@@ -245,3 +245,5 @@ if __name__ == "__main__":
     handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
     stream_handler.setFormatter(handler_format)
     log.addHandler(stream_handler)
+    
+    struct=Structure().parse_structure_from_file(file='benzene.xyz')
