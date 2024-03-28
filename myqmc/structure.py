@@ -1,8 +1,7 @@
 """Structure module"""
 
-from __future__ import annotations
-
 # python modules
+from dataclasses import dataclass, field
 import numpy as np
 from numpy import linalg as LA
 import numpy.typing as npt
@@ -20,104 +19,72 @@ from utilities.units import Angstrom_to_Bohr, Bohr_to_Angstrom
 logger = getLogger("myqmc").getChild(__name__)
 
 
-class Structure:
+@dataclass
+class Structure_data:
     """Structure class
 
     The class contains all information about a structure.
 
     Args:
-        vec_a (npt.NDArray[np.float]): lattice vector a. The unit is Bohr
-        vec_b (npt.NDArray[np.float]): lattice vector b. The unit is Bohr
-        vec_c (npt.NDArray[np.float]): lattice vector c. The unit is Bohr
+        pbc_flag (list[bool]): pbc_flags in the a, b, and c directions.
+        vec_a (list[float]): lattice vector a. The unit is Bohr
+        vec_b (list[float]): lattice vector b. The unit is Bohr
+        vec_c (list[float]): lattice vector c. The unit is Bohr
         atomic_numbers (list[int]): list of atomic numbers in the system.
         element_symbols (list[str]): list of element symbols in the system.
         atomic_labels (list[str]): list of labels for the atoms in the system.
-        positions (npt.NDArray[np.float]): (N x 3) np.array containing atomic positions in cartesian. The unit is Bohr
+        positions (npt.NDArray[np.float64]): (N x 3) np.array containing atomic positions in cartesian. The unit is Bohr
     """
 
-    def __init__(
-        self,
-        vec_a: None | npt.NDArray[np.float] = None,
-        vec_b: None | npt.NDArray[np.float] = None,
-        vec_c: None | npt.NDArray[np.float] = None,
-        atomic_numbers: None | list[int] = None,
-        element_symbols: None | list[str] = None,
-        atomic_labels: None | list[str] = None,
-        positions: None | npt.NDArray[np.float] = None,
-    ):
-
-        # initialization
-        if vec_a is None:
-            vec_a = np.array([0.0, 0.0, 0.0], dtype=float)
-        if vec_b is None:
-            vec_b = np.array([0.0, 0.0, 0.0], dtype=float)
-        if vec_c is None:
-            vec_c = np.array([0.0, 0.0, 0.0], dtype=float)
-
-        if atomic_numbers is None:
-            atomic_numbers = []
-        if element_symbols is None:
-            element_symbols = []
-        if atomic_labels is None:
-            atomic_labels = []
-        if positions is None:
-            positions = np.array([[]])
-
-        self.__vec_a = vec_a
-        self.__vec_b = vec_b
-        self.__vec_c = vec_c
-        self.__norm_vec_a = LA.norm(self.__vec_a)
-        self.__norm_vec_b = LA.norm(self.__vec_b)
-        self.__norm_vec_c = LA.norm(self.__vec_c)
-        self.__atomic_numbers = atomic_numbers
-        self.__element_symbols = element_symbols
-        self.__atomic_labels = atomic_labels
-        self.__positions = positions
+    pbc_flag: list[bool] = field(default_factory=lambda: [False, False, False])
+    vec_a: list[float] = field(default_factory=list)
+    vec_b: list[float] = field(default_factory=list)
+    vec_c: list[float] = field(default_factory=list)
+    atomic_numbers: list[int] = field(default_factory=list)
+    element_symbols: list[str] = field(default_factory=list)
+    atomic_labels: list[str] = field(default_factory=list)
+    positions: npt.NDArray[np.float64] = np.array([])
 
     @property
-    def cell(self) -> npt.NDArray[np.float]:
+    def norm_vec_a(self) -> float:
+        return LA.norm(self.vec_a)
+
+    @property
+    def norm_vec_b(self) -> float:
+        return LA.norm(self.vec_b)
+
+    @property
+    def norm_vec_c(self) -> float:
+        return LA.norm(self.vec_c)
+
+    @property
+    def cell(self) -> npt.NDArray[np.float64]:
         """
         Returns:
             3x3 cell matrix containing `vec_a`, `vec_b`, and `vec_c`
         """
-        _cell = np.array([self.__vec_a, self.__vec_b, self.__vec_c])
-        return _cell
+        cell = np.array([self.vec_a, self.vec_b, self.vec_c])
+        return cell
 
     @property
-    def atomic_numbers(self) -> list[int]:
-        """
-        Returns:
-            list of atomic numbers
-        """
-        return self.__atomic_numbers
-
-    @property
-    def element_symbols(self) -> list[str]:
-        """
-        Returns:
-            list of element symbols
-        """
-        return self.__element_symbols
-
-    @property
-    def positions_cart(self) -> npt.NDArray[np.float]:
+    def positions_cart(self) -> npt.NDArray[np.float64]:
         """
         Returns:
             (N x 3) np.array containing atomic positions in cartesian. The unit is Bohr
         """
-        return self.__positions
+        return self.positions
 
     @property
-    def positions_frac(self) -> npt.NDArray[np.float]:
+    def positions_frac(self) -> npt.NDArray[np.float64]:
         """
         Returns:
             (N x 3) np.array containing atomic positions in crystal (fractional) coordinate.
         """
-        h = np.array([self.__vec_a, self.__vec_b, self.__vec_c])
-        self.__positions_frac = np.array(
+        h = np.array([self.vec_a, self.vec_b, self.vec_c])
+        positions_frac = np.array(
             [np.dot(np.array(pos), np.linalg.inv(h)) for pos in self.positions_cart]
         )
-        return self.__positions_frac
+        return positions_frac
 
     @property
     def natom(self) -> int:
@@ -125,7 +92,7 @@ class Structure:
         Returns:
             The number of atoms in the system.
         """
-        return len(self.__atomic_numbers)
+        return len(self.atomic_numbers)
 
     @property
     def ntyp(self) -> int:
@@ -133,22 +100,7 @@ class Structure:
         Returns:
             The number of element types in the system.
         """
-        return len(list(set(self.__atomic_numbers)))
-
-    @property
-    def pbc_flag(self) -> bool:
-        """
-        Returns:
-            Flag if the system is under PBC (i.e. a crystal) or not (i.e. a molecule)
-        """
-        if (
-            self.__norm_vec_a == 0.0
-            and self.__norm_vec_b == 0.0
-            and self.__norm_vec_c == 0.0
-        ):
-            return False
-        else:
-            return True
+        return len(list(set(self.atomic_numbers)))
 
     def get_ase_atom(self) -> Atoms:
         """
@@ -161,7 +113,7 @@ class Structure:
         """
         if self.pbc_flag:
             ase_atom = Atoms(
-                self.__element_symbols, positions=self.positions_cart * Bohr_to_Angstrom
+                self.element_symbols, positions=self.positions_cart * Bohr_to_Angstrom
             )
             ase_atom.set_cell(
                 np.array(
@@ -175,14 +127,14 @@ class Structure:
             ase_atom.set_pbc(True)
         else:
             ase_atom = Atoms(
-                self.__element_symbols, positions=self.positions_cart * Bohr_to_Angstrom
+                self.element_symbols, positions=self.positions_cart * Bohr_to_Angstrom
             )
             ase_atom.set_pbc(False)
 
         return ase_atom
 
     @classmethod
-    def parse_structure_from_ase_atom(cls, ase_atom: Atoms) -> Structure:
+    def parse_structure_from_ase_atom(cls, ase_atom: Atoms) -> "Structure_data":
         """
         Returns:
             Struture class, by parsing an ASE Atoms instance.
@@ -190,20 +142,22 @@ class Structure:
         Args:
             Atoms: ASE Atoms instance
         """
-        if all(ase_atom.get_pbc()):
-            vec_a = ase_atom.get_cell()[0] * Angstrom_to_Bohr
-            vec_b = ase_atom.get_cell()[1] * Angstrom_to_Bohr
-            vec_c = ase_atom.get_cell()[2] * Angstrom_to_Bohr
+        pbc_flag = ase_atom.get_pbc()
+        if all(pbc_flag):
+            vec_a = list(ase_atom.get_cell()[0] * Angstrom_to_Bohr)
+            vec_b = list(ase_atom.get_cell()[1] * Angstrom_to_Bohr)
+            vec_c = list(ase_atom.get_cell()[2] * Angstrom_to_Bohr)
         else:
-            vec_a = np.array([0.0, 0.0, 0.0])
-            vec_b = np.array([0.0, 0.0, 0.0])
-            vec_c = np.array([0.0, 0.0, 0.0])
+            vec_a = [0.0, 0.0, 0.0]
+            vec_b = [0.0, 0.0, 0.0]
+            vec_c = [0.0, 0.0, 0.0]
 
         atomic_numbers = ase_atom.get_atomic_numbers()
         element_symbols = ase_atom.get_chemical_symbols()
         positions = ase_atom.get_positions() * Angstrom_to_Bohr
 
         return cls(
+            pbc_flag=pbc_flag,
             vec_a=vec_a,
             vec_b=vec_b,
             vec_c=vec_c,
@@ -214,7 +168,7 @@ class Structure:
         )
 
     @classmethod
-    def parse_structure_from_file(cls, filename: str) -> Structure:
+    def parse_structure_from_file(cls, filename: str) -> "Structure_data":
         """
         Returns:
             Struture class from a file using the ASE read function.
@@ -245,5 +199,5 @@ if __name__ == "__main__":
     handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
     stream_handler.setFormatter(handler_format)
     log.addHandler(stream_handler)
-    
-    struct=Structure().parse_structure_from_file(file='benzene.xyz')
+
+    struct = Structure_data().parse_structure_from_file(filename="benzene.xyz")
