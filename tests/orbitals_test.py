@@ -7,7 +7,7 @@ from numpy.testing import assert_almost_equal
 
 from logging import getLogger, StreamHandler, Formatter
 
-from ..myqmc.atomic_orbital import AO_sphe
+from ..myqmc.atomic_orbital import AO_data, compute_S_l_m, AOs_data, compute_AOs
 
 log = getLogger("myqmc")
 log.setLevel("DEBUG")
@@ -18,6 +18,7 @@ stream_handler.setFormatter(handler_format)
 log.addHandler(stream_handler)
 
 
+# @pytest.mark.skip
 @pytest.mark.parametrize(
     ["l", "m"],
     list(
@@ -30,11 +31,10 @@ log.addHandler(stream_handler)
     ),
 )
 def test_spherical_part_of_AO(l, m):
-
-    def S_l_m_ref(l=0, m=0, r_cart=[0.0, 0.0, 0.0]):
+    def S_l_m_ref(l=0, m=0, r_cart_rel=[0.0, 0.0, 0.0]):
         """see https://en.wikipedia.org/wiki/Table_of_spherical_harmonics#Real_spherical_harmonics"""
-        x, y, z = r_cart
-        r = LA.norm(r_cart)
+        x, y, z = r_cart_rel
+        r = LA.norm(r_cart_rel)
         # s orbital
         if (l, m) == (0, 0):
             return 1.0 / 2.0 * np.sqrt(1.0 / np.pi)
@@ -83,14 +83,56 @@ def test_spherical_part_of_AO(l, m):
             raise NotImplementedError
 
     num_samples = 40
+    R_cart = [0.0, 0.0, 0.0]
     r_cart_min, r_cart_max = -10.0, 10.0
     r_x_rand = (r_cart_max - r_cart_min) * np.random.rand(num_samples) + r_cart_min
     r_y_rand = (r_cart_max - r_cart_min) * np.random.rand(num_samples) + r_cart_min
     r_z_rand = (r_cart_max - r_cart_min) * np.random.rand(num_samples) + r_cart_min
 
-    ao_sphe = AO_sphe(angular_momentum=l, magnetic_quantum_number=m)
-
     for r_cart in zip(r_x_rand, r_y_rand, r_z_rand):
-        test_Y_lm = ao_sphe.S_l_m(r_cart=r_cart) / LA.norm(r_cart) ** l
-        ref_Y_lm = S_l_m_ref(l=l, m=m, r_cart=r_cart)
+        r_norm = LA.norm(np.array(R_cart) - np.array(r_cart))
+        r_cart_rel = np.array(r_cart) - np.array(R_cart)
+        test_Y_lm = (
+            compute_S_l_m(
+                atomic_center_cart=R_cart,
+                angular_momentum=l,
+                magnetic_quantum_number=m,
+                r_cart=r_cart,
+            )
+            / r_norm**l
+        )
+        ref_Y_lm = S_l_m_ref(l=l, m=m, r_cart_rel=r_cart_rel)
         assert_almost_equal(test_Y_lm, ref_Y_lm, decimal=12)
+
+
+@pytest.mark.skip
+def test_AOs():
+    num_r_cart_samples = 10
+    num_R_cart_samples = 2
+    r_cart_min, r_cart_max = -1.0, 1.0
+    R_cart_min, R_cart_max = 0.0, 0.0
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(
+        num_r_cart_samples, 3
+    ) + r_cart_min
+    R_cart = (R_cart_max - R_cart_min) * np.random.rand(
+        num_R_cart_samples, 3
+    ) + R_cart_min
+
+    orbital_indices = [0, 1, 1]
+    exponents = [50.0, 20.0, 10.0]
+    coefficients = [1.0, 1.0, 1.0]
+    angular_momentums = [0, 1]
+    magnetic_quantum_numbers = [0, 0]
+
+    aos_data = AOs_data(
+        atomic_center_carts=R_cart,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        magnetic_quantum_numbers=magnetic_quantum_numbers,
+    )
+
+    aos_debug = compute_AOs(aos_data=aos_data, r_carts=r_carts)
+    print(aos_debug)
+    # assert_almost_equal(test_Y_lm, ref_Y_lm, decimal=12)
