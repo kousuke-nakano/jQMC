@@ -7,7 +7,13 @@ from numpy.testing import assert_almost_equal
 
 from logging import getLogger, StreamHandler, Formatter
 
-from ..myqmc.atomic_orbital import AO_data, compute_S_l_m, AOs_data, compute_AOs
+from ..myqmc.atomic_orbital import (
+    AO_data,
+    compute_S_l_m,
+    AOs_data,
+    compute_AOs,
+    compute_AO,
+)
 
 log = getLogger("myqmc")
 log.setLevel("DEBUG")
@@ -82,8 +88,8 @@ def test_spherical_part_of_AO(l, m):
         else:
             raise NotImplementedError
 
-    num_samples = 40
-    R_cart = [0.0, 0.0, 0.0]
+    num_samples = 1
+    R_cart = [0.0, 0.0, 1.0]
     r_cart_min, r_cart_max = -10.0, 10.0
     r_x_rand = (r_cart_max - r_cart_min) * np.random.rand(num_samples) + r_cart_min
     r_y_rand = (r_cart_max - r_cart_min) * np.random.rand(num_samples) + r_cart_min
@@ -104,11 +110,33 @@ def test_spherical_part_of_AO(l, m):
         ref_Y_lm = S_l_m_ref(l=l, m=m, r_cart_rel=r_cart_rel)
         assert_almost_equal(test_Y_lm, ref_Y_lm, decimal=12)
 
+        ao_data = AO_data(
+            num_ao_prim=1,
+            atomic_center_cart=R_cart,
+            exponents=[0.0],
+            coefficients=[1.0],
+            angular_momentum=l,
+            magnetic_quantum_number=m,
+        )
 
-@pytest.mark.skip
+        test_Y_lm = compute_AO(ao_data=ao_data, r_cart=r_cart) / r_norm**l
+        assert_almost_equal(test_Y_lm, ref_Y_lm, decimal=12)
+
+
+# @pytest.mark.skip
 def test_AOs():
-    num_r_cart_samples = 10
-    num_R_cart_samples = 2
+    factor = 1000
+    num_el = 1000
+    num_ao = 3 * factor
+    num_ao_prim = 4 * factor
+    orbital_indices = [0, 0, 1, 2] * factor
+    exponents = [50.0, 20.0, 10.0, 5.0] * factor
+    coefficients = [1.0, 1.0, 1.0, 0.5] * factor
+    angular_momentums = [1, 1, 1] * factor
+    magnetic_quantum_numbers = [0, 0, -1] * factor
+
+    num_r_cart_samples = num_el
+    num_R_cart_samples = num_ao
     r_cart_min, r_cart_max = -1.0, 1.0
     R_cart_min, R_cart_max = 0.0, 0.0
     r_carts = (r_cart_max - r_cart_min) * np.random.rand(
@@ -118,13 +146,9 @@ def test_AOs():
         num_R_cart_samples, 3
     ) + R_cart_min
 
-    orbital_indices = [0, 1, 1]
-    exponents = [50.0, 20.0, 10.0]
-    coefficients = [1.0, 1.0, 1.0]
-    angular_momentums = [0, 1]
-    magnetic_quantum_numbers = [0, 0]
-
     aos_data = AOs_data(
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
         atomic_center_carts=R_cart,
         orbital_indices=orbital_indices,
         exponents=exponents,
@@ -133,6 +157,6 @@ def test_AOs():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    aos_debug = compute_AOs(aos_data=aos_data, r_carts=r_carts)
-    print(aos_debug)
-    # assert_almost_equal(test_Y_lm, ref_Y_lm, decimal=12)
+    aos_debug = compute_AOs(aos_data=aos_data, r_carts=r_carts, debug_flag=True)
+    aos_fast = compute_AOs(aos_data=aos_data, r_carts=r_carts, debug_flag=False)
+    assert np.allclose(aos_fast, aos_debug, rtol=1e-05, atol=1e-08)
