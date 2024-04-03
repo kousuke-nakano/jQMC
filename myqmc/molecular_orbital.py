@@ -26,7 +26,7 @@ class MO_data:
         atomic_orbitals (list[AO]): List of AO instances.
     """
 
-    coefficients: list[float | complex] = field(default_factory=list)
+    ao_coefficients: list[float | complex] = field(default_factory=list)
     ao_data_l: list[AO_data] = field(default_factory=list)
 
 
@@ -44,7 +44,7 @@ def compute_MO(mo_data: MO_data, r_cart: list[float]) -> float:
     """
 
     return np.inner(
-        np.array(mo_data.coefficients),
+        np.array(mo_data.ao_coefficients),
         np.array(
             [
                 compute_AO(ao_data=ao_data, r_cart=r_cart)
@@ -62,3 +62,42 @@ if __name__ == "__main__":
     handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
     stream_handler.setFormatter(handler_format)
     log.addHandler(stream_handler)
+
+    num_el = 10
+    num_ao = 3
+    num_ao_prim = 4
+    orbital_indices = [0, 0, 1, 2]
+    exponents = [50.0, 20.0, 10.0, 5.0]
+    coefficients = [1.0, 1.0, 1.0, 0.5]
+    angular_momentums = [1, 1, 1]
+    magnetic_quantum_numbers = [0, 0, -1]
+
+    num_r_cart_samples = 1
+    num_R_cart_samples = num_ao
+    r_cart_min, r_cart_max = -1.0, 1.0
+    R_cart_min, R_cart_max = 0.0, 0.0
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(
+        num_r_cart_samples, 3
+    ) + r_cart_min
+    R_cart = (R_cart_max - R_cart_min) * np.random.rand(
+        num_R_cart_samples, 3
+    ) + R_cart_min
+
+    ao_coefficients = [1.0, 1.0, 1.0]
+
+    ao_data_l = [
+        AO_data(
+            num_ao_prim=orbital_indices.count(i),
+            atomic_center_cart=R_cart[i],
+            exponents=[exponents[k] for (k, v) in enumerate(orbital_indices) if v == i],
+            coefficients=[
+                coefficients[k] for (k, v) in enumerate(orbital_indices) if v == i
+            ],
+            angular_momentum=angular_momentums[i],
+            magnetic_quantum_number=magnetic_quantum_numbers[i],
+        )
+        for i in range(num_ao)
+    ]
+
+    mo_data = MO_data(ao_data_l=ao_data_l, ao_coefficients=ao_coefficients)
+    print(compute_MO(mo_data=mo_data, r_cart=r_carts[0]))

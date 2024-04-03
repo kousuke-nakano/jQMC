@@ -51,10 +51,10 @@ class AO_data:
             logger.error("dim. of atomic_center_cart is wrong")
             raise ValueError
         if len(self.exponents) != self.num_ao_prim:
-            logger.error("dim. of self.exponentst is wrong")
+            logger.error("dim. of self.exponents is wrong")
             raise ValueError
         if len(self.coefficients) != self.num_ao_prim:
-            logger.error("dim. of self.exponentst is wrong")
+            logger.error("dim. of self.coefficients is wrong")
             raise ValueError
         if self.angular_momentum < np.abs(self.magnetic_quantum_number):
             logger.error(
@@ -124,10 +124,10 @@ class AOs_data:
                 f"num_ao={self.num_ao} and/or num_ao_prim={self.num_ao_prim} is wrong"
             )
         if len(self.exponents) != self.num_ao_prim:
-            logger.error("dim. of self.exponentst is wrong")
+            logger.error("dim. of self.exponents is wrong")
             raise ValueError
         if len(self.coefficients) != self.num_ao_prim:
-            logger.error("dim. of self.exponents is wrong")
+            logger.error("dim. of self.coefficients is wrong")
             raise ValueError
         if len(self.angular_momentums) != self.num_ao:
             logger.error("dim. of self.angular_momentums is wrong")
