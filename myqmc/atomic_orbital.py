@@ -159,7 +159,7 @@ class AOs_data:
 
 
 def compute_AOs(
-    aos_data: AOs_data, r_carts: npt.NDArray[np.float64], debug_flag=True
+    aos_data: AOs_data, r_carts: npt.NDArray[np.float64], debug_flag: bool = True
 ) -> npt.NDArray[np.float64 | np.complex128]:
     """
     The method is for computing the value of the given atomic orbital at r_carts
@@ -174,188 +174,204 @@ def compute_AOs(
     """
 
     if debug_flag:
-        vec_a = aos_data.vec_a
-        vec_b = aos_data.vec_b
-        vec_c = aos_data.vec_c
-
-        def compute_each_AO(ao_index):
-            atomic_center_cart = aos_data.atomic_center_carts[ao_index]
-            shell_indices = [
-                i for i, v in enumerate(aos_data.orbital_indices) if v == ao_index
-            ]
-            exponents = [aos_data.exponents[i] for i in shell_indices]
-            coefficients = [aos_data.coefficients[i] for i in shell_indices]
-            angular_momentum = aos_data.angular_momentums[ao_index]
-            magnetic_quantum_number = aos_data.magnetic_quantum_numbers[ao_index]
-            num_ao_prim = len(exponents)
-
-            ao_data = AO_data(
-                num_ao_prim=num_ao_prim,
-                vec_a=vec_a,
-                vec_b=vec_b,
-                vec_c=vec_c,
-                atomic_center_cart=atomic_center_cart,
-                exponents=exponents,
-                coefficients=coefficients,
-                angular_momentum=angular_momentum,
-                magnetic_quantum_number=magnetic_quantum_number,
-            )
-
-            ao_values = [
-                compute_AO(ao_data=ao_data, r_cart=r_cart) for r_cart in r_carts
-            ]
-
-            return ao_values
-
-        aos_values = np.array(
-            [compute_each_AO(ao_index) for ao_index in range(aos_data.num_ao)]
-        )
-
-        return aos_values
-
+        return compute_AOs_debug(aos_data, r_carts)
     else:
-        atomic_center_carts = aos_data.atomic_center_carts
-        atomic_center_carts_dup = np.array(
-            [atomic_center_carts[i] for i in aos_data.orbital_indices]
+        return compute_AOs_fast(aos_data, r_carts)
+
+
+def compute_AOs_debug(
+    aos_data: AOs_data, r_carts: npt.NDArray[np.float64]
+) -> npt.NDArray[np.float64 | np.complex128]:
+    """
+    This is for debuging compute_AOs method. It is written in a very straightforward way.
+
+    Args:
+        ao_datas (AOs_data): an instance of AOs_data
+        r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
+
+    Returns:
+    Arrays containing values of the AOs at r_carts. (dim: num_ao, N_e)
+    """
+    vec_a = aos_data.vec_a
+    vec_b = aos_data.vec_b
+    vec_c = aos_data.vec_c
+
+    def compute_each_AO(ao_index):
+        atomic_center_cart = aos_data.atomic_center_carts[ao_index]
+        shell_indices = [
+            i for i, v in enumerate(aos_data.orbital_indices) if v == ao_index
+        ]
+        exponents = [aos_data.exponents[i] for i in shell_indices]
+        coefficients = [aos_data.coefficients[i] for i in shell_indices]
+        angular_momentum = aos_data.angular_momentums[ao_index]
+        magnetic_quantum_number = aos_data.magnetic_quantum_numbers[ao_index]
+        num_ao_prim = len(exponents)
+
+        ao_data = AO_data(
+            num_ao_prim=num_ao_prim,
+            vec_a=vec_a,
+            vec_b=vec_b,
+            vec_c=vec_c,
+            atomic_center_cart=atomic_center_cart,
+            exponents=exponents,
+            coefficients=coefficients,
+            angular_momentum=angular_momentum,
+            magnetic_quantum_number=magnetic_quantum_number,
         )
-        exponents = aos_data.exponents
-        coefficients = aos_data.coefficients
-        angular_momentums = aos_data.angular_momentums
-        magnetic_quantum_numbers = aos_data.magnetic_quantum_numbers
 
-        # compute R_n
-        n_el = r_carts.shape[0]
-        sq_r_R = np.array(
-            [
-                LA.norm(v[0] - v[1]) ** 2
-                for v in itertools.product(atomic_center_carts_dup, r_carts)
-            ]
-        ).reshape(aos_data.num_ao_prim, n_el)
-
-        logger.debug(sq_r_R)
-        logger.debug(np.array([exponents]).T)
-
-        R_n_dup = np.array([coefficients]).T * np.exp(
-            -1 * np.array([exponents]).T * sq_r_R
+        ao_values = np.array(
+            [compute_AO(ao_data=ao_data, r_cart=r_cart) for r_cart in r_carts]
         )
 
-        R_n = np.zeros([aos_data.num_ao, n_el])
-        unique_indices = np.unique(aos_data.orbital_indices)
-        for ui in unique_indices:
-            mask = aos_data.orbital_indices == ui
-            R_n[ui] = R_n_dup[mask].sum(axis=0)
+        return ao_values
 
-        # compute S_n
+    aos_values = np.array(
+        [compute_each_AO(ao_index) for ao_index in range(aos_data.num_ao)]
+    )
 
-        # direct product of r_cart * R
-        r_R = np.array(
-            [v[1] - v[0] for v in itertools.product(atomic_center_carts, r_carts)]
-        ).reshape(aos_data.num_ao, n_el, 3)
+    return aos_values
 
-        def __compute_S_l_m(
-            r_cart_rel: npt.NDArray[np.float64], l: int, m: int
+
+def compute_AOs_fast(
+    aos_data: AOs_data, r_carts: npt.NDArray[np.float64]
+) -> npt.NDArray[np.float64 | np.complex128]:
+
+    atomic_center_carts = aos_data.atomic_center_carts
+    atomic_center_carts_dup = np.array(
+        [atomic_center_carts[i] for i in aos_data.orbital_indices]
+    )
+    exponents = aos_data.exponents
+    coefficients = aos_data.coefficients
+    angular_momentums = aos_data.angular_momentums
+    magnetic_quantum_numbers = aos_data.magnetic_quantum_numbers
+
+    # compute R_n
+    n_el = r_carts.shape[0]
+    sq_r_R = np.array(
+        [
+            LA.norm(v[0] - v[1]) ** 2
+            for v in itertools.product(atomic_center_carts_dup, r_carts)
+        ]
+    ).reshape(aos_data.num_ao_prim, n_el)
+
+    logger.debug(sq_r_R)
+    logger.debug(np.array([exponents]).T)
+
+    R_n_dup = np.array([coefficients]).T * np.exp(-1 * np.array([exponents]).T * sq_r_R)
+
+    R_n = np.zeros([aos_data.num_ao, n_el])
+    unique_indices = np.unique(aos_data.orbital_indices)
+    for ui in unique_indices:
+        mask = aos_data.orbital_indices == ui
+        R_n[ui] = R_n_dup[mask].sum(axis=0)
+
+    # compute S_n
+
+    # direct product of r_cart * R
+    r_R = np.array(
+        [v[1] - v[0] for v in itertools.product(atomic_center_carts, r_carts)]
+    ).reshape(aos_data.num_ao, n_el, 3)
+
+    def __compute_S_l_m(
+        r_cart_rel: npt.NDArray[np.float64], l: int, m: int
+    ) -> npt.NDArray[np.float64]:
+        x, y, z = r_cart_rel[..., 0], r_cart_rel[..., 1], r_cart_rel[..., 2]
+        r_norm = np.sqrt(x**2 + y**2 + z**2)
+        m_abs = np.abs(m)
+
+        logger.debug(f"x.shape={x.shape}")
+        logger.debug(f"y.shape={y.shape}")
+        logger.debug(f"z.shape={z.shape}")
+        logger.debug(f"r_norm.shape={r_norm.shape}")
+
+        # solid harmonics for (x,y) dependent part:
+        def A_m(
+            x: npt.NDArray[np.float64], y: npt.NDArray[np.float64]
         ) -> npt.NDArray[np.float64]:
-            x, y, z = r_cart_rel[..., 0], r_cart_rel[..., 1], r_cart_rel[..., 2]
-            r_norm = np.sqrt(x**2 + y**2 + z**2)
-            m_abs = np.abs(m)
-
-            logger.debug(f"x.shape={x.shape}")
-            logger.debug(f"y.shape={y.shape}")
-            logger.debug(f"z.shape={z.shape}")
-            logger.debug(f"r_norm.shape={r_norm.shape}")
-
-            # solid harmonics for (x,y) dependent part:
-            def A_m(
-                x: npt.NDArray[np.float64], y: npt.NDArray[np.float64]
-            ) -> npt.NDArray[np.float64]:
-                return np.sum(
-                    [
-                        binom(m_abs, p)
-                        * x ** (p)
-                        * y ** (m_abs - p)
-                        * np.cos((m_abs - p) * (np.pi / 2.0))
-                        for p in range(0, m_abs + 1)
-                    ],
-                    axis=0,
-                )
-
-            def B_m(
-                x: npt.NDArray[np.float64], y: npt.NDArray[np.float64]
-            ) -> npt.NDArray[np.float64]:
-                return np.sum(
-                    [
-                        binom(m_abs, p)
-                        * x ** (p)
-                        * y ** (m_abs - p)
-                        * np.sin((m_abs - p) * (np.pi / 2.0))
-                        for p in range(0, m_abs + 1)
-                    ],
-                    axis=0,
-                )
-
-            # solid harmonics for (z) dependent part:
-            def lambda_lm(k: int) -> float:
-                return (
-                    (-1) ** (k)
-                    * 2 ** (-l)
-                    * binom(l, k)
-                    * binom(2 * l - 2 * k, l)
-                    * factorial(l - 2 * k)
-                    / factorial(l - 2 * k - m_abs)
-                )
-
-            # solid harmonics for (z) dependent part:
-            def Lambda_lm(
-                r_norm: npt.NDArray[np.float64], z: npt.NDArray[np.float64]
-            ) -> npt.NDArray[np.float64]:
-                return np.sqrt(
-                    (2 - int(m_abs == 0)) * factorial(l - m_abs) / factorial(l + m_abs)
-                ) * np.sum(
-                    [
-                        lambda_lm(k) * r_norm ** (2 * k) * z ** (l - 2 * k - m_abs)
-                        for k in range(0, int((l - m_abs) / 2) + 1)
-                    ],
-                    axis=0,
-                )
-
-            # solid harmonics in Cartesian (x,y,z):
-            if m >= 0:
-                gamma = (
-                    np.sqrt((2 * l + 1) / (4 * np.pi))
-                    * Lambda_lm(r_norm, z)
-                    * A_m(x, y)
-                )
-            if m < 0:
-                gamma = (
-                    np.sqrt((2 * l + 1) / (4 * np.pi))
-                    * Lambda_lm(r_norm, z)
-                    * B_m(x, y)
-                )
-            return gamma
-
-        S_l_m = np.array(
-            [
-                __compute_S_l_m(
-                    r_cart_rel=r_cart_rel,
-                    l=angular_momentums[i],
-                    m=magnetic_quantum_numbers[i],
-                )
-                for i, r_cart_rel in enumerate(r_R)
-            ]
-        )
-
-        # final answer
-        answer = R_n * S_l_m
-
-        if answer.shape != (aos_data.num_ao, len(r_carts)):
-            logger.error(
-                f"answer.shape = {answer.shape} is inconsistent with the expected one = {(aos_data.num_ao, len(r_carts))}"
+            return np.sum(
+                [
+                    binom(m_abs, p)
+                    * x ** (p)
+                    * y ** (m_abs - p)
+                    * np.cos((m_abs - p) * (np.pi / 2.0))
+                    for p in range(0, m_abs + 1)
+                ],
+                axis=0,
             )
-            logger.error(f"R_n.shape = {R_n.shape}")
-            logger.error(f"S_l_m.shape = {S_l_m.shape}")
-            raise ValueError
 
-        return answer
+        def B_m(
+            x: npt.NDArray[np.float64], y: npt.NDArray[np.float64]
+        ) -> npt.NDArray[np.float64]:
+            return np.sum(
+                [
+                    binom(m_abs, p)
+                    * x ** (p)
+                    * y ** (m_abs - p)
+                    * np.sin((m_abs - p) * (np.pi / 2.0))
+                    for p in range(0, m_abs + 1)
+                ],
+                axis=0,
+            )
+
+        # solid harmonics for (z) dependent part:
+        def lambda_lm(k: int) -> float:
+            return (
+                (-1) ** (k)
+                * 2 ** (-l)
+                * binom(l, k)
+                * binom(2 * l - 2 * k, l)
+                * factorial(l - 2 * k)
+                / factorial(l - 2 * k - m_abs)
+            )
+
+        # solid harmonics for (z) dependent part:
+        def Lambda_lm(
+            r_norm: npt.NDArray[np.float64], z: npt.NDArray[np.float64]
+        ) -> npt.NDArray[np.float64]:
+            return np.sqrt(
+                (2 - int(m_abs == 0)) * factorial(l - m_abs) / factorial(l + m_abs)
+            ) * np.sum(
+                [
+                    lambda_lm(k) * r_norm ** (2 * k) * z ** (l - 2 * k - m_abs)
+                    for k in range(0, int((l - m_abs) / 2) + 1)
+                ],
+                axis=0,
+            )
+
+        # solid harmonics in Cartesian (x,y,z):
+        if m >= 0:
+            gamma = (
+                np.sqrt((2 * l + 1) / (4 * np.pi)) * Lambda_lm(r_norm, z) * A_m(x, y)
+            )
+        if m < 0:
+            gamma = (
+                np.sqrt((2 * l + 1) / (4 * np.pi)) * Lambda_lm(r_norm, z) * B_m(x, y)
+            )
+        return gamma
+
+    S_l_m = np.array(
+        [
+            __compute_S_l_m(
+                r_cart_rel=r_cart_rel,
+                l=angular_momentums[i],
+                m=magnetic_quantum_numbers[i],
+            )
+            for i, r_cart_rel in enumerate(r_R)
+        ]
+    )
+
+    # final answer
+    answer = R_n * S_l_m
+
+    if answer.shape != (aos_data.num_ao, len(r_carts)):
+        logger.error(
+            f"answer.shape = {answer.shape} is inconsistent with the expected one = {(aos_data.num_ao, len(r_carts))}"
+        )
+        logger.error(f"R_n.shape = {R_n.shape}")
+        logger.error(f"S_l_m.shape = {S_l_m.shape}")
+        raise ValueError
+
+    return answer
 
 
 def compute_AO(ao_data: AO_data, r_cart: list[float]) -> float | complex:
@@ -401,8 +417,8 @@ def compute_AO(ao_data: AO_data, r_cart: list[float]) -> float | complex:
         r_cart=r_cart,
     )
 
-    logger.debug(f"R_n = {R_n}")
-    logger.debug(f"S_l_m = {S_l_m}")
+    # logger.debug(f"R_n = {R_n}")
+    # logger.debug(f"S_l_m = {S_l_m}")
 
     return R_n * S_l_m
 
@@ -528,14 +544,14 @@ def compute_S_l_m(
             ]
         )
 
-    logger.debug(f"z = {z}")
-    logger.debug(f"l,m = {(l,m)}")
-    logger.debug(f"r_cart = {r_cart}")
-    logger.debug(f"R_cart = {R_cart}")
-    logger.debug(f"r_norm = {r_norm}")
-    logger.debug(f"Lambda_lm(r_norm, z)={Lambda_lm(r_norm, z)}")
-    logger.debug(f"A_m(x, y)={A_m(x, y)}")
-    logger.debug(f"B_m(x, y)={B_m(x, y)}")
+    # logger.debug(f"z = {z}")
+    # logger.debug(f"l,m = {(l,m)}")
+    # logger.debug(f"r_cart = {r_cart}")
+    # logger.debug(f"R_cart = {R_cart}")
+    # logger.debug(f"r_norm = {r_norm}")
+    # logger.debug(f"Lambda_lm(r_norm, z)={Lambda_lm(r_norm, z)}")
+    # logger.debug(f"A_m(x, y)={A_m(x, y)}")
+    # logger.debug(f"B_m(x, y)={B_m(x, y)}")
 
     # solid harmonics in Cartesian (x,y,z):
     if m >= 0:

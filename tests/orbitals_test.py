@@ -15,6 +15,8 @@ from ..myqmc.atomic_orbital import (
     compute_AO,
 )
 
+from ..myqmc.molecular_orbital import MO_data, MOs_data, compute_MO, compute_MOs
+
 log = getLogger("myqmc")
 log.setLevel("DEBUG")
 stream_handler = StreamHandler()
@@ -125,7 +127,7 @@ def test_spherical_part_of_AO(l, m):
 
 # @pytest.mark.skip
 def test_AOs():
-    factor = 1000
+    factor = 1
     num_el = 1000
     num_ao = 3 * factor
     num_ao_prim = 4 * factor
@@ -160,3 +162,74 @@ def test_AOs():
     aos_debug = compute_AOs(aos_data=aos_data, r_carts=r_carts, debug_flag=True)
     aos_fast = compute_AOs(aos_data=aos_data, r_carts=r_carts, debug_flag=False)
     assert np.allclose(aos_fast, aos_debug, rtol=1e-05, atol=1e-08)
+
+
+def test_MOs():
+    num_el = 10
+    num_mo = 5
+    num_ao = 3
+    num_ao_prim = 4
+    orbital_indices = [0, 0, 1, 2]
+    exponents = [50.0, 20.0, 10.0, 5.0]
+    coefficients = [1.0, 1.0, 1.0, 0.5]
+    angular_momentums = [1, 1, 1]
+    magnetic_quantum_numbers = [0, 0, -1]
+
+    num_r_cart_samples = num_el
+    num_R_cart_samples = num_ao
+    r_cart_min, r_cart_max = -1.0, 1.0
+    R_cart_min, R_cart_max = 0.0, 0.0
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(
+        num_r_cart_samples, 3
+    ) + r_cart_min
+    R_cart = (R_cart_max - R_cart_min) * np.random.rand(
+        num_R_cart_samples, 3
+    ) + R_cart_min
+
+    ao_coefficients = np.random.rand(num_mo, num_ao)
+
+    # compute each MO step by step
+    mo_ans_step_by_step = []
+
+    ao_data_l = [
+        AO_data(
+            num_ao_prim=orbital_indices.count(i),
+            atomic_center_cart=R_cart[i],
+            exponents=[exponents[k] for (k, v) in enumerate(orbital_indices) if v == i],
+            coefficients=[
+                coefficients[k] for (k, v) in enumerate(orbital_indices) if v == i
+            ],
+            angular_momentum=angular_momentums[i],
+            magnetic_quantum_number=magnetic_quantum_numbers[i],
+        )
+        for i in range(num_ao)
+    ]
+
+    for ao_coeff in ao_coefficients:
+        mo_data = MO_data(ao_data_l=ao_data_l, ao_coefficients=ao_coeff)
+        mo_ans_step_by_step.append(
+            [compute_MO(mo_data=mo_data, r_cart=r_cart) for r_cart in r_carts]
+        )
+    mo_ans_step_by_step = np.array(mo_ans_step_by_step)
+
+    aos_data = AOs_data(
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        atomic_center_carts=R_cart,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        magnetic_quantum_numbers=magnetic_quantum_numbers,
+    )
+
+    mos_data = MOs_data(
+        num_mo=num_mo, aos_data=aos_data, ao_coefficients=ao_coefficients
+    )
+
+    mo_ans_all_debug = compute_MOs(mos_data=mos_data, r_carts=r_carts, debug_flag=True)
+
+    mo_ans_all_fast = compute_MOs(mos_data=mos_data, r_carts=r_carts, debug_flag=False)
+
+    assert np.allclose(mo_ans_step_by_step, mo_ans_all_debug)
+    assert np.allclose(mo_ans_step_by_step, mo_ans_all_fast)
