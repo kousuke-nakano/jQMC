@@ -159,7 +159,7 @@ class AOs_data:
 
 
 def compute_AOs(
-    aos_data: AOs_data, r_carts: npt.NDArray[np.float64], debug_flag: bool = True
+    aos_data: AOs_data, r_carts: npt.NDArray[np.float64], debug_flag: bool = False
 ) -> npt.NDArray[np.float64 | np.complex128]:
     """
     The method is for computing the value of the given atomic orbital at r_carts
@@ -577,7 +577,7 @@ if __name__ == "__main__":
     r_carts = (r_cart_max - r_cart_min) * np.random.rand(
         num_r_cart_samples, 3
     ) + r_cart_min
-    R_cart = (R_cart_max - R_cart_min) * np.random.rand(
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(
         num_R_cart_samples, 3
     ) + R_cart_min
 
@@ -592,7 +592,7 @@ if __name__ == "__main__":
     aos_data = AOs_data(
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
-        atomic_center_carts=R_cart,
+        atomic_center_carts=R_carts,
         orbital_indices=orbital_indices,
         exponents=exponents,
         coefficients=coefficients,

@@ -144,14 +144,14 @@ def test_AOs():
     r_carts = (r_cart_max - r_cart_min) * np.random.rand(
         num_r_cart_samples, 3
     ) + r_cart_min
-    R_cart = (R_cart_max - R_cart_min) * np.random.rand(
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(
         num_R_cart_samples, 3
     ) + R_cart_min
 
     aos_data = AOs_data(
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
-        atomic_center_carts=R_cart,
+        atomic_center_carts=R_carts,
         orbital_indices=orbital_indices,
         exponents=exponents,
         coefficients=coefficients,
@@ -182,7 +182,7 @@ def test_MOs():
     r_carts = (r_cart_max - r_cart_min) * np.random.rand(
         num_r_cart_samples, 3
     ) + r_cart_min
-    R_cart = (R_cart_max - R_cart_min) * np.random.rand(
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(
         num_R_cart_samples, 3
     ) + R_cart_min
 
@@ -194,7 +194,7 @@ def test_MOs():
     ao_data_l = [
         AO_data(
             num_ao_prim=orbital_indices.count(i),
-            atomic_center_cart=R_cart[i],
+            atomic_center_cart=R_carts[i],
             exponents=[exponents[k] for (k, v) in enumerate(orbital_indices) if v == i],
             coefficients=[
                 coefficients[k] for (k, v) in enumerate(orbital_indices) if v == i
@@ -215,7 +215,7 @@ def test_MOs():
     aos_data = AOs_data(
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
-        atomic_center_carts=R_cart,
+        atomic_center_carts=R_carts,
         orbital_indices=orbital_indices,
         exponents=exponents,
         coefficients=coefficients,
