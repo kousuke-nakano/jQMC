@@ -3,14 +3,13 @@
 # python modules
 from dataclasses import dataclass, field
 import numpy as np
-from numpy import linalg as LA
 import numpy.typing as npt
 
 # set logger
 from logging import getLogger, StreamHandler, Formatter
 
 # myqmc module
-from .atomic_orbital import AO_data, compute_AO, AOs_data, compute_AOs
+from atomic_orbital import AO_data, compute_AO, AOs_data, compute_AOs
 
 logger = getLogger("myqmc").getChild(__name__)
 

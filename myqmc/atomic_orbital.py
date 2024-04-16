@@ -1,6 +1,6 @@
 """Atomic Orbital module"""
 
-import sys
+# import sys
 
 # python modules
 from dataclasses import dataclass, field
