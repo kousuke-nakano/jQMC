@@ -16,6 +16,7 @@ from ..myqmc.atomic_orbital import (
 )
 
 from ..myqmc.molecular_orbital import MO_data, MOs_data, compute_MO, compute_MOs
+from ..myqmc.determinant import Geminal_data, compute_geminal_all_elements
 
 log = getLogger("myqmc")
 log.setLevel("DEBUG")
@@ -186,7 +187,7 @@ def test_MOs():
         num_R_cart_samples, 3
     ) + R_cart_min
 
-    ao_coefficients = np.random.rand(num_mo, num_ao)
+    mo_coefficients = np.random.rand(num_mo, num_ao)
 
     # compute each MO step by step
     mo_ans_step_by_step = []
@@ -205,8 +206,8 @@ def test_MOs():
         for i in range(num_ao)
     ]
 
-    for ao_coeff in ao_coefficients:
-        mo_data = MO_data(ao_data_l=ao_data_l, ao_coefficients=ao_coeff)
+    for mo_coeff in mo_coefficients:
+        mo_data = MO_data(ao_data_l=ao_data_l, mo_coefficients=mo_coeff)
         mo_ans_step_by_step.append(
             [compute_MO(mo_data=mo_data, r_cart=r_cart) for r_cart in r_carts]
         )
@@ -224,7 +225,7 @@ def test_MOs():
     )
 
     mos_data = MOs_data(
-        num_mo=num_mo, aos_data=aos_data, ao_coefficients=ao_coefficients
+        num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients
     )
 
     mo_ans_all_debug = compute_MOs(mos_data=mos_data, r_carts=r_carts, debug_flag=True)
@@ -233,3 +234,108 @@ def test_MOs():
 
     assert np.allclose(mo_ans_step_by_step, mo_ans_all_debug)
     assert np.allclose(mo_ans_step_by_step, mo_ans_all_fast)
+
+
+def test_geminals():
+    # test MOs
+    num_r_up_cart_samples = 9
+    num_r_dn_cart_samples = 5
+    num_R_cart_samples = 2
+    num_ao = 2
+    num_mo_up = num_r_up_cart_samples  # Slater Determinant
+    num_mo_dn = num_r_dn_cart_samples  # Slater Determinant
+    num_ao_prim = 3
+    orbital_indices = [0, 1, 1]
+    exponents = [50.0, 20.0, 10.0]
+    coefficients = [1.0, 1.0, 1.0]
+    angular_momentums = [0, 1]
+    magnetic_quantum_numbers = [0, 0]
+
+    # generate matrices for the test
+    mo_coefficients_up = np.random.rand(num_mo_up, num_ao)
+    mo_coefficients_dn = np.random.rand(num_mo_dn, num_ao)
+    mo_lambda_matrix_paired = np.eye(num_mo_up, num_mo_dn, k=0)
+    mo_lambda_matrix_unpaired = np.eye(num_mo_up, num_mo_up - num_mo_dn, k=-num_mo_dn)
+    mo_lambda_matrix = np.hstack([mo_lambda_matrix_paired, mo_lambda_matrix_unpaired])
+
+    r_cart_min, r_cart_max = -1.0, 1.0
+    R_cart_min, R_cart_max = 0.0, 0.0
+    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(
+        num_r_up_cart_samples, 3
+    ) + r_cart_min
+    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(
+        num_r_dn_cart_samples, 3
+    ) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(
+        num_R_cart_samples, 3
+    ) + R_cart_min
+
+    aos_up_data = AOs_data(
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        atomic_center_carts=R_carts,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        magnetic_quantum_numbers=magnetic_quantum_numbers,
+    )
+
+    aos_dn_data = AOs_data(
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        atomic_center_carts=R_carts,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        magnetic_quantum_numbers=magnetic_quantum_numbers,
+    )
+
+    mos_up_data = MOs_data(
+        num_mo=num_mo_up, mo_coefficients=mo_coefficients_up, aos_data=aos_up_data
+    )
+
+    mos_dn_data = MOs_data(
+        num_mo=num_mo_dn, mo_coefficients=mo_coefficients_dn, aos_data=aos_dn_data
+    )
+
+    geminal_mo_data = Geminal_data(
+        num_electron_up=num_r_up_cart_samples,
+        num_electron_dn=num_r_dn_cart_samples,
+        orb_data_up_spin=mos_up_data,
+        orb_data_dn_spin=mos_dn_data,
+        compute_orb=compute_MOs,
+        lambda_matrix=mo_lambda_matrix,
+    )
+
+    geminal_mo = compute_geminal_all_elements(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    # generate matrices for the test
+    ao_lambda_matrix_paired = np.dot(
+        mo_coefficients_up.T, np.dot(mo_lambda_matrix_paired, mo_coefficients_dn)
+    )
+    ao_lambda_matrix_unpaired = np.dot(mo_coefficients_up.T, mo_lambda_matrix_unpaired)
+    ao_lambda_matrix = np.hstack([ao_lambda_matrix_paired, ao_lambda_matrix_unpaired])
+
+    geminal_ao_data = Geminal_data(
+        num_electron_up=num_r_up_cart_samples,
+        num_electron_dn=num_r_dn_cart_samples,
+        orb_data_up_spin=aos_up_data,
+        orb_data_dn_spin=aos_dn_data,
+        compute_orb=compute_AOs,
+        lambda_matrix=ao_lambda_matrix,
+    )
+
+    geminal_ao = compute_geminal_all_elements(
+        geminal_data=geminal_ao_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    # check if geminals with AO and MO representations are consistent
+    np.testing.assert_array_almost_equal(geminal_ao, geminal_mo, decimal=15)

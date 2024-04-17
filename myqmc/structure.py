@@ -1,6 +1,7 @@
 """Structure module"""
 
 # python modules
+import itertools
 from dataclasses import dataclass, field
 import numpy as np
 from numpy import linalg as LA
@@ -46,6 +47,97 @@ class Structure_data:
     positions: npt.NDArray[np.float64] = np.array([])
 
     @property
+    def cell(self) -> npt.NDArray[np.float64]:
+        """
+        Returns:
+            3x3 cell matrix containing the cell vectors, `vec_a`, `vec_b`, and `vec_c`
+            The unit is Bohr.
+        """
+        cell = np.array([self.vec_a, self.vec_b, self.vec_c])
+        return cell
+
+    @property
+    def recip_cell(self) -> npt.NDArray[np.float64]:
+        """
+        Returns:
+            3x3 cell matrix containing the reciprocal cell vectors,
+            `recip_vec_a`, `recip_vec_b`, and `recip_vec_c`
+            The unit is Bohr^{-1}
+        """
+
+        # definitions of reciprocal lattice vectors are;
+        # T_a, T_b, T_c are given lattice vectors
+        #
+        # G_a = 2 \pi * { T_b \times T_c } / {T_a \cdot ( T_b \times T_c )}
+        # G_b = 2 \pi * { T_c \times T_a } / {T_b \cdot ( T_c \times T_a )}
+        # G_c = 2 \pi * { T_a \times T_b } / {T_c \cdot ( T_a \times T_b )}
+        #
+        # one can easily check if the implementations are correct by using the
+        # following orthonormality condition, T_i \cdot G_j = 2 \pi * \delta_{i,j}
+        #
+
+        recip_a = (
+            2
+            * np.pi
+            * (np.cross(self.vec_b, self.vec_c))
+            / (np.dot(self.vec_a, np.cross(self.vec_b, self.vec_c)))
+        )
+        recip_b = (
+            2
+            * np.pi
+            * (np.cross(self.vec_c, self.vec_a))
+            / (np.dot(self.vec_b, np.cross(self.vec_c, self.vec_a)))
+        )
+        recip_c = (
+            2
+            * np.pi
+            * (np.cross(self.vec_a, self.vec_b))
+            / (np.dot(self.vec_c, np.cross(self.vec_a, self.vec_b)))
+        )
+
+        # check if the implementations are correct
+        lattice_vec_list = [self.vec_a, self.vec_b, self.vec_c]
+        recip_vec_list = [recip_a, recip_b, recip_c]
+        for (lattice_vec_i, lattice_vec), (recip_vec_j, recip_vec) in itertools.product(
+            enumerate(lattice_vec_list), enumerate(recip_vec_list)
+        ):
+            if lattice_vec_i == recip_vec_j:
+                np.testing.assert_almost_equal(
+                    np.dot(lattice_vec, recip_vec), 2 * np.pi, decimal=15
+                )
+            else:
+                np.testing.assert_almost_equal(
+                    np.dot(lattice_vec, recip_vec), 0.0, decimal=15
+                )
+
+        recip_cell = np.array([recip_a, recip_b, recip_c])
+        return recip_cell
+
+    @property
+    def lattice_vec_a(self) -> list:
+        return list(self.cell[0])
+
+    @property
+    def lattice_vec_b(self) -> list:
+        return list(self.cell[1])
+
+    @property
+    def lattice_vec_c(self) -> list:
+        return list(self.cell[2])
+
+    @property
+    def recip_vec_a(self) -> list:
+        return list(self.recip_cell[0])
+
+    @property
+    def recip_vec_b(self) -> list:
+        return list(self.recip_cell[1])
+
+    @property
+    def recip_vec_c(self) -> list:
+        return list(self.recip_cell[2])
+
+    @property
     def norm_vec_a(self) -> float:
         return LA.norm(self.vec_a)
 
@@ -56,15 +148,6 @@ class Structure_data:
     @property
     def norm_vec_c(self) -> float:
         return LA.norm(self.vec_c)
-
-    @property
-    def cell(self) -> npt.NDArray[np.float64]:
-        """
-        Returns:
-            3x3 cell matrix containing `vec_a`, `vec_b`, and `vec_c`
-        """
-        cell = np.array([self.vec_a, self.vec_b, self.vec_c])
-        return cell
 
     @property
     def positions_cart(self) -> npt.NDArray[np.float64]:
@@ -201,3 +284,8 @@ if __name__ == "__main__":
     log.addHandler(stream_handler)
 
     struct = Structure_data().parse_structure_from_file(filename="benzene.xyz")
+
+    struct = Structure_data().parse_structure_from_file(filename="benzene.xyz")
+
+    struct = Structure_data().parse_structure_from_file(filename="silicon_oxide.cif")
+    print(struct.recip_cell)

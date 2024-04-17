@@ -26,9 +26,6 @@ class AO_data:
     Args:
         num_ao : the number of atomic orbitals.
         num_ao_prim : the number of primitive atomic orbitals.
-        vec_a (list[float]): lattice vector a. The unit is Bohr. dim: 3
-        vec_b (list[float]): lattice vector b. The unit is Bohr. dim: 3
-        vec_c (list[float]): lattice vector c. The unit is Bohr. dim: 3
         atomic_center_cart (list[float]): Center of the nucleus associated to the AO. dim: 3
         exponents (list[float]): List of exponents of the AO. dim: num_ao_prim
         coefficients (list[float | complex]): List of coefficients of the AO. dim: num_ao_prim
@@ -37,9 +34,6 @@ class AO_data:
     """
 
     num_ao_prim: int = 0
-    vec_a: list[float] = field(default_factory=list)
-    vec_b: list[float] = field(default_factory=list)
-    vec_c: list[float] = field(default_factory=list)
     atomic_center_cart: list[float] = field(default_factory=list)
     exponents: list[float] = field(default_factory=list)
     coefficients: list[float | complex] = field(default_factory=list)
@@ -62,27 +56,6 @@ class AO_data:
             )
             raise ValueError
 
-    @property
-    def norm_vec_a(self) -> float:
-        return LA.norm(self.vec_a)
-
-    @property
-    def norm_vec_b(self) -> float:
-        return LA.norm(self.vec_b)
-
-    @property
-    def norm_vec_c(self) -> float:
-        return LA.norm(self.vec_c)
-
-    @property
-    def cell(self) -> npt.NDArray[np.float64]:
-        """
-        Returns:
-            3x3 cell matrix containing `vec_a`, `vec_b`, and `vec_c`
-        """
-        cell = np.array([self.vec_a, self.vec_b, self.vec_c])
-        return cell
-
 
 @dataclass
 class AOs_data:
@@ -92,9 +65,6 @@ class AOs_data:
     Args:
         num_ao : the number of atomic orbitals.
         num_ao_prim : the number of primitive atomic orbitals.
-        vec_a (list[float]): lattice vector a. The unit is Bohr. dim: 3
-        vec_b (list[float]): lattice vector b. The unit is Bohr. dim: 3
-        vec_c (list[float]): lattice vector c. The unit is Bohr. dim: 3
         atomic_center_carts (npt.NDArray[np.float64]): Centers of the nuclei associated to the AOs (dim: num_AOs, 3).
         orbital_indices (list[int]): index for what exponents and coefficients are associated to each atomic orbital. dim: num_ao_prim
         exponents (list[float]): List of exponents of the AOs. dim: num_ao_prim.
@@ -105,9 +75,6 @@ class AOs_data:
 
     num_ao: int = 0
     num_ao_prim: int = 0
-    vec_a: list[float] = field(default_factory=list)
-    vec_b: list[float] = field(default_factory=list)
-    vec_c: list[float] = field(default_factory=list)
     atomic_center_carts: npt.NDArray[np.float64] = np.array([[]])
     orbital_indices: list[int] = field(default_factory=list)
     exponents: list[float] = field(default_factory=list)
@@ -135,27 +102,6 @@ class AOs_data:
         if len(self.magnetic_quantum_numbers) != self.num_ao:
             logger.error("dim. of self.magnetic_quantum_numbers is wrong")
             raise ValueError
-
-    @property
-    def norm_vec_a(self) -> float:
-        return LA.norm(self.vec_a)
-
-    @property
-    def norm_vec_b(self) -> float:
-        return LA.norm(self.vec_b)
-
-    @property
-    def norm_vec_c(self) -> float:
-        return LA.norm(self.vec_c)
-
-    @property
-    def cell(self) -> npt.NDArray[np.float64]:
-        """
-        Returns:
-            3x3 cell matrix containing `vec_a`, `vec_b`, and `vec_c`
-        """
-        cell = np.array([self.vec_a, self.vec_b, self.vec_c])
-        return cell
 
 
 def compute_AOs(
@@ -192,9 +138,6 @@ def compute_AOs_debug(
     Returns:
     Arrays containing values of the AOs at r_carts. (dim: num_ao, N_e)
     """
-    vec_a = aos_data.vec_a
-    vec_b = aos_data.vec_b
-    vec_c = aos_data.vec_c
 
     def compute_each_AO(ao_index):
         atomic_center_cart = aos_data.atomic_center_carts[ao_index]
@@ -209,9 +152,6 @@ def compute_AOs_debug(
 
         ao_data = AO_data(
             num_ao_prim=num_ao_prim,
-            vec_a=vec_a,
-            vec_b=vec_b,
-            vec_c=vec_c,
             atomic_center_cart=atomic_center_cart,
             exponents=exponents,
             coefficients=coefficients,
