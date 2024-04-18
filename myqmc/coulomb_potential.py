@@ -137,7 +137,7 @@ def compute_nearest_neighbors_nuclei_indices(
     """
 
 
-def compute_local_parts(
+def compute_ecp_local_parts(
     coulomb_potential_data: Coulomb_potential_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
@@ -192,7 +192,7 @@ def compute_local_parts(
         raise NotImplementedError
 
 
-def compute_nonlocal_parts(
+def compute_ecp_nonlocal_parts(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -334,7 +334,7 @@ def compute_nonlocal_parts(
         raise NotImplementedError
 
 
-def compute_coulomb_potential(
+def compute_bare_coulomb_potential(
     coulomb_potential_data: Coulomb_potential_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
@@ -342,7 +342,7 @@ def compute_coulomb_potential(
 ) -> npt.NDArray[np.float64 | np.complex128]:
     """
     The method is for computing the bare coulomb potentials including all electron-electron,
-    electron-ion (inc. ECPs), and ion-ion interactions at (r_up_carts, r_dn_carts).
+    electron-ion (except. ECPs), and ion-ion interactions at (r_up_carts, r_dn_carts).
 
     Args:
         Coulomb_potential_data (BCoulomb_potential_data): an instance of Bare_coulomb_potential_data
@@ -376,17 +376,52 @@ def compute_coulomb_potential(
         ]
     )
 
-    if coulomb_potential_data.ecp_flag:
+    return bare_coulomb_potential
+
+
+def compute_coulomb_potential(
+    coulomb_potential_data: Coulomb_potential_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+    debug_flag: bool = True,
+) -> npt.NDArray[np.float64 | np.complex128]:
+    """
+    The method is for computing the bare coulomb potentials including all electron-electron,
+    electron-ion (inc. ECPs), and ion-ion interactions at (r_up_carts, r_dn_carts).
+
+    Args:
+        Coulomb_potential_data (BCoulomb_potential_data): an instance of Bare_coulomb_potential_data
+        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
+        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+
+    Returns:
+        Arrays containing values of the geminal function with r_up_carts and r_dn_carts. (dim: N_e^{up}, N_e^{up})
+    """
+
+    # all-electron
+    if not coulomb_potential_data.ecp_flag:
+        bare_coulomb_potential = compute_bare_coulomb_potential(
+            coulomb_potential_data=compute_bare_coulomb_potential,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+        )
         ecp_local_coulomb_potential = 0
         ecp_nonlocal_coulomb_potential = 0
+
+    # pseudo-potential
     else:
-        ecp_local_coulomb_potential = compute_local_parts(
+        bare_coulomb_potential = compute_bare_coulomb_potential(
+            coulomb_potential_data=compute_bare_coulomb_potential,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+        )
+        ecp_local_coulomb_potential = compute_ecp_local_parts(
             coulomb_potential_data=coulomb_potential_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
             debug_flag=debug_flag,
         )
-        ecp_nonlocal_coulomb_potential = compute_nonlocal_parts(
+        ecp_nonlocal_coulomb_potential = compute_ecp_nonlocal_parts(
             coulomb_potential_data=coulomb_potential_data,
             wavefunction_data=coulomb_potential_data.wavefunction_data,
             r_up_carts=r_up_carts,
@@ -459,13 +494,13 @@ if __name__ == "__main__":
         num_r_cart_samples, 3
     ) + r_cart_min
 
-    V_local = compute_local_parts(
+    V_local = compute_ecp_local_parts(
         coulomb_potential_data=effective_core_potential_data, r_up_carts=r_carts
     )
 
     print(V_local)
 
-    V_nonlocal = compute_nonlocal_parts(
+    V_nonlocal = compute_ecp_nonlocal_parts(
         coulomb_potential_data=effective_core_potential_data,
         r_up_carts=r_carts,
         r_dn_carts=r_carts,
