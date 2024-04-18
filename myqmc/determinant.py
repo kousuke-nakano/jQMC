@@ -1,7 +1,7 @@
 """Geminal module"""
 
 # python modules
-from dataclasses import dataclass
+# from dataclasses import dataclass
 from collections.abc import Callable
 import numpy as np
 import numpy.typing as npt
@@ -51,7 +51,8 @@ class Geminal_data:
             self.orb_num_dn + (self.num_electron_up - self.num_electron_dn),
         ):
             logger.error(
-                f"dim. of lambda_matrix = {self.lambda_matrix.shape} is imcompatible with the expected one = ({self.orb_num_up}, {self.orb_num_dn + (self.num_electron_up - self.num_electron_dn)}).",
+                f"dim. of lambda_matrix = {self.lambda_matrix.shape} is imcompatible with the expected one "
+                + f"= ({self.orb_num_up}, {self.orb_num_dn + (self.num_electron_up - self.num_electron_dn)}).",
             )
             raise ValueError
 
@@ -111,7 +112,8 @@ def compute_geminal_all_elements(
         or len(r_dn_carts) != geminal_data.num_electron_dn
     ):
         logger.info(
-            f"Number of up and dn electrons (N_up, N_dn) = ({len(r_up_carts)}, {len(r_dn_carts)}) are not consistent with the expected values. (N_up, N_dn) = {geminal_data.num_electron_up}, {geminal_data.num_electron_dn})"
+            f"Number of up and dn electrons (N_up, N_dn) = ({len(r_up_carts)}, {len(r_dn_carts)}) are not consistent "
+            + f"with the expected values. (N_up, N_dn) = {geminal_data.num_electron_up}, {geminal_data.num_electron_dn})"
         )
         raise ValueError
 
@@ -183,7 +185,8 @@ def compute_gradients_and_laplacians_geminal(
         or len(r_dn_carts) != geminal_data.num_electron_dn
     ):
         logger.info(
-            f"Number of up and dn electrons (N_up, N_dn) = ({len(r_up_carts)}, {len(r_dn_carts)}) are not consistent with the expected values. (N_up, N_dn) = {geminal_data.num_electron_up}, {geminal_data.num_electron_dn})"
+            f"Number of up and dn electrons (N_up, N_dn) = ({len(r_up_carts)}, {len(r_dn_carts)}) are not consistent "
+            + f"with the expected values. (N_up, N_dn) = {geminal_data.num_electron_up}, {geminal_data.num_electron_dn})"
         )
         raise ValueError
 
@@ -435,6 +438,20 @@ def compute_gradients_and_laplacians_geminal(
 
     logger.debug(geminal_inverse)
 
+    vec_F_D_up_x = jnp.diag(np.dot(geminal_grad_up_x, geminal_inverse))
+    vec_F_D_up_y = jnp.diag(np.dot(geminal_grad_up_y, geminal_inverse))
+    vec_F_D_up_z = jnp.diag(np.dot(geminal_grad_up_z, geminal_inverse))
+    vec_F_D_dn_x = jnp.diag(np.dot(geminal_inverse, geminal_grad_dn_x))
+    vec_F_D_dn_y = jnp.diag(np.dot(geminal_inverse, geminal_grad_dn_y))
+    vec_F_D_dn_z = jnp.diag(np.dot(geminal_inverse, geminal_grad_dn_z))
+
+    logger.info(vec_F_D_up_x)
+    logger.info(vec_F_D_up_y)
+    logger.info(vec_F_D_up_z)
+    logger.info(vec_F_D_dn_x)
+    logger.info(vec_F_D_dn_y)
+    logger.info(vec_F_D_dn_z)
+
     T_D = (
         -((jnp.trace(np.dot(geminal_grad_up_x, geminal_inverse))) ** 2)
         - (jnp.trace(np.dot(geminal_grad_up_y, geminal_inverse))) ** 2
@@ -447,7 +464,12 @@ def compute_gradients_and_laplacians_geminal(
     )
 
     logger.info(T_D)
-    return T_D
+
+    return (
+        (vec_F_D_up_x, vec_F_D_up_y, vec_F_D_up_z),
+        (vec_F_D_dn_x, vec_F_D_dn_y, vec_F_D_dn_z),
+        T_D,
+    )
 
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ logger = getLogger("myqmc").getChild(__name__)
 class Structure_data:
     """Structure class
 
-    The class contains all information about a structure.
+    The class contains all information about the given structure.
 
     Args:
         pbc_flag (list[bool]): pbc_flags in the a, b, and c directions.

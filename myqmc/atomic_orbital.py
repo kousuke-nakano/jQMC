@@ -16,7 +16,6 @@ import scipy  # type: ignore
 import jax.scipy as jscipy
 import jax.numpy as jnp
 from flax import struct
-from jax import grad
 
 # set logger
 from logging import getLogger, StreamHandler, Formatter
