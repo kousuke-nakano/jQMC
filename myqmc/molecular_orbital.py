@@ -9,7 +9,7 @@ import numpy.typing as npt
 from logging import getLogger, StreamHandler, Formatter
 
 # myqmc module
-from .atomic_orbital import AO_data, compute_AO, AOs_data, compute_AOs
+from atomic_orbital import AO_data, compute_AO, AOs_data, compute_AOs_api
 
 logger = getLogger("myqmc").getChild(__name__)
 
@@ -38,7 +38,7 @@ class MOs_data:
 
 
 def compute_MOs(
-    mos_data: MOs_data, r_carts: npt.NDArray[np.float64], debug_flag: bool = True
+    mos_data: MOs_data, r_carts: npt.NDArray[np.float64], jax_flag: bool = True
 ) -> npt.NDArray[np.float64]:
     """
     The class contains information for computing molecular orbitals at r_carts simlunateously.
@@ -46,7 +46,7 @@ def compute_MOs(
     Args:
         mos_data (MOs_data): an instance of MOs_data
         r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
-        debug_flag: if True, AOs are computed one by one using compute_AO
+        jax_flag: if False, AOs are computed one by one using compute_AO_debug
 
     Returns:
         Arrays containing values of the MOs at r_carts. (dim: num_mo, N_e)
@@ -54,7 +54,7 @@ def compute_MOs(
 
     answer = np.dot(
         mos_data.mo_coefficients,
-        compute_AOs(aos_data=mos_data.aos_data, r_carts=r_carts, debug_flag=debug_flag),
+        compute_AOs_api(aos_data=mos_data.aos_data, r_carts=r_carts, jax_flag=jax_flag),
     )
 
     if answer.shape != (mos_data.num_mo, len(r_carts)):

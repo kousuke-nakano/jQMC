@@ -9,7 +9,14 @@ import numpy as np
 from numpy import linalg as LA
 import numpy.typing as npt
 
-from scipy.special import binom, factorial  # type: ignore
+# scipy
+import scipy  # type: ignore
+
+# jax modules
+import jax.scipy as jscipy
+import jax.numpy as jnp
+from flax import struct
+from jax import grad
 
 # set logger
 from logging import getLogger, StreamHandler, Formatter
@@ -17,47 +24,8 @@ from logging import getLogger, StreamHandler, Formatter
 logger = getLogger("myqmc").getChild(__name__)
 
 
-@dataclass
-class AO_data:
-    """
-    The class contains data for computing an atomic orbital. Just for testing purpose.
-    For fast computations, use AOs_data and AOs.
-
-    Args:
-        num_ao : the number of atomic orbitals.
-        num_ao_prim : the number of primitive atomic orbitals.
-        atomic_center_cart (list[float]): Center of the nucleus associated to the AO. dim: 3
-        exponents (list[float]): List of exponents of the AO. dim: num_ao_prim
-        coefficients (list[float | complex]): List of coefficients of the AO. dim: num_ao_prim
-        angular_momentum (int): Angular momentum of the AO, i.e., l. dim: 1
-        magnetic_quantum_number (int): Magnetic quantum number of the AO, i.e m = -l .... +l. dim: 1
-    """
-
-    num_ao_prim: int = 0
-    atomic_center_cart: list[float] = field(default_factory=list)
-    exponents: list[float] = field(default_factory=list)
-    coefficients: list[float | complex] = field(default_factory=list)
-    angular_momentum: int = 0
-    magnetic_quantum_number: int = 0
-
-    def __post_init__(self) -> None:
-        if len(self.atomic_center_cart) != 3:
-            logger.error("dim. of atomic_center_cart is wrong")
-            raise ValueError
-        if len(self.exponents) != self.num_ao_prim:
-            logger.error("dim. of self.exponents is wrong")
-            raise ValueError
-        if len(self.coefficients) != self.num_ao_prim:
-            logger.error("dim. of self.coefficients is wrong")
-            raise ValueError
-        if self.angular_momentum < np.abs(self.magnetic_quantum_number):
-            logger.error(
-                "angular_momentum(l) is smaller than magnetic_quantum_number(|m|)."
-            )
-            raise ValueError
-
-
-@dataclass
+# @dataclass
+@struct.dataclass
 class AOs_data:
     """
     The class contains data for computing atomic orbitals simltaneously
@@ -73,14 +41,14 @@ class AOs_data:
         magnetic_quantum_numbers (list[int]): Magnetic quantum number of the AOs, i.e m = -l .... +l. dim: num_ao
     """
 
-    num_ao: int = 0
-    num_ao_prim: int = 0
-    atomic_center_carts: npt.NDArray[np.float64] = np.array([[]])
-    orbital_indices: list[int] = field(default_factory=list)
-    exponents: list[float] = field(default_factory=list)
-    coefficients: list[float | complex] = field(default_factory=list)
-    angular_momentums: list[int] = field(default_factory=list)
-    magnetic_quantum_numbers: list[int] = field(default_factory=list)
+    num_ao: int = struct.field(pytree_node=False)
+    num_ao_prim: int = struct.field(pytree_node=False)
+    atomic_center_carts: npt.NDArray[np.float64] = struct.field(pytree_node=True)
+    orbital_indices: list[int] = struct.field(pytree_node=False)
+    exponents: list[float] = struct.field(pytree_node=True)
+    coefficients: list[float | complex] = struct.field(pytree_node=True)
+    angular_momentums: list[int] = struct.field(pytree_node=False)
+    magnetic_quantum_numbers: list[int] = struct.field(pytree_node=False)
 
     def __post_init__(self) -> None:
         if self.atomic_center_carts.shape != (self.num_ao, 3):
@@ -104,8 +72,10 @@ class AOs_data:
             raise ValueError
 
 
-def compute_AOs(
-    aos_data: AOs_data, r_carts: npt.NDArray[np.float64], debug_flag: bool = False
+def compute_AOs_api(
+    aos_data: AOs_data,
+    r_carts: npt.NDArray[np.float64],
+    jax_flag: bool = True,
 ) -> npt.NDArray[np.float64 | np.complex128]:
     """
     The method is for computing the value of the given atomic orbital at r_carts
@@ -113,16 +83,15 @@ def compute_AOs(
     Args:
         ao_datas (AOs_data): an instance of AOs_data
         r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
-        debug_flag: if True, AOs are computed one by one using compute_AO
+        jax_flag: if False, AOs are computed one by one using compute_AO for debuging purpose
 
     Returns:
     Arrays containing values of the AOs at r_carts. (dim: num_ao, N_e)
     """
-
-    if debug_flag:
-        return compute_AOs_debug(aos_data, r_carts)
+    if jax_flag:
+        return compute_AOs_jax(aos_data, r_carts)
     else:
-        return compute_AOs_fast(aos_data, r_carts)
+        return compute_AOs_debug(aos_data, r_carts)
 
 
 def compute_AOs_debug(
@@ -172,6 +141,7 @@ def compute_AOs_debug(
     return aos_values
 
 
+"""
 def compute_AOs_fast(
     aos_data: AOs_data, r_carts: npt.NDArray[np.float64]
 ) -> npt.NDArray[np.float64 | np.complex128]:
@@ -219,18 +189,13 @@ def compute_AOs_fast(
         r_norm = np.sqrt(x**2 + y**2 + z**2)
         m_abs = np.abs(m)
 
-        logger.debug(f"x.shape={x.shape}")
-        logger.debug(f"y.shape={y.shape}")
-        logger.debug(f"z.shape={z.shape}")
-        logger.debug(f"r_norm.shape={r_norm.shape}")
-
         # solid harmonics for (x,y) dependent part:
         def A_m(
             x: npt.NDArray[np.float64], y: npt.NDArray[np.float64]
         ) -> npt.NDArray[np.float64]:
             return np.sum(
                 [
-                    binom(m_abs, p)
+                    scipy.special.binom(m_abs, p)
                     * x ** (p)
                     * y ** (m_abs - p)
                     * np.cos((m_abs - p) * (np.pi / 2.0))
@@ -244,7 +209,7 @@ def compute_AOs_fast(
         ) -> npt.NDArray[np.float64]:
             return np.sum(
                 [
-                    binom(m_abs, p)
+                    scipy.special.binom(m_abs, p)
                     * x ** (p)
                     * y ** (m_abs - p)
                     * np.sin((m_abs - p) * (np.pi / 2.0))
@@ -258,10 +223,10 @@ def compute_AOs_fast(
             return (
                 (-1) ** (k)
                 * 2 ** (-l)
-                * binom(l, k)
-                * binom(2 * l - 2 * k, l)
-                * factorial(l - 2 * k)
-                / factorial(l - 2 * k - m_abs)
+                * scipy.special.binom(l, k)
+                * scipy.special.binom(2 * l - 2 * k, l)
+                * scipy.special.factorial(l - 2 * k)
+                / scipy.special.factorial(l - 2 * k - m_abs)
             )
 
         # solid harmonics for (z) dependent part:
@@ -269,7 +234,9 @@ def compute_AOs_fast(
             r_norm: npt.NDArray[np.float64], z: npt.NDArray[np.float64]
         ) -> npt.NDArray[np.float64]:
             return np.sqrt(
-                (2 - int(m_abs == 0)) * factorial(l - m_abs) / factorial(l + m_abs)
+                (2 - int(m_abs == 0))
+                * scipy.special.factorial(l - m_abs)
+                / scipy.special.factorial(l + m_abs)
             ) * np.sum(
                 [
                     lambda_lm(k) * r_norm ** (2 * k) * z ** (l - 2 * k - m_abs)
@@ -312,6 +279,201 @@ def compute_AOs_fast(
         raise ValueError
 
     return answer
+"""
+
+
+def compute_AOs_jax(
+    aos_data: AOs_data, r_carts: npt.NDArray[np.float64]
+) -> npt.NDArray[np.float64 | np.complex128]:
+    """
+    This is a straightforward jax code for compute_AOs method.
+
+    Args:
+        ao_datas (AOs_data): an instance of AOs_data
+        r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
+
+    Returns:
+    Arrays containing values of the AOs at r_carts. (dim: num_ao, N_e)
+    """
+
+    atomic_center_carts = aos_data.atomic_center_carts
+    atomic_center_carts_dup = jnp.array(
+        [atomic_center_carts[i] for i in aos_data.orbital_indices]
+    )
+    exponents = aos_data.exponents
+    coefficients = aos_data.coefficients
+    angular_momentums = aos_data.angular_momentums
+    magnetic_quantum_numbers = aos_data.magnetic_quantum_numbers
+
+    # compute R_n
+    n_el = r_carts.shape[0]
+    sq_r_R = jnp.array(
+        [
+            jnp.linalg.norm(v[0] - v[1]) ** 2
+            for v in itertools.product(atomic_center_carts_dup, r_carts)
+        ]
+    ).reshape(aos_data.num_ao_prim, n_el)
+
+    R_n_dup = jnp.array([coefficients]).T * jnp.exp(
+        -1 * jnp.array([exponents]).T * sq_r_R
+    )
+
+    R_n = jnp.zeros([aos_data.num_ao, n_el])
+    unique_indices = np.unique(aos_data.orbital_indices)
+    for ui in unique_indices:
+        mask = aos_data.orbital_indices == ui
+        R_n = R_n.at[ui].set(R_n_dup[mask].sum(axis=0))
+
+    # compute S_n
+
+    # direct product of r_cart * R
+    r_R = jnp.array(
+        [v[1] - v[0] for v in itertools.product(atomic_center_carts, r_carts)]
+    ).reshape(aos_data.num_ao, n_el, 3)
+
+    def __compute_S_l_m(
+        r_cart_rel: npt.NDArray[np.float64], l: int, m: int
+    ) -> npt.NDArray[np.float64]:
+        x, y, z = r_cart_rel[..., 0], r_cart_rel[..., 1], r_cart_rel[..., 2]
+        r_norm = jnp.sqrt(x**2 + y**2 + z**2)
+        m_abs = jnp.abs(m)
+
+        # solid harmonics for (x,y) dependent part:
+        def A_m(
+            x: npt.NDArray[np.float64], y: npt.NDArray[np.float64]
+        ) -> npt.NDArray[np.float64]:
+            return jnp.sum(
+                jnp.array(
+                    [
+                        scipy.special.binom(m_abs, p)
+                        * x ** (p)
+                        * y ** (m_abs - p)
+                        * jnp.cos((m_abs - p) * (jnp.pi / 2.0))
+                        for p in range(0, m_abs + 1)
+                    ]
+                ),
+                axis=0,
+            )
+
+        def B_m(
+            x: npt.NDArray[np.float64], y: npt.NDArray[np.float64]
+        ) -> npt.NDArray[np.float64]:
+            return jnp.sum(
+                jnp.array(
+                    [
+                        scipy.special.binom(m_abs, p)
+                        * x ** (p)
+                        * y ** (m_abs - p)
+                        * jnp.sin((m_abs - p) * (jnp.pi / 2.0))
+                        for p in range(0, m_abs + 1)
+                    ]
+                ),
+                axis=0,
+            )
+
+        # solid harmonics for (z) dependent part:
+        def lambda_lm(k: int) -> float:
+            return (
+                (-1) ** (k)
+                * 2 ** (-l)
+                * scipy.special.binom(l, k)
+                * scipy.special.binom(2 * l - 2 * k, l)
+                * jscipy.special.factorial(l - 2 * k)
+                / jscipy.special.factorial(l - 2 * k - m_abs)
+            )
+
+        # solid harmonics for (z) dependent part:
+        def Lambda_lm(
+            r_norm: npt.NDArray[np.float64], z: npt.NDArray[np.float64]
+        ) -> npt.NDArray[np.float64]:
+            return jnp.sqrt(
+                (2 - int(m_abs == 0))
+                * jscipy.special.factorial(l - m_abs)
+                / jscipy.special.factorial(l + m_abs)
+            ) * jnp.sum(
+                jnp.array(
+                    [
+                        lambda_lm(k) * r_norm ** (2 * k) * z ** (l - 2 * k - m_abs)
+                        for k in range(0, int((l - m_abs) / 2) + 1)
+                    ]
+                ),
+                axis=0,
+            )
+
+        # solid harmonics in Cartesian (x,y,z):
+        if m >= 0:
+            gamma = (
+                jnp.sqrt((2 * l + 1) / (4 * np.pi)) * Lambda_lm(r_norm, z) * A_m(x, y)
+            )
+        if m < 0:
+            gamma = (
+                jnp.sqrt((2 * l + 1) / (4 * np.pi)) * Lambda_lm(r_norm, z) * B_m(x, y)
+            )
+        return gamma
+
+    S_l_m = jnp.array(
+        [
+            __compute_S_l_m(
+                r_cart_rel=r_cart_rel,
+                l=angular_momentums[i],
+                m=magnetic_quantum_numbers[i],
+            )
+            for i, r_cart_rel in enumerate(r_R)
+        ]
+    )
+
+    # final answer
+    answer = R_n * S_l_m
+
+    if answer.shape != (aos_data.num_ao, len(r_carts)):
+        logger.error(
+            f"answer.shape = {answer.shape} is inconsistent with the expected one = {(aos_data.num_ao, len(r_carts))}"
+        )
+        logger.error(f"R_n.shape = {R_n.shape}")
+        logger.error(f"S_l_m.shape = {S_l_m.shape}")
+        raise ValueError
+
+    return answer
+
+
+@dataclass
+class AO_data:
+    """
+    The class contains data for computing an atomic orbital. Just for testing purpose.
+    For fast computations, use AOs_data and AOs.
+
+    Args:
+        num_ao : the number of atomic orbitals.
+        num_ao_prim : the number of primitive atomic orbitals.
+        atomic_center_cart (list[float]): Center of the nucleus associated to the AO. dim: 3
+        exponents (list[float]): List of exponents of the AO. dim: num_ao_prim
+        coefficients (list[float | complex]): List of coefficients of the AO. dim: num_ao_prim
+        angular_momentum (int): Angular momentum of the AO, i.e., l. dim: 1
+        magnetic_quantum_number (int): Magnetic quantum number of the AO, i.e m = -l .... +l. dim: 1
+    """
+
+    num_ao_prim: int = 0
+    atomic_center_cart: list[float] = field(default_factory=list)
+    exponents: list[float] = field(default_factory=list)
+    coefficients: list[float | complex] = field(default_factory=list)
+    angular_momentum: int = 0
+    magnetic_quantum_number: int = 0
+
+    def __post_init__(self) -> None:
+        if len(self.atomic_center_cart) != 3:
+            logger.error("dim. of atomic_center_cart is wrong")
+            raise ValueError
+        if len(self.exponents) != self.num_ao_prim:
+            logger.error("dim. of self.exponents is wrong")
+            raise ValueError
+        if len(self.coefficients) != self.num_ao_prim:
+            logger.error("dim. of self.coefficients is wrong")
+            raise ValueError
+        if self.angular_momentum < np.abs(self.magnetic_quantum_number):
+            logger.error(
+                "angular_momentum(l) is smaller than magnetic_quantum_number(|m|)."
+            )
+            raise ValueError
 
 
 def compute_AO(ao_data: AO_data, r_cart: list[float]) -> float | complex:
@@ -443,7 +605,7 @@ def compute_S_l_m(
     def A_m(x: float, y: float) -> float:
         return np.sum(
             [
-                binom(m_abs, p)
+                scipy.special.binom(m_abs, p)
                 * x ** (p)
                 * y ** (m_abs - p)
                 * np.cos((m_abs - p) * (np.pi / 2.0))
@@ -454,7 +616,7 @@ def compute_S_l_m(
     def B_m(x: float, y: float) -> float:
         return np.sum(
             [
-                binom(m_abs, p)
+                scipy.special.binom(m_abs, p)
                 * x ** (p)
                 * y ** (m_abs - p)
                 * np.sin((m_abs - p) * (np.pi / 2.0))
@@ -467,16 +629,18 @@ def compute_S_l_m(
         return (
             (-1) ** (k)
             * 2 ** (-l)
-            * binom(l, k)
-            * binom(2 * l - 2 * k, l)
-            * factorial(l - 2 * k)
-            / factorial(l - 2 * k - m_abs)
+            * scipy.special.binom(l, k)
+            * scipy.special.binom(2 * l - 2 * k, l)
+            * scipy.special.factorial(l - 2 * k)
+            / scipy.special.factorial(l - 2 * k - m_abs)
         )
 
     # solid harmonics for (z) dependent part:
     def Lambda_lm(r_norm: float, z: float) -> float:
         return np.sqrt(
-            (2 - int(m_abs == 0)) * factorial(l - m_abs) / factorial(l + m_abs)
+            (2 - int(m_abs == 0))
+            * scipy.special.factorial(l - m_abs)
+            / scipy.special.factorial(l + m_abs)
         ) * np.sum(
             [
                 lambda_lm(k) * r_norm ** (2 * k) * z ** (l - 2 * k - m_abs)
@@ -540,5 +704,7 @@ if __name__ == "__main__":
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    aos_compute_fast = compute_AOs(aos_data=aos_data, r_carts=r_carts, debug_flag=False)
+    aos_compute_fast = compute_AOs_api(
+        aos_data=aos_data, r_carts=r_carts, debug_flag=False
+    )
     print(aos_compute_fast)
