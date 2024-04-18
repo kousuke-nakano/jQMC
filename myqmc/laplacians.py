@@ -30,7 +30,7 @@ class Laplacian_data:
         pass
 
 
-def compute_lapcalian(
+def compute_laplacian(
     laplacian_data: Laplacian_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
