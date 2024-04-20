@@ -71,6 +71,36 @@ class AOs_data:
             raise ValueError
 
 
+def compute_overlap_matrix(aos_data: AOs_data):
+    n = 50
+    x_max = y_max = z_max = +5.0
+    x_min = y_min = z_min = -5.0
+
+    x, w_x = scipy.special.roots_legendre(n=n)
+    y, w_y = scipy.special.roots_legendre(n=n)
+    z, w_z = scipy.special.roots_legendre(n=n)
+
+    # Use itertools.product to generate all combinations of points across dimensions
+    points = list(itertools.product(x, y, z))
+    weights = list(itertools.product(w_x, w_y, w_z))
+
+    # Create the matrix of coordinates r from combinations
+    r_prime = np.array(points)  # Shape: (n^3, 3)
+
+    A = 1.0 / 2.0 * np.array([[x_max + x_min], [y_max + y_min], [z_max + z_min]])
+    B = 1.0 / 2.0 * np.diag([x_max - x_min, y_max - y_min, z_max - z_min])
+
+    # Create the weight vector W (calculate the product of each set of weights)
+    W = np.array([w[0] * w[1] * w[2] for w in weights])  # Length: n^3
+    Jacob = 1.0 / 8.0 * (x_max - x_min) * (y_max - y_min) * (z_max - z_min)
+    W_prime = Jacob * np.tile(W, (aos_data.num_ao, 1))
+
+    Psi = compute_AOs_api(aos_data=aos_data, r_carts=(A + np.dot(B, r_prime.T)).T)
+
+    S = np.dot(Psi, (W_prime * Psi).T)
+    print(S)
+
+
 def compute_AOs_api(
     aos_data: AOs_data,
     r_carts: npt.NDArray[np.float64],
@@ -704,6 +734,32 @@ if __name__ == "__main__":
     )
 
     aos_compute_fast = compute_AOs_api(
-        aos_data=aos_data, r_carts=r_carts, debug_flag=False
+        aos_data=aos_data, r_carts=r_carts, jax_flag=False
     )
-    print(aos_compute_fast)
+
+    # overlap matrix
+
+    num_ao = 3
+    num_ao_prim = 3
+    orbital_indices = [0, 1, 2]
+    R_carts = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    exponents = [10.0, 3.0, 1.0]
+    coefficients = [1.0, 1.0, 1.0]
+    angular_momentums = [0, 0, 0]
+    magnetic_quantum_numbers = [0, 0, 0]
+
+    aos_data = AOs_data(
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        atomic_center_carts=R_carts,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        magnetic_quantum_numbers=magnetic_quantum_numbers,
+    )
+
+    print(1 / (4 * np.pi) * np.sqrt(np.pi / (2 * 10.0)) ** 3)
+    print(1 / (4 * np.pi) * np.sqrt(np.pi / (2 * 3.0)) ** 3)
+    print(1 / (4 * np.pi) * np.sqrt(np.pi / (2 * 1.0)) ** 3)
+    compute_overlap_matrix(aos_data=aos_data)
