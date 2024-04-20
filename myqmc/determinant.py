@@ -90,6 +90,7 @@ def compute_det_ao_geminal_all_elements(
     )
 
 
+# WIP!! something wrong in the geminal implementation
 def compute_geminal_all_elements(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -151,6 +152,7 @@ def compute_geminal_all_elements(
 
     # compute geminal values
     geminal_paired = np.dot(ao_matrix_up.T, np.dot(lambda_matrix_paired, ao_matrix_dn))
+    assert np.allclose(geminal_paired, geminal_paired.T)
     geminal_unpaired = np.dot(ao_matrix_up.T, lambda_matrix_unpaired)
     geminal = np.hstack([geminal_paired, geminal_unpaired])
 
@@ -482,22 +484,20 @@ if __name__ == "__main__":
     log.addHandler(stream_handler)
 
     # test MOs
-    num_r_up_cart_samples = 10
-    num_r_dn_cart_samples = 5
-    num_R_cart_samples = 2
-    num_ao = 2
-    num_mo_up = num_r_up_cart_samples  # Slater Determinant
-    num_mo_dn = num_r_dn_cart_samples  # Slater Determinant
-    num_ao_prim = 3
-    orbital_indices = [0, 1, 1]
-    exponents = [12.0, 5.0, 2.0]
-    coefficients = [0.001, 0.01, 0.1]
-    angular_momentums = [0, 1]
-    magnetic_quantum_numbers = [0, 0]
+    num_r_up_cart_samples = 2
+    num_r_dn_cart_samples = 2
+    num_R_cart_samples = 6
+    num_ao = 6
+    num_mo_up = num_mo_dn = num_r_up_cart_samples  # Slater Determinant
+    num_ao_prim = 6
+    orbital_indices = [0, 1, 2, 3, 4, 5]
+    exponents = [1.2, 0.5, 0.1, 0.05, 0.05, 0.05]
+    coefficients = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    angular_momentums = [0, 0, 0, 1, 1, 1]
+    magnetic_quantum_numbers = [0, 0, 0, 0, +1, -1]
 
     # generate matrices for the test
-    mo_coefficients_up = np.random.rand(num_mo_up, num_ao)
-    mo_coefficients_dn = np.random.rand(num_mo_dn, num_ao)
+    mo_coefficients_up = mo_coefficients_dn = np.random.rand(num_mo_up, num_ao)
     mo_lambda_matrix_paired = np.eye(num_mo_up, num_mo_dn, k=0)
     mo_lambda_matrix_unpaired = np.eye(num_mo_up, num_mo_up - num_mo_dn, k=-num_mo_dn)
     mo_lambda_matrix = np.hstack([mo_lambda_matrix_paired, mo_lambda_matrix_unpaired])
@@ -507,9 +507,12 @@ if __name__ == "__main__":
     r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(
         num_r_up_cart_samples, 3
     ) + r_cart_min
+    """
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(
         num_r_dn_cart_samples, 3
     ) + r_cart_min
+    """
+    r_dn_carts = r_up_carts
     R_carts = (R_cart_max - R_cart_min) * np.random.rand(
         num_R_cart_samples, 3
     ) + R_cart_min
@@ -553,7 +556,7 @@ if __name__ == "__main__":
         lambda_matrix=mo_lambda_matrix,
     )
 
-    geminal_mo = compute_geminal_all_elements(
+    geminal_mo_matrix = compute_geminal_all_elements(
         geminal_data=geminal_mo_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -566,6 +569,9 @@ if __name__ == "__main__":
     ao_lambda_matrix_unpaired = np.dot(mo_coefficients_up.T, mo_lambda_matrix_unpaired)
     ao_lambda_matrix = np.hstack([ao_lambda_matrix_paired, ao_lambda_matrix_unpaired])
 
+    # check if generated ao_lambda_matrix is symmetric:
+    assert np.allclose(ao_lambda_matrix, ao_lambda_matrix.T)
+
     geminal_ao_data = Geminal_data(
         num_electron_up=num_r_up_cart_samples,
         num_electron_dn=num_r_dn_cart_samples,
@@ -575,15 +581,16 @@ if __name__ == "__main__":
         lambda_matrix=ao_lambda_matrix,
     )
 
-    geminal_ao = compute_geminal_all_elements(
+    geminal_ao_matrix = compute_geminal_all_elements(
         geminal_data=geminal_ao_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
 
-    print(geminal_ao)
-    print(np.linalg.det(geminal_ao))
-    print(np.linalg.cond(geminal_ao))
+    print(geminal_ao_matrix)
+
+    # check if generated ao_lambda_matrix is symmetric: (WIP!! something wrong in the geminal implementation)
+    assert np.allclose(geminal_ao_matrix, geminal_ao_matrix.T)
 
     """
     geminal_ao = compute_gradients_and_laplacians_geminal(
@@ -592,3 +599,8 @@ if __name__ == "__main__":
         r_dn_carts=r_dn_carts,
     )
     """
+
+    # check if geminals with AO and MO representations are consistent
+    np.testing.assert_array_almost_equal(
+        geminal_ao_matrix, geminal_mo_matrix, decimal=15
+    )
