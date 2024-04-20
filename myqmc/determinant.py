@@ -90,7 +90,6 @@ def compute_det_ao_geminal_all_elements(
     )
 
 
-# WIP!! something wrong in the geminal implementation
 def compute_geminal_all_elements(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -586,19 +585,6 @@ if __name__ == "__main__":
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
-
-    print(geminal_ao_matrix)
-
-    # check if generated ao_lambda_matrix is symmetric: (WIP!! something wrong in the geminal implementation)
-    assert np.allclose(geminal_ao_matrix, geminal_ao_matrix.T)
-
-    """
-    geminal_ao = compute_gradients_and_laplacians_geminal(
-        geminal_data=geminal_ao_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
-    )
-    """
 
     # check if geminals with AO and MO representations are consistent
     np.testing.assert_array_almost_equal(
