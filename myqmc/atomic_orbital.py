@@ -71,34 +71,51 @@ class AOs_data:
             raise ValueError
 
 
-def compute_overlap_matrix(aos_data: AOs_data):
-    n = 50
-    x_max = y_max = z_max = +5.0
-    x_min = y_min = z_min = -5.0
+def compute_AOs_overlap_matrix(aos_data: AOs_data, method: str = "numerical"):
+    """
+    The method is for computing overlap matrix (S) of the given atomic orbitals
 
-    x, w_x = scipy.special.roots_legendre(n=n)
-    y, w_y = scipy.special.roots_legendre(n=n)
-    z, w_z = scipy.special.roots_legendre(n=n)
+    Args:
+        ao_datas (AOs_data): an instance of AOs_data
+        method: method to compute S, numerical or analytical. numerical is just for the debugging purpose.
 
-    # Use itertools.product to generate all combinations of points across dimensions
-    points = list(itertools.product(x, y, z))
-    weights = list(itertools.product(w_x, w_y, w_z))
+    Returns:
+        Arrays containing the overlap matrix (S) of the given AOs (dim: num_ao, num_ao)
+    """
 
-    # Create the matrix of coordinates r from combinations
-    r_prime = np.array(points)  # Shape: (n^3, 3)
+    if method == "numerical":
+        n = 40
+        x_max = y_max = z_max = +5.0
+        x_min = y_min = z_min = -5.0
 
-    A = 1.0 / 2.0 * np.array([[x_max + x_min], [y_max + y_min], [z_max + z_min]])
-    B = 1.0 / 2.0 * np.diag([x_max - x_min, y_max - y_min, z_max - z_min])
+        x, w_x = scipy.special.roots_legendre(n=n)
+        y, w_y = scipy.special.roots_legendre(n=n)
+        z, w_z = scipy.special.roots_legendre(n=n)
 
-    # Create the weight vector W (calculate the product of each set of weights)
-    W = np.array([w[0] * w[1] * w[2] for w in weights])  # Length: n^3
-    Jacob = 1.0 / 8.0 * (x_max - x_min) * (y_max - y_min) * (z_max - z_min)
-    W_prime = Jacob * np.tile(W, (aos_data.num_ao, 1))
+        # Use itertools.product to generate all combinations of points across dimensions
+        points = list(itertools.product(x, y, z))
+        weights = list(itertools.product(w_x, w_y, w_z))
 
-    Psi = compute_AOs_api(aos_data=aos_data, r_carts=(A + np.dot(B, r_prime.T)).T)
+        # Create the matrix of coordinates r from combinations
+        r_prime = np.array(points)  # Shape: (n^3, 3)
 
-    S = np.dot(Psi, (W_prime * Psi).T)
-    print(S)
+        A = 1.0 / 2.0 * np.array([[x_max + x_min], [y_max + y_min], [z_max + z_min]])
+        B = 1.0 / 2.0 * np.diag([x_max - x_min, y_max - y_min, z_max - z_min])
+
+        # Create the weight vector W (calculate the product of each set of weights)
+        W = np.array([w[0] * w[1] * w[2] for w in weights])  # Length: n^3
+        Jacob = 1.0 / 8.0 * (x_max - x_min) * (y_max - y_min) * (z_max - z_min)
+        W_prime = Jacob * np.tile(W, (aos_data.num_ao, 1))
+
+        Psi = compute_AOs_api(
+            aos_data=aos_data, r_carts=(A + np.dot(B, r_prime.T)).T, jax_flag=False
+        )
+
+        S = np.dot(Psi, (W_prime * Psi).T)
+        print(S)
+
+    else:
+        raise NotImplementedError
 
 
 def compute_AOs_api(
@@ -316,6 +333,7 @@ def compute_AOs_jax(
 ) -> npt.NDArray[np.float64 | np.complex128]:
     """
     This is a straightforward jax code for compute_AOs method.
+    Since jit is not used, not very fast.
 
     Args:
         ao_datas (AOs_data): an instance of AOs_data
@@ -333,8 +351,9 @@ def compute_AOs_jax(
     coefficients = aos_data.coefficients
     angular_momentums = aos_data.angular_momentums
     magnetic_quantum_numbers = aos_data.magnetic_quantum_numbers
+    angular_momentums_dup = [angular_momentums[i] for i in aos_data.orbital_indices]
 
-    # compute R_n
+    # compute R_n inc. the whole normalization factor
     n_el = r_carts.shape[0]
     sq_r_R = jnp.array(
         [
@@ -343,8 +362,22 @@ def compute_AOs_jax(
         ]
     ).reshape(aos_data.num_ao_prim, n_el)
 
-    R_n_dup = jnp.array([coefficients]).T * jnp.exp(
-        -1 * jnp.array([exponents]).T * sq_r_R
+    # normalization factors
+    Z_jnp = jnp.array(exponents)
+    l_jnp = jnp.array(angular_momentums_dup)
+    N_n_dup = jnp.sqrt(
+        (
+            2 ** (2 * l_jnp + 3)
+            * scipy.special.factorial(l_jnp + 1)
+            * (2 * Z_jnp) ** (l_jnp + 1.5)
+        )
+        / (scipy.special.factorial(2 * l_jnp + 2) * jnp.sqrt(jnp.pi))
+    )
+
+    R_n_dup = (
+        jnp.array([N_n_dup]).T
+        * jnp.array([coefficients]).T
+        * jnp.exp(-1 * jnp.array([exponents]).T * sq_r_R)
     )
 
     R_n = jnp.zeros([aos_data.num_ao, n_el])
@@ -532,15 +565,13 @@ def compute_AO(ao_data: AO_data, r_cart: list[float]) -> float | complex:
         Rad{\alpha}(r_cart) = e^{-Z_\alpha * |\vec{R_\alpha} - \vec{r}|^2}
 
         Finally, an AO, \phi_{l+\pm |m|, \alpha}(\vec{r}), is computed as:
-            \phi_{l+\pm |m|, \alpha}(\vec{r})  = Rad{\alpha}(r_cart) * Sha_{l,\pm|m|,\alpha}(r_cart)
+            \phi_{l+\pm |m|, \alpha}(\vec{r})  = \mathcal{N}_{l,\alpha} * Rad{\alpha}(r_cart) * Sha_{l,\pm|m|,\alpha}(r_cart)
+        where N is the normalization factor. N is computed as:
+            \mathcal{N}_{l,\alpha} = \sqrt{\frac{2^{2l+3}(l+1)!(2Z_\alpha)^{l+\frac{3}{2}}}{(2l+2)!\sqrt{\pi}}}.
+        Notice that this normalization factor is just for the primitive GTO. The contracted GTO is not explicitly normalized.
     """
 
-    R_n = compute_R_n(
-        atomic_center_cart=ao_data.atomic_center_cart,
-        exponents=ao_data.exponents,
-        coefficients=ao_data.coefficients,
-        r_cart=r_cart,
-    )
+    R_n = []
     S_l_m = compute_S_l_m(
         atomic_center_cart=ao_data.atomic_center_cart,
         angular_momentum=ao_data.angular_momentum,
@@ -551,13 +582,30 @@ def compute_AO(ao_data: AO_data, r_cart: list[float]) -> float | complex:
     # logger.debug(f"R_n = {R_n}")
     # logger.debug(f"S_l_m = {S_l_m}")
 
-    return R_n * S_l_m
+    R_n = np.array(
+        [
+            compute_R_n(
+                atomic_center_cart=ao_data.atomic_center_cart,
+                exponent=Z,
+                r_cart=r_cart,
+            )
+            for Z in ao_data.exponents
+        ]
+    )
+    N_n_l = np.array(
+        [
+            compute_normalization_fator(ao_data.angular_momentum, Z)
+            for Z in ao_data.exponents
+        ]
+    )
+    C_n = np.array(ao_data.coefficients)
+
+    return np.sum(N_n_l * C_n * R_n) * S_l_m
 
 
 def compute_R_n(
     atomic_center_cart: list[float],
-    exponents: list[float],
-    coefficients: list[float | complex],
+    exponent: float,
     r_cart: list[float],
 ) -> float | complex:
     """
@@ -565,19 +613,15 @@ def compute_R_n(
 
     Args:
         atomic_center_cart (list[float]): Center of the nucleus associated to the AO.
-        exponents (list[float]): List of exponents of the AO.
-        coefficients (list[float | complex]): List of coefficients of the AO.
+        exponent (float): the exponent of the target AO.
         r_cart: Cartesian coordinate of an electron
 
     Returns:
-        Value of the radial part.
+        Value of the pure radial part.
     """
-    R_cart = atomic_center_cart
-    return np.inner(
-        np.array(coefficients),
-        np.exp(
-            -1 * np.array(exponents) * LA.norm(np.array(r_cart) - np.array(R_cart)) ** 2
-        ),
+
+    return np.exp(
+        -1 * exponent * LA.norm(np.array(r_cart) - np.array(atomic_center_cart)) ** 2
     )
 
 
@@ -588,7 +632,7 @@ def compute_S_l_m(
     r_cart: list[float],
 ) -> float:
     """
-    Spherical part of the AO
+    r^l * spherical hamonics part (i.e., regular solid harmonics) of the AO
 
     Args:
         atomic_center_cart (list[float]): Center of the nucleus associated to the AO.
@@ -597,7 +641,7 @@ def compute_S_l_m(
         r_cart: Cartesian coordinate of an electron
 
     Returns:
-        Value of the spherical part.
+        Value of the spherical harmonics part * r^l (i.e., regular solid harmonics).
 
     Note:
         A real basis of spherical harmonics Y_{l,m} : S^2 -> R can be defined in terms of
@@ -686,12 +730,20 @@ def compute_S_l_m(
     # logger.debug(f"A_m(x, y)={A_m(x, y)}")
     # logger.debug(f"B_m(x, y)={B_m(x, y)}")
 
-    # solid harmonics in Cartesian (x,y,z):
+    # solid harmonics eveluated in Cartesian coord. (x,y,z):
     if m >= 0:
         gamma = np.sqrt((2 * l + 1) / (4 * np.pi)) * Lambda_lm(r_norm, z) * A_m(x, y)
     if m < 0:
         gamma = np.sqrt((2 * l + 1) / (4 * np.pi)) * Lambda_lm(r_norm, z) * B_m(x, y)
     return gamma
+
+
+def compute_normalization_fator(l: int, Z: float):
+    # return 1.0
+    return np.sqrt(
+        (2 ** (2 * l + 3) * scipy.special.factorial(l + 1) * (2 * Z) ** (l + 1.5))
+        / (scipy.special.factorial(2 * l + 2) * np.sqrt(np.pi))
+    )
 
 
 if __name__ == "__main__":
@@ -743,7 +795,7 @@ if __name__ == "__main__":
     num_ao_prim = 3
     orbital_indices = [0, 1, 2]
     R_carts = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
-    exponents = [10.0, 3.0, 1.0]
+    exponents = [3.0, 1.0, 0.5]
     coefficients = [1.0, 1.0, 1.0]
     angular_momentums = [0, 0, 0]
     magnetic_quantum_numbers = [0, 0, 0]
@@ -762,4 +814,4 @@ if __name__ == "__main__":
     print(1 / (4 * np.pi) * np.sqrt(np.pi / (2 * 10.0)) ** 3)
     print(1 / (4 * np.pi) * np.sqrt(np.pi / (2 * 3.0)) ** 3)
     print(1 / (4 * np.pi) * np.sqrt(np.pi / (2 * 1.0)) ** 3)
-    compute_overlap_matrix(aos_data=aos_data)
+    compute_AOs_overlap_matrix(aos_data=aos_data)
