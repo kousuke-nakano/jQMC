@@ -12,8 +12,10 @@ import trexio
 # import myQMC
 from structure import Structure_data
 from atomic_orbital import AOs_data, compute_AOs_overlap_matrix
-from molecular_orbital import MOs_data, compute_MOs_overlap_matrix
-from coulomb_potential import Coulomb_potential_data
+from molecular_orbital import MOs_data, compute_MOs, compute_MOs_overlap_matrix
+from coulomb_potential import Coulomb_potential_data, compute_coulomb_potential
+from determinant import Geminal_data
+from wavefunction import Wavefunction_data, evaluate_wavefunction
 
 logger = getLogger("myqmc").getChild(__name__)
 
@@ -57,8 +59,8 @@ def read_trexio_file(trexio_file: str):
         logger.info("Molecule (Open boundary condition)")
 
     # read electron num
-    # num_ele_up = trexio.read_electron_up_num(file_r)
-    # num_ele_dn = trexio.read_electron_dn_num(file_r)
+    num_ele_up = trexio.read_electron_up_num(file_r)
+    num_ele_dn = trexio.read_electron_dn_num(file_r)
 
     # read structure info.
     # nucleus_num_r = trexio.read_nucleus_num(file_r)
@@ -142,8 +144,8 @@ def read_trexio_file(trexio_file: str):
         # vec_a: list[float] = field(default_factory=list)
         # vec_b: list[float] = field(default_factory=list)
         # vec_c: list[float] = field(default_factory=list)
-        atomic_numbers=charges_r,
-        element_symbols=convert_from_atomic_numbers_to_atomic_labels(charges_r),
+        atomic_numbers=convert_from_atomic_labels_to_atomic_numbers(labels_r),
+        element_symbols=labels_r,
         atomic_labels=labels_r,
         positions=coords_r,
     )
@@ -196,6 +198,9 @@ def read_trexio_file(trexio_file: str):
         coefficients += ao_coefficients_all
 
     if ao_num_count != ao_num:
+        logger.error(
+            f"ao_num_count = {ao_num_count} is inconsistent with the read ao_num = {ao_num}"
+        )
         raise ValueError
 
     aos_data = AOs_data(
@@ -212,6 +217,36 @@ def read_trexio_file(trexio_file: str):
     # MOs_data instance (WIP)
     mos_data = MOs_data(
         num_mo=mo_num, mo_coefficients=mo_coefficient_real, aos_data=aos_data
+    )
+
+    mo_num_up = mo_num_dn = mo_num
+    mo_lambda_paired_occ = np.eye(num_ele_up, num_ele_dn, k=0)
+
+    mo_lambda_matrix_unpaired = np.eye(
+        num_ele_up, num_ele_up - num_ele_dn, k=-num_ele_dn
+    )
+    mo_lambda_matrix = np.block(
+        [
+            [
+                mo_lambda_paired_occ,
+                np.zeros((num_ele_up, mo_num_dn - num_ele_dn)),
+                mo_lambda_matrix_unpaired,
+            ],
+            [
+                np.zeros((mo_num_up - num_ele_up, num_ele_dn)),
+                np.zeros((mo_num_up - num_ele_up, mo_num_dn - num_ele_dn)),
+                np.zeros((mo_num_up - num_ele_up, num_ele_up - num_ele_dn)),
+            ],
+        ]
+    )
+
+    geminal_data = Geminal_data(
+        num_electron_up=num_ele_up,
+        num_electron_dn=num_ele_dn,
+        orb_data_up_spin=mos_data,
+        orb_data_dn_spin=mos_data,
+        compute_orb=compute_MOs,
+        lambda_matrix=mo_lambda_matrix,
     )
 
     # Coulomb_potential_data instance
@@ -233,7 +268,7 @@ def read_trexio_file(trexio_file: str):
             structure_data=structure_data, ecp_flag=False
         )
 
-    return structure_data, aos_data, mos_data, coulomb_potential_data
+    return structure_data, geminal_data, coulomb_potential_data
 
 
 def convert_from_atomic_numbers_to_atomic_labels(charges_r: list[int]) -> list[str]:
@@ -343,6 +378,112 @@ def convert_from_atomic_numbers_to_atomic_labels(charges_r: list[int]) -> list[s
     return labels_r
 
 
+def convert_from_atomic_labels_to_atomic_numbers(labels_r: list[str]) -> list[int]:
+    # Mapping of element symbols to their atomic numbers up to 86
+    element_to_number = {
+        "H": 1,
+        "He": 2,
+        "Li": 3,
+        "Be": 4,
+        "B": 5,
+        "C": 6,
+        "N": 7,
+        "O": 8,
+        "F": 9,
+        "Ne": 10,
+        "Na": 11,
+        "Mg": 12,
+        "Al": 13,
+        "Si": 14,
+        "P": 15,
+        "S": 16,
+        "Cl": 17,
+        "Ar": 18,
+        "K": 19,
+        "Ca": 20,
+        "Sc": 21,
+        "Ti": 22,
+        "V": 23,
+        "Cr": 24,
+        "Mn": 25,
+        "Fe": 26,
+        "Co": 27,
+        "Ni": 28,
+        "Cu": 29,
+        "Zn": 30,
+        "Ga": 31,
+        "Ge": 32,
+        "As": 33,
+        "Se": 34,
+        "Br": 35,
+        "Kr": 36,
+        "Rb": 37,
+        "Sr": 38,
+        "Y": 39,
+        "Zr": 40,
+        "Nb": 41,
+        "Mo": 42,
+        "Tc": 43,
+        "Ru": 44,
+        "Rh": 45,
+        "Pd": 46,
+        "Ag": 47,
+        "Cd": 48,
+        "In": 49,
+        "Sn": 50,
+        "Sb": 51,
+        "Te": 52,
+        "I": 53,
+        "Xe": 54,
+        "Cs": 55,
+        "Ba": 56,
+        "La": 57,
+        "Ce": 58,
+        "Pr": 59,
+        "Nd": 60,
+        "Pm": 61,
+        "Sm": 62,
+        "Eu": 63,
+        "Gd": 64,
+        "Tb": 65,
+        "Dy": 66,
+        "Ho": 67,
+        "Er": 68,
+        "Tm": 69,
+        "Yb": 70,
+        "Lu": 71,
+        "Hf": 72,
+        "Ta": 73,
+        "W": 74,
+        "Re": 75,
+        "Os": 76,
+        "Ir": 77,
+        "Pt": 78,
+        "Au": 79,
+        "Hg": 80,
+        "Tl": 81,
+        "Pb": 82,
+        "Bi": 83,
+        "Po": 84,
+        "At": 85,
+        "Rn": 86,
+    }
+
+    # Convert labels to atomic numbers, checking for validity
+    atomic_numbers = []
+    for label in labels_r:
+        if label in element_to_number:
+            atomic_number = element_to_number[label]
+            if atomic_number > 86:
+                raise NotImplementedError(
+                    "Atomic numbers above 86 are not implemented."
+                )
+            atomic_numbers.append(atomic_number)
+        else:
+            raise ValueError(f"No atomic number found for the label '{label}'")
+    return atomic_numbers
+
+
 if __name__ == "__main__":
     logger = getLogger("myqmc")
     logger.setLevel("DEBUG")
@@ -353,21 +494,24 @@ if __name__ == "__main__":
     logger.addHandler(stream_handler)
 
     # water
-    structure_data, aos_data, mos_data, coulomb_potential_data = read_trexio_file(
+    structure_data, geminal_data, coulomb_potential_data = read_trexio_file(
         trexio_file="water_trexio.hdf5"
     )
 
     structure_data.write_to_file("water.xyz")
 
     # print(structure_data)
-    print(aos_data)
+    # print(aos_data)
     # print(mos_data)
     # print(coulomb_potential_data)
 
-    S_ao = compute_AOs_overlap_matrix(aos_data=aos_data)
-    print(S_ao)
-    print(np.diag(S_ao))
+    # S_ao = compute_AOs_overlap_matrix(aos_data=aos_data)
+    # print(S_ao)
+    # print(np.diag(S_ao))
 
-    S_mo = compute_MOs_overlap_matrix(mos_data=mos_data)
-    print(S_mo)
-    print(np.diag(S_mo))
+    # S_mo = compute_MOs_overlap_matrix(mos_data=mos_data)
+    # print(S_mo)
+    # print(np.diag(S_mo))
+
+    print(geminal_data.lambda_matrix)
+    wavefunction_data = Wavefunction_data(geminal_data=geminal_data)

@@ -25,7 +25,7 @@ logger = getLogger("myqmc").getChild(__name__)
 @struct.dataclass
 class Geminal_data:
     """
-    The class contains data for computing geminal function.
+    The class contains data for evaluating a geminal function.
 
     Args:
         num_electron_up (int): number of up electrons.
@@ -96,15 +96,15 @@ def compute_geminal_all_elements(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64 | np.complex128]:
     """
-    The method is for computing geminal matrix elements with the given atomic orbitals at (r_up_carts, r_dn_carts).
+    The method is for computing geminal matrix elements with the given atomic/molecular orbitals at (r_up_carts, r_dn_carts).
 
     Args:
-        geminal_data (Geminal_data): an instance of Geminal_data
+        geminal_data (Geminal_data): an instance of Geminal_data class
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
     Returns:
-        Arrays containing values of the geminal function with r_up_carts and r_dn_carts. (dim: N_e^{up}, N_e^{up})
+        Arrays containing values of the given geminal functions f(i,j) where r_up_carts[i] and r_dn_carts[j]. (dim: N_e^{up}, N_e^{up})
     """
 
     if (
@@ -178,10 +178,10 @@ def compute_gradients_and_laplacians_geminal(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64 | np.complex128]:
     """
-    The method is for computing geminal matrix elements with the given atomic orbitals at (r_up_carts, r_dn_carts).
+    The method is for computing geminal matrix elements with the given atomic/molecular orbitals at (r_up_carts, r_dn_carts).
 
     Args:
-        geminal_data (Geminal_data): an instance of Geminal_data
+        geminal_data (Geminal_data): an instance of Geminal_data class
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 

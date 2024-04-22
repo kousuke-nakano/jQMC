@@ -194,7 +194,7 @@ class Structure_data:
             # define ASE-type structure (used inside this class)
             # Note! unit in ASE is angstrom, so one should convert bohr -> ang
         """
-        if all(self.pbc_flag):
+        if any(self.pbc_flag):
             ase_atom = Atoms(
                 self.element_symbols, positions=self.positions_cart * Bohr_to_Angstrom
             )
@@ -207,12 +207,12 @@ class Structure_data:
                     ]
                 )
             )
-            ase_atom.set_pbc(True)
+            ase_atom.set_pbc(self.pbc_flag)
         else:
             ase_atom = Atoms(
                 self.element_symbols, positions=self.positions_cart * Bohr_to_Angstrom
             )
-            ase_atom.set_pbc(False)
+            ase_atom.set_pbc(self.pbc_flag)
 
         return ase_atom
 
@@ -226,14 +226,14 @@ class Structure_data:
             Atoms: ASE Atoms instance
         """
         pbc_flag = ase_atom.get_pbc()
-        if all(pbc_flag):
+        if any(pbc_flag):
             vec_a = list(ase_atom.get_cell()[0] * Angstrom_to_Bohr)
             vec_b = list(ase_atom.get_cell()[1] * Angstrom_to_Bohr)
             vec_c = list(ase_atom.get_cell()[2] * Angstrom_to_Bohr)
         else:
-            vec_a = [0.0, 0.0, 0.0]
-            vec_b = [0.0, 0.0, 0.0]
-            vec_c = [0.0, 0.0, 0.0]
+            vec_a = None
+            vec_b = None
+            vec_c = None
 
         atomic_numbers = ase_atom.get_atomic_numbers()
         element_symbols = ase_atom.get_chemical_symbols()
