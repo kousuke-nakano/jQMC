@@ -12,6 +12,7 @@ from ..myqmc.atomic_orbital import (
     compute_S_l_m,
     AOs_data,
     compute_AOs_api,
+    compute_AOs_overlap_matrix,
 )
 
 from ..myqmc.molecular_orbital import MO_data, MOs_data, compute_MO, compute_MOs
@@ -178,16 +179,72 @@ def test_spherical_part_of_AO(l, m):
         assert_almost_equal(test_S_lm, ref_S_lm, decimal=10)
 
 
+def test_radial_part_of_AO():
+    pass
+
+
 # @pytest.mark.skip
-def test_AOs():
-    num_el = 1000
-    num_ao = 4
-    num_ao_prim = 5
-    orbital_indices = [0, 1, 1, 2, 3]
-    exponents = [50.0, 50.0, 20.0, 10.0, 5.0]
-    coefficients = [1.0, 1.0, 1.0, 1.0, 0.5]
-    angular_momentums = [0, 1, 1, 1]
-    magnetic_quantum_numbers = [0, 0, 0, -1]
+def test_AOs_uncontracted():
+    num_el = 100
+    num_ao = 25
+    num_ao_prim = 25
+    orbital_indices = list(range(25))
+    exponents = [5.0] * 25
+    coefficients = [1.0] * 25
+    angular_momentums = [
+        0,
+        1,
+        1,
+        1,
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+    ]
+    magnetic_quantum_numbers = [
+        0,
+        -1,
+        0,
+        1,
+        -2,
+        -1,
+        0,
+        1,
+        2,
+        -3,
+        -2,
+        -1,
+        0,
+        1,
+        2,
+        3,
+        -4,
+        -3,
+        -2,
+        -1,
+        0,
+        1,
+        2,
+        3,
+        4,
+    ]
 
     num_r_cart_samples = num_el
     num_R_cart_samples = num_ao
@@ -213,7 +270,8 @@ def test_AOs():
 
     aos_jax = compute_AOs_api(aos_data=aos_data, r_carts=r_carts, jax_flag=True)
     aos_debug = compute_AOs_api(aos_data=aos_data, r_carts=r_carts, jax_flag=False)
-    assert np.allclose(aos_jax, aos_debug, rtol=1e-05, atol=1e-08)
+
+    assert np.allclose(aos_jax, aos_debug, rtol=1e-12, atol=1e-05)
 
 
 def test_MOs():

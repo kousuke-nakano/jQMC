@@ -78,13 +78,16 @@ def read_trexio_file(trexio_file: str):
     basis_exponent = trexio.read_basis_exponent(file_r)
     basis_coefficient = trexio.read_basis_coefficient(file_r)
     # basis_prim_factor = trexio.read_basis_prim_factor(file_r)
+    logger.debug(basis_nucleus_index)
+    logger.debug(basis_shell_index)
+    logger.debug(basis_shell_ang_mom)
 
     # ao info
     ao_cartesian = trexio.read_ao_cartesian(file_r)
     ao_num = trexio.read_ao_num(file_r)
-    # ao_shell = trexio.read_ao_shell(file_r)
+    ao_shell = trexio.read_ao_shell(file_r)
     # ao_normalization = trexio.read_ao_normalization(file_r)
-
+    logger.debug(ao_shell)
     # ao spherical part check
     if ao_cartesian:
         raise NotImplementedError
@@ -165,6 +168,8 @@ def read_trexio_file(trexio_file: str):
             i * (-1) ** j for i in range(1, ao_ang_mom + 1) for j in range(2)
         ]
         num_mag_moms = len(ao_mag_moms)
+
+        logger.debug(ao_mag_moms)
 
         ao_coords = [ao_coord for _ in range(num_mag_moms)]
         ao_ang_moms = [ao_ang_mom for _ in range(num_mag_moms)]
@@ -351,14 +356,18 @@ if __name__ == "__main__":
     structure_data, aos_data, mos_data, coulomb_potential_data = read_trexio_file(
         trexio_file="water_trexio.hdf5"
     )
+
+    structure_data.write_to_file("water.xyz")
+
     # print(structure_data)
-    # print(aos_data)
-    print(mos_data)
+    print(aos_data)
+    # print(mos_data)
     # print(coulomb_potential_data)
 
     S_ao = compute_AOs_overlap_matrix(aos_data=aos_data)
     print(S_ao)
     print(np.diag(S_ao))
-    # S_mo = compute_MOs_overlap_matrix(mos_data=mos_data)
-    # print(S_mo)
-    # print(np.diag(S_mo))
+
+    S_mo = compute_MOs_overlap_matrix(mos_data=mos_data)
+    print(S_mo)
+    print(np.diag(S_mo))

@@ -194,7 +194,7 @@ class Structure_data:
             # define ASE-type structure (used inside this class)
             # Note! unit in ASE is angstrom, so one should convert bohr -> ang
         """
-        if self.pbc_flag:
+        if all(self.pbc_flag):
             ase_atom = Atoms(
                 self.element_symbols, positions=self.positions_cart * Bohr_to_Angstrom
             )

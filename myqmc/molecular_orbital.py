@@ -11,7 +11,7 @@ import itertools
 from logging import getLogger, StreamHandler, Formatter
 
 # myqmc module
-from .atomic_orbital import AO_data, compute_AO, AOs_data, compute_AOs_api
+from atomic_orbital import AO_data, compute_AO, AOs_data, compute_AOs_api
 
 logger = getLogger("myqmc").getChild(__name__)
 
@@ -81,17 +81,17 @@ def compute_MOs_overlap_matrix(mos_data: MOs_data, method: str = "numerical"):
     """
 
     if method == "numerical":
-        nx = 30
-        x_min = 5.0
-        x_max = 12.0
+        nx = 300
+        x_min = -6.0
+        x_max = 6.0
 
-        ny = 10
-        y_min = 11.0
-        y_max = 15.0
+        ny = 300
+        y_min = -5.0
+        y_max = 7.0
 
-        nz = 20
-        z_min = 10.0
-        z_max = 16.0
+        nz = 300
+        z_min = -9.0
+        z_max = 3.0
 
         x, w_x = scipy.special.roots_legendre(n=nx)
         y, w_y = scipy.special.roots_legendre(n=ny)
