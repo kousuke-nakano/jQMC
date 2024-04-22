@@ -5,8 +5,6 @@ import numpy as np
 from numpy import linalg as LA
 from numpy.testing import assert_almost_equal
 
-import scipy
-
 from logging import getLogger, StreamHandler, Formatter
 
 from ..myqmc.atomic_orbital import (
@@ -14,7 +12,6 @@ from ..myqmc.atomic_orbital import (
     compute_S_l_m,
     AOs_data,
     compute_AOs_api,
-    compute_AO,
 )
 
 from ..myqmc.molecular_orbital import MO_data, MOs_data, compute_MO, compute_MOs
