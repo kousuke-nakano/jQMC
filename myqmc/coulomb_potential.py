@@ -100,7 +100,6 @@ class Coulomb_potential_data:
         exponents (list[float]): all ECP exponents (dim:num_ecps)
         coefficients (list[float]): all ECP coefficients (dim:num_ecps)
         powers (list[int]): all ECP powers (dim:num_ecps)
-        wavefunction_data (Wavefunction_data): Wavefunction information needed to compute the non-local part
     """
 
     structure_data: Structure_data = None
@@ -113,7 +112,6 @@ class Coulomb_potential_data:
     exponents: list[float] = None
     coefficients: list[float] = None
     powers: list[int] = None
-    wavefunction_data: Wavefunction_data = None
 
     def __post_init__(self) -> None:
         pass
@@ -383,6 +381,7 @@ def compute_coulomb_potential(
     coulomb_potential_data: Coulomb_potential_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
+    wavefunction_data: Wavefunction_data = None,
     debug_flag: bool = True,
 ) -> npt.NDArray[np.float64 | np.complex128]:
     """
@@ -393,6 +392,7 @@ def compute_coulomb_potential(
         Coulomb_potential_data (BCoulomb_potential_data): an instance of Bare_coulomb_potential_data
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        wavefunction_data (Wavefunction_data): Wavefunction information needed to compute the non-local part
 
     Returns:
         Arrays containing values of the geminal function with r_up_carts and r_dn_carts. (dim: N_e^{up}, N_e^{up})
@@ -423,7 +423,7 @@ def compute_coulomb_potential(
         )
         ecp_nonlocal_coulomb_potential = compute_ecp_nonlocal_parts(
             coulomb_potential_data=coulomb_potential_data,
-            wavefunction_data=coulomb_potential_data.wavefunction_data,
+            wavefunction_data=wavefunction_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
             debug_flag=debug_flag,

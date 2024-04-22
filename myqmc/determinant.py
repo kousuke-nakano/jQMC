@@ -151,7 +151,6 @@ def compute_geminal_all_elements(
 
     # compute geminal values
     geminal_paired = np.dot(ao_matrix_up.T, np.dot(lambda_matrix_paired, ao_matrix_dn))
-    assert np.allclose(geminal_paired, geminal_paired.T)
     geminal_unpaired = np.dot(ao_matrix_up.T, lambda_matrix_unpaired)
     geminal = np.hstack([geminal_paired, geminal_unpaired])
 

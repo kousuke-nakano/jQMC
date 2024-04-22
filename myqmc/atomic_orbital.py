@@ -84,13 +84,21 @@ def compute_AOs_overlap_matrix(aos_data: AOs_data, method: str = "numerical"):
     """
 
     if method == "numerical":
-        n = 40
-        x_max = y_max = z_max = +5.0
-        x_min = y_min = z_min = -5.0
+        nx = 40
+        x_min = 4.55
+        x_max = 13.15
 
-        x, w_x = scipy.special.roots_legendre(n=n)
-        y, w_y = scipy.special.roots_legendre(n=n)
-        z, w_z = scipy.special.roots_legendre(n=n)
+        ny = 25
+        y_min = 10.00
+        y_max = 16.50
+
+        nz = 40
+        z_min = 9.85
+        z_max = 17.45
+
+        x, w_x = scipy.special.roots_legendre(n=nx)
+        y, w_y = scipy.special.roots_legendre(n=ny)
+        z, w_z = scipy.special.roots_legendre(n=nz)
 
         # Use itertools.product to generate all combinations of points across dimensions
         points = list(itertools.product(x, y, z))
@@ -108,11 +116,12 @@ def compute_AOs_overlap_matrix(aos_data: AOs_data, method: str = "numerical"):
         W_prime = Jacob * np.tile(W, (aos_data.num_ao, 1))
 
         Psi = compute_AOs_api(
-            aos_data=aos_data, r_carts=(A + np.dot(B, r_prime.T)).T, jax_flag=False
+            aos_data=aos_data, r_carts=(A + np.dot(B, r_prime.T)).T, jax_flag=True
         )
 
         S = np.dot(Psi, (W_prime * Psi).T)
-        print(S)
+
+        return S
 
     else:
         raise NotImplementedError
@@ -367,7 +376,7 @@ def compute_AOs_jax(
     l_jnp = jnp.array(angular_momentums_dup)
     N_n_dup = jnp.sqrt(
         (
-            2 ** (2 * l_jnp + 3)
+            2.0 ** (2 * l_jnp + 3)
             * scipy.special.factorial(l_jnp + 1)
             * (2 * Z_jnp) ** (l_jnp + 1.5)
         )
@@ -435,9 +444,10 @@ def compute_AOs_jax(
 
         # solid harmonics for (z) dependent part:
         def lambda_lm(k: int) -> float:
+            # logger.debug(f"l={l}, type ={type(l)}")
             return (
-                (-1) ** (k)
-                * 2 ** (-l)
+                (-1.0) ** (k)
+                * 2.0 ** (-l)
                 * scipy.special.binom(l, k)
                 * scipy.special.binom(2 * l - 2 * k, l)
                 * jscipy.special.factorial(l - 2 * k)
@@ -699,9 +709,10 @@ def compute_S_l_m(
 
     # solid harmonics for (z) dependent part:
     def lambda_lm(k: int) -> float:
+        # logger.debug(f"l={l}, type ={type(l)}")
         return (
-            (-1) ** (k)
-            * 2 ** (-l)
+            (-1.0) ** (k)
+            * 2.0 ** (-l)
             * scipy.special.binom(l, k)
             * scipy.special.binom(2 * l - 2 * k, l)
             * scipy.special.factorial(l - 2 * k)
@@ -741,7 +752,7 @@ def compute_S_l_m(
 def compute_normalization_fator(l: int, Z: float):
     # return 1.0
     return np.sqrt(
-        (2 ** (2 * l + 3) * scipy.special.factorial(l + 1) * (2 * Z) ** (l + 1.5))
+        (2.0 ** (2 * l + 3) * scipy.special.factorial(l + 1) * (2 * Z) ** (l + 1.5))
         / (scipy.special.factorial(2 * l + 2) * np.sqrt(np.pi))
     )
 

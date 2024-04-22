@@ -15,7 +15,7 @@ from ase.io import write, read  # type: ignore
 from logging import getLogger, StreamHandler, Formatter
 
 # modules
-from utilities.units import Angstrom_to_Bohr, Bohr_to_Angstrom
+from units import Angstrom_to_Bohr, Bohr_to_Angstrom
 
 logger = getLogger("myqmc").getChild(__name__)
 

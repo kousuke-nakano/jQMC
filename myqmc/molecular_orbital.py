@@ -2,8 +2,10 @@
 
 # python modules
 from dataclasses import dataclass, field
+import scipy
 import numpy as np
 import numpy.typing as npt
+import itertools
 
 # set logger
 from logging import getLogger, StreamHandler, Formatter
@@ -64,6 +66,62 @@ def compute_MOs(
         raise ValueError
 
     return answer
+
+
+def compute_MOs_overlap_matrix(mos_data: MOs_data, method: str = "numerical"):
+    """
+    The method is for computing overlap matrix (S) of the given molecular orbitals
+
+    Args:
+        mo_datas (MOs_data): an instance of MOs_data
+        method: method to compute S, numerical or analytical. numerical is just for the debugging purpose.
+
+    Returns:
+        Arrays containing the overlap matrix (S) of the given MOs (dim: num_mo, num_mo)
+    """
+
+    if method == "numerical":
+        nx = 30
+        x_min = 5.0
+        x_max = 12.0
+
+        ny = 10
+        y_min = 11.0
+        y_max = 15.0
+
+        nz = 20
+        z_min = 10.0
+        z_max = 16.0
+
+        x, w_x = scipy.special.roots_legendre(n=nx)
+        y, w_y = scipy.special.roots_legendre(n=ny)
+        z, w_z = scipy.special.roots_legendre(n=nz)
+
+        # Use itertools.product to generate all combinations of points across dimensions
+        points = list(itertools.product(x, y, z))
+        weights = list(itertools.product(w_x, w_y, w_z))
+
+        # Create the matrix of coordinates r from combinations
+        r_prime = np.array(points)  # Shape: (n^3, 3)
+
+        A = 1.0 / 2.0 * np.array([[x_max + x_min], [y_max + y_min], [z_max + z_min]])
+        B = 1.0 / 2.0 * np.diag([x_max - x_min, y_max - y_min, z_max - z_min])
+
+        # Create the weight vector W (calculate the product of each set of weights)
+        W = np.array([w[0] * w[1] * w[2] for w in weights])  # Length: n^3
+        Jacob = 1.0 / 8.0 * (x_max - x_min) * (y_max - y_min) * (z_max - z_min)
+        W_prime = Jacob * np.tile(W, (mos_data.num_mo, 1))
+
+        Psi = compute_MOs(
+            mos_data=mos_data, r_carts=(A + np.dot(B, r_prime.T)).T, jax_flag=True
+        )
+
+        S = np.dot(Psi, (W_prime * Psi).T)
+
+        return S
+
+    else:
+        raise NotImplementedError
 
 
 @dataclass
