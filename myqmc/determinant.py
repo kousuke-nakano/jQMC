@@ -15,8 +15,8 @@ from jax import jacrev
 from logging import getLogger, StreamHandler, Formatter
 
 # myqmc module
-from atomic_orbital import AOs_data, compute_AOs_api
-from molecular_orbital import MOs_data, compute_MOs
+from .atomic_orbital import AOs_data, compute_AOs_api
+from .molecular_orbital import MOs_data, compute_MOs
 
 logger = getLogger("myqmc").getChild(__name__)
 
@@ -134,25 +134,34 @@ def compute_geminal_all_elements(
         geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
     )
 
-    ao_matrix_up = geminal_data.compute_orb(geminal_data.orb_data_up_spin, r_up_carts)
-    ao_matrix_dn = geminal_data.compute_orb(geminal_data.orb_data_dn_spin, r_dn_carts)
+    logger.debug(f"computing orb_matrix_up and orb_matrix_dn")
+    logger.debug(f"r_up_carts.shape = {r_up_carts.shape} / type = {type(r_up_carts)}")
+    logger.debug(f"r_dn_carts.shape = {r_dn_carts.shape} / type = {type(r_dn_carts)}")
+    orb_matrix_up = geminal_data.compute_orb(geminal_data.orb_data_up_spin, r_up_carts)
+    logger.debug(f"orb_matrix_up.shape = {orb_matrix_up.shape} !!")
+    orb_matrix_dn = geminal_data.compute_orb(geminal_data.orb_data_dn_spin, r_dn_carts)
+    logger.debug(f"orb_matrix_dn.shape = {orb_matrix_dn.shape} !!")
 
-    if ao_matrix_up.shape != (geminal_data.orb_num_up, len(r_up_carts)):
+    if orb_matrix_up.shape != (geminal_data.orb_num_up, len(r_up_carts)):
         logger.error(
-            f"answer.shape = {ao_matrix_up.shape} is inconsistent with the expected one = {(len(geminal_data.orb_num_up), len(r_up_carts))}"
+            f"answer.shape = {orb_matrix_up.shape} is inconsistent with the expected one = {(len(geminal_data.orb_num_up), len(r_up_carts))}"
         )
         raise ValueError
 
-    if ao_matrix_dn.shape != (geminal_data.orb_num_dn, len(r_dn_carts)):
+    if orb_matrix_dn.shape != (geminal_data.orb_num_dn, len(r_dn_carts)):
         logger.error(
-            f"answer.shape = {ao_matrix_dn.shape} is inconsistent with the expected one = {(len(geminal_data.orb_num_dn), len(r_dn_carts))}"
+            f"answer.shape = {orb_matrix_dn.shape} is inconsistent with the expected one = {(len(geminal_data.orb_num_dn), len(r_dn_carts))}"
         )
         raise ValueError
 
     # compute geminal values
-    geminal_paired = np.dot(ao_matrix_up.T, np.dot(lambda_matrix_paired, ao_matrix_dn))
-    geminal_unpaired = np.dot(ao_matrix_up.T, lambda_matrix_unpaired)
+    geminal_paired = np.dot(
+        orb_matrix_up.T, np.dot(lambda_matrix_paired, orb_matrix_dn)
+    )
+    geminal_unpaired = np.dot(orb_matrix_up.T, lambda_matrix_unpaired)
     geminal = np.hstack([geminal_paired, geminal_unpaired])
+
+    logger.debug(f"geminal shape = {geminal.shape} !!")
 
     if geminal.shape != (len(r_up_carts), len(r_up_carts)):
         logger.error(

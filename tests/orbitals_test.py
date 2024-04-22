@@ -33,19 +33,19 @@ log.addHandler(stream_handler)
         itertools.chain.from_iterable(
             [
                 [pytest.param(l, m, id=f"l={l}, m={m}") for m in range(-l, l + 1)]
-                for l in range(4)
+                for l in range(5)
             ]
         )
     ),
 )
 def test_spherical_part_of_AO(l, m):
-    def S_l_m_ref(l=0, m=0, r_cart_rel=[0.0, 0.0, 0.0]):
+    def Y_l_m_ref(l=0, m=0, r_cart_rel=[0.0, 0.0, 0.0]):
         """see https://en.wikipedia.org/wiki/Table_of_spherical_harmonics#Real_spherical_harmonics"""
-        x, y, z = r_cart_rel
-        r = LA.norm(r_cart_rel)
+        x, y, z = r_cart_rel[..., 0], r_cart_rel[..., 1], r_cart_rel[..., 2]
+        r = np.sqrt(x**2 + y**2 + z**2)
         # s orbital
         if (l, m) == (0, 0):
-            return 1.0 / 2.0 * np.sqrt(1.0 / np.pi)
+            return 1.0 / 2.0 * np.sqrt(1.0 / np.pi) * r**0.0
         # p orbitals
         elif (l, m) == (1, -1):
             return np.sqrt(3.0 / (4 * np.pi)) * y / r
@@ -87,6 +87,74 @@ def test_spherical_part_of_AO(l, m):
             return (
                 1.0 / 4.0 * np.sqrt(35.0 / (2 * np.pi)) * x * (x**2 - 3 * y**2) / r**3
             )
+        # g orbitals
+        elif (l, m) == (4, -4):
+            return 3.0 / 4.0 * np.sqrt(35.0 / (np.pi)) * x * y * (x**2 - y**2) / r**4
+        elif (l, m) == (4, -3):
+            return (
+                3.0
+                / 4.0
+                * np.sqrt(35.0 / (2 * np.pi))
+                * y
+                * z
+                * (3 * x**2 - y**2)
+                / r**4
+            )
+        elif (l, m) == (4, -2):
+            return 3.0 / 4.0 * np.sqrt(5.0 / (np.pi)) * x * y * (7 * z**2 - r**2) / r**4
+        elif (l, m) == (4, -1):
+            return (
+                3.0
+                / 4.0
+                * np.sqrt(5.0 / (2 * np.pi))
+                * y
+                * (7 * z**3 - 3 * z * r**2)
+                / r**4
+            )
+        elif (l, m) == (4, 0):
+            return (
+                3.0
+                / 16.0
+                * np.sqrt(1.0 / (np.pi))
+                * (35 * z**4 - 30 * z**2 * r**2 + 3 * r**4)
+                / r**4
+            )
+        elif (l, m) == (4, 1):
+            return (
+                3.0
+                / 4.0
+                * np.sqrt(5.0 / (2 * np.pi))
+                * x
+                * (7 * z**3 - 3 * z * r**2)
+                / r**4
+            )
+        elif (l, m) == (4, 2):
+            return (
+                3.0
+                / 8.0
+                * np.sqrt(5.0 / (np.pi))
+                * (x**2 - y**2)
+                * (7 * z**2 - r**2)
+                / r**4
+            )
+        elif (l, m) == (4, 3):
+            return (
+                3.0
+                / 4.0
+                * np.sqrt(35.0 / (2 * np.pi))
+                * x
+                * z
+                * (x**2 - 3 * y**2)
+                / r**4
+            )
+        elif (l, m) == (4, 4):
+            return (
+                3.0
+                / 16.0
+                * np.sqrt(35.0 / (np.pi))
+                * (x**2 * (x**2 - 3 * y**2) - y**2 * (3 * x**2 - y**2))
+                / r**4
+            )
         else:
             raise NotImplementedError
 
@@ -100,47 +168,26 @@ def test_spherical_part_of_AO(l, m):
     for r_cart in zip(r_x_rand, r_y_rand, r_z_rand):
         r_norm = LA.norm(np.array(R_cart) - np.array(r_cart))
         r_cart_rel = np.array(r_cart) - np.array(R_cart)
-        test_Y_lm = (
-            compute_S_l_m(
-                atomic_center_cart=R_cart,
-                angular_momentum=l,
-                magnetic_quantum_number=m,
-                r_cart=r_cart,
-            )
-            / r_norm**l
-        )
-        ref_Y_lm = S_l_m_ref(l=l, m=m, r_cart_rel=r_cart_rel)
-        assert_almost_equal(test_Y_lm, ref_Y_lm, decimal=12)
-
-        """
-        ao_data = AO_data(
-            num_ao_prim=1,
+        test_S_lm = compute_S_l_m(
             atomic_center_cart=R_cart,
-            exponents=[0.0],
-            coefficients=[1.0],
             angular_momentum=l,
             magnetic_quantum_number=m,
+            r_cart=r_cart,
         )
-
-        norm_gto = np.sqrt(
-            (2 ** (2 * l + 3) * scipy.special.factorial(l + 1) * (2 * 0.0) ** (l + 1.5))
-            / (scipy.special.factorial(2 * l + 2) * np.sqrt(np.pi))
-        )
-        test_Y_lm = compute_AO(ao_data=ao_data, r_cart=r_cart) / r_norm**l / norm_gto
-        assert_almost_equal(test_Y_lm, ref_Y_lm, decimal=12)
-        """
+        ref_S_lm = r_norm**l * Y_l_m_ref(l=l, m=m, r_cart_rel=r_cart_rel)
+        assert_almost_equal(test_S_lm, ref_S_lm, decimal=10)
 
 
 # @pytest.mark.skip
 def test_AOs():
     num_el = 1000
-    num_ao = 3
-    num_ao_prim = 4
-    orbital_indices = [0, 0, 1, 2]
-    exponents = [50.0, 20.0, 10.0, 5.0]
-    coefficients = [1.0, 1.0, 1.0, 0.5]
-    angular_momentums = [1, 1, 1]
-    magnetic_quantum_numbers = [0, 0, -1]
+    num_ao = 4
+    num_ao_prim = 5
+    orbital_indices = [0, 1, 1, 2, 3]
+    exponents = [50.0, 50.0, 20.0, 10.0, 5.0]
+    coefficients = [1.0, 1.0, 1.0, 1.0, 0.5]
+    angular_momentums = [0, 1, 1, 1]
+    magnetic_quantum_numbers = [0, 0, 0, -1]
 
     num_r_cart_samples = num_el
     num_R_cart_samples = num_ao

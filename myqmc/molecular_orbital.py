@@ -11,7 +11,7 @@ import itertools
 from logging import getLogger, StreamHandler, Formatter
 
 # myqmc module
-from atomic_orbital import AO_data, compute_AO, AOs_data, compute_AOs_api
+from .atomic_orbital import AO_data, compute_AO, AOs_data, compute_AOs_api
 
 logger = getLogger("myqmc").getChild(__name__)
 

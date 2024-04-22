@@ -13,6 +13,7 @@ import numpy.typing as npt
 import scipy  # type: ignore
 
 # jax modules
+from jax import vmap
 import jax.scipy as jscipy
 import jax.numpy as jnp
 from flax import struct
@@ -196,122 +197,199 @@ def compute_AOs_debug(
     return aos_values
 
 
-"""
-def compute_AOs_fast(
+'''
+def compute_AOs_jax(
     aos_data: AOs_data, r_carts: npt.NDArray[np.float64]
 ) -> npt.NDArray[np.float64 | np.complex128]:
+    """
+    This is git-jax version compute_AOs method.
+
+    Args:
+        ao_datas (AOs_data): an instance of AOs_data
+        r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
+
+    Returns:
+    Arrays containing values of the AOs at r_carts. (dim: num_ao, N_e)
+    """
 
     atomic_center_carts = aos_data.atomic_center_carts
-    atomic_center_carts_dup = np.array(
+    atomic_center_carts_dup = jnp.array(
         [atomic_center_carts[i] for i in aos_data.orbital_indices]
     )
     exponents = aos_data.exponents
     coefficients = aos_data.coefficients
     angular_momentums = aos_data.angular_momentums
     magnetic_quantum_numbers = aos_data.magnetic_quantum_numbers
+    angular_momentums_dup = [angular_momentums[i] for i in aos_data.orbital_indices]
 
-    # compute R_n
+    # compute R_n inc. the whole normalization factor
     n_el = r_carts.shape[0]
-    sq_r_R = np.array(
+    sq_r_R = jnp.array(
         [
-            LA.norm(v[0] - v[1]) ** 2
+            jnp.linalg.norm(v[0] - v[1]) ** 2
             for v in itertools.product(atomic_center_carts_dup, r_carts)
         ]
     ).reshape(aos_data.num_ao_prim, n_el)
 
-    logger.debug(sq_r_R)
-    logger.debug(np.array([exponents]).T)
+    # normalization factors
+    Z_jnp = jnp.array(exponents)
+    l_jnp = jnp.array(angular_momentums_dup)
+    N_n_dup = jnp.sqrt(
+        (
+            2.0 ** (2 * l_jnp + 3)
+            * scipy.special.factorial(l_jnp + 1)
+            * (2 * Z_jnp) ** (l_jnp + 1.5)
+        )
+        / (scipy.special.factorial(2 * l_jnp + 2) * jnp.sqrt(jnp.pi))
+    )
 
-    R_n_dup = np.array([coefficients]).T * np.exp(-1 * np.array([exponents]).T * sq_r_R)
+    R_n_dup = (
+        jnp.array([N_n_dup]).T
+        * jnp.array([coefficients]).T
+        * jnp.exp(-1 * jnp.array([exponents]).T * sq_r_R)
+    )
 
-    R_n = np.zeros([aos_data.num_ao, n_el])
+    R_n = jnp.zeros([aos_data.num_ao, n_el])
     unique_indices = np.unique(aos_data.orbital_indices)
     for ui in unique_indices:
         mask = aos_data.orbital_indices == ui
-        R_n[ui] = R_n_dup[mask].sum(axis=0)
+        R_n = R_n.at[ui].set(R_n_dup[mask].sum(axis=0))
 
     # compute S_n
 
     # direct product of r_cart * R
-    r_R = np.array(
+    r_R = jnp.array(
         [v[1] - v[0] for v in itertools.product(atomic_center_carts, r_carts)]
     ).reshape(aos_data.num_ao, n_el, 3)
+
+    logger.debug(f"r_R.shape={r_R.shape}")
 
     def __compute_S_l_m(
         r_cart_rel: npt.NDArray[np.float64], l: int, m: int
     ) -> npt.NDArray[np.float64]:
+
+        logger.debug(f"r_cart_rel.shape = {r_cart_rel.shape}")
         x, y, z = r_cart_rel[..., 0], r_cart_rel[..., 1], r_cart_rel[..., 2]
-        r_norm = np.sqrt(x**2 + y**2 + z**2)
-        m_abs = np.abs(m)
+        logger.debug(f"x.shape={x.shape}")
+        logger.debug(f"y.shape={y.shape}")
+        logger.debug(f"z.shape={z.shape}")
+        r_norm = jnp.sqrt(x**2 + y**2 + z**2)
+        logger.debug(f"r_norm.shape={r_norm.shape}")
 
-        # solid harmonics for (x,y) dependent part:
-        def A_m(
-            x: npt.NDArray[np.float64], y: npt.NDArray[np.float64]
-        ) -> npt.NDArray[np.float64]:
-            return np.sum(
-                [
-                    scipy.special.binom(m_abs, p)
-                    * x ** (p)
-                    * y ** (m_abs - p)
-                    * np.cos((m_abs - p) * (np.pi / 2.0))
-                    for p in range(0, m_abs + 1)
-                ],
-                axis=0,
-            )
-
-        def B_m(
-            x: npt.NDArray[np.float64], y: npt.NDArray[np.float64]
-        ) -> npt.NDArray[np.float64]:
-            return np.sum(
-                [
-                    scipy.special.binom(m_abs, p)
-                    * x ** (p)
-                    * y ** (m_abs - p)
-                    * np.sin((m_abs - p) * (np.pi / 2.0))
-                    for p in range(0, m_abs + 1)
-                ],
-                axis=0,
-            )
-
-        # solid harmonics for (z) dependent part:
-        def lambda_lm(k: int) -> float:
+        """see https://en.wikipedia.org/wiki/Table_of_spherical_harmonics#Real_spherical_harmonics"""
+        # s orbital
+        if (l, m) == (0, 0):
+            return 1.0 / 2.0 * jnp.sqrt(1.0 / jnp.pi) * r_norm**0.0
+        # p orbitals
+        elif (l, m) == (1, -1):
+            return jnp.sqrt(3.0 / (4 * jnp.pi)) * y
+        elif (l, m) == (1, 0):
+            return jnp.sqrt(3.0 / (4 * jnp.pi)) * z
+        elif (l, m) == (1, 1):
+            return jnp.sqrt(3.0 / (4 * jnp.pi)) * x
+        # d orbitals
+        elif (l, m) == (2, -2):
+            return 1.0 / 2.0 * jnp.sqrt(15.0 / (jnp.pi)) * x * y
+        elif (l, m) == (2, -1):
+            return 1.0 / 2.0 * jnp.sqrt(15.0 / (jnp.pi)) * y * z
+        elif (l, m) == (2, 0):
+            return 1.0 / 4.0 * jnp.sqrt(5.0 / (jnp.pi)) * (3 * z**2 - r_norm**2)
+        elif (l, m) == (2, 1):
+            return 1.0 / 2.0 * jnp.sqrt(15.0 / (jnp.pi)) * x * z
+        elif (l, m) == (2, 2):
+            return 1.0 / 4.0 * jnp.sqrt(15.0 / (jnp.pi)) * (x**2 - y**2)
+        # f orbitals
+        elif (l, m) == (3, -3):
+            return 1.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * y * (3 * x**2 - y**2)
+        elif (l, m) == (3, -2):
+            return 1.0 / 2.0 * jnp.sqrt(105.0 / (jnp.pi)) * x * y * z
+        elif (l, m) == (3, -1):
             return (
-                (-1) ** (k)
-                * 2 ** (-l)
-                * scipy.special.binom(l, k)
-                * scipy.special.binom(2 * l - 2 * k, l)
-                * scipy.special.factorial(l - 2 * k)
-                / scipy.special.factorial(l - 2 * k - m_abs)
+                1.0 / 4.0 * jnp.sqrt(21.0 / (2 * jnp.pi)) * y * (5 * z**2 - r_norm**2)
             )
+        elif (l, m) == (3, 0):
+            return 1.0 / 4.0 * jnp.sqrt(7.0 / (jnp.pi)) * (5 * z**3 - 3 * z * r_norm**2)
+        elif (l, m) == (3, 1):
+            return (
+                1.0 / 4.0 * jnp.sqrt(21.0 / (2 * jnp.pi)) * x * (5 * z**2 - r_norm**2)
+            )
+        elif (l, m) == (3, 2):
+            return 1.0 / 4.0 * jnp.sqrt(105.0 / (jnp.pi)) * (x**2 - y**2) * z
+        elif (l, m) == (3, 3):
+            return 1.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * x * (x**2 - 3 * y**2)
+        # g orbitals
+        elif (l, m) == (4, -4):
+            return 3.0 / 4.0 * jnp.sqrt(35.0 / (jnp.pi)) * x * y * (x**2 - y**2)
+        elif (l, m) == (4, -3):
+            return 3.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * y * z * (3 * x**2 - y**2)
+        elif (l, m) == (4, -2):
+            return 3.0 / 4.0 * jnp.sqrt(5.0 / (jnp.pi)) * x * y * (7 * z**2 - r_norm**2)
+        elif (l, m) == (4, -1):
+            return (
+                3.0
+                / 4.0
+                * jnp.sqrt(5.0 / (2 * jnp.pi))
+                * y
+                * (7 * z**3 - 3 * z * r_norm**2)
+            )
+        elif (l, m) == (4, 0):
+            return (
+                3.0
+                / 16.0
+                * jnp.sqrt(1.0 / (jnp.pi))
+                * (35 * z**4 - 30 * z**2 * r_norm**2 + 3 * r_norm**4)
+            )
+        elif (l, m) == (4, 1):
+            return (
+                3.0
+                / 4.0
+                * jnp.sqrt(5.0 / (2 * jnp.pi))
+                * x
+                * (7 * z**3 - 3 * z * r_norm**2)
+            )
+        elif (l, m) == (4, 2):
+            return (
+                3.0
+                / 8.0
+                * jnp.sqrt(5.0 / (jnp.pi))
+                * (x**2 - y**2)
+                * (7 * z**2 - r_norm**2)
+            )
+        elif (l, m) == (4, 3):
+            return (
+                3.0
+                / 4.0
+                * jnp.sqrt(35.0 / (2 * jnp.pi))
+                * x
+                * z
+                * (x**2 - 3 * r_norm**2)
+            )
+        elif (l, m) == (4, 4):
+            return (
+                3.0
+                / 16.0
+                * jnp.sqrt(35.0 / (jnp.pi))
+                * (x**2 * (x**2 - 3 * y**2) - y**2 * (3 * x**2 - y**2))
+            )
+        else:
+            raise NotImplementedError
 
-        # solid harmonics for (z) dependent part:
-        def Lambda_lm(
-            r_norm: npt.NDArray[np.float64], z: npt.NDArray[np.float64]
-        ) -> npt.NDArray[np.float64]:
-            return np.sqrt(
-                (2 - int(m_abs == 0))
-                * scipy.special.factorial(l - m_abs)
-                / scipy.special.factorial(l + m_abs)
-            ) * np.sum(
-                [
-                    lambda_lm(k) * r_norm ** (2 * k) * z ** (l - 2 * k - m_abs)
-                    for k in range(0, int((l - m_abs) / 2) + 1)
-                ],
-                axis=0,
-            )
+    logger.debug(f"r_R.shape = {r_R.shape} / type = {type(r_R)}")
+    logger.debug(
+        f"angular_momentums = {angular_momentums} / type = {type(angular_momentums)}"
+    )
+    logger.debug(
+        f"magnetic_quantum_numbers = {magnetic_quantum_numbers} / type = {type(magnetic_quantum_numbers)}"
+    )
 
-        # solid harmonics in Cartesian (x,y,z):
-        if m >= 0:
-            gamma = (
-                np.sqrt((2 * l + 1) / (4 * np.pi)) * Lambda_lm(r_norm, z) * A_m(x, y)
-            )
-        if m < 0:
-            gamma = (
-                np.sqrt((2 * l + 1) / (4 * np.pi)) * Lambda_lm(r_norm, z) * B_m(x, y)
-            )
-        return gamma
+    """
+    vmap_compute_S_l_m = vmap(__compute_S_l_m, in_axes=(0, None, None))
+    l_jnp = jnp.array(angular_momentums)
+    m_jnp = jnp.array(magnetic_quantum_numbers)
+    S_l_m = vmap_compute_S_l_m(r_R, l_jnp, m_jnp)
+    """
 
-    S_l_m = np.array(
+    S_l_m = jnp.array(
         [
             __compute_S_l_m(
                 r_cart_rel=r_cart_rel,
@@ -325,6 +403,9 @@ def compute_AOs_fast(
     # final answer
     answer = R_n * S_l_m
 
+    logger.debug(f"shape R_n is {R_n.shape}")
+    logger.debug(f"shape S_l_m is {S_l_m.shape}")
+
     if answer.shape != (aos_data.num_ao, len(r_carts)):
         logger.error(
             f"answer.shape = {answer.shape} is inconsistent with the expected one = {(aos_data.num_ao, len(r_carts))}"
@@ -334,9 +415,10 @@ def compute_AOs_fast(
         raise ValueError
 
     return answer
-"""
+'''
 
 
+#'''
 def compute_AOs_jax(
     aos_data: AOs_data, r_carts: npt.NDArray[np.float64]
 ) -> npt.NDArray[np.float64 | np.complex128]:
@@ -483,6 +565,20 @@ def compute_AOs_jax(
             )
         return gamma
 
+    logger.debug(
+        [
+            a.shape
+            for a in [
+                __compute_S_l_m(
+                    r_cart_rel=r_cart_rel,
+                    l=angular_momentums[i],
+                    m=magnetic_quantum_numbers[i],
+                )
+                for i, r_cart_rel in enumerate(r_R)
+            ]
+        ]
+    )
+
     S_l_m = jnp.array(
         [
             __compute_S_l_m(
@@ -506,6 +602,9 @@ def compute_AOs_jax(
         raise ValueError
 
     return answer
+
+
+#'''
 
 
 @dataclass
