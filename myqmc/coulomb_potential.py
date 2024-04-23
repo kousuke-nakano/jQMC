@@ -428,6 +428,12 @@ def compute_coulomb_potential(
             debug_flag=debug_flag,
         )
 
+        logger.debug(f"bare_coulomb_potential = {bare_coulomb_potential}.")
+        logger.debug(f"ecp_local_coulomb_potential  = {ecp_local_coulomb_potential}.")
+        logger.debug(
+            f"ecp_nonlocal_coulomb_potential  = {ecp_nonlocal_coulomb_potential}."
+        )
+
     return (
         bare_coulomb_potential
         + ecp_local_coulomb_potential

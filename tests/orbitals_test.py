@@ -15,7 +15,7 @@ from ..myqmc.atomic_orbital import (
     compute_AOs_overlap_matrix,
 )
 
-from ..myqmc.molecular_orbital import MO_data, MOs_data, compute_MO, compute_MOs
+from ..myqmc.molecular_orbital import MO_data, MOs_data, compute_MO, compute_MOs_api
 from ..myqmc.determinant import Geminal_data, compute_geminal_all_elements
 
 log = getLogger("myqmc")
@@ -337,9 +337,11 @@ def test_MOs():
         num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients
     )
 
-    mo_ans_all_jax = compute_MOs(mos_data=mos_data, r_carts=r_carts, jax_flag=True)
+    mo_ans_all_jax = compute_MOs_api(mos_data=mos_data, r_carts=r_carts, jax_flag=True)
 
-    mo_ans_all_debug = compute_MOs(mos_data=mos_data, r_carts=r_carts, jax_flag=False)
+    mo_ans_all_debug = compute_MOs_api(
+        mos_data=mos_data, r_carts=r_carts, jax_flag=False
+    )
 
     assert np.allclose(mo_ans_step_by_step, mo_ans_all_jax)
     assert np.allclose(mo_ans_step_by_step, mo_ans_all_debug)
@@ -414,7 +416,7 @@ def test_geminals():
         num_electron_dn=num_r_dn_cart_samples,
         orb_data_up_spin=mos_up_data,
         orb_data_dn_spin=mos_dn_data,
-        compute_orb=compute_MOs,
+        compute_orb=compute_MOs_api,
         lambda_matrix=mo_lambda_matrix,
     )
 

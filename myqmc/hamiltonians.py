@@ -57,6 +57,7 @@ def compute_local_energy(
         coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
+        wavefunction_data=hamiltonian_data.wavefunction_data,
     )
 
     return T + V

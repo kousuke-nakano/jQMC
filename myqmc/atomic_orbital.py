@@ -13,10 +13,14 @@ import numpy.typing as npt
 import scipy  # type: ignore
 
 # jax modules
+import jax
 from jax import vmap, jit
 import jax.scipy as jscipy
 import jax.numpy as jnp
 from flax import struct
+
+# JAX float64
+jax.config.update("jax_enable_x64", True)
 
 # set logger
 from logging import getLogger, StreamHandler, Formatter
@@ -85,17 +89,17 @@ def compute_AOs_overlap_matrix(aos_data: AOs_data, method: str = "numerical"):
     """
 
     if method == "numerical":
-        nx = 30
-        x_min = 0.0
-        x_max = 10.0
+        nx = 300
+        x_min = -5.0
+        x_max = 5.0
 
-        ny = 30
-        y_min = 0.0
-        y_max = 10.0
+        ny = 300
+        y_min = -5.0
+        y_max = 5.0
 
-        nz = 30
-        z_min = 0.0
-        z_max = 10.0
+        nz = 300
+        z_min = -5.0
+        z_max = 5.0
 
         x, w_x = scipy.special.roots_legendre(n=nx)
         y, w_y = scipy.special.roots_legendre(n=ny)

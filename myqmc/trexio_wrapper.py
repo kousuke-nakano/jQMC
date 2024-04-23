@@ -12,10 +12,14 @@ import trexio
 # import myQMC
 from structure import Structure_data
 from atomic_orbital import AOs_data, compute_AOs_overlap_matrix
-from molecular_orbital import MOs_data, compute_MOs, compute_MOs_overlap_matrix
-from coulomb_potential import Coulomb_potential_data, compute_coulomb_potential
+from molecular_orbital import MOs_data, compute_MOs_api, compute_MOs_overlap_matrix
+from coulomb_potential import (
+    Coulomb_potential_data,
+    compute_coulomb_potential,
+    compute_bare_coulomb_potential,
+)
 from determinant import Geminal_data
-from wavefunction import Wavefunction_data
+from wavefunction import Wavefunction_data, compute_gradients_and_laplacians_geminal
 
 logger = getLogger("myqmc").getChild(__name__)
 
@@ -80,14 +84,14 @@ def read_trexio_file(trexio_file: str):
     basis_exponent = trexio.read_basis_exponent(file_r)
     basis_coefficient = trexio.read_basis_coefficient(file_r)
     # basis_prim_factor = trexio.read_basis_prim_factor(file_r)
-    logger.debug(basis_shell_ang_mom)
+    logger.info(f"max angular momentum l = {np.max(basis_shell_ang_mom)}.")
 
     # ao info
     ao_cartesian = trexio.read_ao_cartesian(file_r)
     ao_num = trexio.read_ao_num(file_r)
     ao_shell = trexio.read_ao_shell(file_r)
     # ao_normalization = trexio.read_ao_normalization(file_r)
-    logger.debug(ao_shell)
+
     # ao spherical part check
     if ao_cartesian:
         raise NotImplementedError
@@ -249,7 +253,7 @@ def read_trexio_file(trexio_file: str):
         num_electron_dn=num_ele_dn,
         orb_data_up_spin=mos_data_up,
         orb_data_dn_spin=mos_data_dn,
-        compute_orb=compute_MOs,
+        compute_orb=compute_MOs_api,
         lambda_matrix=mo_lambda_matrix,
     )
 
@@ -514,16 +518,16 @@ if __name__ == "__main__":
         mos_data_dn,
         geminal_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file="benzene_trexio.hdf5")
+    ) = read_trexio_file(trexio_file="water_trexio.hdf5")
 
-    structure_data.write_to_file("benzene_trexio.xyz")
+    structure_data.write_to_file("water_trexio.xyz")
 
     # print(structure_data)
     # print(aos_data)
     # print(mos_data)
-    # print(coulomb_potential_data)
+    print(coulomb_potential_data)
 
-    # """
+    """
     S_ao = compute_AOs_overlap_matrix(aos_data=aos_data)
     # print(S_ao)
     print(np.diag(S_ao))
@@ -531,10 +535,10 @@ if __name__ == "__main__":
     S_mo_up = compute_MOs_overlap_matrix(mos_data=mos_data_up)
     # print(S_mo_up)
     print(np.diag(S_mo_up))
-    # """
+    """
 
     num_r_cart_samples = 4
-    r_cart_min, r_cart_max = -1.0, 1.0
+    r_cart_min, r_cart_max = -2.0, 2.0
     r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(
         num_r_cart_samples, 3
     ) + r_cart_min
@@ -543,6 +547,12 @@ if __name__ == "__main__":
     ) + r_cart_min
 
     wavefunction_data = Wavefunction_data(geminal_data=geminal_data)
+    V_bare = compute_bare_coulomb_potential(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
     V = compute_coulomb_potential(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=r_up_carts,
@@ -550,4 +560,9 @@ if __name__ == "__main__":
         wavefunction_data=wavefunction_data,
     )
 
+    print(V_bare)
     print(V)
+
+    compute_gradients_and_laplacians_geminal(
+        geminal_data=geminal_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+    )

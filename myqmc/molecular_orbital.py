@@ -7,6 +7,14 @@ import numpy as np
 import numpy.typing as npt
 import itertools
 
+# jax modules
+import jax
+from jax import vmap, jit
+import jax.numpy as jnp
+
+# JAX float64
+jax.config.update("jax_enable_x64", True)
+
 # set logger
 from logging import getLogger, StreamHandler, Formatter
 
@@ -39,7 +47,7 @@ class MOs_data:
             raise ValueError
 
 
-def compute_MOs(
+def compute_MOs_api(
     mos_data: MOs_data, r_carts: npt.NDArray[np.float64], jax_flag: bool = True
 ) -> npt.NDArray[np.float64]:
     """
@@ -54,10 +62,18 @@ def compute_MOs(
         Arrays containing values of the MOs at r_carts. (dim: num_mo, N_e)
     """
 
-    answer = np.dot(
-        mos_data.mo_coefficients,
-        compute_AOs_api(aos_data=mos_data.aos_data, r_carts=r_carts, jax_flag=jax_flag),
-    )
+    if jax_flag:
+        answer = jnp.dot(
+            mos_data.mo_coefficients,
+            compute_AOs_api(aos_data=mos_data.aos_data, r_carts=r_carts, jax_flag=True),
+        )
+    else:
+        answer = np.dot(
+            mos_data.mo_coefficients,
+            compute_AOs_api(
+                aos_data=mos_data.aos_data, r_carts=r_carts, jax_flag=False
+            ),
+        )
 
     if answer.shape != (mos_data.num_mo, len(r_carts)):
         logger.error(
@@ -81,17 +97,17 @@ def compute_MOs_overlap_matrix(mos_data: MOs_data, method: str = "numerical"):
     """
 
     if method == "numerical":
-        nx = 30
-        x_min = 0.0
-        x_max = 10.0
+        nx = 300
+        x_min = -5.0
+        x_max = 5.0
 
-        ny = 30
-        y_min = 0.0
-        y_max = 10.0
+        ny = 300
+        y_min = -5.0
+        y_max = 5.0
 
-        nz = 30
-        z_min = 0.0
-        z_max = 10.0
+        nz = 300
+        z_min = -5.0
+        z_max = 5.0
 
         x, w_x = scipy.special.roots_legendre(n=nx)
         y, w_y = scipy.special.roots_legendre(n=ny)
@@ -112,7 +128,7 @@ def compute_MOs_overlap_matrix(mos_data: MOs_data, method: str = "numerical"):
         Jacob = 1.0 / 8.0 * (x_max - x_min) * (y_max - y_min) * (z_max - z_min)
         W_prime = Jacob * np.tile(W, (mos_data.num_mo, 1))
 
-        Psi = compute_MOs(
+        Psi = compute_MOs_api(
             mos_data=mos_data, r_carts=(A + np.dot(B, r_prime.T)).T, jax_flag=True
         )
 

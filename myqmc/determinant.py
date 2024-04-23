@@ -16,7 +16,7 @@ from logging import getLogger, StreamHandler, Formatter
 
 # myqmc module
 from atomic_orbital import AOs_data, compute_AOs_api
-from molecular_orbital import MOs_data, compute_MOs
+from molecular_orbital import MOs_data, compute_MOs_api
 
 logger = getLogger("myqmc").getChild(__name__)
 
@@ -60,7 +60,7 @@ class Geminal_data:
     def orb_num_up(self) -> int:
         if self.compute_orb == compute_AOs_api:
             return self.orb_data_up_spin.num_ao
-        elif self.compute_orb == compute_MOs:
+        elif self.compute_orb == compute_MOs_api:
             return self.orb_data_up_spin.num_mo
         else:
             raise NotImplementedError
@@ -69,7 +69,7 @@ class Geminal_data:
     def orb_num_dn(self) -> int:
         if self.compute_orb == compute_AOs_api:
             return self.orb_data_dn_spin.num_ao
-        elif self.compute_orb == compute_MOs:
+        elif self.compute_orb == compute_MOs_api:
             return self.orb_data_dn_spin.num_mo
         else:
             raise NotImplementedError
@@ -240,9 +240,9 @@ def compute_gradients_and_laplacians_geminal(
     ao_matrix_grad_up_x_ = ao_matrix_up_jacrev[:, :, :, 0]
     ao_matrix_grad_up_y_ = ao_matrix_up_jacrev[:, :, :, 1]
     ao_matrix_grad_up_z_ = ao_matrix_up_jacrev[:, :, :, 2]
-    ao_matrix_up_grad_x = jnp.sum(ao_matrix_grad_up_x_, axis=2)
-    ao_matrix_up_grad_y = jnp.sum(ao_matrix_grad_up_y_, axis=2)
-    ao_matrix_up_grad_z = jnp.sum(ao_matrix_grad_up_z_, axis=2)
+    ao_matrix_up_grad_x = np.sum(ao_matrix_grad_up_x_, axis=2)
+    ao_matrix_up_grad_y = np.sum(ao_matrix_grad_up_y_, axis=2)
+    ao_matrix_up_grad_z = np.sum(ao_matrix_grad_up_z_, axis=2)
 
     logger.debug(ao_matrix_up_grad_x)
     logger.debug(ao_matrix_up_grad_y)
@@ -274,9 +274,9 @@ def compute_gradients_and_laplacians_geminal(
     ao_matrix_grad_dn_x_ = ao_matrix_dn_jacrev[:, :, :, 0]
     ao_matrix_grad_dn_y_ = ao_matrix_dn_jacrev[:, :, :, 1]
     ao_matrix_grad_dn_z_ = ao_matrix_dn_jacrev[:, :, :, 2]
-    ao_matrix_dn_grad_x = jnp.sum(ao_matrix_grad_dn_x_, axis=2)
-    ao_matrix_dn_grad_y = jnp.sum(ao_matrix_grad_dn_y_, axis=2)
-    ao_matrix_dn_grad_z = jnp.sum(ao_matrix_grad_dn_z_, axis=2)
+    ao_matrix_dn_grad_x = np.sum(ao_matrix_grad_dn_x_, axis=2)
+    ao_matrix_dn_grad_y = np.sum(ao_matrix_grad_dn_y_, axis=2)
+    ao_matrix_dn_grad_z = np.sum(ao_matrix_grad_dn_z_, axis=2)
 
     logger.debug(ao_matrix_dn_grad_x)
     logger.debug(ao_matrix_dn_grad_y)
@@ -308,9 +308,9 @@ def compute_gradients_and_laplacians_geminal(
     ao_matrix_hessian_up_x2_ = ao_matrix_up_hessian[:, :, :, 0]
     ao_matrix_hessian_up_y2_ = ao_matrix_up_hessian[:, :, :, 1]
     ao_matrix_hessian_up_z2_ = ao_matrix_up_hessian[:, :, :, 2]
-    ao_matrix_hessian_up_x2 = jnp.sum(ao_matrix_hessian_up_x2_, axis=2)
-    ao_matrix_hessian_up_y2 = jnp.sum(ao_matrix_hessian_up_y2_, axis=2)
-    ao_matrix_hessian_up_z2 = jnp.sum(ao_matrix_hessian_up_z2_, axis=2)
+    ao_matrix_hessian_up_x2 = np.sum(ao_matrix_hessian_up_x2_, axis=2)
+    ao_matrix_hessian_up_y2 = np.sum(ao_matrix_hessian_up_y2_, axis=2)
+    ao_matrix_hessian_up_z2 = np.sum(ao_matrix_hessian_up_z2_, axis=2)
 
     ao_matrix_laplacian_up = (
         ao_matrix_hessian_up_x2 + ao_matrix_hessian_up_y2 + ao_matrix_hessian_up_z2
@@ -330,9 +330,9 @@ def compute_gradients_and_laplacians_geminal(
     ao_matrix_hessian_dn_x2_ = ao_matrix_dn_hessian[:, :, :, 0]
     ao_matrix_hessian_dn_y2_ = ao_matrix_dn_hessian[:, :, :, 1]
     ao_matrix_hessian_dn_z2_ = ao_matrix_dn_hessian[:, :, :, 2]
-    ao_matrix_hessian_dn_x2 = jnp.sum(ao_matrix_hessian_dn_x2_, axis=2)
-    ao_matrix_hessian_dn_y2 = jnp.sum(ao_matrix_hessian_dn_y2_, axis=2)
-    ao_matrix_hessian_dn_z2 = jnp.sum(ao_matrix_hessian_dn_z2_, axis=2)
+    ao_matrix_hessian_dn_x2 = np.sum(ao_matrix_hessian_dn_x2_, axis=2)
+    ao_matrix_hessian_dn_y2 = np.sum(ao_matrix_hessian_dn_y2_, axis=2)
+    ao_matrix_hessian_dn_z2 = np.sum(ao_matrix_hessian_dn_z2_, axis=2)
 
     ao_matrix_laplacian_dn = (
         ao_matrix_hessian_dn_x2 + ao_matrix_hessian_dn_y2 + ao_matrix_hessian_dn_z2
@@ -442,43 +442,50 @@ def compute_gradients_and_laplacians_geminal(
         [geminal_laplacian_dn_paired, geminal_laplacian_dn_unpaired]
     )
 
-    logger.info(f"The condition number of geminal matrix is {jnp.linalg.cond(geminal)}")
-    geminal_inverse = jnp.linalg.inv(geminal)
+    logger.info(f"The condition number of geminal matrix is {np.linalg.cond(geminal)}")
+    geminal_inverse = np.linalg.inv(geminal)
 
     logger.debug(geminal_inverse)
 
-    vec_F_D_up_x = jnp.diag(np.dot(geminal_grad_up_x, geminal_inverse))
-    vec_F_D_up_y = jnp.diag(np.dot(geminal_grad_up_y, geminal_inverse))
-    vec_F_D_up_z = jnp.diag(np.dot(geminal_grad_up_z, geminal_inverse))
-    vec_F_D_dn_x = jnp.diag(np.dot(geminal_inverse, geminal_grad_dn_x))
-    vec_F_D_dn_y = jnp.diag(np.dot(geminal_inverse, geminal_grad_dn_y))
-    vec_F_D_dn_z = jnp.diag(np.dot(geminal_inverse, geminal_grad_dn_z))
+    vec_F_D_up_x = np.diag(np.dot(geminal_grad_up_x, geminal_inverse))
+    vec_F_D_up_y = np.diag(np.dot(geminal_grad_up_y, geminal_inverse))
+    vec_F_D_up_z = np.diag(np.dot(geminal_grad_up_z, geminal_inverse))
+    vec_F_D_dn_x = np.diag(np.dot(geminal_inverse, geminal_grad_dn_x))
+    vec_F_D_dn_y = np.diag(np.dot(geminal_inverse, geminal_grad_dn_y))
+    vec_F_D_dn_z = np.diag(np.dot(geminal_inverse, geminal_grad_dn_z))
 
-    logger.info(vec_F_D_up_x)
-    logger.info(vec_F_D_up_y)
-    logger.info(vec_F_D_up_z)
-    logger.info(vec_F_D_dn_x)
-    logger.info(vec_F_D_dn_y)
-    logger.info(vec_F_D_dn_z)
+    F_D_up = np.array([vec_F_D_up_x, vec_F_D_up_y, vec_F_D_up_z]).T
+    F_D_dn = np.array([vec_F_D_dn_x, vec_F_D_dn_y, vec_F_D_dn_z]).T
+
+    logger.info(F_D_up)
+    logger.info(F_D_dn)
+
+    if F_D_up.shape != (geminal_data.num_electron_up, 3):
+        logger.error(
+            f"F_D_up.shape = {F_D_up.shape} is inconsistent with the expected one = {(geminal_data.num_electron_up, 3)}"
+        )
+        raise ValueError
+
+    if F_D_dn.shape != (geminal_data.num_electron_dn, 3):
+        logger.error(
+            f"F_D_up.shape = {F_D_up.shape} is inconsistent with the expected one = {(geminal_data.num_electron_dn, 3)}"
+        )
+        raise ValueError
 
     T_D = (
-        -((jnp.trace(np.dot(geminal_grad_up_x, geminal_inverse))) ** 2)
-        - (jnp.trace(np.dot(geminal_grad_up_y, geminal_inverse))) ** 2
-        - (jnp.trace(np.dot(geminal_grad_up_z, geminal_inverse))) ** 2
-        - (jnp.trace(np.dot(geminal_inverse, geminal_grad_dn_x))) ** 2
-        - (jnp.trace(np.dot(geminal_inverse, geminal_grad_dn_y))) ** 2
-        - (jnp.trace(np.dot(geminal_inverse, geminal_grad_dn_z))) ** 2
-        + (jnp.trace(np.dot(geminal_laplacian_up, geminal_inverse))) ** 2
-        + (jnp.trace(np.dot(geminal_inverse, geminal_laplacian_dn))) ** 2
+        -((np.trace(np.dot(geminal_grad_up_x, geminal_inverse))) ** 2)
+        - (np.trace(np.dot(geminal_grad_up_y, geminal_inverse))) ** 2
+        - (np.trace(np.dot(geminal_grad_up_z, geminal_inverse))) ** 2
+        - (np.trace(np.dot(geminal_inverse, geminal_grad_dn_x))) ** 2
+        - (np.trace(np.dot(geminal_inverse, geminal_grad_dn_y))) ** 2
+        - (np.trace(np.dot(geminal_inverse, geminal_grad_dn_z))) ** 2
+        + (np.trace(np.dot(geminal_laplacian_up, geminal_inverse))) ** 2
+        + (np.trace(np.dot(geminal_inverse, geminal_laplacian_dn))) ** 2
     )
 
     logger.info(T_D)
 
-    return (
-        (vec_F_D_up_x, vec_F_D_up_y, vec_F_D_up_z),
-        (vec_F_D_dn_x, vec_F_D_dn_y, vec_F_D_dn_z),
-        T_D,
-    )
+    return F_D_up, F_D_dn, T_D
 
 
 if __name__ == "__main__":
@@ -559,7 +566,7 @@ if __name__ == "__main__":
         num_electron_dn=num_r_dn_cart_samples,
         orb_data_up_spin=mos_up_data,
         orb_data_dn_spin=mos_dn_data,
-        compute_orb=compute_MOs,
+        compute_orb=compute_MOs_api,
         lambda_matrix=mo_lambda_matrix,
     )
 
