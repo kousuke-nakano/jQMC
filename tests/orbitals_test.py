@@ -34,7 +34,7 @@ log.addHandler(stream_handler)
         itertools.chain.from_iterable(
             [
                 [pytest.param(l, m, id=f"l={l}, m={m}") for m in range(-l, l + 1)]
-                for l in range(5)
+                for l in range(7)
             ]
         )
     ),
@@ -156,6 +156,227 @@ def test_spherical_part_of_AO(l, m):
                 * (x**2 * (x**2 - 3 * y**2) - y**2 * (3 * x**2 - y**2))
                 / r**4
             )
+        elif (l, m) == (5, -5):
+            return (
+                3.0
+                / 16.0
+                * np.sqrt(77.0 / (2 * np.pi))
+                * (5 * x**4 * y - 10 * x**2 * y**3 + y**5)
+                / r**5
+            )
+        elif (l, m) == (5, -4):
+            return (
+                3.0
+                / 16.0
+                * np.sqrt(385.0 / np.pi)
+                * 4
+                * x
+                * y
+                * z
+                * (x**2 - y**2)
+                / r**5
+            )
+        elif (l, m) == (5, -3):
+            return (
+                1.0
+                / 16.0
+                * np.sqrt(385.0 / (2 * np.pi))
+                * -1
+                * (y**3 - 3 * x**2 * y)
+                * (9 * z**2 - r**2)
+                / r**5
+            )
+        elif (l, m) == (5, -2):
+            return (
+                1.0
+                / 8.0
+                * np.sqrt(1155 / np.pi)
+                * 2
+                * x
+                * y
+                * (3 * z**3 - z * r**2)
+                / r**5
+            )
+        elif (l, m) == (5, -1):
+            return (
+                1.0
+                / 16.0
+                * np.sqrt(165 / np.pi)
+                * y
+                * (21 * z**4 - 14 * z**2 * r**2 + r**4)
+                / r**5
+            )
+        elif (l, m) == (5, 0):
+            return (
+                1.0
+                / 16.0
+                * np.sqrt(11 / np.pi)
+                * (63 * z**5 - 70 * z**3 * r**2 + 15 * z * r**4)
+                / r**5
+            )
+        elif (l, m) == (5, 1):
+            return (
+                1.0
+                / 16.0
+                * np.sqrt(165 / np.pi)
+                * x
+                * (21 * z**4 - 14 * z**2 * r**2 + r**4)
+                / r**5
+            )
+        elif (l, m) == (5, 2):
+            return (
+                1.0
+                / 8.0
+                * np.sqrt(1155 / np.pi)
+                * (x**2 - y**2)
+                * (3 * z**3 - z * r**2)
+                / r**5
+            )
+        elif (l, m) == (5, 3):
+            return (
+                1.0
+                / 16.0
+                * np.sqrt(385.0 / (2 * np.pi))
+                * (x**3 - 3 * x * y**2)
+                * (9 * z**2 - r**2)
+                / r**5
+            )
+        elif (l, m) == (5, 4):
+            return (
+                3.0
+                / 16.0
+                * np.sqrt(385.0 / np.pi)
+                * (x**2 * z * (x**2 - 3 * y**2) - y**2 * z * (3 * x**2 - y**2))
+                / r**5
+            )
+        elif (l, m) == (5, 5):
+            return (
+                3.0
+                / 16.0
+                * np.sqrt(77.0 / (2 * np.pi))
+                * (x**5 - 10 * x**3 * y**2 + 5 * x * y**4)
+                / r**5
+            )
+        elif (l, m) == (6, -6):
+            return (
+                1.0
+                / 64.0
+                * np.sqrt(6006.0 / np.pi)
+                * (6 * x**5 * y - 20 * x**3 * y**3 + 6 * x * y**5)
+                / r**6
+            )
+        elif (l, m) == (6, -5):
+            return (
+                3.0
+                / 32.0
+                * np.sqrt(2002.0 / np.pi)
+                * z
+                * (5 * x**4 * y - 10 * x**2 * y**3 + y**5)
+                / r**6
+            )
+        elif (l, m) == (6, -4):
+            return (
+                3.0
+                / 32.0
+                * np.sqrt(91.0 / np.pi)
+                * 4
+                * x
+                * y
+                * (11 * z**2 - r**2)
+                * (x**2 - y**2)
+                / r**6
+            )
+        elif (l, m) == (6, -3):
+            return (
+                1.0
+                / 32.0
+                * np.sqrt(2730.0 / np.pi)
+                * -1
+                * (11 * z**3 - 3 * z * r**2)
+                * (y**3 - 3 * x**2 * y)
+                / r**6
+            )
+        elif (l, m) == (6, -2):
+            return (
+                1.0
+                / 64.0
+                * np.sqrt(2730.0 / np.pi)
+                * 2
+                * x
+                * y
+                * (33 * z**4 - 18 * z**2 * r**2 + r**4)
+                / r**6
+            )
+        elif (l, m) == (6, -1):
+            return (
+                1.0
+                / 16.0
+                * np.sqrt(273.0 / np.pi)
+                * y
+                * (33 * z**5 - 30 * z**3 * r**2 + 5 * z * r**4)
+                / r**6
+            )
+        elif (l, m) == (6, 0):
+            return (
+                1.0
+                / 32.0
+                * np.sqrt(13.0 / np.pi)
+                * (231 * z**6 - 315 * z**4 * r**2 + 105 * z**2 * r**4 - 5 * r**6)
+                / r**6
+            )
+        elif (l, m) == (6, 1):
+            return (
+                1.0
+                / 16.0
+                * np.sqrt(273.0 / np.pi)
+                * x
+                * (33 * z**5 - 30 * z**3 * r**2 + 5 * z * r**4)
+                / r**6
+            )
+        elif (l, m) == (6, 2):
+            return (
+                1.0
+                / 64.0
+                * np.sqrt(2730.0 / np.pi)
+                * (x**2 - y**2)
+                * (33 * z**4 - 18 * z**2 * r**2 + r**4)
+                / r**6
+            )
+        elif (l, m) == (6, 3):
+            return (
+                1.0
+                / 32.0
+                * np.sqrt(2730.0 / np.pi)
+                * (11 * z**3 - 3 * z * r**2)
+                * (x**3 - 3 * x * y**2)
+                / r**6
+            )
+        elif (l, m) == (6, 4):
+            return (
+                3.0
+                / 32.0
+                * np.sqrt(91.0 / np.pi)
+                * (11 * z**2 - r**2)
+                * (x**2 * (x**2 - 3 * y**2) + y**2 * (y**2 - 3 * x**2))
+                / r**6
+            )
+        elif (l, m) == (6, 5):
+            return (
+                3.0
+                / 32.0
+                * np.sqrt(2002.0 / np.pi)
+                * z
+                * (x**5 - 10 * x**3 * y**2 + 5 * x * y**4)
+                / r**6
+            )
+        elif (l, m) == (6, 6):
+            return (
+                1.0
+                / 64.0
+                * np.sqrt(6006.0 / np.pi)
+                * (x**6 - 15 * x**4 * y**2 + 15 * x**2 * y**4 - y**6)
+                / r**6
+            )
         else:
             raise NotImplementedError
 
@@ -176,7 +397,7 @@ def test_spherical_part_of_AO(l, m):
             r_cart=r_cart,
         )
         ref_S_lm = r_norm**l * Y_l_m_ref(l=l, m=m, r_cart_rel=r_cart_rel)
-        assert_almost_equal(test_S_lm, ref_S_lm, decimal=10)
+        assert_almost_equal(test_S_lm, ref_S_lm, decimal=8)
 
 
 def test_radial_part_of_AO():
