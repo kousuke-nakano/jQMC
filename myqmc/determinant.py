@@ -15,8 +15,8 @@ from jax import jacrev
 from logging import getLogger, StreamHandler, Formatter
 
 # myqmc module
-from atomic_orbital import AOs_data, compute_AOs_api
-from molecular_orbital import MOs_data, compute_MOs_api
+from .atomic_orbital import AOs_data, compute_AOs_api
+from .molecular_orbital import MOs_data, compute_MOs_api
 
 logger = getLogger("myqmc").getChild(__name__)
 
@@ -447,32 +447,32 @@ def compute_gradients_and_laplacians_geminal(
 
     logger.debug(geminal_inverse)
 
-    vec_F_D_up_x = np.diag(np.dot(geminal_grad_up_x, geminal_inverse))
-    vec_F_D_up_y = np.diag(np.dot(geminal_grad_up_y, geminal_inverse))
-    vec_F_D_up_z = np.diag(np.dot(geminal_grad_up_z, geminal_inverse))
-    vec_F_D_dn_x = np.diag(np.dot(geminal_inverse, geminal_grad_dn_x))
-    vec_F_D_dn_y = np.diag(np.dot(geminal_inverse, geminal_grad_dn_y))
-    vec_F_D_dn_z = np.diag(np.dot(geminal_inverse, geminal_grad_dn_z))
+    vec_W_D_up_x = np.diag(np.dot(geminal_grad_up_x, geminal_inverse))
+    vec_W_D_up_y = np.diag(np.dot(geminal_grad_up_y, geminal_inverse))
+    vec_W_D_up_z = np.diag(np.dot(geminal_grad_up_z, geminal_inverse))
+    vec_W_D_dn_x = np.diag(np.dot(geminal_inverse, geminal_grad_dn_x))
+    vec_W_D_dn_y = np.diag(np.dot(geminal_inverse, geminal_grad_dn_y))
+    vec_W_D_dn_z = np.diag(np.dot(geminal_inverse, geminal_grad_dn_z))
 
-    F_D_up = np.array([vec_F_D_up_x, vec_F_D_up_y, vec_F_D_up_z]).T
-    F_D_dn = np.array([vec_F_D_dn_x, vec_F_D_dn_y, vec_F_D_dn_z]).T
+    W_D_up = np.array([vec_W_D_up_x, vec_W_D_up_y, vec_W_D_up_z]).T
+    W_D_dn = np.array([vec_W_D_dn_x, vec_W_D_dn_y, vec_W_D_dn_z]).T
 
-    logger.info(F_D_up)
-    logger.info(F_D_dn)
+    logger.info(W_D_up)
+    logger.info(W_D_dn)
 
-    if F_D_up.shape != (geminal_data.num_electron_up, 3):
+    if W_D_up.shape != (geminal_data.num_electron_up, 3):
         logger.error(
-            f"F_D_up.shape = {F_D_up.shape} is inconsistent with the expected one = {(geminal_data.num_electron_up, 3)}"
+            f"W_D_up.shape = {W_D_up.shape} is inconsistent with the expected one = {(geminal_data.num_electron_up, 3)}"
         )
         raise ValueError
 
-    if F_D_dn.shape != (geminal_data.num_electron_dn, 3):
+    if W_D_dn.shape != (geminal_data.num_electron_dn, 3):
         logger.error(
-            f"F_D_up.shape = {F_D_up.shape} is inconsistent with the expected one = {(geminal_data.num_electron_dn, 3)}"
+            f"W_D_up.shape = {W_D_up.shape} is inconsistent with the expected one = {(geminal_data.num_electron_dn, 3)}"
         )
         raise ValueError
 
-    T_D = (
+    T_D = -(
         -((np.trace(np.dot(geminal_grad_up_x, geminal_inverse))) ** 2)
         - (np.trace(np.dot(geminal_grad_up_y, geminal_inverse))) ** 2
         - (np.trace(np.dot(geminal_grad_up_z, geminal_inverse))) ** 2
@@ -485,7 +485,7 @@ def compute_gradients_and_laplacians_geminal(
 
     logger.info(T_D)
 
-    return F_D_up, F_D_dn, T_D
+    return W_D_up, W_D_dn, T_D
 
 
 if __name__ == "__main__":

@@ -77,12 +77,21 @@ def compute_laplacian(
     Returns:
         The value of laplacian the given wavefunction (float | complex)
     """
+    W_J_up, W_J_dn, T_J = 0, 0, 0  # tentative
 
-    F_D_up, F_D_dn, T_D = compute_gradients_and_laplacians_geminal(
+    W_D_up, W_D_dn, T_D = compute_gradients_and_laplacians_geminal(
         geminal_data=wavefunction_data.geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
+
+    # compute laplacians
+    L = (T_J + T_D) - 1.0 / 2.0 * (
+        np.sum((W_J_up + W_D_up) * (W_J_up + W_D_up))
+        + np.sum((W_J_dn + W_D_dn) * (W_J_dn + W_D_dn))
+    )
+
+    return L
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""Atomic Orbital module"""
+"""Molecular Orbital module"""
 
 # python modules
 from dataclasses import dataclass, field
@@ -19,7 +19,7 @@ jax.config.update("jax_enable_x64", True)
 from logging import getLogger, StreamHandler, Formatter
 
 # myqmc module
-from atomic_orbital import AO_data, compute_AO, AOs_data, compute_AOs_api
+from .atomic_orbital import AO_data, compute_AO, AOs_data, compute_AOs_api
 
 logger = getLogger("myqmc").getChild(__name__)
 

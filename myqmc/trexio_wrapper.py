@@ -19,7 +19,7 @@ from coulomb_potential import (
     compute_bare_coulomb_potential,
 )
 from determinant import Geminal_data
-from wavefunction import Wavefunction_data, compute_gradients_and_laplacians_geminal
+from wavefunction import Wavefunction_data, compute_laplacian
 
 logger = getLogger("myqmc").getChild(__name__)
 
@@ -560,9 +560,10 @@ if __name__ == "__main__":
         wavefunction_data=wavefunction_data,
     )
 
-    print(V_bare)
-    print(V)
-
-    compute_gradients_and_laplacians_geminal(
-        geminal_data=geminal_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+    L = compute_laplacian(
+        wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
     )
+
+    print(L + V)

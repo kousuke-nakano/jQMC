@@ -1,4 +1,4 @@
-"""Geminal module"""
+"""Hamiltonian module"""
 
 # python modules
 from dataclasses import dataclass
