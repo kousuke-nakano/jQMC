@@ -11,7 +11,7 @@ from logging import getLogger, StreamHandler, Formatter
 from determinant import (
     Geminal_data,
     compute_det_ao_geminal_all_elements,
-    compute_gradients_and_laplacians_geminal,
+    compute_laplacians_geminal,
 )
 
 logger = getLogger("myqmc").getChild(__name__)
@@ -79,7 +79,7 @@ def compute_laplacian(
     """
     W_J_up, W_J_dn, T_J = 0, 0, 0  # tentative
 
-    W_D_up, W_D_dn, T_D = compute_gradients_and_laplacians_geminal(
+    W_D_up, W_D_dn, T_D = compute_laplacians_geminal(
         geminal_data=wavefunction_data.geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,

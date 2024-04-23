@@ -20,6 +20,7 @@ from coulomb_potential import (
 )
 from determinant import Geminal_data
 from wavefunction import Wavefunction_data, compute_laplacian
+from hamiltonians import Hamiltonian_data
 
 logger = getLogger("myqmc").getChild(__name__)
 
@@ -567,3 +568,14 @@ if __name__ == "__main__":
     )
 
     print(L + V)
+
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+
+    from vmc import MCMC
+
+    mcmc = MCMC(hamiltonian_data=hamiltonian_data)
+    mcmc.run(num_mcmc_steps=100)

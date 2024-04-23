@@ -10,6 +10,7 @@ from logging import getLogger, StreamHandler, Formatter
 
 from wavefunction import Wavefunction_data, compute_laplacian
 from coulomb_potential import Coulomb_potential_data, compute_coulomb_potential
+from structure import Structure_data
 
 logger = getLogger("myqmc").getChild(__name__)
 
@@ -20,10 +21,12 @@ class Hamiltonian_data:
     The class contains data for computing laplacians
 
     Args:
+        structure_data (Structure_data)
         coulomb_data (Coulomb_data)
         wavefunction_data (Wavefunction_data)
     """
 
+    structure_data: Structure_data = None
     coulomb_potential_data: Coulomb_potential_data = None
     wavefunction_data: Wavefunction_data = None
 

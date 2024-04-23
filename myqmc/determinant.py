@@ -7,7 +7,6 @@ import numpy as np
 import numpy.typing as npt
 
 # jax modules
-import jax.numpy as jnp
 from flax import struct
 from jax import jacrev
 
@@ -15,9 +14,10 @@ from jax import jacrev
 from logging import getLogger, StreamHandler, Formatter
 
 # myqmc module
-from .atomic_orbital import AOs_data, compute_AOs_api
-from .molecular_orbital import MOs_data, compute_MOs_api
+from atomic_orbital import AOs_data, compute_AOs_api
+from molecular_orbital import MOs_data, compute_MOs_api
 
+# set logger
 logger = getLogger("myqmc").getChild(__name__)
 
 
@@ -134,7 +134,7 @@ def compute_geminal_all_elements(
         geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
     )
 
-    logger.debug(f"computing orb_matrix_up and orb_matrix_dn")
+    logger.debug("computing orb_matrix_up and orb_matrix_dn")
     logger.debug(f"r_up_carts.shape = {r_up_carts.shape} / type = {type(r_up_carts)}")
     logger.debug(f"r_dn_carts.shape = {r_dn_carts.shape} / type = {type(r_dn_carts)}")
     orb_matrix_up = geminal_data.compute_orb(geminal_data.orb_data_up_spin, r_up_carts)
@@ -172,13 +172,13 @@ def compute_geminal_all_elements(
     return geminal
 
 
-def compute_gradients_and_laplacians_geminal(
+def compute_laplacians_geminal(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64 | np.complex128]:
+) -> float | complex:
     """
-    The method is for computing geminal matrix elements with the given atomic/molecular orbitals at (r_up_carts, r_dn_carts).
+    The method is for computing the sum of laplacians of ln WF at (r_up_carts, r_dn_carts).
 
     Args:
         geminal_data (Geminal_data): an instance of Geminal_data class
@@ -186,7 +186,7 @@ def compute_gradients_and_laplacians_geminal(
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
     Returns:
-        Arrays containing values of the geminal function with r_up_carts and r_dn_carts. (dim: N_e^{up}, N_e^{up})
+        the sum of laplacians of ln WF at (r_up_carts, r_dn_carts).
     """
 
     if (
@@ -244,10 +244,6 @@ def compute_gradients_and_laplacians_geminal(
     ao_matrix_up_grad_y = np.sum(ao_matrix_grad_up_y_, axis=2)
     ao_matrix_up_grad_z = np.sum(ao_matrix_grad_up_z_, axis=2)
 
-    logger.debug(ao_matrix_up_grad_x)
-    logger.debug(ao_matrix_up_grad_y)
-    logger.debug(ao_matrix_up_grad_z)
-
     if ao_matrix_up_grad_x.shape != (geminal_data.orb_num_up, len(r_up_carts)):
         logger.error(
             f"aao_matrix_up_grad_x.shape = {ao_matrix_up_grad_x.shape} is inconsistent with the expected one = {(geminal_data.orb_num_up, len(r_up_carts))}"
@@ -277,10 +273,6 @@ def compute_gradients_and_laplacians_geminal(
     ao_matrix_dn_grad_x = np.sum(ao_matrix_grad_dn_x_, axis=2)
     ao_matrix_dn_grad_y = np.sum(ao_matrix_grad_dn_y_, axis=2)
     ao_matrix_dn_grad_z = np.sum(ao_matrix_grad_dn_z_, axis=2)
-
-    logger.debug(ao_matrix_dn_grad_x)
-    logger.debug(ao_matrix_dn_grad_y)
-    logger.debug(ao_matrix_dn_grad_z)
 
     if ao_matrix_dn_grad_x.shape != (geminal_data.orb_num_dn, len(r_dn_carts)):
         logger.error(
@@ -338,9 +330,6 @@ def compute_gradients_and_laplacians_geminal(
         ao_matrix_hessian_dn_x2 + ao_matrix_hessian_dn_y2 + ao_matrix_hessian_dn_z2
     )
 
-    logger.debug(ao_matrix_laplacian_up)
-    logger.debug(ao_matrix_laplacian_dn)
-
     if ao_matrix_laplacian_dn.shape != (geminal_data.orb_num_dn, len(r_dn_carts)):
         logger.error(
             f"ao_matrix_hessian_dn.shape = {ao_matrix_laplacian_dn.shape} is inconsistent with the expected one = {(geminal_data.orb_num_dn, len(r_dn_carts))}"
@@ -351,8 +340,6 @@ def compute_gradients_and_laplacians_geminal(
     geminal_paired = np.dot(ao_matrix_up.T, np.dot(lambda_matrix_paired, ao_matrix_dn))
     geminal_unpaired = np.dot(ao_matrix_up.T, lambda_matrix_unpaired)
     geminal = np.hstack([geminal_paired, geminal_unpaired])
-
-    logger.debug(geminal)
 
     # up electron
     geminal_grad_up_x_paired = np.dot(
@@ -444,8 +431,6 @@ def compute_gradients_and_laplacians_geminal(
 
     logger.info(f"The condition number of geminal matrix is {np.linalg.cond(geminal)}")
     geminal_inverse = np.linalg.inv(geminal)
-
-    logger.debug(geminal_inverse)
 
     vec_W_D_up_x = np.diag(np.dot(geminal_grad_up_x, geminal_inverse))
     vec_W_D_up_y = np.diag(np.dot(geminal_grad_up_y, geminal_inverse))

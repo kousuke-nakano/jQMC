@@ -9,19 +9,19 @@ import itertools
 
 # jax modules
 import jax
-from jax import vmap, jit
 import jax.numpy as jnp
-
-# JAX float64
-jax.config.update("jax_enable_x64", True)
 
 # set logger
 from logging import getLogger, StreamHandler, Formatter
 
 # myqmc module
-from .atomic_orbital import AO_data, compute_AO, AOs_data, compute_AOs_api
+from atomic_orbital import AO_data, compute_AO, AOs_data, compute_AOs_api
 
+# set logger
 logger = getLogger("myqmc").getChild(__name__)
+
+# JAX float64
+jax.config.update("jax_enable_x64", True)
 
 
 @dataclass
