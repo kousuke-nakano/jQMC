@@ -4,7 +4,6 @@
 
 # python modules
 from dataclasses import dataclass, field
-from functools import partial
 import itertools
 import numpy as np
 from numpy import linalg as LA
@@ -18,7 +17,6 @@ from jax import vmap, jit
 import jax.scipy as jscipy
 import jax.numpy as jnp
 from flax import struct
-from jax.lax import cond
 
 # set logger
 from logging import getLogger, StreamHandler, Formatter
@@ -87,17 +85,17 @@ def compute_AOs_overlap_matrix(aos_data: AOs_data, method: str = "numerical"):
     """
 
     if method == "numerical":
-        nx = 300
-        x_min = -6.0
-        x_max = 6.0
+        nx = 30
+        x_min = 0.0
+        x_max = 10.0
 
-        ny = 300
-        y_min = -5.0
-        y_max = 7.0
+        ny = 30
+        y_min = 0.0
+        y_max = 10.0
 
-        nz = 300
-        z_min = -9.0
-        z_max = 3.0
+        nz = 30
+        z_min = 0.0
+        z_max = 10.0
 
         x, w_x = scipy.special.roots_legendre(n=nx)
         y, w_y = scipy.special.roots_legendre(n=ny)
@@ -647,15 +645,6 @@ def compute_S_l_m(
                 for k in range(0, int((l - m_abs) / 2) + 1)
             ]
         )
-
-    # logger.debug(f"z = {z}")
-    # logger.debug(f"l,m = {(l,m)}")
-    # logger.debug(f"r_cart = {r_cart}")
-    # logger.debug(f"R_cart = {R_cart}")
-    # logger.debug(f"r_norm = {r_norm}")
-    # logger.debug(f"Lambda_lm(r_norm, z)={Lambda_lm(r_norm, z)}")
-    # logger.debug(f"A_m(x, y)={A_m(x, y)}")
-    # logger.debug(f"B_m(x, y)={B_m(x, y)}")
 
     # solid harmonics eveluated in Cartesian coord. (x,y,z):
     if m >= 0:

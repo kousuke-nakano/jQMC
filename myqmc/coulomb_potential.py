@@ -343,14 +343,13 @@ def compute_bare_coulomb_potential(
     electron-ion (except. ECPs), and ion-ion interactions at (r_up_carts, r_dn_carts).
 
     Args:
-        Coulomb_potential_data (BCoulomb_potential_data): an instance of Bare_coulomb_potential_data
+        coulomb_potential_data (Coulomb_potential_data): an instance of Bare_coulomb_potential_data
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
     Returns:
         Arrays containing values of the geminal function with r_up_carts and r_dn_carts. (dim: N_e^{up}, N_e^{up})
     """
-
     R_carts = coulomb_potential_data.structure_data.positions_cart
     if coulomb_potential_data.ecp_flag:
         R_charges = list(
@@ -389,7 +388,7 @@ def compute_coulomb_potential(
     electron-ion (inc. ECPs), and ion-ion interactions at (r_up_carts, r_dn_carts).
 
     Args:
-        Coulomb_potential_data (BCoulomb_potential_data): an instance of Bare_coulomb_potential_data
+        coulomb_potential_data (Coulomb_potential_data): an instance of Bare_coulomb_potential_data
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
         wavefunction_data (Wavefunction_data): Wavefunction information needed to compute the non-local part
@@ -401,7 +400,7 @@ def compute_coulomb_potential(
     # all-electron
     if not coulomb_potential_data.ecp_flag:
         bare_coulomb_potential = compute_bare_coulomb_potential(
-            coulomb_potential_data=compute_bare_coulomb_potential,
+            coulomb_potential_data=coulomb_potential_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
         )
@@ -411,7 +410,7 @@ def compute_coulomb_potential(
     # pseudo-potential
     else:
         bare_coulomb_potential = compute_bare_coulomb_potential(
-            coulomb_potential_data=compute_bare_coulomb_potential,
+            coulomb_potential_data=coulomb_potential_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
         )

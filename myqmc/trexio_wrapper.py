@@ -15,7 +15,7 @@ from atomic_orbital import AOs_data, compute_AOs_overlap_matrix
 from molecular_orbital import MOs_data, compute_MOs, compute_MOs_overlap_matrix
 from coulomb_potential import Coulomb_potential_data, compute_coulomb_potential
 from determinant import Geminal_data
-from wavefunction import Wavefunction_data, evaluate_wavefunction
+from wavefunction import Wavefunction_data
 
 logger = getLogger("myqmc").getChild(__name__)
 
@@ -65,7 +65,7 @@ def read_trexio_file(trexio_file: str):
     # read structure info.
     # nucleus_num_r = trexio.read_nucleus_num(file_r)
     labels_r = trexio.read_nucleus_label(file_r)
-    charges_r = trexio.read_nucleus_charge(file_r)
+    # charges_r = trexio.read_nucleus_charge(file_r)
     coords_r = trexio.read_nucleus_coord(file_r)
 
     # Reading basis sets info
@@ -80,8 +80,6 @@ def read_trexio_file(trexio_file: str):
     basis_exponent = trexio.read_basis_exponent(file_r)
     basis_coefficient = trexio.read_basis_coefficient(file_r)
     # basis_prim_factor = trexio.read_basis_prim_factor(file_r)
-    logger.debug(basis_nucleus_index)
-    logger.debug(basis_shell_index)
     logger.debug(basis_shell_ang_mom)
 
     # ao info
@@ -104,14 +102,12 @@ def read_trexio_file(trexio_file: str):
     try:
         mo_spin = trexio.read_mo_spin(file_r)
         if all(x == 0 for x in mo_spin):
-            pass
-            # spin_restricted = True
+            spin_restricted = True
         else:
-            # spin_restricted = False
-            raise NotImplementedError
+            spin_restricted = False
     except trexio.Error:  # backward compatibility
-        pass
-        # spin_restricted = True
+        mo_spin = [0 for _ in range(mo_num)]
+        spin_restricted = True
 
     # MO complex check
     if trexio.has_mo_coefficient_im(file_r):
@@ -150,7 +146,7 @@ def read_trexio_file(trexio_file: str):
         positions=coords_r,
     )
 
-    # AOs_data instance (WIP)
+    # AOs_data instance
     ao_num_count = 0
     ao_prim_num_count = 0
 
@@ -170,8 +166,6 @@ def read_trexio_file(trexio_file: str):
             i * (-1) ** j for i in range(1, ao_ang_mom + 1) for j in range(2)
         ]
         num_mag_moms = len(ao_mag_moms)
-
-        logger.debug(ao_mag_moms)
 
         ao_coords = [ao_coord for _ in range(num_mag_moms)]
         ao_ang_moms = [ao_ang_mom for _ in range(num_mag_moms)]
@@ -214,37 +208,47 @@ def read_trexio_file(trexio_file: str):
         coefficients=coefficients,
     )
 
-    # MOs_data instance (WIP)
-    mos_data = MOs_data(
-        num_mo=mo_num, mo_coefficients=mo_coefficient_real, aos_data=aos_data
-    )
-
-    mo_num_up = mo_num_dn = mo_num
-    mo_lambda_paired_occ = np.eye(num_ele_up, num_ele_dn, k=0)
-
-    mo_lambda_matrix_unpaired = np.eye(
-        num_ele_up, num_ele_up - num_ele_dn, k=-num_ele_dn
-    )
-    mo_lambda_matrix = np.block(
-        [
-            [
-                mo_lambda_paired_occ,
-                np.zeros((num_ele_up, mo_num_dn - num_ele_dn)),
-                mo_lambda_matrix_unpaired,
-            ],
-            [
-                np.zeros((mo_num_up - num_ele_up, num_ele_dn)),
-                np.zeros((mo_num_up - num_ele_up, mo_num_dn - num_ele_dn)),
-                np.zeros((mo_num_up - num_ele_up, num_ele_up - num_ele_dn)),
-            ],
+    # MOs_data instance
+    if spin_restricted:
+        mo_indices = [i for (i, v) in enumerate(mo_spin) if v == 0]
+        mo_coefficient_real_up = mo_coefficient_real_dn = mo_coefficient_real[
+            mo_indices
         ]
-    )
+        mo_num_up = mo_num_dn = mo_num
+        mos_data_up = MOs_data(
+            num_mo=mo_num_up, mo_coefficients=mo_coefficient_real_up, aos_data=aos_data
+        )
+        mos_data_dn = MOs_data(
+            num_mo=mo_num_dn, mo_coefficients=mo_coefficient_real_dn, aos_data=aos_data
+        )
+
+        mo_lambda_paired_occ = np.eye(num_ele_up, num_ele_dn, k=0)
+
+        mo_lambda_matrix_unpaired = np.eye(
+            num_ele_up, num_ele_up - num_ele_dn, k=-num_ele_dn
+        )
+        mo_lambda_matrix = np.block(
+            [
+                [
+                    mo_lambda_paired_occ,
+                    np.zeros((num_ele_up, mo_num_dn - num_ele_dn)),
+                    mo_lambda_matrix_unpaired,
+                ],
+                [
+                    np.zeros((mo_num_up - num_ele_up, num_ele_dn)),
+                    np.zeros((mo_num_up - num_ele_up, mo_num_dn - num_ele_dn)),
+                    np.zeros((mo_num_up - num_ele_up, num_ele_up - num_ele_dn)),
+                ],
+            ]
+        )
+    else:
+        raise NotImplementedError
 
     geminal_data = Geminal_data(
         num_electron_up=num_ele_up,
         num_electron_dn=num_ele_dn,
-        orb_data_up_spin=mos_data,
-        orb_data_dn_spin=mos_data,
+        orb_data_up_spin=mos_data_up,
+        orb_data_dn_spin=mos_data_dn,
         compute_orb=compute_MOs,
         lambda_matrix=mo_lambda_matrix,
     )
@@ -268,7 +272,14 @@ def read_trexio_file(trexio_file: str):
             structure_data=structure_data, ecp_flag=False
         )
 
-    return structure_data, geminal_data, coulomb_potential_data
+    return (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_data,
+        coulomb_potential_data,
+    )
 
 
 def convert_from_atomic_numbers_to_atomic_labels(charges_r: list[int]) -> list[str]:
@@ -493,25 +504,50 @@ if __name__ == "__main__":
     stream_handler.setFormatter(handler_format)
     logger.addHandler(stream_handler)
 
-    # water
-    structure_data, geminal_data, coulomb_potential_data = read_trexio_file(
-        trexio_file="water_trexio.hdf5"
-    )
+    np.set_printoptions(threshold=1.0e8)
 
-    structure_data.write_to_file("water.xyz")
+    # water
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file="benzene_trexio.hdf5")
+
+    structure_data.write_to_file("benzene_trexio.xyz")
 
     # print(structure_data)
     # print(aos_data)
     # print(mos_data)
     # print(coulomb_potential_data)
 
-    # S_ao = compute_AOs_overlap_matrix(aos_data=aos_data)
+    # """
+    S_ao = compute_AOs_overlap_matrix(aos_data=aos_data)
     # print(S_ao)
-    # print(np.diag(S_ao))
+    print(np.diag(S_ao))
 
-    # S_mo = compute_MOs_overlap_matrix(mos_data=mos_data)
-    # print(S_mo)
-    # print(np.diag(S_mo))
+    S_mo_up = compute_MOs_overlap_matrix(mos_data=mos_data_up)
+    # print(S_mo_up)
+    print(np.diag(S_mo_up))
+    # """
 
-    print(geminal_data.lambda_matrix)
+    num_r_cart_samples = 4
+    r_cart_min, r_cart_max = -1.0, 1.0
+    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(
+        num_r_cart_samples, 3
+    ) + r_cart_min
+    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(
+        num_r_cart_samples, 3
+    ) + r_cart_min
+
     wavefunction_data = Wavefunction_data(geminal_data=geminal_data)
+    V = compute_coulomb_potential(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        wavefunction_data=wavefunction_data,
+    )
+
+    print(V)

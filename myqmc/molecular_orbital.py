@@ -81,17 +81,17 @@ def compute_MOs_overlap_matrix(mos_data: MOs_data, method: str = "numerical"):
     """
 
     if method == "numerical":
-        nx = 300
-        x_min = -6.0
-        x_max = 6.0
+        nx = 30
+        x_min = 0.0
+        x_max = 10.0
 
-        ny = 300
-        y_min = -5.0
-        y_max = 7.0
+        ny = 30
+        y_min = 0.0
+        y_max = 10.0
 
-        nz = 300
-        z_min = -9.0
-        z_max = 3.0
+        nz = 30
+        z_min = 0.0
+        z_max = 10.0
 
         x, w_x = scipy.special.roots_legendre(n=nx)
         y, w_y = scipy.special.roots_legendre(n=ny)
