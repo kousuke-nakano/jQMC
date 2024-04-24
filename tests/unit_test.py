@@ -1,3 +1,4 @@
+import os, sys
 import itertools
 import pytest
 
@@ -7,16 +8,35 @@ from numpy.testing import assert_almost_equal
 
 from logging import getLogger, StreamHandler, Formatter
 
-from ..myqmc.atomic_orbital import (
+import sys
+
+sys.path.append("../myqmc")
+
+from atomic_orbital import (
     AO_data,
     compute_S_l_m,
     AOs_data,
     compute_AOs_api,
-    compute_AOs_overlap_matrix,
+    compute_AOs_grad_api,
+    compute_AOs_laplacian_api,
 )
 
-from ..myqmc.molecular_orbital import MO_data, MOs_data, compute_MO, compute_MOs_api
-from ..myqmc.determinant import Geminal_data, compute_geminal_all_elements
+from molecular_orbital import (
+    MO_data,
+    MOs_data,
+    compute_MO,
+    compute_MOs_api,
+    compute_MOs_grad_api,
+    compute_MOs_laplacian_api,
+)
+from determinant import (
+    Geminal_data,
+    compute_geminal_all_elements,
+    compute_det_geminal_all_elements,
+    compute_grads_and_laplacian_ln_Det,
+)
+
+from trexio_wrapper import read_trexio_file
 
 log = getLogger("myqmc")
 log.setLevel("DEBUG")
@@ -405,7 +425,7 @@ def test_radial_part_of_AO():
 
 
 # @pytest.mark.skip
-def test_AOs_uncontracted():
+def test_AOs_comparing_jax_and_debug_implemenetations():
     num_el = 100
     num_ao = 25
     num_ao_prim = 25
@@ -495,7 +515,104 @@ def test_AOs_uncontracted():
     assert np.allclose(aos_jax, aos_debug, rtol=1e-12, atol=1e-05)
 
 
-def test_MOs():
+def test_AOs_comparing_auto_and_numerical_grads():
+    num_r_cart_samples = 10
+    num_R_cart_samples = 3
+    r_cart_min, r_cart_max = -5.0, +5.0
+    R_cart_min, R_cart_max = -3.0, +3.0
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(
+        num_r_cart_samples, 3
+    ) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(
+        num_R_cart_samples, 3
+    ) + R_cart_min
+
+    num_ao = 3
+    num_ao_prim = 3
+    orbital_indices = [0, 1, 2]
+    exponents = [3.0, 1.0, 0.5]
+    coefficients = [1.0, 1.0, 1.0]
+    angular_momentums = [0, 0, 0]
+    magnetic_quantum_numbers = [0, 0, 0]
+
+    aos_data = AOs_data(
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        atomic_center_carts=R_carts,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        magnetic_quantum_numbers=magnetic_quantum_numbers,
+    )
+
+    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = (
+        compute_AOs_grad_api(aos_data=aos_data, r_carts=r_carts, debug_flag=True)
+    )
+
+    (
+        ao_matrix_grad_x_numerical,
+        ao_matrix_grad_y_numerical,
+        ao_matrix_grad_z_numerical,
+    ) = compute_AOs_grad_api(aos_data=aos_data, r_carts=r_carts, debug_flag=False)
+
+    np.testing.assert_array_almost_equal(
+        ao_matrix_grad_x_auto, ao_matrix_grad_x_numerical, decimal=7
+    )
+    np.testing.assert_array_almost_equal(
+        ao_matrix_grad_y_auto, ao_matrix_grad_y_numerical, decimal=7
+    )
+
+    np.testing.assert_array_almost_equal(
+        ao_matrix_grad_z_auto, ao_matrix_grad_z_numerical, decimal=7
+    )
+
+
+def test_AOs_comparing_auto_and_numerical_laplacians():
+    num_r_cart_samples = 10
+    num_R_cart_samples = 3
+    r_cart_min, r_cart_max = -5.0, +5.0
+    R_cart_min, R_cart_max = -3.0, +3.0
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(
+        num_r_cart_samples, 3
+    ) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(
+        num_R_cart_samples, 3
+    ) + R_cart_min
+
+    num_ao = 3
+    num_ao_prim = 3
+    orbital_indices = [0, 1, 2]
+    exponents = [3.0, 1.0, 0.5]
+    coefficients = [1.0, 1.0, 1.0]
+    angular_momentums = [0, 0, 0]
+    magnetic_quantum_numbers = [0, 0, 0]
+
+    aos_data = AOs_data(
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        atomic_center_carts=R_carts,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        magnetic_quantum_numbers=magnetic_quantum_numbers,
+    )
+
+    ao_matrix_laplacian_numerical = compute_AOs_laplacian_api(
+        aos_data=aos_data, r_carts=r_carts, debug_flag=True
+    )
+
+    ao_matrix_laplacian_auto = compute_AOs_laplacian_api(
+        aos_data=aos_data, r_carts=r_carts, debug_flag=False
+    )
+
+    np.testing.assert_array_almost_equal(
+        ao_matrix_laplacian_auto, ao_matrix_laplacian_numerical, decimal=5
+    )
+
+
+def test_MOs_comparing_jax_and_debug_implemenetations():
     num_el = 10
     num_mo = 5
     num_ao = 3
@@ -508,8 +625,8 @@ def test_MOs():
 
     num_r_cart_samples = num_el
     num_R_cart_samples = num_ao
-    r_cart_min, r_cart_max = -1.0, 1.0
-    R_cart_min, R_cart_max = 0.0, 0.0
+    r_cart_min, r_cart_max = -5.0, 5.0
+    R_cart_min, R_cart_max = -6.0, 6.0
     r_carts = (r_cart_max - r_cart_min) * np.random.rand(
         num_r_cart_samples, 3
     ) + r_cart_min
@@ -568,41 +685,31 @@ def test_MOs():
     assert np.allclose(mo_ans_step_by_step, mo_ans_all_debug)
 
 
-def test_geminals():
-    # test MOs
-    num_r_up_cart_samples = 9
-    num_r_dn_cart_samples = 5
-    num_R_cart_samples = 2
-    num_ao = 2
-    num_mo_up = num_r_up_cart_samples  # Slater Determinant
-    num_mo_dn = num_r_dn_cart_samples  # Slater Determinant
-    num_ao_prim = 3
-    orbital_indices = [0, 1, 1]
-    exponents = [50.0, 20.0, 10.0]
-    coefficients = [1.0, 1.0, 1.0]
-    angular_momentums = [0, 1]
-    magnetic_quantum_numbers = [0, 0]
+def test_MOs_comparing_auto_and_numerical_grads():
+    num_el = 10
+    num_mo = 5
+    num_ao = 3
+    num_ao_prim = 4
+    orbital_indices = [0, 0, 1, 2]
+    exponents = [50.0, 20.0, 10.0, 5.0]
+    coefficients = [1.0, 1.0, 1.0, 0.5]
+    angular_momentums = [1, 1, 1]
+    magnetic_quantum_numbers = [0, 0, -1]
 
-    # generate matrices for the test
-    mo_coefficients_up = np.random.rand(num_mo_up, num_ao)
-    mo_coefficients_dn = np.random.rand(num_mo_dn, num_ao)
-    mo_lambda_matrix_paired = np.eye(num_mo_up, num_mo_dn, k=0)
-    mo_lambda_matrix_unpaired = np.eye(num_mo_up, num_mo_up - num_mo_dn, k=-num_mo_dn)
-    mo_lambda_matrix = np.hstack([mo_lambda_matrix_paired, mo_lambda_matrix_unpaired])
-
-    r_cart_min, r_cart_max = -1.0, 1.0
-    R_cart_min, R_cart_max = 0.0, 0.0
-    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(
-        num_r_up_cart_samples, 3
-    ) + r_cart_min
-    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(
-        num_r_dn_cart_samples, 3
+    num_r_cart_samples = num_el
+    num_R_cart_samples = num_ao
+    r_cart_min, r_cart_max = -5.0, 5.0
+    R_cart_min, R_cart_max = 10.0, 10.0
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(
+        num_r_cart_samples, 3
     ) + r_cart_min
     R_carts = (R_cart_max - R_cart_min) * np.random.rand(
         num_R_cart_samples, 3
     ) + R_cart_min
 
-    aos_up_data = AOs_data(
+    mo_coefficients = np.random.rand(num_mo, num_ao)
+
+    aos_data = AOs_data(
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         atomic_center_carts=R_carts,
@@ -613,7 +720,57 @@ def test_geminals():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    aos_dn_data = AOs_data(
+    mos_data = MOs_data(
+        num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients
+    )
+
+    mo_matrix_grad_x_auto, mo_matrix_grad_y_auto, mo_matrix_grad_z_auto = (
+        compute_MOs_grad_api(mos_data=mos_data, r_carts=r_carts, debug_flag=True)
+    )
+
+    (
+        mo_matrix_grad_x_numerical,
+        mo_matrix_grad_y_numerical,
+        mo_matrix_grad_z_numerical,
+    ) = compute_MOs_grad_api(mos_data=mos_data, r_carts=r_carts, debug_flag=False)
+
+    np.testing.assert_array_almost_equal(
+        mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, decimal=6
+    )
+    np.testing.assert_array_almost_equal(
+        mo_matrix_grad_y_auto, mo_matrix_grad_y_numerical, decimal=6
+    )
+
+    np.testing.assert_array_almost_equal(
+        mo_matrix_grad_z_auto, mo_matrix_grad_z_numerical, decimal=6
+    )
+
+
+def test_MOs_comparing_auto_and_numerical_laplacians():
+    num_el = 10
+    num_mo = 5
+    num_ao = 3
+    num_ao_prim = 4
+    orbital_indices = [0, 0, 1, 2]
+    exponents = [50.0, 20.0, 10.0, 5.0]
+    coefficients = [1.0, 1.0, 1.0, 0.5]
+    angular_momentums = [1, 1, 1]
+    magnetic_quantum_numbers = [0, 0, -1]
+
+    num_r_cart_samples = num_el
+    num_R_cart_samples = num_ao
+    r_cart_min, r_cart_max = -5.0, 5.0
+    R_cart_min, R_cart_max = 10.0, 10.0
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(
+        num_r_cart_samples, 3
+    ) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(
+        num_R_cart_samples, 3
+    ) + R_cart_min
+
+    mo_coefficients = np.random.rand(num_mo, num_ao)
+
+    aos_data = AOs_data(
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         atomic_center_carts=R_carts,
@@ -624,22 +781,101 @@ def test_geminals():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    mos_up_data = MOs_data(
-        num_mo=num_mo_up, mo_coefficients=mo_coefficients_up, aos_data=aos_up_data
+    mos_data = MOs_data(
+        num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients
     )
 
-    mos_dn_data = MOs_data(
-        num_mo=num_mo_dn, mo_coefficients=mo_coefficients_dn, aos_data=aos_dn_data
+    mo_matrix_laplacian_numerical = compute_MOs_laplacian_api(
+        mos_data=mos_data, r_carts=r_carts, debug_flag=True
     )
 
-    geminal_mo_data = Geminal_data(
-        num_electron_up=num_r_up_cart_samples,
-        num_electron_dn=num_r_dn_cart_samples,
-        orb_data_up_spin=mos_up_data,
-        orb_data_dn_spin=mos_dn_data,
-        compute_orb=compute_MOs_api,
-        lambda_matrix=mo_lambda_matrix,
+    mo_matrix_laplacian_auto = compute_MOs_laplacian_api(
+        mos_data=mos_data, r_carts=r_carts, debug_flag=False
     )
+
+    np.testing.assert_array_almost_equal(
+        mo_matrix_laplacian_auto, mo_matrix_laplacian_numerical, decimal=6
+    )
+
+
+def test_comparing_AO_and_MO_geminals():
+    # test MOs
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file="water_trexio.hdf5")
+
+    num_electron_up = geminal_mo_data.num_electron_up
+    num_electron_dn = geminal_mo_data.num_electron_dn
+
+    # Initialization
+    r_up_carts = []
+    r_dn_carts = []
+
+    total_electrons = 0
+
+    if coulomb_potential_data.ecp_flag:
+        charges = np.array(structure_data.atomic_numbers) - np.array(
+            coulomb_potential_data.z_cores
+        )
+    else:
+        charges = np.array(structure_data.atomic_numbers)
+
+    coords = structure_data.positions_cart
+
+    # Place electrons around each nucleus
+    for i in range(len(coords)):
+        charge = charges[i]
+        num_electrons = int(
+            np.round(charge)
+        )  # Number of electrons to place based on the charge
+
+        # Retrieve the position coordinates
+        x, y, z = coords[i]
+
+        # Place electrons
+        for _ in range(num_electrons):
+            # Calculate distance range
+            distance = np.random.uniform(1.0 / charge, 2.0 / charge)
+            theta = np.random.uniform(0, np.pi)
+            phi = np.random.uniform(0, 2 * np.pi)
+
+            # Convert spherical to Cartesian coordinates
+            dx = distance * np.sin(theta) * np.cos(phi)
+            dy = distance * np.sin(theta) * np.sin(phi)
+            dz = distance * np.cos(theta)
+
+            # Position of the electron
+            electron_position = np.array([x + dx, y + dy, z + dz])
+
+            # Assign spin
+            if len(r_up_carts) < num_electron_up:
+                r_up_carts.append(electron_position)
+            else:
+                r_dn_carts.append(electron_position)
+
+        total_electrons += num_electrons
+
+    # Handle surplus electrons
+    remaining_up = num_electron_up - len(r_up_carts)
+    remaining_dn = num_electron_dn - len(r_dn_carts)
+
+    # Randomly place any remaining electrons
+    for _ in range(remaining_up):
+        r_up_carts.append(
+            np.random.choice(coords) + np.random.normal(scale=0.1, size=3)
+        )
+    for _ in range(remaining_dn):
+        r_dn_carts.append(
+            np.random.choice(coords) + np.random.normal(scale=0.1, size=3)
+        )
+
+    r_up_carts = np.array(r_up_carts)
+    r_dn_carts = np.array(r_dn_carts)
 
     geminal_mo = compute_geminal_all_elements(
         geminal_data=geminal_mo_data,
@@ -647,18 +883,25 @@ def test_geminals():
         r_dn_carts=r_dn_carts,
     )
 
+    mo_lambda_matrix_paired, mo_lambda_matrix_unpaired = np.hsplit(
+        geminal_mo_data.lambda_matrix, [geminal_mo_data.orb_num_dn]
+    )
+
     # generate matrices for the test
     ao_lambda_matrix_paired = np.dot(
-        mo_coefficients_up.T, np.dot(mo_lambda_matrix_paired, mo_coefficients_dn)
+        mos_data_up.mo_coefficients.T,
+        np.dot(mo_lambda_matrix_paired, mos_data_dn.mo_coefficients),
     )
-    ao_lambda_matrix_unpaired = np.dot(mo_coefficients_up.T, mo_lambda_matrix_unpaired)
+    ao_lambda_matrix_unpaired = np.dot(
+        mos_data_up.mo_coefficients.T, mo_lambda_matrix_unpaired
+    )
     ao_lambda_matrix = np.hstack([ao_lambda_matrix_paired, ao_lambda_matrix_unpaired])
 
     geminal_ao_data = Geminal_data(
-        num_electron_up=num_r_up_cart_samples,
-        num_electron_dn=num_r_dn_cart_samples,
-        orb_data_up_spin=aos_up_data,
-        orb_data_dn_spin=aos_dn_data,
+        num_electron_up=num_electron_up,
+        num_electron_dn=num_electron_dn,
+        orb_data_up_spin=aos_data,
+        orb_data_dn_spin=aos_data,
         compute_orb=compute_AOs_api,
         lambda_matrix=ao_lambda_matrix,
     )
@@ -671,3 +914,229 @@ def test_geminals():
 
     # check if geminals with AO and MO representations are consistent
     np.testing.assert_array_almost_equal(geminal_ao, geminal_mo, decimal=15)
+
+    det_geminal_mo = compute_det_geminal_all_elements(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    det_geminal_ao = compute_det_geminal_all_elements(
+        geminal_data=geminal_ao_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    np.testing.assert_almost_equal(det_geminal_ao, det_geminal_mo, decimal=15)
+
+
+def test_numerial_and_auto_grads_ln_Det():
+    # test MOs
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file="water_trexio.hdf5")
+
+    num_electron_up = geminal_mo_data.num_electron_up
+    num_electron_dn = geminal_mo_data.num_electron_dn
+
+    # Initialization
+    r_up_carts = []
+    r_dn_carts = []
+
+    total_electrons = 0
+
+    if coulomb_potential_data.ecp_flag:
+        charges = np.array(structure_data.atomic_numbers) - np.array(
+            coulomb_potential_data.z_cores
+        )
+    else:
+        charges = np.array(structure_data.atomic_numbers)
+
+    coords = structure_data.positions_cart
+
+    # Place electrons around each nucleus
+    for i in range(len(coords)):
+        charge = charges[i]
+        num_electrons = int(
+            np.round(charge)
+        )  # Number of electrons to place based on the charge
+
+        # Retrieve the position coordinates
+        x, y, z = coords[i]
+
+        # Place electrons
+        for _ in range(num_electrons):
+            # Calculate distance range
+            distance = np.random.uniform(1.0 / charge, 2.0 / charge)
+            theta = np.random.uniform(0, np.pi)
+            phi = np.random.uniform(0, 2 * np.pi)
+
+            # Convert spherical to Cartesian coordinates
+            dx = distance * np.sin(theta) * np.cos(phi)
+            dy = distance * np.sin(theta) * np.sin(phi)
+            dz = distance * np.cos(theta)
+
+            # Position of the electron
+            electron_position = np.array([x + dx, y + dy, z + dz])
+
+            # Assign spin
+            if len(r_up_carts) < num_electron_up:
+                r_up_carts.append(electron_position)
+            else:
+                r_dn_carts.append(electron_position)
+
+        total_electrons += num_electrons
+
+    # Handle surplus electrons
+    remaining_up = num_electron_up - len(r_up_carts)
+    remaining_dn = num_electron_dn - len(r_dn_carts)
+
+    # Randomly place any remaining electrons
+    for _ in range(remaining_up):
+        r_up_carts.append(
+            np.random.choice(coords) + np.random.normal(scale=0.1, size=3)
+        )
+    for _ in range(remaining_dn):
+        r_dn_carts.append(
+            np.random.choice(coords) + np.random.normal(scale=0.1, size=3)
+        )
+
+    r_up_carts = np.array(r_up_carts)
+    r_dn_carts = np.array(r_dn_carts)
+
+    geminal_mo = compute_geminal_all_elements(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    mo_lambda_matrix_paired, mo_lambda_matrix_unpaired = np.hsplit(
+        geminal_mo_data.lambda_matrix, [geminal_mo_data.orb_num_dn]
+    )
+
+    # generate matrices for the test
+    ao_lambda_matrix_paired = np.dot(
+        mos_data_up.mo_coefficients.T,
+        np.dot(mo_lambda_matrix_paired, mos_data_dn.mo_coefficients),
+    )
+    ao_lambda_matrix_unpaired = np.dot(
+        mos_data_up.mo_coefficients.T, mo_lambda_matrix_unpaired
+    )
+    ao_lambda_matrix = np.hstack([ao_lambda_matrix_paired, ao_lambda_matrix_unpaired])
+
+    geminal_ao_data = Geminal_data(
+        num_electron_up=num_electron_up,
+        num_electron_dn=num_electron_dn,
+        orb_data_up_spin=aos_data,
+        orb_data_dn_spin=aos_data,
+        compute_orb=compute_AOs_api,
+        lambda_matrix=ao_lambda_matrix,
+    )
+
+    geminal_ao = compute_geminal_all_elements(
+        geminal_data=geminal_ao_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    grad_ln_D_up_numerical, grad_ln_D_dn_numerical, sum_laplacian_ln_D_numerical = (
+        compute_grads_and_laplacian_ln_Det(
+            geminal_data=geminal_ao_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+            debug_flag=True,
+        )
+    )
+
+    grad_ln_D_up_auto, grad_ln_D_dn_auto, sum_laplacian_ln_D_auto = (
+        compute_grads_and_laplacian_ln_Det(
+            geminal_data=geminal_ao_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+            debug_flag=False,
+        )
+    )
+
+    np.testing.assert_almost_equal(grad_ln_D_up_numerical, grad_ln_D_up_auto, decimal=6)
+    np.testing.assert_almost_equal(grad_ln_D_dn_numerical, grad_ln_D_dn_auto, decimal=6)
+
+    # print(grad_ln_D_up_numerical)
+    # print(grad_ln_D_up_auto)
+    # print(grad_ln_D_dn_numerical)
+    # print(grad_ln_D_dn_auto)
+    print(sum_laplacian_ln_D_numerical)
+    print(sum_laplacian_ln_D_auto)
+
+
+if __name__ == "__main__":
+    logger = getLogger("myqmc")
+    logger.setLevel("INFO")
+    stream_handler = StreamHandler()
+    stream_handler.setLevel("INFO")
+    handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
+    stream_handler.setFormatter(handler_format)
+    logger.addHandler(stream_handler)
+
+    np.set_printoptions(threshold=1.0e8)
+
+    # water
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file="water_trexio.hdf5")
+
+    num_r_cart_samples = 4
+    r_cart_min, r_cart_max = -2.0, 2.0
+    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(
+        num_r_cart_samples, 3
+    ) + r_cart_min
+    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(
+        num_r_cart_samples, 3
+    ) + r_cart_min
+
+    print(aos_data)
+    print(mos_data_up)
+
+    """
+    wavefunction_data = Wavefunction_data(geminal_data=geminal_data)
+    V_bare = compute_bare_coulomb_potential(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    V = compute_coulomb_potential(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        wavefunction_data=wavefunction_data,
+    )
+
+    L = compute_kinetic_energy(
+        wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    print(L + V)
+
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+
+    from vmc import MCMC
+
+    mcmc = MCMC(hamiltonian_data=hamiltonian_data)
+    mcmc.run(num_mcmc_steps=100)
+    """

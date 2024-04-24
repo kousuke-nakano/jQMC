@@ -10,8 +10,8 @@ from logging import getLogger, StreamHandler, Formatter
 
 from determinant import (
     Geminal_data,
-    compute_det_ao_geminal_all_elements,
-    compute_laplacians_geminal,
+    compute_det_geminal_all_elements,
+    compute_grads_and_laplacian_ln_Det,
 )
 
 logger = getLogger("myqmc").getChild(__name__)
@@ -52,7 +52,7 @@ def evaluate_wavefunction(
     """
 
     Jastrow_part = 1.0  # tentative
-    Determinant_part = compute_det_ao_geminal_all_elements(
+    Determinant_part = compute_det_geminal_all_elements(
         geminal_data=wavefunction_data.geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -61,7 +61,7 @@ def evaluate_wavefunction(
     return Jastrow_part * Determinant_part
 
 
-def compute_laplacian(
+def compute_kinetic_energy(
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
@@ -77,19 +77,54 @@ def compute_laplacian(
     Returns:
         The value of laplacian the given wavefunction (float | complex)
     """
-    W_J_up, W_J_dn, T_J = 0, 0, 0  # tentative
+    grad_J_up, grad_J_dn, sum_laplacian_J = 0, 0, 0  # tentative
 
-    W_D_up, W_D_dn, T_D = compute_laplacians_geminal(
+    grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = compute_grads_and_laplacian_ln_Det(
         geminal_data=wavefunction_data.geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
 
     # compute laplacians
-    L = (T_J + T_D) - 1.0 / 2.0 * (
-        np.sum((W_J_up + W_D_up) * (W_J_up + W_D_up))
-        + np.sum((W_J_dn + W_D_dn) * (W_J_dn + W_D_dn))
+    L = -(sum_laplacian_J + sum_laplacian_ln_D) - 1.0 / 2.0 * (
+        np.sum((grad_J_up + grad_ln_D_up) * (grad_J_up + grad_ln_D_up))
+        + np.sum((grad_J_dn + grad_ln_D_dn) * (grad_J_dn + grad_ln_D_dn))
     )
+
+    logger.info(f"kinetic energy = {L} a.u.")
+
+    return L
+
+
+def compute_quantum_force(
+    wavefunction_data: Wavefunction_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """
+    The method is for computing quantum forces at (r_up_carts, r_dn_carts).
+
+    Args:
+        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
+        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
+        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+
+    Returns:
+        The value of quantum forces of the given wavefunction -> return tuple[(N_e^{up}, 3), (N_e^{dn}, 3)]
+    """
+
+    grad_J_up, grad_J_dn, _ = 0, 0, 0  # tentative
+
+    grad_ln_D_up, grad_ln_D_dn, _ = compute_grads_and_laplacian_ln_Det(
+        geminal_data=wavefunction_data.geminal_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    grad_ln_WF_up = grad_J_up + grad_ln_D_up
+    grad_ln_WF_dn = grad_J_dn + grad_ln_D_dn
+
+    return 2.0 * grad_ln_WF_up, 2.0 * grad_ln_WF_dn
 
     return L
 

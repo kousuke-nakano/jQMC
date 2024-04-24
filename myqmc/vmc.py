@@ -9,7 +9,8 @@ import numpy as np
 # set logger
 from logging import getLogger, StreamHandler, Formatter
 
-from hamiltonians import Hamiltonian_data
+from hamiltonians import Hamiltonian_data, compute_local_energy
+from wavefunction import compute_quantum_force, evaluate_wavefunction
 
 logger = getLogger("myqmc").getChild(__name__)
 
@@ -19,6 +20,7 @@ class MCMC:
         self,
         hamiltonian_data: Hamiltonian_data = None,
         mcmc_seed: int = 34467,
+        Dt: float = 0.001,
     ) -> None:
         """
         Initialize a MCMC class.
@@ -32,6 +34,7 @@ class MCMC:
 
         self.__hamiltonian_data = hamiltonian_data
         self.__mcmc_seed = mcmc_seed
+        self.__Dt = Dt
 
         # mcmc counter
         self.__mcmc_counter = 0
@@ -148,9 +151,11 @@ class MCMC:
         """
 
         # Set the random seed and use the Mersenne Twister generator
+        accepted_moves = 0
         random.seed(self.__mcmc_seed)
         np.random.seed(self.__mcmc_seed)
 
+        # MAIN MCMC loop from here !!!
         for i_mcmc_step in range(num_mcmc_steps):
             logger.info(f"Current MCMC step = {i_mcmc_step+1}/{num_mcmc_steps}.")
 
@@ -159,6 +164,18 @@ class MCMC:
                 self.__latest_r_dn_carts
             )
 
+            # compute quantum forces
+            qF_up, qF_dn = compute_quantum_force(
+                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                r_up_carts=self.__latest_r_up_carts,
+                r_dn_carts=self.__latest_r_dn_carts,
+            )
+
+            # 3次元ガウス分布ベクトルを生成する
+            # np.random.normalは指定された平均、標準偏差でランダムな値を生成する
+            sigma = np.sqrt(2 * self.__Dt)
+            g_vector = np.random.normal(loc=0, scale=sigma, size=3)
+
             # Choose randomly if the electron comes from up or dn
             if random.randint(0, total_electrons - 1) < len(self.__latest_r_up_carts):
                 selected_electron_spin = "up"
@@ -166,19 +183,104 @@ class MCMC:
                 selected_electron_index = random.randint(
                     0, len(self.__latest_r_up_carts) - 1
                 )
-                selected_electron = self.__latest_r_up_carts[selected_electron_index]
+                old_r_l = self.__latest_r_up_carts[selected_electron_index]
+                old_qF_l = qF_up[selected_electron_index]
+                new_r_l = old_r_l + self.__Dt * old_qF_l + g_vector
+
+                proposed_r_up_carts = self.__latest_r_up_carts.copy()
+                proposed_r_dn_carts = self.__latest_r_dn_carts.copy()
+                proposed_r_up_carts[selected_electron_index] = new_r_l
+
+                # compute quantum forces
+                new_qF_l, _ = compute_quantum_force(
+                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                    r_up_carts=proposed_r_up_carts,
+                    r_dn_carts=proposed_r_dn_carts,
+                )
+
             else:
                 selected_electron_spin = "dn"
                 # Randomly select an electron from r_carts_dn
                 selected_electron_index = random.randint(
                     0, len(self.__latest_r_dn_carts) - 1
                 )
-                selected_electron = self.__latest_r_dn_carts[selected_electron_index]
+                old_r_l = self.__latest_r_dn_carts[selected_electron_index]
+                old_qF_l = qF_dn[selected_electron_index]
+                new_r_l = old_r_l + self.__Dt * old_qF_l + g_vector
+
+                proposed_r_up_carts = self.__latest_r_up_carts.copy()
+                proposed_r_dn_carts = self.__latest_r_dn_carts.copy()
+                proposed_r_dn_carts[selected_electron_index] = new_r_l
+
+                # compute quantum forces
+                _, new_qF_l = compute_quantum_force(
+                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                    r_up_carts=proposed_r_up_carts,
+                    r_dn_carts=proposed_r_dn_carts,
+                )
 
             logger.info(
                 f"The selected electron is {selected_electron_index+1}-th {selected_electron_spin} electron."
             )
-            logger.info(f"The selected electron position is {selected_electron}.")
+            logger.info(f"The selected electron position is {old_r_l}.")
+            logger.info(f"The proposed electron position is {new_r_l}.")
+
+            T_forward = (
+                1.0
+                / (4 * np.pi * self.__Dt) ** 3.0
+                / 2.0
+                * np.exp(
+                    (-np.linalg.norm(new_r_l - old_r_l - self.__Dt * old_qF_l) ** 2)
+                    / (4.0 * self.__Dt)
+                )
+            )
+            T_backward = (
+                1.0
+                / (4 * np.pi * self.__Dt) ** 3.0
+                / 2.0
+                * np.exp(
+                    (-np.linalg.norm(old_r_l - new_r_l - self.__Dt * new_qF_l) ** 2)
+                    / (4.0 * self.__Dt)
+                )
+            )
+            R_ratio = (
+                evaluate_wavefunction(
+                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                    r_up_carts=proposed_r_up_carts,
+                    r_dn_carts=proposed_r_dn_carts,
+                )
+                ** 2.0
+            )
+
+            logger.info(
+                f"R_ratio, T_forward, T_backward = {R_ratio}, {T_forward}, {T_backward}"
+            )
+            acceptance_ratio = np.min([1.0, R_ratio * T_forward / T_backward])
+            logger.info(f"acceptance_ratio = {acceptance_ratio}")
+
+            b = np.random.uniform(0, 1)
+
+            if b < acceptance_ratio:
+                logger.info("The proposed move is accepted!")
+                accepted_moves += 1
+                self.__latest_r_up_carts = proposed_r_up_carts
+                self.__latest_r_dn_carts = proposed_r_dn_carts
+                e_L = compute_local_energy(
+                    hamiltonian_data=self.__hamiltonian_data,
+                    r_up_carts=self.__latest_r_up_carts,
+                    r_dn_carts=self.__latest_r_dn_carts,
+                )
+            else:
+                logger.info("The proposed move is rejected!")
+                e_L = compute_local_energy(
+                    hamiltonian_data=self.__hamiltonian_data,
+                    r_up_carts=self.__latest_r_up_carts,
+                    r_dn_carts=self.__latest_r_dn_carts,
+                )
+
+            logger.info(f"e_L = {e_L}")
+
+        logger.info(f"acceptance ratio is {accepted_moves/num_mcmc_steps*100} %")
 
 
 if __name__ == "__main__":

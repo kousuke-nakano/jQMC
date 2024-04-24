@@ -15,6 +15,7 @@ import scipy  # type: ignore
 # jax modules
 import jax
 from jax import vmap, jit
+from jax import jacfwd, jacrev
 import jax.scipy as jscipy
 import jax.numpy as jnp
 from flax import struct
@@ -76,6 +77,7 @@ class AOs_data:
             raise ValueError
 
 
+'''
 def compute_AOs_overlap_matrix(aos_data: AOs_data, method: str = "numerical"):
     """
     The method is for computing overlap matrix (S) of the given atomic orbitals
@@ -130,6 +132,262 @@ def compute_AOs_overlap_matrix(aos_data: AOs_data, method: str = "numerical"):
 
     else:
         raise NotImplementedError
+'''
+
+
+def compute_AOs_laplacian_api(
+    aos_data: AOs_data,
+    r_carts: npt.NDArray[np.float64],
+    debug_flag: bool = True,
+) -> npt.NDArray[np.float64 | np.complex128]:
+    """
+    The method is for computing the laplacians of the given atomic orbital at r_carts
+
+    Args:
+        ao_datas (AOs_data): an instance of AOs_data
+        r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
+        debug_flag: if True, numerical derivatives are computed for debuging purpose
+
+    Returns:
+        An array containing laplacians of the AOs at r_carts. The dim. is (num_ao, N_e)
+    """
+
+    if debug_flag:
+        return compute_AOs_laplacian_numerical_grad(aos_data, r_carts)
+    else:
+        return compute_AOs_laplacian_jax_auto_grad(aos_data, r_carts)
+
+
+@jit
+def compute_AOs_laplacian_jax_auto_grad(
+    aos_data: AOs_data, r_carts: npt.NDArray[np.float64]
+):
+    # Laplacians of AOs (autograd via google-JAX)
+    # Note: This method gives correct answers, but slow because the full hessian calculation is not needed for computing laplacians.
+    # grad(grad) should be pluged into compute_AOs_jax() in the future for accelaration.
+
+    def _compute_ao_matrix_grad(aos_data: AOs_data, r_carts, target=0):
+        ao_matrix_jacrev = jacrev(compute_AOs_api, argnums=1)(
+            aos_data, r_carts, jax_flag=True
+        )
+
+        ao_matrix_grad_ = ao_matrix_jacrev[:, :, :, target]
+        ao_matrix_grad = jnp.sum(ao_matrix_grad_, axis=2)
+
+        return ao_matrix_grad
+
+    ao_matrix_hessian_x = jacfwd(_compute_ao_matrix_grad, argnums=1)(
+        aos_data, r_carts, target=0
+    )
+    ao_matrix_hessian_y = jacfwd(_compute_ao_matrix_grad, argnums=1)(
+        aos_data, r_carts, target=1
+    )
+    ao_matrix_hessian_z = jacfwd(_compute_ao_matrix_grad, argnums=1)(
+        aos_data, r_carts, target=2
+    )
+
+    ao_matrix_hessian_x2_ = ao_matrix_hessian_x[:, :, :, 0]
+    ao_matrix_hessian_y2_ = ao_matrix_hessian_y[:, :, :, 1]
+    ao_matrix_hessian_z2_ = ao_matrix_hessian_z[:, :, :, 2]
+    ao_matrix_hessian_x2 = jnp.sum(ao_matrix_hessian_x2_, axis=2)
+    ao_matrix_hessian_y2 = jnp.sum(ao_matrix_hessian_y2_, axis=2)
+    ao_matrix_hessian_z2 = jnp.sum(ao_matrix_hessian_z2_, axis=2)
+
+    ao_matrix_laplacian = (
+        ao_matrix_hessian_x2 + ao_matrix_hessian_y2 + ao_matrix_hessian_z2
+    )
+
+    if ao_matrix_laplacian.shape != (aos_data.num_ao, len(r_carts)):
+        logger.error(
+            f"ao_matrix_hessian.shape = {ao_matrix_laplacian.shape} is inconsistent with the expected one = {(aos_data.num_ao, len(r_carts))}"
+        )
+        raise ValueError
+
+    return ao_matrix_laplacian
+
+
+def compute_AOs_laplacian_numerical_grad(
+    aos_data: AOs_data, r_carts: npt.NDArray[np.float64]
+):
+    # Laplacians of AOs (numerical)
+    diff_h = 1.0e-5
+
+    ao_matrix = compute_AOs_api(aos_data, r_carts, jax_flag=True)
+
+    # laplacians x^2
+    diff_p_x_r_carts = r_carts.copy()
+    diff_p_x_r_carts[:, 0] += diff_h
+    ao_matrix_diff_p_x = compute_AOs_api(aos_data, diff_p_x_r_carts, jax_flag=True)
+    diff_m_x_r_carts = r_carts.copy()
+    diff_m_x_r_carts[:, 0] -= diff_h
+    ao_matrix_diff_m_x = compute_AOs_api(aos_data, diff_m_x_r_carts, jax_flag=True)
+
+    # laplacians y^2
+    diff_p_y_r_carts = r_carts.copy()
+    diff_p_y_r_carts[:, 1] += diff_h
+    ao_matrix_diff_p_y = compute_AOs_api(aos_data, diff_p_y_r_carts, jax_flag=True)
+    diff_m_y_r_carts = r_carts.copy()
+    diff_m_y_r_carts[:, 1] -= diff_h
+    ao_matrix_diff_m_y = compute_AOs_api(aos_data, diff_m_y_r_carts, jax_flag=True)
+
+    # laplacians z^2
+    diff_p_z_r_carts = r_carts.copy()
+    diff_p_z_r_carts[:, 2] += diff_h
+    ao_matrix_diff_p_z = compute_AOs_api(aos_data, diff_p_z_r_carts, jax_flag=True)
+    diff_m_z_r_carts = r_carts.copy()
+    diff_m_z_r_carts[:, 2] -= diff_h
+    ao_matrix_diff_m_z = compute_AOs_api(aos_data, diff_m_z_r_carts, jax_flag=True)
+
+    ao_matrix_grad2_x = (ao_matrix_diff_p_x + ao_matrix_diff_m_x - 2 * ao_matrix) / (
+        diff_h
+    ) ** 2
+    ao_matrix_grad2_y = (ao_matrix_diff_p_y + ao_matrix_diff_m_y - 2 * ao_matrix) / (
+        diff_h
+    ) ** 2
+    ao_matrix_grad2_z = (ao_matrix_diff_p_z + ao_matrix_diff_m_z - 2 * ao_matrix) / (
+        diff_h
+    ) ** 2
+
+    ao_matrix_laplacian = ao_matrix_grad2_x + ao_matrix_grad2_y + ao_matrix_grad2_z
+
+    if ao_matrix_laplacian.shape != (aos_data.num_ao, len(r_carts)):
+        logger.error(
+            f"ao_matrix_laplacian.shape = {ao_matrix_laplacian.shape} is inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
+        )
+        raise ValueError
+
+    return ao_matrix_laplacian
+
+
+def compute_AOs_grad_api(
+    aos_data: AOs_data,
+    r_carts: npt.NDArray[np.float64],
+    debug_flag: bool = True,
+) -> tuple[
+    npt.NDArray[np.float64 | np.complex128],
+    npt.NDArray[np.float64 | np.complex128],
+    npt.NDArray[np.float64 | np.complex128],
+]:
+    """
+    The method is for computing the gradients (x,y,z) of the given atomic orbital at r_carts
+
+    Args:
+        ao_datas (AOs_data): an instance of AOs_data
+        r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
+        debug_flag: if True, numerical derivatives are computed for debuging purpose
+
+    Returns:
+        tuple containing gradients of the AOs at r_carts. (grad_x, grad_y, grad_z). The dim. of each matrix is (num_ao, N_e)
+    """
+
+    if debug_flag:
+        return compute_AOs_numerical_grad(aos_data, r_carts)
+    else:
+        return compute_AOs_jax_auto_grad(aos_data, r_carts)
+
+
+@jit
+def compute_AOs_jax_auto_grad(
+    aos_data: AOs_data,
+    r_carts: npt.NDArray[np.float64],
+) -> tuple[
+    npt.NDArray[np.float64 | np.complex128],
+    npt.NDArray[np.float64 | np.complex128],
+    npt.NDArray[np.float64 | np.complex128],
+]:
+    # Gradientss of AOs (autograd via google-JAX)
+    # Note: This method gives correct answers, but slow because the full Jacobian calculation is not needed for computing gradients.
+    # grad should be pluged into compute_AOs_jax() in the future for accelaration.
+    ao_matrix_jacrev = jacrev(compute_AOs_api, argnums=1)(
+        aos_data, r_carts, jax_flag=True
+    )
+
+    ao_matrix_grad_x_ = ao_matrix_jacrev[:, :, :, 0]
+    ao_matrix_grad_y_ = ao_matrix_jacrev[:, :, :, 1]
+    ao_matrix_grad_z_ = ao_matrix_jacrev[:, :, :, 2]
+    ao_matrix_grad_x = jnp.sum(ao_matrix_grad_x_, axis=2)
+    ao_matrix_grad_y = jnp.sum(ao_matrix_grad_y_, axis=2)
+    ao_matrix_grad_z = jnp.sum(ao_matrix_grad_z_, axis=2)
+
+    if ao_matrix_grad_x.shape != (aos_data.num_ao, len(r_carts)):
+        logger.error(
+            f"aao_matrix_grad_x.shape = {ao_matrix_grad_x.shape} is inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
+        )
+        raise ValueError
+
+    if ao_matrix_grad_y.shape != (aos_data.num_ao, len(r_carts)):
+        logger.error(
+            f"ao_matrix_grad_y.shape = {ao_matrix_grad_y.shape} is inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
+        )
+        raise ValueError
+
+    if ao_matrix_grad_z.shape != (aos_data.num_ao, len(r_carts)):
+        logger.error(
+            f"ao_matrix_grad_z.shape = {ao_matrix_grad_y.shape} is inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
+        )
+        raise ValueError
+
+    return ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z
+
+
+def compute_AOs_numerical_grad(
+    aos_data: AOs_data,
+    r_carts: npt.NDArray[np.float64],
+) -> tuple[
+    npt.NDArray[np.float64 | np.complex128],
+    npt.NDArray[np.float64 | np.complex128],
+    npt.NDArray[np.float64 | np.complex128],
+]:
+    # Gradients of AOs (numerical)
+    diff_h = 1.0e-5
+
+    # grad x
+    diff_p_x_r_carts = r_carts.copy()
+    diff_p_x_r_carts[:, 0] += diff_h
+    ao_matrix_diff_p_x = compute_AOs_api(aos_data, diff_p_x_r_carts, jax_flag=True)
+    diff_m_x_r_carts = r_carts.copy()
+    diff_m_x_r_carts[:, 0] -= diff_h
+    ao_matrix_diff_m_x = compute_AOs_api(aos_data, diff_m_x_r_carts, jax_flag=True)
+
+    # grad y
+    diff_p_y_r_carts = r_carts.copy()
+    diff_p_y_r_carts[:, 1] += diff_h
+    ao_matrix_diff_p_y = compute_AOs_api(aos_data, diff_p_y_r_carts, jax_flag=True)
+    diff_m_y_r_carts = r_carts.copy()
+    diff_m_y_r_carts[:, 1] -= diff_h
+    ao_matrix_diff_m_y = compute_AOs_api(aos_data, diff_m_y_r_carts, jax_flag=True)
+
+    # grad z
+    diff_p_z_r_carts = r_carts.copy()
+    diff_p_z_r_carts[:, 2] += diff_h
+    ao_matrix_diff_p_z = compute_AOs_api(aos_data, diff_p_z_r_carts, jax_flag=True)
+    diff_m_z_r_carts = r_carts.copy()
+    diff_m_z_r_carts[:, 2] -= diff_h
+    ao_matrix_diff_m_z = compute_AOs_api(aos_data, diff_m_z_r_carts, jax_flag=True)
+
+    ao_matrix_grad_x = (ao_matrix_diff_p_x - ao_matrix_diff_m_x) / (2.0 * diff_h)
+    ao_matrix_grad_y = (ao_matrix_diff_p_y - ao_matrix_diff_m_y) / (2.0 * diff_h)
+    ao_matrix_grad_z = (ao_matrix_diff_p_z - ao_matrix_diff_m_z) / (2.0 * diff_h)
+
+    if ao_matrix_grad_x.shape != (aos_data.num_ao, len(r_carts)):
+        logger.error(
+            f"ao_matrix_grad_x.shape = {ao_matrix_grad_x.shape} is inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
+        )
+        raise ValueError
+
+    if ao_matrix_grad_y.shape != (aos_data.num_ao, len(r_carts)):
+        logger.error(
+            f"ao_matrix_grad_y.shape = {ao_matrix_grad_y.shape} is inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
+        )
+        raise ValueError
+
+    if ao_matrix_grad_z.shape != (aos_data.num_ao, len(r_carts)):
+        logger.error(
+            f"ao_matrix_grad_z.shape = {ao_matrix_grad_z.shape} is inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
+        )
+        raise ValueError
+
+    return ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z
 
 
 def compute_AOs_api(
@@ -675,9 +933,8 @@ if __name__ == "__main__":
     stream_handler.setFormatter(handler_format)
     log.addHandler(stream_handler)
 
-    """
     num_r_cart_samples = 10
-    num_R_cart_samples = 2
+    num_R_cart_samples = 3
     r_cart_min, r_cart_max = -1.0, 1.0
     R_cart_min, R_cart_max = 0.0, 0.0
     r_carts = (r_cart_max - r_cart_min) * np.random.rand(
@@ -687,35 +944,9 @@ if __name__ == "__main__":
         num_R_cart_samples, 3
     ) + R_cart_min
 
-    num_ao = 2
-    num_ao_prim = 3
-    orbital_indices = [0, 1, 1]
-    exponents = [50.0, 20.0, 10.0]
-    coefficients = [1.0, 1.0, 1.0]
-    angular_momentums = [0, 1]
-    magnetic_quantum_numbers = [0, 0]
-
-    aos_data = AOs_data(
-        num_ao=num_ao,
-        num_ao_prim=num_ao_prim,
-        atomic_center_carts=R_carts,
-        orbital_indices=orbital_indices,
-        exponents=exponents,
-        coefficients=coefficients,
-        angular_momentums=angular_momentums,
-        magnetic_quantum_numbers=magnetic_quantum_numbers,
-    )
-
-    aos_compute_fast = compute_AOs_api(
-        aos_data=aos_data, r_carts=r_carts, jax_flag=False
-    )
-
-    # overlap matrix
-
     num_ao = 3
     num_ao_prim = 3
     orbital_indices = [0, 1, 2]
-    R_carts = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
     exponents = [3.0, 1.0, 0.5]
     coefficients = [1.0, 1.0, 1.0]
     angular_momentums = [0, 0, 0]
@@ -732,34 +963,37 @@ if __name__ == "__main__":
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    print(1 / (4 * np.pi) * np.sqrt(np.pi / (2 * 10.0)) ** 3)
-    print(1 / (4 * np.pi) * np.sqrt(np.pi / (2 * 3.0)) ** 3)
-    print(1 / (4 * np.pi) * np.sqrt(np.pi / (2 * 1.0)) ** 3)
-    compute_AOs_overlap_matrix(aos_data=aos_data)
-    """
-
-    @jit
-    def comp_S_l_m(l, m, r_cart):
-        def A(r_cart):
-            return jnp.linalg.norm(r_cart) * m * l
-
-        def B(r_cart):
-            return jnp.linalg.norm(r_cart) * m * l
-
-        # 要素ごとの論理AND演算を行うには '&' を使用
-        return jnp.where((m == 0) & (l == 0), A(r_cart), B(r_cart))
-
-    # データの定義
-    r_R = jnp.array([[0, 0, 0], [2, 2, 2], [2, 2, 2], [3, 3, 3]])
-    l_list = [0, 1, 1]
-    m_list = [0, -2, 2]
-
-    # l, mの各ペアに対してr_Rの全行に関数を適用するためのvmap
-    vmap_compute_S_l_m = vmap(
-        vmap(comp_S_l_m, in_axes=(None, None, 0)), in_axes=(0, 0, None)
+    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = (
+        compute_AOs_grad_api(aos_data=aos_data, r_carts=r_carts, debug_flag=True)
     )
-    l_jnp = jnp.array(l_list)
-    m_jnp = jnp.array(m_list)
-    S_l_m = vmap_compute_S_l_m(l_jnp, m_jnp, r_R)
 
-    print(S_l_m)
+    (
+        ao_matrix_grad_x_numerical,
+        ao_matrix_grad_y_numerical,
+        ao_matrix_grad_z_numerical,
+    ) = compute_AOs_grad_api(aos_data=aos_data, r_carts=r_carts, debug_flag=False)
+
+    np.testing.assert_array_almost_equal(
+        ao_matrix_grad_x_auto, ao_matrix_grad_x_numerical, decimal=7
+    )
+    np.testing.assert_array_almost_equal(
+        ao_matrix_grad_y_auto, ao_matrix_grad_y_numerical, decimal=7
+    )
+
+    np.testing.assert_array_almost_equal(
+        ao_matrix_grad_z_auto, ao_matrix_grad_z_numerical, decimal=7
+    )
+
+    ao_matrix_laplacian_numerical = compute_AOs_laplacian_api(
+        aos_data=aos_data, r_carts=r_carts, debug_flag=True
+    )
+
+    print(ao_matrix_laplacian_numerical)
+
+    ao_matrix_laplacian_auto = compute_AOs_laplacian_api(
+        aos_data=aos_data, r_carts=r_carts, debug_flag=False
+    )
+
+    np.testing.assert_array_almost_equal(
+        ao_matrix_laplacian_auto, ao_matrix_laplacian_numerical, decimal=5
+    )

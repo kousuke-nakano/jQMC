@@ -8,7 +8,7 @@ import numpy.typing as npt
 # set logger
 from logging import getLogger, StreamHandler, Formatter
 
-from wavefunction import Wavefunction_data, compute_laplacian
+from wavefunction import Wavefunction_data, compute_kinetic_energy
 from coulomb_potential import Coulomb_potential_data, compute_coulomb_potential
 from structure import Structure_data
 
@@ -51,7 +51,7 @@ def compute_local_energy(
         The value of local energy with the given wavefunction (float | complex)
     """
 
-    T = compute_laplacian(
+    T = compute_kinetic_energy(
         wavefunction_data=hamiltonian_data.wavefunction_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,

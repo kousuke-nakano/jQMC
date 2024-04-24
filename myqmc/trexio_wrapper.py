@@ -11,15 +11,15 @@ import trexio
 
 # import myQMC
 from structure import Structure_data
-from atomic_orbital import AOs_data, compute_AOs_overlap_matrix
-from molecular_orbital import MOs_data, compute_MOs_api, compute_MOs_overlap_matrix
+from atomic_orbital import AOs_data
+from molecular_orbital import MOs_data, compute_MOs_api
 from coulomb_potential import (
     Coulomb_potential_data,
     compute_coulomb_potential,
     compute_bare_coulomb_potential,
 )
 from determinant import Geminal_data
-from wavefunction import Wavefunction_data, compute_laplacian
+from wavefunction import Wavefunction_data, compute_kinetic_energy
 from hamiltonians import Hamiltonian_data
 
 logger = getLogger("myqmc").getChild(__name__)
@@ -498,84 +498,3 @@ def convert_from_atomic_labels_to_atomic_numbers(labels_r: list[str]) -> list[in
         else:
             raise ValueError(f"No atomic number found for the label '{label}'")
     return atomic_numbers
-
-
-if __name__ == "__main__":
-    logger = getLogger("myqmc")
-    logger.setLevel("DEBUG")
-    stream_handler = StreamHandler()
-    stream_handler.setLevel("DEBUG")
-    handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
-    stream_handler.setFormatter(handler_format)
-    logger.addHandler(stream_handler)
-
-    np.set_printoptions(threshold=1.0e8)
-
-    # water
-    (
-        structure_data,
-        aos_data,
-        mos_data_up,
-        mos_data_dn,
-        geminal_data,
-        coulomb_potential_data,
-    ) = read_trexio_file(trexio_file="water_trexio.hdf5")
-
-    structure_data.write_to_file("water_trexio.xyz")
-
-    # print(structure_data)
-    # print(aos_data)
-    # print(mos_data)
-    print(coulomb_potential_data)
-
-    """
-    S_ao = compute_AOs_overlap_matrix(aos_data=aos_data)
-    # print(S_ao)
-    print(np.diag(S_ao))
-
-    S_mo_up = compute_MOs_overlap_matrix(mos_data=mos_data_up)
-    # print(S_mo_up)
-    print(np.diag(S_mo_up))
-    """
-
-    num_r_cart_samples = 4
-    r_cart_min, r_cart_max = -2.0, 2.0
-    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(
-        num_r_cart_samples, 3
-    ) + r_cart_min
-    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(
-        num_r_cart_samples, 3
-    ) + r_cart_min
-
-    wavefunction_data = Wavefunction_data(geminal_data=geminal_data)
-    V_bare = compute_bare_coulomb_potential(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
-    )
-
-    V = compute_coulomb_potential(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
-        wavefunction_data=wavefunction_data,
-    )
-
-    L = compute_laplacian(
-        wavefunction_data=wavefunction_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
-    )
-
-    print(L + V)
-
-    hamiltonian_data = Hamiltonian_data(
-        structure_data=structure_data,
-        coulomb_potential_data=coulomb_potential_data,
-        wavefunction_data=wavefunction_data,
-    )
-
-    from vmc import MCMC
-
-    mcmc = MCMC(hamiltonian_data=hamiltonian_data)
-    mcmc.run(num_mcmc_steps=100)

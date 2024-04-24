@@ -14,8 +14,18 @@ from jax import jacrev
 from logging import getLogger, StreamHandler, Formatter
 
 # myqmc module
-from atomic_orbital import AOs_data, compute_AOs_api
-from molecular_orbital import MOs_data, compute_MOs_api
+from atomic_orbital import (
+    AOs_data,
+    compute_AOs_api,
+    compute_AOs_grad_api,
+    compute_AOs_laplacian_api,
+)
+from molecular_orbital import (
+    MOs_data,
+    compute_MOs_api,
+    compute_MOs_grad_api,
+    compute_MOs_laplacian_api,
+)
 
 # set logger
 logger = getLogger("myqmc").getChild(__name__)
@@ -56,6 +66,8 @@ class Geminal_data:
             )
             raise ValueError
 
+        logger.info(f"compute_orb={self.compute_orb}")
+
     @property
     def orb_num_up(self) -> int:
         if self.compute_orb == compute_AOs_api:
@@ -74,8 +86,26 @@ class Geminal_data:
         else:
             raise NotImplementedError
 
+    @property
+    def compute_orb_grad_api(self) -> Callable[..., npt.NDArray[np.float64]]:
+        if self.compute_orb == compute_AOs_api:
+            return compute_AOs_grad_api
+        elif self.compute_orb == compute_MOs_api:
+            return compute_MOs_grad_api
+        else:
+            raise NotImplementedError
 
-def compute_det_ao_geminal_all_elements(
+    @property
+    def compute_orb_laplacian_api(self) -> Callable[..., npt.NDArray[np.float64]]:
+        if self.compute_orb == compute_AOs_api:
+            return compute_AOs_laplacian_api
+        elif self.compute_orb == compute_MOs_api:
+            return compute_MOs_laplacian_api
+        else:
+            raise NotImplementedError
+
+
+def compute_det_geminal_all_elements(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
@@ -128,19 +158,20 @@ def compute_geminal_all_elements(
             )
             raise ValueError
     else:
-        logger.info("There is no unpaired electrons.")
+        pass
+        # logger.debug("There is no unpaired electrons.")
 
     lambda_matrix_paired, lambda_matrix_unpaired = np.hsplit(
         geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
     )
 
-    logger.debug("computing orb_matrix_up and orb_matrix_dn")
-    logger.debug(f"r_up_carts.shape = {r_up_carts.shape} / type = {type(r_up_carts)}")
-    logger.debug(f"r_dn_carts.shape = {r_dn_carts.shape} / type = {type(r_dn_carts)}")
+    # logger.debug("computing orb_matrix_up and orb_matrix_dn")
+    # logger.debug(f"r_up_carts.shape = {r_up_carts.shape} / type = {type(r_up_carts)}")
+    # logger.debug(f"r_dn_carts.shape = {r_dn_carts.shape} / type = {type(r_dn_carts)}")
     orb_matrix_up = geminal_data.compute_orb(geminal_data.orb_data_up_spin, r_up_carts)
-    logger.debug(f"orb_matrix_up.shape = {orb_matrix_up.shape} !!")
     orb_matrix_dn = geminal_data.compute_orb(geminal_data.orb_data_dn_spin, r_dn_carts)
-    logger.debug(f"orb_matrix_dn.shape = {orb_matrix_dn.shape} !!")
+    # logger.debug(f"orb_matrix_up.shape = {orb_matrix_up.shape} !!")
+    # logger.debug(f"orb_matrix_dn.shape = {orb_matrix_dn.shape} !!")
 
     if orb_matrix_up.shape != (geminal_data.orb_num_up, len(r_up_carts)):
         logger.error(
@@ -161,7 +192,7 @@ def compute_geminal_all_elements(
     geminal_unpaired = np.dot(orb_matrix_up.T, lambda_matrix_unpaired)
     geminal = np.hstack([geminal_paired, geminal_unpaired])
 
-    logger.debug(f"geminal shape = {geminal.shape} !!")
+    # logger.debug(f"geminal shape = {geminal.shape} !!")
 
     if geminal.shape != (len(r_up_carts), len(r_up_carts)):
         logger.error(
@@ -172,11 +203,16 @@ def compute_geminal_all_elements(
     return geminal
 
 
-def compute_laplacians_geminal(
+def compute_grads_and_laplacian_ln_Det(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
-) -> float | complex:
+    debug_flag: bool = False,
+) -> tuple[
+    npt.NDArray[np.float64 | np.complex128],
+    npt.NDArray[np.float64 | np.complex128],
+    float | complex,
+]:
     """
     The method is for computing the sum of laplacians of ln WF at (r_up_carts, r_dn_carts).
 
@@ -184,9 +220,9 @@ def compute_laplacians_geminal(
         geminal_data (Geminal_data): an instance of Geminal_data class
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
-
+        debug_flag: if True, numerical derivatives are computed for debuging purpose
     Returns:
-        the sum of laplacians of ln WF at (r_up_carts, r_dn_carts).
+        the gradients(x,y,z) of ln Det and the sum of laplacians of ln Det at (r_up_carts, r_dn_carts).
     """
 
     if (
@@ -210,267 +246,377 @@ def compute_laplacians_geminal(
             )
             raise ValueError
     else:
-        logger.info("There is no unpaired electrons.")
+        pass
+        # logger.debug("There is no unpaired electrons.")
 
-    lambda_matrix_paired, lambda_matrix_unpaired = np.hsplit(
-        geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
-    )
+    if debug_flag:
 
-    # AOs
-    ao_matrix_up = geminal_data.compute_orb(geminal_data.orb_data_up_spin, r_up_carts)
-    ao_matrix_dn = geminal_data.compute_orb(geminal_data.orb_data_dn_spin, r_dn_carts)
+        diff_h = 1.0e-6
 
-    if ao_matrix_up.shape != (geminal_data.orb_num_up, len(r_up_carts)):
-        logger.error(
-            f"ao_matrix_up.shape = {ao_matrix_up.shape} is inconsistent with the expected one = {(geminal_data.orb_num_up, len(r_up_carts))}"
+        det_geminal = compute_det_geminal_all_elements(
+            geminal_data=geminal_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
         )
-        raise ValueError
 
-    if ao_matrix_dn.shape != (geminal_data.orb_num_dn, len(r_dn_carts)):
-        logger.error(
-            f"ao_matrix_dn.shape = {ao_matrix_dn.shape} is inconsistent with the expected one = {(geminal_data.orb_num_dn, len(r_dn_carts))}"
+        sum_laplacian_ln_D = 0.0
+
+        # grad up
+        grad_x_up = []
+        grad_y_up = []
+        grad_z_up = []
+        for r_i, _ in enumerate(r_up_carts):
+            diff_p_x_r_up_carts = r_up_carts.copy()
+            diff_p_y_r_up_carts = r_up_carts.copy()
+            diff_p_z_r_up_carts = r_up_carts.copy()
+            diff_p_x_r_up_carts[r_i][0] += diff_h
+            diff_p_y_r_up_carts[r_i][1] += diff_h
+            diff_p_z_r_up_carts[r_i][2] += diff_h
+
+            det_geminal_p_x_up = compute_det_geminal_all_elements(
+                geminal_data=geminal_data,
+                r_up_carts=diff_p_x_r_up_carts,
+                r_dn_carts=r_dn_carts,
+            )
+            det_geminal_p_y_up = compute_det_geminal_all_elements(
+                geminal_data=geminal_data,
+                r_up_carts=diff_p_y_r_up_carts,
+                r_dn_carts=r_dn_carts,
+            )
+            det_geminal_p_z_up = compute_det_geminal_all_elements(
+                geminal_data=geminal_data,
+                r_up_carts=diff_p_z_r_up_carts,
+                r_dn_carts=r_dn_carts,
+            )
+
+            diff_m_x_r_up_carts = r_up_carts.copy()
+            diff_m_y_r_up_carts = r_up_carts.copy()
+            diff_m_z_r_up_carts = r_up_carts.copy()
+            diff_m_x_r_up_carts[r_i][0] -= diff_h
+            diff_m_y_r_up_carts[r_i][1] -= diff_h
+            diff_m_z_r_up_carts[r_i][2] -= diff_h
+
+            det_geminal_m_x_up = compute_det_geminal_all_elements(
+                geminal_data=geminal_data,
+                r_up_carts=diff_m_x_r_up_carts,
+                r_dn_carts=r_dn_carts,
+            )
+            det_geminal_m_y_up = compute_det_geminal_all_elements(
+                geminal_data=geminal_data,
+                r_up_carts=diff_m_y_r_up_carts,
+                r_dn_carts=r_dn_carts,
+            )
+            det_geminal_m_z_up = compute_det_geminal_all_elements(
+                geminal_data=geminal_data,
+                r_up_carts=diff_m_z_r_up_carts,
+                r_dn_carts=r_dn_carts,
+            )
+
+            grad_x_up.append(
+                (
+                    np.log(np.abs(det_geminal_p_x_up))
+                    - np.log(np.abs(det_geminal_m_x_up))
+                )
+                / (2.0 * diff_h)
+            )
+            grad_y_up.append(
+                (
+                    np.log(np.abs(det_geminal_p_y_up))
+                    - np.log(np.abs(det_geminal_m_y_up))
+                )
+                / (2.0 * diff_h)
+            )
+            grad_z_up.append(
+                (
+                    np.log(np.abs(det_geminal_p_z_up))
+                    - np.log(np.abs(det_geminal_m_z_up))
+                )
+                / (2.0 * diff_h)
+            )
+
+            gradgrad_x_up = (
+                np.log(np.abs(det_geminal_p_x_up))
+                + np.log(np.abs(det_geminal_m_x_up))
+                - 2.0 * np.log(np.abs(det_geminal))
+            ) / (diff_h**2)
+
+            gradgrad_y_up = (
+                np.log(np.abs(det_geminal_p_y_up))
+                + np.log(np.abs(det_geminal_m_y_up))
+                - 2.0 * np.log(np.abs(det_geminal))
+            ) / (diff_h**2)
+
+            gradgrad_z_up = (
+                np.log(np.abs(det_geminal_p_z_up))
+                + np.log(np.abs(det_geminal_m_z_up))
+                - 2.0 * np.log(np.abs(det_geminal))
+            ) / (diff_h**2)
+
+            sum_laplacian_ln_D += gradgrad_x_up + gradgrad_y_up + gradgrad_z_up
+
+        # grad dn
+        grad_x_dn = []
+        grad_y_dn = []
+        grad_z_dn = []
+        for r_i, _ in enumerate(r_dn_carts):
+            diff_p_x_r_dn_carts = r_dn_carts.copy()
+            diff_p_y_r_dn_carts = r_dn_carts.copy()
+            diff_p_z_r_dn_carts = r_dn_carts.copy()
+            diff_p_x_r_dn_carts[r_i][0] += diff_h
+            diff_p_y_r_dn_carts[r_i][1] += diff_h
+            diff_p_z_r_dn_carts[r_i][2] += diff_h
+
+            det_geminal_p_x_dn = compute_det_geminal_all_elements(
+                geminal_data=geminal_data,
+                r_up_carts=r_up_carts,
+                r_dn_carts=diff_p_x_r_dn_carts,
+            )
+            det_geminal_p_y_dn = compute_det_geminal_all_elements(
+                geminal_data=geminal_data,
+                r_up_carts=r_up_carts,
+                r_dn_carts=diff_p_y_r_dn_carts,
+            )
+            det_geminal_p_z_dn = compute_det_geminal_all_elements(
+                geminal_data=geminal_data,
+                r_up_carts=r_up_carts,
+                r_dn_carts=diff_p_z_r_dn_carts,
+            )
+
+            diff_m_x_r_dn_carts = r_dn_carts.copy()
+            diff_m_y_r_dn_carts = r_dn_carts.copy()
+            diff_m_z_r_dn_carts = r_dn_carts.copy()
+            diff_m_x_r_dn_carts[r_i][0] -= diff_h
+            diff_m_y_r_dn_carts[r_i][1] -= diff_h
+            diff_m_z_r_dn_carts[r_i][2] -= diff_h
+
+            det_geminal_m_x_dn = compute_det_geminal_all_elements(
+                geminal_data=geminal_data,
+                r_up_carts=r_up_carts,
+                r_dn_carts=diff_m_x_r_dn_carts,
+            )
+            det_geminal_m_y_dn = compute_det_geminal_all_elements(
+                geminal_data=geminal_data,
+                r_up_carts=r_up_carts,
+                r_dn_carts=diff_m_y_r_dn_carts,
+            )
+            det_geminal_m_z_dn = compute_det_geminal_all_elements(
+                geminal_data=geminal_data,
+                r_up_carts=r_up_carts,
+                r_dn_carts=diff_m_z_r_dn_carts,
+            )
+
+            grad_x_dn.append(
+                (
+                    np.log(np.abs(det_geminal_p_x_dn))
+                    - np.log(np.abs(det_geminal_m_x_dn))
+                )
+                / (2.0 * diff_h)
+            )
+            grad_y_dn.append(
+                (
+                    np.log(np.abs(det_geminal_p_y_dn))
+                    - np.log(np.abs(det_geminal_m_y_dn))
+                )
+                / (2.0 * diff_h)
+            )
+            grad_z_dn.append(
+                (
+                    np.log(np.abs(det_geminal_p_z_dn))
+                    - np.log(np.abs(det_geminal_m_z_dn))
+                )
+                / (2.0 * diff_h)
+            )
+
+            gradgrad_x_dn = (
+                np.log(np.abs(det_geminal_p_x_dn))
+                + np.log(np.abs(det_geminal_m_x_dn))
+                - 2.0 * np.log(np.abs(det_geminal))
+            ) / (diff_h**2)
+
+            gradgrad_y_dn = (
+                np.log(np.abs(det_geminal_p_y_dn))
+                + np.log(np.abs(det_geminal_m_y_dn))
+                - 2.0 * np.log(np.abs(det_geminal))
+            ) / (diff_h**2)
+
+            gradgrad_z_dn = (
+                np.log(np.abs(det_geminal_p_z_dn))
+                + np.log(np.abs(det_geminal_m_z_dn))
+                - 2.0 * np.log(np.abs(det_geminal))
+            ) / (diff_h**2)
+
+            sum_laplacian_ln_D += gradgrad_x_dn + gradgrad_y_dn + gradgrad_z_dn
+
+        grad_ln_D_up = np.array([grad_x_up, grad_y_up, grad_z_up]).T
+        grad_ln_D_dn = np.array([grad_x_dn, grad_y_dn, grad_z_dn]).T
+        sum_laplacian_ln_D = sum_laplacian_ln_D
+
+    else:
+        lambda_matrix_paired, lambda_matrix_unpaired = np.hsplit(
+            geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
         )
-        raise ValueError
 
-    # Gradientss of AOs (up-spin)
-    ao_matrix_up_jacrev = jacrev(geminal_data.compute_orb, argnums=1)(
-        geminal_data.orb_data_up_spin, r_up_carts, jax_flag=True
-    )
-
-    ao_matrix_grad_up_x_ = ao_matrix_up_jacrev[:, :, :, 0]
-    ao_matrix_grad_up_y_ = ao_matrix_up_jacrev[:, :, :, 1]
-    ao_matrix_grad_up_z_ = ao_matrix_up_jacrev[:, :, :, 2]
-    ao_matrix_up_grad_x = np.sum(ao_matrix_grad_up_x_, axis=2)
-    ao_matrix_up_grad_y = np.sum(ao_matrix_grad_up_y_, axis=2)
-    ao_matrix_up_grad_z = np.sum(ao_matrix_grad_up_z_, axis=2)
-
-    if ao_matrix_up_grad_x.shape != (geminal_data.orb_num_up, len(r_up_carts)):
-        logger.error(
-            f"aao_matrix_up_grad_x.shape = {ao_matrix_up_grad_x.shape} is inconsistent with the expected one = {(geminal_data.orb_num_up, len(r_up_carts))}"
+        # AOs/MOs
+        ao_matrix_up = geminal_data.compute_orb(
+            geminal_data.orb_data_up_spin, r_up_carts
         )
-        raise ValueError
-
-    if ao_matrix_up_grad_y.shape != (geminal_data.orb_num_up, len(r_up_carts)):
-        logger.error(
-            f"ao_matrix_up_grad_y.shape = {ao_matrix_up_grad_y.shape} is inconsistent with the expected one = {(geminal_data.orb_num_up, len(r_up_carts))}"
+        ao_matrix_dn = geminal_data.compute_orb(
+            geminal_data.orb_data_dn_spin, r_dn_carts
         )
-        raise ValueError
 
-    if ao_matrix_up_grad_z.shape != (geminal_data.orb_num_up, len(r_up_carts)):
-        logger.error(
-            f"ao_matrix_up_grad_z.shape = {ao_matrix_up_grad_y.shape} is inconsistent with the expected one = {(geminal_data.orb_num_up, len(r_up_carts))}"
+        ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z = (
+            geminal_data.compute_orb_grad_api(geminal_data.orb_data_up_spin, r_up_carts)
         )
-        raise ValueError
-
-    # Gradientss of AOs (dn-spin)
-    ao_matrix_dn_jacrev = jacrev(geminal_data.compute_orb, argnums=1)(
-        geminal_data.orb_data_dn_spin, r_dn_carts, jax_flag=True
-    )
-
-    ao_matrix_grad_dn_x_ = ao_matrix_dn_jacrev[:, :, :, 0]
-    ao_matrix_grad_dn_y_ = ao_matrix_dn_jacrev[:, :, :, 1]
-    ao_matrix_grad_dn_z_ = ao_matrix_dn_jacrev[:, :, :, 2]
-    ao_matrix_dn_grad_x = np.sum(ao_matrix_grad_dn_x_, axis=2)
-    ao_matrix_dn_grad_y = np.sum(ao_matrix_grad_dn_y_, axis=2)
-    ao_matrix_dn_grad_z = np.sum(ao_matrix_grad_dn_z_, axis=2)
-
-    if ao_matrix_dn_grad_x.shape != (geminal_data.orb_num_dn, len(r_dn_carts)):
-        logger.error(
-            f"ao_matrix_dn_grad_x.shape = {ao_matrix_dn_grad_x.shape} is inconsistent with the expected one = {(geminal_data.orb_num_dn, len(r_dn_carts))}"
+        ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z = (
+            geminal_data.compute_orb_grad_api(geminal_data.orb_data_dn_spin, r_dn_carts)
         )
-        raise ValueError
-
-    if ao_matrix_dn_grad_y.shape != (geminal_data.orb_num_dn, len(r_dn_carts)):
-        logger.error(
-            f"ao_matrix_dn_grad_y.shape = {ao_matrix_dn_grad_y.shape} is inconsistent with the expected one = {(geminal_data.orb_num_dn, len(r_dn_carts))}"
+        ao_matrix_laplacian_up = geminal_data.compute_orb_laplacian_api(
+            geminal_data.orb_data_up_spin, r_up_carts
         )
-        raise ValueError
-
-    if ao_matrix_dn_grad_z.shape != (geminal_data.orb_num_dn, len(r_dn_carts)):
-        logger.error(
-            f"ao_matrix_dn_grad_z.shape = {ao_matrix_dn_grad_y.shape} is inconsistent with the expected one = {(geminal_data.orb_num_dn, len(r_dn_carts))}"
+        ao_matrix_laplacian_dn = geminal_data.compute_orb_laplacian_api(
+            geminal_data.orb_data_dn_spin, r_dn_carts
         )
-        raise ValueError
 
-    # Laplacians of AOs (up-spin)
-    ao_matrix_up_hessian = jacrev(geminal_data.compute_orb, argnums=1)(
-        geminal_data.orb_data_up_spin, r_up_carts, jax_flag=True
-    )
-
-    ao_matrix_hessian_up_x2_ = ao_matrix_up_hessian[:, :, :, 0]
-    ao_matrix_hessian_up_y2_ = ao_matrix_up_hessian[:, :, :, 1]
-    ao_matrix_hessian_up_z2_ = ao_matrix_up_hessian[:, :, :, 2]
-    ao_matrix_hessian_up_x2 = np.sum(ao_matrix_hessian_up_x2_, axis=2)
-    ao_matrix_hessian_up_y2 = np.sum(ao_matrix_hessian_up_y2_, axis=2)
-    ao_matrix_hessian_up_z2 = np.sum(ao_matrix_hessian_up_z2_, axis=2)
-
-    ao_matrix_laplacian_up = (
-        ao_matrix_hessian_up_x2 + ao_matrix_hessian_up_y2 + ao_matrix_hessian_up_z2
-    )
-
-    if ao_matrix_laplacian_up.shape != (geminal_data.orb_num_up, len(r_up_carts)):
-        logger.error(
-            f"ao_matrix_hessian_up.shape = {ao_matrix_laplacian_up.shape} is inconsistent with the expected one = {(geminal_data.orb_num_up, len(r_up_carts))}"
+        # compute Laplacians of Geminal
+        geminal_paired = np.dot(
+            ao_matrix_up.T, np.dot(lambda_matrix_paired, ao_matrix_dn)
         )
-        raise ValueError
+        geminal_unpaired = np.dot(ao_matrix_up.T, lambda_matrix_unpaired)
+        geminal = np.hstack([geminal_paired, geminal_unpaired])
 
-    # Laplacians of AOs (dn-spin)
-    ao_matrix_dn_hessian = jacrev(geminal_data.compute_orb, argnums=1)(
-        geminal_data.orb_data_dn_spin, r_dn_carts, jax_flag=True
-    )
-
-    ao_matrix_hessian_dn_x2_ = ao_matrix_dn_hessian[:, :, :, 0]
-    ao_matrix_hessian_dn_y2_ = ao_matrix_dn_hessian[:, :, :, 1]
-    ao_matrix_hessian_dn_z2_ = ao_matrix_dn_hessian[:, :, :, 2]
-    ao_matrix_hessian_dn_x2 = np.sum(ao_matrix_hessian_dn_x2_, axis=2)
-    ao_matrix_hessian_dn_y2 = np.sum(ao_matrix_hessian_dn_y2_, axis=2)
-    ao_matrix_hessian_dn_z2 = np.sum(ao_matrix_hessian_dn_z2_, axis=2)
-
-    ao_matrix_laplacian_dn = (
-        ao_matrix_hessian_dn_x2 + ao_matrix_hessian_dn_y2 + ao_matrix_hessian_dn_z2
-    )
-
-    if ao_matrix_laplacian_dn.shape != (geminal_data.orb_num_dn, len(r_dn_carts)):
-        logger.error(
-            f"ao_matrix_hessian_dn.shape = {ao_matrix_laplacian_dn.shape} is inconsistent with the expected one = {(geminal_data.orb_num_dn, len(r_dn_carts))}"
+        # up electron
+        geminal_grad_up_x_paired = np.dot(
+            ao_matrix_up_grad_x.T, np.dot(lambda_matrix_paired, ao_matrix_dn)
         )
-        raise ValueError
-
-    # compute Laplacians of Geminal
-    geminal_paired = np.dot(ao_matrix_up.T, np.dot(lambda_matrix_paired, ao_matrix_dn))
-    geminal_unpaired = np.dot(ao_matrix_up.T, lambda_matrix_unpaired)
-    geminal = np.hstack([geminal_paired, geminal_unpaired])
-
-    # up electron
-    geminal_grad_up_x_paired = np.dot(
-        ao_matrix_up_grad_x.T, np.dot(lambda_matrix_paired, ao_matrix_dn)
-    )
-    geminal_grad_up_x_unpaired = np.dot(ao_matrix_up_grad_x.T, lambda_matrix_unpaired)
-    geminal_grad_up_x = np.hstack(
-        [geminal_grad_up_x_paired, geminal_grad_up_x_unpaired]
-    )
-
-    geminal_grad_up_y_paired = np.dot(
-        ao_matrix_up_grad_y.T, np.dot(lambda_matrix_paired, ao_matrix_dn)
-    )
-    geminal_grad_up_y_unpaired = np.dot(ao_matrix_up_grad_y.T, lambda_matrix_unpaired)
-    geminal_grad_up_y = np.hstack(
-        [geminal_grad_up_y_paired, geminal_grad_up_y_unpaired]
-    )
-
-    geminal_grad_up_z_paired = np.dot(
-        ao_matrix_up_grad_y.T, np.dot(lambda_matrix_paired, ao_matrix_dn)
-    )
-    geminal_grad_up_z_unpaired = np.dot(ao_matrix_up_grad_z.T, lambda_matrix_unpaired)
-    geminal_grad_up_z = np.hstack(
-        [geminal_grad_up_z_paired, geminal_grad_up_z_unpaired]
-    )
-
-    geminal_laplacian_up_paired = np.dot(
-        ao_matrix_laplacian_up.T, np.dot(lambda_matrix_paired, ao_matrix_dn)
-    )
-    geminal_laplacian_up_unpaired = np.dot(
-        ao_matrix_laplacian_up.T, lambda_matrix_unpaired
-    )
-    geminal_laplacian_up = np.hstack(
-        [geminal_laplacian_up_paired, geminal_laplacian_up_unpaired]
-    )
-
-    # dn electron
-    geminal_grad_dn_x_paired = np.dot(
-        ao_matrix_up.T, np.dot(lambda_matrix_paired, ao_matrix_dn_grad_x)
-    )
-    geminal_grad_dn_x_unpaired = np.zeros(
-        [
-            geminal_data.num_electron_up,
-            geminal_data.num_electron_up - geminal_data.num_electron_dn,
-        ]
-    )
-    geminal_grad_dn_x = np.hstack(
-        [geminal_grad_dn_x_paired, geminal_grad_dn_x_unpaired]
-    )
-
-    geminal_grad_dn_y_paired = np.dot(
-        ao_matrix_up.T, np.dot(lambda_matrix_paired, ao_matrix_dn_grad_y)
-    )
-    geminal_grad_dn_y_unpaired = np.zeros(
-        [
-            geminal_data.num_electron_up,
-            geminal_data.num_electron_up - geminal_data.num_electron_dn,
-        ]
-    )
-    geminal_grad_dn_y = np.hstack(
-        [geminal_grad_dn_y_paired, geminal_grad_dn_y_unpaired]
-    )
-
-    geminal_grad_dn_z_paired = np.dot(
-        ao_matrix_up.T, np.dot(lambda_matrix_paired, ao_matrix_dn_grad_z)
-    )
-    geminal_grad_dn_z_unpaired = np.zeros(
-        [
-            geminal_data.num_electron_up,
-            geminal_data.num_electron_up - geminal_data.num_electron_dn,
-        ]
-    )
-    geminal_grad_dn_z = np.hstack(
-        [geminal_grad_dn_z_paired, geminal_grad_dn_z_unpaired]
-    )
-
-    geminal_laplacian_dn_paired = np.dot(
-        ao_matrix_up.T, np.dot(lambda_matrix_paired, ao_matrix_laplacian_dn)
-    )
-    geminal_laplacian_dn_unpaired = np.zeros(
-        [
-            geminal_data.num_electron_up,
-            geminal_data.num_electron_up - geminal_data.num_electron_dn,
-        ]
-    )
-    geminal_laplacian_dn = np.hstack(
-        [geminal_laplacian_dn_paired, geminal_laplacian_dn_unpaired]
-    )
-
-    logger.info(f"The condition number of geminal matrix is {np.linalg.cond(geminal)}")
-    geminal_inverse = np.linalg.inv(geminal)
-
-    vec_W_D_up_x = np.diag(np.dot(geminal_grad_up_x, geminal_inverse))
-    vec_W_D_up_y = np.diag(np.dot(geminal_grad_up_y, geminal_inverse))
-    vec_W_D_up_z = np.diag(np.dot(geminal_grad_up_z, geminal_inverse))
-    vec_W_D_dn_x = np.diag(np.dot(geminal_inverse, geminal_grad_dn_x))
-    vec_W_D_dn_y = np.diag(np.dot(geminal_inverse, geminal_grad_dn_y))
-    vec_W_D_dn_z = np.diag(np.dot(geminal_inverse, geminal_grad_dn_z))
-
-    W_D_up = np.array([vec_W_D_up_x, vec_W_D_up_y, vec_W_D_up_z]).T
-    W_D_dn = np.array([vec_W_D_dn_x, vec_W_D_dn_y, vec_W_D_dn_z]).T
-
-    logger.info(W_D_up)
-    logger.info(W_D_dn)
-
-    if W_D_up.shape != (geminal_data.num_electron_up, 3):
-        logger.error(
-            f"W_D_up.shape = {W_D_up.shape} is inconsistent with the expected one = {(geminal_data.num_electron_up, 3)}"
+        geminal_grad_up_x_unpaired = np.dot(
+            ao_matrix_up_grad_x.T, lambda_matrix_unpaired
         )
-        raise ValueError
-
-    if W_D_dn.shape != (geminal_data.num_electron_dn, 3):
-        logger.error(
-            f"W_D_up.shape = {W_D_up.shape} is inconsistent with the expected one = {(geminal_data.num_electron_dn, 3)}"
+        geminal_grad_up_x = np.hstack(
+            [geminal_grad_up_x_paired, geminal_grad_up_x_unpaired]
         )
-        raise ValueError
 
-    T_D = -(
-        -((np.trace(np.dot(geminal_grad_up_x, geminal_inverse))) ** 2)
-        - (np.trace(np.dot(geminal_grad_up_y, geminal_inverse))) ** 2
-        - (np.trace(np.dot(geminal_grad_up_z, geminal_inverse))) ** 2
-        - (np.trace(np.dot(geminal_inverse, geminal_grad_dn_x))) ** 2
-        - (np.trace(np.dot(geminal_inverse, geminal_grad_dn_y))) ** 2
-        - (np.trace(np.dot(geminal_inverse, geminal_grad_dn_z))) ** 2
-        + (np.trace(np.dot(geminal_laplacian_up, geminal_inverse))) ** 2
-        + (np.trace(np.dot(geminal_inverse, geminal_laplacian_dn))) ** 2
-    )
+        geminal_grad_up_y_paired = np.dot(
+            ao_matrix_up_grad_y.T, np.dot(lambda_matrix_paired, ao_matrix_dn)
+        )
+        geminal_grad_up_y_unpaired = np.dot(
+            ao_matrix_up_grad_y.T, lambda_matrix_unpaired
+        )
+        geminal_grad_up_y = np.hstack(
+            [geminal_grad_up_y_paired, geminal_grad_up_y_unpaired]
+        )
 
-    logger.info(T_D)
+        geminal_grad_up_z_paired = np.dot(
+            ao_matrix_up_grad_z.T, np.dot(lambda_matrix_paired, ao_matrix_dn)
+        )
+        geminal_grad_up_z_unpaired = np.dot(
+            ao_matrix_up_grad_z.T, lambda_matrix_unpaired
+        )
+        geminal_grad_up_z = np.hstack(
+            [geminal_grad_up_z_paired, geminal_grad_up_z_unpaired]
+        )
 
-    return W_D_up, W_D_dn, T_D
+        geminal_laplacian_up_paired = np.dot(
+            ao_matrix_laplacian_up.T, np.dot(lambda_matrix_paired, ao_matrix_dn)
+        )
+        geminal_laplacian_up_unpaired = np.dot(
+            ao_matrix_laplacian_up.T, lambda_matrix_unpaired
+        )
+        geminal_laplacian_up = np.hstack(
+            [geminal_laplacian_up_paired, geminal_laplacian_up_unpaired]
+        )
+
+        # dn electron
+        geminal_grad_dn_x_paired = np.dot(
+            ao_matrix_up.T, np.dot(lambda_matrix_paired, ao_matrix_dn_grad_x)
+        )
+        geminal_grad_dn_x_unpaired = np.zeros(
+            [
+                geminal_data.num_electron_up,
+                geminal_data.num_electron_up - geminal_data.num_electron_dn,
+            ]
+        )
+        geminal_grad_dn_x = np.hstack(
+            [geminal_grad_dn_x_paired, geminal_grad_dn_x_unpaired]
+        )
+
+        geminal_grad_dn_y_paired = np.dot(
+            ao_matrix_up.T, np.dot(lambda_matrix_paired, ao_matrix_dn_grad_y)
+        )
+        geminal_grad_dn_y_unpaired = np.zeros(
+            [
+                geminal_data.num_electron_up,
+                geminal_data.num_electron_up - geminal_data.num_electron_dn,
+            ]
+        )
+        geminal_grad_dn_y = np.hstack(
+            [geminal_grad_dn_y_paired, geminal_grad_dn_y_unpaired]
+        )
+
+        geminal_grad_dn_z_paired = np.dot(
+            ao_matrix_up.T, np.dot(lambda_matrix_paired, ao_matrix_dn_grad_z)
+        )
+        geminal_grad_dn_z_unpaired = np.zeros(
+            [
+                geminal_data.num_electron_up,
+                geminal_data.num_electron_up - geminal_data.num_electron_dn,
+            ]
+        )
+        geminal_grad_dn_z = np.hstack(
+            [geminal_grad_dn_z_paired, geminal_grad_dn_z_unpaired]
+        )
+
+        geminal_laplacian_dn_paired = np.dot(
+            ao_matrix_up.T, np.dot(lambda_matrix_paired, ao_matrix_laplacian_dn)
+        )
+        geminal_laplacian_dn_unpaired = np.zeros(
+            [
+                geminal_data.num_electron_up,
+                geminal_data.num_electron_up - geminal_data.num_electron_dn,
+            ]
+        )
+        geminal_laplacian_dn = np.hstack(
+            [geminal_laplacian_dn_paired, geminal_laplacian_dn_unpaired]
+        )
+
+        logger.info(
+            f"The condition number of geminal matrix is {np.linalg.cond(geminal)}"
+        )
+        geminal_inverse = np.linalg.inv(geminal)
+
+        grad_ln_D_up_x = np.diag(np.dot(geminal_grad_up_x, geminal_inverse))
+        grad_ln_D_up_y = np.diag(np.dot(geminal_grad_up_y, geminal_inverse))
+        grad_ln_D_up_z = np.diag(np.dot(geminal_grad_up_z, geminal_inverse))
+        grad_ln_D_dn_x = np.diag(np.dot(geminal_inverse, geminal_grad_dn_x))
+        grad_ln_D_dn_y = np.diag(np.dot(geminal_inverse, geminal_grad_dn_y))
+        grad_ln_D_dn_z = np.diag(np.dot(geminal_inverse, geminal_grad_dn_z))
+
+        grad_ln_D_up = np.array([grad_ln_D_up_x, grad_ln_D_up_y, grad_ln_D_up_z]).T
+        grad_ln_D_dn = np.array([grad_ln_D_dn_x, grad_ln_D_dn_y, grad_ln_D_dn_z]).T
+
+        if grad_ln_D_up.shape != (geminal_data.num_electron_up, 3):
+            logger.error(
+                f"grad_ln_D_up.shape = {grad_ln_D_up.shape} is inconsistent with the expected one = {(geminal_data.num_electron_up, 3)}"
+            )
+            raise ValueError
+
+        if grad_ln_D_dn.shape != (geminal_data.num_electron_dn, 3):
+            logger.error(
+                f"grad_ln_D_up.shape = {grad_ln_D_up.shape} is inconsistent with the expected one = {(geminal_data.num_electron_dn, 3)}"
+            )
+            raise ValueError
+
+        sum_laplacian_ln_D = (
+            -((np.trace(np.dot(geminal_grad_up_x, geminal_inverse))) ** 2)
+            - (np.trace(np.dot(geminal_grad_up_y, geminal_inverse))) ** 2
+            - (np.trace(np.dot(geminal_grad_up_z, geminal_inverse))) ** 2
+            - (np.trace(np.dot(geminal_inverse, geminal_grad_dn_x))) ** 2
+            - (np.trace(np.dot(geminal_inverse, geminal_grad_dn_y))) ** 2
+            - (np.trace(np.dot(geminal_inverse, geminal_grad_dn_z))) ** 2
+            + (np.trace(np.dot(geminal_laplacian_up, geminal_inverse)))
+            + (np.trace(np.dot(geminal_inverse, geminal_laplacian_dn)))
+        )
+
+    return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D
 
 
 if __name__ == "__main__":
@@ -576,7 +722,7 @@ if __name__ == "__main__":
         num_electron_dn=num_r_dn_cart_samples,
         orb_data_up_spin=aos_up_data,
         orb_data_dn_spin=aos_dn_data,
-        compute_orb=compute_AOs_api,
+        compute_orb=compute_MOs_api,
         lambda_matrix=ao_lambda_matrix,
     )
 
@@ -590,3 +736,13 @@ if __name__ == "__main__":
     np.testing.assert_array_almost_equal(
         geminal_ao_matrix, geminal_mo_matrix, decimal=15
     )
+
+    grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = compute_grads_and_laplacian_ln_Det(
+        geminal_data=geminal_ao_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    print(grad_ln_D_up)
+    print(grad_ln_D_dn)
+    print(sum_laplacian_ln_D)
