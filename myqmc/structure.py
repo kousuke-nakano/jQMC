@@ -185,6 +185,23 @@ class Structure_data:
         """
         return len(list(set(self.atomic_numbers)))
 
+    @property
+    def nearest_neigbhor_atom_index(self, r_cart: list[float, float, float]) -> int:
+        """
+        Args:
+            r_cart (list[float, float, float]): reference position
+        Return:
+            The index of the nearest neigbhor nucleus (int)
+        """
+
+        if any(self.pbc_flag):
+            raise NotImplementedError
+        else:
+            differences = self.positions_cart - np.array(r_cart)
+            distances = np.linalg.norm(differences, axis=1)
+            closest_index = np.argmin(distances)
+            return closest_index
+
     def get_ase_atom(self) -> Atoms:
         """
         Returns:

@@ -164,17 +164,16 @@ class MCMC:
                 self.__latest_r_dn_carts
             )
 
-            # compute quantum forces
-            qF_up, qF_dn = compute_quantum_force(
-                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                r_up_carts=self.__latest_r_up_carts,
-                r_dn_carts=self.__latest_r_dn_carts,
-            )
+            if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
+                charges = np.array(
+                    self.__hamiltonian_data.structure_data.atomic_numbers
+                ) - np.array(self.__hamiltonian_data.coulomb_potential_data.z_cores)
+            else:
+                charges = np.array(
+                    self.__hamiltonian_data.structure_data.atomic_numbers
+                )
 
-            # 3次元ガウス分布ベクトルを生成する
-            # np.random.normalは指定された平均、標準偏差でランダムな値を生成する
-            sigma = np.sqrt(2 * self.__Dt)
-            g_vector = np.random.normal(loc=0, scale=sigma, size=3)
+            coords = self.__hamiltonian_data.structure_data.positions_cart
 
             # Choose randomly if the electron comes from up or dn
             if random.randint(0, total_electrons - 1) < len(self.__latest_r_up_carts):
@@ -183,64 +182,64 @@ class MCMC:
                 selected_electron_index = random.randint(
                     0, len(self.__latest_r_up_carts) - 1
                 )
-                old_r_l = self.__latest_r_up_carts[selected_electron_index]
-                old_qF_l = qF_up[selected_electron_index]
-                new_r_l = old_r_l + self.__Dt * old_qF_l + g_vector
 
-                proposed_r_up_carts = self.__latest_r_up_carts.copy()
-                proposed_r_dn_carts = self.__latest_r_dn_carts.copy()
-                proposed_r_up_carts[selected_electron_index] = new_r_l
-
-                # compute quantum forces
-                new_qF_l, _ = compute_quantum_force(
-                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                    r_up_carts=proposed_r_up_carts,
-                    r_dn_carts=proposed_r_dn_carts,
-                )
-
+                old_r_cart = self.__latest_r_up_carts[selected_electron_index]
             else:
                 selected_electron_spin = "dn"
                 # Randomly select an electron from r_carts_dn
                 selected_electron_index = random.randint(
                     0, len(self.__latest_r_dn_carts) - 1
                 )
-                old_r_l = self.__latest_r_dn_carts[selected_electron_index]
-                old_qF_l = qF_dn[selected_electron_index]
-                new_r_l = old_r_l + self.__Dt * old_qF_l + g_vector
+                old_r_cart = self.__latest_r_dn_carts[selected_electron_index]
 
+            nearest_atom_index = (
+                self.__hamiltonian_data.structure_data.nearest_neigbhor_atom_index(
+                    old_r_cart
+                )
+            )
+
+            R_cart = coords[nearest_atom_index]
+            Z = charges[nearest_atom_index]
+            norm_r_R = np.linalg.norm(old_r_cart - R_cart)
+            f_l = 1 / (Z**2 * norm_r_R) * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
+
+            sigma = np.sqrt(f_l * self.__Dt)
+            g = np.random.normal(loc=0, scale=sigma, size=1)
+            g_vector = np.zeros(3)
+            random_index = np.random.randint(0, 3)
+            g_vector[random_index] = g
+            new_r_cart = old_r_cart + g_vector
+
+            if selected_electron_spin == "up":
                 proposed_r_up_carts = self.__latest_r_up_carts.copy()
                 proposed_r_dn_carts = self.__latest_r_dn_carts.copy()
-                proposed_r_dn_carts[selected_electron_index] = new_r_l
+                proposed_r_up_carts[selected_electron_index] = new_r_cart
+            else:
+                proposed_r_up_carts = self.__latest_r_up_carts.copy()
+                proposed_r_dn_carts = self.__latest_r_dn_carts.copy()
+                proposed_r_up_carts[selected_electron_index] = new_r_cart
 
-                # compute quantum forces
-                _, new_qF_l = compute_quantum_force(
-                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                    r_up_carts=proposed_r_up_carts,
-                    r_dn_carts=proposed_r_dn_carts,
+            nearest_atom_index = (
+                self.__hamiltonian_data.structure_data.nearest_neigbhor_atom_index(
+                    new_r_cart
                 )
+            )
+            R_cart = coords[nearest_atom_index]
+            Z = charges[nearest_atom_index]
+            norm_r_R = np.linalg.norm(new_r_cart - R_cart)
+            f_prime_l = 1 / (Z**2 * norm_r_R) * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
 
             logger.info(
                 f"The selected electron is {selected_electron_index+1}-th {selected_electron_spin} electron."
             )
-            logger.info(f"The selected electron position is {old_r_l}.")
-            logger.info(f"The proposed electron position is {new_r_l}.")
+            logger.info(f"The selected electron position is {old_r_cart}.")
+            logger.info(f"The proposed electron position is {new_r_cart}.")
 
-            T_forward = (
-                1.0
-                / (4 * np.pi * self.__Dt) ** 3.0
-                / 2.0
-                * np.exp(
-                    (-np.linalg.norm(new_r_l - old_r_l - self.__Dt * old_qF_l) ** 2)
-                    / (4.0 * self.__Dt)
-                )
-            )
-            T_backward = (
-                1.0
-                / (4 * np.pi * self.__Dt) ** 3.0
-                / 2.0
-                * np.exp(
-                    (-np.linalg.norm(old_r_l - new_r_l - self.__Dt * new_qF_l) ** 2)
-                    / (4.0 * self.__Dt)
+            T_ratio = (f_prime_l / f_l) ** 2 * np.exp(
+                -np.linalg.norm(new_r_cart - old_r_cart) ** 2
+                * (
+                    1.0 / (2.0 * f_prime_l**2 * self.__Dt**2)
+                    - 1.0 / (2.0 * f_l**2 * self.__Dt**2)
                 )
             )
             R_ratio = (
@@ -252,10 +251,8 @@ class MCMC:
                 ** 2.0
             )
 
-            logger.info(
-                f"R_ratio, T_forward, T_backward = {R_ratio}, {T_forward}, {T_backward}"
-            )
-            acceptance_ratio = np.min([1.0, R_ratio * T_forward / T_backward])
+            logger.info(f"R_ratio, T_ratio = {R_ratio}, {T_ratio}")
+            acceptance_ratio = np.min([1.0, R_ratio * T_ratio])
             logger.info(f"acceptance_ratio = {acceptance_ratio}")
 
             b = np.random.uniform(0, 1)
