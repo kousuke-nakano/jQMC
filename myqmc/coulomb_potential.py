@@ -24,7 +24,7 @@ class Mesh(NamedTuple):
     grid_points: npt.NDArray[np.float64]
 
 
-# Tetrahedron symmetry quadrature
+# Tetrahedron symmetry quadrature (Nv=4)
 q = 1 / np.sqrt(3)
 A = 1.0 / 4.0
 tetrahedron_sym_mesh_Nv4 = Mesh(
@@ -50,7 +50,7 @@ octahedron_sym_mesh_Nv6 = Mesh(
     ),
 )
 
-# Octahedron symmetry quadrature (Nv=6)
+# Octahedron symmetry quadrature (Nv=18)
 A = 1.0 / 6.0
 B = 1.0 / 15.0
 p = 1.0 / np.sqrt(2)
@@ -195,13 +195,20 @@ def compute_ecp_nonlocal_parts(
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
-    Nv: int = 4,
+    Nv: int = 6,
     debug_flag: bool = True,
 ) -> float:
 
+    logger.info(f"Nv={Nv} for non-local PP evaluations.")
     if Nv == 4:
         weights = tetrahedron_sym_mesh_Nv4.weights
         grid_points = tetrahedron_sym_mesh_Nv4.grid_points
+    elif Nv == 6:
+        weights = octahedron_sym_mesh_Nv6.weights
+        grid_points = octahedron_sym_mesh_Nv6.grid_points
+    elif Nv == 18:
+        weights = octahedron_sym_mesh_Nv18.weights
+        grid_points = octahedron_sym_mesh_Nv18.grid_points
     else:
         raise NotImplementedError
 
@@ -268,14 +275,13 @@ def compute_ecp_nonlocal_parts(
                             for a, n, b in zip(coefficients, powers, exponents)
                         ]
                     )
-                    logger.debug(f"  Local part:V_l = {V_l}")
+                    # logger.debug(f"  Local part:V_l = {V_l}")
 
-                    P_l = 0
                     for weight, vec_delta in zip(weights, grid_points):
                         logger.debug(f"  vec_delta={vec_delta}")
                         r_up_carts_on_mesh = r_up_carts.copy()
-                        r_up_carts_on_mesh[r_up_i] += (
-                            np.linalg.norm(R_cart - r_up_cart) * vec_delta
+                        r_up_carts_on_mesh[r_up_i] = (
+                            R_cart + np.linalg.norm(R_cart - r_up_cart) * vec_delta
                         )
                         logger.debug(
                             f"  r_up_carts_center[r_up_i]={r_up_carts[r_up_i]}"
@@ -286,17 +292,14 @@ def compute_ecp_nonlocal_parts(
 
                         cos_theta = np.dot(
                             (R_cart - r_up_cart) / np.linalg.norm(R_cart - r_up_cart),
-                            (
-                                (R_cart - r_up_cart)
-                                / np.linalg.norm(R_cart - r_up_cart)
-                                + vec_delta
-                            ),
+                            ((vec_delta) / np.linalg.norm(vec_delta)),
                         )
 
                         logger.debug(f"  cos_theta={cos_theta}")
                         logger.debug(
                             f"  Legendre(cos_theta)={eval_legendre(ang_mom, cos_theta)}"
                         )
+
                         wf_ratio = (
                             evaluate_wavefunction(
                                 wavefunction_data=wavefunction_data,
@@ -305,20 +308,17 @@ def compute_ecp_nonlocal_parts(
                             )
                             / wavefunction_denominator
                         )
+
                         logger.debug(f"  wf_ratio={wf_ratio}")
 
-                        P_l += (
+                        P_l = (
                             (2 * ang_mom + 1)
                             * eval_legendre(
                                 ang_mom,
                                 np.dot(
                                     (R_cart - r_up_cart)
                                     / np.linalg.norm(R_cart - r_up_cart),
-                                    (
-                                        (R_cart - r_up_cart)
-                                        / np.linalg.norm(R_cart - r_up_cart)
-                                        + vec_delta
-                                    ),
+                                    (vec_delta / np.linalg.norm(vec_delta)),
                                 ),
                             )
                             * weight
@@ -329,9 +329,8 @@ def compute_ecp_nonlocal_parts(
                             )
                             / wavefunction_denominator
                         )
-
-                    V_nonlocal += V_l * P_l
-                    logger.debug(f"V_l * P_l = {V_l * P_l}")
+                        logger.debug(f"V_l * P_l={V_l * P_l}")
+                        V_nonlocal += V_l * P_l
 
                 # dn electrons
                 for r_dn_i, r_dn_cart in enumerate(r_dn_carts):
@@ -344,25 +343,20 @@ def compute_ecp_nonlocal_parts(
                         ]
                     )
 
-                    P_l = 0
                     for weight, vec_delta in zip(weights, grid_points):
                         r_dn_carts_on_mesh = r_dn_carts.copy()
-                        r_dn_carts_on_mesh[r_dn_i] += (
-                            np.linalg.norm(R_cart - r_dn_cart) * vec_delta
+                        r_dn_carts_on_mesh[r_dn_i] = (
+                            R_cart + np.linalg.norm(R_cart - r_dn_cart) * vec_delta
                         )
 
-                        P_l += (
+                        P_l = (
                             (2 * ang_mom + 1)
                             * eval_legendre(
                                 ang_mom,
                                 np.dot(
                                     (R_cart - r_dn_cart)
                                     / np.linalg.norm(R_cart - r_dn_cart),
-                                    (
-                                        (R_cart - r_dn_cart)
-                                        / np.linalg.norm(R_cart - r_dn_cart)
-                                        + vec_delta
-                                    ),
+                                    vec_delta / np.linalg.norm(vec_delta),
                                 ),
                             )
                             * weight
@@ -373,9 +367,8 @@ def compute_ecp_nonlocal_parts(
                             )
                             / wavefunction_denominator
                         )
-
-                    V_nonlocal += V_l * P_l
-                    logger.debug(f"V_l * P_l = {V_l * P_l}")
+                        logger.debug(f"V_l * P_l = {V_l * P_l}")
+                        V_nonlocal += V_l * P_l
 
         return V_nonlocal
     else:

@@ -10,9 +10,18 @@ import numpy as np
 from logging import getLogger, StreamHandler, Formatter
 
 from hamiltonians import Hamiltonian_data, compute_local_energy
-from wavefunction import compute_quantum_force, evaluate_wavefunction
+from wavefunction import (
+    compute_quantum_force,
+    evaluate_wavefunction,
+    compute_kinetic_energy,
+)
 from trexio_wrapper import read_trexio_file
 from wavefunction import Wavefunction_data
+from coulomb_potential import (
+    compute_bare_coulomb_potential,
+    compute_ecp_local_parts,
+    compute_ecp_nonlocal_parts,
+)
 
 logger = getLogger("myqmc").getChild(__name__)
 
@@ -286,7 +295,7 @@ class MCMC:
             logger.info(f"e_L = {e_L}")
             self.__stored_local_energy.append(e_L)
 
-        logger.info(f"acceptance ratio is {accepted_moves/num_mcmc_steps*100} %")
+        logger.info(f"acceptance ratio is {accepted_moves/num_mcmc_steps*16*100} %")
         logger.info(
             f"e_L is {np.average(self.__stored_local_energy[50:])} +- {np.sqrt(np.var(self.__stored_local_energy[50:]))} Ha."
         )
@@ -320,6 +329,126 @@ if __name__ == "__main__":
         wavefunction_data=wavefunction_data,
     )
 
+    old_r_up_carts = np.array(
+        [
+            [-0.64878536, -0.83275288, 0.33532629],
+            [0.55271273, 0.72310605, 0.93443775],
+            [0.66767275, 0.1206456, -0.36521208],
+            [-0.93165236, -0.0120386, 0.33003036],
+        ]
+    )
+    old_r_dn_carts = np.array(
+        [
+            [-1.0347816, 1.26162081, 0.42301735],
+            [-0.57843435, 1.03651987, -0.55091542],
+            [-1.56091964, -0.58952149, -0.99268141],
+            [0.61863233, -0.14903326, 0.51962683],
+        ]
+    )
+    new_r_up_carts = old_r_up_carts.copy()
+    new_r_dn_carts = old_r_dn_carts.copy()
+
+    old_r_cart = [0.61863233, -0.14903326, 0.51962683]
+    new_r_cart = [0.618632327645002, -0.149033260668010, 0.131889254514777]
+    new_r_dn_carts[3] = new_r_cart
+
+    print(old_r_up_carts)
+    print(old_r_dn_carts)
+    print(new_r_up_carts)
+    print(new_r_dn_carts)
+
+    R_ratio = (
+        evaluate_wavefunction(
+            wavefunction_data=hamiltonian_data.wavefunction_data,
+            r_up_carts=new_r_up_carts,
+            r_dn_carts=new_r_dn_carts,
+        )
+        / evaluate_wavefunction(
+            wavefunction_data=hamiltonian_data.wavefunction_data,
+            r_up_carts=old_r_up_carts,
+            r_dn_carts=old_r_dn_carts,
+        )
+    ) ** 2.0
+
+    print(f"R_ratio = {R_ratio}")
+
+    if hamiltonian_data.coulomb_potential_data.ecp_flag:
+        charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
+            hamiltonian_data.coulomb_potential_data.z_cores
+        )
+    else:
+        charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
+
+    coords = hamiltonian_data.structure_data.positions_cart
+
+    nearest_atom_index = (
+        hamiltonian_data.structure_data.get_nearest_neigbhor_atom_index(old_r_cart)
+    )
+
+    R_cart = coords[nearest_atom_index]
+    Z = charges[nearest_atom_index]
+    norm_r_R = np.linalg.norm(old_r_cart - R_cart)
+    f_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
+    print(f"f_l = {f_l}")
+
+    nearest_atom_index = (
+        hamiltonian_data.structure_data.get_nearest_neigbhor_atom_index(new_r_cart)
+    )
+    R_cart = coords[nearest_atom_index]
+    Z = charges[nearest_atom_index]
+    norm_r_R = np.linalg.norm(new_r_cart - R_cart)
+    f_prime_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
+    print(f"f_prime_l  = {f_prime_l }")
+
+    T_ratio = (f_l / f_prime_l) * np.exp(
+        -np.linalg.norm(np.array(new_r_cart) - np.array(old_r_cart)) ** 2
+        * (1.0 / (2.0 * f_prime_l**2 * 2.0**2) - 1.0 / (2.0 * f_l**2 * 2.0**2))
+    )
+
+    print(f"T_ratio = {T_ratio}")
+
+    kinc = compute_kinetic_energy(
+        wavefunction_data=hamiltonian_data.wavefunction_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+    )
+
+    vpot_bare = compute_bare_coulomb_potential(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+    )
+
+    vpot_ecp_local = compute_ecp_local_parts(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+    )
+
+    vpot_ecp_nonlocal = compute_ecp_nonlocal_parts(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+        wavefunction_data=wavefunction_data,
+    )
+
+    print(f"kinc={kinc} Ha")
+    print(f"vpot_bare={vpot_bare} Ha")
+    print(f"vpot_ecp_local={vpot_ecp_local} Ha")
+    print(f"vpot_ecp_nonlocal={vpot_ecp_nonlocal} Ha")
+
+    print(f"kinc={kinc} Ha")
+    print(f"vpot={vpot_bare+vpot_ecp_local} Ha")
+    print(f"vpotoff={vpot_ecp_nonlocal} Ha")
+
+    """
+    e_L = compute_local_energy(
+        hamiltonian_data=hamiltonian_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+    )
+    print(f"e_L={e_L} Ha")
+    """
     # """
     mcmc = MCMC(hamiltonian_data=hamiltonian_data)
     mcmc.run(num_mcmc_steps=150)
