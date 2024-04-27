@@ -185,8 +185,7 @@ class Structure_data:
         """
         return len(list(set(self.atomic_numbers)))
 
-    @property
-    def nearest_neigbhor_atom_index(self, r_cart: list[float, float, float]) -> int:
+    def get_nearest_neigbhor_atom_index(self, r_cart: list[float, float, float]) -> int:
         """
         Args:
             r_cart (list[float, float, float]): reference position

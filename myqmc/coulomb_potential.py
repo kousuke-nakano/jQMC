@@ -165,10 +165,10 @@ def compute_ecp_local_parts(
             ]
             exponents = [exponents[i] for i in ang_mom_indices]
             coefficients = [coefficients[i] for i in ang_mom_indices]
-            powers = [exponents[i] for i in ang_mom_indices]
+            powers = [powers[i] for i in ang_mom_indices]
 
             for r_cart in r_up_carts:
-                V_local += np.linalg.norm(R_cart - r_cart) ** -2 * np.sum(
+                V_local += np.linalg.norm(R_cart - r_cart) ** -2.0 * np.sum(
                     [
                         a
                         * np.linalg.norm(R_cart - r_cart) ** n
@@ -177,7 +177,7 @@ def compute_ecp_local_parts(
                     ]
                 )
             for r_cart in r_dn_carts:
-                V_local += np.linalg.norm(R_cart - r_cart) ** -2 * np.sum(
+                V_local += np.linalg.norm(R_cart - r_cart) ** -2.0 * np.sum(
                     [
                         a
                         * np.linalg.norm(R_cart - r_cart) ** n
@@ -215,8 +215,12 @@ def compute_ecp_nonlocal_parts(
             r_dn_carts=r_dn_carts,
         )
 
+        logger.debug(f"wavefunction_denominator = {wavefunction_denominator}")
+
         for i_atom in range(coulomb_potential_data.structure_data.natom):
+            logger.debug(f"^^^^^non-local part calc. for i_atom={i_atom}^^^^^")
             R_cart = coulomb_potential_data.structure_data.positions_cart[i_atom]
+            logger.debug(f"  R_cart={R_cart}")
             max_ang_mom_plus_1 = coulomb_potential_data.max_ang_mom_plus_1[i_atom]
             nucleus_indices = [
                 i
@@ -234,6 +238,7 @@ def compute_ecp_nonlocal_parts(
             powers_all = [coulomb_potential_data.powers[i] for i in nucleus_indices]
 
             for ang_mom in range(max_ang_mom_plus_1):
+                logger.debug(f"=====non-local part calc. for ang_mom={ang_mom}======")
                 ang_mom_indices = [
                     i for i, v in enumerate(ang_moms_all) if v == ang_mom
                 ]
@@ -243,21 +248,64 @@ def compute_ecp_nonlocal_parts(
 
                 # up electrons
                 for r_up_i, r_up_cart in enumerate(r_up_carts):
-                    V_l = np.linalg.norm(R_cart - r_up_cart) ** -2 * np.sum(
+                    logger.debug(f"  r_up_i={r_up_i}, r_up_cart={r_up_cart}")
+                    logger.debug(f"  coefficients={coefficients}")
+                    logger.debug(f"  exponents={exponents}")
+                    logger.debug(f"  powers={powers}")
+
+                    V_l = np.linalg.norm(R_cart - r_up_cart) ** -2.0 * np.sum(
                         [
                             a
                             * np.linalg.norm(R_cart - r_up_cart) ** n
-                            * np.exp(-b * np.linalg.norm(R_cart - r_up_cart) ** 2)
+                            * np.exp(-b * np.linalg.norm(R_cart - r_up_cart) ** 2.0)
                             for a, n, b in zip(coefficients, powers, exponents)
                         ]
                     )
 
+                    logger.debug(
+                        [
+                            a * np.exp(-b * np.linalg.norm(R_cart - r_up_cart) ** 2.0)
+                            for a, n, b in zip(coefficients, powers, exponents)
+                        ]
+                    )
+                    logger.debug(f"  Local part:V_l = {V_l}")
+
                     P_l = 0
                     for weight, vec_delta in zip(weights, grid_points):
+                        logger.debug(f"  vec_delta={vec_delta}")
                         r_up_carts_on_mesh = r_up_carts.copy()
                         r_up_carts_on_mesh[r_up_i] += (
                             np.linalg.norm(R_cart - r_up_cart) * vec_delta
                         )
+                        logger.debug(
+                            f"  r_up_carts_center[r_up_i]={r_up_carts[r_up_i]}"
+                        )
+                        logger.debug(
+                            f"  r_up_carts_on_mesh[r_up_i]={r_up_carts_on_mesh[r_up_i]}"
+                        )
+
+                        cos_theta = np.dot(
+                            (R_cart - r_up_cart) / np.linalg.norm(R_cart - r_up_cart),
+                            (
+                                (R_cart - r_up_cart)
+                                / np.linalg.norm(R_cart - r_up_cart)
+                                + vec_delta
+                            ),
+                        )
+
+                        logger.debug(f"  cos_theta={cos_theta}")
+                        logger.debug(
+                            f"  Legendre(cos_theta)={eval_legendre(ang_mom, cos_theta)}"
+                        )
+                        wf_ratio = (
+                            evaluate_wavefunction(
+                                wavefunction_data=wavefunction_data,
+                                r_up_carts=r_up_carts_on_mesh,
+                                r_dn_carts=r_dn_carts,
+                            )
+                            / wavefunction_denominator
+                        )
+                        logger.debug(f"  wf_ratio={wf_ratio}")
 
                         P_l += (
                             (2 * ang_mom + 1)
@@ -283,6 +331,7 @@ def compute_ecp_nonlocal_parts(
                         )
 
                     V_nonlocal += V_l * P_l
+                    logger.debug(f"V_l * P_l = {V_l * P_l}")
 
                 # dn electrons
                 for r_dn_i, r_dn_cart in enumerate(r_dn_carts):
@@ -310,7 +359,7 @@ def compute_ecp_nonlocal_parts(
                                     (R_cart - r_dn_cart)
                                     / np.linalg.norm(R_cart - r_dn_cart),
                                     (
-                                        (R_cart - r_up_cart)
+                                        (R_cart - r_dn_cart)
                                         / np.linalg.norm(R_cart - r_dn_cart)
                                         + vec_delta
                                     ),
@@ -326,6 +375,7 @@ def compute_ecp_nonlocal_parts(
                         )
 
                     V_nonlocal += V_l * P_l
+                    logger.debug(f"V_l * P_l = {V_l * P_l}")
 
         return V_nonlocal
     else:
@@ -449,66 +499,4 @@ if __name__ == "__main__":
     handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
     stream_handler.setFormatter(handler_format)
     log.addHandler(stream_handler)
-
-    # Hyrdogen dimer
-    num_atoms = 2
-    atomic_center_carts = np.array([[0.0, 0.0, -1.0], [0.0, 0.0, +1.0]])
-    z_cores = [0, 0]
-    max_ang_mom_plus_1 = [1, 1]
-    num_ecps = 8
-    ang_moms = [1, 1, 1, 0, 1, 1, 1, 0]
-    nucleus_index = [0, 0, 0, 0, 1, 1, 1, 1]
-    coefficients = [
-        1.00000000000000,
-        21.24359508259891,
-        -10.85192405303825,
-        0.00000000000000,
-        1.00000000000000,
-        21.24359508259891,
-        -10.85192405303825,
-        0.00000000000000,
-    ]
-    exponents = [
-        21.24359508259891,
-        21.24359508259891,
-        21.77696655044365,
-        1.000000000000000,
-        21.24359508259891,
-        21.24359508259891,
-        21.77696655044365,
-        1.000000000000000,
-    ]
-    powers = [1, 3, 2, 2, 1, 3, 2, 2]
-
-    effective_core_potential_data = Coulomb_potential_data(
-        num_atoms=num_atoms,
-        atomic_center_carts=atomic_center_carts,
-        z_cores=z_cores,
-        max_ang_mom_plus_1=max_ang_mom_plus_1,
-        num_ecps=num_ecps,
-        ang_moms=ang_moms,
-        nucleus_index=nucleus_index,
-        coefficients=coefficients,
-        exponents=exponents,
-        powers=powers,
-    )
-
-    num_r_cart_samples = 2
-    r_cart_min, r_cart_max = -1.0, 1.0
-    r_carts = (r_cart_max - r_cart_min) * np.random.rand(
-        num_r_cart_samples, 3
-    ) + r_cart_min
-
-    V_local = compute_ecp_local_parts(
-        coulomb_potential_data=effective_core_potential_data, r_up_carts=r_carts
-    )
-
-    print(V_local)
-
-    V_nonlocal = compute_ecp_nonlocal_parts(
-        coulomb_potential_data=effective_core_potential_data,
-        r_up_carts=r_carts,
-        r_dn_carts=r_carts,
-    )
-
-    print(V_nonlocal)
+    pass

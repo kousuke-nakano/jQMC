@@ -86,9 +86,16 @@ def compute_kinetic_energy(
     )
 
     # compute laplacians
-    L = -(sum_laplacian_J + sum_laplacian_ln_D) - 1.0 / 2.0 * (
-        np.sum((grad_J_up + grad_ln_D_up) * (grad_J_up + grad_ln_D_up))
-        + np.sum((grad_J_dn + grad_ln_D_dn) * (grad_J_dn + grad_ln_D_dn))
+    L = (
+        1.0
+        / 2.0
+        * (
+            -(sum_laplacian_J + sum_laplacian_ln_D)
+            - (
+                np.sum((grad_J_up + grad_ln_D_up) * (grad_J_up + grad_ln_D_up))
+                + np.sum((grad_J_dn + grad_ln_D_dn) * (grad_J_dn + grad_ln_D_dn))
+            )
+        )
     )
 
     logger.info(f"kinetic energy = {L} a.u.")
@@ -125,8 +132,6 @@ def compute_quantum_force(
     grad_ln_WF_dn = grad_J_dn + grad_ln_D_dn
 
     return 2.0 * grad_ln_WF_up, 2.0 * grad_ln_WF_dn
-
-    return L
 
 
 if __name__ == "__main__":

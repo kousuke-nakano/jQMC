@@ -11,6 +11,8 @@ from logging import getLogger, StreamHandler, Formatter
 
 from hamiltonians import Hamiltonian_data, compute_local_energy
 from wavefunction import compute_quantum_force, evaluate_wavefunction
+from trexio_wrapper import read_trexio_file
+from wavefunction import Wavefunction_data
 
 logger = getLogger("myqmc").getChild(__name__)
 
@@ -20,7 +22,7 @@ class MCMC:
         self,
         hamiltonian_data: Hamiltonian_data = None,
         mcmc_seed: int = 34467,
-        Dt: float = 0.001,
+        Dt: float = 2.0,
     ) -> None:
         """
         Initialize a MCMC class.
@@ -91,7 +93,7 @@ class MCMC:
             # Place electrons
             for _ in range(num_electrons):
                 # Calculate distance range
-                distance = np.random.uniform(0.5 / charge, 1.5 / charge)
+                distance = np.random.uniform(1.5, 3.0)
                 theta = np.random.uniform(0, np.pi)
                 phi = np.random.uniform(0, 2 * np.pi)
 
@@ -175,116 +177,239 @@ class MCMC:
 
             coords = self.__hamiltonian_data.structure_data.positions_cart
 
-            # Choose randomly if the electron comes from up or dn
-            if random.randint(0, total_electrons - 1) < len(self.__latest_r_up_carts):
-                selected_electron_spin = "up"
-                # Randomly select an electron from r_carts_up
-                selected_electron_index = random.randint(
-                    0, len(self.__latest_r_up_carts) - 1
-                )
+            for _ in range(16):
+                # Choose randomly if the electron comes from up or dn
+                if random.randint(0, total_electrons - 1) < len(
+                    self.__latest_r_up_carts
+                ):
+                    selected_electron_spin = "up"
+                    # Randomly select an electron from r_carts_up
+                    selected_electron_index = random.randint(
+                        0, len(self.__latest_r_up_carts) - 1
+                    )
 
-                old_r_cart = self.__latest_r_up_carts[selected_electron_index]
-            else:
-                selected_electron_spin = "dn"
-                # Randomly select an electron from r_carts_dn
-                selected_electron_index = random.randint(
-                    0, len(self.__latest_r_dn_carts) - 1
-                )
-                old_r_cart = self.__latest_r_dn_carts[selected_electron_index]
+                    old_r_cart = self.__latest_r_up_carts[selected_electron_index]
+                else:
+                    selected_electron_spin = "dn"
+                    # Randomly select an electron from r_carts_dn
+                    selected_electron_index = random.randint(
+                        0, len(self.__latest_r_dn_carts) - 1
+                    )
+                    old_r_cart = self.__latest_r_dn_carts[selected_electron_index]
 
-            nearest_atom_index = (
-                self.__hamiltonian_data.structure_data.nearest_neigbhor_atom_index(
+                nearest_atom_index = self.__hamiltonian_data.structure_data.get_nearest_neigbhor_atom_index(
                     old_r_cart
                 )
-            )
 
-            R_cart = coords[nearest_atom_index]
-            Z = charges[nearest_atom_index]
-            norm_r_R = np.linalg.norm(old_r_cart - R_cart)
-            f_l = 1 / (Z**2 * norm_r_R) * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
+                R_cart = coords[nearest_atom_index]
+                Z = charges[nearest_atom_index]
+                norm_r_R = np.linalg.norm(old_r_cart - R_cart)
+                f_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
 
-            sigma = np.sqrt(f_l * self.__Dt)
-            g = np.random.normal(loc=0, scale=sigma, size=1)
-            g_vector = np.zeros(3)
-            random_index = np.random.randint(0, 3)
-            g_vector[random_index] = g
-            new_r_cart = old_r_cart + g_vector
+                logger.info(f"nearest_atom_index = {nearest_atom_index}")
+                logger.info(f"norm_r_R = {norm_r_R}")
+                logger.info(f"f_l  = {f_l }")
 
-            if selected_electron_spin == "up":
-                proposed_r_up_carts = self.__latest_r_up_carts.copy()
-                proposed_r_dn_carts = self.__latest_r_dn_carts.copy()
-                proposed_r_up_carts[selected_electron_index] = new_r_cart
-            else:
-                proposed_r_up_carts = self.__latest_r_up_carts.copy()
-                proposed_r_dn_carts = self.__latest_r_dn_carts.copy()
-                proposed_r_up_carts[selected_electron_index] = new_r_cart
+                sigma = f_l * self.__Dt
+                g = float(np.random.normal(loc=0, scale=sigma))
+                g_vector = np.zeros(3)
+                random_index = np.random.randint(0, 3)
+                g_vector[random_index] = g
+                logger.info(f"jn = {random_index}, g \equiv dstep  = {g_vector}")
+                new_r_cart = old_r_cart + g_vector
 
-            nearest_atom_index = (
-                self.__hamiltonian_data.structure_data.nearest_neigbhor_atom_index(
+                if selected_electron_spin == "up":
+                    proposed_r_up_carts = self.__latest_r_up_carts.copy()
+                    proposed_r_dn_carts = self.__latest_r_dn_carts.copy()
+                    proposed_r_up_carts[selected_electron_index] = new_r_cart
+                else:
+                    proposed_r_up_carts = self.__latest_r_up_carts.copy()
+                    proposed_r_dn_carts = self.__latest_r_dn_carts.copy()
+                    proposed_r_dn_carts[selected_electron_index] = new_r_cart
+
+                nearest_atom_index = self.__hamiltonian_data.structure_data.get_nearest_neigbhor_atom_index(
                     new_r_cart
                 )
-            )
-            R_cart = coords[nearest_atom_index]
-            Z = charges[nearest_atom_index]
-            norm_r_R = np.linalg.norm(new_r_cart - R_cart)
-            f_prime_l = 1 / (Z**2 * norm_r_R) * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
+                R_cart = coords[nearest_atom_index]
+                Z = charges[nearest_atom_index]
+                norm_r_R = np.linalg.norm(new_r_cart - R_cart)
+                f_prime_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
+                logger.info(f"nearest_atom_index = {nearest_atom_index}")
+                logger.info(f"norm_r_R = {norm_r_R}")
+                logger.info(f"f_prime_l  = {f_prime_l }")
 
-            logger.info(
-                f"The selected electron is {selected_electron_index+1}-th {selected_electron_spin} electron."
-            )
-            logger.info(f"The selected electron position is {old_r_cart}.")
-            logger.info(f"The proposed electron position is {new_r_cart}.")
-
-            T_ratio = (f_prime_l / f_l) ** 2 * np.exp(
-                -np.linalg.norm(new_r_cart - old_r_cart) ** 2
-                * (
-                    1.0 / (2.0 * f_prime_l**2 * self.__Dt**2)
-                    - 1.0 / (2.0 * f_l**2 * self.__Dt**2)
+                logger.info(
+                    f"The selected electron is {selected_electron_index+1}-th {selected_electron_spin} electron."
                 )
+                logger.info(f"The selected electron position is {old_r_cart}.")
+                logger.info(f"The proposed electron position is {new_r_cart}.")
+
+                T_ratio = (f_l / f_prime_l) * np.exp(
+                    -np.linalg.norm(new_r_cart - old_r_cart) ** 2
+                    * (
+                        1.0 / (2.0 * f_prime_l**2 * self.__Dt**2)
+                        - 1.0 / (2.0 * f_l**2 * self.__Dt**2)
+                    )
+                )
+                R_ratio = (
+                    evaluate_wavefunction(
+                        wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                        r_up_carts=proposed_r_up_carts,
+                        r_dn_carts=proposed_r_dn_carts,
+                    )
+                    / evaluate_wavefunction(
+                        wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                        r_up_carts=self.__latest_r_up_carts,
+                        r_dn_carts=self.__latest_r_dn_carts,
+                    )
+                ) ** 2.0
+
+                logger.info(f"R_ratio, T_ratio = {R_ratio}, {T_ratio}")
+                acceptance_ratio = np.min([1.0, R_ratio * T_ratio])
+                logger.info(f"acceptance_ratio = {acceptance_ratio}")
+
+                b = np.random.uniform(0, 1)
+
+                if b < acceptance_ratio:
+                    logger.info("The proposed move is accepted!")
+                    accepted_moves += 1
+                    self.__latest_r_up_carts = proposed_r_up_carts
+                    self.__latest_r_dn_carts = proposed_r_dn_carts
+                else:
+                    logger.info("The proposed move is rejected!")
+
+            e_L = compute_local_energy(
+                hamiltonian_data=self.__hamiltonian_data,
+                r_up_carts=self.__latest_r_up_carts,
+                r_dn_carts=self.__latest_r_dn_carts,
             )
-            R_ratio = (
-                evaluate_wavefunction(
-                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                    r_up_carts=proposed_r_up_carts,
-                    r_dn_carts=proposed_r_dn_carts,
-                )
-                ** 2.0
-            )
-
-            logger.info(f"R_ratio, T_ratio = {R_ratio}, {T_ratio}")
-            acceptance_ratio = np.min([1.0, R_ratio * T_ratio])
-            logger.info(f"acceptance_ratio = {acceptance_ratio}")
-
-            b = np.random.uniform(0, 1)
-
-            if b < acceptance_ratio:
-                logger.info("The proposed move is accepted!")
-                accepted_moves += 1
-                self.__latest_r_up_carts = proposed_r_up_carts
-                self.__latest_r_dn_carts = proposed_r_dn_carts
-                e_L = compute_local_energy(
-                    hamiltonian_data=self.__hamiltonian_data,
-                    r_up_carts=self.__latest_r_up_carts,
-                    r_dn_carts=self.__latest_r_dn_carts,
-                )
-            else:
-                logger.info("The proposed move is rejected!")
-                e_L = compute_local_energy(
-                    hamiltonian_data=self.__hamiltonian_data,
-                    r_up_carts=self.__latest_r_up_carts,
-                    r_dn_carts=self.__latest_r_dn_carts,
-                )
-
             logger.info(f"e_L = {e_L}")
+            self.__stored_local_energy.append(e_L)
 
         logger.info(f"acceptance ratio is {accepted_moves/num_mcmc_steps*100} %")
+        logger.info(
+            f"e_L is {np.average(self.__stored_local_energy[50:])} +- {np.sqrt(np.var(self.__stored_local_energy[50:]))} Ha."
+        )
+        logger.info(f"all e_L is {self.__stored_local_energy[50:]} Ha.")
 
 
 if __name__ == "__main__":
     log = getLogger("myqmc")
-    log.setLevel("DEBUG")
+    log.setLevel("INFO")
     stream_handler = StreamHandler()
-    stream_handler.setLevel("DEBUG")
+    stream_handler.setLevel("INFO")
     handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
     stream_handler.setFormatter(handler_format)
     log.addHandler(stream_handler)
+
+    # water
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file="water_trexio.hdf5")
+
+    wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data)
+
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+
+    # """
+    mcmc = MCMC(hamiltonian_data=hamiltonian_data)
+    mcmc.run(num_mcmc_steps=150)
+    # """
+
+    """
+    from coulomb_potential import compute_ecp_local_parts, compute_ecp_nonlocal_parts
+
+    num_electron_up = geminal_mo_data.num_electron_up
+    num_electron_dn = geminal_mo_data.num_electron_dn
+
+    # Initialization
+    r_up_carts = []
+    r_dn_carts = []
+
+    total_electrons = 0
+
+    if coulomb_potential_data.ecp_flag:
+        charges = np.array(structure_data.atomic_numbers) - np.array(
+            coulomb_potential_data.z_cores
+        )
+    else:
+        charges = np.array(structure_data.atomic_numbers)
+
+    coords = structure_data.positions_cart
+
+    # Place electrons around each nucleus
+    for i in range(len(coords)):
+        charge = charges[i]
+        num_electrons = int(
+            np.round(charge)
+        )  # Number of electrons to place based on the charge
+
+        # Retrieve the position coordinates
+        x, y, z = coords[i]
+
+        # Place electrons
+        for _ in range(num_electrons):
+            # Calculate distance range
+            distance = np.random.uniform(1.0 / charge, 2.0 / charge)
+            theta = np.random.uniform(0, np.pi)
+            phi = np.random.uniform(0, 2 * np.pi)
+
+            # Convert spherical to Cartesian coordinates
+            dx = distance * np.sin(theta) * np.cos(phi)
+            dy = distance * np.sin(theta) * np.sin(phi)
+            dz = distance * np.cos(theta)
+
+            # Position of the electron
+            electron_position = np.array([x + dx, y + dy, z + dz])
+
+            # Assign spin
+            if len(r_up_carts) < num_electron_up:
+                r_up_carts.append(electron_position)
+            else:
+                r_dn_carts.append(electron_position)
+
+        total_electrons += num_electrons
+
+    # Handle surplus electrons
+    remaining_up = num_electron_up - len(r_up_carts)
+    remaining_dn = num_electron_dn - len(r_dn_carts)
+
+    # Randomly place any remaining electrons
+    for _ in range(remaining_up):
+        r_up_carts.append(
+            np.random.choice(coords) + np.random.normal(scale=0.1, size=3)
+        )
+    for _ in range(remaining_dn):
+        r_dn_carts.append(
+            np.random.choice(coords) + np.random.normal(scale=0.1, size=3)
+        )
+
+    r_up_carts = np.array(r_up_carts)
+    r_dn_carts = np.array(r_dn_carts)
+
+    V_local = compute_ecp_local_parts(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    print(V_local)
+
+    V_nonlocal = compute_ecp_nonlocal_parts(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        wavefunction_data=wavefunction_data,
+    )
+
+    print(V_nonlocal)
+    """
