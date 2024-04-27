@@ -13,14 +13,8 @@ import trexio
 from structure import Structure_data
 from atomic_orbital import AOs_data
 from molecular_orbital import MOs_data, compute_MOs_api
-from coulomb_potential import (
-    Coulomb_potential_data,
-    compute_coulomb_potential,
-    compute_bare_coulomb_potential,
-)
+from coulomb_potential import Coulomb_potential_data
 from determinant import Geminal_data
-from wavefunction import Wavefunction_data, compute_kinetic_energy
-from hamiltonians import Hamiltonian_data
 
 logger = getLogger("myqmc").getChild(__name__)
 
@@ -90,7 +84,7 @@ def read_trexio_file(trexio_file: str):
     # ao info
     ao_cartesian = trexio.read_ao_cartesian(file_r)
     ao_num = trexio.read_ao_num(file_r)
-    ao_shell = trexio.read_ao_shell(file_r)
+    # ao_shell = trexio.read_ao_shell(file_r)
     # ao_normalization = trexio.read_ao_normalization(file_r)
 
     # ao spherical part check
@@ -270,7 +264,7 @@ def read_trexio_file(trexio_file: str):
             nucleus_index=ecp_nucleus_index,
             exponents=ecp_exponent,
             coefficients=ecp_coefficient,
-            powers=ecp_power,
+            powers=ecp_power + 2,
         )
     else:
         coulomb_potential_data = Coulomb_potential_data(
@@ -498,3 +492,13 @@ def convert_from_atomic_labels_to_atomic_numbers(labels_r: list[str]) -> list[in
         else:
             raise ValueError(f"No atomic number found for the label '{label}'")
     return atomic_numbers
+
+
+if __name__ == "__main__":
+    log = getLogger("myqmc")
+    log.setLevel("DEBUG")
+    stream_handler = StreamHandler()
+    stream_handler.setLevel("DEBUG")
+    handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
+    stream_handler.setFormatter(handler_format)
+    log.addHandler(stream_handler)

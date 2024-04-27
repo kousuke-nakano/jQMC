@@ -8,7 +8,6 @@ import numpy.typing as npt
 
 # jax modules
 from flax import struct
-from jax import jacrev
 
 # set logger
 from logging import getLogger, StreamHandler, Formatter
@@ -251,7 +250,7 @@ def compute_grads_and_laplacian_ln_Det(
 
     if debug_flag:
 
-        diff_h = 1.0e-6
+        diff_h = 1.0e-5
 
         det_geminal = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
@@ -449,7 +448,6 @@ def compute_grads_and_laplacian_ln_Det(
 
         grad_ln_D_up = np.array([grad_x_up, grad_y_up, grad_z_up]).T
         grad_ln_D_dn = np.array([grad_x_dn, grad_y_dn, grad_z_dn]).T
-        sum_laplacian_ln_D = sum_laplacian_ln_D
 
     else:
         lambda_matrix_paired, lambda_matrix_unpaired = np.hsplit(
@@ -606,12 +604,15 @@ def compute_grads_and_laplacian_ln_Det(
             raise ValueError
 
         sum_laplacian_ln_D = (
-            -((np.trace(np.dot(geminal_grad_up_x, geminal_inverse))) ** 2)
-            - (np.trace(np.dot(geminal_grad_up_y, geminal_inverse))) ** 2
-            - (np.trace(np.dot(geminal_grad_up_z, geminal_inverse))) ** 2
-            - (np.trace(np.dot(geminal_inverse, geminal_grad_dn_x))) ** 2
-            - (np.trace(np.dot(geminal_inverse, geminal_grad_dn_y))) ** 2
-            - (np.trace(np.dot(geminal_inverse, geminal_grad_dn_z))) ** 2
+            -1
+            * (
+                (np.trace(np.dot(geminal_grad_up_x, geminal_inverse) ** 2.0))
+                + (np.trace(np.dot(geminal_grad_up_y, geminal_inverse) ** 2.0))
+                + (np.trace(np.dot(geminal_grad_up_z, geminal_inverse) ** 2.0))
+                + (np.trace(np.dot(geminal_inverse, geminal_grad_dn_x) ** 2.0))
+                + (np.trace(np.dot(geminal_inverse, geminal_grad_dn_y) ** 2.0))
+                + (np.trace(np.dot(geminal_inverse, geminal_grad_dn_z) ** 2.0))
+            )
             + (np.trace(np.dot(geminal_laplacian_up, geminal_inverse)))
             + (np.trace(np.dot(geminal_inverse, geminal_laplacian_dn)))
         )

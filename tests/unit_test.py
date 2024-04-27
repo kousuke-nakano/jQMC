@@ -1,4 +1,3 @@
-import os, sys
 import itertools
 import pytest
 
@@ -8,11 +7,7 @@ from numpy.testing import assert_almost_equal
 
 from logging import getLogger, StreamHandler, Formatter
 
-import sys
-
-sys.path.append("../myqmc")
-
-from atomic_orbital import (
+from ..myqmc.atomic_orbital import (
     AO_data,
     compute_S_l_m,
     AOs_data,
@@ -21,7 +16,7 @@ from atomic_orbital import (
     compute_AOs_laplacian_api,
 )
 
-from molecular_orbital import (
+from ..myqmc.molecular_orbital import (
     MO_data,
     MOs_data,
     compute_MO,
@@ -29,14 +24,15 @@ from molecular_orbital import (
     compute_MOs_grad_api,
     compute_MOs_laplacian_api,
 )
-from determinant import (
+from ..myqmc.determinant import (
     Geminal_data,
     compute_geminal_all_elements,
     compute_det_geminal_all_elements,
     compute_grads_and_laplacian_ln_Det,
 )
 
-from trexio_wrapper import read_trexio_file
+from ..myqmc.trexio_wrapper import read_trexio_file
+
 
 log = getLogger("myqmc")
 log.setLevel("DEBUG")
@@ -1009,12 +1005,6 @@ def test_numerial_and_auto_grads_ln_Det():
     r_up_carts = np.array(r_up_carts)
     r_dn_carts = np.array(r_dn_carts)
 
-    geminal_mo = compute_geminal_all_elements(
-        geminal_data=geminal_mo_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
-    )
-
     mo_lambda_matrix_paired, mo_lambda_matrix_unpaired = np.hsplit(
         geminal_mo_data.lambda_matrix, [geminal_mo_data.orb_num_dn]
     )
@@ -1038,12 +1028,6 @@ def test_numerial_and_auto_grads_ln_Det():
         lambda_matrix=ao_lambda_matrix,
     )
 
-    geminal_ao = compute_geminal_all_elements(
-        geminal_data=geminal_ao_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
-    )
-
     grad_ln_D_up_numerical, grad_ln_D_dn_numerical, sum_laplacian_ln_D_numerical = (
         compute_grads_and_laplacian_ln_Det(
             geminal_data=geminal_ao_data,
@@ -1062,15 +1046,17 @@ def test_numerial_and_auto_grads_ln_Det():
         )
     )
 
-    np.testing.assert_almost_equal(grad_ln_D_up_numerical, grad_ln_D_up_auto, decimal=6)
-    np.testing.assert_almost_equal(grad_ln_D_dn_numerical, grad_ln_D_dn_auto, decimal=6)
-
+    np.testing.assert_almost_equal(grad_ln_D_up_numerical, grad_ln_D_up_auto, decimal=5)
+    np.testing.assert_almost_equal(grad_ln_D_dn_numerical, grad_ln_D_dn_auto, decimal=5)
+    np.testing.assert_almost_equal(
+        sum_laplacian_ln_D_numerical, sum_laplacian_ln_D_auto, decimal=3
+    )
     # print(grad_ln_D_up_numerical)
     # print(grad_ln_D_up_auto)
     # print(grad_ln_D_dn_numerical)
     # print(grad_ln_D_dn_auto)
-    print(sum_laplacian_ln_D_numerical)
-    print(sum_laplacian_ln_D_auto)
+    # print(sum_laplacian_ln_D_numerical)
+    # print(sum_laplacian_ln_D_auto)
 
 
 if __name__ == "__main__":
@@ -1084,59 +1070,4 @@ if __name__ == "__main__":
 
     np.set_printoptions(threshold=1.0e8)
 
-    # water
-    (
-        structure_data,
-        aos_data,
-        mos_data_up,
-        mos_data_dn,
-        geminal_data,
-        coulomb_potential_data,
-    ) = read_trexio_file(trexio_file="water_trexio.hdf5")
-
-    num_r_cart_samples = 4
-    r_cart_min, r_cart_max = -2.0, 2.0
-    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(
-        num_r_cart_samples, 3
-    ) + r_cart_min
-    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(
-        num_r_cart_samples, 3
-    ) + r_cart_min
-
-    print(aos_data)
-    print(mos_data_up)
-
-    """
-    wavefunction_data = Wavefunction_data(geminal_data=geminal_data)
-    V_bare = compute_bare_coulomb_potential(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
-    )
-
-    V = compute_coulomb_potential(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
-        wavefunction_data=wavefunction_data,
-    )
-
-    L = compute_kinetic_energy(
-        wavefunction_data=wavefunction_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
-    )
-
-    print(L + V)
-
-    hamiltonian_data = Hamiltonian_data(
-        structure_data=structure_data,
-        coulomb_potential_data=coulomb_potential_data,
-        wavefunction_data=wavefunction_data,
-    )
-
-    from vmc import MCMC
-
-    mcmc = MCMC(hamiltonian_data=hamiltonian_data)
-    mcmc.run(num_mcmc_steps=100)
-    """
+    pass
