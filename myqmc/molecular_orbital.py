@@ -2,10 +2,8 @@
 
 # python modules
 from dataclasses import dataclass, field
-import scipy
 import numpy as np
 import numpy.typing as npt
-import itertools
 
 # jax modules
 import jax
@@ -15,7 +13,7 @@ import jax.numpy as jnp
 from logging import getLogger, StreamHandler, Formatter
 
 # myqmc module
-from atomic_orbital import (
+from .atomic_orbital import (
     AO_data,
     compute_AO,
     AOs_data,
@@ -376,3 +374,5 @@ if __name__ == "__main__":
     handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
     stream_handler.setFormatter(handler_format)
     log.addHandler(stream_handler)
+
+    logger.debug("test")

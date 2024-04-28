@@ -8,7 +8,7 @@ import numpy.typing as npt
 # set logger
 from logging import getLogger, StreamHandler, Formatter
 
-from determinant import (
+from .determinant import (
     Geminal_data,
     compute_det_geminal_all_elements,
     compute_grads_and_laplacian_ln_Det,

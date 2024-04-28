@@ -1,3 +1,4 @@
+import os
 import itertools
 import pytest
 
@@ -33,6 +34,19 @@ from ..myqmc.determinant import (
 
 from ..myqmc.trexio_wrapper import read_trexio_file
 
+from ..myqmc.wavefunction import (
+    Wavefunction_data,
+    evaluate_wavefunction,
+    compute_kinetic_energy,
+)
+
+from ..myqmc.coulomb_potential import (
+    compute_bare_coulomb_potential,
+    compute_ecp_local_parts,
+    compute_ecp_nonlocal_parts,
+)
+
+from ..myqmc.hamiltonians import Hamiltonian_data
 
 log = getLogger("myqmc")
 log.setLevel("DEBUG")
@@ -794,6 +808,19 @@ def test_MOs_comparing_auto_and_numerical_laplacians():
     )
 
 
+@pytest.mark.parametrize(
+    "filename",
+    ["water_trexio.hdf5"],
+    ids=["water_trexio.hdf5"],
+)
+def test_read_trexio_files(filename: str):
+    read_trexio_file(
+        trexio_file=os.path.join(
+            os.path.dirname(__file__), "trexio_example_files", filename
+        )
+    )
+
+
 def test_comparing_AO_and_MO_geminals():
     # test MOs
     (
@@ -803,8 +830,11 @@ def test_comparing_AO_and_MO_geminals():
         mos_data_dn,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file="water_trexio.hdf5")
-
+    ) = read_trexio_file(
+        trexio_file=os.path.join(
+            os.path.dirname(__file__), "trexio_example_files", "water_trexio.hdf5"
+        )
+    )
     num_electron_up = geminal_mo_data.num_electron_up
     num_electron_dn = geminal_mo_data.num_electron_dn
 
@@ -927,7 +957,6 @@ def test_comparing_AO_and_MO_geminals():
 
 
 def test_numerial_and_auto_grads_ln_Det():
-    # test MOs
     (
         structure_data,
         aos_data,
@@ -935,7 +964,11 @@ def test_numerial_and_auto_grads_ln_Det():
         mos_data_dn,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file="water_trexio.hdf5")
+    ) = read_trexio_file(
+        trexio_file=os.path.join(
+            os.path.dirname(__file__), "trexio_example_files", "water_trexio.hdf5"
+        )
+    )
 
     num_electron_up = geminal_mo_data.num_electron_up
     num_electron_dn = geminal_mo_data.num_electron_dn
@@ -1057,6 +1090,121 @@ def test_numerial_and_auto_grads_ln_Det():
     # print(grad_ln_D_dn_auto)
     # print(sum_laplacian_ln_D_numerical)
     # print(sum_laplacian_ln_D_auto)
+
+
+@pytest.mark.parametrize(
+    "test_value",
+    ["wf_ratio", "kinc", "vpot", "vpotref"],
+    ids=[
+        "WF_ratio**2",
+        "kinetic energy",
+        "potential(local parts: bare + ecp parts)",
+        "potential(nonlocal ecp parts)",
+    ],
+)
+def test_comparing_values_with_TurboRVB_code(test_value: str):
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(
+            os.path.dirname(__file__), "trexio_example_files", "water_trexio.hdf5"
+        )
+    )
+
+    wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data)
+
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+
+    old_r_up_carts = np.array(
+        [
+            [-0.64878536, -0.83275288, 0.33532629],
+            [0.55271273, 0.72310605, 0.93443775],
+            [0.66767275, 0.1206456, -0.36521208],
+            [-0.93165236, -0.0120386, 0.33003036],
+        ]
+    )
+    old_r_dn_carts = np.array(
+        [
+            [-1.0347816, 1.26162081, 0.42301735],
+            [-0.57843435, 1.03651987, -0.55091542],
+            [-1.56091964, -0.58952149, -0.99268141],
+            [0.61863233, -0.14903326, 0.51962683],
+        ]
+    )
+    new_r_up_carts = old_r_up_carts.copy()
+    new_r_dn_carts = old_r_dn_carts.copy()
+    new_r_dn_carts[3] = [0.618632327645002, -0.149033260668010, 0.131889254514777]
+
+    WF_ratio = (
+        evaluate_wavefunction(
+            wavefunction_data=hamiltonian_data.wavefunction_data,
+            r_up_carts=new_r_up_carts,
+            r_dn_carts=new_r_dn_carts,
+        )
+        / evaluate_wavefunction(
+            wavefunction_data=hamiltonian_data.wavefunction_data,
+            r_up_carts=old_r_up_carts,
+            r_dn_carts=old_r_dn_carts,
+        )
+    ) ** 2.0
+
+    kinc = compute_kinetic_energy(
+        wavefunction_data=hamiltonian_data.wavefunction_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+    )
+
+    vpot_bare = compute_bare_coulomb_potential(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+    )
+
+    vpot_ecp_local = compute_ecp_local_parts(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+    )
+
+    vpot_ecp_nonlocal = compute_ecp_nonlocal_parts(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+        wavefunction_data=wavefunction_data,
+    )
+
+    # logger.debug(f"kinc={kinc} Ha")
+    # logger.debug(f"vpot={vpot_bare+vpot_ecp_local} Ha")
+    # logger.debug(f"vpotoff={vpot_ecp_nonlocal} Ha")
+
+    WF_ratio_ref_turborvb = 1.04447207308308
+    kinc_ref_turborvb = 9.77796571601343
+    vpot_ref_turborvb = -27.9099792589717
+    vpotoff_ref_turborvb = 0.159136845080957
+
+    if test_value == "wf_ratio":
+        np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=8)
+    elif test_value == "kinc":
+        np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
+    elif test_value == "vpot":
+        np.testing.assert_almost_equal(
+            vpot_bare + vpot_ecp_local, vpot_ref_turborvb, decimal=6
+        )
+    elif test_value == "vpotoff":
+        np.testing.assert_almost_equal(
+            vpot_ecp_nonlocal, vpotoff_ref_turborvb, decimal=6
+        )
+    else:
+        AssertionError
 
 
 if __name__ == "__main__":

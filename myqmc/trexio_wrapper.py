@@ -10,11 +10,11 @@ from logging import getLogger, StreamHandler, Formatter
 import trexio
 
 # import myQMC
-from structure import Structure_data
-from atomic_orbital import AOs_data
-from molecular_orbital import MOs_data, compute_MOs_api
-from coulomb_potential import Coulomb_potential_data
-from determinant import Geminal_data
+from .structure import Structure_data
+from .atomic_orbital import AOs_data
+from .molecular_orbital import MOs_data, compute_MOs_api
+from .coulomb_potential import Coulomb_potential_data
+from .determinant import Geminal_data
 
 logger = getLogger("myqmc").getChild(__name__)
 

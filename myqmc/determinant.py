@@ -13,13 +13,13 @@ from flax import struct
 from logging import getLogger, StreamHandler, Formatter
 
 # myqmc module
-from atomic_orbital import (
+from .atomic_orbital import (
     AOs_data,
     compute_AOs_api,
     compute_AOs_grad_api,
     compute_AOs_laplacian_api,
 )
-from molecular_orbital import (
+from .molecular_orbital import (
     MOs_data,
     compute_MOs_api,
     compute_MOs_grad_api,

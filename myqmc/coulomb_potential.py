@@ -8,8 +8,8 @@ import numpy as np
 import numpy.typing as npt
 from scipy.special import eval_legendre
 
-from structure import Structure_data
-from wavefunction import Wavefunction_data, evaluate_wavefunction
+from .structure import Structure_data
+from .wavefunction import Wavefunction_data, evaluate_wavefunction
 
 # set logger
 from logging import getLogger, StreamHandler, Formatter
@@ -199,7 +199,7 @@ def compute_ecp_nonlocal_parts(
     debug_flag: bool = True,
 ) -> float:
 
-    logger.info(f"Nv={Nv} for non-local PP evaluations.")
+    logger.debug(f"Nv={Nv} for non-local PP evaluations.")
     if Nv == 4:
         weights = tetrahedron_sym_mesh_Nv4.weights
         grid_points = tetrahedron_sym_mesh_Nv4.grid_points

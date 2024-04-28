@@ -7,15 +7,11 @@ import numpy as np
 from numpy import linalg as LA
 import numpy.typing as npt
 
-# python material modules
-from ase import Atoms  # type: ignore
-from ase.io import write, read  # type: ignore
-
 # set logger
 from logging import getLogger, StreamHandler, Formatter
 
 # modules
-from units import Angstrom_to_Bohr, Bohr_to_Angstrom
+from .units import Bohr_to_Angstrom
 
 logger = getLogger("myqmc").getChild(__name__)
 
@@ -201,37 +197,7 @@ class Structure_data:
             closest_index = np.argmin(distances)
             return closest_index
 
-    def get_ase_atom(self) -> Atoms:
-        """
-        Returns:
-            ASE Atoms instance.
-
-        Notes:
-            # define ASE-type structure (used inside this class)
-            # Note! unit in ASE is angstrom, so one should convert bohr -> ang
-        """
-        if any(self.pbc_flag):
-            ase_atom = Atoms(
-                self.element_symbols, positions=self.positions_cart * Bohr_to_Angstrom
-            )
-            ase_atom.set_cell(
-                np.array(
-                    [
-                        self.cell[0] * Bohr_to_Angstrom,
-                        self.cell[1] * Bohr_to_Angstrom,
-                        self.cell[2] * Bohr_to_Angstrom,
-                    ]
-                )
-            )
-            ase_atom.set_pbc(self.pbc_flag)
-        else:
-            ase_atom = Atoms(
-                self.element_symbols, positions=self.positions_cart * Bohr_to_Angstrom
-            )
-            ase_atom.set_pbc(self.pbc_flag)
-
-        return ase_atom
-
+    ''' unsupported
     @classmethod
     def parse_structure_from_ase_atom(cls, ase_atom: Atoms) -> "Structure_data":
         """
@@ -265,6 +231,7 @@ class Structure_data:
             atomic_labels=element_symbols,
             positions=positions,
         )
+    '''
 
     @classmethod
     def parse_structure_from_file(cls, filename: str) -> "Structure_data":
@@ -275,6 +242,9 @@ class Structure_data:
         Args:
             file, See the ASE manual for the supported formats
         """
+        # python material modules
+        from ase.io import read  # type: ignore
+
         logger.info(f"Structure is read from {filename} using the ASE read function.")
         atoms = read(filename)
         return cls.parse_structure_from_ase_atom(atoms)
@@ -286,8 +256,31 @@ class Structure_data:
         Args:
             filename, See the ASE manual for the supported formats
         """
-        atoms = self.get_ase_atom()
-        write(filename, atoms)
+        # python material modules
+        from ase import Atoms
+        from ase.io import write  # type: ignore
+
+        if any(self.pbc_flag):
+            ase_atom = Atoms(
+                self.element_symbols, positions=self.positions_cart * Bohr_to_Angstrom
+            )
+            ase_atom.set_cell(
+                np.array(
+                    [
+                        self.cell[0] * Bohr_to_Angstrom,
+                        self.cell[1] * Bohr_to_Angstrom,
+                        self.cell[2] * Bohr_to_Angstrom,
+                    ]
+                )
+            )
+            ase_atom.set_pbc(self.pbc_flag)
+        else:
+            ase_atom = Atoms(
+                self.element_symbols, positions=self.positions_cart * Bohr_to_Angstrom
+            )
+            ase_atom.set_pbc(self.pbc_flag)
+
+        write(filename, ase_atom)
 
 
 if __name__ == "__main__":

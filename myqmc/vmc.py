@@ -9,15 +9,15 @@ import numpy as np
 # set logger
 from logging import getLogger, StreamHandler, Formatter
 
-from hamiltonians import Hamiltonian_data, compute_local_energy
-from wavefunction import (
-    compute_quantum_force,
+from .hamiltonians import Hamiltonian_data, compute_local_energy
+from .wavefunction import (
+    # compute_quantum_force,
     evaluate_wavefunction,
     compute_kinetic_energy,
 )
-from trexio_wrapper import read_trexio_file
-from wavefunction import Wavefunction_data
-from coulomb_potential import (
+from .trexio_wrapper import read_trexio_file
+from .wavefunction import Wavefunction_data
+from .coulomb_potential import (
     compute_bare_coulomb_potential,
     compute_ecp_local_parts,
     compute_ecp_nonlocal_parts,
@@ -102,7 +102,7 @@ class MCMC:
             # Place electrons
             for _ in range(num_electrons):
                 # Calculate distance range
-                distance = np.random.uniform(1.5, 3.0)
+                distance = np.random.uniform(0.1, 2.0)
                 theta = np.random.uniform(0, np.pi)
                 phi = np.random.uniform(0, 2 * np.pi)
 
@@ -163,6 +163,7 @@ class MCMC:
 
         # Set the random seed and use the Mersenne Twister generator
         accepted_moves = 0
+        nbra = 16
         random.seed(self.__mcmc_seed)
         np.random.seed(self.__mcmc_seed)
 
@@ -186,7 +187,7 @@ class MCMC:
 
             coords = self.__hamiltonian_data.structure_data.positions_cart
 
-            for _ in range(16):
+            for _ in range(nbra):
                 # Choose randomly if the electron comes from up or dn
                 if random.randint(0, total_electrons - 1) < len(
                     self.__latest_r_up_carts
@@ -215,16 +216,16 @@ class MCMC:
                 norm_r_R = np.linalg.norm(old_r_cart - R_cart)
                 f_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
 
-                logger.info(f"nearest_atom_index = {nearest_atom_index}")
-                logger.info(f"norm_r_R = {norm_r_R}")
-                logger.info(f"f_l  = {f_l }")
+                logger.debug(f"nearest_atom_index = {nearest_atom_index}")
+                logger.debug(f"norm_r_R = {norm_r_R}")
+                logger.debug(f"f_l  = {f_l }")
 
                 sigma = f_l * self.__Dt
                 g = float(np.random.normal(loc=0, scale=sigma))
                 g_vector = np.zeros(3)
                 random_index = np.random.randint(0, 3)
                 g_vector[random_index] = g
-                logger.info(f"jn = {random_index}, g \equiv dstep  = {g_vector}")
+                logger.debug(f"jn = {random_index}, g \equiv dstep  = {g_vector}")
                 new_r_cart = old_r_cart + g_vector
 
                 if selected_electron_spin == "up":
@@ -243,15 +244,15 @@ class MCMC:
                 Z = charges[nearest_atom_index]
                 norm_r_R = np.linalg.norm(new_r_cart - R_cart)
                 f_prime_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
-                logger.info(f"nearest_atom_index = {nearest_atom_index}")
-                logger.info(f"norm_r_R = {norm_r_R}")
-                logger.info(f"f_prime_l  = {f_prime_l }")
+                logger.debug(f"nearest_atom_index = {nearest_atom_index}")
+                logger.debug(f"norm_r_R = {norm_r_R}")
+                logger.debug(f"f_prime_l  = {f_prime_l }")
 
-                logger.info(
+                logger.debug(
                     f"The selected electron is {selected_electron_index+1}-th {selected_electron_spin} electron."
                 )
-                logger.info(f"The selected electron position is {old_r_cart}.")
-                logger.info(f"The proposed electron position is {new_r_cart}.")
+                logger.debug(f"The selected electron position is {old_r_cart}.")
+                logger.debug(f"The proposed electron position is {new_r_cart}.")
 
                 T_ratio = (f_l / f_prime_l) * np.exp(
                     -np.linalg.norm(new_r_cart - old_r_cart) ** 2
@@ -273,9 +274,9 @@ class MCMC:
                     )
                 ) ** 2.0
 
-                logger.info(f"R_ratio, T_ratio = {R_ratio}, {T_ratio}")
+                logger.debug(f"R_ratio, T_ratio = {R_ratio}, {T_ratio}")
                 acceptance_ratio = np.min([1.0, R_ratio * T_ratio])
-                logger.info(f"acceptance_ratio = {acceptance_ratio}")
+                logger.debug(f"acceptance_ratio = {acceptance_ratio}")
 
                 b = np.random.uniform(0, 1)
 
@@ -295,7 +296,7 @@ class MCMC:
             logger.info(f"e_L = {e_L}")
             self.__stored_local_energy.append(e_L)
 
-        logger.info(f"acceptance ratio is {accepted_moves/num_mcmc_steps*16*100} %")
+        logger.info(f"acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
         logger.info(
             f"e_L is {np.average(self.__stored_local_energy[50:])} +- {np.sqrt(np.var(self.__stored_local_energy[50:]))} Ha."
         )
@@ -352,11 +353,6 @@ if __name__ == "__main__":
     new_r_cart = [0.618632327645002, -0.149033260668010, 0.131889254514777]
     new_r_dn_carts[3] = new_r_cart
 
-    print(old_r_up_carts)
-    print(old_r_dn_carts)
-    print(new_r_up_carts)
-    print(new_r_dn_carts)
-
     R_ratio = (
         evaluate_wavefunction(
             wavefunction_data=hamiltonian_data.wavefunction_data,
@@ -389,7 +385,7 @@ if __name__ == "__main__":
     Z = charges[nearest_atom_index]
     norm_r_R = np.linalg.norm(old_r_cart - R_cart)
     f_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
-    print(f"f_l = {f_l}")
+    logger.debug(f"f_l = {f_l}")
 
     nearest_atom_index = (
         hamiltonian_data.structure_data.get_nearest_neigbhor_atom_index(new_r_cart)
@@ -398,14 +394,14 @@ if __name__ == "__main__":
     Z = charges[nearest_atom_index]
     norm_r_R = np.linalg.norm(new_r_cart - R_cart)
     f_prime_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
-    print(f"f_prime_l  = {f_prime_l }")
+    logger.debug(f"f_prime_l  = {f_prime_l }")
 
     T_ratio = (f_l / f_prime_l) * np.exp(
         -np.linalg.norm(np.array(new_r_cart) - np.array(old_r_cart)) ** 2
         * (1.0 / (2.0 * f_prime_l**2 * 2.0**2) - 1.0 / (2.0 * f_l**2 * 2.0**2))
     )
 
-    print(f"T_ratio = {T_ratio}")
+    logger.debug(f"T_ratio = {T_ratio}")
 
     kinc = compute_kinetic_energy(
         wavefunction_data=hamiltonian_data.wavefunction_data,
@@ -432,14 +428,14 @@ if __name__ == "__main__":
         wavefunction_data=wavefunction_data,
     )
 
-    print(f"kinc={kinc} Ha")
-    print(f"vpot_bare={vpot_bare} Ha")
-    print(f"vpot_ecp_local={vpot_ecp_local} Ha")
-    print(f"vpot_ecp_nonlocal={vpot_ecp_nonlocal} Ha")
+    logger.debug(f"kinc={kinc} Ha")
+    logger.debug(f"vpot_bare={vpot_bare} Ha")
+    logger.debug(f"vpot_ecp_local={vpot_ecp_local} Ha")
+    logger.debug(f"vpot_ecp_nonlocal={vpot_ecp_nonlocal} Ha")
 
-    print(f"kinc={kinc} Ha")
-    print(f"vpot={vpot_bare+vpot_ecp_local} Ha")
-    print(f"vpotoff={vpot_ecp_nonlocal} Ha")
+    logger.debug(f"kinc={kinc} Ha")
+    logger.debug(f"vpot={vpot_bare+vpot_ecp_local} Ha")
+    logger.debug(f"vpotoff={vpot_ecp_nonlocal} Ha")
 
     """
     e_L = compute_local_energy(
