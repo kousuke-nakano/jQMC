@@ -4,20 +4,24 @@
 from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
-
-# set logger
 from logging import getLogger, StreamHandler, Formatter
+
+# import jax
+from jax import jit
+import jax.numpy as jnp
+from flax import struct
 
 from .determinant import (
     Geminal_data,
     compute_det_geminal_all_elements,
-    compute_grads_and_laplacian_ln_Det,
+    compute_grads_and_laplacian_ln_Det_api,
 )
 
+# set logger
 logger = getLogger("myqmc").getChild(__name__)
 
 
-@dataclass
+@struct.dataclass
 class Wavefunction_data:
     """
     The class contains data for wavefunction
@@ -61,6 +65,7 @@ def evaluate_wavefunction(
     return Jastrow_part * Determinant_part
 
 
+@jit
 def compute_kinetic_energy(
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -79,10 +84,13 @@ def compute_kinetic_energy(
     """
     grad_J_up, grad_J_dn, sum_laplacian_J = 0, 0, 0  # tentative
 
-    grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = compute_grads_and_laplacian_ln_Det(
-        geminal_data=wavefunction_data.geminal_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
+    grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = (
+        compute_grads_and_laplacian_ln_Det_api(
+            geminal_data=wavefunction_data.geminal_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+            debug_flag=False,
+        )
     )
 
     # compute laplacians
@@ -92,13 +100,11 @@ def compute_kinetic_energy(
         * (
             -(sum_laplacian_J + sum_laplacian_ln_D)
             - (
-                np.sum((grad_J_up + grad_ln_D_up) * (grad_J_up + grad_ln_D_up))
-                + np.sum((grad_J_dn + grad_ln_D_dn) * (grad_J_dn + grad_ln_D_dn))
+                jnp.sum((grad_J_up + grad_ln_D_up) * (grad_J_up + grad_ln_D_up))
+                + jnp.sum((grad_J_dn + grad_ln_D_dn) * (grad_J_dn + grad_ln_D_dn))
             )
         )
     )
-
-    logger.info(f"kinetic energy = {L} a.u.")
 
     return L
 
@@ -122,7 +128,7 @@ def compute_quantum_force(
 
     grad_J_up, grad_J_dn, _ = 0, 0, 0  # tentative
 
-    grad_ln_D_up, grad_ln_D_dn, _ = compute_grads_and_laplacian_ln_Det(
+    grad_ln_D_up, grad_ln_D_dn, _ = compute_grads_and_laplacian_ln_Det_api(
         geminal_data=wavefunction_data.geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,

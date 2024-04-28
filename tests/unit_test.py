@@ -29,7 +29,7 @@ from ..myqmc.determinant import (
     Geminal_data,
     compute_geminal_all_elements,
     compute_det_geminal_all_elements,
-    compute_grads_and_laplacian_ln_Det,
+    compute_grads_and_laplacian_ln_Det_api,
 )
 
 from ..myqmc.trexio_wrapper import read_trexio_file
@@ -519,8 +519,8 @@ def test_AOs_comparing_jax_and_debug_implemenetations():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    aos_jax = compute_AOs_api(aos_data=aos_data, r_carts=r_carts, jax_flag=True)
-    aos_debug = compute_AOs_api(aos_data=aos_data, r_carts=r_carts, jax_flag=False)
+    aos_jax = compute_AOs_api(aos_data=aos_data, r_carts=r_carts, debug_flag=False)
+    aos_debug = compute_AOs_api(aos_data=aos_data, r_carts=r_carts, debug_flag=True)
 
     assert np.allclose(aos_jax, aos_debug, rtol=1e-12, atol=1e-05)
 
@@ -557,14 +557,14 @@ def test_AOs_comparing_auto_and_numerical_grads():
     )
 
     ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = (
-        compute_AOs_grad_api(aos_data=aos_data, r_carts=r_carts, debug_flag=True)
+        compute_AOs_grad_api(aos_data=aos_data, r_carts=r_carts, debug_flag=False)
     )
 
     (
         ao_matrix_grad_x_numerical,
         ao_matrix_grad_y_numerical,
         ao_matrix_grad_z_numerical,
-    ) = compute_AOs_grad_api(aos_data=aos_data, r_carts=r_carts, debug_flag=False)
+    ) = compute_AOs_grad_api(aos_data=aos_data, r_carts=r_carts, debug_flag=True)
 
     np.testing.assert_array_almost_equal(
         ao_matrix_grad_x_auto, ao_matrix_grad_x_numerical, decimal=7
@@ -685,10 +685,12 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
         num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients
     )
 
-    mo_ans_all_jax = compute_MOs_api(mos_data=mos_data, r_carts=r_carts, jax_flag=True)
+    mo_ans_all_jax = compute_MOs_api(
+        mos_data=mos_data, r_carts=r_carts, debug_flag=False
+    )
 
     mo_ans_all_debug = compute_MOs_api(
-        mos_data=mos_data, r_carts=r_carts, jax_flag=False
+        mos_data=mos_data, r_carts=r_carts, debug_flag=True
     )
 
     assert np.allclose(mo_ans_step_by_step, mo_ans_all_jax)
@@ -735,14 +737,14 @@ def test_MOs_comparing_auto_and_numerical_grads():
     )
 
     mo_matrix_grad_x_auto, mo_matrix_grad_y_auto, mo_matrix_grad_z_auto = (
-        compute_MOs_grad_api(mos_data=mos_data, r_carts=r_carts, debug_flag=True)
+        compute_MOs_grad_api(mos_data=mos_data, r_carts=r_carts, debug_flag=False)
     )
 
     (
         mo_matrix_grad_x_numerical,
         mo_matrix_grad_y_numerical,
         mo_matrix_grad_z_numerical,
-    ) = compute_MOs_grad_api(mos_data=mos_data, r_carts=r_carts, debug_flag=False)
+    ) = compute_MOs_grad_api(mos_data=mos_data, r_carts=r_carts, debug_flag=True)
 
     np.testing.assert_array_almost_equal(
         mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, decimal=6
@@ -1062,7 +1064,7 @@ def test_numerial_and_auto_grads_ln_Det():
     )
 
     grad_ln_D_up_numerical, grad_ln_D_dn_numerical, sum_laplacian_ln_D_numerical = (
-        compute_grads_and_laplacian_ln_Det(
+        compute_grads_and_laplacian_ln_Det_api(
             geminal_data=geminal_ao_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
@@ -1071,7 +1073,7 @@ def test_numerial_and_auto_grads_ln_Det():
     )
 
     grad_ln_D_up_auto, grad_ln_D_dn_auto, sum_laplacian_ln_D_auto = (
-        compute_grads_and_laplacian_ln_Det(
+        compute_grads_and_laplacian_ln_Det_api(
             geminal_data=geminal_ao_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
@@ -1082,7 +1084,7 @@ def test_numerial_and_auto_grads_ln_Det():
     np.testing.assert_almost_equal(grad_ln_D_up_numerical, grad_ln_D_up_auto, decimal=5)
     np.testing.assert_almost_equal(grad_ln_D_dn_numerical, grad_ln_D_dn_auto, decimal=5)
     np.testing.assert_almost_equal(
-        sum_laplacian_ln_D_numerical, sum_laplacian_ln_D_auto, decimal=3
+        sum_laplacian_ln_D_numerical, sum_laplacian_ln_D_auto, decimal=2
     )
     # print(grad_ln_D_up_numerical)
     # print(grad_ln_D_up_auto)

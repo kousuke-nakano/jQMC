@@ -439,6 +439,7 @@ def compute_coulomb_potential(
     Returns:
         Arrays containing values of the geminal function with r_up_carts and r_dn_carts. (dim: N_e^{up}, N_e^{up})
     """
+    # return 0.0
 
     # all-electron
     if not coulomb_potential_data.ecp_flag:

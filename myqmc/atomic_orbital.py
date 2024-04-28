@@ -4,10 +4,10 @@
 
 # python modules
 from dataclasses import dataclass, field
-import itertools
 import numpy as np
 from numpy import linalg as LA
 import numpy.typing as npt
+from logging import getLogger, StreamHandler, Formatter
 
 # scipy
 import scipy  # type: ignore
@@ -20,13 +20,11 @@ import jax.scipy as jscipy
 import jax.numpy as jnp
 from flax import struct
 
+# set logger
+logger = getLogger("myqmc").getChild(__name__)
+
 # JAX float64
 jax.config.update("jax_enable_x64", True)
-
-# set logger
-from logging import getLogger, StreamHandler, Formatter
-
-logger = getLogger("myqmc").getChild(__name__)
 
 
 # @dataclass
@@ -138,7 +136,7 @@ def compute_AOs_overlap_matrix(aos_data: AOs_data, method: str = "numerical"):
 def compute_AOs_laplacian_api(
     aos_data: AOs_data,
     r_carts: npt.NDArray[np.float64],
-    debug_flag: bool = True,
+    debug_flag: bool = False,
 ) -> npt.NDArray[np.float64 | np.complex128]:
     """
     The method is for computing the laplacians of the given atomic orbital at r_carts
@@ -168,7 +166,7 @@ def compute_AOs_laplacian_jax_auto_grad(
 
     def _compute_ao_matrix_grad(aos_data: AOs_data, r_carts, target=0):
         ao_matrix_jacrev = jacrev(compute_AOs_api, argnums=1)(
-            aos_data, r_carts, jax_flag=True
+            aos_data, r_carts, debug_flag=False
         )
 
         ao_matrix_grad_ = ao_matrix_jacrev[:, :, :, target]
@@ -212,31 +210,31 @@ def compute_AOs_laplacian_numerical_grad(
     # Laplacians of AOs (numerical)
     diff_h = 1.0e-5
 
-    ao_matrix = compute_AOs_api(aos_data, r_carts, jax_flag=True)
+    ao_matrix = compute_AOs_api(aos_data, r_carts, debug_flag=True)
 
     # laplacians x^2
     diff_p_x_r_carts = r_carts.copy()
     diff_p_x_r_carts[:, 0] += diff_h
-    ao_matrix_diff_p_x = compute_AOs_api(aos_data, diff_p_x_r_carts, jax_flag=True)
+    ao_matrix_diff_p_x = compute_AOs_api(aos_data, diff_p_x_r_carts, debug_flag=True)
     diff_m_x_r_carts = r_carts.copy()
     diff_m_x_r_carts[:, 0] -= diff_h
-    ao_matrix_diff_m_x = compute_AOs_api(aos_data, diff_m_x_r_carts, jax_flag=True)
+    ao_matrix_diff_m_x = compute_AOs_api(aos_data, diff_m_x_r_carts, debug_flag=True)
 
     # laplacians y^2
     diff_p_y_r_carts = r_carts.copy()
     diff_p_y_r_carts[:, 1] += diff_h
-    ao_matrix_diff_p_y = compute_AOs_api(aos_data, diff_p_y_r_carts, jax_flag=True)
+    ao_matrix_diff_p_y = compute_AOs_api(aos_data, diff_p_y_r_carts, debug_flag=True)
     diff_m_y_r_carts = r_carts.copy()
     diff_m_y_r_carts[:, 1] -= diff_h
-    ao_matrix_diff_m_y = compute_AOs_api(aos_data, diff_m_y_r_carts, jax_flag=True)
+    ao_matrix_diff_m_y = compute_AOs_api(aos_data, diff_m_y_r_carts, debug_flag=True)
 
     # laplacians z^2
     diff_p_z_r_carts = r_carts.copy()
     diff_p_z_r_carts[:, 2] += diff_h
-    ao_matrix_diff_p_z = compute_AOs_api(aos_data, diff_p_z_r_carts, jax_flag=True)
+    ao_matrix_diff_p_z = compute_AOs_api(aos_data, diff_p_z_r_carts, debug_flag=True)
     diff_m_z_r_carts = r_carts.copy()
     diff_m_z_r_carts[:, 2] -= diff_h
-    ao_matrix_diff_m_z = compute_AOs_api(aos_data, diff_m_z_r_carts, jax_flag=True)
+    ao_matrix_diff_m_z = compute_AOs_api(aos_data, diff_m_z_r_carts, debug_flag=True)
 
     ao_matrix_grad2_x = (ao_matrix_diff_p_x + ao_matrix_diff_m_x - 2 * ao_matrix) / (
         diff_h
@@ -262,7 +260,7 @@ def compute_AOs_laplacian_numerical_grad(
 def compute_AOs_grad_api(
     aos_data: AOs_data,
     r_carts: npt.NDArray[np.float64],
-    debug_flag: bool = True,
+    debug_flag: bool = False,
 ) -> tuple[
     npt.NDArray[np.float64 | np.complex128],
     npt.NDArray[np.float64 | np.complex128],
@@ -299,7 +297,7 @@ def compute_AOs_jax_auto_grad(
     # Note: This method gives correct answers, but slow because the full Jacobian calculation is not needed for computing gradients.
     # grad should be pluged into compute_AOs_jax() in the future for accelaration.
     ao_matrix_jacrev = jacrev(compute_AOs_api, argnums=1)(
-        aos_data, r_carts, jax_flag=True
+        aos_data, r_carts, debug_flag=False
     )
 
     ao_matrix_grad_x_ = ao_matrix_jacrev[:, :, :, 0]
@@ -344,26 +342,26 @@ def compute_AOs_numerical_grad(
     # grad x
     diff_p_x_r_carts = r_carts.copy()
     diff_p_x_r_carts[:, 0] += diff_h
-    ao_matrix_diff_p_x = compute_AOs_api(aos_data, diff_p_x_r_carts, jax_flag=True)
+    ao_matrix_diff_p_x = compute_AOs_api(aos_data, diff_p_x_r_carts, debug_flag=True)
     diff_m_x_r_carts = r_carts.copy()
     diff_m_x_r_carts[:, 0] -= diff_h
-    ao_matrix_diff_m_x = compute_AOs_api(aos_data, diff_m_x_r_carts, jax_flag=True)
+    ao_matrix_diff_m_x = compute_AOs_api(aos_data, diff_m_x_r_carts, debug_flag=True)
 
     # grad y
     diff_p_y_r_carts = r_carts.copy()
     diff_p_y_r_carts[:, 1] += diff_h
-    ao_matrix_diff_p_y = compute_AOs_api(aos_data, diff_p_y_r_carts, jax_flag=True)
+    ao_matrix_diff_p_y = compute_AOs_api(aos_data, diff_p_y_r_carts, debug_flag=True)
     diff_m_y_r_carts = r_carts.copy()
     diff_m_y_r_carts[:, 1] -= diff_h
-    ao_matrix_diff_m_y = compute_AOs_api(aos_data, diff_m_y_r_carts, jax_flag=True)
+    ao_matrix_diff_m_y = compute_AOs_api(aos_data, diff_m_y_r_carts, debug_flag=True)
 
     # grad z
     diff_p_z_r_carts = r_carts.copy()
     diff_p_z_r_carts[:, 2] += diff_h
-    ao_matrix_diff_p_z = compute_AOs_api(aos_data, diff_p_z_r_carts, jax_flag=True)
+    ao_matrix_diff_p_z = compute_AOs_api(aos_data, diff_p_z_r_carts, debug_flag=True)
     diff_m_z_r_carts = r_carts.copy()
     diff_m_z_r_carts[:, 2] -= diff_h
-    ao_matrix_diff_m_z = compute_AOs_api(aos_data, diff_m_z_r_carts, jax_flag=True)
+    ao_matrix_diff_m_z = compute_AOs_api(aos_data, diff_m_z_r_carts, debug_flag=True)
 
     ao_matrix_grad_x = (ao_matrix_diff_p_x - ao_matrix_diff_m_x) / (2.0 * diff_h)
     ao_matrix_grad_y = (ao_matrix_diff_p_y - ao_matrix_diff_m_y) / (2.0 * diff_h)
@@ -393,7 +391,7 @@ def compute_AOs_numerical_grad(
 def compute_AOs_api(
     aos_data: AOs_data,
     r_carts: npt.NDArray[np.float64],
-    jax_flag: bool = True,
+    debug_flag: bool = False,
 ) -> npt.NDArray[np.float64 | np.complex128]:
     """
     The method is for computing the value of the given atomic orbital at r_carts
@@ -401,15 +399,15 @@ def compute_AOs_api(
     Args:
         ao_datas (AOs_data): an instance of AOs_data
         r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
-        jax_flag: if False, AOs are computed one by one using compute_AO for debuging purpose
+        debug_flag: if True, AOs are computed one by one using compute_AO for debuging purpose
 
     Returns:
     Arrays containing values of the AOs at r_carts. (dim: num_ao, N_e)
     """
-    if jax_flag:
-        return compute_AOs_jax(aos_data, r_carts)
-    else:
+    if debug_flag:
         return compute_AOs_debug(aos_data, r_carts)
+    else:
+        return compute_AOs_jax(aos_data, r_carts)
 
 
 def compute_AOs_debug(

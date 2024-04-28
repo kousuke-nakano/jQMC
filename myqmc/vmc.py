@@ -1,6 +1,7 @@
 """VMC module"""
 
 # python modules
+import os
 import random
 import numpy as np
 
@@ -281,12 +282,12 @@ class MCMC:
                 b = np.random.uniform(0, 1)
 
                 if b < acceptance_ratio:
-                    logger.info("The proposed move is accepted!")
+                    logger.debug("The proposed move is accepted!")
                     accepted_moves += 1
                     self.__latest_r_up_carts = proposed_r_up_carts
                     self.__latest_r_dn_carts = proposed_r_dn_carts
                 else:
-                    logger.info("The proposed move is rejected!")
+                    logger.debug("The proposed move is rejected!")
 
             e_L = compute_local_energy(
                 hamiltonian_data=self.__hamiltonian_data,
@@ -320,7 +321,9 @@ if __name__ == "__main__":
         mos_data_dn,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file="water_trexio.hdf5")
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "water_trexio.hdf5")
+    )
 
     wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data)
 
@@ -366,7 +369,7 @@ if __name__ == "__main__":
         )
     ) ** 2.0
 
-    print(f"R_ratio = {R_ratio}")
+    logger.debug(f"R_ratio = {R_ratio}")
 
     if hamiltonian_data.coulomb_potential_data.ecp_flag:
         charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
