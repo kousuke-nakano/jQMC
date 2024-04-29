@@ -1,21 +1,22 @@
 """Hamiltonian module"""
 
 # python modules
-from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
-
-# set logger
 from logging import getLogger, StreamHandler, Formatter
+
+# JAX
+from flax import struct
 
 from .wavefunction import Wavefunction_data, compute_kinetic_energy
 from .coulomb_potential import Coulomb_potential_data, compute_coulomb_potential
 from .structure import Structure_data
 
+# set logger
 logger = getLogger("myqmc").getChild(__name__)
 
 
-@dataclass
+@struct.dataclass
 class Hamiltonian_data:
     """
     The class contains data for computing laplacians

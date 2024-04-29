@@ -2,17 +2,19 @@
 
 # python modules
 from typing import NamedTuple
-from dataclasses import dataclass
 import itertools
+from logging import getLogger, StreamHandler, Formatter
+
 import numpy as np
 import numpy.typing as npt
 from scipy.special import eval_legendre
 
+# JAX
+from flax import struct
+
 from .structure import Structure_data
 from .wavefunction import Wavefunction_data, evaluate_wavefunction
 
-# set logger
-from logging import getLogger, StreamHandler, Formatter
 
 logger = getLogger("myqmc").getChild(__name__)
 
@@ -82,7 +84,7 @@ octahedron_sym_mesh_Nv18 = Mesh(
 )
 
 
-@dataclass
+@struct.dataclass
 class Coulomb_potential_data:
     """
     The class contains data for computing effective core potentials (ECPs).
@@ -102,37 +104,19 @@ class Coulomb_potential_data:
         powers (list[int]): all ECP powers (dim:num_ecps)
     """
 
-    structure_data: Structure_data = None
-    ecp_flag: bool = False
-    z_cores: list[float] = None
-    max_ang_mom_plus_1: list[int] = None
-    num_ecps: list[int] = None
-    ang_moms: list[int] = None
-    nucleus_index: list[int] = None
-    exponents: list[float] = None
-    coefficients: list[float] = None
-    powers: list[int] = None
+    structure_data: Structure_data = struct.field(pytree_node=True)
+    ecp_flag: bool = struct.field(pytree_node=False)
+    z_cores: list[float] = struct.field(pytree_node=False)
+    max_ang_mom_plus_1: list[int] = struct.field(pytree_node=False)
+    num_ecps: list[int] = struct.field(pytree_node=False)
+    ang_moms: list[int] = struct.field(pytree_node=False)
+    nucleus_index: list[int] = struct.field(pytree_node=False)
+    exponents: list[float] = struct.field(pytree_node=False)
+    coefficients: list[float] = struct.field(pytree_node=False)
+    powers: list[int] = struct.field(pytree_node=False)
 
     def __post_init__(self) -> None:
         pass
-
-
-def compute_nearest_neighbors_nuclei_indices(
-    num_nearest_neighbors_nuclei: int,
-    atomic_center_carts: npt.NDArray[np.float64],
-    r_carts: npt.NDArray[np.float64],
-) -> list[tuple[int]]:
-    """
-    The method returning num_nearest_neighbors_nuclei indices.
-
-    Args:
-        num_nearest_neighbors_nuclei (int): number of searched nearest-neighbor nuclei
-        atomic_center_carts (npt.NDArray[np.float64]): Centers of the nuclei (dim: num_atoms, 3).
-        r_carts (npt.NDArray[np.float64]): Cartesian coordinates of electrons (dim: N_e, 3)
-
-    Returns:
-        list containing tuples including indices for nearest neighbors nuclei for each electron. (dim: N_e)
-    """
 
 
 def compute_ecp_local_parts(
@@ -439,7 +423,6 @@ def compute_coulomb_potential(
     Returns:
         Arrays containing values of the geminal function with r_up_carts and r_dn_carts. (dim: N_e^{up}, N_e^{up})
     """
-    # return 0.0
 
     # all-electron
     if not coulomb_potential_data.ecp_flag:

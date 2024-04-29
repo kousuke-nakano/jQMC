@@ -4,11 +4,14 @@
 import os
 import random
 import numpy as np
-
-# import numpy.typing as npt
-
-# set logger
 from logging import getLogger, StreamHandler, Formatter
+
+# MPI
+from mpi4py import MPI
+import mpi4jax
+
+# jax
+from jax import grad
 
 from .hamiltonians import Hamiltonian_data, compute_local_energy
 from .wavefunction import (
@@ -24,6 +27,7 @@ from .coulomb_potential import (
     compute_ecp_nonlocal_parts,
 )
 
+# set logger
 logger = getLogger("myqmc").getChild(__name__)
 
 
@@ -262,6 +266,7 @@ class MCMC:
                         - 1.0 / (2.0 * f_l**2 * self.__Dt**2)
                     )
                 )
+
                 R_ratio = (
                     evaluate_wavefunction(
                         wavefunction_data=self.__hamiltonian_data.wavefunction_data,
@@ -297,6 +302,15 @@ class MCMC:
             logger.info(f"e_L = {e_L}")
             self.__stored_local_energy.append(e_L)
 
+            """
+            grad_e_L = grad(compute_local_energy, argnums=(0, 1, 2))(
+                self.__hamiltonian_data,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+            )
+            logger.info(f"grad_e_L = {grad_e_L}")
+            """
+
         logger.info(f"acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
         logger.info(
             f"e_L is {np.average(self.__stored_local_energy[50:])} +- {np.sqrt(np.var(self.__stored_local_energy[50:]))} Ha."
@@ -305,11 +319,17 @@ class MCMC:
 
 
 if __name__ == "__main__":
+
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+
     log = getLogger("myqmc")
     log.setLevel("INFO")
     stream_handler = StreamHandler()
     stream_handler.setLevel("INFO")
-    handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
+    handler_format = Formatter(
+        f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s"
+    )
     stream_handler.setFormatter(handler_format)
     log.addHandler(stream_handler)
 
@@ -332,6 +352,15 @@ if __name__ == "__main__":
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
     )
+
+    mpi_seed = 34356 * (rank + 1)
+
+    logger.info(f"mcmc_seed for MPI-rank={rank} is {mpi_seed}.")
+
+    mcmc = MCMC(hamiltonian_data=hamiltonian_data, mcmc_seed=mpi_seed)
+    mcmc.run(num_mcmc_steps=150)
+
+    """
 
     old_r_up_carts = np.array(
         [
@@ -439,6 +468,7 @@ if __name__ == "__main__":
     logger.debug(f"kinc={kinc} Ha")
     logger.debug(f"vpot={vpot_bare+vpot_ecp_local} Ha")
     logger.debug(f"vpotoff={vpot_ecp_nonlocal} Ha")
+    """
 
     """
     e_L = compute_local_energy(
@@ -448,10 +478,6 @@ if __name__ == "__main__":
     )
     print(f"e_L={e_L} Ha")
     """
-    # """
-    mcmc = MCMC(hamiltonian_data=hamiltonian_data)
-    mcmc.run(num_mcmc_steps=150)
-    # """
 
     """
     from coulomb_potential import compute_ecp_local_parts, compute_ecp_nonlocal_parts

@@ -136,9 +136,9 @@ def read_trexio_file(trexio_file: str):
     # Structure_data instance
     structure_data = Structure_data(
         pbc_flag=pbc_flag,
-        # vec_a: list[float] = field(default_factory=list)
-        # vec_b: list[float] = field(default_factory=list)
-        # vec_c: list[float] = field(default_factory=list)
+        vec_a=[],
+        vec_b=[],
+        vec_c=[],
         atomic_numbers=convert_from_atomic_labels_to_atomic_numbers(labels_r),
         element_symbols=labels_r,
         atomic_labels=labels_r,

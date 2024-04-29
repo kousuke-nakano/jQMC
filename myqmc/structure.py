@@ -2,21 +2,23 @@
 
 # python modules
 import itertools
-from dataclasses import dataclass, field
+from logging import getLogger, StreamHandler, Formatter
+
 import numpy as np
 from numpy import linalg as LA
 import numpy.typing as npt
 
-# set logger
-from logging import getLogger, StreamHandler, Formatter
+# JAX
+from flax import struct
 
 # modules
 from .units import Bohr_to_Angstrom
 
+# set logger
 logger = getLogger("myqmc").getChild(__name__)
 
 
-@dataclass
+@struct.dataclass
 class Structure_data:
     """Structure class
 
@@ -33,14 +35,14 @@ class Structure_data:
         positions (npt.NDArray[np.float64]): (N x 3) np.array containing atomic positions in cartesian. The unit is Bohr
     """
 
-    pbc_flag: list[bool] = field(default_factory=lambda: [False, False, False])
-    vec_a: list[float] = field(default_factory=list)
-    vec_b: list[float] = field(default_factory=list)
-    vec_c: list[float] = field(default_factory=list)
-    atomic_numbers: list[int] = field(default_factory=list)
-    element_symbols: list[str] = field(default_factory=list)
-    atomic_labels: list[str] = field(default_factory=list)
-    positions: npt.NDArray[np.float64] = np.array([])
+    pbc_flag: list[bool] = struct.field(pytree_node=False)
+    vec_a: list[float] = struct.field(pytree_node=True)
+    vec_b: list[float] = struct.field(pytree_node=True)
+    vec_c: list[float] = struct.field(pytree_node=True)
+    atomic_numbers: list[int] = struct.field(pytree_node=False)
+    element_symbols: list[str] = struct.field(pytree_node=False)
+    atomic_labels: list[str] = struct.field(pytree_node=False)
+    positions: npt.NDArray[np.float64] = struct.field(pytree_node=True)
 
     @property
     def cell(self) -> npt.NDArray[np.float64]:
