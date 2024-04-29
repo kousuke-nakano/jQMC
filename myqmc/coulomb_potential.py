@@ -10,6 +10,9 @@ import numpy.typing as npt
 from scipy.special import eval_legendre
 
 # JAX
+from jax import lax
+from jax import vmap, jit
+import jax.numpy as jnp
 from flax import struct
 
 from .structure import Structure_data
@@ -363,7 +366,7 @@ def compute_bare_coulomb_potential_api(
     coulomb_potential_data: Coulomb_potential_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
-    debug_flag: bool = True,
+    debug_flag: bool = False,
 ) -> float:
     """
     The method is for computing the bare coulomb potentials including all electron-electron,
@@ -423,6 +426,7 @@ def compute_bare_coulomb_potential_debug(
 
 
 # WIP for git-jax
+@jit
 def compute_bare_coulomb_potential_jax(
     coulomb_potential_data: Coulomb_potential_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -430,37 +434,48 @@ def compute_bare_coulomb_potential_jax(
 ) -> float:
 
     R_carts = coulomb_potential_data.structure_data.positions_cart
-    if coulomb_potential_data.ecp_flag:
-        R_charges = list(
-            np.array(coulomb_potential_data.structure_data.atomic_numbers)
-            - np.array(coulomb_potential_data.z_cores)
+
+    def return_R_charges_ecp(atomic_numbers, z_cores):
+        return jnp.array(atomic_numbers) - jnp.array(z_cores)
+
+    def return_R_charges_all_electrons(atomic_numbers, z_cores):
+        return jnp.array(atomic_numbers)
+
+    # logger.debug(coulomb_potential_data.ecp_flag)
+    R_charges = lax.cond(
+        coulomb_potential_data.ecp_flag,
+        return_R_charges_ecp,
+        return_R_charges_all_electrons,
+        coulomb_potential_data.structure_data.atomic_numbers,
+        coulomb_potential_data.z_cores,
+    )
+
+    r_up_charges = jnp.array([-1 for _ in range(len(r_up_carts))])
+    r_dn_charges = jnp.array([-1 for _ in range(len(r_dn_carts))])
+
+    all_carts = jnp.vstack([R_carts, r_up_carts, r_dn_carts])
+    all_charges = jnp.hstack([R_charges, r_up_charges, r_dn_charges])
+
+    bare_coulomb_potential = jnp.sum(
+        jnp.array(
+            [
+                (Z_a * Z_b) / jnp.linalg.norm(r_a - r_b)
+                for (Z_a, r_a), (Z_b, r_b) in itertools.combinations(
+                    zip(all_charges, all_carts), 2
+                )
+            ]
         )
-    else:
-        R_charges = coulomb_potential_data.structure_data.atomic_numbers
-    r_up_charges = [-1 for _ in range(len(r_up_carts))]
-    r_dn_charges = [-1 for _ in range(len(r_dn_carts))]
-
-    all_carts = np.vstack([R_carts, r_up_carts, r_dn_carts])
-    all_charges = R_charges + r_up_charges + r_dn_charges
-
-    bare_coulomb_potential = np.sum(
-        [
-            (Z_a * Z_b) / np.linalg.norm(r_a - r_b)
-            for (Z_a, r_a), (Z_b, r_b) in itertools.combinations(
-                zip(all_charges, all_carts), 2
-            )
-        ]
     )
 
     return bare_coulomb_potential
 
 
-def compute_coulomb_potential(
+def compute_coulomb_potential_api(
     coulomb_potential_data: Coulomb_potential_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
     wavefunction_data: Wavefunction_data = None,
-    debug_flag: bool = True,
+    debug_flag: bool = False,
 ) -> float:
     """
     The method is for computing the bare coulomb potentials including all electron-electron,

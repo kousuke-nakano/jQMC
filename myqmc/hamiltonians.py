@@ -9,7 +9,7 @@ from logging import getLogger, StreamHandler, Formatter
 from flax import struct
 
 from .wavefunction import Wavefunction_data, compute_kinetic_energy
-from .coulomb_potential import Coulomb_potential_data, compute_coulomb_potential
+from .coulomb_potential import Coulomb_potential_data, compute_coulomb_potential_api
 from .structure import Structure_data
 
 # set logger
@@ -57,7 +57,7 @@ def compute_local_energy(
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
-    V = compute_coulomb_potential(
+    V = compute_coulomb_potential_api(
         coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
