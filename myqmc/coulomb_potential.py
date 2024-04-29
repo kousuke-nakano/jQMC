@@ -359,12 +359,12 @@ def compute_ecp_nonlocal_parts(
         raise NotImplementedError
 
 
-def compute_bare_coulomb_potential(
+def compute_bare_coulomb_potential_api(
     coulomb_potential_data: Coulomb_potential_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
     debug_flag: bool = True,
-) -> npt.NDArray[np.float64 | np.complex128]:
+) -> float:
     """
     The method is for computing the bare coulomb potentials including all electron-electron,
     electron-ion (except. ECPs), and ion-ion interactions at (r_up_carts, r_dn_carts).
@@ -375,8 +375,60 @@ def compute_bare_coulomb_potential(
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
     Returns:
-        Arrays containing values of the geminal function with r_up_carts and r_dn_carts. (dim: N_e^{up}, N_e^{up})
+        The bare Coulomb potential with r_up_carts and r_dn_carts. (float)
     """
+
+    if debug_flag:
+        bare_coulomb_potential = compute_bare_coulomb_potential_debug(
+            coulomb_potential_data, r_up_carts, r_dn_carts
+        )
+    else:
+        bare_coulomb_potential = compute_bare_coulomb_potential_jax(
+            coulomb_potential_data, r_up_carts, r_dn_carts
+        )
+
+    return bare_coulomb_potential
+
+
+def compute_bare_coulomb_potential_debug(
+    coulomb_potential_data: Coulomb_potential_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+) -> float:
+
+    R_carts = coulomb_potential_data.structure_data.positions_cart
+    if coulomb_potential_data.ecp_flag:
+        R_charges = list(
+            np.array(coulomb_potential_data.structure_data.atomic_numbers)
+            - np.array(coulomb_potential_data.z_cores)
+        )
+    else:
+        R_charges = coulomb_potential_data.structure_data.atomic_numbers
+    r_up_charges = [-1 for _ in range(len(r_up_carts))]
+    r_dn_charges = [-1 for _ in range(len(r_dn_carts))]
+
+    all_carts = np.vstack([R_carts, r_up_carts, r_dn_carts])
+    all_charges = R_charges + r_up_charges + r_dn_charges
+
+    bare_coulomb_potential = np.sum(
+        [
+            (Z_a * Z_b) / np.linalg.norm(r_a - r_b)
+            for (Z_a, r_a), (Z_b, r_b) in itertools.combinations(
+                zip(all_charges, all_carts), 2
+            )
+        ]
+    )
+
+    return bare_coulomb_potential
+
+
+# WIP for git-jax
+def compute_bare_coulomb_potential_jax(
+    coulomb_potential_data: Coulomb_potential_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+) -> float:
+
     R_carts = coulomb_potential_data.structure_data.positions_cart
     if coulomb_potential_data.ecp_flag:
         R_charges = list(
@@ -409,7 +461,7 @@ def compute_coulomb_potential(
     r_dn_carts: npt.NDArray[np.float64],
     wavefunction_data: Wavefunction_data = None,
     debug_flag: bool = True,
-) -> npt.NDArray[np.float64 | np.complex128]:
+) -> float:
     """
     The method is for computing the bare coulomb potentials including all electron-electron,
     electron-ion (inc. ECPs), and ion-ion interactions at (r_up_carts, r_dn_carts).
@@ -421,12 +473,12 @@ def compute_coulomb_potential(
         wavefunction_data (Wavefunction_data): Wavefunction information needed to compute the non-local part
 
     Returns:
-        Arrays containing values of the geminal function with r_up_carts and r_dn_carts. (dim: N_e^{up}, N_e^{up})
+        Potential Energy at r_up_carts and r_dn_carts. (float)
     """
 
     # all-electron
     if not coulomb_potential_data.ecp_flag:
-        bare_coulomb_potential = compute_bare_coulomb_potential(
+        bare_coulomb_potential = compute_bare_coulomb_potential_api(
             coulomb_potential_data=coulomb_potential_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
@@ -436,7 +488,7 @@ def compute_coulomb_potential(
 
     # pseudo-potential
     else:
-        bare_coulomb_potential = compute_bare_coulomb_potential(
+        bare_coulomb_potential = compute_bare_coulomb_potential_api(
             coulomb_potential_data=coulomb_potential_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,

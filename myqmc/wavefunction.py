@@ -1,7 +1,7 @@
 """Geminal module"""
 
 # python modules
-from dataclasses import dataclass
+# from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
 from logging import getLogger, StreamHandler, Formatter

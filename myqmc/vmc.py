@@ -10,9 +10,6 @@ from logging import getLogger, StreamHandler, Formatter
 from mpi4py import MPI
 import mpi4jax
 
-# jax
-from jax import grad
-
 from .hamiltonians import Hamiltonian_data, compute_local_energy
 from .wavefunction import (
     # compute_quantum_force,
@@ -22,7 +19,7 @@ from .wavefunction import (
 from .trexio_wrapper import read_trexio_file
 from .wavefunction import Wavefunction_data
 from .coulomb_potential import (
-    compute_bare_coulomb_potential,
+    compute_bare_coulomb_potential_api,
     compute_ecp_local_parts,
     compute_ecp_nonlocal_parts,
 )

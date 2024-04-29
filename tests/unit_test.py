@@ -10,7 +10,7 @@ from logging import getLogger, StreamHandler, Formatter
 
 from ..myqmc.atomic_orbital import (
     AO_data,
-    compute_S_l_m,
+    compute_S_l_m_debug,
     AOs_data,
     compute_AOs_api,
     compute_AOs_grad_api,
@@ -41,7 +41,7 @@ from ..myqmc.wavefunction import (
 )
 
 from ..myqmc.coulomb_potential import (
-    compute_bare_coulomb_potential,
+    compute_bare_coulomb_potential_api,
     compute_ecp_local_parts,
     compute_ecp_nonlocal_parts,
 )
@@ -420,7 +420,7 @@ def test_spherical_part_of_AO(l, m):
     for r_cart in zip(r_x_rand, r_y_rand, r_z_rand):
         r_norm = LA.norm(np.array(R_cart) - np.array(r_cart))
         r_cart_rel = np.array(r_cart) - np.array(R_cart)
-        test_S_lm = compute_S_l_m(
+        test_S_lm = compute_S_l_m_debug(
             atomic_center_cart=R_cart,
             angular_momentum=l,
             magnetic_quantum_number=m,
@@ -538,10 +538,10 @@ def test_AOs_comparing_auto_and_numerical_grads():
     ) + R_cart_min
 
     num_ao = 3
-    num_ao_prim = 3
-    orbital_indices = [0, 1, 2]
-    exponents = [3.0, 1.0, 0.5]
-    coefficients = [1.0, 1.0, 1.0]
+    num_ao_prim = 4
+    orbital_indices = [0, 1, 2, 2]
+    exponents = [3.0, 1.0, 0.5, 0.5]
+    coefficients = [1.0, 1.0, 0.5, 0.5]
     angular_momentums = [0, 0, 0]
     magnetic_quantum_numbers = [0, 0, 0]
 
@@ -591,10 +591,10 @@ def test_AOs_comparing_auto_and_numerical_laplacians():
     ) + R_cart_min
 
     num_ao = 3
-    num_ao_prim = 3
-    orbital_indices = [0, 1, 2]
-    exponents = [3.0, 1.0, 0.5]
-    coefficients = [1.0, 1.0, 1.0]
+    num_ao_prim = 4
+    orbital_indices = [0, 1, 2, 2]
+    exponents = [3.0, 1.0, 0.5, 0.5]
+    coefficients = [1.0, 1.0, 0.5, 0.5]
     angular_momentums = [0, 0, 0]
     magnetic_quantum_numbers = [0, 0, 0]
 
@@ -1165,7 +1165,7 @@ def test_comparing_values_with_TurboRVB_code(test_value: str):
         r_dn_carts=new_r_dn_carts,
     )
 
-    vpot_bare = compute_bare_coulomb_potential(
+    vpot_bare = compute_bare_coulomb_potential_api(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
