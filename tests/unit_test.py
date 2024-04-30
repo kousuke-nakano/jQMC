@@ -27,8 +27,8 @@ from ..myqmc.molecular_orbital import (
 )
 from ..myqmc.determinant import (
     Geminal_data,
-    compute_geminal_all_elements,
-    compute_det_geminal_all_elements,
+    compute_geminal_all_elements_api,
+    compute_det_geminal_all_elements_api,
     compute_grads_and_laplacian_ln_Det_api,
 )
 
@@ -43,7 +43,7 @@ from ..myqmc.wavefunction import (
 from ..myqmc.coulomb_potential import (
     compute_bare_coulomb_potential_api,
     compute_ecp_local_parts_api,
-    compute_ecp_nonlocal_parts,
+    compute_ecp_nonlocal_parts_api,
 )
 
 from ..myqmc.hamiltonians import Hamiltonian_data
@@ -905,7 +905,7 @@ def test_comparing_AO_and_MO_geminals():
     r_up_carts = np.array(r_up_carts)
     r_dn_carts = np.array(r_dn_carts)
 
-    geminal_mo = compute_geminal_all_elements(
+    geminal_mo = compute_geminal_all_elements_api(
         geminal_data=geminal_mo_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -934,7 +934,7 @@ def test_comparing_AO_and_MO_geminals():
         lambda_matrix=ao_lambda_matrix,
     )
 
-    geminal_ao = compute_geminal_all_elements(
+    geminal_ao = compute_geminal_all_elements_api(
         geminal_data=geminal_ao_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -943,13 +943,13 @@ def test_comparing_AO_and_MO_geminals():
     # check if geminals with AO and MO representations are consistent
     np.testing.assert_array_almost_equal(geminal_ao, geminal_mo, decimal=15)
 
-    det_geminal_mo = compute_det_geminal_all_elements(
+    det_geminal_mo = compute_det_geminal_all_elements_api(
         geminal_data=geminal_mo_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
 
-    det_geminal_ao = compute_det_geminal_all_elements(
+    det_geminal_ao = compute_det_geminal_all_elements_api(
         geminal_data=geminal_ao_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -1183,7 +1183,7 @@ def test_comparing_values_with_TurboRVB_code():
         r_dn_carts=new_r_dn_carts,
     )
 
-    vpot_ecp_nonlocal = compute_ecp_nonlocal_parts(
+    vpot_ecp_nonlocal = compute_ecp_nonlocal_parts_api(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,

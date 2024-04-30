@@ -13,7 +13,7 @@ from flax import struct
 
 from .determinant import (
     Geminal_data,
-    compute_det_geminal_all_elements,
+    compute_det_geminal_all_elements_api,
     compute_grads_and_laplacian_ln_Det_api,
 )
 
@@ -56,7 +56,7 @@ def evaluate_wavefunction(
     """
 
     Jastrow_part = 1.0  # tentative
-    Determinant_part = compute_det_geminal_all_elements(
+    Determinant_part = compute_det_geminal_all_elements_api(
         geminal_data=wavefunction_data.geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,

@@ -48,8 +48,8 @@ class AOs_data:
     num_ao_prim: int = struct.field(pytree_node=False)
     atomic_center_carts: npt.NDArray[np.float64] = struct.field(pytree_node=True)
     orbital_indices: list[int] = struct.field(pytree_node=False)
-    exponents: list[float] = struct.field(pytree_node=True)
-    coefficients: list[float | complex] = struct.field(pytree_node=True)
+    exponents: list[float] = struct.field(pytree_node=False)
+    coefficients: list[float | complex] = struct.field(pytree_node=False)
     angular_momentums: list[int] = struct.field(pytree_node=False)
     magnetic_quantum_numbers: list[int] = struct.field(pytree_node=False)
 

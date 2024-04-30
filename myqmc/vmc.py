@@ -24,7 +24,7 @@ from .wavefunction import Wavefunction_data
 from .coulomb_potential import (
     compute_bare_coulomb_potential_api,
     compute_ecp_local_parts_api,
-    compute_ecp_nonlocal_parts,
+    compute_ecp_nonlocal_parts_api,
 )
 
 # set logger
@@ -302,20 +302,20 @@ class MCMC:
             logger.info(f"e_L = {e_L}")
             self.__stored_local_energy.append(e_L)
 
-            # """
+            """
             grad_e_L = grad(compute_local_energy, argnums=(0, 1, 2))(
                 self.__hamiltonian_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
             logger.info(f"grad_e_L = {grad_e_L}")
-            # """
+            """
 
         logger.info(f"acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
         logger.info(
             f"e_L is {np.average(self.__stored_local_energy[50:])} +- {np.sqrt(np.var(self.__stored_local_energy[50:]))} Ha."
         )
-        logger.info(f"all e_L is {self.__stored_local_energy[50:]} Ha.")
+        # logger.info(f"all e_L is {self.__stored_local_energy[50:]} Ha.")
 
 
 if __name__ == "__main__":
@@ -333,7 +333,7 @@ if __name__ == "__main__":
     stream_handler.setFormatter(handler_format)
     log.addHandler(stream_handler)
 
-    # water
+    # water  cc-pVTZ with Mitas ccECP.
     (
         structure_data,
         aos_data,
@@ -345,7 +345,9 @@ if __name__ == "__main__":
         trexio_file=os.path.join(os.path.dirname(__file__), "water_trexio.hdf5")
     )
 
-    wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data)
+    wavefunction_data = Wavefunction_data(
+        geminal_data=geminal_mo_data
+    )  # no jastrow for the time-being.
 
     hamiltonian_data = Hamiltonian_data(
         structure_data=structure_data,
