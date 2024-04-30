@@ -4,14 +4,14 @@
 from collections.abc import Callable
 import numpy as np
 import numpy.typing as npt
+from logging import getLogger, StreamHandler, Formatter
 
 # jax modules
+# from jax.debug import print as jprint
+import jax
 import jax.numpy as jnp
 from jax import jit
 from flax import struct
-
-# set logger
-from logging import getLogger, StreamHandler, Formatter
 
 # myqmc module
 from .atomic_orbital import (
@@ -29,6 +29,9 @@ from .molecular_orbital import (
 
 # set logger
 logger = getLogger("myqmc").getChild(__name__)
+
+# JAX float64
+jax.config.update("jax_enable_x64", True)
 
 
 # @dataclass
@@ -50,7 +53,7 @@ class Geminal_data:
     num_electron_dn: int = struct.field(pytree_node=False)
     orb_data_up_spin: AOs_data | MOs_data = struct.field(pytree_node=True)
     orb_data_dn_spin: AOs_data | MOs_data = struct.field(pytree_node=True)
-    compute_orb: Callable[..., npt.NDArray[np.float64]] = struct.field(
+    compute_orb_api: Callable[..., npt.NDArray[np.float64]] = struct.field(
         pytree_node=False
     )
     lambda_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True)
@@ -66,40 +69,40 @@ class Geminal_data:
             )
             raise ValueError
 
-        logger.debug(f"compute_orb={self.compute_orb}")
+        logger.debug(f"compute_orb={self.compute_orb_api}")
 
     @property
     def orb_num_up(self) -> int:
-        if self.compute_orb == compute_AOs_api:
+        if self.compute_orb_api == compute_AOs_api:
             return self.orb_data_up_spin.num_ao
-        elif self.compute_orb == compute_MOs_api:
+        elif self.compute_orb_api == compute_MOs_api:
             return self.orb_data_up_spin.num_mo
         else:
             raise NotImplementedError
 
     @property
     def orb_num_dn(self) -> int:
-        if self.compute_orb == compute_AOs_api:
+        if self.compute_orb_api == compute_AOs_api:
             return self.orb_data_dn_spin.num_ao
-        elif self.compute_orb == compute_MOs_api:
+        elif self.compute_orb_api == compute_MOs_api:
             return self.orb_data_dn_spin.num_mo
         else:
             raise NotImplementedError
 
     @property
     def compute_orb_grad_api(self) -> Callable[..., npt.NDArray[np.float64]]:
-        if self.compute_orb == compute_AOs_api:
+        if self.compute_orb_api == compute_AOs_api:
             return compute_AOs_grad_api
-        elif self.compute_orb == compute_MOs_api:
+        elif self.compute_orb_api == compute_MOs_api:
             return compute_MOs_grad_api
         else:
             raise NotImplementedError
 
     @property
     def compute_orb_laplacian_api(self) -> Callable[..., npt.NDArray[np.float64]]:
-        if self.compute_orb == compute_AOs_api:
+        if self.compute_orb_api == compute_AOs_api:
             return compute_AOs_laplacian_api
-        elif self.compute_orb == compute_MOs_api:
+        elif self.compute_orb_api == compute_MOs_api:
             return compute_MOs_laplacian_api
         else:
             raise NotImplementedError
@@ -121,7 +124,7 @@ def compute_det_geminal_all_elements_api(
             )
         )
     else:
-        return jit(jnp.linalg.det)(
+        return jnp.linalg.det(
             compute_geminal_all_elements_api(
                 geminal_data=geminal_data,
                 r_up_carts=r_up_carts,
@@ -173,6 +176,8 @@ def compute_geminal_all_elements_api(
         pass
         # logger.debug("There is no unpaired electrons.")
 
+    # jprint(f"geminal:debug_flag={debug_flag}, type={type(debug_flag)}")
+
     if debug_flag:
         geminal = compute_geminal_all_elements_debug(
             geminal_data, r_up_carts, r_dn_carts
@@ -198,8 +203,12 @@ def compute_geminal_all_elements_debug(
         geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
     )
 
-    orb_matrix_up = geminal_data.compute_orb(geminal_data.orb_data_up_spin, r_up_carts)
-    orb_matrix_dn = geminal_data.compute_orb(geminal_data.orb_data_dn_spin, r_dn_carts)
+    orb_matrix_up = geminal_data.compute_orb_api(
+        geminal_data.orb_data_up_spin, r_up_carts, debug_flag=False
+    )
+    orb_matrix_dn = geminal_data.compute_orb_api(
+        geminal_data.orb_data_dn_spin, r_dn_carts, debug_flag=False
+    )
 
     # compute geminal values
     geminal_paired = np.dot(
@@ -211,6 +220,10 @@ def compute_geminal_all_elements_debug(
     return geminal
 
 
+# it cannot be jitted!? because _api methods
+# in which crude if statements are included.
+# but why? other _api can be jitted...
+# -> probably it's related to pytree... now it works
 @jit
 def compute_geminal_all_elements_jax(
     geminal_data: Geminal_data,
@@ -221,8 +234,12 @@ def compute_geminal_all_elements_jax(
         geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
     )
 
-    orb_matrix_up = geminal_data.compute_orb(geminal_data.orb_data_up_spin, r_up_carts)
-    orb_matrix_dn = geminal_data.compute_orb(geminal_data.orb_data_dn_spin, r_dn_carts)
+    orb_matrix_up = geminal_data.compute_orb_api(
+        geminal_data.orb_data_up_spin, r_up_carts, debug_flag=False
+    )
+    orb_matrix_dn = geminal_data.compute_orb_api(
+        geminal_data.orb_data_dn_spin, r_dn_carts, debug_flag=False
+    )
 
     # compute geminal values
     geminal_paired = jnp.dot(
@@ -513,10 +530,10 @@ def compute_grads_and_laplacian_ln_Det_jax(
     )
 
     # AOs/MOs
-    ao_matrix_up = geminal_data.compute_orb(
+    ao_matrix_up = geminal_data.compute_orb_api(
         geminal_data.orb_data_up_spin, r_up_carts, debug_flag=False
     )
-    ao_matrix_dn = geminal_data.compute_orb(
+    ao_matrix_dn = geminal_data.compute_orb_api(
         geminal_data.orb_data_dn_spin, r_dn_carts, debug_flag=False
     )
 
@@ -739,7 +756,7 @@ if __name__ == "__main__":
         num_electron_dn=num_r_dn_cart_samples,
         orb_data_up_spin=mos_up_data,
         orb_data_dn_spin=mos_dn_data,
-        compute_orb=compute_MOs_api,
+        compute_orb_api=compute_MOs_api,
         lambda_matrix=mo_lambda_matrix,
     )
 
@@ -764,7 +781,7 @@ if __name__ == "__main__":
         num_electron_dn=num_r_dn_cart_samples,
         orb_data_up_spin=aos_up_data,
         orb_data_dn_spin=aos_dn_data,
-        compute_orb=compute_MOs_api,
+        compute_orb_api=compute_MOs_api,
         lambda_matrix=ao_lambda_matrix,
     )
 

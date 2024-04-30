@@ -248,7 +248,7 @@ def read_trexio_file(trexio_file: str):
         num_electron_dn=num_ele_dn,
         orb_data_up_spin=mos_data_up,
         orb_data_dn_spin=mos_data_dn,
-        compute_orb=compute_MOs_api,
+        compute_orb_api=compute_MOs_api,
         lambda_matrix=mo_lambda_matrix,
     )
 

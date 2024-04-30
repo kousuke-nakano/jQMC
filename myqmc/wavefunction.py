@@ -7,6 +7,7 @@ import numpy.typing as npt
 from logging import getLogger, StreamHandler, Formatter
 
 # import jax
+import jax
 from jax import jit
 import jax.numpy as jnp
 from flax import struct
@@ -19,6 +20,9 @@ from .determinant import (
 
 # set logger
 logger = getLogger("myqmc").getChild(__name__)
+
+# JAX float64
+jax.config.update("jax_enable_x64", True)
 
 
 @struct.dataclass
@@ -55,14 +59,14 @@ def evaluate_wavefunction(
         The value of the given wavefunction (float | complex)
     """
 
-    Jastrow_part = 1.0  # tentative
     Determinant_part = compute_det_geminal_all_elements_api(
         geminal_data=wavefunction_data.geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
+        debug_flag=False,
     )
 
-    return Jastrow_part * Determinant_part
+    return Determinant_part
 
 
 @jit

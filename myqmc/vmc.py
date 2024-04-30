@@ -11,6 +11,7 @@ from mpi4py import MPI
 import mpi4jax
 
 # JAX
+import jax
 from jax import grad
 
 from .hamiltonians import Hamiltonian_data, compute_local_energy
@@ -29,6 +30,9 @@ from .coulomb_potential import (
 
 # set logger
 logger = getLogger("myqmc").getChild(__name__)
+
+# JAX float64
+jax.config.update("jax_enable_x64", True)
 
 
 class MCMC:
@@ -302,14 +306,14 @@ class MCMC:
             logger.info(f"e_L = {e_L}")
             self.__stored_local_energy.append(e_L)
 
-            """
+            # """
             grad_e_L = grad(compute_local_energy, argnums=(0, 1, 2))(
                 self.__hamiltonian_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
             logger.info(f"grad_e_L = {grad_e_L}")
-            """
+            # """
 
         logger.info(f"acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
         logger.info(

@@ -10,21 +10,25 @@ import numpy.typing as npt
 from scipy.special import eval_legendre
 
 # JAX
-from jax import lax
-from jax.debug import print as jprint
+# from jax import lax
+# from jax.debug import print as jprint
+# import jax.scipy as jscipy
+# from typing import Any, Callable, Mapping, Optional
+import jax
 from jax import vmap, jit
 import jax.numpy as jnp
-import jax.scipy as jscipy
 from flax import struct
-from jaxtyping import Array, Float, Int
-from typing import Any, Callable, Mapping, Optional
+
 
 from .structure import Structure_data
 from .wavefunction import Wavefunction_data, evaluate_wavefunction
 from .function_collections import legendre_tablated as jnp_legendre_tablated
 
-
+# set logger
 logger = getLogger("myqmc").getChild(__name__)
+
+# JAX float64
+jax.config.update("jax_enable_x64", True)
 
 
 # non local PPs, Mesh Info. taken from Mitas's paper [J. Chem. Phys., 95, 5, (1991)]
@@ -92,6 +96,7 @@ octahedron_sym_mesh_Nv18 = Mesh(
 )
 
 
+# To be refactored!! primitive (flatten) data should be stored for jitting ecp parts.
 @struct.dataclass
 class Coulomb_potential_data:
     """
@@ -126,6 +131,22 @@ class Coulomb_potential_data:
     def __post_init__(self) -> None:
         pass
 
+    @property
+    def effective_charges(self):
+        if self.ecp_flag:
+            return np.array(self.structure_data.atomic_numbers) - np.array(self.z_cores)
+        else:
+            return np.array(self.structure_data.atomic_numbers)
+
+    @property
+    def effective_charges_jnp(self):
+        if self.ecp_flag:
+            return jnp.array(self.structure_data.atomic_numbers) - jnp.array(
+                self.z_cores
+            )
+        else:
+            return jnp.array(self.structure_data.atomic_numbers)
+
 
 def compute_ecp_local_parts_api(
     coulomb_potential_data: Coulomb_potential_data,
@@ -151,7 +172,7 @@ def compute_ecp_local_parts_api(
             coulomb_potential_data, r_up_carts, r_dn_carts
         )
     else:
-        V_local = compute_ecp_local_parts_jax(
+        V_local = compute_ecp_local_parts_jax_refactored(
             coulomb_potential_data, r_up_carts, r_dn_carts
         )
 
@@ -258,6 +279,66 @@ def compute_ecp_local_parts_jax(
             powers_jnp,
             exponents_jnp,
         )
+
+    return V_local
+
+
+# WIP
+@jit
+def compute_ecp_local_parts_jax_refactored(
+    coulomb_potential_data: Coulomb_potential_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+) -> float:
+
+    def compute_ecp_local_part(r_cart):
+        dist_list = []
+        exponents_list = []
+        coefficients_list = []
+        powers_list = []
+
+        for i_atom in range(coulomb_potential_data.structure_data.natom):
+            R_cart = coulomb_potential_data.structure_data.positions_cart[i_atom]
+            max_ang_mom_plus_1 = coulomb_potential_data.max_ang_mom_plus_1[i_atom]
+            nucleus_indices = [
+                i
+                for i, v in enumerate(coulomb_potential_data.nucleus_index)
+                if v == i_atom
+            ]
+            ang_moms = [coulomb_potential_data.ang_moms[i] for i in nucleus_indices]
+            exponents = [coulomb_potential_data.exponents[i] for i in nucleus_indices]
+            coefficients = [
+                coulomb_potential_data.coefficients[i] for i in nucleus_indices
+            ]
+            powers = [coulomb_potential_data.powers[i] for i in nucleus_indices]
+            ang_mom_indices = [
+                i for i, v in enumerate(ang_moms) if v == max_ang_mom_plus_1
+            ]
+
+            dist_list += [jnp.linalg.norm(R_cart - r_cart)] * len(ang_mom_indices)
+            exponents_list += [exponents[i] for i in ang_mom_indices]
+            coefficients_list += [coefficients[i] for i in ang_mom_indices]
+            powers_list += [powers[i] for i in ang_mom_indices]
+
+        dist_jnp = jnp.array(dist_list)
+        coefficients_jnp = jnp.array(coefficients_list)
+        powers_jnp = jnp.array(powers_list)
+        exponents_jnp = np.array(exponents_list)
+
+        ecp_local_part = jnp.sum(
+            (
+                dist_jnp**-2.0
+                * coefficients_jnp
+                * dist_jnp**powers_jnp
+                * jnp.exp(-exponents_jnp * (dist_jnp**2))
+            )
+        )
+        return ecp_local_part
+
+    vmap_compute_ecp_local_part = vmap(compute_ecp_local_part)
+    V_local = jnp.sum(vmap_compute_ecp_local_part(r_up_carts)) + jnp.sum(
+        vmap_compute_ecp_local_part(r_dn_carts)
+    )
 
     return V_local
 
@@ -391,12 +472,7 @@ def compute_ecp_nonlocal_parts_debug(
                         (2 * ang_mom + 1)
                         * eval_legendre(ang_mom, cos_theta)
                         * weight
-                        * evaluate_wavefunction(
-                            wavefunction_data=wavefunction_data,
-                            r_up_carts=r_up_carts_on_mesh,
-                            r_dn_carts=r_dn_carts,
-                        )
-                        / wavefunction_denominator
+                        * wf_ratio
                     )
                     logger.debug(f"V_l * P_l={V_l * P_l}")
                     V_nonlocal += V_l * P_l
@@ -423,16 +499,20 @@ def compute_ecp_nonlocal_parts_debug(
                         vec_delta / np.linalg.norm(vec_delta),
                     )
 
-                    P_l = (
-                        (2 * ang_mom + 1)
-                        * eval_legendre(ang_mom, cos_theta)
-                        * weight
-                        * evaluate_wavefunction(
+                    wf_ratio = (
+                        evaluate_wavefunction(
                             wavefunction_data=wavefunction_data,
                             r_up_carts=r_up_carts,
                             r_dn_carts=r_dn_carts_on_mesh,
                         )
                         / wavefunction_denominator
+                    )
+
+                    P_l = (
+                        (2 * ang_mom + 1)
+                        * eval_legendre(ang_mom, cos_theta)
+                        * weight
+                        * wf_ratio
                     )
                     V_nonlocal += V_l * P_l
 
@@ -607,13 +687,7 @@ def compute_bare_coulomb_potential_debug(
 ) -> float:
 
     R_carts = coulomb_potential_data.structure_data.positions_cart
-    if coulomb_potential_data.ecp_flag:
-        R_charges = list(
-            np.array(coulomb_potential_data.structure_data.atomic_numbers)
-            - np.array(coulomb_potential_data.z_cores)
-        )
-    else:
-        R_charges = coulomb_potential_data.structure_data.atomic_numbers
+    R_charges = coulomb_potential_data.effective_charges
     r_up_charges = [-1 for _ in range(len(r_up_carts))]
     r_dn_charges = [-1 for _ in range(len(r_dn_carts))]
 
@@ -640,14 +714,7 @@ def compute_bare_coulomb_potential_jax(
 ) -> float:
 
     R_carts = coulomb_potential_data.structure_data.positions_cart
-
-    if coulomb_potential_data.ecp_flag:
-        R_charges = jnp.array(
-            coulomb_potential_data.structure_data.atomic_numbers
-        ) - jnp.array(coulomb_potential_data.z_cores)
-    else:
-        R_charges = jnp.array(coulomb_potential_data.structure_data.atomic_numbers)
-
+    R_charges = coulomb_potential_data.effective_charges_jnp
     r_up_charges = jnp.array([-1 for _ in range(len(r_up_carts))])
     r_dn_charges = jnp.array([-1 for _ in range(len(r_dn_carts))])
 
@@ -741,7 +808,6 @@ if __name__ == "__main__":
     import os
     from .trexio_wrapper import read_trexio_file
     from .hamiltonians import Hamiltonian_data
-    from .wavefunction import evaluate_wavefunction, compute_kinetic_energy
 
     log = getLogger("myqmc")
     log.setLevel("DEBUG")

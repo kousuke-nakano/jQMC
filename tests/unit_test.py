@@ -930,7 +930,7 @@ def test_comparing_AO_and_MO_geminals():
         num_electron_dn=num_electron_dn,
         orb_data_up_spin=aos_data,
         orb_data_dn_spin=aos_data,
-        compute_orb=compute_AOs_api,
+        compute_orb_api=compute_AOs_api,
         lambda_matrix=ao_lambda_matrix,
     )
 
@@ -1059,7 +1059,7 @@ def test_numerial_and_auto_grads_ln_Det():
         num_electron_dn=num_electron_dn,
         orb_data_up_spin=aos_data,
         orb_data_dn_spin=aos_data,
-        compute_orb=compute_AOs_api,
+        compute_orb_api=compute_AOs_api,
         lambda_matrix=ao_lambda_matrix,
     )
 
@@ -1205,23 +1205,6 @@ def test_comparing_values_with_TurboRVB_code():
         vpot_bare + vpot_ecp_local, vpot_ref_turborvb, decimal=6
     )
     np.testing.assert_almost_equal(vpot_ecp_nonlocal, vpotoff_ref_turborvb, decimal=3)
-
-    """
-    if test_value == "wf_ratio":
-        np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=8)
-    elif test_value == "kinc":
-        np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
-    elif test_value == "vpot":
-        np.testing.assert_almost_equal(
-            vpot_bare + vpot_ecp_local, vpot_ref_turborvb, decimal=6
-        )
-    elif test_value == "vpotoff":
-        np.testing.assert_almost_equal(
-            vpot_ecp_nonlocal, vpotoff_ref_turborvb, decimal=6
-        )
-    else:
-        AssertionError
-    """
 
 
 if __name__ == "__main__":

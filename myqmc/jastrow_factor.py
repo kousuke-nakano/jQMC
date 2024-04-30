@@ -2,34 +2,23 @@
 
 # python modules
 import itertools
-from collections.abc import Callable
 import numpy as np
 import numpy.typing as npt
 
 # jax modules
+import jax
 import jax.numpy as jnp
-from jax import jit, vmap
+from jax import grad, jit, vmap
 from flax import struct
 
 # set logger
 from logging import getLogger, StreamHandler, Formatter
 
-# myqmc module
-from .atomic_orbital import (
-    AOs_data,
-    compute_AOs_api,
-    compute_AOs_grad_api,
-    compute_AOs_laplacian_api,
-)
-from .molecular_orbital import (
-    MOs_data,
-    compute_MOs_api,
-    compute_MOs_grad_api,
-    compute_MOs_laplacian_api,
-)
-
 # set logger
 logger = getLogger("myqmc").getChild(__name__)
+
+# JAX float64
+jax.config.update("jax_enable_x64", True)
 
 
 # @dataclass
@@ -93,7 +82,17 @@ def compute_Jastrow_two_body_debug(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
-
+    print(
+        np.sum(
+            [
+                two_body_jastrow_anti_parallel_spins(
+                    param=jastrow_two_body_data.param_anti_parallel_spin,
+                    rel_r_cart=r_up_cart - r_dn_cart,
+                )
+                for (r_up_cart, r_dn_cart) in itertools.product(r_up_carts, r_dn_carts)
+            ]
+        )
+    )
     two_body_jastrow = (
         np.sum(
             [
@@ -127,74 +126,67 @@ def compute_Jastrow_two_body_debug(
     return two_body_jastrow
 
 
+@jit
 def compute_Jastrow_two_body_jax(
     jastrow_two_body_data: Jastrow_two_body_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
 
-    # For anti-parallel spins
-    def sum_anti_parallel(r_up_cart, r_dn_cart):
-        return two_body_jastrow_anti_parallel_spins(
-            param=jastrow_two_body_data.param_anti_parallel_spin,
-            rel_r_cart=r_up_cart - r_dn_cart,
+    r_up_carts = jnp.array(r_up_carts)
+    r_dn_carts = jnp.array(r_dn_carts)
+
+    rel_r_carts_up_dn = jnp.array(
+        [
+            r_up_cart - r_dn_cart
+            for (r_up_cart, r_dn_cart) in itertools.product(r_up_carts, r_dn_carts)
+        ]
+    )
+
+    rel_r_carts_up_up = jnp.array(
+        [
+            r_up_cart_i - r_up_cart_j
+            for (r_up_cart_i, r_up_cart_j) in itertools.combinations(r_up_carts, 2)
+        ]
+    )
+
+    rel_r_carts_dn_dn = jnp.array(
+        [
+            r_dn_cart_i - r_dn_cart_j
+            for (r_dn_cart_i, r_dn_cart_j) in itertools.combinations(r_dn_carts, 2)
+        ]
+    )
+
+    vmap_two_body_jastrow_anti_parallel_spins = vmap(
+        two_body_jastrow_anti_parallel_spins, in_axes=(None, 0)
+    )
+
+    vmap_two_body_jastrow_parallel_spins = vmap(
+        two_body_jastrow_parallel_spins, in_axes=(None, 0)
+    )
+
+    two_body_jastrow = jnp.sum(
+        vmap_two_body_jastrow_anti_parallel_spins(
+            jastrow_two_body_data.param_anti_parallel_spin, rel_r_carts_up_dn
         )
-
-    # Apply vmap over all pairs from r_up_carts and r_dn_carts
-    all_pairs_anti_parallel = vmap(
-        vmap(sum_anti_parallel, in_axes=(None, 0)), in_axes=(0, None)
     )
-    result_anti_parallel = jnp.sum(all_pairs_anti_parallel(r_up_carts, r_dn_carts))
 
-    # For parallel spins within r_up_carts
-    def sum_parallel(r_up_cart_i, r_up_cart_j):
-        return two_body_jastrow_parallel_spins(
-            param=jastrow_two_body_data.param_parallel_spin,
-            rel_r_cart=r_up_cart_i - r_up_cart_j,
+    two_body_jastrow += jnp.sum(
+        vmap_two_body_jastrow_parallel_spins(
+            jastrow_two_body_data.param_parallel_spin, rel_r_carts_up_up
         )
-
-    # Apply vmap over all unique pairs (i.e., combinations)
-    all_combinations_parallel = vmap(
-        vmap(sum_parallel, in_axes=(None, 0)), in_axes=(0, None)
-    )
-    result_parallel_up = jnp.sum(
-        all_combinations_parallel(r_up_carts[:-1], r_up_carts[1:])
     )
 
-    # For parallel spins within r_dn_carts
-    result_parallel_dn = jnp.sum(
-        all_combinations_parallel(r_dn_carts[:-1], r_dn_carts[1:])
+    two_body_jastrow += jnp.sum(
+        vmap_two_body_jastrow_parallel_spins(
+            jastrow_two_body_data.param_parallel_spin, rel_r_carts_dn_dn
+        )
     )
-
-    two_body_jastrow = result_anti_parallel + result_parallel_up + result_parallel_dn
 
     return two_body_jastrow
 
 
 ''' WIP
-@jit
-def compute_geminal_all_elements_jax(
-    geminal_data: Geminal_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64 | np.complex128]:
-    lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(
-        geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
-    )
-
-    orb_matrix_up = geminal_data.compute_orb(geminal_data.orb_data_up_spin, r_up_carts)
-    orb_matrix_dn = geminal_data.compute_orb(geminal_data.orb_data_dn_spin, r_dn_carts)
-
-    # compute geminal values
-    geminal_paired = jnp.dot(
-        orb_matrix_up.T, jnp.dot(lambda_matrix_paired, orb_matrix_dn)
-    )
-    geminal_unpaired = jnp.dot(orb_matrix_up.T, lambda_matrix_unpaired)
-    geminal = jnp.hstack([geminal_paired, geminal_unpaired])
-
-    return geminal
-
-
 def compute_grads_and_laplacian_Jastrow_two_body_api(
     jastrow_two_body_data: Jastrow_two_body_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -639,5 +631,15 @@ if __name__ == "__main__":
         debug_flag=False,
     )
 
+    # """
+    grad_jastrow_two_body_jax = grad(compute_Jastrow_two_body_api, argnums=[1, 2])(
+        jastrow_two_body_data,
+        r_up_carts,
+        r_dn_carts,
+        False,
+    )
+    # """
+
     logger.debug(f"jastrow_two_body_debug = {jastrow_two_body_debug}")
     logger.debug(f"jastrow_two_body_jax = {jastrow_two_body_jax}")
+    logger.debug(f"grad_jastrow_two_body_jax = {grad_jastrow_two_body_jax}")

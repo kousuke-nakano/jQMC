@@ -6,6 +6,7 @@ import numpy.typing as npt
 from logging import getLogger, StreamHandler, Formatter
 
 # JAX
+import jax
 from flax import struct
 
 from .wavefunction import Wavefunction_data, compute_kinetic_energy
@@ -14,6 +15,9 @@ from .structure import Structure_data
 
 # set logger
 logger = getLogger("myqmc").getChild(__name__)
+
+# JAX float64
+jax.config.update("jax_enable_x64", True)
 
 
 @struct.dataclass

@@ -1,12 +1,17 @@
 import numpy as np
 import scipy
+import scipy.special
+
+# from typing import Any, Callable, Mapping, Optional
+
+# JAX
 import jax
 from jax import numpy as jnp
 from jax import jit
 from jaxtyping import Array, Float, Int
-from typing import Any, Callable, Mapping, Optional
 
-import scipy.special
+# JAX float64
+jax.config.update("jax_enable_x64", True)
 
 
 @jit

@@ -6,6 +6,7 @@ import numpy as np
 import numpy.typing as npt
 
 # jax modules
+# from jax.debug import print as jprint
 import jax
 from jax import jit
 import jax.numpy as jnp
@@ -44,7 +45,7 @@ class MOs_data:
 
     num_mo: int = struct.field(pytree_node=False)
     mo_coefficients: npt.NDArray[np.float64 | np.complex128] = struct.field(
-        pytree_node=False
+        pytree_node=True
     )
     aos_data: AOs_data = struct.field(pytree_node=True)
 
@@ -258,20 +259,11 @@ def compute_MOs_api(
         Arrays containing values of the MOs at r_carts. (dim: num_mo, N_e)
     """
 
+    # jprint(f"MOs:debug_flag={debug_flag}, type={type(debug_flag)}")
     if debug_flag:
-        answer = np.dot(
-            mos_data.mo_coefficients,
-            compute_AOs_api(
-                aos_data=mos_data.aos_data, r_carts=r_carts, debug_flag=True
-            ),
-        )
+        answer = compute_MOs_debug(mos_data, r_carts)
     else:
-        answer = jnp.dot(
-            mos_data.mo_coefficients,
-            compute_AOs_api(
-                aos_data=mos_data.aos_data, r_carts=r_carts, debug_flag=False
-            ),
-        )
+        answer = compute_MOs_jax(mos_data, r_carts)
 
     if answer.shape != (mos_data.num_mo, len(r_carts)):
         logger.error(
@@ -282,62 +274,23 @@ def compute_MOs_api(
     return answer
 
 
-'''
-def compute_MOs_overlap_matrix(mos_data: MOs_data, method: str = "numerical"):
-    """
-    The method is for computing overlap matrix (S) of the given molecular orbitals
+def compute_MOs_debug(
+    mos_data: MOs_data, r_carts: npt.NDArray[np.float64]
+) -> npt.NDArray[np.float64]:
+    return np.dot(
+        mos_data.mo_coefficients,
+        compute_AOs_api(aos_data=mos_data.aos_data, r_carts=r_carts, debug_flag=True),
+    )
 
-    Args:
-        mo_datas (MOs_data): an instance of MOs_data
-        method: method to compute S, numerical or analytical. numerical is just for the debugging purpose.
 
-    Returns:
-        Arrays containing the overlap matrix (S) of the given MOs (dim: num_mo, num_mo)
-    """
-
-    if method == "numerical":
-        nx = 300
-        x_min = -5.0
-        x_max = 5.0
-
-        ny = 300
-        y_min = -5.0
-        y_max = 5.0
-
-        nz = 300
-        z_min = -5.0
-        z_max = 5.0
-
-        x, w_x = scipy.special.roots_legendre(n=nx)
-        y, w_y = scipy.special.roots_legendre(n=ny)
-        z, w_z = scipy.special.roots_legendre(n=nz)
-
-        # Use itertools.product to generate all combinations of points across dimensions
-        points = list(itertools.product(x, y, z))
-        weights = list(itertools.product(w_x, w_y, w_z))
-
-        # Create the matrix of coordinates r from combinations
-        r_prime = np.array(points)  # Shape: (n^3, 3)
-
-        A = 1.0 / 2.0 * np.array([[x_max + x_min], [y_max + y_min], [z_max + z_min]])
-        B = 1.0 / 2.0 * np.diag([x_max - x_min, y_max - y_min, z_max - z_min])
-
-        # Create the weight vector W (calculate the product of each set of weights)
-        W = np.array([w[0] * w[1] * w[2] for w in weights])  # Length: n^3
-        Jacob = 1.0 / 8.0 * (x_max - x_min) * (y_max - y_min) * (z_max - z_min)
-        W_prime = Jacob * np.tile(W, (mos_data.num_mo, 1))
-
-        Psi = compute_MOs_api(
-            mos_data=mos_data, r_carts=(A + np.dot(B, r_prime.T)).T, jax_flag=True
-        )
-
-        S = np.dot(Psi, (W_prime * Psi).T)
-
-        return S
-
-    else:
-        raise NotImplementedError
-'''
+@jit
+def compute_MOs_jax(
+    mos_data: MOs_data, r_carts: npt.NDArray[np.float64]
+) -> npt.NDArray[np.float64]:
+    return jnp.dot(
+        mos_data.mo_coefficients,
+        compute_AOs_api(aos_data=mos_data.aos_data, r_carts=r_carts, debug_flag=False),
+    )
 
 
 @dataclass
