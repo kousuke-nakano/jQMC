@@ -42,7 +42,7 @@ from ..myqmc.wavefunction import (
 
 from ..myqmc.coulomb_potential import (
     compute_bare_coulomb_potential_api,
-    compute_ecp_local_parts,
+    compute_ecp_local_parts_api,
     compute_ecp_nonlocal_parts,
 )
 
@@ -1094,6 +1094,7 @@ def test_numerial_and_auto_grads_ln_Det():
     # print(sum_laplacian_ln_D_auto)
 
 
+"""
 @pytest.mark.parametrize(
     "test_value",
     ["wf_ratio", "kinc", "vpot", "vpotref"],
@@ -1105,6 +1106,10 @@ def test_numerial_and_auto_grads_ln_Det():
     ],
 )
 def test_comparing_values_with_TurboRVB_code(test_value: str):
+"""
+
+
+def test_comparing_values_with_TurboRVB_code():
     (
         structure_data,
         aos_data,
@@ -1169,9 +1174,10 @@ def test_comparing_values_with_TurboRVB_code(test_value: str):
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
+        debug_flag=False,
     )
 
-    vpot_ecp_local = compute_ecp_local_parts(
+    vpot_ecp_local = compute_ecp_local_parts_api(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
@@ -1193,6 +1199,14 @@ def test_comparing_values_with_TurboRVB_code(test_value: str):
     vpot_ref_turborvb = -27.9099792589717
     vpotoff_ref_turborvb = 0.159136845080957
 
+    np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=8)
+    np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
+    np.testing.assert_almost_equal(
+        vpot_bare + vpot_ecp_local, vpot_ref_turborvb, decimal=6
+    )
+    np.testing.assert_almost_equal(vpot_ecp_nonlocal, vpotoff_ref_turborvb, decimal=3)
+
+    """
     if test_value == "wf_ratio":
         np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=8)
     elif test_value == "kinc":
@@ -1207,6 +1221,7 @@ def test_comparing_values_with_TurboRVB_code(test_value: str):
         )
     else:
         AssertionError
+    """
 
 
 if __name__ == "__main__":

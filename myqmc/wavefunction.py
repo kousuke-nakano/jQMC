@@ -32,7 +32,7 @@ class Wavefunction_data:
     """
 
     # jastrow_data: Jastrow_data = None
-    geminal_data: Geminal_data = None
+    geminal_data: Geminal_data = struct.field(pytree_node=True)
 
     def __post_init__(self) -> None:
         pass
