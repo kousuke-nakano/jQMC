@@ -1,6 +1,7 @@
 """Effective core potential module"""
 
 # python modules
+from functools import partial
 from typing import NamedTuple
 import itertools
 from logging import getLogger, StreamHandler, Formatter
@@ -20,8 +21,12 @@ import jax.numpy as jnp
 from flax import struct
 
 
-from .structure import Structure_data
-from .wavefunction import Wavefunction_data, evaluate_wavefunction
+from .structure import (
+    Structure_data,
+    get_min_dist_rel_R_cart_np,
+    get_min_dist_rel_R_cart_jnp,
+)
+from .wavefunction import Wavefunction_data, evaluate_wavefunction_api
 from .function_collections import legendre_tablated as jnp_legendre_tablated
 
 # set logger
@@ -147,12 +152,63 @@ class Coulomb_potential_data:
         else:
             return jnp.array(self.structure_data.atomic_numbers)
 
+    def get_primitive_np_array_for_an_ang_mom_of_a_target_atom(
+        self, i_atom: int, ang_mom: int
+    ):
+        nucleus_indices = [i for i, v in enumerate(self.nucleus_index) if v == i_atom]
+        ang_moms = [self.ang_moms[i] for i in nucleus_indices]
+        exponents = [self.exponents[i] for i in nucleus_indices]
+        coefficients = [self.coefficients[i] for i in nucleus_indices]
+        powers = [self.powers[i] for i in nucleus_indices]
+        ang_mom_indices = [i for i, v in enumerate(ang_moms) if v == ang_mom]
+
+        exponents_array = np.array([exponents[i] for i in ang_mom_indices])
+        coefficients_array = np.array([coefficients[i] for i in ang_mom_indices])
+        powers_array = np.array([powers[i] for i in ang_mom_indices])
+
+        return exponents_array, coefficients_array, powers_array
+
+    def get_primitive_jnp_array_for_an_ang_mom_of_a_target_atom(
+        self, i_atom: int, ang_mom: int
+    ):
+        nucleus_indices = [i for i, v in enumerate(self.nucleus_index) if v == i_atom]
+        ang_moms = [self.ang_moms[i] for i in nucleus_indices]
+        exponents = [self.exponents[i] for i in nucleus_indices]
+        coefficients = [self.coefficients[i] for i in nucleus_indices]
+        powers = [self.powers[i] for i in nucleus_indices]
+        ang_mom_indices = [i for i, v in enumerate(ang_moms) if v == ang_mom]
+
+        exponents_array = jnp.array([exponents[i] for i in ang_mom_indices])
+        coefficients_array = jnp.array([coefficients[i] for i in ang_mom_indices])
+        powers_array = jnp.array([powers[i] for i in ang_mom_indices])
+
+        return exponents_array, coefficients_array, powers_array
+
+    """
+    @partial(jit, static_argnums=(1, 2))
+    def get_primitive_jnp_array_for_an_ang_mom_of_a_target_atom_(
+        self, i_atom: int, ang_mom: int
+    ):
+        nucleus_indices = jnp.where(self.nucleus_index == i_atom)[0]
+        ang_moms = self.ang_moms[nucleus_indices]
+        exponents = self.exponents[nucleus_indices]
+        coefficients = self.coefficients[nucleus_indices]
+        powers = self.powers[nucleus_indices]
+        ang_mom_indices = [i for i, v in enumerate(ang_moms) if v == ang_mom]
+
+        exponents_array = np.array([exponents[i] for i in ang_mom_indices])
+        coefficients_array = np.array([coefficients[i] for i in ang_mom_indices])
+        powers_array = np.array([powers[i] for i in ang_mom_indices])
+
+        return exponents_array, coefficients_array, powers_array
+    """
+
 
 def compute_ecp_local_parts_api(
     coulomb_potential_data: Coulomb_potential_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
-    debug_flag: bool = True,
+    debug_flag: bool = False,
 ) -> float:
     """
     The method is for computing the local part of the given ECPs at (r_up_carts, r_dn_carts).
@@ -172,7 +228,7 @@ def compute_ecp_local_parts_api(
             coulomb_potential_data, r_up_carts, r_dn_carts
         )
     else:
-        V_local = compute_ecp_local_parts_jax_refactored(
+        V_local = compute_ecp_local_parts_jax(
             coulomb_potential_data, r_up_carts, r_dn_carts
         )
 
@@ -186,7 +242,6 @@ def compute_ecp_local_parts_debug(
 ) -> float:
     V_local = 0.0
     for i_atom in range(coulomb_potential_data.structure_data.natom):
-        R_cart = coulomb_potential_data.structure_data.positions_cart[i_atom]
         max_ang_mom_plus_1 = coulomb_potential_data.max_ang_mom_plus_1[i_atom]
         nucleus_indices = [
             i for i, v in enumerate(coulomb_potential_data.nucleus_index) if v == i_atom
@@ -201,30 +256,34 @@ def compute_ecp_local_parts_debug(
         coefficients = [coefficients[i] for i in ang_mom_indices]
         powers = [powers[i] for i in ang_mom_indices]
 
-        for r_cart in r_up_carts:
-            V_local += np.linalg.norm(R_cart - r_cart) ** -2.0 * np.sum(
+        for r_up_cart in r_up_carts:
+            rel_R_cart_min_dist = get_min_dist_rel_R_cart_np(
+                structure_data=coulomb_potential_data.structure_data,
+                r_cart=r_up_cart,
+                i_atom=i_atom,
+            )
+            V_local += rel_R_cart_min_dist**-2.0 * np.sum(
                 [
-                    a
-                    * np.linalg.norm(R_cart - r_cart) ** n
-                    * np.exp(-b * np.linalg.norm(R_cart - r_cart) ** 2)
+                    a * rel_R_cart_min_dist**n * np.exp(-b * rel_R_cart_min_dist**2)
                     for a, n, b in zip(coefficients, powers, exponents)
                 ]
             )
-        for r_cart in r_dn_carts:
-            V_local += np.linalg.norm(R_cart - r_cart) ** -2.0 * np.sum(
+        for r_dn_cart in r_dn_carts:
+            rel_R_cart_min_dist = get_min_dist_rel_R_cart_np(
+                structure_data=coulomb_potential_data.structure_data,
+                r_cart=r_dn_cart,
+                i_atom=i_atom,
+            )
+            V_local += rel_R_cart_min_dist**-2.0 * np.sum(
                 [
-                    a
-                    * np.linalg.norm(R_cart - r_cart) ** n
-                    * np.exp(-b * np.linalg.norm(R_cart - r_cart) ** 2)
+                    a * rel_R_cart_min_dist**n * np.exp(-b * rel_R_cart_min_dist**2)
                     for a, n, b in zip(coefficients, powers, exponents)
                 ]
             )
     return V_local
 
 
-# WIP (To be refactored!!) This jax part is not efficient because
-# 1. it considers all atoms, while the ECP part typically is short-range
-# 2. it can be jitted, but not yet vectorized in the natom axis.
+# can we avoid the for loop by using lax.scan and lax.cond?
 @jit
 def compute_ecp_local_parts_jax(
     coulomb_potential_data: Coulomb_potential_data,
@@ -232,113 +291,52 @@ def compute_ecp_local_parts_jax(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
 
-    V_local = 0.0
-
-    def compute_ecp_part(r_cart, R_cart, coefficients, powers, exponents):
-        distances = jnp.linalg.norm(R_cart - r_cart)
-        V_contributions = jnp.sum(
-            coefficients * (distances**powers) * jnp.exp(-exponents * (distances**2))
-        )
-        return jnp.sum(distances**-2.0 * V_contributions)
-
-    def total_ecp_part(r_up_carts, r_dn_carts, R_cart, coefficients, powers, exponents):
-        local_ecp_up = vmap(compute_ecp_part, in_axes=(0, None, None, None, None))(
-            r_up_carts, R_cart, coefficients, powers, exponents
-        )
-        local_ecp_dn = vmap(compute_ecp_part, in_axes=(0, None, None, None, None))(
-            r_dn_carts, R_cart, coefficients, powers, exponents
-        )
-        return jnp.sum(local_ecp_up + local_ecp_dn)
-
-    for i_atom in range(coulomb_potential_data.structure_data.natom):
-        R_cart = coulomb_potential_data.structure_data.positions_cart[i_atom]
-        max_ang_mom_plus_1 = coulomb_potential_data.max_ang_mom_plus_1[i_atom]
-        nucleus_indices = [
-            i for i, v in enumerate(coulomb_potential_data.nucleus_index) if v == i_atom
-        ]
-        ang_moms = [coulomb_potential_data.ang_moms[i] for i in nucleus_indices]
-        exponents = [coulomb_potential_data.exponents[i] for i in nucleus_indices]
-        coefficients = [coulomb_potential_data.coefficients[i] for i in nucleus_indices]
-        powers = [coulomb_potential_data.powers[i] for i in nucleus_indices]
-
-        ang_mom_indices = [i for i, v in enumerate(ang_moms) if v == max_ang_mom_plus_1]
-        exponents = [exponents[i] for i in ang_mom_indices]
-        coefficients = [coefficients[i] for i in ang_mom_indices]
-        powers = [powers[i] for i in ang_mom_indices]
-
-        R_cart_jnp = jnp.array(R_cart)
+    @jit
+    def compute_V_l(rel_R_cart, exponents, coefficients, powers):
+        exponents_jnp = jnp.array(exponents)
         coefficients_jnp = jnp.array(coefficients)
         powers_jnp = jnp.array(powers)
-        exponents_jnp = np.array(exponents)
 
-        V_local += total_ecp_part(
-            r_up_carts,
-            r_dn_carts,
-            R_cart_jnp,
-            coefficients_jnp,
-            powers_jnp,
-            exponents_jnp,
-        )
-
-    return V_local
-
-
-# WIP
-@jit
-def compute_ecp_local_parts_jax_refactored(
-    coulomb_potential_data: Coulomb_potential_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
-) -> float:
-
-    def compute_ecp_local_part(r_cart):
-        dist_list = []
-        exponents_list = []
-        coefficients_list = []
-        powers_list = []
-
-        for i_atom in range(coulomb_potential_data.structure_data.natom):
-            R_cart = coulomb_potential_data.structure_data.positions_cart[i_atom]
-            max_ang_mom_plus_1 = coulomb_potential_data.max_ang_mom_plus_1[i_atom]
-            nucleus_indices = [
-                i
-                for i, v in enumerate(coulomb_potential_data.nucleus_index)
-                if v == i_atom
-            ]
-            ang_moms = [coulomb_potential_data.ang_moms[i] for i in nucleus_indices]
-            exponents = [coulomb_potential_data.exponents[i] for i in nucleus_indices]
-            coefficients = [
-                coulomb_potential_data.coefficients[i] for i in nucleus_indices
-            ]
-            powers = [coulomb_potential_data.powers[i] for i in nucleus_indices]
-            ang_mom_indices = [
-                i for i, v in enumerate(ang_moms) if v == max_ang_mom_plus_1
-            ]
-
-            dist_list += [jnp.linalg.norm(R_cart - r_cart)] * len(ang_mom_indices)
-            exponents_list += [exponents[i] for i in ang_mom_indices]
-            coefficients_list += [coefficients[i] for i in ang_mom_indices]
-            powers_list += [powers[i] for i in ang_mom_indices]
-
-        dist_jnp = jnp.array(dist_list)
-        coefficients_jnp = jnp.array(coefficients_list)
-        powers_jnp = jnp.array(powers_list)
-        exponents_jnp = np.array(exponents_list)
-
-        ecp_local_part = jnp.sum(
+        V_l = jnp.sum(
             (
-                dist_jnp**-2.0
+                rel_R_cart**-2.0
                 * coefficients_jnp
-                * dist_jnp**powers_jnp
-                * jnp.exp(-exponents_jnp * (dist_jnp**2))
+                * rel_R_cart**powers_jnp
+                * jnp.exp(-exponents_jnp * (rel_R_cart**2))
             )
         )
-        return ecp_local_part
 
-    vmap_compute_ecp_local_part = vmap(compute_ecp_local_part)
-    V_local = jnp.sum(vmap_compute_ecp_local_part(r_up_carts)) + jnp.sum(
-        vmap_compute_ecp_local_part(r_dn_carts)
-    )
+        return V_l
+
+    V_local = 0.0
+    for r_up_cart in r_up_carts:
+        for i_atom in range(coulomb_potential_data.structure_data.natom):
+            max_ang_mom_plus_1 = coulomb_potential_data.max_ang_mom_plus_1[i_atom]
+            rel_R_cart_min_dist = get_min_dist_rel_R_cart_jnp(
+                structure_data=coulomb_potential_data.structure_data,
+                r_cart=r_up_cart,
+                i_atom=i_atom,
+            )
+            exponents, coefficients, powers = (
+                coulomb_potential_data.get_primitive_jnp_array_for_an_ang_mom_of_a_target_atom(
+                    i_atom=i_atom, ang_mom=max_ang_mom_plus_1
+                )
+            )
+            V_local += compute_V_l(rel_R_cart_min_dist, exponents, coefficients, powers)
+    for r_dn_cart in r_dn_carts:
+        for i_atom in range(coulomb_potential_data.structure_data.natom):
+            max_ang_mom_plus_1 = coulomb_potential_data.max_ang_mom_plus_1[i_atom]
+            rel_R_cart_min_dist = get_min_dist_rel_R_cart_jnp(
+                structure_data=coulomb_potential_data.structure_data,
+                r_cart=r_dn_cart,
+                i_atom=i_atom,
+            )
+            exponents, coefficients, powers = (
+                coulomb_potential_data.get_primitive_jnp_array_for_an_ang_mom_of_a_target_atom(
+                    i_atom=i_atom, ang_mom=max_ang_mom_plus_1
+                )
+            )
+            V_local += compute_V_l(rel_R_cart_min_dist, exponents, coefficients, powers)
 
     return V_local
 
@@ -349,7 +347,7 @@ def compute_ecp_nonlocal_parts_api(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
     Nv: int = 6,
-    debug_flag: bool = True,
+    debug_flag: bool = False,
 ) -> float:
     """
     The method is for computing the non-local part of the given ECPs at (r_up_carts, r_dn_carts).
@@ -410,7 +408,7 @@ def compute_ecp_nonlocal_parts_debug(
 
     V_nonlocal = 0.0
 
-    wavefunction_denominator = evaluate_wavefunction(
+    wf_denominator = evaluate_wavefunction_api(
         wavefunction_data=wavefunction_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -459,14 +457,13 @@ def compute_ecp_nonlocal_parts_debug(
                         ((vec_delta) / np.linalg.norm(vec_delta)),
                     )
 
-                    wf_ratio = (
-                        evaluate_wavefunction(
-                            wavefunction_data=wavefunction_data,
-                            r_up_carts=r_up_carts_on_mesh,
-                            r_dn_carts=r_dn_carts,
-                        )
-                        / wavefunction_denominator
+                    wf_numerator = evaluate_wavefunction_api(
+                        wavefunction_data=wavefunction_data,
+                        r_up_carts=r_up_carts_on_mesh,
+                        r_dn_carts=r_dn_carts,
                     )
+
+                    wf_ratio = wf_numerator / wf_denominator
 
                     P_l = (
                         (2 * ang_mom + 1)
@@ -474,7 +471,6 @@ def compute_ecp_nonlocal_parts_debug(
                         * weight
                         * wf_ratio
                     )
-                    logger.debug(f"V_l * P_l={V_l * P_l}")
                     V_nonlocal += V_l * P_l
 
             # dn electrons
@@ -499,14 +495,13 @@ def compute_ecp_nonlocal_parts_debug(
                         vec_delta / np.linalg.norm(vec_delta),
                     )
 
-                    wf_ratio = (
-                        evaluate_wavefunction(
-                            wavefunction_data=wavefunction_data,
-                            r_up_carts=r_up_carts,
-                            r_dn_carts=r_dn_carts_on_mesh,
-                        )
-                        / wavefunction_denominator
+                    wf_numerator = evaluate_wavefunction_api(
+                        wavefunction_data=wavefunction_data,
+                        r_up_carts=r_up_carts,
+                        r_dn_carts=r_dn_carts_on_mesh,
                     )
+
+                    wf_ratio = wf_numerator / wf_denominator
 
                     P_l = (
                         (2 * ang_mom + 1)
@@ -519,10 +514,8 @@ def compute_ecp_nonlocal_parts_debug(
     return V_nonlocal
 
 
-# WIP (To be refactored!!) This jax part is not efficient because
-# 1. it considers all atoms, while the ECP part typically is short-range
-# 2. it cannot be jitted.
-# @jit
+# can we avoid the for loops by using lax.scan and lax.cond?
+@jit
 def compute_ecp_nonlocal_parts_jax(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
@@ -532,118 +525,147 @@ def compute_ecp_nonlocal_parts_jax(
     grid_points: npt.NDArray[np.float64],
 ) -> float:
 
-    V_nonlocal = 0.0
+    weights = jnp.array(weights)
+    grid_points = jnp.array(grid_points)
 
-    wavefunction_denominator = evaluate_wavefunction(
+    wf_denominator = evaluate_wavefunction_api(
         wavefunction_data=wavefunction_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
 
-    for i_atom in range(coulomb_potential_data.structure_data.natom):
-        R_cart = coulomb_potential_data.structure_data.positions_cart[i_atom]
-        max_ang_mom_plus_1 = coulomb_potential_data.max_ang_mom_plus_1[i_atom]
-        nucleus_indices = [
-            i for i, v in enumerate(coulomb_potential_data.nucleus_index) if v == i_atom
-        ]
+    @jit
+    def compute_V_l(r_cart, R_cart, exponents, coefficients, powers):
+        dist_jnp = jnp.linalg.norm(R_cart - r_cart)
+        exponents_jnp = jnp.array(exponents)
+        coefficients_jnp = jnp.array(coefficients)
+        powers_jnp = jnp.array(powers)
 
-        ang_moms_all = [coulomb_potential_data.ang_moms[i] for i in nucleus_indices]
-        exponents_all = [coulomb_potential_data.exponents[i] for i in nucleus_indices]
-        coefficients_all = [
-            coulomb_potential_data.coefficients[i] for i in nucleus_indices
-        ]
-        powers_all = [coulomb_potential_data.powers[i] for i in nucleus_indices]
+        V_l = jnp.sum(
+            (
+                dist_jnp**-2.0
+                * coefficients_jnp
+                * dist_jnp**powers_jnp
+                * jnp.exp(-exponents_jnp * (dist_jnp**2))
+            )
+        )
 
-        for ang_mom in range(max_ang_mom_plus_1):
-            ang_mom_indices = [i for i, v in enumerate(ang_moms_all) if v == ang_mom]
+        return V_l
 
-            exponents = [exponents_all[i] for i in ang_mom_indices]
-            coefficients = [coefficients_all[i] for i in ang_mom_indices]
-            powers = [powers_all[i] for i in ang_mom_indices]
+    @jit
+    def compute_P_l_up(ang_mom, r_up_i, r_up_cart, R_cart, weight, vec_delta):
+        r_up_carts_on_mesh = jnp.array(r_up_carts)
+        r_up_carts_on_mesh = r_up_carts_on_mesh.at[r_up_i].set(
+            R_cart + jnp.linalg.norm(R_cart - r_up_cart) * vec_delta
+        )
 
-            # up electrons
-            for r_up_i, r_up_cart in enumerate(r_up_carts):
+        cos_theta_up = jnp.dot(
+            (R_cart - r_up_cart) / jnp.linalg.norm(R_cart - r_up_cart),
+            ((vec_delta) / jnp.linalg.norm(vec_delta)),
+        )
+        wf_numerator_up = evaluate_wavefunction_api(
+            wavefunction_data=wavefunction_data,
+            r_up_carts=r_up_carts_on_mesh,
+            r_dn_carts=r_dn_carts,
+        )
 
-                V_l = jnp.linalg.norm(R_cart - r_up_cart) ** -2.0 * jnp.sum(
-                    jnp.array(
-                        [
-                            a
-                            * jnp.linalg.norm(R_cart - r_up_cart) ** n
-                            * jnp.exp(-b * jnp.linalg.norm(R_cart - r_up_cart) ** 2.0)
-                            for a, n, b in zip(coefficients, powers, exponents)
-                        ]
+        wf_ratio_up = wf_numerator_up / wf_denominator
+
+        P_l_up = (
+            (2 * ang_mom + 1)
+            * jnp_legendre_tablated(ang_mom, cos_theta_up)
+            * weight
+            * wf_ratio_up
+        )
+
+        return P_l_up
+
+    @jit
+    def compute_P_l_dn(ang_mom, r_dn_i, r_dn_cart, R_cart, weight, vec_delta):
+
+        r_dn_carts_on_mesh = jnp.array(r_dn_carts)
+        r_dn_carts_on_mesh = r_dn_carts_on_mesh.at[r_dn_i].set(
+            R_cart + jnp.linalg.norm(R_cart - r_dn_cart) * vec_delta
+        )
+
+        cos_theta_dn = jnp.dot(
+            (R_cart - r_dn_cart) / jnp.linalg.norm(R_cart - r_dn_cart),
+            ((vec_delta) / jnp.linalg.norm(vec_delta)),
+        )
+        wf_numerator_dn = evaluate_wavefunction_api(
+            wavefunction_data=wavefunction_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts_on_mesh,
+        )
+
+        wf_ratio_dn = wf_numerator_dn / wf_denominator
+
+        P_l_dn = (
+            (2 * ang_mom + 1)
+            * jnp_legendre_tablated(ang_mom, cos_theta_dn)
+            * weight
+            * wf_ratio_dn
+        )
+        return P_l_dn
+
+    vmap_compute_P_l_up = vmap(compute_P_l_up, in_axes=(None, None, None, None, 0, 0))
+    vmap_compute_P_l_dn = vmap(compute_P_l_dn, in_axes=(None, None, None, None, 0, 0))
+
+    @jit
+    def compute_V_nonlocal_up(
+        ang_mom, r_up_i, r_up_cart, R_cart, exponents, coefficients, powers
+    ):
+        V_l_up = compute_V_l(r_up_cart, R_cart, exponents, coefficients, powers)
+        P_l_up = jnp.sum(
+            vmap_compute_P_l_up(
+                ang_mom, r_up_i, r_up_cart, R_cart, weights, grid_points
+            )
+        )
+        return V_l_up * P_l_up
+
+    @jit
+    def compute_V_nonlocal_dn(
+        ang_mom, r_dn_i, r_dn_cart, R_cart, exponents, coefficients, powers
+    ):
+        V_l_dn = compute_V_l(r_dn_cart, R_cart, exponents, coefficients, powers)
+        P_l_dn = jnp.sum(
+            vmap_compute_P_l_dn(
+                ang_mom, r_dn_i, r_dn_cart, R_cart, weights, grid_points
+            )
+        )
+        return V_l_dn * P_l_dn
+
+    V_nonlocal = 0.0
+
+    # up electrons (can we avoid the for loops by using lax.scan and lax.cond?)
+    for r_up_i, r_up_cart in enumerate(r_up_carts):
+        for i_atom in range(coulomb_potential_data.structure_data.natom):
+            R_cart = coulomb_potential_data.structure_data.positions_cart[i_atom]
+            ang_mom_np = np.arange(coulomb_potential_data.max_ang_mom_plus_1[i_atom])
+            for ang_mom in ang_mom_np:
+                exponents, coefficients, powers = (
+                    coulomb_potential_data.get_primitive_jnp_array_for_an_ang_mom_of_a_target_atom(
+                        i_atom=i_atom, ang_mom=ang_mom
                     )
                 )
-
-                for weight, vec_delta in zip(weights, grid_points):
-                    r_up_carts_on_mesh = jnp.array(r_up_carts)
-                    r_up_carts_on_mesh = r_up_carts_on_mesh.at[r_up_i].set(
-                        R_cart + jnp.linalg.norm(R_cart - r_up_cart) * vec_delta
-                    )
-
-                    cos_theta = jnp.dot(
-                        (R_cart - r_up_cart) / jnp.linalg.norm(R_cart - r_up_cart),
-                        ((vec_delta) / jnp.linalg.norm(vec_delta)),
-                    )
-
-                    wf_ratio = (
-                        evaluate_wavefunction(
-                            wavefunction_data=wavefunction_data,
-                            r_up_carts=r_up_carts_on_mesh,
-                            r_dn_carts=r_dn_carts,
-                        )
-                        / wavefunction_denominator
-                    )
-
-                    P_l = (
-                        (2 * ang_mom + 1)
-                        * jnp_legendre_tablated(ang_mom, cos_theta)
-                        * weight
-                        * wf_ratio
-                    )
-                    logger.debug(f"V_l * P_l={V_l * P_l}")
-                    V_nonlocal += V_l * P_l
-
-            # dn electrons
-            for r_dn_i, r_dn_cart in enumerate(r_dn_carts):
-                V_l = jnp.linalg.norm(R_cart - r_dn_cart) ** -2 * jnp.sum(
-                    jnp.array(
-                        [
-                            a
-                            * jnp.linalg.norm(R_cart - r_dn_cart) ** n
-                            * jnp.exp(-b * jnp.linalg.norm(R_cart - r_dn_cart) ** 2)
-                            for a, n, b in zip(coefficients, powers, exponents)
-                        ]
-                    )
+                V_nonlocal += compute_V_nonlocal_up(
+                    ang_mom, r_up_i, r_up_cart, R_cart, exponents, coefficients, powers
                 )
 
-                for weight, vec_delta in zip(weights, grid_points):
-                    r_dn_carts_on_mesh = jnp.array(r_dn_carts)
-                    r_dn_carts_on_mesh = r_dn_carts_on_mesh.at[r_dn_i].set(
-                        R_cart + jnp.linalg.norm(R_cart - r_dn_cart) * vec_delta
+    # dn electrons (can we avoid the for loops by using lax.scan and lax.cond?)
+    for r_dn_i, r_dn_cart in enumerate(r_dn_carts):
+        for i_atom in range(coulomb_potential_data.structure_data.natom):
+            R_cart = coulomb_potential_data.structure_data.positions_cart[i_atom]
+            ang_mom_np = np.arange(coulomb_potential_data.max_ang_mom_plus_1[i_atom])
+            for ang_mom in ang_mom_np:
+                exponents, coefficients, powers = (
+                    coulomb_potential_data.get_primitive_jnp_array_for_an_ang_mom_of_a_target_atom(
+                        i_atom=i_atom, ang_mom=ang_mom
                     )
-
-                    cos_theta = jnp.dot(
-                        (R_cart - r_dn_cart) / jnp.linalg.norm(R_cart - r_dn_cart),
-                        vec_delta / jnp.linalg.norm(vec_delta),
-                    )
-
-                    wf_ratio = (
-                        evaluate_wavefunction(
-                            wavefunction_data=wavefunction_data,
-                            r_up_carts=r_up_carts,
-                            r_dn_carts=r_dn_carts_on_mesh,
-                        )
-                        / wavefunction_denominator
-                    )
-
-                    P_l = (
-                        (2 * ang_mom + 1)
-                        * jnp_legendre_tablated(ang_mom, cos_theta)
-                        * weight
-                        * wf_ratio
-                    )
-                    V_nonlocal += V_l * P_l
+                )
+                V_nonlocal += compute_V_nonlocal_dn(
+                    ang_mom, r_dn_i, r_dn_cart, R_cart, exponents, coefficients, powers
+                )
 
     return V_nonlocal
 
@@ -692,7 +714,7 @@ def compute_bare_coulomb_potential_debug(
     r_dn_charges = [-1 for _ in range(len(r_dn_carts))]
 
     all_carts = np.vstack([R_carts, r_up_carts, r_dn_carts])
-    all_charges = R_charges + r_up_charges + r_dn_charges
+    all_charges = np.hstack([R_charges, r_up_charges, r_dn_charges])
 
     bare_coulomb_potential = np.sum(
         [
@@ -774,13 +796,21 @@ def compute_coulomb_potential_api(
             r_dn_carts=r_dn_carts,
             debug_flag=debug_flag,
         )
+
+        ecp_local_coulomb_potential = 0.0
+
+        # """ slow!!
         ecp_local_coulomb_potential = compute_ecp_local_parts_api(
             coulomb_potential_data=coulomb_potential_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
             debug_flag=debug_flag,
         )
-        # """ #WIP
+        # """
+
+        ecp_nonlocal_coulomb_potential = 0.0
+
+        # """ very slow!!!
         ecp_nonlocal_coulomb_potential = compute_ecp_nonlocal_parts_api(
             coulomb_potential_data=coulomb_potential_data,
             wavefunction_data=wavefunction_data,
@@ -789,7 +819,6 @@ def compute_coulomb_potential_api(
             debug_flag=debug_flag,
         )
         # """
-        # ecp_nonlocal_coulomb_potential = 0.0
 
         # logger.info(f"bare_coulomb_potential = {bare_coulomb_potential}.")
         # logger.info(f"ecp_local_coulomb_potential  = {ecp_local_coulomb_potential}.")

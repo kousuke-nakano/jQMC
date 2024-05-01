@@ -1,6 +1,7 @@
 """Structure module"""
 
 # python modules
+from functools import partial
 import itertools
 from logging import getLogger, StreamHandler, Formatter
 
@@ -9,6 +10,9 @@ from numpy import linalg as LA
 import numpy.typing as npt
 
 # JAX
+from jax import numpy as jnp
+from jax import lax
+from jax import jit
 from flax import struct
 
 # modules
@@ -183,22 +187,6 @@ class Structure_data:
         """
         return len(list(set(self.atomic_numbers)))
 
-    def get_nearest_neigbhor_atom_index(self, r_cart: list[float, float, float]) -> int:
-        """
-        Args:
-            r_cart (list[float, float, float]): reference position
-        Return:
-            The index of the nearest neigbhor nucleus (int)
-        """
-
-        if any(self.pbc_flag):
-            raise NotImplementedError
-        else:
-            differences = self.positions_cart - np.array(r_cart)
-            distances = np.linalg.norm(differences, axis=1)
-            closest_index = np.argmin(distances)
-            return closest_index
-
     ''' unsupported
     @classmethod
     def parse_structure_from_ase_atom(cls, ase_atom: Atoms) -> "Structure_data":
@@ -283,6 +271,99 @@ class Structure_data:
             ase_atom.set_pbc(self.pbc_flag)
 
         write(filename, ase_atom)
+
+
+def find_nearest_index(
+    structure: Structure_data, r_cart: list[float, float, float]
+) -> int:
+    """
+    Args:
+        structure (Structure_data): an instance of Structure_data
+        r_cart (list[float, float, float]): reference position
+    Return:
+        The index of the nearest neigbhor nucleus (int)
+    """
+
+    if any(structure.pbc_flag):
+        raise NotImplementedError
+    else:
+        return find_nearest_nucleus_indices_np(structure, r_cart, 1)[0]
+
+
+def find_nearest_nucleus_indices_np(structure_data: Structure_data, r_cart, N):
+    if any(structure_data.pbc_flag):
+        raise NotImplementedError
+    else:
+        # Calculate the distance between each row of R_carts and r_cart
+        distances = np.sqrt(
+            np.sum((structure_data.positions_cart - np.array(r_cart)) ** 2, axis=1)
+        )
+        # Sort indices based on the calculated distances
+        nearest_indices = np.argsort(distances)
+        # Select the indices of the nearest N rows
+        return nearest_indices[:N]
+
+
+def find_nearest_nucleus_indices_jnp(structure_data: Structure_data, r_cart, N):
+    # Calculate the distance between each row of R_carts and r_cart
+    distances = jnp.sqrt(
+        jnp.sum((structure_data.positions_cart - jnp.array(r_cart)) ** 2, axis=1)
+    )
+    # Sort indices based on the calculated distances
+    nearest_indices = jnp.argsort(distances)
+    # Select the indices of the nearest N rows
+    return nearest_indices[:N]
+
+
+def get_min_dist_rel_R_cart_np(
+    structure_data: Structure_data, r_cart: list[float, float, float], i_atom: int
+) -> float:
+    """
+    Returns:
+        rel_R_cart_min_dist containing minimum-distance atomic positions with respect to the given r_cart in cartesian. The unit is Bohr
+    """
+
+    def mapping(r_cart, R_cart):
+        return np.linalg.norm(r_cart - R_cart)
+
+    def non_mapping(r_cart, R_cart):
+        return np.linalg.norm(r_cart - R_cart)
+
+    if (
+        np.linalg.norm(r_cart - structure_data.positions_cart[i_atom]) > 0.0
+    ):  # dummy, which will be replaced in PBC cases
+        rel_R_cart_min_dist = mapping(r_cart, structure_data.positions_cart[i_atom])
+    else:
+        rel_R_cart_min_dist = non_mapping(r_cart, structure_data.positions_cart[i_atom])
+
+    return rel_R_cart_min_dist
+
+
+@jit
+def get_min_dist_rel_R_cart_jnp(
+    structure_data: Structure_data, r_cart: list[float, float, float], i_atom: int
+) -> float:
+    """
+    Returns:
+        rel_R_cart_min_dist minimum-distance atomic positions with respect to the given r_cart in cartesian. The unit is Bohr
+    """
+
+    def mapping(r_cart, R_cart):
+        return jnp.linalg.norm(r_cart - R_cart)
+
+    def non_mapping(r_cart, R_cart):
+        return jnp.linalg.norm(r_cart - R_cart)
+
+    rel_R_cart_min_dist = lax.cond(
+        jnp.linalg.norm(r_cart - structure_data.positions_cart[i_atom])
+        < 0.0,  # dummy, which will be replaced in PBC cases
+        mapping,
+        non_mapping,
+        r_cart,
+        structure_data.positions_cart[i_atom],
+    )
+
+    return rel_R_cart_min_dist
 
 
 if __name__ == "__main__":

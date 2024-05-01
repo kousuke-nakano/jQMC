@@ -17,8 +17,16 @@ jax.config.update("jax_enable_x64", True)
 @jit
 def legendre_tablated(n, x):
     # see https://en.wikipedia.org/wiki/Legendre_polynomials
-    conditions = [n == 0, n == 1, n == 2, n == 3]
-    P_n = [1, x, 1.0 / 2.0 * (3.0 * x**2 - 1), 1.0 / 2.0 * (5.0 * x**3 - 3.0 * x)]
+    conditions = [n == 0, n == 1, n == 2, n == 3, n == 4, n == 5, n == 6]
+    P_n = [
+        1,
+        x,
+        1.0 / 2.0 * (3.0 * x**2 - 1),
+        1.0 / 2.0 * (5.0 * x**3 - 3.0 * x),
+        1.0 / 8.0 * (35.0 * x**4 - 30.0 * x**2 + 3.0),
+        1.0 / 8.0 * (63.0 * x**5 - 70 * x**3 + 15 * x),
+        1.0 / 16.0 * (231.0 * x**6 - 315.0 * x**4 + 105.0 * x**2 - 5),
+    ]
     return jnp.select(conditions, P_n, jnp.nan)
 
 
@@ -61,7 +69,7 @@ def eval_legendre(n: Int[Array, "n"], x: Float[Array, "m"]) -> Float[Array, "n m
 
 
 def test_eval_legendre():
-    n = np.array([0, 1])
+    n = np.arange(7)
     print(jnp.max(n))
 
     print(f"n = {n}")

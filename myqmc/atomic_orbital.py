@@ -112,64 +112,6 @@ class AOs_data:
         return jnp.array(self.coefficients)
 
 
-'''
-def compute_AOs_overlap_matrix(aos_data: AOs_data, method: str = "numerical"):
-    """
-    The method is for computing overlap matrix (S) of the given atomic orbitals
-
-    Args:
-        ao_datas (AOs_data): an instance of AOs_data
-        method: method to compute S, numerical or analytical. numerical is just for the debugging purpose.
-
-    Returns:
-        Arrays containing the overlap matrix (S) of the given AOs (dim: num_ao, num_ao)
-    """
-
-    if method == "numerical":
-        nx = 300
-        x_min = -5.0
-        x_max = 5.0
-
-        ny = 300
-        y_min = -5.0
-        y_max = 5.0
-
-        nz = 300
-        z_min = -5.0
-        z_max = 5.0
-
-        x, w_x = scipy.special.roots_legendre(n=nx)
-        y, w_y = scipy.special.roots_legendre(n=ny)
-        z, w_z = scipy.special.roots_legendre(n=nz)
-
-        # Use itertools.product to generate all combinations of points across dimensions
-        points = list(itertools.product(x, y, z))
-        weights = list(itertools.product(w_x, w_y, w_z))
-
-        # Create the matrix of coordinates r from combinations
-        r_prime = np.array(points)  # Shape: (n^3, 3)
-
-        A = 1.0 / 2.0 * np.array([[x_max + x_min], [y_max + y_min], [z_max + z_min]])
-        B = 1.0 / 2.0 * np.diag([x_max - x_min, y_max - y_min, z_max - z_min])
-
-        # Create the weight vector W (calculate the product of each set of weights)
-        W = np.array([w[0] * w[1] * w[2] for w in weights])  # Length: n^3
-        Jacob = 1.0 / 8.0 * (x_max - x_min) * (y_max - y_min) * (z_max - z_min)
-        W_prime = Jacob * np.tile(W, (aos_data.num_ao, 1))
-
-        Psi = compute_AOs_api(
-            aos_data=aos_data, r_carts=(A + np.dot(B, r_prime.T)).T, jax_flag=True
-        )
-
-        S = np.dot(Psi, (W_prime * Psi).T)
-
-        return S
-
-    else:
-        raise NotImplementedError
-'''
-
-
 def compute_AOs_laplacian_api(
     aos_data: AOs_data,
     r_carts: npt.NDArray[np.float64],
@@ -232,54 +174,6 @@ def compute_AOs_laplacian_jax_auto_grad(
         ao_matrix_laplacian = ao_matrix_laplacian.at[ui].set(
             AOs_laplacian_dup[mask].sum(axis=0)
         )
-
-    return ao_matrix_laplacian
-
-
-@jit
-def compute_AOs_laplacian_jax_auto_grad_old(
-    aos_data: AOs_data, r_carts: npt.NDArray[np.float64]
-):
-    # Laplacians of AOs (autograd via google-JAX)
-    # Note: This method gives correct answers, but slow because the full hessian calculation is not needed for computing laplacians.
-    # grad(grad) should be pluged into compute_AOs_jax() in the future for accelaration.
-
-    def _compute_ao_matrix_grad(aos_data: AOs_data, r_carts, target=0):
-        ao_matrix_jacrev = jacrev(compute_AOs_api, argnums=1)(
-            aos_data, r_carts, debug_flag=False
-        )
-
-        ao_matrix_grad_ = ao_matrix_jacrev[:, :, :, target]
-        ao_matrix_grad = jnp.sum(ao_matrix_grad_, axis=2)
-
-        return ao_matrix_grad
-
-    ao_matrix_hessian_x = jacfwd(_compute_ao_matrix_grad, argnums=1)(
-        aos_data, r_carts, target=0
-    )
-    ao_matrix_hessian_y = jacfwd(_compute_ao_matrix_grad, argnums=1)(
-        aos_data, r_carts, target=1
-    )
-    ao_matrix_hessian_z = jacfwd(_compute_ao_matrix_grad, argnums=1)(
-        aos_data, r_carts, target=2
-    )
-
-    ao_matrix_hessian_x2_ = ao_matrix_hessian_x[:, :, :, 0]
-    ao_matrix_hessian_y2_ = ao_matrix_hessian_y[:, :, :, 1]
-    ao_matrix_hessian_z2_ = ao_matrix_hessian_z[:, :, :, 2]
-    ao_matrix_hessian_x2 = jnp.sum(ao_matrix_hessian_x2_, axis=2)
-    ao_matrix_hessian_y2 = jnp.sum(ao_matrix_hessian_y2_, axis=2)
-    ao_matrix_hessian_z2 = jnp.sum(ao_matrix_hessian_z2_, axis=2)
-
-    ao_matrix_laplacian = (
-        ao_matrix_hessian_x2 + ao_matrix_hessian_y2 + ao_matrix_hessian_z2
-    )
-
-    if ao_matrix_laplacian.shape != (aos_data.num_ao, len(r_carts)):
-        logger.error(
-            f"ao_matrix_hessian.shape = {ao_matrix_laplacian.shape} is inconsistent with the expected one = {(aos_data.num_ao, len(r_carts))}"
-        )
-        raise ValueError
 
     return ao_matrix_laplacian
 

@@ -42,7 +42,8 @@ class Wavefunction_data:
         pass
 
 
-def evaluate_wavefunction(
+@jit
+def evaluate_wavefunction_api(
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
@@ -59,6 +60,8 @@ def evaluate_wavefunction(
         The value of the given wavefunction (float | complex)
     """
 
+    Jastrow_part = 1.0
+
     Determinant_part = compute_det_geminal_all_elements_api(
         geminal_data=wavefunction_data.geminal_data,
         r_up_carts=r_up_carts,
@@ -66,17 +69,17 @@ def evaluate_wavefunction(
         debug_flag=False,
     )
 
-    return Determinant_part
+    return Jastrow_part * Determinant_part
 
 
 @jit
-def compute_kinetic_energy(
+def compute_kinetic_energy_api(
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float | complex:
     """
-    The method is for computing laplacian at (r_up_carts, r_dn_carts).
+    The method is for computing kinetic energy of the given WF at (r_up_carts, r_dn_carts).
 
     Args:
         wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
@@ -97,7 +100,7 @@ def compute_kinetic_energy(
         )
     )
 
-    # compute laplacians
+    # compute kinetic energy
     L = (
         1.0
         / 2.0

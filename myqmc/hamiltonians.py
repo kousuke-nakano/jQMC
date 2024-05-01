@@ -9,7 +9,7 @@ from logging import getLogger, StreamHandler, Formatter
 import jax
 from flax import struct
 
-from .wavefunction import Wavefunction_data, compute_kinetic_energy
+from .wavefunction import Wavefunction_data, compute_kinetic_energy_api
 from .coulomb_potential import Coulomb_potential_data, compute_coulomb_potential_api
 from .structure import Structure_data
 
@@ -56,7 +56,7 @@ def compute_local_energy(
         The value of local energy with the given wavefunction (float | complex)
     """
 
-    T = compute_kinetic_energy(
+    T = compute_kinetic_energy_api(
         wavefunction_data=hamiltonian_data.wavefunction_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,

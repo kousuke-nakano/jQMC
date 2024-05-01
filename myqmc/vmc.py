@@ -14,11 +14,12 @@ import mpi4jax
 import jax
 from jax import grad
 
+from .structure import find_nearest_index
 from .hamiltonians import Hamiltonian_data, compute_local_energy
 from .wavefunction import (
     # compute_quantum_force,
-    evaluate_wavefunction,
-    compute_kinetic_energy,
+    evaluate_wavefunction_api,
+    compute_kinetic_energy_api,
 )
 from .trexio_wrapper import read_trexio_file
 from .wavefunction import Wavefunction_data
@@ -216,8 +217,8 @@ class MCMC:
                     )
                     old_r_cart = self.__latest_r_dn_carts[selected_electron_index]
 
-                nearest_atom_index = self.__hamiltonian_data.structure_data.get_nearest_neigbhor_atom_index(
-                    old_r_cart
+                nearest_atom_index = find_nearest_index(
+                    self.__hamiltonian_data.structure_data, old_r_cart
                 )
 
                 R_cart = coords[nearest_atom_index]
@@ -246,9 +247,10 @@ class MCMC:
                     proposed_r_dn_carts = self.__latest_r_dn_carts.copy()
                     proposed_r_dn_carts[selected_electron_index] = new_r_cart
 
-                nearest_atom_index = self.__hamiltonian_data.structure_data.get_nearest_neigbhor_atom_index(
-                    new_r_cart
+                nearest_atom_index = find_nearest_index(
+                    self.__hamiltonian_data.structure_data, new_r_cart
                 )
+
                 R_cart = coords[nearest_atom_index]
                 Z = charges[nearest_atom_index]
                 norm_r_R = np.linalg.norm(new_r_cart - R_cart)
@@ -272,12 +274,12 @@ class MCMC:
                 )
 
                 R_ratio = (
-                    evaluate_wavefunction(
+                    evaluate_wavefunction_api(
                         wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                         r_up_carts=proposed_r_up_carts,
                         r_dn_carts=proposed_r_dn_carts,
                     )
-                    / evaluate_wavefunction(
+                    / evaluate_wavefunction_api(
                         wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                         r_up_carts=self.__latest_r_up_carts,
                         r_dn_carts=self.__latest_r_dn_carts,
