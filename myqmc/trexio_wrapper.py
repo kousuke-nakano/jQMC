@@ -197,9 +197,9 @@ def read_trexio_file(trexio_file: str):
         raise ValueError
 
     aos_data = AOs_data(
+        structure_data=structure_data,
         num_ao=ao_num_count,
         num_ao_prim=ao_prim_num_count,
-        atomic_center_carts=np.array(atomic_center_carts),
         angular_momentums=angular_momentums,
         magnetic_quantum_numbers=magnetic_quantum_numbers,
         orbital_indices=orbital_indices,

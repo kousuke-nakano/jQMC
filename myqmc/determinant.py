@@ -15,7 +15,7 @@ from flax import struct
 
 # myqmc module
 from .atomic_orbital import (
-    AOs_data,
+    AOs_data_debug,
     compute_AOs_api,
     compute_AOs_grad_api,
     compute_AOs_laplacian_api,
@@ -51,8 +51,8 @@ class Geminal_data:
 
     num_electron_up: int = struct.field(pytree_node=False)
     num_electron_dn: int = struct.field(pytree_node=False)
-    orb_data_up_spin: AOs_data | MOs_data = struct.field(pytree_node=True)
-    orb_data_dn_spin: AOs_data | MOs_data = struct.field(pytree_node=True)
+    orb_data_up_spin: AOs_data_debug | MOs_data = struct.field(pytree_node=True)
+    orb_data_dn_spin: AOs_data_debug | MOs_data = struct.field(pytree_node=True)
     compute_orb_api: Callable[..., npt.NDArray[np.float64]] = struct.field(
         pytree_node=False
     )
@@ -721,7 +721,7 @@ if __name__ == "__main__":
         num_R_cart_samples, 3
     ) + R_cart_min
 
-    aos_up_data = AOs_data(
+    aos_up_data = AOs_data_debug(
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         atomic_center_carts=R_carts,
@@ -732,7 +732,7 @@ if __name__ == "__main__":
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    aos_dn_data = AOs_data(
+    aos_dn_data = AOs_data_debug(
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         atomic_center_carts=R_carts,

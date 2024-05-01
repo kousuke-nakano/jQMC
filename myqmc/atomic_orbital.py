@@ -16,10 +16,13 @@ import scipy  # type: ignore
 # from jax.debug import print as jprint
 import jax
 from jax import vmap, jit
-from jax import jacfwd, jacrev, grad
+from jax import jacrev, grad
 import jax.scipy as jscipy
 import jax.numpy as jnp
 from flax import struct
+
+# jaxQMC module
+from .structure import Structure_data
 
 # set logger
 logger = getLogger("myqmc").getChild(__name__)
@@ -28,11 +31,124 @@ logger = getLogger("myqmc").getChild(__name__)
 jax.config.update("jax_enable_x64", True)
 
 
-# @dataclass
+# WIP!!!
 @struct.dataclass
 class AOs_data:
     """
     The class contains data for computing atomic orbitals simltaneously
+
+    Args:
+        structure_data: an instance of Structure_data
+        num_ao : the number of atomic orbitals.
+        num_ao_prim : the number of primitive atomic orbitals.
+        orbital_indices (list[int]): index for what exponents and coefficients are associated to each atomic orbital. dim: num_ao_prim
+        exponents (list[float]): List of exponents of the AOs. dim: num_ao_prim.
+        coefficients (list[float | complex]): List of coefficients of the AOs. dim: num_ao_prim
+        angular_momentums (list[int]): Angular momentum of the AOs, i.e., l. dim: num_ao
+        magnetic_quantum_numbers (list[int]): Magnetic quantum number of the AOs, i.e m = -l .... +l. dim: num_ao
+    """
+
+    structure_data: Structure_data = struct.field(pytree_node=True)
+    num_ao: int = struct.field(pytree_node=False)
+    num_ao_prim: int = struct.field(pytree_node=False)
+    orbital_indices: list[int] = struct.field(pytree_node=False)
+    exponents: list[float] = struct.field(pytree_node=False)
+    coefficients: list[float | complex] = struct.field(pytree_node=False)
+    angular_momentums: list[int] = struct.field(pytree_node=False)
+    magnetic_quantum_numbers: list[int] = struct.field(pytree_node=False)
+
+    def __post_init__(self) -> None:
+        if self.atomic_center_carts.shape != (self.num_ao, 3):
+            logger.error(self.atomic_center_carts.shape)
+            logger.error("dim. of atomic_center_cart is wrong")
+            raise ValueError
+        if len(np.unique(self.orbital_indices)) != self.num_ao:
+            logger.error(
+                f"num_ao={self.num_ao} and/or num_ao_prim={self.num_ao_prim} is wrong"
+            )
+        if len(self.exponents) != self.num_ao_prim:
+            logger.error("dim. of self.exponents is wrong")
+            raise ValueError
+        if len(self.coefficients) != self.num_ao_prim:
+            logger.error("dim. of self.coefficients is wrong")
+            raise ValueError
+        if len(self.angular_momentums) != self.num_ao:
+            logger.error("dim. of self.angular_momentums is wrong")
+            raise ValueError
+        if len(self.magnetic_quantum_numbers) != self.num_ao:
+            logger.error("dim. of self.magnetic_quantum_numbers is wrong")
+            raise ValueError
+
+    @property
+    def atomic_center_carts(self):
+        return self.structure_data.positions_cart  # wrong!!
+
+    """ something like this?
+        unique_indices = np.unique(aos_data.orbital_indices)
+        for ui in unique_indices:
+            mask = aos_data.orbital_indices == ui
+            ao_matrix_laplacian = ao_matrix_laplacian.at[ui].set(
+                AOs_laplacian_dup[mask].sum(axis=0)
+        )
+    """
+
+    @property
+    def atomic_center_carts_jnp(self):
+        return self.structure_data.positions_cart  # wrong!!
+
+    """ something like this?
+        unique_indices = np.unique(aos_data.orbital_indices)
+        for ui in unique_indices:
+            mask = aos_data.orbital_indices == ui
+            ao_matrix_laplacian = ao_matrix_laplacian.at[ui].set(
+                AOs_laplacian_dup[mask].sum(axis=0)
+        )
+    """
+
+    @property
+    def atomic_center_carts_prim(self):
+        return np.array([self.atomic_center_carts[i] for i in self.orbital_indices])
+
+    @property
+    def atomic_center_carts_prim_jnp(self):
+        return jnp.array([self.atomic_center_carts[i] for i in self.orbital_indices])
+
+    @property
+    def angular_momentums_prim(self):
+        return np.array([self.angular_momentums[i] for i in self.orbital_indices])
+
+    @property
+    def angular_momentums_prim_jnp(self):
+        return jnp.array([self.angular_momentums[i] for i in self.orbital_indices])
+
+    @property
+    def magnetic_quantum_numbers_prim(self):
+        return np.array(
+            [self.magnetic_quantum_numbers[i] for i in self.orbital_indices]
+        )
+
+    @property
+    def magnetic_quantum_numbers_prim_jnp(self):
+        return jnp.array(
+            [self.magnetic_quantum_numbers[i] for i in self.orbital_indices]
+        )
+
+    @property
+    def exponents_jnp(self):
+        return jnp.array(self.exponents)
+
+    @property
+    def coefficients_jnp(self):
+        return jnp.array(self.coefficients)
+
+
+# @dataclass
+@struct.dataclass
+class AOs_data_debug:
+    """
+    The class contains data for computing atomic orbitals simltaneously.
+    This is for debuggin purpose because if we store atomic_center_carts
+    in more than one dataclass, algorithmic differentiation does not correctly work.
 
     Args:
         num_ao : the number of atomic orbitals.
@@ -113,7 +229,7 @@ class AOs_data:
 
 
 def compute_AOs_laplacian_api(
-    aos_data: AOs_data,
+    aos_data: AOs_data | AOs_data_debug,
     r_carts: npt.NDArray[np.float64],
     debug_flag: bool = False,
 ) -> npt.NDArray[np.float64 | np.complex128]:
@@ -121,7 +237,7 @@ def compute_AOs_laplacian_api(
     The method is for computing the laplacians of the given atomic orbital at r_carts
 
     Args:
-        ao_datas (AOs_data): an instance of AOs_data
+        ao_datas (AOs_data | AOs_data_debug): an instance of AOs_data or AOs_data_debug
         r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
         debug_flag: if True, numerical derivatives are computed for debuging purpose
 
@@ -137,7 +253,7 @@ def compute_AOs_laplacian_api(
 
 @jit
 def compute_AOs_laplacian_jax_auto_grad(
-    aos_data: AOs_data, r_carts: npt.NDArray[np.float64]
+    aos_data: AOs_data | AOs_data_debug, r_carts: npt.NDArray[np.float64]
 ) -> npt.NDArray[np.float64 | np.complex128]:
 
     # expansion with respect to the primitive AOs
@@ -179,7 +295,7 @@ def compute_AOs_laplacian_jax_auto_grad(
 
 
 def compute_AOs_laplacian_numerical_grad(
-    aos_data: AOs_data, r_carts: npt.NDArray[np.float64]
+    aos_data: AOs_data | AOs_data_debug, r_carts: npt.NDArray[np.float64]
 ):
     # Laplacians of AOs (numerical)
     diff_h = 1.0e-5
@@ -232,7 +348,7 @@ def compute_AOs_laplacian_numerical_grad(
 
 
 def compute_AOs_grad_api(
-    aos_data: AOs_data,
+    aos_data: AOs_data | AOs_data_debug,
     r_carts: npt.NDArray[np.float64],
     debug_flag: bool = False,
 ) -> tuple[
@@ -244,7 +360,7 @@ def compute_AOs_grad_api(
     The method is for computing the gradients (x,y,z) of the given atomic orbital at r_carts
 
     Args:
-        ao_datas (AOs_data): an instance of AOs_data
+        ao_datas (AOs_data | AOs_data_debug): an instance of AOs_data | AOs_data_debug
         r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
         debug_flag: if True, numerical derivatives are computed for debuging purpose
 
@@ -359,7 +475,7 @@ def compute_AOs_jax_auto_grad_old(
 
 
 def compute_AOs_numerical_grad(
-    aos_data: AOs_data,
+    aos_data: AOs_data | AOs_data_debug,
     r_carts: npt.NDArray[np.float64],
 ) -> tuple[
     npt.NDArray[np.float64 | np.complex128],
@@ -401,7 +517,7 @@ def compute_AOs_numerical_grad(
 
 
 def compute_AOs_api(
-    aos_data: AOs_data,
+    aos_data: AOs_data | AOs_data_debug,
     r_carts: npt.NDArray[np.float64],
     debug_flag: bool = False,
 ) -> npt.NDArray[np.float64 | np.complex128]:
@@ -434,13 +550,13 @@ def compute_AOs_api(
 
 
 def compute_AOs_debug(
-    aos_data: AOs_data, r_carts: npt.NDArray[np.float64]
+    aos_data: AOs_data | AOs_data_debug, r_carts: npt.NDArray[np.float64]
 ) -> npt.NDArray[np.float64 | np.complex128]:
     """
     This is for debuging compute_AOs method. It is written in a very straightforward way.
 
     Args:
-        ao_datas (AOs_data): an instance of AOs_data
+        ao_datas (AOs_data | AOs_data_debug): an instance of AOs_data or AOs_data_debug
         r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
 
     Returns:
@@ -458,7 +574,7 @@ def compute_AOs_debug(
         magnetic_quantum_number = aos_data.magnetic_quantum_numbers[ao_index]
         num_ao_prim = len(exponents)
 
-        ao_data = AO_data(
+        ao_data = AO_data_debug(
             num_ao_prim=num_ao_prim,
             atomic_center_cart=atomic_center_cart,
             exponents=exponents,
@@ -482,7 +598,7 @@ def compute_AOs_debug(
 
 @jit
 def compute_AOs_jax(
-    aos_data: AOs_data, r_carts: npt.NDArray[np.float64]
+    aos_data: AOs_data | AOs_data_debug, r_carts: npt.NDArray[np.float64]
 ) -> npt.NDArray[np.float64 | np.complex128]:
     """
     This is jit-jax version compute_AOs method.
@@ -527,7 +643,7 @@ def compute_AOs_jax(
 
 
 @dataclass
-class AO_data:
+class AO_data_debug:
     """
     The class contains data for computing an atomic orbital. Just for testing purpose.
     For fast computations, use AOs_data and AOs.
@@ -566,7 +682,7 @@ class AO_data:
             raise ValueError
 
 
-def compute_AO(ao_data: AO_data, r_cart: list[float]) -> float | complex:
+def compute_AO(ao_data: AO_data_debug, r_cart: list[float]) -> float | complex:
     """
     The method is for computing the value of the given atomic orbital at r_cart
     Just for testing purpose. For fast computations, use AOs_data and AOs.
@@ -1010,7 +1126,7 @@ if __name__ == "__main__":
     angular_momentums = [0, 0, 0]
     magnetic_quantum_numbers = [0, 0, 0]
 
-    aos_data = AOs_data(
+    aos_data = AOs_data_debug(
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         atomic_center_carts=R_carts,

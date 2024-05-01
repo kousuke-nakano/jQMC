@@ -9,9 +9,9 @@ from numpy.testing import assert_almost_equal
 from logging import getLogger, StreamHandler, Formatter
 
 from ..myqmc.atomic_orbital import (
-    AO_data,
+    AO_data_debug,
     compute_S_l_m_debug,
-    AOs_data,
+    AOs_data_debug,
     compute_AOs_api,
     compute_AOs_grad_api,
     compute_AOs_laplacian_api,
@@ -42,8 +42,7 @@ from ..myqmc.wavefunction import (
 
 from ..myqmc.coulomb_potential import (
     compute_bare_coulomb_potential_api,
-    compute_ecp_local_parts_api,
-    compute_ecp_nonlocal_parts_api,
+    compute_ecp_coulomb_potential_api,
 )
 
 from ..myqmc.hamiltonians import Hamiltonian_data
@@ -508,7 +507,7 @@ def test_AOs_comparing_jax_and_debug_implemenetations():
         num_R_cart_samples, 3
     ) + R_cart_min
 
-    aos_data = AOs_data(
+    aos_data = AOs_data_debug(
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         atomic_center_carts=R_carts,
@@ -544,7 +543,7 @@ def test_AOs_comparing_jax_and_debug_implemenetations():
         num_R_cart_samples, 3
     ) + R_cart_min
 
-    aos_data = AOs_data(
+    aos_data = AOs_data_debug(
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         atomic_center_carts=R_carts,
@@ -581,7 +580,7 @@ def test_AOs_comparing_auto_and_numerical_grads():
     angular_momentums = [0, 0, 0]
     magnetic_quantum_numbers = [0, 0, 0]
 
-    aos_data = AOs_data(
+    aos_data = AOs_data_debug(
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         atomic_center_carts=R_carts,
@@ -632,7 +631,7 @@ def test_AOs_comparing_auto_and_numerical_grads():
     angular_momentums = [1, 1, 1]
     magnetic_quantum_numbers = [0, 1, -1]
 
-    aos_data = AOs_data(
+    aos_data = AOs_data_debug(
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         atomic_center_carts=R_carts,
@@ -685,7 +684,7 @@ def test_AOs_comparing_auto_and_numerical_laplacians():
     angular_momentums = [0, 0, 0]
     magnetic_quantum_numbers = [0, 0, 0]
 
-    aos_data = AOs_data(
+    aos_data = AOs_data_debug(
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         atomic_center_carts=R_carts,
@@ -727,7 +726,7 @@ def test_AOs_comparing_auto_and_numerical_laplacians():
     angular_momentums = [1, 1, 1]
     magnetic_quantum_numbers = [0, 1, -1]
 
-    aos_data = AOs_data(
+    aos_data = AOs_data_debug(
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         atomic_center_carts=R_carts,
@@ -779,7 +778,7 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
     mo_ans_step_by_step = []
 
     ao_data_l = [
-        AO_data(
+        AO_data_debug(
             num_ao_prim=orbital_indices.count(i),
             atomic_center_cart=R_carts[i],
             exponents=[exponents[k] for (k, v) in enumerate(orbital_indices) if v == i],
@@ -799,7 +798,7 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
         )
     mo_ans_step_by_step = np.array(mo_ans_step_by_step)
 
-    aos_data = AOs_data(
+    aos_data = AOs_data_debug(
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         atomic_center_carts=R_carts,
@@ -852,7 +851,7 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
     mo_ans_step_by_step = []
 
     ao_data_l = [
-        AO_data(
+        AO_data_debug(
             num_ao_prim=orbital_indices.count(i),
             atomic_center_cart=R_carts[i],
             exponents=[exponents[k] for (k, v) in enumerate(orbital_indices) if v == i],
@@ -872,7 +871,7 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
         )
     mo_ans_step_by_step = np.array(mo_ans_step_by_step)
 
-    aos_data = AOs_data(
+    aos_data = AOs_data_debug(
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         atomic_center_carts=R_carts,
@@ -923,7 +922,7 @@ def test_MOs_comparing_auto_and_numerical_grads():
 
     mo_coefficients = np.random.rand(num_mo, num_ao)
 
-    aos_data = AOs_data(
+    aos_data = AOs_data_debug(
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         atomic_center_carts=R_carts,
@@ -982,7 +981,7 @@ def test_MOs_comparing_auto_and_numerical_grads():
 
     mo_coefficients = np.random.rand(num_mo, num_ao)
 
-    aos_data = AOs_data(
+    aos_data = AOs_data_debug(
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         atomic_center_carts=R_carts,
@@ -1043,7 +1042,7 @@ def test_MOs_comparing_auto_and_numerical_laplacians():
 
     mo_coefficients = np.random.rand(num_mo, num_ao)
 
-    aos_data = AOs_data(
+    aos_data = AOs_data_debug(
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         atomic_center_carts=R_carts,
@@ -1359,27 +1358,6 @@ def test_numerial_and_auto_grads_ln_Det():
         np.testing.assert_almost_equal(
             sum_laplacian_ln_D_numerical, sum_laplacian_ln_D_auto, decimal=1
         )
-        # print(grad_ln_D_up_numerical)
-        # print(grad_ln_D_up_auto)
-        # print(grad_ln_D_dn_numerical)
-        # print(grad_ln_D_dn_auto)
-        # print(sum_laplacian_ln_D_numerical)
-        # print(sum_laplacian_ln_D_auto)
-
-
-"""
-@pytest.mark.parametrize(
-    "test_value",
-    ["wf_ratio", "kinc", "vpot", "vpotref"],
-    ids=[
-        "WF_ratio**2",
-        "kinetic energy",
-        "potential(local parts: bare + ecp parts)",
-        "potential(nonlocal ecp parts)",
-    ],
-)
-def test_comparing_values_with_TurboRVB_code(test_value: str):
-"""
 
 
 def test_comparing_values_with_TurboRVB_code():
@@ -1447,20 +1425,22 @@ def test_comparing_values_with_TurboRVB_code():
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
-        debug_flag=False,
     )
 
-    vpot_ecp_local = compute_ecp_local_parts_api(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-    )
-
-    vpot_ecp_nonlocal = compute_ecp_nonlocal_parts_api(
+    vpot_ecp_debug = compute_ecp_coulomb_potential_api(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
         wavefunction_data=wavefunction_data,
+        debug_flag=True,
+    )
+
+    vpot_ecp_jax = compute_ecp_coulomb_potential_api(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+        wavefunction_data=wavefunction_data,
+        debug_flag=False,
     )
 
     # logger.debug(f"kinc={kinc} Ha")
@@ -1475,9 +1455,11 @@ def test_comparing_values_with_TurboRVB_code():
     np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=8)
     np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
     np.testing.assert_almost_equal(
-        vpot_bare + vpot_ecp_local, vpot_ref_turborvb, decimal=6
+        vpot_bare + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3
     )
-    np.testing.assert_almost_equal(vpot_ecp_nonlocal, vpotoff_ref_turborvb, decimal=3)
+    np.testing.assert_almost_equal(
+        vpot_bare + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3
+    )
 
 
 if __name__ == "__main__":

@@ -1,7 +1,6 @@
 """Structure module"""
 
 # python modules
-from functools import partial
 import itertools
 from logging import getLogger, StreamHandler, Formatter
 
@@ -324,10 +323,10 @@ def get_min_dist_rel_R_cart_np(
     """
 
     def mapping(r_cart, R_cart):
-        return np.linalg.norm(r_cart - R_cart)
+        return np.array(R_cart) - np.array(r_cart)
 
     def non_mapping(r_cart, R_cart):
-        return np.linalg.norm(r_cart - R_cart)
+        return np.array(R_cart) - np.array(r_cart)
 
     if (
         np.linalg.norm(r_cart - structure_data.positions_cart[i_atom]) > 0.0
@@ -349,10 +348,10 @@ def get_min_dist_rel_R_cart_jnp(
     """
 
     def mapping(r_cart, R_cart):
-        return jnp.linalg.norm(r_cart - R_cart)
+        return jnp.array(R_cart) - jnp.array(r_cart)
 
     def non_mapping(r_cart, R_cart):
-        return jnp.linalg.norm(r_cart - R_cart)
+        return jnp.array(R_cart) - jnp.array(r_cart)
 
     rel_R_cart_min_dist = lax.cond(
         jnp.linalg.norm(r_cart - structure_data.positions_cart[i_atom])

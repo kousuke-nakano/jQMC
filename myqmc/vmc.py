@@ -8,7 +8,8 @@ from logging import getLogger, StreamHandler, Formatter
 
 # MPI
 from mpi4py import MPI
-import mpi4jax
+
+# import mpi4jax
 
 # JAX
 import jax
@@ -17,17 +18,10 @@ from jax import grad
 from .structure import find_nearest_index
 from .hamiltonians import Hamiltonian_data, compute_local_energy
 from .wavefunction import (
-    # compute_quantum_force,
     evaluate_wavefunction_api,
-    compute_kinetic_energy_api,
 )
 from .trexio_wrapper import read_trexio_file
 from .wavefunction import Wavefunction_data
-from .coulomb_potential import (
-    compute_bare_coulomb_potential_api,
-    compute_ecp_local_parts_api,
-    compute_ecp_nonlocal_parts_api,
-)
 
 # set logger
 logger = getLogger("myqmc").getChild(__name__)
@@ -309,12 +303,15 @@ class MCMC:
             self.__stored_local_energy.append(e_L)
 
             # """
-            grad_e_L = grad(compute_local_energy, argnums=(0, 1, 2))(
+            grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = grad(
+                compute_local_energy, argnums=(0, 1, 2)
+            )(
                 self.__hamiltonian_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
-            logger.info(f"grad_e_L = {grad_e_L}")
+            logger.info(f"grad_e_L_up = {grad_e_L_r_up}")
+            logger.info(f"grad_e_L_up = {grad_e_L_r_dn}")
             # """
 
         logger.info(f"acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
