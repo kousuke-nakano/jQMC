@@ -11,7 +11,7 @@ import trexio
 
 # import myQMC
 from .structure import Structure_data
-from .atomic_orbital import AOs_data
+from .atomic_orbital import AOs_data_debug
 from .molecular_orbital import MOs_data, compute_MOs_api
 from .coulomb_potential import Coulomb_potential_data
 from .determinant import Geminal_data
@@ -196,10 +196,10 @@ def read_trexio_file(trexio_file: str):
         )
         raise ValueError
 
-    aos_data = AOs_data(
-        structure_data=structure_data,
+    aos_data = AOs_data_debug(
         num_ao=ao_num_count,
         num_ao_prim=ao_prim_num_count,
+        atomic_center_carts=np.array(atomic_center_carts),
         angular_momentums=angular_momentums,
         magnetic_quantum_numbers=magnetic_quantum_numbers,
         orbital_indices=orbital_indices,

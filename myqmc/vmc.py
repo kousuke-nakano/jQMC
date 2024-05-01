@@ -302,7 +302,7 @@ class MCMC:
             logger.info(f"e_L = {e_L}")
             self.__stored_local_energy.append(e_L)
 
-            # """
+            """
             grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = grad(
                 compute_local_energy, argnums=(0, 1, 2)
             )(
@@ -310,9 +310,12 @@ class MCMC:
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
+            logger.info(
+                f"grad_e_L_h.structure_data.positions = {grad_e_L_h.structure_data.positions}"
+            )
             logger.info(f"grad_e_L_up = {grad_e_L_r_up}")
             logger.info(f"grad_e_L_up = {grad_e_L_r_dn}")
-            # """
+            """
 
         logger.info(f"acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
         logger.info(

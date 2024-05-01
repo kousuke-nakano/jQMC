@@ -58,10 +58,12 @@ class AOs_data:
     magnetic_quantum_numbers: list[int] = struct.field(pytree_node=False)
 
     def __post_init__(self) -> None:
+        """
         if self.atomic_center_carts.shape != (self.num_ao, 3):
             logger.error(self.atomic_center_carts.shape)
             logger.error("dim. of atomic_center_cart is wrong")
             raise ValueError
+        """
         if len(np.unique(self.orbital_indices)) != self.num_ao:
             logger.error(
                 f"num_ao={self.num_ao} and/or num_ao_prim={self.num_ao_prim} is wrong"
@@ -80,38 +82,16 @@ class AOs_data:
             raise ValueError
 
     @property
-    def atomic_center_carts(self):
-        return self.structure_data.positions_cart  # wrong!!
-
-    """ something like this?
-        unique_indices = np.unique(aos_data.orbital_indices)
-        for ui in unique_indices:
-            mask = aos_data.orbital_indices == ui
-            ao_matrix_laplacian = ao_matrix_laplacian.at[ui].set(
-                AOs_laplacian_dup[mask].sum(axis=0)
-        )
-    """
-
-    @property
-    def atomic_center_carts_jnp(self):
-        return self.structure_data.positions_cart  # wrong!!
-
-    """ something like this?
-        unique_indices = np.unique(aos_data.orbital_indices)
-        for ui in unique_indices:
-            mask = aos_data.orbital_indices == ui
-            ao_matrix_laplacian = ao_matrix_laplacian.at[ui].set(
-                AOs_laplacian_dup[mask].sum(axis=0)
-        )
-    """
-
-    @property
     def atomic_center_carts_prim(self):
-        return np.array([self.atomic_center_carts[i] for i in self.orbital_indices])
+        return np.array(
+            [self.structure_data.positions_cart[i] for i in self.orbital_indices]
+        )
 
     @property
     def atomic_center_carts_prim_jnp(self):
-        return jnp.array([self.atomic_center_carts[i] for i in self.orbital_indices])
+        return jnp.array(
+            [self.structure_data.positions_cart[i] for i in self.orbital_indices]
+        )
 
     @property
     def angular_momentums_prim(self):
