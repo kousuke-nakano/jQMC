@@ -39,28 +39,6 @@ class Jastrow_two_body_data:
         pass
 
 
-def two_body_jastrow_anti_parallel_spins(
-    param: float, rel_r_cart: npt.NDArray[np.float64]
-) -> float:
-    two_body_jastrow = (
-        jnp.linalg.norm(rel_r_cart)
-        / 2.0
-        * (1.0 + param * jnp.linalg.norm(rel_r_cart)) ** (-1.0)
-    )
-    return two_body_jastrow
-
-
-def two_body_jastrow_parallel_spins(
-    param: float, rel_r_cart: npt.NDArray[np.float64]
-) -> float:
-    two_body_jastrow = (
-        jnp.linalg.norm(rel_r_cart)
-        / 4.0
-        * (1.0 + param * jnp.linalg.norm(rel_r_cart)) ** (-1.0)
-    )
-    return two_body_jastrow
-
-
 def compute_Jastrow_two_body_api(
     jastrow_two_body_data: Jastrow_two_body_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -82,6 +60,26 @@ def compute_Jastrow_two_body_debug(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
+
+    def two_body_jastrow_anti_parallel_spins(
+        param: float, rel_r_cart: npt.NDArray[np.float64]
+    ) -> float:
+        two_body_jastrow = (
+            jnp.linalg.norm(rel_r_cart)
+            / 2.0
+            * (1.0 + param * jnp.linalg.norm(rel_r_cart)) ** (-1.0)
+        )
+        return two_body_jastrow
+
+    def two_body_jastrow_parallel_spins(
+        param: float, rel_r_cart: npt.NDArray[np.float64]
+    ) -> float:
+        two_body_jastrow = (
+            jnp.linalg.norm(rel_r_cart)
+            / 4.0
+            * (1.0 + param * jnp.linalg.norm(rel_r_cart)) ** (-1.0)
+        )
+        return two_body_jastrow
 
     two_body_jastrow = (
         np.sum(
@@ -123,54 +121,48 @@ def compute_Jastrow_two_body_jax(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
 
-    r_up_carts = jnp.array(r_up_carts)
-    r_dn_carts = jnp.array(r_dn_carts)
+    def J2_anti_parallel_spins(r_cart_i, r_cart_j):
+        two_body_jastrow = (
+            jnp.linalg.norm(r_cart_i - r_cart_j)
+            / 2.0
+            * (
+                1.0
+                + jastrow_two_body_data.param_anti_parallel_spin
+                * jnp.linalg.norm(r_cart_i - r_cart_j)
+            )
+            ** (-1.0)
+        )
+        return two_body_jastrow
 
-    rel_r_carts_up_dn = jnp.array(
-        [
-            r_up_cart - r_dn_cart
-            for (r_up_cart, r_dn_cart) in itertools.product(r_up_carts, r_dn_carts)
-        ]
-    )
-
-    rel_r_carts_up_up = jnp.array(
-        [
-            r_up_cart_i - r_up_cart_j
-            for (r_up_cart_i, r_up_cart_j) in itertools.combinations(r_up_carts, 2)
-        ]
-    )
-
-    rel_r_carts_dn_dn = jnp.array(
-        [
-            r_dn_cart_i - r_dn_cart_j
-            for (r_dn_cart_i, r_dn_cart_j) in itertools.combinations(r_dn_carts, 2)
-        ]
-    )
+    def J2_parallel_spins(r_cart_i, r_cart_j):
+        two_body_jastrow = (
+            jnp.linalg.norm(r_cart_i - r_cart_j)
+            / 4.0
+            * (
+                1.0
+                + jastrow_two_body_data.param_parallel_spin
+                * jnp.linalg.norm(r_cart_i - r_cart_j)
+            )
+            ** (-1.0)
+        )
+        return two_body_jastrow
 
     vmap_two_body_jastrow_anti_parallel_spins = vmap(
-        two_body_jastrow_anti_parallel_spins, in_axes=(None, 0)
+        vmap(J2_anti_parallel_spins, in_axes=(None, 0)), in_axes=(0, None)
     )
 
     vmap_two_body_jastrow_parallel_spins = vmap(
-        two_body_jastrow_parallel_spins, in_axes=(None, 0)
+        vmap(J2_parallel_spins, in_axes=(None, 0)), in_axes=(0, None)
     )
 
-    two_body_jastrow = jnp.sum(
-        vmap_two_body_jastrow_anti_parallel_spins(
-            jastrow_two_body_data.param_anti_parallel_spin, rel_r_carts_up_dn
-        )
-    )
-
-    two_body_jastrow += jnp.sum(
-        vmap_two_body_jastrow_parallel_spins(
-            jastrow_two_body_data.param_parallel_spin, rel_r_carts_up_up
-        )
-    )
-
-    two_body_jastrow += jnp.sum(
-        vmap_two_body_jastrow_parallel_spins(
-            jastrow_two_body_data.param_parallel_spin, rel_r_carts_dn_dn
-        )
+    two_body_jastrow = (
+        jnp.sum(vmap_two_body_jastrow_anti_parallel_spins(r_up_carts, r_dn_carts))
+        + 1.0
+        / 2.0
+        * jnp.sum(vmap_two_body_jastrow_parallel_spins(r_up_carts, r_up_carts))
+        + 1.0
+        / 2.0
+        * jnp.sum(vmap_two_body_jastrow_parallel_spins(r_dn_carts, r_dn_carts))
     )
 
     return two_body_jastrow
@@ -206,7 +198,7 @@ def compute_grads_and_laplacian_Jastrow_two_body_api(
         )
     else:
         grad_J2_up, grad_J2_dn, sum_laplacian_J2 = (
-            compute_grads_and_laplacian_Jastrow_two_body_debug(
+            compute_grads_and_laplacian_Jastrow_two_body_jax(
                 jastrow_two_body_data, r_up_carts, r_dn_carts
             )
         )
@@ -367,7 +359,6 @@ def compute_grads_and_laplacian_Jastrow_two_body_debug(
     return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_J2
 
 
-@WIP
 @jit
 def compute_grads_and_laplacian_Jastrow_two_body_jax(
     jastrow_two_body_data: Jastrow_two_body_data,
@@ -378,157 +369,53 @@ def compute_grads_and_laplacian_Jastrow_two_body_jax(
     npt.NDArray[jnp.float64 | jnp.complex128],
     float | complex,
 ]:
-    lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(
-        geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
-    )
 
-    # AOs/MOs
-    ao_matrix_up = geminal_data.compute_orb(
-        geminal_data.orb_data_up_spin, r_up_carts, debug_flag=False
-    )
-    ao_matrix_dn = geminal_data.compute_orb(
-        geminal_data.orb_data_dn_spin, r_dn_carts, debug_flag=False
-    )
-
-    ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z = (
-        geminal_data.compute_orb_grad_api(
-            geminal_data.orb_data_up_spin, r_up_carts, debug_flag=False
+    def J2_anti_parallel_spins(r_cart_i, r_cart_j):
+        two_body_jastrow = (
+            jnp.linalg.norm(r_cart_i - r_cart_j)
+            / 2.0
+            * (
+                1.0
+                + jastrow_two_body_data.param_anti_parallel_spin
+                * jnp.linalg.norm(r_cart_i - r_cart_j)
+            )
+            ** (-1.0)
         )
-    )
-    ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z = (
-        geminal_data.compute_orb_grad_api(
-            geminal_data.orb_data_dn_spin, r_dn_carts, debug_flag=False
+        return two_body_jastrow
+
+    def J2_parallel_spins(r_cart_i, r_cart_j):
+        two_body_jastrow = (
+            jnp.linalg.norm(r_cart_i - r_cart_j)
+            / 4.0
+            * (
+                1.0
+                + jastrow_two_body_data.param_parallel_spin
+                * jnp.linalg.norm(r_cart_i - r_cart_j)
+            )
+            ** (-1.0)
         )
-    )
-    ao_matrix_laplacian_up = geminal_data.compute_orb_laplacian_api(
-        geminal_data.orb_data_up_spin, r_up_carts, debug_flag=False
-    )
-    ao_matrix_laplacian_dn = geminal_data.compute_orb_laplacian_api(
-        geminal_data.orb_data_dn_spin, r_dn_carts, debug_flag=False
+        return two_body_jastrow
+
+    vmap_two_body_jastrow_anti_parallel_spins = vmap(
+        vmap(grad(J2_anti_parallel_spins), in_axes=(0, None)),
+        in_axes=(None, 0),
     )
 
-    # compute Laplacians of Geminal
-    geminal_paired = jnp.dot(
-        ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn)
-    )
-    geminal_unpaired = jnp.dot(ao_matrix_up.T, lambda_matrix_unpaired)
-    geminal = jnp.hstack([geminal_paired, geminal_unpaired])
-
-    # up electron
-    geminal_grad_up_x_paired = jnp.dot(
-        ao_matrix_up_grad_x.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn)
-    )
-    geminal_grad_up_x_unpaired = jnp.dot(ao_matrix_up_grad_x.T, lambda_matrix_unpaired)
-    geminal_grad_up_x = jnp.hstack(
-        [geminal_grad_up_x_paired, geminal_grad_up_x_unpaired]
+    vmap_two_body_jastrow_parallel_spins = vmap(
+        vmap(J2_parallel_spins, in_axes=(0, None)), in_axes=(None, 0)
     )
 
-    geminal_grad_up_y_paired = jnp.dot(
-        ao_matrix_up_grad_y.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn)
-    )
-    geminal_grad_up_y_unpaired = jnp.dot(ao_matrix_up_grad_y.T, lambda_matrix_unpaired)
-    geminal_grad_up_y = jnp.hstack(
-        [geminal_grad_up_y_paired, geminal_grad_up_y_unpaired]
-    )
+    grad_J2_up = vmap_two_body_jastrow_anti_parallel_spins(
+        r_up_carts, r_dn_carts
+    ) + 1.0 / 2.0 * vmap_two_body_jastrow_parallel_spins(r_up_carts, r_up_carts)
 
-    geminal_grad_up_z_paired = jnp.dot(
-        ao_matrix_up_grad_z.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn)
-    )
-    geminal_grad_up_z_unpaired = jnp.dot(ao_matrix_up_grad_z.T, lambda_matrix_unpaired)
-    geminal_grad_up_z = jnp.hstack(
-        [geminal_grad_up_z_paired, geminal_grad_up_z_unpaired]
-    )
+    grad_J2_dn = vmap_two_body_jastrow_anti_parallel_spins(
+        r_dn_carts, r_up_carts
+    ) + 1.0 / 2.0 * vmap_two_body_jastrow_parallel_spins(r_dn_carts, r_dn_carts)
 
-    geminal_laplacian_up_paired = jnp.dot(
-        ao_matrix_laplacian_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn)
-    )
-    geminal_laplacian_up_unpaired = jnp.dot(
-        ao_matrix_laplacian_up.T, lambda_matrix_unpaired
-    )
-    geminal_laplacian_up = jnp.hstack(
-        [geminal_laplacian_up_paired, geminal_laplacian_up_unpaired]
-    )
+    sum_laplacian_J2 = 0.0
 
-    # dn electron
-    geminal_grad_dn_x_paired = jnp.dot(
-        ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn_grad_x)
-    )
-    geminal_grad_dn_x_unpaired = jnp.zeros(
-        [
-            geminal_data.num_electron_up,
-            geminal_data.num_electron_up - geminal_data.num_electron_dn,
-        ]
-    )
-    geminal_grad_dn_x = jnp.hstack(
-        [geminal_grad_dn_x_paired, geminal_grad_dn_x_unpaired]
-    )
-
-    geminal_grad_dn_y_paired = jnp.dot(
-        ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn_grad_y)
-    )
-    geminal_grad_dn_y_unpaired = jnp.zeros(
-        [
-            geminal_data.num_electron_up,
-            geminal_data.num_electron_up - geminal_data.num_electron_dn,
-        ]
-    )
-    geminal_grad_dn_y = jnp.hstack(
-        [geminal_grad_dn_y_paired, geminal_grad_dn_y_unpaired]
-    )
-
-    geminal_grad_dn_z_paired = jnp.dot(
-        ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn_grad_z)
-    )
-    geminal_grad_dn_z_unpaired = jnp.zeros(
-        [
-            geminal_data.num_electron_up,
-            geminal_data.num_electron_up - geminal_data.num_electron_dn,
-        ]
-    )
-    geminal_grad_dn_z = jnp.hstack(
-        [geminal_grad_dn_z_paired, geminal_grad_dn_z_unpaired]
-    )
-
-    geminal_laplacian_dn_paired = jnp.dot(
-        ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_laplacian_dn)
-    )
-    geminal_laplacian_dn_unpaired = jnp.zeros(
-        [
-            geminal_data.num_electron_up,
-            geminal_data.num_electron_up - geminal_data.num_electron_dn,
-        ]
-    )
-    geminal_laplacian_dn = jnp.hstack(
-        [geminal_laplacian_dn_paired, geminal_laplacian_dn_unpaired]
-    )
-
-    geminal_inverse = jnp.linalg.inv(geminal)
-
-    grad_ln_D_up_x = jnp.diag(jnp.dot(geminal_grad_up_x, geminal_inverse))
-    grad_ln_D_up_y = jnp.diag(jnp.dot(geminal_grad_up_y, geminal_inverse))
-    grad_ln_D_up_z = jnp.diag(jnp.dot(geminal_grad_up_z, geminal_inverse))
-    grad_ln_D_dn_x = jnp.diag(jnp.dot(geminal_inverse, geminal_grad_dn_x))
-    grad_ln_D_dn_y = jnp.diag(jnp.dot(geminal_inverse, geminal_grad_dn_y))
-    grad_ln_D_dn_z = jnp.diag(jnp.dot(geminal_inverse, geminal_grad_dn_z))
-
-    grad_ln_D_up = jnp.array([grad_ln_D_up_x, grad_ln_D_up_y, grad_ln_D_up_z]).T
-    grad_ln_D_dn = jnp.array([grad_ln_D_dn_x, grad_ln_D_dn_y, grad_ln_D_dn_z]).T
-
-    sum_laplacian_ln_D = (
-        -1
-        * (
-            (jnp.trace(jnp.dot(geminal_grad_up_x, geminal_inverse) ** 2.0))
-            + (jnp.trace(jnp.dot(geminal_grad_up_y, geminal_inverse) ** 2.0))
-            + (jnp.trace(jnp.dot(geminal_grad_up_z, geminal_inverse) ** 2.0))
-            + (jnp.trace(jnp.dot(geminal_inverse, geminal_grad_dn_x) ** 2.0))
-            + (jnp.trace(jnp.dot(geminal_inverse, geminal_grad_dn_y) ** 2.0))
-            + (jnp.trace(jnp.dot(geminal_inverse, geminal_grad_dn_z) ** 2.0))
-        )
-        + (jnp.trace(jnp.dot(geminal_laplacian_up, geminal_inverse)))
-        + (jnp.trace(jnp.dot(geminal_inverse, geminal_laplacian_dn)))
-    )
-
-    return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D
+    return grad_J2_up, grad_J2_dn, sum_laplacian_J2
 
 
 if __name__ == "__main__":
@@ -570,8 +457,23 @@ if __name__ == "__main__":
         debug_flag=False,
     )
 
+    logger.debug(f"jastrow_two_body_debug = {jastrow_two_body_debug}")
+    logger.debug(f"jastrow_two_body_jax = {jastrow_two_body_jax}")
+    np.testing.assert_almost_equal(
+        jastrow_two_body_debug, jastrow_two_body_jax, decimal=10
+    )
+
     # """
     grad_jastrow_two_body_up_debug, grad_jastrow_two_body_dn_debug, _ = (
+        compute_grads_and_laplacian_Jastrow_two_body_api(
+            jastrow_two_body_data,
+            r_up_carts,
+            r_dn_carts,
+            True,
+        )
+    )
+
+    grad_jastrow_two_body_up_jax, grad_jastrow_two_body_dn_jax, _ = (
         compute_grads_and_laplacian_Jastrow_two_body_api(
             jastrow_two_body_data,
             r_up_carts,
@@ -581,7 +483,5 @@ if __name__ == "__main__":
     )
     # """
 
-    logger.debug(f"jastrow_two_body_debug = {jastrow_two_body_debug}")
-    logger.debug(f"jastrow_two_body_jax = {jastrow_two_body_jax}")
     logger.debug(f"grad_jastrow_two_body_up_debug = {grad_jastrow_two_body_up_debug}")
     logger.debug(f"grad_jastrow_two_body_dn_debug = {grad_jastrow_two_body_dn_debug}")
