@@ -82,17 +82,7 @@ def compute_Jastrow_two_body_debug(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
-    print(
-        np.sum(
-            [
-                two_body_jastrow_anti_parallel_spins(
-                    param=jastrow_two_body_data.param_anti_parallel_spin,
-                    rel_r_cart=r_up_cart - r_dn_cart,
-                )
-                for (r_up_cart, r_dn_cart) in itertools.product(r_up_carts, r_dn_carts)
-            ]
-        )
-    )
+
     two_body_jastrow = (
         np.sum(
             [
@@ -186,7 +176,6 @@ def compute_Jastrow_two_body_jax(
     return two_body_jastrow
 
 
-''' WIP
 def compute_grads_and_laplacian_Jastrow_two_body_api(
     jastrow_two_body_data: Jastrow_two_body_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -198,7 +187,7 @@ def compute_grads_and_laplacian_Jastrow_two_body_api(
     float | complex,
 ]:
     """
-    The method is for computing the sum of laplacians of ln WF at (r_up_carts, r_dn_carts).
+    The method is for computing the gradients and the sum of laplacians of J at (r_up_carts, r_dn_carts).
 
     Args:
         jastrow_two_body_data (Jastrow_two_body_data): an instance of Jastrow_two_body_data class
@@ -211,32 +200,34 @@ def compute_grads_and_laplacian_Jastrow_two_body_api(
 
     if debug_flag:
         grad_J2_up, grad_J2_dn, sum_laplacian_J2 = (
-            compute_grads_and_laplacian_ln_Det_debug(
-                geminal_data, r_up_carts, r_dn_carts
+            compute_grads_and_laplacian_Jastrow_two_body_debug(
+                jastrow_two_body_data, r_up_carts, r_dn_carts
             )
         )
     else:
-        grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = (
-            compute_grads_and_laplacian_ln_Det_jax(geminal_data, r_up_carts, r_dn_carts)
+        grad_J2_up, grad_J2_dn, sum_laplacian_J2 = (
+            compute_grads_and_laplacian_Jastrow_two_body_debug(
+                jastrow_two_body_data, r_up_carts, r_dn_carts
+            )
         )
 
-    if grad_ln_D_up.shape != (geminal_data.num_electron_up, 3):
+    if grad_J2_up.shape != r_up_carts.shape:
         logger.error(
-            f"grad_ln_D_up.shape = {grad_ln_D_up.shape} is inconsistent with the expected one = {(geminal_data.num_electron_up, 3)}"
+            f"grad_J2_up.shape = {grad_J2_up.shape} is inconsistent with the expected one = {r_up_carts.shape}"
         )
         raise ValueError
 
-    if grad_ln_D_dn.shape != (geminal_data.num_electron_dn, 3):
+    if grad_J2_dn.shape != r_dn_carts.shape:
         logger.error(
-            f"grad_ln_D_up.shape = {grad_ln_D_up.shape} is inconsistent with the expected one = {(geminal_data.num_electron_dn, 3)}"
+            f"grad_J2_dn.shape = {grad_J2_dn.shape} is inconsistent with the expected one = {r_dn_carts.shape}"
         )
         raise ValueError
 
-    return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D
+    return grad_J2_up, grad_J2_dn, sum_laplacian_J2
 
 
-def compute_grads_and_laplacian_ln_Det_debug(
-    geminal_data: Geminal_data,
+def compute_grads_and_laplacian_Jastrow_two_body_debug(
+    jastrow_two_body_data: Jastrow_two_body_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> tuple[
@@ -245,14 +236,6 @@ def compute_grads_and_laplacian_ln_Det_debug(
     float | complex,
 ]:
     diff_h = 1.0e-5
-
-    det_geminal = compute_det_geminal_all_elements_api(
-        geminal_data=geminal_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
-    )
-
-    sum_laplacian_ln_D = 0.0
 
     # grad up
     grad_x_up = []
@@ -266,18 +249,18 @@ def compute_grads_and_laplacian_ln_Det_debug(
         diff_p_y_r_up_carts[r_i][1] += diff_h
         diff_p_z_r_up_carts[r_i][2] += diff_h
 
-        det_geminal_p_x_up = compute_det_geminal_all_elements_api(
-            geminal_data=geminal_data,
+        J2_p_x_up = compute_Jastrow_two_body_api(
+            jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=diff_p_x_r_up_carts,
             r_dn_carts=r_dn_carts,
         )
-        det_geminal_p_y_up = compute_det_geminal_all_elements_api(
-            geminal_data=geminal_data,
+        J2_p_y_up = compute_Jastrow_two_body_api(
+            jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=diff_p_y_r_up_carts,
             r_dn_carts=r_dn_carts,
         )
-        det_geminal_p_z_up = compute_det_geminal_all_elements_api(
-            geminal_data=geminal_data,
+        J2_p_z_up = compute_Jastrow_two_body_api(
+            jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=diff_p_z_r_up_carts,
             r_dn_carts=r_dn_carts,
         )
@@ -289,54 +272,31 @@ def compute_grads_and_laplacian_ln_Det_debug(
         diff_m_y_r_up_carts[r_i][1] -= diff_h
         diff_m_z_r_up_carts[r_i][2] -= diff_h
 
-        det_geminal_m_x_up = compute_det_geminal_all_elements_api(
-            geminal_data=geminal_data,
+        J2_m_x_up = compute_Jastrow_two_body_api(
+            jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=diff_m_x_r_up_carts,
             r_dn_carts=r_dn_carts,
         )
-        det_geminal_m_y_up = compute_det_geminal_all_elements_api(
-            geminal_data=geminal_data,
+        J2_m_y_up = compute_Jastrow_two_body_api(
+            jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=diff_m_y_r_up_carts,
             r_dn_carts=r_dn_carts,
         )
-        det_geminal_m_z_up = compute_det_geminal_all_elements_api(
-            geminal_data=geminal_data,
+        J2_m_z_up = compute_Jastrow_two_body_api(
+            jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=diff_m_z_r_up_carts,
             r_dn_carts=r_dn_carts,
         )
 
         grad_x_up.append(
-            (np.log(np.abs(det_geminal_p_x_up)) - np.log(np.abs(det_geminal_m_x_up)))
-            / (2.0 * diff_h)
+            (np.log(np.abs(J2_p_x_up)) - np.log(np.abs(J2_m_x_up))) / (2.0 * diff_h)
         )
         grad_y_up.append(
-            (np.log(np.abs(det_geminal_p_y_up)) - np.log(np.abs(det_geminal_m_y_up)))
-            / (2.0 * diff_h)
+            (np.log(np.abs(J2_p_y_up)) - np.log(np.abs(J2_m_y_up))) / (2.0 * diff_h)
         )
         grad_z_up.append(
-            (np.log(np.abs(det_geminal_p_z_up)) - np.log(np.abs(det_geminal_m_z_up)))
-            / (2.0 * diff_h)
+            (np.log(np.abs(J2_p_z_up)) - np.log(np.abs(J2_m_z_up))) / (2.0 * diff_h)
         )
-
-        gradgrad_x_up = (
-            np.log(np.abs(det_geminal_p_x_up))
-            + np.log(np.abs(det_geminal_m_x_up))
-            - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h**2)
-
-        gradgrad_y_up = (
-            np.log(np.abs(det_geminal_p_y_up))
-            + np.log(np.abs(det_geminal_m_y_up))
-            - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h**2)
-
-        gradgrad_z_up = (
-            np.log(np.abs(det_geminal_p_z_up))
-            + np.log(np.abs(det_geminal_m_z_up))
-            - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h**2)
-
-        sum_laplacian_ln_D += gradgrad_x_up + gradgrad_y_up + gradgrad_z_up
 
     # grad dn
     grad_x_dn = []
@@ -350,18 +310,18 @@ def compute_grads_and_laplacian_ln_Det_debug(
         diff_p_y_r_dn_carts[r_i][1] += diff_h
         diff_p_z_r_dn_carts[r_i][2] += diff_h
 
-        det_geminal_p_x_dn = compute_det_geminal_all_elements_api(
-            geminal_data=geminal_data,
+        J2_p_x_dn = compute_Jastrow_two_body_api(
+            jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_p_x_r_dn_carts,
         )
-        det_geminal_p_y_dn = compute_det_geminal_all_elements_api(
-            geminal_data=geminal_data,
+        J2_p_y_dn = compute_Jastrow_two_body_api(
+            jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_p_y_r_dn_carts,
         )
-        det_geminal_p_z_dn = compute_det_geminal_all_elements_api(
-            geminal_data=geminal_data,
+        J2_p_z_dn = compute_Jastrow_two_body_api(
+            jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_p_z_r_dn_carts,
         )
@@ -373,64 +333,44 @@ def compute_grads_and_laplacian_ln_Det_debug(
         diff_m_y_r_dn_carts[r_i][1] -= diff_h
         diff_m_z_r_dn_carts[r_i][2] -= diff_h
 
-        det_geminal_m_x_dn = compute_det_geminal_all_elements_api(
-            geminal_data=geminal_data,
+        J2_m_x_dn = compute_Jastrow_two_body_api(
+            jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_m_x_r_dn_carts,
         )
-        det_geminal_m_y_dn = compute_det_geminal_all_elements_api(
-            geminal_data=geminal_data,
+        J2_m_y_dn = compute_Jastrow_two_body_api(
+            jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_m_y_r_dn_carts,
         )
-        det_geminal_m_z_dn = compute_det_geminal_all_elements_api(
-            geminal_data=geminal_data,
+        J2_m_z_dn = compute_Jastrow_two_body_api(
+            jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_m_z_r_dn_carts,
         )
 
         grad_x_dn.append(
-            (np.log(np.abs(det_geminal_p_x_dn)) - np.log(np.abs(det_geminal_m_x_dn)))
-            / (2.0 * diff_h)
+            (np.log(np.abs(J2_p_x_dn)) - np.log(np.abs(J2_m_x_dn))) / (2.0 * diff_h)
         )
         grad_y_dn.append(
-            (np.log(np.abs(det_geminal_p_y_dn)) - np.log(np.abs(det_geminal_m_y_dn)))
-            / (2.0 * diff_h)
+            (np.log(np.abs(J2_p_y_dn)) - np.log(np.abs(J2_m_y_dn))) / (2.0 * diff_h)
         )
         grad_z_dn.append(
-            (np.log(np.abs(det_geminal_p_z_dn)) - np.log(np.abs(det_geminal_m_z_dn)))
-            / (2.0 * diff_h)
+            (np.log(np.abs(J2_p_z_dn)) - np.log(np.abs(J2_m_z_dn))) / (2.0 * diff_h)
         )
-
-        gradgrad_x_dn = (
-            np.log(np.abs(det_geminal_p_x_dn))
-            + np.log(np.abs(det_geminal_m_x_dn))
-            - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h**2)
-
-        gradgrad_y_dn = (
-            np.log(np.abs(det_geminal_p_y_dn))
-            + np.log(np.abs(det_geminal_m_y_dn))
-            - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h**2)
-
-        gradgrad_z_dn = (
-            np.log(np.abs(det_geminal_p_z_dn))
-            + np.log(np.abs(det_geminal_m_z_dn))
-            - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h**2)
-
-        sum_laplacian_ln_D += gradgrad_x_dn + gradgrad_y_dn + gradgrad_z_dn
 
     grad_ln_D_up = np.array([grad_x_up, grad_y_up, grad_z_up]).T
     grad_ln_D_dn = np.array([grad_x_dn, grad_y_dn, grad_z_dn]).T
 
-    return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D
+    sum_laplacian_J2 = 0.0
+
+    return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_J2
 
 
+@WIP
 @jit
-def compute_grads_and_laplacian_ln_Det_jax(
-    geminal_data: Geminal_data,
+def compute_grads_and_laplacian_Jastrow_two_body_jax(
+    jastrow_two_body_data: Jastrow_two_body_data,
     r_up_carts: npt.NDArray[jnp.float64],
     r_dn_carts: npt.NDArray[jnp.float64],
 ) -> tuple[
@@ -589,7 +529,6 @@ def compute_grads_and_laplacian_ln_Det_jax(
     )
 
     return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D
-'''
 
 
 if __name__ == "__main__":
@@ -632,14 +571,17 @@ if __name__ == "__main__":
     )
 
     # """
-    grad_jastrow_two_body_jax = grad(compute_Jastrow_two_body_api, argnums=[1, 2])(
-        jastrow_two_body_data,
-        r_up_carts,
-        r_dn_carts,
-        False,
+    grad_jastrow_two_body_up_debug, grad_jastrow_two_body_dn_debug, _ = (
+        compute_grads_and_laplacian_Jastrow_two_body_api(
+            jastrow_two_body_data,
+            r_up_carts,
+            r_dn_carts,
+            False,
+        )
     )
     # """
 
     logger.debug(f"jastrow_two_body_debug = {jastrow_two_body_debug}")
     logger.debug(f"jastrow_two_body_jax = {jastrow_two_body_jax}")
-    logger.debug(f"grad_jastrow_two_body_jax = {grad_jastrow_two_body_jax}")
+    logger.debug(f"grad_jastrow_two_body_up_debug = {grad_jastrow_two_body_up_debug}")
+    logger.debug(f"grad_jastrow_two_body_dn_debug = {grad_jastrow_two_body_dn_debug}")
