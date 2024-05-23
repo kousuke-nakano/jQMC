@@ -9,6 +9,7 @@ from numpy import linalg as LA
 import numpy.typing as npt
 
 # JAX
+import jax
 from jax import numpy as jnp
 from jax import lax
 from jax import jit
@@ -19,6 +20,9 @@ from .units import Bohr_to_Angstrom
 
 # set logger
 logger = getLogger("myqmc").getChild(__name__)
+
+# JAX float64
+jax.config.update("jax_enable_x64", True)
 
 
 @struct.dataclass

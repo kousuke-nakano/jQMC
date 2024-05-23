@@ -149,12 +149,29 @@ class MCMC:
         # reset mcmc counter
         self.__mcmc_counter = 0
 
-        # reset stored electron positions
-        self.__stored_r_up_carts = []
-        self.__stored_r_dn_carts = []
-
         # stored local energy
         self.__stored_local_energy = []
+
+        # compiling methods
+        logger.info(f"Compilation starts.")
+
+        logger.info(f"  Compilation e_L starts.")
+        _ = compute_local_energy(
+            hamiltonian_data=self.__hamiltonian_data,
+            r_up_carts=self.__latest_r_up_carts,
+            r_dn_carts=self.__latest_r_dn_carts,
+        )
+        logger.info(f"  Compilation e_L is done.")
+
+        """
+        _, _, _ = grad(compute_local_energy, argnums=(0, 1, 2))(
+            self.__hamiltonian_data,
+            self.__latest_r_up_carts,
+            self.__latest_r_dn_carts,
+        )
+        """
+
+        logger.info(f"Compilation is done.")
 
     def run(self, num_mcmc_steps: int = 0, continuation: int = 0) -> None:
         """
@@ -164,6 +181,9 @@ class MCMC:
         Returns:
             None
         """
+
+        cpu_count = os.cpu_count()
+        logger.info(f"cpu count = {cpu_count}")
 
         # Set the random seed and use the Mersenne Twister generator
         accepted_moves = 0
@@ -310,11 +330,23 @@ class MCMC:
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
-            logger.info(
-                f"grad_e_L_h.structure_data.positions = {grad_e_L_h.structure_data.positions}"
+            grad_e_L_R = (
+                grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.aos_data.structure_data.positions
+                + grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions
+                + grad_e_L_h.coulomb_potential_data.structure_data.positions
             )
-            logger.info(f"grad_e_L_up = {grad_e_L_r_up}")
-            logger.info(f"grad_e_L_up = {grad_e_L_r_dn}")
+            logger.info(
+                f"de_L_dR(AOs_data_up) = {grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.aos_data.structure_data.positions}"
+            )
+            logger.info(
+                f"de_L_dR(AOs_data_dn) = {grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions}"
+            )
+            logger.info(
+                f"de_L_dR(coulomb_potential_data) = {grad_e_L_h.coulomb_potential_data.structure_data.positions}"
+            )
+            logger.info(f"de_L_dR = {grad_e_L_R}")
+            logger.info(f"de_L_dr_up = {grad_e_L_r_up}")
+            logger.info(f"de_L_dr_dn= {grad_e_L_r_dn}")
             """
 
         logger.info(f"acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
@@ -349,6 +381,18 @@ if __name__ == "__main__":
         coulomb_potential_data,
     ) = read_trexio_file(
         trexio_file=os.path.join(os.path.dirname(__file__), "water_trexio.hdf5")
+    )
+
+    # water  cc-pVTZ with Mitas ccECP.
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "C60_trexio.hdf5")
     )
 
     wavefunction_data = Wavefunction_data(

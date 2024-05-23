@@ -15,6 +15,7 @@ from flax import struct
 
 # myqmc module
 from .atomic_orbital import (
+    AOs_data,
     AOs_data_debug,
     compute_AOs_api,
     compute_AOs_grad_api,
@@ -51,8 +52,8 @@ class Geminal_data:
 
     num_electron_up: int = struct.field(pytree_node=False)
     num_electron_dn: int = struct.field(pytree_node=False)
-    orb_data_up_spin: AOs_data_debug | MOs_data = struct.field(pytree_node=True)
-    orb_data_dn_spin: AOs_data_debug | MOs_data = struct.field(pytree_node=True)
+    orb_data_up_spin: AOs_data | MOs_data = struct.field(pytree_node=True)
+    orb_data_dn_spin: AOs_data | MOs_data = struct.field(pytree_node=True)
     compute_orb_api: Callable[..., npt.NDArray[np.float64]] = struct.field(
         pytree_node=False
     )
@@ -331,7 +332,155 @@ def compute_grads_and_laplacian_ln_Det_debug(
     npt.NDArray[np.float64 | np.complex128],
     float | complex,
 ]:
-    diff_h = 1.0e-5
+
+    #############################################################
+    # Gradients part
+    #############################################################
+
+    diff_h = 1.0e-5  # for grad
+
+    det_geminal = compute_det_geminal_all_elements_api(
+        geminal_data=geminal_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    # grad up
+    grad_x_up = []
+    grad_y_up = []
+    grad_z_up = []
+    for r_i, _ in enumerate(r_up_carts):
+        diff_p_x_r_up2_carts = r_up_carts.copy()
+        diff_p_y_r_up2_carts = r_up_carts.copy()
+        diff_p_z_r_up2_carts = r_up_carts.copy()
+        diff_p_x_r_up2_carts[r_i][0] += diff_h
+        diff_p_y_r_up2_carts[r_i][1] += diff_h
+        diff_p_z_r_up2_carts[r_i][2] += diff_h
+
+        det_geminal_p_x_up2 = compute_det_geminal_all_elements_api(
+            geminal_data=geminal_data,
+            r_up_carts=diff_p_x_r_up2_carts,
+            r_dn_carts=r_dn_carts,
+        )
+        det_geminal_p_y_up2 = compute_det_geminal_all_elements_api(
+            geminal_data=geminal_data,
+            r_up_carts=diff_p_y_r_up2_carts,
+            r_dn_carts=r_dn_carts,
+        )
+        det_geminal_p_z_up2 = compute_det_geminal_all_elements_api(
+            geminal_data=geminal_data,
+            r_up_carts=diff_p_z_r_up2_carts,
+            r_dn_carts=r_dn_carts,
+        )
+
+        diff_m_x_r_up2_carts = r_up_carts.copy()
+        diff_m_y_r_up2_carts = r_up_carts.copy()
+        diff_m_z_r_up2_carts = r_up_carts.copy()
+        diff_m_x_r_up2_carts[r_i][0] -= diff_h
+        diff_m_y_r_up2_carts[r_i][1] -= diff_h
+        diff_m_z_r_up2_carts[r_i][2] -= diff_h
+
+        det_geminal_m_x_up2 = compute_det_geminal_all_elements_api(
+            geminal_data=geminal_data,
+            r_up_carts=diff_m_x_r_up2_carts,
+            r_dn_carts=r_dn_carts,
+        )
+        det_geminal_m_y_up2 = compute_det_geminal_all_elements_api(
+            geminal_data=geminal_data,
+            r_up_carts=diff_m_y_r_up2_carts,
+            r_dn_carts=r_dn_carts,
+        )
+        det_geminal_m_z_up2 = compute_det_geminal_all_elements_api(
+            geminal_data=geminal_data,
+            r_up_carts=diff_m_z_r_up2_carts,
+            r_dn_carts=r_dn_carts,
+        )
+
+        grad_x_up.append(
+            (np.log(np.abs(det_geminal_p_x_up2)) - np.log(np.abs(det_geminal_m_x_up2)))
+            / (2.0 * diff_h)
+        )
+        grad_y_up.append(
+            (np.log(np.abs(det_geminal_p_y_up2)) - np.log(np.abs(det_geminal_m_y_up2)))
+            / (2.0 * diff_h)
+        )
+        grad_z_up.append(
+            (np.log(np.abs(det_geminal_p_z_up2)) - np.log(np.abs(det_geminal_m_z_up2)))
+            / (2.0 * diff_h)
+        )
+
+    # grad dn
+    grad_x_dn = []
+    grad_y_dn = []
+    grad_z_dn = []
+    for r_i, _ in enumerate(r_dn_carts):
+        diff_p_x_r_dn2_carts = r_dn_carts.copy()
+        diff_p_y_r_dn2_carts = r_dn_carts.copy()
+        diff_p_z_r_dn2_carts = r_dn_carts.copy()
+        diff_p_x_r_dn2_carts[r_i][0] += diff_h
+        diff_p_y_r_dn2_carts[r_i][1] += diff_h
+        diff_p_z_r_dn2_carts[r_i][2] += diff_h
+
+        det_geminal_p_x_dn2 = compute_det_geminal_all_elements_api(
+            geminal_data=geminal_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=diff_p_x_r_dn2_carts,
+        )
+        det_geminal_p_y_dn2 = compute_det_geminal_all_elements_api(
+            geminal_data=geminal_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=diff_p_y_r_dn2_carts,
+        )
+        det_geminal_p_z_dn2 = compute_det_geminal_all_elements_api(
+            geminal_data=geminal_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=diff_p_z_r_dn2_carts,
+        )
+
+        diff_m_x_r_dn2_carts = r_dn_carts.copy()
+        diff_m_y_r_dn2_carts = r_dn_carts.copy()
+        diff_m_z_r_dn2_carts = r_dn_carts.copy()
+        diff_m_x_r_dn2_carts[r_i][0] -= diff_h
+        diff_m_y_r_dn2_carts[r_i][1] -= diff_h
+        diff_m_z_r_dn2_carts[r_i][2] -= diff_h
+
+        det_geminal_m_x_dn2 = compute_det_geminal_all_elements_api(
+            geminal_data=geminal_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=diff_m_x_r_dn2_carts,
+        )
+        det_geminal_m_y_dn2 = compute_det_geminal_all_elements_api(
+            geminal_data=geminal_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=diff_m_y_r_dn2_carts,
+        )
+        det_geminal_m_z_dn2 = compute_det_geminal_all_elements_api(
+            geminal_data=geminal_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=diff_m_z_r_dn2_carts,
+        )
+
+        grad_x_dn.append(
+            (np.log(np.abs(det_geminal_p_x_dn2)) - np.log(np.abs(det_geminal_m_x_dn2)))
+            / (2.0 * diff_h)
+        )
+        grad_y_dn.append(
+            (np.log(np.abs(det_geminal_p_y_dn2)) - np.log(np.abs(det_geminal_m_y_dn2)))
+            / (2.0 * diff_h)
+        )
+        grad_z_dn.append(
+            (np.log(np.abs(det_geminal_p_z_dn2)) - np.log(np.abs(det_geminal_m_z_dn2)))
+            / (2.0 * diff_h)
+        )
+
+    grad_ln_D_up = np.array([grad_x_up, grad_y_up, grad_z_up]).T
+    grad_ln_D_dn = np.array([grad_x_dn, grad_y_dn, grad_z_dn]).T
+
+    #############################################################
+    # Laplacian part
+    #############################################################
+
+    diff_h2 = 1.0e-4  # for laplacian
 
     det_geminal = compute_det_geminal_all_elements_api(
         geminal_data=geminal_data,
@@ -341,177 +490,143 @@ def compute_grads_and_laplacian_ln_Det_debug(
 
     sum_laplacian_ln_D = 0.0
 
-    # grad up
-    grad_x_up = []
-    grad_y_up = []
-    grad_z_up = []
+    # laplacians up
     for r_i, _ in enumerate(r_up_carts):
-        diff_p_x_r_up_carts = r_up_carts.copy()
-        diff_p_y_r_up_carts = r_up_carts.copy()
-        diff_p_z_r_up_carts = r_up_carts.copy()
-        diff_p_x_r_up_carts[r_i][0] += diff_h
-        diff_p_y_r_up_carts[r_i][1] += diff_h
-        diff_p_z_r_up_carts[r_i][2] += diff_h
+        diff_p_x_r_up2_carts = r_up_carts.copy()
+        diff_p_y_r_up2_carts = r_up_carts.copy()
+        diff_p_z_r_up2_carts = r_up_carts.copy()
+        diff_p_x_r_up2_carts[r_i][0] += diff_h2
+        diff_p_y_r_up2_carts[r_i][1] += diff_h2
+        diff_p_z_r_up2_carts[r_i][2] += diff_h2
 
-        det_geminal_p_x_up = compute_det_geminal_all_elements_api(
+        det_geminal_p_x_up2 = compute_det_geminal_all_elements_api(
             geminal_data=geminal_data,
-            r_up_carts=diff_p_x_r_up_carts,
+            r_up_carts=diff_p_x_r_up2_carts,
             r_dn_carts=r_dn_carts,
         )
-        det_geminal_p_y_up = compute_det_geminal_all_elements_api(
+        det_geminal_p_y_up2 = compute_det_geminal_all_elements_api(
             geminal_data=geminal_data,
-            r_up_carts=diff_p_y_r_up_carts,
+            r_up_carts=diff_p_y_r_up2_carts,
             r_dn_carts=r_dn_carts,
         )
-        det_geminal_p_z_up = compute_det_geminal_all_elements_api(
+        det_geminal_p_z_up2 = compute_det_geminal_all_elements_api(
             geminal_data=geminal_data,
-            r_up_carts=diff_p_z_r_up_carts,
-            r_dn_carts=r_dn_carts,
-        )
-
-        diff_m_x_r_up_carts = r_up_carts.copy()
-        diff_m_y_r_up_carts = r_up_carts.copy()
-        diff_m_z_r_up_carts = r_up_carts.copy()
-        diff_m_x_r_up_carts[r_i][0] -= diff_h
-        diff_m_y_r_up_carts[r_i][1] -= diff_h
-        diff_m_z_r_up_carts[r_i][2] -= diff_h
-
-        det_geminal_m_x_up = compute_det_geminal_all_elements_api(
-            geminal_data=geminal_data,
-            r_up_carts=diff_m_x_r_up_carts,
-            r_dn_carts=r_dn_carts,
-        )
-        det_geminal_m_y_up = compute_det_geminal_all_elements_api(
-            geminal_data=geminal_data,
-            r_up_carts=diff_m_y_r_up_carts,
-            r_dn_carts=r_dn_carts,
-        )
-        det_geminal_m_z_up = compute_det_geminal_all_elements_api(
-            geminal_data=geminal_data,
-            r_up_carts=diff_m_z_r_up_carts,
+            r_up_carts=diff_p_z_r_up2_carts,
             r_dn_carts=r_dn_carts,
         )
 
-        grad_x_up.append(
-            (np.log(np.abs(det_geminal_p_x_up)) - np.log(np.abs(det_geminal_m_x_up)))
-            / (2.0 * diff_h)
+        diff_m_x_r_up2_carts = r_up_carts.copy()
+        diff_m_y_r_up2_carts = r_up_carts.copy()
+        diff_m_z_r_up2_carts = r_up_carts.copy()
+        diff_m_x_r_up2_carts[r_i][0] -= diff_h2
+        diff_m_y_r_up2_carts[r_i][1] -= diff_h2
+        diff_m_z_r_up2_carts[r_i][2] -= diff_h2
+
+        det_geminal_m_x_up2 = compute_det_geminal_all_elements_api(
+            geminal_data=geminal_data,
+            r_up_carts=diff_m_x_r_up2_carts,
+            r_dn_carts=r_dn_carts,
         )
-        grad_y_up.append(
-            (np.log(np.abs(det_geminal_p_y_up)) - np.log(np.abs(det_geminal_m_y_up)))
-            / (2.0 * diff_h)
+        det_geminal_m_y_up2 = compute_det_geminal_all_elements_api(
+            geminal_data=geminal_data,
+            r_up_carts=diff_m_y_r_up2_carts,
+            r_dn_carts=r_dn_carts,
         )
-        grad_z_up.append(
-            (np.log(np.abs(det_geminal_p_z_up)) - np.log(np.abs(det_geminal_m_z_up)))
-            / (2.0 * diff_h)
+        det_geminal_m_z_up2 = compute_det_geminal_all_elements_api(
+            geminal_data=geminal_data,
+            r_up_carts=diff_m_z_r_up2_carts,
+            r_dn_carts=r_dn_carts,
         )
 
         gradgrad_x_up = (
-            np.log(np.abs(det_geminal_p_x_up))
-            + np.log(np.abs(det_geminal_m_x_up))
+            np.log(np.abs(det_geminal_p_x_up2))
+            + np.log(np.abs(det_geminal_m_x_up2))
             - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h**2)
+        ) / (diff_h2**2)
 
         gradgrad_y_up = (
-            np.log(np.abs(det_geminal_p_y_up))
-            + np.log(np.abs(det_geminal_m_y_up))
+            np.log(np.abs(det_geminal_p_y_up2))
+            + np.log(np.abs(det_geminal_m_y_up2))
             - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h**2)
+        ) / (diff_h2**2)
 
         gradgrad_z_up = (
-            np.log(np.abs(det_geminal_p_z_up))
-            + np.log(np.abs(det_geminal_m_z_up))
+            np.log(np.abs(det_geminal_p_z_up2))
+            + np.log(np.abs(det_geminal_m_z_up2))
             - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h**2)
+        ) / (diff_h2**2)
 
         sum_laplacian_ln_D += gradgrad_x_up + gradgrad_y_up + gradgrad_z_up
 
-    # grad dn
-    grad_x_dn = []
-    grad_y_dn = []
-    grad_z_dn = []
+    # laplacians dn
     for r_i, _ in enumerate(r_dn_carts):
-        diff_p_x_r_dn_carts = r_dn_carts.copy()
-        diff_p_y_r_dn_carts = r_dn_carts.copy()
-        diff_p_z_r_dn_carts = r_dn_carts.copy()
-        diff_p_x_r_dn_carts[r_i][0] += diff_h
-        diff_p_y_r_dn_carts[r_i][1] += diff_h
-        diff_p_z_r_dn_carts[r_i][2] += diff_h
+        diff_p_x_r_dn2_carts = r_dn_carts.copy()
+        diff_p_y_r_dn2_carts = r_dn_carts.copy()
+        diff_p_z_r_dn2_carts = r_dn_carts.copy()
+        diff_p_x_r_dn2_carts[r_i][0] += diff_h2
+        diff_p_y_r_dn2_carts[r_i][1] += diff_h2
+        diff_p_z_r_dn2_carts[r_i][2] += diff_h2
 
-        det_geminal_p_x_dn = compute_det_geminal_all_elements_api(
+        det_geminal_p_x_dn2 = compute_det_geminal_all_elements_api(
             geminal_data=geminal_data,
             r_up_carts=r_up_carts,
-            r_dn_carts=diff_p_x_r_dn_carts,
+            r_dn_carts=diff_p_x_r_dn2_carts,
         )
-        det_geminal_p_y_dn = compute_det_geminal_all_elements_api(
+        det_geminal_p_y_dn2 = compute_det_geminal_all_elements_api(
             geminal_data=geminal_data,
             r_up_carts=r_up_carts,
-            r_dn_carts=diff_p_y_r_dn_carts,
+            r_dn_carts=diff_p_y_r_dn2_carts,
         )
-        det_geminal_p_z_dn = compute_det_geminal_all_elements_api(
+        det_geminal_p_z_dn2 = compute_det_geminal_all_elements_api(
             geminal_data=geminal_data,
             r_up_carts=r_up_carts,
-            r_dn_carts=diff_p_z_r_dn_carts,
-        )
-
-        diff_m_x_r_dn_carts = r_dn_carts.copy()
-        diff_m_y_r_dn_carts = r_dn_carts.copy()
-        diff_m_z_r_dn_carts = r_dn_carts.copy()
-        diff_m_x_r_dn_carts[r_i][0] -= diff_h
-        diff_m_y_r_dn_carts[r_i][1] -= diff_h
-        diff_m_z_r_dn_carts[r_i][2] -= diff_h
-
-        det_geminal_m_x_dn = compute_det_geminal_all_elements_api(
-            geminal_data=geminal_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_m_x_r_dn_carts,
-        )
-        det_geminal_m_y_dn = compute_det_geminal_all_elements_api(
-            geminal_data=geminal_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_m_y_r_dn_carts,
-        )
-        det_geminal_m_z_dn = compute_det_geminal_all_elements_api(
-            geminal_data=geminal_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=diff_m_z_r_dn_carts,
+            r_dn_carts=diff_p_z_r_dn2_carts,
         )
 
-        grad_x_dn.append(
-            (np.log(np.abs(det_geminal_p_x_dn)) - np.log(np.abs(det_geminal_m_x_dn)))
-            / (2.0 * diff_h)
+        diff_m_x_r_dn2_carts = r_dn_carts.copy()
+        diff_m_y_r_dn2_carts = r_dn_carts.copy()
+        diff_m_z_r_dn2_carts = r_dn_carts.copy()
+        diff_m_x_r_dn2_carts[r_i][0] -= diff_h2
+        diff_m_y_r_dn2_carts[r_i][1] -= diff_h2
+        diff_m_z_r_dn2_carts[r_i][2] -= diff_h2
+
+        det_geminal_m_x_dn2 = compute_det_geminal_all_elements_api(
+            geminal_data=geminal_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=diff_m_x_r_dn2_carts,
         )
-        grad_y_dn.append(
-            (np.log(np.abs(det_geminal_p_y_dn)) - np.log(np.abs(det_geminal_m_y_dn)))
-            / (2.0 * diff_h)
+        det_geminal_m_y_dn2 = compute_det_geminal_all_elements_api(
+            geminal_data=geminal_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=diff_m_y_r_dn2_carts,
         )
-        grad_z_dn.append(
-            (np.log(np.abs(det_geminal_p_z_dn)) - np.log(np.abs(det_geminal_m_z_dn)))
-            / (2.0 * diff_h)
+        det_geminal_m_z_dn2 = compute_det_geminal_all_elements_api(
+            geminal_data=geminal_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=diff_m_z_r_dn2_carts,
         )
 
         gradgrad_x_dn = (
-            np.log(np.abs(det_geminal_p_x_dn))
-            + np.log(np.abs(det_geminal_m_x_dn))
+            np.log(np.abs(det_geminal_p_x_dn2))
+            + np.log(np.abs(det_geminal_m_x_dn2))
             - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h**2)
+        ) / (diff_h2**2)
 
         gradgrad_y_dn = (
-            np.log(np.abs(det_geminal_p_y_dn))
-            + np.log(np.abs(det_geminal_m_y_dn))
+            np.log(np.abs(det_geminal_p_y_dn2))
+            + np.log(np.abs(det_geminal_m_y_dn2))
             - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h**2)
+        ) / (diff_h2**2)
 
         gradgrad_z_dn = (
-            np.log(np.abs(det_geminal_p_z_dn))
-            + np.log(np.abs(det_geminal_m_z_dn))
+            np.log(np.abs(det_geminal_p_z_dn2))
+            + np.log(np.abs(det_geminal_m_z_dn2))
             - 2.0 * np.log(np.abs(det_geminal))
-        ) / (diff_h**2)
+        ) / (diff_h2**2)
 
         sum_laplacian_ln_D += gradgrad_x_dn + gradgrad_y_dn + gradgrad_z_dn
 
-    grad_ln_D_up = np.array([grad_x_up, grad_y_up, grad_z_up]).T
-    grad_ln_D_dn = np.array([grad_x_dn, grad_y_dn, grad_z_dn]).T
-
+    # Returning answers
     return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D
 
 

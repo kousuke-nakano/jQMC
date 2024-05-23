@@ -11,7 +11,7 @@ import trexio
 
 # import myQMC
 from .structure import Structure_data
-from .atomic_orbital import AOs_data_debug
+from .atomic_orbital import AOs_data
 from .molecular_orbital import MOs_data, compute_MOs_api
 from .coulomb_potential import Coulomb_potential_data
 from .determinant import Geminal_data
@@ -150,6 +150,7 @@ def read_trexio_file(trexio_file: str):
     ao_prim_num_count = 0
 
     # values to be stored
+    nucleus_index = []
     atomic_center_carts = []
     angular_momentums = []
     magnetic_quantum_numbers = []
@@ -166,6 +167,7 @@ def read_trexio_file(trexio_file: str):
         ]
         num_mag_moms = len(ao_mag_moms)
 
+        ao_nucleus_index_dup = [ao_nucleus_index for _ in range(num_mag_moms)]
         ao_coords = [ao_coord for _ in range(num_mag_moms)]
         ao_ang_moms = [ao_ang_mom for _ in range(num_mag_moms)]
 
@@ -183,6 +185,7 @@ def read_trexio_file(trexio_file: str):
         ao_num_count += num_mag_moms
         ao_prim_num_count += num_mag_moms * ao_prim_num
 
+        nucleus_index += ao_nucleus_index_dup
         atomic_center_carts += ao_coords
         angular_momentums += ao_ang_moms
         magnetic_quantum_numbers += ao_mag_moms
@@ -196,10 +199,24 @@ def read_trexio_file(trexio_file: str):
         )
         raise ValueError
 
+    """ old!!
     aos_data = AOs_data_debug(
         num_ao=ao_num_count,
         num_ao_prim=ao_prim_num_count,
         atomic_center_carts=np.array(atomic_center_carts),
+        angular_momentums=angular_momentums,
+        magnetic_quantum_numbers=magnetic_quantum_numbers,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+    )
+    """
+
+    aos_data = AOs_data(
+        structure_data=structure_data,
+        nucleus_index=nucleus_index,
+        num_ao=ao_num_count,
+        num_ao_prim=ao_prim_num_count,
         angular_momentums=angular_momentums,
         magnetic_quantum_numbers=magnetic_quantum_numbers,
         orbital_indices=orbital_indices,

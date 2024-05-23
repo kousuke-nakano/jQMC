@@ -437,7 +437,8 @@ def compute_ecp_coulomb_potential_jax(
 ) -> float:
     """
     The method is for computing the local and non-local parts of the given ECPs at (r_up_carts, r_dn_carts).
-    To avoid for loops, jax-vmap function is fully exploittted in the method.
+    To avoid for the nested loops, jax-vmap function (i.e. efficient vectrization for compilation) is fully
+    exploitted in the method.
 
     Args:
         coulomb_potential_data (Coulomb_potential_data): an instance of Bare_coulomb_potential_data
@@ -666,14 +667,14 @@ def compute_ecp_coulomb_potential_jax(
         )
 
     # vectrize compute_ecp_up and compute_ecp_dn
-    vmap_compute_ecp_up = vmap(
+    vmap_vmap_compute_ecp_up = vmap(
         vmap(
             compute_ecp_up,
             in_axes=(0, 0, None, None, None, None, None, None),
         ),
         in_axes=(None, None, 0, 0, 0, 0, 0, 0),
     )
-    vmap_compute_ecp_dn = vmap(
+    vmap_vmap_compute_ecp_dn = vmap(
         vmap(
             compute_ecp_dn,
             in_axes=(0, 0, None, None, None, None, None, None),
@@ -699,7 +700,7 @@ def compute_ecp_coulomb_potential_jax(
     power_jnp = jnp.array(coulomb_potential_data.powers)
 
     V_ecp_up = jnp.sum(
-        vmap_compute_ecp_up(
+        vmap_vmap_compute_ecp_up(
             r_up_i_jnp,
             r_up_carts_jnp,
             max_ang_mom_plus_1_jnp,
@@ -712,7 +713,7 @@ def compute_ecp_coulomb_potential_jax(
     )
 
     V_ecp_dn = jnp.sum(
-        vmap_compute_ecp_dn(
+        vmap_vmap_compute_ecp_dn(
             r_dn_i_jnp,
             r_dn_carts_jnp,
             max_ang_mom_plus_1_jnp,
