@@ -31,7 +31,6 @@ logger = getLogger("myqmc").getChild(__name__)
 jax.config.update("jax_enable_x64", True)
 
 
-# WIP!!!
 @struct.dataclass
 class AOs_data:
     """
@@ -39,6 +38,7 @@ class AOs_data:
 
     Args:
         structure_data: an instance of Structure_data
+        nucleus_index (list[int]): One-to-one correspondence between AO items and the atom index (dim:num_ao)
         num_ao : the number of atomic orbitals.
         num_ao_prim : the number of primitive atomic orbitals.
         orbital_indices (list[int]): index for what exponents and coefficients are associated to each atomic orbital. dim: num_ao_prim
@@ -49,6 +49,7 @@ class AOs_data:
     """
 
     structure_data: Structure_data = struct.field(pytree_node=True)
+    nucleus_index: list[int] = struct.field(pytree_node=False)
     num_ao: int = struct.field(pytree_node=False)
     num_ao_prim: int = struct.field(pytree_node=False)
     orbital_indices: list[int] = struct.field(pytree_node=False)
@@ -58,12 +59,10 @@ class AOs_data:
     magnetic_quantum_numbers: list[int] = struct.field(pytree_node=False)
 
     def __post_init__(self) -> None:
-        """
-        if self.atomic_center_carts.shape != (self.num_ao, 3):
-            logger.error(self.atomic_center_carts.shape)
-            logger.error("dim. of atomic_center_cart is wrong")
+
+        if len(self.nucleus_index) != self.num_ao:
+            logger.error("dim. of self.nucleus_index is wrong")
             raise ValueError
-        """
         if len(np.unique(self.orbital_indices)) != self.num_ao:
             logger.error(
                 f"num_ao={self.num_ao} and/or num_ao_prim={self.num_ao_prim} is wrong"
@@ -82,15 +81,25 @@ class AOs_data:
             raise ValueError
 
     @property
-    def atomic_center_carts_prim(self):
+    def atomic_center_carts(self):
         return np.array(
-            [self.structure_data.positions_cart[i] for i in self.orbital_indices]
+            [self.structure_data.positions_cart[i] for i in self.nucleus_index]
         )
+
+    @property
+    def atomic_center_carts_jnp(self):
+        return jnp.array(
+            [self.structure_data.positions_cart[i] for i in self.nucleus_index]
+        )
+
+    @property
+    def atomic_center_carts_prim(self):
+        return np.array([self.atomic_center_carts[i] for i in self.orbital_indices])
 
     @property
     def atomic_center_carts_prim_jnp(self):
         return jnp.array(
-            [self.structure_data.positions_cart[i] for i in self.orbital_indices]
+            [self.atomic_center_carts_jnp[i] for i in self.orbital_indices]
         )
 
     @property

@@ -20,6 +20,7 @@ from .atomic_orbital import (
     AO_data_debug,
     compute_AO,
     AOs_data_debug,
+    AOs_data,
     compute_AOs_api,
     compute_AOs_grad_api,
     compute_AOs_laplacian_api,
@@ -47,7 +48,7 @@ class MOs_data:
     mo_coefficients: npt.NDArray[np.float64 | np.complex128] = struct.field(
         pytree_node=True
     )
-    aos_data: AOs_data_debug = struct.field(pytree_node=True)
+    aos_data: AOs_data = struct.field(pytree_node=True)
 
     def __post_init__(self) -> None:
         if self.mo_coefficients.shape != (self.num_mo, self.aos_data.num_ao):

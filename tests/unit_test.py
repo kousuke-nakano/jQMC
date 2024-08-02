@@ -8,6 +8,8 @@ from numpy.testing import assert_almost_equal
 
 from logging import getLogger, StreamHandler, Formatter
 
+import jax
+
 from ..myqmc.atomic_orbital import (
     AO_data_debug,
     compute_S_l_m_debug,
@@ -46,6 +48,9 @@ from ..myqmc.coulomb_potential import (
 )
 
 from ..myqmc.hamiltonians import Hamiltonian_data
+
+# JAX float64
+jax.config.update("jax_enable_x64", True)
 
 log = getLogger("myqmc")
 log.setLevel("DEBUG")
@@ -1443,14 +1448,18 @@ def test_comparing_values_with_TurboRVB_code():
         debug_flag=False,
     )
 
-    # logger.debug(f"kinc={kinc} Ha")
-    # logger.debug(f"vpot={vpot_bare+vpot_ecp_local} Ha")
-    # logger.debug(f"vpotoff={vpot_ecp_nonlocal} Ha")
+    print(f"wf_ratio={WF_ratio} Ha")
+    print(f"kinc={kinc} Ha")
+    print(f"vpot={vpot_bare+vpot_ecp_debug} Ha")
 
     WF_ratio_ref_turborvb = 1.04447207308308
     kinc_ref_turborvb = 9.77796571601343
     vpot_ref_turborvb = -27.9099792589717
     vpotoff_ref_turborvb = 0.159136845080957
+
+    print(f"wf_ratio_ref={WF_ratio_ref_turborvb} Ha")
+    print(f"kinc_ref={kinc_ref_turborvb} Ha")
+    print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
 
     np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=8)
     np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
