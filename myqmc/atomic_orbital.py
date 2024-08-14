@@ -136,8 +136,9 @@ class AOs_data:
 class AOs_data_debug:
     """
     The class contains data for computing atomic orbitals simltaneously.
-    This is for debuggin purpose because if we store atomic_center_carts
-    in more than one dataclass, algorithmic differentiation does not correctly work.
+    This is for debuggin purpose. This dataclass can be defined without
+    the structure class, which should make tests easier and simpler to
+    be implemented.
 
     Args:
         num_ao : the number of atomic orbitals.

@@ -22,6 +22,7 @@ from .wavefunction import (
 )
 from .trexio_wrapper import read_trexio_file
 from .wavefunction import Wavefunction_data
+from .jastrow_factor import Jastrow_two_body_data, Jastrow_data
 
 # set logger
 logger = getLogger("myqmc").getChild(__name__)
@@ -153,15 +154,15 @@ class MCMC:
         self.__stored_local_energy = []
 
         # compiling methods
-        logger.info(f"Compilation starts.")
+        logger.info("Compilation starts.")
 
-        logger.info(f"  Compilation e_L starts.")
+        logger.info("  Compilation e_L starts.")
         _ = compute_local_energy(
             hamiltonian_data=self.__hamiltonian_data,
             r_up_carts=self.__latest_r_up_carts,
             r_dn_carts=self.__latest_r_dn_carts,
         )
-        logger.info(f"  Compilation e_L is done.")
+        logger.info("  Compilation e_L is done.")
 
         """
         _, _, _ = grad(compute_local_energy, argnums=(0, 1, 2))(
@@ -171,7 +172,7 @@ class MCMC:
         )
         """
 
-        logger.info(f"Compilation is done.")
+        logger.info("Compilation is done.")
 
     def run(self, num_mcmc_steps: int = 0, continuation: int = 0) -> None:
         """
@@ -350,8 +351,17 @@ class MCMC:
             """
 
         logger.info(f"acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
+
+    def get_e_L(self, num_mcmc_warmup_steps=100):
+        """
+        Args:
+            num_mcmc_steps (int): the number of total mcmc steps
+            continuation (int): 1 = VMC run from sctach, 0 = VMC run continuataion
+        Returns:
+            None
+        """
         logger.info(
-            f"e_L is {np.average(self.__stored_local_energy[50:])} +- {np.sqrt(np.var(self.__stored_local_energy[50:]))} Ha."
+            f"e_L is {np.average(self.__stored_local_energy[num_mcmc_warmup_steps:])} +- {np.sqrt(np.var(self.__stored_local_energy[num_mcmc_warmup_steps:]))} Ha."
         )
         # logger.info(f"all e_L is {self.__stored_local_energy[50:]} Ha.")
 
@@ -383,21 +393,16 @@ if __name__ == "__main__":
         trexio_file=os.path.join(os.path.dirname(__file__), "water_trexio.hdf5")
     )
 
-    # water  cc-pVTZ with Mitas ccECP.
-    (
-        structure_data,
-        aos_data,
-        mos_data_up,
-        mos_data_dn,
-        geminal_mo_data,
-        coulomb_potential_data,
-    ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "C60_trexio.hdf5")
+    jastrow_two_body_data = Jastrow_two_body_data(
+        param_parallel_spin=0.0, param_anti_parallel_spin=0.0
     )
+    jastrow_data = Jastrow_data(
+        jastrow_two_body_data=jastrow_two_body_data, jastrow_two_body_type="off"
+    )  # no jastrow for the time-being.
 
     wavefunction_data = Wavefunction_data(
-        geminal_data=geminal_mo_data
-    )  # no jastrow for the time-being.
+        jastrow_data=jastrow_data, geminal_data=geminal_mo_data
+    )
 
     hamiltonian_data = Hamiltonian_data(
         structure_data=structure_data,
@@ -410,7 +415,8 @@ if __name__ == "__main__":
     logger.info(f"mcmc_seed for MPI-rank={rank} is {mpi_seed}.")
 
     mcmc = MCMC(hamiltonian_data=hamiltonian_data, mcmc_seed=mpi_seed)
-    mcmc.run(num_mcmc_steps=150)
+    mcmc.run(num_mcmc_steps=100)
+    mcmc.analysis(num_mcmc_warmup_steps=100, num_mcmc_bin_blocks=10)
 
     """
 
