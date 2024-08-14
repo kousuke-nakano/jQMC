@@ -18,6 +18,12 @@ from .determinant import (
     compute_grads_and_laplacian_ln_Det_api,
 )
 
+from .jastrow_factor import (
+    Jastrow_data,
+    compute_Jastrow_part_api,
+    compute_grads_and_laplacian_Jastrow_part_api,
+)
+
 # set logger
 logger = getLogger("myqmc").getChild(__name__)
 
@@ -35,7 +41,7 @@ class Wavefunction_data:
         geminal_data (Geminal_data)
     """
 
-    # jastrow_data: Jastrow_data = None
+    jastrow_data: Jastrow_data = struct.field(pytree_node=True)
     geminal_data: Geminal_data = struct.field(pytree_node=True)
 
     def __post_init__(self) -> None:
@@ -60,7 +66,12 @@ def evaluate_wavefunction_api(
         The value of the given wavefunction (float | complex)
     """
 
-    Jastrow_part = 1.0
+    Jastrow_part = compute_Jastrow_part_api(
+        jastrow_data=wavefunction_data.jastrow_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        debug_flag=False,
+    )
 
     Determinant_part = compute_det_geminal_all_elements_api(
         geminal_data=wavefunction_data.geminal_data,
@@ -69,7 +80,7 @@ def evaluate_wavefunction_api(
         debug_flag=False,
     )
 
-    return Jastrow_part * Determinant_part
+    return jnp.exp(Jastrow_part) * Determinant_part
 
 
 @jit
@@ -89,7 +100,14 @@ def compute_kinetic_energy_api(
     Returns:
         The value of laplacian the given wavefunction (float | complex)
     """
-    grad_J_up, grad_J_dn, sum_laplacian_J = 0, 0, 0  # tentative
+    grad_J_up, grad_J_dn, sum_laplacian_J = (
+        compute_grads_and_laplacian_Jastrow_part_api(
+            jastrow_data=wavefunction_data.jastrow_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+            debug_flag=False,
+        )
+    )
 
     grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = (
         compute_grads_and_laplacian_ln_Det_api(

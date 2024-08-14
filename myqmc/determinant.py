@@ -896,7 +896,7 @@ if __name__ == "__main__":
         num_electron_dn=num_r_dn_cart_samples,
         orb_data_up_spin=aos_up_data,
         orb_data_dn_spin=aos_dn_data,
-        compute_orb_api=compute_MOs_api,
+        compute_orb_api=compute_AOs_api,
         lambda_matrix=ao_lambda_matrix,
     )
 

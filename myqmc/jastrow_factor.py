@@ -8,7 +8,7 @@ import numpy.typing as npt
 # jax modules
 import jax
 import jax.numpy as jnp
-from jax import grad, jit, vmap
+from jax import grad, jacrev, jit, vmap
 from flax import struct
 
 # set logger
@@ -25,7 +25,7 @@ jax.config.update("jax_enable_x64", True)
 @struct.dataclass
 class Jastrow_two_body_data:
     """
-    The class contains data for evaluating a geminal function.
+    The class contains data for evaluating a Jastrow function.
 
     Args:
         param_parallel_spin (float): parameter for parallel spins
@@ -37,6 +37,81 @@ class Jastrow_two_body_data:
 
     def __post_init__(self) -> None:
         pass
+
+
+# @dataclass
+@struct.dataclass
+class Jastrow_data:
+    """
+    The class contains data for evaluating a Jastrow function.
+
+    Args:
+        jastrow_two_body_data (Jastrow_two_body_data): parameter for parallel spins
+        param_antiparallel_spin (float): parameter for anti-parallel spins
+    """
+
+    jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=True)
+    jastrow_two_body_type: str = struct.field(pytree_node=False)  # off, pade
+
+    def __post_init__(self) -> None:
+        pass
+
+
+def compute_Jastrow_part_api(
+    jastrow_data: Jastrow_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+    debug_flag: bool = False,
+) -> float:
+
+    # two-body
+    if jastrow_data.jastrow_two_body_type == "off":
+        J2 = 0.0
+    elif jastrow_data.jastrow_two_body_type == "pade":
+        J2 = compute_Jastrow_two_body_api(
+            jastrow_data.jastrow_two_body_data,
+            r_up_carts,
+            r_dn_carts,
+            debug_flag=debug_flag,
+        )
+    else:
+        raise NotImplementedError
+
+    J = J2
+
+    return J
+
+
+def compute_grads_and_laplacian_Jastrow_part_api(
+    jastrow_data: Jastrow_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+    debug_flag: bool = False,
+) -> tuple[
+    npt.NDArray[np.float64 | np.complex128],
+    npt.NDArray[np.float64 | np.complex128],
+    float | complex,
+]:
+    # two-body
+    if jastrow_data.jastrow_two_body_type == "off":
+        grad_J2_up, grad_J2_dn, sum_laplacian_J2 = 0.0, 0.0, 0.0
+    elif jastrow_data.jastrow_two_body_type == "pade":
+        grad_J2_up, grad_J2_dn, sum_laplacian_J2 = (
+            compute_grads_and_laplacian_Jastrow_two_body_api(
+                jastrow_data.jastrow_two_body_data,
+                r_up_carts=r_up_carts,
+                r_dn_carts=r_dn_carts,
+                debug_flag=debug_flag,
+            )
+        )
+    else:
+        raise NotImplementedError
+
+    grad_J_up = grad_J2_up
+    grad_J_dn = grad_J2_dn
+    sum_laplacian_J = sum_laplacian_J2
+
+    return grad_J_up, grad_J_dn, sum_laplacian_J
 
 
 def compute_Jastrow_two_body_api(
@@ -421,9 +496,9 @@ def compute_grads_and_laplacian_Jastrow_two_body_debug(
             debug_flag=True,
         )
 
-        gradgrad_x_up = (J2_p_x_up2 + J2_m_x_up2 - J2_ref) / (diff_h2**2)
-        gradgrad_y_up = (J2_p_y_up2 + J2_m_y_up2 - J2_ref) / (diff_h2**2)
-        gradgrad_z_up = (J2_p_z_up2 + J2_m_z_up2 - J2_ref) / (diff_h2**2)
+        gradgrad_x_up = (J2_p_x_up2 + J2_m_x_up2 - 2 * J2_ref) / (diff_h2**2)
+        gradgrad_y_up = (J2_p_y_up2 + J2_m_y_up2 - 2 * J2_ref) / (diff_h2**2)
+        gradgrad_z_up = (J2_p_z_up2 + J2_m_z_up2 - 2 * J2_ref) / (diff_h2**2)
 
         sum_laplacian_J2 += gradgrad_x_up + gradgrad_y_up + gradgrad_z_up
 
@@ -482,16 +557,16 @@ def compute_grads_and_laplacian_Jastrow_two_body_debug(
             debug_flag=True,
         )
 
-        gradgrad_x_dn = (J2_p_x_dn2 + J2_m_x_dn2 - J2_ref) / (diff_h2**2)
-        gradgrad_y_dn = (J2_p_y_dn2 + J2_m_y_dn2 - J2_ref) / (diff_h2**2)
-        gradgrad_z_dn = (J2_p_z_dn2 + J2_m_z_dn2 - J2_ref) / (diff_h2**2)
+        gradgrad_x_dn = (J2_p_x_dn2 + J2_m_x_dn2 - 2 * J2_ref) / (diff_h2**2)
+        gradgrad_y_dn = (J2_p_y_dn2 + J2_m_y_dn2 - 2 * J2_ref) / (diff_h2**2)
+        gradgrad_z_dn = (J2_p_z_dn2 + J2_m_z_dn2 - 2 * J2_ref) / (diff_h2**2)
 
         sum_laplacian_J2 += gradgrad_x_dn + gradgrad_y_dn + gradgrad_z_dn
 
     return grad_J2_up, grad_J2_dn, sum_laplacian_J2
 
 
-# @jit
+@jit
 def compute_grads_and_laplacian_Jastrow_two_body_jax(
     jastrow_two_body_data: Jastrow_two_body_data,
     r_up_carts: npt.NDArray[jnp.float64],
@@ -528,95 +603,103 @@ def compute_grads_and_laplacian_Jastrow_two_body_jax(
         )
         return two_body_jastrow
 
-    """
-    vmap_two_body_jastrow_anti_parallel_spins = vmap(
-        vmap(grad(J2_anti_parallel_spins), in_axes=(None, 0)),
-        in_axes=(0, None),
-    )
+    # compute grad
 
-    vmap_two_body_jastrow_parallel_spins = vmap(
-        vmap(grad(J2_parallel_spins), in_axes=(None, 0)),
-        in_axes=(0, None),
-    )
-    """
+    # Function to compute the sum of gradients for each r_j_cart
+    def compute_grad_sum_anti_parallel(r_i_cart, r_j_carts):
+        grads = vmap(
+            lambda r_j_cart: grad(J2_anti_parallel_spins, argnums=0)(r_i_cart, r_j_cart)
+        )(r_j_carts)
+        # Calculate norms and reshape for broadcasting
+        norms = jnp.linalg.norm(r_i_cart - r_j_carts, axis=1)
+        norms = norms[:, None]  # Reshape to (n, 1) for broadcasting with grads
+        non_zero_grads = jnp.where(norms != 0, grads, 0)
+        return jnp.sum(non_zero_grads, axis=0)
 
-    """
-    def vmap_two_body_jastrow_anti_parallel_spins(r_i_carts, r_j_carts):
-        return jnp.array(
-            [
-                jnp.sum(
-                    jnp.array(
-                        [
-                            grad(J2_anti_parallel_spins, argnums=0)(r_i_cart, r_j_cart)
-                            for r_j_cart in r_j_carts
-                            if jnp.linalg.norm(r_i_cart - r_j_cart) != 0
-                        ]
-                    ),
-                    axis=0,
-                )
-                for r_i_cart in r_i_carts
-            ]
+    # Apply the above function to all r_i_cart
+    def grad_vmap_two_body_jastrow_anti_parallel_spins(r_i_carts, r_j_carts):
+        return vmap(
+            lambda r_i_cart: compute_grad_sum_anti_parallel(r_i_cart, r_j_carts)
+        )(r_i_carts)
+
+    # Function to compute the sum of gradients for each r_j_cart
+    def compute_grad_sum_parallel(r_i_cart, r_j_carts):
+        grads = vmap(
+            lambda r_j_cart: grad(J2_parallel_spins, argnums=0)(r_i_cart, r_j_cart)
+        )(r_j_carts)
+        # Calculate norms and reshape for broadcasting
+        norms = jnp.linalg.norm(r_i_cart - r_j_carts, axis=1)
+        norms = norms[:, None]  # Reshape to (n, 1) for broadcasting with grads
+        non_zero_grads = jnp.where(norms != 0, grads, 0)
+        return jnp.sum(non_zero_grads, axis=0)
+
+    # Apply the above function to all r_i_cart
+    def grad_vmap_two_body_jastrow_parallel_spins(r_i_carts, r_j_carts):
+        return vmap(lambda r_i_cart: compute_grad_sum_parallel(r_i_cart, r_j_carts))(
+            r_i_carts
         )
 
-    def vmap_two_body_jastrow_parallel_spins(r_i_carts, r_j_carts):
-        return jnp.array(
-            [
-                jnp.sum(
-                    jnp.array(
-                        [
-                            grad(J2_parallel_spins, argnums=0)(r_i_cart, r_j_cart)
-                            for r_j_cart in r_j_carts
-                            if jnp.linalg.norm(r_i_cart - r_j_cart) != 0
-                        ]
-                    ),
-                    axis=0,
-                )
-                for r_i_cart in r_i_carts
-            ]
-        )
-
-    grad_J2_up = vmap_two_body_jastrow_anti_parallel_spins(
+    grad_J2_up = grad_vmap_two_body_jastrow_anti_parallel_spins(
         r_up_carts, r_dn_carts
-    ) + 1.0 / 2.0 * vmap_two_body_jastrow_parallel_spins(r_up_carts, r_up_carts)
+    ) + grad_vmap_two_body_jastrow_parallel_spins(r_up_carts, r_up_carts)
 
-    grad_J2_dn = vmap_two_body_jastrow_anti_parallel_spins(
+    grad_J2_dn = grad_vmap_two_body_jastrow_anti_parallel_spins(
         r_dn_carts, r_up_carts
-    ) + 1.0 / 2.0 * vmap_two_body_jastrow_parallel_spins(r_dn_carts, r_dn_carts)
-    """
+    ) + grad_vmap_two_body_jastrow_parallel_spins(r_dn_carts, r_dn_carts)
 
-    # grad J2 up
-    grad_J2_up = []
-    for r_i, r_up_cart in enumerate(r_up_carts):
-        grad_J2_up_buf = np.array([0.0, 0.0, 0.0])
-        for _, r_dn_cart in enumerate(r_dn_carts):
-            grad_J2_up_buf += grad(J2_anti_parallel_spins, argnums=0)(
-                r_up_cart, r_dn_cart
-            )
-        for r_ii, r_up_cart_ in enumerate(r_up_carts):
-            if r_i != r_ii:
-                grad_J2_up_buf += grad(J2_parallel_spins, argnums=0)(
-                    r_up_cart, r_up_cart_
+    # compute laplacian
+
+    # Function to compute the sum of gradients for each r_j_cart
+    def compute_laplacian_anti_parallel(r_i_cart, r_j_carts):
+        laplacian = vmap(
+            lambda r_j_cart: jnp.diag(
+                jacrev(grad(J2_anti_parallel_spins, argnums=0), argnums=0)(
+                    r_i_cart, r_j_cart
                 )
-        grad_J2_up.append(grad_J2_up_buf)
-    grad_J2_up = np.array(grad_J2_up)
-
-    # grad J2 dn
-    grad_J2_dn = []
-    for r_i, r_dn_cart in enumerate(r_dn_carts):
-        grad_J2_dn_buf = np.array([0.0, 0.0, 0.0])
-        for _, r_up_cart in enumerate(r_up_carts):
-            grad_J2_dn_buf += grad(J2_anti_parallel_spins, argnums=0)(
-                r_dn_cart, r_up_cart
             )
-        for r_ii, r_dn_cart_ in enumerate(r_dn_carts):
-            if r_i != r_ii:
-                grad_J2_dn_buf += grad(J2_parallel_spins, argnums=0)(
-                    r_dn_cart, r_dn_cart_
-                )
-        grad_J2_dn.append(grad_J2_dn_buf)
-    grad_J2_dn = np.array(grad_J2_dn)
+        )(r_j_carts)
+        # Calculate norms and reshape for broadcasting
+        norms = jnp.linalg.norm(r_i_cart - r_j_carts, axis=1)
+        norms = norms[:, None]  # Reshape to (n, 1) for broadcasting with grads
+        non_zero_laplacian = jnp.where(norms != 0, laplacian, 0)
+        return jnp.sum(non_zero_laplacian, axis=0)
 
-    sum_laplacian_J2 = 0.0
+    # Apply the above function to all r_i_cart
+    def laplacian_vmap_two_body_jastrow_anti_parallel_spins(r_i_carts, r_j_carts):
+        return vmap(
+            lambda r_i_cart: compute_laplacian_anti_parallel(r_i_cart, r_j_carts)
+        )(r_i_carts)
+
+    # Function to compute the sum of gradients for each r_j_cart
+    def compute_laplacian_parallel(r_i_cart, r_j_carts):
+        laplacian = vmap(
+            lambda r_j_cart: jnp.diag(
+                jacrev(grad(J2_parallel_spins, argnums=0), argnums=0)(
+                    r_i_cart, r_j_cart
+                )
+            )
+        )(r_j_carts)
+        # Calculate norms and reshape for broadcasting
+        norms = jnp.linalg.norm(r_i_cart - r_j_carts, axis=1)
+        norms = norms[:, None]  # Reshape to (n, 1) for broadcasting with grads
+        non_zero_laplacian = jnp.where(norms != 0, laplacian, 0)
+        return jnp.sum(non_zero_laplacian, axis=0)
+
+    # Apply the above function to all r_i_cart
+    def laplacian_vmap_two_body_jastrow_parallel_spins(r_i_carts, r_j_carts):
+        return vmap(lambda r_i_cart: compute_laplacian_parallel(r_i_cart, r_j_carts))(
+            r_i_carts
+        )
+
+    laplacian_J2_up = laplacian_vmap_two_body_jastrow_anti_parallel_spins(
+        r_up_carts, r_dn_carts
+    ) + laplacian_vmap_two_body_jastrow_parallel_spins(r_up_carts, r_up_carts)
+
+    laplacian_J2_dn = laplacian_vmap_two_body_jastrow_anti_parallel_spins(
+        r_dn_carts, r_up_carts
+    ) + laplacian_vmap_two_body_jastrow_parallel_spins(r_dn_carts, r_dn_carts)
+
+    sum_laplacian_J2 = jnp.sum(laplacian_J2_up) + jnp.sum(laplacian_J2_dn)
 
     return grad_J2_up, grad_J2_dn, sum_laplacian_J2
 
@@ -634,7 +717,7 @@ if __name__ == "__main__":
     num_r_up_cart_samples = 5
     num_r_dn_cart_samples = 2
 
-    r_cart_min, r_cart_max = -1.0, 1.0
+    r_cart_min, r_cart_max = -3.0, 3.0
 
     r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(
         num_r_up_cart_samples, 3
@@ -644,7 +727,7 @@ if __name__ == "__main__":
     ) + r_cart_min
 
     jastrow_two_body_data = Jastrow_two_body_data(
-        param_anti_parallel_spin=1.5, param_parallel_spin=1.0
+        param_anti_parallel_spin=1.0, param_parallel_spin=1.0
     )
     jastrow_two_body_debug = compute_Jastrow_two_body_api(
         jastrow_two_body_data=jastrow_two_body_data,

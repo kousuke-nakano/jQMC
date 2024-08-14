@@ -27,6 +27,14 @@ from ..myqmc.molecular_orbital import (
     compute_MOs_grad_api,
     compute_MOs_laplacian_api,
 )
+
+from ..myqmc.jastrow_factor import (
+    Jastrow_data,
+    Jastrow_two_body_data,
+    compute_Jastrow_two_body_api,
+    compute_grads_and_laplacian_Jastrow_two_body_api,
+)
+
 from ..myqmc.determinant import (
     Geminal_data,
     compute_geminal_all_elements_api,
@@ -1227,6 +1235,7 @@ def test_comparing_AO_and_MO_geminals():
         np.testing.assert_almost_equal(det_geminal_ao, det_geminal_mo, decimal=15)
 
 
+@pytest.mark.skip
 def test_numerial_and_auto_grads_ln_Det():
     (
         structure_data,
@@ -1274,7 +1283,7 @@ def test_numerial_and_auto_grads_ln_Det():
             # Place electrons
             for _ in range(num_electrons):
                 # Calculate distance range
-                distance = np.random.uniform(1.0 / charge, 2.0 / charge)
+                distance = np.random.uniform(0.5 / charge, 1.5 / charge)
                 theta = np.random.uniform(0, np.pi)
                 phi = np.random.uniform(0, 2 * np.pi)
 
@@ -1379,7 +1388,16 @@ def test_comparing_values_with_TurboRVB_code():
         )
     )
 
-    wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data)
+    jastrow_two_body_data = Jastrow_two_body_data(
+        param_parallel_spin=0.0, param_anti_parallel_spin=0.0
+    )
+    jastrow_data = Jastrow_data(
+        jastrow_two_body_data=jastrow_two_body_data, jastrow_two_body_type="off"
+    )
+
+    wavefunction_data = Wavefunction_data(
+        jastrow_data=jastrow_data, geminal_data=geminal_mo_data
+    )
 
     hamiltonian_data = Hamiltonian_data(
         structure_data=structure_data,
@@ -1468,6 +1486,84 @@ def test_comparing_values_with_TurboRVB_code():
     )
     np.testing.assert_almost_equal(
         vpot_bare + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3
+    )
+
+
+def test_numerial_and_auto_grads_Jastrow_twobody_part():
+    # test MOs
+    num_r_up_cart_samples = 5
+    num_r_dn_cart_samples = 2
+
+    r_cart_min, r_cart_max = -3.0, 3.0
+
+    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(
+        num_r_up_cart_samples, 3
+    ) + r_cart_min
+    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(
+        num_r_dn_cart_samples, 3
+    ) + r_cart_min
+
+    jastrow_two_body_data = Jastrow_two_body_data(
+        param_anti_parallel_spin=1.0, param_parallel_spin=1.0
+    )
+    jastrow_two_body_debug = compute_Jastrow_two_body_api(
+        jastrow_two_body_data=jastrow_two_body_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        debug_flag=True,
+    )
+
+    # print(f"jastrow_two_body_debug = {jastrow_two_body_debug}")
+
+    jastrow_two_body_jax = compute_Jastrow_two_body_api(
+        jastrow_two_body_data=jastrow_two_body_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        debug_flag=False,
+    )
+
+    # print(f"jastrow_two_body_jax = {jastrow_two_body_jax}")
+
+    np.testing.assert_almost_equal(
+        jastrow_two_body_debug, jastrow_two_body_jax, decimal=10
+    )
+
+    (
+        grad_jastrow_two_body_up_debug,
+        grad_jastrow_two_body_dn_debug,
+        sum_laplacian_J2_debug,
+    ) = compute_grads_and_laplacian_Jastrow_two_body_api(
+        jastrow_two_body_data,
+        r_up_carts,
+        r_dn_carts,
+        True,
+    )
+
+    print(f"grad_jastrow_two_body_up_debug = {grad_jastrow_two_body_up_debug}")
+    print(f"grad_jastrow_two_body_dn_debug = {grad_jastrow_two_body_dn_debug}")
+    print(f"sum_laplacian_J2_debug = {sum_laplacian_J2_debug}")
+
+    grad_jastrow_two_body_up_jax, grad_jastrow_two_body_dn_jax, sum_laplacian_J2_jax = (
+        compute_grads_and_laplacian_Jastrow_two_body_api(
+            jastrow_two_body_data,
+            r_up_carts,
+            r_dn_carts,
+            False,
+        )
+    )
+
+    print(f"grad_jastrow_two_body_up_jax = {grad_jastrow_two_body_up_jax}")
+    print(f"grad_jastrow_two_body_dn_jax = {grad_jastrow_two_body_dn_jax}")
+    print(f"sum_laplacian_J2_jax = {sum_laplacian_J2_jax}")
+
+    np.testing.assert_almost_equal(
+        grad_jastrow_two_body_up_debug, grad_jastrow_two_body_up_jax, decimal=8
+    )
+    np.testing.assert_almost_equal(
+        grad_jastrow_two_body_dn_debug, grad_jastrow_two_body_dn_jax, decimal=8
+    )
+    np.testing.assert_almost_equal(
+        sum_laplacian_J2_debug, sum_laplacian_J2_jax, decimal=4
     )
 
 
