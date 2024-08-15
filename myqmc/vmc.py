@@ -352,18 +352,9 @@ class MCMC:
 
         logger.info(f"acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
 
-    def get_e_L(self, num_mcmc_warmup_steps=100):
-        """
-        Args:
-            num_mcmc_steps (int): the number of total mcmc steps
-            continuation (int): 1 = VMC run from sctach, 0 = VMC run continuataion
-        Returns:
-            None
-        """
-        logger.info(
-            f"e_L is {np.average(self.__stored_local_energy[num_mcmc_warmup_steps:])} +- {np.sqrt(np.var(self.__stored_local_energy[num_mcmc_warmup_steps:]))} Ha."
-        )
-        # logger.info(f"all e_L is {self.__stored_local_energy[50:]} Ha.")
+    @property
+    def e_L(self):
+        return self.__stored_local_energy
 
 
 if __name__ == "__main__":
@@ -410,13 +401,40 @@ if __name__ == "__main__":
         wavefunction_data=wavefunction_data,
     )
 
+    num_mcmc_warmup_steps = 50
+    num_mcmc_bin_blocks = 10
     mpi_seed = 34356 * (rank + 1)
 
     logger.info(f"mcmc_seed for MPI-rank={rank} is {mpi_seed}.")
+    if rank == 0:
+        logger.info(f"num_mcmc_warmup_steps={num_mcmc_warmup_steps}.")
+        logger.info(f"num_mcmc_bin_blocks={num_mcmc_bin_blocks}.")
 
     mcmc = MCMC(hamiltonian_data=hamiltonian_data, mcmc_seed=mpi_seed)
     mcmc.run(num_mcmc_steps=100)
-    mcmc.analysis(num_mcmc_warmup_steps=100, num_mcmc_bin_blocks=10)
+    e_L = mcmc.e_L[num_mcmc_warmup_steps:]
+
+    e_L_split = np.array_split(e_L, num_mcmc_bin_blocks)
+    e_L_binned = [np.average(e_list) for e_list in e_L_split]
+
+    logger.info(f"e_L_binned for MPI-rank={rank} is {e_L_binned}.")
+
+    e_L_binned = comm.reduce(e_L_binned, op=MPI.SUM, root=0)
+
+    if rank == 0:
+        logger.info(f"e_L_binned = {e_L_binned}.")
+        # jackknife implementation
+        # https://www2.yukawa.kyoto-u.ac.jp/~etsuko.itou/old-HP/Notes/Jackknife-method.pdf
+        e_L_jackknife_binned = [
+            np.average(np.delete(e_L_binned, i)) for i in range(len(e_L_binned))
+        ]
+
+        logger.info(f"e_L_jackknife_binned  = {e_L_jackknife_binned}.")
+
+        e_L_mean = np.average(e_L_jackknife_binned)
+        e_L_std = np.sqrt(len(e_L_binned) - 1) * np.std(e_L_jackknife_binned)
+
+        logger.info(f"e_L = {e_L_mean} +- {e_L_std} Ha.")
 
     """
 
