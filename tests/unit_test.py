@@ -1235,7 +1235,7 @@ def test_comparing_AO_and_MO_geminals():
         np.testing.assert_almost_equal(det_geminal_ao, det_geminal_mo, decimal=15)
 
 
-@pytest.mark.skip
+# @pytest.mark.skip
 def test_numerial_and_auto_grads_ln_Det():
     (
         structure_data,
@@ -1253,125 +1253,121 @@ def test_numerial_and_auto_grads_ln_Det():
     num_electron_up = geminal_mo_data.num_electron_up
     num_electron_dn = geminal_mo_data.num_electron_dn
 
-    trial = 3
-    for _ in range(trial):
-        # Initialization
-        r_up_carts = []
-        r_dn_carts = []
+    # Initialization
+    r_up_carts = []
+    r_dn_carts = []
 
-        total_electrons = 0
+    total_electrons = 0
 
-        if coulomb_potential_data.ecp_flag:
-            charges = np.array(structure_data.atomic_numbers) - np.array(
-                coulomb_potential_data.z_cores
-            )
-        else:
-            charges = np.array(structure_data.atomic_numbers)
+    if coulomb_potential_data.ecp_flag:
+        charges = np.array(structure_data.atomic_numbers) - np.array(
+            coulomb_potential_data.z_cores
+        )
+    else:
+        charges = np.array(structure_data.atomic_numbers)
 
-        coords = structure_data.positions_cart
+    coords = structure_data.positions_cart
 
-        # Place electrons around each nucleus
-        for i in range(len(coords)):
-            charge = charges[i]
-            num_electrons = int(
-                np.round(charge)
-            )  # Number of electrons to place based on the charge
+    # Place electrons around each nucleus
+    for i in range(len(coords)):
+        charge = charges[i]
+        num_electrons = int(
+            np.round(charge)
+        )  # Number of electrons to place based on the charge
 
-            # Retrieve the position coordinates
-            x, y, z = coords[i]
+        # Retrieve the position coordinates
+        x, y, z = coords[i]
 
-            # Place electrons
-            for _ in range(num_electrons):
-                # Calculate distance range
-                distance = np.random.uniform(0.5 / charge, 1.5 / charge)
-                theta = np.random.uniform(0, np.pi)
-                phi = np.random.uniform(0, 2 * np.pi)
+        # Place electrons
+        for _ in range(num_electrons):
+            # Calculate distance range
+            distance = np.random.uniform(0.5 / charge, 1.5 / charge)
+            theta = np.random.uniform(0, np.pi)
+            phi = np.random.uniform(0, 2 * np.pi)
 
-                # Convert spherical to Cartesian coordinates
-                dx = distance * np.sin(theta) * np.cos(phi)
-                dy = distance * np.sin(theta) * np.sin(phi)
-                dz = distance * np.cos(theta)
+            # Convert spherical to Cartesian coordinates
+            dx = distance * np.sin(theta) * np.cos(phi)
+            dy = distance * np.sin(theta) * np.sin(phi)
+            dz = distance * np.cos(theta)
 
-                # Position of the electron
-                electron_position = np.array([x + dx, y + dy, z + dz])
+            # Position of the electron
+            electron_position = np.array([x + dx, y + dy, z + dz])
 
-                # Assign spin
-                if len(r_up_carts) < num_electron_up:
-                    r_up_carts.append(electron_position)
-                else:
-                    r_dn_carts.append(electron_position)
+            # Assign spin
+            if len(r_up_carts) < num_electron_up:
+                r_up_carts.append(electron_position)
+            else:
+                r_dn_carts.append(electron_position)
 
-            total_electrons += num_electrons
+        total_electrons += num_electrons
 
-        # Handle surplus electrons
-        remaining_up = num_electron_up - len(r_up_carts)
-        remaining_dn = num_electron_dn - len(r_dn_carts)
+    # Handle surplus electrons
+    remaining_up = num_electron_up - len(r_up_carts)
+    remaining_dn = num_electron_dn - len(r_dn_carts)
 
-        # Randomly place any remaining electrons
-        for _ in range(remaining_up):
-            r_up_carts.append(
-                np.random.choice(coords) + np.random.normal(scale=0.1, size=3)
-            )
-        for _ in range(remaining_dn):
-            r_dn_carts.append(
-                np.random.choice(coords) + np.random.normal(scale=0.1, size=3)
-            )
-
-        r_up_carts = np.array(r_up_carts)
-        r_dn_carts = np.array(r_dn_carts)
-
-        mo_lambda_matrix_paired, mo_lambda_matrix_unpaired = np.hsplit(
-            geminal_mo_data.lambda_matrix, [geminal_mo_data.orb_num_dn]
+    # Randomly place any remaining electrons
+    for _ in range(remaining_up):
+        r_up_carts.append(
+            np.random.choice(coords) + np.random.normal(scale=0.1, size=3)
+        )
+    for _ in range(remaining_dn):
+        r_dn_carts.append(
+            np.random.choice(coords) + np.random.normal(scale=0.1, size=3)
         )
 
-        # generate matrices for the test
-        ao_lambda_matrix_paired = np.dot(
-            mos_data_up.mo_coefficients.T,
-            np.dot(mo_lambda_matrix_paired, mos_data_dn.mo_coefficients),
-        )
-        ao_lambda_matrix_unpaired = np.dot(
-            mos_data_up.mo_coefficients.T, mo_lambda_matrix_unpaired
-        )
-        ao_lambda_matrix = np.hstack(
-            [ao_lambda_matrix_paired, ao_lambda_matrix_unpaired]
-        )
+    r_up_carts = np.array(r_up_carts)
+    r_dn_carts = np.array(r_dn_carts)
 
-        geminal_ao_data = Geminal_data(
-            num_electron_up=num_electron_up,
-            num_electron_dn=num_electron_dn,
-            orb_data_up_spin=aos_data,
-            orb_data_dn_spin=aos_data,
-            compute_orb_api=compute_AOs_api,
-            lambda_matrix=ao_lambda_matrix,
-        )
+    mo_lambda_matrix_paired, mo_lambda_matrix_unpaired = np.hsplit(
+        geminal_mo_data.lambda_matrix, [geminal_mo_data.orb_num_dn]
+    )
 
-        grad_ln_D_up_numerical, grad_ln_D_dn_numerical, sum_laplacian_ln_D_numerical = (
-            compute_grads_and_laplacian_ln_Det_api(
-                geminal_data=geminal_ao_data,
-                r_up_carts=r_up_carts,
-                r_dn_carts=r_dn_carts,
-                debug_flag=True,
-            )
-        )
+    # generate matrices for the test
+    ao_lambda_matrix_paired = np.dot(
+        mos_data_up.mo_coefficients.T,
+        np.dot(mo_lambda_matrix_paired, mos_data_dn.mo_coefficients),
+    )
+    ao_lambda_matrix_unpaired = np.dot(
+        mos_data_up.mo_coefficients.T, mo_lambda_matrix_unpaired
+    )
+    ao_lambda_matrix = np.hstack([ao_lambda_matrix_paired, ao_lambda_matrix_unpaired])
 
-        grad_ln_D_up_auto, grad_ln_D_dn_auto, sum_laplacian_ln_D_auto = (
-            compute_grads_and_laplacian_ln_Det_api(
-                geminal_data=geminal_ao_data,
-                r_up_carts=r_up_carts,
-                r_dn_carts=r_dn_carts,
-                debug_flag=False,
-            )
-        )
+    geminal_ao_data = Geminal_data(
+        num_electron_up=num_electron_up,
+        num_electron_dn=num_electron_dn,
+        orb_data_up_spin=aos_data,
+        orb_data_dn_spin=aos_data,
+        compute_orb_api=compute_AOs_api,
+        lambda_matrix=ao_lambda_matrix,
+    )
 
-        np.testing.assert_almost_equal(
-            grad_ln_D_up_numerical, grad_ln_D_up_auto, decimal=3
+    grad_ln_D_up_numerical, grad_ln_D_dn_numerical, sum_laplacian_ln_D_numerical = (
+        compute_grads_and_laplacian_ln_Det_api(
+            geminal_data=geminal_ao_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+            debug_flag=True,
         )
-        np.testing.assert_almost_equal(
-            grad_ln_D_dn_numerical, grad_ln_D_dn_auto, decimal=3
+    )
+
+    grad_ln_D_up_auto, grad_ln_D_dn_auto, sum_laplacian_ln_D_auto = (
+        compute_grads_and_laplacian_ln_Det_api(
+            geminal_data=geminal_ao_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+            debug_flag=False,
         )
-        np.testing.assert_almost_equal(
-            sum_laplacian_ln_D_numerical, sum_laplacian_ln_D_auto, decimal=1
-        )
+    )
+
+    np.testing.assert_almost_equal(
+        np.array(grad_ln_D_up_numerical), np.array(grad_ln_D_up_auto), decimal=6
+    )
+    np.testing.assert_almost_equal(
+        np.array(grad_ln_D_dn_numerical), np.array(grad_ln_D_dn_auto), decimal=6
+    )
+    np.testing.assert_almost_equal(
+        sum_laplacian_ln_D_numerical, sum_laplacian_ln_D_auto, decimal=1
+    )
 
 
 def test_comparing_values_with_TurboRVB_code():

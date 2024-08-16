@@ -57,7 +57,7 @@ class Geminal_data:
     compute_orb_api: Callable[..., npt.NDArray[np.float64]] = struct.field(
         pytree_node=False
     )
-    lambda_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True)
+    lambda_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=False)
 
     def __post_init__(self) -> None:
         if self.lambda_matrix.shape != (
@@ -333,22 +333,23 @@ def compute_grads_and_laplacian_ln_Det_debug(
     float | complex,
 ]:
 
-    #############################################################
-    # Gradients part
-    #############################################################
-
-    diff_h = 1.0e-5  # for grad
-
     det_geminal = compute_det_geminal_all_elements_api(
         geminal_data=geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
 
+    #############################################################
+    # Gradients part
+    #############################################################
+
+    diff_h = 1.0e-5  # for grad
+
     # grad up
     grad_x_up = []
     grad_y_up = []
     grad_z_up = []
+
     for r_i, _ in enumerate(r_up_carts):
         diff_p_x_r_up2_carts = r_up_carts.copy()
         diff_p_y_r_up2_carts = r_up_carts.copy()
@@ -396,6 +397,7 @@ def compute_grads_and_laplacian_ln_Det_debug(
             r_dn_carts=r_dn_carts,
         )
 
+        """ mathematically correct, but numerically unstable.
         grad_x_up.append(
             (np.log(np.abs(det_geminal_p_x_up2)) - np.log(np.abs(det_geminal_m_x_up2)))
             / (2.0 * diff_h)
@@ -408,11 +410,18 @@ def compute_grads_and_laplacian_ln_Det_debug(
             (np.log(np.abs(det_geminal_p_z_up2)) - np.log(np.abs(det_geminal_m_z_up2)))
             / (2.0 * diff_h)
         )
+        """
+
+        # compute f'(x)
+        grad_x_up.append((det_geminal_p_x_up2 - det_geminal_m_x_up2) / (2.0 * diff_h))
+        grad_y_up.append((det_geminal_p_y_up2 - det_geminal_m_y_up2) / (2.0 * diff_h))
+        grad_z_up.append((det_geminal_p_z_up2 - det_geminal_m_z_up2) / (2.0 * diff_h))
 
     # grad dn
     grad_x_dn = []
     grad_y_dn = []
     grad_z_dn = []
+
     for r_i, _ in enumerate(r_dn_carts):
         diff_p_x_r_dn2_carts = r_dn_carts.copy()
         diff_p_y_r_dn2_carts = r_dn_carts.copy()
@@ -460,6 +469,7 @@ def compute_grads_and_laplacian_ln_Det_debug(
             r_dn_carts=diff_m_z_r_dn2_carts,
         )
 
+        """ mathematically correct, but numerically unstable.
         grad_x_dn.append(
             (np.log(np.abs(det_geminal_p_x_dn2)) - np.log(np.abs(det_geminal_m_x_dn2)))
             / (2.0 * diff_h)
@@ -472,21 +482,22 @@ def compute_grads_and_laplacian_ln_Det_debug(
             (np.log(np.abs(det_geminal_p_z_dn2)) - np.log(np.abs(det_geminal_m_z_dn2)))
             / (2.0 * diff_h)
         )
+        """
 
-    grad_ln_D_up = np.array([grad_x_up, grad_y_up, grad_z_up]).T
-    grad_ln_D_dn = np.array([grad_x_dn, grad_y_dn, grad_z_dn]).T
+        # compute f'(x)
+        grad_x_dn.append((det_geminal_p_x_dn2 - det_geminal_m_x_dn2) / (2.0 * diff_h))
+        grad_y_dn.append((det_geminal_p_y_dn2 - det_geminal_m_y_dn2) / (2.0 * diff_h))
+        grad_z_dn.append((det_geminal_p_z_dn2 - det_geminal_m_z_dn2) / (2.0 * diff_h))
+
+    # since d/dx ln |f(x)| = f'(x) / f(x)
+    grad_ln_D_up = np.array([grad_x_up, grad_y_up, grad_z_up]).T / det_geminal
+    grad_ln_D_dn = np.array([grad_x_dn, grad_y_dn, grad_z_dn]).T / det_geminal
 
     #############################################################
     # Laplacian part
     #############################################################
 
-    diff_h2 = 1.0e-4  # for laplacian
-
-    det_geminal = compute_det_geminal_all_elements_api(
-        geminal_data=geminal_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
-    )
+    diff_h2 = 1.0e-3  # for laplacian
 
     sum_laplacian_ln_D = 0.0
 
@@ -538,6 +549,7 @@ def compute_grads_and_laplacian_ln_Det_debug(
             r_dn_carts=r_dn_carts,
         )
 
+        """ mathematically correct, but numerically unstablle
         gradgrad_x_up = (
             np.log(np.abs(det_geminal_p_x_up2))
             + np.log(np.abs(det_geminal_m_x_up2))
@@ -555,8 +567,31 @@ def compute_grads_and_laplacian_ln_Det_debug(
             + np.log(np.abs(det_geminal_m_z_up2))
             - 2.0 * np.log(np.abs(det_geminal))
         ) / (diff_h2**2)
+        """
 
-        sum_laplacian_ln_D += gradgrad_x_up + gradgrad_y_up + gradgrad_z_up
+        # compute f''(x)
+        gradgrad_x_up = (
+            det_geminal_p_x_up2 + det_geminal_m_x_up2 - 2.0 * det_geminal
+        ) / (diff_h2**2)
+
+        gradgrad_y_up = (
+            det_geminal_p_y_up2 + det_geminal_m_y_up2 - 2.0 * det_geminal
+        ) / (diff_h2**2)
+
+        gradgrad_z_up = (
+            det_geminal_p_z_up2 + det_geminal_m_z_up2 - 2.0 * det_geminal
+        ) / (diff_h2**2)
+
+        _grad_x_up = grad_x_up[r_i]
+        _grad_y_up = grad_y_up[r_i]
+        _grad_z_up = grad_z_up[r_i]
+
+        # since d^2/dx^2 ln(|f(x)|) = (f''(x)*f(x) - f'(x)^2) / f(x)^2
+        sum_laplacian_ln_D += (
+            (gradgrad_x_up * det_geminal - _grad_x_up**2) / det_geminal**2
+            + (gradgrad_y_up * det_geminal - _grad_y_up**2) / det_geminal**2
+            + (gradgrad_z_up * det_geminal - _grad_z_up**2) / det_geminal**2
+        )
 
     # laplacians dn
     for r_i, _ in enumerate(r_dn_carts):
@@ -606,6 +641,7 @@ def compute_grads_and_laplacian_ln_Det_debug(
             r_dn_carts=diff_m_z_r_dn2_carts,
         )
 
+        """ mathematically correct, but numerically unstable
         gradgrad_x_dn = (
             np.log(np.abs(det_geminal_p_x_dn2))
             + np.log(np.abs(det_geminal_m_x_dn2))
@@ -623,8 +659,31 @@ def compute_grads_and_laplacian_ln_Det_debug(
             + np.log(np.abs(det_geminal_m_z_dn2))
             - 2.0 * np.log(np.abs(det_geminal))
         ) / (diff_h2**2)
+        """
 
-        sum_laplacian_ln_D += gradgrad_x_dn + gradgrad_y_dn + gradgrad_z_dn
+        # compute f''(x)
+        gradgrad_x_dn = (
+            det_geminal_p_x_dn2 + det_geminal_m_x_dn2 - 2.0 * det_geminal
+        ) / (diff_h2**2)
+
+        gradgrad_y_dn = (
+            det_geminal_p_y_dn2 + det_geminal_m_y_dn2 - 2.0 * det_geminal
+        ) / (diff_h2**2)
+
+        gradgrad_z_dn = (
+            det_geminal_p_z_dn2 + det_geminal_m_z_dn2 - 2.0 * det_geminal
+        ) / (diff_h2**2)
+
+        _grad_x_dn = grad_x_dn[r_i]
+        _grad_y_dn = grad_y_dn[r_i]
+        _grad_z_dn = grad_z_dn[r_i]
+
+        # since d^2/dx^2 ln(|f(x)|) = (f''(x)*f(x) - f'(x)^2) / f(x)^2
+        sum_laplacian_ln_D += (
+            (gradgrad_x_dn * det_geminal - _grad_x_dn**2) / det_geminal**2
+            + (gradgrad_y_dn * det_geminal - _grad_y_dn**2) / det_geminal**2
+            + (gradgrad_z_dn * det_geminal - _grad_z_dn**2) / det_geminal**2
+        )
 
     # Returning answers
     return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D
