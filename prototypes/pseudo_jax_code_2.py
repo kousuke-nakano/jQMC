@@ -1,13 +1,11 @@
 # import dataclasses
-import numpy as np
-import numpy.typing as npt
-
 # flax, jax
 import jax
 import jax.numpy as jnp
-from jax import lax
+import numpy as np
+import numpy.typing as npt
 from flax import struct
-from jax import grad, jit
+from jax import grad, jit, lax
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -148,7 +146,6 @@ class Hamiltonian_data:
 
 @jit
 def compute_local_energy(hamiltonian_data: Hamiltonian_data, A_old, r_old, flag, r):
-
     laplacian_data = hamiltonian_data.laplacian_data
     coulomb_data = hamiltonian_data.coulomb_data
     e_L = (
