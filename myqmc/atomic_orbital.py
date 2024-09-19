@@ -4,22 +4,21 @@
 
 # python modules
 from dataclasses import dataclass, field
-import numpy as np
-from numpy import linalg as LA
-import numpy.typing as npt
-from logging import getLogger, StreamHandler, Formatter
-
-# scipy
-import scipy  # type: ignore
+from logging import Formatter, StreamHandler, getLogger
 
 # jax modules
 # from jax.debug import print as jprint
 import jax
-from jax import vmap, jit
-from jax import jacrev, grad
-import jax.scipy as jscipy
 import jax.numpy as jnp
+import jax.scipy as jscipy
+import numpy as np
+import numpy.typing as npt
+
+# scipy
+import scipy  # type: ignore
 from flax import struct
+from jax import grad, jacrev, jit, vmap
+from numpy import linalg as LA
 
 # jaxQMC module
 from .structure import Structure_data
@@ -59,14 +58,11 @@ class AOs_data:
     magnetic_quantum_numbers: list[int] = struct.field(pytree_node=False)
 
     def __post_init__(self) -> None:
-
         if len(self.nucleus_index) != self.num_ao:
             logger.error("dim. of self.nucleus_index is wrong")
             raise ValueError
         if len(np.unique(self.orbital_indices)) != self.num_ao:
-            logger.error(
-                f"num_ao={self.num_ao} and/or num_ao_prim={self.num_ao_prim} is wrong"
-            )
+            logger.error(f"num_ao={self.num_ao} and/or num_ao_prim={self.num_ao_prim} is wrong")
         if len(self.exponents) != self.num_ao_prim:
             logger.error("dim. of self.exponents is wrong")
             raise ValueError
@@ -82,15 +78,11 @@ class AOs_data:
 
     @property
     def atomic_center_carts(self):
-        return np.array(
-            [self.structure_data.positions_cart[i] for i in self.nucleus_index]
-        )
+        return np.array([self.structure_data.positions_cart[i] for i in self.nucleus_index])
 
     @property
     def atomic_center_carts_jnp(self):
-        return jnp.array(
-            [self.structure_data.positions_cart[i] for i in self.nucleus_index]
-        )
+        return jnp.array([self.structure_data.positions_cart[i] for i in self.nucleus_index])
 
     @property
     def atomic_center_carts_prim(self):
@@ -98,9 +90,7 @@ class AOs_data:
 
     @property
     def atomic_center_carts_prim_jnp(self):
-        return jnp.array(
-            [self.atomic_center_carts_jnp[i] for i in self.orbital_indices]
-        )
+        return jnp.array([self.atomic_center_carts_jnp[i] for i in self.orbital_indices])
 
     @property
     def angular_momentums_prim(self):
@@ -112,15 +102,11 @@ class AOs_data:
 
     @property
     def magnetic_quantum_numbers_prim(self):
-        return np.array(
-            [self.magnetic_quantum_numbers[i] for i in self.orbital_indices]
-        )
+        return np.array([self.magnetic_quantum_numbers[i] for i in self.orbital_indices])
 
     @property
     def magnetic_quantum_numbers_prim_jnp(self):
-        return jnp.array(
-            [self.magnetic_quantum_numbers[i] for i in self.orbital_indices]
-        )
+        return jnp.array([self.magnetic_quantum_numbers[i] for i in self.orbital_indices])
 
     @property
     def exponents_jnp(self):
@@ -165,9 +151,7 @@ class AOs_data_debug:
             logger.error("dim. of atomic_center_cart is wrong")
             raise ValueError
         if len(np.unique(self.orbital_indices)) != self.num_ao:
-            logger.error(
-                f"num_ao={self.num_ao} and/or num_ao_prim={self.num_ao_prim} is wrong"
-            )
+            logger.error(f"num_ao={self.num_ao} and/or num_ao_prim={self.num_ao_prim} is wrong")
         if len(self.exponents) != self.num_ao_prim:
             logger.error("dim. of self.exponents is wrong")
             raise ValueError
@@ -199,15 +183,11 @@ class AOs_data_debug:
 
     @property
     def magnetic_quantum_numbers_prim(self):
-        return np.array(
-            [self.magnetic_quantum_numbers[i] for i in self.orbital_indices]
-        )
+        return np.array([self.magnetic_quantum_numbers[i] for i in self.orbital_indices])
 
     @property
     def magnetic_quantum_numbers_prim_jnp(self):
-        return jnp.array(
-            [self.magnetic_quantum_numbers[i] for i in self.orbital_indices]
-        )
+        return jnp.array([self.magnetic_quantum_numbers[i] for i in self.orbital_indices])
 
     @property
     def exponents_jnp(self):
@@ -231,10 +211,10 @@ def compute_AOs_laplacian_api(
         r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
         debug_flag: if True, numerical derivatives are computed for debuging purpose
 
-    Returns:
+    Returns
+    -------
         An array containing laplacians of the AOs at r_carts. The dim. is (num_ao, N_e)
     """
-
     if debug_flag:
         return compute_AOs_laplacian_numerical_grad(aos_data, r_carts)
     else:
@@ -245,7 +225,6 @@ def compute_AOs_laplacian_api(
 def compute_AOs_laplacian_jax_auto_grad(
     aos_data: AOs_data | AOs_data_debug, r_carts: npt.NDArray[np.float64]
 ) -> npt.NDArray[np.float64 | np.complex128]:
-
     # expansion with respect to the primitive AOs
     atomic_center_carts_dup = aos_data.atomic_center_carts_prim_jnp
     angular_momentums_dup = aos_data.angular_momentums_prim_jnp
@@ -277,9 +256,7 @@ def compute_AOs_laplacian_jax_auto_grad(
     unique_indices = np.unique(aos_data.orbital_indices)
     for ui in unique_indices:
         mask = aos_data.orbital_indices == ui
-        ao_matrix_laplacian = ao_matrix_laplacian.at[ui].set(
-            AOs_laplacian_dup[mask].sum(axis=0)
-        )
+        ao_matrix_laplacian = ao_matrix_laplacian.at[ui].set(AOs_laplacian_dup[mask].sum(axis=0))
 
     return ao_matrix_laplacian
 
@@ -316,15 +293,9 @@ def compute_AOs_laplacian_numerical_grad(
     diff_m_z_r_carts[:, 2] -= diff_h
     ao_matrix_diff_m_z = compute_AOs_api(aos_data, diff_m_z_r_carts, debug_flag=True)
 
-    ao_matrix_grad2_x = (ao_matrix_diff_p_x + ao_matrix_diff_m_x - 2 * ao_matrix) / (
-        diff_h
-    ) ** 2
-    ao_matrix_grad2_y = (ao_matrix_diff_p_y + ao_matrix_diff_m_y - 2 * ao_matrix) / (
-        diff_h
-    ) ** 2
-    ao_matrix_grad2_z = (ao_matrix_diff_p_z + ao_matrix_diff_m_z - 2 * ao_matrix) / (
-        diff_h
-    ) ** 2
+    ao_matrix_grad2_x = (ao_matrix_diff_p_x + ao_matrix_diff_m_x - 2 * ao_matrix) / (diff_h) ** 2
+    ao_matrix_grad2_y = (ao_matrix_diff_p_y + ao_matrix_diff_m_y - 2 * ao_matrix) / (diff_h) ** 2
+    ao_matrix_grad2_z = (ao_matrix_diff_p_z + ao_matrix_diff_m_z - 2 * ao_matrix) / (diff_h) ** 2
 
     ao_matrix_laplacian = ao_matrix_grad2_x + ao_matrix_grad2_y + ao_matrix_grad2_z
 
@@ -354,17 +325,17 @@ def compute_AOs_grad_api(
         r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
         debug_flag: if True, numerical derivatives are computed for debuging purpose
 
-    Returns:
+    Returns
+    -------
         tuple containing gradients of the AOs at r_carts. (grad_x, grad_y, grad_z). The dim. of each matrix is (num_ao, N_e)
     """
-
     if debug_flag:
-        ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z = (
-            compute_AOs_numerical_grad(aos_data, r_carts)
+        ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z = compute_AOs_numerical_grad(
+            aos_data, r_carts
         )
     else:
-        ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z = (
-            compute_AOs_jax_auto_grad(aos_data, r_carts)
+        ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z = compute_AOs_jax_auto_grad(
+            aos_data, r_carts
         )
 
     if ao_matrix_grad_x.shape != (aos_data.num_ao, len(r_carts)):
@@ -396,7 +367,6 @@ def compute_AOs_jax_auto_grad(
     npt.NDArray[np.float64 | np.complex128],
     npt.NDArray[np.float64 | np.complex128],
 ]:
-
     # expansion with respect to the primitive AOs
     atomic_center_carts_dup = aos_data.atomic_center_carts_prim_jnp
     angular_momentums_dup = aos_data.angular_momentums_prim_jnp
@@ -450,9 +420,7 @@ def compute_AOs_jax_auto_grad_old(
     # Gradients of AOs (autograd via google-JAX)
     # Note: This method gives correct answers, but slow because the full Jacobian calculation is not needed for computing gradients.
     # grad should be pluged into compute_AOs_jax() in the future for accelaration.
-    ao_matrix_jacrev = jacrev(compute_AOs_api, argnums=1)(
-        aos_data, r_carts, debug_flag=False
-    )
+    ao_matrix_jacrev = jacrev(compute_AOs_api, argnums=1)(aos_data, r_carts, debug_flag=False)
 
     ao_matrix_grad_x_ = ao_matrix_jacrev[:, :, :, 0]
     ao_matrix_grad_y_ = ao_matrix_jacrev[:, :, :, 1]
@@ -519,10 +487,10 @@ def compute_AOs_api(
         r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
         debug_flag: if True, AOs are computed one by one using compute_AO for debuging purpose
 
-    Returns:
+    Returns
+    -------
     Arrays containing values of the AOs at r_carts. (dim: num_ao, N_e)
     """
-
     # jprint(f"AOs:debug_flag={debug_flag}, type={type(debug_flag)}")
 
     if debug_flag:
@@ -549,15 +517,14 @@ def compute_AOs_debug(
         ao_datas (AOs_data | AOs_data_debug): an instance of AOs_data or AOs_data_debug
         r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
 
-    Returns:
+    Returns
+    -------
     Arrays containing values of the AOs at r_carts. (dim: num_ao, N_e)
     """
 
     def compute_each_AO(ao_index):
         atomic_center_cart = aos_data.atomic_center_carts[ao_index]
-        shell_indices = [
-            i for i, v in enumerate(aos_data.orbital_indices) if v == ao_index
-        ]
+        shell_indices = [i for i, v in enumerate(aos_data.orbital_indices) if v == ao_index]
         exponents = [aos_data.exponents[i] for i in shell_indices]
         coefficients = [aos_data.coefficients[i] for i in shell_indices]
         angular_momentum = aos_data.angular_momentums[ao_index]
@@ -573,15 +540,11 @@ def compute_AOs_debug(
             magnetic_quantum_number=magnetic_quantum_number,
         )
 
-        ao_values = np.array(
-            [compute_AO(ao_data=ao_data, r_cart=r_cart) for r_cart in r_carts]
-        )
+        ao_values = np.array([compute_AO(ao_data=ao_data, r_cart=r_cart) for r_cart in r_carts])
 
         return ao_values
 
-    aos_values = np.array(
-        [compute_each_AO(ao_index) for ao_index in range(aos_data.num_ao)]
-    )
+    aos_values = np.array([compute_each_AO(ao_index) for ao_index in range(aos_data.num_ao)])
 
     return aos_values
 
@@ -598,10 +561,10 @@ def compute_AOs_jax(
         r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
         derivative: 0=AOs, 1=grad of AOs, 2=laplacians of AOs
 
-    Returns:
+    Returns
+    -------
     Arrays containing values of the AOs at r_carts. (dim: num_ao, N_e)
     """
-
     # Indices with respect to the contracted AOs
     atomic_center_carts_dup = aos_data.atomic_center_carts_prim_jnp
     angular_momentums_dup = aos_data.angular_momentums_prim_jnp
@@ -666,9 +629,7 @@ class AO_data_debug:
             logger.error("dim. of self.coefficients is wrong")
             raise ValueError
         if self.angular_momentum < np.abs(self.magnetic_quantum_number):
-            logger.error(
-                "angular_momentum(l) is smaller than magnetic_quantum_number(|m|)."
-            )
+            logger.error("angular_momentum(l) is smaller than magnetic_quantum_number(|m|).")
             raise ValueError
 
 
@@ -681,7 +642,8 @@ def compute_AO(ao_data: AO_data_debug, r_cart: list[float]) -> float | complex:
         ao_data (AO_data): an instance of AO_data
         r_cart: Cartesian coordinate of an electron
 
-    Returns:
+    Returns
+    -------
     Value of the AO value at r_cart.
 
     Note:
@@ -704,7 +666,6 @@ def compute_AO(ao_data: AO_data_debug, r_cart: list[float]) -> float | complex:
             \mathcal{N}_{l,\alpha} = \sqrt{\frac{2^{2l+3}(l+1)!(2Z_\alpha)^{l+\frac{3}{2}}}{(2l+2)!\sqrt{\pi}}}.
         Notice that this normalization factor is just for the primitive GTO. The contracted GTO is not explicitly normalized.
     """
-
     R_n = np.array(
         [
             compute_R_n_debug(
@@ -717,10 +678,7 @@ def compute_AO(ao_data: AO_data_debug, r_cart: list[float]) -> float | complex:
         ]
     )
     N_n_l = np.array(
-        [
-            compute_normalization_fator_debug(ao_data.angular_momentum, Z)
-            for Z in ao_data.exponents
-        ]
+        [compute_normalization_fator_debug(ao_data.angular_momentum, Z) for Z in ao_data.exponents]
     )
     S_l_m = compute_S_l_m_debug(
         atomic_center_cart=ao_data.atomic_center_cart,
@@ -747,13 +705,11 @@ def compute_R_n_debug(
         exponent (float): the exponent of the target AO.
         r_cart: Cartesian coordinate of an electron
 
-    Returns:
+    Returns
+    -------
         Value of the pure radial part.
     """
-
-    return coefficient * np.exp(
-        -1.0 * exponent * LA.norm(np.array(r_cart) - np.array(R_cart)) ** 2
-    )
+    return coefficient * np.exp(-1.0 * exponent * LA.norm(np.array(r_cart) - np.array(R_cart)) ** 2)
 
 
 # compute R_n
@@ -764,9 +720,7 @@ def compute_R_n_jax(
     R_cart: npt.NDArray[np.float64],
     r_cart: npt.NDArray[np.float64],
 ):
-    return coefficient * jnp.exp(
-        -1.0 * exponent * jnp.linalg.norm(r_cart - R_cart) ** 2
-    )
+    return coefficient * jnp.exp(-1.0 * exponent * jnp.linalg.norm(r_cart - R_cart) ** 2)
 
 
 def compute_S_l_m_debug(
@@ -784,7 +738,8 @@ def compute_S_l_m_debug(
         magnetic_quantum_number (int): Magnetic quantum number of the AO, i.e m = -l .... +l
         r_cart: Cartesian coordinate of an electron
 
-    Returns:
+    Returns
+    -------
         Value of the spherical harmonics part * r^l (i.e., regular solid harmonics).
 
     Note:
@@ -811,7 +766,6 @@ def compute_S_l_m_debug(
         They can be hardcoded into a code, or they can be computed analytically (e.g., https://en.wikipedia.org/wiki/Solid_harmonics).
         The latter one is the strategy employed in this code,
     """
-
     R_cart = atomic_center_cart
     x, y, z = np.array(r_cart) - np.array(R_cart)
     r_norm = LA.norm(np.array(r_cart) - np.array(R_cart))
@@ -925,64 +879,23 @@ def compute_S_l_m_jax(
         # d orbitals
         1.0 / 2.0 * jnp.sqrt(15.0 / (jnp.pi)) * x * y,  # (l, m) == (2, -2)
         1.0 / 2.0 * jnp.sqrt(15.0 / (jnp.pi)) * y * z,  # (l, m) == (2, -1)
-        1.0
-        / 4.0
-        * jnp.sqrt(5.0 / (jnp.pi))
-        * (3 * z**2 - r_norm**2),  # (l, m) == (2, 0):
+        1.0 / 4.0 * jnp.sqrt(5.0 / (jnp.pi)) * (3 * z**2 - r_norm**2),  # (l, m) == (2, 0):
         1.0 / 2.0 * jnp.sqrt(15.0 / (jnp.pi)) * x * z,  # (l, m) == (2, 1)
         1.0 / 4.0 * jnp.sqrt(15.0 / (jnp.pi)) * (x**2 - y**2),  # (l, m) == (2, 2)
         # f orbitals
-        1.0
-        / 4.0
-        * jnp.sqrt(35.0 / (2 * jnp.pi))
-        * y
-        * (3 * x**2 - y**2),  # (l, m) == (3, -3)
+        1.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * y * (3 * x**2 - y**2),  # (l, m) == (3, -3)
         1.0 / 2.0 * jnp.sqrt(105.0 / (jnp.pi)) * x * y * z,  # (l, m) == (3, -2)
-        1.0
-        / 4.0
-        * jnp.sqrt(21.0 / (2 * jnp.pi))
-        * y
-        * (5 * z**2 - r_norm**2),  # (l, m) == (3, -1)
-        1.0
-        / 4.0
-        * jnp.sqrt(7.0 / (jnp.pi))
-        * (5 * z**3 - 3 * z * r_norm**2),  # (l, m) == (3, 0)
-        1.0
-        / 4.0
-        * jnp.sqrt(21.0 / (2 * jnp.pi))
-        * x
-        * (5 * z**2 - r_norm**2),  # (l, m) == (3, 1)
+        1.0 / 4.0 * jnp.sqrt(21.0 / (2 * jnp.pi)) * y * (5 * z**2 - r_norm**2),  # (l, m) == (3, -1)
+        1.0 / 4.0 * jnp.sqrt(7.0 / (jnp.pi)) * (5 * z**3 - 3 * z * r_norm**2),  # (l, m) == (3, 0)
+        1.0 / 4.0 * jnp.sqrt(21.0 / (2 * jnp.pi)) * x * (5 * z**2 - r_norm**2),  # (l, m) == (3, 1)
         1.0 / 4.0 * jnp.sqrt(105.0 / (jnp.pi)) * (x**2 - y**2) * z,  # (l, m) == (3, 2)
-        1.0
-        / 4.0
-        * jnp.sqrt(35.0 / (2 * jnp.pi))
-        * x
-        * (x**2 - 3 * y**2),  # (l, m) == (3, 3)
+        1.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * x * (x**2 - 3 * y**2),  # (l, m) == (3, 3)
         # g orbitals
-        3.0
-        / 4.0
-        * jnp.sqrt(35.0 / (jnp.pi))
-        * x
-        * y
-        * (x**2 - y**2),  # (l, m) == (4, -4)
-        3.0
-        / 4.0
-        * jnp.sqrt(35.0 / (2 * jnp.pi))
-        * y
-        * z
-        * (3 * x**2 - y**2),  # (l, m) == (4, -3)
-        3.0
-        / 4.0
-        * jnp.sqrt(5.0 / (jnp.pi))
-        * x
-        * y
-        * (7 * z**2 - r_norm**2),  # (l, m) == (4, -2)
+        3.0 / 4.0 * jnp.sqrt(35.0 / (jnp.pi)) * x * y * (x**2 - y**2),  # (l, m) == (4, -4)
+        3.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * y * z * (3 * x**2 - y**2),  # (l, m) == (4, -3)
+        3.0 / 4.0 * jnp.sqrt(5.0 / (jnp.pi)) * x * y * (7 * z**2 - r_norm**2),  # (l, m) == (4, -2)
         (
-            3.0
-            / 4.0
-            * jnp.sqrt(5.0 / (2 * jnp.pi))
-            * y
-            * (7 * z**3 - 3 * z * r_norm**2)
+            3.0 / 4.0 * jnp.sqrt(5.0 / (2 * jnp.pi)) * y * (7 * z**3 - 3 * z * r_norm**2)
         ),  # (l, m) == (4, -1)
         (
             3.0
@@ -991,22 +904,12 @@ def compute_S_l_m_jax(
             * (35 * z**4 - 30 * z**2 * r_norm**2 + 3 * r_norm**4)
         ),  # (l, m) == (4, 0)
         (
-            3.0
-            / 4.0
-            * jnp.sqrt(5.0 / (2 * jnp.pi))
-            * x
-            * (7 * z**3 - 3 * z * r_norm**2)
+            3.0 / 4.0 * jnp.sqrt(5.0 / (2 * jnp.pi)) * x * (7 * z**3 - 3 * z * r_norm**2)
         ),  # (l, m) == (4, 1)
         (
-            3.0
-            / 8.0
-            * jnp.sqrt(5.0 / (jnp.pi))
-            * (x**2 - y**2)
-            * (7 * z**2 - r_norm**2)
+            3.0 / 8.0 * jnp.sqrt(5.0 / (jnp.pi)) * (x**2 - y**2) * (7 * z**2 - r_norm**2)
         ),  # (l, m) == (4, 2)
-        (
-            3.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * x * z * (x**2 - 3 * y**2)
-        ),  # (l, m) == (4, 3)
+        (3.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * x * z * (x**2 - 3 * y**2)),  # (l, m) == (4, 3)
         (
             3.0
             / 16.0
@@ -1101,12 +1004,8 @@ if __name__ == "__main__":
     num_R_cart_samples = 3
     r_cart_min, r_cart_max = -1.0, 1.0
     R_cart_min, R_cart_max = 0.0, 0.0
-    r_carts = (r_cart_max - r_cart_min) * np.random.rand(
-        num_r_cart_samples, 3
-    ) + r_cart_min
-    R_carts = (R_cart_max - R_cart_min) * np.random.rand(
-        num_R_cart_samples, 3
-    ) + R_cart_min
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_cart_samples, 3) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
 
     num_ao = 3
     num_ao_prim = 3
@@ -1127,8 +1026,8 @@ if __name__ == "__main__":
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = (
-        compute_AOs_grad_api(aos_data=aos_data, r_carts=r_carts, debug_flag=True)
+    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = compute_AOs_grad_api(
+        aos_data=aos_data, r_carts=r_carts, debug_flag=True
     )
 
     (

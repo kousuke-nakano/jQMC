@@ -2,14 +2,12 @@
 
 # python modules
 # from dataclasses import dataclass
-import numpy as np
-import numpy.typing as npt
-from logging import getLogger, StreamHandler, Formatter
+from logging import Formatter, StreamHandler, getLogger
 
 # import jax
 import jax
-from jax import jit
-import jax.numpy as jnp
+import numpy as np
+import numpy.typing as npt
 from flax import struct
 
 # jaxQMC module
@@ -52,17 +50,19 @@ def evaluate_swct_omega_api(
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
         debug_flag: if True, numerical derivatives are computed for debuging purpose
 
-    Returns:
+    Returns
+    -------
         The omega_up (dim: N_a, N_e_up) and omega_dn (dim: N_a, N_e_dn)
-        with the given structure (npt.NDArray[np.float64])
+        with the given structure (npt.NDArray[np.float64], npt.NDArray[np.float64])
     """
-
     if debug_flag:
-        evaluate_swct_omega_debug(
+        omega_up, omega_dn = evaluate_swct_omega_debug(
             swct_data=swct_data, r_up_carts=r_dn_carts, r_dn_carts=r_dn_carts
         )
+    else:
+        raise NotImplementedError
 
-    return np.nan
+    return (omega_up, omega_dn)
 
 
 def evaluate_swct_omega_debug(
@@ -70,10 +70,25 @@ def evaluate_swct_omega_debug(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
+    R_carts = swct_data.structure.positions_cart
+    omega_up = np.zeros((len(R_carts), len(r_up_carts)))
+    omega_dn = np.zeros((len(R_carts), len(r_dn_carts)))
 
-    swct_data.structure.positions_cart
+    for alpha, i in range(len(R_carts), len(r_up_carts)):
+        kappa = 1.0 / np.abs(r_up_carts[i] - R_carts[alpha]) ** 4
+        kappa_sum = np.sum(
+            [1.0 / np.abs(r_up_carts[i] - R_carts[beta]) ** 4 for beta in range(len(R_carts))]
+        )
+        omega_up[alpha, i] = kappa / kappa_sum
 
-    pass
+    for alpha, i in range(len(R_carts), len(r_dn_carts)):
+        kappa = 1.0 / np.abs(r_dn_carts[i] - R_carts[alpha]) ** 4
+        kappa_sum = np.sum(
+            [1.0 / np.abs(r_dn_carts[i] - R_carts[beta]) ** 4 for beta in range(len(R_carts))]
+        )
+        omega_dn[alpha, i] = kappa / kappa_sum
+
+    return (omega_up, omega_dn)
 
 
 if __name__ == "__main__":

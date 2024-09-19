@@ -2,25 +2,24 @@
 
 # python modules
 from dataclasses import dataclass, field
-import numpy as np
-import numpy.typing as npt
+
+# set logger
+from logging import Formatter, StreamHandler, getLogger
 
 # jax modules
 # from jax.debug import print as jprint
 import jax
-from jax import jit
 import jax.numpy as jnp
+import numpy as np
+import numpy.typing as npt
 from flax import struct
-
-# set logger
-from logging import getLogger, StreamHandler, Formatter
+from jax import jit
 
 # myqmc module
 from .atomic_orbital import (
     AO_data_debug,
-    compute_AO,
-    AOs_data_debug,
     AOs_data,
+    compute_AO,
     compute_AOs_api,
     compute_AOs_grad_api,
     compute_AOs_laplacian_api,
@@ -45,9 +44,7 @@ class MOs_data:
     """
 
     num_mo: int = struct.field(pytree_node=False)
-    mo_coefficients: npt.NDArray[np.float64 | np.complex128] = struct.field(
-        pytree_node=False
-    )
+    mo_coefficients: npt.NDArray[np.float64 | np.complex128] = struct.field(pytree_node=False)
     aos_data: AOs_data = struct.field(pytree_node=True)
 
     def __post_init__(self) -> None:
@@ -69,7 +66,8 @@ def compute_MOs_laplacian_api(
         r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
         debug_flag: if True, numerical derivatives are computed for debuging purpose
 
-    Returns:
+    Returns
+    -------
         An array containing laplacians of the MOs at r_carts. The dim. is (num_mo, N_e)
     """
     if debug_flag:
@@ -116,15 +114,9 @@ def compute_MOs_laplacian_debug(mos_data: MOs_data, r_carts: npt.NDArray[np.floa
     diff_m_z_r_carts[:, 2] -= diff_h
     mo_matrix_diff_m_z = compute_MOs_api(mos_data, diff_m_z_r_carts, debug_flag=True)
 
-    mo_matrix_grad2_x = (mo_matrix_diff_p_x + mo_matrix_diff_m_x - 2 * mo_matrix) / (
-        diff_h
-    ) ** 2
-    mo_matrix_grad2_y = (mo_matrix_diff_p_y + mo_matrix_diff_m_y - 2 * mo_matrix) / (
-        diff_h
-    ) ** 2
-    mo_matrix_grad2_z = (mo_matrix_diff_p_z + mo_matrix_diff_m_z - 2 * mo_matrix) / (
-        diff_h
-    ) ** 2
+    mo_matrix_grad2_x = (mo_matrix_diff_p_x + mo_matrix_diff_m_x - 2 * mo_matrix) / (diff_h) ** 2
+    mo_matrix_grad2_y = (mo_matrix_diff_p_y + mo_matrix_diff_m_y - 2 * mo_matrix) / (diff_h) ** 2
+    mo_matrix_grad2_z = (mo_matrix_diff_p_z + mo_matrix_diff_m_z - 2 * mo_matrix) / (diff_h) ** 2
 
     mo_matrix_laplacian = mo_matrix_grad2_x + mo_matrix_grad2_y + mo_matrix_grad2_z
 
@@ -158,10 +150,10 @@ def compute_MOs_grad_api(
         r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
         debug_flag: if True, numerical derivatives are computed for debuging purpose
 
-    Returns:
+    Returns
+    -------
         tuple containing gradients of the MOs at r_carts. (grad_x, grad_y, grad_z). The dim. of each matrix is (num_mo, N_e)
     """
-
     if debug_flag:
         mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z = compute_MOs_grad_debug(
             mos_data, r_carts
@@ -256,10 +248,10 @@ def compute_MOs_api(
         r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
         debug_flag: if True, AOs are computed one by one using compute_AO_debug
 
-    Returns:
+    Returns
+    -------
         Arrays containing values of the MOs at r_carts. (dim: num_mo, N_e)
     """
-
     # jprint(f"MOs:debug_flag={debug_flag}, type={type(debug_flag)}")
     if debug_flag:
         answer = compute_MOs_debug(mos_data, r_carts)
@@ -323,18 +315,13 @@ def compute_MO(mo_data: MO_data, r_cart: list[float]) -> float:
         mo_data (MO_data): an instance of MO_data
         r_cart: Cartesian coordinate of an electron
 
-    Returns:
+    Returns
+    -------
         Value of the MO value at r_cart.
     """
-
     return np.inner(
         np.array(mo_data.mo_coefficients),
-        np.array(
-            [
-                compute_AO(ao_data=ao_data, r_cart=r_cart)
-                for ao_data in mo_data.ao_data_l
-            ]
-        ),
+        np.array([compute_AO(ao_data=ao_data, r_cart=r_cart) for ao_data in mo_data.ao_data_l]),
     )
 
 

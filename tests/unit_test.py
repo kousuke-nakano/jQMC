@@ -1,24 +1,38 @@
-import os
 import itertools
-import pytest
+import os
+from logging import Formatter, StreamHandler, getLogger
 
+import jax
 import numpy as np
+import pytest
 from numpy import linalg as LA
 from numpy.testing import assert_almost_equal
 
-from logging import getLogger, StreamHandler, Formatter
-
-import jax
-
 from ..myqmc.atomic_orbital import (
     AO_data_debug,
-    compute_S_l_m_debug,
     AOs_data_debug,
     compute_AOs_api,
     compute_AOs_grad_api,
     compute_AOs_laplacian_api,
+    compute_S_l_m_debug,
 )
-
+from ..myqmc.coulomb_potential import (
+    compute_bare_coulomb_potential_api,
+    compute_ecp_coulomb_potential_api,
+)
+from ..myqmc.determinant import (
+    Geminal_data,
+    compute_det_geminal_all_elements_api,
+    compute_geminal_all_elements_api,
+    compute_grads_and_laplacian_ln_Det_api,
+)
+from ..myqmc.hamiltonians import Hamiltonian_data
+from ..myqmc.jastrow_factor import (
+    Jastrow_data,
+    Jastrow_two_body_data,
+    compute_grads_and_laplacian_Jastrow_two_body_api,
+    compute_Jastrow_two_body_api,
+)
 from ..myqmc.molecular_orbital import (
     MO_data,
     MOs_data,
@@ -27,35 +41,12 @@ from ..myqmc.molecular_orbital import (
     compute_MOs_grad_api,
     compute_MOs_laplacian_api,
 )
-
-from ..myqmc.jastrow_factor import (
-    Jastrow_data,
-    Jastrow_two_body_data,
-    compute_Jastrow_two_body_api,
-    compute_grads_and_laplacian_Jastrow_two_body_api,
-)
-
-from ..myqmc.determinant import (
-    Geminal_data,
-    compute_geminal_all_elements_api,
-    compute_det_geminal_all_elements_api,
-    compute_grads_and_laplacian_ln_Det_api,
-)
-
 from ..myqmc.trexio_wrapper import read_trexio_file
-
 from ..myqmc.wavefunction import (
     Wavefunction_data,
-    evaluate_wavefunction_api,
     compute_kinetic_energy_api,
+    evaluate_wavefunction_api,
 )
-
-from ..myqmc.coulomb_potential import (
-    compute_bare_coulomb_potential_api,
-    compute_ecp_coulomb_potential_api,
-)
-
-from ..myqmc.hamiltonians import Hamiltonian_data
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -74,16 +65,13 @@ log.addHandler(stream_handler)
     ["l", "m"],
     list(
         itertools.chain.from_iterable(
-            [
-                [pytest.param(l, m, id=f"l={l}, m={m}") for m in range(-l, l + 1)]
-                for l in range(7)
-            ]
+            [[pytest.param(l, m, id=f"l={l}, m={m}") for m in range(-l, l + 1)] for l in range(7)]
         )
     ),
 )
 def test_spherical_part_of_AO(l, m):
     def Y_l_m_ref(l=0, m=0, r_cart_rel=[0.0, 0.0, 0.0]):
-        """see https://en.wikipedia.org/wiki/Table_of_spherical_harmonics#Real_spherical_harmonics"""
+        """See https://en.wikipedia.org/wiki/Table_of_spherical_harmonics#Real_spherical_harmonics"""
         x, y, z = r_cart_rel[..., 0], r_cart_rel[..., 1], r_cart_rel[..., 2]
         r = np.sqrt(x**2 + y**2 + z**2)
         # s orbital
@@ -109,51 +97,28 @@ def test_spherical_part_of_AO(l, m):
             return 1.0 / 4.0 * np.sqrt(15.0 / (np.pi)) * (x**2 - y**2) / r**2
         # f orbitals
         elif (l, m) == (3, -3):
-            return (
-                1.0 / 4.0 * np.sqrt(35.0 / (2 * np.pi)) * y * (3 * x**2 - y**2) / r**3
-            )
+            return 1.0 / 4.0 * np.sqrt(35.0 / (2 * np.pi)) * y * (3 * x**2 - y**2) / r**3
         elif (l, m) == (3, -2):
             return 1.0 / 2.0 * np.sqrt(105.0 / (np.pi)) * x * y * z / r**3
         elif (l, m) == (3, -1):
-            return (
-                1.0 / 4.0 * np.sqrt(21.0 / (2 * np.pi)) * y * (5 * z**2 - r**2) / r**3
-            )
+            return 1.0 / 4.0 * np.sqrt(21.0 / (2 * np.pi)) * y * (5 * z**2 - r**2) / r**3
         elif (l, m) == (3, 0):
             return 1.0 / 4.0 * np.sqrt(7.0 / (np.pi)) * (5 * z**3 - 3 * z * r**2) / r**3
         elif (l, m) == (3, 1):
-            return (
-                1.0 / 4.0 * np.sqrt(21.0 / (2 * np.pi)) * x * (5 * z**2 - r**2) / r**3
-            )
+            return 1.0 / 4.0 * np.sqrt(21.0 / (2 * np.pi)) * x * (5 * z**2 - r**2) / r**3
         elif (l, m) == (3, 2):
             return 1.0 / 4.0 * np.sqrt(105.0 / (np.pi)) * (x**2 - y**2) * z / r**3
         elif (l, m) == (3, 3):
-            return (
-                1.0 / 4.0 * np.sqrt(35.0 / (2 * np.pi)) * x * (x**2 - 3 * y**2) / r**3
-            )
+            return 1.0 / 4.0 * np.sqrt(35.0 / (2 * np.pi)) * x * (x**2 - 3 * y**2) / r**3
         # g orbitals
         elif (l, m) == (4, -4):
             return 3.0 / 4.0 * np.sqrt(35.0 / (np.pi)) * x * y * (x**2 - y**2) / r**4
         elif (l, m) == (4, -3):
-            return (
-                3.0
-                / 4.0
-                * np.sqrt(35.0 / (2 * np.pi))
-                * y
-                * z
-                * (3 * x**2 - y**2)
-                / r**4
-            )
+            return 3.0 / 4.0 * np.sqrt(35.0 / (2 * np.pi)) * y * z * (3 * x**2 - y**2) / r**4
         elif (l, m) == (4, -2):
             return 3.0 / 4.0 * np.sqrt(5.0 / (np.pi)) * x * y * (7 * z**2 - r**2) / r**4
         elif (l, m) == (4, -1):
-            return (
-                3.0
-                / 4.0
-                * np.sqrt(5.0 / (2 * np.pi))
-                * y
-                * (7 * z**3 - 3 * z * r**2)
-                / r**4
-            )
+            return 3.0 / 4.0 * np.sqrt(5.0 / (2 * np.pi)) * y * (7 * z**3 - 3 * z * r**2) / r**4
         elif (l, m) == (4, 0):
             return (
                 3.0
@@ -163,33 +128,11 @@ def test_spherical_part_of_AO(l, m):
                 / r**4
             )
         elif (l, m) == (4, 1):
-            return (
-                3.0
-                / 4.0
-                * np.sqrt(5.0 / (2 * np.pi))
-                * x
-                * (7 * z**3 - 3 * z * r**2)
-                / r**4
-            )
+            return 3.0 / 4.0 * np.sqrt(5.0 / (2 * np.pi)) * x * (7 * z**3 - 3 * z * r**2) / r**4
         elif (l, m) == (4, 2):
-            return (
-                3.0
-                / 8.0
-                * np.sqrt(5.0 / (np.pi))
-                * (x**2 - y**2)
-                * (7 * z**2 - r**2)
-                / r**4
-            )
+            return 3.0 / 8.0 * np.sqrt(5.0 / (np.pi)) * (x**2 - y**2) * (7 * z**2 - r**2) / r**4
         elif (l, m) == (4, 3):
-            return (
-                3.0
-                / 4.0
-                * np.sqrt(35.0 / (2 * np.pi))
-                * x
-                * z
-                * (x**2 - 3 * y**2)
-                / r**4
-            )
+            return 3.0 / 4.0 * np.sqrt(35.0 / (2 * np.pi)) * x * z * (x**2 - 3 * y**2) / r**4
         elif (l, m) == (4, 4):
             return (
                 3.0
@@ -207,17 +150,7 @@ def test_spherical_part_of_AO(l, m):
                 / r**5
             )
         elif (l, m) == (5, -4):
-            return (
-                3.0
-                / 16.0
-                * np.sqrt(385.0 / np.pi)
-                * 4
-                * x
-                * y
-                * z
-                * (x**2 - y**2)
-                / r**5
-            )
+            return 3.0 / 16.0 * np.sqrt(385.0 / np.pi) * 4 * x * y * z * (x**2 - y**2) / r**5
         elif (l, m) == (5, -3):
             return (
                 1.0
@@ -229,24 +162,10 @@ def test_spherical_part_of_AO(l, m):
                 / r**5
             )
         elif (l, m) == (5, -2):
-            return (
-                1.0
-                / 8.0
-                * np.sqrt(1155 / np.pi)
-                * 2
-                * x
-                * y
-                * (3 * z**3 - z * r**2)
-                / r**5
-            )
+            return 1.0 / 8.0 * np.sqrt(1155 / np.pi) * 2 * x * y * (3 * z**3 - z * r**2) / r**5
         elif (l, m) == (5, -1):
             return (
-                1.0
-                / 16.0
-                * np.sqrt(165 / np.pi)
-                * y
-                * (21 * z**4 - 14 * z**2 * r**2 + r**4)
-                / r**5
+                1.0 / 16.0 * np.sqrt(165 / np.pi) * y * (21 * z**4 - 14 * z**2 * r**2 + r**4) / r**5
             )
         elif (l, m) == (5, 0):
             return (
@@ -258,22 +177,10 @@ def test_spherical_part_of_AO(l, m):
             )
         elif (l, m) == (5, 1):
             return (
-                1.0
-                / 16.0
-                * np.sqrt(165 / np.pi)
-                * x
-                * (21 * z**4 - 14 * z**2 * r**2 + r**4)
-                / r**5
+                1.0 / 16.0 * np.sqrt(165 / np.pi) * x * (21 * z**4 - 14 * z**2 * r**2 + r**4) / r**5
             )
         elif (l, m) == (5, 2):
-            return (
-                1.0
-                / 8.0
-                * np.sqrt(1155 / np.pi)
-                * (x**2 - y**2)
-                * (3 * z**3 - z * r**2)
-                / r**5
-            )
+            return 1.0 / 8.0 * np.sqrt(1155 / np.pi) * (x**2 - y**2) * (3 * z**3 - z * r**2) / r**5
         elif (l, m) == (5, 3):
             return (
                 1.0
@@ -513,12 +420,8 @@ def test_AOs_comparing_jax_and_debug_implemenetations():
     num_R_cart_samples = num_ao
     r_cart_min, r_cart_max = -1.0, 1.0
     R_cart_min, R_cart_max = 0.0, 0.0
-    r_carts = (r_cart_max - r_cart_min) * np.random.rand(
-        num_r_cart_samples, 3
-    ) + r_cart_min
-    R_carts = (R_cart_max - R_cart_min) * np.random.rand(
-        num_R_cart_samples, 3
-    ) + R_cart_min
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_cart_samples, 3) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
 
     aos_data = AOs_data_debug(
         num_ao=num_ao,
@@ -549,12 +452,8 @@ def test_AOs_comparing_jax_and_debug_implemenetations():
     num_R_cart_samples = num_ao
     r_cart_min, r_cart_max = -1.0, 1.0
     R_cart_min, R_cart_max = -1.0, 1.0
-    r_carts = (r_cart_max - r_cart_min) * np.random.rand(
-        num_r_cart_samples, 3
-    ) + r_cart_min
-    R_carts = (R_cart_max - R_cart_min) * np.random.rand(
-        num_R_cart_samples, 3
-    ) + R_cart_min
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_cart_samples, 3) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
 
     aos_data = AOs_data_debug(
         num_ao=num_ao,
@@ -578,12 +477,8 @@ def test_AOs_comparing_auto_and_numerical_grads():
     num_R_cart_samples = 3
     r_cart_min, r_cart_max = -5.0, +5.0
     R_cart_min, R_cart_max = -3.0, +3.0
-    r_carts = (r_cart_max - r_cart_min) * np.random.rand(
-        num_r_cart_samples, 3
-    ) + r_cart_min
-    R_carts = (R_cart_max - R_cart_min) * np.random.rand(
-        num_R_cart_samples, 3
-    ) + R_cart_min
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_cart_samples, 3) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
 
     num_ao = 3
     num_ao_prim = 4
@@ -604,8 +499,8 @@ def test_AOs_comparing_auto_and_numerical_grads():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = (
-        compute_AOs_grad_api(aos_data=aos_data, r_carts=r_carts, debug_flag=False)
+    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = compute_AOs_grad_api(
+        aos_data=aos_data, r_carts=r_carts, debug_flag=False
     )
 
     (
@@ -629,12 +524,8 @@ def test_AOs_comparing_auto_and_numerical_grads():
     num_R_cart_samples = 3
     r_cart_min, r_cart_max = -3.0, +3.0
     R_cart_min, R_cart_max = -3.0, +3.0
-    r_carts = (r_cart_max - r_cart_min) * np.random.rand(
-        num_r_cart_samples, 3
-    ) + r_cart_min
-    R_carts = (R_cart_max - R_cart_min) * np.random.rand(
-        num_R_cart_samples, 3
-    ) + R_cart_min
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_cart_samples, 3) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
 
     num_ao = 3
     num_ao_prim = 3
@@ -655,8 +546,8 @@ def test_AOs_comparing_auto_and_numerical_grads():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = (
-        compute_AOs_grad_api(aos_data=aos_data, r_carts=r_carts, debug_flag=False)
+    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = compute_AOs_grad_api(
+        aos_data=aos_data, r_carts=r_carts, debug_flag=False
     )
 
     (
@@ -682,12 +573,8 @@ def test_AOs_comparing_auto_and_numerical_laplacians():
     num_R_cart_samples = 3
     r_cart_min, r_cart_max = -5.0, +5.0
     R_cart_min, R_cart_max = -3.0, +3.0
-    r_carts = (r_cart_max - r_cart_min) * np.random.rand(
-        num_r_cart_samples, 3
-    ) + r_cart_min
-    R_carts = (R_cart_max - R_cart_min) * np.random.rand(
-        num_R_cart_samples, 3
-    ) + R_cart_min
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_cart_samples, 3) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
 
     num_ao = 3
     num_ao_prim = 4
@@ -724,12 +611,8 @@ def test_AOs_comparing_auto_and_numerical_laplacians():
     num_R_cart_samples = 3
     r_cart_min, r_cart_max = -3.0, +3.0
     R_cart_min, R_cart_max = -3.0, +3.0
-    r_carts = (r_cart_max - r_cart_min) * np.random.rand(
-        num_r_cart_samples, 3
-    ) + r_cart_min
-    R_carts = (R_cart_max - R_cart_min) * np.random.rand(
-        num_R_cart_samples, 3
-    ) + R_cart_min
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_cart_samples, 3) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
 
     num_ao = 3
     num_ao_prim = 3
@@ -778,12 +661,8 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
     num_R_cart_samples = num_ao
     r_cart_min, r_cart_max = -5.0, 5.0
     R_cart_min, R_cart_max = -6.0, 6.0
-    r_carts = (r_cart_max - r_cart_min) * np.random.rand(
-        num_r_cart_samples, 3
-    ) + r_cart_min
-    R_carts = (R_cart_max - R_cart_min) * np.random.rand(
-        num_R_cart_samples, 3
-    ) + R_cart_min
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_cart_samples, 3) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
 
     mo_coefficients = np.random.rand(num_mo, num_ao)
 
@@ -795,9 +674,7 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
             num_ao_prim=orbital_indices.count(i),
             atomic_center_cart=R_carts[i],
             exponents=[exponents[k] for (k, v) in enumerate(orbital_indices) if v == i],
-            coefficients=[
-                coefficients[k] for (k, v) in enumerate(orbital_indices) if v == i
-            ],
+            coefficients=[coefficients[k] for (k, v) in enumerate(orbital_indices) if v == i],
             angular_momentum=angular_momentums[i],
             magnetic_quantum_number=magnetic_quantum_numbers[i],
         )
@@ -822,17 +699,11 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    mos_data = MOs_data(
-        num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients
-    )
+    mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
 
-    mo_ans_all_jax = compute_MOs_api(
-        mos_data=mos_data, r_carts=r_carts, debug_flag=False
-    )
+    mo_ans_all_jax = compute_MOs_api(mos_data=mos_data, r_carts=r_carts, debug_flag=False)
 
-    mo_ans_all_debug = compute_MOs_api(
-        mos_data=mos_data, r_carts=r_carts, debug_flag=True
-    )
+    mo_ans_all_debug = compute_MOs_api(mos_data=mos_data, r_carts=r_carts, debug_flag=True)
 
     assert np.allclose(mo_ans_step_by_step, mo_ans_all_jax)
     assert np.allclose(mo_ans_step_by_step, mo_ans_all_debug)
@@ -851,12 +722,8 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
     num_R_cart_samples = num_ao
     r_cart_min, r_cart_max = -5.0, 5.0
     R_cart_min, R_cart_max = -6.0, 6.0
-    r_carts = (r_cart_max - r_cart_min) * np.random.rand(
-        num_r_cart_samples, 3
-    ) + r_cart_min
-    R_carts = (R_cart_max - R_cart_min) * np.random.rand(
-        num_R_cart_samples, 3
-    ) + R_cart_min
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_cart_samples, 3) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
 
     mo_coefficients = np.random.rand(num_mo, num_ao)
 
@@ -868,9 +735,7 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
             num_ao_prim=orbital_indices.count(i),
             atomic_center_cart=R_carts[i],
             exponents=[exponents[k] for (k, v) in enumerate(orbital_indices) if v == i],
-            coefficients=[
-                coefficients[k] for (k, v) in enumerate(orbital_indices) if v == i
-            ],
+            coefficients=[coefficients[k] for (k, v) in enumerate(orbital_indices) if v == i],
             angular_momentum=angular_momentums[i],
             magnetic_quantum_number=magnetic_quantum_numbers[i],
         )
@@ -895,17 +760,11 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    mos_data = MOs_data(
-        num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients
-    )
+    mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
 
-    mo_ans_all_jax = compute_MOs_api(
-        mos_data=mos_data, r_carts=r_carts, debug_flag=False
-    )
+    mo_ans_all_jax = compute_MOs_api(mos_data=mos_data, r_carts=r_carts, debug_flag=False)
 
-    mo_ans_all_debug = compute_MOs_api(
-        mos_data=mos_data, r_carts=r_carts, debug_flag=True
-    )
+    mo_ans_all_debug = compute_MOs_api(mos_data=mos_data, r_carts=r_carts, debug_flag=True)
 
     assert np.allclose(mo_ans_step_by_step, mo_ans_all_jax)
     assert np.allclose(mo_ans_step_by_step, mo_ans_all_debug)
@@ -926,12 +785,8 @@ def test_MOs_comparing_auto_and_numerical_grads():
     num_R_cart_samples = num_ao
     r_cart_min, r_cart_max = -5.0, 5.0
     R_cart_min, R_cart_max = 10.0, 10.0
-    r_carts = (r_cart_max - r_cart_min) * np.random.rand(
-        num_r_cart_samples, 3
-    ) + r_cart_min
-    R_carts = (R_cart_max - R_cart_min) * np.random.rand(
-        num_R_cart_samples, 3
-    ) + R_cart_min
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_cart_samples, 3) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
 
     mo_coefficients = np.random.rand(num_mo, num_ao)
 
@@ -946,12 +801,10 @@ def test_MOs_comparing_auto_and_numerical_grads():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    mos_data = MOs_data(
-        num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients
-    )
+    mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
 
-    mo_matrix_grad_x_auto, mo_matrix_grad_y_auto, mo_matrix_grad_z_auto = (
-        compute_MOs_grad_api(mos_data=mos_data, r_carts=r_carts, debug_flag=False)
+    mo_matrix_grad_x_auto, mo_matrix_grad_y_auto, mo_matrix_grad_z_auto = compute_MOs_grad_api(
+        mos_data=mos_data, r_carts=r_carts, debug_flag=False
     )
 
     (
@@ -985,12 +838,8 @@ def test_MOs_comparing_auto_and_numerical_grads():
     num_R_cart_samples = num_ao
     r_cart_min, r_cart_max = -1.0, 1.0
     R_cart_min, R_cart_max = 3.0, 3.0
-    r_carts = (r_cart_max - r_cart_min) * np.random.rand(
-        num_r_cart_samples, 3
-    ) + r_cart_min
-    R_carts = (R_cart_max - R_cart_min) * np.random.rand(
-        num_R_cart_samples, 3
-    ) + R_cart_min
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_cart_samples, 3) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
 
     mo_coefficients = np.random.rand(num_mo, num_ao)
 
@@ -1005,12 +854,10 @@ def test_MOs_comparing_auto_and_numerical_grads():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    mos_data = MOs_data(
-        num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients
-    )
+    mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
 
-    mo_matrix_grad_x_auto, mo_matrix_grad_y_auto, mo_matrix_grad_z_auto = (
-        compute_MOs_grad_api(mos_data=mos_data, r_carts=r_carts, debug_flag=False)
+    mo_matrix_grad_x_auto, mo_matrix_grad_y_auto, mo_matrix_grad_z_auto = compute_MOs_grad_api(
+        mos_data=mos_data, r_carts=r_carts, debug_flag=False
     )
 
     (
@@ -1046,12 +893,8 @@ def test_MOs_comparing_auto_and_numerical_laplacians():
     num_R_cart_samples = num_ao
     r_cart_min, r_cart_max = -5.0, 5.0
     R_cart_min, R_cart_max = 10.0, 10.0
-    r_carts = (r_cart_max - r_cart_min) * np.random.rand(
-        num_r_cart_samples, 3
-    ) + r_cart_min
-    R_carts = (R_cart_max - R_cart_min) * np.random.rand(
-        num_R_cart_samples, 3
-    ) + R_cart_min
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_cart_samples, 3) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
 
     mo_coefficients = np.random.rand(num_mo, num_ao)
 
@@ -1066,9 +909,7 @@ def test_MOs_comparing_auto_and_numerical_laplacians():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    mos_data = MOs_data(
-        num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients
-    )
+    mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
 
     mo_matrix_laplacian_numerical = compute_MOs_laplacian_api(
         mos_data=mos_data, r_carts=r_carts, debug_flag=True
@@ -1090,9 +931,7 @@ def test_MOs_comparing_auto_and_numerical_laplacians():
 )
 def test_read_trexio_files(filename: str):
     read_trexio_file(
-        trexio_file=os.path.join(
-            os.path.dirname(__file__), "trexio_example_files", filename
-        )
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", filename)
     )
 
 
@@ -1169,13 +1008,9 @@ def test_comparing_AO_and_MO_geminals():
 
         # Randomly place any remaining electrons
         for _ in range(remaining_up):
-            r_up_carts.append(
-                np.random.choice(coords) + np.random.normal(scale=0.1, size=3)
-            )
+            r_up_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
         for _ in range(remaining_dn):
-            r_dn_carts.append(
-                np.random.choice(coords) + np.random.normal(scale=0.1, size=3)
-            )
+            r_dn_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
 
         r_up_carts = np.array(r_up_carts)
         r_dn_carts = np.array(r_dn_carts)
@@ -1195,12 +1030,8 @@ def test_comparing_AO_and_MO_geminals():
             mos_data_up.mo_coefficients.T,
             np.dot(mo_lambda_matrix_paired, mos_data_dn.mo_coefficients),
         )
-        ao_lambda_matrix_unpaired = np.dot(
-            mos_data_up.mo_coefficients.T, mo_lambda_matrix_unpaired
-        )
-        ao_lambda_matrix = np.hstack(
-            [ao_lambda_matrix_paired, ao_lambda_matrix_unpaired]
-        )
+        ao_lambda_matrix_unpaired = np.dot(mos_data_up.mo_coefficients.T, mo_lambda_matrix_unpaired)
+        ao_lambda_matrix = np.hstack([ao_lambda_matrix_paired, ao_lambda_matrix_unpaired])
 
         geminal_ao_data = Geminal_data(
             num_electron_up=num_electron_up,
@@ -1260,9 +1091,7 @@ def test_numerial_and_auto_grads_ln_Det():
     total_electrons = 0
 
     if coulomb_potential_data.ecp_flag:
-        charges = np.array(structure_data.atomic_numbers) - np.array(
-            coulomb_potential_data.z_cores
-        )
+        charges = np.array(structure_data.atomic_numbers) - np.array(coulomb_potential_data.z_cores)
     else:
         charges = np.array(structure_data.atomic_numbers)
 
@@ -1271,9 +1100,7 @@ def test_numerial_and_auto_grads_ln_Det():
     # Place electrons around each nucleus
     for i in range(len(coords)):
         charge = charges[i]
-        num_electrons = int(
-            np.round(charge)
-        )  # Number of electrons to place based on the charge
+        num_electrons = int(np.round(charge))  # Number of electrons to place based on the charge
 
         # Retrieve the position coordinates
         x, y, z = coords[i]
@@ -1307,13 +1134,9 @@ def test_numerial_and_auto_grads_ln_Det():
 
     # Randomly place any remaining electrons
     for _ in range(remaining_up):
-        r_up_carts.append(
-            np.random.choice(coords) + np.random.normal(scale=0.1, size=3)
-        )
+        r_up_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
     for _ in range(remaining_dn):
-        r_dn_carts.append(
-            np.random.choice(coords) + np.random.normal(scale=0.1, size=3)
-        )
+        r_dn_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
 
     r_up_carts = np.array(r_up_carts)
     r_dn_carts = np.array(r_dn_carts)
@@ -1327,9 +1150,7 @@ def test_numerial_and_auto_grads_ln_Det():
         mos_data_up.mo_coefficients.T,
         np.dot(mo_lambda_matrix_paired, mos_data_dn.mo_coefficients),
     )
-    ao_lambda_matrix_unpaired = np.dot(
-        mos_data_up.mo_coefficients.T, mo_lambda_matrix_unpaired
-    )
+    ao_lambda_matrix_unpaired = np.dot(mos_data_up.mo_coefficients.T, mo_lambda_matrix_unpaired)
     ao_lambda_matrix = np.hstack([ao_lambda_matrix_paired, ao_lambda_matrix_unpaired])
 
     geminal_ao_data = Geminal_data(
@@ -1365,9 +1186,7 @@ def test_numerial_and_auto_grads_ln_Det():
     np.testing.assert_almost_equal(
         np.array(grad_ln_D_dn_numerical), np.array(grad_ln_D_dn_auto), decimal=6
     )
-    np.testing.assert_almost_equal(
-        sum_laplacian_ln_D_numerical, sum_laplacian_ln_D_auto, decimal=1
-    )
+    np.testing.assert_almost_equal(sum_laplacian_ln_D_numerical, sum_laplacian_ln_D_auto, decimal=1)
 
 
 def test_comparing_values_with_TurboRVB_code():
@@ -1391,9 +1210,7 @@ def test_comparing_values_with_TurboRVB_code():
         jastrow_two_body_data=jastrow_two_body_data, jastrow_two_body_type="off"
     )
 
-    wavefunction_data = Wavefunction_data(
-        jastrow_data=jastrow_data, geminal_data=geminal_mo_data
-    )
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
 
     hamiltonian_data = Hamiltonian_data(
         structure_data=structure_data,
@@ -1492,12 +1309,8 @@ def test_numerial_and_auto_grads_Jastrow_twobody_part():
 
     r_cart_min, r_cart_max = -3.0, 3.0
 
-    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(
-        num_r_up_cart_samples, 3
-    ) + r_cart_min
-    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(
-        num_r_dn_cart_samples, 3
-    ) + r_cart_min
+    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_up_cart_samples, 3) + r_cart_min
+    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_dn_cart_samples, 3) + r_cart_min
 
     jastrow_two_body_data = Jastrow_two_body_data(
         param_anti_parallel_spin=1.0, param_parallel_spin=1.0
@@ -1520,9 +1333,7 @@ def test_numerial_and_auto_grads_Jastrow_twobody_part():
 
     # print(f"jastrow_two_body_jax = {jastrow_two_body_jax}")
 
-    np.testing.assert_almost_equal(
-        jastrow_two_body_debug, jastrow_two_body_jax, decimal=10
-    )
+    np.testing.assert_almost_equal(jastrow_two_body_debug, jastrow_two_body_jax, decimal=10)
 
     (
         grad_jastrow_two_body_up_debug,
@@ -1558,9 +1369,7 @@ def test_numerial_and_auto_grads_Jastrow_twobody_part():
     np.testing.assert_almost_equal(
         grad_jastrow_two_body_dn_debug, grad_jastrow_two_body_dn_jax, decimal=8
     )
-    np.testing.assert_almost_equal(
-        sum_laplacian_J2_debug, sum_laplacian_J2_jax, decimal=4
-    )
+    np.testing.assert_almost_equal(sum_laplacian_J2_debug, sum_laplacian_J2_jax, decimal=4)
 
 
 if __name__ == "__main__":

@@ -1,13 +1,11 @@
+# from typing import Any, Callable, Mapping, Optional
+# JAX
+import jax
 import numpy as np
 import scipy
 import scipy.special
-
-# from typing import Any, Callable, Mapping, Optional
-
-# JAX
-import jax
-from jax import numpy as jnp
 from jax import jit
+from jax import numpy as jnp
 from jaxtyping import Array, Float, Int
 
 # JAX float64
@@ -39,29 +37,29 @@ def eval_legendre(n: Int[Array, "n"], x: Float[Array, "m"]) -> Float[Array, "n m
     compute the necessary polynomials up to the maximum degree found in 'n'. It then selects and returns
     the values of the polynomials at the degrees specified in 'n' and evaluated at the points in 'x'.
 
-    Parameters:
+    Parameters
+    ----------
         n (jnp.ndarray): An array of integer degrees for which the Legendre polynomials are to be evaluated.
                         Each element must be a non-negative integer and the array can be of any shape.
         x (jnp.ndarray): The point(s) at which the Legendre polynomials are to be evaluated. Can be a single
                         point (float) or an array of points. The shape must be broadcastable to the shape of 'n'.
 
-    Returns:
+    Returns
+    -------
         jnp.ndarray: An array of Legendre polynomial values. The output has the same shape as 'n' and 'x' after broadcasting.
                     The i-th entry corresponds to the Legendre polynomial of degree 'n[i]' evaluated at point 'x[i]'.
 
-    Notes:
+    Notes
+    -----
         This function makes use of the vectorized map (vmap) functionality in JAX to efficiently compute and select
         the necessary Legendre polynomial values.
     """
-
     n = jnp.asarray(n)
     x = jnp.asarray(x)
 
     p = jnp.where(
         n.ndim == 1 and x.ndim == 1,
-        jnp.diagonal(
-            jax.vmap(lambda ni: jax.vmap(lambda xi: legendre_tablated(ni, xi))(x))(n)
-        ),
+        jnp.diagonal(jax.vmap(lambda ni: jax.vmap(lambda xi: legendre_tablated(ni, xi))(x))(n)),
         jax.vmap(lambda ni: jax.vmap(lambda xi: legendre_tablated(ni, xi))(x))(n),
     )
 

@@ -1,17 +1,17 @@
 """Hamiltonian module"""
 
 # python modules
-import numpy as np
-import numpy.typing as npt
-from logging import getLogger, StreamHandler, Formatter
+from logging import Formatter, StreamHandler, getLogger
 
 # JAX
 import jax
+import numpy as np
+import numpy.typing as npt
 from flax import struct
 
-from .wavefunction import Wavefunction_data, compute_kinetic_energy_api
 from .coulomb_potential import Coulomb_potential_data, compute_coulomb_potential_api
 from .structure import Structure_data
+from .wavefunction import Wavefunction_data, compute_kinetic_energy_api
 
 # set logger
 logger = getLogger("myqmc").getChild(__name__)
@@ -68,10 +68,10 @@ def compute_local_energy(
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
-    Returns:
+    Returns
+    -------
         The value of local energy with the given wavefunction (float | complex)
     """
-
     T = compute_kinetic_energy_api(
         wavefunction_data=hamiltonian_data.wavefunction_data,
         r_up_carts=r_up_carts,

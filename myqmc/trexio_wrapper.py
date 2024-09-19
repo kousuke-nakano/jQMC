@@ -1,20 +1,21 @@
 """TREXIO wrapper modules"""
 
 # import python modules
-import numpy as np
-
 # logger
-from logging import getLogger, StreamHandler, Formatter
+from logging import Formatter, StreamHandler, getLogger
+
+import numpy as np
 
 # import trexio
 import trexio
 
-# import myQMC
-from .structure import Structure_data
 from .atomic_orbital import AOs_data
-from .molecular_orbital import MOs_data, compute_MOs_api
 from .coulomb_potential import Coulomb_potential_data
 from .determinant import Geminal_data
+from .molecular_orbital import MOs_data, compute_MOs_api
+
+# import myQMC
+from .structure import Structure_data
 
 logger = getLogger("myqmc").getChild(__name__)
 
@@ -27,11 +28,11 @@ def read_trexio_file(trexio_file: str):
     Args:
         trexio_file (str): the path to a TREXIO file
 
-    Returns:
+    Returns
+    -------
         instances of AOs_data, MOs_data, Structure_data, and
         Coulomb_potential_data.
     """
-
     # prefix and file names
     logger.info(f"TREXIO file = {trexio_file}")
 
@@ -162,9 +163,7 @@ def read_trexio_file(trexio_file: str):
         ao_nucleus_index = basis_nucleus_index[i_shell]
         ao_coord = list(coords_r[ao_nucleus_index])
         ao_ang_mom = basis_shell_ang_mom[i_shell]
-        ao_mag_moms = [0] + [
-            i * (-1) ** j for i in range(1, ao_ang_mom + 1) for j in range(2)
-        ]
+        ao_mag_moms = [0] + [i * (-1) ** j for i in range(1, ao_ang_mom + 1) for j in range(2)]
         num_mag_moms = len(ao_mag_moms)
 
         ao_nucleus_index_dup = [ao_nucleus_index for _ in range(num_mag_moms)]
@@ -227,9 +226,7 @@ def read_trexio_file(trexio_file: str):
     # MOs_data instance
     if spin_restricted:
         mo_indices = [i for (i, v) in enumerate(mo_spin) if v == 0]
-        mo_coefficient_real_up = mo_coefficient_real_dn = mo_coefficient_real[
-            mo_indices
-        ]
+        mo_coefficient_real_up = mo_coefficient_real_dn = mo_coefficient_real[mo_indices]
         mo_num_up = mo_num_dn = mo_num
         mos_data_up = MOs_data(
             num_mo=mo_num_up, mo_coefficients=mo_coefficient_real_up, aos_data=aos_data
@@ -240,9 +237,7 @@ def read_trexio_file(trexio_file: str):
 
         mo_lambda_paired_occ = np.eye(num_ele_up, num_ele_dn, k=0)
 
-        mo_lambda_matrix_unpaired = np.eye(
-            num_ele_up, num_ele_up - num_ele_dn, k=-num_ele_dn
-        )
+        mo_lambda_matrix_unpaired = np.eye(num_ele_up, num_ele_up - num_ele_dn, k=-num_ele_dn)
         mo_lambda_matrix = np.block(
             [
                 [
@@ -502,9 +497,7 @@ def convert_from_atomic_labels_to_atomic_numbers(labels_r: list[str]) -> list[in
         if label in element_to_number:
             atomic_number = element_to_number[label]
             if atomic_number > 86:
-                raise NotImplementedError(
-                    "Atomic numbers above 86 are not implemented."
-                )
+                raise NotImplementedError("Atomic numbers above 86 are not implemented.")
             atomic_numbers.append(atomic_number)
         else:
             raise ValueError(f"No atomic number found for the label '{label}'")

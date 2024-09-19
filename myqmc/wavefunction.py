@@ -2,26 +2,25 @@
 
 # python modules
 # from dataclasses import dataclass
-import numpy as np
-import numpy.typing as npt
-from logging import getLogger, StreamHandler, Formatter
+from logging import Formatter, StreamHandler, getLogger
 
 # import jax
 import jax
-from jax import jit
 import jax.numpy as jnp
+import numpy as np
+import numpy.typing as npt
 from flax import struct
+from jax import jit
 
 from .determinant import (
     Geminal_data,
     compute_det_geminal_all_elements_api,
     compute_grads_and_laplacian_ln_Det_api,
 )
-
 from .jastrow_factor import (
     Jastrow_data,
-    compute_Jastrow_part_api,
     compute_grads_and_laplacian_Jastrow_part_api,
+    compute_Jastrow_part_api,
 )
 
 # set logger
@@ -62,10 +61,10 @@ def evaluate_ln_wavefunction_api(
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
-    Returns:
+    Returns
+    -------
         The value of the given wavefunction (float | complex)
     """
-
     return jnp.log(
         jnp.abs(
             evaluate_wavefunction_api(
@@ -90,10 +89,10 @@ def evaluate_wavefunction_api(
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
-    Returns:
+    Returns
+    -------
         The value of the given wavefunction (float | complex)
     """
-
     Jastrow_part = compute_Jastrow_part_api(
         jastrow_data=wavefunction_data.jastrow_data,
         r_up_carts=r_up_carts,
@@ -125,25 +124,22 @@ def compute_kinetic_energy_api(
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
-    Returns:
+    Returns
+    -------
         The value of laplacian the given wavefunction (float | complex)
     """
-    grad_J_up, grad_J_dn, sum_laplacian_J = (
-        compute_grads_and_laplacian_Jastrow_part_api(
-            jastrow_data=wavefunction_data.jastrow_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
-            debug_flag=False,
-        )
+    grad_J_up, grad_J_dn, sum_laplacian_J = compute_grads_and_laplacian_Jastrow_part_api(
+        jastrow_data=wavefunction_data.jastrow_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        debug_flag=False,
     )
 
-    grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = (
-        compute_grads_and_laplacian_ln_Det_api(
-            geminal_data=wavefunction_data.geminal_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
-            debug_flag=False,
-        )
+    grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = compute_grads_and_laplacian_ln_Det_api(
+        geminal_data=wavefunction_data.geminal_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        debug_flag=False,
     )
 
     # compute kinetic energy
@@ -175,10 +171,10 @@ def compute_quantum_force(
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
-    Returns:
+    Returns
+    -------
         The value of quantum forces of the given wavefunction -> return tuple[(N_e^{up}, 3), (N_e^{dn}, 3)]
     """
-
     grad_J_up, grad_J_dn, _ = 0, 0, 0  # tentative
 
     grad_ln_D_up, grad_ln_D_dn, _ = compute_grads_and_laplacian_ln_Det_api(

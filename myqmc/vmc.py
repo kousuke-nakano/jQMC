@@ -3,24 +3,22 @@
 # python modules
 import os
 import random
+from logging import Formatter, StreamHandler, getLogger
+
+# import mpi4jax
+# JAX
+import jax
 import numpy as np
-from logging import getLogger, StreamHandler, Formatter
+from jax import grad
 
 # MPI
 from mpi4py import MPI
 
-# import mpi4jax
-
-# JAX
-import jax
-from jax import grad
-
-from .structure import find_nearest_index
 from .hamiltonians import Hamiltonian_data, compute_local_energy
-from .wavefunction import evaluate_wavefunction_api, evaluate_ln_wavefunction_api
+from .jastrow_factor import Jastrow_data, Jastrow_two_body_data
+from .structure import find_nearest_index
 from .trexio_wrapper import read_trexio_file
-from .wavefunction import Wavefunction_data
-from .jastrow_factor import Jastrow_two_body_data, Jastrow_data
+from .wavefunction import Wavefunction_data, evaluate_ln_wavefunction_api, evaluate_wavefunction_api
 
 # set logger
 logger = getLogger("myqmc").getChild(__name__)
@@ -45,7 +43,6 @@ class MCMC:
         Returns:
             None
         """
-
         self.__hamiltonian_data = hamiltonian_data
         self.__mcmc_seed = mcmc_seed
         self.__Dt = Dt
@@ -89,14 +86,9 @@ class MCMC:
         self.__init__attributes()
 
     def __init__attributes(self):
-
         # set the initial electron configurations
-        num_electron_up = (
-            self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
-        )
-        num_electron_dn = (
-            self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
-        )
+        num_electron_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+        num_electron_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
 
         # Initialization
         r_carts_up = []
@@ -105,9 +97,9 @@ class MCMC:
         total_electrons = 0
 
         if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
-            charges = np.array(
-                self.__hamiltonian_data.structure_data.atomic_numbers
-            ) - np.array(self.__hamiltonian_data.coulomb_potential_data.z_cores)
+            charges = np.array(self.__hamiltonian_data.structure_data.atomic_numbers) - np.array(
+                self.__hamiltonian_data.coulomb_potential_data.z_cores
+            )
         else:
             charges = np.array(self.__hamiltonian_data.structure_data.atomic_numbers)
 
@@ -152,13 +144,9 @@ class MCMC:
 
         # Randomly place any remaining electrons
         for _ in range(remaining_up):
-            r_carts_up.append(
-                np.random.choice(coords) + np.random.normal(scale=0.1, size=3)
-            )
+            r_carts_up.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
         for _ in range(remaining_dn):
-            r_carts_dn.append(
-                np.random.choice(coords) + np.random.normal(scale=0.1, size=3)
-            )
+            r_carts_dn.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
 
         self.__latest_r_up_carts = np.array(r_carts_up)
         self.__latest_r_dn_carts = np.array(r_carts_dn)
@@ -224,7 +212,6 @@ class MCMC:
         Returns:
             None
         """
-
         cpu_count = os.cpu_count()
         logger.info(f"cpu count = {cpu_count}")
 
@@ -239,39 +226,29 @@ class MCMC:
             logger.info(f"Current MCMC step = {i_mcmc_step+1}/{num_mcmc_steps}.")
 
             # Determine the total number of electrons
-            total_electrons = len(self.__latest_r_up_carts) + len(
-                self.__latest_r_dn_carts
-            )
+            total_electrons = len(self.__latest_r_up_carts) + len(self.__latest_r_dn_carts)
 
             if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
                 charges = np.array(
                     self.__hamiltonian_data.structure_data.atomic_numbers
                 ) - np.array(self.__hamiltonian_data.coulomb_potential_data.z_cores)
             else:
-                charges = np.array(
-                    self.__hamiltonian_data.structure_data.atomic_numbers
-                )
+                charges = np.array(self.__hamiltonian_data.structure_data.atomic_numbers)
 
             coords = self.__hamiltonian_data.structure_data.positions_cart
 
             for _ in range(nbra):
                 # Choose randomly if the electron comes from up or dn
-                if random.randint(0, total_electrons - 1) < len(
-                    self.__latest_r_up_carts
-                ):
+                if random.randint(0, total_electrons - 1) < len(self.__latest_r_up_carts):
                     selected_electron_spin = "up"
                     # Randomly select an electron from r_carts_up
-                    selected_electron_index = random.randint(
-                        0, len(self.__latest_r_up_carts) - 1
-                    )
+                    selected_electron_index = random.randint(0, len(self.__latest_r_up_carts) - 1)
 
                     old_r_cart = self.__latest_r_up_carts[selected_electron_index]
                 else:
                     selected_electron_spin = "dn"
                     # Randomly select an electron from r_carts_dn
-                    selected_electron_index = random.randint(
-                        0, len(self.__latest_r_dn_carts) - 1
-                    )
+                    selected_electron_index = random.randint(0, len(self.__latest_r_dn_carts) - 1)
                     old_r_cart = self.__latest_r_dn_carts[selected_electron_index]
 
                 nearest_atom_index = find_nearest_index(
@@ -323,7 +300,7 @@ class MCMC:
                 logger.debug(f"The proposed electron position is {new_r_cart}.")
 
                 T_ratio = (f_l / f_prime_l) * np.exp(
-                    -np.linalg.norm(new_r_cart - old_r_cart) ** 2
+                    -(np.linalg.norm(new_r_cart - old_r_cart) ** 2)
                     * (
                         1.0 / (2.0 * f_prime_l**2 * self.__Dt**2)
                         - 1.0 / (2.0 * f_l**2 * self.__Dt**2)
@@ -436,7 +413,6 @@ class MCMC:
 
 
 if __name__ == "__main__":
-
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
 
@@ -458,9 +434,7 @@ if __name__ == "__main__":
         mos_data_dn,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "water_trexio.hdf5")
-    )
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "water_trexio.hdf5"))
 
     jastrow_two_body_data = Jastrow_two_body_data(
         param_parallel_spin=0.0, param_anti_parallel_spin=0.0
@@ -469,9 +443,7 @@ if __name__ == "__main__":
         jastrow_two_body_data=jastrow_two_body_data, jastrow_two_body_type="off"
     )  # no jastrow for the time-being.
 
-    wavefunction_data = Wavefunction_data(
-        jastrow_data=jastrow_data, geminal_data=geminal_mo_data
-    )
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
 
     hamiltonian_data = Hamiltonian_data(
         structure_data=structure_data,

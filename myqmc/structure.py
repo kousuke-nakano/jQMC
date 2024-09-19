@@ -2,18 +2,16 @@
 
 # python modules
 import itertools
-from logging import getLogger, StreamHandler, Formatter
-
-import numpy as np
-from numpy import linalg as LA
-import numpy.typing as npt
+from logging import Formatter, StreamHandler, getLogger
 
 # JAX
 import jax
-from jax import numpy as jnp
-from jax import lax
-from jax import jit
+import numpy as np
+import numpy.typing as npt
 from flax import struct
+from jax import jit, lax
+from jax import numpy as jnp
+from numpy import linalg as LA
 
 # modules
 from .units import Bohr_to_Angstrom
@@ -54,7 +52,8 @@ class Structure_data:
     @property
     def cell(self) -> npt.NDArray[np.float64]:
         """
-        Returns:
+        Returns
+        -------
             3x3 cell matrix containing the cell vectors, `vec_a`, `vec_b`, and `vec_c`
             The unit is Bohr.
         """
@@ -64,12 +63,12 @@ class Structure_data:
     @property
     def recip_cell(self) -> npt.NDArray[np.float64]:
         """
-        Returns:
+        Returns
+        -------
             3x3 cell matrix containing the reciprocal cell vectors,
             `recip_vec_a`, `recip_vec_b`, and `recip_vec_c`
             The unit is Bohr^{-1}
         """
-
         # definitions of reciprocal lattice vectors are;
         # T_a, T_b, T_c are given lattice vectors
         #
@@ -111,9 +110,7 @@ class Structure_data:
                     np.dot(lattice_vec, recip_vec), 2 * np.pi, decimal=15
                 )
             else:
-                np.testing.assert_almost_equal(
-                    np.dot(lattice_vec, recip_vec), 0.0, decimal=15
-                )
+                np.testing.assert_almost_equal(np.dot(lattice_vec, recip_vec), 0.0, decimal=15)
 
         recip_cell = np.array([recip_a, recip_b, recip_c])
         return recip_cell
@@ -157,7 +154,8 @@ class Structure_data:
     @property
     def positions_cart(self) -> npt.NDArray[np.float64]:
         """
-        Returns:
+        Returns
+        -------
             (N x 3) np.array containing atomic positions in cartesian. The unit is Bohr
         """
         return self.positions
@@ -165,7 +163,8 @@ class Structure_data:
     @property
     def positions_frac(self) -> npt.NDArray[np.float64]:
         """
-        Returns:
+        Returns
+        -------
             (N x 3) np.array containing atomic positions in crystal (fractional) coordinate.
         """
         h = np.array([self.vec_a, self.vec_b, self.vec_c])
@@ -177,7 +176,8 @@ class Structure_data:
     @property
     def natom(self) -> int:
         """
-        Returns:
+        Returns
+        -------
             The number of atoms in the system.
         """
         return len(self.atomic_numbers)
@@ -185,7 +185,8 @@ class Structure_data:
     @property
     def ntyp(self) -> int:
         """
-        Returns:
+        Returns
+        -------
             The number of element types in the system.
         """
         return len(list(set(self.atomic_numbers)))
@@ -229,7 +230,8 @@ class Structure_data:
     @classmethod
     def parse_structure_from_file(cls, filename: str) -> "Structure_data":
         """
-        Returns:
+        Returns
+        -------
             Struture class from a file using the ASE read function.
 
         Args:
@@ -254,9 +256,7 @@ class Structure_data:
         from ase.io import write  # type: ignore
 
         if any(self.pbc_flag):
-            ase_atom = Atoms(
-                self.element_symbols, positions=self.positions_cart * Bohr_to_Angstrom
-            )
+            ase_atom = Atoms(self.element_symbols, positions=self.positions_cart * Bohr_to_Angstrom)
             ase_atom.set_cell(
                 np.array(
                     [
@@ -268,17 +268,13 @@ class Structure_data:
             )
             ase_atom.set_pbc(self.pbc_flag)
         else:
-            ase_atom = Atoms(
-                self.element_symbols, positions=self.positions_cart * Bohr_to_Angstrom
-            )
+            ase_atom = Atoms(self.element_symbols, positions=self.positions_cart * Bohr_to_Angstrom)
             ase_atom.set_pbc(self.pbc_flag)
 
         write(filename, ase_atom)
 
 
-def find_nearest_index(
-    structure: Structure_data, r_cart: list[float, float, float]
-) -> int:
+def find_nearest_index(structure: Structure_data, r_cart: list[float, float, float]) -> int:
     """
     Args:
         structure (Structure_data): an instance of Structure_data
@@ -286,7 +282,6 @@ def find_nearest_index(
     Return:
         The index of the nearest neigbhor nucleus (int)
     """
-
     if any(structure.pbc_flag):
         raise NotImplementedError
     else:
@@ -298,9 +293,7 @@ def find_nearest_nucleus_indices_np(structure_data: Structure_data, r_cart, N):
         raise NotImplementedError
     else:
         # Calculate the distance between each row of R_carts and r_cart
-        distances = np.sqrt(
-            np.sum((structure_data.positions_cart - np.array(r_cart)) ** 2, axis=1)
-        )
+        distances = np.sqrt(np.sum((structure_data.positions_cart - np.array(r_cart)) ** 2, axis=1))
         # Sort indices based on the calculated distances
         nearest_indices = np.argsort(distances)
         # Select the indices of the nearest N rows
@@ -309,9 +302,7 @@ def find_nearest_nucleus_indices_np(structure_data: Structure_data, r_cart, N):
 
 def find_nearest_nucleus_indices_jnp(structure_data: Structure_data, r_cart, N):
     # Calculate the distance between each row of R_carts and r_cart
-    distances = jnp.sqrt(
-        jnp.sum((structure_data.positions_cart - jnp.array(r_cart)) ** 2, axis=1)
-    )
+    distances = jnp.sqrt(jnp.sum((structure_data.positions_cart - jnp.array(r_cart)) ** 2, axis=1))
     # Sort indices based on the calculated distances
     nearest_indices = jnp.argsort(distances)
     # Select the indices of the nearest N rows
@@ -322,7 +313,8 @@ def get_min_dist_rel_R_cart_np(
     structure_data: Structure_data, r_cart: list[float, float, float], i_atom: int
 ) -> float:
     """
-    Returns:
+    Returns
+    -------
         rel_R_cart_min_dist containing minimum-distance atomic positions with respect to the given r_cart in cartesian. The unit is Bohr
     """
 
@@ -347,7 +339,8 @@ def get_min_dist_rel_R_cart_jnp(
     structure_data: Structure_data, r_cart: list[float, float, float], i_atom: int
 ) -> float:
     """
-    Returns:
+    Returns
+    -------
         rel_R_cart_min_dist minimum-distance atomic positions with respect to the given r_cart in cartesian. The unit is Bohr
     """
 
