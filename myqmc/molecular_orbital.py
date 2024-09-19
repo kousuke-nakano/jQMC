@@ -22,6 +22,7 @@ from .atomic_orbital import (
     compute_AO,
     compute_AOs_api,
     compute_AOs_grad_api,
+    compute_AOs_jax,
     compute_AOs_laplacian_api,
 )
 
@@ -276,13 +277,18 @@ def compute_MOs_debug(
     )
 
 
-@jit
+# it cannot be jitted!? because _api methods
+# in which crude if statements are included.
+# but why? other _api can be jitted...
+# to be solved
+# @jit
 def compute_MOs_jax(
     mos_data: MOs_data, r_carts: npt.NDArray[np.float64]
 ) -> npt.NDArray[np.float64]:
     return jnp.dot(
         mos_data.mo_coefficients,
         compute_AOs_api(aos_data=mos_data.aos_data, r_carts=r_carts, debug_flag=False),
+        # compute_AOs_jax(aos_data=mos_data.aos_data, r_carts=r_carts),
     )
 
 

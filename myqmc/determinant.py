@@ -216,9 +216,9 @@ def compute_geminal_all_elements_debug(
 
 
 # it cannot be jitted!? because _api methods
-# in which crude if statements are included.
+# in which crude if statements are included ??
 # but why? other _api can be jitted...
-# -> probably it's related to pytree... now it works
+# to be solved
 @jit
 def compute_geminal_all_elements_jax(
     geminal_data: Geminal_data,

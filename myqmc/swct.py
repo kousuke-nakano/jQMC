@@ -1,6 +1,8 @@
 """SWCT module"""
 
 # python modules
+import os
+
 # from dataclasses import dataclass
 from logging import Formatter, StreamHandler, getLogger
 
@@ -57,7 +59,7 @@ def evaluate_swct_omega_api(
     """
     if debug_flag:
         omega_up, omega_dn = evaluate_swct_omega_debug(
-            swct_data=swct_data, r_up_carts=r_dn_carts, r_dn_carts=r_dn_carts
+            swct_data=swct_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
         )
     else:
         raise NotImplementedError
@@ -74,15 +76,15 @@ def evaluate_swct_omega_debug(
     omega_up = np.zeros((len(R_carts), len(r_up_carts)))
     omega_dn = np.zeros((len(R_carts), len(r_dn_carts)))
 
-    for alpha, i in range(len(R_carts), len(r_up_carts)):
-        kappa = 1.0 / np.abs(r_up_carts[i] - R_carts[alpha]) ** 4
+    for alpha, i in zip(range(len(R_carts)), range(len(r_up_carts))):
+        kappa = 1.0 / np.linalg.norm(r_up_carts[i] - R_carts[alpha]) ** 4
         kappa_sum = np.sum(
             [1.0 / np.abs(r_up_carts[i] - R_carts[beta]) ** 4 for beta in range(len(R_carts))]
         )
         omega_up[alpha, i] = kappa / kappa_sum
 
-    for alpha, i in range(len(R_carts), len(r_dn_carts)):
-        kappa = 1.0 / np.abs(r_dn_carts[i] - R_carts[alpha]) ** 4
+    for alpha, i in zip(range(len(R_carts)), range(len(r_dn_carts))):
+        kappa = 1.0 / np.linalg.norm(r_dn_carts[i] - R_carts[alpha]) ** 4
         kappa_sum = np.sum(
             [1.0 / np.abs(r_dn_carts[i] - R_carts[beta]) ** 4 for beta in range(len(R_carts))]
         )
@@ -99,3 +101,29 @@ if __name__ == "__main__":
     handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
     stream_handler.setFormatter(handler_format)
     log.addHandler(stream_handler)
+
+    from .trexio_wrapper import read_trexio_file
+
+    # water  cc-pVTZ with Mitas ccECP.
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "water_trexio.hdf5"))
+
+    swct_data = SWCT_data(structure=structure_data)
+
+    num_ele_up = geminal_mo_data.num_electron_up
+    num_ele_dn = geminal_mo_data.num_electron_dn
+    r_cart_min, r_cart_max = -5.0, +5.0
+    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
+    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
+
+    print(
+        evaluate_swct_omega_api(
+            swct_data=swct_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, debug_flag=True
+        )
+    )
