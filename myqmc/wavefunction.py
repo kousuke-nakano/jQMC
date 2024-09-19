@@ -49,13 +49,41 @@ class Wavefunction_data:
 
 
 @jit
+def evaluate_ln_wavefunction_api(
+    wavefunction_data: Wavefunction_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+) -> float | complex:
+    """
+    The method is for evaluate the logarithm of |wavefunction| (ln |Psi|) at (r_up_carts, r_dn_carts).
+
+    Args:
+        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
+        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
+        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+
+    Returns:
+        The value of the given wavefunction (float | complex)
+    """
+
+    return jnp.log(
+        jnp.abs(
+            evaluate_wavefunction_api(
+                wavefunction_data=wavefunction_data,
+                r_up_carts=r_up_carts,
+                r_dn_carts=r_dn_carts,
+            )
+        )
+    )
+
+
 def evaluate_wavefunction_api(
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float | complex:
     """
-    The method is for evaluate wavefunction at (r_up_carts, r_dn_carts).
+    The method is for evaluate wavefunction (Psi) at (r_up_carts, r_dn_carts).
 
     Args:
         wavefunction_data (Wavefunction_data): an instance of Wavefunction_data

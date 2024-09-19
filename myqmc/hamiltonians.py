@@ -29,6 +29,22 @@ class Hamiltonian_data:
         structure_data (Structure_data)
         coulomb_data (Coulomb_data)
         wavefunction_data (Wavefunction_data)
+
+    Comments:
+        Heres are the differentiable arguments, i.e., pytree_node = True
+
+        WF parameters related:
+            - mo_coefficients in MOs_data (molecular_orbital.py) (switched off, for the time being)
+            - (ao_)coefficients in AOs_data (atomic_orbital.py) (switched off, for the time being)
+            - (ao_)exponents in AOs_data (atomic_orbital.py) (switched off, for the time being)
+            - lambda_matrix in Geminal_data (determinant.py) (switched off, for the time being)
+            - param_parallel_spin in Jastrow_two_body_data (jastrow_factor.py)
+            - param_anti_parallel_spin in Jastrow_two_body_data (jastrow_factor.py)
+
+        Atomic positions related:
+            - structure_data.positions in AOs_data (atomic_orbital.py)
+            - structure_data.positions in Coulomb_potential_data (coulomb_potential.py)
+
     """
 
     structure_data: Structure_data = None

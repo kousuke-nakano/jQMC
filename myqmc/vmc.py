@@ -17,9 +17,7 @@ from jax import grad
 
 from .structure import find_nearest_index
 from .hamiltonians import Hamiltonian_data, compute_local_energy
-from .wavefunction import (
-    evaluate_wavefunction_api,
-)
+from .wavefunction import evaluate_wavefunction_api, evaluate_ln_wavefunction_api
 from .trexio_wrapper import read_trexio_file
 from .wavefunction import Wavefunction_data
 from .jastrow_factor import Jastrow_two_body_data, Jastrow_data
@@ -63,8 +61,29 @@ class MCMC:
         self.__stored_r_up_carts = None
         self.__stored_r_dn_carts = None
 
-        # stored local energy
-        self.__stored_local_energy = None
+        # stored local energy (e_L)
+        self.__stored_e_L = []
+
+        # stored de_L / dR
+        self.__stored_grad_e_L_R = []
+
+        # stored de_L / dr_up
+        self.__stored_grad_e_L_r_up = []
+
+        # stored de_L / dr_dn
+        self.__stored_grad_e_L_r_dn = []
+
+        # stored ln_Psi
+        self.__stored_ln_Psi = []
+
+        # stored dln_Psi / dr_up
+        self.__stored_grad_ln_Psi_r_up = []
+
+        # stored dln_Psi / dr_dn
+        self.__stored_grad_ln_Psi_r_dn = []
+
+        # stored dln_Psi / dR
+        self.__stored_grad_ln_Psi_R = []
 
         # intialize all attributes
         self.__init__attributes()
@@ -150,9 +169,31 @@ class MCMC:
         # reset mcmc counter
         self.__mcmc_counter = 0
 
-        # stored local energy
-        self.__stored_local_energy = []
+        # stored local energy (e_L)
+        self.__stored_e_L = []
 
+        # stored de_L / dR
+        self.__stored_grad_e_L_R = []
+
+        # stored de_L / dr_up
+        self.__stored_grad_e_L_r_up = []
+
+        # stored de_L / dr_dn
+        self.__stored_grad_e_L_r_dn = []
+
+        # stored ln_Psi
+        self.__stored_ln_Psi = []
+
+        # stored dln_Psi / dr_up
+        self.__stored_grad_ln_Psi_r_up = []
+
+        # stored dln_Psi / dr_dn
+        self.__stored_grad_ln_Psi_r_dn = []
+
+        # stored dln_Psi / dR
+        self.__stored_grad_ln_Psi_R = []
+
+        """
         # compiling methods
         logger.info("Compilation starts.")
 
@@ -164,15 +205,16 @@ class MCMC:
         )
         logger.info("  Compilation e_L is done.")
 
-        """
+        logger.info("  Compilation de_L/dR_a starts.")
         _, _, _ = grad(compute_local_energy, argnums=(0, 1, 2))(
             self.__hamiltonian_data,
             self.__latest_r_up_carts,
             self.__latest_r_dn_carts,
         )
-        """
+        logger.info("  Compilation de_L/dR_a is done.")
 
         logger.info("Compilation is done.")
+        """
 
     def run(self, num_mcmc_steps: int = 0, continuation: int = 0) -> None:
         """
@@ -186,7 +228,7 @@ class MCMC:
         cpu_count = os.cpu_count()
         logger.info(f"cpu count = {cpu_count}")
 
-        # Set the random seed and use the Mersenne Twister generator
+        # Set the random seed. Use the Mersenne Twister generator
         accepted_moves = 0
         nbra = 16
         random.seed(self.__mcmc_seed)
@@ -315,13 +357,14 @@ class MCMC:
                 else:
                     logger.debug("The proposed move is rejected!")
 
+            # evaluate observables
             e_L = compute_local_energy(
                 hamiltonian_data=self.__hamiltonian_data,
                 r_up_carts=self.__latest_r_up_carts,
                 r_dn_carts=self.__latest_r_dn_carts,
             )
             logger.info(f"e_L = {e_L}")
-            self.__stored_local_energy.append(e_L)
+            self.__stored_e_L.append(e_L)
 
             """
             grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = grad(
@@ -331,11 +374,18 @@ class MCMC:
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
+            self.__stored_grad_e_L_r_up.append(grad_e_L_r_up)
+            self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn)
+
             grad_e_L_R = (
                 grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.aos_data.structure_data.positions
                 + grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions
                 + grad_e_L_h.coulomb_potential_data.structure_data.positions
             )
+            self.__stored_grad_e_L_R.append(grad_e_L_R)
+            """
+
+            """
             logger.info(
                 f"de_L_dR(AOs_data_up) = {grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.aos_data.structure_data.positions}"
             )
@@ -350,11 +400,39 @@ class MCMC:
             logger.info(f"de_L_dr_dn= {grad_e_L_r_dn}")
             """
 
+            ln_Psi = evaluate_ln_wavefunction_api(
+                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                r_up_carts=self.__latest_r_up_carts,
+                r_dn_carts=self.__latest_r_dn_carts,
+            )
+            logger.info(f"ln_Psi = {ln_Psi}")
+            self.__stored_ln_Psi.append(ln_Psi)
+
+            # """
+            grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = grad(
+                evaluate_ln_wavefunction_api, argnums=(0, 1, 2)
+            )(
+                self.__hamiltonian_data.wavefunction_data,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+            )
+            self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up)
+            self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn)
+
+            grad_ln_Psi_R = (
+                grad_ln_Psi_h.geminal_data.orb_data_up_spin.aos_data.structure_data.positions
+                + grad_ln_Psi_h.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions
+            )
+
+            # stored dln_Psi / dR
+            self.__stored_grad_ln_Psi_R.append(grad_ln_Psi_R)
+            # """
+
         logger.info(f"acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
 
     @property
     def e_L(self):
-        return self.__stored_local_energy
+        return self.__stored_e_L
 
 
 if __name__ == "__main__":

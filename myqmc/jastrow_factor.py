@@ -32,8 +32,8 @@ class Jastrow_two_body_data:
         param_antiparallel_spin (float): parameter for anti-parallel spins
     """
 
-    param_parallel_spin: float = struct.field(pytree_node=False)
-    param_anti_parallel_spin: float = struct.field(pytree_node=False)
+    param_parallel_spin: float = struct.field(pytree_node=True)
+    param_anti_parallel_spin: float = struct.field(pytree_node=True)
 
     def __post_init__(self) -> None:
         pass

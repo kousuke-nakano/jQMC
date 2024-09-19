@@ -43,9 +43,9 @@ class Structure_data:
     """
 
     pbc_flag: list[bool] = struct.field(pytree_node=False)
-    vec_a: list[float] = struct.field(pytree_node=True)
-    vec_b: list[float] = struct.field(pytree_node=True)
-    vec_c: list[float] = struct.field(pytree_node=True)
+    vec_a: list[float] = struct.field(pytree_node=False)
+    vec_b: list[float] = struct.field(pytree_node=False)
+    vec_c: list[float] = struct.field(pytree_node=False)
     atomic_numbers: list[int] = struct.field(pytree_node=False)
     element_symbols: list[str] = struct.field(pytree_node=False)
     atomic_labels: list[str] = struct.field(pytree_node=False)
