@@ -8,7 +8,7 @@ import pytest
 from numpy import linalg as LA
 from numpy.testing import assert_almost_equal
 
-from ..myqmc.atomic_orbital import (
+from ..jqmc.atomic_orbital import (
     AO_data_debug,
     AOs_data_debug,
     compute_AOs_api,
@@ -16,24 +16,24 @@ from ..myqmc.atomic_orbital import (
     compute_AOs_laplacian_api,
     compute_S_l_m_debug,
 )
-from ..myqmc.coulomb_potential import (
+from ..jqmc.coulomb_potential import (
     compute_bare_coulomb_potential_api,
     compute_ecp_coulomb_potential_api,
 )
-from ..myqmc.determinant import (
+from ..jqmc.determinant import (
     Geminal_data,
     compute_det_geminal_all_elements_api,
     compute_geminal_all_elements_api,
     compute_grads_and_laplacian_ln_Det_api,
 )
-from ..myqmc.hamiltonians import Hamiltonian_data
-from ..myqmc.jastrow_factor import (
+from ..jqmc.hamiltonians import Hamiltonian_data
+from ..jqmc.jastrow_factor import (
     Jastrow_data,
     Jastrow_two_body_data,
     compute_grads_and_laplacian_Jastrow_two_body_api,
     compute_Jastrow_two_body_api,
 )
-from ..myqmc.molecular_orbital import (
+from ..jqmc.molecular_orbital import (
     MO_data,
     MOs_data,
     compute_MO,
@@ -41,8 +41,8 @@ from ..myqmc.molecular_orbital import (
     compute_MOs_grad_api,
     compute_MOs_laplacian_api,
 )
-from ..myqmc.trexio_wrapper import read_trexio_file
-from ..myqmc.wavefunction import (
+from ..jqmc.trexio_wrapper import read_trexio_file
+from ..jqmc.wavefunction import (
     Wavefunction_data,
     compute_kinetic_energy_api,
     evaluate_wavefunction_api,
