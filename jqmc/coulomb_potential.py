@@ -19,15 +19,11 @@ from jax import jit, lax, vmap
 from scipy.special import eval_legendre
 
 from .function_collections import legendre_tablated as jnp_legendre_tablated
-from .structure import (
-    Structure_data,
-    get_min_dist_rel_R_cart_jnp,
-    get_min_dist_rel_R_cart_np,
-)
+from .structure import Structure_data, get_min_dist_rel_R_cart_jnp, get_min_dist_rel_R_cart_np
 from .wavefunction import Wavefunction_data, evaluate_wavefunction_api
 
 # set logger
-logger = getLogger("myqmc").getChild(__name__)
+logger = getLogger("jqmc").getChild(__name__)
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -823,7 +819,7 @@ if __name__ == "__main__":
     from .hamiltonians import Hamiltonian_data
     from .trexio_wrapper import read_trexio_file
 
-    log = getLogger("myqmc")
+    log = getLogger("jqmc")
     log.setLevel("DEBUG")
     stream_handler = StreamHandler()
     stream_handler.setLevel("DEBUG")

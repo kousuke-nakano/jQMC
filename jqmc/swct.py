@@ -16,7 +16,7 @@ from flax import struct
 from .structure import Structure_data
 
 # set logger
-logger = getLogger("myqmc").getChild(__name__)
+logger = getLogger("jqmc").getChild(__name__)
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -94,7 +94,7 @@ def evaluate_swct_omega_debug(
 
 
 if __name__ == "__main__":
-    log = getLogger("myqmc")
+    log = getLogger("jqmc")
     log.setLevel("DEBUG")
     stream_handler = StreamHandler()
     stream_handler.setLevel("DEBUG")

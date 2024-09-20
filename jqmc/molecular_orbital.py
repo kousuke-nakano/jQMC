@@ -27,7 +27,7 @@ from .atomic_orbital import (
 )
 
 # set logger
-logger = getLogger("myqmc").getChild(__name__)
+logger = getLogger("jqmc").getChild(__name__)
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -332,7 +332,7 @@ def compute_MO(mo_data: MO_data, r_cart: list[float]) -> float:
 
 
 if __name__ == "__main__":
-    log = getLogger("myqmc")
+    log = getLogger("jqmc")
     log.setLevel("DEBUG")
     stream_handler = StreamHandler()
     stream_handler.setLevel("DEBUG")

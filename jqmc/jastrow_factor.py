@@ -15,7 +15,7 @@ from flax import struct
 from jax import grad, jacrev, jit, vmap
 
 # set logger
-logger = getLogger("myqmc").getChild(__name__)
+logger = getLogger("jqmc").getChild(__name__)
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -674,7 +674,7 @@ def compute_grads_and_laplacian_Jastrow_two_body_jax(
 
 
 if __name__ == "__main__":
-    log = getLogger("myqmc")
+    log = getLogger("jqmc")
     log.setLevel("DEBUG")
     stream_handler = StreamHandler()
     stream_handler.setLevel("DEBUG")

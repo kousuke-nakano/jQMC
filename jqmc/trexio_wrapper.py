@@ -17,7 +17,7 @@ from .molecular_orbital import MOs_data, compute_MOs_api
 # import myQMC
 from .structure import Structure_data
 
-logger = getLogger("myqmc").getChild(__name__)
+logger = getLogger("jqmc").getChild(__name__)
 
 
 def read_trexio_file(trexio_file: str):
@@ -505,7 +505,7 @@ def convert_from_atomic_labels_to_atomic_numbers(labels_r: list[str]) -> list[in
 
 
 if __name__ == "__main__":
-    log = getLogger("myqmc")
+    log = getLogger("jqmc")
     log.setLevel("DEBUG")
     stream_handler = StreamHandler()
     stream_handler.setLevel("DEBUG")

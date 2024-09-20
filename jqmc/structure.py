@@ -17,7 +17,7 @@ from numpy import linalg as LA
 from .units import Bohr_to_Angstrom
 
 # set logger
-logger = getLogger("myqmc").getChild(__name__)
+logger = getLogger("jqmc").getChild(__name__)
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -363,7 +363,7 @@ def get_min_dist_rel_R_cart_jnp(
 
 
 if __name__ == "__main__":
-    log = getLogger("myqmc")
+    log = getLogger("jqmc")
     log.setLevel("DEBUG")
     stream_handler = StreamHandler()
     stream_handler.setLevel("DEBUG")
