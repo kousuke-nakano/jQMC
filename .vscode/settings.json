@@ -1,0 +1,15 @@
+{
+    "ruff.lint.args": [
+        "--config=${workspaceFolder}/pyproject.toml",
+    ],
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        }
+    },
+    "ruff.lineLength": 128,
+    "ruff.lint.ignore": [
+        "E501"
+    ],
+}
