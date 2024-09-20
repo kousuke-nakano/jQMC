@@ -454,12 +454,12 @@ class MCMC:
             self.__stored_omega_up.append(omega_up)
             self.__stored_omega_dn.append(omega_dn)
 
-            grad_omega_dr_up = grad(evaluate_swct_omega_api, argnums=(1))(
+            grad_omega_dr_up = grad(evaluate_swct_omega_api, argnums=1)(
                 self.__swct_data,
                 self.__latest_r_up_carts,
             )
 
-            grad_omega_dr_dn = grad(evaluate_swct_omega_api, argnums=(1))(
+            grad_omega_dr_dn = grad(evaluate_swct_omega_api, argnums=1)(
                 self.__swct_data,
                 self.__latest_r_dn_carts,
             )

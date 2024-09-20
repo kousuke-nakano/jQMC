@@ -8,6 +8,7 @@ from logging import Formatter, StreamHandler, getLogger
 
 # import jax
 import jax
+from jax import jacrev
 import numpy as np
 import numpy.typing as npt
 from flax import struct
@@ -76,7 +77,7 @@ def evaluate_swct_omega_debug(
         kappa_sum = np.sum(
             [1.0 / np.abs(r_carts[i] - R_carts[beta]) ** 4 for beta in range(len(R_carts))]
         )
-        omega = omega.at[alpha, i].set(kappa / kappa_sum)
+        omega[alpha, i] = kappa / kappa_sum
 
     return omega
 
@@ -96,7 +97,7 @@ def evaluate_swct_omega_jax(
                 [1.0 / jnp.abs(r_carts[i] - R_carts[beta]) ** 4 for beta in range(len(R_carts))]
             )
         )
-        omega[alpha, i] = kappa / kappa_sum
+        omega = omega.at[alpha, i].set(kappa / kappa_sum)
 
     return omega
 
@@ -130,5 +131,12 @@ if __name__ == "__main__":
     r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
 
-    print(evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_up_carts, debug_flag=True))
-    print(evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_dn_carts, debug_flag=True))
+    omega_up = evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_up_carts, debug_flag=True)
+    omega_dn = evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_dn_carts, debug_flag=True)
+    print(f'shape(omega_up) = {omega_up.shape}')
+    print(f'shape(omega_dn) = {omega_dn.shape}')
+
+    jacob_omega_up = jacrev(evaluate_swct_omega_api, argnums=1)(swct_data, r_up_carts)
+    print(f'shape(jacob_omega_up) = {jacob_omega_up.shape}')
+    jacob_omega_dn = jacrev(evaluate_swct_omega_api, argnums=1)(swct_data, r_dn_carts)
+    print(f'shape(jacob_omega_dn) = {jacob_omega_dn.shape}')
