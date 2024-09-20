@@ -14,9 +14,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10"]
+        python-version: ["3.10", "3.11"]
 
     steps:
+    - name: Install gfortran and gcc
+      run: |
+        sudo apt-get update
+        sudo apt-get install gfortran
+
+    - name: Install OpenBLAS and LAPACK
+      run: sudo apt-get install libopenblas-dev liblapack-dev
+
+    - name: Install OpenMPI
+      run: sudo apt-get install openmpi-bin libopenmpi-dev
+
     - uses: actions/checkout@v3
 
     - name: Set up Python ${{ matrix.python-version }}
