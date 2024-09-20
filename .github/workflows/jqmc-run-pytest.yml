@@ -9,8 +9,10 @@ on:
     branches: [ "main", "devel" ]
 
 jobs:
-  run-test:
+  run:
     runs-on: ubuntu-latest
+
+    steps:
     - name: Install TurboGenius
       working-directory: jqmc
       run: |
