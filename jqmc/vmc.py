@@ -17,6 +17,7 @@ from mpi4py import MPI
 from .hamiltonians import Hamiltonian_data, compute_local_energy
 from .jastrow_factor import Jastrow_data, Jastrow_two_body_data
 from .structure import find_nearest_index
+from .swct import SWCT_data, evaluate_swct_omega_api
 from .trexio_wrapper import read_trexio_file
 from .wavefunction import Wavefunction_data, evaluate_ln_wavefunction_api, evaluate_wavefunction_api
 
@@ -31,6 +32,7 @@ class MCMC:
     def __init__(
         self,
         hamiltonian_data: Hamiltonian_data = None,
+        swct_data: SWCT_data = None,
         mcmc_seed: int = 34467,
         Dt: float = 2.0,
     ) -> None:
@@ -44,6 +46,7 @@ class MCMC:
             None
         """
         self.__hamiltonian_data = hamiltonian_data
+        self.__swct_data = swct_data
         self.__mcmc_seed = mcmc_seed
         self.__Dt = Dt
 
@@ -62,7 +65,7 @@ class MCMC:
         self.__stored_e_L = []
 
         # stored de_L / dR
-        self.__stored_grad_e_L_R = []
+        self.__stored_grad_e_L_dR = []
 
         # stored de_L / dr_up
         self.__stored_grad_e_L_r_up = []
@@ -80,7 +83,7 @@ class MCMC:
         self.__stored_grad_ln_Psi_r_dn = []
 
         # stored dln_Psi / dR
-        self.__stored_grad_ln_Psi_R = []
+        self.__stored_grad_ln_Psi_dR = []
 
         # intialize all attributes
         self.__init__attributes()
@@ -161,7 +164,7 @@ class MCMC:
         self.__stored_e_L = []
 
         # stored de_L / dR
-        self.__stored_grad_e_L_R = []
+        self.__stored_grad_e_L_dR = []
 
         # stored de_L / dr_up
         self.__stored_grad_e_L_r_up = []
@@ -179,9 +182,21 @@ class MCMC:
         self.__stored_grad_ln_Psi_r_dn = []
 
         # stored dln_Psi / dR
-        self.__stored_grad_ln_Psi_R = []
+        self.__stored_grad_ln_Psi_dR = []
 
-        """
+        # stored Omega_up (SWCT)
+        self.__stored_omega_up = []
+
+        # stored Omega_dn (SWCT)
+        self.__stored_omega_dn = []
+
+        # stored sum_i d omega/d r_i for up spins (SWCT)
+        self.__stored_grad_omega_r_up = []
+
+        # stored sum_i d omega/d r_i for dn spins (SWCT)
+        self.__stored_grad_omega_r_dn = []
+
+        # """
         # compiling methods
         logger.info("Compilation starts.")
 
@@ -193,16 +208,31 @@ class MCMC:
         )
         logger.info("  Compilation e_L is done.")
 
-        logger.info("  Compilation de_L/dR_a starts.")
+        logger.info("  Compilation de_L starts.")
         _, _, _ = grad(compute_local_energy, argnums=(0, 1, 2))(
             self.__hamiltonian_data,
             self.__latest_r_up_carts,
             self.__latest_r_dn_carts,
         )
-        logger.info("  Compilation de_L/dR_a is done.")
+        logger.info("  Compilation de_L is done.")
+
+        logger.info("  Compilation dln_Psi starts.")
+        _, _, _ = grad(evaluate_ln_wavefunction_api, argnums=(0, 1, 2))(
+            self.__hamiltonian_data.wavefunction_data,
+            self.__latest_r_up_carts,
+            self.__latest_r_dn_carts,
+        )
+        logger.info("  Compilation dln_Psi is done.")
+
+        logger.info("  Compilation domega starts.")
+        _ = grad(evaluate_swct_omega_api, argnums=1)(
+            self.__swct_data,
+            self.__latest_r_up_carts,
+        )
+        logger.info("  Compilation domega is done.")
 
         logger.info("Compilation is done.")
-        """
+        # """
 
     def run(self, num_mcmc_steps: int = 0, continuation: int = 0) -> None:
         """
@@ -343,7 +373,7 @@ class MCMC:
             logger.info(f"e_L = {e_L}")
             self.__stored_e_L.append(e_L)
 
-            """
+            # """
             grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = grad(
                 compute_local_energy, argnums=(0, 1, 2)
             )(
@@ -359,23 +389,23 @@ class MCMC:
                 + grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions
                 + grad_e_L_h.coulomb_potential_data.structure_data.positions
             )
-            self.__stored_grad_e_L_R.append(grad_e_L_R)
-            """
+            self.__stored_grad_e_L_dR.append(grad_e_L_R)
+            # """
 
-            """
-            logger.info(
+            # """
+            logger.debug(
                 f"de_L_dR(AOs_data_up) = {grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.aos_data.structure_data.positions}"
             )
-            logger.info(
+            logger.debug(
                 f"de_L_dR(AOs_data_dn) = {grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions}"
             )
-            logger.info(
+            logger.debug(
                 f"de_L_dR(coulomb_potential_data) = {grad_e_L_h.coulomb_potential_data.structure_data.positions}"
             )
             logger.info(f"de_L_dR = {grad_e_L_R}")
             logger.info(f"de_L_dr_up = {grad_e_L_r_up}")
             logger.info(f"de_L_dr_dn= {grad_e_L_r_dn}")
-            """
+            # """
 
             ln_Psi = evaluate_ln_wavefunction_api(
                 wavefunction_data=self.__hamiltonian_data.wavefunction_data,
@@ -393,23 +423,82 @@ class MCMC:
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
+            logger.info(f"dln_Psi_dr_up = {grad_ln_Psi_r_up}")
+            logger.info(f"dln_Psi_dr_dn = {grad_ln_Psi_r_dn}")
             self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up)
             self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn)
 
-            grad_ln_Psi_R = (
+            grad_ln_Psi_dR = (
                 grad_ln_Psi_h.geminal_data.orb_data_up_spin.aos_data.structure_data.positions
                 + grad_ln_Psi_h.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions
             )
 
             # stored dln_Psi / dR
-            self.__stored_grad_ln_Psi_R.append(grad_ln_Psi_R)
+            logger.info(f"dln_Psi_dR = {grad_ln_Psi_dR}")
+            self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
             # """
+
+            omega_up = evaluate_swct_omega_api(
+                swct_data=self.__swct_data,
+                r_carts=self.__latest_r_up_carts,
+            )
+
+            omega_dn = evaluate_swct_omega_api(
+                swct_data=self.__swct_data,
+                r_carts=self.__latest_r_dn_carts,
+            )
+
+            logger.info(f"omega_up = {omega_up}")
+            logger.info(f"omega_dn = {omega_dn}")
+
+            self.__stored_omega_up.append(omega_up)
+            self.__stored_omega_dn.append(omega_dn)
+
+            grad_omega_dr_up = grad(evaluate_swct_omega_api, argnums=(1))(
+                self.__swct_data,
+                self.__latest_r_up_carts,
+            )
+
+            grad_omega_dr_dn = grad(evaluate_swct_omega_api, argnums=(1))(
+                self.__swct_data,
+                self.__latest_r_dn_carts,
+            )
+
+            logger.info(f"grad_omega_dr_up = {grad_omega_dr_up}")
+            logger.info(f"grad_omega_dr_dn = {grad_omega_dr_dn}")
+
+            self.__stored_grad_omega_r_up.append(grad_omega_dr_up)
+            self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn)
 
         logger.info(f"acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
 
     @property
     def e_L(self):
         return self.__stored_e_L
+
+    @property
+    def de_L_dR(self):
+        return self.__stored_grad_e_L_dR
+
+    @property
+    def de_L_dr_up(self):
+        return self.__stored_grad_e_L_r_up
+
+    @property
+    def de_L_dr_dn(self):
+        return self.__stored_grad_e_L_r_dn
+
+    @property
+    def dln_Psi_dr_up(self):
+        return self.__stored_grad_ln_Psi_r_up
+
+    @property
+    def dln_Psi_dr_dn(self):
+        return self.__stored_grad_ln_Psi_r_dn
+
+    @property
+    def dln_Psi_dR(self):
+        return self.__stored_grad_ln_Psi_dR
 
 
 if __name__ == "__main__":
@@ -436,6 +525,7 @@ if __name__ == "__main__":
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "water_trexio.hdf5"))
 
+    # define data
     jastrow_two_body_data = Jastrow_two_body_data(
         param_parallel_spin=0.0, param_anti_parallel_spin=0.0
     )
@@ -451,6 +541,9 @@ if __name__ == "__main__":
         wavefunction_data=wavefunction_data,
     )
 
+    swct_data = SWCT_data(structure=structure_data)
+
+    # VMC parameters
     num_mcmc_warmup_steps = 50
     num_mcmc_bin_blocks = 10
     mpi_seed = 34356 * (rank + 1)
@@ -460,26 +553,27 @@ if __name__ == "__main__":
         logger.info(f"num_mcmc_warmup_steps={num_mcmc_warmup_steps}.")
         logger.info(f"num_mcmc_bin_blocks={num_mcmc_bin_blocks}.")
 
-    mcmc = MCMC(hamiltonian_data=hamiltonian_data, mcmc_seed=mpi_seed)
+    # run VMC
+    mcmc = MCMC(hamiltonian_data=hamiltonian_data, swct_data=swct_data, mcmc_seed=mpi_seed)
     mcmc.run(num_mcmc_steps=100)
     e_L = mcmc.e_L[num_mcmc_warmup_steps:]
 
     e_L_split = np.array_split(e_L, num_mcmc_bin_blocks)
     e_L_binned = [np.average(e_list) for e_list in e_L_split]
 
-    logger.info(f"e_L_binned for MPI-rank={rank} is {e_L_binned}.")
+    logger.debug(f"e_L_binned for MPI-rank={rank} is {e_L_binned}.")
 
     e_L_binned = comm.reduce(e_L_binned, op=MPI.SUM, root=0)
 
     if rank == 0:
-        logger.info(f"e_L_binned = {e_L_binned}.")
+        logger.debug(f"e_L_binned = {e_L_binned}.")
         # jackknife implementation
         # https://www2.yukawa.kyoto-u.ac.jp/~etsuko.itou/old-HP/Notes/Jackknife-method.pdf
         e_L_jackknife_binned = [
             np.average(np.delete(e_L_binned, i)) for i in range(len(e_L_binned))
         ]
 
-        logger.info(f"e_L_jackknife_binned  = {e_L_jackknife_binned}.")
+        logger.debug(f"e_L_jackknife_binned  = {e_L_jackknife_binned}.")
 
         e_L_mean = np.average(e_L_jackknife_binned)
         e_L_std = np.sqrt(len(e_L_binned) - 1) * np.std(e_L_jackknife_binned)
