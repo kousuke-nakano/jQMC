@@ -288,6 +288,7 @@ def compute_MOs_jax(
     return jnp.dot(
         mos_data.mo_coefficients,
         compute_AOs_api(aos_data=mos_data.aos_data, r_carts=r_carts, debug_flag=False),
+        # why doesn't this _api  work? to do ...
         # compute_AOs_jax(aos_data=mos_data.aos_data, r_carts=r_carts),
     )
 

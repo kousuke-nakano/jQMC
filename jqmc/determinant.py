@@ -219,7 +219,7 @@ def compute_geminal_all_elements_debug(
 # in which crude if statements are included ??
 # but why? other _api can be jitted...
 # to be solved
-@jit
+# @jit
 def compute_geminal_all_elements_jax(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],

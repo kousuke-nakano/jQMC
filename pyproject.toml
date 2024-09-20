@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 # pyproject.toml
 [tool.setuptools_scm]
-write_to = "myqmc/_version.py"
+write_to = "jqmc/_version.py"
 
 [tool.ruff]
 line-length = 100
