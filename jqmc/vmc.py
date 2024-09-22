@@ -17,7 +17,7 @@ from mpi4py import MPI
 from .hamiltonians import Hamiltonian_data, compute_local_energy
 from .jastrow_factor import Jastrow_data, Jastrow_two_body_data
 from .structure import find_nearest_index
-from .swct import SWCT_data, evaluate_swct_omega_api
+from .swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
 from .trexio_wrapper import read_trexio_file
 from .wavefunction import Wavefunction_data, evaluate_ln_wavefunction_api, evaluate_wavefunction_api
 
@@ -225,7 +225,7 @@ class MCMC:
         logger.info("  Compilation dln_Psi is done.")
 
         logger.info("  Compilation domega starts.")
-        _ = grad(evaluate_swct_omega_api, argnums=1)(
+        _ = evaluate_swct_domega_api(
             self.__swct_data,
             self.__latest_r_up_carts,
         )
@@ -454,12 +454,12 @@ class MCMC:
             self.__stored_omega_up.append(omega_up)
             self.__stored_omega_dn.append(omega_dn)
 
-            grad_omega_dr_up = grad(evaluate_swct_omega_api, argnums=1)(
+            grad_omega_dr_up = evaluate_swct_domega_api(
                 self.__swct_data,
                 self.__latest_r_up_carts,
             )
 
-            grad_omega_dr_dn = grad(evaluate_swct_omega_api, argnums=1)(
+            grad_omega_dr_dn = evaluate_swct_domega_api(
                 self.__swct_data,
                 self.__latest_r_dn_carts,
             )

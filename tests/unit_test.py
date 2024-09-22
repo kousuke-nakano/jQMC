@@ -41,6 +41,7 @@ from ..jqmc.molecular_orbital import (
     compute_MOs_grad_api,
     compute_MOs_laplacian_api,
 )
+from ..jqmc.swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
 from ..jqmc.trexio_wrapper import read_trexio_file
 from ..jqmc.wavefunction import (
     Wavefunction_data,
@@ -1064,6 +1065,62 @@ def test_comparing_AO_and_MO_geminals():
         )
 
         np.testing.assert_almost_equal(det_geminal_ao, det_geminal_mo, decimal=15)
+
+
+# @pytest.mark.skip
+def test_debug_and_jax_SWCT_omega():
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(
+            os.path.dirname(__file__), "trexio_example_files", "water_trexio.hdf5"
+        )
+    )
+
+    swct_data = SWCT_data(structure=structure_data)
+
+    num_ele_up = geminal_mo_data.num_electron_up
+    num_ele_dn = geminal_mo_data.num_electron_dn
+    r_cart_min, r_cart_max = -5.0, +5.0
+    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
+    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
+
+    omega_up_debug = evaluate_swct_omega_api(
+        swct_data=swct_data, r_carts=r_up_carts, debug_flag=True
+    )
+    omega_dn_debug = evaluate_swct_omega_api(
+        swct_data=swct_data, r_carts=r_dn_carts, debug_flag=True
+    )
+    omega_up_jax = evaluate_swct_omega_api(
+        swct_data=swct_data, r_carts=r_up_carts, debug_flag=False
+    )
+    omega_dn_jax = evaluate_swct_omega_api(
+        swct_data=swct_data, r_carts=r_dn_carts, debug_flag=False
+    )
+
+    np.testing.assert_almost_equal(omega_up_debug, omega_up_jax, decimal=6)
+    np.testing.assert_almost_equal(omega_dn_debug, omega_dn_jax, decimal=6)
+
+    domega_up_debug = evaluate_swct_domega_api(
+        swct_data=swct_data, r_carts=r_up_carts, debug_flag=True
+    )
+    domega_dn_debug = evaluate_swct_domega_api(
+        swct_data=swct_data, r_carts=r_dn_carts, debug_flag=True
+    )
+    domega_up_jax = evaluate_swct_domega_api(
+        swct_data=swct_data, r_carts=r_up_carts, debug_flag=False
+    )
+    domega_dn_jax = evaluate_swct_domega_api(
+        swct_data=swct_data, r_carts=r_dn_carts, debug_flag=False
+    )
+
+    np.testing.assert_almost_equal(domega_up_debug, domega_up_jax, decimal=6)
+    np.testing.assert_almost_equal(domega_dn_debug, domega_dn_jax, decimal=6)
 
 
 # @pytest.mark.skip
