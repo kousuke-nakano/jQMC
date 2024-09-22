@@ -8,7 +8,7 @@ from logging import Formatter, StreamHandler, getLogger
 
 # import jax
 import jax
-from jax import jacrev
+from jax import grad, jacrev
 import numpy as np
 import numpy.typing as npt
 from flax import struct
@@ -72,7 +72,7 @@ def evaluate_swct_omega_debug(
     R_carts = swct_data.structure.positions_cart
     omega = np.zeros((len(R_carts), len(r_carts)))
 
-    for alpha, i in zip(range(len(R_carts)), range(len(r_up_carts))):
+    for alpha, i in zip(range(len(R_carts)), range(len(r_carts))):
         kappa = 1.0 / np.linalg.norm(r_carts[i] - R_carts[alpha]) ** 4
         kappa_sum = np.sum(
             [1.0 / np.abs(r_carts[i] - R_carts[beta]) ** 4 for beta in range(len(R_carts))]
@@ -80,6 +80,50 @@ def evaluate_swct_omega_debug(
         omega[alpha, i] = kappa / kappa_sum
 
     return omega
+
+
+def evaluate_swct_domega_debug(
+    swct_data: SWCT_data,
+    r_carts: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]:
+    R_carts = swct_data.structure.positions_cart
+    domega = np.zeros((len(R_carts), 3))
+
+    def compute_omega(R_cart, r_cart, R_carts):
+        kappa = 1.0 / np.linalg.norm(r_cart - R_cart) ** 4
+        kappa_sum = np.sum(
+            [1.0 / np.abs(r_cart - R_carts[beta]) ** 4 for beta in range(len(R_carts))]
+        )
+        omega = kappa / kappa_sum
+        return omega
+
+    diff_h = 1.0e-5
+
+    for i, R_cart in enumerate(R_carts):
+        for r_cart in r_carts:
+            r_cart_p_dx = r_cart.copy()
+            r_cart_m_dx = r_cart.copy()
+            r_cart_p_dx[0] += diff_h
+            r_cart_m_dx[0] -= diff_h
+            omega_dx = (compute_omega(R_cart, r_cart_p_dx, R_carts) - compute_omega(R_cart, r_cart_m_dx, R_carts))/(2*diff_h)
+
+            r_cart_p_dy = r_cart.copy()
+            r_cart_m_dy = r_cart.copy()
+            r_cart_p_dy[1] += diff_h
+            r_cart_m_dy[1] -= diff_h
+            omega_dy = (compute_omega(R_cart, r_cart_p_dy, R_carts) - compute_omega(R_cart, r_cart_m_dy, R_carts))/(2*diff_h)
+
+            r_cart_p_dz = r_cart.copy()
+            r_cart_m_dz = r_cart.copy()
+            r_cart_p_dz[2] += diff_h
+            r_cart_m_dz[2] -= diff_h
+            omega_dz = (compute_omega(R_cart, r_cart_p_dz, R_carts) - compute_omega(R_cart, r_cart_m_dz, R_carts))/(2*diff_h)
+
+            domega[i, 0] += omega_dx
+            domega[i, 1] += omega_dy
+            domega[i, 2] += omega_dz
+
+    return domega
 
 
 # WIP, to replace the for loops with vmap
@@ -140,3 +184,10 @@ if __name__ == "__main__":
     print(f'shape(jacob_omega_up) = {jacob_omega_up.shape}')
     jacob_omega_dn = jacrev(evaluate_swct_omega_api, argnums=1)(swct_data, r_dn_carts)
     print(f'shape(jacob_omega_dn) = {jacob_omega_dn.shape}')
+
+    d_omega_up = evaluate_swct_domega_debug(swct_data, r_up_carts)
+    print(d_omega_up)
+    print(f'shape(d_omega_up) = {d_omega_up.shape}')
+    d_omega_dn = evaluate_swct_domega_debug(swct_data, r_dn_carts)
+    print(d_omega_dn)
+    print(f'shape(d_omega_dn) = {d_omega_dn.shape}')
