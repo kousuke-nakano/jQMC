@@ -1314,11 +1314,21 @@ def test_comparing_values_with_TurboRVB_code():
         r_dn_carts=new_r_dn_carts,
     )
 
-    vpot_bare = compute_bare_coulomb_potential_api(
+    vpot_bare_debug = compute_bare_coulomb_potential_api(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
+        debug_flag=True,
     )
+
+    vpot_bare_jax = compute_bare_coulomb_potential_api(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+        debug_flag=False,
+    )
+
+    np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=6)
 
     vpot_ecp_debug = compute_ecp_coulomb_potential_api(
         coulomb_potential_data=coulomb_potential_data,
@@ -1338,7 +1348,7 @@ def test_comparing_values_with_TurboRVB_code():
 
     print(f"wf_ratio={WF_ratio} Ha")
     print(f"kinc={kinc} Ha")
-    print(f"vpot={vpot_bare+vpot_ecp_debug} Ha")
+    print(f"vpot={vpot_bare_jax+vpot_ecp_debug} Ha")
 
     WF_ratio_ref_turborvb = 1.04447207308308
     kinc_ref_turborvb = 9.77796571601343
@@ -1352,10 +1362,10 @@ def test_comparing_values_with_TurboRVB_code():
     np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=8)
     np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
     np.testing.assert_almost_equal(
-        vpot_bare + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3
+        vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3
     )
     np.testing.assert_almost_equal(
-        vpot_bare + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3
+        vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3
     )
 
 

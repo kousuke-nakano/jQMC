@@ -434,7 +434,7 @@ def compute_ecp_coulomb_potential_jax(
     )
 
     # Compute the local part. To understand the flow, please refer to the debug version.
-    @jit
+    # @jit
     def compute_V_l(r_cart, i_atom, exponent, coefficient, power):
         rel_R_cart_min_dist = get_min_dist_rel_R_cart_jnp(
             structure_data=coulomb_potential_data.structure_data,
@@ -452,7 +452,7 @@ def compute_ecp_coulomb_potential_jax(
 
     # Compute the Projection of WF. for a up electron
     # To understand the flow, please refer to the debug version.
-    @jit
+    # @jit
     def compute_P_l_up(ang_mom, r_up_i, r_up_cart, i_atom, weight, vec_delta):
         rel_R_cart_min_dist = get_min_dist_rel_R_cart_jnp(
             structure_data=coulomb_potential_data.structure_data,
@@ -484,7 +484,7 @@ def compute_ecp_coulomb_potential_jax(
 
     # Compute the Projection of WF. for a down electron
     # To understand the flow, please refer to the debug version.
-    @jit
+    # @jit
     def compute_P_l_dn(ang_mom, r_dn_i, r_dn_cart, i_atom, weight, vec_delta):
         rel_R_cart_min_dist = get_min_dist_rel_R_cart_jnp(
             structure_data=coulomb_potential_data.structure_data,
@@ -519,7 +519,7 @@ def compute_ecp_coulomb_potential_jax(
 
     # Compute the local part V_l * Projection of WF. for a up electron
     # To understand the flow, please refer to the debug version.
-    @jit
+    # @jit
     def compute_V_nonlocal_up(
         r_up_i,
         r_up_cart,
@@ -537,7 +537,7 @@ def compute_ecp_coulomb_potential_jax(
 
     # Compute the local part V_l * Projection of WF. for a down electron
     # To understand the flow, please refer to the debug version.
-    @jit
+    # @jit
     def compute_V_nonlocal_dn(
         r_dn_i,
         r_dn_cart,
@@ -557,7 +557,7 @@ def compute_ecp_coulomb_potential_jax(
     # This is activate when the given ang_mom == max_ang_mom_plus_1
     # i.e. the projection is not needed for the highest angular momentum
     # To understand the flow, please refer to the debug version.
-    @jit
+    # @jit
     def compute_V_local(
         r_i,
         r_cart,
@@ -572,7 +572,7 @@ def compute_ecp_coulomb_potential_jax(
 
     # Choose the local part V_l * Projection of WF. or only the local part
     # for a up electron, depending on max_ang_mom_plus_1 (by using jax.lax)
-    @jit
+    # @jit
     def compute_ecp_up(
         r_up_i,
         r_up_cart,
@@ -598,7 +598,7 @@ def compute_ecp_coulomb_potential_jax(
 
     # Choose the local part V_l * Projection of WF. or only the local part
     # for a down electron, depending on max_ang_mom_plus_1 (by using jax.lax)
-    @jit
+    # @jit
     def compute_ecp_dn(
         r_dn_i,
         r_dn_cart,
@@ -639,13 +639,13 @@ def compute_ecp_coulomb_potential_jax(
     )
 
     # Vectrized (flatten) arguments are prepared here.
-    r_up_i_jnp = jnp.array([i for i in range(len(r_up_carts))])
+    r_up_i_jnp = jnp.arange(len(r_up_carts))
     r_up_carts_jnp = jnp.array(r_up_carts)
-    r_dn_i_jnp = jnp.array([i for i in range(len(r_dn_carts))])
+    r_dn_i_jnp = jnp.arange(len(r_dn_carts))
     r_dn_carts_jnp = jnp.array(r_dn_carts)
-    max_ang_mom_plus_1_jnp = jnp.array(
-        [coulomb_potential_data.max_ang_mom_plus_1[i] for i in coulomb_potential_data.nucleus_index]
-    )
+    max_ang_mom_plus_1 = jnp.array(coulomb_potential_data.max_ang_mom_plus_1)
+    nucleus_index = jnp.array(coulomb_potential_data.nucleus_index, dtype=jnp.int32)
+    max_ang_mom_plus_1_jnp = max_ang_mom_plus_1[nucleus_index]
     ang_mom_jnp = jnp.array(coulomb_potential_data.ang_moms)
     i_atom_jnp = jnp.array(coulomb_potential_data.nucleus_index)
     exponent_jnp = jnp.array(coulomb_potential_data.exponents)
@@ -744,6 +744,7 @@ def compute_bare_coulomb_potential_jax(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
+    """bare for loop, old
     R_carts = coulomb_potential_data.structure_data.positions_cart
     R_charges = coulomb_potential_data.effective_charges_jnp
     r_up_charges = jnp.array([-1 for _ in range(len(r_up_carts))])
@@ -762,6 +763,44 @@ def compute_bare_coulomb_potential_jax(
     )
 
     return bare_coulomb_potential
+    """
+
+    # """
+    R_carts = coulomb_potential_data.structure_data.positions_cart
+    R_charges = coulomb_potential_data.effective_charges_jnp
+    r_up_charges = jnp.full(len(r_up_carts), -1.0, dtype=jnp.float64)
+    r_dn_charges = jnp.full(len(r_dn_carts), -1.0, dtype=jnp.float64)
+
+    all_carts = jnp.vstack([R_carts, r_up_carts, r_dn_carts])
+    all_charges = jnp.hstack([R_charges, r_up_charges, r_dn_charges])
+
+    # Number of particles
+    N = all_charges.shape[0]
+
+    # Generate all unique pairs indices (i < j)
+    idx_i, idx_j = jnp.triu_indices(N, k=1)
+
+    # Extract charges and positions for each pair
+    Z_i = all_charges[idx_i]  # Shape: (M,)
+    Z_j = all_charges[idx_j]  # Shape: (M,)
+    r_i = all_carts[idx_i]  # Shape: (M, D)
+    r_j = all_carts[idx_j]  # Shape: (M, D)
+
+    # Define a function to compute interaction for a pair
+    def pair_interaction(Z_i, Z_j, r_i, r_j):
+        distance = jnp.linalg.norm(r_i - r_j) + 1e-12  # Add epsilon to avoid division by zero
+        interaction = (Z_i * Z_j) / distance
+        return interaction
+
+    # Vectorize the function over all pairs
+    interactions = jax.vmap(pair_interaction)(Z_i, Z_j, r_i, r_j)  # Shape: (M,)
+
+    # Sum all interactions
+    bare_coulomb_potential = jnp.sum(interactions)
+
+    return bare_coulomb_potential
+
+    # """
 
 
 def compute_coulomb_potential_api(
