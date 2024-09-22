@@ -515,7 +515,8 @@ if __name__ == "__main__":
     stream_handler.setFormatter(handler_format)
     log.addHandler(stream_handler)
 
-    # water  cc-pVTZ with Mitas ccECP.
+    # """
+    # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
     (
         structure_data,
         aos_data,
@@ -524,6 +525,31 @@ if __name__ == "__main__":
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "water_trexio.hdf5"))
+    # """
+
+    """
+    # benzene cc-pVDZ with Mitas ccECP (30 electrons, feasible).
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "benzene_trexio.hdf5"))
+    """
+
+    """
+    # C60 cc-pVTZ with Mitas ccECP (240 electrons, not feasible).
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "C60_trexio.hdf5"))
+    """
 
     # define data
     jastrow_two_body_data = Jastrow_two_body_data(
