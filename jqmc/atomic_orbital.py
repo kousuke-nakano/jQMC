@@ -117,7 +117,6 @@ class AOs_data:
         return jnp.array(self.coefficients)
 
 
-# @dataclass
 @struct.dataclass
 class AOs_data_debug:
     """
@@ -251,12 +250,22 @@ def compute_AOs_laplacian_jax_auto_grad(
         c_jnp, Z_jnp, l_jnp, m_jnp, R_carts_jnp, r_carts
     )
 
+    """ bare for loop (old)
     n_el = r_carts.shape[0]
     ao_matrix_laplacian = jnp.zeros([aos_data.num_ao, n_el])
     unique_indices = np.unique(aos_data.orbital_indices)
     for ui in unique_indices:
         mask = aos_data.orbital_indices == ui
         ao_matrix_laplacian = ao_matrix_laplacian.at[ui].set(AOs_laplacian_dup[mask].sum(axis=0))
+
+    return ao_matrix_laplacian
+    """
+
+    orbital_indices = jnp.array(aos_data.orbital_indices, dtype=jnp.int32)
+    num_segments = aos_data.num_ao
+    ao_matrix_laplacian = jax.ops.segment_sum(
+        AOs_laplacian_dup, orbital_indices, num_segments=num_segments
+    )
 
     return ao_matrix_laplacian
 
@@ -394,6 +403,7 @@ def compute_AOs_jax_auto_grad(
         c_jnp, Z_jnp, l_jnp, m_jnp, R_carts_jnp, r_carts
     )
 
+    """bare for loop
     n_el = r_carts.shape[0]
     ao_matrix_grad_x = jnp.zeros([aos_data.num_ao, n_el])
     ao_matrix_grad_y = jnp.zeros([aos_data.num_ao, n_el])
@@ -405,6 +415,20 @@ def compute_AOs_jax_auto_grad(
         ao_matrix_grad_y = ao_matrix_grad_y.at[ui].set(AOs_grad_y_dup[mask].sum(axis=0))
         ao_matrix_grad_z = ao_matrix_grad_z.at[ui].set(AOs_grad_z_dup[mask].sum(axis=0))
 
+    return ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z
+    """
+
+    orbital_indices = jnp.array(aos_data.orbital_indices, dtype=jnp.int32)
+    num_segments = aos_data.num_ao
+    ao_matrix_grad_x = jax.ops.segment_sum(
+        AOs_grad_x_dup, orbital_indices, num_segments=num_segments
+    )
+    ao_matrix_grad_y = jax.ops.segment_sum(
+        AOs_grad_y_dup, orbital_indices, num_segments=num_segments
+    )
+    ao_matrix_grad_z = jax.ops.segment_sum(
+        AOs_grad_z_dup, orbital_indices, num_segments=num_segments
+    )
     return ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z
 
 
@@ -585,13 +609,20 @@ def compute_AOs_jax(
     )
 
     AOs_dup = vmap_compute_AOs_dup(c_jnp, Z_jnp, l_jnp, m_jnp, R_carts_jnp, r_carts)
+
+    """ bare for loop
     n_el = r_carts.shape[0]
     AOs = jnp.zeros([aos_data.num_ao, n_el])
     unique_indices = np.unique(aos_data.orbital_indices)
     for ui in unique_indices:
         mask = aos_data.orbital_indices == ui
         AOs = AOs.at[ui].set(AOs_dup[mask].sum(axis=0))
+    return AOs
+    """
 
+    orbital_indices = jnp.array(aos_data.orbital_indices, dtype=jnp.int32)
+    num_segments = aos_data.num_ao
+    AOs = jax.ops.segment_sum(AOs_dup, orbital_indices, num_segments=num_segments)
     return AOs
 
 
@@ -712,7 +743,6 @@ def compute_R_n_debug(
     return coefficient * np.exp(-1.0 * exponent * LA.norm(np.array(r_cart) - np.array(R_cart)) ** 2)
 
 
-# compute R_n
 @jit
 def compute_R_n_jax(
     coefficient: float | complex,
@@ -828,7 +858,6 @@ def compute_S_l_m_debug(
     return gamma
 
 
-# compute S_n
 @jit
 def compute_S_l_m_jax(
     l: int,
