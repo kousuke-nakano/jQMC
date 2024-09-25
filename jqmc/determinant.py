@@ -13,7 +13,7 @@ import numpy.typing as npt
 from flax import struct
 from jax import jit
 
-# myqmc module
+# jqmc module
 from .atomic_orbital import (
     AOs_data,
     AOs_data_debug,

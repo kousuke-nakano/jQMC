@@ -14,6 +14,9 @@ import numpy.typing as npt
 from flax import struct
 from jax import grad, jacrev, jit, vmap
 
+# jqmc module
+from .atomic_orbital import AOs_data, AOs_data_debug, compute_AOs_api
+
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
 
@@ -25,7 +28,7 @@ jax.config.update("jax_enable_x64", True)
 @struct.dataclass
 class Jastrow_two_body_data:
     """
-    The class contains data for evaluating a Jastrow function.
+    The class contains data for evaluating the two-body Jastrow function.
 
     Args:
         param_parallel_spin (float): parameter for parallel spins
@@ -41,6 +44,66 @@ class Jastrow_two_body_data:
 
 # @dataclass
 @struct.dataclass
+class Jastrow_three_body_data:
+    """
+    The class contains data for evaluating the three-body Jastrow function.
+
+    Args:
+        orb_data_up_spin (AOs_data): AOs data for up-spin.
+        orb_data_dn_spin (AOs_data): AOs data for dn-spin.
+        j_matrix_up_up (npt.NDArray[np.float64]): J matrix dim. (orb_data_up_spin.num_ao, orb_data_up_spin.num_ao+1))
+        j_matrix_dn_dn (npt.NDArray[np.float64]): J matrix dim. (orb_data_dn_spin.num_ao, orb_data_dn_spin.num_ao+1))
+        j_matrix_up_dn (npt.NDArray[np.float64]): J matrix dim. (orb_data_up_spin.num_ao, orb_data_dn_spin.num_ao))
+    """
+
+    orb_data_up_spin: AOs_data = struct.field(pytree_node=True)
+    orb_data_dn_spin: AOs_data = struct.field(pytree_node=True)
+    j_matrix_up_up: npt.NDArray[np.float64] = struct.field(pytree_node=False)
+    j_matrix_dn_dn: npt.NDArray[np.float64] = struct.field(pytree_node=False)
+    j_matrix_up_dn: npt.NDArray[np.float64] = struct.field(pytree_node=False)
+
+    def __post_init__(self) -> None:
+        if self.j_matrix_up_up.shape != (
+            self.orb_num_up,
+            self.orb_num_up + 1,
+        ):
+            logger.error(
+                f"dim. of j_matrix_up_up = {self.j_matrix_up_up.shape} is imcompatible with the expected one "
+                + f"= ({self.orb_num_up}, {self.orb_num_up + 1}).",
+            )
+            raise ValueError
+
+        if self.j_matrix_dn_dn.shape != (
+            self.orb_num_dn,
+            self.orb_num_dn + 1,
+        ):
+            logger.error(
+                f"dim. of j_matrix_dn_dn = {self.j_matrix_dn_dn.shape} is imcompatible with the expected one "
+                + f"= ({self.orb_num_dn}, {self.orb_num_dn + 1}).",
+            )
+            raise ValueError
+
+        if self.j_matrix_up_dn.shape != (
+            self.orb_num_up,
+            self.orb_num_dn,
+        ):
+            logger.error(
+                f"dim. of j_matrix_up_dn = {self.j_matrix_up_dn.shape} is imcompatible with the expected one "
+                + f"= ({self.orb_num_up}, {self.orb_num_dn}).",
+            )
+            raise ValueError
+
+    @property
+    def orb_num_up(self) -> int:
+        return self.orb_data_up_spin.num_ao
+
+    @property
+    def orb_num_dn(self) -> int:
+        return self.orb_data_dn_spin.num_ao
+
+
+# @dataclass
+@struct.dataclass
 class Jastrow_data:
     """
     The class contains data for evaluating a Jastrow function.
@@ -52,6 +115,8 @@ class Jastrow_data:
 
     jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=True)
     jastrow_two_body_type: str = struct.field(pytree_node=False)  # off, pade
+    jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=True)
+    jastrow_three_body_type: str = struct.field(pytree_node=False)  # off, on
 
     def __post_init__(self) -> None:
         pass
@@ -76,9 +141,117 @@ def compute_Jastrow_part_api(
     else:
         raise NotImplementedError
 
-    J = J2
+    # three-body
+    if jastrow_data.jastrow_three_body_type == "off":
+        J3 = 0.0
+    elif jastrow_data.jastrow_three_body_type == "on":
+        J3 = compute_Jastrow_three_body_api(
+            jastrow_data.jastrow_three_body_data,
+            r_up_carts,
+            r_dn_carts,
+            debug_flag=debug_flag,
+        )
+    else:
+        raise NotImplementedError
+
+    J = J2 + J3
 
     return J
+
+
+def compute_Jastrow_three_body_api(
+    jastrow_three_body_data: Jastrow_three_body_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+    debug_flag: bool = False,
+) -> float:
+    if debug_flag:
+        return compute_Jastrow_three_body_debug(jastrow_three_body_data, r_up_carts, r_dn_carts)
+    else:
+        return compute_Jastrow_three_body_jax(jastrow_three_body_data, r_up_carts, r_dn_carts)
+
+
+def compute_Jastrow_three_body_debug(
+    jastrow_three_body_data: Jastrow_three_body_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+) -> float:
+    aos_up = compute_AOs_api(aos_data=jastrow_three_body_data.orb_data_up_spin, r_carts=r_up_carts)
+    aos_dn = compute_AOs_api(aos_data=jastrow_three_body_data.orb_data_dn_spin, r_carts=r_dn_carts)
+
+    # compute one body
+    j1_vector_up = jastrow_three_body_data.j_matrix_up_up[:, -1]
+    J_1_up = np.sum(aos_up.T @ j1_vector_up)
+    j1_vector_dn = jastrow_three_body_data.j_matrix_dn_dn[:, -1]
+    J_1_dn = np.sum(aos_dn.T @ j1_vector_dn)
+
+    # compute three-body
+    j3_matrix_up_up = jastrow_three_body_data.j_matrix_up_up[:, :-1]
+    J_3_up_up_full = aos_up.T @ j3_matrix_up_up @ aos_up
+    n, m = J_3_up_up_full.shape
+    row_indices, col_indices = np.indices((n, m))
+    mask = col_indices > row_indices
+    J_3_up_up = np.sum(J_3_up_up_full[mask])
+
+    j3_matrix_dn_dn = jastrow_three_body_data.j_matrix_dn_dn[:, :-1]
+    J_3_dn_dn_full = aos_dn.T @ j3_matrix_dn_dn @ aos_dn
+    n, m = J_3_dn_dn_full.shape
+    row_indices, col_indices = np.indices((n, m))
+    mask = col_indices > row_indices
+    J_3_dn_dn = np.sum(J_3_dn_dn_full[mask])
+
+    j3_matrix_up_dn = jastrow_three_body_data.j_matrix_up_dn
+    J_3_up_dn_full = aos_up.T @ j3_matrix_up_dn @ aos_dn
+    J_3_up_dn = np.sum(J_3_up_dn_full)
+
+    J3 = J_1_up + J_1_dn + J_3_up_up + J_3_dn_dn + J_3_up_dn
+
+    return J3
+
+
+def compute_Jastrow_three_body_jax(
+    jastrow_three_body_data: Jastrow_three_body_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+) -> float:
+    num_electron_up = len(r_up_carts)
+    num_electron_dn = len(r_dn_carts)
+
+    aos_up = jnp.array(
+        compute_AOs_api(aos_data=jastrow_three_body_data.orb_data_up_spin, r_carts=r_up_carts)
+    )
+    aos_dn = jnp.array(
+        compute_AOs_api(aos_data=jastrow_three_body_data.orb_data_dn_spin, r_carts=r_dn_carts)
+    )
+
+    aos_up_bar = jnp.vstack([aos_up, jnp.ones((1, num_electron_up))])
+    aos_dn_bar = jnp.vstack([aos_dn, jnp.ones((1, num_electron_dn))])
+
+    # print(aos_up)
+    # print(jnp.ones((1, num_electron_up)))
+    # print(aos_up_bar)
+
+    K_up = jnp.tril(jnp.ones((num_electron_up, num_electron_up)), k=-1)
+    K_dn = jnp.tril(jnp.ones((num_electron_dn, num_electron_dn)), k=-1)
+
+    j3_matrix_up_up = jastrow_three_body_data.j_matrix_up_up
+    j3_matrix_dn_dn = jastrow_three_body_data.j_matrix_dn_dn
+    j3_matrix_up_dn = jastrow_three_body_data.j_matrix_up_dn
+
+    e_up = jnp.ones(num_electron_up).T
+    e_dn = jnp.ones(num_electron_dn).T
+
+    # print(jnp.trace(aos_up.T @ j3_matrix_up_up @ aos_up_bar @ K_up))
+    # print(jnp.trace(aos_dn.T @ j3_matrix_dn_dn @ aos_dn_bar @ K_dn))
+    # print(e_up.T @ aos_up.T @ j3_matrix_up_dn @ aos_dn @ e_dn)
+
+    J3 = (
+        jnp.trace(aos_up.T @ j3_matrix_up_up @ aos_up_bar @ K_up)
+        + jnp.trace(aos_dn.T @ j3_matrix_dn_dn @ aos_dn_bar @ K_dn)
+        + (e_up.T @ aos_up.T @ j3_matrix_up_dn @ aos_dn @ e_dn)
+    )
+
+    return J3
 
 
 def compute_grads_and_laplacian_Jastrow_part_api(
@@ -214,14 +387,23 @@ def compute_Jastrow_two_body_jax(
         vmap(J2_anti_parallel_spins, in_axes=(None, 0)), in_axes=(0, None)
     )
 
-    vmap_two_body_jastrow_parallel_spins = vmap(
-        vmap(J2_parallel_spins, in_axes=(None, 0)), in_axes=(0, None)
+    two_body_jastrow_anti_parallel = jnp.sum(
+        vmap_two_body_jastrow_anti_parallel_spins(r_up_carts, r_dn_carts)
     )
 
+    def compute_parallel_sum(r_carts):
+        num_particles = r_carts.shape[0]
+        idx_i, idx_j = jnp.triu_indices(num_particles, k=1)
+        r_i = r_carts[idx_i]
+        r_j = r_carts[idx_j]
+        vmap_two_body_jastrow_parallel_spins = vmap(J2_parallel_spins)(r_i, r_j)
+        return jnp.sum(vmap_two_body_jastrow_parallel_spins)
+
+    two_body_jastrow_parallel_up = compute_parallel_sum(r_up_carts)
+    two_body_jastrow_parallel_dn = compute_parallel_sum(r_dn_carts)
+
     two_body_jastrow = (
-        jnp.sum(vmap_two_body_jastrow_anti_parallel_spins(r_up_carts, r_dn_carts))
-        + 1.0 / 2.0 * jnp.sum(vmap_two_body_jastrow_parallel_spins(r_up_carts, r_up_carts))
-        + 1.0 / 2.0 * jnp.sum(vmap_two_body_jastrow_parallel_spins(r_dn_carts, r_dn_carts))
+        two_body_jastrow_anti_parallel + two_body_jastrow_parallel_up + two_body_jastrow_parallel_dn
     )
 
     return two_body_jastrow
@@ -557,6 +739,17 @@ def compute_grads_and_laplacian_Jastrow_two_body_jax(
     npt.NDArray[jnp.float64 | jnp.complex128],
     float | complex,
 ]:
+    # compute grad
+    grad_J2_up = grad(compute_Jastrow_two_body_jax, argnums=1)(
+        jastrow_two_body_data, r_up_carts, r_dn_carts
+    )
+
+    grad_J2_dn = grad(compute_Jastrow_two_body_jax, argnums=2)(
+        jastrow_two_body_data, r_up_carts, r_dn_carts
+    )
+
+    # compute laplacian (to be refactored in the future. Jastrow definitions are dubplicated.)
+
     def J2_anti_parallel_spins(r_cart_i, r_cart_j):
         two_body_jastrow = (
             jnp.linalg.norm(r_cart_i - r_cart_j)
@@ -581,48 +774,6 @@ def compute_grads_and_laplacian_Jastrow_two_body_jax(
             ** (-1.0)
         )
         return two_body_jastrow
-
-    # compute grad
-
-    # Function to compute the sum of gradients for each r_j_cart
-    def compute_grad_sum_anti_parallel(r_i_cart, r_j_carts):
-        grads = vmap(lambda r_j_cart: grad(J2_anti_parallel_spins, argnums=0)(r_i_cart, r_j_cart))(
-            r_j_carts
-        )
-        # Calculate norms and reshape for broadcasting
-        norms = jnp.linalg.norm(r_i_cart - r_j_carts, axis=1)
-        norms = norms[:, None]  # Reshape to (n, 1) for broadcasting with grads
-        non_zero_grads = jnp.where(norms != 0, grads, 0)
-        return jnp.sum(non_zero_grads, axis=0)
-
-    # Apply the above function to all r_i_cart
-    def grad_vmap_two_body_jastrow_anti_parallel_spins(r_i_carts, r_j_carts):
-        return vmap(lambda r_i_cart: compute_grad_sum_anti_parallel(r_i_cart, r_j_carts))(r_i_carts)
-
-    # Function to compute the sum of gradients for each r_j_cart
-    def compute_grad_sum_parallel(r_i_cart, r_j_carts):
-        grads = vmap(lambda r_j_cart: grad(J2_parallel_spins, argnums=0)(r_i_cart, r_j_cart))(
-            r_j_carts
-        )
-        # Calculate norms and reshape for broadcasting
-        norms = jnp.linalg.norm(r_i_cart - r_j_carts, axis=1)
-        norms = norms[:, None]  # Reshape to (n, 1) for broadcasting with grads
-        non_zero_grads = jnp.where(norms != 0, grads, 0)
-        return jnp.sum(non_zero_grads, axis=0)
-
-    # Apply the above function to all r_i_cart
-    def grad_vmap_two_body_jastrow_parallel_spins(r_i_carts, r_j_carts):
-        return vmap(lambda r_i_cart: compute_grad_sum_parallel(r_i_cart, r_j_carts))(r_i_carts)
-
-    grad_J2_up = grad_vmap_two_body_jastrow_anti_parallel_spins(
-        r_up_carts, r_dn_carts
-    ) + grad_vmap_two_body_jastrow_parallel_spins(r_up_carts, r_up_carts)
-
-    grad_J2_dn = grad_vmap_two_body_jastrow_anti_parallel_spins(
-        r_dn_carts, r_up_carts
-    ) + grad_vmap_two_body_jastrow_parallel_spins(r_dn_carts, r_dn_carts)
-
-    # compute laplacian
 
     # Function to compute the sum of gradients for each r_j_cart
     def compute_laplacian_anti_parallel(r_i_cart, r_j_carts):
@@ -741,3 +892,74 @@ if __name__ == "__main__":
     logger.debug(f"grad_jastrow_two_body_up_jax = {grad_jastrow_two_body_up_jax}")
     logger.debug(f"grad_jastrow_two_body_dn_jax = {grad_jastrow_two_body_dn_jax}")
     logger.debug(f"sum_laplacian_J2_jax = {sum_laplacian_J2_jax}")
+
+    # test MOs
+    num_r_up_cart_samples = 4
+    num_r_dn_cart_samples = 2
+    num_R_cart_samples = 6
+    num_ao = 6
+    num_ao_prim = 6
+    orbital_indices = [0, 1, 2, 3, 4, 5]
+    exponents = [1.2, 0.5, 0.1, 0.05, 0.05, 0.05]
+    coefficients = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    angular_momentums = [0, 0, 0, 1, 1, 1]
+    magnetic_quantum_numbers = [0, 0, 0, 0, +1, -1]
+
+    # generate matrices for the test
+    r_cart_min, r_cart_max = -1.0, 1.0
+    R_cart_min, R_cart_max = 0.0, 0.0
+    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_up_cart_samples, 3) + r_cart_min
+    r_dn_carts = r_up_carts
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
+
+    aos_up_data = AOs_data_debug(
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        atomic_center_carts=R_carts,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        magnetic_quantum_numbers=magnetic_quantum_numbers,
+    )
+
+    aos_dn_data = AOs_data_debug(
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        atomic_center_carts=R_carts,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        magnetic_quantum_numbers=magnetic_quantum_numbers,
+    )
+
+    j_matrix_up_up = np.random.rand(aos_up_data.num_ao, aos_up_data.num_ao + 1)
+    j_matrix_dn_dn = np.random.rand(aos_dn_data.num_ao, aos_dn_data.num_ao + 1)
+    j_matrix_up_dn = np.random.rand(aos_up_data.num_ao, aos_dn_data.num_ao)
+
+    jastrow_three_body_data = Jastrow_three_body_data(
+        orb_data_up_spin=aos_up_data,
+        orb_data_dn_spin=aos_dn_data,
+        j_matrix_up_up=j_matrix_up_up,
+        j_matrix_dn_dn=j_matrix_dn_dn,
+        j_matrix_up_dn=j_matrix_up_dn,
+    )
+
+    J3_debug = compute_Jastrow_three_body_api(
+        jastrow_three_body_data=jastrow_three_body_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        debug_flag=True,
+    )
+
+    logger.debug(f"J3_debug = {J3_debug}")
+
+    J3_jax = compute_Jastrow_three_body_api(
+        jastrow_three_body_data=jastrow_three_body_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        debug_flag=False,
+    )
+
+    logger.debug(f"J3_jax = {J3_jax}")

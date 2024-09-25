@@ -47,7 +47,6 @@ class Wavefunction_data:
         pass
 
 
-@jit
 def evaluate_ln_wavefunction_api(
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -110,7 +109,6 @@ def evaluate_wavefunction_api(
     return jnp.exp(Jastrow_part) * Determinant_part
 
 
-@jit
 def compute_kinetic_energy_api(
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
