@@ -15,7 +15,7 @@ from jax import grad
 from mpi4py import MPI
 
 from .hamiltonians import Hamiltonian_data, compute_local_energy
-from .jastrow_factor import Jastrow_data, Jastrow_two_body_data
+from .jastrow_factor import Jastrow_data
 from .structure import find_nearest_index
 from .swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
 from .trexio_wrapper import read_trexio_file
@@ -502,319 +502,314 @@ class MCMC:
 
 
 if __name__ == "__main__":
-    with jax.profiler.trace("/tmp/tensorboard"):
-        comm = MPI.COMM_WORLD
-        rank = comm.Get_rank()
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
 
-        log = getLogger("jqmc")
-        log.setLevel("INFO")
-        stream_handler = StreamHandler()
-        stream_handler.setLevel("INFO")
-        handler_format = Formatter(
-            f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s"
-        )
-        stream_handler.setFormatter(handler_format)
-        log.addHandler(stream_handler)
+    log = getLogger("jqmc")
+    log.setLevel("INFO")
+    stream_handler = StreamHandler()
+    stream_handler.setLevel("INFO")
+    handler_format = Formatter(
+        f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s"
+    )
+    stream_handler.setFormatter(handler_format)
+    log.addHandler(stream_handler)
 
-        # """
-        # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
-        (
-            structure_data,
-            aos_data,
-            mos_data_up,
-            mos_data_dn,
-            geminal_mo_data,
-            coulomb_potential_data,
-        ) = read_trexio_file(
-            trexio_file=os.path.join(os.path.dirname(__file__), "water_trexio.hdf5")
-        )
-        # """
+    # """
+    # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "water_trexio.hdf5"))
+    # """
 
-        """
-        # benzene cc-pVDZ with Mitas ccECP (30 electrons, feasible).
-        (
-            structure_data,
-            aos_data,
-            mos_data_up,
-            mos_data_dn,
-            geminal_mo_data,
-            coulomb_potential_data,
-        ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "benzene_trexio.hdf5"))
-        """
+    """
+    # benzene cc-pVDZ with Mitas ccECP (30 electrons, feasible).
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "benzene_trexio.hdf5"))
+    """
 
-        """
-        # C60 cc-pVTZ with Mitas ccECP (240 electrons, not feasible).
-        (
-            structure_data,
-            aos_data,
-            mos_data_up,
-            mos_data_dn,
-            geminal_mo_data,
-            coulomb_potential_data,
-        ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "C60_trexio.hdf5"))
-        """
+    """
+    # C60 cc-pVTZ with Mitas ccECP (240 electrons, not feasible).
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "C60_trexio.hdf5"))
+    """
 
-        # define data
-        jastrow_two_body_data = Jastrow_two_body_data(
-            param_parallel_spin=0.0, param_anti_parallel_spin=0.0
-        )
-        jastrow_data = Jastrow_data(
-            jastrow_two_body_data=jastrow_two_body_data, jastrow_two_body_type="off"
-        )  # no jastrow for the time-being.
+    # define data
+    jastrow_data = Jastrow_data(
+        jastrow_two_body_data=None,
+        jastrow_two_body_type="off",
+        jastrow_three_body_data=None,
+        jastrow_three_body_type="off",
+    )  # no jastrow for the time-being.
 
-        wavefunction_data = Wavefunction_data(
-            jastrow_data=jastrow_data, geminal_data=geminal_mo_data
-        )
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
 
-        hamiltonian_data = Hamiltonian_data(
-            structure_data=structure_data,
-            coulomb_potential_data=coulomb_potential_data,
-            wavefunction_data=wavefunction_data,
-        )
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
 
-        swct_data = SWCT_data(structure=structure_data)
+    swct_data = SWCT_data(structure=structure_data)
 
-        # VMC parameters
-        num_mcmc_warmup_steps = 50
-        num_mcmc_bin_blocks = 10
-        mpi_seed = 34356 * (rank + 1)
+    # VMC parameters
+    num_mcmc_warmup_steps = 50
+    num_mcmc_bin_blocks = 10
+    mpi_seed = 34356 * (rank + 1)
 
-        logger.info(f"mcmc_seed for MPI-rank={rank} is {mpi_seed}.")
-        if rank == 0:
-            logger.info(f"num_mcmc_warmup_steps={num_mcmc_warmup_steps}.")
-            logger.info(f"num_mcmc_bin_blocks={num_mcmc_bin_blocks}.")
+    logger.info(f"mcmc_seed for MPI-rank={rank} is {mpi_seed}.")
+    if rank == 0:
+        logger.info(f"num_mcmc_warmup_steps={num_mcmc_warmup_steps}.")
+        logger.info(f"num_mcmc_bin_blocks={num_mcmc_bin_blocks}.")
 
-        # run VMC
-        mcmc = MCMC(hamiltonian_data=hamiltonian_data, swct_data=swct_data, mcmc_seed=mpi_seed)
-        mcmc.run(num_mcmc_steps=100)
-        e_L = mcmc.e_L[num_mcmc_warmup_steps:]
+    # run VMC
+    mcmc = MCMC(hamiltonian_data=hamiltonian_data, swct_data=swct_data, mcmc_seed=mpi_seed)
+    mcmc.run(num_mcmc_steps=100)
+    e_L = mcmc.e_L[num_mcmc_warmup_steps:]
 
-        e_L_split = np.array_split(e_L, num_mcmc_bin_blocks)
-        e_L_binned = [np.average(e_list) for e_list in e_L_split]
+    e_L_split = np.array_split(e_L, num_mcmc_bin_blocks)
+    e_L_binned = [np.average(e_list) for e_list in e_L_split]
 
-        logger.debug(f"e_L_binned for MPI-rank={rank} is {e_L_binned}.")
+    logger.debug(f"e_L_binned for MPI-rank={rank} is {e_L_binned}.")
 
-        e_L_binned = comm.reduce(e_L_binned, op=MPI.SUM, root=0)
+    e_L_binned = comm.reduce(e_L_binned, op=MPI.SUM, root=0)
 
-        if rank == 0:
-            logger.debug(f"e_L_binned = {e_L_binned}.")
-            # jackknife implementation
-            # https://www2.yukawa.kyoto-u.ac.jp/~etsuko.itou/old-HP/Notes/Jackknife-method.pdf
-            e_L_jackknife_binned = [
-                np.average(np.delete(e_L_binned, i)) for i in range(len(e_L_binned))
-            ]
+    if rank == 0:
+        logger.debug(f"e_L_binned = {e_L_binned}.")
+        # jackknife implementation
+        # https://www2.yukawa.kyoto-u.ac.jp/~etsuko.itou/old-HP/Notes/Jackknife-method.pdf
+        e_L_jackknife_binned = [
+            np.average(np.delete(e_L_binned, i)) for i in range(len(e_L_binned))
+        ]
 
-            logger.debug(f"e_L_jackknife_binned  = {e_L_jackknife_binned}.")
+        logger.debug(f"e_L_jackknife_binned  = {e_L_jackknife_binned}.")
 
-            e_L_mean = np.average(e_L_jackknife_binned)
-            e_L_std = np.sqrt(len(e_L_binned) - 1) * np.std(e_L_jackknife_binned)
+        e_L_mean = np.average(e_L_jackknife_binned)
+        e_L_std = np.sqrt(len(e_L_binned) - 1) * np.std(e_L_jackknife_binned)
 
-            logger.info(f"e_L = {e_L_mean} +- {e_L_std} Ha.")
+        logger.info(f"e_L = {e_L_mean} +- {e_L_std} Ha.")
 
-        """
+    """
 
-        old_r_up_carts = np.array(
-            [
-                [-0.64878536, -0.83275288, 0.33532629],
-                [0.55271273, 0.72310605, 0.93443775],
-                [0.66767275, 0.1206456, -0.36521208],
-                [-0.93165236, -0.0120386, 0.33003036],
-            ]
-        )
-        old_r_dn_carts = np.array(
-            [
-                [-1.0347816, 1.26162081, 0.42301735],
-                [-0.57843435, 1.03651987, -0.55091542],
-                [-1.56091964, -0.58952149, -0.99268141],
-                [0.61863233, -0.14903326, 0.51962683],
-            ]
-        )
-        new_r_up_carts = old_r_up_carts.copy()
-        new_r_dn_carts = old_r_dn_carts.copy()
+    old_r_up_carts = np.array(
+        [
+            [-0.64878536, -0.83275288, 0.33532629],
+            [0.55271273, 0.72310605, 0.93443775],
+            [0.66767275, 0.1206456, -0.36521208],
+            [-0.93165236, -0.0120386, 0.33003036],
+        ]
+    )
+    old_r_dn_carts = np.array(
+        [
+            [-1.0347816, 1.26162081, 0.42301735],
+            [-0.57843435, 1.03651987, -0.55091542],
+            [-1.56091964, -0.58952149, -0.99268141],
+            [0.61863233, -0.14903326, 0.51962683],
+        ]
+    )
+    new_r_up_carts = old_r_up_carts.copy()
+    new_r_dn_carts = old_r_dn_carts.copy()
 
-        old_r_cart = [0.61863233, -0.14903326, 0.51962683]
-        new_r_cart = [0.618632327645002, -0.149033260668010, 0.131889254514777]
-        new_r_dn_carts[3] = new_r_cart
+    old_r_cart = [0.61863233, -0.14903326, 0.51962683]
+    new_r_cart = [0.618632327645002, -0.149033260668010, 0.131889254514777]
+    new_r_dn_carts[3] = new_r_cart
 
-        R_ratio = (
-            evaluate_wavefunction(
-                wavefunction_data=hamiltonian_data.wavefunction_data,
-                r_up_carts=new_r_up_carts,
-                r_dn_carts=new_r_dn_carts,
-            )
-            / evaluate_wavefunction(
-                wavefunction_data=hamiltonian_data.wavefunction_data,
-                r_up_carts=old_r_up_carts,
-                r_dn_carts=old_r_dn_carts,
-            )
-        ) ** 2.0
-
-        logger.debug(f"R_ratio = {R_ratio}")
-
-        if hamiltonian_data.coulomb_potential_data.ecp_flag:
-            charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
-                hamiltonian_data.coulomb_potential_data.z_cores
-            )
-        else:
-            charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
-
-        coords = hamiltonian_data.structure_data.positions_cart
-
-        nearest_atom_index = (
-            hamiltonian_data.structure_data.get_nearest_neigbhor_atom_index(old_r_cart)
-        )
-
-        R_cart = coords[nearest_atom_index]
-        Z = charges[nearest_atom_index]
-        norm_r_R = np.linalg.norm(old_r_cart - R_cart)
-        f_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
-        logger.debug(f"f_l = {f_l}")
-
-        nearest_atom_index = (
-            hamiltonian_data.structure_data.get_nearest_neigbhor_atom_index(new_r_cart)
-        )
-        R_cart = coords[nearest_atom_index]
-        Z = charges[nearest_atom_index]
-        norm_r_R = np.linalg.norm(new_r_cart - R_cart)
-        f_prime_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
-        logger.debug(f"f_prime_l  = {f_prime_l }")
-
-        T_ratio = (f_l / f_prime_l) * np.exp(
-            -np.linalg.norm(np.array(new_r_cart) - np.array(old_r_cart)) ** 2
-            * (1.0 / (2.0 * f_prime_l**2 * 2.0**2) - 1.0 / (2.0 * f_l**2 * 2.0**2))
-        )
-
-        logger.debug(f"T_ratio = {T_ratio}")
-
-        kinc = compute_kinetic_energy(
+    R_ratio = (
+        evaluate_wavefunction(
             wavefunction_data=hamiltonian_data.wavefunction_data,
             r_up_carts=new_r_up_carts,
             r_dn_carts=new_r_dn_carts,
         )
+        / evaluate_wavefunction(
+            wavefunction_data=hamiltonian_data.wavefunction_data,
+            r_up_carts=old_r_up_carts,
+            r_dn_carts=old_r_dn_carts,
+        )
+    ) ** 2.0
 
-        vpot_bare = compute_bare_coulomb_potential(
-            coulomb_potential_data=coulomb_potential_data,
-            r_up_carts=new_r_up_carts,
-            r_dn_carts=new_r_dn_carts,
+    logger.debug(f"R_ratio = {R_ratio}")
+
+    if hamiltonian_data.coulomb_potential_data.ecp_flag:
+        charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
+            hamiltonian_data.coulomb_potential_data.z_cores
+        )
+    else:
+        charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
+
+    coords = hamiltonian_data.structure_data.positions_cart
+
+    nearest_atom_index = (
+        hamiltonian_data.structure_data.get_nearest_neigbhor_atom_index(old_r_cart)
+    )
+
+    R_cart = coords[nearest_atom_index]
+    Z = charges[nearest_atom_index]
+    norm_r_R = np.linalg.norm(old_r_cart - R_cart)
+    f_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
+    logger.debug(f"f_l = {f_l}")
+
+    nearest_atom_index = (
+        hamiltonian_data.structure_data.get_nearest_neigbhor_atom_index(new_r_cart)
+    )
+    R_cart = coords[nearest_atom_index]
+    Z = charges[nearest_atom_index]
+    norm_r_R = np.linalg.norm(new_r_cart - R_cart)
+    f_prime_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
+    logger.debug(f"f_prime_l  = {f_prime_l }")
+
+    T_ratio = (f_l / f_prime_l) * np.exp(
+        -np.linalg.norm(np.array(new_r_cart) - np.array(old_r_cart)) ** 2
+        * (1.0 / (2.0 * f_prime_l**2 * 2.0**2) - 1.0 / (2.0 * f_l**2 * 2.0**2))
+    )
+
+    logger.debug(f"T_ratio = {T_ratio}")
+
+    kinc = compute_kinetic_energy(
+        wavefunction_data=hamiltonian_data.wavefunction_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+    )
+
+    vpot_bare = compute_bare_coulomb_potential(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+    )
+
+    vpot_ecp_local = compute_ecp_local_parts(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+    )
+
+    vpot_ecp_nonlocal = compute_ecp_nonlocal_parts(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+        wavefunction_data=wavefunction_data,
+    )
+
+    logger.debug(f"kinc={kinc} Ha")
+    logger.debug(f"vpot_bare={vpot_bare} Ha")
+    logger.debug(f"vpot_ecp_local={vpot_ecp_local} Ha")
+    logger.debug(f"vpot_ecp_nonlocal={vpot_ecp_nonlocal} Ha")
+
+    logger.debug(f"kinc={kinc} Ha")
+    logger.debug(f"vpot={vpot_bare+vpot_ecp_local} Ha")
+    logger.debug(f"vpotoff={vpot_ecp_nonlocal} Ha")
+    """
+
+    """
+    e_L = compute_local_energy(
+        hamiltonian_data=hamiltonian_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+    )
+    print(f"e_L={e_L} Ha")
+    """
+
+    """
+    from coulomb_potential import compute_ecp_local_parts, compute_ecp_nonlocal_parts
+
+    num_electron_up = geminal_mo_data.num_electron_up
+    num_electron_dn = geminal_mo_data.num_electron_dn
+
+    # Initialization
+    r_up_carts = []
+    r_dn_carts = []
+
+    total_electrons = 0
+
+    if coulomb_potential_data.ecp_flag:
+        charges = np.array(structure_data.atomic_numbers) - np.array(
+            coulomb_potential_data.z_cores
+        )
+    else:
+        charges = np.array(structure_data.atomic_numbers)
+
+    coords = structure_data.positions_cart
+
+    # Place electrons around each nucleus
+    for i in range(len(coords)):
+        charge = charges[i]
+        num_electrons = int(
+            np.round(charge)
+        )  # Number of electrons to place based on the charge
+
+        # Retrieve the position coordinates
+        x, y, z = coords[i]
+
+        # Place electrons
+        for _ in range(num_electrons):
+            # Calculate distance range
+            distance = np.random.uniform(1.0 / charge, 2.0 / charge)
+            theta = np.random.uniform(0, np.pi)
+            phi = np.random.uniform(0, 2 * np.pi)
+
+            # Convert spherical to Cartesian coordinates
+            dx = distance * np.sin(theta) * np.cos(phi)
+            dy = distance * np.sin(theta) * np.sin(phi)
+            dz = distance * np.cos(theta)
+
+            # Position of the electron
+            electron_position = np.array([x + dx, y + dy, z + dz])
+
+            # Assign spin
+            if len(r_up_carts) < num_electron_up:
+                r_up_carts.append(electron_position)
+            else:
+                r_dn_carts.append(electron_position)
+
+        total_electrons += num_electrons
+
+    # Handle surplus electrons
+    remaining_up = num_electron_up - len(r_up_carts)
+    remaining_dn = num_electron_dn - len(r_dn_carts)
+
+    # Randomly place any remaining electrons
+    for _ in range(remaining_up):
+        r_up_carts.append(
+            np.random.choice(coords) + np.random.normal(scale=0.1, size=3)
+        )
+    for _ in range(remaining_dn):
+        r_dn_carts.append(
+            np.random.choice(coords) + np.random.normal(scale=0.1, size=3)
         )
 
-        vpot_ecp_local = compute_ecp_local_parts(
-            coulomb_potential_data=coulomb_potential_data,
-            r_up_carts=new_r_up_carts,
-            r_dn_carts=new_r_dn_carts,
-        )
+    r_up_carts = np.array(r_up_carts)
+    r_dn_carts = np.array(r_dn_carts)
 
-        vpot_ecp_nonlocal = compute_ecp_nonlocal_parts(
-            coulomb_potential_data=coulomb_potential_data,
-            r_up_carts=new_r_up_carts,
-            r_dn_carts=new_r_dn_carts,
-            wavefunction_data=wavefunction_data,
-        )
+    V_local = compute_ecp_local_parts(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
 
-        logger.debug(f"kinc={kinc} Ha")
-        logger.debug(f"vpot_bare={vpot_bare} Ha")
-        logger.debug(f"vpot_ecp_local={vpot_ecp_local} Ha")
-        logger.debug(f"vpot_ecp_nonlocal={vpot_ecp_nonlocal} Ha")
+    print(V_local)
 
-        logger.debug(f"kinc={kinc} Ha")
-        logger.debug(f"vpot={vpot_bare+vpot_ecp_local} Ha")
-        logger.debug(f"vpotoff={vpot_ecp_nonlocal} Ha")
-        """
+    V_nonlocal = compute_ecp_nonlocal_parts(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        wavefunction_data=wavefunction_data,
+    )
 
-        """
-        e_L = compute_local_energy(
-            hamiltonian_data=hamiltonian_data,
-            r_up_carts=new_r_up_carts,
-            r_dn_carts=new_r_dn_carts,
-        )
-        print(f"e_L={e_L} Ha")
-        """
-
-        """
-        from coulomb_potential import compute_ecp_local_parts, compute_ecp_nonlocal_parts
-
-        num_electron_up = geminal_mo_data.num_electron_up
-        num_electron_dn = geminal_mo_data.num_electron_dn
-
-        # Initialization
-        r_up_carts = []
-        r_dn_carts = []
-
-        total_electrons = 0
-
-        if coulomb_potential_data.ecp_flag:
-            charges = np.array(structure_data.atomic_numbers) - np.array(
-                coulomb_potential_data.z_cores
-            )
-        else:
-            charges = np.array(structure_data.atomic_numbers)
-
-        coords = structure_data.positions_cart
-
-        # Place electrons around each nucleus
-        for i in range(len(coords)):
-            charge = charges[i]
-            num_electrons = int(
-                np.round(charge)
-            )  # Number of electrons to place based on the charge
-
-            # Retrieve the position coordinates
-            x, y, z = coords[i]
-
-            # Place electrons
-            for _ in range(num_electrons):
-                # Calculate distance range
-                distance = np.random.uniform(1.0 / charge, 2.0 / charge)
-                theta = np.random.uniform(0, np.pi)
-                phi = np.random.uniform(0, 2 * np.pi)
-
-                # Convert spherical to Cartesian coordinates
-                dx = distance * np.sin(theta) * np.cos(phi)
-                dy = distance * np.sin(theta) * np.sin(phi)
-                dz = distance * np.cos(theta)
-
-                # Position of the electron
-                electron_position = np.array([x + dx, y + dy, z + dz])
-
-                # Assign spin
-                if len(r_up_carts) < num_electron_up:
-                    r_up_carts.append(electron_position)
-                else:
-                    r_dn_carts.append(electron_position)
-
-            total_electrons += num_electrons
-
-        # Handle surplus electrons
-        remaining_up = num_electron_up - len(r_up_carts)
-        remaining_dn = num_electron_dn - len(r_dn_carts)
-
-        # Randomly place any remaining electrons
-        for _ in range(remaining_up):
-            r_up_carts.append(
-                np.random.choice(coords) + np.random.normal(scale=0.1, size=3)
-            )
-        for _ in range(remaining_dn):
-            r_dn_carts.append(
-                np.random.choice(coords) + np.random.normal(scale=0.1, size=3)
-            )
-
-        r_up_carts = np.array(r_up_carts)
-        r_dn_carts = np.array(r_dn_carts)
-
-        V_local = compute_ecp_local_parts(
-            coulomb_potential_data=coulomb_potential_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
-        )
-
-        print(V_local)
-
-        V_nonlocal = compute_ecp_nonlocal_parts(
-            coulomb_potential_data=coulomb_potential_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
-            wavefunction_data=wavefunction_data,
-        )
-
-        print(V_nonlocal)
-        """
+    print(V_nonlocal)
+    """
