@@ -198,6 +198,10 @@ class MCMC:
 
         # """
         # compiling methods
+        # jax.profiler.start_trace("/tmp/tensorboard")
+        # tensorboard --logdir /tmp/tensorboard
+        # tensorborad does not work with safari. use google chrome
+
         logger.info("Compilation starts.")
 
         logger.info("  Compilation e_L starts.")
@@ -232,6 +236,8 @@ class MCMC:
         logger.info("  Compilation domega is done.")
 
         logger.info("Compilation is done.")
+
+        # jax.profiler.stop_trace()
         # """
 
     def run(self, num_mcmc_steps: int = 0, continuation: int = 0) -> None:
@@ -581,6 +587,8 @@ if __name__ == "__main__":
 
     # run VMC
     mcmc = MCMC(hamiltonian_data=hamiltonian_data, swct_data=swct_data, mcmc_seed=mpi_seed)
+
+    """
     mcmc.run(num_mcmc_steps=100)
     e_L = mcmc.e_L[num_mcmc_warmup_steps:]
 
@@ -605,6 +613,7 @@ if __name__ == "__main__":
         e_L_std = np.sqrt(len(e_L_binned) - 1) * np.std(e_L_jackknife_binned)
 
         logger.info(f"e_L = {e_L_mean} +- {e_L_std} Ha.")
+    """
 
     """
 
