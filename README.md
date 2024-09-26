@@ -2,21 +2,40 @@
 jQMC code implements two real-space ab initio quantum Monte Carlo (QMC) methods.
 Variatioinal Monte Carlo (VMC) and lattice regularized diffusion Monte Carlo (LRDMC) methods.
 
-# Developer
+# Developers
 Kosuke Nakano (National Institute for Materials Science [NIMS], Japan)
 
-## Development
+# Sponsors
+<img src="https://www.jst.go.jp/kisoken/presto/wp-content/themes/02_presto/img/logo-ja.png" />
 
-The development of phonopy is managed on the `develop` branch of github jQMC repository.
+# For Users
+
+## How to install jQMC
+
+jQMC can be installed via pip
+
+```bash
+% pip install .
+```
+
+## User Documentation
+
+jQMC user documentation is written using python sphinx. The source files are
+stored in `doc` directory. Please see how to write the documentation at
+`doc/README.md`.
+
+# For Contributors
+
+The development of jQMC is managed on the `develop` branch of github jQMC repository.
 
 - Github issues is the place to discuss about jQMC issues.
 - Github pull request is the place to request merging source code.
 
-### Formatting
+## Formatting
 
-Formatting rules are found in `pyproject.toml`.
+Formatting rules are written in `pyproject.toml`.
 
-### pre-commit
+## pre-commit
 
 Pre-commit (https://pre-commit.com/) is mainly used for applying the formatting
 rules automatically. Therefore, it is strongly encouraged to use it at or before
@@ -30,7 +49,7 @@ git-commit. Pre-commit is set-up and used in the following way:
 Unless running pre-commit, pre-commit.ci may push the fix at PR by github
 action. In this case, the fix should be merged by the contributor's repository.
 
-### VSCode setting
+## VSCode setting
 - Not strictly, but VSCode's `settings.json` may be written like below
 
   ```json
@@ -45,17 +64,11 @@ action. In this case, the fix should be merged by the contributor's repository.
   },
   ```
 
-## Documentation
-
-jQMC user documentation is written using python sphinx. The source files are
-stored in `doc` directory. Please see how to write the documentation at
-`doc/README.md`.
-
 ## How to run tests
 
 Tests are written using pytest. To run tests, pytest has to be installed.
 The tests can be run by
 
 ```bash
-% pytest
+% pytest -v
 ```
