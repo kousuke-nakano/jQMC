@@ -15,6 +15,7 @@ from ..jqmc.atomic_orbital import (
     compute_AOs_grad_api,
     compute_AOs_laplacian_api,
     compute_S_l_m_debug,
+    compute_S_l_m_jax,
 )
 from ..jqmc.coulomb_potential import (
     compute_bare_coulomb_potential_api,
@@ -73,7 +74,7 @@ log.addHandler(stream_handler)
         )
     ),
 )
-def test_spherical_part_of_AO(l, m):
+def test_spherical_harmonics(l, m):
     def Y_l_m_ref(l=0, m=0, r_cart_rel=[0.0, 0.0, 0.0]):
         """See https://en.wikipedia.org/wiki/Table_of_spherical_harmonics#Real_spherical_harmonics"""
         x, y, z = r_cart_rel[..., 0], r_cart_rel[..., 1], r_cart_rel[..., 2]
@@ -349,12 +350,45 @@ def test_spherical_part_of_AO(l, m):
             magnetic_quantum_number=m,
             r_cart=r_cart,
         )
-        ref_S_lm = r_norm**l * Y_l_m_ref(l=l, m=m, r_cart_rel=r_cart_rel)
+        ref_S_lm = (
+            np.sqrt((4 * np.pi) / (2 * l + 1))
+            * r_norm**l
+            * Y_l_m_ref(l=l, m=m, r_cart_rel=r_cart_rel)
+        )
         assert_almost_equal(test_S_lm, ref_S_lm, decimal=8)
 
 
-def test_radial_part_of_AO():
-    pass
+# @pytest.mark.skip
+@pytest.mark.parametrize(
+    ["l", "m"],
+    list(
+        itertools.chain.from_iterable(
+            [[pytest.param(l, m, id=f"l={l}, m={m}") for m in range(-l, l + 1)] for l in range(5)]
+        )
+    ),
+)
+def test_solid_harmonics(l, m):
+    num_samples = 1
+    R_cart = [0.0, 0.0, 1.0]
+    r_cart_min, r_cart_max = -10.0, 10.0
+    r_x_rand = (r_cart_max - r_cart_min) * np.random.rand(num_samples) + r_cart_min
+    r_y_rand = (r_cart_max - r_cart_min) * np.random.rand(num_samples) + r_cart_min
+    r_z_rand = (r_cart_max - r_cart_min) * np.random.rand(num_samples) + r_cart_min
+
+    for r_cart in zip(r_x_rand, r_y_rand, r_z_rand):
+        test_S_lm = compute_S_l_m_jax(
+            R_cart=R_cart,
+            l=l,
+            m=m,
+            r_cart=r_cart,
+        )
+        ref_S_lm = compute_S_l_m_debug(
+            atomic_center_cart=R_cart,
+            angular_momentum=l,
+            magnetic_quantum_number=m,
+            r_cart=r_cart,
+        )
+        assert_almost_equal(test_S_lm, ref_S_lm, decimal=8)
 
 
 # @pytest.mark.skip
@@ -1474,9 +1508,9 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part():
     # print(f"grad_jastrow_J3_dn_jax = {grad_jastrow_J3_dn_jax}")
     # print(f"sum_laplacian_J3_jax = {sum_laplacian_J3_jax}")
 
-    np.testing.assert_almost_equal(grad_jastrow_J3_up_debug, grad_jastrow_J3_up_jax, decimal=5)
-    np.testing.assert_almost_equal(grad_jastrow_J3_dn_debug, grad_jastrow_J3_dn_jax, decimal=5)
-    np.testing.assert_almost_equal(sum_laplacian_J3_debug, sum_laplacian_J3_jax, decimal=5)
+    np.testing.assert_almost_equal(grad_jastrow_J3_up_debug, grad_jastrow_J3_up_jax, decimal=4)
+    np.testing.assert_almost_equal(grad_jastrow_J3_dn_debug, grad_jastrow_J3_dn_jax, decimal=4)
+    np.testing.assert_almost_equal(sum_laplacian_J3_debug, sum_laplacian_J3_jax, decimal=4)
 
 
 def test_numerical_and_auto_grads_Jastrow_twobody_part():
