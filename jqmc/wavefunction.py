@@ -10,7 +10,6 @@ import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import jit
 
 from .determinant import (
     Geminal_data,

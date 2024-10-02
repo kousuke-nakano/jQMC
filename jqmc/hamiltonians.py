@@ -23,7 +23,7 @@ jax.config.update("jax_enable_x64", True)
 @struct.dataclass
 class Hamiltonian_data:
     """
-    The class contains data for computing laplacians
+    The class contains data for computing hamiltonian
 
     Args:
         structure_data (Structure_data)
@@ -40,6 +40,9 @@ class Hamiltonian_data:
             - lambda_matrix in Geminal_data (determinant.py) (switched off, for the time being)
             - param_parallel_spin in Jastrow_two_body_data (jastrow_factor.py)
             - param_anti_parallel_spin in Jastrow_two_body_data (jastrow_factor.py)
+            - j_matrix_up_up in Jastrow_three_body_data (jastrow_factor.py)
+            - j_matrix_dn_dn in Jastrow_three_body_data (jastrow_factor.py)
+            - j_matrix_up_dn in Jastrow_three_body_data (jastrow_factor.py)
 
         Atomic positions related:
             - structure_data.positions in AOs_data (atomic_orbital.py)
@@ -72,6 +75,7 @@ def compute_local_energy(
     -------
         The value of local energy with the given wavefunction (float | complex)
     """
+
     T = compute_kinetic_energy_api(
         wavefunction_data=hamiltonian_data.wavefunction_data,
         r_up_carts=r_up_carts,
