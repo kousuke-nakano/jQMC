@@ -5,6 +5,7 @@
 from logging import Formatter, StreamHandler, getLogger
 
 import numpy as np
+import scipy
 
 # import trexio
 import trexio
@@ -75,18 +76,18 @@ def read_trexio_file(trexio_file: str):
     # basis_prim_num = trexio.read_basis_prim_num(file_r)
     basis_nucleus_index = trexio.read_basis_nucleus_index(file_r)
     basis_shell_ang_mom = trexio.read_basis_shell_ang_mom(file_r)
-    # basis_shell_factor = trexio.read_basis_shell_factor(file_r)
+    basis_shell_factor = trexio.read_basis_shell_factor(file_r)
     basis_shell_index = trexio.read_basis_shell_index(file_r)
     basis_exponent = trexio.read_basis_exponent(file_r)
     basis_coefficient = trexio.read_basis_coefficient(file_r)
-    # basis_prim_factor = trexio.read_basis_prim_factor(file_r)
+    basis_prim_factor = trexio.read_basis_prim_factor(file_r)
     logger.info(f"max angular momentum l = {np.max(basis_shell_ang_mom)}.")
 
     # ao info
     ao_cartesian = trexio.read_ao_cartesian(file_r)
     ao_num = trexio.read_ao_num(file_r)
     # ao_shell = trexio.read_ao_shell(file_r)
-    # ao_normalization = trexio.read_ao_normalization(file_r)
+    ao_normalization = trexio.read_ao_normalization(file_r)
 
     # ao spherical part check
     if ao_cartesian:
@@ -160,37 +161,56 @@ def read_trexio_file(trexio_file: str):
     coefficients = []
 
     for i_shell in range(basis_shell_num):
-        ao_nucleus_index = basis_nucleus_index[i_shell]
-        ao_coord = list(coords_r[ao_nucleus_index])
-        ao_ang_mom = basis_shell_ang_mom[i_shell]
-        ao_mag_moms = [0] + [i * (-1) ** j for i in range(1, ao_ang_mom + 1) for j in range(2)]
-        num_mag_moms = len(ao_mag_moms)
+        b_nucleus_index = basis_nucleus_index[i_shell]
+        b_coord = list(coords_r[b_nucleus_index])
+        b_ang_mom = basis_shell_ang_mom[i_shell]
+        ao_mag_mom_list = [0] + [i * (-1) ** j for i in range(1, b_ang_mom + 1) for j in range(2)]
+        num_ao_mag_moms = len(ao_mag_mom_list)
 
-        ao_nucleus_index_dup = [ao_nucleus_index for _ in range(num_mag_moms)]
-        ao_coords = [ao_coord for _ in range(num_mag_moms)]
-        ao_ang_moms = [ao_ang_mom for _ in range(num_mag_moms)]
+        ao_nucleus_index = [b_nucleus_index for _ in range(num_ao_mag_moms)]
+        ao_coords = [b_coord for _ in range(num_ao_mag_moms)]
+        ao_ang_moms = [b_ang_mom for _ in range(num_ao_mag_moms)]
 
-        ao_prim_indices = [i for i, v in enumerate(basis_shell_index) if v == i_shell]
-        ao_prim_num = len(ao_prim_indices)
-        ao_exponents = [basis_exponent[k] for k in ao_prim_indices]
-        ao_coefficients = [basis_coefficient[k] for k in ao_prim_indices]
-
-        orbital_indices_all = [
-            ao_num_count + j for j in range(num_mag_moms) for _ in range(ao_prim_num)
+        b_prim_indices = [i for i, v in enumerate(basis_shell_index) if v == i_shell]
+        b_prim_num = len(b_prim_indices)
+        b_normalizations = [
+            np.sqrt(
+                (
+                    2.0 ** (2 * b_ang_mom + 3)
+                    * scipy.special.factorial(b_ang_mom + 1)
+                    * (2 * basis_exponent[k]) ** (b_ang_mom + 1.5)
+                )
+                / (scipy.special.factorial(2 * b_ang_mom + 2) * np.sqrt(np.pi))
+            )
+            for k in b_prim_indices
         ]
-        ao_exponents_all = ao_exponents * num_mag_moms
-        ao_coefficients_all = ao_coefficients * num_mag_moms
+        b_prim_exponents = [basis_exponent[k] for k in b_prim_indices]
+        b_prim_coefficients = [
+            basis_shell_factor[i_shell]
+            * basis_prim_factor[k]
+            / b_normalizations[i]
+            * basis_coefficient[k]
+            for i, k in enumerate(b_prim_indices)
+        ]
+        orbital_indices_all = [
+            ao_num_count + j for j in range(num_ao_mag_moms) for _ in range(b_prim_num)
+        ]
+        ao_exponents = b_prim_exponents * num_ao_mag_moms
+        ao_coefficients_list = b_prim_coefficients * num_ao_mag_moms
+        ao_coefficients = [
+            ao_coefficients_list[k] * ao_normalization[orbital_indices_all[k]]
+            for k in range(len(ao_coefficients_list))
+        ]
+        ao_num_count += num_ao_mag_moms
+        ao_prim_num_count += num_ao_mag_moms * b_prim_num
 
-        ao_num_count += num_mag_moms
-        ao_prim_num_count += num_mag_moms * ao_prim_num
-
-        nucleus_index += ao_nucleus_index_dup
+        nucleus_index += ao_nucleus_index
         atomic_center_carts += ao_coords
         angular_momentums += ao_ang_moms
-        magnetic_quantum_numbers += ao_mag_moms
+        magnetic_quantum_numbers += ao_mag_mom_list
         orbital_indices += orbital_indices_all
-        exponents += ao_exponents_all
-        coefficients += ao_coefficients_all
+        exponents += ao_exponents
+        coefficients += ao_coefficients
 
     if ao_num_count != ao_num:
         logger.error(
