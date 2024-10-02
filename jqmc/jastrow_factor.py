@@ -114,7 +114,7 @@ class Jastrow_data:
     """
 
     jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=True)
-    jastrow_two_body_type: str = struct.field(pytree_node=False)  # off, pade
+    jastrow_two_body_type: str = struct.field(pytree_node=False)  # off, on
     jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=True)
     jastrow_three_body_type: str = struct.field(pytree_node=False)  # off, on
 
@@ -131,7 +131,7 @@ def compute_Jastrow_part_api(
     # two-body
     if jastrow_data.jastrow_two_body_type == "off":
         J2 = 0.0
-    elif jastrow_data.jastrow_two_body_type == "pade":
+    elif jastrow_data.jastrow_two_body_type == "on":
         J2 = compute_Jastrow_two_body_api(
             jastrow_data.jastrow_two_body_data,
             r_up_carts,
@@ -334,20 +334,34 @@ def compute_Jastrow_two_body_debug(
     def two_body_jastrow_anti_parallel_spins(
         param: float, rel_r_cart: npt.NDArray[np.float64]
     ) -> float:
+        # """ exp
+        two_body_jastrow = 1.0 / (2.0 * param) * (1.0 - np.exp(-param * np.linalg.norm(rel_r_cart)))
+        return two_body_jastrow
+        # """
+
+        """pade
         two_body_jastrow = (
-            jnp.linalg.norm(rel_r_cart)
+            np.linalg.norm(rel_r_cart)
             / 2.0
-            * (1.0 + param * jnp.linalg.norm(rel_r_cart)) ** (-1.0)
+            * (1.0 + param * np.linalg.norm(rel_r_cart)) ** (-1.0)
         )
         return two_body_jastrow
+        """
 
     def two_body_jastrow_parallel_spins(param: float, rel_r_cart: npt.NDArray[np.float64]) -> float:
+        # """ exp
+        two_body_jastrow = 1.0 / (4.0 * param) * (1.0 - np.exp(-param * np.linalg.norm(rel_r_cart)))
+        return two_body_jastrow
+        # """
+
+        """pade
         two_body_jastrow = (
-            jnp.linalg.norm(rel_r_cart)
+            np.linalg.norm(rel_r_cart)
             / 4.0
-            * (1.0 + param * jnp.linalg.norm(rel_r_cart)) ** (-1.0)
+            * (1.0 + param * np.linalg.norm(rel_r_cart)) ** (-1.0)
         )
         return two_body_jastrow
+        """
 
     two_body_jastrow = (
         np.sum(
@@ -389,6 +403,22 @@ def compute_Jastrow_two_body_jax(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
     def J2_anti_parallel_spins(r_cart_i, r_cart_j):
+        # """exp
+        two_body_jastrow = (
+            1.0
+            / (2.0 * jastrow_two_body_data.param_anti_parallel_spin)
+            * (
+                1.0
+                - jnp.exp(
+                    -jastrow_two_body_data.param_anti_parallel_spin
+                    * jnp.linalg.norm(r_cart_i - r_cart_j)
+                )
+            )
+        )
+        return two_body_jastrow
+        # """
+
+        """pade
         two_body_jastrow = (
             jnp.linalg.norm(r_cart_i - r_cart_j)
             / 2.0
@@ -400,8 +430,25 @@ def compute_Jastrow_two_body_jax(
             ** (-1.0)
         )
         return two_body_jastrow
+        """
 
     def J2_parallel_spins(r_cart_i, r_cart_j):
+        # """exp
+        two_body_jastrow = (
+            1.0
+            / (4.0 * jastrow_two_body_data.param_parallel_spin)
+            * (
+                1.0
+                - jnp.exp(
+                    -jastrow_two_body_data.param_parallel_spin
+                    * jnp.linalg.norm(r_cart_i - r_cart_j)
+                )
+            )
+        )
+        return two_body_jastrow
+        # """
+
+        """pade
         two_body_jastrow = (
             jnp.linalg.norm(r_cart_i - r_cart_j)
             / 4.0
@@ -412,6 +459,7 @@ def compute_Jastrow_two_body_jax(
             ** (-1.0)
         )
         return two_body_jastrow
+        """
 
     vmap_two_body_jastrow_anti_parallel_spins = vmap(
         vmap(J2_anti_parallel_spins, in_axes=(None, 0)), in_axes=(0, None)
