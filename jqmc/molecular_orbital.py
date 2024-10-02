@@ -22,7 +22,6 @@ from .atomic_orbital import (
     compute_AO,
     compute_AOs_api,
     compute_AOs_grad_api,
-    compute_AOs_jax,
     compute_AOs_laplacian_api,
 )
 
