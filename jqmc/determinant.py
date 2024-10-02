@@ -485,7 +485,7 @@ def compute_grads_and_laplacian_ln_Det_debug(
     # Laplacian part
     #############################################################
 
-    diff_h2 = 1.0e-3  # for laplacian
+    diff_h2 = 1.0e-4  # for laplacian
 
     sum_laplacian_ln_D = 0.0
 

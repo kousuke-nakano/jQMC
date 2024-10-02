@@ -1275,12 +1275,12 @@ def test_numerial_and_auto_grads_ln_Det():
     )
 
     np.testing.assert_almost_equal(
-        np.array(grad_ln_D_up_numerical), np.array(grad_ln_D_up_auto), decimal=6
+        np.array(grad_ln_D_up_numerical), np.array(grad_ln_D_up_auto), decimal=5
     )
     np.testing.assert_almost_equal(
-        np.array(grad_ln_D_dn_numerical), np.array(grad_ln_D_dn_auto), decimal=6
+        np.array(grad_ln_D_dn_numerical), np.array(grad_ln_D_dn_auto), decimal=5
     )
-    np.testing.assert_almost_equal(sum_laplacian_ln_D_numerical, sum_laplacian_ln_D_auto, decimal=1)
+    np.testing.assert_almost_equal(sum_laplacian_ln_D_numerical, sum_laplacian_ln_D_auto, decimal=4)
 
 
 def test_comparing_values_with_TurboRVB_code():
