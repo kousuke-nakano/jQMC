@@ -296,7 +296,7 @@ def compute_grads_and_laplacian_Jastrow_part_api(
     elif jastrow_data.jastrow_three_body_type == "on":
         grad_J3_up, grad_J3_dn, sum_laplacian_J3 = (
             compute_grads_and_laplacian_Jastrow_three_body_api(
-                jastrow_data.jastrow_two_body_data,
+                jastrow_data.jastrow_three_body_data,
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
                 debug_flag=debug_flag,

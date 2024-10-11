@@ -1,4 +1,6 @@
 # read turborvb WF and PPs and generate jQMC WF and PP instances.
+import pickle
+
 import numpy as np
 from turbogenius.pyturbo.io_fort10 import IO_fort10
 
@@ -7,8 +9,11 @@ from jqmc.jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_t
 from jqmc.structure import Structure_data
 from jqmc.vmc import VMC
 
+turborvb_WF_file = "fort.10"
+
 # fort10
-io_fort10 = IO_fort10()
+io_fort10 = IO_fort10(turborvb_WF_file)
+num_ele = io_fort10.f10header.nel
 
 # jastrow twobody
 f10jastwobody = io_fort10.f10jastwobody
@@ -18,7 +23,7 @@ if f10jastwobody.jastrow_type != -6:
 assert len(f10jastwobody.twobody_list) == 1
 
 twobody_parameter = f10jastwobody.twobody_list[0]
-print(twobody_parameter)
+# print(twobody_parameter)
 
 # structure
 f10structure = io_fort10.f10structure
@@ -132,11 +137,11 @@ j1_matrix_dn = np.zeros((jas_aos_data_up.num_ao))
 
 for i, (row, col) in enumerate(zip(f10jasmatrix.row, f10jasmatrix.col)):
     if col == const_jas_orb_index and row != const_jas_orb_index:
-        j1_matrix_up[row - 1] = f10jasmatrix.coeff[i]
-        j1_matrix_dn[row - 1] = f10jasmatrix.coeff[i]
+        j1_matrix_up[row - 1] = f10jasmatrix.coeff[i] * (num_ele - 1)
+        j1_matrix_dn[row - 1] = f10jasmatrix.coeff[i] * (num_ele - 1)
 
-print(j1_matrix_up.T)
-print(j1_matrix_dn.T)
+# print(j1_matrix_up.T)
+# print(j1_matrix_dn.T)
 
 j3_matrix_up_up = np.zeros((jas_aos_data_up.num_ao, jas_aos_data_up.num_ao))
 j3_matrix_dn_dn = np.zeros((jas_aos_data_dn.num_ao, jas_aos_data_dn.num_ao))
@@ -180,3 +185,6 @@ jastrow_data = Jastrow_data(
 )
 
 print(jastrow_data)
+
+with open("jastrow_data.pkl", "wb") as f:
+    pickle.dump(jastrow_data, f)
