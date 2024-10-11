@@ -31,12 +31,10 @@ class Jastrow_two_body_data:
     The class contains data for evaluating the two-body Jastrow function.
 
     Args:
-        param_parallel_spin (float): parameter for parallel spins
-        param_antiparallel_spin (float): parameter for anti-parallel spins
+        jastrow_2b_param (float): the parameter for 2b Jastrow part
     """
 
-    param_parallel_spin: float = struct.field(pytree_node=True)
-    param_anti_parallel_spin: float = struct.field(pytree_node=True)
+    jastrow_2b_param: float = struct.field(pytree_node=True)
 
     def __post_init__(self) -> None:
         pass
@@ -282,7 +280,7 @@ def compute_grads_and_laplacian_Jastrow_part_api(
     # two-body
     if jastrow_data.jastrow_two_body_type == "off":
         grad_J2_up, grad_J2_dn, sum_laplacian_J2 = 0.0, 0.0, 0.0
-    elif jastrow_data.jastrow_two_body_type == "pade":
+    elif jastrow_data.jastrow_two_body_type == "on":
         grad_J2_up, grad_J2_dn, sum_laplacian_J2 = compute_grads_and_laplacian_Jastrow_two_body_api(
             jastrow_data.jastrow_two_body_data,
             r_up_carts=r_up_carts,
@@ -350,7 +348,7 @@ def compute_Jastrow_two_body_debug(
 
     def two_body_jastrow_parallel_spins(param: float, rel_r_cart: npt.NDArray[np.float64]) -> float:
         # """ exp
-        two_body_jastrow = 1.0 / (4.0 * param) * (1.0 - np.exp(-param * np.linalg.norm(rel_r_cart)))
+        two_body_jastrow = 1.0 / (2.0 * param) * (1.0 - np.exp(-param * np.linalg.norm(rel_r_cart)))
         return two_body_jastrow
         # """
 
@@ -367,7 +365,7 @@ def compute_Jastrow_two_body_debug(
         np.sum(
             [
                 two_body_jastrow_anti_parallel_spins(
-                    param=jastrow_two_body_data.param_anti_parallel_spin,
+                    param=jastrow_two_body_data.jastrow_2b_param,
                     rel_r_cart=r_up_cart - r_dn_cart,
                 )
                 for (r_up_cart, r_dn_cart) in itertools.product(r_up_carts, r_dn_carts)
@@ -376,7 +374,7 @@ def compute_Jastrow_two_body_debug(
         + np.sum(
             [
                 two_body_jastrow_parallel_spins(
-                    param=jastrow_two_body_data.param_parallel_spin,
+                    param=jastrow_two_body_data.jastrow_2b_param,
                     rel_r_cart=r_up_cart_i - r_up_cart_j,
                 )
                 for (r_up_cart_i, r_up_cart_j) in itertools.combinations(r_up_carts, 2)
@@ -385,7 +383,7 @@ def compute_Jastrow_two_body_debug(
         + np.sum(
             [
                 two_body_jastrow_parallel_spins(
-                    param=jastrow_two_body_data.param_parallel_spin,
+                    param=jastrow_two_body_data.jastrow_2b_param,
                     rel_r_cart=r_dn_cart_i - r_dn_cart_j,
                 )
                 for (r_dn_cart_i, r_dn_cart_j) in itertools.combinations(r_dn_carts, 2)
@@ -406,12 +404,11 @@ def compute_Jastrow_two_body_jax(
         # """exp
         two_body_jastrow = (
             1.0
-            / (2.0 * jastrow_two_body_data.param_anti_parallel_spin)
+            / (2.0 * jastrow_two_body_data.jastrow_2b_param)
             * (
                 1.0
                 - jnp.exp(
-                    -jastrow_two_body_data.param_anti_parallel_spin
-                    * jnp.linalg.norm(r_cart_i - r_cart_j)
+                    -jastrow_two_body_data.jastrow_2b_param * jnp.linalg.norm(r_cart_i - r_cart_j)
                 )
             )
         )
@@ -436,12 +433,11 @@ def compute_Jastrow_two_body_jax(
         # """exp
         two_body_jastrow = (
             1.0
-            / (4.0 * jastrow_two_body_data.param_parallel_spin)
+            / (2.0 * jastrow_two_body_data.jastrow_2b_param)
             * (
                 1.0
                 - jnp.exp(
-                    -jastrow_two_body_data.param_parallel_spin
-                    * jnp.linalg.norm(r_cart_i - r_cart_j)
+                    -jastrow_two_body_data.jastrow_2b_param * jnp.linalg.norm(r_cart_i - r_cart_j)
                 )
             )
         )
@@ -1217,7 +1213,7 @@ if __name__ == "__main__":
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_dn_cart_samples, 3) + r_cart_min
 
     jastrow_two_body_data = Jastrow_two_body_data(
-        param_anti_parallel_spin=1.0, param_parallel_spin=1.0
+        param_anti_parallel_spin=1.0, jastrow_2b_param=1.0
     )
     jastrow_two_body_debug = compute_Jastrow_two_body_api(
         jastrow_two_body_data=jastrow_two_body_data,

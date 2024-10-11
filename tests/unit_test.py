@@ -1283,11 +1283,8 @@ def test_numerial_and_auto_grads_ln_Det():
     np.testing.assert_almost_equal(sum_laplacian_ln_D_numerical, sum_laplacian_ln_D_auto, decimal=1)
 
 
-@pytest.mark.skip(
-    reason="because the TREXIO file is replaced with new one with correct normalization factor. \
-        we can test also a WF with Jastrow factor! This should be fixed asap."
-)
-def test_comparing_values_with_TurboRVB_code():
+@pytest.mark.skip(reason="@jit in the next test fails for some reason... Under investigation.")
+def test_comparison_with_TurboRVB_wo_Jastrow():
     (
         structure_data,
         aos_data,
@@ -1318,23 +1315,32 @@ def test_comparing_values_with_TurboRVB_code():
 
     old_r_up_carts = np.array(
         [
-            [-0.64878536, -0.83275288, 0.33532629],
-            [0.55271273, 0.72310605, 0.93443775],
-            [0.66767275, 0.1206456, -0.36521208],
-            [-0.93165236, -0.0120386, 0.33003036],
+            [-1.13450385875760, -0.698914730480577, -6.290951981744008e-003],
+            [-2.07761893946839, 1.30902541938751, -5.220902114745041e-002],
+            [0.276215481293413, 0.422863618938476, 0.279866487253010],
+            [-1.60902246286275, 0.499927465264998, 0.700105816369930],
         ]
     )
     old_r_dn_carts = np.array(
         [
-            [-1.0347816, 1.26162081, 0.42301735],
-            [-0.57843435, 1.03651987, -0.55091542],
-            [-1.56091964, -0.58952149, -0.99268141],
-            [0.61863233, -0.14903326, 0.51962683],
+            [-1.48583455555933, -1.01189391902775, 1.83998639430367],
+            [0.635659512640246, 0.398999201990364, -0.745191606127732],
+            [-2.00590358216444, 1.90796788491204, -0.195294104680795],
+            [-1.12726250654165, -0.739542218156325, -4.817447678670805e-002],
         ]
     )
     new_r_up_carts = old_r_up_carts.copy()
     new_r_dn_carts = old_r_dn_carts.copy()
-    new_r_dn_carts[3] = [0.618632327645002, -0.149033260668010, 0.131889254514777]
+    new_r_up_carts[2] = [0.276215481293413, -0.270740090536313, 0.279866487253010]
+
+    WF_ratio_ref_turborvb = 0.919592366177398
+    kinc_ref_turborvb = 14.6961809427008
+    vpot_ref_turborvb = -17.0152290468758
+    vpotoff_ref_turborvb = 0.329197252921614
+
+    # print(f"wf_ratio_ref={WF_ratio_ref_turborvb} Ha")
+    # print(f"kinc_ref={kinc_ref_turborvb} Ha")
+    # print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
 
     WF_ratio = (
         evaluate_wavefunction_api(
@@ -1391,14 +1397,132 @@ def test_comparing_values_with_TurboRVB_code():
     # print(f"kinc={kinc} Ha")
     # print(f"vpot={vpot_bare_jax+vpot_ecp_debug} Ha")
 
-    WF_ratio_ref_turborvb = 1.04447207308308
-    kinc_ref_turborvb = 9.77796571601343
-    vpot_ref_turborvb = -27.9099792589717
-    vpotoff_ref_turborvb = 0.159136845080957
+    np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=8)
+    np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
+    np.testing.assert_almost_equal(
+        vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3
+    )
+    np.testing.assert_almost_equal(
+        vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3
+    )
+
+
+def test_comparison_with_TurboRVB_w_2b_Jastrow():
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(
+            os.path.dirname(__file__), "trexio_example_files", "water_trexio.hdf5"
+        )
+    )
+
+    turborvb_2b_param = 0.896342988526927  # -6 !!
+
+    jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=turborvb_2b_param)
+
+    jastrow_data = Jastrow_data(
+        jastrow_two_body_data=jastrow_two_body_data,
+        jastrow_two_body_type="on",
+        jastrow_three_body_data=None,
+        jastrow_three_body_type="off",
+    )
+
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+
+    old_r_up_carts = np.array(
+        [
+            [-1.13450385875760, -0.698914730480577, -6.290951981744008e-003],
+            [-2.30366220171161, 1.47326376760292, 0.126403765463162],
+            [0.276215481293413, 0.422863618938476, 0.279866487253010],
+            [-1.60902246286275, 0.499927465264998, 0.700105816369930],
+        ]
+    )
+    old_r_dn_carts = np.array(
+        [
+            [-1.42343008909407, -1.13669461924113, 0.525171318204107],
+            [0.635659512640246, 0.398999201990364, -0.745191606127732],
+            [-2.00590358216444, 1.90796788491204, -0.195294104680795],
+            [-1.12726250654165, -0.678049640381367, -0.656537799033216],
+        ]
+    )
+    new_r_up_carts = old_r_up_carts.copy()
+    new_r_dn_carts = old_r_dn_carts.copy()
+    new_r_up_carts[2] = [0.276215481293413, -0.270740090536313, 0.279866487253010]
+
+    WF_ratio_ref_turborvb = 0.872631278217550
+    kinc_ref_turborvb = 13.5310405254930
+    vpot_ref_turborvb = -30.1945862173100
+    vpotoff_ref_turborvb = 0.250461990878211
 
     # print(f"wf_ratio_ref={WF_ratio_ref_turborvb} Ha")
     # print(f"kinc_ref={kinc_ref_turborvb} Ha")
     # print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
+
+    WF_ratio = (
+        evaluate_wavefunction_api(
+            wavefunction_data=hamiltonian_data.wavefunction_data,
+            r_up_carts=new_r_up_carts,
+            r_dn_carts=new_r_dn_carts,
+        )
+        / evaluate_wavefunction_api(
+            wavefunction_data=hamiltonian_data.wavefunction_data,
+            r_up_carts=old_r_up_carts,
+            r_dn_carts=old_r_dn_carts,
+        )
+    ) ** 2.0
+
+    kinc = compute_kinetic_energy_api(
+        wavefunction_data=hamiltonian_data.wavefunction_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+    )
+
+    vpot_bare_debug = compute_bare_coulomb_potential_api(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+        debug_flag=True,
+    )
+
+    vpot_bare_jax = compute_bare_coulomb_potential_api(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+        debug_flag=False,
+    )
+
+    np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=6)
+
+    vpot_ecp_debug = compute_ecp_coulomb_potential_api(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+        wavefunction_data=wavefunction_data,
+        debug_flag=True,
+    )
+
+    vpot_ecp_jax = compute_ecp_coulomb_potential_api(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+        wavefunction_data=wavefunction_data,
+        debug_flag=False,
+    )
+
+    # print(f"wf_ratio={WF_ratio} Ha")
+    # print(f"kinc={kinc} Ha")
+    # print(f"vpot={vpot_bare_jax+vpot_ecp_debug} Ha")
 
     np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=8)
     np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
@@ -1527,9 +1651,7 @@ def test_numerical_and_auto_grads_Jastrow_twobody_part():
     r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_up_cart_samples, 3) + r_cart_min
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_dn_cart_samples, 3) + r_cart_min
 
-    jastrow_two_body_data = Jastrow_two_body_data(
-        param_anti_parallel_spin=1.0, param_parallel_spin=1.0
-    )
+    jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=1.0)
     J2_debug = compute_Jastrow_two_body_api(
         jastrow_two_body_data=jastrow_two_body_data,
         r_up_carts=r_up_carts,
