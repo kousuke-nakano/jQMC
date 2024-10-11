@@ -12,8 +12,13 @@ io_fort10 = IO_fort10()
 
 # jastrow twobody
 f10jastwobody = io_fort10.f10jastwobody
-print(f10jastwobody.jastrow_type)
-print(f10jastwobody.twobody_list)
+if f10jastwobody.jastrow_type != -6:
+    raise NotImplementedError
+
+assert len(f10jastwobody.twobody_list) == 1
+
+twobody_parameter = f10jastwobody.twobody_list[0]
+print(twobody_parameter)
 
 # structure
 f10structure = io_fort10.f10structure
@@ -115,27 +120,63 @@ jas_aos_data_dn = jas_aos_data_up = AOs_data(
 
 # Jastrow matrix
 f10jasmatrix = io_fort10.f10jasmatrix
-# print(f10jasmatrix.jasmat)
-print(f10jasmatrix.row)
-print(f10jasmatrix.col)
-print(f10jasmatrix.coeff)
 
 max_row = max(f10jasmatrix.row)
 max_col = max(f10jasmatrix.col)
 
 assert max_row == max_col
 const_jas_orb_index = max_row
-print(const_jas_orb_index)
 
 j1_matrix_up = np.zeros((jas_aos_data_up.num_ao))
 j1_matrix_dn = np.zeros((jas_aos_data_up.num_ao))
-print(j1_matrix_up)
-print(j1_matrix_dn)
+
+for i, (row, col) in enumerate(zip(f10jasmatrix.row, f10jasmatrix.col)):
+    if col == const_jas_orb_index and row != const_jas_orb_index:
+        j1_matrix_up[row - 1] = f10jasmatrix.coeff[i]
+        j1_matrix_dn[row - 1] = f10jasmatrix.coeff[i]
+
+print(j1_matrix_up.T)
+print(j1_matrix_dn.T)
 
 j3_matrix_up_up = np.zeros((jas_aos_data_up.num_ao, jas_aos_data_up.num_ao))
 j3_matrix_dn_dn = np.zeros((jas_aos_data_dn.num_ao, jas_aos_data_dn.num_ao))
 j3_matrix_up_dn = np.zeros((jas_aos_data_up.num_ao, jas_aos_data_dn.num_ao))
 
-print(j3_matrix_up_up)
-print(j3_matrix_dn_dn)
-print(j3_matrix_up_dn)
+for i, (row, col) in enumerate(zip(f10jasmatrix.row, f10jasmatrix.col)):
+    if col != const_jas_orb_index and row != const_jas_orb_index:
+        # upper diagonal
+        j3_matrix_up_up[row - 1, col - 1] = f10jasmatrix.coeff[i]
+        j3_matrix_dn_dn[row - 1, col - 1] = f10jasmatrix.coeff[i]
+        j3_matrix_up_dn[row - 1, col - 1] = f10jasmatrix.coeff[i]
+
+        # lower diagonal
+        j3_matrix_up_up[col - 1, row - 1] = f10jasmatrix.coeff[i]
+        j3_matrix_dn_dn[col - 1, row - 1] = f10jasmatrix.coeff[i]
+        j3_matrix_up_dn[col - 1, row - 1] = f10jasmatrix.coeff[i]
+
+# print(j3_matrix_up_up)
+# print(j3_matrix_dn_dn)
+# print(j3_matrix_up_dn)
+
+j_matrix_up_up = np.column_stack((j3_matrix_up_up, j1_matrix_up))
+j_matrix_dn_dn = np.column_stack((j3_matrix_dn_dn, j1_matrix_dn))
+j_matrix_up_dn = j3_matrix_up_dn
+
+jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=twobody_parameter)
+
+jastrow_three_body_data = Jastrow_three_body_data(
+    orb_data_up_spin=jas_aos_data_up,
+    orb_data_dn_spin=jas_aos_data_dn,
+    j_matrix_up_up=j_matrix_up_up,
+    j_matrix_dn_dn=j_matrix_dn_dn,
+    j_matrix_up_dn=j_matrix_up_dn,
+)
+
+jastrow_data = Jastrow_data(
+    jastrow_two_body_data=jastrow_two_body_data,
+    jastrow_two_body_type="on",
+    jastrow_three_body_data=jastrow_three_body_data,
+    jastrow_three_body_type="on",
+)
+
+print(jastrow_data)
