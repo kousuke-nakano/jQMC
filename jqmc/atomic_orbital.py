@@ -790,7 +790,7 @@ def compute_S_l_m_debug(
                 2) points on the z axis (0,0,z)
 
         Therefore, instead, the so-called solid harmonics function is computed, which is defined as
-        S_{l,\pm|m|} = \sqrt(\cfrac{2 * l + 1}{4 * np.pi}) * |\vec{R} - \vec{r}|^l [Y_{l,m,\alpha}(\phi, \theta) +- Y_{l,-m,\alpha}(\phi, \theta)].
+        S_{l,\pm|m|} = \sqrt(\cfrac{4 * np.pi}{2 * l + 1}) * |\vec{R} - \vec{r}|^l [Y_{l,m,\alpha}(\phi, \theta) +- Y_{l,-m,\alpha}(\phi, \theta)].
 
         The real solid harmonics function are tabulated in many textbooks and websites such as Wikipedia.
         They can be hardcoded into a code, or they can be computed analytically (e.g., https://en.wikipedia.org/wiki/Solid_harmonics).
