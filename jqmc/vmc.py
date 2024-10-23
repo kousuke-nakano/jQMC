@@ -63,6 +63,19 @@ jax.config.update("jax_enable_x64", True)
 
 
 class MCMC:
+    """MCMC class.
+
+    MCMC class. Runing MCMC.
+
+    Args:
+        mcmc_seed (int): seed for the MCMC chain.
+        hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
+        swct_data (SWCT_data): an instance of SWCT_data
+        mcmc_seed (int): random seed for MCMC
+        Dt (float): electron move step (bohr)
+        flag_energy_deriv (bool): compute derivatives of local energy.
+    """
+
     def __init__(
         self,
         hamiltonian_data: Hamiltonian_data = None,
@@ -71,14 +84,14 @@ class MCMC:
         Dt: float = 2.0,
         flag_energy_deriv: bool = False,
     ) -> None:
-        """
-        Initialize a MCMC class.
+        """Init.
+
+        Initialize a MCMC class, creating list holding results, etc...
 
         Args:
-            mcmc_seed (int): seed for the MCMC chain.
             hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
-        Returns:
-            None
+            swct_data (SWCT_data)
+
         """
         self.__hamiltonian_data = hamiltonian_data
         self.__swct_data = swct_data
@@ -551,6 +564,20 @@ class MCMC:
 
 
 class VMC:
+    """VMC class.
+
+    MCMC class. Runing MCMC.
+
+    Args:
+        mcmc_seed (int): seed for the MCMC chain.
+        hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
+        swct_data (SWCT_data): an instance of SWCT_data
+        mcmc_seed (int): random seed for MCMC
+        num_mcmc_warmup_steps (int): number of equilibration steps.
+        num_mcmc_bin_blocks (int): number of blocks for reblocking.
+        Dt (float): electron move step (bohr)
+    """
+
     def __init__(
         self,
         hamiltonian_data: Hamiltonian_data = None,
@@ -560,16 +587,6 @@ class VMC:
         num_mcmc_bin_blocks: int = 10,
         Dt: float = 2.0,
     ) -> None:
-        """
-        VMC class.
-
-        Args:
-            mcmc_seed (int): seed for the MCMC chain.
-            hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
-        Returns:
-            None
-        """
-
         self.comm = MPI.COMM_WORLD
         self.rank = self.comm.Get_rank()
 
@@ -626,6 +643,20 @@ class VMC:
             e_L_std = np.sqrt(len(e_L_binned) - 1) * np.std(e_L_jackknife_binned)
 
             logger.info(f"e_L = {e_L_mean} +- {e_L_std} Ha.")
+
+            return (e_L_mean, e_L_std)
+
+    def get_atomic_forces(self):
+        # analysis VMC
+        e_L_mean, e_L_std = self.get_e_L()
+
+        de_L_dR = self.__mcmc.de_L_dR[self.__num_mcmc_warmup_steps :]
+        de_L_dr_up = self.__mcmc.de_L_dr_up[self.__num_mcmc_warmup_steps :]
+        de_L_dr_dn = self.__mcmc.de_L_dr_dn[self.__num_mcmc_warmup_steps :]
+        dln_Psi_dr_up = self.__mcmc.dln_Psi_dr_up[self.__num_mcmc_warmup_steps :]
+        dln_Psi_dr_dn = self.__mcmc.dln_Psi_dr_dn[self.__num_mcmc_warmup_steps :]
+        dln_Psi_dR = self.__mcmc.dln_Psi_dR[self.__num_mcmc_warmup_steps :]
+        de_L_dR = self.__mcmc.de_L_dR[self.__num_mcmc_warmup_steps :]
 
 
 if __name__ == "__main__":
