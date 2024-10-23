@@ -1,3 +1,39 @@
+"""collections of unit tests"""
+
+# Copyright (C) 2024- Kosuke Nakano
+# All rights reserved.
+#
+# This file is part of phonopy.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+#
+# * Redistributions of source code must retain the above copyright
+#   notice, this list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright
+#   notice, this list of conditions and the following disclaimer in
+#   the documentation and/or other materials provided with the
+#   distribution.
+#
+# * Neither the name of the phonopy project nor the names of its
+#   contributors may be used to endorse or promote products derived
+#   from this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+# FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+# COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+# LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+# ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
 import itertools
 import os
 import pickle
@@ -10,7 +46,7 @@ from numpy import linalg as LA
 from numpy.testing import assert_almost_equal
 
 from ..jqmc.atomic_orbital import (
-    AO_data_debug,
+    AO_data,
     AOs_data_debug,
     compute_AOs_api,
     compute_AOs_grad_api,
@@ -709,7 +745,7 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
     mo_ans_step_by_step = []
 
     ao_data_l = [
-        AO_data_debug(
+        AO_data(
             num_ao_prim=orbital_indices.count(i),
             atomic_center_cart=R_carts[i],
             exponents=[exponents[k] for (k, v) in enumerate(orbital_indices) if v == i],
@@ -770,7 +806,7 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
     mo_ans_step_by_step = []
 
     ao_data_l = [
-        AO_data_debug(
+        AO_data(
             num_ao_prim=orbital_indices.count(i),
             atomic_center_cart=R_carts[i],
             exponents=[exponents[k] for (k, v) in enumerate(orbital_indices) if v == i],
