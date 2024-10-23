@@ -1,23 +1,61 @@
-"""Atomic Orbital module"""
+"""Atomic Orbitals module.
+
+Module containing classes and methods related to Atomic Orbitals
+
+Todo:
+    * Laplacian computation without JAX
+    * Replace numpy and jax.numpy typings with jaxtyping
+    * Remove AOs_data_debug
+"""
+
+# Copyright (C) 2024- Kosuke Nakano
+# All rights reserved.
+#
+# This file is part of phonopy.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+#
+# * Redistributions of source code must retain the above copyright
+#   notice, this list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright
+#   notice, this list of conditions and the following disclaimer in
+#   the documentation and/or other materials provided with the
+#   distribution.
+#
+# * Neither the name of the phonopy project nor the names of its
+#   contributors may be used to endorse or promote products derived
+#   from this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+# FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+# COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+# LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+# ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
 
 # import sys
 
-# python modules
 from dataclasses import dataclass, field
 from logging import Formatter, StreamHandler, getLogger
 
-# jax modules
-# from jax.debug import print as jprint
 import jax
 import jax.numpy as jnp
 import jax.scipy as jscipy
 import numpy as np
 import numpy.typing as npt
-
-# scipy
 import scipy  # type: ignore
 from flax import struct
 from jax import grad, jacrev, jit, vmap
+from jax import typing as jnpt
 from numpy import linalg as LA
 
 # jaxQMC module
@@ -32,19 +70,37 @@ jax.config.update("jax_enable_x64", True)
 
 @struct.dataclass
 class AOs_data:
-    """
+    """Atomic Orbitals dataclass.
+
     The class contains data for computing atomic orbitals simltaneously
 
     Args:
-        structure_data: an instance of Structure_data
-        nucleus_index (list[int]): One-to-one correspondence between AO items and the atom index (dim:num_ao)
-        num_ao : the number of atomic orbitals.
-        num_ao_prim : the number of primitive atomic orbitals.
-        orbital_indices (list[int]): index for what exponents and coefficients are associated to each atomic orbital. dim: num_ao_prim
-        exponents (list[float]): List of exponents of the AOs. dim: num_ao_prim.
-        coefficients (list[float | complex]): List of coefficients of the AOs. dim: num_ao_prim
-        angular_momentums (list[int]): Angular momentum of the AOs, i.e., l. dim: num_ao
-        magnetic_quantum_numbers (list[int]): Magnetic quantum number of the AOs, i.e m = -l .... +l. dim: num_ao
+        structure_data(Structure_data):
+            an instance of Structure_data
+        nucleus_index (list[int]):
+            One-to-one correspondence between AO items and the atom index (dim:num_ao)
+        num_ao (int):
+            the number of atomic orbitals.
+        num_ao_prim (int):
+            the number of primitive atomic orbitals.
+        orbital_indices (list[int]):
+            index for what exponents and coefficients are associated to each atomic orbital.
+            dim: num_ao_prim
+        exponents (list[float]):
+            List of exponents of the AOs. dim: num_ao_prim.
+        coefficients (list[float | complex]):
+            List of coefficients of the AOs. dim: num_ao_prim
+        angular_momentums (list[int]):
+            Angular momentum of the AOs, i.e., l. dim: num_ao
+        magnetic_quantum_numbers (list[int]):
+            Magnetic quantum number of the AOs, i.e m = -l .... +l. dim: num_ao
+
+    Examples:
+        NA
+
+    Note:
+        NA
+
     """
 
     structure_data: Structure_data = struct.field(pytree_node=True)
@@ -58,6 +114,23 @@ class AOs_data:
     magnetic_quantum_numbers: list[int] = struct.field(pytree_node=False)
 
     def __post_init__(self) -> None:
+        """Initialization of the class.
+
+        This magic function checks the consistencies among the arguments.
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If there is an inconsistency in a dimension of a given argument.
+
+        Examples:
+            NA
+
+        Note:
+            NA
+
+        """
         if len(self.nucleus_index) != self.num_ao:
             logger.error("dim. of self.nucleus_index is wrong")
             raise ValueError
@@ -77,49 +150,120 @@ class AOs_data:
             raise ValueError
 
     @property
-    def atomic_center_carts(self):
+    def atomic_center_carts(self) -> npt.NDArray[np.float64]:
+        """Atomic positions in cartesian.
+
+        Returns atomic positions in cartesian
+
+        Returns:
+            npt.NDArray[np.float64]: atomic positions in cartesian
+        """
         return np.array([self.structure_data.positions_cart[i] for i in self.nucleus_index])
 
     @property
-    def atomic_center_carts_jnp(self):
+    def atomic_center_carts_jnp(self) -> jax.Array:
+        """Atomic positions in cartesian.
+
+        Returns atomic positions in cartesian
+
+        Returns:
+            jax.Array: atomic positions in cartesian
+        """
         return jnp.array([self.structure_data.positions_cart[i] for i in self.nucleus_index])
 
     @property
-    def atomic_center_carts_prim(self):
+    def atomic_center_carts_prim(self) -> npt.NDArray[np.float64]:
+        """Atomic positions in cartesian for primitve orbitals.
+
+        Returns atomic positions in cartesian for primitive orbitals
+
+        Returns:
+            npt.NDArray[np.float]: atomic positions in cartesian for primitive orbitals
+        """
         return np.array([self.atomic_center_carts[i] for i in self.orbital_indices])
 
     @property
-    def atomic_center_carts_prim_jnp(self):
+    def atomic_center_carts_prim_jnp(self) -> jax.Array:
+        """Atomic positions in cartesian for primitve orbitals.
+
+        Returns atomic positions in cartesian for primitive orbitals
+
+        Returns:
+            jax.Array: atomic positions in cartesian for primitive orbitals
+        """
         return jnp.array([self.atomic_center_carts_jnp[i] for i in self.orbital_indices])
 
     @property
-    def angular_momentums_prim(self):
+    def angular_momentums_prim(self) -> npt.NDArray[np.float64]:
+        """Angular momentums for primitive orbitals.
+
+        Returns angular momentums for primitive orbitals
+
+        Returns:
+            npt.NDArray[np.float64]: angular momentums for primitive orbitals
+        """
         return np.array([self.angular_momentums[i] for i in self.orbital_indices])
 
     @property
-    def angular_momentums_prim_jnp(self):
+    def angular_momentums_prim_jnp(self) -> jax.Array:
+        """Angular momentums for primitive orbitals.
+
+        Returns angular momentums for primitive orbitals
+
+        Returns:
+            jax.Array: angular momentums for primitive orbitals
+        """
         return jnp.array([self.angular_momentums[i] for i in self.orbital_indices])
 
     @property
-    def magnetic_quantum_numbers_prim(self):
+    def magnetic_quantum_numbers_prim(self) -> npt.NDArray[np.int64]:
+        """Magnetic quantum numbers for primitive orbitals.
+
+        Returns magnetic quantum numbers for primitive orbitals
+
+        Returns:
+            npt.NDArray[np.int64]: magnetic quantum numbers for primitive orbitals
+        """
         return np.array([self.magnetic_quantum_numbers[i] for i in self.orbital_indices])
 
     @property
-    def magnetic_quantum_numbers_prim_jnp(self):
+    def magnetic_quantum_numbers_prim_jnp(self) -> jax.Array:
+        """Magnetic quantum numbers for primitive orbitals.
+
+        Returns magnetic quantum numbers for primitive orbitals
+
+        Returns:
+            jax.Array: magnetic quantum numbers for primitive orbitals
+        """
         return jnp.array([self.magnetic_quantum_numbers[i] for i in self.orbital_indices])
 
     @property
-    def exponents_jnp(self):
+    def exponents_jnp(self) -> jax.Array:
+        """Exponents of GTOs for primitive orbitals.
+
+        Returns exponents of GTOs for primitive orbitals.
+
+        Returns:
+            jax.Array: exponents of GTOs for primitive orbitals.
+        """
         return jnp.array(self.exponents)
 
     @property
-    def coefficients_jnp(self):
+    def coefficients_jnp(self) -> jax.Array:
+        """Coefficients of GTOs for primitive orbitals.
+
+        Returns coefficients of GTOs for primitive orbitals.
+
+        Returns:
+            jax.Array: coefficients of GTOs for primitive orbitals.
+        """
         return jnp.array(self.coefficients)
 
 
 @struct.dataclass
 class AOs_data_debug:
-    """
+    """To be removed.
+
     The class contains data for computing atomic orbitals simltaneously.
     This is for debuggin purpose. This dataclass can be defined without
     the structure class, which should make tests easier and simpler to
@@ -198,21 +342,23 @@ class AOs_data_debug:
 
 
 def compute_AOs_laplacian_api(
-    aos_data: AOs_data | AOs_data_debug,
+    aos_data: AOs_data,
     r_carts: npt.NDArray[np.float64],
     debug_flag: bool = False,
-) -> npt.NDArray[np.float64 | np.complex128]:
-    """
+) -> npt.NDArray[np.float64]:
+    """Compute laplacians of the give AOs at r_carts.
+
     The method is for computing the laplacians of the given atomic orbital at r_carts
 
     Args:
-        ao_datas (AOs_data | AOs_data_debug): an instance of AOs_data or AOs_data_debug
-        r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
-        debug_flag: if True, numerical derivatives are computed for debuging purpose
+        ao_datas (AOs_data): an instance of AOs_data
+        r_carts (npt.NDArray[np.float64]): Cartesian coordinates of electrons (dim: N_e, 3)
+        debug_flag (bool): if True, numerical derivatives are computed for debuging purpose
 
-    Returns
-    -------
-        An array containing laplacians of the AOs at r_carts. The dim. is (num_ao, N_e)
+    Returns:
+        npt.NDArray[np.float64]:
+            Array containing laplacians of the AOs at r_carts. The dim. is (num_ao, N_e)
+
     """
     if debug_flag:
         return compute_AOs_laplacian_numerical_grad(aos_data, r_carts)
@@ -221,9 +367,21 @@ def compute_AOs_laplacian_api(
 
 
 @jit
-def compute_AOs_laplacian_jax_auto_grad(
-    aos_data: AOs_data | AOs_data_debug, r_carts: npt.NDArray[np.float64]
-) -> npt.NDArray[np.float64 | np.complex128]:
+def compute_AOs_laplacian_jax_auto_grad(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
+    """Compute laplacians of the give AOs at r_carts.
+
+    The method is for computing the laplacians of the given atomic orbital at r_carts
+
+    Args:
+        ao_datas (AOs_data): an instance of AOs_data
+        r_carts (jnpt.ArrayLike): Cartesian coordinates of electrons (dim: N_e, 3)
+        debug_flag (bool): if True, numerical derivatives are computed for debuging purpose
+
+    Returns:
+        jax.Array:
+            Array containing laplacians of the AOs at r_carts. The dim. is (num_ao, N_e)
+
+    """
     # expansion with respect to the primitive AOs
     atomic_center_carts_dup = aos_data.atomic_center_carts_prim_jnp
     angular_momentums_dup = aos_data.angular_momentums_prim_jnp
@@ -250,17 +408,6 @@ def compute_AOs_laplacian_jax_auto_grad(
         c_jnp, Z_jnp, l_jnp, m_jnp, R_carts_jnp, r_carts
     )
 
-    """ bare for loop (old)
-    n_el = r_carts.shape[0]
-    ao_matrix_laplacian = jnp.zeros([aos_data.num_ao, n_el])
-    unique_indices = np.unique(aos_data.orbital_indices)
-    for ui in unique_indices:
-        mask = aos_data.orbital_indices == ui
-        ao_matrix_laplacian = ao_matrix_laplacian.at[ui].set(AOs_laplacian_dup[mask].sum(axis=0))
-
-    return ao_matrix_laplacian
-    """
-
     orbital_indices = jnp.array(aos_data.orbital_indices, dtype=jnp.int32)
     num_segments = aos_data.num_ao
     ao_matrix_laplacian = jax.ops.segment_sum(
@@ -271,8 +418,23 @@ def compute_AOs_laplacian_jax_auto_grad(
 
 
 def compute_AOs_laplacian_numerical_grad(
-    aos_data: AOs_data | AOs_data_debug, r_carts: npt.NDArray[np.float64]
-):
+    aos_data: AOs_data, r_carts: npt.NDArray[np.float64]
+) -> npt.NDArray[np.float64]:
+    """Compute laplacians of the give AOs at r_carts.
+
+    The method is for computing the laplacians of the given atomic orbital at r_carts
+    using the FDM method for debuging purpose.
+
+    Args:
+        ao_datas (AOs_data): an instance of AOs_data
+        r_carts (npt.NDArray[np.float64]): Cartesian coordinates of electrons (dim: N_e, 3)
+        debug_flag (bool): if True, numerical derivatives are computed for debuging purpose
+
+    Returns:
+        npt.NDArray[np.float64]:
+            Array containing laplacians of the AOs at r_carts. The dim. is (num_ao, N_e)
+
+    """
     # Laplacians of AOs (numerical)
     diff_h = 1.0e-5
 
@@ -310,7 +472,8 @@ def compute_AOs_laplacian_numerical_grad(
 
     if ao_matrix_laplacian.shape != (aos_data.num_ao, len(r_carts)):
         logger.error(
-            f"ao_matrix_laplacian.shape = {ao_matrix_laplacian.shape} is inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
+            f"ao_matrix_laplacian.shape = {ao_matrix_laplacian.shape} is \
+                inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
         )
         raise ValueError
 
@@ -318,25 +481,24 @@ def compute_AOs_laplacian_numerical_grad(
 
 
 def compute_AOs_grad_api(
-    aos_data: AOs_data | AOs_data_debug,
+    aos_data: AOs_data,
     r_carts: npt.NDArray[np.float64],
     debug_flag: bool = False,
-) -> tuple[
-    npt.NDArray[np.float64 | np.complex128],
-    npt.NDArray[np.float64 | np.complex128],
-    npt.NDArray[np.float64 | np.complex128],
-]:
-    """
-    The method is for computing the gradients (x,y,z) of the given atomic orbital at r_carts
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Compute Cartesian Gradients of AOs.
+
+    The method is for computing the Carteisan gradients (x,y,z) of
+    the given atomic orbital at r_carts
 
     Args:
-        ao_datas (AOs_data | AOs_data_debug): an instance of AOs_data | AOs_data_debug
-        r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
-        debug_flag: if True, numerical derivatives are computed for debuging purpose
+        ao_datas (AOs_data): an instance of AOs_data | AOs_data_debug
+        r_carts (npt.NDArray[np.float64]): Cartesian coordinates of electrons (dim: N_e, 3)
+        debug_flag (bool): if True, numerical derivatives are computed for debuging purpose
 
-    Returns
-    -------
-        tuple containing gradients of the AOs at r_carts. (grad_x, grad_y, grad_z). The dim. of each matrix is (num_ao, N_e)
+    Returns:
+        tuple: tuple containing gradients of the AOs at r_carts. (grad_x, grad_y, grad_z).
+        The dim. of each matrix is (num_ao, N_e)
+
     """
     if debug_flag:
         ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z = compute_AOs_numerical_grad(
@@ -349,19 +511,22 @@ def compute_AOs_grad_api(
 
     if ao_matrix_grad_x.shape != (aos_data.num_ao, len(r_carts)):
         logger.error(
-            f"aao_matrix_grad_x.shape = {ao_matrix_grad_x.shape} is inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
+            f"aao_matrix_grad_x.shape = {ao_matrix_grad_x.shape} is \
+                inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
         )
         raise ValueError
 
     if ao_matrix_grad_y.shape != (aos_data.num_ao, len(r_carts)):
         logger.error(
-            f"ao_matrix_grad_y.shape = {ao_matrix_grad_y.shape} is inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
+            f"ao_matrix_grad_y.shape = {ao_matrix_grad_y.shape} is \
+                inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
         )
         raise ValueError
 
     if ao_matrix_grad_z.shape != (aos_data.num_ao, len(r_carts)):
         logger.error(
-            f"ao_matrix_grad_z.shape = {ao_matrix_grad_y.shape} is inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
+            f"ao_matrix_grad_z.shape = {ao_matrix_grad_y.shape} is \
+                inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
         )
         raise ValueError
 
@@ -370,12 +535,22 @@ def compute_AOs_grad_api(
 
 @jit
 def compute_AOs_jax_auto_grad(
-    aos_data: AOs_data, r_carts: npt.NDArray[np.float64]
-) -> tuple[
-    npt.NDArray[np.float64 | np.complex128],
-    npt.NDArray[np.float64 | np.complex128],
-    npt.NDArray[np.float64 | np.complex128],
-]:
+    aos_data: AOs_data, r_carts: jnpt.ArrayLike
+) -> tuple[jax.Array, jax.Array, jax.Array]:
+    """Compute Cartesian Gradients of AOs.
+
+    The method is for computing the Carteisan gradients (x,y,z) of
+    the given atomic orbital at r_carts
+
+    Args:
+        ao_datas(AOs_data): an instance of AOs_data | AOs_data_debug
+        r_carts(jnpt.ArrayLike): Cartesian coordinates of electrons (dim: N_e, 3)
+
+    Returns:
+        tuple: tuple containing gradients of the AOs at r_carts. (grad_x, grad_y, grad_z).
+        The dim. of each matrix is (num_ao, N_e)
+
+    """
     # expansion with respect to the primitive AOs
     atomic_center_carts_dup = aos_data.atomic_center_carts_prim_jnp
     angular_momentums_dup = aos_data.angular_momentums_prim_jnp
@@ -403,21 +578,6 @@ def compute_AOs_jax_auto_grad(
         c_jnp, Z_jnp, l_jnp, m_jnp, R_carts_jnp, r_carts
     )
 
-    """bare for loop
-    n_el = r_carts.shape[0]
-    ao_matrix_grad_x = jnp.zeros([aos_data.num_ao, n_el])
-    ao_matrix_grad_y = jnp.zeros([aos_data.num_ao, n_el])
-    ao_matrix_grad_z = jnp.zeros([aos_data.num_ao, n_el])
-    unique_indices = np.unique(aos_data.orbital_indices)
-    for ui in unique_indices:
-        mask = aos_data.orbital_indices == ui
-        ao_matrix_grad_x = ao_matrix_grad_x.at[ui].set(AOs_grad_x_dup[mask].sum(axis=0))
-        ao_matrix_grad_y = ao_matrix_grad_y.at[ui].set(AOs_grad_y_dup[mask].sum(axis=0))
-        ao_matrix_grad_z = ao_matrix_grad_z.at[ui].set(AOs_grad_z_dup[mask].sum(axis=0))
-
-    return ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z
-    """
-
     orbital_indices = jnp.array(aos_data.orbital_indices, dtype=jnp.int32)
     num_segments = aos_data.num_ao
     ao_matrix_grad_x = jax.ops.segment_sum(
@@ -435,15 +595,27 @@ def compute_AOs_jax_auto_grad(
 @jit
 def compute_AOs_jax_auto_grad_old(
     aos_data: AOs_data,
-    r_carts: npt.NDArray[np.float64],
-) -> tuple[
-    npt.NDArray[np.float64 | np.complex128],
-    npt.NDArray[np.float64 | np.complex128],
-    npt.NDArray[np.float64 | np.complex128],
-]:
-    # Gradients of AOs (autograd via google-JAX)
-    # Note: This method gives correct answers, but slow because the full Jacobian calculation is not needed for computing gradients.
-    # grad should be pluged into compute_AOs_jax() in the future for accelaration.
+    r_carts: jnpt.ArrayLike,
+) -> tuple[jax.Array, jax.Array, jax.Array]:
+    """Compute Cartesian Gradients of AOs.
+
+    The method is for computing the Carteisan gradients (x,y,z) of
+    the given atomic orbital at r_carts
+
+    Args:
+        ao_datas(AOs_data): an instance of AOs_data | AOs_data_debug
+        r_carts(jnpt.ArrayLike): Cartesian coordinates of electrons (dim: N_e, 3)
+
+    Returns:
+        tuple: tuple containing gradients of the AOs at r_carts. (grad_x, grad_y, grad_z).
+        The dim. of each matrix is (num_ao, N_e)
+
+    Note:
+        Gradients of AOs (autograd via google-JAX)
+        This method gives correct answers, but slow because the full Jacobian calculation is
+        not needed for computing gradients.
+        grad should be pluged into compute_AOs_jax() in the future for accelaration.
+    """
     ao_matrix_jacrev = jacrev(compute_AOs_api, argnums=1)(aos_data, r_carts, debug_flag=False)
 
     ao_matrix_grad_x_ = ao_matrix_jacrev[:, :, :, 0]
@@ -457,13 +629,24 @@ def compute_AOs_jax_auto_grad_old(
 
 
 def compute_AOs_numerical_grad(
-    aos_data: AOs_data | AOs_data_debug,
+    aos_data: AOs_data,
     r_carts: npt.NDArray[np.float64],
-) -> tuple[
-    npt.NDArray[np.float64 | np.complex128],
-    npt.NDArray[np.float64 | np.complex128],
-    npt.NDArray[np.float64 | np.complex128],
-]:
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Compute Cartesian Gradients of AOs.
+
+    The method is for computing the Carteisan gradients (x,y,z) of
+    the given atomic orbital at r_carts using FDM for debugging JAX
+    implementations
+
+    Args:
+        ao_datas(AOs_data): an instance of AOs_data | AOs_data_debug
+        r_carts(npt.NDArray[np.float64]): Cartesian coordinates of electrons (dim: N_e, 3)
+
+    Returns:
+        tuple: tuple containing gradients of the AOs at r_carts. (grad_x, grad_y, grad_z).
+        The dim. of each matrix is (num_ao, N_e)
+
+    """
     # Gradients of AOs (numerical)
     diff_h = 1.0e-5
 
@@ -499,24 +682,22 @@ def compute_AOs_numerical_grad(
 
 
 def compute_AOs_api(
-    aos_data: AOs_data | AOs_data_debug,
+    aos_data: AOs_data,
     r_carts: npt.NDArray[np.float64],
     debug_flag: bool = False,
-) -> npt.NDArray[np.float64 | np.complex128]:
-    """
+) -> npt.NDArray[np.float64]:
+    """Compute AO values at the given r_carts.
+
     The method is for computing the value of the given atomic orbital at r_carts
 
     Args:
         ao_datas (AOs_data): an instance of AOs_data
-        r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
-        debug_flag: if True, AOs are computed one by one using compute_AO for debuging purpose
+        r_carts (npt.NDArray[np.float64]): Cartesian coordinates of electrons (dim: N_e, 3)
+        debug_flag (bool): if True, AOs are computed one by one using compute_AO for debug
 
-    Returns
-    -------
-    Arrays containing values of the AOs at r_carts. (dim: num_ao, N_e)
+    Returns:
+        Arrays containing values of the AOs at r_carts. (dim: num_ao, N_e)
     """
-    # jprint(f"AOs:debug_flag={debug_flag}, type={type(debug_flag)}")
-
     if debug_flag:
         AOs = compute_AOs_debug(aos_data, r_carts)
     else:
@@ -524,7 +705,8 @@ def compute_AOs_api(
 
     if AOs.shape != (aos_data.num_ao, len(r_carts)):
         logger.error(
-            f"AOs.shape = {AOs.shape} is inconsistent with the expected one = {(aos_data.num_ao, len(r_carts))}"
+            f"AOs.shape = {AOs.shape} is inconsistent with the expected one \
+                = {(aos_data.num_ao, len(r_carts))}"
         )
         raise ValueError
 
@@ -532,18 +714,19 @@ def compute_AOs_api(
 
 
 def compute_AOs_debug(
-    aos_data: AOs_data | AOs_data_debug, r_carts: npt.NDArray[np.float64]
-) -> npt.NDArray[np.float64 | np.complex128]:
-    """
-    This is for debuging compute_AOs method. It is written in a very straightforward way.
+    aos_data: AOs_data, r_carts: npt.NDArray[np.float64]
+) -> npt.NDArray[np.float64]:
+    """Compute AO values at the given r_carts.
+
+    The method is for computing the value of the given atomic orbital at r_carts
+    for debugging purpose.
 
     Args:
-        ao_datas (AOs_data | AOs_data_debug): an instance of AOs_data or AOs_data_debug
-        r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
+        ao_datas (AOs_data): an instance of AOs_data
+        r_carts (npt.NDArray[np.float64]): Cartesian coordinates of electrons (dim: N_e, 3)
 
-    Returns
-    -------
-    Arrays containing values of the AOs at r_carts. (dim: num_ao, N_e)
+    Returns:
+        Arrays containing values of the AOs at r_carts. (dim: num_ao, N_e)
     """
 
     def compute_each_AO(ao_index):
@@ -555,7 +738,7 @@ def compute_AOs_debug(
         magnetic_quantum_number = aos_data.magnetic_quantum_numbers[ao_index]
         num_ao_prim = len(exponents)
 
-        ao_data = AO_data_debug(
+        ao_data = AO_data(
             num_ao_prim=num_ao_prim,
             atomic_center_cart=atomic_center_cart,
             exponents=exponents,
@@ -577,17 +760,16 @@ def compute_AOs_debug(
 def compute_AOs_jax(
     aos_data: AOs_data | AOs_data_debug, r_carts: npt.NDArray[np.float64]
 ) -> npt.NDArray[np.float64 | np.complex128]:
-    """
-    This is jit-jax version compute_AOs method.
+    """Compute AO values at the given r_carts.
+
+    The method is for computing the value of the given atomic orbital at r_carts
 
     Args:
         ao_datas (AOs_data): an instance of AOs_data
-        r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
-        derivative: 0=AOs, 1=grad of AOs, 2=laplacians of AOs
+        r_carts (npt.NDArray[np.float64]): Cartesian coordinates of electrons (dim: N_e, 3)
 
-    Returns
-    -------
-    Arrays containing values of the AOs at r_carts. (dim: num_ao, N_e)
+    Returns:
+        Arrays containing values of the AOs at r_carts. (dim: num_ao, N_e)
     """
     # Indices with respect to the contracted AOs
     atomic_center_carts_dup = aos_data.atomic_center_carts_prim_jnp
@@ -610,16 +792,6 @@ def compute_AOs_jax(
 
     AOs_dup = vmap_compute_AOs_dup(c_jnp, Z_jnp, l_jnp, m_jnp, R_carts_jnp, r_carts)
 
-    """ bare for loop
-    n_el = r_carts.shape[0]
-    AOs = jnp.zeros([aos_data.num_ao, n_el])
-    unique_indices = np.unique(aos_data.orbital_indices)
-    for ui in unique_indices:
-        mask = aos_data.orbital_indices == ui
-        AOs = AOs.at[ui].set(AOs_dup[mask].sum(axis=0))
-    return AOs
-    """
-
     orbital_indices = jnp.array(aos_data.orbital_indices, dtype=jnp.int32)
     num_segments = aos_data.num_ao
     AOs = jax.ops.segment_sum(AOs_dup, orbital_indices, num_segments=num_segments)
@@ -627,8 +799,9 @@ def compute_AOs_jax(
 
 
 @dataclass
-class AO_data_debug:
-    """
+class AO_data:
+    """AO data class for debugging.
+
     The class contains data for computing an atomic orbital. Just for testing purpose.
     For fast computations, use AOs_data and AOs.
 
@@ -664,8 +837,9 @@ class AO_data_debug:
             raise ValueError
 
 
-def compute_AO(ao_data: AO_data_debug, r_cart: list[float]) -> float | complex:
-    """
+def compute_AO(ao_data: AO_data, r_cart: list[float]) -> float | complex:
+    """Compute single AO for debugging.
+
     The method is for computing the value of the given atomic orbital at r_cart
     Just for testing purpose. For fast computations, use AOs_data and AOs.
 
@@ -673,12 +847,12 @@ def compute_AO(ao_data: AO_data_debug, r_cart: list[float]) -> float | complex:
         ao_data (AO_data): an instance of AO_data
         r_cart: Cartesian coordinate of an electron
 
-    Returns
-    -------
-    Value of the AO value at r_cart.
+    Returns:
+        Value of the AO value at r_cart.
 
     Note:
-        The faster way to compute all AOs at the same time because one can avoid X-times calling np.exp and np.sphe calls.
+        The faster way to compute all AOs at the same time because one can avoid X-times calling \
+            np.exp and np.sphe calls.
 
         Atomic orbitals are given in the followng Gaussian form:
         \phi_{l+\pm |m|, \alpha}(\vec{r}) =
