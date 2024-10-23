@@ -25,7 +25,7 @@ stored in `doc` directory. Please see how to write the documentation at
 
 ## Develpment branch
 
-The development of jQMC is managed on the `develop` branch of github jQMC repository.
+The development of jQMC is managed on the `devel` branch of github jQMC repository.
 
 - Github issues is the place to discuss about jQMC issues.
 - Github pull request is the place to request merging source code.

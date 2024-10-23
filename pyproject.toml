@@ -19,4 +19,4 @@ lint.extend-ignore = ["D417", "D100"]
 exclude = []
 
 [tool.ruff.lint.pydocstyle]
-convention = "numpy"
+convention = "google"

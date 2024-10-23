@@ -12,4 +12,5 @@
     "ruff.lint.ignore": [
         "E501"
     ],
+    "editor.formatOnSave": true,
 }
