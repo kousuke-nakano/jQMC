@@ -1,4 +1,11 @@
-"""Effective core potential module"""
+"""Effective core potential module.
+
+Module containing classes and methods related to Effective core potential
+and bare Coulomb potentials
+
+Todo:
+    * Replace numpy and jax.numpy typings with jaxtyping
+"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -40,16 +47,14 @@ from logging import Formatter, StreamHandler, getLogger
 from typing import NamedTuple
 
 # JAX
-# from jax import lax
-# from jax.debug import print as jprint
-# import jax.scipy as jscipy
-# from typing import Any, Callable, Mapping, Optional
 import jax
 import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import jit, lax, vmap
+from jax import jit, lax
+from jax import typing as jnpt
+from jax import vmap
 from scipy.special import eval_legendre
 
 from .function_collections import legendre_tablated as jnp_legendre_tablated
@@ -64,7 +69,7 @@ jax.config.update("jax_enable_x64", True)
 
 
 # non local PPs, Mesh Info. taken from Mitas's paper [J. Chem. Phys., 95, 5, (1991)]
-class Mesh(NamedTuple):
+class _Mesh(NamedTuple):
     Nv: int
     weights: list[float]
     grid_points: npt.NDArray[np.float64]
@@ -73,7 +78,7 @@ class Mesh(NamedTuple):
 # Tetrahedron symmetry quadrature (Nv=4)
 q = 1 / np.sqrt(3)
 A = 1.0 / 4.0
-tetrahedron_sym_mesh_Nv4 = Mesh(
+tetrahedron_sym_mesh_Nv4 = _Mesh(
     Nv=4,
     weights=[A, A, A, A],
     grid_points=np.array([[q, q, q], [q, -q, -q], [-q, q, -q], [-q, -q, q]]),
@@ -81,7 +86,7 @@ tetrahedron_sym_mesh_Nv4 = Mesh(
 
 # Octahedron symmetry quadrature (Nv=6)
 A = 1.0 / 6.0
-octahedron_sym_mesh_Nv6 = Mesh(
+octahedron_sym_mesh_Nv6 = _Mesh(
     Nv=6,
     weights=[A, A, A, A, A, A],
     grid_points=np.array(
@@ -100,7 +105,7 @@ octahedron_sym_mesh_Nv6 = Mesh(
 A = 1.0 / 6.0
 B = 1.0 / 15.0
 p = 1.0 / np.sqrt(2)
-octahedron_sym_mesh_Nv18 = Mesh(
+octahedron_sym_mesh_Nv18 = _Mesh(
     Nv=18,
     weights=[A, A, A, A, A, A, B, B, B, B, B, B, B, B, B, B, B, B],
     grid_points=np.array(
@@ -128,25 +133,41 @@ octahedron_sym_mesh_Nv18 = Mesh(
 )
 
 
-# To be refactored!! primitive (flatten) data should be stored for jitting ecp parts.
 @struct.dataclass
 class Coulomb_potential_data:
-    """
+    """Coulomb_potential dataclass.
+
     The class contains data for computing effective core potentials (ECPs).
 
     Args:
-        # Structure part
-        structure_data (Structure_data): Instance of a structure_data
-        # Effective core potential part
-        ecp_flag (bool) : If True, ECPs are used. The following values should be defined.
-        z_cores (list[float]]): Number of core electrons to remove per atom (dim: num_atoms).
-        max_ang_mom_plus_1 (list[int]): l_{max}+1, one higher than the max angular momentum in the removed core orbitals (dim: num_atoms)
-        num_ecps (list[int]): Total number of ECP functions for all atoms and all values of l
-        ang_moms (list[int]): One-to-one correspondence between ECP items and the angular momentum l (dim:num_ecps)
-        nucleus_index (list[int]): One-to-one correspondence between ECP items and the atom index (dim:num_ecps)
-        exponents (list[float]): all ECP exponents (dim:num_ecps)
-        coefficients (list[float]): all ECP coefficients (dim:num_ecps)
-        powers (list[int]): all ECP powers (dim:num_ecps)
+        structure_data (Structure_data):
+            Instance of a structure_data
+        ecp_flag (bool) :
+            If True, ECPs are used. The following values should be defined.
+        z_cores (list[float]]):
+            Number of core electrons to remove per atom (dim: num_atoms).
+        max_ang_mom_plus_1 (list[int]):
+            l_{max}+1, one higher than the max angular momentum in the
+            removed core orbitals (dim: num_atoms)
+        num_ecps (list[int]):
+            Total number of ECP functions for all atoms and all values of l
+        ang_moms (list[int]):
+            One-to-one correspondence between ECP items and the angular momentum l (dim:num_ecps)
+        nucleus_index (list[int]):
+            One-to-one correspondence between ECP items and the atom index (dim:num_ecps)
+        exponents (list[float]):
+            all ECP exponents (dim:num_ecps)
+        coefficients (list[float]):
+            all ECP coefficients (dim:num_ecps)
+        powers (list[int]):
+            all ECP powers (dim:num_ecps)
+
+    Examples:
+        NA
+
+    Note:
+        NA
+
     """
 
     structure_data: Structure_data = struct.field(pytree_node=True)
@@ -161,17 +182,48 @@ class Coulomb_potential_data:
     powers: list[int] = struct.field(pytree_node=False)
 
     def __post_init__(self) -> None:
+        """Initialization of the class.
+
+        This magic function checks the consistencies among the arguments.
+
+        Raises:
+            ValueError: If there is an inconsistency in a dimension of a given argument.
+
+        Examples:
+            NA
+
+        Note:
+            NA
+
+        Todo:
+            To be implemented.
+
+        """
         pass
 
     @property
-    def effective_charges(self):
+    def effective_charges(self) -> npt.NDArray:
+        """effective_charges.
+
+        Return nucleus charge (all-electron) or effective charge (with ECP)
+
+        Return:
+            npt.NDAarray: nucleus charge (effective charge)
+        """
         if self.ecp_flag:
             return np.array(self.structure_data.atomic_numbers) - np.array(self.z_cores)
         else:
             return np.array(self.structure_data.atomic_numbers)
 
     @property
-    def effective_charges_jnp(self):
+    def effective_charges_jnp(self) -> jax.Array:
+        """effective_charges.
+
+        Return nucleus charge (all-electron) or effective charge (with ECP)
+
+        Return:
+            jax.Array: nucleus charge (effective charge)
+        """
         if self.ecp_flag:
             return jnp.array(self.structure_data.atomic_numbers) - jnp.array(self.z_cores)
         else:

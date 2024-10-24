@@ -54,8 +54,9 @@ import numpy as np
 import numpy.typing as npt
 import scipy  # type: ignore
 from flax import struct
-from jax import grad, jacrev, jit, vmap
+from jax import grad, jacrev, jit
 from jax import typing as jnpt
+from jax import vmap
 from numpy import linalg as LA
 
 # jaxQMC module
@@ -117,9 +118,6 @@ class AOs_data:
         """Initialization of the class.
 
         This magic function checks the consistencies among the arguments.
-
-        Returns:
-            None
 
         Raises:
             ValueError: If there is an inconsistency in a dimension of a given argument.
