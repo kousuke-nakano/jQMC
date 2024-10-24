@@ -222,6 +222,8 @@ def read_trexio_file(trexio_file: str):
         b_prim_coefficients = [
             basis_shell_factor[i_shell]
             * basis_prim_factor[k]
+            * np.sqrt(4 * np.pi)
+            / np.sqrt(2 * b_ang_mom + 1)
             / b_normalizations[i]
             * basis_coefficient[k]
             for i, k in enumerate(b_prim_indices)
