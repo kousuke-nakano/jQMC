@@ -82,7 +82,7 @@ class MCMC:
         swct_data: SWCT_data = None,
         mcmc_seed: int = 34467,
         Dt: float = 2.0,
-        flag_energy_deriv: bool = False,
+        flag_energy_deriv: bool = True,
     ) -> None:
         """Init.
 
@@ -562,6 +562,22 @@ class MCMC:
     def dln_Psi_dR(self):
         return self.__stored_grad_ln_Psi_dR
 
+    @property
+    def omega_up(self):
+        return self.__stored_omega_up
+
+    @property
+    def omega_dn(self):
+        return self.__stored_omega_dn
+
+    @property
+    def domega_dr_up(self):
+        return self.__stored_grad_omega_r_up
+
+    @property
+    def domega_dr_dn(self):
+        return self.__stored_grad_omega_r_dn
+
 
 class VMC:
     """VMC class.
@@ -644,19 +660,109 @@ class VMC:
 
             logger.info(f"e_L = {e_L_mean} +- {e_L_std} Ha.")
 
-            return (e_L_mean, e_L_std)
+        e_L_mean = self.comm.bcast(e_L_mean, root=0)
+        e_L_std = self.comm.bcast(e_L_std, root=0)
+
+        return (e_L_mean, e_L_std)
 
     def get_atomic_forces(self):
         # analysis VMC
-        e_L_mean, e_L_std = self.get_e_L()
+        e_L_mean, _ = self.get_e_L()
 
-        de_L_dR = self.__mcmc.de_L_dR[self.__num_mcmc_warmup_steps :]
-        de_L_dr_up = self.__mcmc.de_L_dr_up[self.__num_mcmc_warmup_steps :]
-        de_L_dr_dn = self.__mcmc.de_L_dr_dn[self.__num_mcmc_warmup_steps :]
-        dln_Psi_dr_up = self.__mcmc.dln_Psi_dr_up[self.__num_mcmc_warmup_steps :]
-        dln_Psi_dr_dn = self.__mcmc.dln_Psi_dr_dn[self.__num_mcmc_warmup_steps :]
-        dln_Psi_dR = self.__mcmc.dln_Psi_dR[self.__num_mcmc_warmup_steps :]
-        de_L_dR = self.__mcmc.de_L_dR[self.__num_mcmc_warmup_steps :]
+        e_L_list = self.__mcmc.e_L[self.__num_mcmc_warmup_steps :]
+        de_L_dR_list = self.__mcmc.de_L_dR[self.__num_mcmc_warmup_steps :]
+        de_L_dr_up_list = self.__mcmc.de_L_dr_up[self.__num_mcmc_warmup_steps :]
+        de_L_dr_dn_list = self.__mcmc.de_L_dr_dn[self.__num_mcmc_warmup_steps :]
+        dln_Psi_dr_up_list = self.__mcmc.dln_Psi_dr_up[self.__num_mcmc_warmup_steps :]
+        dln_Psi_dr_dn_list = self.__mcmc.dln_Psi_dr_dn[self.__num_mcmc_warmup_steps :]
+        dln_Psi_dR_list = self.__mcmc.dln_Psi_dR[self.__num_mcmc_warmup_steps :]
+        omega_up_list = self.__mcmc.omega_up[self.__num_mcmc_warmup_steps :]
+        omega_dn_list = self.__mcmc.omega_dn[self.__num_mcmc_warmup_steps :]
+        domega_dr_up_list = self.__mcmc.domega_dr_up[self.__num_mcmc_warmup_steps :]
+        domega_dr_dn_list = self.__mcmc.domega_dr_dn[self.__num_mcmc_warmup_steps :]
+
+        # logger.info(f"e_L.shape = {e_L.shape}")
+        # logger.info(f"de_L_dR.shape = {de_L_dR.shape}")
+        # logger.info(f"de_L_dr_up.shape = {de_L_dr_up.shape}")
+        # logger.info(f"de_L_dr_dn.shape = {de_L_dr_dn.shape}")
+        # logger.info(f"dln_Psi_dr_up.shape = {dln_Psi_dr_up.shape}")
+        # logger.info(f"dln_Psi_dr_dn.shape = {dln_Psi_dr_dn.shape}")
+        # logger.info(f"de_L_dR.shape = {de_L_dR.shape}")
+        # logger.info(f"omega_up.shape = {omega_up.shape}")
+        # logger.info(f"omega_dn.shape = {omega_dn.shape}")
+        # logger.info(f"domega_dr_up.shape = {domega_dr_up.shape}")
+        # logger.info(f"domega_dr_dn.shape = {domega_dr_dn.shape}")
+
+        force = np.array(
+            [
+                -(de_L_dR + omega_up @ de_L_dr_up + omega_dn @ de_L_dr_dn)
+                - 2
+                * (
+                    (e_L - e_L_mean)
+                    * (
+                        dln_Psi_dR
+                        + omega_up @ dln_Psi_dr_up
+                        + omega_dn @ dln_Psi_dr_dn
+                        + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
+                    )
+                )
+                for (
+                    e_L,
+                    de_L_dR,
+                    de_L_dr_up,
+                    de_L_dr_dn,
+                    dln_Psi_dr_up,
+                    dln_Psi_dr_dn,
+                    dln_Psi_dR,
+                    omega_up,
+                    omega_dn,
+                    domega_dr_up,
+                    domega_dr_dn,
+                ) in zip(
+                    e_L_list,
+                    de_L_dR_list,
+                    de_L_dr_up_list,
+                    de_L_dr_dn_list,
+                    dln_Psi_dr_up_list,
+                    dln_Psi_dr_dn_list,
+                    dln_Psi_dR_list,
+                    omega_up_list,
+                    omega_dn_list,
+                    domega_dr_up_list,
+                    domega_dr_dn_list,
+                )
+            ]
+        )
+        force_split = np.array_split(force, self.__num_mcmc_bin_blocks)
+        # logger.info(f"force_split.shape = {force_split.shape}")
+        force_binned = np.array([np.average(force_list, axis=0) for force_list in force_split])
+        # logger.info(f"force_binned.shape = {force_binned.shape}")
+
+        logger.info(f"force_binned for MPI-rank={self.rank} is {force_binned}.")
+
+        force_binned = self.comm.reduce(force_binned, op=MPI.SUM, root=0)
+
+        if self.rank == 0:
+            # logger.info(f"force_binned = {force_binned }.")
+            # jackknife implementation
+            # https://www2.yukawa.kyoto-u.ac.jp/~etsuko.itou/old-HP/Notes/Jackknife-method.pdf
+            force_jackknife_binned = np.array(
+                [np.average(np.delete(force_binned, i), axis=0) for i in range(len(force_binned))]
+            )
+
+            logger.info(f"force_jackknife_binned.shape = {force_jackknife_binned.shape}.")
+
+            force_mean = np.average(force_jackknife_binned, axis=0)
+            force_std = np.sqrt(len(force_jackknife_binned) - 1) * np.std(
+                force_jackknife_binned, axis=0
+            )
+
+            logger.info(f"force_mean.shape  = {force_mean.shape}.")
+            logger.info(f"force_std.shape  = {force_std.shape}.")
+
+            logger.info(f"force = {force_mean} +- {force_std} Ha.")
+
+            return (force_mean, force_std)
 
 
 if __name__ == "__main__":
@@ -715,8 +821,8 @@ if __name__ == "__main__":
     swct_data = SWCT_data(structure=structure_data)
 
     # VMC parameters
-    num_mcmc_warmup_steps = 50
-    num_mcmc_bin_blocks = 10
+    num_mcmc_warmup_steps = 5
+    num_mcmc_bin_blocks = 2
     mcmc_seed = 34356
 
     # run VMC
@@ -727,7 +833,6 @@ if __name__ == "__main__":
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
-    vmc.run(num_mcmc_steps=100)
+    vmc.run(num_mcmc_steps=20)
     vmc.get_e_L()
-    vmc.run(num_mcmc_steps=500)
-    vmc.get_e_L()
+    vmc.get_atomic_forces()
