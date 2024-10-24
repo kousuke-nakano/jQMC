@@ -659,6 +659,9 @@ class VMC:
             e_L_std = np.sqrt(len(e_L_binned) - 1) * np.std(e_L_jackknife_binned)
 
             logger.info(f"e_L = {e_L_mean} +- {e_L_std} Ha.")
+        else:
+            e_L_mean = 0.0
+            e_L_std = 0.0
 
         e_L_mean = self.comm.bcast(e_L_mean, root=0)
         e_L_std = self.comm.bcast(e_L_std, root=0)
@@ -681,20 +684,46 @@ class VMC:
         domega_dr_up_list = self.__mcmc.domega_dr_up[self.__num_mcmc_warmup_steps :]
         domega_dr_dn_list = self.__mcmc.domega_dr_dn[self.__num_mcmc_warmup_steps :]
 
-        # logger.info(f"e_L.shape = {e_L.shape}")
-        # logger.info(f"de_L_dR.shape = {de_L_dR.shape}")
-        # logger.info(f"de_L_dr_up.shape = {de_L_dr_up.shape}")
-        # logger.info(f"de_L_dr_dn.shape = {de_L_dr_dn.shape}")
-        # logger.info(f"dln_Psi_dr_up.shape = {dln_Psi_dr_up.shape}")
-        # logger.info(f"dln_Psi_dr_dn.shape = {dln_Psi_dr_dn.shape}")
-        # logger.info(f"de_L_dR.shape = {de_L_dR.shape}")
-        # logger.info(f"omega_up.shape = {omega_up.shape}")
-        # logger.info(f"omega_dn.shape = {omega_dn.shape}")
-        # logger.info(f"domega_dr_up.shape = {domega_dr_up.shape}")
-        # logger.info(f"domega_dr_dn.shape = {domega_dr_dn.shape}")
+        force = []
 
-        force = np.array(
-            [
+        for (
+            e_L,
+            de_L_dR,
+            de_L_dr_up,
+            de_L_dr_dn,
+            dln_Psi_dr_up,
+            dln_Psi_dr_dn,
+            dln_Psi_dR,
+            omega_up,
+            omega_dn,
+            domega_dr_up,
+            domega_dr_dn,
+        ) in zip(
+            e_L_list,
+            de_L_dR_list,
+            de_L_dr_up_list,
+            de_L_dr_dn_list,
+            dln_Psi_dr_up_list,
+            dln_Psi_dr_dn_list,
+            dln_Psi_dR_list,
+            omega_up_list,
+            omega_dn_list,
+            domega_dr_up_list,
+            domega_dr_dn_list,
+        ):
+            # logger.info(f"e_L.shape = {e_L.shape}")
+            # logger.info(f"de_L_dR.shape = {de_L_dR.shape}")
+            # logger.info(f"de_L_dr_up.shape = {de_L_dr_up.shape}")
+            # logger.info(f"de_L_dr_dn.shape = {de_L_dr_dn.shape}")
+            # logger.info(f"dln_Psi_dr_up.shape = {dln_Psi_dr_up.shape}")
+            # logger.info(f"dln_Psi_dr_dn.shape = {dln_Psi_dr_dn.shape}")
+            # logger.info(f"de_L_dR.shape = {de_L_dR.shape}")
+            # logger.info(f"omega_up.shape = {omega_up.shape}")
+            # logger.info(f"omega_dn.shape = {omega_dn.shape}")
+            # logger.info(f"domega_dr_up.shape = {domega_dr_up.shape}")
+            # logger.info(f"domega_dr_dn.shape = {domega_dr_dn.shape}")
+
+            force.append(
                 -(de_L_dR + omega_up @ de_L_dr_up + omega_dn @ de_L_dr_dn)
                 - 2
                 * (
@@ -706,37 +735,14 @@ class VMC:
                         + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
                     )
                 )
-                for (
-                    e_L,
-                    de_L_dR,
-                    de_L_dr_up,
-                    de_L_dr_dn,
-                    dln_Psi_dr_up,
-                    dln_Psi_dr_dn,
-                    dln_Psi_dR,
-                    omega_up,
-                    omega_dn,
-                    domega_dr_up,
-                    domega_dr_dn,
-                ) in zip(
-                    e_L_list,
-                    de_L_dR_list,
-                    de_L_dr_up_list,
-                    de_L_dr_dn_list,
-                    dln_Psi_dr_up_list,
-                    dln_Psi_dr_dn_list,
-                    dln_Psi_dR_list,
-                    omega_up_list,
-                    omega_dn_list,
-                    domega_dr_up_list,
-                    domega_dr_dn_list,
-                )
-            ]
-        )
+            )
+
+        force = np.array(force)
+        logger.info(f"force.shape = {force.shape}")
+
         force_split = np.array_split(force, self.__num_mcmc_bin_blocks)
-        # logger.info(f"force_split.shape = {force_split.shape}")
         force_binned = np.array([np.average(force_list, axis=0) for force_list in force_split])
-        # logger.info(f"force_binned.shape = {force_binned.shape}")
+        logger.info(f"force_binned.shape = {force_binned.shape}")
 
         logger.info(f"force_binned for MPI-rank={self.rank} is {force_binned}.")
 
@@ -747,7 +753,10 @@ class VMC:
             # jackknife implementation
             # https://www2.yukawa.kyoto-u.ac.jp/~etsuko.itou/old-HP/Notes/Jackknife-method.pdf
             force_jackknife_binned = np.array(
-                [np.average(np.delete(force_binned, i), axis=0) for i in range(len(force_binned))]
+                [
+                    np.average(np.delete(force_binned, i, axis=0), axis=0)
+                    for i in range(len(force_binned))
+                ]
             )
 
             logger.info(f"force_jackknife_binned.shape = {force_jackknife_binned.shape}.")
@@ -762,7 +771,14 @@ class VMC:
 
             logger.info(f"force = {force_mean} +- {force_std} Ha.")
 
-            return (force_mean, force_std)
+        else:
+            force_mean = np.array([])
+            force_std = np.array([])
+
+        force_mean = self.comm.bcast(force_mean, root=0)
+        force_std = self.comm.bcast(force_std, root=0)
+
+        return (force_mean, force_std)
 
 
 if __name__ == "__main__":
@@ -821,8 +837,8 @@ if __name__ == "__main__":
     swct_data = SWCT_data(structure=structure_data)
 
     # VMC parameters
-    num_mcmc_warmup_steps = 5
-    num_mcmc_bin_blocks = 2
+    num_mcmc_warmup_steps = 20
+    num_mcmc_bin_blocks = 5
     mcmc_seed = 34356
 
     # run VMC
@@ -833,6 +849,6 @@ if __name__ == "__main__":
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
-    vmc.run(num_mcmc_steps=20)
+    vmc.run(num_mcmc_steps=100)
     vmc.get_e_L()
     vmc.get_atomic_forces()
