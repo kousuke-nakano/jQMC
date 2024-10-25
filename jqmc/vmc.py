@@ -794,6 +794,32 @@ if __name__ == "__main__":
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "water_trexio.hdf5"))
     # """
 
+    # """
+    # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "H2_dimer_trexio.hdf5")
+    )
+    # """
+
+    """ Error!! To be fixed.
+    # Ne atom cc-pV5Z with Mitas ccECP (10 electrons, feasible).
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "Ne_trexio.hdf5"))
+    """
+
     """
     # benzene cc-pVDZ with Mitas ccECP (30 electrons, feasible).
     (
