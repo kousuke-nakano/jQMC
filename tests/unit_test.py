@@ -48,9 +48,12 @@ from numpy.testing import assert_almost_equal
 from ..jqmc.atomic_orbital import (
     AO_data,
     AOs_data_debug,
-    compute_AOs_api,
-    compute_AOs_grad_api,
-    compute_AOs_laplacian_api,
+    compute_AOs_debug,
+    compute_AOs_jax,
+    compute_AOs_jax_auto_grad,
+    compute_AOs_laplacian_jax_auto_grad,
+    compute_AOs_laplacian_numerical_grad,
+    compute_AOs_numerical_grad,
     compute_S_l_m_debug,
     compute_S_l_m_jax,
 )
@@ -78,9 +81,12 @@ from ..jqmc.molecular_orbital import (
     MO_data,
     MOs_data,
     compute_MO,
-    compute_MOs_api,
-    compute_MOs_grad_api,
-    compute_MOs_laplacian_api,
+    compute_MOs_debug,
+    compute_MOs_grad_debug,
+    compute_MOs_grad_jax,
+    compute_MOs_jax,
+    compute_MOs_laplacian_debug,
+    compute_MOs_laplacian_jax,
 )
 from ..jqmc.swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
 from ..jqmc.trexio_wrapper import read_trexio_file
@@ -509,8 +515,8 @@ def test_AOs_comparing_jax_and_debug_implemenetations():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    aos_jax = compute_AOs_api(aos_data=aos_data, r_carts=r_carts, debug_flag=False)
-    aos_debug = compute_AOs_api(aos_data=aos_data, r_carts=r_carts, debug_flag=True)
+    aos_jax = compute_AOs_jax(aos_data=aos_data, r_carts=r_carts)
+    aos_debug = compute_AOs_debug(aos_data=aos_data, r_carts=r_carts)
 
     assert np.allclose(aos_jax, aos_debug, rtol=1e-12, atol=1e-05)
 
@@ -541,8 +547,8 @@ def test_AOs_comparing_jax_and_debug_implemenetations():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    aos_jax = compute_AOs_api(aos_data=aos_data, r_carts=r_carts, debug_flag=False)
-    aos_debug = compute_AOs_api(aos_data=aos_data, r_carts=r_carts, debug_flag=True)
+    aos_jax = compute_AOs_jax(aos_data=aos_data, r_carts=r_carts)
+    aos_debug = compute_AOs_debug(aos_data=aos_data, r_carts=r_carts)
 
     assert np.allclose(aos_jax, aos_debug, rtol=1e-12, atol=1e-05)
 
@@ -574,15 +580,15 @@ def test_AOs_comparing_auto_and_numerical_grads():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = compute_AOs_grad_api(
-        aos_data=aos_data, r_carts=r_carts, debug_flag=False
+    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = compute_AOs_jax_auto_grad(
+        aos_data=aos_data, r_carts=r_carts
     )
 
     (
         ao_matrix_grad_x_numerical,
         ao_matrix_grad_y_numerical,
         ao_matrix_grad_z_numerical,
-    ) = compute_AOs_grad_api(aos_data=aos_data, r_carts=r_carts, debug_flag=True)
+    ) = compute_AOs_numerical_grad(aos_data=aos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(
         ao_matrix_grad_x_auto, ao_matrix_grad_x_numerical, decimal=7
@@ -621,15 +627,15 @@ def test_AOs_comparing_auto_and_numerical_grads():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = compute_AOs_grad_api(
-        aos_data=aos_data, r_carts=r_carts, debug_flag=False
+    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = compute_AOs_jax_auto_grad(
+        aos_data=aos_data, r_carts=r_carts
     )
 
     (
         ao_matrix_grad_x_numerical,
         ao_matrix_grad_y_numerical,
         ao_matrix_grad_z_numerical,
-    ) = compute_AOs_grad_api(aos_data=aos_data, r_carts=r_carts, debug_flag=True)
+    ) = compute_AOs_numerical_grad(aos_data=aos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(
         ao_matrix_grad_x_auto, ao_matrix_grad_x_numerical, decimal=7
@@ -670,12 +676,12 @@ def test_AOs_comparing_auto_and_numerical_laplacians():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    ao_matrix_laplacian_numerical = compute_AOs_laplacian_api(
-        aos_data=aos_data, r_carts=r_carts, debug_flag=True
+    ao_matrix_laplacian_numerical = compute_AOs_laplacian_jax_auto_grad(
+        aos_data=aos_data, r_carts=r_carts
     )
 
-    ao_matrix_laplacian_auto = compute_AOs_laplacian_api(
-        aos_data=aos_data, r_carts=r_carts, debug_flag=False
+    ao_matrix_laplacian_auto = compute_AOs_laplacian_numerical_grad(
+        aos_data=aos_data, r_carts=r_carts
     )
 
     np.testing.assert_array_almost_equal(
@@ -708,12 +714,12 @@ def test_AOs_comparing_auto_and_numerical_laplacians():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    ao_matrix_laplacian_numerical = compute_AOs_laplacian_api(
-        aos_data=aos_data, r_carts=r_carts, debug_flag=True
+    ao_matrix_laplacian_numerical = compute_AOs_laplacian_jax_auto_grad(
+        aos_data=aos_data, r_carts=r_carts
     )
 
-    ao_matrix_laplacian_auto = compute_AOs_laplacian_api(
-        aos_data=aos_data, r_carts=r_carts, debug_flag=False
+    ao_matrix_laplacian_auto = compute_AOs_laplacian_numerical_grad(
+        aos_data=aos_data, r_carts=r_carts
     )
 
     np.testing.assert_array_almost_equal(
@@ -776,9 +782,9 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
 
     mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
 
-    mo_ans_all_jax = compute_MOs_api(mos_data=mos_data, r_carts=r_carts, debug_flag=False)
+    mo_ans_all_jax = compute_MOs_jax(mos_data=mos_data, r_carts=r_carts)
 
-    mo_ans_all_debug = compute_MOs_api(mos_data=mos_data, r_carts=r_carts, debug_flag=True)
+    mo_ans_all_debug = compute_MOs_debug(mos_data=mos_data, r_carts=r_carts)
 
     assert np.allclose(mo_ans_step_by_step, mo_ans_all_jax)
     assert np.allclose(mo_ans_step_by_step, mo_ans_all_debug)
@@ -837,9 +843,9 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
 
     mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
 
-    mo_ans_all_jax = compute_MOs_api(mos_data=mos_data, r_carts=r_carts, debug_flag=False)
+    mo_ans_all_jax = compute_MOs_jax(mos_data=mos_data, r_carts=r_carts)
 
-    mo_ans_all_debug = compute_MOs_api(mos_data=mos_data, r_carts=r_carts, debug_flag=True)
+    mo_ans_all_debug = compute_MOs_debug(mos_data=mos_data, r_carts=r_carts)
 
     assert np.allclose(mo_ans_step_by_step, mo_ans_all_jax)
     assert np.allclose(mo_ans_step_by_step, mo_ans_all_debug)
@@ -878,15 +884,15 @@ def test_MOs_comparing_auto_and_numerical_grads():
 
     mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
 
-    mo_matrix_grad_x_auto, mo_matrix_grad_y_auto, mo_matrix_grad_z_auto = compute_MOs_grad_api(
-        mos_data=mos_data, r_carts=r_carts, debug_flag=False
+    mo_matrix_grad_x_auto, mo_matrix_grad_y_auto, mo_matrix_grad_z_auto = compute_MOs_grad_jax(
+        mos_data=mos_data, r_carts=r_carts
     )
 
     (
         mo_matrix_grad_x_numerical,
         mo_matrix_grad_y_numerical,
         mo_matrix_grad_z_numerical,
-    ) = compute_MOs_grad_api(mos_data=mos_data, r_carts=r_carts, debug_flag=True)
+    ) = compute_MOs_grad_debug(mos_data=mos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(
         mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, decimal=6
@@ -931,15 +937,15 @@ def test_MOs_comparing_auto_and_numerical_grads():
 
     mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
 
-    mo_matrix_grad_x_auto, mo_matrix_grad_y_auto, mo_matrix_grad_z_auto = compute_MOs_grad_api(
-        mos_data=mos_data, r_carts=r_carts, debug_flag=False
+    mo_matrix_grad_x_auto, mo_matrix_grad_y_auto, mo_matrix_grad_z_auto = compute_MOs_grad_jax(
+        mos_data=mos_data, r_carts=r_carts
     )
 
     (
         mo_matrix_grad_x_numerical,
         mo_matrix_grad_y_numerical,
         mo_matrix_grad_z_numerical,
-    ) = compute_MOs_grad_api(mos_data=mos_data, r_carts=r_carts, debug_flag=True)
+    ) = compute_MOs_grad_debug(mos_data=mos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(
         mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, decimal=6
@@ -986,13 +992,9 @@ def test_MOs_comparing_auto_and_numerical_laplacians():
 
     mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
 
-    mo_matrix_laplacian_numerical = compute_MOs_laplacian_api(
-        mos_data=mos_data, r_carts=r_carts, debug_flag=True
-    )
+    mo_matrix_laplacian_numerical = compute_MOs_laplacian_jax(mos_data=mos_data, r_carts=r_carts)
 
-    mo_matrix_laplacian_auto = compute_MOs_laplacian_api(
-        mos_data=mos_data, r_carts=r_carts, debug_flag=False
-    )
+    mo_matrix_laplacian_auto = compute_MOs_laplacian_debug(mos_data=mos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(
         mo_matrix_laplacian_auto, mo_matrix_laplacian_numerical, decimal=6
@@ -1113,7 +1115,6 @@ def test_comparing_AO_and_MO_geminals():
             num_electron_dn=num_electron_dn,
             orb_data_up_spin=aos_data,
             orb_data_dn_spin=aos_data,
-            compute_orb_api=compute_AOs_api,
             lambda_matrix=ao_lambda_matrix,
         )
 
@@ -1289,7 +1290,6 @@ def test_numerial_and_auto_grads_ln_Det():
         num_electron_dn=num_electron_dn,
         orb_data_up_spin=aos_data,
         orb_data_dn_spin=aos_data,
-        compute_orb_api=compute_AOs_api,
         lambda_matrix=ao_lambda_matrix,
     )
 

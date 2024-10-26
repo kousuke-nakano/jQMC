@@ -98,16 +98,12 @@ def compute_MOs_laplacian_api(
     Args:
         ao_datas (AOs_data): an instance of AOs_data
         r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
-        debug_flag: if True, numerical derivatives are computed for debuging purpose
 
     Returns
     -------
         An array containing laplacians of the MOs at r_carts. The dim. is (num_mo, N_e)
     """
-    if debug_flag:
-        mo_matrix_laplacian = compute_MOs_laplacian_debug(mos_data, r_carts)
-    else:
-        mo_matrix_laplacian = compute_MOs_laplacian_jax(mos_data, r_carts)
+    mo_matrix_laplacian = compute_MOs_laplacian_jax(mos_data, r_carts)
 
     if mo_matrix_laplacian.shape != (mos_data.num_mo, len(r_carts)):
         logger.error(
@@ -122,31 +118,31 @@ def compute_MOs_laplacian_debug(mos_data: MOs_data, r_carts: npt.NDArray[np.floa
     # Laplacians of AOs (numerical)
     diff_h = 1.0e-5
 
-    mo_matrix = compute_MOs_api(mos_data, r_carts, debug_flag=True)
+    mo_matrix = compute_MOs_api(mos_data, r_carts)
 
     # laplacians x^2
     diff_p_x_r_carts = r_carts.copy()
     diff_p_x_r_carts[:, 0] += diff_h
-    mo_matrix_diff_p_x = compute_MOs_api(mos_data, diff_p_x_r_carts, debug_flag=True)
+    mo_matrix_diff_p_x = compute_MOs_api(mos_data, diff_p_x_r_carts)
     diff_m_x_r_carts = r_carts.copy()
     diff_m_x_r_carts[:, 0] -= diff_h
-    mo_matrix_diff_m_x = compute_MOs_api(mos_data, diff_m_x_r_carts, debug_flag=True)
+    mo_matrix_diff_m_x = compute_MOs_api(mos_data, diff_m_x_r_carts)
 
     # laplacians y^2
     diff_p_y_r_carts = r_carts.copy()
     diff_p_y_r_carts[:, 1] += diff_h
-    mo_matrix_diff_p_y = compute_MOs_api(mos_data, diff_p_y_r_carts, debug_flag=True)
+    mo_matrix_diff_p_y = compute_MOs_api(mos_data, diff_p_y_r_carts)
     diff_m_y_r_carts = r_carts.copy()
     diff_m_y_r_carts[:, 1] -= diff_h
-    mo_matrix_diff_m_y = compute_MOs_api(mos_data, diff_m_y_r_carts, debug_flag=True)
+    mo_matrix_diff_m_y = compute_MOs_api(mos_data, diff_m_y_r_carts)
 
     # laplacians z^2
     diff_p_z_r_carts = r_carts.copy()
     diff_p_z_r_carts[:, 2] += diff_h
-    mo_matrix_diff_p_z = compute_MOs_api(mos_data, diff_p_z_r_carts, debug_flag=True)
+    mo_matrix_diff_p_z = compute_MOs_api(mos_data, diff_p_z_r_carts)
     diff_m_z_r_carts = r_carts.copy()
     diff_m_z_r_carts[:, 2] -= diff_h
-    mo_matrix_diff_m_z = compute_MOs_api(mos_data, diff_m_z_r_carts, debug_flag=True)
+    mo_matrix_diff_m_z = compute_MOs_api(mos_data, diff_m_z_r_carts)
 
     mo_matrix_grad2_x = (mo_matrix_diff_p_x + mo_matrix_diff_m_x - 2 * mo_matrix) / (diff_h) ** 2
     mo_matrix_grad2_y = (mo_matrix_diff_p_y + mo_matrix_diff_m_y - 2 * mo_matrix) / (diff_h) ** 2
@@ -161,16 +157,14 @@ def compute_MOs_laplacian_debug(mos_data: MOs_data, r_carts: npt.NDArray[np.floa
 def compute_MOs_laplacian_jax(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]):
     mo_matrix_laplacian = jnp.dot(
         mos_data.mo_coefficients,
-        compute_AOs_laplacian_api(mos_data.aos_data, r_carts, debug_flag=False),
+        compute_AOs_laplacian_api(mos_data.aos_data, r_carts),
     )
 
     return mo_matrix_laplacian
 
 
 def compute_MOs_grad_api(
-    mos_data: MOs_data,
-    r_carts: npt.NDArray[np.float64],
-    debug_flag: bool = False,
+    mos_data: MOs_data, r_carts: npt.NDArray[np.float64]
 ) -> tuple[
     npt.NDArray[np.float64 | np.complex128],
     npt.NDArray[np.float64 | np.complex128],
@@ -182,20 +176,12 @@ def compute_MOs_grad_api(
     Args:
         ao_datas (AOs_data): an instance of AOs_data
         r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
-        debug_flag: if True, numerical derivatives are computed for debuging purpose
 
-    Returns
-    -------
+    Returns:
+
         tuple containing gradients of the MOs at r_carts. (grad_x, grad_y, grad_z). The dim. of each matrix is (num_mo, N_e)
     """
-    if debug_flag:
-        mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z = compute_MOs_grad_debug(
-            mos_data, r_carts
-        )
-    else:
-        mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z = compute_MOs_grad_jax(
-            mos_data, r_carts
-        )
+    mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z = compute_MOs_grad_jax(mos_data, r_carts)
 
     if mo_matrix_grad_x.shape != (mos_data.num_mo, len(r_carts)):
         logger.error(
@@ -262,7 +248,7 @@ def compute_MOs_grad_jax(
     r_carts: npt.NDArray[np.float64],
 ):
     mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z = compute_AOs_grad_api(
-        mos_data.aos_data, r_carts, debug_flag=False
+        mos_data.aos_data, r_carts
     )
     mo_matrix_grad_x = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_x)
     mo_matrix_grad_y = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_y)
@@ -280,17 +266,12 @@ def compute_MOs_api(
     Args:
         mos_data (MOs_data): an instance of MOs_data
         r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
-        debug_flag: if True, AOs are computed one by one using compute_AO_debug
 
-    Returns
-    -------
+    Returns:
         Arrays containing values of the MOs at r_carts. (dim: num_mo, N_e)
     """
     # jprint(f"MOs:debug_flag={debug_flag}, type={type(debug_flag)}")
-    if debug_flag:
-        answer = compute_MOs_debug(mos_data, r_carts)
-    else:
-        answer = compute_MOs_jax(mos_data, r_carts)
+    answer = compute_MOs_jax(mos_data, r_carts)
 
     if answer.shape != (mos_data.num_mo, len(r_carts)):
         logger.error(
@@ -306,7 +287,7 @@ def compute_MOs_debug(
 ) -> npt.NDArray[np.float64]:
     return np.dot(
         mos_data.mo_coefficients,
-        compute_AOs_api(aos_data=mos_data.aos_data, r_carts=r_carts, debug_flag=True),
+        compute_AOs_api(aos_data=mos_data.aos_data, r_carts=r_carts),
     )
 
 
@@ -320,7 +301,7 @@ def compute_MOs_jax(
 ) -> npt.NDArray[np.float64]:
     return jnp.dot(
         mos_data.mo_coefficients,
-        compute_AOs_api(aos_data=mos_data.aos_data, r_carts=r_carts, debug_flag=False),
+        compute_AOs_api(aos_data=mos_data.aos_data, r_carts=r_carts),
         # why doesn't this _api  work? to do ...
         # compute_AOs_jax(aos_data=mos_data.aos_data, r_carts=r_carts),
     )

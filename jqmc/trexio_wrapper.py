@@ -47,7 +47,7 @@ import trexio
 from .atomic_orbital import AOs_data
 from .coulomb_potential import Coulomb_potential_data
 from .determinant import Geminal_data
-from .molecular_orbital import MOs_data, compute_MOs_api
+from .molecular_orbital import MOs_data
 
 # import myQMC
 from .structure import Structure_data
@@ -316,7 +316,6 @@ def read_trexio_file(trexio_file: str):
         num_electron_dn=num_ele_dn,
         orb_data_up_spin=mos_data_up,
         orb_data_dn_spin=mos_data_dn,
-        compute_orb_api=compute_MOs_api,
         lambda_matrix=mo_lambda_matrix,
     )
 
@@ -567,4 +566,5 @@ if __name__ == "__main__":
     stream_handler.setLevel("DEBUG")
     handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
     stream_handler.setFormatter(handler_format)
+    log.addHandler(stream_handler)
     log.addHandler(stream_handler)

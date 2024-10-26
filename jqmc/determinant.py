@@ -1,4 +1,4 @@
-"""Geminal module"""
+"""Determinant module"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -76,20 +76,25 @@ class Geminal_data:
     The class contains data for evaluating a geminal function.
 
     Args:
-        num_electron_up (int): number of up electrons.
-        num_electron_dn (int): number of dn electrons.
-        orb_data_up_spin (AOs_data | MOs_data): AOs data or MOs data for up-spin.
-        orb_data_dn_spin (AOs_data | MOs_data): AOs data or MOs data for dn-spin.
-        compute_orb Callable[..., npt.NDArray[np.float64]]: Method to compute AOs or MOs values at an electronic configuration.
-        lambda_matrix (npt.NDArray[np.float64]): geminal matrix. dim. (orb_data_up_spin.num_ao/mo, orb_data_dn_spin.num_ao/mo + num_electron_up - num_electron_dn)).
+        num_electron_up (int):
+            number of up electrons.
+        num_electron_dn (int):
+            number of dn electrons.
+        orb_data_up_spin (AOs_data | MOs_data):
+            AOs data or MOs data for up-spin.
+        orb_data_dn_spin (AOs_data | MOs_data):
+            AOs data or MOs data for dn-spin.
+        lambda_matrix (npt.NDArray[np.float64]):
+            geminal matrix. for the employed orb_data, MOs or AOs.
+            The dim. is [orb_data_up_spin.num_ao/mo, orb_data_dn_spin.num_ao/mo +
+            (num_electron_up - num_electron_dn)].
     """
 
-    num_electron_up: int = struct.field(pytree_node=False)
-    num_electron_dn: int = struct.field(pytree_node=False)
-    orb_data_up_spin: AOs_data | MOs_data = struct.field(pytree_node=True)
-    orb_data_dn_spin: AOs_data | MOs_data = struct.field(pytree_node=True)
-    compute_orb_api: Callable[..., npt.NDArray[np.float64]] = struct.field(pytree_node=False)
-    lambda_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=False)
+    num_electron_up: int = struct.field(pytree_node=False, default=0)
+    num_electron_dn: int = struct.field(pytree_node=False, default=0)
+    orb_data_up_spin: AOs_data | MOs_data = struct.field(pytree_node=True, default=None)
+    orb_data_dn_spin: AOs_data | MOs_data = struct.field(pytree_node=True, default=None)
+    lambda_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=False, default=None)
 
     def __post_init__(self) -> None:
         if self.lambda_matrix.shape != (
@@ -106,36 +111,65 @@ class Geminal_data:
 
     @property
     def orb_num_up(self) -> int:
-        if self.compute_orb_api == compute_AOs_api:
+        if isinstance(self.orb_data_up_spin, AOs_data) and isinstance(
+            self.orb_data_dn_spin, AOs_data
+        ):
             return self.orb_data_up_spin.num_ao
-        elif self.compute_orb_api == compute_MOs_api:
+        elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(
+            self.orb_data_dn_spin, MOs_data
+        ):
             return self.orb_data_up_spin.num_mo
         else:
             raise NotImplementedError
 
     @property
     def orb_num_dn(self) -> int:
-        if self.compute_orb_api == compute_AOs_api:
+        if isinstance(self.orb_data_up_spin, AOs_data) and isinstance(
+            self.orb_data_dn_spin, AOs_data
+        ):
             return self.orb_data_dn_spin.num_ao
-        elif self.compute_orb_api == compute_MOs_api:
+        elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(
+            self.orb_data_dn_spin, MOs_data
+        ):
             return self.orb_data_dn_spin.num_mo
         else:
             raise NotImplementedError
 
     @property
+    def compute_orb_api(self) -> Callable[..., npt.NDArray[np.float64]]:
+        if isinstance(self.orb_data_up_spin, AOs_data) and isinstance(
+            self.orb_data_dn_spin, AOs_data
+        ):
+            return compute_AOs_api
+        elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(
+            self.orb_data_dn_spin, MOs_data
+        ):
+            return compute_MOs_api
+        else:
+            raise NotImplementedError
+
+    @property
     def compute_orb_grad_api(self) -> Callable[..., npt.NDArray[np.float64]]:
-        if self.compute_orb_api == compute_AOs_api:
+        if isinstance(self.orb_data_up_spin, AOs_data) and isinstance(
+            self.orb_data_dn_spin, AOs_data
+        ):
             return compute_AOs_grad_api
-        elif self.compute_orb_api == compute_MOs_api:
+        elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(
+            self.orb_data_dn_spin, MOs_data
+        ):
             return compute_MOs_grad_api
         else:
             raise NotImplementedError
 
     @property
     def compute_orb_laplacian_api(self) -> Callable[..., npt.NDArray[np.float64]]:
-        if self.compute_orb_api == compute_AOs_api:
+        if isinstance(self.orb_data_up_spin, AOs_data) and isinstance(
+            self.orb_data_dn_spin, AOs_data
+        ):
             return compute_AOs_laplacian_api
-        elif self.compute_orb_api == compute_MOs_api:
+        elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(
+            self.orb_data_dn_spin, MOs_data
+        ):
             return compute_MOs_laplacian_api
         else:
             raise NotImplementedError
@@ -263,12 +297,8 @@ def compute_geminal_all_elements_jax(
         geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
     )
 
-    orb_matrix_up = geminal_data.compute_orb_api(
-        geminal_data.orb_data_up_spin, r_up_carts, debug_flag=False
-    )
-    orb_matrix_dn = geminal_data.compute_orb_api(
-        geminal_data.orb_data_dn_spin, r_dn_carts, debug_flag=False
-    )
+    orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
+    orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts)
 
     # compute geminal values
     geminal_paired = jnp.dot(orb_matrix_up.T, jnp.dot(lambda_matrix_paired, orb_matrix_dn))
@@ -726,28 +756,20 @@ def compute_grads_and_laplacian_ln_Det_jax(
     )
 
     # AOs/MOs
-    ao_matrix_up = geminal_data.compute_orb_api(
-        geminal_data.orb_data_up_spin, r_up_carts, debug_flag=False
-    )
-    ao_matrix_dn = geminal_data.compute_orb_api(
-        geminal_data.orb_data_dn_spin, r_dn_carts, debug_flag=False
-    )
+    ao_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
+    ao_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts)
 
     ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z = (
-        geminal_data.compute_orb_grad_api(
-            geminal_data.orb_data_up_spin, r_up_carts, debug_flag=False
-        )
+        geminal_data.compute_orb_grad_api(geminal_data.orb_data_up_spin, r_up_carts)
     )
     ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z = (
-        geminal_data.compute_orb_grad_api(
-            geminal_data.orb_data_dn_spin, r_dn_carts, debug_flag=False
-        )
+        geminal_data.compute_orb_grad_api(geminal_data.orb_data_dn_spin, r_dn_carts)
     )
     ao_matrix_laplacian_up = geminal_data.compute_orb_laplacian_api(
-        geminal_data.orb_data_up_spin, r_up_carts, debug_flag=False
+        geminal_data.orb_data_up_spin, r_up_carts
     )
     ao_matrix_laplacian_dn = geminal_data.compute_orb_laplacian_api(
-        geminal_data.orb_data_dn_spin, r_dn_carts, debug_flag=False
+        geminal_data.orb_data_dn_spin, r_dn_carts
     )
 
     # compute Laplacians of Geminal

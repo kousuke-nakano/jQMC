@@ -1,4 +1,4 @@
-"""Collections of useful functions"""
+"""Collections of useful functions."""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -42,15 +42,19 @@ import scipy
 import scipy.special
 from jax import jit
 from jax import numpy as jnp
-from jaxtyping import Array, Float, Int
+from jax import typing as jnpt
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
 
 
 @jit
-def legendre_tablated(n, x):
+def legendre_tablated(n: int, x: float) -> float:
+    """Tabulated Legendre polynomials.
+
     # see https://en.wikipedia.org/wiki/Legendre_polynomials
+
+    """
     conditions = [n == 0, n == 1, n == 2, n == 3, n == 4, n == 5, n == 6]
     P_n = [
         1,
@@ -65,30 +69,32 @@ def legendre_tablated(n, x):
 
 
 @jit
-def eval_legendre(n: Int[Array, "n"], x: Float[Array, "m"]) -> Float[Array, "n m"]:
-    """
-    Evaluate Legendre polynomials of specified degrees at provided point(s).
+def eval_legendre(n: jnpt.ArrayLike, x: jnpt.ArrayLike) -> jax.Array:
+    """Evaluate Legendre polynomials of specified degrees at provided point(s).
 
-    This function makes use of a vectorized version of the Legendre polynomial recurrence relation to
-    compute the necessary polynomials up to the maximum degree found in 'n'. It then selects and returns
-    the values of the polynomials at the degrees specified in 'n' and evaluated at the points in 'x'.
+    This function makes use of a vectorized version of the Legendre polynomial recurrence
+    relation to compute the necessary polynomials up to the maximum degree found in 'n'.
+    It then selects and returns the values of the polynomials at the degrees specified in 'n'
+    and evaluated at the points in 'x'.
 
-    Parameters
-    ----------
-        n (jnp.ndarray): An array of integer degrees for which the Legendre polynomials are to be evaluated.
-                        Each element must be a non-negative integer and the array can be of any shape.
-        x (jnp.ndarray): The point(s) at which the Legendre polynomials are to be evaluated. Can be a single
-                        point (float) or an array of points. The shape must be broadcastable to the shape of 'n'.
+    Args:
+        n (jnp.ndarray):
+            An array of integer degrees for which the Legendre polynomials are to be evaluated.
+            Each element must be a non-negative integer and the array can be of any shape.
+        x (jnp.ndarray):
+            The point(s) at which the Legendre polynomials are to be evaluated. Can be a single
+            point (float) or an array of points. The shape must be broadcastable to the shape
+            of 'n'.
 
-    Returns
-    -------
-        jnp.ndarray: An array of Legendre polynomial values. The output has the same shape as 'n' and 'x' after broadcasting.
-                    The i-th entry corresponds to the Legendre polynomial of degree 'n[i]' evaluated at point 'x[i]'.
+    Returns:
+        jnp.ndarray:
+            An array of Legendre polynomial values. The output has the same shape as 'n' and 'x'
+            after broadcasting. The i-th entry corresponds to the Legendre polynomial of degree
+            'n[i]' evaluated at point 'x[i]'.
 
-    Notes
-    -----
-        This function makes use of the vectorized map (vmap) functionality in JAX to efficiently compute and select
-        the necessary Legendre polynomial values.
+    Notes:
+        This function makes use of the vectorized map (vmap) functionality in JAX to efficiently
+        compute and select the necessary Legendre polynomial values.
     """
     n = jnp.asarray(n)
     x = jnp.asarray(x)
@@ -102,7 +108,7 @@ def eval_legendre(n: Int[Array, "n"], x: Float[Array, "m"]) -> Float[Array, "n m
     return jnp.squeeze(p)
 
 
-def test_eval_legendre():
+if __name__ == "__main__":
     n = np.arange(7)
     print(jnp.max(n))
 
@@ -126,7 +132,3 @@ def test_eval_legendre():
 
     assert np.allclose(y_pred, y, rtol=1e-5, atol=1e-8), "Results do not match"
     print("Results match")
-
-
-if __name__ == "__main__":
-    test_eval_legendre()

@@ -64,7 +64,7 @@ class Hamiltonian_data:
         coulomb_data (Coulomb_data)
         wavefunction_data (Wavefunction_data)
 
-    Comments:
+    Notes:
         Heres are the differentiable arguments, i.e., pytree_node = True
 
         WF parameters related:
@@ -105,8 +105,7 @@ def compute_local_energy(
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
-    Returns
-    -------
+    Returns:
         The value of local energy with the given wavefunction (float | complex)
     """
 

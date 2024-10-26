@@ -43,6 +43,7 @@ from logging import Formatter, StreamHandler, getLogger
 # JAX
 import jax
 import numpy as np
+import numpy.typing as npt
 from jax import grad
 
 # MPI
@@ -70,148 +71,45 @@ class MCMC:
     Args:
         mcmc_seed (int): seed for the MCMC chain.
         hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
-        swct_data (SWCT_data): an instance of SWCT_data
-        mcmc_seed (int): random seed for MCMC
+        init_r_up_carts (npt.NDArray): starting electron positions for up electrons
+        init_r_dn_carts (npt.NDArray): starting electron positions for dn electrons
         Dt (float): electron move step (bohr)
-        flag_energy_deriv (bool): compute derivatives of local energy.
     """
 
     def __init__(
         self,
         hamiltonian_data: Hamiltonian_data = None,
-        swct_data: SWCT_data = None,
+        init_r_up_carts: npt.NDArray[np.float64] = None,
+        init_r_dn_carts: npt.NDArray[np.float64] = None,
         mcmc_seed: int = 34467,
         Dt: float = 2.0,
-        flag_energy_deriv: bool = True,
     ) -> None:
         """Init.
 
         Initialize a MCMC class, creating list holding results, etc...
 
-        Args:
-            hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
-            swct_data (SWCT_data)
-
         """
         self.__hamiltonian_data = hamiltonian_data
-        self.__swct_data = swct_data
         self.__mcmc_seed = mcmc_seed
         self.__Dt = Dt
-        self.__flag_energy_deriv = flag_energy_deriv
+
+        # set random seeds
+        random.seed(self.__mcmc_seed)
+        np.random.seed(self.__mcmc_seed)
 
         # mcmc counter
         self.__mcmc_counter = 0
 
         # latest electron positions
-        self.__latest_r_up_carts = None
-        self.__latest_r_dn_carts = None
+        self.__latest_r_up_carts = init_r_up_carts
+        self.__latest_r_dn_carts = init_r_dn_carts
 
         # stored electron positions
         self.__stored_r_up_carts = None
         self.__stored_r_dn_carts = None
 
-        # stored local energy (e_L)
-        self.__stored_e_L = []
-
-        # stored de_L / dR
-        self.__stored_grad_e_L_dR = []
-
-        # stored de_L / dr_up
-        self.__stored_grad_e_L_r_up = []
-
-        # stored de_L / dr_dn
-        self.__stored_grad_e_L_r_dn = []
-
-        # stored ln_Psi
-        self.__stored_ln_Psi = []
-
-        # stored dln_Psi / dr_up
-        self.__stored_grad_ln_Psi_r_up = []
-
-        # stored dln_Psi / dr_dn
-        self.__stored_grad_ln_Psi_r_dn = []
-
-        # stored dln_Psi / dR
-        self.__stored_grad_ln_Psi_dR = []
-
-        # intialize all attributes
-        self.__init__attributes()
-
-    def __init__attributes(self):
-        # set random seeds
-        random.seed(self.__mcmc_seed)
-        np.random.seed(self.__mcmc_seed)
-
-        # set the initial electron configurations
-        num_electron_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
-        num_electron_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
-
-        # Initialization
-        r_carts_up = []
-        r_carts_dn = []
-
-        total_electrons = 0
-
-        if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
-            charges = np.array(self.__hamiltonian_data.structure_data.atomic_numbers) - np.array(
-                self.__hamiltonian_data.coulomb_potential_data.z_cores
-            )
-        else:
-            charges = np.array(self.__hamiltonian_data.structure_data.atomic_numbers)
-
-        coords = self.__hamiltonian_data.structure_data.positions_cart
-
-        # Place electrons around each nucleus
-        for i in range(len(coords)):
-            charge = charges[i]
-            num_electrons = int(
-                np.round(charge)
-            )  # Number of electrons to place based on the charge
-
-            # Retrieve the position coordinates
-            x, y, z = coords[i]
-
-            # Place electrons
-            for _ in range(num_electrons):
-                # Calculate distance range
-                distance = np.random.uniform(0.1, 2.0)
-                theta = np.random.uniform(0, np.pi)
-                phi = np.random.uniform(0, 2 * np.pi)
-
-                # Convert spherical to Cartesian coordinates
-                dx = distance * np.sin(theta) * np.cos(phi)
-                dy = distance * np.sin(theta) * np.sin(phi)
-                dz = distance * np.cos(theta)
-
-                # Position of the electron
-                electron_position = np.array([x + dx, y + dy, z + dz])
-
-                # Assign spin
-                if len(r_carts_up) < num_electron_up:
-                    r_carts_up.append(electron_position)
-                else:
-                    r_carts_dn.append(electron_position)
-
-            total_electrons += num_electrons
-
-        # Handle surplus electrons
-        remaining_up = num_electron_up - len(r_carts_up)
-        remaining_dn = num_electron_dn - len(r_carts_dn)
-
-        # Randomly place any remaining electrons
-        for _ in range(remaining_up):
-            r_carts_up.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
-        for _ in range(remaining_dn):
-            r_carts_dn.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
-
-        self.__latest_r_up_carts = np.array(r_carts_up)
-        self.__latest_r_dn_carts = np.array(r_carts_dn)
-
-        logger.info(f"initial r_up_carts = { self.__latest_r_up_carts}")
-        logger.info(f"initial r_dn_carts = { self.__latest_r_dn_carts}")
-
-        # reset mcmc counter
-        self.__mcmc_counter = 0
+        # SWCT data
+        self.__swct_data = SWCT_data(structure=self.__hamiltonian_data.structure_data)
 
         # stored local energy (e_L)
         self.__stored_e_L = []
@@ -265,29 +163,28 @@ class MCMC:
         )
         logger.info("  Compilation e_L is done.")
 
-        if self.__flag_energy_deriv:
-            logger.info("  Compilation de_L starts.")
-            _, _, _ = grad(compute_local_energy, argnums=(0, 1, 2))(
-                self.__hamiltonian_data,
-                self.__latest_r_up_carts,
-                self.__latest_r_dn_carts,
-            )
-            logger.info("  Compilation de_L is done.")
+        logger.info("  Compilation de_L starts.")
+        _, _, _ = grad(compute_local_energy, argnums=(0, 1, 2))(
+            self.__hamiltonian_data,
+            self.__latest_r_up_carts,
+            self.__latest_r_dn_carts,
+        )
+        logger.info("  Compilation de_L is done.")
 
-            logger.info("  Compilation dln_Psi starts.")
-            _, _, _ = grad(evaluate_ln_wavefunction_api, argnums=(0, 1, 2))(
-                self.__hamiltonian_data.wavefunction_data,
-                self.__latest_r_up_carts,
-                self.__latest_r_dn_carts,
-            )
-            logger.info("  Compilation dln_Psi is done.")
+        logger.info("  Compilation dln_Psi starts.")
+        _, _, _ = grad(evaluate_ln_wavefunction_api, argnums=(0, 1, 2))(
+            self.__hamiltonian_data.wavefunction_data,
+            self.__latest_r_up_carts,
+            self.__latest_r_dn_carts,
+        )
+        logger.info("  Compilation dln_Psi is done.")
 
-            logger.info("  Compilation domega starts.")
-            _ = evaluate_swct_domega_api(
-                self.__swct_data,
-                self.__latest_r_up_carts,
-            )
-            logger.info("  Compilation domega is done.")
+        logger.info("  Compilation domega starts.")
+        _ = evaluate_swct_domega_api(
+            self.__swct_data,
+            self.__latest_r_up_carts,
+        )
+        logger.info("  Compilation domega is done.")
 
         logger.info("Compilation is done.")
 
@@ -433,103 +330,102 @@ class MCMC:
             logger.info(f"e_L = {e_L}")
             self.__stored_e_L.append(e_L)
 
-            if self.__flag_energy_deriv:
-                # """
-                grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = grad(
-                    compute_local_energy, argnums=(0, 1, 2)
-                )(
-                    self.__hamiltonian_data,
-                    self.__latest_r_up_carts,
-                    self.__latest_r_dn_carts,
-                )
-                self.__stored_grad_e_L_r_up.append(grad_e_L_r_up)
-                self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn)
+            # """
+            grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = grad(
+                compute_local_energy, argnums=(0, 1, 2)
+            )(
+                self.__hamiltonian_data,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+            )
+            self.__stored_grad_e_L_r_up.append(grad_e_L_r_up)
+            self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn)
 
-                grad_e_L_R = (
-                    grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.aos_data.structure_data.positions
-                    + grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions
-                    + grad_e_L_h.coulomb_potential_data.structure_data.positions
-                )
-                self.__stored_grad_e_L_dR.append(grad_e_L_R)
-                # """
+            grad_e_L_R = (
+                grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.aos_data.structure_data.positions
+                + grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions
+                + grad_e_L_h.coulomb_potential_data.structure_data.positions
+            )
+            self.__stored_grad_e_L_dR.append(grad_e_L_R)
+            # """
 
-                # """
-                logger.debug(
-                    f"de_L_dR(AOs_data_up) = {grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.aos_data.structure_data.positions}"
-                )
-                logger.debug(
-                    f"de_L_dR(AOs_data_dn) = {grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions}"
-                )
-                logger.debug(
-                    f"de_L_dR(coulomb_potential_data) = {grad_e_L_h.coulomb_potential_data.structure_data.positions}"
-                )
-                logger.info(f"de_L_dR = {grad_e_L_R}")
-                logger.info(f"de_L_dr_up = {grad_e_L_r_up}")
-                logger.info(f"de_L_dr_dn= {grad_e_L_r_dn}")
-                # """
+            # """
+            logger.debug(
+                f"de_L_dR(AOs_data_up) = {grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.aos_data.structure_data.positions}"
+            )
+            logger.debug(
+                f"de_L_dR(AOs_data_dn) = {grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions}"
+            )
+            logger.debug(
+                f"de_L_dR(coulomb_potential_data) = {grad_e_L_h.coulomb_potential_data.structure_data.positions}"
+            )
+            logger.info(f"de_L_dR = {grad_e_L_R}")
+            logger.info(f"de_L_dr_up = {grad_e_L_r_up}")
+            logger.info(f"de_L_dr_dn= {grad_e_L_r_dn}")
+            # """
 
-                ln_Psi = evaluate_ln_wavefunction_api(
-                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                    r_up_carts=self.__latest_r_up_carts,
-                    r_dn_carts=self.__latest_r_dn_carts,
-                )
-                logger.info(f"ln_Psi = {ln_Psi}")
-                self.__stored_ln_Psi.append(ln_Psi)
+            ln_Psi = evaluate_ln_wavefunction_api(
+                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                r_up_carts=self.__latest_r_up_carts,
+                r_dn_carts=self.__latest_r_dn_carts,
+            )
+            logger.info(f"ln_Psi = {ln_Psi}")
+            self.__stored_ln_Psi.append(ln_Psi)
 
-                # """
-                grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = grad(
-                    evaluate_ln_wavefunction_api, argnums=(0, 1, 2)
-                )(
-                    self.__hamiltonian_data.wavefunction_data,
-                    self.__latest_r_up_carts,
-                    self.__latest_r_dn_carts,
-                )
-                logger.info(f"dln_Psi_dr_up = {grad_ln_Psi_r_up}")
-                logger.info(f"dln_Psi_dr_dn = {grad_ln_Psi_r_dn}")
-                self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up)
-                self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn)
+            # """
+            grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = grad(
+                evaluate_ln_wavefunction_api, argnums=(0, 1, 2)
+            )(
+                self.__hamiltonian_data.wavefunction_data,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+            )
+            logger.info(f"dln_Psi_dr_up = {grad_ln_Psi_r_up}")
+            logger.info(f"dln_Psi_dr_dn = {grad_ln_Psi_r_dn}")
+            self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up)
+            self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn)
 
-                grad_ln_Psi_dR = (
-                    grad_ln_Psi_h.geminal_data.orb_data_up_spin.aos_data.structure_data.positions
-                    + grad_ln_Psi_h.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions
-                )
+            grad_ln_Psi_dR = (
+                grad_ln_Psi_h.geminal_data.orb_data_up_spin.aos_data.structure_data.positions
+                + grad_ln_Psi_h.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions
+            )
 
-                # stored dln_Psi / dR
-                logger.info(f"dln_Psi_dR = {grad_ln_Psi_dR}")
-                self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
-                # """
+            # stored dln_Psi / dR
+            logger.info(f"dln_Psi_dR = {grad_ln_Psi_dR}")
+            self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
+            # """
 
-                omega_up = evaluate_swct_omega_api(
-                    swct_data=self.__swct_data,
-                    r_carts=self.__latest_r_up_carts,
-                )
+            omega_up = evaluate_swct_omega_api(
+                swct_data=self.__swct_data,
+                r_carts=self.__latest_r_up_carts,
+            )
 
-                omega_dn = evaluate_swct_omega_api(
-                    swct_data=self.__swct_data,
-                    r_carts=self.__latest_r_dn_carts,
-                )
+            omega_dn = evaluate_swct_omega_api(
+                swct_data=self.__swct_data,
+                r_carts=self.__latest_r_dn_carts,
+            )
 
-                logger.info(f"omega_up = {omega_up}")
-                logger.info(f"omega_dn = {omega_dn}")
+            logger.info(f"omega_up = {omega_up}")
+            logger.info(f"omega_dn = {omega_dn}")
 
-                self.__stored_omega_up.append(omega_up)
-                self.__stored_omega_dn.append(omega_dn)
+            self.__stored_omega_up.append(omega_up)
+            self.__stored_omega_dn.append(omega_dn)
 
-                grad_omega_dr_up = evaluate_swct_domega_api(
-                    self.__swct_data,
-                    self.__latest_r_up_carts,
-                )
+            grad_omega_dr_up = evaluate_swct_domega_api(
+                self.__swct_data,
+                self.__latest_r_up_carts,
+            )
 
-                grad_omega_dr_dn = evaluate_swct_domega_api(
-                    self.__swct_data,
-                    self.__latest_r_dn_carts,
-                )
+            grad_omega_dr_dn = evaluate_swct_domega_api(
+                self.__swct_data,
+                self.__latest_r_dn_carts,
+            )
 
-                logger.info(f"grad_omega_dr_up = {grad_omega_dr_up}")
-                logger.info(f"grad_omega_dr_dn = {grad_omega_dr_dn}")
+            logger.info(f"grad_omega_dr_up = {grad_omega_dr_up}")
+            logger.info(f"grad_omega_dr_dn = {grad_omega_dr_dn}")
 
-                self.__stored_grad_omega_r_up.append(grad_omega_dr_up)
-                self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn)
+            self.__stored_grad_omega_r_up.append(grad_omega_dr_up)
+            self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn)
 
         self.__mcmc_counter += num_mcmc_steps
         logger.info(f"acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
@@ -582,12 +478,11 @@ class MCMC:
 class VMC:
     """VMC class.
 
-    MCMC class. Runing MCMC.
+    Runing VMC using MCMC.
 
     Args:
         mcmc_seed (int): seed for the MCMC chain.
         hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
-        swct_data (SWCT_data): an instance of SWCT_data
         mcmc_seed (int): random seed for MCMC
         num_mcmc_warmup_steps (int): number of equilibration steps.
         num_mcmc_bin_blocks (int): number of blocks for reblocking.
@@ -597,7 +492,6 @@ class VMC:
     def __init__(
         self,
         hamiltonian_data: Hamiltonian_data = None,
-        swct_data: SWCT_data = None,
         mcmc_seed: int = 34467,
         num_mcmc_warmup_steps: int = 50,
         num_mcmc_bin_blocks: int = 10,
@@ -620,11 +514,87 @@ class VMC:
 
         logger.info(f"mcmc_seed for MPI-rank={self.rank} is {self.mpi_seed}.")
 
+        # set random seeds
+        random.seed(self.mpi_seed)
+        np.random.seed(self.mpi_seed)
+
         self.__num_mcmc_warmup_steps = num_mcmc_warmup_steps
         self.__num_mcmc_bin_blocks = num_mcmc_bin_blocks
 
+        # set the initial electron configurations
+        num_electron_up = hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+        num_electron_dn = hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+
+        # Initialization
+        r_carts_up = []
+        r_carts_dn = []
+
+        total_electrons = 0
+
+        if hamiltonian_data.coulomb_potential_data.ecp_flag:
+            charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
+                hamiltonian_data.coulomb_potential_data.z_cores
+            )
+        else:
+            charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
+
+        coords = hamiltonian_data.structure_data.positions_cart
+
+        # Place electrons around each nucleus
+        for i in range(len(coords)):
+            charge = charges[i]
+            num_electrons = int(
+                np.round(charge)
+            )  # Number of electrons to place based on the charge
+
+            # Retrieve the position coordinates
+            x, y, z = coords[i]
+
+            # Place electrons
+            for _ in range(num_electrons):
+                # Calculate distance range
+                distance = np.random.uniform(0.1, 2.0)
+                theta = np.random.uniform(0, np.pi)
+                phi = np.random.uniform(0, 2 * np.pi)
+
+                # Convert spherical to Cartesian coordinates
+                dx = distance * np.sin(theta) * np.cos(phi)
+                dy = distance * np.sin(theta) * np.sin(phi)
+                dz = distance * np.cos(theta)
+
+                # Position of the electron
+                electron_position = np.array([x + dx, y + dy, z + dz])
+
+                # Assign spin
+                if len(r_carts_up) < num_electron_up:
+                    r_carts_up.append(electron_position)
+                else:
+                    r_carts_dn.append(electron_position)
+
+            total_electrons += num_electrons
+
+        # Handle surplus electrons
+        remaining_up = num_electron_up - len(r_carts_up)
+        remaining_dn = num_electron_dn - len(r_carts_dn)
+
+        # Randomly place any remaining electrons
+        for _ in range(remaining_up):
+            r_carts_up.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
+        for _ in range(remaining_dn):
+            r_carts_dn.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
+
+        init_r_up_carts = np.array(r_carts_up)
+        init_r_dn_carts = np.array(r_carts_dn)
+
+        logger.info(f"initial r_up_carts = {init_r_up_carts}")
+        logger.info(f"initial r_dn_carts = {init_r_dn_carts}")
+
         self.__mcmc = MCMC(
-            hamiltonian_data=hamiltonian_data, swct_data=swct_data, mcmc_seed=self.mpi_seed, Dt=Dt
+            hamiltonian_data=hamiltonian_data,
+            init_r_up_carts=init_r_up_carts,
+            init_r_dn_carts=init_r_dn_carts,
+            mcmc_seed=self.mpi_seed,
+            Dt=Dt,
         )
 
     def run(self, num_mcmc_steps=0):
@@ -782,7 +752,7 @@ class VMC:
 
 
 if __name__ == "__main__":
-    # """
+    """
     # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
     (
         structure_data,
@@ -791,8 +761,10 @@ if __name__ == "__main__":
         mos_data_dn,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "water_trexio.hdf5"))
-    # """
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_trexio.hdf5")
+    )
+    """
 
     # """
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
@@ -804,7 +776,7 @@ if __name__ == "__main__":
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "H2_dimer_trexio.hdf5")
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "H2_dimer_trexio.hdf5")
     )
     # """
 
@@ -817,7 +789,7 @@ if __name__ == "__main__":
         mos_data_dn,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "Ne_trexio.hdf5"))
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), 'trexio_files', "Ne_trexio.hdf5"))
     """
 
     """
@@ -829,7 +801,7 @@ if __name__ == "__main__":
         mos_data_dn,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "benzene_trexio.hdf5"))
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), 'trexio_files', "benzene_trexio.hdf5"))
     """
 
     """
@@ -860,8 +832,6 @@ if __name__ == "__main__":
         wavefunction_data=wavefunction_data,
     )
 
-    swct_data = SWCT_data(structure=structure_data)
-
     # VMC parameters
     num_mcmc_warmup_steps = 20
     num_mcmc_bin_blocks = 5
@@ -870,7 +840,6 @@ if __name__ == "__main__":
     # run VMC
     vmc = VMC(
         hamiltonian_data=hamiltonian_data,
-        swct_data=swct_data,
         mcmc_seed=mcmc_seed,
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,

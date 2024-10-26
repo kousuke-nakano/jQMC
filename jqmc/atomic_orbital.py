@@ -258,6 +258,27 @@ class AOs_data:
         return jnp.array(self.coefficients)
 
 
+''' to switch pytree_node jax grad
+@struct.dataclass
+class AOs_data_comput_autograd_dR(AOs_data):
+    """Atomic Orbitals dataclass.
+
+    See class AOs_data
+
+    """
+
+    structure_data: Structure_data = struct.field(pytree_node=True)
+    nucleus_index: list[int] = struct.field(pytree_node=False)
+    num_ao: int = struct.field(pytree_node=False)
+    num_ao_prim: int = struct.field(pytree_node=False)
+    orbital_indices: list[int] = struct.field(pytree_node=False)
+    exponents: list[float] = struct.field(pytree_node=False)
+    coefficients: list[float | complex] = struct.field(pytree_node=False)
+    angular_momentums: list[int] = struct.field(pytree_node=False)
+    magnetic_quantum_numbers: list[int] = struct.field(pytree_node=False)
+'''
+
+
 @struct.dataclass
 class AOs_data_debug:
     """To be removed.
@@ -339,33 +360,7 @@ class AOs_data_debug:
         return jnp.array(self.coefficients)
 
 
-def compute_AOs_laplacian_api(
-    aos_data: AOs_data,
-    r_carts: npt.NDArray[np.float64],
-    debug_flag: bool = False,
-) -> npt.NDArray[np.float64]:
-    """Compute laplacians of the give AOs at r_carts.
-
-    The method is for computing the laplacians of the given atomic orbital at r_carts
-
-    Args:
-        ao_datas (AOs_data): an instance of AOs_data
-        r_carts (npt.NDArray[np.float64]): Cartesian coordinates of electrons (dim: N_e, 3)
-        debug_flag (bool): if True, numerical derivatives are computed for debuging purpose
-
-    Returns:
-        npt.NDArray[np.float64]:
-            Array containing laplacians of the AOs at r_carts. The dim. is (num_ao, N_e)
-
-    """
-    if debug_flag:
-        return compute_AOs_laplacian_numerical_grad(aos_data, r_carts)
-    else:
-        return compute_AOs_laplacian_jax_auto_grad(aos_data, r_carts)
-
-
-@jit
-def compute_AOs_laplacian_jax_auto_grad(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
+def compute_AOs_laplacian_api(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     """Compute laplacians of the give AOs at r_carts.
 
     The method is for computing the laplacians of the given atomic orbital at r_carts
@@ -378,6 +373,16 @@ def compute_AOs_laplacian_jax_auto_grad(aos_data: AOs_data, r_carts: jnpt.ArrayL
     Returns:
         jax.Array:
             Array containing laplacians of the AOs at r_carts. The dim. is (num_ao, N_e)
+
+    """
+    return compute_AOs_laplacian_jax_auto_grad(aos_data, r_carts)
+
+
+@jit
+def compute_AOs_laplacian_jax_auto_grad(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
+    """Compute laplacians of the give AOs at r_carts.
+
+    See compute_AOs_laplacian_api
 
     """
     # expansion with respect to the primitive AOs
@@ -436,31 +441,31 @@ def compute_AOs_laplacian_numerical_grad(
     # Laplacians of AOs (numerical)
     diff_h = 1.0e-5
 
-    ao_matrix = compute_AOs_api(aos_data, r_carts, debug_flag=True)
+    ao_matrix = compute_AOs_api(aos_data, r_carts)
 
     # laplacians x^2
     diff_p_x_r_carts = r_carts.copy()
     diff_p_x_r_carts[:, 0] += diff_h
-    ao_matrix_diff_p_x = compute_AOs_api(aos_data, diff_p_x_r_carts, debug_flag=True)
+    ao_matrix_diff_p_x = compute_AOs_api(aos_data, diff_p_x_r_carts)
     diff_m_x_r_carts = r_carts.copy()
     diff_m_x_r_carts[:, 0] -= diff_h
-    ao_matrix_diff_m_x = compute_AOs_api(aos_data, diff_m_x_r_carts, debug_flag=True)
+    ao_matrix_diff_m_x = compute_AOs_api(aos_data, diff_m_x_r_carts)
 
     # laplacians y^2
     diff_p_y_r_carts = r_carts.copy()
     diff_p_y_r_carts[:, 1] += diff_h
-    ao_matrix_diff_p_y = compute_AOs_api(aos_data, diff_p_y_r_carts, debug_flag=True)
+    ao_matrix_diff_p_y = compute_AOs_api(aos_data, diff_p_y_r_carts)
     diff_m_y_r_carts = r_carts.copy()
     diff_m_y_r_carts[:, 1] -= diff_h
-    ao_matrix_diff_m_y = compute_AOs_api(aos_data, diff_m_y_r_carts, debug_flag=True)
+    ao_matrix_diff_m_y = compute_AOs_api(aos_data, diff_m_y_r_carts)
 
     # laplacians z^2
     diff_p_z_r_carts = r_carts.copy()
     diff_p_z_r_carts[:, 2] += diff_h
-    ao_matrix_diff_p_z = compute_AOs_api(aos_data, diff_p_z_r_carts, debug_flag=True)
+    ao_matrix_diff_p_z = compute_AOs_api(aos_data, diff_p_z_r_carts)
     diff_m_z_r_carts = r_carts.copy()
     diff_m_z_r_carts[:, 2] -= diff_h
-    ao_matrix_diff_m_z = compute_AOs_api(aos_data, diff_m_z_r_carts, debug_flag=True)
+    ao_matrix_diff_m_z = compute_AOs_api(aos_data, diff_m_z_r_carts)
 
     ao_matrix_grad2_x = (ao_matrix_diff_p_x + ao_matrix_diff_m_x - 2 * ao_matrix) / (diff_h) ** 2
     ao_matrix_grad2_y = (ao_matrix_diff_p_y + ao_matrix_diff_m_y - 2 * ao_matrix) / (diff_h) ** 2
@@ -479,33 +484,25 @@ def compute_AOs_laplacian_numerical_grad(
 
 
 def compute_AOs_grad_api(
-    aos_data: AOs_data,
-    r_carts: npt.NDArray[np.float64],
-    debug_flag: bool = False,
-) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    aos_data: AOs_data, r_carts: jnpt.ArrayLike
+) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Compute Cartesian Gradients of AOs.
 
     The method is for computing the Carteisan gradients (x,y,z) of
     the given atomic orbital at r_carts
 
     Args:
-        ao_datas (AOs_data): an instance of AOs_data | AOs_data_debug
-        r_carts (npt.NDArray[np.float64]): Cartesian coordinates of electrons (dim: N_e, 3)
-        debug_flag (bool): if True, numerical derivatives are computed for debuging purpose
+        ao_datas(AOs_data): an instance of AOs_data | AOs_data_debug
+        r_carts(jnpt.ArrayLike): Cartesian coordinates of electrons (dim: N_e, 3)
 
     Returns:
         tuple: tuple containing gradients of the AOs at r_carts. (grad_x, grad_y, grad_z).
         The dim. of each matrix is (num_ao, N_e)
 
     """
-    if debug_flag:
-        ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z = compute_AOs_numerical_grad(
-            aos_data, r_carts
-        )
-    else:
-        ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z = compute_AOs_jax_auto_grad(
-            aos_data, r_carts
-        )
+    ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z = compute_AOs_jax_auto_grad(
+        aos_data, r_carts
+    )
 
     if ao_matrix_grad_x.shape != (aos_data.num_ao, len(r_carts)):
         logger.error(
@@ -537,16 +534,7 @@ def compute_AOs_jax_auto_grad(
 ) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Compute Cartesian Gradients of AOs.
 
-    The method is for computing the Carteisan gradients (x,y,z) of
-    the given atomic orbital at r_carts
-
-    Args:
-        ao_datas(AOs_data): an instance of AOs_data | AOs_data_debug
-        r_carts(jnpt.ArrayLike): Cartesian coordinates of electrons (dim: N_e, 3)
-
-    Returns:
-        tuple: tuple containing gradients of the AOs at r_carts. (grad_x, grad_y, grad_z).
-        The dim. of each matrix is (num_ao, N_e)
+    See compute_AOs_grad_api
 
     """
     # expansion with respect to the primitive AOs
@@ -614,7 +602,7 @@ def compute_AOs_jax_auto_grad_old(
         not needed for computing gradients.
         grad should be pluged into compute_AOs_jax() in the future for accelaration.
     """
-    ao_matrix_jacrev = jacrev(compute_AOs_api, argnums=1)(aos_data, r_carts, debug_flag=False)
+    ao_matrix_jacrev = jacrev(compute_AOs_api, argnums=1)(aos_data, r_carts)
 
     ao_matrix_grad_x_ = ao_matrix_jacrev[:, :, :, 0]
     ao_matrix_grad_y_ = ao_matrix_jacrev[:, :, :, 1]
@@ -651,26 +639,26 @@ def compute_AOs_numerical_grad(
     # grad x
     diff_p_x_r_carts = r_carts.copy()
     diff_p_x_r_carts[:, 0] += diff_h
-    ao_matrix_diff_p_x = compute_AOs_api(aos_data, diff_p_x_r_carts, debug_flag=True)
+    ao_matrix_diff_p_x = compute_AOs_api(aos_data, diff_p_x_r_carts)
     diff_m_x_r_carts = r_carts.copy()
     diff_m_x_r_carts[:, 0] -= diff_h
-    ao_matrix_diff_m_x = compute_AOs_api(aos_data, diff_m_x_r_carts, debug_flag=True)
+    ao_matrix_diff_m_x = compute_AOs_api(aos_data, diff_m_x_r_carts)
 
     # grad y
     diff_p_y_r_carts = r_carts.copy()
     diff_p_y_r_carts[:, 1] += diff_h
-    ao_matrix_diff_p_y = compute_AOs_api(aos_data, diff_p_y_r_carts, debug_flag=True)
+    ao_matrix_diff_p_y = compute_AOs_api(aos_data, diff_p_y_r_carts)
     diff_m_y_r_carts = r_carts.copy()
     diff_m_y_r_carts[:, 1] -= diff_h
-    ao_matrix_diff_m_y = compute_AOs_api(aos_data, diff_m_y_r_carts, debug_flag=True)
+    ao_matrix_diff_m_y = compute_AOs_api(aos_data, diff_m_y_r_carts)
 
     # grad z
     diff_p_z_r_carts = r_carts.copy()
     diff_p_z_r_carts[:, 2] += diff_h
-    ao_matrix_diff_p_z = compute_AOs_api(aos_data, diff_p_z_r_carts, debug_flag=True)
+    ao_matrix_diff_p_z = compute_AOs_api(aos_data, diff_p_z_r_carts)
     diff_m_z_r_carts = r_carts.copy()
     diff_m_z_r_carts[:, 2] -= diff_h
-    ao_matrix_diff_m_z = compute_AOs_api(aos_data, diff_m_z_r_carts, debug_flag=True)
+    ao_matrix_diff_m_z = compute_AOs_api(aos_data, diff_m_z_r_carts)
 
     ao_matrix_grad_x = (ao_matrix_diff_p_x - ao_matrix_diff_m_x) / (2.0 * diff_h)
     ao_matrix_grad_y = (ao_matrix_diff_p_y - ao_matrix_diff_m_y) / (2.0 * diff_h)
@@ -679,27 +667,19 @@ def compute_AOs_numerical_grad(
     return ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z
 
 
-def compute_AOs_api(
-    aos_data: AOs_data,
-    r_carts: npt.NDArray[np.float64],
-    debug_flag: bool = False,
-) -> npt.NDArray[np.float64]:
+def compute_AOs_api(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     """Compute AO values at the given r_carts.
 
     The method is for computing the value of the given atomic orbital at r_carts
 
     Args:
         ao_datas (AOs_data): an instance of AOs_data
-        r_carts (npt.NDArray[np.float64]): Cartesian coordinates of electrons (dim: N_e, 3)
-        debug_flag (bool): if True, AOs are computed one by one using compute_AO for debug
+        r_carts (jnpt.ArrayLike): Cartesian coordinates of electrons (dim: N_e, 3)
 
     Returns:
-        Arrays containing values of the AOs at r_carts. (dim: num_ao, N_e)
+        jax.Array: Arrays containing values of the AOs at r_carts. (dim: num_ao, N_e)
     """
-    if debug_flag:
-        AOs = compute_AOs_debug(aos_data, r_carts)
-    else:
-        AOs = compute_AOs_jax(aos_data, r_carts)
+    AOs = compute_AOs_jax(aos_data, r_carts)
 
     if AOs.shape != (aos_data.num_ao, len(r_carts)):
         logger.error(
@@ -755,19 +735,11 @@ def compute_AOs_debug(
 
 
 @jit
-def compute_AOs_jax(
-    aos_data: AOs_data | AOs_data_debug, r_carts: npt.NDArray[np.float64]
-) -> npt.NDArray[np.float64 | np.complex128]:
+def compute_AOs_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     """Compute AO values at the given r_carts.
 
-    The method is for computing the value of the given atomic orbital at r_carts
+    See compute_AOs_api
 
-    Args:
-        ao_datas (AOs_data): an instance of AOs_data
-        r_carts (npt.NDArray[np.float64]): Cartesian coordinates of electrons (dim: N_e, 3)
-
-    Returns:
-        Arrays containing values of the AOs at r_carts. (dim: num_ao, N_e)
     """
     # Indices with respect to the contracted AOs
     atomic_center_carts_dup = aos_data.atomic_center_carts_prim_jnp
@@ -1297,14 +1269,14 @@ if __name__ == "__main__":
     )
 
     ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = compute_AOs_grad_api(
-        aos_data=aos_data, r_carts=r_carts, debug_flag=True
+        aos_data=aos_data, r_carts=r_carts
     )
 
     (
         ao_matrix_grad_x_numerical,
         ao_matrix_grad_y_numerical,
         ao_matrix_grad_z_numerical,
-    ) = compute_AOs_grad_api(aos_data=aos_data, r_carts=r_carts, debug_flag=False)
+    ) = compute_AOs_grad_api(aos_data=aos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(
         ao_matrix_grad_x_auto, ao_matrix_grad_x_numerical, decimal=7
@@ -1317,15 +1289,11 @@ if __name__ == "__main__":
         ao_matrix_grad_z_auto, ao_matrix_grad_z_numerical, decimal=7
     )
 
-    ao_matrix_laplacian_numerical = compute_AOs_laplacian_api(
-        aos_data=aos_data, r_carts=r_carts, debug_flag=True
-    )
+    ao_matrix_laplacian_numerical = compute_AOs_laplacian_api(aos_data=aos_data, r_carts=r_carts)
 
     print(ao_matrix_laplacian_numerical)
 
-    ao_matrix_laplacian_auto = compute_AOs_laplacian_api(
-        aos_data=aos_data, r_carts=r_carts, debug_flag=False
-    )
+    ao_matrix_laplacian_auto = compute_AOs_laplacian_api(aos_data=aos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(
         ao_matrix_laplacian_auto, ao_matrix_laplacian_numerical, decimal=5

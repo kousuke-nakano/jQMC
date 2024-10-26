@@ -57,7 +57,7 @@ from jax import typing as jnpt
 from jax import vmap
 from scipy.special import eval_legendre
 
-from .function_collections import legendre_tablated as jnp_legendre_tablated
+from .miscs.function_collections import legendre_tablated as jnp_legendre_tablated
 from .structure import Structure_data, get_min_dist_rel_R_cart_jnp, get_min_dist_rel_R_cart_np
 from .wavefunction import Wavefunction_data, evaluate_wavefunction_api
 
