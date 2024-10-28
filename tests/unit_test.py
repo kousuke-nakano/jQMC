@@ -49,33 +49,42 @@ from ..jqmc.atomic_orbital import (
     AO_data,
     AOs_data_debug,
     compute_AOs_debug,
+    compute_AOs_grad_jax,
     compute_AOs_jax,
-    compute_AOs_jax_auto_grad,
-    compute_AOs_laplacian_jax_auto_grad,
-    compute_AOs_laplacian_numerical_grad,
+    compute_AOs_laplacian_debug,
+    compute_AOs_laplacian_jax,
     compute_AOs_numerical_grad,
     compute_S_l_m_debug,
     compute_S_l_m_jax,
 )
 from ..jqmc.coulomb_potential import (
-    compute_bare_coulomb_potential_api,
-    compute_ecp_coulomb_potential_api,
+    compute_bare_coulomb_potential_debug,
+    compute_bare_coulomb_potential_jax,
+    compute_ecp_coulomb_potential_debug,
+    compute_ecp_coulomb_potential_jax,
 )
 from ..jqmc.determinant import (
     Geminal_data,
-    compute_det_geminal_all_elements_api,
-    compute_geminal_all_elements_api,
-    compute_grads_and_laplacian_ln_Det_api,
+    compute_det_geminal_all_elements_debug,
+    compute_det_geminal_all_elements_jax,
+    compute_geminal_all_elements_debug,
+    compute_geminal_all_elements_jax,
+    compute_grads_and_laplacian_ln_Det_debug,
+    compute_grads_and_laplacian_ln_Det_jax,
 )
 from ..jqmc.hamiltonians import Hamiltonian_data
 from ..jqmc.jastrow_factor import (
     Jastrow_data,
     Jastrow_three_body_data,
     Jastrow_two_body_data,
-    compute_grads_and_laplacian_Jastrow_three_body_api,
-    compute_grads_and_laplacian_Jastrow_two_body_api,
-    compute_Jastrow_three_body_api,
-    compute_Jastrow_two_body_api,
+    compute_grads_and_laplacian_Jastrow_three_body_debug,
+    compute_grads_and_laplacian_Jastrow_three_body_jax,
+    compute_grads_and_laplacian_Jastrow_two_body_debug,
+    compute_grads_and_laplacian_Jastrow_two_body_jax,
+    compute_Jastrow_three_body_debug,
+    compute_Jastrow_three_body_jax,
+    compute_Jastrow_two_body_debug,
+    compute_Jastrow_two_body_jax,
 )
 from ..jqmc.molecular_orbital import (
     MO_data,
@@ -98,6 +107,7 @@ from ..jqmc.wavefunction import (
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_traceback_filtering", "off")
 
 log = getLogger("myqmc")
 log.setLevel("DEBUG")
@@ -400,8 +410,9 @@ def test_spherical_harmonics(l, m):
         )
         assert_almost_equal(test_S_lm, ref_S_lm, decimal=8)
 
+    jax.clear_caches()
 
-# @pytest.mark.skip
+
 @pytest.mark.parametrize(
     ["l", "m"],
     list(
@@ -432,6 +443,8 @@ def test_solid_harmonics(l, m):
             r_cart=r_cart,
         )
         assert_almost_equal(test_S_lm, ref_S_lm, decimal=8)
+
+    jax.clear_caches()
 
 
 # @pytest.mark.skip
@@ -552,6 +565,8 @@ def test_AOs_comparing_jax_and_debug_implemenetations():
 
     assert np.allclose(aos_jax, aos_debug, rtol=1e-12, atol=1e-05)
 
+    jax.clear_caches()
+
 
 def test_AOs_comparing_auto_and_numerical_grads():
     num_r_cart_samples = 10
@@ -580,7 +595,7 @@ def test_AOs_comparing_auto_and_numerical_grads():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = compute_AOs_jax_auto_grad(
+    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = compute_AOs_grad_jax(
         aos_data=aos_data, r_carts=r_carts
     )
 
@@ -627,7 +642,7 @@ def test_AOs_comparing_auto_and_numerical_grads():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = compute_AOs_jax_auto_grad(
+    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = compute_AOs_grad_jax(
         aos_data=aos_data, r_carts=r_carts
     )
 
@@ -647,6 +662,8 @@ def test_AOs_comparing_auto_and_numerical_grads():
     np.testing.assert_array_almost_equal(
         ao_matrix_grad_z_auto, ao_matrix_grad_z_numerical, decimal=7
     )
+
+    jax.clear_caches()
 
 
 def test_AOs_comparing_auto_and_numerical_laplacians():
@@ -676,13 +693,9 @@ def test_AOs_comparing_auto_and_numerical_laplacians():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    ao_matrix_laplacian_numerical = compute_AOs_laplacian_jax_auto_grad(
-        aos_data=aos_data, r_carts=r_carts
-    )
+    ao_matrix_laplacian_numerical = compute_AOs_laplacian_jax(aos_data=aos_data, r_carts=r_carts)
 
-    ao_matrix_laplacian_auto = compute_AOs_laplacian_numerical_grad(
-        aos_data=aos_data, r_carts=r_carts
-    )
+    ao_matrix_laplacian_auto = compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(
         ao_matrix_laplacian_auto, ao_matrix_laplacian_numerical, decimal=5
@@ -714,17 +727,15 @@ def test_AOs_comparing_auto_and_numerical_laplacians():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    ao_matrix_laplacian_numerical = compute_AOs_laplacian_jax_auto_grad(
-        aos_data=aos_data, r_carts=r_carts
-    )
+    ao_matrix_laplacian_numerical = compute_AOs_laplacian_jax(aos_data=aos_data, r_carts=r_carts)
 
-    ao_matrix_laplacian_auto = compute_AOs_laplacian_numerical_grad(
-        aos_data=aos_data, r_carts=r_carts
-    )
+    ao_matrix_laplacian_auto = compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(
         ao_matrix_laplacian_auto, ao_matrix_laplacian_numerical, decimal=5
     )
+
+    jax.clear_caches()
 
 
 def test_MOs_comparing_jax_and_debug_implemenetations():
@@ -850,6 +861,8 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
     assert np.allclose(mo_ans_step_by_step, mo_ans_all_jax)
     assert np.allclose(mo_ans_step_by_step, mo_ans_all_debug)
 
+    jax.clear_caches()
+
 
 def test_MOs_comparing_auto_and_numerical_grads():
     num_el = 10
@@ -958,6 +971,8 @@ def test_MOs_comparing_auto_and_numerical_grads():
         mo_matrix_grad_z_auto, mo_matrix_grad_z_numerical, decimal=6
     )
 
+    jax.clear_caches()
+
 
 def test_MOs_comparing_auto_and_numerical_laplacians():
     num_el = 10
@@ -1000,6 +1015,8 @@ def test_MOs_comparing_auto_and_numerical_laplacians():
         mo_matrix_laplacian_auto, mo_matrix_laplacian_numerical, decimal=6
     )
 
+    jax.clear_caches()
+
 
 @pytest.mark.parametrize(
     "filename",
@@ -1010,6 +1027,7 @@ def test_read_trexio_files(filename: str):
     read_trexio_file(
         trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", filename)
     )
+    jax.clear_caches()
 
 
 def test_comparing_AO_and_MO_geminals():
@@ -1092,11 +1110,21 @@ def test_comparing_AO_and_MO_geminals():
         r_up_carts = np.array(r_up_carts)
         r_dn_carts = np.array(r_dn_carts)
 
-        geminal_mo = compute_geminal_all_elements_api(
+        geminal_mo_debug = compute_geminal_all_elements_debug(
             geminal_data=geminal_mo_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
         )
+
+        geminal_mo_jax = compute_geminal_all_elements_jax(
+            geminal_data=geminal_mo_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+        )
+
+        np.testing.assert_almost_equal(geminal_mo_debug, geminal_mo_jax, decimal=15)
+
+        geminal_mo = geminal_mo_jax
 
         mo_lambda_matrix_paired, mo_lambda_matrix_unpaired = np.hsplit(
             geminal_mo_data.lambda_matrix, [geminal_mo_data.orb_num_dn]
@@ -1118,28 +1146,58 @@ def test_comparing_AO_and_MO_geminals():
             lambda_matrix=ao_lambda_matrix,
         )
 
-        geminal_ao = compute_geminal_all_elements_api(
+        geminal_ao_debug = compute_geminal_all_elements_debug(
             geminal_data=geminal_ao_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
         )
 
+        geminal_ao_jax = compute_geminal_all_elements_debug(
+            geminal_data=geminal_ao_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+        )
+
+        np.testing.assert_almost_equal(geminal_ao_debug, geminal_ao_jax, decimal=15)
+
+        geminal_ao = geminal_ao_jax
+
         # check if geminals with AO and MO representations are consistent
         np.testing.assert_array_almost_equal(geminal_ao, geminal_mo, decimal=15)
 
-        det_geminal_mo = compute_det_geminal_all_elements_api(
+        det_geminal_mo_debug = compute_det_geminal_all_elements_debug(
             geminal_data=geminal_mo_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
         )
 
-        det_geminal_ao = compute_det_geminal_all_elements_api(
+        det_geminal_mo_jax = compute_det_geminal_all_elements_jax(
+            geminal_data=geminal_mo_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+        )
+
+        np.testing.assert_array_almost_equal(det_geminal_mo_debug, det_geminal_mo_jax, decimal=15)
+        det_geminal_mo = det_geminal_mo_jax
+
+        det_geminal_ao_debug = compute_det_geminal_all_elements_debug(
             geminal_data=geminal_ao_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
         )
 
+        det_geminal_ao_jax = compute_det_geminal_all_elements_jax(
+            geminal_data=geminal_ao_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+        )
+
+        np.testing.assert_array_almost_equal(det_geminal_ao_debug, det_geminal_ao_jax, decimal=15)
+        det_geminal_ao = det_geminal_ao_jax
+
         np.testing.assert_almost_equal(det_geminal_ao, det_geminal_mo, decimal=15)
+
+    jax.clear_caches()
 
 
 # @pytest.mark.skip
@@ -1196,6 +1254,8 @@ def test_debug_and_jax_SWCT_omega():
 
     np.testing.assert_almost_equal(domega_up_debug, domega_up_jax, decimal=6)
     np.testing.assert_almost_equal(domega_dn_debug, domega_dn_jax, decimal=6)
+
+    jax.clear_caches()
 
 
 # @pytest.mark.skip
@@ -1294,20 +1354,18 @@ def test_numerial_and_auto_grads_ln_Det():
     )
 
     grad_ln_D_up_numerical, grad_ln_D_dn_numerical, sum_laplacian_ln_D_numerical = (
-        compute_grads_and_laplacian_ln_Det_api(
+        compute_grads_and_laplacian_ln_Det_debug(
             geminal_data=geminal_ao_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
-            debug_flag=True,
         )
     )
 
     grad_ln_D_up_auto, grad_ln_D_dn_auto, sum_laplacian_ln_D_auto = (
-        compute_grads_and_laplacian_ln_Det_api(
+        compute_grads_and_laplacian_ln_Det_jax(
             geminal_data=geminal_ao_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
-            debug_flag=False,
         )
     )
 
@@ -1318,6 +1376,8 @@ def test_numerial_and_auto_grads_ln_Det():
         np.array(grad_ln_D_dn_numerical), np.array(grad_ln_D_dn_auto), decimal=5
     )
     np.testing.assert_almost_equal(sum_laplacian_ln_D_numerical, sum_laplacian_ln_D_auto, decimal=1)
+
+    jax.clear_caches()
 
 
 @pytest.mark.skip(reason="@jit in the next test fails for some reason... Under investigation.")
@@ -1398,36 +1458,32 @@ def test_comparison_with_TurboRVB_wo_Jastrow():
         r_dn_carts=new_r_dn_carts,
     )
 
-    vpot_bare_debug = compute_bare_coulomb_potential_api(
+    vpot_bare_debug = compute_bare_coulomb_potential_debug(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
-        debug_flag=True,
     )
 
-    vpot_bare_jax = compute_bare_coulomb_potential_api(
+    vpot_bare_jax = compute_bare_coulomb_potential_jax(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
-        debug_flag=False,
     )
 
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=6)
 
-    vpot_ecp_debug = compute_ecp_coulomb_potential_api(
+    vpot_ecp_debug = compute_ecp_coulomb_potential_debug(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
         wavefunction_data=wavefunction_data,
-        debug_flag=True,
     )
 
-    vpot_ecp_jax = compute_ecp_coulomb_potential_api(
+    vpot_ecp_jax = compute_ecp_coulomb_potential_jax(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
         wavefunction_data=wavefunction_data,
-        debug_flag=False,
     )
 
     # print(f"wf_ratio={WF_ratio} Ha")
@@ -1443,8 +1499,10 @@ def test_comparison_with_TurboRVB_wo_Jastrow():
         vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3
     )
 
+    jax.clear_caches()
 
-@pytest.mark.skip(reason="@jit in the next test fails for some reason... Under investigation.")
+
+@pytest.mark.skip(reason="@jit in the next test fails for some reason. Under investigation.")
 def test_comparison_with_TurboRVB_w_2b_Jastrow():
     (
         structure_data,
@@ -1525,36 +1583,32 @@ def test_comparison_with_TurboRVB_w_2b_Jastrow():
         r_dn_carts=new_r_dn_carts,
     )
 
-    vpot_bare_debug = compute_bare_coulomb_potential_api(
+    vpot_bare_debug = compute_bare_coulomb_potential_debug(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
-        debug_flag=True,
     )
 
-    vpot_bare_jax = compute_bare_coulomb_potential_api(
+    vpot_bare_jax = compute_bare_coulomb_potential_jax(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
-        debug_flag=False,
     )
 
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=6)
 
-    vpot_ecp_debug = compute_ecp_coulomb_potential_api(
+    vpot_ecp_debug = compute_ecp_coulomb_potential_debug(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
         wavefunction_data=wavefunction_data,
-        debug_flag=True,
     )
 
-    vpot_ecp_jax = compute_ecp_coulomb_potential_api(
+    vpot_ecp_jax = compute_ecp_coulomb_potential_jax(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
         wavefunction_data=wavefunction_data,
-        debug_flag=False,
     )
 
     # print(f"wf_ratio={WF_ratio} Ha")
@@ -1569,6 +1623,11 @@ def test_comparison_with_TurboRVB_w_2b_Jastrow():
     np.testing.assert_almost_equal(
         vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3
     )
+
+    jax.clear_caches()
+
+
+jax.clear_caches()
 
 
 @pytest.mark.skip(reason="@jit in the next test fails for some reason... Under investigation.")
@@ -1625,9 +1684,9 @@ def test_comparison_with_TurboRVB_w_2b_3b_Jastrow():
     vpot_ref_turborvb = -17.0140133127848
     vpotoff_ref_turborvb = 0.275054565511106
 
-    print(f"wf_ratio_ref={WF_ratio_ref_turborvb} Ha")
-    print(f"kinc_ref={kinc_ref_turborvb} Ha")
-    print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
+    # print(f"wf_ratio_ref={WF_ratio_ref_turborvb} Ha")
+    # print(f"kinc_ref={kinc_ref_turborvb} Ha")
+    # print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
 
     WF_ratio = (
         evaluate_wavefunction_api(
@@ -1648,41 +1707,37 @@ def test_comparison_with_TurboRVB_w_2b_3b_Jastrow():
         r_dn_carts=new_r_dn_carts,
     )
 
-    vpot_bare_debug = compute_bare_coulomb_potential_api(
+    vpot_bare_debug = compute_bare_coulomb_potential_debug(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
-        debug_flag=True,
     )
 
-    vpot_bare_jax = compute_bare_coulomb_potential_api(
+    vpot_bare_jax = compute_bare_coulomb_potential_jax(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
-        debug_flag=False,
     )
 
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=6)
 
-    vpot_ecp_debug = compute_ecp_coulomb_potential_api(
+    vpot_ecp_debug = compute_ecp_coulomb_potential_debug(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
         wavefunction_data=wavefunction_data,
-        debug_flag=True,
     )
 
-    vpot_ecp_jax = compute_ecp_coulomb_potential_api(
+    vpot_ecp_jax = compute_ecp_coulomb_potential_jax(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
         wavefunction_data=wavefunction_data,
-        debug_flag=False,
     )
 
-    print(f"wf_ratio={WF_ratio} Ha")
-    print(f"kinc={kinc} Ha")
-    print(f"vpot={vpot_bare_jax+vpot_ecp_debug} Ha")
+    # print(f"wf_ratio={WF_ratio} Ha")
+    # print(f"kinc={kinc} Ha")
+    # print(f"vpot={vpot_bare_jax+vpot_ecp_debug} Ha")
 
     np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=8)
     np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
@@ -1693,8 +1748,12 @@ def test_comparison_with_TurboRVB_w_2b_3b_Jastrow():
         vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3
     )
 
+    jax.clear_caches()
 
-# @pytest.mark.skip(reason="1b in the 3b part is failure.")
+
+jax.clear_caches()
+
+
 def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow():
     (
         structure_data,
@@ -1750,9 +1809,9 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow():
     vpot_ref_turborvb = -29.6412525272157
     vpotoff_ref_turborvb = 0.995316391222278
 
-    print(f"wf_ratio_ref={WF_ratio_ref_turborvb} Ha")
-    print(f"kinc_ref={kinc_ref_turborvb} Ha")
-    print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
+    # print(f"wf_ratio_ref={WF_ratio_ref_turborvb} Ha")
+    # print(f"kinc_ref={kinc_ref_turborvb} Ha")
+    # print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
 
     WF_ratio = (
         evaluate_wavefunction_api(
@@ -1773,36 +1832,32 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow():
         r_dn_carts=new_r_dn_carts,
     )
 
-    vpot_bare_debug = compute_bare_coulomb_potential_api(
+    vpot_bare_debug = compute_bare_coulomb_potential_debug(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
-        debug_flag=True,
     )
 
-    vpot_bare_jax = compute_bare_coulomb_potential_api(
+    vpot_bare_jax = compute_bare_coulomb_potential_jax(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
-        debug_flag=False,
     )
 
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=6)
 
-    vpot_ecp_debug = compute_ecp_coulomb_potential_api(
+    vpot_ecp_debug = compute_ecp_coulomb_potential_debug(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
         wavefunction_data=wavefunction_data,
-        debug_flag=True,
     )
 
-    vpot_ecp_jax = compute_ecp_coulomb_potential_api(
+    vpot_ecp_jax = compute_ecp_coulomb_potential_jax(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
         wavefunction_data=wavefunction_data,
-        debug_flag=False,
     )
 
     print(f"wf_ratio={WF_ratio} Ha")
@@ -1817,6 +1872,8 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow():
     np.testing.assert_almost_equal(
         vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=2
     )
+
+    jax.clear_caches()
 
 
 def test_numerical_and_auto_grads_Jastrow_threebody_part():
@@ -1873,20 +1930,18 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part():
         j_matrix_up_dn=j_matrix_up_dn,
     )
 
-    J3_debug = compute_Jastrow_three_body_api(
+    J3_debug = compute_Jastrow_three_body_debug(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
-        debug_flag=True,
     )
 
     # print(f"J3_debug = {J3_debug}")
 
-    J3_jax = compute_Jastrow_three_body_api(
+    J3_jax = compute_Jastrow_three_body_jax(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
-        debug_flag=False,
     )
 
     # print(f"J3_jax = {J3_jax}")
@@ -1897,11 +1952,10 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part():
         grad_jastrow_J3_up_debug,
         grad_jastrow_J3_dn_debug,
         sum_laplacian_J3_debug,
-    ) = compute_grads_and_laplacian_Jastrow_three_body_api(
+    ) = compute_grads_and_laplacian_Jastrow_three_body_debug(
         jastrow_three_body_data,
         r_up_carts,
         r_dn_carts,
-        True,
     )
 
     # print(f"grad_jastrow_J3_up_debug = {grad_jastrow_J3_up_debug}")
@@ -1909,11 +1963,10 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part():
     # print(f"sum_laplacian_J3_debug = {sum_laplacian_J3_debug}")
 
     grad_jastrow_J3_up_jax, grad_jastrow_J3_dn_jax, sum_laplacian_J3_jax = (
-        compute_grads_and_laplacian_Jastrow_three_body_api(
+        compute_grads_and_laplacian_Jastrow_three_body_jax(
             jastrow_three_body_data,
             r_up_carts,
             r_dn_carts,
-            False,
         )
     )
 
@@ -1924,6 +1977,8 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part():
     np.testing.assert_almost_equal(grad_jastrow_J3_up_debug, grad_jastrow_J3_up_jax, decimal=4)
     np.testing.assert_almost_equal(grad_jastrow_J3_dn_debug, grad_jastrow_J3_dn_jax, decimal=4)
     np.testing.assert_almost_equal(sum_laplacian_J3_debug, sum_laplacian_J3_jax, decimal=4)
+
+    jax.clear_caches()
 
 
 def test_numerical_and_auto_grads_Jastrow_twobody_part():
@@ -1937,20 +1992,14 @@ def test_numerical_and_auto_grads_Jastrow_twobody_part():
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_dn_cart_samples, 3) + r_cart_min
 
     jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=1.0)
-    J2_debug = compute_Jastrow_two_body_api(
-        jastrow_two_body_data=jastrow_two_body_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
-        debug_flag=True,
+    J2_debug = compute_Jastrow_two_body_debug(
+        jastrow_two_body_data=jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
     # print(f"jastrow_two_body_debug = {jastrow_two_body_debug}")
 
-    J2_jax = compute_Jastrow_two_body_api(
-        jastrow_two_body_data=jastrow_two_body_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
-        debug_flag=False,
+    J2_jax = compute_Jastrow_two_body_jax(
+        jastrow_two_body_data=jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
     # print(f"jastrow_two_body_jax = {jastrow_two_body_jax}")
@@ -1961,11 +2010,10 @@ def test_numerical_and_auto_grads_Jastrow_twobody_part():
         grad_J2_up_debug,
         grad_J2_dn_debug,
         sum_laplacian_J2_debug,
-    ) = compute_grads_and_laplacian_Jastrow_two_body_api(
+    ) = compute_grads_and_laplacian_Jastrow_two_body_debug(
         jastrow_two_body_data,
         r_up_carts,
         r_dn_carts,
-        True,
     )
 
     # print(f"grad_J2_up_debug = {grad_J2_up_debug}")
@@ -1973,11 +2021,10 @@ def test_numerical_and_auto_grads_Jastrow_twobody_part():
     # print(f"sum_laplacian_J2_debug = {sum_laplacian_J2_debug}")
 
     grad_J2_up_jax, grad_J2_dn_jax, sum_laplacian_J2_jax = (
-        compute_grads_and_laplacian_Jastrow_two_body_api(
+        compute_grads_and_laplacian_Jastrow_two_body_jax(
             jastrow_two_body_data,
             r_up_carts,
             r_dn_carts,
-            False,
         )
     )
 
@@ -1988,6 +2035,8 @@ def test_numerical_and_auto_grads_Jastrow_twobody_part():
     np.testing.assert_almost_equal(grad_J2_up_debug, grad_J2_up_jax, decimal=8)
     np.testing.assert_almost_equal(grad_J2_dn_debug, grad_J2_dn_jax, decimal=8)
     np.testing.assert_almost_equal(sum_laplacian_J2_debug, sum_laplacian_J2_jax, decimal=4)
+
+    jax.clear_caches()
 
 
 if __name__ == "__main__":
