@@ -43,7 +43,7 @@ Todo:
 # POSSIBILITY OF SUCH DAMAGE.
 
 # import sys
-
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from logging import Formatter, StreamHandler, getLogger
 
@@ -110,7 +110,7 @@ class AOs_data:
     num_ao_prim: int = struct.field(pytree_node=False)
     orbital_indices: list[int] = struct.field(pytree_node=False)
     exponents: list[float] = struct.field(pytree_node=False)
-    coefficients: list[float | complex] = struct.field(pytree_node=False)
+    coefficients: list[float] = struct.field(pytree_node=False)
     angular_momentums: list[int] = struct.field(pytree_node=False)
     magnetic_quantum_numbers: list[int] = struct.field(pytree_node=False)
 
@@ -375,11 +375,11 @@ def compute_AOs_laplacian_api(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> ja
             Array containing laplacians of the AOs at r_carts. The dim. is (num_ao, N_e)
 
     """
-    return compute_AOs_laplacian_jax_auto_grad(aos_data, r_carts)
+    return compute_AOs_laplacian_jax(aos_data, r_carts)
 
 
 @jit
-def compute_AOs_laplacian_jax_auto_grad(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
+def compute_AOs_laplacian_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     """Compute laplacians of the give AOs at r_carts.
 
     See compute_AOs_laplacian_api
@@ -420,7 +420,7 @@ def compute_AOs_laplacian_jax_auto_grad(aos_data: AOs_data, r_carts: jnpt.ArrayL
     return ao_matrix_laplacian
 
 
-def compute_AOs_laplacian_numerical_grad(
+def compute_AOs_laplacian_debug(
     aos_data: AOs_data, r_carts: npt.NDArray[np.float64]
 ) -> npt.NDArray[np.float64]:
     """Compute laplacians of the give AOs at r_carts.
@@ -500,9 +500,7 @@ def compute_AOs_grad_api(
         The dim. of each matrix is (num_ao, N_e)
 
     """
-    ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z = compute_AOs_jax_auto_grad(
-        aos_data, r_carts
-    )
+    ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z = compute_AOs_grad_jax(aos_data, r_carts)
 
     if ao_matrix_grad_x.shape != (aos_data.num_ao, len(r_carts)):
         logger.error(
@@ -529,7 +527,7 @@ def compute_AOs_grad_api(
 
 
 @jit
-def compute_AOs_jax_auto_grad(
+def compute_AOs_grad_jax(
     aos_data: AOs_data, r_carts: jnpt.ArrayLike
 ) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Compute Cartesian Gradients of AOs.
@@ -579,7 +577,7 @@ def compute_AOs_jax_auto_grad(
 
 
 @jit
-def compute_AOs_jax_auto_grad_old(
+def compute_AOs_grad_jax_old(
     aos_data: AOs_data,
     r_carts: jnpt.ArrayLike,
 ) -> tuple[jax.Array, jax.Array, jax.Array]:

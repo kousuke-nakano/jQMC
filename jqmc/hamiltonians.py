@@ -84,9 +84,9 @@ class Hamiltonian_data:
 
     """
 
-    structure_data: Structure_data = None
-    coulomb_potential_data: Coulomb_potential_data = None
-    wavefunction_data: Wavefunction_data = None
+    structure_data: Structure_data = struct.field(pytree_node=True)
+    coulomb_potential_data: Coulomb_potential_data = struct.field(pytree_node=True)
+    wavefunction_data: Wavefunction_data = struct.field(pytree_node=True)
 
     def __post_init__(self) -> None:
         pass

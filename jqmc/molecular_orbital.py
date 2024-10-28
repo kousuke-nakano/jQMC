@@ -55,8 +55,9 @@ from .atomic_orbital import (
     AOs_data,
     compute_AO,
     compute_AOs_api,
-    compute_AOs_grad_api,
-    compute_AOs_laplacian_api,
+    compute_AOs_grad_jax,
+    compute_AOs_jax,
+    compute_AOs_laplacian_jax,
 )
 
 # set logger
@@ -78,7 +79,7 @@ class MOs_data:
     """
 
     num_mo: int = struct.field(pytree_node=False)
-    mo_coefficients: npt.NDArray[np.float64 | np.complex128] = struct.field(pytree_node=False)
+    mo_coefficients: npt.NDArray[np.float64] = struct.field(pytree_node=True)
     aos_data: AOs_data = struct.field(pytree_node=True)
 
     def __post_init__(self) -> None:
@@ -153,11 +154,11 @@ def compute_MOs_laplacian_debug(mos_data: MOs_data, r_carts: npt.NDArray[np.floa
     return mo_matrix_laplacian
 
 
-@jit
+# @jit
 def compute_MOs_laplacian_jax(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]):
     mo_matrix_laplacian = jnp.dot(
         mos_data.mo_coefficients,
-        compute_AOs_laplacian_api(mos_data.aos_data, r_carts),
+        compute_AOs_laplacian_jax(mos_data.aos_data, r_carts),
     )
 
     return mo_matrix_laplacian
@@ -247,7 +248,7 @@ def compute_MOs_grad_jax(
     mos_data: MOs_data,
     r_carts: npt.NDArray[np.float64],
 ):
-    mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z = compute_AOs_grad_api(
+    mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z = compute_AOs_grad_jax(
         mos_data.aos_data, r_carts
     )
     mo_matrix_grad_x = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_x)
@@ -284,26 +285,29 @@ def compute_MOs_api(
 def compute_MOs_debug(
     mos_data: MOs_data, r_carts: npt.NDArray[np.float64]
 ) -> npt.NDArray[np.float64]:
-    return np.dot(
+    answer = np.dot(
         mos_data.mo_coefficients,
         compute_AOs_api(aos_data=mos_data.aos_data, r_carts=r_carts),
     )
+    return answer
 
 
 # it cannot be jitted!? because _api methods
 # in which crude if statements are included.
 # but why? other _api can be jitted...
-# to be solved
-# @jit
+# There is a related issue on github.
+# ValueError when re-compiling function with a multi-dimensional array as a static field #24204
+# For the time being, we can unjit it to avoid errors in unit_test.py
+# This error is tied with the choice of pytree=True/False flag
+@jit
 def compute_MOs_jax(
     mos_data: MOs_data, r_carts: npt.NDArray[np.float64]
 ) -> npt.NDArray[np.float64]:
-    return jnp.dot(
+    answer = jnp.dot(
         mos_data.mo_coefficients,
-        compute_AOs_api(aos_data=mos_data.aos_data, r_carts=r_carts),
-        # why doesn't this _api  work? to do ...
-        # compute_AOs_jax(aos_data=mos_data.aos_data, r_carts=r_carts),
+        compute_AOs_jax(aos_data=mos_data.aos_data, r_carts=r_carts),
     )
+    return answer
 
 
 @dataclass
@@ -346,6 +350,10 @@ def compute_MO(mo_data: MO_data, r_cart: list[float]) -> float:
 
 
 if __name__ == "__main__":
+    import os
+
+    from .trexio_wrapper import read_trexio_file
+
     log = getLogger("jqmc")
     log.setLevel("DEBUG")
     stream_handler = StreamHandler()
@@ -355,3 +363,79 @@ if __name__ == "__main__":
     log.addHandler(stream_handler)
 
     logger.debug("test")
+
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_trexio.hdf5")
+    )
+
+    num_electron_up = geminal_mo_data.num_electron_up
+    num_electron_dn = geminal_mo_data.num_electron_dn
+
+    # Initialization
+    r_up_carts = []
+    r_dn_carts = []
+
+    total_electrons = 0
+
+    if coulomb_potential_data.ecp_flag:
+        charges = np.array(structure_data.atomic_numbers) - np.array(coulomb_potential_data.z_cores)
+    else:
+        charges = np.array(structure_data.atomic_numbers)
+
+    coords = structure_data.positions_cart
+
+    # Place electrons around each nucleus
+    for i in range(len(coords)):
+        charge = charges[i]
+        num_electrons = int(np.round(charge))  # Number of electrons to place based on the charge
+
+        # Retrieve the position coordinates
+        x, y, z = coords[i]
+
+        # Place electrons
+        for _ in range(num_electrons):
+            # Calculate distance range
+            distance = np.random.uniform(1.0 / charge, 2.0 / charge)
+            theta = np.random.uniform(0, np.pi)
+            phi = np.random.uniform(0, 2 * np.pi)
+
+            # Convert spherical to Cartesian coordinates
+            dx = distance * np.sin(theta) * np.cos(phi)
+            dy = distance * np.sin(theta) * np.sin(phi)
+            dz = distance * np.cos(theta)
+
+            # Position of the electron
+            electron_position = np.array([x + dx, y + dy, z + dz])
+
+            # Assign spin
+            if len(r_up_carts) < num_electron_up:
+                r_up_carts.append(electron_position)
+            else:
+                r_dn_carts.append(electron_position)
+
+        total_electrons += num_electrons
+
+    # Handle surplus electrons
+    remaining_up = num_electron_up - len(r_up_carts)
+    remaining_dn = num_electron_dn - len(r_dn_carts)
+
+    # Randomly place any remaining electrons
+    for _ in range(remaining_up):
+        r_up_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
+    for _ in range(remaining_dn):
+        r_dn_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
+
+    r_up_carts = np.array(r_up_carts)
+    r_dn_carts = np.array(r_dn_carts)
+
+    mos_up_debug = compute_MOs_debug(mos_data=mos_data_up, r_carts=r_up_carts)
+    mos_up_jax = compute_MOs_jax(mos_data=mos_data_up, r_carts=r_up_carts)
+
+    print(mos_up_debug - mos_up_jax)

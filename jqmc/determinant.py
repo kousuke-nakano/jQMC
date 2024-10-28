@@ -90,11 +90,11 @@ class Geminal_data:
             (num_electron_up - num_electron_dn)].
     """
 
-    num_electron_up: int = struct.field(pytree_node=False, default=0)
-    num_electron_dn: int = struct.field(pytree_node=False, default=0)
-    orb_data_up_spin: AOs_data | MOs_data = struct.field(pytree_node=True, default=None)
-    orb_data_dn_spin: AOs_data | MOs_data = struct.field(pytree_node=True, default=None)
-    lambda_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=False, default=None)
+    num_electron_up: int = struct.field(pytree_node=False)
+    num_electron_dn: int = struct.field(pytree_node=False)
+    orb_data_up_spin: AOs_data | MOs_data = struct.field(pytree_node=True)
+    orb_data_dn_spin: AOs_data | MOs_data = struct.field(pytree_node=True)
+    lambda_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True)
 
     def __post_init__(self) -> None:
         if self.lambda_matrix.shape != (
@@ -111,26 +111,18 @@ class Geminal_data:
 
     @property
     def orb_num_up(self) -> int:
-        if isinstance(self.orb_data_up_spin, AOs_data) and isinstance(
-            self.orb_data_dn_spin, AOs_data
-        ):
+        if isinstance(self.orb_data_up_spin, AOs_data):
             return self.orb_data_up_spin.num_ao
-        elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(
-            self.orb_data_dn_spin, MOs_data
-        ):
+        elif isinstance(self.orb_data_up_spin, MOs_data):
             return self.orb_data_up_spin.num_mo
         else:
             raise NotImplementedError
 
     @property
     def orb_num_dn(self) -> int:
-        if isinstance(self.orb_data_up_spin, AOs_data) and isinstance(
-            self.orb_data_dn_spin, AOs_data
-        ):
+        if isinstance(self.orb_data_dn_spin, AOs_data):
             return self.orb_data_dn_spin.num_ao
-        elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(
-            self.orb_data_dn_spin, MOs_data
-        ):
+        elif isinstance(self.orb_data_dn_spin, MOs_data):
             return self.orb_data_dn_spin.num_mo
         else:
             raise NotImplementedError
@@ -295,8 +287,11 @@ def compute_geminal_all_elements_debug(
 # it cannot be jitted!? because _api methods
 # in which crude if statements are included ??
 # but why? other _api can be jitted...
-# to be solved
-# @jit
+# There is a related issue on github.
+# ValueError when re-compiling function with a multi-dimensional array as a static field #24204
+# For the time being, we can unjit it to avoid errors in unit_test.py
+# This error is tied with the choice of pytree=True/False flag
+@jit
 def compute_geminal_all_elements_jax(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
