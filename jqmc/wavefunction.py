@@ -129,14 +129,12 @@ def evaluate_wavefunction_api(
         jastrow_data=wavefunction_data.jastrow_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
-        debug_flag=False,
     )
 
     Determinant_part = compute_det_geminal_all_elements_api(
         geminal_data=wavefunction_data.geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
-        debug_flag=False,
     )
 
     return jnp.exp(Jastrow_part) * Determinant_part
@@ -163,14 +161,12 @@ def compute_kinetic_energy_api(
         jastrow_data=wavefunction_data.jastrow_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
-        debug_flag=False,
     )
 
     grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = compute_grads_and_laplacian_ln_Det_api(
         geminal_data=wavefunction_data.geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
-        debug_flag=False,
     )
 
     # compute kinetic energy

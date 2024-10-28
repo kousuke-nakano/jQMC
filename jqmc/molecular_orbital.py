@@ -90,7 +90,7 @@ class MOs_data:
 
 
 def compute_MOs_laplacian_api(
-    mos_data: MOs_data, r_carts: npt.NDArray[np.float64], debug_flag: bool = False
+    mos_data: MOs_data, r_carts: npt.NDArray[np.float64]
 ) -> npt.NDArray[np.float64]:
     """
     The method is for computing the laplacians of the given molecular orbital at r_carts
@@ -214,26 +214,26 @@ def compute_MOs_grad_debug(
     # grad x
     diff_p_x_r_carts = r_carts.copy()
     diff_p_x_r_carts[:, 0] += diff_h
-    mo_matrix_diff_p_x = compute_MOs_api(mos_data, diff_p_x_r_carts, debug_flag=True)
+    mo_matrix_diff_p_x = compute_MOs_api(mos_data, diff_p_x_r_carts)
     diff_m_x_r_carts = r_carts.copy()
     diff_m_x_r_carts[:, 0] -= diff_h
-    mo_matrix_diff_m_x = compute_MOs_api(mos_data, diff_m_x_r_carts, debug_flag=True)
+    mo_matrix_diff_m_x = compute_MOs_api(mos_data, diff_m_x_r_carts)
 
     # grad y
     diff_p_y_r_carts = r_carts.copy()
     diff_p_y_r_carts[:, 1] += diff_h
-    mo_matrix_diff_p_y = compute_MOs_api(mos_data, diff_p_y_r_carts, debug_flag=True)
+    mo_matrix_diff_p_y = compute_MOs_api(mos_data, diff_p_y_r_carts)
     diff_m_y_r_carts = r_carts.copy()
     diff_m_y_r_carts[:, 1] -= diff_h
-    mo_matrix_diff_m_y = compute_MOs_api(mos_data, diff_m_y_r_carts, debug_flag=True)
+    mo_matrix_diff_m_y = compute_MOs_api(mos_data, diff_m_y_r_carts)
 
     # grad z
     diff_p_z_r_carts = r_carts.copy()
     diff_p_z_r_carts[:, 2] += diff_h
-    mo_matrix_diff_p_z = compute_MOs_api(mos_data, diff_p_z_r_carts, debug_flag=True)
+    mo_matrix_diff_p_z = compute_MOs_api(mos_data, diff_p_z_r_carts)
     diff_m_z_r_carts = r_carts.copy()
     diff_m_z_r_carts[:, 2] -= diff_h
-    mo_matrix_diff_m_z = compute_MOs_api(mos_data, diff_m_z_r_carts, debug_flag=True)
+    mo_matrix_diff_m_z = compute_MOs_api(mos_data, diff_m_z_r_carts)
 
     mo_matrix_grad_x = (mo_matrix_diff_p_x - mo_matrix_diff_m_x) / (2.0 * diff_h)
     mo_matrix_grad_y = (mo_matrix_diff_p_y - mo_matrix_diff_m_y) / (2.0 * diff_h)
@@ -258,7 +258,7 @@ def compute_MOs_grad_jax(
 
 
 def compute_MOs_api(
-    mos_data: MOs_data, r_carts: npt.NDArray[np.float64], debug_flag: bool = False
+    mos_data: MOs_data, r_carts: npt.NDArray[np.float64]
 ) -> npt.NDArray[np.float64]:
     """
     The class contains information for computing molecular orbitals at r_carts simlunateously.
@@ -270,7 +270,6 @@ def compute_MOs_api(
     Returns:
         Arrays containing values of the MOs at r_carts. (dim: num_mo, N_e)
     """
-    # jprint(f"MOs:debug_flag={debug_flag}, type={type(debug_flag)}")
     answer = compute_MOs_jax(mos_data, r_carts)
 
     if answer.shape != (mos_data.num_mo, len(r_carts)):

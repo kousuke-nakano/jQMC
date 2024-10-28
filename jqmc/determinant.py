@@ -179,33 +179,48 @@ def compute_det_geminal_all_elements_api(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
-    debug_flag: bool = False,
 ) -> np.float64 | np.complex128:
-    if debug_flag:
-        return np.linalg.det(
-            compute_geminal_all_elements_api(
-                geminal_data=geminal_data,
-                r_up_carts=r_up_carts,
-                r_dn_carts=r_dn_carts,
-                debug_flag=True,
-            )
+    return jnp.linalg.det(
+        compute_geminal_all_elements_api(
+            geminal_data=geminal_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
         )
-    else:
-        return jnp.linalg.det(
-            compute_geminal_all_elements_api(
-                geminal_data=geminal_data,
-                r_up_carts=r_up_carts,
-                r_dn_carts=r_dn_carts,
-                debug_flag=False,
-            )
+    )
+
+
+def compute_det_geminal_all_elements_jax(
+    geminal_data: Geminal_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+) -> np.float64 | np.complex128:
+    return jnp.linalg.det(
+        compute_geminal_all_elements_jax(
+            geminal_data=geminal_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
         )
+    )
+
+
+def compute_det_geminal_all_elements_debug(
+    geminal_data: Geminal_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+) -> np.float64 | np.complex128:
+    return np.linalg.det(
+        compute_geminal_all_elements_debug(
+            geminal_data=geminal_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+        )
+    )
 
 
 def compute_geminal_all_elements_api(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
-    debug_flag: bool = False,
 ) -> npt.NDArray[np.float64 | np.complex128]:
     """
     The method is for computing geminal matrix elements with the given atomic/molecular orbitals at (r_up_carts, r_dn_carts).
@@ -245,10 +260,8 @@ def compute_geminal_all_elements_api(
 
     # jprint(f"geminal:debug_flag={debug_flag}, type={type(debug_flag)}")
 
-    if debug_flag:
-        geminal = compute_geminal_all_elements_debug(geminal_data, r_up_carts, r_dn_carts)
-    else:
-        geminal = compute_geminal_all_elements_jax(geminal_data, r_up_carts, r_dn_carts)
+    # geminal = compute_geminal_all_elements_debug(geminal_data, r_up_carts, r_dn_carts)
+    geminal = compute_geminal_all_elements_jax(geminal_data, r_up_carts, r_dn_carts)
 
     if geminal.shape != (len(r_up_carts), len(r_up_carts)):
         logger.error(
@@ -268,12 +281,8 @@ def compute_geminal_all_elements_debug(
         geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
     )
 
-    orb_matrix_up = geminal_data.compute_orb_api(
-        geminal_data.orb_data_up_spin, r_up_carts, debug_flag=False
-    )
-    orb_matrix_dn = geminal_data.compute_orb_api(
-        geminal_data.orb_data_dn_spin, r_dn_carts, debug_flag=False
-    )
+    orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
+    orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts)
 
     # compute geminal values
     geminal_paired = np.dot(orb_matrix_up.T, np.dot(lambda_matrix_paired, orb_matrix_dn))
@@ -312,7 +321,6 @@ def compute_grads_and_laplacian_ln_Det_api(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
-    debug_flag: bool = False,
 ) -> tuple[
     npt.NDArray[np.float64 | np.complex128],
     npt.NDArray[np.float64 | np.complex128],
@@ -325,7 +333,6 @@ def compute_grads_and_laplacian_ln_Det_api(
         geminal_data (Geminal_data): an instance of Geminal_data class
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
-        debug_flag: if True, numerical derivatives are computed for debuging purpose
     Returns:
         the gradients(x,y,z) of ln Det and the sum of laplacians of ln Det at (r_up_carts, r_dn_carts).
     """
@@ -352,14 +359,12 @@ def compute_grads_and_laplacian_ln_Det_api(
     else:
         logger.debug("There is no unpaired electrons.")
 
-    if debug_flag:
-        grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = compute_grads_and_laplacian_ln_Det_debug(
-            geminal_data, r_up_carts, r_dn_carts
-        )
-    else:
-        grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = compute_grads_and_laplacian_ln_Det_jax(
-            geminal_data, r_up_carts, r_dn_carts
-        )
+    # grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = compute_grads_and_laplacian_ln_Det_debug(
+    #    geminal_data, r_up_carts, r_dn_carts
+    # )
+    grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = compute_grads_and_laplacian_ln_Det_jax(
+        geminal_data, r_up_carts, r_dn_carts
+    )
 
     if grad_ln_D_up.shape != (geminal_data.num_electron_up, 3):
         logger.error(
