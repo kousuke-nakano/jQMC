@@ -83,6 +83,8 @@ class MCMC:
         init_r_dn_carts: npt.NDArray[np.float64] = None,
         mcmc_seed: int = 34467,
         Dt: float = 2.0,
+        comput_jas_2b_param_deriv: bool = False,
+        comput_position_deriv: bool = False,
     ) -> None:
         """Init.
 
@@ -92,6 +94,9 @@ class MCMC:
         self.__hamiltonian_data = hamiltonian_data
         self.__mcmc_seed = mcmc_seed
         self.__Dt = Dt
+
+        self.__comput_jas_2b_param_deriv = comput_jas_2b_param_deriv
+        self.__comput_position_deriv = comput_position_deriv
 
         # set random seeds
         random.seed(self.__mcmc_seed)
@@ -108,11 +113,10 @@ class MCMC:
         self.__stored_r_up_carts = None
         self.__stored_r_dn_carts = None
 
-        # SWCT data
-        self.__swct_data = SWCT_data(structure=self.__hamiltonian_data.structure_data)
-
         # stored local energy (e_L)
         self.__stored_e_L = []
+
+        self.__swct_data = SWCT_data(structure=self.__hamiltonian_data.structure_data)
 
         # stored de_L / dR
         self.__stored_grad_e_L_dR = []
@@ -147,6 +151,12 @@ class MCMC:
         # stored sum_i d omega/d r_i for dn spins (SWCT)
         self.__stored_grad_omega_r_dn = []
 
+        # stored dln_Psi / dr_up
+        self.__stored_grad_ln_Psi_r_up = []
+
+        # stored dln_Psi / dc_jas2b
+        self.__stored_grad_ln_Psi_jas2b = []
+
         # """
         # compiling methods
         # jax.profiler.start_trace("/tmp/tensorboard")
@@ -163,28 +173,38 @@ class MCMC:
         )
         logger.info("  Compilation e_L is done.")
 
-        logger.info("  Compilation de_L starts.")
-        _, _, _ = grad(compute_local_energy, argnums=(0, 1, 2))(
-            self.__hamiltonian_data,
-            self.__latest_r_up_carts,
-            self.__latest_r_dn_carts,
-        )
-        logger.info("  Compilation de_L is done.")
+        if self.__comput_position_deriv:
+            logger.info("  Compilation de_L starts.")
+            _, _, _ = grad(compute_local_energy, argnums=(0, 1, 2))(
+                self.__hamiltonian_data,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+            )
+            logger.info("  Compilation de_L is done.")
 
-        logger.info("  Compilation dln_Psi starts.")
-        _, _, _ = grad(evaluate_ln_wavefunction_api, argnums=(0, 1, 2))(
-            self.__hamiltonian_data.wavefunction_data,
-            self.__latest_r_up_carts,
-            self.__latest_r_dn_carts,
-        )
-        logger.info("  Compilation dln_Psi is done.")
+            logger.info("  Compilation dln_Psi starts.")
+            _, _, _ = grad(evaluate_ln_wavefunction_api, argnums=(0, 1, 2))(
+                self.__hamiltonian_data.wavefunction_data,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+            )
+            logger.info("  Compilation dln_Psi is done.")
 
-        logger.info("  Compilation domega starts.")
-        _ = evaluate_swct_domega_api(
-            self.__swct_data,
-            self.__latest_r_up_carts,
-        )
-        logger.info("  Compilation domega is done.")
+            logger.info("  Compilation domega starts.")
+            _ = evaluate_swct_domega_api(
+                self.__swct_data,
+                self.__latest_r_up_carts,
+            )
+            logger.info("  Compilation domega is done.")
+
+        if self.__comput_jas_2b_param_deriv:
+            logger.info("  Compilation dln_Psi starts.")
+            _ = grad(evaluate_ln_wavefunction_api, argnums=(0))(
+                self.__hamiltonian_data.wavefunction_data,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+            )
+            logger.info("  Compilation dln_Psi is done.")
 
         logger.info("Compilation is done.")
 
@@ -330,102 +350,115 @@ class MCMC:
             logger.info(f"e_L = {e_L}")
             self.__stored_e_L.append(e_L)
 
-            # """
-            grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = grad(
-                compute_local_energy, argnums=(0, 1, 2)
-            )(
-                self.__hamiltonian_data,
-                self.__latest_r_up_carts,
-                self.__latest_r_dn_carts,
-            )
-            self.__stored_grad_e_L_r_up.append(grad_e_L_r_up)
-            self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn)
+            if self.__comput_position_deriv:
+                # """
+                grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = grad(
+                    compute_local_energy, argnums=(0, 1, 2)
+                )(
+                    self.__hamiltonian_data,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                )
+                self.__stored_grad_e_L_r_up.append(grad_e_L_r_up)
+                self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn)
 
-            grad_e_L_R = (
-                grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.aos_data.structure_data.positions
-                + grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions
-                + grad_e_L_h.coulomb_potential_data.structure_data.positions
-            )
-            self.__stored_grad_e_L_dR.append(grad_e_L_R)
-            # """
+                grad_e_L_R = (
+                    grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.aos_data.structure_data.positions
+                    + grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions
+                    + grad_e_L_h.coulomb_potential_data.structure_data.positions
+                )
+                self.__stored_grad_e_L_dR.append(grad_e_L_R)
+                # """
 
-            # """
-            logger.debug(
-                f"de_L_dR(AOs_data_up) = {grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.aos_data.structure_data.positions}"
-            )
-            logger.debug(
-                f"de_L_dR(AOs_data_dn) = {grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions}"
-            )
-            logger.debug(
-                f"de_L_dR(coulomb_potential_data) = {grad_e_L_h.coulomb_potential_data.structure_data.positions}"
-            )
-            logger.info(f"de_L_dR = {grad_e_L_R}")
-            logger.info(f"de_L_dr_up = {grad_e_L_r_up}")
-            logger.info(f"de_L_dr_dn= {grad_e_L_r_dn}")
-            # """
+                # """ to be added Jastrow!!
+                logger.debug(
+                    f"de_L_dR(AOs_data_up) = {grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.aos_data.structure_data.positions}"
+                )
+                logger.debug(
+                    f"de_L_dR(AOs_data_dn) = {grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions}"
+                )
+                logger.debug(
+                    f"de_L_dR(coulomb_potential_data) = {grad_e_L_h.coulomb_potential_data.structure_data.positions}"
+                )
+                logger.info(f"de_L_dR = {grad_e_L_R}")
+                logger.info(f"de_L_dr_up = {grad_e_L_r_up}")
+                logger.info(f"de_L_dr_dn= {grad_e_L_r_dn}")
+                # """
 
-            ln_Psi = evaluate_ln_wavefunction_api(
-                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                r_up_carts=self.__latest_r_up_carts,
-                r_dn_carts=self.__latest_r_dn_carts,
-            )
-            logger.info(f"ln_Psi = {ln_Psi}")
-            self.__stored_ln_Psi.append(ln_Psi)
+                ln_Psi = evaluate_ln_wavefunction_api(
+                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                    r_up_carts=self.__latest_r_up_carts,
+                    r_dn_carts=self.__latest_r_dn_carts,
+                )
+                logger.info(f"ln_Psi = {ln_Psi}")
+                self.__stored_ln_Psi.append(ln_Psi)
 
-            # """
-            grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = grad(
-                evaluate_ln_wavefunction_api, argnums=(0, 1, 2)
-            )(
-                self.__hamiltonian_data.wavefunction_data,
-                self.__latest_r_up_carts,
-                self.__latest_r_dn_carts,
-            )
-            logger.info(f"dln_Psi_dr_up = {grad_ln_Psi_r_up}")
-            logger.info(f"dln_Psi_dr_dn = {grad_ln_Psi_r_dn}")
-            self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up)
-            self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn)
+                # """
+                grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = grad(
+                    evaluate_ln_wavefunction_api, argnums=(0, 1, 2)
+                )(
+                    self.__hamiltonian_data.wavefunction_data,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                )
+                logger.info(f"dln_Psi_dr_up = {grad_ln_Psi_r_up}")
+                logger.info(f"dln_Psi_dr_dn = {grad_ln_Psi_r_dn}")
+                self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up)
+                self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn)
 
-            grad_ln_Psi_dR = (
-                grad_ln_Psi_h.geminal_data.orb_data_up_spin.aos_data.structure_data.positions
-                + grad_ln_Psi_h.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions
-            )
+                grad_ln_Psi_dR = (
+                    grad_ln_Psi_h.geminal_data.orb_data_up_spin.aos_data.structure_data.positions
+                    + grad_ln_Psi_h.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions
+                )
 
-            # stored dln_Psi / dR
-            logger.info(f"dln_Psi_dR = {grad_ln_Psi_dR}")
-            self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
-            # """
+                # stored dln_Psi / dR
+                logger.info(f"dln_Psi_dR = {grad_ln_Psi_dR}")
+                self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
+                # """
 
-            omega_up = evaluate_swct_omega_api(
-                swct_data=self.__swct_data,
-                r_carts=self.__latest_r_up_carts,
-            )
+                omega_up = evaluate_swct_omega_api(
+                    swct_data=self.__swct_data,
+                    r_carts=self.__latest_r_up_carts,
+                )
 
-            omega_dn = evaluate_swct_omega_api(
-                swct_data=self.__swct_data,
-                r_carts=self.__latest_r_dn_carts,
-            )
+                omega_dn = evaluate_swct_omega_api(
+                    swct_data=self.__swct_data,
+                    r_carts=self.__latest_r_dn_carts,
+                )
 
-            logger.info(f"omega_up = {omega_up}")
-            logger.info(f"omega_dn = {omega_dn}")
+                logger.info(f"omega_up = {omega_up}")
+                logger.info(f"omega_dn = {omega_dn}")
 
-            self.__stored_omega_up.append(omega_up)
-            self.__stored_omega_dn.append(omega_dn)
+                self.__stored_omega_up.append(omega_up)
+                self.__stored_omega_dn.append(omega_dn)
 
-            grad_omega_dr_up = evaluate_swct_domega_api(
-                self.__swct_data,
-                self.__latest_r_up_carts,
-            )
+                grad_omega_dr_up = evaluate_swct_domega_api(
+                    self.__swct_data,
+                    self.__latest_r_up_carts,
+                )
 
-            grad_omega_dr_dn = evaluate_swct_domega_api(
-                self.__swct_data,
-                self.__latest_r_dn_carts,
-            )
+                grad_omega_dr_dn = evaluate_swct_domega_api(
+                    self.__swct_data,
+                    self.__latest_r_dn_carts,
+                )
 
-            logger.info(f"grad_omega_dr_up = {grad_omega_dr_up}")
-            logger.info(f"grad_omega_dr_dn = {grad_omega_dr_dn}")
+                logger.info(f"grad_omega_dr_up = {grad_omega_dr_up}")
+                logger.info(f"grad_omega_dr_dn = {grad_omega_dr_dn}")
 
-            self.__stored_grad_omega_r_up.append(grad_omega_dr_up)
-            self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn)
+                self.__stored_grad_omega_r_up.append(grad_omega_dr_up)
+                self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn)
+
+            if self.__comput_jas_2b_param_deriv:
+                grad_ln_Psi_h = grad(evaluate_ln_wavefunction_api, argnums=(0))(
+                    self.__hamiltonian_data.wavefunction_data,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                )
+                grad_ln_Psi_jas2b = (
+                    grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
+                )
+                logger.info(f"grad_ln_Psi_jas2b = {grad_ln_Psi_jas2b}")
+                self.__stored_grad_ln_Psi_jas2b.append(grad_ln_Psi_jas2b)
 
         self.__mcmc_counter += num_mcmc_steps
         logger.info(f"acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
@@ -474,6 +507,14 @@ class MCMC:
     def domega_dr_dn(self):
         return self.__stored_grad_omega_r_dn
 
+    @property
+    def latest_r_up_carts(self):
+        return self.__latest_r_up_carts
+
+    @property
+    def latest_r_dn_carts(self):
+        return self.__latest_r_dn_carts
+
 
 class VMC:
     """VMC class.
@@ -495,31 +536,34 @@ class VMC:
         mcmc_seed: int = 34467,
         num_mcmc_warmup_steps: int = 50,
         num_mcmc_bin_blocks: int = 10,
-        Dt: float = 2.0,
+        Dt_init: float = 2.0,
+        comput_jas_2b_param_deriv=False,
+        comput_position_deriv=False,
     ) -> None:
-        self.comm = MPI.COMM_WORLD
-        self.rank = self.comm.Get_rank()
+        self.__comm = MPI.COMM_WORLD
+        self.__rank = self.__comm.Get_rank()
 
         log = getLogger("jqmc")
         log.setLevel("INFO")
         stream_handler = StreamHandler()
         stream_handler.setLevel("INFO")
         handler_format = Formatter(
-            f"MPI-rank={self.rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s"
+            f"MPI-rank={self.__rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s"
         )
         stream_handler.setFormatter(handler_format)
         log.addHandler(stream_handler)
 
-        self.mpi_seed = mcmc_seed * (self.rank + 1)
-
-        logger.info(f"mcmc_seed for MPI-rank={self.rank} is {self.mpi_seed}.")
-
-        # set random seeds
-        random.seed(self.mpi_seed)
-        np.random.seed(self.mpi_seed)
-
+        self.__mpi_seed = mcmc_seed * (self.__rank + 1)
         self.__num_mcmc_warmup_steps = num_mcmc_warmup_steps
         self.__num_mcmc_bin_blocks = num_mcmc_bin_blocks
+        self.__comput_jas_2b_param_deriv = comput_jas_2b_param_deriv
+        self.__comput_position_deriv = comput_position_deriv
+
+        logger.info(f"mcmc_seed for MPI-rank={self.__rank} is {self.__mpi_seed}.")
+
+        # set random seeds
+        random.seed(self.__mpi_seed)
+        np.random.seed(self.__mpi_seed)
 
         # set the initial electron configurations
         num_electron_up = hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
@@ -593,12 +637,14 @@ class VMC:
             hamiltonian_data=hamiltonian_data,
             init_r_up_carts=init_r_up_carts,
             init_r_dn_carts=init_r_dn_carts,
-            mcmc_seed=self.mpi_seed,
-            Dt=Dt,
+            mcmc_seed=self.__mpi_seed,
+            Dt=Dt_init,
+            comput_jas_2b_param_deriv=self.__comput_jas_2b_param_deriv,
+            comput_position_deriv=self.__comput_position_deriv,
         )
 
     def run(self, num_mcmc_steps=0):
-        if self.rank == 0:
+        if self.__rank == 0:
             logger.info(f"num_mcmc_warmup_steps={self.__num_mcmc_warmup_steps}.")
             logger.info(f"num_mcmc_bin_blocks={self.__num_mcmc_bin_blocks}.")
 
@@ -611,11 +657,11 @@ class VMC:
         e_L_split = np.array_split(e_L, self.__num_mcmc_bin_blocks)
         e_L_binned = [np.average(e_list) for e_list in e_L_split]
 
-        logger.debug(f"e_L_binned for MPI-rank={self.rank} is {e_L_binned}.")
+        logger.debug(f"e_L_binned for MPI-rank={self.__rank} is {e_L_binned}.")
 
-        e_L_binned = self.comm.reduce(e_L_binned, op=MPI.SUM, root=0)
+        e_L_binned = self.__comm.reduce(e_L_binned, op=MPI.SUM, root=0)
 
-        if self.rank == 0:
+        if self.__rank == 0:
             logger.debug(f"e_L_binned = {e_L_binned}.")
             # jackknife implementation
             # https://www2.yukawa.kyoto-u.ac.jp/~etsuko.itou/old-HP/Notes/Jackknife-method.pdf
@@ -633,122 +679,128 @@ class VMC:
             e_L_mean = 0.0
             e_L_std = 0.0
 
-        e_L_mean = self.comm.bcast(e_L_mean, root=0)
-        e_L_std = self.comm.bcast(e_L_std, root=0)
+        e_L_mean = self.__comm.bcast(e_L_mean, root=0)
+        e_L_std = self.__comm.bcast(e_L_std, root=0)
 
         return (e_L_mean, e_L_std)
 
     def get_atomic_forces(self):
-        # analysis VMC
-        e_L_mean, _ = self.get_e_L()
-
-        e_L_list = self.__mcmc.e_L[self.__num_mcmc_warmup_steps :]
-        de_L_dR_list = self.__mcmc.de_L_dR[self.__num_mcmc_warmup_steps :]
-        de_L_dr_up_list = self.__mcmc.de_L_dr_up[self.__num_mcmc_warmup_steps :]
-        de_L_dr_dn_list = self.__mcmc.de_L_dr_dn[self.__num_mcmc_warmup_steps :]
-        dln_Psi_dr_up_list = self.__mcmc.dln_Psi_dr_up[self.__num_mcmc_warmup_steps :]
-        dln_Psi_dr_dn_list = self.__mcmc.dln_Psi_dr_dn[self.__num_mcmc_warmup_steps :]
-        dln_Psi_dR_list = self.__mcmc.dln_Psi_dR[self.__num_mcmc_warmup_steps :]
-        omega_up_list = self.__mcmc.omega_up[self.__num_mcmc_warmup_steps :]
-        omega_dn_list = self.__mcmc.omega_dn[self.__num_mcmc_warmup_steps :]
-        domega_dr_up_list = self.__mcmc.domega_dr_up[self.__num_mcmc_warmup_steps :]
-        domega_dr_dn_list = self.__mcmc.domega_dr_dn[self.__num_mcmc_warmup_steps :]
-
-        force = []
-
-        for (
-            e_L,
-            de_L_dR,
-            de_L_dr_up,
-            de_L_dr_dn,
-            dln_Psi_dr_up,
-            dln_Psi_dr_dn,
-            dln_Psi_dR,
-            omega_up,
-            omega_dn,
-            domega_dr_up,
-            domega_dr_dn,
-        ) in zip(
-            e_L_list,
-            de_L_dR_list,
-            de_L_dr_up_list,
-            de_L_dr_dn_list,
-            dln_Psi_dr_up_list,
-            dln_Psi_dr_dn_list,
-            dln_Psi_dR_list,
-            omega_up_list,
-            omega_dn_list,
-            domega_dr_up_list,
-            domega_dr_dn_list,
-        ):
-            # logger.info(f"e_L.shape = {e_L.shape}")
-            # logger.info(f"de_L_dR.shape = {de_L_dR.shape}")
-            # logger.info(f"de_L_dr_up.shape = {de_L_dr_up.shape}")
-            # logger.info(f"de_L_dr_dn.shape = {de_L_dr_dn.shape}")
-            # logger.info(f"dln_Psi_dr_up.shape = {dln_Psi_dr_up.shape}")
-            # logger.info(f"dln_Psi_dr_dn.shape = {dln_Psi_dr_dn.shape}")
-            # logger.info(f"de_L_dR.shape = {de_L_dR.shape}")
-            # logger.info(f"omega_up.shape = {omega_up.shape}")
-            # logger.info(f"omega_dn.shape = {omega_dn.shape}")
-            # logger.info(f"domega_dr_up.shape = {domega_dr_up.shape}")
-            # logger.info(f"domega_dr_dn.shape = {domega_dr_dn.shape}")
-
-            force.append(
-                -(de_L_dR + omega_up @ de_L_dr_up + omega_dn @ de_L_dr_dn)
-                - 2
-                * (
-                    (e_L - e_L_mean)
-                    * (
-                        dln_Psi_dR
-                        + omega_up @ dln_Psi_dr_up
-                        + omega_dn @ dln_Psi_dr_dn
-                        + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
-                    )
-                )
-            )
-
-        force = np.array(force)
-        logger.info(f"force.shape = {force.shape}")
-
-        force_split = np.array_split(force, self.__num_mcmc_bin_blocks)
-        force_binned = np.array([np.average(force_list, axis=0) for force_list in force_split])
-        logger.info(f"force_binned.shape = {force_binned.shape}")
-
-        logger.info(f"force_binned for MPI-rank={self.rank} is {force_binned}.")
-
-        force_binned = self.comm.reduce(force_binned, op=MPI.SUM, root=0)
-
-        if self.rank == 0:
-            # logger.info(f"force_binned = {force_binned }.")
-            # jackknife implementation
-            # https://www2.yukawa.kyoto-u.ac.jp/~etsuko.itou/old-HP/Notes/Jackknife-method.pdf
-            force_jackknife_binned = np.array(
-                [
-                    np.average(np.delete(force_binned, i, axis=0), axis=0)
-                    for i in range(len(force_binned))
-                ]
-            )
-
-            logger.info(f"force_jackknife_binned.shape = {force_jackknife_binned.shape}.")
-
-            force_mean = np.average(force_jackknife_binned, axis=0)
-            force_std = np.sqrt(len(force_jackknife_binned) - 1) * np.std(
-                force_jackknife_binned, axis=0
-            )
-
-            logger.info(f"force_mean.shape  = {force_mean.shape}.")
-            logger.info(f"force_std.shape  = {force_std.shape}.")
-
-            logger.info(f"force = {force_mean} +- {force_std} Ha.")
-
-        else:
+        if not self.__comput_position_deriv:
             force_mean = np.array([])
             force_std = np.array([])
+            return (force_mean, force_std)
 
-        force_mean = self.comm.bcast(force_mean, root=0)
-        force_std = self.comm.bcast(force_std, root=0)
+        else:
+            # analysis VMC
+            e_L_mean, _ = self.get_e_L()
 
-        return (force_mean, force_std)
+            e_L_list = self.__mcmc.e_L[self.__num_mcmc_warmup_steps :]
+            de_L_dR_list = self.__mcmc.de_L_dR[self.__num_mcmc_warmup_steps :]
+            de_L_dr_up_list = self.__mcmc.de_L_dr_up[self.__num_mcmc_warmup_steps :]
+            de_L_dr_dn_list = self.__mcmc.de_L_dr_dn[self.__num_mcmc_warmup_steps :]
+            dln_Psi_dr_up_list = self.__mcmc.dln_Psi_dr_up[self.__num_mcmc_warmup_steps :]
+            dln_Psi_dr_dn_list = self.__mcmc.dln_Psi_dr_dn[self.__num_mcmc_warmup_steps :]
+            dln_Psi_dR_list = self.__mcmc.dln_Psi_dR[self.__num_mcmc_warmup_steps :]
+            omega_up_list = self.__mcmc.omega_up[self.__num_mcmc_warmup_steps :]
+            omega_dn_list = self.__mcmc.omega_dn[self.__num_mcmc_warmup_steps :]
+            domega_dr_up_list = self.__mcmc.domega_dr_up[self.__num_mcmc_warmup_steps :]
+            domega_dr_dn_list = self.__mcmc.domega_dr_dn[self.__num_mcmc_warmup_steps :]
+
+            force = []
+
+            for (
+                e_L,
+                de_L_dR,
+                de_L_dr_up,
+                de_L_dr_dn,
+                dln_Psi_dr_up,
+                dln_Psi_dr_dn,
+                dln_Psi_dR,
+                omega_up,
+                omega_dn,
+                domega_dr_up,
+                domega_dr_dn,
+            ) in zip(
+                e_L_list,
+                de_L_dR_list,
+                de_L_dr_up_list,
+                de_L_dr_dn_list,
+                dln_Psi_dr_up_list,
+                dln_Psi_dr_dn_list,
+                dln_Psi_dR_list,
+                omega_up_list,
+                omega_dn_list,
+                domega_dr_up_list,
+                domega_dr_dn_list,
+            ):
+                # logger.info(f"e_L.shape = {e_L.shape}")
+                # logger.info(f"de_L_dR.shape = {de_L_dR.shape}")
+                # logger.info(f"de_L_dr_up.shape = {de_L_dr_up.shape}")
+                # logger.info(f"de_L_dr_dn.shape = {de_L_dr_dn.shape}")
+                # logger.info(f"dln_Psi_dr_up.shape = {dln_Psi_dr_up.shape}")
+                # logger.info(f"dln_Psi_dr_dn.shape = {dln_Psi_dr_dn.shape}")
+                # logger.info(f"de_L_dR.shape = {de_L_dR.shape}")
+                # logger.info(f"omega_up.shape = {omega_up.shape}")
+                # logger.info(f"omega_dn.shape = {omega_dn.shape}")
+                # logger.info(f"domega_dr_up.shape = {domega_dr_up.shape}")
+                # logger.info(f"domega_dr_dn.shape = {domega_dr_dn.shape}")
+
+                force.append(
+                    -(de_L_dR + omega_up @ de_L_dr_up + omega_dn @ de_L_dr_dn)
+                    - 2
+                    * (
+                        (e_L - e_L_mean)
+                        * (
+                            dln_Psi_dR
+                            + omega_up @ dln_Psi_dr_up
+                            + omega_dn @ dln_Psi_dr_dn
+                            + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
+                        )
+                    )
+                )
+
+            force = np.array(force)
+            logger.info(f"force.shape = {force.shape}")
+
+            force_split = np.array_split(force, self.__num_mcmc_bin_blocks)
+            force_binned = np.array([np.average(force_list, axis=0) for force_list in force_split])
+            logger.info(f"force_binned.shape = {force_binned.shape}")
+
+            logger.info(f"force_binned for MPI-rank={self.__rank} is {force_binned}.")
+
+            force_binned = self.__comm.reduce(force_binned, op=MPI.SUM, root=0)
+
+            if self.__rank == 0:
+                # logger.info(f"force_binned = {force_binned }.")
+                # jackknife implementation
+                # https://www2.yukawa.kyoto-u.ac.jp/~etsuko.itou/old-HP/Notes/Jackknife-method.pdf
+                force_jackknife_binned = np.array(
+                    [
+                        np.average(np.delete(force_binned, i, axis=0), axis=0)
+                        for i in range(len(force_binned))
+                    ]
+                )
+
+                logger.info(f"force_jackknife_binned.shape = {force_jackknife_binned.shape}.")
+
+                force_mean = np.average(force_jackknife_binned, axis=0)
+                force_std = np.sqrt(len(force_jackknife_binned) - 1) * np.std(
+                    force_jackknife_binned, axis=0
+                )
+
+                logger.info(f"force_mean.shape  = {force_mean.shape}.")
+                logger.info(f"force_std.shape  = {force_std.shape}.")
+
+                logger.info(f"force = {force_mean} +- {force_std} Ha.")
+
+            else:
+                force_mean = np.array([])
+                force_std = np.array([])
+
+            force_mean = self.__comm.bcast(force_mean, root=0)
+            force_std = self.__comm.bcast(force_std, root=0)
+
+            return (force_mean, force_std)
 
 
 if __name__ == "__main__":
@@ -843,6 +895,8 @@ if __name__ == "__main__":
         mcmc_seed=mcmc_seed,
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
+        comput_position_deriv=False,
+        comput_jas_2b_param_deriv=True,
     )
     vmc.run(num_mcmc_steps=100)
     vmc.get_e_L()
