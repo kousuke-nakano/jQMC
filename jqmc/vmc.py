@@ -37,6 +37,7 @@
 # python modules
 import os
 import random
+import time
 from logging import Formatter, StreamHandler, getLogger
 
 # import mpi4jax
@@ -50,7 +51,7 @@ from jax import grad
 from mpi4py import MPI
 
 from .hamiltonians import Hamiltonian_data, compute_local_energy
-from .jastrow_factor import Jastrow_data
+from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
 from .structure import find_nearest_index
 from .swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
 from .trexio_wrapper import read_trexio_file
@@ -84,6 +85,7 @@ class MCMC:
         mcmc_seed: int = 34467,
         Dt: float = 2.0,
         comput_jas_2b_param_deriv: bool = False,
+        comput_jas_1b3b_param_deriv: bool = False,
         comput_position_deriv: bool = False,
     ) -> None:
         """Init.
@@ -96,6 +98,7 @@ class MCMC:
         self.__Dt = Dt
 
         self.__comput_jas_2b_param_deriv = comput_jas_2b_param_deriv
+        self.__comput_jas_1b3b_param_deriv = comput_jas_1b3b_param_deriv
         self.__comput_position_deriv = comput_position_deriv
 
         # set random seeds
@@ -157,6 +160,11 @@ class MCMC:
         # stored dln_Psi / dc_jas2b
         self.__stored_grad_ln_Psi_jas2b = []
 
+        # stored dln_Psi / dc_jas1b3b
+        self.__stored_grad_ln_Psi_jas1b3b_j_matrix_up_up = []
+        self.__stored_grad_ln_Psi_jas1b3b_j_matrix_dn_dn = []
+        self.__stored_grad_ln_Psi_jas1b3b_j_matrix_up_dn = []
+
         # """
         # compiling methods
         # jax.profiler.start_trace("/tmp/tensorboard")
@@ -166,45 +174,60 @@ class MCMC:
         logger.info("Compilation starts.")
 
         logger.info("  Compilation e_L starts.")
+        start = time.perf_counter()
         _ = compute_local_energy(
             hamiltonian_data=self.__hamiltonian_data,
             r_up_carts=self.__latest_r_up_carts,
             r_dn_carts=self.__latest_r_dn_carts,
         )
+        end = time.perf_counter()
         logger.info("  Compilation e_L is done.")
+        logger.info(f"  time={end-start:.2f} sec.")
 
         if self.__comput_position_deriv:
             logger.info("  Compilation de_L starts.")
+            start = time.perf_counter()
             _, _, _ = grad(compute_local_energy, argnums=(0, 1, 2))(
                 self.__hamiltonian_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
+            end = time.perf_counter()
             logger.info("  Compilation de_L is done.")
+            logger.info(f"  time={end-start:.2f} sec.")
 
             logger.info("  Compilation dln_Psi starts.")
+            start = time.perf_counter()
             _, _, _ = grad(evaluate_ln_wavefunction_api, argnums=(0, 1, 2))(
                 self.__hamiltonian_data.wavefunction_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
+            end = time.perf_counter()
             logger.info("  Compilation dln_Psi is done.")
+            logger.info(f"  time={end-start:.2f} sec.")
 
             logger.info("  Compilation domega starts.")
+            start = time.perf_counter()
             _ = evaluate_swct_domega_api(
                 self.__swct_data,
                 self.__latest_r_up_carts,
             )
+            end = time.perf_counter()
             logger.info("  Compilation domega is done.")
+            logger.info(f"  time={end-start:.2f} sec.")
 
-        if self.__comput_jas_2b_param_deriv:
+        if self.__comput_jas_2b_param_deriv or self.__comput_jas_1b3b_param_deriv:
             logger.info("  Compilation dln_Psi starts.")
+            start = time.perf_counter()
             _ = grad(evaluate_ln_wavefunction_api, argnums=(0))(
                 self.__hamiltonian_data.wavefunction_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
+            end = time.perf_counter()
             logger.info("  Compilation dln_Psi is done.")
+            logger.info(f"  time={end-start:.2f} sec.")
 
         logger.info("Compilation is done.")
 
@@ -367,10 +390,15 @@ class MCMC:
                     + grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions
                     + grad_e_L_h.coulomb_potential_data.structure_data.positions
                 )
+
+                if jastrow_data.jastrow_three_body_flag:
+                    grad_e_L_R += grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data_up_spin.structure_data.positions
+                    grad_e_L_R += grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data_dn_spin.structure_data.positions
+
                 self.__stored_grad_e_L_dR.append(grad_e_L_R)
                 # """
 
-                # """ to be added Jastrow!!
+                # """
                 logger.debug(
                     f"de_L_dR(AOs_data_up) = {grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.aos_data.structure_data.positions}"
                 )
@@ -411,6 +439,10 @@ class MCMC:
                     + grad_ln_Psi_h.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions
                 )
 
+                if jastrow_data.jastrow_three_body_flag:
+                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data_up_spin.structure_data.positions
+                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data_dn_spin.structure_data.positions
+
                 # stored dln_Psi / dR
                 logger.info(f"dln_Psi_dR = {grad_ln_Psi_dR}")
                 self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
@@ -448,17 +480,48 @@ class MCMC:
                 self.__stored_grad_omega_r_up.append(grad_omega_dr_up)
                 self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn)
 
-            if self.__comput_jas_2b_param_deriv:
+            if self.__comput_jas_2b_param_deriv or self.__comput_jas_1b3b_param_deriv:
                 grad_ln_Psi_h = grad(evaluate_ln_wavefunction_api, argnums=(0))(
                     self.__hamiltonian_data.wavefunction_data,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
-                grad_ln_Psi_jas2b = (
-                    grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
-                )
-                logger.info(f"grad_ln_Psi_jas2b = {grad_ln_Psi_jas2b}")
-                self.__stored_grad_ln_Psi_jas2b.append(grad_ln_Psi_jas2b)
+
+                if self.__comput_jas_2b_param_deriv:
+                    grad_ln_Psi_jas2b = (
+                        grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
+                    )
+                    logger.info(f"grad_ln_Psi_jas2b = {grad_ln_Psi_jas2b}")
+                    self.__stored_grad_ln_Psi_jas2b.append(grad_ln_Psi_jas2b)
+
+                if self.__comput_jas_1b3b_param_deriv:
+                    grad_ln_Psi_jas1b3b_j_matrix_up_up = (
+                        grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix_up_up
+                    )
+                    logger.info(
+                        f"grad_ln_Psi_jas1b3b_j_matrix_up_up = {grad_ln_Psi_jas1b3b_j_matrix_up_up}"
+                    )
+                    self.__stored_grad_ln_Psi_jas1b3b_j_matrix_up_up.append(
+                        grad_ln_Psi_jas1b3b_j_matrix_up_up
+                    )
+                    grad_ln_Psi_jas1b3b_j_matrix_dn_dn = (
+                        grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix_dn_dn
+                    )
+                    logger.info(
+                        f"grad_ln_Psi_jas1b3b_j_matrix_dn_dn = {grad_ln_Psi_jas1b3b_j_matrix_dn_dn}"
+                    )
+                    self.__stored_grad_ln_Psi_jas1b3b_j_matrix_dn_dn.append(
+                        grad_ln_Psi_jas1b3b_j_matrix_dn_dn
+                    )
+                    grad_ln_Psi_jas1b3b_j_matrix_up_dn = (
+                        grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix_up_dn
+                    )
+                    logger.info(
+                        f"grad_ln_Psi_jas1b3b_j_matrix_up_dn = {grad_ln_Psi_jas1b3b_j_matrix_up_dn}"
+                    )
+                    self.__stored_grad_ln_Psi_jas1b3b_j_matrix_up_dn.append(
+                        grad_ln_Psi_jas1b3b_j_matrix_up_dn
+                    )
 
         self.__mcmc_counter += num_mcmc_steps
         logger.info(f"acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
@@ -538,6 +601,7 @@ class VMC:
         num_mcmc_bin_blocks: int = 10,
         Dt_init: float = 2.0,
         comput_jas_2b_param_deriv=False,
+        comput_jas_1b3b_param_deriv=False,
         comput_position_deriv=False,
     ) -> None:
         self.__comm = MPI.COMM_WORLD
@@ -557,6 +621,7 @@ class VMC:
         self.__num_mcmc_warmup_steps = num_mcmc_warmup_steps
         self.__num_mcmc_bin_blocks = num_mcmc_bin_blocks
         self.__comput_jas_2b_param_deriv = comput_jas_2b_param_deriv
+        self.__comput_jas_1b3b_param_deriv = comput_jas_1b3b_param_deriv
         self.__comput_position_deriv = comput_position_deriv
 
         logger.info(f"mcmc_seed for MPI-rank={self.__rank} is {self.__mpi_seed}.")
@@ -640,6 +705,7 @@ class VMC:
             mcmc_seed=self.__mpi_seed,
             Dt=Dt_init,
             comput_jas_2b_param_deriv=self.__comput_jas_2b_param_deriv,
+            comput_jas_1b3b_param_deriv=self.__comput_jas_1b3b_param_deriv,
             comput_position_deriv=self.__comput_position_deriv,
         )
 
@@ -868,13 +934,18 @@ if __name__ == "__main__":
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "C60_trexio.hdf5"))
     """
 
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
+        orb_data_up_spin=aos_data, orb_data_dn_spin=aos_data
+    )
+
     # define data
     jastrow_data = Jastrow_data(
-        jastrow_two_body_data=None,
-        jastrow_two_body_type="off",
+        jastrow_two_body_data=jastrow_twobody_data,
+        jastrow_two_body_pade_flag=True,
         jastrow_three_body_data=None,
-        jastrow_three_body_type="off",
-    )  # no jastrow for the time-being.
+        jastrow_three_body_flag=False,
+    )
 
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
 
@@ -895,8 +966,9 @@ if __name__ == "__main__":
         mcmc_seed=mcmc_seed,
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
-        comput_position_deriv=False,
-        comput_jas_2b_param_deriv=True,
+        comput_position_deriv=True,
+        comput_jas_2b_param_deriv=False,
+        comput_jas_1b3b_param_deriv=False,
     )
     vmc.run(num_mcmc_steps=100)
     vmc.get_e_L()

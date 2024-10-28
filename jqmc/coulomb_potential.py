@@ -52,9 +52,8 @@ import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import jit, lax
+from jax import jit, lax, vmap
 from jax import typing as jnpt
-from jax import vmap
 from scipy.special import eval_legendre
 
 from .jastrow_factor import Jastrow_data
@@ -1075,9 +1074,9 @@ if __name__ == "__main__":
     # define data
     jastrow_data = Jastrow_data(
         jastrow_two_body_data=None,
-        jastrow_two_body_type="off",
+        jastrow_two_body_pade_flag="off",
         jastrow_three_body_data=None,
-        jastrow_three_body_type="off",
+        jastrow_three_body_flag="off",
     )  # no jastrow for the time-being.
 
     wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)

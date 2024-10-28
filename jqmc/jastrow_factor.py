@@ -73,6 +73,11 @@ class Jastrow_two_body_data:
     def __post_init__(self) -> None:
         pass
 
+    @classmethod
+    def init_jastrow_two_body_data(cls, jastrow_2b_param=1.0):
+        jastrow_two_body_data = cls(jastrow_2b_param=jastrow_2b_param)
+        return jastrow_two_body_data
+
 
 # @dataclass
 @struct.dataclass
@@ -133,6 +138,25 @@ class Jastrow_three_body_data:
     def orb_num_dn(self) -> int:
         return self.orb_data_dn_spin.num_ao
 
+    @classmethod
+    def init_jastrow_three_body_data(cls, orb_data_up_spin: AOs_data, orb_data_dn_spin: AOs_data):
+        j_matrix_up_up = np.zeros((orb_data_up_spin.num_ao, orb_data_up_spin.num_ao + 1))
+        j_matrix_dn_dn = np.zeros((orb_data_dn_spin.num_ao, orb_data_dn_spin.num_ao + 1))
+        j_matrix_up_dn = np.zeros((orb_data_up_spin.num_ao, orb_data_dn_spin.num_ao))
+
+        # j_matrix_up_up = np.random.randn(orb_data_up_spin.num_ao, orb_data_up_spin.num_ao + 1)
+        # j_matrix_dn_dn = np.random.randn(orb_data_dn_spin.num_ao, orb_data_dn_spin.num_ao + 1)
+        # j_matrix_up_dn = np.random.randn(orb_data_up_spin.num_ao, orb_data_dn_spin.num_ao)
+
+        jastrow_three_body_data = cls(
+            orb_data_up_spin=orb_data_up_spin,
+            orb_data_dn_spin=orb_data_dn_spin,
+            j_matrix_up_up=j_matrix_up_up,
+            j_matrix_dn_dn=j_matrix_dn_dn,
+            j_matrix_up_dn=j_matrix_up_dn,
+        )
+        return jastrow_three_body_data
+
 
 # @dataclass
 @struct.dataclass
@@ -145,8 +169,8 @@ class Jastrow_data:
         param_antiparallel_spin (float): parameter for anti-parallel spins
     """
 
-    jastrow_two_body_type: str = struct.field(pytree_node=False)  # off, on
-    jastrow_three_body_type: str = struct.field(pytree_node=False)  # off, on
+    jastrow_two_body_pade_flag: bool = struct.field(pytree_node=False)
+    jastrow_three_body_flag: bool = struct.field(pytree_node=False)
     jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=True)
     jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=True)
 
@@ -159,29 +183,24 @@ def compute_Jastrow_part_api(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ):
-    # two-body
-    if jastrow_data.jastrow_two_body_type == "off":
-        J2 = 0.0
-    elif jastrow_data.jastrow_two_body_type == "on":
-        J2 = compute_Jastrow_two_body_api(
+    J2 = 0.0
+    J3 = 0.0
+
+    # two-body (pade)
+    if jastrow_data.jastrow_two_body_pade_flag:
+        J2 += compute_Jastrow_two_body_api(
             jastrow_data.jastrow_two_body_data,
             r_up_carts,
             r_dn_carts,
         )
-    else:
-        raise NotImplementedError
 
     # three-body
-    if jastrow_data.jastrow_three_body_type == "off":
-        J3 = 0.0
-    elif jastrow_data.jastrow_three_body_type == "on":
-        J3 = compute_Jastrow_three_body_api(
+    if jastrow_data.jastrow_three_body_flag:
+        J3 += compute_Jastrow_three_body_api(
             jastrow_data.jastrow_three_body_data,
             r_up_carts,
             r_dn_carts,
         )
-    else:
-        raise NotImplementedError
 
     J = J2 + J3
 
@@ -300,33 +319,36 @@ def compute_grads_and_laplacian_Jastrow_part_api(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> tuple[
-    npt.NDArray[np.float64 | np.complex128],
-    npt.NDArray[np.float64 | np.complex128],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
     float | complex,
 ]:
-    # two-body
-    if jastrow_data.jastrow_two_body_type == "off":
-        grad_J2_up, grad_J2_dn, sum_laplacian_J2 = 0.0, 0.0, 0.0
-    elif jastrow_data.jastrow_two_body_type == "on":
-        grad_J2_up, grad_J2_dn, sum_laplacian_J2 = compute_grads_and_laplacian_Jastrow_two_body_api(
-            jastrow_data.jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+    grad_J2_up, grad_J2_dn, sum_laplacian_J2 = 0.0, 0.0, 0.0
+    grad_J3_up, grad_J3_dn, sum_laplacian_J3 = 0.0, 0.0, 0.0
+
+    # two-body (pade)
+    if jastrow_data.jastrow_two_body_pade_flag:
+        grad_J2_up_pade, grad_J2_dn_pade, sum_laplacian_J2_pade = (
+            compute_grads_and_laplacian_Jastrow_two_body_api(
+                jastrow_data.jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+            )
         )
-    else:
-        raise NotImplementedError
+        grad_J2_up += grad_J2_up_pade
+        grad_J2_dn += grad_J2_dn_pade
+        sum_laplacian_J2 += sum_laplacian_J2_pade
 
     # three-body
-    if jastrow_data.jastrow_three_body_type == "off":
-        grad_J3_up, grad_J3_dn, sum_laplacian_J3 = 0.0, 0.0, 0.0
-    elif jastrow_data.jastrow_three_body_type == "on":
-        grad_J3_up, grad_J3_dn, sum_laplacian_J3 = (
+    if jastrow_data.jastrow_three_body_flag:
+        grad_J3_up_add, grad_J3_dn_add, sum_laplacian_J3_add = (
             compute_grads_and_laplacian_Jastrow_three_body_api(
                 jastrow_data.jastrow_three_body_data,
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
             )
         )
-    else:
-        raise NotImplementedError
+        grad_J3_up += grad_J3_up_add
+        grad_J3_dn += grad_J3_dn_add
+        sum_laplacian_J3 += sum_laplacian_J3_add
 
     grad_J_up = grad_J2_up + grad_J3_up
     grad_J_dn = grad_J2_dn + grad_J3_dn
@@ -1158,6 +1180,8 @@ if __name__ == "__main__":
     handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
     stream_handler.setFormatter(handler_format)
     log.addHandler(stream_handler)
+
+    jastrow_two_body_data = Jastrow_two_body_data.init_jastrow_two_body_data(randomized_flag=True)
 
     num_r_up_cart_samples = 5
     num_r_dn_cart_samples = 2

@@ -179,9 +179,9 @@ jastrow_three_body_data = Jastrow_three_body_data(
 
 jastrow_data = Jastrow_data(
     jastrow_two_body_data=jastrow_two_body_data,
-    jastrow_two_body_type="on",
+    jastrow_two_body_pade_flag=True,
     jastrow_three_body_data=jastrow_three_body_data,
-    jastrow_three_body_type="on",
+    jastrow_three_body_flag=True,
 )
 
 print(jastrow_data)
