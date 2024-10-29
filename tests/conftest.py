@@ -1,6 +1,6 @@
 # conftest.py
-import pytest
 import jax
+import pytest
 
 
 def pytest_addoption(parser):

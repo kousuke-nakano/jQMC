@@ -871,7 +871,7 @@ class VMC:
 
 
 if __name__ == "__main__":
-    """
+    # """
     # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
     (
         structure_data,
@@ -885,9 +885,9 @@ if __name__ == "__main__":
             os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"
         )
     )
-    """
-
     # """
+
+    """
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,
@@ -901,7 +901,7 @@ if __name__ == "__main__":
             os.path.dirname(__file__), "trexio_files", "H2_dimer_ccpv5z_trexio.hdf5"
         )
     )
-    # """
+    """
 
     """ Error!! To be fixed.
     # Ne atom cc-pV5Z with Mitas ccECP (10 electrons, feasible).
@@ -1025,9 +1025,9 @@ if __name__ == "__main__":
         mcmc_seed=mcmc_seed,
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
-        comput_position_deriv=False,
-        comput_jas_2b_param_deriv=True,
-        comput_jas_1b3b_param_deriv=True,
+        comput_position_deriv=True,
+        comput_jas_2b_param_deriv=False,
+        comput_jas_1b3b_param_deriv=False,
     )
     vmc.run(num_mcmc_steps=100)
     vmc.get_e_L()

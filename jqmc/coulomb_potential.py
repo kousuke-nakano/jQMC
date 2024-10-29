@@ -52,9 +52,8 @@ import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import jit, lax
+from jax import jit, lax, vmap
 from jax import typing as jnpt
-from jax import vmap
 from scipy.special import eval_legendre
 
 from .jastrow_factor import Jastrow_data
@@ -171,7 +170,7 @@ class Coulomb_potential_data:
 
     """
 
-    structure_data: Structure_data = struct.field(pytree_node=False)
+    structure_data: Structure_data = struct.field(pytree_node=True)
     ecp_flag: bool = struct.field(pytree_node=False)
     z_cores: list[float] = struct.field(pytree_node=False)
     max_ang_mom_plus_1: list[int] = struct.field(pytree_node=False)
@@ -216,6 +215,7 @@ class Coulomb_potential_data:
         else:
             return np.array(self.structure_data.atomic_numbers)
 
+    '''
     @property
     def effective_charges_jnp(self) -> jax.Array:
         """effective_charges.
@@ -229,6 +229,7 @@ class Coulomb_potential_data:
             return jnp.array(self.structure_data.atomic_numbers) - jnp.array(self.z_cores)
         else:
             return jnp.array(self.structure_data.atomic_numbers)
+    '''
 
 
 def compute_ecp_coulomb_potential_api(
@@ -887,32 +888,10 @@ def compute_bare_coulomb_potential_jax(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
-    """bare for loop, old
     R_carts = coulomb_potential_data.structure_data.positions_cart
-    R_charges = coulomb_potential_data.effective_charges_jnp
-    r_up_charges = jnp.array([-1 for _ in range(len(r_up_carts))])
-    r_dn_charges = jnp.array([-1 for _ in range(len(r_dn_carts))])
-
-    all_carts = jnp.vstack([R_carts, r_up_carts, r_dn_carts])
-    all_charges = jnp.hstack([R_charges, r_up_charges, r_dn_charges])
-
-    bare_coulomb_potential = jnp.sum(
-        jnp.array(
-            [
-                (Z_a * Z_b) / jnp.linalg.norm(r_a - r_b)
-                for (Z_a, r_a), (Z_b, r_b) in itertools.combinations(zip(all_charges, all_carts), 2)
-            ]
-        )
-    )
-
-    return bare_coulomb_potential
-    """
-
-    # """
-    R_carts = coulomb_potential_data.structure_data.positions_cart
-    R_charges = coulomb_potential_data.effective_charges_jnp
-    r_up_charges = jnp.full(len(r_up_carts), -1.0, dtype=jnp.float64)
-    r_dn_charges = jnp.full(len(r_dn_carts), -1.0, dtype=jnp.float64)
+    R_charges = coulomb_potential_data.effective_charges
+    r_up_charges = np.full(len(r_up_carts), -1.0, dtype=np.float64)
+    r_dn_charges = np.full(len(r_dn_carts), -1.0, dtype=np.float64)
 
     all_carts = jnp.vstack([R_carts, r_up_carts, r_dn_carts])
     all_charges = jnp.hstack([R_charges, r_up_charges, r_dn_charges])
@@ -942,8 +921,6 @@ def compute_bare_coulomb_potential_jax(
     bare_coulomb_potential = jnp.sum(interactions)
 
     return bare_coulomb_potential
-
-    # """
 
 
 def compute_coulomb_potential_debug(

@@ -864,10 +864,10 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
     jax.clear_caches()
 
 
-@pytest.mark.skip_if_enable_jit
+# @pytest.mark.skip_if_enable_jit
 def test_MOs_comparing_auto_and_numerical_grads(request):
-    if request.config.getoption("--enable-jit"):
-        pytest.skip(reason="Bug of flux.struct with @jit.")
+    # if request.config.getoption("--enable-jit"):
+    #    pytest.skip(reason="Bug of flux.struct with @jit.")
     num_el = 10
     num_mo = 5
     num_ao = 3
@@ -1033,10 +1033,10 @@ def test_read_trexio_files(filename: str):
     jax.clear_caches()
 
 
-@pytest.mark.skip_if_enable_jit
+# @pytest.mark.skip_if_enable_jit
 def test_comparing_AO_and_MO_geminals(request):
-    if request.config.getoption("--enable-jit"):
-        pytest.skip(reason="Bug of flux.struct with @jit.")
+    # if request.config.getoption("--enable-jit"):
+    #    pytest.skip(reason="Bug of flux.struct with @jit.")
     # test MOs
     (
         structure_data,
@@ -1258,10 +1258,10 @@ def test_debug_and_jax_SWCT_omega():
     jax.clear_caches()
 
 
-@pytest.mark.skip_if_enable_jit
+# @pytest.mark.skip_if_enable_jit
 def test_numerial_and_auto_grads_ln_Det(request):
-    if request.config.getoption("--enable-jit"):
-        pytest.skip(reason="Bug of flux.struct with @jit.")
+    # if request.config.getoption("--enable-jit"):
+    #    pytest.skip(reason="Bug of flux.struct with @jit.")
 
     (
         structure_data,
@@ -1383,7 +1383,10 @@ def test_numerial_and_auto_grads_ln_Det(request):
     jax.clear_caches()
 
 
-def test_debug_and_jax_ECP():
+@pytest.mark.skip_if_enable_jit
+def test_debug_and_jax_ECP(request):
+    if request.config.getoption("--enable-jit"):
+        pytest.skip(reason="Bug of flux.struct with @jit.")
     (
         structure_data,
         aos_data,
@@ -1844,10 +1847,10 @@ def test_comparison_with_TurboRVB_w_2b_3b_Jastrow(request):
 jax.clear_caches()
 
 
-@pytest.mark.skip_if_enable_jit
+# @pytest.mark.skip_if_enable_jit
 def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow(request):
-    if request.config.getoption("--enable-jit"):
-        pytest.skip(reason="Bug of flux.struct with @jit.")
+    # if request.config.getoption("--enable-jit"):
+    #    pytest.skip(reason="Bug of flux.struct with @jit.")
     (
         structure_data,
         aos_data,
