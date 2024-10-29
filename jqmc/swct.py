@@ -45,8 +45,9 @@ import jax
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import grad, jacrev, jit, vmap
+from jax import grad, jacrev, jit
 from jax import numpy as jnp
+from jax import vmap
 
 # jaxQMC module
 from .structure import Structure_data
@@ -67,7 +68,7 @@ class SWCT_data:
         structure_data (Structure_data)
     """
 
-    structure: Structure_data = struct.field(pytree_node=True)
+    structure: Structure_data = struct.field(pytree_node=False)
 
     def __post_init__(self) -> None:
         pass

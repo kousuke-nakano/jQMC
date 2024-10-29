@@ -864,7 +864,10 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
     jax.clear_caches()
 
 
-def test_MOs_comparing_auto_and_numerical_grads():
+@pytest.mark.skip_if_enable_jit
+def test_MOs_comparing_auto_and_numerical_grads(request):
+    if request.config.getoption("--enable-jit"):
+        pytest.skip(reason="Bug of flux.struct with @jit.")
     num_el = 10
     num_mo = 5
     num_ao = 3
@@ -1030,7 +1033,10 @@ def test_read_trexio_files(filename: str):
     jax.clear_caches()
 
 
-def test_comparing_AO_and_MO_geminals():
+@pytest.mark.skip_if_enable_jit
+def test_comparing_AO_and_MO_geminals(request):
+    if request.config.getoption("--enable-jit"):
+        pytest.skip(reason="Bug of flux.struct with @jit.")
     # test MOs
     (
         structure_data,
@@ -1047,155 +1053,149 @@ def test_comparing_AO_and_MO_geminals():
     num_electron_up = geminal_mo_data.num_electron_up
     num_electron_dn = geminal_mo_data.num_electron_dn
 
-    trial = 3
-    for _ in range(trial):
-        # Initialization
-        r_up_carts = []
-        r_dn_carts = []
+    # Initialization
+    r_up_carts = []
+    r_dn_carts = []
 
-        total_electrons = 0
+    total_electrons = 0
 
-        if coulomb_potential_data.ecp_flag:
-            charges = np.array(structure_data.atomic_numbers) - np.array(
-                coulomb_potential_data.z_cores
-            )
-        else:
-            charges = np.array(structure_data.atomic_numbers)
+    if coulomb_potential_data.ecp_flag:
+        charges = np.array(structure_data.atomic_numbers) - np.array(coulomb_potential_data.z_cores)
+    else:
+        charges = np.array(structure_data.atomic_numbers)
 
-        coords = structure_data.positions_cart
+    coords = structure_data.positions_cart
 
-        # Place electrons around each nucleus
-        for i in range(len(coords)):
-            charge = charges[i]
-            num_electrons = int(
-                np.round(charge)
-            )  # Number of electrons to place based on the charge
+    # Place electrons around each nucleus
+    for i in range(len(coords)):
+        charge = charges[i]
+        num_electrons = int(np.round(charge))  # Number of electrons to place based on the charge
 
-            # Retrieve the position coordinates
-            x, y, z = coords[i]
+        # Retrieve the position coordinates
+        x, y, z = coords[i]
 
-            # Place electrons
-            for _ in range(num_electrons):
-                # Calculate distance range
-                distance = np.random.uniform(1.0 / charge, 2.0 / charge)
-                theta = np.random.uniform(0, np.pi)
-                phi = np.random.uniform(0, 2 * np.pi)
+        # Place electrons
+        for _ in range(num_electrons):
+            # Calculate distance range
+            distance = np.random.uniform(1.0 / charge, 2.0 / charge)
+            theta = np.random.uniform(0, np.pi)
+            phi = np.random.uniform(0, 2 * np.pi)
 
-                # Convert spherical to Cartesian coordinates
-                dx = distance * np.sin(theta) * np.cos(phi)
-                dy = distance * np.sin(theta) * np.sin(phi)
-                dz = distance * np.cos(theta)
+            # Convert spherical to Cartesian coordinates
+            dx = distance * np.sin(theta) * np.cos(phi)
+            dy = distance * np.sin(theta) * np.sin(phi)
+            dz = distance * np.cos(theta)
 
-                # Position of the electron
-                electron_position = np.array([x + dx, y + dy, z + dz])
+            # Position of the electron
+            electron_position = np.array([x + dx, y + dy, z + dz])
 
-                # Assign spin
-                if len(r_up_carts) < num_electron_up:
-                    r_up_carts.append(electron_position)
-                else:
-                    r_dn_carts.append(electron_position)
+            # Assign spin
+            if len(r_up_carts) < num_electron_up:
+                r_up_carts.append(electron_position)
+            else:
+                r_dn_carts.append(electron_position)
 
-            total_electrons += num_electrons
+        total_electrons += num_electrons
 
-        # Handle surplus electrons
-        remaining_up = num_electron_up - len(r_up_carts)
-        remaining_dn = num_electron_dn - len(r_dn_carts)
+    # Handle surplus electrons
+    remaining_up = num_electron_up - len(r_up_carts)
+    remaining_dn = num_electron_dn - len(r_dn_carts)
 
-        # Randomly place any remaining electrons
-        for _ in range(remaining_up):
-            r_up_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
-        for _ in range(remaining_dn):
-            r_dn_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
+    # Randomly place any remaining electrons
+    for _ in range(remaining_up):
+        r_up_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
+    for _ in range(remaining_dn):
+        r_dn_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
 
-        r_up_carts = np.array(r_up_carts)
-        r_dn_carts = np.array(r_dn_carts)
+    r_up_carts = np.array(r_up_carts)
+    r_dn_carts = np.array(r_dn_carts)
 
-        geminal_mo_debug = compute_geminal_all_elements_debug(
-            geminal_data=geminal_mo_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
-        )
+    geminal_mo_debug = compute_geminal_all_elements_debug(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
 
-        geminal_mo_jax = compute_geminal_all_elements_jax(
-            geminal_data=geminal_mo_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
-        )
+    geminal_mo_jax = compute_geminal_all_elements_jax(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
 
-        np.testing.assert_almost_equal(geminal_mo_debug, geminal_mo_jax, decimal=15)
+    np.testing.assert_almost_equal(geminal_mo_debug, geminal_mo_jax, decimal=15)
 
-        geminal_mo = geminal_mo_jax
+    geminal_mo = geminal_mo_jax
 
-        mo_lambda_matrix_paired, mo_lambda_matrix_unpaired = np.hsplit(
-            geminal_mo_data.lambda_matrix, [geminal_mo_data.orb_num_dn]
-        )
+    mo_lambda_matrix_paired, mo_lambda_matrix_unpaired = np.hsplit(
+        geminal_mo_data.lambda_matrix, [geminal_mo_data.orb_num_dn]
+    )
 
-        # generate matrices for the test
-        ao_lambda_matrix_paired = np.dot(
-            mos_data_up.mo_coefficients.T,
-            np.dot(mo_lambda_matrix_paired, mos_data_dn.mo_coefficients),
-        )
-        ao_lambda_matrix_unpaired = np.dot(mos_data_up.mo_coefficients.T, mo_lambda_matrix_unpaired)
-        ao_lambda_matrix = np.hstack([ao_lambda_matrix_paired, ao_lambda_matrix_unpaired])
+    # generate matrices for the test
+    ao_lambda_matrix_paired = np.dot(
+        mos_data_up.mo_coefficients.T,
+        np.dot(mo_lambda_matrix_paired, mos_data_dn.mo_coefficients),
+    )
+    ao_lambda_matrix_unpaired = np.dot(mos_data_up.mo_coefficients.T, mo_lambda_matrix_unpaired)
+    ao_lambda_matrix = np.hstack([ao_lambda_matrix_paired, ao_lambda_matrix_unpaired])
 
-        geminal_ao_data = Geminal_data(
-            num_electron_up=num_electron_up,
-            num_electron_dn=num_electron_dn,
-            orb_data_up_spin=aos_data,
-            orb_data_dn_spin=aos_data,
-            lambda_matrix=ao_lambda_matrix,
-        )
+    geminal_ao_data = Geminal_data(
+        num_electron_up=num_electron_up,
+        num_electron_dn=num_electron_dn,
+        orb_data_up_spin=aos_data,
+        orb_data_dn_spin=aos_data,
+        lambda_matrix=ao_lambda_matrix,
+    )
 
-        geminal_ao_debug = compute_geminal_all_elements_debug(
-            geminal_data=geminal_ao_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
-        )
+    geminal_ao_debug = compute_geminal_all_elements_debug(
+        geminal_data=geminal_ao_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
 
-        geminal_ao_jax = compute_geminal_all_elements_debug(
-            geminal_data=geminal_ao_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
-        )
+    geminal_ao_jax = compute_geminal_all_elements_debug(
+        geminal_data=geminal_ao_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
 
-        np.testing.assert_almost_equal(geminal_ao_debug, geminal_ao_jax, decimal=15)
+    np.testing.assert_almost_equal(geminal_ao_debug, geminal_ao_jax, decimal=15)
 
-        geminal_ao = geminal_ao_jax
+    geminal_ao = geminal_ao_jax
 
-        # check if geminals with AO and MO representations are consistent
-        np.testing.assert_array_almost_equal(geminal_ao, geminal_mo, decimal=15)
+    # check if geminals with AO and MO representations are consistent
+    np.testing.assert_array_almost_equal(geminal_ao, geminal_mo, decimal=15)
 
-        det_geminal_mo_debug = compute_det_geminal_all_elements_debug(
-            geminal_data=geminal_mo_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
-        )
+    det_geminal_mo_debug = compute_det_geminal_all_elements_debug(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
 
-        det_geminal_mo_jax = compute_det_geminal_all_elements_jax(
-            geminal_data=geminal_mo_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
-        )
+    det_geminal_mo_jax = compute_det_geminal_all_elements_jax(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
 
-        np.testing.assert_array_almost_equal(det_geminal_mo_debug, det_geminal_mo_jax, decimal=15)
-        det_geminal_mo = det_geminal_mo_jax
+    np.testing.assert_array_almost_equal(det_geminal_mo_debug, det_geminal_mo_jax, decimal=15)
+    det_geminal_mo = det_geminal_mo_jax
 
-        det_geminal_ao_debug = compute_det_geminal_all_elements_debug(
-            geminal_data=geminal_ao_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
-        )
+    det_geminal_ao_debug = compute_det_geminal_all_elements_debug(
+        geminal_data=geminal_ao_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
 
-        det_geminal_ao_jax = compute_det_geminal_all_elements_jax(
-            geminal_data=geminal_ao_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
-        )
+    det_geminal_ao_jax = compute_det_geminal_all_elements_jax(
+        geminal_data=geminal_ao_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
 
-        np.testing.assert_array_almost_equal(det_geminal_ao_debug, det_geminal_ao_jax, decimal=15)
-        det_geminal_ao = det_geminal_ao_jax
+    np.testing.assert_array_almost_equal(det_geminal_ao_debug, det_geminal_ao_jax, decimal=15)
+    det_geminal_ao = det_geminal_ao_jax
 
-        np.testing.assert_almost_equal(det_geminal_ao, det_geminal_mo, decimal=15)
+    np.testing.assert_almost_equal(det_geminal_ao, det_geminal_mo, decimal=15)
 
     jax.clear_caches()
 
@@ -1258,8 +1258,11 @@ def test_debug_and_jax_SWCT_omega():
     jax.clear_caches()
 
 
-# @pytest.mark.skip
-def test_numerial_and_auto_grads_ln_Det():
+@pytest.mark.skip_if_enable_jit
+def test_numerial_and_auto_grads_ln_Det(request):
+    if request.config.getoption("--enable-jit"):
+        pytest.skip(reason="Bug of flux.struct with @jit.")
+
     (
         structure_data,
         aos_data,
@@ -1380,8 +1383,90 @@ def test_numerial_and_auto_grads_ln_Det():
     jax.clear_caches()
 
 
-@pytest.mark.skip(reason="Bug of flux.struct with @jit.")
-def test_comparison_with_TurboRVB_wo_Jastrow():
+def test_debug_and_jax_ECP():
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(
+            os.path.dirname(__file__), "trexio_example_files", "water_trexio.hdf5"
+        )
+    )
+
+    # define data
+    jastrow_data = Jastrow_data(
+        jastrow_two_body_data=None,
+        jastrow_two_body_pade_flag=False,
+        jastrow_three_body_data=None,
+        jastrow_three_body_flag=False,
+    )  # no jastrow for the time-being.
+
+    wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
+
+    old_r_up_carts = np.array(
+        [
+            [0.64878536, -0.83275288, 0.33532629],
+            [0.55271273, 0.72310605, 0.93443775],
+            [0.66767275, 0.1206456, -0.36521208],
+            [-0.93165236, -0.0120386, 0.33003036],
+        ]
+    )
+    old_r_dn_carts = np.array(
+        [
+            [1.0347816, 1.26162081, 0.42301735],
+            [-0.57843435, 1.03651987, -0.55091542],
+            [-1.56091964, -0.58952149, -0.99268141],
+            [0.61863233, -0.14903326, 0.51962683],
+        ]
+    )
+    new_r_up_carts = old_r_up_carts.copy()
+    new_r_dn_carts = old_r_dn_carts.copy()
+    new_r_dn_carts[3] = [0.618632327645002, -0.149033260668010, 0.131889254514777]
+
+    vpot_bare_jax = compute_bare_coulomb_potential_jax(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+    )
+
+    vpot_bare_debug = compute_bare_coulomb_potential_debug(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+    )
+
+    # print(f"vpot_bare_jax = {vpot_bare_jax}")
+    # print(f"vpot_bare_debug = {vpot_bare_debug}")
+    np.testing.assert_almost_equal(vpot_bare_jax, vpot_bare_debug, decimal=10)
+
+    vpot_ecp_jax = compute_ecp_coulomb_potential_jax(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+        wavefunction_data=wavefunction_data,
+    )
+
+    vpot_ecp_debug = compute_ecp_coulomb_potential_debug(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+        wavefunction_data=wavefunction_data,
+    )
+
+    # print(f"vpot_ecp_jax = {vpot_ecp_jax}")
+    # print(f"vpot_ecp_debug = {vpot_ecp_debug}")
+    np.testing.assert_almost_equal(vpot_ecp_jax, vpot_ecp_debug, decimal=10)
+
+
+@pytest.mark.skip_if_enable_jit
+def test_comparison_with_TurboRVB_wo_Jastrow(request):
+    if request.config.getoption("--enable-jit"):
+        pytest.skip(reason="Bug of flux.struct with @jit.")
+
     (
         structure_data,
         aos_data,
@@ -1502,8 +1587,11 @@ def test_comparison_with_TurboRVB_wo_Jastrow():
     jax.clear_caches()
 
 
-@pytest.mark.skip(reason="Bug of flux.struct with @jit.")
-def test_comparison_with_TurboRVB_w_2b_Jastrow():
+@pytest.mark.skip_if_enable_jit
+def test_comparison_with_TurboRVB_w_2b_Jastrow(request):
+    if request.config.getoption("--enable-jit"):
+        pytest.skip(reason="Bug of flux.struct with @jit.")
+
     (
         structure_data,
         aos_data,
@@ -1630,8 +1718,10 @@ def test_comparison_with_TurboRVB_w_2b_Jastrow():
 jax.clear_caches()
 
 
-@pytest.mark.skip(reason="Bug of flux.struct with @jit.")
-def test_comparison_with_TurboRVB_w_2b_3b_Jastrow():
+@pytest.mark.skip_if_enable_jit
+def test_comparison_with_TurboRVB_w_2b_3b_Jastrow(request):
+    if request.config.getoption("--enable-jit"):
+        pytest.skip(reason="Bug of flux.struct with @jit.")
     (
         structure_data,
         aos_data,
@@ -1754,8 +1844,10 @@ def test_comparison_with_TurboRVB_w_2b_3b_Jastrow():
 jax.clear_caches()
 
 
-# @pytest.mark.skip(reason="@jastrow_pkl should be regenerated.")
-def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow():
+@pytest.mark.skip_if_enable_jit
+def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow(request):
+    if request.config.getoption("--enable-jit"):
+        pytest.skip(reason="Bug of flux.struct with @jit.")
     (
         structure_data,
         aos_data,

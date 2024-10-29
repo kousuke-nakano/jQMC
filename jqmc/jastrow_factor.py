@@ -93,8 +93,8 @@ class Jastrow_three_body_data:
         j_matrix_up_dn (npt.NDArray[np.float64]): J matrix dim. (orb_data_up_spin.num_ao, orb_data_dn_spin.num_ao))
     """
 
-    orb_data_up_spin: AOs_data = struct.field(pytree_node=True)
-    orb_data_dn_spin: AOs_data = struct.field(pytree_node=True)
+    orb_data_up_spin: AOs_data = struct.field(pytree_node=False)
+    orb_data_dn_spin: AOs_data = struct.field(pytree_node=False)
     j_matrix_up_up: npt.NDArray[np.float64] = struct.field(pytree_node=True)
     j_matrix_dn_dn: npt.NDArray[np.float64] = struct.field(pytree_node=True)
     j_matrix_up_dn: npt.NDArray[np.float64] = struct.field(pytree_node=True)

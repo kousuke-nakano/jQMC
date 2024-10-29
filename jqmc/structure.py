@@ -373,24 +373,26 @@ def get_min_dist_rel_R_cart_jnp(
     structure_data: Structure_data, r_cart: list[float, float, float], i_atom: int
 ) -> float:
     """
-    Returns
-    -------
+    Returns:
         rel_R_cart_min_dist minimum-distance atomic positions with respect to the given r_cart in cartesian. The unit is Bohr
     """
 
-    def mapping(r_cart, R_cart):
-        return jnp.array(R_cart) - jnp.array(r_cart)
+    r_cart = jnp.array(r_cart)
+    R_carts = jnp.array(structure_data.positions_cart)
 
-    def non_mapping(r_cart, R_cart):
-        return jnp.array(R_cart) - jnp.array(r_cart)
+    def mapping(r, R):
+        return jnp.array(R) - jnp.array(r)
+
+    def non_mapping(r, R):
+        return jnp.array(R) - jnp.array(r)
 
     rel_R_cart_min_dist = lax.cond(
-        jnp.linalg.norm(r_cart - structure_data.positions_cart[i_atom])
+        jnp.linalg.norm(r_cart - R_carts[i_atom])
         < 0.0,  # dummy, which will be replaced in PBC cases
         mapping,
         non_mapping,
         r_cart,
-        structure_data.positions_cart[i_atom],
+        R_carts[i_atom],
     )
 
     return rel_R_cart_min_dist

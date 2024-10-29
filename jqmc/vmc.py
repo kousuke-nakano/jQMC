@@ -911,7 +911,7 @@ if __name__ == "__main__":
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), 'trexio_files', "Ne_trexio.hdf5"))
     """
 
-    # """
+    """
     # benzene cc-pVDZ with Mitas ccECP (30 electrons, feasible).
     (
         structure_data,
@@ -923,9 +923,9 @@ if __name__ == "__main__":
     ) = read_trexio_file(
         trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "benzene_trexio.hdf5")
     )
-    # """
+    """
 
-    # """
+    """
     # C60 cc-pVTZ with Mitas ccECP (240 electrons, not feasible).
     (
         structure_data,
@@ -937,7 +937,7 @@ if __name__ == "__main__":
     ) = read_trexio_file(
         trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "C60_trexio.hdf5")
     )
-    # """
+    """
 
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
