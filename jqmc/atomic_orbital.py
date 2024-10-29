@@ -104,7 +104,7 @@ class AOs_data:
 
     """
 
-    structure_data: Structure_data = struct.field(pytree_node=False)
+    structure_data: Structure_data = struct.field(pytree_node=True)
     nucleus_index: list[int] = struct.field(pytree_node=False)
     num_ao: int = struct.field(pytree_node=False)
     num_ao_prim: int = struct.field(pytree_node=False)

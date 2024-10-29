@@ -68,7 +68,7 @@ class SWCT_data:
         structure_data (Structure_data)
     """
 
-    structure: Structure_data = struct.field(pytree_node=False)
+    structure: Structure_data = struct.field(pytree_node=True)
 
     def __post_init__(self) -> None:
         pass

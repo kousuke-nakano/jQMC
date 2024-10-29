@@ -923,7 +923,7 @@ if __name__ == "__main__":
     ) = read_trexio_file(
         trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "benzene_trexio.hdf5")
     )
-    """
+    # """
 
     """
     # C60 cc-pVTZ with Mitas ccECP (240 electrons, not feasible).
