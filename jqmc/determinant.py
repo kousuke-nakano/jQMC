@@ -291,7 +291,7 @@ def compute_geminal_all_elements_debug(
 # ValueError when re-compiling function with a multi-dimensional array as a static field #24204
 # For the time being, we can unjit it to avoid errors in unit_test.py
 # This error is tied with the choice of pytree=True/False flag
-# @jit
+@jit
 def compute_geminal_all_elements_jax(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -741,7 +741,7 @@ def compute_grads_and_laplacian_ln_Det_debug(
     return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D
 
 
-# @jit
+@jit
 def compute_grads_and_laplacian_ln_Det_jax(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[jnp.float64],

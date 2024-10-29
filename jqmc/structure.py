@@ -64,6 +64,7 @@ class Structure_data:
     The class contains all information about the given structure.
 
     Args:
+        positions (npt.NDArray[np.float64]): (N x 3) np.array containing atomic positions in cartesian. The unit is Bohr
         pbc_flag (list[bool]): pbc_flags in the a, b, and c directions.
         vec_a (list[float]): lattice vector a. The unit is Bohr
         vec_b (list[float]): lattice vector b. The unit is Bohr
@@ -71,9 +72,9 @@ class Structure_data:
         atomic_numbers (list[int]): list of atomic numbers in the system.
         element_symbols (list[str]): list of element symbols in the system.
         atomic_labels (list[str]): list of labels for the atoms in the system.
-        positions (npt.NDArray[np.float64]): (N x 3) np.array containing atomic positions in cartesian. The unit is Bohr
     """
 
+    positions: npt.NDArray[np.float64] = struct.field(pytree_node=True)
     pbc_flag: list[bool] = struct.field(pytree_node=False)
     vec_a: list[float] = struct.field(pytree_node=False)
     vec_b: list[float] = struct.field(pytree_node=False)
@@ -81,7 +82,6 @@ class Structure_data:
     atomic_numbers: list[int] = struct.field(pytree_node=False)
     element_symbols: list[str] = struct.field(pytree_node=False)
     atomic_labels: list[str] = struct.field(pytree_node=False)
-    positions: npt.NDArray[np.float64] = struct.field(pytree_node=True)
 
     @property
     def cell(self) -> npt.NDArray[np.float64]:
@@ -368,7 +368,7 @@ def get_min_dist_rel_R_cart_np(
     return rel_R_cart_min_dist
 
 
-@jit
+# @jit
 def get_min_dist_rel_R_cart_jnp(
     structure_data: Structure_data, r_cart: list[float, float, float], i_atom: int
 ) -> float:

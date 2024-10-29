@@ -163,16 +163,12 @@ class Jastrow_three_body_data:
 class Jastrow_data:
     """
     The class contains data for evaluating a Jastrow function.
-
-    Args:
-        jastrow_two_body_data (Jastrow_two_body_data): parameter for parallel spins
-        param_antiparallel_spin (float): parameter for anti-parallel spins
     """
 
-    jastrow_two_body_pade_flag: bool = struct.field(pytree_node=False)
-    jastrow_three_body_flag: bool = struct.field(pytree_node=False)
     jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=True)
     jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=True)
+    jastrow_two_body_pade_flag: bool = struct.field(pytree_node=False)
+    jastrow_three_body_flag: bool = struct.field(pytree_node=False)
 
     def __post_init__(self) -> None:
         pass

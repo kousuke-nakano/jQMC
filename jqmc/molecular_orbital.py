@@ -299,7 +299,7 @@ def compute_MOs_debug(
 # ValueError when re-compiling function with a multi-dimensional array as a static field #24204
 # For the time being, we can unjit it to avoid errors in unit_test.py
 # This error is tied with the choice of pytree=True/False flag
-# @jit
+@jit
 def compute_MOs_jax(
     mos_data: MOs_data, r_carts: npt.NDArray[np.float64]
 ) -> npt.NDArray[np.float64]:

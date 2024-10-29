@@ -66,6 +66,7 @@ logger = getLogger("jqmc").getChild(__name__)
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_traceback_filtering", "off")
 
 
 # non local PPs, Mesh Info. taken from Mitas's paper [J. Chem. Phys., 95, 5, (1991)]
@@ -140,8 +141,6 @@ class Coulomb_potential_data:
     The class contains data for computing effective core potentials (ECPs).
 
     Args:
-        structure_data (Structure_data):
-            Instance of a structure_data
         ecp_flag (bool) :
             If True, ECPs are used. The following values should be defined.
         z_cores (list[float]]):
@@ -161,6 +160,8 @@ class Coulomb_potential_data:
             all ECP coefficients (dim:num_ecps)
         powers (list[int]):
             all ECP powers (dim:num_ecps)
+        structure_data (Structure_data):
+            Instance of a structure_data
 
     Examples:
         NA
@@ -170,7 +171,6 @@ class Coulomb_potential_data:
 
     """
 
-    structure_data: Structure_data = struct.field(pytree_node=True)
     ecp_flag: bool = struct.field(pytree_node=False)
     z_cores: list[float] = struct.field(pytree_node=False)
     max_ang_mom_plus_1: list[int] = struct.field(pytree_node=False)
@@ -180,6 +180,7 @@ class Coulomb_potential_data:
     exponents: list[float] = struct.field(pytree_node=False)
     coefficients: list[float] = struct.field(pytree_node=False)
     powers: list[int] = struct.field(pytree_node=False)
+    structure_data: Structure_data = struct.field(pytree_node=True)
 
     def __post_init__(self) -> None:
         """Initialization of the class.
@@ -776,25 +777,25 @@ def compute_ecp_coulomb_potential_jax_weights_grid_points(
     r_up_carts_jnp = jnp.array(r_up_carts)
     r_dn_i_jnp = jnp.arange(len(r_dn_carts))
     r_dn_carts_jnp = jnp.array(r_dn_carts)
-    max_ang_mom_plus_1 = jnp.array(coulomb_potential_data.max_ang_mom_plus_1)
-    nucleus_index = jnp.array(coulomb_potential_data.nucleus_index, dtype=jnp.int32)
-    max_ang_mom_plus_1_jnp = max_ang_mom_plus_1[nucleus_index]
-    ang_mom_jnp = jnp.array(coulomb_potential_data.ang_moms)
-    i_atom_jnp = jnp.array(coulomb_potential_data.nucleus_index)
-    exponent_jnp = jnp.array(coulomb_potential_data.exponents)
-    coefficient_jnp = jnp.array(coulomb_potential_data.coefficients)
-    power_jnp = jnp.array(coulomb_potential_data.powers)
+    max_ang_mom_plus_1 = np.array(coulomb_potential_data.max_ang_mom_plus_1)
+    nucleus_index = np.array(coulomb_potential_data.nucleus_index)
+    max_ang_mom_plus_1_np = max_ang_mom_plus_1[nucleus_index]
+    ang_mom_np = np.array(coulomb_potential_data.ang_moms)
+    i_atom_np = np.array(coulomb_potential_data.nucleus_index)
+    exponent_np = np.array(coulomb_potential_data.exponents)
+    coefficient_np = np.array(coulomb_potential_data.coefficients)
+    power_np = np.array(coulomb_potential_data.powers)
 
     V_ecp_up = jnp.sum(
         vmap_vmap_compute_ecp_up(
             r_up_i_jnp,
             r_up_carts_jnp,
-            max_ang_mom_plus_1_jnp,
-            ang_mom_jnp,
-            i_atom_jnp,
-            exponent_jnp,
-            coefficient_jnp,
-            power_jnp,
+            max_ang_mom_plus_1_np,
+            ang_mom_np,
+            i_atom_np,
+            exponent_np,
+            coefficient_np,
+            power_np,
         )
     )
 
@@ -802,12 +803,12 @@ def compute_ecp_coulomb_potential_jax_weights_grid_points(
         vmap_vmap_compute_ecp_dn(
             r_dn_i_jnp,
             r_dn_carts_jnp,
-            max_ang_mom_plus_1_jnp,
-            ang_mom_jnp,
-            i_atom_jnp,
-            exponent_jnp,
-            coefficient_jnp,
-            power_jnp,
+            max_ang_mom_plus_1_np,
+            ang_mom_np,
+            i_atom_np,
+            exponent_np,
+            coefficient_np,
+            power_np,
         )
     )
 
@@ -866,16 +867,24 @@ def compute_bare_coulomb_potential_debug(
     return bare_coulomb_potential
 
 
+# it cannot be jitted?
+# There is a related issue on github.
+# ValueError when re-compiling function with a multi-dimensional array as a static field #24204
+# For the time being, we can unjit it to avoid errors in unit_test.py
+# This error is tied with the choice of pytree=True/False flag
 @jit
 def compute_bare_coulomb_potential_jax(
     coulomb_potential_data: Coulomb_potential_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
-    R_carts = coulomb_potential_data.structure_data.positions_cart
-    R_charges = coulomb_potential_data.effective_charges
+    R_carts = jnp.array(coulomb_potential_data.structure_data.positions_cart)
+    R_charges = np.array(coulomb_potential_data.effective_charges)
     r_up_charges = np.full(len(r_up_carts), -1.0, dtype=np.float64)
     r_dn_charges = np.full(len(r_dn_carts), -1.0, dtype=np.float64)
+
+    r_up_carts = jnp.array(r_up_carts)
+    r_dn_carts = jnp.array(r_dn_carts)
 
     all_charges = np.hstack([R_charges, r_up_charges, r_dn_charges])
     all_carts = jnp.vstack([R_carts, r_up_carts, r_dn_carts])
