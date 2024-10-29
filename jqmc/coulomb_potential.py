@@ -215,22 +215,6 @@ class Coulomb_potential_data:
         else:
             return np.array(self.structure_data.atomic_numbers)
 
-    '''
-    @property
-    def effective_charges_jnp(self) -> jax.Array:
-        """effective_charges.
-
-        Return nucleus charge (all-electron) or effective charge (with ECP)
-
-        Return:
-            jax.Array: nucleus charge (effective charge)
-        """
-        if self.ecp_flag:
-            return jnp.array(self.structure_data.atomic_numbers) - jnp.array(self.z_cores)
-        else:
-            return jnp.array(self.structure_data.atomic_numbers)
-    '''
-
 
 def compute_ecp_coulomb_potential_api(
     coulomb_potential_data: Coulomb_potential_data,
@@ -893,20 +877,22 @@ def compute_bare_coulomb_potential_jax(
     r_up_charges = np.full(len(r_up_carts), -1.0, dtype=np.float64)
     r_dn_charges = np.full(len(r_dn_carts), -1.0, dtype=np.float64)
 
+    all_charges = np.hstack([R_charges, r_up_charges, r_dn_charges])
     all_carts = jnp.vstack([R_carts, r_up_carts, r_dn_carts])
-    all_charges = jnp.hstack([R_charges, r_up_charges, r_dn_charges])
 
     # Number of particles
-    N = all_charges.shape[0]
+    N_np = all_charges.shape[0]
+    N_jnp = all_carts.shape[0]
 
     # Generate all unique pairs indices (i < j)
-    idx_i, idx_j = jnp.triu_indices(N, k=1)
+    idx_i_np, idx_j_np = np.triu_indices(N_np, k=1)
+    idx_i_jnp, idx_j_jnp = jnp.triu_indices(N_jnp, k=1)
 
     # Extract charges and positions for each pair
-    Z_i = all_charges[idx_i]  # Shape: (M,)
-    Z_j = all_charges[idx_j]  # Shape: (M,)
-    r_i = all_carts[idx_i]  # Shape: (M, D)
-    r_j = all_carts[idx_j]  # Shape: (M, D)
+    Z_i = all_charges[idx_i_np]  # Shape: (M,)
+    Z_j = all_charges[idx_j_np]  # Shape: (M,)
+    r_i = all_carts[idx_i_jnp]  # Shape: (M, D)
+    r_j = all_carts[idx_j_jnp]  # Shape: (M, D)
 
     # Define a function to compute interaction for a pair
     def pair_interaction(Z_i, Z_j, r_i, r_j):

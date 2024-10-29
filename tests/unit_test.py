@@ -1033,11 +1033,7 @@ def test_read_trexio_files(filename: str):
     jax.clear_caches()
 
 
-# @pytest.mark.skip_if_enable_jit
-def test_comparing_AO_and_MO_geminals(request):
-    # if request.config.getoption("--enable-jit"):
-    #    pytest.skip(reason="Bug of flux.struct with @jit.")
-    # test MOs
+def test_comparing_AO_and_MO_geminals():
     (
         structure_data,
         aos_data,
@@ -1258,11 +1254,7 @@ def test_debug_and_jax_SWCT_omega():
     jax.clear_caches()
 
 
-# @pytest.mark.skip_if_enable_jit
-def test_numerial_and_auto_grads_ln_Det(request):
-    # if request.config.getoption("--enable-jit"):
-    #    pytest.skip(reason="Bug of flux.struct with @jit.")
-
+def test_numerial_and_auto_grads_ln_Det():
     (
         structure_data,
         aos_data,
