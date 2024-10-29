@@ -881,7 +881,9 @@ if __name__ == "__main__":
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_trexio.hdf5")
+        trexio_file=os.path.join(
+            os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"
+        )
     )
     """
 
@@ -895,7 +897,9 @@ if __name__ == "__main__":
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "H2_dimer_trexio.hdf5")
+        trexio_file=os.path.join(
+            os.path.dirname(__file__), "trexio_files", "H2_dimer_ccpv5z_trexio.hdf5"
+        )
     )
     # """
 
@@ -921,9 +925,59 @@ if __name__ == "__main__":
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "benzene_trexio.hdf5")
+        trexio_file=os.path.join(
+            os.path.dirname(__file__), "trexio_files", "benzene_ccpvdz_trexio.hdf5"
+        )
     )
-    # """
+    """
+
+    """ Error!! To be fixed.
+    # benzene cc-pV6Z with Mitas ccECP (30 electrons, feasible).
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(
+            os.path.dirname(__file__), "trexio_files", "benzene_ccpv6z_trexio.hdf5"
+        )
+    )
+    """
+
+    """ # h orbitals should be implemented.
+    # AcOH-AcOH dimer aug-cc-pV6Z with Mitas ccECP (48 electrons, not feasible?).
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(
+            os.path.dirname(__file__), "trexio_files", "AcOH_dimer_augccpv6z.hdf5"
+        )
+    )
+    """
+
+    """
+    # benzene dimer cc-pV6Z with Mitas ccECP (60 electrons, not feasible).
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(
+            os.path.dirname(__file__), "trexio_files", "benzene_dimer_ccpv6z_trexio.hdf5"
+        )
+    )
+    """
 
     """
     # C60 cc-pVTZ with Mitas ccECP (240 electrons, not feasible).
@@ -975,6 +1029,6 @@ if __name__ == "__main__":
         comput_jas_2b_param_deriv=True,
         comput_jas_1b3b_param_deriv=True,
     )
-    # vmc.run(num_mcmc_steps=100)
-    # vmc.get_e_L()
-    # vmc.get_atomic_forces()
+    vmc.run(num_mcmc_steps=100)
+    vmc.get_e_L()
+    vmc.get_atomic_forces()

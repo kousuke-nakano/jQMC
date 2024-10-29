@@ -106,8 +106,9 @@ class AOs_data:
 
     # 20 Oct. 24: Found that jit becomes faster if pytree_node is switched off for structure_data.
     # but, why? It slows down even if only e_L is compiled, for which, */dR is not needed. i.e.,
-    # we do not need to compute derivatives wrt structure_data!
+    # even if we do not need to compute derivatives wrt structure_data!!
     structure_data: Structure_data = struct.field(pytree_node=False)
+    # structure_data: Structure_data = struct.field(pytree_node=True)
     nucleus_index: list[int] = struct.field(pytree_node=False)
     num_ao: int = struct.field(pytree_node=False)
     num_ao_prim: int = struct.field(pytree_node=False)
@@ -1057,7 +1058,7 @@ def compute_S_l_m_jax(
     def lnorm(l):
         return jnp.sqrt((4 * np.pi) / (2 * l + 1))
 
-    """see https://en.wikipedia.org/wiki/Table_of_spherical_harmonics#Real_spherical_harmonics"""
+    """see https://en.wikipedia.org/wiki/Table_of_spherical_harmonics#Real_spherical_harmonics (l=0-4)"""
     S_l_m_values = [
         # s orbital
         lnorm(l=0) * 1.0 / 2.0 * jnp.sqrt(1.0 / jnp.pi) * r_norm**0.0,  # (l, m) == (0, 0)
