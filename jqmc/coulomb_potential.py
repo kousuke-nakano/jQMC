@@ -171,7 +171,7 @@ class Coulomb_potential_data:
 
     """
 
-    structure_data: Structure_data = struct.field(pytree_node=False)
+    structure_data: Structure_data = struct.field(pytree_node=True)
     ecp_flag: bool = struct.field(pytree_node=False)
     z_cores: list[float] = struct.field(pytree_node=False)
     max_ang_mom_plus_1: list[int] = struct.field(pytree_node=False)

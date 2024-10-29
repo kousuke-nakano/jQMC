@@ -79,8 +79,8 @@ class MOs_data:
     """
 
     num_mo: int = struct.field(pytree_node=False)
-    mo_coefficients: npt.NDArray[np.float64] = struct.field(pytree_node=False)
-    aos_data: AOs_data = struct.field(pytree_node=False)
+    mo_coefficients: npt.NDArray[np.float64] = struct.field(pytree_node=True)
+    aos_data: AOs_data = struct.field(pytree_node=True)
 
     def __post_init__(self) -> None:
         if self.mo_coefficients.shape != (self.num_mo, self.aos_data.num_ao):
