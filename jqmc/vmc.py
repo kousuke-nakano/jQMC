@@ -975,6 +975,6 @@ if __name__ == "__main__":
         comput_jas_2b_param_deriv=True,
         comput_jas_1b3b_param_deriv=True,
     )
-    vmc.run(num_mcmc_steps=100)
-    vmc.get_e_L()
-    vmc.get_atomic_forces()
+    # vmc.run(num_mcmc_steps=100)
+    # vmc.get_e_L()
+    # vmc.get_atomic_forces()
