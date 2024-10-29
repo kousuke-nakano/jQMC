@@ -37,6 +37,7 @@
 # python modules
 import os
 import random
+import time
 from logging import Formatter, StreamHandler, getLogger
 
 # import mpi4jax
@@ -62,9 +63,9 @@ jax.config.update("jax_enable_x64", True)
 
 
 class VMCopt:
-    """VMC class.
+    """VMCopt class.
 
-    Runing VMC using MCMC.
+    Runing VMCopt using MCMC.
 
     Args:
         mcmc_seed (int): seed for the MCMC chain.
@@ -78,6 +79,7 @@ class VMCopt:
     def __init__(
         self,
         hamiltonian_data: Hamiltonian_data = None,
+        hamiltonian_data_up: Hamiltonian_data = None,  # dummy updated WF
         mcmc_seed: int = 34467,
         num_mcmc_warmup_steps: int = 50,
         num_mcmc_bin_blocks: int = 10,
@@ -85,6 +87,7 @@ class VMCopt:
     ) -> None:
         self.comm = MPI.COMM_WORLD
         self.rank = self.comm.Get_rank()
+        self.hamiltonian_data_up = hamiltonian_data_up
 
         log = getLogger("jqmc")
         log.setLevel("INFO")
@@ -195,9 +198,11 @@ class VMCopt:
         latest_r_dn_carts = self.__mcmc.latest_r_dn_carts
         Dt = 2.0
 
+        time.sleep(20)
+
         # update WF
         self.__mcmc = MCMC(
-            hamiltonian_data=hamiltonian_data,
+            hamiltonian_data=self.hamiltonian_data_up,
             init_r_up_carts=latest_r_up_carts,
             init_r_dn_carts=latest_r_dn_carts,
             mcmc_seed=self.mpi_seed,
@@ -378,45 +383,11 @@ if __name__ == "__main__":
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "H2_dimer_trexio.hdf5")
+        trexio_file=os.path.join(
+            os.path.dirname(__file__), "trexio_files", "H2_dimer_ccpv5z_trexio.hdf5"
+        )
     )
     # """
-
-    """ Error!! To be fixed.
-    # Ne atom cc-pV5Z with Mitas ccECP (10 electrons, feasible).
-    (
-        structure_data,
-        aos_data,
-        mos_data_up,
-        mos_data_dn,
-        geminal_mo_data,
-        coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), 'trexio_files', "Ne_trexio.hdf5"))
-    """
-
-    """
-    # benzene cc-pVDZ with Mitas ccECP (30 electrons, feasible).
-    (
-        structure_data,
-        aos_data,
-        mos_data_up,
-        mos_data_dn,
-        geminal_mo_data,
-        coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), 'trexio_files', "benzene_trexio.hdf5"))
-    """
-
-    """
-    # C60 cc-pVTZ with Mitas ccECP (240 electrons, not feasible).
-    (
-        structure_data,
-        aos_data,
-        mos_data_up,
-        mos_data_dn,
-        geminal_mo_data,
-        coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "C60_trexio.hdf5"))
-    """
 
     # define data
     jastrow_data = Jastrow_data(
@@ -434,6 +405,12 @@ if __name__ == "__main__":
         wavefunction_data=wavefunction_data,
     )
 
+    hamiltonian_data_up = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+
     # VMC parameters
     num_mcmc_warmup_steps = 20
     num_mcmc_bin_blocks = 5
@@ -442,10 +419,10 @@ if __name__ == "__main__":
     # run VMC
     vmcopt = VMCopt(
         hamiltonian_data=hamiltonian_data,
+        hamiltonian_data_up=hamiltonian_data_up,
         mcmc_seed=mcmc_seed,
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
     vmcopt.run(num_mcmc_steps=100)
     vmcopt.get_e_L()
-    vmcopt.get_atomic_forces()
