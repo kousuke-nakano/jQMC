@@ -1380,7 +1380,7 @@ def test_numerial_and_auto_grads_ln_Det():
     jax.clear_caches()
 
 
-@pytest.mark.skip(reason="@jit in the next test fails for some reason... Under investigation.")
+@pytest.mark.skip(reason="Bug of flux.struct with @jit.")
 def test_comparison_with_TurboRVB_wo_Jastrow():
     (
         structure_data,
@@ -1502,7 +1502,7 @@ def test_comparison_with_TurboRVB_wo_Jastrow():
     jax.clear_caches()
 
 
-@pytest.mark.skip(reason="@jit in the next test fails for some reason. Under investigation.")
+@pytest.mark.skip(reason="Bug of flux.struct with @jit.")
 def test_comparison_with_TurboRVB_w_2b_Jastrow():
     (
         structure_data,
@@ -1630,7 +1630,7 @@ def test_comparison_with_TurboRVB_w_2b_Jastrow():
 jax.clear_caches()
 
 
-@pytest.mark.skip(reason="@jit in the next test fails for some reason... Under investigation.")
+@pytest.mark.skip(reason="Bug of flux.struct with @jit.")
 def test_comparison_with_TurboRVB_w_2b_3b_Jastrow():
     (
         structure_data,
@@ -1754,7 +1754,7 @@ def test_comparison_with_TurboRVB_w_2b_3b_Jastrow():
 jax.clear_caches()
 
 
-@pytest.mark.skip(reason="@jastrow_pkl should be regenerated.")
+# @pytest.mark.skip(reason="@jastrow_pkl should be regenerated.")
 def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow():
     (
         structure_data,
@@ -1861,9 +1861,9 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow():
         wavefunction_data=wavefunction_data,
     )
 
-    print(f"wf_ratio={WF_ratio} Ha")
-    print(f"kinc={kinc} Ha")
-    print(f"vpot={vpot_bare_jax+vpot_ecp_debug} Ha")
+    # print(f"wf_ratio={WF_ratio} Ha")
+    # print(f"kinc={kinc} Ha")
+    # print(f"vpot={vpot_bare_jax+vpot_ecp_debug} Ha")
 
     np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=8)
     np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)

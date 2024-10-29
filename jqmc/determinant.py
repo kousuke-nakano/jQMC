@@ -92,9 +92,9 @@ class Geminal_data:
 
     num_electron_up: int = struct.field(pytree_node=False)
     num_electron_dn: int = struct.field(pytree_node=False)
-    orb_data_up_spin: AOs_data | MOs_data = struct.field(pytree_node=True)
-    orb_data_dn_spin: AOs_data | MOs_data = struct.field(pytree_node=True)
-    lambda_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True)
+    orb_data_up_spin: AOs_data | MOs_data = struct.field(pytree_node=False)
+    orb_data_dn_spin: AOs_data | MOs_data = struct.field(pytree_node=False)
+    lambda_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=False)
 
     def __post_init__(self) -> None:
         if self.lambda_matrix.shape != (
@@ -291,12 +291,12 @@ def compute_geminal_all_elements_debug(
 # ValueError when re-compiling function with a multi-dimensional array as a static field #24204
 # For the time being, we can unjit it to avoid errors in unit_test.py
 # This error is tied with the choice of pytree=True/False flag
-@jit
+# @jit
 def compute_geminal_all_elements_jax(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64 | np.complex128]:
+) -> npt.NDArray[np.float64]:
     lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(
         geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
     )
@@ -741,7 +741,7 @@ def compute_grads_and_laplacian_ln_Det_debug(
     return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D
 
 
-@jit
+# @jit
 def compute_grads_and_laplacian_ln_Det_jax(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[jnp.float64],

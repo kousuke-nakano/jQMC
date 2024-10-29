@@ -93,8 +93,8 @@ class Jastrow_three_body_data:
         j_matrix_up_dn (npt.NDArray[np.float64]): J matrix dim. (orb_data_up_spin.num_ao, orb_data_dn_spin.num_ao))
     """
 
-    orb_data_up_spin: AOs_data = struct.field(pytree_node=True)
-    orb_data_dn_spin: AOs_data = struct.field(pytree_node=True)
+    orb_data_up_spin: AOs_data = struct.field(pytree_node=False)
+    orb_data_dn_spin: AOs_data = struct.field(pytree_node=False)
     j_matrix_up_up: npt.NDArray[np.float64] = struct.field(pytree_node=True)
     j_matrix_dn_dn: npt.NDArray[np.float64] = struct.field(pytree_node=True)
     j_matrix_up_dn: npt.NDArray[np.float64] = struct.field(pytree_node=True)
@@ -442,6 +442,9 @@ def compute_Jastrow_two_body_jax(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
+    r_up_carts = jnp.array(r_up_carts)
+    r_dn_carts = jnp.array(r_dn_carts)
+
     def J2_anti_parallel_spins(r_cart_i, r_cart_j):
         # """exp
         two_body_jastrow = (
@@ -822,10 +825,13 @@ def compute_grads_and_laplacian_Jastrow_two_body_jax(
     r_up_carts: npt.NDArray[jnp.float64],
     r_dn_carts: npt.NDArray[jnp.float64],
 ) -> tuple[
-    npt.NDArray[jnp.float64 | jnp.complex128],
-    npt.NDArray[jnp.float64 | jnp.complex128],
+    npt.NDArray[jnp.float64],
+    npt.NDArray[jnp.float64],
     float | complex,
 ]:
+    r_up_carts = jnp.array(r_up_carts)
+    r_dn_carts = jnp.array(r_dn_carts)
+
     # compute grad
     grad_J2_up = grad(compute_Jastrow_two_body_jax, argnums=1)(
         jastrow_two_body_data, r_up_carts, r_dn_carts

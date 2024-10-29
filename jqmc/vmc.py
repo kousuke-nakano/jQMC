@@ -167,7 +167,8 @@ class MCMC:
 
         # """
         # compiling methods
-        jax.profiler.start_trace("/tmp/tensorboard")
+        # jax.profiler.start_trace("/tmp/tensorboard", create_perfetto_link=True)
+        # open the generated URL (UI with perfetto)
         # tensorboard --logdir /tmp/tensorboard
         # tensorborad does not work with safari. use google chrome
 
@@ -231,7 +232,7 @@ class MCMC:
 
         logger.info("Compilation is done.")
 
-        jax.profiler.stop_trace()
+        # jax.profiler.stop_trace()
         # """
 
     def run(self, num_mcmc_steps: int = 0) -> None:
@@ -910,7 +911,7 @@ if __name__ == "__main__":
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), 'trexio_files', "Ne_trexio.hdf5"))
     """
 
-    """
+    # """
     # benzene cc-pVDZ with Mitas ccECP (30 electrons, feasible).
     (
         structure_data,
@@ -919,10 +920,12 @@ if __name__ == "__main__":
         mos_data_dn,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), 'trexio_files', "benzene_trexio.hdf5"))
-    """
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "benzene_trexio.hdf5")
+    )
+    # """
 
-    """
+    # """
     # C60 cc-pVTZ with Mitas ccECP (240 electrons, not feasible).
     (
         structure_data,
@@ -931,8 +934,10 @@ if __name__ == "__main__":
         mos_data_dn,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "C60_trexio.hdf5"))
-    """
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "C60_trexio.hdf5")
+    )
+    # """
 
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
@@ -943,8 +948,8 @@ if __name__ == "__main__":
     jastrow_data = Jastrow_data(
         jastrow_two_body_data=jastrow_twobody_data,
         jastrow_two_body_pade_flag=True,
-        jastrow_three_body_data=None,
-        jastrow_three_body_flag=False,
+        jastrow_three_body_data=jastrow_threebody_data,
+        jastrow_three_body_flag=True,
     )
 
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
@@ -966,9 +971,9 @@ if __name__ == "__main__":
         mcmc_seed=mcmc_seed,
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
-        comput_position_deriv=True,
-        comput_jas_2b_param_deriv=False,
-        comput_jas_1b3b_param_deriv=False,
+        comput_position_deriv=False,
+        comput_jas_2b_param_deriv=True,
+        comput_jas_1b3b_param_deriv=True,
     )
     vmc.run(num_mcmc_steps=100)
     vmc.get_e_L()

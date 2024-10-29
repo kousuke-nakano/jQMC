@@ -54,8 +54,9 @@ import numpy as np
 import numpy.typing as npt
 import scipy  # type: ignore
 from flax import struct
-from jax import grad, jacrev, jit, vmap
+from jax import grad, jacrev, jit
 from jax import typing as jnpt
+from jax import vmap
 from numpy import linalg as LA
 
 # jaxQMC module
@@ -103,7 +104,7 @@ class AOs_data:
 
     """
 
-    structure_data: Structure_data = struct.field(pytree_node=True)
+    structure_data: Structure_data = struct.field(pytree_node=False)
     nucleus_index: list[int] = struct.field(pytree_node=False)
     num_ao: int = struct.field(pytree_node=False)
     num_ao_prim: int = struct.field(pytree_node=False)
@@ -1203,37 +1204,9 @@ def compute_primitive_AOs_grad_jax(
     R_cart: npt.NDArray[np.float64],
     r_cart: npt.NDArray[np.float64],
 ):
-    # """grad. Correct but slow...
     grad_x, grad_y, grad_z = grad(compute_primitive_AOs_jax, argnums=5)(
         coefficient, exponent, l, m, R_cart, r_cart
     )
-    # """
-
-    """
-    # What if grad is replaced with the analytical one? (test using FDM) / To be refactored
-    diff_h = 1.0e-5
-    diff_p_x = compute_primitive_AOs_jax(
-        coefficient, exponent, l, m, R_cart, r_cart + jnp.array([+diff_h, 0.0, 0.0])
-    )
-    diff_m_x = compute_primitive_AOs_jax(
-        coefficient, exponent, l, m, R_cart, r_cart + jnp.array([-diff_h, 0.0, 0.0])
-    )
-    diff_p_y = compute_primitive_AOs_jax(
-        coefficient, exponent, l, m, R_cart, r_cart + jnp.array([0.0, +diff_h, 0.0])
-    )
-    diff_m_y = compute_primitive_AOs_jax(
-        coefficient, exponent, l, m, R_cart, r_cart + jnp.array([0.0, -diff_h, 0.0])
-    )
-    diff_p_z = compute_primitive_AOs_jax(
-        coefficient, exponent, l, m, R_cart, r_cart + jnp.array([0.0, 0.0, +diff_h])
-    )
-    diff_m_z = compute_primitive_AOs_jax(
-        coefficient, exponent, l, m, R_cart, r_cart + jnp.array([0.0, 0.0, -diff_h])
-    )
-    grad_x = (diff_p_x - diff_m_x) / (2 * diff_h)
-    grad_y = (diff_p_y - diff_m_y) / (2 * diff_h)
-    grad_z = (diff_p_z - diff_m_z) / (2 * diff_h)
-    """
 
     return grad_x, grad_y, grad_z
 
@@ -1247,7 +1220,6 @@ def compute_primitive_AOs_laplacians_jax(
     R_cart: npt.NDArray[np.float64],
     r_cart: npt.NDArray[np.float64],
 ):
-    # """jacrev(grad). Correct but slow...
     laplacians = jnp.sum(
         jnp.diag(
             jacrev(grad(compute_primitive_AOs_jax, argnums=5), argnums=5)(
@@ -1255,36 +1227,6 @@ def compute_primitive_AOs_laplacians_jax(
             )
         )
     )
-    # """
-
-    """
-    # What if jacrev(grad) is replaced with the analytical one? (test using FDM) / To be refactored
-    diff_h = 1.0e-5
-    p = compute_primitive_AOs_jax(coefficient, exponent, l, m, R_cart, r_cart)
-    diff_p_x = compute_primitive_AOs_jax(
-        coefficient, exponent, l, m, R_cart, r_cart + jnp.array([+diff_h, 0.0, 0.0])
-    )
-    diff_m_x = compute_primitive_AOs_jax(
-        coefficient, exponent, l, m, R_cart, r_cart + jnp.array([-diff_h, 0.0, 0.0])
-    )
-    diff_p_y = compute_primitive_AOs_jax(
-        coefficient, exponent, l, m, R_cart, r_cart + jnp.array([0.0, +diff_h, 0.0])
-    )
-    diff_m_y = compute_primitive_AOs_jax(
-        coefficient, exponent, l, m, R_cart, r_cart + jnp.array([0.0, -diff_h, 0.0])
-    )
-    diff_p_z = compute_primitive_AOs_jax(
-        coefficient, exponent, l, m, R_cart, r_cart + jnp.array([0.0, 0.0, +diff_h])
-    )
-    diff_m_z = compute_primitive_AOs_jax(
-        coefficient, exponent, l, m, R_cart, r_cart + jnp.array([0.0, 0.0, -diff_h])
-    )
-    grad2_x = (diff_p_x + diff_m_x - 2 * p) / (diff_h) ** 2
-    grad2_y = (diff_p_y + diff_m_y - 2 * p) / (diff_h) ** 2
-    grad2_z = (diff_p_z + diff_m_z - 2 * p) / (diff_h) ** 2
-
-    laplacians = grad2_x + grad2_y + grad2_z
-    """
 
     return laplacians
 

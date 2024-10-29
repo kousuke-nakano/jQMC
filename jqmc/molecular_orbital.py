@@ -79,8 +79,8 @@ class MOs_data:
     """
 
     num_mo: int = struct.field(pytree_node=False)
-    mo_coefficients: npt.NDArray[np.float64] = struct.field(pytree_node=True)
-    aos_data: AOs_data = struct.field(pytree_node=True)
+    mo_coefficients: npt.NDArray[np.float64] = struct.field(pytree_node=False)
+    aos_data: AOs_data = struct.field(pytree_node=False)
 
     def __post_init__(self) -> None:
         if self.mo_coefficients.shape != (self.num_mo, self.aos_data.num_ao):
@@ -154,7 +154,7 @@ def compute_MOs_laplacian_debug(mos_data: MOs_data, r_carts: npt.NDArray[np.floa
     return mo_matrix_laplacian
 
 
-# @jit
+@jit
 def compute_MOs_laplacian_jax(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]):
     mo_matrix_laplacian = jnp.dot(
         mos_data.mo_coefficients,
@@ -299,7 +299,7 @@ def compute_MOs_debug(
 # ValueError when re-compiling function with a multi-dimensional array as a static field #24204
 # For the time being, we can unjit it to avoid errors in unit_test.py
 # This error is tied with the choice of pytree=True/False flag
-@jit
+# @jit
 def compute_MOs_jax(
     mos_data: MOs_data, r_carts: npt.NDArray[np.float64]
 ) -> npt.NDArray[np.float64]:

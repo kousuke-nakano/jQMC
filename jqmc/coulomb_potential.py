@@ -171,7 +171,7 @@ class Coulomb_potential_data:
 
     """
 
-    structure_data: Structure_data = struct.field(pytree_node=True)
+    structure_data: Structure_data = struct.field(pytree_node=False)
     ecp_flag: bool = struct.field(pytree_node=False)
     z_cores: list[float] = struct.field(pytree_node=False)
     max_ang_mom_plus_1: list[int] = struct.field(pytree_node=False)
@@ -547,7 +547,7 @@ def compute_ecp_coulomb_potential_jax(
     return V_ecp
 
 
-@jit
+@jit  # this jit drastically accelarates the computation!
 def compute_ecp_coulomb_potential_jax_weights_grid_points(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
