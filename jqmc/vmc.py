@@ -167,13 +167,13 @@ class MCMC:
 
         # """
         # compiling methods
-        # jax.profiler.start_trace("/tmp/tensorboard")
+        jax.profiler.start_trace("/tmp/tensorboard")
         # tensorboard --logdir /tmp/tensorboard
         # tensorborad does not work with safari. use google chrome
 
         logger.info("Compilation starts.")
 
-        logger.info("  Compilation e_L starts.")
+        logger.info("Compilation e_L starts.")
         start = time.perf_counter()
         _ = compute_local_energy(
             hamiltonian_data=self.__hamiltonian_data,
@@ -181,11 +181,11 @@ class MCMC:
             r_dn_carts=self.__latest_r_dn_carts,
         )
         end = time.perf_counter()
-        logger.info("  Compilation e_L is done.")
-        logger.info(f"  time={end-start:.2f} sec.")
+        logger.info("Compilation e_L is done.")
+        logger.info(f"Elapsed Time = {end-start:.2f} sec.")
 
         if self.__comput_position_deriv:
-            logger.info("  Compilation de_L starts.")
+            logger.info("Compilation de_L starts.")
             start = time.perf_counter()
             _, _, _ = grad(compute_local_energy, argnums=(0, 1, 2))(
                 self.__hamiltonian_data,
@@ -193,10 +193,10 @@ class MCMC:
                 self.__latest_r_dn_carts,
             )
             end = time.perf_counter()
-            logger.info("  Compilation de_L is done.")
-            logger.info(f"  time={end-start:.2f} sec.")
+            logger.info("Compilation de_L is done.")
+            logger.info(f"Elapsed Time = {end-start:.2f} sec.")
 
-            logger.info("  Compilation dln_Psi starts.")
+            logger.info("Compilation dln_Psi starts.")
             start = time.perf_counter()
             _, _, _ = grad(evaluate_ln_wavefunction_api, argnums=(0, 1, 2))(
                 self.__hamiltonian_data.wavefunction_data,
@@ -204,21 +204,21 @@ class MCMC:
                 self.__latest_r_dn_carts,
             )
             end = time.perf_counter()
-            logger.info("  Compilation dln_Psi is done.")
-            logger.info(f"  time={end-start:.2f} sec.")
+            logger.info("Compilation dln_Psi is done.")
+            logger.info(f"Elapsed Time = {end-start:.2f} sec.")
 
-            logger.info("  Compilation domega starts.")
+            logger.info("Compilation domega starts.")
             start = time.perf_counter()
             _ = evaluate_swct_domega_api(
                 self.__swct_data,
                 self.__latest_r_up_carts,
             )
             end = time.perf_counter()
-            logger.info("  Compilation domega is done.")
-            logger.info(f"  time={end-start:.2f} sec.")
+            logger.info("Compilation domega is done.")
+            logger.info(f"Elapsed Time = {end-start:.2f} sec.")
 
         if self.__comput_jas_2b_param_deriv or self.__comput_jas_1b3b_param_deriv:
-            logger.info("  Compilation dln_Psi starts.")
+            logger.info("Compilation dln_Psi starts.")
             start = time.perf_counter()
             _ = grad(evaluate_ln_wavefunction_api, argnums=(0))(
                 self.__hamiltonian_data.wavefunction_data,
@@ -226,12 +226,12 @@ class MCMC:
                 self.__latest_r_dn_carts,
             )
             end = time.perf_counter()
-            logger.info("  Compilation dln_Psi is done.")
-            logger.info(f"  time={end-start:.2f} sec.")
+            logger.info("Compilation dln_Psi is done.")
+            logger.info(f"Elapsed Time = {end-start:.2f} sec.")
 
         logger.info("Compilation is done.")
 
-        # jax.profiler.stop_trace()
+        jax.profiler.stop_trace()
         # """
 
     def run(self, num_mcmc_steps: int = 0) -> None:

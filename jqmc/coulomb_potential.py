@@ -52,8 +52,9 @@ import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import jit, lax, vmap
+from jax import jit, lax
 from jax import typing as jnpt
+from jax import vmap
 from scipy.special import eval_legendre
 
 from .jastrow_factor import Jastrow_data
@@ -1030,6 +1031,9 @@ def compute_coulomb_potential_api(
             r_dn_carts=r_dn_carts,
         )
 
+        # ecp_coulomb_potential = 0.0
+
+        # """
         ecp_coulomb_potential = compute_ecp_coulomb_potential_api(
             coulomb_potential_data=coulomb_potential_data,
             r_up_carts=r_up_carts,
@@ -1037,6 +1041,7 @@ def compute_coulomb_potential_api(
             wavefunction_data=wavefunction_data,
             Nv=6,
         )
+        # """
 
     return bare_coulomb_potential + ecp_coulomb_potential
 
