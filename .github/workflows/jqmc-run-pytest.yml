@@ -52,4 +52,5 @@ jobs:
         pytest -v -s
 
     - name: Test jqmc (pytest) with @jit decorator
+      run: |
         pytest -v -s --enable-jit
