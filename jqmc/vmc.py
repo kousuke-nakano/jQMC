@@ -822,25 +822,28 @@ class VMC:
                     O_matrix = np.vstack([O_matrix, dln_Psi_dc_jas_1b3b_up_up_flat])
 
                 print(O_matrix.shape)
-
-                V_vector = np.var(O_matrix, ddof=1, axis=1)
-                S_matrix = np.cov(O_matrix, bias=True, rowvar=True)
-
-                print(V_vector.shape)
-                print(S_matrix.shape)
-
-                """
+				
                 var_epsilon = 1.0e-5
-                O_matrix = np.array([])
-
+                I_matrix = np.one(S_matrix.shape)
+                S_matrix = np.cov(O_matrix, bias=True, rowvar=True)
+				S_prime_matrix = S_matrix + var_epsilon * I_matrix
                 f_vector = np.array()
 
                 # solve Sx=f
-                # x=scipy.solve(S_matrix, f_vector)
-                """
+                X = scipy.solve(S_matrix, f_vector)
+                
+                X_matrix_2b = X[0:size_jas_2b].reshape(shape_jas_2b)
+                X_matrix_3b_up_up = xxx
+                
+                # update parameter
+                delta = 1.0e-4
+                jas_3b_up_up = jas_3b_up_up + delta * X_matrix_3b_up_up
+                
+                # Create new WF and Hamiltonian
+                
+            # Broadcast the updated Hamiltonian
 
-            continue
-
+            # Other variables
             latest_r_up_carts = self.__mcmc.latest_r_up_carts
             latest_r_dn_carts = self.__mcmc.latest_r_dn_carts
             mpi_seed = self.__mcmc.mcmc_seed
@@ -848,7 +851,8 @@ class VMC:
 
             time.sleep(1)
 
-            # update WF
+            # Generate a new MCMC instance
+            # No, let's 
             self.__mcmc = MCMC(
                 hamiltonian_data=self.hamiltonian_data,
                 init_r_up_carts=latest_r_up_carts,
@@ -857,7 +861,20 @@ class VMC:
                 Dt=Dt,
             )
         # """
-
+        
+        # dln_Psi_dc_list= [self.__mcmc.dln_Psi_dc_jas_1b3b_dn_dn, ...]
+        # dln_Psi_dc_index [0,1,....1,1,...]
+        # param [(0,), (0,1), ...] 
+        
+        # compute <E*O>
+        ## E -> 1 * M dim
+        ## O -> L * M dim
+        ## compose EO -> L * M dim.
+        ## bar(E) 1*1 dim
+        ## bar(O) L*M dim
+        ## EO-\bar(E)\bar(O) -> L*M dim.
+        ## jackknife for EO-\bar(E)\bar(O) -> L*1 dim.
+        
     def get_e_L(self):
         # analysis VMC
         e_L = self.__mcmc.e_L[self.__num_mcmc_warmup_steps :]
