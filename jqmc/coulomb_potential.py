@@ -52,8 +52,9 @@ import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import jit, lax, vmap
+from jax import jit, lax
 from jax import typing as jnpt
+from jax import vmap
 from scipy.special import eval_legendre
 
 from .jastrow_factor import Jastrow_data
@@ -171,16 +172,18 @@ class Coulomb_potential_data:
 
     """
 
-    ecp_flag: bool = struct.field(pytree_node=False)
-    z_cores: list[float] = struct.field(pytree_node=False)
-    max_ang_mom_plus_1: list[int] = struct.field(pytree_node=False)
-    num_ecps: list[int] = struct.field(pytree_node=False)
-    ang_moms: list[int] = struct.field(pytree_node=False)
-    nucleus_index: list[int] = struct.field(pytree_node=False)
-    exponents: list[float] = struct.field(pytree_node=False)
-    coefficients: list[float] = struct.field(pytree_node=False)
-    powers: list[int] = struct.field(pytree_node=False)
-    structure_data: Structure_data = struct.field(pytree_node=True)
+    structure_data: Structure_data = struct.field(
+        pytree_node=True, default_factory=lambda: Structure_data()
+    )
+    ecp_flag: bool = struct.field(pytree_node=False, default=False)
+    z_cores: list[float] = struct.field(pytree_node=False, default_factory=list)
+    max_ang_mom_plus_1: list[int] = struct.field(pytree_node=False, default_factory=list)
+    num_ecps: list[int] = struct.field(pytree_node=False, default_factory=list)
+    ang_moms: list[int] = struct.field(pytree_node=False, default_factory=list)
+    nucleus_index: list[int] = struct.field(pytree_node=False, default_factory=list)
+    exponents: list[float] = struct.field(pytree_node=False, default_factory=list)
+    coefficients: list[float] = struct.field(pytree_node=False, default_factory=list)
+    powers: list[int] = struct.field(pytree_node=False, default_factory=list)
 
     def __post_init__(self) -> None:
         """Initialization of the class.

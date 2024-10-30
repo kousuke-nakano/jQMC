@@ -90,11 +90,17 @@ class Geminal_data:
             (num_electron_up - num_electron_dn)].
     """
 
-    num_electron_up: int = struct.field(pytree_node=False)
-    num_electron_dn: int = struct.field(pytree_node=False)
-    orb_data_up_spin: AOs_data | MOs_data = struct.field(pytree_node=True)
-    orb_data_dn_spin: AOs_data | MOs_data = struct.field(pytree_node=True)
-    lambda_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True)
+    num_electron_up: int = struct.field(pytree_node=False, default=0)
+    num_electron_dn: int = struct.field(pytree_node=False, default=0)
+    orb_data_up_spin: AOs_data | MOs_data = struct.field(
+        pytree_node=True, default_factory=lambda: AOs_data()
+    )
+    orb_data_dn_spin: AOs_data | MOs_data = struct.field(
+        pytree_node=True, default_factory=lambda: AOs_data()
+    )
+    lambda_matrix: npt.NDArray[np.float64] = struct.field(
+        pytree_node=True, default_factory=lambda: np.array([])
+    )
 
     def __post_init__(self) -> None:
         if self.lambda_matrix.shape != (

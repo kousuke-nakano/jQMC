@@ -74,14 +74,16 @@ class Structure_data:
         atomic_labels (list[str]): list of labels for the atoms in the system.
     """
 
-    positions: npt.NDArray[np.float64] = struct.field(pytree_node=True)
-    pbc_flag: list[bool] = struct.field(pytree_node=False)
-    vec_a: list[float] = struct.field(pytree_node=False)
-    vec_b: list[float] = struct.field(pytree_node=False)
-    vec_c: list[float] = struct.field(pytree_node=False)
-    atomic_numbers: list[int] = struct.field(pytree_node=False)
-    element_symbols: list[str] = struct.field(pytree_node=False)
-    atomic_labels: list[str] = struct.field(pytree_node=False)
+    positions: npt.NDArray[np.float64] = struct.field(
+        pytree_node=True, default_factory=lambda: np.array([], dtype=np.float64)
+    )
+    pbc_flag: list[bool] = struct.field(pytree_node=False, default_factory=list)
+    vec_a: list[float] = struct.field(pytree_node=False, default_factory=list)
+    vec_b: list[float] = struct.field(pytree_node=False, default_factory=list)
+    vec_c: list[float] = struct.field(pytree_node=False, default_factory=list)
+    atomic_numbers: list[int] = struct.field(pytree_node=False, default_factory=list)
+    element_symbols: list[str] = struct.field(pytree_node=False, default_factory=list)
+    atomic_labels: list[str] = struct.field(pytree_node=False, default_factory=list)
 
     @property
     def cell(self) -> npt.NDArray[np.float64]:

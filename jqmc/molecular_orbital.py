@@ -78,9 +78,11 @@ class MOs_data:
         aos_data (AOs_data): aos_data instances
     """
 
-    num_mo: int = struct.field(pytree_node=False)
-    mo_coefficients: npt.NDArray[np.float64] = struct.field(pytree_node=True)
-    aos_data: AOs_data = struct.field(pytree_node=True)
+    num_mo: int = struct.field(pytree_node=False, default=0)
+    mo_coefficients: npt.NDArray[np.float64] = struct.field(
+        pytree_node=True, default_factory=lambda: np.array([])
+    )
+    aos_data: AOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
 
     def __post_init__(self) -> None:
         if self.mo_coefficients.shape != (self.num_mo, self.aos_data.num_ao):
@@ -292,13 +294,6 @@ def compute_MOs_debug(
     return answer
 
 
-# it cannot be jitted!? because _api methods
-# in which crude if statements are included.
-# but why? other _api can be jitted...
-# There is a related issue on github.
-# ValueError when re-compiling function with a multi-dimensional array as a static field #24204
-# For the time being, we can unjit it to avoid errors in unit_test.py
-# This error is tied with the choice of pytree=True/False flag
 @jit
 def compute_MOs_jax(
     mos_data: MOs_data, r_carts: npt.NDArray[np.float64]

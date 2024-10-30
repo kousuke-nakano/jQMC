@@ -104,15 +104,17 @@ class AOs_data:
 
     """
 
-    structure_data: Structure_data = struct.field(pytree_node=True)
-    nucleus_index: list[int] = struct.field(pytree_node=False)
-    num_ao: int = struct.field(pytree_node=False)
-    num_ao_prim: int = struct.field(pytree_node=False)
-    orbital_indices: list[int] = struct.field(pytree_node=False)
-    exponents: list[float] = struct.field(pytree_node=False)
-    coefficients: list[float] = struct.field(pytree_node=False)
-    angular_momentums: list[int] = struct.field(pytree_node=False)
-    magnetic_quantum_numbers: list[int] = struct.field(pytree_node=False)
+    structure_data: Structure_data = struct.field(
+        pytree_node=True, default_factory=lambda: Structure_data()
+    )
+    nucleus_index: list[int] = struct.field(pytree_node=False, default_factory=list)
+    num_ao: int = struct.field(pytree_node=False, default=0)
+    num_ao_prim: int = struct.field(pytree_node=False, default=0)
+    orbital_indices: list[int] = struct.field(pytree_node=False, default_factory=list)
+    exponents: list[float] = struct.field(pytree_node=False, default_factory=list)
+    coefficients: list[float] = struct.field(pytree_node=False, default_factory=list)
+    angular_momentums: list[int] = struct.field(pytree_node=False, default_factory=list)
+    magnetic_quantum_numbers: list[int] = struct.field(pytree_node=False, default_factory=list)
 
     def __post_init__(self) -> None:
         """Initialization of the class.

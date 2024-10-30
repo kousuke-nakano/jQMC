@@ -68,7 +68,7 @@ class Jastrow_two_body_data:
         jastrow_2b_param (float): the parameter for 2b Jastrow part
     """
 
-    jastrow_2b_param: float = struct.field(pytree_node=True)
+    jastrow_2b_param: float = struct.field(pytree_node=True, default=1.0)
 
     def __post_init__(self) -> None:
         pass
@@ -93,11 +93,17 @@ class Jastrow_three_body_data:
         j_matrix_up_dn (npt.NDArray[np.float64]): J matrix dim. (orb_data_up_spin.num_ao, orb_data_dn_spin.num_ao))
     """
 
-    orb_data_up_spin: AOs_data = struct.field(pytree_node=True)
-    orb_data_dn_spin: AOs_data = struct.field(pytree_node=True)
-    j_matrix_up_up: npt.NDArray[np.float64] = struct.field(pytree_node=True)
-    j_matrix_dn_dn: npt.NDArray[np.float64] = struct.field(pytree_node=True)
-    j_matrix_up_dn: npt.NDArray[np.float64] = struct.field(pytree_node=True)
+    orb_data_up_spin: AOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
+    orb_data_dn_spin: AOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
+    j_matrix_up_up: npt.NDArray[np.float64] = struct.field(
+        pytree_node=True, default_factory=lambda: np.array([])
+    )
+    j_matrix_dn_dn: npt.NDArray[np.float64] = struct.field(
+        pytree_node=True, default_factory=lambda: np.array([])
+    )
+    j_matrix_up_dn: npt.NDArray[np.float64] = struct.field(
+        pytree_node=True, default_factory=lambda: np.array([])
+    )
 
     def __post_init__(self) -> None:
         if self.j_matrix_up_up.shape != (
@@ -165,10 +171,14 @@ class Jastrow_data:
     The class contains data for evaluating a Jastrow function.
     """
 
-    jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=True)
-    jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=True)
-    jastrow_two_body_pade_flag: bool = struct.field(pytree_node=False)
-    jastrow_three_body_flag: bool = struct.field(pytree_node=False)
+    jastrow_two_body_data: Jastrow_two_body_data = struct.field(
+        pytree_node=True, default_factory=lambda: Jastrow_two_body_data()
+    )
+    jastrow_three_body_data: Jastrow_three_body_data = struct.field(
+        pytree_node=True, default_factory=lambda: Jastrow_three_body_data()
+    )
+    jastrow_two_body_pade_flag: bool = struct.field(pytree_node=False, default=False)
+    jastrow_three_body_flag: bool = struct.field(pytree_node=False, default=False)
 
     def __post_init__(self) -> None:
         pass
