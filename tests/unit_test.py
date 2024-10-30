@@ -417,7 +417,7 @@ def test_spherical_harmonics(l, m):
     ["l", "m"],
     list(
         itertools.chain.from_iterable(
-            [[pytest.param(l, m, id=f"l={l}, m={m}") for m in range(-l, l + 1)] for l in range(5)]
+            [[pytest.param(l, m, id=f"l={l}, m={m}") for m in range(-l, l + 1)] for l in range(7)]
         )
     ),
 )

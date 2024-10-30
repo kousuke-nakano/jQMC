@@ -54,8 +54,9 @@ import numpy as np
 import numpy.typing as npt
 import scipy  # type: ignore
 from flax import struct
-from jax import grad, jacrev, jit, vmap
+from jax import grad, jacrev, jit
 from jax import typing as jnpt
+from jax import vmap
 from numpy import linalg as LA
 
 # jaxQMC module
@@ -967,12 +968,37 @@ def compute_S_l_m_jax(
         (l == 4) & (m == 2),
         (l == 4) & (m == 3),
         (l == 4) & (m == 4),
+        (l == 5) & (m == -5),
+        (l == 5) & (m == -4),
+        (l == 5) & (m == -3),
+        (l == 5) & (m == -2),
+        (l == 5) & (m == -1),
+        (l == 5) & (m == 0),
+        (l == 5) & (m == 1),
+        (l == 5) & (m == 2),
+        (l == 5) & (m == 3),
+        (l == 5) & (m == 4),
+        (l == 5) & (m == 5),
+        (l == 6) & (m == -6),
+        (l == 6) & (m == -5),
+        (l == 6) & (m == -4),
+        (l == 6) & (m == -3),
+        (l == 6) & (m == -2),
+        (l == 6) & (m == -1),
+        (l == 6) & (m == 0),
+        (l == 6) & (m == 1),
+        (l == 6) & (m == 2),
+        (l == 6) & (m == 3),
+        (l == 6) & (m == 4),
+        (l == 6) & (m == 5),
+        (l == 6) & (m == 6),
     ]
 
     def lnorm(l):
         return jnp.sqrt((4 * np.pi) / (2 * l + 1))
 
     """see https://en.wikipedia.org/wiki/Table_of_spherical_harmonics#Real_spherical_harmonics (l=0-4)"""
+    """Useful tool to generate spherical harmonics generator [https://github.com/elerac/sh_table]"""
     S_l_m_values = [
         # s orbital
         lnorm(l=0) * 1.0 / 2.0 * jnp.sqrt(1.0 / jnp.pi) * r_norm**0.0,  # (l, m) == (0, 0)
@@ -1086,6 +1112,174 @@ def compute_S_l_m_jax(
             * jnp.sqrt(35.0 / (jnp.pi))
             * (x**2 * (x**2 - 3 * y**2) - y**2 * (3 * x**2 - y**2))
         ),  # (l, m) == (4, 4)
+        lnorm(5)
+        * 3.0
+        / 16.0
+        * jnp.sqrt(77.0 / (2 * jnp.pi))
+        * (5 * x**4 * y - 10 * x**2 * y**3 + y**5),  # (l, m) == (5, -5)
+        lnorm(5)
+        * 3.0
+        / 16.0
+        * jnp.sqrt(385.0 / jnp.pi)
+        * 4
+        * x
+        * y
+        * z
+        * (x**2 - y**2),  # (l, m) == (5, -4)
+        lnorm(5)
+        * 1.0
+        / 16.0
+        * np.sqrt(385.0 / (2 * np.pi))
+        * -1
+        * (y**3 - 3 * x**2 * y)
+        * (9 * z**2 - (x**2 + y**2 + z**2)),  # (l, m) == (5, -3)
+        lnorm(5)
+        * 1.0
+        / 8.0
+        * jnp.sqrt(1155 / jnp.pi)
+        * 2
+        * x
+        * y
+        * (3 * z**3 - z * (x**2 + y**2 + z**2)),  # (l, m) == (5, -2)
+        lnorm(5)
+        * 1.0
+        / 16.0
+        * jnp.sqrt(165 / jnp.pi)
+        * y
+        * (
+            21 * z**4 - 14 * z**2 * (x**2 + y**2 + z**2) + (x**2 + y**2 + z**2) ** 2
+        ),  # (l, m) == (5, -1)
+        lnorm(5)
+        * 1.0
+        / 16.0
+        * jnp.sqrt(11 / jnp.pi)
+        * (
+            63 * z**5 - 70 * z**3 * (x**2 + y**2 + z**2) + 15 * z * (x**2 + y**2 + z**2) ** 2
+        ),  # (l, m) == (5, 0)
+        lnorm(5)
+        * 1.0
+        / 16.0
+        * jnp.sqrt(165 / jnp.pi)
+        * x
+        * (
+            21 * z**4 - 14 * z**2 * (x**2 + y**2 + z**2) + (x**2 + y**2 + z**2) ** 2
+        ),  # (l, m) == (5, 1)
+        lnorm(5)
+        * 1.0
+        / 8.0
+        * jnp.sqrt(1155 / jnp.pi)
+        * (x**2 - y**2)
+        * (3 * z**3 - z * (x**2 + y**2 + z**2)),  # (l, m) == (5, 2)
+        lnorm(5)
+        * 1.0
+        / 16.0
+        * jnp.sqrt(385.0 / (2 * jnp.pi))
+        * (x**3 - 3 * x * y**2)
+        * (9 * z**2 - (x**2 + y**2 + z**2)),  # (l, m) == (5, 3)
+        lnorm(5)
+        * 3.0
+        / 16.0
+        * jnp.sqrt(385.0 / jnp.pi)
+        * (x**2 * z * (x**2 - 3 * y**2) - y**2 * z * (3 * x**2 - y**2)),  # (l, m) == (5, 4)
+        lnorm(5)
+        * 3.0
+        / 16.0
+        * jnp.sqrt(77.0 / (2 * jnp.pi))
+        * (x**5 - 10 * x**3 * y**2 + 5 * x * y**4),  # (l, m) == (5, 5)
+        lnorm(6)
+        * 1.0
+        / 64.0
+        * jnp.sqrt(6006.0 / jnp.pi)
+        * (6 * x**5 * y - 20 * x**3 * y**3 + 6 * x * y**5),  # (l, m) == (6, -6)
+        lnorm(6)
+        * 3.0
+        / 32.0
+        * jnp.sqrt(2002.0 / jnp.pi)
+        * z
+        * (5 * x**4 * y - 10 * x**2 * y**3 + y**5),  # (l, m) == (6, -5)
+        lnorm(6)
+        * 3.0
+        / 32.0
+        * jnp.sqrt(91.0 / jnp.pi)
+        * 4
+        * x
+        * y
+        * (11 * z**2 - (x**2 + y**2 + z**2))
+        * (x**2 - y**2),  # (l, m) == (6, -4)
+        lnorm(6)
+        * 1.0
+        / 32.0
+        * jnp.sqrt(2730.0 / jnp.pi)
+        * -1
+        * (11 * z**3 - 3 * z * (x**2 + y**2 + z**2))
+        * (y**3 - 3 * x**2 * y),  # (l, m) == (6, -3)
+        lnorm(6)
+        * 1.0
+        / 64.0
+        * jnp.sqrt(2730.0 / jnp.pi)
+        * 2
+        * x
+        * y
+        * (
+            33 * z**4 - 18 * z**2 * (x**2 + y**2 + z**2) + (x**2 + y**2 + z**2) ** 2
+        ),  # (l, m) == (6, -2)
+        lnorm(6)
+        * 1.0
+        / 16.0
+        * jnp.sqrt(273.0 / jnp.pi)
+        * y
+        * (
+            33 * z**5 - 30 * z**3 * (x**2 + y**2 + z**2) + 5 * z * (x**2 + y**2 + z**2) ** 2
+        ),  # (l, m) == (6, -1)
+        lnorm(6)
+        * 1.0
+        / 32.0
+        * jnp.sqrt(13.0 / jnp.pi)
+        * (
+            231 * z**6
+            - 315 * z**4 * (x**2 + y**2 + z**2)
+            + 105 * z**2 * (x**2 + y**2 + z**2) ** 2
+            - 5 * (x**2 + y**2 + z**2) ** 3
+        ),  # (l, m) == (6, 0)
+        lnorm(6)
+        * 1.0
+        / 16.0
+        * jnp.sqrt(273.0 / jnp.pi)
+        * x
+        * (
+            33 * z**5 - 30 * z**3 * (x**2 + y**2 + z**2) + 5 * z * (x**2 + y**2 + z**2) ** 2
+        ),  # (l, m) == (6, 1)
+        lnorm(6)
+        * 1.0
+        / 64.0
+        * jnp.sqrt(2730.0 / jnp.pi)
+        * (x**2 - y**2)
+        * (
+            33 * z**4 - 18 * z**2 * (x**2 + y**2 + z**2) + (x**2 + y**2 + z**2) ** 2
+        ),  # (l, m) == (6, 2)
+        lnorm(6)
+        * 1.0
+        / 32.0
+        * jnp.sqrt(2730.0 / jnp.pi)
+        * (11 * z**3 - 3 * z * (x**2 + y**2 + z**2))
+        * (x**3 - 3 * x * y**2),  # (l, m) == (6, 3)
+        lnorm(6)
+        * 3.0
+        / 32.0
+        * jnp.sqrt(91.0 / jnp.pi)
+        * (11 * z**2 - (x**2 + y**2 + z**2))
+        * (x**2 * (x**2 - 3 * y**2) + y**2 * (y**2 - 3 * x**2)),  # (l, m) == (6, 4)
+        lnorm(6)
+        * 3.0
+        / 32.0
+        * jnp.sqrt(2002.0 / jnp.pi)
+        * z
+        * (x**5 - 10 * x**3 * y**2 + 5 * x * y**4),  # (l, m) == (6, 5)
+        lnorm(6)
+        * 1.0
+        / 64.0
+        * jnp.sqrt(6006.0 / jnp.pi)
+        * (x**6 - 15 * x**4 * y**2 + 15 * x**2 * y**4 - y**6),  # (l, m) == (6, 6)
     ]
 
     return jnp.select(conditions, S_l_m_values, default=jnp.nan)
