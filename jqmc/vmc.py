@@ -84,8 +84,7 @@ class MCMC:
         init_r_dn_carts: npt.NDArray[np.float64] = None,
         mcmc_seed: int = 34467,
         Dt: float = 2.0,
-        comput_jas_2b_param_deriv: bool = False,
-        comput_jas_1b3b_param_deriv: bool = False,
+        comput_jas_param_deriv: bool = False,
         comput_position_deriv: bool = False,
     ) -> None:
         """Init.
@@ -97,8 +96,7 @@ class MCMC:
         self.__mcmc_seed = mcmc_seed
         self.__Dt = Dt
 
-        self.__comput_jas_2b_param_deriv = comput_jas_2b_param_deriv
-        self.__comput_jas_1b3b_param_deriv = comput_jas_1b3b_param_deriv
+        self.__comput_jas_param_deriv = comput_jas_param_deriv
         self.__comput_position_deriv = comput_position_deriv
 
         # set random seeds
@@ -218,7 +216,7 @@ class MCMC:
             logger.info("Compilation domega is done.")
             logger.info(f"Elapsed Time = {end-start:.2f} sec.")
 
-        if self.__comput_jas_2b_param_deriv or self.__comput_jas_1b3b_param_deriv:
+        if self.__comput_jas_param_deriv or self.__comput_jas_1b3b_param_deriv:
             logger.info("Compilation dln_Psi starts.")
             start = time.perf_counter()
             _ = grad(evaluate_ln_wavefunction_api, argnums=(0))(
@@ -253,7 +251,7 @@ class MCMC:
         # MAIN MCMC loop from here !!!
         for i_mcmc_step in range(num_mcmc_steps):
             logger.info(
-                f"Current MCMC step = {i_mcmc_step+1+self.__mcmc_counter}/{num_mcmc_steps+self.__mcmc_counter}."
+                f"  Current MCMC step = {i_mcmc_step+1+self.__mcmc_counter}/{num_mcmc_steps+self.__mcmc_counter}."
             )
 
             # Determine the total number of electrons
@@ -371,7 +369,7 @@ class MCMC:
                 r_up_carts=self.__latest_r_up_carts,
                 r_dn_carts=self.__latest_r_dn_carts,
             )
-            logger.info(f"e_L = {e_L}")
+            logger.info(f"  e_L = {e_L}")
             self.__stored_e_L.append(e_L)
 
             if self.__comput_position_deriv:
@@ -409,9 +407,9 @@ class MCMC:
                 logger.debug(
                     f"de_L_dR(coulomb_potential_data) = {grad_e_L_h.coulomb_potential_data.structure_data.positions}"
                 )
-                logger.info(f"de_L_dR = {grad_e_L_R}")
-                logger.info(f"de_L_dr_up = {grad_e_L_r_up}")
-                logger.info(f"de_L_dr_dn= {grad_e_L_r_dn}")
+                logger.debug(f"de_L_dR = {grad_e_L_R}")
+                logger.debug(f"de_L_dr_up = {grad_e_L_r_up}")
+                logger.debug(f"de_L_dr_dn= {grad_e_L_r_dn}")
                 # """
 
                 ln_Psi = evaluate_ln_wavefunction_api(
@@ -419,7 +417,7 @@ class MCMC:
                     r_up_carts=self.__latest_r_up_carts,
                     r_dn_carts=self.__latest_r_dn_carts,
                 )
-                logger.info(f"ln_Psi = {ln_Psi}")
+                logger.debug(f"ln_Psi = {ln_Psi}")
                 self.__stored_ln_Psi.append(ln_Psi)
 
                 # """
@@ -430,8 +428,8 @@ class MCMC:
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
-                logger.info(f"dln_Psi_dr_up = {grad_ln_Psi_r_up}")
-                logger.info(f"dln_Psi_dr_dn = {grad_ln_Psi_r_dn}")
+                logger.debug(f"dln_Psi_dr_up = {grad_ln_Psi_r_up}")
+                logger.debug(f"dln_Psi_dr_dn = {grad_ln_Psi_r_dn}")
                 self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up)
                 self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn)
 
@@ -445,7 +443,7 @@ class MCMC:
                     grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data_dn_spin.structure_data.positions
 
                 # stored dln_Psi / dR
-                logger.info(f"dln_Psi_dR = {grad_ln_Psi_dR}")
+                logger.debug(f"dln_Psi_dR = {grad_ln_Psi_dR}")
                 self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
                 # """
 
@@ -459,8 +457,8 @@ class MCMC:
                     r_carts=self.__latest_r_dn_carts,
                 )
 
-                logger.info(f"omega_up = {omega_up}")
-                logger.info(f"omega_dn = {omega_dn}")
+                logger.debug(f"omega_up = {omega_up}")
+                logger.debug(f"omega_dn = {omega_dn}")
 
                 self.__stored_omega_up.append(omega_up)
                 self.__stored_omega_dn.append(omega_dn)
@@ -475,31 +473,31 @@ class MCMC:
                     self.__latest_r_dn_carts,
                 )
 
-                logger.info(f"grad_omega_dr_up = {grad_omega_dr_up}")
-                logger.info(f"grad_omega_dr_dn = {grad_omega_dr_dn}")
+                logger.debug(f"grad_omega_dr_up = {grad_omega_dr_up}")
+                logger.debug(f"grad_omega_dr_dn = {grad_omega_dr_dn}")
 
                 self.__stored_grad_omega_r_up.append(grad_omega_dr_up)
                 self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn)
 
-            if self.__comput_jas_2b_param_deriv or self.__comput_jas_1b3b_param_deriv:
+            if self.__comput_jas_param_deriv:
                 grad_ln_Psi_h = grad(evaluate_ln_wavefunction_api, argnums=(0))(
                     self.__hamiltonian_data.wavefunction_data,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
 
-                if self.__comput_jas_2b_param_deriv:
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag:
                     grad_ln_Psi_jas2b = (
                         grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
                     )
-                    logger.info(f"grad_ln_Psi_jas2b = {grad_ln_Psi_jas2b}")
+                    logger.debug(f"grad_ln_Psi_jas2b = {grad_ln_Psi_jas2b}")
                     self.__stored_grad_ln_Psi_jas2b.append(grad_ln_Psi_jas2b)
 
-                if self.__comput_jas_1b3b_param_deriv:
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
                     grad_ln_Psi_jas1b3b_j_matrix_up_up = (
                         grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix_up_up
                     )
-                    logger.info(
+                    logger.debug(
                         f"grad_ln_Psi_jas1b3b_j_matrix_up_up = {grad_ln_Psi_jas1b3b_j_matrix_up_up}"
                     )
                     self.__stored_grad_ln_Psi_jas1b3b_j_matrix_up_up.append(
@@ -508,7 +506,7 @@ class MCMC:
                     grad_ln_Psi_jas1b3b_j_matrix_dn_dn = (
                         grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix_dn_dn
                     )
-                    logger.info(
+                    logger.debug(
                         f"grad_ln_Psi_jas1b3b_j_matrix_dn_dn = {grad_ln_Psi_jas1b3b_j_matrix_dn_dn}"
                     )
                     self.__stored_grad_ln_Psi_jas1b3b_j_matrix_dn_dn.append(
@@ -517,7 +515,7 @@ class MCMC:
                     grad_ln_Psi_jas1b3b_j_matrix_up_dn = (
                         grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix_up_dn
                     )
-                    logger.info(
+                    logger.debug(
                         f"grad_ln_Psi_jas1b3b_j_matrix_up_dn = {grad_ln_Psi_jas1b3b_j_matrix_up_dn}"
                     )
                     self.__stored_grad_ln_Psi_jas1b3b_j_matrix_up_dn.append(
@@ -526,6 +524,10 @@ class MCMC:
 
         self.__mcmc_counter += num_mcmc_steps
         logger.info(f"acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
+
+    @property
+    def hamiltonian_data(self):
+        return self.__hamiltonian_data
 
     @property
     def e_L(self):
@@ -572,12 +574,40 @@ class MCMC:
         return self.__stored_grad_omega_r_dn
 
     @property
+    def dln_Psi_dc_jas_2b(self):
+        return self.__stored_grad_ln_Psi_jas2b
+
+    @property
+    def dln_Psi_dc_jas_1b3b_up_up(self):
+        return self.__stored_grad_ln_Psi_jas1b3b_j_matrix_up_up
+
+    @property
+    def dln_Psi_dc_jas_1b3b_up_dn(self):
+        return self.__stored_grad_ln_Psi_jas1b3b_j_matrix_up_dn
+
+    @property
+    def dln_Psi_dc_jas_1b3b_dn_dn(self):
+        return self.__stored_grad_ln_Psi_jas1b3b_j_matrix_dn_dn
+
+    @property
+    def domega_dr_dn(self):
+        return self.__stored_grad_omega_r_dn
+
+    @property
     def latest_r_up_carts(self):
         return self.__latest_r_up_carts
 
     @property
     def latest_r_dn_carts(self):
         return self.__latest_r_dn_carts
+
+    @property
+    def Dt(self):
+        return self.__Dt
+
+    @property
+    def mcmc_seed(self):
+        return self.__mcmc_seed
 
 
 class VMC:
@@ -601,8 +631,7 @@ class VMC:
         num_mcmc_warmup_steps: int = 50,
         num_mcmc_bin_blocks: int = 10,
         Dt_init: float = 2.0,
-        comput_jas_2b_param_deriv=False,
-        comput_jas_1b3b_param_deriv=False,
+        comput_jas_param_deriv=False,
         comput_position_deriv=False,
     ) -> None:
         self.__comm = MPI.COMM_WORLD
@@ -621,8 +650,7 @@ class VMC:
         self.__mpi_seed = mcmc_seed * (self.__rank + 1)
         self.__num_mcmc_warmup_steps = num_mcmc_warmup_steps
         self.__num_mcmc_bin_blocks = num_mcmc_bin_blocks
-        self.__comput_jas_2b_param_deriv = comput_jas_2b_param_deriv
-        self.__comput_jas_1b3b_param_deriv = comput_jas_1b3b_param_deriv
+        self.__comput_jas_param_deriv = comput_jas_param_deriv
         self.__comput_position_deriv = comput_position_deriv
 
         logger.info(f"mcmc_seed for MPI-rank={self.__rank} is {self.__mpi_seed}.")
@@ -705,18 +733,130 @@ class VMC:
             init_r_dn_carts=init_r_dn_carts,
             mcmc_seed=self.__mpi_seed,
             Dt=Dt_init,
-            comput_jas_2b_param_deriv=self.__comput_jas_2b_param_deriv,
-            comput_jas_1b3b_param_deriv=self.__comput_jas_1b3b_param_deriv,
+            comput_jas_param_deriv=self.__comput_jas_param_deriv,
             comput_position_deriv=self.__comput_position_deriv,
         )
 
-    def run(self, num_mcmc_steps=0):
+    def run_single_shot(self, num_mcmc_steps=0):
         if self.__rank == 0:
             logger.info(f"num_mcmc_warmup_steps={self.__num_mcmc_warmup_steps}.")
             logger.info(f"num_mcmc_bin_blocks={self.__num_mcmc_bin_blocks}.")
 
         # run VMC
         self.__mcmc.run(num_mcmc_steps=num_mcmc_steps)
+
+    def run_optimize(
+        self,
+        num_mcmc_steps=100,
+        num_opt_steps=1,
+    ):
+        if self.__rank == 0:
+            logger.info(f"num_mcmc_warmup_steps={self.__num_mcmc_warmup_steps}.")
+            logger.info(f"num_mcmc_bin_blocks={self.__num_mcmc_bin_blocks}.")
+            logger.info(f"num_mcmc_steps={num_mcmc_steps}.")
+            logger.info(f"num_opt_steps={num_opt_steps}.")
+
+            logger.info(f"Optimize Jastrow 1b2b3b={self.__comput_jas_param_deriv}")
+
+        # """ WIP
+        for i_opt_steps in range(num_opt_steps):
+            if self.__rank == 0:
+                logger.info(f"i opt_steps={i_opt_steps + 1}/{num_opt_steps}.")
+
+            # run VMC
+            self.__mcmc.run(num_mcmc_steps=num_mcmc_steps)
+
+            if self.__comput_jas_param_deriv:
+                if self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag:
+                    size_jas_2b = 1
+                    shape_jas_2b = (1,)
+                    dln_Psi_dc_jas_2b = self.__mcmc.dln_Psi_dc_jas_2b
+                    dln_Psi_dc_jas_2b = self.__comm.reduce(dln_Psi_dc_jas_2b, op=MPI.SUM, root=0)
+                else:
+                    size_jas_2b = 0
+                    shape_jas_2b = (0,)
+
+                if self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
+                    size_jas_3b_up_up = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_up.size
+                    shape_jas_3b_up_up = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_up.shape
+                    dln_Psi_dc_jas_1b3b_up_up = self.__mcmc.dln_Psi_dc_jas_1b3b_up_up
+                    dln_Psi_dc_jas_1b3b_up_up = self.__comm.reduce(
+                        dln_Psi_dc_jas_1b3b_up_up, op=MPI.SUM, root=0
+                    )
+
+                    size_jas_3b_up_dn = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_dn.size
+                    shape_jas_3b_up_dn = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_dn.shape
+                    dln_Psi_dc_jas_1b3b_up_dn = self.__mcmc.dln_Psi_dc_jas_1b3b_up_dn
+                    dln_Psi_dc_jas_1b3b_up_dn = self.__comm.reduce(
+                        dln_Psi_dc_jas_1b3b_up_dn, op=MPI.SUM, root=0
+                    )
+
+                    size_jas_3b_dn_dn = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_dn_dn.size
+                    shape_jas_3b_dn_dn = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_dn_dn.shape
+                    dln_Psi_dc_jas_1b3b_dn_dn = self.__mcmc.dln_Psi_dc_jas_1b3b_dn_dn
+                    dln_Psi_dc_jas_1b3b_dn_dn = self.__comm.reduce(
+                        dln_Psi_dc_jas_1b3b_dn_dn, op=MPI.SUM, root=0
+                    )
+                else:
+                    size_jas_3b_up_up = 0
+                    shape_jas_3b_up_up = (0, 0)
+                    size_jas_3b_up_dn = 0
+                    shape_jas_3b_up_dn = (0, 0)
+                    size_jas_3b_dn_dn = 0
+                    shape_jas_3b_dn_dn = (0, 0)
+
+            if self.__rank == 0:
+                M = 200
+                O_matrix = np.empty((0, M))
+
+                if self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
+                    dln_Psi_dc_jas_2b_flat = np.stack(
+                        [arr.flatten() for arr in dln_Psi_dc_jas_2b], axis=1
+                    )
+                    O_matrix = np.vstack([O_matrix, dln_Psi_dc_jas_2b_flat])
+
+                if self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
+                    dln_Psi_dc_jas_1b3b_up_up_flat = np.stack(
+                        [arr.flatten() for arr in dln_Psi_dc_jas_1b3b_up_up], axis=1
+                    )
+                    O_matrix = np.vstack([O_matrix, dln_Psi_dc_jas_1b3b_up_up_flat])
+
+                print(O_matrix.shape)
+
+                V_vector = np.var(O_matrix, ddof=1, axis=1)
+                S_matrix = np.cov(O_matrix, bias=True, rowvar=True)
+
+                print(V_vector.shape)
+                print(S_matrix.shape)
+
+                """
+                var_epsilon = 1.0e-5
+                O_matrix = np.array([])
+
+                f_vector = np.array()
+
+                # solve Sx=f
+                # x=scipy.solve(S_matrix, f_vector)
+                """
+
+            continue
+
+            latest_r_up_carts = self.__mcmc.latest_r_up_carts
+            latest_r_dn_carts = self.__mcmc.latest_r_dn_carts
+            mpi_seed = self.__mcmc.mcmc_seed
+            Dt = self.__mcmc.Dt
+
+            time.sleep(1)
+
+            # update WF
+            self.__mcmc = MCMC(
+                hamiltonian_data=self.hamiltonian_data,
+                init_r_up_carts=latest_r_up_carts,
+                init_r_dn_carts=latest_r_dn_carts,
+                mcmc_seed=mpi_seed,
+                Dt=Dt,
+            )
+        # """
 
     def get_e_L(self):
         # analysis VMC
@@ -903,7 +1043,7 @@ if __name__ == "__main__":
     )
     """
 
-    """ Error!! To be fixed.
+    """
     # Ne atom cc-pV5Z with Mitas ccECP (10 electrons, feasible).
     (
         structure_data,
@@ -912,7 +1052,9 @@ if __name__ == "__main__":
         mos_data_dn,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), 'trexio_files', "Ne_trexio.hdf5"))
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "Ne_ccpv5z_trexio.hdf5")
+    )
     """
 
     """
@@ -931,8 +1073,8 @@ if __name__ == "__main__":
     )
     """
 
-    """ Error!! To be fixed.
-    # benzene cc-pV6Z with Mitas ccECP (30 electrons, feasible).
+    """
+    # benzene cc-pV6Z with Mitas ccECP (30 electrons, slow, but feasible).
     (
         structure_data,
         aos_data,
@@ -947,8 +1089,8 @@ if __name__ == "__main__":
     )
     """
 
-    """ # h orbitals should be implemented.
-    # AcOH-AcOH dimer aug-cc-pV6Z with Mitas ccECP (48 electrons, not feasible?).
+    """
+    # AcOH-AcOH dimer aug-cc-pV6Z with Mitas ccECP (48 electrons, slow, but feasible).
     (
         structure_data,
         aos_data,
@@ -964,7 +1106,7 @@ if __name__ == "__main__":
     """
 
     """
-    # benzene dimer cc-pV6Z with Mitas ccECP (60 electrons, not feasible).
+    # benzene dimer cc-pV6Z with Mitas ccECP (60 electrons, not feasible, why?).
     (
         structure_data,
         aos_data,
@@ -989,7 +1131,7 @@ if __name__ == "__main__":
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "C60_trexio.hdf5")
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "C60_ccpvtz_trexio.hdf5")
     )
     """
 
@@ -1025,10 +1167,11 @@ if __name__ == "__main__":
         mcmc_seed=mcmc_seed,
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
-        comput_position_deriv=True,
-        comput_jas_2b_param_deriv=False,
-        comput_jas_1b3b_param_deriv=False,
+        comput_position_deriv=False,
+        comput_jas_param_deriv=True,
     )
-    vmc.run(num_mcmc_steps=100)
+    vmc.run_single_shot(num_mcmc_steps=100)
     vmc.get_e_L()
     vmc.get_atomic_forces()
+
+    vmc.run_optimize(num_mcmc_steps=100, num_opt_steps=1)
