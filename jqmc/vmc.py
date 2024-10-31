@@ -822,7 +822,7 @@ class VMC:
                     O_matrix = np.vstack([O_matrix, dln_Psi_dc_jas_1b3b_up_up_flat])
 
                 print(O_matrix.shape)
-				
+
                 var_epsilon = 1.0e-5
                 I_matrix = np.one(S_matrix.shape)
                 S_matrix = np.cov(O_matrix, bias=True, rowvar=True)
@@ -831,16 +831,16 @@ class VMC:
 
                 # solve Sx=f
                 X = scipy.solve(S_matrix, f_vector)
-                
+
                 X_matrix_2b = X[0:size_jas_2b].reshape(shape_jas_2b)
                 X_matrix_3b_up_up = xxx
-                
+
                 # update parameter
                 delta = 1.0e-4
                 jas_3b_up_up = jas_3b_up_up + delta * X_matrix_3b_up_up
-                
+
                 # Create new WF and Hamiltonian
-                
+
             # Broadcast the updated Hamiltonian
 
             # Other variables
@@ -852,7 +852,7 @@ class VMC:
             time.sleep(1)
 
             # Generate a new MCMC instance
-            # No, let's 
+            # No, let's
             self.__mcmc = MCMC(
                 hamiltonian_data=self.hamiltonian_data,
                 init_r_up_carts=latest_r_up_carts,
@@ -861,20 +861,29 @@ class VMC:
                 Dt=Dt,
             )
         # """
-        
-        # dln_Psi_dc_list= [self.__mcmc.dln_Psi_dc_jas_1b3b_dn_dn, ...]
-        # dln_Psi_dc_index [0,1,....1,1,...]
-        # param [(0,), (0,1), ...] 
-        
-        # compute <E*O>
-        ## E -> 1 * M dim
-        ## O -> L * M dim
-        ## compose EO -> L * M dim.
-        ## bar(E) 1*1 dim
-        ## bar(O) L*M dim
-        ## EO-\bar(E)\bar(O) -> L*M dim.
-        ## jackknife for EO-\bar(E)\bar(O) -> L*1 dim.
-        
+
+        @property
+        def opt_param_dict(self):
+            return {}
+        # {
+        # opt_param_list: [self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_param
+        #                  self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_up]
+        # dln_Psi_dc_list: [dln_Psi_dc_jas_2b,
+        #                   self.__mcmc.dln_Psi_dc_jas_1b3b_dn_dn, ...]
+        # dln_Psi_dc_size_list: [0,1346,....]
+        # dln_Psi_dc_index_list: [0,1,....1,1,...]
+        # opt_param_indices_list: [None, (0,1), (0,2) ...]
+        # }
+
+    def get_O(self):
+        return None # O.... (x....) L * M matrix
+
+    def get_f(self):
+        return None # (f_k ...., var(f_k)....) (L vector, L vector)
+
+    def get_S(self):
+        return None # (S_mu,nu ...., var(S)_mu,nu....) (L*L matrix, L*L matrix)
+
     def get_e_L(self):
         # analysis VMC
         e_L = self.__mcmc.e_L[self.__num_mcmc_warmup_steps :]
