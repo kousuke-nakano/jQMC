@@ -609,6 +609,87 @@ class MCMC:
     def mcmc_seed(self):
         return self.__mcmc_seed
 
+    @property
+    def mcmc_counter(self):
+        return self.__mcmc_counter
+
+    @property
+    def opt_param_dict(self):
+        """Return a dictionary containing information about variational parameters to be optimized.
+
+        Return:
+            opt_param_list (list): instances of the parameters to be optimized.
+            dln_Psi_dc_list (list): dln_Psi_dc instances computed by JAX-grad.
+            dln_Psi_dc_size_list (list): sizes of dln_Psi_dc instances
+            dln_Psi_dc_shape_list (list): shapes of dln_Psi_dc instances
+            dln_Psi_dc_flattened_index_list (list): indices of dln_Psi_dc instances for the flattened parameter
+        #
+        """
+        opt_param_list = []
+        dln_Psi_dc_list = []
+        dln_Psi_dc_size_list = []
+        dln_Psi_dc_shape_list = []
+        dln_Psi_dc_flattened_index_list = []
+
+        if self.__comput_jas_param_deriv:
+            if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag:
+                opt_param = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
+                dln_Psi_dc = self.dln_Psi_dc_jas_2b
+                dln_Psi_dc_size = 1
+                dln_Psi_dc_shape = (1,)
+                dln_Psi_dc_flattened_index_list = [len(opt_param_list)] * dln_Psi_dc_size
+
+                opt_param_list.append(opt_param)
+                dln_Psi_dc_list.append(dln_Psi_dc)
+                dln_Psi_dc_size_list.append(dln_Psi_dc_size)
+                dln_Psi_dc_shape_list.append(dln_Psi_dc_shape)
+                dln_Psi_dc_flattened_index_list += dln_Psi_dc_flattened_index_list
+
+            if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
+                opt_param = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_up
+                dln_Psi_dc = self.dln_Psi_dc_jas_1b3b_up_up
+                dln_Psi_dc_size = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_up.size
+                dln_Psi_dc_shape = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_up.shape
+                dln_Psi_dc_flattened_index_list = [len(opt_param_list)] * dln_Psi_dc_size
+
+                opt_param_list.append(opt_param)
+                dln_Psi_dc_list.append(dln_Psi_dc)
+                dln_Psi_dc_size_list.append(dln_Psi_dc_size)
+                dln_Psi_dc_shape_list.append(dln_Psi_dc_shape)
+                dln_Psi_dc_flattened_index_list += dln_Psi_dc_flattened_index_list
+
+                opt_param = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_dn
+                dln_Psi_dc = self.dln_Psi_dc_jas_1b3b_up_dn
+                dln_Psi_dc_size = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_dn.size
+                dln_Psi_dc_shape = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_dn.shape
+                dln_Psi_dc_flattened_index_list = [len(opt_param_list)] * dln_Psi_dc_size
+
+                opt_param_list.append(opt_param)
+                dln_Psi_dc_list.append(dln_Psi_dc)
+                dln_Psi_dc_size_list.append(dln_Psi_dc_size)
+                dln_Psi_dc_shape_list.append(dln_Psi_dc_shape)
+                dln_Psi_dc_flattened_index_list += dln_Psi_dc_flattened_index_list
+
+                opt_param = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_dn_dn
+                dln_Psi_dc = self.dln_Psi_dc_jas_1b3b_dn_dn
+                dln_Psi_dc_size = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_dn_dn.size
+                dln_Psi_dc_shape = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_dn_dn.shape
+                dln_Psi_dc_flattened_index_list = [len(opt_param_list)] * dln_Psi_dc_size
+
+                opt_param_list.append(opt_param)
+                dln_Psi_dc_list.append(dln_Psi_dc)
+                dln_Psi_dc_size_list.append(dln_Psi_dc_size)
+                dln_Psi_dc_shape_list.append(dln_Psi_dc_shape)
+                dln_Psi_dc_flattened_index_list += dln_Psi_dc_flattened_index_list
+
+        return {
+            "opt_param_list": opt_param_list,
+            "dln_Psi_dc_list": dln_Psi_dc_list,
+            "dln_Psi_dc_size_list": dln_Psi_dc_size_list,
+            "dln_Psi_dc_shape_list": dln_Psi_dc_shape_list,
+            "dln_Psi_dc_flattened_index_list": dln_Psi_dc_flattened_index_list,
+        }
+
 
 class VMC:
     """VMC class.
@@ -758,7 +839,10 @@ class VMC:
 
             logger.info(f"Optimize Jastrow 1b2b3b={self.__comput_jas_param_deriv}")
 
-        # """ WIP
+        self.__mcmc.run(num_mcmc_steps=num_mcmc_steps)
+        deriv_ln_WF = self.get_deriv_ln_WF()
+
+        """ WIP
         for i_opt_steps in range(num_opt_steps):
             if self.__rank == 0:
                 logger.info(f"i opt_steps={i_opt_steps + 1}/{num_opt_steps}.")
@@ -766,63 +850,8 @@ class VMC:
             # run VMC
             self.__mcmc.run(num_mcmc_steps=num_mcmc_steps)
 
-            if self.__comput_jas_param_deriv:
-                if self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag:
-                    size_jas_2b = 1
-                    shape_jas_2b = (1,)
-                    dln_Psi_dc_jas_2b = self.__mcmc.dln_Psi_dc_jas_2b
-                    dln_Psi_dc_jas_2b = self.__comm.reduce(dln_Psi_dc_jas_2b, op=MPI.SUM, root=0)
-                else:
-                    size_jas_2b = 0
-                    shape_jas_2b = (0,)
-
-                if self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
-                    size_jas_3b_up_up = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_up.size
-                    shape_jas_3b_up_up = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_up.shape
-                    dln_Psi_dc_jas_1b3b_up_up = self.__mcmc.dln_Psi_dc_jas_1b3b_up_up
-                    dln_Psi_dc_jas_1b3b_up_up = self.__comm.reduce(
-                        dln_Psi_dc_jas_1b3b_up_up, op=MPI.SUM, root=0
-                    )
-
-                    size_jas_3b_up_dn = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_dn.size
-                    shape_jas_3b_up_dn = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_dn.shape
-                    dln_Psi_dc_jas_1b3b_up_dn = self.__mcmc.dln_Psi_dc_jas_1b3b_up_dn
-                    dln_Psi_dc_jas_1b3b_up_dn = self.__comm.reduce(
-                        dln_Psi_dc_jas_1b3b_up_dn, op=MPI.SUM, root=0
-                    )
-
-                    size_jas_3b_dn_dn = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_dn_dn.size
-                    shape_jas_3b_dn_dn = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_dn_dn.shape
-                    dln_Psi_dc_jas_1b3b_dn_dn = self.__mcmc.dln_Psi_dc_jas_1b3b_dn_dn
-                    dln_Psi_dc_jas_1b3b_dn_dn = self.__comm.reduce(
-                        dln_Psi_dc_jas_1b3b_dn_dn, op=MPI.SUM, root=0
-                    )
-                else:
-                    size_jas_3b_up_up = 0
-                    shape_jas_3b_up_up = (0, 0)
-                    size_jas_3b_up_dn = 0
-                    shape_jas_3b_up_dn = (0, 0)
-                    size_jas_3b_dn_dn = 0
-                    shape_jas_3b_dn_dn = (0, 0)
-
             if self.__rank == 0:
                 M = 200
-                O_matrix = np.empty((0, M))
-
-                if self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
-                    dln_Psi_dc_jas_2b_flat = np.stack(
-                        [arr.flatten() for arr in dln_Psi_dc_jas_2b], axis=1
-                    )
-                    O_matrix = np.vstack([O_matrix, dln_Psi_dc_jas_2b_flat])
-
-                if self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
-                    dln_Psi_dc_jas_1b3b_up_up_flat = np.stack(
-                        [arr.flatten() for arr in dln_Psi_dc_jas_1b3b_up_up], axis=1
-                    )
-                    O_matrix = np.vstack([O_matrix, dln_Psi_dc_jas_1b3b_up_up_flat])
-
-                print(O_matrix.shape)
-
                 var_epsilon = 1.0e-5
                 I_matrix = np.one(S_matrix.shape)
                 S_matrix = np.cov(O_matrix, bias=True, rowvar=True)
@@ -860,29 +889,32 @@ class VMC:
                 mcmc_seed=mpi_seed,
                 Dt=Dt,
             )
-        # """
+        """
 
-        @property
-        def opt_param_dict(self):
-            return {}
-        # {
-        # opt_param_list: [self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_param
-        #                  self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_up]
-        # dln_Psi_dc_list: [dln_Psi_dc_jas_2b,
-        #                   self.__mcmc.dln_Psi_dc_jas_1b3b_dn_dn, ...]
-        # dln_Psi_dc_size_list: [0,1346,....]
-        # dln_Psi_dc_index_list: [0,1,....1,1,...]
-        # opt_param_indices_list: [None, (0,1), (0,2) ...]
-        # }
+    def get_deriv_ln_WF(self):
+        opt_param_dict = self.__mcmc.opt_param_dict
 
-    def get_O(self):
-        return None # O.... (x....) L * M matrix
+        # opt_param_list = opt_param_dict["opt_param_list"]
+        dln_Psi_dc_list = opt_param_dict["dln_Psi_dc_list"]
+        # dln_Psi_dc_size_list = opt_param_dict["dln_Psi_dc_size_list"]
+        # dln_Psi_dc_shape_list = opt_param_dict["dln_Psi_dc_shape_list"]
+        # dln_Psi_dc_flattened_index_list = opt_param_dict["dln_Psi_dc_flattened_index_list"]
+
+        O_matrix = np.empty((0, self.__mcmc.mcmc_counter))
+
+        for dln_Psi_dc in dln_Psi_dc_list:
+            dln_Psi_dc_flat = np.stack([arr.flatten() for arr in dln_Psi_dc], axis=1)
+            O_matrix = np.vstack([O_matrix, dln_Psi_dc_flat])
+
+        print(O_matrix.shape)
+
+        return O_matrix  # O.... (x....) L * M matrix
 
     def get_f(self):
-        return None # (f_k ...., var(f_k)....) (L vector, L vector)
+        return None  # (f_k ...., var(f_k)....) (L vector, L vector)
 
     def get_S(self):
-        return None # (S_mu,nu ...., var(S)_mu,nu....) (L*L matrix, L*L matrix)
+        return None  # (S_mu,nu ...., var(S)_mu,nu....) (L*L matrix, L*L matrix)
 
     def get_e_L(self):
         # analysis VMC
