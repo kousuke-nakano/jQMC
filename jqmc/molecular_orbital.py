@@ -74,15 +74,15 @@ class MOs_data:
 
     Args:
         num_mo: The number of MOs.
-        mo_coefficients (npt.NDArray[np.float64|np.complex128]): array of MO coefficients. dim. num_mo, num_ao
         aos_data (AOs_data): aos_data instances
+        mo_coefficients (npt.NDArray[np.float64|np.complex128]): array of MO coefficients. dim. num_mo, num_ao
     """
 
     num_mo: int = struct.field(pytree_node=False, default=0)
+    aos_data: AOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
     mo_coefficients: npt.NDArray[np.float64] = struct.field(
         pytree_node=True, default_factory=lambda: np.array([])
     )
-    aos_data: AOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
 
     def __post_init__(self) -> None:
         if self.mo_coefficients.shape != (self.num_mo, self.aos_data.num_ao):

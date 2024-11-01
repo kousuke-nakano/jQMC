@@ -216,7 +216,7 @@ class MCMC:
             logger.info("Compilation domega is done.")
             logger.info(f"Elapsed Time = {end-start:.2f} sec.")
 
-        if self.__comput_jas_param_deriv or self.__comput_jas_1b3b_param_deriv:
+        if self.__comput_jas_param_deriv:
             logger.info("Compilation dln_Psi starts.")
             start = time.perf_counter()
             _ = grad(evaluate_ln_wavefunction_api, argnums=(0))(
@@ -900,20 +900,103 @@ class VMC:
         # dln_Psi_dc_shape_list = opt_param_dict["dln_Psi_dc_shape_list"]
         # dln_Psi_dc_flattened_index_list = opt_param_dict["dln_Psi_dc_flattened_index_list"]
 
-        O_matrix = np.empty((0, self.__mcmc.mcmc_counter))
+        O_matrix = np.empty((self.__mcmc.mcmc_counter, 0))
 
         for dln_Psi_dc in dln_Psi_dc_list:
-            dln_Psi_dc_flat = np.stack([arr.flatten() for arr in dln_Psi_dc], axis=1)
-            O_matrix = np.vstack([O_matrix, dln_Psi_dc_flat])
+            dln_Psi_dc_flat = np.stack([arr.flatten() for arr in dln_Psi_dc], axis=0)
+            O_matrix = np.hstack([O_matrix, dln_Psi_dc_flat])
 
         print(O_matrix.shape)
 
-        return O_matrix  # O.... (x....) L * M matrix
+        return O_matrix  # O.... (x....) M * L matrix
 
-    def get_f(self):
+    def get_generalized_forces(self, mpi_broadcast=True):
+        e_L = self.__mcmc.e_L[self.__num_mcmc_warmup_steps :]
+        e_L_split = np.array_split(e_L, self.__num_mcmc_bin_blocks)
+        e_L_binned = [np.average(e_list) for e_list in e_L_split]
+
+        logger.info(
+            f"[before reduce] len(e_L_binned) for MPI-rank={self.__rank} is {len(e_L_binned)}"
+        )
+
+        e_L_binned = self.__comm.reduce(e_L_binned, op=MPI.SUM, root=0)
+
+        if self.__rank == 0:
+            logger.info(
+                f"[before reduce] len(e_L_binned) for MPI-rank={self.__rank} is {len(e_L_binned)}"
+            )
+
+        O_matrix = self.get_deriv_ln_WF()
+        O_matrix_split = np.array_split(O_matrix, self.__num_mcmc_bin_blocks)
+        O_matrix_binned = [np.average(O_matrix_list, axis=0) for O_matrix_list in O_matrix_split]
+
+        logger.info(f"[before reduce] O_matrix_binned.shape = {np.array(O_matrix_binned).shape}")
+
+        O_matrix_binned = self.__comm.reduce(O_matrix_binned, op=MPI.SUM, root=0)
+
+        if self.__rank == 0:
+            logger.info(f"[after reduce] O_matrix_binned.shape = {np.array(O_matrix_binned).shape}")
+
+            ExO_matrix_binned = np.array(e_L_binned).reshape(len(e_L_binned), 1) * np.array(
+                O_matrix_binned
+            )
+
+            logger.info(f"ExO_matrix_binned.shape = {ExO_matrix_binned.shape}")
+
+            ExO_matrix_jackknife_binned = np.array(
+                [
+                    np.average(np.delete(ExO_matrix_binned, i, axis=0), axis=0)
+                    for i in range(len(ExO_matrix_binned))
+                ]
+            )
+
+            logger.info(f"ExO_matrix_jackknife_binned.shape = {ExO_matrix_jackknife_binned.shape}")
+
+            braket_O_matrix_binned = np.array(
+                [
+                    np.average(np.delete(O_matrix_binned, i, axis=0), axis=0)
+                    for i in range(len(O_matrix_binned))
+                ]
+            )
+
+            logger.info(f"braket_O_matrix_binned.shape = {braket_O_matrix_binned.shape}")
+
+            braket_E_x_braket_O_matrix_binned = np.array(e_L_binned).reshape(
+                len(e_L_binned), 1
+            ) * np.array(braket_O_matrix_binned)
+
+            logger.info(
+                f"braket_E_x_braket_O_matrix_binned.shape = {braket_E_x_braket_O_matrix_binned.shape}"
+            )
+
+            braket_E_x_braket_O_matrix_jackknife_binned = np.array(
+                [
+                    np.average(np.delete(braket_E_x_braket_O_matrix_binned, i, axis=0), axis=0)
+                    for i in range(len(braket_E_x_braket_O_matrix_binned))
+                ]
+            )
+
+            logger.info(
+                f"braket_E_x_braket_O_matrix_jackknife_binned.shape = {braket_E_x_braket_O_matrix_jackknife_binned.shape}"
+            )
+
+            generalized_force_mean = -2.0 * np.average(
+                ExO_matrix_jackknife_binned * braket_E_x_braket_O_matrix_jackknife_binned, axis=0
+            )
+            generalized_force_std = np.sqrt(
+                2.0 * len(ExO_matrix_jackknife_binned * braket_E_x_braket_O_matrix_jackknife_binned)
+                - 1
+            ) * np.std(
+                ExO_matrix_jackknife_binned * braket_E_x_braket_O_matrix_jackknife_binned, axis=0
+            )
+
+            logger.info(f"generalized_force_mean.shape = {generalized_force_mean.shape}")
+
+            logger.info(f"generalized_force_std.shape = {generalized_force_std.shape}")
+
         return None  # (f_k ...., var(f_k)....) (L vector, L vector)
 
-    def get_S(self):
+    def get_stochastic_matrix(self, mpi_broadcast=True):
         return None  # (S_mu,nu ...., var(S)_mu,nu....) (L*L matrix, L*L matrix)
 
     def get_e_L(self):
@@ -922,11 +1005,16 @@ class VMC:
         e_L_split = np.array_split(e_L, self.__num_mcmc_bin_blocks)
         e_L_binned = [np.average(e_list) for e_list in e_L_split]
 
-        logger.debug(f"e_L_binned for MPI-rank={self.__rank} is {e_L_binned}.")
+        logger.info(
+            f"[before reduce] len(e_L_binned) for MPI-rank={self.__rank} is {len(e_L_binned)}."
+        )
 
         e_L_binned = self.__comm.reduce(e_L_binned, op=MPI.SUM, root=0)
 
         if self.__rank == 0:
+            logger.info(
+                f"[after reduce] len(e_L_binned) for MPI-rank={self.__rank} is {len(e_L_binned)}."
+            )
             logger.debug(f"e_L_binned = {e_L_binned}.")
             # jackknife implementation
             # https://www2.yukawa.kyoto-u.ac.jp/~etsuko.itou/old-HP/Notes/Jackknife-method.pdf
@@ -934,7 +1022,7 @@ class VMC:
                 np.average(np.delete(e_L_binned, i)) for i in range(len(e_L_binned))
             ]
 
-            logger.debug(f"e_L_jackknife_binned  = {e_L_jackknife_binned}.")
+            logger.info(f"len(e_L_jackknife_binned)  = {len(e_L_jackknife_binned)}.")
 
             e_L_mean = np.average(e_L_jackknife_binned)
             e_L_std = np.sqrt(len(e_L_binned) - 1) * np.std(e_L_jackknife_binned)
@@ -949,7 +1037,7 @@ class VMC:
 
         return (e_L_mean, e_L_std)
 
-    def get_atomic_forces(self):
+    def get_atomic_forces(self, mpi_broadcast=True):
         if not self.__comput_position_deriv:
             force_mean = np.array([])
             force_std = np.array([])
@@ -957,6 +1045,11 @@ class VMC:
 
         else:
             # analysis VMC
+
+            # todo!! I do not think it's true. e_L_mean should be computed differently
+            # for each bin in the jackknife sampling.
+            # no? because jackknife mean = true mean, as shown in the O_k calc.
+            # Let's think about it tomorrow.
             e_L_mean, _ = self.get_e_L()
 
             e_L_list = self.__mcmc.e_L[self.__num_mcmc_warmup_steps :]
@@ -1025,17 +1118,21 @@ class VMC:
                 )
 
             force = np.array(force)
-            logger.info(f"force.shape = {force.shape}")
+            logger.info(f"force.shape for MPI-rank={self.__rank} is {force.shape}")
 
             force_split = np.array_split(force, self.__num_mcmc_bin_blocks)
-            force_binned = np.array([np.average(force_list, axis=0) for force_list in force_split])
-            logger.info(f"force_binned.shape = {force_binned.shape}")
-
-            logger.info(f"force_binned for MPI-rank={self.__rank} is {force_binned}.")
+            # force_binned = np.array([np.average(force_list, axis=0) for force_list in force_split]) # ?
+            force_binned = [np.average(force_list, axis=0) for force_list in force_split]
+            logger.info(
+                f"[before reduce] force_binned.shape for MPI-rank={self.__rank} is {np.array(force_binned).shape}"
+            )
 
             force_binned = self.__comm.reduce(force_binned, op=MPI.SUM, root=0)
 
             if self.__rank == 0:
+                logger.info(
+                    f"[after reduce] force_binned.shape for MPI-rank={self.__rank} is {np.array(force_binned).shape}"
+                )
                 # logger.info(f"force_binned = {force_binned }.")
                 # jackknife implementation
                 # https://www2.yukawa.kyoto-u.ac.jp/~etsuko.itou/old-HP/Notes/Jackknife-method.pdf
@@ -1062,8 +1159,9 @@ class VMC:
                 force_mean = np.array([])
                 force_std = np.array([])
 
-            force_mean = self.__comm.bcast(force_mean, root=0)
-            force_std = self.__comm.bcast(force_std, root=0)
+            if mpi_broadcast:
+                force_mean = self.__comm.bcast(force_mean, root=0)
+                force_std = self.__comm.bcast(force_std, root=0)
 
             return (force_mean, force_std)
 
@@ -1085,7 +1183,7 @@ if __name__ == "__main__":
     )
     # """
 
-    """
+    # """
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,
@@ -1099,7 +1197,7 @@ if __name__ == "__main__":
             os.path.dirname(__file__), "trexio_files", "H2_dimer_ccpv5z_trexio.hdf5"
         )
     )
-    """
+    # """
 
     """
     # Ne atom cc-pV5Z with Mitas ccECP (10 electrons, feasible).
@@ -1228,8 +1326,8 @@ if __name__ == "__main__":
         comput_position_deriv=False,
         comput_jas_param_deriv=True,
     )
-    vmc.run_single_shot(num_mcmc_steps=100)
-    vmc.get_e_L()
-    vmc.get_atomic_forces()
-
+    # vmc.run_single_shot(num_mcmc_steps=100)
+    # vmc.get_e_L()
+    # vmc.get_atomic_forces()
     vmc.run_optimize(num_mcmc_steps=100, num_opt_steps=1)
+    vmc.get_generalized_forces()
