@@ -45,6 +45,7 @@ from logging import Formatter, StreamHandler, getLogger
 import jax
 import numpy as np
 import numpy.typing as npt
+import scipy
 from jax import grad
 
 # MPI
@@ -840,7 +841,29 @@ class VMC:
             logger.info(f"Optimize Jastrow 1b2b3b={self.__comput_jas_param_deriv}")
 
         self.__mcmc.run(num_mcmc_steps=num_mcmc_steps)
-        deriv_ln_WF = self.get_deriv_ln_WF()
+
+        f, _ = self.get_generalized_forces(mpi_broadcast=False)
+        S, _ = self.get_stochastic_matrix(mpi_broadcast=False)
+
+        if self.__rank == 0:
+            var_epsilon = 1.0e-1
+            I = np.eye(S.shape[0])
+            S_prime = S + var_epsilon * I
+
+            logger.info(S_prime)
+            logger.info(np.diag(S_prime))
+
+            logger.info(
+                f"The matrix S_prime is symmetric? = {np.allclose(S_prime, S_prime.T, atol=1.0e-10)}"
+            )
+            # logger.info(f"The condition number of the matrix S is {np.linalg.cond(S)}")
+            # logger.info(f"The condition number of the matrix S_prime is {np.linalg.cond(S_prime)}")
+
+            # solve Sx=f
+            X = scipy.linalg.solve(S_prime, f, assume_a="sym")
+
+            logger.info(f"X = {X}")
+            logger.info(f"X.shape = {X.shape}")
 
         """ WIP
         for i_opt_steps in range(num_opt_steps):
@@ -853,13 +876,11 @@ class VMC:
             if self.__rank == 0:
                 M = 200
                 var_epsilon = 1.0e-5
+                S_matrix = np.cov(O_matrix, bias=True)
                 I_matrix = np.one(S_matrix.shape)
-                S_matrix = np.cov(O_matrix, bias=True, rowvar=True)
 				S_prime_matrix = S_matrix + var_epsilon * I_matrix
-                f_vector = np.array()
 
-                # solve Sx=f
-                X = scipy.solve(S_matrix, f_vector)
+
 
                 X_matrix_2b = X[0:size_jas_2b].reshape(shape_jas_2b)
                 X_matrix_3b_up_up = xxx
@@ -906,8 +927,6 @@ class VMC:
             dln_Psi_dc_flat = np.stack([arr.flatten() for arr in dln_Psi_dc], axis=0)
             O_matrix = np.hstack([O_matrix, dln_Psi_dc_flat])
 
-        print(O_matrix.shape)
-
         return O_matrix  # O.... (x....) M * L matrix
 
     def get_generalized_forces(self, mpi_broadcast=True):
@@ -937,67 +956,88 @@ class VMC:
         if self.__rank == 0:
             logger.info(f"[after reduce] O_matrix_binned.shape = {np.array(O_matrix_binned).shape}")
 
-            ExO_matrix_binned = np.array(e_L_binned).reshape(len(e_L_binned), 1) * np.array(
-                O_matrix_binned
+            e_L_binned = np.array(e_L_binned)
+            O_matrix_binned = np.array(O_matrix_binned)
+
+            eL_O_matrix_binned = np.einsum("i,ij->ij", e_L_binned, O_matrix_binned)
+
+            logger.info(f"eL_O_matrix_binned.shape = {eL_O_matrix_binned.shape}")
+
+            M = self.__num_mcmc_bin_blocks * self.__comm.size
+
+            eL_O_jn = (
+                1.0
+                / (M - 1)
+                * np.array(
+                    [np.sum(eL_O_matrix_binned, axis=0) - eL_O_matrix_binned[j] for j in range(M)]
+                )
             )
 
-            logger.info(f"ExO_matrix_binned.shape = {ExO_matrix_binned.shape}")
+            logger.info(f"eL_O_jn.shape = {eL_O_jn.shape}")
 
-            ExO_matrix_jackknife_binned = np.array(
-                [
-                    np.average(np.delete(ExO_matrix_binned, i, axis=0), axis=0)
-                    for i in range(len(ExO_matrix_binned))
-                ]
+            eL_jn = np.array([np.sum(e_L_binned, axis=0) - e_L_binned[j] for j in range(M)])
+
+            logger.info(f"eL_jn.shape = {eL_jn.shape}")
+
+            O_jn = (
+                1.0
+                / (M - 1)
+                * np.array([np.sum(O_matrix_binned, axis=0) - O_matrix_binned[j] for j in range(M)])
             )
 
-            logger.info(f"ExO_matrix_jackknife_binned.shape = {ExO_matrix_jackknife_binned.shape}")
+            logger.info(f"O_jn.shape = {O_jn.shape}")
 
-            braket_O_matrix_binned = np.array(
-                [
-                    np.average(np.delete(O_matrix_binned, i, axis=0), axis=0)
-                    for i in range(len(O_matrix_binned))
-                ]
-            )
+            eL_barO_jn = 1.0 / (M - 1) * np.einsum("i,ij->ij", eL_jn, O_jn)
 
-            logger.info(f"braket_O_matrix_binned.shape = {braket_O_matrix_binned.shape}")
+            logger.info(f"eL_barO_jn.shape = {eL_barO_jn.shape}")
 
-            braket_E_x_braket_O_matrix_binned = np.array(e_L_binned).reshape(
-                len(e_L_binned), 1
-            ) * np.array(braket_O_matrix_binned)
+            generalized_force_mean = np.average(-2.0 * (eL_O_jn - eL_barO_jn), axis=0)
+            generalized_force_std = np.sqrt(M - 1) * np.std(-2.0 * (eL_O_jn - eL_barO_jn), axis=0)
 
-            logger.info(
-                f"braket_E_x_braket_O_matrix_binned.shape = {braket_E_x_braket_O_matrix_binned.shape}"
-            )
-
-            braket_E_x_braket_O_matrix_jackknife_binned = np.array(
-                [
-                    np.average(np.delete(braket_E_x_braket_O_matrix_binned, i, axis=0), axis=0)
-                    for i in range(len(braket_E_x_braket_O_matrix_binned))
-                ]
-            )
-
-            logger.info(
-                f"braket_E_x_braket_O_matrix_jackknife_binned.shape = {braket_E_x_braket_O_matrix_jackknife_binned.shape}"
-            )
-
-            generalized_force_mean = -2.0 * np.average(
-                ExO_matrix_jackknife_binned * braket_E_x_braket_O_matrix_jackknife_binned, axis=0
-            )
-            generalized_force_std = np.sqrt(
-                2.0 * len(ExO_matrix_jackknife_binned * braket_E_x_braket_O_matrix_jackknife_binned)
-                - 1
-            ) * np.std(
-                ExO_matrix_jackknife_binned * braket_E_x_braket_O_matrix_jackknife_binned, axis=0
-            )
+            logger.info(f"generalized_force_mean = {generalized_force_mean}")
+            logger.info(f"generalized_force_std = {generalized_force_std}")
 
             logger.info(f"generalized_force_mean.shape = {generalized_force_mean.shape}")
-
             logger.info(f"generalized_force_std.shape = {generalized_force_std.shape}")
 
-        return None  # (f_k ...., var(f_k)....) (L vector, L vector)
+        else:
+            generalized_force_mean = None
+            generalized_force_std = None
 
-    def get_stochastic_matrix(self, mpi_broadcast=True):
-        return None  # (S_mu,nu ...., var(S)_mu,nu....) (L*L matrix, L*L matrix)
+        if mpi_broadcast:
+            # self.__comm.Bcast(generalized_force_mean, root=0)
+            # self.__comm.Bcast(generalized_force_std, root=0)
+            generalized_force_mean = self.__comm.bcast(generalized_force_mean, root=0)
+            generalized_force_std = self.__comm.bcast(generalized_force_std, root=0)
+
+        return (generalized_force_mean, generalized_force_std)  # (L vector, L vector)
+
+    def get_stochastic_matrix(self, mpi_broadcast=False):
+        O_matrix = self.get_deriv_ln_WF()
+        O_matrix_split = np.array_split(O_matrix, self.__num_mcmc_bin_blocks)
+        O_matrix_binned = [np.average(O_matrix_list, axis=0) for O_matrix_list in O_matrix_split]
+        O_matrix_binned = self.__comm.reduce(O_matrix_binned, op=MPI.SUM, root=0)
+
+        if self.__rank == 0:
+            O_matrix_binned = np.array(O_matrix_binned)
+            logger.info(f"O_matrix_binned.shape = {O_matrix_binned.shape}")
+            S_mean = np.array(np.cov(O_matrix_binned, bias=True, rowvar=False))
+            S_std = np.zeros(S_mean.size)
+            logger.info(f"S_mean = {S_mean}")
+            logger.info(f"S_mean.is_nan for MPI-rank={self.__rank} is {np.isnan(S_mean).any()}")
+            logger.info(f"S_mean.shape for MPI-rank={self.__rank} is {S_mean.shape}")
+            logger.info(f"S_mean.type for MPI-rank={self.__rank} is {type(S_mean)}")
+        else:
+            S_mean = None
+            S_std = None
+
+        if mpi_broadcast:
+            # self.__comm.Bcast(S_mean, root=0)
+            # self.__comm.Bcast(S_std, root=0)
+            S_mean = self.__comm.bcast(S_mean, root=0)
+            S_std = self.__comm.bcast(S_std, root=0)
+
+        return (S_mean, S_std)  # (S_mu,nu ...., var(S)_mu,nu....) (L*L matrix, L*L matrix)
 
     def get_e_L(self):
         # analysis VMC
@@ -1037,12 +1077,128 @@ class VMC:
 
         return (e_L_mean, e_L_std)
 
-    def get_atomic_forces(self, mpi_broadcast=True):
+    def get_atomic_forces(self):
         if not self.__comput_position_deriv:
             force_mean = np.array([])
             force_std = np.array([])
             return (force_mean, force_std)
 
+        else:
+            e_L = np.array(self.__mcmc.e_L[self.__num_mcmc_warmup_steps :])
+            de_L_dR = np.array(self.__mcmc.de_L_dR[self.__num_mcmc_warmup_steps :])
+            de_L_dr_up = np.array(self.__mcmc.de_L_dr_up[self.__num_mcmc_warmup_steps :])
+            de_L_dr_dn = np.array(self.__mcmc.de_L_dr_dn[self.__num_mcmc_warmup_steps :])
+            dln_Psi_dr_up = np.array(self.__mcmc.dln_Psi_dr_up[self.__num_mcmc_warmup_steps :])
+            dln_Psi_dr_dn = np.array(self.__mcmc.dln_Psi_dr_dn[self.__num_mcmc_warmup_steps :])
+            dln_Psi_dR = np.array(self.__mcmc.dln_Psi_dR[self.__num_mcmc_warmup_steps :])
+            omega_up = np.array(self.__mcmc.omega_up[self.__num_mcmc_warmup_steps :])
+            omega_dn = np.array(self.__mcmc.omega_dn[self.__num_mcmc_warmup_steps :])
+            domega_dr_up = np.array(self.__mcmc.domega_dr_up[self.__num_mcmc_warmup_steps :])
+            domega_dr_dn = np.array(self.__mcmc.domega_dr_dn[self.__num_mcmc_warmup_steps :])
+
+            force_HF = (
+                de_L_dR
+                + np.einsum("ijk,ikl->ijl", omega_up, de_L_dr_up)
+                + np.einsum("ijk,ikl->ijl", omega_dn, de_L_dr_dn)
+            )
+
+            force_PP = (
+                dln_Psi_dR
+                + np.einsum("ijk,ikl->ijl", omega_up, dln_Psi_dr_up)
+                + np.einsum("ijk,ikl->ijl", omega_dn, dln_Psi_dr_dn)
+                + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
+            )
+
+            E_L_force_PP = np.einsum("i,ijk->ijk", e_L, force_PP)
+
+            logger.info(f"e_L.shape for MPI-rank={self.__rank} is {e_L.shape}")
+            logger.info(f"force_HF.shape for MPI-rank={self.__rank} is {force_HF.shape}")
+            logger.info(f"force_PP.shape for MPI-rank={self.__rank} is {force_PP.shape}")
+            logger.info(f"E_L_force_PP.shape for MPI-rank={self.__rank} is {E_L_force_PP.shape}")
+
+            e_L_split = np.array_split(e_L, self.__num_mcmc_bin_blocks)
+            force_HF_split = np.array_split(force_HF, self.__num_mcmc_bin_blocks)
+            force_PP_split = np.array_split(force_PP, self.__num_mcmc_bin_blocks)
+            E_L_force_PP_split = np.array_split(E_L_force_PP, self.__num_mcmc_bin_blocks)
+
+            e_L_binned = [np.average(A, axis=0) for A in e_L_split]
+            force_HF_binned = [np.average(A, axis=0) for A in force_HF_split]
+            force_PP_binned = [np.average(A, axis=0) for A in force_PP_split]
+            E_L_force_PP_binned = [np.average(A, axis=0) for A in E_L_force_PP_split]
+
+            e_L_binned = self.__comm.reduce(e_L_binned, op=MPI.SUM, root=0)
+            force_HF_binned = self.__comm.reduce(force_HF_binned, op=MPI.SUM, root=0)
+            force_PP_binned = self.__comm.reduce(force_PP_binned, op=MPI.SUM, root=0)
+            E_L_force_PP_binned = self.__comm.reduce(E_L_force_PP_binned, op=MPI.SUM, root=0)
+
+            if self.__rank == 0:
+                e_L_binned = np.array(e_L_binned)
+                force_HF_binned = np.array(force_HF_binned)
+                force_PP_binned = np.array(force_PP_binned)
+                E_L_force_PP_binned = np.array(E_L_force_PP_binned)
+
+                logger.info(f"e_L_binned.shape for MPI-rank={self.__rank} is {e_L_binned.shape}")
+                logger.info(
+                    f"force_HF_binned.shape for MPI-rank={self.__rank} is {force_HF_binned.shape}"
+                )
+                logger.info(
+                    f"force_PP_binned.shape for MPI-rank={self.__rank} is {force_PP_binned.shape}"
+                )
+                logger.info(
+                    f"E_L_force_PP_binned.shape for MPI-rank={self.__rank} is {E_L_force_PP_binned.shape}"
+                )
+
+                M = self.__num_mcmc_bin_blocks * self.__comm.size
+
+                force_HF_jn = np.array(
+                    [
+                        -1.0 / (M - 1) * (np.sum(force_HF_binned, axis=0) - force_HF_binned[j])
+                        for j in range(M)
+                    ]
+                )
+
+                force_Pulay_jn = np.array(
+                    [
+                        -2.0
+                        / (M - 1)
+                        * (
+                            (np.sum(E_L_force_PP_binned, axis=0) - E_L_force_PP_binned[j])
+                            - (
+                                1.0
+                                / (M - 1)
+                                * (np.sum(e_L_binned) - e_L_binned[j])
+                                * (np.sum(force_PP_binned, axis=0) - force_PP_binned[j])
+                            )
+                        )
+                        for j in range(M)
+                    ]
+                )
+
+                logger.info(f"force_HF_jn.shape for MPI-rank={self.__rank} is {force_HF_jn.shape}")
+                logger.info(
+                    f"force_Pulay_jn.shape for MPI-rank={self.__rank} is {force_Pulay_jn.shape}"
+                )
+
+                force_jn = force_HF_jn + force_Pulay_jn
+
+                force_mean = np.average(force_jn, axis=0)
+                force_std = np.sqrt(M - 1) * np.std(force_jn, axis=0)
+
+                logger.info(f"force_mean.shape  = {force_mean.shape}.")
+                logger.info(f"force_std.shape  = {force_std.shape}.")
+
+                logger.info(f"force = {force_mean} +- {force_std} Ha.")
+
+            else:
+                force_mean = np.array([])
+                force_std = np.array([])
+
+            force_mean = self.__comm.bcast(force_mean, root=0)
+            force_std = self.__comm.bcast(force_std, root=0)
+
+            return (force_mean, force_std)
+
+        """
         else:
             # analysis VMC
 
@@ -1164,6 +1320,7 @@ class VMC:
                 force_std = self.__comm.bcast(force_std, root=0)
 
             return (force_mean, force_std)
+        """
 
 
 if __name__ == "__main__":
@@ -1183,7 +1340,7 @@ if __name__ == "__main__":
     )
     # """
 
-    # """
+    """
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,
@@ -1197,7 +1354,7 @@ if __name__ == "__main__":
             os.path.dirname(__file__), "trexio_files", "H2_dimer_ccpv5z_trexio.hdf5"
         )
     )
-    # """
+    """
 
     """
     # Ne atom cc-pV5Z with Mitas ccECP (10 electrons, feasible).
@@ -1326,8 +1483,9 @@ if __name__ == "__main__":
         comput_position_deriv=False,
         comput_jas_param_deriv=True,
     )
-    # vmc.run_single_shot(num_mcmc_steps=100)
+    vmc.run_single_shot(num_mcmc_steps=50)
     # vmc.get_e_L()
     # vmc.get_atomic_forces()
-    vmc.run_optimize(num_mcmc_steps=100, num_opt_steps=1)
-    vmc.get_generalized_forces()
+    # vmc.run_optimize(num_mcmc_steps=100, num_opt_steps=1)
+    vmc.get_generalized_forces(mpi_broadcast=True)
+    vmc.get_stochastic_matrix(mpi_broadcast=True)
