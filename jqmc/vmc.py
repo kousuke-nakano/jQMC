@@ -620,7 +620,7 @@ class MCMC:
         """Return a dictionary containing information about variational parameters to be optimized.
 
         Return:
-            opt_param_list (list): instances of the parameters to be optimized.
+            opt_param_list (list): labels of the parameters to be optimized.
             dln_Psi_dc_list (list): dln_Psi_dc instances computed by JAX-grad.
             dln_Psi_dc_size_list (list): sizes of dln_Psi_dc instances
             dln_Psi_dc_shape_list (list): shapes of dln_Psi_dc instances
@@ -635,7 +635,7 @@ class MCMC:
 
         if self.__comput_jas_param_deriv:
             if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag:
-                opt_param = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
+                opt_param = "jastrow_2b_param"
                 dln_Psi_dc = self.dln_Psi_dc_jas_2b
                 dln_Psi_dc_size = 1
                 dln_Psi_dc_shape = (1,)
@@ -648,7 +648,7 @@ class MCMC:
                 dln_Psi_dc_flattened_index_list += dln_Psi_dc_flattened_index
 
             if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
-                opt_param = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_up
+                opt_param = "j_matrix_up_up"
                 dln_Psi_dc = self.dln_Psi_dc_jas_1b3b_up_up
                 dln_Psi_dc_size = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_up.size
                 dln_Psi_dc_shape = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_up.shape
@@ -660,7 +660,7 @@ class MCMC:
                 dln_Psi_dc_shape_list.append(dln_Psi_dc_shape)
                 dln_Psi_dc_flattened_index_list += dln_Psi_dc_flattened_index
 
-                opt_param = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_dn
+                opt_param = "j_matrix_up_dn"
                 dln_Psi_dc = self.dln_Psi_dc_jas_1b3b_up_dn
                 dln_Psi_dc_size = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_dn.size
                 dln_Psi_dc_shape = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_dn.shape
@@ -672,7 +672,7 @@ class MCMC:
                 dln_Psi_dc_shape_list.append(dln_Psi_dc_shape)
                 dln_Psi_dc_flattened_index_list += dln_Psi_dc_flattened_index
 
-                opt_param = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_dn_dn
+                opt_param = "j_matrix_dn_dn"
                 dln_Psi_dc = self.dln_Psi_dc_jas_1b3b_dn_dn
                 dln_Psi_dc_size = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_dn_dn.size
                 dln_Psi_dc_shape = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_dn_dn.shape
@@ -876,15 +876,23 @@ class VMC:
         logger.info(f"X.shape for MPI-rank={self.__rank} is {X.shape}")
 
         opt_param_list = self.__mcmc.opt_param_dict["opt_param_list"]
-        dln_Psi_dc_size_list = self.__mcmc.opt_param_dict["dln_Psi_dc_size_list"]
         dln_Psi_dc_shape_list = self.__mcmc.opt_param_dict["dln_Psi_dc_shape_list"]
         dln_Psi_dc_flattened_index_list = self.__mcmc.opt_param_dict[
             "dln_Psi_dc_flattened_index_list"
         ]
 
-        logger.info(f"dln_Psi_dc_flattened_index_list={dln_Psi_dc_flattened_index_list}")
-
         delta = 0.01
+
+        jastrow_2b_param = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
+        aos_data_up = (
+            self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data_up
+        )
+        aos_data_dn = (
+            self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data_dn
+        )
+        j_matrix_up_up = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_up
+        j_matrix_dn_dn = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_dn_dn
+        j_matrix_up_dn = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_dn
 
         for ii, opt_param in enumerate(opt_param_list):
             param_shape = dln_Psi_dc_shape_list[ii]
@@ -892,61 +900,21 @@ class VMC:
             dX = X[param_index].reshape(param_shape)
             logger.info(f"dX.shape for MPI-rank={self.__rank} is {dX.shape}")
 
-            logger.info(opt_param)
-            opt_param = opt_param + delta * dX
-            logger.info(opt_param)
+            if opt_param == "jastrow_2b_param":
+                jastrow_2b_param += delta * dX
+            if opt_param == "j_matrix_up_up":
+                j_matrix_up_up += delta * dX
+            if opt_param == "j_matrix_dn_dn":
+                j_matrix_dn_dn += delta * dX
+            if opt_param == "j_matrix_up_dn":
+                j_matrix_up_dn += delta * dX
 
-        logger.warning(f"twobody param before opt.")
-        logger.warning(
-            self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
-        )
+        structure_data = self.__mcmc.hamiltonian_data.structure_data
+        geminal_data = self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data
+        jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=jastrow_2b_param)
+        jastrow_three_body_data = Jastrow_three_body_data(aos_data_up, aos_data_dn)
 
-        """ WIP
-        for i_opt_steps in range(num_opt_steps):
-            if self.__rank == 0:
-                logger.info(f"i opt_steps={i_opt_steps + 1}/{num_opt_steps}.")
-
-            # run VMC
-            self.__mcmc.run(num_mcmc_steps=num_mcmc_steps)
-
-            if self.__rank == 0:
-                M = 200
-                var_epsilon = 1.0e-5
-                S_matrix = np.cov(O_matrix, bias=True)
-                I_matrix = np.one(S_matrix.shape)
-				S_prime_matrix = S_matrix + var_epsilon * I_matrix
-
-
-
-                X_matrix_2b = X[0:size_jas_2b].reshape(shape_jas_2b)
-                X_matrix_3b_up_up = xxx
-
-                # update parameter
-                delta = 1.0e-4
-                jas_3b_up_up = jas_3b_up_up + delta * X_matrix_3b_up_up
-
-                # Create new WF and Hamiltonian
-
-            # Broadcast the updated Hamiltonian
-
-            # Other variables
-            latest_r_up_carts = self.__mcmc.latest_r_up_carts
-            latest_r_dn_carts = self.__mcmc.latest_r_dn_carts
-            mpi_seed = self.__mcmc.mcmc_seed
-            Dt = self.__mcmc.Dt
-
-            time.sleep(1)
-
-            # Generate a new MCMC instance
-            # No, let's
-            self.__mcmc = MCMC(
-                hamiltonian_data=self.hamiltonian_data,
-                init_r_up_carts=latest_r_up_carts,
-                init_r_dn_carts=latest_r_dn_carts,
-                mcmc_seed=mpi_seed,
-                Dt=Dt,
-            )
-        """
+        new_hamiltonian = Hamiltonian_data()
 
     def get_deriv_ln_WF(self):
         opt_param_dict = self.__mcmc.opt_param_dict
