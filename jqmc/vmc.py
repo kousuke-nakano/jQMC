@@ -236,9 +236,7 @@ class MCMC:
         self.__stored_grad_ln_Psi_jas2b = []
 
         # stored dln_Psi / dc_jas1b3b
-        self.__stored_grad_ln_Psi_jas1b3b_j_matrix_up_up = []
-        self.__stored_grad_ln_Psi_jas1b3b_j_matrix_dn_dn = []
-        self.__stored_grad_ln_Psi_jas1b3b_j_matrix_up_dn = []
+        self.__stored_grad_ln_Psi_jas1b3b_j_matrix = []
 
     def run(self, num_mcmc_steps: int = 0) -> None:
         """
@@ -398,18 +396,14 @@ class MCMC:
                 )
 
                 if jastrow_data.jastrow_three_body_flag:
-                    grad_e_L_R += grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data_up_spin.structure_data.positions
-                    grad_e_L_R += grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data_dn_spin.structure_data.positions
+                    grad_e_L_R += grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
 
                 self.__stored_grad_e_L_dR.append(grad_e_L_R)
                 # """
 
                 # """
                 logger.debug(
-                    f"de_L_dR(AOs_data_up) = {grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.aos_data.structure_data.positions}"
-                )
-                logger.debug(
-                    f"de_L_dR(AOs_data_dn) = {grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions}"
+                    f"de_L_dR(AOs_data_up) = {grad_e_L_h.wavefunction_data.geminal_data.orb_data.aos_data.structure_data.positions}"
                 )
                 logger.debug(
                     f"de_L_dR(coulomb_potential_data) = {grad_e_L_h.coulomb_potential_data.structure_data.positions}"
@@ -446,8 +440,7 @@ class MCMC:
                 )
 
                 if jastrow_data.jastrow_three_body_flag:
-                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data_up_spin.structure_data.positions
-                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data_dn_spin.structure_data.positions
+                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
 
                 # stored dln_Psi / dR
                 logger.debug(f"dln_Psi_dR = {grad_ln_Psi_dR}")
@@ -501,33 +494,11 @@ class MCMC:
                     self.__stored_grad_ln_Psi_jas2b.append(grad_ln_Psi_jas2b)
 
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
-                    grad_ln_Psi_jas1b3b_j_matrix_up_up = (
-                        grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix_up_up
+                    grad_ln_Psi_jas1b3b_j_matrix = (
+                        grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix
                     )
-                    logger.debug(
-                        f"grad_ln_Psi_jas1b3b_j_matrix_up_up = {grad_ln_Psi_jas1b3b_j_matrix_up_up}"
-                    )
-                    self.__stored_grad_ln_Psi_jas1b3b_j_matrix_up_up.append(
-                        grad_ln_Psi_jas1b3b_j_matrix_up_up
-                    )
-                    grad_ln_Psi_jas1b3b_j_matrix_dn_dn = (
-                        grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix_dn_dn
-                    )
-                    logger.debug(
-                        f"grad_ln_Psi_jas1b3b_j_matrix_dn_dn = {grad_ln_Psi_jas1b3b_j_matrix_dn_dn}"
-                    )
-                    self.__stored_grad_ln_Psi_jas1b3b_j_matrix_dn_dn.append(
-                        grad_ln_Psi_jas1b3b_j_matrix_dn_dn
-                    )
-                    grad_ln_Psi_jas1b3b_j_matrix_up_dn = (
-                        grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix_up_dn
-                    )
-                    logger.debug(
-                        f"grad_ln_Psi_jas1b3b_j_matrix_up_dn = {grad_ln_Psi_jas1b3b_j_matrix_up_dn}"
-                    )
-                    self.__stored_grad_ln_Psi_jas1b3b_j_matrix_up_dn.append(
-                        grad_ln_Psi_jas1b3b_j_matrix_up_dn
-                    )
+                    logger.debug(f"grad_ln_Psi_jas1b3b_j_matrix = {grad_ln_Psi_jas1b3b_j_matrix}")
+                    self.__stored_grad_ln_Psi_jas1b3b_j_matrix.append(grad_ln_Psi_jas1b3b_j_matrix)
 
         self.__mcmc_counter += num_mcmc_steps
         logger.info(f"acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
@@ -590,16 +561,8 @@ class MCMC:
         return self.__stored_grad_ln_Psi_jas2b
 
     @property
-    def dln_Psi_dc_jas_1b3b_up_up(self):
-        return self.__stored_grad_ln_Psi_jas1b3b_j_matrix_up_up
-
-    @property
-    def dln_Psi_dc_jas_1b3b_up_dn(self):
-        return self.__stored_grad_ln_Psi_jas1b3b_j_matrix_up_dn
-
-    @property
-    def dln_Psi_dc_jas_1b3b_dn_dn(self):
-        return self.__stored_grad_ln_Psi_jas1b3b_j_matrix_dn_dn
+    def dln_Psi_dc_jas_1b3b(self):
+        return self.__stored_grad_ln_Psi_jas1b3b_j_matrix
 
     @property
     def domega_dr_dn(self):
@@ -658,34 +621,10 @@ class MCMC:
                 dln_Psi_dc_flattened_index_list += dln_Psi_dc_flattened_index
 
             if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
-                opt_param = "j_matrix_up_up"
-                dln_Psi_dc = self.dln_Psi_dc_jas_1b3b_up_up
-                dln_Psi_dc_size = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_up.size
-                dln_Psi_dc_shape = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_up.shape
-                dln_Psi_dc_flattened_index = [len(opt_param_list)] * dln_Psi_dc_size
-
-                opt_param_list.append(opt_param)
-                dln_Psi_dc_list.append(dln_Psi_dc)
-                dln_Psi_dc_size_list.append(dln_Psi_dc_size)
-                dln_Psi_dc_shape_list.append(dln_Psi_dc_shape)
-                dln_Psi_dc_flattened_index_list += dln_Psi_dc_flattened_index
-
-                opt_param = "j_matrix_up_dn"
-                dln_Psi_dc = self.dln_Psi_dc_jas_1b3b_up_dn
-                dln_Psi_dc_size = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_dn.size
-                dln_Psi_dc_shape = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_dn.shape
-                dln_Psi_dc_flattened_index = [len(opt_param_list)] * dln_Psi_dc_size
-
-                opt_param_list.append(opt_param)
-                dln_Psi_dc_list.append(dln_Psi_dc)
-                dln_Psi_dc_size_list.append(dln_Psi_dc_size)
-                dln_Psi_dc_shape_list.append(dln_Psi_dc_shape)
-                dln_Psi_dc_flattened_index_list += dln_Psi_dc_flattened_index
-
-                opt_param = "j_matrix_dn_dn"
-                dln_Psi_dc = self.dln_Psi_dc_jas_1b3b_dn_dn
-                dln_Psi_dc_size = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_dn_dn.size
-                dln_Psi_dc_shape = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_dn_dn.shape
+                opt_param = "j_matrix"
+                dln_Psi_dc = self.dln_Psi_dc_jas_1b3b
+                dln_Psi_dc_size = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix.size
+                dln_Psi_dc_shape = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix.shape
                 dln_Psi_dc_flattened_index = [len(opt_param_list)] * dln_Psi_dc_size
 
                 opt_param_list.append(opt_param)
@@ -872,8 +811,6 @@ class VMC:
                 I = np.eye(S.shape[0])
                 S_prime = S + var_epsilon * I
 
-                logger.info(S_prime)
-
                 # logger.info(
                 #    f"The matrix S_prime is symmetric? = {np.allclose(S_prime, S_prime.T, atol=1.0e-10)}"
                 # )
@@ -898,18 +835,15 @@ class VMC:
                 "dln_Psi_dc_flattened_index_list"
             ]
 
-            delta = 0.01
+            delta = 0.02
 
             jastrow_2b_param = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
             jastrow_two_body_pade_flag = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag
             jastrow_three_body_flag = (
                 self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag
             )
-            aos_data_up = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data_up_spin
-            aos_data_dn = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data_up_spin
-            j_matrix_up_up = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_up
-            j_matrix_dn_dn = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_dn_dn
-            j_matrix_up_dn = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_dn
+            aos_data = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data
+            j_matrix = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix
 
             for ii, opt_param in enumerate(opt_param_list):
                 param_shape = dln_Psi_dc_shape_list[ii]
@@ -919,23 +853,16 @@ class VMC:
 
                 if opt_param == "jastrow_2b_param":
                     jastrow_2b_param += delta * dX
-                if opt_param == "j_matrix_up_up":
-                    j_matrix_up_up += delta * dX
-                if opt_param == "j_matrix_dn_dn":
-                    j_matrix_dn_dn += delta * dX
-                if opt_param == "j_matrix_up_dn":
-                    j_matrix_up_dn += delta * dX
+                if opt_param == "j_matrix":
+                    j_matrix += delta * dX
 
             structure_data = self.__mcmc.hamiltonian_data.structure_data
             coulomb_potential_data = self.__mcmc.hamiltonian_data.coulomb_potential_data
             geminal_data = self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data
             jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=jastrow_2b_param)
             jastrow_three_body_data = Jastrow_three_body_data(
-                orb_data_up_spin=aos_data_up,
-                orb_data_dn_spin=aos_data_dn,
-                j_matrix_up_up=j_matrix_up_up,
-                j_matrix_up_dn=j_matrix_up_dn,
-                j_matrix_dn_dn=j_matrix_dn_dn,
+                orb_data=aos_data,
+                j_matrix=j_matrix,
             )
             jastrow_data = Jastrow_data(
                 jastrow_two_body_data=jastrow_two_body_data,
@@ -1037,8 +964,8 @@ class VMC:
             generalized_force_mean = np.average(-2.0 * (eL_O_jn - eL_barO_jn), axis=0)
             generalized_force_std = np.sqrt(M - 1) * np.std(-2.0 * (eL_O_jn - eL_barO_jn), axis=0)
 
-            logger.info(f"generalized_force_mean = {generalized_force_mean}")
-            logger.info(f"generalized_force_std = {generalized_force_std}")
+            logger.debug(f"generalized_force_mean = {generalized_force_mean}")
+            logger.debug(f"generalized_force_std = {generalized_force_std}")
 
             logger.info(f"generalized_force_mean.shape = {generalized_force_mean.shape}")
             logger.info(f"generalized_force_std.shape = {generalized_force_std.shape}")
@@ -1066,10 +993,10 @@ class VMC:
             logger.info(f"O_matrix_binned.shape = {O_matrix_binned.shape}")
             S_mean = np.array(np.cov(O_matrix_binned, bias=True, rowvar=False))
             S_std = np.zeros(S_mean.size)
-            logger.info(f"S_mean = {S_mean}")
+            logger.debug(f"S_mean = {S_mean}")
             logger.info(f"S_mean.is_nan for MPI-rank={self.__rank} is {np.isnan(S_mean).any()}")
             logger.info(f"S_mean.shape for MPI-rank={self.__rank} is {S_mean.shape}")
-            logger.info(f"S_mean.type for MPI-rank={self.__rank} is {type(S_mean)}")
+            logger.debug(f"S_mean.type for MPI-rank={self.__rank} is {type(S_mean)}")
         else:
             S_mean = None
             S_std = None
@@ -1492,9 +1419,7 @@ if __name__ == "__main__":
     """
 
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
-    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
-        orb_data_up_spin=aos_data, orb_data_dn_spin=aos_data
-    )
+    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
 
     # define data
     jastrow_data = Jastrow_data(

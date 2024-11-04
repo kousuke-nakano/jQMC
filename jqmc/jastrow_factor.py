@@ -86,80 +86,37 @@ class Jastrow_three_body_data:
     The class contains data for evaluating the three-body Jastrow function.
 
     Args:
-        orb_data_up_spin (AOs_data): AOs data for up-spin.
-        orb_data_dn_spin (AOs_data): AOs data for dn-spin.
-        j_matrix_up_up (npt.NDArray[np.float64]): J matrix dim. (orb_data_up_spin.num_ao, orb_data_up_spin.num_ao+1))
-        j_matrix_dn_dn (npt.NDArray[np.float64]): J matrix dim. (orb_data_dn_spin.num_ao, orb_data_dn_spin.num_ao+1))
-        j_matrix_up_dn (npt.NDArray[np.float64]): J matrix dim. (orb_data_up_spin.num_ao, orb_data_dn_spin.num_ao))
+        orb_data (AOs_data): AOs data for up-spin and dn-spin.
+        j_matrix (npt.NDArray[np.float64]): J matrix dim. (orb_data.num_ao, orb_data.num_ao+1))
     """
 
-    orb_data_up_spin: AOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
-    orb_data_dn_spin: AOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
-    j_matrix_up_up: npt.NDArray[np.float64] = struct.field(
-        pytree_node=True, default_factory=lambda: np.array([])
-    )
-    j_matrix_dn_dn: npt.NDArray[np.float64] = struct.field(
-        pytree_node=True, default_factory=lambda: np.array([])
-    )
-    j_matrix_up_dn: npt.NDArray[np.float64] = struct.field(
+    orb_data: AOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
+    j_matrix: npt.NDArray[np.float64] = struct.field(
         pytree_node=True, default_factory=lambda: np.array([])
     )
 
     def __post_init__(self) -> None:
-        if self.j_matrix_up_up.shape != (
-            self.orb_num_up,
-            self.orb_num_up + 1,
+        if self.j_matrix.shape != (
+            self.orb_num,
+            self.orb_num + 1,
         ):
             logger.error(
-                f"dim. of j_matrix_up_up = {self.j_matrix_up_up.shape} is imcompatible with the expected one "
-                + f"= ({self.orb_num_up}, {self.orb_num_up + 1}).",
-            )
-            raise ValueError
-
-        if self.j_matrix_dn_dn.shape != (
-            self.orb_num_dn,
-            self.orb_num_dn + 1,
-        ):
-            logger.error(
-                f"dim. of j_matrix_dn_dn = {self.j_matrix_dn_dn.shape} is imcompatible with the expected one "
-                + f"= ({self.orb_num_dn}, {self.orb_num_dn + 1}).",
-            )
-            raise ValueError
-
-        if self.j_matrix_up_dn.shape != (
-            self.orb_num_up,
-            self.orb_num_dn,
-        ):
-            logger.error(
-                f"dim. of j_matrix_up_dn = {self.j_matrix_up_dn.shape} is imcompatible with the expected one "
-                + f"= ({self.orb_num_up}, {self.orb_num_dn}).",
+                f"dim. of j_matrix = {self.j_matrix.shape} is imcompatible with the expected one "
+                + f"= ({self.orb_num}, {self.orb_num + 1}).",
             )
             raise ValueError
 
     @property
-    def orb_num_up(self) -> int:
-        return self.orb_data_up_spin.num_ao
-
-    @property
-    def orb_num_dn(self) -> int:
-        return self.orb_data_dn_spin.num_ao
+    def orb_num(self) -> int:
+        return self.orb_data.num_ao
 
     @classmethod
-    def init_jastrow_three_body_data(cls, orb_data_up_spin: AOs_data, orb_data_dn_spin: AOs_data):
-        j_matrix_up_up = np.zeros((orb_data_up_spin.num_ao, orb_data_up_spin.num_ao + 1))
-        j_matrix_dn_dn = np.zeros((orb_data_dn_spin.num_ao, orb_data_dn_spin.num_ao + 1))
-        j_matrix_up_dn = np.zeros((orb_data_up_spin.num_ao, orb_data_dn_spin.num_ao))
-
-        # j_matrix_up_up = np.random.randn(orb_data_up_spin.num_ao, orb_data_up_spin.num_ao + 1)
-        # j_matrix_dn_dn = np.random.randn(orb_data_dn_spin.num_ao, orb_data_dn_spin.num_ao + 1)
-        # j_matrix_up_dn = np.random.randn(orb_data_up_spin.num_ao, orb_data_dn_spin.num_ao)
+    def init_jastrow_three_body_data(cls, orb_data: AOs_data):
+        j_matrix = np.zeros((orb_data.num_ao, orb_data.num_ao + 1))
 
         jastrow_three_body_data = cls(
-            orb_data_up_spin=orb_data_up_spin,
-            orb_data_dn_spin=orb_data_dn_spin,
-            j_matrix_up_up=j_matrix_up_up,
-            j_matrix_dn_dn=j_matrix_dn_dn,
-            j_matrix_up_dn=j_matrix_up_dn,
+            orb_data=orb_data,
+            j_matrix=j_matrix,
         )
         return jastrow_three_body_data
 
@@ -227,19 +184,19 @@ def compute_Jastrow_three_body_debug(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
-    aos_up = compute_AOs_api(aos_data=jastrow_three_body_data.orb_data_up_spin, r_carts=r_up_carts)
-    aos_dn = compute_AOs_api(aos_data=jastrow_three_body_data.orb_data_dn_spin, r_carts=r_dn_carts)
+    aos_up = compute_AOs_api(aos_data=jastrow_three_body_data.orb_data, r_carts=r_up_carts)
+    aos_dn = compute_AOs_api(aos_data=jastrow_three_body_data.orb_data, r_carts=r_dn_carts)
 
     # compute one body
     J_1_up = 0.0
-    j1_vector_up = jastrow_three_body_data.j_matrix_up_up[:, -1]
+    j1_vector_up = jastrow_three_body_data.j_matrix[:, -1]
     for i in range(len(r_up_carts)):
         ao_up = aos_up[:, i]
         for al in range(len(ao_up)):
             J_1_up += j1_vector_up[al] * ao_up[al]
 
     J_1_dn = 0.0
-    j1_vector_dn = jastrow_three_body_data.j_matrix_dn_dn[:, -1]
+    j1_vector_dn = jastrow_three_body_data.j_matrix[:, -1]
     for i in range(len(r_dn_carts)):
         ao_dn = aos_dn[:, i]
         for al in range(len(ao_dn)):
@@ -247,7 +204,7 @@ def compute_Jastrow_three_body_debug(
 
     # compute three-body
     J_3_up_up = 0.0
-    j3_matrix_up_up = jastrow_three_body_data.j_matrix_up_up[:, :-1]
+    j3_matrix_up_up = jastrow_three_body_data.j_matrix[:, :-1]
     for i in range(len(r_up_carts)):
         for j in range(i + 1, len(r_up_carts)):
             ao_up_i = aos_up[:, i]
@@ -257,7 +214,7 @@ def compute_Jastrow_three_body_debug(
                     J_3_up_up += j3_matrix_up_up[al, bm] * ao_up_i[al] * ao_up_j[bm]
 
     J_3_dn_dn = 0.0
-    j3_matrix_dn_dn = jastrow_three_body_data.j_matrix_dn_dn[:, :-1]
+    j3_matrix_dn_dn = jastrow_three_body_data.j_matrix[:, :-1]
     for i in range(len(r_dn_carts)):
         for j in range(i + 1, len(r_dn_carts)):
             ao_dn_i = aos_dn[:, i]
@@ -267,7 +224,7 @@ def compute_Jastrow_three_body_debug(
                     J_3_dn_dn += j3_matrix_dn_dn[al, bm] * ao_dn_i[al] * ao_dn_j[bm]
 
     J_3_up_dn = 0.0
-    j3_matrix_up_dn = jastrow_three_body_data.j_matrix_up_dn[:, :]
+    j3_matrix_up_dn = jastrow_three_body_data.j_matrix[:, :]
     for i in range(len(r_up_carts)):
         for j in range(len(r_dn_carts)):
             ao_up_i = aos_up[:, i]
@@ -291,23 +248,31 @@ def compute_Jastrow_three_body_jax(
     num_electron_dn = len(r_dn_carts)
 
     aos_up = jnp.array(
-        compute_AOs_api(aos_data=jastrow_three_body_data.orb_data_up_spin, r_carts=r_up_carts)
+        compute_AOs_api(aos_data=jastrow_three_body_data.orb_data, r_carts=r_up_carts)
     )
     aos_dn = jnp.array(
-        compute_AOs_api(aos_data=jastrow_three_body_data.orb_data_dn_spin, r_carts=r_dn_carts)
+        compute_AOs_api(aos_data=jastrow_three_body_data.orb_data, r_carts=r_dn_carts)
     )
 
     K_up = jnp.tril(jnp.ones((num_electron_up, num_electron_up)), k=-1)
     K_dn = jnp.tril(jnp.ones((num_electron_dn, num_electron_dn)), k=-1)
 
-    j1_matrix_up = jastrow_three_body_data.j_matrix_up_up[:, -1]
-    j1_matrix_dn = jastrow_three_body_data.j_matrix_dn_dn[:, -1]
-    j3_matrix_up_up = jastrow_three_body_data.j_matrix_up_up[:, :-1]
-    j3_matrix_dn_dn = jastrow_three_body_data.j_matrix_dn_dn[:, :-1]
-    j3_matrix_up_dn = jastrow_three_body_data.j_matrix_up_dn
+    j1_matrix_up = jastrow_three_body_data.j_matrix[:, -1]
+    j1_matrix_dn = jastrow_three_body_data.j_matrix[:, -1]
+    j3_matrix_up_up = jastrow_three_body_data.j_matrix[:, :-1]
+    j3_matrix_dn_dn = jastrow_three_body_data.j_matrix[:, :-1]
+    j3_matrix_up_dn = jastrow_three_body_data.j_matrix[:, :-1]
 
     e_up = jnp.ones(num_electron_up).T
     e_dn = jnp.ones(num_electron_dn).T
+
+    # print(f"aos_up.shape={aos_up.shape}")
+    # print(f"aos_dn.shape={aos_dn.shape}")
+    # print(f"e_up.shape={e_up.shape}")
+    # print(f"e_dn.shape={e_dn.shape}")
+    # print(f"j3_matrix_up_up.shape={j3_matrix_up_up.shape}")
+    # print(f"j3_matrix_dn_dn.shape={j3_matrix_dn_dn.shape}")
+    # print(f"j3_matrix_up_dn.shape={j3_matrix_up_dn.shape}")
 
     J3 = (
         j1_matrix_up @ aos_up @ e_up
