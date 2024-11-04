@@ -105,9 +105,6 @@ class MCMC:
         random.seed(self.__mcmc_seed)
         np.random.seed(self.__mcmc_seed)
 
-        # mcmc counter
-        self.__mcmc_counter = 0
-
         # latest electron positions
         self.__latest_r_up_carts = init_r_up_carts
         self.__latest_r_dn_carts = init_r_dn_carts
@@ -116,54 +113,8 @@ class MCMC:
         self.__stored_r_up_carts = None
         self.__stored_r_dn_carts = None
 
-        # stored local energy (e_L)
-        self.__stored_e_L = []
-
+        # SWCT data
         self.__swct_data = SWCT_data(structure=self.__hamiltonian_data.structure_data)
-
-        # stored de_L / dR
-        self.__stored_grad_e_L_dR = []
-
-        # stored de_L / dr_up
-        self.__stored_grad_e_L_r_up = []
-
-        # stored de_L / dr_dn
-        self.__stored_grad_e_L_r_dn = []
-
-        # stored ln_Psi
-        self.__stored_ln_Psi = []
-
-        # stored dln_Psi / dr_up
-        self.__stored_grad_ln_Psi_r_up = []
-
-        # stored dln_Psi / dr_dn
-        self.__stored_grad_ln_Psi_r_dn = []
-
-        # stored dln_Psi / dR
-        self.__stored_grad_ln_Psi_dR = []
-
-        # stored Omega_up (SWCT)
-        self.__stored_omega_up = []
-
-        # stored Omega_dn (SWCT)
-        self.__stored_omega_dn = []
-
-        # stored sum_i d omega/d r_i for up spins (SWCT)
-        self.__stored_grad_omega_r_up = []
-
-        # stored sum_i d omega/d r_i for dn spins (SWCT)
-        self.__stored_grad_omega_r_dn = []
-
-        # stored dln_Psi / dr_up
-        self.__stored_grad_ln_Psi_r_up = []
-
-        # stored dln_Psi / dc_jas2b
-        self.__stored_grad_ln_Psi_jas2b = []
-
-        # stored dln_Psi / dc_jas1b3b
-        self.__stored_grad_ln_Psi_jas1b3b_j_matrix_up_up = []
-        self.__stored_grad_ln_Psi_jas1b3b_j_matrix_dn_dn = []
-        self.__stored_grad_ln_Psi_jas1b3b_j_matrix_up_dn = []
 
         # """
         # compiling methods
@@ -234,6 +185,60 @@ class MCMC:
 
         # jax.profiler.stop_trace()
         # """
+
+        # init attributes
+        self.__init_attributes()
+
+    def __init_attributes(self):
+        # mcmc counter
+        self.__mcmc_counter = 0
+
+        # stored local energy (e_L)
+        self.__stored_e_L = []
+
+        # stored de_L / dR
+        self.__stored_grad_e_L_dR = []
+
+        # stored de_L / dr_up
+        self.__stored_grad_e_L_r_up = []
+
+        # stored de_L / dr_dn
+        self.__stored_grad_e_L_r_dn = []
+
+        # stored ln_Psi
+        self.__stored_ln_Psi = []
+
+        # stored dln_Psi / dr_up
+        self.__stored_grad_ln_Psi_r_up = []
+
+        # stored dln_Psi / dr_dn
+        self.__stored_grad_ln_Psi_r_dn = []
+
+        # stored dln_Psi / dR
+        self.__stored_grad_ln_Psi_dR = []
+
+        # stored Omega_up (SWCT)
+        self.__stored_omega_up = []
+
+        # stored Omega_dn (SWCT)
+        self.__stored_omega_dn = []
+
+        # stored sum_i d omega/d r_i for up spins (SWCT)
+        self.__stored_grad_omega_r_up = []
+
+        # stored sum_i d omega/d r_i for dn spins (SWCT)
+        self.__stored_grad_omega_r_dn = []
+
+        # stored dln_Psi / dr_up
+        self.__stored_grad_ln_Psi_r_up = []
+
+        # stored dln_Psi / dc_jas2b
+        self.__stored_grad_ln_Psi_jas2b = []
+
+        # stored dln_Psi / dc_jas1b3b
+        self.__stored_grad_ln_Psi_jas1b3b_j_matrix_up_up = []
+        self.__stored_grad_ln_Psi_jas1b3b_j_matrix_dn_dn = []
+        self.__stored_grad_ln_Psi_jas1b3b_j_matrix_up_dn = []
 
     def run(self, num_mcmc_steps: int = 0) -> None:
         """
@@ -371,7 +376,7 @@ class MCMC:
                 r_up_carts=self.__latest_r_up_carts,
                 r_dn_carts=self.__latest_r_dn_carts,
             )
-            logger.info(f"  e_L = {e_L}")
+            logger.debug(f"  e_L = {e_L}")
             self.__stored_e_L.append(e_L)
 
             if self.__comput_position_deriv:
@@ -530,6 +535,11 @@ class MCMC:
     @property
     def hamiltonian_data(self):
         return self.__hamiltonian_data
+
+    @hamiltonian_data.setter
+    def hamiltonian_data(self, hamiltonian_data):
+        self.__hamiltonian_data = hamiltonian_data
+        self.__init_attributes()
 
     @property
     def e_L(self):
@@ -833,88 +843,117 @@ class VMC:
         num_mcmc_steps=100,
         num_opt_steps=1,
     ):
-        if self.__rank == 0:
-            logger.info(f"num_mcmc_warmup_steps={self.__num_mcmc_warmup_steps}.")
-            logger.info(f"num_mcmc_bin_blocks={self.__num_mcmc_bin_blocks}.")
-            logger.info(f"num_mcmc_steps={num_mcmc_steps}.")
-            logger.info(f"num_opt_steps={num_opt_steps}.")
+        for i_opt in range(num_opt_steps):
+            logger.info(f"i_opt={i_opt+1}/{num_opt_steps}.")
 
-            logger.info(f"Optimize Jastrow 1b2b3b={self.__comput_jas_param_deriv}")
+            if self.__rank == 0:
+                logger.info(f"num_mcmc_warmup_steps={self.__num_mcmc_warmup_steps}.")
+                logger.info(f"num_mcmc_bin_blocks={self.__num_mcmc_bin_blocks}.")
+                logger.info(f"num_mcmc_steps={num_mcmc_steps}.")
+                logger.info(f"Optimize Jastrow 1b2b3b={self.__comput_jas_param_deriv}")
 
-        logger.warning(f"twobody param before opt.")
-        logger.warning(
-            self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
-        )
-        self.__mcmc.run(num_mcmc_steps=num_mcmc_steps)
+            logger.warning(f"twobody param before opt.")
+            logger.warning(
+                self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
+            )
 
-        f, _ = self.get_generalized_forces(mpi_broadcast=False)
-        S, _ = self.get_stochastic_matrix(mpi_broadcast=False)
+            # run MCMC
+            self.__mcmc.run(num_mcmc_steps=num_mcmc_steps)
 
-        if self.__rank == 0:
-            var_epsilon = 1.0e-1
-            I = np.eye(S.shape[0])
-            S_prime = S + var_epsilon * I
+            # get e_L
+            e_L, e_L_std = self.get_e_L()
+            logger.info(f"e_L = {e_L} +- {e_L_std} Ha")
 
-            logger.info(S_prime)
+            f, _ = self.get_generalized_forces(mpi_broadcast=False)
+            S, _ = self.get_stochastic_matrix(mpi_broadcast=False)
 
-            # logger.info(
-            #    f"The matrix S_prime is symmetric? = {np.allclose(S_prime, S_prime.T, atol=1.0e-10)}"
-            # )
-            # logger.info(f"The condition number of the matrix S is {np.linalg.cond(S)}")
-            # logger.info(f"The condition number of the matrix S_prime is {np.linalg.cond(S_prime)}")
+            if self.__rank == 0:
+                var_epsilon = 1.0e-1
+                I = np.eye(S.shape[0])
+                S_prime = S + var_epsilon * I
 
-            # solve Sx=f
-            # X = scipy.linalg.solve(S_prime, f, assume_a="sym")
-            c, lower = cho_factor(S_prime)
-            X = cho_solve((c, lower), f)
+                logger.info(S_prime)
 
-        else:
-            X = None
+                # logger.info(
+                #    f"The matrix S_prime is symmetric? = {np.allclose(S_prime, S_prime.T, atol=1.0e-10)}"
+                # )
+                # logger.info(f"The condition number of the matrix S is {np.linalg.cond(S)}")
+                # logger.info(f"The condition number of the matrix S_prime is {np.linalg.cond(S_prime)}")
 
-        X = self.__comm.bcast(X, root=0)
-        logger.info(f"X for MPI-rank={self.__rank} is {X}")
-        logger.info(f"X.shape for MPI-rank={self.__rank} is {X.shape}")
+                # solve Sx=f
+                # X = scipy.linalg.solve(S_prime, f, assume_a="sym")
+                c, lower = cho_factor(S_prime)
+                X = cho_solve((c, lower), f)
 
-        opt_param_list = self.__mcmc.opt_param_dict["opt_param_list"]
-        dln_Psi_dc_shape_list = self.__mcmc.opt_param_dict["dln_Psi_dc_shape_list"]
-        dln_Psi_dc_flattened_index_list = self.__mcmc.opt_param_dict[
-            "dln_Psi_dc_flattened_index_list"
-        ]
+            else:
+                X = None
 
-        delta = 0.01
+            X = self.__comm.bcast(X, root=0)
+            logger.info(f"X for MPI-rank={self.__rank} is {X}")
+            logger.info(f"X.shape for MPI-rank={self.__rank} is {X.shape}")
 
-        jastrow_2b_param = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
-        aos_data_up = (
-            self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data_up
-        )
-        aos_data_dn = (
-            self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data_dn
-        )
-        j_matrix_up_up = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_up
-        j_matrix_dn_dn = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_dn_dn
-        j_matrix_up_dn = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_dn
+            opt_param_list = self.__mcmc.opt_param_dict["opt_param_list"]
+            dln_Psi_dc_shape_list = self.__mcmc.opt_param_dict["dln_Psi_dc_shape_list"]
+            dln_Psi_dc_flattened_index_list = self.__mcmc.opt_param_dict[
+                "dln_Psi_dc_flattened_index_list"
+            ]
 
-        for ii, opt_param in enumerate(opt_param_list):
-            param_shape = dln_Psi_dc_shape_list[ii]
-            param_index = [i for i, v in enumerate(dln_Psi_dc_flattened_index_list) if v == ii]
-            dX = X[param_index].reshape(param_shape)
-            logger.info(f"dX.shape for MPI-rank={self.__rank} is {dX.shape}")
+            delta = 0.01
 
-            if opt_param == "jastrow_2b_param":
-                jastrow_2b_param += delta * dX
-            if opt_param == "j_matrix_up_up":
-                j_matrix_up_up += delta * dX
-            if opt_param == "j_matrix_dn_dn":
-                j_matrix_dn_dn += delta * dX
-            if opt_param == "j_matrix_up_dn":
-                j_matrix_up_dn += delta * dX
+            jastrow_2b_param = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
+            jastrow_two_body_pade_flag = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag
+            jastrow_three_body_flag = (
+                self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag
+            )
+            aos_data_up = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data_up_spin
+            aos_data_dn = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data_up_spin
+            j_matrix_up_up = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_up
+            j_matrix_dn_dn = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_dn_dn
+            j_matrix_up_dn = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix_up_dn
 
-        structure_data = self.__mcmc.hamiltonian_data.structure_data
-        geminal_data = self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data
-        jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=jastrow_2b_param)
-        jastrow_three_body_data = Jastrow_three_body_data(aos_data_up, aos_data_dn)
+            for ii, opt_param in enumerate(opt_param_list):
+                param_shape = dln_Psi_dc_shape_list[ii]
+                param_index = [i for i, v in enumerate(dln_Psi_dc_flattened_index_list) if v == ii]
+                dX = X[param_index].reshape(param_shape)
+                logger.info(f"dX.shape for MPI-rank={self.__rank} is {dX.shape}")
 
-        new_hamiltonian = Hamiltonian_data()
+                if opt_param == "jastrow_2b_param":
+                    jastrow_2b_param += delta * dX
+                if opt_param == "j_matrix_up_up":
+                    j_matrix_up_up += delta * dX
+                if opt_param == "j_matrix_dn_dn":
+                    j_matrix_dn_dn += delta * dX
+                if opt_param == "j_matrix_up_dn":
+                    j_matrix_up_dn += delta * dX
+
+            structure_data = self.__mcmc.hamiltonian_data.structure_data
+            coulomb_potential_data = self.__mcmc.hamiltonian_data.coulomb_potential_data
+            geminal_data = self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data
+            jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=jastrow_2b_param)
+            jastrow_three_body_data = Jastrow_three_body_data(
+                orb_data_up_spin=aos_data_up,
+                orb_data_dn_spin=aos_data_dn,
+                j_matrix_up_up=j_matrix_up_up,
+                j_matrix_up_dn=j_matrix_up_dn,
+                j_matrix_dn_dn=j_matrix_dn_dn,
+            )
+            jastrow_data = Jastrow_data(
+                jastrow_two_body_data=jastrow_two_body_data,
+                jastrow_three_body_data=jastrow_three_body_data,
+                jastrow_two_body_pade_flag=jastrow_two_body_pade_flag,
+                jastrow_three_body_flag=jastrow_three_body_flag,
+            )
+            wavefunction_data = Wavefunction_data(
+                geminal_data=geminal_data, jastrow_data=jastrow_data
+            )
+            hamiltonian_data = Hamiltonian_data(
+                structure_data=structure_data,
+                wavefunction_data=wavefunction_data,
+                coulomb_potential_data=coulomb_potential_data,
+            )
+
+            logger.info("WF updated")
+            self.__mcmc.hamiltonian_data = hamiltonian_data
 
     def get_deriv_ln_WF(self):
         opt_param_dict = self.__mcmc.opt_param_dict
@@ -1490,6 +1529,6 @@ if __name__ == "__main__":
     # vmc.run_single_shot(num_mcmc_steps=50)
     # vmc.get_e_L()
     # vmc.get_atomic_forces()
-    vmc.run_optimize(num_mcmc_steps=100, num_opt_steps=1)
+    vmc.run_optimize(num_mcmc_steps=300, num_opt_steps=5)
     # vmc.get_generalized_forces(mpi_broadcast=False)
     # vmc.get_stochastic_matrix(mpi_broadcast=False)
