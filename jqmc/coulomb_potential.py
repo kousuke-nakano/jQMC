@@ -52,12 +52,9 @@ import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import jit, lax
-from jax import typing as jnpt
-from jax import vmap
+from jax import jit, lax, vmap
 from scipy.special import eval_legendre
 
-from .jastrow_factor import Jastrow_data
 from .miscs.function_collections import legendre_tablated as jnp_legendre_tablated
 from .structure import Structure_data, get_min_dist_rel_R_cart_jnp, get_min_dist_rel_R_cart_np
 from .wavefunction import Wavefunction_data, evaluate_wavefunction_api
@@ -164,12 +161,6 @@ class Coulomb_potential_data:
         structure_data (Structure_data):
             Instance of a structure_data
 
-    Examples:
-        NA
-
-    Note:
-        NA
-
     """
 
     structure_data: Structure_data = struct.field(
@@ -192,12 +183,6 @@ class Coulomb_potential_data:
 
         Raises:
             ValueError: If there is an inconsistency in a dimension of a given argument.
-
-        Examples:
-            NA
-
-        Note:
-            NA
 
         Todo:
             To be implemented.
@@ -227,20 +212,21 @@ def compute_ecp_coulomb_potential_api(
     r_dn_carts: npt.NDArray[np.float64],
     Nv: int = 6,
 ) -> float:
-    """
-    The method is for computing the local and non-local parts of the given ECPs at (r_up_carts, r_dn_carts).
+    """Compute effective core potential term.
+
+    The method is for computing the local and non-local parts of the given ECPs at
+    a given electronic configuration (r_up_carts, r_dn_carts).
 
     Args:
-        coulomb_potential_data (Coulomb_potential_data): an instance of Bare_coulomb_potential_data
+        coulomb_potential_data (Coulomb_potential_data):
+            an instance of Bare_coulomb_potential_data
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
         Nv (int): The number of quadrature points for the spherical part.
 
-    Returns
-    -------
+    Returns:
         The sum of local and non-local parts of the given ECPs with r_up_carts and r_dn_carts. (float)
     """
-
     V_ecp = compute_ecp_coulomb_potential_jax(
         coulomb_potential_data, wavefunction_data, r_up_carts, r_dn_carts, Nv
     )

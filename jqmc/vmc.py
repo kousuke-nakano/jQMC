@@ -34,6 +34,8 @@
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
+import logging
+
 # python modules
 import os
 import random
@@ -50,14 +52,31 @@ from jax import grad
 
 # MPI
 from mpi4py import MPI
-from scipy.linalg import cho_factor, cho_solve
 
+# jQMC module
 from .hamiltonians import Hamiltonian_data, compute_local_energy
 from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
 from .structure import find_nearest_index
 from .swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
 from .trexio_wrapper import read_trexio_file
 from .wavefunction import Wavefunction_data, evaluate_ln_wavefunction_api, evaluate_wavefunction_api
+
+# MPI related
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
+
+# create new logger level for development
+DEVEL_LEVEL = 5
+logging.addLevelName(DEVEL_LEVEL, "DEVEL")
+
+
+# a new method to create a new logger
+def _loglevel_devel(self, message, *args, **kwargs):
+    if self.isEnabledFor(DEVEL_LEVEL):
+        self._log(DEVEL_LEVEL, message, args, **kwargs)
+
+
+logging.Logger.devel = _loglevel_devel
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
@@ -247,17 +266,37 @@ class MCMC:
             None
         """
         cpu_count = os.cpu_count()
-        logger.info(f"cpu count = {cpu_count}")
+        logger.debug(f"cpu count = {cpu_count}")
 
         # Set the random seed. Use the Mersenne Twister generator
         accepted_moves = 0
         nbra = 16
 
         # MAIN MCMC loop from here !!!
+        logger.info(
+            f"  Current MCMC step = {self.__mcmc_counter}/{num_mcmc_steps+self.__mcmc_counter}: {0.0:.0f} %."
+        )
+        mcmc_interval = int(num_mcmc_steps / 10)  # %
+
+        # timer_counter
+        timer_mcmc_updated = 0.0
+        timer_e_L = 0.0
+        timer_de_L_dR_dr = 0.0
+        timer_dln_Psi_dR_dr = 0.0
+        timer_dln_Psi_dc_jas1b2b3b = 0.0
+
+        mcmc_total_start = time.perf_counter()
+
         for i_mcmc_step in range(num_mcmc_steps):
-            logger.info(
-                f"  Current MCMC step = {i_mcmc_step+1+self.__mcmc_counter}/{num_mcmc_steps+self.__mcmc_counter}."
-            )
+            if (i_mcmc_step + 1) % mcmc_interval == 0:
+                progress = (
+                    (i_mcmc_step + 1 + self.__mcmc_counter)
+                    / (num_mcmc_steps + self.__mcmc_counter)
+                    * 100.0
+                )
+                logger.info(
+                    f"  Current MCMC step = {i_mcmc_step+1+self.__mcmc_counter}/{num_mcmc_steps+self.__mcmc_counter}: {progress:.1f} %."
+                )
 
             # Determine the total number of electrons
             total_electrons = len(self.__latest_r_up_carts) + len(self.__latest_r_dn_carts)
@@ -271,6 +310,8 @@ class MCMC:
 
             coords = self.__hamiltonian_data.structure_data.positions_cart
 
+            # electron positions are goint to be updated!
+            start = time.perf_counter()
             for _ in range(nbra):
                 # Choose randomly if the electron comes from up or dn
                 if random.randint(0, total_electrons - 1) < len(self.__latest_r_up_carts):
@@ -294,16 +335,16 @@ class MCMC:
                 norm_r_R = np.linalg.norm(old_r_cart - R_cart)
                 f_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
 
-                logger.debug(f"nearest_atom_index = {nearest_atom_index}")
-                logger.debug(f"norm_r_R = {norm_r_R}")
-                logger.debug(f"f_l  = {f_l }")
+                logger.devel(f"nearest_atom_index = {nearest_atom_index}")
+                logger.devel(f"norm_r_R = {norm_r_R}")
+                logger.devel(f"f_l  = {f_l }")
 
                 sigma = f_l * self.__Dt
                 g = float(np.random.normal(loc=0, scale=sigma))
                 g_vector = np.zeros(3)
                 random_index = np.random.randint(0, 3)
                 g_vector[random_index] = g
-                logger.debug(f"jn = {random_index}, g \equiv dstep  = {g_vector}")
+                logger.devel(f"jn = {random_index}, g \equiv dstep  = {g_vector}")
                 new_r_cart = old_r_cart + g_vector
 
                 if selected_electron_spin == "up":
@@ -323,15 +364,15 @@ class MCMC:
                 Z = charges[nearest_atom_index]
                 norm_r_R = np.linalg.norm(new_r_cart - R_cart)
                 f_prime_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
-                logger.debug(f"nearest_atom_index = {nearest_atom_index}")
-                logger.debug(f"norm_r_R = {norm_r_R}")
-                logger.debug(f"f_prime_l  = {f_prime_l }")
+                logger.devel(f"nearest_atom_index = {nearest_atom_index}")
+                logger.devel(f"norm_r_R = {norm_r_R}")
+                logger.devel(f"f_prime_l  = {f_prime_l }")
 
-                logger.debug(
+                logger.devel(
                     f"The selected electron is {selected_electron_index+1}-th {selected_electron_spin} electron."
                 )
-                logger.debug(f"The selected electron position is {old_r_cart}.")
-                logger.debug(f"The proposed electron position is {new_r_cart}.")
+                logger.devel(f"The selected electron position is {old_r_cart}.")
+                logger.devel(f"The proposed electron position is {new_r_cart}.")
 
                 T_ratio = (f_l / f_prime_l) * np.exp(
                     -(np.linalg.norm(new_r_cart - old_r_cart) ** 2)
@@ -354,31 +395,39 @@ class MCMC:
                     )
                 ) ** 2.0
 
-                logger.debug(f"R_ratio, T_ratio = {R_ratio}, {T_ratio}")
+                logger.devel(f"R_ratio, T_ratio = {R_ratio}, {T_ratio}")
                 acceptance_ratio = np.min([1.0, R_ratio * T_ratio])
-                logger.debug(f"acceptance_ratio = {acceptance_ratio}")
+                logger.devel(f"acceptance_ratio = {acceptance_ratio}")
 
                 b = np.random.uniform(0, 1)
 
                 if b < acceptance_ratio:
-                    logger.debug("The proposed move is accepted!")
+                    logger.devel("The proposed move is accepted!")
                     accepted_moves += 1
                     self.__latest_r_up_carts = proposed_r_up_carts
                     self.__latest_r_dn_carts = proposed_r_dn_carts
                 else:
-                    logger.debug("The proposed move is rejected!")
+                    logger.devel("The proposed move is rejected!")
+
+            end = time.perf_counter()
+            timer_mcmc_updated += end - start
 
             # evaluate observables
+            start = time.perf_counter()
             e_L = compute_local_energy(
                 hamiltonian_data=self.__hamiltonian_data,
                 r_up_carts=self.__latest_r_up_carts,
                 r_dn_carts=self.__latest_r_dn_carts,
             )
-            logger.debug(f"  e_L = {e_L}")
+            end = time.perf_counter()
+            timer_e_L += end - start
+
+            logger.devel(f"  e_L = {e_L}")
             self.__stored_e_L.append(e_L)
 
             if self.__comput_position_deriv:
                 # """
+                start = time.perf_counter()
                 grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = grad(
                     compute_local_energy, argnums=(0, 1, 2)
                 )(
@@ -386,6 +435,9 @@ class MCMC:
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
+                end = time.perf_counter()
+                timer_de_L_dR_dr += end - start
+
                 self.__stored_grad_e_L_r_up.append(grad_e_L_r_up)
                 self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn)
 
@@ -402,26 +454,31 @@ class MCMC:
                 # """
 
                 # """
-                logger.debug(
+                logger.devel(
                     f"de_L_dR(AOs_data_up) = {grad_e_L_h.wavefunction_data.geminal_data.orb_data.aos_data.structure_data.positions}"
                 )
-                logger.debug(
+                logger.devel(
                     f"de_L_dR(coulomb_potential_data) = {grad_e_L_h.coulomb_potential_data.structure_data.positions}"
                 )
-                logger.debug(f"de_L_dR = {grad_e_L_R}")
-                logger.debug(f"de_L_dr_up = {grad_e_L_r_up}")
-                logger.debug(f"de_L_dr_dn= {grad_e_L_r_dn}")
+                logger.devel(f"de_L_dR = {grad_e_L_R}")
+                logger.devel(f"de_L_dr_up = {grad_e_L_r_up}")
+                logger.devel(f"de_L_dr_dn= {grad_e_L_r_dn}")
                 # """
 
+                start = time.perf_counter()
                 ln_Psi = evaluate_ln_wavefunction_api(
                     wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                     r_up_carts=self.__latest_r_up_carts,
                     r_dn_carts=self.__latest_r_dn_carts,
                 )
-                logger.debug(f"ln_Psi = {ln_Psi}")
+                end = time.perf_counter()
+                logger.info(f"ln Psi evaluation: Time = {(end-start)*1000:.3f} msec.")
+
+                logger.devel(f"ln_Psi = {ln_Psi}")
                 self.__stored_ln_Psi.append(ln_Psi)
 
                 # """
+                start = time.perf_counter()
                 grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = grad(
                     evaluate_ln_wavefunction_api, argnums=(0, 1, 2)
                 )(
@@ -429,8 +486,11 @@ class MCMC:
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
-                logger.debug(f"dln_Psi_dr_up = {grad_ln_Psi_r_up}")
-                logger.debug(f"dln_Psi_dr_dn = {grad_ln_Psi_r_dn}")
+                end = time.perf_counter()
+                timer_dln_Psi_dR_dr += end - start
+
+                logger.devel(f"dln_Psi_dr_up = {grad_ln_Psi_r_up}")
+                logger.devel(f"dln_Psi_dr_dn = {grad_ln_Psi_r_dn}")
                 self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up)
                 self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn)
 
@@ -443,7 +503,7 @@ class MCMC:
                     grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
 
                 # stored dln_Psi / dR
-                logger.debug(f"dln_Psi_dR = {grad_ln_Psi_dR}")
+                logger.devel(f"dln_Psi_dR = {grad_ln_Psi_dR}")
                 self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
                 # """
 
@@ -457,8 +517,8 @@ class MCMC:
                     r_carts=self.__latest_r_dn_carts,
                 )
 
-                logger.debug(f"omega_up = {omega_up}")
-                logger.debug(f"omega_dn = {omega_dn}")
+                logger.devel(f"omega_up = {omega_up}")
+                logger.devel(f"omega_dn = {omega_dn}")
 
                 self.__stored_omega_up.append(omega_up)
                 self.__stored_omega_dn.append(omega_dn)
@@ -473,35 +533,54 @@ class MCMC:
                     self.__latest_r_dn_carts,
                 )
 
-                logger.debug(f"grad_omega_dr_up = {grad_omega_dr_up}")
-                logger.debug(f"grad_omega_dr_dn = {grad_omega_dr_dn}")
+                logger.devel(f"grad_omega_dr_up = {grad_omega_dr_up}")
+                logger.devel(f"grad_omega_dr_dn = {grad_omega_dr_dn}")
 
                 self.__stored_grad_omega_r_up.append(grad_omega_dr_up)
                 self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn)
 
             if self.__comput_jas_param_deriv:
+                start = time.perf_counter()
                 grad_ln_Psi_h = grad(evaluate_ln_wavefunction_api, argnums=(0))(
                     self.__hamiltonian_data.wavefunction_data,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
+                end = time.perf_counter()
+                timer_dln_Psi_dc_jas1b2b3b += end - start
 
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag:
                     grad_ln_Psi_jas2b = (
                         grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
                     )
-                    logger.debug(f"grad_ln_Psi_jas2b = {grad_ln_Psi_jas2b}")
+                    logger.devel(f"grad_ln_Psi_jas2b = {grad_ln_Psi_jas2b}")
                     self.__stored_grad_ln_Psi_jas2b.append(grad_ln_Psi_jas2b)
 
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
                     grad_ln_Psi_jas1b3b_j_matrix = (
                         grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix
                     )
-                    logger.debug(f"grad_ln_Psi_jas1b3b_j_matrix = {grad_ln_Psi_jas1b3b_j_matrix}")
+                    logger.devel(f"grad_ln_Psi_jas1b3b_j_matrix = {grad_ln_Psi_jas1b3b_j_matrix}")
                     self.__stored_grad_ln_Psi_jas1b3b_j_matrix.append(grad_ln_Psi_jas1b3b_j_matrix)
 
+        mcmc_total_end = time.perf_counter()
+        timer_mcmc_total = mcmc_total_end - mcmc_total_start
+
         self.__mcmc_counter += num_mcmc_steps
-        logger.info(f"acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
+        logger.info(f"Acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
+        logger.info(f"Elapsed time for MCMC {num_mcmc_steps} steps. = {timer_mcmc_total:.2f} msec.")
+        logger.info(f"Elapsed times per MCMC step, averaged over {num_mcmc_steps} steps.")
+        logger.info(f"  Time for mcmc_update = {timer_mcmc_updated/num_mcmc_steps*100.0:.2f} msec.")
+        logger.info(f"  Time for e_L = {timer_e_L/num_mcmc_steps*100.0:.2f} msec.")
+        logger.info(
+            f"  Time for de_L/dR and de_L/dr = {timer_de_L_dR_dr/num_mcmc_steps*100.0:.2f} msec."
+        )
+        logger.info(
+            f"  Time for dln_Psi/dR and dln_Psi/dr = {timer_dln_Psi_dR_dr/num_mcmc_steps*100.0:.2f} msec."
+        )
+        logger.info(
+            f"  Time for dln_Psi/dc (jastrow 1b2b3b) = {timer_dln_Psi_dc_jas1b2b3b/num_mcmc_steps*100.0:.2f} msec."
+        )
 
     @property
     def hamiltonian_data(self):
@@ -665,27 +744,37 @@ class VMC:
         Dt_init: float = 2.0,
         comput_jas_param_deriv=False,
         comput_position_deriv=False,
+        logger_level="MPI-INFO",
     ) -> None:
-        self.__comm = MPI.COMM_WORLD
-        self.__rank = self.__comm.Get_rank()
-
         log = getLogger("jqmc")
-        log.setLevel("INFO")
-        stream_handler = StreamHandler()
-        stream_handler.setLevel("INFO")
-        handler_format = Formatter(
-            f"MPI-rank={self.__rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s"
-        )
-        stream_handler.setFormatter(handler_format)
-        log.addHandler(stream_handler)
 
-        self.__mpi_seed = mcmc_seed * (self.__rank + 1)
+        if logger_level == "MPI-INFO":
+            if rank == 0:
+                log.setLevel("INFO")
+                stream_handler = StreamHandler()
+                stream_handler.setLevel("INFO")
+                handler_format = Formatter(
+                    f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s"
+                )
+                stream_handler.setFormatter(handler_format)
+                log.addHandler(stream_handler)
+        else:
+            log.setLevel(logger_level)
+            stream_handler = StreamHandler()
+            stream_handler.setLevel(logger_level)
+            handler_format = Formatter(
+                f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s"
+            )
+            stream_handler.setFormatter(handler_format)
+            log.addHandler(stream_handler)
+
+        self.__mpi_seed = mcmc_seed * (rank + 1)
         self.__num_mcmc_warmup_steps = num_mcmc_warmup_steps
         self.__num_mcmc_bin_blocks = num_mcmc_bin_blocks
         self.__comput_jas_param_deriv = comput_jas_param_deriv
         self.__comput_position_deriv = comput_position_deriv
 
-        logger.info(f"mcmc_seed for MPI-rank={self.__rank} is {self.__mpi_seed}.")
+        logger.debug(f"mcmc_seed for MPI-rank={rank} is {self.__mpi_seed}.")
 
         # set random seeds
         random.seed(self.__mpi_seed)
@@ -756,8 +845,8 @@ class VMC:
         init_r_up_carts = np.array(r_carts_up)
         init_r_dn_carts = np.array(r_carts_dn)
 
-        logger.info(f"initial r_up_carts = {init_r_up_carts}")
-        logger.info(f"initial r_dn_carts = {init_r_dn_carts}")
+        logger.debug(f"initial r_up_carts = {init_r_up_carts}")
+        logger.debug(f"initial r_dn_carts = {init_r_dn_carts}")
 
         self.__mcmc = MCMC(
             hamiltonian_data=hamiltonian_data,
@@ -770,7 +859,7 @@ class VMC:
         )
 
     def run_single_shot(self, num_mcmc_steps=0):
-        if self.__rank == 0:
+        if rank == 0:
             logger.info(f"num_mcmc_warmup_steps={self.__num_mcmc_warmup_steps}.")
             logger.info(f"num_mcmc_bin_blocks={self.__num_mcmc_bin_blocks}.")
 
@@ -785,14 +874,14 @@ class VMC:
         for i_opt in range(num_opt_steps):
             logger.info(f"i_opt={i_opt+1}/{num_opt_steps}.")
 
-            if self.__rank == 0:
+            if rank == 0:
                 logger.info(f"num_mcmc_warmup_steps={self.__num_mcmc_warmup_steps}.")
                 logger.info(f"num_mcmc_bin_blocks={self.__num_mcmc_bin_blocks}.")
                 logger.info(f"num_mcmc_steps={num_mcmc_steps}.")
                 logger.info(f"Optimize Jastrow 1b2b3b={self.__comput_jas_param_deriv}")
 
-            logger.warning(f"twobody param before opt.")
-            logger.warning(
+            logger.debug(f"twobody param before opt.")
+            logger.debug(
                 self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
             )
 
@@ -803,11 +892,18 @@ class VMC:
             e_L, e_L_std = self.get_e_L()
             logger.info(f"e_L = {e_L} +- {e_L_std} Ha")
 
-            f, _ = self.get_generalized_forces(mpi_broadcast=False)
+            f, f_std = self.get_generalized_forces(mpi_broadcast=False)
             S, _ = self.get_stochastic_matrix(mpi_broadcast=False)
 
-            if self.__rank == 0:
-                var_epsilon = 1.0e-1
+            if rank == 0:
+                signal_to_noise_f = np.abs(f) / f_std
+                logger.info(f"Max |f| = {np.max(np.abs(f)):.3f} Ha/a.u.")
+                logger.info(
+                    f"Max of signal to noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}."
+                )
+
+            if rank == 0:
+                var_epsilon = 1.0e-3
                 I = np.eye(S.shape[0])
                 S_prime = S + var_epsilon * I
 
@@ -818,16 +914,20 @@ class VMC:
                 # logger.info(f"The condition number of the matrix S_prime is {np.linalg.cond(S_prime)}")
 
                 # solve Sx=f
-                # X = scipy.linalg.solve(S_prime, f, assume_a="sym")
-                c, lower = cho_factor(S_prime)
-                X = cho_solve((c, lower), f)
+                X = scipy.linalg.solve(S_prime, f, assume_a="sym")
+                # c, lower = cho_factor(S_prime)
+                # X = cho_solve((c, lower), f)
+
+                # steepest decent (SD)
+                # X = f
 
             else:
                 X = None
 
-            X = self.__comm.bcast(X, root=0)
-            logger.info(f"X for MPI-rank={self.__rank} is {X}")
-            logger.info(f"X.shape for MPI-rank={self.__rank} is {X.shape}")
+            X = comm.bcast(X, root=0)
+            logger.debug(f"X for MPI-rank={rank} is {X}")
+            logger.debug(f"X.shape for MPI-rank={rank} is {X.shape}")
+            logger.debug(f"max(X) for MPI-rank={rank} is {np.max(X)}")
 
             opt_param_list = self.__mcmc.opt_param_dict["opt_param_list"]
             dln_Psi_dc_shape_list = self.__mcmc.opt_param_dict["dln_Psi_dc_shape_list"]
@@ -835,7 +935,7 @@ class VMC:
                 "dln_Psi_dc_flattened_index_list"
             ]
 
-            delta = 0.02
+            delta = 0.01
 
             jastrow_2b_param = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
             jastrow_two_body_pade_flag = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag
@@ -849,7 +949,7 @@ class VMC:
                 param_shape = dln_Psi_dc_shape_list[ii]
                 param_index = [i for i, v in enumerate(dln_Psi_dc_flattened_index_list) if v == ii]
                 dX = X[param_index].reshape(param_shape)
-                logger.info(f"dX.shape for MPI-rank={self.__rank} is {dX.shape}")
+                logger.debug(f"dX.shape for MPI-rank={rank} is {dX.shape}")
 
                 if opt_param == "jastrow_2b_param":
                     jastrow_2b_param += delta * dX
@@ -904,36 +1004,36 @@ class VMC:
         e_L_split = np.array_split(e_L, self.__num_mcmc_bin_blocks)
         e_L_binned = [np.average(e_list) for e_list in e_L_split]
 
-        logger.info(
-            f"[before reduce] len(e_L_binned) for MPI-rank={self.__rank} is {len(e_L_binned)}"
-        )
+        logger.debug(f"[before reduce] len(e_L_binned) for MPI-rank={rank} is {len(e_L_binned)}")
 
-        e_L_binned = self.__comm.reduce(e_L_binned, op=MPI.SUM, root=0)
+        e_L_binned = comm.reduce(e_L_binned, op=MPI.SUM, root=0)
 
-        if self.__rank == 0:
-            logger.info(
-                f"[before reduce] len(e_L_binned) for MPI-rank={self.__rank} is {len(e_L_binned)}"
+        if rank == 0:
+            logger.debug(
+                f"[before reduce] len(e_L_binned) for MPI-rank={rank} is {len(e_L_binned)}"
             )
 
         O_matrix = self.get_deriv_ln_WF()
         O_matrix_split = np.array_split(O_matrix, self.__num_mcmc_bin_blocks)
         O_matrix_binned = [np.average(O_matrix_list, axis=0) for O_matrix_list in O_matrix_split]
 
-        logger.info(f"[before reduce] O_matrix_binned.shape = {np.array(O_matrix_binned).shape}")
+        logger.debug(f"[before reduce] O_matrix_binned.shape = {np.array(O_matrix_binned).shape}")
 
-        O_matrix_binned = self.__comm.reduce(O_matrix_binned, op=MPI.SUM, root=0)
+        O_matrix_binned = comm.reduce(O_matrix_binned, op=MPI.SUM, root=0)
 
-        if self.__rank == 0:
-            logger.info(f"[after reduce] O_matrix_binned.shape = {np.array(O_matrix_binned).shape}")
+        if rank == 0:
+            logger.debug(
+                f"[after reduce] O_matrix_binned.shape = {np.array(O_matrix_binned).shape}"
+            )
 
             e_L_binned = np.array(e_L_binned)
             O_matrix_binned = np.array(O_matrix_binned)
 
             eL_O_matrix_binned = np.einsum("i,ij->ij", e_L_binned, O_matrix_binned)
 
-            logger.info(f"eL_O_matrix_binned.shape = {eL_O_matrix_binned.shape}")
+            logger.debug(f"eL_O_matrix_binned.shape = {eL_O_matrix_binned.shape}")
 
-            M = self.__num_mcmc_bin_blocks * self.__comm.size
+            M = self.__num_mcmc_bin_blocks * comm.size
 
             eL_O_jn = (
                 1.0
@@ -943,11 +1043,11 @@ class VMC:
                 )
             )
 
-            logger.info(f"eL_O_jn.shape = {eL_O_jn.shape}")
+            logger.debug(f"eL_O_jn.shape = {eL_O_jn.shape}")
 
             eL_jn = np.array([np.sum(e_L_binned, axis=0) - e_L_binned[j] for j in range(M)])
 
-            logger.info(f"eL_jn.shape = {eL_jn.shape}")
+            logger.debug(f"eL_jn.shape = {eL_jn.shape}")
 
             O_jn = (
                 1.0
@@ -955,57 +1055,60 @@ class VMC:
                 * np.array([np.sum(O_matrix_binned, axis=0) - O_matrix_binned[j] for j in range(M)])
             )
 
-            logger.info(f"O_jn.shape = {O_jn.shape}")
+            logger.debug(f"O_jn.shape = {O_jn.shape}")
 
             eL_barO_jn = 1.0 / (M - 1) * np.einsum("i,ij->ij", eL_jn, O_jn)
 
-            logger.info(f"eL_barO_jn.shape = {eL_barO_jn.shape}")
+            logger.debug(f"eL_barO_jn.shape = {eL_barO_jn.shape}")
 
             generalized_force_mean = np.average(-2.0 * (eL_O_jn - eL_barO_jn), axis=0)
             generalized_force_std = np.sqrt(M - 1) * np.std(-2.0 * (eL_O_jn - eL_barO_jn), axis=0)
 
-            logger.debug(f"generalized_force_mean = {generalized_force_mean}")
-            logger.debug(f"generalized_force_std = {generalized_force_std}")
+            logger.devel(f"generalized_force_mean = {generalized_force_mean}")
+            logger.devel(f"generalized_force_std = {generalized_force_std}")
 
-            logger.info(f"generalized_force_mean.shape = {generalized_force_mean.shape}")
-            logger.info(f"generalized_force_std.shape = {generalized_force_std.shape}")
+            logger.debug(f"generalized_force_mean.shape = {generalized_force_mean.shape}")
+            logger.debug(f"generalized_force_std.shape = {generalized_force_std.shape}")
 
         else:
             generalized_force_mean = None
             generalized_force_std = None
 
         if mpi_broadcast:
-            # self.__comm.Bcast(generalized_force_mean, root=0)
-            # self.__comm.Bcast(generalized_force_std, root=0)
-            generalized_force_mean = self.__comm.bcast(generalized_force_mean, root=0)
-            generalized_force_std = self.__comm.bcast(generalized_force_std, root=0)
+            # comm.Bcast(generalized_force_mean, root=0)
+            # comm.Bcast(generalized_force_std, root=0)
+            generalized_force_mean = comm.bcast(generalized_force_mean, root=0)
+            generalized_force_std = comm.bcast(generalized_force_std, root=0)
 
-        return (generalized_force_mean, generalized_force_std)  # (L vector, L vector)
+        return (
+            generalized_force_mean,
+            generalized_force_std,
+        )  # (L vector, L vector)
 
     def get_stochastic_matrix(self, mpi_broadcast=False):
         O_matrix = self.get_deriv_ln_WF()
         O_matrix_split = np.array_split(O_matrix, self.__num_mcmc_bin_blocks)
         O_matrix_binned = [np.average(O_matrix_list, axis=0) for O_matrix_list in O_matrix_split]
-        O_matrix_binned = self.__comm.reduce(O_matrix_binned, op=MPI.SUM, root=0)
+        O_matrix_binned = comm.reduce(O_matrix_binned, op=MPI.SUM, root=0)
 
-        if self.__rank == 0:
+        if rank == 0:
             O_matrix_binned = np.array(O_matrix_binned)
-            logger.info(f"O_matrix_binned.shape = {O_matrix_binned.shape}")
+            logger.debug(f"O_matrix_binned.shape = {O_matrix_binned.shape}")
             S_mean = np.array(np.cov(O_matrix_binned, bias=True, rowvar=False))
             S_std = np.zeros(S_mean.size)
-            logger.debug(f"S_mean = {S_mean}")
-            logger.info(f"S_mean.is_nan for MPI-rank={self.__rank} is {np.isnan(S_mean).any()}")
-            logger.info(f"S_mean.shape for MPI-rank={self.__rank} is {S_mean.shape}")
-            logger.debug(f"S_mean.type for MPI-rank={self.__rank} is {type(S_mean)}")
+            logger.devel(f"S_mean = {S_mean}")
+            logger.debug(f"S_mean.is_nan for MPI-rank={rank} is {np.isnan(S_mean).any()}")
+            logger.debug(f"S_mean.shape for MPI-rank={rank} is {S_mean.shape}")
+            logger.devel(f"S_mean.type for MPI-rank={rank} is {type(S_mean)}")
         else:
             S_mean = None
             S_std = None
 
         if mpi_broadcast:
-            # self.__comm.Bcast(S_mean, root=0)
-            # self.__comm.Bcast(S_std, root=0)
-            S_mean = self.__comm.bcast(S_mean, root=0)
-            S_std = self.__comm.bcast(S_std, root=0)
+            # comm.Bcast(S_mean, root=0)
+            # comm.Bcast(S_std, root=0)
+            S_mean = comm.bcast(S_mean, root=0)
+            S_std = comm.bcast(S_std, root=0)
 
         return (S_mean, S_std)  # (S_mu,nu ...., var(S)_mu,nu....) (L*L matrix, L*L matrix)
 
@@ -1015,35 +1118,33 @@ class VMC:
         e_L_split = np.array_split(e_L, self.__num_mcmc_bin_blocks)
         e_L_binned = [np.average(e_list) for e_list in e_L_split]
 
-        logger.info(
-            f"[before reduce] len(e_L_binned) for MPI-rank={self.__rank} is {len(e_L_binned)}."
-        )
+        logger.debug(f"[before reduce] len(e_L_binned) for MPI-rank={rank} is {len(e_L_binned)}.")
 
-        e_L_binned = self.__comm.reduce(e_L_binned, op=MPI.SUM, root=0)
+        e_L_binned = comm.reduce(e_L_binned, op=MPI.SUM, root=0)
 
-        if self.__rank == 0:
-            logger.info(
-                f"[after reduce] len(e_L_binned) for MPI-rank={self.__rank} is {len(e_L_binned)}."
+        if rank == 0:
+            logger.debug(
+                f"[after reduce] len(e_L_binned) for MPI-rank={rank} is {len(e_L_binned)}."
             )
-            logger.debug(f"e_L_binned = {e_L_binned}.")
+            logger.devel(f"e_L_binned = {e_L_binned}.")
             # jackknife implementation
             # https://www2.yukawa.kyoto-u.ac.jp/~etsuko.itou/old-HP/Notes/Jackknife-method.pdf
             e_L_jackknife_binned = [
                 np.average(np.delete(e_L_binned, i)) for i in range(len(e_L_binned))
             ]
 
-            logger.info(f"len(e_L_jackknife_binned)  = {len(e_L_jackknife_binned)}.")
+            logger.debug(f"len(e_L_jackknife_binned)  = {len(e_L_jackknife_binned)}.")
 
             e_L_mean = np.average(e_L_jackknife_binned)
             e_L_std = np.sqrt(len(e_L_binned) - 1) * np.std(e_L_jackknife_binned)
 
-            logger.info(f"e_L = {e_L_mean} +- {e_L_std} Ha.")
+            logger.debug(f"e_L = {e_L_mean} +- {e_L_std} Ha.")
         else:
             e_L_mean = 0.0
             e_L_std = 0.0
 
-        e_L_mean = self.__comm.bcast(e_L_mean, root=0)
-        e_L_std = self.__comm.bcast(e_L_std, root=0)
+        e_L_mean = comm.bcast(e_L_mean, root=0)
+        e_L_std = comm.bcast(e_L_std, root=0)
 
         return (e_L_mean, e_L_std)
 
@@ -1081,10 +1182,10 @@ class VMC:
 
             E_L_force_PP = np.einsum("i,ijk->ijk", e_L, force_PP)
 
-            logger.info(f"e_L.shape for MPI-rank={self.__rank} is {e_L.shape}")
-            logger.info(f"force_HF.shape for MPI-rank={self.__rank} is {force_HF.shape}")
-            logger.info(f"force_PP.shape for MPI-rank={self.__rank} is {force_PP.shape}")
-            logger.info(f"E_L_force_PP.shape for MPI-rank={self.__rank} is {E_L_force_PP.shape}")
+            logger.info(f"e_L.shape for MPI-rank={rank} is {e_L.shape}")
+            logger.info(f"force_HF.shape for MPI-rank={rank} is {force_HF.shape}")
+            logger.info(f"force_PP.shape for MPI-rank={rank} is {force_PP.shape}")
+            logger.info(f"E_L_force_PP.shape for MPI-rank={rank} is {E_L_force_PP.shape}")
 
             e_L_split = np.array_split(e_L, self.__num_mcmc_bin_blocks)
             force_HF_split = np.array_split(force_HF, self.__num_mcmc_bin_blocks)
@@ -1096,29 +1197,25 @@ class VMC:
             force_PP_binned = [np.average(A, axis=0) for A in force_PP_split]
             E_L_force_PP_binned = [np.average(A, axis=0) for A in E_L_force_PP_split]
 
-            e_L_binned = self.__comm.reduce(e_L_binned, op=MPI.SUM, root=0)
-            force_HF_binned = self.__comm.reduce(force_HF_binned, op=MPI.SUM, root=0)
-            force_PP_binned = self.__comm.reduce(force_PP_binned, op=MPI.SUM, root=0)
-            E_L_force_PP_binned = self.__comm.reduce(E_L_force_PP_binned, op=MPI.SUM, root=0)
+            e_L_binned = comm.reduce(e_L_binned, op=MPI.SUM, root=0)
+            force_HF_binned = comm.reduce(force_HF_binned, op=MPI.SUM, root=0)
+            force_PP_binned = comm.reduce(force_PP_binned, op=MPI.SUM, root=0)
+            E_L_force_PP_binned = comm.reduce(E_L_force_PP_binned, op=MPI.SUM, root=0)
 
-            if self.__rank == 0:
+            if rank == 0:
                 e_L_binned = np.array(e_L_binned)
                 force_HF_binned = np.array(force_HF_binned)
                 force_PP_binned = np.array(force_PP_binned)
                 E_L_force_PP_binned = np.array(E_L_force_PP_binned)
 
-                logger.info(f"e_L_binned.shape for MPI-rank={self.__rank} is {e_L_binned.shape}")
+                logger.info(f"e_L_binned.shape for MPI-rank={rank} is {e_L_binned.shape}")
+                logger.info(f"force_HF_binned.shape for MPI-rank={rank} is {force_HF_binned.shape}")
+                logger.info(f"force_PP_binned.shape for MPI-rank={rank} is {force_PP_binned.shape}")
                 logger.info(
-                    f"force_HF_binned.shape for MPI-rank={self.__rank} is {force_HF_binned.shape}"
-                )
-                logger.info(
-                    f"force_PP_binned.shape for MPI-rank={self.__rank} is {force_PP_binned.shape}"
-                )
-                logger.info(
-                    f"E_L_force_PP_binned.shape for MPI-rank={self.__rank} is {E_L_force_PP_binned.shape}"
+                    f"E_L_force_PP_binned.shape for MPI-rank={rank} is {E_L_force_PP_binned.shape}"
                 )
 
-                M = self.__num_mcmc_bin_blocks * self.__comm.size
+                M = self.__num_mcmc_bin_blocks * comm.size
 
                 force_HF_jn = np.array(
                     [
@@ -1144,10 +1241,8 @@ class VMC:
                     ]
                 )
 
-                logger.info(f"force_HF_jn.shape for MPI-rank={self.__rank} is {force_HF_jn.shape}")
-                logger.info(
-                    f"force_Pulay_jn.shape for MPI-rank={self.__rank} is {force_Pulay_jn.shape}"
-                )
+                logger.info(f"force_HF_jn.shape for MPI-rank={rank} is {force_HF_jn.shape}")
+                logger.info(f"force_Pulay_jn.shape for MPI-rank={rank} is {force_Pulay_jn.shape}")
 
                 force_jn = force_HF_jn + force_Pulay_jn
 
@@ -1163,134 +1258,10 @@ class VMC:
                 force_mean = np.array([])
                 force_std = np.array([])
 
-            force_mean = self.__comm.bcast(force_mean, root=0)
-            force_std = self.__comm.bcast(force_std, root=0)
+            force_mean = comm.bcast(force_mean, root=0)
+            force_std = comm.bcast(force_std, root=0)
 
             return (force_mean, force_std)
-
-        """
-        else:
-            # analysis VMC
-
-            # todo!! I do not think it's true. e_L_mean should be computed differently
-            # for each bin in the jackknife sampling.
-            # no? because jackknife mean = true mean, as shown in the O_k calc.
-            # Let's think about it tomorrow.
-            e_L_mean, _ = self.get_e_L()
-
-            e_L_list = self.__mcmc.e_L[self.__num_mcmc_warmup_steps :]
-            de_L_dR_list = self.__mcmc.de_L_dR[self.__num_mcmc_warmup_steps :]
-            de_L_dr_up_list = self.__mcmc.de_L_dr_up[self.__num_mcmc_warmup_steps :]
-            de_L_dr_dn_list = self.__mcmc.de_L_dr_dn[self.__num_mcmc_warmup_steps :]
-            dln_Psi_dr_up_list = self.__mcmc.dln_Psi_dr_up[self.__num_mcmc_warmup_steps :]
-            dln_Psi_dr_dn_list = self.__mcmc.dln_Psi_dr_dn[self.__num_mcmc_warmup_steps :]
-            dln_Psi_dR_list = self.__mcmc.dln_Psi_dR[self.__num_mcmc_warmup_steps :]
-            omega_up_list = self.__mcmc.omega_up[self.__num_mcmc_warmup_steps :]
-            omega_dn_list = self.__mcmc.omega_dn[self.__num_mcmc_warmup_steps :]
-            domega_dr_up_list = self.__mcmc.domega_dr_up[self.__num_mcmc_warmup_steps :]
-            domega_dr_dn_list = self.__mcmc.domega_dr_dn[self.__num_mcmc_warmup_steps :]
-
-            force = []
-
-            for (
-                e_L,
-                de_L_dR,
-                de_L_dr_up,
-                de_L_dr_dn,
-                dln_Psi_dr_up,
-                dln_Psi_dr_dn,
-                dln_Psi_dR,
-                omega_up,
-                omega_dn,
-                domega_dr_up,
-                domega_dr_dn,
-            ) in zip(
-                e_L_list,
-                de_L_dR_list,
-                de_L_dr_up_list,
-                de_L_dr_dn_list,
-                dln_Psi_dr_up_list,
-                dln_Psi_dr_dn_list,
-                dln_Psi_dR_list,
-                omega_up_list,
-                omega_dn_list,
-                domega_dr_up_list,
-                domega_dr_dn_list,
-            ):
-                # logger.info(f"e_L.shape = {e_L.shape}")
-                # logger.info(f"de_L_dR.shape = {de_L_dR.shape}")
-                # logger.info(f"de_L_dr_up.shape = {de_L_dr_up.shape}")
-                # logger.info(f"de_L_dr_dn.shape = {de_L_dr_dn.shape}")
-                # logger.info(f"dln_Psi_dr_up.shape = {dln_Psi_dr_up.shape}")
-                # logger.info(f"dln_Psi_dr_dn.shape = {dln_Psi_dr_dn.shape}")
-                # logger.info(f"de_L_dR.shape = {de_L_dR.shape}")
-                # logger.info(f"omega_up.shape = {omega_up.shape}")
-                # logger.info(f"omega_dn.shape = {omega_dn.shape}")
-                # logger.info(f"domega_dr_up.shape = {domega_dr_up.shape}")
-                # logger.info(f"domega_dr_dn.shape = {domega_dr_dn.shape}")
-
-                force.append(
-                    -(de_L_dR + omega_up @ de_L_dr_up + omega_dn @ de_L_dr_dn)
-                    - 2
-                    * (
-                        (e_L - e_L_mean)
-                        * (
-                            dln_Psi_dR
-                            + omega_up @ dln_Psi_dr_up
-                            + omega_dn @ dln_Psi_dr_dn
-                            + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
-                        )
-                    )
-                )
-
-            force = np.array(force)
-            logger.info(f"force.shape for MPI-rank={self.__rank} is {force.shape}")
-
-            force_split = np.array_split(force, self.__num_mcmc_bin_blocks)
-            # force_binned = np.array([np.average(force_list, axis=0) for force_list in force_split]) # ?
-            force_binned = [np.average(force_list, axis=0) for force_list in force_split]
-            logger.info(
-                f"[before reduce] force_binned.shape for MPI-rank={self.__rank} is {np.array(force_binned).shape}"
-            )
-
-            force_binned = self.__comm.reduce(force_binned, op=MPI.SUM, root=0)
-
-            if self.__rank == 0:
-                logger.info(
-                    f"[after reduce] force_binned.shape for MPI-rank={self.__rank} is {np.array(force_binned).shape}"
-                )
-                # logger.info(f"force_binned = {force_binned }.")
-                # jackknife implementation
-                # https://www2.yukawa.kyoto-u.ac.jp/~etsuko.itou/old-HP/Notes/Jackknife-method.pdf
-                force_jackknife_binned = np.array(
-                    [
-                        np.average(np.delete(force_binned, i, axis=0), axis=0)
-                        for i in range(len(force_binned))
-                    ]
-                )
-
-                logger.info(f"force_jackknife_binned.shape = {force_jackknife_binned.shape}.")
-
-                force_mean = np.average(force_jackknife_binned, axis=0)
-                force_std = np.sqrt(len(force_jackknife_binned) - 1) * np.std(
-                    force_jackknife_binned, axis=0
-                )
-
-                logger.info(f"force_mean.shape  = {force_mean.shape}.")
-                logger.info(f"force_std.shape  = {force_std.shape}.")
-
-                logger.info(f"force = {force_mean} +- {force_std} Ha.")
-
-            else:
-                force_mean = np.array([])
-                force_std = np.array([])
-
-            if mpi_broadcast:
-                force_mean = self.__comm.bcast(force_mean, root=0)
-                force_std = self.__comm.bcast(force_std, root=0)
-
-            return (force_mean, force_std)
-        """
 
 
 if __name__ == "__main__":
@@ -1438,8 +1409,8 @@ if __name__ == "__main__":
     )
 
     # VMC parameters
-    num_mcmc_warmup_steps = 20
-    num_mcmc_bin_blocks = 5
+    num_mcmc_warmup_steps = 0
+    num_mcmc_bin_blocks = 100
     mcmc_seed = 34356
 
     # run VMC
@@ -1454,6 +1425,7 @@ if __name__ == "__main__":
     # vmc.run_single_shot(num_mcmc_steps=50)
     # vmc.get_e_L()
     # vmc.get_atomic_forces()
-    vmc.run_optimize(num_mcmc_steps=300, num_opt_steps=5)
+    vmc.run_optimize(num_mcmc_steps=500, num_opt_steps=50)
     # vmc.get_generalized_forces(mpi_broadcast=False)
+    # vmc.get_stochastic_matrix(mpi_broadcast=False)
     # vmc.get_stochastic_matrix(mpi_broadcast=False)
