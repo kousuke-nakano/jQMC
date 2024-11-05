@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 write_to = "jqmc/_version.py"
 
 [tool.ruff]
-line-length = 100
+line-length = 128
 lint.select = [
     "F", # Flake8
     "B", # Black
@@ -15,7 +15,7 @@ lint.select = [
     "E", # pycodestyle-errors
     "D", # pydocstyle
 ]
-lint.extend-ignore = ["D417", "D100"]
+lint.extend-ignore = ["D417", "D100", "E501", "E741"]
 exclude = []
 
 [tool.ruff.lint.pydocstyle]

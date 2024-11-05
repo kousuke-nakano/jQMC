@@ -1,4 +1,4 @@
-"""Hamiltonian module"""
+"""Hamiltonian module."""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -57,13 +57,14 @@ jax.config.update("jax_enable_x64", True)
 
 @struct.dataclass
 class Hamiltonian_data:
-    """
-    The class contains data for computing hamiltonian
+    """Hamiltonian dataclass.
+
+    The class contains data for computing Kinetic and Potential energy terms.
 
     Args:
-        structure_data (Structure_data)
-        coulomb_data (Coulomb_data)
-        wavefunction_data (Wavefunction_data)
+        structure_data (Structure_data): an instance of Structure_data
+        coulomb_data (Coulomb_data): an instance of Coulomb_data
+        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
 
     Notes:
         Heres are the differentiable arguments, i.e., pytree_node = True
@@ -73,29 +74,31 @@ class Hamiltonian_data:
             - (ao_)coefficients in AOs_data (atomic_orbital.py) (switched off, for the time being)
             - (ao_)exponents in AOs_data (atomic_orbital.py) (switched off, for the time being)
             - lambda_matrix in Geminal_data (determinant.py) (switched off, for the time being)
-            - param_parallel_spin in Jastrow_two_body_data (jastrow_factor.py)
-            - param_anti_parallel_spin in Jastrow_two_body_data (jastrow_factor.py)
-            - j_matrix_up_up in Jastrow_three_body_data (jastrow_factor.py)
-            - j_matrix_dn_dn in Jastrow_three_body_data (jastrow_factor.py)
-            - j_matrix_up_dn in Jastrow_three_body_data (jastrow_factor.py)
+            - jastrow_2b_param in Jastrow_two_body_data (jastrow_factor.py)
+            - j_matrix in Jastrow_three_body_data (jastrow_factor.py)
 
         Atomic positions related:
             - structure_data.positions in AOs_data (atomic_orbital.py)
             - structure_data.positions in Coulomb_potential_data (coulomb_potential.py)
-
     """
 
-    structure_data: Structure_data = struct.field(
-        pytree_node=True, default_factory=lambda: Structure_data()
-    )
+    structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
     coulomb_potential_data: Coulomb_potential_data = struct.field(
         pytree_node=True, default_factory=lambda: Coulomb_potential_data()
     )
-    wavefunction_data: Wavefunction_data = struct.field(
-        pytree_node=True, default_factory=lambda: Wavefunction_data()
-    )
+    wavefunction_data: Wavefunction_data = struct.field(pytree_node=True, default_factory=lambda: Wavefunction_data())
 
     def __post_init__(self) -> None:
+        """Initialization of the class.
+
+        This magic function checks the consistencies among the arguments.
+
+        Raises:
+            ValueError: If there is an inconsistency in a dimension of a given argument.
+
+        Todo:
+            To be implemented.
+        """
         pass
 
 
@@ -104,7 +107,8 @@ def compute_local_energy(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float | complex:
-    """
+    """Compute Local Energy.
+
     The method is for computing the local energy at (r_up_carts, r_dn_carts).
 
     Args:
@@ -113,9 +117,8 @@ def compute_local_energy(
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
     Returns:
-        The value of local energy with the given wavefunction (float | complex)
+        float: The value of local energy (e_L) with the given wavefunction (float)
     """
-
     start = time.perf_counter()
     T = compute_kinetic_energy_api(
         wavefunction_data=hamiltonian_data.wavefunction_data,

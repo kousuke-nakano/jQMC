@@ -1,4 +1,4 @@
-"""Determinant module"""
+"""Determinant module."""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -72,8 +72,9 @@ jax.config.update("jax_enable_x64", True)
 # @dataclass
 @struct.dataclass
 class Geminal_data:
-    """
-    The class contains data for evaluating a geminal function.
+    """Geminal data class.
+
+    The class contains data for evaluating a geminal function (Determinant part).
 
     Args:
         num_electron_up (int):
@@ -92,17 +93,18 @@ class Geminal_data:
 
     num_electron_up: int = struct.field(pytree_node=False, default=0)
     num_electron_dn: int = struct.field(pytree_node=False, default=0)
-    orb_data_up_spin: AOs_data | MOs_data = struct.field(
-        pytree_node=True, default_factory=lambda: AOs_data()
-    )
-    orb_data_dn_spin: AOs_data | MOs_data = struct.field(
-        pytree_node=True, default_factory=lambda: AOs_data()
-    )
-    lambda_matrix: npt.NDArray[np.float64] = struct.field(
-        pytree_node=True, default_factory=lambda: np.array([])
-    )
+    orb_data_up_spin: AOs_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
+    orb_data_dn_spin: AOs_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
+    lambda_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
     def __post_init__(self) -> None:
+        """Initialization of the class.
+
+        This magic function checks the consistencies among the arguments.
+
+        Raises:
+            ValueError: If there is an inconsistency in a dimension of a given argument.
+        """
         if self.lambda_matrix.shape != (
             self.orb_num_up,
             self.orb_num_dn + (self.num_electron_up - self.num_electron_dn),
@@ -117,6 +119,19 @@ class Geminal_data:
 
     @property
     def orb_num_up(self) -> int:
+        """orb_num_up.
+
+        The number of atomic orbitals or molecular orbitals for up electrons,
+        depending on the instance stored in the attribute orb_data_up.
+
+        Return:
+            int: The number of atomic orbitals or molecular orbitals for up electrons.
+
+        Raises:
+            NotImplementedError:
+                If the instance of orb_data_up_spin is neither AOs_data nor MOs_data.
+
+        """
         if isinstance(self.orb_data_up_spin, AOs_data):
             return self.orb_data_up_spin.num_ao
         elif isinstance(self.orb_data_up_spin, MOs_data):
@@ -126,6 +141,18 @@ class Geminal_data:
 
     @property
     def orb_num_dn(self) -> int:
+        """orb_num_dn.
+
+        The number of atomic orbitals or molecular orbitals for down electrons,
+        depending on the instance stored in the attribute orb_data_up.
+
+        Return:
+            int: The number of atomic orbitals or molecular orbitals for down electrons.
+
+        Raises:
+            NotImplementedError:
+                If the instance of orb_data_dn_spin is neither AOs_data nor MOs_data.
+        """
         if isinstance(self.orb_data_dn_spin, AOs_data):
             return self.orb_data_dn_spin.num_ao
         elif isinstance(self.orb_data_dn_spin, MOs_data):
@@ -135,39 +162,66 @@ class Geminal_data:
 
     @property
     def compute_orb_api(self) -> Callable[..., npt.NDArray[np.float64]]:
-        if isinstance(self.orb_data_up_spin, AOs_data) and isinstance(
-            self.orb_data_dn_spin, AOs_data
-        ):
+        """Function for computing AOs or MOs.
+
+        The api method to compute AOs or MOs corresponding to instances
+        stored in self.orb_data_up_spin and self.orb_data_dn_spin
+
+        Return:
+            Callable: The api method to compute AOs or MOs.
+
+        Raises:
+            NotImplementedError:
+                If the instances of orb_data_up_spin/orb_data_dn_spin are
+                neither AOs_data/AOs_data nor MOs_data/MOs_data.
+        """
+        if isinstance(self.orb_data_up_spin, AOs_data) and isinstance(self.orb_data_dn_spin, AOs_data):
             return compute_AOs_api
-        elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(
-            self.orb_data_dn_spin, MOs_data
-        ):
+        elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
             return compute_MOs_api
         else:
             raise NotImplementedError
 
     @property
     def compute_orb_grad_api(self) -> Callable[..., npt.NDArray[np.float64]]:
-        if isinstance(self.orb_data_up_spin, AOs_data) and isinstance(
-            self.orb_data_dn_spin, AOs_data
-        ):
+        """Function for computing AOs or MOs grads.
+
+        The api method to compute AOs or MOs grads corresponding to instances
+        stored in self.orb_data_up_spin and self.orb_data_dn_spin.
+
+        Return:
+            Callable: The api method to compute AOs or MOs grads.
+
+        Raises:
+            NotImplementedError:
+                If the instances of orb_data_up_spin/orb_data_dn_spin are
+                neither AOs_data/AOs_data nor MOs_data/MOs_data.
+        """
+        if isinstance(self.orb_data_up_spin, AOs_data) and isinstance(self.orb_data_dn_spin, AOs_data):
             return compute_AOs_grad_api
-        elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(
-            self.orb_data_dn_spin, MOs_data
-        ):
+        elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
             return compute_MOs_grad_api
         else:
             raise NotImplementedError
 
     @property
     def compute_orb_laplacian_api(self) -> Callable[..., npt.NDArray[np.float64]]:
-        if isinstance(self.orb_data_up_spin, AOs_data) and isinstance(
-            self.orb_data_dn_spin, AOs_data
-        ):
+        """Function for computing AOs or MOs laplacians.
+
+        The api method to compute AOs or MOs laplacians corresponding to instances
+        stored in self.orb_data_up_spin and self.orb_data_dn_spin.
+
+        Return:
+            Callable: The api method to compute AOs or MOs laplacians.
+
+        Raises:
+            NotImplementedError:
+                If the instances of orb_data_up_spin/orb_data_dn_spin are
+                neither AOs_data/AOs_data nor MOs_data/MOs_data.
+        """
+        if isinstance(self.orb_data_up_spin, AOs_data) and isinstance(self.orb_data_dn_spin, AOs_data):
             return compute_AOs_laplacian_api
-        elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(
-            self.orb_data_dn_spin, MOs_data
-        ):
+        elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
             return compute_MOs_laplacian_api
         else:
             raise NotImplementedError
@@ -177,7 +231,14 @@ def compute_det_geminal_all_elements_api(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
-) -> np.float64 | np.complex128:
+) -> np.float64:
+    """Function for computing determinant of the given geminal.
+
+    The api method to compute determinant of the given geminal functions.
+
+    Return:
+        np.float64: The determinant of the given geminal functions.
+    """
     return jnp.linalg.det(
         compute_geminal_all_elements_api(
             geminal_data=geminal_data,
@@ -191,7 +252,8 @@ def compute_det_geminal_all_elements_jax(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
-) -> np.float64 | np.complex128:
+) -> np.float64:
+    """See compute_det_geminal_all_elements_api."""
     return jnp.linalg.det(
         compute_geminal_all_elements_jax(
             geminal_data=geminal_data,
@@ -205,7 +267,8 @@ def compute_det_geminal_all_elements_debug(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
-) -> np.float64 | np.complex128:
+) -> np.float64:
+    """See compute_det_geminal_all_elements_api."""
     return np.linalg.det(
         compute_geminal_all_elements_debug(
             geminal_data=geminal_data,
@@ -219,8 +282,9 @@ def compute_geminal_all_elements_api(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64 | np.complex128]:
-    """
+) -> npt.NDArray[np.float64]:
+    """Compute Geminal matrix elements.
+
     The method is for computing geminal matrix elements with the given atomic/molecular orbitals at (r_up_carts, r_dn_carts).
 
     Args:
@@ -228,14 +292,11 @@ def compute_geminal_all_elements_api(
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
-    Returns
-    -------
-        Arrays containing values of the given geminal functions f(i,j) where r_up_carts[i] and r_dn_carts[j]. (dim: N_e^{up}, N_e^{up})
+    Returns:
+        npt.NDArray[np.float64]: Arrays containing values of the given geminal functions f(i,j),
+        where r_up_carts[i] and r_dn_carts[j]. (dim: N_e^{up}, N_e^{up})
     """
-    if (
-        len(r_up_carts) != geminal_data.num_electron_up
-        or len(r_dn_carts) != geminal_data.num_electron_dn
-    ):
+    if len(r_up_carts) != geminal_data.num_electron_up or len(r_dn_carts) != geminal_data.num_electron_dn:
         logger.info(
             f"Number of up and dn electrons (N_up, N_dn) = ({len(r_up_carts)}, {len(r_dn_carts)}) are not consistent "
             + f"with the expected values. (N_up, N_dn) = {geminal_data.num_electron_up}, {geminal_data.num_electron_dn})"
@@ -244,9 +305,7 @@ def compute_geminal_all_elements_api(
 
     if len(r_up_carts) != len(r_dn_carts):
         if len(r_up_carts) - len(r_dn_carts) > 0:
-            logger.info(
-                f"Number of up and dn electrons are different. (N_el - N_dn = {len(r_up_carts) - len(r_dn_carts)})"
-            )
+            logger.info(f"Number of up and dn electrons are different. (N_el - N_dn = {len(r_up_carts) - len(r_dn_carts)})")
         else:
             logger.error(
                 f"Number of up electron is smaller than dn electrons. (N_el - N_dn = {len(r_up_carts) - len(r_dn_carts)})"
@@ -274,10 +333,9 @@ def compute_geminal_all_elements_debug(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64 | np.complex128]:
-    lambda_matrix_paired, lambda_matrix_unpaired = np.hsplit(
-        geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
-    )
+) -> npt.NDArray[np.float64]:
+    """See compute_geminal_all_elements_api."""
+    lambda_matrix_paired, lambda_matrix_unpaired = np.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
 
     orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
     orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts)
@@ -303,9 +361,8 @@ def compute_geminal_all_elements_jax(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
-    lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(
-        geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
-    )
+    """See compute_geminal_all_elements_api."""
+    lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
 
     orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
     orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts)
@@ -323,24 +380,26 @@ def compute_grads_and_laplacian_ln_Det_api(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> tuple[
-    npt.NDArray[np.float64 | np.complex128],
-    npt.NDArray[np.float64 | np.complex128],
-    float | complex,
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    float,
 ]:
-    """
-    The method is for computing the sum of laplacians of ln WF at (r_up_carts, r_dn_carts).
+    """Compute grads and laplacians of ln Det.
+
+    The method is for computing the gradients(x,y,z) of ln Det and the sum of laplacians of ln Det at
+    the given electronic positions (r_up_carts, r_dn_carts).
 
     Args:
         geminal_data (Geminal_data): an instance of Geminal_data class
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+
     Returns:
-        the gradients(x,y,z) of ln Det and the sum of laplacians of ln Det at (r_up_carts, r_dn_carts).
+        tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], float]: containing
+        the gradients(x,y,z) of ln Det for up and dn electron positions and
+        the sum of laplacians of ln Det at (r_up_carts, r_dn_carts).
     """
-    if (
-        len(r_up_carts) != geminal_data.num_electron_up
-        or len(r_dn_carts) != geminal_data.num_electron_dn
-    ):
+    if len(r_up_carts) != geminal_data.num_electron_up or len(r_dn_carts) != geminal_data.num_electron_dn:
         logger.info(
             f"Number of up and dn electrons (N_up, N_dn) = ({len(r_up_carts)}, {len(r_dn_carts)}) are not consistent "
             + f"with the expected values. (N_up, N_dn) = {geminal_data.num_electron_up}, {geminal_data.num_electron_dn})"
@@ -349,9 +408,7 @@ def compute_grads_and_laplacian_ln_Det_api(
 
     if len(r_up_carts) != len(r_dn_carts):
         if len(r_up_carts) - len(r_dn_carts) > 0:
-            logger.info(
-                f"Number of up and dn electrons are different. (N_el - N_dn = {len(r_up_carts) - len(r_dn_carts)})"
-            )
+            logger.info(f"Number of up and dn electrons are different. (N_el - N_dn = {len(r_up_carts) - len(r_dn_carts)})")
         else:
             logger.error(
                 f"Number of up electron is smaller than dn electrons. (N_el - N_dn = {len(r_up_carts) - len(r_dn_carts)})"
@@ -387,10 +444,11 @@ def compute_grads_and_laplacian_ln_Det_debug(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> tuple[
-    npt.NDArray[np.float64 | np.complex128],
-    npt.NDArray[np.float64 | np.complex128],
-    float | complex,
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    float,
 ]:
+    """See compute_grads_and_laplacian_ln_Det_api."""
     det_geminal = compute_det_geminal_all_elements_api(
         geminal_data=geminal_data,
         r_up_carts=r_up_carts,
@@ -628,17 +686,11 @@ def compute_grads_and_laplacian_ln_Det_debug(
         """
 
         # compute f''(x)
-        gradgrad_x_up = (det_geminal_p_x_up2 + det_geminal_m_x_up2 - 2.0 * det_geminal) / (
-            diff_h2**2
-        )
+        gradgrad_x_up = (det_geminal_p_x_up2 + det_geminal_m_x_up2 - 2.0 * det_geminal) / (diff_h2**2)
 
-        gradgrad_y_up = (det_geminal_p_y_up2 + det_geminal_m_y_up2 - 2.0 * det_geminal) / (
-            diff_h2**2
-        )
+        gradgrad_y_up = (det_geminal_p_y_up2 + det_geminal_m_y_up2 - 2.0 * det_geminal) / (diff_h2**2)
 
-        gradgrad_z_up = (det_geminal_p_z_up2 + det_geminal_m_z_up2 - 2.0 * det_geminal) / (
-            diff_h2**2
-        )
+        gradgrad_z_up = (det_geminal_p_z_up2 + det_geminal_m_z_up2 - 2.0 * det_geminal) / (diff_h2**2)
 
         _grad_x_up = grad_x_up[r_i]
         _grad_y_up = grad_y_up[r_i]
@@ -720,17 +772,11 @@ def compute_grads_and_laplacian_ln_Det_debug(
         """
 
         # compute f''(x)
-        gradgrad_x_dn = (det_geminal_p_x_dn2 + det_geminal_m_x_dn2 - 2.0 * det_geminal) / (
-            diff_h2**2
-        )
+        gradgrad_x_dn = (det_geminal_p_x_dn2 + det_geminal_m_x_dn2 - 2.0 * det_geminal) / (diff_h2**2)
 
-        gradgrad_y_dn = (det_geminal_p_y_dn2 + det_geminal_m_y_dn2 - 2.0 * det_geminal) / (
-            diff_h2**2
-        )
+        gradgrad_y_dn = (det_geminal_p_y_dn2 + det_geminal_m_y_dn2 - 2.0 * det_geminal) / (diff_h2**2)
 
-        gradgrad_z_dn = (det_geminal_p_z_dn2 + det_geminal_m_z_dn2 - 2.0 * det_geminal) / (
-            diff_h2**2
-        )
+        gradgrad_z_dn = (det_geminal_p_z_dn2 + det_geminal_m_z_dn2 - 2.0 * det_geminal) / (diff_h2**2)
 
         _grad_x_dn = grad_x_dn[r_i]
         _grad_y_dn = grad_y_dn[r_i]
@@ -750,33 +796,28 @@ def compute_grads_and_laplacian_ln_Det_debug(
 @jit
 def compute_grads_and_laplacian_ln_Det_jax(
     geminal_data: Geminal_data,
-    r_up_carts: npt.NDArray[jnp.float64],
-    r_dn_carts: npt.NDArray[jnp.float64],
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
 ) -> tuple[
-    npt.NDArray[jnp.float64 | jnp.complex128],
-    npt.NDArray[jnp.float64 | jnp.complex128],
-    float | complex,
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    float,
 ]:
-    lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(
-        geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
-    )
+    """See compute_grads_and_laplacian_ln_Det_api."""
+    lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
 
     # AOs/MOs
     ao_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
     ao_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts)
 
-    ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z = (
-        geminal_data.compute_orb_grad_api(geminal_data.orb_data_up_spin, r_up_carts)
-    )
-    ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z = (
-        geminal_data.compute_orb_grad_api(geminal_data.orb_data_dn_spin, r_dn_carts)
-    )
-    ao_matrix_laplacian_up = geminal_data.compute_orb_laplacian_api(
+    ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z = geminal_data.compute_orb_grad_api(
         geminal_data.orb_data_up_spin, r_up_carts
     )
-    ao_matrix_laplacian_dn = geminal_data.compute_orb_laplacian_api(
+    ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z = geminal_data.compute_orb_grad_api(
         geminal_data.orb_data_dn_spin, r_dn_carts
     )
+    ao_matrix_laplacian_up = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_up_spin, r_up_carts)
+    ao_matrix_laplacian_dn = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_dn_spin, r_dn_carts)
 
     # compute Laplacians of Geminal
     geminal_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
@@ -784,34 +825,24 @@ def compute_grads_and_laplacian_ln_Det_jax(
     geminal = jnp.hstack([geminal_paired, geminal_unpaired])
 
     # up electron
-    geminal_grad_up_x_paired = jnp.dot(
-        ao_matrix_up_grad_x.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn)
-    )
+    geminal_grad_up_x_paired = jnp.dot(ao_matrix_up_grad_x.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
     geminal_grad_up_x_unpaired = jnp.dot(ao_matrix_up_grad_x.T, lambda_matrix_unpaired)
     geminal_grad_up_x = jnp.hstack([geminal_grad_up_x_paired, geminal_grad_up_x_unpaired])
 
-    geminal_grad_up_y_paired = jnp.dot(
-        ao_matrix_up_grad_y.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn)
-    )
+    geminal_grad_up_y_paired = jnp.dot(ao_matrix_up_grad_y.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
     geminal_grad_up_y_unpaired = jnp.dot(ao_matrix_up_grad_y.T, lambda_matrix_unpaired)
     geminal_grad_up_y = jnp.hstack([geminal_grad_up_y_paired, geminal_grad_up_y_unpaired])
 
-    geminal_grad_up_z_paired = jnp.dot(
-        ao_matrix_up_grad_z.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn)
-    )
+    geminal_grad_up_z_paired = jnp.dot(ao_matrix_up_grad_z.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
     geminal_grad_up_z_unpaired = jnp.dot(ao_matrix_up_grad_z.T, lambda_matrix_unpaired)
     geminal_grad_up_z = jnp.hstack([geminal_grad_up_z_paired, geminal_grad_up_z_unpaired])
 
-    geminal_laplacian_up_paired = jnp.dot(
-        ao_matrix_laplacian_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn)
-    )
+    geminal_laplacian_up_paired = jnp.dot(ao_matrix_laplacian_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
     geminal_laplacian_up_unpaired = jnp.dot(ao_matrix_laplacian_up.T, lambda_matrix_unpaired)
     geminal_laplacian_up = jnp.hstack([geminal_laplacian_up_paired, geminal_laplacian_up_unpaired])
 
     # dn electron
-    geminal_grad_dn_x_paired = jnp.dot(
-        ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn_grad_x)
-    )
+    geminal_grad_dn_x_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn_grad_x))
     geminal_grad_dn_x_unpaired = jnp.zeros(
         [
             geminal_data.num_electron_up,
@@ -820,9 +851,7 @@ def compute_grads_and_laplacian_ln_Det_jax(
     )
     geminal_grad_dn_x = jnp.hstack([geminal_grad_dn_x_paired, geminal_grad_dn_x_unpaired])
 
-    geminal_grad_dn_y_paired = jnp.dot(
-        ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn_grad_y)
-    )
+    geminal_grad_dn_y_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn_grad_y))
     geminal_grad_dn_y_unpaired = jnp.zeros(
         [
             geminal_data.num_electron_up,
@@ -831,9 +860,7 @@ def compute_grads_and_laplacian_ln_Det_jax(
     )
     geminal_grad_dn_y = jnp.hstack([geminal_grad_dn_y_paired, geminal_grad_dn_y_unpaired])
 
-    geminal_grad_dn_z_paired = jnp.dot(
-        ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn_grad_z)
-    )
+    geminal_grad_dn_z_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn_grad_z))
     geminal_grad_dn_z_unpaired = jnp.zeros(
         [
             geminal_data.num_electron_up,
@@ -842,9 +869,7 @@ def compute_grads_and_laplacian_ln_Det_jax(
     )
     geminal_grad_dn_z = jnp.hstack([geminal_grad_dn_z_paired, geminal_grad_dn_z_unpaired])
 
-    geminal_laplacian_dn_paired = jnp.dot(
-        ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_laplacian_dn)
-    )
+    geminal_laplacian_dn_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_laplacian_dn))
     geminal_laplacian_dn_unpaired = jnp.zeros(
         [
             geminal_data.num_electron_up,
@@ -943,13 +968,9 @@ if __name__ == "__main__":
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    mos_up_data = MOs_data(
-        num_mo=num_mo_up, mo_coefficients=mo_coefficients_up, aos_data=aos_up_data
-    )
+    mos_up_data = MOs_data(num_mo=num_mo_up, mo_coefficients=mo_coefficients_up, aos_data=aos_up_data)
 
-    mos_dn_data = MOs_data(
-        num_mo=num_mo_dn, mo_coefficients=mo_coefficients_dn, aos_data=aos_dn_data
-    )
+    mos_dn_data = MOs_data(num_mo=num_mo_dn, mo_coefficients=mo_coefficients_dn, aos_data=aos_dn_data)
 
     geminal_mo_data = Geminal_data(
         num_electron_up=num_r_up_cart_samples,
@@ -967,9 +988,7 @@ if __name__ == "__main__":
     )
 
     # generate matrices for the test
-    ao_lambda_matrix_paired = np.dot(
-        mo_coefficients_up.T, np.dot(mo_lambda_matrix_paired, mo_coefficients_dn)
-    )
+    ao_lambda_matrix_paired = np.dot(mo_coefficients_up.T, np.dot(mo_lambda_matrix_paired, mo_coefficients_dn))
     ao_lambda_matrix_unpaired = np.dot(mo_coefficients_up.T, mo_lambda_matrix_unpaired)
     ao_lambda_matrix = np.hstack([ao_lambda_matrix_paired, ao_lambda_matrix_unpaired])
 

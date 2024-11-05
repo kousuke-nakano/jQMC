@@ -565,22 +565,34 @@ class MCMC:
 
         mcmc_total_end = time.perf_counter()
         timer_mcmc_total = mcmc_total_end - mcmc_total_start
+        timer_others = timer_mcmc_total - (
+            timer_mcmc_updated
+            + timer_e_L
+            + timer_de_L_dR_dr
+            + timer_dln_Psi_dR_dr
+            + timer_dln_Psi_dc_jas1b2b3b
+        )
 
         self.__mcmc_counter += num_mcmc_steps
         logger.info(f"Acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
-        logger.info(f"Elapsed time for MCMC {num_mcmc_steps} steps. = {timer_mcmc_total:.2f} msec.")
+        logger.info(
+            f"Total Elapsed time for MCMC {num_mcmc_steps} steps. = {timer_mcmc_total:.2f} msec."
+        )
         logger.info(f"Elapsed times per MCMC step, averaged over {num_mcmc_steps} steps.")
-        logger.info(f"  Time for mcmc_update = {timer_mcmc_updated/num_mcmc_steps*100.0:.2f} msec.")
-        logger.info(f"  Time for e_L = {timer_e_L/num_mcmc_steps*100.0:.2f} msec.")
         logger.info(
-            f"  Time for de_L/dR and de_L/dr = {timer_de_L_dR_dr/num_mcmc_steps*100.0:.2f} msec."
+            f"  Time for MCMC updated = {timer_mcmc_updated/num_mcmc_steps*100.0:.2f} msec."
+        )
+        logger.info(f"  Time for computing e_L = {timer_e_L/num_mcmc_steps*100.0:.2f} msec.")
+        logger.info(
+            f"  Time for computing de_L/dR and de_L/dr = {timer_de_L_dR_dr/num_mcmc_steps*100.0:.2f} msec."
         )
         logger.info(
-            f"  Time for dln_Psi/dR and dln_Psi/dr = {timer_dln_Psi_dR_dr/num_mcmc_steps*100.0:.2f} msec."
+            f"  Time for computing dln_Psi/dR and dln_Psi/dr = {timer_dln_Psi_dR_dr/num_mcmc_steps*100.0:.2f} msec."
         )
         logger.info(
-            f"  Time for dln_Psi/dc (jastrow 1b2b3b) = {timer_dln_Psi_dc_jas1b2b3b/num_mcmc_steps*100.0:.2f} msec."
+            f"  Time for computing dln_Psi/dc (jastrow 1b2b3b) = {timer_dln_Psi_dc_jas1b2b3b/num_mcmc_steps*100.0:.2f} msec."
         )
+        logger.info(f"  Time for misc. (others) = {timer_others/num_mcmc_steps*100.0:.2f} msec.")
 
     @property
     def hamiltonian_data(self):

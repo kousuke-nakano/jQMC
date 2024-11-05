@@ -163,9 +163,7 @@ class Coulomb_potential_data:
 
     """
 
-    structure_data: Structure_data = struct.field(
-        pytree_node=True, default_factory=lambda: Structure_data()
-    )
+    structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
     ecp_flag: bool = struct.field(pytree_node=False, default=False)
     z_cores: list[float] = struct.field(pytree_node=False, default_factory=list)
     max_ang_mom_plus_1: list[int] = struct.field(pytree_node=False, default_factory=list)
@@ -218,18 +216,15 @@ def compute_ecp_coulomb_potential_api(
     a given electronic configuration (r_up_carts, r_dn_carts).
 
     Args:
-        coulomb_potential_data (Coulomb_potential_data):
-            an instance of Bare_coulomb_potential_data
+        coulomb_potential_data (Coulomb_potential_data): an instance of Coulomb_potential_data
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
         Nv (int): The number of quadrature points for the spherical part.
 
     Returns:
-        The sum of local and non-local parts of the given ECPs with r_up_carts and r_dn_carts. (float)
+        float: The sum of local and non-local parts of the given ECPs with r_up_carts and r_dn_carts. (float)
     """
-    V_ecp = compute_ecp_coulomb_potential_jax(
-        coulomb_potential_data, wavefunction_data, r_up_carts, r_dn_carts, Nv
-    )
+    V_ecp = compute_ecp_coulomb_potential_jax(coulomb_potential_data, wavefunction_data, r_up_carts, r_dn_carts, Nv)
 
     return V_ecp
 
@@ -239,27 +234,24 @@ def compute_ecp_local_parts_debug(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
-    """
+    """Compute ecp local parts.
+
     The method is for computing the local part of the given ECPs at (r_up_carts, r_dn_carts).
     A very straightforward (so very slow) implementation. Just for debudding purpose.
 
     Args:
-        coulomb_potential_data (Coulomb_potential_data): an instance of Bare_coulomb_potential_data
+        coulomb_potential_data (Coulomb_potential_data): an instance of Coulomb_potential_data
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
         Nv (int): The number of quadrature points for the spherical part.
-        debug_flag: if True, the non-local part is computed in a very straightforward way for debuging purpose
 
-    Returns
-    -------
-        The sum of local part of the given ECPs with r_up_carts and r_dn_carts. (float)
+    Returns:
+        float: The sum of local part of the given ECPs with r_up_carts and r_dn_carts.
     """
     V_local = 0.0
     for i_atom in range(coulomb_potential_data.structure_data.natom):
         max_ang_mom_plus_1 = coulomb_potential_data.max_ang_mom_plus_1[i_atom]
-        nucleus_indices = [
-            i for i, v in enumerate(coulomb_potential_data.nucleus_index) if v == i_atom
-        ]
+        nucleus_indices = [i for i, v in enumerate(coulomb_potential_data.nucleus_index) if v == i_atom]
         ang_moms = [coulomb_potential_data.ang_moms[i] for i in nucleus_indices]
         exponents = [coulomb_potential_data.exponents[i] for i in nucleus_indices]
         coefficients = [coulomb_potential_data.coefficients[i] for i in nucleus_indices]
@@ -278,9 +270,7 @@ def compute_ecp_local_parts_debug(
             )
             V_local += np.linalg.norm(rel_R_cart_min_dist) ** -2.0 * np.sum(
                 [
-                    a
-                    * np.linalg.norm(rel_R_cart_min_dist) ** n
-                    * np.exp(-b * np.linalg.norm(rel_R_cart_min_dist) ** 2)
+                    a * np.linalg.norm(rel_R_cart_min_dist) ** n * np.exp(-b * np.linalg.norm(rel_R_cart_min_dist) ** 2)
                     for a, n, b in zip(coefficients, powers, exponents)
                 ]
             )
@@ -292,9 +282,7 @@ def compute_ecp_local_parts_debug(
             )
             V_local += np.linalg.norm(rel_R_cart_min_dist) ** -2.0 * np.sum(
                 [
-                    a
-                    * np.linalg.norm(rel_R_cart_min_dist) ** n
-                    * np.exp(-b * np.linalg.norm(rel_R_cart_min_dist) ** 2)
+                    a * np.linalg.norm(rel_R_cart_min_dist) ** n * np.exp(-b * np.linalg.norm(rel_R_cart_min_dist) ** 2)
                     for a, n, b in zip(coefficients, powers, exponents)
                 ]
             )
@@ -308,20 +296,21 @@ def compute_ecp_nonlocal_parts_debug(
     r_dn_carts: npt.NDArray[np.float64],
     Nv: int = 6,
 ) -> float:
-    """
+    """Compute ecp non-local parts.
+
     The method is for computing the non-local part of the given ECPs at (r_up_carts, r_dn_carts).
-    A very straightforward (so super slow) implementation. Just for debudding purpose.
+    A very straightforward (so very slow) implementation. Just for debudding purpose.
 
     Args:
-        coulomb_potential_data (Coulomb_potential_data): an instance of Bare_coulomb_potential_data
+        coulomb_potential_data (Coulomb_potential_data): an instance of Coulomb_potential_data
+        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
         Nv (int): The number of quadrature points for the spherical part.
 
     Returns:
-        The sum of the non-local part of the given ECPs with r_up_carts and r_dn_carts. (float)
+        float: The sum of non-local part of the given ECPs with r_up_carts and r_dn_carts.
     """
-
     if Nv == 4:
         weights = tetrahedron_sym_mesh_Nv4.weights
         grid_points = tetrahedron_sym_mesh_Nv4.grid_points
@@ -344,9 +333,7 @@ def compute_ecp_nonlocal_parts_debug(
 
     for i_atom in range(coulomb_potential_data.structure_data.natom):
         max_ang_mom_plus_1 = coulomb_potential_data.max_ang_mom_plus_1[i_atom]
-        nucleus_indices = [
-            i for i, v in enumerate(coulomb_potential_data.nucleus_index) if v == i_atom
-        ]
+        nucleus_indices = [i for i, v in enumerate(coulomb_potential_data.nucleus_index) if v == i_atom]
 
         ang_moms_all = [coulomb_potential_data.ang_moms[i] for i in nucleus_indices]
         exponents_all = [coulomb_potential_data.exponents[i] for i in nucleus_indices]
@@ -368,9 +355,7 @@ def compute_ecp_nonlocal_parts_debug(
                 )
                 V_l = np.linalg.norm(rel_R_cart_min_dist) ** -2.0 * np.sum(
                     [
-                        a
-                        * np.linalg.norm(rel_R_cart_min_dist) ** n
-                        * np.exp(-b * np.linalg.norm(rel_R_cart_min_dist) ** 2.0)
+                        a * np.linalg.norm(rel_R_cart_min_dist) ** n * np.exp(-b * np.linalg.norm(rel_R_cart_min_dist) ** 2.0)
                         for a, n, b in zip(coefficients, powers, exponents)
                     ]
                 )
@@ -378,9 +363,7 @@ def compute_ecp_nonlocal_parts_debug(
                 for weight, vec_delta in zip(weights, grid_points):
                     r_up_carts_on_mesh = r_up_carts.copy()
                     r_up_carts_on_mesh[r_up_i] = (
-                        r_up_cart
-                        + rel_R_cart_min_dist
-                        + np.linalg.norm(rel_R_cart_min_dist) * vec_delta
+                        r_up_cart + rel_R_cart_min_dist + np.linalg.norm(rel_R_cart_min_dist) * vec_delta
                     )
 
                     cos_theta = np.dot(
@@ -408,9 +391,7 @@ def compute_ecp_nonlocal_parts_debug(
                 )
                 V_l = np.linalg.norm(rel_R_cart_min_dist) ** -2 * np.sum(
                     [
-                        a
-                        * np.linalg.norm(rel_R_cart_min_dist) ** n
-                        * np.exp(-b * np.linalg.norm(rel_R_cart_min_dist) ** 2)
+                        a * np.linalg.norm(rel_R_cart_min_dist) ** n * np.exp(-b * np.linalg.norm(rel_R_cart_min_dist) ** 2)
                         for a, n, b in zip(coefficients, powers, exponents)
                     ]
                 )
@@ -418,9 +399,7 @@ def compute_ecp_nonlocal_parts_debug(
                 for weight, vec_delta in zip(weights, grid_points):
                     r_dn_carts_on_mesh = r_dn_carts.copy()
                     r_dn_carts_on_mesh[r_dn_i] = (
-                        r_dn_cart
-                        + rel_R_cart_min_dist
-                        + np.linalg.norm(rel_R_cart_min_dist) * vec_delta
+                        r_dn_cart + rel_R_cart_min_dist + np.linalg.norm(rel_R_cart_min_dist) * vec_delta
                     )
 
                     cos_theta = np.dot(
@@ -449,19 +428,21 @@ def compute_ecp_coulomb_potential_debug(
     r_dn_carts: npt.NDArray[np.float64],
     Nv: int = 6,
 ) -> float:
-    """
-    The method is for computing the local and non-local parts of the given ECPs at (r_up_carts, r_dn_carts).
+    """Compute ecp local and non-local parts.
+
+    The method is for computing the local and non-local part of the given ECPs at (r_up_carts, r_dn_carts).
+    A very straightforward (so very slow) implementation. Just for debudding purpose.
 
     Args:
-        coulomb_potential_data (Coulomb_potential_data): an instance of Bare_coulomb_potential_data
+        coulomb_potential_data (Coulomb_potential_data): an instance of Coulomb_potential_data
+        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
         Nv (int): The number of quadrature points for the spherical part.
 
     Returns:
-        The sum of local and non-local parts of the given ECPs with r_up_carts and r_dn_carts. (float)
+        float: The sum of local and non-local part of the given ECPs with r_up_carts and r_dn_carts.
     """
-
     ecp_local_parts = compute_ecp_local_parts_debug(
         coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
@@ -486,17 +467,20 @@ def compute_ecp_coulomb_potential_jax(
     r_dn_carts: npt.NDArray[np.float64],
     Nv: int = 6,
 ) -> float:
-    """
-    The method is for computing the local and non-local parts of the given ECPs at (r_up_carts, r_dn_carts).
+    """Compute ecp local and non-local parts.
+
+    The method is for computing the local and non-local part of the given ECPs at (r_up_carts, r_dn_carts).
+    A very straightforward (so very slow) implementation. Just for debudding purpose.
 
     Args:
-        coulomb_potential_data (Coulomb_potential_data): an instance of Bare_coulomb_potential_data
+        coulomb_potential_data (Coulomb_potential_data): an instance of Coulomb_potential_data
+        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
         Nv (int): The number of quadrature points for the spherical part.
 
     Returns:
-        The sum of local and non-local parts of the given ECPs with r_up_carts and r_dn_carts. (float)
+        float: The sum of local and non-local part of the given ECPs with r_up_carts and r_dn_carts.
     """
     if Nv == 4:
         weights = tetrahedron_sym_mesh_Nv4.weights
@@ -531,22 +515,28 @@ def compute_ecp_coulomb_potential_jax_weights_grid_points(
     weights: list,
     grid_points: npt.NDArray[np.float64],
 ) -> float:
-    """
+    """Compute ecp local and non-local parts using JAX.
+
     The method is for computing the local and non-local parts of the given ECPs at (r_up_carts, r_dn_carts).
     To avoid for the nested loops, jax-vmap function (i.e. efficient vectrization for compilation) is fully
     exploitted in the method.
 
     Args:
         coulomb_potential_data (Coulomb_potential_data): an instance of Bare_coulomb_potential_data
+        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
-        weights: weights for numerical integration
-        grid_points: grid_points for numerical integration
+        weights (list[np.float]): weights for numerical integration
+        grid_points (npt.NDArray[np.float64]): grid_points for numerical integration
 
     Returns:
         The sum of local and non-local parts of the given ECPs with r_up_carts and r_dn_carts. (float)
-    """
 
+    Notes:
+        This part of @jit drastically accelarates the computation!
+        The procesure is so complicated that one should refer to the debug version.
+        to understand the flow
+    """
     weights = jnp.array(weights)
     grid_points = jnp.array(grid_points)
 
@@ -599,9 +589,7 @@ def compute_ecp_coulomb_potential_jax_weights_grid_points(
 
         wf_ratio_up = wf_numerator_up / wf_denominator
 
-        P_l_up = (
-            (2 * ang_mom + 1) * jnp_legendre_tablated(ang_mom, cos_theta_up) * weight * wf_ratio_up
-        )
+        P_l_up = (2 * ang_mom + 1) * jnp_legendre_tablated(ang_mom, cos_theta_up) * weight * wf_ratio_up
 
         return P_l_up
 
@@ -631,9 +619,7 @@ def compute_ecp_coulomb_potential_jax_weights_grid_points(
 
         wf_ratio_dn = wf_numerator_dn / wf_denominator
 
-        P_l_dn = (
-            (2 * ang_mom + 1) * jnp_legendre_tablated(ang_mom, cos_theta_dn) * weight * wf_ratio_dn
-        )
+        P_l_dn = (2 * ang_mom + 1) * jnp_legendre_tablated(ang_mom, cos_theta_dn) * weight * wf_ratio_dn
         return P_l_dn
 
     # Vectrize the functions
@@ -653,9 +639,7 @@ def compute_ecp_coulomb_potential_jax_weights_grid_points(
         power,
     ):
         V_l_up = compute_V_l(r_up_cart, i_atom, exponent, coefficient, power)
-        P_l_up = jnp.sum(
-            vmap_compute_P_l_up(ang_mom, r_up_i, r_up_cart, i_atom, weights, grid_points)
-        )
+        P_l_up = jnp.sum(vmap_compute_P_l_up(ang_mom, r_up_i, r_up_cart, i_atom, weights, grid_points))
         return V_l_up * P_l_up
 
     # Compute the local part V_l * Projection of WF. for a down electron
@@ -671,9 +655,7 @@ def compute_ecp_coulomb_potential_jax_weights_grid_points(
         power,
     ):
         V_l_dn = compute_V_l(r_dn_cart, i_atom, exponent, coefficient, power)
-        P_l_dn = jnp.sum(
-            vmap_compute_P_l_dn(ang_mom, r_dn_i, r_dn_cart, i_atom, weights, grid_points)
-        )
+        P_l_dn = jnp.sum(vmap_compute_P_l_dn(ang_mom, r_dn_i, r_dn_cart, i_atom, weights, grid_points))
         return V_l_dn * P_l_dn
 
     # Compute the local part V_l for a up electron.
@@ -811,24 +793,20 @@ def compute_bare_coulomb_potential_api(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
-    """
-    The method is for computing the bare coulomb potentials including all electron-electron,
+    """Compute bare Coulomb potential.
+
+    The method is for computing the bare coulomb potentials including both electron-electron,
     electron-ion (except. ECPs), and ion-ion interactions at (r_up_carts, r_dn_carts).
 
     Args:
         coulomb_potential_data (Coulomb_potential_data): an instance of Bare_coulomb_potential_data
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
-        debug_flag: if True, the non-local part is computed in a very straightforward way for debuging purpose
 
-    Returns
-    -------
+    Returns:
         The bare Coulomb potential with r_up_carts and r_dn_carts. (float)
     """
-
-    bare_coulomb_potential = compute_bare_coulomb_potential_jax(
-        coulomb_potential_data, r_up_carts, r_dn_carts
-    )
+    bare_coulomb_potential = compute_bare_coulomb_potential_jax(coulomb_potential_data, r_up_carts, r_dn_carts)
 
     return bare_coulomb_potential
 
@@ -838,6 +816,7 @@ def compute_bare_coulomb_potential_debug(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
+    """See compute_bare_coulomb_potential_api."""
     R_carts = coulomb_potential_data.structure_data.positions_cart
     R_charges = coulomb_potential_data.effective_charges
     r_up_charges = [-1 for _ in range(len(r_up_carts))]
@@ -867,6 +846,7 @@ def compute_bare_coulomb_potential_jax(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
+    """See compute_bare_coulomb_potential_api."""
     R_carts = jnp.array(coulomb_potential_data.structure_data.positions_cart)
     R_charges = np.array(coulomb_potential_data.effective_charges)
     r_up_charges = np.full(len(r_up_carts), -1.0, dtype=np.float64)
@@ -913,20 +893,7 @@ def compute_coulomb_potential_debug(
     r_dn_carts: npt.NDArray[np.float64],
     wavefunction_data: Wavefunction_data = None,
 ) -> float:
-    """
-    The method is for computing the bare coulomb potentials including all electron-electron,
-    electron-ion (inc. ECPs), and ion-ion interactions at (r_up_carts, r_dn_carts).
-
-    Args:
-        coulomb_potential_data (Coulomb_potential_data): an instance of Bare_coulomb_potential_data
-        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
-        wavefunction_data (Wavefunction_data): Wavefunction information needed to compute the non-local part
-
-    Returns
-    -------
-        Potential Energy at r_up_carts and r_dn_carts. (float)
-    """
+    """See ompute_coulomb_potential_api."""
     # all-electron
     if not coulomb_potential_data.ecp_flag:
         bare_coulomb_potential = compute_bare_coulomb_potential_debug(
@@ -961,19 +928,23 @@ def compute_coulomb_potential_api(
     r_dn_carts: npt.NDArray[np.float64],
     wavefunction_data: Wavefunction_data = None,
 ) -> float:
-    """
-    The method is for computing the bare coulomb potentials including all electron-electron,
-    electron-ion (inc. ECPs), and ion-ion interactions at (r_up_carts, r_dn_carts).
+    """Compute coulomb potential including bare electron-ion, electron-electron, ecp local and non-local parts.
+
+    The method is for computing coulomb potential including bare electron-ion, electron-electron,
+    ecp local and non-local parts, of the given ECPs at (r_up_carts, r_dn_carts).
 
     Args:
-        coulomb_potential_data (Coulomb_potential_data): an instance of Bare_coulomb_potential_data
-        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
-        wavefunction_data (Wavefunction_data): Wavefunction information needed to compute the non-local part
+        coulomb_potential_data (Coulomb_potential_data):
+            an instance of Bare_coulomb_potential_data
+        r_up_carts (npt.NDArray[np.float64]):
+            Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
+        r_dn_carts (npt.NDArray[np.float64]):
+            Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
 
-    Returns
-    -------
-        Potential Energy at r_up_carts and r_dn_carts. (float)
+    Returns:
+        float:  The sum of bare electron-ion, electron-electron, local and non-local parts of the given
+                ECPs with r_up_carts and r_dn_carts. (float)
     """
     # all-electron
     if not coulomb_potential_data.ecp_flag:
@@ -1008,10 +979,9 @@ def compute_coulomb_potential_api(
 
 
 if __name__ == "__main__":
-    import os
-
-    from .hamiltonians import Hamiltonian_data
-    from .trexio_wrapper import read_trexio_file
+    # import os
+    # from .hamiltonians import Hamiltonian_data
+    # from .trexio_wrapper import read_trexio_file
 
     log = getLogger("jqmc")
     log.setLevel("DEBUG")

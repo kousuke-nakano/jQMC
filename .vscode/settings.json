@@ -10,7 +10,8 @@
     },
     "ruff.lineLength": 128,
     "ruff.lint.ignore": [
-        "E501"
+        "E501",
+        "E741"
     ],
     "editor.formatOnSave": true,
 }

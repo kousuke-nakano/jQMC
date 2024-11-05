@@ -1,4 +1,4 @@
-"""Structure module"""
+"""Structure module."""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -56,15 +56,19 @@ logger = getLogger("jqmc").getChild(__name__)
 # JAX float64
 jax.config.update("jax_enable_x64", True)
 
+# separator
+num_sep_line = 50
+
 
 @struct.dataclass
 class Structure_data:
-    """Structure class
+    """Structure class.
 
-    The class contains all information about the given structure.
+    This class contains information about the given structure.
 
     Args:
-        positions (npt.NDArray[np.float64]): (N x 3) np.array containing atomic positions in cartesian. The unit is Bohr
+        positions (npt.NDArray[np.float64]):
+            (N x 3) np.array containing atomic positions in cartesian. The unit is Bohr
         pbc_flag (list[bool]): pbc_flags in the a, b, and c directions.
         vec_a (list[float]): lattice vector a. The unit is Bohr
         vec_b (list[float]): lattice vector b. The unit is Bohr
@@ -85,36 +89,59 @@ class Structure_data:
     element_symbols: list[str] = struct.field(pytree_node=False, default_factory=list)
     atomic_labels: list[str] = struct.field(pytree_node=False, default_factory=list)
 
+    def logger_info(self) -> None:
+        """Print out information stored in the Structure attribute using logger."""
+        logger.info("=" * num_sep_line)
+        logger.info(f"PBC flag = {self.pbc_flag}")
+        if any(self.pbc_flag):
+            logger.info(f"vec A = {self.vec_a} Bohr")
+            logger.info(f"vec B = {self.vec_b} Bohr")
+            logger.info(f"vec C = {self.vec_c} Bohr")
+
+        logger.info("-" * num_sep_line)
+        logger.info("element, label, Z, x, y, z in cartesian (Bohr)")
+        logger.info("-" * num_sep_line)
+        for atomic_number, element_symbol, atomic_label, position in zip(
+            self.atomic_numbers, self.element_symbols, self.atomic_labels, self.positions_cart
+        ):
+            logger.info(
+                f"{element_symbol:s}, {atomic_label:s}, {atomic_number:.1f}, {position[0]:.8f}, {position[1]:.8f}, {position[2]:.8f}"
+            )
+        logger.info("=" * num_sep_line)
+
     @property
     def cell(self) -> npt.NDArray[np.float64]:
-        """
-        Returns
-        -------
-            3x3 cell matrix containing the cell vectors, `vec_a`, `vec_b`, and `vec_c`
-            The unit is Bohr.
+        """Cell vectors.
+
+        Returns:
+            npt.NDAarray[np.float64]:
+                3x3 cell matrix containing the cell vectors,
+                `vec_a`, `vec_b`, and `vec_c`. The unit is Bohr.
         """
         cell = np.array([self.vec_a, self.vec_b, self.vec_c])
         return cell
 
     @property
     def recip_cell(self) -> npt.NDArray[np.float64]:
+        """Reciprocal Lattice vectors.
+
+        Returns:
+            npt.NDAarray[np.float64]:
+                3x3 cell matrix containing the reciprocal cell vectors,
+                `recip_vec_a`, `recip_vec_b`, and `recip_vec_c`
+                The unit is Bohr^{-1}
+
+        Notes:
+            Definitions of reciprocal lattice vectors are;
+            T_a, T_b, T_c are given lattice vectors
+
+            G_a = 2 \\pi * { T_b \\times T_c } / {T_a \\cdot ( T_b \\times T_c )}
+            G_b = 2 \\pi * { T_c \\times T_a } / {T_b \\cdot ( T_c \\times T_a )}
+            G_c = 2 \\pi * { T_a \\times T_b } / {T_c \\cdot ( T_a \\times T_b )}
+
+            one can easily check if the implementations are correct by using the
+            following orthonormality condition, T_i \cdot G_j = 2 \pi * \delta_{i,j}
         """
-        Returns
-        -------
-            3x3 cell matrix containing the reciprocal cell vectors,
-            `recip_vec_a`, `recip_vec_b`, and `recip_vec_c`
-            The unit is Bohr^{-1}
-        """
-        # definitions of reciprocal lattice vectors are;
-        # T_a, T_b, T_c are given lattice vectors
-        #
-        # G_a = 2 \pi * { T_b \times T_c } / {T_a \cdot ( T_b \times T_c )}
-        # G_b = 2 \pi * { T_c \times T_a } / {T_b \cdot ( T_c \times T_a )}
-        # G_c = 2 \pi * { T_a \times T_b } / {T_c \cdot ( T_a \times T_b )}
-        #
-        # one can easily check if the implementations are correct by using the
-        # following orthonormality condition, T_i \cdot G_j = 2 \pi * \delta_{i,j}
-        #
 
         recip_a = (
             2
@@ -153,55 +180,112 @@ class Structure_data:
 
     @property
     def lattice_vec_a(self) -> list:
+        """Return lattice vector A (in Bohr).
+
+        Returns:
+            list[np.float64]: the lattice vector A (in Bohr).
+
+        """
         return list(self.cell[0])
 
     @property
     def lattice_vec_b(self) -> list:
+        """Return lattice vector B (in Bohr).
+
+        Returns:
+            list[np.float64]: the lattice vector B (in Bohr).
+
+        """
         return list(self.cell[1])
 
     @property
     def lattice_vec_c(self) -> list:
+        """Return lattice vector C (in Bohr).
+
+        Returns:
+            list[np.float64]: the lattice vector C (in Bohr).
+
+        """
         return list(self.cell[2])
 
     @property
     def recip_vec_a(self) -> list:
+        """Return reciprocal lattice vector A (in Bohr).
+
+        Returns:
+            list[np.float64]: the reciprocal lattice vector A (in Bohr).
+
+        """
         return list(self.recip_cell[0])
 
     @property
     def recip_vec_b(self) -> list:
+        """Return reciprocal lattice vector B (in Bohr).
+
+        Returns:
+            list[np.float64]: the reciprocal lattice vector B (in Bohr).
+
+        """
         return list(self.recip_cell[1])
 
     @property
     def recip_vec_c(self) -> list:
+        """Return reciprocal lattice vector C (in Bohr).
+
+        Returns:
+            list[np.float64]: the reciprocal lattice vector C (in Bohr).
+
+        """
         return list(self.recip_cell[2])
 
     @property
     def norm_vec_a(self) -> float:
+        """Return the norm of the lattice vector A (in Bohr).
+
+        Returns:
+            np.float64: the norm of the lattice vector A (in Bohr).
+
+        """
         return LA.norm(self.vec_a)
 
     @property
     def norm_vec_b(self) -> float:
+        """Return the norm of the lattice vector B (in Bohr).
+
+        Returns:
+            np.float64: the norm of the lattice vector C (in Bohr).
+
+        """
         return LA.norm(self.vec_b)
 
     @property
     def norm_vec_c(self) -> float:
+        """Return the norm of the lattice vector C (in Bohr).
+
+        Returns:
+            np.float64: the norm of the lattice vector C (in Bohr).
+
+        """
         return LA.norm(self.vec_c)
 
     @property
     def positions_cart(self) -> npt.NDArray[np.float64]:
-        """
-        Returns
-        -------
-            (N x 3) np.array containing atomic positions in cartesian. The unit is Bohr
+        """Return atomic positions in cartesian (Bohr).
+
+        Returns:
+            npt.NDAarray[np.float64]: (N x 3) np.array containing atomic positions in cartesian.
+            The unit is Bohr
         """
         return self.positions
 
     @property
     def positions_frac(self) -> npt.NDArray[np.float64]:
-        """
-        Returns
-        -------
-            (N x 3) np.array containing atomic positions in crystal (fractional) coordinate.
+        """Return atomic positions in cartesian (Bohr).
+
+        Returns:
+            npt.NDAarray[np.float64]:
+                (N x 3) np.array containing atomic positions in crystal (fractional) coordinate.
+            The unit is Bohr
         """
         h = np.array([self.vec_a, self.vec_b, self.vec_c])
         positions_frac = np.array(
@@ -211,19 +295,19 @@ class Structure_data:
 
     @property
     def natom(self) -> int:
-        """
-        Returns
-        -------
-            The number of atoms in the system.
+        """The number of atoms in the system.
+
+        Returns:
+            int:The number of atoms in the system.
         """
         return len(self.atomic_numbers)
 
     @property
     def ntyp(self) -> int:
-        """
-        Returns
-        -------
-            The number of element types in the system.
+        """The number of element types in the system.
+
+        Returns:
+            int: The number of element types in the system.
         """
         return len(list(set(self.atomic_numbers)))
 
@@ -265,13 +349,18 @@ class Structure_data:
 
     @classmethod
     def parse_structure_from_file(cls, filename: str) -> "Structure_data":
-        """
-        Returns
-        -------
-            Struture class from a file using the ASE read function.
+        """Parse structure file.
 
         Args:
-            file, See the ASE manual for the supported formats
+            filename (str): Filename of the input structure file.
+                            See the ASE manual for the supported formats
+
+        Returns:
+            Structure: Struture class read from the input file
+
+        Notes:
+            The ASE module should be installed to use its read function.
+
         """
         # python material modules
         from ase.io import read  # type: ignore
@@ -281,11 +370,15 @@ class Structure_data:
         return cls.parse_structure_from_ase_atom(atoms)
 
     def write_to_file(self, filename: str) -> None:
-        """
-        Write the stored sturcute information to a file
+        """Write the stored sturcute information to a file.
 
         Args:
-            filename, See the ASE manual for the supported formats
+            filename (str): Filename of the output structure file.
+                            See the ASE manual for the supported formats
+
+        Notes:
+            The ASE module should be installed to use its write function.
+
         """
         # python material modules
         from ase import Atoms
@@ -310,13 +403,18 @@ class Structure_data:
         write(filename, ase_atom)
 
 
-def find_nearest_index(structure: Structure_data, r_cart: list[float, float, float]) -> int:
-    """
+def find_nearest_index(structure: Structure_data, r_cart: list[float]) -> int:
+    """Find the nearest atom index for the give position.
+
     Args:
         structure (Structure_data): an instance of Structure_data
-        r_cart (list[float, float, float]): reference position
+        r_cart (list[float, float, float]): reference position (in Bohr)
+
     Return:
-        The index of the nearest neigbhor nucleus (int)
+        int: The index of the nearest neigbhor nucleus
+
+    Todo:
+        Implementing PBC (i.e., considering mirror images).
     """
     if any(structure.pbc_flag):
         raise NotImplementedError
@@ -325,6 +423,7 @@ def find_nearest_index(structure: Structure_data, r_cart: list[float, float, flo
 
 
 def find_nearest_nucleus_indices_np(structure_data: Structure_data, r_cart, N):
+    """See find_nearest_index."""
     if any(structure_data.pbc_flag):
         raise NotImplementedError
     else:
@@ -337,6 +436,7 @@ def find_nearest_nucleus_indices_np(structure_data: Structure_data, r_cart, N):
 
 
 def find_nearest_nucleus_indices_jnp(structure_data: Structure_data, r_cart, N):
+    """See find_nearest_index."""
     # Calculate the distance between each row of R_carts and r_cart
     distances = jnp.sqrt(jnp.sum((structure_data.positions_cart - jnp.array(r_cart)) ** 2, axis=1))
     # Sort indices based on the calculated distances
@@ -348,13 +448,21 @@ def find_nearest_nucleus_indices_jnp(structure_data: Structure_data, r_cart, N):
 def get_min_dist_rel_R_cart_np(
     structure_data: Structure_data, r_cart: list[float, float, float], i_atom: int
 ) -> float:
-    """
-    Returns
-    -------
-        rel_R_cart_min_dist containing minimum-distance atomic positions with respect to the given r_cart in cartesian. The unit is Bohr
+    """Minimum-distance atomic position with respect to the given r_cart.
+
+    Args:
+        structure (Structure_data): an instance of Structure_data
+        r_cart (list[float, float, float]): reference position (in Bohr)
+        int: the index of the target atom
+
+    Returns:
+        npt.NDAarray: rel_R_cart_min_dist containing minimum-distance atomic positions
+        with respect to the given r_cart in cartesian. The unit is Bohr
+
     """
 
     def mapping(r_cart, R_cart):
+        # dummy, which will be replaced in PBC cases
         return np.array(R_cart) - np.array(r_cart)
 
     def non_mapping(r_cart, R_cart):
@@ -374,15 +482,12 @@ def get_min_dist_rel_R_cart_np(
 def get_min_dist_rel_R_cart_jnp(
     structure_data: Structure_data, r_cart: list[float, float, float], i_atom: int
 ) -> float:
-    """
-    Returns:
-        rel_R_cart_min_dist minimum-distance atomic positions with respect to the given r_cart in cartesian. The unit is Bohr
-    """
-
+    """See get_min_dist_rel_R_cart_np."""
     r_cart = jnp.array(r_cart)
     R_carts = jnp.array(structure_data.positions_cart)
 
     def mapping(r, R):
+        # dummy, which will be replaced in PBC cases
         return jnp.array(R) - jnp.array(r)
 
     def non_mapping(r, R):
@@ -401,6 +506,10 @@ def get_min_dist_rel_R_cart_jnp(
 
 
 if __name__ == "__main__":
+    import os
+
+    from .trexio_wrapper import read_trexio_file
+
     log = getLogger("jqmc")
     log.setLevel("DEBUG")
     stream_handler = StreamHandler()
@@ -409,9 +518,21 @@ if __name__ == "__main__":
     stream_handler.setFormatter(handler_format)
     log.addHandler(stream_handler)
 
-    struct = Structure_data().parse_structure_from_file(filename="benzene.xyz")
+    # struct = Structure_data().parse_structure_from_file(filename="benzene.xyz")
+    # struct = Structure_data().parse_structure_from_file(filename="benzene.xyz")
+    # struct = Structure_data().parse_structure_from_file(filename="silicon_oxide.cif")
 
-    struct = Structure_data().parse_structure_from_file(filename="benzene.xyz")
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(
+            os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"
+        )
+    )
 
-    struct = Structure_data().parse_structure_from_file(filename="silicon_oxide.cif")
-    print(struct.recip_cell)
+    structure_data.logger_info()
