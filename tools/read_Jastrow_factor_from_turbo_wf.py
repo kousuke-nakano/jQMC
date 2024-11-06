@@ -95,9 +95,7 @@ for i_shell in range(basis_shell_num):
     ao_exponents = [basis_exponent[k] for k in ao_prim_indices]
     ao_coefficients = [basis_coefficient[k] for k in ao_prim_indices]
 
-    orbital_indices_all = [
-        ao_num_count + j for j in range(num_mag_moms) for _ in range(ao_prim_num)
-    ]
+    orbital_indices_all = [ao_num_count + j for j in range(num_mag_moms) for _ in range(ao_prim_num)]
     ao_exponents_all = ao_exponents * num_mag_moms
     ao_coefficients_all = ao_coefficients * num_mag_moms
 
@@ -111,7 +109,7 @@ for i_shell in range(basis_shell_num):
     exponents += ao_exponents_all
     coefficients += ao_coefficients_all
 
-jas_aos_data_dn = jas_aos_data_up = AOs_data(
+jas_aos_data = AOs_data(
     structure_data=structure_data,
     nucleus_index=nucleus_index,
     num_ao=ao_num_count,
@@ -132,49 +130,35 @@ max_col = max(f10jasmatrix.col)
 assert max_row == max_col
 const_jas_orb_index = max_row
 
-j1_matrix_up = np.zeros((jas_aos_data_up.num_ao))
-j1_matrix_dn = np.zeros((jas_aos_data_up.num_ao))
+j1_matrix = np.zeros((jas_aos_data.num_ao))
 
 for i, (row, col) in enumerate(zip(f10jasmatrix.row, f10jasmatrix.col)):
     if col == const_jas_orb_index and row != const_jas_orb_index:
-        j1_matrix_up[row - 1] = f10jasmatrix.coeff[i] * (num_ele - 1)
-        j1_matrix_dn[row - 1] = f10jasmatrix.coeff[i] * (num_ele - 1)
+        j1_matrix[row - 1] = f10jasmatrix.coeff[i] * (num_ele - 1)
 
 # print(j1_matrix_up.T)
 # print(j1_matrix_dn.T)
 
-j3_matrix_up_up = np.zeros((jas_aos_data_up.num_ao, jas_aos_data_up.num_ao))
-j3_matrix_dn_dn = np.zeros((jas_aos_data_dn.num_ao, jas_aos_data_dn.num_ao))
-j3_matrix_up_dn = np.zeros((jas_aos_data_up.num_ao, jas_aos_data_dn.num_ao))
+j3_matrix = np.zeros((jas_aos_data.num_ao, jas_aos_data.num_ao))
 
 for i, (row, col) in enumerate(zip(f10jasmatrix.row, f10jasmatrix.col)):
     if col != const_jas_orb_index and row != const_jas_orb_index:
         # upper diagonal
-        j3_matrix_up_up[row - 1, col - 1] = f10jasmatrix.coeff[i]
-        j3_matrix_dn_dn[row - 1, col - 1] = f10jasmatrix.coeff[i]
-        j3_matrix_up_dn[row - 1, col - 1] = f10jasmatrix.coeff[i]
+        j3_matrix[row - 1, col - 1] = f10jasmatrix.coeff[i]
 
         # lower diagonal
-        j3_matrix_up_up[col - 1, row - 1] = f10jasmatrix.coeff[i]
-        j3_matrix_dn_dn[col - 1, row - 1] = f10jasmatrix.coeff[i]
-        j3_matrix_up_dn[col - 1, row - 1] = f10jasmatrix.coeff[i]
+        j3_matrix[col - 1, row - 1] = f10jasmatrix.coeff[i]
 
 # print(j3_matrix_up_up)
 # print(j3_matrix_dn_dn)
 # print(j3_matrix_up_dn)
 
-j_matrix_up_up = np.column_stack((j3_matrix_up_up, j1_matrix_up))
-j_matrix_dn_dn = np.column_stack((j3_matrix_dn_dn, j1_matrix_dn))
-j_matrix_up_dn = j3_matrix_up_dn
-
+j_matrix = np.column_stack((j3_matrix, j1_matrix))
 jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=twobody_parameter)
 
 jastrow_three_body_data = Jastrow_three_body_data(
-    orb_data_up_spin=jas_aos_data_up,
-    orb_data_dn_spin=jas_aos_data_dn,
-    j_matrix_up_up=j_matrix_up_up,
-    j_matrix_dn_dn=j_matrix_dn_dn,
-    j_matrix_up_dn=j_matrix_up_dn,
+    orb_data=jas_aos_data,
+    j_matrix=j_matrix,
 )
 
 jastrow_data = Jastrow_data(

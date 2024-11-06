@@ -85,7 +85,7 @@ class AOs_data:
             dim: num_ao_prim
         exponents (list[float]):
             List of exponents of the AOs. dim: num_ao_prim.
-        coefficients (list[float | complex]):
+        coefficients (list[float]):
             List of coefficients of the AOs. dim: num_ao_prim
         angular_momentums (list[int]):
             Angular momentum of the AOs, i.e., l. dim: num_ao

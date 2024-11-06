@@ -43,7 +43,7 @@ import jax
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import lax
+from jax import jit, lax
 from jax import numpy as jnp
 from numpy import linalg as LA
 
@@ -452,7 +452,7 @@ def get_min_dist_rel_R_cart_np(structure_data: Structure_data, r_cart: list[floa
     return rel_R_cart_min_dist
 
 
-# @jit
+@jit
 def get_min_dist_rel_R_cart_jnp(structure_data: Structure_data, r_cart: list[float, float, float], i_atom: int) -> float:
     """See get_min_dist_rel_R_cart_np."""
     r_cart = jnp.array(r_cart)

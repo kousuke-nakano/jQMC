@@ -1562,7 +1562,6 @@ jax.clear_caches()
 
 
 @pytest.mark.skip_if_enable_jit
-@pytest.mark.skip(reason="3b jastrow is refactored. To replace *.pkl file")
 def test_comparison_with_TurboRVB_w_2b_3b_Jastrow(request):
     if request.config.getoption("--enable-jit"):
         pytest.skip(reason="Bug of flux.struct with @jit.")
@@ -1681,7 +1680,6 @@ jax.clear_caches()
 
 
 # @pytest.mark.skip_if_enable_jit
-@pytest.mark.skip(reason="3b jastrow is refactored. To replace *.pkl file")
 def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow(request):
     # if request.config.getoption("--enable-jit"):
     #    pytest.skip(reason="Bug of flux.struct with @jit.")
