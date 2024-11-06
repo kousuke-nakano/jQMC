@@ -49,7 +49,7 @@ from flax import struct
 from jax import grad, hessian, jacrev, jit, vmap
 
 # jqmc module
-from .atomic_orbital import AOs_data, AOs_data_debug, compute_AOs_api
+from .atomic_orbital import AOs_data, compute_AOs_api
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
@@ -1106,7 +1106,9 @@ if __name__ == "__main__":
     stream_handler.setFormatter(handler_format)
     log.addHandler(stream_handler)
 
-    jastrow_two_body_data = Jastrow_two_body_data.init_jastrow_two_body_data(randomized_flag=True)
+    from .structure import Structure_data
+
+    jastrow_two_body_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
 
     num_r_up_cart_samples = 5
     num_r_dn_cart_samples = 2
@@ -1116,7 +1118,7 @@ if __name__ == "__main__":
     r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_up_cart_samples, 3) + r_cart_min
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_dn_cart_samples, 3) + r_cart_min
 
-    jastrow_two_body_data = Jastrow_two_body_data(param_anti_parallel_spin=1.0, jastrow_2b_param=1.0)
+    jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=1.0)
     jastrow_two_body_debug = compute_Jastrow_two_body_debug(
         jastrow_two_body_data=jastrow_two_body_data,
         r_up_carts=r_up_carts,
@@ -1139,12 +1141,7 @@ if __name__ == "__main__":
         grad_jastrow_J2_up_debug,
         grad_jastrow_J2_dn_debug,
         sum_laplacian_J2_debug,
-    ) = compute_grads_and_laplacian_Jastrow_two_body_debug(
-        jastrow_two_body_data,
-        r_up_carts,
-        r_dn_carts,
-        True,
-    )
+    ) = compute_grads_and_laplacian_Jastrow_two_body_debug(jastrow_two_body_data, r_up_carts, r_dn_carts)
 
     # logger.debug(f"grad_jastrow_J2_up_debug = {grad_jastrow_J2_up_debug}")
     # logger.debug(f"grad_jastrow_J2_dn_debug = {grad_jastrow_J2_dn_debug}")
@@ -1154,7 +1151,6 @@ if __name__ == "__main__":
         jastrow_two_body_data,
         r_up_carts,
         r_dn_carts,
-        False,
     )
 
     # logger.debug(f"grad_jastrow_J2_up_jax = {grad_jastrow_J2_up_jax}")
@@ -1184,10 +1180,19 @@ if __name__ == "__main__":
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_dn_cart_samples, 3) + r_cart_min
     R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
 
-    aos_up_data = AOs_data_debug(
+    structure_data = Structure_data(
+        pbc_flag=[False, False, False],
+        positions=R_carts,
+        atomic_numbers=[0] * num_R_cart_samples,
+        element_symbols=["X"] * num_R_cart_samples,
+        atomic_labels=["X"] * num_R_cart_samples,
+    )
+
+    aos_data = AOs_data(
+        structure_data=structure_data,
+        nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
-        atomic_center_carts=R_carts,
         orbital_indices=orbital_indices,
         exponents=exponents,
         coefficients=coefficients,
@@ -1195,28 +1200,9 @@ if __name__ == "__main__":
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    aos_dn_data = AOs_data_debug(
-        num_ao=num_ao,
-        num_ao_prim=num_ao_prim,
-        atomic_center_carts=R_carts,
-        orbital_indices=orbital_indices,
-        exponents=exponents,
-        coefficients=coefficients,
-        angular_momentums=angular_momentums,
-        magnetic_quantum_numbers=magnetic_quantum_numbers,
-    )
+    j_matrix = np.random.rand(aos_data.num_ao, aos_data.num_ao + 1)
 
-    j_matrix_up_up = np.random.rand(aos_up_data.num_ao, aos_up_data.num_ao + 1)
-    j_matrix_dn_dn = np.random.rand(aos_dn_data.num_ao, aos_dn_data.num_ao + 1)
-    j_matrix_up_dn = np.random.rand(aos_up_data.num_ao, aos_dn_data.num_ao)
-
-    jastrow_three_body_data = Jastrow_three_body_data(
-        orb_data_up_spin=aos_up_data,
-        orb_data_dn_spin=aos_dn_data,
-        j_matrix_up_up=j_matrix_up_up,
-        j_matrix_dn_dn=j_matrix_dn_dn,
-        j_matrix_up_dn=j_matrix_up_dn,
-    )
+    jastrow_three_body_data = Jastrow_three_body_data(orb_data=aos_data, j_matrix=j_matrix)
 
     J3_debug = compute_Jastrow_three_body_debug(
         jastrow_three_body_data=jastrow_three_body_data,

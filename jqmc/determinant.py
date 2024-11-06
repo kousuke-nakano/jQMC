@@ -48,19 +48,8 @@ from flax import struct
 from jax import jit
 
 # jqmc module
-from .atomic_orbital import (
-    AOs_data,
-    AOs_data_debug,
-    compute_AOs_api,
-    compute_AOs_grad_api,
-    compute_AOs_laplacian_api,
-)
-from .molecular_orbital import (
-    MOs_data,
-    compute_MOs_api,
-    compute_MOs_grad_api,
-    compute_MOs_laplacian_api,
-)
+from .atomic_orbital import AOs_data, compute_AOs_api, compute_AOs_grad_api, compute_AOs_laplacian_api
+from .molecular_orbital import MOs_data, compute_MOs_api, compute_MOs_grad_api, compute_MOs_laplacian_api
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
@@ -916,6 +905,8 @@ if __name__ == "__main__":
     stream_handler.setFormatter(handler_format)
     log.addHandler(stream_handler)
 
+    from .structure import Structure_data
+
     # test MOs
     num_r_up_cart_samples = 2
     num_r_dn_cart_samples = 2
@@ -946,10 +937,19 @@ if __name__ == "__main__":
     r_dn_carts = r_up_carts
     R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
 
-    aos_up_data = AOs_data_debug(
+    structure_data = Structure_data(
+        pbc_flag=[False, False, False],
+        positions=R_carts,
+        atomic_numbers=[0] * num_R_cart_samples,
+        element_symbols=["X"] * num_R_cart_samples,
+        atomic_labels=["X"] * num_R_cart_samples,
+    )
+
+    aos_up_data = AOs_data(
+        structure_data=structure_data,
+        nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
-        atomic_center_carts=R_carts,
         orbital_indices=orbital_indices,
         exponents=exponents,
         coefficients=coefficients,
@@ -957,10 +957,11 @@ if __name__ == "__main__":
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    aos_dn_data = AOs_data_debug(
+    aos_dn_data = AOs_data(
+        structure_data=structure_data,
+        nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
-        atomic_center_carts=R_carts,
         orbital_indices=orbital_indices,
         exponents=exponents,
         coefficients=coefficients,
@@ -977,7 +978,6 @@ if __name__ == "__main__":
         num_electron_dn=num_r_dn_cart_samples,
         orb_data_up_spin=mos_up_data,
         orb_data_dn_spin=mos_dn_data,
-        compute_orb_api=compute_MOs_api,
         lambda_matrix=mo_lambda_matrix,
     )
 
@@ -1000,7 +1000,6 @@ if __name__ == "__main__":
         num_electron_dn=num_r_dn_cart_samples,
         orb_data_up_spin=aos_up_data,
         orb_data_dn_spin=aos_dn_data,
-        compute_orb_api=compute_AOs_api,
         lambda_matrix=ao_lambda_matrix,
     )
 

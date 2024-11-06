@@ -46,16 +46,8 @@ import numpy.typing as npt
 from flax import struct
 from jax import jit
 
-from .determinant import (
-    Geminal_data,
-    compute_det_geminal_all_elements_api,
-    compute_grads_and_laplacian_ln_Det_api,
-)
-from .jastrow_factor import (
-    Jastrow_data,
-    compute_grads_and_laplacian_Jastrow_part_api,
-    compute_Jastrow_part_api,
-)
+from .determinant import Geminal_data, compute_det_geminal_all_elements_api, compute_grads_and_laplacian_ln_Det_api
+from .jastrow_factor import Jastrow_data, compute_grads_and_laplacian_Jastrow_part_api, compute_Jastrow_part_api
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)

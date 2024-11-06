@@ -43,7 +43,7 @@ import jax
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import jit, lax
+from jax import lax
 from jax import numpy as jnp
 from numpy import linalg as LA
 
@@ -78,9 +78,7 @@ class Structure_data:
         atomic_labels (list[str]): list of labels for the atoms in the system.
     """
 
-    positions: npt.NDArray[np.float64] = struct.field(
-        pytree_node=True, default_factory=lambda: np.array([], dtype=np.float64)
-    )
+    positions: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([], dtype=np.float64))
     pbc_flag: list[bool] = struct.field(pytree_node=False, default_factory=list)
     vec_a: list[float] = struct.field(pytree_node=False, default_factory=list)
     vec_b: list[float] = struct.field(pytree_node=False, default_factory=list)
@@ -123,7 +121,7 @@ class Structure_data:
 
     @property
     def recip_cell(self) -> npt.NDArray[np.float64]:
-        """Reciprocal Lattice vectors.
+        r"""Reciprocal Lattice vectors.
 
         Returns:
             npt.NDAarray[np.float64]:
@@ -142,25 +140,9 @@ class Structure_data:
             one can easily check if the implementations are correct by using the
             following orthonormality condition, T_i \cdot G_j = 2 \pi * \delta_{i,j}
         """
-
-        recip_a = (
-            2
-            * np.pi
-            * (np.cross(self.vec_b, self.vec_c))
-            / (np.dot(self.vec_a, np.cross(self.vec_b, self.vec_c)))
-        )
-        recip_b = (
-            2
-            * np.pi
-            * (np.cross(self.vec_c, self.vec_a))
-            / (np.dot(self.vec_b, np.cross(self.vec_c, self.vec_a)))
-        )
-        recip_c = (
-            2
-            * np.pi
-            * (np.cross(self.vec_a, self.vec_b))
-            / (np.dot(self.vec_c, np.cross(self.vec_a, self.vec_b)))
-        )
+        recip_a = 2 * np.pi * (np.cross(self.vec_b, self.vec_c)) / (np.dot(self.vec_a, np.cross(self.vec_b, self.vec_c)))
+        recip_b = 2 * np.pi * (np.cross(self.vec_c, self.vec_a)) / (np.dot(self.vec_b, np.cross(self.vec_c, self.vec_a)))
+        recip_c = 2 * np.pi * (np.cross(self.vec_a, self.vec_b)) / (np.dot(self.vec_c, np.cross(self.vec_a, self.vec_b)))
 
         # check if the implementations are correct
         lattice_vec_list = [self.vec_a, self.vec_b, self.vec_c]
@@ -169,9 +151,7 @@ class Structure_data:
             enumerate(lattice_vec_list), enumerate(recip_vec_list)
         ):
             if lattice_vec_i == recip_vec_j:
-                np.testing.assert_almost_equal(
-                    np.dot(lattice_vec, recip_vec), 2 * np.pi, decimal=15
-                )
+                np.testing.assert_almost_equal(np.dot(lattice_vec, recip_vec), 2 * np.pi, decimal=15)
             else:
                 np.testing.assert_almost_equal(np.dot(lattice_vec, recip_vec), 0.0, decimal=15)
 
@@ -288,9 +268,7 @@ class Structure_data:
             The unit is Bohr
         """
         h = np.array([self.vec_a, self.vec_b, self.vec_c])
-        positions_frac = np.array(
-            [np.dot(np.array(pos), np.linalg.inv(h)) for pos in self.positions_cart]
-        )
+        positions_frac = np.array([np.dot(np.array(pos), np.linalg.inv(h)) for pos in self.positions_cart])
         return positions_frac
 
     @property
@@ -445,9 +423,7 @@ def find_nearest_nucleus_indices_jnp(structure_data: Structure_data, r_cart, N):
     return nearest_indices[:N]
 
 
-def get_min_dist_rel_R_cart_np(
-    structure_data: Structure_data, r_cart: list[float, float, float], i_atom: int
-) -> float:
+def get_min_dist_rel_R_cart_np(structure_data: Structure_data, r_cart: list[float, float, float], i_atom: int) -> float:
     """Minimum-distance atomic position with respect to the given r_cart.
 
     Args:
@@ -468,9 +444,7 @@ def get_min_dist_rel_R_cart_np(
     def non_mapping(r_cart, R_cart):
         return np.array(R_cart) - np.array(r_cart)
 
-    if (
-        np.linalg.norm(r_cart - structure_data.positions_cart[i_atom]) > 0.0
-    ):  # dummy, which will be replaced in PBC cases
+    if np.linalg.norm(r_cart - structure_data.positions_cart[i_atom]) > 0.0:  # dummy, which will be replaced in PBC cases
         rel_R_cart_min_dist = mapping(r_cart, structure_data.positions_cart[i_atom])
     else:
         rel_R_cart_min_dist = non_mapping(r_cart, structure_data.positions_cart[i_atom])
@@ -479,9 +453,7 @@ def get_min_dist_rel_R_cart_np(
 
 
 # @jit
-def get_min_dist_rel_R_cart_jnp(
-    structure_data: Structure_data, r_cart: list[float, float, float], i_atom: int
-) -> float:
+def get_min_dist_rel_R_cart_jnp(structure_data: Structure_data, r_cart: list[float, float, float], i_atom: int) -> float:
     """See get_min_dist_rel_R_cart_np."""
     r_cart = jnp.array(r_cart)
     R_carts = jnp.array(structure_data.positions_cart)
@@ -494,8 +466,7 @@ def get_min_dist_rel_R_cart_jnp(
         return jnp.array(R) - jnp.array(r)
 
     rel_R_cart_min_dist = lax.cond(
-        jnp.linalg.norm(r_cart - R_carts[i_atom])
-        < 0.0,  # dummy, which will be replaced in PBC cases
+        jnp.linalg.norm(r_cart - R_carts[i_atom]) < 0.0,  # dummy, which will be replaced in PBC cases
         mapping,
         non_mapping,
         r_cart,
@@ -529,10 +500,6 @@ if __name__ == "__main__":
         mos_data_dn,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(
-        trexio_file=os.path.join(
-            os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"
-        )
-    )
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"))
 
     structure_data.logger_info()

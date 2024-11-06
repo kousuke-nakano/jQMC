@@ -110,12 +110,7 @@ def evaluate_swct_omega_debug(
     for alpha in range(len(R_carts)):
         for i in range(len(r_carts)):
             kappa = 1.0 / np.linalg.norm(r_carts[i] - R_carts[alpha]) ** 4
-            kappa_sum = np.sum(
-                [
-                    1.0 / np.linalg.norm(r_carts[i] - R_carts[beta]) ** 4
-                    for beta in range(len(R_carts))
-                ]
-            )
+            kappa_sum = np.sum([1.0 / np.linalg.norm(r_carts[i] - R_carts[beta]) ** 4 for beta in range(len(R_carts))])
             omega[alpha, i] = kappa / kappa_sum
 
     return omega
@@ -181,9 +176,7 @@ def evaluate_swct_domega_debug(
 
     def compute_omega(R_cart, r_cart, R_carts):
         kappa = 1.0 / np.linalg.norm(r_cart - R_cart) ** 4
-        kappa_sum = np.sum(
-            [1.0 / np.linalg.norm(r_cart - R_carts[beta]) ** 4 for beta in range(len(R_carts))]
-        )
+        kappa_sum = np.sum([1.0 / np.linalg.norm(r_cart - R_carts[beta]) ** 4 for beta in range(len(R_carts))])
         omega = kappa / kappa_sum
         return omega
 
@@ -195,28 +188,25 @@ def evaluate_swct_domega_debug(
             r_cart_m_dx = r_cart.copy()
             r_cart_p_dx[0] += diff_h
             r_cart_m_dx[0] -= diff_h
-            omega_dx = (
-                compute_omega(R_cart, r_cart_p_dx, R_carts)
-                - compute_omega(R_cart, r_cart_m_dx, R_carts)
-            ) / (2 * diff_h)
+            omega_dx = (compute_omega(R_cart, r_cart_p_dx, R_carts) - compute_omega(R_cart, r_cart_m_dx, R_carts)) / (
+                2 * diff_h
+            )
 
             r_cart_p_dy = r_cart.copy()
             r_cart_m_dy = r_cart.copy()
             r_cart_p_dy[1] += diff_h
             r_cart_m_dy[1] -= diff_h
-            omega_dy = (
-                compute_omega(R_cart, r_cart_p_dy, R_carts)
-                - compute_omega(R_cart, r_cart_m_dy, R_carts)
-            ) / (2 * diff_h)
+            omega_dy = (compute_omega(R_cart, r_cart_p_dy, R_carts) - compute_omega(R_cart, r_cart_m_dy, R_carts)) / (
+                2 * diff_h
+            )
 
             r_cart_p_dz = r_cart.copy()
             r_cart_m_dz = r_cart.copy()
             r_cart_p_dz[2] += diff_h
             r_cart_m_dz[2] -= diff_h
-            omega_dz = (
-                compute_omega(R_cart, r_cart_p_dz, R_carts)
-                - compute_omega(R_cart, r_cart_m_dz, R_carts)
-            ) / (2 * diff_h)
+            omega_dz = (compute_omega(R_cart, r_cart_p_dz, R_carts) - compute_omega(R_cart, r_cart_m_dz, R_carts)) / (
+                2 * diff_h
+            )
 
             domega[i, 0] += omega_dx
             domega[i, 1] += omega_dy
@@ -273,13 +263,9 @@ if __name__ == "__main__":
     print(omega_up)
     print(omega_dn)
 
-    d_omega_up = np.sum(
-        jacrev(evaluate_swct_omega_api, argnums=1)(swct_data, r_up_carts), axis=(1, 2)
-    )
+    d_omega_up = np.sum(jacrev(evaluate_swct_omega_api, argnums=1)(swct_data, r_up_carts), axis=(1, 2))
     print(f"shape(d_omega_up) = {d_omega_up.shape}")
-    d_omega_dn = np.sum(
-        jacrev(evaluate_swct_omega_api, argnums=1)(swct_data, r_dn_carts), axis=(1, 2)
-    )
+    d_omega_dn = np.sum(jacrev(evaluate_swct_omega_api, argnums=1)(swct_data, r_dn_carts), axis=(1, 2))
     print(f"shape(d_omega_dn) = {d_omega_dn.shape}")
     print(d_omega_up)
     print(d_omega_dn)

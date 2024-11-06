@@ -5,7 +5,6 @@ Module containing classes and methods related to Atomic Orbitals
 Todo:
     * Laplacian computation without JAX
     * Replace numpy and jax.numpy typings with jaxtyping
-    * Remove AOs_data_debug
 """
 
 # Copyright (C) 2024- Kosuke Nakano
@@ -42,8 +41,6 @@ Todo:
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-# import sys
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from logging import Formatter, StreamHandler, getLogger
 
@@ -52,13 +49,13 @@ import jax.numpy as jnp
 import jax.scipy as jscipy
 import numpy as np
 import numpy.typing as npt
-import scipy  # type: ignore
+import scipy
 from flax import struct
-from jax import grad, jacrev, jit, vmap
+from jax import grad, jacrev, jit
 from jax import typing as jnpt
+from jax import vmap
 from numpy import linalg as LA
 
-# jaxQMC module
 from .structure import Structure_data
 
 # set logger
@@ -113,9 +110,6 @@ class AOs_data:
 
         Raises:
             ValueError: If there is an inconsistency in a dimension of a given argument.
-
-        Todo:
-            To be implemented.
         """
         if len(self.nucleus_index) != self.num_ao:
             logger.error("dim. of self.nucleus_index is wrong")
@@ -204,79 +198,6 @@ class AOs_data:
             npt.NDArray[np.int64]: magnetic quantum numbers for primitive orbitals
         """
         return np.array([self.magnetic_quantum_numbers[i] for i in self.orbital_indices])
-
-
-@struct.dataclass
-class AOs_data_debug:
-    """To be removed.
-
-    The class contains data for computing atomic orbitals simltaneously.
-    This is for debuggin purpose. This dataclass can be defined without
-    the structure class, which should make tests easier and simpler to
-    be implemented.
-
-    Args:
-        num_ao : the number of atomic orbitals.
-        num_ao_prim : the number of primitive atomic orbitals.
-        atomic_center_carts (npt.NDArray[np.float64]): Centers of the nuclei associated to the AOs (dim: num_AOs, 3).
-        orbital_indices (list[int]): index for what exponents and coefficients are associated to each atomic orbital. dim: num_ao_prim
-        exponents (list[float]): List of exponents of the AOs. dim: num_ao_prim.
-        coefficients (list[float | complex]): List of coefficients of the AOs. dim: num_ao_prim
-        angular_momentums (list[int]): Angular momentum of the AOs, i.e., l. dim: num_ao
-        magnetic_quantum_numbers (list[int]): Magnetic quantum number of the AOs, i.e m = -l .... +l. dim: num_ao
-    """
-
-    num_ao: int = struct.field(pytree_node=False)
-    num_ao_prim: int = struct.field(pytree_node=False)
-    atomic_center_carts: npt.NDArray[np.float64] = struct.field(pytree_node=True)
-    orbital_indices: list[int] = struct.field(pytree_node=False)
-    exponents: list[float] = struct.field(pytree_node=False)
-    coefficients: list[float | complex] = struct.field(pytree_node=False)
-    angular_momentums: list[int] = struct.field(pytree_node=False)
-    magnetic_quantum_numbers: list[int] = struct.field(pytree_node=False)
-
-    def __post_init__(self) -> None:
-        if self.atomic_center_carts.shape != (self.num_ao, 3):
-            logger.error("dim. of atomic_center_cart is wrong")
-            raise ValueError
-        if len(np.unique(self.orbital_indices)) != self.num_ao:
-            logger.error(f"num_ao={self.num_ao} and/or num_ao_prim={self.num_ao_prim} is wrong")
-        if len(self.exponents) != self.num_ao_prim:
-            logger.error("dim. of self.exponents is wrong")
-            raise ValueError
-        if len(self.coefficients) != self.num_ao_prim:
-            logger.error("dim. of self.coefficients is wrong")
-            raise ValueError
-        if len(self.angular_momentums) != self.num_ao:
-            logger.error("dim. of self.angular_momentums is wrong")
-            raise ValueError
-        if len(self.magnetic_quantum_numbers) != self.num_ao:
-            logger.error("dim. of self.magnetic_quantum_numbers is wrong")
-            raise ValueError
-
-    @property
-    def atomic_center_carts_prim(self):
-        return np.array([self.atomic_center_carts[i] for i in self.orbital_indices])
-
-    @property
-    def atomic_center_carts_prim_jnp(self):
-        return jnp.array([self.atomic_center_carts[i] for i in self.orbital_indices])
-
-    @property
-    def angular_momentums_prim(self):
-        return np.array([self.angular_momentums[i] for i in self.orbital_indices])
-
-    @property
-    def magnetic_quantum_numbers_prim(self):
-        return np.array([self.magnetic_quantum_numbers[i] for i in self.orbital_indices])
-
-    @property
-    def exponents_jnp(self):
-        return jnp.array(self.exponents)
-
-    @property
-    def coefficients_jnp(self):
-        return jnp.array(self.coefficients)
 
 
 def compute_AOs_laplacian_api(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
@@ -403,7 +324,7 @@ def compute_AOs_grad_api(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> tuple[j
     the given atomic orbital at r_carts
 
     Args:
-        ao_datas(AOs_data): an instance of AOs_data | AOs_data_debug
+        ao_datas(AOs_data): an instance of AOs_data
         r_carts(jnpt.ArrayLike): Cartesian coordinates of electrons (dim: N_e, 3)
 
     Returns:
@@ -482,13 +403,13 @@ def compute_AOs_grad_jax_old(
     aos_data: AOs_data,
     r_carts: jnpt.ArrayLike,
 ) -> tuple[jax.Array, jax.Array, jax.Array]:
-    """Compute Cartesian Gradients of AOs.
+    """Compute Cartesian Gradients of AOs (old).
 
     The method is for computing the Carteisan gradients (x,y,z) of
     the given atomic orbital at r_carts
 
     Args:
-        ao_datas(AOs_data): an instance of AOs_data | AOs_data_debug
+        ao_datas(AOs_data): an instance of AOs_data
         r_carts(jnpt.ArrayLike): Cartesian coordinates of electrons (dim: N_e, 3)
 
     Returns:
@@ -524,7 +445,7 @@ def compute_AOs_numerical_grad(
     implementations
 
     Args:
-        ao_datas(AOs_data): an instance of AOs_data | AOs_data_debug
+        ao_datas(AOs_data): an instance of AOs_data
         r_carts(npt.NDArray[np.float64]): Cartesian coordinates of electrons (dim: N_e, 3)
 
     Returns:
@@ -690,6 +611,13 @@ class AO_data:
     magnetic_quantum_number: int = 0
 
     def __post_init__(self) -> None:
+        """Initialization of the class.
+
+        This magic function checks the consistencies among the arguments.
+
+        Raises:
+            ValueError: If there is an inconsistency in a dimension of a given argument.
+        """
         if len(self.atomic_center_cart) != 3:
             logger.error("dim. of atomic_center_cart is wrong")
             raise ValueError
@@ -704,22 +632,21 @@ class AO_data:
             raise ValueError
 
 
-def compute_AO(ao_data: AO_data, r_cart: list[float]) -> float | complex:
-    """Compute single AO for debugging.
+def compute_AO(ao_data: AO_data, r_cart: list[float]) -> float:
+    r"""Compute single AO for debugging.
 
     The method is for computing the value of the given atomic orbital at r_cart
     Just for testing purpose. For fast computations, use AOs_data and AOs.
 
     Args:
         ao_data (AO_data): an instance of AO_data
-        r_cart: Cartesian coordinate of an electron
+        r_cart (list[float]): Cartesian coordinate of an electron
 
     Returns:
         Value of the AO value at r_cart.
 
     Note:
-        The faster way to compute all AOs at the same time because one can avoid X-times calling \
-            np.exp and np.sphe calls.
+        The faster way to compute all AOs at the same time because one can avoid X-times calling np.exp and np.sphe calls.
 
         Atomic orbitals are given in the followng Gaussian form:
         \phi_{l+\pm |m|, \alpha}(\vec{r}) =
@@ -761,55 +688,68 @@ def compute_AO(ao_data: AO_data, r_cart: list[float]) -> float | complex:
 
 
 def compute_R_n_debug(
-    coefficient: float | complex,
+    coefficient: float,
     exponent: float,
     R_cart: list[float],
     r_cart: list[float],
-) -> float | complex:
-    """
-    Radial part of the primitive AO
+) -> float:
+    """Radial part of the primitive AO.
+
+    Compute Radial part of a primitive AO, for debugging
 
     Args:
-        atomic_center_cart (list[float]): Center of the nucleus associated to the AO.
-        coefficient (float|complex): the coefficient of the target AO.
+        coefficient (float): the coefficient of the target AO.
         exponent (float): the exponent of the target AO.
-        r_cart: Cartesian coordinate of an electron
+        R_cart (list[float]): Center of the nucleus associated to the AO.
+        r_cart (list[float]): Cartesian coordinate of an electron
 
-    Returns
-    -------
-        Value of the pure radial part.
+    Returns:
+        float: Value of the pure radial part.
     """
     return coefficient * np.exp(-1.0 * exponent * LA.norm(np.array(r_cart) - np.array(R_cart)) ** 2)
 
 
 @jit
 def compute_R_n_jax(
-    coefficient: float | complex,
+    coefficient: float,
     exponent: float,
     R_cart: npt.NDArray[np.float64],
     r_cart: npt.NDArray[np.float64],
-):
+) -> float:
+    """Radial part of a primitive AO.
+
+    Compute Radial part of a primitive AO, for debugging
+
+    Args:
+        coefficient (float): the coefficient of the target AO.
+        exponent (float): the exponent of the target AO.
+        R_cart (npt.NDArray[np.float64]): Center of the nucleus associated to the AO.
+        r_cart (npt.NDArray[np.float64]): Cartesian coordinate of an electron
+
+    Returns:
+        float: Value of the pure radial part.
+    """
     return coefficient * jnp.exp(-1.0 * exponent * jnp.linalg.norm(r_cart - R_cart) ** 2)
 
 
 def compute_S_l_m_debug(
-    atomic_center_cart: list[float],
     angular_momentum: int,
     magnetic_quantum_number: int,
+    atomic_center_cart: list[float],
     r_cart: list[float],
 ) -> float:
-    """
-    r^l * spherical hamonics part (i.e., regular solid harmonics) of the AO
+    r"""Solid harmonics part of a primitve AO.
+
+    Compute the solid harmonics, i.e., r^l * spherical hamonics part (c.f., regular solid harmonics) of a given AO
 
     Args:
-        atomic_center_cart (list[float]): Center of the nucleus associated to the AO.
         angular_momentum (int): Angular momentum of the AO, i.e., l
         magnetic_quantum_number (int): Magnetic quantum number of the AO, i.e m = -l .... +l
-        r_cart: Cartesian coordinate of an electron
+        atomic_center_cart (list[float]): Center of the nucleus associated to the AO.
+        r_cart (list[float]): Cartesian coordinate of an electron
 
-    Returns
-    -------
-        Value of the spherical harmonics part * r^l (i.e., regular solid harmonics).
+    Returns:
+        float: Value of the spherical harmonics part * r^l (i.e., regular solid harmonics).
 
     Note:
         A real basis of spherical harmonics Y_{l,m} : S^2 -> R can be defined in terms of
@@ -890,7 +830,23 @@ def compute_S_l_m_jax(
     m: int,
     R_cart: npt.NDArray[np.float64],
     r_cart: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64]:
+) -> float:
+    r"""Solid harmonics part of a primitve AO.
+
+    Compute the solid harmonics, i.e., r^l * spherical hamonics part (c.f., regular solid harmonics) of a given AO
+
+    Args:
+        angular_momentum (int): Angular momentum of the AO, i.e., l
+        magnetic_quantum_number (int): Magnetic quantum number of the AO, i.e m = -l .... +l
+        atomic_center_cart (npt.NDArray[np.float64]): Center of the nucleus associated to the AO.
+        r_cart (npt.NDArray[np.float64]): Cartesian coordinate of an electron
+
+    Returns:
+        float: Value of the spherical harmonics part * r^l (i.e., regular solid harmonics).
+
+    Note:
+        See compute_S_l_m_debug for the details.
+    """
     r_cart_rel = jnp.array(r_cart) - jnp.array(R_cart)
     x, y, z = r_cart_rel[..., 0], r_cart_rel[..., 1], r_cart_rel[..., 2]
     r_norm = jnp.sqrt(x**2 + y**2 + z**2)
@@ -1114,7 +1070,21 @@ def compute_S_l_m_jax(
 
 
 def compute_normalization_fator_debug(l: int, Z: float) -> float:
-    # return 1.0
+    """Compute the normalization factor of a primitve AO.
+
+    Compute the normalization factor of a primitve AO.
+
+    Args:
+        l (int): Angular momentum of the primitve AO
+        Z (float): The exponent of the radial part of the primitive AO
+
+    Returns:
+        float: the normalization factor fo the primitive AO
+
+    Note:
+        This normalization factor is for the (real) 'spherical' harmonics! There is another
+        normalization convention with the (regular) 'solid' harmonics!!
+    """
     N_n = np.sqrt(
         (2.0 ** (2 * l + 3) * scipy.special.factorial(l + 1) * (2 * Z) ** (l + 1.5))
         / (scipy.special.factorial(2 * l + 2) * np.sqrt(np.pi))
@@ -1124,6 +1094,21 @@ def compute_normalization_fator_debug(l: int, Z: float) -> float:
 
 @jit
 def compute_normalization_fator_jax(l: int, Z: float) -> float:
+    """Compute the normalization factor of a primitve AO.
+
+    Compute the normalization factor of a primitve AO.
+
+    Args:
+        l (int): Angular momentum of the primitve AO
+        Z (float): The exponent of the radial part of the primitive AO
+
+    Returns:
+        float: the normalization factor fo the primitive AO
+
+    Note:
+        This normalization factor is for the (real) 'spherical' harmonics! There is another
+        normalization convention with the (regular) 'solid' harmonics!!
+    """
     N_n_jnp = jnp.sqrt(
         (2.0 ** (2 * l + 3) * jscipy.special.factorial(l + 1) * (2 * Z) ** (l + 1.5))
         / (jscipy.special.factorial(2 * l + 2) * jnp.sqrt(jnp.pi))
@@ -1139,7 +1124,23 @@ def compute_primitive_AOs_jax(
     m: int,
     R_cart: npt.NDArray[np.float64],
     r_cart: npt.NDArray[np.float64],
-):
+) -> float:
+    """Compute the value of a primitve AO at the given r_cart.
+
+    Compute the value of a primitve AO at the given r_cart.
+
+    Args:
+        coefficient (float) the coefficient of the given AO
+        exponent (float): the exponent of the given AO
+        l (int): Angular momentum of the AO, i.e., l. dim: 1
+        m (int): Magnetic quantum number of the given AO, i.e m = -l .... +l. dim: 1
+        R_cart (npt.NDArray[np.float64]): Center of the nucleus associated to the AO. dim: 3
+        r_cart (npt.NDArray[np.float64]): electron position. dim: 3
+
+    Return:
+        float: the value of a primitve AO at the given r_cart.
+
+    """
     N_n_dup = compute_normalization_fator_jax(l, exponent)
     R_n_dup = compute_R_n_jax(coefficient, exponent, R_cart, r_cart)
     S_l_m_dup = compute_S_l_m_jax(l, m, R_cart, r_cart)
@@ -1155,8 +1156,23 @@ def compute_primitive_AOs_grad_jax(
     m: int,
     R_cart: npt.NDArray[np.float64],
     r_cart: npt.NDArray[np.float64],
-):
-    # """grad. Correct but slow...
+) -> tuple[jax.Array, jax.Array, jax.Array]:
+    """Compute the gradients of a primitve AO at the given r_cart.
+
+    Compute the gradients of a primitve AO at the given r_cart.
+
+    Args:
+        coefficient (float) the coefficient of the given AO
+        exponent (float): the exponent of the given AO
+        l (int): Angular momentum of the AO, i.e., l. dim: 1
+        m (int): Magnetic quantum number of the given AO, i.e m = -l .... +l. dim: 1
+        R_cart (npt.NDArray[np.float64]): Center of the nucleus associated to the AO. dim: 3
+        r_cart (npt.NDArray[np.float64]): electron position. dim: 3
+
+    Returns:
+        tuple[jax.Array, jax.Array, jax.Array]: the gradients of a primitve AO at the given r_cart.
+    """
+    # """grad. Correct but not the fastest...
     grad_x, grad_y, grad_z = grad(compute_primitive_AOs_jax, argnums=5)(coefficient, exponent, l, m, R_cart, r_cart)
     # """
 
@@ -1197,8 +1213,23 @@ def compute_primitive_AOs_laplacians_jax(
     m: int,
     R_cart: npt.NDArray[np.float64],
     r_cart: npt.NDArray[np.float64],
-):
-    # """jacrev(grad). Correct but slow...
+) -> float:
+    """Compute the laplacian of a primitve AO at the given r_cart.
+
+    Compute the laplacian of a primitve AO at the given r_cart.
+
+    Args:
+        coefficient (float) the coefficient of the given AO
+        exponent (float): the exponent of the given AO
+        l (int): Angular momentum of the AO, i.e., l. dim: 1
+        m (int): Magnetic quantum number of the given AO, i.e m = -l .... +l. dim: 1
+        R_cart (npt.NDArray[np.float64]): Center of the nucleus associated to the AO. dim: 3
+        r_cart (npt.NDArray[np.float64]): electron position. dim: 3
+
+    Returns:
+        float: the laplacian of the given primitve AO at the given r_cart.
+    """
+    # """jacrev(grad). Correct but not the fastest...
     laplacians = jnp.sum(
         jnp.diag(jacrev(grad(compute_primitive_AOs_jax, argnums=5), argnums=5)(coefficient, exponent, l, m, R_cart, r_cart))
     )
@@ -1260,10 +1291,19 @@ if __name__ == "__main__":
     angular_momentums = [0, 0, 0]
     magnetic_quantum_numbers = [0, 0, 0]
 
-    aos_data = AOs_data_debug(
+    structure_data = Structure_data(
+        pbc_flag=[False, False, False],
+        positions=R_carts,
+        atomic_numbers=[0] * num_R_cart_samples,
+        element_symbols=["X"] * num_R_cart_samples,
+        atomic_labels=["X"] * num_R_cart_samples,
+    )
+
+    aos_data = AOs_data(
+        structure_data=structure_data,
+        nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
-        atomic_center_carts=R_carts,
         orbital_indices=orbital_indices,
         exponents=exponents,
         coefficients=coefficients,
@@ -1292,4 +1332,5 @@ if __name__ == "__main__":
 
     ao_matrix_laplacian_auto = compute_AOs_laplacian_api(aos_data=aos_data, r_carts=r_carts)
 
+    np.testing.assert_array_almost_equal(ao_matrix_laplacian_auto, ao_matrix_laplacian_numerical, decimal=5)
     np.testing.assert_array_almost_equal(ao_matrix_laplacian_auto, ao_matrix_laplacian_numerical, decimal=5)
