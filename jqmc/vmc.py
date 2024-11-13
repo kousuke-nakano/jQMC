@@ -273,9 +273,7 @@ class MCMC:
         nbra = 16
 
         # MAIN MCMC loop from here !!!
-        logger.info(
-            f"  Current MCMC step = {self.__mcmc_counter}/{num_mcmc_steps+self.__mcmc_counter}: {0.0:.0f} %."
-        )
+        logger.info(f"  Current MCMC step = {self.__mcmc_counter}/{num_mcmc_steps+self.__mcmc_counter}: {0.0:.0f} %.")
         mcmc_interval = int(num_mcmc_steps / 10)  # %
 
         # timer_counter
@@ -289,11 +287,7 @@ class MCMC:
 
         for i_mcmc_step in range(num_mcmc_steps):
             if (i_mcmc_step + 1) % mcmc_interval == 0:
-                progress = (
-                    (i_mcmc_step + 1 + self.__mcmc_counter)
-                    / (num_mcmc_steps + self.__mcmc_counter)
-                    * 100.0
-                )
+                progress = (i_mcmc_step + 1 + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
                 logger.info(
                     f"  Current MCMC step = {i_mcmc_step+1+self.__mcmc_counter}/{num_mcmc_steps+self.__mcmc_counter}: {progress:.1f} %."
                 )
@@ -302,9 +296,9 @@ class MCMC:
             total_electrons = len(self.__latest_r_up_carts) + len(self.__latest_r_dn_carts)
 
             if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
-                charges = np.array(
-                    self.__hamiltonian_data.structure_data.atomic_numbers
-                ) - np.array(self.__hamiltonian_data.coulomb_potential_data.z_cores)
+                charges = np.array(self.__hamiltonian_data.structure_data.atomic_numbers) - np.array(
+                    self.__hamiltonian_data.coulomb_potential_data.z_cores
+                )
             else:
                 charges = np.array(self.__hamiltonian_data.structure_data.atomic_numbers)
 
@@ -326,9 +320,7 @@ class MCMC:
                     selected_electron_index = random.randint(0, len(self.__latest_r_dn_carts) - 1)
                     old_r_cart = self.__latest_r_dn_carts[selected_electron_index]
 
-                nearest_atom_index = find_nearest_index(
-                    self.__hamiltonian_data.structure_data, old_r_cart
-                )
+                nearest_atom_index = find_nearest_index(self.__hamiltonian_data.structure_data, old_r_cart)
 
                 R_cart = coords[nearest_atom_index]
                 Z = charges[nearest_atom_index]
@@ -356,9 +348,7 @@ class MCMC:
                     proposed_r_dn_carts = self.__latest_r_dn_carts.copy()
                     proposed_r_dn_carts[selected_electron_index] = new_r_cart
 
-                nearest_atom_index = find_nearest_index(
-                    self.__hamiltonian_data.structure_data, new_r_cart
-                )
+                nearest_atom_index = find_nearest_index(self.__hamiltonian_data.structure_data, new_r_cart)
 
                 R_cart = coords[nearest_atom_index]
                 Z = charges[nearest_atom_index]
@@ -368,18 +358,13 @@ class MCMC:
                 logger.devel(f"norm_r_R = {norm_r_R}")
                 logger.devel(f"f_prime_l  = {f_prime_l }")
 
-                logger.devel(
-                    f"The selected electron is {selected_electron_index+1}-th {selected_electron_spin} electron."
-                )
+                logger.devel(f"The selected electron is {selected_electron_index+1}-th {selected_electron_spin} electron.")
                 logger.devel(f"The selected electron position is {old_r_cart}.")
                 logger.devel(f"The proposed electron position is {new_r_cart}.")
 
                 T_ratio = (f_l / f_prime_l) * np.exp(
                     -(np.linalg.norm(new_r_cart - old_r_cart) ** 2)
-                    * (
-                        1.0 / (2.0 * f_prime_l**2 * self.__Dt**2)
-                        - 1.0 / (2.0 * f_l**2 * self.__Dt**2)
-                    )
+                    * (1.0 / (2.0 * f_prime_l**2 * self.__Dt**2) - 1.0 / (2.0 * f_l**2 * self.__Dt**2))
                 )
 
                 R_ratio = (
@@ -428,9 +413,7 @@ class MCMC:
             if self.__comput_position_deriv:
                 # """
                 start = time.perf_counter()
-                grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = grad(
-                    compute_local_energy, argnums=(0, 1, 2)
-                )(
+                grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = grad(compute_local_energy, argnums=(0, 1, 2))(
                     self.__hamiltonian_data,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
@@ -448,7 +431,9 @@ class MCMC:
                 )
 
                 if jastrow_data.jastrow_three_body_flag:
-                    grad_e_L_R += grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
+                    grad_e_L_R += (
+                        grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
+                    )
 
                 self.__stored_grad_e_L_dR.append(grad_e_L_R)
                 # """
@@ -457,9 +442,7 @@ class MCMC:
                 logger.devel(
                     f"de_L_dR(AOs_data_up) = {grad_e_L_h.wavefunction_data.geminal_data.orb_data.aos_data.structure_data.positions}"
                 )
-                logger.devel(
-                    f"de_L_dR(coulomb_potential_data) = {grad_e_L_h.coulomb_potential_data.structure_data.positions}"
-                )
+                logger.devel(f"de_L_dR(coulomb_potential_data) = {grad_e_L_h.coulomb_potential_data.structure_data.positions}")
                 logger.devel(f"de_L_dR = {grad_e_L_R}")
                 logger.devel(f"de_L_dr_up = {grad_e_L_r_up}")
                 logger.devel(f"de_L_dr_dn= {grad_e_L_r_dn}")
@@ -479,9 +462,7 @@ class MCMC:
 
                 # """
                 start = time.perf_counter()
-                grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = grad(
-                    evaluate_ln_wavefunction_api, argnums=(0, 1, 2)
-                )(
+                grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = grad(evaluate_ln_wavefunction_api, argnums=(0, 1, 2))(
                     self.__hamiltonian_data.wavefunction_data,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
@@ -550,45 +531,29 @@ class MCMC:
                 timer_dln_Psi_dc_jas1b2b3b += end - start
 
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag:
-                    grad_ln_Psi_jas2b = (
-                        grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
-                    )
+                    grad_ln_Psi_jas2b = grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
                     logger.devel(f"grad_ln_Psi_jas2b = {grad_ln_Psi_jas2b}")
                     self.__stored_grad_ln_Psi_jas2b.append(grad_ln_Psi_jas2b)
 
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
-                    grad_ln_Psi_jas1b3b_j_matrix = (
-                        grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix
-                    )
+                    grad_ln_Psi_jas1b3b_j_matrix = grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix
                     logger.devel(f"grad_ln_Psi_jas1b3b_j_matrix = {grad_ln_Psi_jas1b3b_j_matrix}")
                     self.__stored_grad_ln_Psi_jas1b3b_j_matrix.append(grad_ln_Psi_jas1b3b_j_matrix)
 
         mcmc_total_end = time.perf_counter()
         timer_mcmc_total = mcmc_total_end - mcmc_total_start
         timer_others = timer_mcmc_total - (
-            timer_mcmc_updated
-            + timer_e_L
-            + timer_de_L_dR_dr
-            + timer_dln_Psi_dR_dr
-            + timer_dln_Psi_dc_jas1b2b3b
+            timer_mcmc_updated + timer_e_L + timer_de_L_dR_dr + timer_dln_Psi_dR_dr + timer_dln_Psi_dc_jas1b2b3b
         )
 
         self.__mcmc_counter += num_mcmc_steps
         logger.info(f"Acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
-        logger.info(
-            f"Total Elapsed time for MCMC {num_mcmc_steps} steps. = {timer_mcmc_total:.2f} msec."
-        )
+        logger.info(f"Total Elapsed time for MCMC {num_mcmc_steps} steps. = {timer_mcmc_total:.2f} msec.")
         logger.info(f"Elapsed times per MCMC step, averaged over {num_mcmc_steps} steps.")
-        logger.info(
-            f"  Time for MCMC updated = {timer_mcmc_updated/num_mcmc_steps*100.0:.2f} msec."
-        )
+        logger.info(f"  Time for MCMC updated = {timer_mcmc_updated/num_mcmc_steps*100.0:.2f} msec.")
         logger.info(f"  Time for computing e_L = {timer_e_L/num_mcmc_steps*100.0:.2f} msec.")
-        logger.info(
-            f"  Time for computing de_L/dR and de_L/dr = {timer_de_L_dR_dr/num_mcmc_steps*100.0:.2f} msec."
-        )
-        logger.info(
-            f"  Time for computing dln_Psi/dR and dln_Psi/dr = {timer_dln_Psi_dR_dr/num_mcmc_steps*100.0:.2f} msec."
-        )
+        logger.info(f"  Time for computing de_L/dR and de_L/dr = {timer_de_L_dR_dr/num_mcmc_steps*100.0:.2f} msec.")
+        logger.info(f"  Time for computing dln_Psi/dR and dln_Psi/dr = {timer_dln_Psi_dR_dr/num_mcmc_steps*100.0:.2f} msec.")
         logger.info(
             f"  Time for computing dln_Psi/dc (jastrow 1b2b3b) = {timer_dln_Psi_dc_jas1b2b3b/num_mcmc_steps*100.0:.2f} msec."
         )
@@ -765,18 +730,14 @@ class VMC:
                 log.setLevel("INFO")
                 stream_handler = StreamHandler()
                 stream_handler.setLevel("INFO")
-                handler_format = Formatter(
-                    f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s"
-                )
+                handler_format = Formatter(f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
                 stream_handler.setFormatter(handler_format)
                 log.addHandler(stream_handler)
         else:
             log.setLevel(logger_level)
             stream_handler = StreamHandler()
             stream_handler.setLevel(logger_level)
-            handler_format = Formatter(
-                f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s"
-            )
+            handler_format = Formatter(f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
             stream_handler.setFormatter(handler_format)
             log.addHandler(stream_handler)
 
@@ -814,9 +775,7 @@ class VMC:
         # Place electrons around each nucleus
         for i in range(len(coords)):
             charge = charges[i]
-            num_electrons = int(
-                np.round(charge)
-            )  # Number of electrons to place based on the charge
+            num_electrons = int(np.round(charge))  # Number of electrons to place based on the charge
 
             # Retrieve the position coordinates
             x, y, z = coords[i]
@@ -882,7 +841,14 @@ class VMC:
         self,
         num_mcmc_steps=100,
         num_opt_steps=1,
+        wf_dump_freq=10,
     ):
+        # dump WF before opt.
+        if rank == 0:
+            logger.info("Hamiltonian data is dumped as a checkpoint file before optimization.")
+            self.__mcmc.hamiltonian_data.dump("hamiltonian_data_opt_0.chk")
+
+        # main vmcopt loop
         for i_opt in range(num_opt_steps):
             logger.info(f"i_opt={i_opt+1}/{num_opt_steps}.")
 
@@ -893,9 +859,7 @@ class VMC:
                 logger.info(f"Optimize Jastrow 1b2b3b={self.__comput_jas_param_deriv}")
 
             logger.debug(f"twobody param before opt.")
-            logger.debug(
-                self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
-            )
+            logger.debug(self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param)
 
             # run MCMC
             self.__mcmc.run(num_mcmc_steps=num_mcmc_steps)
@@ -910,9 +874,7 @@ class VMC:
             if rank == 0:
                 signal_to_noise_f = np.abs(f) / f_std
                 logger.info(f"Max |f| = {np.max(np.abs(f)):.3f} Ha/a.u.")
-                logger.info(
-                    f"Max of signal to noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}."
-                )
+                logger.info(f"Max of signal to noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}.")
 
             if rank == 0:
                 var_epsilon = 1.0e-3
@@ -943,17 +905,15 @@ class VMC:
 
             opt_param_list = self.__mcmc.opt_param_dict["opt_param_list"]
             dln_Psi_dc_shape_list = self.__mcmc.opt_param_dict["dln_Psi_dc_shape_list"]
-            dln_Psi_dc_flattened_index_list = self.__mcmc.opt_param_dict[
-                "dln_Psi_dc_flattened_index_list"
-            ]
+            dln_Psi_dc_flattened_index_list = self.__mcmc.opt_param_dict["dln_Psi_dc_flattened_index_list"]
 
             delta = 0.01
 
-            jastrow_2b_param = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
-            jastrow_two_body_pade_flag = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag
-            jastrow_three_body_flag = (
-                self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag
+            jastrow_2b_param = (
+                self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
             )
+            jastrow_two_body_pade_flag = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag
+            jastrow_three_body_flag = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag
             aos_data = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data
             j_matrix = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix
 
@@ -982,9 +942,7 @@ class VMC:
                 jastrow_two_body_pade_flag=jastrow_two_body_pade_flag,
                 jastrow_three_body_flag=jastrow_three_body_flag,
             )
-            wavefunction_data = Wavefunction_data(
-                geminal_data=geminal_data, jastrow_data=jastrow_data
-            )
+            wavefunction_data = Wavefunction_data(geminal_data=geminal_data, jastrow_data=jastrow_data)
             hamiltonian_data = Hamiltonian_data(
                 structure_data=structure_data,
                 wavefunction_data=wavefunction_data,
@@ -993,6 +951,12 @@ class VMC:
 
             logger.info("WF updated")
             self.__mcmc.hamiltonian_data = hamiltonian_data
+
+            # dump WF
+            if rank == 0:
+                if i_opt % wf_dump_freq == 0 or i_opt == num_opt_steps - 1:
+                    logger.info("Hamiltonian data is dumped as a checkpoint file.")
+                    self.__mcmc.hamiltonian_data.dump(f"hamiltonian_data_opt_{i_opt+1}.chk")
 
     def get_deriv_ln_WF(self):
         opt_param_dict = self.__mcmc.opt_param_dict
@@ -1021,9 +985,7 @@ class VMC:
         e_L_binned = comm.reduce(e_L_binned, op=MPI.SUM, root=0)
 
         if rank == 0:
-            logger.debug(
-                f"[before reduce] len(e_L_binned) for MPI-rank={rank} is {len(e_L_binned)}"
-            )
+            logger.debug(f"[before reduce] len(e_L_binned) for MPI-rank={rank} is {len(e_L_binned)}")
 
         O_matrix = self.get_deriv_ln_WF()
         O_matrix_split = np.array_split(O_matrix, self.__num_mcmc_bin_blocks)
@@ -1034,9 +996,7 @@ class VMC:
         O_matrix_binned = comm.reduce(O_matrix_binned, op=MPI.SUM, root=0)
 
         if rank == 0:
-            logger.debug(
-                f"[after reduce] O_matrix_binned.shape = {np.array(O_matrix_binned).shape}"
-            )
+            logger.debug(f"[after reduce] O_matrix_binned.shape = {np.array(O_matrix_binned).shape}")
 
             e_L_binned = np.array(e_L_binned)
             O_matrix_binned = np.array(O_matrix_binned)
@@ -1047,13 +1007,7 @@ class VMC:
 
             M = self.__num_mcmc_bin_blocks * comm.size
 
-            eL_O_jn = (
-                1.0
-                / (M - 1)
-                * np.array(
-                    [np.sum(eL_O_matrix_binned, axis=0) - eL_O_matrix_binned[j] for j in range(M)]
-                )
-            )
+            eL_O_jn = 1.0 / (M - 1) * np.array([np.sum(eL_O_matrix_binned, axis=0) - eL_O_matrix_binned[j] for j in range(M)])
 
             logger.debug(f"eL_O_jn.shape = {eL_O_jn.shape}")
 
@@ -1061,11 +1015,7 @@ class VMC:
 
             logger.debug(f"eL_jn.shape = {eL_jn.shape}")
 
-            O_jn = (
-                1.0
-                / (M - 1)
-                * np.array([np.sum(O_matrix_binned, axis=0) - O_matrix_binned[j] for j in range(M)])
-            )
+            O_jn = 1.0 / (M - 1) * np.array([np.sum(O_matrix_binned, axis=0) - O_matrix_binned[j] for j in range(M)])
 
             logger.debug(f"O_jn.shape = {O_jn.shape}")
 
@@ -1135,15 +1085,11 @@ class VMC:
         e_L_binned = comm.reduce(e_L_binned, op=MPI.SUM, root=0)
 
         if rank == 0:
-            logger.debug(
-                f"[after reduce] len(e_L_binned) for MPI-rank={rank} is {len(e_L_binned)}."
-            )
+            logger.debug(f"[after reduce] len(e_L_binned) for MPI-rank={rank} is {len(e_L_binned)}.")
             logger.devel(f"e_L_binned = {e_L_binned}.")
             # jackknife implementation
             # https://www2.yukawa.kyoto-u.ac.jp/~etsuko.itou/old-HP/Notes/Jackknife-method.pdf
-            e_L_jackknife_binned = [
-                np.average(np.delete(e_L_binned, i)) for i in range(len(e_L_binned))
-            ]
+            e_L_jackknife_binned = [np.average(np.delete(e_L_binned, i)) for i in range(len(e_L_binned))]
 
             logger.debug(f"len(e_L_jackknife_binned)  = {len(e_L_jackknife_binned)}.")
 
@@ -1180,9 +1126,7 @@ class VMC:
             domega_dr_dn = np.array(self.__mcmc.domega_dr_dn[self.__num_mcmc_warmup_steps :])
 
             force_HF = (
-                de_L_dR
-                + np.einsum("ijk,ikl->ijl", omega_up, de_L_dr_up)
-                + np.einsum("ijk,ikl->ijl", omega_dn, de_L_dr_dn)
+                de_L_dR + np.einsum("ijk,ikl->ijl", omega_up, de_L_dr_up) + np.einsum("ijk,ikl->ijl", omega_dn, de_L_dr_dn)
             )
 
             force_PP = (
@@ -1223,17 +1167,12 @@ class VMC:
                 logger.info(f"e_L_binned.shape for MPI-rank={rank} is {e_L_binned.shape}")
                 logger.info(f"force_HF_binned.shape for MPI-rank={rank} is {force_HF_binned.shape}")
                 logger.info(f"force_PP_binned.shape for MPI-rank={rank} is {force_PP_binned.shape}")
-                logger.info(
-                    f"E_L_force_PP_binned.shape for MPI-rank={rank} is {E_L_force_PP_binned.shape}"
-                )
+                logger.info(f"E_L_force_PP_binned.shape for MPI-rank={rank} is {E_L_force_PP_binned.shape}")
 
                 M = self.__num_mcmc_bin_blocks * comm.size
 
                 force_HF_jn = np.array(
-                    [
-                        -1.0 / (M - 1) * (np.sum(force_HF_binned, axis=0) - force_HF_binned[j])
-                        for j in range(M)
-                    ]
+                    [-1.0 / (M - 1) * (np.sum(force_HF_binned, axis=0) - force_HF_binned[j]) for j in range(M)]
                 )
 
                 force_Pulay_jn = np.array(
@@ -1286,11 +1225,7 @@ if __name__ == "__main__":
         mos_data_dn,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(
-        trexio_file=os.path.join(
-            os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"
-        )
-    )
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"))
     # """
 
     """
@@ -1437,7 +1372,7 @@ if __name__ == "__main__":
     # vmc.run_single_shot(num_mcmc_steps=50)
     # vmc.get_e_L()
     # vmc.get_atomic_forces()
-    vmc.run_optimize(num_mcmc_steps=500, num_opt_steps=50)
+    vmc.run_optimize(num_mcmc_steps=500, num_opt_steps=50, wf_dump_freq=1)
     # vmc.get_generalized_forces(mpi_broadcast=False)
     # vmc.get_stochastic_matrix(mpi_broadcast=False)
     # vmc.get_stochastic_matrix(mpi_broadcast=False)

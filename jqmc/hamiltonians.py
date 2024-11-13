@@ -34,9 +34,12 @@
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
+import pickle
+
 # python modules
 import time
 from logging import Formatter, StreamHandler, getLogger
+from typing import Self
 
 # JAX
 import jax
@@ -100,6 +103,28 @@ class Hamiltonian_data:
             To be implemented.
         """
         pass
+
+    def dump(self, filepath="jqmc.chk") -> None:
+        """_dump Hamiltonian data as a binary file.
+
+        Args:
+            filepath (str, optional): file path
+        """
+        with open(filepath, "wb") as f:
+            pickle.dump(self, f)
+
+    @staticmethod
+    def load(filepath="jqmc.chk") -> Self:
+        """Read Hamiltonian data from a binary file.
+
+        Args:
+            filepath (str, optional): file path
+
+        Returns:
+            Hamiltonian_data: An instance of Hamiltonian_data.
+        """
+        with open(filepath, "rb") as f:
+            return pickle.load(f)
 
 
 def compute_local_energy(
