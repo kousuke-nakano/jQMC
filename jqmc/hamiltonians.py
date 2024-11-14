@@ -39,7 +39,6 @@ import pickle
 # python modules
 import time
 from logging import Formatter, StreamHandler, getLogger
-from typing import Self
 
 # JAX
 import jax
@@ -114,7 +113,7 @@ class Hamiltonian_data:
             pickle.dump(self, f)
 
     @staticmethod
-    def load(filepath="jqmc.chk") -> Self:
+    def load(filepath="jqmc.chk") -> "Hamiltonian_data":
         """Read Hamiltonian data from a binary file.
 
         Args:
