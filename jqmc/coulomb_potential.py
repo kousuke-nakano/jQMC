@@ -470,7 +470,6 @@ def compute_ecp_coulomb_potential_jax(
     """Compute ecp local and non-local parts.
 
     The method is for computing the local and non-local part of the given ECPs at (r_up_carts, r_dn_carts).
-    A very straightforward (so very slow) implementation. Just for debudding purpose.
 
     Args:
         coulomb_potential_data (Coulomb_potential_data): an instance of Coulomb_potential_data
@@ -935,7 +934,7 @@ def compute_coulomb_potential_api(
 
     Args:
         coulomb_potential_data (Coulomb_potential_data):
-            an instance of Bare_coulomb_potential_data
+            an instance of Coulomb_potential_data
         r_up_carts (npt.NDArray[np.float64]):
             Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]):
