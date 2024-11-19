@@ -202,6 +202,152 @@ class Coulomb_potential_data:
         else:
             return np.array(self.structure_data.atomic_numbers)
 
+    @property
+    def ang_mom_local_part(self) -> npt.NDArray:
+        """ang_mom_local_part.
+
+        Return angular momentum of the local part (i.e., = max_ang_mom_plus1)
+
+        Return:
+            npt.NDAarray: momentum of the local part (effective charge)
+        """
+        return np.array(self.max_ang_mom_plus_1)
+
+    @property
+    def ang_mom_non_local_part(self) -> npt.NDArray:
+        """ang_mom_non_local_part.
+
+        Return angular momentum of the non_local part (i.e., = max_ang_mom_plus1)
+
+        Return:
+            npt.NDAarray: momentum of the non_local part (effective charge)
+        """
+        return np.array(self.ang_moms[self.non_local_part_index])
+
+    @property
+    def local_part_index(self) -> npt.NDArray:
+        """local_part_index.
+
+        Return a list containing index of the local part
+
+        Return:
+            npt.NDAarray: a list containing index of the local part
+        """
+        local_part_index = np.array(
+            [
+                i
+                for i, v in enumerate(self.nucleus_index)
+                if v in range(self.structure_data.natom) and self.ang_moms[i] == self.max_ang_mom_plus_1[v]
+            ]
+        )
+        return local_part_index
+
+    @property
+    def non_local_part_index(self) -> npt.NDArray:
+        """non_local_part_index.
+
+        Return a list containing index of the non-local part
+
+        Return:
+            npt.NDAarray: a list containing index of the non-local part
+        """
+        non_local_part_index = np.array(
+            [
+                i
+                for i, v in enumerate(self.nucleus_index)
+                if v in range(self.structure_data.natom) and self.ang_moms[i] != self.max_ang_mom_plus_1[v]
+            ]
+        )
+        return non_local_part_index
+
+    @property
+    def nucleus_index_local_part(self) -> npt.NDArray:
+        """nucleus_index local_part.
+
+        Return a list containing nucleus_index of the local part
+
+        Return:
+            npt.NDAarray: a list containing nucleus_index of the local part
+        """
+        return np.array(self.nucleus_index)[self.local_part_index]
+
+    @property
+    def nucleus_index_non_local_part(self) -> npt.NDArray:
+        """nucleus_index non_local_part.
+
+        Return a list containing nucleus_index of the non-local part
+
+        Return:
+            npt.NDAarray: a list containing nucleus_index of the non-local part
+        """
+        return np.array(self.nucleus_index)[self.non_local_part_index]
+
+    @property
+    def exponents_local_part(self) -> npt.NDArray:
+        """Exponents local_part.
+
+        Return a list containing exponents of the local part
+
+        Return:
+            npt.NDAarray: a list containing exponents of the local part
+        """
+        return np.array(self.exponents)[self.local_part_index]
+
+    @property
+    def exponents_non_local_part(self) -> npt.NDArray:
+        """Exponents non_local_part.
+
+        Return a list containing exponents of the non-local part
+
+        Return:
+            npt.NDAarray: a list containing exponents of the non-local part
+        """
+        return np.array(self.exponents)[self.non_local_part_index]
+
+    @property
+    def coefficients_local_part(self) -> npt.NDArray:
+        """Coefficients local_part.
+
+        Return a list containing coefficients of the local part
+
+        Return:
+            npt.NDAarray: a list containing coefficients of the local part
+        """
+        return np.array(self.coefficients)[self.local_part_index]
+
+    @property
+    def coefficients_non_local_part(self) -> npt.NDArray:
+        """Coefficients non_local_part.
+
+        Return a list containing coefficients of the non-local part
+
+        Return:
+            npt.NDAarray: a list containing coefficients of the non-local part
+        """
+        return np.array(self.coefficients)[self.non_local_part_index]
+
+    @property
+    def powers_local_part(self) -> npt.NDArray:
+        """Powers local_part.
+
+        Return a list containing powers of the local part
+
+        Return:
+            npt.NDAarray: a list containing powers of the local part
+        """
+        return np.array(self.powers)[self.local_part_index]
+
+    @property
+    def powers_non_local_part(self) -> npt.NDArray:
+        """Powers non_local_part.
+
+        Return a list containing powers of the non-local part
+
+        Return:
+            npt.NDAarray: a list containing powers of the non-local part
+        """
+        return np.array(self.powers)[self.non_local_part_index]
+
 
 def compute_ecp_coulomb_potential_api(
     coulomb_potential_data: Coulomb_potential_data,
@@ -256,7 +402,6 @@ def compute_ecp_local_parts_debug(
         exponents = [coulomb_potential_data.exponents[i] for i in nucleus_indices]
         coefficients = [coulomb_potential_data.coefficients[i] for i in nucleus_indices]
         powers = [coulomb_potential_data.powers[i] for i in nucleus_indices]
-
         ang_mom_indices = [i for i, v in enumerate(ang_moms) if v == max_ang_mom_plus_1]
         exponents = [exponents[i] for i in ang_mom_indices]
         coefficients = [coefficients[i] for i in ang_mom_indices]
@@ -289,7 +434,7 @@ def compute_ecp_local_parts_debug(
     return V_local
 
 
-def compute_ecp_nonlocal_parts_debug(
+def compute_ecp_non_local_parts_debug(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -309,7 +454,9 @@ def compute_ecp_nonlocal_parts_debug(
         Nv (int): The number of quadrature points for the spherical part.
 
     Returns:
-        float: The sum of non-local part of the given ECPs with r_up_carts and r_dn_carts.
+        list[(np.NDArray, np.NDArray)]: The list of grids on which the non-local part is computed.
+        list[float]: The list of non-local part of the given ECPs with r_up_carts and r_dn_carts.
+        float: sum of the V_nonlocal
     """
     if Nv == 4:
         weights = tetrahedron_sym_mesh_Nv4.weights
@@ -323,7 +470,9 @@ def compute_ecp_nonlocal_parts_debug(
     else:
         raise NotImplementedError
 
-    V_nonlocal = 0.0
+    mesh_non_local_ecp_part = []
+    V_nonlocal = []
+    sum_V_nonlocal = 0.0
 
     wf_denominator = evaluate_wavefunction_api(
         wavefunction_data=wavefunction_data,
@@ -380,7 +529,10 @@ def compute_ecp_nonlocal_parts_debug(
                     wf_ratio = wf_numerator / wf_denominator
 
                     P_l = (2 * ang_mom + 1) * eval_legendre(ang_mom, cos_theta) * weight * wf_ratio
-                    V_nonlocal += V_l * P_l
+
+                    mesh_non_local_ecp_part.append((r_up_carts_on_mesh, r_dn_carts))
+                    V_nonlocal.append(V_l * P_l)
+                    sum_V_nonlocal += V_l * P_l
 
             # dn electrons
             for r_dn_i, r_dn_cart in enumerate(r_dn_carts):
@@ -416,9 +568,11 @@ def compute_ecp_nonlocal_parts_debug(
                     wf_ratio = wf_numerator / wf_denominator
 
                     P_l = (2 * ang_mom + 1) * eval_legendre(ang_mom, cos_theta) * weight * wf_ratio
-                    V_nonlocal += V_l * P_l
+                    mesh_non_local_ecp_part.append((r_up_carts, r_dn_carts_on_mesh))
+                    V_nonlocal.append(V_l * P_l)
+                    sum_V_nonlocal += V_l * P_l
 
-    return V_nonlocal
+    return mesh_non_local_ecp_part, V_nonlocal, sum_V_nonlocal
 
 
 def compute_ecp_coulomb_potential_debug(
@@ -441,13 +595,15 @@ def compute_ecp_coulomb_potential_debug(
         Nv (int): The number of quadrature points for the spherical part.
 
     Returns:
-        float: The sum of local and non-local part of the given ECPs with r_up_carts and r_dn_carts.
+        list[(np.NDArray, np.NDArray)]: The list of grids on which the non-local part is computed.
+        list[float]: The list of non-local part of the given ECPs with r_up_carts and r_dn_carts.
+        float: The sum of non-local part of the given ECPs with r_up_carts and r_dn_carts.
     """
     ecp_local_parts = compute_ecp_local_parts_debug(
         coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
-    ecp_nonlocal_parts = compute_ecp_nonlocal_parts_debug(
+    _, _, ecp_nonlocal_parts = compute_ecp_non_local_parts_debug(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         r_up_carts=r_up_carts,
@@ -460,7 +616,427 @@ def compute_ecp_coulomb_potential_debug(
     return V_ecp
 
 
+@jit
+def compute_ecp_local_parts_jax(
+    coulomb_potential_data: Coulomb_potential_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+) -> float:
+    """Compute ecp local parts.
+
+    The method is for computing the local part of the given ECPs at (r_up_carts, r_dn_carts).
+    A much faster implementation using JAX.
+
+    Args:
+        coulomb_potential_data (Coulomb_potential_data): an instance of Coulomb_potential_data
+        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
+        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+
+    Returns:
+        float: The sum of local part of the given ECPs with r_up_carts and r_dn_carts.
+    """
+
+    # Compute the local part. To understand the flow, please refer to the debug version.
+    # @jit
+    def compute_V_l(r_cart, i_atom, exponent, coefficient, power):
+        rel_R_cart_min_dist = get_min_dist_rel_R_cart_jnp(
+            structure_data=coulomb_potential_data.structure_data,
+            r_cart=r_cart,
+            i_atom=i_atom,
+        )
+        V_l = (
+            jnp.linalg.norm(rel_R_cart_min_dist) ** -2.0
+            * coefficient
+            * jnp.linalg.norm(rel_R_cart_min_dist) ** power
+            * jnp.exp(-exponent * (jnp.linalg.norm(rel_R_cart_min_dist) ** 2))
+        )
+
+        return V_l
+
+    # Compute the local part V_l for a up electron.
+    # This is activate when the given ang_mom == max_ang_mom_plus_1
+    # i.e. the projection is not needed for the highest angular momentum
+    # To understand the flow, please refer to the debug version.
+    # @jit
+    def compute_V_local(
+        r_cart,
+        i_atom,
+        exponent,
+        coefficient,
+        power,
+    ):
+        V_l = compute_V_l(r_cart, i_atom, exponent, coefficient, power)
+        return V_l
+
+    # vectrize compute_ecp_up and compute_ecp_dn
+    vmap_vmap_compute_ecp_up = vmap(
+        vmap(
+            compute_V_local,
+            in_axes=(0, None, None, None, None),
+        ),
+        in_axes=(None, 0, 0, 0, 0),
+    )
+    vmap_vmap_compute_ecp_dn = vmap(
+        vmap(
+            compute_V_local,
+            in_axes=(0, None, None, None, None),
+        ),
+        in_axes=(None, 0, 0, 0, 0),
+    )
+
+    # Vectrized (flatten) arguments are prepared here.
+    r_up_carts_jnp = jnp.array(r_up_carts)
+    r_dn_carts_jnp = jnp.array(r_dn_carts)
+
+    i_atom_np = np.array(coulomb_potential_data.nucleus_index_local_part)
+    exponent_np = np.array(coulomb_potential_data.exponents_local_part)
+    coefficient_np = np.array(coulomb_potential_data.coefficients_local_part)
+    power_np = np.array(coulomb_potential_data.powers_local_part)
+
+    V_ecp_up = jnp.sum(
+        vmap_vmap_compute_ecp_up(
+            r_up_carts_jnp,
+            i_atom_np,
+            exponent_np,
+            coefficient_np,
+            power_np,
+        )
+    )
+
+    V_ecp_dn = jnp.sum(
+        vmap_vmap_compute_ecp_dn(
+            r_dn_carts_jnp,
+            i_atom_np,
+            exponent_np,
+            coefficient_np,
+            power_np,
+        )
+    )
+
+    V_ecp = V_ecp_up + V_ecp_dn
+
+    return V_ecp
+
+
+def compute_ecp_non_local_parts_jax(
+    coulomb_potential_data: Coulomb_potential_data,
+    wavefunction_data: Wavefunction_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+    Nv: int = 6,
+) -> float:
+    """Compute ecp non-local parts using JAX.
+
+    The method is for computing the non-local part of the given ECPs at (r_up_carts, r_dn_carts).
+
+    Args:
+        coulomb_potential_data (Coulomb_potential_data): an instance of Coulomb_potential_data
+        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
+        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
+        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        Nv (int): The number of quadrature points for the spherical part.
+
+    Returns:
+        list[(np.NDArray, np.NDArray)]: The list of grids on which the non-local part is computed.
+        list[float]: The list of non-local part of the given ECPs with r_up_carts and r_dn_carts.
+        float: The sum of non-local part of the given ECPs with r_up_carts and r_dn_carts.
+    """
+    if Nv == 4:
+        weights = tetrahedron_sym_mesh_Nv4.weights
+        grid_points = tetrahedron_sym_mesh_Nv4.grid_points
+    elif Nv == 6:
+        weights = octahedron_sym_mesh_Nv6.weights
+        grid_points = octahedron_sym_mesh_Nv6.grid_points
+    elif Nv == 18:
+        weights = octahedron_sym_mesh_Nv18.weights
+        grid_points = octahedron_sym_mesh_Nv18.grid_points
+    else:
+        raise NotImplementedError
+
+    r_up_carts_on_mesh, r_dn_carts_on_mesh, V_ecp_up, V_ecp_dn, sum_V_nonlocal = (
+        compute_ecp_non_local_part_jax_weights_grid_points(
+            coulomb_potential_data=coulomb_potential_data,
+            wavefunction_data=wavefunction_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+            weights=weights,
+            grid_points=grid_points,
+        )
+    )
+
+    print(f"r_up_carts_on_mesh.shape={r_up_carts_on_mesh.shape}")
+    print(f"r_dn_carts_on_mesh.shape={r_dn_carts_on_mesh.shape}")
+    print(f"V_ecp_up.shape={V_ecp_up.shape}")
+    print(f"V_ecp_dn.shape={V_ecp_dn.shape}")
+
+    print(f"r_up_carts_on_mesh[0]={r_up_carts_on_mesh[0]}")
+    print(f"r_up_carts_on_mesh[1]={r_up_carts_on_mesh[3]}")
+
+    np.testing.assert_array_almost_equal(r_up_carts_on_mesh[0], r_up_carts_on_mesh[1], decimal=5)
+
+    # for r_cats, not segment_sum, but something like segment choice.
+
+    mesh_non_local_ecp_part = [(r_up_carts_m, r_dn_carts) for r_up_carts_m in r_up_carts_on_mesh] + [
+        (r_up_carts, r_dn_carts_m) for r_dn_carts_m in r_dn_carts_on_mesh
+    ]
+
+    nucleus_index_non_local_part = jnp.array(coulomb_potential_data.nucleus_index_non_local_part, dtype=jnp.int32)
+    num_segments = len(set(coulomb_potential_data.nucleus_index_non_local_part))
+    V_ecp_up = jax.ops.segment_sum(V_ecp_up, nucleus_index_non_local_part, num_segments=num_segments)
+    V_ecp_dn = jax.ops.segment_sum(V_ecp_dn, nucleus_index_non_local_part, num_segments=num_segments)
+
+    print(f"V_ecp_up.shape={V_ecp_up.shape}")
+    print(f"V_ecp_dn.shape={V_ecp_dn.shape}")
+
+    V_nonlocal = V_ecp_up + V_ecp_dn
+    return mesh_non_local_ecp_part, V_nonlocal, sum_V_nonlocal
+
+
+# @jit  # this jit drastically accelarates the computation!
+def compute_ecp_non_local_part_jax_weights_grid_points(
+    coulomb_potential_data: Coulomb_potential_data,
+    wavefunction_data: Wavefunction_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+    weights: list,
+    grid_points: npt.NDArray[np.float64],
+) -> float:
+    """Compute ecp non-local parts using JAX.
+
+    The method is for computing the non-local parts of the given ECPs at (r_up_carts, r_dn_carts).
+    To avoid for the nested loops, jax-vmap function (i.e. efficient vectrization for compilation) is fully
+    exploitted in the method.
+
+    Args:
+        coulomb_potential_data (Coulomb_potential_data): an instance of Bare_coulomb_potential_data
+        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
+        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
+        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        weights (list[np.float]): weights for numerical integration
+        grid_points (npt.NDArray[np.float64]): grid_points for numerical integration
+
+    Returns:
+        npt.NDArray: grid points used for the up electron
+        npt.NDArray: grid points used for the dn electron
+        npt.NDArray: V_ecp_up for the grid points for up electron
+        npt.NDArray: V_ecp_dn for the grid points for up electron
+        float: The sum of non-local part of the given ECPs with r_up_carts and r_dn_carts.
+
+    Notes:
+        This part of @jit drastically accelarates the computation!
+        The procesure is so complicated that one should refer to the debug version.
+        to understand the flow
+    """
+    weights = jnp.array(weights)
+    grid_points = jnp.array(grid_points)
+
+    wf_denominator = evaluate_wavefunction_api(
+        wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    # Compute the local part. To understand the flow, please refer to the debug version.
+    # @jit
+    def compute_V_l(r_cart, i_atom, exponent, coefficient, power):
+        rel_R_cart_min_dist = get_min_dist_rel_R_cart_jnp(
+            structure_data=coulomb_potential_data.structure_data,
+            r_cart=r_cart,
+            i_atom=i_atom,
+        )
+        V_l = (
+            jnp.linalg.norm(rel_R_cart_min_dist) ** -2.0
+            * coefficient
+            * jnp.linalg.norm(rel_R_cart_min_dist) ** power
+            * jnp.exp(-exponent * (jnp.linalg.norm(rel_R_cart_min_dist) ** 2))
+        )
+
+        return V_l
+
+    # Compute the Projection of WF. for a up electron
+    # To understand the flow, please refer to the debug version.
+    # @jit
+    # in_axes=(None, None, None, None, 0, 0)
+    def compute_P_l_up(ang_mom, r_up_i, r_up_cart, i_atom, weight, vec_delta):
+        rel_R_cart_min_dist = get_min_dist_rel_R_cart_jnp(
+            structure_data=coulomb_potential_data.structure_data,
+            r_cart=r_up_cart,
+            i_atom=i_atom,
+        )
+        r_up_carts_on_mesh = jnp.array(r_up_carts)
+        r_up_carts_on_mesh = r_up_carts_on_mesh.at[r_up_i].set(
+            r_up_cart + rel_R_cart_min_dist + jnp.linalg.norm(rel_R_cart_min_dist) * vec_delta
+        )
+
+        cos_theta_up = jnp.dot(
+            -1.0 * (rel_R_cart_min_dist) / jnp.linalg.norm(rel_R_cart_min_dist),
+            ((vec_delta) / jnp.linalg.norm(vec_delta)),
+        )
+        wf_numerator_up = evaluate_wavefunction_api(
+            wavefunction_data=wavefunction_data,
+            r_up_carts=r_up_carts_on_mesh,
+            r_dn_carts=r_dn_carts,
+        )
+
+        wf_ratio_up = wf_numerator_up / wf_denominator
+
+        P_l_up = (2 * ang_mom + 1) * jnp_legendre_tablated(ang_mom, cos_theta_up) * weight * wf_ratio_up
+
+        return r_up_carts_on_mesh, P_l_up
+
+    # Compute the Projection of WF. for a down electron
+    # To understand the flow, please refer to the debug version.
+    # @jit
+    # vmap in_axes=(None, None, None, None, 0, 0)
+    def compute_P_l_dn(ang_mom, r_dn_i, r_dn_cart, i_atom, weight, vec_delta):
+        rel_R_cart_min_dist = get_min_dist_rel_R_cart_jnp(
+            structure_data=coulomb_potential_data.structure_data,
+            r_cart=r_dn_cart,
+            i_atom=i_atom,
+        )
+        r_dn_carts_on_mesh = jnp.array(r_dn_carts)
+        r_dn_carts_on_mesh = r_dn_carts_on_mesh.at[r_dn_i].set(
+            r_dn_cart + rel_R_cart_min_dist + jnp.linalg.norm(rel_R_cart_min_dist) * vec_delta
+        )
+
+        cos_theta_dn = jnp.dot(
+            -1.0 * (rel_R_cart_min_dist) / jnp.linalg.norm(rel_R_cart_min_dist),
+            ((vec_delta) / jnp.linalg.norm(vec_delta)),
+        )
+        wf_numerator_dn = evaluate_wavefunction_api(
+            wavefunction_data=wavefunction_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts_on_mesh,
+        )
+
+        wf_ratio_dn = wf_numerator_dn / wf_denominator
+
+        P_l_dn = (2 * ang_mom + 1) * jnp_legendre_tablated(ang_mom, cos_theta_dn) * weight * wf_ratio_dn
+        return r_dn_carts_on_mesh, P_l_dn
+
+    # Vectrize the functions
+    vmap_compute_P_l_up = vmap(compute_P_l_up, in_axes=(None, None, None, None, 0, 0))
+    vmap_compute_P_l_dn = vmap(compute_P_l_dn, in_axes=(None, None, None, None, 0, 0))
+
+    # Compute the local part V_l * Projection of WF. for a up electron
+    # To understand the flow, please refer to the debug version.
+    # @jit
+    # vmap in_axes=(0, 0, None, None, None, None, None) and in_axes=(None, None, 0, 0, 0, 0, 0)
+    def compute_V_nonlocal_up(
+        r_up_i,
+        r_up_cart,
+        ang_mom,
+        i_atom,
+        exponent,
+        coefficient,
+        power,
+    ):
+        V_l_up = compute_V_l(r_up_cart, i_atom, exponent, coefficient, power)
+        r_up_carts_on_mesh, P_l_up = vmap_compute_P_l_up(ang_mom, r_up_i, r_up_cart, i_atom, weights, grid_points)
+        return r_up_carts_on_mesh, (V_l_up * P_l_up)
+
+    # Compute the local part V_l * Projection of WF. for a down electron
+    # To understand the flow, please refer to the debug version.
+    # @jit
+    # vmap in_axes=(0, 0, None, None, None, None, None) and in_axes=(None, None, 0, 0, 0, 0, 0)
+    def compute_V_nonlocal_dn(
+        r_dn_i,
+        r_dn_cart,
+        ang_mom,
+        i_atom,
+        exponent,
+        coefficient,
+        power,
+    ):
+        V_l_dn = compute_V_l(r_dn_cart, i_atom, exponent, coefficient, power)
+        r_dn_carts_on_mesh, P_l_dn = vmap_compute_P_l_dn(ang_mom, r_dn_i, r_dn_cart, i_atom, weights, grid_points)
+        return r_dn_carts_on_mesh, (V_l_dn * P_l_dn)
+
+    # vectrize compute_ecp_up and compute_ecp_dn
+    vmap_vmap_compute_ecp_up = vmap(
+        vmap(compute_V_nonlocal_up, in_axes=(0, 0, None, None, None, None, None)), in_axes=(None, None, 0, 0, 0, 0, 0)
+    )
+    vmap_vmap_compute_ecp_dn = vmap(
+        vmap(compute_V_nonlocal_dn, in_axes=(0, 0, None, None, None, None, None)), in_axes=(None, None, 0, 0, 0, 0, 0)
+    )
+
+    # Vectrized (flatten) arguments are prepared here.
+    r_up_i_jnp = jnp.arange(len(r_up_carts))
+    r_up_carts_jnp = jnp.array(r_up_carts)
+    r_dn_i_jnp = jnp.arange(len(r_dn_carts))
+    r_dn_carts_jnp = jnp.array(r_dn_carts)
+
+    i_atom_np = np.array(coulomb_potential_data.nucleus_index_non_local_part)
+    ang_mom_np = np.array(coulomb_potential_data.ang_mom_non_local_part)
+    exponent_np = np.array(coulomb_potential_data.exponents_non_local_part)
+    coefficient_np = np.array(coulomb_potential_data.coefficients_non_local_part)
+    power_np = np.array(coulomb_potential_data.powers_non_local_part)
+
+    r_up_carts_on_mesh, V_ecp_up = vmap_vmap_compute_ecp_up(
+        r_up_i_jnp,
+        r_up_carts_jnp,
+        ang_mom_np,
+        i_atom_np,
+        exponent_np,
+        coefficient_np,
+        power_np,
+    )
+
+    r_dn_carts_on_mesh, V_ecp_dn = vmap_vmap_compute_ecp_dn(
+        r_dn_i_jnp,
+        r_dn_carts_jnp,
+        ang_mom_np,
+        i_atom_np,
+        exponent_np,
+        coefficient_np,
+        power_np,
+    )
+
+    sum_V_nonlocal = jnp.sum(V_ecp_up) + jnp.sum(V_ecp_dn)
+
+    return r_up_carts_on_mesh, r_dn_carts_on_mesh, V_ecp_up, V_ecp_dn, sum_V_nonlocal
+
+
 def compute_ecp_coulomb_potential_jax(
+    coulomb_potential_data: Coulomb_potential_data,
+    wavefunction_data: Wavefunction_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+    Nv: int = 6,
+) -> float:
+    """Compute ecp local and non-local parts.
+
+    The method is for computing the local and non-local part of the given ECPs at (r_up_carts, r_dn_carts).
+
+    Args:
+        coulomb_potential_data (Coulomb_potential_data): an instance of Coulomb_potential_data
+        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
+        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
+        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        Nv (int): The number of quadrature points for the spherical part.
+
+    Returns:
+        float: The sum of local and non-local part of the given ECPs with r_up_carts and r_dn_carts.
+    """
+    ecp_local_parts = compute_ecp_local_parts_jax(
+        coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+    )
+
+    _, _, ecp_nonlocal_parts = compute_ecp_non_local_parts_jax(
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        Nv=Nv,
+    )
+
+    V_ecp = ecp_local_parts + ecp_nonlocal_parts
+
+    return V_ecp
+
+
+'''
+def compute_ecp_coulomb_potential_jax_old(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -785,6 +1361,7 @@ def compute_ecp_coulomb_potential_jax_weights_grid_points(
     V_ecp = V_ecp_up + V_ecp_dn
 
     return V_ecp
+'''
 
 
 def compute_bare_coulomb_potential_api(
@@ -978,9 +1555,12 @@ def compute_coulomb_potential_api(
 
 
 if __name__ == "__main__":
-    # import os
+    import os
+
+    from .jastrow_factor import Jastrow_data, Jastrow_two_body_data
+
     # from .hamiltonians import Hamiltonian_data
-    # from .trexio_wrapper import read_trexio_file
+    from .trexio_wrapper import read_trexio_file
 
     log = getLogger("jqmc")
     log.setLevel("DEBUG")
@@ -989,3 +1569,115 @@ if __name__ == "__main__":
     handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
     stream_handler.setFormatter(handler_format)
     log.addHandler(stream_handler)
+
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"))
+
+    num_electron_up = geminal_mo_data.num_electron_up
+    num_electron_dn = geminal_mo_data.num_electron_dn
+
+    # WF data
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+
+    # define data
+    jastrow_data = Jastrow_data(
+        jastrow_two_body_data=jastrow_twobody_data,
+        jastrow_two_body_pade_flag=True,
+        jastrow_three_body_data=None,
+        jastrow_three_body_flag=False,
+    )
+
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+
+    # Initialization
+    r_up_carts = []
+    r_dn_carts = []
+
+    total_electrons = 0
+
+    if coulomb_potential_data.ecp_flag:
+        charges = np.array(structure_data.atomic_numbers) - np.array(coulomb_potential_data.z_cores)
+    else:
+        charges = np.array(structure_data.atomic_numbers)
+
+    coords = structure_data.positions_cart
+
+    # Place electrons around each nucleus
+    for i in range(len(coords)):
+        charge = charges[i]
+        num_electrons = int(np.round(charge))  # Number of electrons to place based on the charge
+
+        # Retrieve the position coordinates
+        x, y, z = coords[i]
+
+        # Place electrons
+        for _ in range(num_electrons):
+            # Calculate distance range
+            distance = np.random.uniform(1.0 / charge, 2.0 / charge)
+            theta = np.random.uniform(0, np.pi)
+            phi = np.random.uniform(0, 2 * np.pi)
+
+            # Convert spherical to Cartesian coordinates
+            dx = distance * np.sin(theta) * np.cos(phi)
+            dy = distance * np.sin(theta) * np.sin(phi)
+            dz = distance * np.cos(theta)
+
+            # Position of the electron
+            electron_position = np.array([x + dx, y + dy, z + dz])
+
+            # Assign spin
+            if len(r_up_carts) < num_electron_up:
+                r_up_carts.append(electron_position)
+            else:
+                r_dn_carts.append(electron_position)
+
+        total_electrons += num_electrons
+
+    # Handle surplus electrons
+    remaining_up = num_electron_up - len(r_up_carts)
+    remaining_dn = num_electron_dn - len(r_dn_carts)
+
+    # Randomly place any remaining electrons
+    for _ in range(remaining_up):
+        r_up_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
+    for _ in range(remaining_dn):
+        r_dn_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
+
+    r_up_carts = np.array(r_up_carts)
+    r_dn_carts = np.array(r_dn_carts)
+
+    mesh_non_local_ecp_part_jax, V_nonlocal_jax, sum_V_nonlocal_jax = compute_ecp_non_local_parts_jax(
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        Nv=6,
+    )
+
+    mesh_non_local_ecp_part_debug, V_nonlocal_debug, sum_V_nonlocal_debug = compute_ecp_non_local_parts_debug(
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        Nv=6,
+    )
+
+    print(len(mesh_non_local_ecp_part_jax))
+    print(len(mesh_non_local_ecp_part_debug))
+
+    print(len(V_nonlocal_jax))
+    print(len(V_nonlocal_debug))
+
+    print(sum_V_nonlocal_jax)
+    print(sum_V_nonlocal_debug)
+
+    np.testing.assert_almost_equal(sum_V_nonlocal_jax, sum_V_nonlocal_debug, decimal=5)
+
+    print(mesh_non_local_ecp_part_debug[np.argmax(V_nonlocal_debug)])
+    # print(mesh_non_local_ecp_part_jax[np.argmax(V_nonlocal_jax)])
