@@ -128,10 +128,6 @@ class MCMC:
         self.__latest_r_up_carts = init_r_up_carts
         self.__latest_r_dn_carts = init_r_dn_carts
 
-        # stored electron positions
-        self.__stored_r_up_carts = None
-        self.__stored_r_dn_carts = None
-
         # SWCT data
         self.__swct_data = SWCT_data(structure=self.__hamiltonian_data.structure_data)
 
@@ -548,16 +544,16 @@ class MCMC:
 
         self.__mcmc_counter += num_mcmc_steps
         logger.info(f"Acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
-        logger.info(f"Total Elapsed time for MCMC {num_mcmc_steps} steps. = {timer_mcmc_total:.2f} msec.")
+        logger.info(f"Total Elapsed time for MCMC {num_mcmc_steps} steps. = {timer_mcmc_total*10**3:.2f} msec.")
         logger.info(f"Elapsed times per MCMC step, averaged over {num_mcmc_steps} steps.")
-        logger.info(f"  Time for MCMC updated = {timer_mcmc_updated/num_mcmc_steps*100.0:.2f} msec.")
-        logger.info(f"  Time for computing e_L = {timer_e_L/num_mcmc_steps*100.0:.2f} msec.")
-        logger.info(f"  Time for computing de_L/dR and de_L/dr = {timer_de_L_dR_dr/num_mcmc_steps*100.0:.2f} msec.")
-        logger.info(f"  Time for computing dln_Psi/dR and dln_Psi/dr = {timer_dln_Psi_dR_dr/num_mcmc_steps*100.0:.2f} msec.")
+        logger.info(f"  Time for MCMC updated = {timer_mcmc_updated/num_mcmc_steps*10**3:.2f} msec.")
+        logger.info(f"  Time for computing e_L = {timer_e_L/num_mcmc_steps*10**3:.2f} msec.")
+        logger.info(f"  Time for computing de_L/dR and de_L/dr = {timer_de_L_dR_dr/num_mcmc_steps*10**3:.2f} msec.")
+        logger.info(f"  Time for computing dln_Psi/dR and dln_Psi/dr = {timer_dln_Psi_dR_dr/num_mcmc_steps*10**3:.2f} msec.")
         logger.info(
-            f"  Time for computing dln_Psi/dc (jastrow 1b2b3b) = {timer_dln_Psi_dc_jas1b2b3b/num_mcmc_steps*100.0:.2f} msec."
+            f"  Time for computing dln_Psi/dc (jastrow 1b2b3b) = {timer_dln_Psi_dc_jas1b2b3b/num_mcmc_steps*10**3:.2f} msec."
         )
-        logger.info(f"  Time for misc. (others) = {timer_others/num_mcmc_steps*100.0:.2f} msec.")
+        logger.info(f"  Time for misc. (others) = {timer_others/num_mcmc_steps*10**3:.2f} msec.")
 
     @property
     def hamiltonian_data(self):

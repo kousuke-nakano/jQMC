@@ -38,6 +38,8 @@ import logging
 
 # python modules
 import os
+import random
+import time
 from logging import Formatter, StreamHandler, getLogger
 
 # import mpi4jax
@@ -50,12 +52,11 @@ import numpy.typing as npt
 from mpi4py import MPI
 
 # jQMC module
-from .hamiltonians import Hamiltonian_data, compute_local_energy
+from .coulomb_potential import compute_bare_coulomb_potential_jax, compute_ecp_local_parts_jax, compute_ecp_non_local_parts_jax
+from .hamiltonians import Hamiltonian_data, compute_kinetic_energy_api
 from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
-from .structure import Structure_data, find_nearest_index
-from .swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
 from .trexio_wrapper import read_trexio_file
-from .wavefunction import Wavefunction_data, evaluate_ln_wavefunction_api, evaluate_wavefunction_api
+from .wavefunction import Wavefunction_data, compute_discretized_kinetic_energy_jax
 
 # MPI related
 comm = MPI.COMM_WORLD
@@ -81,92 +82,298 @@ logger = getLogger("jqmc").getChild(__name__)
 jax.config.update("jax_enable_x64", True)
 
 
-def generate_kinetic_mesh_debug(
-    alat: float, wavefunction_data: Wavefunction_data, r_up_carts: npt.NDArray, r_dn_carts: npt.NDArray
-) -> list[tuple[npt.NDArray, npt.NDArray]]:
-    r"""_summary.
+class GFMC:
+    """GFMC class.
+
+    GFMC class. Runing GFMC.
 
     Args:
-        alat (float): Hamiltonian discretization (bohr), which will be replaced with LRDMC_data.
-        wavefunction_data (Wavefunction_data): an instance of Qavefunction_data, which will be replaced with LRDMC_data.
-        r_carts_up (npt.NDArray): up electron position (N_e,3).
-        r_carts_dn (npt.NDArray): down electron position (N_e,3).
-
-    Returns:
-        list[tuple[npt.NDArray, npt.NDArray]], list[npt.NDArray]:
-            return mesh for the LRDMC kinetic part, a list containing tuples containing (r_carts_up, r_carts_dn),
-            and a list containing values of the \Psi(x')/\Psi(x) corresponding to the grid.
+        mcmc_seed (int): seed for the MCMC chain.
+        hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
+        init_r_up_carts (npt.NDArray): starting electron positions for up electrons
+        init_r_dn_carts (npt.NDArray): starting electron positions for dn electrons
+        tau (float): projection time (bohr^-1)
+        alat (float): discretized grid length (bohr)
     """
-    mesh_kinetic_part = []
 
-    # up electron
-    for r_up_i in range(len(r_up_carts)):
-        # x, plus
-        r_up_carts_p = r_up_carts.copy()
-        r_up_carts_p[r_up_i, 0] += alat
-        mesh_kinetic_part.append((r_up_carts_p, r_dn_carts))
-        # x, minus
-        r_up_carts_p = r_up_carts.copy()
-        r_up_carts_p[r_up_i, 0] -= alat
-        mesh_kinetic_part.append((r_up_carts_p, r_dn_carts))
-        # y, plus
-        r_up_carts_p = r_up_carts.copy()
-        r_up_carts_p[r_up_i, 1] += alat
-        mesh_kinetic_part.append((r_up_carts_p, r_dn_carts))
-        # y, minus
-        r_up_carts_p = r_up_carts.copy()
-        r_up_carts_p[r_up_i, 1] -= alat
-        mesh_kinetic_part.append((r_up_carts_p, r_dn_carts))
-        # z, plus
-        r_up_carts_p = r_up_carts.copy()
-        r_up_carts_p[r_up_i, 2] += alat
-        mesh_kinetic_part.append((r_up_carts_p, r_dn_carts))
-        # z, minus
-        r_up_carts_p = r_up_carts.copy()
-        r_up_carts_p[r_up_i, 2] -= alat
-        mesh_kinetic_part.append((r_up_carts_p, r_dn_carts))
+    def __init__(
+        self,
+        hamiltonian_data: Hamiltonian_data = None,
+        init_r_up_carts: npt.NDArray[np.float64] = None,
+        init_r_dn_carts: npt.NDArray[np.float64] = None,
+        mcmc_seed: int = 34467,
+        tau: float = 0.1,
+        alat: float = 0.1,
+    ) -> None:
+        """Init.
 
-    # dn electron
-    for r_dn_i in range(len(r_dn_carts)):
-        # x, plus
-        r_dn_carts_p = r_dn_carts.copy()
-        r_dn_carts_p[r_dn_i, 0] += alat
-        mesh_kinetic_part.append((r_up_carts, r_dn_carts_p))
-        # x, minus
-        r_dn_carts_p = r_dn_carts.copy()
-        r_dn_carts_p[r_dn_i, 0] -= alat
-        mesh_kinetic_part.append((r_up_carts, r_dn_carts_p))
-        # y, plus
-        r_dn_carts_p = r_dn_carts.copy()
-        r_dn_carts_p[r_dn_i, 1] += alat
-        mesh_kinetic_part.append((r_up_carts, r_dn_carts_p))
-        # y, minus
-        r_dn_carts_p = r_dn_carts.copy()
-        r_dn_carts_p[r_dn_i, 1] -= alat
-        mesh_kinetic_part.append((r_up_carts, r_dn_carts_p))
-        # z, plus
-        r_dn_carts_p = r_dn_carts.copy()
-        r_dn_carts_p[r_dn_i, 2] += alat
-        mesh_kinetic_part.append((r_up_carts, r_dn_carts_p))
-        # z, minus
-        r_dn_carts_p = r_dn_carts.copy()
-        r_dn_carts_p[r_dn_i, 2] -= alat
-        mesh_kinetic_part.append((r_up_carts, r_dn_carts_p))
+        Initialize a MCMC class, creating list holding results, etc...
 
-    elements_kinetic_part = [
-        float(
-            -1.0
-            / (2.0 * alat**2)
-            * evaluate_wavefunction_api(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_, r_dn_carts=r_dn_carts_)
-            / evaluate_wavefunction_api(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+        """
+        self.__hamiltonian_data = hamiltonian_data
+        self.__mcmc_seed = mcmc_seed
+        self.__tau = tau
+        self.__alat = alat
+
+        # set random seeds
+        random.seed(self.__mcmc_seed)
+        np.random.seed(self.__mcmc_seed)
+
+        # latest electron positions
+        self.__latest_r_up_carts = init_r_up_carts
+        self.__latest_r_dn_carts = init_r_dn_carts
+
+        # """
+        # compiling methods
+        # jax.profiler.start_trace("/tmp/tensorboard", create_perfetto_link=True)
+        # open the generated URL (UI with perfetto)
+        # tensorboard --logdir /tmp/tensorboard
+        # tensorborad does not work with safari. use google chrome
+
+        logger.info("Compilation starts.")
+
+        logger.info("Compilation e_L starts.")
+        start = time.perf_counter()
+        _ = compute_kinetic_energy_api(
+            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+            r_up_carts=self.__latest_r_up_carts,
+            r_dn_carts=self.__latest_r_dn_carts,
         )
-        for r_up_carts_, r_dn_carts_ in mesh_kinetic_part
-    ]
+        _, _, _ = compute_discretized_kinetic_energy_jax(
+            alat=self.__alat,
+            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+            r_up_carts=self.__latest_r_up_carts,
+            r_dn_carts=self.__latest_r_dn_carts,
+        )
+        _ = compute_bare_coulomb_potential_jax(
+            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+            r_up_carts=self.__latest_r_up_carts,
+            r_dn_carts=self.__latest_r_dn_carts,
+        )
+        _ = compute_ecp_local_parts_jax(
+            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+            r_up_carts=self.__latest_r_up_carts,
+            r_dn_carts=self.__latest_r_dn_carts,
+        )
+        _, _, _ = compute_ecp_non_local_parts_jax(
+            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+            r_up_carts=self.__latest_r_up_carts,
+            r_dn_carts=self.__latest_r_dn_carts,
+        )
+        end = time.perf_counter()
+        logger.info("Compilation e_L is done.")
+        logger.info(f"Elapsed Time = {end-start:.2f} sec.")
 
-    return mesh_kinetic_part, elements_kinetic_part
+        logger.info("Compilation is done.")
+
+        # jax.profiler.stop_trace()
+        # """
+
+        # init attributes
+        self.__init_attributes()
+
+    def __init_attributes(self):
+        # init attributes
+        # stored local energy (e_L) and weight (w_L)
+        self.__latest_e_L = 0.0
+        self.__latest_w_L = 1.0
+        self.__stored_e_L = []
+        self.__stored_w_L = []
+
+    def run(self) -> None:
+        """Run LRDMC."""
+        cpu_count = os.cpu_count()
+        logger.debug(f"cpu count = {cpu_count}")
+
+        # MAIN MCMC loop from here !!!
+        tau_left = self.__tau
+        logger.info(f"  Left projection time = {tau_left}/{self.__tau}: {0.0:.0f} %.")
+
+        # timer_counter
+        timer_mcmc_updated = 0.0
+        timer_e_L = 0.0
+
+        mcmc_total_start = time.perf_counter()
+
+        w_L = self.__latest_w_L
+        jax_PRNG_key = jax.random.PRNGKey(self.__mcmc_seed)
+        while tau_left > 0.0:
+            progress = (tau_left) / (self.__tau) * 100.0
+            logger.info(f"  Left projection time = {tau_left}/{self.__tau}: {progress:.1f} %.")
+
+            # compute non-diagonal grids and elements
+            mesh_kinetic_part, elements_kinetic_part, jax_PRNG_key = compute_discretized_kinetic_energy_jax(
+                alat=self.__alat,
+                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                r_up_carts=self.__latest_r_up_carts,
+                r_dn_carts=self.__latest_r_dn_carts,
+                jax_PRNG_key=jax_PRNG_key,
+            )
+            mesh_non_local_ecp_part, V_nonlocal, _ = compute_ecp_non_local_parts_jax(
+                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                r_up_carts=self.__latest_r_up_carts,
+                r_dn_carts=self.__latest_r_dn_carts,
+            )
+
+            # Fixed-node.
+            elements_kinetic_part_FN = list(map(lambda x: x if x >= 0 else 0.0, elements_kinetic_part))
+            V_nonlocal_FN = list(map(lambda x: x if x >= 0 else 0.0, V_nonlocal))
+
+            sum_non_diagonal_hamiltonian = np.sum(elements_kinetic_part_FN) + np.sum(V_nonlocal_FN)
+
+            # compute diagonal element
+            kinetic_continuum = compute_kinetic_energy_api(
+                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                r_up_carts=self.__latest_r_up_carts,
+                r_dn_carts=self.__latest_r_dn_carts,
+            )
+            kinetic_discretized = -1.0 * np.sum(elements_kinetic_part)
+            bare_coulomb_part = compute_bare_coulomb_potential_jax(
+                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                r_up_carts=self.__latest_r_up_carts,
+                r_dn_carts=self.__latest_r_dn_carts,
+            )
+            ecp_local_part = compute_ecp_local_parts_jax(
+                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                r_up_carts=self.__latest_r_up_carts,
+                r_dn_carts=self.__latest_r_dn_carts,
+            )
+            elements_kinetic_part_SP = np.sum(list(map(lambda x: x if x < 0 else 0.0, elements_kinetic_part)))
+            V_nonlocal_SP = np.sum(list(map(lambda x: x if x < 0 else 0.0, V_nonlocal)))
+
+            # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
+            e_L = (
+                kinetic_continuum
+                + kinetic_discretized
+                + bare_coulomb_part
+                + ecp_local_part
+                + elements_kinetic_part_SP
+                + V_nonlocal_SP
+                + sum_non_diagonal_hamiltonian
+            )
+            logger.info(f"  sum_non_diagonal_hamiltonian = {sum_non_diagonal_hamiltonian}")
+            logger.info(f"  e_L={e_L}")
+
+            # compute the time the walker remaining in the same configuration
+            xi = random.random()
+            tau_update = np.min((tau_left, -np.log(xi) / sum_non_diagonal_hamiltonian))
+            logger.info(f"  tau_updateL={tau_update}")
+
+            # update weight
+            w_L = w_L * np.exp(-tau_update * e_L)
+            logger.info(f"  w_L={w_L}")
+
+            # update tau_left
+            tau_left = tau_left - tau_update
+
+            # choose a non-diagonal move destination
+            p_list = np.array(elements_kinetic_part_FN + V_nonlocal_FN)
+            probabilities = p_list / p_list.sum()
+            k = np.random.choice(len(p_list), p=probabilities)
+
+            # update electron position
+            self.__latest_r_up_carts, self.__latest_r_dn_carts = (list(mesh_kinetic_part) + list(mesh_non_local_ecp_part))[k]
+
+            end = time.perf_counter()
+
+        # projection ends
+        logger.info("  Projection ends.")
+
+        # evaluate observables
+        start = time.perf_counter()
+        # compute non-diagonal grids and elements
+        _, elements_kinetic_part, jax_PRNG_key = compute_discretized_kinetic_energy_jax(
+            alat=self.__alat,
+            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+            r_up_carts=self.__latest_r_up_carts,
+            r_dn_carts=self.__latest_r_dn_carts,
+            jax_PRNG_key=jax_PRNG_key,
+        )
+        _, V_nonlocal, _ = compute_ecp_non_local_parts_jax(
+            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+            r_up_carts=self.__latest_r_up_carts,
+            r_dn_carts=self.__latest_r_dn_carts,
+        )
+
+        # Fixed-node.
+        elements_kinetic_part_FN = list(map(lambda x: x if x >= 0 else 0.0, elements_kinetic_part))
+        V_nonlocal_FN = list(map(lambda x: x if x >= 0 else 0.0, V_nonlocal))
+
+        sum_non_diagonal_hamiltonian = np.sum(elements_kinetic_part_FN) + np.sum(V_nonlocal_FN)
+
+        # compute diagonal element
+        kinetic_continuum = compute_kinetic_energy_api(
+            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+            r_up_carts=self.__latest_r_up_carts,
+            r_dn_carts=self.__latest_r_dn_carts,
+        )
+        kinetic_discretized = -1.0 * np.sum(elements_kinetic_part)
+        bare_coulomb_part = compute_bare_coulomb_potential_jax(
+            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+            r_up_carts=self.__latest_r_up_carts,
+            r_dn_carts=self.__latest_r_dn_carts,
+        )
+        ecp_local_part = compute_ecp_local_parts_jax(
+            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+            r_up_carts=self.__latest_r_up_carts,
+            r_dn_carts=self.__latest_r_dn_carts,
+        )
+        elements_kinetic_part_SP = np.sum(list(map(lambda x: x if x < 0 else 0.0, elements_kinetic_part)))
+        V_nonlocal_SP = np.sum(list(map(lambda x: x if x < 0 else 0.0, V_nonlocal)))
+
+        # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
+        e_L = (
+            kinetic_continuum
+            + kinetic_discretized
+            + bare_coulomb_part
+            + ecp_local_part
+            + elements_kinetic_part_SP
+            + V_nonlocal_SP
+            + sum_non_diagonal_hamiltonian
+        )
+
+        end = time.perf_counter()
+        timer_e_L += end - start
+
+        logger.devel(f"  e_L = {e_L}")
+        logger.devel(f"  w_L = {w_L}")
+        self.__stored_w_L.append(w_L)
+        self.__stored_e_L.append(e_L)
+
+        mcmc_total_end = time.perf_counter()
+        timer_mcmc_total = mcmc_total_end - mcmc_total_start
+        timer_others = timer_mcmc_total - (timer_mcmc_updated + timer_e_L)
+
+        logger.info(f"Total Elapsed time for MCMC = {timer_mcmc_total*10**3:.2f} msec.")
+        logger.info(f"Time for MCMC updated = {timer_mcmc_updated*10**3:.2f} msec.")
+        logger.info(f"Time for computing e_L = {timer_e_L*10**3:.2f} msec.")
+        logger.info(f"Time for misc. (others) = {timer_others*10**3:.2f} msec.")
+
+    @property
+    def e_L(self):
+        return self.__stored_e_L
+
+    @property
+    def latest_r_up_carts(self):
+        return self.__latest_r_up_carts
+
+    @property
+    def latest_r_dn_carts(self):
+        return self.__latest_r_dn_carts
 
 
 if __name__ == "__main__":
+    log = getLogger("jqmc")
+    log.setLevel("DEBUG")
+    stream_handler = StreamHandler()
+    stream_handler.setLevel("DEBUG")
+    handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
+    stream_handler.setFormatter(handler_format)
+    log.addHandler(stream_handler)
+
     # """
     # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
     (
@@ -182,18 +389,29 @@ if __name__ == "__main__":
     num_electron_up = geminal_mo_data.num_electron_up
     num_electron_dn = geminal_mo_data.num_electron_dn
 
-    # WF data
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
 
     # define data
     jastrow_data = Jastrow_data(
         jastrow_two_body_data=jastrow_twobody_data,
         jastrow_two_body_pade_flag=True,
-        jastrow_three_body_data=None,
-        jastrow_three_body_flag=False,
+        jastrow_three_body_data=jastrow_threebody_data,
+        jastrow_three_body_flag=True,
     )
 
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+
+    # LRDMC parameters
+    alat = 0.1
+    tau = 0.1
+    mcmc_seed = 34356
 
     # Initialization
     r_up_carts = []
@@ -252,9 +470,13 @@ if __name__ == "__main__":
     r_up_carts = np.array(r_up_carts)
     r_dn_carts = np.array(r_dn_carts)
 
-    alat = 1.0
-    mesh_kinetic_part, elements_kinetic_part = generate_kinetic_mesh_debug(
-        alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+    # run GFMC
+    gfmc = GFMC(
+        hamiltonian_data=hamiltonian_data,
+        mcmc_seed=mcmc_seed,
+        tau=tau,
+        alat=alat,
+        init_r_up_carts=r_up_carts,
+        init_r_dn_carts=r_dn_carts,
     )
-
-    print(mesh_kinetic_part, elements_kinetic_part)
+    gfmc.run()
