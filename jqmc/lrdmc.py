@@ -53,7 +53,7 @@ from mpi4py import MPI
 
 # jQMC module
 from .coulomb_potential import compute_bare_coulomb_potential_jax, compute_ecp_local_parts_jax, compute_ecp_non_local_parts_jax
-from .hamiltonians import Hamiltonian_data, compute_kinetic_energy_api
+from .hamiltonians import Hamiltonian_data, compute_kinetic_energy_api, compute_local_energy
 from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
 from .trexio_wrapper import read_trexio_file
 from .wavefunction import Wavefunction_data, compute_discretized_kinetic_energy_jax
@@ -210,7 +210,7 @@ class GFMC:
                 r_dn_carts=self.__latest_r_dn_carts,
                 jax_PRNG_key=jax_PRNG_key,
             )
-            mesh_non_local_ecp_part, V_nonlocal, _ = compute_ecp_non_local_parts_jax(
+            mesh_non_local_ecp_part, V_nonlocal, sum_V_nonlocal = compute_ecp_non_local_parts_jax(
                 coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                 wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                 r_up_carts=self.__latest_r_up_carts,
@@ -255,6 +255,13 @@ class GFMC:
             )
             logger.info(f"  sum_non_diagonal_hamiltonian = {sum_non_diagonal_hamiltonian}")
             logger.info(f"  e_L={e_L}")
+
+            e_L_debug = compute_local_energy(
+                hamiltonian_data=self.__hamiltonian_data,
+                r_up_carts=self.__latest_r_up_carts,
+                r_dn_carts=self.__latest_r_dn_carts,
+            )
+            logger.info(f"  e_L_debug={e_L_debug}")
 
             # compute the time the walker remaining in the same configuration
             xi = random.random()
