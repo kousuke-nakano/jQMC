@@ -62,6 +62,8 @@ from ..jqmc.coulomb_potential import (
     compute_bare_coulomb_potential_jax,
     compute_ecp_coulomb_potential_debug,
     compute_ecp_coulomb_potential_jax,
+    compute_ecp_local_parts_debug,
+    compute_ecp_local_parts_jax,
 )
 from ..jqmc.determinant import (
     Geminal_data,
@@ -1286,6 +1288,7 @@ def test_debug_and_jax_ECP(request):
     new_r_dn_carts = old_r_dn_carts.copy()
     new_r_dn_carts[3] = [0.618632327645002, -0.149033260668010, 0.131889254514777]
 
+    # bare coulomb
     vpot_bare_jax = compute_bare_coulomb_potential_jax(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
@@ -1302,6 +1305,22 @@ def test_debug_and_jax_ECP(request):
     # print(f"vpot_bare_debug = {vpot_bare_debug}")
     np.testing.assert_almost_equal(vpot_bare_jax, vpot_bare_debug, decimal=10)
 
+    # ecp local
+    vpot_ecp_local_jax = compute_ecp_local_parts_jax(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+    )
+
+    vpot_ecp_local_debug = compute_ecp_local_parts_debug(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+    )
+
+    np.testing.assert_almost_equal(vpot_ecp_local_jax, vpot_ecp_local_debug, decimal=10)
+
+    # ecp total
     vpot_ecp_jax = compute_ecp_coulomb_potential_jax(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,

@@ -40,6 +40,7 @@ import logging
 import os
 import random
 import time
+from collections import Counter
 from logging import Formatter, StreamHandler, getLogger
 
 # import mpi4jax
@@ -115,10 +116,6 @@ class GFMC:
         self.__tau = tau
         self.__alat = alat
 
-        # set random seeds
-        random.seed(self.__mcmc_seed)
-        np.random.seed(self.__mcmc_seed)
-
         # latest electron positions
         self.__latest_r_up_carts = init_r_up_carts
         self.__latest_r_dn_carts = init_r_dn_carts
@@ -171,15 +168,13 @@ class GFMC:
         # """
 
         # init attributes
-        self.__init_attributes()
+        self.init_attributes()
 
-    def __init_attributes(self):
+    def init_attributes(self):
         # init attributes
         # stored local energy (e_L) and weight (w_L)
         self.__latest_e_L = 0.0
         self.__latest_w_L = 1.0
-        self.__stored_e_L = []
-        self.__stored_w_L = []
 
     def run(self) -> None:
         """Run LRDMC."""
@@ -218,8 +213,8 @@ class GFMC:
             )
 
             # Fixed-node.
-            elements_kinetic_part_FN = list(map(lambda x: x if x >= 0 else 0.0, elements_kinetic_part))
-            V_nonlocal_FN = list(map(lambda x: x if x >= 0 else 0.0, V_nonlocal))
+            elements_kinetic_part_FN = list(map(lambda x: x if x < 0 else 0.0, elements_kinetic_part))
+            V_nonlocal_FN = list(map(lambda x: x if x < 0 else 0.0, V_nonlocal))
 
             sum_non_diagonal_hamiltonian = np.sum(elements_kinetic_part_FN) + np.sum(V_nonlocal_FN)
 
@@ -240,8 +235,8 @@ class GFMC:
                 r_up_carts=self.__latest_r_up_carts,
                 r_dn_carts=self.__latest_r_dn_carts,
             )
-            elements_kinetic_part_SP = np.sum(list(map(lambda x: x if x < 0 else 0.0, elements_kinetic_part)))
-            V_nonlocal_SP = np.sum(list(map(lambda x: x if x < 0 else 0.0, V_nonlocal)))
+            elements_kinetic_part_SP = np.sum(list(map(lambda x: x if x >= 0 else 0.0, elements_kinetic_part)))
+            V_nonlocal_SP = np.sum(list(map(lambda x: x if x >= 0 else 0.0, V_nonlocal)))
 
             # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
             e_L = (
@@ -253,20 +248,24 @@ class GFMC:
                 + V_nonlocal_SP
                 + sum_non_diagonal_hamiltonian
             )
-            logger.info(f"  sum_non_diagonal_hamiltonian = {sum_non_diagonal_hamiltonian}")
+            logger.debug(f"  sum_non_diagonal_hamiltonian = {sum_non_diagonal_hamiltonian}")
             logger.info(f"  e_L={e_L}")
 
+            """
+            logger.info(self.__latest_r_up_carts)
+            logger.info(self.__latest_r_dn_carts)
             e_L_debug = compute_local_energy(
                 hamiltonian_data=self.__hamiltonian_data,
                 r_up_carts=self.__latest_r_up_carts,
                 r_dn_carts=self.__latest_r_dn_carts,
             )
             logger.info(f"  e_L_debug={e_L_debug}")
+            """
 
             # compute the time the walker remaining in the same configuration
             xi = random.random()
-            tau_update = np.min((tau_left, -np.log(xi) / sum_non_diagonal_hamiltonian))
-            logger.info(f"  tau_updateL={tau_update}")
+            tau_update = np.min((tau_left, np.log(1 - xi) / sum_non_diagonal_hamiltonian))
+            logger.info(f"  tau_update={tau_update}")
 
             # update weight
             w_L = w_L * np.exp(-tau_update * e_L)
@@ -306,8 +305,8 @@ class GFMC:
         )
 
         # Fixed-node.
-        elements_kinetic_part_FN = list(map(lambda x: x if x >= 0 else 0.0, elements_kinetic_part))
-        V_nonlocal_FN = list(map(lambda x: x if x >= 0 else 0.0, V_nonlocal))
+        elements_kinetic_part_FN = list(map(lambda x: x if x < 0 else 0.0, elements_kinetic_part))
+        V_nonlocal_FN = list(map(lambda x: x if x < 0 else 0.0, V_nonlocal))
 
         sum_non_diagonal_hamiltonian = np.sum(elements_kinetic_part_FN) + np.sum(V_nonlocal_FN)
 
@@ -328,8 +327,8 @@ class GFMC:
             r_up_carts=self.__latest_r_up_carts,
             r_dn_carts=self.__latest_r_dn_carts,
         )
-        elements_kinetic_part_SP = np.sum(list(map(lambda x: x if x < 0 else 0.0, elements_kinetic_part)))
-        V_nonlocal_SP = np.sum(list(map(lambda x: x if x < 0 else 0.0, V_nonlocal)))
+        elements_kinetic_part_SP = np.sum(list(map(lambda x: x if x >= 0 else 0.0, elements_kinetic_part)))
+        V_nonlocal_SP = np.sum(list(map(lambda x: x if x >= 0 else 0.0, V_nonlocal)))
 
         # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
         e_L = (
@@ -347,8 +346,8 @@ class GFMC:
 
         logger.devel(f"  e_L = {e_L}")
         logger.devel(f"  w_L = {w_L}")
-        self.__stored_w_L.append(w_L)
-        self.__stored_e_L.append(e_L)
+        self.__latest_w_L = float(w_L)
+        self.__latest_e_L = float(e_L)
 
         mcmc_total_end = time.perf_counter()
         timer_mcmc_total = mcmc_total_end - mcmc_total_start
@@ -360,8 +359,24 @@ class GFMC:
         logger.info(f"Time for misc. (others) = {timer_others*10**3:.2f} msec.")
 
     @property
+    def hamiltonian_data(self):
+        return self.__hamiltonian_data
+
+    @property
+    def alat(self):
+        return self.__alat
+
+    @property
+    def tau(self):
+        return self.__tau
+
+    @property
     def e_L(self):
-        return self.__stored_e_L
+        return self.__latest_e_L
+
+    @property
+    def w_L(self):
+        return self.__latest_w_L
 
     @property
     def latest_r_up_carts(self):
@@ -371,15 +386,35 @@ class GFMC:
     def latest_r_dn_carts(self):
         return self.__latest_r_dn_carts
 
+    @property
+    def mcmc_seed(self):
+        return self.__mcmc_seed
+
+    @mcmc_seed.setter
+    def mcmc_seed(self, mcmc_seed):
+        self.__mcmc_seed = mcmc_seed
+
 
 if __name__ == "__main__":
+    logger_level = "INFO"
+
     log = getLogger("jqmc")
-    log.setLevel("DEBUG")
-    stream_handler = StreamHandler()
-    stream_handler.setLevel("DEBUG")
-    handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
-    stream_handler.setFormatter(handler_format)
-    log.addHandler(stream_handler)
+
+    if logger_level == "MPI-INFO":
+        if rank == 0:
+            log.setLevel("INFO")
+            stream_handler = StreamHandler()
+            stream_handler.setLevel("INFO")
+            handler_format = Formatter(f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
+            stream_handler.setFormatter(handler_format)
+            log.addHandler(stream_handler)
+    else:
+        log.setLevel(logger_level)
+        stream_handler = StreamHandler()
+        stream_handler.setLevel(logger_level)
+        handler_format = Formatter(f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
+        stream_handler.setFormatter(handler_format)
+        log.addHandler(stream_handler)
 
     # """
     # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
@@ -433,6 +468,30 @@ if __name__ == "__main__":
 
     coords = structure_data.positions_cart
 
+    # set random seeds
+    mpi_seed = mcmc_seed * (rank + 1)
+    random.seed(mpi_seed)
+    np.random.seed(mpi_seed)
+
+    # Place electrons around each nucleus
+    num_electron_up = hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+    num_electron_dn = hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+
+    # Initialization
+    r_carts_up = []
+    r_carts_dn = []
+
+    total_electrons = 0
+
+    if hamiltonian_data.coulomb_potential_data.ecp_flag:
+        charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
+            hamiltonian_data.coulomb_potential_data.z_cores
+        )
+    else:
+        charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
+
+    coords = hamiltonian_data.structure_data.positions_cart
+
     # Place electrons around each nucleus
     for i in range(len(coords)):
         charge = charges[i]
@@ -444,7 +503,7 @@ if __name__ == "__main__":
         # Place electrons
         for _ in range(num_electrons):
             # Calculate distance range
-            distance = np.random.uniform(1.0 / charge, 2.0 / charge)
+            distance = np.random.uniform(0.1, 2.0)
             theta = np.random.uniform(0, np.pi)
             phi = np.random.uniform(0, 2 * np.pi)
 
@@ -457,33 +516,178 @@ if __name__ == "__main__":
             electron_position = np.array([x + dx, y + dy, z + dz])
 
             # Assign spin
-            if len(r_up_carts) < num_electron_up:
-                r_up_carts.append(electron_position)
+            if len(r_carts_up) < num_electron_up:
+                r_carts_up.append(electron_position)
             else:
-                r_dn_carts.append(electron_position)
+                r_carts_dn.append(electron_position)
 
         total_electrons += num_electrons
 
     # Handle surplus electrons
-    remaining_up = num_electron_up - len(r_up_carts)
-    remaining_dn = num_electron_dn - len(r_dn_carts)
+    remaining_up = num_electron_up - len(r_carts_up)
+    remaining_dn = num_electron_dn - len(r_carts_dn)
 
     # Randomly place any remaining electrons
     for _ in range(remaining_up):
-        r_up_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
+        r_carts_up.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
     for _ in range(remaining_dn):
-        r_dn_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
+        r_carts_dn.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
 
-    r_up_carts = np.array(r_up_carts)
-    r_dn_carts = np.array(r_dn_carts)
+    init_r_up_carts = np.array(r_carts_up)
+    init_r_dn_carts = np.array(r_carts_dn)
+
+    logger.info(f"initial r_up_carts = {init_r_up_carts}")
+    logger.info(f"initial r_dn_carts = {init_r_dn_carts}")
+
+    # run branching
+    num_branching = 50
+    num_survived_walkers = 0
+    num_killed_walkers = 0
+    e_L_averaged_list = []
+    w_L_averaged_list = []
 
     # run GFMC
     gfmc = GFMC(
         hamiltonian_data=hamiltonian_data,
-        mcmc_seed=mcmc_seed,
+        mcmc_seed=mpi_seed,
         tau=tau,
         alat=alat,
-        init_r_up_carts=r_up_carts,
-        init_r_dn_carts=r_dn_carts,
+        init_r_up_carts=init_r_up_carts,
+        init_r_dn_carts=init_r_dn_carts,
     )
-    gfmc.run()
+
+    for i_branching in range(num_branching):
+        logger.info(f"i_branching = {i_branching}/{num_branching}")
+        gfmc.run()
+
+        w_L = gfmc.w_L
+        e_L = gfmc.e_L
+        logger.info(f"e_L={e_L} for rank={rank}")
+        logger.info(f"w_L={w_L} for rank={rank}")
+
+        e_L_gathered_dyad = (rank, e_L)
+        e_L_gathered_dyad = comm.gather(e_L_gathered_dyad, root=0)
+        w_L_gathered_dyad = (rank, w_L)
+        w_L_gathered_dyad = comm.gather(w_L_gathered_dyad, root=0)
+        if rank == 0:
+            logger.info(e_L_gathered_dyad)
+            logger.info(w_L_gathered_dyad)
+            e_L_gathered = np.array([e_L for _, e_L in e_L_gathered_dyad])
+            w_L_gathered = np.array([w_L for _, w_L in w_L_gathered_dyad])
+            e_L_averaged = np.sum(w_L_gathered * e_L_gathered) / np.sum(w_L_gathered)
+            w_L_averaged = np.average(w_L_gathered)
+            logger.info(f"e_L_averaged={e_L_averaged} for rank={rank}")
+            logger.info(f"w_L_averaged={w_L_averaged} for rank={rank}")
+            e_L_averaged_list.append(e_L_averaged)
+            w_L_averaged_list.append(w_L_averaged)
+            mpi_rank_list = [r for r, _ in w_L_gathered_dyad]
+            w_L_list = np.array([w_L for _, w_L in w_L_gathered_dyad])
+            logger.info(f"w_L_list = {w_L_list}")
+            probabilities = w_L_list / w_L_list.sum()
+            logger.info(f"probabilities = {probabilities}")
+            k_list = np.random.choice(len(w_L_list), size=len(w_L_list), p=probabilities, replace=True)
+            chosen_rank_list = [w_L_gathered_dyad[k][0] for k in k_list]
+            chosen_rank_list.sort()
+            logger.info(f"chosen_rank_list = {chosen_rank_list}")
+            counter = Counter(chosen_rank_list)
+            num_survived_walkers += len(set(chosen_rank_list))
+            num_killed_walkers += len(mpi_rank_list) - len(set(chosen_rank_list))
+            logger.info(f"num_survived_walkers={num_survived_walkers}")
+            logger.info(f"num_killed_walkers={num_killed_walkers}")
+            mpi_send_rank = [item for item, count in counter.items() for _ in range(count - 1) if count > 1]
+            mpi_recv_rank = list(set(mpi_rank_list) - set(chosen_rank_list))
+            logger.info(f"mpi_send_rank={mpi_send_rank}")
+            logger.info(f"mpi_recv_rank={mpi_recv_rank}")
+        else:
+            mpi_send_rank = None
+            mpi_recv_rank = None
+        mpi_send_rank = comm.bcast(mpi_send_rank, root=0)
+        mpi_recv_rank = comm.bcast(mpi_recv_rank, root=0)
+
+        if rank == 0:
+            logger.info("-------------------------------------")
+            logger.info("*before branching")
+        logger.info(f"rank={rank}:gfmc.e_L = {gfmc.e_L}")
+        comm.barrier()
+        if rank == 0:
+            logger.info("-------------------------------------")
+        comm.barrier()
+
+        for ii, (send_rank, recv_rank) in enumerate(zip(mpi_send_rank, mpi_recv_rank)):
+            if rank == send_rank:
+                comm.send(gfmc, dest=recv_rank, tag=100 + ii)
+            if rank == recv_rank:
+                gfmc = comm.recv(source=send_rank, tag=100 + ii)
+
+        if rank == 0:
+            logger.info("-------------------------------------")
+            logger.info("*after branching")
+        logger.info(f"rank={rank}:gfmc.e_L = {gfmc.e_L}")
+        comm.barrier()
+        if rank == 0:
+            logger.info("-------------------------------------")
+        comm.barrier()
+
+        # run GFMC
+        gfmc = GFMC(
+            hamiltonian_data=hamiltonian_data,
+            mcmc_seed=mpi_seed + i_branching * rank,
+            tau=tau,
+            alat=alat,
+            init_r_up_carts=gfmc.latest_r_up_carts,
+            init_r_dn_carts=gfmc.latest_r_dn_carts,
+        )
+
+        """
+        # reset weight -> 0
+        gfmc.init_attributes()
+        logger.info(f"gfmc.w_L={gfmc.w_L}")
+
+        # reset random seeds
+        gfmc.mcmc_seed = mpi_seed
+        logger.info(f"gfmc.mcmc_seed={gfmc.mcmc_seed}")
+        """
+
+    logger.info("Branching is over.")
+    if rank == 0:
+        logger.info(e_L_averaged_list)
+        logger.info(w_L_averaged_list)
+        num_gfmc_warmup_steps = 3
+        num_gfmc_bin_blocks = 10
+        num_gfmc_bin_collect = 2
+        e_L_averaged_eq = e_L_averaged_list[num_gfmc_warmup_steps:]
+        e_L_split = np.array_split(e_L_averaged_eq, num_gfmc_bin_blocks)
+        e_L_binned = np.array([np.average(e_list) for e_list in e_L_split])
+        w_L_averaged_eq = w_L_averaged_list[num_gfmc_warmup_steps:]
+        w_L_split = np.array_split(w_L_averaged_eq, num_gfmc_bin_blocks)
+        w_L_binned = np.array([np.average(w_list) for w_list in w_L_split])
+
+        logger.info(e_L_binned)
+        logger.info(w_L_binned)
+
+        e_L_binned_c = e_L_binned[num_gfmc_bin_collect:]
+        G_binned_c = np.array(
+            [
+                np.sum([w_L_binned[i - k] for k in range(num_gfmc_bin_collect)])
+                for i in range(num_gfmc_bin_collect, len(w_L_binned))
+            ]
+        )
+
+        logger.info(e_L_binned_c)
+        logger.info(G_binned_c)
+
+        M = len(e_L_binned_c)
+        e_L_jackknife = [
+            (np.sum(G_binned_c * e_L_binned_c) - G_binned_c[m] * e_L_binned_c[m]) / (np.sum(G_binned_c) - G_binned_c[m])
+            for m in range(M)
+        ]
+
+        logger.info(e_L_jackknife)
+
+        e_L_mean = np.average(e_L_jackknife)
+        e_L_std = np.sqrt(M - 1) * np.std(e_L_jackknife)
+
+        logger.info(f"e_L = {e_L_mean} +- {e_L_std} Ha")
+        logger.info(f"Survived walkers = {num_survived_walkers}")
+        logger.info(f"killed walkers = {num_killed_walkers}")
+        logger.info(f"Survived walkers ratio = {num_survived_walkers/(num_survived_walkers + num_killed_walkers) * 100} :.3f %")

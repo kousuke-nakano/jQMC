@@ -303,6 +303,14 @@ class MCMC:
             # electron positions are goint to be updated!
             start = time.perf_counter()
             for _ in range(nbra):
+                """
+                e_L_debug = compute_local_energy(
+                    hamiltonian_data=self.__hamiltonian_data,
+                    r_up_carts=self.__latest_r_up_carts,
+                    r_dn_carts=self.__latest_r_dn_carts,
+                )
+                logger.info(f"e_L_debug = {e_L_debug}")
+                """
                 # Choose randomly if the electron comes from up or dn
                 if random.randint(0, total_electrons - 1) < len(self.__latest_r_up_carts):
                     selected_electron_spin = "up"
