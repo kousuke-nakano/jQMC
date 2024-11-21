@@ -57,10 +57,7 @@ from scipy.special import eval_legendre
 
 from .miscs.function_collections import legendre_tablated as jnp_legendre_tablated
 from .structure import Structure_data, get_min_dist_rel_R_cart_jnp, get_min_dist_rel_R_cart_np
-from .wavefunction import Wavefunction_data, evaluate_wavefunction_api
-
-# set logger
-logger = getLogger("jqmc").getChild(__name__)
+from .wavefunction import Wavefunction_data, evaluate_determinant_api, evaluate_wavefunction_api
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -440,6 +437,7 @@ def compute_ecp_non_local_parts_debug(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
     Nv: int = 6,
+    flag_determinant_only: int = False,
 ) -> float:
     """Compute ecp non-local parts.
 
@@ -452,6 +450,7 @@ def compute_ecp_non_local_parts_debug(
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
         Nv (int): The number of quadrature points for the spherical part.
+        flag_determinant_only (bool): If True, only the determinant part is considered for the non-local ECP part.
 
     Returns:
         list[(np.NDArray, np.NDArray)]: The list of grids on which the non-local part is computed.
@@ -474,11 +473,18 @@ def compute_ecp_non_local_parts_debug(
     V_nonlocal = []
     sum_V_nonlocal = 0.0
 
-    wf_denominator = evaluate_wavefunction_api(
-        wavefunction_data=wavefunction_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
-    )
+    if flag_determinant_only:
+        wf_denominator = evaluate_determinant_api(
+            wavefunction_data=wavefunction_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+        )
+    else:
+        wf_denominator = evaluate_wavefunction_api(
+            wavefunction_data=wavefunction_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+        )
 
     for i_atom in range(coulomb_potential_data.structure_data.natom):
         max_ang_mom_plus_1 = coulomb_potential_data.max_ang_mom_plus_1[i_atom]
@@ -520,12 +526,18 @@ def compute_ecp_non_local_parts_debug(
                         ((vec_delta) / np.linalg.norm(vec_delta)),
                     )
 
-                    wf_numerator = evaluate_wavefunction_api(
-                        wavefunction_data=wavefunction_data,
-                        r_up_carts=r_up_carts_on_mesh,
-                        r_dn_carts=r_dn_carts,
-                    )
-
+                    if flag_determinant_only:
+                        wf_numerator = evaluate_determinant_api(
+                            wavefunction_data=wavefunction_data,
+                            r_up_carts=r_up_carts_on_mesh,
+                            r_dn_carts=r_dn_carts,
+                        )
+                    else:
+                        wf_numerator = evaluate_wavefunction_api(
+                            wavefunction_data=wavefunction_data,
+                            r_up_carts=r_up_carts_on_mesh,
+                            r_dn_carts=r_dn_carts,
+                        )
                     wf_ratio = wf_numerator / wf_denominator
 
                     P_l = (2 * ang_mom + 1) * eval_legendre(ang_mom, cos_theta) * weight * wf_ratio
@@ -559,11 +571,18 @@ def compute_ecp_non_local_parts_debug(
                         vec_delta / np.linalg.norm(vec_delta),
                     )
 
-                    wf_numerator = evaluate_wavefunction_api(
-                        wavefunction_data=wavefunction_data,
-                        r_up_carts=r_up_carts,
-                        r_dn_carts=r_dn_carts_on_mesh,
-                    )
+                    if flag_determinant_only:
+                        wf_numerator = evaluate_determinant_api(
+                            wavefunction_data=wavefunction_data,
+                            r_up_carts=r_up_carts,
+                            r_dn_carts=r_dn_carts_on_mesh,
+                        )
+                    else:
+                        wf_numerator = evaluate_wavefunction_api(
+                            wavefunction_data=wavefunction_data,
+                            r_up_carts=r_up_carts,
+                            r_dn_carts=r_dn_carts_on_mesh,
+                        )
 
                     wf_ratio = wf_numerator / wf_denominator
 
@@ -725,6 +744,7 @@ def compute_ecp_non_local_parts_jax(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
     Nv: int = 6,
+    flag_determinant_only: int = False,
 ) -> float:
     """Compute ecp non-local parts using JAX.
 
@@ -736,6 +756,7 @@ def compute_ecp_non_local_parts_jax(
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
         Nv (int): The number of quadrature points for the spherical part.
+        flag_determinant_only (bool): If True, only the determinant part is considered for the non-local ECP part.
 
     Returns:
         list[(np.NDArray, np.NDArray)]: The list of grids on which the non-local part is computed.
@@ -762,6 +783,7 @@ def compute_ecp_non_local_parts_jax(
             r_dn_carts=r_dn_carts,
             weights=weights,
             grid_points=grid_points,
+            flag_determinant_only=int(flag_determinant_only),
         )
     )
 
@@ -816,6 +838,7 @@ def compute_ecp_non_local_part_jax_weights_grid_points(
     r_dn_carts: npt.NDArray[np.float64],
     weights: list,
     grid_points: npt.NDArray[np.float64],
+    flag_determinant_only: int = 0,
 ) -> float:
     """Compute ecp non-local parts using JAX.
 
@@ -830,6 +853,7 @@ def compute_ecp_non_local_part_jax_weights_grid_points(
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
         weights (list[np.float]): weights for numerical integration
         grid_points (npt.NDArray[np.float64]): grid_points for numerical integration
+        flag_determinant_only (int): If True (i.e., 0), only the determinant part is considered for the non-local ECP part.
 
     Returns:
         npt.NDArray: grid points used for the up electron
@@ -846,14 +870,20 @@ def compute_ecp_non_local_part_jax_weights_grid_points(
     weights = jnp.array(weights)
     grid_points = jnp.array(grid_points)
 
+    """
     wf_denominator = evaluate_wavefunction_api(
         wavefunction_data=wavefunction_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
+    """
+    wf_denominator = lax.switch(
+        flag_determinant_only,
+        (evaluate_wavefunction_api, evaluate_determinant_api),
+        *(wavefunction_data, r_up_carts, r_dn_carts),
+    )
 
     # Compute the local part. To understand the flow, please refer to the debug version.
-    # @jit
     def compute_V_l(r_cart, i_atom, exponent, coefficient, power):
         rel_R_cart_min_dist = get_min_dist_rel_R_cart_jnp(
             structure_data=coulomb_potential_data.structure_data,
@@ -871,8 +901,6 @@ def compute_ecp_non_local_part_jax_weights_grid_points(
 
     # Compute the Projection of WF. for a up electron
     # To understand the flow, please refer to the debug version.
-    # @jit
-    # in_axes=(None, None, None, None, 0, 0)
     def compute_P_l_up(ang_mom, r_up_i, r_up_cart, i_atom, weight, vec_delta):
         rel_R_cart_min_dist = get_min_dist_rel_R_cart_jnp(
             structure_data=coulomb_potential_data.structure_data,
@@ -888,10 +916,19 @@ def compute_ecp_non_local_part_jax_weights_grid_points(
             -1.0 * (rel_R_cart_min_dist) / jnp.linalg.norm(rel_R_cart_min_dist),
             ((vec_delta) / jnp.linalg.norm(vec_delta)),
         )
+
+        """
         wf_numerator_up = evaluate_wavefunction_api(
             wavefunction_data=wavefunction_data,
             r_up_carts=r_up_carts_on_mesh,
             r_dn_carts=r_dn_carts,
+        )
+        """
+
+        wf_numerator_up = lax.switch(
+            flag_determinant_only,
+            (evaluate_wavefunction_api, evaluate_determinant_api),
+            *(wavefunction_data, r_up_carts_on_mesh, r_dn_carts),
         )
 
         wf_ratio_up = wf_numerator_up / wf_denominator
@@ -902,8 +939,6 @@ def compute_ecp_non_local_part_jax_weights_grid_points(
 
     # Compute the Projection of WF. for a down electron
     # To understand the flow, please refer to the debug version.
-    # @jit
-    # vmap in_axes=(None, None, None, None, 0, 0)
     def compute_P_l_dn(ang_mom, r_dn_i, r_dn_cart, i_atom, weight, vec_delta):
         rel_R_cart_min_dist = get_min_dist_rel_R_cart_jnp(
             structure_data=coulomb_potential_data.structure_data,
@@ -919,10 +954,17 @@ def compute_ecp_non_local_part_jax_weights_grid_points(
             -1.0 * (rel_R_cart_min_dist) / jnp.linalg.norm(rel_R_cart_min_dist),
             ((vec_delta) / jnp.linalg.norm(vec_delta)),
         )
+        """
         wf_numerator_dn = evaluate_wavefunction_api(
             wavefunction_data=wavefunction_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts_on_mesh,
+        )
+        """
+        wf_numerator_dn = lax.switch(
+            flag_determinant_only,
+            (evaluate_wavefunction_api, evaluate_determinant_api),
+            *(wavefunction_data, r_up_carts, r_dn_carts_on_mesh),
         )
 
         wf_ratio_dn = wf_numerator_dn / wf_denominator
@@ -1345,6 +1387,7 @@ if __name__ == "__main__":
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
         Nv=6,
+        flag_determinant_only=False,
     )
 
     mesh_non_local_ecp_part_debug, V_nonlocal_debug, sum_V_nonlocal_debug = compute_ecp_non_local_parts_debug(
@@ -1353,6 +1396,7 @@ if __name__ == "__main__":
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
         Nv=6,
+        flag_determinant_only=False,
     )
 
     np.testing.assert_almost_equal(sum_V_nonlocal_jax, sum_V_nonlocal_debug, decimal=5)
@@ -1366,3 +1410,27 @@ if __name__ == "__main__":
     mesh_non_local_max_jax = mesh_non_local_ecp_part_jax[np.argmax(V_nonlocal_jax)]
 
     np.testing.assert_array_almost_equal(mesh_non_local_max_debug, mesh_non_local_max_jax, decimal=5)
+
+    mesh_non_local_ecp_part_only_det_jax, V_nonlocal_only_det_jax, sum_V_nonlocal_only_det_jax = (
+        compute_ecp_non_local_parts_jax(
+            coulomb_potential_data=coulomb_potential_data,
+            wavefunction_data=wavefunction_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+            Nv=6,
+            flag_determinant_only=True,
+        )
+    )
+
+    mesh_non_local_ecp_part_only_det_debug, V_nonlocal_only_det_debug, sum_V_nonlocal_only_det_debug = (
+        compute_ecp_non_local_parts_debug(
+            coulomb_potential_data=coulomb_potential_data,
+            wavefunction_data=wavefunction_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+            Nv=6,
+            flag_determinant_only=True,
+        )
+    )
+
+    np.testing.assert_almost_equal(sum_V_nonlocal_only_det_jax, sum_V_nonlocal_only_det_debug, decimal=5)

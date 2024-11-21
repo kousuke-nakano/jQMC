@@ -734,7 +734,7 @@ class VMC:
                 log.setLevel("INFO")
                 stream_handler = StreamHandler()
                 stream_handler.setLevel("INFO")
-                handler_format = Formatter(f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
+                handler_format = Formatter("%(message)s")
                 stream_handler.setFormatter(handler_format)
                 log.addHandler(stream_handler)
         else:

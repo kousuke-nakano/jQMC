@@ -88,7 +88,7 @@ def evaluate_ln_wavefunction_api(
 
     Returns
     -------
-        The value of the given wavefunction (float | complex)
+        The value of the given wavefunction (float)
     """
     return jnp.log(
         jnp.abs(
@@ -116,7 +116,7 @@ def evaluate_wavefunction_api(
 
     Returns
     -------
-        The value of the given wavefunction (float | complex)
+        The value of the given wavefunction (float)
     """
     Jastrow_part = compute_Jastrow_part_api(
         jastrow_data=wavefunction_data.jastrow_data,
@@ -131,6 +131,58 @@ def evaluate_wavefunction_api(
     )
 
     return jnp.exp(Jastrow_part) * Determinant_part
+
+
+def evaluate_jastrow_api(
+    wavefunction_data: Wavefunction_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+) -> float:
+    """
+    The method is for evaluate the Jastrow part of the wavefunction (Psi) at (r_up_carts, r_dn_carts).
+
+    Args:
+        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
+        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
+        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+
+    Returns
+    -------
+        The value of the given Jastrow (float)
+    """
+    Jastrow_part = compute_Jastrow_part_api(
+        jastrow_data=wavefunction_data.jastrow_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    return Jastrow_part
+
+
+def evaluate_determinant_api(
+    wavefunction_data: Wavefunction_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+) -> float:
+    """
+    The method is for evaluate the determinant part of the wavefunction (Psi) at (r_up_carts, r_dn_carts).
+
+    Args:
+        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
+        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
+        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+
+    Returns
+    -------
+        The value of the given determinant (float)
+    """
+    Determinant_part = compute_det_geminal_all_elements_api(
+        geminal_data=wavefunction_data.geminal_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    return Determinant_part
 
 
 def compute_kinetic_energy_api(
