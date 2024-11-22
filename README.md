@@ -3,23 +3,23 @@ jQMC code implements two real-space ab initio quantum Monte Carlo (QMC) methods.
 Variatioinal Monte Carlo (VMC) and lattice regularized diffusion Monte Carlo (LRDMC) methods.
 
 ## Developers
-Kosuke Nakano (National Institute for Materials Science [NIMS], Japan)
-
-## Sponsors
-<img src="https://www.jst.go.jp/kisoken/presto/wp-content/themes/02_presto/img/logo-ja.png" />
+Kosuke Nakano (National Institute for Materials Science, NIMS, Japan)
 
 
 ## How to install jQMC
 
-jQMC can be installed via pip
+**jQMC** can be installed via pip
 
 ```bash
 % pip install .
 ```
 
+## Examples
+Examples are in `examples` directory.
+
 ## Documentation
 
-jQMC user documentation is written using python sphinx. The source files are
+**jQMC** user documentation is written using python sphinx. The source files are
 stored in `doc` directory. Please see how to write the documentation at
 `doc/README.md`.
 
@@ -69,5 +69,6 @@ Tests are written using pytest. To run tests, pytest has to be installed.
 The tests can be run by
 
 ```bash
-% pytest -v
+% pytest -s -v  # without jax-jit
+% pytest -s -v --enable-jit  # with jax jit
 ```
