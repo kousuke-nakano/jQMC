@@ -552,7 +552,7 @@ class MCMC:
 
         self.__mcmc_counter += num_mcmc_steps
         logger.info(f"Acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
-        logger.info(f"Total Elapsed time for MCMC {num_mcmc_steps} steps. = {timer_mcmc_total*10**3:.2f} msec.")
+        logger.info(f"Total Elapsed time for MCMC {num_mcmc_steps} steps. = {timer_mcmc_total:.2f} sec.")
         logger.info(f"Elapsed times per MCMC step, averaged over {num_mcmc_steps} steps.")
         logger.info(f"  Time for MCMC updated = {timer_mcmc_updated/num_mcmc_steps*10**3:.2f} msec.")
         logger.info(f"  Time for computing e_L = {timer_e_L/num_mcmc_steps*10**3:.2f} msec.")
@@ -708,7 +708,6 @@ class VMC:
     Runing VMC using MCMC.
 
     Args:
-        mcmc_seed (int): seed for the MCMC chain.
         hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
         mcmc_seed (int): random seed for MCMC
         num_mcmc_warmup_steps (int): number of equilibration steps.
@@ -725,26 +724,7 @@ class VMC:
         Dt_init: float = 2.0,
         comput_jas_param_deriv=False,
         comput_position_deriv=False,
-        logger_level="MPI-INFO",
     ) -> None:
-        log = getLogger("jqmc")
-
-        if logger_level == "MPI-INFO":
-            if rank == 0:
-                log.setLevel("INFO")
-                stream_handler = StreamHandler()
-                stream_handler.setLevel("INFO")
-                handler_format = Formatter("%(message)s")
-                stream_handler.setFormatter(handler_format)
-                log.addHandler(stream_handler)
-        else:
-            log.setLevel(logger_level)
-            stream_handler = StreamHandler()
-            stream_handler.setLevel(logger_level)
-            handler_format = Formatter(f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
-            stream_handler.setFormatter(handler_format)
-            log.addHandler(stream_handler)
-
         self.__mpi_seed = mcmc_seed * (rank + 1)
         self.__num_mcmc_warmup_steps = num_mcmc_warmup_steps
         self.__num_mcmc_bin_blocks = num_mcmc_bin_blocks

@@ -2,6 +2,8 @@
 jQMC code implements two real-space ab initio quantum Monte Carlo (QMC) methods.
 Variatioinal Monte Carlo (VMC) and lattice regularized diffusion Monte Carlo (LRDMC) methods.
 
+![license](https://img.shields.io/github/license/kousuke-nakano/jQMC)
+
 ## Developers
 Kosuke Nakano (National Institute for Materials Science, NIMS, Japan)
 

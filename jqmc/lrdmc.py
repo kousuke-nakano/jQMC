@@ -128,12 +128,14 @@ class GFMC:
 
         total_electrons = 0
 
-        if coulomb_potential_data.ecp_flag:
-            charges = np.array(structure_data.atomic_numbers) - np.array(coulomb_potential_data.z_cores)
+        if hamiltonian_data.coulomb_potential_data.ecp_flag:
+            charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
+                hamiltonian_data.coulomb_potential_data.z_cores
+            )
         else:
-            charges = np.array(structure_data.atomic_numbers)
+            charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
 
-        coords = structure_data.positions_cart
+        coords = hamiltonian_data.structure_data.positions_cart
 
         # set random seeds
         mpi_seed = mcmc_seed * (rank + 1)
@@ -272,7 +274,7 @@ class GFMC:
             logger.info(f"i_branching = {i_branching}/{num_branching}")
 
             # MAIN project loop.
-            logger.info(f"  Projection time {self.__tau} a.u.^{-1}.")
+            logger.debug(f"  Projection time {self.__tau} a.u.^{-1}.")
 
             tau_left = self.__tau
             logger.debug(f"  Left projection time = {tau_left}/{self.__tau}: {0.0:.0f} %.")
@@ -280,7 +282,7 @@ class GFMC:
             # Always set the initial weight to 1.0
             w_L = 1.0
 
-            logger.info("  Projection is on going....")
+            logger.debug("  Projection is on going....")
 
             start_projection = time.perf_counter()
             while tau_left > 0.0:
@@ -423,7 +425,7 @@ class GFMC:
             timer_projection += end_projection - start_projection
 
             # projection ends
-            logger.info("  Projection ends.")
+            logger.debug("  Projection ends.")
 
             # evaluate observables
             start_observable = time.perf_counter()
@@ -506,8 +508,8 @@ class GFMC:
                 w_L_gathered = np.array([w_L for _, w_L in w_L_gathered_dyad])
                 e_L_averaged = np.sum(w_L_gathered * e_L_gathered) / np.sum(w_L_gathered)
                 w_L_averaged = np.average(w_L_gathered)
-                logger.info(f"  e_L_averaged = {e_L_averaged} Ha")
-                logger.info(f"  w_L_averaged(before branching) = {w_L_averaged}")
+                logger.debug(f"  e_L_averaged = {e_L_averaged} Ha")
+                logger.debug(f"  w_L_averaged(before branching) = {w_L_averaged}")
                 self.__e_L_averaged_list.append(e_L_averaged)
                 self.__w_L_averaged_list.append(w_L_averaged)
                 mpi_rank_list = [r for r, _ in w_L_gathered_dyad]
@@ -562,6 +564,11 @@ class GFMC:
         logger.info(f"  Projection time per branching = {timer_projection/num_branching: .3f} sec.")
         logger.info(f"  Observable time per branching = {timer_observable/num_branching: .3f} sec.")
         logger.info(f"  Branching time per branching = {timer_branching/num_branching: .3f} sec.")
+        logger.debug(f"Survived walkers = {self.__num_survived_walkers}")
+        logger.debug(f"killed walkers = {self.__num_killed_walkers}")
+        logger.info(
+            f"Survived walkers ratio = {self.__num_survived_walkers/(self.__num_survived_walkers + self.__num_killed_walkers) * 100:.2f} %"
+        )
 
     def get_e_L(self, num_gfmc_warmup_steps: int = 3, num_gfmc_bin_blocks: int = 10, num_gfmc_bin_collect: int = 2) -> float:
         """Get e_L."""
@@ -595,17 +602,13 @@ class GFMC:
                 for m in range(M)
             ]
 
-            logger.info(e_L_jackknife)
+            logger.debug(e_L_jackknife)
 
             e_L_mean = np.average(e_L_jackknife)
             e_L_std = np.sqrt(M - 1) * np.std(e_L_jackknife)
 
-            logger.info(f"e_L = {e_L_mean} +- {e_L_std} Ha")
-            logger.info(f"Survived walkers = {self.__num_survived_walkers}")
-            logger.info(f"killed walkers = {self.__num_killed_walkers}")
-            logger.info(
-                f"Survived walkers ratio = {self.__num_survived_walkers/(self.__num_survived_walkers + self.__num_killed_walkers) * 100:.2f} %"
-            )
+            logger.debug(f"e_L = {e_L_mean} +- {e_L_std} Ha")
+            return e_L_mean, e_L_std
 
     @property
     def hamiltonian_data(self):
