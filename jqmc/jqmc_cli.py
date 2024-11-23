@@ -89,6 +89,13 @@ def main():
             handler_format = Formatter("%(message)s")
             stream_handler.setFormatter(handler_format)
             log.addHandler(stream_handler)
+        else:
+            log.setLevel("ERROR")
+            stream_handler = StreamHandler()
+            stream_handler.setLevel("ERROR")
+            handler_format = Formatter(f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
+            stream_handler.setFormatter(handler_format)
+            log.addHandler(stream_handler)
     else:
         log.setLevel(logger_level)
         stream_handler = StreamHandler()
@@ -106,78 +113,218 @@ def main():
     else:
         toml_file = sys.argv[1]
         if not os.path.isfile(toml_file):
-            raise FileNotFoundError(f"toml_file = {toml_file} does not exsit.")
+            raise FileNotFoundError(f"toml_file = {toml_file} does not exist.")
         else:
             dict_toml = toml.load(open(toml_file))
 
     logger.info(f"Input file = {toml_file}")
+    if not all([type(value) is dict for value in dict_toml.values()]):
+        raise ValueError("The format of the toml file is wrong. See the tutorial.")
+
     logger.info("")
-    logger.info("Input parameters are")
+    logger.info("Input parameters are::")
+    logger.info("")
     for section, dict_item in dict_toml.items():
         logger.info(f"**section:{section}**")
         for key, item in dict_item.items():
             logger.info(f"  {key}={item}")
         logger.info("")
 
-    job_type = dict_toml["control"]["job_type"]
-    mcmc_seed = dict_toml["control"]["mcmc_seed"]
-    restart = dict_toml["control"]["restart"]
+    # job_type
+    try:
+        job_type = dict_toml["control"]["job_type"]
+    except KeyError as e:
+        logger.error("job_type should be specified.")
+        raise ValueError from e
+    # mcmc_seed
+    try:
+        mcmc_seed = dict_toml["control"]["mcmc_seed"]
+    except KeyError:
+        mcmc_seed = 34456
+        logger.info(f"The default value of mcmc_seed = {mcmc_seed}.")
+    # restart
+    try:
+        restart = dict_toml["control"]["restart"]
+    except KeyError:
+        restart = False
+        logger.info(f"The default value of restart = {restart}.")
     if restart:
         restart_chk = dict_toml["control"]["restart_chk"]
-        logger.info(f"restart = {restart}, restart_chk = {restart_chk}")
+        logger.info(f"restart = {restart}, restart_chk = {restart_chk}.")
     else:
         hamiltonian_chk = dict_toml["control"]["hamiltonian_chk"]
-        logger.info(f"restart = {restart}, hamiltonian_chk = {hamiltonian_chk}")
+        logger.info(f"restart = {restart}, hamiltonian_chk = {hamiltonian_chk}.")
 
     # VMC!
     if job_type == "vmc":
-        num_mcmc_steps = dict_toml["vmc"]["num_mcmc_steps"]
-        num_mcmc_warmup_steps = dict_toml["vmc"]["num_mcmc_warmup_steps"]
-        num_mcmc_bin_blocks = dict_toml["vmc"]["num_mcmc_bin_blocks"]
+        logger.info("***Variational Monte Carlo***")
+        # num_mcmc_steps
+        try:
+            num_mcmc_steps = dict_toml["vmc"]["num_mcmc_steps"]
+        except KeyError as e:
+            logger.error("num_mcmc_steps should be specified.")
+            raise KeyError from e
+        # num_mcmc_warmup_steps
+        try:
+            num_mcmc_warmup_steps = dict_toml["vmc"]["num_mcmc_warmup_steps"]
+        except KeyError:
+            num_mcmc_warmup_steps = 0
+            logger.warning(f"The default value of num_mcmc_warmup_steps = {num_mcmc_warmup_steps}.")
+        # num_mcmc_bin_blocks
+        try:
+            num_mcmc_bin_blocks = dict_toml["vmc"]["num_mcmc_bin_blocks"]
+        except KeyError:
+            num_mcmc_bin_blocks = 1
+            logger.warning(f"The default value of num_mcmc_bin_blocks = {num_mcmc_bin_blocks}.")
+        # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
+        if num_mcmc_steps < num_mcmc_warmup_steps:
+            raise ValueError("num_mcmc_steps should be larger than num_mcmc_warmup_steps")
+        if num_mcmc_steps - num_mcmc_warmup_steps < num_mcmc_bin_blocks:
+            raise ValueError("(num_mcmc_steps - num_mcmc_warmup_steps) should be larger than num_mcmc_bin_blocks.")
 
-        with open(hamiltonian_chk, "rb") as f:
-            hamiltonian_data = pickle.load(f)
+        if restart:
+            raise NotImplementedError("Implementation of restart=true is in progress.")
+        else:
+            with open(hamiltonian_chk, "rb") as f:
+                hamiltonian_data = pickle.load(f)
 
-            vmc = VMC(
-                hamiltonian_data=hamiltonian_data,
-                mcmc_seed=mcmc_seed,
-                num_mcmc_warmup_steps=num_mcmc_warmup_steps,
-                num_mcmc_bin_blocks=num_mcmc_bin_blocks,
-                comput_position_deriv=False,
-                comput_jas_param_deriv=False,
-            )
-            vmc.run_single_shot(num_mcmc_steps=num_mcmc_steps)
-            e_L_mean, e_L_std = vmc.get_e_L()
-            logger.info("Final output(s):")
-            logger.info(f"  Total Energy: E = {e_L_mean:.5f} +- {e_L_std:5f} Ha.")
-            logger.info("")
+                vmc = VMC(
+                    hamiltonian_data=hamiltonian_data,
+                    mcmc_seed=mcmc_seed,
+                    num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+                    num_mcmc_bin_blocks=num_mcmc_bin_blocks,
+                    comput_position_deriv=False,
+                    comput_jas_param_deriv=False,
+                )
+        vmc.run_single_shot(num_mcmc_steps=num_mcmc_steps)
+        e_L_mean, e_L_std = vmc.get_e_L()
+        logger.info("Final output(s):")
+        logger.info(f"  Total Energy: E = {e_L_mean:.5f} +- {e_L_std:5f} Ha.")
+        logger.info("")
+
+    # VMCopt!
+    if job_type == "vmcopt":
+        logger.info("***WF optimization with Variational Monte Carlo***")
+        # num_mcmc_steps
+        try:
+            num_mcmc_steps = dict_toml["vmcopt"]["num_mcmc_steps"]
+        except KeyError as e:
+            logger.error("num_mcmc_steps should be specified.")
+            raise KeyError from e
+        # num_opt_steps
+        try:
+            num_opt_steps = dict_toml["vmcopt"]["num_opt_steps"]
+        except KeyError as e:
+            logger.error("num_opt_steps should be specified.")
+            raise KeyError from e
+        # num_mcmc_warmup_steps
+        try:
+            num_mcmc_warmup_steps = dict_toml["vmcopt"]["num_mcmc_warmup_steps"]
+        except KeyError:
+            num_mcmc_warmup_steps = 0
+            logger.warning(f"The default value of num_mcmc_warmup_steps = {num_mcmc_warmup_steps}.")
+        # num_mcmc_bin_blocks
+        try:
+            num_mcmc_bin_blocks = dict_toml["vmcopt"]["num_mcmc_bin_blocks"]
+        except KeyError:
+            num_mcmc_bin_blocks = 1
+            logger.warning(f"The default value of num_mcmc_bin_blocks = {num_mcmc_bin_blocks}.")
+        # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
+        if num_mcmc_steps < num_mcmc_warmup_steps:
+            raise ValueError("num_mcmc_steps should be larger than num_mcmc_warmup_steps")
+        if num_mcmc_steps - num_mcmc_warmup_steps < num_mcmc_bin_blocks:
+            raise ValueError("(num_mcmc_steps - num_mcmc_warmup_steps) should be larger than num_mcmc_bin_blocks.")
+
+        if restart:
+            raise NotImplementedError("Implementation of restart=true is in progress.")
+        else:
+            with open(hamiltonian_chk, "rb") as f:
+                hamiltonian_data = pickle.load(f)
+
+                vmc = VMC(
+                    hamiltonian_data=hamiltonian_data,
+                    mcmc_seed=mcmc_seed,
+                    num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+                    num_mcmc_bin_blocks=num_mcmc_bin_blocks,
+                    comput_position_deriv=False,
+                    comput_jas_param_deriv=True,
+                )
+        vmc.run_optimize(
+            num_mcmc_steps=num_mcmc_steps, num_opt_steps=num_opt_steps, delta=0.01, var_epsilon=1.0e-3, wf_dump_freq=1
+        )
+        logger.info("")
 
     # LRDMC!
     if job_type == "lrdmc":
         logger.info("***Lattice Regularized diffusion Monte Carlo***")
-        num_branching = dict_toml["lrdmc"]["num_branching"]
-        tau = dict_toml["lrdmc"]["tau"]
-        alat = dict_toml["lrdmc"]["alat"]
-        non_local_move = dict_toml["lrdmc"]["non_local_move"]
-        num_gfmc_warmup_steps = dict_toml["lrdmc"]["num_gfmc_warmup_steps"]
-        num_gfmc_bin_blocks = dict_toml["lrdmc"]["num_gfmc_bin_blocks"]
-        num_gfmc_bin_collect = dict_toml["lrdmc"]["num_gfmc_bin_collect"]
+        # num_branching
+        try:
+            num_branching = dict_toml["lrdmc"]["num_branching"]
+        except KeyError as e:
+            logger.error("num_branching should be specified.")
+            raise ValueError from e
+        # tau
+        try:
+            tau = dict_toml["lrdmc"]["tau"]
+        except KeyError:
+            tau = 0.01
+            logger.warning(f"The default value of tau = {tau}.")
+        # alat
+        try:
+            alat = dict_toml["lrdmc"]["alat"]
+        except KeyError as e:
+            logger.error("num_branching should be specified.")
+            raise ValueError from e
+        # non_local_move
+        try:
+            non_local_move = dict_toml["lrdmc"]["non_local_move"]
+        except KeyError:
+            non_local_move = "tmove"
+            logger.warning(f"The default value of non_local_move = {non_local_move}.")
+        # num_gmfc_warmup_steps:
+        try:
+            num_gfmc_warmup_steps = dict_toml["lrdmc"]["num_gfmc_warmup_steps"]
+        except KeyError:
+            num_gfmc_warmup_steps = 0
+            logger.warning(f"The default value of num_gfmc_warmup_steps = {num_gfmc_warmup_steps}.")
+        # num_gmfc_bin_blocks
+        try:
+            num_gfmc_bin_blocks = dict_toml["lrdmc"]["num_gfmc_bin_blocks"]
+        except KeyError:
+            num_gfmc_bin_blocks = 1
+            logger.warning(f"The default value of num_gfmc_bin_blocks = {num_gfmc_bin_blocks}.")
+        # num_gfmc_bin_collect
+        try:
+            num_gfmc_bin_collect = dict_toml["lrdmc"]["num_gfmc_bin_collect"]
+        except KeyError:
+            num_gfmc_bin_collect = 0
+            logger.warning(f"The default value of num_gfmc_bin_collect = {num_gfmc_bin_collect}.")
+        # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
+        if num_branching < num_gfmc_warmup_steps:
+            raise ValueError("num_branching should be larger than num_gfmc_warmup_steps")
+        if num_branching - num_gfmc_warmup_steps < num_gfmc_bin_blocks:
+            raise ValueError("(num_branching - num_gfmc_warmup_steps) should be larger than num_gfmc_bin_blocks.")
+        if num_gfmc_bin_blocks < num_gfmc_bin_collect:
+            raise ValueError("num_gfmc_bin_blocks should be larger than num_gfmc_bin_collect.")
 
-        with open(hamiltonian_chk, "rb") as f:
-            hamiltonian_data = pickle.load(f)
+        if restart:
+            raise NotImplementedError("Implementation of restart=true is in progress.")
+        else:
+            with open(hamiltonian_chk, "rb") as f:
+                hamiltonian_data = pickle.load(f)
 
-            gfmc = GFMC(
-                hamiltonian_data=hamiltonian_data, mcmc_seed=mcmc_seed, tau=tau, alat=alat, non_local_move=non_local_move
-            )
-            gfmc.run(num_branching=num_branching)
-            e_L_mean, e_L_std = gfmc.get_e_L(
-                num_gfmc_warmup_steps=num_gfmc_warmup_steps,
-                num_gfmc_bin_blocks=num_gfmc_bin_blocks,
-                num_gfmc_bin_collect=num_gfmc_bin_collect,
-            )
-            logger.info("Final output(s):")
-            logger.info(f"  Total Energy: E = {e_L_mean:.5f} +- {e_L_std:5f} Ha.")
-            logger.info("")
+                gfmc = GFMC(
+                    hamiltonian_data=hamiltonian_data, mcmc_seed=mcmc_seed, tau=tau, alat=alat, non_local_move=non_local_move
+                )
+        gfmc.run(num_branching=num_branching)
+        e_L_mean, e_L_std = gfmc.get_e_L(
+            num_gfmc_warmup_steps=num_gfmc_warmup_steps,
+            num_gfmc_bin_blocks=num_gfmc_bin_blocks,
+            num_gfmc_bin_collect=num_gfmc_bin_collect,
+        )
+        logger.info("Final output(s):")
+        logger.info(f"  Total Energy: E = {e_L_mean:.5f} +- {e_L_std:5f} Ha.")
+        logger.info("")
 
     print_footer()
 

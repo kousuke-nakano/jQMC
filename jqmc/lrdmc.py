@@ -540,6 +540,8 @@ class GFMC:
             logger.debug(f"Before branching: rank={rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
 
             comm.barrier()
+            self.__num_survived_walkers = comm.bcast(self.__num_survived_walkers, root=0)
+            self.__num_killed_walkers = comm.bcast(self.__num_killed_walkers, root=0)
             for ii, (send_rank, recv_rank) in enumerate(zip(mpi_send_rank, mpi_recv_rank)):
                 if rank == send_rank:
                     comm.send(self.__latest_r_up_carts, dest=recv_rank, tag=100 + 2 * ii)
@@ -608,7 +610,14 @@ class GFMC:
             e_L_std = np.sqrt(M - 1) * np.std(e_L_jackknife)
 
             logger.debug(f"e_L = {e_L_mean} +- {e_L_std} Ha")
-            return e_L_mean, e_L_std
+        else:
+            e_L_mean = None
+            e_L_std = None
+
+        e_L_mean = comm.bcast(e_L_mean, root=0)
+        e_L_std = comm.bcast(e_L_std, root=0)
+
+        return e_L_mean, e_L_std
 
     @property
     def hamiltonian_data(self):

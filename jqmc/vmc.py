@@ -552,7 +552,7 @@ class MCMC:
 
         self.__mcmc_counter += num_mcmc_steps
         logger.info(f"Acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
-        logger.info(f"Total Elapsed time for MCMC {num_mcmc_steps} steps. = {timer_mcmc_total:.2f} sec.")
+        logger.info(f"Total Elapsed time for MCMC {num_mcmc_steps} steps. = {timer_mcmc_total*10**3:.2f} msec.")
         logger.info(f"Elapsed times per MCMC step, averaged over {num_mcmc_steps} steps.")
         logger.info(f"  Time for MCMC updated = {timer_mcmc_updated/num_mcmc_steps*10**3:.2f} msec.")
         logger.info(f"  Time for computing e_L = {timer_e_L/num_mcmc_steps*10**3:.2f} msec.")
@@ -813,11 +813,10 @@ class VMC:
             comput_position_deriv=self.__comput_position_deriv,
         )
 
-    def run_single_shot(self, num_mcmc_steps=0):
-        if rank == 0:
-            logger.info(f"num_mcmc_warmup_steps={self.__num_mcmc_warmup_steps}.")
-            logger.info(f"num_mcmc_bin_blocks={self.__num_mcmc_bin_blocks}.")
+        # WF optimization counter
+        self.__i_opt = 0
 
+    def run_single_shot(self, num_mcmc_steps=0):
         # run VMC
         self.__mcmc.run(num_mcmc_steps=num_mcmc_steps)
 
@@ -825,12 +824,14 @@ class VMC:
         self,
         num_mcmc_steps=100,
         num_opt_steps=1,
+        delta=0.01,
+        var_epsilon=1.0e-3,
         wf_dump_freq=10,
     ):
         # dump WF before opt.
         if rank == 0:
             logger.info("Hamiltonian data is dumped as a checkpoint file before optimization.")
-            self.__mcmc.hamiltonian_data.dump("hamiltonian_data_opt_0.chk")
+            self.__mcmc.hamiltonian_data.dump(f"hamiltonian_data_opt_step_{self.__i_opt}.chk")
 
         # main vmcopt loop
         for i_opt in range(num_opt_steps):
@@ -842,7 +843,7 @@ class VMC:
                 logger.info(f"num_mcmc_steps={num_mcmc_steps}.")
                 logger.info(f"Optimize Jastrow 1b2b3b={self.__comput_jas_param_deriv}")
 
-            logger.debug(f"twobody param before opt.")
+            logger.debug("twobody param before opt.")
             logger.debug(self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param)
 
             # run MCMC
@@ -858,10 +859,10 @@ class VMC:
             if rank == 0:
                 signal_to_noise_f = np.abs(f) / f_std
                 logger.info(f"Max |f| = {np.max(np.abs(f)):.3f} Ha/a.u.")
+                logger.info(f"f_std of Max |f| = {f_std[np.argmax(np.abs(f))]} Ha/a.u.")
                 logger.info(f"Max of signal to noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}.")
 
             if rank == 0:
-                var_epsilon = 1.0e-3
                 I = np.eye(S.shape[0])
                 S_prime = S + var_epsilon * I
 
@@ -890,8 +891,6 @@ class VMC:
             opt_param_list = self.__mcmc.opt_param_dict["opt_param_list"]
             dln_Psi_dc_shape_list = self.__mcmc.opt_param_dict["dln_Psi_dc_shape_list"]
             dln_Psi_dc_flattened_index_list = self.__mcmc.opt_param_dict["dln_Psi_dc_flattened_index_list"]
-
-            delta = 0.01
 
             jastrow_2b_param = (
                 self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
@@ -938,9 +937,10 @@ class VMC:
 
             # dump WF
             if rank == 0:
-                if i_opt % wf_dump_freq == 0 or i_opt == num_opt_steps - 1:
+                if (i_opt + 1) % wf_dump_freq == 0 or (i_opt + 1) == num_opt_steps:
                     logger.info("Hamiltonian data is dumped as a checkpoint file.")
-                    self.__mcmc.hamiltonian_data.dump(f"hamiltonian_data_opt_{i_opt+1}.chk")
+                    self.__mcmc.hamiltonian_data.dump(f"hamiltonian_data_opt_step_{self.__i_opt + 1}.chk")
+            self.__i_opt += 1
 
     def get_deriv_ln_WF(self):
         opt_param_dict = self.__mcmc.opt_param_dict
