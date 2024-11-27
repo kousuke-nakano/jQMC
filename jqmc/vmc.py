@@ -211,6 +211,12 @@ class MCMC:
         # stored local energy (e_L)
         self.__stored_e_L = []
 
+        # stored local energy (ln_WF)
+        self.__stored_ln_WF = []
+
+        # stored local energy (abs_WF)
+        self.__stored_abs_WF = []
+
         # stored de_L / dR
         self.__stored_grad_e_L_dR = []
 
@@ -414,6 +420,24 @@ class MCMC:
             logger.devel(f"  e_L = {e_L}")
             self.__stored_e_L.append(e_L)
 
+            abs_WF = np.abs(
+                evaluate_wavefunction_api(
+                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                    r_up_carts=self.__latest_r_up_carts,
+                    r_dn_carts=self.__latest_r_dn_carts,
+                )
+            )
+            logger.devel(f"  abs_WF = {abs_WF}")
+            self.__stored_ln_WF.append(abs_WF)
+
+            ln_WF = evaluate_ln_wavefunction_api(
+                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                r_up_carts=self.__latest_r_up_carts,
+                r_dn_carts=self.__latest_r_dn_carts,
+            )
+            logger.devel(f"  ln_WF = {ln_WF}")
+            self.__stored_ln_WF.append(ln_WF)
+
             if self.__comput_position_deriv:
                 # """
                 start = time.perf_counter()
@@ -526,7 +550,7 @@ class MCMC:
 
             if self.__comput_jas_param_deriv:
                 start = time.perf_counter()
-                grad_ln_Psi_h = grad(evaluate_ln_wavefunction_api, argnums=(0))(
+                grad_ln_Psi_h = grad(evaluate_ln_wavefunction_api, argnums=0)(
                     self.__hamiltonian_data.wavefunction_data,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
@@ -536,12 +560,12 @@ class MCMC:
 
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag:
                     grad_ln_Psi_jas2b = grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
-                    logger.devel(f"grad_ln_Psi_jas2b = {grad_ln_Psi_jas2b}")
+                    logger.devel(f"  grad_ln_Psi_jas2b = {grad_ln_Psi_jas2b}")
                     self.__stored_grad_ln_Psi_jas2b.append(grad_ln_Psi_jas2b)
 
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
                     grad_ln_Psi_jas1b3b_j_matrix = grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix
-                    logger.devel(f"grad_ln_Psi_jas1b3b_j_matrix = {grad_ln_Psi_jas1b3b_j_matrix}")
+                    logger.devel(f"  grad_ln_Psi_jas1b3b_j_matrix = {grad_ln_Psi_jas1b3b_j_matrix}")
                     self.__stored_grad_ln_Psi_jas1b3b_j_matrix.append(grad_ln_Psi_jas1b3b_j_matrix)
 
         mcmc_total_end = time.perf_counter()
@@ -958,7 +982,7 @@ class VMC:
             dln_Psi_dc_flat = np.stack([arr.flatten() for arr in dln_Psi_dc], axis=0)
             O_matrix = np.hstack([O_matrix, dln_Psi_dc_flat])
 
-        return O_matrix  # O.... (x....) M * L matrix
+        return O_matrix[self.__num_mcmc_warmup_steps :]  # O.... (x....) M * L matrix
 
     def get_generalized_forces(self, mpi_broadcast=True):
         e_L = self.__mcmc.e_L[self.__num_mcmc_warmup_steps :]
@@ -974,7 +998,9 @@ class VMC:
 
         O_matrix = self.get_deriv_ln_WF()
         O_matrix_split = np.array_split(O_matrix, self.__num_mcmc_bin_blocks)
+        logger.info(O_matrix_split)
         O_matrix_binned = [np.average(O_matrix_list, axis=0) for O_matrix_list in O_matrix_split]
+        logger.info(O_matrix_binned)
 
         logger.debug(f"[before reduce] O_matrix_binned.shape = {np.array(O_matrix_binned).shape}")
 
@@ -985,27 +1011,41 @@ class VMC:
 
             e_L_binned = np.array(e_L_binned)
             O_matrix_binned = np.array(O_matrix_binned)
-
             eL_O_matrix_binned = np.einsum("i,ij->ij", e_L_binned, O_matrix_binned)
-
             logger.debug(f"eL_O_matrix_binned.shape = {eL_O_matrix_binned.shape}")
+
+            logger.info("e_L_binned")
+            logger.info(e_L_binned)
+            logger.info("O_matrix_binned")
+            logger.info(O_matrix_binned)
+            logger.info("eL_O_matrix_binned")
+            logger.info(eL_O_matrix_binned)
 
             M = self.__num_mcmc_bin_blocks * comm.size
 
             eL_O_jn = 1.0 / (M - 1) * np.array([np.sum(eL_O_matrix_binned, axis=0) - eL_O_matrix_binned[j] for j in range(M)])
 
+            logger.info("std eL_O_jn")
+            logger.info(np.std(eL_O_jn))
+
+            logger.info("eL_O_jn")
+            logger.info(eL_O_jn)
+
             logger.debug(f"eL_O_jn.shape = {eL_O_jn.shape}")
 
-            eL_jn = np.array([np.sum(e_L_binned, axis=0) - e_L_binned[j] for j in range(M)])
+            eL_jn = 1.0 / (M - 1) * np.array([np.sum(e_L_binned, axis=0) - e_L_binned[j] for j in range(M)])
+            logger.info(f"eL_jn = {eL_jn}")
 
             logger.debug(f"eL_jn.shape = {eL_jn.shape}")
 
             O_jn = 1.0 / (M - 1) * np.array([np.sum(O_matrix_binned, axis=0) - O_matrix_binned[j] for j in range(M)])
 
+            logger.info(f"O_jn = {O_jn}")
             logger.debug(f"O_jn.shape = {O_jn.shape}")
 
-            eL_barO_jn = 1.0 / (M - 1) * np.einsum("i,ij->ij", eL_jn, O_jn)
+            eL_barO_jn = np.einsum("i,ij->ij", eL_jn, O_jn)
 
+            logger.info(f"eL_barO_jn = {eL_barO_jn}")
             logger.debug(f"eL_barO_jn.shape = {eL_barO_jn.shape}")
 
             generalized_force_mean = np.average(-2.0 * (eL_O_jn - eL_barO_jn), axis=0)
@@ -1238,8 +1278,20 @@ if __name__ == "__main__":
         mos_data_dn,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"))
+    ) = read_trexio_file(trexio_file=os.path.join(os.getcwd(), "trexio.hdf5"))
     # """
+
+    """
+    # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"))
+    """
 
     """
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
@@ -1349,7 +1401,7 @@ if __name__ == "__main__":
     )
     """
 
-    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.4)
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5)
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
 
     # define data
@@ -1369,13 +1421,14 @@ if __name__ == "__main__":
     )
 
     # VMC parameters
-    num_mcmc_warmup_steps = 0
-    num_mcmc_bin_blocks = 20
+    num_mcmc_warmup_steps = 20
+    num_mcmc_bin_blocks = 2
     mcmc_seed = 34356
 
     # run VMC
     vmc = VMC(
         hamiltonian_data=hamiltonian_data,
+        Dt_init=3.0,
         mcmc_seed=mcmc_seed,
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
@@ -1385,7 +1438,7 @@ if __name__ == "__main__":
     # vmc.run_single_shot(num_mcmc_steps=50)
     # vmc.get_e_L()
     # vmc.get_atomic_forces()
-    vmc.run_optimize(num_mcmc_steps=500, num_opt_steps=50, wf_dump_freq=1)
+    vmc.run_optimize(num_mcmc_steps=220, num_opt_steps=1, wf_dump_freq=1)
     # vmc.get_generalized_forces(mpi_broadcast=False)
     # vmc.get_stochastic_matrix(mpi_broadcast=False)
     # vmc.get_stochastic_matrix(mpi_broadcast=False)
