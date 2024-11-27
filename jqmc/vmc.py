@@ -266,7 +266,7 @@ class MCMC:
 
         # Set the random seed. Use the Mersenne Twister generator
         accepted_moves = 0
-        nbra = 16
+        nbra = 16 * 2
 
         # MAIN MCMC loop from here !!!
         logger.info(f"  Current MCMC step = {self.__mcmc_counter}/{num_mcmc_steps+self.__mcmc_counter}: {0.0:.0f} %.")
@@ -863,12 +863,13 @@ class VMC:
                 logger.info(f"Max of signal to noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}.")
 
             if rank == 0:
-                I = np.eye(S.shape[0])
+                if S.ndim != 0:
+                    I = np.eye(S.shape[0])
+                else:
+                    I = 1.0
                 S_prime = S + var_epsilon * I
 
-                # logger.info(
-                #    f"The matrix S_prime is symmetric? = {np.allclose(S_prime, S_prime.T, atol=1.0e-10)}"
-                # )
+                # logger.info(f"The matrix S_prime is symmetric? = {np.allclose(S_prime, S_prime.T, atol=1.0e-10)}")
                 # logger.info(f"The condition number of the matrix S is {np.linalg.cond(S)}")
                 # logger.info(f"The condition number of the matrix S_prime is {np.linalg.cond(S_prime)}")
 
@@ -1010,8 +1011,8 @@ class VMC:
             generalized_force_mean = np.average(-2.0 * (eL_O_jn - eL_barO_jn), axis=0)
             generalized_force_std = np.sqrt(M - 1) * np.std(-2.0 * (eL_O_jn - eL_barO_jn), axis=0)
 
-            logger.devel(f"generalized_force_mean = {generalized_force_mean}")
-            logger.devel(f"generalized_force_std = {generalized_force_std}")
+            logger.info(f"generalized_force_mean = {generalized_force_mean}")
+            logger.info(f"generalized_force_std = {generalized_force_std}")
 
             logger.debug(f"generalized_force_mean.shape = {generalized_force_mean.shape}")
             logger.debug(f"generalized_force_std.shape = {generalized_force_std.shape}")
@@ -1039,10 +1040,11 @@ class VMC:
 
         if rank == 0:
             O_matrix_binned = np.array(O_matrix_binned)
+            logger.debug(f"O_matrix_binned = {O_matrix_binned}")
             logger.debug(f"O_matrix_binned.shape = {O_matrix_binned.shape}")
             S_mean = np.array(np.cov(O_matrix_binned, bias=True, rowvar=False))
             S_std = np.zeros(S_mean.size)
-            logger.devel(f"S_mean = {S_mean}")
+            logger.info(f"S_mean = {S_mean}")
             logger.debug(f"S_mean.is_nan for MPI-rank={rank} is {np.isnan(S_mean).any()}")
             logger.debug(f"S_mean.shape for MPI-rank={rank} is {S_mean.shape}")
             logger.devel(f"S_mean.type for MPI-rank={rank} is {type(S_mean)}")
@@ -1200,6 +1202,33 @@ class VMC:
 
 
 if __name__ == "__main__":
+    logger_level = "MPI-INFO"
+
+    log = getLogger("jqmc")
+
+    if logger_level == "MPI-INFO":
+        if rank == 0:
+            log.setLevel("INFO")
+            stream_handler = StreamHandler()
+            stream_handler.setLevel("INFO")
+            handler_format = Formatter("%(message)s")
+            stream_handler.setFormatter(handler_format)
+            log.addHandler(stream_handler)
+        else:
+            log.setLevel("WARNING")
+            stream_handler = StreamHandler()
+            stream_handler.setLevel("WARNING")
+            handler_format = Formatter(f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
+            stream_handler.setFormatter(handler_format)
+            log.addHandler(stream_handler)
+    else:
+        log.setLevel(logger_level)
+        stream_handler = StreamHandler()
+        stream_handler.setLevel(logger_level)
+        handler_format = Formatter(f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
+        stream_handler.setFormatter(handler_format)
+        log.addHandler(stream_handler)
+
     # """
     # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
     (
@@ -1320,7 +1349,7 @@ if __name__ == "__main__":
     )
     """
 
-    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.4)
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
 
     # define data
@@ -1328,7 +1357,7 @@ if __name__ == "__main__":
         jastrow_two_body_data=jastrow_twobody_data,
         jastrow_two_body_pade_flag=True,
         jastrow_three_body_data=jastrow_threebody_data,
-        jastrow_three_body_flag=True,
+        jastrow_three_body_flag=False,
     )
 
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
@@ -1341,7 +1370,7 @@ if __name__ == "__main__":
 
     # VMC parameters
     num_mcmc_warmup_steps = 0
-    num_mcmc_bin_blocks = 100
+    num_mcmc_bin_blocks = 20
     mcmc_seed = 34356
 
     # run VMC

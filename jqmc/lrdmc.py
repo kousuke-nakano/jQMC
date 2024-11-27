@@ -653,6 +653,13 @@ if __name__ == "__main__":
             handler_format = Formatter("%(message)s")
             stream_handler.setFormatter(handler_format)
             log.addHandler(stream_handler)
+        else:
+            log.setLevel("WARNING")
+            stream_handler = StreamHandler()
+            stream_handler.setLevel("WARNING")
+            handler_format = Formatter(f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
+            stream_handler.setFormatter(handler_format)
+            log.addHandler(stream_handler)
     else:
         log.setLevel(logger_level)
         stream_handler = StreamHandler()

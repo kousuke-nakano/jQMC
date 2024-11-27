@@ -525,6 +525,9 @@ if __name__ == "__main__":
 
     import os
 
+    from jax import grad
+
+    from .hamiltonians import Hamiltonian_data
     from .jastrow_factor import Jastrow_data, Jastrow_two_body_data
     from .trexio_wrapper import read_trexio_file
 
@@ -555,6 +558,10 @@ if __name__ == "__main__":
     )
 
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
+    )
 
     # Initialization
     r_up_carts = []
@@ -613,6 +620,7 @@ if __name__ == "__main__":
     r_up_carts = np.array(r_up_carts)
     r_dn_carts = np.array(r_dn_carts)
 
+    """ test discritized kinetic mesh
     alat = 0.05
     mesh_kinetic_part_debug, elements_kinetic_part_debug = compute_discretized_kinetic_energy_debug(
         alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
@@ -647,3 +655,57 @@ if __name__ == "__main__":
 
     with np.testing.assert_raises(AssertionError):
         np.testing.assert_array_almost_equal(elements_kinetic_part_jax_pp1, elements_kinetic_part_jax_pp3, decimal=10)
+    """
+
+    # test jax grad
+    grad_ln_Psi_h = grad(evaluate_ln_wavefunction_api, argnums=(0))(
+        hamiltonian_data.wavefunction_data,
+        r_up_carts,
+        r_dn_carts,
+    )
+
+    grad_ln_Psi_jastrow2b_param_jax = grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
+
+    d_jastrow2b_param = 1.0e-5
+
+    # WF data
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0 + d_jastrow2b_param)
+
+    # define data
+    jastrow_data = Jastrow_data(
+        jastrow_two_body_data=jastrow_twobody_data,
+        jastrow_two_body_pade_flag=True,
+        jastrow_three_body_data=None,
+        jastrow_three_body_flag=False,
+    )
+
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
+    )
+
+    ln_Psi_h_p = evaluate_ln_wavefunction_api(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+
+    # WF data
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0 - d_jastrow2b_param)
+
+    # define data
+    jastrow_data = Jastrow_data(
+        jastrow_two_body_data=jastrow_twobody_data,
+        jastrow_two_body_pade_flag=True,
+        jastrow_three_body_data=None,
+        jastrow_three_body_flag=False,
+    )
+
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
+    )
+
+    ln_Psi_h_m = evaluate_ln_wavefunction_api(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+
+    grad_ln_Psi_jastrow2b_param_fdm = (ln_Psi_h_p - ln_Psi_h_m) / (2.0 * d_jastrow2b_param)
+
+    np.testing.assert_almost_equal(grad_ln_Psi_jastrow2b_param_fdm, grad_ln_Psi_jastrow2b_param_jax, decimal=6)
