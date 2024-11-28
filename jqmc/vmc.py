@@ -272,7 +272,7 @@ class MCMC:
 
         # Set the random seed. Use the Mersenne Twister generator
         accepted_moves = 0
-        nbra = 16 * 2
+        nbra = 16 * 8
 
         # MAIN MCMC loop from here !!!
         logger.info(f"  Current MCMC step = {self.__mcmc_counter}/{num_mcmc_steps+self.__mcmc_counter}: {0.0:.0f} %.")
@@ -883,8 +883,8 @@ class VMC:
             if rank == 0:
                 signal_to_noise_f = np.abs(f) / f_std
                 logger.info(f"Max |f| = {np.max(np.abs(f)):.3f} Ha/a.u.")
-                logger.info(f"f_std of Max |f| = {f_std[np.argmax(np.abs(f))]} Ha/a.u.")
-                logger.info(f"Max of signal to noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}.")
+                logger.debug(f"f_std of Max |f| = {f_std[np.argmax(np.abs(f))]:.3f} Ha/a.u.")
+                logger.info(f"Max of signal-to-noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}.")
 
             if rank == 0:
                 if S.ndim != 0:
@@ -998,61 +998,53 @@ class VMC:
 
         O_matrix = self.get_deriv_ln_WF()
         O_matrix_split = np.array_split(O_matrix, self.__num_mcmc_bin_blocks)
-        logger.info(O_matrix_split)
         O_matrix_binned = [np.average(O_matrix_list, axis=0) for O_matrix_list in O_matrix_split]
-        logger.info(O_matrix_binned)
 
         logger.debug(f"[before reduce] O_matrix_binned.shape = {np.array(O_matrix_binned).shape}")
 
         O_matrix_binned = comm.reduce(O_matrix_binned, op=MPI.SUM, root=0)
+
+        eL_O_matrix = np.einsum("i,ij->ij", e_L, O_matrix)
+        eL_O_matrix_split = np.array_split(eL_O_matrix, self.__num_mcmc_bin_blocks)
+        eL_O_matrix_binned = [np.average(eL_O_matrix_list, axis=0) for eL_O_matrix_list in eL_O_matrix_split]
+
+        eL_O_matrix_binned = comm.reduce(eL_O_matrix_binned, op=MPI.SUM, root=0)
 
         if rank == 0:
             logger.debug(f"[after reduce] O_matrix_binned.shape = {np.array(O_matrix_binned).shape}")
 
             e_L_binned = np.array(e_L_binned)
             O_matrix_binned = np.array(O_matrix_binned)
-            eL_O_matrix_binned = np.einsum("i,ij->ij", e_L_binned, O_matrix_binned)
-            logger.debug(f"eL_O_matrix_binned.shape = {eL_O_matrix_binned.shape}")
-
-            logger.info("e_L_binned")
-            logger.info(e_L_binned)
-            logger.info("O_matrix_binned")
-            logger.info(O_matrix_binned)
-            logger.info("eL_O_matrix_binned")
-            logger.info(eL_O_matrix_binned)
+            eL_O_matrix_binned = np.array(eL_O_matrix_binned)
 
             M = self.__num_mcmc_bin_blocks * comm.size
+            logger.info(f"Total number of binned samples = {M}")
 
             eL_O_jn = 1.0 / (M - 1) * np.array([np.sum(eL_O_matrix_binned, axis=0) - eL_O_matrix_binned[j] for j in range(M)])
 
-            logger.info("std eL_O_jn")
-            logger.info(np.std(eL_O_jn))
-
-            logger.info("eL_O_jn")
-            logger.info(eL_O_jn)
-
+            logger.debug(f"eL_O_jn = {eL_O_jn}")
             logger.debug(f"eL_O_jn.shape = {eL_O_jn.shape}")
 
             eL_jn = 1.0 / (M - 1) * np.array([np.sum(e_L_binned, axis=0) - e_L_binned[j] for j in range(M)])
-            logger.info(f"eL_jn = {eL_jn}")
+            logger.debug(f"eL_jn = {eL_jn}")
 
             logger.debug(f"eL_jn.shape = {eL_jn.shape}")
 
             O_jn = 1.0 / (M - 1) * np.array([np.sum(O_matrix_binned, axis=0) - O_matrix_binned[j] for j in range(M)])
 
-            logger.info(f"O_jn = {O_jn}")
+            logger.debug(f"O_jn = {O_jn}")
             logger.debug(f"O_jn.shape = {O_jn.shape}")
 
             eL_barO_jn = np.einsum("i,ij->ij", eL_jn, O_jn)
 
-            logger.info(f"eL_barO_jn = {eL_barO_jn}")
+            logger.debug(f"eL_barO_jn = {eL_barO_jn}")
             logger.debug(f"eL_barO_jn.shape = {eL_barO_jn.shape}")
 
             generalized_force_mean = np.average(-2.0 * (eL_O_jn - eL_barO_jn), axis=0)
             generalized_force_std = np.sqrt(M - 1) * np.std(-2.0 * (eL_O_jn - eL_barO_jn), axis=0)
 
-            logger.info(f"generalized_force_mean = {generalized_force_mean}")
-            logger.info(f"generalized_force_std = {generalized_force_std}")
+            logger.debug(f"generalized_force_mean = {generalized_force_mean}")
+            logger.debug(f"generalized_force_std = {generalized_force_std}")
 
             logger.debug(f"generalized_force_mean.shape = {generalized_force_mean.shape}")
             logger.debug(f"generalized_force_std.shape = {generalized_force_std.shape}")
@@ -1084,7 +1076,7 @@ class VMC:
             logger.debug(f"O_matrix_binned.shape = {O_matrix_binned.shape}")
             S_mean = np.array(np.cov(O_matrix_binned, bias=True, rowvar=False))
             S_std = np.zeros(S_mean.size)
-            logger.info(f"S_mean = {S_mean}")
+            logger.debug(f"S_mean = {S_mean}")
             logger.debug(f"S_mean.is_nan for MPI-rank={rank} is {np.isnan(S_mean).any()}")
             logger.debug(f"S_mean.shape for MPI-rank={rank} is {S_mean.shape}")
             logger.devel(f"S_mean.type for MPI-rank={rank} is {type(S_mean)}")
@@ -1421,14 +1413,14 @@ if __name__ == "__main__":
     )
 
     # VMC parameters
-    num_mcmc_warmup_steps = 20
-    num_mcmc_bin_blocks = 2
+    num_mcmc_warmup_steps = 10
+    num_mcmc_bin_blocks = 5
     mcmc_seed = 34356
 
     # run VMC
     vmc = VMC(
         hamiltonian_data=hamiltonian_data,
-        Dt_init=3.0,
+        Dt_init=2.0,
         mcmc_seed=mcmc_seed,
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
@@ -1438,7 +1430,7 @@ if __name__ == "__main__":
     # vmc.run_single_shot(num_mcmc_steps=50)
     # vmc.get_e_L()
     # vmc.get_atomic_forces()
-    vmc.run_optimize(num_mcmc_steps=220, num_opt_steps=1, wf_dump_freq=1)
+    vmc.run_optimize(num_mcmc_steps=210, num_opt_steps=5, wf_dump_freq=1)
     # vmc.get_generalized_forces(mpi_broadcast=False)
     # vmc.get_stochastic_matrix(mpi_broadcast=False)
     # vmc.get_stochastic_matrix(mpi_broadcast=False)
