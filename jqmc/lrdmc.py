@@ -411,6 +411,8 @@ class GFMC:
                 else:
                     p_list = np.array(elements_kinetic_part_FN)
                 probabilities = p_list / p_list.sum()
+
+                # random choice
                 k = np.random.choice(len(p_list), p=probabilities)
 
                 # update electron position
@@ -517,7 +519,19 @@ class GFMC:
                 logger.debug(f"w_L_list = {w_L_list}")
                 probabilities = w_L_list / w_L_list.sum()
                 logger.debug(f"probabilities = {probabilities}")
+
+                """
+                # random choice
                 k_list = np.random.choice(len(w_L_list), size=len(w_L_list), p=probabilities, replace=True)
+                """
+
+                # correlated choice (see Sandro's textbook, page 182)
+                zeta = np.random.random()
+                z_list = [(alpha + zeta) / len(probabilities) for alpha in range(len(probabilities))]
+                cumulative_prob = np.cumsum(probabilities)
+                k_list = np.array([next(idx for idx, prob in enumerate(cumulative_prob) if z <= prob) for z in z_list])
+                logger.debug(k_list)
+
                 chosen_rank_list = [w_L_gathered_dyad[k][0] for k in k_list]
                 chosen_rank_list.sort()
                 logger.debug(f"chosen_rank_list = {chosen_rank_list}")
@@ -575,34 +589,30 @@ class GFMC:
     def get_e_L(self, num_gfmc_warmup_steps: int = 3, num_gfmc_bin_blocks: int = 10, num_gfmc_bin_collect: int = 2) -> float:
         """Get e_L."""
         if rank == 0:
-            logger.debug(self.__e_L_averaged_list)
-            logger.debug(self.__w_L_averaged_list)
-            e_L_averaged_eq = self.__e_L_averaged_list[num_gfmc_warmup_steps:]
-            e_L_split = np.array_split(e_L_averaged_eq, num_gfmc_bin_blocks)
-            e_L_binned = np.array([np.average(e_list) for e_list in e_L_split])
-            w_L_averaged_eq = self.__w_L_averaged_list[num_gfmc_warmup_steps:]
-            w_L_split = np.array_split(w_L_averaged_eq, num_gfmc_bin_blocks)
-            w_L_binned = np.array([np.average(w_list) for w_list in w_L_split])
-
-            logger.debug(e_L_binned)
-            logger.debug(w_L_binned)
-
-            e_L_binned_c = e_L_binned[num_gfmc_bin_collect:]
-            G_binned_c = np.array(
-                [
-                    np.sum([w_L_binned[i - k] for k in range(num_gfmc_bin_collect)])
-                    for i in range(num_gfmc_bin_collect, len(w_L_binned))
-                ]
-            )
-
-            logger.debug(e_L_binned_c)
-            logger.debug(G_binned_c)
-
-            M = len(e_L_binned_c)
-            e_L_jackknife = [
-                (np.sum(G_binned_c * e_L_binned_c) - G_binned_c[m] * e_L_binned_c[m]) / (np.sum(G_binned_c) - G_binned_c[m])
-                for m in range(M)
+            e_L_eq = self.__e_L_averaged_list[num_gfmc_warmup_steps + num_gfmc_bin_collect :]
+            w_L_eq = self.__w_L_averaged_list[num_gfmc_warmup_steps:]
+            G_eq = [
+                np.prod([w_L_eq[n - j] for j in range(1, num_gfmc_bin_collect + 1)])
+                for n in range(num_gfmc_bin_collect, len(w_L_eq))
             ]
+            logger.debug(f"len(e_L_eq) = {len(e_L_eq)}")
+            logger.debug(f"len(G_eq) = {len(G_eq)}")
+
+            e_L_eq = np.array(e_L_eq)
+            G_eq = np.array(G_eq)
+
+            G_e_L_eq = e_L_eq * G_eq
+
+            G_e_L_split = np.array_split(G_e_L_eq, num_gfmc_bin_blocks)
+            G_e_L_binned = np.array([np.average(G_e_L_list) for G_e_L_list in G_e_L_split])
+            G_split = np.array_split(G_eq, num_gfmc_bin_blocks)
+            G_binned = np.array([np.average(G_list) for G_list in G_split])
+
+            M = num_gfmc_bin_blocks
+
+            logger.info(f"The number of binned blocks = {num_gfmc_bin_blocks}.")
+
+            e_L_jackknife = [(np.sum(G_e_L_binned) - G_e_L_binned[m]) / (np.sum(G_binned) - G_binned[m]) for m in range(M)]
 
             logger.debug(e_L_jackknife)
 
@@ -718,20 +728,21 @@ if __name__ == "__main__":
 
     # run branching
     mcmc_seed = 3446
-    tau = 0.1
-    alat = 0.2
-    num_branching = 10
-    non_local_move = "tmove"
+    tau = 0.01
+    alat = 0.3
+    num_branching = 1050
+    non_local_move = "dltmove"
 
-    num_gfmc_warmup_steps = 3
-    num_gfmc_bin_blocks = 10
-    num_gfmc_bin_collect = 2
+    num_gfmc_warmup_steps = 40
+    num_gfmc_bin_blocks = 20
+    num_gfmc_bin_collect = 10
 
     # run GFMC
     gfmc = GFMC(hamiltonian_data=hamiltonian_data, mcmc_seed=mcmc_seed, tau=tau, alat=alat, non_local_move=non_local_move)
     gfmc.run(num_branching=num_branching)
-    gfmc.get_e_L(
+    e_L_mean, e_L_std = gfmc.get_e_L(
         num_gfmc_warmup_steps=num_gfmc_warmup_steps,
         num_gfmc_bin_blocks=num_gfmc_bin_blocks,
         num_gfmc_bin_collect=num_gfmc_bin_collect,
     )
+    logger.info(f"e_L = {e_L_mean} +- {e_L_std} Ha")
