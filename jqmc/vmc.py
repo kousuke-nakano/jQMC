@@ -272,7 +272,7 @@ class MCMC:
 
         # Set the random seed. Use the Mersenne Twister generator
         accepted_moves = 0
-        nbra = 16 * 8
+        nbra = 16
 
         # MAIN MCMC loop from here !!!
         logger.info(f"  Current MCMC step = {self.__mcmc_counter}/{num_mcmc_steps+self.__mcmc_counter}: {0.0:.0f} %.")
@@ -848,7 +848,7 @@ class VMC:
         self,
         num_mcmc_steps=100,
         num_opt_steps=1,
-        delta=0.01,
+        delta=0.001,
         var_epsilon=1.0e-3,
         wf_dump_freq=10,
     ):

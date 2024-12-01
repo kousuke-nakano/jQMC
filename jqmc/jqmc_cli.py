@@ -250,7 +250,7 @@ def main():
                     comput_jas_param_deriv=True,
                 )
         vmc.run_optimize(
-            num_mcmc_steps=num_mcmc_steps, num_opt_steps=num_opt_steps, delta=0.01, var_epsilon=1.0e-3, wf_dump_freq=1
+            num_mcmc_steps=num_mcmc_steps, num_opt_steps=num_opt_steps, delta=5.0e-4, var_epsilon=1.0e-3, wf_dump_freq=1
         )
         logger.info("")
 
