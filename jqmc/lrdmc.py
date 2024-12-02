@@ -122,6 +122,9 @@ class GFMC:
         self.__e_L_averaged_list = []
         self.__w_L_averaged_list = []
 
+        # gfmc branching counter
+        self.__gfmc_branching_counter = 0
+
         # Initialization
         init_r_up_carts = []
         init_r_dn_carts = []
@@ -223,11 +226,13 @@ class GFMC:
             r_up_carts=self.__latest_r_up_carts,
             r_dn_carts=self.__latest_r_dn_carts,
         )
+        jax_PRNG_key = jax.random.PRNGKey(self.__mcmc_seed)
         _, _, _ = compute_discretized_kinetic_energy_jax(
             alat=self.__alat,
             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
             r_up_carts=self.__latest_r_up_carts,
             r_dn_carts=self.__latest_r_dn_carts,
+            jax_PRNG_key=jax_PRNG_key,
         )
         _ = compute_bare_coulomb_potential_jax(
             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
@@ -254,14 +259,21 @@ class GFMC:
         # jax.profiler.stop_trace()
         # """
 
-    def run(self, num_branching: int = 50) -> None:
+    def run(self, num_branching: int = 50, max_time: int = 86400) -> None:
         """Run LRDMC.
 
         Args:
             num_branching (int): number of branching (reconfiguration of walkers).
+            max_time (int): maximum time in sec.
         """
         # set timer
-        timer_projection = 0.0
+        timer_projection_total = 0.0
+        timer_projection_non_diagonal_kinetic_part = 0.0
+        timer_projection_non_diagonal_ecp_part = 0.0
+        timer_projection_diag_kinetic_part = 0.0
+        timer_projection_diag_bare_couloumb_part = 0.0
+        timer_projection_diag_ecp_part = 0.0
+        timer_projection_update_weights_and_positions = 0.0
         timer_observable = 0.0
         timer_branching = 0.0
         gmfc_total_start = time.perf_counter()
@@ -271,7 +283,9 @@ class GFMC:
 
         # Main branching loop.
         for i_branching in range(num_branching):
-            logger.info(f"i_branching = {i_branching}/{num_branching}")
+            logger.info(
+                f"i_branching = {i_branching+self.__gfmc_branching_counter + 1}/{num_branching+self.__gfmc_branching_counter}"
+            )
 
             # MAIN project loop.
             logger.debug(f"  Projection time {self.__tau} a.u.^{-1}.")
@@ -289,7 +303,8 @@ class GFMC:
                 progress = (tau_left) / (self.__tau) * 100.0
                 logger.debug(f"  Left projection time = {tau_left}/{self.__tau}: {progress:.1f} %.")
 
-                # compute non-diagonal grids and elements
+                # compute non-diagonal grids and elements (kinetic)
+                start_projection_non_diagonal_kinetic_part = time.perf_counter()
                 mesh_kinetic_part, elements_kinetic_part, jax_PRNG_key = compute_discretized_kinetic_energy_jax(
                     alat=self.__alat,
                     wavefunction_data=self.__hamiltonian_data.wavefunction_data,
@@ -297,32 +312,51 @@ class GFMC:
                     r_dn_carts=self.__latest_r_dn_carts,
                     jax_PRNG_key=jax_PRNG_key,
                 )
+                elements_kinetic_part_FN = list(map(lambda K: K if K < 0 else 0.0, elements_kinetic_part))
+                elements_kinetic_part_SP = np.sum(list(map(lambda K: K if K >= 0 else 0.0, elements_kinetic_part)))
+                sum_non_diagonal_hamiltonian = np.sum(elements_kinetic_part_FN)
+                end_projection_non_diagonal_kinetic_part = time.perf_counter()
+                timer_projection_non_diagonal_kinetic_part += (
+                    end_projection_non_diagonal_kinetic_part - start_projection_non_diagonal_kinetic_part
+                )
 
-                # compute diagonal element
+                # compute diagonal elements
+                # kinetic  part
+                start_projection_diag_kinetic_part = time.perf_counter()
                 kinetic_continuum = compute_kinetic_energy_api(
                     wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                     r_up_carts=self.__latest_r_up_carts,
                     r_dn_carts=self.__latest_r_dn_carts,
                 )
                 kinetic_discretized = -1.0 * np.sum(elements_kinetic_part)
+                end_projection_diag_kinetic_part = time.perf_counter()
+                timer_projection_diag_kinetic_part += end_projection_diag_kinetic_part - start_projection_diag_kinetic_part
+
+                # bare couloumb
+                start_projection_diag_bare_couloumb = time.perf_counter()
                 bare_coulomb_part = compute_bare_coulomb_potential_jax(
                     coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                     r_up_carts=self.__latest_r_up_carts,
                     r_dn_carts=self.__latest_r_dn_carts,
                 )
-
-                elements_kinetic_part_FN = list(map(lambda K: K if K < 0 else 0.0, elements_kinetic_part))
-                elements_kinetic_part_SP = np.sum(list(map(lambda K: K if K >= 0 else 0.0, elements_kinetic_part)))
-
-                sum_non_diagonal_hamiltonian = np.sum(elements_kinetic_part_FN)
+                end_projection_diag_bare_couloumb = time.perf_counter()
+                timer_projection_diag_bare_couloumb_part += (
+                    end_projection_diag_bare_couloumb - start_projection_diag_bare_couloumb
+                )
 
                 if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
+                    # ecp local
+                    start_projection_diag_ecp = time.perf_counter()
                     ecp_local_part = compute_ecp_local_parts_jax(
                         coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                         r_up_carts=self.__latest_r_up_carts,
                         r_dn_carts=self.__latest_r_dn_carts,
                     )
+                    end_projection_diag_ecp = time.perf_counter()
+                    timer_projection_diag_ecp_part += end_projection_diag_ecp - start_projection_diag_ecp
 
+                    # ecp non-local
+                    start_projection_non_diagonal_ecp_part = time.perf_counter()
                     if self.__non_local_move == "tmove":
                         mesh_non_local_ecp_part, V_nonlocal, sum_V_nonlocal = compute_ecp_non_local_parts_jax(
                             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
@@ -369,6 +403,10 @@ class GFMC:
                     else:
                         logger.error(f"non_local_move = {self.__non_local_move} is not yet implemented.")
                         raise NotImplementedError
+                    end_projection_non_diagonal_ecp_part = time.perf_counter()
+                    timer_projection_non_diagonal_ecp_part += (
+                        end_projection_non_diagonal_ecp_part - start_projection_non_diagonal_ecp_part
+                    )
 
                     # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
                     e_L = (
@@ -394,6 +432,7 @@ class GFMC:
                 logger.debug(f"  e_L={e_L}")
 
                 # compute the time the walker remaining in the same configuration
+                start_projection_update_weights_and_positions = time.perf_counter()
                 xi = random.random()
                 tau_update = np.min((tau_left, np.log(1 - xi) / sum_non_diagonal_hamiltonian))
                 logger.debug(f"  tau_update={tau_update}")
@@ -411,10 +450,13 @@ class GFMC:
                 else:
                     p_list = np.array(elements_kinetic_part_FN)
                 probabilities = p_list / p_list.sum()
+                logger.debug(f"len(probabilities) = {len(probabilities)}")
 
                 # random choice
+                logger.debug(f"self.__latest_r_up_carts = {self.__latest_r_up_carts}")
+                logger.debug(f"self.__latest_r_dn_carts = {self.__latest_r_dn_carts}")
                 k = np.random.choice(len(p_list), p=probabilities)
-
+                logger.debug(f"chosen update electron index = {k}.")
                 # update electron position
                 if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
                     self.__latest_r_up_carts, self.__latest_r_dn_carts = (
@@ -422,9 +464,15 @@ class GFMC:
                     )[k]
                 else:
                     self.__latest_r_up_carts, self.__latest_r_dn_carts = (list(mesh_kinetic_part))[k]
+                logger.debug(f"self.__latest_r_up_carts = {self.__latest_r_up_carts}")
+                logger.debug(f"self.__latest_r_dn_carts = {self.__latest_r_dn_carts}")
+                end_projection_update_weights_and_positions = time.perf_counter()
+                timer_projection_update_weights_and_positions += (
+                    end_projection_update_weights_and_positions - start_projection_update_weights_and_positions
+                )
 
             end_projection = time.perf_counter()
-            timer_projection += end_projection - start_projection
+            timer_projection_total += end_projection - start_projection
 
             # projection ends
             logger.debug("  Projection ends.")
@@ -504,8 +552,8 @@ class GFMC:
             w_L_gathered_dyad = comm.gather(w_L_gathered_dyad, root=0)
 
             if rank == 0:
-                logger.debug(e_L_gathered_dyad)
-                logger.debug(w_L_gathered_dyad)
+                logger.debug(f"e_L_gathered_dyad={e_L_gathered_dyad}")
+                logger.debug(f"w_L_gathered_dyad={w_L_gathered_dyad}")
                 e_L_gathered = np.array([e_L for _, e_L in e_L_gathered_dyad])
                 w_L_gathered = np.array([w_L for _, w_L in w_L_gathered_dyad])
                 e_L_averaged = np.sum(w_L_gathered * e_L_gathered) / np.sum(w_L_gathered)
@@ -530,7 +578,7 @@ class GFMC:
                 z_list = [(alpha + zeta) / len(probabilities) for alpha in range(len(probabilities))]
                 cumulative_prob = np.cumsum(probabilities)
                 k_list = np.array([next(idx for idx, prob in enumerate(cumulative_prob) if z <= prob) for z in z_list])
-                logger.debug(k_list)
+                logger.debug(f"The chosen walker indices = {k_list}")
 
                 chosen_rank_list = [w_L_gathered_dyad[k][0] for k in k_list]
                 chosen_rank_list.sort()
@@ -547,8 +595,12 @@ class GFMC:
             else:
                 mpi_send_rank = None
                 mpi_recv_rank = None
+                self.__e_L_averaged_list = None
+                self.__w_L_averaged_list = None
             mpi_send_rank = comm.bcast(mpi_send_rank, root=0)
             mpi_recv_rank = comm.bcast(mpi_recv_rank, root=0)
+            self.__e_L_averaged_list = comm.bcast(self.__e_L_averaged_list, root=0)
+            self.__w_L_averaged_list = comm.bcast(self.__w_L_averaged_list, root=0)
 
             logger.debug(f"Before branching: rank={rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
             logger.debug(f"Before branching: rank={rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
@@ -573,11 +625,28 @@ class GFMC:
             end_branching = time.perf_counter()
             timer_branching += end_branching - start_branching
 
+            gmfc_current = time.perf_counter()
+            if max_time < gmfc_current - gmfc_total_start:
+                logger.info(f"max_time = {max_time} sec. exceeds.")
+                logger.info("break the branching loop.")
+                break
+
+        # count up
+        self.__gfmc_branching_counter += i_branching + 1
+
         gmfc_total_end = time.perf_counter()
         timer_gmfc_total = gmfc_total_end - gmfc_total_start
 
         logger.info(f"Total GFMC time = {timer_gmfc_total: .3f} sec.")
-        logger.info(f"  Projection time per branching = {timer_projection/num_branching: .3f} sec.")
+        logger.info(f"  Projection time per branching = {timer_projection_total/num_branching: .3f} sec.")
+        logger.info(f"    Non_diagonal kinetic part = {timer_projection_non_diagonal_kinetic_part/num_branching: .3f} sec.")
+        logger.info(f"    Diagonal kinetic part = {timer_projection_diag_kinetic_part/num_branching: 3f} sec.")
+        logger.info(f"    Diagonal ecp part = {timer_projection_diag_ecp_part/num_branching: 3f} sec.")
+        logger.info(f"    Diagonal bare coulomb part = {timer_projection_diag_bare_couloumb_part/num_branching: 3f} sec.")
+        logger.info(f"    Non_diagonal ecp part = {timer_projection_non_diagonal_ecp_part/num_branching: .3f} sec.")
+        logger.info(
+            f"    Update weights and positions = {timer_projection_update_weights_and_positions/num_branching: .3f} sec."
+        )
         logger.info(f"  Observable time per branching = {timer_observable/num_branching: .3f} sec.")
         logger.info(f"  Branching time per branching = {timer_branching/num_branching: .3f} sec.")
         logger.debug(f"Survived walkers = {self.__num_survived_walkers}")
@@ -595,8 +664,8 @@ class GFMC:
                 np.prod([w_L_eq[n - j] for j in range(1, num_gfmc_bin_collect + 1)])
                 for n in range(num_gfmc_bin_collect, len(w_L_eq))
             ]
-            logger.debug(f"len(e_L_eq) = {len(e_L_eq)}")
-            logger.debug(f"len(G_eq) = {len(G_eq)}")
+            logger.info(f"len(e_L_eq) = {len(e_L_eq)}")
+            logger.info(f"len(G_eq) = {len(G_eq)}")
 
             e_L_eq = np.array(e_L_eq)
             G_eq = np.array(G_eq)
@@ -613,8 +682,6 @@ class GFMC:
             logger.info(f"The number of binned blocks = {num_gfmc_bin_blocks}.")
 
             e_L_jackknife = [(np.sum(G_e_L_binned) - G_e_L_binned[m]) / (np.sum(G_binned) - G_binned[m]) for m in range(M)]
-
-            logger.debug(e_L_jackknife)
 
             e_L_mean = np.average(e_L_jackknife)
             e_L_std = np.sqrt(M - 1) * np.std(e_L_jackknife)
@@ -651,7 +718,7 @@ class GFMC:
 
 
 if __name__ == "__main__":
-    logger_level = "MPI-INFO"
+    logger_level = "DEBUG"
 
     log = getLogger("jqmc")
 
@@ -690,20 +757,6 @@ if __name__ == "__main__":
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"))
     # """
 
-    """
-    # benzene dimer cc-pV6Z with Mitas ccECP (60 electrons, not feasible, why?).
-    (
-        structure_data,
-        aos_data,
-        mos_data_up,
-        mos_data_dn,
-        geminal_mo_data,
-        coulomb_potential_data,
-    ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "benzene_dimer_ccpv6z_trexio.hdf5")
-    )
-    """
-
     num_electron_up = geminal_mo_data.num_electron_up
     num_electron_dn = geminal_mo_data.num_electron_dn
 
@@ -730,12 +783,12 @@ if __name__ == "__main__":
     mcmc_seed = 3446
     tau = 0.01
     alat = 0.3
-    num_branching = 1050
-    non_local_move = "dltmove"
+    num_branching = 10
+    non_local_move = "tmove"
 
-    num_gfmc_warmup_steps = 40
-    num_gfmc_bin_blocks = 20
-    num_gfmc_bin_collect = 10
+    num_gfmc_warmup_steps = 2
+    num_gfmc_bin_blocks = 2
+    num_gfmc_bin_collect = 2
 
     # run GFMC
     gfmc = GFMC(hamiltonian_data=hamiltonian_data, mcmc_seed=mcmc_seed, tau=tau, alat=alat, non_local_move=non_local_move)

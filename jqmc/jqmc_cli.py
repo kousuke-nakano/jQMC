@@ -57,8 +57,6 @@ from .vmc import VMC
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 
-rank = comm.Get_rank()
-
 # create new logger level for development
 DEVEL_LEVEL = 5
 logging.addLevelName(DEVEL_LEVEL, "DEVEL")
@@ -84,21 +82,21 @@ def main():
     if logger_level == "MPI-INFO":
         if rank == 0:
             log.setLevel("INFO")
-            stream_handler = StreamHandler()
+            stream_handler = StreamHandler(sys.stdout)
             stream_handler.setLevel("INFO")
             handler_format = Formatter("%(message)s")
             stream_handler.setFormatter(handler_format)
             log.addHandler(stream_handler)
         else:
             log.setLevel("ERROR")
-            stream_handler = StreamHandler()
+            stream_handler = StreamHandler(sys.stdout)
             stream_handler.setLevel("ERROR")
             handler_format = Formatter(f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
             stream_handler.setFormatter(handler_format)
             log.addHandler(stream_handler)
     else:
         log.setLevel(logger_level)
-        stream_handler = StreamHandler()
+        stream_handler = StreamHandler(sys.stdout)
         stream_handler.setLevel(logger_level)
         handler_format = Formatter(f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
         stream_handler.setFormatter(handler_format)
@@ -142,6 +140,13 @@ def main():
     except KeyError:
         mcmc_seed = 34456
         logger.info(f"The default value of mcmc_seed = {mcmc_seed}.")
+    # max_time
+    try:
+        max_time = dict_toml["control"]["max_time"]
+    except KeyError:
+        max_time = 86400
+        logger.info(f"The default value of max_time = {max_time}.")
+    logger.info(f"max_time = {max_time} sec.")
     # restart
     try:
         restart = dict_toml["control"]["restart"]
@@ -152,8 +157,15 @@ def main():
         restart_chk = dict_toml["control"]["restart_chk"]
         logger.info(f"restart = {restart}, restart_chk = {restart_chk}.")
     else:
+        try:
+            restart_chk = dict_toml["control"]["restart_chk"]
+        except KeyError:
+            restart_chk = "restart.chk"
+            logger.info(f"The default value of restart_chk = {restart_chk}.")
         hamiltonian_chk = dict_toml["control"]["hamiltonian_chk"]
-        logger.info(f"restart = {restart}, hamiltonian_chk = {hamiltonian_chk}.")
+        logger.info(f"restart = {restart}, hamiltonian_chk = {hamiltonian_chk}, restart_chk = {restart_chk}.")
+
+    logger.info("")
 
     # VMC!
     if job_type == "vmc":
@@ -183,7 +195,15 @@ def main():
             raise ValueError("(num_mcmc_steps - num_mcmc_warmup_steps) should be larger than num_mcmc_bin_blocks.")
 
         if restart:
-            raise NotImplementedError("Implementation of restart=true is in progress.")
+            logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
+            if rank == 0:
+                with open(restart_chk, "rb") as f:
+                    chk_dyad_list = pickle.load(f)
+                vmc = [chk for _, chk in chk_dyad_list]
+            else:
+                vmc = None
+            vmc = comm.scatter(vmc, root=0)
+
         else:
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
@@ -191,15 +211,25 @@ def main():
                 vmc = VMC(
                     hamiltonian_data=hamiltonian_data,
                     mcmc_seed=mcmc_seed,
-                    num_mcmc_warmup_steps=num_mcmc_warmup_steps,
-                    num_mcmc_bin_blocks=num_mcmc_bin_blocks,
                     comput_position_deriv=False,
                     comput_jas_param_deriv=False,
                 )
-        vmc.run_single_shot(num_mcmc_steps=num_mcmc_steps)
-        e_L_mean, e_L_std = vmc.get_e_L()
+        vmc.run_single_shot(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
+        e_L_mean, e_L_std = vmc.get_e_L(
+            num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+            num_mcmc_bin_blocks=num_mcmc_bin_blocks,
+        )
+
         logger.info("Final output(s):")
         logger.info(f"  Total Energy: E = {e_L_mean:.5f} +- {e_L_std:5f} Ha.")
+        logger.info("")
+
+        logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
+        chk_dyad_list = [(rank, vmc)]
+        chk_dyad_list = comm.reduce(chk_dyad_list, op=MPI.SUM, root=0)
+        if rank == 0:
+            with open(restart_chk, "wb") as f:
+                pickle.dump(chk_dyad_list, f)
         logger.info("")
 
     # VMCopt!
@@ -236,7 +266,15 @@ def main():
             raise ValueError("(num_mcmc_steps - num_mcmc_warmup_steps) should be larger than num_mcmc_bin_blocks.")
 
         if restart:
-            raise NotImplementedError("Implementation of restart=true is in progress.")
+            logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
+            if rank == 0:
+                with open(restart_chk, "rb") as f:
+                    chk_dyad_list = pickle.load(f)
+                vmc = [chk for _, chk in chk_dyad_list]
+            else:
+                vmc = None
+            vmc = comm.scatter(vmc, root=0)
+
         else:
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
@@ -244,14 +282,27 @@ def main():
                 vmc = VMC(
                     hamiltonian_data=hamiltonian_data,
                     mcmc_seed=mcmc_seed,
-                    num_mcmc_warmup_steps=num_mcmc_warmup_steps,
-                    num_mcmc_bin_blocks=num_mcmc_bin_blocks,
                     comput_position_deriv=False,
                     comput_jas_param_deriv=True,
                 )
         vmc.run_optimize(
-            num_mcmc_steps=num_mcmc_steps, num_opt_steps=num_opt_steps, delta=5.0e-4, var_epsilon=1.0e-3, wf_dump_freq=1
+            num_mcmc_steps=num_mcmc_steps,
+            num_opt_steps=num_opt_steps,
+            delta=5.0e-4,
+            var_epsilon=1.0e-3,
+            wf_dump_freq=1,
+            num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+            num_mcmc_bin_blocks=num_mcmc_bin_blocks,
+            max_time=max_time,
         )
+        logger.info("")
+
+        logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
+        chk_dyad_list = [(rank, vmc)]
+        chk_dyad_list = comm.reduce(chk_dyad_list, op=MPI.SUM, root=0)
+        if rank == 0:
+            with open(restart_chk, "wb") as f:
+                pickle.dump(chk_dyad_list, f)
         logger.info("")
 
     # LRDMC!
@@ -308,7 +359,15 @@ def main():
             raise ValueError("num_gfmc_bin_blocks should be larger than num_gfmc_bin_collect.")
 
         if restart:
-            raise NotImplementedError("Implementation of restart=true is in progress.")
+            logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
+            if rank == 0:
+                with open(restart_chk, "rb") as f:
+                    chk_dyad_list = pickle.load(f)
+                gfmc = [chk for _, chk in chk_dyad_list]
+            else:
+                gfmc = None
+            gfmc = comm.scatter(gfmc, root=0)
+
         else:
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
@@ -316,7 +375,7 @@ def main():
                 gfmc = GFMC(
                     hamiltonian_data=hamiltonian_data, mcmc_seed=mcmc_seed, tau=tau, alat=alat, non_local_move=non_local_move
                 )
-        gfmc.run(num_branching=num_branching)
+        gfmc.run(num_branching=num_branching, max_time=max_time)
         e_L_mean, e_L_std = gfmc.get_e_L(
             num_gfmc_warmup_steps=num_gfmc_warmup_steps,
             num_gfmc_bin_blocks=num_gfmc_bin_blocks,
@@ -324,6 +383,13 @@ def main():
         )
         logger.info("Final output(s):")
         logger.info(f"  Total Energy: E = {e_L_mean:.5f} +- {e_L_std:5f} Ha.")
+        logger.info("")
+        logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
+        chk_dyad_list = [(rank, gfmc)]
+        chk_dyad_list = comm.reduce(chk_dyad_list, op=MPI.SUM, root=0)
+        if rank == 0:
+            with open(restart_chk, "wb") as f:
+                pickle.dump(chk_dyad_list, f)
         logger.info("")
 
     print_footer()
