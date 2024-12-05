@@ -320,8 +320,7 @@ class GFMC:
                     end_projection_non_diagonal_kinetic_part - start_projection_non_diagonal_kinetic_part
                 )
 
-                # compute diagonal elements
-                # kinetic  part
+                # compute diagonal elements, kinetic part
                 start_projection_diag_kinetic_part = time.perf_counter()
                 kinetic_continuum = compute_kinetic_energy_api(
                     wavefunction_data=self.__hamiltonian_data.wavefunction_data,
@@ -332,7 +331,7 @@ class GFMC:
                 end_projection_diag_kinetic_part = time.perf_counter()
                 timer_projection_diag_kinetic_part += end_projection_diag_kinetic_part - start_projection_diag_kinetic_part
 
-                # bare couloumb
+                # compute diagonal elements, bare couloumb
                 start_projection_diag_bare_couloumb = time.perf_counter()
                 bare_coulomb_part = compute_bare_coulomb_potential_jax(
                     coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
@@ -344,6 +343,7 @@ class GFMC:
                     end_projection_diag_bare_couloumb - start_projection_diag_bare_couloumb
                 )
 
+                # with ECP
                 if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
                     # ecp local
                     start_projection_diag_ecp = time.perf_counter()
@@ -403,6 +403,7 @@ class GFMC:
                     else:
                         logger.error(f"non_local_move = {self.__non_local_move} is not yet implemented.")
                         raise NotImplementedError
+
                     end_projection_non_diagonal_ecp_part = time.perf_counter()
                     timer_projection_non_diagonal_ecp_part += (
                         end_projection_non_diagonal_ecp_part - start_projection_non_diagonal_ecp_part
@@ -419,6 +420,7 @@ class GFMC:
                         + sum_non_diagonal_hamiltonian
                     )
 
+                # with all electrons
                 else:
                     # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
                     e_L = (
@@ -480,7 +482,7 @@ class GFMC:
             # evaluate observables
             start_observable = time.perf_counter()
 
-            # compute non-diagonal grids and elements
+            # compute non-diagonal grids and elements (kinetic)
             _, elements_kinetic_part, jax_PRNG_key = compute_discretized_kinetic_energy_jax(
                 alat=self.__alat,
                 wavefunction_data=self.__hamiltonian_data.wavefunction_data,
@@ -488,49 +490,102 @@ class GFMC:
                 r_dn_carts=self.__latest_r_dn_carts,
                 jax_PRNG_key=jax_PRNG_key,
             )
-            _, V_nonlocal, _ = compute_ecp_non_local_parts_jax(
-                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                r_up_carts=self.__latest_r_up_carts,
-                r_dn_carts=self.__latest_r_dn_carts,
-            )
-
-            # Fixed-node.
             elements_kinetic_part_FN = list(map(lambda x: x if x < 0 else 0.0, elements_kinetic_part))
-            V_nonlocal_FN = list(map(lambda x: x if x < 0 else 0.0, V_nonlocal))
+            sum_non_diagonal_hamiltonian = np.sum(elements_kinetic_part_FN)
 
-            sum_non_diagonal_hamiltonian = np.sum(elements_kinetic_part_FN) + np.sum(V_nonlocal_FN)
-
-            # compute diagonal element
+            # compute diagonal elements, kinetic part
             kinetic_continuum = compute_kinetic_energy_api(
                 wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                 r_up_carts=self.__latest_r_up_carts,
                 r_dn_carts=self.__latest_r_dn_carts,
             )
             kinetic_discretized = -1.0 * np.sum(elements_kinetic_part)
+
+            # compute diagonal elements, bare couloumb
             bare_coulomb_part = compute_bare_coulomb_potential_jax(
                 coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                 r_up_carts=self.__latest_r_up_carts,
                 r_dn_carts=self.__latest_r_dn_carts,
             )
-            ecp_local_part = compute_ecp_local_parts_jax(
-                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                r_up_carts=self.__latest_r_up_carts,
-                r_dn_carts=self.__latest_r_dn_carts,
-            )
-            elements_kinetic_part_SP = np.sum(list(map(lambda x: x if x >= 0 else 0.0, elements_kinetic_part)))
-            V_nonlocal_SP = np.sum(list(map(lambda x: x if x >= 0 else 0.0, V_nonlocal)))
 
-            # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
-            e_L = (
-                kinetic_continuum
-                + kinetic_discretized
-                + bare_coulomb_part
-                + ecp_local_part
-                + elements_kinetic_part_SP
-                + V_nonlocal_SP
-                + sum_non_diagonal_hamiltonian
-            )
+            # with ECP
+            if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
+                # ECP local part
+                ecp_local_part = compute_ecp_local_parts_jax(
+                    coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                    r_up_carts=self.__latest_r_up_carts,
+                    r_dn_carts=self.__latest_r_dn_carts,
+                )
+
+                # ECP non-local part
+                if self.__non_local_move == "tmove":
+                    _, V_nonlocal, _ = compute_ecp_non_local_parts_jax(
+                        coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                        wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                        r_up_carts=self.__latest_r_up_carts,
+                        r_dn_carts=self.__latest_r_dn_carts,
+                        flag_determinant_only=False,
+                    )
+
+                    V_nonlocal_FN = list(map(lambda V: V if V < 0.0 else 0.0, V_nonlocal))
+                    V_nonlocal_SP = np.sum(list(map(lambda V: V if V >= 0.0 else 0.0, V_nonlocal)))
+                    sum_non_diagonal_hamiltonian += np.sum(V_nonlocal_FN)
+
+                elif self.__non_local_move == "dltmove":
+                    _, V_nonlocal, _ = compute_ecp_non_local_parts_jax(
+                        coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                        wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                        r_up_carts=self.__latest_r_up_carts,
+                        r_dn_carts=self.__latest_r_dn_carts,
+                        flag_determinant_only=True,
+                    )
+
+                    V_nonlocal_FN = list(map(lambda V: V if V < 0.0 else 0.0, V_nonlocal))
+                    V_nonlocal_SP = np.sum(list(map(lambda V: V if V >= 0.0 else 0.0, V_nonlocal)))
+
+                    Jastrow_ref = evaluate_jastrow_api(
+                        wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                        r_up_carts=self.__latest_r_up_carts,
+                        r_dn_carts=self.__latest_r_dn_carts,
+                    )
+                    V_nonlocal_FN = [
+                        V
+                        * evaluate_jastrow_api(
+                            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                            r_up_carts=mesh_non_local_ecp_part[i][0],
+                            r_dn_carts=mesh_non_local_ecp_part[i][1],
+                        )
+                        / Jastrow_ref
+                        if V < 0.0
+                        else 0.0
+                        for i, V in enumerate(V_nonlocal_FN)
+                    ]
+                    sum_non_diagonal_hamiltonian += np.sum(V_nonlocal_FN)
+                else:
+                    logger.error(f"non_local_move = {self.__non_local_move} is not yet implemented.")
+                    raise NotImplementedError
+
+                # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
+                e_L = (
+                    kinetic_continuum
+                    + kinetic_discretized
+                    + bare_coulomb_part
+                    + ecp_local_part
+                    + elements_kinetic_part_SP
+                    + V_nonlocal_SP
+                    + sum_non_diagonal_hamiltonian
+                )
+
+            # with all electrons
+            else:
+                # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
+                e_L = (
+                    kinetic_continuum
+                    + kinetic_discretized
+                    + bare_coulomb_part
+                    + elements_kinetic_part_SP
+                    + sum_non_diagonal_hamiltonian
+                )
 
             end_observable = time.perf_counter()
             timer_observable += end_observable - start_observable
@@ -660,10 +715,13 @@ class GFMC:
         if rank == 0:
             e_L_eq = self.__e_L_averaged_list[num_gfmc_warmup_steps + num_gfmc_bin_collect :]
             w_L_eq = self.__w_L_averaged_list[num_gfmc_warmup_steps:]
+            logger.info(f"e_L_eq = {e_L_eq}")
+            logger.info(f"w_L_eq = {w_L_eq}")
             G_eq = [
                 np.prod([w_L_eq[n - j] for j in range(1, num_gfmc_bin_collect + 1)])
                 for n in range(num_gfmc_bin_collect, len(w_L_eq))
             ]
+            logger.info(f"G_eq = {G_eq}")
             logger.info(f"len(e_L_eq) = {len(e_L_eq)}")
             logger.info(f"len(G_eq) = {len(G_eq)}")
 
