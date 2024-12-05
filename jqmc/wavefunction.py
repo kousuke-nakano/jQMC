@@ -148,7 +148,7 @@ def evaluate_jastrow_api(
 
     Returns
     -------
-        The value of the given Jastrow (float)
+        The value of the given exp(Jastrow (float))
     """
     Jastrow_part = compute_Jastrow_part_api(
         jastrow_data=wavefunction_data.jastrow_data,
@@ -156,7 +156,7 @@ def evaluate_jastrow_api(
         r_dn_carts=r_dn_carts,
     )
 
-    return Jastrow_part
+    return jnp.exp(Jastrow_part)
 
 
 def evaluate_determinant_api(
