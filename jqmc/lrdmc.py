@@ -482,6 +482,7 @@ class GFMC:
             # evaluate observables
             start_observable = time.perf_counter()
 
+            """ e_L evaluation is not necessarily repeated!
             # compute non-diagonal grids and elements (kinetic)
             _, elements_kinetic_part, jax_PRNG_key = compute_discretized_kinetic_energy_jax(
                 alat=self.__alat,
@@ -586,6 +587,7 @@ class GFMC:
                     + elements_kinetic_part_SP
                     + sum_non_diagonal_hamiltonian
                 )
+            """
 
             end_observable = time.perf_counter()
             timer_observable += end_observable - start_observable
