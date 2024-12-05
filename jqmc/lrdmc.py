@@ -282,10 +282,20 @@ class GFMC:
         jax_PRNG_key = jax.random.PRNGKey(self.__mcmc_seed)
 
         # Main branching loop.
+        progress = (self.__gfmc_branching_counter) / (num_branching + self.__gfmc_branching_counter) * 100.0
+        logger.info(
+            f"Current branching step = {self.__gfmc_branching_counter}/{num_branching+self.__gfmc_branching_counter}: {progress:.0f} %."
+        )
+        logger.info("-Start branching-")
+        gfmc_interval = int(num_branching / 10)  # %
         for i_branching in range(num_branching):
-            logger.info(
-                f"i_branching = {i_branching+self.__gfmc_branching_counter + 1}/{num_branching+self.__gfmc_branching_counter}"
-            )
+            if (i_branching + 1) % gfmc_interval == 0:
+                progress = (
+                    (i_branching + self.__gfmc_branching_counter + 1) / (num_branching + self.__gfmc_branching_counter) * 100.0
+                )
+                logger.info(
+                    f"  Progress: branching step = {i_branching + self.__gfmc_branching_counter + 1}/{num_branching+self.__gfmc_branching_counter}: {progress:.1f} %."
+                )
 
             # MAIN project loop.
             logger.debug(f"  Projection time {self.__tau} a.u.^{-1}.")
@@ -592,6 +602,8 @@ class GFMC:
                 logger.info("break the branching loop.")
                 break
 
+        logger.info("-End branching-")
+
         # count up
         self.__gfmc_branching_counter += i_branching + 1
 
@@ -621,15 +633,15 @@ class GFMC:
         if rank == 0:
             e_L_eq = self.__e_L_averaged_list[num_gfmc_warmup_steps + num_gfmc_bin_collect :]
             w_L_eq = self.__w_L_averaged_list[num_gfmc_warmup_steps:]
-            logger.info(f"e_L_eq = {e_L_eq}")
-            logger.info(f"w_L_eq = {w_L_eq}")
+            logger.debug(f"e_L_eq = {e_L_eq}")
+            logger.debug(f"w_L_eq = {w_L_eq}")
             G_eq = [
                 np.prod([w_L_eq[n - j] for j in range(1, num_gfmc_bin_collect + 1)])
                 for n in range(num_gfmc_bin_collect, len(w_L_eq))
             ]
-            logger.info(f"G_eq = {G_eq}")
-            logger.info(f"len(e_L_eq) = {len(e_L_eq)}")
-            logger.info(f"len(G_eq) = {len(G_eq)}")
+            logger.debug(f"G_eq = {G_eq}")
+            logger.debug(f"len(e_L_eq) = {len(e_L_eq)}")
+            logger.debug(f"len(G_eq) = {len(G_eq)}")
 
             e_L_eq = np.array(e_L_eq)
             G_eq = np.array(G_eq)

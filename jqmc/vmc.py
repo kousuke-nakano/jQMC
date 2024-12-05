@@ -266,16 +266,13 @@ class MCMC:
         Returns:
             None
         """
-
-        cpu_count = os.cpu_count()
-        logger.debug(f"cpu count = {cpu_count}")
-
         # Set the random seed. Use the Mersenne Twister generator
         accepted_moves = 0
         nbra = 16
 
         # MAIN MCMC loop from here !!!
-        logger.info(f"  Current MCMC step = {self.__mcmc_counter}/{num_mcmc_steps+self.__mcmc_counter}: {0.0:.0f} %.")
+        progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+        logger.info(f"Current MCMC step = {self.__mcmc_counter}/{num_mcmc_steps+self.__mcmc_counter}: {progress:.0f} %.")
         mcmc_interval = int(num_mcmc_steps / 10)  # %
 
         # timer_counter
@@ -287,11 +284,12 @@ class MCMC:
 
         mcmc_total_start = time.perf_counter()
 
+        logger.info("-Start MCMC-")
         for i_mcmc_step in range(num_mcmc_steps):
             if (i_mcmc_step + 1) % mcmc_interval == 0:
-                progress = (i_mcmc_step + 1 + self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+                progress = (i_mcmc_step + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
                 logger.info(
-                    f"  Current MCMC step = {i_mcmc_step+1+self.__mcmc_counter}/{num_mcmc_steps+self.__mcmc_counter}: {progress:.1f} %."
+                    f"  Progress: MCMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps+self.__mcmc_counter}: {progress:.1f} %."
                 )
 
             # Determine the total number of electrons
@@ -574,6 +572,8 @@ class MCMC:
                 logger.info(f"max_time = {max_time} sec. exceeds.")
                 logger.info("break the mcmc loop.")
                 break
+
+        logger.info("-End MCMC-")
 
         # count up the mcmc counter
         self.__mcmc_counter += i_mcmc_step + 1
