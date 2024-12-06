@@ -1019,7 +1019,7 @@ class VMC:
         if rank == 0:
             logger.debug(f"[before reduce] len(e_L_binned) for MPI-rank={rank} is {len(e_L_binned)}")
 
-        O_matrix = self.get_deriv_ln_WF()
+        O_matrix = self.get_deriv_ln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps)
         O_matrix_split = np.array_split(O_matrix, num_mcmc_bin_blocks)
         O_matrix_binned = [np.average(O_matrix_list, axis=0) for O_matrix_list in O_matrix_split]
 

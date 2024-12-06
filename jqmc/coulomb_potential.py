@@ -437,7 +437,7 @@ def compute_ecp_non_local_parts_debug(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
     Nv: int = 6,
-    flag_determinant_only: int = False,
+    flag_determinant_only: bool = False,
 ) -> float:
     """Compute ecp non-local parts.
 
@@ -744,7 +744,7 @@ def compute_ecp_non_local_parts_jax(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
     Nv: int = 6,
-    flag_determinant_only: int = False,
+    flag_determinant_only: bool = False,
 ) -> float:
     """Compute ecp non-local parts using JAX.
 
@@ -853,7 +853,9 @@ def compute_ecp_non_local_part_jax_weights_grid_points(
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
         weights (list[np.float]): weights for numerical integration
         grid_points (npt.NDArray[np.float64]): grid_points for numerical integration
-        flag_determinant_only (int): If True (i.e., 0), only the determinant part is considered for the non-local ECP part.
+        flag_determinant_only (int):
+            If True (i.e., 1), only the determinant part is considered for the non-local ECP part.
+            If False (i.e., 0), both the Jastrow and determinant part is considered for the non-local ECP part.
 
     Returns:
         npt.NDArray: grid points used for the up electron
