@@ -3,8 +3,6 @@
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
 #
-# This file is part of phonopy.
-#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
 # are met:
@@ -53,7 +51,11 @@ import numpy.typing as npt
 from mpi4py import MPI
 
 # jQMC module
-from .coulomb_potential import compute_bare_coulomb_potential_jax, compute_ecp_local_parts_jax, compute_ecp_non_local_parts_jax
+from .coulomb_potential import (
+    _compute_bare_coulomb_potential_jax,
+    _compute_ecp_local_parts_jax,
+    _compute_ecp_non_local_parts_jax,
+)
 from .hamiltonians import Hamiltonian_data, compute_kinetic_energy_api, compute_local_energy
 from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
 from .trexio_wrapper import read_trexio_file
@@ -234,17 +236,17 @@ class GFMC:
             r_dn_carts=self.__latest_r_dn_carts,
             jax_PRNG_key=jax_PRNG_key,
         )
-        _ = compute_bare_coulomb_potential_jax(
+        _ = _compute_bare_coulomb_potential_jax(
             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
             r_up_carts=self.__latest_r_up_carts,
             r_dn_carts=self.__latest_r_dn_carts,
         )
-        _ = compute_ecp_local_parts_jax(
+        _ = _compute_ecp_local_parts_jax(
             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
             r_up_carts=self.__latest_r_up_carts,
             r_dn_carts=self.__latest_r_dn_carts,
         )
-        _, _, _ = compute_ecp_non_local_parts_jax(
+        _, _, _ = _compute_ecp_non_local_parts_jax(
             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
             r_up_carts=self.__latest_r_up_carts,
@@ -346,7 +348,7 @@ class GFMC:
 
                 # compute diagonal elements, bare couloumb
                 start_projection_diag_bare_couloumb = time.perf_counter()
-                diagonal_bare_coulomb_part = compute_bare_coulomb_potential_jax(
+                diagonal_bare_coulomb_part = _compute_bare_coulomb_potential_jax(
                     coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                     r_up_carts=self.__latest_r_up_carts,
                     r_dn_carts=self.__latest_r_dn_carts,
@@ -360,7 +362,7 @@ class GFMC:
                 if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
                     # ecp local
                     start_projection_diag_ecp = time.perf_counter()
-                    diagonal_ecp_local_part = compute_ecp_local_parts_jax(
+                    diagonal_ecp_local_part = _compute_ecp_local_parts_jax(
                         coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                         r_up_carts=self.__latest_r_up_carts,
                         r_dn_carts=self.__latest_r_dn_carts,
@@ -371,7 +373,7 @@ class GFMC:
                     # ecp non-local
                     start_projection_non_diagonal_ecp_part = time.perf_counter()
                     if self.__non_local_move == "tmove":
-                        mesh_non_local_ecp_part, V_nonlocal, _ = compute_ecp_non_local_parts_jax(
+                        mesh_non_local_ecp_part, V_nonlocal, _ = _compute_ecp_non_local_parts_jax(
                             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                             r_up_carts=self.__latest_r_up_carts,
@@ -384,7 +386,7 @@ class GFMC:
                         non_diagonal_sum_hamiltonian += np.sum(V_nonlocal_FN)
 
                     elif self.__non_local_move == "dltmove":
-                        mesh_non_local_ecp_part, V_nonlocal, _ = compute_ecp_non_local_parts_jax(
+                        mesh_non_local_ecp_part, V_nonlocal, _ = _compute_ecp_non_local_parts_jax(
                             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                             r_up_carts=self.__latest_r_up_carts,

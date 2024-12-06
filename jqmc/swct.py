@@ -1,9 +1,7 @@
-"""SWCT module"""
+"""SWCT module."""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
-#
-# This file is part of phonopy.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -45,9 +43,8 @@ import jax
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import grad, jacrev, jit
+from jax import grad, jacrev, jit, vmap
 from jax import numpy as jnp
-from jax import vmap
 
 # jaxQMC module
 from .structure import Structure_data

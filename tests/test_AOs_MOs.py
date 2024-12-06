@@ -36,7 +36,6 @@
 
 import itertools
 import os
-import pickle
 from logging import Formatter, StreamHandler, getLogger
 
 import jax
@@ -48,45 +47,23 @@ from numpy.testing import assert_almost_equal
 from ..jqmc.atomic_orbital import (
     AO_data,
     AOs_data,
-    compute_AOs_debug,
-    compute_AOs_grad_jax,
-    compute_AOs_jax,
-    compute_AOs_laplacian_debug,
-    compute_AOs_laplacian_jax,
-    compute_AOs_numerical_grad,
-    compute_S_l_m_debug,
-    compute_S_l_m_jax,
-)
-from ..jqmc.coulomb_potential import (
-    compute_bare_coulomb_potential_debug,
-    compute_bare_coulomb_potential_jax,
-    compute_ecp_coulomb_potential_debug,
-    compute_ecp_coulomb_potential_jax,
-    compute_ecp_local_parts_debug,
-    compute_ecp_local_parts_jax,
+    _compute_AOs_debug,
+    _compute_AOs_grad_debug,
+    _compute_AOs_grad_jax,
+    _compute_AOs_jax,
+    _compute_AOs_laplacian_debug,
+    _compute_AOs_laplacian_jax,
+    _compute_S_l_m_debug,
+    _compute_S_l_m_jax,
 )
 from ..jqmc.determinant import (
     Geminal_data,
-    compute_det_geminal_all_elements_debug,
-    compute_det_geminal_all_elements_jax,
-    compute_geminal_all_elements_debug,
-    compute_geminal_all_elements_jax,
-    compute_grads_and_laplacian_ln_Det_debug,
-    compute_grads_and_laplacian_ln_Det_jax,
-)
-from ..jqmc.hamiltonians import Hamiltonian_data
-from ..jqmc.jastrow_factor import (
-    Jastrow_data,
-    Jastrow_three_body_data,
-    Jastrow_two_body_data,
-    compute_grads_and_laplacian_Jastrow_three_body_debug,
-    compute_grads_and_laplacian_Jastrow_three_body_jax,
-    compute_grads_and_laplacian_Jastrow_two_body_debug,
-    compute_grads_and_laplacian_Jastrow_two_body_jax,
-    compute_Jastrow_three_body_debug,
-    compute_Jastrow_three_body_jax,
-    compute_Jastrow_two_body_debug,
-    compute_Jastrow_two_body_jax,
+    _compute_det_geminal_all_elements_debug,
+    _compute_det_geminal_all_elements_jax,
+    _compute_geminal_all_elements_debug,
+    _compute_geminal_all_elements_jax,
+    _compute_grads_and_laplacian_ln_Det_debug,
+    _compute_grads_and_laplacian_ln_Det_jax,
 )
 from ..jqmc.molecular_orbital import (
     MO_data,
@@ -100,9 +77,7 @@ from ..jqmc.molecular_orbital import (
     compute_MOs_laplacian_jax,
 )
 from ..jqmc.structure import Structure_data
-from ..jqmc.swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
 from ..jqmc.trexio_wrapper import read_trexio_file
-from ..jqmc.wavefunction import Wavefunction_data, compute_kinetic_energy_api, evaluate_wavefunction_api
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -252,7 +227,7 @@ def test_spherical_harmonics(l, m):
     for r_cart in zip(r_x_rand, r_y_rand, r_z_rand):
         r_norm = LA.norm(np.array(R_cart) - np.array(r_cart))
         r_cart_rel = np.array(r_cart) - np.array(R_cart)
-        test_S_lm = compute_S_l_m_debug(
+        test_S_lm = _compute_S_l_m_debug(
             atomic_center_cart=R_cart,
             angular_momentum=l,
             magnetic_quantum_number=m,
@@ -277,13 +252,13 @@ def test_solid_harmonics(l, m):
     r_z_rand = (r_cart_max - r_cart_min) * np.random.rand(num_samples) + r_cart_min
 
     for r_cart in zip(r_x_rand, r_y_rand, r_z_rand):
-        test_S_lm = compute_S_l_m_jax(
+        test_S_lm = _compute_S_l_m_jax(
             R_cart=R_cart,
             l=l,
             m=m,
             r_cart=r_cart,
         )
-        ref_S_lm = compute_S_l_m_debug(
+        ref_S_lm = _compute_S_l_m_debug(
             atomic_center_cart=R_cart,
             angular_momentum=l,
             magnetic_quantum_number=m,
@@ -384,8 +359,8 @@ def test_AOs_comparing_jax_and_debug_implemenetations():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    aos_jax = compute_AOs_jax(aos_data=aos_data, r_carts=r_carts)
-    aos_debug = compute_AOs_debug(aos_data=aos_data, r_carts=r_carts)
+    aos_jax = _compute_AOs_jax(aos_data=aos_data, r_carts=r_carts)
+    aos_debug = _compute_AOs_debug(aos_data=aos_data, r_carts=r_carts)
 
     assert np.allclose(aos_jax, aos_debug, rtol=1e-12, atol=1e-05)
 
@@ -425,8 +400,8 @@ def test_AOs_comparing_jax_and_debug_implemenetations():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    aos_jax = compute_AOs_jax(aos_data=aos_data, r_carts=r_carts)
-    aos_debug = compute_AOs_debug(aos_data=aos_data, r_carts=r_carts)
+    aos_jax = _compute_AOs_jax(aos_data=aos_data, r_carts=r_carts)
+    aos_debug = _compute_AOs_debug(aos_data=aos_data, r_carts=r_carts)
 
     assert np.allclose(aos_jax, aos_debug, rtol=1e-12, atol=1e-05)
 
@@ -469,7 +444,7 @@ def test_AOs_comparing_auto_and_numerical_grads():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = compute_AOs_grad_jax(
+    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = _compute_AOs_grad_jax(
         aos_data=aos_data, r_carts=r_carts
     )
 
@@ -477,7 +452,7 @@ def test_AOs_comparing_auto_and_numerical_grads():
         ao_matrix_grad_x_numerical,
         ao_matrix_grad_y_numerical,
         ao_matrix_grad_z_numerical,
-    ) = compute_AOs_numerical_grad(aos_data=aos_data, r_carts=r_carts)
+    ) = _compute_AOs_grad_debug(aos_data=aos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(ao_matrix_grad_x_auto, ao_matrix_grad_x_numerical, decimal=7)
     np.testing.assert_array_almost_equal(ao_matrix_grad_y_auto, ao_matrix_grad_y_numerical, decimal=7)
@@ -519,7 +494,7 @@ def test_AOs_comparing_auto_and_numerical_grads():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = compute_AOs_grad_jax(
+    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = _compute_AOs_grad_jax(
         aos_data=aos_data, r_carts=r_carts
     )
 
@@ -527,7 +502,7 @@ def test_AOs_comparing_auto_and_numerical_grads():
         ao_matrix_grad_x_numerical,
         ao_matrix_grad_y_numerical,
         ao_matrix_grad_z_numerical,
-    ) = compute_AOs_numerical_grad(aos_data=aos_data, r_carts=r_carts)
+    ) = _compute_AOs_grad_debug(aos_data=aos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(ao_matrix_grad_x_auto, ao_matrix_grad_x_numerical, decimal=7)
     np.testing.assert_array_almost_equal(ao_matrix_grad_y_auto, ao_matrix_grad_y_numerical, decimal=7)
@@ -573,9 +548,9 @@ def test_AOs_comparing_auto_and_numerical_laplacians():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    ao_matrix_laplacian_numerical = compute_AOs_laplacian_jax(aos_data=aos_data, r_carts=r_carts)
+    ao_matrix_laplacian_numerical = _compute_AOs_laplacian_jax(aos_data=aos_data, r_carts=r_carts)
 
-    ao_matrix_laplacian_auto = compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
+    ao_matrix_laplacian_auto = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(ao_matrix_laplacian_auto, ao_matrix_laplacian_numerical, decimal=5)
 
@@ -614,9 +589,9 @@ def test_AOs_comparing_auto_and_numerical_laplacians():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    ao_matrix_laplacian_numerical = compute_AOs_laplacian_jax(aos_data=aos_data, r_carts=r_carts)
+    ao_matrix_laplacian_numerical = _compute_AOs_laplacian_jax(aos_data=aos_data, r_carts=r_carts)
 
-    ao_matrix_laplacian_auto = compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
+    ao_matrix_laplacian_auto = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(ao_matrix_laplacian_auto, ao_matrix_laplacian_numerical, decimal=5)
 
@@ -1012,13 +987,13 @@ def test_comparing_AO_and_MO_geminals():
     r_up_carts = np.array(r_up_carts)
     r_dn_carts = np.array(r_dn_carts)
 
-    geminal_mo_debug = compute_geminal_all_elements_debug(
+    geminal_mo_debug = _compute_geminal_all_elements_debug(
         geminal_data=geminal_mo_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
 
-    geminal_mo_jax = compute_geminal_all_elements_jax(
+    geminal_mo_jax = _compute_geminal_all_elements_jax(
         geminal_data=geminal_mo_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -1046,13 +1021,13 @@ def test_comparing_AO_and_MO_geminals():
         lambda_matrix=ao_lambda_matrix,
     )
 
-    geminal_ao_debug = compute_geminal_all_elements_debug(
+    geminal_ao_debug = _compute_geminal_all_elements_debug(
         geminal_data=geminal_ao_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
 
-    geminal_ao_jax = compute_geminal_all_elements_debug(
+    geminal_ao_jax = _compute_geminal_all_elements_debug(
         geminal_data=geminal_ao_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -1065,13 +1040,13 @@ def test_comparing_AO_and_MO_geminals():
     # check if geminals with AO and MO representations are consistent
     np.testing.assert_array_almost_equal(geminal_ao, geminal_mo, decimal=15)
 
-    det_geminal_mo_debug = compute_det_geminal_all_elements_debug(
+    det_geminal_mo_debug = _compute_det_geminal_all_elements_debug(
         geminal_data=geminal_mo_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
 
-    det_geminal_mo_jax = compute_det_geminal_all_elements_jax(
+    det_geminal_mo_jax = _compute_det_geminal_all_elements_jax(
         geminal_data=geminal_mo_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -1080,13 +1055,13 @@ def test_comparing_AO_and_MO_geminals():
     np.testing.assert_array_almost_equal(det_geminal_mo_debug, det_geminal_mo_jax, decimal=15)
     det_geminal_mo = det_geminal_mo_jax
 
-    det_geminal_ao_debug = compute_det_geminal_all_elements_debug(
+    det_geminal_ao_debug = _compute_det_geminal_all_elements_debug(
         geminal_data=geminal_ao_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
 
-    det_geminal_ao_jax = compute_det_geminal_all_elements_jax(
+    det_geminal_ao_jax = _compute_det_geminal_all_elements_jax(
         geminal_data=geminal_ao_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -1100,42 +1075,18 @@ def test_comparing_AO_and_MO_geminals():
     jax.clear_caches()
 
 
-# @pytest.mark.skip
-def test_debug_and_jax_SWCT_omega():
-    (
-        structure_data,
-        aos_data,
-        mos_data_up,
-        mos_data_dn,
-        geminal_mo_data,
-        coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_trexio.hdf5"))
+if __name__ == "__main__":
+    logger = getLogger("myqmc")
+    logger.setLevel("INFO")
+    stream_handler = StreamHandler()
+    stream_handler.setLevel("INFO")
+    handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
+    stream_handler.setFormatter(handler_format)
+    logger.addHandler(stream_handler)
 
-    swct_data = SWCT_data(structure=structure_data)
+    np.set_printoptions(threshold=1.0e8)
 
-    num_ele_up = geminal_mo_data.num_electron_up
-    num_ele_dn = geminal_mo_data.num_electron_dn
-    r_cart_min, r_cart_max = -5.0, +5.0
-    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
-    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
-
-    omega_up_debug = evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_up_carts, debug_flag=True)
-    omega_dn_debug = evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_dn_carts, debug_flag=True)
-    omega_up_jax = evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_up_carts, debug_flag=False)
-    omega_dn_jax = evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_dn_carts, debug_flag=False)
-
-    np.testing.assert_almost_equal(omega_up_debug, omega_up_jax, decimal=6)
-    np.testing.assert_almost_equal(omega_dn_debug, omega_dn_jax, decimal=6)
-
-    domega_up_debug = evaluate_swct_domega_api(swct_data=swct_data, r_carts=r_up_carts, debug_flag=True)
-    domega_dn_debug = evaluate_swct_domega_api(swct_data=swct_data, r_carts=r_dn_carts, debug_flag=True)
-    domega_up_jax = evaluate_swct_domega_api(swct_data=swct_data, r_carts=r_up_carts, debug_flag=False)
-    domega_dn_jax = evaluate_swct_domega_api(swct_data=swct_data, r_carts=r_dn_carts, debug_flag=False)
-
-    np.testing.assert_almost_equal(domega_up_debug, domega_up_jax, decimal=6)
-    np.testing.assert_almost_equal(domega_dn_debug, domega_dn_jax, decimal=6)
-
-    jax.clear_caches()
+    pass
 
 
 def test_numerial_and_auto_grads_ln_Det():
@@ -1226,13 +1177,13 @@ def test_numerial_and_auto_grads_ln_Det():
         lambda_matrix=ao_lambda_matrix,
     )
 
-    grad_ln_D_up_numerical, grad_ln_D_dn_numerical, sum_laplacian_ln_D_numerical = compute_grads_and_laplacian_ln_Det_debug(
+    grad_ln_D_up_numerical, grad_ln_D_dn_numerical, sum_laplacian_ln_D_numerical = _compute_grads_and_laplacian_ln_Det_debug(
         geminal_data=geminal_ao_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
 
-    grad_ln_D_up_auto, grad_ln_D_dn_auto, sum_laplacian_ln_D_auto = compute_grads_and_laplacian_ln_Det_jax(
+    grad_ln_D_up_auto, grad_ln_D_dn_auto, sum_laplacian_ln_D_auto = _compute_grads_and_laplacian_ln_Det_jax(
         geminal_data=geminal_ao_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -1243,734 +1194,3 @@ def test_numerial_and_auto_grads_ln_Det():
     np.testing.assert_almost_equal(sum_laplacian_ln_D_numerical, sum_laplacian_ln_D_auto, decimal=1)
 
     jax.clear_caches()
-
-
-@pytest.mark.skip_if_enable_jit
-def test_debug_and_jax_ECP(request):
-    if request.config.getoption("--enable-jit"):
-        pytest.skip(reason="Bug of flux.struct with @jit.")
-    (
-        structure_data,
-        aos_data,
-        mos_data_up,
-        mos_data_dn,
-        geminal_mo_data,
-        coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_trexio.hdf5"))
-
-    # define data
-    jastrow_data = Jastrow_data(
-        jastrow_two_body_data=None,
-        jastrow_two_body_pade_flag=False,
-        jastrow_three_body_data=None,
-        jastrow_three_body_flag=False,
-    )  # no jastrow for the time-being.
-
-    wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
-
-    old_r_up_carts = np.array(
-        [
-            [0.64878536, -0.83275288, 0.33532629],
-            [0.55271273, 0.72310605, 0.93443775],
-            [0.66767275, 0.1206456, -0.36521208],
-            [-0.93165236, -0.0120386, 0.33003036],
-        ]
-    )
-    old_r_dn_carts = np.array(
-        [
-            [1.0347816, 1.26162081, 0.42301735],
-            [-0.57843435, 1.03651987, -0.55091542],
-            [-1.56091964, -0.58952149, -0.99268141],
-            [0.61863233, -0.14903326, 0.51962683],
-        ]
-    )
-    new_r_up_carts = old_r_up_carts.copy()
-    new_r_dn_carts = old_r_dn_carts.copy()
-    new_r_dn_carts[3] = [0.618632327645002, -0.149033260668010, 0.131889254514777]
-
-    # bare coulomb
-    vpot_bare_jax = compute_bare_coulomb_potential_jax(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-    )
-
-    vpot_bare_debug = compute_bare_coulomb_potential_debug(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-    )
-
-    # print(f"vpot_bare_jax = {vpot_bare_jax}")
-    # print(f"vpot_bare_debug = {vpot_bare_debug}")
-    np.testing.assert_almost_equal(vpot_bare_jax, vpot_bare_debug, decimal=10)
-
-    # ecp local
-    vpot_ecp_local_jax = compute_ecp_local_parts_jax(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-    )
-
-    vpot_ecp_local_debug = compute_ecp_local_parts_debug(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-    )
-
-    np.testing.assert_almost_equal(vpot_ecp_local_jax, vpot_ecp_local_debug, decimal=10)
-
-    # ecp total
-    vpot_ecp_jax = compute_ecp_coulomb_potential_jax(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-        wavefunction_data=wavefunction_data,
-    )
-
-    vpot_ecp_debug = compute_ecp_coulomb_potential_debug(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-        wavefunction_data=wavefunction_data,
-    )
-
-    # print(f"vpot_ecp_jax = {vpot_ecp_jax}")
-    # print(f"vpot_ecp_debug = {vpot_ecp_debug}")
-    np.testing.assert_almost_equal(vpot_ecp_jax, vpot_ecp_debug, decimal=10)
-
-
-@pytest.mark.skip_if_enable_jit
-def test_comparison_with_TurboRVB_wo_Jastrow(request):
-    if request.config.getoption("--enable-jit"):
-        pytest.skip(reason="Bug of flux.struct with @jit.")
-
-    (
-        structure_data,
-        aos_data,
-        mos_data_up,
-        mos_data_dn,
-        geminal_mo_data,
-        coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_trexio.hdf5"))
-
-    jastrow_data = Jastrow_data(
-        jastrow_two_body_data=None,
-        jastrow_two_body_pade_flag=False,
-        jastrow_three_body_data=None,
-        jastrow_three_body_flag=False,
-    )
-
-    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
-
-    hamiltonian_data = Hamiltonian_data(
-        structure_data=structure_data,
-        coulomb_potential_data=coulomb_potential_data,
-        wavefunction_data=wavefunction_data,
-    )
-
-    old_r_up_carts = np.array(
-        [
-            [-1.13450385875760, -0.698914730480577, -6.290951981744008e-003],
-            [-2.07761893946839, 1.30902541938751, -5.220902114745041e-002],
-            [0.276215481293413, 0.422863618938476, 0.279866487253010],
-            [-1.60902246286275, 0.499927465264998, 0.700105816369930],
-        ]
-    )
-    old_r_dn_carts = np.array(
-        [
-            [-1.48583455555933, -1.01189391902775, 1.83998639430367],
-            [0.635659512640246, 0.398999201990364, -0.745191606127732],
-            [-2.00590358216444, 1.90796788491204, -0.195294104680795],
-            [-1.12726250654165, -0.739542218156325, -4.817447678670805e-002],
-        ]
-    )
-    new_r_up_carts = old_r_up_carts.copy()
-    new_r_dn_carts = old_r_dn_carts.copy()
-    new_r_up_carts[2] = [0.276215481293413, -0.270740090536313, 0.279866487253010]
-
-    WF_ratio_ref_turborvb = 0.919592366177398
-    kinc_ref_turborvb = 14.6961809427008
-    vpot_ref_turborvb = -17.0152290468758
-    vpotoff_ref_turborvb = 0.329197252921614
-
-    # print(f"wf_ratio_ref={WF_ratio_ref_turborvb} Ha")
-    # print(f"kinc_ref={kinc_ref_turborvb} Ha")
-    # print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
-
-    WF_ratio = (
-        evaluate_wavefunction_api(
-            wavefunction_data=hamiltonian_data.wavefunction_data,
-            r_up_carts=new_r_up_carts,
-            r_dn_carts=new_r_dn_carts,
-        )
-        / evaluate_wavefunction_api(
-            wavefunction_data=hamiltonian_data.wavefunction_data,
-            r_up_carts=old_r_up_carts,
-            r_dn_carts=old_r_dn_carts,
-        )
-    ) ** 2.0
-
-    kinc = compute_kinetic_energy_api(
-        wavefunction_data=hamiltonian_data.wavefunction_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-    )
-
-    vpot_bare_debug = compute_bare_coulomb_potential_debug(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-    )
-
-    vpot_bare_jax = compute_bare_coulomb_potential_jax(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-    )
-
-    np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=6)
-
-    vpot_ecp_debug = compute_ecp_coulomb_potential_debug(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-        wavefunction_data=wavefunction_data,
-    )
-
-    vpot_ecp_jax = compute_ecp_coulomb_potential_jax(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-        wavefunction_data=wavefunction_data,
-    )
-
-    # print(f"wf_ratio={WF_ratio} Ha")
-    # print(f"kinc={kinc} Ha")
-    # print(f"vpot={vpot_bare_jax+vpot_ecp_debug} Ha")
-
-    np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=8)
-    np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
-    np.testing.assert_almost_equal(vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3)
-    np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3)
-
-    jax.clear_caches()
-
-
-@pytest.mark.skip_if_enable_jit
-def test_comparison_with_TurboRVB_w_2b_Jastrow(request):
-    if request.config.getoption("--enable-jit"):
-        pytest.skip(reason="Bug of flux.struct with @jit.")
-
-    (
-        structure_data,
-        aos_data,
-        mos_data_up,
-        mos_data_dn,
-        geminal_mo_data,
-        coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_trexio.hdf5"))
-
-    turborvb_2b_param = 0.896342988526927  # -6 !!
-    jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=turborvb_2b_param)
-
-    jastrow_data = Jastrow_data(
-        jastrow_two_body_data=jastrow_two_body_data,
-        jastrow_two_body_pade_flag=True,
-        jastrow_three_body_data=None,
-        jastrow_three_body_flag=False,
-    )
-
-    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
-
-    hamiltonian_data = Hamiltonian_data(
-        structure_data=structure_data,
-        coulomb_potential_data=coulomb_potential_data,
-        wavefunction_data=wavefunction_data,
-    )
-
-    old_r_up_carts = np.array(
-        [
-            [-1.13450385875760, -0.698914730480577, -6.290951981744008e-003],
-            [-2.30366220171161, 1.47326376760292, 0.126403765463162],
-            [0.276215481293413, 0.422863618938476, 0.279866487253010],
-            [-1.60902246286275, 0.499927465264998, 0.700105816369930],
-        ]
-    )
-    old_r_dn_carts = np.array(
-        [
-            [-1.42343008909407, -1.13669461924113, 0.525171318204107],
-            [0.635659512640246, 0.398999201990364, -0.745191606127732],
-            [-2.00590358216444, 1.90796788491204, -0.195294104680795],
-            [-1.12726250654165, -0.678049640381367, -0.656537799033216],
-        ]
-    )
-    new_r_up_carts = old_r_up_carts.copy()
-    new_r_dn_carts = old_r_dn_carts.copy()
-    new_r_up_carts[2] = [0.276215481293413, -0.270740090536313, 0.279866487253010]
-
-    WF_ratio_ref_turborvb = 0.872631278217550
-    kinc_ref_turborvb = 13.5310405254930
-    vpot_ref_turborvb = -30.1945862173100
-    vpotoff_ref_turborvb = 0.250461990878211
-
-    # print(f"wf_ratio_ref={WF_ratio_ref_turborvb} Ha")
-    # print(f"kinc_ref={kinc_ref_turborvb} Ha")
-    # print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
-
-    WF_ratio = (
-        evaluate_wavefunction_api(
-            wavefunction_data=hamiltonian_data.wavefunction_data,
-            r_up_carts=new_r_up_carts,
-            r_dn_carts=new_r_dn_carts,
-        )
-        / evaluate_wavefunction_api(
-            wavefunction_data=hamiltonian_data.wavefunction_data,
-            r_up_carts=old_r_up_carts,
-            r_dn_carts=old_r_dn_carts,
-        )
-    ) ** 2.0
-
-    kinc = compute_kinetic_energy_api(
-        wavefunction_data=hamiltonian_data.wavefunction_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-    )
-
-    vpot_bare_debug = compute_bare_coulomb_potential_debug(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-    )
-
-    vpot_bare_jax = compute_bare_coulomb_potential_jax(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-    )
-
-    np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=6)
-
-    vpot_ecp_debug = compute_ecp_coulomb_potential_debug(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-        wavefunction_data=wavefunction_data,
-    )
-
-    vpot_ecp_jax = compute_ecp_coulomb_potential_jax(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-        wavefunction_data=wavefunction_data,
-    )
-
-    # print(f"wf_ratio={WF_ratio} Ha")
-    # print(f"kinc={kinc} Ha")
-    # print(f"vpot={vpot_bare_jax+vpot_ecp_debug} Ha")
-
-    np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=8)
-    np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
-    np.testing.assert_almost_equal(vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3)
-    np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3)
-
-    jax.clear_caches()
-
-
-jax.clear_caches()
-
-
-@pytest.mark.skip_if_enable_jit
-def test_comparison_with_TurboRVB_w_2b_3b_Jastrow(request):
-    if request.config.getoption("--enable-jit"):
-        pytest.skip(reason="Bug of flux.struct with @jit.")
-    (
-        structure_data,
-        aos_data,
-        mos_data_up,
-        mos_data_dn,
-        geminal_mo_data,
-        coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_trexio.hdf5"))
-
-    with open(
-        os.path.join(os.path.dirname(__file__), "trexio_example_files", "jastrow_data_w_2b_3b.pkl"),
-        "rb",
-    ) as f:
-        jastrow_data = pickle.load(f)
-
-    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
-
-    hamiltonian_data = Hamiltonian_data(
-        structure_data=structure_data,
-        coulomb_potential_data=coulomb_potential_data,
-        wavefunction_data=wavefunction_data,
-    )
-
-    old_r_up_carts = np.array(
-        [
-            [-1.13450385875760, -0.698914730480577, -6.290951981744008e-003],
-            [-2.30366220171161, 2.32528986358581, -0.200085136796780],
-            [0.390190526911041, 0.422863618938476, 1.09811717761730],
-            [-2.40143573560450, 0.623761374394509, 0.700105816369930],
-        ]
-    )
-    old_r_dn_carts = np.array(
-        [
-            [-1.58454340030273, -1.01943210665261, 2.47097269788962],
-            [1.90701925586575, 0.398999201990364, -0.745191606127732],
-            [-2.00590358216444, 2.31787632191030, -0.195294104680795],
-            [-0.103689059569662, -2.18500664943652, -0.318874284614467],
-        ]
-    )
-    new_r_up_carts = old_r_up_carts.copy()
-    new_r_dn_carts = old_r_dn_carts.copy()
-    new_r_up_carts[2] = [0.390190526911041, -0.270740090536313, 1.09811717761730]
-
-    WF_ratio_ref_turborvb = 0.867706478518192
-    kinc_ref_turborvb = 5.11234708991921
-    vpot_ref_turborvb = -17.0140133127848
-    vpotoff_ref_turborvb = 0.275054565511106
-
-    # print(f"wf_ratio_ref={WF_ratio_ref_turborvb} Ha")
-    # print(f"kinc_ref={kinc_ref_turborvb} Ha")
-    # print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
-
-    WF_ratio = (
-        evaluate_wavefunction_api(
-            wavefunction_data=hamiltonian_data.wavefunction_data,
-            r_up_carts=new_r_up_carts,
-            r_dn_carts=new_r_dn_carts,
-        )
-        / evaluate_wavefunction_api(
-            wavefunction_data=hamiltonian_data.wavefunction_data,
-            r_up_carts=old_r_up_carts,
-            r_dn_carts=old_r_dn_carts,
-        )
-    ) ** 2.0
-
-    kinc = compute_kinetic_energy_api(
-        wavefunction_data=hamiltonian_data.wavefunction_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-    )
-
-    vpot_bare_debug = compute_bare_coulomb_potential_debug(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-    )
-
-    vpot_bare_jax = compute_bare_coulomb_potential_jax(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-    )
-
-    np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=6)
-
-    vpot_ecp_debug = compute_ecp_coulomb_potential_debug(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-        wavefunction_data=wavefunction_data,
-    )
-
-    vpot_ecp_jax = compute_ecp_coulomb_potential_jax(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-        wavefunction_data=wavefunction_data,
-    )
-
-    # print(f"wf_ratio={WF_ratio} Ha")
-    # print(f"kinc={kinc} Ha")
-    # print(f"vpot={vpot_bare_jax+vpot_ecp_debug} Ha")
-
-    np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=8)
-    np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
-    np.testing.assert_almost_equal(vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3)
-    np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3)
-
-    jax.clear_caches()
-
-
-jax.clear_caches()
-
-
-# @pytest.mark.skip_if_enable_jit
-def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow(request):
-    # if request.config.getoption("--enable-jit"):
-    #    pytest.skip(reason="Bug of flux.struct with @jit.")
-    (
-        structure_data,
-        aos_data,
-        mos_data_up,
-        mos_data_dn,
-        geminal_mo_data,
-        coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_trexio.hdf5"))
-
-    with open(
-        os.path.join(os.path.dirname(__file__), "trexio_example_files", "jastrow_data_w_2b_1b3b.pkl"),
-        "rb",
-    ) as f:
-        jastrow_data = pickle.load(f)
-
-    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
-
-    hamiltonian_data = Hamiltonian_data(
-        structure_data=structure_data,
-        coulomb_potential_data=coulomb_potential_data,
-        wavefunction_data=wavefunction_data,
-    )
-
-    old_r_up_carts = np.array(
-        [
-            [-1.45953855349650, -0.862585479538573, -6.290951981744008e-003],
-            [-0.332901524462574, 0.626165379953289, -0.603559493748950],
-            [-0.197062006804461, 0.371833444736005, 0.439075235222144],
-            [-1.83684814645671, -8.976990228515924e-002, -2.462312627037627e-002],
-        ]
-    )
-    old_r_dn_carts = np.array(
-        [
-            [-5.347744437064250e-002, 0.623781376578920, 0.525171318204107],
-            [-2.19220906931126, -0.310636827543933, 5.967026994100055e-002],
-            [-1.81960258882794, 0.517427457629536, -0.195294104680795],
-            [-1.12726250654165, -0.260900727811469, -1.45214401542009],
-        ]
-    )
-    new_r_up_carts = old_r_up_carts.copy()
-    new_r_dn_carts = old_r_dn_carts.copy()
-    new_r_up_carts[1] = [-0.150727555030462, 0.626165379953289, -0.603559493748950]
-
-    WF_ratio_ref_turborvb = 0.745878160412662
-    kinc_ref_turborvb = 12.2446576962106
-    vpot_ref_turborvb = -29.6412525272157
-    vpotoff_ref_turborvb = 0.995316391222278
-
-    # print(f"wf_ratio_ref={WF_ratio_ref_turborvb} Ha")
-    # print(f"kinc_ref={kinc_ref_turborvb} Ha")
-    # print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
-
-    WF_ratio = (
-        evaluate_wavefunction_api(
-            wavefunction_data=hamiltonian_data.wavefunction_data,
-            r_up_carts=new_r_up_carts,
-            r_dn_carts=new_r_dn_carts,
-        )
-        / evaluate_wavefunction_api(
-            wavefunction_data=hamiltonian_data.wavefunction_data,
-            r_up_carts=old_r_up_carts,
-            r_dn_carts=old_r_dn_carts,
-        )
-    ) ** 2.0
-
-    kinc = compute_kinetic_energy_api(
-        wavefunction_data=hamiltonian_data.wavefunction_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-    )
-
-    vpot_bare_debug = compute_bare_coulomb_potential_debug(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-    )
-
-    vpot_bare_jax = compute_bare_coulomb_potential_jax(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-    )
-
-    np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=6)
-
-    vpot_ecp_debug = compute_ecp_coulomb_potential_debug(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-        wavefunction_data=wavefunction_data,
-    )
-
-    vpot_ecp_jax = compute_ecp_coulomb_potential_jax(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
-        wavefunction_data=wavefunction_data,
-    )
-
-    # print(f"wf_ratio={WF_ratio} Ha")
-    # print(f"kinc={kinc} Ha")
-    # print(f"vpot={vpot_bare_jax+vpot_ecp_debug} Ha")
-
-    np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=8)
-    np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
-    np.testing.assert_almost_equal(vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=2)
-    np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=2)
-
-    jax.clear_caches()
-
-
-def test_numerical_and_auto_grads_Jastrow_threebody_part():
-    # test MOs
-    num_r_up_cart_samples = 4
-    num_r_dn_cart_samples = 2
-    num_R_cart_samples = 6
-    num_ao = 6
-    num_ao_prim = 6
-    orbital_indices = [0, 1, 2, 3, 4, 5]
-    exponents = [1.2, 0.5, 0.1, 0.05, 0.05, 0.05]
-    coefficients = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-    angular_momentums = [0, 0, 0, 1, 1, 1]
-    magnetic_quantum_numbers = [0, 0, 0, 0, +1, -1]
-
-    # generate matrices for the test
-    r_cart_min, r_cart_max = -1.0, 1.0
-    R_cart_min, R_cart_max = 0.0, 0.0
-    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_up_cart_samples, 3) + r_cart_min
-    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_dn_cart_samples, 3) + r_cart_min
-    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
-
-    structure_data = Structure_data(
-        pbc_flag=[False, False, False],
-        positions=R_carts,
-        atomic_numbers=[0] * num_R_cart_samples,
-        element_symbols=["X"] * num_R_cart_samples,
-        atomic_labels=["X"] * num_R_cart_samples,
-    )
-
-    aos_data = AOs_data(
-        structure_data=structure_data,
-        nucleus_index=list(range(num_R_cart_samples)),
-        num_ao=num_ao,
-        num_ao_prim=num_ao_prim,
-        orbital_indices=orbital_indices,
-        exponents=exponents,
-        coefficients=coefficients,
-        angular_momentums=angular_momentums,
-        magnetic_quantum_numbers=magnetic_quantum_numbers,
-    )
-
-    j_matrix = np.random.rand(aos_data.num_ao, aos_data.num_ao + 1)
-
-    jastrow_three_body_data = Jastrow_three_body_data(orb_data=aos_data, j_matrix=j_matrix)
-
-    J3_debug = compute_Jastrow_three_body_debug(
-        jastrow_three_body_data=jastrow_three_body_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
-    )
-
-    # print(f"J3_debug = {J3_debug}")
-
-    J3_jax = compute_Jastrow_three_body_jax(
-        jastrow_three_body_data=jastrow_three_body_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
-    )
-
-    # print(f"J3_jax = {J3_jax}")
-
-    np.testing.assert_almost_equal(J3_debug, J3_jax, decimal=8)
-
-    (
-        grad_jastrow_J3_up_debug,
-        grad_jastrow_J3_dn_debug,
-        sum_laplacian_J3_debug,
-    ) = compute_grads_and_laplacian_Jastrow_three_body_debug(
-        jastrow_three_body_data,
-        r_up_carts,
-        r_dn_carts,
-    )
-
-    # print(f"grad_jastrow_J3_up_debug = {grad_jastrow_J3_up_debug}")
-    # print(f"grad_jastrow_J3_dn_debug = {grad_jastrow_J3_dn_debug}")
-    # print(f"sum_laplacian_J3_debug = {sum_laplacian_J3_debug}")
-
-    grad_jastrow_J3_up_jax, grad_jastrow_J3_dn_jax, sum_laplacian_J3_jax = compute_grads_and_laplacian_Jastrow_three_body_jax(
-        jastrow_three_body_data,
-        r_up_carts,
-        r_dn_carts,
-    )
-
-    # print(f"grad_jastrow_J3_up_jax = {grad_jastrow_J3_up_jax}")
-    # print(f"grad_jastrow_J3_dn_jax = {grad_jastrow_J3_dn_jax}")
-    # print(f"sum_laplacian_J3_jax = {sum_laplacian_J3_jax}")
-
-    np.testing.assert_almost_equal(grad_jastrow_J3_up_debug, grad_jastrow_J3_up_jax, decimal=4)
-    np.testing.assert_almost_equal(grad_jastrow_J3_dn_debug, grad_jastrow_J3_dn_jax, decimal=4)
-    np.testing.assert_almost_equal(sum_laplacian_J3_debug, sum_laplacian_J3_jax, decimal=4)
-
-    jax.clear_caches()
-
-
-def test_numerical_and_auto_grads_Jastrow_twobody_part():
-    # test MOs
-    num_r_up_cart_samples = 5
-    num_r_dn_cart_samples = 2
-
-    r_cart_min, r_cart_max = -3.0, 3.0
-
-    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_up_cart_samples, 3) + r_cart_min
-    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_dn_cart_samples, 3) + r_cart_min
-
-    jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=1.0)
-    J2_debug = compute_Jastrow_two_body_debug(
-        jastrow_two_body_data=jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
-    )
-
-    # print(f"jastrow_two_body_debug = {jastrow_two_body_debug}")
-
-    J2_jax = compute_Jastrow_two_body_jax(
-        jastrow_two_body_data=jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
-    )
-
-    # print(f"jastrow_two_body_jax = {jastrow_two_body_jax}")
-
-    np.testing.assert_almost_equal(J2_debug, J2_jax, decimal=10)
-
-    (
-        grad_J2_up_debug,
-        grad_J2_dn_debug,
-        sum_laplacian_J2_debug,
-    ) = compute_grads_and_laplacian_Jastrow_two_body_debug(
-        jastrow_two_body_data,
-        r_up_carts,
-        r_dn_carts,
-    )
-
-    # print(f"grad_J2_up_debug = {grad_J2_up_debug}")
-    # print(f"grad_J2_dn_debug = {grad_J2_dn_debug}")
-    # print(f"sum_laplacian_J2_debug = {sum_laplacian_J2_debug}")
-
-    grad_J2_up_jax, grad_J2_dn_jax, sum_laplacian_J2_jax = compute_grads_and_laplacian_Jastrow_two_body_jax(
-        jastrow_two_body_data,
-        r_up_carts,
-        r_dn_carts,
-    )
-
-    # print(f"grad_J2_up_jax = {grad_J2_up_jax}")
-    # print(f"grad_J2_dn_jax = {grad_J2_dn_jax}")
-    # print(f"sum_laplacian_J2_jax = {sum_laplacian_J2_jax}")
-
-    np.testing.assert_almost_equal(grad_J2_up_debug, grad_J2_up_jax, decimal=8)
-    np.testing.assert_almost_equal(grad_J2_dn_debug, grad_J2_dn_jax, decimal=8)
-    np.testing.assert_almost_equal(sum_laplacian_J2_debug, sum_laplacian_J2_jax, decimal=4)
-
-    jax.clear_caches()
-
-
-if __name__ == "__main__":
-    logger = getLogger("myqmc")
-    logger.setLevel("INFO")
-    stream_handler = StreamHandler()
-    stream_handler.setLevel("INFO")
-    handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
-    stream_handler.setFormatter(handler_format)
-    logger.addHandler(stream_handler)
-
-    np.set_printoptions(threshold=1.0e8)
-
-    pass

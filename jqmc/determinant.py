@@ -1,9 +1,11 @@
-"""Determinant module."""
+"""Determinant module.
+
+Todo:
+    * Replace numpy and jax.numpy typings with jaxtyping
+"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
-#
-# This file is part of phonopy.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -46,6 +48,7 @@ import numpy as np
 import numpy.typing as npt
 from flax import struct
 from jax import jit
+from jax import typing as jnpt
 
 # jqmc module
 from .atomic_orbital import AOs_data, compute_AOs_api, compute_AOs_grad_api, compute_AOs_laplacian_api
@@ -218,33 +221,40 @@ class Geminal_data:
 
 def compute_det_geminal_all_elements_api(
     geminal_data: Geminal_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
-) -> np.float64:
+    r_up_carts: jnpt.ArrayLike,
+    r_dn_carts: jnpt.ArrayLike,
+    debug=False,
+) -> float:
     """Function for computing determinant of the given geminal.
 
     The api method to compute determinant of the given geminal functions.
 
+    Args:
+        geminal_data (Geminal_data): an instance of Geminal_data
+        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^up, 3)
+        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^dn, 3)
+        debug (bool): if True, this is computed via _debug function for debuging purpose
+
+    Returns:
+        jax.Array:
+            Array containing laplacians of the AOs at r_carts. The dim. is (num_ao, N_e)
+
     Return:
-        np.float64: The determinant of the given geminal functions.
+        float: The determinant of the given geminal functions.
     """
     return jnp.linalg.det(
-        compute_geminal_all_elements_api(
-            geminal_data=geminal_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
-        )
+        compute_geminal_all_elements_api(geminal_data=geminal_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, debug=debug)
     )
 
 
-def compute_det_geminal_all_elements_jax(
+def _compute_det_geminal_all_elements_jax(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> np.float64:
     """See compute_det_geminal_all_elements_api."""
     return jnp.linalg.det(
-        compute_geminal_all_elements_jax(
+        _compute_geminal_all_elements_jax(
             geminal_data=geminal_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
@@ -252,14 +262,14 @@ def compute_det_geminal_all_elements_jax(
     )
 
 
-def compute_det_geminal_all_elements_debug(
+def _compute_det_geminal_all_elements_debug(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> np.float64:
     """See compute_det_geminal_all_elements_api."""
     return np.linalg.det(
-        compute_geminal_all_elements_debug(
+        _compute_geminal_all_elements_debug(
             geminal_data=geminal_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
@@ -268,9 +278,7 @@ def compute_det_geminal_all_elements_debug(
 
 
 def compute_geminal_all_elements_api(
-    geminal_data: Geminal_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    geminal_data: Geminal_data, r_up_carts: npt.NDArray[np.float64], r_dn_carts: npt.NDArray[np.float64], debug: bool = False
 ) -> npt.NDArray[np.float64]:
     """Compute Geminal matrix elements.
 
@@ -280,6 +288,7 @@ def compute_geminal_all_elements_api(
         geminal_data (Geminal_data): an instance of Geminal_data class
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        debug (bool): if True, this is computed via _debug function for debuging purpose
 
     Returns:
         npt.NDArray[np.float64]: Arrays containing values of the given geminal functions f(i,j),
@@ -306,8 +315,10 @@ def compute_geminal_all_elements_api(
 
     # jprint(f"geminal:debug_flag={debug_flag}, type={type(debug_flag)}")
 
-    # geminal = compute_geminal_all_elements_debug(geminal_data, r_up_carts, r_dn_carts)
-    geminal = compute_geminal_all_elements_jax(geminal_data, r_up_carts, r_dn_carts)
+    if debug:
+        geminal = _compute_geminal_all_elements_debug(geminal_data, r_up_carts, r_dn_carts)
+    else:
+        geminal = _compute_geminal_all_elements_jax(geminal_data, r_up_carts, r_dn_carts)
 
     if geminal.shape != (len(r_up_carts), len(r_up_carts)):
         logger.error(
@@ -318,7 +329,7 @@ def compute_geminal_all_elements_api(
     return geminal
 
 
-def compute_geminal_all_elements_debug(
+def _compute_geminal_all_elements_debug(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
@@ -345,7 +356,7 @@ def compute_geminal_all_elements_debug(
 # For the time being, we can unjit it to avoid errors in unit_test.py
 # This error is tied with the choice of pytree=True/False flag
 @jit
-def compute_geminal_all_elements_jax(
+def _compute_geminal_all_elements_jax(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
@@ -368,6 +379,7 @@ def compute_grads_and_laplacian_ln_Det_api(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
+    debug: bool = False,
 ) -> tuple[
     npt.NDArray[np.float64],
     npt.NDArray[np.float64],
@@ -382,6 +394,7 @@ def compute_grads_and_laplacian_ln_Det_api(
         geminal_data (Geminal_data): an instance of Geminal_data class
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        debug (bool): if True, this is computed via _debug function for debuging purpose
 
     Returns:
         tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], float]: containing
@@ -406,12 +419,14 @@ def compute_grads_and_laplacian_ln_Det_api(
     else:
         logger.debug("There is no unpaired electrons.")
 
-    # grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = compute_grads_and_laplacian_ln_Det_debug(
-    #    geminal_data, r_up_carts, r_dn_carts
-    # )
-    grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = compute_grads_and_laplacian_ln_Det_jax(
-        geminal_data, r_up_carts, r_dn_carts
-    )
+    if debug:
+        grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = _compute_grads_and_laplacian_ln_Det_debug(
+            geminal_data, r_up_carts, r_dn_carts
+        )
+    else:
+        grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = _compute_grads_and_laplacian_ln_Det_jax(
+            geminal_data, r_up_carts, r_dn_carts
+        )
 
     if grad_ln_D_up.shape != (geminal_data.num_electron_up, 3):
         logger.error(
@@ -428,7 +443,7 @@ def compute_grads_and_laplacian_ln_Det_api(
     return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D
 
 
-def compute_grads_and_laplacian_ln_Det_debug(
+def _compute_grads_and_laplacian_ln_Det_debug(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
@@ -783,7 +798,7 @@ def compute_grads_and_laplacian_ln_Det_debug(
 
 
 @jit
-def compute_grads_and_laplacian_ln_Det_jax(
+def _compute_grads_and_laplacian_ln_Det_jax(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],

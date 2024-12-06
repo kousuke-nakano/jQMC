@@ -1,9 +1,7 @@
-"""Molecular Orbital module"""
+"""Molecular Orbital module."""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
-#
-# This file is part of phonopy.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -53,11 +51,11 @@ from jax import jit
 from .atomic_orbital import (
     AO_data,
     AOs_data,
+    _compute_AOs_grad_jax,
+    _compute_AOs_jax,
+    _compute_AOs_laplacian_jax,
     compute_AO,
     compute_AOs_api,
-    compute_AOs_grad_jax,
-    compute_AOs_jax,
-    compute_AOs_laplacian_jax,
 )
 
 # set logger
@@ -80,9 +78,7 @@ class MOs_data:
 
     num_mo: int = struct.field(pytree_node=False, default=0)
     aos_data: AOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
-    mo_coefficients: npt.NDArray[np.float64] = struct.field(
-        pytree_node=True, default_factory=lambda: np.array([])
-    )
+    mo_coefficients: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
     def __post_init__(self) -> None:
         if self.mo_coefficients.shape != (self.num_mo, self.aos_data.num_ao):
@@ -92,9 +88,7 @@ class MOs_data:
             raise ValueError
 
 
-def compute_MOs_laplacian_api(
-    mos_data: MOs_data, r_carts: npt.NDArray[np.float64]
-) -> npt.NDArray[np.float64]:
+def compute_MOs_laplacian_api(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     """
     The method is for computing the laplacians of the given molecular orbital at r_carts
 
@@ -160,7 +154,7 @@ def compute_MOs_laplacian_debug(mos_data: MOs_data, r_carts: npt.NDArray[np.floa
 def compute_MOs_laplacian_jax(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]):
     mo_matrix_laplacian = jnp.dot(
         mos_data.mo_coefficients,
-        compute_AOs_laplacian_jax(mos_data.aos_data, r_carts),
+        _compute_AOs_laplacian_jax(mos_data.aos_data, r_carts),
     )
 
     return mo_matrix_laplacian
@@ -250,9 +244,7 @@ def compute_MOs_grad_jax(
     mos_data: MOs_data,
     r_carts: npt.NDArray[np.float64],
 ):
-    mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z = compute_AOs_grad_jax(
-        mos_data.aos_data, r_carts
-    )
+    mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z = _compute_AOs_grad_jax(mos_data.aos_data, r_carts)
     mo_matrix_grad_x = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_x)
     mo_matrix_grad_y = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_y)
     mo_matrix_grad_z = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_z)
@@ -260,9 +252,7 @@ def compute_MOs_grad_jax(
     return mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z
 
 
-def compute_MOs_api(
-    mos_data: MOs_data, r_carts: npt.NDArray[np.float64]
-) -> npt.NDArray[np.float64]:
+def compute_MOs_api(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     """
     The class contains information for computing molecular orbitals at r_carts simlunateously.
 
@@ -276,17 +266,13 @@ def compute_MOs_api(
     answer = compute_MOs_jax(mos_data, r_carts)
 
     if answer.shape != (mos_data.num_mo, len(r_carts)):
-        logger.error(
-            f"answer.shape = {answer.shape} is inconsistent with the expected one = {(mos_data.num_mo, len(r_carts))}"
-        )
+        logger.error(f"answer.shape = {answer.shape} is inconsistent with the expected one = {(mos_data.num_mo, len(r_carts))}")
         raise ValueError
 
     return answer
 
 
-def compute_MOs_debug(
-    mos_data: MOs_data, r_carts: npt.NDArray[np.float64]
-) -> npt.NDArray[np.float64]:
+def compute_MOs_debug(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     answer = np.dot(
         mos_data.mo_coefficients,
         compute_AOs_api(aos_data=mos_data.aos_data, r_carts=r_carts),
@@ -295,12 +281,10 @@ def compute_MOs_debug(
 
 
 @jit
-def compute_MOs_jax(
-    mos_data: MOs_data, r_carts: npt.NDArray[np.float64]
-) -> npt.NDArray[np.float64]:
+def compute_MOs_jax(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     answer = jnp.dot(
         mos_data.mo_coefficients,
-        compute_AOs_jax(aos_data=mos_data.aos_data, r_carts=r_carts),
+        _compute_AOs_jax(aos_data=mos_data.aos_data, r_carts=r_carts),
     )
     return answer
 
@@ -366,9 +350,7 @@ if __name__ == "__main__":
         mos_data_dn,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_trexio.hdf5")
-    )
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_trexio.hdf5"))
 
     num_electron_up = geminal_mo_data.num_electron_up
     num_electron_dn = geminal_mo_data.num_electron_dn

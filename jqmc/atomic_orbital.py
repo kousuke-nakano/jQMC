@@ -10,8 +10,6 @@ Todo:
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
 #
-# This file is part of phonopy.
-#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
 # are met:
@@ -199,7 +197,11 @@ class AOs_data:
         return np.array([self.magnetic_quantum_numbers[i] for i in self.orbital_indices])
 
 
-def compute_AOs_laplacian_api(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
+def compute_AOs_laplacian_api(
+    aos_data: AOs_data,
+    r_carts: jnpt.ArrayLike,
+    debug=False,
+) -> jax.Array:
     """Compute laplacians of the give AOs at r_carts.
 
     The method is for computing the laplacians of the given atomic orbital at r_carts
@@ -207,18 +209,21 @@ def compute_AOs_laplacian_api(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> ja
     Args:
         ao_datas (AOs_data): an instance of AOs_data
         r_carts (jnpt.ArrayLike): Cartesian coordinates of electrons (dim: N_e, 3)
-        debug_flag (bool): if True, numerical derivatives are computed for debuging purpose
+        debug (bool): if True, numerical derivatives are computed via _debug function for debuging purpose
 
     Returns:
         jax.Array:
             Array containing laplacians of the AOs at r_carts. The dim. is (num_ao, N_e)
 
     """
-    return compute_AOs_laplacian_jax(aos_data, r_carts)
+    if debug:
+        return _compute_AOs_laplacian_debug(aos_data, r_carts)
+    else:
+        return _compute_AOs_laplacian_jax(aos_data, r_carts)
 
 
 @jit
-def compute_AOs_laplacian_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
+def _compute_AOs_laplacian_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     """Compute laplacians of the give AOs at r_carts.
 
     See compute_AOs_laplacian_api
@@ -240,7 +245,7 @@ def compute_AOs_laplacian_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> ja
 
     vmap_compute_AOs_laplacian_dup = vmap(
         vmap(
-            compute_primitive_AOs_laplacians_jax,
+            _compute_primitive_AOs_laplacians_jax,
             in_axes=(None, None, None, None, None, 0),
         ),
         in_axes=(0, 0, 0, 0, 0, None),
@@ -255,7 +260,7 @@ def compute_AOs_laplacian_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> ja
     return ao_matrix_laplacian
 
 
-def compute_AOs_laplacian_debug(aos_data: AOs_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+def _compute_AOs_laplacian_debug(aos_data: AOs_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     """Compute laplacians of the give AOs at r_carts.
 
     The method is for computing the laplacians of the given atomic orbital at r_carts
@@ -316,7 +321,7 @@ def compute_AOs_laplacian_debug(aos_data: AOs_data, r_carts: npt.NDArray[np.floa
     return ao_matrix_laplacian
 
 
-def compute_AOs_grad_api(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> tuple[jax.Array, jax.Array, jax.Array]:
+def compute_AOs_grad_api(aos_data: AOs_data, r_carts: jnpt.ArrayLike, debug=False) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Compute Cartesian Gradients of AOs.
 
     The method is for computing the Carteisan gradients (x,y,z) of
@@ -325,13 +330,17 @@ def compute_AOs_grad_api(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> tuple[j
     Args:
         ao_datas(AOs_data): an instance of AOs_data
         r_carts(jnpt.ArrayLike): Cartesian coordinates of electrons (dim: N_e, 3)
+        debug (bool): if True, numerical derivatives are computed via _debug function for debuging purpose
 
     Returns:
         tuple: tuple containing gradients of the AOs at r_carts. (grad_x, grad_y, grad_z).
         The dim. of each matrix is (num_ao, N_e)
 
     """
-    ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z = compute_AOs_grad_jax(aos_data, r_carts)
+    if debug:
+        ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z = _compute_AOs_grad_debug(aos_data, r_carts)
+    else:
+        ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z = _compute_AOs_grad_jax(aos_data, r_carts)
 
     if ao_matrix_grad_x.shape != (aos_data.num_ao, len(r_carts)):
         logger.error(
@@ -358,7 +367,7 @@ def compute_AOs_grad_api(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> tuple[j
 
 
 @jit
-def compute_AOs_grad_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> tuple[jax.Array, jax.Array, jax.Array]:
+def _compute_AOs_grad_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Compute Cartesian Gradients of AOs.
 
     See compute_AOs_grad_api
@@ -381,7 +390,7 @@ def compute_AOs_grad_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> tuple[j
     # grad in compute_primitive_AOs_grad_jax
     vmap_compute_AOs_grad_dup = vmap(
         vmap(
-            compute_primitive_AOs_grad_jax,
+            _compute_primitive_AOs_grad_jax,
             in_axes=(None, None, None, None, None, 0),
         ),
         in_axes=(0, 0, 0, 0, 0, None),
@@ -398,7 +407,7 @@ def compute_AOs_grad_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> tuple[j
 
 
 @jit
-def compute_AOs_grad_jax_old(
+def __compute_AOs_grad_jax_old(
     aos_data: AOs_data,
     r_carts: jnpt.ArrayLike,
 ) -> tuple[jax.Array, jax.Array, jax.Array]:
@@ -433,7 +442,7 @@ def compute_AOs_grad_jax_old(
     return ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z
 
 
-def compute_AOs_numerical_grad(
+def _compute_AOs_grad_debug(
     aos_data: AOs_data,
     r_carts: npt.NDArray[np.float64],
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
@@ -441,16 +450,7 @@ def compute_AOs_numerical_grad(
 
     The method is for computing the Carteisan gradients (x,y,z) of
     the given atomic orbital at r_carts using FDM for debugging JAX
-    implementations
-
-    Args:
-        ao_datas(AOs_data): an instance of AOs_data
-        r_carts(npt.NDArray[np.float64]): Cartesian coordinates of electrons (dim: N_e, 3)
-
-    Returns:
-        tuple: tuple containing gradients of the AOs at r_carts. (grad_x, grad_y, grad_z).
-        The dim. of each matrix is (num_ao, N_e)
-
+    implementations. See compute_AOs_grad_api
     """
     # Gradients of AOs (numerical)
     diff_h = 1.0e-5
@@ -486,7 +486,7 @@ def compute_AOs_numerical_grad(
     return ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z
 
 
-def compute_AOs_api(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
+def compute_AOs_api(aos_data: AOs_data, r_carts: jnpt.ArrayLike, debug=False) -> jax.Array:
     """Compute AO values at the given r_carts.
 
     The method is for computing the value of the given atomic orbital at r_carts
@@ -494,11 +494,15 @@ def compute_AOs_api(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     Args:
         ao_datas (AOs_data): an instance of AOs_data
         r_carts (jnpt.ArrayLike): Cartesian coordinates of electrons (dim: N_e, 3)
+        debug (bool): if True, AOs are computed via _debug function for debuging purpose
 
     Returns:
         jax.Array: Arrays containing values of the AOs at r_carts. (dim: num_ao, N_e)
     """
-    AOs = compute_AOs_jax(aos_data, r_carts)
+    if debug:
+        AOs = _compute_AOs_debug(aos_data, r_carts)
+    else:
+        AOs = _compute_AOs_jax(aos_data, r_carts)
 
     if AOs.shape != (aos_data.num_ao, len(r_carts)):
         logger.error(
@@ -510,18 +514,11 @@ def compute_AOs_api(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     return AOs
 
 
-def compute_AOs_debug(aos_data: AOs_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+def _compute_AOs_debug(aos_data: AOs_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     """Compute AO values at the given r_carts.
 
     The method is for computing the value of the given atomic orbital at r_carts
-    for debugging purpose.
-
-    Args:
-        ao_datas (AOs_data): an instance of AOs_data
-        r_carts (npt.NDArray[np.float64]): Cartesian coordinates of electrons (dim: N_e, 3)
-
-    Returns:
-        Arrays containing values of the AOs at r_carts. (dim: num_ao, N_e)
+    for debugging purpose. See compute_AOs_api.
     """
 
     def compute_each_AO(ao_index):
@@ -552,7 +549,7 @@ def compute_AOs_debug(aos_data: AOs_data, r_carts: npt.NDArray[np.float64]) -> n
 
 
 @jit
-def compute_AOs_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
+def _compute_AOs_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     """Compute AO values at the given r_carts.
 
     See compute_AOs_api
@@ -573,7 +570,7 @@ def compute_AOs_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     m_jnp = np.array(magnetic_quantum_numbers_dup)
 
     vmap_compute_AOs_dup = vmap(
-        vmap(compute_primitive_AOs_jax, in_axes=(None, None, None, None, None, 0)),
+        vmap(_compute_primitive_AOs_jax, in_axes=(None, None, None, None, None, 0)),
         in_axes=(0, 0, 0, 0, 0, None),
     )
 
@@ -666,7 +663,7 @@ def compute_AO(ao_data: AO_data, r_cart: list[float]) -> float:
     """
     R_n = np.array(
         [
-            compute_R_n_debug(
+            _compute_R_n_debug(
                 coefficient=c,
                 exponent=Z,
                 R_cart=ao_data.atomic_center_cart,
@@ -675,8 +672,8 @@ def compute_AO(ao_data: AO_data, r_cart: list[float]) -> float:
             for c, Z in zip(ao_data.coefficients, ao_data.exponents)
         ]
     )
-    N_n_l = np.array([compute_normalization_fator_debug(ao_data.angular_momentum, Z) for Z in ao_data.exponents])
-    S_l_m = compute_S_l_m_debug(
+    N_n_l = np.array([_compute_normalization_fator_debug(ao_data.angular_momentum, Z) for Z in ao_data.exponents])
+    S_l_m = _compute_S_l_m_debug(
         atomic_center_cart=ao_data.atomic_center_cart,
         angular_momentum=ao_data.angular_momentum,
         magnetic_quantum_number=ao_data.magnetic_quantum_number,
@@ -686,7 +683,7 @@ def compute_AO(ao_data: AO_data, r_cart: list[float]) -> float:
     return np.sum(N_n_l * R_n) * np.sqrt((2 * ao_data.angular_momentum + 1) / (4 * np.pi)) * S_l_m
 
 
-def compute_R_n_debug(
+def _compute_R_n_debug(
     coefficient: float,
     exponent: float,
     R_cart: list[float],
@@ -709,7 +706,7 @@ def compute_R_n_debug(
 
 
 @jit
-def compute_R_n_jax(
+def _compute_R_n_jax(
     coefficient: float,
     exponent: float,
     R_cart: npt.NDArray[np.float64],
@@ -731,7 +728,7 @@ def compute_R_n_jax(
     return coefficient * jnp.exp(-1.0 * exponent * jnp.linalg.norm(r_cart - R_cart) ** 2)
 
 
-def compute_S_l_m_debug(
+def _compute_S_l_m_debug(
     angular_momentum: int,
     magnetic_quantum_number: int,
     atomic_center_cart: list[float],
@@ -824,7 +821,7 @@ def compute_S_l_m_debug(
 
 
 @jit
-def compute_S_l_m_jax(
+def _compute_S_l_m_jax(
     l: int,
     m: int,
     R_cart: npt.NDArray[np.float64],
@@ -1068,7 +1065,7 @@ def compute_S_l_m_jax(
     return jnp.select(conditions, S_l_m_values, default=jnp.nan)
 
 
-def compute_normalization_fator_debug(l: int, Z: float) -> float:
+def _compute_normalization_fator_debug(l: int, Z: float) -> float:
     """Compute the normalization factor of a primitve AO.
 
     Compute the normalization factor of a primitve AO.
@@ -1092,7 +1089,7 @@ def compute_normalization_fator_debug(l: int, Z: float) -> float:
 
 
 @jit
-def compute_normalization_fator_jax(l: int, Z: float) -> float:
+def _compute_normalization_fator_jax(l: int, Z: float) -> float:
     """Compute the normalization factor of a primitve AO.
 
     Compute the normalization factor of a primitve AO.
@@ -1116,7 +1113,7 @@ def compute_normalization_fator_jax(l: int, Z: float) -> float:
 
 
 @jit
-def compute_primitive_AOs_jax(
+def _compute_primitive_AOs_jax(
     coefficient: float,
     exponent: float,
     l: int,
@@ -1140,15 +1137,15 @@ def compute_primitive_AOs_jax(
         float: the value of a primitve AO at the given r_cart.
 
     """
-    N_n_dup = compute_normalization_fator_jax(l, exponent)
-    R_n_dup = compute_R_n_jax(coefficient, exponent, R_cart, r_cart)
-    S_l_m_dup = compute_S_l_m_jax(l, m, R_cart, r_cart)
+    N_n_dup = _compute_normalization_fator_jax(l, exponent)
+    R_n_dup = _compute_R_n_jax(coefficient, exponent, R_cart, r_cart)
+    S_l_m_dup = _compute_S_l_m_jax(l, m, R_cart, r_cart)
 
     return N_n_dup * R_n_dup * jnp.sqrt((2 * l + 1) / (4 * np.pi)) * S_l_m_dup
 
 
 @jit
-def compute_primitive_AOs_grad_jax(
+def _compute_primitive_AOs_grad_jax(
     coefficient: float,
     exponent: float,
     l: int,
@@ -1172,7 +1169,7 @@ def compute_primitive_AOs_grad_jax(
         tuple[jax.Array, jax.Array, jax.Array]: the gradients of a primitve AO at the given r_cart.
     """
     # """grad. Correct but not the fastest...
-    grad_x, grad_y, grad_z = grad(compute_primitive_AOs_jax, argnums=5)(coefficient, exponent, l, m, R_cart, r_cart)
+    grad_x, grad_y, grad_z = grad(_compute_primitive_AOs_jax, argnums=5)(coefficient, exponent, l, m, R_cart, r_cart)
     # """
 
     """
@@ -1205,7 +1202,7 @@ def compute_primitive_AOs_grad_jax(
 
 
 @jit
-def compute_primitive_AOs_laplacians_jax(
+def _compute_primitive_AOs_laplacians_jax(
     coefficient: float,
     exponent: float,
     l: int,
@@ -1230,7 +1227,7 @@ def compute_primitive_AOs_laplacians_jax(
     """
     # """jacrev(grad). Correct but not the fastest...
     laplacians = jnp.sum(
-        jnp.diag(jacrev(grad(compute_primitive_AOs_jax, argnums=5), argnums=5)(coefficient, exponent, l, m, R_cart, r_cart))
+        jnp.diag(jacrev(grad(_compute_primitive_AOs_jax, argnums=5), argnums=5)(coefficient, exponent, l, m, R_cart, r_cart))
     )
     # """
 

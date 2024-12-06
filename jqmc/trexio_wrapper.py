@@ -1,9 +1,7 @@
-"""TREXIO wrapper modules"""
+"""TREXIO wrapper modules."""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
-#
-# This file is part of phonopy.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -228,14 +226,11 @@ def read_trexio_file(trexio_file: str):
             * basis_coefficient[k]
             for i, k in enumerate(b_prim_indices)
         ]
-        orbital_indices_all = [
-            ao_num_count + j for j in range(num_ao_mag_moms) for _ in range(b_prim_num)
-        ]
+        orbital_indices_all = [ao_num_count + j for j in range(num_ao_mag_moms) for _ in range(b_prim_num)]
         ao_exponents = b_prim_exponents * num_ao_mag_moms
         ao_coefficients_list = b_prim_coefficients * num_ao_mag_moms
         ao_coefficients = [
-            ao_coefficients_list[k] * ao_normalization[orbital_indices_all[k]]
-            for k in range(len(ao_coefficients_list))
+            ao_coefficients_list[k] * ao_normalization[orbital_indices_all[k]] for k in range(len(ao_coefficients_list))
         ]
         ao_num_count += num_ao_mag_moms
         ao_prim_num_count += num_ao_mag_moms * b_prim_num
@@ -249,9 +244,7 @@ def read_trexio_file(trexio_file: str):
         coefficients += ao_coefficients
 
     if ao_num_count != ao_num:
-        logger.error(
-            f"ao_num_count = {ao_num_count} is inconsistent with the read ao_num = {ao_num}"
-        )
+        logger.error(f"ao_num_count = {ao_num_count} is inconsistent with the read ao_num = {ao_num}")
         raise ValueError
 
     """ old!!
@@ -284,12 +277,8 @@ def read_trexio_file(trexio_file: str):
         mo_indices = [i for (i, v) in enumerate(mo_spin) if v == 0]
         mo_coefficient_real_up = mo_coefficient_real_dn = mo_coefficient_real[mo_indices]
         mo_num_up = mo_num_dn = mo_num
-        mos_data_up = MOs_data(
-            num_mo=mo_num_up, mo_coefficients=mo_coefficient_real_up, aos_data=aos_data
-        )
-        mos_data_dn = MOs_data(
-            num_mo=mo_num_dn, mo_coefficients=mo_coefficient_real_dn, aos_data=aos_data
-        )
+        mos_data_up = MOs_data(num_mo=mo_num_up, mo_coefficients=mo_coefficient_real_up, aos_data=aos_data)
+        mos_data_dn = MOs_data(num_mo=mo_num_dn, mo_coefficients=mo_coefficient_real_dn, aos_data=aos_data)
 
         mo_lambda_paired_occ = np.eye(num_ele_up, num_ele_dn, k=0)
 
@@ -334,9 +323,7 @@ def read_trexio_file(trexio_file: str):
             powers=ecp_power + 2,
         )
     else:
-        coulomb_potential_data = Coulomb_potential_data(
-            structure_data=structure_data, ecp_flag=False
-        )
+        coulomb_potential_data = Coulomb_potential_data(structure_data=structure_data, ecp_flag=False)
 
     return (
         structure_data,
