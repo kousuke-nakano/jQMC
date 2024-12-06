@@ -247,12 +247,30 @@ def main():
         except KeyError as e:
             logger.error("num_opt_steps should be specified.")
             raise KeyError from e
+        # delta
+        try:
+            delta = dict_toml["vmcopt"]["delta"]
+        except KeyError:
+            delta = 0.01
+            logger.warning(f"The default value of delta = {delta}.")
+        # epsilon
+        try:
+            epsilon = dict_toml["vmcopt"]["epsilon"]
+        except KeyError:
+            epsilon = 0.001
+            logger.warning(f"The default value of epsilon = {epsilon}.")
         # num_mcmc_warmup_steps
         try:
             num_mcmc_warmup_steps = dict_toml["vmcopt"]["num_mcmc_warmup_steps"]
         except KeyError:
             num_mcmc_warmup_steps = 0
             logger.warning(f"The default value of num_mcmc_warmup_steps = {num_mcmc_warmup_steps}.")
+        # wf_dump_freq
+        try:
+            wf_dump_freq = dict_toml["vmcopt"]["wf_dump_freq"]
+        except KeyError:
+            wf_dump_freq = 1
+            logger.warning(f"The default value of wf_dump_freq = {wf_dump_freq}.")
         # num_mcmc_bin_blocks
         try:
             num_mcmc_bin_blocks = dict_toml["vmcopt"]["num_mcmc_bin_blocks"]
@@ -288,9 +306,9 @@ def main():
         vmc.run_optimize(
             num_mcmc_steps=num_mcmc_steps,
             num_opt_steps=num_opt_steps,
-            delta=5.0e-4,
-            var_epsilon=1.0e-3,
-            wf_dump_freq=1,
+            delta=delta,
+            var_epsilon=epsilon,
+            wf_dump_freq=wf_dump_freq,
             num_mcmc_warmup_steps=num_mcmc_warmup_steps,
             num_mcmc_bin_blocks=num_mcmc_bin_blocks,
             max_time=max_time,

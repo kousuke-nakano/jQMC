@@ -56,7 +56,7 @@ def print_header() -> None:
     logger.info('      888  "Y888888"  888       888   Y8888P    ')
     logger.info("      888        Y8b                            ")
     logger.info("     d88P                                       ")
-    logger.info("   888P                           Made in Japan ")
+    logger.info("   888P                           Made on earth ")
     logger.info("-" * 48)
     logger.info("")
     logger.info("jQMC: Python-based real-space ab-initio Quantum Monte Carlo package.")

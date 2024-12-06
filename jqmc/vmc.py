@@ -854,7 +854,7 @@ class VMC:
         num_mcmc_steps=100,
         num_opt_steps=1,
         delta=0.001,
-        var_epsilon=1.0e-3,
+        epsilon=1.0e-3,
         wf_dump_freq=10,
         max_time=86400,
         num_mcmc_warmup_steps=0,
@@ -862,14 +862,9 @@ class VMC:
     ):
         vmcopt_total_start = time.perf_counter()
 
-        # dump WF before opt.
-        if rank == 0:
-            logger.info("Hamiltonian data is dumped as a checkpoint file before optimization.")
-            self.__mcmc.hamiltonian_data.dump(f"hamiltonian_data_opt_step_{self.__i_opt}.chk")
-
         # main vmcopt loop
         for i_opt in range(num_opt_steps):
-            logger.info(f"i_opt={i_opt+1}/{num_opt_steps}.")
+            logger.info(f"i_opt={i_opt+1+self.__i_opt}/{num_opt_steps+self.__i_opt}.")
 
             if rank == 0:
                 logger.info(f"num_mcmc_warmup_steps={num_mcmc_warmup_steps}.")
@@ -905,7 +900,7 @@ class VMC:
                     I = np.eye(S.shape[0])
                 else:
                     I = 1.0
-                S_prime = S + var_epsilon * I
+                S_prime = S + epsilon * I
 
                 # logger.info(f"The matrix S_prime is symmetric? = {np.allclose(S_prime, S_prime.T, atol=1.0e-10)}")
                 # logger.info(f"The condition number of the matrix S is {np.linalg.cond(S)}")
@@ -974,12 +969,14 @@ class VMC:
             logger.info("WF updated")
             self.__mcmc.hamiltonian_data = hamiltonian_data
 
+            # update WF opt counter
+            self.__i_opt += 1
+
             # dump WF
             if rank == 0:
                 if (i_opt + 1) % wf_dump_freq == 0 or (i_opt + 1) == num_opt_steps:
                     logger.info("Hamiltonian data is dumped as a checkpoint file.")
-                    self.__mcmc.hamiltonian_data.dump(f"hamiltonian_data_opt_step_{self.__i_opt + 1}.chk")
-            self.__i_opt += 1
+                    self.__mcmc.hamiltonian_data.dump(f"hamiltonian_data_opt_step_{self.__i_opt}.chk")
 
             # check max time
             vmcopt_current = time.perf_counter()
