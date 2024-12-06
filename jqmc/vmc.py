@@ -1,4 +1,4 @@
-"""VMC module"""
+"""VMC module."""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -52,7 +52,7 @@ from jax import grad
 from mpi4py import MPI
 
 # jQMC module
-from .hamiltonians import Hamiltonian_data, compute_local_energy
+from .hamiltonians import Hamiltonian_data, compute_local_energy_api
 from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
 from .structure import find_nearest_index
 from .swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
@@ -140,7 +140,7 @@ class MCMC:
 
         logger.info("Compilation e_L starts.")
         start = time.perf_counter()
-        _ = compute_local_energy(
+        _ = compute_local_energy_api(
             hamiltonian_data=self.__hamiltonian_data,
             r_up_carts=self.__latest_r_up_carts,
             r_dn_carts=self.__latest_r_dn_carts,
@@ -152,7 +152,7 @@ class MCMC:
         if self.__comput_position_deriv:
             logger.info("Compilation de_L starts.")
             start = time.perf_counter()
-            _, _, _ = grad(compute_local_energy, argnums=(0, 1, 2))(
+            _, _, _ = grad(compute_local_energy_api, argnums=(0, 1, 2))(
                 self.__hamiltonian_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
@@ -405,7 +405,7 @@ class MCMC:
 
             # evaluate observables
             start = time.perf_counter()
-            e_L = compute_local_energy(
+            e_L = compute_local_energy_api(
                 hamiltonian_data=self.__hamiltonian_data,
                 r_up_carts=self.__latest_r_up_carts,
                 r_dn_carts=self.__latest_r_dn_carts,
@@ -437,7 +437,7 @@ class MCMC:
             if self.__comput_position_deriv:
                 # """
                 start = time.perf_counter()
-                grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = grad(compute_local_energy, argnums=(0, 1, 2))(
+                grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = grad(compute_local_energy_api, argnums=(0, 1, 2))(
                     self.__hamiltonian_data,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
@@ -463,9 +463,6 @@ class MCMC:
                 # """
 
                 # """
-                logger.devel(
-                    f"de_L_dR(AOs_data_up) = {grad_e_L_h.wavefunction_data.geminal_data.orb_data.aos_data.structure_data.positions}"
-                )
                 logger.devel(f"de_L_dR(coulomb_potential_data) = {grad_e_L_h.coulomb_potential_data.structure_data.positions}")
                 logger.devel(f"de_L_dR = {grad_e_L_R}")
                 logger.devel(f"de_L_dr_up = {grad_e_L_r_up}")
@@ -1292,18 +1289,6 @@ if __name__ == "__main__":
         stream_handler.setFormatter(handler_format)
         log.addHandler(stream_handler)
 
-    # """
-    # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
-    (
-        structure_data,
-        aos_data,
-        mos_data_up,
-        mos_data_dn,
-        geminal_mo_data,
-        coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.getcwd(), "trexio.hdf5"))
-    # """
-
     """
     # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
     (
@@ -1316,7 +1301,7 @@ if __name__ == "__main__":
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"))
     """
 
-    """
+    # """
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,
@@ -1325,12 +1310,8 @@ if __name__ == "__main__":
         mos_data_dn,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(
-        trexio_file=os.path.join(
-            os.path.dirname(__file__), "trexio_files", "H2_dimer_ccpv5z_trexio.hdf5"
-        )
-    )
-    """
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "H2_dimer_ccpv5z_trexio.hdf5"))
+    # """
 
     """
     # Ne atom cc-pV5Z with Mitas ccECP (10 electrons, feasible).
@@ -1453,15 +1434,19 @@ if __name__ == "__main__":
         hamiltonian_data=hamiltonian_data,
         Dt_init=2.0,
         mcmc_seed=mcmc_seed,
+        comput_position_deriv=True,
+        comput_jas_param_deriv=False,
+    )
+    vmc.run_single_shot(num_mcmc_steps=50)
+    vmc.get_e_L(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
-        comput_position_deriv=False,
-        comput_jas_param_deriv=True,
     )
-    # vmc.run_single_shot(num_mcmc_steps=50)
-    # vmc.get_e_L()
-    # vmc.get_atomic_forces()
-    vmc.run_optimize(num_mcmc_steps=210, num_opt_steps=5, wf_dump_freq=1)
+    vmc.get_atomic_forces(
+        num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+        num_mcmc_bin_blocks=num_mcmc_bin_blocks,
+    )
+    # vmc.run_optimize(num_mcmc_steps=210, num_opt_steps=5, wf_dump_freq=1)
     # vmc.get_generalized_forces(mpi_broadcast=False)
     # vmc.get_stochastic_matrix(mpi_broadcast=False)
     # vmc.get_stochastic_matrix(mpi_broadcast=False)

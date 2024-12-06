@@ -29,9 +29,7 @@ os.environ["XLA_FLAGS"] = "--xla_cpu_multi_thread_eigen=false " "intra_op_parall
     mos_data_dn,
     geminal_mo_data,
     coulomb_potential_data,
-) = read_trexio_file(
-    trexio_file=os.path.join(os.path.dirname(__file__), "water_ccpvtz_trexio.hdf5")
-)
+) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "water_ccpvtz_trexio.hdf5"))
 
 num_ele_up = geminal_mo_data.num_electron_up
 num_ele_dn = geminal_mo_data.num_electron_dn

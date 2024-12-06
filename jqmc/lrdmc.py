@@ -56,7 +56,7 @@ from .coulomb_potential import (
     _compute_ecp_local_parts_jax,
     _compute_ecp_non_local_parts_jax,
 )
-from .hamiltonians import Hamiltonian_data, compute_kinetic_energy_api, compute_local_energy
+from .hamiltonians import Hamiltonian_data, compute_kinetic_energy_api, compute_local_energy_api
 from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
 from .trexio_wrapper import read_trexio_file
 from .wavefunction import Wavefunction_data, compute_discretized_kinetic_energy_jax, evaluate_jastrow_api

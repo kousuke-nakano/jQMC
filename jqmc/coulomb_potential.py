@@ -796,8 +796,8 @@ def _compute_ecp_non_local_parts_jax(
     # print(f"V_ecp_dn.shape={V_ecp_dn.shape}")
 
     _, uq_indices = np.unique(coulomb_potential_data.nucleus_index_non_local_part, return_index=True)
-    r_up_carts_on_mesh = np.array([r_up_carts_on_mesh[i] for i in uq_indices])
-    r_dn_carts_on_mesh = np.array([r_dn_carts_on_mesh[i] for i in uq_indices])
+    r_up_carts_on_mesh = jnp.array([r_up_carts_on_mesh[i] for i in uq_indices])
+    r_dn_carts_on_mesh = jnp.array([r_dn_carts_on_mesh[i] for i in uq_indices])
 
     nucleus_index_non_local_part = np.array(coulomb_potential_data.nucleus_index_non_local_part, dtype=np.int32)
     num_segments = len(set(coulomb_potential_data.nucleus_index_non_local_part))

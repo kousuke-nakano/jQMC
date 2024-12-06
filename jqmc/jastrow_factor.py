@@ -44,7 +44,7 @@ import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import grad, hessian, jacrev, jit, vmap
+from jax import grad, hessian, jit, vmap
 
 # jqmc module
 from .atomic_orbital import AOs_data, compute_AOs_api

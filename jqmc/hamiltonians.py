@@ -124,11 +124,11 @@ class Hamiltonian_data:
             return pickle.load(f)
 
 
-def compute_local_energy(
+def compute_local_energy_api(
     hamiltonian_data: Hamiltonian_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
-) -> float | complex:
+) -> float:
     """Compute Local Energy.
 
     The method is for computing the local energy at (r_up_carts, r_dn_carts).

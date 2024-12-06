@@ -71,6 +71,6 @@ Tests are written using pytest. To run tests, pytest has to be installed.
 The tests can be run by
 
 ```bash
-% pytest -s -v  # without jax-jit
-% pytest -s -v --enable-jit  # with jax jit
+% pytest -s -v  # with jax-jit
+% pytest -s -v --disable-jit  # without jax jit
 ```
