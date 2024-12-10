@@ -59,7 +59,8 @@ jax.config.update("jax_enable_x64", True)
 # @dataclass
 @struct.dataclass
 class Jastrow_two_body_data:
-    """
+    """Jastrow two-body dataclass.
+
     The class contains data for evaluating the two-body Jastrow function.
 
     Args:
@@ -80,7 +81,8 @@ class Jastrow_two_body_data:
 # @dataclass
 @struct.dataclass
 class Jastrow_three_body_data:
-    """
+    """Jastrow_three_body dataclass.
+
     The class contains data for evaluating the three-body Jastrow function.
 
     Args:
@@ -104,6 +106,11 @@ class Jastrow_three_body_data:
 
     @property
     def orb_num(self) -> int:
+        """Get number of atomic orbitals.
+
+        Returns:
+            int: get number of atomic orbitals.
+        """
         return self.orb_data.num_ao
 
     @classmethod
@@ -120,8 +127,15 @@ class Jastrow_three_body_data:
 # @dataclass
 @struct.dataclass
 class Jastrow_data:
-    """
+    """Jastrow dataclass.
+
     The class contains data for evaluating a Jastrow function.
+
+    Args:
+        jastrow_two_body_data (Jastrow_two_body_data): An instance of Jastrow_two_body_data.
+        jastrow_three_body_data (Jastrow_three_body_data): An instance of Jastrow_three_body_data.
+        jastrow_two_body_pade_flag (bool): If true, the pade-form two-body Jastrow is turned on.
+        jastrow_three_body_flag (bool): If true, the three-body Jastrow is turned on.
     """
 
     jastrow_two_body_data: Jastrow_two_body_data = struct.field(
@@ -138,28 +152,34 @@ class Jastrow_data:
 
 
 def compute_Jastrow_part_api(
-    jastrow_data: Jastrow_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
-):
+    jastrow_data: Jastrow_data, r_up_carts: npt.NDArray[np.float64], r_dn_carts: npt.NDArray[np.float64], debug: bool = False
+) -> float:
+    """Function for computing Jastrow factor with the given jastrow_data.
+
+    The api method to compute Jastrow factor with the given jastrow_data.
+    Notice that the Jastrow factor does not contain exp factor. Attach this
+    J to a WF with the modification, exp(J).
+
+    Args:
+        jastrow_data (Jastrow_data): an instance of Jastrow_data
+        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^up, 3)
+        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^dn, 3)
+        debug (bool): if True, this is computed via _debug function for debuging purpose
+
+    Return:
+        float: The value of Jastrow factor. Notice that the Jastrow factor does not
+        contain exp factor. Attach this J to a WF with the modification, exp(J).
+    """
     J2 = 0.0
     J3 = 0.0
 
     # two-body (pade)
     if jastrow_data.jastrow_two_body_pade_flag:
-        J2 += compute_Jastrow_two_body_api(
-            jastrow_data.jastrow_two_body_data,
-            r_up_carts,
-            r_dn_carts,
-        )
+        J2 += compute_Jastrow_two_body_api(jastrow_data.jastrow_two_body_data, r_up_carts, r_dn_carts, debug=debug)
 
     # three-body
     if jastrow_data.jastrow_three_body_flag:
-        J3 += compute_Jastrow_three_body_api(
-            jastrow_data.jastrow_three_body_data,
-            r_up_carts,
-            r_dn_carts,
-        )
+        J3 += compute_Jastrow_three_body_api(jastrow_data.jastrow_three_body_data, r_up_carts, r_dn_carts, debug=debug)
 
     J = J2 + J3
 
@@ -170,9 +190,28 @@ def compute_Jastrow_three_body_api(
     jastrow_three_body_data: Jastrow_three_body_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
+    debug: bool = False,
 ) -> float:
-    # return compute_Jastrow_three_body_debug(jastrow_three_body_data, r_up_carts, r_dn_carts)
-    return compute_Jastrow_three_body_jax(jastrow_three_body_data, r_up_carts, r_dn_carts)
+    """Function for computing Jastrow factor with the given jastrow_three_body_data.
+
+    The api method to compute Jastrow factor with the given jastrow_three_body_data.
+    Notice that the Jastrow factor does not contain exp factor. Attach this
+    J to a WF with the modification, exp(J).
+
+    Args:
+        jastrow_three_body_data (Jastrow_three_body_data): an instance of Jastrow_three_body_data
+        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^up, 3)
+        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^dn, 3)
+        debug (bool): if True, this is computed via _debug function for debuging purpose
+
+    Return:
+        float: The value of Jastrow factor. Notice that the Jastrow factor does not
+        contain exp factor. Attach this J to a WF with the modification, exp(J).
+    """
+    if debug:
+        return compute_Jastrow_three_body_debug(jastrow_three_body_data, r_up_carts, r_dn_carts)
+    else:
+        return compute_Jastrow_three_body_jax(jastrow_three_body_data, r_up_carts, r_dn_carts)
 
 
 def compute_Jastrow_three_body_debug(
@@ -180,6 +219,7 @@ def compute_Jastrow_three_body_debug(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
+    """See _api method."""
     aos_up = compute_AOs_api(aos_data=jastrow_three_body_data.orb_data, r_carts=r_up_carts)
     aos_dn = compute_AOs_api(aos_data=jastrow_three_body_data.orb_data, r_carts=r_dn_carts)
 
@@ -240,6 +280,7 @@ def compute_Jastrow_three_body_jax(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
+    """See _api method."""
     num_electron_up = len(r_up_carts)
     num_electron_dn = len(r_dn_carts)
 
@@ -277,52 +318,32 @@ def compute_Jastrow_three_body_jax(
     return J3
 
 
-def compute_grads_and_laplacian_Jastrow_part_api(
-    jastrow_data: Jastrow_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
-) -> tuple[
-    npt.NDArray[np.float64],
-    npt.NDArray[np.float64],
-    float | complex,
-]:
-    grad_J2_up, grad_J2_dn, sum_laplacian_J2 = 0.0, 0.0, 0.0
-    grad_J3_up, grad_J3_dn, sum_laplacian_J3 = 0.0, 0.0, 0.0
-
-    # two-body (pade)
-    if jastrow_data.jastrow_two_body_pade_flag:
-        grad_J2_up_pade, grad_J2_dn_pade, sum_laplacian_J2_pade = compute_grads_and_laplacian_Jastrow_two_body_api(
-            jastrow_data.jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
-        )
-        grad_J2_up += grad_J2_up_pade
-        grad_J2_dn += grad_J2_dn_pade
-        sum_laplacian_J2 += sum_laplacian_J2_pade
-
-    # three-body
-    if jastrow_data.jastrow_three_body_flag:
-        grad_J3_up_add, grad_J3_dn_add, sum_laplacian_J3_add = compute_grads_and_laplacian_Jastrow_three_body_api(
-            jastrow_data.jastrow_three_body_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
-        )
-        grad_J3_up += grad_J3_up_add
-        grad_J3_dn += grad_J3_dn_add
-        sum_laplacian_J3 += sum_laplacian_J3_add
-
-    grad_J_up = grad_J2_up + grad_J3_up
-    grad_J_dn = grad_J2_dn + grad_J3_dn
-    sum_laplacian_J = sum_laplacian_J2 + sum_laplacian_J3
-
-    return grad_J_up, grad_J_dn, sum_laplacian_J
-
-
 def compute_Jastrow_two_body_api(
     jastrow_two_body_data: Jastrow_two_body_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
+    debug: bool = False,
 ) -> float:
-    # return compute_Jastrow_two_body_debug(jastrow_two_body_data, r_up_carts, r_dn_carts)
-    return compute_Jastrow_two_body_jax(jastrow_two_body_data, r_up_carts, r_dn_carts)
+    """Function for computing Jastrow factor with the given jastrow_two_body_data.
+
+    The api method to compute Jastrow factor with the given jastrow_two_body_data.
+    Notice that the Jastrow factor does not contain exp factor. Attach this
+    J to a WF with the modification, exp(J).
+
+    Args:
+        jastrow_two_body_data (Jastrow_two_body_data): an instance of Jastrow_two_body_data
+        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^up, 3)
+        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^dn, 3)
+        debug (bool): if True, this is computed via _debug function for debuging purpose
+
+    Return:
+        float: The value of Jastrow factor. Notice that the Jastrow factor does not
+        contain exp factor. Attach this J to a WF with the modification, exp(J).
+    """
+    if debug:
+        return compute_Jastrow_two_body_debug(jastrow_two_body_data, r_up_carts, r_dn_carts)
+    else:
+        return compute_Jastrow_two_body_jax(jastrow_two_body_data, r_up_carts, r_dn_carts)
 
 
 def compute_Jastrow_two_body_debug(
@@ -330,6 +351,8 @@ def compute_Jastrow_two_body_debug(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
+    """See _api method."""
+
     def two_body_jastrow_anti_parallel_spins(param: float, rel_r_cart: npt.NDArray[np.float64]) -> float:
         # """ exp
         two_body_jastrow = 1.0 / (2.0 * param) * (1.0 - np.exp(-param * np.linalg.norm(rel_r_cart)))
@@ -399,6 +422,7 @@ def compute_Jastrow_two_body_jax(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
+    """See _api method."""
     r_up_carts = jnp.array(r_up_carts)
     r_dn_carts = jnp.array(r_dn_carts)
 
@@ -467,6 +491,45 @@ def compute_Jastrow_two_body_jax(
     two_body_jastrow = two_body_jastrow_anti_parallel + two_body_jastrow_parallel_up + two_body_jastrow_parallel_dn
 
     return two_body_jastrow
+
+
+def compute_grads_and_laplacian_Jastrow_part_api(
+    jastrow_data: Jastrow_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+) -> tuple[
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    float | complex,
+]:
+    grad_J2_up, grad_J2_dn, sum_laplacian_J2 = 0.0, 0.0, 0.0
+    grad_J3_up, grad_J3_dn, sum_laplacian_J3 = 0.0, 0.0, 0.0
+
+    # two-body (pade)
+    if jastrow_data.jastrow_two_body_pade_flag:
+        grad_J2_up_pade, grad_J2_dn_pade, sum_laplacian_J2_pade = compute_grads_and_laplacian_Jastrow_two_body_api(
+            jastrow_data.jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+        )
+        grad_J2_up += grad_J2_up_pade
+        grad_J2_dn += grad_J2_dn_pade
+        sum_laplacian_J2 += sum_laplacian_J2_pade
+
+    # three-body
+    if jastrow_data.jastrow_three_body_flag:
+        grad_J3_up_add, grad_J3_dn_add, sum_laplacian_J3_add = compute_grads_and_laplacian_Jastrow_three_body_api(
+            jastrow_data.jastrow_three_body_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+        )
+        grad_J3_up += grad_J3_up_add
+        grad_J3_dn += grad_J3_dn_add
+        sum_laplacian_J3 += sum_laplacian_J3_add
+
+    grad_J_up = grad_J2_up + grad_J3_up
+    grad_J_dn = grad_J2_dn + grad_J3_dn
+    sum_laplacian_J = sum_laplacian_J2 + sum_laplacian_J3
+
+    return grad_J_up, grad_J_dn, sum_laplacian_J
 
 
 def compute_grads_and_laplacian_Jastrow_two_body_api(
