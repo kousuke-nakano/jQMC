@@ -25,6 +25,10 @@ Examples are in `examples` directory.
 stored in `doc` directory. Please see how to write the documentation at
 `doc/README.md`.
 
+## Contribution
+
+Please see [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
+
 ## Develpment branch
 
 The development of jQMC is managed on the `devel` branch of github jQMC repository.
