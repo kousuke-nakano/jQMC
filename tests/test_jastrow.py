@@ -41,20 +41,18 @@ from logging import Formatter, StreamHandler, getLogger
 import jax
 import numpy as np
 
-from ..jqmc.atomic_orbital import (
-    AOs_data,
-)
+from ..jqmc.atomic_orbital import AOs_data
 from ..jqmc.jastrow_factor import (
     Jastrow_three_body_data,
     Jastrow_two_body_data,
-    compute_grads_and_laplacian_Jastrow_three_body_debug,
-    compute_grads_and_laplacian_Jastrow_three_body_jax,
-    compute_grads_and_laplacian_Jastrow_two_body_debug,
-    compute_grads_and_laplacian_Jastrow_two_body_jax,
-    compute_Jastrow_three_body_debug,
-    compute_Jastrow_three_body_jax,
-    compute_Jastrow_two_body_debug,
-    compute_Jastrow_two_body_jax,
+    _compute_grads_and_laplacian_Jastrow_three_body_debug,
+    _compute_grads_and_laplacian_Jastrow_three_body_jax,
+    _compute_grads_and_laplacian_Jastrow_two_body_debug,
+    _compute_grads_and_laplacian_Jastrow_two_body_jax,
+    _compute_Jastrow_three_body_debug,
+    _compute_Jastrow_three_body_jax,
+    _compute_Jastrow_two_body_debug,
+    _compute_Jastrow_two_body_jax,
 )
 from ..jqmc.structure import Structure_data
 
@@ -115,7 +113,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part():
 
     jastrow_three_body_data = Jastrow_three_body_data(orb_data=aos_data, j_matrix=j_matrix)
 
-    J3_debug = compute_Jastrow_three_body_debug(
+    J3_debug = _compute_Jastrow_three_body_debug(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -123,7 +121,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part():
 
     # print(f"J3_debug = {J3_debug}")
 
-    J3_jax = compute_Jastrow_three_body_jax(
+    J3_jax = _compute_Jastrow_three_body_jax(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -137,7 +135,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part():
         grad_jastrow_J3_up_debug,
         grad_jastrow_J3_dn_debug,
         sum_laplacian_J3_debug,
-    ) = compute_grads_and_laplacian_Jastrow_three_body_debug(
+    ) = _compute_grads_and_laplacian_Jastrow_three_body_debug(
         jastrow_three_body_data,
         r_up_carts,
         r_dn_carts,
@@ -147,7 +145,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part():
     # print(f"grad_jastrow_J3_dn_debug = {grad_jastrow_J3_dn_debug}")
     # print(f"sum_laplacian_J3_debug = {sum_laplacian_J3_debug}")
 
-    grad_jastrow_J3_up_jax, grad_jastrow_J3_dn_jax, sum_laplacian_J3_jax = compute_grads_and_laplacian_Jastrow_three_body_jax(
+    grad_jastrow_J3_up_jax, grad_jastrow_J3_dn_jax, sum_laplacian_J3_jax = _compute_grads_and_laplacian_Jastrow_three_body_jax(
         jastrow_three_body_data,
         r_up_carts,
         r_dn_carts,
@@ -175,13 +173,13 @@ def test_numerical_and_auto_grads_Jastrow_twobody_part():
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_dn_cart_samples, 3) + r_cart_min
 
     jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=1.0)
-    J2_debug = compute_Jastrow_two_body_debug(
+    J2_debug = _compute_Jastrow_two_body_debug(
         jastrow_two_body_data=jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
     # print(f"jastrow_two_body_debug = {jastrow_two_body_debug}")
 
-    J2_jax = compute_Jastrow_two_body_jax(
+    J2_jax = _compute_Jastrow_two_body_jax(
         jastrow_two_body_data=jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
@@ -193,7 +191,7 @@ def test_numerical_and_auto_grads_Jastrow_twobody_part():
         grad_J2_up_debug,
         grad_J2_dn_debug,
         sum_laplacian_J2_debug,
-    ) = compute_grads_and_laplacian_Jastrow_two_body_debug(
+    ) = _compute_grads_and_laplacian_Jastrow_two_body_debug(
         jastrow_two_body_data,
         r_up_carts,
         r_dn_carts,
@@ -203,7 +201,7 @@ def test_numerical_and_auto_grads_Jastrow_twobody_part():
     # print(f"grad_J2_dn_debug = {grad_J2_dn_debug}")
     # print(f"sum_laplacian_J2_debug = {sum_laplacian_J2_debug}")
 
-    grad_J2_up_jax, grad_J2_dn_jax, sum_laplacian_J2_jax = compute_grads_and_laplacian_Jastrow_two_body_jax(
+    grad_J2_up_jax, grad_J2_dn_jax, sum_laplacian_J2_jax = _compute_grads_and_laplacian_Jastrow_two_body_jax(
         jastrow_two_body_data,
         r_up_carts,
         r_dn_carts,

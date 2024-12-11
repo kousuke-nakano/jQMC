@@ -73,6 +73,7 @@ logger = getLogger("jqmc").getChild(__name__)
 
 
 def main():
+    """Main function for tests."""
     logger_level = "MPI-INFO"
 
     log = getLogger("jqmc")

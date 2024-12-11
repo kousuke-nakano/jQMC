@@ -68,13 +68,13 @@ from ..jqmc.determinant import (
 from ..jqmc.molecular_orbital import (
     MO_data,
     MOs_data,
+    _compute_MOs_debug,
+    _compute_MOs_grad_debug,
+    _compute_MOs_grad_jax,
+    _compute_MOs_jax,
+    _compute_MOs_laplacian_debug,
+    _compute_MOs_laplacian_jax,
     compute_MO,
-    compute_MOs_debug,
-    compute_MOs_grad_debug,
-    compute_MOs_grad_jax,
-    compute_MOs_jax,
-    compute_MOs_laplacian_debug,
-    compute_MOs_laplacian_jax,
 )
 from ..jqmc.structure import Structure_data
 from ..jqmc.trexio_wrapper import read_trexio_file
@@ -660,9 +660,9 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
 
     mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
 
-    mo_ans_all_jax = compute_MOs_jax(mos_data=mos_data, r_carts=r_carts)
+    mo_ans_all_jax = _compute_MOs_jax(mos_data=mos_data, r_carts=r_carts)
 
-    mo_ans_all_debug = compute_MOs_debug(mos_data=mos_data, r_carts=r_carts)
+    mo_ans_all_debug = _compute_MOs_debug(mos_data=mos_data, r_carts=r_carts)
 
     assert np.allclose(mo_ans_step_by_step, mo_ans_all_jax)
     assert np.allclose(mo_ans_step_by_step, mo_ans_all_debug)
@@ -728,9 +728,9 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
 
     mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
 
-    mo_ans_all_jax = compute_MOs_jax(mos_data=mos_data, r_carts=r_carts)
+    mo_ans_all_jax = _compute_MOs_jax(mos_data=mos_data, r_carts=r_carts)
 
-    mo_ans_all_debug = compute_MOs_debug(mos_data=mos_data, r_carts=r_carts)
+    mo_ans_all_debug = _compute_MOs_debug(mos_data=mos_data, r_carts=r_carts)
 
     assert np.allclose(mo_ans_step_by_step, mo_ans_all_jax)
     assert np.allclose(mo_ans_step_by_step, mo_ans_all_debug)
@@ -783,7 +783,7 @@ def test_MOs_comparing_auto_and_numerical_grads(request):
 
     mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
 
-    mo_matrix_grad_x_auto, mo_matrix_grad_y_auto, mo_matrix_grad_z_auto = compute_MOs_grad_jax(
+    mo_matrix_grad_x_auto, mo_matrix_grad_y_auto, mo_matrix_grad_z_auto = _compute_MOs_grad_jax(
         mos_data=mos_data, r_carts=r_carts
     )
 
@@ -791,7 +791,7 @@ def test_MOs_comparing_auto_and_numerical_grads(request):
         mo_matrix_grad_x_numerical,
         mo_matrix_grad_y_numerical,
         mo_matrix_grad_z_numerical,
-    ) = compute_MOs_grad_debug(mos_data=mos_data, r_carts=r_carts)
+    ) = _compute_MOs_grad_debug(mos_data=mos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, decimal=6)
     np.testing.assert_array_almost_equal(mo_matrix_grad_y_auto, mo_matrix_grad_y_numerical, decimal=6)
@@ -839,7 +839,7 @@ def test_MOs_comparing_auto_and_numerical_grads(request):
 
     mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
 
-    mo_matrix_grad_x_auto, mo_matrix_grad_y_auto, mo_matrix_grad_z_auto = compute_MOs_grad_jax(
+    mo_matrix_grad_x_auto, mo_matrix_grad_y_auto, mo_matrix_grad_z_auto = _compute_MOs_grad_jax(
         mos_data=mos_data, r_carts=r_carts
     )
 
@@ -847,7 +847,7 @@ def test_MOs_comparing_auto_and_numerical_grads(request):
         mo_matrix_grad_x_numerical,
         mo_matrix_grad_y_numerical,
         mo_matrix_grad_z_numerical,
-    ) = compute_MOs_grad_debug(mos_data=mos_data, r_carts=r_carts)
+    ) = _compute_MOs_grad_debug(mos_data=mos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, decimal=6)
     np.testing.assert_array_almost_equal(mo_matrix_grad_y_auto, mo_matrix_grad_y_numerical, decimal=6)
@@ -899,9 +899,9 @@ def test_MOs_comparing_auto_and_numerical_laplacians():
 
     mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
 
-    mo_matrix_laplacian_numerical = compute_MOs_laplacian_jax(mos_data=mos_data, r_carts=r_carts)
+    mo_matrix_laplacian_numerical = _compute_MOs_laplacian_jax(mos_data=mos_data, r_carts=r_carts)
 
-    mo_matrix_laplacian_auto = compute_MOs_laplacian_debug(mos_data=mos_data, r_carts=r_carts)
+    mo_matrix_laplacian_auto = _compute_MOs_laplacian_debug(mos_data=mos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(mo_matrix_laplacian_auto, mo_matrix_laplacian_numerical, decimal=6)
 

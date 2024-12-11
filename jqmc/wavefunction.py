@@ -56,8 +56,7 @@ jax.config.update("jax_enable_x64", True)
 
 @struct.dataclass
 class Wavefunction_data:
-    """
-    The class contains data for wavefunction
+    """The class contains data for computing wavefunction.
 
     Args:
         jastrow_data (Jastrow_data)
@@ -68,6 +67,14 @@ class Wavefunction_data:
     geminal_data: Geminal_data = struct.field(pytree_node=True)
 
     def __post_init__(self) -> None:
+        """Initialization of the class.
+
+        This magic function checks the consistencies among the arguments.
+        To be implemented.
+
+        Raises:
+            ValueError: If there is an inconsistency in a dimension of a given argument.
+        """
         pass
 
 
@@ -75,8 +82,9 @@ def evaluate_ln_wavefunction_api(
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
-) -> float | complex:
-    """
+) -> float:
+    """Evaluate the value of Wavefunction.
+
     The method is for evaluate the logarithm of |wavefunction| (ln |Psi|) at (r_up_carts, r_dn_carts).
 
     Args:
@@ -84,8 +92,7 @@ def evaluate_ln_wavefunction_api(
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
-    Returns
-    -------
+    Returns:
         The value of the given wavefunction (float)
     """
     return jnp.log(
@@ -104,17 +111,15 @@ def evaluate_wavefunction_api(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float | complex:
-    """
-    The method is for evaluate wavefunction (Psi) at (r_up_carts, r_dn_carts).
+    """The method is for evaluate wavefunction (Psi) at (r_up_carts, r_dn_carts).
 
     Args:
         wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
-    Returns
-    -------
-        The value of the given wavefunction (float)
+    Returns:
+        The value of the given wavefunction (float).
     """
     Jastrow_part = compute_Jastrow_part_api(
         jastrow_data=wavefunction_data.jastrow_data,
@@ -136,17 +141,15 @@ def evaluate_jastrow_api(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
-    """
-    The method is for evaluate the Jastrow part of the wavefunction (Psi) at (r_up_carts, r_dn_carts).
+    """The method is for evaluate the Jastrow part of the wavefunction (Psi) at (r_up_carts, r_dn_carts).
 
     Args:
         wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
-    Returns
-    -------
-        The value of the given exp(Jastrow (float))
+    Returns:
+        The value of the given exp(Jastrow (float))  Notice that the Jastrow factor here includes the exp factor, i.e., exp(J).
     """
     Jastrow_part = compute_Jastrow_part_api(
         jastrow_data=wavefunction_data.jastrow_data,
@@ -162,16 +165,14 @@ def evaluate_determinant_api(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
-    """
-    The method is for evaluate the determinant part of the wavefunction (Psi) at (r_up_carts, r_dn_carts).
+    """The method is for evaluate the determinant part of the wavefunction (Psi) at (r_up_carts, r_dn_carts).
 
     Args:
         wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
-    Returns
-    -------
+    Returns:
         The value of the given determinant (float)
     """
     Determinant_part = compute_det_geminal_all_elements_api(
@@ -188,16 +189,14 @@ def compute_kinetic_energy_api(
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float | complex:
-    """
-    The method is for computing kinetic energy of the given WF at (r_up_carts, r_dn_carts).
+    """The method is for computing kinetic energy of the given WF at (r_up_carts, r_dn_carts).
 
     Args:
         wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
-    Returns
-    -------
+    Returns:
         The value of laplacian the given wavefunction (float | complex)
     """
     grad_J_up, grad_J_dn, sum_laplacian_J = compute_grads_and_laplacian_Jastrow_part_api(
@@ -314,10 +313,10 @@ def compute_discretized_kinetic_energy_debug(
 
 
 @jit
-def compute_discretized_kinetic_energy_jax(
+def compute_discretized_kinetic_energy_api(
     alat: float, wavefunction_data, r_up_carts: jnp.ndarray, r_dn_carts: jnp.ndarray, jax_PRNG_key: jax.Array = None
 ) -> tuple[list[tuple[npt.NDArray, npt.NDArray]], list[npt.NDArray], jax.Array]:
-    r"""_Summary.
+    r"""Function for computing discretized kinetic grid points and thier energies with a given lattice space (alat).
 
     Args:
         alat (float): Hamiltonian discretization (bohr), which will be replaced with LRDMC_data.
@@ -481,21 +480,19 @@ def compute_discretized_kinetic_energy_jax(
     return mesh_kinetic_part, elements_kinetic_part, jax_PRNG_key
 
 
-def compute_quantum_force(
+def compute_quantum_force_api(
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
-    """
-    The method is for computing quantum forces at (r_up_carts, r_dn_carts).
+    """The method is for computing quantum forces at (r_up_carts, r_dn_carts).
 
     Args:
         wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
-    Returns
-    -------
+    Returns:
         The value of quantum forces of the given wavefunction -> return tuple[(N_e^{up}, 3), (N_e^{dn}, 3)]
     """
     grad_J_up, grad_J_dn, _ = 0, 0, 0  # tentative

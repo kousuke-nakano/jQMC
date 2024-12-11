@@ -34,19 +34,18 @@
 
 # python modules
 import os
+from logging import getLogger
 
-# from dataclasses import dataclass
-from logging import Formatter, StreamHandler, getLogger
-
-# import jax
+# JAX
 import jax
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import grad, jacrev, jit, vmap
+from jax import jacrev, jit
 from jax import numpy as jnp
+from jax import vmap
 
-# jaxQMC module
+# jQMC modules
 from .structure import Structure_data
 
 # set logger
@@ -58,8 +57,7 @@ jax.config.update("jax_enable_x64", True)
 
 @struct.dataclass
 class SWCT_data:
-    """
-    The class contains data for SWCT
+    """The class contains data for SWCT.
 
     Args:
         structure_data (Structure_data)
@@ -68,39 +66,46 @@ class SWCT_data:
     structure: Structure_data = struct.field(pytree_node=True)
 
     def __post_init__(self) -> None:
+        """Initialization of the class.
+
+        This magic function checks the consistencies among the arguments.
+        To be implemented.
+
+        Raises:
+            ValueError: If there is an inconsistency in a dimension of a given argument.
+        """
         pass
 
 
 def evaluate_swct_omega_api(
     swct_data: SWCT_data,
     r_carts: npt.NDArray[np.float64],
-    debug_flag: bool = False,
+    debug: bool = False,
 ) -> npt.NDArray[np.float64]:
-    """
-    The method is for evaluate the omega(R_alpha, r_up_carts or r_dn_carts) for SWCT.
+    """The method is for evaluate the omega(R_alpha, r_up_carts or r_dn_carts) for SWCT.
 
     Args:
         swct_data (SWCT_data): an instance of SWCT_data
         r_carts (npt.NDArray[np.float64]): Cartesian coordinates of up- or dn-spin electrons (dim: N_e, 3)
-        debug_flag: if True, numerical derivatives are computed for debuging purpose
+        debug: if True, numerical derivatives are computed for debuging purpose
 
-    Returns
-    -------
+    Returns:
         The omega_up (dim: N_a, N_e_up) and omega_dn (dim: N_a, N_e_dn)
         with the given structure (npt.NDArray[np.float64], npt.NDArray[np.float64])
     """
-    if debug_flag:
-        omega = evaluate_swct_omega_debug(swct_data=swct_data, r_carts=r_carts)
+    if debug:
+        omega = _evaluate_swct_omega_debug(swct_data=swct_data, r_carts=r_carts)
     else:
-        omega = evaluate_swct_omega_jax(swct_data=swct_data, r_carts=r_carts)
+        omega = _evaluate_swct_omega_jax(swct_data=swct_data, r_carts=r_carts)
 
     return omega
 
 
-def evaluate_swct_omega_debug(
+def _evaluate_swct_omega_debug(
     swct_data: SWCT_data,
     r_carts: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
+    """See _api method."""
     R_carts = swct_data.structure.positions_cart
     omega = np.zeros((len(R_carts), len(r_carts)))
 
@@ -114,10 +119,11 @@ def evaluate_swct_omega_debug(
 
 
 @jit
-def evaluate_swct_omega_jax(
+def _evaluate_swct_omega_jax(
     swct_data: SWCT_data,
     r_carts: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
+    """See _api method."""
     R_carts = swct_data.structure.positions_cart
 
     def compute_omega(R_cart, r_cart):
@@ -141,33 +147,32 @@ def evaluate_swct_omega_jax(
 def evaluate_swct_domega_api(
     swct_data: SWCT_data,
     r_carts: npt.NDArray[np.float64],
-    debug_flag: bool = False,
+    debug: bool = False,
 ) -> npt.NDArray[np.float64]:
-    """
-    The method is for evaluate the sum_i domega(R_alpha, r_i_up_carts or r_i_dn_carts)/d_r_i_up_carts or d_r_i_dn_carts for SWCT.
+    """The method is for evaluate the sum_i domega(R_alpha, r_i_up_carts or r_i_dn_carts)/d_r_i_up_carts or d_r_i_dn_carts for SWCT.
 
     Args:
         swct_data (SWCT_data): an instance of SWCT_data
         r_carts (npt.NDArray[np.float64]): Cartesian coordinates of up- or dn-spin electrons (dim: N_e, 3)
-        debug_flag: if True, numerical derivatives are computed for debuging purpose
+        debug: if True, numerical derivatives are computed for debuging purpose
 
-    Returns
-    -------
+    Returns:
         The omega_up (dim: N_a, N_e_up) and omega_dn (dim: N_a, N_e_dn)
         with the given structure (npt.NDArray[np.float64], npt.NDArray[np.float64])
     """
-    if debug_flag:
-        domega = evaluate_swct_domega_debug(swct_data=swct_data, r_carts=r_carts)
+    if debug:
+        domega = _evaluate_swct_domega_debug(swct_data=swct_data, r_carts=r_carts)
     else:
-        domega = evaluate_swct_domega_jax(swct_data=swct_data, r_carts=r_carts)
+        domega = _evaluate_swct_domega_jax(swct_data=swct_data, r_carts=r_carts)
 
     return domega
 
 
-def evaluate_swct_domega_debug(
+def _evaluate_swct_domega_debug(
     swct_data: SWCT_data,
     r_carts: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
+    """See _api method."""
     R_carts = swct_data.structure.positions_cart
     domega = np.zeros((len(R_carts), 3))
 
@@ -213,16 +218,19 @@ def evaluate_swct_domega_debug(
 
 
 @jit
-def evaluate_swct_domega_jax(
+def _evaluate_swct_domega_jax(
     swct_data: SWCT_data,
     r_carts: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
+    """See _api method."""
     domega = jnp.sum(jacrev(evaluate_swct_omega_api, argnums=1)(swct_data, r_carts), axis=(1, 2))
 
     return domega
 
 
 if __name__ == "__main__":
+    from logging import Formatter, StreamHandler
+
     log = getLogger("jqmc")
     log.setLevel("DEBUG")
     stream_handler = StreamHandler()
@@ -251,12 +259,12 @@ if __name__ == "__main__":
     r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
 
-    omega_up = evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_up_carts, debug_flag=True)
-    omega_dn = evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_dn_carts, debug_flag=True)
+    omega_up = evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_up_carts, debug=True)
+    omega_dn = evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_dn_carts, debug=True)
     print(omega_up)
     print(omega_dn)
-    omega_up = evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_up_carts, debug_flag=False)
-    omega_dn = evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_dn_carts, debug_flag=False)
+    omega_up = evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_up_carts, debug=False)
+    omega_dn = evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_dn_carts, debug=False)
     print(omega_up)
     print(omega_dn)
 
@@ -267,9 +275,9 @@ if __name__ == "__main__":
     print(d_omega_up)
     print(d_omega_dn)
 
-    d_omega_up = evaluate_swct_domega_debug(swct_data, r_up_carts)
+    d_omega_up = _evaluate_swct_domega_debug(swct_data, r_up_carts)
     print(d_omega_up)
     print(f"shape(d_omega_up) = {d_omega_up.shape}")
-    d_omega_dn = evaluate_swct_domega_debug(swct_data, r_dn_carts)
+    d_omega_dn = _evaluate_swct_domega_debug(swct_data, r_dn_carts)
     print(d_omega_dn)
     print(f"shape(d_omega_dn) = {d_omega_dn.shape}")

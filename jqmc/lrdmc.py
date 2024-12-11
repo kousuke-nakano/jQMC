@@ -59,7 +59,7 @@ from .coulomb_potential import (
 from .hamiltonians import Hamiltonian_data, compute_kinetic_energy_api, compute_local_energy_api
 from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
 from .trexio_wrapper import read_trexio_file
-from .wavefunction import Wavefunction_data, compute_discretized_kinetic_energy_jax, evaluate_jastrow_api
+from .wavefunction import Wavefunction_data, compute_discretized_kinetic_energy_api, evaluate_jastrow_api
 
 # MPI related
 comm = MPI.COMM_WORLD
@@ -229,7 +229,7 @@ class GFMC:
             r_dn_carts=self.__latest_r_dn_carts,
         )
         jax_PRNG_key = jax.random.PRNGKey(self.__mcmc_seed)
-        _, _, _ = compute_discretized_kinetic_energy_jax(
+        _, _, _ = compute_discretized_kinetic_energy_api(
             alat=self.__alat,
             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
             r_up_carts=self.__latest_r_up_carts,
@@ -318,7 +318,7 @@ class GFMC:
 
                 # compute non-diagonal grids and elements (kinetic)
                 start_projection_non_diagonal_kinetic_part = time.perf_counter()
-                mesh_kinetic_part, elements_non_diagonal_kinetic_part, jax_PRNG_key = compute_discretized_kinetic_energy_jax(
+                mesh_kinetic_part, elements_non_diagonal_kinetic_part, jax_PRNG_key = compute_discretized_kinetic_energy_api(
                     alat=self.__alat,
                     wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                     r_up_carts=self.__latest_r_up_carts,

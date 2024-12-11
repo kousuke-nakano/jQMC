@@ -53,16 +53,18 @@ from .structure import Structure_data
 logger = getLogger("jqmc").getChild(__name__)
 
 
-def read_trexio_file(trexio_file: str):
-    """
+def read_trexio_file(
+    trexio_file: str,
+) -> tuple[Structure_data, AOs_data, MOs_data, MOs_data, Geminal_data, Coulomb_potential_data]:
+    """Reading a TREXIO file.
+
     The method reads a TREXIO file and return AOs_data, MOs_data,
     Structure_data, and Coulomb_potential_data instances.
 
     Args:
         trexio_file (str): the path to a TREXIO file
 
-    Returns
-    -------
+    Returns:
         instances of AOs_data, MOs_data, Structure_data, and
         Coulomb_potential_data.
     """
@@ -173,7 +175,7 @@ def read_trexio_file(trexio_file: str):
         vec_a=[],
         vec_b=[],
         vec_c=[],
-        atomic_numbers=convert_from_atomic_labels_to_atomic_numbers(labels_r),
+        atomic_numbers=_convert_from_atomic_labels_to_atomic_numbers(labels_r),
         element_symbols=labels_r,
         atomic_labels=labels_r,
         positions=coords_r,
@@ -335,7 +337,7 @@ def read_trexio_file(trexio_file: str):
     )
 
 
-def convert_from_atomic_numbers_to_atomic_labels(charges_r: list[int]) -> list[str]:
+def _convert_from_atomic_numbers_to_atomic_labels(charges_r: list[int]) -> list[str]:
     # Dictionary mapping atomic numbers to symbols, up to atomic number 86
     atomic_number_to_element = {
         1: "H",
@@ -442,7 +444,7 @@ def convert_from_atomic_numbers_to_atomic_labels(charges_r: list[int]) -> list[s
     return labels_r
 
 
-def convert_from_atomic_labels_to_atomic_numbers(labels_r: list[str]) -> list[int]:
+def _convert_from_atomic_labels_to_atomic_numbers(labels_r: list[str]) -> list[int]:
     # Mapping of element symbols to their atomic numbers up to 86
     element_to_number = {
         "H": 1,

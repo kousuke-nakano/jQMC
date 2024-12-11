@@ -342,7 +342,7 @@ class MCMC:
                 g_vector = np.zeros(3)
                 random_index = np.random.randint(0, 3)
                 g_vector[random_index] = g
-                logger.devel(f"jn = {random_index}, g \equiv dstep  = {g_vector}")
+                logger.devel(f"jn = {random_index}, g \\equiv dstep  = {g_vector}")
                 new_r_cart = old_r_cart + g_vector
 
                 if selected_electron_spin == "up":
@@ -454,7 +454,7 @@ class MCMC:
                     + grad_e_L_h.coulomb_potential_data.structure_data.positions
                 )
 
-                if jastrow_data.jastrow_three_body_flag:
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
                     grad_e_L_R += (
                         grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
                     )
@@ -476,7 +476,7 @@ class MCMC:
                     r_dn_carts=self.__latest_r_dn_carts,
                 )
                 end = time.perf_counter()
-                logger.info(f"ln Psi evaluation: Time = {(end-start)*1000:.3f} msec.")
+                logger.devel(f"ln Psi evaluation: Time = {(end-start)*1000:.3f} msec.")
 
                 logger.devel(f"ln_Psi = {ln_Psi}")
                 self.__stored_ln_Psi.append(ln_Psi)
@@ -501,7 +501,7 @@ class MCMC:
                     + grad_ln_Psi_h.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions
                 )
 
-                if jastrow_data.jastrow_three_body_flag:
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
                     grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
 
                 # stored dln_Psi / dR
