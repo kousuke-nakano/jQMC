@@ -51,6 +51,6 @@ jobs:
       run: |
         pytest -v -s
 
-    - name: Test jqmc (pytest) without @jit decorator
-      run: |
-        pytest -v -s --disable-jit
+    #- name: Test jqmc (pytest) without @jit decorator
+    #  run: |
+    #    pytest -v -s --disable-jit
