@@ -60,6 +60,7 @@ from .trexio_wrapper import read_trexio_file
 from .wavefunction import Wavefunction_data, evaluate_ln_wavefunction_api, evaluate_wavefunction_api
 
 # MPI related
+jax.distributed.initialize()
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 
@@ -1288,6 +1289,9 @@ if __name__ == "__main__":
         handler_format = Formatter(f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
         stream_handler.setFormatter(handler_format)
         log.addHandler(stream_handler)
+
+    logger.info(f"jax.device_count={jax.device_count()}.")
+    logger.info(f"jax.local_device_count={jax.local_device_count()}.")
 
     """
     # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).

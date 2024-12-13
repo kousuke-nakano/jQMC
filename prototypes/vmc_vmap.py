@@ -2,14 +2,13 @@ import random
 
 import jax
 import numpy as np
-from jax import grad, jit, lax
+from jax import grad, jit, lax, vmap
 from jax import numpy as jnp
-from jax import vmap
 
 jax.config.update("jax_enable_x64", True)
 
 num_mcmc = 1
-num_walkers = 2
+num_walkers = 160
 
 num_r_up_cart_samples = 5
 num_r_dn_cart_samples = 2
@@ -98,7 +97,7 @@ for i_mcmc in range(num_mcmc):
     print(f"i_mcmc={i_mcmc+1}/{num_mcmc}")
 
     # @jit
-    def run_mcmc(latest_r_up_carts, latest_r_dn_carts, key):
+    def run_mcmc(latest_r_up_carts, latest_r_dn_carts, key, A, B):
         # latest_r_up_carts = latest_r_up_carts_nw[0]
         # latest_r_dn_carts = latest_r_dn_carts_nw[0]
 
@@ -155,12 +154,11 @@ for i_mcmc in range(num_mcmc):
             g_vector = g_vector.at[random_index].set(g)
 
             # a dummy heavy calc.
-            N = 500
-            key, subkey = jax.random.split(key)
-            A = jax.random.uniform(subkey, shape=(N, N))
-            key, subkey = jax.random.split(key)
-            B = jax.random.uniform(subkey, shape=(N, N))
-            _ = A.dot(B)
+            C = A.dot(B)
+            _ = B.dot(B)
+            _ = A.dot(C)
+            _ = C.dot(C)
+            _ = A.dot(A)
 
             # 位置ベクトルを更新
             new_r_cart = old_r_cart + g_vector
@@ -204,9 +202,13 @@ for i_mcmc in range(num_mcmc):
 
         return accepted_moves, rejected_moves, latest_r_up_carts, latest_r_dn_carts
 
-    accepted_moves_nw, rejected_moves_nw, latest_r_up_carts_nw, latest_r_dn_carts_nw = vmap(run_mcmc, in_axes=(0, 0, 0))(
-        latest_r_up_carts_nw, latest_r_dn_carts_nw, key_nw
-    )
+    N = 50000
+    A = jnp.array(np.random.rand(N, N))
+    B = jnp.array(np.random.rand(N, N))
+
+    accepted_moves_nw, rejected_moves_nw, latest_r_up_carts_nw, latest_r_dn_carts_nw = vmap(
+        run_mcmc, in_axes=(0, 0, 0, None, None)
+    )(latest_r_up_carts_nw, latest_r_dn_carts_nw, key_nw, A, B)
     accepted_moves += jnp.sum(accepted_moves_nw)
     rejected_moves += jnp.sum(rejected_moves_nw)
 
