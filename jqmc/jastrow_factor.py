@@ -95,14 +95,15 @@ class Jastrow_three_body_data:
     orb_data: AOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
     j_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
+    """
     def __post_init__(self) -> None:
-        """Initialization of the class.
+        '''Initialization of the class.
 
         This magic function checks the consistencies among the arguments.
 
         Raises:
             ValueError: If there is an inconsistency in a dimension of a given argument.
-        """
+        '''
         if self.j_matrix.shape != (
             self.orb_num,
             self.orb_num + 1,
@@ -112,6 +113,7 @@ class Jastrow_three_body_data:
                 + f"= ({self.orb_num}, {self.orb_num + 1}).",
             )
             raise ValueError
+    """
 
     @property
     def orb_num(self) -> int:

@@ -89,14 +89,15 @@ class Geminal_data:
     orb_data_dn_spin: AOs_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
     lambda_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
+    """
     def __post_init__(self) -> None:
-        """Initialization of the class.
+        '''Initialization of the class.
 
         This magic function checks the consistencies among the arguments.
 
         Raises:
             ValueError: If there is an inconsistency in a dimension of a given argument.
-        """
+        '''
         if self.lambda_matrix.shape != (
             self.orb_num_up,
             self.orb_num_dn + (self.num_electron_up - self.num_electron_dn),
@@ -108,6 +109,7 @@ class Geminal_data:
             raise ValueError
 
         logger.debug(f"compute_orb={self.compute_orb_api}")
+    """
 
     @property
     def orb_num_up(self) -> int:

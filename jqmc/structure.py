@@ -398,6 +398,25 @@ def find_nearest_index(structure: Structure_data, r_cart: list[float]) -> int:
         return find_nearest_nucleus_indices_np(structure, r_cart, 1)[0]
 
 
+def find_nearest_index_jax(structure: Structure_data, r_cart: list[float]) -> int:
+    """Find the nearest atom index for the give position.
+
+    Args:
+        structure (Structure_data): an instance of Structure_data
+        r_cart (list[float, float, float]): reference position (in Bohr)
+
+    Return:
+        int: The index of the nearest neigbhor nucleus
+
+    Todo:
+        Implementing PBC (i.e., considering mirror images).
+    """
+    if any(structure.pbc_flag):
+        raise NotImplementedError
+    else:
+        return find_nearest_nucleus_indices_jnp(structure, r_cart, 1)[0]
+
+
 def find_nearest_nucleus_indices_np(structure_data: Structure_data, r_cart, N):
     """See find_nearest_index."""
     if any(structure_data.pbc_flag):

@@ -2,13 +2,14 @@ import random
 
 import jax
 import numpy as np
-from jax import grad, jit, lax, vmap
+from jax import grad, jit, lax
 from jax import numpy as jnp
+from jax import vmap
 
 jax.config.update("jax_enable_x64", True)
 
 num_mcmc = 1
-num_walkers = 160
+num_walkers = 1600
 
 num_r_up_cart_samples = 5
 num_r_dn_cart_samples = 2
@@ -202,7 +203,7 @@ for i_mcmc in range(num_mcmc):
 
         return accepted_moves, rejected_moves, latest_r_up_carts, latest_r_dn_carts
 
-    N = 50000
+    N = 5000
     A = jnp.array(np.random.rand(N, N))
     B = jnp.array(np.random.rand(N, N))
 

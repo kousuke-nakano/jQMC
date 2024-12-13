@@ -71,20 +71,22 @@ class MOs_data:
     aos_data: AOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
     mo_coefficients: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
+    """
     def __post_init__(self) -> None:
-        """Initialization of the class.
+        '''Initialization of the class.
 
         This magic function checks the consistencies among the arguments.
         To be implemented.
 
         Raises:
             ValueError: If there is an inconsistency in a dimension of a given argument.
-        """
+        '''
         if self.mo_coefficients.shape != (self.num_mo, self.aos_data.num_ao):
             logger.error(
                 f"dim. of ao_coefficients = {self.mo_coefficients.shape} is wrong. Inconsistent with the expected value = {(self.num_mo, self.aos_data.num_ao)}"
             )
             raise ValueError
+    """
 
 
 def compute_MOs_laplacian_api(
