@@ -62,9 +62,14 @@ from .trexio_wrapper import read_trexio_file
 from .wavefunction import Wavefunction_data, compute_discretized_kinetic_energy_api, evaluate_jastrow_api
 
 # MPI related
-jax.distributed.initialize()
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
+
+# jax-MPI related
+try:
+    jax.distributed.initialize()
+except ValueError:
+    pass
 
 # create new logger level for development
 DEVEL_LEVEL = 5
