@@ -2251,7 +2251,18 @@ class VMC_multiple_walkers:
                 break
 
     def get_deriv_ln_WF(self, num_mcmc_warmup_steps: int = 50):
-        """Refactoring in progress."""
+        """Return the derivativs of ln_WF wrt variational parameters.
+
+        Refactoring in progress.
+
+        Args:
+            num_mcmc_warmup_steps (int): The number of warmup steps.
+
+        Return:
+            O_matrix(npt.NDArray): The matrix containing O_k = d ln Psi / dc_k,
+            where k is the flattened variational parameter index. The dimenstion
+            of O_matrix is (M, nw, k), where M is the MCMC step and nw is the walker index.
+        """
         opt_param_dict = self.__mcmc.opt_param_dict
 
         # opt_param_list = opt_param_dict["opt_param_list"]
@@ -2260,13 +2271,13 @@ class VMC_multiple_walkers:
         # dln_Psi_dc_shape_list = opt_param_dict["dln_Psi_dc_shape_list"]
         # dln_Psi_dc_flattened_index_list = opt_param_dict["dln_Psi_dc_flattened_index_list"]
 
-        O_matrix = np.empty((self.__mcmc.mcmc_counter, 0))
+        O_matrix = np.empty((self.__mcmc.mcmc_counter, self.__num_walkers, 0))
 
         for dln_Psi_dc in dln_Psi_dc_list:
-            dln_Psi_dc_flat = np.stack([arr.flatten() for arr in dln_Psi_dc], axis=0)
+            dln_Psi_dc_flat = np.stack([arr.flatten() for arr in dln_Psi_dc], axis=0)  # ?? to be refactored
             O_matrix = np.hstack([O_matrix, dln_Psi_dc_flat])
 
-        return O_matrix[num_mcmc_warmup_steps:]  # O.... (x....) M * L matrix
+        return O_matrix[num_mcmc_warmup_steps:]  # O.... (x....) (M, nw, L) matrix
 
     def get_generalized_forces(
         self, mpi_broadcast: bool = True, num_mcmc_warmup_steps: int = 50, num_mcmc_bin_blocks: int = 10
@@ -2400,7 +2411,6 @@ class VMC_multiple_walkers:
             tuple[float, float]:
                 The mean and std values of the computed local energy
                 estimated by the Jackknife method with the Args.
-        #
         """
         # analysis VMC
         e_L = np.array(self.__mcmc.e_L[num_mcmc_warmup_steps:])
@@ -2443,8 +2453,6 @@ class VMC_multiple_walkers:
     ):
         """Return the mean and std of the computed local energy.
 
-        WIP!!!!!
-
         Args:
             num_mcmc_warmup_steps (int): the number of warmup steps.
             num_mcmc_bin_blocks (int): the number of binning blocks
@@ -2453,7 +2461,7 @@ class VMC_multiple_walkers:
             tuple[npt.NDArray, npt.NDArray]:
                 The mean and std values of the computed atomic forces
                 estimated by the Jackknife method with the Args.
-        #
+                The dimention of the arrays is (N, 3).
         """
         if not self.__comput_position_deriv:
             force_mean = np.array([])
@@ -2526,6 +2534,30 @@ class VMC_multiple_walkers:
             E_L_force_PP_split = np.array_split(E_L_force_PP, num_mcmc_bin_blocks, axis=0)
 
             e_L_binned = list(np.ravel(np.average(np.stack(e_L_split), axis=1)))
+
+            force_HF_ave = np.average(np.stack(force_HF_split), axis=1)
+            force_HF_binned_shape = (
+                force_HF_ave.shape[0] * force_HF_ave.shape[1],
+                force_HF_ave.shape[2],
+                force_HF_ave.shape[3],
+            )
+            force_HF_binned = list(force_HF_ave.reshape(force_HF_binned_shape))
+
+            force_PP_ave = np.average(np.stack(force_PP_split), axis=1)
+            force_PP_binned_shape = (
+                force_PP_ave.shape[0] * force_PP_ave.shape[1],
+                force_PP_ave.shape[2],
+                force_PP_ave.shape[3],
+            )
+            force_PP_binned = list(force_PP_ave.reshape(force_PP_binned_shape))
+
+            E_L_force_PP_ave = np.average(np.stack(E_L_force_PP_split), axis=1)
+            E_L_force_PP_binned_shape = (
+                E_L_force_PP_ave.shape[0] * E_L_force_PP_ave.shape[1],
+                E_L_force_PP_ave.shape[2],
+                E_L_force_PP_ave.shape[3],
+            )
+            E_L_force_PP_binned = list(E_L_force_PP_ave.reshape(E_L_force_PP_binned_shape))
 
             # MPI reduce
             e_L_binned = comm.reduce(e_L_binned, op=MPI.SUM, root=0)
@@ -2786,7 +2818,7 @@ if __name__ == "__main__":
     """
 
     # VMC parameters
-    num_walkers = 2
+    num_walkers = 200
     num_mcmc_warmup_steps = 5
     num_mcmc_bin_blocks = 5
     mcmc_seed = 34356
@@ -2797,8 +2829,8 @@ if __name__ == "__main__":
         Dt_init=2.0,
         mcmc_seed=mcmc_seed,
         num_walkers=num_walkers,
-        comput_position_deriv=True,
-        comput_jas_param_deriv=False,
+        comput_position_deriv=False,
+        comput_jas_param_deriv=True,
     )
     vmc.run_single_shot(num_mcmc_steps=100)
     e_L_mean, e_L_std = vmc.get_e_L(
@@ -2807,7 +2839,12 @@ if __name__ == "__main__":
     )
     logger.info(f"e_L = {e_L_mean} +- {e_L_std} Ha.")
 
+    O_matrix = vmc.get_deriv_ln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps)
+    logger.info(f"O_matrix.shape = {O_matrix.shape}")
+
+    """ Check the divergence later
     f_mean, f_std = vmc.get_atomic_forces(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
+    """
