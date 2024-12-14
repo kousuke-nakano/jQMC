@@ -717,7 +717,7 @@ class GFMC:
 
 
 if __name__ == "__main__":
-    logger_level = "DEBUG"
+    logger_level = "MPI-INFO"
 
     log = getLogger("jqmc")
 
@@ -782,7 +782,7 @@ if __name__ == "__main__":
     mcmc_seed = 3446
     tau = 0.01
     alat = 0.3
-    num_branching = 10
+    num_branching = 100
     non_local_move = "tmove"
 
     num_gfmc_warmup_steps = 2
