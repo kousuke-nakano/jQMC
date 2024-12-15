@@ -1274,16 +1274,8 @@ class MCMC_multiple_walkers:
     MCMC class. Runing MCMC with multiple walkers. The independent 'num_walkers' MCMCs are
     vectrized via the jax-vmap function.
 
-    Refactoring in progress!!! (something wrong in VMC.)
-    There is inconsistency between the sinlgle and the multiple
-    walker implementations for the water molecule. Already e_L
-    gives a totally wrong energy, even with a single walker.
-    So, the problem should come from the vectorized MCMC part.
-    WIP.
-
     Args:
         hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
-        mcmc_seed (int): seed for the MCMC chain.
         num_walkers (int): the number of walkers.
         num_mcmc_per_measurement (int): the number of MCMC steps between a value (e.g., local energy) measurement.
         init_r_up_carts (npt.NDArray): starting electron positions for up electrons. dim. (num_walkers, N_e^up ,3)
@@ -1291,6 +1283,7 @@ class MCMC_multiple_walkers:
         Dt (float): electron move step (bohr)
         comput_jas_param_deriv (bool): if True, compute the derivatives of E wrt. Jastrow parameters.
         comput_position_deriv (bool): if True, compute the derivatives of E wrt. atomic positions.
+        jax_PRIN_key (jax.Array): Jax PRIN key to handle random numbers.
     """
 
     def __init__(
@@ -1303,7 +1296,7 @@ class MCMC_multiple_walkers:
         Dt: float = 2.0,
         comput_jas_param_deriv: bool = False,
         comput_position_deriv: bool = False,
-        jax_PRIN_key=None,
+        jax_PRIN_key: jax.Array = None,
     ) -> None:
         """Initialize a MCMC class, creating list holding results."""
         self.__hamiltonian_data = hamiltonian_data
@@ -1467,7 +1460,7 @@ class MCMC_multiple_walkers:
             max_time(int):
                 Max elapsed time (sec.). If the elapsed time exceeds max_time, the methods exits the mcmc loop.
 
-        Returns:
+        Return:
             None
         """
         # MAIN MCMC loop from here !!!
@@ -1537,9 +1530,6 @@ class MCMC_multiple_walkers:
                         is_up, latest_r_up_carts[selected_electron_index], latest_r_dn_carts[selected_electron_index]
                     )
 
-                    # set selected_electron_spin（0: up, 1: dn)
-                    selected_electron_spin = jnp.where(is_up, 0, 1)
-
                     # choose the nearest atom index
                     nearest_atom_index = find_nearest_index_jax(self.__hamiltonian_data.structure_data, old_r_cart)
 
@@ -1548,9 +1538,9 @@ class MCMC_multiple_walkers:
                     norm_r_R = jnp.linalg.norm(old_r_cart - R_cart)
                     f_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
 
-                    logger.devel(f"nearest_atom_index = {nearest_atom_index}")
-                    logger.devel(f"norm_r_R = {norm_r_R}")
-                    logger.devel(f"f_l  = {f_l }")
+                    logger.debug(f"nearest_atom_index = {nearest_atom_index}")
+                    logger.debug(f"norm_r_R = {norm_r_R}")
+                    logger.debug(f"f_l  = {f_l }")
 
                     sigma = f_l * self.__Dt
                     jax_PRIN_key, subkey = jax.random.split(jax_PRIN_key)
@@ -1564,20 +1554,19 @@ class MCMC_multiple_walkers:
                     g_vector = jnp.zeros(3)
                     g_vector = g_vector.at[random_index].set(g)
 
-                    logger.devel(f"jn = {random_index}, g \\equiv dstep  = {g_vector}")
+                    logger.debug(f"jn = {random_index}, g \\equiv dstep  = {g_vector}")
                     new_r_cart = old_r_cart + g_vector
 
                     # set proposed r_up_carts and r_dn_carts.
-                    spin_bool = selected_electron_spin == 1
                     proposed_r_up_carts = lax.cond(
-                        spin_bool,
+                        is_up,
                         lambda _: latest_r_up_carts.at[selected_electron_index].set(new_r_cart),
                         lambda _: latest_r_up_carts,
                         operand=None,
                     )
 
                     proposed_r_dn_carts = lax.cond(
-                        spin_bool,
+                        is_up,
                         lambda _: latest_r_dn_carts,
                         lambda _: latest_r_dn_carts.at[selected_electron_index].set(new_r_cart),
                         operand=None,
@@ -1591,13 +1580,13 @@ class MCMC_multiple_walkers:
                     norm_r_R = jnp.linalg.norm(new_r_cart - R_cart)
                     f_prime_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
 
-                    logger.devel(f"nearest_atom_index = {nearest_atom_index}")
-                    logger.devel(f"norm_r_R = {norm_r_R}")
-                    logger.devel(f"f_prime_l  = {f_prime_l }")
+                    logger.debug(f"nearest_atom_index = {nearest_atom_index}")
+                    logger.debug(f"norm_r_R = {norm_r_R}")
+                    logger.debug(f"f_prime_l  = {f_prime_l }")
 
-                    logger.devel(f"The selected electron is {selected_electron_index+1}-th {selected_electron_spin} electron.")
-                    logger.devel(f"The selected electron position is {old_r_cart}.")
-                    logger.devel(f"The proposed electron position is {new_r_cart}.")
+                    logger.debug(f"The selected electron is {selected_electron_index+1}-th {is_up} electron.")
+                    logger.debug(f"The selected electron position is {old_r_cart}.")
+                    logger.debug(f"The proposed electron position is {new_r_cart}.")
 
                     T_ratio = (f_l / f_prime_l) * jnp.exp(
                         -(jnp.linalg.norm(new_r_cart - old_r_cart) ** 2)
@@ -1617,12 +1606,13 @@ class MCMC_multiple_walkers:
                         )
                     ) ** 2.0
 
-                    logger.devel(f"R_ratio, T_ratio = {R_ratio}, {T_ratio}")
+                    logger.debug(f"R_ratio, T_ratio = {R_ratio}, {T_ratio}")
                     acceptance_ratio = jnp.min(jnp.array([1.0, R_ratio * T_ratio]))
-                    logger.devel(f"acceptance_ratio = {acceptance_ratio}")
+                    logger.debug(f"acceptance_ratio = {acceptance_ratio}")
 
                     jax_PRIN_key, subkey = jax.random.split(jax_PRIN_key)
                     b = jax.random.uniform(subkey, shape=(), minval=0.0, maxval=1.0)
+                    logger.debug(f"b = {b}.")
 
                     def _accepted_fun(_):
                         # Move accepted
@@ -1656,15 +1646,31 @@ class MCMC_multiple_walkers:
 
             # evaluate observables
             start = time.perf_counter()
+            """
+            logger.info(f"r_up_carts = {self.__latest_r_up_carts}")
+            logger.info(f"r_dn_carts = {self.__latest_r_dn_carts}")
+            logger.info(f"r_up_carts.shape = {self.__latest_r_up_carts.shape}")
+            logger.info(f"r_dn_carts.shape = {self.__latest_r_dn_carts.shape}")
+            e_L = [
+                compute_local_energy_api(
+                    self.__hamiltonian_data,
+                    r_up_carts,
+                    r_dn_carts,
+                )
+                for r_up_carts, r_dn_carts in zip(self.__latest_r_up_carts, self.__latest_r_dn_carts)
+            ]
+            logger.info(f"e_L = {e_L}.")
+            """
+
             e_L = vmap(compute_local_energy_api, in_axes=(None, 0, 0))(
                 self.__hamiltonian_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
+            logger.debug(f"e_L = {e_L}.")
             end = time.perf_counter()
             timer_e_L += end - start
 
-            logger.devel(f"  e_L = {e_L}")
             self.__stored_e_L.append(e_L)
 
             abs_WF = np.abs(
@@ -1836,7 +1842,7 @@ class MCMC_multiple_walkers:
             timer_mcmc_updated + timer_e_L + timer_de_L_dR_dr + timer_dln_Psi_dR_dr + timer_dln_Psi_dc_jas1b2b3b
         )
 
-        logger.info(f"Acceptance ratio is {self.__accepted_moves/(self.__accepted_moves + self.__rejected_moves)*100} %")
+        logger.info(f"Acceptance ratio is {self.__accepted_moves/(self.__accepted_moves + self.__rejected_moves)*100:.3f} %")
         logger.info(f"Total Elapsed time for MCMC {num_mcmc_steps} steps. = {timer_mcmc_total:.2f} sec.")
         logger.info(f"Elapsed times per MCMC step, averaged over {num_mcmc_steps} steps.")
         logger.info(f"  Time for MCMC updated = {timer_mcmc_updated/num_mcmc_steps*10**3:.2f} msec.")
@@ -1996,8 +2002,6 @@ class VMC_multiple_walkers:
 
     Runing VMC using MCMC.
 
-    Refactoring in progress!!! (something wrong in VMC.)
-
     Args:
         hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
         mcmc_seed (int): random seed for MCMC
@@ -2012,7 +2016,7 @@ class VMC_multiple_walkers:
         hamiltonian_data: Hamiltonian_data = None,
         mcmc_seed: int = 34467,
         num_walkers: int = 40,
-        Dt_init: float = 2.0,
+        Dt: float = 2.0,
         comput_jas_param_deriv=False,
         comput_position_deriv=False,
     ) -> None:
@@ -2103,8 +2107,10 @@ class VMC_multiple_walkers:
         init_r_up_carts = jnp.array(r_carts_up_list)
         init_r_dn_carts = jnp.array(r_carts_dn_list)
 
-        logger.info(f"initial r_up_carts.shape = {init_r_up_carts.shape}")
-        logger.info(f"initial r_dn_carts.shape = {init_r_dn_carts.shape}")
+        logger.debug(f"initial r_up_carts= {init_r_up_carts}")
+        logger.debug(f"initial r_dn_carts = {init_r_dn_carts}")
+        logger.debug(f"initial r_up_carts.shape = {init_r_up_carts.shape}")
+        logger.debug(f"initial r_dn_carts.shape = {init_r_dn_carts.shape}")
 
         self.__mcmc = MCMC_multiple_walkers(
             hamiltonian_data=hamiltonian_data,
@@ -2112,7 +2118,7 @@ class VMC_multiple_walkers:
             init_r_dn_carts=init_r_dn_carts,
             num_walkers=self.__num_walkers,
             num_mcmc_per_measurement=16,  # tentative
-            Dt=Dt_init,
+            Dt=Dt,
             comput_jas_param_deriv=self.__comput_jas_param_deriv,
             comput_position_deriv=self.__comput_position_deriv,
             jax_PRIN_key=jax_PRIN_key,
@@ -2121,14 +2127,18 @@ class VMC_multiple_walkers:
         # WF optimization counter
         self.__i_opt = 0
 
-    def run_single_shot(self, num_mcmc_steps=0, max_time=86400):
+    def run_single_shot(self, num_mcmc_steps: int = 0, max_time: int = 86400) -> None:
         """Launch single-shot VMC.
 
         Args:
+            num_mcmc_steps(int):
+                The number of MCMC samples per walker.
             max_time(int):
                 The maximum time (sec.) If maximum time exceeds,
                 the method exits the MCMC loop.
 
+        Return:
+            None
         """
         self.__mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
 
@@ -2143,7 +2153,28 @@ class VMC_multiple_walkers:
         num_mcmc_warmup_steps: int = 0,
         num_mcmc_bin_blocks: int = 100,
     ):
-        """Refactoring in progress."""
+        """Optimizing wavefunction.
+
+        Optimizing Wavefunction using the Stochastic Reconfiguration Method.
+
+        Args:
+            num_mcmc_steps(int): The number of MCMC samples per walker.
+            num_opt_steps(int): The number of WF optimization step.
+            delta(float):
+                The prefactor of the SR matrix for adjusting the optimization step.
+                i.e., c_i <- c_i + delta * S^{-1} f
+            epsilon(float):
+                The regralization factor of the SR matrix
+                i.e., S <- S + I * delta
+            wf_dump_freq(int):
+                The frequency of WF data (i.e., hamiltonian_data.chk)
+            max_time(int):
+                The maximum time (sec.) If maximum time exceeds,
+                the method exits the MCMC loop.
+            num_mcmc_warmup_steps (int): number of equilibration steps.
+            num_mcmc_bin_blocks (int): number of blocks for reblocking.
+
+        """
         vmcopt_total_start = time.perf_counter()
 
         dln_Psi_dc_size_list = self.__mcmc.opt_param_dict["dln_Psi_dc_size_list"]
@@ -2309,7 +2340,7 @@ class VMC_multiple_walkers:
                 )
             O_matrix = np.concatenate((O_matrix, dln_Psi_dc_reshaped), axis=2)
 
-        logger.info(f"O_matrix.shape = {O_matrix.shape}")
+        logger.debug(f"O_matrix.shape = {O_matrix.shape}")
         return O_matrix[num_mcmc_warmup_steps:]  # O.... (x....) (M, nw, L) matrix
 
     def get_generalized_forces(
@@ -2349,10 +2380,10 @@ class VMC_multiple_walkers:
         )
         O_matrix_binned = list(O_matrix_ave.reshape(O_matrix_binned_shape))
 
-        logger.info(f"O_matrix.shape = {O_matrix.shape}")
+        logger.debug(f"O_matrix.shape = {O_matrix.shape}")
         # logger.info(f"O_matrix_split.shape = {np.array(O_matrix_split).shape}")
-        logger.info(f"O_matrix_ave.shape = {O_matrix_ave.shape}")
-        logger.info(f"O_matrix_binned.shape [before reduce] = {np.array(O_matrix_binned).shape}")
+        logger.debug(f"O_matrix_ave.shape = {O_matrix_ave.shape}")
+        logger.debug(f"O_matrix_binned.shape [before reduce] = {np.array(O_matrix_binned).shape}")
 
         O_matrix_binned = comm.reduce(O_matrix_binned, op=MPI.SUM, root=0)
 
@@ -2365,10 +2396,10 @@ class VMC_multiple_walkers:
         )
         eL_O_matrix_binned = list(eL_O_matrix_ave.reshape(eL_O_matrix_binned_shape))
 
-        logger.info(f"eL_O_matrix.shape = {eL_O_matrix.shape}")
+        logger.debug(f"eL_O_matrix.shape = {eL_O_matrix.shape}")
         # logger.info(f"eL_O_matrix_split.shape = {np.array(eL_O_matrix_split).shape}")
-        logger.info(f"eL_O_matrix_ave.shape = {eL_O_matrix_ave.shape}")
-        logger.info(f"eL_O_matrix_binned.shape [before reduce] = {np.array(eL_O_matrix_binned).shape}")
+        logger.debug(f"eL_O_matrix_ave.shape = {eL_O_matrix_ave.shape}")
+        logger.debug(f"eL_O_matrix_binned.shape [before reduce] = {np.array(eL_O_matrix_binned).shape}")
 
         eL_O_matrix_binned = comm.reduce(eL_O_matrix_binned, op=MPI.SUM, root=0)
 
@@ -2384,21 +2415,21 @@ class VMC_multiple_walkers:
 
             eL_O_jn = 1.0 / (M - 1) * np.array([np.sum(eL_O_matrix_binned, axis=0) - eL_O_matrix_binned[j] for j in range(M)])
             logger.debug(f"eL_O_jn = {eL_O_jn}")
-            logger.info(f"eL_O_jn.shape = {eL_O_jn.shape}")
+            logger.debug(f"eL_O_jn.shape = {eL_O_jn.shape}")
 
             eL_jn = 1.0 / (M - 1) * np.array([np.sum(e_L_binned, axis=0) - e_L_binned[j] for j in range(M)])
             logger.debug(f"eL_jn = {eL_jn}")
-            logger.info(f"eL_jn.shape = {eL_jn.shape}")
+            logger.debug(f"eL_jn.shape = {eL_jn.shape}")
 
             O_jn = 1.0 / (M - 1) * np.array([np.sum(O_matrix_binned, axis=0) - O_matrix_binned[j] for j in range(M)])
 
             logger.debug(f"O_jn = {O_jn}")
-            logger.info(f"O_jn.shape = {O_jn.shape}")
+            logger.debug(f"O_jn.shape = {O_jn.shape}")
 
             eL_barO_jn = np.einsum("i,ij->ij", eL_jn, O_jn)
 
             logger.debug(f"eL_barO_jn = {eL_barO_jn}")
-            logger.info(f"eL_barO_jn.shape = {eL_barO_jn.shape}")
+            logger.debug(f"eL_barO_jn.shape = {eL_barO_jn.shape}")
 
             generalized_force_mean = np.average(-2.0 * (eL_O_jn - eL_barO_jn), axis=0)
             generalized_force_std = np.sqrt(M - 1) * np.std(-2.0 * (eL_O_jn - eL_barO_jn), axis=0)
@@ -2727,7 +2758,7 @@ if __name__ == "__main__":
     logger.info(f"jax.device_count={jax.device_count()}.")
     logger.info(f"jax.local_device_count={jax.local_device_count()}.")
 
-    # """
+    """
     # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
     (
         structure_data,
@@ -2737,9 +2768,9 @@ if __name__ == "__main__":
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"))
-    # """
-
     """
+
+    # """
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,
@@ -2749,7 +2780,7 @@ if __name__ == "__main__":
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "H2_dimer_ccpv5z_trexio.hdf5"))
-    """
+    # """
 
     """
     # Ne atom cc-pV5Z with Mitas ccECP (10 electrons, feasible).
@@ -2843,7 +2874,7 @@ if __name__ == "__main__":
     )
     """
 
-    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.6)
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.75)
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
 
     # define data
@@ -2902,18 +2933,19 @@ if __name__ == "__main__":
 
     # """
     # VMC parameters
-    num_walkers = 1
-    num_mcmc_warmup_steps = 20
+    num_walkers = 200
+    num_mcmc_warmup_steps = 5
     num_mcmc_bin_blocks = 5
     mcmc_seed = 34356
 
+    """
     # run VMC single-shot
     vmc = VMC_multiple_walkers(
         hamiltonian_data=hamiltonian_data,
-        Dt_init=2.0,
+        Dt=2.0,
         mcmc_seed=mcmc_seed,
         num_walkers=num_walkers,
-        comput_position_deriv=False,
+        comput_position_deriv=True,
         comput_jas_param_deriv=False,
     )
     vmc.run_single_shot(num_mcmc_steps=120)
@@ -2922,7 +2954,7 @@ if __name__ == "__main__":
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
     logger.info(f"e_L = {e_L_mean} +- {e_L_std} Ha.")
-    # """
+    """
 
     """
     f_mean, f_std = vmc.get_atomic_forces(
@@ -2934,23 +2966,23 @@ if __name__ == "__main__":
     logger.info(f"f_std = {f_std} Ha/bohr.")
     """
 
-    """
+    # """
     # run VMCopt
     vmc = VMC_multiple_walkers(
         hamiltonian_data=hamiltonian_data,
-        Dt_init=2.0,
+        Dt=2.0,
         mcmc_seed=mcmc_seed,
         num_walkers=num_walkers,
         comput_position_deriv=False,
         comput_jas_param_deriv=True,
     )
     vmc.run_optimize(
-        num_mcmc_steps=20,
-        num_opt_steps=10,
-        delta=0.01,
+        num_mcmc_steps=50,
+        num_opt_steps=20,
+        delta=0.02,
         epsilon=0.001,
         wf_dump_freq=1,
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
-    """
+    # """
