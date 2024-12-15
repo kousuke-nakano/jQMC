@@ -953,6 +953,16 @@ class GFMC_multiple_walkers:
 
                 # Many-Walker Implementation from here!!!!
 
+                # note: vmap assumes a static number of loop,
+                # i.e., the current while - break is imcompatible
+                # with vmap. one possibility is to check
+                # remaining tau for ALL walker, then, if
+                # at least one tau remains, proceed with
+                # the projection, otherwise, breaks the loop
+                # and proceed with the branching step.
+                # Such a check can be done outside of the vmap
+                # with a native for loop.
+
             # Always set the initial weight list to 1.0
             w_L = 1.0
 
