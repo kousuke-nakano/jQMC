@@ -392,6 +392,8 @@ class GFMC:
                         V_nonlocal_FN = list(map(lambda V: V if V < 0.0 else 0.0, V_nonlocal))
                         diagonal_ecp_part_SP = np.sum(list(map(lambda V: V if V >= 0.0 else 0.0, V_nonlocal)))
                         non_diagonal_sum_hamiltonian += np.sum(V_nonlocal_FN)
+                        logger.info("V_nonlocal_FN")
+                        logger.info(V_nonlocal_FN)
 
                     elif self.__non_local_move == "dltmove":
                         mesh_non_local_ecp_part, V_nonlocal, _ = _compute_ecp_non_local_parts_jax(
@@ -471,7 +473,7 @@ class GFMC:
                         + non_diagonal_sum_hamiltonian
                     )
 
-                logger.debug(f"  e_L={e_L}")
+                logger.info(f"  e_L={e_L}")
 
                 # compute the time the walker remaining in the same configuration
                 start_projection_update_weights_and_positions = time.perf_counter()
@@ -783,12 +785,12 @@ if __name__ == "__main__":
     # run branching
     mcmc_seed = 3446
     tau = 0.01
-    alat = 0.3
-    num_branching = 100
+    alat = 0.30
+    num_branching = 50
     non_local_move = "tmove"
 
     num_gfmc_warmup_steps = 2
-    num_gfmc_bin_blocks = 2
+    num_gfmc_bin_blocks = 5
     num_gfmc_bin_collect = 2
 
     # run GFMC
