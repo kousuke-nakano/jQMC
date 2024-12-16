@@ -46,6 +46,7 @@ from logging import Formatter, StreamHandler, getLogger
 import jax
 import numpy as np
 import numpy.typing as npt
+from jax import jit
 from jax import numpy as jnp
 from jax import vmap
 
@@ -93,14 +94,15 @@ logger = getLogger("jqmc").getChild(__name__)
 jax.config.update("jax_enable_x64", True)
 
 
-class GFMC:
+class GFMC_multiple_walkers:
     """GFMC class.
 
     GFMC class. Runing GFMC.
 
     Args:
-        mcmc_seed (int): seed for the MCMC chain.
         hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
+        num_walkers (int): the number of walkers
+        mcmc_seed (int): seed for the MCMC chain.
         tau (float): projection time (bohr^-1)
         alat (float): discretized grid length (bohr)
         non_local_move (str):
@@ -111,6 +113,7 @@ class GFMC:
     def __init__(
         self,
         hamiltonian_data: Hamiltonian_data = None,
+        num_walkers: int = 40,
         mcmc_seed: int = 34467,
         tau: float = 0.1,
         alat: float = 0.1,
@@ -122,6 +125,7 @@ class GFMC:
 
         """
         self.__hamiltonian_data = hamiltonian_data
+        self.__num_walkers = num_walkers
         self.__mcmc_seed = mcmc_seed
         self.__tau = tau
         self.__alat = alat
@@ -136,21 +140,6 @@ class GFMC:
         self.__gfmc_branching_counter = 0
 
         # Initialization
-        init_r_up_carts = []
-        init_r_dn_carts = []
-
-        total_electrons = 0
-
-        if hamiltonian_data.coulomb_potential_data.ecp_flag:
-            charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
-                hamiltonian_data.coulomb_potential_data.z_cores
-            )
-        else:
-            charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
-
-        coords = hamiltonian_data.structure_data.positions_cart
-
-        # set random seeds
         mpi_seed = mcmc_seed * (rank + 1)
         random.seed(mpi_seed)
         np.random.seed(mpi_seed)
@@ -159,66 +148,76 @@ class GFMC:
         num_electron_up = hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
         num_electron_dn = hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
 
-        total_electrons = 0
+        r_carts_up_list = []
+        r_carts_dn_list = []
 
-        if hamiltonian_data.coulomb_potential_data.ecp_flag:
-            charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
-                hamiltonian_data.coulomb_potential_data.z_cores
-            )
-        else:
-            charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
+        for _ in range(self.__num_walkers):
+            # Initialization
+            r_carts_up = []
+            r_carts_dn = []
 
-        coords = hamiltonian_data.structure_data.positions_cart
+            total_electrons = 0
 
-        # Place electrons around each nucleus
-        for i in range(len(coords)):
-            charge = charges[i]
-            num_electrons = int(np.round(charge))  # Number of electrons to place based on the charge
+            if hamiltonian_data.coulomb_potential_data.ecp_flag:
+                charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
+                    hamiltonian_data.coulomb_potential_data.z_cores
+                )
+            else:
+                charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
 
-            # Retrieve the position coordinates
-            x, y, z = coords[i]
+            coords = hamiltonian_data.structure_data.positions_cart
 
-            # Place electrons
-            for _ in range(num_electrons):
-                # Calculate distance range
-                distance = np.random.uniform(0.1, 2.0)
-                theta = np.random.uniform(0, np.pi)
-                phi = np.random.uniform(0, 2 * np.pi)
+            # Place electrons around each nucleus
+            for i in range(len(coords)):
+                charge = charges[i]
+                num_electrons = int(np.round(charge))  # Number of electrons to place based on the charge
 
-                # Convert spherical to Cartesian coordinates
-                dx = distance * np.sin(theta) * np.cos(phi)
-                dy = distance * np.sin(theta) * np.sin(phi)
-                dz = distance * np.cos(theta)
+                # Retrieve the position coordinates
+                x, y, z = coords[i]
 
-                # Position of the electron
-                electron_position = np.array([x + dx, y + dy, z + dz])
+                # Place electrons
+                for _ in range(num_electrons):
+                    # Calculate distance range
+                    distance = np.random.uniform(0.1, 2.0)
+                    theta = np.random.uniform(0, np.pi)
+                    phi = np.random.uniform(0, 2 * np.pi)
 
-                # Assign spin
-                if len(init_r_up_carts) < num_electron_up:
-                    init_r_up_carts.append(electron_position)
-                else:
-                    init_r_dn_carts.append(electron_position)
+                    # Convert spherical to Cartesian coordinates
+                    dx = distance * np.sin(theta) * np.cos(phi)
+                    dy = distance * np.sin(theta) * np.sin(phi)
+                    dz = distance * np.cos(theta)
 
-            total_electrons += num_electrons
+                    # Position of the electron
+                    electron_position = np.array([x + dx, y + dy, z + dz])
 
-        # Handle surplus electrons
-        remaining_up = num_electron_up - len(init_r_up_carts)
-        remaining_dn = num_electron_dn - len(init_r_dn_carts)
+                    # Assign spin
+                    if len(r_carts_up) < num_electron_up:
+                        r_carts_up.append(electron_position)
+                    else:
+                        r_carts_dn.append(electron_position)
 
-        # Randomly place any remaining electrons
-        for _ in range(remaining_up):
-            init_r_up_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
-        for _ in range(remaining_dn):
-            init_r_dn_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
+                total_electrons += num_electrons
 
-        init_r_up_carts = np.array(init_r_up_carts)
-        init_r_dn_carts = np.array(init_r_dn_carts)
+            # Handle surplus electrons
+            remaining_up = num_electron_up - len(r_carts_up)
+            remaining_dn = num_electron_dn - len(r_carts_dn)
 
-        logger.debug(f"initial r_up_carts = {init_r_up_carts}")
-        logger.debug(f"initial r_dn_carts = {init_r_dn_carts}")
+            # Randomly place any remaining electrons
+            for _ in range(remaining_up):
+                r_carts_up.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
+            for _ in range(remaining_dn):
+                r_carts_dn.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
 
-        self.__latest_r_up_carts = init_r_up_carts
-        self.__latest_r_dn_carts = init_r_dn_carts
+            r_carts_up_list.append(r_carts_up)
+            r_carts_dn_list.append(r_carts_dn)
+
+        self.__latest_r_up_carts = jnp.array(r_carts_up_list)
+        self.__latest_r_dn_carts = jnp.array(r_carts_dn_list)
+
+        logger.debug(f"initial r_up_carts= {self.__latest_r_up_carts}")
+        logger.debug(f"initial r_dn_carts = {self.__latest_r_dn_carts}")
+        logger.info(f"initial r_up_carts.shape = {self.__latest_r_up_carts.shape}")
+        logger.info(f"initial r_dn_carts.shape = {self.__latest_r_dn_carts.shape}")
 
         # """
         # compiling methods
@@ -233,32 +232,32 @@ class GFMC:
         start = time.perf_counter()
         _ = compute_kinetic_energy_api(
             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-            r_up_carts=self.__latest_r_up_carts,
-            r_dn_carts=self.__latest_r_dn_carts,
+            r_up_carts=self.__latest_r_up_carts[0],
+            r_dn_carts=self.__latest_r_dn_carts[0],
         )
         jax_PRNG_key = jax.random.PRNGKey(self.__mcmc_seed)
         _, _, _ = compute_discretized_kinetic_energy_api(
             alat=self.__alat,
             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-            r_up_carts=self.__latest_r_up_carts,
-            r_dn_carts=self.__latest_r_dn_carts,
+            r_up_carts=self.__latest_r_up_carts[0],
+            r_dn_carts=self.__latest_r_dn_carts[0],
             jax_PRNG_key=jax_PRNG_key,
         )
         _ = _compute_bare_coulomb_potential_jax(
             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-            r_up_carts=self.__latest_r_up_carts,
-            r_dn_carts=self.__latest_r_dn_carts,
+            r_up_carts=self.__latest_r_up_carts[0],
+            r_dn_carts=self.__latest_r_dn_carts[0],
         )
         _ = _compute_ecp_local_parts_jax(
             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-            r_up_carts=self.__latest_r_up_carts,
-            r_dn_carts=self.__latest_r_dn_carts,
+            r_up_carts=self.__latest_r_up_carts[0],
+            r_dn_carts=self.__latest_r_dn_carts[0],
         )
         _, _, _ = _compute_ecp_non_local_parts_jax(
             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-            r_up_carts=self.__latest_r_up_carts,
-            r_dn_carts=self.__latest_r_dn_carts,
+            r_up_carts=self.__latest_r_up_carts[0],
+            r_dn_carts=self.__latest_r_dn_carts[0],
         )
         end = time.perf_counter()
         logger.info("Compilation e_L is done.")
@@ -270,7 +269,7 @@ class GFMC:
         # """
 
     def run(self, num_branching: int = 50, max_time: int = 86400) -> None:
-        """Run LRDMC.
+        """Run LRDMC with multiple walkers.
 
         Args:
             num_branching (int): number of branching (reconfiguration of walkers).
@@ -278,18 +277,9 @@ class GFMC:
         """
         # set timer
         timer_projection_total = 0.0
-        timer_projection_non_diagonal_kinetic_part = 0.0
-        timer_projection_non_diagonal_ecp_part = 0.0
-        timer_projection_diag_kinetic_part = 0.0
-        timer_projection_diag_bare_couloumb_part = 0.0
-        timer_projection_diag_ecp_part = 0.0
-        timer_projection_update_weights_and_positions = 0.0
         timer_observable = 0.0
         timer_branching = 0.0
         gmfc_total_start = time.perf_counter()
-
-        # set jax PRNG key for pseudo random number generators of JAX.
-        jax_PRNG_key = jax.random.PRNGKey(self.__mcmc_seed)
 
         # Main branching loop.
         progress = (self.__gfmc_branching_counter) / (num_branching + self.__gfmc_branching_counter) * 100.0
@@ -297,7 +287,8 @@ class GFMC:
             f"Current branching step = {self.__gfmc_branching_counter}/{num_branching+self.__gfmc_branching_counter}: {progress:.0f} %."
         )
         logger.info("-Start branching-")
-        gfmc_interval = int(num_branching / 10)  # %
+        gfmc_interval = int(np.max([num_branching / 10, 1]))  # %
+
         for i_branching in range(num_branching):
             if (i_branching + 1) % gfmc_interval == 0:
                 progress = (
@@ -307,147 +298,108 @@ class GFMC:
                     f"  Progress: branching step = {i_branching + self.__gfmc_branching_counter + 1}/{num_branching+self.__gfmc_branching_counter}: {progress:.1f} %."
                 )
 
-            # MAIN project loop.
-            logger.debug(f"  Projection time {self.__tau} a.u.^{-1}.")
+            # MAIN projection loop.
+            def _projection(
+                e_L: float,
+                tau_left: float,
+                w_L: float,
+                r_up_carts: npt.NDArray,
+                r_dn_carts: npt.NDArray,
+                jax_PRNG_key: jax.Array,
+            ):
+                """Do projection, compatible with vmap.
 
-            tau_left = self.__tau
-            logger.debug(f"  Left projection time = {tau_left}/{self.__tau}: {0.0:.0f} %.")
+                Do projection for a set of (r_up_cart, r_dn_cart).
 
-            # Always set the initial weight to 1.0
-            w_L = 1.0
+                Args:
+                    e_L (float): e_L before the projection.
+                    tau_left (float): left projection time
+                    w_L (float): weight before projection
+                    r_up_carts (N_e^up, 3) before projection
+                    r_dn_carts (N_e^dn, 3) after projection
+                Returns:
+                    e_L (float): e_L after the final projection.
+                    tau_left (float): left projection time
+                    w_L (float): weight after the final projection
+                    r_up_carts (N_e^up, 3) after the final projection
+                    r_dn_carts (N_e^dn, 3) after the final projection
+                """
+                # Many-Walker Implementation from here!!!!
 
-            logger.debug("  Projection is on going....")
+                # note: vmap assumes a static number of loop,
+                # i.e., the current while - break is imcompatible
+                # with vmap. one possibility is to check
+                # remaining tau for ALL walker, then, if
+                # at least one tau remains, proceed with
+                # the projection, otherwise, breaks the loop
+                # and proceed with the branching step.
+                # Such a check can be done outside of the vmap
+                # with a native for loop.
 
-            start_projection = time.perf_counter()
-            # projection loop
-            while True:
-                progress = (tau_left) / (self.__tau) * 100.0
-                logger.debug(f"  Left projection time = {tau_left}/{self.__tau}: {progress:.1f} %.")
+                def _continue_projection(
+                    e_L,
+                    tau_left,
+                    w_L,
+                    r_up_carts,
+                    r_dn_carts,
+                    jax_PRNG_key,
+                ):
+                    # compute non-diagonal grids and elements (kinetic)
+                    mesh_kinetic_part, elements_non_diagonal_kinetic_part, jax_PRNG_key = (
+                        compute_discretized_kinetic_energy_api(
+                            alat=self.__alat,
+                            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                            r_up_carts=r_up_carts,
+                            r_dn_carts=r_dn_carts,
+                            jax_PRNG_key=jax_PRNG_key,
+                        )
+                    )
+                    elements_non_diagonal_kinetic_part_FN = jnp.where(
+                        elements_non_diagonal_kinetic_part < 0.0, elements_non_diagonal_kinetic_part, 0.0
+                    )
+                    diagonal_kinetic_part_SP = jnp.sum(
+                        jnp.where(elements_non_diagonal_kinetic_part >= 0, elements_non_diagonal_kinetic_part, 0.0)
+                    )
+                    non_diagonal_sum_hamiltonian_kinetic = jnp.sum(elements_non_diagonal_kinetic_part_FN)
 
-                # compute non-diagonal grids and elements (kinetic)
-                start_projection_non_diagonal_kinetic_part = time.perf_counter()
-                mesh_kinetic_part, elements_non_diagonal_kinetic_part, jax_PRNG_key = compute_discretized_kinetic_energy_api(
-                    alat=self.__alat,
-                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                    r_up_carts=self.__latest_r_up_carts,
-                    r_dn_carts=self.__latest_r_dn_carts,
-                    jax_PRNG_key=jax_PRNG_key,
-                )
-                elements_non_diagonal_kinetic_part_FN = list(
-                    map(lambda K: K if K < 0 else 0.0, elements_non_diagonal_kinetic_part)
-                )
-                diagonal_kinetic_part_SP = np.sum(list(map(lambda K: K if K >= 0 else 0.0, elements_non_diagonal_kinetic_part)))
-                non_diagonal_sum_hamiltonian = np.sum(elements_non_diagonal_kinetic_part_FN)
-                end_projection_non_diagonal_kinetic_part = time.perf_counter()
-                timer_projection_non_diagonal_kinetic_part += (
-                    end_projection_non_diagonal_kinetic_part - start_projection_non_diagonal_kinetic_part
-                )
+                    # compute diagonal elements, kinetic part
+                    diagonal_kinetic_continuum = compute_kinetic_energy_api(
+                        wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                        r_up_carts=r_up_carts,
+                        r_dn_carts=r_dn_carts,
+                    )
+                    diagonal_kinetic_discretized = -1.0 * jnp.sum(elements_non_diagonal_kinetic_part)
 
-                # compute diagonal elements, kinetic part
-                start_projection_diag_kinetic_part = time.perf_counter()
-                diagonal_kinetic_continuum = compute_kinetic_energy_api(
-                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                    r_up_carts=self.__latest_r_up_carts,
-                    r_dn_carts=self.__latest_r_dn_carts,
-                )
-                diagonal_kinetic_discretized = -1.0 * np.sum(elements_non_diagonal_kinetic_part)
-                end_projection_diag_kinetic_part = time.perf_counter()
-                timer_projection_diag_kinetic_part += end_projection_diag_kinetic_part - start_projection_diag_kinetic_part
+                    # compute diagonal elements, bare couloumb
+                    diagonal_bare_coulomb_part = _compute_bare_coulomb_potential_jax(
+                        coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                        r_up_carts=r_up_carts,
+                        r_dn_carts=r_dn_carts,
+                    )
 
-                # compute diagonal elements, bare couloumb
-                start_projection_diag_bare_couloumb = time.perf_counter()
-                diagonal_bare_coulomb_part = _compute_bare_coulomb_potential_jax(
-                    coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                    r_up_carts=self.__latest_r_up_carts,
-                    r_dn_carts=self.__latest_r_dn_carts,
-                )
-                end_projection_diag_bare_couloumb = time.perf_counter()
-                timer_projection_diag_bare_couloumb_part += (
-                    end_projection_diag_bare_couloumb - start_projection_diag_bare_couloumb
-                )
-
-                # with ECP
-                if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
+                    # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
                     # ecp local
-                    start_projection_diag_ecp = time.perf_counter()
                     diagonal_ecp_local_part = _compute_ecp_local_parts_jax(
                         coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                        r_up_carts=self.__latest_r_up_carts,
-                        r_dn_carts=self.__latest_r_dn_carts,
+                        r_up_carts=r_up_carts,
+                        r_dn_carts=r_dn_carts,
                     )
-                    end_projection_diag_ecp = time.perf_counter()
-                    timer_projection_diag_ecp_part += end_projection_diag_ecp - start_projection_diag_ecp
 
-                    # ecp non-local
-                    start_projection_non_diagonal_ecp_part = time.perf_counter()
-                    if self.__non_local_move == "tmove":
-                        mesh_non_local_ecp_part, V_nonlocal, _ = _compute_ecp_non_local_parts_jax(
-                            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                            r_up_carts=self.__latest_r_up_carts,
-                            r_dn_carts=self.__latest_r_dn_carts,
-                            flag_determinant_only=False,
-                        )
-
-                        V_nonlocal_FN = list(map(lambda V: V if V < 0.0 else 0.0, V_nonlocal))
-                        diagonal_ecp_part_SP = np.sum(list(map(lambda V: V if V >= 0.0 else 0.0, V_nonlocal)))
-                        non_diagonal_sum_hamiltonian += np.sum(V_nonlocal_FN)
-
-                    elif self.__non_local_move == "dltmove":
-                        mesh_non_local_ecp_part, V_nonlocal, _ = _compute_ecp_non_local_parts_jax(
-                            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                            r_up_carts=self.__latest_r_up_carts,
-                            r_dn_carts=self.__latest_r_dn_carts,
-                            flag_determinant_only=True,
-                        )
-
-                        V_nonlocal_FN = list(map(lambda V: V if V < 0.0 else 0.0, V_nonlocal))
-                        diagonal_ecp_part_SP = np.sum(list(map(lambda V: V if V >= 0.0 else 0.0, V_nonlocal)))
-
-                        Jastrow_ref = evaluate_jastrow_api(
-                            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                            r_up_carts=self.__latest_r_up_carts,
-                            r_dn_carts=self.__latest_r_dn_carts,
-                        )
-                        V_nonlocal_FN = [
-                            V
-                            * evaluate_jastrow_api(
-                                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                                r_up_carts=mesh_non_local_ecp_part[i][0],
-                                r_dn_carts=mesh_non_local_ecp_part[i][1],
-                            )
-                            / Jastrow_ref
-                            if V < 0.0
-                            else 0.0
-                            for i, V in enumerate(V_nonlocal_FN)
-                        ]
-                        non_diagonal_sum_hamiltonian += np.sum(V_nonlocal_FN)
-
-                        """ for debug / to be deleted soon.
-                        _, V_nonlocal_debug, _ = compute_ecp_non_local_parts_jax(
-                            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                            r_up_carts=self.__latest_r_up_carts,
-                            r_dn_carts=self.__latest_r_dn_carts,
-                            flag_determinant_only=False,
-                        )
-
-                        V_nonlocal_FN_debug = list(map(lambda V: V if V < 0.0 else 0.0, V_nonlocal_debug))
-
-                        logger.info(
-                            f"np.max(np.array(V_nonlocal_FN_debug) - np.array(V_nonlocal_FN)) = {np.max(np.array(V_nonlocal_FN_debug) - np.array(V_nonlocal_FN))}"
-                        )
-                        """
-
-                    else:
-                        logger.error(f"non_local_move = {self.__non_local_move} is not yet implemented.")
-                        raise NotImplementedError
-
-                    end_projection_non_diagonal_ecp_part = time.perf_counter()
-                    timer_projection_non_diagonal_ecp_part += (
-                        end_projection_non_diagonal_ecp_part - start_projection_non_diagonal_ecp_part
+                    # ecp non-local (t-move)
+                    mesh_non_local_ecp_part, V_nonlocal, _ = _compute_ecp_non_local_parts_jax(
+                        coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                        wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                        r_up_carts=r_up_carts,
+                        r_dn_carts=r_dn_carts,
+                        flag_determinant_only=False,
                     )
+
+                    V_nonlocal = jnp.array(V_nonlocal)
+                    V_nonlocal_FN = jnp.where(V_nonlocal < 0, V_nonlocal, 0.0)
+                    diagonal_ecp_part_SP = jnp.sum(jnp.where(V_nonlocal >= 0, V_nonlocal, 0.0))
+                    non_diagonal_sum_hamiltonian_ecp = jnp.sum(V_nonlocal_FN)
+
+                    non_diagonal_sum_hamiltonian = non_diagonal_sum_hamiltonian_kinetic + non_diagonal_sum_hamiltonian_ecp
 
                     # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
                     e_L = (
@@ -460,69 +412,126 @@ class GFMC:
                         + non_diagonal_sum_hamiltonian
                     )
 
-                # with all electrons
-                else:
-                    # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
-                    e_L = (
-                        diagonal_kinetic_continuum
-                        + diagonal_kinetic_discretized
-                        + diagonal_bare_coulomb_part
-                        + diagonal_kinetic_part_SP
-                        + non_diagonal_sum_hamiltonian
+                    logger.devel(f"  e_L={e_L}")
+
+                    # choose a non-diagonal move destination
+                    p_list = jnp.concatenate([jnp.ravel(elements_non_diagonal_kinetic_part_FN), jnp.ravel(V_nonlocal_FN)])
+                    non_diagonal_move_probabilities = p_list / p_list.sum()
+                    non_diagonal_move_mesh = jnp.concatenate([jnp.array(mesh_kinetic_part), jnp.array(mesh_non_local_ecp_part)])
+
+                    # compute the time the walker remaining in the same configuration
+                    jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
+                    xi = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
+                    tau_update = jnp.min(jnp.array([tau_left, jnp.log(1 - xi) / non_diagonal_sum_hamiltonian]))
+                    logger.devel(f"  tau_update={tau_update}")
+
+                    # update weight
+                    w_L = w_L * jnp.exp(-tau_update * e_L)
+                    logger.devel(f"  w_L={w_L}")
+
+                    # update tau_left
+                    tau_left = tau_left - tau_update
+                    logger.devel(f"tau_left = {tau_left}.")
+
+                    # if tau_left becomes < 0, break the loop (i.e., proceed with the branching step.)
+                    def _electron_position_update(
+                        jax_PRNG_key, r_up_carts, r_dn_carts, non_diagonal_move_probabilities, non_diagonal_move_mesh
+                    ):
+                        logger.devel(f"len(non_diagonal_move_probabilities)) = {len(non_diagonal_move_probabilities)}")
+
+                        # random choice
+                        logger.devel(f"r_up_carts = {r_up_carts}")
+                        logger.devel(f"r_dn_carts = {r_dn_carts}")
+                        jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
+                        # k = np.random.choice(len(non_diagonal_move_probabilities), p=non_diagonal_move_probabilities)
+                        cdf = jnp.cumsum(non_diagonal_move_probabilities)
+                        random_value = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
+                        k = jnp.searchsorted(cdf, random_value)
+                        logger.devel(f"chosen update electron index = {k}.")
+                        r_up_carts, r_dn_carts = non_diagonal_move_mesh[k]
+                        return jax_PRNG_key, r_up_carts, r_dn_carts, non_diagonal_move_probabilities, non_diagonal_move_mesh
+
+                    jax_PRNG_key, r_up_carts, r_dn_carts, _, _ = jax.lax.cond(
+                        tau_left <= 0.0,
+                        lambda *args: args,
+                        _electron_position_update,
+                        *(jax_PRNG_key, r_up_carts, r_dn_carts, non_diagonal_move_probabilities, non_diagonal_move_mesh),
                     )
 
-                logger.debug(f"  e_L={e_L}")
+                    logger.devel(f"r_up_carts = {r_up_carts}")
+                    logger.devel(f"r_dn_carts = {r_dn_carts}")
 
-                # compute the time the walker remaining in the same configuration
-                start_projection_update_weights_and_positions = time.perf_counter()
-                xi = random.random()
-                tau_update = np.min((tau_left, np.log(1 - xi) / non_diagonal_sum_hamiltonian))
-                logger.debug(f"  tau_update={tau_update}")
+                    return (
+                        e_L,
+                        tau_left,
+                        w_L,
+                        r_up_carts,
+                        r_dn_carts,
+                        jax_PRNG_key,
+                    )
 
-                # update weight
-                w_L = w_L * np.exp(-tau_update * e_L)
-                logger.debug(f"  w_L={w_L}")
-
-                # update tau_left
-                tau_left = tau_left - tau_update
-
-                # if tau_left becomes < 0, break the loop (i.e., proceed with the branching step.)
-                if tau_left <= 0.0:
-                    logger.debug("tau_left = {tau_left} <= 0.0. Exit the projection loop.")
-                    break
-
-                # choose a non-diagonal move destination
-                if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
-                    p_list = np.array(elements_non_diagonal_kinetic_part_FN + V_nonlocal_FN)
-                else:
-                    p_list = np.array(elements_non_diagonal_kinetic_part_FN)
-                probabilities = p_list / p_list.sum()
-                logger.debug(f"len(probabilities) = {len(probabilities)}")
-
-                # random choice
-                logger.debug(f"self.__latest_r_up_carts = {self.__latest_r_up_carts}")
-                logger.debug(f"self.__latest_r_dn_carts = {self.__latest_r_dn_carts}")
-                k = np.random.choice(len(p_list), p=probabilities)
-                logger.debug(f"chosen update electron index = {k}.")
-                # update electron position
-                if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
-                    self.__latest_r_up_carts, self.__latest_r_dn_carts = (
-                        list(mesh_kinetic_part) + list(mesh_non_local_ecp_part)
-                    )[k]
-                else:
-                    self.__latest_r_up_carts, self.__latest_r_dn_carts = (list(mesh_kinetic_part))[k]
-                logger.debug(f"self.__latest_r_up_carts = {self.__latest_r_up_carts}")
-                logger.debug(f"self.__latest_r_dn_carts = {self.__latest_r_dn_carts}")
-                end_projection_update_weights_and_positions = time.perf_counter()
-                timer_projection_update_weights_and_positions += (
-                    end_projection_update_weights_and_positions - start_projection_update_weights_and_positions
+                (
+                    e_L,
+                    tau_left,
+                    w_L,
+                    r_up_carts,
+                    r_dn_carts,
+                    jax_PRNG_key,
+                ) = jax.lax.cond(
+                    tau_left <= 0.0,
+                    lambda *args: args,
+                    _continue_projection,
+                    *(e_L, tau_left, w_L, r_up_carts, r_dn_carts, jax_PRNG_key),
                 )
+
+                return (
+                    e_L,
+                    tau_left,
+                    w_L,
+                    r_up_carts,
+                    r_dn_carts,
+                    jax_PRNG_key,
+                )
+
+            # Always set the initial weight list to 1.0
+            e_L_list = jnp.array([0.0 for _ in range(self.__num_walkers)])
+            tau_left_list = jnp.array([self.__tau for _ in range(self.__num_walkers)])
+            w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
+            jax_PRNG_key = jnp.array([jax.random.PRNGKey(i**2 * self.__mcmc_seed) for i in range(self.__num_walkers)])
+
+            logger.debug("  Projection is on going....")
+
+            start_projection = time.perf_counter()
+
+            # projection loop
+            while True:
+                progress = (np.max(tau_left_list) / (self.__tau)) * 100.0
+                logger.debug(f"  max. Left projection time = {np.max(tau_left_list)}/{self.__tau}: {progress:.1f} %.")
+                (
+                    e_L_list,
+                    tau_left_list,
+                    w_L_list,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                    jax_PRNG_key,
+                ) = vmap(_projection, in_axes=(0, 0, 0, 0, 0, 0))(
+                    e_L_list,
+                    tau_left_list,
+                    w_L_list,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                    jax_PRNG_key,
+                )
+                logger.info(f"max(tau_left_list) = {np.max(tau_left_list)}.")
+                if np.max(tau_left_list) <= 0.0:
+                    logger.info(f"max(tau_left_list) = {np.max(tau_left_list)} <= 0.0. Exit the projection loop.")
+                    break
 
             end_projection = time.perf_counter()
             timer_projection_total += end_projection - start_projection
 
             # projection ends
-            logger.debug("  Projection ends.")
+            logger.info("  Projection ends.")
 
             # evaluate observables
             start_observable = time.perf_counter()
@@ -531,11 +540,12 @@ class GFMC:
             end_observable = time.perf_counter()
             timer_observable += end_observable - start_observable
 
-            logger.devel(f"  e_L = {e_L}")
-            logger.devel(f"  w_L = {w_L}")
-            w_L_latest = float(w_L)
-            e_L_latest = float(e_L)
+            logger.info(f"  e_L = {e_L_list}")
+            logger.info(f"  w_L = {w_L_list}")
+            w_L_latest = e_L_list
+            e_L_latest = w_L_list
 
+            """
             # Branching!
             start_branching = time.perf_counter()
 
@@ -547,6 +557,7 @@ class GFMC:
             w_L_gathered_dyad = (rank, w_L_latest)
             w_L_gathered_dyad = comm.gather(w_L_gathered_dyad, root=0)
 
+            # refactoring from here!!
             if rank == 0:
                 logger.debug(f"e_L_gathered_dyad={e_L_gathered_dyad}")
                 logger.debug(f"w_L_gathered_dyad={w_L_gathered_dyad}")
@@ -563,11 +574,6 @@ class GFMC:
                 logger.debug(f"w_L_list = {w_L_list}")
                 probabilities = w_L_list / w_L_list.sum()
                 logger.debug(f"probabilities = {probabilities}")
-
-                """
-                # random choice
-                k_list = np.random.choice(len(w_L_list), size=len(w_L_list), p=probabilities, replace=True)
-                """
 
                 # correlated choice (see Sandro's textbook, page 182)
                 zeta = np.random.random()
@@ -626,7 +632,9 @@ class GFMC:
                 logger.info(f"max_time = {max_time} sec. exceeds.")
                 logger.info("break the branching loop.")
                 break
+            """
 
+        """
         logger.info("-End branching-")
 
         # count up
@@ -652,6 +660,7 @@ class GFMC:
         logger.info(
             f"Survived walkers ratio = {self.__num_survived_walkers/(self.__num_survived_walkers + self.__num_killed_walkers) * 100:.2f} %"
         )
+        """
 
     def get_e_L(self, num_gfmc_warmup_steps: int = 3, num_gfmc_bin_blocks: int = 10, num_gfmc_bin_collect: int = 2) -> float:
         """Get e_L."""
@@ -781,22 +790,32 @@ if __name__ == "__main__":
     )
 
     # run branching
+    num_walkers = 100
     mcmc_seed = 3446
     tau = 0.01
     alat = 0.3
-    num_branching = 100
+    num_branching = 1
     non_local_move = "tmove"
 
     num_gfmc_warmup_steps = 2
     num_gfmc_bin_blocks = 2
     num_gfmc_bin_collect = 2
 
-    # run GFMC
-    gfmc = GFMC(hamiltonian_data=hamiltonian_data, mcmc_seed=mcmc_seed, tau=tau, alat=alat, non_local_move=non_local_move)
+    # run GFMC with multiple walkers
+    gfmc = GFMC_multiple_walkers(
+        hamiltonian_data=hamiltonian_data,
+        num_walkers=num_walkers,
+        mcmc_seed=mcmc_seed,
+        tau=tau,
+        alat=alat,
+        non_local_move=non_local_move,
+    )
     gfmc.run(num_branching=num_branching)
+    """
     e_L_mean, e_L_std = gfmc.get_e_L(
         num_gfmc_warmup_steps=num_gfmc_warmup_steps,
         num_gfmc_bin_blocks=num_gfmc_bin_blocks,
         num_gfmc_bin_collect=num_gfmc_bin_collect,
     )
     logger.info(f"e_L = {e_L_mean} +- {e_L_std} Ha")
+    """
