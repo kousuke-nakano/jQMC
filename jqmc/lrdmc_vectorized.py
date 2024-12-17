@@ -58,6 +58,7 @@ from .coulomb_potential import (
     _compute_ecp_non_local_parts_jax,
 )
 from .hamiltonians import Hamiltonian_data, compute_kinetic_energy_api
+from .wavefunction import compute_discretized_kinetic_energy_api, evaluate_jastrow_api
 
 # MPI related
 comm = MPI.COMM_WORLD
@@ -847,7 +848,7 @@ if __name__ == "__main__":
 
     from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
     from .trexio_wrapper import read_trexio_file
-    from .wavefunction import Wavefunction_data, compute_discretized_kinetic_energy_api, evaluate_jastrow_api
+    from .wavefunction import Wavefunction_data
 
     logger_level = "MPI-INFO"
 

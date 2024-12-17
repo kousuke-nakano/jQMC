@@ -306,7 +306,7 @@ def main():
                 vmc = VMC_multiple_walkers(
                     hamiltonian_data=hamiltonian_data,
                     mcmc_seed=mcmc_seed,
-                    number_of_walkers=number_of_walkers,
+                    num_walkers=number_of_walkers,
                     comput_position_deriv=False,
                     comput_jas_param_deriv=True,
                 )
@@ -400,7 +400,7 @@ def main():
                 gfmc = GFMC_multiple_walkers(
                     hamiltonian_data=hamiltonian_data,
                     mcmc_seed=mcmc_seed,
-                    number_of_walkers=number_of_walkers,
+                    num_walkers=number_of_walkers,
                     tau=tau,
                     alat=alat,
                     non_local_move=non_local_move,
