@@ -91,7 +91,7 @@ logger = getLogger("jqmc").getChild(__name__)
 jax.config.update("jax_enable_x64", True)
 
 
-class MCMC:
+class MCMC_serial:
     """MCMC class.
 
     MCMC class. Runing MCMC.
@@ -738,7 +738,7 @@ class MCMC:
         }
 
 
-class VMC:
+class VMC_serial:
     """VMC class.
 
     Runing VMC using MCMC.
@@ -755,7 +755,7 @@ class VMC:
         self,
         hamiltonian_data: Hamiltonian_data = None,
         mcmc_seed: int = 34467,
-        Dt_init: float = 2.0,
+        Dt: float = 2.0,
         comput_jas_param_deriv=False,
         comput_position_deriv=False,
     ) -> None:
@@ -835,12 +835,12 @@ class VMC:
         logger.debug(f"initial r_up_carts = {init_r_up_carts}")
         logger.debug(f"initial r_dn_carts = {init_r_dn_carts}")
 
-        self.__mcmc = MCMC(
+        self.__mcmc = MCMC_serial(
             hamiltonian_data=hamiltonian_data,
             init_r_up_carts=init_r_up_carts,
             init_r_dn_carts=init_r_dn_carts,
             mcmc_seed=self.__mpi_seed,
-            Dt=Dt_init,
+            Dt=Dt,
             comput_jas_param_deriv=self.__comput_jas_param_deriv,
             comput_position_deriv=self.__comput_position_deriv,
         )
@@ -1441,9 +1441,9 @@ if __name__ == "__main__":
     mcmc_seed = 34356
 
     # run VMC
-    vmc = VMC(
+    vmc = VMC_serial(
         hamiltonian_data=hamiltonian_data,
-        Dt_init=2.0,
+        Dt=2.0,
         mcmc_seed=mcmc_seed,
         comput_position_deriv=False,
         comput_jas_param_deriv=False,

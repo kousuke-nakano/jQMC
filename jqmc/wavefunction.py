@@ -312,9 +312,9 @@ def compute_discretized_kinetic_energy_debug(
     return mesh_kinetic_part, elements_kinetic_part
 
 
-@jit
+# @jit
 def compute_discretized_kinetic_energy_api(
-    alat: float, wavefunction_data, r_up_carts: jnp.ndarray, r_dn_carts: jnp.ndarray, jax_PRNG_key: jax.Array = None
+    alat: float, wavefunction_data, r_up_carts: jnp.ndarray, r_dn_carts: jnp.ndarray, RT: jnp.ndarray
 ) -> tuple[list[tuple[npt.NDArray, npt.NDArray]], list[npt.NDArray], jax.Array]:
     r"""Function for computing discretized kinetic grid points and thier energies with a given lattice space (alat).
 
@@ -323,7 +323,7 @@ def compute_discretized_kinetic_energy_api(
         wavefunction_data (Wavefunction_data): an instance of Qavefunction_data, which will be replaced with LRDMC_data.
         r_carts_up (npt.NDArray): up electron position (N_e,3).
         r_carts_dn (npt.NDArray): down electron position (N_e,3).
-        jax_PRNG_key (jax.random.PRNGKey): A pseudo-random number generator key used by JAX for generating random numbers
+        RT (npt.NDArray): Rotation matrix. \equiv R.T
 
     Returns:
         list[tuple[npt.NDArray, npt.NDArray]], list[npt.NDArray], jax.Array:
@@ -343,66 +343,9 @@ def compute_discretized_kinetic_energy_api(
         ]
     )  # Shape: (6, 3)
 
-    if jax_PRNG_key is not None:
-        # Specify rotation angles in radians
-        jax_PRNG_key, jax_PRNG_subkey = jax.random.split(jax_PRNG_key)
-        alpha, beta, gamma = jax.random.uniform(
-            jax_PRNG_subkey, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi
-        )  # Rotation angle around the x,y,z-axis (in radians)
+    shifts = shifts @ RT  # Shape: (6, 3)
 
-        # Define the rotation matrix for rotation around the x-axis
-        def rotation_matrix_x(alpha):
-            cos_a = jnp.cos(alpha)
-            sin_a = jnp.sin(alpha)
-            R_x = jnp.array(
-                [
-                    [1, 0, 0],
-                    [0, cos_a, -sin_a],
-                    [0, sin_a, cos_a],
-                ]
-            )
-            return R_x
-
-        # Define the rotation matrix for rotation around the y-axis
-        def rotation_matrix_y(beta):
-            cos_b = jnp.cos(beta)
-            sin_b = jnp.sin(beta)
-            R_y = jnp.array(
-                [
-                    [cos_b, 0, sin_b],
-                    [0, 1, 0],
-                    [-sin_b, 0, cos_b],
-                ]
-            )
-            return R_y
-
-        # Define the rotation matrix for rotation around the z-axis
-        def rotation_matrix_z(gamma):
-            cos_g = jnp.cos(gamma)
-            sin_g = jnp.sin(gamma)
-            R_z = jnp.array(
-                [
-                    [cos_g, -sin_g, 0],
-                    [sin_g, cos_g, 0],
-                    [0, 0, 1],
-                ]
-            )
-            return R_z
-
-        # Compute individual rotation matrices
-        R_x = rotation_matrix_x(alpha)
-        R_y = rotation_matrix_y(beta)
-        R_z = rotation_matrix_z(gamma)
-
-        # Compute the combined rotation matrix (order matters)
-        R = R_z @ R_y @ R_x  # Rotate in the order x -> y -> z
-
-        # Apply the rotation to the shift vectors
-        shifts = shifts @ R.T  # Shape: (6, 3)
-
-    else:
-        jax_PRNG_key = None
-
+    # num shift
     num_shifts = shifts.shape[0]
 
     # Process up-spin electrons
@@ -477,7 +420,7 @@ def compute_discretized_kinetic_energy_api(
     mesh_kinetic_part = jnp.stack([r_up_padded, r_dn_padded], axis=1)
 
     # Return the combined configurations and the kinetic elements
-    return mesh_kinetic_part, elements_kinetic_part, jax_PRNG_key
+    return mesh_kinetic_part, elements_kinetic_part
 
 
 def compute_quantum_force_api(

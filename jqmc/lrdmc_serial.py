@@ -35,8 +35,6 @@
 import logging
 
 # python modules
-import os
-import random
 import time
 from collections import Counter
 from logging import Formatter, StreamHandler, getLogger
@@ -122,7 +120,6 @@ class GFMC:
 
         """
         self.__hamiltonian_data = hamiltonian_data
-        self.__mcmc_seed = mcmc_seed
         self.__tau = tau
         self.__alat = alat
         self.__non_local_move = non_local_move
@@ -151,9 +148,9 @@ class GFMC:
         coords = hamiltonian_data.structure_data.positions_cart
 
         # set random seeds
-        mpi_seed = mcmc_seed * (rank + 1)
-        random.seed(mpi_seed)
-        np.random.seed(mpi_seed)
+        self.__mpi_seed = mcmc_seed * (rank + 1) ** 2
+        np.random.seed(self.__mpi_seed)
+        self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
 
         # Place electrons around each nucleus
         num_electron_up = hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
@@ -236,13 +233,12 @@ class GFMC:
             r_up_carts=self.__latest_r_up_carts,
             r_dn_carts=self.__latest_r_dn_carts,
         )
-        jax_PRNG_key = jax.random.PRNGKey(self.__mcmc_seed)
-        _, _, _ = compute_discretized_kinetic_energy_api(
+        _, _ = compute_discretized_kinetic_energy_api(
             alat=self.__alat,
             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
             r_up_carts=self.__latest_r_up_carts,
             r_dn_carts=self.__latest_r_dn_carts,
-            jax_PRNG_key=jax_PRNG_key,
+            RT=jnp.eye(3, 3),
         )
         _ = _compute_bare_coulomb_potential_jax(
             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
@@ -288,9 +284,6 @@ class GFMC:
         timer_branching = 0.0
         gmfc_total_start = time.perf_counter()
 
-        # set jax PRNG key for pseudo random number generators of JAX.
-        jax_PRNG_key = jax.random.PRNGKey(self.__mcmc_seed)
-
         # Main branching loop.
         progress = (self.__gfmc_branching_counter) / (num_branching + self.__gfmc_branching_counter) * 100.0
         logger.info(
@@ -326,12 +319,63 @@ class GFMC:
 
                 # compute non-diagonal grids and elements (kinetic)
                 start_projection_non_diagonal_kinetic_part = time.perf_counter()
-                mesh_kinetic_part, elements_non_diagonal_kinetic_part, jax_PRNG_key = compute_discretized_kinetic_energy_api(
+                # generate a random rotation matrix
+                self.__jax_PRNG_key, subkey = jax.random.split(self.__jax_PRNG_key)
+                alpha, beta, gamma = jax.random.uniform(
+                    subkey, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi
+                )  # Rotation angle around the x,y,z-axis (in radians)
+
+                # Define the rotation matrix for rotation around the x-axis
+                def rotation_matrix_x(alpha):
+                    cos_a = jnp.cos(alpha)
+                    sin_a = jnp.sin(alpha)
+                    R_x = jnp.array(
+                        [
+                            [1, 0, 0],
+                            [0, cos_a, -sin_a],
+                            [0, sin_a, cos_a],
+                        ]
+                    )
+                    return R_x
+
+                # Define the rotation matrix for rotation around the y-axis
+                def rotation_matrix_y(beta):
+                    cos_b = jnp.cos(beta)
+                    sin_b = jnp.sin(beta)
+                    R_y = jnp.array(
+                        [
+                            [cos_b, 0, sin_b],
+                            [0, 1, 0],
+                            [-sin_b, 0, cos_b],
+                        ]
+                    )
+                    return R_y
+
+                # Define the rotation matrix for rotation around the z-axis
+                def rotation_matrix_z(gamma):
+                    cos_g = jnp.cos(gamma)
+                    sin_g = jnp.sin(gamma)
+                    R_z = jnp.array(
+                        [
+                            [cos_g, -sin_g, 0],
+                            [sin_g, cos_g, 0],
+                            [0, 0, 1],
+                        ]
+                    )
+                    return R_z
+
+                # Compute individual rotation matrices
+                R_x = rotation_matrix_x(alpha)
+                R_y = rotation_matrix_y(beta)
+                R_z = rotation_matrix_z(gamma)
+                R = R_z @ R_y @ R_x  # Rotate in the order x -> y -> z
+
+                mesh_kinetic_part, elements_non_diagonal_kinetic_part = compute_discretized_kinetic_energy_api(
                     alat=self.__alat,
                     wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                     r_up_carts=self.__latest_r_up_carts,
                     r_dn_carts=self.__latest_r_dn_carts,
-                    jax_PRNG_key=jax_PRNG_key,
+                    RT=R.T,
                 )
                 elements_non_diagonal_kinetic_part_FN = list(
                     map(lambda K: K if K < 0 else 0.0, elements_non_diagonal_kinetic_part)
@@ -392,8 +436,8 @@ class GFMC:
                         V_nonlocal_FN = list(map(lambda V: V if V < 0.0 else 0.0, V_nonlocal))
                         diagonal_ecp_part_SP = np.sum(list(map(lambda V: V if V >= 0.0 else 0.0, V_nonlocal)))
                         non_diagonal_sum_hamiltonian += np.sum(V_nonlocal_FN)
-                        logger.info("V_nonlocal_FN")
-                        logger.info(V_nonlocal_FN)
+                        logger.debug("V_nonlocal_FN")
+                        logger.debug(V_nonlocal_FN)
 
                     elif self.__non_local_move == "dltmove":
                         mesh_non_local_ecp_part, V_nonlocal, _ = _compute_ecp_non_local_parts_jax(
@@ -473,11 +517,11 @@ class GFMC:
                         + non_diagonal_sum_hamiltonian
                     )
 
-                logger.info(f"  e_L={e_L}")
+                logger.debug(f"  e_L={e_L}")
 
                 # compute the time the walker remaining in the same configuration
                 start_projection_update_weights_and_positions = time.perf_counter()
-                xi = random.random()
+                xi = np.random.random()
                 tau_update = np.min((tau_left, np.log(1 - xi) / non_diagonal_sum_hamiltonian))
                 logger.debug(f"  tau_update={tau_update}")
 
@@ -721,7 +765,11 @@ class GFMC:
 
 
 if __name__ == "__main__":
+    import os
+    import pickle
+
     logger_level = "MPI-INFO"
+    # logger_level = "INFO"
 
     log = getLogger("jqmc")
 
@@ -748,7 +796,7 @@ if __name__ == "__main__":
         stream_handler.setFormatter(handler_format)
         log.addHandler(stream_handler)
 
-    # """
+    """
     # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
     (
         structure_data,
@@ -758,7 +806,6 @@ if __name__ == "__main__":
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"))
-    # """
 
     num_electron_up = geminal_mo_data.num_electron_up
     num_electron_dn = geminal_mo_data.num_electron_dn
@@ -781,17 +828,22 @@ if __name__ == "__main__":
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
     )
+    """
+
+    hamiltonian_chk = "hamiltonian_data.chk"
+    with open(hamiltonian_chk, "rb") as f:
+        hamiltonian_data = pickle.load(f)
 
     # run branching
     mcmc_seed = 3446
     tau = 0.01
     alat = 0.30
-    num_branching = 50
+    num_branching = 500
     non_local_move = "tmove"
 
-    num_gfmc_warmup_steps = 2
-    num_gfmc_bin_blocks = 5
-    num_gfmc_bin_collect = 2
+    num_gfmc_warmup_steps = 5
+    num_gfmc_bin_blocks = 10
+    num_gfmc_bin_collect = 5
 
     # run GFMC
     gfmc = GFMC(hamiltonian_data=hamiltonian_data, mcmc_seed=mcmc_seed, tau=tau, alat=alat, non_local_move=non_local_move)

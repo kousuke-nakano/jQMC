@@ -45,11 +45,11 @@ import toml
 # MPI
 from mpi4py import MPI
 
-from .lrdmc import GFMC
+from .lrdmc_vectorized import GFMC_multiple_walkers
 
 # jQMC module
 from .miscs.header_footer import print_footer, print_header
-from .vmc import VMC
+from .vmc_vectorized import VMC_multiple_walkers
 
 # MPI related
 comm = MPI.COMM_WORLD
@@ -139,6 +139,12 @@ def main():
     except KeyError:
         mcmc_seed = 34456
         logger.info(f"The default value of mcmc_seed = {mcmc_seed}.")
+    # number_of_walkers
+    try:
+        number_of_walkers = dict_toml["control"]["number_of_walkers"]
+    except KeyError:
+        number_of_walkers = 40
+        logger.info(f"The default value of number_of_walkers = {number_of_walkers}.")
     # max_time
     try:
         max_time = dict_toml["control"]["max_time"]
@@ -207,9 +213,10 @@ def main():
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
 
-                vmc = VMC(
+                vmc = VMC_multiple_walkers(
                     hamiltonian_data=hamiltonian_data,
                     mcmc_seed=mcmc_seed,
+                    num_walkers=number_of_walkers,
                     comput_position_deriv=False,
                     comput_jas_param_deriv=False,
                 )
@@ -296,9 +303,10 @@ def main():
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
 
-                vmc = VMC(
+                vmc = VMC_multiple_walkers(
                     hamiltonian_data=hamiltonian_data,
                     mcmc_seed=mcmc_seed,
+                    number_of_walkers=number_of_walkers,
                     comput_position_deriv=False,
                     comput_jas_param_deriv=True,
                 )
@@ -389,8 +397,13 @@ def main():
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
 
-                gfmc = GFMC(
-                    hamiltonian_data=hamiltonian_data, mcmc_seed=mcmc_seed, tau=tau, alat=alat, non_local_move=non_local_move
+                gfmc = GFMC_multiple_walkers(
+                    hamiltonian_data=hamiltonian_data,
+                    mcmc_seed=mcmc_seed,
+                    number_of_walkers=number_of_walkers,
+                    tau=tau,
+                    alat=alat,
+                    non_local_move=non_local_move,
                 )
         gfmc.run(num_branching=num_branching, max_time=max_time)
         e_L_mean, e_L_std = gfmc.get_e_L(
@@ -413,4 +426,5 @@ def main():
 
 
 if __name__ == "__main__":
+    main()
     main()

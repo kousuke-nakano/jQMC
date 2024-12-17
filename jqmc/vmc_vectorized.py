@@ -119,14 +119,14 @@ class MCMC_multiple_walkers:
         Dt: float = 2.0,
         comput_jas_param_deriv: bool = False,
         comput_position_deriv: bool = False,
-        jax_PRNG_key: jax.Array = None,
+        jax_PRNG_key_list: jax.Array = None,
     ) -> None:
         """Initialize a MCMC class, creating list holding results."""
         self.__hamiltonian_data = hamiltonian_data
         self.__num_walkers = num_walkers
         self.__num_mcmc_per_measurement = num_mcmc_per_measurement
         self.__Dt = Dt
-        self.__jax_PRNG_key = jax_PRNG_key
+        self.__jax_PRNG_key_list = jax_PRNG_key_list
 
         self.__comput_jas_param_deriv = comput_jas_param_deriv
         self.__comput_position_deriv = comput_position_deriv
@@ -454,14 +454,14 @@ class MCMC_multiple_walkers:
 
             # electron positions are goint to be updated!
             start = time.perf_counter()
-            jax_PRNG_key, accepted_moves_nw, rejected_moves_nw, latest_r_up_carts_nw, latest_r_dn_carts_nw = vmap(
+            jax_PRNG_key_list, accepted_moves_nw, rejected_moves_nw, latest_r_up_carts_nw, latest_r_dn_carts_nw = vmap(
                 _update_electron_positions, in_axes=(0, 0, 0)
-            )(self.__latest_r_up_carts, self.__latest_r_dn_carts, self.__jax_PRNG_key)
+            )(self.__latest_r_up_carts, self.__latest_r_dn_carts, self.__jax_PRNG_key_list)
             end = time.perf_counter()
             timer_mcmc_updated += end - start
 
             # store vmapped outcomes
-            self.__jax_PRNG_key = jax_PRNG_key
+            self.__jax_PRNG_key_list = jax_PRNG_key_list
             self.__accepted_moves += jnp.sum(accepted_moves_nw)
             self.__rejected_moves += jnp.sum(rejected_moves_nw)
             self.__latest_r_up_carts = latest_r_up_carts_nw
@@ -855,7 +855,8 @@ class VMC_multiple_walkers:
         np.random.seed(self.__mpi_seed)
 
         # set JAX random seed
-        jax_PRNG_key = jnp.array([jax.random.PRNGKey(i**2 * self.__mpi_seed) for i in range(self.__num_walkers)])
+        jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
+        jax_PRNG_key_list = jnp.array([jax.random.fold_in(jax_PRNG_key, nw) for nw in range(self.__num_walkers)])
 
         # set the initial electron configurations
         num_electron_up = hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
@@ -944,7 +945,7 @@ class VMC_multiple_walkers:
             Dt=Dt,
             comput_jas_param_deriv=self.__comput_jas_param_deriv,
             comput_position_deriv=self.__comput_position_deriv,
-            jax_PRNG_key=jax_PRNG_key,
+            jax_PRNG_key_list=jax_PRNG_key_list,
         )
 
         # WF optimization counter

@@ -7,7 +7,7 @@ from turbogenius.pyturbo.io_fort10 import IO_fort10
 from jqmc.atomic_orbital import AOs_data
 from jqmc.jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
 from jqmc.structure import Structure_data
-from jqmc.vmc import VMC
+from jqmc.vmc_serial import VMC_serial
 
 turborvb_WF_file = "fort.10"
 
