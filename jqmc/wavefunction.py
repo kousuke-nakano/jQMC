@@ -312,7 +312,7 @@ def compute_discretized_kinetic_energy_debug(
     return mesh_kinetic_part, elements_kinetic_part
 
 
-# @jit
+@jit
 def compute_discretized_kinetic_energy_api(
     alat: float, wavefunction_data, r_up_carts: jnp.ndarray, r_dn_carts: jnp.ndarray, RT: jnp.ndarray
 ) -> tuple[list[tuple[npt.NDArray, npt.NDArray]], list[npt.NDArray], jax.Array]:

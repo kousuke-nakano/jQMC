@@ -43,7 +43,8 @@ from logging import Formatter, StreamHandler, getLogger
 import jax
 import numpy as np
 import numpy.typing as npt
-from jax import jit
+
+# from jax import jit
 from jax import numpy as jnp
 from jax import vmap
 
@@ -56,10 +57,7 @@ from .coulomb_potential import (
     _compute_ecp_local_parts_jax,
     _compute_ecp_non_local_parts_jax,
 )
-from .hamiltonians import Hamiltonian_data, compute_kinetic_energy_api, compute_local_energy_api
-from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
-from .trexio_wrapper import read_trexio_file
-from .wavefunction import Wavefunction_data, compute_discretized_kinetic_energy_api, evaluate_jastrow_api
+from .hamiltonians import Hamiltonian_data, compute_kinetic_energy_api
 
 # MPI related
 comm = MPI.COMM_WORLD
@@ -134,9 +132,17 @@ class GFMC_multiple_walkers:
         self.__e_L_averaged_list = []
         self.__w_L_averaged_list = []
 
+        # timer
+        self.__timer_gmfc_init = 0.0
+        self.__timer_gmfc_total = 0.0
+        self.__timer_projection_total = 0.0
+        self.__timer_branching = 0.0
+        self.__timer_observable = 0.0
+
         # gfmc branching counter
         self.__gfmc_branching_counter = 0
 
+        start = time.perf_counter()
         # Initialization
         self.__mpi_seed = mcmc_seed * (rank + 1)
         self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
@@ -218,17 +224,9 @@ class GFMC_multiple_walkers:
         logger.info(f"initial r_up_carts.shape = {self.__latest_r_up_carts.shape}")
         logger.info(f"initial r_dn_carts.shape = {self.__latest_r_dn_carts.shape}")
 
-        # """
-        # compiling methods
-        # jax.profiler.start_trace("/tmp/tensorboard", create_perfetto_link=True)
-        # open the generated URL (UI with perfetto)
-        # tensorboard --logdir /tmp/tensorboard
-        # tensorborad does not work with safari. use google chrome
-
         logger.info("Compilation starts.")
 
         logger.info("Compilation e_L starts.")
-        start = time.perf_counter()
         _ = compute_kinetic_energy_api(
             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
             r_up_carts=self.__latest_r_up_carts[0],
@@ -258,13 +256,12 @@ class GFMC_multiple_walkers:
             r_dn_carts=self.__latest_r_dn_carts[0],
         )
         end = time.perf_counter()
+        timer_gmfc_init = end - start
         logger.info("Compilation e_L is done.")
-        logger.info(f"Elapsed Time = {end-start:.2f} sec.")
 
+        logger.info(f"Elapsed Time = {timer_gmfc_init:.2f} sec.")
         logger.info("Compilation is done.")
-
-        # jax.profiler.stop_trace()
-        # """
+        self.__timer_gmfc_init += timer_gmfc_init
 
     def run(self, num_branching: int = 50, max_time: int = 86400) -> None:
         """Run LRDMC with multiple walkers.
@@ -273,7 +270,6 @@ class GFMC_multiple_walkers:
             num_branching (int): number of branching (reconfiguration of walkers).
             max_time (int): maximum time in sec.
         """
-
         # set timer
         timer_projection_total = 0.0
         timer_observable = 0.0
@@ -299,12 +295,12 @@ class GFMC_multiple_walkers:
 
             # MAIN projection loop.
             def _projection(
-                e_L: float,
                 tau_left: float,
                 w_L: float,
                 r_up_carts: npt.NDArray,
                 r_dn_carts: npt.NDArray,
                 jax_PRNG_key: jax.Array,
+                non_local_move: bool,
             ):
                 """Do projection, compatible with vmap.
 
@@ -409,40 +405,89 @@ class GFMC_multiple_walkers:
                     r_dn_carts=r_dn_carts,
                 )
 
-                # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
-                # ecp local
-                diagonal_ecp_local_part = _compute_ecp_local_parts_jax(
-                    coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                    r_up_carts=r_up_carts,
-                    r_dn_carts=r_dn_carts,
-                )
+                # with ECP
+                if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
+                    # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
+                    # ecp local
+                    diagonal_ecp_local_part = _compute_ecp_local_parts_jax(
+                        coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                        r_up_carts=r_up_carts,
+                        r_dn_carts=r_dn_carts,
+                    )
 
-                # ecp non-local (t-move)
-                mesh_non_local_ecp_part, V_nonlocal, _ = _compute_ecp_non_local_parts_jax(
-                    coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                    r_up_carts=r_up_carts,
-                    r_dn_carts=r_dn_carts,
-                    flag_determinant_only=False,
-                )
+                    if non_local_move == "tmove":
+                        # ecp non-local (t-move)
+                        mesh_non_local_ecp_part, V_nonlocal, _ = _compute_ecp_non_local_parts_jax(
+                            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                            r_up_carts=r_up_carts,
+                            r_dn_carts=r_dn_carts,
+                            flag_determinant_only=False,
+                        )
 
-                V_nonlocal = jnp.array(V_nonlocal)
-                V_nonlocal_FN = jnp.where(V_nonlocal < 0.0, V_nonlocal, 0.0)
-                diagonal_ecp_part_SP = jnp.sum(jnp.where(V_nonlocal >= 0.0, V_nonlocal, 0.0))
-                non_diagonal_sum_hamiltonian_ecp = jnp.sum(V_nonlocal_FN)
+                        V_nonlocal = jnp.array(V_nonlocal)
+                        V_nonlocal_FN = jnp.where(V_nonlocal < 0.0, V_nonlocal, 0.0)
+                        diagonal_ecp_part_SP = jnp.sum(jnp.where(V_nonlocal >= 0.0, V_nonlocal, 0.0))
+                        non_diagonal_sum_hamiltonian_ecp = jnp.sum(V_nonlocal_FN)
+                        non_diagonal_sum_hamiltonian = non_diagonal_sum_hamiltonian_kinetic + non_diagonal_sum_hamiltonian_ecp
 
-                non_diagonal_sum_hamiltonian = non_diagonal_sum_hamiltonian_kinetic + non_diagonal_sum_hamiltonian_ecp
+                    elif non_local_move == "dltmove":
+                        mesh_non_local_ecp_part, V_nonlocal, _ = _compute_ecp_non_local_parts_jax(
+                            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                            r_up_carts=r_up_carts,
+                            r_dn_carts=r_dn_carts,
+                            flag_determinant_only=True,
+                        )
 
-                # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
-                e_L = (
-                    diagonal_kinetic_continuum
-                    + diagonal_kinetic_discretized
-                    + diagonal_bare_coulomb_part
-                    + diagonal_ecp_local_part
-                    + diagonal_kinetic_part_SP
-                    + diagonal_ecp_part_SP
-                    + non_diagonal_sum_hamiltonian
-                )
+                        V_nonlocal = jnp.array(V_nonlocal)
+                        V_nonlocal_FN = jnp.where(V_nonlocal < 0.0, V_nonlocal, 0.0)
+                        diagonal_ecp_part_SP = jnp.sum(jnp.where(V_nonlocal >= 0.0, V_nonlocal, 0.0))
+
+                        Jastrow_ref = evaluate_jastrow_api(
+                            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                            r_up_carts=r_up_carts,
+                            r_dn_carts=r_dn_carts,
+                        )
+
+                        mesh_non_local_ecp_part = jnp.array(mesh_non_local_ecp_part)
+                        r_up_carts_on_mesh = mesh_non_local_ecp_part[:, 0, :, :]
+                        r_dn_carts_on_mesh = mesh_non_local_ecp_part[:, 1, :, :]
+                        Jastrow_on_mesh = vmap(evaluate_jastrow_api, in_axes=(None, 0, 0))(
+                            self.__hamiltonian_data.wavefunction_data, r_up_carts_on_mesh, r_dn_carts_on_mesh
+                        )
+                        Jastrow_ratio = Jastrow_on_mesh / Jastrow_ref
+                        # logger.info(f"Jastrow_ratio = {Jastrow_ratio}.")
+                        V_nonlocal_FN = jnp.where(V_nonlocal < 0.0, V_nonlocal * Jastrow_ratio, 0.0)
+
+                        non_diagonal_sum_hamiltonian_ecp = jnp.sum(V_nonlocal_FN)
+                        non_diagonal_sum_hamiltonian = non_diagonal_sum_hamiltonian_kinetic + non_diagonal_sum_hamiltonian_ecp
+
+                    else:
+                        logger.error(f"non_local_move = {self.__non_local_move} is not yet implemented.")
+                        raise NotImplementedError
+
+                    # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
+                    e_L = (
+                        diagonal_kinetic_continuum
+                        + diagonal_kinetic_discretized
+                        + diagonal_bare_coulomb_part
+                        + diagonal_ecp_local_part
+                        + diagonal_kinetic_part_SP
+                        + diagonal_ecp_part_SP
+                        + non_diagonal_sum_hamiltonian
+                    )
+
+                # with all electrons
+                else:
+                    # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
+                    e_L = (
+                        diagonal_kinetic_continuum
+                        + diagonal_kinetic_discretized
+                        + diagonal_bare_coulomb_part
+                        + diagonal_kinetic_part_SP
+                        + non_diagonal_sum_hamiltonian
+                    )
 
                 logger.debug(f"  e_L={e_L}")
 
@@ -507,7 +552,6 @@ class GFMC_multiple_walkers:
                 return (e_L, tau_left, w_L, r_up_carts, r_dn_carts, jax_PRNG_key)
 
             # Always set the initial weight list to 1.0
-            e_L_list = jnp.array([0.0 for _ in range(self.__num_walkers)])
             tau_left_list = jnp.array([self.__tau for _ in range(self.__num_walkers)])
             w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
 
@@ -533,13 +577,13 @@ class GFMC_multiple_walkers:
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                     self.__jax_PRNG_key_list,
-                ) = vmap(_projection, in_axes=(0, 0, 0, 0, 0, 0))(
-                    e_L_list,
+                ) = vmap(_projection, in_axes=(0, 0, 0, 0, 0, None))(
                     tau_left_list,
                     w_L_list,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                     self.__jax_PRNG_key_list,
+                    self.__non_local_move,
                 )
                 logger.debug(f"  out: w_L_list = {w_L_list}.")
                 logger.debug(f"max(tau_left_list) = {np.max(tau_left_list)}.")
@@ -697,6 +741,11 @@ class GFMC_multiple_walkers:
         logger.debug(f"len(self.__e_L_averaged_list) = {len(self.__e_L_averaged_list)}.")
         logger.debug(f"len(self.__w_L_averaged_list) = {len(self.__w_L_averaged_list)}.")
 
+        self.__timer_gmfc_total += timer_gmfc_total
+        self.__timer_projection_total += timer_projection_total
+        self.__timer_branching += timer_branching
+        self.__timer_observable += timer_observable
+
     def get_e_L(self, num_gfmc_warmup_steps: int = 3, num_gfmc_bin_blocks: int = 10, num_gfmc_bin_collect: int = 2) -> float:
         """Get e_L."""
         if rank == 0:
@@ -743,28 +792,62 @@ class GFMC_multiple_walkers:
 
     @property
     def hamiltonian_data(self):
+        """Return hamiltonian_data."""
         return self.__hamiltonian_data
 
     @property
-    def e_L(self):
+    def e_L(self) -> npt.NDArray:
+        """Return the stored e_L array."""
         return self.__latest_e_L
 
     @property
-    def w_L(self):
+    def w_L(self) -> npt.NDArray:
+        """Return the stored w_L array."""
         return self.__latest_w_L
 
     @property
-    def latest_r_up_carts(self):
+    def latest_r_up_carts(self) -> npt.NDArray:
+        """Latest updated electron position for up-spin."""
         return self.__latest_r_up_carts
 
     @property
-    def latest_r_dn_carts(self):
+    def latest_r_dn_carts(self) -> npt.NDArray:
+        """Latest updated electron position for down-spin."""
         return self.__latest_r_dn_carts
+
+    @property
+    def timer_gmfc_init(self) -> float:
+        """Return the measured elapsed time for initialization."""
+        return self.__timer_gmfc_init
+
+    @property
+    def timer_gmfc_total(self) -> float:
+        """Return the measured elapsed time for total GFMC."""
+        return self.__timer_gmfc_total
+
+    @property
+    def timer_projection_total(self) -> float:
+        """Return the measured elapsed time for GFMC projection."""
+        return self.__timer_projection_total
+
+    @property
+    def timer_branching(self) -> float:
+        """Return the measured elapsed time for GFMC branching."""
+        return self.__timer_branching
+
+    @property
+    def timer_observable(self) -> float:
+        """Return the measured elapsed time for computing other observables."""
+        return self.__timer_observable
 
 
 if __name__ == "__main__":
     import os
     import pickle
+
+    from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
+    from .trexio_wrapper import read_trexio_file
+    from .wavefunction import Wavefunction_data, compute_discretized_kinetic_energy_api, evaluate_jastrow_api
 
     logger_level = "MPI-INFO"
 
@@ -836,8 +919,8 @@ if __name__ == "__main__":
     mcmc_seed = 3446
     tau = 0.01
     alat = 0.30
-    num_branching = 500
-    non_local_move = "tmove"
+    num_branching = 50
+    non_local_move = "dltmove"
 
     num_gfmc_warmup_steps = 5
     num_gfmc_bin_blocks = 10

@@ -36,7 +36,6 @@ import logging
 
 # python modules
 import os
-import random
 import time
 from logging import Formatter, StreamHandler, getLogger
 
@@ -46,9 +45,8 @@ import jax
 import numpy as np
 import numpy.typing as npt
 import scipy
-from jax import grad, lax
+from jax import grad, lax, vmap
 from jax import numpy as jnp
-from jax import vmap
 
 # MPI
 from mpi4py import MPI
@@ -56,7 +54,7 @@ from mpi4py import MPI
 # jQMC module
 from .hamiltonians import Hamiltonian_data, compute_local_energy_api
 from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
-from .structure import find_nearest_index, find_nearest_index_jax
+from .structure import find_nearest_index_jax
 from .swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
 from .trexio_wrapper import read_trexio_file
 from .wavefunction import Wavefunction_data, evaluate_ln_wavefunction_api, evaluate_wavefunction_api
@@ -127,9 +125,17 @@ class MCMC_multiple_walkers:
         self.__num_mcmc_per_measurement = num_mcmc_per_measurement
         self.__Dt = Dt
         self.__jax_PRNG_key_list = jax_PRNG_key_list
-
         self.__comput_jas_param_deriv = comput_jas_param_deriv
         self.__comput_position_deriv = comput_position_deriv
+
+        # timer
+        self.__timer_mcmc_init = 0.0
+        self.__timer_mcmc_updated = 0.0
+        self.__timer_e_L = 0.0
+        self.__timer_de_L_dR_dr = 0.0
+        self.__timer_dln_Psi_dR_dr = 0.0
+        self.__timer_dln_Psi_dc_jas1b2b3b = 0.0
+        self.__timer_misc = 0.0
 
         # latest electron positions
         self.__latest_r_up_carts = init_r_up_carts
@@ -151,6 +157,7 @@ class MCMC_multiple_walkers:
         end = time.perf_counter()
         logger.info("Compilation e_L is done.")
         logger.info(f"Elapsed Time = {end-start:.2f} sec.")
+        self.__timer_mcmc_init += end - start
 
         if self.__comput_position_deriv:
             logger.info("Compilation de_L starts.")
@@ -163,6 +170,7 @@ class MCMC_multiple_walkers:
             end = time.perf_counter()
             logger.info("Compilation de_L is done.")
             logger.info(f"Elapsed Time = {end-start:.2f} sec.")
+            self.__timer_mcmc_init += end - start
 
             logger.info("Compilation dln_Psi starts.")
             start = time.perf_counter()
@@ -174,6 +182,7 @@ class MCMC_multiple_walkers:
             end = time.perf_counter()
             logger.info("Compilation dln_Psi is done.")
             logger.info(f"Elapsed Time = {end-start:.2f} sec.")
+            self.__timer_mcmc_init += end - start
 
             logger.info("Compilation domega starts.")
             start = time.perf_counter()
@@ -184,6 +193,7 @@ class MCMC_multiple_walkers:
             end = time.perf_counter()
             logger.info("Compilation domega is done.")
             logger.info(f"Elapsed Time = {end-start:.2f} sec.")
+            self.__timer_mcmc_init += end - start
 
         if self.__comput_jas_param_deriv:
             logger.info("Compilation dln_Psi starts.")
@@ -196,6 +206,7 @@ class MCMC_multiple_walkers:
             end = time.perf_counter()
             logger.info("Compilation dln_Psi is done.")
             logger.info(f"Elapsed Time = {end-start:.2f} sec.")
+            self.__timer_mcmc_init += end - start
 
         logger.info("Compilation is done.")
 
@@ -215,9 +226,6 @@ class MCMC_multiple_walkers:
 
         # stored local energy (ln_WF)
         self.__stored_ln_WF = []
-
-        # stored local energy (abs_WF)
-        self.__stored_abs_WF = []
 
         # stored de_L / dR
         self.__stored_grad_e_L_dR = []
@@ -282,9 +290,6 @@ class MCMC_multiple_walkers:
             num_mcmc_steps (int): the number of total mcmc steps per walker.
             max_time(int):
                 Max elapsed time (sec.). If the elapsed time exceeds max_time, the methods exits the mcmc loop.
-
-        Return:
-            None
         """
         # MAIN MCMC loop from here !!!
         progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
@@ -469,22 +474,6 @@ class MCMC_multiple_walkers:
 
             # evaluate observables
             start = time.perf_counter()
-            """
-            logger.info(f"r_up_carts = {self.__latest_r_up_carts}")
-            logger.info(f"r_dn_carts = {self.__latest_r_dn_carts}")
-            logger.info(f"r_up_carts.shape = {self.__latest_r_up_carts.shape}")
-            logger.info(f"r_dn_carts.shape = {self.__latest_r_dn_carts.shape}")
-            e_L = [
-                compute_local_energy_api(
-                    self.__hamiltonian_data,
-                    r_up_carts,
-                    r_dn_carts,
-                )
-                for r_up_carts, r_dn_carts in zip(self.__latest_r_up_carts, self.__latest_r_dn_carts)
-            ]
-            logger.info(f"e_L = {e_L}.")
-            """
-
             e_L = vmap(compute_local_energy_api, in_axes=(None, 0, 0))(
                 self.__hamiltonian_data,
                 self.__latest_r_up_carts,
@@ -661,9 +650,16 @@ class MCMC_multiple_walkers:
 
         mcmc_total_end = time.perf_counter()
         timer_mcmc_total = mcmc_total_end - mcmc_total_start
-        timer_others = timer_mcmc_total - (
+        timer_misc = timer_mcmc_total - (
             timer_mcmc_updated + timer_e_L + timer_de_L_dR_dr + timer_dln_Psi_dR_dr + timer_dln_Psi_dc_jas1b2b3b
         )
+
+        self.__timer_mcmc_updated += timer_mcmc_updated
+        self.__timer_e_L += timer_e_L
+        self.__timer_de_L_dR_dr += timer_de_L_dR_dr
+        self.__timer_dln_Psi_dR_dr += timer_dln_Psi_dR_dr
+        self.__timer_dln_Psi_dc_jas1b2b3b += timer_dln_Psi_dc_jas1b2b3b
+        self.__timer_misc += timer_misc
 
         logger.info(f"Acceptance ratio is {self.__accepted_moves/(self.__accepted_moves + self.__rejected_moves)*100:.3f} %")
         logger.info(f"Total Elapsed time for MCMC {num_mcmc_steps} steps. = {timer_mcmc_total:.2f} sec.")
@@ -675,94 +671,143 @@ class MCMC_multiple_walkers:
         logger.info(
             f"  Time for computing dln_Psi/dc (jastrow 1b2b3b) = {timer_dln_Psi_dc_jas1b2b3b/num_mcmc_steps*10**3:.2f} msec."
         )
-        logger.info(f"  Time for misc. (others) = {timer_others/num_mcmc_steps*10**3:.2f} msec.")
+        logger.info(f"  Time for misc. (others) = {timer_misc/num_mcmc_steps*10**3:.2f} msec.")
 
     @property
     def hamiltonian_data(self):
+        """Return hamiltonian_data."""
         return self.__hamiltonian_data
 
     @hamiltonian_data.setter
     def hamiltonian_data(self, hamiltonian_data):
+        """Set hamiltonian_data."""
         self.__hamiltonian_data = hamiltonian_data
         self.__init_attributes()
 
     @property
-    def e_L(self):
+    def e_L(self) -> npt.NDArray:
+        """Return the stored e_L array."""
         return np.array(self.__stored_e_L)
 
     @property
-    def de_L_dR(self):
+    def de_L_dR(self) -> npt.NDArray:
+        """Return the stored de_L/dR array."""
         return np.array(self.__stored_grad_e_L_dR)
 
     @property
-    def de_L_dr_up(self):
+    def de_L_dr_up(self) -> npt.NDArray:
+        """Return the stored de_L/dr_up array."""
         return np.array(self.__stored_grad_e_L_r_up)
 
     @property
-    def de_L_dr_dn(self):
+    def de_L_dr_dn(self) -> npt.NDArray:
+        """Return the stored de_L/dr_dn array."""
         return np.array(self.__stored_grad_e_L_r_dn)
 
     @property
-    def dln_Psi_dr_up(self):
+    def dln_Psi_dr_up(self) -> npt.NDArray:
+        """Return the stored dln_Psi/dr_up array."""
         return np.array(self.__stored_grad_ln_Psi_r_up)
 
     @property
-    def dln_Psi_dr_dn(self):
+    def dln_Psi_dr_dn(self) -> npt.NDArray:
+        """Return the stored dln_Psi/dr_down array."""
         return np.array(self.__stored_grad_ln_Psi_r_dn)
 
     @property
-    def dln_Psi_dR(self):
+    def dln_Psi_dR(self) -> npt.NDArray:
+        """Return the stored dln_Psi/dR array."""
         return np.array(self.__stored_grad_ln_Psi_dR)
 
     @property
-    def omega_up(self):
+    def omega_up(self) -> npt.NDArray:
+        """Return the stored Omega (for up electrons) array."""
         return np.array(self.__stored_omega_up)
 
     @property
-    def omega_dn(self):
+    def omega_dn(self) -> npt.NDArray:
+        """Return the stored Omega (for down electrons) array."""
         return np.array(self.__stored_omega_dn)
 
     @property
-    def domega_dr_up(self):
+    def domega_dr_up(self) -> npt.NDArray:
+        """Return the stored dOmega/dr_up array."""
         return np.array(self.__stored_grad_omega_r_up)
 
     @property
-    def domega_dr_dn(self):
+    def domega_dr_dn(self) -> npt.NDArray:
+        """Return the stored dOmega/dr_dn array."""
         return np.array(self.__stored_grad_omega_r_dn)
 
     @property
-    def dln_Psi_dc_jas_2b(self):
+    def dln_Psi_dc_jas_2b(self) -> npt.NDArray:
+        """Return the stored dln_Psi/dc_J2 array."""
         return np.array(self.__stored_grad_ln_Psi_jas2b)
 
     @property
-    def dln_Psi_dc_jas_1b3b(self):
+    def dln_Psi_dc_jas_1b3b(self) -> npt.NDArray:
+        """Return the stored dln_Psi/dc_J1_3 array."""
         return np.array(self.__stored_grad_ln_Psi_jas1b3b_j_matrix)
 
     @property
-    def domega_dr_dn(self):
-        return np.array(self.__stored_grad_omega_r_dn)
-
-    @property
-    def latest_r_up_carts(self):
+    def latest_r_up_carts(self) -> npt.NDArray:
         """Latest updated electron position for up-spin."""
         return self.__latest_r_up_carts
 
     @property
-    def latest_r_dn_carts(self):
+    def latest_r_dn_carts(self) -> npt.NDArray:
         """Latest updated electron position for dn-spin."""
         return self.__latest_r_dn_carts
 
     @property
-    def Dt(self):
+    def Dt(self) -> float:
+        """Return Dt."""
         return self.__Dt
 
     @property
-    def mcmc_counter(self):
+    def mcmc_counter(self) -> int:
+        """Return current MCMC counter."""
         return self.__mcmc_counter
 
     @property
     def num_walkers(self):
+        """The number of walkers."""
         return self.__num_walkers
+
+    @property
+    def timer_mcmc_init(self):
+        """Return the measured elapsed time for MCMC initialization."""
+        return self.__timer_mcmc_init
+
+    @property
+    def timer_mcmc_updated(self):
+        """Return the measured elapsed time for MCMC update."""
+        return self.__timer_mcmc_updated
+
+    @property
+    def timer_e_L(self):
+        """Return the measured elapsed time for computing e_L."""
+        return self.__timer_e_L
+
+    @property
+    def timer_de_L_dR_dr(self):
+        """Return the measured elapsed time for computing de_L/dR and de_L/dr."""
+        return self.__timer_de_L_dR_dr
+
+    @property
+    def timer_dln_Psi_dR_dr(self):
+        """Return the measured elapsed time for computing dln_Psi/dR and dln_Psi/dr."""
+        return self.__timer_dln_Psi_dR_dr
+
+    @property
+    def timer_dln_Psi_dc_jas1b2b3b(self):
+        """Return the measured elapsed time for computing dln_Psi/dc(jas1b,2b,3b)."""
+        return self.__timer_dln_Psi_dc_jas1b2b3b
+
+    @property
+    def timer_misc(self):
+        """Return the measured elapsed time for computing miscs."""
+        return self.__timer_misc
 
     @property
     def opt_param_dict(self):
@@ -826,12 +871,12 @@ class VMC_multiple_walkers:
     Runing VMC using MCMC.
 
     Args:
-        hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
-        mcmc_seed (int): random seed for MCMC
+        hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data.
+        mcmc_seed (int): random seed for generating initial electron positions.
         num_walkers (int): the number of walkers.
-        num_mcmc_warmup_steps (int): number of equilibration steps.
-        num_mcmc_bin_blocks (int): number of blocks for reblocking.
         Dt (float): electron move step (bohr)
+        comput_jas_param_deriv (bool): if True, compute the derivatives of E wrt. Jastrow parameters.
+        comput_position_deriv (bool): if True, compute the derivatives of E wrt. atomic positions.
     """
 
     def __init__(
@@ -851,9 +896,6 @@ class VMC_multiple_walkers:
 
         logger.debug(f"mcmc_seed for MPI-rank={rank} is {self.__mpi_seed}.")
 
-        # set random seeds
-        np.random.seed(self.__mpi_seed)
-
         # set JAX random seed
         jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
         jax_PRNG_key_list = jnp.array([jax.random.fold_in(jax_PRNG_key, nw) for nw in range(self.__num_walkers)])
@@ -865,6 +907,7 @@ class VMC_multiple_walkers:
         r_carts_up_list = []
         r_carts_dn_list = []
 
+        np.random.seed(self.__mpi_seed)
         for _ in range(self.__num_walkers):
             # Initialization
             r_carts_up = []
@@ -941,7 +984,7 @@ class VMC_multiple_walkers:
             init_r_up_carts=init_r_up_carts,
             init_r_dn_carts=init_r_dn_carts,
             num_walkers=self.__num_walkers,
-            num_mcmc_per_measurement=16,  # tentative
+            num_mcmc_per_measurement=16,
             Dt=Dt,
             comput_jas_param_deriv=self.__comput_jas_param_deriv,
             comput_position_deriv=self.__comput_position_deriv,
@@ -950,6 +993,41 @@ class VMC_multiple_walkers:
 
         # WF optimization counter
         self.__i_opt = 0
+
+    @property
+    def timer_mcmc_init(self):
+        """Return the measured elapsed time for MCMC initialization."""
+        return self.__mcmc.timer_mcmc_init
+
+    @property
+    def timer_mcmc_updated(self):
+        """Return the measured elapsed time for MCMC update."""
+        return self.__mcmc.timer_mcmc_updated
+
+    @property
+    def timer_e_L(self):
+        """Return the measured elapsed time for computing e_L."""
+        return self.__mcmc.timer_e_L
+
+    @property
+    def timer_de_L_dR_dr(self):
+        """Return the measured elapsed time for computing de_L/dR and de_L/dr."""
+        return self.__mcmc.timer_de_L_dR_dr
+
+    @property
+    def timer_dln_Psi_dR_dr(self):
+        """Return the measured elapsed time for computing dln_Psi/dR and dln_Psi/dr."""
+        return self.__mcmc.timer_dln_Psi_dR_dr
+
+    @property
+    def timer_dln_Psi_dc_jas1b2b3b(self):
+        """Return the measured elapsed time for computing dln_Psi/dc(jas1b,2b,3b)."""
+        return self.__mcmc.timer_dln_Psi_dc_jas1b2b3b
+
+    @property
+    def timer_misc(self):
+        """Return the measured elapsed time for computing miscs."""
+        return self.__mcmc.timer_misc
 
     def run_single_shot(self, num_mcmc_steps: int = 0, max_time: int = 86400) -> None:
         """Launch single-shot VMC.
@@ -960,9 +1038,6 @@ class VMC_multiple_walkers:
             max_time(int):
                 The maximum time (sec.) If maximum time exceeds,
                 the method exits the MCMC loop.
-
-        Return:
-            None
         """
         self.__mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
 
