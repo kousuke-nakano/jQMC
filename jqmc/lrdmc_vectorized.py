@@ -33,18 +33,17 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import logging
+import time
 
 # python modules
-import time
+from functools import partial
 from logging import Formatter, StreamHandler, getLogger
 
-# import mpi4jax
 # JAX
 import jax
 import numpy as np
 import numpy.typing as npt
-
-# from jax import jit
+from jax import jit
 from jax import numpy as jnp
 from jax import vmap
 
@@ -228,6 +227,7 @@ class GFMC_multiple_walkers:
         logger.debug(f"initial r_dn_carts = {self.__latest_r_dn_carts}")
         logger.debug(f"initial r_up_carts.shape = {self.__latest_r_up_carts.shape}")
         logger.debug(f"initial r_dn_carts.shape = {self.__latest_r_dn_carts.shape}")
+        logger.info("")
 
         logger.info("Compilation of fundamental functions starts.")
 
@@ -266,6 +266,7 @@ class GFMC_multiple_walkers:
 
         logger.info("Compilation of fundamental functions is done.")
         logger.info(f"Elapsed Time = {self.__timer_gmfc_init:.2f} sec.")
+        logger.info("")
 
     def run(self, num_branching: int = 50, max_time: int = 86400) -> None:
         """Run LRDMC with multiple walkers.
@@ -283,8 +284,10 @@ class GFMC_multiple_walkers:
 
         # projection function.
         start_init = time.perf_counter()
-        logger.info("Start compilation of the GMFC projection funciton.-")
+        logger.info("Start compilation of the GMFC projection funciton.")
 
+        # Note: This jit drastically accelarates the computation!!
+        @partial(jit, static_argnums=5)
         def _projection(
             tau_left: float,
             w_L: float,
@@ -396,6 +399,7 @@ class GFMC_multiple_walkers:
                 r_dn_carts=r_dn_carts,
             )
 
+            # """ if-else for all-ele, ecp with tmove, and ecp with dltmove
             # with ECP
             if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
                 # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
@@ -481,15 +485,36 @@ class GFMC_multiple_walkers:
                 )
 
             logger.debug(f"  e_L={e_L}")
+            # """
 
-            """
-            e_L_debug = compute_local_energy_api(
-                hamiltonian_data=self.__hamiltonian_data,
+            """ for speed test: ecp local and non-local (t-move)
+            diagonal_ecp_local_part = _compute_ecp_local_parts_jax(
+                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
             )
+            mesh_non_local_ecp_part, V_nonlocal, _ = _compute_ecp_non_local_parts_jax(
+                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                r_up_carts=r_up_carts,
+                r_dn_carts=r_dn_carts,
+                flag_determinant_only=False,
+            )
 
-            logger.info(f"  e_L_debug={e_L_debug}")
+            V_nonlocal = jnp.array(V_nonlocal)
+            V_nonlocal_FN = jnp.where(V_nonlocal < 0.0, V_nonlocal, 0.0)
+            diagonal_ecp_part_SP = jnp.sum(jnp.where(V_nonlocal >= 0.0, V_nonlocal, 0.0))
+            non_diagonal_sum_hamiltonian_ecp = jnp.sum(V_nonlocal_FN)
+            non_diagonal_sum_hamiltonian = non_diagonal_sum_hamiltonian_kinetic + non_diagonal_sum_hamiltonian_ecp
+            e_L = (
+                diagonal_kinetic_continuum
+                + diagonal_kinetic_discretized
+                + diagonal_bare_coulomb_part
+                + diagonal_ecp_local_part
+                + diagonal_kinetic_part_SP
+                + diagonal_ecp_part_SP
+                + non_diagonal_sum_hamiltonian
+            )
             """
 
             # choose a non-diagonal move destination
@@ -564,7 +589,8 @@ class GFMC_multiple_walkers:
 
         end_init = time.perf_counter()
         timer_projection_init += end_init - start_init
-        logger.info("End compilation of the GMFC projection funciton.-")
+        logger.info("End compilation of the GMFC projection funciton.")
+        logger.info("")
 
         # Main branching loop.
         gfmc_interval = int(np.max([num_branching / 10, 1]))  # gfmc_projection set print-interval
@@ -573,7 +599,7 @@ class GFMC_multiple_walkers:
 
         progress = (self.__gfmc_branching_counter) / (num_branching + self.__gfmc_branching_counter) * 100.0
         logger.info(
-            f"Current branching step = {self.__gfmc_branching_counter}/{num_branching+self.__gfmc_branching_counter}: {progress:.0f} %."
+            f"  Progress: branching step = {self.__gfmc_branching_counter}/{num_branching+self.__gfmc_branching_counter}: {progress:.0f} %."
         )
 
         for i_branching in range(num_branching):
@@ -753,6 +779,7 @@ class GFMC_multiple_walkers:
                 break
 
         logger.info("-End branching-")
+        logger.info("")
 
         # count up
         self.__gfmc_branching_counter += i_branching + 1
@@ -773,6 +800,7 @@ class GFMC_multiple_walkers:
         logger.debug(f"self.__w_L_averaged_list = {self.__w_L_averaged_list}.")
         logger.debug(f"len(self.__e_L_averaged_list) = {len(self.__e_L_averaged_list)}.")
         logger.debug(f"len(self.__w_L_averaged_list) = {len(self.__w_L_averaged_list)}.")
+        logger.info("")
 
         self.__timer_gmfc_total += timer_gmfc_total
         self.__timer_projection_total += timer_projection_total
@@ -973,16 +1001,16 @@ if __name__ == "__main__":
         hamiltonian_data = pickle.load(f)
 
     # run branching
-    num_walkers = 40
+    num_walkers = 1
     mcmc_seed = 3446
     tau = 0.01
     alat = 0.30
-    num_branching = 50
+    num_branching = 20
     non_local_move = "dltmove"
 
     num_gfmc_warmup_steps = 5
-    num_gfmc_bin_blocks = 10
-    num_gfmc_bin_collect = 5
+    num_gfmc_bin_blocks = 5
+    num_gfmc_bin_collect = 3
 
     # run GFMC with multiple walkers
     gfmc = GFMC_multiple_walkers(

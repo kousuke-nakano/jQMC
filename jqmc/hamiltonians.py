@@ -43,6 +43,7 @@ import jax
 import numpy as np
 import numpy.typing as npt
 from flax import struct
+from jax import jit
 
 from .coulomb_potential import Coulomb_potential_data, compute_coulomb_potential_api
 from .structure import Structure_data
@@ -124,6 +125,7 @@ class Hamiltonian_data:
             return pickle.load(f)
 
 
+@jit
 def compute_local_energy_api(
     hamiltonian_data: Hamiltonian_data,
     r_up_carts: npt.NDArray[np.float64],

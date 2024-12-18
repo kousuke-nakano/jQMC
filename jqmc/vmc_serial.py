@@ -40,7 +40,6 @@ import random
 import time
 from logging import Formatter, StreamHandler, getLogger
 
-# import mpi4jax
 # JAX
 import jax
 import numpy as np
@@ -56,7 +55,7 @@ from mpi4py import MPI
 # jQMC module
 from .hamiltonians import Hamiltonian_data, compute_local_energy_api
 from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
-from .structure import find_nearest_index, find_nearest_index_jax
+from .structure import find_nearest_index
 from .swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
 from .trexio_wrapper import read_trexio_file
 from .wavefunction import Wavefunction_data, evaluate_ln_wavefunction_api, evaluate_wavefunction_api
@@ -216,12 +215,6 @@ class MCMC_serial:
 
         # stored local energy (e_L)
         self.__stored_e_L = []
-
-        # stored local energy (ln_WF)
-        self.__stored_ln_WF = []
-
-        # stored local energy (abs_WF)
-        self.__stored_abs_WF = []
 
         # stored de_L / dR
         self.__stored_grad_e_L_dR = []
@@ -423,24 +416,6 @@ class MCMC_serial:
 
             logger.devel(f"  e_L = {e_L}")
             self.__stored_e_L.append(e_L)
-
-            abs_WF = np.abs(
-                evaluate_wavefunction_api(
-                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                    r_up_carts=self.__latest_r_up_carts,
-                    r_dn_carts=self.__latest_r_dn_carts,
-                )
-            )
-            logger.devel(f"  abs_WF = {abs_WF}")
-            self.__stored_ln_WF.append(abs_WF)
-
-            ln_WF = evaluate_ln_wavefunction_api(
-                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                r_up_carts=self.__latest_r_up_carts,
-                r_dn_carts=self.__latest_r_dn_carts,
-            )
-            logger.devel(f"  ln_WF = {ln_WF}")
-            self.__stored_ln_WF.append(ln_WF)
 
             if self.__comput_position_deriv:
                 # """
@@ -1270,6 +1245,8 @@ class VMC_serial:
 
 
 if __name__ == "__main__":
+    import pickle
+
     logger_level = "MPI-INFO"
 
     log = getLogger("jqmc")
@@ -1300,7 +1277,7 @@ if __name__ == "__main__":
     logger.info(f"jax.device_count={jax.device_count()}.")
     logger.info(f"jax.local_device_count={jax.local_device_count()}.")
 
-    # """
+    """
     # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
     (
         structure_data,
@@ -1310,7 +1287,7 @@ if __name__ == "__main__":
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"))
-    # """
+    """
 
     """
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
@@ -1416,6 +1393,7 @@ if __name__ == "__main__":
     )
     """
 
+    """
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.75)
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
 
@@ -1434,6 +1412,11 @@ if __name__ == "__main__":
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
     )
+    """
+
+    hamiltonian_chk = "hamiltonian_data.chk"
+    with open(hamiltonian_chk, "rb") as f:
+        hamiltonian_data = pickle.load(f)
 
     # VMC parameters
     num_mcmc_warmup_steps = 5

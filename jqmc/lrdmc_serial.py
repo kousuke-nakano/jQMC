@@ -39,7 +39,6 @@ import time
 from collections import Counter
 from logging import Formatter, StreamHandler, getLogger
 
-# import mpi4jax
 # JAX
 import jax
 import numpy as np
@@ -56,10 +55,8 @@ from .coulomb_potential import (
     _compute_ecp_local_parts_jax,
     _compute_ecp_non_local_parts_jax,
 )
-from .hamiltonians import Hamiltonian_data, compute_kinetic_energy_api, compute_local_energy_api
-from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
-from .trexio_wrapper import read_trexio_file
-from .wavefunction import Wavefunction_data, compute_discretized_kinetic_energy_api, evaluate_jastrow_api
+from .hamiltonians import Hamiltonian_data, compute_kinetic_energy_api
+from .wavefunction import compute_discretized_kinetic_energy_api, evaluate_jastrow_api
 
 # MPI related
 comm = MPI.COMM_WORLD
@@ -768,6 +765,10 @@ if __name__ == "__main__":
     import os
     import pickle
 
+    from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
+    from .trexio_wrapper import read_trexio_file
+    from .wavefunction import Wavefunction_data, compute_discretized_kinetic_energy_api, evaluate_jastrow_api
+
     logger_level = "MPI-INFO"
     # logger_level = "INFO"
 
@@ -838,12 +839,12 @@ if __name__ == "__main__":
     mcmc_seed = 3446
     tau = 0.01
     alat = 0.30
-    num_branching = 500
+    num_branching = 20
     non_local_move = "tmove"
 
     num_gfmc_warmup_steps = 5
-    num_gfmc_bin_blocks = 10
-    num_gfmc_bin_collect = 5
+    num_gfmc_bin_blocks = 5
+    num_gfmc_bin_collect = 3
 
     # run GFMC
     gfmc = GFMC(hamiltonian_data=hamiltonian_data, mcmc_seed=mcmc_seed, tau=tau, alat=alat, non_local_move=non_local_move)

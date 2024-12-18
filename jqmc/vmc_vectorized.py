@@ -35,17 +35,16 @@
 import logging
 
 # python modules
-import os
 import time
-from logging import Formatter, StreamHandler, getLogger
+from functools import partial
+from logging import getLogger
 
-# import mpi4jax
 # JAX
 import jax
 import numpy as np
 import numpy.typing as npt
 import scipy
-from jax import grad, lax
+from jax import grad, jit, lax
 from jax import numpy as jnp
 from jax import vmap
 
@@ -54,11 +53,9 @@ from mpi4py import MPI
 
 # jQMC module
 from .hamiltonians import Hamiltonian_data, compute_local_energy_api
-from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
 from .structure import find_nearest_index_jax
 from .swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
-from .trexio_wrapper import read_trexio_file
-from .wavefunction import Wavefunction_data, evaluate_ln_wavefunction_api, evaluate_wavefunction_api
+from .wavefunction import evaluate_ln_wavefunction_api, evaluate_wavefunction_api
 
 # MPI related
 comm = MPI.COMM_WORLD
@@ -211,6 +208,7 @@ class MCMC_multiple_walkers:
 
         logger.info("Compilation of fundamental functions is done.")
         logger.info(f"Elapsed Time = {self.__timer_mcmc_init:.2f} sec.")
+        logger.info("")
 
         # init attributes
         self.__init_attributes()
@@ -225,9 +223,6 @@ class MCMC_multiple_walkers:
 
         # stored local energy (e_L)
         self.__stored_e_L = []
-
-        # stored local energy (ln_WF)
-        self.__stored_ln_WF = []
 
         # stored de_L / dR
         self.__stored_grad_e_L_dR = []
@@ -293,11 +288,6 @@ class MCMC_multiple_walkers:
             max_time(int):
                 Max elapsed time (sec.). If the elapsed time exceeds max_time, the methods exits the mcmc loop.
         """
-        # MAIN MCMC loop from here !!!
-        progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
-        logger.info(f"Current MCMC step = {self.__mcmc_counter}/{num_mcmc_steps+self.__mcmc_counter}: {progress:.0f} %.")
-        mcmc_interval = max(1, int(num_mcmc_steps / 10))  # %
-
         # timer_counter
         timer_mcmc_total = 0.0
         timer_mcmc_updated = 0.0
@@ -309,14 +299,18 @@ class MCMC_multiple_walkers:
 
         # MCMC electron position update function
         mcmc_init_start = time.perf_counter()
+        logger.info("Start compilation of the MCMC_update funciton.")
 
-        def _update_electron_positions(init_r_up_carts, init_r_dn_carts, jax_PRNG_key):
+        # Note: This jit drastically accelarates the computation!!
+        @partial(jit, static_argnums=3)
+        def _update_electron_positions(init_r_up_carts, init_r_dn_carts, jax_PRNG_key, num_mcmc_per_measurement):
             """Update electron positions based on the MH method.
 
             Args:
                 init_r_up_carts (jnpt.ArrayLike): up electron position. dim: (N_e^up, 3)
                 init_r_dn_carts (jnpt.ArrayLike): down electron position. dim: (N_e^dn, 3)
                 jax_PRNG_key (jnpt.ArrayLike): jax PRIN key.
+                self.__num_mcmc_per_measurement (int): the number of iterarations (i.e. the number of proposal in updating electron positions.)
 
             Returns:
                 jax_PRNG_key (jnpt.ArrayLike): updated jax_PRNG_key.
@@ -331,7 +325,7 @@ class MCMC_multiple_walkers:
             latest_r_up_carts = init_r_up_carts
             latest_r_dn_carts = init_r_dn_carts
 
-            for _ in range(self.__num_mcmc_per_measurement):
+            for _ in range(num_mcmc_per_measurement):
                 # Choose randomly if the electron comes from up or dn
                 jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
                 rand_num = jax.random.randint(subkey, shape=(), minval=0, maxval=self.__total_electrons)
@@ -452,14 +446,80 @@ class MCMC_multiple_walkers:
                     b < acceptance_ratio, _accepted_fun, _rejected_fun, operand=None
                 )
 
-            return jax_PRNG_key, accepted_moves, rejected_moves, latest_r_up_carts, latest_r_dn_carts
+            return accepted_moves, rejected_moves, latest_r_up_carts, latest_r_dn_carts, jax_PRNG_key
 
+        # MCMC update compilation.
+        logger.info("  Compilation is in progress...")
+        (
+            _,
+            _,
+            _,
+            _,
+            _,
+        ) = vmap(_update_electron_positions, in_axes=(0, 0, 0, None))(
+            self.__latest_r_up_carts, self.__latest_r_dn_carts, self.__jax_PRNG_key_list, self.__num_mcmc_per_measurement
+        )
+        _ = vmap(compute_local_energy_api, in_axes=(None, 0, 0))(
+            self.__hamiltonian_data,
+            self.__latest_r_up_carts,
+            self.__latest_r_dn_carts,
+        )
+        if self.__comput_position_deriv:
+            _, _, _ = vmap(grad(compute_local_energy_api, argnums=(0, 1, 2)), in_axes=(None, 0, 0))(
+                self.__hamiltonian_data,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+            )
+
+            _ = vmap(evaluate_ln_wavefunction_api, in_axes=(None, 0, 0))(
+                self.__hamiltonian_data.wavefunction_data,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+            )
+
+            _, _, _ = vmap(grad(evaluate_ln_wavefunction_api, argnums=(0, 1, 2)), in_axes=(None, 0, 0))(
+                self.__hamiltonian_data.wavefunction_data,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+            )
+
+            _ = vmap(evaluate_swct_omega_api, in_axes=(None, 0))(
+                self.__swct_data,
+                self.__latest_r_up_carts,
+            )
+
+            _ = vmap(evaluate_swct_omega_api, in_axes=(None, 0))(
+                self.__swct_data,
+                self.__latest_r_dn_carts,
+            )
+
+            _ = vmap(evaluate_swct_domega_api, in_axes=(None, 0))(
+                self.__swct_data,
+                self.__latest_r_up_carts,
+            )
+
+            _ = vmap(evaluate_swct_domega_api, in_axes=(None, 0))(
+                self.__swct_data,
+                self.__latest_r_dn_carts,
+            )
+            _ = vmap(grad(evaluate_ln_wavefunction_api, argnums=0), in_axes=(None, 0, 0))(
+                self.__hamiltonian_data.wavefunction_data,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+            )
         mcmc_init_end = time.perf_counter()
         timer_mcmc_init += mcmc_init_end - mcmc_init_start
+        logger.info("End compilation of the MCMC_update funciton.")
+        logger.info("")
+
+        # MAIN MCMC loop from here !!!
+        logger.info("Start MCMC")
+        progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+        logger.info(f"  Progress: MCMC step= {self.__mcmc_counter}/{num_mcmc_steps+self.__mcmc_counter}: {progress:.0f} %.")
+        mcmc_interval = max(1, int(num_mcmc_steps / 10))  # %
 
         mcmc_total_start = time.perf_counter()
 
-        logger.info("-Start MCMC-")
         for i_mcmc_step in range(num_mcmc_steps):
             if (i_mcmc_step + 1) % mcmc_interval == 0:
                 progress = (i_mcmc_step + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
@@ -469,18 +529,21 @@ class MCMC_multiple_walkers:
 
             # electron positions are goint to be updated!
             start = time.perf_counter()
-            jax_PRNG_key_list, accepted_moves_nw, rejected_moves_nw, latest_r_up_carts_nw, latest_r_dn_carts_nw = vmap(
-                _update_electron_positions, in_axes=(0, 0, 0)
-            )(self.__latest_r_up_carts, self.__latest_r_dn_carts, self.__jax_PRNG_key_list)
+            (
+                accepted_moves_nw,
+                rejected_moves_nw,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+                self.__jax_PRNG_key_list,
+            ) = vmap(_update_electron_positions, in_axes=(0, 0, 0, None))(
+                self.__latest_r_up_carts, self.__latest_r_dn_carts, self.__jax_PRNG_key_list, self.__num_mcmc_per_measurement
+            )
             end = time.perf_counter()
             timer_mcmc_updated += end - start
 
             # store vmapped outcomes
-            self.__jax_PRNG_key_list = jax_PRNG_key_list
             self.__accepted_moves += jnp.sum(accepted_moves_nw)
             self.__rejected_moves += jnp.sum(rejected_moves_nw)
-            self.__latest_r_up_carts = latest_r_up_carts_nw
-            self.__latest_r_dn_carts = latest_r_dn_carts_nw
 
             # evaluate observables
             start = time.perf_counter()
@@ -494,24 +557,6 @@ class MCMC_multiple_walkers:
             timer_e_L += end - start
 
             self.__stored_e_L.append(e_L)
-
-            abs_WF = np.abs(
-                vmap(evaluate_wavefunction_api, in_axes=(None, 0, 0))(
-                    self.__hamiltonian_data.wavefunction_data,
-                    self.__latest_r_up_carts,
-                    self.__latest_r_dn_carts,
-                )
-            )
-            logger.devel(f"  abs_WF = {abs_WF}")
-            self.__stored_ln_WF.append(abs_WF)
-
-            ln_WF = vmap(evaluate_ln_wavefunction_api, in_axes=(None, 0, 0))(
-                self.__hamiltonian_data.wavefunction_data,
-                self.__latest_r_up_carts,
-                self.__latest_r_dn_carts,
-            )
-            logger.devel(f"  ln_WF = {ln_WF}")
-            self.__stored_ln_WF.append(ln_WF)
 
             if self.__comput_position_deriv:
                 # """
@@ -653,7 +698,8 @@ class MCMC_multiple_walkers:
                 logger.info("break the mcmc loop.")
                 break
 
-        logger.info("-End MCMC-")
+        logger.info("End MCMC")
+        logger.info("")
 
         # count up the mcmc counter
         self.__mcmc_counter += i_mcmc_step + 1
@@ -682,6 +728,7 @@ class MCMC_multiple_walkers:
             f"  Time for computing dln_Psi/dc (jastrow 1b2b3b) = {timer_dln_Psi_dc_jas1b2b3b/num_mcmc_steps*10**3:.2f} msec."
         )
         logger.info(f"  Time for misc. (others) = {timer_misc/num_mcmc_steps*10**3:.2f} msec.")
+        logger.info("")
 
     @property
     def hamiltonian_data(self):
@@ -1671,6 +1718,14 @@ class VMC_multiple_walkers:
 
 
 if __name__ == "__main__":
+    import os
+    import pickle
+    from logging import Formatter, StreamHandler, getLogger
+
+    from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
+    from .trexio_wrapper import read_trexio_file
+    from .wavefunction import Wavefunction_data
+
     logger_level = "MPI-INFO"
 
     log = getLogger("jqmc")
@@ -1701,7 +1756,7 @@ if __name__ == "__main__":
     logger.info(f"jax.device_count={jax.device_count()}.")
     logger.info(f"jax.local_device_count={jax.local_device_count()}.")
 
-    # """
+    """
     # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
     (
         structure_data,
@@ -1711,7 +1766,7 @@ if __name__ == "__main__":
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"))
-    # """
+    """
 
     """
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
@@ -1817,6 +1872,7 @@ if __name__ == "__main__":
     )
     """
 
+    """
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.75)
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
 
@@ -1835,14 +1891,19 @@ if __name__ == "__main__":
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
     )
+    """
+
+    hamiltonian_chk = "hamiltonian_data.chk"
+    with open(hamiltonian_chk, "rb") as f:
+        hamiltonian_data = pickle.load(f)
 
     # VMC parameters
-    num_walkers = 1000
+    num_walkers = 1
     num_mcmc_warmup_steps = 5
     num_mcmc_bin_blocks = 5
     mcmc_seed = 34356
 
-    """
+    # """
     # run VMC single-shot
     vmc = VMC_multiple_walkers(
         hamiltonian_data=hamiltonian_data,
@@ -1852,15 +1913,15 @@ if __name__ == "__main__":
         comput_position_deriv=True,
         comput_jas_param_deriv=False,
     )
-    vmc.run_single_shot(num_mcmc_steps=120)
+    vmc.run_single_shot(num_mcmc_steps=100)
     e_L_mean, e_L_std = vmc.get_e_L(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
     logger.info(f"e_L = {e_L_mean} +- {e_L_std} Ha.")
-    """
+    # """
 
-    """
+    # """
     f_mean, f_std = vmc.get_atomic_forces(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
@@ -1868,8 +1929,9 @@ if __name__ == "__main__":
 
     logger.info(f"f_mean = {f_mean} Ha/bohr.")
     logger.info(f"f_std = {f_std} Ha/bohr.")
-    """
+    # """
 
+    """
     # run VMCopt
     vmc = VMC_multiple_walkers(
         hamiltonian_data=hamiltonian_data,
@@ -1888,3 +1950,4 @@ if __name__ == "__main__":
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
+    """
