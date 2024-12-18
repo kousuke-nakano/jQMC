@@ -60,9 +60,9 @@ from .hamiltonians import Hamiltonian_data, compute_kinetic_energy_api
 from .wavefunction import compute_discretized_kinetic_energy_api, evaluate_jastrow_api
 
 # MPI related
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
-size = comm.Get_size()
+mpi_comm = MPI.COMM_WORLD
+mpi_rank = mpi_comm.Get_rank()
+mpi_size = mpi_comm.Get_size()
 
 # jax-MPI related
 try:
@@ -135,6 +135,7 @@ class GFMC_multiple_walkers:
         # timer
         self.__timer_gmfc_init = 0.0
         self.__timer_gmfc_total = 0.0
+        self.__timer_projection_init = 0.0
         self.__timer_projection_total = 0.0
         self.__timer_branching = 0.0
         self.__timer_observable = 0.0
@@ -144,7 +145,7 @@ class GFMC_multiple_walkers:
 
         start = time.perf_counter()
         # Initialization
-        self.__mpi_seed = mcmc_seed * (rank + 1)
+        self.__mpi_seed = mcmc_seed * (mpi_rank + 1)
         self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
         self.__jax_PRNG_key_list_init = jnp.array(
             [jax.random.fold_in(self.__jax_PRNG_key, nw) for nw in range(self.__num_walkers)]
@@ -222,6 +223,7 @@ class GFMC_multiple_walkers:
         self.__latest_r_up_carts = jnp.array(r_carts_up_list)
         self.__latest_r_dn_carts = jnp.array(r_carts_dn_list)
 
+        logger.info(f"The number of MPI process = {mpi_size}.")
         logger.info(f"The number of walkers assigned for each MPI process = {self.__num_walkers}.")
         logger.debug(f"initial r_up_carts= {self.__latest_r_up_carts}")
         logger.debug(f"initial r_dn_carts = {self.__latest_r_dn_carts}")
@@ -672,24 +674,24 @@ class GFMC_multiple_walkers:
             # Branching!
             start_branching = time.perf_counter()
 
-            logger.debug(f"e_L={e_L_latest} for rank={rank}")
-            logger.debug(f"w_L={w_L_latest} for rank={rank}")
+            logger.debug(f"e_L={e_L_latest} for rank={mpi_rank}")
+            logger.debug(f"w_L={w_L_latest} for rank={mpi_rank}")
 
             r_up_carts_shape = self.__latest_r_up_carts.shape
-            r_up_carts_gathered_dyad = (rank, self.__latest_r_up_carts)
-            r_up_carts_gathered_dyad = comm.gather(r_up_carts_gathered_dyad, root=0)
+            r_up_carts_gathered_dyad = (mpi_rank, self.__latest_r_up_carts)
+            r_up_carts_gathered_dyad = mpi_comm.gather(r_up_carts_gathered_dyad, root=0)
 
             r_dn_carts_shape = self.__latest_r_dn_carts.shape
-            r_dn_carts_gathered_dyad = (rank, self.__latest_r_dn_carts)
-            r_dn_carts_gathered_dyad = comm.gather(r_dn_carts_gathered_dyad, root=0)
+            r_dn_carts_gathered_dyad = (mpi_rank, self.__latest_r_dn_carts)
+            r_dn_carts_gathered_dyad = mpi_comm.gather(r_dn_carts_gathered_dyad, root=0)
 
-            e_L_gathered_dyad = (rank, e_L_latest)
-            e_L_gathered_dyad = comm.gather(e_L_gathered_dyad, root=0)
-            w_L_gathered_dyad = (rank, w_L_latest)
-            w_L_gathered_dyad = comm.gather(w_L_gathered_dyad, root=0)
+            e_L_gathered_dyad = (mpi_rank, e_L_latest)
+            e_L_gathered_dyad = mpi_comm.gather(e_L_gathered_dyad, root=0)
+            w_L_gathered_dyad = (mpi_rank, w_L_latest)
+            w_L_gathered_dyad = mpi_comm.gather(w_L_gathered_dyad, root=0)
 
             # refactoring from here!!
-            if rank == 0:
+            if mpi_rank == 0:
                 logger.debug(f"e_L_gathered_dyad={e_L_gathered_dyad}")
                 logger.debug(f"w_L_gathered_dyad={w_L_gathered_dyad}")
                 r_up_carts_gathered_dict = dict(r_up_carts_gathered_dyad)
@@ -698,10 +700,10 @@ class GFMC_multiple_walkers:
                 w_L_gathered_dict = dict(w_L_gathered_dyad)
                 logger.debug(f"  e_L_gathered_dict = {e_L_gathered_dict} Ha")
                 logger.debug(f"  w_L_gathered_dict = {w_L_gathered_dict}")
-                r_up_carts_gathered = np.concatenate([r_up_carts_gathered_dict[i] for i in range(size)])
-                r_dn_carts_gathered = np.concatenate([r_dn_carts_gathered_dict[i] for i in range(size)])
-                e_L_gathered = np.concatenate([e_L_gathered_dict[i] for i in range(size)])
-                w_L_gathered = np.concatenate([w_L_gathered_dict[i] for i in range(size)])
+                r_up_carts_gathered = np.concatenate([r_up_carts_gathered_dict[i] for i in range(mpi_size)])
+                r_dn_carts_gathered = np.concatenate([r_dn_carts_gathered_dict[i] for i in range(mpi_size)])
+                e_L_gathered = np.concatenate([e_L_gathered_dict[i] for i in range(mpi_size)])
+                w_L_gathered = np.concatenate([w_L_gathered_dict[i] for i in range(mpi_size)])
                 logger.debug(f"  e_L_gathered = {e_L_gathered} Ha")
                 logger.debug(f"  w_L_gathered = {w_L_gathered}")
                 e_L_averaged = np.sum(w_L_gathered * e_L_gathered) / np.sum(w_L_gathered)
@@ -744,30 +746,30 @@ class GFMC_multiple_walkers:
                 proposed_r_up_carts = None
                 proposed_r_dn_carts = None
 
-            self.__e_L_averaged_list = comm.bcast(self.__e_L_averaged_list, root=0)
-            self.__w_L_averaged_list = comm.bcast(self.__w_L_averaged_list, root=0)
+            self.__e_L_averaged_list = mpi_comm.bcast(self.__e_L_averaged_list, root=0)
+            self.__w_L_averaged_list = mpi_comm.bcast(self.__w_L_averaged_list, root=0)
 
-            logger.debug(f"Before branching: rank={rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
-            logger.debug(f"Before branching: rank={rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
+            logger.debug(f"Before branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
+            logger.debug(f"Before branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
 
-            self.__num_survived_walkers = comm.bcast(self.__num_survived_walkers, root=0)
-            self.__num_killed_walkers = comm.bcast(self.__num_killed_walkers, root=0)
+            self.__num_survived_walkers = mpi_comm.bcast(self.__num_survived_walkers, root=0)
+            self.__num_killed_walkers = mpi_comm.bcast(self.__num_killed_walkers, root=0)
 
-            proposed_r_up_carts = comm.bcast(proposed_r_up_carts, root=0)
-            proposed_r_dn_carts = comm.bcast(proposed_r_dn_carts, root=0)
+            proposed_r_up_carts = mpi_comm.bcast(proposed_r_up_carts, root=0)
+            proposed_r_dn_carts = mpi_comm.bcast(proposed_r_dn_carts, root=0)
 
             proposed_r_up_carts = proposed_r_up_carts.reshape(
-                size, r_up_carts_shape[0], r_up_carts_shape[1], r_up_carts_shape[2]
+                mpi_size, r_up_carts_shape[0], r_up_carts_shape[1], r_up_carts_shape[2]
             )
             proposed_r_dn_carts = proposed_r_dn_carts.reshape(
-                size, r_dn_carts_shape[0], r_dn_carts_shape[1], r_dn_carts_shape[2]
+                mpi_size, r_dn_carts_shape[0], r_dn_carts_shape[1], r_dn_carts_shape[2]
             )
 
-            self.__latest_r_up_carts = proposed_r_up_carts[rank, :, :, :]
-            self.__latest_r_dn_carts = proposed_r_dn_carts[rank, :, :, :]
+            self.__latest_r_up_carts = proposed_r_up_carts[mpi_rank, :, :, :]
+            self.__latest_r_dn_carts = proposed_r_dn_carts[mpi_rank, :, :, :]
 
-            logger.debug(f"*After branching: rank={rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
-            logger.debug(f"*After branching: rank={rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
+            logger.debug(f"*After branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
+            logger.debug(f"*After branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
 
             end_branching = time.perf_counter()
             timer_branching += end_branching - start_branching
@@ -787,10 +789,13 @@ class GFMC_multiple_walkers:
         gmfc_total_end = time.perf_counter()
         timer_gmfc_total = gmfc_total_end - gmfc_total_start
 
-        logger.info(f"Total GFMC time = {timer_gmfc_total: .3f} sec.")
-        logger.info(f"  Projection time per branching = {timer_projection_total/num_branching: .3f} sec.")
-        logger.info(f"  Observable time per branching = {timer_observable/num_branching: .3f} sec.")
-        logger.info(f"  Branching time per branching = {timer_branching/num_branching: .3f} sec.")
+        logger.info(f"Total GFMC time for {num_branching} branching steps = {timer_gmfc_total: .3f} sec.")
+        logger.info(f"Pre-compilation time for GFMC = {timer_projection_init: .3f} sec.")
+        logger.info(f"Net GFMC time without pre-compilations = {timer_gmfc_total-timer_projection_init: .3f} sec.")
+        logger.info(f"Elapsed times per branching, averaged over {num_branching} branching steps.")
+        logger.info(f"  Projection time per branching = {timer_projection_total/num_branching*10**3: .3f} msec.")
+        logger.info(f"  Observable measurement time per branching = {timer_observable/num_branching*10**3: .3f} msec.")
+        logger.info(f"  Walker reconfiguration time per branching = {timer_branching/num_branching*10**3: .3f} msec.")
         logger.debug(f"Survived walkers = {self.__num_survived_walkers}")
         logger.debug(f"killed walkers = {self.__num_killed_walkers}")
         logger.info(
@@ -803,13 +808,14 @@ class GFMC_multiple_walkers:
         logger.info("")
 
         self.__timer_gmfc_total += timer_gmfc_total
+        self.__timer_projection_init += timer_projection_init
         self.__timer_projection_total += timer_projection_total
         self.__timer_branching += timer_branching
         self.__timer_observable += timer_observable
 
     def get_e_L(self, num_gfmc_warmup_steps: int = 3, num_gfmc_bin_blocks: int = 10, num_gfmc_bin_collect: int = 2) -> float:
         """Get e_L."""
-        if rank == 0:
+        if mpi_rank == 0:
             e_L_eq = self.__e_L_averaged_list[num_gfmc_warmup_steps + num_gfmc_bin_collect :]
             w_L_eq = self.__w_L_averaged_list[num_gfmc_warmup_steps:]
             logger.debug(f"e_L_eq = {e_L_eq}")
@@ -846,8 +852,8 @@ class GFMC_multiple_walkers:
             e_L_mean = None
             e_L_std = None
 
-        e_L_mean = comm.bcast(e_L_mean, root=0)
-        e_L_std = comm.bcast(e_L_std, root=0)
+        e_L_mean = mpi_comm.bcast(e_L_mean, root=0)
+        e_L_std = mpi_comm.bcast(e_L_std, root=0)
 
         return e_L_mean, e_L_std
 
@@ -940,7 +946,7 @@ if __name__ == "__main__":
     log = getLogger("jqmc")
 
     if logger_level == "MPI-INFO":
-        if rank == 0:
+        if mpi_rank == 0:
             log.setLevel("INFO")
             stream_handler = StreamHandler()
             stream_handler.setLevel("INFO")
@@ -951,14 +957,14 @@ if __name__ == "__main__":
             log.setLevel("WARNING")
             stream_handler = StreamHandler()
             stream_handler.setLevel("WARNING")
-            handler_format = Formatter(f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
+            handler_format = Formatter(f"MPI-rank={mpi_rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
             stream_handler.setFormatter(handler_format)
             log.addHandler(stream_handler)
     else:
         log.setLevel(logger_level)
         stream_handler = StreamHandler()
         stream_handler.setLevel(logger_level)
-        handler_format = Formatter(f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
+        handler_format = Formatter(f"MPI-rank={mpi_rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
         stream_handler.setFormatter(handler_format)
         log.addHandler(stream_handler)
 
@@ -1001,11 +1007,11 @@ if __name__ == "__main__":
         hamiltonian_data = pickle.load(f)
 
     # run branching
-    num_walkers = 1
+    num_walkers = 40
     mcmc_seed = 3446
-    tau = 0.01
+    tau = 0.1
     alat = 0.30
-    num_branching = 20
+    num_branching = 50
     non_local_move = "dltmove"
 
     num_gfmc_warmup_steps = 5

@@ -40,6 +40,11 @@ from logging import getLogger
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
 
+try:
+    from jqmc._version import version as jqmc_version
+except (ModuleNotFoundError, ImportError):
+    jqmc_version = "unknown"
+
 
 def print_header() -> None:
     """Print Header."""
@@ -60,6 +65,7 @@ def print_header() -> None:
     logger.info("-" * 48)
     logger.info("")
     logger.info("jQMC: Python-based real-space ab-initio Quantum Monte Carlo package.")
+    logger.info(f"version = {jqmc_version}.")
     logger.info("")
     logger.info("Authors: Kosuke Nakano [kousuke_1123@icloud.com]")
     logger.info("")

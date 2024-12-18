@@ -59,8 +59,9 @@ from .hamiltonians import Hamiltonian_data, compute_kinetic_energy_api
 from .wavefunction import compute_discretized_kinetic_energy_api, evaluate_jastrow_api
 
 # MPI related
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
+mpi_comm = MPI.COMM_WORLD
+mpi_rank = mpi_comm.Get_rank()
+mpi_size = mpi_comm.Get_size()
 
 # jax-MPI related
 try:
@@ -145,7 +146,7 @@ class GFMC:
         coords = hamiltonian_data.structure_data.positions_cart
 
         # set random seeds
-        self.__mpi_seed = mcmc_seed * (rank + 1) ** 2
+        self.__mpi_seed = mcmc_seed * (mpi_rank + 1) ** 2
         np.random.seed(self.__mpi_seed)
         self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
 
@@ -208,6 +209,7 @@ class GFMC:
         init_r_up_carts = np.array(init_r_up_carts)
         init_r_dn_carts = np.array(init_r_dn_carts)
 
+        logger.info(f"The number of MPI process = {mpi_size}.")
         logger.debug(f"initial r_up_carts = {init_r_up_carts}")
         logger.debug(f"initial r_dn_carts = {init_r_dn_carts}")
 
@@ -582,15 +584,15 @@ class GFMC:
             # Branching!
             start_branching = time.perf_counter()
 
-            logger.debug(f"e_L={e_L_latest} for rank={rank}")
-            logger.debug(f"w_L={w_L_latest} for rank={rank}")
+            logger.debug(f"e_L={e_L_latest} for rank={mpi_rank}")
+            logger.debug(f"w_L={w_L_latest} for rank={mpi_rank}")
 
-            e_L_gathered_dyad = (rank, e_L_latest)
-            e_L_gathered_dyad = comm.gather(e_L_gathered_dyad, root=0)
-            w_L_gathered_dyad = (rank, w_L_latest)
-            w_L_gathered_dyad = comm.gather(w_L_gathered_dyad, root=0)
+            e_L_gathered_dyad = (mpi_rank, e_L_latest)
+            e_L_gathered_dyad = mpi_comm.gather(e_L_gathered_dyad, root=0)
+            w_L_gathered_dyad = (mpi_rank, w_L_latest)
+            w_L_gathered_dyad = mpi_comm.gather(w_L_gathered_dyad, root=0)
 
-            if rank == 0:
+            if mpi_rank == 0:
                 logger.debug(f"e_L_gathered_dyad={e_L_gathered_dyad}")
                 logger.debug(f"w_L_gathered_dyad={w_L_gathered_dyad}")
                 e_L_gathered = np.array([e_L for _, e_L in e_L_gathered_dyad])
@@ -636,30 +638,30 @@ class GFMC:
                 mpi_recv_rank = None
                 self.__e_L_averaged_list = None
                 self.__w_L_averaged_list = None
-            mpi_send_rank = comm.bcast(mpi_send_rank, root=0)
-            mpi_recv_rank = comm.bcast(mpi_recv_rank, root=0)
-            self.__e_L_averaged_list = comm.bcast(self.__e_L_averaged_list, root=0)
-            self.__w_L_averaged_list = comm.bcast(self.__w_L_averaged_list, root=0)
+            mpi_send_rank = mpi_comm.bcast(mpi_send_rank, root=0)
+            mpi_recv_rank = mpi_comm.bcast(mpi_recv_rank, root=0)
+            self.__e_L_averaged_list = mpi_comm.bcast(self.__e_L_averaged_list, root=0)
+            self.__w_L_averaged_list = mpi_comm.bcast(self.__w_L_averaged_list, root=0)
 
-            logger.debug(f"Before branching: rank={rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
-            logger.debug(f"Before branching: rank={rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
+            logger.debug(f"Before branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
+            logger.debug(f"Before branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
 
-            comm.barrier()
-            self.__num_survived_walkers = comm.bcast(self.__num_survived_walkers, root=0)
-            self.__num_killed_walkers = comm.bcast(self.__num_killed_walkers, root=0)
+            mpi_comm.barrier()
+            self.__num_survived_walkers = mpi_comm.bcast(self.__num_survived_walkers, root=0)
+            self.__num_killed_walkers = mpi_comm.bcast(self.__num_killed_walkers, root=0)
             for ii, (send_rank, recv_rank) in enumerate(zip(mpi_send_rank, mpi_recv_rank)):
-                if rank == send_rank:
-                    comm.send(self.__latest_r_up_carts, dest=recv_rank, tag=100 + 2 * ii)
-                    comm.send(self.__latest_r_dn_carts, dest=recv_rank, tag=100 + 2 * ii + 1)
-                if rank == recv_rank:
-                    self.__latest_r_up_carts = comm.recv(source=send_rank, tag=100 + 2 * ii)
-                    self.__latest_r_dn_carts = comm.recv(source=send_rank, tag=100 + 2 * ii + 1)
-            comm.barrier()
+                if mpi_rank == send_rank:
+                    mpi_comm.send(self.__latest_r_up_carts, dest=recv_rank, tag=100 + 2 * ii)
+                    mpi_comm.send(self.__latest_r_dn_carts, dest=recv_rank, tag=100 + 2 * ii + 1)
+                if mpi_rank == recv_rank:
+                    self.__latest_r_up_carts = mpi_comm.recv(source=send_rank, tag=100 + 2 * ii)
+                    self.__latest_r_dn_carts = mpi_comm.recv(source=send_rank, tag=100 + 2 * ii + 1)
+            mpi_comm.barrier()
 
-            logger.debug(f"*After branching: rank={rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
-            logger.debug(f"*After branching: rank={rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
+            logger.debug(f"*After branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
+            logger.debug(f"*After branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
 
-            comm.barrier()
+            mpi_comm.barrier()
 
             end_branching = time.perf_counter()
             timer_branching += end_branching - start_branching
@@ -678,18 +680,24 @@ class GFMC:
         gmfc_total_end = time.perf_counter()
         timer_gmfc_total = gmfc_total_end - gmfc_total_start
 
-        logger.info(f"Total GFMC time = {timer_gmfc_total: .3f} sec.")
-        logger.info(f"  Projection time per branching = {timer_projection_total/num_branching: .3f} sec.")
-        logger.info(f"    Non_diagonal kinetic part = {timer_projection_non_diagonal_kinetic_part/num_branching: .3f} sec.")
-        logger.info(f"    Diagonal kinetic part = {timer_projection_diag_kinetic_part/num_branching: 3f} sec.")
-        logger.info(f"    Diagonal ecp part = {timer_projection_diag_ecp_part/num_branching: 3f} sec.")
-        logger.info(f"    Diagonal bare coulomb part = {timer_projection_diag_bare_couloumb_part/num_branching: 3f} sec.")
-        logger.info(f"    Non_diagonal ecp part = {timer_projection_non_diagonal_ecp_part/num_branching: .3f} sec.")
+        logger.info(f"Total GFMC time for {num_branching} branching steps = {timer_gmfc_total: .3f} sec.")
+        logger.info(f"Net GFMC time for {num_branching} branching steps = {timer_gmfc_total: .3f} sec.")
+        logger.info(f"Elapsed times per branching, averaged over {num_branching} branching steps.")
+        logger.info(f"  Projection time per branching = {timer_projection_total/num_branching*10**3: .3f} msec.")
         logger.info(
-            f"    Update weights and positions = {timer_projection_update_weights_and_positions/num_branching: .3f} sec."
+            f"    Non_diagonal kinetic part = {timer_projection_non_diagonal_kinetic_part/num_branching*10**3: .3f} msec."
         )
-        logger.info(f"  Observable time per branching = {timer_observable/num_branching: .3f} sec.")
-        logger.info(f"  Branching time per branching = {timer_branching/num_branching: .3f} sec.")
+        logger.info(f"    Diagonal kinetic part = {timer_projection_diag_kinetic_part/num_branching*10**3: 3f} msec.")
+        logger.info(f"    Diagonal ecp part = {timer_projection_diag_ecp_part/num_branching*10**3: 3f} msec.")
+        logger.info(
+            f"    Diagonal bare coulomb part = {timer_projection_diag_bare_couloumb_part/num_branching*10**3: 3f} msec."
+        )
+        logger.info(f"    Non_diagonal ecp part = {timer_projection_non_diagonal_ecp_part/num_branching*10**3: .3f} msec.")
+        logger.info(
+            f"    Update weights and positions = {timer_projection_update_weights_and_positions/num_branching*10**3: .3f} msec."
+        )
+        logger.info(f"  Observable measurement time per branching = {timer_observable/num_branching*10**3: .3f} msec.")
+        logger.info(f"  Walker reconfiguration time per branching = {timer_branching/num_branching*10**3: .3f} msec.")
         logger.debug(f"Survived walkers = {self.__num_survived_walkers}")
         logger.debug(f"killed walkers = {self.__num_killed_walkers}")
         logger.info(
@@ -698,7 +706,7 @@ class GFMC:
 
     def get_e_L(self, num_gfmc_warmup_steps: int = 3, num_gfmc_bin_blocks: int = 10, num_gfmc_bin_collect: int = 2) -> float:
         """Get e_L."""
-        if rank == 0:
+        if mpi_rank == 0:
             e_L_eq = self.__e_L_averaged_list[num_gfmc_warmup_steps + num_gfmc_bin_collect :]
             w_L_eq = self.__w_L_averaged_list[num_gfmc_warmup_steps:]
             logger.debug(f"e_L_eq = {e_L_eq}")
@@ -735,8 +743,8 @@ class GFMC:
             e_L_mean = None
             e_L_std = None
 
-        e_L_mean = comm.bcast(e_L_mean, root=0)
-        e_L_std = comm.bcast(e_L_std, root=0)
+        e_L_mean = mpi_comm.bcast(e_L_mean, root=0)
+        e_L_std = mpi_comm.bcast(e_L_std, root=0)
 
         return e_L_mean, e_L_std
 
@@ -775,7 +783,7 @@ if __name__ == "__main__":
     log = getLogger("jqmc")
 
     if logger_level == "MPI-INFO":
-        if rank == 0:
+        if mpi_rank == 0:
             log.setLevel("INFO")
             stream_handler = StreamHandler()
             stream_handler.setLevel("INFO")
@@ -786,14 +794,14 @@ if __name__ == "__main__":
             log.setLevel("WARNING")
             stream_handler = StreamHandler()
             stream_handler.setLevel("WARNING")
-            handler_format = Formatter(f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
+            handler_format = Formatter(f"MPI-rank={mpi_rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
             stream_handler.setFormatter(handler_format)
             log.addHandler(stream_handler)
     else:
         log.setLevel(logger_level)
         stream_handler = StreamHandler()
         stream_handler.setLevel(logger_level)
-        handler_format = Formatter(f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
+        handler_format = Formatter(f"MPI-rank={mpi_rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
         stream_handler.setFormatter(handler_format)
         log.addHandler(stream_handler)
 
@@ -837,10 +845,10 @@ if __name__ == "__main__":
 
     # run branching
     mcmc_seed = 3446
-    tau = 0.01
+    tau = 0.10
     alat = 0.30
-    num_branching = 20
-    non_local_move = "tmove"
+    num_branching = 50
+    non_local_move = "dltmove"
 
     num_gfmc_warmup_steps = 5
     num_gfmc_bin_blocks = 5

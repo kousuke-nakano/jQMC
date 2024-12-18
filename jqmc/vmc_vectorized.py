@@ -51,15 +51,18 @@ from jax import vmap
 # MPI
 from mpi4py import MPI
 
-# jQMC module
 from .hamiltonians import Hamiltonian_data, compute_local_energy_api
+
+# jQMC module
+from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
 from .structure import find_nearest_index_jax
 from .swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
-from .wavefunction import evaluate_ln_wavefunction_api, evaluate_wavefunction_api
+from .wavefunction import Wavefunction_data, evaluate_ln_wavefunction_api, evaluate_wavefunction_api
 
 # MPI related
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
+mpi_comm = MPI.COMM_WORLD
+mpi_rank = mpi_comm.Get_rank()
+mpi_size = mpi_comm.Get_size()
 
 # jax-MPI related
 try:
@@ -127,8 +130,10 @@ class MCMC_multiple_walkers:
         self.__comput_position_deriv = comput_position_deriv
 
         # timer
+        self.__timer_mcmc_total = 0.0
         self.__timer_mcmc_init = 0.0
-        self.__timer_mcmc_updated = 0.0
+        self.__timer_mcmc_update_init = 0.0
+        self.__timer_mcmc_update = 0.0
         self.__timer_e_L = 0.0
         self.__timer_de_L_dR_dr = 0.0
         self.__timer_dln_Psi_dR_dr = 0.0
@@ -290,15 +295,16 @@ class MCMC_multiple_walkers:
         """
         # timer_counter
         timer_mcmc_total = 0.0
-        timer_mcmc_updated = 0.0
-        timer_mcmc_init = 0.0
+        timer_mcmc_update_init = 0.0
+        timer_mcmc_update = 0.0
         timer_e_L = 0.0
         timer_de_L_dR_dr = 0.0
         timer_dln_Psi_dR_dr = 0.0
         timer_dln_Psi_dc_jas1b2b3b = 0.0
+        mcmc_total_start = time.perf_counter()
 
         # MCMC electron position update function
-        mcmc_init_start = time.perf_counter()
+        mcmc_update_init_start = time.perf_counter()
         logger.info("Start compilation of the MCMC_update funciton.")
 
         # Note: This jit drastically accelarates the computation!!
@@ -507,8 +513,8 @@ class MCMC_multiple_walkers:
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
-        mcmc_init_end = time.perf_counter()
-        timer_mcmc_init += mcmc_init_end - mcmc_init_start
+        mcmc_update_init_end = time.perf_counter()
+        timer_mcmc_update_init += mcmc_update_init_end - mcmc_update_init_start
         logger.info("End compilation of the MCMC_update funciton.")
         logger.info("")
 
@@ -517,8 +523,6 @@ class MCMC_multiple_walkers:
         progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
         logger.info(f"  Progress: MCMC step= {self.__mcmc_counter}/{num_mcmc_steps+self.__mcmc_counter}: {progress:.0f} %.")
         mcmc_interval = max(1, int(num_mcmc_steps / 10))  # %
-
-        mcmc_total_start = time.perf_counter()
 
         for i_mcmc_step in range(num_mcmc_steps):
             if (i_mcmc_step + 1) % mcmc_interval == 0:
@@ -539,7 +543,7 @@ class MCMC_multiple_walkers:
                 self.__latest_r_up_carts, self.__latest_r_dn_carts, self.__jax_PRNG_key_list, self.__num_mcmc_per_measurement
             )
             end = time.perf_counter()
-            timer_mcmc_updated += end - start
+            timer_mcmc_update += end - start
 
             # store vmapped outcomes
             self.__accepted_moves += jnp.sum(accepted_moves_nw)
@@ -707,20 +711,23 @@ class MCMC_multiple_walkers:
         mcmc_total_end = time.perf_counter()
         timer_mcmc_total += mcmc_total_end - mcmc_total_start
         timer_misc = timer_mcmc_total - (
-            timer_mcmc_updated + timer_e_L + timer_de_L_dR_dr + timer_dln_Psi_dR_dr + timer_dln_Psi_dc_jas1b2b3b
+            timer_mcmc_update + timer_e_L + timer_de_L_dR_dr + timer_dln_Psi_dR_dr + timer_dln_Psi_dc_jas1b2b3b
         )
 
-        self.__timer_mcmc_updated += timer_mcmc_updated
+        self.__timer_mcmc_total += timer_mcmc_total
+        self.__timer_mcmc_update_init += timer_mcmc_update_init
+        self.__timer_mcmc_update += timer_mcmc_update
         self.__timer_e_L += timer_e_L
         self.__timer_de_L_dR_dr += timer_de_L_dR_dr
         self.__timer_dln_Psi_dR_dr += timer_dln_Psi_dR_dr
         self.__timer_dln_Psi_dc_jas1b2b3b += timer_dln_Psi_dc_jas1b2b3b
         self.__timer_misc += timer_misc
 
-        logger.info(f"Acceptance ratio is {self.__accepted_moves/(self.__accepted_moves + self.__rejected_moves)*100:.3f} %")
-        logger.info(f"Total Elapsed time for MCMC {num_mcmc_steps} steps. = {timer_mcmc_total:.2f} sec.")
+        logger.info(f"Total elapsed time for MCMC {num_mcmc_steps} steps. = {timer_mcmc_total:.2f} sec.")
+        logger.info(f"Pre-compilation time for MCMC = {timer_mcmc_update_init:.2f} sec.")
+        logger.info(f"Net total time for MCMC = {timer_mcmc_total - timer_mcmc_update_init:.2f} sec.")
         logger.info(f"Elapsed times per MCMC step, averaged over {num_mcmc_steps} steps.")
-        logger.info(f"  Time for MCMC updated = {timer_mcmc_updated/num_mcmc_steps*10**3:.2f} msec.")
+        logger.info(f"  Time for MCMC updated = {timer_mcmc_update/num_mcmc_steps*10**3:.2f} msec.")
         logger.info(f"  Time for computing e_L = {timer_e_L/num_mcmc_steps*10**3:.2f} msec.")
         logger.info(f"  Time for computing de_L/dR and de_L/dr = {timer_de_L_dR_dr/num_mcmc_steps*10**3:.2f} msec.")
         logger.info(f"  Time for computing dln_Psi/dR and dln_Psi/dr = {timer_dln_Psi_dR_dr/num_mcmc_steps*10**3:.2f} msec.")
@@ -728,6 +735,7 @@ class MCMC_multiple_walkers:
             f"  Time for computing dln_Psi/dc (jastrow 1b2b3b) = {timer_dln_Psi_dc_jas1b2b3b/num_mcmc_steps*10**3:.2f} msec."
         )
         logger.info(f"  Time for misc. (others) = {timer_misc/num_mcmc_steps*10**3:.2f} msec.")
+        logger.info(f"Acceptance ratio is {self.__accepted_moves/(self.__accepted_moves + self.__rejected_moves)*100:.3f} %")
         logger.info("")
 
     @property
@@ -839,7 +847,7 @@ class MCMC_multiple_walkers:
     @property
     def timer_mcmc_updated(self):
         """Return the measured elapsed time for MCMC update."""
-        return self.__timer_mcmc_updated
+        return self.__timer_mcmc_update
 
     @property
     def timer_e_L(self):
@@ -947,12 +955,12 @@ class VMC_multiple_walkers:
     ) -> None:
         """Initialization."""
         self.__mcmc_seed = mcmc_seed
-        self.__mpi_seed = mcmc_seed * (rank + 1)
+        self.__mpi_seed = mcmc_seed * (mpi_rank + 1)
         self.__num_walkers = num_walkers
         self.__comput_jas_param_deriv = comput_jas_param_deriv
         self.__comput_position_deriv = comput_position_deriv
 
-        logger.debug(f"mcmc_seed for MPI-rank={rank} is {self.__mpi_seed}.")
+        logger.debug(f"mcmc_seed for MPI-rank={mpi_rank} is {self.__mpi_seed}.")
 
         # set JAX random seed
         self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
@@ -1034,6 +1042,7 @@ class VMC_multiple_walkers:
         init_r_up_carts = jnp.array(r_carts_up_list)
         init_r_dn_carts = jnp.array(r_carts_dn_list)
 
+        logger.info(f"The number of MPI process = {mpi_size}.")
         logger.info(f"The number of walkers assigned for each MPI process = {self.__num_walkers}.")
         logger.debug(f"initial r_up_carts= {init_r_up_carts}")
         logger.debug(f"initial r_dn_carts = {init_r_dn_carts}")
@@ -1169,7 +1178,7 @@ class VMC_multiple_walkers:
         for i_opt in range(num_opt_steps):
             logger.info(f"i_opt={i_opt+1+self.__i_opt}/{num_opt_steps+self.__i_opt}.")
 
-            if rank == 0:
+            if mpi_rank == 0:
                 logger.info(f"num_mcmc_warmup_steps={num_mcmc_warmup_steps}.")
                 logger.info(f"num_mcmc_bin_blocks={num_mcmc_bin_blocks}.")
                 logger.info(f"num_mcmc_steps={num_mcmc_steps}.")
@@ -1195,13 +1204,13 @@ class VMC_multiple_walkers:
                 mpi_broadcast=False, num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks
             )
 
-            if rank == 0:
+            if mpi_rank == 0:
                 signal_to_noise_f = np.abs(f) / f_std
                 logger.info(f"Max |f| = {np.max(np.abs(f)):.3f} Ha/a.u.")
                 logger.debug(f"f_std of Max |f| = {f_std[np.argmax(np.abs(f))]:.3f} Ha/a.u.")
                 logger.info(f"Max of signal-to-noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}.")
 
-            if rank == 0:
+            if mpi_rank == 0:
                 logger.info("Computing the inverse of the stochastic matrix S^{-1}...")
                 # logger.info(f"The matrix S_prime is symmetric? = {np.allclose(S_prime, S_prime.T, atol=1.0e-10)}")
                 # logger.info(f"The condition number of the matrix S is {np.linalg.cond(S)}")
@@ -1223,10 +1232,10 @@ class VMC_multiple_walkers:
             else:
                 X = None
 
-            X = comm.bcast(X, root=0)
-            logger.debug(f"X for MPI-rank={rank} is {X}")
-            logger.debug(f"X.shape for MPI-rank={rank} is {X.shape}")
-            logger.info(f"max(dX) for MPI-rank={rank} is {np.max(X)}")
+            X = mpi_comm.bcast(X, root=0)
+            logger.debug(f"X for MPI-rank={mpi_rank} is {X}")
+            logger.debug(f"X.shape for MPI-rank={mpi_rank} is {X.shape}")
+            logger.info(f"max(dX) for MPI-rank={mpi_rank} is {np.max(X)}")
 
             opt_param_list = self.__mcmc.opt_param_dict["opt_param_list"]
             dln_Psi_dc_shape_list = self.__mcmc.opt_param_dict["dln_Psi_dc_shape_list"]
@@ -1244,7 +1253,7 @@ class VMC_multiple_walkers:
                 param_shape = dln_Psi_dc_shape_list[ii]
                 param_index = [i for i, v in enumerate(dln_Psi_dc_flattened_index_list) if v == ii]
                 dX = X[param_index].reshape(param_shape)
-                logger.info(f"dX.shape for MPI-rank={rank} is {dX.shape}")
+                logger.info(f"dX.shape for MPI-rank={mpi_rank} is {dX.shape}")
                 if dX.shape == (1,):
                     dX = dX[0]
                 if opt_param == "jastrow_2b_param":
@@ -1281,7 +1290,7 @@ class VMC_multiple_walkers:
             )
 
             # dump WF
-            if rank == 0:
+            if mpi_rank == 0:
                 if (i_opt + 1) % wf_dump_freq == 0 or (i_opt + 1) == num_opt_steps:
                     logger.info("Hamiltonian data is dumped as a checkpoint file.")
                     self.__mcmc.hamiltonian_data.dump(f"hamiltonian_data_opt_step_{self.__i_opt}.chk")
@@ -1353,12 +1362,12 @@ class VMC_multiple_walkers:
         e_L_split = np.array_split(e_L, num_mcmc_bin_blocks, axis=0)
         e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in e_L_split]))
 
-        logger.debug(f"[before reduce] len(e_L_binned) for MPI-rank={rank} is {len(e_L_binned)}")
+        logger.debug(f"[before reduce] len(e_L_binned) for MPI-rank={mpi_rank} is {len(e_L_binned)}")
 
-        e_L_binned = comm.reduce(e_L_binned, op=MPI.SUM, root=0)
+        e_L_binned = mpi_comm.reduce(e_L_binned, op=MPI.SUM, root=0)
 
-        if rank == 0:
-            logger.debug(f"[before reduce] len(e_L_binned) for MPI-rank={rank} is {len(e_L_binned)}")
+        if mpi_rank == 0:
+            logger.debug(f"[before reduce] len(e_L_binned) for MPI-rank={mpi_rank} is {len(e_L_binned)}")
 
         O_matrix = self.get_deriv_ln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps)
         O_matrix_split = np.array_split(O_matrix, num_mcmc_bin_blocks, axis=0)
@@ -1374,7 +1383,7 @@ class VMC_multiple_walkers:
         logger.debug(f"O_matrix_ave.shape = {O_matrix_ave.shape}")
         logger.debug(f"O_matrix_binned.shape [before reduce] = {np.array(O_matrix_binned).shape}")
 
-        O_matrix_binned = comm.reduce(O_matrix_binned, op=MPI.SUM, root=0)
+        O_matrix_binned = mpi_comm.reduce(O_matrix_binned, op=MPI.SUM, root=0)
 
         eL_O_matrix = np.einsum("iw,iwj->iwj", e_L, O_matrix)
         eL_O_matrix_split = np.array_split(eL_O_matrix, num_mcmc_bin_blocks, axis=0)
@@ -1390,16 +1399,16 @@ class VMC_multiple_walkers:
         logger.debug(f"eL_O_matrix_ave.shape = {eL_O_matrix_ave.shape}")
         logger.debug(f"eL_O_matrix_binned.shape [before reduce] = {np.array(eL_O_matrix_binned).shape}")
 
-        eL_O_matrix_binned = comm.reduce(eL_O_matrix_binned, op=MPI.SUM, root=0)
+        eL_O_matrix_binned = mpi_comm.reduce(eL_O_matrix_binned, op=MPI.SUM, root=0)
 
-        if rank == 0:
+        if mpi_rank == 0:
             logger.debug(f"[after reduce] O_matrix_binned.shape = {np.array(O_matrix_binned).shape}")
 
             e_L_binned = np.array(e_L_binned)
             O_matrix_binned = np.array(O_matrix_binned)
             eL_O_matrix_binned = np.array(eL_O_matrix_binned)
 
-            M = num_mcmc_bin_blocks * self.__mcmc.num_walkers * comm.size
+            M = num_mcmc_bin_blocks * self.__mcmc.num_walkers * mpi_comm.size
             logger.info(f"Total number of binned samples = {M}")
 
             eL_O_jn = 1.0 / (M - 1) * np.array([np.sum(eL_O_matrix_binned, axis=0) - eL_O_matrix_binned[j] for j in range(M)])
@@ -1436,8 +1445,8 @@ class VMC_multiple_walkers:
         if mpi_broadcast:
             # comm.Bcast(generalized_force_mean, root=0)
             # comm.Bcast(generalized_force_std, root=0)
-            generalized_force_mean = comm.bcast(generalized_force_mean, root=0)
-            generalized_force_std = comm.bcast(generalized_force_std, root=0)
+            generalized_force_mean = mpi_comm.bcast(generalized_force_mean, root=0)
+            generalized_force_std = mpi_comm.bcast(generalized_force_std, root=0)
 
         return (
             generalized_force_mean,
@@ -1476,9 +1485,9 @@ class VMC_multiple_walkers:
         )
         O_matrix_binned = list(O_matrix_ave.reshape(O_matrix_binned_shape))
 
-        O_matrix_binned = comm.reduce(O_matrix_binned, op=MPI.SUM, root=0)
+        O_matrix_binned = mpi_comm.reduce(O_matrix_binned, op=MPI.SUM, root=0)
 
-        if rank == 0:
+        if mpi_rank == 0:
             O_matrix_binned = np.array(O_matrix_binned)
             logger.devel(f"O_matrix_binned = {O_matrix_binned}")
             logger.info(f"O_matrix_binned.shape = {O_matrix_binned.shape}")
@@ -1486,9 +1495,9 @@ class VMC_multiple_walkers:
             S_std = np.zeros(S_mean.size)
             logger.devel(f"S_mean = {S_mean}")
             logger.info(f"S_mean.shape = {S_mean.shape}")
-            logger.debug(f"S_mean.is_nan for MPI-rank={rank} is {np.isnan(S_mean).any()}")
-            logger.debug(f"S_mean.shape for MPI-rank={rank} is {S_mean.shape}")
-            logger.devel(f"S_mean.type for MPI-rank={rank} is {type(S_mean)}")
+            logger.debug(f"S_mean.is_nan for MPI-rank={mpi_rank} is {np.isnan(S_mean).any()}")
+            logger.debug(f"S_mean.shape for MPI-rank={mpi_rank} is {S_mean.shape}")
+            logger.devel(f"S_mean.type for MPI-rank={mpi_rank} is {type(S_mean)}")
         else:
             S_mean = None
             S_std = None
@@ -1496,8 +1505,8 @@ class VMC_multiple_walkers:
         if mpi_broadcast:
             # comm.Bcast(S_mean, root=0)
             # comm.Bcast(S_std, root=0)
-            S_mean = comm.bcast(S_mean, root=0)
-            S_std = comm.bcast(S_std, root=0)
+            S_mean = mpi_comm.bcast(S_mean, root=0)
+            S_std = mpi_comm.bcast(S_std, root=0)
 
         return (S_mean, S_std)  # (S_mu,nu ...., var(S)_mu,nu....) (L*L matrix, L*L matrix)
 
@@ -1525,12 +1534,12 @@ class VMC_multiple_walkers:
         # logger.info(e_L_binned)
         # logger.info(e_L_binned_check)
 
-        logger.debug(f"[before reduce] len(e_L_binned) for MPI-rank={rank} is {len(e_L_binned)}.")
+        logger.debug(f"[before reduce] len(e_L_binned) for MPI-rank={mpi_rank} is {len(e_L_binned)}.")
 
-        e_L_binned = comm.reduce(e_L_binned, op=MPI.SUM, root=0)
+        e_L_binned = mpi_comm.reduce(e_L_binned, op=MPI.SUM, root=0)
 
-        if rank == 0:
-            logger.debug(f"[after reduce] len(e_L_binned) for MPI-rank={rank} is {len(e_L_binned)}.")
+        if mpi_rank == 0:
+            logger.debug(f"[after reduce] len(e_L_binned) for MPI-rank={mpi_rank} is {len(e_L_binned)}.")
             logger.devel(f"e_L_binned = {e_L_binned}.")
             # jackknife implementation
             # https://www2.yukawa.kyoto-u.ac.jp/~etsuko.itou/old-HP/Notes/Jackknife-method.pdf
@@ -1546,8 +1555,8 @@ class VMC_multiple_walkers:
             e_L_mean = 0.0
             e_L_std = 0.0
 
-        e_L_mean = comm.bcast(e_L_mean, root=0)
-        e_L_std = comm.bcast(e_L_std, root=0)
+        e_L_mean = mpi_comm.bcast(e_L_mean, root=0)
+        e_L_std = mpi_comm.bcast(e_L_std, root=0)
 
         return (e_L_mean, e_L_std)
 
@@ -1586,20 +1595,20 @@ class VMC_multiple_walkers:
             domega_dr_up = self.__mcmc.domega_dr_up[num_mcmc_warmup_steps:]
             domega_dr_dn = self.__mcmc.domega_dr_dn[num_mcmc_warmup_steps:]
 
-            logger.info(f"e_L.shape for MPI-rank={rank} is {e_L.shape}")
+            logger.info(f"e_L.shape for MPI-rank={mpi_rank} is {e_L.shape}")
 
-            logger.info(f"de_L_dR.shape for MPI-rank={rank} is {de_L_dR.shape}")
-            logger.info(f"de_L_dr_up.shape for MPI-rank={rank} is {de_L_dr_up.shape}")
-            logger.info(f"de_L_dr_dn.shape for MPI-rank={rank} is {de_L_dr_dn.shape}")
+            logger.info(f"de_L_dR.shape for MPI-rank={mpi_rank} is {de_L_dR.shape}")
+            logger.info(f"de_L_dr_up.shape for MPI-rank={mpi_rank} is {de_L_dr_up.shape}")
+            logger.info(f"de_L_dr_dn.shape for MPI-rank={mpi_rank} is {de_L_dr_dn.shape}")
 
-            logger.info(f"dln_Psi_dr_up.shape for MPI-rank={rank} is {dln_Psi_dr_up.shape}")
-            logger.info(f"dln_Psi_dr_dn.shape for MPI-rank={rank} is {dln_Psi_dr_dn.shape}")
-            logger.info(f"dln_Psi_dR.shape for MPI-rank={rank} is {dln_Psi_dR.shape}")
+            logger.info(f"dln_Psi_dr_up.shape for MPI-rank={mpi_rank} is {dln_Psi_dr_up.shape}")
+            logger.info(f"dln_Psi_dr_dn.shape for MPI-rank={mpi_rank} is {dln_Psi_dr_dn.shape}")
+            logger.info(f"dln_Psi_dR.shape for MPI-rank={mpi_rank} is {dln_Psi_dR.shape}")
 
-            logger.info(f"omega_up.shape for MPI-rank={rank} is {omega_up.shape}")
-            logger.info(f"omega_dn.shape for MPI-rank={rank} is {omega_dn.shape}")
-            logger.info(f"domega_dr_up.shape for MPI-rank={rank} is {domega_dr_up.shape}")
-            logger.info(f"domega_dr_dn.shape for MPI-rank={rank} is {domega_dr_dn.shape}")
+            logger.info(f"omega_up.shape for MPI-rank={mpi_rank} is {omega_up.shape}")
+            logger.info(f"omega_dn.shape for MPI-rank={mpi_rank} is {omega_dn.shape}")
+            logger.info(f"domega_dr_up.shape for MPI-rank={mpi_rank} is {domega_dr_up.shape}")
+            logger.info(f"domega_dr_dn.shape for MPI-rank={mpi_rank} is {domega_dr_dn.shape}")
 
             force_HF = (
                 de_L_dR
@@ -1616,10 +1625,10 @@ class VMC_multiple_walkers:
 
             E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
 
-            logger.info(f"e_L.shape for MPI-rank={rank} is {e_L.shape}")
-            logger.info(f"force_HF.shape for MPI-rank={rank} is {force_HF.shape}")
-            logger.info(f"force_PP.shape for MPI-rank={rank} is {force_PP.shape}")
-            logger.info(f"E_L_force_PP.shape for MPI-rank={rank} is {E_L_force_PP.shape}")
+            logger.info(f"e_L.shape for MPI-rank={mpi_rank} is {e_L.shape}")
+            logger.info(f"force_HF.shape for MPI-rank={mpi_rank} is {force_HF.shape}")
+            logger.info(f"force_PP.shape for MPI-rank={mpi_rank} is {force_PP.shape}")
+            logger.info(f"E_L_force_PP.shape for MPI-rank={mpi_rank} is {E_L_force_PP.shape}")
 
             # split and binning with multiple walkers
             e_L_split = np.array_split(e_L, num_mcmc_bin_blocks, axis=0)
@@ -1654,23 +1663,23 @@ class VMC_multiple_walkers:
             E_L_force_PP_binned = list(E_L_force_PP_ave.reshape(E_L_force_PP_binned_shape))
 
             # MPI reduce
-            e_L_binned = comm.reduce(e_L_binned, op=MPI.SUM, root=0)
-            force_HF_binned = comm.reduce(force_HF_binned, op=MPI.SUM, root=0)
-            force_PP_binned = comm.reduce(force_PP_binned, op=MPI.SUM, root=0)
-            E_L_force_PP_binned = comm.reduce(E_L_force_PP_binned, op=MPI.SUM, root=0)
+            e_L_binned = mpi_comm.reduce(e_L_binned, op=MPI.SUM, root=0)
+            force_HF_binned = mpi_comm.reduce(force_HF_binned, op=MPI.SUM, root=0)
+            force_PP_binned = mpi_comm.reduce(force_PP_binned, op=MPI.SUM, root=0)
+            E_L_force_PP_binned = mpi_comm.reduce(E_L_force_PP_binned, op=MPI.SUM, root=0)
 
-            if rank == 0:
+            if mpi_rank == 0:
                 e_L_binned = np.array(e_L_binned)
                 force_HF_binned = np.array(force_HF_binned)
                 force_PP_binned = np.array(force_PP_binned)
                 E_L_force_PP_binned = np.array(E_L_force_PP_binned)
 
-                logger.info(f"e_L_binned.shape for MPI-rank={rank} is {e_L_binned.shape}")
-                logger.info(f"force_HF_binned.shape for MPI-rank={rank} is {force_HF_binned.shape}")
-                logger.info(f"force_PP_binned.shape for MPI-rank={rank} is {force_PP_binned.shape}")
-                logger.info(f"E_L_force_PP_binned.shape for MPI-rank={rank} is {E_L_force_PP_binned.shape}")
+                logger.info(f"e_L_binned.shape for MPI-rank={mpi_rank} is {e_L_binned.shape}")
+                logger.info(f"force_HF_binned.shape for MPI-rank={mpi_rank} is {force_HF_binned.shape}")
+                logger.info(f"force_PP_binned.shape for MPI-rank={mpi_rank} is {force_PP_binned.shape}")
+                logger.info(f"E_L_force_PP_binned.shape for MPI-rank={mpi_rank} is {E_L_force_PP_binned.shape}")
 
-                M = num_mcmc_bin_blocks * self.__mcmc.num_walkers * comm.size
+                M = num_mcmc_bin_blocks * self.__mcmc.num_walkers * mpi_comm.size
                 logger.info(f"Total number of binned samples = {M}")
 
                 force_HF_jn = np.array(
@@ -1694,8 +1703,8 @@ class VMC_multiple_walkers:
                     ]
                 )
 
-                logger.info(f"force_HF_jn.shape for MPI-rank={rank} is {force_HF_jn.shape}")
-                logger.info(f"force_Pulay_jn.shape for MPI-rank={rank} is {force_Pulay_jn.shape}")
+                logger.info(f"force_HF_jn.shape for MPI-rank={mpi_rank} is {force_HF_jn.shape}")
+                logger.info(f"force_Pulay_jn.shape for MPI-rank={mpi_rank} is {force_Pulay_jn.shape}")
 
                 force_jn = force_HF_jn + force_Pulay_jn
 
@@ -1711,8 +1720,8 @@ class VMC_multiple_walkers:
                 force_mean = np.array([])
                 force_std = np.array([])
 
-            force_mean = comm.bcast(force_mean, root=0)
-            force_std = comm.bcast(force_std, root=0)
+            force_mean = mpi_comm.bcast(force_mean, root=0)
+            force_std = mpi_comm.bcast(force_std, root=0)
 
             return (force_mean, force_std)
 
@@ -1722,16 +1731,14 @@ if __name__ == "__main__":
     import pickle
     from logging import Formatter, StreamHandler, getLogger
 
-    from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
     from .trexio_wrapper import read_trexio_file
-    from .wavefunction import Wavefunction_data
 
     logger_level = "MPI-INFO"
 
     log = getLogger("jqmc")
 
     if logger_level == "MPI-INFO":
-        if rank == 0:
+        if mpi_rank == 0:
             log.setLevel("INFO")
             stream_handler = StreamHandler()
             stream_handler.setLevel("INFO")
@@ -1742,14 +1749,14 @@ if __name__ == "__main__":
             log.setLevel("WARNING")
             stream_handler = StreamHandler()
             stream_handler.setLevel("WARNING")
-            handler_format = Formatter(f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
+            handler_format = Formatter(f"MPI-rank={mpi_rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
             stream_handler.setFormatter(handler_format)
             log.addHandler(stream_handler)
     else:
         log.setLevel(logger_level)
         stream_handler = StreamHandler()
         stream_handler.setLevel(logger_level)
-        handler_format = Formatter(f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
+        handler_format = Formatter(f"MPI-rank={mpi_rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
         stream_handler.setFormatter(handler_format)
         log.addHandler(stream_handler)
 
