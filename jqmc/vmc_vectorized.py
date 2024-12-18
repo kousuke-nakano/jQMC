@@ -45,8 +45,9 @@ import jax
 import numpy as np
 import numpy.typing as npt
 import scipy
-from jax import grad, lax, vmap
+from jax import grad, lax
 from jax import numpy as jnp
+from jax import vmap
 
 # MPI
 from mpi4py import MPI
@@ -145,9 +146,9 @@ class MCMC_multiple_walkers:
         self.__swct_data = SWCT_data(structure=self.__hamiltonian_data.structure_data)
 
         # compiling methods
-        logger.info("Compilation starts.")
+        logger.info("Compilation of fundamental functions starts.")
 
-        logger.info("Compilation e_L starts.")
+        logger.info("  Compilation e_L starts.")
         start = time.perf_counter()
         _ = compute_local_energy_api(
             hamiltonian_data=self.__hamiltonian_data,
@@ -155,12 +156,12 @@ class MCMC_multiple_walkers:
             r_dn_carts=self.__latest_r_dn_carts[0],
         )
         end = time.perf_counter()
-        logger.info("Compilation e_L is done.")
-        logger.info(f"Elapsed Time = {end-start:.2f} sec.")
+        logger.info("  Compilation e_L is done.")
+        logger.info(f"  Elapsed Time = {end-start:.2f} sec.")
         self.__timer_mcmc_init += end - start
 
         if self.__comput_position_deriv:
-            logger.info("Compilation de_L starts.")
+            logger.info("  Compilation de_L starts.")
             start = time.perf_counter()
             _, _, _ = grad(compute_local_energy_api, argnums=(0, 1, 2))(
                 self.__hamiltonian_data,
@@ -168,11 +169,11 @@ class MCMC_multiple_walkers:
                 self.__latest_r_dn_carts[0],
             )
             end = time.perf_counter()
-            logger.info("Compilation de_L is done.")
-            logger.info(f"Elapsed Time = {end-start:.2f} sec.")
+            logger.info("  Compilation de_L is done.")
+            logger.info(f"  Elapsed Time = {end-start:.2f} sec.")
             self.__timer_mcmc_init += end - start
 
-            logger.info("Compilation dln_Psi starts.")
+            logger.info("  Compilation dln_Psi starts.")
             start = time.perf_counter()
             _, _, _ = grad(evaluate_ln_wavefunction_api, argnums=(0, 1, 2))(
                 self.__hamiltonian_data.wavefunction_data,
@@ -180,23 +181,23 @@ class MCMC_multiple_walkers:
                 self.__latest_r_dn_carts[0],
             )
             end = time.perf_counter()
-            logger.info("Compilation dln_Psi is done.")
-            logger.info(f"Elapsed Time = {end-start:.2f} sec.")
+            logger.info("  Compilation dln_Psi is done.")
+            logger.info(f"  Elapsed Time = {end-start:.2f} sec.")
             self.__timer_mcmc_init += end - start
 
-            logger.info("Compilation domega starts.")
+            logger.info("  Compilation domega starts.")
             start = time.perf_counter()
             _ = evaluate_swct_domega_api(
                 self.__swct_data,
                 self.__latest_r_up_carts[0],
             )
             end = time.perf_counter()
-            logger.info("Compilation domega is done.")
-            logger.info(f"Elapsed Time = {end-start:.2f} sec.")
+            logger.info("  Compilation domega is done.")
+            logger.info(f"  Elapsed Time = {end-start:.2f} sec.")
             self.__timer_mcmc_init += end - start
 
         if self.__comput_jas_param_deriv:
-            logger.info("Compilation dln_Psi starts.")
+            logger.info("  Compilation dln_Psi starts.")
             start = time.perf_counter()
             _ = grad(evaluate_ln_wavefunction_api, argnums=(0))(
                 self.__hamiltonian_data.wavefunction_data,
@@ -204,11 +205,12 @@ class MCMC_multiple_walkers:
                 self.__latest_r_dn_carts[0],
             )
             end = time.perf_counter()
-            logger.info("Compilation dln_Psi is done.")
-            logger.info(f"Elapsed Time = {end-start:.2f} sec.")
+            logger.info("  Compilation dln_Psi is done.")
+            logger.info(f"  Elapsed Time = {end-start:.2f} sec.")
             self.__timer_mcmc_init += end - start
 
-        logger.info("Compilation is done.")
+        logger.info("Compilation of fundamental functions is done.")
+        logger.info(f"Elapsed Time = {self.__timer_mcmc_init:.2f} sec.")
 
         # init attributes
         self.__init_attributes()
@@ -297,11 +299,163 @@ class MCMC_multiple_walkers:
         mcmc_interval = max(1, int(num_mcmc_steps / 10))  # %
 
         # timer_counter
+        timer_mcmc_total = 0.0
         timer_mcmc_updated = 0.0
+        timer_mcmc_init = 0.0
         timer_e_L = 0.0
         timer_de_L_dR_dr = 0.0
         timer_dln_Psi_dR_dr = 0.0
         timer_dln_Psi_dc_jas1b2b3b = 0.0
+
+        # MCMC electron position update function
+        mcmc_init_start = time.perf_counter()
+
+        def _update_electron_positions(init_r_up_carts, init_r_dn_carts, jax_PRNG_key):
+            """Update electron positions based on the MH method.
+
+            Args:
+                init_r_up_carts (jnpt.ArrayLike): up electron position. dim: (N_e^up, 3)
+                init_r_dn_carts (jnpt.ArrayLike): down electron position. dim: (N_e^dn, 3)
+                jax_PRNG_key (jnpt.ArrayLike): jax PRIN key.
+
+            Returns:
+                jax_PRNG_key (jnpt.ArrayLike): updated jax_PRNG_key.
+                accepted_moves (int): the number of accepted moves
+                rejected_moves (int): the number of rejected moves
+                updated_r_up_cart (jnpt.ArrayLike): up electron position. dim: (N_e^up, 3)
+                updated_r_dn_cart (jnpt.ArrayLike): down electron position. dim: (N_e^down, 3)
+            """
+            accepted_moves = 0
+            rejected_moves = 0
+
+            latest_r_up_carts = init_r_up_carts
+            latest_r_dn_carts = init_r_dn_carts
+
+            for _ in range(self.__num_mcmc_per_measurement):
+                # Choose randomly if the electron comes from up or dn
+                jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
+                rand_num = jax.random.randint(subkey, shape=(), minval=0, maxval=self.__total_electrons)
+
+                # boolen: "up" or "dn"
+                # is_up == True -> up、False -> dn
+                is_up = rand_num < len(latest_r_up_carts)
+
+                # an index chosen from up electons
+                jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
+                up_index = jax.random.randint(subkey, shape=(), minval=0, maxval=len(latest_r_up_carts))
+
+                # an index chosen from dn electrons
+                jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
+                dn_index = jax.random.randint(subkey, shape=(), minval=0, maxval=len(latest_r_dn_carts))
+
+                selected_electron_index = jnp.where(is_up, up_index, dn_index)
+
+                # choose an up or dn electron from old_r_cart
+                old_r_cart = jnp.where(
+                    is_up, latest_r_up_carts[selected_electron_index], latest_r_dn_carts[selected_electron_index]
+                )
+
+                # choose the nearest atom index
+                nearest_atom_index = find_nearest_index_jax(self.__hamiltonian_data.structure_data, old_r_cart)
+
+                R_cart = self.__coords[nearest_atom_index]
+                Z = self.__charges[nearest_atom_index]
+                norm_r_R = jnp.linalg.norm(old_r_cart - R_cart)
+                f_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
+
+                logger.debug(f"nearest_atom_index = {nearest_atom_index}")
+                logger.debug(f"norm_r_R = {norm_r_R}")
+                logger.debug(f"f_l  = {f_l }")
+
+                sigma = f_l * self.__Dt
+                jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
+                g = jax.random.normal(subkey, shape=()) * sigma
+
+                # choose x,y,or,z
+                jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
+                random_index = jax.random.randint(subkey, shape=(), minval=0, maxval=3)
+
+                # plug g into g_vector
+                g_vector = jnp.zeros(3)
+                g_vector = g_vector.at[random_index].set(g)
+
+                logger.debug(f"jn = {random_index}, g \\equiv dstep  = {g_vector}")
+                new_r_cart = old_r_cart + g_vector
+
+                # set proposed r_up_carts and r_dn_carts.
+                proposed_r_up_carts = lax.cond(
+                    is_up,
+                    lambda _: latest_r_up_carts.at[selected_electron_index].set(new_r_cart),
+                    lambda _: latest_r_up_carts,
+                    operand=None,
+                )
+
+                proposed_r_dn_carts = lax.cond(
+                    is_up,
+                    lambda _: latest_r_dn_carts,
+                    lambda _: latest_r_dn_carts.at[selected_electron_index].set(new_r_cart),
+                    operand=None,
+                )
+
+                # choose the nearest atom index
+                nearest_atom_index = find_nearest_index_jax(self.__hamiltonian_data.structure_data, new_r_cart)
+
+                R_cart = self.__coords[nearest_atom_index]
+                Z = self.__charges[nearest_atom_index]
+                norm_r_R = jnp.linalg.norm(new_r_cart - R_cart)
+                f_prime_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
+
+                logger.debug(f"nearest_atom_index = {nearest_atom_index}")
+                logger.debug(f"norm_r_R = {norm_r_R}")
+                logger.debug(f"f_prime_l  = {f_prime_l }")
+
+                logger.debug(f"The selected electron is {selected_electron_index+1}-th {is_up} electron.")
+                logger.debug(f"The selected electron position is {old_r_cart}.")
+                logger.debug(f"The proposed electron position is {new_r_cart}.")
+
+                T_ratio = (f_l / f_prime_l) * jnp.exp(
+                    -(jnp.linalg.norm(new_r_cart - old_r_cart) ** 2)
+                    * (1.0 / (2.0 * f_prime_l**2 * self.__Dt**2) - 1.0 / (2.0 * f_l**2 * self.__Dt**2))
+                )
+
+                R_ratio = (
+                    evaluate_wavefunction_api(
+                        wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                        r_up_carts=proposed_r_up_carts,
+                        r_dn_carts=proposed_r_dn_carts,
+                    )
+                    / evaluate_wavefunction_api(
+                        wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                        r_up_carts=latest_r_up_carts,
+                        r_dn_carts=latest_r_dn_carts,
+                    )
+                ) ** 2.0
+
+                logger.debug(f"R_ratio, T_ratio = {R_ratio}, {T_ratio}")
+                acceptance_ratio = jnp.min(jnp.array([1.0, R_ratio * T_ratio]))
+                logger.debug(f"acceptance_ratio = {acceptance_ratio}")
+
+                jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
+                b = jax.random.uniform(subkey, shape=(), minval=0.0, maxval=1.0)
+                logger.debug(f"b = {b}.")
+
+                def _accepted_fun(_):
+                    # Move accepted
+                    return (accepted_moves + 1, rejected_moves, proposed_r_up_carts, proposed_r_dn_carts)
+
+                def _rejected_fun(_):
+                    # Move rejected
+                    return (accepted_moves, rejected_moves + 1, latest_r_up_carts, latest_r_dn_carts)
+
+                # judge accept or reject the propsed move using jax.lax.cond
+                accepted_moves, rejected_moves, latest_r_up_carts, latest_r_dn_carts = lax.cond(
+                    b < acceptance_ratio, _accepted_fun, _rejected_fun, operand=None
+                )
+
+            return jax_PRNG_key, accepted_moves, rejected_moves, latest_r_up_carts, latest_r_dn_carts
+
+        mcmc_init_end = time.perf_counter()
+        timer_mcmc_init += mcmc_init_end - mcmc_init_start
 
         mcmc_total_start = time.perf_counter()
 
@@ -312,150 +466,6 @@ class MCMC_multiple_walkers:
                 logger.info(
                     f"  Progress: MCMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps+self.__mcmc_counter}: {progress:.1f} %."
                 )
-
-            def _update_electron_positions(init_r_up_carts, init_r_dn_carts, jax_PRNG_key):
-                """Update electron positions based on the MH method.
-
-                Args:
-                    init_r_up_carts (jnpt.ArrayLike): up electron position. dim: (N_e^up, 3)
-                    init_r_dn_carts (jnpt.ArrayLike): down electron position. dim: (N_e^dn, 3)
-                    jax_PRNG_key (jnpt.ArrayLike): jax PRIN key.
-
-                Returns:
-                    jax_PRNG_key (jnpt.ArrayLike): updated jax_PRNG_key.
-                    accepted_moves (int): the number of accepted moves
-                    rejected_moves (int): the number of rejected moves
-                    updated_r_up_cart (jnpt.ArrayLike): up electron position. dim: (N_e^up, 3)
-                    updated_r_dn_cart (jnpt.ArrayLike): down electron position. dim: (N_e^down, 3)
-                """
-                accepted_moves = 0
-                rejected_moves = 0
-
-                latest_r_up_carts = init_r_up_carts
-                latest_r_dn_carts = init_r_dn_carts
-
-                for _ in range(self.__num_mcmc_per_measurement):
-                    # Choose randomly if the electron comes from up or dn
-                    jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
-                    rand_num = jax.random.randint(subkey, shape=(), minval=0, maxval=self.__total_electrons)
-
-                    # boolen: "up" or "dn"
-                    # is_up == True -> up、False -> dn
-                    is_up = rand_num < len(latest_r_up_carts)
-
-                    # an index chosen from up electons
-                    jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
-                    up_index = jax.random.randint(subkey, shape=(), minval=0, maxval=len(latest_r_up_carts))
-
-                    # an index chosen from dn electrons
-                    jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
-                    dn_index = jax.random.randint(subkey, shape=(), minval=0, maxval=len(latest_r_dn_carts))
-
-                    selected_electron_index = jnp.where(is_up, up_index, dn_index)
-
-                    # choose an up or dn electron from old_r_cart
-                    old_r_cart = jnp.where(
-                        is_up, latest_r_up_carts[selected_electron_index], latest_r_dn_carts[selected_electron_index]
-                    )
-
-                    # choose the nearest atom index
-                    nearest_atom_index = find_nearest_index_jax(self.__hamiltonian_data.structure_data, old_r_cart)
-
-                    R_cart = self.__coords[nearest_atom_index]
-                    Z = self.__charges[nearest_atom_index]
-                    norm_r_R = jnp.linalg.norm(old_r_cart - R_cart)
-                    f_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
-
-                    logger.debug(f"nearest_atom_index = {nearest_atom_index}")
-                    logger.debug(f"norm_r_R = {norm_r_R}")
-                    logger.debug(f"f_l  = {f_l }")
-
-                    sigma = f_l * self.__Dt
-                    jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
-                    g = jax.random.normal(subkey, shape=()) * sigma
-
-                    # choose x,y,or,z
-                    jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
-                    random_index = jax.random.randint(subkey, shape=(), minval=0, maxval=3)
-
-                    # plug g into g_vector
-                    g_vector = jnp.zeros(3)
-                    g_vector = g_vector.at[random_index].set(g)
-
-                    logger.debug(f"jn = {random_index}, g \\equiv dstep  = {g_vector}")
-                    new_r_cart = old_r_cart + g_vector
-
-                    # set proposed r_up_carts and r_dn_carts.
-                    proposed_r_up_carts = lax.cond(
-                        is_up,
-                        lambda _: latest_r_up_carts.at[selected_electron_index].set(new_r_cart),
-                        lambda _: latest_r_up_carts,
-                        operand=None,
-                    )
-
-                    proposed_r_dn_carts = lax.cond(
-                        is_up,
-                        lambda _: latest_r_dn_carts,
-                        lambda _: latest_r_dn_carts.at[selected_electron_index].set(new_r_cart),
-                        operand=None,
-                    )
-
-                    # choose the nearest atom index
-                    nearest_atom_index = find_nearest_index_jax(self.__hamiltonian_data.structure_data, new_r_cart)
-
-                    R_cart = self.__coords[nearest_atom_index]
-                    Z = self.__charges[nearest_atom_index]
-                    norm_r_R = jnp.linalg.norm(new_r_cart - R_cart)
-                    f_prime_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
-
-                    logger.debug(f"nearest_atom_index = {nearest_atom_index}")
-                    logger.debug(f"norm_r_R = {norm_r_R}")
-                    logger.debug(f"f_prime_l  = {f_prime_l }")
-
-                    logger.debug(f"The selected electron is {selected_electron_index+1}-th {is_up} electron.")
-                    logger.debug(f"The selected electron position is {old_r_cart}.")
-                    logger.debug(f"The proposed electron position is {new_r_cart}.")
-
-                    T_ratio = (f_l / f_prime_l) * jnp.exp(
-                        -(jnp.linalg.norm(new_r_cart - old_r_cart) ** 2)
-                        * (1.0 / (2.0 * f_prime_l**2 * self.__Dt**2) - 1.0 / (2.0 * f_l**2 * self.__Dt**2))
-                    )
-
-                    R_ratio = (
-                        evaluate_wavefunction_api(
-                            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                            r_up_carts=proposed_r_up_carts,
-                            r_dn_carts=proposed_r_dn_carts,
-                        )
-                        / evaluate_wavefunction_api(
-                            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                            r_up_carts=latest_r_up_carts,
-                            r_dn_carts=latest_r_dn_carts,
-                        )
-                    ) ** 2.0
-
-                    logger.debug(f"R_ratio, T_ratio = {R_ratio}, {T_ratio}")
-                    acceptance_ratio = jnp.min(jnp.array([1.0, R_ratio * T_ratio]))
-                    logger.debug(f"acceptance_ratio = {acceptance_ratio}")
-
-                    jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
-                    b = jax.random.uniform(subkey, shape=(), minval=0.0, maxval=1.0)
-                    logger.debug(f"b = {b}.")
-
-                    def _accepted_fun(_):
-                        # Move accepted
-                        return (accepted_moves + 1, rejected_moves, proposed_r_up_carts, proposed_r_dn_carts)
-
-                    def _rejected_fun(_):
-                        # Move rejected
-                        return (accepted_moves, rejected_moves + 1, latest_r_up_carts, latest_r_dn_carts)
-
-                    # judge accept or reject the propsed move using jax.lax.cond
-                    accepted_moves, rejected_moves, latest_r_up_carts, latest_r_dn_carts = lax.cond(
-                        b < acceptance_ratio, _accepted_fun, _rejected_fun, operand=None
-                    )
-
-                return jax_PRNG_key, accepted_moves, rejected_moves, latest_r_up_carts, latest_r_dn_carts
 
             # electron positions are goint to be updated!
             start = time.perf_counter()
@@ -649,7 +659,7 @@ class MCMC_multiple_walkers:
         self.__mcmc_counter += i_mcmc_step + 1
 
         mcmc_total_end = time.perf_counter()
-        timer_mcmc_total = mcmc_total_end - mcmc_total_start
+        timer_mcmc_total += mcmc_total_end - mcmc_total_start
         timer_misc = timer_mcmc_total - (
             timer_mcmc_updated + timer_e_L + timer_de_L_dR_dr + timer_dln_Psi_dR_dr + timer_dln_Psi_dc_jas1b2b3b
         )
@@ -889,6 +899,7 @@ class VMC_multiple_walkers:
         comput_position_deriv=False,
     ) -> None:
         """Initialization."""
+        self.__mcmc_seed = mcmc_seed
         self.__mpi_seed = mcmc_seed * (rank + 1)
         self.__num_walkers = num_walkers
         self.__comput_jas_param_deriv = comput_jas_param_deriv
@@ -897,8 +908,10 @@ class VMC_multiple_walkers:
         logger.debug(f"mcmc_seed for MPI-rank={rank} is {self.__mpi_seed}.")
 
         # set JAX random seed
-        jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
-        jax_PRNG_key_list = jnp.array([jax.random.fold_in(jax_PRNG_key, nw) for nw in range(self.__num_walkers)])
+        self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
+        self.__jax_PRNG_key_list_init = jnp.array(
+            [jax.random.fold_in(self.__jax_PRNG_key, nw) for nw in range(self.__num_walkers)]
+        )
 
         # set the initial electron configurations
         num_electron_up = hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
@@ -974,6 +987,7 @@ class VMC_multiple_walkers:
         init_r_up_carts = jnp.array(r_carts_up_list)
         init_r_dn_carts = jnp.array(r_carts_dn_list)
 
+        logger.info(f"The number of walkers assigned for each MPI process = {self.__num_walkers}.")
         logger.debug(f"initial r_up_carts= {init_r_up_carts}")
         logger.debug(f"initial r_dn_carts = {init_r_dn_carts}")
         logger.debug(f"initial r_up_carts.shape = {init_r_up_carts.shape}")
@@ -988,11 +1002,36 @@ class VMC_multiple_walkers:
             Dt=Dt,
             comput_jas_param_deriv=self.__comput_jas_param_deriv,
             comput_position_deriv=self.__comput_position_deriv,
-            jax_PRNG_key_list=jax_PRNG_key_list,
+            jax_PRNG_key_list=self.__jax_PRNG_key_list_init,
         )
 
         # WF optimization counter
         self.__i_opt = 0
+
+    @property
+    def num_walkers(self) -> int:
+        """The number of walkers."""
+        return self.__num_walkers
+
+    @property
+    def mcmc_seed(self) -> int:
+        """Return the mcmc_seed used for generating initial electron positions. This is used only for generating mpi_seed which differs among MPI processes."""
+        return self.__mcmc_seed
+
+    @property
+    def mpi_seed(self) -> int:
+        """Return the mpi_seed used for generating initial electron positions."""
+        return self.__mpi_seed
+
+    @property
+    def jax_PRNG_key(self) -> int:
+        """Return jax_PRNG_key used for generating jax_PRNG_key. This is used only for generating jax_PRNG_key_list containing different jax_PRNG_key among walkers."""
+        return self.__jax_PRNG_key
+
+    @property
+    def jax_PRNG_key_list(self) -> int:
+        """Return the initial jax_PRNG_key_list used for controlling random numbers in vectorized mcmc update."""
+        return self.__jax_PRNG_key_list_init
 
     @property
     def timer_mcmc_init(self):
