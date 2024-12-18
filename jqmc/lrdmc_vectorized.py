@@ -43,9 +43,8 @@ from logging import Formatter, StreamHandler, getLogger
 import jax
 import numpy as np
 import numpy.typing as npt
-from jax import jit
+from jax import jit, vmap
 from jax import numpy as jnp
-from jax import vmap
 
 # MPI
 from mpi4py import MPI
@@ -934,12 +933,12 @@ class GFMC_multiple_walkers:
 
 
 if __name__ == "__main__":
-    import os
     import pickle
 
-    from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
-    from .trexio_wrapper import read_trexio_file
-    from .wavefunction import Wavefunction_data
+    # import os
+    # from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
+    # from .trexio_wrapper import read_trexio_file
+    # from .wavefunction import Wavefunction_data
 
     logger_level = "MPI-INFO"
 
@@ -1007,9 +1006,9 @@ if __name__ == "__main__":
         hamiltonian_data = pickle.load(f)
 
     # run branching
-    num_walkers = 40
+    num_walkers = 1
     mcmc_seed = 3446
-    tau = 0.1
+    tau = 0.10
     alat = 0.30
     num_branching = 50
     non_local_move = "dltmove"

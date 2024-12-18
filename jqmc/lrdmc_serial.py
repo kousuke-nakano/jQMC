@@ -44,7 +44,6 @@ import jax
 import numpy as np
 import numpy.typing as npt
 from jax import numpy as jnp
-from jax import vmap
 
 # MPI
 from mpi4py import MPI
@@ -284,12 +283,12 @@ class GFMC:
         gmfc_total_start = time.perf_counter()
 
         # Main branching loop.
-        progress = (self.__gfmc_branching_counter) / (num_branching + self.__gfmc_branching_counter) * 100.0
-        logger.info(
-            f"Current branching step = {self.__gfmc_branching_counter}/{num_branching+self.__gfmc_branching_counter}: {progress:.0f} %."
-        )
         logger.info("-Start branching-")
         gfmc_interval = int(num_branching / 10)  # %
+        progress = (self.__gfmc_branching_counter) / (num_branching + self.__gfmc_branching_counter) * 100.0
+        logger.info(
+            f"Progress: branching step = {self.__gfmc_branching_counter}/{num_branching+self.__gfmc_branching_counter}: {progress:.0f} %."
+        )
         for i_branching in range(num_branching):
             if (i_branching + 1) % gfmc_interval == 0:
                 progress = (
@@ -687,10 +686,10 @@ class GFMC:
         logger.info(
             f"    Non_diagonal kinetic part = {timer_projection_non_diagonal_kinetic_part/num_branching*10**3: .3f} msec."
         )
-        logger.info(f"    Diagonal kinetic part = {timer_projection_diag_kinetic_part/num_branching*10**3: 3f} msec.")
-        logger.info(f"    Diagonal ecp part = {timer_projection_diag_ecp_part/num_branching*10**3: 3f} msec.")
+        logger.info(f"    Diagonal kinetic part = {timer_projection_diag_kinetic_part/num_branching*10**3: .3f} msec.")
+        logger.info(f"    Diagonal ecp part = {timer_projection_diag_ecp_part/num_branching*10**3: .3f} msec.")
         logger.info(
-            f"    Diagonal bare coulomb part = {timer_projection_diag_bare_couloumb_part/num_branching*10**3: 3f} msec."
+            f"    Diagonal bare coulomb part = {timer_projection_diag_bare_couloumb_part/num_branching*10**3: .3f} msec."
         )
         logger.info(f"    Non_diagonal ecp part = {timer_projection_non_diagonal_ecp_part/num_branching*10**3: .3f} msec.")
         logger.info(
@@ -750,32 +749,37 @@ class GFMC:
 
     @property
     def hamiltonian_data(self):
+        """Return hamiltonian_data."""
         return self.__hamiltonian_data
 
     @property
-    def e_L(self):
+    def e_L(self) -> npt.NDArray:
+        """Return the stored e_L array."""
         return self.__latest_e_L
 
     @property
-    def w_L(self):
+    def w_L(self) -> npt.NDArray:
+        """Return the stored w_L array."""
         return self.__latest_w_L
 
     @property
-    def latest_r_up_carts(self):
+    def latest_r_up_carts(self) -> npt.NDArray:
+        """Latest updated electron position for up-spin."""
         return self.__latest_r_up_carts
 
     @property
-    def latest_r_dn_carts(self):
+    def latest_r_dn_carts(self) -> npt.NDArray:
+        """Latest updated electron position for down-spin."""
         return self.__latest_r_dn_carts
 
 
 if __name__ == "__main__":
-    import os
     import pickle
 
-    from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
-    from .trexio_wrapper import read_trexio_file
-    from .wavefunction import Wavefunction_data, compute_discretized_kinetic_energy_api, evaluate_jastrow_api
+    # import os
+    # from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
+    # from .trexio_wrapper import read_trexio_file
+    # from .wavefunction import Wavefunction_data, compute_discretized_kinetic_energy_api, evaluate_jastrow_api
 
     logger_level = "MPI-INFO"
     # logger_level = "INFO"

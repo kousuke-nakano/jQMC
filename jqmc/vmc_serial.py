@@ -43,9 +43,7 @@ import jax
 import numpy as np
 import numpy.typing as npt
 import scipy
-from jax import grad, lax
-from jax import numpy as jnp
-from jax import vmap
+from jax import grad
 
 # MPI
 from mpi4py import MPI
@@ -1243,11 +1241,11 @@ class VMC_serial:
 
 
 if __name__ == "__main__":
-    import os
     import pickle
     from logging import Formatter, StreamHandler, getLogger
 
-    from .trexio_wrapper import read_trexio_file
+    # import os
+    # from .trexio_wrapper import read_trexio_file
 
     logger_level = "MPI-INFO"
 
