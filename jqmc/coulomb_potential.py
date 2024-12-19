@@ -5,6 +5,10 @@ and bare Coulomb potentials
 
 Todo:
     * Replace numpy and jax.numpy typings with jaxtyping
+    * Very inefficient implemantation of the non-local ECP part
+    because the routine computes exp(*) for all ion-electron distances.
+    At most, up to the second nearest neighbour's atoms are enough
+    * Use the fast computation for Psi(x')/Psi(x).
 """
 
 # Copyright (C) 2024- Kosuke Nakano

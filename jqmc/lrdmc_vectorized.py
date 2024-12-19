@@ -1,4 +1,11 @@
-"""LRDMC module."""
+"""LRDMC module.
+
+Todo:
+    The bottleneck of the LRDMC projection is that numbers of projection
+    are different among OpenMP/MPI distributed walkers, which makes many
+    idle walkers. Can we use different numbers of projection for each
+    walker??
+"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -670,7 +677,10 @@ class GFMC_multiple_walkers:
             w_L_latest = w_L_list
             e_L_latest = e_L_list
 
-            # Branching!
+            # Barrier before MPI operation
+            mpi_comm.Barrier()
+
+            # Branching starts
             start_branching = time.perf_counter()
 
             logger.debug(f"e_L={e_L_latest} for rank={mpi_rank}")
@@ -689,7 +699,6 @@ class GFMC_multiple_walkers:
             w_L_gathered_dyad = (mpi_rank, w_L_latest)
             w_L_gathered_dyad = mpi_comm.gather(w_L_gathered_dyad, root=0)
 
-            # refactoring from here!!
             if mpi_rank == 0:
                 logger.debug(f"e_L_gathered_dyad={e_L_gathered_dyad}")
                 logger.debug(f"w_L_gathered_dyad={w_L_gathered_dyad}")

@@ -1,4 +1,9 @@
-"""Wavefunction module."""
+"""Wavefunction module.
+
+Todo:
+    * Use the fast computation for Psi(x')/Psi(x) in compute_discretized_kinetic_energy_api.
+
+"""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
