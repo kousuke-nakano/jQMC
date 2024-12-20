@@ -40,6 +40,7 @@ import pickle
 import sys
 from logging import Formatter, StreamHandler, getLogger
 
+import jax
 import toml
 
 # MPI
@@ -52,8 +53,15 @@ from .miscs.header_footer import print_footer, print_header
 from .vmc_vectorized import VMC_multiple_walkers
 
 # MPI related
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
+mpi_comm = MPI.COMM_WORLD
+mpi_rank = mpi_comm.Get_rank()
+mpi_size = mpi_comm.Get_size()
+
+# jax-MPI related
+try:
+    jax.distributed.initialize()
+except ValueError:
+    pass
 
 # create new logger level for development
 DEVEL_LEVEL = 5
@@ -79,7 +87,7 @@ def main():
     log = getLogger("jqmc")
 
     if logger_level == "MPI-INFO":
-        if rank == 0:
+        if mpi_rank == 0:
             log.setLevel("INFO")
             stream_handler = StreamHandler(sys.stdout)
             stream_handler.setLevel("INFO")
@@ -90,14 +98,14 @@ def main():
             log.setLevel("ERROR")
             stream_handler = StreamHandler(sys.stdout)
             stream_handler.setLevel("ERROR")
-            handler_format = Formatter(f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
+            handler_format = Formatter(f"MPI-rank={mpi_rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
             stream_handler.setFormatter(handler_format)
             log.addHandler(stream_handler)
     else:
         log.setLevel(logger_level)
         stream_handler = StreamHandler(sys.stdout)
         stream_handler.setLevel(logger_level)
-        handler_format = Formatter(f"MPI-rank={rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
+        handler_format = Formatter(f"MPI-rank={mpi_rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
         stream_handler.setFormatter(handler_format)
         log.addHandler(stream_handler)
 
@@ -201,13 +209,13 @@ def main():
 
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
-            if rank == 0:
+            if mpi_rank == 0:
                 with open(restart_chk, "rb") as f:
                     chk_dyad_list = pickle.load(f)
                 vmc = [chk for _, chk in chk_dyad_list]
             else:
                 vmc = None
-            vmc = comm.scatter(vmc, root=0)
+            vmc = mpi_comm.scatter(vmc, root=0)
 
         else:
             with open(hamiltonian_chk, "rb") as f:
@@ -231,9 +239,9 @@ def main():
         logger.info("")
 
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
-        chk_dyad_list = [(rank, vmc)]
-        chk_dyad_list = comm.reduce(chk_dyad_list, op=MPI.SUM, root=0)
-        if rank == 0:
+        chk_dyad_list = [(mpi_rank, vmc)]
+        chk_dyad_list = mpi_comm.reduce(chk_dyad_list, op=MPI.SUM, root=0)
+        if mpi_rank == 0:
             with open(restart_chk, "wb") as f:
                 pickle.dump(chk_dyad_list, f)
         logger.info("")
@@ -291,13 +299,13 @@ def main():
 
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
-            if rank == 0:
+            if mpi_rank == 0:
                 with open(restart_chk, "rb") as f:
                     chk_dyad_list = pickle.load(f)
                 vmc = [chk for _, chk in chk_dyad_list]
             else:
                 vmc = None
-            vmc = comm.scatter(vmc, root=0)
+            vmc = mpi_comm.scatter(vmc, root=0)
 
         else:
             with open(hamiltonian_chk, "rb") as f:
@@ -323,9 +331,9 @@ def main():
         logger.info("")
 
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
-        chk_dyad_list = [(rank, vmc)]
-        chk_dyad_list = comm.reduce(chk_dyad_list, op=MPI.SUM, root=0)
-        if rank == 0:
+        chk_dyad_list = [(mpi_rank, vmc)]
+        chk_dyad_list = mpi_comm.reduce(chk_dyad_list, op=MPI.SUM, root=0)
+        if mpi_rank == 0:
             with open(restart_chk, "wb") as f:
                 pickle.dump(chk_dyad_list, f)
         logger.info("")
@@ -385,13 +393,13 @@ def main():
 
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
-            if rank == 0:
+            if mpi_rank == 0:
                 with open(restart_chk, "rb") as f:
                     chk_dyad_list = pickle.load(f)
                 gfmc = [chk for _, chk in chk_dyad_list]
             else:
                 gfmc = None
-            gfmc = comm.scatter(gfmc, root=0)
+            gfmc = mpi_comm.scatter(gfmc, root=0)
 
         else:
             with open(hamiltonian_chk, "rb") as f:
@@ -415,9 +423,9 @@ def main():
         logger.info(f"  Total Energy: E = {e_L_mean:.5f} +- {e_L_std:5f} Ha.")
         logger.info("")
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
-        chk_dyad_list = [(rank, gfmc)]
-        chk_dyad_list = comm.reduce(chk_dyad_list, op=MPI.SUM, root=0)
-        if rank == 0:
+        chk_dyad_list = [(mpi_rank, gfmc)]
+        chk_dyad_list = mpi_comm.reduce(chk_dyad_list, op=MPI.SUM, root=0)
+        if mpi_rank == 0:
             with open(restart_chk, "wb") as f:
                 pickle.dump(chk_dyad_list, f)
         logger.info("")
@@ -426,5 +434,6 @@ def main():
 
 
 if __name__ == "__main__":
+    main()
     main()
     main()
