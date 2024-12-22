@@ -44,7 +44,9 @@ import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import grad, hessian, jit, vmap
+from jax import grad, hessian, jit
+from jax import typing as jnpt
+from jax import vmap
 
 # jqmc module
 from .atomic_orbital import AOs_data, compute_AOs_api
@@ -169,6 +171,73 @@ class Jastrow_data:
             ValueError: If there is an inconsistency in a dimension of a given argument.
         """
         pass
+
+
+def compute_ratio_Jastrow_part_api(
+    jastrow_data: Jastrow_data,
+    old_r_up_carts: npt.NDArray[np.float64],
+    old_r_dn_carts: npt.NDArray[np.float64],
+    new_r_up_carts_arr: npt.NDArray[np.float64],
+    new_r_dn_carts_arr: npt.NDArray[np.float64],
+    debug: bool = False,
+) -> npt.NDArray:
+    """Function for computing the ratio of the Jastrow factor with the given jastrow_data between new_r_up_carts and old_r_up_carts.
+
+    The api method to compute the ratio of the Jastrow factor with the given jastrow_data between new_r_up_carts and old_r_up_carts.
+    i.e., J(new_r_carts_arr) / J(old_r_carts)
+
+    Notice that the Jastrow factor does contain exp factor!
+
+    Args:
+        jastrow_data (Jastrow_data): an instance of Jastrow_data
+        old_r_up_carts (jnpt.ArrayLike): Old Cartesian coordinates of up electrons (dim: N_e^up, 3)
+        old_r_dn_carts (jnpt.ArrayLike): Old Cartesian coordinates of down electrons (dim: N_e^dn, 3)
+        new_r_up_carts_arr (jnpt.ArrayLike): New Cartesian coordinate grids of up electrons (dim: N_grid, N_e^up, 3)
+        new_r_dn_carts_arr (jnpt.ArrayLike): New Cartesian coordinate grids of down electrons (dim: N_grid, N_e^dn, 3)
+        debug (bool): if True, this is computed via _debug function for debuging purpose
+
+    Return:
+        npt.NDArray: The value of Jastrow factor ratios. Notice that the Jastrow factor does contain exp factor. (dim: N_grid)
+    """
+    if debug:
+        jastrow_ratios = _compute_ratio_Jastrow_part_debug(
+            jastrow_data, old_r_up_carts, old_r_dn_carts, new_r_up_carts_arr, new_r_dn_carts_arr
+        )
+    else:
+        jastrow_ratios = _compute_ratio_Jastrow_part_debug(
+            jastrow_data, old_r_up_carts, old_r_dn_carts, new_r_up_carts_arr, new_r_dn_carts_arr
+        )
+    return jastrow_ratios
+
+
+def _compute_ratio_Jastrow_part_debug(
+    jastrow_data: Jastrow_data,
+    old_r_up_carts: npt.NDArray[np.float64],
+    old_r_dn_carts: npt.NDArray[np.float64],
+    new_r_up_carts_arr: npt.NDArray[np.float64],
+    new_r_dn_carts_arr: npt.NDArray[np.float64],
+) -> npt.NDArray:
+    """See _api method."""
+    return np.array(
+        [
+            np.exp(
+                compute_Jastrow_part_api(jastrow_data, new_r_up_carts, new_r_dn_carts)
+                - compute_Jastrow_part_api(jastrow_data, old_r_up_carts, old_r_dn_carts)
+            )
+            for new_r_up_carts, new_r_dn_carts in zip(new_r_up_carts_arr, new_r_dn_carts_arr)
+        ]
+    )
+
+
+def _compute_ratio_Jastrow_part_jax(
+    jastrow_data: Jastrow_data,
+    old_r_up_carts: npt.NDArray[np.float64],
+    old_r_dn_carts: npt.NDArray[np.float64],
+    new_r_up_carts_arr: npt.NDArray[np.float64],
+    new_r_dn_carts_arr: npt.NDArray[np.float64],
+) -> npt.NDArray:
+    """See _api method."""
+    pass
 
 
 def compute_Jastrow_part_api(
@@ -1353,3 +1422,43 @@ if __name__ == "__main__":
     np.testing.assert_almost_equal(grad_jastrow_J3_up_debug, grad_jastrow_J3_up_jax, decimal=5)
     np.testing.assert_almost_equal(grad_jastrow_J3_dn_debug, grad_jastrow_J3_dn_jax, decimal=5)
     np.testing.assert_almost_equal(sum_laplacian_J3_debug, sum_laplacian_J3_jax, decimal=5)
+
+    # ratio
+    N_grid_up = len(r_up_carts)
+    N_grid_dn = len(r_dn_carts)
+    old_r_up_carts = r_up_carts
+    old_r_dn_carts = r_dn_carts
+    new_r_up_carts_arr = []
+    new_r_dn_carts_arr = []
+    for i in range(N_grid_up):
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_up_carts[i] += 0.05 * new_r_up_carts[i]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+    for i in range(N_grid_dn):
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_dn_carts[i] += 0.05 * new_r_dn_carts[i]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+
+    new_r_up_carts_arr = np.array(new_r_up_carts_arr)
+    new_r_dn_carts_arr = np.array(new_r_dn_carts_arr)
+
+    jastrow_data = Jastrow_data(
+        jastrow_two_body_data=jastrow_two_body_data,
+        jastrow_two_body_pade_flag=True,
+        jastrow_three_body_data=jastrow_three_body_data,
+        jastrow_three_body_flag=True,
+    )
+
+    jastrow_ratios_debug = _compute_ratio_Jastrow_part_debug(
+        jastrow_data=jastrow_data,
+        old_r_up_carts=old_r_up_carts,
+        old_r_dn_carts=old_r_dn_carts,
+        new_r_up_carts_arr=new_r_up_carts_arr,
+        new_r_dn_carts_arr=new_r_dn_carts_arr,
+    )
+
+    print(jastrow_ratios_debug)

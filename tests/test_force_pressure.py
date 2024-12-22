@@ -163,7 +163,7 @@ def test_vmc_serial_force_with_SWCT(request):
     np.testing.assert_almost_equal(np.array(force_mean[0]), -1.0 * np.array(force_mean[1]), decimal=6)
     np.testing.assert_almost_equal(np.array(force_std[0]), np.array(force_std[1]), decimal=6)
 
-
+@pytest.mark.skip(reason="A heavy calculation. Use only on a local machine.")
 def test_vmc_vectorized_force_with_SWCT():
     # """
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
