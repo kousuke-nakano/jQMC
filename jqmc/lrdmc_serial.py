@@ -284,7 +284,7 @@ class GFMC:
 
         # Main branching loop.
         logger.info("-Start branching-")
-        gfmc_interval = int(num_branching / 10)  # %
+        gfmc_interval = np.max([1, int(num_branching / 10)])  # %
         progress = (self.__gfmc_branching_counter) / (num_branching + self.__gfmc_branching_counter) * 100.0
         logger.info(
             f"Progress: branching step = {self.__gfmc_branching_counter}/{num_branching+self.__gfmc_branching_counter}: {progress:.0f} %."
@@ -851,7 +851,7 @@ if __name__ == "__main__":
     mcmc_seed = 3446
     tau = 0.10
     alat = 0.30
-    num_branching = 50
+    num_branching = 2
     non_local_move = "dltmove"
 
     num_gfmc_warmup_steps = 5

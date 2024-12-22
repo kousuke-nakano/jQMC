@@ -377,6 +377,154 @@ def _compute_geminal_all_elements_jax(
     return geminal
 
 
+def compute_ratio_determinant_part_api(
+    geminal_data: Geminal_data,
+    old_r_up_carts: npt.NDArray[np.float64],
+    old_r_dn_carts: npt.NDArray[np.float64],
+    new_r_up_carts_arr: npt.NDArray[np.float64],
+    new_r_dn_carts_arr: npt.NDArray[np.float64],
+    debug: bool = False,
+) -> npt.NDArray:
+    """Function for computing the ratio of the Determinant part with the given geminal_data between new_r_up_carts and old_r_up_carts.
+
+    The api method to compute the ratio of the Determinant factor with the given geminal_data between new_r_up_carts and old_r_up_carts.
+    i.e., Det(new_r_carts_arr) / Det(old_r_carts)
+
+    Args:
+        geminal_data (Geminal_data): an instance of Geminal_data
+        old_r_up_carts (jnpt.ArrayLike): Old Cartesian coordinates of up electrons (dim: N_e^up, 3)
+        old_r_dn_carts (jnpt.ArrayLike): Old Cartesian coordinates of down electrons (dim: N_e^dn, 3)
+        new_r_up_carts_arr (jnpt.ArrayLike): New Cartesian coordinate grids of up electrons (dim: N_grid, N_e^up, 3)
+        new_r_dn_carts_arr (jnpt.ArrayLike): New Cartesian coordinate grids of down electrons (dim: N_grid, N_e^dn, 3)
+        debug (bool): if True, this is computed via _debug function for debuging purpose
+
+    Return:
+        npt.NDArray: The value of Determinant ratios. (dim: N_grid)
+    """
+    if debug:
+        determinant_ratios = _compute_ratio_determinant_part_debug(
+            geminal_data, old_r_up_carts, old_r_dn_carts, new_r_up_carts_arr, new_r_dn_carts_arr
+        )
+    else:
+        determinant_ratios = _compute_ratio_determinant_part_debug(
+            geminal_data, old_r_up_carts, old_r_dn_carts, new_r_up_carts_arr, new_r_dn_carts_arr
+        )
+    return determinant_ratios
+
+
+def _compute_ratio_determinant_part_debug(
+    geminal_data: Geminal_data,
+    old_r_up_carts: npt.NDArray[np.float64],
+    old_r_dn_carts: npt.NDArray[np.float64],
+    new_r_up_carts_arr: npt.NDArray[np.float64],
+    new_r_dn_carts_arr: npt.NDArray[np.float64],
+) -> npt.NDArray:
+    """See _api method."""
+    return np.array(
+        [
+            compute_det_geminal_all_elements_api(geminal_data, new_r_up_carts, new_r_dn_carts)
+            / compute_det_geminal_all_elements_api(geminal_data, old_r_up_carts, old_r_dn_carts)
+            for new_r_up_carts, new_r_dn_carts in zip(new_r_up_carts_arr, new_r_dn_carts_arr)
+        ]
+    )
+
+
+def _compute_ratio_determinant_part_jax_test(
+    geminal_data: Geminal_data,
+    old_r_up_carts: npt.NDArray[np.float64],
+    old_r_dn_carts: npt.NDArray[np.float64],
+    new_r_up_carts_arr: npt.NDArray[np.float64],
+    new_r_dn_carts_arr: npt.NDArray[np.float64],
+) -> npt.NDArray:
+    """See _api method."""
+    start = time.perf_counter()
+    A_old = compute_geminal_all_elements_api(geminal_data=geminal_data, r_up_carts=old_r_up_carts, r_dn_carts=old_r_dn_carts)
+    end = time.perf_counter()
+    print(f"Compute_geminal_old = {end-start:.2f} sec.")
+
+    start = time.perf_counter()
+    A_old_inv = np.linalg.inv(A_old)
+    end = time.perf_counter()
+    print(f"Compute_inv_geminal_old = {end-start:.2f} sec.")
+
+    start = time.perf_counter()
+    n_grid = new_r_up_carts_arr.shape[0]
+    info_list = []
+
+    for i in range(n_grid):
+        delta_up = new_r_up_carts_arr[i] - old_r_up_carts  # shape: (N_up, 3)
+        delta_dn = new_r_dn_carts_arr[i] - old_r_dn_carts  # shape: (N_dn, 3)
+
+        up_all_zero = np.all(delta_up == 0)
+
+        # ---- 非ゼロな方を取り出す
+        if not up_all_zero:
+            diff = delta_up
+            diff_type = "up"
+        else:
+            diff = delta_dn
+            diff_type = "dn"
+
+        nonzero_in_rows = np.any(diff != 0, axis=1)
+        idx = int(np.argmax(nonzero_in_rows))
+        info_list.append(
+            {
+                "i": i,  # どの grid index か
+                "diff_type": diff_type,  # "up" or "dn"
+                "idx": idx,  # 非ゼロ行 or 非ゼロ列 のインデックス
+            }
+        )
+
+    A_old_inv_vec_list = []
+    new_r_up_carts_list = []
+    new_r_dn_carts_list = []
+
+    for info in info_list:
+        i = info["i"]
+        diff_type = info["diff_type"]
+        idx = info["idx"]
+
+        if diff_type == "up":
+            new_r_up_carts = new_r_up_carts_arr[i, idx, :].reshape(1, 3)
+            new_r_dn_carts = new_r_dn_carts_arr[i]
+            new_r_up_carts_list.append(new_r_up_carts)
+            new_r_dn_carts_list.append(new_r_dn_carts)
+            A_old_inv_vec_list.append(A_old_inv[:, idx].reshape(A_old_inv[:, idx].size, 1))
+        else:
+            new_r_up_carts = new_r_up_carts_arr[i]
+            new_r_dn_carts = new_r_dn_carts_arr[i, idx, :].reshape(1, 3)
+            new_r_up_carts_list.append(new_r_up_carts)
+            new_r_dn_carts_list.append(new_r_dn_carts)
+            A_old_inv_vec_list.append(A_old_inv[idx, :].reshape(1, A_old_inv[idx, :].size))
+
+    lambda_matrix_paired, lambda_matrix_unpaired = np.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
+    end = time.perf_counter()
+    print(f"Initialization = {end-start:.2f} sec.")
+
+    start = time.perf_counter()
+    results = []
+
+    for info, A_old_inv_vec, new_r_up_carts, new_r_dn_carts in zip(
+        info_list, A_old_inv_vec_list, new_r_up_carts_list, new_r_dn_carts_list
+    ):
+        orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, new_r_up_carts)
+        orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, new_r_dn_carts)
+        # compute geminal values
+        geminal_paired = np.dot(orb_matrix_up.T, np.dot(lambda_matrix_paired, orb_matrix_dn))
+        geminal_unpaired = np.dot(orb_matrix_up.T, lambda_matrix_unpaired)
+        geminal = np.hstack([geminal_paired, geminal_unpaired])
+
+        if info["diff_type"] == "up":
+            result = np.dot(geminal, A_old_inv_vec)
+        else:
+            result = np.dot(A_old_inv_vec, geminal)
+        results.append(result)
+    end = time.perf_counter()
+    print(f"Compute_new_geminal = {end-start:.2f} sec.")
+
+    return results
+
+
 def compute_grads_and_laplacian_ln_Det_api(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -914,6 +1062,9 @@ def _compute_grads_and_laplacian_ln_Det_jax(
 
 
 if __name__ == "__main__":
+    import pickle
+    import time
+
     log = getLogger("jqmc")
     log.setLevel("DEBUG")
     stream_handler = StreamHandler()
@@ -924,6 +1075,7 @@ if __name__ == "__main__":
 
     from .structure import Structure_data
 
+    """
     # test MOs
     num_r_up_cart_samples = 2
     num_r_dn_cart_samples = 2
@@ -946,11 +1098,6 @@ if __name__ == "__main__":
     r_cart_min, r_cart_max = -1.0, 1.0
     R_cart_min, R_cart_max = 0.0, 0.0
     r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_up_cart_samples, 3) + r_cart_min
-    """
-    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(
-        num_r_dn_cart_samples, 3
-    ) + r_cart_min
-    """
     r_dn_carts = r_up_carts
     R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
 
@@ -1038,3 +1185,115 @@ if __name__ == "__main__":
     print(grad_ln_D_up)
     print(grad_ln_D_dn)
     print(sum_laplacian_ln_D)
+    """
+
+    # ratio
+    hamiltonian_chk = "hamiltonian_data.chk"
+    with open(hamiltonian_chk, "rb") as f:
+        hamiltonian_data = pickle.load(f)
+    geminal_data = hamiltonian_data.wavefunction_data.geminal_data
+
+    # test MOs
+    num_r_up_cart_samples = 4
+    num_r_dn_cart_samples = 4
+    r_cart_min, r_cart_max = -1.0, 1.0
+    R_cart_min, R_cart_max = 0.0, 0.0
+    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_up_cart_samples, 3) + r_cart_min
+    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_dn_cart_samples, 3) + r_cart_min
+    N_grid_up = len(r_up_carts)
+    N_grid_dn = len(r_dn_carts)
+    old_r_up_carts = r_up_carts
+    old_r_dn_carts = r_dn_carts
+    new_r_up_carts_arr = []
+    new_r_dn_carts_arr = []
+    for i in range(N_grid_up):
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_up_carts[i][0] += 0.05 * new_r_up_carts[i][0]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_up_carts[i][1] += 0.05 * new_r_up_carts[i][1]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_up_carts[i][2] += 0.05 * new_r_up_carts[i][2]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_up_carts[i][0] -= 0.05 * new_r_up_carts[i][0]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_up_carts[i][1] -= 0.05 * new_r_up_carts[i][1]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_up_carts[i][2] -= 0.05 * new_r_up_carts[i][2]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+    for i in range(N_grid_dn):
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_dn_carts[i][0] += 0.05 * new_r_dn_carts[i][0]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_dn_carts[i][1] += 0.05 * new_r_dn_carts[i][1]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_dn_carts[i][2] += 0.05 * new_r_dn_carts[i][2]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_dn_carts[i][0] -= 0.05 * new_r_dn_carts[i][0]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_dn_carts[i][1] -= 0.05 * new_r_dn_carts[i][1]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_dn_carts[i][2] -= 0.05 * new_r_dn_carts[i][2]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+
+    new_r_up_carts_arr = np.array(new_r_up_carts_arr)
+    new_r_dn_carts_arr = np.array(new_r_dn_carts_arr)
+
+    start = time.perf_counter()
+    determinant_ratios_debug = _compute_ratio_determinant_part_debug(
+        geminal_data=geminal_data,
+        old_r_up_carts=old_r_up_carts,
+        old_r_dn_carts=old_r_dn_carts,
+        new_r_up_carts_arr=new_r_up_carts_arr,
+        new_r_dn_carts_arr=new_r_dn_carts_arr,
+    )
+    end = time.perf_counter()
+    print(f"Elapsed Time = {end-start:.2f} sec.")
+
+    print(determinant_ratios_debug)
+
+    start = time.perf_counter()
+    determinant_ratios_jax = _compute_ratio_determinant_part_jax_test(
+        geminal_data=geminal_data,
+        old_r_up_carts=old_r_up_carts,
+        old_r_dn_carts=old_r_dn_carts,
+        new_r_up_carts_arr=new_r_up_carts_arr,
+        new_r_dn_carts_arr=new_r_dn_carts_arr,
+    )
+    end = time.perf_counter()
+    print(f"Elapsed Time = {end-start:.2f} sec.")
+
+    print(determinant_ratios_jax)

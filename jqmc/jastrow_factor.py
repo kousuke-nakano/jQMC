@@ -220,10 +220,8 @@ def _compute_ratio_Jastrow_part_debug(
     """See _api method."""
     return np.array(
         [
-            np.exp(
-                compute_Jastrow_part_api(jastrow_data, new_r_up_carts, new_r_dn_carts)
-                - compute_Jastrow_part_api(jastrow_data, old_r_up_carts, old_r_dn_carts)
-            )
+            np.exp(compute_Jastrow_part_api(jastrow_data, new_r_up_carts, new_r_dn_carts))
+            / np.exp(compute_Jastrow_part_api(jastrow_data, old_r_up_carts, old_r_dn_carts))
             for new_r_up_carts, new_r_dn_carts in zip(new_r_up_carts_arr, new_r_dn_carts_arr)
         ]
     )
@@ -1271,6 +1269,9 @@ def _compute_grads_and_laplacian_Jastrow_three_body_jax(
 
 
 if __name__ == "__main__":
+    import pickle
+    import time
+
     log = getLogger("jqmc")
     log.setLevel("DEBUG")
     stream_handler = StreamHandler()
@@ -1424,6 +1425,20 @@ if __name__ == "__main__":
     np.testing.assert_almost_equal(sum_laplacian_J3_debug, sum_laplacian_J3_jax, decimal=5)
 
     # ratio
+    hamiltonian_chk = "hamiltonian_data.chk"
+    with open(hamiltonian_chk, "rb") as f:
+        hamiltonian_data = pickle.load(f)
+    jastrow_data = hamiltonian_data.wavefunction_data.jastrow_data
+
+    # test MOs
+    num_r_up_cart_samples = 4
+    num_r_dn_cart_samples = 4
+
+    # generate matrices for the test
+    r_cart_min, r_cart_max = -1.0, 1.0
+    R_cart_min, R_cart_max = 0.0, 0.0
+    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_up_cart_samples, 3) + r_cart_min
+    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_dn_cart_samples, 3) + r_cart_min
     N_grid_up = len(r_up_carts)
     N_grid_dn = len(r_dn_carts)
     old_r_up_carts = r_up_carts
@@ -1433,26 +1448,70 @@ if __name__ == "__main__":
     for i in range(N_grid_up):
         new_r_up_carts = old_r_up_carts.copy()
         new_r_dn_carts = old_r_dn_carts.copy()
-        new_r_up_carts[i] += 0.05 * new_r_up_carts[i]
+        new_r_up_carts[i][0] += 0.05 * new_r_up_carts[i][0]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_up_carts[i][1] += 0.05 * new_r_up_carts[i][1]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_up_carts[i][2] += 0.05 * new_r_up_carts[i][2]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_up_carts[i][0] -= 0.05 * new_r_up_carts[i][0]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_up_carts[i][1] -= 0.05 * new_r_up_carts[i][1]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_up_carts[i][2] -= 0.05 * new_r_up_carts[i][2]
         new_r_up_carts_arr.append(new_r_up_carts)
         new_r_dn_carts_arr.append(new_r_dn_carts)
     for i in range(N_grid_dn):
         new_r_up_carts = old_r_up_carts.copy()
         new_r_dn_carts = old_r_dn_carts.copy()
-        new_r_dn_carts[i] += 0.05 * new_r_dn_carts[i]
+        new_r_dn_carts[i][0] += 0.05 * new_r_dn_carts[i][0]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_dn_carts[i][1] += 0.05 * new_r_dn_carts[i][1]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_dn_carts[i][2] += 0.05 * new_r_dn_carts[i][2]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_dn_carts[i][0] -= 0.05 * new_r_dn_carts[i][0]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_dn_carts[i][1] -= 0.05 * new_r_dn_carts[i][1]
+        new_r_up_carts_arr.append(new_r_up_carts)
+        new_r_dn_carts_arr.append(new_r_dn_carts)
+        new_r_up_carts = old_r_up_carts.copy()
+        new_r_dn_carts = old_r_dn_carts.copy()
+        new_r_dn_carts[i][2] -= 0.05 * new_r_dn_carts[i][2]
         new_r_up_carts_arr.append(new_r_up_carts)
         new_r_dn_carts_arr.append(new_r_dn_carts)
 
     new_r_up_carts_arr = np.array(new_r_up_carts_arr)
     new_r_dn_carts_arr = np.array(new_r_dn_carts_arr)
 
-    jastrow_data = Jastrow_data(
-        jastrow_two_body_data=jastrow_two_body_data,
-        jastrow_two_body_pade_flag=True,
-        jastrow_three_body_data=jastrow_three_body_data,
-        jastrow_three_body_flag=True,
-    )
-
+    start = time.perf_counter()
     jastrow_ratios_debug = _compute_ratio_Jastrow_part_debug(
         jastrow_data=jastrow_data,
         old_r_up_carts=old_r_up_carts,
@@ -1460,5 +1519,7 @@ if __name__ == "__main__":
         new_r_up_carts_arr=new_r_up_carts_arr,
         new_r_dn_carts_arr=new_r_dn_carts_arr,
     )
+    end = time.perf_counter()
+    print(f"Elapsed Time = {end-start:.2f} sec.")
 
     print(jastrow_ratios_debug)

@@ -43,8 +43,9 @@ from logging import Formatter, StreamHandler, getLogger
 import jax
 import numpy as np
 import numpy.typing as npt
-from jax import jit, vmap
+from jax import jit
 from jax import numpy as jnp
+from jax import vmap
 
 # MPI
 from mpi4py import MPI
@@ -377,12 +378,8 @@ class GFMC_multiple_walkers:
                 r_dn_carts=r_dn_carts,
                 RT=R.T,
             )
-            elements_non_diagonal_kinetic_part_FN = jnp.where(
-                elements_non_diagonal_kinetic_part < 0.0, elements_non_diagonal_kinetic_part, 0.0
-            )
-            diagonal_kinetic_part_SP = jnp.sum(
-                jnp.where(elements_non_diagonal_kinetic_part >= 0.0, elements_non_diagonal_kinetic_part, 0.0)
-            )
+            elements_non_diagonal_kinetic_part_FN = jnp.minimum(elements_non_diagonal_kinetic_part, 0.0)
+            diagonal_kinetic_part_SP = jnp.sum(jnp.maximum(elements_non_diagonal_kinetic_part, 0.0))
             non_diagonal_sum_hamiltonian_kinetic = jnp.sum(elements_non_diagonal_kinetic_part_FN)
 
             # compute diagonal elements, kinetic part
@@ -422,8 +419,8 @@ class GFMC_multiple_walkers:
                     )
 
                     V_nonlocal = jnp.array(V_nonlocal)
-                    V_nonlocal_FN = jnp.where(V_nonlocal < 0.0, V_nonlocal, 0.0)
-                    diagonal_ecp_part_SP = jnp.sum(jnp.where(V_nonlocal >= 0.0, V_nonlocal, 0.0))
+                    V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
+                    diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
                     non_diagonal_sum_hamiltonian_ecp = jnp.sum(V_nonlocal_FN)
                     non_diagonal_sum_hamiltonian = non_diagonal_sum_hamiltonian_kinetic + non_diagonal_sum_hamiltonian_ecp
 
@@ -437,8 +434,8 @@ class GFMC_multiple_walkers:
                     )
 
                     V_nonlocal = jnp.array(V_nonlocal)
-                    V_nonlocal_FN = jnp.where(V_nonlocal < 0.0, V_nonlocal, 0.0)
-                    diagonal_ecp_part_SP = jnp.sum(jnp.where(V_nonlocal >= 0.0, V_nonlocal, 0.0))
+                    V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
+                    diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
 
                     Jastrow_ref = evaluate_jastrow_api(
                         wavefunction_data=self.__hamiltonian_data.wavefunction_data,
@@ -1010,7 +1007,7 @@ if __name__ == "__main__":
     mcmc_seed = 3446
     tau = 0.10
     alat = 0.30
-    num_branching = 50
+    num_branching = 2
     non_local_move = "dltmove"
 
     num_gfmc_warmup_steps = 5
