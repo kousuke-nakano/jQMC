@@ -49,6 +49,7 @@ import numpy.typing as npt
 from flax import struct
 from jax import jit
 from jax import typing as jnpt
+from jax import vmap
 
 # jqmc module
 from .atomic_orbital import AOs_data, compute_AOs_api, compute_AOs_grad_api, compute_AOs_laplacian_api
@@ -350,13 +351,6 @@ def _compute_geminal_all_elements_debug(
     return geminal
 
 
-# it cannot be jitted!? because _api methods
-# in which crude if statements are included ??
-# but why? other _api can be jitted...
-# There is a related issue on github.
-# ValueError when re-compiling function with a multi-dimensional array as a static field #24204
-# For the time being, we can unjit it to avoid errors in unit_test.py
-# This error is tied with the choice of pytree=True/False flag
 @jit
 def _compute_geminal_all_elements_jax(
     geminal_data: Geminal_data,
@@ -406,7 +400,7 @@ def compute_ratio_determinant_part_api(
             geminal_data, old_r_up_carts, old_r_dn_carts, new_r_up_carts_arr, new_r_dn_carts_arr
         )
     else:
-        determinant_ratios = _compute_ratio_determinant_part_debug(
+        determinant_ratios = _compute_ratio_determinant_part_jax(
             geminal_data, old_r_up_carts, old_r_dn_carts, new_r_up_carts_arr, new_r_dn_carts_arr
         )
     return determinant_ratios
@@ -429,8 +423,8 @@ def _compute_ratio_determinant_part_debug(
     )
 
 
-# @jit
-def compute_ratio_determinant_part_jax(
+@jit
+def _compute_ratio_determinant_part_jax(
     geminal_data: Geminal_data,
     old_r_up_carts: jnp.ndarray,  # shape = (N_up, 3)
     old_r_dn_carts: jnp.ndarray,  # shape = (N_dn, 3)
@@ -450,22 +444,23 @@ def compute_ratio_determinant_part_jax(
         geminal_data.lambda_matrix, indices_or_sections=[geminal_data.orb_num_dn], axis=1
     )
 
-    def compute_one_grid(i: int) -> jnp.ndarray:
-        delta_up = new_r_up_carts_arr[i] - old_r_up_carts
-        delta_dn = new_r_dn_carts_arr[i] - old_r_dn_carts
+    def compute_one_grid(
+        lambda_matrix_paired, lambda_matrix_unpaired, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts
+    ):
+        delta_up = new_r_up_carts - old_r_up_carts
+        delta_dn = new_r_dn_carts - old_r_dn_carts
         up_all_zero = jnp.all(delta_up == 0)
 
         diff = jax.lax.cond(up_all_zero, lambda _: delta_dn, lambda _: delta_up, operand=None)
         nonzero_in_rows = jnp.any(diff != 0, axis=1)
         idx = jnp.argmax(nonzero_in_rows).astype(int)
 
-        def up_case(_):
-            new_r_up_carts = jnp.expand_dims(new_r_up_carts_arr[i, idx], axis=0)  # shape=(1,3)
-            new_r_dn_carts = new_r_dn_carts_arr[i]
+        def up_case(lambda_matrix_paired, lambda_matrix_unpaired, new_r_up_carts, new_r_dn_carts):
+            new_r_up_carts_extracted = jnp.expand_dims(new_r_up_carts[idx], axis=0)  # shape=(1,3)
             A_old_inv_vec = A_old_inv[:, idx, None]
 
             # orb
-            orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, new_r_up_carts)
+            orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, new_r_up_carts_extracted)
             orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, new_r_dn_carts)
             # geminal
             geminal_paired = orb_matrix_up.T @ (lambda_matrix_paired @ orb_matrix_dn)
@@ -474,14 +469,13 @@ def compute_ratio_determinant_part_jax(
 
             return (geminal @ A_old_inv_vec)[0][0]
 
-        def dn_case(_):
-            new_r_up_carts = new_r_up_carts_arr[i]
-            new_r_dn_carts = jnp.expand_dims(new_r_dn_carts_arr[i, idx], axis=0)  # shape=(1,3)
+        def dn_case(lambda_matrix_paired, lambda_matrix_unpaired, new_r_up_carts, new_r_dn_carts):
+            new_r_dn_carts_extracted = jnp.expand_dims(new_r_dn_carts[idx], axis=0)  # shape=(1,3)
             A_old_inv_vec = A_old_inv[idx, None, :]
 
             # orb
             orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, new_r_up_carts)
-            orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, new_r_dn_carts)
+            orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, new_r_dn_carts_extracted)
             # geminal
             geminal_paired = orb_matrix_up.T @ (lambda_matrix_paired @ orb_matrix_dn)
             geminal_unpaired = orb_matrix_up.T @ lambda_matrix_unpaired
@@ -489,108 +483,17 @@ def compute_ratio_determinant_part_jax(
 
             return (A_old_inv_vec @ geminal)[0][0]
 
-        # up/dn
-        return jax.lax.cond(up_all_zero, dn_case, up_case, operand=None)
-
-    # n_grid
-    idxs = jnp.arange(new_r_up_carts_arr.shape[0])
-    results = jax.vmap(compute_one_grid)(idxs)
-    return results
-
-
-def _compute_ratio_determinant_part_jax_test(
-    geminal_data: Geminal_data,
-    old_r_up_carts: npt.NDArray[np.float64],
-    old_r_dn_carts: npt.NDArray[np.float64],
-    new_r_up_carts_arr: npt.NDArray[np.float64],
-    new_r_dn_carts_arr: npt.NDArray[np.float64],
-) -> npt.NDArray:
-    """See _api method."""
-    start = time.perf_counter()
-    A_old = compute_geminal_all_elements_api(geminal_data=geminal_data, r_up_carts=old_r_up_carts, r_dn_carts=old_r_dn_carts)
-    end = time.perf_counter()
-    print(f"Compute_geminal_old = {end-start:.2f} sec.")
-
-    start = time.perf_counter()
-    A_old_inv = np.linalg.inv(A_old)
-    end = time.perf_counter()
-    print(f"Compute_inv_geminal_old = {end-start:.2f} sec.")
-
-    start = time.perf_counter()
-    n_grid = new_r_up_carts_arr.shape[0]
-    info_list = []
-
-    for i in range(n_grid):
-        delta_up = new_r_up_carts_arr[i] - old_r_up_carts  # shape: (N_up, 3)
-        delta_dn = new_r_dn_carts_arr[i] - old_r_dn_carts  # shape: (N_dn, 3)
-
-        up_all_zero = np.all(delta_up == 0)
-
-        # ---- 非ゼロな方を取り出す
-        if not up_all_zero:
-            diff = delta_up
-            diff_type = "up"
-        else:
-            diff = delta_dn
-            diff_type = "dn"
-
-        nonzero_in_rows = np.any(diff != 0, axis=1)
-        idx = int(np.argmax(nonzero_in_rows))
-        info_list.append(
-            {
-                "i": i,  # どの grid index か
-                "diff_type": diff_type,  # "up" or "dn"
-                "idx": idx,  # 非ゼロ行 or 非ゼロ列 のインデックス
-            }
+        return jax.lax.cond(
+            up_all_zero,
+            dn_case,
+            up_case,
+            *(lambda_matrix_paired, lambda_matrix_unpaired, new_r_up_carts, new_r_dn_carts),
         )
 
-    A_old_inv_vec_list = []
-    new_r_up_carts_list = []
-    new_r_dn_carts_list = []
-
-    for info in info_list:
-        i = info["i"]
-        diff_type = info["diff_type"]
-        idx = info["idx"]
-
-        if diff_type == "up":
-            new_r_up_carts = new_r_up_carts_arr[i, idx, :].reshape(1, 3)
-            new_r_dn_carts = new_r_dn_carts_arr[i]
-            new_r_up_carts_list.append(new_r_up_carts)
-            new_r_dn_carts_list.append(new_r_dn_carts)
-            A_old_inv_vec_list.append(A_old_inv[:, idx].reshape(A_old_inv[:, idx].size, 1))
-        else:
-            new_r_up_carts = new_r_up_carts_arr[i]
-            new_r_dn_carts = new_r_dn_carts_arr[i, idx, :].reshape(1, 3)
-            new_r_up_carts_list.append(new_r_up_carts)
-            new_r_dn_carts_list.append(new_r_dn_carts)
-            A_old_inv_vec_list.append(A_old_inv[idx, :].reshape(1, A_old_inv[idx, :].size))
-
-    lambda_matrix_paired, lambda_matrix_unpaired = np.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
-    end = time.perf_counter()
-    print(f"Initialization = {end-start:.2f} sec.")
-
-    start = time.perf_counter()
-    results = []
-
-    for info, A_old_inv_vec, new_r_up_carts, new_r_dn_carts in zip(
-        info_list, A_old_inv_vec_list, new_r_up_carts_list, new_r_dn_carts_list
-    ):
-        orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, new_r_up_carts)
-        orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, new_r_dn_carts)
-        # compute geminal values
-        geminal_paired = np.dot(orb_matrix_up.T, np.dot(lambda_matrix_paired, orb_matrix_dn))
-        geminal_unpaired = np.dot(orb_matrix_up.T, lambda_matrix_unpaired)
-        geminal = np.hstack([geminal_paired, geminal_unpaired])
-
-        if info["diff_type"] == "up":
-            result = np.dot(geminal, A_old_inv_vec)
-        else:
-            result = np.dot(A_old_inv_vec, geminal)
-        results.append(result)
-    end = time.perf_counter()
-    print(f"Compute_new_geminal = {end-start:.2f} sec.")
-
+    # vectorization along grid
+    results = vmap(compute_one_grid, in_axes=(None, None, 0, 0, None, None))(
+        lambda_matrix_paired, lambda_matrix_unpaired, new_r_up_carts_arr, new_r_dn_carts_arr, old_r_up_carts, old_r_dn_carts
+    )
     return results
 
 
@@ -1352,22 +1255,7 @@ if __name__ == "__main__":
     end = time.perf_counter()
     print(f"Elapsed Time = {end-start:.2f} sec.")
 
-    print(determinant_ratios_debug)
-
-    start = time.perf_counter()
-    determinant_ratios_jax_test = _compute_ratio_determinant_part_jax_test(
-        geminal_data=geminal_data,
-        old_r_up_carts=old_r_up_carts,
-        old_r_dn_carts=old_r_dn_carts,
-        new_r_up_carts_arr=new_r_up_carts_arr,
-        new_r_dn_carts_arr=new_r_dn_carts_arr,
-    )
-    end = time.perf_counter()
-    print(f"Elapsed Time = {end-start:.2f} sec.")
-
-    # print(determinant_ratios_jax_test)
-
-    _ = compute_ratio_determinant_part_jax(
+    _ = _compute_ratio_determinant_part_jax(
         geminal_data=geminal_data,
         old_r_up_carts=jnp.array(old_r_up_carts),
         old_r_dn_carts=jnp.array(old_r_dn_carts),
@@ -1376,7 +1264,7 @@ if __name__ == "__main__":
     )
 
     start = time.perf_counter()
-    determinant_ratios_jax = compute_ratio_determinant_part_jax(
+    determinant_ratios_jax = _compute_ratio_determinant_part_jax(
         geminal_data=geminal_data,
         old_r_up_carts=jnp.array(old_r_up_carts),
         old_r_dn_carts=jnp.array(old_r_dn_carts),
@@ -1385,4 +1273,5 @@ if __name__ == "__main__":
     )
     end = time.perf_counter()
     print(f"Elapsed Time = {end-start:.2f} sec.")
-    print(determinant_ratios_jax)
+
+    np.testing.assert_array_almost_equal(determinant_ratios_debug, determinant_ratios_jax, decimal=1)
