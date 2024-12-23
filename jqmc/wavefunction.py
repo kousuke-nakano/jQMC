@@ -47,10 +47,20 @@ import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import jit
+from jax import jit, vmap
 
-from .determinant import Geminal_data, compute_det_geminal_all_elements_api, compute_grads_and_laplacian_ln_Det_api
-from .jastrow_factor import Jastrow_data, compute_grads_and_laplacian_Jastrow_part_api, compute_Jastrow_part_api
+from .determinant import (
+    Geminal_data,
+    _compute_ratio_determinant_part_jax,
+    compute_det_geminal_all_elements_api,
+    compute_grads_and_laplacian_ln_Det_api,
+)
+from .jastrow_factor import (
+    Jastrow_data,
+    _compute_ratio_Jastrow_part_jax,
+    compute_grads_and_laplacian_Jastrow_part_api,
+    compute_Jastrow_part_api,
+)
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
@@ -322,7 +332,7 @@ def compute_discretized_kinetic_energy_debug(
 
 
 @jit
-def compute_discretized_kinetic_energy_api(
+def compute_discretized_kinetic_energy_api_old(
     alat: float, wavefunction_data, r_up_carts: jnp.ndarray, r_dn_carts: jnp.ndarray, RT: jnp.ndarray
 ) -> tuple[list[tuple[npt.NDArray, npt.NDArray]], list[npt.NDArray], jax.Array]:
     r"""Function for computing discretized kinetic grid points and thier energies with a given lattice space (alat).
@@ -411,10 +421,127 @@ def compute_discretized_kinetic_energy_api(
     def eval_psi(r_up, r_dn):
         return evaluate_wavefunction_api(wavefunction_data, r_up, r_dn)
 
-    psi_xp = jax.vmap(eval_psi)(r_up_carts_combined, r_dn_carts_combined)
+    psi_xp = vmap(eval_psi)(r_up_carts_combined, r_dn_carts_combined)
 
     # Compute the kinetic part elements
     elements_kinetic_part = -1.0 / (2.0 * alat**2) * psi_xp / psi_x
+
+    # Determine the maximum number of electrons
+    N_up = r_up_carts_combined.shape[1]
+    N_dn = r_dn_carts_combined.shape[1]
+    N_max = max(N_up, N_dn)
+
+    # Pad the arrays to have the same number of electrons
+    r_up_padded = jnp.pad(r_up_carts_combined, ((0, 0), (0, N_max - N_up), (0, 0)), mode="constant")
+    r_dn_padded = jnp.pad(r_dn_carts_combined, ((0, 0), (0, N_max - N_dn), (0, 0)), mode="constant")
+
+    # Stack along the spin axis to get shape (N_configs, 2, N_max, 3)
+    mesh_kinetic_part = jnp.stack([r_up_padded, r_dn_padded], axis=1)
+
+    # Return the combined configurations and the kinetic elements
+    return mesh_kinetic_part, elements_kinetic_part
+
+
+@jit
+def compute_discretized_kinetic_energy_api(
+    alat: float, wavefunction_data, r_up_carts: jnp.ndarray, r_dn_carts: jnp.ndarray, RT: jnp.ndarray
+) -> tuple[list[tuple[npt.NDArray, npt.NDArray]], list[npt.NDArray], jax.Array]:
+    r"""Function for computing discretized kinetic grid points and thier energies with a given lattice space (alat).
+
+    Args:
+        alat (float): Hamiltonian discretization (bohr), which will be replaced with LRDMC_data.
+        wavefunction_data (Wavefunction_data): an instance of Qavefunction_data, which will be replaced with LRDMC_data.
+        r_carts_up (npt.NDArray): up electron position (N_e,3).
+        r_carts_dn (npt.NDArray): down electron position (N_e,3).
+        RT (npt.NDArray): Rotation matrix. \equiv R.T
+
+    Returns:
+        list[tuple[npt.NDArray, npt.NDArray]], list[npt.NDArray], jax.Array:
+            return mesh for the LRDMC kinetic part, a list containing tuples containing (r_carts_up, r_carts_dn),
+            a list containing values of the \Psi(x')/\Psi(x) corresponding to the grid, and the new jax_PRNG_key
+            that should be used in the next call of this @jitted function.
+    """
+    # Define the shifts to apply (+/- alat in each coordinate direction)
+    shifts = alat * jnp.array(
+        [
+            [1, 0, 0],  # x+
+            [-1, 0, 0],  # x-
+            [0, 1, 0],  # y+
+            [0, -1, 0],  # y-
+            [0, 0, 1],  # z+
+            [0, 0, -1],  # z-
+        ]
+    )  # Shape: (6, 3)
+
+    shifts = shifts @ RT  # Shape: (6, 3)
+
+    # num shift
+    num_shifts = shifts.shape[0]
+
+    # Process up-spin electrons
+    num_up_electrons = r_up_carts.shape[0]
+    num_up_configs = num_up_electrons * num_shifts
+
+    # Create base positions repeated for each configuration
+    base_positions_up = jnp.repeat(r_up_carts[None, :, :], num_up_configs, axis=0)  # Shape: (num_up_configs, N_up, 3)
+
+    # Initialize shifts_to_apply_up
+    shifts_to_apply_up = jnp.zeros_like(base_positions_up)
+
+    # Create indices for configurations
+    config_indices_up = jnp.arange(num_up_configs)
+    electron_indices_up = jnp.repeat(jnp.arange(num_up_electrons), num_shifts)
+    shift_indices_up = jnp.tile(jnp.arange(num_shifts), num_up_electrons)
+
+    # Apply shifts to the appropriate electron in each configuration
+    shifts_to_apply_up = shifts_to_apply_up.at[config_indices_up, electron_indices_up, :].set(shifts[shift_indices_up])
+
+    # Apply shifts to base positions
+    r_up_carts_shifted = base_positions_up + shifts_to_apply_up  # Shape: (num_up_configs, N_up, 3)
+
+    # Repeat down-spin electrons for up-spin configurations
+    r_dn_carts_repeated_up = jnp.repeat(r_dn_carts[None, :, :], num_up_configs, axis=0)  # Shape: (num_up_configs, N_dn, 3)
+
+    # Process down-spin electrons
+    num_dn_electrons = r_dn_carts.shape[0]
+    num_dn_configs = num_dn_electrons * num_shifts
+
+    base_positions_dn = jnp.repeat(r_dn_carts[None, :, :], num_dn_configs, axis=0)  # Shape: (num_dn_configs, N_dn, 3)
+    shifts_to_apply_dn = jnp.zeros_like(base_positions_dn)
+
+    config_indices_dn = jnp.arange(num_dn_configs)
+    electron_indices_dn = jnp.repeat(jnp.arange(num_dn_electrons), num_shifts)
+    shift_indices_dn = jnp.tile(jnp.arange(num_shifts), num_dn_electrons)
+
+    # Apply shifts to the appropriate electron in each configuration
+    shifts_to_apply_dn = shifts_to_apply_dn.at[config_indices_dn, electron_indices_dn, :].set(shifts[shift_indices_dn])
+
+    r_dn_carts_shifted = base_positions_dn + shifts_to_apply_dn  # Shape: (num_dn_configs, N_dn, 3)
+
+    # Repeat up-spin electrons for down-spin configurations
+    r_up_carts_repeated_dn = jnp.repeat(r_up_carts[None, :, :], num_dn_configs, axis=0)  # Shape: (num_dn_configs, N_up, 3)
+
+    # Combine configurations
+    r_up_carts_combined = jnp.concatenate([r_up_carts_shifted, r_up_carts_repeated_dn], axis=0)  # Shape: (N_configs, N_up, 3)
+    r_dn_carts_combined = jnp.concatenate([r_dn_carts_repeated_up, r_dn_carts_shifted], axis=0)  # Shape: (N_configs, N_dn, 3)
+
+    # Evaluate the ratios of wavefunctions between the shifted positions and the original position
+    wf_ratio = _compute_ratio_determinant_part_jax(
+        geminal_data=wavefunction_data.geminal_data,
+        old_r_up_carts=r_up_carts,
+        old_r_dn_carts=r_dn_carts,
+        new_r_up_carts_arr=r_up_carts_combined,
+        new_r_dn_carts_arr=r_dn_carts_combined,
+    ) * _compute_ratio_Jastrow_part_jax(
+        jastrow_data=wavefunction_data.jastrow_data,
+        old_r_up_carts=r_up_carts,
+        old_r_dn_carts=r_dn_carts,
+        new_r_up_carts_arr=r_up_carts_combined,
+        new_r_dn_carts_arr=r_dn_carts_combined,
+    )
+
+    # Compute the kinetic part elements
+    elements_kinetic_part = -1.0 / (2.0 * alat**2) * wf_ratio
 
     # Determine the maximum number of electrons
     N_up = r_up_carts_combined.shape[1]
@@ -471,6 +598,8 @@ if __name__ == "__main__":
     log.addHandler(stream_handler)
 
     import os
+    import pickle
+    import time
 
     from jax import grad
 
@@ -478,7 +607,7 @@ if __name__ == "__main__":
     from .jastrow_factor import Jastrow_data, Jastrow_two_body_data
     from .trexio_wrapper import read_trexio_file
 
-    # """
+    """
     # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
     (
         structure_data,
@@ -488,8 +617,6 @@ if __name__ == "__main__":
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"))
-    # """
-
     num_electron_up = geminal_mo_data.num_electron_up
     num_electron_dn = geminal_mo_data.num_electron_dn
 
@@ -509,6 +636,15 @@ if __name__ == "__main__":
     hamiltonian_data = Hamiltonian_data(
         structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
     )
+    """
+
+    hamiltonian_chk = "hamiltonian_data.chk"
+    with open(hamiltonian_chk, "rb") as f:
+        hamiltonian_data = pickle.load(f)
+    wavefunction_data = hamiltonian_data.wavefunction_data
+    geminal_data = hamiltonian_data.wavefunction_data.geminal_data
+    num_electron_up = geminal_data.num_electron_up
+    num_electron_dn = geminal_data.num_electron_dn
 
     # Initialization
     r_up_carts = []
@@ -516,12 +652,14 @@ if __name__ == "__main__":
 
     total_electrons = 0
 
-    if coulomb_potential_data.ecp_flag:
-        charges = np.array(structure_data.atomic_numbers) - np.array(coulomb_potential_data.z_cores)
+    if hamiltonian_data.coulomb_potential_data.ecp_flag:
+        charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
+            hamiltonian_data.coulomb_potential_data.z_cores
+        )
     else:
-        charges = np.array(structure_data.atomic_numbers)
+        charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
 
-    coords = structure_data.positions_cart
+    coords = hamiltonian_data.structure_data.positions_cart
 
     # Place electrons around each nucleus
     for i in range(len(coords)):
@@ -567,43 +705,44 @@ if __name__ == "__main__":
     r_up_carts = np.array(r_up_carts)
     r_dn_carts = np.array(r_dn_carts)
 
-    """ test discritized kinetic mesh
+    # """ test discritized kinetic mesh
     alat = 0.05
+    RT = np.eye(3)
+    start = time.perf_counter()
     mesh_kinetic_part_debug, elements_kinetic_part_debug = compute_discretized_kinetic_energy_debug(
         alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
+    end = time.perf_counter()
+    print(f"Elapsed Time = {(end-start)*1e3:.3f} msec.")
 
-    mesh_kinetic_part_jax, elements_kinetic_part_jax, _ = compute_discretized_kinetic_energy_jax(
-        alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+    _, _ = compute_discretized_kinetic_energy_api_old(
+        alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, RT=RT
     )
+
+    start = time.perf_counter()
+    mesh_kinetic_part_jax_old, elements_kinetic_part_jax_old = compute_discretized_kinetic_energy_api_old(
+        alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, RT=RT
+    )
+    end = time.perf_counter()
+    print(f"(new) Elapsed Time = {(end-start)*1e3:.3f} msec.")
+
+    _, _ = compute_discretized_kinetic_energy_api(
+        alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, RT=RT
+    )
+
+    start = time.perf_counter()
+    mesh_kinetic_part_jax, elements_kinetic_part_jax = compute_discretized_kinetic_energy_api(
+        alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, RT=RT
+    )
+    end = time.perf_counter()
+    print(f"(old) Elapsed Time = {(end-start)*1e3:.3f} msec.")
 
     np.testing.assert_array_almost_equal(mesh_kinetic_part_jax, mesh_kinetic_part_debug, decimal=10)
+    np.testing.assert_array_almost_equal(elements_kinetic_part_jax_old, elements_kinetic_part_debug, decimal=10)
     np.testing.assert_array_almost_equal(elements_kinetic_part_jax, elements_kinetic_part_debug, decimal=10)
+    # """
 
-    jax_PRNG_key = jax.random.PRNGKey(42)
-
-    mesh_kinetic_part_jax_pp1, elements_kinetic_part_jax_pp1, new_jax_PRNG_key = compute_discretized_kinetic_energy_jax(
-        alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, jax_PRNG_key=jax_PRNG_key
-    )
-
-    mesh_kinetic_part_jax_pp2, elements_kinetic_part_jax_pp2, new_jax_PRNG_key = compute_discretized_kinetic_energy_jax(
-        alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, jax_PRNG_key=jax_PRNG_key
-    )
-
-    np.testing.assert_array_almost_equal(elements_kinetic_part_jax_pp1, elements_kinetic_part_jax_pp2, decimal=10)
-
-    mesh_kinetic_part_jax_pp3, elements_kinetic_part_jax_pp3, new_jax_PRNG_key = compute_discretized_kinetic_energy_jax(
-        alat=alat,
-        wavefunction_data=wavefunction_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
-        jax_PRNG_key=new_jax_PRNG_key,
-    )
-
-    with np.testing.assert_raises(AssertionError):
-        np.testing.assert_array_almost_equal(elements_kinetic_part_jax_pp1, elements_kinetic_part_jax_pp3, decimal=10)
     """
-
     # test jax grad
     grad_ln_Psi_h = grad(evaluate_ln_wavefunction_api, argnums=(0))(
         hamiltonian_data.wavefunction_data,
@@ -656,3 +795,14 @@ if __name__ == "__main__":
     grad_ln_Psi_jastrow2b_param_fdm = (ln_Psi_h_p - ln_Psi_h_m) / (2.0 * d_jastrow2b_param)
 
     np.testing.assert_almost_equal(grad_ln_Psi_jastrow2b_param_fdm, grad_ln_Psi_jastrow2b_param_jax, decimal=6)
+
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
+    )
+
+    ln_Psi_h_m = evaluate_ln_wavefunction_api(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+
+    grad_ln_Psi_jastrow2b_param_fdm = (ln_Psi_h_p - ln_Psi_h_m) / (2.0 * d_jastrow2b_param)
+
+    np.testing.assert_almost_equal(grad_ln_Psi_jastrow2b_param_fdm, grad_ln_Psi_jastrow2b_param_jax, decimal=6)
+    """

@@ -43,6 +43,7 @@ from logging import Formatter, StreamHandler, getLogger
 import jax
 import numpy as np
 import numpy.typing as npt
+from jax import jit
 from jax import numpy as jnp
 
 # MPI
@@ -272,11 +273,15 @@ class GFMC:
         """
         # set timer
         timer_projection_total = 0.0
-        timer_projection_non_diagonal_kinetic_part = 0.0
-        timer_projection_non_diagonal_ecp_part = 0.0
-        timer_projection_diag_kinetic_part = 0.0
-        timer_projection_diag_bare_couloumb_part = 0.0
-        timer_projection_diag_ecp_part = 0.0
+        timer_projection_non_diagonal_kinetic_part_init = 0.0
+        timer_projection_non_diagonal_kinetic_part_comput = 0.0
+        timer_projection_non_diagonal_kinetic_part_post = 0.0
+        timer_projection_diag_kinetic_part_comput = 0.0
+        timer_projection_diag_kinetic_part_post = 0.0
+        timer_projection_diag_bare_couloumb_part_comput = 0.0
+        timer_projection_diag_ecp_part_comput = 0.0
+        timer_projection_non_diagonal_ecp_part_comput = 0.0
+        timer_projection_non_diagonal_ecp_part_post = 0.0
         timer_projection_update_weights_and_positions = 0.0
         timer_observable = 0.0
         timer_branching = 0.0
@@ -289,6 +294,54 @@ class GFMC:
         logger.info(
             f"Progress: branching step = {self.__gfmc_branching_counter}/{num_branching+self.__gfmc_branching_counter}: {progress:.0f} %."
         )
+
+        @jit
+        def generate_rotation_matrix(alpha, beta, gamma):
+            # Define the rotation matrix for rotation around the x-axis
+            def rotation_matrix_x(alpha):
+                cos_a = jnp.cos(alpha)
+                sin_a = jnp.sin(alpha)
+                R_x = jnp.array(
+                    [
+                        [1, 0, 0],
+                        [0, cos_a, -sin_a],
+                        [0, sin_a, cos_a],
+                    ]
+                )
+                return R_x
+
+            # Define the rotation matrix for rotation around the y-axis
+            def rotation_matrix_y(beta):
+                cos_b = jnp.cos(beta)
+                sin_b = jnp.sin(beta)
+                R_y = jnp.array(
+                    [
+                        [cos_b, 0, sin_b],
+                        [0, 1, 0],
+                        [-sin_b, 0, cos_b],
+                    ]
+                )
+                return R_y
+
+            # Define the rotation matrix for rotation around the z-axis
+            def rotation_matrix_z(gamma):
+                cos_g = jnp.cos(gamma)
+                sin_g = jnp.sin(gamma)
+                R_z = jnp.array(
+                    [
+                        [cos_g, -sin_g, 0],
+                        [sin_g, cos_g, 0],
+                        [0, 0, 1],
+                    ]
+                )
+                return R_z
+
+            R_x = rotation_matrix_x(alpha)
+            R_y = rotation_matrix_y(beta)
+            R_z = rotation_matrix_z(gamma)
+
+            return jnp.dot(R_z, jnp.dot(R_y, R_x))  # Rotate in the order x -> y -> z
+
         for i_branching in range(num_branching):
             if (i_branching + 1) % gfmc_interval == 0:
                 progress = (
@@ -311,63 +364,28 @@ class GFMC:
 
             start_projection = time.perf_counter()
             # projection loop
+            projection_times = 0
             while True:
+                projection_times += 1
                 progress = (tau_left) / (self.__tau) * 100.0
                 logger.debug(f"  Left projection time = {tau_left}/{self.__tau}: {progress:.1f} %.")
 
                 # compute non-diagonal grids and elements (kinetic)
-                start_projection_non_diagonal_kinetic_part = time.perf_counter()
+                start_projection_non_diagonal_kinetic_part_init = time.perf_counter()
                 # generate a random rotation matrix
                 self.__jax_PRNG_key, subkey = jax.random.split(self.__jax_PRNG_key)
                 alpha, beta, gamma = jax.random.uniform(
                     subkey, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi
                 )  # Rotation angle around the x,y,z-axis (in radians)
 
-                # Define the rotation matrix for rotation around the x-axis
-                def rotation_matrix_x(alpha):
-                    cos_a = jnp.cos(alpha)
-                    sin_a = jnp.sin(alpha)
-                    R_x = jnp.array(
-                        [
-                            [1, 0, 0],
-                            [0, cos_a, -sin_a],
-                            [0, sin_a, cos_a],
-                        ]
-                    )
-                    return R_x
-
-                # Define the rotation matrix for rotation around the y-axis
-                def rotation_matrix_y(beta):
-                    cos_b = jnp.cos(beta)
-                    sin_b = jnp.sin(beta)
-                    R_y = jnp.array(
-                        [
-                            [cos_b, 0, sin_b],
-                            [0, 1, 0],
-                            [-sin_b, 0, cos_b],
-                        ]
-                    )
-                    return R_y
-
-                # Define the rotation matrix for rotation around the z-axis
-                def rotation_matrix_z(gamma):
-                    cos_g = jnp.cos(gamma)
-                    sin_g = jnp.sin(gamma)
-                    R_z = jnp.array(
-                        [
-                            [cos_g, -sin_g, 0],
-                            [sin_g, cos_g, 0],
-                            [0, 0, 1],
-                        ]
-                    )
-                    return R_z
-
                 # Compute individual rotation matrices
-                R_x = rotation_matrix_x(alpha)
-                R_y = rotation_matrix_y(beta)
-                R_z = rotation_matrix_z(gamma)
-                R = R_z @ R_y @ R_x  # Rotate in the order x -> y -> z
+                R = generate_rotation_matrix(alpha, beta, gamma)
+                end_projection_non_diagonal_kinetic_part_init = time.perf_counter()
+                timer_projection_non_diagonal_kinetic_part_init += (
+                    end_projection_non_diagonal_kinetic_part_init - start_projection_non_diagonal_kinetic_part_init
+                )
 
+                start_projection_non_diagonal_kinetic_part_comput = time.perf_counter()
                 mesh_kinetic_part, elements_non_diagonal_kinetic_part = compute_discretized_kinetic_energy_api(
                     alat=self.__alat,
                     wavefunction_data=self.__hamiltonian_data.wavefunction_data,
@@ -375,54 +393,66 @@ class GFMC:
                     r_dn_carts=self.__latest_r_dn_carts,
                     RT=R.T,
                 )
-                elements_non_diagonal_kinetic_part_FN = list(
-                    map(lambda K: K if K < 0 else 0.0, elements_non_diagonal_kinetic_part)
+                end_projection_non_diagonal_kinetic_part_comput = time.perf_counter()
+                timer_projection_non_diagonal_kinetic_part_comput += (
+                    end_projection_non_diagonal_kinetic_part_comput - start_projection_non_diagonal_kinetic_part_comput
                 )
-                diagonal_kinetic_part_SP = np.sum(list(map(lambda K: K if K >= 0 else 0.0, elements_non_diagonal_kinetic_part)))
+
+                start_projection_non_diagonal_kinetic_part_post = time.perf_counter()
+                elements_non_diagonal_kinetic_part_FN = list(np.minimum(elements_non_diagonal_kinetic_part, 0.0))
+                diagonal_kinetic_part_SP = np.sum(np.maximum(elements_non_diagonal_kinetic_part, 0.0))
                 non_diagonal_sum_hamiltonian = np.sum(elements_non_diagonal_kinetic_part_FN)
-                end_projection_non_diagonal_kinetic_part = time.perf_counter()
-                timer_projection_non_diagonal_kinetic_part += (
-                    end_projection_non_diagonal_kinetic_part - start_projection_non_diagonal_kinetic_part
+                end_projection_non_diagonal_kinetic_part_post = time.perf_counter()
+                timer_projection_non_diagonal_kinetic_part_post += (
+                    end_projection_non_diagonal_kinetic_part_post - start_projection_non_diagonal_kinetic_part_post
                 )
 
                 # compute diagonal elements, kinetic part
-                start_projection_diag_kinetic_part = time.perf_counter()
+                start_projection_diag_kinetic_part_comput = time.perf_counter()
                 diagonal_kinetic_continuum = compute_kinetic_energy_api(
                     wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                     r_up_carts=self.__latest_r_up_carts,
                     r_dn_carts=self.__latest_r_dn_carts,
                 )
+                end_projection_diag_kinetic_part_comput = time.perf_counter()
+                timer_projection_diag_kinetic_part_comput += (
+                    end_projection_diag_kinetic_part_comput - start_projection_diag_kinetic_part_comput
+                )
+
+                start_projection_diag_kinetic_part_post = time.perf_counter()
                 diagonal_kinetic_discretized = -1.0 * np.sum(elements_non_diagonal_kinetic_part)
-                end_projection_diag_kinetic_part = time.perf_counter()
-                timer_projection_diag_kinetic_part += end_projection_diag_kinetic_part - start_projection_diag_kinetic_part
+                end_projection_diag_kinetic_part_post = time.perf_counter()
+                timer_projection_diag_kinetic_part_post += (
+                    end_projection_diag_kinetic_part_post - start_projection_diag_kinetic_part_post
+                )
 
                 # compute diagonal elements, bare couloumb
-                start_projection_diag_bare_couloumb = time.perf_counter()
+                start_projection_diag_bare_couloumb_comput = time.perf_counter()
                 diagonal_bare_coulomb_part = _compute_bare_coulomb_potential_jax(
                     coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                     r_up_carts=self.__latest_r_up_carts,
                     r_dn_carts=self.__latest_r_dn_carts,
                 )
-                end_projection_diag_bare_couloumb = time.perf_counter()
-                timer_projection_diag_bare_couloumb_part += (
-                    end_projection_diag_bare_couloumb - start_projection_diag_bare_couloumb
+                end_projection_diag_bare_couloumb_comput = time.perf_counter()
+                timer_projection_diag_bare_couloumb_part_comput += (
+                    end_projection_diag_bare_couloumb_comput - start_projection_diag_bare_couloumb_comput
                 )
 
                 # with ECP
                 if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
                     # ecp local
-                    start_projection_diag_ecp = time.perf_counter()
-                    diagonal_ecp_local_part = _compute_ecp_local_parts_jax(
+                    start_projection_diag_ecp_comput = time.perf_counter()
+                    diagonal_ecp_local_part_comput = _compute_ecp_local_parts_jax(
                         coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                         r_up_carts=self.__latest_r_up_carts,
                         r_dn_carts=self.__latest_r_dn_carts,
                     )
-                    end_projection_diag_ecp = time.perf_counter()
-                    timer_projection_diag_ecp_part += end_projection_diag_ecp - start_projection_diag_ecp
+                    end_projection_diag_ecp_comput = time.perf_counter()
+                    timer_projection_diag_ecp_part_comput += end_projection_diag_ecp_comput - start_projection_diag_ecp_comput
 
                     # ecp non-local
-                    start_projection_non_diagonal_ecp_part = time.perf_counter()
                     if self.__non_local_move == "tmove":
+                        start_projection_non_diagonal_ecp_part_comput = time.perf_counter()
                         mesh_non_local_ecp_part, V_nonlocal, _ = _compute_ecp_non_local_parts_jax(
                             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
@@ -430,14 +460,22 @@ class GFMC:
                             r_dn_carts=self.__latest_r_dn_carts,
                             flag_determinant_only=False,
                         )
+                        end_projection_non_diagonal_ecp_part_comput = time.perf_counter()
+                        timer_projection_non_diagonal_ecp_part_comput += (
+                            end_projection_non_diagonal_ecp_part_comput - start_projection_non_diagonal_ecp_part_comput
+                        )
 
-                        V_nonlocal_FN = list(map(lambda V: V if V < 0.0 else 0.0, V_nonlocal))
-                        diagonal_ecp_part_SP = np.sum(list(map(lambda V: V if V >= 0.0 else 0.0, V_nonlocal)))
+                        start_projection_non_diagonal_ecp_part_post = time.perf_counter()
+                        V_nonlocal_FN = list(np.minimum(V_nonlocal, 0.0))
+                        diagonal_ecp_part_SP = np.sum(np.maximum(V_nonlocal, 0.0))
                         non_diagonal_sum_hamiltonian += np.sum(V_nonlocal_FN)
-                        logger.debug("V_nonlocal_FN")
-                        logger.debug(V_nonlocal_FN)
+                        end_projection_non_diagonal_ecp_part_post = time.perf_counter()
+                        timer_projection_non_diagonal_ecp_part_post += (
+                            end_projection_non_diagonal_ecp_part_post - start_projection_non_diagonal_ecp_part_post
+                        )
 
                     elif self.__non_local_move == "dltmove":
+                        start_projection_non_diagonal_ecp_part_comput = time.perf_counter()
                         mesh_non_local_ecp_part, V_nonlocal, _ = _compute_ecp_non_local_parts_jax(
                             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
@@ -445,9 +483,14 @@ class GFMC:
                             r_dn_carts=self.__latest_r_dn_carts,
                             flag_determinant_only=True,
                         )
+                        end_projection_non_diagonal_ecp_part_comput = time.perf_counter()
+                        timer_projection_non_diagonal_ecp_part_comput += (
+                            end_projection_non_diagonal_ecp_part_comput - start_projection_non_diagonal_ecp_part_comput
+                        )
 
-                        V_nonlocal_FN = list(map(lambda V: V if V < 0.0 else 0.0, V_nonlocal))
-                        diagonal_ecp_part_SP = np.sum(list(map(lambda V: V if V >= 0.0 else 0.0, V_nonlocal)))
+                        start_projection_non_diagonal_ecp_part_post = time.perf_counter()
+                        V_nonlocal_FN = np.minimum(V_nonlocal, 0.0)
+                        diagonal_ecp_part_SP = np.sum(np.maximum(V_nonlocal, 0.0))
 
                         Jastrow_ref = evaluate_jastrow_api(
                             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
@@ -467,38 +510,21 @@ class GFMC:
                             for i, V in enumerate(V_nonlocal_FN)
                         ]
                         non_diagonal_sum_hamiltonian += np.sum(V_nonlocal_FN)
-
-                        """ for debug / to be deleted soon.
-                        _, V_nonlocal_debug, _ = compute_ecp_non_local_parts_jax(
-                            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                            r_up_carts=self.__latest_r_up_carts,
-                            r_dn_carts=self.__latest_r_dn_carts,
-                            flag_determinant_only=False,
+                        end_projection_non_diagonal_ecp_part_post = time.perf_counter()
+                        timer_projection_non_diagonal_ecp_part_post += (
+                            end_projection_non_diagonal_ecp_part_post - start_projection_non_diagonal_ecp_part_post
                         )
-
-                        V_nonlocal_FN_debug = list(map(lambda V: V if V < 0.0 else 0.0, V_nonlocal_debug))
-
-                        logger.info(
-                            f"np.max(np.array(V_nonlocal_FN_debug) - np.array(V_nonlocal_FN)) = {np.max(np.array(V_nonlocal_FN_debug) - np.array(V_nonlocal_FN))}"
-                        )
-                        """
 
                     else:
                         logger.error(f"non_local_move = {self.__non_local_move} is not yet implemented.")
                         raise NotImplementedError
-
-                    end_projection_non_diagonal_ecp_part = time.perf_counter()
-                    timer_projection_non_diagonal_ecp_part += (
-                        end_projection_non_diagonal_ecp_part - start_projection_non_diagonal_ecp_part
-                    )
 
                     # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
                     e_L = (
                         diagonal_kinetic_continuum
                         + diagonal_kinetic_discretized
                         + diagonal_bare_coulomb_part
-                        + diagonal_ecp_local_part
+                        + diagonal_ecp_local_part_comput
                         + diagonal_kinetic_part_SP
                         + diagonal_ecp_part_SP
                         + non_diagonal_sum_hamiltonian
@@ -564,6 +590,7 @@ class GFMC:
 
             end_projection = time.perf_counter()
             timer_projection_total += end_projection - start_projection
+            logger.info(f"  #projection times = x {projection_times}")
 
             # projection ends
             logger.debug("  Projection ends.")
@@ -684,14 +711,30 @@ class GFMC:
         logger.info(f"Elapsed times per branching, averaged over {num_branching} branching steps.")
         logger.info(f"  Projection time per branching = {timer_projection_total/num_branching*10**3: .3f} msec.")
         logger.info(
-            f"    Non_diagonal kinetic part = {timer_projection_non_diagonal_kinetic_part/num_branching*10**3: .3f} msec."
+            f"    Non_diagonal kinetic part(init) = {timer_projection_non_diagonal_kinetic_part_init/num_branching*10**3: .3f} msec."
         )
-        logger.info(f"    Diagonal kinetic part = {timer_projection_diag_kinetic_part/num_branching*10**3: .3f} msec.")
-        logger.info(f"    Diagonal ecp part = {timer_projection_diag_ecp_part/num_branching*10**3: .3f} msec.")
         logger.info(
-            f"    Diagonal bare coulomb part = {timer_projection_diag_bare_couloumb_part/num_branching*10**3: .3f} msec."
+            f"    Non_diagonal kinetic part(comput) = {timer_projection_non_diagonal_kinetic_part_comput/num_branching*10**3: .3f} msec."
         )
-        logger.info(f"    Non_diagonal ecp part = {timer_projection_non_diagonal_ecp_part/num_branching*10**3: .3f} msec.")
+        logger.info(
+            f"    Non_diagonal kinetic part(post) = {timer_projection_non_diagonal_kinetic_part_post/num_branching*10**3: .3f} msec."
+        )
+        logger.info(
+            f"    Diagonal kinetic part(comput) = {timer_projection_diag_kinetic_part_comput/num_branching*10**3: .3f} msec."
+        )
+        logger.info(
+            f"    Diagonal kinetic part(post) = {timer_projection_diag_kinetic_part_post/num_branching*10**3: .3f} msec."
+        )
+        logger.info(f"    Diagonal ecp part(comput) = {timer_projection_diag_ecp_part_comput/num_branching*10**3: .3f} msec.")
+        logger.info(
+            f"    Diagonal bare coulomb part(comput) = {timer_projection_diag_bare_couloumb_part_comput/num_branching*10**3: .3f} msec."
+        )
+        logger.info(
+            f"    Non_diagonal ecp part(comput) = {timer_projection_non_diagonal_ecp_part_comput/num_branching*10**3: .3f} msec."
+        )
+        logger.info(
+            f"    Non_diagonal ecp part(post) = {timer_projection_non_diagonal_ecp_part_post/num_branching*10**3: .3f} msec."
+        )
         logger.info(
             f"    Update weights and positions = {timer_projection_update_weights_and_positions/num_branching*10**3: .3f} msec."
         )
@@ -851,8 +894,8 @@ if __name__ == "__main__":
     mcmc_seed = 3446
     tau = 0.10
     alat = 0.30
-    num_branching = 2
-    non_local_move = "dltmove"
+    num_branching = 10
+    non_local_move = "tmove"
 
     num_gfmc_warmup_steps = 5
     num_gfmc_bin_blocks = 5

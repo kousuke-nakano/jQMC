@@ -295,43 +295,8 @@ class GFMC_multiple_walkers:
         start_init = time.perf_counter()
         logger.info("Start compilation of the GMFC projection funciton.")
 
-        # Note: This jit drastically accelarates the computation!!
-        @partial(jit, static_argnums=5)
-        def _projection(
-            tau_left: float,
-            w_L: float,
-            r_up_carts: npt.NDArray,
-            r_dn_carts: npt.NDArray,
-            jax_PRNG_key: jax.Array,
-            non_local_move: bool,
-        ):
-            """Do projection, compatible with vmap.
-
-            Do projection for a set of (r_up_cart, r_dn_cart).
-
-            Args:
-                e_L (float): e_L before the projection.
-                tau_left (float): left projection time
-                w_L (float): weight before projection
-                r_up_carts (N_e^up, 3) before projection
-                r_dn_carts (N_e^dn, 3) after projection
-            Returns:
-                e_L (float): e_L after the final projection.
-                tau_left (float): left projection time
-                w_L (float): weight after the final projection
-                r_up_carts (N_e^up, 3) after the final projection
-                r_dn_carts (N_e^dn, 3) after the final projection
-            """
-            logger.debug(f"jax_PRNG_key={jax_PRNG_key}")
-
-            # compute non-diagonal grids and elements (kinetic)
-
-            # generate a random rotation matrix
-            jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
-            alpha, beta, gamma = jax.random.uniform(
-                subkey, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi
-            )  # Rotation angle around the x,y,z-axis (in radians)
-
+        @jit
+        def generate_rotation_matrix(alpha, beta, gamma):
             # Define the rotation matrix for rotation around the x-axis
             def rotation_matrix_x(alpha):
                 cos_a = jnp.cos(alpha)
@@ -371,11 +336,50 @@ class GFMC_multiple_walkers:
                 )
                 return R_z
 
-            # Compute individual rotation matrices
             R_x = rotation_matrix_x(alpha)
             R_y = rotation_matrix_y(beta)
             R_z = rotation_matrix_z(gamma)
-            R = R_z @ R_y @ R_x  # Rotate in the order x -> y -> z
+
+            return jnp.dot(R_z, jnp.dot(R_y, R_x))  # Rotate in the order x -> y -> z
+
+        # Note: This jit drastically accelarates the computation!!
+        @partial(jit, static_argnums=5)
+        def _projection(
+            tau_left: float,
+            w_L: float,
+            r_up_carts: npt.NDArray,
+            r_dn_carts: npt.NDArray,
+            jax_PRNG_key: jax.Array,
+            non_local_move: bool,
+        ):
+            """Do projection, compatible with vmap.
+
+            Do projection for a set of (r_up_cart, r_dn_cart).
+
+            Args:
+                e_L (float): e_L before the projection.
+                tau_left (float): left projection time
+                w_L (float): weight before projection
+                r_up_carts (N_e^up, 3) before projection
+                r_dn_carts (N_e^dn, 3) after projection
+            Returns:
+                e_L (float): e_L after the final projection.
+                tau_left (float): left projection time
+                w_L (float): weight after the final projection
+                r_up_carts (N_e^up, 3) after the final projection
+                r_dn_carts (N_e^dn, 3) after the final projection
+            """
+            logger.debug(f"jax_PRNG_key={jax_PRNG_key}")
+
+            # compute non-diagonal grids and elements (kinetic)
+
+            # generate a random rotation matrix
+            jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
+            alpha, beta, gamma = jax.random.uniform(
+                subkey, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi
+            )  # Rotation angle around the x,y,z-axis (in radians)
+
+            R = generate_rotation_matrix(alpha, beta, gamma)  # Rotate in the order x -> y -> z
 
             # compute discretized kinetic energy and mesh (with a random rotation)
             mesh_kinetic_part, elements_non_diagonal_kinetic_part = compute_discretized_kinetic_energy_api(
@@ -1012,12 +1016,12 @@ if __name__ == "__main__":
         hamiltonian_data = pickle.load(f)
 
     # run branching
-    num_walkers = 1
+    num_walkers = 100
     mcmc_seed = 3446
     tau = 0.10
     alat = 0.30
-    num_branching = 2
-    non_local_move = "dltmove"
+    num_branching = 50
+    non_local_move = "tmove"
 
     num_gfmc_warmup_steps = 5
     num_gfmc_bin_blocks = 5

@@ -416,8 +416,8 @@ def _compute_ratio_determinant_part_debug(
     """See _api method."""
     return np.array(
         [
-            compute_det_geminal_all_elements_api(geminal_data, new_r_up_carts, new_r_dn_carts)
-            / compute_det_geminal_all_elements_api(geminal_data, old_r_up_carts, old_r_dn_carts)
+            _compute_det_geminal_all_elements_jax(geminal_data, new_r_up_carts, new_r_dn_carts)
+            / _compute_det_geminal_all_elements_jax(geminal_data, old_r_up_carts, old_r_dn_carts)
             for new_r_up_carts, new_r_dn_carts in zip(new_r_up_carts_arr, new_r_dn_carts_arr)
         ]
     )
@@ -426,11 +426,11 @@ def _compute_ratio_determinant_part_debug(
 @jit
 def _compute_ratio_determinant_part_jax(
     geminal_data: Geminal_data,
-    old_r_up_carts: jnp.ndarray,  # shape = (N_up, 3)
-    old_r_dn_carts: jnp.ndarray,  # shape = (N_dn, 3)
-    new_r_up_carts_arr: jnp.ndarray,  # shape = (n_grid, N_up, 3)
-    new_r_dn_carts_arr: jnp.ndarray,  # shape = (n_grid, N_dn, 3)
-) -> jnp.ndarray:
+    old_r_up_carts: npt.NDArray[np.float64],  # shape = (N_up, 3)
+    old_r_dn_carts: npt.NDArray[np.float64],  # shape = (N_dn, 3)
+    new_r_up_carts_arr: npt.NDArray[np.float64],  # shape = (n_grid, N_up, 3)
+    new_r_dn_carts_arr: npt.NDArray[np.float64],  # shape = (n_grid, N_dn, 3)
+) -> npt.NDArray[np.float64]:
     # A_old, A_old_inv
     A_old = compute_geminal_all_elements_api(
         geminal_data=geminal_data,
@@ -445,56 +445,62 @@ def _compute_ratio_determinant_part_jax(
     )
 
     def compute_one_grid(
-        lambda_matrix_paired, lambda_matrix_unpaired, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts
+        A_old_inv, lambda_matrix_paired, lambda_matrix_unpaired, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts
     ):
         delta_up = new_r_up_carts - old_r_up_carts
         delta_dn = new_r_dn_carts - old_r_dn_carts
-        up_all_zero = jnp.all(delta_up == 0)
+        up_all_zero = jnp.all(delta_up == 0.0)
 
         diff = jax.lax.cond(up_all_zero, lambda _: delta_dn, lambda _: delta_up, operand=None)
-        nonzero_in_rows = jnp.any(diff != 0, axis=1)
-        idx = jnp.argmax(nonzero_in_rows).astype(int)
+        nonzero_in_rows = jnp.any(diff != 0.0, axis=1)
+        idx = jnp.argmax(nonzero_in_rows)
 
-        def up_case(lambda_matrix_paired, lambda_matrix_unpaired, new_r_up_carts, new_r_dn_carts):
+        def up_case(A_old_inv, idx, lambda_matrix_paired, lambda_matrix_unpaired, new_r_up_carts, new_r_dn_carts):
             new_r_up_carts_extracted = jnp.expand_dims(new_r_up_carts[idx], axis=0)  # shape=(1,3)
-            A_old_inv_vec = A_old_inv[:, idx, None]
+            A_old_inv_vec = jnp.expand_dims(A_old_inv[:, idx], axis=1)
 
             # orb
             orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, new_r_up_carts_extracted)
             orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, new_r_dn_carts)
             # geminal
-            geminal_paired = orb_matrix_up.T @ (lambda_matrix_paired @ orb_matrix_dn)
-            geminal_unpaired = orb_matrix_up.T @ lambda_matrix_unpaired
+            geminal_paired = jnp.dot(orb_matrix_up.T, jnp.dot(lambda_matrix_paired, orb_matrix_dn))
+            geminal_unpaired = jnp.dot(orb_matrix_up.T, lambda_matrix_unpaired)
             geminal = jnp.hstack([geminal_paired, geminal_unpaired])
 
-            return (geminal @ A_old_inv_vec)[0][0]
+            return jnp.dot(geminal, A_old_inv_vec)[0][0]
 
-        def dn_case(lambda_matrix_paired, lambda_matrix_unpaired, new_r_up_carts, new_r_dn_carts):
+        def dn_case(A_old_inv, idx, lambda_matrix_paired, lambda_matrix_unpaired, new_r_up_carts, new_r_dn_carts):
             new_r_dn_carts_extracted = jnp.expand_dims(new_r_dn_carts[idx], axis=0)  # shape=(1,3)
-            A_old_inv_vec = A_old_inv[idx, None, :]
+            A_old_inv_vec = jnp.expand_dims(A_old_inv[idx, :], axis=0)
 
             # orb
             orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, new_r_up_carts)
             orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, new_r_dn_carts_extracted)
             # geminal
-            geminal_paired = orb_matrix_up.T @ (lambda_matrix_paired @ orb_matrix_dn)
-            geminal_unpaired = orb_matrix_up.T @ lambda_matrix_unpaired
+            geminal_paired = jnp.dot(orb_matrix_up.T, jnp.dot(lambda_matrix_paired, orb_matrix_dn))
+            geminal_unpaired = jnp.dot(orb_matrix_up.T, lambda_matrix_unpaired)
             geminal = jnp.hstack([geminal_paired, geminal_unpaired])
 
-            return (A_old_inv_vec @ geminal)[0][0]
+            return jnp.dot(A_old_inv_vec, geminal)[0][0]
 
         return jax.lax.cond(
             up_all_zero,
             dn_case,
             up_case,
-            *(lambda_matrix_paired, lambda_matrix_unpaired, new_r_up_carts, new_r_dn_carts),
+            *(A_old_inv, idx, lambda_matrix_paired, lambda_matrix_unpaired, new_r_up_carts, new_r_dn_carts),
         )
 
     # vectorization along grid
-    results = vmap(compute_one_grid, in_axes=(None, None, 0, 0, None, None))(
-        lambda_matrix_paired, lambda_matrix_unpaired, new_r_up_carts_arr, new_r_dn_carts_arr, old_r_up_carts, old_r_dn_carts
+    results = vmap(compute_one_grid, in_axes=(None, None, None, 0, 0, None, None))(
+        A_old_inv,
+        lambda_matrix_paired,
+        lambda_matrix_unpaired,
+        new_r_up_carts_arr,
+        new_r_dn_carts_arr,
+        old_r_up_carts,
+        old_r_dn_carts,
     )
-    return results
+    return jnp.array(results)
 
 
 def compute_grads_and_laplacian_ln_Det_api(
@@ -1166,12 +1172,68 @@ if __name__ == "__main__":
     geminal_data = hamiltonian_data.wavefunction_data.geminal_data
 
     # test MOs
-    num_r_up_cart_samples = 4
-    num_r_dn_cart_samples = 4
-    r_cart_min, r_cart_max = -1.0, 1.0
-    R_cart_min, R_cart_max = 0.0, 0.0
-    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_up_cart_samples, 3) + r_cart_min
-    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_dn_cart_samples, 3) + r_cart_min
+    num_electron_up = 4
+    num_electron_dn = 4
+
+    # Initialization
+    r_carts_up = []
+    r_carts_dn = []
+
+    total_electrons = 0
+
+    if hamiltonian_data.coulomb_potential_data.ecp_flag:
+        charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
+            hamiltonian_data.coulomb_potential_data.z_cores
+        )
+    else:
+        charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
+
+    coords = hamiltonian_data.structure_data.positions_cart
+
+    # Place electrons around each nucleus
+    for i in range(len(coords)):
+        charge = charges[i]
+        num_electrons = int(np.round(charge))  # Number of electrons to place based on the charge
+
+        # Retrieve the position coordinates
+        x, y, z = coords[i]
+
+        # Place electrons
+        for _ in range(num_electrons):
+            # Calculate distance range
+            distance = np.random.uniform(0.1, 2.0)
+            theta = np.random.uniform(0, np.pi)
+            phi = np.random.uniform(0, 2 * np.pi)
+
+            # Convert spherical to Cartesian coordinates
+            dx = distance * np.sin(theta) * np.cos(phi)
+            dy = distance * np.sin(theta) * np.sin(phi)
+            dz = distance * np.cos(theta)
+
+            # Position of the electron
+            electron_position = np.array([x + dx, y + dy, z + dz])
+
+            # Assign spin
+            if len(r_carts_up) < num_electron_up:
+                r_carts_up.append(electron_position)
+            else:
+                r_carts_dn.append(electron_position)
+
+        total_electrons += num_electrons
+
+    # Handle surplus electrons
+    remaining_up = num_electron_up - len(r_carts_up)
+    remaining_dn = num_electron_dn - len(r_carts_dn)
+
+    # Randomly place any remaining electrons
+    for _ in range(remaining_up):
+        r_carts_up.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
+    for _ in range(remaining_dn):
+        r_carts_dn.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
+
+    r_up_carts = np.array(r_carts_up)
+    r_dn_carts = np.array(r_carts_dn)
+
     N_grid_up = len(r_up_carts)
     N_grid_dn = len(r_dn_carts)
     old_r_up_carts = r_up_carts
@@ -1244,6 +1306,14 @@ if __name__ == "__main__":
     new_r_up_carts_arr = np.array(new_r_up_carts_arr)
     new_r_dn_carts_arr = np.array(new_r_dn_carts_arr)
 
+    _ = _compute_ratio_determinant_part_debug(
+        geminal_data=geminal_data,
+        old_r_up_carts=old_r_up_carts,
+        old_r_dn_carts=old_r_dn_carts,
+        new_r_up_carts_arr=new_r_up_carts_arr,
+        new_r_dn_carts_arr=new_r_dn_carts_arr,
+    )
+
     start = time.perf_counter()
     determinant_ratios_debug = _compute_ratio_determinant_part_debug(
         geminal_data=geminal_data,
@@ -1253,7 +1323,8 @@ if __name__ == "__main__":
         new_r_dn_carts_arr=new_r_dn_carts_arr,
     )
     end = time.perf_counter()
-    print(f"Elapsed Time = {end-start:.2f} sec.")
+    print(f"Elapsed Time = {(end-start)*1e3:.3f} msec.")
+    # print(determinant_ratios_debug)
 
     _ = _compute_ratio_determinant_part_jax(
         geminal_data=geminal_data,
@@ -1272,6 +1343,7 @@ if __name__ == "__main__":
         new_r_dn_carts_arr=jnp.array(new_r_dn_carts_arr),
     )
     end = time.perf_counter()
-    print(f"Elapsed Time = {end-start:.2f} sec.")
+    print(f"Elapsed Time = {(end-start)*1e3:.3f} msec.")
+    # print(determinant_ratios_jax)
 
-    np.testing.assert_array_almost_equal(determinant_ratios_debug, determinant_ratios_jax, decimal=1)
+    np.testing.assert_array_almost_equal(determinant_ratios_debug, determinant_ratios_jax, decimal=12)
