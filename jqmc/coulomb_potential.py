@@ -45,6 +45,7 @@ Todo:
 
 # python modules
 import itertools
+import time
 from logging import Formatter, StreamHandler, getLogger
 from typing import NamedTuple
 
@@ -60,6 +61,9 @@ from scipy.special import eval_legendre
 from .miscs.function_collections import legendre_tablated as jnp_legendre_tablated
 from .structure import Structure_data, get_min_dist_rel_R_cart_jnp, get_min_dist_rel_R_cart_np
 from .wavefunction import Wavefunction_data, evaluate_determinant_api, evaluate_wavefunction_api
+
+# set logger
+logger = getLogger("jqmc").getChild(__name__)
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -782,6 +786,7 @@ def _compute_ecp_non_local_parts_jax(
     else:
         raise NotImplementedError
 
+    start = time.perf_counter()
     r_up_carts_on_mesh, r_dn_carts_on_mesh, V_ecp_up, V_ecp_dn, sum_V_nonlocal = (
         _compute_ecp_non_local_part_jax_weights_grid_points(
             coulomb_potential_data=coulomb_potential_data,
@@ -793,7 +798,10 @@ def _compute_ecp_non_local_parts_jax(
             flag_determinant_only=int(flag_determinant_only),
         )
     )
+    end = time.perf_counter()
+    logger.info(f"Comput. elapsed Time = {(end-start)*1e3:.3f} msec.")
 
+    start = time.perf_counter()
     # print(f"r_up_carts_on_mesh.shape={r_up_carts_on_mesh.shape}")
     # print(f"r_dn_carts_on_mesh.shape={r_dn_carts_on_mesh.shape}")
     # print(f"V_ecp_up.shape={V_ecp_up.shape}")
@@ -833,6 +841,9 @@ def _compute_ecp_non_local_parts_jax(
     ]
 
     V_nonlocal = list(V_ecp_up) + list(V_ecp_dn)
+
+    end = time.perf_counter()
+    logger.info(f"Post elapsed Time = {(end-start)*1e3:.3f} msec.")
 
     return mesh_non_local_ecp_part, V_nonlocal, sum_V_nonlocal
 
