@@ -5,7 +5,11 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from jqmc.coulomb_potential import compute_bare_coulomb_potential_api, compute_ecp_coulomb_potential_api
+from jqmc.coulomb_potential import (
+    _compute_ecp_non_local_parts_jax,
+    compute_bare_coulomb_potential_api,
+    compute_ecp_coulomb_potential_api,
+)
 from jqmc.jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
 from jqmc.trexio_wrapper import read_trexio_file
 from jqmc.wavefunction import Wavefunction_data
@@ -52,10 +56,7 @@ jastrow_data = Jastrow_data(
 
 wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
 
-# tensorboard --logdir /tmp/tensorboard
-jax.profiler.start_trace("/tmp/tensorboard", create_perfetto_link=True)
-print("Coulomb comput. starts.")
-start = time.perf_counter()
+"""
 _ = compute_bare_coulomb_potential_api(
     coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
 )
@@ -64,6 +65,39 @@ _ = compute_ecp_coulomb_potential_api(
     wavefunction_data=wavefunction_data,
     r_up_carts=r_up_carts,
     r_dn_carts=r_dn_carts,
+)
+"""
+_, _, _ = _compute_ecp_non_local_parts_jax(
+    coulomb_potential_data=coulomb_potential_data,
+    wavefunction_data=wavefunction_data,
+    r_up_carts=r_up_carts,
+    r_dn_carts=r_dn_carts,
+    Nv=6,
+    flag_determinant_only=False,
+)
+
+# tensorboard --logdir /tmp/tensorboard
+jax.profiler.start_trace("/tmp/tensorboard", create_perfetto_link=True)
+print("Coulomb comput. starts.")
+start = time.perf_counter()
+"""
+_ = compute_bare_coulomb_potential_api(
+    coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+)
+_ = compute_ecp_coulomb_potential_api(
+    coulomb_potential_data=coulomb_potential_data,
+    wavefunction_data=wavefunction_data,
+    r_up_carts=r_up_carts,
+    r_dn_carts=r_dn_carts,
+)
+"""
+_, _, _ = _compute_ecp_non_local_parts_jax(
+    coulomb_potential_data=coulomb_potential_data,
+    wavefunction_data=wavefunction_data,
+    r_up_carts=r_up_carts,
+    r_dn_carts=r_dn_carts,
+    Nv=6,
+    flag_determinant_only=False,
 )
 end = time.perf_counter()
 print("Coulomb comput. ends.")
