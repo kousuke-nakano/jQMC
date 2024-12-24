@@ -282,7 +282,7 @@ class GFMC_multiple_walkers:
         timer_projection_init = 0.0
         timer_projection_total = 0.0
         timer_observable = 0.0
-        timer_reconfiguratioin = 0.0
+        timer_reconfiguration = 0.0
         gmfc_total_start = time.perf_counter()
 
         # projection function.
@@ -635,20 +635,21 @@ class GFMC_multiple_walkers:
             end_observable = time.perf_counter()
             timer_observable += end_observable - start_observable
 
-            logger.debug(f"  e_L = {e_L_list}")
-            logger.debug(f"  w_L = {w_L_list}")
-            w_L_latest = w_L_list
-            e_L_latest = e_L_list
-
             # Barrier before MPI operation
-            mpi_comm.Barrier()
+            # mpi_comm.Barrier()
 
             # Branching starts
             start_reconfiguration = time.perf_counter()
 
-            logger.debug(f"e_L={e_L_latest} for rank={mpi_rank}")
-            logger.debug(f"w_L={w_L_latest} for rank={mpi_rank}")
+            # jnp.array -> np.array
+            w_L_latest = np.array(w_L_list)
+            e_L_latest = np.array(e_L_list)
 
+            # jnp.array -> np.array
+            self.__latest_r_up_carts = np.array(self.__latest_r_up_carts)
+            self.__latest_r_dn_carts = np.array(self.__latest_r_dn_carts)
+
+            # MPI reduce
             r_up_carts_shape = self.__latest_r_up_carts.shape
             r_up_carts_gathered_dyad = (mpi_rank, self.__latest_r_up_carts)
             r_up_carts_gathered_dyad = mpi_comm.gather(r_up_carts_gathered_dyad, root=0)
@@ -736,14 +737,19 @@ class GFMC_multiple_walkers:
                 mpi_size, r_dn_carts_shape[0], r_dn_carts_shape[1], r_dn_carts_shape[2]
             )
 
+            # set new r_up_carts and r_dn_carts, and, np.array -> jnp.array
             self.__latest_r_up_carts = proposed_r_up_carts[mpi_rank, :, :, :]
             self.__latest_r_dn_carts = proposed_r_dn_carts[mpi_rank, :, :, :]
+
+            # np.array -> jnp.array
+            self.__latest_r_up_carts = jnp.array(self.__latest_r_up_carts)
+            self.__latest_r_dn_carts = jnp.array(self.__latest_r_dn_carts)
 
             logger.debug(f"*After branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
             logger.debug(f"*After branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
 
             end_reconfiguration = time.perf_counter()
-            timer_reconfiguratioin += end_reconfiguration - start_reconfiguration
+            timer_reconfiguration += end_reconfiguration - start_reconfiguration
 
             gmfc_current = time.perf_counter()
             if max_time < gmfc_current - gmfc_total_start:
@@ -766,7 +772,7 @@ class GFMC_multiple_walkers:
         logger.info(f"Elapsed times per branching, averaged over {num_branching} branching steps.")
         logger.info(f"  Projection time per branching = {timer_projection_total/num_branching*10**3: .3f} msec.")
         logger.info(f"  Observable measurement time per branching = {timer_observable/num_branching*10**3: .3f} msec.")
-        logger.info(f"  Walker reconfiguration time per branching = {timer_reconfiguratioin/num_branching*10**3: .3f} msec.")
+        logger.info(f"  Walker reconfiguration time per branching = {timer_reconfiguration/num_branching*10**3: .3f} msec.")
         logger.debug(f"Survived walkers = {self.__num_survived_walkers}")
         logger.debug(f"killed walkers = {self.__num_killed_walkers}")
         logger.info(
@@ -781,7 +787,7 @@ class GFMC_multiple_walkers:
         self.__timer_gmfc_total += timer_gmfc_total
         self.__timer_projection_init += timer_projection_init
         self.__timer_projection_total += timer_projection_total
-        self.__timer_branching += timer_reconfiguratioin
+        self.__timer_branching += timer_reconfiguration
         self.__timer_observable += timer_observable
 
     def get_e_L(self, num_gfmc_warmup_steps: int = 3, num_gfmc_bin_blocks: int = 10, num_gfmc_bin_collect: int = 2) -> float:

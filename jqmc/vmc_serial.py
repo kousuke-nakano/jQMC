@@ -1268,8 +1268,16 @@ if __name__ == "__main__":
         stream_handler.setFormatter(handler_format)
         log.addHandler(stream_handler)
 
-    logger.info(f"jax.device_count={jax.device_count()}.")
-    logger.info(f"jax.local_device_count={jax.local_device_count()}.")
+    # jax-MPI related
+    try:
+        jax.distributed.initialize()
+    except ValueError:
+        pass
+
+    # print recognized XLA devices
+    logger.info("*** XLA devices recognized by JAX***")
+    logger.info(jax.devices())
+    logger.info("")
 
     """
     # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).

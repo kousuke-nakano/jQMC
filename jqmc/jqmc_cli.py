@@ -61,6 +61,7 @@ mpi_size = mpi_comm.Get_size()
 DEVEL_LEVEL = 5
 logging.addLevelName(DEVEL_LEVEL, "DEVEL")
 
+
 # a new method to create a new logger
 def _loglevel_devel(self, message, *args, **kwargs):
     if self.isEnabledFor(DEVEL_LEVEL):
@@ -107,7 +108,7 @@ def main():
         handler_format = Formatter(f"MPI-rank={mpi_rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
         stream_handler.setFormatter(handler_format)
         log.addHandler(stream_handler)
-    
+
     # print header
     print_header()
 

@@ -280,7 +280,10 @@ class GFMC:
         timer_projection_non_diagonal_probablity = 0.0
         timer_projection_update_weights_and_positions = 0.0
         timer_observable = 0.0
-        timer_branching = 0.0
+        timer_reconfiguration = 0.0
+        timer_mpi_reduce = 0.0
+        timer_mpi_comput = 0.0
+        timer_mpi_bcast = 0.0
         gmfc_total_start = time.perf_counter()
 
         # Main branching loop.
@@ -288,7 +291,7 @@ class GFMC:
         gfmc_interval = np.max([1, int(num_branching / 10)])  # %
         progress = (self.__gfmc_branching_counter) / (num_branching + self.__gfmc_branching_counter) * 100.0
         logger.info(
-            f"Progress: branching step = {self.__gfmc_branching_counter}/{num_branching+self.__gfmc_branching_counter}: {progress:.0f} %."
+            f"  Progress: branching step = {self.__gfmc_branching_counter}/{num_branching+self.__gfmc_branching_counter}: {progress:.0f} %."
         )
 
         @jit
@@ -569,8 +572,6 @@ class GFMC:
                         end_projection_non_diagonal_probablity - start_projection_non_diagonal_probablity
                     )
 
-                logger.debug(f"  e_L={e_L}")
-
                 # compute the time the walker remaining in the same configuration
                 start_projection_update_weights_and_positions = time.perf_counter()
                 xi = np.random.random()
@@ -617,23 +618,28 @@ class GFMC:
             end_observable = time.perf_counter()
             timer_observable += end_observable - start_observable
 
-            logger.devel(f"  e_L = {e_L}")
-            logger.devel(f"  w_L = {w_L}")
+            # Reconfigurations!
+            start_reconfiguration = time.perf_counter()
+
+            # jnp.float -> np.array
             w_L_latest = float(w_L)
             e_L_latest = float(e_L)
 
-            # Branching!
-            start_branching = time.perf_counter()
+            # jnp.array -> np.array
+            self.__latest_r_up_carts = np.array(self.__latest_r_up_carts)
+            self.__latest_r_dn_carts = np.array(self.__latest_r_dn_carts)
 
-            logger.debug(f"e_L={e_L_latest} for rank={mpi_rank}")
-            logger.debug(f"w_L={w_L_latest} for rank={mpi_rank}")
-
+            # MPI reduce
+            start_reduce = time.perf_counter()
             e_L_gathered_dyad = (mpi_rank, e_L_latest)
             e_L_gathered_dyad = mpi_comm.gather(e_L_gathered_dyad, root=0)
             w_L_gathered_dyad = (mpi_rank, w_L_latest)
             w_L_gathered_dyad = mpi_comm.gather(w_L_gathered_dyad, root=0)
+            end_reduce = time.perf_counter()
+            timer_mpi_reduce += end_reduce - start_reduce
 
             if mpi_rank == 0:
+                start_comput = time.perf_counter()
                 logger.debug(f"e_L_gathered_dyad={e_L_gathered_dyad}")
                 logger.debug(f"w_L_gathered_dyad={w_L_gathered_dyad}")
                 e_L_gathered = np.array([e_L for _, e_L in e_L_gathered_dyad])
@@ -649,11 +655,6 @@ class GFMC:
                 logger.debug(f"w_L_list = {w_L_list}")
                 probabilities = w_L_list / w_L_list.sum()
                 logger.debug(f"probabilities = {probabilities}")
-
-                """
-                # random choice
-                k_list = np.random.choice(len(w_L_list), size=len(w_L_list), p=probabilities, replace=True)
-                """
 
                 # correlated choice (see Sandro's textbook, page 182)
                 zeta = np.random.random()
@@ -674,20 +675,23 @@ class GFMC:
                 mpi_recv_rank = list(set(mpi_rank_list) - set(chosen_rank_list))
                 logger.debug(f"mpi_send_rank={mpi_send_rank}")
                 logger.debug(f"mpi_recv_rank={mpi_recv_rank}")
+                end_comput = time.perf_counter()
+                timer_mpi_comput += end_comput - start_comput
             else:
                 mpi_send_rank = None
                 mpi_recv_rank = None
                 self.__e_L_averaged_list = None
                 self.__w_L_averaged_list = None
+
+            start_bcast = time.perf_counter()
             mpi_send_rank = mpi_comm.bcast(mpi_send_rank, root=0)
             mpi_recv_rank = mpi_comm.bcast(mpi_recv_rank, root=0)
             self.__e_L_averaged_list = mpi_comm.bcast(self.__e_L_averaged_list, root=0)
             self.__w_L_averaged_list = mpi_comm.bcast(self.__w_L_averaged_list, root=0)
 
-            logger.debug(f"Before branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
-            logger.debug(f"Before branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
-
-            mpi_comm.barrier()
+            # logger.debug(f"Before branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
+            # logger.debug(f"Before branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
+            # mpi_comm.barrier()
             self.__num_survived_walkers = mpi_comm.bcast(self.__num_survived_walkers, root=0)
             self.__num_killed_walkers = mpi_comm.bcast(self.__num_killed_walkers, root=0)
             for ii, (send_rank, recv_rank) in enumerate(zip(mpi_send_rank, mpi_recv_rank)):
@@ -697,15 +701,19 @@ class GFMC:
                 if mpi_rank == recv_rank:
                     self.__latest_r_up_carts = mpi_comm.recv(source=send_rank, tag=100 + 2 * ii)
                     self.__latest_r_dn_carts = mpi_comm.recv(source=send_rank, tag=100 + 2 * ii + 1)
-            mpi_comm.barrier()
+            end_bcast = time.perf_counter()
+            timer_mpi_bcast += end_bcast - start_bcast
+            # mpi_comm.barrier()
+            # logger.debug(f"*After branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
+            # logger.debug(f"*After branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
+            # mpi_comm.barrier()
 
-            logger.debug(f"*After branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
-            logger.debug(f"*After branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
+            # np.array -> jnp.array
+            self.__latest_r_up_carts = jnp.array(self.__latest_r_up_carts)
+            self.__latest_r_dn_carts = jnp.array(self.__latest_r_dn_carts)
 
-            mpi_comm.barrier()
-
-            end_branching = time.perf_counter()
-            timer_branching += end_branching - start_branching
+            end_reconfiguration = time.perf_counter()
+            timer_reconfiguration += end_reconfiguration - start_reconfiguration
 
             gmfc_current = time.perf_counter()
             if max_time < gmfc_current - gmfc_total_start:
@@ -757,9 +765,12 @@ class GFMC:
             f"    Update weights and positions = {timer_projection_update_weights_and_positions/num_branching*10**3: .3f} msec."
         )
         logger.info(f"  Observable measurement time per branching = {timer_observable/num_branching*10**3: .3f} msec.")
-        logger.info(f"  Walker reconfiguration time per branching = {timer_branching/num_branching*10**3: .3f} msec.")
+        logger.info(f"  Walker reconfiguration time per branching = {timer_reconfiguration/num_branching*10**3: .3f} msec.")
+        logger.info(f"      MPI reduce time per branching = {timer_mpi_reduce/num_branching*10**3: .3f} msec.")
+        logger.info(f"      MPI comput time per branching = {timer_mpi_comput/num_branching*10**3: .3f} msec.")
+        logger.info(f"      MPI bcast time per branching = {timer_mpi_bcast/num_branching*10**3: .3f} msec.")
         logger.debug(f"Survived walkers = {self.__num_survived_walkers}")
-        logger.debug(f"killed walkers = {self.__num_killed_walkers}")
+        logger.debug(f"Killed walkers = {self.__num_killed_walkers}")
         logger.info(
             f"Survived walkers ratio = {self.__num_survived_walkers/(self.__num_survived_walkers + self.__num_killed_walkers) * 100:.2f} %"
         )
