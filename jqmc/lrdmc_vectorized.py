@@ -475,7 +475,7 @@ class GFMC_multiple_walkers:
                     )
 
                     # logger.info(f"Jastrow_ratio = {Jastrow_ratio}.")
-                    V_nonlocal_FN = jnp.where(V_nonlocal < 0.0, V_nonlocal * Jastrow_ratio, 0.0)
+                    V_nonlocal_FN = V_nonlocal_FN * Jastrow_ratio
 
                     non_diagonal_sum_hamiltonian_ecp = jnp.sum(V_nonlocal_FN)
                     non_diagonal_sum_hamiltonian = non_diagonal_sum_hamiltonian_kinetic + non_diagonal_sum_hamiltonian_ecp
