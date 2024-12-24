@@ -869,6 +869,17 @@ if __name__ == "__main__":
         stream_handler.setFormatter(handler_format)
         log.addHandler(stream_handler)
 
+    # jax-MPI related
+    try:
+        jax.distributed.initialize()
+    except ValueError:
+        pass
+
+    # print recognized XLA devices
+    logger.info("*** XLA devices recognized by JAX***")
+    logger.info(jax.devices())
+    logger.info("")
+
     """
     # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
     (

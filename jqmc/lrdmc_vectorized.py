@@ -50,9 +50,8 @@ from logging import Formatter, StreamHandler, getLogger
 import jax
 import numpy as np
 import numpy.typing as npt
-from jax import jit
+from jax import jit, vmap
 from jax import numpy as jnp
-from jax import vmap
 
 # MPI
 from mpi4py import MPI
@@ -954,6 +953,17 @@ if __name__ == "__main__":
         handler_format = Formatter(f"MPI-rank={mpi_rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
         stream_handler.setFormatter(handler_format)
         log.addHandler(stream_handler)
+
+    # jax-MPI related
+    try:
+        jax.distributed.initialize()
+    except ValueError:
+        pass
+
+    # print recognized XLA devices
+    logger.info("*** XLA devices recognized by JAX***")
+    logger.info(jax.devices())
+    logger.info("")
 
     """
     # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
