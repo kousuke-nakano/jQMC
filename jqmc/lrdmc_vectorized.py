@@ -72,12 +72,6 @@ mpi_comm = MPI.COMM_WORLD
 mpi_rank = mpi_comm.Get_rank()
 mpi_size = mpi_comm.Get_size()
 
-# jax-MPI related
-try:
-    jax.distributed.initialize()
-except ValueError:
-    pass
-
 # create new logger level for development
 DEVEL_LEVEL = 5
 logging.addLevelName(DEVEL_LEVEL, "DEVEL")
@@ -567,6 +561,7 @@ class GFMC_multiple_walkers:
         end_init = time.perf_counter()
         timer_projection_init += end_init - start_init
         logger.info("End compilation of the GMFC projection funciton.")
+        logger.info(f"Elapsed Time = {timer_projection_init:.2f} sec.")
         logger.info("")
 
         # Main branching loop.
