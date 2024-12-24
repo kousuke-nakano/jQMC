@@ -67,7 +67,7 @@ _ = compute_ecp_coulomb_potential_api(
     r_dn_carts=r_dn_carts,
 )
 """
-_, _, _ = _compute_ecp_non_local_parts_jax(
+_, _, _, _ = _compute_ecp_non_local_parts_jax(
     coulomb_potential_data=coulomb_potential_data,
     wavefunction_data=wavefunction_data,
     r_up_carts=r_up_carts,
@@ -76,9 +76,9 @@ _, _, _ = _compute_ecp_non_local_parts_jax(
     flag_determinant_only=False,
 )
 
+print("Coulomb comput. starts.")
 # tensorboard --logdir /tmp/tensorboard
 jax.profiler.start_trace("/tmp/tensorboard", create_perfetto_link=True)
-print("Coulomb comput. starts.")
 start = time.perf_counter()
 """
 _ = compute_bare_coulomb_potential_api(
@@ -91,7 +91,7 @@ _ = compute_ecp_coulomb_potential_api(
     r_dn_carts=r_dn_carts,
 )
 """
-_, _, _ = _compute_ecp_non_local_parts_jax(
+_, _, _, _ = _compute_ecp_non_local_parts_jax(
     coulomb_potential_data=coulomb_potential_data,
     wavefunction_data=wavefunction_data,
     r_up_carts=r_up_carts,

@@ -282,7 +282,7 @@ class GFMC_multiple_walkers:
         timer_projection_init = 0.0
         timer_projection_total = 0.0
         timer_observable = 0.0
-        timer_branching = 0.0
+        timer_reconfiguratioin = 0.0
         gmfc_total_start = time.perf_counter()
 
         # projection function.
@@ -291,48 +291,35 @@ class GFMC_multiple_walkers:
 
         @jit
         def generate_rotation_matrix(alpha, beta, gamma):
-            # Define the rotation matrix for rotation around the x-axis
-            def rotation_matrix_x(alpha):
-                cos_a = jnp.cos(alpha)
-                sin_a = jnp.sin(alpha)
-                R_x = jnp.array(
-                    [
-                        [1, 0, 0],
-                        [0, cos_a, -sin_a],
-                        [0, sin_a, cos_a],
-                    ]
-                )
-                return R_x
+            cos_a = jnp.cos(alpha)
+            sin_a = jnp.sin(alpha)
+            R_x = jnp.array(
+                [
+                    [1, 0, 0],
+                    [0, cos_a, -sin_a],
+                    [0, sin_a, cos_a],
+                ]
+            )
 
-            # Define the rotation matrix for rotation around the y-axis
-            def rotation_matrix_y(beta):
-                cos_b = jnp.cos(beta)
-                sin_b = jnp.sin(beta)
-                R_y = jnp.array(
-                    [
-                        [cos_b, 0, sin_b],
-                        [0, 1, 0],
-                        [-sin_b, 0, cos_b],
-                    ]
-                )
-                return R_y
+            cos_b = jnp.cos(beta)
+            sin_b = jnp.sin(beta)
+            R_y = jnp.array(
+                [
+                    [cos_b, 0, sin_b],
+                    [0, 1, 0],
+                    [-sin_b, 0, cos_b],
+                ]
+            )
 
-            # Define the rotation matrix for rotation around the z-axis
-            def rotation_matrix_z(gamma):
-                cos_g = jnp.cos(gamma)
-                sin_g = jnp.sin(gamma)
-                R_z = jnp.array(
-                    [
-                        [cos_g, -sin_g, 0],
-                        [sin_g, cos_g, 0],
-                        [0, 0, 1],
-                    ]
-                )
-                return R_z
-
-            R_x = rotation_matrix_x(alpha)
-            R_y = rotation_matrix_y(beta)
-            R_z = rotation_matrix_z(gamma)
+            cos_g = jnp.cos(gamma)
+            sin_g = jnp.sin(gamma)
+            R_z = jnp.array(
+                [
+                    [cos_g, -sin_g, 0],
+                    [sin_g, cos_g, 0],
+                    [0, 0, 1],
+                ]
+            )
 
             return jnp.dot(R_z, jnp.dot(R_y, R_x))  # Rotate in the order x -> y -> z
 
@@ -341,8 +328,8 @@ class GFMC_multiple_walkers:
         def _projection(
             tau_left: float,
             w_L: float,
-            r_up_carts: npt.NDArray,
-            r_dn_carts: npt.NDArray,
+            r_up_carts: jax.Array,
+            r_dn_carts: jax.Array,
             jax_PRNG_key: jax.Array,
             non_local_move: bool,
         ):
@@ -466,8 +453,6 @@ class GFMC_multiple_walkers:
                         new_r_up_carts_arr=mesh_non_local_ecp_part_r_up_carts,
                         new_r_dn_carts_arr=mesh_non_local_ecp_part_r_dn_carts,
                     )
-
-                    # logger.info(f"Jastrow_ratio = {Jastrow_ratio}.")
                     V_nonlocal_FN = V_nonlocal_FN * Jastrow_ratio
 
                     non_diagonal_sum_hamiltonian_ecp = jnp.sum(V_nonlocal_FN)
@@ -519,7 +504,7 @@ class GFMC_multiple_walkers:
             # compute the time the walker remaining in the same configuration
             jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
             xi = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
-            tau_update = jnp.min(jnp.array([tau_left, jnp.log(1 - xi) / non_diagonal_sum_hamiltonian]))
+            tau_update = jnp.minimum(tau_left, jnp.log(1 - xi) / non_diagonal_sum_hamiltonian)
             logger.debug(f"  tau_update={tau_update}")
 
             # update weight
@@ -545,12 +530,12 @@ class GFMC_multiple_walkers:
 
             logger.debug(f"old: r_up_carts = {r_up_carts}")
             logger.debug(f"old: r_dn_carts = {r_dn_carts}")
-            r_up_carts = jnp.where(tau_left <= 0.0, r_up_carts, proposed_r_up_carts)
-            r_dn_carts = jnp.where(tau_left <= 0.0, r_dn_carts, proposed_r_dn_carts)
-            logger.debug(f"new: r_up_carts={r_up_carts}.")
-            logger.debug(f"new: r_dn_carts={r_dn_carts}.")
+            new_r_up_carts = jnp.where(tau_left <= 0.0, r_up_carts, proposed_r_up_carts)
+            new_r_dn_carts = jnp.where(tau_left <= 0.0, r_dn_carts, proposed_r_dn_carts)
+            logger.debug(f"new: r_up_carts={new_r_up_carts}.")
+            logger.debug(f"new: r_dn_carts={new_r_dn_carts}.")
 
-            return (e_L, tau_left, w_L, r_up_carts, r_dn_carts, jax_PRNG_key)
+            return (e_L, tau_left, w_L, new_r_up_carts, new_r_dn_carts, jax_PRNG_key)
 
         # projection compilation.
         logger.info("  Compilation is in progress...")
@@ -659,7 +644,7 @@ class GFMC_multiple_walkers:
             mpi_comm.Barrier()
 
             # Branching starts
-            start_branching = time.perf_counter()
+            start_reconfiguration = time.perf_counter()
 
             logger.debug(f"e_L={e_L_latest} for rank={mpi_rank}")
             logger.debug(f"w_L={w_L_latest} for rank={mpi_rank}")
@@ -757,8 +742,8 @@ class GFMC_multiple_walkers:
             logger.debug(f"*After branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
             logger.debug(f"*After branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
 
-            end_branching = time.perf_counter()
-            timer_branching += end_branching - start_branching
+            end_reconfiguration = time.perf_counter()
+            timer_reconfiguratioin += end_reconfiguration - start_reconfiguration
 
             gmfc_current = time.perf_counter()
             if max_time < gmfc_current - gmfc_total_start:
@@ -781,7 +766,7 @@ class GFMC_multiple_walkers:
         logger.info(f"Elapsed times per branching, averaged over {num_branching} branching steps.")
         logger.info(f"  Projection time per branching = {timer_projection_total/num_branching*10**3: .3f} msec.")
         logger.info(f"  Observable measurement time per branching = {timer_observable/num_branching*10**3: .3f} msec.")
-        logger.info(f"  Walker reconfiguration time per branching = {timer_branching/num_branching*10**3: .3f} msec.")
+        logger.info(f"  Walker reconfiguration time per branching = {timer_reconfiguratioin/num_branching*10**3: .3f} msec.")
         logger.debug(f"Survived walkers = {self.__num_survived_walkers}")
         logger.debug(f"killed walkers = {self.__num_killed_walkers}")
         logger.info(
@@ -796,7 +781,7 @@ class GFMC_multiple_walkers:
         self.__timer_gmfc_total += timer_gmfc_total
         self.__timer_projection_init += timer_projection_init
         self.__timer_projection_total += timer_projection_total
-        self.__timer_branching += timer_branching
+        self.__timer_branching += timer_reconfiguratioin
         self.__timer_observable += timer_observable
 
     def get_e_L(self, num_gfmc_warmup_steps: int = 3, num_gfmc_bin_blocks: int = 10, num_gfmc_bin_collect: int = 2) -> float:
@@ -1004,7 +989,7 @@ if __name__ == "__main__":
         hamiltonian_data = pickle.load(f)
 
     # run branching
-    num_walkers = 8
+    num_walkers = 1
     mcmc_seed = 3446
     tau = 0.10
     alat = 0.30

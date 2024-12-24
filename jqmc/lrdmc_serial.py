@@ -277,6 +277,7 @@ class GFMC:
         timer_projection_diag_ecp_part_comput = 0.0
         timer_projection_non_diagonal_ecp_part_comput = 0.0
         timer_projection_non_diagonal_ecp_part_post = 0.0
+        timer_projection_non_diagonal_probablity = 0.0
         timer_projection_update_weights_and_positions = 0.0
         timer_observable = 0.0
         timer_branching = 0.0
@@ -293,47 +294,35 @@ class GFMC:
         @jit
         def generate_rotation_matrix(alpha, beta, gamma):
             # Define the rotation matrix for rotation around the x-axis
-            def rotation_matrix_x(alpha):
-                cos_a = jnp.cos(alpha)
-                sin_a = jnp.sin(alpha)
-                R_x = jnp.array(
-                    [
-                        [1, 0, 0],
-                        [0, cos_a, -sin_a],
-                        [0, sin_a, cos_a],
-                    ]
-                )
-                return R_x
+            cos_a = jnp.cos(alpha)
+            sin_a = jnp.sin(alpha)
+            R_x = jnp.array(
+                [
+                    [1, 0, 0],
+                    [0, cos_a, -sin_a],
+                    [0, sin_a, cos_a],
+                ]
+            )
 
-            # Define the rotation matrix for rotation around the y-axis
-            def rotation_matrix_y(beta):
-                cos_b = jnp.cos(beta)
-                sin_b = jnp.sin(beta)
-                R_y = jnp.array(
-                    [
-                        [cos_b, 0, sin_b],
-                        [0, 1, 0],
-                        [-sin_b, 0, cos_b],
-                    ]
-                )
-                return R_y
+            cos_b = jnp.cos(beta)
+            sin_b = jnp.sin(beta)
+            R_y = jnp.array(
+                [
+                    [cos_b, 0, sin_b],
+                    [0, 1, 0],
+                    [-sin_b, 0, cos_b],
+                ]
+            )
 
-            # Define the rotation matrix for rotation around the z-axis
-            def rotation_matrix_z(gamma):
-                cos_g = jnp.cos(gamma)
-                sin_g = jnp.sin(gamma)
-                R_z = jnp.array(
-                    [
-                        [cos_g, -sin_g, 0],
-                        [sin_g, cos_g, 0],
-                        [0, 0, 1],
-                    ]
-                )
-                return R_z
-
-            R_x = rotation_matrix_x(alpha)
-            R_y = rotation_matrix_y(beta)
-            R_z = rotation_matrix_z(gamma)
+            cos_g = jnp.cos(gamma)
+            sin_g = jnp.sin(gamma)
+            R_z = jnp.array(
+                [
+                    [cos_g, -sin_g, 0],
+                    [sin_g, cos_g, 0],
+                    [0, 0, 1],
+                ]
+            )
 
             return jnp.dot(R_z, jnp.dot(R_y, R_x))  # Rotate in the order x -> y -> z
 
@@ -396,9 +385,9 @@ class GFMC:
                 )
 
                 start_projection_non_diagonal_kinetic_part_post = time.perf_counter()
-                elements_non_diagonal_kinetic_part_FN = np.minimum(elements_non_diagonal_kinetic_part, 0.0)
-                diagonal_kinetic_part_SP = np.sum(np.maximum(elements_non_diagonal_kinetic_part, 0.0))
-                non_diagonal_sum_hamiltonian = np.sum(elements_non_diagonal_kinetic_part_FN)
+                elements_non_diagonal_kinetic_part_FN = jnp.minimum(elements_non_diagonal_kinetic_part, 0.0)
+                diagonal_kinetic_part_SP = jnp.sum(jnp.maximum(elements_non_diagonal_kinetic_part, 0.0))
+                non_diagonal_sum_hamiltonian = jnp.sum(elements_non_diagonal_kinetic_part_FN)
                 end_projection_non_diagonal_kinetic_part_post = time.perf_counter()
                 timer_projection_non_diagonal_kinetic_part_post += (
                     end_projection_non_diagonal_kinetic_part_post - start_projection_non_diagonal_kinetic_part_post
@@ -417,7 +406,7 @@ class GFMC:
                 )
 
                 start_projection_diag_kinetic_part_post = time.perf_counter()
-                diagonal_kinetic_discretized = -1.0 * np.sum(elements_non_diagonal_kinetic_part)
+                diagonal_kinetic_discretized = -1.0 * jnp.sum(elements_non_diagonal_kinetic_part)
                 end_projection_diag_kinetic_part_post = time.perf_counter()
                 timer_projection_diag_kinetic_part_post += (
                     end_projection_diag_kinetic_part_post - start_projection_diag_kinetic_part_post
@@ -465,9 +454,9 @@ class GFMC:
                         )
 
                         start_projection_non_diagonal_ecp_part_post = time.perf_counter()
-                        V_nonlocal_FN = np.minimum(V_nonlocal, 0.0)
-                        diagonal_ecp_part_SP = np.sum(np.maximum(V_nonlocal, 0.0))
-                        non_diagonal_sum_hamiltonian += np.sum(V_nonlocal_FN)
+                        V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
+                        diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
+                        non_diagonal_sum_hamiltonian += jnp.sum(V_nonlocal_FN)
                         end_projection_non_diagonal_ecp_part_post = time.perf_counter()
                         timer_projection_non_diagonal_ecp_part_post += (
                             end_projection_non_diagonal_ecp_part_post - start_projection_non_diagonal_ecp_part_post
@@ -490,8 +479,8 @@ class GFMC:
                         )
 
                         start_projection_non_diagonal_ecp_part_post = time.perf_counter()
-                        V_nonlocal_FN = np.minimum(V_nonlocal, 0.0)
-                        diagonal_ecp_part_SP = np.sum(np.maximum(V_nonlocal, 0.0))
+                        V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
+                        diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
 
                         """obsolete
                         Jastrow_ref = evaluate_jastrow_api(
@@ -524,7 +513,7 @@ class GFMC:
                         )
                         V_nonlocal_FN = V_nonlocal_FN * Jastrow_ratio
 
-                        non_diagonal_sum_hamiltonian += np.sum(V_nonlocal_FN)
+                        non_diagonal_sum_hamiltonian += jnp.sum(V_nonlocal_FN)
                         end_projection_non_diagonal_ecp_part_post = time.perf_counter()
                         timer_projection_non_diagonal_ecp_part_post += (
                             end_projection_non_diagonal_ecp_part_post - start_projection_non_diagonal_ecp_part_post
@@ -535,6 +524,7 @@ class GFMC:
                         raise NotImplementedError
 
                     # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
+                    start_projection_non_diagonal_probablity = time.perf_counter()
                     e_L = (
                         diagonal_kinetic_continuum
                         + diagonal_kinetic_discretized
@@ -545,17 +535,22 @@ class GFMC:
                         + non_diagonal_sum_hamiltonian
                     )
 
-                    p_list = np.concatenate([np.ravel(elements_non_diagonal_kinetic_part_FN), np.ravel(V_nonlocal_FN)])
+                    p_list = jnp.concatenate([jnp.ravel(elements_non_diagonal_kinetic_part_FN), jnp.ravel(V_nonlocal_FN)])
                     non_diagonal_move_probabilities = p_list / p_list.sum()
-                    non_diagonal_move_mesh_r_up_carts = np.concatenate(
+                    non_diagonal_move_mesh_r_up_carts = jnp.concatenate(
                         [mesh_kinetic_part_r_up_carts, mesh_non_local_ecp_part_r_up_carts], axis=0
                     )
-                    non_diagonal_move_mesh_r_dn_carts = np.concatenate(
+                    non_diagonal_move_mesh_r_dn_carts = jnp.concatenate(
                         [mesh_kinetic_part_r_dn_carts, mesh_non_local_ecp_part_r_dn_carts], axis=0
+                    )
+                    end_projection_non_diagonal_probablity = time.perf_counter()
+                    timer_projection_non_diagonal_probablity += (
+                        end_projection_non_diagonal_probablity - start_projection_non_diagonal_probablity
                     )
 
                 # with all electrons
                 else:
+                    start_projection_non_diagonal_probablity = time.perf_counter()
                     # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
                     e_L = (
                         diagonal_kinetic_continuum
@@ -565,45 +560,48 @@ class GFMC:
                         + non_diagonal_sum_hamiltonian
                     )
 
-                    p_list = np.ravel(elements_non_diagonal_kinetic_part_FN)
+                    p_list = jnp.ravel(elements_non_diagonal_kinetic_part_FN)
                     non_diagonal_move_probabilities = p_list / p_list.sum()
                     non_diagonal_move_mesh_r_up_carts = mesh_kinetic_part_r_up_carts
                     non_diagonal_move_mesh_r_dn_carts = mesh_kinetic_part_r_dn_carts
+                    end_projection_non_diagonal_probablity = time.perf_counter()
+                    timer_projection_non_diagonal_probablity += (
+                        end_projection_non_diagonal_probablity - start_projection_non_diagonal_probablity
+                    )
 
                 logger.debug(f"  e_L={e_L}")
 
                 # compute the time the walker remaining in the same configuration
                 start_projection_update_weights_and_positions = time.perf_counter()
                 xi = np.random.random()
-                tau_update = np.min((tau_left, np.log(1 - xi) / non_diagonal_sum_hamiltonian))
+                tau_update = jnp.minimum(tau_left, jnp.log(1 - xi) / non_diagonal_sum_hamiltonian)
                 logger.debug(f"  tau_update={tau_update}")
 
                 # update weight
-                w_L = w_L * np.exp(-tau_update * e_L)
+                w_L = w_L * jnp.exp(-tau_update * e_L)
                 logger.debug(f"  w_L={w_L}")
 
                 # update tau_left
                 tau_left = tau_left - tau_update
 
-                # if tau_left becomes < 0, break the loop (i.e., proceed with the branching step.)
-                if tau_left <= 0.0:
-                    logger.debug("tau_left = {tau_left} <= 0.0. Exit the projection loop.")
-                    break
+                # random choice and update electron positions
+                if tau_left > 0.0:
+                    k = np.random.choice(len(p_list), p=non_diagonal_move_probabilities)
+                    self.__latest_r_up_carts = non_diagonal_move_mesh_r_up_carts[k]
+                    self.__latest_r_dn_carts = non_diagonal_move_mesh_r_dn_carts[k]
+                else:
+                    self.__latest_r_up_carts = self.__latest_r_up_carts
+                    self.__latest_r_dn_carts = self.__latest_r_dn_carts
 
-                # random choice
-                logger.debug(f"self.__latest_r_up_carts = {self.__latest_r_up_carts}")
-                logger.debug(f"self.__latest_r_dn_carts = {self.__latest_r_dn_carts}")
-                k = np.random.choice(len(p_list), p=non_diagonal_move_probabilities)
-                logger.debug(f"chosen update electron index = {k}.")
-                # update electron position
-                self.__latest_r_up_carts = non_diagonal_move_mesh_r_up_carts[k]
-                self.__latest_r_dn_carts = non_diagonal_move_mesh_r_dn_carts[k]
-                logger.debug(f"self.__latest_r_up_carts = {self.__latest_r_up_carts}")
-                logger.debug(f"self.__latest_r_dn_carts = {self.__latest_r_dn_carts}")
                 end_projection_update_weights_and_positions = time.perf_counter()
                 timer_projection_update_weights_and_positions += (
                     end_projection_update_weights_and_positions - start_projection_update_weights_and_positions
                 )
+
+                # if tau_left becomes < 0, break the loop (i.e., proceed with the branching step.)
+                if tau_left <= 0.0:
+                    logger.debug("tau_left = {tau_left} <= 0.0. Exit the projection loop.")
+                    break
 
             end_projection = time.perf_counter()
             timer_projection_total += end_projection - start_projection
@@ -751,6 +749,9 @@ class GFMC:
         )
         logger.info(
             f"    Non_diagonal ecp part(post) = {timer_projection_non_diagonal_ecp_part_post/num_branching*10**3: .3f} msec."
+        )
+        logger.info(
+            f"    Non_diagonal probablity part(post) = {timer_projection_non_diagonal_probablity/num_branching*10**3: .3f} msec."
         )
         logger.info(
             f"    Update weights and positions = {timer_projection_update_weights_and_positions/num_branching*10**3: .3f} msec."
@@ -923,7 +924,7 @@ if __name__ == "__main__":
     tau = 0.10
     alat = 0.30
     num_branching = 50
-    non_local_move = "dltmove"
+    non_local_move = "tmove"
 
     num_gfmc_warmup_steps = 5
     num_gfmc_bin_blocks = 5
