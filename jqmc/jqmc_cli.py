@@ -57,16 +57,9 @@ mpi_comm = MPI.COMM_WORLD
 mpi_rank = mpi_comm.Get_rank()
 mpi_size = mpi_comm.Get_size()
 
-# jax-MPI related
-try:
-    jax.distributed.initialize()
-except ValueError:
-    pass
-
 # create new logger level for development
 DEVEL_LEVEL = 5
 logging.addLevelName(DEVEL_LEVEL, "DEVEL")
-
 
 # a new method to create a new logger
 def _loglevel_devel(self, message, *args, **kwargs):
@@ -78,6 +71,12 @@ logging.Logger.devel = _loglevel_devel
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
+
+# jax-MPI related
+try:
+    jax.distributed.initialize()
+except ValueError:
+    pass
 
 
 def main():
@@ -108,8 +107,14 @@ def main():
         handler_format = Formatter(f"MPI-rank={mpi_rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
         stream_handler.setFormatter(handler_format)
         log.addHandler(stream_handler)
-
+    
+    # print header
     print_header()
+
+    # print recognized XLA devices
+    logger.info("*** XLA devices recognized by JAX***")
+    logger.info(jax.devices())
+    logger.info("")
 
     if len(sys.argv) == 1:
         raise ValueError("Please specify input toml file.")
