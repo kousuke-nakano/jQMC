@@ -46,6 +46,7 @@ Todo:
 # python modules
 import itertools
 import time
+from functools import partial
 from logging import Formatter, StreamHandler, getLogger
 from typing import NamedTuple
 
@@ -602,10 +603,11 @@ def _compute_ecp_non_local_parts_debug(
                     V_nonlocal.append(V_l * P_l)
                     sum_V_nonlocal += V_l * P_l
 
-    mesh_non_local_ecp_part = list(mesh_non_local_ecp_part)
-    V_nonlocal = list(V_nonlocal)
+    mesh_non_local_ecp_part_r_up_carts = np.array([up for up, _ in mesh_non_local_ecp_part])
+    mesh_non_local_ecp_part_r_dn_carts = np.array([dn for _, dn in mesh_non_local_ecp_part])
+    V_nonlocal = np.array(V_nonlocal)
 
-    return mesh_non_local_ecp_part, V_nonlocal, sum_V_nonlocal
+    return mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, sum_V_nonlocal
 
 
 def _compute_ecp_coulomb_potential_debug(
@@ -634,7 +636,7 @@ def _compute_ecp_coulomb_potential_debug(
         coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
-    _, _, ecp_nonlocal_parts = _compute_ecp_non_local_parts_debug(
+    _, _, _, ecp_nonlocal_parts = _compute_ecp_non_local_parts_debug(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         r_up_carts=r_up_carts,
@@ -749,6 +751,7 @@ def _compute_ecp_local_parts_jax(
     return V_ecp
 
 
+@partial(jit, static_argnums=(4, 5))
 def _compute_ecp_non_local_parts_jax(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
@@ -786,7 +789,7 @@ def _compute_ecp_non_local_parts_jax(
     else:
         raise NotImplementedError
 
-    start = time.perf_counter()
+    # start = time.perf_counter()
     r_up_carts_on_mesh, r_dn_carts_on_mesh, V_ecp_up, V_ecp_dn, sum_V_nonlocal = (
         _compute_ecp_non_local_part_jax_weights_grid_points(
             coulomb_potential_data=coulomb_potential_data,
@@ -798,29 +801,35 @@ def _compute_ecp_non_local_parts_jax(
             flag_determinant_only=int(flag_determinant_only),
         )
     )
-    end = time.perf_counter()
-    logger.info(f"Comput. elapsed Time = {(end-start)*1e3:.3f} msec.")
+    # end = time.perf_counter()
+    # logger.info(f"Comput. elapsed Time = {(end-start)*1e3:.3f} msec.")
 
-    start = time.perf_counter()
     # print(f"r_up_carts_on_mesh.shape={r_up_carts_on_mesh.shape}")
     # print(f"r_dn_carts_on_mesh.shape={r_dn_carts_on_mesh.shape}")
     # print(f"V_ecp_up.shape={V_ecp_up.shape}")
     # print(f"V_ecp_dn.shape={V_ecp_dn.shape}")
 
+    # start = time.perf_counter()
     _, uq_indices = np.unique(coulomb_potential_data.nucleus_index_non_local_part, return_index=True)
-    r_up_carts_on_mesh = jnp.array([r_up_carts_on_mesh[i] for i in uq_indices])
-    r_dn_carts_on_mesh = jnp.array([r_dn_carts_on_mesh[i] for i in uq_indices])
+    r_up_carts_on_mesh = r_up_carts_on_mesh[uq_indices]
+    r_dn_carts_on_mesh = r_dn_carts_on_mesh[uq_indices]
+    # end = time.perf_counter()
+    # logger.info(f"Extract unique indices elapsed Time = {(end-start)*1e3:.3f} msec.")
 
+    # start = time.perf_counter()
     nucleus_index_non_local_part = np.array(coulomb_potential_data.nucleus_index_non_local_part, dtype=np.int32)
     num_segments = len(set(coulomb_potential_data.nucleus_index_non_local_part))
     V_ecp_up = jax.ops.segment_sum(V_ecp_up, nucleus_index_non_local_part, num_segments=num_segments)
     V_ecp_dn = jax.ops.segment_sum(V_ecp_dn, nucleus_index_non_local_part, num_segments=num_segments)
+    # end = time.perf_counter()
+    # logger.info(f"Segment sum elapsed Time = {(end-start)*1e3:.3f} msec.")
 
     # print(f"r_up_carts_on_mesh.shape={r_up_carts_on_mesh.shape}")
     # print(f"r_dn_carts_on_mesh.shape={r_dn_carts_on_mesh.shape}")
     # print(f"V_ecp_up.shape={V_ecp_up.shape}")
     # print(f"V_ecp_dn.shape={V_ecp_dn.shape}")
 
+    # start = time.perf_counter()
     r_up_new_shape = (np.prod(r_up_carts_on_mesh.shape[:3]),) + r_up_carts_on_mesh.shape[3:]
     r_up_carts_on_mesh = r_up_carts_on_mesh.reshape(r_up_new_shape)
     r_dn_new_shape = (np.prod(r_dn_carts_on_mesh.shape[:3]),) + r_dn_carts_on_mesh.shape[3:]
@@ -830,22 +839,37 @@ def _compute_ecp_non_local_parts_jax(
     V_ecp_up = V_ecp_up.reshape(V_ecp_up_new_shape)
     V_ecp_dn_new_shape = (np.prod(V_ecp_dn.shape[:3]),)
     V_ecp_dn = V_ecp_dn.reshape(V_ecp_dn_new_shape)
+    # end = time.perf_counter()
+    # logger.info(f"Reshape elapsed Time = {(end-start)*1e3:.3f} msec.")
 
     # print(f"r_up_carts_on_mesh.shape={r_up_carts_on_mesh.shape}")
     # print(f"r_dn_carts_on_mesh.shape={r_dn_carts_on_mesh.shape}")
     # print(f"V_ecp_up.shape={V_ecp_up.shape}")
     # print(f"V_ecp_dn.shape={V_ecp_dn.shape}")
 
-    mesh_non_local_ecp_part = [(r_up_carts_m, r_dn_carts) for r_up_carts_m in r_up_carts_on_mesh] + [
-        (r_up_carts, r_dn_carts_m) for r_dn_carts_m in r_dn_carts_on_mesh
-    ]
+    # start = time.perf_counter()
+    # Repeat up-spin electrons for down-spin configurations
+    r_up_carts_repeated_dn = jnp.repeat(
+        r_up_carts[None, :, :], r_dn_carts_on_mesh.shape[0], axis=0
+    )  # Shape: (num_dn_configs, N_up, 3)
+    # Repeat down-spin electrons for up-spin configurations
+    r_dn_carts_repeated_up = jnp.repeat(
+        r_dn_carts[None, :, :], r_up_carts_on_mesh.shape[0], axis=0
+    )  # Shape: (num_up_configs, N_dn, 3)
+    # Combine configurations
+    mesh_non_local_ecp_part_r_up_carts = jnp.concatenate(
+        [r_up_carts_on_mesh, r_up_carts_repeated_dn], axis=0
+    )  # Shape: (N_configs, N_up, 3)
+    mesh_non_local_ecp_part_r_dn_carts = jnp.concatenate(
+        [r_dn_carts_repeated_up, r_dn_carts_on_mesh], axis=0
+    )  # Shape: (N_configs, N_dn, 3)
 
-    V_nonlocal = list(V_ecp_up) + list(V_ecp_dn)
+    V_nonlocal = jnp.concatenate([V_ecp_up, V_ecp_dn], axis=0)
 
-    end = time.perf_counter()
-    logger.info(f"Post elapsed Time = {(end-start)*1e3:.3f} msec.")
+    # end = time.perf_counter()
+    # logger.info(f"Post elapsed Time = {(end-start)*1e3:.3f} msec.")
 
-    return mesh_non_local_ecp_part, V_nonlocal, sum_V_nonlocal
+    return mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, sum_V_nonlocal
 
 
 @jit  # this jit drastically accelarates the computation!
@@ -1100,7 +1124,7 @@ def _compute_ecp_coulomb_potential_jax(
         coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
-    _, _, ecp_nonlocal_parts = _compute_ecp_non_local_parts_jax(
+    _, _, _, ecp_nonlocal_parts = _compute_ecp_non_local_parts_jax(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         r_up_carts=r_up_carts,
@@ -1165,11 +1189,6 @@ def _compute_bare_coulomb_potential_debug(
     return bare_coulomb_potential
 
 
-# it cannot be jitted?
-# There is a related issue on github.
-# ValueError when re-compiling function with a multi-dimensional array as a static field #24204
-# For the time being, we can unjit it to avoid errors in unit_test.py
-# This error is tied with the choice of pytree=True/False flag
 @jit
 def _compute_bare_coulomb_potential_jax(
     coulomb_potential_data: Coulomb_potential_data,
@@ -1405,16 +1424,23 @@ if __name__ == "__main__":
     r_up_carts = np.array(r_up_carts)
     r_dn_carts = np.array(r_dn_carts)
 
-    mesh_non_local_ecp_part_jax, V_nonlocal_jax, sum_V_nonlocal_jax = _compute_ecp_non_local_parts_jax(
-        coulomb_potential_data=coulomb_potential_data,
-        wavefunction_data=wavefunction_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
-        Nv=6,
-        flag_determinant_only=False,
+    mesh_non_local_ecp_part_r_up_carts_jax, mesh_non_local_ecp_part_r_dn_carts_jax, V_nonlocal_jax, sum_V_nonlocal_jax = (
+        _compute_ecp_non_local_parts_jax(
+            coulomb_potential_data=coulomb_potential_data,
+            wavefunction_data=wavefunction_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+            Nv=6,
+            flag_determinant_only=False,
+        )
     )
 
-    mesh_non_local_ecp_part_debug, V_nonlocal_debug, sum_V_nonlocal_debug = _compute_ecp_non_local_parts_debug(
+    (
+        mesh_non_local_ecp_part_r_up_carts_debug,
+        mesh_non_local_ecp_part_r_dn_carts_debug,
+        V_nonlocal_debug,
+        sum_V_nonlocal_debug,
+    ) = _compute_ecp_non_local_parts_debug(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         r_up_carts=r_up_carts,
@@ -1430,31 +1456,37 @@ if __name__ == "__main__":
 
     np.testing.assert_almost_equal(V_ecp_non_local_max_debug, V_ecp_non_local_max_jax, decimal=5)
 
-    mesh_non_local_max_debug = mesh_non_local_ecp_part_debug[np.argmax(V_nonlocal_debug)]
-    mesh_non_local_max_jax = mesh_non_local_ecp_part_jax[np.argmax(V_nonlocal_jax)]
+    mesh_non_local_r_up_carts_max_debug = mesh_non_local_ecp_part_r_up_carts_debug[np.argmax(V_nonlocal_debug)]
+    mesh_non_local_r_up_carts_max_jax = mesh_non_local_ecp_part_r_up_carts_jax[np.argmax(V_nonlocal_jax)]
 
-    np.testing.assert_array_almost_equal(mesh_non_local_max_debug, mesh_non_local_max_jax, decimal=5)
+    np.testing.assert_array_almost_equal(mesh_non_local_r_up_carts_max_debug, mesh_non_local_r_up_carts_max_jax, decimal=5)
 
-    mesh_non_local_ecp_part_only_det_jax, V_nonlocal_only_det_jax, sum_V_nonlocal_only_det_jax = (
-        _compute_ecp_non_local_parts_jax(
-            coulomb_potential_data=coulomb_potential_data,
-            wavefunction_data=wavefunction_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
-            Nv=6,
-            flag_determinant_only=True,
-        )
+    (
+        mesh_non_local_ecp_part_r_up_carts_only_det_jax,
+        mesh_non_local_ecp_part_r_dn_carts_only_det_jax,
+        V_nonlocal_only_det_jax,
+        sum_V_nonlocal_only_det_jax,
+    ) = _compute_ecp_non_local_parts_jax(
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        Nv=6,
+        flag_determinant_only=True,
     )
 
-    mesh_non_local_ecp_part_only_det_debug, V_nonlocal_only_det_debug, sum_V_nonlocal_only_det_debug = (
-        _compute_ecp_non_local_parts_debug(
-            coulomb_potential_data=coulomb_potential_data,
-            wavefunction_data=wavefunction_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
-            Nv=6,
-            flag_determinant_only=True,
-        )
+    (
+        mesh_non_local_ecp_part_r_up_carts_only_det_debug,
+        mesh_non_local_ecp_part_r_dn_carts_only_det_debug,
+        V_nonlocal_only_det_debug,
+        sum_V_nonlocal_only_det_debug,
+    ) = _compute_ecp_non_local_parts_debug(
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        Nv=6,
+        flag_determinant_only=True,
     )
 
     np.testing.assert_almost_equal(sum_V_nonlocal_only_det_jax, sum_V_nonlocal_only_det_debug, decimal=5)

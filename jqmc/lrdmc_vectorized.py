@@ -64,7 +64,8 @@ from .coulomb_potential import (
     _compute_ecp_non_local_parts_jax,
 )
 from .hamiltonians import Hamiltonian_data, compute_kinetic_energy_api
-from .wavefunction import compute_discretized_kinetic_energy_api, evaluate_jastrow_api
+from .jastrow_factor import compute_ratio_Jastrow_part_api
+from .wavefunction import compute_discretized_kinetic_energy_api
 
 # MPI related
 mpi_comm = MPI.COMM_WORLD
@@ -246,7 +247,7 @@ class GFMC_multiple_walkers:
             r_up_carts=self.__latest_r_up_carts[0],
             r_dn_carts=self.__latest_r_dn_carts[0],
         )
-        _, _ = compute_discretized_kinetic_energy_api(
+        _, _, _ = compute_discretized_kinetic_energy_api(
             alat=self.__alat,
             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
             r_up_carts=self.__latest_r_up_carts[0],
@@ -263,7 +264,7 @@ class GFMC_multiple_walkers:
             r_up_carts=self.__latest_r_up_carts[0],
             r_dn_carts=self.__latest_r_dn_carts[0],
         )
-        _, _, _ = _compute_ecp_non_local_parts_jax(
+        _, _, _, _ = _compute_ecp_non_local_parts_jax(
             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
             r_up_carts=self.__latest_r_up_carts[0],
@@ -382,12 +383,14 @@ class GFMC_multiple_walkers:
             R = generate_rotation_matrix(alpha, beta, gamma)  # Rotate in the order x -> y -> z
 
             # compute discretized kinetic energy and mesh (with a random rotation)
-            mesh_kinetic_part, elements_non_diagonal_kinetic_part = compute_discretized_kinetic_energy_api(
-                alat=self.__alat,
-                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                r_up_carts=r_up_carts,
-                r_dn_carts=r_dn_carts,
-                RT=R.T,
+            mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
+                compute_discretized_kinetic_energy_api(
+                    alat=self.__alat,
+                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                    r_up_carts=r_up_carts,
+                    r_dn_carts=r_dn_carts,
+                    RT=R.T,
+                )
             )
             elements_non_diagonal_kinetic_part_FN = jnp.minimum(elements_non_diagonal_kinetic_part, 0.0)
             diagonal_kinetic_part_SP = jnp.sum(jnp.maximum(elements_non_diagonal_kinetic_part, 0.0))
@@ -421,46 +424,56 @@ class GFMC_multiple_walkers:
 
                 if non_local_move == "tmove":
                     # ecp non-local (t-move)
-                    mesh_non_local_ecp_part, V_nonlocal, _ = _compute_ecp_non_local_parts_jax(
-                        coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                        wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                        r_up_carts=r_up_carts,
-                        r_dn_carts=r_dn_carts,
-                        flag_determinant_only=False,
+                    mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
+                        _compute_ecp_non_local_parts_jax(
+                            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                            r_up_carts=r_up_carts,
+                            r_dn_carts=r_dn_carts,
+                            flag_determinant_only=False,
+                        )
                     )
 
-                    V_nonlocal = jnp.array(V_nonlocal)
                     V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
                     diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
                     non_diagonal_sum_hamiltonian_ecp = jnp.sum(V_nonlocal_FN)
                     non_diagonal_sum_hamiltonian = non_diagonal_sum_hamiltonian_kinetic + non_diagonal_sum_hamiltonian_ecp
 
                 elif non_local_move == "dltmove":
-                    mesh_non_local_ecp_part, V_nonlocal, _ = _compute_ecp_non_local_parts_jax(
-                        coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                        wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                        r_up_carts=r_up_carts,
-                        r_dn_carts=r_dn_carts,
-                        flag_determinant_only=True,
+                    mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
+                        _compute_ecp_non_local_parts_jax(
+                            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                            r_up_carts=r_up_carts,
+                            r_dn_carts=r_dn_carts,
+                            flag_determinant_only=True,
+                        )
                     )
 
-                    V_nonlocal = jnp.array(V_nonlocal)
                     V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
                     diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
-
+                    """ obsolete
                     Jastrow_ref = evaluate_jastrow_api(
                         wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
                     )
 
-                    mesh_non_local_ecp_part = jnp.array(mesh_non_local_ecp_part)
-                    r_up_carts_on_mesh = mesh_non_local_ecp_part[:, 0, :, :]
-                    r_dn_carts_on_mesh = mesh_non_local_ecp_part[:, 1, :, :]
                     Jastrow_on_mesh = vmap(evaluate_jastrow_api, in_axes=(None, 0, 0))(
-                        self.__hamiltonian_data.wavefunction_data, r_up_carts_on_mesh, r_dn_carts_on_mesh
+                        self.__hamiltonian_data.wavefunction_data,
+                        mesh_non_local_ecp_part_r_up_carts,
+                        mesh_non_local_ecp_part_r_dn_carts,
                     )
                     Jastrow_ratio = Jastrow_on_mesh / Jastrow_ref
+                    """
+                    Jastrow_ratio = compute_ratio_Jastrow_part_api(
+                        jastrow_data=self.__hamiltonian_data.wavefunction_data.jastrow_data,
+                        old_r_up_carts=r_up_carts,
+                        old_r_dn_carts=r_dn_carts,
+                        new_r_up_carts_arr=mesh_non_local_ecp_part_r_up_carts,
+                        new_r_dn_carts_arr=mesh_non_local_ecp_part_r_dn_carts,
+                    )
+
                     # logger.info(f"Jastrow_ratio = {Jastrow_ratio}.")
                     V_nonlocal_FN = jnp.where(V_nonlocal < 0.0, V_nonlocal * Jastrow_ratio, 0.0)
 
@@ -482,6 +495,15 @@ class GFMC_multiple_walkers:
                     + non_diagonal_sum_hamiltonian
                 )
 
+                p_list = jnp.concatenate([jnp.ravel(elements_non_diagonal_kinetic_part_FN), jnp.ravel(V_nonlocal_FN)])
+                non_diagonal_move_probabilities = p_list / p_list.sum()
+                non_diagonal_move_mesh_r_up_carts = jnp.concatenate(
+                    [mesh_kinetic_part_r_up_carts, mesh_non_local_ecp_part_r_up_carts], axis=0
+                )
+                non_diagonal_move_mesh_r_dn_carts = jnp.concatenate(
+                    [mesh_kinetic_part_r_dn_carts, mesh_non_local_ecp_part_r_dn_carts], axis=0
+                )
+
             # with all electrons
             else:
                 # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
@@ -493,53 +515,14 @@ class GFMC_multiple_walkers:
                     + non_diagonal_sum_hamiltonian
                 )
 
+                p_list = jnp.ravel(elements_non_diagonal_kinetic_part_FN)
+                non_diagonal_move_probabilities = p_list / p_list.sum()
+                non_diagonal_move_mesh_r_up_carts = mesh_kinetic_part_r_up_carts
+                non_diagonal_move_mesh_r_dn_carts = mesh_kinetic_part_r_dn_carts
+
             logger.debug(f"  e_L={e_L}")
             # """
 
-            """ for speed test: ecp local and non-local (t-move)
-            diagonal_ecp_local_part = _compute_ecp_local_parts_jax(
-                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                r_up_carts=r_up_carts,
-                r_dn_carts=r_dn_carts,
-            )
-            mesh_non_local_ecp_part, V_nonlocal, _ = _compute_ecp_non_local_parts_jax(
-                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                r_up_carts=r_up_carts,
-                r_dn_carts=r_dn_carts,
-                flag_determinant_only=False,
-            )
-
-            V_nonlocal = jnp.array(V_nonlocal)
-            V_nonlocal_FN = jnp.where(V_nonlocal < 0.0, V_nonlocal, 0.0)
-            diagonal_ecp_part_SP = jnp.sum(jnp.where(V_nonlocal >= 0.0, V_nonlocal, 0.0))
-            non_diagonal_sum_hamiltonian_ecp = jnp.sum(V_nonlocal_FN)
-            non_diagonal_sum_hamiltonian = non_diagonal_sum_hamiltonian_kinetic + non_diagonal_sum_hamiltonian_ecp
-            e_L = (
-                diagonal_kinetic_continuum
-                + diagonal_kinetic_discretized
-                + diagonal_bare_coulomb_part
-                + diagonal_ecp_local_part
-                + diagonal_kinetic_part_SP
-                + diagonal_ecp_part_SP
-                + non_diagonal_sum_hamiltonian
-            )
-            """
-
-            # choose a non-diagonal move destination
-            # logger.info("elements_non_diagonal_kinetic_part_FN")
-            # logger.info(elements_non_diagonal_kinetic_part_FN)
-            # logger.info("V_nonlocal_FN")
-            # logger.info(V_nonlocal_FN)
-            p_list = jnp.concatenate([jnp.ravel(elements_non_diagonal_kinetic_part_FN), jnp.ravel(V_nonlocal_FN)])
-            non_diagonal_move_probabilities = p_list / p_list.sum()
-            logger.debug(f"non_diagonal_move_probabilities={non_diagonal_move_probabilities}.")
-            logger.debug(f"mesh_kinetic_part.shape={jnp.array(mesh_kinetic_part).shape}.")
-            logger.debug(f"mesh_kinetic_part[0]={jnp.array(mesh_kinetic_part)[0]}.")
-            logger.debug(f"mesh_non_local_ecp_part.shape={jnp.array(mesh_non_local_ecp_part).shape}.")
-            non_diagonal_move_mesh = jnp.concatenate([jnp.array(mesh_kinetic_part), jnp.array(mesh_non_local_ecp_part)])
-            logger.debug(f"non_diagonal_move_mesh.shape = {non_diagonal_move_mesh.shape}")
-            logger.debug(f"non_diagonal_move_mesh[0] = {non_diagonal_move_mesh[0]}")
             # compute the time the walker remaining in the same configuration
             jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
             xi = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
@@ -564,8 +547,8 @@ class GFMC_multiple_walkers:
             k = jnp.searchsorted(cdf, random_value)
             logger.debug(f"len(non_diagonal_move_probabilities) = {len(non_diagonal_move_probabilities)}.")
             logger.debug(f"chosen update electron index, k = {k}.")
-            logger.debug(f"non_diagonal_move_mesh[k]={non_diagonal_move_mesh[k]}")
-            proposed_r_up_carts, proposed_r_dn_carts = non_diagonal_move_mesh[k]
+            proposed_r_up_carts = non_diagonal_move_mesh_r_up_carts[k]
+            proposed_r_dn_carts = non_diagonal_move_mesh_r_dn_carts[k]
 
             logger.debug(f"old: r_up_carts = {r_up_carts}")
             logger.debug(f"old: r_dn_carts = {r_dn_carts}")
@@ -1016,12 +999,12 @@ if __name__ == "__main__":
         hamiltonian_data = pickle.load(f)
 
     # run branching
-    num_walkers = 100
+    num_walkers = 8
     mcmc_seed = 3446
     tau = 0.10
     alat = 0.30
     num_branching = 50
-    non_local_move = "tmove"
+    non_local_move = "dltmove"
 
     num_gfmc_warmup_steps = 5
     num_gfmc_bin_blocks = 5

@@ -56,7 +56,8 @@ from .coulomb_potential import (
     _compute_ecp_non_local_parts_jax,
 )
 from .hamiltonians import Hamiltonian_data, compute_kinetic_energy_api
-from .wavefunction import compute_discretized_kinetic_energy_api, evaluate_jastrow_api
+from .jastrow_factor import compute_ratio_Jastrow_part_api
+from .wavefunction import compute_discretized_kinetic_energy_api
 
 # MPI related
 mpi_comm = MPI.COMM_WORLD
@@ -232,7 +233,7 @@ class GFMC:
             r_up_carts=self.__latest_r_up_carts,
             r_dn_carts=self.__latest_r_dn_carts,
         )
-        _, _ = compute_discretized_kinetic_energy_api(
+        _, _, _ = compute_discretized_kinetic_energy_api(
             alat=self.__alat,
             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
             r_up_carts=self.__latest_r_up_carts,
@@ -249,7 +250,7 @@ class GFMC:
             r_up_carts=self.__latest_r_up_carts,
             r_dn_carts=self.__latest_r_dn_carts,
         )
-        _, _, _ = _compute_ecp_non_local_parts_jax(
+        _, _, _, _ = _compute_ecp_non_local_parts_jax(
             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
             r_up_carts=self.__latest_r_up_carts,
@@ -386,12 +387,14 @@ class GFMC:
                 )
 
                 start_projection_non_diagonal_kinetic_part_comput = time.perf_counter()
-                mesh_kinetic_part, elements_non_diagonal_kinetic_part = compute_discretized_kinetic_energy_api(
-                    alat=self.__alat,
-                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                    r_up_carts=self.__latest_r_up_carts,
-                    r_dn_carts=self.__latest_r_dn_carts,
-                    RT=R.T,
+                mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
+                    compute_discretized_kinetic_energy_api(
+                        alat=self.__alat,
+                        wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                        r_up_carts=self.__latest_r_up_carts,
+                        r_dn_carts=self.__latest_r_dn_carts,
+                        RT=R.T,
+                    )
                 )
                 end_projection_non_diagonal_kinetic_part_comput = time.perf_counter()
                 timer_projection_non_diagonal_kinetic_part_comput += (
@@ -399,7 +402,7 @@ class GFMC:
                 )
 
                 start_projection_non_diagonal_kinetic_part_post = time.perf_counter()
-                elements_non_diagonal_kinetic_part_FN = list(np.minimum(elements_non_diagonal_kinetic_part, 0.0))
+                elements_non_diagonal_kinetic_part_FN = np.minimum(elements_non_diagonal_kinetic_part, 0.0)
                 diagonal_kinetic_part_SP = np.sum(np.maximum(elements_non_diagonal_kinetic_part, 0.0))
                 non_diagonal_sum_hamiltonian = np.sum(elements_non_diagonal_kinetic_part_FN)
                 end_projection_non_diagonal_kinetic_part_post = time.perf_counter()
@@ -453,12 +456,14 @@ class GFMC:
                     # ecp non-local
                     if self.__non_local_move == "tmove":
                         start_projection_non_diagonal_ecp_part_comput = time.perf_counter()
-                        mesh_non_local_ecp_part, V_nonlocal, _ = _compute_ecp_non_local_parts_jax(
-                            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                            r_up_carts=self.__latest_r_up_carts,
-                            r_dn_carts=self.__latest_r_dn_carts,
-                            flag_determinant_only=False,
+                        mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
+                            _compute_ecp_non_local_parts_jax(
+                                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                                r_up_carts=self.__latest_r_up_carts,
+                                r_dn_carts=self.__latest_r_dn_carts,
+                                flag_determinant_only=False,
+                            )
                         )
                         end_projection_non_diagonal_ecp_part_comput = time.perf_counter()
                         timer_projection_non_diagonal_ecp_part_comput += (
@@ -466,7 +471,7 @@ class GFMC:
                         )
 
                         start_projection_non_diagonal_ecp_part_post = time.perf_counter()
-                        V_nonlocal_FN = list(np.minimum(V_nonlocal, 0.0))
+                        V_nonlocal_FN = np.minimum(V_nonlocal, 0.0)
                         diagonal_ecp_part_SP = np.sum(np.maximum(V_nonlocal, 0.0))
                         non_diagonal_sum_hamiltonian += np.sum(V_nonlocal_FN)
                         end_projection_non_diagonal_ecp_part_post = time.perf_counter()
@@ -476,12 +481,14 @@ class GFMC:
 
                     elif self.__non_local_move == "dltmove":
                         start_projection_non_diagonal_ecp_part_comput = time.perf_counter()
-                        mesh_non_local_ecp_part, V_nonlocal, _ = _compute_ecp_non_local_parts_jax(
-                            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                            r_up_carts=self.__latest_r_up_carts,
-                            r_dn_carts=self.__latest_r_dn_carts,
-                            flag_determinant_only=True,
+                        mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
+                            _compute_ecp_non_local_parts_jax(
+                                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                                r_up_carts=self.__latest_r_up_carts,
+                                r_dn_carts=self.__latest_r_dn_carts,
+                                flag_determinant_only=True,
+                            )
                         )
                         end_projection_non_diagonal_ecp_part_comput = time.perf_counter()
                         timer_projection_non_diagonal_ecp_part_comput += (
@@ -492,23 +499,37 @@ class GFMC:
                         V_nonlocal_FN = np.minimum(V_nonlocal, 0.0)
                         diagonal_ecp_part_SP = np.sum(np.maximum(V_nonlocal, 0.0))
 
+                        """obsolete
                         Jastrow_ref = evaluate_jastrow_api(
                             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                             r_up_carts=self.__latest_r_up_carts,
                             r_dn_carts=self.__latest_r_dn_carts,
                         )
-                        V_nonlocal_FN = [
-                            V
-                            * evaluate_jastrow_api(
-                                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                                r_up_carts=mesh_non_local_ecp_part[i][0],
-                                r_dn_carts=mesh_non_local_ecp_part[i][1],
-                            )
-                            / Jastrow_ref
-                            if V < 0.0
-                            else 0.0
-                            for i, V in enumerate(V_nonlocal_FN)
-                        ]
+                        V_nonlocal_FN_debug = np.array(
+                            [
+                                V
+                                * evaluate_jastrow_api(
+                                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                                    r_up_carts=mesh_non_local_ecp_part_r_up_carts[i],
+                                    r_dn_carts=mesh_non_local_ecp_part_r_dn_carts[i],
+                                )
+                                / Jastrow_ref
+                                if V < 0.0
+                                else 0.0
+                                for i, V in enumerate(V_nonlocal_FN)
+                            ]
+                        )
+                        """
+
+                        Jastrow_ratio = compute_ratio_Jastrow_part_api(
+                            jastrow_data=self.__hamiltonian_data.wavefunction_data.jastrow_data,
+                            old_r_up_carts=self.__latest_r_up_carts,
+                            old_r_dn_carts=self.__latest_r_dn_carts,
+                            new_r_up_carts_arr=mesh_non_local_ecp_part_r_up_carts,
+                            new_r_dn_carts_arr=mesh_non_local_ecp_part_r_dn_carts,
+                        )
+                        V_nonlocal_FN = V_nonlocal_FN * Jastrow_ratio
+
                         non_diagonal_sum_hamiltonian += np.sum(V_nonlocal_FN)
                         end_projection_non_diagonal_ecp_part_post = time.perf_counter()
                         timer_projection_non_diagonal_ecp_part_post += (
@@ -530,6 +551,15 @@ class GFMC:
                         + non_diagonal_sum_hamiltonian
                     )
 
+                    p_list = np.concatenate([np.ravel(elements_non_diagonal_kinetic_part_FN), np.ravel(V_nonlocal_FN)])
+                    non_diagonal_move_probabilities = p_list / p_list.sum()
+                    non_diagonal_move_mesh_r_up_carts = np.concatenate(
+                        [mesh_kinetic_part_r_up_carts, mesh_non_local_ecp_part_r_up_carts], axis=0
+                    )
+                    non_diagonal_move_mesh_r_dn_carts = np.concatenate(
+                        [mesh_kinetic_part_r_dn_carts, mesh_non_local_ecp_part_r_dn_carts], axis=0
+                    )
+
                 # with all electrons
                 else:
                     # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
@@ -540,6 +570,11 @@ class GFMC:
                         + diagonal_kinetic_part_SP
                         + non_diagonal_sum_hamiltonian
                     )
+
+                    p_list = np.ravel(elements_non_diagonal_kinetic_part_FN)
+                    non_diagonal_move_probabilities = p_list / p_list.sum()
+                    non_diagonal_move_mesh_r_up_carts = mesh_kinetic_part_r_up_carts
+                    non_diagonal_move_mesh_r_dn_carts = mesh_kinetic_part_r_dn_carts
 
                 logger.debug(f"  e_L={e_L}")
 
@@ -561,26 +596,14 @@ class GFMC:
                     logger.debug("tau_left = {tau_left} <= 0.0. Exit the projection loop.")
                     break
 
-                # choose a non-diagonal move destination
-                if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
-                    p_list = np.array(elements_non_diagonal_kinetic_part_FN + V_nonlocal_FN)
-                else:
-                    p_list = np.array(elements_non_diagonal_kinetic_part_FN)
-                probabilities = p_list / p_list.sum()
-                logger.debug(f"len(probabilities) = {len(probabilities)}")
-
                 # random choice
                 logger.debug(f"self.__latest_r_up_carts = {self.__latest_r_up_carts}")
                 logger.debug(f"self.__latest_r_dn_carts = {self.__latest_r_dn_carts}")
-                k = np.random.choice(len(p_list), p=probabilities)
+                k = np.random.choice(len(p_list), p=non_diagonal_move_probabilities)
                 logger.debug(f"chosen update electron index = {k}.")
                 # update electron position
-                if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
-                    self.__latest_r_up_carts, self.__latest_r_dn_carts = (
-                        list(mesh_kinetic_part) + list(mesh_non_local_ecp_part)
-                    )[k]
-                else:
-                    self.__latest_r_up_carts, self.__latest_r_dn_carts = (list(mesh_kinetic_part))[k]
+                self.__latest_r_up_carts = non_diagonal_move_mesh_r_up_carts[k]
+                self.__latest_r_dn_carts = non_diagonal_move_mesh_r_dn_carts[k]
                 logger.debug(f"self.__latest_r_up_carts = {self.__latest_r_up_carts}")
                 logger.debug(f"self.__latest_r_dn_carts = {self.__latest_r_dn_carts}")
                 end_projection_update_weights_and_positions = time.perf_counter()
@@ -590,7 +613,7 @@ class GFMC:
 
             end_projection = time.perf_counter()
             timer_projection_total += end_projection - start_projection
-            logger.info(f"  #projection times = x {projection_times}")
+            logger.debug(f"  #projection times = x {projection_times}")
 
             # projection ends
             logger.debug("  Projection ends.")
@@ -894,8 +917,8 @@ if __name__ == "__main__":
     mcmc_seed = 3446
     tau = 0.10
     alat = 0.30
-    num_branching = 10
-    non_local_move = "tmove"
+    num_branching = 50
+    non_local_move = "dltmove"
 
     num_gfmc_warmup_steps = 5
     num_gfmc_bin_blocks = 5

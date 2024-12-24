@@ -328,7 +328,10 @@ def compute_discretized_kinetic_energy_debug(
         for r_up_carts_, r_dn_carts_ in mesh_kinetic_part
     ]
 
-    return mesh_kinetic_part, elements_kinetic_part
+    r_up_carts_combined = np.array([up for up, _ in mesh_kinetic_part])
+    r_dn_carts_combined = np.array([dn for _, dn in mesh_kinetic_part])
+
+    return r_up_carts_combined, r_dn_carts_combined, elements_kinetic_part
 
 
 @jit
@@ -426,26 +429,14 @@ def compute_discretized_kinetic_energy_api_old(
     # Compute the kinetic part elements
     elements_kinetic_part = -1.0 / (2.0 * alat**2) * psi_xp / psi_x
 
-    # Determine the maximum number of electrons
-    N_up = r_up_carts_combined.shape[1]
-    N_dn = r_dn_carts_combined.shape[1]
-    N_max = max(N_up, N_dn)
-
-    # Pad the arrays to have the same number of electrons
-    r_up_padded = jnp.pad(r_up_carts_combined, ((0, 0), (0, N_max - N_up), (0, 0)), mode="constant")
-    r_dn_padded = jnp.pad(r_dn_carts_combined, ((0, 0), (0, N_max - N_dn), (0, 0)), mode="constant")
-
-    # Stack along the spin axis to get shape (N_configs, 2, N_max, 3)
-    mesh_kinetic_part = jnp.stack([r_up_padded, r_dn_padded], axis=1)
-
     # Return the combined configurations and the kinetic elements
-    return mesh_kinetic_part, elements_kinetic_part
+    return r_up_carts_combined, r_dn_carts_combined, elements_kinetic_part
 
 
 @jit
 def compute_discretized_kinetic_energy_api(
     alat: float, wavefunction_data, r_up_carts: jnp.ndarray, r_dn_carts: jnp.ndarray, RT: jnp.ndarray
-) -> tuple[list[tuple[npt.NDArray, npt.NDArray]], list[npt.NDArray], jax.Array]:
+) -> tuple[jax.Array, jax.Array, jax.Array]:
     r"""Function for computing discretized kinetic grid points and thier energies with a given lattice space (alat).
 
     Args:
@@ -456,10 +447,10 @@ def compute_discretized_kinetic_energy_api(
         RT (npt.NDArray): Rotation matrix. \equiv R.T
 
     Returns:
-        list[tuple[npt.NDArray, npt.NDArray]], list[npt.NDArray], jax.Array:
-            return mesh for the LRDMC kinetic part, a list containing tuples containing (r_carts_up, r_carts_dn),
-            a list containing values of the \Psi(x')/\Psi(x) corresponding to the grid, and the new jax_PRNG_key
-            that should be used in the next call of this @jitted function.
+        tuple[jax.Array, jax.Array, jax.Array]:
+            return mesh for the LRDMC kinetic part, npt.NDArrays, r_carts_up_arr and r_carts_dn_arr, whose dimensions
+            are (N_grid, N_up, 3) and (N_grid, N_dn, 3), respectively. A (N_grid, 1) npt.NDArray \Psi(x')/\Psi(x)
+            corresponding to the grid.
     """
     # Define the shifts to apply (+/- alat in each coordinate direction)
     shifts = alat * jnp.array(
@@ -543,20 +534,8 @@ def compute_discretized_kinetic_energy_api(
     # Compute the kinetic part elements
     elements_kinetic_part = -1.0 / (2.0 * alat**2) * wf_ratio
 
-    # Determine the maximum number of electrons
-    N_up = r_up_carts_combined.shape[1]
-    N_dn = r_dn_carts_combined.shape[1]
-    N_max = max(N_up, N_dn)
-
-    # Pad the arrays to have the same number of electrons
-    r_up_padded = jnp.pad(r_up_carts_combined, ((0, 0), (0, N_max - N_up), (0, 0)), mode="constant")
-    r_dn_padded = jnp.pad(r_dn_carts_combined, ((0, 0), (0, N_max - N_dn), (0, 0)), mode="constant")
-
-    # Stack along the spin axis to get shape (N_configs, 2, N_max, 3)
-    mesh_kinetic_part = jnp.stack([r_up_padded, r_dn_padded], axis=1)
-
     # Return the combined configurations and the kinetic elements
-    return mesh_kinetic_part, elements_kinetic_part
+    return r_up_carts_combined, r_dn_carts_combined, elements_kinetic_part
 
 
 def compute_quantum_force_api(
@@ -709,35 +688,44 @@ if __name__ == "__main__":
     alat = 0.05
     RT = np.eye(3)
     start = time.perf_counter()
-    mesh_kinetic_part_debug, elements_kinetic_part_debug = compute_discretized_kinetic_energy_debug(
-        alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+    mesh_kinetic_part_r_up_carts_debug, mesh_kinetic_part_r_dn_carts_debug, elements_kinetic_part_debug = (
+        compute_discretized_kinetic_energy_debug(
+            alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+        )
     )
     end = time.perf_counter()
-    print(f"Elapsed Time = {(end-start)*1e3:.3f} msec.")
+    print(f"(debug) Elapsed Time = {(end-start)*1e3:.3f} msec.")
 
-    _, _ = compute_discretized_kinetic_energy_api_old(
+    _, _, _ = compute_discretized_kinetic_energy_api_old(
         alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, RT=RT
     )
 
     start = time.perf_counter()
-    mesh_kinetic_part_jax_old, elements_kinetic_part_jax_old = compute_discretized_kinetic_energy_api_old(
-        alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, RT=RT
+    mesh_kinetic_part_r_up_carts_jax_old, mesh_kinetic_part_r_dn_carts_jax_old, elements_kinetic_part_jax_old = (
+        compute_discretized_kinetic_energy_api_old(
+            alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, RT=RT
+        )
     )
     end = time.perf_counter()
     print(f"(new) Elapsed Time = {(end-start)*1e3:.3f} msec.")
 
-    _, _ = compute_discretized_kinetic_energy_api(
+    _, _, _ = compute_discretized_kinetic_energy_api(
         alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, RT=RT
     )
 
     start = time.perf_counter()
-    mesh_kinetic_part_jax, elements_kinetic_part_jax = compute_discretized_kinetic_energy_api(
-        alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, RT=RT
+    mesh_kinetic_part_r_up_carts_jax, mesh_kinetic_part_r_dn_carts_jax, elements_kinetic_part_jax = (
+        compute_discretized_kinetic_energy_api(
+            alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, RT=RT
+        )
     )
     end = time.perf_counter()
     print(f"(old) Elapsed Time = {(end-start)*1e3:.3f} msec.")
 
-    np.testing.assert_array_almost_equal(mesh_kinetic_part_jax, mesh_kinetic_part_debug, decimal=10)
+    np.testing.assert_array_almost_equal(mesh_kinetic_part_r_up_carts_jax_old, mesh_kinetic_part_r_up_carts_debug, decimal=10)
+    np.testing.assert_array_almost_equal(mesh_kinetic_part_r_dn_carts_jax_old, mesh_kinetic_part_r_dn_carts_debug, decimal=10)
+    np.testing.assert_array_almost_equal(mesh_kinetic_part_r_up_carts_jax, mesh_kinetic_part_r_up_carts_debug, decimal=10)
+    np.testing.assert_array_almost_equal(mesh_kinetic_part_r_dn_carts_jax, mesh_kinetic_part_r_dn_carts_debug, decimal=10)
     np.testing.assert_array_almost_equal(elements_kinetic_part_jax_old, elements_kinetic_part_debug, decimal=10)
     np.testing.assert_array_almost_equal(elements_kinetic_part_jax, elements_kinetic_part_debug, decimal=10)
     # """
