@@ -574,6 +574,7 @@ class GFMC_multiple_walkers:
             f"  Progress: branching step = {self.__gfmc_branching_counter}/{num_branching+self.__gfmc_branching_counter}: {progress:.0f} %."
         )
 
+        num_branching_done = 0
         for i_branching in range(num_branching):
             if (i_branching + 1) % gfmc_interval == 0:
                 progress = (
@@ -760,10 +761,11 @@ class GFMC_multiple_walkers:
             end_reconfiguration = time.perf_counter()
             timer_reconfiguration += end_reconfiguration - start_reconfiguration
 
+            num_branching_done += 1
             gmfc_current = time.perf_counter()
             if max_time < gmfc_current - gmfc_total_start:
-                logger.info(f"max_time = {max_time} sec. exceeds.")
-                logger.info("break the branching loop.")
+                logger.info(f"  Max_time = {max_time} sec. exceeds.")
+                logger.info("  Break the branching loop.")
                 break
 
         logger.info("-End branching-")
@@ -775,13 +777,15 @@ class GFMC_multiple_walkers:
         gmfc_total_end = time.perf_counter()
         timer_gmfc_total = gmfc_total_end - gmfc_total_start
 
-        logger.info(f"Total GFMC time for {num_branching} branching steps = {timer_gmfc_total: .3f} sec.")
+        logger.info(f"Total GFMC time for {num_branching_done} branching steps = {timer_gmfc_total: .3f} sec.")
         logger.info(f"Pre-compilation time for GFMC = {timer_projection_init: .3f} sec.")
         logger.info(f"Net GFMC time without pre-compilations = {timer_gmfc_total-timer_projection_init: .3f} sec.")
-        logger.info(f"Elapsed times per branching, averaged over {num_branching} branching steps.")
-        logger.info(f"  Projection time per branching = {timer_projection_total/num_branching*10**3: .3f} msec.")
-        logger.info(f"  Observable measurement time per branching = {timer_observable/num_branching*10**3: .3f} msec.")
-        logger.info(f"  Walker reconfiguration time per branching = {timer_reconfiguration/num_branching*10**3: .3f} msec.")
+        logger.info(f"Elapsed times per branching, averaged over {num_branching_done} branching steps.")
+        logger.info(f"  Projection time per branching = {timer_projection_total/num_branching_done*10**3: .3f} msec.")
+        logger.info(f"  Observable measurement time per branching = {timer_observable/num_branching_done*10**3: .3f} msec.")
+        logger.info(
+            f"  Walker reconfiguration time per branching = {timer_reconfiguration/num_branching_done*10**3: .3f} msec."
+        )
         logger.debug(f"Survived walkers = {self.__num_survived_walkers}")
         logger.debug(f"killed walkers = {self.__num_killed_walkers}")
         logger.info(
@@ -801,39 +805,41 @@ class GFMC_multiple_walkers:
 
     def get_e_L(self, num_gfmc_warmup_steps: int = 3, num_gfmc_bin_blocks: int = 10, num_gfmc_bin_collect: int = 2) -> float:
         """Get e_L."""
+        logger.info("- Comput. e_L -")
         if mpi_rank == 0:
             e_L_eq = self.__e_L_averaged_list[num_gfmc_warmup_steps + num_gfmc_bin_collect :]
             w_L_eq = self.__w_L_averaged_list[num_gfmc_warmup_steps:]
-            logger.debug(f"e_L_eq = {e_L_eq}")
-            logger.debug(f"w_L_eq = {w_L_eq}")
-            G_eq = [
-                np.prod([w_L_eq[n - j] for j in range(1, num_gfmc_bin_collect + 1)])
-                for n in range(num_gfmc_bin_collect, len(w_L_eq))
-            ]
-            logger.debug(f"G_eq = {G_eq}")
-            logger.debug(f"len(e_L_eq) = {len(e_L_eq)}")
-            logger.debug(f"len(G_eq) = {len(G_eq)}")
-
             e_L_eq = np.array(e_L_eq)
-            G_eq = np.array(G_eq)
-
+            w_L_eq = np.array(w_L_eq)
+            logger.info("  Progress: Computing G_eq. and G_e_L_eq.")
+            G_eq = np.array(
+                [
+                    np.prod([w_L_eq[n - j] for j in range(1, num_gfmc_bin_collect + 1)])
+                    for n in range(num_gfmc_bin_collect, len(w_L_eq))
+                ]
+            )
             G_e_L_eq = e_L_eq * G_eq
 
+            logger.info(f"  Progress: Computing binned G_e_L_eq and G_eq with # binned blocks = {num_gfmc_bin_blocks}.")
             G_e_L_split = np.array_split(G_e_L_eq, num_gfmc_bin_blocks)
             G_e_L_binned = np.array([np.average(G_e_L_list) for G_e_L_list in G_e_L_split])
             G_split = np.array_split(G_eq, num_gfmc_bin_blocks)
             G_binned = np.array([np.average(G_list) for G_list in G_split])
 
-            M = num_gfmc_bin_blocks
+            logger.info(f"  Progress: Computing jackknife samples with # binned blocks = {num_gfmc_bin_blocks}.")
 
-            logger.info(f"The number of binned blocks = {num_gfmc_bin_blocks}.")
+            G_e_L_binned_sum = np.sum(G_e_L_binned)
+            G_binned_sum = np.sum(G_binned)
 
-            e_L_jackknife = [(np.sum(G_e_L_binned) - G_e_L_binned[m]) / (np.sum(G_binned) - G_binned[m]) for m in range(M)]
+            e_L_jackknife = [
+                (G_e_L_binned_sum - G_e_L_binned[m]) / (G_binned_sum - G_binned[m]) for m in range(num_gfmc_bin_blocks)
+            ]
 
+            logger.info("  Progress: Computing jackknife mean and std.")
             e_L_mean = np.average(e_L_jackknife)
-            e_L_std = np.sqrt(M - 1) * np.std(e_L_jackknife)
+            e_L_std = np.sqrt(num_gfmc_bin_blocks - 1) * np.std(e_L_jackknife)
 
-            logger.debug(f"e_L = {e_L_mean} +- {e_L_std} Ha")
+            logger.debug(f"  e_L = {e_L_mean} +- {e_L_std} Ha")
         else:
             e_L_mean = None
             e_L_std = None
@@ -1006,9 +1012,10 @@ if __name__ == "__main__":
     # run branching
     num_walkers = 1
     mcmc_seed = 3446
+    max_time = 100
     tau = 0.10
     alat = 0.30
-    num_branching = 50
+    num_branching = 100
     non_local_move = "dltmove"
 
     num_gfmc_warmup_steps = 5
@@ -1024,7 +1031,7 @@ if __name__ == "__main__":
         alat=alat,
         non_local_move=non_local_move,
     )
-    gfmc.run(num_branching=num_branching)
+    gfmc.run(num_branching=num_branching, max_time=max_time)
 
     # """
     e_L_mean, e_L_std = gfmc.get_e_L(
