@@ -47,9 +47,8 @@ import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import jit
+from jax import jit, vmap
 from jax import typing as jnpt
-from jax import vmap
 
 # jqmc module
 from .atomic_orbital import AOs_data, compute_AOs_api, compute_AOs_grad_api, compute_AOs_laplacian_api
@@ -1306,7 +1305,7 @@ if __name__ == "__main__":
     new_r_up_carts_arr = np.array(new_r_up_carts_arr)
     new_r_dn_carts_arr = np.array(new_r_dn_carts_arr)
 
-    _ = _compute_ratio_determinant_part_debug(
+    determinant_ratios_debug = _compute_ratio_determinant_part_debug(
         geminal_data=geminal_data,
         old_r_up_carts=old_r_up_carts,
         old_r_dn_carts=old_r_dn_carts,
@@ -1322,17 +1321,19 @@ if __name__ == "__main__":
         new_r_up_carts_arr=new_r_up_carts_arr,
         new_r_dn_carts_arr=new_r_dn_carts_arr,
     )
+
     end = time.perf_counter()
     print(f"Elapsed Time = {(end-start)*1e3:.3f} msec.")
     # print(determinant_ratios_debug)
 
-    _ = _compute_ratio_determinant_part_jax(
+    determinant_ratios_jax = _compute_ratio_determinant_part_jax(
         geminal_data=geminal_data,
         old_r_up_carts=jnp.array(old_r_up_carts),
         old_r_dn_carts=jnp.array(old_r_dn_carts),
         new_r_up_carts_arr=jnp.array(new_r_up_carts_arr),
         new_r_dn_carts_arr=jnp.array(new_r_dn_carts_arr),
     )
+    determinant_ratios_jax.block_until_ready()
 
     start = time.perf_counter()
     determinant_ratios_jax = _compute_ratio_determinant_part_jax(
@@ -1342,6 +1343,7 @@ if __name__ == "__main__":
         new_r_up_carts_arr=jnp.array(new_r_up_carts_arr),
         new_r_dn_carts_arr=jnp.array(new_r_dn_carts_arr),
     )
+    determinant_ratios_jax.block_until_ready()
     end = time.perf_counter()
     print(f"Elapsed Time = {(end-start)*1e3:.3f} msec.")
     # print(determinant_ratios_jax)

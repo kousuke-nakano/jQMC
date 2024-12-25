@@ -970,7 +970,7 @@ if __name__ == "__main__":
     max_time = 100
     tau = 0.10
     alat = 0.30
-    num_branching = 100
+    num_branching = 30
     non_local_move = "tmove"
 
     num_gfmc_warmup_steps = 5

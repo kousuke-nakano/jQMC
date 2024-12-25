@@ -44,9 +44,8 @@ import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import grad, hessian, jit
+from jax import grad, hessian, jit, vmap
 from jax import typing as jnpt
-from jax import vmap
 
 # jqmc module
 from .atomic_orbital import AOs_data, compute_AOs_api
@@ -1736,13 +1735,14 @@ if __name__ == "__main__":
 
     # print(jastrow_ratios_debug)
 
-    _ = _compute_ratio_Jastrow_part_jax(
+    jastrow_ratios_jax = _compute_ratio_Jastrow_part_jax(
         jastrow_data=jastrow_data,
         old_r_up_carts=old_r_up_carts,
         old_r_dn_carts=old_r_dn_carts,
         new_r_up_carts_arr=new_r_up_carts_arr,
         new_r_dn_carts_arr=new_r_dn_carts_arr,
     )
+    jastrow_ratios_jax.block_until_ready()
 
     start = time.perf_counter()
     jastrow_ratios_jax = _compute_ratio_Jastrow_part_jax(
@@ -1752,6 +1752,7 @@ if __name__ == "__main__":
         new_r_up_carts_arr=new_r_up_carts_arr,
         new_r_dn_carts_arr=new_r_dn_carts_arr,
     )
+    jastrow_ratios_jax.block_until_ready()
     end = time.perf_counter()
     print(f"Elapsed Time = {(end-start)*1e3:.3f} msec.")
 

@@ -3,9 +3,11 @@ import time
 
 import jax
 import jax.numpy as jnp
+import jax.scipy as jscipy
 import numpy as np
+from jax import jit
 
-from jqmc.atomic_orbital import compute_AOs_api, compute_AOs_grad_api, compute_AOs_laplacian_api
+from jqmc.atomic_orbital import _compute_AOs_jax, compute_AOs_api, compute_AOs_grad_api, compute_AOs_laplacian_api
 from jqmc.trexio_wrapper import read_trexio_file
 
 jax.config.update("jax_enable_x64", True)
@@ -37,6 +39,7 @@ r_cart_min, r_cart_max = -3.0, +3.0
 r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
 r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
 
+"""
 _ = compute_AOs_api(aos_data=aos_data, r_carts=r_up_carts)
 _ = compute_AOs_grad_api(aos_data=aos_data, r_carts=r_up_carts)
 _ = compute_AOs_laplacian_api(aos_data=aos_data, r_carts=r_up_carts)
@@ -59,3 +62,14 @@ end = time.perf_counter()
 print("AO comput. ends.")
 print(f"Elapsed Time = {end-start:.2f} sec.")
 jax.profiler.stop_trace()
+"""
+
+num_ele = 4
+r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele, 3) + r_cart_min
+
+_ = _compute_AOs_jax(aos_data=aos_data, r_carts=r_carts)
+start = time.perf_counter()
+AOs = _compute_AOs_jax(aos_data=aos_data, r_carts=r_carts)
+AOs.block_until_ready()
+end = time.perf_counter()
+print(f"Comput. elapsed Time = {(end-start)*1e3:.3f} msec.")
