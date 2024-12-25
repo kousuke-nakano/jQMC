@@ -37,16 +37,24 @@ r_cart_min, r_cart_max = -3.0, +3.0
 r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
 r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
 
+_ = compute_AOs_api(aos_data=aos_data, r_carts=r_up_carts)
+_ = compute_AOs_grad_api(aos_data=aos_data, r_carts=r_up_carts)
+_ = compute_AOs_laplacian_api(aos_data=aos_data, r_carts=r_up_carts)
+
 # tensorboard --logdir /tmp/tensorboard
 jax.profiler.start_trace("/tmp/tensorboard", create_perfetto_link=True)
 print("AO comput. starts.")
 start = time.perf_counter()
-_ = compute_AOs_api(aos_data=aos_data, r_carts=r_up_carts)
-_ = compute_AOs_grad_api(aos_data=aos_data, r_carts=r_up_carts)
-_ = compute_AOs_laplacian_api(aos_data=aos_data, r_carts=r_up_carts)
-_ = compute_AOs_api(aos_data=aos_data, r_carts=r_dn_carts)
-_ = compute_AOs_grad_api(aos_data=aos_data, r_carts=r_dn_carts)
-_ = compute_AOs_laplacian_api(aos_data=aos_data, r_carts=r_dn_carts)
+aos_up = compute_AOs_api(aos_data=aos_data, r_carts=r_up_carts)
+# aos_up_grad = compute_AOs_grad_api(aos_data=aos_data, r_carts=r_up_carts)
+# aos_up_laplacian = compute_AOs_laplacian_api(aos_data=aos_data, r_carts=r_up_carts)
+
+aos_up.block_until_ready()
+# aos_up_grad[0].block_until_ready()
+# aos_up_grad[1].block_until_ready()
+# aos_up_grad[2].block_until_ready()
+# aos_up_laplacian.block_until_ready()
+
 end = time.perf_counter()
 print("AO comput. ends.")
 print(f"Elapsed Time = {end-start:.2f} sec.")

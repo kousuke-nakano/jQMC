@@ -50,8 +50,9 @@ from logging import Formatter, StreamHandler, getLogger
 import jax
 import numpy as np
 import numpy.typing as npt
-from jax import jit, vmap
+from jax import jit
 from jax import numpy as jnp
+from jax import vmap
 
 # MPI
 from mpi4py import MPI
@@ -621,6 +622,14 @@ class GFMC_multiple_walkers:
                 if np.max(tau_left_list) <= 0.0:
                     logger.debug(f"max(tau_left_list) = {np.max(tau_left_list)} <= 0.0. Exit the projection loop.")
                     break
+
+            # sync. jax arrays computations.
+            e_L_list.block_until_ready()
+            tau_left_list.block_until_ready()
+            w_L_list.block_until_ready()
+            self.__latest_r_up_carts.block_until_ready()
+            self.__latest_r_dn_carts.block_until_ready()
+            self.__jax_PRNG_key_list.block_until_ready()
 
             end_projection = time.perf_counter()
             timer_projection_total += end_projection - start_projection
