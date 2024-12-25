@@ -289,7 +289,7 @@ class GFMC:
 
         # Main branching loop.
         logger.info("-Start branching-")
-        gfmc_interval = np.max([1, int(num_branching / 10)])  # %
+        gfmc_interval = int(np.maximum(num_branching / 100, 1))
         progress = (self.__gfmc_branching_counter) / (num_branching + self.__gfmc_branching_counter) * 100.0
         logger.info(
             f"  Progress: branching step = {self.__gfmc_branching_counter}/{num_branching+self.__gfmc_branching_counter}: {progress:.0f} %."
@@ -810,7 +810,7 @@ class GFMC:
             w_L_eq = self.__w_L_averaged_list[num_gfmc_warmup_steps:]
             logger.debug(f"e_L_eq = {e_L_eq}")
             logger.debug(f"w_L_eq = {w_L_eq}")
-            logger.info("  Comput. G_eq.")
+            logger.info("  Progress: Computing G_eq and G_e_L_eq.")
             G_eq = [
                 np.prod([w_L_eq[n - j] for j in range(1, num_gfmc_bin_collect + 1)])
                 for n in range(num_gfmc_bin_collect, len(w_L_eq))
@@ -825,13 +825,13 @@ class GFMC:
             logger.info("  Comput. G_e_L_eq.")
             G_e_L_eq = e_L_eq * G_eq
 
-            logger.info("  Comput. binned G_e_L_eq and G_eq.")
+            logger.info(f"  Progress: Computing binned G_e_L_eq and G_eq with # binned blocks = {num_gfmc_bin_blocks}.")
             G_e_L_split = np.array_split(G_e_L_eq, num_gfmc_bin_blocks)
             G_e_L_binned = np.array([np.average(G_e_L_list) for G_e_L_list in G_e_L_split])
             G_split = np.array_split(G_eq, num_gfmc_bin_blocks)
             G_binned = np.array([np.average(G_list) for G_list in G_split])
 
-            logger.info(f"  Comput. jackknife samples with # binned blocks = {num_gfmc_bin_blocks}.")
+            logger.info(f"  Progress: Computing jackknife samples with # binned blocks = {num_gfmc_bin_blocks}.")
 
             G_e_L_binned_sum = np.sum(G_e_L_binned)
             G_binned_sum = np.sum(G_binned)
@@ -840,7 +840,7 @@ class GFMC:
                 (G_e_L_binned_sum - G_e_L_binned[m]) / (G_binned_sum - G_binned[m]) for m in range(num_gfmc_bin_blocks)
             ]
 
-            logger.info("  Comput. jackknife mean and std.")
+            logger.info("  Progress: Computing jackknife mean and std.")
             e_L_mean = np.average(e_L_jackknife)
             e_L_std = np.sqrt(num_gfmc_bin_blocks - 1) * np.std(e_L_jackknife)
 

@@ -565,7 +565,7 @@ class GFMC_multiple_walkers:
         logger.info("")
 
         # Main branching loop.
-        gfmc_interval = int(np.max([num_branching / 10, 1]))  # gfmc_projection set print-interval
+        gfmc_interval = int(np.maximum(num_branching / 100, 1))  # gfmc_projection set print-interval
 
         logger.info("-Start branching-")
 
@@ -809,7 +809,7 @@ class GFMC_multiple_walkers:
         if mpi_rank == 0:
             e_L_eq = self.__e_L_averaged_list[num_gfmc_warmup_steps + num_gfmc_bin_collect :]
             w_L_eq = self.__w_L_averaged_list[num_gfmc_warmup_steps:]
-            logger.info("  Progress: Computing G_eq. and G_e_L_eq.")
+            logger.info("  Progress: Computing G_eq and G_e_L_eq.")
 
             @partial(jit, static_argnums=2)
             def compute_G_eq_and_G_e_L_eq_jax(w_L_eq, e_L_eq, num_gfmc_bin_collect):
