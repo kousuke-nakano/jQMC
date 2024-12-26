@@ -60,7 +60,7 @@ from jax import jit, lax, vmap
 from scipy.special import eval_legendre
 
 from .miscs.function_collections import legendre_tablated as jnp_legendre_tablated
-from .structure import Structure_data, get_min_dist_rel_R_cart_jnp, get_min_dist_rel_R_cart_np
+from .structure import Structure_data, find_nearest_nucleus_indices_np, get_min_dist_rel_R_cart_jnp, get_min_dist_rel_R_cart_np
 from .wavefunction import Wavefunction_data, evaluate_determinant_api, evaluate_wavefunction_api
 
 # set logger
@@ -605,6 +605,247 @@ def _compute_ecp_non_local_parts_debug(
 
     mesh_non_local_ecp_part_r_up_carts = np.array([up for up, _ in mesh_non_local_ecp_part])
     mesh_non_local_ecp_part_r_dn_carts = np.array([dn for _, dn in mesh_non_local_ecp_part])
+    V_nonlocal = np.array(V_nonlocal)
+
+    return mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, sum_V_nonlocal
+
+
+# WIP!!
+def _compute_ecp_non_local_parts_NN_debug(
+    coulomb_potential_data: Coulomb_potential_data,
+    wavefunction_data: Wavefunction_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+    # NN: int = 1,
+    Nv: int = 6,
+    flag_determinant_only: bool = False,
+) -> float:
+    """Compute ecp non-local parts.
+
+    The method is for computing the non-local part of the given ECPs at (r_up_carts, r_dn_carts)
+    with a cutoff considering only up to NN-th nearest neighbors. A very straightforward (so very slow) implementation.
+    Just for debudding purpose.
+
+    Args:
+        coulomb_potential_data (Coulomb_potential_data): an instance of Coulomb_potential_data
+        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
+        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
+        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        NN (int): Consider only up to NN-th nearest neighbors.
+        Nv (int): The number of quadrature points for the spherical part.
+        flag_determinant_only (bool): If True, only the determinant part is considered for the non-local ECP part.
+
+    Returns:
+        list[(np.NDArray, np.NDArray)]: The list of grids on which the non-local part is computed.
+        list[float]: The list of non-local part of the given ECPs with r_up_carts and r_dn_carts.
+        float: sum of the V_nonlocal
+    """
+    if Nv == 4:
+        weights = tetrahedron_sym_mesh_Nv4.weights
+        grid_points = tetrahedron_sym_mesh_Nv4.grid_points
+    elif Nv == 6:
+        weights = octahedron_sym_mesh_Nv6.weights
+        grid_points = octahedron_sym_mesh_Nv6.grid_points
+    elif Nv == 18:
+        weights = octahedron_sym_mesh_Nv18.weights
+        grid_points = octahedron_sym_mesh_Nv18.grid_points
+    else:
+        raise NotImplementedError
+
+    V_nonlocal = []
+    sum_V_nonlocal = 0.0
+
+    if flag_determinant_only:
+        wf_denominator = evaluate_determinant_api(
+            wavefunction_data=wavefunction_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+        )
+    else:
+        wf_denominator = evaluate_wavefunction_api(
+            wavefunction_data=wavefunction_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+        )
+
+    i_atom_np = np.array(coulomb_potential_data.nucleus_index_non_local_part)
+    ang_mom_np = np.array(coulomb_potential_data.ang_mom_non_local_part)
+    exponent_np = np.array(coulomb_potential_data.exponents_non_local_part)
+    coefficient_np = np.array(coulomb_potential_data.coefficients_non_local_part)
+    power_np = np.array(coulomb_potential_data.powers_non_local_part)
+
+    # up electrons
+    for r_up_i, r_up_cart in enumerate(r_up_carts):
+        i_atom_list = find_nearest_nucleus_indices_np(
+            structure_data=coulomb_potential_data.structure_data,
+            r_cart=r_up_cart,
+            N=coulomb_potential_data.structure_data.natom,
+        )
+        print(f"up: i_atom_list = {i_atom_list}")
+
+        for i_atom in i_atom_list:
+            rel_R_cart_min_dist = get_min_dist_rel_R_cart_np(
+                structure_data=coulomb_potential_data.structure_data,
+                r_cart=r_up_cart,
+                i_atom=i_atom,
+            )
+
+            max_ang_mom_plus_1 = coulomb_potential_data.max_ang_mom_plus_1[i_atom]
+            i_target = [i for i, v in enumerate(i_atom_np) if v == i_atom]
+            ang_moms = ang_mom_np[i_target]
+            exponents = exponent_np[i_target]
+            coefficients = coefficient_np[i_target]
+            powers = power_np[i_target]
+
+            # dim (#ang_moms, 1) # note: ang_moms include the same l because each l has seveal (exp, coeff, and powers).
+            # jax.ops.segsum cares about it later.
+            V_l_list = (
+                np.linalg.norm(rel_R_cart_min_dist) ** -2.0
+                * coefficients
+                * np.linalg.norm(rel_R_cart_min_dist) ** powers
+                * np.exp(-exponents * np.linalg.norm(rel_R_cart_min_dist) ** 2.0)
+            )
+
+            V_l = []
+            for ang_mom in range(max_ang_mom_plus_1):
+                ll_target = [i for i, v in enumerate(ang_moms) if v == ang_mom]
+                V_l.append(np.sum([V_l_list[ll] for ll in ll_target]))
+
+            up_mesh_non_local_ecp_part_up = []
+            up_mesh_non_local_ecp_part_dn = []
+            weight_list = []
+            cos_theta_list = []
+            wf_ratio_list = []
+            for weight, vec_delta in zip(weights, grid_points):
+                weight_list.append(weight)
+                r_up_carts_on_mesh = r_up_carts.copy()
+                r_up_carts_on_mesh[r_up_i] = r_up_cart + rel_R_cart_min_dist + np.linalg.norm(rel_R_cart_min_dist) * vec_delta
+                up_mesh_non_local_ecp_part_up.append(r_up_carts_on_mesh)
+                up_mesh_non_local_ecp_part_dn.append(r_dn_carts)
+
+                cos_theta = np.dot(
+                    -1.0 * (rel_R_cart_min_dist) / np.linalg.norm(rel_R_cart_min_dist),
+                    ((vec_delta) / np.linalg.norm(vec_delta)),
+                )
+                cos_theta_list.append(cos_theta)
+
+                if flag_determinant_only:
+                    wf_numerator = evaluate_determinant_api(
+                        wavefunction_data=wavefunction_data,
+                        r_up_carts=r_up_carts_on_mesh,
+                        r_dn_carts=r_dn_carts,
+                    )
+                else:
+                    wf_numerator = evaluate_wavefunction_api(
+                        wavefunction_data=wavefunction_data,
+                        r_up_carts=r_up_carts_on_mesh,
+                        r_dn_carts=r_dn_carts,
+                    )
+                wf_ratio = wf_numerator / wf_denominator
+                wf_ratio_list.append(wf_ratio)
+
+            P_l = []
+            for ang_mom in range(max_ang_mom_plus_1):
+                P_l.append(
+                    np.sum(
+                        [
+                            (2 * ang_mom + 1) * eval_legendre(ang_mom, cos_theta) * weight * wf_ratio
+                            for cos_theta, weight, wf_ratio in zip(cos_theta_list, weight_list, wf_ratio_list)
+                        ]
+                    )
+                )
+            ans_list = list(np.array(V_l) * np.array(P_l))
+
+            V_nonlocal += ans_list
+            sum_V_nonlocal += np.sum(ans_list)
+
+    # dn electrons
+    for r_dn_i, r_dn_cart in enumerate(r_dn_carts):
+        i_atom_list = find_nearest_nucleus_indices_np(
+            structure_data=coulomb_potential_data.structure_data,
+            r_cart=r_dn_cart,
+            N=coulomb_potential_data.structure_data.natom,
+        )
+        print(f"dn: i_atom_list = {i_atom_list}")
+
+        for i_atom in i_atom_list:
+            rel_R_cart_min_dist = get_min_dist_rel_R_cart_np(
+                structure_data=coulomb_potential_data.structure_data,
+                r_cart=r_dn_cart,
+                i_atom=i_atom,
+            )
+
+            max_ang_mom_plus_1 = coulomb_potential_data.max_ang_mom_plus_1[i_atom]
+            i_target = [i for i, v in enumerate(i_atom_np) if v == i_atom]
+            ang_moms = ang_mom_np[i_target]
+            exponents = exponent_np[i_target]
+            coefficients = coefficient_np[i_target]
+            powers = power_np[i_target]
+
+            # dim (#ang_moms, 1) # note: ang_moms include the same l because each l has seveal (exp, coeff, and powers).
+            # jax.ops.segsum cares about it later.
+            V_l_list = (
+                np.linalg.norm(rel_R_cart_min_dist) ** -2.0
+                * coefficients
+                * np.linalg.norm(rel_R_cart_min_dist) ** powers
+                * np.exp(-exponents * np.linalg.norm(rel_R_cart_min_dist) ** 2.0)
+            )
+
+            V_l = []
+            for ang_mom in range(max_ang_mom_plus_1):
+                ll_target = [i for i, v in enumerate(ang_moms) if v == ang_mom]
+                V_l.append(np.sum([V_l_list[ll] for ll in ll_target]))
+
+            dn_mesh_non_local_ecp_part_up = []
+            dn_mesh_non_local_ecp_part_dn = []
+            weight_list = []
+            cos_theta_list = []
+            wf_ratio_list = []
+            for weight, vec_delta in zip(weights, grid_points):
+                weight_list.append(weight)
+                r_dn_carts_on_mesh = r_dn_carts.copy()
+                r_dn_carts_on_mesh[r_dn_i] = r_dn_cart + rel_R_cart_min_dist + np.linalg.norm(rel_R_cart_min_dist) * vec_delta
+                dn_mesh_non_local_ecp_part_up.append(r_up_carts)
+                dn_mesh_non_local_ecp_part_dn.append(r_dn_carts_on_mesh)
+
+                cos_theta = np.dot(
+                    -1.0 * (rel_R_cart_min_dist) / np.linalg.norm(rel_R_cart_min_dist),
+                    ((vec_delta) / np.linalg.norm(vec_delta)),
+                )
+                cos_theta_list.append(cos_theta)
+
+                if flag_determinant_only:
+                    wf_numerator = evaluate_determinant_api(
+                        wavefunction_data=wavefunction_data,
+                        r_up_carts=r_up_carts,
+                        r_dn_carts=r_dn_carts_on_mesh,
+                    )
+                else:
+                    wf_numerator = evaluate_wavefunction_api(
+                        wavefunction_data=wavefunction_data,
+                        r_up_carts=r_up_carts,
+                        r_dn_carts=r_dn_carts_on_mesh,
+                    )
+                wf_ratio = wf_numerator / wf_denominator
+                wf_ratio_list.append(wf_ratio)
+
+            P_l = []
+            for ang_mom in range(max_ang_mom_plus_1):
+                P_l.append(
+                    np.sum(
+                        [
+                            (2 * ang_mom + 1) * eval_legendre(ang_mom, cos_theta) * weight * wf_ratio
+                            for cos_theta, weight, wf_ratio in zip(cos_theta_list, weight_list, wf_ratio_list)
+                        ]
+                    )
+                )
+            ans_list = list(np.array(V_l) * np.array(P_l))
+
+            V_nonlocal += ans_list
+            sum_V_nonlocal += np.sum(ans_list)
+
+    mesh_non_local_ecp_part_r_up_carts = np.array(up_mesh_non_local_ecp_part_up + dn_mesh_non_local_ecp_part_up)
+    mesh_non_local_ecp_part_r_dn_carts = np.array(up_mesh_non_local_ecp_part_dn + dn_mesh_non_local_ecp_part_dn)
     V_nonlocal = np.array(V_nonlocal)
 
     return mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, sum_V_nonlocal
@@ -1424,6 +1665,8 @@ if __name__ == "__main__":
     r_up_carts = np.array(r_up_carts)
     r_dn_carts = np.array(r_dn_carts)
 
+    """
+    # Full WF, Full-neighbours
     mesh_non_local_ecp_part_r_up_carts_jax, mesh_non_local_ecp_part_r_dn_carts_jax, V_nonlocal_jax, sum_V_nonlocal_jax = (
         _compute_ecp_non_local_parts_jax(
             coulomb_potential_data=coulomb_potential_data,
@@ -1461,6 +1704,7 @@ if __name__ == "__main__":
 
     np.testing.assert_array_almost_equal(mesh_non_local_r_up_carts_max_debug, mesh_non_local_r_up_carts_max_jax, decimal=5)
 
+    # Only determinant, Full-neighbours
     (
         mesh_non_local_ecp_part_r_up_carts_only_det_jax,
         mesh_non_local_ecp_part_r_dn_carts_only_det_jax,
@@ -1490,3 +1734,47 @@ if __name__ == "__main__":
     )
 
     np.testing.assert_almost_equal(sum_V_nonlocal_only_det_jax, sum_V_nonlocal_only_det_debug, decimal=5)
+    """
+
+    # Full WF, NN Nearest-neighbours
+    (
+        mesh_non_local_ecp_part_r_up_carts_NN_debug,
+        mesh_non_local_ecp_part_r_dn_carts_NN_debug,
+        V_nonlocal_NN_debug,
+        sum_V_nonlocal_NN_debug,
+    ) = _compute_ecp_non_local_parts_NN_debug(
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        Nv=6,
+        flag_determinant_only=False,
+    )
+
+    (
+        mesh_non_local_ecp_part_r_up_carts_debug,
+        mesh_non_local_ecp_part_r_dn_carts_debug,
+        V_nonlocal_debug,
+        sum_V_nonlocal_debug,
+    ) = _compute_ecp_non_local_parts_debug(
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        Nv=6,
+        flag_determinant_only=False,
+    )
+
+    print(sum_V_nonlocal_NN_debug)
+    print(sum_V_nonlocal_debug)
+    np.testing.assert_almost_equal(sum_V_nonlocal_NN_debug, sum_V_nonlocal_debug, decimal=5)
+
+    mesh_non_local_r_up_carts_max_debug = mesh_non_local_ecp_part_r_up_carts_debug[np.argmax(V_nonlocal_debug)]
+    mesh_non_local_r_up_carts_max_NN_debug = mesh_non_local_ecp_part_r_up_carts_NN_debug[np.argmax(V_nonlocal_NN_debug)]
+
+    np.testing.assert_array_almost_equal(mesh_non_local_r_up_carts_max_debug, mesh_non_local_r_up_carts_max_NN_debug, decimal=5)
+
+    V_ecp_non_local_max_debug = V_nonlocal_debug[np.argmax(V_nonlocal_debug)]
+    V_ecp_non_local_max_NN_debug = V_nonlocal_NN_debug[np.argmax(V_nonlocal_NN_debug)]
+
+    np.testing.assert_almost_equal(V_ecp_non_local_max_debug, V_ecp_non_local_max_NN_debug, decimal=5)
