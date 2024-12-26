@@ -293,37 +293,20 @@ class GFMC_multiple_walkers:
 
         @jit
         def generate_rotation_matrix(alpha, beta, gamma):
-            cos_a = jnp.cos(alpha)
-            sin_a = jnp.sin(alpha)
-            R_x = jnp.array(
+            # Precompute all necessary cosines and sines
+            cos_a, sin_a = jnp.cos(alpha), jnp.sin(alpha)
+            cos_b, sin_b = jnp.cos(beta), jnp.sin(beta)
+            cos_g, sin_g = jnp.cos(gamma), jnp.sin(gamma)
+
+            # Combine the rotations directly
+            R = jnp.array(
                 [
-                    [1, 0, 0],
-                    [0, cos_a, -sin_a],
-                    [0, sin_a, cos_a],
+                    [cos_b * cos_g, cos_g * sin_a * sin_b - cos_a * sin_g, sin_a * sin_g + cos_a * cos_g * sin_b],
+                    [cos_b * sin_g, cos_a * cos_g + sin_a * sin_b * sin_g, cos_a * sin_b * sin_g - cos_g * sin_a],
+                    [-sin_b, cos_b * sin_a, cos_a * cos_b],
                 ]
             )
-
-            cos_b = jnp.cos(beta)
-            sin_b = jnp.sin(beta)
-            R_y = jnp.array(
-                [
-                    [cos_b, 0, sin_b],
-                    [0, 1, 0],
-                    [-sin_b, 0, cos_b],
-                ]
-            )
-
-            cos_g = jnp.cos(gamma)
-            sin_g = jnp.sin(gamma)
-            R_z = jnp.array(
-                [
-                    [cos_g, -sin_g, 0],
-                    [sin_g, cos_g, 0],
-                    [0, 0, 1],
-                ]
-            )
-
-            return jnp.dot(R_z, jnp.dot(R_y, R_x))  # Rotate in the order x -> y -> z
+            return R
 
         # Note: This jit drastically accelarates the computation!!
         @partial(jit, static_argnums=5)
@@ -569,6 +552,11 @@ class GFMC_multiple_walkers:
         gfmc_interval = int(np.maximum(num_branching / 100, 1))  # gfmc_projection set print-interval
 
         logger.info("-Start branching-")
+        progress = (self.__gfmc_branching_counter + 1) / (num_branching + self.__gfmc_branching_counter) * 100.0
+        gmfc_total_current = time.perf_counter()
+        logger.info(
+            f"  branching step = {self.__gfmc_branching_counter + 1}/{num_branching+self.__gfmc_branching_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
+        )
 
         num_branching_done = 0
         for i_branching in range(num_branching):

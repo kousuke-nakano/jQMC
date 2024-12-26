@@ -227,6 +227,7 @@ class GFMC:
             r_up_carts=self.__latest_r_up_carts,
             r_dn_carts=self.__latest_r_dn_carts,
         )
+        # """old
         _, _, _ = compute_discretized_kinetic_energy_api(
             alat=self.__alat,
             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
@@ -234,6 +235,24 @@ class GFMC:
             r_dn_carts=self.__latest_r_dn_carts,
             RT=jnp.eye(3, 3),
         )
+        # """
+        """ fast update with given A_old_inv, WIP
+        # tentative for fast update, A_old, A_old_inv
+        A_old = compute_geminal_all_elements_api(
+            geminal_data=self.__hamiltonian_data.wavefunction_data.geminal_data,
+            r_up_carts=self.__latest_r_up_carts,
+            r_dn_carts=self.__latest_r_dn_carts,
+        )
+        A_old_inv = jnp.linalg.inv(A_old)
+        _, _, _ = compute_discretized_kinetic_energy_api_fast_update(
+            alat=self.__alat,
+            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+            A_old_inv=A_old_inv,
+            r_up_carts=self.__latest_r_up_carts,
+            r_dn_carts=self.__latest_r_dn_carts,
+            RT=jnp.eye(3, 3),
+        )
+        """
         _ = _compute_bare_coulomb_potential_jax(
             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
             r_up_carts=self.__latest_r_up_carts,
@@ -287,44 +306,31 @@ class GFMC:
         timer_mpi_bcast = 0.0
         gmfc_total_start = time.perf_counter()
 
+        @jit
+        def generate_rotation_matrix(alpha, beta, gamma):
+            # Precompute all necessary cosines and sines
+            cos_a, sin_a = jnp.cos(alpha), jnp.sin(alpha)
+            cos_b, sin_b = jnp.cos(beta), jnp.sin(beta)
+            cos_g, sin_g = jnp.cos(gamma), jnp.sin(gamma)
+
+            # Combine the rotations directly
+            R = jnp.array(
+                [
+                    [cos_b * cos_g, cos_g * sin_a * sin_b - cos_a * sin_g, sin_a * sin_g + cos_a * cos_g * sin_b],
+                    [cos_b * sin_g, cos_a * cos_g + sin_a * sin_b * sin_g, cos_a * sin_b * sin_g - cos_g * sin_a],
+                    [-sin_b, cos_b * sin_a, cos_a * cos_b],
+                ]
+            )
+            return R
+
         # Main branching loop.
         logger.info("-Start branching-")
         gfmc_interval = int(np.maximum(num_branching / 100, 1))
-
-        @jit
-        def generate_rotation_matrix(alpha, beta, gamma):
-            # Define the rotation matrix for rotation around the x-axis
-            cos_a = jnp.cos(alpha)
-            sin_a = jnp.sin(alpha)
-            R_x = jnp.array(
-                [
-                    [1, 0, 0],
-                    [0, cos_a, -sin_a],
-                    [0, sin_a, cos_a],
-                ]
-            )
-
-            cos_b = jnp.cos(beta)
-            sin_b = jnp.sin(beta)
-            R_y = jnp.array(
-                [
-                    [cos_b, 0, sin_b],
-                    [0, 1, 0],
-                    [-sin_b, 0, cos_b],
-                ]
-            )
-
-            cos_g = jnp.cos(gamma)
-            sin_g = jnp.sin(gamma)
-            R_z = jnp.array(
-                [
-                    [cos_g, -sin_g, 0],
-                    [sin_g, cos_g, 0],
-                    [0, 0, 1],
-                ]
-            )
-
-            return jnp.dot(R_z, jnp.dot(R_y, R_x))  # Rotate in the order x -> y -> z
+        progress = (self.__gfmc_branching_counter + 1) / (num_branching + self.__gfmc_branching_counter) * 100.0
+        gmfc_total_current = time.perf_counter()
+        logger.info(
+            f"  branching step = {self.__gfmc_branching_counter + 1}/{num_branching+self.__gfmc_branching_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
+        )
 
         num_branching_done = 0
         for i_branching in range(num_branching):
@@ -372,16 +378,6 @@ class GFMC:
                     end_projection_non_diagonal_kinetic_part_init - start_projection_non_diagonal_kinetic_part_init
                 )
 
-                """
-                # tentative for fast update, A_old, A_old_inv
-                A_old = compute_geminal_all_elements_api(
-                    geminal_data=self.__hamiltonian_data.wavefunction_data.geminal_data,
-                    r_up_carts=self.__latest_r_up_carts,
-                    r_dn_carts=self.__latest_r_dn_carts,
-                )
-                A_old_inv = jnp.linalg.inv(A_old)
-                """
-
                 start_projection_non_diagonal_kinetic_part_comput = time.perf_counter()
                 # """ old
                 mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
@@ -395,6 +391,14 @@ class GFMC:
                 )
                 # """
                 """ fast update with given A_old_inv, WIP
+                # tentative for fast update, A_old, A_old_inv
+                A_old = compute_geminal_all_elements_api(
+                    geminal_data=self.__hamiltonian_data.wavefunction_data.geminal_data,
+                    r_up_carts=self.__latest_r_up_carts,
+                    r_dn_carts=self.__latest_r_dn_carts,
+                )
+                A_old_inv = jnp.linalg.inv(A_old)
+                A_old_inv.block_until_ready()
                 mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
                     compute_discretized_kinetic_energy_api_fast_update(
                         alat=self.__alat,
@@ -988,11 +992,11 @@ if __name__ == "__main__":
 
     # run branching
     mcmc_seed = 3446
-    max_time = 100
+    max_time = 86400
     tau = 0.10
     alat = 0.30
-    num_branching = 100
-    non_local_move = "dltmove"
+    num_branching = 1
+    non_local_move = "tmove"
 
     num_gfmc_warmup_steps = 5
     num_gfmc_bin_blocks = 5
@@ -1001,9 +1005,11 @@ if __name__ == "__main__":
     # run GFMC
     gfmc = GFMC(hamiltonian_data=hamiltonian_data, mcmc_seed=mcmc_seed, tau=tau, alat=alat, non_local_move=non_local_move)
     gfmc.run(num_branching=num_branching, max_time=max_time)
+    """
     e_L_mean, e_L_std = gfmc.get_e_L(
         num_gfmc_warmup_steps=num_gfmc_warmup_steps,
         num_gfmc_bin_blocks=num_gfmc_bin_blocks,
         num_gfmc_bin_collect=num_gfmc_bin_collect,
     )
     logger.info(f"e_L = {e_L_mean} +- {e_L_std} Ha")
+    """
