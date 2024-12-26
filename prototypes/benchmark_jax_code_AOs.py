@@ -7,14 +7,17 @@ import jax.scipy as jscipy
 import numpy as np
 from jax import jit
 
-from jqmc.atomic_orbital import _compute_AOs_jax, compute_AOs_api, compute_AOs_grad_api, compute_AOs_laplacian_api
+from jqmc.atomic_orbital import (
+    _compute_AOs_jax,
+    _compute_normalization_fator_jax,
+    _compute_primitive_AOs_jax,
+    _compute_R_n_jax,
+    _compute_S_l_m_jax,
+    compute_AOs_api,
+    compute_AOs_grad_api,
+    compute_AOs_laplacian_api,
+)
 from jqmc.trexio_wrapper import read_trexio_file
-
-jax.config.update("jax_enable_x64", True)
-jax.config.update("jax_platform_name", "cpu")  # insures we use the CPU
-
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
 os.environ["NUM_INTER_THREADS"] = "1"
 os.environ["NUM_INTRA_THREADS"] = "1"
@@ -64,6 +67,7 @@ print(f"Elapsed Time = {end-start:.2f} sec.")
 jax.profiler.stop_trace()
 """
 
+"""
 num_ele = 4
 r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele, 3) + r_cart_min
 
@@ -73,3 +77,50 @@ AOs = _compute_AOs_jax(aos_data=aos_data, r_carts=r_carts)
 AOs.block_until_ready()
 end = time.perf_counter()
 print(f"Comput. elapsed Time = {(end-start)*1e3:.3f} msec.")
+"""
+
+trial = 10000
+R_cart = np.array([0, 0, 0])
+r_cart = np.array([1.0, 1.0, 1.0])
+coefficient = 1.0
+exponent = 15.0
+l = 5
+m = 3
+
+ao = _compute_primitive_AOs_jax(coefficient=coefficient, exponent=exponent, l=l, m=m, R_cart=R_cart, r_cart=r_cart)
+ao.block_until_ready()
+start = time.perf_counter()
+for _ in range(trial):
+    ao = _compute_primitive_AOs_jax(coefficient=coefficient, exponent=exponent, l=l, m=m, R_cart=R_cart, r_cart=r_cart)
+    ao.block_until_ready()
+end = time.perf_counter()
+print(f"Comput. elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+time.sleep(3)
+
+N_n_dup = _compute_normalization_fator_jax(l, exponent)
+R_n_dup = _compute_R_n_jax(coefficient, exponent, R_cart, r_cart)
+S_l_m_dup = _compute_S_l_m_jax(l, m, R_cart, r_cart)
+
+start = time.perf_counter()
+for _ in range(trial):
+    N_n_dup = _compute_normalization_fator_jax(l, exponent)
+    N_n_dup.block_until_ready()
+end = time.perf_counter()
+print(f"N_n_dup Comput. elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+time.sleep(3)
+
+start = time.perf_counter()
+for _ in range(trial):
+    R_n_dup = _compute_R_n_jax(coefficient, exponent, R_cart, r_cart)
+    R_n_dup.block_until_ready()
+end = time.perf_counter()
+print(f"R_n_dup Comput. elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+time.sleep(3)
+
+start = time.perf_counter()
+for _ in range(trial):
+    S_l_m_dup = _compute_S_l_m_jax(l, m, R_cart, r_cart)
+    S_l_m_dup.block_until_ready()
+end = time.perf_counter()
+print(f"S_l_m_dup Comput. elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+time.sleep(3)

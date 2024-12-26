@@ -128,6 +128,16 @@ class AOs_data:
             raise ValueError
 
     @property
+    def nucleus_index_np(self) -> npt.NDArray[np.int32]:
+        """nucleus_index."""
+        return np.array(self.nucleus_index)
+
+    @property
+    def orbital_indices_np(self) -> npt.NDArray[np.int32]:
+        """nucleus_index."""
+        return np.array(self.orbital_indices)
+
+    @property
     def atomic_center_carts(self) -> npt.NDArray[np.float64]:
         """Atomic positions in cartesian.
 
@@ -149,7 +159,7 @@ class AOs_data:
         """
         # this is super slow!!! Do not use list comprehension.
         # return jnp.array([self.structure_data.positions_cart[i] for i in self.nucleus_index])
-        return jnp.array(self.structure_data.positions_cart)[np.array(self.nucleus_index)]
+        return jnp.array(self.structure_data.positions_cart)[self.nucleus_index_np]
 
     @property
     def atomic_center_carts_prim(self) -> npt.NDArray[np.float64]:
@@ -173,10 +183,10 @@ class AOs_data:
         """
         # this is super slow!!! Do not use list comprehension.
         # return jnp.array([self.atomic_center_carts_jnp[i] for i in self.orbital_indices])
-        return self.atomic_center_carts_jnp[np.array(self.orbital_indices)]
+        return self.atomic_center_carts_jnp[self.orbital_indices_np]
 
     @property
-    def angular_momentums_prim(self) -> npt.NDArray[np.float64]:
+    def angular_momentums_prim(self) -> npt.NDArray[np.int32]:
         """Angular momentums for primitive orbitals.
 
         Returns angular momentums for primitive orbitals
@@ -187,7 +197,29 @@ class AOs_data:
         return np.array([self.angular_momentums[i] for i in self.orbital_indices])
 
     @property
-    def magnetic_quantum_numbers_prim(self) -> npt.NDArray[np.int64]:
+    def angular_momentums_prim_jnp(self) -> jax.Array:
+        """Angular momentums for primitive orbitals.
+
+        Returns angular momentums for primitive orbitals
+
+        Returns:
+            jax.Array: angular momentums for primitive orbitals
+        """
+        return jnp.array(self.angular_momentums)[self.orbital_indices_np]
+
+    @property
+    def magnetic_quantum_numbers_prim(self) -> npt.NDArray[np.int32]:
+        """Magnetic quantum numbers for primitive orbitals.
+
+        Returns magnetic quantum numbers for primitive orbitals
+
+        Returns:
+            jax.Array: magnetic quantum numbers for primitive orbitals
+        """
+        return np.array([self.magnetic_quantum_numbers[i] for i in self.orbital_indices])
+
+    @property
+    def magnetic_quantum_numbers_prim_jnp(self) -> jax.Array:
         """Magnetic quantum numbers for primitive orbitals.
 
         Returns magnetic quantum numbers for primitive orbitals
@@ -195,7 +227,17 @@ class AOs_data:
         Returns:
             npt.NDArray[np.int64]: magnetic quantum numbers for primitive orbitals
         """
-        return np.array([self.magnetic_quantum_numbers[i] for i in self.orbital_indices])
+        return jnp.array(self.magnetic_quantum_numbers)[self.orbital_indices_np]
+
+    @property
+    def exponents_jnp(self) -> jax.Array:
+        """Return exponents."""
+        return jnp.array(self.exponents)
+
+    @property
+    def coefficients_jnp(self) -> jax.Array:
+        """Return coefficients."""
+        return jnp.array(self.coefficients)
 
 
 def compute_AOs_laplacian_api(
@@ -231,18 +273,12 @@ def _compute_AOs_laplacian_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> j
 
     """
     # expansion with respect to the primitive AOs
-    atomic_center_carts_dup = aos_data.atomic_center_carts_prim_jnp
-    angular_momentums_dup = aos_data.angular_momentums_prim
-    magnetic_quantum_numbers_dup = aos_data.magnetic_quantum_numbers_prim
-    exponents = aos_data.exponents
-    coefficients = aos_data.coefficients
-
     # compute R_n inc. the whole normalization factor
-    R_carts_jnp = jnp.array(atomic_center_carts_dup)
-    c_jnp = np.array(coefficients)
-    Z_jnp = np.array(exponents)
-    l_jnp = np.array(angular_momentums_dup)
-    m_jnp = np.array(magnetic_quantum_numbers_dup)
+    R_carts_jnp = aos_data.atomic_center_carts_prim_jnp
+    c_jnp = aos_data.coefficients_jnp
+    Z_jnp = aos_data.exponents_jnp
+    l_jnp = aos_data.angular_momentums_prim_jnp
+    m_jnp = aos_data.magnetic_quantum_numbers_prim_jnp
 
     vmap_compute_AOs_laplacian_dup = vmap(
         vmap(
@@ -375,18 +411,12 @@ def _compute_AOs_grad_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> tuple[
 
     """
     # expansion with respect to the primitive AOs
-    atomic_center_carts_dup = aos_data.atomic_center_carts_prim_jnp
-    angular_momentums_dup = aos_data.angular_momentums_prim
-    magnetic_quantum_numbers_dup = aos_data.magnetic_quantum_numbers_prim
-    exponents = aos_data.exponents
-    coefficients = aos_data.coefficients
-
     # compute R_n inc. the whole normalization factor
-    R_carts_jnp = jnp.array(atomic_center_carts_dup)
-    c_jnp = np.array(coefficients)
-    Z_jnp = np.array(exponents)
-    l_jnp = np.array(angular_momentums_dup)
-    m_jnp = np.array(magnetic_quantum_numbers_dup)
+    R_carts_jnp = aos_data.atomic_center_carts_prim_jnp
+    c_jnp = aos_data.coefficients_jnp
+    Z_jnp = aos_data.exponents_jnp
+    l_jnp = aos_data.angular_momentums_prim_jnp
+    m_jnp = aos_data.magnetic_quantum_numbers_prim_jnp
 
     # grad in compute_primitive_AOs_grad_jax
     vmap_compute_AOs_grad_dup = vmap(
@@ -557,18 +587,12 @@ def _compute_AOs_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
 
     """
     # Indices with respect to the contracted AOs
-    atomic_center_carts_dup = aos_data.atomic_center_carts_prim_jnp
-    angular_momentums_dup = aos_data.angular_momentums_prim
-    magnetic_quantum_numbers_dup = aos_data.magnetic_quantum_numbers_prim
-    exponents = aos_data.exponents
-    coefficients = aos_data.coefficients
-
     # compute R_n inc. the whole normalization factor
-    R_carts_jnp = jnp.array(atomic_center_carts_dup)
-    c_jnp = np.array(coefficients)
-    Z_jnp = np.array(exponents)
-    l_jnp = np.array(angular_momentums_dup)
-    m_jnp = np.array(magnetic_quantum_numbers_dup)
+    R_carts_jnp = aos_data.atomic_center_carts_prim_jnp
+    c_jnp = aos_data.coefficients_jnp
+    Z_jnp = aos_data.exponents_jnp
+    l_jnp = aos_data.angular_momentums_prim_jnp
+    m_jnp = aos_data.magnetic_quantum_numbers_prim_jnp
 
     vmap_compute_AOs_dup = vmap(
         vmap(_compute_primitive_AOs_jax, in_axes=(None, None, None, None, None, 0)),
@@ -726,7 +750,8 @@ def _compute_R_n_jax(
     Returns:
         float: Value of the pure radial part.
     """
-    return coefficient * jnp.exp(-1.0 * exponent * jnp.linalg.norm(r_cart - R_cart) ** 2)
+    # return coefficient * jnp.exp(-1.0 * exponent * jnp.linalg.norm(r_cart - R_cart) ** 2)
+    return coefficient * jnp.exp(-1.0 * exponent * jnp.sum(jnp.square(r_cart - R_cart)))
 
 
 def _compute_S_l_m_debug(
@@ -901,7 +926,7 @@ def _compute_S_l_m_jax(
     ]
 
     def lnorm(l):
-        return jnp.sqrt((4 * np.pi) / (2 * l + 1))
+        return jnp.sqrt((4 * jnp.pi) / (2 * l + 1))
 
     """see https://en.wikipedia.org/wiki/Table_of_spherical_harmonics#Real_spherical_harmonics (l=0-4)"""
     """Useful tool to generate spherical harmonics generator [https://github.com/elerac/sh_table]"""
@@ -945,7 +970,7 @@ def _compute_S_l_m_jax(
         lnorm(5)
         * 1.0
         / 16.0
-        * np.sqrt(385.0 / (2 * np.pi))
+        * jnp.sqrt(385.0 / (2 * jnp.pi))
         * -1
         * (y**3 - 3 * x**2 * y)
         * (9 * z**2 - (x**2 + y**2 + z**2)),  # (l, m) == (5, -3)
@@ -1142,7 +1167,7 @@ def _compute_primitive_AOs_jax(
     R_n_dup = _compute_R_n_jax(coefficient, exponent, R_cart, r_cart)
     S_l_m_dup = _compute_S_l_m_jax(l, m, R_cart, r_cart)
 
-    return N_n_dup * R_n_dup * jnp.sqrt((2 * l + 1) / (4 * np.pi)) * S_l_m_dup
+    return N_n_dup * R_n_dup * jnp.sqrt((2 * l + 1) / (4 * jnp.pi)) * S_l_m_dup
 
 
 @jit

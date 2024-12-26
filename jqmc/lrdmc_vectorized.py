@@ -40,24 +40,19 @@ Todo:
 # POSSIBILITY OF SUCH DAMAGE.
 
 import logging
+import os
+import sys
 import time
-
-# python modules
 from functools import partial
 from logging import Formatter, StreamHandler, getLogger
 
-# JAX
 import jax
 import numpy as np
 import numpy.typing as npt
-from jax import jit
+from jax import jit, vmap
 from jax import numpy as jnp
-from jax import vmap
-
-# MPI
 from mpi4py import MPI
 
-# jQMC module
 from .coulomb_potential import (
     _compute_bare_coulomb_potential_jax,
     _compute_ecp_local_parts_jax,
@@ -227,10 +222,16 @@ class GFMC_multiple_walkers:
 
         logger.info(f"The number of MPI process = {mpi_size}.")
         logger.info(f"The number of walkers assigned for each MPI process = {self.__num_walkers}.")
+
         logger.debug(f"initial r_up_carts= {self.__latest_r_up_carts}")
         logger.debug(f"initial r_dn_carts = {self.__latest_r_dn_carts}")
         logger.debug(f"initial r_up_carts.shape = {self.__latest_r_up_carts.shape}")
         logger.debug(f"initial r_dn_carts.shape = {self.__latest_r_dn_carts.shape}")
+        logger.info("")
+
+        # print out structure info
+        logger.info("Structure information:")
+        self.__hamiltonian_data.structure_data.logger_info()
         logger.info("")
 
         logger.info("Compilation of fundamental functions starts.")
@@ -569,19 +570,15 @@ class GFMC_multiple_walkers:
 
         logger.info("-Start branching-")
 
-        progress = (self.__gfmc_branching_counter) / (num_branching + self.__gfmc_branching_counter) * 100.0
-        logger.info(
-            f"  Progress: branching step = {self.__gfmc_branching_counter}/{num_branching+self.__gfmc_branching_counter}: {progress:.0f} %."
-        )
-
         num_branching_done = 0
         for i_branching in range(num_branching):
             if (i_branching + 1) % gfmc_interval == 0:
                 progress = (
                     (i_branching + self.__gfmc_branching_counter + 1) / (num_branching + self.__gfmc_branching_counter) * 100.0
                 )
+                gmfc_total_current = time.perf_counter()
                 logger.info(
-                    f"  Progress: branching step = {i_branching + self.__gfmc_branching_counter + 1}/{num_branching+self.__gfmc_branching_counter}: {progress:.1f} %."
+                    f"  branching step = {i_branching + self.__gfmc_branching_counter + 1}/{num_branching+self.__gfmc_branching_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
                 )
 
             # Always set the initial weight list to 1.0
@@ -1024,7 +1021,7 @@ if __name__ == "__main__":
     tau = 0.10
     alat = 0.30
     num_branching = 100
-    non_local_move = "dltmove"
+    non_local_move = "tmove"
 
     num_gfmc_warmup_steps = 5
     num_gfmc_bin_blocks = 5

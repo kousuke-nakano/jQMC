@@ -33,31 +33,26 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import logging
-
-# python modules
 import time
 from collections import Counter
 from logging import Formatter, StreamHandler, getLogger
 
-# JAX
 import jax
 import numpy as np
 import numpy.typing as npt
 from jax import jit
 from jax import numpy as jnp
-
-# MPI
 from mpi4py import MPI
 
-# jQMC module
 from .coulomb_potential import (
     _compute_bare_coulomb_potential_jax,
     _compute_ecp_local_parts_jax,
     _compute_ecp_non_local_parts_jax,
 )
+from .determinant import compute_geminal_all_elements_api
 from .hamiltonians import Hamiltonian_data, compute_kinetic_energy_api
 from .jastrow_factor import compute_ratio_Jastrow_part_api
-from .wavefunction import compute_discretized_kinetic_energy_api
+from .wavefunction import compute_discretized_kinetic_energy_api, compute_discretized_kinetic_energy_api_fast_update
 
 # MPI related
 mpi_comm = MPI.COMM_WORLD
@@ -211,6 +206,11 @@ class GFMC:
         self.__latest_r_up_carts = init_r_up_carts
         self.__latest_r_dn_carts = init_r_dn_carts
 
+        # print out structure info
+        logger.info("Structure information:")
+        self.__hamiltonian_data.structure_data.logger_info()
+        logger.info("")
+
         # """
         # compiling methods
         # jax.profiler.start_trace("/tmp/tensorboard", create_perfetto_link=True)
@@ -290,10 +290,6 @@ class GFMC:
         # Main branching loop.
         logger.info("-Start branching-")
         gfmc_interval = int(np.maximum(num_branching / 100, 1))
-        progress = (self.__gfmc_branching_counter) / (num_branching + self.__gfmc_branching_counter) * 100.0
-        logger.info(
-            f"  Progress: branching step = {self.__gfmc_branching_counter}/{num_branching+self.__gfmc_branching_counter}: {progress:.0f} %."
-        )
 
         @jit
         def generate_rotation_matrix(alpha, beta, gamma):
@@ -336,8 +332,9 @@ class GFMC:
                 progress = (
                     (i_branching + self.__gfmc_branching_counter + 1) / (num_branching + self.__gfmc_branching_counter) * 100.0
                 )
+                gmfc_total_current = time.perf_counter()
                 logger.info(
-                    f"  Progress: branching step = {i_branching + self.__gfmc_branching_counter + 1}/{num_branching+self.__gfmc_branching_counter}: {progress:.1f} %."
+                    f"  branching step = {i_branching + self.__gfmc_branching_counter + 1}/{num_branching+self.__gfmc_branching_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
                 )
 
             # MAIN project loop.
@@ -375,7 +372,18 @@ class GFMC:
                     end_projection_non_diagonal_kinetic_part_init - start_projection_non_diagonal_kinetic_part_init
                 )
 
+                """
+                # tentative for fast update, A_old, A_old_inv
+                A_old = compute_geminal_all_elements_api(
+                    geminal_data=self.__hamiltonian_data.wavefunction_data.geminal_data,
+                    r_up_carts=self.__latest_r_up_carts,
+                    r_dn_carts=self.__latest_r_dn_carts,
+                )
+                A_old_inv = jnp.linalg.inv(A_old)
+                """
+
                 start_projection_non_diagonal_kinetic_part_comput = time.perf_counter()
+                # """ old
                 mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
                     compute_discretized_kinetic_energy_api(
                         alat=self.__alat,
@@ -385,6 +393,19 @@ class GFMC:
                         RT=R.T,
                     )
                 )
+                # """
+                """ fast update with given A_old_inv, WIP
+                mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
+                    compute_discretized_kinetic_energy_api_fast_update(
+                        alat=self.__alat,
+                        wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                        A_old_inv=A_old_inv,
+                        r_up_carts=self.__latest_r_up_carts,
+                        r_dn_carts=self.__latest_r_dn_carts,
+                        RT=R.T,
+                    )
+                )
+                """
                 mesh_kinetic_part_r_up_carts.block_until_ready()
                 mesh_kinetic_part_r_dn_carts.block_until_ready()
                 elements_non_diagonal_kinetic_part.block_until_ready()
@@ -970,8 +991,8 @@ if __name__ == "__main__":
     max_time = 100
     tau = 0.10
     alat = 0.30
-    num_branching = 30
-    non_local_move = "tmove"
+    num_branching = 100
+    non_local_move = "dltmove"
 
     num_gfmc_warmup_steps = 5
     num_gfmc_bin_blocks = 5

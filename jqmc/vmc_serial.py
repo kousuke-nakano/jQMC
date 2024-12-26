@@ -800,6 +800,11 @@ class VMC_serial:
         logger.debug(f"initial r_up_carts = {init_r_up_carts}")
         logger.debug(f"initial r_dn_carts = {init_r_dn_carts}")
 
+        # print out structure info
+        logger.info("Structure information:")
+        hamiltonian_data.structure_data.logger_info()
+        logger.info("")
+
         self.__mcmc = MCMC_serial(
             hamiltonian_data=hamiltonian_data,
             init_r_up_carts=init_r_up_carts,

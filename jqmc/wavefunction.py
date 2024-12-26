@@ -53,6 +53,7 @@ from .determinant import (
     Geminal_data,
     _compute_ratio_determinant_part_jax,
     compute_det_geminal_all_elements_api,
+    compute_geminal_all_elements_api,
     compute_grads_and_laplacian_ln_Det_api,
 )
 from .jastrow_factor import (
@@ -335,7 +336,7 @@ def compute_discretized_kinetic_energy_debug(
 
 
 @jit
-def compute_discretized_kinetic_energy_api_old(
+def compute_discretized_kinetic_energy_api(
     alat: float, wavefunction_data, r_up_carts: jnp.ndarray, r_dn_carts: jnp.ndarray, RT: jnp.ndarray
 ) -> tuple[list[tuple[npt.NDArray, npt.NDArray]], list[npt.NDArray], jax.Array]:
     r"""Function for computing discretized kinetic grid points and thier energies with a given lattice space (alat).
@@ -418,32 +419,35 @@ def compute_discretized_kinetic_energy_api_old(
     r_dn_carts_combined = jnp.concatenate([r_dn_carts_repeated_up, r_dn_carts_shifted], axis=0)  # Shape: (N_configs, N_dn, 3)
 
     # Evaluate the wavefunction at the original positions
-    psi_x = evaluate_wavefunction_api(wavefunction_data, r_up_carts, r_dn_carts)
-
     # Evaluate the wavefunction at the shifted positions using vectorization
-    def eval_psi(r_up, r_dn):
-        return evaluate_wavefunction_api(wavefunction_data, r_up, r_dn)
-
-    psi_xp = vmap(eval_psi)(r_up_carts_combined, r_dn_carts_combined)
+    psi_x = evaluate_wavefunction_api(wavefunction_data, r_up_carts, r_dn_carts)
+    psi_xp = vmap(evaluate_wavefunction_api, in_axes=(None, 0, 0))(wavefunction_data, r_up_carts_combined, r_dn_carts_combined)
+    wf_ratio = psi_xp / psi_x
 
     # Compute the kinetic part elements
-    elements_kinetic_part = -1.0 / (2.0 * alat**2) * psi_xp / psi_x
+    elements_kinetic_part = -1.0 / (2.0 * alat**2) * wf_ratio
 
     # Return the combined configurations and the kinetic elements
     return r_up_carts_combined, r_dn_carts_combined, elements_kinetic_part
 
 
 @jit
-def compute_discretized_kinetic_energy_api(
-    alat: float, wavefunction_data, r_up_carts: jnp.ndarray, r_dn_carts: jnp.ndarray, RT: jnp.ndarray
+def compute_discretized_kinetic_energy_api_fast_update(
+    alat: float,
+    wavefunction_data: Wavefunction_data,
+    A_old_inv: jnp.ndarray,
+    r_up_carts: jnp.ndarray,
+    r_dn_carts: jnp.ndarray,
+    RT: jnp.ndarray,
 ) -> tuple[jax.Array, jax.Array, jax.Array]:
     r"""Function for computing discretized kinetic grid points and thier energies with a given lattice space (alat).
 
     Args:
         alat (float): Hamiltonian discretization (bohr), which will be replaced with LRDMC_data.
         wavefunction_data (Wavefunction_data): an instance of Qavefunction_data, which will be replaced with LRDMC_data.
-        r_carts_up (npt.NDArray): up electron position (N_e,3).
-        r_carts_dn (npt.NDArray): down electron position (N_e,3).
+        A_old_inv (npt.NDArray): the inverse of geminal matrix with (r_up_carts, r_dn_carts)
+        r_up_carts (npt.NDArray): up electron position (N_e,3).
+        r_dn_carts (npt.NDArray): down electron position (N_e,3).
         RT (npt.NDArray): Rotation matrix. \equiv R.T
 
     Returns:
@@ -519,6 +523,7 @@ def compute_discretized_kinetic_energy_api(
     # Evaluate the ratios of wavefunctions between the shifted positions and the original position
     wf_ratio = _compute_ratio_determinant_part_jax(
         geminal_data=wavefunction_data.geminal_data,
+        A_old_inv=A_old_inv,
         old_r_up_carts=r_up_carts,
         old_r_dn_carts=r_dn_carts,
         new_r_up_carts_arr=r_up_carts_combined,
@@ -696,26 +701,26 @@ if __name__ == "__main__":
     end = time.perf_counter()
     print(f"(debug) Elapsed Time = {(end-start)*1e3:.3f} msec.")
 
-    _, _, _ = compute_discretized_kinetic_energy_api_old(
+    _, _, _ = compute_discretized_kinetic_energy_api(
         alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, RT=RT
     )
 
     start = time.perf_counter()
     mesh_kinetic_part_r_up_carts_jax_old, mesh_kinetic_part_r_dn_carts_jax_old, elements_kinetic_part_jax_old = (
-        compute_discretized_kinetic_energy_api_old(
+        compute_discretized_kinetic_energy_api(
             alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, RT=RT
         )
     )
     end = time.perf_counter()
     print(f"(new) Elapsed Time = {(end-start)*1e3:.3f} msec.")
 
-    _, _, _ = compute_discretized_kinetic_energy_api(
+    _, _, _ = compute_discretized_kinetic_energy_api_fast_update(
         alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, RT=RT
     )
 
     start = time.perf_counter()
     mesh_kinetic_part_r_up_carts_jax, mesh_kinetic_part_r_dn_carts_jax, elements_kinetic_part_jax = (
-        compute_discretized_kinetic_energy_api(
+        compute_discretized_kinetic_energy_api_fast_update(
             alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, RT=RT
         )
     )

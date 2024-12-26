@@ -47,8 +47,9 @@ import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import jit, vmap
+from jax import jit
 from jax import typing as jnpt
+from jax import vmap
 
 # jqmc module
 from .atomic_orbital import AOs_data, compute_AOs_api, compute_AOs_grad_api, compute_AOs_laplacian_api
@@ -372,6 +373,7 @@ def _compute_geminal_all_elements_jax(
 
 def compute_ratio_determinant_part_api(
     geminal_data: Geminal_data,
+    A_old_inv: npt.NDArray[np.float64],
     old_r_up_carts: npt.NDArray[np.float64],
     old_r_dn_carts: npt.NDArray[np.float64],
     new_r_up_carts_arr: npt.NDArray[np.float64],
@@ -385,6 +387,7 @@ def compute_ratio_determinant_part_api(
 
     Args:
         geminal_data (Geminal_data): an instance of Geminal_data
+        A_old_inv (jnpt.ArrayLike): Inverse of the geminal matrix with the old carterian coordniates (dim: N_e_up, N_e_up).
         old_r_up_carts (jnpt.ArrayLike): Old Cartesian coordinates of up electrons (dim: N_e^up, 3)
         old_r_dn_carts (jnpt.ArrayLike): Old Cartesian coordinates of down electrons (dim: N_e^dn, 3)
         new_r_up_carts_arr (jnpt.ArrayLike): New Cartesian coordinate grids of up electrons (dim: N_grid, N_e^up, 3)
@@ -400,7 +403,7 @@ def compute_ratio_determinant_part_api(
         )
     else:
         determinant_ratios = _compute_ratio_determinant_part_jax(
-            geminal_data, old_r_up_carts, old_r_dn_carts, new_r_up_carts_arr, new_r_dn_carts_arr
+            geminal_data, A_old_inv, old_r_up_carts, old_r_dn_carts, new_r_up_carts_arr, new_r_dn_carts_arr
         )
     return determinant_ratios
 
@@ -425,19 +428,12 @@ def _compute_ratio_determinant_part_debug(
 @jit
 def _compute_ratio_determinant_part_jax(
     geminal_data: Geminal_data,
+    A_old_inv: npt.NDArray[np.float64],
     old_r_up_carts: npt.NDArray[np.float64],  # shape = (N_up, 3)
     old_r_dn_carts: npt.NDArray[np.float64],  # shape = (N_dn, 3)
     new_r_up_carts_arr: npt.NDArray[np.float64],  # shape = (n_grid, N_up, 3)
     new_r_dn_carts_arr: npt.NDArray[np.float64],  # shape = (n_grid, N_dn, 3)
 ) -> npt.NDArray[np.float64]:
-    # A_old, A_old_inv
-    A_old = compute_geminal_all_elements_api(
-        geminal_data=geminal_data,
-        r_up_carts=old_r_up_carts,
-        r_dn_carts=old_r_dn_carts,
-    )
-    A_old_inv = jnp.linalg.inv(A_old)
-
     # split, geminal_data.lambda_matrix
     lambda_matrix_paired, lambda_matrix_unpaired = jnp.split(
         geminal_data.lambda_matrix, indices_or_sections=[geminal_data.orb_num_dn], axis=1
