@@ -652,6 +652,7 @@ def _compute_ecp_non_local_parts_NN_debug(
     else:
         raise NotImplementedError
 
+    N = coulomb_potential_data.structure_data.natom
     V_nonlocal = []
     sum_V_nonlocal = 0.0
 
@@ -675,11 +676,14 @@ def _compute_ecp_non_local_parts_NN_debug(
     power_np = np.array(coulomb_potential_data.powers_non_local_part)
 
     # up electrons
+    up_mesh_non_local_ecp_part_up = []
+    up_mesh_non_local_ecp_part_dn = []
+
     for r_up_i, r_up_cart in enumerate(r_up_carts):
         i_atom_list = find_nearest_nucleus_indices_np(
             structure_data=coulomb_potential_data.structure_data,
             r_cart=r_up_cart,
-            N=coulomb_potential_data.structure_data.natom,
+            N=N,
         )
         print(f"up: i_atom_list = {i_atom_list}")
 
@@ -706,13 +710,6 @@ def _compute_ecp_non_local_parts_NN_debug(
                 * np.exp(-exponents * np.linalg.norm(rel_R_cart_min_dist) ** 2.0)
             )
 
-            V_l = []
-            for ang_mom in range(max_ang_mom_plus_1):
-                ll_target = [i for i, v in enumerate(ang_moms) if v == ang_mom]
-                V_l.append(np.sum([V_l_list[ll] for ll in ll_target]))
-
-            up_mesh_non_local_ecp_part_up = []
-            up_mesh_non_local_ecp_part_dn = []
             weight_list = []
             cos_theta_list = []
             wf_ratio_list = []
@@ -744,27 +741,28 @@ def _compute_ecp_non_local_parts_NN_debug(
                 wf_ratio = wf_numerator / wf_denominator
                 wf_ratio_list.append(wf_ratio)
 
-            P_l = []
             for ang_mom in range(max_ang_mom_plus_1):
-                P_l.append(
-                    np.sum(
-                        [
-                            (2 * ang_mom + 1) * eval_legendre(ang_mom, cos_theta) * weight * wf_ratio
-                            for cos_theta, weight, wf_ratio in zip(cos_theta_list, weight_list, wf_ratio_list)
-                        ]
-                    )
+                ll_target = [i for i, v in enumerate(ang_moms) if v == ang_mom]
+                V_l = np.sum([V_l_list[ll] for ll in ll_target])
+                P_l = np.array(
+                    [
+                        (2 * ang_mom + 1) * eval_legendre(ang_mom, cos_theta) * weight * wf_ratio
+                        for cos_theta, weight, wf_ratio in zip(cos_theta_list, weight_list, wf_ratio_list)
+                    ]
                 )
-            ans_list = list(np.array(V_l) * np.array(P_l))
-
-            V_nonlocal += ans_list
-            sum_V_nonlocal += np.sum(ans_list)
+                ans = list(V_l * P_l)
+                V_nonlocal += ans
+                sum_V_nonlocal += np.sum(ans)
 
     # dn electrons
+    dn_mesh_non_local_ecp_part_up = []
+    dn_mesh_non_local_ecp_part_dn = []
+
     for r_dn_i, r_dn_cart in enumerate(r_dn_carts):
         i_atom_list = find_nearest_nucleus_indices_np(
             structure_data=coulomb_potential_data.structure_data,
             r_cart=r_dn_cart,
-            N=coulomb_potential_data.structure_data.natom,
+            N=N,
         )
         print(f"dn: i_atom_list = {i_atom_list}")
 
@@ -791,13 +789,6 @@ def _compute_ecp_non_local_parts_NN_debug(
                 * np.exp(-exponents * np.linalg.norm(rel_R_cart_min_dist) ** 2.0)
             )
 
-            V_l = []
-            for ang_mom in range(max_ang_mom_plus_1):
-                ll_target = [i for i, v in enumerate(ang_moms) if v == ang_mom]
-                V_l.append(np.sum([V_l_list[ll] for ll in ll_target]))
-
-            dn_mesh_non_local_ecp_part_up = []
-            dn_mesh_non_local_ecp_part_dn = []
             weight_list = []
             cos_theta_list = []
             wf_ratio_list = []
@@ -829,20 +820,18 @@ def _compute_ecp_non_local_parts_NN_debug(
                 wf_ratio = wf_numerator / wf_denominator
                 wf_ratio_list.append(wf_ratio)
 
-            P_l = []
             for ang_mom in range(max_ang_mom_plus_1):
-                P_l.append(
-                    np.sum(
-                        [
-                            (2 * ang_mom + 1) * eval_legendre(ang_mom, cos_theta) * weight * wf_ratio
-                            for cos_theta, weight, wf_ratio in zip(cos_theta_list, weight_list, wf_ratio_list)
-                        ]
-                    )
+                ll_target = [i for i, v in enumerate(ang_moms) if v == ang_mom]
+                V_l = np.sum([V_l_list[ll] for ll in ll_target])
+                P_l = np.array(
+                    [
+                        (2 * ang_mom + 1) * eval_legendre(ang_mom, cos_theta) * weight * wf_ratio
+                        for cos_theta, weight, wf_ratio in zip(cos_theta_list, weight_list, wf_ratio_list)
+                    ]
                 )
-            ans_list = list(np.array(V_l) * np.array(P_l))
-
-            V_nonlocal += ans_list
-            sum_V_nonlocal += np.sum(ans_list)
+                ans = list(V_l * P_l)
+                V_nonlocal += ans
+                sum_V_nonlocal += np.sum(ans)
 
     mesh_non_local_ecp_part_r_up_carts = np.array(up_mesh_non_local_ecp_part_up + dn_mesh_non_local_ecp_part_up)
     mesh_non_local_ecp_part_r_dn_carts = np.array(up_mesh_non_local_ecp_part_dn + dn_mesh_non_local_ecp_part_dn)
@@ -1769,11 +1758,15 @@ if __name__ == "__main__":
     print(sum_V_nonlocal_debug)
     np.testing.assert_almost_equal(sum_V_nonlocal_NN_debug, sum_V_nonlocal_debug, decimal=5)
 
+    print(mesh_non_local_ecp_part_r_up_carts_debug.shape)
+    print(mesh_non_local_ecp_part_r_up_carts_NN_debug.shape)
     mesh_non_local_r_up_carts_max_debug = mesh_non_local_ecp_part_r_up_carts_debug[np.argmax(V_nonlocal_debug)]
     mesh_non_local_r_up_carts_max_NN_debug = mesh_non_local_ecp_part_r_up_carts_NN_debug[np.argmax(V_nonlocal_NN_debug)]
 
     np.testing.assert_array_almost_equal(mesh_non_local_r_up_carts_max_debug, mesh_non_local_r_up_carts_max_NN_debug, decimal=5)
 
+    print(V_nonlocal_debug.shape)
+    print(V_nonlocal_NN_debug.shape)
     V_ecp_non_local_max_debug = V_nonlocal_debug[np.argmax(V_nonlocal_debug)]
     V_ecp_non_local_max_NN_debug = V_nonlocal_NN_debug[np.argmax(V_nonlocal_NN_debug)]
 
