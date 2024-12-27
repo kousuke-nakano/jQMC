@@ -259,12 +259,26 @@ class GFMC_multiple_walkers:
             r_up_carts=self.__latest_r_up_carts[0],
             r_dn_carts=self.__latest_r_dn_carts[0],
         )
-        _, _, _, _ = _compute_ecp_non_local_parts_jax(
-            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-            r_up_carts=self.__latest_r_up_carts[0],
-            r_dn_carts=self.__latest_r_dn_carts[0],
-        )
+        if self.__non_local_move == "tmove":
+            _, _, _, _ = _compute_ecp_non_local_parts_jax(
+                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                r_up_carts=self.__latest_r_up_carts,
+                r_dn_carts=self.__latest_r_dn_carts,
+                flag_determinant_only=False,
+            )
+        elif self.__non_local_move == "dltmove":
+            _, _, _, _ = _compute_ecp_non_local_parts_jax(
+                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                r_up_carts=self.__latest_r_up_carts,
+                r_dn_carts=self.__latest_r_dn_carts,
+                flag_determinant_only=True,
+            )
+        else:
+            logger.error(f"non_local_move = {self.__non_local_move} is not yet implemented.")
+            raise NotImplementedError
+
         end = time.perf_counter()
         self.__timer_gmfc_init += end - start
         logger.info("  Compilation e_L is done.")
@@ -552,10 +566,10 @@ class GFMC_multiple_walkers:
         gfmc_interval = int(np.maximum(num_branching / 100, 1))  # gfmc_projection set print-interval
 
         logger.info("-Start branching-")
-        progress = (self.__gfmc_branching_counter + 1) / (num_branching + self.__gfmc_branching_counter) * 100.0
+        progress = (self.__gfmc_branching_counter) / (num_branching + self.__gfmc_branching_counter) * 100.0
         gmfc_total_current = time.perf_counter()
         logger.info(
-            f"  branching step = {self.__gfmc_branching_counter + 1}/{num_branching+self.__gfmc_branching_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
+            f"  branching step = {self.__gfmc_branching_counter}/{num_branching+self.__gfmc_branching_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
         )
 
         num_branching_done = 0

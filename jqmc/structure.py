@@ -34,6 +34,7 @@
 
 # python modules
 import itertools
+from functools import partial
 from logging import Formatter, StreamHandler, getLogger
 
 # JAX
@@ -430,6 +431,7 @@ def find_nearest_nucleus_indices_np(structure_data: Structure_data, r_cart, N):
         return nearest_indices[:N]
 
 
+@partial(jit, static_argnums=2)
 def find_nearest_nucleus_indices_jnp(structure_data: Structure_data, r_cart, N):
     """See find_nearest_index."""
     # Calculate the distance between each row of R_carts and r_cart

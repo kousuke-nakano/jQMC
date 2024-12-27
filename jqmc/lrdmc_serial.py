@@ -263,12 +263,26 @@ class GFMC:
             r_up_carts=self.__latest_r_up_carts,
             r_dn_carts=self.__latest_r_dn_carts,
         )
-        _, _, _, _ = _compute_ecp_non_local_parts_jax(
-            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-            r_up_carts=self.__latest_r_up_carts,
-            r_dn_carts=self.__latest_r_dn_carts,
-        )
+        if self.__non_local_move == "tmove":
+            _, _, _, _ = _compute_ecp_non_local_parts_jax(
+                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                r_up_carts=self.__latest_r_up_carts,
+                r_dn_carts=self.__latest_r_dn_carts,
+                flag_determinant_only=False,
+            )
+        elif self.__non_local_move == "dltmove":
+            _, _, _, _ = _compute_ecp_non_local_parts_jax(
+                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                r_up_carts=self.__latest_r_up_carts,
+                r_dn_carts=self.__latest_r_dn_carts,
+                flag_determinant_only=True,
+            )
+        else:
+            logger.error(f"non_local_move = {self.__non_local_move} is not yet implemented.")
+            raise NotImplementedError
+
         end = time.perf_counter()
         logger.info("Compilation e_L is done.")
         logger.info(f"Elapsed Time = {end-start:.2f} sec.")
@@ -326,10 +340,10 @@ class GFMC:
         # Main branching loop.
         logger.info("-Start branching-")
         gfmc_interval = int(np.maximum(num_branching / 100, 1))
-        progress = (self.__gfmc_branching_counter + 1) / (num_branching + self.__gfmc_branching_counter) * 100.0
+        progress = (self.__gfmc_branching_counter) / (num_branching + self.__gfmc_branching_counter) * 100.0
         gmfc_total_current = time.perf_counter()
         logger.info(
-            f"  branching step = {self.__gfmc_branching_counter + 1}/{num_branching+self.__gfmc_branching_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
+            f"  branching step = {self.__gfmc_branching_counter}/{num_branching+self.__gfmc_branching_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
         )
 
         num_branching_done = 0
@@ -985,8 +999,10 @@ if __name__ == "__main__":
         wavefunction_data=wavefunction_data,
     )
     """
-
-    hamiltonian_chk = "hamiltonian_data.chk"
+    # hamiltonian_chk = "hamiltonian_data_water.chk"
+    hamiltonian_chk = "hamiltonian_data_AcOH.chk"
+    # hamiltonian_chk = "hamiltonian_data_benzene.chk"
+    # hamiltonian_chk = "hamiltonian_data_C60.chk"
     with open(hamiltonian_chk, "rb") as f:
         hamiltonian_data = pickle.load(f)
 
