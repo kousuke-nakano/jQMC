@@ -988,7 +988,6 @@ def _compute_ecp_non_local_parts_NN_jax(
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
-    # NN: int = 1,
     Nv: int = 6,
     flag_determinant_only: bool = False,
 ) -> float:
@@ -1002,7 +1001,6 @@ def _compute_ecp_non_local_parts_NN_jax(
         wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
-        NN (int): Consider only up to NN-th nearest neighbors.
         Nv (int): The number of quadrature points for the spherical part.
         flag_determinant_only (bool): If True, only the determinant part is considered for the non-local ECP part.
 
@@ -1023,35 +1021,27 @@ def _compute_ecp_non_local_parts_NN_jax(
     else:
         raise NotImplementedError
 
-    tot_start = time.perf_counter()
+    # N (int): Consider only up to N-th nearest neighbors.
+    N = coulomb_potential_data.structure_data.natom  # all neighbors
+    N = 1  # only the nearest neighbors
 
-    N = coulomb_potential_data.structure_data.natom
-    N = 1
-    V_nonlocal = []
-    sum_V_nonlocal = 0.0
+    # jnp variables
+    i_atom_all = jnp.array(coulomb_potential_data.nucleus_index_non_local_part)
+    ang_mom_all = jnp.array(coulomb_potential_data.ang_mom_non_local_part)
+    exponent_all = jnp.array(coulomb_potential_data.exponents_non_local_part)
+    coefficient_all = jnp.array(coulomb_potential_data.coefficients_non_local_part)
+    power_all = jnp.array(coulomb_potential_data.powers_non_local_part)
+    max_ang_mom_plus_1_all = jnp.array(coulomb_potential_data.max_ang_mom_plus_1)
+    weights = jnp.array(weights)
+    grid_points = jnp.array(grid_points)
+    global_max_ang_mom_plus_1 = jnp.max(max_ang_mom_plus_1_all)
 
-    flag_determinant_only = int(flag_determinant_only)
-
-    start = time.perf_counter()
-    wf_denominator = lax.switch(
-        flag_determinant_only,
-        (evaluate_wavefunction_api, evaluate_determinant_api),
-        *(wavefunction_data, r_up_carts, r_dn_carts),
-    )
-    wf_denominator.block_until_ready()
-    end = time.perf_counter()
-    print(f"wf_denominator. elapsed Time = {(end-start)*1e3:.3f} msec.")
-
-    r_up_carts = jnp.array(r_up_carts)
-    r_dn_carts = jnp.array(r_dn_carts)
-    i_atom_jnp = jnp.array(coulomb_potential_data.nucleus_index_non_local_part)
-    ang_mom_jnp = jnp.array(coulomb_potential_data.ang_mom_non_local_part)
-    exponent_jnp = jnp.array(coulomb_potential_data.exponents_non_local_part)
-    coefficient_jnp = jnp.array(coulomb_potential_data.coefficients_non_local_part)
-    power_jnp = jnp.array(coulomb_potential_data.powers_non_local_part)
-    max_ang_mom_plus_1_jnp = jnp.array(coulomb_potential_data.max_ang_mom_plus_1)
-    weights_jnp = jnp.array(weights)
-    grid_points_jnp = jnp.array(grid_points)
+    # stored
+    non_local_ecp_part_r_carts_up = jnp.zeros((0, len(r_up_carts), 3))
+    non_local_ecp_part_r_carts_dn = jnp.zeros((0, len(r_dn_carts), 3))
+    cos_theta_all = jnp.zeros((0,))
+    weight_all = jnp.zeros((0,))
+    V_l_mapped_all = jnp.zeros((global_max_ang_mom_plus_1, 0))
 
     @jit
     def compute_V_l(rel_R_cart_min_dist, exponents, coefficients, powers):
@@ -1064,39 +1054,10 @@ def _compute_ecp_non_local_parts_NN_jax(
 
         return V_l
 
-    if flag_determinant_only:
-        wavefunc = partial(evaluate_determinant_api, wavefunction_data)
-    else:
-        wavefunc = partial(evaluate_wavefunction_api, wavefunction_data)
-
-    @jit
-    def compute_wf_ratio(r_up_carts, r_dn_carts):
-        wf_numerator = wavefunc(r_up_carts, r_dn_carts)
-
-        wf_ratio = wf_numerator / wf_denominator
-
-        return wf_ratio
-
     @jit
     def compute_P_l(ang_mom, cos_theta, weight, wf_ratio):
         P_l = (2 * ang_mom + 1) * jnp_legendre_tablated(ang_mom, cos_theta) * weight * wf_ratio
         return P_l
-
-    non_local_ecp_part_r_carts_up = []
-    non_local_ecp_part_r_carts_dn = []
-    cos_theta_all = []
-    weight_all = []
-    V_l_all = []
-
-    # timers
-    timer_get_min_dist_rel_R_cart_jnp = 0.0
-    timer_V_l_vmapped = 0.0
-    timer_V_l_segment_sum = 0.0
-    timer_mesh_generation = 0.0
-    timer_comput_cos_thetas = 0.0
-    timer_comput_wf_ratios = 0.0
-    timer_comput_P_l_mapped = 0.0
-    timer_comput_V_nl = 0.0
 
     # up electrons
     for r_up_i, r_up_cart in enumerate(r_up_carts):
@@ -1107,96 +1068,50 @@ def _compute_ecp_non_local_parts_NN_jax(
         )
 
         for i_atom in i_atom_list:
-            start = time.perf_counter()
             rel_R_cart_min_dist = get_min_dist_rel_R_cart_jnp(
                 structure_data=coulomb_potential_data.structure_data,
                 r_cart=r_up_cart,
                 i_atom=i_atom,
             )
             rel_R_cart_norm = jnp.linalg.norm(rel_R_cart_min_dist)
-            rel_R_cart_norm.block_until_ready()
-            end = time.perf_counter()
-            timer_get_min_dist_rel_R_cart_jnp += end - start
 
-            max_ang_mom_plus_1 = max_ang_mom_plus_1_jnp[i_atom]
-            mask = i_atom_jnp == i_atom
-            ang_moms = ang_mom_jnp[mask]
-            exponents = exponent_jnp[mask]
-            coefficients = coefficient_jnp[mask]
-            powers = power_jnp[mask]
+            max_ang_mom_plus_1 = max_ang_mom_plus_1_all[i_atom]
+            mask = i_atom_all == i_atom
+            ang_moms = ang_mom_all[mask]
+            exponents = exponent_all[mask]
+            coefficients = coefficient_all[mask]
+            powers = power_all[mask]
 
-            start = time.perf_counter()
             V_l_vmapped = compute_V_l(rel_R_cart_min_dist, exponents, coefficients, powers)
-            V_l_vmapped.block_until_ready()
-            end = time.perf_counter()
-            timer_V_l_vmapped += end - start
-
-            start = time.perf_counter()
             V_l_mapped = jax.ops.segment_sum(V_l_vmapped, ang_moms, num_segments=max_ang_mom_plus_1)
-            V_l_mapped.block_until_ready()
-            V_l_all += list(V_l_mapped[None, :].repeat(len(weights_jnp), axis=1))
-            end = time.perf_counter()
-            timer_V_l_segment_sum += end - start
+            pad_width = (0, global_max_ang_mom_plus_1 - V_l_mapped.shape[0])
+            V_l_padded = jnp.pad(
+                V_l_mapped,
+                pad_width=pad_width,
+                mode="constant",
+            )
+            V_l_dup = V_l_padded[:, None].repeat(len(weights), axis=1)
+            V_l_mapped_all = jnp.concatenate([V_l_mapped_all, V_l_dup], axis=1)
 
-            start = time.perf_counter()
             offsets = rel_R_cart_min_dist + rel_R_cart_norm * grid_points
             updated_carts = r_up_cart + offsets
             r_up_carts_on_mesh = jnp.repeat(r_up_carts[jnp.newaxis, ...], grid_points.shape[0], axis=0)
             up_non_local_ecp_part_r_carts_up = r_up_carts_on_mesh.at[:, r_up_i, :].set(updated_carts)
-            up_non_local_ecp_part_r_carts_up.block_until_ready()
-            up_non_local_ecp_part_r_carts_dn = jnp.repeat(r_dn_carts[jnp.newaxis, ...], len(weights_jnp), axis=0)
-            up_non_local_ecp_part_r_carts_dn.block_until_ready()
-            non_local_ecp_part_r_carts_up += list(up_non_local_ecp_part_r_carts_up)
-            non_local_ecp_part_r_carts_dn += list(up_non_local_ecp_part_r_carts_dn)
+            up_non_local_ecp_part_r_carts_dn = jnp.repeat(r_dn_carts[jnp.newaxis, ...], len(weights), axis=0)
+            non_local_ecp_part_r_carts_up = jnp.concatenate(
+                [non_local_ecp_part_r_carts_up, up_non_local_ecp_part_r_carts_up], axis=0
+            )
+            non_local_ecp_part_r_carts_dn = jnp.concatenate(
+                [non_local_ecp_part_r_carts_dn, up_non_local_ecp_part_r_carts_dn], axis=0
+            )
 
-            end = time.perf_counter()
-            timer_mesh_generation += end - start
-
-            start = time.perf_counter()
             cos_thetas = jnp.einsum(
                 "ij,ij->i",
                 -rel_R_cart_min_dist[None, :] / rel_R_cart_norm,
-                grid_points_jnp / jnp.linalg.norm(grid_points_jnp, axis=1, keepdims=True),
+                grid_points / jnp.linalg.norm(grid_points, axis=1, keepdims=True),
             )
-            cos_thetas.block_until_ready()
-            cos_theta_all += list(cos_thetas)
-            weight_all += list(weights_jnp)
-            end = time.perf_counter()
-            timer_comput_cos_thetas += end - start
-
-            """
-            start = time.perf_counter()
-            wf_ratios = vmap(compute_wf_ratio)(up_non_local_ecp_part_r_carts_up, up_non_local_ecp_part_r_carts_dn)
-            wf_ratios.block_until_ready()
-            end = time.perf_counter()
-            timer_comput_wf_ratios += end - start
-
-            start = time.perf_counter()
-            P_l_mapped = vmap(vmap(compute_P_l, in_axes=(None, 0, 0, 0)), in_axes=(0, None, None, None))(
-                jnp.arange(max_ang_mom_plus_1), cos_thetas, weights_jnp, wf_ratios
-            )
-            P_l_mapped.block_until_ready()
-            end = time.perf_counter()
-            timer_comput_P_l_mapped += end - start
-
-            start = time.perf_counter()
-            V_nl = V_l_mapped[:, jnp.newaxis] * P_l_mapped
-            V_nl.block_until_ready()
-            end = time.perf_counter()
-            timer_comput_V_nl += end - start
-
-            V_nonlocal += list(jnp.sum(V_nl, axis=0))
-            sum_V_nonlocal += jnp.sum(V_nl)
-            """
-
-    print(f"timer_get_min_dist_rel_R_cart_jnp elapsed Time = {(timer_get_min_dist_rel_R_cart_jnp)*1e3:.3f} msec.")
-    print(f"timer_V_l_vmapped elapsed Time = {(timer_V_l_vmapped)*1e3:.3f} msec.")
-    print(f"timer_V_l_segment_sum elapsed Time = {(timer_V_l_segment_sum)*1e3:.3f} msec.")
-    print(f"timer_mesh_generation elapsed Time = {(timer_mesh_generation)*1e3:.3f} msec.")
-    print(f"timer_comput_cos_thetas elapsed Time = {(timer_comput_cos_thetas)*1e3:.3f} msec.")
-    print(f"timer_comput_wf_ratios elapsed Time = {(timer_comput_wf_ratios)*1e3:.3f} msec.")
-    print(f"timer_comput_P_l_mapped elapsed Time = {(timer_comput_P_l_mapped)*1e3:.3f} msec.")
-    print(f"timer_comput_V_nl elapsed Time = {(timer_comput_V_nl)*1e3:.3f} msec.")
+            cos_theta_all = jnp.concatenate([cos_theta_all, cos_thetas], axis=0)
+            weight_all = jnp.concatenate([weight_all, weights], axis=0)
 
     # dn electrons
     for r_dn_i, r_dn_cart in enumerate(r_dn_carts):
@@ -1213,76 +1128,70 @@ def _compute_ecp_non_local_parts_NN_jax(
             )
             rel_R_cart_norm = jnp.linalg.norm(rel_R_cart_min_dist)
 
-            max_ang_mom_plus_1 = max_ang_mom_plus_1_jnp[i_atom]
-            mask = i_atom_jnp == i_atom
-            ang_moms = ang_mom_jnp[mask]
-            exponents = exponent_jnp[mask]
-            coefficients = coefficient_jnp[mask]
-            powers = power_jnp[mask]
+            max_ang_mom_plus_1 = max_ang_mom_plus_1_all[i_atom]
+            mask = i_atom_all == i_atom
+            ang_moms = ang_mom_all[mask]
+            exponents = exponent_all[mask]
+            coefficients = coefficient_all[mask]
+            powers = power_all[mask]
 
             V_l_vmapped = compute_V_l(rel_R_cart_min_dist, exponents, coefficients, powers)
             V_l_mapped = jax.ops.segment_sum(V_l_vmapped, ang_moms, num_segments=max_ang_mom_plus_1)
-            V_l_all += list(V_l_mapped[None, :].repeat(len(weights_jnp), axis=1))
+            pad_width = (0, global_max_ang_mom_plus_1 - V_l_mapped.shape[0])
+            V_l_padded = jnp.pad(
+                V_l_mapped,
+                pad_width=pad_width,
+                mode="constant",
+            )
+            V_l_dup = V_l_padded[:, None].repeat(len(weights), axis=1)
+            V_l_mapped_all = jnp.concatenate([V_l_mapped_all, V_l_dup], axis=1)
 
             offsets = rel_R_cart_min_dist + rel_R_cart_norm * grid_points
             updated_carts = r_dn_cart + offsets
             r_dn_carts_on_mesh = jnp.repeat(r_dn_carts[jnp.newaxis, ...], grid_points.shape[0], axis=0)
             dn_non_local_ecp_part_r_carts_dn = r_dn_carts_on_mesh.at[:, r_dn_i, :].set(updated_carts)
-            dn_non_local_ecp_part_r_carts_up = jnp.repeat(r_up_carts[jnp.newaxis, ...], len(weights_jnp), axis=0)
-            non_local_ecp_part_r_carts_up += list(dn_non_local_ecp_part_r_carts_up)
-            non_local_ecp_part_r_carts_dn += list(dn_non_local_ecp_part_r_carts_dn)
+            dn_non_local_ecp_part_r_carts_up = jnp.repeat(r_up_carts[jnp.newaxis, ...], len(weights), axis=0)
+            non_local_ecp_part_r_carts_up = jnp.concatenate(
+                [non_local_ecp_part_r_carts_up, dn_non_local_ecp_part_r_carts_up], axis=0
+            )
+            non_local_ecp_part_r_carts_dn = jnp.concatenate(
+                [non_local_ecp_part_r_carts_dn, dn_non_local_ecp_part_r_carts_dn], axis=0
+            )
             # Compute cos_theta for all grid points
             cos_thetas = jnp.einsum(
                 "ij,ij->i",
                 -rel_R_cart_min_dist[None, :] / rel_R_cart_norm,
-                grid_points_jnp / jnp.linalg.norm(grid_points_jnp, axis=1, keepdims=True),
+                grid_points / jnp.linalg.norm(grid_points, axis=1, keepdims=True),
             )
-            cos_theta_all += list(cos_thetas)
-            weight_all += list(weights_jnp)
-
-            """
-            wf_ratios = vmap(compute_wf_ratio)(dn_non_local_ecp_part_r_carts_up, dn_non_local_ecp_part_r_carts_dn)
-            P_l_mapped = vmap(vmap(compute_P_l, in_axes=(None, 0, 0, 0)), in_axes=(0, None, None, None))(
-                jnp.arange(max_ang_mom_plus_1), cos_thetas, weights_jnp, wf_ratios
-            )
-
-            V_nl = V_l_mapped[:, jnp.newaxis] * P_l_mapped
-
-            V_nonlocal += list(jnp.sum(V_nl, axis=0))
-            sum_V_nonlocal += jnp.sum(V_nl)
-            """
+            cos_theta_all = jnp.concatenate([cos_theta_all, cos_thetas], axis=0)
+            weight_all = jnp.concatenate([weight_all, weights], axis=0)
 
     non_local_ecp_part_r_carts_up = jnp.array(non_local_ecp_part_r_carts_up)
     non_local_ecp_part_r_carts_dn = jnp.array(non_local_ecp_part_r_carts_dn)
 
     # wf_ratio
-    psi_x = evaluate_wavefunction_api(wavefunction_data, r_up_carts, r_dn_carts)
-    psi_xp = vmap(evaluate_wavefunction_api, in_axes=(None, 0, 0))(
+    if flag_determinant_only:
+        evaluate_psi_api = evaluate_determinant_api
+    else:
+        evaluate_psi_api = evaluate_wavefunction_api
+    start = time.perf_counter()
+    psi_x = evaluate_psi_api(wavefunction_data, r_up_carts, r_dn_carts)
+    psi_xp = vmap(evaluate_psi_api, in_axes=(None, 0, 0))(
         wavefunction_data, non_local_ecp_part_r_carts_up, non_local_ecp_part_r_carts_dn
     )
     wf_ratio_all = psi_xp / psi_x
-    wf_ratio_all.block_until_ready()
-    print(wf_ratio_all.shape)
 
     cos_theta_all = jnp.array(cos_theta_all)
     weight_all = jnp.array(weight_all)
-    wf_ratio_all = jnp.array(weight_all)
+    wf_ratio_all = jnp.array(wf_ratio_all)
 
-    """
-    V_l_mapped = jnp.array(V_l_all)
-    P_l_mapped = vmap(vmap(compute_P_l, in_axes=(None, 0, 0, 0)), in_axes=(0, None, None, None))(
-        jnp.arange(max_ang_mom_plus_1), cos_theta_all, weight_all, wf_ratio_all
+    P_l_mapped_all = vmap(vmap(compute_P_l, in_axes=(None, 0, 0, 0)), in_axes=(0, None, None, None))(
+        jnp.arange(global_max_ang_mom_plus_1), cos_theta_all, weight_all, wf_ratio_all
     )
-    """
 
-    """
-    V_nl = V_l_mapped * P_l_mapped
+    V_nl = V_l_mapped_all * P_l_mapped_all
     V_nonlocal = jnp.sum(V_nl, axis=0)
     sum_V_nonlocal = jnp.sum(V_nl)
-    """
-
-    tot_end = time.perf_counter()
-    print(f"Total elapsed Time = {(tot_end-tot_start)*1e3:.3f} msec.")
 
     return non_local_ecp_part_r_carts_up, non_local_ecp_part_r_carts_dn, V_nonlocal, sum_V_nonlocal
 
@@ -1914,8 +1823,8 @@ if __name__ == "__main__":
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
     """
 
-    # hamiltonian_chk = "hamiltonian_data_water.chk"
-    hamiltonian_chk = "hamiltonian_data_AcOH.chk"
+    hamiltonian_chk = "hamiltonian_data_water.chk"
+    # hamiltonian_chk = "hamiltonian_data_AcOH.chk"
     # hamiltonian_chk = "hamiltonian_data_benzene.chk"
     # hamiltonian_chk = "hamiltonian_data_C60.chk"
     with open(hamiltonian_chk, "rb") as f:
@@ -1983,6 +1892,9 @@ if __name__ == "__main__":
 
     r_up_carts = np.array(r_up_carts)
     r_dn_carts = np.array(r_dn_carts)
+
+    r_up_carts_jnp = jnp.array(r_up_carts)
+    r_dn_carts_jnp = jnp.array(r_dn_carts)
 
     """
     # Full WF, Full-neighbours
@@ -2078,12 +1990,17 @@ if __name__ == "__main__":
     ) = _compute_ecp_non_local_parts_NN_jax(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
+        r_up_carts=r_up_carts_jnp,
+        r_dn_carts=r_dn_carts_jnp,
         Nv=6,
         flag_determinant_only=False,
     )
+    mesh_non_local_ecp_part_r_up_carts_NN_jax.block_until_ready()
+    mesh_non_local_ecp_part_r_dn_carts_NN_jax.block_until_ready()
+    V_nonlocal_NN_jax.block_until_ready()
+    sum_V_nonlocal_NN_jax.block_until_ready()
 
+    start = time.perf_counter()
     (
         mesh_non_local_ecp_part_r_up_carts_NN_jax,
         mesh_non_local_ecp_part_r_dn_carts_NN_jax,
@@ -2092,11 +2009,17 @@ if __name__ == "__main__":
     ) = _compute_ecp_non_local_parts_NN_jax(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
+        r_up_carts=r_up_carts_jnp,
+        r_dn_carts=r_dn_carts_jnp,
         Nv=6,
         flag_determinant_only=False,
     )
+    mesh_non_local_ecp_part_r_up_carts_NN_jax.block_until_ready()
+    mesh_non_local_ecp_part_r_dn_carts_NN_jax.block_until_ready()
+    V_nonlocal_NN_jax.block_until_ready()
+    sum_V_nonlocal_NN_jax.block_until_ready()
+    end = time.perf_counter()
+    print(f"Total elapsed Time = {(end-start)*1e3:.3f} msec.")
 
     np.testing.assert_almost_equal(sum_V_nonlocal_NN_debug, sum_V_nonlocal_NN_jax, decimal=5)
 
@@ -2105,7 +2028,6 @@ if __name__ == "__main__":
     V_ecp_non_local_max_NN_jax = V_nonlocal_NN_jax[np.argmax(V_nonlocal_NN_jax)]
     V_ecp_non_local_max_NN_debug = V_nonlocal_NN_debug[np.argmax(V_nonlocal_NN_debug)]
 
-    print(V_ecp_non_local_max_NN_jax, V_ecp_non_local_max_NN_debug)
     np.testing.assert_almost_equal(V_ecp_non_local_max_NN_jax, V_ecp_non_local_max_NN_debug, decimal=5)
     np.testing.assert_array_almost_equal(
         mesh_non_local_r_up_carts_max_NN_jax, mesh_non_local_r_up_carts_max_NN_debug, decimal=5
@@ -2115,8 +2037,8 @@ if __name__ == "__main__":
         _compute_ecp_non_local_parts_jax(
             coulomb_potential_data=coulomb_potential_data,
             wavefunction_data=wavefunction_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
+            r_up_carts=r_up_carts_jnp,
+            r_dn_carts=r_dn_carts_jnp,
             Nv=6,
             flag_determinant_only=False,
         )
@@ -2125,13 +2047,14 @@ if __name__ == "__main__":
     mesh_non_local_ecp_part_r_dn_carts_jax.block_until_ready()
     V_nonlocal_jax.block_until_ready()
     sum_V_nonlocal_jax.block_until_ready()
+
     start = time.perf_counter()
     mesh_non_local_ecp_part_r_up_carts_jax, mesh_non_local_ecp_part_r_dn_carts_jax, V_nonlocal_jax, sum_V_nonlocal_jax = (
         _compute_ecp_non_local_parts_jax(
             coulomb_potential_data=coulomb_potential_data,
             wavefunction_data=wavefunction_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
+            r_up_carts=r_up_carts_jnp,
+            r_dn_carts=r_dn_carts_jnp,
             Nv=6,
             flag_determinant_only=False,
         )
