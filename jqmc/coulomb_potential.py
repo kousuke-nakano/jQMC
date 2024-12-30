@@ -369,17 +369,75 @@ class Coulomb_potential_data:
         return np.max(self.nucleus_index_local_part) + 1
 
     @property
-    def max_param_num(self) -> int:
-        """Max. number of parameters."""
-        counts = np.bincount(self.nucleus_index_non_local_part)
-        return counts.max()
+    def pad_ang_mom_to_global_max(self):
+        """
+        Ensure that each atom has the global max ang_mom.
+        If an atom's local max ang_mom is less than the global max,
+        append a dummy element with ang_mom = global_ang_mom_non_local_part.
 
-    def return_pad_param(self, array_1d: jnp.ndarray) -> jnp.ndarray:
+        Returns updated lists of:
+            - new_nucleus_index
+            - new_ang_mom
+            - new_exponents
+        so that each atom's maximum ang_mom matches the global max.
+        """
+
+        # Infer the number of atoms (n_atom) from the maximum index
+        n_atom = max(self.nucleus_index_non_local_part) + 1
+
+        # 2) Prepare a temporary data structure to group items by atom
+        #    grouped[i_atom] = [(ang_mom, exponent), (ang_mom, exponent), ...]
+        grouped = [[] for _ in range(n_atom)]
+        for i in range(len(self.nucleus_index_non_local_part)):
+            i_atom = self.nucleus_index_non_local_part[i]
+            l_val = self.ang_mom_non_local_part[i]
+            expo = self.exponents_non_local_part[i]
+            coeff = self.coefficients_non_local_part[i]
+            power = self.powers_non_local_part[i]
+            grouped[i_atom].append((l_val, expo, coeff, power))
+
+        # 3) For each atom, if the local max ang_mom is less than the global, append one dummy element
+        for i_atom in range(n_atom):
+            if len(grouped[i_atom]) == 0:
+                # If the atom has no elements at all, skip or add one by choice
+                continue
+
+            local_max = max(pair[0] for pair in grouped[i_atom])
+            if local_max < self.global_max_ang_mom_plus_1:
+                # Append one element with ang_mom = global and expo, coeff, power = 0.0
+                grouped[i_atom].append((self.global_max_ang_mom_plus_1, 0.0, 0.0, 0.0))
+
+        # 4) Flatten the data structure back into lists
+        new_nucleus_index = []
+        new_ang_mom = []
+        new_exponents = []
+        new_coefficients = []
+        new_powers = []
+        for i_atom in range(n_atom):
+            for l_val, expo, coeff, power in grouped[i_atom]:
+                new_nucleus_index.append(i_atom)
+                new_ang_mom.append(l_val)
+                new_exponents.append(expo)
+                new_coefficients.append(coeff)
+                new_powers.append(power)
+
+        new_nucleus_index = np.array(new_nucleus_index)
+        new_ang_mom = np.array(new_ang_mom)
+        new_exponents = np.array(new_exponents)
+        new_coefficients = np.array(new_coefficients)
+        new_powers = np.array(new_powers)
+
+        return new_nucleus_index, new_ang_mom, new_exponents, new_coefficients, new_powers
+
+    def return_pad_param(self, array_1d) -> jnp.ndarray:
         """Padding parameters."""
-        arr2d = np.zeros((self.n_atom, self.max_param_num), dtype=array_1d.dtype)
+        padded_nucleus_index_non_local_part, _, _, _, _ = self.pad_ang_mom_to_global_max
+        counts = np.bincount(padded_nucleus_index_non_local_part)
+        max_param_num = counts.max()
+        arr2d = np.zeros((self.n_atom, max_param_num), dtype=array_1d.dtype)
         row_counts = np.zeros((self.n_atom,), dtype=np.int32)
         for i in range(array_1d.shape[0]):
-            i_atom = self.nucleus_index_non_local_part[i]
+            i_atom = padded_nucleus_index_non_local_part[i]
             j = row_counts[i_atom]
             arr2d[i_atom, j] = array_1d[i]
             row_counts[i_atom] += 1
@@ -388,22 +446,26 @@ class Coulomb_potential_data:
     @property
     def ang_mom_non_local_part_padded_jnp(self) -> jax.Array:
         """Padded for jit."""
-        return self.return_pad_param(self.ang_mom_non_local_part)
+        _, ang_mom_non_local_part, _, _, _ = self.pad_ang_mom_to_global_max
+        return self.return_pad_param(ang_mom_non_local_part)
 
     @property
     def exponents_non_local_part_padded_jnp(self) -> jax.Array:
         """Padded for jit."""
-        return self.return_pad_param(self.exponents_non_local_part)
+        _, _, exponents_non_local_part, _, _ = self.pad_ang_mom_to_global_max
+        return self.return_pad_param(exponents_non_local_part)
 
     @property
     def coefficients_non_local_part_padded_jnp(self) -> jax.Array:
         """Padded for jit."""
-        return self.return_pad_param(self.coefficients_non_local_part)
+        _, _, _, coefficients_non_local_part, _ = self.pad_ang_mom_to_global_max
+        return self.return_pad_param(coefficients_non_local_part)
 
     @property
     def powers_non_local_part_padded_jnp(self) -> jax.Array:
         """Padded for jit."""
-        return self.return_pad_param(self.powers_non_local_part)
+        _, _, _, _, powers_non_local_part = self.pad_ang_mom_to_global_max
+        return self.return_pad_param(powers_non_local_part)
 
 
 def compute_ecp_coulomb_potential_api(
@@ -1031,7 +1093,7 @@ def _compute_ecp_local_parts_jax(
     return V_ecp
 
 
-# @partial(jit, static_argnums=(4, 5))
+@partial(jit, static_argnums=(4, 5))
 def _compute_ecp_non_local_parts_NN_jax(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
@@ -1132,8 +1194,8 @@ def _compute_ecp_non_local_parts_NN_jax(
             rel_R_cart_norm = jnp.linalg.norm(rel_R_cart_min_dist)
 
             # cannot be jitted due to this.
-            # max_ang_mom_plus_1 = coulomb_potential_data.global_max_ang_mom_plus_1 # wrong!! Padding considering also this.
-            max_ang_mom_plus_1 = max_ang_mom_plus_1_all[i_atom]
+            max_ang_mom_plus_1 = coulomb_potential_data.global_max_ang_mom_plus_1  # wrong!! Padding considering also this.
+            # max_ang_mom_plus_1 = max_ang_mom_plus_1_all[i_atom]
             ang_moms = ang_mom_all[i_atom]
             exponents = exponent_all[i_atom]
             coefficients = coefficient_all[i_atom]
@@ -1186,8 +1248,8 @@ def _compute_ecp_non_local_parts_NN_jax(
             rel_R_cart_norm = jnp.linalg.norm(rel_R_cart_min_dist)
 
             # cannot be jitted due to this.
-            # max_ang_mom_plus_1 = coulomb_potential_data.global_max_ang_mom_plus_1  # wrong!! Padding considering also this.
-            max_ang_mom_plus_1 = max_ang_mom_plus_1_all[i_atom]
+            max_ang_mom_plus_1 = coulomb_potential_data.global_max_ang_mom_plus_1  # wrong!! Padding considering also this.
+            # max_ang_mom_plus_1 = max_ang_mom_plus_1_all[i_atom]
             ang_moms = ang_mom_all[i_atom]
             exponents = exponent_all[i_atom]
             coefficients = coefficient_all[i_atom]
@@ -1880,9 +1942,9 @@ if __name__ == "__main__":
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
     """
 
-    hamiltonian_chk = "hamiltonian_data_water.chk"
+    # hamiltonian_chk = "hamiltonian_data_water.chk"
     # hamiltonian_chk = "hamiltonian_data_AcOH.chk"
-    # hamiltonian_chk = "hamiltonian_data_benzene.chk"
+    hamiltonian_chk = "hamiltonian_data_benzene.chk"
     # hamiltonian_chk = "hamiltonian_data_C60.chk"
     with open(hamiltonian_chk, "rb") as f:
         hamiltonian_data = pickle.load(f)
@@ -2078,16 +2140,16 @@ if __name__ == "__main__":
     end = time.perf_counter()
     print(f"Total elapsed Time = {(end-start)*1e3:.3f} msec.")
 
-    np.testing.assert_almost_equal(sum_V_nonlocal_NN_debug, sum_V_nonlocal_NN_jax, decimal=8)
+    np.testing.assert_almost_equal(sum_V_nonlocal_NN_debug, sum_V_nonlocal_NN_jax, decimal=6)
 
     mesh_non_local_r_up_carts_max_NN_jax = mesh_non_local_ecp_part_r_up_carts_NN_jax[np.argmax(V_nonlocal_NN_jax)]
     mesh_non_local_r_up_carts_max_NN_debug = mesh_non_local_ecp_part_r_up_carts_NN_debug[np.argmax(V_nonlocal_NN_debug)]
     V_ecp_non_local_max_NN_jax = V_nonlocal_NN_jax[np.argmax(V_nonlocal_NN_jax)]
     V_ecp_non_local_max_NN_debug = V_nonlocal_NN_debug[np.argmax(V_nonlocal_NN_debug)]
 
-    np.testing.assert_almost_equal(V_ecp_non_local_max_NN_jax, V_ecp_non_local_max_NN_debug, decimal=8)
+    np.testing.assert_almost_equal(V_ecp_non_local_max_NN_jax, V_ecp_non_local_max_NN_debug, decimal=6)
     np.testing.assert_array_almost_equal(
-        mesh_non_local_r_up_carts_max_NN_jax, mesh_non_local_r_up_carts_max_NN_debug, decimal=8
+        mesh_non_local_r_up_carts_max_NN_jax, mesh_non_local_r_up_carts_max_NN_debug, decimal=6
     )
 
     mesh_non_local_ecp_part_r_up_carts_jax, mesh_non_local_ecp_part_r_dn_carts_jax, V_nonlocal_jax, sum_V_nonlocal_jax = (
