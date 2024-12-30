@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from jqmc.coulomb_potential import (
-    _compute_ecp_non_local_parts_jax,
+    _compute_ecp_non_local_parts_full_NN_jax,
     compute_bare_coulomb_potential_api,
     compute_ecp_coulomb_potential_api,
 )
@@ -67,7 +67,7 @@ _ = compute_ecp_coulomb_potential_api(
     r_dn_carts=r_dn_carts,
 )
 """
-_, _, _, _ = _compute_ecp_non_local_parts_jax(
+_, _, _, _ = _compute_ecp_non_local_parts_full_NN_jax(
     coulomb_potential_data=coulomb_potential_data,
     wavefunction_data=wavefunction_data,
     r_up_carts=r_up_carts,
@@ -91,7 +91,7 @@ _ = compute_ecp_coulomb_potential_api(
     r_dn_carts=r_dn_carts,
 )
 """
-_, _, _, _ = _compute_ecp_non_local_parts_jax(
+_, _, _, _ = _compute_ecp_non_local_parts_full_NN_jax(
     coulomb_potential_data=coulomb_potential_data,
     wavefunction_data=wavefunction_data,
     r_up_carts=r_up_carts,

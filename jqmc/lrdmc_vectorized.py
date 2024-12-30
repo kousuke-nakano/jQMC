@@ -55,8 +55,9 @@ from mpi4py import MPI
 
 from .coulomb_potential import (
     _compute_bare_coulomb_potential_jax,
-    _compute_ecp_local_parts_jax,
-    _compute_ecp_non_local_parts_jax,
+    _compute_ecp_local_parts_full_NN_jax,
+    _compute_ecp_non_local_parts_full_NN_jax,
+    _compute_ecp_non_local_parts_NN_jax,
 )
 from .hamiltonians import Hamiltonian_data, compute_kinetic_energy_api
 from .jastrow_factor import compute_ratio_Jastrow_part_api
@@ -254,25 +255,25 @@ class GFMC_multiple_walkers:
             r_up_carts=self.__latest_r_up_carts[0],
             r_dn_carts=self.__latest_r_dn_carts[0],
         )
-        _ = _compute_ecp_local_parts_jax(
+        _ = _compute_ecp_local_parts_full_NN_jax(
             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
             r_up_carts=self.__latest_r_up_carts[0],
             r_dn_carts=self.__latest_r_dn_carts[0],
         )
         if self.__non_local_move == "tmove":
-            _, _, _, _ = _compute_ecp_non_local_parts_jax(
+            _, _, _, _ = _compute_ecp_non_local_parts_NN_jax(
                 coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                 wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                r_up_carts=self.__latest_r_up_carts,
-                r_dn_carts=self.__latest_r_dn_carts,
+                r_up_carts=self.__latest_r_up_carts[0],
+                r_dn_carts=self.__latest_r_dn_carts[0],
                 flag_determinant_only=False,
             )
         elif self.__non_local_move == "dltmove":
-            _, _, _, _ = _compute_ecp_non_local_parts_jax(
+            _, _, _, _ = _compute_ecp_non_local_parts_NN_jax(
                 coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                 wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                r_up_carts=self.__latest_r_up_carts,
-                r_dn_carts=self.__latest_r_dn_carts,
+                r_up_carts=self.__latest_r_up_carts[0],
+                r_dn_carts=self.__latest_r_dn_carts[0],
                 flag_determinant_only=True,
             )
         else:
@@ -395,7 +396,7 @@ class GFMC_multiple_walkers:
             if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
                 # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
                 # ecp local
-                diagonal_ecp_local_part = _compute_ecp_local_parts_jax(
+                diagonal_ecp_local_part = _compute_ecp_local_parts_full_NN_jax(
                     coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -404,7 +405,7 @@ class GFMC_multiple_walkers:
                 if non_local_move == "tmove":
                     # ecp non-local (t-move)
                     mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                        _compute_ecp_non_local_parts_jax(
+                        _compute_ecp_non_local_parts_NN_jax(
                             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                             r_up_carts=r_up_carts,
@@ -420,7 +421,7 @@ class GFMC_multiple_walkers:
 
                 elif non_local_move == "dltmove":
                     mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                        _compute_ecp_non_local_parts_jax(
+                        _compute_ecp_non_local_parts_NN_jax(
                             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                             r_up_carts=r_up_carts,
@@ -1012,7 +1013,10 @@ if __name__ == "__main__":
     )
     """
 
-    hamiltonian_chk = "hamiltonian_data.chk"
+    hamiltonian_chk = "hamiltonian_data_water.chk"
+    # hamiltonian_chk = "hamiltonian_data_AcOH.chk"
+    # hamiltonian_chk = "hamiltonian_data_benzene.chk"
+    # hamiltonian_chk = "hamiltonian_data_C60.chk"
     with open(hamiltonian_chk, "rb") as f:
         hamiltonian_data = pickle.load(f)
 

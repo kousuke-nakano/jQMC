@@ -46,8 +46,9 @@ from mpi4py import MPI
 
 from .coulomb_potential import (
     _compute_bare_coulomb_potential_jax,
-    _compute_ecp_local_parts_jax,
-    _compute_ecp_non_local_parts_jax,
+    _compute_ecp_local_parts_full_NN_jax,
+    _compute_ecp_non_local_parts_full_NN_jax,
+    _compute_ecp_non_local_parts_NN_jax,
 )
 from .determinant import compute_geminal_all_elements_api
 from .hamiltonians import Hamiltonian_data, compute_kinetic_energy_api
@@ -258,13 +259,13 @@ class GFMC:
             r_up_carts=self.__latest_r_up_carts,
             r_dn_carts=self.__latest_r_dn_carts,
         )
-        _ = _compute_ecp_local_parts_jax(
+        _ = _compute_ecp_local_parts_full_NN_jax(
             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
             r_up_carts=self.__latest_r_up_carts,
             r_dn_carts=self.__latest_r_dn_carts,
         )
         if self.__non_local_move == "tmove":
-            _, _, _, _ = _compute_ecp_non_local_parts_jax(
+            _, _, _, _ = _compute_ecp_non_local_parts_NN_jax(
                 coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                 wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                 r_up_carts=self.__latest_r_up_carts,
@@ -272,7 +273,7 @@ class GFMC:
                 flag_determinant_only=False,
             )
         elif self.__non_local_move == "dltmove":
-            _, _, _, _ = _compute_ecp_non_local_parts_jax(
+            _, _, _, _ = _compute_ecp_non_local_parts_NN_jax(
                 coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                 wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                 r_up_carts=self.__latest_r_up_carts,
@@ -482,7 +483,7 @@ class GFMC:
                 if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
                     # ecp local
                     start_projection_diag_ecp_comput = time.perf_counter()
-                    diagonal_ecp_local_part_comput = _compute_ecp_local_parts_jax(
+                    diagonal_ecp_local_part_comput = _compute_ecp_local_parts_full_NN_jax(
                         coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                         r_up_carts=self.__latest_r_up_carts,
                         r_dn_carts=self.__latest_r_dn_carts,
@@ -495,7 +496,7 @@ class GFMC:
                     if self.__non_local_move == "tmove":
                         start_projection_non_diagonal_ecp_part_comput = time.perf_counter()
                         mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                            _compute_ecp_non_local_parts_jax(
+                            _compute_ecp_non_local_parts_NN_jax(
                                 coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                                 wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                                 r_up_carts=self.__latest_r_up_carts,
@@ -526,7 +527,7 @@ class GFMC:
                     elif self.__non_local_move == "dltmove":
                         start_projection_non_diagonal_ecp_part_comput = time.perf_counter()
                         mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                            _compute_ecp_non_local_parts_jax(
+                            _compute_ecp_non_local_parts_NN_jax(
                                 coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                                 wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                                 r_up_carts=self.__latest_r_up_carts,
@@ -999,8 +1000,8 @@ if __name__ == "__main__":
         wavefunction_data=wavefunction_data,
     )
     """
-    # hamiltonian_chk = "hamiltonian_data_water.chk"
-    hamiltonian_chk = "hamiltonian_data_AcOH.chk"
+    hamiltonian_chk = "hamiltonian_data_water.chk"
+    # hamiltonian_chk = "hamiltonian_data_AcOH.chk"
     # hamiltonian_chk = "hamiltonian_data_benzene.chk"
     # hamiltonian_chk = "hamiltonian_data_C60.chk"
     with open(hamiltonian_chk, "rb") as f:
@@ -1011,7 +1012,7 @@ if __name__ == "__main__":
     max_time = 86400
     tau = 0.10
     alat = 0.30
-    num_branching = 1
+    num_branching = 100
     non_local_move = "tmove"
 
     num_gfmc_warmup_steps = 5

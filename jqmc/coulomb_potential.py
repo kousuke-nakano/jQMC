@@ -369,20 +369,23 @@ class Coulomb_potential_data:
         return np.max(self.nucleus_index_local_part) + 1
 
     @property
-    def pad_ang_mom_to_global_max(self):
-        """
-        Ensure that each atom has the global max ang_mom.
+    def padded_parameters_tuple(self):
+        """Padding parameters for jit(vmap).
+
+        Ensure that each atom has the global max ang_mom and the same number of
+        params for jit vmap. Padded jnp.arrays are returned.
         If an atom's local max ang_mom is less than the global max,
         append a dummy element with ang_mom = global_ang_mom_non_local_part.
 
         Returns updated lists of:
-            - new_nucleus_index
-            - new_ang_mom
-            - new_exponents
-        so that each atom's maximum ang_mom matches the global max.
+            -ang_mom_non_local_part_padded_jnp,
+            -exponents_non_local_part_padded_jnp,
+            -coefficients_non_local_part_padded_jnp,
+            -powers_non_local_part_padded_jnp,
+        so that each atom's maximum ang_mom matches the global max,
+        and the same dim. for i_atom (nucleus index).
         """
-
-        # Infer the number of atoms (n_atom) from the maximum index
+        # 1) Infer the number of atoms (n_atom) from the maximum index
         n_atom = max(self.nucleus_index_non_local_part) + 1
 
         # 2) Prepare a temporary data structure to group items by atom
@@ -408,64 +411,78 @@ class Coulomb_potential_data:
                 grouped[i_atom].append((self.global_max_ang_mom_plus_1, 0.0, 0.0, 0.0))
 
         # 4) Flatten the data structure back into lists
-        new_nucleus_index = []
+        nucleus_index_with_global_lmax_plus1 = []
         new_ang_mom = []
         new_exponents = []
         new_coefficients = []
         new_powers = []
         for i_atom in range(n_atom):
             for l_val, expo, coeff, power in grouped[i_atom]:
-                new_nucleus_index.append(i_atom)
+                nucleus_index_with_global_lmax_plus1.append(i_atom)
                 new_ang_mom.append(l_val)
                 new_exponents.append(expo)
                 new_coefficients.append(coeff)
                 new_powers.append(power)
 
-        new_nucleus_index = np.array(new_nucleus_index)
-        new_ang_mom = np.array(new_ang_mom)
-        new_exponents = np.array(new_exponents)
-        new_coefficients = np.array(new_coefficients)
-        new_powers = np.array(new_powers)
+        nucleus_index_with_global_lmax_plus1 = np.array(nucleus_index_with_global_lmax_plus1)
+        ang_mom_with_global_lmax_plus1 = np.array(new_ang_mom)
+        exponents_global_lmax_plus1 = np.array(new_exponents)
+        coefficients_global_lmax_plus1 = np.array(new_coefficients)
+        powers_global_lmax_plus1 = np.array(new_powers)
 
-        return new_nucleus_index, new_ang_mom, new_exponents, new_coefficients, new_powers
-
-    def return_pad_param(self, array_1d) -> jnp.ndarray:
-        """Padding parameters."""
-        padded_nucleus_index_non_local_part, _, _, _, _ = self.pad_ang_mom_to_global_max
-        counts = np.bincount(padded_nucleus_index_non_local_part)
+        # 5) count the max of i_atom appearance (i.e., max num of params.)
+        counts = np.bincount(nucleus_index_with_global_lmax_plus1)
         max_param_num = counts.max()
-        arr2d = np.zeros((self.n_atom, max_param_num), dtype=array_1d.dtype)
+
+        # 6) padding ang_mom_non_local_part_padded_np
+        ang_mom_non_local_part_padded_np = np.zeros((self.n_atom, max_param_num), dtype=ang_mom_with_global_lmax_plus1.dtype)
         row_counts = np.zeros((self.n_atom,), dtype=np.int32)
-        for i in range(array_1d.shape[0]):
-            i_atom = padded_nucleus_index_non_local_part[i]
+        for i in range(ang_mom_with_global_lmax_plus1.shape[0]):
+            i_atom = nucleus_index_with_global_lmax_plus1[i]
             j = row_counts[i_atom]
-            arr2d[i_atom, j] = array_1d[i]
+            ang_mom_non_local_part_padded_np[i_atom, j] = ang_mom_with_global_lmax_plus1[i]
             row_counts[i_atom] += 1
-        return arr2d
 
-    @property
-    def ang_mom_non_local_part_padded_jnp(self) -> jax.Array:
-        """Padded for jit."""
-        _, ang_mom_non_local_part, _, _, _ = self.pad_ang_mom_to_global_max
-        return self.return_pad_param(ang_mom_non_local_part)
+        # 7) padding exponents_non_local_part_padded_np
+        exponents_non_local_part_padded_np = np.zeros((self.n_atom, max_param_num), dtype=exponents_global_lmax_plus1.dtype)
+        row_counts = np.zeros((self.n_atom,), dtype=np.int32)
+        for i in range(exponents_global_lmax_plus1.shape[0]):
+            i_atom = nucleus_index_with_global_lmax_plus1[i]
+            j = row_counts[i_atom]
+            exponents_non_local_part_padded_np[i_atom, j] = exponents_global_lmax_plus1[i]
+            row_counts[i_atom] += 1
 
-    @property
-    def exponents_non_local_part_padded_jnp(self) -> jax.Array:
-        """Padded for jit."""
-        _, _, exponents_non_local_part, _, _ = self.pad_ang_mom_to_global_max
-        return self.return_pad_param(exponents_non_local_part)
+        # 8) padding coefficients_non_local_part_padded_np
+        coefficients_non_local_part_padded_np = np.zeros(
+            (self.n_atom, max_param_num), dtype=coefficients_global_lmax_plus1.dtype
+        )
+        row_counts = np.zeros((self.n_atom,), dtype=np.int32)
+        for i in range(coefficients_global_lmax_plus1.shape[0]):
+            i_atom = nucleus_index_with_global_lmax_plus1[i]
+            j = row_counts[i_atom]
+            coefficients_non_local_part_padded_np[i_atom, j] = coefficients_global_lmax_plus1[i]
+            row_counts[i_atom] += 1
 
-    @property
-    def coefficients_non_local_part_padded_jnp(self) -> jax.Array:
-        """Padded for jit."""
-        _, _, _, coefficients_non_local_part, _ = self.pad_ang_mom_to_global_max
-        return self.return_pad_param(coefficients_non_local_part)
+        # 9) padding coefficients_non_local_part_padded_np
+        powers_non_local_part_padded_np = np.zeros((self.n_atom, max_param_num), dtype=powers_global_lmax_plus1.dtype)
+        row_counts = np.zeros((self.n_atom,), dtype=np.int32)
+        for i in range(powers_global_lmax_plus1.shape[0]):
+            i_atom = nucleus_index_with_global_lmax_plus1[i]
+            j = row_counts[i_atom]
+            powers_non_local_part_padded_np[i_atom, j] = powers_global_lmax_plus1[i]
+            row_counts[i_atom] += 1
 
-    @property
-    def powers_non_local_part_padded_jnp(self) -> jax.Array:
-        """Padded for jit."""
-        _, _, _, _, powers_non_local_part = self.pad_ang_mom_to_global_max
-        return self.return_pad_param(powers_non_local_part)
+        ang_mom_non_local_part_padded_jnp = jnp.array(ang_mom_non_local_part_padded_np)
+        exponents_non_local_part_padded_jnp = jnp.array(exponents_non_local_part_padded_np)
+        coefficients_non_local_part_padded_jnp = jnp.array(coefficients_non_local_part_padded_np)
+        powers_non_local_part_padded_jnp = jnp.array(powers_non_local_part_padded_np)
+
+        return (
+            ang_mom_non_local_part_padded_jnp,
+            exponents_non_local_part_padded_jnp,
+            coefficients_non_local_part_padded_jnp,
+            powers_non_local_part_padded_jnp,
+        )
 
 
 def compute_ecp_coulomb_potential_api(
@@ -499,7 +516,7 @@ def compute_ecp_coulomb_potential_api(
     return V_ecp
 
 
-def _compute_ecp_local_parts_debug(
+def _compute_ecp_local_parts_full_NN_debug(
     coulomb_potential_data: Coulomb_potential_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
@@ -558,7 +575,7 @@ def _compute_ecp_local_parts_debug(
     return V_local
 
 
-def _compute_ecp_non_local_parts_debug(
+def _compute_ecp_non_local_parts_full_NN_debug(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -730,7 +747,7 @@ def _compute_ecp_non_local_parts_NN_debug(
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
-    # NN: int = 1,
+    NN: int = 1,
     Nv: int = 6,
     flag_determinant_only: bool = False,
 ) -> float:
@@ -766,7 +783,6 @@ def _compute_ecp_non_local_parts_NN_debug(
     else:
         raise NotImplementedError
 
-    N = coulomb_potential_data.structure_data.natom
     V_nonlocal = []
     sum_V_nonlocal = 0.0
 
@@ -797,7 +813,7 @@ def _compute_ecp_non_local_parts_NN_debug(
         i_atom_list = find_nearest_nucleus_indices_np(
             structure_data=coulomb_potential_data.structure_data,
             r_cart=r_up_cart,
-            N=N,
+            N=NN,
         )
 
         for i_atom in i_atom_list:
@@ -875,7 +891,7 @@ def _compute_ecp_non_local_parts_NN_debug(
         i_atom_list = find_nearest_nucleus_indices_np(
             structure_data=coulomb_potential_data.structure_data,
             r_cart=r_dn_cart,
-            N=N,
+            N=NN,
         )
 
         for i_atom in i_atom_list:
@@ -974,11 +990,11 @@ def _compute_ecp_coulomb_potential_debug(
     Returns:
         float: The sum of non-local part of the given ECPs with r_up_carts and r_dn_carts.
     """
-    ecp_local_parts = _compute_ecp_local_parts_debug(
+    ecp_local_parts = _compute_ecp_local_parts_full_NN_debug(
         coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
-    _, _, _, ecp_nonlocal_parts = _compute_ecp_non_local_parts_debug(
+    _, _, _, ecp_nonlocal_parts = _compute_ecp_non_local_parts_NN_debug(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         r_up_carts=r_up_carts,
@@ -992,7 +1008,7 @@ def _compute_ecp_coulomb_potential_debug(
 
 
 @jit
-def _compute_ecp_local_parts_jax(
+def _compute_ecp_local_parts_full_NN_jax(
     coulomb_potential_data: Coulomb_potential_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
@@ -1093,12 +1109,13 @@ def _compute_ecp_local_parts_jax(
     return V_ecp
 
 
-@partial(jit, static_argnums=(4, 5))
+@partial(jit, static_argnums=(4, 5, 6))
 def _compute_ecp_non_local_parts_NN_jax(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
+    NN: int = 1,
     Nv: int = 6,
     flag_determinant_only: bool = False,
 ) -> float:
@@ -1112,6 +1129,7 @@ def _compute_ecp_non_local_parts_NN_jax(
         wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        NN (int): Consider only up to N-th nearest neighbors.
         Nv (int): The number of quadrature points for the spherical part.
         flag_determinant_only (bool): If True, only the determinant part is considered for the non-local ECP part.
 
@@ -1121,37 +1139,19 @@ def _compute_ecp_non_local_parts_NN_jax(
         float: sum of the V_nonlocal
     """
     if Nv == 4:
-        weights = tetrahedron_sym_mesh_Nv4.weights
-        grid_points = tetrahedron_sym_mesh_Nv4.grid_points
+        weights = jnp.array(tetrahedron_sym_mesh_Nv4.weights)
+        grid_points = jnp.array(tetrahedron_sym_mesh_Nv4.grid_points)
     elif Nv == 6:
-        weights = octahedron_sym_mesh_Nv6.weights
-        grid_points = octahedron_sym_mesh_Nv6.grid_points
+        weights = jnp.array(octahedron_sym_mesh_Nv6.weights)
+        grid_points = jnp.array(octahedron_sym_mesh_Nv6.grid_points)
     elif Nv == 18:
-        weights = octahedron_sym_mesh_Nv18.weights
-        grid_points = octahedron_sym_mesh_Nv18.grid_points
+        weights = jnp.array(octahedron_sym_mesh_Nv18.weights)
+        grid_points = jnp.array(octahedron_sym_mesh_Nv18.grid_points)
     else:
         raise NotImplementedError
 
-    # N (int): Consider only up to N-th nearest neighbors.
-    # N = coulomb_potential_data.structure_data.natom  # all neighbors
-    N = 1  # only the nearest neighbors
-
     # jnp variables
-    """
-    i_atom_all = jnp.array(coulomb_potential_data.nucleus_index_non_local_part)
-    ang_mom_all = jnp.array(coulomb_potential_data.ang_mom_non_local_part)
-    exponent_all = jnp.array(coulomb_potential_data.exponents_non_local_part)
-    coefficient_all = jnp.array(coulomb_potential_data.coefficients_non_local_part)
-    power_all = jnp.array(coulomb_potential_data.powers_non_local_part)
-    """
-
-    ang_mom_all = jnp.array(coulomb_potential_data.ang_mom_non_local_part_padded_jnp)
-    exponent_all = jnp.array(coulomb_potential_data.exponents_non_local_part_padded_jnp)
-    coefficient_all = jnp.array(coulomb_potential_data.coefficients_non_local_part_padded_jnp)
-    power_all = jnp.array(coulomb_potential_data.powers_non_local_part_padded_jnp)
-    weights = jnp.array(weights)
-    grid_points = jnp.array(grid_points)
-    max_ang_mom_plus_1_all = coulomb_potential_data.max_ang_mom_plus_1
+    ang_mom_all, exponent_all, coefficient_all, power_all = coulomb_potential_data.padded_parameters_tuple
     global_max_ang_mom_plus_1 = coulomb_potential_data.global_max_ang_mom_plus_1
 
     # stored
@@ -1182,7 +1182,7 @@ def _compute_ecp_non_local_parts_NN_jax(
         i_atom_list = find_nearest_nucleus_indices_jnp(
             structure_data=coulomb_potential_data.structure_data,
             r_cart=r_up_cart,
-            N=N,
+            N=NN,
         )
 
         for i_atom in i_atom_list:
@@ -1193,9 +1193,7 @@ def _compute_ecp_non_local_parts_NN_jax(
             )
             rel_R_cart_norm = jnp.linalg.norm(rel_R_cart_min_dist)
 
-            # cannot be jitted due to this.
             max_ang_mom_plus_1 = coulomb_potential_data.global_max_ang_mom_plus_1  # wrong!! Padding considering also this.
-            # max_ang_mom_plus_1 = max_ang_mom_plus_1_all[i_atom]
             ang_moms = ang_mom_all[i_atom]
             exponents = exponent_all[i_atom]
             coefficients = coefficient_all[i_atom]
@@ -1237,7 +1235,7 @@ def _compute_ecp_non_local_parts_NN_jax(
         i_atom_list = find_nearest_nucleus_indices_jnp(
             structure_data=coulomb_potential_data.structure_data,
             r_cart=r_dn_cart,
-            N=N,
+            N=NN,
         )
         for i_atom in i_atom_list:
             rel_R_cart_min_dist = get_min_dist_rel_R_cart_jnp(
@@ -1247,9 +1245,7 @@ def _compute_ecp_non_local_parts_NN_jax(
             )
             rel_R_cart_norm = jnp.linalg.norm(rel_R_cart_min_dist)
 
-            # cannot be jitted due to this.
             max_ang_mom_plus_1 = coulomb_potential_data.global_max_ang_mom_plus_1  # wrong!! Padding considering also this.
-            # max_ang_mom_plus_1 = max_ang_mom_plus_1_all[i_atom]
             ang_moms = ang_mom_all[i_atom]
             exponents = exponent_all[i_atom]
             coefficients = coefficient_all[i_atom]
@@ -1316,7 +1312,7 @@ def _compute_ecp_non_local_parts_NN_jax(
 
 
 @partial(jit, static_argnums=(4, 5))
-def _compute_ecp_non_local_parts_jax(
+def _compute_ecp_non_local_parts_full_NN_jax(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -1355,7 +1351,7 @@ def _compute_ecp_non_local_parts_jax(
 
     # start = time.perf_counter()
     r_up_carts_on_mesh, r_dn_carts_on_mesh, V_ecp_up, V_ecp_dn, sum_V_nonlocal = (
-        _compute_ecp_non_local_part_jax_weights_grid_points(
+        _compute_ecp_non_local_part_full_NN_jax_weights_grid_points(
             coulomb_potential_data=coulomb_potential_data,
             wavefunction_data=wavefunction_data,
             r_up_carts=r_up_carts,
@@ -1437,7 +1433,7 @@ def _compute_ecp_non_local_parts_jax(
 
 
 @jit  # this jit drastically accelarates the computation!
-def _compute_ecp_non_local_part_jax_weights_grid_points(
+def _compute_ecp_non_local_part_full_NN_jax_weights_grid_points(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -1692,11 +1688,11 @@ def _compute_ecp_coulomb_potential_jax(
     Returns:
         float: The sum of local and non-local part of the given ECPs with r_up_carts and r_dn_carts.
     """
-    ecp_local_parts = _compute_ecp_local_parts_jax(
+    ecp_local_parts = _compute_ecp_local_parts_full_NN_jax(
         coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
-    _, _, _, ecp_nonlocal_parts = _compute_ecp_non_local_parts_jax(
+    _, _, _, ecp_nonlocal_parts = _compute_ecp_non_local_parts_NN_jax(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         r_up_carts=r_up_carts,
@@ -1942,9 +1938,9 @@ if __name__ == "__main__":
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
     """
 
-    # hamiltonian_chk = "hamiltonian_data_water.chk"
+    hamiltonian_chk = "hamiltonian_data_water.chk"
     # hamiltonian_chk = "hamiltonian_data_AcOH.chk"
-    hamiltonian_chk = "hamiltonian_data_benzene.chk"
+    # hamiltonian_chk = "hamiltonian_data_benzene.chk"
     # hamiltonian_chk = "hamiltonian_data_C60.chk"
     with open(hamiltonian_chk, "rb") as f:
         hamiltonian_data = pickle.load(f)
@@ -2153,7 +2149,7 @@ if __name__ == "__main__":
     )
 
     mesh_non_local_ecp_part_r_up_carts_jax, mesh_non_local_ecp_part_r_dn_carts_jax, V_nonlocal_jax, sum_V_nonlocal_jax = (
-        _compute_ecp_non_local_parts_jax(
+        _compute_ecp_non_local_parts_full_NN_jax(
             coulomb_potential_data=coulomb_potential_data,
             wavefunction_data=wavefunction_data,
             r_up_carts=r_up_carts_jnp,
@@ -2169,7 +2165,7 @@ if __name__ == "__main__":
 
     start = time.perf_counter()
     mesh_non_local_ecp_part_r_up_carts_jax, mesh_non_local_ecp_part_r_dn_carts_jax, V_nonlocal_jax, sum_V_nonlocal_jax = (
-        _compute_ecp_non_local_parts_jax(
+        _compute_ecp_non_local_parts_full_NN_jax(
             coulomb_potential_data=coulomb_potential_data,
             wavefunction_data=wavefunction_data,
             r_up_carts=r_up_carts_jnp,
