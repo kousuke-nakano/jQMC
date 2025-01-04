@@ -47,9 +47,8 @@ import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import jit
+from jax import jit, vmap
 from jax import typing as jnpt
-from jax import vmap
 
 # jqmc module
 from .atomic_orbital import AOs_data, compute_AOs_api, compute_AOs_grad_api, compute_AOs_laplacian_api
@@ -250,6 +249,7 @@ def compute_det_geminal_all_elements_api(
     )
 
 
+@jit
 def _compute_det_geminal_all_elements_jax(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],

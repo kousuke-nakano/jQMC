@@ -5,24 +5,21 @@ import time
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax import jit
+from jax import jit, vmap
 
-from jqmc.determinant import _compute_ratio_determinant_part_jax
-from jqmc.jastrow_factor import _compute_ratio_Jastrow_part_jax
+from jqmc.determinant import _compute_det_geminal_all_elements_jax, compute_det_geminal_all_elements_api
+from jqmc.jastrow_factor import compute_Jastrow_part_api
 
 jax.config.update("jax_enable_x64", True)
-jax.config.update("jax_platform_name", "cpu")  # insures we use the CPU
-
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-
-os.environ["NUM_INTER_THREADS"] = "1"
-os.environ["NUM_INTRA_THREADS"] = "1"
-
-os.environ["XLA_FLAGS"] = "--xla_cpu_multi_thread_eigen=false " "intra_op_parallelism_threads=1"
+# jax.config.update("jax_platform_name", "cpu")  # insures we use the CPU
+# os.environ["MKL_NUM_THREADS"] = "1"
+# os.environ["OPENBLAS_NUM_THREADS"] = "1"
+# os.environ["NUM_INTER_THREADS"] = "1"
+# os.environ["NUM_INTRA_THREADS"] = "1"
+# os.environ["XLA_FLAGS"] = "--xla_cpu_multi_thread_eigen=false " "intra_op_parallelism_threads=1"
 
 # ratio
-hamiltonian_chk = "hamiltonian_data.chk"
+hamiltonian_chk = "hamiltonian_data_water.chk"
 with open(hamiltonian_chk, "rb") as f:
     hamiltonian_data = pickle.load(f)
 geminal_data = hamiltonian_data.wavefunction_data.geminal_data
@@ -173,6 +170,7 @@ r_dn_carts_combined.block_until_ready()
 end = time.perf_counter()
 print(f"Init elapsed Time = {(end-start)*1e3:.3f} msec.")
 
+""" fast update
 _ = _compute_ratio_determinant_part_jax(
     geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
     old_r_up_carts=r_up_carts,
@@ -205,6 +203,55 @@ wf_ratio = _compute_ratio_determinant_part_jax(
 wf_ratio.block_until_ready()
 end = time.perf_counter()
 print(f"Comput. elapsed Time = {(end-start)*1e3:.3f} msec.")
+"""
+
+psi_j = compute_Jastrow_part_api(hamiltonian_data.wavefunction_data.jastrow_data, r_up_carts, r_dn_carts)
+# Evaluate the wavefunction at the shifted positions using vectorization
+psi_jp = vmap(compute_Jastrow_part_api, in_axes=(None, 0, 0))(
+    hamiltonian_data.wavefunction_data.jastrow_data, r_up_carts_combined, r_dn_carts_combined
+)
+psi_j.block_until_ready()
+psi_jp.block_until_ready()
+
+psi_d = _compute_det_geminal_all_elements_jax(hamiltonian_data.wavefunction_data.geminal_data, r_up_carts, r_dn_carts)
+# Evaluate the wavefunction at the shifted positions using vectorization
+psi_dp = vmap(_compute_det_geminal_all_elements_jax, in_axes=(None, 0, 0))(
+    hamiltonian_data.wavefunction_data.geminal_data, r_up_carts_combined, r_dn_carts_combined
+)
+psi_d.block_until_ready()
+psi_dp.block_until_ready()
+
+start = time.perf_counter()
+psi_j = compute_Jastrow_part_api(hamiltonian_data.wavefunction_data.jastrow_data, r_up_carts, r_dn_carts)
+psi_j.block_until_ready()
+end = time.perf_counter()
+print(f"Comput. elapsed Time (jas) = {(end-start)*1e3:.3f} msec.")
+
+start = time.perf_counter()
+psi_jp = vmap(compute_Jastrow_part_api, in_axes=(None, 0, 0))(
+    hamiltonian_data.wavefunction_data.jastrow_data, r_up_carts_combined, r_dn_carts_combined
+)
+psi_jp.block_until_ready()
+end = time.perf_counter()
+print(f"Comput. elapsed Time (jas-vmap) = {(end-start)*1e3:.3f} msec.")
+
+start = time.perf_counter()
+psi_d = _compute_det_geminal_all_elements_jax(hamiltonian_data.wavefunction_data.geminal_data, r_up_carts, r_dn_carts)
+psi_d.block_until_ready()
+end = time.perf_counter()
+print(f"Comput. elapsed Time (det) = {(end-start)*1e3:.3f} msec.")
+
+start = time.perf_counter()
+psi_dp = vmap(_compute_det_geminal_all_elements_jax, in_axes=(None, 0, 0))(
+    hamiltonian_data.wavefunction_data.geminal_data, r_up_carts_combined, r_dn_carts_combined
+)
+psi_dp.block_until_ready()
+end = time.perf_counter()
+print(f"Comput. elapsed Time (det-vmap) = {(end-start)*1e3:.3f} msec.")
+
+
+wf_ratio = psi_jp * psi_dp / (psi_j * psi_d)
+
 
 # Compute the kinetic part elements
 elements_kinetic_part = -1.0 / (2.0 * alat**2) * wf_ratio

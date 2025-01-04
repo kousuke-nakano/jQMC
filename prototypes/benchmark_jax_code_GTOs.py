@@ -7,6 +7,9 @@ import jax.scipy as jscipy
 import numpy as np
 from jax import jit, vmap
 
+jax.config.update("jax_enable_x64", True)
+os.environ["XLA_FLAGS"] = "--xla_cpu_multi_thread_eigen=true"
+
 
 # Define GTO for single input
 @jit
@@ -36,9 +39,12 @@ def batch_gto(c, l, m, r, R, Z):
     return radial * spherical_harmonics
 
 
-trial = 1000
-N = 1000  # Number of GTO parameters
-M = 8  # Number of r vectors
+trial = 5000
+N = 103  # Number of GTO parameters (water)
+M = 8  # Number of r vectors (water)
+# N = 30000  # Number of GTO parameters (water)
+# M = 30  # Number of r vectors (water)
+
 c = np.linspace(1.0, 2.0, N)
 l = np.arange(N)
 m = np.arange(-N // 2, N // 2)
@@ -46,12 +52,24 @@ R = np.random.uniform(0, 1, (N, 3))
 Z = np.linspace(1.0, 1.5, N)
 r = np.random.uniform(0, 1, (M, 3))
 
+# it turns out that np -> jnp transformation inside functions
+# is a rate-determinant step! Pre transformation is needed.
+# """
+c = jnp.array(c)
+l = jnp.array(l)
+m = jnp.array(m)
+R = jnp.array(R)
+Z = jnp.array(Z)
+r = jnp.array(r)
+# """
+
 # JIT compilation
 vmap_gto_jit = jit(vmap_gto)
 batch_gto_jit = jit(batch_gto)
 
 # Batch benchmark
 result_batch = batch_gto_jit(c, l, m, r, R, Z)
+result_batch.block_until_ready()
 start = time.perf_counter()
 for _ in range(trial):
     result_batch = batch_gto_jit(c, l, m, r, R, Z)
@@ -61,6 +79,7 @@ batch_time = (end - start) / trial
 
 # vmap benchmark
 result_vmap = vmap_gto_jit(c, l, m, r, R, Z)
+result_vmap.block_until_ready()
 start = time.perf_counter()
 for _ in range(trial):
     result_vmap = vmap_gto_jit(c, l, m, r, R, Z)

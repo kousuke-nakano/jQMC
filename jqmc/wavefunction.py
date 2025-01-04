@@ -419,8 +419,8 @@ def compute_discretized_kinetic_energy_api(
     r_dn_carts_combined = jnp.concatenate([r_dn_carts_repeated_up, r_dn_carts_shifted], axis=0)  # Shape: (N_configs, N_dn, 3)
 
     # Evaluate the wavefunction at the original positions
-    # Evaluate the wavefunction at the shifted positions using vectorization
     psi_x = evaluate_wavefunction_api(wavefunction_data, r_up_carts, r_dn_carts)
+    # Evaluate the wavefunction at the shifted positions using vectorization
     psi_xp = vmap(evaluate_wavefunction_api, in_axes=(None, 0, 0))(wavefunction_data, r_up_carts_combined, r_dn_carts_combined)
     wf_ratio = psi_xp / psi_x
 

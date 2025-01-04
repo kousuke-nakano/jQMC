@@ -319,6 +319,7 @@ class GFMC:
         timer_mpi_reduce = 0.0
         timer_mpi_comput = 0.0
         timer_mpi_bcast = 0.0
+        counter_projection_times = 0
         gmfc_total_start = time.perf_counter()
 
         @jit
@@ -669,6 +670,7 @@ class GFMC:
             end_projection = time.perf_counter()
             timer_projection_total += end_projection - start_projection
             logger.debug(f"  #projection times = x {projection_times}")
+            counter_projection_times += projection_times
 
             # projection ends
             logger.debug("  Projection ends.")
@@ -797,6 +799,7 @@ class GFMC:
         logger.info(f"Net GFMC time for {num_branching_done} branching steps = {timer_gmfc_total: .3f} sec.")
         logger.info(f"Elapsed times per branching, averaged over {num_branching_done} branching steps.")
         logger.info(f"  Projection time per branching = {timer_projection_total/num_branching_done*10**3: .3f} msec.")
+        logger.info(f"  Projection iterations per branching ={counter_projection_times/num_branching_done: .3f} times.")
         logger.info(
             f"    - Non_diagonal kinetic part (init) = {timer_projection_non_diagonal_kinetic_part_init/num_branching_done*10**3: .3f} msec."
         )

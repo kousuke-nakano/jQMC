@@ -49,9 +49,8 @@ import numpy as np
 import numpy.typing as npt
 import scipy
 from flax import struct
-from jax import grad, jacrev, jit
+from jax import grad, jacrev, jit, vmap
 from jax import typing as jnpt
-from jax import vmap
 from numpy import linalg as LA
 
 from .structure import Structure_data
@@ -1135,6 +1134,10 @@ def _compute_normalization_fator_jax(l: int, Z: float) -> float:
         (2.0 ** (2 * l + 3) * jscipy.special.factorial(l + 1) * (2 * Z) ** (l + 1.5))
         / (jscipy.special.factorial(2 * l + 2) * jnp.sqrt(jnp.pi))
     )
+    # N_n_jnp = jnp.sqrt(
+    #    (2.0 ** (2 * l + 3) * jscipy.special.gamma(l + 2) * (2 * Z) ** (l + 1.5))
+    #    / (jscipy.special.gamma(2 * l + 3) * jnp.sqrt(jnp.pi))
+    # )
     return N_n_jnp
 
 

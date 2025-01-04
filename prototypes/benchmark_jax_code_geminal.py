@@ -1,6 +1,7 @@
 import os
 import pickle
 import time
+from functools import partial
 
 import jax
 import jax.numpy as jnp
@@ -12,22 +13,23 @@ from jqmc.jastrow_factor import _compute_ratio_Jastrow_part_jax
 from jqmc.molecular_orbital import _compute_MOs_jax
 
 jax.config.update("jax_enable_x64", True)
-jax.config.update("jax_platform_name", "cpu")  # insures we use the CPU
 
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-
-os.environ["NUM_INTER_THREADS"] = "1"
-os.environ["NUM_INTRA_THREADS"] = "1"
-
-os.environ["XLA_FLAGS"] = "--xla_cpu_multi_thread_eigen=false " "intra_op_parallelism_threads=1"
+# jax.config.update("jax_platform_name", "cpu")  # insures we use the CPU
+# os.environ["MKL_NUM_THREADS"] = "1"
+# os.environ["OPENBLAS_NUM_THREADS"] = "1"
+# os.environ["NUM_INTER_THREADS"] = "1"
+# os.environ["NUM_INTRA_THREADS"] = "1"
+# os.environ["XLA_FLAGS"] = "--xla_cpu_multi_thread_eigen=false " "intra_op_parallelism_threads=1"
 
 # ratio
-hamiltonian_chk = "hamiltonian_data.chk"
+hamiltonian_chk = "hamiltonian_data_water.chk"
 with open(hamiltonian_chk, "rb") as f:
     hamiltonian_data = pickle.load(f)
 geminal_data = hamiltonian_data.wavefunction_data.geminal_data
 jastrow_data = hamiltonian_data.wavefunction_data.jastrow_data
+
+# print
+print(geminal_data)
 
 # test MOs
 num_electron_up = 4
@@ -93,6 +95,7 @@ r_up_carts = jnp.array(r_carts_up)
 r_dn_carts = jnp.array(r_carts_dn)
 
 
+@partial(jit, static_argnums=1)
 def split_lambda_matrix(lambda_matrix, orb_num_dn):
     return jnp.hsplit(lambda_matrix, [orb_num_dn])
 
@@ -118,7 +121,7 @@ orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn
 orb_matrix_up.block_until_ready()
 orb_matrix_dn.block_until_ready()
 end = time.perf_counter()
-print(f"Comput. (indirect) elapsed Time = {(end-start)*1e3:.3f} msec.")
+print(f"Comput. MOs elapsed Time = {(end-start)*1e3:.3f} msec.")
 
 """
 d_up = _compute_MOs_jax(mos_data=geminal_data.orb_data_up_spin, r_carts=r_up_carts)
@@ -132,10 +135,11 @@ orb_matrix_dn_d = _compute_MOs_jax(mos_data=geminal_data.orb_data_dn_spin, r_car
 orb_matrix_up_d.block_until_ready()
 orb_matrix_dn_d.block_until_ready()
 end = time.perf_counter()
-print(f"Comput. (direct) elapsed Time = {(end-start)*1e3:.3f} msec.")
+print(f"Comput. MOs elapsed Time = {(end-start)*1e3:.3f} msec.")
 """
 
 
+@jit
 def construct_geminal(orb_matrix_up, orb_matrix_dn, lambda_matrix_paired, lambda_matrix_unpaired):
     geminal_paired = jnp.dot(orb_matrix_up.T, jnp.dot(lambda_matrix_paired, orb_matrix_dn))
     geminal_unpaired = jnp.dot(orb_matrix_up.T, lambda_matrix_unpaired)

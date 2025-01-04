@@ -446,7 +446,6 @@ def compute_Jastrow_part_api(
     # three-body
     if jastrow_data.jastrow_three_body_flag:
         J3 += compute_Jastrow_three_body_api(jastrow_data.jastrow_three_body_data, r_up_carts, r_dn_carts, debug=debug)
-
     J = J2 + J3
 
     return J
