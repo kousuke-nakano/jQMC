@@ -49,8 +49,9 @@ import numpy as np
 import numpy.typing as npt
 import scipy
 from flax import struct
-from jax import grad, jacrev, jit, vmap
+from jax import grad, jacrev, jit
 from jax import typing as jnpt
+from jax import vmap
 from numpy import linalg as LA
 
 from .structure import Structure_data
@@ -135,6 +136,11 @@ class AOs_data:
     def orbital_indices_np(self) -> npt.NDArray[np.int32]:
         """nucleus_index."""
         return np.array(self.orbital_indices)
+
+    @property
+    def orbital_indices_jnp(self) -> npt.NDArray[np.int32]:
+        """nucleus_index."""
+        return jnp.array(self.orbital_indices, dtype=jnp.int32)
 
     @property
     def atomic_center_carts(self) -> npt.NDArray[np.float64]:
@@ -580,6 +586,7 @@ def _compute_AOs_debug(aos_data: AOs_data, r_carts: npt.NDArray[np.float64]) -> 
 
 @jit
 def _compute_AOs_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
+    # def _compute_AOs_vmapvmap_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     """Compute AO values at the given r_carts.
 
     See compute_AOs_api
@@ -600,7 +607,44 @@ def _compute_AOs_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
 
     AOs_dup = vmap_compute_AOs_dup(c_jnp, Z_jnp, l_jnp, m_jnp, R_carts_jnp, r_carts)
 
-    orbital_indices = jnp.array(aos_data.orbital_indices, dtype=jnp.int32)
+    orbital_indices = aos_data.orbital_indices_jnp
+    num_segments = aos_data.num_ao
+    AOs = jax.ops.segment_sum(AOs_dup, orbital_indices, num_segments=num_segments)
+    return AOs
+
+
+@jit
+# def _compute_AOs_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
+def _compute_AOs_batch_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
+    """Compute AO values at the given r_carts.
+
+    See compute_AOs_api
+
+    """
+    # Indices with respect to the contracted AOs
+    # compute R_n inc. the whole normalization factor
+    R_carts_jnp = aos_data.atomic_center_carts_prim_jnp
+    c_jnp = aos_data.coefficients_jnp
+    Z_jnp = aos_data.exponents_jnp
+    l_jnp = aos_data.angular_momentums_prim_jnp
+    m_jnp = aos_data.magnetic_quantum_numbers_prim_jnp
+
+    N_n_dup = jnp.sqrt(
+        (2.0 ** (2 * l_jnp + 3) * jscipy.special.factorial(l_jnp + 1) * (2 * Z_jnp) ** (l_jnp + 1.5))
+        / (jscipy.special.factorial(2 * l_jnp + 2) * jnp.sqrt(jnp.pi))
+    )
+    N_l_m_dup = jnp.sqrt((2 * l_jnp + 1) / (4 * jnp.pi))
+
+    r_diff = R_carts_jnp[:, None, :] - r_carts[None, :, :]
+    r_squared = jnp.sum(r_diff**2, axis=-1)
+    R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
+    S_l_m_dup = vmap(vmap(_compute_S_l_m_jax, in_axes=(None, None, None, 0)), in_axes=(0, 0, 0, None))(
+        l_jnp, m_jnp, R_carts_jnp, r_carts
+    )
+
+    AOs_dup = N_n_dup[:, None] * R_n_dup * N_l_m_dup[:, None] * S_l_m_dup
+
+    orbital_indices = aos_data.orbital_indices_jnp
     num_segments = aos_data.num_ao
     AOs = jax.ops.segment_sum(AOs_dup, orbital_indices, num_segments=num_segments)
     return AOs
@@ -1293,6 +1337,12 @@ def _compute_primitive_AOs_laplacians_jax(
 
 
 if __name__ == "__main__":
+    import os
+    import random
+    import time
+
+    from .trexio_wrapper import read_trexio_file
+
     log = getLogger("jqmc")
     log.setLevel("DEBUG")
     stream_handler = StreamHandler()
@@ -1301,32 +1351,48 @@ if __name__ == "__main__":
     stream_handler.setFormatter(handler_format)
     log.addHandler(stream_handler)
 
-    num_r_cart_samples = 10
-    num_R_cart_samples = 3
+    trial = 5000
+
+    # """
+    M = 160  # Number of GTO parameters (water, only prim.)
+    N = 4  # Number of r vectors (water)
+    M = 16000  # Number of GTO parameters (benzene, only prim.)
+    N = 100  # Number of r vectors (benzene)
     r_cart_min, r_cart_max = -1.0, 1.0
     R_cart_min, R_cart_max = 0.0, 0.0
-    r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_cart_samples, 3) + r_cart_min
-    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
+    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(N, 3) + r_cart_min
+    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(N, 3) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(M, 3) + R_cart_min
 
-    num_ao = 3
-    num_ao_prim = 3
-    orbital_indices = [0, 1, 2]
-    exponents = [3.0, 1.0, 0.5]
-    coefficients = [1.0, 1.0, 1.0]
-    angular_momentums = [0, 0, 0]
-    magnetic_quantum_numbers = [0, 0, 0]
+    all_lm_pairs = [(l, m) for l in range(6) for m in range(-l, l + 1)]
+    chosen_lm_pairs = random.choices(all_lm_pairs, k=M)
+    l = [p[0] for p in chosen_lm_pairs]
+    m = [p[1] for p in chosen_lm_pairs]
+    c = np.linspace(1.0, 2.0, M)
+    Z = np.linspace(1.0, 1.5, M)
+
+    num_ao = M
+    num_ao_prim = M
+    orbital_indices = jnp.arange(M)
+    exponents = jnp.array(Z)
+    coefficients = jnp.array(c)
+    angular_momentums = jnp.array(l)
+    magnetic_quantum_numbers = jnp.array(m)
+
+    r_up_carts = jnp.array(r_up_carts)
+    r_dn_carts = jnp.array(r_dn_carts)
 
     structure_data = Structure_data(
         pbc_flag=[False, False, False],
         positions=R_carts,
-        atomic_numbers=[0] * num_R_cart_samples,
-        element_symbols=["X"] * num_R_cart_samples,
-        atomic_labels=["X"] * num_R_cart_samples,
+        atomic_numbers=[0] * M,
+        element_symbols=["X"] * M,
+        atomic_labels=["X"] * M,
     )
 
     aos_data = AOs_data(
         structure_data=structure_data,
-        nucleus_index=list(range(num_R_cart_samples)),
+        nucleus_index=list(range(M)),
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         orbital_indices=orbital_indices,
@@ -1335,7 +1401,63 @@ if __name__ == "__main__":
         angular_momentums=angular_momentums,
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
+    # """
 
+    """
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "../", "prototypes", "water_ccpvtz_trexio.hdf5"))
+
+    num_ele_up = geminal_mo_data.num_electron_up
+    num_ele_dn = geminal_mo_data.num_electron_dn
+    r_cart_min, r_cart_max = -3.0, +3.0
+    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
+    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
+
+    r_up_carts = jnp.array(r_up_carts)
+    r_dn_carts = jnp.array(r_dn_carts)
+    """
+
+    print(aos_data)
+
+    aos_jax_vmap_up = _compute_AOs_jax(aos_data=aos_data, r_carts=r_up_carts)
+    aos_jax_vmap_dn = _compute_AOs_jax(aos_data=aos_data, r_carts=r_dn_carts)
+    aos_jax_batch_up = _compute_AOs_batch_jax(aos_data=aos_data, r_carts=r_up_carts)
+    aos_jax_batch_dn = _compute_AOs_batch_jax(aos_data=aos_data, r_carts=r_dn_carts)
+    aos_jax_vmap_up.block_until_ready()
+    aos_jax_vmap_dn.block_until_ready()
+    aos_jax_batch_up.block_until_ready()
+    aos_jax_batch_dn.block_until_ready()
+
+    np.testing.assert_array_almost_equal(aos_jax_vmap_up, aos_jax_batch_up, decimal=7)
+    np.testing.assert_array_almost_equal(aos_jax_vmap_dn, aos_jax_batch_dn, decimal=7)
+
+    start = time.perf_counter()
+    for _ in range(trial):
+        aos_jax_vmap_up = _compute_AOs_jax(aos_data=aos_data, r_carts=r_up_carts)
+        aos_jax_vmap_dn = _compute_AOs_jax(aos_data=aos_data, r_carts=r_dn_carts)
+        aos_jax_vmap_up.block_until_ready()
+        aos_jax_vmap_dn.block_until_ready()
+    end = time.perf_counter()
+    print(f"Comput. AOs(vmap-vmap) elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+    time.sleep(3)
+
+    start = time.perf_counter()
+    for _ in range(trial):
+        aos_jax_batch_up = _compute_AOs_batch_jax(aos_data=aos_data, r_carts=r_up_carts)
+        aos_jax_batch_dn = _compute_AOs_batch_jax(aos_data=aos_data, r_carts=r_dn_carts)
+        aos_jax_batch_up.block_until_ready()
+        aos_jax_batch_dn.block_until_ready()
+    end = time.perf_counter()
+    print(f"Comput. AOs(batch) elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+    time.sleep(3)
+
+    """
     ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = compute_AOs_grad_api(
         aos_data=aos_data, r_carts=r_carts
     )
@@ -1359,3 +1481,4 @@ if __name__ == "__main__":
 
     np.testing.assert_array_almost_equal(ao_matrix_laplacian_auto, ao_matrix_laplacian_numerical, decimal=5)
     np.testing.assert_array_almost_equal(ao_matrix_laplacian_auto, ao_matrix_laplacian_numerical, decimal=5)
+    """

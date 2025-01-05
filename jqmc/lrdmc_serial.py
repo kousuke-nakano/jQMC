@@ -415,6 +415,7 @@ class GFMC:
                 )
                 A_old_inv = jnp.linalg.inv(A_old)
                 A_old_inv.block_until_ready()
+                start_projection_non_diagonal_kinetic_part_comput = time.perf_counter()
                 mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
                     compute_discretized_kinetic_energy_api_fast_update(
                         alat=self.__alat,
@@ -1015,7 +1016,7 @@ if __name__ == "__main__":
     max_time = 86400
     tau = 0.10
     alat = 0.30
-    num_branching = 100
+    num_branching = 20
     non_local_move = "tmove"
 
     num_gfmc_warmup_steps = 5
