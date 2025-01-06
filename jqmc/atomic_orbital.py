@@ -49,9 +49,8 @@ import numpy as np
 import numpy.typing as npt
 import scipy
 from flax import struct
-from jax import grad, jacrev, jit
+from jax import grad, jacrev, jit, vmap
 from jax import typing as jnpt
-from jax import vmap
 from numpy import linalg as LA
 
 from .structure import Structure_data
@@ -1340,6 +1339,9 @@ if __name__ == "__main__":
     import os
     import random
     import time
+    from functools import partial
+
+    from jax.experimental import sparse
 
     from .trexio_wrapper import read_trexio_file
 
@@ -1356,8 +1358,8 @@ if __name__ == "__main__":
     # """
     M = 160  # Number of GTO parameters (water, only prim.)
     N = 4  # Number of r vectors (water)
-    M = 16000  # Number of GTO parameters (benzene, only prim.)
-    N = 100  # Number of r vectors (benzene)
+    M = 1600  # Number of GTO parameters (benzene, only prim.)
+    N = 10  # Number of r vectors (benzene)
     r_cart_min, r_cart_max = -1.0, 1.0
     R_cart_min, R_cart_max = 0.0, 0.0
     r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(N, 3) + r_cart_min
@@ -1423,7 +1425,7 @@ if __name__ == "__main__":
     r_dn_carts = jnp.array(r_dn_carts)
     """
 
-    print(aos_data)
+    # print(aos_data)
 
     aos_jax_vmap_up = _compute_AOs_jax(aos_data=aos_data, r_carts=r_up_carts)
     aos_jax_vmap_dn = _compute_AOs_jax(aos_data=aos_data, r_carts=r_dn_carts)
@@ -1455,6 +1457,157 @@ if __name__ == "__main__":
         aos_jax_batch_dn.block_until_ready()
     end = time.perf_counter()
     print(f"Comput. AOs(batch) elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+    time.sleep(3)
+
+    # Indices with respect to the contracted AOs
+    # compute R_n inc. the whole normalization factor
+    R_carts_jnp = aos_data.atomic_center_carts_prim_jnp
+    c_jnp = aos_data.coefficients_jnp
+    Z_jnp = aos_data.exponents_jnp
+    l_jnp = aos_data.angular_momentums_prim_jnp
+    m_jnp = aos_data.magnetic_quantum_numbers_prim_jnp
+
+    r_diff = R_carts_jnp[:, None, :] - r_up_carts[None, :, :]
+    r_squared = jnp.sum(r_diff**2, axis=-1)
+
+    orbital_indices = aos_data.orbital_indices_jnp
+    num_segments = aos_data.num_ao
+    oh = jax.nn.one_hot(orbital_indices, num_segments, dtype=jnp.float64)
+    oh_sp = sparse.BCOO.fromdense(oh)
+
+    @jit
+    def compute_N_n_dup():
+        N_n_dup = jnp.sqrt(
+            (2.0 ** (2 * l_jnp + 3) * jscipy.special.factorial(l_jnp + 1) * (2 * Z_jnp) ** (l_jnp + 1.5))
+            / (jscipy.special.factorial(2 * l_jnp + 2) * jnp.sqrt(jnp.pi))
+        )
+        return N_n_dup
+
+    @jit
+    def compute_N_l_m_dup():
+        N_l_m_dup = jnp.sqrt((2 * l_jnp + 1) / (4 * jnp.pi))
+        return N_l_m_dup
+
+    @jit
+    def compute_R_n_dup():
+        R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
+        return R_n_dup
+
+    @jit
+    def compute_S_l_m_dup():
+        S_l_m_dup = vmap(vmap(_compute_S_l_m_jax, in_axes=(None, None, None, 0)), in_axes=(0, 0, 0, None))(
+            l_jnp, m_jnp, R_carts_jnp, r_up_carts
+        )
+        return S_l_m_dup
+
+    @jit
+    def compute_AOs_dup(N_n_dup, R_n_dup, N_l_m_dup, S_l_m_dup):
+        AOs_dup = N_n_dup[:, None] * R_n_dup * N_l_m_dup[:, None] * S_l_m_dup
+        return AOs_dup
+
+    @partial(jit, static_argnums=(2))
+    def fast_segment_sum(data, indices, num_segments):
+        output_shape = (num_segments,) + data.shape[1:]
+        init = jnp.zeros(output_shape, dtype=data.dtype)
+        result = init.at[indices].add(data)
+        return result
+
+    @partial(jit, static_argnums=(2))
+    def segment_sum_with_matmul(data, indices, num_segments):
+        oh = jax.nn.one_hot(indices, num_segments, dtype=data.dtype)
+        return oh.T @ data
+
+    @jit
+    def segment_sum_with_cached_oh(oh, data):
+        return oh.T @ data
+
+    @jit
+    def segment_sum_with_cached_oh_sp(oh_sp, data):
+        return oh_sp.T @ data
+
+    @jit
+    def compute_AOs_normal(AOs_dup):
+        AOs = jax.ops.segment_sum(AOs_dup, orbital_indices, num_segments=num_segments, indices_are_sorted=False)
+        return AOs
+
+    @jit
+    def compute_AOs_fast(AOs_dup):
+        # AOs = jax.ops.segment_sum(AOs_dup, orbital_indices, num_segments=num_segments, indices_are_sorted=False)
+        # AOs = fast_segment_sum(AOs_dup, orbital_indices, num_segments=num_segments)
+        # AOs = segment_sum_with_matmul(AOs_dup, orbital_indices, num_segments=num_segments)
+        # AOs = segment_sum_with_cached_oh(oh, AOs_dup)
+        AOs = segment_sum_with_cached_oh_sp(oh_sp, AOs_dup)
+        return AOs
+
+    N_n_dup = compute_N_n_dup()
+    N_n_dup.block_until_ready()
+    N_l_m_dup = compute_N_l_m_dup()
+    N_l_m_dup.block_until_ready()
+    R_n_dup = compute_R_n_dup()
+    R_n_dup.block_until_ready()
+    S_l_m_dup = compute_S_l_m_dup()
+    S_l_m_dup.block_until_ready()
+    AOs_dup = compute_AOs_dup(N_n_dup, R_n_dup, N_l_m_dup, S_l_m_dup)
+    AOs_dup.block_until_ready()
+    AOs = compute_AOs_normal(AOs_dup)
+    AOs.block_until_ready()
+    AOs_fast = compute_AOs_fast(AOs_dup)
+    AOs_fast.block_until_ready()
+
+    start = time.perf_counter()
+    for _ in range(trial):
+        N_n_dup = compute_N_n_dup()
+        N_n_dup.block_until_ready()
+    end = time.perf_counter()
+    print(f"Comput. N_n_dup(batch) elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+    time.sleep(3)
+
+    start = time.perf_counter()
+    for _ in range(trial):
+        N_l_m_dup = compute_N_l_m_dup()
+        N_l_m_dup.block_until_ready()
+    end = time.perf_counter()
+    print(f"Comput. N_l_m_dup(batch) elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+    time.sleep(3)
+
+    start = time.perf_counter()
+    for _ in range(trial):
+        R_n_dup = compute_R_n_dup()
+        R_n_dup.block_until_ready()
+    end = time.perf_counter()
+    print(f"Comput. R_n_dup(batch) elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+    time.sleep(3)
+
+    start = time.perf_counter()
+    for _ in range(trial):
+        S_l_m_dup = compute_S_l_m_dup()
+        S_l_m_dup.block_until_ready()
+    end = time.perf_counter()
+    print(f"Comput. S_l_m_dup(batch) elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+    time.sleep(3)
+
+    start = time.perf_counter()
+    for _ in range(trial):
+        AOs_dup = compute_AOs_dup(N_n_dup, R_n_dup, N_l_m_dup, S_l_m_dup)
+        AOs_dup.block_until_ready()
+    end = time.perf_counter()
+    print(f"Comput. AOs_dup(batch) elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+    time.sleep(3)
+
+    start = time.perf_counter()
+    for _ in range(trial):
+        AOs = compute_AOs_normal(AOs_dup)
+        AOs.block_until_ready()
+    end = time.perf_counter()
+    print(f"Comput. AOs-normal(batch) elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+    time.sleep(3)
+
+    start = time.perf_counter()
+    for _ in range(trial):
+        AOs_fast = compute_AOs_fast(AOs_dup)
+        AOs_fast.block_until_ready()
+    end = time.perf_counter()
+    print(f"Comput. AOs-fast(batch) elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
     time.sleep(3)
 
     """
