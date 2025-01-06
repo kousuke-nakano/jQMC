@@ -40,6 +40,7 @@ Todo:
 # POSSIBILITY OF SUCH DAMAGE.
 
 from dataclasses import dataclass, field
+from functools import partial
 from logging import Formatter, StreamHandler, getLogger
 
 import jax
@@ -49,8 +50,9 @@ import numpy as np
 import numpy.typing as npt
 import scipy
 from flax import struct
-from jax import grad, jacrev, jit, vmap
+from jax import grad, jacrev, jit
 from jax import typing as jnpt
+from jax import vmap
 from numpy import linalg as LA
 
 from .structure import Structure_data
@@ -132,6 +134,11 @@ class AOs_data:
         return np.array(self.nucleus_index)
 
     @property
+    def nucleus_index_prim_np(self) -> npt.NDArray[np.int32]:
+        """nucleus_index."""
+        return np.array(self.nucleus_index)[self.orbital_indices_np]
+
+    @property
     def orbital_indices_np(self) -> npt.NDArray[np.int32]:
         """nucleus_index."""
         return np.array(self.orbital_indices)
@@ -164,6 +171,23 @@ class AOs_data:
         # this is super slow!!! Do not use list comprehension.
         # return jnp.array([self.structure_data.positions_cart[i] for i in self.nucleus_index])
         return jnp.array(self.structure_data.positions_cart)[self.nucleus_index_np]
+
+    @property
+    def atomic_center_carts_unique_jnp(self) -> jax.Array:
+        """Atomic positions in cartesian.
+
+        Returns atomic positions in cartesian
+
+        Returns:
+            jax.Array: atomic positions in cartesian
+        """
+        _, first_indices = np.unique(self.nucleus_index_np, return_index=True)
+        sorted_order = np.argsort(first_indices)
+        return jnp.array(self.structure_data.positions_cart)[sorted_order]
+
+    @property
+    def global_l_m_index(self) -> jax.Array:
+        return self.angular_momentums_prim_jnp**2 + (self.magnetic_quantum_numbers_prim_jnp + self.angular_momentums_prim_jnp)
 
     @property
     def atomic_center_carts_prim(self) -> npt.NDArray[np.float64]:
@@ -623,10 +647,11 @@ def _compute_AOs_batch_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.A
     # Indices with respect to the contracted AOs
     # compute R_n inc. the whole normalization factor
     R_carts_jnp = aos_data.atomic_center_carts_prim_jnp
+    R_carts_unique_jnp = aos_data.atomic_center_carts_unique_jnp
     c_jnp = aos_data.coefficients_jnp
     Z_jnp = aos_data.exponents_jnp
     l_jnp = aos_data.angular_momentums_prim_jnp
-    m_jnp = aos_data.magnetic_quantum_numbers_prim_jnp
+    # m_jnp = aos_data.magnetic_quantum_numbers_prim_jnp
 
     N_n_dup = jnp.sqrt(
         (2.0 ** (2 * l_jnp + 3) * jscipy.special.factorial(l_jnp + 1) * (2 * Z_jnp) ** (l_jnp + 1.5))
@@ -637,9 +662,16 @@ def _compute_AOs_batch_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.A
     r_diff = R_carts_jnp[:, None, :] - r_carts[None, :, :]
     r_squared = jnp.sum(r_diff**2, axis=-1)
     R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
-    S_l_m_dup = vmap(vmap(_compute_S_l_m_jax, in_axes=(None, None, None, 0)), in_axes=(0, 0, 0, None))(
-        l_jnp, m_jnp, R_carts_jnp, r_carts
+
+    r_diff = r_carts[None, :, :] - R_carts_unique_jnp[:, None, :]
+    max_l, S_l_m_dup_all_l_m = _compute_S_l_m_batch_jax(r_diff)
+    S_l_m_dup_all_l_m_reshaped = S_l_m_dup_all_l_m.reshape(
+        (S_l_m_dup_all_l_m.shape[0] * S_l_m_dup_all_l_m.shape[1], S_l_m_dup_all_l_m.shape[2]), order="F"
     )
+    global_l_m_index = aos_data.global_l_m_index
+    nucleus_index = aos_data.nucleus_index_prim_np
+    global_R_l_m_index = nucleus_index * max_l + global_l_m_index
+    S_l_m_dup = S_l_m_dup_all_l_m_reshaped[global_R_l_m_index]
 
     AOs_dup = N_n_dup[:, None] * R_n_dup * N_l_m_dup[:, None] * S_l_m_dup
 
@@ -1133,6 +1165,644 @@ def _compute_S_l_m_jax(
     return jnp.select(conditions, S_l_m_values, default=jnp.nan)
 
 
+@jit
+def _compute_S_l_m_batch_jax(
+    r_diff: npt.NDArray[np.float64],
+) -> float:
+    r"""Solid harmonics part of a primitve AO.
+
+    Compute the solid harmonics, i.e., r^l * spherical hamonics part (c.f., regular solid harmonics) of a given AO
+
+    Args:
+        angular_momentum (int): Angular momentum of the AO, i.e., l
+        magnetic_quantum_number (int): Magnetic quantum number of the AO, i.e m = -l .... +l
+        atomic_center_cart (npt.NDArray[np.float64]): Center of the nucleus associated to the AO.
+        r_cart (npt.NDArray[np.float64]): Cartesian coordinate of an electron
+
+    Returns:
+        float: Value of the spherical harmonics part * r^l (i.e., regular solid harmonics).
+
+    Note:
+        See compute_S_l_m_debug for the details.
+    """
+    x, y, z = r_diff[..., 0], r_diff[..., 1], r_diff[..., 2]
+    r_norm = jnp.sqrt(x**2 + y**2 + z**2)
+
+    def lnorm(l):
+        return jnp.sqrt((4 * jnp.pi) / (2 * l + 1))
+
+    """see https://en.wikipedia.org/wiki/Table_of_spherical_harmonics#Real_spherical_harmonics (l=0-4)"""
+    """Useful tool to generate spherical harmonics generator [https://github.com/elerac/sh_table]"""
+    l_max = 49
+    S_l_m_values = jnp.array(
+        [
+            # s orbital
+            lnorm(l=0) * 1.0 / 2.0 * jnp.sqrt(1.0 / jnp.pi) * r_norm**0.0,  # (l, m) == (0, 0)
+            # p orbitals
+            lnorm(l=1) * jnp.sqrt(3.0 / (4 * jnp.pi)) * y,  # (l, m) == (1, -1)
+            lnorm(l=1) * jnp.sqrt(3.0 / (4 * jnp.pi)) * z,  # (l, m) == (1, 0)
+            lnorm(l=1) * jnp.sqrt(3.0 / (4 * jnp.pi)) * x,  # (l, m) == (1, 1)
+            # d orbitals
+            lnorm(l=2) * 1.0 / 2.0 * jnp.sqrt(15.0 / (jnp.pi)) * x * y,  # (l, m) == (2, -2)
+            lnorm(l=2) * 1.0 / 2.0 * jnp.sqrt(15.0 / (jnp.pi)) * y * z,  # (l, m) == (2, -1)
+            lnorm(l=2) * 1.0 / 4.0 * jnp.sqrt(5.0 / (jnp.pi)) * (3 * z**2 - r_norm**2),  # (l, m) == (2, 0):
+            lnorm(l=2) * 1.0 / 2.0 * jnp.sqrt(15.0 / (jnp.pi)) * x * z,  # (l, m) == (2, 1)
+            lnorm(l=2) * 1.0 / 4.0 * jnp.sqrt(15.0 / (jnp.pi)) * (x**2 - y**2),  # (l, m) == (2, 2)
+            # f orbitals
+            lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * y * (3 * x**2 - y**2),  # (l, m) == (3, -3)
+            lnorm(l=3) * 1.0 / 2.0 * jnp.sqrt(105.0 / (jnp.pi)) * x * y * z,  # (l, m) == (3, -2)
+            lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(21.0 / (2 * jnp.pi)) * y * (5 * z**2 - r_norm**2),  # (l, m) == (3, -1)
+            lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(7.0 / (jnp.pi)) * (5 * z**3 - 3 * z * r_norm**2),  # (l, m) == (3, 0)
+            lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(21.0 / (2 * jnp.pi)) * x * (5 * z**2 - r_norm**2),  # (l, m) == (3, 1)
+            lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(105.0 / (jnp.pi)) * (x**2 - y**2) * z,  # (l, m) == (3, 2)
+            lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * x * (x**2 - 3 * y**2),  # (l, m) == (3, 3)
+            # g orbitals
+            lnorm(l=4) * 3.0 / 4.0 * jnp.sqrt(35.0 / (jnp.pi)) * x * y * (x**2 - y**2),  # (l, m) == (4, -4)
+            lnorm(l=4) * 3.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * y * z * (3 * x**2 - y**2),  # (l, m) == (4, -3)
+            lnorm(l=4) * 3.0 / 4.0 * jnp.sqrt(5.0 / (jnp.pi)) * x * y * (7 * z**2 - r_norm**2),  # (l, m) == (4, -2)
+            (lnorm(l=4) * 3.0 / 4.0 * jnp.sqrt(5.0 / (2 * jnp.pi)) * y * (7 * z**3 - 3 * z * r_norm**2)),  # (l, m) == (4, -1)
+            (
+                lnorm(l=4) * 3.0 / 16.0 * jnp.sqrt(1.0 / (jnp.pi)) * (35 * z**4 - 30 * z**2 * r_norm**2 + 3 * r_norm**4)
+            ),  # (l, m) == (4, 0)
+            (lnorm(l=4) * 3.0 / 4.0 * jnp.sqrt(5.0 / (2 * jnp.pi)) * x * (7 * z**3 - 3 * z * r_norm**2)),  # (l, m) == (4, 1)
+            (lnorm(l=4) * 3.0 / 8.0 * jnp.sqrt(5.0 / (jnp.pi)) * (x**2 - y**2) * (7 * z**2 - r_norm**2)),  # (l, m) == (4, 2)
+            lnorm(l=4) * (3.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * x * z * (x**2 - 3 * y**2)),  # (l, m) == (4, 3)
+            (
+                lnorm(l=4) * 3.0 / 16.0 * jnp.sqrt(35.0 / (jnp.pi)) * (x**2 * (x**2 - 3 * y**2) - y**2 * (3 * x**2 - y**2))
+            ),  # (l, m) == (4, 4)
+            lnorm(5)
+            * 3.0
+            / 16.0
+            * jnp.sqrt(77.0 / (2 * jnp.pi))
+            * (5 * x**4 * y - 10 * x**2 * y**3 + y**5),  # (l, m) == (5, -5)
+            lnorm(5) * 3.0 / 16.0 * jnp.sqrt(385.0 / jnp.pi) * 4 * x * y * z * (x**2 - y**2),  # (l, m) == (5, -4)
+            lnorm(5)
+            * 1.0
+            / 16.0
+            * jnp.sqrt(385.0 / (2 * jnp.pi))
+            * -1
+            * (y**3 - 3 * x**2 * y)
+            * (9 * z**2 - (x**2 + y**2 + z**2)),  # (l, m) == (5, -3)
+            lnorm(5)
+            * 1.0
+            / 8.0
+            * jnp.sqrt(1155 / jnp.pi)
+            * 2
+            * x
+            * y
+            * (3 * z**3 - z * (x**2 + y**2 + z**2)),  # (l, m) == (5, -2)
+            lnorm(5)
+            * 1.0
+            / 16.0
+            * jnp.sqrt(165 / jnp.pi)
+            * y
+            * (21 * z**4 - 14 * z**2 * (x**2 + y**2 + z**2) + (x**2 + y**2 + z**2) ** 2),  # (l, m) == (5, -1)
+            lnorm(5)
+            * 1.0
+            / 16.0
+            * jnp.sqrt(11 / jnp.pi)
+            * (63 * z**5 - 70 * z**3 * (x**2 + y**2 + z**2) + 15 * z * (x**2 + y**2 + z**2) ** 2),  # (l, m) == (5, 0)
+            lnorm(5)
+            * 1.0
+            / 16.0
+            * jnp.sqrt(165 / jnp.pi)
+            * x
+            * (21 * z**4 - 14 * z**2 * (x**2 + y**2 + z**2) + (x**2 + y**2 + z**2) ** 2),  # (l, m) == (5, 1)
+            lnorm(5)
+            * 1.0
+            / 8.0
+            * jnp.sqrt(1155 / jnp.pi)
+            * (x**2 - y**2)
+            * (3 * z**3 - z * (x**2 + y**2 + z**2)),  # (l, m) == (5, 2)
+            lnorm(5)
+            * 1.0
+            / 16.0
+            * jnp.sqrt(385.0 / (2 * jnp.pi))
+            * (x**3 - 3 * x * y**2)
+            * (9 * z**2 - (x**2 + y**2 + z**2)),  # (l, m) == (5, 3)
+            lnorm(5)
+            * 3.0
+            / 16.0
+            * jnp.sqrt(385.0 / jnp.pi)
+            * (x**2 * z * (x**2 - 3 * y**2) - y**2 * z * (3 * x**2 - y**2)),  # (l, m) == (5, 4)
+            lnorm(5)
+            * 3.0
+            / 16.0
+            * jnp.sqrt(77.0 / (2 * jnp.pi))
+            * (x**5 - 10 * x**3 * y**2 + 5 * x * y**4),  # (l, m) == (5, 5)
+            lnorm(6)
+            * 1.0
+            / 64.0
+            * jnp.sqrt(6006.0 / jnp.pi)
+            * (6 * x**5 * y - 20 * x**3 * y**3 + 6 * x * y**5),  # (l, m) == (6, -6)
+            lnorm(6)
+            * 3.0
+            / 32.0
+            * jnp.sqrt(2002.0 / jnp.pi)
+            * z
+            * (5 * x**4 * y - 10 * x**2 * y**3 + y**5),  # (l, m) == (6, -5)
+            lnorm(6)
+            * 3.0
+            / 32.0
+            * jnp.sqrt(91.0 / jnp.pi)
+            * 4
+            * x
+            * y
+            * (11 * z**2 - (x**2 + y**2 + z**2))
+            * (x**2 - y**2),  # (l, m) == (6, -4)
+            lnorm(6)
+            * 1.0
+            / 32.0
+            * jnp.sqrt(2730.0 / jnp.pi)
+            * -1
+            * (11 * z**3 - 3 * z * (x**2 + y**2 + z**2))
+            * (y**3 - 3 * x**2 * y),  # (l, m) == (6, -3)
+            lnorm(6)
+            * 1.0
+            / 64.0
+            * jnp.sqrt(2730.0 / jnp.pi)
+            * 2
+            * x
+            * y
+            * (33 * z**4 - 18 * z**2 * (x**2 + y**2 + z**2) + (x**2 + y**2 + z**2) ** 2),  # (l, m) == (6, -2)
+            lnorm(6)
+            * 1.0
+            / 16.0
+            * jnp.sqrt(273.0 / jnp.pi)
+            * y
+            * (33 * z**5 - 30 * z**3 * (x**2 + y**2 + z**2) + 5 * z * (x**2 + y**2 + z**2) ** 2),  # (l, m) == (6, -1)
+            lnorm(6)
+            * 1.0
+            / 32.0
+            * jnp.sqrt(13.0 / jnp.pi)
+            * (
+                231 * z**6
+                - 315 * z**4 * (x**2 + y**2 + z**2)
+                + 105 * z**2 * (x**2 + y**2 + z**2) ** 2
+                - 5 * (x**2 + y**2 + z**2) ** 3
+            ),  # (l, m) == (6, 0)
+            lnorm(6)
+            * 1.0
+            / 16.0
+            * jnp.sqrt(273.0 / jnp.pi)
+            * x
+            * (33 * z**5 - 30 * z**3 * (x**2 + y**2 + z**2) + 5 * z * (x**2 + y**2 + z**2) ** 2),  # (l, m) == (6, 1)
+            lnorm(6)
+            * 1.0
+            / 64.0
+            * jnp.sqrt(2730.0 / jnp.pi)
+            * (x**2 - y**2)
+            * (33 * z**4 - 18 * z**2 * (x**2 + y**2 + z**2) + (x**2 + y**2 + z**2) ** 2),  # (l, m) == (6, 2)
+            lnorm(6)
+            * 1.0
+            / 32.0
+            * jnp.sqrt(2730.0 / jnp.pi)
+            * (11 * z**3 - 3 * z * (x**2 + y**2 + z**2))
+            * (x**3 - 3 * x * y**2),  # (l, m) == (6, 3)
+            lnorm(6)
+            * 3.0
+            / 32.0
+            * jnp.sqrt(91.0 / jnp.pi)
+            * (11 * z**2 - (x**2 + y**2 + z**2))
+            * (x**2 * (x**2 - 3 * y**2) + y**2 * (y**2 - 3 * x**2)),  # (l, m) == (6, 4)
+            lnorm(6)
+            * 3.0
+            / 32.0
+            * jnp.sqrt(2002.0 / jnp.pi)
+            * z
+            * (x**5 - 10 * x**3 * y**2 + 5 * x * y**4),  # (l, m) == (6, 5)
+            lnorm(6)
+            * 1.0
+            / 64.0
+            * jnp.sqrt(6006.0 / jnp.pi)
+            * (x**6 - 15 * x**4 * y**2 + 15 * x**2 * y**4 - y**6),  # (l, m) == (6, 6)
+        ]
+    )
+
+    return l_max, S_l_m_values
+
+
+@jit
+def _compute_S_l_m_batch_jax_old(
+    l: int,
+    m: int,
+    R_cart: npt.NDArray[np.float64],
+    r_carts: npt.NDArray[np.float64],
+) -> float:
+    r"""Solid harmonics part of a primitve AO.
+
+    Compute the solid harmonics, i.e., r^l * spherical hamonics part (c.f., regular solid harmonics) of a given AO
+
+    Args:
+        angular_momentum (int): Angular momentum of the AO, i.e., l
+        magnetic_quantum_number (int): Magnetic quantum number of the AO, i.e m = -l .... +l
+        atomic_center_cart (npt.NDArray[np.float64]): Center of the nucleus associated to the AO.
+        r_cart (npt.NDArray[np.float64]): Cartesian coordinate of an electron
+
+    Returns:
+        float: Value of the spherical harmonics part * r^l (i.e., regular solid harmonics).
+
+    Note:
+        See compute_S_l_m_debug for the details.
+    """
+    r_cart_rel = r_carts[:, :] - R_cart[None, :]
+    x, y, z = r_cart_rel[..., 0], r_cart_rel[..., 1], r_cart_rel[..., 2]
+    r_norm = jnp.sqrt(x**2 + y**2 + z**2)
+
+    conditions = jnp.array(
+        [
+            (l == 0) & (m == 0),
+            (l == 1) & (m == -1),
+            (l == 1) & (m == 0),
+            (l == 1) & (m == 1),
+            (l == 2) & (m == -2),
+            (l == 2) & (m == -1),
+            (l == 2) & (m == 0),
+            (l == 2) & (m == 1),
+            (l == 2) & (m == 2),
+            (l == 3) & (m == -3),
+            (l == 3) & (m == -2),
+            (l == 3) & (m == -1),
+            (l == 3) & (m == 0),
+            (l == 3) & (m == 1),
+            (l == 3) & (m == 2),
+            (l == 3) & (m == 3),
+            (l == 4) & (m == -4),
+            (l == 4) & (m == -3),
+            (l == 4) & (m == -2),
+            (l == 4) & (m == -1),
+            (l == 4) & (m == 0),
+            (l == 4) & (m == 1),
+            (l == 4) & (m == 2),
+            (l == 4) & (m == 3),
+            (l == 4) & (m == 4),
+            (l == 5) & (m == -5),
+            (l == 5) & (m == -4),
+            (l == 5) & (m == -3),
+            (l == 5) & (m == -2),
+            (l == 5) & (m == -1),
+            (l == 5) & (m == 0),
+            (l == 5) & (m == 1),
+            (l == 5) & (m == 2),
+            (l == 5) & (m == 3),
+            (l == 5) & (m == 4),
+            (l == 5) & (m == 5),
+            (l == 6) & (m == -6),
+            (l == 6) & (m == -5),
+            (l == 6) & (m == -4),
+            (l == 6) & (m == -3),
+            (l == 6) & (m == -2),
+            (l == 6) & (m == -1),
+            (l == 6) & (m == 0),
+            (l == 6) & (m == 1),
+            (l == 6) & (m == 2),
+            (l == 6) & (m == 3),
+            (l == 6) & (m == 4),
+            (l == 6) & (m == 5),
+            (l == 6) & (m == 6),
+        ]
+    )
+
+    idx = jnp.argmax(conditions)
+
+    def lnorm(l):
+        return jnp.sqrt((4 * jnp.pi) / (2 * l + 1))
+
+    # s orbital
+    def branch_l0_m_0(l, x, y, z, r_norm):
+        return lnorm(l=0) * 1.0 / 2.0 * jnp.sqrt(1.0 / jnp.pi) * r_norm**0.0  # (l, m) == (0, 0)
+
+    # p orbital
+    def branch_l1_m_m1(l, x, y, z, r_norm):
+        return lnorm(l=1) * jnp.sqrt(3.0 / (4 * jnp.pi)) * y  # (l, m) == (1, -1)
+
+    def branch_l1_m_0(l, x, y, z, r_norm):
+        return lnorm(l=1) * jnp.sqrt(3.0 / (4 * jnp.pi)) * z  # (l, m) == (1, 0)
+
+    def branch_l1_m_p1(l, x, y, z, r_norm):
+        return lnorm(l=1) * jnp.sqrt(3.0 / (4 * jnp.pi)) * x  # (l, m) == (1, 1)
+
+    # d orbitals
+    def branch_l2_m_m2(l, x, y, z, r_norm):
+        return lnorm(l=2) * 1.0 / 2.0 * jnp.sqrt(15.0 / (jnp.pi)) * x * y  # (l, m) == (2, -2)
+
+    def branch_l2_m_m1(l, x, y, z, r_norm):
+        return lnorm(l=2) * 1.0 / 2.0 * jnp.sqrt(15.0 / (jnp.pi)) * y * z  # (l, m) == (2, -1)
+
+    def branch_l2_m_0(l, x, y, z, r_norm):
+        return lnorm(l=2) * 1.0 / 4.0 * jnp.sqrt(5.0 / (jnp.pi)) * (3 * z**2 - r_norm**2)  # (l, m) == (2, 0):
+
+    def branch_l2_m_p1(l, x, y, z, r_norm):
+        return lnorm(l=2) * 1.0 / 2.0 * jnp.sqrt(15.0 / (jnp.pi)) * x * z  # (l, m) == (2, 1)
+
+    def branch_l2_m_p2(l, x, y, z, r_norm):
+        return lnorm(l=2) * 1.0 / 4.0 * jnp.sqrt(15.0 / (jnp.pi)) * (x**2 - y**2)  # (l, m) == (2, 2)
+
+    # f orbitals
+    def branch_l3_m_m3(l, x, y, z, r_norm):
+        return lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * y * (3 * x**2 - y**2)  # (l, m) == (3, -3)
+
+    def branch_l3_m_m2(l, x, y, z, r_norm):
+        return lnorm(l=3) * 1.0 / 2.0 * jnp.sqrt(105.0 / (jnp.pi)) * x * y * z  # (l, m) == (3, -2)
+
+    def branch_l3_m_m1(l, x, y, z, r_norm):
+        return lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(21.0 / (2 * jnp.pi)) * y * (5 * z**2 - r_norm**2)  # (l, m) == (3, -1)
+
+    def branch_l3_m_0(l, x, y, z, r_norm):
+        return lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(7.0 / (jnp.pi)) * (5 * z**3 - 3 * z * r_norm**2)  # (l, m) == (3, 0)
+
+    def branch_l3_m_p1(l, x, y, z, r_norm):
+        return lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(21.0 / (2 * jnp.pi)) * x * (5 * z**2 - r_norm**2)  # (l, m) == (3, 1)
+
+    def branch_l3_m_p2(l, x, y, z, r_norm):
+        return lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(105.0 / (jnp.pi)) * (x**2 - y**2) * z  # (l, m) == (3, 2)
+
+    def branch_l3_m_p3(l, x, y, z, r_norm):
+        return lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * x * (x**2 - 3 * y**2)  # (l, m) == (3, 3)
+
+    # g orbitals
+    def branch_l4_m_m4(l, x, y, z, r_norm):
+        return lnorm(l=4) * 3.0 / 4.0 * jnp.sqrt(35.0 / (jnp.pi)) * x * y * (x**2 - y**2)  # (l, m) == (4, -4)
+
+    def branch_l4_m_m3(l, x, y, z, r_norm):
+        return lnorm(l=4) * 3.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * y * z * (3 * x**2 - y**2)  # (l, m) == (4, -3)
+
+    def branch_l4_m_m2(l, x, y, z, r_norm):
+        return lnorm(l=4) * 3.0 / 4.0 * jnp.sqrt(5.0 / (jnp.pi)) * x * y * (7 * z**2 - r_norm**2)  # (l, m) == (4, -2)
+
+    def branch_l4_m_m1(l, x, y, z, r_norm):
+        return lnorm(l=4) * 3.0 / 4.0 * jnp.sqrt(5.0 / (2 * jnp.pi)) * y * (7 * z**3 - 3 * z * r_norm**2)  # (l, m) == (4, -1)
+
+    def branch_l4_m_0(l, x, y, z, r_norm):
+        return (
+            lnorm(l=4) * 3.0 / 16.0 * jnp.sqrt(1.0 / (jnp.pi)) * (35 * z**4 - 30 * z**2 * r_norm**2 + 3 * r_norm**4)
+        )  # (l, m) == (4, 0)
+
+    def branch_l4_m_p1(l, x, y, z, r_norm):
+        return lnorm(l=4) * 3.0 / 4.0 * jnp.sqrt(5.0 / (2 * jnp.pi)) * x * (7 * z**3 - 3 * z * r_norm**2)  # (l, m) == (4, 1)
+
+    def branch_l4_m_p2(l, x, y, z, r_norm):
+        return lnorm(l=4) * 3.0 / 8.0 * jnp.sqrt(5.0 / (jnp.pi)) * (x**2 - y**2) * (7 * z**2 - r_norm**2)  # (l, m) == (4, 2)
+
+    def branch_l4_m_p3(l, x, y, z, r_norm):
+        return lnorm(l=4) * (3.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * x * z * (x**2 - 3 * y**2))  # (l, m) == (4, 3)
+
+    def branch_l4_m_p4(l, x, y, z, r_norm):
+        return (
+            lnorm(l=4) * 3.0 / 16.0 * jnp.sqrt(35.0 / (jnp.pi)) * (x**2 * (x**2 - 3 * y**2) - y**2 * (3 * x**2 - y**2))
+        )  # (l, m) == (4, 4)
+
+    # h orbitals
+    def branch_l5_m_m5(l, x, y, z, r_norm):
+        return (
+            lnorm(5) * 3.0 / 16.0 * jnp.sqrt(77.0 / (2 * jnp.pi)) * (5 * x**4 * y - 10 * x**2 * y**3 + y**5)
+        )  # (l, m) == (5, -5)
+
+    def branch_l5_m_m4(l, x, y, z, r_norm):
+        return lnorm(5) * 3.0 / 16.0 * jnp.sqrt(385.0 / jnp.pi) * 4 * x * y * z * (x**2 - y**2)  # (l, m) == (5, -4)
+
+    def branch_l5_m_m3(l, x, y, z, r_norm):
+        return (
+            lnorm(5)
+            * 1.0
+            / 16.0
+            * jnp.sqrt(385.0 / (2 * jnp.pi))
+            * -1
+            * (y**3 - 3 * x**2 * y)
+            * (9 * z**2 - (x**2 + y**2 + z**2))
+        )  # (l, m) == (5, -3)
+
+    def branch_l5_m_m2(l, x, y, z, r_norm):
+        return (
+            lnorm(5) * 1.0 / 8.0 * jnp.sqrt(1155 / jnp.pi) * 2 * x * y * (3 * z**3 - z * (x**2 + y**2 + z**2))
+        )  # (l, m) == (5, -2)
+
+    def branch_l5_m_m1(l, x, y, z, r_norm):
+        return (
+            lnorm(5)
+            * 1.0
+            / 16.0
+            * jnp.sqrt(165 / jnp.pi)
+            * y
+            * (21 * z**4 - 14 * z**2 * (x**2 + y**2 + z**2) + (x**2 + y**2 + z**2) ** 2)
+        )  # (l, m) == (5, -1)
+
+    def branch_l5_m_0(l, x, y, z, r_norm):
+        return (
+            lnorm(5)
+            * 1.0
+            / 16.0
+            * jnp.sqrt(11 / jnp.pi)
+            * (63 * z**5 - 70 * z**3 * (x**2 + y**2 + z**2) + 15 * z * (x**2 + y**2 + z**2) ** 2)
+        )  # (l, m) == (5, 0)
+
+    def branch_l5_m_p1(l, x, y, z, r_norm):
+        return (
+            lnorm(5)
+            * 1.0
+            / 16.0
+            * jnp.sqrt(165 / jnp.pi)
+            * x
+            * (21 * z**4 - 14 * z**2 * (x**2 + y**2 + z**2) + (x**2 + y**2 + z**2) ** 2)
+        )  # (l, m) == (5, 1)
+
+    def branch_l5_m_p2(l, x, y, z, r_norm):
+        return (
+            lnorm(5) * 1.0 / 8.0 * jnp.sqrt(1155 / jnp.pi) * (x**2 - y**2) * (3 * z**3 - z * (x**2 + y**2 + z**2))
+        )  # (l, m) == (5, 2)
+
+    def branch_l5_m_p3(l, x, y, z, r_norm):
+        return (
+            lnorm(5) * 1.0 / 16.0 * jnp.sqrt(385.0 / (2 * jnp.pi)) * (x**3 - 3 * x * y**2) * (9 * z**2 - (x**2 + y**2 + z**2))
+        )  # (l, m) == (5, 3)
+
+    def branch_l5_m_p4(l, x, y, z, r_norm):
+        return (
+            lnorm(5) * 3.0 / 16.0 * jnp.sqrt(385.0 / jnp.pi) * (x**2 * z * (x**2 - 3 * y**2) - y**2 * z * (3 * x**2 - y**2))
+        )  # (l, m) == (5, 4)
+
+    def branch_l5_m_p5(l, x, y, z, r_norm):
+        return (
+            lnorm(5) * 3.0 / 16.0 * jnp.sqrt(77.0 / (2 * jnp.pi)) * (x**5 - 10 * x**3 * y**2 + 5 * x * y**4)
+        )  # (l, m) == (5, 5)
+
+    # i orbitals
+    def branch_l6_m_m6(l, x, y, z, r_norm):
+        return (
+            lnorm(6) * 1.0 / 64.0 * jnp.sqrt(6006.0 / jnp.pi) * (6 * x**5 * y - 20 * x**3 * y**3 + 6 * x * y**5)
+        )  # (l, m) == (6, -6)
+
+    def branch_l6_m_m5(l, x, y, z, r_norm):
+        return (
+            lnorm(6) * 3.0 / 32.0 * jnp.sqrt(2002.0 / jnp.pi) * z * (5 * x**4 * y - 10 * x**2 * y**3 + y**5)
+        )  # (l, m) == (6, -5)
+
+    def branch_l6_m_m4(l, x, y, z, r_norm):
+        return (
+            lnorm(6) * 3.0 / 32.0 * jnp.sqrt(91.0 / jnp.pi) * 4 * x * y * (11 * z**2 - (x**2 + y**2 + z**2)) * (x**2 - y**2)
+        )  # (l, m) == (6, -4)
+
+    def branch_l6_m_m3(l, x, y, z, r_norm):
+        return (
+            lnorm(6)
+            * 1.0
+            / 32.0
+            * jnp.sqrt(2730.0 / jnp.pi)
+            * -1
+            * (11 * z**3 - 3 * z * (x**2 + y**2 + z**2))
+            * (y**3 - 3 * x**2 * y)
+        )  # (l, m) == (6, -3)
+
+    def branch_l6_m_m2(l, x, y, z, r_norm):
+        return (
+            lnorm(6)
+            * 1.0
+            / 64.0
+            * jnp.sqrt(2730.0 / jnp.pi)
+            * 2
+            * x
+            * y
+            * (33 * z**4 - 18 * z**2 * (x**2 + y**2 + z**2) + (x**2 + y**2 + z**2) ** 2)
+        )  # (l, m) == (6, -2)
+
+    def branch_l6_m_m1(l, x, y, z, r_norm):
+        return (
+            lnorm(6)
+            * 1.0
+            / 16.0
+            * jnp.sqrt(273.0 / jnp.pi)
+            * y
+            * (33 * z**5 - 30 * z**3 * (x**2 + y**2 + z**2) + 5 * z * (x**2 + y**2 + z**2) ** 2)
+        )  # (l, m) == (6, -1)
+
+    def branch_l6_m_0(l, x, y, z, r_norm):
+        return (
+            lnorm(6)
+            * 1.0
+            / 32.0
+            * jnp.sqrt(13.0 / jnp.pi)
+            * (
+                231 * z**6
+                - 315 * z**4 * (x**2 + y**2 + z**2)
+                + 105 * z**2 * (x**2 + y**2 + z**2) ** 2
+                - 5 * (x**2 + y**2 + z**2) ** 3
+            )
+        )  # (l, m) == (6, 0)
+
+    def branch_l6_m_p1(l, x, y, z, r_norm):
+        return (
+            lnorm(6)
+            * 1.0
+            / 16.0
+            * jnp.sqrt(273.0 / jnp.pi)
+            * x
+            * (33 * z**5 - 30 * z**3 * (x**2 + y**2 + z**2) + 5 * z * (x**2 + y**2 + z**2) ** 2)
+        )  # (l, m) == (6, 1)
+
+    def branch_l6_m_p2(l, x, y, z, r_norm):
+        return (
+            lnorm(6)
+            * 1.0
+            / 64.0
+            * jnp.sqrt(2730.0 / jnp.pi)
+            * (x**2 - y**2)
+            * (33 * z**4 - 18 * z**2 * (x**2 + y**2 + z**2) + (x**2 + y**2 + z**2) ** 2)
+        )  # (l, m) == (6, 2)
+
+    def branch_l6_m_p3(l, x, y, z, r_norm):
+        return (
+            lnorm(6)
+            * 1.0
+            / 32.0
+            * jnp.sqrt(2730.0 / jnp.pi)
+            * (11 * z**3 - 3 * z * (x**2 + y**2 + z**2))
+            * (x**3 - 3 * x * y**2)
+        )  # (l, m) == (6, 3)
+
+    def branch_l6_m_p4(l, x, y, z, r_norm):
+        return (
+            lnorm(6)
+            * 3.0
+            / 32.0
+            * jnp.sqrt(91.0 / jnp.pi)
+            * (11 * z**2 - (x**2 + y**2 + z**2))
+            * (x**2 * (x**2 - 3 * y**2) + y**2 * (y**2 - 3 * x**2))
+        )  # (l, m) == (6, 4)
+
+    def branch_l6_m_p5(l, x, y, z, r_norm):
+        return (
+            lnorm(6) * 3.0 / 32.0 * jnp.sqrt(2002.0 / jnp.pi) * z * (x**5 - 10 * x**3 * y**2 + 5 * x * y**4)
+        )  # (l, m) == (6, 5)
+
+    def branch_l6_m_p6(l, x, y, z, r_norm):
+        return (
+            lnorm(6) * 1.0 / 64.0 * jnp.sqrt(6006.0 / jnp.pi) * (x**6 - 15 * x**4 * y**2 + 15 * x**2 * y**4 - y**6)
+        )  # (l, m) == (6, 6)
+
+    branch_fns = [
+        # s orbitals
+        branch_l0_m_0,  # idx=0
+        # p orbitals
+        branch_l1_m_m1,  # idx=1
+        branch_l1_m_0,  # idx=2
+        branch_l1_m_p1,  # idx=3
+        # d orbitals
+        branch_l2_m_m2,  # idx=4
+        branch_l2_m_m1,  # idx=5
+        branch_l2_m_0,  # idx=6
+        branch_l2_m_p1,  # idx=7
+        branch_l2_m_p2,  # idx=8
+        # f orbitals
+        branch_l3_m_m3,  # idx=4
+        branch_l3_m_m2,  # idx=5
+        branch_l3_m_m1,  # idx=6
+        branch_l3_m_0,  # idx=7
+        branch_l3_m_p1,  # idx=8
+        branch_l3_m_p2,  # idx=9
+        branch_l3_m_p3,  # idx=10
+        # g orbitals
+        branch_l4_m_m4,  # idx=11
+        branch_l4_m_m3,  # idx=12
+        branch_l4_m_m2,  # idx=13
+        branch_l4_m_m1,  # idx=15
+        branch_l4_m_0,  # idx=16
+        branch_l4_m_p1,  # idx=17
+        branch_l4_m_p2,  # idx=18
+        branch_l4_m_p3,  # idx=19
+        branch_l4_m_p4,  # idx=20
+        # h orbitals
+        branch_l5_m_m5,  # idx=21
+        branch_l5_m_m4,  # idx=22
+        branch_l5_m_m3,  # idx=22
+        branch_l5_m_m2,  # idx=23
+        branch_l5_m_m1,  # idx=24
+        branch_l5_m_0,  # idx=25
+        branch_l5_m_p1,  # idx=26
+        branch_l5_m_p2,  # idx=27
+        branch_l5_m_p3,  # idx=28
+        branch_l5_m_p4,  # idx=29
+        branch_l5_m_p5,  # idx=30
+        # i orbitals
+        branch_l6_m_m6,  # idx=31
+        branch_l6_m_m5,  # idx=32
+        branch_l6_m_m4,  # idx=33
+        branch_l6_m_m3,  # idx=34
+        branch_l6_m_m2,  # idx=35
+        branch_l6_m_m1,  # idx=36
+        branch_l6_m_0,  # idx=37
+        branch_l6_m_p1,  # idx=38
+        branch_l6_m_p2,  # idx=39
+        branch_l6_m_p3,  # idx=40
+        branch_l6_m_p4,  # idx=41
+        branch_l6_m_p5,  # idx=42
+        branch_l6_m_p6,  # idx=43
+    ]
+    """see https://en.wikipedia.org/wiki/Table_of_spherical_harmonics#Real_spherical_harmonics (l=0-4)"""
+    """Useful tool to generate spherical harmonics generator [https://github.com/elerac/sh_table]"""
+
+    return jax.lax.switch(idx, branch_fns, *(l, x, y, z, r_norm))
+
+
 def _compute_normalization_fator_debug(l: int, Z: float) -> float:
     """Compute the normalization factor of a primitve AO.
 
@@ -1353,20 +2023,20 @@ if __name__ == "__main__":
     stream_handler.setFormatter(handler_format)
     log.addHandler(stream_handler)
 
-    trial = 5000
+    trial = 50
 
-    # """
+    """
     M = 160  # Number of GTO parameters (water, only prim.)
     N = 4  # Number of r vectors (water)
-    M = 1600  # Number of GTO parameters (benzene, only prim.)
-    N = 10  # Number of r vectors (benzene)
+    M = 16000  # Number of GTO parameters (benzene, only prim.)
+    N = 400  # Number of r vectors (benzene)
     r_cart_min, r_cart_max = -1.0, 1.0
     R_cart_min, R_cart_max = 0.0, 0.0
     r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(N, 3) + r_cart_min
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(N, 3) + r_cart_min
     R_carts = (R_cart_max - R_cart_min) * np.random.rand(M, 3) + R_cart_min
 
-    all_lm_pairs = [(l, m) for l in range(6) for m in range(-l, l + 1)]
+    all_lm_pairs = [(l, m) for l in range(7) for m in range(-l, l + 1)]
     chosen_lm_pairs = random.choices(all_lm_pairs, k=M)
     l = [p[0] for p in chosen_lm_pairs]
     m = [p[1] for p in chosen_lm_pairs]
@@ -1403,7 +2073,7 @@ if __name__ == "__main__":
         angular_momentums=angular_momentums,
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
-    # """
+    """
 
     """
     (
@@ -1413,7 +2083,30 @@ if __name__ == "__main__":
         mos_data_dn,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "../", "prototypes", "water_ccpvtz_trexio.hdf5"))
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"))
+    """
+
+    """
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "benzene_ccpv6z_trexio.hdf5")
+    )
+    """
+
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "AcOH_dimer_augccpv6z.hdf5"))
 
     num_ele_up = geminal_mo_data.num_electron_up
     num_ele_dn = geminal_mo_data.num_electron_dn
@@ -1423,7 +2116,7 @@ if __name__ == "__main__":
 
     r_up_carts = jnp.array(r_up_carts)
     r_dn_carts = jnp.array(r_dn_carts)
-    """
+    # """
 
     # print(aos_data)
 
@@ -1505,6 +2198,11 @@ if __name__ == "__main__":
         AOs_dup = N_n_dup[:, None] * R_n_dup * N_l_m_dup[:, None] * S_l_m_dup
         return AOs_dup
 
+    @jit
+    def compute_AOs_dup_fast(N_n_dup, R_n_dup, N_l_m_dup, S_l_m_dup):
+        AOs_dup_fast = N_n_dup[:, None] * R_n_dup * N_l_m_dup[:, None] * S_l_m_dup
+        return AOs_dup_fast
+
     @partial(jit, static_argnums=(2))
     def fast_segment_sum(data, indices, num_segments):
         output_shape = (num_segments,) + data.shape[1:]
@@ -1526,6 +2224,11 @@ if __name__ == "__main__":
         return oh_sp.T @ data
 
     @jit
+    def segment_sum_with_vmap(AOs_dup_T):
+        AOs = vmap(jax.ops.segment_sum, in_axes=(0, None, None))(AOs_dup_T, orbital_indices, num_segments)
+        return AOs.T
+
+    @jit
     def compute_AOs_normal(AOs_dup):
         AOs = jax.ops.segment_sum(AOs_dup, orbital_indices, num_segments=num_segments, indices_are_sorted=False)
         return AOs
@@ -1537,6 +2240,7 @@ if __name__ == "__main__":
         # AOs = segment_sum_with_matmul(AOs_dup, orbital_indices, num_segments=num_segments)
         # AOs = segment_sum_with_cached_oh(oh, AOs_dup)
         AOs = segment_sum_with_cached_oh_sp(oh_sp, AOs_dup)
+        # AOs = segment_sum_with_vmap(AOs_dup)
         return AOs
 
     N_n_dup = compute_N_n_dup()
@@ -1549,9 +2253,11 @@ if __name__ == "__main__":
     S_l_m_dup.block_until_ready()
     AOs_dup = compute_AOs_dup(N_n_dup, R_n_dup, N_l_m_dup, S_l_m_dup)
     AOs_dup.block_until_ready()
+    AOs_dup_fast = compute_AOs_dup_fast(N_n_dup, R_n_dup, N_l_m_dup, S_l_m_dup)
+    AOs_dup_fast.block_until_ready()
     AOs = compute_AOs_normal(AOs_dup)
     AOs.block_until_ready()
-    AOs_fast = compute_AOs_fast(AOs_dup)
+    AOs_fast = compute_AOs_fast(AOs_dup_fast)
     AOs_fast.block_until_ready()
 
     start = time.perf_counter()
@@ -1583,15 +2289,25 @@ if __name__ == "__main__":
         S_l_m_dup = compute_S_l_m_dup()
         S_l_m_dup.block_until_ready()
     end = time.perf_counter()
-    print(f"Comput. S_l_m_dup(batch) elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+    print(f"Comput. S_l_m_dup(vmap-vmap) elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
     time.sleep(3)
+
+    """
+    start = time.perf_counter()
+    for _ in range(trial):
+        S_l_m_dup = compute_S_l_m_dup()
+        S_l_m_dup.block_until_ready()
+    end = time.perf_counter()
+    print(f"Comput. S_l_m_dup(vmap) elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+    time.sleep(3)
+    """
 
     start = time.perf_counter()
     for _ in range(trial):
         AOs_dup = compute_AOs_dup(N_n_dup, R_n_dup, N_l_m_dup, S_l_m_dup)
         AOs_dup.block_until_ready()
     end = time.perf_counter()
-    print(f"Comput. AOs_dup(batch) elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+    print(f"Comput. AOs_dup-normal(batch) elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
     time.sleep(3)
 
     start = time.perf_counter()
@@ -1604,7 +2320,15 @@ if __name__ == "__main__":
 
     start = time.perf_counter()
     for _ in range(trial):
-        AOs_fast = compute_AOs_fast(AOs_dup)
+        AOs_dup_fast = compute_AOs_dup_fast(N_n_dup, R_n_dup, N_l_m_dup, S_l_m_dup)
+        AOs_dup_fast.block_until_ready()
+    end = time.perf_counter()
+    print(f"Comput. AOs_dup-fast(batch) elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+    time.sleep(3)
+
+    start = time.perf_counter()
+    for _ in range(trial):
+        AOs_fast = compute_AOs_fast(AOs_dup_fast)
         AOs_fast.block_until_ready()
     end = time.perf_counter()
     print(f"Comput. AOs-fast(batch) elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
