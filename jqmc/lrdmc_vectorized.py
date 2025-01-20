@@ -299,6 +299,7 @@ class GFMC_multiple_walkers:
         timer_projection_init = 0.0
         timer_projection_total = 0.0
         timer_observable = 0.0
+        timer_mpi_barrier = 0.0
         timer_reconfiguration = 0.0
         gmfc_total_start = time.perf_counter()
 
@@ -570,7 +571,7 @@ class GFMC_multiple_walkers:
         progress = (self.__gfmc_branching_counter) / (num_branching + self.__gfmc_branching_counter) * 100.0
         gmfc_total_current = time.perf_counter()
         logger.info(
-            f"  branching step = {self.__gfmc_branching_counter}/{num_branching+self.__gfmc_branching_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
+            f"  branching step = {self.__gfmc_branching_counter}/{num_branching + self.__gfmc_branching_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
         )
 
         num_branching_done = 0
@@ -581,7 +582,7 @@ class GFMC_multiple_walkers:
                 )
                 gmfc_total_current = time.perf_counter()
                 logger.info(
-                    f"  branching step = {i_branching + self.__gfmc_branching_counter + 1}/{num_branching+self.__gfmc_branching_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
+                    f"  branching step = {i_branching + self.__gfmc_branching_counter + 1}/{num_branching + self.__gfmc_branching_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
                 )
 
             # Always set the initial weight list to 1.0
@@ -646,7 +647,10 @@ class GFMC_multiple_walkers:
             timer_observable += end_observable - start_observable
 
             # Barrier before MPI operation
-            # mpi_comm.Barrier()
+            start_mpi_barrier = time.perf_counter()
+            mpi_comm.Barrier()
+            end_mpi_barrier = time.perf_counter()
+            timer_mpi_barrier += end_mpi_barrier - start_mpi_barrier
 
             # Branching starts
             start_reconfiguration = time.perf_counter()
@@ -779,17 +783,18 @@ class GFMC_multiple_walkers:
 
         logger.info(f"Total GFMC time for {num_branching_done} branching steps = {timer_gmfc_total: .3f} sec.")
         logger.info(f"Pre-compilation time for GFMC = {timer_projection_init: .3f} sec.")
-        logger.info(f"Net GFMC time without pre-compilations = {timer_gmfc_total-timer_projection_init: .3f} sec.")
+        logger.info(f"Net GFMC time without pre-compilations = {timer_gmfc_total - timer_projection_init: .3f} sec.")
         logger.info(f"Elapsed times per branching, averaged over {num_branching_done} branching steps.")
-        logger.info(f"  Projection time per branching = {timer_projection_total/num_branching_done*10**3: .3f} msec.")
-        logger.info(f"  Observable measurement time per branching = {timer_observable/num_branching_done*10**3: .3f} msec.")
+        logger.info(f"  Projection time per branching = {timer_projection_total / num_branching_done * 10**3: .3f} msec.")
+        logger.info(f"  Observable measurement time per branching = {timer_observable / num_branching_done * 10**3: .3f} msec.")
+        logger.info(f"  MPI barrier time per branching = {timer_mpi_barrier / num_branching_done * 10**3: .3f} msec.")
         logger.info(
-            f"  Walker reconfiguration time per branching = {timer_reconfiguration/num_branching_done*10**3: .3f} msec."
+            f"  Walker reconfiguration time per branching = {timer_reconfiguration / num_branching_done * 10**3: .3f} msec."
         )
         logger.debug(f"Survived walkers = {self.__num_survived_walkers}")
         logger.debug(f"killed walkers = {self.__num_killed_walkers}")
         logger.info(
-            f"Survived walkers ratio = {self.__num_survived_walkers/(self.__num_survived_walkers + self.__num_killed_walkers) * 100:.2f} %"
+            f"Survived walkers ratio = {self.__num_survived_walkers / (self.__num_survived_walkers + self.__num_killed_walkers) * 100:.2f} %"
         )
         logger.debug(f"self.__e_L_averaged_list = {self.__e_L_averaged_list}.")
         logger.debug(f"self.__w_L_averaged_list = {self.__w_L_averaged_list}.")
@@ -974,9 +979,17 @@ if __name__ == "__main__":
     except ValueError:
         pass
 
+    # global JAX device
+    global_device_info = jax.devices()
+    # local JAX device
+    num_devices = jax.local_devices()
+    device_info_str = f"Rank {mpi_rank}: {num_devices}"
+    local_device_info = mpi_comm.allgather(device_info_str)
     # print recognized XLA devices
-    logger.info("*** XLA devices recognized by JAX***")
-    logger.info(jax.devices())
+    logger.info("*** XLA Global devices recognized by JAX***")
+    logger.info(global_device_info)
+    logger.info("*** XLA Local devices recognized by JAX***")
+    logger.info(local_device_info)
     logger.info("")
 
     """
@@ -1021,12 +1034,12 @@ if __name__ == "__main__":
         hamiltonian_data = pickle.load(f)
 
     # run branching
-    num_walkers = 1
+    num_walkers = 4
     mcmc_seed = 3446
-    max_time = 100
-    tau = 0.10
+    max_time = 1800
+    tau = 0.5
     alat = 0.30
-    num_branching = 100
+    num_branching = 10
     non_local_move = "tmove"
 
     num_gfmc_warmup_steps = 5

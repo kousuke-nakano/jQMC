@@ -1279,9 +1279,17 @@ if __name__ == "__main__":
     except ValueError:
         pass
 
+    # global JAX device
+    global_device_info = jax.devices()
+    # local JAX device
+    num_devices = jax.local_devices()
+    device_info_str = f"Rank {mpi_rank}: {num_devices}"
+    local_device_info = mpi_comm.allgather(device_info_str)
     # print recognized XLA devices
-    logger.info("*** XLA devices recognized by JAX***")
-    logger.info(jax.devices())
+    logger.info("*** XLA Global devices recognized by JAX***")
+    logger.info(global_device_info)
+    logger.info("*** XLA Local devices recognized by JAX***")
+    logger.info(local_device_info)
     logger.info("")
 
     """
