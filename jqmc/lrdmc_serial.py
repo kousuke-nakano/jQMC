@@ -286,7 +286,7 @@ class GFMC:
 
         end = time.perf_counter()
         logger.info("Compilation e_L is done.")
-        logger.info(f"Elapsed Time = {end-start:.2f} sec.")
+        logger.info(f"Elapsed Time = {end - start:.2f} sec.")
 
         logger.info("Compilation is done.")
 
@@ -322,6 +322,9 @@ class GFMC:
         counter_projection_times = 0
         gmfc_total_start = time.perf_counter()
 
+        # initialize numpy random seed
+        np.random.seed(self.__mpi_seed)
+
         @jit
         def generate_rotation_matrix(alpha, beta, gamma):
             # Precompute all necessary cosines and sines
@@ -345,7 +348,7 @@ class GFMC:
         progress = (self.__gfmc_branching_counter) / (num_branching + self.__gfmc_branching_counter) * 100.0
         gmfc_total_current = time.perf_counter()
         logger.info(
-            f"  branching step = {self.__gfmc_branching_counter}/{num_branching+self.__gfmc_branching_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
+            f"  branching step = {self.__gfmc_branching_counter}/{num_branching + self.__gfmc_branching_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
         )
 
         num_branching_done = 0
@@ -356,7 +359,7 @@ class GFMC:
                 )
                 gmfc_total_current = time.perf_counter()
                 logger.info(
-                    f"  branching step = {i_branching + self.__gfmc_branching_counter + 1}/{num_branching+self.__gfmc_branching_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
+                    f"  branching step = {i_branching + self.__gfmc_branching_counter + 1}/{num_branching + self.__gfmc_branching_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
                 )
 
             # MAIN project loop.
@@ -722,7 +725,7 @@ class GFMC:
                 logger.debug(f"probabilities = {probabilities}")
 
                 # correlated choice (see Sandro's textbook, page 182)
-                zeta = np.random.random()
+                zeta = float(np.random.random())
                 z_list = [(alpha + zeta) / len(probabilities) for alpha in range(len(probabilities))]
                 cumulative_prob = np.cumsum(probabilities)
                 k_list = np.array([next(idx for idx, prob in enumerate(cumulative_prob) if z <= prob) for z in z_list])
@@ -799,51 +802,51 @@ class GFMC:
         logger.info(f"Total GFMC time for {num_branching_done} branching steps = {timer_gmfc_total: .3f} sec.")
         logger.info(f"Net GFMC time for {num_branching_done} branching steps = {timer_gmfc_total: .3f} sec.")
         logger.info(f"Elapsed times per branching, averaged over {num_branching_done} branching steps.")
-        logger.info(f"  Projection time per branching = {timer_projection_total/num_branching_done*10**3: .3f} msec.")
-        logger.info(f"  Projection iterations per branching ={counter_projection_times/num_branching_done: .3f} times.")
+        logger.info(f"  Projection time per branching = {timer_projection_total / num_branching_done * 10**3: .3f} msec.")
+        logger.info(f"  Projection iterations per branching ={counter_projection_times / num_branching_done: .3f} times.")
         logger.info(
-            f"    - Non_diagonal kinetic part (init) = {timer_projection_non_diagonal_kinetic_part_init/num_branching_done*10**3: .3f} msec."
+            f"    - Non_diagonal kinetic part (init) = {timer_projection_non_diagonal_kinetic_part_init / num_branching_done * 10**3: .3f} msec."
         )
         logger.info(
-            f"    - Non_diagonal kinetic part (comput) = {timer_projection_non_diagonal_kinetic_part_comput/num_branching_done*10**3: .3f} msec."
+            f"    - Non_diagonal kinetic part (comput) = {timer_projection_non_diagonal_kinetic_part_comput / num_branching_done * 10**3: .3f} msec."
         )
         logger.info(
-            f"    - Non_diagonal kinetic part (post) = {timer_projection_non_diagonal_kinetic_part_post/num_branching_done*10**3: .3f} msec."
+            f"    - Non_diagonal kinetic part (post) = {timer_projection_non_diagonal_kinetic_part_post / num_branching_done * 10**3: .3f} msec."
         )
         logger.info(
-            f"    - Diagonal kinetic part (comput) = {timer_projection_diag_kinetic_part_comput/num_branching_done*10**3: .3f} msec."
+            f"    - Diagonal kinetic part (comput) = {timer_projection_diag_kinetic_part_comput / num_branching_done * 10**3: .3f} msec."
         )
         logger.info(
-            f"    - Diagonal kinetic part (post) = {timer_projection_diag_kinetic_part_post/num_branching_done*10**3: .3f} msec."
+            f"    - Diagonal kinetic part (post) = {timer_projection_diag_kinetic_part_post / num_branching_done * 10**3: .3f} msec."
         )
         logger.info(
-            f"    - Diagonal ecp part (comput) = {timer_projection_diag_ecp_part_comput/num_branching_done*10**3: .3f} msec."
+            f"    - Diagonal ecp part (comput) = {timer_projection_diag_ecp_part_comput / num_branching_done * 10**3: .3f} msec."
         )
         logger.info(
-            f"    - Diagonal bare coulomb part (comput) = {timer_projection_diag_bare_couloumb_part_comput/num_branching_done*10**3: .3f} msec."
+            f"    - Diagonal bare coulomb part (comput) = {timer_projection_diag_bare_couloumb_part_comput / num_branching_done * 10**3: .3f} msec."
         )
         logger.info(
-            f"    - Non_diagonal ecp part (comput) = {timer_projection_non_diagonal_ecp_part_comput/num_branching_done*10**3: .3f} msec."
+            f"    - Non_diagonal ecp part (comput) = {timer_projection_non_diagonal_ecp_part_comput / num_branching_done * 10**3: .3f} msec."
         )
         logger.info(
-            f"    - Non_diagonal ecp part (post) = {timer_projection_non_diagonal_ecp_part_post/num_branching_done*10**3: .3f} msec."
+            f"    - Non_diagonal ecp part (post) = {timer_projection_non_diagonal_ecp_part_post / num_branching_done * 10**3: .3f} msec."
         )
         logger.info(
-            f"    - Non_diagonal probablity part (post) = {timer_projection_non_diagonal_probablity/num_branching_done*10**3: .3f} msec."
+            f"    - Non_diagonal probablity part (post) = {timer_projection_non_diagonal_probablity / num_branching_done * 10**3: .3f} msec."
         )
-        logger.info(f"    - Comput. tau_update = {timer_projection_comput_tau_update/num_branching_done*10**3: .3f} msec.")
+        logger.info(f"    - Comput. tau_update = {timer_projection_comput_tau_update / num_branching_done * 10**3: .3f} msec.")
         logger.info(
-            f"    - Update weights and positions = {timer_projection_update_weights_and_positions/num_branching_done*10**3: .3f} msec."
+            f"    - Update weights and positions = {timer_projection_update_weights_and_positions / num_branching_done * 10**3: .3f} msec."
         )
-        logger.info(f"  Observable measurement time per branching = {timer_observable/num_branching_done*10**3: .3f} msec.")
+        logger.info(f"  Observable measurement time per branching = {timer_observable / num_branching_done * 10**3: .3f} msec.")
         logger.info(
-            f"  Walker reconfiguration time per branching = {timer_reconfiguration/num_branching_done*10**3: .3f} msec."
+            f"  Walker reconfiguration time per branching = {timer_reconfiguration / num_branching_done * 10**3: .3f} msec."
         )
-        logger.info(f"    - MPI reduce time per reconfiguration = {timer_mpi_reduce/num_branching_done*10**3: .3f} msec.")
-        logger.info(f"    - Comput time per reconfiguration = {timer_mpi_comput/num_branching_done*10**3: .3f} msec.")
-        logger.info(f"    - MPI bcast time per reconfiguration = {timer_mpi_bcast/num_branching_done*10**3: .3f} msec.")
+        logger.info(f"    - MPI reduce time per reconfiguration = {timer_mpi_reduce / num_branching_done * 10**3: .3f} msec.")
+        logger.info(f"    - Comput time per reconfiguration = {timer_mpi_comput / num_branching_done * 10**3: .3f} msec.")
+        logger.info(f"    - MPI bcast time per reconfiguration = {timer_mpi_bcast / num_branching_done * 10**3: .3f} msec.")
         logger.info(
-            f"Survived walkers ratio = {self.__num_survived_walkers/(self.__num_survived_walkers + self.__num_killed_walkers) * 100:.2f} %"
+            f"Survived walkers ratio = {self.__num_survived_walkers / (self.__num_survived_walkers + self.__num_killed_walkers) * 100:.2f} %"
         )
 
     def get_e_L(self, num_gfmc_warmup_steps: int = 3, num_gfmc_bin_blocks: int = 10, num_gfmc_bin_collect: int = 2) -> float:

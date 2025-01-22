@@ -303,6 +303,9 @@ class GFMC_multiple_walkers:
         timer_reconfiguration = 0.0
         gmfc_total_start = time.perf_counter()
 
+        # initialize numpy random seed
+        np.random.seed(self.__mpi_seed)
+
         # projection function.
         start_init = time.perf_counter()
         logger.info("Start compilation of the GMFC projection funciton.")
@@ -704,8 +707,9 @@ class GFMC_multiple_walkers:
                 logger.debug(f"probabilities = {probabilities}")
 
                 # correlated choice (see Sandro's textbook, page 182)
-                self.__jax_PRNG_key, subkey = jax.random.split(self.__jax_PRNG_key)
-                zeta = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
+                zeta = float(np.random.random())
+                # self.__jax_PRNG_key, subkey = jax.random.split(self.__jax_PRNG_key) # slow w/o jit!!
+                # zeta = float(jax.random.uniform(subkey, minval=0.0, maxval=1.0)) # slow w/o jit!!
                 z_list = [(alpha + zeta) / len(probabilities) for alpha in range(len(probabilities))]
                 logger.debug(f"z_list = {z_list}")
                 cumulative_prob = np.cumsum(probabilities)
