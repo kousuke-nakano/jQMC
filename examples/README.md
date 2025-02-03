@@ -10,5 +10,5 @@ VMC and HF energies of water molecule, for validation of the VMC implementation 
 ## example03
 Binding Water-Methane dimer, one of the validation tests for ab initio DMC implementation. 
 
-## example03
+## example04
 Benchmarking of MPI/Vectorization on CPU and GPU machines, i.e., how to choose the most efficient number of walkers and number of MPI processes.
