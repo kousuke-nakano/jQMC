@@ -41,6 +41,7 @@ from logging import Formatter, StreamHandler, getLogger
 import jax
 import numpy as np
 import pytest
+from jax import numpy as jnp
 from numpy import linalg as LA
 from numpy.testing import assert_almost_equal
 
@@ -53,6 +54,7 @@ from ..jqmc.atomic_orbital import (
     _compute_AOs_jax,
     _compute_AOs_laplacian_debug,
     _compute_AOs_laplacian_jax,
+    _compute_S_l_m_batch_jax,
     _compute_S_l_m_debug,
     _compute_S_l_m_jax,
 )
@@ -266,6 +268,148 @@ def test_solid_harmonics(l, m):
         )
         assert_almost_equal(test_S_lm, ref_S_lm, decimal=8)
 
+    jax.clear_caches()
+
+
+def test_solid_harmonics_batch():
+    seed = 34487
+    key = jax.random.PRNGKey(seed)
+    num_R_samples = 49  # fixed
+    num_r_samples = 10
+    l_list = [
+        0,
+        1,
+        1,
+        1,
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+    ]
+
+    m_list = [
+        0,
+        -1,
+        0,
+        1,
+        -2,
+        -1,
+        0,
+        1,
+        2,
+        -3,
+        -2,
+        -1,
+        0,
+        1,
+        2,
+        3,
+        -4,
+        -3,
+        -2,
+        -1,
+        0,
+        1,
+        2,
+        3,
+        4,
+        -5,
+        -4,
+        -3,
+        -2,
+        -1,
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        -6,
+        -5,
+        -4,
+        -3,
+        -2,
+        -1,
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+    ]
+    R_carts = jax.random.normal(key, (num_R_samples, 3))
+    r_carts = jax.random.normal(key, (num_r_samples, 3))
+    r_R_diffs_uq = r_carts[None, :, :] - R_carts[:, None, :]
+
+    # S_l_m debug
+    ref_S_lm = np.array(
+        [
+            [
+                [
+                    _compute_S_l_m_jax(
+                        l=l,
+                        m=m,
+                        R_cart=R_cart,
+                        r_cart=r_cart,
+                    )
+                    for r_cart in r_carts
+                ]
+                for R_cart in R_carts
+            ]
+            for l, m in zip(l_list, m_list)
+        ]
+    )
+
+    # print(f"ref_S_lm.shape = {ref_S_lm.shape}.")
+
+    # S_l_m batch
+    _, batch_S_l_m = _compute_S_l_m_batch_jax(r_R_diffs_uq)
+
+    # print(f"batch_S_l_m.shape = {batch_S_l_m.shape}.")
+
+    np.testing.assert_array_almost_equal(ref_S_lm, batch_S_l_m, decimal=10)
     jax.clear_caches()
 
 
