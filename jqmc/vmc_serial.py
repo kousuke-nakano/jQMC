@@ -143,7 +143,7 @@ class MCMC_serial:
         )
         end = time.perf_counter()
         logger.info("Compilation e_L is done.")
-        logger.info(f"Elapsed Time = {end-start:.2f} sec.")
+        logger.info(f"Elapsed Time = {end - start:.2f} sec.")
 
         if self.__comput_position_deriv:
             logger.info("Compilation de_L starts.")
@@ -155,7 +155,7 @@ class MCMC_serial:
             )
             end = time.perf_counter()
             logger.info("Compilation de_L is done.")
-            logger.info(f"Elapsed Time = {end-start:.2f} sec.")
+            logger.info(f"Elapsed Time = {end - start:.2f} sec.")
 
             logger.info("Compilation dln_Psi starts.")
             start = time.perf_counter()
@@ -166,7 +166,7 @@ class MCMC_serial:
             )
             end = time.perf_counter()
             logger.info("Compilation dln_Psi is done.")
-            logger.info(f"Elapsed Time = {end-start:.2f} sec.")
+            logger.info(f"Elapsed Time = {end - start:.2f} sec.")
 
             logger.info("Compilation domega starts.")
             start = time.perf_counter()
@@ -176,7 +176,7 @@ class MCMC_serial:
             )
             end = time.perf_counter()
             logger.info("Compilation domega is done.")
-            logger.info(f"Elapsed Time = {end-start:.2f} sec.")
+            logger.info(f"Elapsed Time = {end - start:.2f} sec.")
 
         if self.__comput_jas_param_deriv:
             logger.info("Compilation dln_Psi starts.")
@@ -188,7 +188,7 @@ class MCMC_serial:
             )
             end = time.perf_counter()
             logger.info("Compilation dln_Psi is done.")
-            logger.info(f"Elapsed Time = {end-start:.2f} sec.")
+            logger.info(f"Elapsed Time = {end - start:.2f} sec.")
 
         logger.info("Compilation is done.")
 
@@ -260,7 +260,7 @@ class MCMC_serial:
 
         # MAIN MCMC loop from here !!!
         progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
-        logger.info(f"Current MCMC step = {self.__mcmc_counter}/{num_mcmc_steps+self.__mcmc_counter}: {progress:.0f} %.")
+        logger.info(f"Current MCMC step = {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.0f} %.")
         mcmc_interval = int(num_mcmc_steps / 10)  # %
 
         # timer_counter
@@ -277,7 +277,7 @@ class MCMC_serial:
             if (i_mcmc_step + 1) % mcmc_interval == 0:
                 progress = (i_mcmc_step + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
                 logger.info(
-                    f"  Progress: MCMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps+self.__mcmc_counter}: {progress:.1f} %."
+                    f"  Progress: MCMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %."
                 )
 
             # Determine the total number of electrons
@@ -325,7 +325,7 @@ class MCMC_serial:
 
                 logger.devel(f"nearest_atom_index = {nearest_atom_index}")
                 logger.devel(f"norm_r_R = {norm_r_R}")
-                logger.devel(f"f_l  = {f_l }")
+                logger.devel(f"f_l  = {f_l}")
 
                 sigma = f_l * self.__Dt
                 g = float(np.random.normal(loc=0, scale=sigma))
@@ -352,9 +352,9 @@ class MCMC_serial:
                 f_prime_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
                 logger.devel(f"nearest_atom_index = {nearest_atom_index}")
                 logger.devel(f"norm_r_R = {norm_r_R}")
-                logger.devel(f"f_prime_l  = {f_prime_l }")
+                logger.devel(f"f_prime_l  = {f_prime_l}")
 
-                logger.devel(f"The selected electron is {selected_electron_index+1}-th {selected_electron_spin} electron.")
+                logger.devel(f"The selected electron is {selected_electron_index + 1}-th {selected_electron_spin} electron.")
                 logger.devel(f"The selected electron position is {old_r_cart}.")
                 logger.devel(f"The proposed electron position is {new_r_cart}.")
 
@@ -448,7 +448,7 @@ class MCMC_serial:
                     r_dn_carts=self.__latest_r_dn_carts,
                 )
                 end = time.perf_counter()
-                logger.devel(f"ln Psi evaluation: Time = {(end-start)*1000:.3f} msec.")
+                logger.devel(f"ln Psi evaluation: Time = {(end - start) * 1000:.3f} msec.")
 
                 logger.devel(f"ln_Psi = {ln_Psi}")
                 self.__stored_ln_Psi.append(ln_Psi)
@@ -554,15 +554,17 @@ class MCMC_serial:
         logger.info(f"Total elapsed time for MCMC {num_mcmc_steps} steps. = {timer_mcmc_total:.2f} sec.")
         logger.info(f"Net elapsed time for MCMC {num_mcmc_steps} steps. = {timer_mcmc_total:.2f} sec.")
         logger.info(f"Elapsed times per MCMC step, averaged over {num_mcmc_steps} steps.")
-        logger.info(f"  Time for MCMC updated = {timer_mcmc_updated/num_mcmc_steps*10**3:.2f} msec.")
-        logger.info(f"  Time for computing e_L = {timer_e_L/num_mcmc_steps*10**3:.2f} msec.")
-        logger.info(f"  Time for computing de_L/dR and de_L/dr = {timer_de_L_dR_dr/num_mcmc_steps*10**3:.2f} msec.")
-        logger.info(f"  Time for computing dln_Psi/dR and dln_Psi/dr = {timer_dln_Psi_dR_dr/num_mcmc_steps*10**3:.2f} msec.")
+        logger.info(f"  Time for MCMC updated = {timer_mcmc_updated / num_mcmc_steps * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing e_L = {timer_e_L / num_mcmc_steps * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing de_L/dR and de_L/dr = {timer_de_L_dR_dr / num_mcmc_steps * 10**3:.2f} msec.")
         logger.info(
-            f"  Time for computing dln_Psi/dc (jastrow 1b2b3b) = {timer_dln_Psi_dc_jas1b2b3b/num_mcmc_steps*10**3:.2f} msec."
+            f"  Time for computing dln_Psi/dR and dln_Psi/dr = {timer_dln_Psi_dR_dr / num_mcmc_steps * 10**3:.2f} msec."
         )
-        logger.info(f"  Time for misc. (others) = {timer_others/num_mcmc_steps*10**3:.2f} msec.")
-        logger.info(f"Acceptance ratio is {accepted_moves/num_mcmc_steps/nbra*100} %")
+        logger.info(
+            f"  Time for computing dln_Psi/dc (jastrow 1b2b3b) = {timer_dln_Psi_dc_jas1b2b3b / num_mcmc_steps * 10**3:.2f} msec."
+        )
+        logger.info(f"  Time for misc. (others) = {timer_others / num_mcmc_steps * 10**3:.2f} msec.")
+        logger.info(f"Acceptance ratio is {accepted_moves / num_mcmc_steps / nbra * 100} %")
 
     @property
     def hamiltonian_data(self):
@@ -837,7 +839,7 @@ class VMC_serial:
 
         # main vmcopt loop
         for i_opt in range(num_opt_steps):
-            logger.info(f"i_opt={i_opt+1+self.__i_opt}/{num_opt_steps+self.__i_opt}.")
+            logger.info(f"i_opt={i_opt + 1 + self.__i_opt}/{num_opt_steps + self.__i_opt}.")
 
             if mpi_rank == 0:
                 logger.info(f"num_mcmc_warmup_steps={num_mcmc_warmup_steps}.")
@@ -946,7 +948,7 @@ class VMC_serial:
             if mpi_rank == 0:
                 if (i_opt + 1) % wf_dump_freq == 0 or (i_opt + 1) == num_opt_steps:
                     logger.info("Hamiltonian data is dumped as a checkpoint file.")
-                    self.__mcmc.hamiltonian_data.dump(f"hamiltonian_data_opt_step_{self.__i_opt}.chk")
+                    self.__mcmc.hamiltonian_data.dump(f"hamiltonian_data_opt_step_{i_opt + 1}.chk")
 
             # check max time
             vmcopt_current = time.perf_counter()

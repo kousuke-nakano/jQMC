@@ -44,8 +44,9 @@ import jax
 import numpy as np
 import numpy.typing as npt
 import scipy
-from jax import grad, jit, lax, vmap
+from jax import grad, jit, lax
 from jax import numpy as jnp
+from jax import vmap
 
 # MPI
 from mpi4py import MPI
@@ -152,7 +153,7 @@ class MCMC_multiple_walkers:
         )
         end = time.perf_counter()
         logger.info("  Compilation e_L is done.")
-        logger.info(f"  Elapsed Time = {end-start:.2f} sec.")
+        logger.info(f"  Elapsed Time = {end - start:.2f} sec.")
         self.__timer_mcmc_init += end - start
 
         if self.__comput_position_deriv:
@@ -165,7 +166,7 @@ class MCMC_multiple_walkers:
             )
             end = time.perf_counter()
             logger.info("  Compilation de_L is done.")
-            logger.info(f"  Elapsed Time = {end-start:.2f} sec.")
+            logger.info(f"  Elapsed Time = {end - start:.2f} sec.")
             self.__timer_mcmc_init += end - start
 
             logger.info("  Compilation dln_Psi starts.")
@@ -177,7 +178,7 @@ class MCMC_multiple_walkers:
             )
             end = time.perf_counter()
             logger.info("  Compilation dln_Psi is done.")
-            logger.info(f"  Elapsed Time = {end-start:.2f} sec.")
+            logger.info(f"  Elapsed Time = {end - start:.2f} sec.")
             self.__timer_mcmc_init += end - start
 
             logger.info("  Compilation domega starts.")
@@ -188,7 +189,7 @@ class MCMC_multiple_walkers:
             )
             end = time.perf_counter()
             logger.info("  Compilation domega is done.")
-            logger.info(f"  Elapsed Time = {end-start:.2f} sec.")
+            logger.info(f"  Elapsed Time = {end - start:.2f} sec.")
             self.__timer_mcmc_init += end - start
 
         if self.__comput_jas_param_deriv:
@@ -201,7 +202,7 @@ class MCMC_multiple_walkers:
             )
             end = time.perf_counter()
             logger.info("  Compilation dln_Psi is done.")
-            logger.info(f"  Elapsed Time = {end-start:.2f} sec.")
+            logger.info(f"  Elapsed Time = {end - start:.2f} sec.")
             self.__timer_mcmc_init += end - start
 
         logger.info("Compilation of fundamental functions is done.")
@@ -358,7 +359,7 @@ class MCMC_multiple_walkers:
 
                 logger.debug(f"nearest_atom_index = {nearest_atom_index}")
                 logger.debug(f"norm_r_R = {norm_r_R}")
-                logger.debug(f"f_l  = {f_l }")
+                logger.debug(f"f_l  = {f_l}")
 
                 sigma = f_l * self.__Dt
                 jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
@@ -400,9 +401,9 @@ class MCMC_multiple_walkers:
 
                 logger.debug(f"nearest_atom_index = {nearest_atom_index}")
                 logger.debug(f"norm_r_R = {norm_r_R}")
-                logger.debug(f"f_prime_l  = {f_prime_l }")
+                logger.debug(f"f_prime_l  = {f_prime_l}")
 
-                logger.debug(f"The selected electron is {selected_electron_index+1}-th {is_up} electron.")
+                logger.debug(f"The selected electron is {selected_electron_index + 1}-th {is_up} electron.")
                 logger.debug(f"The selected electron position is {old_r_cart}.")
                 logger.debug(f"The proposed electron position is {new_r_cart}.")
 
@@ -514,14 +515,14 @@ class MCMC_multiple_walkers:
         # MAIN MCMC loop from here !!!
         logger.info("Start MCMC")
         progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
-        logger.info(f"  Progress: MCMC step= {self.__mcmc_counter}/{num_mcmc_steps+self.__mcmc_counter}: {progress:.0f} %.")
+        logger.info(f"  Progress: MCMC step= {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.0f} %.")
         mcmc_interval = max(1, int(num_mcmc_steps / 10))  # %
 
         for i_mcmc_step in range(num_mcmc_steps):
             if (i_mcmc_step + 1) % mcmc_interval == 0:
                 progress = (i_mcmc_step + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
                 logger.info(
-                    f"  Progress: MCMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps+self.__mcmc_counter}: {progress:.1f} %."
+                    f"  Progress: MCMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %."
                 )
 
             # electron positions are goint to be updated!
@@ -599,7 +600,7 @@ class MCMC_multiple_walkers:
                     self.__latest_r_dn_carts,
                 )
                 end = time.perf_counter()
-                logger.devel(f"ln Psi evaluation: Time = {(end-start)*1000:.3f} msec.")
+                logger.devel(f"ln Psi evaluation: Time = {(end - start) * 1000:.3f} msec.")
 
                 logger.devel(f"ln_Psi = {ln_Psi}")
                 self.__stored_ln_Psi.append(ln_Psi)
@@ -720,15 +721,19 @@ class MCMC_multiple_walkers:
         logger.info(f"Pre-compilation time for MCMC = {timer_mcmc_update_init:.2f} sec.")
         logger.info(f"Net total time for MCMC = {timer_mcmc_total - timer_mcmc_update_init:.2f} sec.")
         logger.info(f"Elapsed times per MCMC step, averaged over {num_mcmc_steps} steps.")
-        logger.info(f"  Time for MCMC updated = {timer_mcmc_update/num_mcmc_steps*10**3:.2f} msec.")
-        logger.info(f"  Time for computing e_L = {timer_e_L/num_mcmc_steps*10**3:.2f} msec.")
-        logger.info(f"  Time for computing de_L/dR and de_L/dr = {timer_de_L_dR_dr/num_mcmc_steps*10**3:.2f} msec.")
-        logger.info(f"  Time for computing dln_Psi/dR and dln_Psi/dr = {timer_dln_Psi_dR_dr/num_mcmc_steps*10**3:.2f} msec.")
+        logger.info(f"  Time for MCMC updated = {timer_mcmc_update / num_mcmc_steps * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing e_L = {timer_e_L / num_mcmc_steps * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing de_L/dR and de_L/dr = {timer_de_L_dR_dr / num_mcmc_steps * 10**3:.2f} msec.")
         logger.info(
-            f"  Time for computing dln_Psi/dc (jastrow 1b2b3b) = {timer_dln_Psi_dc_jas1b2b3b/num_mcmc_steps*10**3:.2f} msec."
+            f"  Time for computing dln_Psi/dR and dln_Psi/dr = {timer_dln_Psi_dR_dr / num_mcmc_steps * 10**3:.2f} msec."
         )
-        logger.info(f"  Time for misc. (others) = {timer_misc/num_mcmc_steps*10**3:.2f} msec.")
-        logger.info(f"Acceptance ratio is {self.__accepted_moves/(self.__accepted_moves + self.__rejected_moves)*100:.3f} %")
+        logger.info(
+            f"  Time for computing dln_Psi/dc (jastrow 1b2b3b) = {timer_dln_Psi_dc_jas1b2b3b / num_mcmc_steps * 10**3:.2f} msec."
+        )
+        logger.info(f"  Time for misc. (others) = {timer_misc / num_mcmc_steps * 10**3:.2f} msec.")
+        logger.info(
+            f"Acceptance ratio is {self.__accepted_moves / (self.__accepted_moves + self.__rejected_moves) * 100:.3f} %"
+        )
         logger.info("")
 
     @property
@@ -1169,7 +1174,7 @@ class VMC_multiple_walkers:
 
         # main vmcopt loop
         for i_opt in range(num_opt_steps):
-            logger.info(f"i_opt={i_opt+1+self.__i_opt}/{num_opt_steps+self.__i_opt}.")
+            logger.info(f"i_opt={i_opt + 1 + self.__i_opt}/{num_opt_steps + self.__i_opt}.")
 
             if mpi_rank == 0:
                 logger.info(f"num_mcmc_warmup_steps={num_mcmc_warmup_steps}.")
@@ -1286,7 +1291,7 @@ class VMC_multiple_walkers:
             if mpi_rank == 0:
                 if (i_opt + 1) % wf_dump_freq == 0 or (i_opt + 1) == num_opt_steps:
                     logger.info("Hamiltonian data is dumped as a checkpoint file.")
-                    self.__mcmc.hamiltonian_data.dump(f"hamiltonian_data_opt_step_{self.__i_opt}.chk")
+                    self.__mcmc.hamiltonian_data.dump(f"hamiltonian_data_opt_step_{i_opt + 1}.chk")
 
             # check max time
             vmcopt_current = time.perf_counter()
@@ -1296,7 +1301,7 @@ class VMC_multiple_walkers:
                 break
 
         # update WF opt counter
-        self.__i_opt += 1
+        self.__i_opt += i_opt + 1
 
     def get_deriv_ln_WF(self, num_mcmc_warmup_steps: int = 50):
         """Return the derivativs of ln_WF wrt variational parameters.
@@ -1722,6 +1727,7 @@ class VMC_multiple_walkers:
 if __name__ == "__main__":
     import pickle
     from logging import Formatter, StreamHandler, getLogger
+
     # import os
     # from .trexio_wrapper import read_trexio_file
 
