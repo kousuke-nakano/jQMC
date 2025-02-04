@@ -336,7 +336,7 @@ def main():
             num_mcmc_steps=num_mcmc_steps,
             num_opt_steps=num_opt_steps,
             delta=delta,
-            var_epsilon=epsilon,
+            epsilon=epsilon,
             wf_dump_freq=wf_dump_freq,
             num_mcmc_warmup_steps=num_mcmc_warmup_steps,
             num_mcmc_bin_blocks=num_mcmc_bin_blocks,
