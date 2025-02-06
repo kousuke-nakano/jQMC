@@ -42,8 +42,9 @@ import jax
 import numpy as np
 import numpy.typing as npt
 import scipy
-from jax import grad, jit, lax, vmap
+from jax import grad, jit, lax
 from jax import numpy as jnp
+from jax import vmap
 
 # MPI
 from mpi4py import MPI
@@ -826,6 +827,7 @@ class MCMC:
         return self.__num_walkers
 
     # weights
+    @property
     def w_L(self) -> npt.NDArray:
         """Return the stored weight array. dim: (mcmc_counter, num_walkers)."""
         return np.ones((self.mcmc_counter, self.num_walkers))  # tentative.
@@ -1369,44 +1371,49 @@ class QMC:
         """
         # analysis VMC
         e_L = self.__mcmc.e_L[num_mcmc_warmup_steps:]
-        e_L_split = np.array_split(e_L, num_mcmc_bin_blocks, axis=0)
-        e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in e_L_split]))
-        # e_L_binned_check = list(np.ravel([np.average(e_arr, axis=0) for e_arr in e_L_split]))
-        # logger.info(e_L_binned)
-        # logger.info(e_L_binned_check)
+        w_L = self.__mcmc.w_L[num_mcmc_warmup_steps:]
+        w_L_e_L = w_L * e_L
+        w_L_e_L_split = np.array_split(w_L_e_L, num_mcmc_bin_blocks, axis=0)
+        w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
+        w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
+        w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
 
-        logger.debug(f"[before reduce] len(e_L_binned) for MPI-rank={mpi_rank} is {len(e_L_binned)}.")
-
-        e_L_binned = mpi_comm.reduce(e_L_binned, op=MPI.SUM, root=0)
+        logger.debug(f"[after reduce] len(e_L_binned) for MPI-rank={mpi_rank} is {len(w_L_e_L_binned)}.")
+        w_L_e_L_binned = mpi_comm.reduce(w_L_e_L_binned, op=MPI.SUM, root=0)
+        w_L_binned = mpi_comm.reduce(w_L_binned, op=MPI.SUM, root=0)
 
         if mpi_rank == 0:
-            logger.debug(f"[after reduce] len(e_L_binned) for MPI-rank={mpi_rank} is {len(e_L_binned)}.")
-            logger.devel(f"e_L_binned = {e_L_binned}.")
+            logger.debug(f"[after reduce] len(e_L_binned) for MPI-rank={mpi_rank} is {len(w_L_e_L_binned)}.")
             # jackknife implementation
-            # https://www2.yukawa.kyoto-u.ac.jp/~etsuko.itou/old-HP/Notes/Jackknife-method.pdf
-            e_L_jackknife_binned = [np.average(np.delete(e_L_binned, i)) for i in range(len(e_L_binned))]
+            w_L_e_L_binned_sum = np.sum(w_L_e_L_binned)
+            w_L_binned_sum = np.sum(w_L_binned)
 
-            logger.debug(f"len(e_L_jackknife_binned)  = {len(e_L_jackknife_binned)}.")
+            E_jackknife_binned = [
+                (w_L_e_L_binned_sum - w_L_e_L_binned[m]) / (w_L_binned_sum - w_L_binned[m])
+                for m in range(num_mcmc_bin_blocks * mpi_size)
+            ]
 
-            e_L_mean = np.average(e_L_jackknife_binned)
-            e_L_std = np.sqrt(len(e_L_binned) - 1) * np.std(e_L_jackknife_binned)
+            logger.debug(f"len(E_jackknife_binned)  = {len(E_jackknife_binned)}.")
 
-            logger.debug(f"e_L = {e_L_mean} +- {e_L_std} Ha.")
+            E_mean = np.average(E_jackknife_binned)
+            E_std = np.sqrt(len(E_jackknife_binned) - 1) * np.std(E_jackknife_binned)
+
+            logger.debug(f"E = {E_mean} +- {E_std} Ha.")
         else:
-            e_L_mean = 0.0
-            e_L_std = 0.0
+            E_mean = 0.0
+            E_std = 0.0
 
-        e_L_mean = mpi_comm.bcast(e_L_mean, root=0)
-        e_L_std = mpi_comm.bcast(e_L_std, root=0)
+        E_mean = mpi_comm.bcast(E_mean, root=0)
+        E_std = mpi_comm.bcast(E_std, root=0)
 
-        return (e_L_mean, e_L_std)
+        return (E_mean, E_std)
 
     def get_aF(
         self,
         num_mcmc_warmup_steps: int = 50,
         num_mcmc_bin_blocks: int = 10,
     ):
-        """Return the mean and std of the computed local energy.
+        """Return the mean and std of the computed atomic forces.
 
         Args:
             num_mcmc_warmup_steps (int): the number of warmup steps.
@@ -1756,7 +1763,7 @@ if __name__ == "__main__":
         hamiltonian_data = pickle.load(f)
 
     # VMC parameters
-    num_walkers = 2
+    num_walkers = 4
     num_mcmc_warmup_steps = 5
     num_mcmc_bin_blocks = 5
     mcmc_seed = 34356
@@ -1768,11 +1775,11 @@ if __name__ == "__main__":
         Dt=2.0,
         mcmc_seed=mcmc_seed,
         num_walkers=num_walkers,
-        comput_position_deriv=True,
+        comput_position_deriv=False,
         comput_jas_param_deriv=False,
     )
     vmc = QMC(mcmc)
-    vmc.run(num_mcmc_steps=100)
+    vmc.run(num_mcmc_steps=1000)
     E_mean, E_std = vmc.get_E(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
@@ -1780,7 +1787,7 @@ if __name__ == "__main__":
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
     # """
 
-    # """
+    """
     f_mean, f_std = vmc.get_aF(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
@@ -1788,7 +1795,7 @@ if __name__ == "__main__":
 
     logger.info(f"f_mean = {f_mean} Ha/bohr.")
     logger.info(f"f_std = {f_std} Ha/bohr.")
-    # """
+    """
 
     """
     # run VMCopt
