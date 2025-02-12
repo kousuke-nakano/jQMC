@@ -344,6 +344,12 @@ class MCMC:
         # stored dln_Psi / dc_jas1b3b
         self.__stored_grad_ln_Psi_jas1b3b_j_matrix = []
 
+        # stored de_L / dc_jas2b
+        self.__stored_grad_e_L_jas2b = []
+
+        # stored de_L / dc_jas1b3b
+        self.__stored_grad_e_L_jas1b3b_j_matrix = []
+
         # total number of electrons
         self.__total_electrons = len(self.__latest_r_up_carts[0]) + len(self.__latest_r_dn_carts[0])
 
@@ -763,17 +769,39 @@ class MCMC:
                 end = time.perf_counter()
                 timer_dln_Psi_dc_jas1b2b3b += end - start
 
+                """ for Linear method
+                grad_e_L_h = vmap(grad(compute_local_energy_api, argnums=0), in_axes=(None, 0, 0))(
+                    self.__hamiltonian_data,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                )
+                """
+
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag:
                     grad_ln_Psi_jas2b = grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
                     logger.devel(f"grad_ln_Psi_jas2b.shape = {grad_ln_Psi_jas2b.shape}")
                     logger.devel(f"  grad_ln_Psi_jas2b = {grad_ln_Psi_jas2b}")
                     self.__stored_grad_ln_Psi_jas2b.append(grad_ln_Psi_jas2b)
 
+                    """ for Linear method
+                    grad_e_L_jas2b = grad_e_L_h.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
+                    logger.devel(f"grad_e_L_jas2b.shape = {grad_e_L_jas2b.shape}")
+                    logger.devel(f"  grad_e_L_jas2b = {grad_e_L_jas2b}")
+                    self.__stored_grad_e_L_jas2b.append(grad_e_L_jas2b)
+                    """
+
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
                     grad_ln_Psi_jas1b3b_j_matrix = grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix
                     logger.devel(f"grad_ln_Psi_jas1b3b_j_matrix.shape={grad_ln_Psi_jas1b3b_j_matrix.shape}")
                     logger.devel(f"  grad_ln_Psi_jas1b3b_j_matrix = {grad_ln_Psi_jas1b3b_j_matrix}")
                     self.__stored_grad_ln_Psi_jas1b3b_j_matrix.append(grad_ln_Psi_jas1b3b_j_matrix)
+
+                    """ for Linear method
+                    grad_e_L_jas1b3b_j_matrix = grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix
+                    logger.devel(f"grad_e_L_jas1b3b_j_matrix.shape = {grad_e_L_jas1b3b_j_matrix.shape}")
+                    logger.devel(f"  grad_e_L_jas1b3b_j_matrix = {grad_e_L_jas1b3b_j_matrix}")
+                    self.__stored_grad_e_L_jas1b3b_j_matrix.append(grad_e_L_jas1b3b_j_matrix)
+                    """
 
             num_mcmc_done += 1
 
@@ -920,6 +948,16 @@ class MCMC:
     def dln_Psi_dc_jas_1b3b(self) -> npt.NDArray:
         """Return the stored dln_Psi/dc_J1_3 array. dim: (mcmc_counter, num_walkers, num_J1_J3_param)."""
         return np.array(self.__stored_grad_ln_Psi_jas1b3b_j_matrix)
+
+    @property
+    def de_L_dc_jas_2b(self) -> npt.NDArray:
+        """Return the stored de_L/dc_J2 array. dim: (mcmc_counter, num_walkers, num_J2_param)."""
+        return np.array(self.__stored_grad_e_L_jas2b)
+
+    @property
+    def de_L_dc_jas_1b3b(self) -> npt.NDArray:
+        """Return the stored de_L/dc_J1_3 array. dim: (mcmc_counter, num_walkers, num_J1_J3_param)."""
+        return np.array(self.__stored_grad_e_L_jas1b3b_j_matrix)
 
     # dict for WF optimization
     @property
@@ -2631,6 +2669,7 @@ class QMC:
                 L indicates the flattened variational parameter index.
         """
         logger.info("Computing the stochastic matrix S...")
+
         if self.__mcmc.e_L.size != 0:
             w_L = self.__mcmc.w_L[num_mcmc_warmup_steps:]
             w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
@@ -2638,28 +2677,45 @@ class QMC:
 
             O_matrix = self.get_dln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps)
             O_matrix_split = np.array_split(O_matrix, num_mcmc_bin_blocks, axis=0)
-
             O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in O_matrix_split])
             O_matrix_binned_shape = (
                 O_matrix_ave.shape[0] * O_matrix_ave.shape[1],
                 O_matrix_ave.shape[2],
             )
             O_matrix_binned = list(O_matrix_ave.reshape(O_matrix_binned_shape))
+
+            w_L_O_matrix_split = np.array_split(np.einsum("iw,iwj->iwj", w_L, O_matrix), num_mcmc_bin_blocks, axis=0)
+            w_L_O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in w_L_O_matrix_split])
+            w_L_O_matrix_binned_shape = (
+                w_L_O_matrix_ave.shape[0] * w_L_O_matrix_ave.shape[1],
+                w_L_O_matrix_ave.shape[2],
+            )
+            w_L_O_matrix_binned = list(w_L_O_matrix_ave.reshape(w_L_O_matrix_binned_shape))
+
         else:
             w_L_binned = []
             O_matrix_binned = []
+            w_L_O_matrix_binned = []
+
         w_L_binned = mpi_comm.reduce(w_L_binned, op=MPI.SUM, root=0)
         O_matrix_binned = mpi_comm.reduce(O_matrix_binned, op=MPI.SUM, root=0)
+        w_L_O_matrix_binned = mpi_comm.reduce(w_L_O_matrix_binned, op=MPI.SUM, root=0)
 
         if mpi_rank == 0:
             w_L_binned = np.array(w_L_binned)
             O_matrix_binned = np.array(O_matrix_binned)
+            w_L_O_matrix_binned = np.array(w_L_O_matrix_binned)
             logger.info(f"w_L_binned.shape = {w_L_binned.shape}")
             logger.info(f"O_matrix_binned.shape = {O_matrix_binned.shape}")
+            logger.info(f"w_L_O_matrix_binned.shape = {w_L_O_matrix_binned.shape}")
             # S_mean = np.array(np.cov(O_matrix_binned, bias=True, rowvar=False)) # old
-            O_matrix_ave = np.average(O_matrix_binned, axis=0, weights=w_L_binned)
-            O__bar_O = O_matrix_binned - O_matrix_ave
-            S_mean = (O__bar_O.T * w_L_binned) @ O__bar_O / np.sum(w_L_binned)
+            O_bar = np.sum(w_L_O_matrix_binned, axis=0) / np.sum(w_L_binned, axis=0)
+            w_O_bar = np.einsum("i,k->ik", w_L_binned, O_bar)
+            logger.info(f"O_bar.shape = {O_bar.shape}")
+            logger.info(f"w_O_bar.shape = {w_O_bar.shape}")
+            S_mean = (
+                (w_L_O_matrix_binned - w_O_bar).T @ (O_matrix_binned - O_bar) / np.sum(w_L_binned)
+            )  # weighted variance-covariance matrix
             S_std = np.zeros(S_mean.size)
             logger.info(f"S_mean.shape = {S_mean.shape}")
             logger.debug(f"S_mean.is_nan for MPI-rank={mpi_rank} is {np.isnan(S_mean).any()}")
@@ -3148,7 +3204,7 @@ if __name__ == "__main__":
     logger.info(f"f_std = {f_std} Ha/bohr.")
     """
 
-    """
+    # """
     # run VMCopt
     mcmc = MCMC(
         hamiltonian_data=hamiltonian_data,
@@ -3168,9 +3224,9 @@ if __name__ == "__main__":
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
-    """
-
     # """
+
+    """
 
     # GFMC param
     num_walkers = 2
@@ -3201,9 +3257,9 @@ if __name__ == "__main__":
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
-    # """
+    """
 
-    # """
+    """
     f_mean, f_std = gfmc.get_aF(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
@@ -3211,4 +3267,4 @@ if __name__ == "__main__":
 
     logger.info(f"f_mean = {f_mean} Ha/bohr.")
     logger.info(f"f_std = {f_std} Ha/bohr.")
-    # """
+    """
