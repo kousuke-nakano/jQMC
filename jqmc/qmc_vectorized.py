@@ -43,8 +43,9 @@ import jax
 import numpy as np
 import numpy.typing as npt
 import scipy
-from jax import grad, jit, lax, vmap
+from jax import grad, jit, lax
 from jax import numpy as jnp
+from jax import vmap
 
 # MPI
 from mpi4py import MPI
@@ -598,6 +599,22 @@ class MCMC:
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
+
+        if self.__comput_jas_param_deriv:
+            _ = vmap(grad(evaluate_ln_wavefunction_api, argnums=0), in_axes=(None, 0, 0))(
+                self.__hamiltonian_data.wavefunction_data,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+            )
+
+            # """ for Linear method
+            _ = vmap(grad(compute_local_energy_api, argnums=0), in_axes=(None, 0, 0))(
+                self.__hamiltonian_data,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+            )
+            # """
+
         mcmc_update_init_end = time.perf_counter()
         timer_mcmc_update_init += mcmc_update_init_end - mcmc_update_init_start
         logger.info("End compilation of the MCMC_update funciton.")
@@ -769,13 +786,13 @@ class MCMC:
                 end = time.perf_counter()
                 timer_dln_Psi_dc_jas1b2b3b += end - start
 
-                """ for Linear method
+                # """ for Linear method
                 grad_e_L_h = vmap(grad(compute_local_energy_api, argnums=0), in_axes=(None, 0, 0))(
                     self.__hamiltonian_data,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
-                """
+                # """
 
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag:
                     grad_ln_Psi_jas2b = grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
@@ -783,12 +800,12 @@ class MCMC:
                     logger.devel(f"  grad_ln_Psi_jas2b = {grad_ln_Psi_jas2b}")
                     self.__stored_grad_ln_Psi_jas2b.append(grad_ln_Psi_jas2b)
 
-                    """ for Linear method
+                    # """ for Linear method
                     grad_e_L_jas2b = grad_e_L_h.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
                     logger.devel(f"grad_e_L_jas2b.shape = {grad_e_L_jas2b.shape}")
                     logger.devel(f"  grad_e_L_jas2b = {grad_e_L_jas2b}")
                     self.__stored_grad_e_L_jas2b.append(grad_e_L_jas2b)
-                    """
+                    # """
 
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
                     grad_ln_Psi_jas1b3b_j_matrix = grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix
@@ -796,12 +813,12 @@ class MCMC:
                     logger.devel(f"  grad_ln_Psi_jas1b3b_j_matrix = {grad_ln_Psi_jas1b3b_j_matrix}")
                     self.__stored_grad_ln_Psi_jas1b3b_j_matrix.append(grad_ln_Psi_jas1b3b_j_matrix)
 
-                    """ for Linear method
+                    # """ for Linear method
                     grad_e_L_jas1b3b_j_matrix = grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix
                     logger.devel(f"grad_e_L_jas1b3b_j_matrix.shape = {grad_e_L_jas1b3b_j_matrix.shape}")
                     logger.devel(f"  grad_e_L_jas1b3b_j_matrix = {grad_e_L_jas1b3b_j_matrix}")
                     self.__stored_grad_e_L_jas1b3b_j_matrix.append(grad_e_L_jas1b3b_j_matrix)
-                    """
+                    # """
 
             num_mcmc_done += 1
 
@@ -969,50 +986,56 @@ class MCMC:
         Return:
             opt_param_list (list): labels of the parameters to be optimized.
             dln_Psi_dc_list (list): dln_Psi_dc instances computed by JAX-grad.
-            dln_Psi_dc_size_list (list): sizes of dln_Psi_dc instances
-            dln_Psi_dc_shape_list (list): shapes of dln_Psi_dc instances
-            dln_Psi_dc_flattened_index_list (list): indices of dln_Psi_dc instances for the flattened parameter
+            dc_size_list (list): sizes of dln_Psi_dc instances
+            dc_shape_list (list): shapes of dln_Psi_dc instances
+            dc_flattened_index_list (list): indices of dln_Psi_dc instances for the flattened parameter
         #
         """
         opt_param_list = []
         dln_Psi_dc_list = []
-        dln_Psi_dc_size_list = []
-        dln_Psi_dc_shape_list = []
-        dln_Psi_dc_flattened_index_list = []
+        de_L_dc_list = []
+        dc_size_list = []
+        dc_shape_list = []
+        dc_flattened_index_list = []
 
         if self.__comput_jas_param_deriv:
             if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag:
                 opt_param = "jastrow_2b_param"
                 dln_Psi_dc = self.dln_Psi_dc_jas_2b
-                dln_Psi_dc_size = 1
-                dln_Psi_dc_shape = (1,)
-                dln_Psi_dc_flattened_index = [len(opt_param_list)] * dln_Psi_dc_size
+                de_L_dc = self.de_L_dc_jas_2b
+                dc_size = 1
+                dc_shape = (1,)
+                dc_flattened_index = [len(opt_param_list)] * dc_size
 
                 opt_param_list.append(opt_param)
                 dln_Psi_dc_list.append(dln_Psi_dc)
-                dln_Psi_dc_size_list.append(dln_Psi_dc_size)
-                dln_Psi_dc_shape_list.append(dln_Psi_dc_shape)
-                dln_Psi_dc_flattened_index_list += dln_Psi_dc_flattened_index
+                de_L_dc_list.append(de_L_dc)
+                dc_size_list.append(dc_size)
+                dc_shape_list.append(dc_shape)
+                dc_flattened_index_list += dc_flattened_index
 
             if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
                 opt_param = "j_matrix"
                 dln_Psi_dc = self.dln_Psi_dc_jas_1b3b
-                dln_Psi_dc_size = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix.size
-                dln_Psi_dc_shape = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix.shape
-                dln_Psi_dc_flattened_index = [len(opt_param_list)] * dln_Psi_dc_size
+                de_L_dc = self.de_L_dc_jas_1b3b
+                dc_size = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix.size
+                dc_shape = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix.shape
+                dc_flattened_index = [len(opt_param_list)] * dc_size
 
                 opt_param_list.append(opt_param)
                 dln_Psi_dc_list.append(dln_Psi_dc)
-                dln_Psi_dc_size_list.append(dln_Psi_dc_size)
-                dln_Psi_dc_shape_list.append(dln_Psi_dc_shape)
-                dln_Psi_dc_flattened_index_list += dln_Psi_dc_flattened_index
+                de_L_dc_list.append(de_L_dc)
+                dc_size_list.append(dc_size)
+                dc_shape_list.append(dc_shape)
+                dc_flattened_index_list += dc_flattened_index
 
         return {
             "opt_param_list": opt_param_list,
             "dln_Psi_dc_list": dln_Psi_dc_list,
-            "dln_Psi_dc_size_list": dln_Psi_dc_size_list,
-            "dln_Psi_dc_shape_list": dln_Psi_dc_shape_list,
-            "dln_Psi_dc_flattened_index_list": dln_Psi_dc_flattened_index_list,
+            "de_L_dc_list": de_L_dc_list,
+            "dc_size_list": dc_size_list,
+            "dc_shape_list": dc_shape_list,
+            "dc_flattened_index_list": dc_flattened_index_list,
         }
 
 
@@ -2352,8 +2375,8 @@ class QMC:
         """
         vmcopt_total_start = time.perf_counter()
 
-        dln_Psi_dc_size_list = self.__mcmc.opt_param_dict["dln_Psi_dc_size_list"]
-        logger.info(f"The number of variational paramers = {np.sum(dln_Psi_dc_size_list)}.")
+        dc_size_list = self.__mcmc.opt_param_dict["dc_size_list"]
+        logger.info(f"The number of variational paramers = {np.sum(dc_size_list)}.")
 
         # main vmcopt loop
         for i_opt in range(num_opt_steps):
@@ -2372,8 +2395,8 @@ class QMC:
             self.__mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
 
             # get e_L
-            e_L, e_L_std = self.get_E(num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks)
-            logger.info(f"e_L = {e_L} +- {e_L_std} Ha")
+            E, E_std = self.get_E(num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks)
+            logger.info(f"E = {E} +- {E_std} Ha")
 
             # get f and f_std (generalized forces)
             f, f_std = self.get_gF(
@@ -2381,6 +2404,11 @@ class QMC:
             )
             # get S (preconditioning matrix)
             S, _ = self.get_S(
+                mpi_broadcast=False, num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks
+            )
+
+            # get H (surrogate Hessian matrix)
+            H, _ = self.get_H(
                 mpi_broadcast=False, num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks
             )
 
@@ -2395,6 +2423,43 @@ class QMC:
                 # logger.info(f"The matrix S_prime is symmetric? = {np.allclose(S_prime, S_prime.T, atol=1.0e-10)}")
                 # logger.info(f"The condition number of the matrix S is {np.linalg.cond(S)}")
                 # logger.info(f"The condition number of the matrix S_prime is {np.linalg.cond(S_prime)}")
+
+                # SR with linear method
+                if S.ndim != 0:
+                    I = np.eye(S.shape[0])
+                    S_prime = S + epsilon * I
+                    # solve Sx=f
+                    S_inv_f = scipy.linalg.solve(S_prime, f, assume_a="sym")
+
+                    H_0 = E
+                    H_1 = -1.0 / 2.0 * (S_inv_f.T @ f)
+                    H_2 = S_inv_f.T @ H @ S_inv_f
+                    S_2 = S_inv_f.T @ S_prime @ S_inv_f
+
+                    logger.info(f"H_0 = {H_0}.")
+                    logger.info(f"H_1 = {H_1}.")
+                    logger.info(f"S_2 = {S_2}.")
+                    logger.info(f"H_2 = {H_2}.")
+                    logger.info(f"(H_2 + 2 * H_0 * H_1) ** 2 - 8 * H_1**3) = {(H_2 + 2 * H_0 * H_1) ** 2 - 8 * H_1**3}.")
+
+                    gamma_plus = (H_2 + 2 * H_0 * H_1 + np.sqrt((H_2 + 2 * H_0 * H_1) ** 2 - 8 * H_1**3)) / (-4.0 * H_1**2)
+                    gamma_minus = (H_2 + 2 * H_0 * H_1 - np.sqrt((H_2 + 2 * H_0 * H_1) ** 2 - 8 * H_1**3)) / (-4.0 * H_1**2)
+                    logger.info(f"gamma_plus = {gamma_plus}")
+                    logger.info(f"gamma_minus = {gamma_minus}")
+                    gamma_chosen = np.maximum(gamma_plus, gamma_minus)
+                    logger.info(f"gamma_chosen = {gamma_chosen}")
+                    if gamma_chosen < 0:
+                        logger.warning(f"gamma_chosen = {gamma_chosen} is negative!!")
+                    X = gamma_chosen * S_inv_f
+
+                else:
+                    raise NotImplementedError
+                    I = 1.0
+                    S_prime = S + epsilon * I
+                    # solve Sx=f
+                    X = 1.0 / S_prime * f
+
+                """
                 # SR
                 if S.ndim != 0:
                     I = np.eye(S.shape[0])
@@ -2406,6 +2471,8 @@ class QMC:
                     S_prime = S + epsilon * I
                     # solve Sx=f
                     X = 1.0 / S_prime * f
+                """
+
                 # steepest decent (SD)
                 # X = f
 
@@ -2418,8 +2485,8 @@ class QMC:
             logger.info(f"max(dX) for MPI-rank={mpi_rank} is {np.max(X)}")
 
             opt_param_list = self.__mcmc.opt_param_dict["opt_param_list"]
-            dln_Psi_dc_shape_list = self.__mcmc.opt_param_dict["dln_Psi_dc_shape_list"]
-            dln_Psi_dc_flattened_index_list = self.__mcmc.opt_param_dict["dln_Psi_dc_flattened_index_list"]
+            dc_shape_list = self.__mcmc.opt_param_dict["dc_shape_list"]
+            dc_flattened_index_list = self.__mcmc.opt_param_dict["dc_flattened_index_list"]
 
             jastrow_2b_param = (
                 self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
@@ -2430,8 +2497,8 @@ class QMC:
             j_matrix = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix
 
             for ii, opt_param in enumerate(opt_param_list):
-                param_shape = dln_Psi_dc_shape_list[ii]
-                param_index = [i for i, v in enumerate(dln_Psi_dc_flattened_index_list) if v == ii]
+                param_shape = dc_shape_list[ii]
+                param_index = [i for i, v in enumerate(dc_flattened_index_list) if v == ii]
                 dX = X[param_index].reshape(param_shape)
                 logger.info(f"dX.shape for MPI-rank={mpi_rank} is {dX.shape}")
                 if dX.shape == (1,):
@@ -2500,9 +2567,9 @@ class QMC:
 
         # opt_param_list = opt_param_dict["opt_param_list"]
         dln_Psi_dc_list = opt_param_dict["dln_Psi_dc_list"]
-        # dln_Psi_dc_size_list = opt_param_dict["dln_Psi_dc_size_list"]
-        # dln_Psi_dc_shape_list = opt_param_dict["dln_Psi_dc_shape_list"]
-        # dln_Psi_dc_flattened_index_list = opt_param_dict["dln_Psi_dc_flattened_index_list"]
+        # dc_size_list = opt_param_dict["dc_size_list"]
+        # dc_shape_list = opt_param_dict["dc_shape_list"]
+        # dc_flattened_index_list = opt_param_dict["dc_flattened_index_list"]
 
         # here, the thrid index indicates the flattened variational parameter index.
         O_matrix = np.empty((self.__mcmc.mcmc_counter, self.__mcmc.num_walkers, 0))
@@ -2519,6 +2586,39 @@ class QMC:
 
         logger.debug(f"O_matrix.shape = {O_matrix.shape}")
         return O_matrix[num_mcmc_warmup_steps:]  # O.... (x....) (M, nw, L) matrix
+
+    def get_de_L(self, num_mcmc_warmup_steps: int = 50):
+        """Return the derivativs of e_L wrt variational parameters.
+
+        Args:
+            num_mcmc_warmup_steps (int): The number of warmup steps.
+
+        Return:
+            de_L_matrix(npt.NDArray): The matrix containing de_L_k = d e_L / dc_k,
+            where k is the flattened variational parameter index. The dimenstion
+            of de_L_matrix is (M, nw, k), where M is the MCMC step and nw is the walker index.
+        """
+        opt_param_dict = self.__mcmc.opt_param_dict
+
+        # opt_param_list = opt_param_dict["opt_param_list"]
+        de_L_dc_list = opt_param_dict["de_L_dc_list"]
+        # dc_size_list = opt_param_dict["dc_size_list"]
+        # dc_shape_list = opt_param_dict["dc_shape_list"]
+        # dc_flattened_index_list = opt_param_dict["dc_flattened_index_list"]
+
+        # here, the thrid index indicates the flattened variational parameter index.
+        de_L_matrix = np.empty((self.__mcmc.mcmc_counter, self.__mcmc.num_walkers, 0))
+
+        for de_L_dc in de_L_dc_list:
+            logger.devel(f"de_L_dc.shape={de_L_dc.shape}.")
+            if de_L_dc.ndim == 2:  # i.e., sclar variational param.
+                de_L_dc_reshaped = de_L_dc.reshape(de_L_dc.shape[0], de_L_dc.shape[1], 1)
+            else:
+                de_L_dc_reshaped = de_L_dc.reshape(de_L_dc.shape[0], de_L_dc.shape[1], int(np.prod(de_L_dc.shape[2:])))
+            de_L_matrix = np.concatenate((de_L_matrix, de_L_dc_reshaped), axis=2)
+
+        logger.debug(f"de_L_matrix.shape = {de_L_matrix.shape}")
+        return de_L_matrix[num_mcmc_warmup_steps:]  # O.... (x....) (M, nw, L) matrix
 
     def get_gF(
         self, mpi_broadcast: bool = True, num_mcmc_warmup_steps: int = 50, num_mcmc_bin_blocks: int = 10
@@ -2731,6 +2831,131 @@ class QMC:
             S_std = mpi_comm.bcast(S_std, root=0)
 
         return (S_mean, S_std)  # (S_mu,nu ...., var(S)_mu,nu....) (L*L matrix, L*L matrix)
+
+    def get_H(
+        self,
+        mpi_broadcast: int = False,
+        num_mcmc_warmup_steps: int = 50,
+        num_mcmc_bin_blocks: int = 10,
+    ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+        """Compute the surrogate Hessian matrix H.
+
+        Args:
+            mpi_broadcast (bool):
+                If true, the computed H is shared among all MPI processes.
+                If false, only the root node has it.
+            num_mcmc_warmup_steps (int): The number of warmup steps.
+            num_mcmc_bin_blocks (int): the number of binning blocks
+
+        Return:
+            H_matrix (npt.NDArray):
+                The mean and std of the surrogate matrix S.
+                dim is (L, L) for both, where L is the number of variational parameter.
+                L indicates the flattened variational parameter index.
+        """
+        logger.info("Computing the stochastic matrix S...")
+
+        if self.__mcmc.e_L.size != 0:
+            w_L = self.__mcmc.w_L[num_mcmc_warmup_steps:]
+            w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
+            w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
+
+            O_matrix = self.get_dln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps)
+            O_matrix_split = np.array_split(O_matrix, num_mcmc_bin_blocks, axis=0)
+            O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in O_matrix_split])
+            O_matrix_binned_shape = (
+                O_matrix_ave.shape[0] * O_matrix_ave.shape[1],
+                O_matrix_ave.shape[2],
+            )
+            O_matrix_binned = list(O_matrix_ave.reshape(O_matrix_binned_shape))
+
+            w_L_O_matrix_split = np.array_split(np.einsum("iw,iwj->iwj", w_L, O_matrix), num_mcmc_bin_blocks, axis=0)
+            w_L_O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in w_L_O_matrix_split])
+            w_L_O_matrix_binned_shape = (
+                w_L_O_matrix_ave.shape[0] * w_L_O_matrix_ave.shape[1],
+                w_L_O_matrix_ave.shape[2],
+            )
+            w_L_O_matrix_binned = list(w_L_O_matrix_ave.reshape(w_L_O_matrix_binned_shape))
+
+            e_L = self.__mcmc.e_L[num_mcmc_warmup_steps:]
+            e_L_split = np.array_split(e_L, num_mcmc_bin_blocks, axis=0)
+            e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in e_L_split]))
+
+            e_L_O_matrix_split = np.array_split(np.einsum("iw, iwj -> iwj", e_L, O_matrix), num_mcmc_bin_blocks, axis=0)
+            e_L_O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in e_L_O_matrix_split])
+            e_L_O_matrix_binned_shape = (
+                e_L_O_matrix_ave.shape[0] * e_L_O_matrix_ave.shape[1],
+                e_L_O_matrix_ave.shape[2],
+            )
+            e_L_O_matrix_binned = list(e_L_O_matrix_ave.reshape(e_L_O_matrix_binned_shape))
+
+            de_L_matrix = self.get_de_L(num_mcmc_warmup_steps=num_mcmc_warmup_steps)
+            de_L_matrix_split = np.array_split(de_L_matrix, num_mcmc_bin_blocks, axis=0)
+            de_L_matrix_ave = np.array([np.mean(arr, axis=0) for arr in de_L_matrix_split])
+            de_L_matrix_binned_shape = (
+                de_L_matrix_ave.shape[0] * de_L_matrix_ave.shape[1],
+                de_L_matrix_ave.shape[2],
+            )
+            de_L_matrix_binned = list(de_L_matrix_ave.reshape(de_L_matrix_binned_shape))
+
+        else:
+            w_L_binned = []
+            e_L_binned = []
+            O_matrix_binned = []
+            e_L_O_matrix_binned = []
+            w_L_O_matrix_binned = []
+            de_L_matrix_binned = []
+
+        w_L_binned = mpi_comm.reduce(w_L_binned, op=MPI.SUM, root=0)
+        e_L_binned = mpi_comm.reduce(e_L_binned, op=MPI.SUM, root=0)
+        O_matrix_binned = mpi_comm.reduce(O_matrix_binned, op=MPI.SUM, root=0)
+        e_L_O_matrix_binned = mpi_comm.reduce(e_L_O_matrix_binned, op=MPI.SUM, root=0)
+        w_L_O_matrix_binned = mpi_comm.reduce(w_L_O_matrix_binned, op=MPI.SUM, root=0)
+        de_L_matrix_binned = mpi_comm.reduce(de_L_matrix_binned, op=MPI.SUM, root=0)
+
+        if mpi_rank == 0:
+            w_L_binned = np.array(w_L_binned)
+            e_L_binned = np.array(e_L_binned)
+            O_matrix_binned = np.array(O_matrix_binned)
+            e_L_O_matrix_binned = np.array(e_L_O_matrix_binned)
+            w_L_O_matrix_binned = np.array(w_L_O_matrix_binned)
+            de_L_matrix_binned = np.array(de_L_matrix_binned)
+            logger.info(f"w_L_binned.shape = {w_L_binned.shape}")
+            logger.info(f"e_L_binned.shape = {e_L_binned.shape}")
+            logger.info(f"O_matrix_binned.shape = {O_matrix_binned.shape}")
+            logger.info(f"e_L_O_matrix_binned.shape = {e_L_O_matrix_binned.shape}")
+            logger.info(f"w_L_O_matrix_binned.shape = {w_L_O_matrix_binned.shape}")
+            logger.info(f"de_L_matrix_binned.shape = {de_L_matrix_binned.shape}")
+            # S_mean = np.array(np.cov(O_matrix_binned, bias=True, rowvar=False)) # old
+            O_bar = np.sum(w_L_O_matrix_binned, axis=0) / np.sum(w_L_binned, axis=0)
+            de_L_bar = np.sum(de_L_matrix_binned, axis=0) / np.sum(w_L_binned, axis=0)
+            e_L_O_bar = np.einsum("i,k->ik", e_L_binned, O_bar)
+            w_O_bar = np.einsum("i,k->ik", w_L_binned, O_bar)
+            logger.info(f"O_bar.shape = {O_bar.shape}")
+            logger.info(f"e_L_O_bar.shape = {e_L_O_bar.shape}")
+            logger.info(f"w_O_bar.shape = {w_O_bar.shape}")
+            B_mean = (
+                (w_L_O_matrix_binned - w_O_bar).T @ (de_L_matrix_binned - de_L_bar) / np.sum(w_L_binned)
+            )  # weighted variance-covariance matrix
+            K_mean = (
+                (w_L_O_matrix_binned - w_O_bar).T @ (e_L_O_matrix_binned - e_L_O_bar) / np.sum(w_L_binned)
+            )  # weighted variance-covariance matrix
+            H_mean = B_mean + K_mean
+            H_std = np.zeros(H_mean.size)
+            logger.info(f"H_mean.shape = {H_mean.shape}")
+            logger.debug(f"H_mean.is_nan for MPI-rank={mpi_rank} is {np.isnan(H_mean).any()}")
+            logger.debug(f"H_mean.shape for MPI-rank={mpi_rank} is {H_mean.shape}")
+        else:
+            H_mean = None
+            H_std = None
+
+        if mpi_broadcast:
+            # comm.Bcast(S_mean, root=0)
+            # comm.Bcast(S_std, root=0)
+            H_mean = mpi_comm.bcast(H_mean, root=0)
+            H_std = mpi_comm.bcast(H_std, root=0)
+
+        return (H_mean, H_std)  # (H_mu,nu ...., var(H)_mu,nu....) (L*L matrix, L*L matrix)
 
     def get_E(
         self,
@@ -3024,7 +3249,7 @@ if __name__ == "__main__":
     logger.info(local_device_info)
     logger.info("")
 
-    """
+    # """
     # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
     (
         structure_data,
@@ -3034,9 +3259,9 @@ if __name__ == "__main__":
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"))
-    """
-
     # """
+
+    """
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,
@@ -3046,7 +3271,7 @@ if __name__ == "__main__":
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "H2_dimer_ccpv5z_trexio.hdf5"))
-    # """
+    """
 
     """
     # Ne atom cc-pV5Z with Mitas ccECP (10 electrons, feasible).
@@ -3170,7 +3395,7 @@ if __name__ == "__main__":
     #    hamiltonian_data = pickle.load(f)
 
     # MCMC param
-    num_walkers = 2
+    num_walkers = 4
     num_mcmc_warmup_steps = 5
     num_mcmc_bin_blocks = 5
     mcmc_seed = 34356
@@ -3182,8 +3407,8 @@ if __name__ == "__main__":
         Dt=2.0,
         mcmc_seed=mcmc_seed,
         num_walkers=num_walkers,
-        comput_position_deriv=True,
-        comput_jas_param_deriv=False,
+        comput_position_deriv=False,
+        comput_jas_param_deriv=True,
     )
     vmc = QMC(mcmc)
     vmc.run(num_mcmc_steps=100, max_time=3600)
@@ -3204,6 +3429,11 @@ if __name__ == "__main__":
     logger.info(f"f_std = {f_std} Ha/bohr.")
     """
 
+    """
+    H_mean, H_std = vmc.get_H(num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks)
+    logger.info(f"H_mean = {H_mean}.")
+    """
+
     # """
     # run VMCopt
     mcmc = MCMC(
@@ -3218,7 +3448,7 @@ if __name__ == "__main__":
     vmc.run_optimize(
         num_mcmc_steps=50,
         num_opt_steps=20,
-        delta=0.002,
+        delta=0.01,
         epsilon=0.001,
         wf_dump_freq=1,
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
