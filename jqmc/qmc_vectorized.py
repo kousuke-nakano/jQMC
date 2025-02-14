@@ -345,11 +345,13 @@ class MCMC:
         # stored dln_Psi / dc_jas1b3b
         self.__stored_grad_ln_Psi_jas1b3b_j_matrix = []
 
+        """
         # stored de_L / dc_jas2b
         self.__stored_grad_e_L_jas2b = []
 
         # stored de_L / dc_jas1b3b
         self.__stored_grad_e_L_jas1b3b_j_matrix = []
+        """
 
         # total number of electrons
         self.__total_electrons = len(self.__latest_r_up_carts[0]) + len(self.__latest_r_dn_carts[0])
@@ -607,13 +609,13 @@ class MCMC:
                 self.__latest_r_dn_carts,
             )
 
-            # """ for Linear method
+            """ for Linear method
             _ = vmap(grad(compute_local_energy_api, argnums=0), in_axes=(None, 0, 0))(
                 self.__hamiltonian_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
-            # """
+            """
 
         mcmc_update_init_end = time.perf_counter()
         timer_mcmc_update_init += mcmc_update_init_end - mcmc_update_init_start
@@ -800,12 +802,12 @@ class MCMC:
                     logger.devel(f"  grad_ln_Psi_jas2b = {grad_ln_Psi_jas2b}")
                     self.__stored_grad_ln_Psi_jas2b.append(grad_ln_Psi_jas2b)
 
-                    # """ for Linear method
+                    """ for Linear method
                     grad_e_L_jas2b = grad_e_L_h.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
                     logger.devel(f"grad_e_L_jas2b.shape = {grad_e_L_jas2b.shape}")
                     logger.devel(f"  grad_e_L_jas2b = {grad_e_L_jas2b}")
                     self.__stored_grad_e_L_jas2b.append(grad_e_L_jas2b)
-                    # """
+                    """
 
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
                     grad_ln_Psi_jas1b3b_j_matrix = grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix
@@ -813,12 +815,12 @@ class MCMC:
                     logger.devel(f"  grad_ln_Psi_jas1b3b_j_matrix = {grad_ln_Psi_jas1b3b_j_matrix}")
                     self.__stored_grad_ln_Psi_jas1b3b_j_matrix.append(grad_ln_Psi_jas1b3b_j_matrix)
 
-                    # """ for Linear method
+                    """ for Linear method
                     grad_e_L_jas1b3b_j_matrix = grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix
                     logger.devel(f"grad_e_L_jas1b3b_j_matrix.shape = {grad_e_L_jas1b3b_j_matrix.shape}")
                     logger.devel(f"  grad_e_L_jas1b3b_j_matrix = {grad_e_L_jas1b3b_j_matrix}")
                     self.__stored_grad_e_L_jas1b3b_j_matrix.append(grad_e_L_jas1b3b_j_matrix)
-                    # """
+                    """
 
             num_mcmc_done += 1
 
@@ -966,6 +968,7 @@ class MCMC:
         """Return the stored dln_Psi/dc_J1_3 array. dim: (mcmc_counter, num_walkers, num_J1_J3_param)."""
         return np.array(self.__stored_grad_ln_Psi_jas1b3b_j_matrix)
 
+    '''
     @property
     def de_L_dc_jas_2b(self) -> npt.NDArray:
         """Return the stored de_L/dc_J2 array. dim: (mcmc_counter, num_walkers, num_J2_param)."""
@@ -975,6 +978,7 @@ class MCMC:
     def de_L_dc_jas_1b3b(self) -> npt.NDArray:
         """Return the stored de_L/dc_J1_3 array. dim: (mcmc_counter, num_walkers, num_J1_J3_param)."""
         return np.array(self.__stored_grad_e_L_jas1b3b_j_matrix)
+    '''
 
     # dict for WF optimization
     @property
@@ -993,7 +997,7 @@ class MCMC:
         """
         opt_param_list = []
         dln_Psi_dc_list = []
-        de_L_dc_list = []
+        # de_L_dc_list = []
         dc_size_list = []
         dc_shape_list = []
         dc_flattened_index_list = []
@@ -1002,14 +1006,14 @@ class MCMC:
             if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag:
                 opt_param = "jastrow_2b_param"
                 dln_Psi_dc = self.dln_Psi_dc_jas_2b
-                de_L_dc = self.de_L_dc_jas_2b
+                # de_L_dc = self.de_L_dc_jas_2b
                 dc_size = 1
                 dc_shape = (1,)
                 dc_flattened_index = [len(opt_param_list)] * dc_size
 
                 opt_param_list.append(opt_param)
                 dln_Psi_dc_list.append(dln_Psi_dc)
-                de_L_dc_list.append(de_L_dc)
+                # de_L_dc_list.append(de_L_dc)
                 dc_size_list.append(dc_size)
                 dc_shape_list.append(dc_shape)
                 dc_flattened_index_list += dc_flattened_index
@@ -1017,14 +1021,14 @@ class MCMC:
             if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
                 opt_param = "j_matrix"
                 dln_Psi_dc = self.dln_Psi_dc_jas_1b3b
-                de_L_dc = self.de_L_dc_jas_1b3b
+                # de_L_dc = self.de_L_dc_jas_1b3b
                 dc_size = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix.size
                 dc_shape = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix.shape
                 dc_flattened_index = [len(opt_param_list)] * dc_size
 
                 opt_param_list.append(opt_param)
                 dln_Psi_dc_list.append(dln_Psi_dc)
-                de_L_dc_list.append(de_L_dc)
+                # de_L_dc_list.append(de_L_dc)
                 dc_size_list.append(dc_size)
                 dc_shape_list.append(dc_shape)
                 dc_flattened_index_list += dc_flattened_index
@@ -1032,7 +1036,7 @@ class MCMC:
         return {
             "opt_param_list": opt_param_list,
             "dln_Psi_dc_list": dln_Psi_dc_list,
-            "de_L_dc_list": de_L_dc_list,
+            # "de_L_dc_list": de_L_dc_list,
             "dc_size_list": dc_size_list,
             "dc_shape_list": dc_shape_list,
             "dc_flattened_index_list": dc_flattened_index_list,
@@ -2407,10 +2411,12 @@ class QMC:
                 mpi_broadcast=False, num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks
             )
 
+            """ LR method, to be removed
             # get H (surrogate Hessian matrix)
             H, _ = self.get_H(
                 mpi_broadcast=False, num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks
             )
+            """
 
             if mpi_rank == 0:
                 signal_to_noise_f = np.abs(f) / f_std
@@ -2424,6 +2430,7 @@ class QMC:
                 # logger.info(f"The condition number of the matrix S is {np.linalg.cond(S)}")
                 # logger.info(f"The condition number of the matrix S_prime is {np.linalg.cond(S_prime)}")
 
+                """ LR method, to be removed
                 # SR with linear method
                 if S.ndim != 0:
                     I = np.eye(S.shape[0])
@@ -2458,20 +2465,22 @@ class QMC:
                     S_prime = S + epsilon * I
                     # solve Sx=f
                     X = 1.0 / S_prime * f
-
                 """
+
                 # SR
                 if S.ndim != 0:
-                    I = np.eye(S.shape[0])
-                    S_prime = S + epsilon * I
+                    # I = np.eye(S.shape[0])
+                    # S_prime = S + epsilon * I
+                    S_prime = S.copy()
+                    S_prime[np.diag_indices_from(S)] *= 1 + epsilon
                     # solve Sx=f
                     X = scipy.linalg.solve(S_prime, f, assume_a="sym")
                 else:
-                    I = 1.0
-                    S_prime = S + epsilon * I
+                    # I = 1.0
+                    # S_prime = S + epsilon * I
+                    S_prime = S * (1 + epsilon)
                     # solve Sx=f
                     X = 1.0 / S_prime * f
-                """
 
                 # steepest decent (SD)
                 # X = f
@@ -2587,6 +2596,7 @@ class QMC:
         logger.debug(f"O_matrix.shape = {O_matrix.shape}")
         return O_matrix[num_mcmc_warmup_steps:]  # O.... (x....) (M, nw, L) matrix
 
+    '''
     def get_de_L(self, num_mcmc_warmup_steps: int = 50):
         """Return the derivativs of e_L wrt variational parameters.
 
@@ -2619,6 +2629,7 @@ class QMC:
 
         logger.debug(f"de_L_matrix.shape = {de_L_matrix.shape}")
         return de_L_matrix[num_mcmc_warmup_steps:]  # O.... (x....) (M, nw, L) matrix
+    '''
 
     def get_gF(
         self, mpi_broadcast: bool = True, num_mcmc_warmup_steps: int = 50, num_mcmc_bin_blocks: int = 10
@@ -2832,6 +2843,7 @@ class QMC:
 
         return (S_mean, S_std)  # (S_mu,nu ...., var(S)_mu,nu....) (L*L matrix, L*L matrix)
 
+    ''' to be removed
     def get_H(
         self,
         mpi_broadcast: int = False,
@@ -2956,6 +2968,7 @@ class QMC:
             H_std = mpi_comm.bcast(H_std, root=0)
 
         return (H_mean, H_std)  # (H_mu,nu ...., var(H)_mu,nu....) (L*L matrix, L*L matrix)
+    '''
 
     def get_E(
         self,
