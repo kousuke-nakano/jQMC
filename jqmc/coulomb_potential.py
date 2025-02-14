@@ -2134,7 +2134,7 @@ if __name__ == "__main__":
     V_nonlocal_NN_jax.block_until_ready()
     sum_V_nonlocal_NN_jax.block_until_ready()
     end = time.perf_counter()
-    print(f"Total elapsed Time = {(end-start)*1e3:.3f} msec.")
+    print(f"Total elapsed Time = {(end - start) * 1e3:.3f} msec.")
 
     np.testing.assert_almost_equal(sum_V_nonlocal_NN_debug, sum_V_nonlocal_NN_jax, decimal=6)
 
@@ -2179,4 +2179,4 @@ if __name__ == "__main__":
     V_nonlocal_jax.block_until_ready()
     sum_V_nonlocal_jax.block_until_ready()
     end = time.perf_counter()
-    print(f"Total elapsed Time = {(end-start)*1e3:.3f} msec.")
+    print(f"Total elapsed Time = {(end - start) * 1e3:.3f} msec.")

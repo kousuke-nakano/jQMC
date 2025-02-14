@@ -46,11 +46,9 @@ import toml
 # MPI
 from mpi4py import MPI
 
-from .lrdmc_vectorized import GFMC_multiple_walkers
-
-# jQMC module
+# jQMC
 from .miscs.header_footer import print_footer, print_header
-from .vmc_vectorized import VMC_multiple_walkers
+from .qmc_vectorized import GFMC, MCMC, QMC
 
 # MPI related
 mpi_comm = MPI.COMM_WORLD
@@ -203,6 +201,12 @@ def main():
         except KeyError as e:
             logger.error("num_mcmc_steps should be specified.")
             raise KeyError from e
+        # num_mcmc_per_measurement
+        try:
+            num_mcmc_per_measurement = dict_toml["vmc"]["num_mcmc_per_measurement"]
+        except KeyError:
+            num_mcmc_per_measurement = 40
+            logger.warning(f"The default value of num_mcmc_per_measurement= {num_mcmc_per_measurement}.")
         # num_mcmc_warmup_steps
         try:
             num_mcmc_warmup_steps = dict_toml["vmc"]["num_mcmc_warmup_steps"]
@@ -234,22 +238,24 @@ def main():
         else:
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
-
-                vmc = VMC_multiple_walkers(
+                mcmc = MCMC(
                     hamiltonian_data=hamiltonian_data,
+                    Dt=2.0,
                     mcmc_seed=mcmc_seed,
                     num_walkers=number_of_walkers,
+                    num_mcmc_per_measurement=num_mcmc_per_measurement,
                     comput_position_deriv=False,
                     comput_jas_param_deriv=False,
                 )
-        vmc.run_single_shot(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
-        e_L_mean, e_L_std = vmc.get_e_L(
+                vmc = QMC(mcmc)
+        vmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
+        E_mean, E_std = vmc.get_E(
             num_mcmc_warmup_steps=num_mcmc_warmup_steps,
             num_mcmc_bin_blocks=num_mcmc_bin_blocks,
         )
 
         logger.info("Final output(s):")
-        logger.info(f"  Total Energy: E = {e_L_mean:.5f} +- {e_L_std:5f} Ha.")
+        logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:5f} Ha.")
         logger.info("")
 
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
@@ -269,6 +275,12 @@ def main():
         except KeyError as e:
             logger.error("num_mcmc_steps should be specified.")
             raise KeyError from e
+        # num_mcmc_per_measurement
+        try:
+            num_mcmc_per_measurement = dict_toml["vmcopt"]["num_mcmc_per_measurement"]
+        except KeyError:
+            num_mcmc_per_measurement = 40
+            logger.warning(f"The default value of num_mcmc_per_measurement= {num_mcmc_per_measurement}.")
         # num_opt_steps
         try:
             num_opt_steps = dict_toml["vmcopt"]["num_opt_steps"]
@@ -325,13 +337,16 @@ def main():
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
 
-                vmc = VMC_multiple_walkers(
+                mcmc = MCMC(
                     hamiltonian_data=hamiltonian_data,
+                    Dt=2.0,
                     mcmc_seed=mcmc_seed,
                     num_walkers=number_of_walkers,
+                    num_mcmc_per_measurement=num_mcmc_per_measurement,
                     comput_position_deriv=False,
                     comput_jas_param_deriv=True,
                 )
+                vmc = QMC(mcmc)
         vmc.run_optimize(
             num_mcmc_steps=num_mcmc_steps,
             num_opt_steps=num_opt_steps,
@@ -355,18 +370,18 @@ def main():
     # LRDMC!
     if job_type == "lrdmc":
         logger.info("***Lattice Regularized diffusion Monte Carlo***")
-        # num_branching
+        # num_mcmc_steps
         try:
-            num_branching = dict_toml["lrdmc"]["num_branching"]
+            num_mcmc_steps = dict_toml["lrdmc"]["num_mcmc_steps"]
         except KeyError as e:
-            logger.error("num_branching should be specified.")
+            logger.error("num_mcmc_steps should be specified.")
             raise ValueError from e
-        # tau
+        # num_mcmc_per_measurement
         try:
-            tau = dict_toml["lrdmc"]["tau"]
+            num_mcmc_per_measurement = dict_toml["lrdmc"]["num_mcmc_per_measurement"]
         except KeyError:
-            tau = 0.01
-            logger.warning(f"The default value of tau = {tau}.")
+            num_mcmc_per_measurement = 40
+            logger.warning(f"The default value of num_mcmc_per_measurement= {num_mcmc_per_measurement}.")
         # alat
         try:
             alat = dict_toml["lrdmc"]["alat"]
@@ -393,17 +408,29 @@ def main():
             logger.warning(f"The default value of num_gfmc_bin_blocks = {num_gfmc_bin_blocks}.")
         # num_gfmc_bin_collect
         try:
-            num_gfmc_bin_collect = dict_toml["lrdmc"]["num_gfmc_bin_collect"]
+            num_gfmc_collect_steps = dict_toml["lrdmc"]["num_gfmc_collect_steps"]
         except KeyError:
-            num_gfmc_bin_collect = 0
-            logger.warning(f"The default value of num_gfmc_bin_collect = {num_gfmc_bin_collect}.")
+            num_gfmc_collect_steps = 0
+            logger.warning(f"The default value of num_gfmc_collect_steps = {num_gfmc_collect_steps}.")
+        # E_scf
+        try:
+            E_scf = dict_toml["lrdmc"]["E_scf"]
+        except KeyError:
+            E_scf = 0
+            logger.warning(f"The default value of E_scf = {E_scf}.")
+        # gamma
+        try:
+            gamma = dict_toml["lrdmc"]["gamma"]
+        except KeyError:
+            gamma = 0
+            logger.warning(f"The default value of gamma = {gamma}.")
         # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
-        if num_branching < num_gfmc_warmup_steps:
-            raise ValueError("num_branching should be larger than num_gfmc_warmup_steps")
-        if num_branching - num_gfmc_warmup_steps < num_gfmc_bin_blocks:
-            raise ValueError("(num_branching - num_gfmc_warmup_steps) should be larger than num_gfmc_bin_blocks.")
-        if num_gfmc_bin_blocks < num_gfmc_bin_collect:
-            raise ValueError("num_gfmc_bin_blocks should be larger than num_gfmc_bin_collect.")
+        if num_mcmc_steps < num_gfmc_warmup_steps:
+            raise ValueError("num_mcmc_steps should be larger than num_gfmc_warmup_steps")
+        if num_mcmc_steps - num_gfmc_warmup_steps < num_gfmc_bin_blocks:
+            raise ValueError("(num_mcmc_steps - num_gfmc_warmup_steps) should be larger than num_gfmc_bin_blocks.")
+        if num_gfmc_bin_blocks < num_gfmc_collect_steps:
+            raise ValueError("num_gfmc_bin_blocks should be larger than num_gfmc_collect_steps.")
 
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
@@ -418,23 +445,25 @@ def main():
         else:
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
-
-                gfmc = GFMC_multiple_walkers(
+                gfmc = GFMC(
                     hamiltonian_data=hamiltonian_data,
-                    mcmc_seed=mcmc_seed,
                     num_walkers=number_of_walkers,
-                    tau=tau,
+                    num_mcmc_per_measurement=num_mcmc_per_measurement,
+                    num_gfmc_collect_steps=num_gfmc_collect_steps,
+                    mcmc_seed=mcmc_seed,
+                    E_scf=E_scf,
+                    gamma=gamma,
                     alat=alat,
                     non_local_move=non_local_move,
                 )
-        gfmc.run(num_branching=num_branching, max_time=max_time)
-        e_L_mean, e_L_std = gfmc.get_e_L(
-            num_gfmc_warmup_steps=num_gfmc_warmup_steps,
-            num_gfmc_bin_blocks=num_gfmc_bin_blocks,
-            num_gfmc_bin_collect=num_gfmc_bin_collect,
+                lrdmc = QMC(gfmc)
+        lrdmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
+        E_mean, E_std = lrdmc.get_E(
+            num_mcmc_warmup_steps=num_gfmc_warmup_steps,
+            num_mcmc_bin_blocks=num_gfmc_bin_blocks,
         )
         logger.info("Final output(s):")
-        logger.info(f"  Total Energy: E = {e_L_mean:.5f} +- {e_L_std:5f} Ha.")
+        logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:5f} Ha.")
         logger.info("")
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
         chk_dyad_list = [(mpi_rank, gfmc)]
@@ -448,6 +477,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
-    main()
     main()

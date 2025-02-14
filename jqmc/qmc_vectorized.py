@@ -558,6 +558,11 @@ class MCMC:
             self.__latest_r_up_carts,
             self.__latest_r_dn_carts,
         )
+        _ = vmap(evaluate_ln_wavefunction_api, in_axes=(None, 0, 0))(
+            self.__hamiltonian_data.wavefunction_data,
+            self.__latest_r_up_carts,
+            self.__latest_r_dn_carts,
+        )
         if self.__comput_position_deriv:
             _, _, _ = vmap(grad(compute_local_energy_api, argnums=(0, 1, 2)), in_axes=(None, 0, 0))(
                 self.__hamiltonian_data,
@@ -626,14 +631,18 @@ class MCMC:
         logger.info("Start MCMC")
         num_mcmc_done = 0
         progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
-        logger.info(f"  Progress: MCMC step= {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.0f} %.")
+        mcmc_total_current = time.perf_counter()
+        logger.info(
+            f"  Progress: MCMC step= {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.0f} %. Elapsed time = {(mcmc_total_current - mcmc_total_start):.1f} sec."
+        )
         mcmc_interval = max(1, int(num_mcmc_steps / 10))  # %
 
         for i_mcmc_step in range(num_mcmc_steps):
             if (i_mcmc_step + 1) % mcmc_interval == 0:
                 progress = (i_mcmc_step + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+                mcmc_total_current = time.perf_counter()
                 logger.info(
-                    f"  Progress: MCMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %."
+                    f"  Progress: MCMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(mcmc_total_current - mcmc_total_start):.1f} sec."
                 )
 
             # electron positions are goint to be updated!
@@ -788,13 +797,13 @@ class MCMC:
                 end = time.perf_counter()
                 timer_dln_Psi_dc_jas1b2b3b += end - start
 
-                # """ for Linear method
+                """ for Linear method
                 grad_e_L_h = vmap(grad(compute_local_energy_api, argnums=0), in_axes=(None, 0, 0))(
                     self.__hamiltonian_data,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
-                # """
+                """
 
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag:
                     grad_ln_Psi_jas2b = grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
@@ -1076,6 +1085,7 @@ class GFMC:
         non_local_move (str):
             treatment of the spin-flip term. tmove (Casula's T-move) or dtmove (Determinant Locality Approximation with Casula's T-move)
             Valid only for ECP calculations. Do not specify this value for all-electron calculations.
+        comput_position_deriv (bool): if True, compute the derivatives of E wrt. atomic positions.
     """
 
     def __init__(
@@ -1089,6 +1099,7 @@ class GFMC:
         gamma: float = 0.1,
         alat: float = 0.1,
         non_local_move: str = "tmove",
+        comput_position_deriv: bool = False,
     ) -> None:
         """Init.
 
@@ -1117,7 +1128,7 @@ class GFMC:
         self.__timer_observable = 0.0
 
         # derivative flags
-        self.__comput_position_deriv = True
+        self.__comput_position_deriv = comput_position_deriv
 
         start = time.perf_counter()
         # Initialization
@@ -1787,12 +1798,12 @@ class GFMC:
         logger.info("")
 
         # MAIN MCMC loop from here !!!
-        logger.info("Start MCMC")
+        logger.info("Start GFMC")
         num_mcmc_done = 0
-        gmfc_total_current = time.perf_counter()
         progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+        gmfc_total_current = time.perf_counter()
         logger.info(
-            f"  Progress: MCMC step= {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.0f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
+            f"  Progress: GFMC step = {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.0f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
         )
         mcmc_interval = int(np.maximum(num_mcmc_steps / 100, 1))
 
@@ -1801,7 +1812,7 @@ class GFMC:
                 progress = (i_mcmc_step + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
                 gmfc_total_current = time.perf_counter()
                 logger.info(
-                    f"  Progress: MCMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
+                    f"  Progress: GFMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
                 )
 
             # Always set the initial weight list to 1.0
@@ -1932,16 +1943,17 @@ class GFMC:
             w_L_latest = np.array(w_L_list)
             e_L_latest = np.array(e_L_list)
             V_diag_E_latest = np.array(V_diag_list) - E_scf
-            grad_e_L_r_up_latest = np.array(grad_e_L_r_up)
-            grad_e_L_r_dn_latest = np.array(grad_e_L_r_dn)
-            grad_e_L_R_latest = np.array(grad_e_L_R)
-            grad_ln_Psi_r_up_latest = np.array(grad_ln_Psi_r_up)
-            grad_ln_Psi_r_dn_latest = np.array(grad_ln_Psi_r_dn)
-            grad_ln_Psi_dR_latest = np.array(grad_ln_Psi_dR)
-            omega_up_latest = np.array(omega_up)
-            omega_dn_latest = np.array(omega_dn)
-            grad_omega_dr_up_latest = np.array(grad_omega_dr_up)
-            grad_omega_dr_dn_latest = np.array(grad_omega_dr_dn)
+            if self.__comput_position_deriv:
+                grad_e_L_r_up_latest = np.array(grad_e_L_r_up)
+                grad_e_L_r_dn_latest = np.array(grad_e_L_r_dn)
+                grad_e_L_R_latest = np.array(grad_e_L_R)
+                grad_ln_Psi_r_up_latest = np.array(grad_ln_Psi_r_up)
+                grad_ln_Psi_r_dn_latest = np.array(grad_ln_Psi_r_dn)
+                grad_ln_Psi_dR_latest = np.array(grad_ln_Psi_dR)
+                omega_up_latest = np.array(omega_up)
+                omega_dn_latest = np.array(omega_dn)
+                grad_omega_dr_up_latest = np.array(grad_omega_dr_up)
+                grad_omega_dr_dn_latest = np.array(grad_omega_dr_dn)
 
             # jnp.array -> np.array
             self.__latest_r_up_carts = np.array(self.__latest_r_up_carts)
@@ -1960,30 +1972,32 @@ class GFMC:
             e_L_gathered_dyad = (mpi_rank, e_L_latest)
             w_L_gathered_dyad = (mpi_rank, w_L_latest)
             V_diag_E_gathered_dyad = (mpi_rank, V_diag_E_latest)
-            grad_e_L_r_up_dyad = (mpi_rank, grad_e_L_r_up_latest)
-            grad_e_L_r_dn_dyad = (mpi_rank, grad_e_L_r_dn_latest)
-            grad_e_L_R_dyad = (mpi_rank, grad_e_L_R_latest)
-            grad_ln_Psi_r_up_dyad = (mpi_rank, grad_ln_Psi_r_up_latest)
-            grad_ln_Psi_r_dn_dyad = (mpi_rank, grad_ln_Psi_r_dn_latest)
-            grad_ln_Psi_dR_dyad = (mpi_rank, grad_ln_Psi_dR_latest)
-            omega_up_dyad = (mpi_rank, omega_up_latest)
-            omega_dn_dyad = (mpi_rank, omega_dn_latest)
-            grad_omega_dr_up_dyad = (mpi_rank, grad_omega_dr_up_latest)
-            grad_omega_dr_dn_dyad = (mpi_rank, grad_omega_dr_dn_latest)
+            if self.__comput_position_deriv:
+                grad_e_L_r_up_dyad = (mpi_rank, grad_e_L_r_up_latest)
+                grad_e_L_r_dn_dyad = (mpi_rank, grad_e_L_r_dn_latest)
+                grad_e_L_R_dyad = (mpi_rank, grad_e_L_R_latest)
+                grad_ln_Psi_r_up_dyad = (mpi_rank, grad_ln_Psi_r_up_latest)
+                grad_ln_Psi_r_dn_dyad = (mpi_rank, grad_ln_Psi_r_dn_latest)
+                grad_ln_Psi_dR_dyad = (mpi_rank, grad_ln_Psi_dR_latest)
+                omega_up_dyad = (mpi_rank, omega_up_latest)
+                omega_dn_dyad = (mpi_rank, omega_dn_latest)
+                grad_omega_dr_up_dyad = (mpi_rank, grad_omega_dr_up_latest)
+                grad_omega_dr_dn_dyad = (mpi_rank, grad_omega_dr_dn_latest)
 
             e_L_gathered_dyad = mpi_comm.gather(e_L_gathered_dyad, root=0)
             w_L_gathered_dyad = mpi_comm.gather(w_L_gathered_dyad, root=0)
             V_diag_E_gathered_dyad = mpi_comm.gather(V_diag_E_gathered_dyad, root=0)
-            grad_e_L_r_up_dyad = mpi_comm.gather(grad_e_L_r_up_dyad, root=0)
-            grad_e_L_r_dn_dyad = mpi_comm.gather(grad_e_L_r_dn_dyad, root=0)
-            grad_e_L_R_dyad = mpi_comm.gather(grad_e_L_R_dyad, root=0)
-            grad_ln_Psi_r_up_dyad = mpi_comm.gather(grad_ln_Psi_r_up_dyad, root=0)
-            grad_ln_Psi_r_dn_dyad = mpi_comm.gather(grad_ln_Psi_r_dn_dyad, root=0)
-            grad_ln_Psi_dR_dyad = mpi_comm.gather(grad_ln_Psi_dR_dyad, root=0)
-            omega_up_dyad = mpi_comm.gather(omega_up_dyad, root=0)
-            omega_dn_dyad = mpi_comm.gather(omega_dn_dyad, root=0)
-            grad_omega_dr_up_dyad = mpi_comm.gather(grad_omega_dr_up_dyad, root=0)
-            grad_omega_dr_dn_dyad = mpi_comm.gather(grad_omega_dr_dn_dyad, root=0)
+            if self.__comput_position_deriv:
+                grad_e_L_r_up_dyad = mpi_comm.gather(grad_e_L_r_up_dyad, root=0)
+                grad_e_L_r_dn_dyad = mpi_comm.gather(grad_e_L_r_dn_dyad, root=0)
+                grad_e_L_R_dyad = mpi_comm.gather(grad_e_L_R_dyad, root=0)
+                grad_ln_Psi_r_up_dyad = mpi_comm.gather(grad_ln_Psi_r_up_dyad, root=0)
+                grad_ln_Psi_r_dn_dyad = mpi_comm.gather(grad_ln_Psi_r_dn_dyad, root=0)
+                grad_ln_Psi_dR_dyad = mpi_comm.gather(grad_ln_Psi_dR_dyad, root=0)
+                omega_up_dyad = mpi_comm.gather(omega_up_dyad, root=0)
+                omega_dn_dyad = mpi_comm.gather(omega_dn_dyad, root=0)
+                grad_omega_dr_up_dyad = mpi_comm.gather(grad_omega_dr_up_dyad, root=0)
+                grad_omega_dr_dn_dyad = mpi_comm.gather(grad_omega_dr_dn_dyad, root=0)
 
             if mpi_rank == 0:
                 # dict
@@ -1992,85 +2006,99 @@ class GFMC:
                 e_L_gathered_dict = dict(e_L_gathered_dyad)
                 w_L_gathered_dict = dict(w_L_gathered_dyad)
                 V_diag_E_gathered_dict = dict(V_diag_E_gathered_dyad)
-                grad_e_L_r_up_gathered_dict = dict(grad_e_L_r_up_dyad)
-                grad_e_L_r_dn_gathered_dict = dict(grad_e_L_r_dn_dyad)
-                grad_e_L_R_gathered_dict = dict(grad_e_L_R_dyad)
-                grad_ln_Psi_r_up_gathered_dict = dict(grad_ln_Psi_r_up_dyad)
-                grad_ln_Psi_r_dn_gathered_dict = dict(grad_ln_Psi_r_dn_dyad)
-                grad_ln_Psi_dR_gathered_dict = dict(grad_ln_Psi_dR_dyad)
-                omega_up_gathered_dict = dict(omega_up_dyad)
-                omega_dn_gathered_dict = dict(omega_dn_dyad)
-                grad_omega_dr_up_gathered_dict = dict(grad_omega_dr_up_dyad)
-                grad_omega_dr_dn_gathered_dict = dict(grad_omega_dr_dn_dyad)
+                if self.__comput_position_deriv:
+                    grad_e_L_r_up_gathered_dict = dict(grad_e_L_r_up_dyad)
+                    grad_e_L_r_dn_gathered_dict = dict(grad_e_L_r_dn_dyad)
+                    grad_e_L_R_gathered_dict = dict(grad_e_L_R_dyad)
+                    grad_ln_Psi_r_up_gathered_dict = dict(grad_ln_Psi_r_up_dyad)
+                    grad_ln_Psi_r_dn_gathered_dict = dict(grad_ln_Psi_r_dn_dyad)
+                    grad_ln_Psi_dR_gathered_dict = dict(grad_ln_Psi_dR_dyad)
+                    omega_up_gathered_dict = dict(omega_up_dyad)
+                    omega_dn_gathered_dict = dict(omega_dn_dyad)
+                    grad_omega_dr_up_gathered_dict = dict(grad_omega_dr_up_dyad)
+                    grad_omega_dr_dn_gathered_dict = dict(grad_omega_dr_dn_dyad)
                 # gathered
                 r_up_carts_gathered = np.concatenate([r_up_carts_gathered_dict[i] for i in range(mpi_size)])
                 r_dn_carts_gathered = np.concatenate([r_dn_carts_gathered_dict[i] for i in range(mpi_size)])
                 e_L_gathered = np.concatenate([e_L_gathered_dict[i] for i in range(mpi_size)])
                 w_L_gathered = np.concatenate([w_L_gathered_dict[i] for i in range(mpi_size)])
                 V_diag_E_gathered = np.concatenate([V_diag_E_gathered_dict[i] for i in range(mpi_size)])
-                grad_e_L_r_up_gathered = np.concatenate([grad_e_L_r_up_gathered_dict[i] for i in range(mpi_size)])
-                grad_e_L_r_dn_gathered = np.concatenate([grad_e_L_r_dn_gathered_dict[i] for i in range(mpi_size)])
-                grad_e_L_R_gathered = np.concatenate([grad_e_L_R_gathered_dict[i] for i in range(mpi_size)])
-                grad_ln_Psi_r_up_gathered = np.concatenate([grad_ln_Psi_r_up_gathered_dict[i] for i in range(mpi_size)])
-                grad_ln_Psi_r_dn_gathered = np.concatenate([grad_ln_Psi_r_dn_gathered_dict[i] for i in range(mpi_size)])
-                grad_ln_Psi_dR_gathered = np.concatenate([grad_ln_Psi_dR_gathered_dict[i] for i in range(mpi_size)])
-                omega_up_gathered = np.concatenate([omega_up_gathered_dict[i] for i in range(mpi_size)])
-                omega_dn_gathered = np.concatenate([omega_dn_gathered_dict[i] for i in range(mpi_size)])
-                grad_omega_dr_up_gathered = np.concatenate([grad_omega_dr_up_gathered_dict[i] for i in range(mpi_size)])
-                grad_omega_dr_dn_gathered = np.concatenate([grad_omega_dr_dn_gathered_dict[i] for i in range(mpi_size)])
+                if self.__comput_position_deriv:
+                    grad_e_L_r_up_gathered = np.concatenate([grad_e_L_r_up_gathered_dict[i] for i in range(mpi_size)])
+                    grad_e_L_r_dn_gathered = np.concatenate([grad_e_L_r_dn_gathered_dict[i] for i in range(mpi_size)])
+                    grad_e_L_R_gathered = np.concatenate([grad_e_L_R_gathered_dict[i] for i in range(mpi_size)])
+                    grad_ln_Psi_r_up_gathered = np.concatenate([grad_ln_Psi_r_up_gathered_dict[i] for i in range(mpi_size)])
+                    grad_ln_Psi_r_dn_gathered = np.concatenate([grad_ln_Psi_r_dn_gathered_dict[i] for i in range(mpi_size)])
+                    grad_ln_Psi_dR_gathered = np.concatenate([grad_ln_Psi_dR_gathered_dict[i] for i in range(mpi_size)])
+                    omega_up_gathered = np.concatenate([omega_up_gathered_dict[i] for i in range(mpi_size)])
+                    omega_dn_gathered = np.concatenate([omega_dn_gathered_dict[i] for i in range(mpi_size)])
+                    grad_omega_dr_up_gathered = np.concatenate([grad_omega_dr_up_gathered_dict[i] for i in range(mpi_size)])
+                    grad_omega_dr_dn_gathered = np.concatenate([grad_omega_dr_dn_gathered_dict[i] for i in range(mpi_size)])
                 # sum
                 reg = 1.0 + self.__gamma * self.__alat**2
                 w_L_sum = np.sum(w_L_gathered / V_diag_E_gathered**reg)
                 e_L_sum = np.sum(w_L_gathered / V_diag_E_gathered**reg * e_L_gathered)
-                grad_e_L_r_up_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_e_L_r_up_gathered)
-                grad_e_L_r_dn_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_e_L_r_dn_gathered)
-                grad_e_L_R_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_e_L_R_gathered)
-                grad_ln_Psi_r_up_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_ln_Psi_r_up_gathered)
-                grad_ln_Psi_r_dn_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_ln_Psi_r_dn_gathered)
-                grad_ln_Psi_dR_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_ln_Psi_dR_gathered)
-                omega_up_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, omega_up_gathered)
-                omega_dn_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, omega_dn_gathered)
-                grad_omega_dr_up_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_omega_dr_up_gathered)
-                grad_omega_dr_dn_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_omega_dr_dn_gathered)
+                if self.__comput_position_deriv:
+                    grad_e_L_r_up_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_e_L_r_up_gathered)
+                    grad_e_L_r_dn_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_e_L_r_dn_gathered)
+                    grad_e_L_R_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_e_L_R_gathered)
+                    grad_ln_Psi_r_up_sum = np.einsum(
+                        "i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_ln_Psi_r_up_gathered
+                    )
+                    grad_ln_Psi_r_dn_sum = np.einsum(
+                        "i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_ln_Psi_r_dn_gathered
+                    )
+                    grad_ln_Psi_dR_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_ln_Psi_dR_gathered)
+                    omega_up_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, omega_up_gathered)
+                    omega_dn_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, omega_dn_gathered)
+                    grad_omega_dr_up_sum = np.einsum(
+                        "i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_omega_dr_up_gathered
+                    )
+                    grad_omega_dr_dn_sum = np.einsum(
+                        "i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_omega_dr_dn_gathered
+                    )
                 # averaged
                 w_L_averaged = np.average(w_L_gathered)
                 e_L_averaged = e_L_sum / w_L_sum
-                grad_e_L_r_up_averaged = grad_e_L_r_up_sum / w_L_sum
-                grad_e_L_r_dn_averaged = grad_e_L_r_dn_sum / w_L_sum
-                grad_e_L_R_averaged = grad_e_L_R_sum / w_L_sum
-                grad_ln_Psi_r_up_averaged = grad_ln_Psi_r_up_sum / w_L_sum
-                grad_ln_Psi_r_dn_averaged = grad_ln_Psi_r_dn_sum / w_L_sum
-                grad_ln_Psi_dR_averaged = grad_ln_Psi_dR_sum / w_L_sum
-                omega_up_averaged = omega_up_sum / w_L_sum
-                omega_dn_averaged = omega_dn_sum / w_L_sum
-                grad_omega_dr_up_averaged = grad_omega_dr_up_sum / w_L_sum
-                grad_omega_dr_dn_averaged = grad_omega_dr_dn_sum / w_L_sum
+                if self.__comput_position_deriv:
+                    grad_e_L_r_up_averaged = grad_e_L_r_up_sum / w_L_sum
+                    grad_e_L_r_dn_averaged = grad_e_L_r_dn_sum / w_L_sum
+                    grad_e_L_R_averaged = grad_e_L_R_sum / w_L_sum
+                    grad_ln_Psi_r_up_averaged = grad_ln_Psi_r_up_sum / w_L_sum
+                    grad_ln_Psi_r_dn_averaged = grad_ln_Psi_r_dn_sum / w_L_sum
+                    grad_ln_Psi_dR_averaged = grad_ln_Psi_dR_sum / w_L_sum
+                    omega_up_averaged = omega_up_sum / w_L_sum
+                    omega_dn_averaged = omega_dn_sum / w_L_sum
+                    grad_omega_dr_up_averaged = grad_omega_dr_up_sum / w_L_sum
+                    grad_omega_dr_dn_averaged = grad_omega_dr_dn_sum / w_L_sum
                 # add a dummy dim
                 e_L_averaged = np.expand_dims(e_L_averaged, axis=0)
                 w_L_averaged = np.expand_dims(w_L_averaged, axis=0)
-                grad_e_L_r_up_averaged = np.expand_dims(grad_e_L_r_up_averaged, axis=0)
-                grad_e_L_r_dn_averaged = np.expand_dims(grad_e_L_r_dn_averaged, axis=0)
-                grad_e_L_R_averaged = np.expand_dims(grad_e_L_R_averaged, axis=0)
-                grad_ln_Psi_r_up_averaged = np.expand_dims(grad_ln_Psi_r_up_averaged, axis=0)
-                grad_ln_Psi_r_dn_averaged = np.expand_dims(grad_ln_Psi_r_dn_averaged, axis=0)
-                grad_ln_Psi_dR_averaged = np.expand_dims(grad_ln_Psi_dR_averaged, axis=0)
-                omega_up_averaged = np.expand_dims(omega_up_averaged, axis=0)
-                omega_dn_averaged = np.expand_dims(omega_dn_averaged, axis=0)
-                grad_omega_dr_up_averaged = np.expand_dims(grad_omega_dr_up_averaged, axis=0)
-                grad_omega_dr_dn_averaged = np.expand_dims(grad_omega_dr_dn_averaged, axis=0)
+                if self.__comput_position_deriv:
+                    grad_e_L_r_up_averaged = np.expand_dims(grad_e_L_r_up_averaged, axis=0)
+                    grad_e_L_r_dn_averaged = np.expand_dims(grad_e_L_r_dn_averaged, axis=0)
+                    grad_e_L_R_averaged = np.expand_dims(grad_e_L_R_averaged, axis=0)
+                    grad_ln_Psi_r_up_averaged = np.expand_dims(grad_ln_Psi_r_up_averaged, axis=0)
+                    grad_ln_Psi_r_dn_averaged = np.expand_dims(grad_ln_Psi_r_dn_averaged, axis=0)
+                    grad_ln_Psi_dR_averaged = np.expand_dims(grad_ln_Psi_dR_averaged, axis=0)
+                    omega_up_averaged = np.expand_dims(omega_up_averaged, axis=0)
+                    omega_dn_averaged = np.expand_dims(omega_dn_averaged, axis=0)
+                    grad_omega_dr_up_averaged = np.expand_dims(grad_omega_dr_up_averaged, axis=0)
+                    grad_omega_dr_dn_averaged = np.expand_dims(grad_omega_dr_dn_averaged, axis=0)
                 # store  # This should stored only for MPI-rank = 0 !!!
                 self.__stored_e_L.append(e_L_averaged)
                 self.__stored_w_L.append(w_L_averaged)
-                self.__stored_grad_e_L_r_up.append(grad_e_L_r_up_averaged)
-                self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn_averaged)
-                self.__stored_grad_e_L_dR.append(grad_e_L_R_averaged)
-                self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up_averaged)
-                self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn_averaged)
-                self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR_averaged)
-                self.__stored_omega_up.append(omega_up_averaged)
-                self.__stored_omega_dn.append(omega_dn_averaged)
-                self.__stored_grad_omega_r_up.append(grad_omega_dr_up_averaged)
-                self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn_averaged)
+                if self.__comput_position_deriv:
+                    self.__stored_grad_e_L_r_up.append(grad_e_L_r_up_averaged)
+                    self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn_averaged)
+                    self.__stored_grad_e_L_dR.append(grad_e_L_R_averaged)
+                    self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up_averaged)
+                    self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn_averaged)
+                    self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR_averaged)
+                    self.__stored_omega_up.append(omega_up_averaged)
+                    self.__stored_omega_dn.append(omega_dn_averaged)
+                    self.__stored_grad_omega_r_up.append(grad_omega_dr_up_averaged)
+                    self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn_averaged)
                 # for branching
                 w_L_list = w_L_gathered
                 logger.debug(f"w_L_list = {w_L_list}")
@@ -2215,23 +2243,23 @@ class GFMC:
             G_e_L_binned_sum = np.sum(G_e_L_binned)
             G_binned_sum = np.sum(G_binned)
 
-            e_L_jackknife = [
+            E_jackknife = [
                 (G_e_L_binned_sum - G_e_L_binned[m]) / (G_binned_sum - G_binned[m]) for m in range(num_gfmc_bin_blocks)
             ]
 
             logger.debug("  Progress: Computing jackknife mean and std.")
-            e_L_mean = np.average(e_L_jackknife)
-            e_L_std = np.sqrt(num_gfmc_bin_blocks - 1) * np.std(e_L_jackknife)
-            e_L_mean = float(e_L_mean)
-            e_L_std = float(e_L_std)
+            E_mean = np.average(E_jackknife)
+            E_std = np.sqrt(num_gfmc_bin_blocks - 1) * np.std(E_jackknife)
+            E_mean = float(E_mean)
+            E_std = float(E_std)
         else:
-            e_L_mean = None
-            e_L_std = None
+            E_mean = None
+            E_std = None
 
-        e_L_mean = mpi_comm.bcast(e_L_mean, root=0)
-        e_L_std = mpi_comm.bcast(e_L_std, root=0)
+        E_mean = mpi_comm.bcast(E_mean, root=0)
+        E_std = mpi_comm.bcast(E_std, root=0)
 
-        return e_L_mean, e_L_std
+        return E_mean, E_std
 
     # hamiltonian
     @property
@@ -2424,12 +2452,9 @@ class QMC:
                 logger.debug(f"f_std of Max |f| = {f_std[np.argmax(np.abs(f))]:.3f} Ha/a.u.")
                 logger.info(f"Max of signal-to-noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}.")
 
-            if mpi_rank == 0:
-                logger.info("Computing the inverse of the stochastic matrix S^{-1}...")
-                # logger.info(f"The matrix S_prime is symmetric? = {np.allclose(S_prime, S_prime.T, atol=1.0e-10)}")
-                # logger.info(f"The condition number of the matrix S is {np.linalg.cond(S)}")
-                # logger.info(f"The condition number of the matrix S_prime is {np.linalg.cond(S_prime)}")
+            logger.info("Computing the inverse of the stochastic matrix S^{-1}f...")
 
+            if mpi_rank == 0:
                 """ LR method, to be removed
                 # SR with linear method
                 if S.ndim != 0:
@@ -2467,20 +2492,27 @@ class QMC:
                     X = 1.0 / S_prime * f
                 """
 
+                # """
                 # SR
                 if S.ndim != 0:
                     # I = np.eye(S.shape[0])
                     # S_prime = S + epsilon * I
                     S_prime = S.copy()
-                    S_prime[np.diag_indices_from(S)] *= 1 + epsilon
+                    S_prime[np.diag_indices_from(S)] += epsilon
                     # solve Sx=f
                     X = scipy.linalg.solve(S_prime, f, assume_a="sym")
                 else:
                     # I = 1.0
                     # S_prime = S + epsilon * I
-                    S_prime = S * (1 + epsilon)
+                    S_prime = S + epsilon
                     # solve Sx=f
                     X = 1.0 / S_prime * f
+
+                # logger.info(f"The condition number of the matrix S is {np.linalg.cond(S)}.")
+                # logger.info(f"The diagonal elements of S_prime = {np.diag(S_prime)}.")
+                # logger.info(f"The S_prime is symmetric? = {np.allclose(S_prime, S_prime.T, atol=1.0e-10)}.")
+                # logger.info(f"The condition number of the matrix S_prime is {np.linalg.cond(S_prime)}.")
+                # """
 
                 # steepest decent (SD)
                 # X = f
@@ -2819,8 +2851,8 @@ class QMC:
             logger.info(f"w_L_binned.shape = {w_L_binned.shape}")
             logger.info(f"O_matrix_binned.shape = {O_matrix_binned.shape}")
             logger.info(f"w_L_O_matrix_binned.shape = {w_L_O_matrix_binned.shape}")
-            # S_mean = np.array(np.cov(O_matrix_binned, bias=True, rowvar=False)) # old
-            O_bar = np.sum(w_L_O_matrix_binned, axis=0) / np.sum(w_L_binned, axis=0)
+            # S_mean_old = np.array(np.cov(O_matrix_binned, bias=True, rowvar=False))  # old
+            O_bar = np.sum(w_L_O_matrix_binned, axis=0) / np.sum(w_L_binned)
             w_O_bar = np.einsum("i,k->ik", w_L_binned, O_bar)
             logger.info(f"O_bar.shape = {O_bar.shape}")
             logger.info(f"w_O_bar.shape = {w_O_bar.shape}")
@@ -2828,6 +2860,7 @@ class QMC:
                 (w_L_O_matrix_binned - w_O_bar).T @ (O_matrix_binned - O_bar) / np.sum(w_L_binned)
             )  # weighted variance-covariance matrix
             S_std = np.zeros(S_mean.size)
+            # logger.info(f"np.max(np.abs(S_mean - S_mean_old)) = {np.max(np.abs(S_mean - S_mean_old))}.")
             logger.info(f"S_mean.shape = {S_mean.shape}")
             logger.debug(f"S_mean.is_nan for MPI-rank={mpi_rank} is {np.isnan(S_mean).any()}")
             logger.debug(f"S_mean.shape for MPI-rank={mpi_rank} is {S_mean.shape}")
@@ -3459,10 +3492,10 @@ if __name__ == "__main__":
     )
     vmc = QMC(mcmc)
     vmc.run_optimize(
-        num_mcmc_steps=50,
+        num_mcmc_steps=2000,
         num_opt_steps=20,
-        delta=0.01,
-        epsilon=0.001,
+        delta=1e-4,
+        epsilon=1e-3,
         wf_dump_freq=1,
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,

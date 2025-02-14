@@ -49,8 +49,9 @@ import numpy as np
 import numpy.typing as npt
 import scipy
 from flax import struct
-from jax import grad, jacrev, jit, vmap
+from jax import grad, jacrev, jit
 from jax import typing as jnpt
+from jax import vmap
 from numpy import linalg as LA
 
 from .structure import Structure_data
@@ -1702,7 +1703,7 @@ if __name__ == "__main__":
         aos_jax_up.block_until_ready()
         aos_jax_dn.block_until_ready()
     end = time.perf_counter()
-    print(f"Comput. AOs elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+    print(f"Comput. AOs elapsed Time = {(end - start) / trial * 1e3:.3f} msec.")
     time.sleep(3)
 
     # Indices with respect to the contracted AOs
@@ -1827,7 +1828,7 @@ if __name__ == "__main__":
         N_n_dup = _compute_N_n_dup()
         N_n_dup.block_until_ready()
     end = time.perf_counter()
-    print(f"Comput. N_n_dup elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+    print(f"Comput. N_n_dup elapsed Time = {(end - start) / trial * 1e3:.3f} msec.")
     time.sleep(3)
 
     start = time.perf_counter()
@@ -1835,7 +1836,7 @@ if __name__ == "__main__":
         N_l_m_dup = _compute_N_l_m_dup()
         N_l_m_dup.block_until_ready()
     end = time.perf_counter()
-    print(f"Comput. N_l_m_dup elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+    print(f"Comput. N_l_m_dup elapsed Time = {(end - start) / trial * 1e3:.3f} msec.")
     time.sleep(3)
 
     start = time.perf_counter()
@@ -1843,7 +1844,7 @@ if __name__ == "__main__":
         R_n_dup = _compute_R_n_dup()
         R_n_dup.block_until_ready()
     end = time.perf_counter()
-    print(f"Comput. R_n_dup elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+    print(f"Comput. R_n_dup elapsed Time = {(end - start) / trial * 1e3:.3f} msec.")
     time.sleep(3)
 
     start = time.perf_counter()
@@ -1851,7 +1852,7 @@ if __name__ == "__main__":
         S_l_m_dup = _compute_S_l_m_dup()
         S_l_m_dup.block_until_ready()
     end = time.perf_counter()
-    print(f"Comput. S_l_m_dup elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+    print(f"Comput. S_l_m_dup elapsed Time = {(end - start) / trial * 1e3:.3f} msec.")
     time.sleep(3)
 
     start = time.perf_counter()
@@ -1859,7 +1860,7 @@ if __name__ == "__main__":
         AOs_dup = _compute_AOs_dup(N_n_dup, R_n_dup, N_l_m_dup, S_l_m_dup)
         AOs_dup.block_until_ready()
     end = time.perf_counter()
-    print(f"Comput. AOs_dup elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+    print(f"Comput. AOs_dup elapsed Time = {(end - start) / trial * 1e3:.3f} msec.")
     time.sleep(3)
 
     start = time.perf_counter()
@@ -1867,7 +1868,7 @@ if __name__ == "__main__":
         AOs = _compute_AOs(AOs_dup)
         AOs.block_until_ready()
     end = time.perf_counter()
-    print(f"Comput. AOs elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+    print(f"Comput. AOs elapsed Time = {(end - start) / trial * 1e3:.3f} msec.")
     time.sleep(3)
 
     """
