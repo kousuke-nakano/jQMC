@@ -47,8 +47,9 @@ import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import jit, vmap
+from jax import jit
 from jax import typing as jnpt
+from jax import vmap
 
 # jqmc module
 from .atomic_orbital import AOs_data, compute_AOs_api, compute_AOs_grad_api, compute_AOs_laplacian_api
@@ -278,6 +279,57 @@ def _compute_det_geminal_all_elements_debug(
             r_dn_carts=r_dn_carts,
         )
     )
+
+
+def compute_AS_regularization_factor_api(
+    geminal_data: Geminal_data, r_up_carts: npt.NDArray[np.float64], r_dn_carts: npt.NDArray[np.float64], debug: bool = False
+) -> npt.NDArray[np.float64]:
+    """Compute the Attaccalite and Sorella regularization factor.
+
+    The method is for computing the Attaccalite and Sorella regularization factor with a given geminal data at (r_up_carts, r_dn_carts).
+
+    Args:
+        geminal_data (Geminal_data): an instance of Geminal_data class
+        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
+        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        debug (bool): if True, this is computed via _debug function for debuging purpose
+
+    Returns:
+        float: The Attaccalite and Sorella regularization factor
+    """
+    if debug:
+        R_AS = _compute_AS_regularization_factor_jax(geminal_data, r_up_carts, r_dn_carts)
+    else:
+        R_AS = _compute_AS_regularization_factor_jax(geminal_data, r_up_carts, r_dn_carts)
+
+    return R_AS
+
+
+def _compute_AS_regularization_factor_jax(
+    geminal_data: Geminal_data, r_up_carts: npt.NDArray[np.float64], r_dn_carts: npt.NDArray[np.float64]
+) -> npt.NDArray[np.float64]:
+    """Compute the Attaccalite and Sorella regularization factor.
+
+    The method is for computing the Attaccalite and Sorella regularization factor with a given geminal data at (r_up_carts, r_dn_carts).
+
+    Args:
+        geminal_data (Geminal_data): an instance of Geminal_data class
+        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
+        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+
+    Returns:
+        float: The Attaccalite and Sorella regularization factor
+    """
+    geminal = _compute_geminal_all_elements_jax(geminal_data, r_up_carts, r_dn_carts)
+
+    # compute the AS factor
+    theta = 3.0 / 8.0
+    # To do !! S should be considered or not?
+    S = jnp.min(jnp.sum(geminal**2, axis=1))
+    S = 1
+    R_AS = (S * jnp.sum((1.0 / geminal) ** 2)) ** (-theta)
+
+    return R_AS
 
 
 def compute_geminal_all_elements_api(
@@ -1319,7 +1371,7 @@ if __name__ == "__main__":
     )
 
     end = time.perf_counter()
-    print(f"Elapsed Time = {(end-start)*1e3:.3f} msec.")
+    print(f"Elapsed Time = {(end - start) * 1e3:.3f} msec.")
     # print(determinant_ratios_debug)
 
     determinant_ratios_jax = _compute_ratio_determinant_part_jax(
@@ -1341,7 +1393,7 @@ if __name__ == "__main__":
     )
     determinant_ratios_jax.block_until_ready()
     end = time.perf_counter()
-    print(f"Elapsed Time = {(end-start)*1e3:.3f} msec.")
+    print(f"Elapsed Time = {(end - start) * 1e3:.3f} msec.")
     # print(determinant_ratios_jax)
 
     np.testing.assert_array_almost_equal(determinant_ratios_debug, determinant_ratios_jax, decimal=12)

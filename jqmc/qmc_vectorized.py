@@ -55,6 +55,7 @@ from .coulomb_potential import (
     _compute_ecp_local_parts_full_NN_jax,
     _compute_ecp_non_local_parts_NN_jax,
 )
+from .determinant import compute_AS_regularization_factor_api
 
 # jQMC
 from .hamiltonians import Hamiltonian_data, compute_kinetic_energy_api, compute_local_energy_api
@@ -105,6 +106,7 @@ class MCMC:
         num_walkers (int): the number of walkers.
         num_mcmc_per_measurement (int): the number of MCMC steps between a value (e.g., local energy) measurement.
         Dt (float): electron move step (bohr)
+        epsilon (float): the exponent of the AS regularization
         comput_jas_param_deriv (bool): if True, compute the derivatives of E wrt. Jastrow parameters.
         comput_position_deriv (bool): if True, compute the derivatives of E wrt. atomic positions.
     """
@@ -116,6 +118,7 @@ class MCMC:
         num_walkers: int = 40,
         num_mcmc_per_measurement: int = 16,
         Dt: float = 2.0,
+        epsilon_AS: float = 1e-1,
         comput_jas_param_deriv: bool = False,
         comput_position_deriv: bool = False,
     ) -> None:
@@ -125,6 +128,7 @@ class MCMC:
         self.__num_walkers = num_walkers
         self.__num_mcmc_per_measurement = num_mcmc_per_measurement
         self.__Dt = Dt
+        self.__epsilon_AS = epsilon_AS
         self.__comput_jas_param_deriv = comput_jas_param_deriv
         self.__comput_position_deriv = comput_position_deriv
 
@@ -499,18 +503,41 @@ class MCMC:
                     * (1.0 / (2.0 * f_prime_l**2 * self.__Dt**2) - 1.0 / (2.0 * f_l**2 * self.__Dt**2))
                 )
 
-                R_ratio = (
-                    evaluate_wavefunction_api(
-                        wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                        r_up_carts=proposed_r_up_carts,
-                        r_dn_carts=proposed_r_dn_carts,
-                    )
-                    / evaluate_wavefunction_api(
-                        wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                        r_up_carts=r_up_carts,
-                        r_dn_carts=r_dn_carts,
-                    )
-                ) ** 2.0
+                # original trial WFs
+                Psi_T_p = evaluate_wavefunction_api(
+                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                    r_up_carts=proposed_r_up_carts,
+                    r_dn_carts=proposed_r_dn_carts,
+                )
+
+                Psi_T_o = evaluate_wavefunction_api(
+                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                    r_up_carts=r_up_carts,
+                    r_dn_carts=r_dn_carts,
+                )
+
+                # compute AS regularization factors, R_AS and R_AS_eps
+                R_AS_p = compute_AS_regularization_factor_api(
+                    geminal_data=self.__hamiltonian_data.wavefunction_data.geminal_data,
+                    r_up_carts=proposed_r_up_carts,
+                    r_dn_carts=proposed_r_dn_carts,
+                )
+                R_AS_p_eps = jnp.maximum(R_AS_p, self.__epsilon_AS)
+
+                R_AS_o = compute_AS_regularization_factor_api(
+                    geminal_data=self.__hamiltonian_data.wavefunction_data.geminal_data,
+                    r_up_carts=r_up_carts,
+                    r_dn_carts=r_dn_carts,
+                )
+                R_AS_o_eps = jnp.maximum(R_AS_o, self.__epsilon_AS)
+
+                # modified trial WFs
+                Psi_G_p = R_AS_p_eps / R_AS_p * Psi_T_p
+
+                Psi_G_o = R_AS_o_eps / R_AS_o * Psi_T_o
+
+                # compute R_ratio
+                R_ratio = (Psi_G_p / Psi_G_o) ** 2.0
 
                 logger.debug(f"R_ratio, T_ratio = {R_ratio}, {T_ratio}")
                 acceptance_ratio = jnp.min(jnp.array([1.0, R_ratio * T_ratio]))
@@ -555,6 +582,11 @@ class MCMC:
         )
         _ = vmap(compute_local_energy_api, in_axes=(None, 0, 0))(
             self.__hamiltonian_data,
+            self.__latest_r_up_carts,
+            self.__latest_r_dn_carts,
+        )
+        _ = vmap(compute_AS_regularization_factor_api, in_axes=(None, 0, 0))(
+            self.__hamiltonian_data.wavefunction_data.geminal_data,
             self.__latest_r_up_carts,
             self.__latest_r_dn_carts,
         )
@@ -675,6 +707,21 @@ class MCMC:
             timer_e_L += end - start
 
             self.__stored_e_L.append(e_L)
+
+            # compute AS regularization factors, R_AS and R_AS_eps
+            R_AS = vmap(compute_AS_regularization_factor_api, in_axes=(None, 0, 0))(
+                self.__hamiltonian_data.wavefunction_data.geminal_data,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+            )
+            R_AS_eps = jnp.maximum(R_AS, self.__epsilon_AS)
+
+            logger.info(f"R_AS = {R_AS}.")
+            logger.info(f"R_AS_eps = {R_AS_eps}.")
+
+            w_L = (R_AS / R_AS_eps) ** 2
+            logger.info(f"w_L = {w_L}.")
+            self.__stored_w_L.append(w_L)
 
             if self.__comput_position_deriv:
                 # """
@@ -908,7 +955,7 @@ class MCMC:
     @property
     def w_L(self) -> npt.NDArray:
         """Return the stored weight array. dim: (mcmc_counter, num_walkers)."""
-        self.__stored_w_L = np.ones((self.mcmc_counter, self.num_walkers))  # tentative
+        # self.__stored_w_L = np.ones((self.mcmc_counter, self.num_walkers))  # tentative
         return np.array(self.__stored_w_L)
 
     # observables
@@ -3295,7 +3342,7 @@ if __name__ == "__main__":
     logger.info(local_device_info)
     logger.info("")
 
-    # """
+    """
     # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
     (
         structure_data,
@@ -3305,9 +3352,9 @@ if __name__ == "__main__":
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"))
-    # """
-
     """
+
+    # """
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,
@@ -3317,7 +3364,7 @@ if __name__ == "__main__":
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "H2_dimer_ccpv5z_trexio.hdf5"))
-    """
+    # """
 
     """
     # Ne atom cc-pV5Z with Mitas ccECP (10 electrons, feasible).
@@ -3441,12 +3488,12 @@ if __name__ == "__main__":
     #    hamiltonian_data = pickle.load(f)
 
     # MCMC param
-    num_walkers = 4
+    num_walkers = 20
     num_mcmc_warmup_steps = 5
     num_mcmc_bin_blocks = 5
     mcmc_seed = 34356
 
-    """
+    # """
     # run VMC single-shot
     mcmc = MCMC(
         hamiltonian_data=hamiltonian_data,
@@ -3454,7 +3501,7 @@ if __name__ == "__main__":
         mcmc_seed=mcmc_seed,
         num_walkers=num_walkers,
         comput_position_deriv=False,
-        comput_jas_param_deriv=True,
+        comput_jas_param_deriv=False,
     )
     vmc = QMC(mcmc)
     vmc.run(num_mcmc_steps=100, max_time=3600)
@@ -3463,7 +3510,7 @@ if __name__ == "__main__":
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
-    """
+    # """
 
     """
     f_mean, f_std = vmc.get_aF(
@@ -3480,7 +3527,7 @@ if __name__ == "__main__":
     logger.info(f"H_mean = {H_mean}.")
     """
 
-    # """
+    """
     # run VMCopt
     mcmc = MCMC(
         hamiltonian_data=hamiltonian_data,
@@ -3500,7 +3547,7 @@ if __name__ == "__main__":
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
-    # """
+    """
 
     """
 
