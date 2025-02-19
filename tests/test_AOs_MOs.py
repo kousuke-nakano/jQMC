@@ -883,7 +883,7 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
 
 
 # @pytest.mark.skip_if_enable_jit
-def test_MOs_comparing_auto_and_numerical_grads(request):
+def test_MOs_comparing_auto_and_numerical_grads():
     # if request.config.getoption("--enable-jit"):
     #    pytest.skip(reason="Bug of flux.struct with @jit.")
     num_el = 10

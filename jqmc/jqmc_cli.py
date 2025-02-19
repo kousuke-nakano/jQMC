@@ -245,7 +245,7 @@ def main():
                     num_walkers=number_of_walkers,
                     num_mcmc_per_measurement=num_mcmc_per_measurement,
                     comput_position_deriv=False,
-                    comput_jas_param_deriv=False,
+                    comput_param_deriv=False,
                 )
                 vmc = QMC(mcmc)
         vmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
@@ -344,7 +344,7 @@ def main():
                     num_walkers=number_of_walkers,
                     num_mcmc_per_measurement=num_mcmc_per_measurement,
                     comput_position_deriv=False,
-                    comput_jas_param_deriv=True,
+                    comput_param_deriv=True,
                 )
                 vmc = QMC(mcmc)
         vmc.run_optimize(

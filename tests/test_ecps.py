@@ -188,9 +188,9 @@ def test_debug_and_jax_ecp_local():
 def test_debug_and_jax_ecp_non_local():
     (
         structure_data,
-        aos_data,
-        mos_data_up,
-        mos_data_dn,
+        _,
+        _,
+        _,
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_trexio.hdf5"))

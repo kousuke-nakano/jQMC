@@ -34,6 +34,7 @@
 
 # python modules
 import itertools
+from collections.abc import Callable
 
 # set logger
 from logging import Formatter, StreamHandler, getLogger
@@ -45,10 +46,10 @@ import numpy as np
 import numpy.typing as npt
 from flax import struct
 from jax import grad, hessian, jit, vmap
-from jax import typing as jnpt
 
 # jqmc module
 from .atomic_orbital import AOs_data, compute_AOs_api
+from .molecular_orbital import MOs_data, compute_MOs_api
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
@@ -89,22 +90,26 @@ class Jastrow_three_body_data:
     The class contains data for evaluating the three-body Jastrow function.
 
     Args:
-        orb_data (AOs_data): AOs data for up-spin and dn-spin.
+        orb_data (AOs_data | MOs_data): AOs data for up-spin and dn-spin.
         j_matrix (npt.NDArray[np.float64]): J matrix dim. (orb_data.num_ao, orb_data.num_ao+1))
     """
 
-    orb_data: AOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
+    orb_data: AOs_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
     j_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
-    """
+    ''' This __post__init no longer works because vmap(grad) changes the dimmension of the j3_matrix.
     def __post_init__(self) -> None:
-        '''Initialization of the class.
+        """Initialization of the class.
 
         This magic function checks the consistencies among the arguments.
 
         Raises:
             ValueError: If there is an inconsistency in a dimension of a given argument.
-        '''
+        """
+        if not hasattr(self.j_matrix, "shape"):
+            # it sometimes has 'object' type because of JAX-jit
+            return
+
         if self.j_matrix.shape != (
             self.orb_num,
             self.orb_num + 1,
@@ -114,7 +119,7 @@ class Jastrow_three_body_data:
                 + f"= ({self.orb_num}, {self.orb_num + 1}).",
             )
             raise ValueError
-    """
+    '''
 
     @property
     def orb_num(self) -> int:
@@ -124,6 +129,27 @@ class Jastrow_three_body_data:
             int: get number of atomic orbitals.
         """
         return self.orb_data.num_ao
+
+    @property
+    def compute_orb_api(self) -> Callable[..., npt.NDArray[np.float64]]:
+        """Function for computing AOs or MOs.
+
+        The api method to compute AOs or MOs corresponding to instances
+        stored in self.orb_data
+
+        Return:
+            Callable: The api method to compute AOs or MOs.
+
+        Raises:
+            NotImplementedError:
+                If the instances of orb_data is neither AOs_data nor MOs_data.
+        """
+        if isinstance(self.orb_data, AOs_data):
+            return compute_AOs_api
+        elif isinstance(self.orb_data, MOs_data):
+            return compute_MOs_api
+        else:
+            raise NotImplementedError
 
     @classmethod
     def init_jastrow_three_body_data(cls, orb_data: AOs_data):
@@ -137,7 +163,32 @@ class Jastrow_three_body_data:
         return jastrow_three_body_data
 
 
-# @dataclass
+@struct.dataclass
+class Jastrow_three_body_data_deriv_params(Jastrow_three_body_data):
+    """See Jastrow_three_body_data."""
+
+    orb_data: MOs_data | AOs_data = struct.field(pytree_node=False, default_factory=lambda: AOs_data())
+    j_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
+
+    @classmethod
+    def from_base(cls, jastrow_three_body_data: Jastrow_three_body_data):
+        """Switch pytree_node."""
+        return cls(orb_data=jastrow_three_body_data.orb_data, j_matrix=jastrow_three_body_data.j_matrix)
+
+
+@struct.dataclass
+class Jastrow_three_body_data_deriv_R(Jastrow_three_body_data):
+    """See Jastrow_three_body_data."""
+
+    orb_data: MOs_data | AOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
+    j_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=False, default_factory=lambda: np.array([]))
+
+    @classmethod
+    def from_base(cls, jastrow_three_body_data: Jastrow_three_body_data):
+        """Switch pytree_node."""
+        return cls(orb_data=jastrow_three_body_data.orb_data, j_matrix=jastrow_three_body_data.j_matrix)
+
+
 @struct.dataclass
 class Jastrow_data:
     """Jastrow dataclass.
@@ -170,6 +221,64 @@ class Jastrow_data:
             ValueError: If there is an inconsistency in a dimension of a given argument.
         """
         pass
+
+
+@struct.dataclass
+class Jastrow_data_deriv_params(Jastrow_data):
+    """See Jastrow_data."""
+
+    jastrow_two_body_data: Jastrow_two_body_data = struct.field(
+        pytree_node=True, default_factory=lambda: Jastrow_two_body_data()
+    )
+    jastrow_three_body_data: Jastrow_three_body_data = struct.field(
+        pytree_node=True, default_factory=lambda: Jastrow_three_body_data()
+    )
+    jastrow_two_body_pade_flag: bool = struct.field(pytree_node=False, default=False)
+    jastrow_three_body_flag: bool = struct.field(pytree_node=False, default=False)
+
+    @classmethod
+    def from_base(cls, jastrow_data: Jastrow_data):
+        """Switch pytree_node."""
+        jastrow_two_body_data = jastrow_data.jastrow_two_body_data
+        jastrow_three_body_data = Jastrow_three_body_data_deriv_params.from_base(jastrow_data.jastrow_three_body_data)
+        jastrow_two_body_pade_flag = jastrow_data.jastrow_two_body_pade_flag
+        jastrow_three_body_flag = jastrow_data.jastrow_three_body_flag
+
+        return cls(
+            jastrow_two_body_data=jastrow_two_body_data,
+            jastrow_three_body_data=jastrow_three_body_data,
+            jastrow_two_body_pade_flag=jastrow_two_body_pade_flag,
+            jastrow_three_body_flag=jastrow_three_body_flag,
+        )
+
+
+@struct.dataclass
+class Jastrow_data_deriv_R(Jastrow_data):
+    """See Jastrow_data."""
+
+    jastrow_two_body_data: Jastrow_two_body_data = struct.field(
+        pytree_node=False, default_factory=lambda: Jastrow_two_body_data()
+    )
+    jastrow_three_body_data: Jastrow_three_body_data = struct.field(
+        pytree_node=True, default_factory=lambda: Jastrow_three_body_data()
+    )
+    jastrow_two_body_pade_flag: bool = struct.field(pytree_node=False, default=False)
+    jastrow_three_body_flag: bool = struct.field(pytree_node=False, default=False)
+
+    @classmethod
+    def from_base(cls, jastrow_data: Jastrow_data):
+        """Switch pytree_node."""
+        jastrow_two_body_data = (jastrow_data.jastrow_two_body_data,)
+        jastrow_three_body_data = (Jastrow_three_body_data_deriv_R.from_base(jastrow_data.jastrow_three_body_data),)
+        jastrow_two_body_pade_flag = (jastrow_data.jastrow_two_body_pade_flag,)
+        jastrow_three_body_flag = (jastrow_data.jastrow_three_body_flag,)
+
+        return cls(
+            jastrow_two_body_data=jastrow_two_body_data,
+            jastrow_three_body_data=jastrow_three_body_data,
+            jastrow_two_body_pade_flag=jastrow_two_body_pade_flag,
+            jastrow_three_body_flag=jastrow_three_body_flag,
+        )
 
 
 def compute_ratio_Jastrow_part_api(
@@ -217,8 +326,6 @@ def _compute_ratio_Jastrow_part_debug(
     new_r_dn_carts_arr: npt.NDArray[np.float64],
 ) -> npt.NDArray:
     """See _api method."""
-
-    # """
     return np.array(
         [
             np.exp(compute_Jastrow_part_api(jastrow_data, new_r_up_carts, new_r_dn_carts))
@@ -226,19 +333,6 @@ def _compute_ratio_Jastrow_part_debug(
             for new_r_up_carts, new_r_dn_carts in zip(new_r_up_carts_arr, new_r_dn_carts_arr)
         ]
     )
-    # """
-
-    """
-    return np.array(
-        [
-            np.exp(
-                compute_Jastrow_two_body_api(jastrow_data.jastrow_two_body_data, new_r_up_carts, new_r_dn_carts)
-                - compute_Jastrow_two_body_api(jastrow_data.jastrow_two_body_data, old_r_up_carts, old_r_dn_carts)
-            )
-            for new_r_up_carts, new_r_dn_carts in zip(new_r_up_carts_arr, new_r_dn_carts_arr)
-        ]
-    )
-    """
 
 
 @jit
@@ -330,8 +424,8 @@ def _compute_ratio_Jastrow_part_jax(
 
         num_electron_up = len(old_r_up_carts)
         num_electron_dn = len(old_r_dn_carts)
-        aos_up = jnp.array(compute_AOs_api(aos_data=jastrow_three_body_data.orb_data, r_carts=old_r_up_carts))
-        aos_dn = jnp.array(compute_AOs_api(aos_data=jastrow_three_body_data.orb_data, r_carts=old_r_dn_carts))
+        aos_up = jnp.array(jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, old_r_up_carts))
+        aos_dn = jnp.array(jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, old_r_dn_carts))
         j1_matrix_up = jastrow_three_body_data.j_matrix[:, -1]
         j1_matrix_dn = jastrow_three_body_data.j_matrix[:, -1]
         j3_matrix_up_up = jastrow_three_body_data.j_matrix[:, :-1]
@@ -345,8 +439,8 @@ def _compute_ratio_Jastrow_part_jax(
             old_r_up_carts_extracted = jnp.expand_dims(old_r_up_carts[idx], axis=0)  # shape=(1,3)
 
             aos_up_p = jnp.array(
-                compute_AOs_api(aos_data=jastrow_three_body_data.orb_data, r_carts=new_r_up_carts_extracted)
-            ) - jnp.array(compute_AOs_api(aos_data=jastrow_three_body_data.orb_data, r_carts=old_r_up_carts_extracted))
+                jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, new_r_up_carts_extracted)
+            ) - jnp.array(jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, old_r_up_carts_extracted))
 
             indices = jnp.arange(num_electron_up)
             Q_up_c = (idx < indices).astype(jnp.float64).reshape(-1, 1)
@@ -365,8 +459,8 @@ def _compute_ratio_Jastrow_part_jax(
             old_r_dn_carts_extracted = jnp.expand_dims(old_r_dn_carts[idx], axis=0)  # shape=(1,3)
 
             aos_dn_p = jnp.array(
-                compute_AOs_api(aos_data=jastrow_three_body_data.orb_data, r_carts=new_r_dn_carts_extracted)
-            ) - jnp.array(compute_AOs_api(aos_data=jastrow_three_body_data.orb_data, r_carts=old_r_dn_carts_extracted))
+                jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, new_r_dn_carts_extracted)
+            ) - jnp.array(jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, old_r_dn_carts_extracted))
 
             indices = jnp.arange(num_electron_dn)
             Q_dn_c = (idx < indices).astype(jnp.float64).reshape(-1, 1)
@@ -485,8 +579,8 @@ def _compute_Jastrow_three_body_debug(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
     """See _api method."""
-    aos_up = compute_AOs_api(aos_data=jastrow_three_body_data.orb_data, r_carts=r_up_carts)
-    aos_dn = compute_AOs_api(aos_data=jastrow_three_body_data.orb_data, r_carts=r_dn_carts)
+    aos_up = jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, r_up_carts)
+    aos_dn = jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, r_dn_carts)
 
     # compute one body
     J_1_up = 0.0
@@ -549,8 +643,8 @@ def _compute_Jastrow_three_body_jax(
     num_electron_up = len(r_up_carts)
     num_electron_dn = len(r_dn_carts)
 
-    aos_up = jnp.array(compute_AOs_api(aos_data=jastrow_three_body_data.orb_data, r_carts=r_up_carts))
-    aos_dn = jnp.array(compute_AOs_api(aos_data=jastrow_three_body_data.orb_data, r_carts=r_dn_carts))
+    aos_up = jnp.array(jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, r_up_carts))
+    aos_dn = jnp.array(jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, r_dn_carts))
 
     K_up = jnp.tril(jnp.ones((num_electron_up, num_electron_up)), k=-1)
     K_dn = jnp.tril(jnp.ones((num_electron_dn, num_electron_dn)), k=-1)
@@ -1730,7 +1824,7 @@ if __name__ == "__main__":
         new_r_dn_carts_arr=new_r_dn_carts_arr,
     )
     end = time.perf_counter()
-    print(f"Elapsed Time = {(end-start)*1e3:.3f} msec.")
+    print(f"Elapsed Time = {(end - start) * 1e3:.3f} msec.")
 
     # print(jastrow_ratios_debug)
 
@@ -1753,7 +1847,7 @@ if __name__ == "__main__":
     )
     jastrow_ratios_jax.block_until_ready()
     end = time.perf_counter()
-    print(f"Elapsed Time = {(end-start)*1e3:.3f} msec.")
+    print(f"Elapsed Time = {(end - start) * 1e3:.3f} msec.")
 
     # print(jastrow_ratios_jax)
 

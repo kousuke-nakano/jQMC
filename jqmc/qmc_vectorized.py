@@ -43,9 +43,8 @@ import jax
 import numpy as np
 import numpy.typing as npt
 import scipy
-from jax import grad, jit, lax
+from jax import grad, jit, lax, vmap
 from jax import numpy as jnp
-from jax import vmap
 
 # MPI
 from mpi4py import MPI
@@ -58,7 +57,7 @@ from .coulomb_potential import (
 from .determinant import compute_AS_regularization_factor_api
 
 # jQMC
-from .hamiltonians import Hamiltonian_data, compute_kinetic_energy_api, compute_local_energy_api
+from .hamiltonians import Hamiltonian_data, Hamiltonian_data_deriv_params, compute_kinetic_energy_api, compute_local_energy_api
 from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data, compute_ratio_Jastrow_part_api
 from .structure import find_nearest_index_jax
 from .swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
@@ -107,7 +106,7 @@ class MCMC:
         num_mcmc_per_measurement (int): the number of MCMC steps between a value (e.g., local energy) measurement.
         Dt (float): electron move step (bohr)
         epsilon (float): the exponent of the AS regularization
-        comput_jas_param_deriv (bool): if True, compute the derivatives of E wrt. Jastrow parameters.
+        comput_param_deriv (bool): if True, compute the derivatives of E wrt. variational parameters.
         comput_position_deriv (bool): if True, compute the derivatives of E wrt. atomic positions.
     """
 
@@ -119,18 +118,20 @@ class MCMC:
         num_mcmc_per_measurement: int = 16,
         Dt: float = 2.0,
         epsilon_AS: float = 1e-1,
-        comput_jas_param_deriv: bool = False,
+        comput_param_deriv: bool = False,
         comput_position_deriv: bool = False,
     ) -> None:
         """Initialize a MCMC class, creating list holding results."""
-        self.__hamiltonian_data = hamiltonian_data
         self.__mcmc_seed = mcmc_seed
         self.__num_walkers = num_walkers
         self.__num_mcmc_per_measurement = num_mcmc_per_measurement
         self.__Dt = Dt
         self.__epsilon_AS = epsilon_AS
-        self.__comput_jas_param_deriv = comput_jas_param_deriv
+        self.__comput_param_deriv = comput_param_deriv
         self.__comput_position_deriv = comput_position_deriv
+
+        # set hamiltonian_data
+        self.__hamiltonian_data = hamiltonian_data
 
         # seeds
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
@@ -145,7 +146,8 @@ class MCMC:
         self.__timer_e_L = 0.0
         self.__timer_de_L_dR_dr = 0.0
         self.__timer_dln_Psi_dR_dr = 0.0
-        self.__timer_dln_Psi_dc_jas1b2b3b = 0.0
+        self.__timer_dln_Psi_dc = 0.0
+        self.__timer_de_L_dc = 0.0
         self.__timer_misc = 0.0
 
         # set init electron positions
@@ -241,7 +243,7 @@ class MCMC:
         self.__timer_mcmc_init += end - start
 
         if self.__comput_position_deriv:
-            logger.info("  Compilation de_L starts.")
+            logger.info("  Compilation de_L/dR starts.")
             start = time.perf_counter()
             _, _, _ = grad(compute_local_energy_api, argnums=(0, 1, 2))(
                 self.__hamiltonian_data,
@@ -249,11 +251,11 @@ class MCMC:
                 self.__latest_r_dn_carts[0],
             )
             end = time.perf_counter()
-            logger.info("  Compilation de_L is done.")
+            logger.info("  Compilation de_L/dR is done.")
             logger.info(f"  Elapsed Time = {end - start:.2f} sec.")
             self.__timer_mcmc_init += end - start
 
-            logger.info("  Compilation dln_Psi starts.")
+            logger.info("  Compilation dln_Psi/dR starts.")
             start = time.perf_counter()
             _, _, _ = grad(evaluate_ln_wavefunction_api, argnums=(0, 1, 2))(
                 self.__hamiltonian_data.wavefunction_data,
@@ -261,23 +263,23 @@ class MCMC:
                 self.__latest_r_dn_carts[0],
             )
             end = time.perf_counter()
-            logger.info("  Compilation dln_Psi is done.")
+            logger.info("  Compilation dln_Psi/dR is done.")
             logger.info(f"  Elapsed Time = {end - start:.2f} sec.")
             self.__timer_mcmc_init += end - start
 
-            logger.info("  Compilation domega starts.")
+            logger.info("  Compilation domega/dR starts.")
             start = time.perf_counter()
             _ = evaluate_swct_domega_api(
                 self.__swct_data,
                 self.__latest_r_up_carts[0],
             )
             end = time.perf_counter()
-            logger.info("  Compilation domega is done.")
+            logger.info("  Compilation domega/dR is done.")
             logger.info(f"  Elapsed Time = {end - start:.2f} sec.")
             self.__timer_mcmc_init += end - start
 
-        if self.__comput_jas_param_deriv:
-            logger.info("  Compilation dln_Psi starts.")
+        if self.__comput_param_deriv:
+            logger.info("  Compilation dln_Psi/dc starts.")
             start = time.perf_counter()
             _ = grad(evaluate_ln_wavefunction_api, argnums=(0))(
                 self.__hamiltonian_data.wavefunction_data,
@@ -285,15 +287,30 @@ class MCMC:
                 self.__latest_r_dn_carts[0],
             )
             end = time.perf_counter()
-            logger.info("  Compilation dln_Psi is done.")
+            logger.info("  Compilation dln_Psi/dc is done.")
             logger.info(f"  Elapsed Time = {end - start:.2f} sec.")
             self.__timer_mcmc_init += end - start
+
+            """ for linear method
+            logger.info("  Compilation de_L/dc starts.")
+            start = time.perf_counter()
+            _ = grad(compute_local_energy_api, argnums=0)(
+                self.__hamiltonian_data,
+                self.__latest_r_up_carts[0],
+                self.__latest_r_dn_carts[0],
+            )
+            end = time.perf_counter()
+            logger.info("  Compilation de_L/dc is done.")
+            logger.info(f"  Elapsed Time = {end - start:.2f} sec.")
+            self.__timer_mcmc_init += end - start
+            """
 
         logger.info("Compilation of fundamental functions is done.")
         logger.info(f"Elapsed Time = {self.__timer_mcmc_init:.2f} sec.")
         logger.info("")
 
-        # init attributes
+        # init_attributes
+        self.hamiltonian_data = self.__hamiltonian_data
         self.__init_attributes()
 
     def __init_attributes(self):
@@ -349,12 +366,20 @@ class MCMC:
         # stored dln_Psi / dc_jas1b3b
         self.__stored_grad_ln_Psi_jas1b3b_j_matrix = []
 
-        """
+        """ linear method
         # stored de_L / dc_jas2b
         self.__stored_grad_e_L_jas2b = []
 
         # stored de_L / dc_jas1b3b
         self.__stored_grad_e_L_jas1b3b_j_matrix = []
+        """
+
+        # stored dln_Psi / dc_lambda_matrix
+        self.__stored_grad_ln_Psi_lambda_matrix = []
+
+        """ linear method
+        # stored de_L / dc_lambda_matrix
+        self.__stored_grad_e_L_lambda_matrix = []
         """
 
         # total number of electrons
@@ -386,7 +411,8 @@ class MCMC:
         timer_e_L = 0.0
         timer_de_L_dR_dr = 0.0
         timer_dln_Psi_dR_dr = 0.0
-        timer_dln_Psi_dc_jas1b2b3b = 0.0
+        timer_dln_Psi_dc = 0.0
+        timer_de_L_dc = 0.0
         mcmc_total_start = time.perf_counter()
 
         # MCMC electron position update function
@@ -639,7 +665,7 @@ class MCMC:
                 self.__latest_r_dn_carts,
             )
 
-        if self.__comput_jas_param_deriv:
+        if self.__comput_param_deriv:
             _ = vmap(grad(evaluate_ln_wavefunction_api, argnums=0), in_axes=(None, 0, 0))(
                 self.__hamiltonian_data.wavefunction_data,
                 self.__latest_r_up_carts,
@@ -716,11 +742,11 @@ class MCMC:
             )
             R_AS_eps = jnp.maximum(R_AS, self.__epsilon_AS)
 
-            logger.info(f"R_AS = {R_AS}.")
-            logger.info(f"R_AS_eps = {R_AS_eps}.")
+            # logger.info(f"R_AS = {R_AS}.")
+            # logger.info(f"R_AS_eps = {R_AS_eps}.")
 
             w_L = (R_AS / R_AS_eps) ** 2
-            logger.info(f"w_L = {w_L}.")
+            # logger.info(f"w_L = {w_L}.")
             self.__stored_w_L.append(w_L)
 
             if self.__comput_position_deriv:
@@ -739,9 +765,17 @@ class MCMC:
                 self.__stored_grad_e_L_r_up.append(grad_e_L_r_up)
                 self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn)
 
+                """ it works only for MOs_data
                 grad_e_L_R = (
                     grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.aos_data.structure_data.positions
                     + grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions
+                    + grad_e_L_h.coulomb_potential_data.structure_data.positions
+                )
+                """
+
+                grad_e_L_R = (
+                    grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.structure_data.positions
+                    + grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.structure_data.positions
                     + grad_e_L_h.coulomb_potential_data.structure_data.positions
                 )
 
@@ -834,7 +868,7 @@ class MCMC:
                 self.__stored_grad_omega_r_up.append(grad_omega_dr_up)
                 self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn)
 
-            if self.__comput_jas_param_deriv:
+            if self.__comput_param_deriv:
                 start = time.perf_counter()
                 grad_ln_Psi_h = vmap(grad(evaluate_ln_wavefunction_api, argnums=0), in_axes=(None, 0, 0))(
                     self.__hamiltonian_data.wavefunction_data,
@@ -842,8 +876,9 @@ class MCMC:
                     self.__latest_r_dn_carts,
                 )
                 end = time.perf_counter()
-                timer_dln_Psi_dc_jas1b2b3b += end - start
+                timer_dln_Psi_dc += end - start
 
+                start = time.perf_counter()
                 """ for Linear method
                 grad_e_L_h = vmap(grad(compute_local_energy_api, argnums=0), in_axes=(None, 0, 0))(
                     self.__hamiltonian_data,
@@ -851,7 +886,10 @@ class MCMC:
                     self.__latest_r_dn_carts,
                 )
                 """
+                end = time.perf_counter()
+                timer_de_L_dc += end - start
 
+                # 2b Jastrow
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag:
                     grad_ln_Psi_jas2b = grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
                     logger.devel(f"grad_ln_Psi_jas2b.shape = {grad_ln_Psi_jas2b.shape}")
@@ -865,6 +903,7 @@ class MCMC:
                     self.__stored_grad_e_L_jas2b.append(grad_e_L_jas2b)
                     """
 
+                # 3b Jastrow
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
                     grad_ln_Psi_jas1b3b_j_matrix = grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix
                     logger.devel(f"grad_ln_Psi_jas1b3b_j_matrix.shape={grad_ln_Psi_jas1b3b_j_matrix.shape}")
@@ -877,6 +916,19 @@ class MCMC:
                     logger.devel(f"  grad_e_L_jas1b3b_j_matrix = {grad_e_L_jas1b3b_j_matrix}")
                     self.__stored_grad_e_L_jas1b3b_j_matrix.append(grad_e_L_jas1b3b_j_matrix)
                     """
+
+                # lambda_matrix
+                grad_ln_Psi_lambda_matrix = grad_ln_Psi_h.geminal_data.lambda_matrix
+                logger.devel(f"grad_ln_Psi_lambda_matrix.shape={grad_ln_Psi_lambda_matrix.shape}")
+                logger.devel(f"  grad_ln_Psi_lambda_matrix = {grad_ln_Psi_lambda_matrix}")
+                self.__stored_grad_ln_Psi_lambda_matrix.append(grad_ln_Psi_lambda_matrix)
+
+                """ for Linear method
+                grad_e_L_lambda_matrix = grad_e_L_h.wavefunction_data.geminal_data.lambda_matrix
+                logger.devel(f"grad_e_L_lambda_matrix.shape = {grad_e_L_lambda_matrix.shape}")
+                logger.devel(f"  grad_e_L_lambda_matrix = {grad_e_L_lambda_matrix}")
+                self.__stored_grad_e_L_lambda_matrix.append(grad_e_L_lambda_matrix)
+                """
 
             num_mcmc_done += 1
 
@@ -897,7 +949,7 @@ class MCMC:
         mcmc_total_end = time.perf_counter()
         timer_mcmc_total += mcmc_total_end - mcmc_total_start
         timer_misc = timer_mcmc_total - (
-            timer_mcmc_update + timer_e_L + timer_de_L_dR_dr + timer_dln_Psi_dR_dr + timer_dln_Psi_dc_jas1b2b3b
+            timer_mcmc_update + timer_e_L + timer_de_L_dR_dr + timer_dln_Psi_dR_dr + timer_dln_Psi_dc
         )
 
         self.__timer_mcmc_total += timer_mcmc_total
@@ -906,7 +958,8 @@ class MCMC:
         self.__timer_e_L += timer_e_L
         self.__timer_de_L_dR_dr += timer_de_L_dR_dr
         self.__timer_dln_Psi_dR_dr += timer_dln_Psi_dR_dr
-        self.__timer_dln_Psi_dc_jas1b2b3b += timer_dln_Psi_dc_jas1b2b3b
+        self.__timer_dln_Psi_dc += timer_dln_Psi_dc
+        self.__timer_de_L_dc += timer_de_L_dc
         self.__timer_misc += timer_misc
 
         logger.info(f"Total elapsed time for MCMC {num_mcmc_steps} steps. = {timer_mcmc_total:.2f} sec.")
@@ -919,9 +972,8 @@ class MCMC:
         logger.info(
             f"  Time for computing dln_Psi/dR and dln_Psi/dr = {timer_dln_Psi_dR_dr / num_mcmc_steps * 10**3:.2f} msec."
         )
-        logger.info(
-            f"  Time for computing dln_Psi/dc (jastrow 1b2b3b) = {timer_dln_Psi_dc_jas1b2b3b / num_mcmc_steps * 10**3:.2f} msec."
-        )
+        logger.info(f"  Time for computing dln_Psi/dc = {timer_dln_Psi_dc / num_mcmc_steps * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing de_L/dc = {timer_de_L_dc / num_mcmc_steps * 10**3:.2f} msec.")
         logger.info(f"  Time for misc. (others) = {timer_misc / num_mcmc_steps * 10**3:.2f} msec.")
         logger.info(
             f"Acceptance ratio is {self.__accepted_moves / (self.__accepted_moves + self.__rejected_moves) * 100:.3f} %"
@@ -937,7 +989,10 @@ class MCMC:
     @hamiltonian_data.setter
     def hamiltonian_data(self, hamiltonian_data):
         """Set hamiltonian_data."""
-        self.__hamiltonian_data = hamiltonian_data
+        if self.__comput_param_deriv and not self.__comput_position_deriv:
+            self.__hamiltonian_data = Hamiltonian_data_deriv_params.from_base(hamiltonian_data)
+        else:
+            self.__hamiltonian_data = hamiltonian_data
         self.__init_attributes()
 
     # dimensions of observables
@@ -1036,6 +1091,18 @@ class MCMC:
         return np.array(self.__stored_grad_e_L_jas1b3b_j_matrix)
     '''
 
+    @property
+    def dln_Psi_dc_lambda_matrix(self) -> npt.NDArray:
+        """Return the stored dln_Psi/dc_lambda_matrix array. dim: (mcmc_counter, num_walkers, num_lambda_matrix_param)."""
+        return np.array(self.__stored_grad_ln_Psi_lambda_matrix)
+
+    '''
+    @property
+    def de_L_dc_lambda_matrix(self) -> npt.NDArray:
+        """Return the stored de_L/dc_lambda_matrix array. dim: (mcmc_counter, num_walkers, num_lambda_matrix_param)."""
+        return np.array(self.__stored_grad_e_L_lambda_matrix)
+    '''
+
     # dict for WF optimization
     @property
     def opt_param_dict(self):
@@ -1053,46 +1120,63 @@ class MCMC:
         """
         opt_param_list = []
         dln_Psi_dc_list = []
-        # de_L_dc_list = []
+        # de_L_dc_list = [] # for linear method
         dc_size_list = []
         dc_shape_list = []
         dc_flattened_index_list = []
 
-        if self.__comput_jas_param_deriv:
+        if self.__comput_param_deriv:
+            # jastrow 2-body
             if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag:
-                opt_param = "jastrow_2b_param"
+                opt_param = "j2_param"
                 dln_Psi_dc = self.dln_Psi_dc_jas_2b
-                # de_L_dc = self.de_L_dc_jas_2b
+                # de_L_dc = self.de_L_dc_jas_2b # for linear method
                 dc_size = 1
                 dc_shape = (1,)
                 dc_flattened_index = [len(opt_param_list)] * dc_size
 
                 opt_param_list.append(opt_param)
                 dln_Psi_dc_list.append(dln_Psi_dc)
-                # de_L_dc_list.append(de_L_dc)
+                # de_L_dc_list.append(de_L_dc) # for linear method
                 dc_size_list.append(dc_size)
                 dc_shape_list.append(dc_shape)
                 dc_flattened_index_list += dc_flattened_index
 
+            # jastrow 3-body
             if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
-                opt_param = "j_matrix"
+                opt_param = "j3_matrix"
                 dln_Psi_dc = self.dln_Psi_dc_jas_1b3b
-                # de_L_dc = self.de_L_dc_jas_1b3b
+                # de_L_dc = self.de_L_dc_jas_1b3b # for linear method
                 dc_size = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix.size
                 dc_shape = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix.shape
                 dc_flattened_index = [len(opt_param_list)] * dc_size
 
                 opt_param_list.append(opt_param)
                 dln_Psi_dc_list.append(dln_Psi_dc)
-                # de_L_dc_list.append(de_L_dc)
+                # de_L_dc_list.append(de_L_dc) # for linear method
                 dc_size_list.append(dc_size)
                 dc_shape_list.append(dc_shape)
                 dc_flattened_index_list += dc_flattened_index
 
+            # lambda_matrix
+            opt_param = "lambda_matrix"
+            dln_Psi_dc = self.dln_Psi_dc_lambda_matrix
+            # de_L_dc = self.de_L_dc_lambda # for linear method
+            dc_size = self.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix.size
+            dc_shape = self.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix.shape
+            dc_flattened_index = [len(opt_param_list)] * dc_size
+
+            opt_param_list.append(opt_param)
+            dln_Psi_dc_list.append(dln_Psi_dc)
+            # de_L_dc_list.append(de_L_dc) # for linear method
+            dc_size_list.append(dc_size)
+            dc_shape_list.append(dc_shape)
+            dc_flattened_index_list += dc_flattened_index
+
         return {
             "opt_param_list": opt_param_list,
             "dln_Psi_dc_list": dln_Psi_dc_list,
-            # "de_L_dc_list": de_L_dc_list,
+            # "de_L_dc_list": de_L_dc_list, # for linear method
             "dc_size_list": dc_size_list,
             "dc_shape_list": dc_shape_list,
             "dc_flattened_index_list": dc_flattened_index_list,
@@ -1326,7 +1410,7 @@ class GFMC:
         logger.info("  Compilation e_L is done.")
 
         if self.__comput_position_deriv:
-            logger.info("  Compilation dln_Psi starts.")
+            logger.info("  Compilation dln_Psi/dR starts.")
             start = time.perf_counter()
             _, _, _ = grad(evaluate_ln_wavefunction_api, argnums=(0, 1, 2))(
                 self.__hamiltonian_data.wavefunction_data,
@@ -1334,18 +1418,18 @@ class GFMC:
                 self.__latest_r_dn_carts[0],
             )
             end = time.perf_counter()
-            logger.info("  Compilation dln_Psi is done.")
+            logger.info("  Compilation dln_Psi/dR is done.")
             logger.info(f"  Elapsed Time = {end - start:.2f} sec.")
             self.__timer_gmfc_init += end - start
 
-            logger.info("  Compilation domega starts.")
+            logger.info("  Compilation domega/dR starts.")
             start = time.perf_counter()
             _ = evaluate_swct_domega_api(
                 self.__swct_data,
                 self.__latest_r_up_carts[0],
             )
             end = time.perf_counter()
-            logger.info("  Compilation domega is done.")
+            logger.info("  Compilation domega/dR is done.")
             logger.info(f"  Elapsed Time = {end - start:.2f} sec.")
             self.__timer_gmfc_init += end - start
 
@@ -2429,6 +2513,10 @@ class QMC:
         max_time: int = 86400,
         num_mcmc_warmup_steps: int = 0,
         num_mcmc_bin_blocks: int = 100,
+        # opt_J1_param: bool = True, # to be implemented.
+        opt_J2_param: bool = True,
+        opt_J3_param: bool = True,
+        opt_lambda_param: bool = False,
     ):
         """Optimizing wavefunction.
 
@@ -2450,6 +2538,10 @@ class QMC:
                 the method exits the MCMC loop.
             num_mcmc_warmup_steps (int): number of equilibration steps.
             num_mcmc_bin_blocks (int): number of blocks for reblocking.
+            opt_J1_param (bool): optimize one-body Jastrow # to be implemented.
+            opt_J2_param (bool): optimize two-body Jastrow
+            opt_J3_param (bool): optimize three-body Jastrow
+            opt_lambda_param (bool): optimize lambda_matrix in the determinant part.
 
         """
         vmcopt_total_start = time.perf_counter()
@@ -2486,7 +2578,7 @@ class QMC:
                 mpi_broadcast=False, num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks
             )
 
-            """ LR method, to be removed
+            """ linear method
             # get H (surrogate Hessian matrix)
             H, _ = self.get_H(
                 mpi_broadcast=False, num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks
@@ -2539,8 +2631,7 @@ class QMC:
                     X = 1.0 / S_prime * f
                 """
 
-                # """
-                # SR
+                # """ # SR
                 if S.ndim != 0:
                     # I = np.eye(S.shape[0])
                     # S_prime = S + epsilon * I
@@ -2589,11 +2680,12 @@ class QMC:
                 param_index = [i for i, v in enumerate(dc_flattened_index_list) if v == ii]
                 dX = X[param_index].reshape(param_shape)
                 logger.info(f"dX.shape for MPI-rank={mpi_rank} is {dX.shape}")
+                """To be implemented. Symmetrize or Anti-symmetrize the updated matrices!!!"""
                 if dX.shape == (1,):
                     dX = dX[0]
-                if opt_param == "jastrow_2b_param":
+                if opt_J2_param and opt_param == "j2_param":
                     jastrow_2b_param += delta * dX
-                if opt_param == "j_matrix":
+                if opt_J3_param and opt_param == "j3_matrix":
                     j_matrix += delta * dX
 
             structure_data = self.__mcmc.hamiltonian_data.structure_data
@@ -2675,7 +2767,7 @@ class QMC:
         logger.debug(f"O_matrix.shape = {O_matrix.shape}")
         return O_matrix[num_mcmc_warmup_steps:]  # O.... (x....) (M, nw, L) matrix
 
-    '''
+    ''' linear method
     def get_de_L(self, num_mcmc_warmup_steps: int = 50):
         """Return the derivativs of e_L wrt variational parameters.
 
@@ -2708,6 +2800,7 @@ class QMC:
 
         logger.debug(f"de_L_matrix.shape = {de_L_matrix.shape}")
         return de_L_matrix[num_mcmc_warmup_steps:]  # O.... (x....) (M, nw, L) matrix
+
     '''
 
     def get_gF(
@@ -2923,7 +3016,7 @@ class QMC:
 
         return (S_mean, S_std)  # (S_mu,nu ...., var(S)_mu,nu....) (L*L matrix, L*L matrix)
 
-    ''' to be removed
+    ''' linear method
     def get_H(
         self,
         mpi_broadcast: int = False,
@@ -3048,6 +3141,7 @@ class QMC:
             H_std = mpi_comm.bcast(H_std, root=0)
 
         return (H_mean, H_std)  # (H_mu,nu ...., var(H)_mu,nu....) (L*L matrix, L*L matrix)
+
     '''
 
     def get_E(
@@ -3488,19 +3582,19 @@ if __name__ == "__main__":
     #    hamiltonian_data = pickle.load(f)
 
     # MCMC param
-    num_walkers = 20
+    num_walkers = 2
     num_mcmc_warmup_steps = 5
     num_mcmc_bin_blocks = 5
     mcmc_seed = 34356
 
-    # """
+    """
     # run VMC single-shot
     mcmc = MCMC(
         hamiltonian_data=hamiltonian_data,
         Dt=2.0,
         mcmc_seed=mcmc_seed,
         num_walkers=num_walkers,
-        comput_position_deriv=False,
+        comput_position_deriv=True,
         comput_jas_param_deriv=False,
     )
     vmc = QMC(mcmc)
@@ -3510,7 +3604,7 @@ if __name__ == "__main__":
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
-    # """
+    """
 
     """
     f_mean, f_std = vmc.get_aF(
@@ -3527,7 +3621,7 @@ if __name__ == "__main__":
     logger.info(f"H_mean = {H_mean}.")
     """
 
-    """
+    # """
     # run VMCopt
     mcmc = MCMC(
         hamiltonian_data=hamiltonian_data,
@@ -3535,7 +3629,7 @@ if __name__ == "__main__":
         mcmc_seed=mcmc_seed,
         num_walkers=num_walkers,
         comput_position_deriv=False,
-        comput_jas_param_deriv=True,
+        comput_param_deriv=True,
     )
     vmc = QMC(mcmc)
     vmc.run_optimize(
@@ -3546,8 +3640,11 @@ if __name__ == "__main__":
         wf_dump_freq=1,
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
+        opt_J2_param=True,
+        opt_J3_param=True,
+        opt_lambda_param=True,
     )
-    """
+    # """
 
     """
 

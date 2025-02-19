@@ -47,13 +47,12 @@ import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import jit
+from jax import jit, vmap
 from jax import typing as jnpt
-from jax import vmap
 
 # jqmc module
-from .atomic_orbital import AOs_data, compute_AOs_api, compute_AOs_grad_api, compute_AOs_laplacian_api
-from .molecular_orbital import MOs_data, compute_MOs_api, compute_MOs_grad_api, compute_MOs_laplacian_api
+from .atomic_orbital import AOs_data, AOs_data_deriv_R, compute_AOs_api, compute_AOs_grad_api, compute_AOs_laplacian_api
+from .molecular_orbital import MOs_data, MOs_data_deriv_R, compute_MOs_api, compute_MOs_grad_api, compute_MOs_laplacian_api
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
@@ -90,15 +89,19 @@ class Geminal_data:
     orb_data_dn_spin: AOs_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
     lambda_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
-    """
+    ''' This __post__init no longer works because vmap(grad) changes the dimmension of the lambda_matrix.
     def __post_init__(self) -> None:
-        '''Initialization of the class.
+        """Initialization of the class.
 
         This magic function checks the consistencies among the arguments.
 
         Raises:
             ValueError: If there is an inconsistency in a dimension of a given argument.
-        '''
+        """
+        if not hasattr(self.lambda_matrix, "shape"):
+            # it sometimes has 'object' type because of JAX-jit
+            return
+
         if self.lambda_matrix.shape != (
             self.orb_num_up,
             self.orb_num_dn + (self.num_electron_up - self.num_electron_dn),
@@ -110,7 +113,7 @@ class Geminal_data:
             raise ValueError
 
         logger.debug(f"compute_orb={self.compute_orb_api}")
-    """
+    '''
 
     @property
     def orb_num_up(self) -> int:
@@ -220,6 +223,93 @@ class Geminal_data:
             return compute_MOs_laplacian_api
         else:
             raise NotImplementedError
+
+    # WIP!!
+    '''
+    @classmethod
+    def convert_from_MO_to_AO_representation(cls):
+        """Convert MOs to AOs."""
+        mo_lambda_matrix_paired, mo_lambda_matrix_unpaired = np.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
+
+        # generate matrices for the test
+        ao_lambda_matrix_paired = np.dot(
+            geminal_data.orb_data_up_spin.mo_coefficients.T,
+            np.dot(mo_lambda_matrix_paired, geminal_data.orb_data_dn_spin.mo_coefficients),
+        )
+        ao_lambda_matrix_unpaired = np.dot(geminal_data.orb_data_up_spin.mo_coefficients.T, mo_lambda_matrix_unpaired)
+        ao_lambda_matrix = np.hstack([ao_lambda_matrix_paired, ao_lambda_matrix_unpaired])
+    '''
+
+
+@struct.dataclass
+class Geminal_data_deriv_params(Geminal_data):
+    """See Geminal data class."""
+
+    num_electron_up: int = struct.field(pytree_node=False, default=0)
+    num_electron_dn: int = struct.field(pytree_node=False, default=0)
+    orb_data_up_spin: AOs_data | MOs_data = struct.field(pytree_node=False, default_factory=lambda: AOs_data())
+    orb_data_dn_spin: AOs_data | MOs_data = struct.field(pytree_node=False, default_factory=lambda: AOs_data())
+    lambda_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
+
+    @classmethod
+    def from_base(cls, geminal_data: Geminal_data):
+        """Switch pytree_node."""
+        return cls(
+            geminal_data.num_electron_up,
+            geminal_data.num_electron_dn,
+            geminal_data.orb_data_up_spin,
+            geminal_data.orb_data_dn_spin,
+            geminal_data.lambda_matrix,
+        )
+
+
+@struct.dataclass
+class Geminal_data_deriv_R(Geminal_data):
+    """See Geminal data class."""
+
+    num_electron_up: int = struct.field(pytree_node=False, default=0)
+    num_electron_dn: int = struct.field(pytree_node=False, default=0)
+    orb_data_up_spin: AOs_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
+    orb_data_dn_spin: AOs_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
+    lambda_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=False, default_factory=lambda: np.array([]))
+
+    @classmethod
+    def from_base(cls, geminal_data: Geminal_data):
+        """Switch pytree_node."""
+        num_electron_up = geminal_data.num_electron_up
+        num_electron_dn = geminal_data.num_electron_dn
+        if isinstance(geminal_data.orb_data_up_spin, AOs_data):
+            orb_data_up_spin = AOs_data_deriv_R.from_base(geminal_data.orb_data_up_spin)
+        else:
+            orb_data_up_spin = MOs_data_deriv_R.from_base(geminal_data.orb_data_up_spin)
+        if isinstance(geminal_data.orb_data_dn_spin, AOs_data):
+            orb_data_dn_spin = AOs_data_deriv_R.from_base(geminal_data.orb_data_dn_spin)
+        else:
+            orb_data_dn_spin = MOs_data_deriv_R.from_base(geminal_data.orb_data_dn_spin)
+        lambda_matrix = geminal_data.lambda_matrix
+        return cls(num_electron_up, num_electron_dn, orb_data_up_spin, orb_data_dn_spin, lambda_matrix)
+
+
+@struct.dataclass
+class Geminal_data_no_deriv(Geminal_data):
+    """See Geminal data class."""
+
+    num_electron_up: int = struct.field(pytree_node=False, default=0)
+    num_electron_dn: int = struct.field(pytree_node=False, default=0)
+    orb_data_up_spin: AOs_data | MOs_data = struct.field(pytree_node=False, default_factory=lambda: AOs_data())
+    orb_data_dn_spin: AOs_data | MOs_data = struct.field(pytree_node=False, default_factory=lambda: AOs_data())
+    lambda_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=False, default_factory=lambda: np.array([]))
+
+    @classmethod
+    def from_base(cls, geminal_data: Geminal_data):
+        """Switch pytree_node."""
+        return cls(
+            geminal_data.num_electron_up,
+            geminal_data.num_electron_dn,
+            geminal_data.orb_data_up_spin,
+            geminal_data.orb_data_dn_spin,
+            geminal_data.lambda_matrix,
+        )
 
 
 def compute_det_geminal_all_elements_api(

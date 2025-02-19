@@ -485,6 +485,48 @@ class Coulomb_potential_data:
         )
 
 
+@struct.dataclass
+class Coulomb_potential_data_no_deriv:
+    """See Coulomb_potential_data."""
+
+    structure_data: Structure_data = struct.field(pytree_node=False, default_factory=lambda: Structure_data())
+    ecp_flag: bool = struct.field(pytree_node=False, default=False)
+    z_cores: list[float] = struct.field(pytree_node=False, default_factory=list)
+    max_ang_mom_plus_1: list[int] = struct.field(pytree_node=False, default_factory=list)
+    num_ecps: list[int] = struct.field(pytree_node=False, default_factory=list)
+    ang_moms: list[int] = struct.field(pytree_node=False, default_factory=list)
+    nucleus_index: list[int] = struct.field(pytree_node=False, default_factory=list)
+    exponents: list[float] = struct.field(pytree_node=False, default_factory=list)
+    coefficients: list[float] = struct.field(pytree_node=False, default_factory=list)
+    powers: list[int] = struct.field(pytree_node=False, default_factory=list)
+
+    @classmethod
+    def from_base(cls, coulomb_potential_data: Coulomb_potential_data):
+        """Switch pytree_node."""
+        structure_data = coulomb_potential_data.structure_data
+        ecp_flag = coulomb_potential_data.ecp_flag
+        z_cores = coulomb_potential_data.z_cores
+        max_ang_mom_plus_1 = coulomb_potential_data.max_ang_mom_plus_1
+        num_ecps = coulomb_potential_data.num_ecps
+        ang_moms = coulomb_potential_data.ang_moms
+        nucleus_index = coulomb_potential_data.nucleus_index
+        exponents = coulomb_potential_data.exponents
+        coefficients = coulomb_potential_data.coefficients
+        powers = coulomb_potential_data.powers
+        return cls(
+            structure_data,
+            ecp_flag,
+            z_cores,
+            max_ang_mom_plus_1,
+            num_ecps,
+            ang_moms,
+            nucleus_index,
+            exponents,
+            coefficients,
+            powers,
+        )
+
+
 def compute_ecp_coulomb_potential_api(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
@@ -1294,6 +1336,20 @@ def _compute_ecp_non_local_parts_NN_jax(
     psi_xp = vmap(evaluate_psi_api, in_axes=(None, 0, 0))(
         wavefunction_data, non_local_ecp_part_r_carts_up, non_local_ecp_part_r_carts_dn
     )
+
+    """
+    def compute_psi_xp(wavefunction_data, r_carts_ups, r_carts_dns):
+        def body_fn(carry, inputs):
+            r_carts_up, r_carts_dn = inputs
+            psi_val = evaluate_psi_api(wavefunction_data, r_carts_up, r_carts_dn)
+            return carry, psi_val
+
+        inputs = (r_carts_ups, r_carts_dns)
+        _, psi_xp = lax.scan(body_fn, None, inputs)
+        return psi_xp
+    psi_xp = compute_psi_xp(wavefunction_data, non_local_ecp_part_r_carts_up, non_local_ecp_part_r_carts_dn)
+    """
+
     wf_ratio_all = psi_xp / psi_x
 
     cos_theta_all = jnp.array(cos_theta_all)
