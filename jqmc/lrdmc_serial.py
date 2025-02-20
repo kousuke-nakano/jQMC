@@ -1015,8 +1015,8 @@ if __name__ == "__main__":
         wavefunction_data=wavefunction_data,
     )
     """
-    # hamiltonian_chk = "hamiltonian_data_water.chk"
-    hamiltonian_chk = "hamiltonian_data_AcOH.chk"
+    hamiltonian_chk = "hamiltonian_data_water.chk"
+    # hamiltonian_chk = "hamiltonian_data_AcOH.chk"
     # hamiltonian_chk = "hamiltonian_data_benzene.chk"
     # hamiltonian_chk = "hamiltonian_data_C60.chk"
     with open(hamiltonian_chk, "rb") as f:

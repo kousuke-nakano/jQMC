@@ -54,6 +54,7 @@ from ..jqmc.jastrow_factor import (
     _compute_Jastrow_two_body_debug,
     _compute_Jastrow_two_body_jax,
 )
+from ..jqmc.molecular_orbital import MOs_data
 from ..jqmc.structure import Structure_data
 
 # JAX float64
@@ -69,8 +70,8 @@ stream_handler.setFormatter(handler_format)
 log.addHandler(stream_handler)
 
 
-def test_numerical_and_auto_grads_Jastrow_threebody_part():
-    # test MOs
+def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
+    # test AOs
     num_r_up_cart_samples = 4
     num_r_dn_cart_samples = 2
     num_R_cart_samples = 6
@@ -162,8 +163,104 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part():
     jax.clear_caches()
 
 
+def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
+    num_el = 10
+    num_mo = 5
+    num_ao = 3
+    num_ao_prim = 4
+    orbital_indices = [0, 0, 1, 2]
+    exponents = [50.0, 20.0, 10.0, 5.0]
+    coefficients = [1.0, 1.0, 1.0, 0.5]
+    angular_momentums = [1, 1, 1]
+    magnetic_quantum_numbers = [0, 0, -1]
+
+    num_r_up_cart_samples = num_r_dn_cart_samples = num_el
+    num_R_cart_samples = num_ao
+    r_cart_min, r_cart_max = -5.0, 5.0
+    R_cart_min, R_cart_max = 10.0, 10.0
+    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_up_cart_samples, 3) + r_cart_min
+    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_dn_cart_samples, 3) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
+
+    mo_coefficients = np.random.rand(num_mo, num_ao)
+
+    structure_data = Structure_data(
+        pbc_flag=[False, False, False],
+        positions=R_carts,
+        atomic_numbers=[0] * num_R_cart_samples,
+        element_symbols=["X"] * num_R_cart_samples,
+        atomic_labels=["X"] * num_R_cart_samples,
+    )
+
+    aos_data = AOs_data(
+        structure_data=structure_data,
+        nucleus_index=list(range(num_R_cart_samples)),
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        magnetic_quantum_numbers=magnetic_quantum_numbers,
+    )
+
+    mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
+
+    j_matrix = np.random.rand(mos_data.num_mo, mos_data.num_mo + 1)
+
+    jastrow_three_body_data = Jastrow_three_body_data(orb_data=mos_data, j_matrix=j_matrix)
+
+    J3_debug = _compute_Jastrow_three_body_debug(
+        jastrow_three_body_data=jastrow_three_body_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    # print(f"J3_debug = {J3_debug}")
+
+    J3_jax = _compute_Jastrow_three_body_jax(
+        jastrow_three_body_data=jastrow_three_body_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    # print(f"J3_jax = {J3_jax}")
+
+    np.testing.assert_almost_equal(J3_debug, J3_jax, decimal=8)
+
+    (
+        grad_jastrow_J3_up_debug,
+        grad_jastrow_J3_dn_debug,
+        sum_laplacian_J3_debug,
+    ) = _compute_grads_and_laplacian_Jastrow_three_body_debug(
+        jastrow_three_body_data,
+        r_up_carts,
+        r_dn_carts,
+    )
+
+    # print(f"grad_jastrow_J3_up_debug = {grad_jastrow_J3_up_debug}")
+    # print(f"grad_jastrow_J3_dn_debug = {grad_jastrow_J3_dn_debug}")
+    # print(f"sum_laplacian_J3_debug = {sum_laplacian_J3_debug}")
+
+    grad_jastrow_J3_up_jax, grad_jastrow_J3_dn_jax, sum_laplacian_J3_jax = _compute_grads_and_laplacian_Jastrow_three_body_jax(
+        jastrow_three_body_data,
+        r_up_carts,
+        r_dn_carts,
+    )
+
+    # print(f"grad_jastrow_J3_up_jax = {grad_jastrow_J3_up_jax}")
+    # print(f"grad_jastrow_J3_dn_jax = {grad_jastrow_J3_dn_jax}")
+    # print(f"sum_laplacian_J3_jax = {sum_laplacian_J3_jax}")
+
+    np.testing.assert_almost_equal(grad_jastrow_J3_up_debug, grad_jastrow_J3_up_jax, decimal=4)
+    np.testing.assert_almost_equal(grad_jastrow_J3_dn_debug, grad_jastrow_J3_dn_jax, decimal=4)
+    np.testing.assert_almost_equal(sum_laplacian_J3_debug, sum_laplacian_J3_jax, decimal=4)
+
+    jax.clear_caches()
+
+
 def test_numerical_and_auto_grads_Jastrow_twobody_part():
-    # test MOs
+    # test AOs
     num_r_up_cart_samples = 5
     num_r_dn_cart_samples = 2
 

@@ -48,7 +48,15 @@ from flax import struct
 from jax import jit
 
 # myqmc module
-from .atomic_orbital import AO_data, AOs_data, compute_AO, compute_AOs_api, compute_AOs_grad_api, compute_AOs_laplacian_api
+from .atomic_orbital import (
+    AO_data,
+    AOs_data,
+    AOs_data_deriv_R,
+    compute_AO,
+    compute_AOs_api,
+    compute_AOs_grad_api,
+    compute_AOs_laplacian_api,
+)
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
@@ -71,22 +79,64 @@ class MOs_data:
     aos_data: AOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
     mo_coefficients: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
-    """
+    ''' This __post__init no longer works because vmap(grad) changes the dimmension of the mo_coefficients
     def __post_init__(self) -> None:
-        '''Initialization of the class.
+        """Initialization of the class.
 
         This magic function checks the consistencies among the arguments.
         To be implemented.
 
         Raises:
             ValueError: If there is an inconsistency in a dimension of a given argument.
-        '''
+        """
+        if not hasattr(self.mo_coefficients, "shape"):
+            # it sometimes has 'object' type because of JAX-jit
+            return
         if self.mo_coefficients.shape != (self.num_mo, self.aos_data.num_ao):
             logger.error(
                 f"dim. of ao_coefficients = {self.mo_coefficients.shape} is wrong. Inconsistent with the expected value = {(self.num_mo, self.aos_data.num_ao)}"
             )
             raise ValueError
-    """
+    '''
+
+    @property
+    def structure_data(self):
+        """Return structure_data of the aos_data instance."""
+        return self.aos_data.structure_data
+
+
+@struct.dataclass
+class MOs_data_deriv_R:
+    """See MOs_data class."""
+
+    num_mo: int = struct.field(pytree_node=False, default=0)
+    aos_data: AOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
+    mo_coefficients: npt.NDArray[np.float64] = struct.field(pytree_node=False, default_factory=lambda: np.array([]))
+
+    @classmethod
+    def from_base(cls, mos_data: MOs_data):
+        """Switch pytree_node."""
+        num_mo = mos_data.num_mo
+        aos_data = AOs_data_deriv_R.from_base(aos_data=mos_data.aos_data)
+        mo_coefficients = mos_data.mo_coefficients
+        return cls(num_mo, aos_data, mo_coefficients)
+
+
+@struct.dataclass
+class MOs_data_no_deriv:
+    """See MOs_data class."""
+
+    num_mo: int = struct.field(pytree_node=False, default=0)
+    aos_data: AOs_data = struct.field(pytree_node=False, default_factory=lambda: AOs_data())
+    mo_coefficients: npt.NDArray[np.float64] = struct.field(pytree_node=False, default_factory=lambda: np.array([]))
+
+    @classmethod
+    def from_base(cls, mos_data: MOs_data):
+        """Switch pytree_node."""
+        num_mo = mos_data.num_mo
+        aos_data = mos_data.aos_data
+        mo_coefficients = mos_data.mo_coefficients
+        return cls(num_mo, aos_data, mo_coefficients)
 
 
 def compute_MOs_laplacian_api(

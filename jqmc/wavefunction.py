@@ -1,9 +1,4 @@
-"""Wavefunction module.
-
-Todo:
-    * Use the fast computation for Psi(x')/Psi(x) in compute_discretized_kinetic_energy_api.
-
-"""
+"""Wavefunction module."""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -51,13 +46,16 @@ from jax import jit, vmap
 
 from .determinant import (
     Geminal_data,
+    Geminal_data_deriv_params,
+    Geminal_data_deriv_R,
     _compute_ratio_determinant_part_jax,
     compute_det_geminal_all_elements_api,
-    compute_geminal_all_elements_api,
     compute_grads_and_laplacian_ln_Det_api,
 )
 from .jastrow_factor import (
     Jastrow_data,
+    Jastrow_data_deriv_params,
+    Jastrow_data_deriv_R,
     _compute_ratio_Jastrow_part_jax,
     compute_grads_and_laplacian_Jastrow_part_api,
     compute_Jastrow_part_api,
@@ -79,8 +77,8 @@ class Wavefunction_data:
         geminal_data (Geminal_data)
     """
 
-    jastrow_data: Jastrow_data = struct.field(pytree_node=True)
-    geminal_data: Geminal_data = struct.field(pytree_node=True)
+    jastrow_data: Jastrow_data = struct.field(pytree_node=True, default_factory=lambda: Jastrow_data())
+    geminal_data: Geminal_data = struct.field(pytree_node=True, default_factory=lambda: Wavefunction_data())
 
     def __post_init__(self) -> None:
         """Initialization of the class.
@@ -92,6 +90,36 @@ class Wavefunction_data:
             ValueError: If there is an inconsistency in a dimension of a given argument.
         """
         pass
+
+
+@struct.dataclass
+class Wavefunction_data_deriv_params(Wavefunction_data):
+    """See Wavefunction_data."""
+
+    jastrow_data: Jastrow_data = struct.field(pytree_node=True)
+    geminal_data: Geminal_data = struct.field(pytree_node=True)
+
+    @classmethod
+    def from_base(cls, wavefunction_data: Wavefunction_data):
+        """Switch pytree_node."""
+        jastrow_data = Jastrow_data_deriv_params.from_base(wavefunction_data.jastrow_data)
+        geminal_data = Geminal_data_deriv_params.from_base(wavefunction_data.geminal_data)
+        return cls(jastrow_data=jastrow_data, geminal_data=geminal_data)
+
+
+@struct.dataclass
+class Wavefunction_data_deriv_R(Wavefunction_data):
+    """See Wavefunction_data."""
+
+    jastrow_data: Jastrow_data = struct.field(pytree_node=True)
+    geminal_data: Geminal_data = struct.field(pytree_node=True)
+
+    @classmethod
+    def from_base(cls, wavefunction_data: Wavefunction_data):
+        """Switch pytree_node."""
+        jastrow_data = Jastrow_data_deriv_R.from_base(wavefunction_data.jastrow_data)
+        geminal_data = Geminal_data_deriv_R.from_base(wavefunction_data.geminal_data)
+        return cls(jastrow_data=jastrow_data, geminal_data=geminal_data)
 
 
 @jit
@@ -699,7 +727,7 @@ if __name__ == "__main__":
         )
     )
     end = time.perf_counter()
-    print(f"(debug) Elapsed Time = {(end-start)*1e3:.3f} msec.")
+    print(f"(debug) Elapsed Time = {(end - start) * 1e3:.3f} msec.")
 
     _, _, _ = compute_discretized_kinetic_energy_api(
         alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, RT=RT
@@ -712,7 +740,7 @@ if __name__ == "__main__":
         )
     )
     end = time.perf_counter()
-    print(f"(new) Elapsed Time = {(end-start)*1e3:.3f} msec.")
+    print(f"(new) Elapsed Time = {(end - start) * 1e3:.3f} msec.")
 
     _, _, _ = compute_discretized_kinetic_energy_api_fast_update(
         alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, RT=RT
@@ -725,7 +753,7 @@ if __name__ == "__main__":
         )
     )
     end = time.perf_counter()
-    print(f"(old) Elapsed Time = {(end-start)*1e3:.3f} msec.")
+    print(f"(old) Elapsed Time = {(end - start) * 1e3:.3f} msec.")
 
     np.testing.assert_array_almost_equal(mesh_kinetic_part_r_up_carts_jax_old, mesh_kinetic_part_r_up_carts_debug, decimal=10)
     np.testing.assert_array_almost_equal(mesh_kinetic_part_r_dn_carts_jax_old, mesh_kinetic_part_r_dn_carts_debug, decimal=10)

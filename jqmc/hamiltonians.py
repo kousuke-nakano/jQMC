@@ -47,7 +47,12 @@ from jax import jit
 
 from .coulomb_potential import Coulomb_potential_data, compute_coulomb_potential_api
 from .structure import Structure_data
-from .wavefunction import Wavefunction_data, compute_kinetic_energy_api
+from .wavefunction import (
+    Wavefunction_data,
+    Wavefunction_data_deriv_params,
+    Wavefunction_data_deriv_R,
+    compute_kinetic_energy_api,
+)
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
@@ -69,18 +74,21 @@ class Hamiltonian_data:
 
     Notes:
         Heres are the differentiable arguments, i.e., pytree_node = True
+        This information is a little bit tricky in terms of a principle of the object-oriented programming,
+        'Don't ask, but tell' (i.e., the Hamiltonian_data knows the details of the other classes
+        too much), but there is no other choice to dynamically switch on and off pytree_nodes depending
+        on optimized variational parameters chosen by a user because @dataclass is statistically generated.
 
         WF parameters related:
-            - mo_coefficients in MOs_data (molecular_orbital.py) (switched off, for the time being)
-            - (ao_)coefficients in AOs_data (atomic_orbital.py) (switched off, for the time being)
-            - (ao_)exponents in AOs_data (atomic_orbital.py) (switched off, for the time being)
-            - lambda_matrix in Geminal_data (determinant.py) (switched off, for the time being)
-            - jastrow_2b_param in Jastrow_two_body_data (jastrow_factor.py)
-            - j_matrix in Jastrow_three_body_data (jastrow_factor.py)
+            - lambda in wavefunction_data.geminal_data (determinant.py)
+            - jastrow_2b_param in wavefunction_data.jastrow_data.jastrow_two_body_data (jastrow_factor.py)
+            - j_matrix in wavefunction_data.jastrow_data.jastrow_three_body_data (jastrow_factor.py)
 
         Atomic positions related:
-            - structure_data.positions in AOs_data (atomic_orbital.py)
-            - structure_data.positions in Coulomb_potential_data (coulomb_potential.py)
+            - positions in hamiltonian_data.structure_data (this file)
+            - positions in wavefunction_data.geminal_data.mos_data/aos_data.structure_data (molecular_orbital.py/atomic_orbital.py)
+            - positions in wavefunction_data.jastrow_data.jastrow_three_body_data.mos_data/aos_data.structure_data (jastrow_factor.py)
+            - positions in Coulomb_potential_data.structure_data (coulomb_potential.py)
     """
 
     structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
@@ -125,6 +133,50 @@ class Hamiltonian_data:
             return pickle.load(f)
 
 
+@struct.dataclass
+class Hamiltonian_data_deriv_params(Hamiltonian_data):
+    """See Hamiltonian_data."""
+
+    structure_data: Structure_data = struct.field(pytree_node=False, default_factory=lambda: Structure_data())
+    coulomb_potential_data: Coulomb_potential_data = struct.field(
+        pytree_node=False, default_factory=lambda: Coulomb_potential_data()
+    )
+    wavefunction_data: Wavefunction_data = struct.field(pytree_node=True, default_factory=lambda: Wavefunction_data())
+
+    @classmethod
+    def from_base(cls, hamiltonian_data: Hamiltonian_data):
+        """Switch pytree_node."""
+        structure_data = hamiltonian_data.structure_data
+        coulomb_potential_data = hamiltonian_data.coulomb_potential_data
+        wavefunction_data = Wavefunction_data_deriv_params.from_base(hamiltonian_data.wavefunction_data)
+
+        return cls(
+            structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
+        )
+
+
+@struct.dataclass
+class Hamiltonian_data_deriv_R(Hamiltonian_data):
+    """See Hamiltonian_data."""
+
+    structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
+    coulomb_potential_data: Coulomb_potential_data = struct.field(
+        pytree_node=True, default_factory=lambda: Coulomb_potential_data()
+    )
+    wavefunction_data: Wavefunction_data = struct.field(pytree_node=True, default_factory=lambda: Wavefunction_data())
+
+    @classmethod
+    def from_base(cls, hamiltonian_data: Hamiltonian_data):
+        """Switch pytree_node."""
+        structure_data = hamiltonian_data.structure_data
+        coulomb_potential_data = hamiltonian_data.coulomb_potential_data
+        wavefunction_data = Wavefunction_data_deriv_R.from_base(hamiltonian_data.wavefunction_data)
+
+        return cls(
+            structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
+        )
+
+
 @jit
 def compute_local_energy_api(
     hamiltonian_data: Hamiltonian_data,
@@ -150,7 +202,7 @@ def compute_local_energy_api(
         r_dn_carts=r_dn_carts,
     )
     end = time.perf_counter()
-    logger.debug(f"Kinetic part in e_L: Time = {(end-start)*1000:.3f} msec.")
+    logger.debug(f"Kinetic part in e_L: Time = {(end - start) * 1000:.3f} msec.")
 
     start = time.perf_counter()
     V = compute_coulomb_potential_api(
@@ -160,9 +212,9 @@ def compute_local_energy_api(
         wavefunction_data=hamiltonian_data.wavefunction_data,
     )
     end = time.perf_counter()
-    logger.debug(f"Coulomb Potential part in e_L: Time = {(end-start)*100:.3f} msec.")
+    logger.debug(f"Coulomb Potential part in e_L: Time = {(end - start) * 100:.3f} msec.")
 
-    logger.debug(f"e_L = {T+V} Ha")
+    logger.debug(f"e_L = {T + V} Ha")
 
     return T + V
 

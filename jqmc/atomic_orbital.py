@@ -49,9 +49,8 @@ import numpy as np
 import numpy.typing as npt
 import scipy
 from flax import struct
-from jax import grad, jacrev, jit
+from jax import grad, jacrev, jit, vmap
 from jax import typing as jnpt
-from jax import vmap
 from numpy import linalg as LA
 
 from .structure import Structure_data
@@ -261,6 +260,86 @@ class AOs_data:
     def coefficients_jnp(self) -> jax.Array:
         """Return coefficients."""
         return jnp.array(self.coefficients)
+
+
+@struct.dataclass
+class AOs_data_deriv_R:
+    """See AOs_data."""
+
+    structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
+    nucleus_index: list[int] = struct.field(pytree_node=False, default_factory=list)
+    num_ao: int = struct.field(pytree_node=False, default=0)
+    num_ao_prim: int = struct.field(pytree_node=False, default=0)
+    orbital_indices: list[int] = struct.field(pytree_node=False, default_factory=list)
+    exponents: list[float] = struct.field(pytree_node=False, default_factory=list)
+    coefficients: list[float] = struct.field(pytree_node=False, default_factory=list)
+    angular_momentums: list[int] = struct.field(pytree_node=False, default_factory=list)
+    magnetic_quantum_numbers: list[int] = struct.field(pytree_node=False, default_factory=list)
+
+    @classmethod
+    def from_base(cls, aos_data: AOs_data):
+        """Switch pytree_node."""
+        structure_data = aos_data.structure_data
+        nucleus_index = aos_data.nucleus_index
+        num_ao = aos_data.num_ao
+        num_ao_prim = aos_data.num_ao_prim
+        orbital_indices = aos_data.orbital_indices
+        exponents = aos_data.exponents
+        coefficients = aos_data.coefficients
+        angular_momentums = aos_data.angular_momentums
+        magnetic_quantum_numbers = aos_data.magnetic_quantum_numbers
+
+        return cls(
+            structure_data,
+            nucleus_index,
+            num_ao,
+            num_ao_prim,
+            orbital_indices,
+            exponents,
+            coefficients,
+            angular_momentums,
+            magnetic_quantum_numbers,
+        )
+
+
+@struct.dataclass
+class AOs_data_no_deriv:
+    """See AOs_data."""
+
+    structure_data: Structure_data = struct.field(pytree_node=False, default_factory=lambda: Structure_data())
+    nucleus_index: list[int] = struct.field(pytree_node=False, default_factory=list)
+    num_ao: int = struct.field(pytree_node=False, default=0)
+    num_ao_prim: int = struct.field(pytree_node=False, default=0)
+    orbital_indices: list[int] = struct.field(pytree_node=False, default_factory=list)
+    exponents: list[float] = struct.field(pytree_node=False, default_factory=list)
+    coefficients: list[float] = struct.field(pytree_node=False, default_factory=list)
+    angular_momentums: list[int] = struct.field(pytree_node=False, default_factory=list)
+    magnetic_quantum_numbers: list[int] = struct.field(pytree_node=False, default_factory=list)
+
+    @classmethod
+    def from_base(cls, aos_data: AOs_data):
+        """Switch pytree_node."""
+        structure_data = aos_data.structure_data
+        nucleus_index = aos_data.nucleus_index
+        num_ao = aos_data.num_ao
+        num_ao_prim = aos_data.num_ao_prim
+        orbital_indices = aos_data.orbital_indices
+        exponents = aos_data.exponents
+        coefficients = aos_data.coefficients
+        angular_momentums = aos_data.angular_momentums
+        magnetic_quantum_numbers = aos_data.magnetic_quantum_numbers
+
+        return cls(
+            structure_data,
+            nucleus_index,
+            num_ao,
+            num_ao_prim,
+            orbital_indices,
+            exponents,
+            coefficients,
+            angular_momentums,
+            magnetic_quantum_numbers,
+        )
 
 
 def compute_AOs_laplacian_api(
