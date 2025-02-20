@@ -19,7 +19,7 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["NUM_INTER_THREADS"] = "1"
 os.environ["NUM_INTRA_THREADS"] = "1"
 
-os.environ["XLA_FLAGS"] = "--xla_cpu_multi_thread_eigen=false " "intra_op_parallelism_threads=1"
+os.environ["XLA_FLAGS"] = "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
 
 # taskset -c 0,1,2,3 mpirun -np 2 python benchmark.py works as expected on a linux machine (i.e. 2 MPI processes and 2 threads per MPI process) to limit the maximum thread numbers per task.
 # mpirun -np 4 python benchmark.py simply works :-)
@@ -45,7 +45,7 @@ jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(or
 # define data
 jastrow_data = Jastrow_data(
     jastrow_two_body_data=jastrow_twobody_data,
-    jastrow_two_body_pade_flag=True,
+    jastrow_two_body_flag=True,
     jastrow_three_body_data=jastrow_threebody_data,
     jastrow_three_body_flag=True,
 )
@@ -62,5 +62,5 @@ start = time.perf_counter()
 _ = compute_local_energy_api(hamiltonian_data=hamiltonian_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
 end = time.perf_counter()
 print("E_L comput. ends.")
-print(f"Elapsed Time = {end-start:.2f} sec.")
+print(f"Elapsed Time = {end - start:.2f} sec.")
 jax.profiler.stop_trace()

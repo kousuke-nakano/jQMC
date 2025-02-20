@@ -3,8 +3,6 @@
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
 #
-# This file is part of phonopy.
-#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
 # are met:
@@ -1147,6 +1145,7 @@ def test_comparing_AO_and_MO_geminals():
 
     geminal_mo = geminal_mo_jax
 
+    """
     mo_lambda_matrix_paired, mo_lambda_matrix_unpaired = np.hsplit(geminal_mo_data.lambda_matrix, [geminal_mo_data.orb_num_dn])
 
     # generate matrices for the test
@@ -1164,6 +1163,9 @@ def test_comparing_AO_and_MO_geminals():
         orb_data_dn_spin=aos_data,
         lambda_matrix=ao_lambda_matrix,
     )
+    """
+
+    geminal_ao_data = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_data)
 
     geminal_ao_debug = _compute_geminal_all_elements_debug(
         geminal_data=geminal_ao_data,
@@ -1303,6 +1305,7 @@ def test_numerial_and_auto_grads_ln_Det():
     r_up_carts = np.array(r_up_carts)
     r_dn_carts = np.array(r_dn_carts)
 
+    """
     mo_lambda_matrix_paired, mo_lambda_matrix_unpaired = np.hsplit(geminal_mo_data.lambda_matrix, [geminal_mo_data.orb_num_dn])
 
     # generate matrices for the test
@@ -1320,6 +1323,9 @@ def test_numerial_and_auto_grads_ln_Det():
         orb_data_dn_spin=aos_data,
         lambda_matrix=ao_lambda_matrix,
     )
+    """
+
+    geminal_ao_data = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_data)
 
     grad_ln_D_up_numerical, grad_ln_D_dn_numerical, sum_laplacian_ln_D_numerical = _compute_grads_and_laplacian_ln_Det_debug(
         geminal_data=geminal_ao_data,

@@ -3,8 +3,6 @@
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
 #
-# This file is part of phonopy.
-#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
 # are met:
@@ -49,10 +47,7 @@ from ..jqmc.coulomb_potential import (
     _compute_ecp_coulomb_potential_jax,
 )
 from ..jqmc.hamiltonians import Hamiltonian_data
-from ..jqmc.jastrow_factor import (
-    Jastrow_data,
-    Jastrow_two_body_data,
-)
+from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data
 from ..jqmc.trexio_wrapper import read_trexio_file
 from ..jqmc.wavefunction import Wavefunction_data, compute_kinetic_energy_api, evaluate_wavefunction_api
 
@@ -85,7 +80,7 @@ def test_comparison_with_TurboRVB_wo_Jastrow(request):
 
     jastrow_data = Jastrow_data(
         jastrow_two_body_data=None,
-        jastrow_two_body_pade_flag=False,
+        jastrow_two_body_flag=False,
         jastrow_three_body_data=None,
         jastrow_three_body_flag=False,
     )
@@ -205,7 +200,7 @@ def test_comparison_with_TurboRVB_w_2b_Jastrow(request):
 
     jastrow_data = Jastrow_data(
         jastrow_two_body_data=jastrow_two_body_data,
-        jastrow_two_body_pade_flag=True,
+        jastrow_two_body_flag=True,
         jastrow_three_body_data=None,
         jastrow_three_body_flag=False,
     )

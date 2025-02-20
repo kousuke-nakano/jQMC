@@ -32,21 +32,18 @@
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-# python
 import logging
 import time
 from functools import partial
 from logging import getLogger
 
-# JAX
 import jax
 import numpy as np
 import numpy.typing as npt
 import scipy
-from jax import grad, jit, lax, vmap
+from jax import grad, jit, lax
 from jax import numpy as jnp
-
-# MPI
+from jax import vmap
 from mpi4py import MPI
 
 from .coulomb_potential import (
@@ -54,9 +51,7 @@ from .coulomb_potential import (
     _compute_ecp_local_parts_full_NN_jax,
     _compute_ecp_non_local_parts_NN_jax,
 )
-from .determinant import compute_AS_regularization_factor_api
-
-# jQMC
+from .determinant import Geminal_data, compute_AS_regularization_factor_api
 from .hamiltonians import Hamiltonian_data, Hamiltonian_data_deriv_params, compute_kinetic_energy_api, compute_local_energy_api
 from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data, compute_ratio_Jastrow_part_api
 from .structure import find_nearest_index_jax
@@ -890,7 +885,7 @@ class MCMC:
                 timer_de_L_dc += end - start
 
                 # 2b Jastrow
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag:
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_flag:
                     grad_ln_Psi_jas2b = grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
                     logger.devel(f"grad_ln_Psi_jas2b.shape = {grad_ln_Psi_jas2b.shape}")
                     logger.devel(f"  grad_ln_Psi_jas2b = {grad_ln_Psi_jas2b}")
@@ -1127,7 +1122,7 @@ class MCMC:
 
         if self.__comput_param_deriv:
             # jastrow 2-body
-            if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag:
+            if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_flag:
                 opt_param = "j2_param"
                 dln_Psi_dc = self.dln_Psi_dc_jas_2b
                 # de_L_dc = self.de_L_dc_jas_2b # for linear method
@@ -2516,6 +2511,7 @@ class QMC:
         # opt_J1_param: bool = True, # to be implemented.
         opt_J2_param: bool = True,
         opt_J3_param: bool = True,
+        opt_J4_param: bool = False,
         opt_lambda_param: bool = False,
     ):
         """Optimizing wavefunction.
@@ -2541,6 +2537,7 @@ class QMC:
             opt_J1_param (bool): optimize one-body Jastrow # to be implemented.
             opt_J2_param (bool): optimize two-body Jastrow
             opt_J3_param (bool): optimize three-body Jastrow
+            opt_J4_param (bool): optimize four-body Jastrow # to be implemented.
             opt_lambda_param (bool): optimize lambda_matrix in the determinant part.
 
         """
@@ -2667,39 +2664,49 @@ class QMC:
             dc_shape_list = self.__mcmc.opt_param_dict["dc_shape_list"]
             dc_flattened_index_list = self.__mcmc.opt_param_dict["dc_flattened_index_list"]
 
-            jastrow_2b_param = (
-                self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
-            )
-            jastrow_two_body_pade_flag = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag
+            j2_param = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
+            jastrow_two_body_pade_flag = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_flag
             jastrow_three_body_flag = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag
-            aos_data = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data
-            j_matrix = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix
+            j3_orb_data = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data
+            j3_matrix = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix
+            lambda_matrix = self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix
 
             for ii, opt_param in enumerate(opt_param_list):
                 param_shape = dc_shape_list[ii]
                 param_index = [i for i, v in enumerate(dc_flattened_index_list) if v == ii]
                 dX = X[param_index].reshape(param_shape)
                 logger.info(f"dX.shape for MPI-rank={mpi_rank} is {dX.shape}")
-                """To be implemented. Symmetrize or Anti-symmetrize the updated matrices!!!"""
                 if dX.shape == (1,):
                     dX = dX[0]
                 if opt_J2_param and opt_param == "j2_param":
-                    jastrow_2b_param += delta * dX
+                    j2_param += delta * dX
                 if opt_J3_param and opt_param == "j3_matrix":
-                    j_matrix += delta * dX
+                    j3_matrix += delta * dX
+                    """To be implemented. Opt only the block diagonal parts, i.e. only the J3 part."""
+                    """To be implemented. Symmetrize the updated matrices!!!"""
+                if opt_lambda_param and opt_param == "lambda_matrix":
+                    lambda_matrix += delta * dX
+                    """To be implemented. Symmetrize or Anti-symmetrize the updated matrices!!!"""
+                    """To be implemented. Considering symmetries of the AGP lambda matrix."""
 
             structure_data = self.__mcmc.hamiltonian_data.structure_data
             coulomb_potential_data = self.__mcmc.hamiltonian_data.coulomb_potential_data
-            geminal_data = self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data
-            jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=jastrow_2b_param)
+            geminal_data = Geminal_data(
+                num_electron_up=self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data.num_electron_up,
+                num_electron_dn=self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn,
+                orb_data_up_spin=self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data.orb_data_up_spin,
+                orb_data_dn_spin=self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data.orb_data_dn_spin,
+                lambda_matrix=lambda_matrix,
+            )
+            jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=j2_param)
             jastrow_three_body_data = Jastrow_three_body_data(
-                orb_data=aos_data,
-                j_matrix=j_matrix,
+                orb_data=j3_orb_data,
+                j_matrix=j3_matrix,
             )
             jastrow_data = Jastrow_data(
                 jastrow_two_body_data=jastrow_two_body_data,
                 jastrow_three_body_data=jastrow_three_body_data,
-                jastrow_two_body_pade_flag=jastrow_two_body_pade_flag,
+                jastrow_two_body_flag=jastrow_two_body_pade_flag,
                 jastrow_three_body_flag=jastrow_three_body_flag,
             )
             wavefunction_data = Wavefunction_data(geminal_data=geminal_data, jastrow_data=jastrow_data)
@@ -3559,7 +3566,7 @@ if __name__ == "__main__":
     # define data
     jastrow_data = Jastrow_data(
         jastrow_two_body_data=jastrow_twobody_data,
-        jastrow_two_body_pade_flag=True,
+        jastrow_two_body_flag=True,
         jastrow_three_body_data=jastrow_threebody_data,
         jastrow_three_body_flag=True,
     )
@@ -3642,6 +3649,7 @@ if __name__ == "__main__":
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
         opt_J2_param=True,
         opt_J3_param=True,
+        opt_J4_param=True,
         opt_lambda_param=True,
     )
     # """

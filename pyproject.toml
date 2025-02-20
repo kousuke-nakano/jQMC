@@ -15,7 +15,7 @@ lint.select = [
     "E", # pycodestyle-errors
     "D", # pydocstyle
 ]
-lint.extend-ignore = ["B023", "D417", "D100", "E501", "E741"]
+lint.extend-ignore = ["I001","B023", "D417", "D100", "E501", "E741"]
 exclude = []
 
 [tool.ruff.lint.pydocstyle]

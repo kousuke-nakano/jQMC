@@ -3,8 +3,6 @@
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
 #
-# This file is part of phonopy.
-#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
 # are met:
@@ -43,10 +41,9 @@ import pytest
 
 from ..jqmc.hamiltonians import Hamiltonian_data
 from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
+from ..jqmc.qmc_vectorized import GFMC, MCMC, QMC
 from ..jqmc.swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
 from ..jqmc.trexio_wrapper import read_trexio_file
-from ..jqmc.vmc_serial import VMC_serial
-from ..jqmc.vmc_vectorized import VMC_multiple_walkers
 from ..jqmc.wavefunction import Wavefunction_data
 
 # JAX float64
@@ -66,11 +63,11 @@ log.addHandler(stream_handler)
 def test_debug_and_jax_SWCT_omega():
     (
         structure_data,
-        aos_data,
-        mos_data_up,
-        mos_data_dn,
+        _,
+        _,
+        _,
         geminal_mo_data,
-        coulomb_potential_data,
+        _,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_trexio.hdf5"))
 
     swct_data = SWCT_data(structure=structure_data)
@@ -100,6 +97,7 @@ def test_debug_and_jax_SWCT_omega():
     jax.clear_caches()
 
 
+''' old
 @pytest.mark.activate_if_disable_jit
 def test_vmc_serial_force_with_SWCT(request):
     if not request.config.getoption("--disable-jit"):
@@ -109,8 +107,8 @@ def test_vmc_serial_force_with_SWCT(request):
     (
         structure_data,
         aos_data,
-        mos_data_up,
-        mos_data_dn,
+        _,
+        _,
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_dimer_trexio.hdf5"))
@@ -122,7 +120,7 @@ def test_vmc_serial_force_with_SWCT(request):
     # define data
     jastrow_data = Jastrow_data(
         jastrow_two_body_data=jastrow_twobody_data,
-        jastrow_two_body_pade_flag=True,
+        jastrow_two_body_flag=True,
         jastrow_three_body_data=jastrow_threebody_data,
         jastrow_three_body_flag=False,
     )
@@ -162,16 +160,18 @@ def test_vmc_serial_force_with_SWCT(request):
     # See [J. Chem. Phys. 156, 034101 (2022)]
     np.testing.assert_almost_equal(np.array(force_mean[0]), -1.0 * np.array(force_mean[1]), decimal=6)
     np.testing.assert_almost_equal(np.array(force_std[0]), np.array(force_std[1]), decimal=6)
+'''
+
 
 @pytest.mark.skip(reason="A heavy calculation. Use only on a local machine.")
-def test_vmc_vectorized_force_with_SWCT():
+def test_vmc_force_with_SWCT():
     # """
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,
         aos_data,
-        mos_data_up,
-        mos_data_dn,
+        _,
+        _,
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_dimer_trexio.hdf5"))
@@ -183,7 +183,7 @@ def test_vmc_vectorized_force_with_SWCT():
     # define data
     jastrow_data = Jastrow_data(
         jastrow_two_body_data=jastrow_twobody_data,
-        jastrow_two_body_pade_flag=True,
+        jastrow_two_body_flag=True,
         jastrow_three_body_data=jastrow_threebody_data,
         jastrow_three_body_flag=False,
     )
@@ -202,20 +202,90 @@ def test_vmc_vectorized_force_with_SWCT():
     mcmc_seed = 34356
 
     # run VMC
-    vmc_vectorized = VMC_multiple_walkers(
+    mcmc = MCMC(
         hamiltonian_data=hamiltonian_data,
         Dt=2.0,
         mcmc_seed=mcmc_seed,
         num_walkers=4,
         comput_position_deriv=True,
-        comput_jas_param_deriv=False,
+        comput_param_deriv=False,
     )
-    vmc_vectorized.run_single_shot(num_mcmc_steps=20)
-    vmc_vectorized.get_e_L(
+    vmc = QMC(mcmc)
+    vmc.run(num_mcmc_steps=20)
+    vmc.get_E(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
-    force_mean, force_std = vmc_vectorized.get_atomic_forces(
+    force_mean, force_std = vmc.get_aF(
+        num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+        num_mcmc_bin_blocks=num_mcmc_bin_blocks,
+    )
+    # print(force_mean, force_std)
+
+    # See [J. Chem. Phys. 156, 034101 (2022)]
+    np.testing.assert_almost_equal(np.array(force_mean[0]), -1.0 * np.array(force_mean[1]), decimal=6)
+    np.testing.assert_almost_equal(np.array(force_std[0]), np.array(force_std[1]), decimal=6)
+
+
+@pytest.mark.skip(reason="A heavy calculation. Use only on a local machine.")
+def test_lrdmc_force_with_SWCT():
+    # """
+    # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
+    (
+        structure_data,
+        aos_data,
+        _,
+        _,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_dimer_trexio.hdf5"))
+    # """
+
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5)
+    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
+
+    # define data
+    jastrow_data = Jastrow_data(
+        jastrow_two_body_data=jastrow_twobody_data,
+        jastrow_two_body_flag=True,
+        jastrow_three_body_data=jastrow_threebody_data,
+        jastrow_three_body_flag=False,
+    )
+
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+
+    # VMC parameters
+    num_mcmc_warmup_steps = 5
+    num_mcmc_bin_blocks = 5
+    mcmc_seed = 34356
+
+    # run GFMC
+    gfmc = GFMC(
+        hamiltonian_data=hamiltonian_data,
+        num_walkers=4,
+        num_mcmc_per_measurement=30,
+        num_gfmc_collect_steps=5,
+        mcmc_seed=mcmc_seed,
+        E_scf=-1.00,
+        gamma=0.001,
+        alat=0.30,
+        non_local_move="tmove",
+        comput_position_deriv=True,
+    )
+
+    lrdmc = QMC(gfmc)
+    lrdmc.run(num_mcmc_steps=50)
+    lrdmc.get_E(
+        num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+        num_mcmc_bin_blocks=num_mcmc_bin_blocks,
+    )
+    force_mean, force_std = lrdmc.get_aF(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )

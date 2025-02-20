@@ -198,7 +198,7 @@ class Jastrow_data:
     Args:
         jastrow_two_body_data (Jastrow_two_body_data): An instance of Jastrow_two_body_data.
         jastrow_three_body_data (Jastrow_three_body_data): An instance of Jastrow_three_body_data.
-        jastrow_two_body_pade_flag (bool): If true, the pade-form two-body Jastrow is turned on.
+        jastrow_two_body_flag (bool): If true, the pade-form two-body Jastrow is turned on.
         jastrow_three_body_flag (bool): If true, the three-body Jastrow is turned on.
     """
 
@@ -208,7 +208,7 @@ class Jastrow_data:
     jastrow_three_body_data: Jastrow_three_body_data = struct.field(
         pytree_node=True, default_factory=lambda: Jastrow_three_body_data()
     )
-    jastrow_two_body_pade_flag: bool = struct.field(pytree_node=False, default=False)
+    jastrow_two_body_flag: bool = struct.field(pytree_node=False, default=False)
     jastrow_three_body_flag: bool = struct.field(pytree_node=False, default=False)
 
     def __post_init__(self) -> None:
@@ -233,7 +233,7 @@ class Jastrow_data_deriv_params(Jastrow_data):
     jastrow_three_body_data: Jastrow_three_body_data = struct.field(
         pytree_node=True, default_factory=lambda: Jastrow_three_body_data()
     )
-    jastrow_two_body_pade_flag: bool = struct.field(pytree_node=False, default=False)
+    jastrow_two_body_flag: bool = struct.field(pytree_node=False, default=False)
     jastrow_three_body_flag: bool = struct.field(pytree_node=False, default=False)
 
     @classmethod
@@ -241,13 +241,13 @@ class Jastrow_data_deriv_params(Jastrow_data):
         """Switch pytree_node."""
         jastrow_two_body_data = jastrow_data.jastrow_two_body_data
         jastrow_three_body_data = Jastrow_three_body_data_deriv_params.from_base(jastrow_data.jastrow_three_body_data)
-        jastrow_two_body_pade_flag = jastrow_data.jastrow_two_body_pade_flag
+        jastrow_two_body_flag = jastrow_data.jastrow_two_body_flag
         jastrow_three_body_flag = jastrow_data.jastrow_three_body_flag
 
         return cls(
             jastrow_two_body_data=jastrow_two_body_data,
             jastrow_three_body_data=jastrow_three_body_data,
-            jastrow_two_body_pade_flag=jastrow_two_body_pade_flag,
+            jastrow_two_body_flag=jastrow_two_body_flag,
             jastrow_three_body_flag=jastrow_three_body_flag,
         )
 
@@ -262,7 +262,7 @@ class Jastrow_data_deriv_R(Jastrow_data):
     jastrow_three_body_data: Jastrow_three_body_data = struct.field(
         pytree_node=True, default_factory=lambda: Jastrow_three_body_data()
     )
-    jastrow_two_body_pade_flag: bool = struct.field(pytree_node=False, default=False)
+    jastrow_two_body_flag: bool = struct.field(pytree_node=False, default=False)
     jastrow_three_body_flag: bool = struct.field(pytree_node=False, default=False)
 
     @classmethod
@@ -270,13 +270,13 @@ class Jastrow_data_deriv_R(Jastrow_data):
         """Switch pytree_node."""
         jastrow_two_body_data = (jastrow_data.jastrow_two_body_data,)
         jastrow_three_body_data = (Jastrow_three_body_data_deriv_R.from_base(jastrow_data.jastrow_three_body_data),)
-        jastrow_two_body_pade_flag = (jastrow_data.jastrow_two_body_pade_flag,)
+        jastrow_two_body_flag = (jastrow_data.jastrow_two_body_flag,)
         jastrow_three_body_flag = (jastrow_data.jastrow_three_body_flag,)
 
         return cls(
             jastrow_two_body_data=jastrow_two_body_data,
             jastrow_three_body_data=jastrow_three_body_data,
-            jastrow_two_body_pade_flag=jastrow_two_body_pade_flag,
+            jastrow_two_body_flag=jastrow_two_body_flag,
             jastrow_three_body_flag=jastrow_three_body_flag,
         )
 
@@ -482,7 +482,7 @@ def _compute_ratio_Jastrow_part_jax(
         )
 
     # J2 part
-    if jastrow_data.jastrow_two_body_pade_flag:
+    if jastrow_data.jastrow_two_body_flag:
         # vectorization along grid
         J2_ratio = vmap(compute_one_grid_J2, in_axes=(None, 0, 0, None, None))(
             jastrow_data.jastrow_two_body_data.jastrow_2b_param,
@@ -534,7 +534,7 @@ def compute_Jastrow_part_api(
     J3 = 0.0
 
     # two-body (pade)
-    if jastrow_data.jastrow_two_body_pade_flag:
+    if jastrow_data.jastrow_two_body_flag:
         J2 += compute_Jastrow_two_body_api(jastrow_data.jastrow_two_body_data, r_up_carts, r_dn_carts, debug=debug)
 
     # three-body
@@ -844,14 +844,14 @@ def compute_grads_and_laplacian_Jastrow_part_api(
     grad_J2_up, grad_J2_dn, sum_laplacian_J2 = 0.0, 0.0, 0.0
     grad_J3_up, grad_J3_dn, sum_laplacian_J3 = 0.0, 0.0, 0.0
 
-    # two-body (pade)
-    if jastrow_data.jastrow_two_body_pade_flag:
-        grad_J2_up_pade, grad_J2_dn_pade, sum_laplacian_J2_pade = compute_grads_and_laplacian_Jastrow_two_body_api(
+    # two-body
+    if jastrow_data.jastrow_two_body_flag:
+        grad_J2_up, grad_J2_dn, sum_laplacian_J2 = compute_grads_and_laplacian_Jastrow_two_body_api(
             jastrow_data.jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
         )
-        grad_J2_up += grad_J2_up_pade
-        grad_J2_dn += grad_J2_dn_pade
-        sum_laplacian_J2 += sum_laplacian_J2_pade
+        grad_J2_up += grad_J2_up
+        grad_J2_dn += grad_J2_dn
+        sum_laplacian_J2 += sum_laplacian_J2
 
     # three-body
     if jastrow_data.jastrow_three_body_flag:

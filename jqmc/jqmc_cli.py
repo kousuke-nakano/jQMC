@@ -219,6 +219,12 @@ def main():
         except KeyError:
             num_mcmc_bin_blocks = 1
             logger.warning(f"The default value of num_mcmc_bin_blocks = {num_mcmc_bin_blocks}.")
+        # epsilon_AS
+        try:
+            epsilon_AS = dict_toml["vmc"]["epsilon_AS"]
+        except KeyError:
+            epsilon_AS = 0.0
+            logger.warning(f"The default value of epsilon_AS = {epsilon_AS}.")
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
         if num_mcmc_steps < num_mcmc_warmup_steps:
             raise ValueError("num_mcmc_steps should be larger than num_mcmc_warmup_steps")
@@ -262,6 +268,7 @@ def main():
                     mcmc_seed=mcmc_seed,
                     num_walkers=number_of_walkers,
                     num_mcmc_per_measurement=num_mcmc_per_measurement,
+                    epsilon_AS=epsilon_AS,
                     comput_position_deriv=False,
                     comput_param_deriv=False,
                 )
@@ -358,6 +365,12 @@ def main():
         except KeyError:
             num_mcmc_bin_blocks = 1
             logger.warning(f"The default value of num_mcmc_bin_blocks = {num_mcmc_bin_blocks}.")
+        # epsilon_AS
+        try:
+            epsilon_AS = dict_toml["vmc"]["epsilon_AS"]
+        except KeyError:
+            epsilon_AS = 0.0
+            logger.warning(f"The default value of epsilon_AS = {epsilon_AS}.")
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
         if num_mcmc_steps < num_mcmc_warmup_steps:
             raise ValueError("num_mcmc_steps should be larger than num_mcmc_warmup_steps")
@@ -403,6 +416,7 @@ def main():
                     mcmc_seed=mcmc_seed,
                     num_walkers=number_of_walkers,
                     num_mcmc_per_measurement=num_mcmc_per_measurement,
+                    epsilon_AS=epsilon_AS,
                     comput_position_deriv=False,
                     comput_param_deriv=True,
                 )

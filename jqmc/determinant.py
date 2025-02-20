@@ -224,21 +224,37 @@ class Geminal_data:
         else:
             raise NotImplementedError
 
-    # WIP!!
-    '''
     @classmethod
-    def convert_from_MO_to_AO_representation(cls):
+    def convert_from_MOs_to_AOs(cls, geminal_data: "Geminal_data") -> "Geminal_data":
         """Convert MOs to AOs."""
-        mo_lambda_matrix_paired, mo_lambda_matrix_unpaired = np.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
+        if isinstance(geminal_data.orb_data_up_spin, AOs_data) and isinstance(geminal_data.orb_data_dn_spin, AOs_data):
+            return geminal_data
+        elif isinstance(geminal_data.orb_data_up_spin, MOs_data) and isinstance(geminal_data.orb_data_dn_spin, MOs_data):
+            # split mo_lambda_matrix
+            mo_lambda_matrix_paired, mo_lambda_matrix_unpaired = np.hsplit(
+                geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
+            )
 
-        # generate matrices for the test
-        ao_lambda_matrix_paired = np.dot(
-            geminal_data.orb_data_up_spin.mo_coefficients.T,
-            np.dot(mo_lambda_matrix_paired, geminal_data.orb_data_dn_spin.mo_coefficients),
-        )
-        ao_lambda_matrix_unpaired = np.dot(geminal_data.orb_data_up_spin.mo_coefficients.T, mo_lambda_matrix_unpaired)
-        ao_lambda_matrix = np.hstack([ao_lambda_matrix_paired, ao_lambda_matrix_unpaired])
-    '''
+            # extract AOs data
+            aos_data_up_spin = geminal_data.orb_data_up_spin.aos_data
+            aos_data_dn_spin = geminal_data.orb_data_dn_spin.aos_data
+
+            # convert MOs lambda to AO lambda
+            aos_lambda_matrix_paired = np.dot(
+                geminal_data.orb_data_up_spin.mo_coefficients.T,
+                np.dot(mo_lambda_matrix_paired, geminal_data.orb_data_dn_spin.mo_coefficients),
+            )
+            aos_lambda_matrix_unpaired = np.dot(geminal_data.orb_data_up_spin.mo_coefficients.T, mo_lambda_matrix_unpaired)
+            aos_lambda_matrix = np.hstack([aos_lambda_matrix_paired, aos_lambda_matrix_unpaired])
+            return cls(
+                geminal_data.num_electron_up,
+                geminal_data.num_electron_dn,
+                aos_data_up_spin,
+                aos_data_dn_spin,
+                aos_lambda_matrix,
+            )
+        else:
+            raise NotImplementedError
 
 
 @struct.dataclass

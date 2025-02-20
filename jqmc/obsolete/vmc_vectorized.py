@@ -45,10 +45,8 @@ import numpy as np
 import numpy.typing as npt
 import scipy
 from jax import grad, jit, lax
+from jax import grad, jit, lax, vmap
 from jax import numpy as jnp
-from jax import vmap
-
-# MPI
 from mpi4py import MPI
 
 from .hamiltonians import Hamiltonian_data, compute_local_energy_api
@@ -677,7 +675,7 @@ class MCMC_multiple_walkers:
                 end = time.perf_counter()
                 timer_dln_Psi_dc_jas1b2b3b += end - start
 
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag:
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_flag:
                     grad_ln_Psi_jas2b = grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
                     logger.devel(f"grad_ln_Psi_jas2b.shape = {grad_ln_Psi_jas2b.shape}")
                     logger.devel(f"  grad_ln_Psi_jas2b = {grad_ln_Psi_jas2b}")
@@ -893,7 +891,7 @@ class MCMC_multiple_walkers:
         dln_Psi_dc_flattened_index_list = []
 
         if self.__comput_jas_param_deriv:
-            if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag:
+            if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_flag:
                 opt_param = "jastrow_2b_param"
                 dln_Psi_dc = self.dln_Psi_dc_jas_2b
                 dln_Psi_dc_size = 1
@@ -1242,7 +1240,7 @@ class VMC_multiple_walkers:
             jastrow_2b_param = (
                 self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
             )
-            jastrow_two_body_pade_flag = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_pade_flag
+            jastrow_two_body_pade_flag = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_flag
             jastrow_three_body_flag = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag
             aos_data = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data
             j_matrix = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix
@@ -1270,7 +1268,7 @@ class VMC_multiple_walkers:
             jastrow_data = Jastrow_data(
                 jastrow_two_body_data=jastrow_two_body_data,
                 jastrow_three_body_data=jastrow_three_body_data,
-                jastrow_two_body_pade_flag=jastrow_two_body_pade_flag,
+                jastrow_two_body_flag=jastrow_two_body_pade_flag,
                 jastrow_three_body_flag=jastrow_three_body_flag,
             )
             wavefunction_data = Wavefunction_data(geminal_data=geminal_data, jastrow_data=jastrow_data)

@@ -3,8 +3,6 @@
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
 #
-# This file is part of phonopy.
-#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
 # are met:
@@ -52,9 +50,7 @@ from ..jqmc.coulomb_potential import (
     _compute_ecp_non_local_parts_NN_debug,
     _compute_ecp_non_local_parts_NN_jax,
 )
-from ..jqmc.jastrow_factor import (
-    Jastrow_data,
-)
+from ..jqmc.jastrow_factor import Jastrow_data
 from ..jqmc.trexio_wrapper import read_trexio_file
 from ..jqmc.wavefunction import Wavefunction_data
 
@@ -84,7 +80,7 @@ def test_debug_and_jax_bare_coulomb():
     # define data
     jastrow_data = Jastrow_data(
         jastrow_two_body_data=None,
-        jastrow_two_body_pade_flag=False,
+        jastrow_two_body_flag=False,
         jastrow_three_body_data=None,
         jastrow_three_body_flag=False,
     )  # no jastrow for the time-being.
@@ -142,7 +138,7 @@ def test_debug_and_jax_ecp_local():
     # define data
     jastrow_data = Jastrow_data(
         jastrow_two_body_data=None,
-        jastrow_two_body_pade_flag=False,
+        jastrow_two_body_flag=False,
         jastrow_three_body_data=None,
         jastrow_three_body_flag=False,
     )  # no jastrow for the time-being.
@@ -201,7 +197,7 @@ def test_debug_and_jax_ecp_non_local():
     # define data
     jastrow_data = Jastrow_data(
         jastrow_two_body_data=None,
-        jastrow_two_body_pade_flag=False,
+        jastrow_two_body_flag=False,
         jastrow_three_body_data=None,
         jastrow_three_body_flag=False,
     )  # no jastrow for the time-being.
