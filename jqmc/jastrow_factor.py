@@ -49,6 +49,7 @@ from jax import grad, hessian, jit, vmap
 
 # jqmc module
 from .atomic_orbital import AOs_data, compute_AOs_api
+from .coulomb_potential import Coulomb_potential_data
 from .molecular_orbital import MOs_data, compute_MOs_api
 
 # set logger
@@ -56,6 +57,95 @@ logger = getLogger("jqmc").getChild(__name__)
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
+
+
+# @dataclass
+@struct.dataclass
+class Jastrow_one_body_data:
+    """Jastrow one-body dataclass.
+
+    The class contains data for evaluating the one-body Jastrow function.
+
+    Args:
+        jastrow_1b_param (float): the parameter for 1b Jastrow part
+        structure_data (Structure_data): an instance of Struructure_data
+    """
+
+    jastrow_1b_param: float = struct.field(pytree_node=True, default=1.0)
+    coulomb_potential_data: Coulomb_potential_data = struct.field(
+        pytree_node=True, default_factory=lambda: Coulomb_potential_data()
+    )
+
+    def __post_init__(self) -> None:
+        """Post initialization."""
+        pass
+
+    @classmethod
+    def init_jastrow_one_body_data(cls, jastrow_1b_param=1.0, coulomb_potential_data=lambda: Coulomb_potential_data()):
+        """Initialization."""
+        jastrow_one_body_data = cls(jastrow_1b_param=jastrow_1b_param, coulomb_potential_data=coulomb_potential_data)
+        return jastrow_one_body_data
+
+
+def one_body_jastrow_exp(param: float, coeff: float, r_cart: npt.NDArray[np.float64], R_cart: npt.NDArray[np.float64]) -> float:
+    """Exponential form of J1."""
+    one_body_jastrow = 1.0 / (2.0 * param) * (1.0 - jnp.exp(-param * coeff * jnp.linalg.norm(r_cart - R_cart)))
+    return one_body_jastrow
+
+
+def compute_Jastrow_one_body_api(
+    jastrow_one_body_data: Jastrow_one_body_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+    debug: bool = False,
+) -> float:
+    """Function for computing Jastrow factor with the given jastrow_one_body_data.
+
+    The api method to compute Jastrow factor with the given jastrow_one_body_data.
+    Notice that the Jastrow factor does not contain exp factor. Attach this
+    J to a WF with the modification, exp(J).
+
+    Args:
+        jastrow_one_body_data (Jastrow_one_body_data): an instance of Jastrow_one_body_data
+        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^up, 3)
+        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^dn, 3)
+        debug (bool): if True, this is computed via _debug function for debuging purpose
+
+    Return:
+        float: The value of Jastrow factor. Notice that the Jastrow factor does not
+        contain exp factor. Attach this J to a WF with the modification, exp(J).
+    """
+    if debug:
+        return _compute_Jastrow_one_body_debug(jastrow_one_body_data, r_up_carts, r_dn_carts)
+    else:
+        return _compute_Jastrow_one_body_debug(jastrow_one_body_data, r_up_carts, r_dn_carts)
+
+
+def _compute_Jastrow_one_body_debug(
+    jastrow_one_body_data: Jastrow_one_body_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+) -> float:
+    pass
+
+    positions = jastrow_one_body_data.coulomb_potential_data.structure_data.positions
+    effective_charges = jastrow_one_body_data.coulomb_potential_data.effective_charges
+
+    J1_up = 0.0
+    for r_up in r_up_carts:
+        for R, Z in zip(positions, effective_charges):
+            coeff = (2.0 * Z) ** (1.0 / 4.0)
+            J1_up += (-2.0 * Z) ** (3.0 / 4.0) * one_body_jastrow_exp(jastrow_one_body_data.jastrow_1b_param, coeff, r_up, R)
+
+    J1_dn = 0.0
+    for r_up in r_dn_carts:
+        for R, Z in zip(positions, effective_charges):
+            coeff = (2.0 * Z) ** (1.0 / 4.0)
+            J1_dn += (-2.0 * Z) ** (3.0 / 4.0) * one_body_jastrow_exp(jastrow_one_body_data.jastrow_1b_param, coeff, r_up, R)
+
+    J1 = J1_up + J1_dn
+
+    return J1
 
 
 # @dataclass

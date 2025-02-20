@@ -41,9 +41,8 @@ import jax
 import numpy as np
 import numpy.typing as npt
 import scipy
-from jax import grad, jit, lax
+from jax import grad, jit, lax, vmap
 from jax import numpy as jnp
-from jax import vmap
 from mpi4py import MPI
 
 from .coulomb_potential import (
@@ -3613,6 +3612,7 @@ if __name__ == "__main__":
         hamiltonian_data=hamiltonian_data,
         Dt=2.0,
         mcmc_seed=mcmc_seed,
+        epsilon_AS=1.0e-3,
         num_walkers=num_walkers,
         comput_position_deriv=True,
         comput_jas_param_deriv=False,
@@ -3647,6 +3647,7 @@ if __name__ == "__main__":
         hamiltonian_data=hamiltonian_data,
         Dt=2.0,
         mcmc_seed=mcmc_seed,
+        epsilon_AS=0.0e-3,
         num_walkers=num_walkers,
         comput_position_deriv=False,
         comput_param_deriv=True,
@@ -3655,15 +3656,15 @@ if __name__ == "__main__":
     vmc.run_optimize(
         num_mcmc_steps=1000,
         num_opt_steps=20,
-        delta=1e-5,
-        epsilon=1e-1,
+        delta=1e-4,
+        epsilon=1e-3,
         wf_dump_freq=1,
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
         opt_J2_param=True,
         opt_J3_param=True,
         opt_J4_param=False,
-        opt_lambda_param=True,
+        opt_lambda_param=False,
     )
     # """
 
