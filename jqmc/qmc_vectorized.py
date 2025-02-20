@@ -2633,7 +2633,7 @@ class QMC:
                     # I = np.eye(S.shape[0])
                     # S_prime = S + epsilon * I
                     S_prime = S.copy()
-                    S_prime[np.diag_indices_from(S)] += epsilon
+                    S_prime[np.diag_indices_from(S_prime)] += epsilon
                     # solve Sx=f
                     X = scipy.linalg.solve(S_prime, f, assume_a="sym")
                 else:
@@ -2681,10 +2681,20 @@ class QMC:
                 if opt_J2_param and opt_param == "j2_param":
                     j2_param += delta * dX
                 if opt_J3_param and opt_param == "j3_matrix":
-                    j3_matrix += delta * dX
+                    # j1 part (rectanglar)
+                    j3_matrix[:, -1] += delta * dX[:, -1]
+                    # j3 part (square)
+                    if np.allclose(j3_matrix[:, :-1], j3_matrix[:, :-1].T, atol=1e-8):
+                        logger.info("The j3 matrix is symmetric. Keep it while updating.")
+                        dX = 1.0 / 2.0 * (dX[:, :-1] + dX[:, :-1].T)
+                    else:
+                        dX = dX[:, :-1]
+                    j3_matrix[:, :-1] += delta * dX
                     """To be implemented. Opt only the block diagonal parts, i.e. only the J3 part."""
-                    """To be implemented. Symmetrize the updated matrices!!!"""
                 if opt_lambda_param and opt_param == "lambda_matrix":
+                    if np.allclose(lambda_matrix, lambda_matrix.T, atol=1e-8):
+                        logger.info("The lambda matrix is symmetric. Keep it while updating.")
+                        dX = 1.0 / 2.0 * (dX + dX.T)
                     lambda_matrix += delta * dX
                     """To be implemented. Symmetrize or Anti-symmetrize the updated matrices!!!"""
                     """To be implemented. Considering symmetries of the AGP lambda matrix."""
@@ -3571,7 +3581,10 @@ if __name__ == "__main__":
         jastrow_three_body_flag=True,
     )
 
-    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+    # conversion of SD to AGP
+    geminal_ao_data = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_data)
+
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_ao_data)
 
     hamiltonian_data = Hamiltonian_data(
         structure_data=structure_data,
@@ -3589,7 +3602,7 @@ if __name__ == "__main__":
     #    hamiltonian_data = pickle.load(f)
 
     # MCMC param
-    num_walkers = 2
+    num_walkers = 10
     num_mcmc_warmup_steps = 5
     num_mcmc_bin_blocks = 5
     mcmc_seed = 34356
@@ -3640,16 +3653,16 @@ if __name__ == "__main__":
     )
     vmc = QMC(mcmc)
     vmc.run_optimize(
-        num_mcmc_steps=2000,
+        num_mcmc_steps=1000,
         num_opt_steps=20,
-        delta=1e-4,
-        epsilon=1e-3,
+        delta=1e-5,
+        epsilon=1e-1,
         wf_dump_freq=1,
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
         opt_J2_param=True,
         opt_J3_param=True,
-        opt_J4_param=True,
+        opt_J4_param=False,
         opt_lambda_param=True,
     )
     # """

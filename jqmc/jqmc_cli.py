@@ -225,6 +225,9 @@ def main():
         except KeyError:
             epsilon_AS = 0.0
             logger.warning(f"The default value of epsilon_AS = {epsilon_AS}.")
+
+        logger.info("")
+
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
         if num_mcmc_steps < num_mcmc_warmup_steps:
             raise ValueError("num_mcmc_steps should be larger than num_mcmc_warmup_steps")
@@ -371,6 +374,9 @@ def main():
         except KeyError:
             epsilon_AS = 0.0
             logger.warning(f"The default value of epsilon_AS = {epsilon_AS}.")
+
+        logger.info("")
+
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
         if num_mcmc_steps < num_mcmc_warmup_steps:
             raise ValueError("num_mcmc_steps should be larger than num_mcmc_warmup_steps")
