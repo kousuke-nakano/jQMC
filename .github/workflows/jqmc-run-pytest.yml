@@ -47,7 +47,7 @@ jobs:
     #    # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
     #    flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
-    - name: Test jqmc (pytest) with @jit decorator
+    - name: Test jqmc (pytest) with @jit decorator (intra-software comparisons)
       run: |
         pytest -s -v tests/test_trexio.py
         pytest -s -v tests/test_AOs.py
@@ -57,6 +57,6 @@ jobs:
         pytest -s -v tests/test_wave_function.py
         pytest -s -v tests/test_ecps.py
 
-    #- name: Test jqmc (pytest) without @jit decorator
-    #  run: |
-    #    pytest -s -v tests/test_refs.py --disable-jit
+    - name: Test jqmc (pytest) without @jit decorator (inter-software comparisons)
+      run: |
+        pytest -s -v tests/test_comparison_with_references.py --disable-jit

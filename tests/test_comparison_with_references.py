@@ -65,7 +65,7 @@ log.addHandler(stream_handler)
 
 
 @pytest.mark.activate_if_disable_jit
-def test_comparison_with_TurboRVB_wo_Jastrow(request):
+def test_comparison_with_TurboRVB_wo_Jastrow_w_ecp(request):
     if not request.config.getoption("--disable-jit"):
         pytest.skip(reason="Bug of flux.struct with @jit.")
 
@@ -182,7 +182,7 @@ def test_comparison_with_TurboRVB_wo_Jastrow(request):
 
 
 @pytest.mark.activate_if_disable_jit
-def test_comparison_with_TurboRVB_w_2b_Jastrow(request):
+def test_comparison_with_TurboRVB_w_2b_Jastrow_w_ecp(request):
     if not request.config.getoption("--disable-jit"):
         pytest.skip(reason="Bug of flux.struct with @jit.")
 
@@ -305,7 +305,7 @@ jax.clear_caches()
 
 
 @pytest.mark.activate_if_disable_jit
-def test_comparison_with_TurboRVB_w_2b_3b_Jastrow(request):
+def test_comparison_with_TurboRVB_w_2b_3b_Jastrow_w_ecp(request):
     if not request.config.getoption("--disable-jit"):
         pytest.skip(reason="Bug of flux.struct with @jit.")
     (
@@ -318,7 +318,7 @@ def test_comparison_with_TurboRVB_w_2b_3b_Jastrow(request):
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_trexio.hdf5"))
 
     with open(
-        os.path.join(os.path.dirname(__file__), "trexio_example_files", "jastrow_data_w_2b_3b.pkl"),
+        os.path.join(os.path.dirname(__file__), "trexio_example_files", "jastrow_data_w_2b_3b_w_ecp.pkl"),
         "rb",
     ) as f:
         jastrow_data = pickle.load(f)
@@ -356,9 +356,9 @@ def test_comparison_with_TurboRVB_w_2b_3b_Jastrow(request):
     vpot_ref_turborvb = -17.0140133127848
     vpotoff_ref_turborvb = 0.275054565511106
 
-    print(f"wf_ratio_ref={WF_ratio_ref_turborvb} Ha")
-    print(f"kinc_ref={kinc_ref_turborvb} Ha")
-    print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
+    # print(f"wf_ratio_ref={WF_ratio_ref_turborvb} Ha")
+    # print(f"kinc_ref={kinc_ref_turborvb} Ha")
+    # print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
 
     WF_ratio = (
         evaluate_wavefunction_api(
@@ -407,9 +407,9 @@ def test_comparison_with_TurboRVB_w_2b_3b_Jastrow(request):
         wavefunction_data=wavefunction_data,
     )
 
-    print(f"wf_ratio={WF_ratio} Ha")
-    print(f"kinc={kinc} Ha")
-    print(f"vpot={vpot_bare_jax + vpot_ecp_debug} Ha")
+    # print(f"wf_ratio={WF_ratio} Ha")
+    # print(f"kinc={kinc} Ha")
+    # print(f"vpot={vpot_bare_jax + vpot_ecp_debug} Ha")
 
     np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=8)
     np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
@@ -420,7 +420,7 @@ def test_comparison_with_TurboRVB_w_2b_3b_Jastrow(request):
 
 
 @pytest.mark.activate_if_disable_jit
-def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow(request):
+def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp(request):
     if not request.config.getoption("--disable-jit"):
         pytest.skip(reason="Bug of flux.struct with @jit.")
     (
@@ -433,7 +433,7 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow(request):
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_trexio.hdf5"))
 
     with open(
-        os.path.join(os.path.dirname(__file__), "trexio_example_files", "jastrow_data_w_2b_1b3b.pkl"),
+        os.path.join(os.path.dirname(__file__), "trexio_example_files", "jastrow_data_w_2b_1b3b_w_ecp.pkl"),
         "rb",
     ) as f:
         jastrow_data = pickle.load(f)
