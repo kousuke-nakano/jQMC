@@ -104,6 +104,11 @@ class MOs_data:
         """Return structure_data of the aos_data instance."""
         return self.aos_data.structure_data
 
+    @property
+    def num_orb(self) -> int:
+        """Return the number of orbitals."""
+        return self.num_mo
+
 
 @struct.dataclass
 class MOs_data_deriv_R:

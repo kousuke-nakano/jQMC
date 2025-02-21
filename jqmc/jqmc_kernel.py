@@ -51,7 +51,13 @@ from .coulomb_potential import (
     _compute_ecp_non_local_parts_nearest_neighbors_jax,
 )
 from .determinant import Geminal_data, compute_AS_regularization_factor_api
-from .hamiltonians import Hamiltonian_data, Hamiltonian_data_deriv_params, compute_kinetic_energy_api, compute_local_energy_api
+from .hamiltonians import (
+    Hamiltonian_data,
+    Hamiltonian_data_deriv_params,
+    Hamiltonian_data_deriv_R,
+    compute_kinetic_energy_api,
+    compute_local_energy_api,
+)
 from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data, compute_ratio_Jastrow_part_api
 from .structure import find_nearest_index_jax
 from .swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
@@ -677,6 +683,7 @@ class MCMC:
         mcmc_update_init_end = time.perf_counter()
         timer_mcmc_update_init += mcmc_update_init_end - mcmc_update_init_start
         logger.info("End compilation of the MCMC_update funciton.")
+        logger.info(f"Elapsed Time = {mcmc_update_init_end - mcmc_update_init_start:.2f} sec.")
         logger.info("")
 
         # MAIN MCMC loop from here !!!
@@ -740,7 +747,7 @@ class MCMC:
             # logger.info(f"R_AS_eps = {R_AS_eps}.")
 
             w_L = (R_AS / R_AS_eps) ** 2
-            # logger.info(f"w_L = {w_L}.")
+            # logger.info(f"  AS regularization: np.mean(w_L) = {np.mean(w_L)}.")
             self.__stored_w_L.append(w_L)
 
             if self.__comput_position_deriv:
@@ -818,8 +825,8 @@ class MCMC:
                 self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn)
 
                 grad_ln_Psi_dR = (
-                    grad_ln_Psi_h.geminal_data.orb_data_up_spin.aos_data.structure_data.positions
-                    + grad_ln_Psi_h.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions
+                    grad_ln_Psi_h.geminal_data.orb_data_up_spin.structure_data.positions
+                    + grad_ln_Psi_h.geminal_data.orb_data_dn_spin.structure_data.positions
                 )
 
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
@@ -985,6 +992,9 @@ class MCMC:
         """Set hamiltonian_data."""
         if self.__comput_param_deriv and not self.__comput_position_deriv:
             self.__hamiltonian_data = Hamiltonian_data_deriv_params.from_base(hamiltonian_data)
+        # bug?
+        # elif not self.__comput_param_deriv and self.__comput_position_deriv:
+        #    self.__hamiltonian_data = Hamiltonian_data_deriv_R.from_base(hamiltonian_data)
         else:
             self.__hamiltonian_data = hamiltonian_data
         self.__init_attributes()
@@ -1105,14 +1115,14 @@ class MCMC:
         Refactoring in progress.
 
         Return:
-            opt_param_list (list): labels of the parameters to be optimized.
+            dc_param_list (list): labels of the parameters with derivatives computed.
             dln_Psi_dc_list (list): dln_Psi_dc instances computed by JAX-grad.
             dc_size_list (list): sizes of dln_Psi_dc instances
             dc_shape_list (list): shapes of dln_Psi_dc instances
             dc_flattened_index_list (list): indices of dln_Psi_dc instances for the flattened parameter
         #
         """
-        opt_param_list = []
+        dc_param_list = []
         dln_Psi_dc_list = []
         # de_L_dc_list = [] # for linear method
         dc_size_list = []
@@ -1122,14 +1132,14 @@ class MCMC:
         if self.__comput_param_deriv:
             # jastrow 2-body
             if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_flag:
-                opt_param = "j2_param"
+                dc_param = "j2_param"
                 dln_Psi_dc = self.dln_Psi_dc_jas_2b
                 # de_L_dc = self.de_L_dc_jas_2b # for linear method
                 dc_size = 1
                 dc_shape = (1,)
-                dc_flattened_index = [len(opt_param_list)] * dc_size
+                dc_flattened_index = [len(dc_param_list)] * dc_size
 
-                opt_param_list.append(opt_param)
+                dc_param_list.append(dc_param)
                 dln_Psi_dc_list.append(dln_Psi_dc)
                 # de_L_dc_list.append(de_L_dc) # for linear method
                 dc_size_list.append(dc_size)
@@ -1138,14 +1148,14 @@ class MCMC:
 
             # jastrow 3-body
             if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
-                opt_param = "j3_matrix"
+                dc_param = "j3_matrix"
                 dln_Psi_dc = self.dln_Psi_dc_jas_1b3b
                 # de_L_dc = self.de_L_dc_jas_1b3b # for linear method
                 dc_size = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix.size
                 dc_shape = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix.shape
-                dc_flattened_index = [len(opt_param_list)] * dc_size
+                dc_flattened_index = [len(dc_param_list)] * dc_size
 
-                opt_param_list.append(opt_param)
+                dc_param_list.append(dc_param)
                 dln_Psi_dc_list.append(dln_Psi_dc)
                 # de_L_dc_list.append(de_L_dc) # for linear method
                 dc_size_list.append(dc_size)
@@ -1153,14 +1163,14 @@ class MCMC:
                 dc_flattened_index_list += dc_flattened_index
 
             # lambda_matrix
-            opt_param = "lambda_matrix"
+            dc_param = "lambda_matrix"
             dln_Psi_dc = self.dln_Psi_dc_lambda_matrix
             # de_L_dc = self.de_L_dc_lambda # for linear method
             dc_size = self.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix.size
             dc_shape = self.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix.shape
-            dc_flattened_index = [len(opt_param_list)] * dc_size
+            dc_flattened_index = [len(dc_param_list)] * dc_size
 
-            opt_param_list.append(opt_param)
+            dc_param_list.append(dc_param)
             dln_Psi_dc_list.append(dln_Psi_dc)
             # de_L_dc_list.append(de_L_dc) # for linear method
             dc_size_list.append(dc_size)
@@ -1168,7 +1178,7 @@ class MCMC:
             dc_flattened_index_list += dc_flattened_index
 
         return {
-            "opt_param_list": opt_param_list,
+            "dc_param_list": dc_param_list,
             "dln_Psi_dc_list": dln_Psi_dc_list,
             # "de_L_dc_list": de_L_dc_list, # for linear method
             "dc_size_list": dc_size_list,
@@ -2028,8 +2038,8 @@ class GFMC:
                 timer_dln_Psi_dR_dr += end - start
 
                 grad_ln_Psi_dR = (
-                    grad_ln_Psi_h.geminal_data.orb_data_up_spin.aos_data.structure_data.positions
-                    + grad_ln_Psi_h.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions
+                    grad_ln_Psi_h.geminal_data.orb_data_up_spin.structure_data.positions
+                    + grad_ln_Psi_h.geminal_data.orb_data_dn_spin.structure_data.positions
                 )
 
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
@@ -2482,7 +2492,6 @@ class QMC:
     def __init__(self, mcmc: MCMC = None) -> None:
         """Initialization."""
         self.__mcmc = mcmc
-
         self.__i_opt = 0
 
     def run(self, num_mcmc_steps: int = 0, max_time: int = 86400) -> None:
@@ -2496,257 +2505,6 @@ class QMC:
                 the method exits the MCMC loop.
         """
         self.__mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
-
-    def run_optimize_old(
-        self,
-        num_mcmc_steps: int = 100,
-        num_opt_steps: int = 1,
-        delta: float = 0.001,
-        epsilon: float = 1.0e-3,
-        wf_dump_freq: int = 10,
-        max_time: int = 86400,
-        num_mcmc_warmup_steps: int = 0,
-        num_mcmc_bin_blocks: int = 100,
-        # opt_J1_param: bool = True, # to be implemented.
-        opt_J2_param: bool = True,
-        opt_J3_param: bool = True,
-        opt_J4_param: bool = False,
-        opt_lambda_param: bool = False,
-    ):
-        """Optimizing wavefunction.
-
-        Optimizing Wavefunction using the Stochastic Reconfiguration Method.
-
-        Args:
-            num_mcmc_steps(int): The number of MCMC samples per walker.
-            num_opt_steps(int): The number of WF optimization step.
-            delta(float):
-                The prefactor of the SR matrix for adjusting the optimization step.
-                i.e., c_i <- c_i + delta * S^{-1} f
-            epsilon(float):
-                The regralization factor of the SR matrix
-                i.e., S <- S + I * delta
-            wf_dump_freq(int):
-                The frequency of WF data (i.e., hamiltonian_data.chk)
-            max_time(int):
-                The maximum time (sec.) If maximum time exceeds,
-                the method exits the MCMC loop.
-            num_mcmc_warmup_steps (int): number of equilibration steps.
-            num_mcmc_bin_blocks (int): number of blocks for reblocking.
-            opt_J1_param (bool): optimize one-body Jastrow # to be implemented.
-            opt_J2_param (bool): optimize two-body Jastrow
-            opt_J3_param (bool): optimize three-body Jastrow
-            opt_J4_param (bool): optimize four-body Jastrow # to be implemented.
-            opt_lambda_param (bool): optimize lambda_matrix in the determinant part.
-
-        """
-        vmcopt_total_start = time.perf_counter()
-
-        dc_size_list = self.__mcmc.opt_param_dict["dc_size_list"]
-        logger.info(f"The number of variational paramers = {np.sum(dc_size_list)}.")
-
-        # main vmcopt loop
-        for i_opt in range(num_opt_steps):
-            logger.info(f"i_opt={i_opt + 1 + self.__i_opt}/{num_opt_steps + self.__i_opt}.")
-
-            if mpi_rank == 0:
-                logger.info(f"num_mcmc_warmup_steps={num_mcmc_warmup_steps}.")
-                logger.info(f"num_mcmc_bin_blocks={num_mcmc_bin_blocks}.")
-                logger.info(f"num_mcmc_steps={num_mcmc_steps}.")
-
-            logger.info(
-                f"twobody param before opt. = {self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param}"
-            )
-
-            # run MCMC
-            self.__mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
-
-            # get e_L
-            E, E_std = self.get_E(num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks)
-            logger.info(f"E = {E} +- {E_std} Ha")
-
-            # get f and f_std (generalized forces)
-            f, f_std = self.get_gF(
-                mpi_broadcast=False, num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks
-            )
-            # get S (preconditioning matrix)
-            S, _ = self.get_S(
-                mpi_broadcast=False, num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks
-            )
-
-            """ linear method
-            # get H (surrogate Hessian matrix)
-            H, _ = self.get_H(
-                mpi_broadcast=False, num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks
-            )
-            """
-
-            if mpi_rank == 0:
-                signal_to_noise_f = np.abs(f) / f_std
-                logger.info(f"Max |f| = {np.max(np.abs(f)):.3f} Ha/a.u.")
-                logger.debug(f"f_std of Max |f| = {f_std[np.argmax(np.abs(f))]:.3f} Ha/a.u.")
-                logger.info(f"Max of signal-to-noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}.")
-
-            logger.info("Computing the inverse of the stochastic matrix S^{-1}f...")
-
-            if mpi_rank == 0:
-                """ LR method, to be removed
-                # SR with linear method
-                if S.ndim != 0:
-                    I = np.eye(S.shape[0])
-                    S_prime = S + epsilon * I
-                    # solve Sx=f
-                    S_inv_f = scipy.linalg.solve(S_prime, f, assume_a="sym")
-
-                    H_0 = E
-                    H_1 = -1.0 / 2.0 * (S_inv_f.T @ f)
-                    H_2 = S_inv_f.T @ H @ S_inv_f
-                    S_2 = S_inv_f.T @ S_prime @ S_inv_f
-
-                    logger.info(f"H_0 = {H_0}.")
-                    logger.info(f"H_1 = {H_1}.")
-                    logger.info(f"S_2 = {S_2}.")
-                    logger.info(f"H_2 = {H_2}.")
-                    logger.info(f"(H_2 + 2 * H_0 * H_1) ** 2 - 8 * H_1**3) = {(H_2 + 2 * H_0 * H_1) ** 2 - 8 * H_1**3}.")
-
-                    gamma_plus = (H_2 + 2 * H_0 * H_1 + np.sqrt((H_2 + 2 * H_0 * H_1) ** 2 - 8 * H_1**3)) / (-4.0 * H_1**2)
-                    gamma_minus = (H_2 + 2 * H_0 * H_1 - np.sqrt((H_2 + 2 * H_0 * H_1) ** 2 - 8 * H_1**3)) / (-4.0 * H_1**2)
-                    logger.info(f"gamma_plus = {gamma_plus}")
-                    logger.info(f"gamma_minus = {gamma_minus}")
-                    gamma_chosen = np.maximum(gamma_plus, gamma_minus)
-                    logger.info(f"gamma_chosen = {gamma_chosen}")
-                    if gamma_chosen < 0:
-                        logger.warning(f"gamma_chosen = {gamma_chosen} is negative!!")
-                    X = gamma_chosen * S_inv_f
-
-                else:
-                    raise NotImplementedError
-                    I = 1.0
-                    S_prime = S + epsilon * I
-                    # solve Sx=f
-                    X = 1.0 / S_prime * f
-                """
-
-                # """ # SR
-                if S.ndim != 0:
-                    # I = np.eye(S.shape[0])
-                    # S_prime = S + epsilon * I
-                    S_prime = S.copy()
-                    S_prime[np.diag_indices_from(S_prime)] += epsilon
-                    # solve Sx=f
-                    X = scipy.linalg.solve(S_prime, f, assume_a="sym")
-                else:
-                    # I = 1.0
-                    # S_prime = S + epsilon * I
-                    S_prime = S + epsilon
-                    # solve Sx=f
-                    X = 1.0 / S_prime * f
-
-                # logger.info(f"The condition number of the matrix S is {np.linalg.cond(S)}.")
-                # logger.info(f"The diagonal elements of S_prime = {np.diag(S_prime)}.")
-                # logger.info(f"The S_prime is symmetric? = {np.allclose(S_prime, S_prime.T, atol=1.0e-10)}.")
-                # logger.info(f"The condition number of the matrix S_prime is {np.linalg.cond(S_prime)}.")
-                # """
-
-                # steepest decent (SD)
-                # X = f
-
-            else:
-                X = None
-
-            X = mpi_comm.bcast(X, root=0)
-            logger.debug(f"X for MPI-rank={mpi_rank} is {X}")
-            logger.debug(f"X.shape for MPI-rank={mpi_rank} is {X.shape}")
-            logger.info(f"max(dX) for MPI-rank={mpi_rank} is {np.max(X)}")
-
-            opt_param_list = self.__mcmc.opt_param_dict["opt_param_list"]
-            dc_shape_list = self.__mcmc.opt_param_dict["dc_shape_list"]
-            dc_flattened_index_list = self.__mcmc.opt_param_dict["dc_flattened_index_list"]
-
-            j2_param = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
-            jastrow_two_body_pade_flag = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_flag
-            jastrow_three_body_flag = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag
-            j3_orb_data = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data
-            j3_matrix = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix
-            lambda_matrix = self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix
-
-            for ii, opt_param in enumerate(opt_param_list):
-                param_shape = dc_shape_list[ii]
-                param_index = [i for i, v in enumerate(dc_flattened_index_list) if v == ii]
-                dX = X[param_index].reshape(param_shape)
-                logger.info(f"dX.shape for MPI-rank={mpi_rank} is {dX.shape}")
-                if dX.shape == (1,):
-                    dX = dX[0]
-                if opt_J2_param and opt_param == "j2_param":
-                    j2_param += delta * dX
-                if opt_J3_param and opt_param == "j3_matrix":
-                    # j1 part (rectanglar)
-                    j3_matrix[:, -1] += delta * dX[:, -1]
-                    # j3 part (square)
-                    if np.allclose(j3_matrix[:, :-1], j3_matrix[:, :-1].T, atol=1e-8):
-                        logger.info("The j3 matrix is symmetric. Keep it while updating.")
-                        dX = 1.0 / 2.0 * (dX[:, :-1] + dX[:, :-1].T)
-                    else:
-                        dX = dX[:, :-1]
-                    j3_matrix[:, :-1] += delta * dX
-                    """To be implemented. Opt only the block diagonal parts, i.e. only the J3 part."""
-                if opt_lambda_param and opt_param == "lambda_matrix":
-                    if np.allclose(lambda_matrix, lambda_matrix.T, atol=1e-8):
-                        logger.info("The lambda matrix is symmetric. Keep it while updating.")
-                        dX = 1.0 / 2.0 * (dX + dX.T)
-                    lambda_matrix += delta * dX
-                    """To be implemented. Symmetrize or Anti-symmetrize the updated matrices!!!"""
-                    """To be implemented. Considering symmetries of the AGP lambda matrix."""
-
-            structure_data = self.__mcmc.hamiltonian_data.structure_data
-            coulomb_potential_data = self.__mcmc.hamiltonian_data.coulomb_potential_data
-            geminal_data = Geminal_data(
-                num_electron_up=self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data.num_electron_up,
-                num_electron_dn=self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn,
-                orb_data_up_spin=self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data.orb_data_up_spin,
-                orb_data_dn_spin=self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data.orb_data_dn_spin,
-                lambda_matrix=lambda_matrix,
-            )
-            jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=j2_param)
-            jastrow_three_body_data = Jastrow_three_body_data(
-                orb_data=j3_orb_data,
-                j_matrix=j3_matrix,
-            )
-            jastrow_data = Jastrow_data(
-                jastrow_two_body_data=jastrow_two_body_data,
-                jastrow_three_body_data=jastrow_three_body_data,
-                jastrow_two_body_flag=jastrow_two_body_pade_flag,
-                jastrow_three_body_flag=jastrow_three_body_flag,
-            )
-            wavefunction_data = Wavefunction_data(geminal_data=geminal_data, jastrow_data=jastrow_data)
-            hamiltonian_data = Hamiltonian_data(
-                structure_data=structure_data,
-                wavefunction_data=wavefunction_data,
-                coulomb_potential_data=coulomb_potential_data,
-            )
-
-            logger.info("WF updated")
-            self.__mcmc.hamiltonian_data = hamiltonian_data
-
-            logger.info(
-                f"twobody param after opt. = {self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param}"
-            )
-
-            # dump WF
-            if mpi_rank == 0:
-                if (i_opt + 1) % wf_dump_freq == 0 or (i_opt + 1) == num_opt_steps:
-                    logger.info("Hamiltonian data is dumped as a checkpoint file.")
-                    self.__mcmc.hamiltonian_data.dump(f"hamiltonian_data_opt_step_{i_opt + 1}.chk")
-
-            # check max time
-            vmcopt_current = time.perf_counter()
-            if max_time < vmcopt_current - vmcopt_total_start:
-                logger.info(f"max_time = {max_time} sec. exceeds.")
-                logger.info("break the vmcopt loop.")
-                break
-
-        # update WF opt counter
-        self.__i_opt += i_opt + 1
 
     def run_optimize(
         self,
@@ -2807,47 +2565,64 @@ class QMC:
 
             # get E
             E, E_std = self.get_E(num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks)
-            logger.info(f"E = {E} +- {E_std} Ha")
+            logger.info(f"E = {E:.5f} +- {E_std:.5f} Ha")
+
+            # get opt param
+            dc_param_list = self.__mcmc.opt_param_dict["dc_param_list"]
+            dc_flattened_index_list = self.__mcmc.opt_param_dict["dc_flattened_index_list"]
+            # Indices of variational parameters
+            ## chosen_param_index
+            ## index of optimized parameters in the dln_wf_dc.
+            chosen_param_index = []
+            ## opt_param_index_dict
+            ## index in the vector theta (i.e., natural gradient) for the chosen opt parameters.
+            ## This is used when updating the parameters.
+            opt_param_index_dict = {}
+
+            for ii, dc_param in enumerate(dc_param_list):
+                if opt_J2_param and dc_param == "j2_param":
+                    new_param_index = [i for i, v in enumerate(dc_flattened_index_list) if v == ii]
+                    opt_param_index_dict[dc_param] = np.array(range(len(new_param_index)), dtype=np.int32) + len(
+                        chosen_param_index
+                    )
+                    chosen_param_index += new_param_index
+                if opt_J3_param and dc_param == "j3_matrix":
+                    new_param_index = [i for i, v in enumerate(dc_flattened_index_list) if v == ii]
+                    opt_param_index_dict[dc_param] = np.array(range(len(new_param_index)), dtype=np.int32) + len(
+                        chosen_param_index
+                    )
+                    chosen_param_index += new_param_index
+                if opt_lambda_param and dc_param == "lambda_matrix":
+                    new_param_index = [i for i, v in enumerate(dc_flattened_index_list) if v == ii]
+                    opt_param_index_dict[dc_param] = np.array(range(len(new_param_index)), dtype=np.int32) + len(
+                        chosen_param_index
+                    )
+                    chosen_param_index += new_param_index
+            chosen_param_index = np.array(chosen_param_index)
+
+            logger.info(f"Number of variational parameters = {len(chosen_param_index)}.")
 
             # get f and f_std (generalized forces)
             f, f_std = self.get_gF(
-                mpi_broadcast=False, num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks
+                mpi_broadcast=False,
+                num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+                num_mcmc_bin_blocks=num_mcmc_bin_blocks,
+                chosen_param_index=chosen_param_index,
             )
 
-            # get opt param
-            opt_param_list = self.__mcmc.opt_param_dict["opt_param_list"]
-            dc_flattened_index_list = self.__mcmc.opt_param_dict["dc_flattened_index_list"]
-            param_index = []
-            opt_param_index_dict = {}
-            for ii, opt_param in enumerate(opt_param_list):
-                if opt_J2_param and opt_param == "j2_param":
-                    new_param_index = [i for i, v in enumerate(dc_flattened_index_list) if v == ii]
-                    opt_param_index_dict[opt_param] = np.array(range(len(new_param_index)), dtype=np.int32) + len(param_index)
-                    param_index += new_param_index
-                if opt_J3_param and opt_param == "j3_matrix":
-                    new_param_index = [i for i, v in enumerate(dc_flattened_index_list) if v == ii]
-                    opt_param_index_dict[opt_param] = np.array(range(len(new_param_index)), dtype=np.int32) + len(param_index)
-                    param_index += new_param_index
-                if opt_lambda_param and opt_param == "lambda_matrix":
-                    new_param_index = [i for i, v in enumerate(dc_flattened_index_list) if v == ii]
-                    opt_param_index_dict[opt_param] = np.array(range(len(new_param_index)), dtype=np.int32) + len(param_index)
-                    param_index += new_param_index
-            param_index = np.array(param_index)
-            logger.info(f"param_index={param_index}")
-
             if mpi_rank == 0:
-                f = f[param_index]
-                f_std = f_std[param_index]
                 logger.info(f"f.shape = {f.shape}.")
                 logger.info(f"f_std.shape = {f_std.shape}.")
                 signal_to_noise_f = np.abs(f) / f_std
-                logger.info(f"Max |f| = {np.max(np.abs(f)):.3f} Ha/a.u.")
-                logger.debug(f"f_std of Max |f| = {f_std[np.argmax(np.abs(f))]:.3f} Ha/a.u.")
+                logger.info(f"Max |f| = {np.max(np.abs(f)):.3f} +- {f_std[np.argmax(np.abs(f))]:.3f} Ha/a.u.")
                 logger.info(f"Max of signal-to-noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}.")
+            else:
+                f = None
+                f_std = None
 
-            logger.info(
-                "Computing the inverse of the stochastic matrix (S+epsilon*I)^{-1}*f = X(X^T * X + epsilon*I)^{-1} * F..."
-            )
+            # """
+            logger.info("Computing the inverse of the stochastic matrix.")
+            logger.info("(S+epsilon*I)^{-1}*f = X(X^T * X + epsilon*I)^{-1} * F...")
 
             if self.__mcmc.e_L.size != 0:
                 w_L = self.__mcmc.w_L[num_mcmc_warmup_steps:]
@@ -2858,7 +2633,6 @@ class QMC:
                 e_L_split = np.array_split(e_L, num_mcmc_bin_blocks, axis=0)
                 e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in e_L_split]))
 
-                e_L = self.__mcmc.e_L[num_mcmc_warmup_steps:]
                 w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
                 w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
 
@@ -2893,23 +2667,26 @@ class QMC:
             w_L_binned = mpi_comm.reduce(w_L_binned, op=MPI.SUM, root=0)
             e_L_binned = mpi_comm.reduce(e_L_binned, op=MPI.SUM, root=0)
             O_matrix_binned = mpi_comm.reduce(O_matrix_binned, op=MPI.SUM, root=0)
-            w_L_e_L_matrix_binned = mpi_comm.reduce(w_L_e_L_binned, op=MPI.SUM, root=0)
+            w_L_e_L_binned = mpi_comm.reduce(w_L_e_L_binned, op=MPI.SUM, root=0)
             w_L_O_matrix_binned = mpi_comm.reduce(w_L_O_matrix_binned, op=MPI.SUM, root=0)
 
             if mpi_rank == 0:
                 w_L_binned = np.array(w_L_binned)
                 e_L_binned = np.array(e_L_binned)
                 O_matrix_binned = np.array(O_matrix_binned)
-                w_L_e_L_matrix_binned = np.array(w_L_e_L_matrix_binned)
+                w_L_e_L_binned = np.array(w_L_e_L_binned)
                 w_L_O_matrix_binned = np.array(w_L_O_matrix_binned)
 
-                w_L_O_matrix_binned = w_L_O_matrix_binned[:, param_index]
-                O_matrix_binned = O_matrix_binned[:, param_index]
+                # compute weighted averages
                 O_bar = np.sum(w_L_O_matrix_binned, axis=0) / np.sum(w_L_binned)
-                e_L_bar = np.sum(w_L_e_L_matrix_binned, axis=0) / np.sum(w_L_binned)
+                e_L_bar = np.sum(w_L_e_L_binned) / np.sum(w_L_binned)
 
-                X_w = ((w_L_O_matrix_binned - O_bar) / np.sum(w_L_binned)).T
+                # compute the following variables
+                #     X_{i,k}: \equiv (O_{i, k} - \bar{O}_{k}),
+                #     X_w_{i,k} \equiv w_i O_{i, k} / {\sum_{i} w_i}
+                #     F_i \equiv -2.0 * (e_L_{i} - E)
                 X = (O_matrix_binned - O_bar).T
+                X_w = ((w_L_O_matrix_binned - O_bar) / np.sum(w_L_binned)).T
                 F = -2.0 * (e_L_binned - e_L_bar).T
 
                 logger.info(f"X_w.shape = {X_w.shape}.")
@@ -2919,18 +2696,20 @@ class QMC:
                 X_T_X_w = X.T @ X_w
                 logger.info(f"X_T_X_w.shape = {X_T_X_w.shape}.")
                 X_T_X_w[np.diag_indices_from(X_T_X_w)] += epsilon
-                X_T_X_w_F = scipy.linalg.solve(X_T_X_w, F, assume_a="sym")
-                XX = X_w @ X_T_X_w_F
+                # (X^T X_w + eps*I) x = F ->solve-> x = (X^T X_w + eps*I)^{-1} F
+                X_T_X_w_inv_F = scipy.linalg.solve(X_T_X_w, F, assume_a="sym")
+                # theta = X_w (X^T X_w + eps*I)^{-1} F
+                theta = X_w @ X_T_X_w_inv_F
 
             else:
-                XX = None
+                theta = None
 
-            XX = mpi_comm.bcast(XX, root=0)
-            logger.debug(f"XX for MPI-rank={mpi_rank} is {XX}")
-            logger.debug(f"XX.shape for MPI-rank={mpi_rank} is {XX.shape}")
-            logger.info(f"max(XX) for MPI-rank={mpi_rank} is {np.max(XX)}")
+            theta = mpi_comm.bcast(theta, root=0)
+            # logger.debug(f"XX for MPI-rank={mpi_rank} is {theta}")
+            # logger.debug(f"XX.shape for MPI-rank={mpi_rank} is {theta.shape}")
+            logger.info(f"max(theta) is {np.max(theta)}")
 
-            opt_param_list = self.__mcmc.opt_param_dict["opt_param_list"]
+            dc_param_list = self.__mcmc.opt_param_dict["dc_param_list"]
             dc_shape_list = self.__mcmc.opt_param_dict["dc_shape_list"]
             dc_flattened_index_list = self.__mcmc.opt_param_dict["dc_flattened_index_list"]
 
@@ -2941,17 +2720,17 @@ class QMC:
             j3_matrix = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix
             lambda_matrix = self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix
 
-            logger.info(f"dX.shape for MPI-rank={mpi_rank} is {XX.shape}")
+            logger.info(f"dX.shape for MPI-rank={mpi_rank} is {theta.shape}")
 
-            for ii, opt_param in enumerate(opt_param_list):
-                param_shape = dc_shape_list[ii]
-                if XX.shape == (1,):
-                    dX = XX[0]
-                if opt_J2_param and opt_param == "j2_param":
-                    dX = XX[opt_param_index_dict[opt_param]].reshape(param_shape)
+            for ii, dc_param in enumerate(dc_param_list):
+                dc_shape = dc_shape_list[ii]
+                if theta.shape == (1,):
+                    dX = theta[0]
+                if opt_J2_param and dc_param == "j2_param":
+                    dX = theta[opt_param_index_dict[dc_param]].reshape(dc_shape)
                     j2_param += delta * dX
-                if opt_J3_param and opt_param == "j3_matrix":
-                    dX = XX[opt_param_index_dict[opt_param]].reshape(param_shape)
+                if opt_J3_param and dc_param == "j3_matrix":
+                    dX = theta[opt_param_index_dict[dc_param]].reshape(dc_shape)
                     # j1 part (rectanglar)
                     j3_matrix[:, -1] += delta * dX[:, -1]
                     # j3 part (square)
@@ -2962,8 +2741,8 @@ class QMC:
                         dX = dX[:, :-1]
                     j3_matrix[:, :-1] += delta * dX
                     """To be implemented. Opt only the block diagonal parts, i.e. only the J3 part."""
-                if opt_lambda_param and opt_param == "lambda_matrix":
-                    dX = XX[opt_param_index_dict[opt_param]].reshape(param_shape)
+                if opt_lambda_param and dc_param == "lambda_matrix":
+                    dX = theta[opt_param_index_dict[dc_param]].reshape(dc_shape)
                     if np.allclose(lambda_matrix, lambda_matrix.T, atol=1e-8):
                         logger.info("The lambda matrix is symmetric. Keep it while updating.")
                         dX = 1.0 / 2.0 * (dX + dX.T)
@@ -3001,9 +2780,9 @@ class QMC:
             logger.info("WF updated")
             self.__mcmc.hamiltonian_data = hamiltonian_data
 
-            logger.info(
-                f"twobody param after opt. = {self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param}"
-            )
+            # logger.warning(
+            #    f"twobody param after opt. = {self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param}"
+            # )
 
             # dump WF
             if mpi_rank == 0:
@@ -3020,418 +2799,6 @@ class QMC:
 
         # update WF opt counter
         self.__i_opt += i_opt + 1
-
-    def get_dln_WF(self, num_mcmc_warmup_steps: int = 50):
-        """Return the derivativs of ln_WF wrt variational parameters.
-
-        Args:
-            num_mcmc_warmup_steps (int): The number of warmup steps.
-
-        Return:
-            O_matrix(npt.NDArray): The matrix containing O_k = d ln Psi / dc_k,
-            where k is the flattened variational parameter index. The dimenstion
-            of O_matrix is (M, nw, k), where M is the MCMC step and nw is the walker index.
-        """
-        opt_param_dict = self.__mcmc.opt_param_dict
-
-        # opt_param_list = opt_param_dict["opt_param_list"]
-        dln_Psi_dc_list = opt_param_dict["dln_Psi_dc_list"]
-        # dc_size_list = opt_param_dict["dc_size_list"]
-        # dc_shape_list = opt_param_dict["dc_shape_list"]
-        # dc_flattened_index_list = opt_param_dict["dc_flattened_index_list"]
-
-        # here, the thrid index indicates the flattened variational parameter index.
-        O_matrix = np.empty((self.__mcmc.mcmc_counter, self.__mcmc.num_walkers, 0))
-
-        for dln_Psi_dc in dln_Psi_dc_list:
-            logger.devel(f"dln_Psi_dc.shape={dln_Psi_dc.shape}.")
-            if dln_Psi_dc.ndim == 2:  # i.e., sclar variational param.
-                dln_Psi_dc_reshaped = dln_Psi_dc.reshape(dln_Psi_dc.shape[0], dln_Psi_dc.shape[1], 1)
-            else:
-                dln_Psi_dc_reshaped = dln_Psi_dc.reshape(
-                    dln_Psi_dc.shape[0], dln_Psi_dc.shape[1], int(np.prod(dln_Psi_dc.shape[2:]))
-                )
-            O_matrix = np.concatenate((O_matrix, dln_Psi_dc_reshaped), axis=2)
-
-        logger.debug(f"O_matrix.shape = {O_matrix.shape}")
-        return O_matrix[num_mcmc_warmup_steps:]  # O.... (x....) (M, nw, L) matrix
-
-    ''' linear method
-    def get_de_L(self, num_mcmc_warmup_steps: int = 50):
-        """Return the derivativs of e_L wrt variational parameters.
-
-        Args:
-            num_mcmc_warmup_steps (int): The number of warmup steps.
-
-        Return:
-            de_L_matrix(npt.NDArray): The matrix containing de_L_k = d e_L / dc_k,
-            where k is the flattened variational parameter index. The dimenstion
-            of de_L_matrix is (M, nw, k), where M is the MCMC step and nw is the walker index.
-        """
-        opt_param_dict = self.__mcmc.opt_param_dict
-
-        # opt_param_list = opt_param_dict["opt_param_list"]
-        de_L_dc_list = opt_param_dict["de_L_dc_list"]
-        # dc_size_list = opt_param_dict["dc_size_list"]
-        # dc_shape_list = opt_param_dict["dc_shape_list"]
-        # dc_flattened_index_list = opt_param_dict["dc_flattened_index_list"]
-
-        # here, the thrid index indicates the flattened variational parameter index.
-        de_L_matrix = np.empty((self.__mcmc.mcmc_counter, self.__mcmc.num_walkers, 0))
-
-        for de_L_dc in de_L_dc_list:
-            logger.devel(f"de_L_dc.shape={de_L_dc.shape}.")
-            if de_L_dc.ndim == 2:  # i.e., sclar variational param.
-                de_L_dc_reshaped = de_L_dc.reshape(de_L_dc.shape[0], de_L_dc.shape[1], 1)
-            else:
-                de_L_dc_reshaped = de_L_dc.reshape(de_L_dc.shape[0], de_L_dc.shape[1], int(np.prod(de_L_dc.shape[2:])))
-            de_L_matrix = np.concatenate((de_L_matrix, de_L_dc_reshaped), axis=2)
-
-        logger.debug(f"de_L_matrix.shape = {de_L_matrix.shape}")
-        return de_L_matrix[num_mcmc_warmup_steps:]  # O.... (x....) (M, nw, L) matrix
-
-    '''
-
-    def get_gF(
-        self, mpi_broadcast: bool = True, num_mcmc_warmup_steps: int = 50, num_mcmc_bin_blocks: int = 10
-    ) -> tuple[npt.NDArray, npt.NDArray]:
-        """Compute the derivatives of E wrt variational parameters, a.k.a. generalized forces.
-
-        Args:
-            mpi_broadcast (bool):
-                If true, the computed S is shared among all MPI processes.
-                If false, only the root node has it.
-            num_mcmc_warmup_steps (int): The number of warmup steps.
-            num_mcmc_bin_blocks (int): the number of binning blocks
-
-        Return:
-            tuple[npt.NDArray, npt.NDArray]: mean and std of generalized forces.
-            Dim. is 1D vector with L elements, where L is the number of flattened
-            variational parameters.
-        """
-        logger.info("Computing the generalized force vector f...")
-        if self.__mcmc.e_L.size != 0:
-            w_L = self.__mcmc.w_L[num_mcmc_warmup_steps:]
-            w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-            w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
-
-            e_L = self.__mcmc.e_L[num_mcmc_warmup_steps:]
-            w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
-            w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
-
-            O_matrix = self.get_dln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps)
-            w_L_O_matrix_split = np.array_split(np.einsum("iw,iwj->iwj", w_L, O_matrix), num_mcmc_bin_blocks, axis=0)
-            w_L_O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in w_L_O_matrix_split])
-            w_L_O_matrix_binned_shape = (
-                w_L_O_matrix_ave.shape[0] * w_L_O_matrix_ave.shape[1],
-                w_L_O_matrix_ave.shape[2],
-            )
-            w_L_O_matrix_binned = list(w_L_O_matrix_ave.reshape(w_L_O_matrix_binned_shape))
-
-            logger.debug(f"O_matrix.shape = {O_matrix.shape}")
-            logger.debug(f"w_L_O_matrix_ave.shape = {w_L_O_matrix_ave.shape}")
-            logger.debug(f"w_L_O_matrix_binned.shape = {np.array(w_L_O_matrix_binned).shape}")
-
-            e_L_O_matrix = np.einsum("iw,iwj->iwj", e_L, O_matrix)
-            w_L_e_L_O_matrix_split = np.array_split(np.einsum("iw,iwj->iwj", w_L, e_L_O_matrix), num_mcmc_bin_blocks, axis=0)
-            w_L_e_L_O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in w_L_e_L_O_matrix_split])
-            w_L_e_L_O_matrix_binned_shape = (
-                w_L_e_L_O_matrix_ave.shape[0] * w_L_e_L_O_matrix_ave.shape[1],
-                w_L_e_L_O_matrix_ave.shape[2],
-            )
-            w_L_e_L_O_matrix_binned = list(w_L_e_L_O_matrix_ave.reshape(w_L_e_L_O_matrix_binned_shape))
-
-            logger.debug(f"e_L_O_matrix.shape = {e_L_O_matrix.shape}")
-            logger.debug(f"w_L_e_L_O_matrix_ave.shape = {w_L_e_L_O_matrix_ave.shape}")
-            logger.debug(f"w_L_e_L_O_matrix_binned.shape = {np.array(w_L_e_L_O_matrix_binned).shape}")
-        else:
-            w_L_binned = []
-            w_L_e_L_binned = []
-            w_L_O_matrix_binned = []
-            w_L_e_L_O_matrix_binned = []
-
-        w_L_binned = mpi_comm.reduce(w_L_binned, op=MPI.SUM, root=0)
-        w_L_e_L_binned = mpi_comm.reduce(w_L_e_L_binned, op=MPI.SUM, root=0)
-        w_L_O_matrix_binned = mpi_comm.reduce(w_L_O_matrix_binned, op=MPI.SUM, root=0)
-        w_L_e_L_O_matrix_binned = mpi_comm.reduce(w_L_e_L_O_matrix_binned, op=MPI.SUM, root=0)
-
-        if mpi_rank == 0:
-            w_L_binned = np.array(w_L_binned)
-            w_L_e_L_binned = np.array(w_L_e_L_binned)
-            w_L_O_matrix_binned = np.array(w_L_O_matrix_binned)
-            w_L_e_L_O_matrix_binned = np.array(w_L_e_L_O_matrix_binned)
-
-            M = w_L_binned.size
-            logger.info(f"Total number of binned samples = {M}")
-
-            eL_O_jn = np.array(
-                [
-                    (np.sum(w_L_e_L_O_matrix_binned, axis=0) - w_L_e_L_O_matrix_binned[j])
-                    / (np.sum(w_L_binned) - w_L_binned[j])
-                    for j in range(M)
-                ]
-            )
-            logger.debug(f"eL_O_jn = {eL_O_jn}")
-            logger.debug(f"eL_O_jn.shape = {eL_O_jn.shape}")
-
-            eL_jn = np.array(
-                [(np.sum(w_L_e_L_binned, axis=0) - w_L_e_L_binned[j]) / (np.sum(w_L_binned) - w_L_binned[j]) for j in range(M)]
-            )
-            logger.debug(f"eL_jn = {eL_jn}")
-            logger.debug(f"eL_jn.shape = {eL_jn.shape}")
-
-            O_jn = np.array(
-                [
-                    (np.sum(w_L_O_matrix_binned, axis=0) - w_L_O_matrix_binned[j]) / (np.sum(w_L_binned) - w_L_binned[j])
-                    for j in range(M)
-                ]
-            )
-
-            logger.debug(f"O_jn = {O_jn}")
-            logger.debug(f"O_jn.shape = {O_jn.shape}")
-
-            eL_barO_jn = np.einsum("i,ij->ij", eL_jn, O_jn)
-
-            logger.debug(f"eL_barO_jn = {eL_barO_jn}")
-            logger.debug(f"eL_barO_jn.shape = {eL_barO_jn.shape}")
-
-            generalized_force_mean = np.average(-2.0 * (eL_O_jn - eL_barO_jn), axis=0)
-            generalized_force_std = np.sqrt(M - 1) * np.std(-2.0 * (eL_O_jn - eL_barO_jn), axis=0)
-
-            logger.devel(f"generalized_force_mean = {generalized_force_mean}")
-            logger.devel(f"generalized_force_std = {generalized_force_std}")
-
-            logger.info(f"generalized_force_mean.shape = {generalized_force_mean.shape}")
-            logger.info(f"generalized_force_std.shape = {generalized_force_std.shape}")
-
-        else:
-            generalized_force_mean = None
-            generalized_force_std = None
-
-        if mpi_broadcast:
-            # comm.Bcast(generalized_force_mean, root=0)
-            # comm.Bcast(generalized_force_std, root=0)
-            generalized_force_mean = mpi_comm.bcast(generalized_force_mean, root=0)
-            generalized_force_std = mpi_comm.bcast(generalized_force_std, root=0)
-
-        return (
-            generalized_force_mean,
-            generalized_force_std,
-        )  # (L vector, L vector)
-
-    def get_S(
-        self,
-        mpi_broadcast: int = False,
-        num_mcmc_warmup_steps: int = 50,
-        num_mcmc_bin_blocks: int = 10,
-    ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
-        """Compute the preconditioning matrix S.
-
-        Args:
-            mpi_broadcast (bool):
-                If true, the computed S is shared among all MPI processes.
-                If false, only the root node has it.
-            num_mcmc_warmup_steps (int): The number of warmup steps.
-            num_mcmc_bin_blocks (int): the number of binning blocks
-
-        Return:
-            S_matrix (npt.NDArray):
-                The mean and std of the preconditioning matrix S.
-                dim is (L, L) for both, where L is the number of variational parameter.
-                L indicates the flattened variational parameter index.
-        """
-        logger.info("Computing the stochastic matrix S...")
-
-        if self.__mcmc.e_L.size != 0:
-            w_L = self.__mcmc.w_L[num_mcmc_warmup_steps:]
-            w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-            w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
-
-            O_matrix = self.get_dln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps)
-            O_matrix_split = np.array_split(O_matrix, num_mcmc_bin_blocks, axis=0)
-            O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in O_matrix_split])
-            O_matrix_binned_shape = (
-                O_matrix_ave.shape[0] * O_matrix_ave.shape[1],
-                O_matrix_ave.shape[2],
-            )
-            O_matrix_binned = list(O_matrix_ave.reshape(O_matrix_binned_shape))
-
-            w_L_O_matrix_split = np.array_split(np.einsum("iw,iwj->iwj", w_L, O_matrix), num_mcmc_bin_blocks, axis=0)
-            w_L_O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in w_L_O_matrix_split])
-            w_L_O_matrix_binned_shape = (
-                w_L_O_matrix_ave.shape[0] * w_L_O_matrix_ave.shape[1],
-                w_L_O_matrix_ave.shape[2],
-            )
-            w_L_O_matrix_binned = list(w_L_O_matrix_ave.reshape(w_L_O_matrix_binned_shape))
-
-        else:
-            w_L_binned = []
-            O_matrix_binned = []
-            w_L_O_matrix_binned = []
-
-        w_L_binned = mpi_comm.reduce(w_L_binned, op=MPI.SUM, root=0)
-        O_matrix_binned = mpi_comm.reduce(O_matrix_binned, op=MPI.SUM, root=0)
-        w_L_O_matrix_binned = mpi_comm.reduce(w_L_O_matrix_binned, op=MPI.SUM, root=0)
-
-        if mpi_rank == 0:
-            w_L_binned = np.array(w_L_binned)
-            O_matrix_binned = np.array(O_matrix_binned)
-            w_L_O_matrix_binned = np.array(w_L_O_matrix_binned)
-            logger.info(f"w_L_binned.shape = {w_L_binned.shape}")
-            logger.info(f"O_matrix_binned.shape = {O_matrix_binned.shape}")
-            logger.info(f"w_L_O_matrix_binned.shape = {w_L_O_matrix_binned.shape}")
-            # S_mean_old = np.array(np.cov(O_matrix_binned, bias=True, rowvar=False))  # old
-            O_bar = np.sum(w_L_O_matrix_binned, axis=0) / np.sum(w_L_binned)
-            w_O_bar = np.einsum("i,k->ik", w_L_binned, O_bar)
-            logger.info(f"O_bar.shape = {O_bar.shape}")
-            logger.info(f"w_O_bar.shape = {w_O_bar.shape}")
-            S_mean = (
-                (w_L_O_matrix_binned - w_O_bar).T @ (O_matrix_binned - O_bar) / np.sum(w_L_binned)
-            )  # weighted variance-covariance matrix
-            S_std = np.zeros(S_mean.size)
-            # logger.info(f"np.max(np.abs(S_mean - S_mean_old)) = {np.max(np.abs(S_mean - S_mean_old))}.")
-            logger.info(f"S_mean.shape = {S_mean.shape}")
-            logger.debug(f"S_mean.is_nan for MPI-rank={mpi_rank} is {np.isnan(S_mean).any()}")
-            logger.debug(f"S_mean.shape for MPI-rank={mpi_rank} is {S_mean.shape}")
-        else:
-            S_mean = None
-            S_std = None
-
-        if mpi_broadcast:
-            # comm.Bcast(S_mean, root=0)
-            # comm.Bcast(S_std, root=0)
-            S_mean = mpi_comm.bcast(S_mean, root=0)
-            S_std = mpi_comm.bcast(S_std, root=0)
-
-        return (S_mean, S_std)  # (S_mu,nu ...., var(S)_mu,nu....) (L*L matrix, L*L matrix)
-
-    ''' linear method
-    def get_H(
-        self,
-        mpi_broadcast: int = False,
-        num_mcmc_warmup_steps: int = 50,
-        num_mcmc_bin_blocks: int = 10,
-    ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
-        """Compute the surrogate Hessian matrix H.
-
-        Args:
-            mpi_broadcast (bool):
-                If true, the computed H is shared among all MPI processes.
-                If false, only the root node has it.
-            num_mcmc_warmup_steps (int): The number of warmup steps.
-            num_mcmc_bin_blocks (int): the number of binning blocks
-
-        Return:
-            H_matrix (npt.NDArray):
-                The mean and std of the surrogate matrix S.
-                dim is (L, L) for both, where L is the number of variational parameter.
-                L indicates the flattened variational parameter index.
-        """
-        logger.info("Computing the stochastic matrix S...")
-
-        if self.__mcmc.e_L.size != 0:
-            w_L = self.__mcmc.w_L[num_mcmc_warmup_steps:]
-            w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-            w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
-
-            O_matrix = self.get_dln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps)
-            O_matrix_split = np.array_split(O_matrix, num_mcmc_bin_blocks, axis=0)
-            O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in O_matrix_split])
-            O_matrix_binned_shape = (
-                O_matrix_ave.shape[0] * O_matrix_ave.shape[1],
-                O_matrix_ave.shape[2],
-            )
-            O_matrix_binned = list(O_matrix_ave.reshape(O_matrix_binned_shape))
-
-            w_L_O_matrix_split = np.array_split(np.einsum("iw,iwj->iwj", w_L, O_matrix), num_mcmc_bin_blocks, axis=0)
-            w_L_O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in w_L_O_matrix_split])
-            w_L_O_matrix_binned_shape = (
-                w_L_O_matrix_ave.shape[0] * w_L_O_matrix_ave.shape[1],
-                w_L_O_matrix_ave.shape[2],
-            )
-            w_L_O_matrix_binned = list(w_L_O_matrix_ave.reshape(w_L_O_matrix_binned_shape))
-
-            e_L = self.__mcmc.e_L[num_mcmc_warmup_steps:]
-            e_L_split = np.array_split(e_L, num_mcmc_bin_blocks, axis=0)
-            e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in e_L_split]))
-
-            e_L_O_matrix_split = np.array_split(np.einsum("iw, iwj -> iwj", e_L, O_matrix), num_mcmc_bin_blocks, axis=0)
-            e_L_O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in e_L_O_matrix_split])
-            e_L_O_matrix_binned_shape = (
-                e_L_O_matrix_ave.shape[0] * e_L_O_matrix_ave.shape[1],
-                e_L_O_matrix_ave.shape[2],
-            )
-            e_L_O_matrix_binned = list(e_L_O_matrix_ave.reshape(e_L_O_matrix_binned_shape))
-
-            de_L_matrix = self.get_de_L(num_mcmc_warmup_steps=num_mcmc_warmup_steps)
-            de_L_matrix_split = np.array_split(de_L_matrix, num_mcmc_bin_blocks, axis=0)
-            de_L_matrix_ave = np.array([np.mean(arr, axis=0) for arr in de_L_matrix_split])
-            de_L_matrix_binned_shape = (
-                de_L_matrix_ave.shape[0] * de_L_matrix_ave.shape[1],
-                de_L_matrix_ave.shape[2],
-            )
-            de_L_matrix_binned = list(de_L_matrix_ave.reshape(de_L_matrix_binned_shape))
-
-        else:
-            w_L_binned = []
-            e_L_binned = []
-            O_matrix_binned = []
-            e_L_O_matrix_binned = []
-            w_L_O_matrix_binned = []
-            de_L_matrix_binned = []
-
-        w_L_binned = mpi_comm.reduce(w_L_binned, op=MPI.SUM, root=0)
-        e_L_binned = mpi_comm.reduce(e_L_binned, op=MPI.SUM, root=0)
-        O_matrix_binned = mpi_comm.reduce(O_matrix_binned, op=MPI.SUM, root=0)
-        e_L_O_matrix_binned = mpi_comm.reduce(e_L_O_matrix_binned, op=MPI.SUM, root=0)
-        w_L_O_matrix_binned = mpi_comm.reduce(w_L_O_matrix_binned, op=MPI.SUM, root=0)
-        de_L_matrix_binned = mpi_comm.reduce(de_L_matrix_binned, op=MPI.SUM, root=0)
-
-        if mpi_rank == 0:
-            w_L_binned = np.array(w_L_binned)
-            e_L_binned = np.array(e_L_binned)
-            O_matrix_binned = np.array(O_matrix_binned)
-            e_L_O_matrix_binned = np.array(e_L_O_matrix_binned)
-            w_L_O_matrix_binned = np.array(w_L_O_matrix_binned)
-            de_L_matrix_binned = np.array(de_L_matrix_binned)
-            logger.info(f"w_L_binned.shape = {w_L_binned.shape}")
-            logger.info(f"e_L_binned.shape = {e_L_binned.shape}")
-            logger.info(f"O_matrix_binned.shape = {O_matrix_binned.shape}")
-            logger.info(f"e_L_O_matrix_binned.shape = {e_L_O_matrix_binned.shape}")
-            logger.info(f"w_L_O_matrix_binned.shape = {w_L_O_matrix_binned.shape}")
-            logger.info(f"de_L_matrix_binned.shape = {de_L_matrix_binned.shape}")
-            # S_mean = np.array(np.cov(O_matrix_binned, bias=True, rowvar=False)) # old
-            O_bar = np.sum(w_L_O_matrix_binned, axis=0) / np.sum(w_L_binned, axis=0)
-            de_L_bar = np.sum(de_L_matrix_binned, axis=0) / np.sum(w_L_binned, axis=0)
-            e_L_O_bar = np.einsum("i,k->ik", e_L_binned, O_bar)
-            w_O_bar = np.einsum("i,k->ik", w_L_binned, O_bar)
-            logger.info(f"O_bar.shape = {O_bar.shape}")
-            logger.info(f"e_L_O_bar.shape = {e_L_O_bar.shape}")
-            logger.info(f"w_O_bar.shape = {w_O_bar.shape}")
-            B_mean = (
-                (w_L_O_matrix_binned - w_O_bar).T @ (de_L_matrix_binned - de_L_bar) / np.sum(w_L_binned)
-            )  # weighted variance-covariance matrix
-            K_mean = (
-                (w_L_O_matrix_binned - w_O_bar).T @ (e_L_O_matrix_binned - e_L_O_bar) / np.sum(w_L_binned)
-            )  # weighted variance-covariance matrix
-            H_mean = B_mean + K_mean
-            H_std = np.zeros(H_mean.size)
-            logger.info(f"H_mean.shape = {H_mean.shape}")
-            logger.debug(f"H_mean.is_nan for MPI-rank={mpi_rank} is {np.isnan(H_mean).any()}")
-            logger.debug(f"H_mean.shape for MPI-rank={mpi_rank} is {H_mean.shape}")
-        else:
-            H_mean = None
-            H_std = None
-
-        if mpi_broadcast:
-            # comm.Bcast(S_mean, root=0)
-            # comm.Bcast(S_std, root=0)
-            H_mean = mpi_comm.bcast(H_mean, root=0)
-            H_std = mpi_comm.bcast(H_std, root=0)
-
-        return (H_mean, H_std)  # (H_mu,nu ...., var(H)_mu,nu....) (L*L matrix, L*L matrix)
-
-    '''
 
     def get_E(
         self,
@@ -3671,6 +3038,677 @@ class QMC:
 
         return (force_mean, force_std)
 
+    def get_dln_WF(self, num_mcmc_warmup_steps: int = 50, chosen_param_index: list = None):
+        """Return the derivativs of ln_WF wrt variational parameters.
+
+        Args:
+            num_mcmc_warmup_steps (int): The number of warmup steps.
+            chosen_param_index (list):
+                The chosen parameter index to compute the generalized forces.
+                if None, all parameters are used.
+
+        Return:
+            O_matrix(npt.NDArray): The matrix containing O_k = d ln Psi / dc_k,
+            where k is the flattened variational parameter index. The dimenstion
+            of O_matrix is (M, nw, k), where M is the MCMC step and nw is the walker index.
+        """
+        dln_Psi_dc_list = self.__mcmc.opt_param_dict["dln_Psi_dc_list"]
+
+        # here, the thrid index indicates the flattened variational parameter index.
+        O_matrix = np.empty((self.__mcmc.mcmc_counter, self.__mcmc.num_walkers, 0))
+
+        for dln_Psi_dc in dln_Psi_dc_list:
+            logger.devel(f"dln_Psi_dc.shape={dln_Psi_dc.shape}.")
+            if dln_Psi_dc.ndim == 2:  # i.e., sclar variational param.
+                dln_Psi_dc_reshaped = dln_Psi_dc.reshape(dln_Psi_dc.shape[0], dln_Psi_dc.shape[1], 1)
+            else:
+                dln_Psi_dc_reshaped = dln_Psi_dc.reshape(
+                    dln_Psi_dc.shape[0], dln_Psi_dc.shape[1], int(np.prod(dln_Psi_dc.shape[2:]))
+                )
+            O_matrix = np.concatenate((O_matrix, dln_Psi_dc_reshaped), axis=2)
+
+        logger.debug(f"O_matrix.shape = {O_matrix.shape}")
+        if chosen_param_index is None:
+            O_matrix_chosen = O_matrix[num_mcmc_warmup_steps:]
+        else:
+            O_matrix_chosen = O_matrix[num_mcmc_warmup_steps:, :, chosen_param_index]  # O.... (x....) (M, nw, L) matrix
+        logger.debug(f"O_matrix_chosen.shape = {O_matrix_chosen.shape}")
+        return O_matrix_chosen
+
+    def get_gF(
+        self,
+        mpi_broadcast: bool = True,
+        num_mcmc_warmup_steps: int = 50,
+        num_mcmc_bin_blocks: int = 10,
+        chosen_param_index: list = None,
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """Compute the derivatives of E wrt variational parameters, a.k.a. generalized forces.
+
+        Args:
+            mpi_broadcast (bool):
+                If true, the computed S is shared among all MPI processes.
+                If false, only the root node has it.
+            num_mcmc_warmup_steps (int): The number of warmup steps.
+            num_mcmc_bin_blocks (int): the number of binning blocks
+            chosen_param_index (npt.NDArray):
+                The chosen parameter index to compute the generalized forces.
+                If None, all parameters are used.
+
+        Return:
+            tuple[npt.NDArray, npt.NDArray]: mean and std of generalized forces.
+            Dim. is 1D vector with L elements, where L is the number of flattened
+            variational parameters.
+        """
+        logger.info("Computing the generalized force vector f...")
+        if self.__mcmc.e_L.size != 0:
+            w_L = self.__mcmc.w_L[num_mcmc_warmup_steps:]
+            w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
+            w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
+
+            e_L = self.__mcmc.e_L[num_mcmc_warmup_steps:]
+            w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
+            w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
+
+            O_matrix = self.get_dln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps, chosen_param_index=chosen_param_index)
+            w_L_O_matrix_split = np.array_split(np.einsum("iw,iwj->iwj", w_L, O_matrix), num_mcmc_bin_blocks, axis=0)
+            w_L_O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in w_L_O_matrix_split])
+            w_L_O_matrix_binned_shape = (
+                w_L_O_matrix_ave.shape[0] * w_L_O_matrix_ave.shape[1],
+                w_L_O_matrix_ave.shape[2],
+            )
+            w_L_O_matrix_binned = list(w_L_O_matrix_ave.reshape(w_L_O_matrix_binned_shape))
+
+            logger.debug(f"O_matrix.shape = {O_matrix.shape}")
+            logger.debug(f"w_L_O_matrix_ave.shape = {w_L_O_matrix_ave.shape}")
+            logger.debug(f"w_L_O_matrix_binned.shape = {np.array(w_L_O_matrix_binned).shape}")
+
+            e_L_O_matrix = np.einsum("iw,iwj->iwj", e_L, O_matrix)
+            w_L_e_L_O_matrix_split = np.array_split(np.einsum("iw,iwj->iwj", w_L, e_L_O_matrix), num_mcmc_bin_blocks, axis=0)
+            w_L_e_L_O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in w_L_e_L_O_matrix_split])
+            w_L_e_L_O_matrix_binned_shape = (
+                w_L_e_L_O_matrix_ave.shape[0] * w_L_e_L_O_matrix_ave.shape[1],
+                w_L_e_L_O_matrix_ave.shape[2],
+            )
+            w_L_e_L_O_matrix_binned = list(w_L_e_L_O_matrix_ave.reshape(w_L_e_L_O_matrix_binned_shape))
+
+            logger.debug(f"e_L_O_matrix.shape = {e_L_O_matrix.shape}")
+            logger.debug(f"w_L_e_L_O_matrix_ave.shape = {w_L_e_L_O_matrix_ave.shape}")
+            logger.debug(f"w_L_e_L_O_matrix_binned.shape = {np.array(w_L_e_L_O_matrix_binned).shape}")
+        else:
+            w_L_binned = []
+            w_L_e_L_binned = []
+            w_L_O_matrix_binned = []
+            w_L_e_L_O_matrix_binned = []
+
+        w_L_binned = mpi_comm.reduce(w_L_binned, op=MPI.SUM, root=0)
+        w_L_e_L_binned = mpi_comm.reduce(w_L_e_L_binned, op=MPI.SUM, root=0)
+        w_L_O_matrix_binned = mpi_comm.reduce(w_L_O_matrix_binned, op=MPI.SUM, root=0)
+        w_L_e_L_O_matrix_binned = mpi_comm.reduce(w_L_e_L_O_matrix_binned, op=MPI.SUM, root=0)
+
+        if mpi_rank == 0:
+            w_L_binned = np.array(w_L_binned)
+            w_L_e_L_binned = np.array(w_L_e_L_binned)
+            w_L_O_matrix_binned = np.array(w_L_O_matrix_binned)
+            w_L_e_L_O_matrix_binned = np.array(w_L_e_L_O_matrix_binned)
+
+            M = w_L_binned.size
+            logger.info(f"Total number of binned samples = {M}")
+
+            eL_O_jn = np.array(
+                [
+                    (np.sum(w_L_e_L_O_matrix_binned, axis=0) - w_L_e_L_O_matrix_binned[j])
+                    / (np.sum(w_L_binned) - w_L_binned[j])
+                    for j in range(M)
+                ]
+            )
+            logger.debug(f"eL_O_jn = {eL_O_jn}")
+            logger.debug(f"eL_O_jn.shape = {eL_O_jn.shape}")
+
+            eL_jn = np.array(
+                [(np.sum(w_L_e_L_binned, axis=0) - w_L_e_L_binned[j]) / (np.sum(w_L_binned) - w_L_binned[j]) for j in range(M)]
+            )
+            logger.debug(f"eL_jn = {eL_jn}")
+            logger.debug(f"eL_jn.shape = {eL_jn.shape}")
+
+            O_jn = np.array(
+                [
+                    (np.sum(w_L_O_matrix_binned, axis=0) - w_L_O_matrix_binned[j]) / (np.sum(w_L_binned) - w_L_binned[j])
+                    for j in range(M)
+                ]
+            )
+
+            logger.debug(f"O_jn = {O_jn}")
+            logger.debug(f"O_jn.shape = {O_jn.shape}")
+
+            eL_barO_jn = np.einsum("i,ij->ij", eL_jn, O_jn)
+
+            logger.debug(f"eL_barO_jn = {eL_barO_jn}")
+            logger.debug(f"eL_barO_jn.shape = {eL_barO_jn.shape}")
+
+            generalized_force_mean = np.average(-2.0 * (eL_O_jn - eL_barO_jn), axis=0)
+            generalized_force_std = np.sqrt(M - 1) * np.std(-2.0 * (eL_O_jn - eL_barO_jn), axis=0)
+
+            logger.devel(f"generalized_force_mean = {generalized_force_mean}")
+            logger.devel(f"generalized_force_std = {generalized_force_std}")
+
+            logger.debug(f"generalized_force_mean.shape = {generalized_force_mean.shape}")
+            logger.debug(f"generalized_force_std.shape = {generalized_force_std.shape}")
+
+        else:
+            generalized_force_mean = None
+            generalized_force_std = None
+
+        if mpi_broadcast:
+            # comm.Bcast(generalized_force_mean, root=0)
+            # comm.Bcast(generalized_force_std, root=0)
+            generalized_force_mean = mpi_comm.bcast(generalized_force_mean, root=0)
+            generalized_force_std = mpi_comm.bcast(generalized_force_std, root=0)
+
+        return (
+            generalized_force_mean,
+            generalized_force_std,
+        )  # (L vector, L vector)
+
+    ''' linear method (it works, but very slow.)
+    def get_de_L(self, num_mcmc_warmup_steps: int = 50):
+        """Return the derivativs of e_L wrt variational parameters.
+
+        Args:
+            num_mcmc_warmup_steps (int): The number of warmup steps.
+
+        Return:
+            de_L_matrix(npt.NDArray): The matrix containing de_L_k = d e_L / dc_k,
+            where k is the flattened variational parameter index. The dimenstion
+            of de_L_matrix is (M, nw, k), where M is the MCMC step and nw is the walker index.
+        """
+        opt_param_dict = self.__mcmc.opt_param_dict
+
+        # dc_param_list = opt_param_dict["dc_param_list"]
+        de_L_dc_list = opt_param_dict["de_L_dc_list"]
+        # dc_size_list = opt_param_dict["dc_size_list"]
+        # dc_shape_list = opt_param_dict["dc_shape_list"]
+        # dc_flattened_index_list = opt_param_dict["dc_flattened_index_list"]
+
+        # here, the thrid index indicates the flattened variational parameter index.
+        de_L_matrix = np.empty((self.__mcmc.mcmc_counter, self.__mcmc.num_walkers, 0))
+
+        for de_L_dc in de_L_dc_list:
+            logger.devel(f"de_L_dc.shape={de_L_dc.shape}.")
+            if de_L_dc.ndim == 2:  # i.e., sclar variational param.
+                de_L_dc_reshaped = de_L_dc.reshape(de_L_dc.shape[0], de_L_dc.shape[1], 1)
+            else:
+                de_L_dc_reshaped = de_L_dc.reshape(de_L_dc.shape[0], de_L_dc.shape[1], int(np.prod(de_L_dc.shape[2:])))
+            de_L_matrix = np.concatenate((de_L_matrix, de_L_dc_reshaped), axis=2)
+
+        logger.debug(f"de_L_matrix.shape = {de_L_matrix.shape}")
+        return de_L_matrix[num_mcmc_warmup_steps:]  # O.... (x....) (M, nw, L) matrix
+
+    def get_H(
+        self,
+        mpi_broadcast: int = False,
+        num_mcmc_warmup_steps: int = 50,
+        num_mcmc_bin_blocks: int = 10,
+    ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+        """Compute the surrogate Hessian matrix H.
+
+        Args:
+            mpi_broadcast (bool):
+                If true, the computed H is shared among all MPI processes.
+                If false, only the root node has it.
+            num_mcmc_warmup_steps (int): The number of warmup steps.
+            num_mcmc_bin_blocks (int): the number of binning blocks
+
+        Return:
+            H_matrix (npt.NDArray):
+                The mean and std of the surrogate matrix S.
+                dim is (L, L) for both, where L is the number of variational parameter.
+                L indicates the flattened variational parameter index.
+        """
+        logger.info("Computing the stochastic matrix S...")
+
+        if self.__mcmc.e_L.size != 0:
+            w_L = self.__mcmc.w_L[num_mcmc_warmup_steps:]
+            w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
+            w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
+
+            O_matrix = self.get_dln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps)
+            O_matrix_split = np.array_split(O_matrix, num_mcmc_bin_blocks, axis=0)
+            O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in O_matrix_split])
+            O_matrix_binned_shape = (
+                O_matrix_ave.shape[0] * O_matrix_ave.shape[1],
+                O_matrix_ave.shape[2],
+            )
+            O_matrix_binned = list(O_matrix_ave.reshape(O_matrix_binned_shape))
+
+            w_L_O_matrix_split = np.array_split(np.einsum("iw,iwj->iwj", w_L, O_matrix), num_mcmc_bin_blocks, axis=0)
+            w_L_O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in w_L_O_matrix_split])
+            w_L_O_matrix_binned_shape = (
+                w_L_O_matrix_ave.shape[0] * w_L_O_matrix_ave.shape[1],
+                w_L_O_matrix_ave.shape[2],
+            )
+            w_L_O_matrix_binned = list(w_L_O_matrix_ave.reshape(w_L_O_matrix_binned_shape))
+
+            e_L = self.__mcmc.e_L[num_mcmc_warmup_steps:]
+            e_L_split = np.array_split(e_L, num_mcmc_bin_blocks, axis=0)
+            e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in e_L_split]))
+
+            e_L_O_matrix_split = np.array_split(np.einsum("iw, iwj -> iwj", e_L, O_matrix), num_mcmc_bin_blocks, axis=0)
+            e_L_O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in e_L_O_matrix_split])
+            e_L_O_matrix_binned_shape = (
+                e_L_O_matrix_ave.shape[0] * e_L_O_matrix_ave.shape[1],
+                e_L_O_matrix_ave.shape[2],
+            )
+            e_L_O_matrix_binned = list(e_L_O_matrix_ave.reshape(e_L_O_matrix_binned_shape))
+
+            de_L_matrix = self.get_de_L(num_mcmc_warmup_steps=num_mcmc_warmup_steps)
+            de_L_matrix_split = np.array_split(de_L_matrix, num_mcmc_bin_blocks, axis=0)
+            de_L_matrix_ave = np.array([np.mean(arr, axis=0) for arr in de_L_matrix_split])
+            de_L_matrix_binned_shape = (
+                de_L_matrix_ave.shape[0] * de_L_matrix_ave.shape[1],
+                de_L_matrix_ave.shape[2],
+            )
+            de_L_matrix_binned = list(de_L_matrix_ave.reshape(de_L_matrix_binned_shape))
+
+        else:
+            w_L_binned = []
+            e_L_binned = []
+            O_matrix_binned = []
+            e_L_O_matrix_binned = []
+            w_L_O_matrix_binned = []
+            de_L_matrix_binned = []
+
+        w_L_binned = mpi_comm.reduce(w_L_binned, op=MPI.SUM, root=0)
+        e_L_binned = mpi_comm.reduce(e_L_binned, op=MPI.SUM, root=0)
+        O_matrix_binned = mpi_comm.reduce(O_matrix_binned, op=MPI.SUM, root=0)
+        e_L_O_matrix_binned = mpi_comm.reduce(e_L_O_matrix_binned, op=MPI.SUM, root=0)
+        w_L_O_matrix_binned = mpi_comm.reduce(w_L_O_matrix_binned, op=MPI.SUM, root=0)
+        de_L_matrix_binned = mpi_comm.reduce(de_L_matrix_binned, op=MPI.SUM, root=0)
+
+        if mpi_rank == 0:
+            w_L_binned = np.array(w_L_binned)
+            e_L_binned = np.array(e_L_binned)
+            O_matrix_binned = np.array(O_matrix_binned)
+            e_L_O_matrix_binned = np.array(e_L_O_matrix_binned)
+            w_L_O_matrix_binned = np.array(w_L_O_matrix_binned)
+            de_L_matrix_binned = np.array(de_L_matrix_binned)
+            logger.info(f"w_L_binned.shape = {w_L_binned.shape}")
+            logger.info(f"e_L_binned.shape = {e_L_binned.shape}")
+            logger.info(f"O_matrix_binned.shape = {O_matrix_binned.shape}")
+            logger.info(f"e_L_O_matrix_binned.shape = {e_L_O_matrix_binned.shape}")
+            logger.info(f"w_L_O_matrix_binned.shape = {w_L_O_matrix_binned.shape}")
+            logger.info(f"de_L_matrix_binned.shape = {de_L_matrix_binned.shape}")
+            # S_mean = np.array(np.cov(O_matrix_binned, bias=True, rowvar=False)) # old
+            O_bar = np.sum(w_L_O_matrix_binned, axis=0) / np.sum(w_L_binned, axis=0)
+            de_L_bar = np.sum(de_L_matrix_binned, axis=0) / np.sum(w_L_binned, axis=0)
+            e_L_O_bar = np.einsum("i,k->ik", e_L_binned, O_bar)
+            w_O_bar = np.einsum("i,k->ik", w_L_binned, O_bar)
+            logger.info(f"O_bar.shape = {O_bar.shape}")
+            logger.info(f"e_L_O_bar.shape = {e_L_O_bar.shape}")
+            logger.info(f"w_O_bar.shape = {w_O_bar.shape}")
+            B_mean = (
+                (w_L_O_matrix_binned - w_O_bar).T @ (de_L_matrix_binned - de_L_bar) / np.sum(w_L_binned)
+            )  # weighted variance-covariance matrix
+            K_mean = (
+                (w_L_O_matrix_binned - w_O_bar).T @ (e_L_O_matrix_binned - e_L_O_bar) / np.sum(w_L_binned)
+            )  # weighted variance-covariance matrix
+            H_mean = B_mean + K_mean
+            H_std = np.zeros(H_mean.size)
+            logger.info(f"H_mean.shape = {H_mean.shape}")
+            logger.debug(f"H_mean.is_nan for MPI-rank={mpi_rank} is {np.isnan(H_mean).any()}")
+            logger.debug(f"H_mean.shape for MPI-rank={mpi_rank} is {H_mean.shape}")
+        else:
+            H_mean = None
+            H_std = None
+
+        if mpi_broadcast:
+            # comm.Bcast(S_mean, root=0)
+            # comm.Bcast(S_std, root=0)
+            H_mean = mpi_comm.bcast(H_mean, root=0)
+            H_std = mpi_comm.bcast(H_std, root=0)
+
+        return (H_mean, H_std)  # (H_mu,nu ...., var(H)_mu,nu....) (L*L matrix, L*L matrix)
+
+    '''
+
+    ''' SR method (old)
+    def get_S(
+        self,
+        mpi_broadcast: int = False,
+        num_mcmc_warmup_steps: int = 50,
+        num_mcmc_bin_blocks: int = 10,
+    ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+        """Compute the preconditioning matrix S.
+
+        Args:
+            mpi_broadcast (bool):
+                If true, the computed S is shared among all MPI processes.
+                If false, only the root node has it.
+            num_mcmc_warmup_steps (int): The number of warmup steps.
+            num_mcmc_bin_blocks (int): the number of binning blocks
+
+        Return:
+            S_matrix (npt.NDArray):
+                The mean and std of the preconditioning matrix S.
+                dim is (L, L) for both, where L is the number of variational parameter.
+                L indicates the flattened variational parameter index.
+        """
+        logger.info("Computing the stochastic matrix S...")
+
+        if self.__mcmc.e_L.size != 0:
+            w_L = self.__mcmc.w_L[num_mcmc_warmup_steps:]
+            w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
+            w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
+
+            O_matrix = self.get_dln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps)
+            O_matrix_split = np.array_split(O_matrix, num_mcmc_bin_blocks, axis=0)
+            O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in O_matrix_split])
+            O_matrix_binned_shape = (
+                O_matrix_ave.shape[0] * O_matrix_ave.shape[1],
+                O_matrix_ave.shape[2],
+            )
+            O_matrix_binned = list(O_matrix_ave.reshape(O_matrix_binned_shape))
+
+            w_L_O_matrix_split = np.array_split(np.einsum("iw,iwj->iwj", w_L, O_matrix), num_mcmc_bin_blocks, axis=0)
+            w_L_O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in w_L_O_matrix_split])
+            w_L_O_matrix_binned_shape = (
+                w_L_O_matrix_ave.shape[0] * w_L_O_matrix_ave.shape[1],
+                w_L_O_matrix_ave.shape[2],
+            )
+            w_L_O_matrix_binned = list(w_L_O_matrix_ave.reshape(w_L_O_matrix_binned_shape))
+
+        else:
+            w_L_binned = []
+            O_matrix_binned = []
+            w_L_O_matrix_binned = []
+
+        w_L_binned = mpi_comm.reduce(w_L_binned, op=MPI.SUM, root=0)
+        O_matrix_binned = mpi_comm.reduce(O_matrix_binned, op=MPI.SUM, root=0)
+        w_L_O_matrix_binned = mpi_comm.reduce(w_L_O_matrix_binned, op=MPI.SUM, root=0)
+
+        if mpi_rank == 0:
+            w_L_binned = np.array(w_L_binned)
+            O_matrix_binned = np.array(O_matrix_binned)
+            w_L_O_matrix_binned = np.array(w_L_O_matrix_binned)
+            logger.info(f"w_L_binned.shape = {w_L_binned.shape}")
+            logger.info(f"O_matrix_binned.shape = {O_matrix_binned.shape}")
+            logger.info(f"w_L_O_matrix_binned.shape = {w_L_O_matrix_binned.shape}")
+            # S_mean_old = np.array(np.cov(O_matrix_binned, bias=True, rowvar=False))  # old
+            O_bar = np.sum(w_L_O_matrix_binned, axis=0) / np.sum(w_L_binned)
+            w_O_bar = np.einsum("i,k->ik", w_L_binned, O_bar)
+            logger.info(f"O_bar.shape = {O_bar.shape}")
+            logger.info(f"w_O_bar.shape = {w_O_bar.shape}")
+            S_mean = (
+                (w_L_O_matrix_binned - w_O_bar).T @ (O_matrix_binned - O_bar) / np.sum(w_L_binned)
+            )  # weighted variance-covariance matrix
+            S_std = np.zeros(S_mean.size)
+            # logger.info(f"np.max(np.abs(S_mean - S_mean_old)) = {np.max(np.abs(S_mean - S_mean_old))}.")
+            logger.info(f"S_mean.shape = {S_mean.shape}")
+            logger.debug(f"S_mean.is_nan for MPI-rank={mpi_rank} is {np.isnan(S_mean).any()}")
+            logger.debug(f"S_mean.shape for MPI-rank={mpi_rank} is {S_mean.shape}")
+        else:
+            S_mean = None
+            S_std = None
+
+        if mpi_broadcast:
+            # comm.Bcast(S_mean, root=0)
+            # comm.Bcast(S_std, root=0)
+            S_mean = mpi_comm.bcast(S_mean, root=0)
+            S_std = mpi_comm.bcast(S_std, root=0)
+
+        return (S_mean, S_std)  # (S_mu,nu ...., var(S)_mu,nu....) (L*L matrix, L*L matrix)
+
+    def run_optimize_old(
+        self,
+        num_mcmc_steps: int = 100,
+        num_opt_steps: int = 1,
+        delta: float = 0.001,
+        epsilon: float = 1.0e-3,
+        wf_dump_freq: int = 10,
+        max_time: int = 86400,
+        num_mcmc_warmup_steps: int = 0,
+        num_mcmc_bin_blocks: int = 100,
+        # opt_J1_param: bool = True, # to be implemented.
+        opt_J2_param: bool = True,
+        opt_J3_param: bool = True,
+        opt_J4_param: bool = False,
+        opt_lambda_param: bool = False,
+    ):
+        """Optimizing wavefunction.
+
+        Optimizing Wavefunction using the Stochastic Reconfiguration Method.
+
+        Args:
+            num_mcmc_steps(int): The number of MCMC samples per walker.
+            num_opt_steps(int): The number of WF optimization step.
+            delta(float):
+                The prefactor of the SR matrix for adjusting the optimization step.
+                i.e., c_i <- c_i + delta * S^{-1} f
+            epsilon(float):
+                The regralization factor of the SR matrix
+                i.e., S <- S + I * delta
+            wf_dump_freq(int):
+                The frequency of WF data (i.e., hamiltonian_data.chk)
+            max_time(int):
+                The maximum time (sec.) If maximum time exceeds,
+                the method exits the MCMC loop.
+            num_mcmc_warmup_steps (int): number of equilibration steps.
+            num_mcmc_bin_blocks (int): number of blocks for reblocking.
+            opt_J1_param (bool): optimize one-body Jastrow # to be implemented.
+            opt_J2_param (bool): optimize two-body Jastrow
+            opt_J3_param (bool): optimize three-body Jastrow
+            opt_J4_param (bool): optimize four-body Jastrow # to be implemented.
+            opt_lambda_param (bool): optimize lambda_matrix in the determinant part.
+
+        """
+        vmcopt_total_start = time.perf_counter()
+
+        dc_size_list = self.__mcmc.opt_param_dict["dc_size_list"]
+        logger.info(f"The number of variational paramers = {np.sum(dc_size_list)}.")
+
+        # main vmcopt loop
+        for i_opt in range(num_opt_steps):
+            logger.info(f"i_opt={i_opt + 1 + self.__i_opt}/{num_opt_steps + self.__i_opt}.")
+
+            if mpi_rank == 0:
+                logger.info(f"num_mcmc_warmup_steps={num_mcmc_warmup_steps}.")
+                logger.info(f"num_mcmc_bin_blocks={num_mcmc_bin_blocks}.")
+                logger.info(f"num_mcmc_steps={num_mcmc_steps}.")
+
+            logger.info(
+                f"twobody param before opt. = {self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param}"
+            )
+
+            # run MCMC
+            self.__mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
+
+            # get e_L
+            E, E_std = self.get_E(num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks)
+            logger.info(f"E = {E} +- {E_std} Ha")
+
+            # get f and f_std (generalized forces)
+            f, f_std = self.get_gF(
+                mpi_broadcast=False, num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks
+            )
+            # get S (preconditioning matrix)
+            S, _ = self.get_S(
+                mpi_broadcast=False, num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks
+            )
+
+            """ linear method
+            # get H (surrogate Hessian matrix)
+            H, _ = self.get_H(
+                mpi_broadcast=False, num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks
+            )
+            """
+
+            if mpi_rank == 0:
+                signal_to_noise_f = np.abs(f) / f_std
+                logger.info(f"Max |f| = {np.max(np.abs(f)):.3f} Ha/a.u.")
+                logger.debug(f"f_std of Max |f| = {f_std[np.argmax(np.abs(f))]:.3f} Ha/a.u.")
+                logger.info(f"Max of signal-to-noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}.")
+
+            logger.info("Computing the inverse of the stochastic matrix S^{-1}f...")
+
+            if mpi_rank == 0:
+                """ LR method, to be removed
+                # SR with linear method
+                if S.ndim != 0:
+                    I = np.eye(S.shape[0])
+                    S_prime = S + epsilon * I
+                    # solve Sx=f
+                    S_inv_f = scipy.linalg.solve(S_prime, f, assume_a="sym")
+
+                    H_0 = E
+                    H_1 = -1.0 / 2.0 * (S_inv_f.T @ f)
+                    H_2 = S_inv_f.T @ H @ S_inv_f
+                    S_2 = S_inv_f.T @ S_prime @ S_inv_f
+
+                    logger.info(f"H_0 = {H_0}.")
+                    logger.info(f"H_1 = {H_1}.")
+                    logger.info(f"S_2 = {S_2}.")
+                    logger.info(f"H_2 = {H_2}.")
+                    logger.info(f"(H_2 + 2 * H_0 * H_1) ** 2 - 8 * H_1**3) = {(H_2 + 2 * H_0 * H_1) ** 2 - 8 * H_1**3}.")
+
+                    gamma_plus = (H_2 + 2 * H_0 * H_1 + np.sqrt((H_2 + 2 * H_0 * H_1) ** 2 - 8 * H_1**3)) / (-4.0 * H_1**2)
+                    gamma_minus = (H_2 + 2 * H_0 * H_1 - np.sqrt((H_2 + 2 * H_0 * H_1) ** 2 - 8 * H_1**3)) / (-4.0 * H_1**2)
+                    logger.info(f"gamma_plus = {gamma_plus}")
+                    logger.info(f"gamma_minus = {gamma_minus}")
+                    gamma_chosen = np.maximum(gamma_plus, gamma_minus)
+                    logger.info(f"gamma_chosen = {gamma_chosen}")
+                    if gamma_chosen < 0:
+                        logger.warning(f"gamma_chosen = {gamma_chosen} is negative!!")
+                    X = gamma_chosen * S_inv_f
+
+                else:
+                    raise NotImplementedError
+                    I = 1.0
+                    S_prime = S + epsilon * I
+                    # solve Sx=f
+                    X = 1.0 / S_prime * f
+                """
+
+                # """ # SR
+                if S.ndim != 0:
+                    # I = np.eye(S.shape[0])
+                    # S_prime = S + epsilon * I
+                    S_prime = S.copy()
+                    S_prime[np.diag_indices_from(S_prime)] += epsilon
+                    # solve Sx=f
+                    X = scipy.linalg.solve(S_prime, f, assume_a="sym")
+                else:
+                    # I = 1.0
+                    # S_prime = S + epsilon * I
+                    S_prime = S + epsilon
+                    # solve Sx=f
+                    X = 1.0 / S_prime * f
+
+                # logger.info(f"The condition number of the matrix S is {np.linalg.cond(S)}.")
+                # logger.info(f"The diagonal elements of S_prime = {np.diag(S_prime)}.")
+                # logger.info(f"The S_prime is symmetric? = {np.allclose(S_prime, S_prime.T, atol=1.0e-10)}.")
+                # logger.info(f"The condition number of the matrix S_prime is {np.linalg.cond(S_prime)}.")
+                # """
+
+                # steepest decent (SD)
+                # X = f
+
+            else:
+                X = None
+
+            X = mpi_comm.bcast(X, root=0)
+            logger.debug(f"X for MPI-rank={mpi_rank} is {X}")
+            logger.debug(f"X.shape for MPI-rank={mpi_rank} is {X.shape}")
+            logger.info(f"max(dX) for MPI-rank={mpi_rank} is {np.max(X)}")
+
+            dc_param_list = self.__mcmc.opt_param_dict["dc_param_list"]
+            dc_shape_list = self.__mcmc.opt_param_dict["dc_shape_list"]
+            dc_flattened_index_list = self.__mcmc.opt_param_dict["dc_flattened_index_list"]
+
+            j2_param = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
+            jastrow_two_body_pade_flag = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_flag
+            jastrow_three_body_flag = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag
+            j3_orb_data = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data
+            j3_matrix = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix
+            lambda_matrix = self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix
+
+            for ii, opt_param in enumerate(dc_param_list):
+                param_shape = dc_shape_list[ii]
+                param_index = [i for i, v in enumerate(dc_flattened_index_list) if v == ii]
+                dX = X[param_index].reshape(param_shape)
+                logger.info(f"dX.shape for MPI-rank={mpi_rank} is {dX.shape}")
+                if dX.shape == (1,):
+                    dX = dX[0]
+                if opt_J2_param and opt_param == "j2_param":
+                    j2_param += delta * dX
+                if opt_J3_param and opt_param == "j3_matrix":
+                    # j1 part (rectanglar)
+                    j3_matrix[:, -1] += delta * dX[:, -1]
+                    # j3 part (square)
+                    if np.allclose(j3_matrix[:, :-1], j3_matrix[:, :-1].T, atol=1e-8):
+                        logger.info("The j3 matrix is symmetric. Keep it while updating.")
+                        dX = 1.0 / 2.0 * (dX[:, :-1] + dX[:, :-1].T)
+                    else:
+                        dX = dX[:, :-1]
+                    j3_matrix[:, :-1] += delta * dX
+                    """To be implemented. Opt only the block diagonal parts, i.e. only the J3 part."""
+                if opt_lambda_param and opt_param == "lambda_matrix":
+                    if np.allclose(lambda_matrix, lambda_matrix.T, atol=1e-8):
+                        logger.info("The lambda matrix is symmetric. Keep it while updating.")
+                        dX = 1.0 / 2.0 * (dX + dX.T)
+                    lambda_matrix += delta * dX
+                    """To be implemented. Symmetrize or Anti-symmetrize the updated matrices!!!"""
+                    """To be implemented. Considering symmetries of the AGP lambda matrix."""
+
+            structure_data = self.__mcmc.hamiltonian_data.structure_data
+            coulomb_potential_data = self.__mcmc.hamiltonian_data.coulomb_potential_data
+            geminal_data = Geminal_data(
+                num_electron_up=self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data.num_electron_up,
+                num_electron_dn=self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn,
+                orb_data_up_spin=self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data.orb_data_up_spin,
+                orb_data_dn_spin=self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data.orb_data_dn_spin,
+                lambda_matrix=lambda_matrix,
+            )
+            jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=j2_param)
+            jastrow_three_body_data = Jastrow_three_body_data(
+                orb_data=j3_orb_data,
+                j_matrix=j3_matrix,
+            )
+            jastrow_data = Jastrow_data(
+                jastrow_two_body_data=jastrow_two_body_data,
+                jastrow_three_body_data=jastrow_three_body_data,
+                jastrow_two_body_flag=jastrow_two_body_pade_flag,
+                jastrow_three_body_flag=jastrow_three_body_flag,
+            )
+            wavefunction_data = Wavefunction_data(geminal_data=geminal_data, jastrow_data=jastrow_data)
+            hamiltonian_data = Hamiltonian_data(
+                structure_data=structure_data,
+                wavefunction_data=wavefunction_data,
+                coulomb_potential_data=coulomb_potential_data,
+            )
+
+            logger.info("WF updated")
+            self.__mcmc.hamiltonian_data = hamiltonian_data
+
+            logger.info(
+                f"twobody param after opt. = {self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param}"
+            )
+
+            # dump WF
+            if mpi_rank == 0:
+                if (i_opt + 1) % wf_dump_freq == 0 or (i_opt + 1) == num_opt_steps:
+                    logger.info("Hamiltonian data is dumped as a checkpoint file.")
+                    self.__mcmc.hamiltonian_data.dump(f"hamiltonian_data_opt_step_{i_opt + 1}.chk")
+
+            # check max time
+            vmcopt_current = time.perf_counter()
+            if max_time < vmcopt_current - vmcopt_total_start:
+                logger.info(f"max_time = {max_time} sec. exceeds.")
+                logger.info("break the vmcopt loop.")
+                break
+
+        # update WF opt counter
+        self.__i_opt += i_opt + 1
+    '''
+
 
 if __name__ == "__main__":
     import os
@@ -3876,12 +3914,12 @@ if __name__ == "__main__":
     #    hamiltonian_data = pickle.load(f)
 
     # MCMC param
-    num_walkers = 10
-    num_mcmc_warmup_steps = 5
-    num_mcmc_bin_blocks = 5
+    num_walkers = 4
+    num_mcmc_warmup_steps = 0
+    num_mcmc_bin_blocks = 100
     mcmc_seed = 34356
 
-    """
+    # """
     # run VMC single-shot
     mcmc = MCMC(
         hamiltonian_data=hamiltonian_data,
@@ -3901,7 +3939,7 @@ if __name__ == "__main__":
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
     # """
 
-    """
+    # """
     f_mean, f_std = vmc.get_aF(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
@@ -3909,29 +3947,24 @@ if __name__ == "__main__":
 
     logger.info(f"f_mean = {f_mean} Ha/bohr.")
     logger.info(f"f_std = {f_std} Ha/bohr.")
-    """
-
-    """
-    H_mean, H_std = vmc.get_H(num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks)
-    logger.info(f"H_mean = {H_mean}.")
-    """
-
     # """
+
+    """
     # run VMCopt
     mcmc = MCMC(
         hamiltonian_data=hamiltonian_data,
         Dt=2.0,
         mcmc_seed=mcmc_seed,
-        epsilon_AS=1.0e-2,
+        epsilon_AS=0.0,
         num_walkers=num_walkers,
         comput_position_deriv=False,
         comput_param_deriv=True,
     )
     vmc = QMC(mcmc)
     vmc.run_optimize(
-        num_mcmc_steps=1000,
-        num_opt_steps=20,
-        delta=1e-3,
+        num_mcmc_steps=500,
+        num_opt_steps=50,
+        delta=5e-2,
         epsilon=1e-4,
         wf_dump_freq=10,
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
@@ -3941,7 +3974,7 @@ if __name__ == "__main__":
         opt_J4_param=True,
         opt_lambda_param=False,
     )
-    # """
+    """
 
     """
 

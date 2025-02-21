@@ -49,9 +49,8 @@ import numpy as np
 import numpy.typing as npt
 import scipy
 from flax import struct
-from jax import grad, jacrev, jit
+from jax import grad, jacrev, jit, vmap
 from jax import typing as jnpt
-from jax import vmap
 from numpy import linalg as LA
 
 from .structure import Structure_data
@@ -276,6 +275,11 @@ class AOs_data:
     def coefficients_jnp(self) -> jax.Array:
         """Return coefficients."""
         return jnp.array(self.coefficients, dtype=jnp.float64)
+
+    @property
+    def num_orb(self) -> int:
+        """Return the number of orbitals."""
+        return self.num_ao
 
 
 @struct.dataclass
