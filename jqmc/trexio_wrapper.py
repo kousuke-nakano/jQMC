@@ -69,7 +69,7 @@ def read_trexio_file(
         Coulomb_potential_data.
     """
     # prefix and file names
-    logger.info(f"TREXIO file = {trexio_file}")
+    # logger.info(f"TREXIO file = {trexio_file}")
 
     # read a trexio file
     file_r = trexio.File(
@@ -82,7 +82,7 @@ def read_trexio_file(
     periodic = trexio.read_pbc_periodic(file_r)
 
     if periodic:
-        logger.info("Crystal (Periodic boundary condition)")
+        # logger.info("Crystal (Periodic boundary condition)")
         pbc_flag = [True, True, True]
         # cell_a = trexio.read_cell_a(file_r)
         # cell_b = trexio.read_cell_b(file_r)
@@ -91,7 +91,7 @@ def read_trexio_file(
         raise NotImplementedError
     else:
         pbc_flag = [False, False, False]
-        logger.info("Molecule (Open boundary condition)")
+        # logger.info("Molecule (Open boundary condition)")
 
     # read electron num
     num_ele_up = trexio.read_electron_up_num(file_r)
@@ -115,7 +115,7 @@ def read_trexio_file(
     basis_exponent = trexio.read_basis_exponent(file_r)
     basis_coefficient = trexio.read_basis_coefficient(file_r)
     basis_prim_factor = trexio.read_basis_prim_factor(file_r)
-    logger.info(f"max angular momentum l = {np.max(basis_shell_ang_mom)}.")
+    # logger.info(f"max angular momentum l = {np.max(basis_shell_ang_mom)}.")
 
     # ao info
     ao_cartesian = trexio.read_ao_cartesian(file_r)
@@ -146,12 +146,13 @@ def read_trexio_file(
 
     # MO complex check
     if trexio.has_mo_coefficient_im(file_r):
-        logger.info("The WF is complex")
+        # logger.info("The WF is complex")
         # mo_coefficient_imag = trexio.read_mo_coefficient_im(file_r)
         # complex_flag = True
         raise NotImplementedError
     else:
-        logger.info("The WF is real")
+        pass
+        # logger.info("The WF is real")
         # complex_flag = False
 
     # Pseudo potentials info
@@ -248,19 +249,6 @@ def read_trexio_file(
     if ao_num_count != ao_num:
         logger.error(f"ao_num_count = {ao_num_count} is inconsistent with the read ao_num = {ao_num}")
         raise ValueError
-
-    """ old!!
-    aos_data = AOs_data_debug(
-        num_ao=ao_num_count,
-        num_ao_prim=ao_prim_num_count,
-        atomic_center_carts=np.array(atomic_center_carts),
-        angular_momentums=angular_momentums,
-        magnetic_quantum_numbers=magnetic_quantum_numbers,
-        orbital_indices=orbital_indices,
-        exponents=exponents,
-        coefficients=coefficients,
-    )
-    """
 
     aos_data = AOs_data(
         structure_data=structure_data,

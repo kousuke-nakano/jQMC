@@ -41,14 +41,15 @@ import jax
 import numpy as np
 import numpy.typing as npt
 import scipy
-from jax import grad, jit, lax, vmap
+from jax import grad, jit, lax
 from jax import numpy as jnp
+from jax import vmap
 from mpi4py import MPI
 
 from .coulomb_potential import (
     _compute_bare_coulomb_potential_jax,
-    _compute_ecp_local_parts_full_NN_jax,
-    _compute_ecp_non_local_parts_NN_jax,
+    _compute_ecp_local_parts_all_pairs_jax,
+    _compute_ecp_non_local_parts_nearest_neighbors_jax,
 )
 from .determinant import Geminal_data, compute_AS_regularization_factor_api
 from .hamiltonians import Hamiltonian_data, Hamiltonian_data_deriv_params, compute_kinetic_energy_api, compute_local_energy_api
@@ -1372,13 +1373,13 @@ class GFMC:
             r_up_carts=self.__latest_r_up_carts[0],
             r_dn_carts=self.__latest_r_dn_carts[0],
         )
-        _ = _compute_ecp_local_parts_full_NN_jax(
+        _ = _compute_ecp_local_parts_all_pairs_jax(
             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
             r_up_carts=self.__latest_r_up_carts[0],
             r_dn_carts=self.__latest_r_dn_carts[0],
         )
         if self.__non_local_move == "tmove":
-            _, _, _, _ = _compute_ecp_non_local_parts_NN_jax(
+            _, _, _, _ = _compute_ecp_non_local_parts_nearest_neighbors_jax(
                 coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                 wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                 r_up_carts=self.__latest_r_up_carts[0],
@@ -1386,7 +1387,7 @@ class GFMC:
                 flag_determinant_only=False,
             )
         elif self.__non_local_move == "dltmove":
-            _, _, _, _ = _compute_ecp_non_local_parts_NN_jax(
+            _, _, _, _ = _compute_ecp_non_local_parts_nearest_neighbors_jax(
                 coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                 wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                 r_up_carts=self.__latest_r_up_carts[0],
@@ -1608,7 +1609,7 @@ class GFMC:
                 if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
                     # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
                     # ecp local
-                    diagonal_ecp_local_part = _compute_ecp_local_parts_full_NN_jax(
+                    diagonal_ecp_local_part = _compute_ecp_local_parts_all_pairs_jax(
                         coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
@@ -1617,7 +1618,7 @@ class GFMC:
                     if non_local_move == "tmove":
                         # ecp non-local (t-move)
                         mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                            _compute_ecp_non_local_parts_NN_jax(
+                            _compute_ecp_non_local_parts_nearest_neighbors_jax(
                                 coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                                 wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                                 r_up_carts=r_up_carts,
@@ -1642,7 +1643,7 @@ class GFMC:
 
                     elif non_local_move == "dltmove":
                         mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                            _compute_ecp_non_local_parts_NN_jax(
+                            _compute_ecp_non_local_parts_nearest_neighbors_jax(
                                 coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                                 wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                                 r_up_carts=r_up_carts,
@@ -1793,7 +1794,7 @@ class GFMC:
             # with ECP
             if hamiltonian_data.coulomb_potential_data.ecp_flag:
                 # ecp local
-                diagonal_ecp_local_part = _compute_ecp_local_parts_full_NN_jax(
+                diagonal_ecp_local_part = _compute_ecp_local_parts_all_pairs_jax(
                     coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -1802,7 +1803,7 @@ class GFMC:
                 if non_local_move == "tmove":
                     # ecp non-local (t-move)
                     mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                        _compute_ecp_non_local_parts_NN_jax(
+                        _compute_ecp_non_local_parts_nearest_neighbors_jax(
                             coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                             wavefunction_data=hamiltonian_data.wavefunction_data,
                             r_up_carts=r_up_carts,
@@ -1818,7 +1819,7 @@ class GFMC:
 
                 elif non_local_move == "dltmove":
                     mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                        _compute_ecp_non_local_parts_NN_jax(
+                        _compute_ecp_non_local_parts_nearest_neighbors_jax(
                             coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                             wavefunction_data=hamiltonian_data.wavefunction_data,
                             r_up_carts=r_up_carts,
@@ -3401,7 +3402,8 @@ class QMC:
 
 if __name__ == "__main__":
     import os
-    import pickle
+
+    # import pickle
     from logging import Formatter, StreamHandler, getLogger
 
     from .trexio_wrapper import read_trexio_file

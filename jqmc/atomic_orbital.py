@@ -49,8 +49,9 @@ import numpy as np
 import numpy.typing as npt
 import scipy
 from flax import struct
-from jax import grad, jacrev, jit, vmap
+from jax import grad, jacrev, jit
 from jax import typing as jnpt
+from jax import vmap
 from numpy import linalg as LA
 
 from .structure import Structure_data
@@ -100,6 +101,7 @@ class AOs_data:
     angular_momentums: list[int] = struct.field(pytree_node=False, default_factory=list)
     magnetic_quantum_numbers: list[int] = struct.field(pytree_node=False, default_factory=list)
 
+    '''
     def __post_init__(self) -> None:
         """Initialization of the class.
 
@@ -125,6 +127,7 @@ class AOs_data:
         if len(self.magnetic_quantum_numbers) != self.num_ao:
             logger.error("dim. of self.magnetic_quantum_numbers is wrong")
             raise ValueError
+    '''
 
     @property
     def nucleus_index_np(self) -> npt.NDArray[np.int32]:
@@ -132,9 +135,19 @@ class AOs_data:
         return np.array(self.nucleus_index)
 
     @property
+    def nucleus_index_jnp(self) -> jax.Array:
+        """nucleus_index."""
+        return jnp.array(self.nucleus_index, dtype=jnp.int32)
+
+    @property
     def nucleus_index_prim_np(self) -> npt.NDArray[np.int32]:
         """nucleus_index."""
         return np.array(self.nucleus_index)[self.orbital_indices_np]
+
+    @property
+    def nucleus_index_prim_jnp(self) -> jax.Array:
+        """nucleus_index."""
+        return jnp.array(self.nucleus_index, dtype=jnp.int32)[self.orbital_indices_jnp]
 
     @property
     def orbital_indices_np(self) -> npt.NDArray[np.int32]:
@@ -142,7 +155,7 @@ class AOs_data:
         return np.array(self.orbital_indices)
 
     @property
-    def orbital_indices_jnp(self) -> npt.NDArray[np.int32]:
+    def orbital_indices_jnp(self) -> jax.Array:
         """orbital_index."""
         return jnp.array(self.orbital_indices, dtype=jnp.int32)
 
@@ -168,7 +181,7 @@ class AOs_data:
         """
         # this is super slow!!! Do not use list comprehension.
         # return jnp.array([self.structure_data.positions_cart[i] for i in self.nucleus_index])
-        return jnp.array(self.structure_data.positions_cart)[self.nucleus_index_np]
+        return jnp.array(self.structure_data.positions_cart)[self.nucleus_index_jnp]
 
     @property
     def atomic_center_carts_unique_jnp(self) -> jax.Array:
@@ -180,7 +193,7 @@ class AOs_data:
             jax.Array: atomic positions in cartesian
         """
         _, first_indices = np.unique(self.nucleus_index_np, return_index=True)
-        sorted_order = np.argsort(first_indices)
+        sorted_order = jnp.argsort(first_indices)
         return jnp.array(self.structure_data.positions_cart)[sorted_order]
 
     @property
@@ -192,7 +205,7 @@ class AOs_data:
         Returns:
             npt.NDArray[np.float]: atomic positions in cartesian for primitive orbitals
         """
-        return np.array([self.atomic_center_carts[i] for i in self.orbital_indices])
+        return self.atomic_center_carts[self.orbital_indices]
 
     @property
     def atomic_center_carts_prim_jnp(self) -> jax.Array:
@@ -205,7 +218,7 @@ class AOs_data:
         """
         # this is super slow!!! Do not use list comprehension.
         # return jnp.array([self.atomic_center_carts_jnp[i] for i in self.orbital_indices])
-        return self.atomic_center_carts_jnp[self.orbital_indices_np]
+        return self.atomic_center_carts_jnp[self.orbital_indices_jnp]
 
     @property
     def angular_momentums_prim(self) -> npt.NDArray[np.int32]:
@@ -227,7 +240,7 @@ class AOs_data:
         Returns:
             jax.Array: angular momentums for primitive orbitals
         """
-        return jnp.array(self.angular_momentums)[self.orbital_indices_np]
+        return jnp.array(self.angular_momentums, dtype=jnp.int32)[self.orbital_indices_jnp]
 
     @property
     def magnetic_quantum_numbers_prim(self) -> npt.NDArray[np.int32]:
@@ -249,7 +262,7 @@ class AOs_data:
         Returns:
             npt.NDArray[np.int64]: magnetic quantum numbers for primitive orbitals
         """
-        return jnp.array(self.magnetic_quantum_numbers)[self.orbital_indices_np]
+        return jnp.array(self.magnetic_quantum_numbers, dtype=jnp.int32)[self.orbital_indices_jnp]
 
     @property
     def exponents_jnp(self) -> jax.Array:
@@ -413,7 +426,7 @@ def _compute_AOs_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     """
     # Indices with respect to the contracted AOs
     # compute R_n inc. the whole normalization factor
-    nucleus_index_prim_np = aos_data.nucleus_index_prim_np
+    nucleus_index_prim_jnp = aos_data.nucleus_index_prim_jnp
     R_carts_jnp = aos_data.atomic_center_carts_prim_jnp
     R_carts_unique_jnp = aos_data.atomic_center_carts_unique_jnp
     c_jnp = aos_data.coefficients_jnp
@@ -430,14 +443,13 @@ def _compute_AOs_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     r_R_diffs = r_carts[None, :, :] - R_carts_jnp[:, None, :]
     r_squared = jnp.sum(r_R_diffs**2, axis=-1)
     R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
-
     r_R_diffs_uq = r_carts[None, :, :] - R_carts_unique_jnp[:, None, :]
     max_l, S_l_m_dup_all_l_m = _compute_S_l_m_batch_jax(r_R_diffs_uq)
     S_l_m_dup_all_l_m_reshaped = S_l_m_dup_all_l_m.reshape(
         (S_l_m_dup_all_l_m.shape[0] * S_l_m_dup_all_l_m.shape[1], S_l_m_dup_all_l_m.shape[2]), order="F"
     )
     global_l_m_index = l_jnp**2 + (m_jnp + l_jnp)
-    global_R_l_m_index = nucleus_index_prim_np * max_l + global_l_m_index
+    global_R_l_m_index = nucleus_index_prim_jnp * max_l + global_l_m_index
     S_l_m_dup = S_l_m_dup_all_l_m_reshaped[global_R_l_m_index]
 
     AOs_dup = N_n_dup[:, None] * R_n_dup * N_l_m_dup[:, None] * S_l_m_dup

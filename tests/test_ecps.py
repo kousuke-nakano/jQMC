@@ -41,12 +41,12 @@ import numpy as np
 from ..jqmc.coulomb_potential import (
     _compute_bare_coulomb_potential_debug,
     _compute_bare_coulomb_potential_jax,
-    _compute_ecp_local_parts_full_NN_debug,
-    _compute_ecp_local_parts_full_NN_jax,
-    _compute_ecp_non_local_parts_full_NN_debug,
-    _compute_ecp_non_local_parts_full_NN_jax,
-    _compute_ecp_non_local_parts_NN_debug,
-    _compute_ecp_non_local_parts_NN_jax,
+    _compute_ecp_local_parts_all_pairs_debug,
+    _compute_ecp_local_parts_all_pairs_jax,
+    _compute_ecp_non_local_parts_all_pairs_debug,
+    _compute_ecp_non_local_parts_all_pairs_jax,
+    _compute_ecp_non_local_parts_nearest_neighbors_debug,
+    _compute_ecp_non_local_parts_nearest_neighbors_jax,
 )
 from ..jqmc.jastrow_factor import Jastrow_data
 from ..jqmc.trexio_wrapper import read_trexio_file
@@ -56,7 +56,8 @@ from ..jqmc.wavefunction import Wavefunction_data
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
-log = getLogger("myqmc")
+# logger
+log = getLogger("jqmc")
 log.setLevel("DEBUG")
 stream_handler = StreamHandler()
 stream_handler.setLevel("DEBUG")
@@ -68,11 +69,11 @@ log.addHandler(stream_handler)
 def test_debug_and_jax_bare_coulomb():
     """Test the bare coulomb potential computation."""
     (
-        structure_data,
-        aos_data,
-        mos_data_up,
-        mos_data_dn,
-        geminal_mo_data,
+        _,
+        _,
+        _,
+        _,
+        _,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_trexio.hdf5"))
 
@@ -146,13 +147,13 @@ def test_debug_and_jax_ecp_local():
     new_r_dn_carts[3] = [0.618632327645002, -0.149033260668010, 0.131889254514777]
 
     # ecp local
-    vpot_ecp_local_full_NN_jax = _compute_ecp_local_parts_full_NN_jax(
+    vpot_ecp_local_full_NN_jax = _compute_ecp_local_parts_all_pairs_jax(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
     )
 
-    vpot_ecp_local_full_NN_debug = _compute_ecp_local_parts_full_NN_debug(
+    vpot_ecp_local_full_NN_debug = _compute_ecp_local_parts_all_pairs_debug(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
@@ -211,7 +212,7 @@ def test_debug_and_jax_ecp_non_local():
         mesh_non_local_ecp_part_r_dn_carts_full_NN_jax,
         V_nonlocal_full_NN_jax,
         sum_V_nonlocal_full_NN_jax,
-    ) = _compute_ecp_non_local_parts_full_NN_jax(
+    ) = _compute_ecp_non_local_parts_all_pairs_jax(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         r_up_carts=new_r_up_carts,
@@ -223,7 +224,7 @@ def test_debug_and_jax_ecp_non_local():
         mesh_non_local_ecp_part_r_dn_carts_full_NN_debug,
         V_nonlocal_full_NN_debug,
         sum_V_nonlocal_full_NN_debug,
-    ) = _compute_ecp_non_local_parts_full_NN_debug(
+    ) = _compute_ecp_non_local_parts_all_pairs_debug(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         r_up_carts=new_r_up_carts,
@@ -261,7 +262,7 @@ def test_debug_and_jax_ecp_non_local():
         mesh_non_local_ecp_part_r_dn_carts_NN_check_jax,
         V_nonlocal_NN_check_jax,
         sum_V_nonlocal_NN_check_jax,
-    ) = _compute_ecp_non_local_parts_NN_jax(
+    ) = _compute_ecp_non_local_parts_nearest_neighbors_jax(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         NN=n_atom,
@@ -274,7 +275,7 @@ def test_debug_and_jax_ecp_non_local():
         mesh_non_local_ecp_part_r_dn_carts_NN_check_debug,
         V_nonlocal_NN_check_debug,
         sum_V_nonlocal_NN_check_debug,
-    ) = _compute_ecp_non_local_parts_NN_debug(
+    ) = _compute_ecp_non_local_parts_nearest_neighbors_debug(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         NN=n_atom,
@@ -327,7 +328,7 @@ def test_debug_and_jax_ecp_non_local():
         mesh_non_local_ecp_part_r_dn_carts_NN_jax,
         V_nonlocal_NN_jax,
         sum_V_nonlocal_NN_jax,
-    ) = _compute_ecp_non_local_parts_NN_jax(
+    ) = _compute_ecp_non_local_parts_nearest_neighbors_jax(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         r_up_carts=new_r_up_carts,
@@ -339,7 +340,7 @@ def test_debug_and_jax_ecp_non_local():
         mesh_non_local_ecp_part_r_dn_carts_NN_debug,
         V_nonlocal_NN_debug,
         sum_V_nonlocal_NN_debug,
-    ) = _compute_ecp_non_local_parts_NN_debug(
+    ) = _compute_ecp_non_local_parts_nearest_neighbors_debug(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         r_up_carts=new_r_up_carts,

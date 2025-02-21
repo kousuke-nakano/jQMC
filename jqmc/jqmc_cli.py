@@ -47,8 +47,8 @@ import toml
 from mpi4py import MPI
 
 # jQMC
-from .miscs.header_footer import print_footer, print_header
-from .qmc_vectorized import GFMC, MCMC, QMC
+from .header_footer import print_footer, print_header
+from .jqmc_kernel import GFMC, MCMC, QMC
 
 # MPI related
 mpi_comm = MPI.COMM_WORLD

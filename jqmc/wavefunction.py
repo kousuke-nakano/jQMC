@@ -42,7 +42,7 @@ import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import grad, hessian, jit, vmap
+from jax import grad, hessian, jit, jvp, vmap
 
 from .determinant import (
     Geminal_data,
@@ -257,7 +257,7 @@ def compute_kinetic_energy_api(
     return K
 
 
-def _compute_kinetic_energy_debug(
+def _compute_kinetic_energy_debug_FDM(
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
@@ -333,13 +333,13 @@ def _compute_kinetic_energy_debug(
 
 
 @jit
-def _compute_kinetic_energy_jax(
+def _compute_kinetic_energy_debug(
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float | complex:
     """See compute_kinetic_energy_api."""
-    # compute grad
+    # compute gradients
     grad_ln_Psi_up = grad(evaluate_ln_wavefunction_api, argnums=1)(wavefunction_data, r_up_carts, r_dn_carts)
     grad_ln_Psi_dn = grad(evaluate_ln_wavefunction_api, argnums=2)(wavefunction_data, r_up_carts, r_dn_carts)
 
@@ -351,6 +351,62 @@ def _compute_kinetic_energy_jax(
     sum_laplacian_ln_Psi_dn = jnp.einsum("ijij->", hessian_ln_Psi_dn)
 
     sum_laplacian_ln_Psi = sum_laplacian_ln_Psi_up + sum_laplacian_ln_Psi_dn
+
+    return -1.0 / 2.0 * (sum_laplacian_ln_Psi + jnp.sum(grad_ln_Psi_up**2) + jnp.sum(grad_ln_Psi_dn**2))
+
+
+@jit
+def _compute_kinetic_energy_jax(
+    wavefunction_data: Wavefunction_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+):
+    """See compute_kinetic_energy_api."""
+    # compute gradients
+    grad_ln_Psi_up = grad(evaluate_ln_wavefunction_api, argnums=1)(wavefunction_data, r_up_carts, r_dn_carts)
+    grad_ln_Psi_dn = grad(evaluate_ln_wavefunction_api, argnums=2)(wavefunction_data, r_up_carts, r_dn_carts)
+
+    # compute laplacians. The above Hessian implemenation is redundant since the nondiagonal parts are not needed for Laplacian calculations.
+    # The following implementation is more efficient, while it's a little bit tricky.
+    def laplacian_wrt_arg(func, arg):
+        ## Flatten the argument to a 1D array for computation
+        arg_flat = arg.reshape(-1)
+
+        ## Helper function that reshapes the flattened argument back to its original shape
+        def func_flat(x):
+            return func(x.reshape(arg.shape))
+
+        ## Obtain the gradient function with respect to the flattened argument
+        grad_func = grad(func_flat)
+
+        ## Define a function that computes the directional derivative (i.e., the Hessian-vector product) using jax.jvp
+        def hvp(e):
+            # jax.jvp returns a tuple (function value, tangent value); here we use the tangent value
+            _, hvp_val = jvp(grad_func, (arg_flat,), (e,))
+            return hvp_val
+
+        ## Create the standard basis (unit vectors for each dimension)
+        n = arg_flat.shape[0]
+        basis = jnp.eye(n)
+
+        ## Compute the Hessian-vector product for each standard basis vector.
+        ## The dot product of the basis vector with its Hessian-vector product gives the corresponding diagonal element.
+        diag = vmap(lambda e: jnp.dot(e, hvp(e)))(basis)
+        # The Laplacian is the sum of the diagonal elements
+        return jnp.sum(diag)
+
+    ## For r_up, compute the Laplacian while keeping r_dn fixed
+    def f_r_up(r_up):
+        return evaluate_ln_wavefunction_api(wavefunction_data, r_up, r_dn_carts)
+
+    laplacian_r_up = laplacian_wrt_arg(f_r_up, r_up_carts)
+
+    ## Similarly, for r_dn, compute the Laplacian while keeping r_up fixed
+    def f_r_dn(r_dn):
+        return evaluate_ln_wavefunction_api(wavefunction_data, r_up_carts, r_dn)
+
+    laplacian_r_dn = laplacian_wrt_arg(f_r_dn, r_dn_carts)
+    sum_laplacian_ln_Psi = laplacian_r_up + laplacian_r_dn
 
     return -1.0 / 2.0 * (sum_laplacian_ln_Psi + jnp.sum(grad_ln_Psi_up**2) + jnp.sum(grad_ln_Psi_dn**2))
 

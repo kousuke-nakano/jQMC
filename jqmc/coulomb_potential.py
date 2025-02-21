@@ -4,11 +4,9 @@ Module containing classes and methods related to Effective core potential
 and bare Coulomb potentials
 
 Todo:
-    * Replace numpy and jax.numpy typings with jaxtyping
-    * Very inefficient implemantation of the non-local ECP part
-    because the routine computes exp(*) for all ion-electron distances.
-    At most, up to the second nearest neighbour's atoms are enough
-    * Use the fast computation for Psi(x')/Psi(x).
+    Remove the native 'for' loops for up and down electron positions in the function
+    '_compute_ecp_non_local_parts_NN_jax' and replace them with e.g., jax.lax.scan.
+
 """
 
 # Copyright (C) 2024- Kosuke Nakano
@@ -58,7 +56,7 @@ from flax import struct
 from jax import jit, lax, vmap
 from scipy.special import eval_legendre
 
-from .miscs.function_collections import legendre_tablated as jnp_legendre_tablated
+from .function_collections import legendre_tablated as jnp_legendre_tablated
 from .structure import (
     Structure_data,
     find_nearest_nucleus_indices_jnp,
@@ -558,7 +556,7 @@ def compute_ecp_coulomb_potential_api(
     return V_ecp
 
 
-def _compute_ecp_local_parts_full_NN_debug(
+def _compute_ecp_local_parts_all_pairs_debug(
     coulomb_potential_data: Coulomb_potential_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
@@ -617,7 +615,7 @@ def _compute_ecp_local_parts_full_NN_debug(
     return V_local
 
 
-def _compute_ecp_non_local_parts_full_NN_debug(
+def _compute_ecp_non_local_parts_all_pairs_debug(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -625,7 +623,7 @@ def _compute_ecp_non_local_parts_full_NN_debug(
     Nv: int = 6,
     flag_determinant_only: bool = False,
 ) -> float:
-    """Compute ecp non-local parts.
+    """Compute ecp non-local parts, considering all nucleus-electron pairs.
 
     The method is for computing the non-local part of the given ECPs at (r_up_carts, r_dn_carts).
     A very straightforward (so very slow) implementation. Just for debudding purpose.
@@ -784,7 +782,7 @@ def _compute_ecp_non_local_parts_full_NN_debug(
     return mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, sum_V_nonlocal
 
 
-def _compute_ecp_non_local_parts_NN_debug(
+def _compute_ecp_non_local_parts_nearest_neighbors_debug(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -1032,11 +1030,11 @@ def _compute_ecp_coulomb_potential_debug(
     Returns:
         float: The sum of non-local part of the given ECPs with r_up_carts and r_dn_carts.
     """
-    ecp_local_parts = _compute_ecp_local_parts_full_NN_debug(
+    ecp_local_parts = _compute_ecp_local_parts_all_pairs_debug(
         coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
-    _, _, _, ecp_nonlocal_parts = _compute_ecp_non_local_parts_NN_debug(
+    _, _, _, ecp_nonlocal_parts = _compute_ecp_non_local_parts_nearest_neighbors_debug(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         r_up_carts=r_up_carts,
@@ -1050,12 +1048,12 @@ def _compute_ecp_coulomb_potential_debug(
 
 
 @jit
-def _compute_ecp_local_parts_full_NN_jax(
+def _compute_ecp_local_parts_all_pairs_jax(
     coulomb_potential_data: Coulomb_potential_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
-    """Compute ecp local parts.
+    """Compute ecp local parts, considering all nucleus-electron pairs.
 
     The method is for computing the local part of the given ECPs at (r_up_carts, r_dn_carts).
     A much faster implementation using JAX.
@@ -1152,7 +1150,7 @@ def _compute_ecp_local_parts_full_NN_jax(
 
 
 @partial(jit, static_argnums=(4, 5, 6))
-def _compute_ecp_non_local_parts_NN_jax(
+def _compute_ecp_non_local_parts_nearest_neighbors_jax(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -1368,7 +1366,7 @@ def _compute_ecp_non_local_parts_NN_jax(
 
 
 @partial(jit, static_argnums=(4, 5))
-def _compute_ecp_non_local_parts_full_NN_jax(
+def _compute_ecp_non_local_parts_all_pairs_jax(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -1376,7 +1374,7 @@ def _compute_ecp_non_local_parts_full_NN_jax(
     Nv: int = 6,
     flag_determinant_only: bool = False,
 ) -> float:
-    """Compute ecp non-local parts using JAX.
+    """Compute ecp non-local parts using JAX, considering all nucleus-electron pairs.
 
     The method is for computing the non-local part of the given ECPs at (r_up_carts, r_dn_carts).
 
@@ -1407,7 +1405,7 @@ def _compute_ecp_non_local_parts_full_NN_jax(
 
     # start = time.perf_counter()
     r_up_carts_on_mesh, r_dn_carts_on_mesh, V_ecp_up, V_ecp_dn, sum_V_nonlocal = (
-        _compute_ecp_non_local_part_full_NN_jax_weights_grid_points(
+        _compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
             coulomb_potential_data=coulomb_potential_data,
             wavefunction_data=wavefunction_data,
             r_up_carts=r_up_carts,
@@ -1489,7 +1487,7 @@ def _compute_ecp_non_local_parts_full_NN_jax(
 
 
 @jit  # this jit drastically accelarates the computation!
-def _compute_ecp_non_local_part_full_NN_jax_weights_grid_points(
+def _compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -1744,7 +1742,7 @@ def _compute_ecp_coulomb_potential_jax(
     Returns:
         float: The sum of local and non-local part of the given ECPs with r_up_carts and r_dn_carts.
     """
-    ecp_local_parts = _compute_ecp_local_parts_full_NN_jax(
+    ecp_local_parts = _compute_ecp_local_parts_all_pairs_jax(
         coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
@@ -1759,7 +1757,7 @@ def _compute_ecp_coulomb_potential_jax(
     """
 
     #''' NNs
-    _, _, _, ecp_nonlocal_parts = _compute_ecp_non_local_parts_NN_jax(
+    _, _, _, ecp_nonlocal_parts = _compute_ecp_non_local_parts_nearest_neighbors_jax(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         r_up_carts=r_up_carts,
@@ -2150,7 +2148,7 @@ if __name__ == "__main__":
         mesh_non_local_ecp_part_r_dn_carts_NN_debug,
         V_nonlocal_NN_debug,
         sum_V_nonlocal_NN_debug,
-    ) = _compute_ecp_non_local_parts_NN_debug(
+    ) = _compute_ecp_non_local_parts_nearest_neighbors_debug(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         r_up_carts=r_up_carts,
@@ -2164,7 +2162,7 @@ if __name__ == "__main__":
         mesh_non_local_ecp_part_r_dn_carts_NN_jax,
         V_nonlocal_NN_jax,
         sum_V_nonlocal_NN_jax,
-    ) = _compute_ecp_non_local_parts_NN_jax(
+    ) = _compute_ecp_non_local_parts_nearest_neighbors_jax(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         r_up_carts=r_up_carts_jnp,
@@ -2183,7 +2181,7 @@ if __name__ == "__main__":
         mesh_non_local_ecp_part_r_dn_carts_NN_jax,
         V_nonlocal_NN_jax,
         sum_V_nonlocal_NN_jax,
-    ) = _compute_ecp_non_local_parts_NN_jax(
+    ) = _compute_ecp_non_local_parts_nearest_neighbors_jax(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         r_up_carts=r_up_carts_jnp,
@@ -2211,7 +2209,7 @@ if __name__ == "__main__":
     )
 
     mesh_non_local_ecp_part_r_up_carts_jax, mesh_non_local_ecp_part_r_dn_carts_jax, V_nonlocal_jax, sum_V_nonlocal_jax = (
-        _compute_ecp_non_local_parts_full_NN_jax(
+        _compute_ecp_non_local_parts_all_pairs_jax(
             coulomb_potential_data=coulomb_potential_data,
             wavefunction_data=wavefunction_data,
             r_up_carts=r_up_carts_jnp,
@@ -2227,7 +2225,7 @@ if __name__ == "__main__":
 
     start = time.perf_counter()
     mesh_non_local_ecp_part_r_up_carts_jax, mesh_non_local_ecp_part_r_dn_carts_jax, V_nonlocal_jax, sum_V_nonlocal_jax = (
-        _compute_ecp_non_local_parts_full_NN_jax(
+        _compute_ecp_non_local_parts_all_pairs_jax(
             coulomb_potential_data=coulomb_potential_data,
             wavefunction_data=wavefunction_data,
             r_up_carts=r_up_carts_jnp,
