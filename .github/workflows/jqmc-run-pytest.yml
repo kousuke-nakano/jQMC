@@ -50,7 +50,8 @@ jobs:
     - name: Test jqmc (pytest) with @jit decorator
       run: |
         pytest -s -v tests/test_trexio.py
-        pytest -s -v tests/test_AOs_MOs.py
+        pytest -s -v tests/test_AOs.py
+        pytest -s -v tests/test_MOs.py
         pytest -s -v tests/test_determinant.py
         pytest -s -v tests/test_jastrow.py
         pytest -s -v tests/test_wave_function.py
