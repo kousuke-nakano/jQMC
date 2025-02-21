@@ -99,7 +99,7 @@ class Structure_data:
         logger.info("element, label, Z, x, y, z in cartesian (Bohr)")
         logger.info("-" * num_sep_line)
         for atomic_number, element_symbol, atomic_label, position in zip(
-            self.atomic_numbers, self.element_symbols, self.atomic_labels, self.positions_cart
+            self.atomic_numbers, self.element_symbols, self.atomic_labels, self.positions_cart_np
         ):
             logger.info(
                 f"{element_symbol:s}, {atomic_label:s}, {atomic_number:.1f}, {position[0]:.8f}, {position[1]:.8f}, {position[2]:.8f}"
@@ -248,14 +248,24 @@ class Structure_data:
         return LA.norm(self.vec_c)
 
     @property
-    def positions_cart(self) -> npt.NDArray[np.float64]:
+    def positions_cart_np(self) -> npt.NDArray[np.float64]:
         """Return atomic positions in cartesian (Bohr).
 
         Returns:
             npt.NDAarray[np.float64]: (N x 3) np.array containing atomic positions in cartesian.
             The unit is Bohr
         """
-        return self.positions
+        return np.array(self.positions)
+
+    @property
+    def positions_cart_jnp(self) -> jax.Array:
+        """Return atomic positions in cartesian (Bohr).
+
+        Returns:
+            npt.NDAarray[np.float64]: (N x 3) np.array containing atomic positions in cartesian.
+            The unit is Bohr
+        """
+        return jnp.array(self.positions)
 
     @property
     def positions_frac(self) -> npt.NDArray[np.float64]:
@@ -267,7 +277,7 @@ class Structure_data:
             The unit is Bohr
         """
         h = np.array([self.vec_a, self.vec_b, self.vec_c])
-        positions_frac = np.array([np.dot(np.array(pos), np.linalg.inv(h)) for pos in self.positions_cart])
+        positions_frac = np.array([np.dot(np.array(pos), np.linalg.inv(h)) for pos in self.positions_cart_np])
         return positions_frac
 
     @property
@@ -362,7 +372,7 @@ class Structure_data:
         from ase.io import write  # type: ignore
 
         if any(self.pbc_flag):
-            ase_atom = Atoms(self.element_symbols, positions=self.positions_cart * Bohr_to_Angstrom)
+            ase_atom = Atoms(self.element_symbols, positions=self.positions_cart_np * Bohr_to_Angstrom)
             ase_atom.set_cell(
                 np.array(
                     [
@@ -374,7 +384,7 @@ class Structure_data:
             )
             ase_atom.set_pbc(self.pbc_flag)
         else:
-            ase_atom = Atoms(self.element_symbols, positions=self.positions_cart * Bohr_to_Angstrom)
+            ase_atom = Atoms(self.element_symbols, positions=self.positions_cart_np * Bohr_to_Angstrom)
             ase_atom.set_pbc(self.pbc_flag)
 
         write(filename, ase_atom)
@@ -424,7 +434,7 @@ def find_nearest_nucleus_indices_np(structure_data: Structure_data, r_cart, N):
         raise NotImplementedError
     else:
         # Calculate the distance between each row of R_carts and r_cart
-        distances = np.sqrt(np.sum((structure_data.positions_cart - np.array(r_cart)) ** 2, axis=1))
+        distances = np.sqrt(np.sum((structure_data.positions_cart_np - np.array(r_cart)) ** 2, axis=1))
         # Sort indices based on the calculated distances
         nearest_indices = np.argsort(distances)
         # Select the indices of the nearest N rows
@@ -435,7 +445,7 @@ def find_nearest_nucleus_indices_np(structure_data: Structure_data, r_cart, N):
 def find_nearest_nucleus_indices_jnp(structure_data: Structure_data, r_cart, N):
     """See find_nearest_index."""
     # Calculate the distance between each row of R_carts and r_cart
-    distances = jnp.sqrt(jnp.sum((structure_data.positions_cart - jnp.array(r_cart)) ** 2, axis=1))
+    distances = jnp.sqrt(jnp.sum((structure_data.positions_cart_jnp - jnp.array(r_cart)) ** 2, axis=1))
     # Sort indices based on the calculated distances
     nearest_indices = jnp.argsort(distances)
     # Select the indices of the nearest N rows
@@ -463,10 +473,10 @@ def get_min_dist_rel_R_cart_np(structure_data: Structure_data, r_cart: list[floa
     def non_mapping(r_cart, R_cart):
         return np.array(R_cart) - np.array(r_cart)
 
-    if np.linalg.norm(r_cart - structure_data.positions_cart[i_atom]) > 0.0:  # dummy, which will be replaced in PBC cases
-        rel_R_cart_min_dist = mapping(r_cart, structure_data.positions_cart[i_atom])
+    if np.linalg.norm(r_cart - structure_data.positions_cart_np[i_atom]) > 0.0:  # dummy, which will be replaced in PBC cases
+        rel_R_cart_min_dist = mapping(r_cart, structure_data.positions_cart_np[i_atom])
     else:
-        rel_R_cart_min_dist = non_mapping(r_cart, structure_data.positions_cart[i_atom])
+        rel_R_cart_min_dist = non_mapping(r_cart, structure_data.positions_cart_np[i_atom])
 
     return rel_R_cart_min_dist
 
@@ -475,7 +485,7 @@ def get_min_dist_rel_R_cart_np(structure_data: Structure_data, r_cart: list[floa
 def get_min_dist_rel_R_cart_jnp(structure_data: Structure_data, r_cart: list[float, float, float], i_atom: int) -> float:
     """See get_min_dist_rel_R_cart_np."""
     r_cart = jnp.array(r_cart)
-    R_carts = jnp.array(structure_data.positions_cart)
+    R_carts = jnp.array(structure_data.positions_cart_jnp)
 
     def mapping(r, R):
         # dummy, which will be replaced in PBC cases

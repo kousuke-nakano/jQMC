@@ -41,9 +41,8 @@ import jax
 import numpy as np
 import numpy.typing as npt
 import scipy
-from jax import grad, jit, lax
+from jax import grad, jit, lax, vmap
 from jax import numpy as jnp
-from jax import vmap
 from mpi4py import MPI
 
 from .coulomb_potential import (
@@ -167,7 +166,7 @@ class MCMC:
             else:
                 charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
 
-            coords = hamiltonian_data.structure_data.positions_cart
+            coords = hamiltonian_data.structure_data.positions_cart_np
 
             # Place electrons around each nucleus
             for i in range(len(coords)):
@@ -389,7 +388,7 @@ class MCMC:
             self.__charges = jnp.array(self.__hamiltonian_data.structure_data.atomic_numbers)
 
         # coords
-        self.__coords = jnp.array(self.__hamiltonian_data.structure_data.positions_cart)
+        self.__coords = jnp.array(self.__hamiltonian_data.structure_data.positions_cart_np)
 
     def run(self, num_mcmc_steps: int = 0, max_time=86400) -> None:
         """Launch MCMCs with the set multiple walkers.
@@ -1287,7 +1286,7 @@ class GFMC:
             else:
                 charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
 
-            coords = hamiltonian_data.structure_data.positions_cart
+            coords = hamiltonian_data.structure_data.positions_cart_np
 
             # Place electrons around each nucleus
             for i in range(len(coords)):
@@ -1494,7 +1493,7 @@ class GFMC:
             self.__charges = jnp.array(self.__hamiltonian_data.structure_data.atomic_numbers)
 
         # coords
-        self.__coords = jnp.array(self.__hamiltonian_data.structure_data.positions_cart)
+        self.__coords = jnp.array(self.__hamiltonian_data.structure_data.positions_cart_np)
 
     def run(self, num_mcmc_steps: int = 50, max_time: int = 86400) -> None:
         """Run LRDMC with multiple walkers.

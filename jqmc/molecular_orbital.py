@@ -451,7 +451,7 @@ if __name__ == "__main__":
     else:
         charges = np.array(structure_data.atomic_numbers)
 
-    coords = structure_data.positions_cart
+    coords = structure_data.positions_cart_np
 
     # Place electrons around each nucleus
     for i in range(len(coords)):

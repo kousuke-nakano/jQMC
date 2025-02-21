@@ -1805,7 +1805,7 @@ def _compute_bare_coulomb_potential_debug(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
     """See compute_bare_coulomb_potential_api."""
-    R_carts = coulomb_potential_data.structure_data.positions_cart
+    R_carts = coulomb_potential_data.structure_data.positions_cart_np
     R_charges = coulomb_potential_data.effective_charges
     r_up_charges = [-1 for _ in range(len(r_up_carts))]
     r_dn_charges = [-1 for _ in range(len(r_dn_carts))]
@@ -1830,7 +1830,7 @@ def _compute_bare_coulomb_potential_jax(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
     """See compute_bare_coulomb_potential_api."""
-    R_carts = jnp.array(coulomb_potential_data.structure_data.positions_cart)
+    R_carts = jnp.array(coulomb_potential_data.structure_data.positions_cart_jnp)
     R_charges = np.array(coulomb_potential_data.effective_charges)
     r_up_charges = np.full(len(r_up_carts), -1.0, dtype=np.float64)
     r_dn_charges = np.full(len(r_dn_carts), -1.0, dtype=np.float64)

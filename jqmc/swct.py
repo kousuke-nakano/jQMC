@@ -106,7 +106,7 @@ def _evaluate_swct_omega_debug(
     r_carts: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
     """See _api method."""
-    R_carts = swct_data.structure.positions_cart
+    R_carts = swct_data.structure.positions_cart_np
     omega = np.zeros((len(R_carts), len(r_carts)))
 
     for alpha in range(len(R_carts)):
@@ -124,7 +124,7 @@ def _evaluate_swct_omega_jax(
     r_carts: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
     """See _api method."""
-    R_carts = swct_data.structure.positions_cart
+    R_carts = swct_data.structure.positions_cart_jnp
 
     def compute_omega(R_cart, r_cart):
         kappa = 1.0 / jnp.linalg.norm(r_cart - R_cart) ** 4
@@ -173,7 +173,7 @@ def _evaluate_swct_domega_debug(
     r_carts: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
     """See _api method."""
-    R_carts = swct_data.structure.positions_cart
+    R_carts = swct_data.structure.positions_cart_np
     domega = np.zeros((len(R_carts), 3))
 
     def compute_omega(R_cart, r_cart, R_carts):

@@ -87,7 +87,7 @@ def test_comparing_AO_and_MO_geminals():
     else:
         charges = np.array(structure_data.atomic_numbers)
 
-    coords = structure_data.positions_cart
+    coords = structure_data.positions_cart_np
 
     # Place electrons around each nucleus
     for i in range(len(coords)):
@@ -251,7 +251,7 @@ def test_numerial_and_auto_grads_ln_Det():
     else:
         charges = np.array(structure_data.atomic_numbers)
 
-    coords = structure_data.positions_cart
+    coords = structure_data.positions_cart_np
 
     # Place electrons around each nucleus
     for i in range(len(coords)):

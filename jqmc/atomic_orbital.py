@@ -132,7 +132,7 @@ class AOs_data:
     @property
     def nucleus_index_np(self) -> npt.NDArray[np.int32]:
         """nucleus_index."""
-        return np.array(self.nucleus_index)
+        return np.array(self.nucleus_index, dtype=np.int32)
 
     @property
     def nucleus_index_jnp(self) -> jax.Array:
@@ -147,12 +147,12 @@ class AOs_data:
     @property
     def nucleus_index_prim_jnp(self) -> jax.Array:
         """nucleus_index."""
-        return jnp.array(self.nucleus_index, dtype=jnp.int32)[self.orbital_indices_jnp]
+        return jnp.array(self.nucleus_index_prim_np, dtype=jnp.int32)
 
     @property
     def orbital_indices_np(self) -> npt.NDArray[np.int32]:
         """orbital_index."""
-        return np.array(self.orbital_indices)
+        return np.array(self.orbital_indices, dtype=np.int32)
 
     @property
     def orbital_indices_jnp(self) -> jax.Array:
@@ -160,7 +160,7 @@ class AOs_data:
         return jnp.array(self.orbital_indices, dtype=jnp.int32)
 
     @property
-    def atomic_center_carts(self) -> npt.NDArray[np.float64]:
+    def atomic_center_carts_np(self) -> npt.NDArray[np.float64]:
         """Atomic positions in cartesian.
 
         Returns atomic positions in cartesian
@@ -168,7 +168,7 @@ class AOs_data:
         Returns:
             npt.NDArray[np.float64]: atomic positions in cartesian
         """
-        return np.array([self.structure_data.positions_cart[i] for i in self.nucleus_index])
+        return self.structure_data.positions_cart_np[self.nucleus_index_np]
 
     @property
     def atomic_center_carts_jnp(self) -> jax.Array:
@@ -181,7 +181,7 @@ class AOs_data:
         """
         # this is super slow!!! Do not use list comprehension.
         # return jnp.array([self.structure_data.positions_cart[i] for i in self.nucleus_index])
-        return jnp.array(self.structure_data.positions_cart)[self.nucleus_index_jnp]
+        return self.structure_data.positions_cart_jnp[self.nucleus_index_jnp]
 
     @property
     def atomic_center_carts_unique_jnp(self) -> jax.Array:
@@ -192,12 +192,15 @@ class AOs_data:
         Returns:
             jax.Array: atomic positions in cartesian
         """
+        return self.structure_data.positions_cart_jnp
+        """ the same as above.
         _, first_indices = np.unique(self.nucleus_index_np, return_index=True)
         sorted_order = jnp.argsort(first_indices)
-        return jnp.array(self.structure_data.positions_cart)[sorted_order]
+        return self.structure_data.positions_cart_jnp[sorted_order]
+        """
 
     @property
-    def atomic_center_carts_prim(self) -> npt.NDArray[np.float64]:
+    def atomic_center_carts_prim_np(self) -> npt.NDArray[np.float64]:
         """Atomic positions in cartesian for primitve orbitals.
 
         Returns atomic positions in cartesian for primitive orbitals
@@ -205,7 +208,7 @@ class AOs_data:
         Returns:
             npt.NDArray[np.float]: atomic positions in cartesian for primitive orbitals
         """
-        return self.atomic_center_carts[self.orbital_indices]
+        return self.atomic_center_carts_np[self.orbital_indices]
 
     @property
     def atomic_center_carts_prim_jnp(self) -> jax.Array:
@@ -221,7 +224,7 @@ class AOs_data:
         return self.atomic_center_carts_jnp[self.orbital_indices_jnp]
 
     @property
-    def angular_momentums_prim(self) -> npt.NDArray[np.int32]:
+    def angular_momentums_prim_np(self) -> npt.NDArray[np.int32]:
         """Angular momentums for primitive orbitals.
 
         Returns angular momentums for primitive orbitals
@@ -229,7 +232,7 @@ class AOs_data:
         Returns:
             npt.NDArray[np.float64]: angular momentums for primitive orbitals
         """
-        return np.array([self.angular_momentums[i] for i in self.orbital_indices])
+        return np.array(self.angular_momentums, dtype=np.int32)[self.orbital_indices_np]
 
     @property
     def angular_momentums_prim_jnp(self) -> jax.Array:
@@ -240,10 +243,10 @@ class AOs_data:
         Returns:
             jax.Array: angular momentums for primitive orbitals
         """
-        return jnp.array(self.angular_momentums, dtype=jnp.int32)[self.orbital_indices_jnp]
+        return jnp.array(self.angular_momentums_prim_np, dtype=jnp.int32)
 
     @property
-    def magnetic_quantum_numbers_prim(self) -> npt.NDArray[np.int32]:
+    def magnetic_quantum_numbers_prim_np(self) -> npt.NDArray[np.int32]:
         """Magnetic quantum numbers for primitive orbitals.
 
         Returns magnetic quantum numbers for primitive orbitals
@@ -251,7 +254,7 @@ class AOs_data:
         Returns:
             jax.Array: magnetic quantum numbers for primitive orbitals
         """
-        return np.array([self.magnetic_quantum_numbers[i] for i in self.orbital_indices])
+        return np.array(self.magnetic_quantum_numbers, dtype=np.int32)[self.orbital_indices_np]
 
     @property
     def magnetic_quantum_numbers_prim_jnp(self) -> jax.Array:
@@ -262,17 +265,17 @@ class AOs_data:
         Returns:
             npt.NDArray[np.int64]: magnetic quantum numbers for primitive orbitals
         """
-        return jnp.array(self.magnetic_quantum_numbers, dtype=jnp.int32)[self.orbital_indices_jnp]
+        return jnp.array(self.magnetic_quantum_numbers_prim_np, dtype=jnp.int32)
 
     @property
     def exponents_jnp(self) -> jax.Array:
         """Return exponents."""
-        return jnp.array(self.exponents)
+        return jnp.array(self.exponents, dtype=jnp.float64)
 
     @property
     def coefficients_jnp(self) -> jax.Array:
         """Return coefficients."""
-        return jnp.array(self.coefficients)
+        return jnp.array(self.coefficients, dtype=jnp.float64)
 
 
 @struct.dataclass
@@ -391,7 +394,7 @@ def _compute_AOs_debug(aos_data: AOs_data, r_carts: npt.NDArray[np.float64]) -> 
     """
 
     def compute_each_AO(ao_index):
-        atomic_center_cart = aos_data.atomic_center_carts[ao_index]
+        atomic_center_cart = aos_data.atomic_center_carts_np[ao_index]
         shell_indices = [i for i, v in enumerate(aos_data.orbital_indices) if v == ao_index]
         exponents = [aos_data.exponents[i] for i in shell_indices]
         coefficients = [aos_data.coefficients[i] for i in shell_indices]
