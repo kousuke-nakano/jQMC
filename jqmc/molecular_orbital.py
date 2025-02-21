@@ -139,6 +139,49 @@ class MOs_data_no_deriv:
         return cls(num_mo, aos_data, mo_coefficients)
 
 
+def compute_MOs_api(mos_data: MOs_data, r_carts: npt.NDArray[np.float64], debug: bool = False) -> npt.NDArray[np.float64]:
+    """The class contains information for computing molecular orbitals at r_carts simlunateously.
+
+    Args:
+        mos_data (MOs_data): an instance of MOs_data
+        r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
+        debug (bool): if True, this is computed via _debug function for debuging purpose
+
+    Returns:
+        Arrays containing values of the MOs at r_carts. (dim: num_mo, N_e)
+    """
+    if debug:
+        answer = _compute_MOs_debug(mos_data, r_carts)
+    else:
+        answer = _compute_MOs_jax(mos_data, r_carts)
+
+    if answer.shape != (mos_data.num_mo, len(r_carts)):
+        logger.error(f"answer.shape = {answer.shape} is inconsistent with the expected one = {(mos_data.num_mo, len(r_carts))}")
+        raise ValueError
+
+    return answer
+
+
+def _compute_MOs_debug(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    """See _api method."""
+    answer = np.dot(
+        mos_data.mo_coefficients,
+        compute_AOs_api(aos_data=mos_data.aos_data, r_carts=r_carts),
+    )
+    return answer
+
+
+@jit
+def _compute_MOs_jax(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    """See _api method."""
+    answer = jnp.dot(
+        mos_data.mo_coefficients,
+        compute_AOs_api(aos_data=mos_data.aos_data, r_carts=r_carts),
+    )
+    return answer
+
+
+# no longer used in the main code
 def compute_MOs_laplacian_api(
     mos_data: MOs_data, r_carts: npt.NDArray[np.float64], debug: bool = False
 ) -> npt.NDArray[np.float64]:
@@ -168,6 +211,7 @@ def compute_MOs_laplacian_api(
     return mo_matrix_laplacian
 
 
+# no longer used in the main code
 def _compute_MOs_laplacian_debug(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]):
     """See _api method."""
     # Laplacians of AOs (numerical)
@@ -208,6 +252,7 @@ def _compute_MOs_laplacian_debug(mos_data: MOs_data, r_carts: npt.NDArray[np.flo
     return mo_matrix_laplacian
 
 
+# no longer used in the main code
 @jit
 def _compute_MOs_laplacian_jax(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]):
     """See _api method."""
@@ -219,6 +264,7 @@ def _compute_MOs_laplacian_jax(mos_data: MOs_data, r_carts: npt.NDArray[np.float
     return mo_matrix_laplacian
 
 
+# no longer used in the main code
 def compute_MOs_grad_api(
     mos_data: MOs_data, r_carts: npt.NDArray[np.float64], debug: bool = False
 ) -> tuple[
@@ -262,6 +308,7 @@ def compute_MOs_grad_api(
     return mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z
 
 
+# no longer used in the main code
 def _compute_MOs_grad_debug(
     mos_data: MOs_data,
     r_carts: npt.NDArray[np.float64],
@@ -301,6 +348,7 @@ def _compute_MOs_grad_debug(
     return mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z
 
 
+# no longer used in the main code
 @jit
 def _compute_MOs_grad_jax(
     mos_data: MOs_data,
@@ -315,48 +363,7 @@ def _compute_MOs_grad_jax(
     return mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z
 
 
-def compute_MOs_api(mos_data: MOs_data, r_carts: npt.NDArray[np.float64], debug: bool = False) -> npt.NDArray[np.float64]:
-    """The class contains information for computing molecular orbitals at r_carts simlunateously.
-
-    Args:
-        mos_data (MOs_data): an instance of MOs_data
-        r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
-        debug (bool): if True, this is computed via _debug function for debuging purpose
-
-    Returns:
-        Arrays containing values of the MOs at r_carts. (dim: num_mo, N_e)
-    """
-    if debug:
-        answer = _compute_MOs_debug(mos_data, r_carts)
-    else:
-        answer = _compute_MOs_jax(mos_data, r_carts)
-
-    if answer.shape != (mos_data.num_mo, len(r_carts)):
-        logger.error(f"answer.shape = {answer.shape} is inconsistent with the expected one = {(mos_data.num_mo, len(r_carts))}")
-        raise ValueError
-
-    return answer
-
-
-def _compute_MOs_debug(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
-    """See _api method."""
-    answer = np.dot(
-        mos_data.mo_coefficients,
-        compute_AOs_api(aos_data=mos_data.aos_data, r_carts=r_carts),
-    )
-    return answer
-
-
-@jit
-def _compute_MOs_jax(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
-    """See _api method."""
-    answer = jnp.dot(
-        mos_data.mo_coefficients,
-        compute_AOs_api(aos_data=mos_data.aos_data, r_carts=r_carts),
-    )
-    return answer
-
-
+# no longer used in the main code
 @dataclass
 class MO_data:
     """MO_data for debuggin purpose.
@@ -386,6 +393,7 @@ class MO_data:
             raise ValueError
 
 
+# no longer used in the main code
 def compute_MO(mo_data: MO_data, r_cart: list[float]) -> float:
     """Compute a MO for debugging purpose.
 

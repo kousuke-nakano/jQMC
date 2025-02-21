@@ -61,6 +61,7 @@ log.addHandler(stream_handler)
 
 # @pytest.mark.skip
 def test_debug_and_jax_SWCT_omega():
+    """Test SWCT omega, compare debug and jax."""
     (
         structure_data,
         _,
@@ -165,7 +166,7 @@ def test_vmc_serial_force_with_SWCT(request):
 
 @pytest.mark.skip(reason="A heavy calculation. Use only on a local machine.")
 def test_vmc_force_with_SWCT():
-    # """
+    """Test VMC force with SWCT."""
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,
@@ -229,7 +230,7 @@ def test_vmc_force_with_SWCT():
 
 @pytest.mark.skip(reason="A heavy calculation. Use only on a local machine.")
 def test_lrdmc_force_with_SWCT():
-    # """
+    """Test LRDMC force with SWCT."""
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,

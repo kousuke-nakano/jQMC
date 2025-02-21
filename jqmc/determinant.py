@@ -1,8 +1,4 @@
-"""Determinant module.
-
-Todo:
-    * Replace numpy and jax.numpy typings with jaxtyping
-"""
+"""Determinant module."""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -180,6 +176,7 @@ class Geminal_data:
         else:
             raise NotImplementedError
 
+    # no longer used in the main code
     @property
     def compute_orb_grad_api(self) -> Callable[..., npt.NDArray[np.float64]]:
         """Function for computing AOs or MOs grads.
@@ -202,6 +199,7 @@ class Geminal_data:
         else:
             raise NotImplementedError
 
+    # no longer used in the main code
     @property
     def compute_orb_laplacian_api(self) -> Callable[..., npt.NDArray[np.float64]]:
         """Function for computing AOs or MOs laplacians.
@@ -529,6 +527,7 @@ def _compute_geminal_all_elements_jax(
     return geminal
 
 
+# no longer used in the main code
 def compute_ratio_determinant_part_api(
     geminal_data: Geminal_data,
     A_old_inv: npt.NDArray[np.float64],
@@ -566,6 +565,7 @@ def compute_ratio_determinant_part_api(
     return determinant_ratios
 
 
+# no longer used in the main code
 def _compute_ratio_determinant_part_debug(
     geminal_data: Geminal_data,
     old_r_up_carts: npt.NDArray[np.float64],
@@ -583,6 +583,7 @@ def _compute_ratio_determinant_part_debug(
     )
 
 
+# no longer used in the main code
 @jit
 def _compute_ratio_determinant_part_jax(
     geminal_data: Geminal_data,
@@ -656,6 +657,7 @@ def _compute_ratio_determinant_part_jax(
     return jnp.array(results)
 
 
+# no longer used in the main code
 def compute_grads_and_laplacian_ln_Det_api(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -724,6 +726,7 @@ def compute_grads_and_laplacian_ln_Det_api(
     return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D
 
 
+# no longer used in the main code
 def _compute_grads_and_laplacian_ln_Det_debug(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -1078,6 +1081,7 @@ def _compute_grads_and_laplacian_ln_Det_debug(
     return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D
 
 
+# no longer used in the main code
 @jit
 def _compute_grads_and_laplacian_ln_Det_jax(
     geminal_data: Geminal_data,
@@ -1203,8 +1207,6 @@ if __name__ == "__main__":
     handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
     stream_handler.setFormatter(handler_format)
     log.addHandler(stream_handler)
-
-    from .structure import Structure_data
 
     """
     # test MOs

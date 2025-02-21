@@ -32,12 +32,11 @@
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-import os
-import pickle
 from logging import Formatter, StreamHandler, getLogger
 
 import jax
 import numpy as np
+import pytest
 
 from ..jqmc.atomic_orbital import AOs_data
 from ..jqmc.jastrow_factor import (
@@ -68,8 +67,171 @@ stream_handler.setFormatter(handler_format)
 log.addHandler(stream_handler)
 
 
+def test_Jastrow_twobody_part():
+    """Test the two-body Jastrow factor, comparing the debug and JAX implementations."""
+    num_r_up_cart_samples = 5
+    num_r_dn_cart_samples = 2
+
+    r_cart_min, r_cart_max = -3.0, 3.0
+
+    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_up_cart_samples, 3) + r_cart_min
+    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_dn_cart_samples, 3) + r_cart_min
+
+    jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=1.0)
+    J2_debug = _compute_Jastrow_two_body_debug(
+        jastrow_two_body_data=jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+    )
+
+    # print(f"jastrow_two_body_debug = {jastrow_two_body_debug}")
+
+    J2_jax = _compute_Jastrow_two_body_jax(
+        jastrow_two_body_data=jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+    )
+
+    # print(f"jastrow_two_body_jax = {jastrow_two_body_jax}")
+
+    np.testing.assert_almost_equal(J2_debug, J2_jax, decimal=10)
+
+    jax.clear_caches()
+
+
+def test_Jastrow_threebody_part_with_AOs_data():
+    """Test the three-body Jastrow factor, comparing the debug and JAX implementations, using AOs data."""
+    num_r_up_cart_samples = 4
+    num_r_dn_cart_samples = 2
+    num_R_cart_samples = 6
+    num_ao = 6
+    num_ao_prim = 6
+    orbital_indices = [0, 1, 2, 3, 4, 5]
+    exponents = [1.2, 0.5, 0.1, 0.05, 0.05, 0.05]
+    coefficients = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    angular_momentums = [0, 0, 0, 1, 1, 1]
+    magnetic_quantum_numbers = [0, 0, 0, 0, +1, -1]
+
+    # generate matrices for the test
+    r_cart_min, r_cart_max = -1.0, 1.0
+    R_cart_min, R_cart_max = 0.0, 0.0
+    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_up_cart_samples, 3) + r_cart_min
+    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_dn_cart_samples, 3) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
+
+    structure_data = Structure_data(
+        pbc_flag=[False, False, False],
+        positions=R_carts,
+        atomic_numbers=[0] * num_R_cart_samples,
+        element_symbols=["X"] * num_R_cart_samples,
+        atomic_labels=["X"] * num_R_cart_samples,
+    )
+
+    aos_data = AOs_data(
+        structure_data=structure_data,
+        nucleus_index=list(range(num_R_cart_samples)),
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        magnetic_quantum_numbers=magnetic_quantum_numbers,
+    )
+
+    j_matrix = np.random.rand(aos_data.num_ao, aos_data.num_ao + 1)
+
+    jastrow_three_body_data = Jastrow_three_body_data(orb_data=aos_data, j_matrix=j_matrix)
+
+    J3_debug = _compute_Jastrow_three_body_debug(
+        jastrow_three_body_data=jastrow_three_body_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    # print(f"J3_debug = {J3_debug}")
+
+    J3_jax = _compute_Jastrow_three_body_jax(
+        jastrow_three_body_data=jastrow_three_body_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    # print(f"J3_jax = {J3_jax}")
+
+    np.testing.assert_almost_equal(J3_debug, J3_jax, decimal=8)
+
+    jax.clear_caches()
+
+
+def test_Jastrow_threebody_part_with_MOs_data():
+    """Test the three-body Jastrow factor, comparing the debug and JAX implementations, using MOs data."""
+    num_el = 10
+    num_mo = 5
+    num_ao = 3
+    num_ao_prim = 4
+    orbital_indices = [0, 0, 1, 2]
+    exponents = [50.0, 20.0, 10.0, 5.0]
+    coefficients = [1.0, 1.0, 1.0, 0.5]
+    angular_momentums = [1, 1, 1]
+    magnetic_quantum_numbers = [0, 0, -1]
+
+    num_r_up_cart_samples = num_r_dn_cart_samples = num_el
+    num_R_cart_samples = num_ao
+    r_cart_min, r_cart_max = -5.0, 5.0
+    R_cart_min, R_cart_max = 10.0, 10.0
+    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_up_cart_samples, 3) + r_cart_min
+    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_dn_cart_samples, 3) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
+
+    mo_coefficients = np.random.rand(num_mo, num_ao)
+
+    structure_data = Structure_data(
+        pbc_flag=[False, False, False],
+        positions=R_carts,
+        atomic_numbers=[0] * num_R_cart_samples,
+        element_symbols=["X"] * num_R_cart_samples,
+        atomic_labels=["X"] * num_R_cart_samples,
+    )
+
+    aos_data = AOs_data(
+        structure_data=structure_data,
+        nucleus_index=list(range(num_R_cart_samples)),
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        magnetic_quantum_numbers=magnetic_quantum_numbers,
+    )
+
+    mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
+
+    j_matrix = np.random.rand(mos_data.num_mo, mos_data.num_mo + 1)
+
+    jastrow_three_body_data = Jastrow_three_body_data(orb_data=mos_data, j_matrix=j_matrix)
+
+    J3_debug = _compute_Jastrow_three_body_debug(
+        jastrow_three_body_data=jastrow_three_body_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    # print(f"J3_debug = {J3_debug}")
+
+    J3_jax = _compute_Jastrow_three_body_jax(
+        jastrow_three_body_data=jastrow_three_body_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    # print(f"J3_jax = {J3_jax}")
+
+    np.testing.assert_almost_equal(J3_debug, J3_jax, decimal=8)
+
+    jax.clear_caches()
+
+
+@pytest.mark.obsolete(reasons="Gradients are now implemented by fully exploiting JAX modules.")
 def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
-    # test AOs
+    """Test numerical and JAX grads of the three-body Jastrow factor, comparing the debug and JAX implementations, using AOs data."""
     num_r_up_cart_samples = 4
     num_r_dn_cart_samples = 2
     num_R_cart_samples = 6
@@ -161,7 +323,9 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
     jax.clear_caches()
 
 
+@pytest.mark.obsolete(reasons="Gradients are now implemented by fully exploiting JAX modules.")
 def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
+    """Test numerical and JAX grads of the three-body Jastrow factor, comparing the debug and JAX implementations, using MOs data."""
     num_el = 10
     num_mo = 5
     num_ao = 3
@@ -257,8 +421,9 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
     jax.clear_caches()
 
 
+@pytest.mark.obsolete(reasons="Gradients are now implemented by fully exploiting JAX modules.")
 def test_numerical_and_auto_grads_Jastrow_twobody_part():
-    # test AOs
+    """Test numerical and JAX grads of the two-body Jastrow factor, comparing the debug and JAX implementations."""
     num_r_up_cart_samples = 5
     num_r_dn_cart_samples = 2
 

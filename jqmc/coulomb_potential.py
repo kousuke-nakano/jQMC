@@ -1235,7 +1235,7 @@ def _compute_ecp_non_local_parts_NN_jax(
             )
             rel_R_cart_norm = jnp.linalg.norm(rel_R_cart_min_dist)
 
-            max_ang_mom_plus_1 = coulomb_potential_data.global_max_ang_mom_plus_1  # wrong!! Padding considering also this.
+            max_ang_mom_plus_1 = coulomb_potential_data.global_max_ang_mom_plus_1
             ang_moms = ang_mom_all[i_atom]
             exponents = exponent_all[i_atom]
             coefficients = coefficient_all[i_atom]
@@ -1287,7 +1287,7 @@ def _compute_ecp_non_local_parts_NN_jax(
             )
             rel_R_cart_norm = jnp.linalg.norm(rel_R_cart_min_dist)
 
-            max_ang_mom_plus_1 = coulomb_potential_data.global_max_ang_mom_plus_1  # wrong!! Padding considering also this.
+            max_ang_mom_plus_1 = coulomb_potential_data.global_max_ang_mom_plus_1
             ang_moms = ang_mom_all[i_atom]
             exponents = exponent_all[i_atom]
             coefficients = coefficient_all[i_atom]
@@ -1748,6 +1748,17 @@ def _compute_ecp_coulomb_potential_jax(
         coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
+    """ full NNs
+    _, _, _, ecp_nonlocal_parts = _compute_ecp_non_local_parts_full_NN_jax(
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        Nv=Nv,
+    )
+    """
+
+    #''' NNs
     _, _, _, ecp_nonlocal_parts = _compute_ecp_non_local_parts_NN_jax(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
@@ -1755,6 +1766,7 @@ def _compute_ecp_coulomb_potential_jax(
         r_dn_carts=r_dn_carts,
         Nv=Nv,
     )
+    #'''
 
     V_ecp = ecp_local_parts + ecp_nonlocal_parts
 
@@ -1951,13 +1963,7 @@ def compute_coulomb_potential_api(
 
 
 if __name__ == "__main__":
-    import os
     import pickle
-
-    from .jastrow_factor import Jastrow_data, Jastrow_two_body_data
-
-    # from .hamiltonians import Hamiltonian_data
-    from .trexio_wrapper import read_trexio_file
 
     log = getLogger("jqmc")
     log.setLevel("DEBUG")

@@ -3581,9 +3581,10 @@ if __name__ == "__main__":
     )
 
     # conversion of SD to AGP
-    geminal_ao_data = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_data)
+    # geminal_data = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_data)
 
-    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_ao_data)
+    geminal_data = geminal_mo_data
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_data)
 
     hamiltonian_data = Hamiltonian_data(
         structure_data=structure_data,
@@ -3606,7 +3607,7 @@ if __name__ == "__main__":
     num_mcmc_bin_blocks = 5
     mcmc_seed = 34356
 
-    """
+    # """
     # run VMC single-shot
     mcmc = MCMC(
         hamiltonian_data=hamiltonian_data,
@@ -3615,7 +3616,7 @@ if __name__ == "__main__":
         epsilon_AS=1.0e-3,
         num_walkers=num_walkers,
         comput_position_deriv=True,
-        comput_jas_param_deriv=False,
+        comput_param_deriv=False,
     )
     vmc = QMC(mcmc)
     vmc.run(num_mcmc_steps=100, max_time=3600)
@@ -3624,9 +3625,9 @@ if __name__ == "__main__":
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
-    """
+    # """
 
-    """
+    # """
     f_mean, f_std = vmc.get_aF(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
@@ -3634,14 +3635,14 @@ if __name__ == "__main__":
 
     logger.info(f"f_mean = {f_mean} Ha/bohr.")
     logger.info(f"f_std = {f_std} Ha/bohr.")
-    """
+    # """
 
     """
     H_mean, H_std = vmc.get_H(num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks)
     logger.info(f"H_mean = {H_mean}.")
     """
 
-    # """
+    """
     # run VMCopt
     mcmc = MCMC(
         hamiltonian_data=hamiltonian_data,
@@ -3666,7 +3667,7 @@ if __name__ == "__main__":
         opt_J4_param=False,
         opt_lambda_param=False,
     )
-    # """
+    """
 
     """
 

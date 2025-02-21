@@ -41,8 +41,6 @@ import numpy as np
 from ..jqmc.coulomb_potential import (
     _compute_bare_coulomb_potential_debug,
     _compute_bare_coulomb_potential_jax,
-    _compute_ecp_coulomb_potential_debug,
-    _compute_ecp_coulomb_potential_jax,
     _compute_ecp_local_parts_full_NN_debug,
     _compute_ecp_local_parts_full_NN_jax,
     _compute_ecp_non_local_parts_full_NN_debug,
@@ -68,6 +66,7 @@ log.addHandler(stream_handler)
 
 
 def test_debug_and_jax_bare_coulomb():
+    """Test the bare coulomb potential computation."""
     (
         structure_data,
         aos_data,
@@ -76,16 +75,6 @@ def test_debug_and_jax_bare_coulomb():
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_trexio.hdf5"))
-
-    # define data
-    jastrow_data = Jastrow_data(
-        jastrow_two_body_data=None,
-        jastrow_two_body_flag=False,
-        jastrow_three_body_data=None,
-        jastrow_three_body_flag=False,
-    )  # no jastrow for the time-being.
-
-    wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
 
     old_r_up_carts = np.array(
         [
@@ -126,6 +115,7 @@ def test_debug_and_jax_bare_coulomb():
 
 
 def test_debug_and_jax_ecp_local():
+    """Test the local ECP potential computation."""
     (
         structure_data,
         aos_data,
@@ -134,16 +124,6 @@ def test_debug_and_jax_ecp_local():
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_trexio.hdf5"))
-
-    # define data
-    jastrow_data = Jastrow_data(
-        jastrow_two_body_data=None,
-        jastrow_two_body_flag=False,
-        jastrow_three_body_data=None,
-        jastrow_three_body_flag=False,
-    )  # no jastrow for the time-being.
-
-    wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
 
     old_r_up_carts = np.array(
         [
@@ -182,6 +162,7 @@ def test_debug_and_jax_ecp_local():
 
 
 def test_debug_and_jax_ecp_non_local():
+    """Test the non-local ECP potential computation."""
     (
         structure_data,
         _,

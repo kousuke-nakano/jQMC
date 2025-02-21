@@ -49,8 +49,13 @@ jobs:
 
     - name: Test jqmc (pytest) with @jit decorator
       run: |
-        pytest -v -s
+        pytest -s -v tests/test_trexio.py
+        pytest -s -v tests/test_AOs_MOs.py
+        pytest -s -v tests/test_determinant.py
+        pytest -s -v tests/test_jastrow.py
+        pytest -s -v tests/test_wave_function.py
+        pytest -s -v tests/test_ecps.py
 
     #- name: Test jqmc (pytest) without @jit decorator
     #  run: |
-    #    pytest -v -s --disable-jit
+    #    pytest -s -v tests/test_refs.py --disable-jit

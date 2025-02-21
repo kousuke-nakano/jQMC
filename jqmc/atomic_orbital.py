@@ -342,283 +342,6 @@ class AOs_data_no_deriv:
         )
 
 
-def compute_AOs_laplacian_api(
-    aos_data: AOs_data,
-    r_carts: jnpt.ArrayLike,
-    debug=False,
-) -> jax.Array:
-    """Compute laplacians of the give AOs at r_carts.
-
-    The method is for computing the laplacians of the given atomic orbital at r_carts
-
-    Args:
-        ao_datas (AOs_data): an instance of AOs_data
-        r_carts (jnpt.ArrayLike): Cartesian coordinates of electrons (dim: N_e, 3)
-        debug (bool): if True, numerical derivatives are computed via _debug function for debuging purpose
-
-    Returns:
-        jax.Array:
-            Array containing laplacians of the AOs at r_carts. The dim. is (num_ao, N_e)
-
-    """
-    if debug:
-        return _compute_AOs_laplacian_debug(aos_data, r_carts)
-    else:
-        return _compute_AOs_laplacian_jax(aos_data, r_carts)
-
-
-@jit
-def _compute_AOs_laplacian_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
-    """Compute laplacians of the give AOs at r_carts.
-
-    See compute_AOs_laplacian_api
-
-    """
-    # expansion with respect to the primitive AOs
-    # compute R_n inc. the whole normalization factor
-    R_carts_jnp = aos_data.atomic_center_carts_prim_jnp
-    c_jnp = aos_data.coefficients_jnp
-    Z_jnp = aos_data.exponents_jnp
-    l_jnp = aos_data.angular_momentums_prim_jnp
-    m_jnp = aos_data.magnetic_quantum_numbers_prim_jnp
-
-    vmap_compute_AOs_laplacian_dup = vmap(
-        vmap(
-            _compute_primitive_AOs_laplacians_jax,
-            in_axes=(None, None, None, None, None, 0),
-        ),
-        in_axes=(0, 0, 0, 0, 0, None),
-    )
-
-    AOs_laplacian_dup = vmap_compute_AOs_laplacian_dup(c_jnp, Z_jnp, l_jnp, m_jnp, R_carts_jnp, r_carts)
-
-    orbital_indices = jnp.array(aos_data.orbital_indices, dtype=jnp.int32)
-    num_segments = aos_data.num_ao
-    ao_matrix_laplacian = jax.ops.segment_sum(AOs_laplacian_dup, orbital_indices, num_segments=num_segments)
-
-    return ao_matrix_laplacian
-
-
-def _compute_AOs_laplacian_debug(aos_data: AOs_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
-    """Compute laplacians of the give AOs at r_carts.
-
-    The method is for computing the laplacians of the given atomic orbital at r_carts
-    using the FDM method for debuging purpose.
-
-    Args:
-        ao_datas (AOs_data): an instance of AOs_data
-        r_carts (npt.NDArray[np.float64]): Cartesian coordinates of electrons (dim: N_e, 3)
-        debug_flag (bool): if True, numerical derivatives are computed for debuging purpose
-
-    Returns:
-        npt.NDArray[np.float64]:
-            Array containing laplacians of the AOs at r_carts. The dim. is (num_ao, N_e)
-
-    """
-    # Laplacians of AOs (numerical)
-    diff_h = 1.0e-5
-
-    ao_matrix = compute_AOs_api(aos_data, r_carts)
-
-    # laplacians x^2
-    diff_p_x_r_carts = r_carts.copy()
-    diff_p_x_r_carts[:, 0] += diff_h
-    ao_matrix_diff_p_x = compute_AOs_api(aos_data, diff_p_x_r_carts)
-    diff_m_x_r_carts = r_carts.copy()
-    diff_m_x_r_carts[:, 0] -= diff_h
-    ao_matrix_diff_m_x = compute_AOs_api(aos_data, diff_m_x_r_carts)
-
-    # laplacians y^2
-    diff_p_y_r_carts = r_carts.copy()
-    diff_p_y_r_carts[:, 1] += diff_h
-    ao_matrix_diff_p_y = compute_AOs_api(aos_data, diff_p_y_r_carts)
-    diff_m_y_r_carts = r_carts.copy()
-    diff_m_y_r_carts[:, 1] -= diff_h
-    ao_matrix_diff_m_y = compute_AOs_api(aos_data, diff_m_y_r_carts)
-
-    # laplacians z^2
-    diff_p_z_r_carts = r_carts.copy()
-    diff_p_z_r_carts[:, 2] += diff_h
-    ao_matrix_diff_p_z = compute_AOs_api(aos_data, diff_p_z_r_carts)
-    diff_m_z_r_carts = r_carts.copy()
-    diff_m_z_r_carts[:, 2] -= diff_h
-    ao_matrix_diff_m_z = compute_AOs_api(aos_data, diff_m_z_r_carts)
-
-    ao_matrix_grad2_x = (ao_matrix_diff_p_x + ao_matrix_diff_m_x - 2 * ao_matrix) / (diff_h) ** 2
-    ao_matrix_grad2_y = (ao_matrix_diff_p_y + ao_matrix_diff_m_y - 2 * ao_matrix) / (diff_h) ** 2
-    ao_matrix_grad2_z = (ao_matrix_diff_p_z + ao_matrix_diff_m_z - 2 * ao_matrix) / (diff_h) ** 2
-
-    ao_matrix_laplacian = ao_matrix_grad2_x + ao_matrix_grad2_y + ao_matrix_grad2_z
-
-    if ao_matrix_laplacian.shape != (aos_data.num_ao, len(r_carts)):
-        logger.error(
-            f"ao_matrix_laplacian.shape = {ao_matrix_laplacian.shape} is \
-                inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
-        )
-        raise ValueError
-
-    return ao_matrix_laplacian
-
-
-def compute_AOs_grad_api(aos_data: AOs_data, r_carts: jnpt.ArrayLike, debug=False) -> tuple[jax.Array, jax.Array, jax.Array]:
-    """Compute Cartesian Gradients of AOs.
-
-    The method is for computing the Carteisan gradients (x,y,z) of
-    the given atomic orbital at r_carts
-
-    Args:
-        ao_datas(AOs_data): an instance of AOs_data
-        r_carts(jnpt.ArrayLike): Cartesian coordinates of electrons (dim: N_e, 3)
-        debug (bool): if True, numerical derivatives are computed via _debug function for debuging purpose
-
-    Returns:
-        tuple: tuple containing gradients of the AOs at r_carts. (grad_x, grad_y, grad_z).
-        The dim. of each matrix is (num_ao, N_e)
-
-    """
-    if debug:
-        ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z = _compute_AOs_grad_debug(aos_data, r_carts)
-    else:
-        ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z = _compute_AOs_grad_jax(aos_data, r_carts)
-
-    if ao_matrix_grad_x.shape != (aos_data.num_ao, len(r_carts)):
-        logger.error(
-            f"aao_matrix_grad_x.shape = {ao_matrix_grad_x.shape} is \
-                inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
-        )
-        raise ValueError
-
-    if ao_matrix_grad_y.shape != (aos_data.num_ao, len(r_carts)):
-        logger.error(
-            f"ao_matrix_grad_y.shape = {ao_matrix_grad_y.shape} is \
-                inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
-        )
-        raise ValueError
-
-    if ao_matrix_grad_z.shape != (aos_data.num_ao, len(r_carts)):
-        logger.error(
-            f"ao_matrix_grad_z.shape = {ao_matrix_grad_y.shape} is \
-                inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
-        )
-        raise ValueError
-
-    return ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z
-
-
-@jit
-def _compute_AOs_grad_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> tuple[jax.Array, jax.Array, jax.Array]:
-    """Compute Cartesian Gradients of AOs.
-
-    See compute_AOs_grad_api
-
-    """
-    # expansion with respect to the primitive AOs
-    # compute R_n inc. the whole normalization factor
-    R_carts_jnp = aos_data.atomic_center_carts_prim_jnp
-    c_jnp = aos_data.coefficients_jnp
-    Z_jnp = aos_data.exponents_jnp
-    l_jnp = aos_data.angular_momentums_prim_jnp
-    m_jnp = aos_data.magnetic_quantum_numbers_prim_jnp
-
-    # grad in compute_primitive_AOs_grad_jax
-    vmap_compute_AOs_grad_dup = vmap(
-        vmap(
-            _compute_primitive_AOs_grad_jax,
-            in_axes=(None, None, None, None, None, 0),
-        ),
-        in_axes=(0, 0, 0, 0, 0, None),
-    )
-
-    AOs_grad_x_dup, AOs_grad_y_dup, AOs_grad_z_dup = vmap_compute_AOs_grad_dup(c_jnp, Z_jnp, l_jnp, m_jnp, R_carts_jnp, r_carts)
-
-    orbital_indices = jnp.array(aos_data.orbital_indices, dtype=jnp.int32)
-    num_segments = aos_data.num_ao
-    ao_matrix_grad_x = jax.ops.segment_sum(AOs_grad_x_dup, orbital_indices, num_segments=num_segments)
-    ao_matrix_grad_y = jax.ops.segment_sum(AOs_grad_y_dup, orbital_indices, num_segments=num_segments)
-    ao_matrix_grad_z = jax.ops.segment_sum(AOs_grad_z_dup, orbital_indices, num_segments=num_segments)
-    return ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z
-
-
-@jit
-def __compute_AOs_grad_jax_old(
-    aos_data: AOs_data,
-    r_carts: jnpt.ArrayLike,
-) -> tuple[jax.Array, jax.Array, jax.Array]:
-    """Compute Cartesian Gradients of AOs (old).
-
-    The method is for computing the Carteisan gradients (x,y,z) of
-    the given atomic orbital at r_carts
-
-    Args:
-        ao_datas(AOs_data): an instance of AOs_data
-        r_carts(jnpt.ArrayLike): Cartesian coordinates of electrons (dim: N_e, 3)
-
-    Returns:
-        tuple: tuple containing gradients of the AOs at r_carts. (grad_x, grad_y, grad_z).
-        The dim. of each matrix is (num_ao, N_e)
-
-    Note:
-        Gradients of AOs (autograd via google-JAX)
-        This method gives correct answers, but slow because the full Jacobian calculation is
-        not needed for computing gradients.
-        grad should be pluged into compute_AOs_jax() in the future for accelaration.
-    """
-    ao_matrix_jacrev = jacrev(compute_AOs_api, argnums=1)(aos_data, r_carts)
-
-    ao_matrix_grad_x_ = ao_matrix_jacrev[:, :, :, 0]
-    ao_matrix_grad_y_ = ao_matrix_jacrev[:, :, :, 1]
-    ao_matrix_grad_z_ = ao_matrix_jacrev[:, :, :, 2]
-    ao_matrix_grad_x = jnp.sum(ao_matrix_grad_x_, axis=2)
-    ao_matrix_grad_y = jnp.sum(ao_matrix_grad_y_, axis=2)
-    ao_matrix_grad_z = jnp.sum(ao_matrix_grad_z_, axis=2)
-
-    return ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z
-
-
-def _compute_AOs_grad_debug(
-    aos_data: AOs_data,
-    r_carts: npt.NDArray[np.float64],
-) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
-    """Compute Cartesian Gradients of AOs.
-
-    The method is for computing the Carteisan gradients (x,y,z) of
-    the given atomic orbital at r_carts using FDM for debugging JAX
-    implementations. See compute_AOs_grad_api
-    """
-    # Gradients of AOs (numerical)
-    diff_h = 1.0e-5
-
-    # grad x
-    diff_p_x_r_carts = r_carts.copy()
-    diff_p_x_r_carts[:, 0] += diff_h
-    ao_matrix_diff_p_x = compute_AOs_api(aos_data, diff_p_x_r_carts)
-    diff_m_x_r_carts = r_carts.copy()
-    diff_m_x_r_carts[:, 0] -= diff_h
-    ao_matrix_diff_m_x = compute_AOs_api(aos_data, diff_m_x_r_carts)
-
-    # grad y
-    diff_p_y_r_carts = r_carts.copy()
-    diff_p_y_r_carts[:, 1] += diff_h
-    ao_matrix_diff_p_y = compute_AOs_api(aos_data, diff_p_y_r_carts)
-    diff_m_y_r_carts = r_carts.copy()
-    diff_m_y_r_carts[:, 1] -= diff_h
-    ao_matrix_diff_m_y = compute_AOs_api(aos_data, diff_m_y_r_carts)
-
-    # grad z
-    diff_p_z_r_carts = r_carts.copy()
-    diff_p_z_r_carts[:, 2] += diff_h
-    ao_matrix_diff_p_z = compute_AOs_api(aos_data, diff_p_z_r_carts)
-    diff_m_z_r_carts = r_carts.copy()
-    diff_m_z_r_carts[:, 2] -= diff_h
-    ao_matrix_diff_m_z = compute_AOs_api(aos_data, diff_m_z_r_carts)
-
-    ao_matrix_grad_x = (ao_matrix_diff_p_x - ao_matrix_diff_m_x) / (2.0 * diff_h)
-    ao_matrix_grad_y = (ao_matrix_diff_p_y - ao_matrix_diff_m_y) / (2.0 * diff_h)
-    ao_matrix_grad_z = (ao_matrix_diff_p_z - ao_matrix_diff_m_z) / (2.0 * diff_h)
-
-    return ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z
-
-
 def compute_AOs_api(aos_data: AOs_data, r_carts: jnpt.ArrayLike, debug=False) -> jax.Array:
     """Compute AO values at the given r_carts.
 
@@ -682,34 +405,6 @@ def _compute_AOs_debug(aos_data: AOs_data, r_carts: npt.NDArray[np.float64]) -> 
 
 
 @jit
-def _compute_AOs_jax_old(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
-    """Compute AO values at the given r_carts.
-
-    See compute_AOs_api
-
-    """
-    # Indices with respect to the contracted AOs
-    # compute R_n inc. the whole normalization factor
-    R_carts_jnp = aos_data.atomic_center_carts_prim_jnp
-    c_jnp = aos_data.coefficients_jnp
-    Z_jnp = aos_data.exponents_jnp
-    l_jnp = aos_data.angular_momentums_prim_jnp
-    m_jnp = aos_data.magnetic_quantum_numbers_prim_jnp
-
-    vmap_compute_AOs_dup = vmap(
-        vmap(_compute_primitive_AOs_jax, in_axes=(None, None, None, None, None, 0)),
-        in_axes=(0, 0, 0, 0, 0, None),
-    )
-
-    AOs_dup = vmap_compute_AOs_dup(c_jnp, Z_jnp, l_jnp, m_jnp, R_carts_jnp, r_carts)
-
-    orbital_indices = aos_data.orbital_indices_jnp
-    num_segments = aos_data.num_ao
-    AOs = jax.ops.segment_sum(AOs_dup, orbital_indices, num_segments=num_segments)
-    return AOs
-
-
-@jit
 def _compute_AOs_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     """Compute AO values at the given r_carts.
 
@@ -753,6 +448,531 @@ def _compute_AOs_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     return AOs
 
 
+@jit
+def _compute_S_l_m_batch_jax(
+    r_R_diffs: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]:
+    r"""Solid harmonics part of a primitve AO.
+
+    Compute the solid harmonics, i.e., r^l * spherical hamonics part (c.f., regular solid harmonics) of a given AO
+
+    Args:
+        r_R_diffs (npt.NDArray[np.float64]): Cartesian coordinate of N electrons - Cartesian corrdinates of M nuclei. dim: (N,M,3)
+
+    Returns:
+        npt.NDArray[np.float64]: dim:(49,N,M,3) arrays of the spherical harmonics part * r^l (i.e., regular solid harmonics) for all (l,m) pairs.
+    """
+    x, y, z = r_R_diffs[..., 0], r_R_diffs[..., 1], r_R_diffs[..., 2]
+    r_norm = jnp.sqrt(x**2 + y**2 + z**2)
+
+    def lnorm(l):
+        return jnp.sqrt((4 * jnp.pi) / (2 * l + 1))
+
+    """see https://en.wikipedia.org/wiki/Table_of_spherical_harmonics#Real_spherical_harmonics (l=0-4)"""
+    """Useful tool to generate spherical harmonics generator [https://github.com/elerac/sh_table]"""
+    l_max = 49
+    S_l_m_values = jnp.array(
+        [
+            # s orbital
+            lnorm(l=0) * 1.0 / 2.0 * jnp.sqrt(1.0 / jnp.pi) * r_norm**0.0,  # (l, m) == (0, 0)
+            # p orbitals
+            lnorm(l=1) * jnp.sqrt(3.0 / (4 * jnp.pi)) * y,  # (l, m) == (1, -1)
+            lnorm(l=1) * jnp.sqrt(3.0 / (4 * jnp.pi)) * z,  # (l, m) == (1, 0)
+            lnorm(l=1) * jnp.sqrt(3.0 / (4 * jnp.pi)) * x,  # (l, m) == (1, 1)
+            # d orbitals
+            lnorm(l=2) * 1.0 / 2.0 * jnp.sqrt(15.0 / (jnp.pi)) * x * y,  # (l, m) == (2, -2)
+            lnorm(l=2) * 1.0 / 2.0 * jnp.sqrt(15.0 / (jnp.pi)) * y * z,  # (l, m) == (2, -1)
+            lnorm(l=2) * 1.0 / 4.0 * jnp.sqrt(5.0 / (jnp.pi)) * (3 * z**2 - r_norm**2),  # (l, m) == (2, 0):
+            lnorm(l=2) * 1.0 / 2.0 * jnp.sqrt(15.0 / (jnp.pi)) * x * z,  # (l, m) == (2, 1)
+            lnorm(l=2) * 1.0 / 4.0 * jnp.sqrt(15.0 / (jnp.pi)) * (x**2 - y**2),  # (l, m) == (2, 2)
+            # f orbitals
+            lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * y * (3 * x**2 - y**2),  # (l, m) == (3, -3)
+            lnorm(l=3) * 1.0 / 2.0 * jnp.sqrt(105.0 / (jnp.pi)) * x * y * z,  # (l, m) == (3, -2)
+            lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(21.0 / (2 * jnp.pi)) * y * (5 * z**2 - r_norm**2),  # (l, m) == (3, -1)
+            lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(7.0 / (jnp.pi)) * (5 * z**3 - 3 * z * r_norm**2),  # (l, m) == (3, 0)
+            lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(21.0 / (2 * jnp.pi)) * x * (5 * z**2 - r_norm**2),  # (l, m) == (3, 1)
+            lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(105.0 / (jnp.pi)) * (x**2 - y**2) * z,  # (l, m) == (3, 2)
+            lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * x * (x**2 - 3 * y**2),  # (l, m) == (3, 3)
+            # g orbitals
+            lnorm(l=4) * 3.0 / 4.0 * jnp.sqrt(35.0 / (jnp.pi)) * x * y * (x**2 - y**2),  # (l, m) == (4, -4)
+            lnorm(l=4) * 3.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * y * z * (3 * x**2 - y**2),  # (l, m) == (4, -3)
+            lnorm(l=4) * 3.0 / 4.0 * jnp.sqrt(5.0 / (jnp.pi)) * x * y * (7 * z**2 - r_norm**2),  # (l, m) == (4, -2)
+            (lnorm(l=4) * 3.0 / 4.0 * jnp.sqrt(5.0 / (2 * jnp.pi)) * y * (7 * z**3 - 3 * z * r_norm**2)),  # (l, m) == (4, -1)
+            (
+                lnorm(l=4) * 3.0 / 16.0 * jnp.sqrt(1.0 / (jnp.pi)) * (35 * z**4 - 30 * z**2 * r_norm**2 + 3 * r_norm**4)
+            ),  # (l, m) == (4, 0)
+            (lnorm(l=4) * 3.0 / 4.0 * jnp.sqrt(5.0 / (2 * jnp.pi)) * x * (7 * z**3 - 3 * z * r_norm**2)),  # (l, m) == (4, 1)
+            (lnorm(l=4) * 3.0 / 8.0 * jnp.sqrt(5.0 / (jnp.pi)) * (x**2 - y**2) * (7 * z**2 - r_norm**2)),  # (l, m) == (4, 2)
+            lnorm(l=4) * (3.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * x * z * (x**2 - 3 * y**2)),  # (l, m) == (4, 3)
+            (
+                lnorm(l=4) * 3.0 / 16.0 * jnp.sqrt(35.0 / (jnp.pi)) * (x**2 * (x**2 - 3 * y**2) - y**2 * (3 * x**2 - y**2))
+            ),  # (l, m) == (4, 4)
+            lnorm(5)
+            * 3.0
+            / 16.0
+            * jnp.sqrt(77.0 / (2 * jnp.pi))
+            * (5 * x**4 * y - 10 * x**2 * y**3 + y**5),  # (l, m) == (5, -5)
+            lnorm(5) * 3.0 / 16.0 * jnp.sqrt(385.0 / jnp.pi) * 4 * x * y * z * (x**2 - y**2),  # (l, m) == (5, -4)
+            lnorm(5)
+            * 1.0
+            / 16.0
+            * jnp.sqrt(385.0 / (2 * jnp.pi))
+            * -1
+            * (y**3 - 3 * x**2 * y)
+            * (9 * z**2 - (x**2 + y**2 + z**2)),  # (l, m) == (5, -3)
+            lnorm(5)
+            * 1.0
+            / 8.0
+            * jnp.sqrt(1155 / jnp.pi)
+            * 2
+            * x
+            * y
+            * (3 * z**3 - z * (x**2 + y**2 + z**2)),  # (l, m) == (5, -2)
+            lnorm(5)
+            * 1.0
+            / 16.0
+            * jnp.sqrt(165 / jnp.pi)
+            * y
+            * (21 * z**4 - 14 * z**2 * (x**2 + y**2 + z**2) + (x**2 + y**2 + z**2) ** 2),  # (l, m) == (5, -1)
+            lnorm(5)
+            * 1.0
+            / 16.0
+            * jnp.sqrt(11 / jnp.pi)
+            * (63 * z**5 - 70 * z**3 * (x**2 + y**2 + z**2) + 15 * z * (x**2 + y**2 + z**2) ** 2),  # (l, m) == (5, 0)
+            lnorm(5)
+            * 1.0
+            / 16.0
+            * jnp.sqrt(165 / jnp.pi)
+            * x
+            * (21 * z**4 - 14 * z**2 * (x**2 + y**2 + z**2) + (x**2 + y**2 + z**2) ** 2),  # (l, m) == (5, 1)
+            lnorm(5)
+            * 1.0
+            / 8.0
+            * jnp.sqrt(1155 / jnp.pi)
+            * (x**2 - y**2)
+            * (3 * z**3 - z * (x**2 + y**2 + z**2)),  # (l, m) == (5, 2)
+            lnorm(5)
+            * 1.0
+            / 16.0
+            * jnp.sqrt(385.0 / (2 * jnp.pi))
+            * (x**3 - 3 * x * y**2)
+            * (9 * z**2 - (x**2 + y**2 + z**2)),  # (l, m) == (5, 3)
+            lnorm(5)
+            * 3.0
+            / 16.0
+            * jnp.sqrt(385.0 / jnp.pi)
+            * (x**2 * z * (x**2 - 3 * y**2) - y**2 * z * (3 * x**2 - y**2)),  # (l, m) == (5, 4)
+            lnorm(5)
+            * 3.0
+            / 16.0
+            * jnp.sqrt(77.0 / (2 * jnp.pi))
+            * (x**5 - 10 * x**3 * y**2 + 5 * x * y**4),  # (l, m) == (5, 5)
+            lnorm(6)
+            * 1.0
+            / 64.0
+            * jnp.sqrt(6006.0 / jnp.pi)
+            * (6 * x**5 * y - 20 * x**3 * y**3 + 6 * x * y**5),  # (l, m) == (6, -6)
+            lnorm(6)
+            * 3.0
+            / 32.0
+            * jnp.sqrt(2002.0 / jnp.pi)
+            * z
+            * (5 * x**4 * y - 10 * x**2 * y**3 + y**5),  # (l, m) == (6, -5)
+            lnorm(6)
+            * 3.0
+            / 32.0
+            * jnp.sqrt(91.0 / jnp.pi)
+            * 4
+            * x
+            * y
+            * (11 * z**2 - (x**2 + y**2 + z**2))
+            * (x**2 - y**2),  # (l, m) == (6, -4)
+            lnorm(6)
+            * 1.0
+            / 32.0
+            * jnp.sqrt(2730.0 / jnp.pi)
+            * -1
+            * (11 * z**3 - 3 * z * (x**2 + y**2 + z**2))
+            * (y**3 - 3 * x**2 * y),  # (l, m) == (6, -3)
+            lnorm(6)
+            * 1.0
+            / 64.0
+            * jnp.sqrt(2730.0 / jnp.pi)
+            * 2
+            * x
+            * y
+            * (33 * z**4 - 18 * z**2 * (x**2 + y**2 + z**2) + (x**2 + y**2 + z**2) ** 2),  # (l, m) == (6, -2)
+            lnorm(6)
+            * 1.0
+            / 16.0
+            * jnp.sqrt(273.0 / jnp.pi)
+            * y
+            * (33 * z**5 - 30 * z**3 * (x**2 + y**2 + z**2) + 5 * z * (x**2 + y**2 + z**2) ** 2),  # (l, m) == (6, -1)
+            lnorm(6)
+            * 1.0
+            / 32.0
+            * jnp.sqrt(13.0 / jnp.pi)
+            * (
+                231 * z**6
+                - 315 * z**4 * (x**2 + y**2 + z**2)
+                + 105 * z**2 * (x**2 + y**2 + z**2) ** 2
+                - 5 * (x**2 + y**2 + z**2) ** 3
+            ),  # (l, m) == (6, 0)
+            lnorm(6)
+            * 1.0
+            / 16.0
+            * jnp.sqrt(273.0 / jnp.pi)
+            * x
+            * (33 * z**5 - 30 * z**3 * (x**2 + y**2 + z**2) + 5 * z * (x**2 + y**2 + z**2) ** 2),  # (l, m) == (6, 1)
+            lnorm(6)
+            * 1.0
+            / 64.0
+            * jnp.sqrt(2730.0 / jnp.pi)
+            * (x**2 - y**2)
+            * (33 * z**4 - 18 * z**2 * (x**2 + y**2 + z**2) + (x**2 + y**2 + z**2) ** 2),  # (l, m) == (6, 2)
+            lnorm(6)
+            * 1.0
+            / 32.0
+            * jnp.sqrt(2730.0 / jnp.pi)
+            * (11 * z**3 - 3 * z * (x**2 + y**2 + z**2))
+            * (x**3 - 3 * x * y**2),  # (l, m) == (6, 3)
+            lnorm(6)
+            * 3.0
+            / 32.0
+            * jnp.sqrt(91.0 / jnp.pi)
+            * (11 * z**2 - (x**2 + y**2 + z**2))
+            * (x**2 * (x**2 - 3 * y**2) + y**2 * (y**2 - 3 * x**2)),  # (l, m) == (6, 4)
+            lnorm(6)
+            * 3.0
+            / 32.0
+            * jnp.sqrt(2002.0 / jnp.pi)
+            * z
+            * (x**5 - 10 * x**3 * y**2 + 5 * x * y**4),  # (l, m) == (6, 5)
+            lnorm(6)
+            * 1.0
+            / 64.0
+            * jnp.sqrt(6006.0 / jnp.pi)
+            * (x**6 - 15 * x**4 * y**2 + 15 * x**2 * y**4 - y**6),  # (l, m) == (6, 6)
+        ]
+    )
+
+    return l_max, S_l_m_values
+
+
+# no longer used in the main code
+def compute_AOs_laplacian_api(
+    aos_data: AOs_data,
+    r_carts: jnpt.ArrayLike,
+    debug=False,
+) -> jax.Array:
+    """Compute laplacians of the give AOs at r_carts.
+
+    The method is for computing the laplacians of the given atomic orbital at r_carts
+
+    Args:
+        ao_datas (AOs_data): an instance of AOs_data
+        r_carts (jnpt.ArrayLike): Cartesian coordinates of electrons (dim: N_e, 3)
+        debug (bool): if True, numerical derivatives are computed via _debug function for debuging purpose
+
+    Returns:
+        jax.Array:
+            Array containing laplacians of the AOs at r_carts. The dim. is (num_ao, N_e)
+
+    """
+    if debug:
+        return _compute_AOs_laplacian_debug(aos_data, r_carts)
+    else:
+        return _compute_AOs_laplacian_jax(aos_data, r_carts)
+
+
+# no longer used in the main code
+@jit
+def _compute_AOs_laplacian_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
+    """Compute laplacians of the give AOs at r_carts.
+
+    See compute_AOs_laplacian_api
+
+    """
+    # expansion with respect to the primitive AOs
+    # compute R_n inc. the whole normalization factor
+    R_carts_jnp = aos_data.atomic_center_carts_prim_jnp
+    c_jnp = aos_data.coefficients_jnp
+    Z_jnp = aos_data.exponents_jnp
+    l_jnp = aos_data.angular_momentums_prim_jnp
+    m_jnp = aos_data.magnetic_quantum_numbers_prim_jnp
+
+    vmap_compute_AOs_laplacian_dup = vmap(
+        vmap(
+            _compute_primitive_AOs_laplacians_jax,
+            in_axes=(None, None, None, None, None, 0),
+        ),
+        in_axes=(0, 0, 0, 0, 0, None),
+    )
+
+    AOs_laplacian_dup = vmap_compute_AOs_laplacian_dup(c_jnp, Z_jnp, l_jnp, m_jnp, R_carts_jnp, r_carts)
+
+    orbital_indices = jnp.array(aos_data.orbital_indices, dtype=jnp.int32)
+    num_segments = aos_data.num_ao
+    ao_matrix_laplacian = jax.ops.segment_sum(AOs_laplacian_dup, orbital_indices, num_segments=num_segments)
+
+    return ao_matrix_laplacian
+
+
+# no longer used in the main code
+def _compute_AOs_laplacian_debug(aos_data: AOs_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    """Compute laplacians of the give AOs at r_carts.
+
+    The method is for computing the laplacians of the given atomic orbital at r_carts
+    using the FDM method for debuging purpose.
+
+    Args:
+        ao_datas (AOs_data): an instance of AOs_data
+        r_carts (npt.NDArray[np.float64]): Cartesian coordinates of electrons (dim: N_e, 3)
+        debug_flag (bool): if True, numerical derivatives are computed for debuging purpose
+
+    Returns:
+        npt.NDArray[np.float64]:
+            Array containing laplacians of the AOs at r_carts. The dim. is (num_ao, N_e)
+
+    """
+    # Laplacians of AOs (numerical)
+    diff_h = 1.0e-5
+
+    ao_matrix = compute_AOs_api(aos_data, r_carts)
+
+    # laplacians x^2
+    diff_p_x_r_carts = r_carts.copy()
+    diff_p_x_r_carts[:, 0] += diff_h
+    ao_matrix_diff_p_x = compute_AOs_api(aos_data, diff_p_x_r_carts)
+    diff_m_x_r_carts = r_carts.copy()
+    diff_m_x_r_carts[:, 0] -= diff_h
+    ao_matrix_diff_m_x = compute_AOs_api(aos_data, diff_m_x_r_carts)
+
+    # laplacians y^2
+    diff_p_y_r_carts = r_carts.copy()
+    diff_p_y_r_carts[:, 1] += diff_h
+    ao_matrix_diff_p_y = compute_AOs_api(aos_data, diff_p_y_r_carts)
+    diff_m_y_r_carts = r_carts.copy()
+    diff_m_y_r_carts[:, 1] -= diff_h
+    ao_matrix_diff_m_y = compute_AOs_api(aos_data, diff_m_y_r_carts)
+
+    # laplacians z^2
+    diff_p_z_r_carts = r_carts.copy()
+    diff_p_z_r_carts[:, 2] += diff_h
+    ao_matrix_diff_p_z = compute_AOs_api(aos_data, diff_p_z_r_carts)
+    diff_m_z_r_carts = r_carts.copy()
+    diff_m_z_r_carts[:, 2] -= diff_h
+    ao_matrix_diff_m_z = compute_AOs_api(aos_data, diff_m_z_r_carts)
+
+    ao_matrix_grad2_x = (ao_matrix_diff_p_x + ao_matrix_diff_m_x - 2 * ao_matrix) / (diff_h) ** 2
+    ao_matrix_grad2_y = (ao_matrix_diff_p_y + ao_matrix_diff_m_y - 2 * ao_matrix) / (diff_h) ** 2
+    ao_matrix_grad2_z = (ao_matrix_diff_p_z + ao_matrix_diff_m_z - 2 * ao_matrix) / (diff_h) ** 2
+
+    ao_matrix_laplacian = ao_matrix_grad2_x + ao_matrix_grad2_y + ao_matrix_grad2_z
+
+    if ao_matrix_laplacian.shape != (aos_data.num_ao, len(r_carts)):
+        logger.error(
+            f"ao_matrix_laplacian.shape = {ao_matrix_laplacian.shape} is \
+                inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
+        )
+        raise ValueError
+
+    return ao_matrix_laplacian
+
+
+# no longer used in the main code
+def compute_AOs_grad_api(aos_data: AOs_data, r_carts: jnpt.ArrayLike, debug=False) -> tuple[jax.Array, jax.Array, jax.Array]:
+    """Compute Cartesian Gradients of AOs.
+
+    The method is for computing the Carteisan gradients (x,y,z) of
+    the given atomic orbital at r_carts
+
+    Args:
+        ao_datas(AOs_data): an instance of AOs_data
+        r_carts(jnpt.ArrayLike): Cartesian coordinates of electrons (dim: N_e, 3)
+        debug (bool): if True, numerical derivatives are computed via _debug function for debuging purpose
+
+    Returns:
+        tuple: tuple containing gradients of the AOs at r_carts. (grad_x, grad_y, grad_z).
+        The dim. of each matrix is (num_ao, N_e)
+
+    """
+    if debug:
+        ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z = _compute_AOs_grad_debug(aos_data, r_carts)
+    else:
+        ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z = _compute_AOs_grad_jax(aos_data, r_carts)
+
+    if ao_matrix_grad_x.shape != (aos_data.num_ao, len(r_carts)):
+        logger.error(
+            f"aao_matrix_grad_x.shape = {ao_matrix_grad_x.shape} is \
+                inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
+        )
+        raise ValueError
+
+    if ao_matrix_grad_y.shape != (aos_data.num_ao, len(r_carts)):
+        logger.error(
+            f"ao_matrix_grad_y.shape = {ao_matrix_grad_y.shape} is \
+                inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
+        )
+        raise ValueError
+
+    if ao_matrix_grad_z.shape != (aos_data.num_ao, len(r_carts)):
+        logger.error(
+            f"ao_matrix_grad_z.shape = {ao_matrix_grad_y.shape} is \
+                inconsistent with the expected one = {aos_data.num_ao, len(r_carts)}"
+        )
+        raise ValueError
+
+    return ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z
+
+
+# no longer used in the main code
+@jit
+def _compute_AOs_grad_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> tuple[jax.Array, jax.Array, jax.Array]:
+    """Compute Cartesian Gradients of AOs.
+
+    See compute_AOs_grad_api
+
+    """
+    # expansion with respect to the primitive AOs
+    # compute R_n inc. the whole normalization factor
+    R_carts_jnp = aos_data.atomic_center_carts_prim_jnp
+    c_jnp = aos_data.coefficients_jnp
+    Z_jnp = aos_data.exponents_jnp
+    l_jnp = aos_data.angular_momentums_prim_jnp
+    m_jnp = aos_data.magnetic_quantum_numbers_prim_jnp
+
+    # grad in compute_primitive_AOs_grad_jax
+    vmap_compute_AOs_grad_dup = vmap(
+        vmap(
+            _compute_primitive_AOs_grad_jax,
+            in_axes=(None, None, None, None, None, 0),
+        ),
+        in_axes=(0, 0, 0, 0, 0, None),
+    )
+
+    AOs_grad_x_dup, AOs_grad_y_dup, AOs_grad_z_dup = vmap_compute_AOs_grad_dup(c_jnp, Z_jnp, l_jnp, m_jnp, R_carts_jnp, r_carts)
+
+    orbital_indices = jnp.array(aos_data.orbital_indices, dtype=jnp.int32)
+    num_segments = aos_data.num_ao
+    ao_matrix_grad_x = jax.ops.segment_sum(AOs_grad_x_dup, orbital_indices, num_segments=num_segments)
+    ao_matrix_grad_y = jax.ops.segment_sum(AOs_grad_y_dup, orbital_indices, num_segments=num_segments)
+    ao_matrix_grad_z = jax.ops.segment_sum(AOs_grad_z_dup, orbital_indices, num_segments=num_segments)
+    return ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z
+
+
+# no longer used in the main code
+@jit
+def __compute_AOs_grad_jax_old(
+    aos_data: AOs_data,
+    r_carts: jnpt.ArrayLike,
+) -> tuple[jax.Array, jax.Array, jax.Array]:
+    """Compute Cartesian Gradients of AOs (old).
+
+    The method is for computing the Carteisan gradients (x,y,z) of
+    the given atomic orbital at r_carts
+
+    Args:
+        ao_datas(AOs_data): an instance of AOs_data
+        r_carts(jnpt.ArrayLike): Cartesian coordinates of electrons (dim: N_e, 3)
+
+    Returns:
+        tuple: tuple containing gradients of the AOs at r_carts. (grad_x, grad_y, grad_z).
+        The dim. of each matrix is (num_ao, N_e)
+
+    Note:
+        Gradients of AOs (autograd via google-JAX)
+        This method gives correct answers, but slow because the full Jacobian calculation is
+        not needed for computing gradients.
+        grad should be pluged into compute_AOs_jax() in the future for accelaration.
+    """
+    ao_matrix_jacrev = jacrev(compute_AOs_api, argnums=1)(aos_data, r_carts)
+
+    ao_matrix_grad_x_ = ao_matrix_jacrev[:, :, :, 0]
+    ao_matrix_grad_y_ = ao_matrix_jacrev[:, :, :, 1]
+    ao_matrix_grad_z_ = ao_matrix_jacrev[:, :, :, 2]
+    ao_matrix_grad_x = jnp.sum(ao_matrix_grad_x_, axis=2)
+    ao_matrix_grad_y = jnp.sum(ao_matrix_grad_y_, axis=2)
+    ao_matrix_grad_z = jnp.sum(ao_matrix_grad_z_, axis=2)
+
+    return ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z
+
+
+# no longer used in the main code
+def _compute_AOs_grad_debug(
+    aos_data: AOs_data,
+    r_carts: npt.NDArray[np.float64],
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Compute Cartesian Gradients of AOs.
+
+    The method is for computing the Carteisan gradients (x,y,z) of
+    the given atomic orbital at r_carts using FDM for debugging JAX
+    implementations. See compute_AOs_grad_api
+    """
+    # Gradients of AOs (numerical)
+    diff_h = 1.0e-5
+
+    # grad x
+    diff_p_x_r_carts = r_carts.copy()
+    diff_p_x_r_carts[:, 0] += diff_h
+    ao_matrix_diff_p_x = compute_AOs_api(aos_data, diff_p_x_r_carts)
+    diff_m_x_r_carts = r_carts.copy()
+    diff_m_x_r_carts[:, 0] -= diff_h
+    ao_matrix_diff_m_x = compute_AOs_api(aos_data, diff_m_x_r_carts)
+
+    # grad y
+    diff_p_y_r_carts = r_carts.copy()
+    diff_p_y_r_carts[:, 1] += diff_h
+    ao_matrix_diff_p_y = compute_AOs_api(aos_data, diff_p_y_r_carts)
+    diff_m_y_r_carts = r_carts.copy()
+    diff_m_y_r_carts[:, 1] -= diff_h
+    ao_matrix_diff_m_y = compute_AOs_api(aos_data, diff_m_y_r_carts)
+
+    # grad z
+    diff_p_z_r_carts = r_carts.copy()
+    diff_p_z_r_carts[:, 2] += diff_h
+    ao_matrix_diff_p_z = compute_AOs_api(aos_data, diff_p_z_r_carts)
+    diff_m_z_r_carts = r_carts.copy()
+    diff_m_z_r_carts[:, 2] -= diff_h
+    ao_matrix_diff_m_z = compute_AOs_api(aos_data, diff_m_z_r_carts)
+
+    ao_matrix_grad_x = (ao_matrix_diff_p_x - ao_matrix_diff_m_x) / (2.0 * diff_h)
+    ao_matrix_grad_y = (ao_matrix_diff_p_y - ao_matrix_diff_m_y) / (2.0 * diff_h)
+    ao_matrix_grad_z = (ao_matrix_diff_p_z - ao_matrix_diff_m_z) / (2.0 * diff_h)
+
+    return ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z
+
+
+# no longer used in the main code
+@jit
+def _compute_AOs_jax_old(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
+    """Compute AO values at the given r_carts.
+
+    See compute_AOs_api
+
+    """
+    # Indices with respect to the contracted AOs
+    # compute R_n inc. the whole normalization factor
+    R_carts_jnp = aos_data.atomic_center_carts_prim_jnp
+    c_jnp = aos_data.coefficients_jnp
+    Z_jnp = aos_data.exponents_jnp
+    l_jnp = aos_data.angular_momentums_prim_jnp
+    m_jnp = aos_data.magnetic_quantum_numbers_prim_jnp
+
+    vmap_compute_AOs_dup = vmap(
+        vmap(_compute_primitive_AOs_jax, in_axes=(None, None, None, None, None, 0)),
+        in_axes=(0, 0, 0, 0, 0, None),
+    )
+
+    AOs_dup = vmap_compute_AOs_dup(c_jnp, Z_jnp, l_jnp, m_jnp, R_carts_jnp, r_carts)
+
+    orbital_indices = aos_data.orbital_indices_jnp
+    num_segments = aos_data.num_ao
+    AOs = jax.ops.segment_sum(AOs_dup, orbital_indices, num_segments=num_segments)
+    return AOs
+
+
+# no longer used in the main code
 @dataclass
 class AO_data:
     """AO data class for debugging.
@@ -799,6 +1019,7 @@ class AO_data:
             raise ValueError
 
 
+# no longer used in the main code
 def compute_AO(ao_data: AO_data, r_cart: list[float]) -> float:
     r"""Compute single AO for debugging.
 
@@ -854,6 +1075,7 @@ def compute_AO(ao_data: AO_data, r_cart: list[float]) -> float:
     return np.sum(N_n_l * R_n) * np.sqrt((2 * ao_data.angular_momentum + 1) / (4 * np.pi)) * S_l_m
 
 
+# no longer used in the main code
 def _compute_R_n_debug(
     coefficient: float,
     exponent: float,
@@ -876,6 +1098,7 @@ def _compute_R_n_debug(
     return coefficient * np.exp(-1.0 * exponent * LA.norm(np.array(r_cart) - np.array(R_cart)) ** 2)
 
 
+# no longer used in the main code
 @jit
 def _compute_R_n_jax(
     coefficient: float,
@@ -900,6 +1123,7 @@ def _compute_R_n_jax(
     return coefficient * jnp.exp(-1.0 * exponent * jnp.sum(jnp.square(r_cart - R_cart)))
 
 
+# no longer used in the main code
 def _compute_S_l_m_debug(
     angular_momentum: int,
     magnetic_quantum_number: int,
@@ -992,6 +1216,7 @@ def _compute_S_l_m_debug(
     return gamma
 
 
+# no longer used in the main code
 @jit
 def _compute_S_l_m_jax(
     l: int,
@@ -1237,217 +1462,7 @@ def _compute_S_l_m_jax(
     return jnp.select(conditions, S_l_m_values, default=jnp.nan)
 
 
-@jit
-def _compute_S_l_m_batch_jax(
-    r_R_diffs: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64]:
-    r"""Solid harmonics part of a primitve AO.
-
-    Compute the solid harmonics, i.e., r^l * spherical hamonics part (c.f., regular solid harmonics) of a given AO
-
-    Args:
-        r_R_diffs (npt.NDArray[np.float64]): Cartesian coordinate of N electrons - Cartesian corrdinates of M nuclei. dim: (N,M,3)
-
-    Returns:
-        npt.NDArray[np.float64]: dim:(49,N,M,3) arrays of the spherical harmonics part * r^l (i.e., regular solid harmonics) for all (l,m) pairs.
-    """
-    x, y, z = r_R_diffs[..., 0], r_R_diffs[..., 1], r_R_diffs[..., 2]
-    r_norm = jnp.sqrt(x**2 + y**2 + z**2)
-
-    def lnorm(l):
-        return jnp.sqrt((4 * jnp.pi) / (2 * l + 1))
-
-    """see https://en.wikipedia.org/wiki/Table_of_spherical_harmonics#Real_spherical_harmonics (l=0-4)"""
-    """Useful tool to generate spherical harmonics generator [https://github.com/elerac/sh_table]"""
-    l_max = 49
-    S_l_m_values = jnp.array(
-        [
-            # s orbital
-            lnorm(l=0) * 1.0 / 2.0 * jnp.sqrt(1.0 / jnp.pi) * r_norm**0.0,  # (l, m) == (0, 0)
-            # p orbitals
-            lnorm(l=1) * jnp.sqrt(3.0 / (4 * jnp.pi)) * y,  # (l, m) == (1, -1)
-            lnorm(l=1) * jnp.sqrt(3.0 / (4 * jnp.pi)) * z,  # (l, m) == (1, 0)
-            lnorm(l=1) * jnp.sqrt(3.0 / (4 * jnp.pi)) * x,  # (l, m) == (1, 1)
-            # d orbitals
-            lnorm(l=2) * 1.0 / 2.0 * jnp.sqrt(15.0 / (jnp.pi)) * x * y,  # (l, m) == (2, -2)
-            lnorm(l=2) * 1.0 / 2.0 * jnp.sqrt(15.0 / (jnp.pi)) * y * z,  # (l, m) == (2, -1)
-            lnorm(l=2) * 1.0 / 4.0 * jnp.sqrt(5.0 / (jnp.pi)) * (3 * z**2 - r_norm**2),  # (l, m) == (2, 0):
-            lnorm(l=2) * 1.0 / 2.0 * jnp.sqrt(15.0 / (jnp.pi)) * x * z,  # (l, m) == (2, 1)
-            lnorm(l=2) * 1.0 / 4.0 * jnp.sqrt(15.0 / (jnp.pi)) * (x**2 - y**2),  # (l, m) == (2, 2)
-            # f orbitals
-            lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * y * (3 * x**2 - y**2),  # (l, m) == (3, -3)
-            lnorm(l=3) * 1.0 / 2.0 * jnp.sqrt(105.0 / (jnp.pi)) * x * y * z,  # (l, m) == (3, -2)
-            lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(21.0 / (2 * jnp.pi)) * y * (5 * z**2 - r_norm**2),  # (l, m) == (3, -1)
-            lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(7.0 / (jnp.pi)) * (5 * z**3 - 3 * z * r_norm**2),  # (l, m) == (3, 0)
-            lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(21.0 / (2 * jnp.pi)) * x * (5 * z**2 - r_norm**2),  # (l, m) == (3, 1)
-            lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(105.0 / (jnp.pi)) * (x**2 - y**2) * z,  # (l, m) == (3, 2)
-            lnorm(l=3) * 1.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * x * (x**2 - 3 * y**2),  # (l, m) == (3, 3)
-            # g orbitals
-            lnorm(l=4) * 3.0 / 4.0 * jnp.sqrt(35.0 / (jnp.pi)) * x * y * (x**2 - y**2),  # (l, m) == (4, -4)
-            lnorm(l=4) * 3.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * y * z * (3 * x**2 - y**2),  # (l, m) == (4, -3)
-            lnorm(l=4) * 3.0 / 4.0 * jnp.sqrt(5.0 / (jnp.pi)) * x * y * (7 * z**2 - r_norm**2),  # (l, m) == (4, -2)
-            (lnorm(l=4) * 3.0 / 4.0 * jnp.sqrt(5.0 / (2 * jnp.pi)) * y * (7 * z**3 - 3 * z * r_norm**2)),  # (l, m) == (4, -1)
-            (
-                lnorm(l=4) * 3.0 / 16.0 * jnp.sqrt(1.0 / (jnp.pi)) * (35 * z**4 - 30 * z**2 * r_norm**2 + 3 * r_norm**4)
-            ),  # (l, m) == (4, 0)
-            (lnorm(l=4) * 3.0 / 4.0 * jnp.sqrt(5.0 / (2 * jnp.pi)) * x * (7 * z**3 - 3 * z * r_norm**2)),  # (l, m) == (4, 1)
-            (lnorm(l=4) * 3.0 / 8.0 * jnp.sqrt(5.0 / (jnp.pi)) * (x**2 - y**2) * (7 * z**2 - r_norm**2)),  # (l, m) == (4, 2)
-            lnorm(l=4) * (3.0 / 4.0 * jnp.sqrt(35.0 / (2 * jnp.pi)) * x * z * (x**2 - 3 * y**2)),  # (l, m) == (4, 3)
-            (
-                lnorm(l=4) * 3.0 / 16.0 * jnp.sqrt(35.0 / (jnp.pi)) * (x**2 * (x**2 - 3 * y**2) - y**2 * (3 * x**2 - y**2))
-            ),  # (l, m) == (4, 4)
-            lnorm(5)
-            * 3.0
-            / 16.0
-            * jnp.sqrt(77.0 / (2 * jnp.pi))
-            * (5 * x**4 * y - 10 * x**2 * y**3 + y**5),  # (l, m) == (5, -5)
-            lnorm(5) * 3.0 / 16.0 * jnp.sqrt(385.0 / jnp.pi) * 4 * x * y * z * (x**2 - y**2),  # (l, m) == (5, -4)
-            lnorm(5)
-            * 1.0
-            / 16.0
-            * jnp.sqrt(385.0 / (2 * jnp.pi))
-            * -1
-            * (y**3 - 3 * x**2 * y)
-            * (9 * z**2 - (x**2 + y**2 + z**2)),  # (l, m) == (5, -3)
-            lnorm(5)
-            * 1.0
-            / 8.0
-            * jnp.sqrt(1155 / jnp.pi)
-            * 2
-            * x
-            * y
-            * (3 * z**3 - z * (x**2 + y**2 + z**2)),  # (l, m) == (5, -2)
-            lnorm(5)
-            * 1.0
-            / 16.0
-            * jnp.sqrt(165 / jnp.pi)
-            * y
-            * (21 * z**4 - 14 * z**2 * (x**2 + y**2 + z**2) + (x**2 + y**2 + z**2) ** 2),  # (l, m) == (5, -1)
-            lnorm(5)
-            * 1.0
-            / 16.0
-            * jnp.sqrt(11 / jnp.pi)
-            * (63 * z**5 - 70 * z**3 * (x**2 + y**2 + z**2) + 15 * z * (x**2 + y**2 + z**2) ** 2),  # (l, m) == (5, 0)
-            lnorm(5)
-            * 1.0
-            / 16.0
-            * jnp.sqrt(165 / jnp.pi)
-            * x
-            * (21 * z**4 - 14 * z**2 * (x**2 + y**2 + z**2) + (x**2 + y**2 + z**2) ** 2),  # (l, m) == (5, 1)
-            lnorm(5)
-            * 1.0
-            / 8.0
-            * jnp.sqrt(1155 / jnp.pi)
-            * (x**2 - y**2)
-            * (3 * z**3 - z * (x**2 + y**2 + z**2)),  # (l, m) == (5, 2)
-            lnorm(5)
-            * 1.0
-            / 16.0
-            * jnp.sqrt(385.0 / (2 * jnp.pi))
-            * (x**3 - 3 * x * y**2)
-            * (9 * z**2 - (x**2 + y**2 + z**2)),  # (l, m) == (5, 3)
-            lnorm(5)
-            * 3.0
-            / 16.0
-            * jnp.sqrt(385.0 / jnp.pi)
-            * (x**2 * z * (x**2 - 3 * y**2) - y**2 * z * (3 * x**2 - y**2)),  # (l, m) == (5, 4)
-            lnorm(5)
-            * 3.0
-            / 16.0
-            * jnp.sqrt(77.0 / (2 * jnp.pi))
-            * (x**5 - 10 * x**3 * y**2 + 5 * x * y**4),  # (l, m) == (5, 5)
-            lnorm(6)
-            * 1.0
-            / 64.0
-            * jnp.sqrt(6006.0 / jnp.pi)
-            * (6 * x**5 * y - 20 * x**3 * y**3 + 6 * x * y**5),  # (l, m) == (6, -6)
-            lnorm(6)
-            * 3.0
-            / 32.0
-            * jnp.sqrt(2002.0 / jnp.pi)
-            * z
-            * (5 * x**4 * y - 10 * x**2 * y**3 + y**5),  # (l, m) == (6, -5)
-            lnorm(6)
-            * 3.0
-            / 32.0
-            * jnp.sqrt(91.0 / jnp.pi)
-            * 4
-            * x
-            * y
-            * (11 * z**2 - (x**2 + y**2 + z**2))
-            * (x**2 - y**2),  # (l, m) == (6, -4)
-            lnorm(6)
-            * 1.0
-            / 32.0
-            * jnp.sqrt(2730.0 / jnp.pi)
-            * -1
-            * (11 * z**3 - 3 * z * (x**2 + y**2 + z**2))
-            * (y**3 - 3 * x**2 * y),  # (l, m) == (6, -3)
-            lnorm(6)
-            * 1.0
-            / 64.0
-            * jnp.sqrt(2730.0 / jnp.pi)
-            * 2
-            * x
-            * y
-            * (33 * z**4 - 18 * z**2 * (x**2 + y**2 + z**2) + (x**2 + y**2 + z**2) ** 2),  # (l, m) == (6, -2)
-            lnorm(6)
-            * 1.0
-            / 16.0
-            * jnp.sqrt(273.0 / jnp.pi)
-            * y
-            * (33 * z**5 - 30 * z**3 * (x**2 + y**2 + z**2) + 5 * z * (x**2 + y**2 + z**2) ** 2),  # (l, m) == (6, -1)
-            lnorm(6)
-            * 1.0
-            / 32.0
-            * jnp.sqrt(13.0 / jnp.pi)
-            * (
-                231 * z**6
-                - 315 * z**4 * (x**2 + y**2 + z**2)
-                + 105 * z**2 * (x**2 + y**2 + z**2) ** 2
-                - 5 * (x**2 + y**2 + z**2) ** 3
-            ),  # (l, m) == (6, 0)
-            lnorm(6)
-            * 1.0
-            / 16.0
-            * jnp.sqrt(273.0 / jnp.pi)
-            * x
-            * (33 * z**5 - 30 * z**3 * (x**2 + y**2 + z**2) + 5 * z * (x**2 + y**2 + z**2) ** 2),  # (l, m) == (6, 1)
-            lnorm(6)
-            * 1.0
-            / 64.0
-            * jnp.sqrt(2730.0 / jnp.pi)
-            * (x**2 - y**2)
-            * (33 * z**4 - 18 * z**2 * (x**2 + y**2 + z**2) + (x**2 + y**2 + z**2) ** 2),  # (l, m) == (6, 2)
-            lnorm(6)
-            * 1.0
-            / 32.0
-            * jnp.sqrt(2730.0 / jnp.pi)
-            * (11 * z**3 - 3 * z * (x**2 + y**2 + z**2))
-            * (x**3 - 3 * x * y**2),  # (l, m) == (6, 3)
-            lnorm(6)
-            * 3.0
-            / 32.0
-            * jnp.sqrt(91.0 / jnp.pi)
-            * (11 * z**2 - (x**2 + y**2 + z**2))
-            * (x**2 * (x**2 - 3 * y**2) + y**2 * (y**2 - 3 * x**2)),  # (l, m) == (6, 4)
-            lnorm(6)
-            * 3.0
-            / 32.0
-            * jnp.sqrt(2002.0 / jnp.pi)
-            * z
-            * (x**5 - 10 * x**3 * y**2 + 5 * x * y**4),  # (l, m) == (6, 5)
-            lnorm(6)
-            * 1.0
-            / 64.0
-            * jnp.sqrt(6006.0 / jnp.pi)
-            * (x**6 - 15 * x**4 * y**2 + 15 * x**2 * y**4 - y**6),  # (l, m) == (6, 6)
-        ]
-    )
-
-    return l_max, S_l_m_values
-
-
+# no longer used in the main code
 def _compute_normalization_fator_debug(l: int, Z: float) -> float:
     """Compute the normalization factor of a primitve AO.
 
@@ -1471,6 +1486,7 @@ def _compute_normalization_fator_debug(l: int, Z: float) -> float:
     return N_n
 
 
+# no longer used in the main code
 @jit
 def _compute_normalization_fator_jax(l: int, Z: float) -> float:
     """Compute the normalization factor of a primitve AO.
@@ -1499,6 +1515,7 @@ def _compute_normalization_fator_jax(l: int, Z: float) -> float:
     return N_n_jnp
 
 
+# no longer used in the main code
 @jit
 def _compute_primitive_AOs_jax(
     coefficient: float,
@@ -1531,6 +1548,7 @@ def _compute_primitive_AOs_jax(
     return N_n_dup * R_n_dup * jnp.sqrt((2 * l + 1) / (4 * jnp.pi)) * S_l_m_dup
 
 
+# no longer used in the main code
 @jit
 def _compute_primitive_AOs_grad_jax(
     coefficient: float,
@@ -1588,6 +1606,7 @@ def _compute_primitive_AOs_grad_jax(
     return grad_x, grad_y, grad_z
 
 
+# no longer used in the main code
 @jit
 def _compute_primitive_AOs_laplacians_jax(
     coefficient: float,
