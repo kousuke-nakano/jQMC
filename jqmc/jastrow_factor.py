@@ -76,15 +76,10 @@ class Jastrow_one_body_data:
     structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
     core_electrons: list[float] = struct.field(pytree_node=False, default_factory=list())
 
+    """
     def __post_init__(self) -> None:
-        """Post initialization."""
         pass
-
-    @classmethod
-    def init_jastrow_one_body_data(cls, jastrow_1b_param=1.0, structure_data=lambda: Structure_data()):
-        """Initialization."""
-        jastrow_one_body_data = cls(jastrow_1b_param=jastrow_1b_param, structure_data=structure_data)
-        return jastrow_one_body_data
+    """
 
 
 def one_body_jastrow_exp(param: float, coeff: float, r_cart: npt.NDArray[np.float64], R_cart: npt.NDArray[np.float64]) -> float:
@@ -136,7 +131,7 @@ def _compute_Jastrow_one_body_debug(
     for r_up in r_up_carts:
         for R_cart, Z_eff in zip(positions, effective_charges):
             coeff = (2.0 * Z_eff) ** (1.0 / 4.0)
-            J1_up += (-2.0 * Z_eff) ** (3.0 / 4.0) * one_body_jastrow_exp(
+            J1_up += -((2.0 * Z_eff) ** (3.0 / 4.0)) * one_body_jastrow_exp(
                 jastrow_one_body_data.jastrow_1b_param, coeff, r_up, R_cart
             )
 
@@ -144,7 +139,7 @@ def _compute_Jastrow_one_body_debug(
     for r_up in r_dn_carts:
         for R_cart, Z_eff in zip(positions, effective_charges):
             coeff = (2.0 * Z_eff) ** (1.0 / 4.0)
-            J1_dn += (-2.0 * Z_eff) ** (3.0 / 4.0) * one_body_jastrow_exp(
+            J1_dn += -((2.0 * Z_eff) ** (3.0 / 4.0)) * one_body_jastrow_exp(
                 jastrow_one_body_data.jastrow_1b_param, coeff, r_up, R_cart
             )
 
@@ -170,7 +165,7 @@ def _compute_Jastrow_one_body_jax(
     def atom_contrib(r_cart, R_cart, Z_eff):
         j1b = jastrow_one_body_data.jastrow_1b_param
         coeff = (2.0 * Z_eff) ** (1.0 / 4.0)
-        return (-2.0 * Z_eff) ** (3.0 / 4.0) * one_body_jastrow_exp(j1b, coeff, r_cart, R_cart)
+        return -((2.0 * Z_eff) ** (3.0 / 4.0)) * one_body_jastrow_exp(j1b, coeff, r_cart, R_cart)
 
     # Sum the contributions from all atoms for a single electron
     def electron_contrib(r_cart, R_carts, effective_charges):

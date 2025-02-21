@@ -40,12 +40,15 @@ import pytest
 
 from ..jqmc.atomic_orbital import AOs_data
 from ..jqmc.jastrow_factor import (
+    Jastrow_one_body_data,
     Jastrow_three_body_data,
     Jastrow_two_body_data,
     _compute_grads_and_laplacian_Jastrow_three_body_debug,
     _compute_grads_and_laplacian_Jastrow_three_body_jax,
     _compute_grads_and_laplacian_Jastrow_two_body_debug,
     _compute_grads_and_laplacian_Jastrow_two_body_jax,
+    _compute_Jastrow_one_body_debug,
+    _compute_Jastrow_one_body_jax,
     _compute_Jastrow_three_body_debug,
     _compute_Jastrow_three_body_jax,
     _compute_Jastrow_two_body_debug,
@@ -54,10 +57,7 @@ from ..jqmc.jastrow_factor import (
 from ..jqmc.molecular_orbital import MOs_data
 from ..jqmc.structure import Structure_data
 
-# JAX float64
-jax.config.update("jax_enable_x64", True)
-jax.config.update("jax_traceback_filtering", "off")
-
+# logger
 log = getLogger("myqmc")
 log.setLevel("DEBUG")
 stream_handler = StreamHandler()
@@ -65,6 +65,50 @@ stream_handler.setLevel("DEBUG")
 handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
 stream_handler.setFormatter(handler_format)
 log.addHandler(stream_handler)
+
+
+def test_Jastrow_onebody_part():
+    """Test the three-body Jastrow factor, comparing the debug and JAX implementations, using AOs data."""
+    num_r_up_cart_samples = 8
+    num_r_dn_cart_samples = 4
+    num_R_cart_samples = 6
+
+    # generate matrices for the test
+    r_cart_min, r_cart_max = -1.0, 1.0
+    R_cart_min, R_cart_max = 0.0, 0.0
+    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_up_cart_samples, 3) + r_cart_min
+    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_dn_cart_samples, 3) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
+
+    structure_data = Structure_data(
+        pbc_flag=[False, False, False],
+        positions=R_carts,
+        atomic_numbers=[6] * num_R_cart_samples,
+        element_symbols=["X"] * num_R_cart_samples,
+        atomic_labels=["X"] * num_R_cart_samples,
+    )
+
+    core_electrons = [3] * num_R_cart_samples
+
+    jastrow_one_body_data = Jastrow_one_body_data(
+        jastrow_1b_param=1.0, structure_data=structure_data, core_electrons=core_electrons
+    )
+
+    J1_debug = _compute_Jastrow_one_body_debug(
+        jastrow_one_body_data=jastrow_one_body_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    J1_jax = _compute_Jastrow_one_body_jax(
+        jastrow_one_body_data=jastrow_one_body_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    np.testing.assert_almost_equal(J1_debug, J1_jax, decimal=8)
+
+    jax.clear_caches()
 
 
 def test_Jastrow_twobody_part():
