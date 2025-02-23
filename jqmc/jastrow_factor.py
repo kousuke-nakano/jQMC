@@ -318,20 +318,17 @@ class Jastrow_data:
     The class contains data for evaluating a Jastrow function.
 
     Args:
-        jastrow_two_body_data (Jastrow_two_body_data): An instance of Jastrow_two_body_data.
-        jastrow_three_body_data (Jastrow_three_body_data): An instance of Jastrow_three_body_data.
-        jastrow_two_body_flag (bool): If true, the pade-form two-body Jastrow is turned on.
-        jastrow_three_body_flag (bool): If true, the three-body Jastrow is turned on.
+        jastrow_one_body_data (Jastrow_one_body_data):
+            An instance of Jastrow_one_body_data. If None, the one-body Jastrow is turned off.
+        jastrow_two_body_data (Jastrow_two_body_data):
+            An instance of Jastrow_two_body_data. If None, the two-body Jastrow is turned off.
+        jastrow_three_body_data (Jastrow_three_body_data):
+            An instance of Jastrow_three_body_data. if None, the three-body Jastrow is turned off.
     """
 
-    jastrow_two_body_data: Jastrow_two_body_data = struct.field(
-        pytree_node=True, default_factory=lambda: Jastrow_two_body_data()
-    )
-    jastrow_three_body_data: Jastrow_three_body_data = struct.field(
-        pytree_node=True, default_factory=lambda: Jastrow_three_body_data()
-    )
-    jastrow_two_body_flag: bool = struct.field(pytree_node=False, default=False)
-    jastrow_three_body_flag: bool = struct.field(pytree_node=False, default=False)
+    jastrow_one_body_data: Jastrow_one_body_data = struct.field(pytree_node=True, default=None)
+    jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=True, default=None)
+    jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=True, default=None)
 
     def __post_init__(self) -> None:
         """Initialization of the class.
@@ -349,28 +346,21 @@ class Jastrow_data:
 class Jastrow_data_deriv_params(Jastrow_data):
     """See Jastrow_data."""
 
-    jastrow_two_body_data: Jastrow_two_body_data = struct.field(
-        pytree_node=True, default_factory=lambda: Jastrow_two_body_data()
-    )
-    jastrow_three_body_data: Jastrow_three_body_data = struct.field(
-        pytree_node=True, default_factory=lambda: Jastrow_three_body_data()
-    )
-    jastrow_two_body_flag: bool = struct.field(pytree_node=False, default=False)
-    jastrow_three_body_flag: bool = struct.field(pytree_node=False, default=False)
+    jastrow_one_body_data: Jastrow_one_body_data = struct.field(pytree_node=True, default=None)
+    jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=True, default=None)
+    jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=True, default=None)
 
     @classmethod
     def from_base(cls, jastrow_data: Jastrow_data):
         """Switch pytree_node."""
+        jastrow_one_body_data = jastrow_data.jastrow_one_body_data
         jastrow_two_body_data = jastrow_data.jastrow_two_body_data
         jastrow_three_body_data = Jastrow_three_body_data_deriv_params.from_base(jastrow_data.jastrow_three_body_data)
-        jastrow_two_body_flag = jastrow_data.jastrow_two_body_flag
-        jastrow_three_body_flag = jastrow_data.jastrow_three_body_flag
 
         return cls(
+            jastrow_one_body_data=jastrow_one_body_data,
             jastrow_two_body_data=jastrow_two_body_data,
             jastrow_three_body_data=jastrow_three_body_data,
-            jastrow_two_body_flag=jastrow_two_body_flag,
-            jastrow_three_body_flag=jastrow_three_body_flag,
         )
 
 
@@ -378,28 +368,21 @@ class Jastrow_data_deriv_params(Jastrow_data):
 class Jastrow_data_deriv_R(Jastrow_data):
     """See Jastrow_data."""
 
-    jastrow_two_body_data: Jastrow_two_body_data = struct.field(
-        pytree_node=False, default_factory=lambda: Jastrow_two_body_data()
-    )
-    jastrow_three_body_data: Jastrow_three_body_data = struct.field(
-        pytree_node=True, default_factory=lambda: Jastrow_three_body_data()
-    )
-    jastrow_two_body_flag: bool = struct.field(pytree_node=False, default=False)
-    jastrow_three_body_flag: bool = struct.field(pytree_node=False, default=False)
+    jastrow_one_body_data: Jastrow_one_body_data = struct.field(pytree_node=True, default=None)
+    jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=False, default=None)
+    jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=True, default=None)
 
     @classmethod
     def from_base(cls, jastrow_data: Jastrow_data):
         """Switch pytree_node."""
+        jastrow_one_body_data = jastrow_data.jastrow_one_body_data
         jastrow_two_body_data = jastrow_data.jastrow_two_body_data
         jastrow_three_body_data = Jastrow_three_body_data_deriv_R.from_base(jastrow_data.jastrow_three_body_data)
-        jastrow_two_body_flag = jastrow_data.jastrow_two_body_flag
-        jastrow_three_body_flag = jastrow_data.jastrow_three_body_flag
 
         return cls(
+            jastrow_one_body_data=jastrow_one_body_data,
             jastrow_two_body_data=jastrow_two_body_data,
             jastrow_three_body_data=jastrow_three_body_data,
-            jastrow_two_body_flag=jastrow_two_body_flag,
-            jastrow_three_body_flag=jastrow_three_body_flag,
         )
 
 
@@ -422,17 +405,23 @@ def compute_Jastrow_part_api(
         float: The value of Jastrow factor. Notice that the Jastrow factor does not
         contain exp factor. Attach this J to a WF with the modification, exp(J).
     """
+    J1 = 0.0
     J2 = 0.0
     J3 = 0.0
 
+    # one-body
+    if jastrow_data.jastrow_one_body_data is not None:
+        J1 += compute_Jastrow_one_body_api(jastrow_data.jastrow_one_body_data, r_up_carts, r_dn_carts, debug=debug)
+
     # two-body
-    if jastrow_data.jastrow_two_body_flag:
+    if jastrow_data.jastrow_two_body_data is not None:
         J2 += compute_Jastrow_two_body_api(jastrow_data.jastrow_two_body_data, r_up_carts, r_dn_carts, debug=debug)
 
     # three-body
-    if jastrow_data.jastrow_three_body_flag:
+    if jastrow_data.jastrow_three_body_data is not None:
         J3 += compute_Jastrow_three_body_api(jastrow_data.jastrow_three_body_data, r_up_carts, r_dn_carts, debug=debug)
-    J = J2 + J3
+
+    J = J1 + J2 + J3
 
     return J
 
@@ -628,7 +617,7 @@ def two_body_jastrow_parallel_spins_pade(
 ) -> float:
     """Pade form of J2 for parallel spins."""
     two_body_jastrow = (
-        jnp.linalg.norm(r_cart_i - r_cart_j) / 4.0 * (1.0 + param * jnp.linalg.norm(r_cart_i - r_cart_j)) ** (-1.0)
+        jnp.linalg.norm(r_cart_i - r_cart_j) / 2.0 * (1.0 + param * jnp.linalg.norm(r_cart_i - r_cart_j)) ** (-1.0)
     )
     return two_body_jastrow
 
@@ -642,7 +631,7 @@ def _compute_Jastrow_two_body_debug(
     two_body_jastrow = (
         np.sum(
             [
-                two_body_jastrow_anti_parallel_spins_exp(
+                two_body_jastrow_anti_parallel_spins_pade(
                     param=jastrow_two_body_data.jastrow_2b_param,
                     r_cart_i=r_up_cart,
                     r_cart_j=r_dn_cart,
@@ -652,7 +641,7 @@ def _compute_Jastrow_two_body_debug(
         )
         + np.sum(
             [
-                two_body_jastrow_parallel_spins_exp(
+                two_body_jastrow_parallel_spins_pade(
                     param=jastrow_two_body_data.jastrow_2b_param,
                     r_cart_i=r_up_cart_i,
                     r_cart_j=r_up_cart_j,
@@ -662,7 +651,7 @@ def _compute_Jastrow_two_body_debug(
         )
         + np.sum(
             [
-                two_body_jastrow_parallel_spins_exp(
+                two_body_jastrow_parallel_spins_pade(
                     param=jastrow_two_body_data.jastrow_2b_param,
                     r_cart_i=r_dn_cart_i,
                     r_cart_j=r_dn_cart_j,
@@ -686,7 +675,7 @@ def _compute_Jastrow_two_body_jax(
     r_dn_carts = jnp.array(r_dn_carts)
 
     vmap_two_body_jastrow_anti_parallel_spins = vmap(
-        vmap(two_body_jastrow_anti_parallel_spins_exp, in_axes=(None, None, 0)), in_axes=(None, 0, None)
+        vmap(two_body_jastrow_anti_parallel_spins_pade, in_axes=(None, None, 0)), in_axes=(None, 0, None)
     )
 
     two_body_jastrow_anti_parallel = jnp.sum(
@@ -698,7 +687,7 @@ def _compute_Jastrow_two_body_jax(
         idx_i, idx_j = jnp.triu_indices(num_particles, k=1)
         r_i = r_carts[idx_i]
         r_j = r_carts[idx_j]
-        vmap_two_body_jastrow_parallel_spins = vmap(two_body_jastrow_parallel_spins_exp, in_axes=(None, 0, 0))(
+        vmap_two_body_jastrow_parallel_spins = vmap(two_body_jastrow_parallel_spins_pade, in_axes=(None, 0, 0))(
             jastrow_two_body_data.jastrow_2b_param, r_i, r_j
         )
         return jnp.sum(vmap_two_body_jastrow_parallel_spins)
@@ -792,22 +781,22 @@ def _compute_ratio_Jastrow_part_jax(
             new_r_up_carts_extracted = jnp.expand_dims(new_r_up_carts[idx], axis=0)  # shape=(1,3)
             old_r_up_carts_extracted = jnp.expand_dims(old_r_up_carts[idx], axis=0)  # shape=(1,3)
             J2_up_up_new = jnp.sum(
-                vmap(two_body_jastrow_parallel_spins_exp, in_axes=(None, None, 0))(
+                vmap(two_body_jastrow_parallel_spins_pade, in_axes=(None, None, 0))(
                     jastrow_2b_param, new_r_up_carts_extracted, new_r_up_carts
                 )
             )
             J2_up_up_old = jnp.sum(
-                vmap(two_body_jastrow_parallel_spins_exp, in_axes=(None, None, 0))(
+                vmap(two_body_jastrow_parallel_spins_pade, in_axes=(None, None, 0))(
                     jastrow_2b_param, old_r_up_carts_extracted, old_r_up_carts
                 )
             )
             J2_up_dn_new = jnp.sum(
-                vmap(two_body_jastrow_anti_parallel_spins_exp, in_axes=(None, None, 0))(
+                vmap(two_body_jastrow_anti_parallel_spins_pade, in_axes=(None, None, 0))(
                     jastrow_2b_param, new_r_up_carts_extracted, old_r_dn_carts
                 )
             )
             J2_up_dn_old = jnp.sum(
-                vmap(two_body_jastrow_anti_parallel_spins_exp, in_axes=(None, None, 0))(
+                vmap(two_body_jastrow_anti_parallel_spins_pade, in_axes=(None, None, 0))(
                     jastrow_2b_param, old_r_up_carts_extracted, old_r_dn_carts
                 )
             )
@@ -817,22 +806,22 @@ def _compute_ratio_Jastrow_part_jax(
             new_r_dn_carts_extracted = jnp.expand_dims(new_r_dn_carts[idx], axis=0)  # shape=(1,3)
             old_r_dn_carts_extracted = jnp.expand_dims(old_r_dn_carts[idx], axis=0)  # shape=(1,3)
             J2_dn_dn_new = jnp.sum(
-                vmap(two_body_jastrow_parallel_spins_exp, in_axes=(None, None, 0))(
+                vmap(two_body_jastrow_parallel_spins_pade, in_axes=(None, None, 0))(
                     jastrow_2b_param, new_r_dn_carts_extracted, new_r_dn_carts
                 )
             )
             J2_dn_dn_old = jnp.sum(
-                vmap(two_body_jastrow_parallel_spins_exp, in_axes=(None, None, 0))(
+                vmap(two_body_jastrow_parallel_spins_pade, in_axes=(None, None, 0))(
                     jastrow_2b_param, old_r_dn_carts_extracted, old_r_dn_carts
                 )
             )
             J2_up_dn_new = jnp.sum(
-                vmap(two_body_jastrow_anti_parallel_spins_exp, in_axes=(None, 0, None))(
+                vmap(two_body_jastrow_anti_parallel_spins_pade, in_axes=(None, 0, None))(
                     jastrow_2b_param, old_r_up_carts, new_r_dn_carts_extracted
                 )
             )
             J2_up_dn_old = jnp.sum(
-                vmap(two_body_jastrow_anti_parallel_spins_exp, in_axes=(None, 0, None))(
+                vmap(two_body_jastrow_anti_parallel_spins_pade, in_axes=(None, 0, None))(
                     jastrow_2b_param, old_r_up_carts, old_r_dn_carts_extracted
                 )
             )
@@ -915,7 +904,7 @@ def _compute_ratio_Jastrow_part_jax(
         )
 
     # J2 part
-    if jastrow_data.jastrow_two_body_flag:
+    if jastrow_data.jastrow_two_body_data is not None:
         # vectorization along grid
         J2_ratio = vmap(compute_one_grid_J2, in_axes=(None, 0, 0, None, None))(
             jastrow_data.jastrow_two_body_data.jastrow_2b_param,
@@ -929,7 +918,7 @@ def _compute_ratio_Jastrow_part_jax(
 
     # """
     # J3 part
-    if jastrow_data.jastrow_three_body_flag:
+    if jastrow_data.jastrow_three_body_data is not None:
         # vectorization along grid
         J3_ratio = vmap(compute_one_grid_J3, in_axes=(None, 0, 0, None, None))(
             jastrow_data.jastrow_three_body_data,
@@ -971,7 +960,7 @@ def compute_grads_and_laplacian_Jastrow_part_api(
     grad_J3_up, grad_J3_dn, sum_laplacian_J3 = 0.0, 0.0, 0.0
 
     # two-body
-    if jastrow_data.jastrow_two_body_flag:
+    if jastrow_data.jastrow_two_body_data is not None:
         grad_J2_up, grad_J2_dn, sum_laplacian_J2 = compute_grads_and_laplacian_Jastrow_two_body_api(
             jastrow_data.jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
         )
@@ -980,7 +969,7 @@ def compute_grads_and_laplacian_Jastrow_part_api(
         sum_laplacian_J2 += sum_laplacian_J2
 
     # three-body
-    if jastrow_data.jastrow_three_body_flag:
+    if jastrow_data.jastrow_three_body_data is not None:
         grad_J3_up_add, grad_J3_dn_add, sum_laplacian_J3_add = compute_grads_and_laplacian_Jastrow_three_body_api(
             jastrow_data.jastrow_three_body_data,
             r_up_carts=r_up_carts,

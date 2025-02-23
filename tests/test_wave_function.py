@@ -77,10 +77,9 @@ def test_debug_and_jax_kinetic_energy():
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
 
     jastrow_data = Jastrow_data(
+        jastrow_one_body_data=None,
         jastrow_two_body_data=jastrow_twobody_data,
-        jastrow_two_body_flag=True,
         jastrow_three_body_data=None,
-        jastrow_three_body_flag=False,
     )
 
     wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
@@ -111,10 +110,9 @@ def test_debug_and_jax_discretized_kinetic_energy():
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
 
     jastrow_data = Jastrow_data(
+        jastrow_one_body_data=None,
         jastrow_two_body_data=jastrow_twobody_data,
-        jastrow_two_body_flag=True,
         jastrow_three_body_data=None,
-        jastrow_three_body_flag=False,
     )
 
     wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)

@@ -183,10 +183,9 @@ def test_vmc_force_with_SWCT():
 
     # define data
     jastrow_data = Jastrow_data(
+        jastrow_one_body_data=None,
         jastrow_two_body_data=jastrow_twobody_data,
-        jastrow_two_body_flag=True,
         jastrow_three_body_data=jastrow_threebody_data,
-        jastrow_three_body_flag=False,
     )
 
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
@@ -247,10 +246,9 @@ def test_lrdmc_force_with_SWCT():
 
     # define data
     jastrow_data = Jastrow_data(
+        jastrow_one_body_data=None,
         jastrow_two_body_data=jastrow_twobody_data,
-        jastrow_two_body_flag=True,
         jastrow_three_body_data=jastrow_threebody_data,
-        jastrow_three_body_flag=False,
     )
 
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)

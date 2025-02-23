@@ -178,10 +178,9 @@ def test_debug_and_jax_ecp_non_local():
 
     # define data
     jastrow_data = Jastrow_data(
+        jastrow_one_body_data=None,
         jastrow_two_body_data=None,
-        jastrow_two_body_flag=False,
         jastrow_three_body_data=None,
-        jastrow_three_body_flag=False,
     )  # no jastrow for the time-being.
 
     wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)

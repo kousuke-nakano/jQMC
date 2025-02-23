@@ -5,7 +5,7 @@ import numpy as np
 from turbogenius.pyturbo.io_fort10 import IO_fort10
 
 from jqmc.atomic_orbital import AOs_data
-from jqmc.jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
+from jqmc.jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data, Jastrow_one_body_data
 from jqmc.structure import Structure_data
 
 
@@ -20,12 +20,19 @@ for suffix in suffix_list:
 
     # jastrow twobody
     f10jastwobody = io_fort10.f10jastwobody
-    if f10jastwobody.jastrow_type != -6:
+    if f10jastwobody.jastrow_type not in (-5, -15):
         raise NotImplementedError
 
-    assert len(f10jastwobody.twobody_list) == 1
-
-    twobody_parameter = f10jastwobody.twobody_list[0]
+    if f10jastwobody.jastrow_type == -5:
+        assert len(f10jastwobody.twobody_list) == 1
+        twobody_parameter = f10jastwobody.twobody_list[0]
+    elif f10jastwobody.jastrow_type == -15:
+        assert len(f10jastwobody.twobody_list) == 1
+        assert len(f10jastwobody.onebody_list) == 1
+        twobody_parameter = f10jastwobody.twobody_list[0]
+        onebody_parameter = f10jastwobody.onebody_list[0]
+    else:
+        raise NotImplementedError
     # print(twobody_parameter)
 
     # structure
@@ -39,6 +46,8 @@ for suffix in suffix_list:
     element_symbols = f10structure.structure.element_symbols
     atomic_labels = f10structure.structure.element_symbols
     positions = f10structure.positions
+
+    core_electrons = [Z - Z_val for Z, Z_val in zip(atomic_numbers, valence_electrons)]
 
     structure_data = Structure_data(
         pbc_flag=pbc_flag,
@@ -157,6 +166,7 @@ for suffix in suffix_list:
     # print(j3_matrix_up_dn)
 
     j_matrix = np.column_stack((j3_matrix, j1_matrix))
+
     jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=twobody_parameter)
 
     jastrow_three_body_data = Jastrow_three_body_data(
@@ -164,12 +174,25 @@ for suffix in suffix_list:
         j_matrix=j_matrix,
     )
 
-    jastrow_data = Jastrow_data(
-        jastrow_two_body_data=jastrow_two_body_data,
-        jastrow_two_body_flag=True,
-        jastrow_three_body_data=jastrow_three_body_data,
-        jastrow_three_body_flag=True,
-    )
+    if f10jastwobody.jastrow_type == -15:
+        jastrow_one_body_data = Jastrow_one_body_data(
+            jastrow_1b_param=onebody_parameter, structure_data=structure_data, core_electrons=core_electrons
+        )
+
+    if f10jastwobody.jastrow_type == -5:
+        jastrow_data = Jastrow_data(
+            jastrow_one_body_data=None,
+            jastrow_two_body_data=jastrow_two_body_data,
+            jastrow_three_body_data=jastrow_three_body_data,
+        )
+    elif f10jastwobody.jastrow_type == -15:
+        jastrow_data = Jastrow_data(
+            jastrow_one_body_data=jastrow_one_body_data,
+            jastrow_two_body_data=jastrow_two_body_data,
+            jastrow_three_body_data=jastrow_three_body_data,
+        )
+    else:
+        raise NotImplementedError
 
     with open(f"jastrow_data_{suffix}.pkl", "wb") as f:
         pickle.dump(jastrow_data, f)

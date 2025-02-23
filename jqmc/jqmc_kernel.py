@@ -41,8 +41,9 @@ import jax
 import numpy as np
 import numpy.typing as npt
 import scipy
-from jax import grad, jit, lax, vmap
+from jax import grad, jit, lax
 from jax import numpy as jnp
+from jax import vmap
 from mpi4py import MPI
 
 from .coulomb_potential import (
@@ -780,7 +781,7 @@ class MCMC:
                     + grad_e_L_h.coulomb_potential_data.structure_data.positions
                 )
 
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
                     grad_e_L_R += (
                         grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
                     )
@@ -829,7 +830,7 @@ class MCMC:
                     + grad_ln_Psi_h.geminal_data.orb_data_dn_spin.structure_data.positions
                 )
 
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
                     grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
 
                 # stored dln_Psi / dR
@@ -891,7 +892,7 @@ class MCMC:
                 timer_de_L_dc += end - start
 
                 # 2b Jastrow
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_flag:
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data is not None:
                     grad_ln_Psi_jas2b = grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
                     logger.devel(f"grad_ln_Psi_jas2b.shape = {grad_ln_Psi_jas2b.shape}")
                     logger.devel(f"  grad_ln_Psi_jas2b = {grad_ln_Psi_jas2b}")
@@ -905,7 +906,7 @@ class MCMC:
                     """
 
                 # 3b Jastrow
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
                     grad_ln_Psi_jas1b3b_j_matrix = grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix
                     logger.devel(f"grad_ln_Psi_jas1b3b_j_matrix.shape={grad_ln_Psi_jas1b3b_j_matrix.shape}")
                     logger.devel(f"  grad_ln_Psi_jas1b3b_j_matrix = {grad_ln_Psi_jas1b3b_j_matrix}")
@@ -1131,7 +1132,7 @@ class MCMC:
 
         if self.__comput_param_deriv:
             # jastrow 2-body
-            if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_flag:
+            if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data is not None:
                 dc_param = "j2_param"
                 dln_Psi_dc = self.dln_Psi_dc_jas_2b
                 # de_L_dc = self.de_L_dc_jas_2b # for linear method
@@ -1147,7 +1148,7 @@ class MCMC:
                 dc_flattened_index_list += dc_flattened_index
 
             # jastrow 3-body
-            if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
+            if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
                 dc_param = "j3_matrix"
                 dln_Psi_dc = self.dln_Psi_dc_jas_1b3b
                 # de_L_dc = self.de_L_dc_jas_1b3b # for linear method
@@ -2017,7 +2018,7 @@ class GFMC:
                     + grad_e_L_h.coulomb_potential_data.structure_data.positions
                 )
 
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
                     grad_e_L_R += (
                         grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
                     )
@@ -2042,7 +2043,7 @@ class GFMC:
                     + grad_ln_Psi_h.geminal_data.orb_data_dn_spin.structure_data.positions
                 )
 
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag:
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
                     grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
 
                 omega_up = vmap(evaluate_swct_omega_api, in_axes=(None, 0))(
@@ -2714,8 +2715,6 @@ class QMC:
             dc_flattened_index_list = self.__mcmc.opt_param_dict["dc_flattened_index_list"]
 
             j2_param = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
-            jastrow_two_body_pade_flag = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_flag
-            jastrow_three_body_flag = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_flag
             j3_orb_data = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data
             j3_matrix = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix
             lambda_matrix = self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix
@@ -2767,8 +2766,6 @@ class QMC:
             jastrow_data = Jastrow_data(
                 jastrow_two_body_data=jastrow_two_body_data,
                 jastrow_three_body_data=jastrow_three_body_data,
-                jastrow_two_body_flag=jastrow_two_body_pade_flag,
-                jastrow_three_body_flag=jastrow_three_body_flag,
             )
             wavefunction_data = Wavefunction_data(geminal_data=geminal_data, jastrow_data=jastrow_data)
             hamiltonian_data = Hamiltonian_data(
@@ -3886,10 +3883,9 @@ if __name__ == "__main__":
 
     # define data
     jastrow_data = Jastrow_data(
+        jastrow_one_body_data=None,
         jastrow_two_body_data=jastrow_twobody_data,
-        jastrow_two_body_flag=True,
         jastrow_three_body_data=jastrow_threebody_data,
-        jastrow_three_body_flag=True,
     )
 
     # conversion of SD to AGP
