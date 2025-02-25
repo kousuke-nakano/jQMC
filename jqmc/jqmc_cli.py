@@ -272,7 +272,7 @@ def main():
         # Save the checkpoint file for each process and zip them."""
         filename = f".{mpi_rank}_{restart_chk}"
         with open(filename, "wb") as f:
-            pickle.dump(vmc, f)
+            pickle.dump(vmc, f, protocol=pickle.HIGHEST_PROTOCOL)
 
         # Wait all MPI processes
         mpi_comm.Barrier()
@@ -392,7 +392,7 @@ def main():
         # Save the checkpoint file for each process and zip them."""
         filename = f".{mpi_rank}_{restart_chk}"
         with open(filename, "wb") as f:
-            pickle.dump(vmc, f)
+            pickle.dump(vmc, f, protocol=pickle.HIGHEST_PROTOCOL)
 
         # Wait all MPI processes
         mpi_comm.Barrier()
@@ -508,7 +508,7 @@ def main():
         # Save the checkpoint file for each process and zip them."""
         filename = f".{mpi_rank}_{restart_chk}"
         with open(filename, "wb") as f:
-            pickle.dump(lrdmc, f)
+            pickle.dump(lrdmc, f, protocol=pickle.HIGHEST_PROTOCOL)
 
         # Wait all MPI processes
         mpi_comm.Barrier()
