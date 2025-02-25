@@ -38,6 +38,7 @@ import logging
 import os
 import pickle
 import sys
+import zipfile
 from logging import Formatter, StreamHandler, getLogger
 
 import jax
@@ -241,32 +242,13 @@ def main():
 
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
-            # Open the file for reading using MPI.File.
-            fh = MPI.File.Open(mpi_comm, restart_chk, MPI.MODE_RDONLY)
+            """Unzip the checkpoint file for each process and load them."""
+            filename = f"{mpi_rank}_{restart_chk}"
+            with zipfile.ZipFile(restart_chk, "r") as zipf:
+                data = zipf.read(filename)
+                vmc = pickle.loads(data)
+                # os.remove(filename)
 
-            # Read the first 8 bytes to get the header size.
-            header_size_bytes = bytearray(8)
-            fh.Read_at(0, header_size_bytes)
-            header_size = int.from_bytes(header_size_bytes, byteorder="little")
-
-            # Read the header containing the sizes information (common to all processes).
-            header_buf = bytearray(header_size)
-            fh.Read_at_all(8, header_buf)
-            all_sizes = pickle.loads(header_buf)
-
-            # Calculate the starting position of the data section.
-            offset_data_start = 8 + header_size
-            # Compute this process's data offset by summing the sizes of data from all lower-ranked processes.
-            offset = offset_data_start + sum(all_sizes[:mpi_rank])
-            local_size = all_sizes[mpi_rank]
-
-            # Allocate a buffer of the appropriate size and read the process's data.
-            buf = bytearray(local_size)
-            fh.Read_at_all(offset, buf)
-            fh.Close()
-
-            # Deserialize the object from the buffer.
-            vmc = pickle.loads(buf)
         else:
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
@@ -293,41 +275,21 @@ def main():
 
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
 
-        # Serialize the vmc object on each process.
-        data = pickle.dumps(vmc)
-        local_size = len(data)
+        # Save the checkpoint file for each process and zip them."""
+        filename = f"{mpi_rank}_{restart_chk}"
+        with open(filename, "wb") as f:
+            pickle.dump(vmc, f)
 
-        # Gather the sizes of data from all processes.
-        all_sizes = mpi_comm.allgather(local_size)
+        # Wait all MPI processes
+        mpi_comm.Barrier()
 
-        # Create a header containing the sizes information and serialize it.
-        header = pickle.dumps(all_sizes)
-        header_size = len(header)
-
-        # Convert header_size to a fixed-length byte representation (8 bytes here).
-        header_size_bytes = header_size.to_bytes(8, byteorder="little")
-
-        # Open the file for writing using MPI.File.
-        fh = MPI.File.Open(mpi_comm, restart_chk, MPI.MODE_WRONLY | MPI.MODE_CREATE)
+        # Zip them.
         if mpi_rank == 0:
-            # Write the header size at the beginning of the file.
-            fh.Write_at(0, header_size_bytes)
-            # Write the header itself immediately after the header size.
-            fh.Write_at(8, header)
-
-        # Calculate the starting position of the data section.
-        offset_data_start = 8 + header_size
-        # Compute this process's offset by summing the sizes of data from all lower-ranked processes.
-        offset = offset_data_start + sum(all_sizes[:mpi_rank])
-
-        # Loop over the serialized data in chunks
-        for pos in range(0, local_size, chunk_size):
-            # Extract the current chunk from the data
-            chunk = data[pos : pos + chunk_size]
-            # Calculate the offset for this chunk (global file offset)
-            current_offset = offset + pos
-            # Write the chunk using collective I/O
-            fh.Write_at_all(current_offset, chunk)
+            filename_list = [f"{rank}_{restart_chk}" for rank in range(mpi_size)]
+            with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
+                for filename in filename_list:
+                    zipf.write(filename, arcname=filename)
+                    os.remove(filename)
 
     # VMCopt!
     if job_type == "vmcopt":
@@ -397,33 +359,11 @@ def main():
 
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
-            # Open the file for reading using MPI.File.
-            fh = MPI.File.Open(mpi_comm, restart_chk, MPI.MODE_RDONLY)
-
-            # Read the first 8 bytes to get the header size.
-            header_size_bytes = bytearray(8)
-            fh.Read_at(0, header_size_bytes)
-            header_size = int.from_bytes(header_size_bytes, byteorder="little")
-
-            # Read the header containing the sizes information (common to all processes).
-            header_buf = bytearray(header_size)
-            fh.Read_at_all(8, header_buf)
-            all_sizes = pickle.loads(header_buf)
-
-            # Calculate the starting position of the data section.
-            offset_data_start = 8 + header_size
-            # Compute this process's data offset by summing the sizes of data from all lower-ranked processes.
-            offset = offset_data_start + sum(all_sizes[:mpi_rank])
-            local_size = all_sizes[mpi_rank]
-
-            # Allocate a buffer of the appropriate size and read the process's data.
-            buf = bytearray(local_size)
-            fh.Read_at_all(offset, buf)
-            fh.Close()
-
-            # Deserialize the object from the buffer.
-            vmc = pickle.loads(buf)
-
+            """Unzip the checkpoint file for each process and load them."""
+            filename = f"{mpi_rank}_{restart_chk}"
+            with zipfile.ZipFile(restart_chk, "r") as zipf:
+                data = zipf.read(filename)
+                vmc = pickle.loads(data)
         else:
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
@@ -453,63 +393,21 @@ def main():
 
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
 
-        # Serialize the vmc object on each process.
-        data = pickle.dumps(vmc)
-        local_size = len(data)
+        # Save the checkpoint file for each process and zip them."""
+        filename = f"{mpi_rank}_{restart_chk}"
+        with open(filename, "wb") as f:
+            pickle.dump(vmc, f)
 
-        # Gather the sizes of data from all processes.
-        all_sizes = mpi_comm.allgather(local_size)
+        # Wait all MPI processes
+        mpi_comm.Barrier()
 
-        # Create a header containing the sizes information and serialize it.
-        header = pickle.dumps(all_sizes)
-        header_size = len(header)
-
-        # Convert header_size to a fixed-length byte representation (8 bytes here).
-        header_size_bytes = header_size.to_bytes(8, byteorder="little")
-
-        # Open the file for writing using MPI.File.
-        fh = MPI.File.Open(mpi_comm, restart_chk, MPI.MODE_WRONLY | MPI.MODE_CREATE)
+        # Zip them.
         if mpi_rank == 0:
-            # Write the header size at the beginning of the file.
-            fh.Write_at(0, header_size_bytes)
-            # Write the header itself immediately after the header size.
-            fh.Write_at(8, header)
-
-        # Serialize the vmc object on each process.
-        data = pickle.dumps(vmc)
-        local_size = len(data)
-
-        # Gather the sizes of data from all processes.
-        all_sizes = mpi_comm.allgather(local_size)
-
-        # Create a header containing the sizes information and serialize it.
-        header = pickle.dumps(all_sizes)
-        header_size = len(header)
-
-        # Convert header_size to a fixed-length byte representation (8 bytes here).
-        header_size_bytes = header_size.to_bytes(8, byteorder="little")
-
-        # Open the file for writing using MPI.File.
-        fh = MPI.File.Open(mpi_comm, restart_chk, MPI.MODE_WRONLY | MPI.MODE_CREATE)
-        if mpi_rank == 0:
-            # Write the header size at the beginning of the file.
-            fh.Write_at(0, header_size_bytes)
-            # Write the header itself immediately after the header size.
-            fh.Write_at(8, header)
-
-        # Calculate the starting position of the data section.
-        offset_data_start = 8 + header_size
-        # Compute this process's offset by summing the sizes of data from all lower-ranked processes.
-        offset = offset_data_start + sum(all_sizes[:mpi_rank])
-
-        # Loop over the serialized data in chunks
-        for pos in range(0, local_size, chunk_size):
-            # Extract the current chunk from the data
-            chunk = data[pos : pos + chunk_size]
-            # Calculate the offset for this chunk (global file offset)
-            current_offset = offset + pos
-            # Write the chunk using collective I/O
-            fh.Write_at_all(current_offset, chunk)
+            filename_list = [f"{rank}_{restart_chk}" for rank in range(mpi_size)]
+            with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
+                for filename in filename_list:
+                    zipf.write(filename, arcname=filename)
+                    os.remove(filename)
 
         logger.info("")
 
@@ -579,32 +477,12 @@ def main():
             raise ValueError("num_gfmc_bin_blocks should be larger than num_gfmc_collect_steps.")
 
         if restart:
-            # Open the file for reading using MPI.File.
-            fh = MPI.File.Open(mpi_comm, restart_chk, MPI.MODE_RDONLY)
-
-            # Read the first 8 bytes to get the header size.
-            header_size_bytes = bytearray(8)
-            fh.Read_at(0, header_size_bytes)
-            header_size = int.from_bytes(header_size_bytes, byteorder="little")
-
-            # Read the header containing the sizes information (common to all processes).
-            header_buf = bytearray(header_size)
-            fh.Read_at_all(8, header_buf)
-            all_sizes = pickle.loads(header_buf)
-
-            # Calculate the starting position of the data section.
-            offset_data_start = 8 + header_size
-            # Compute this process's data offset by summing the sizes of data from all lower-ranked processes.
-            offset = offset_data_start + sum(all_sizes[:mpi_rank])
-            local_size = all_sizes[mpi_rank]
-
-            # Allocate a buffer of the appropriate size and read the process's data.
-            buf = bytearray(local_size)
-            fh.Read_at_all(offset, buf)
-            fh.Close()
-
-            # Deserialize the object from the buffer.
-            lrdmc = pickle.loads(buf)
+            logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
+            """Unzip the checkpoint file for each process and load them."""
+            filename = f"{mpi_rank}_{restart_chk}"
+            with zipfile.ZipFile(restart_chk, "r") as zipf:
+                data = zipf.read(filename)
+                lrdmc = pickle.loads(data)
         else:
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
@@ -630,63 +508,21 @@ def main():
         logger.info("")
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
 
-        # Serialize the vmc object on each process.
-        data = pickle.dumps(lrdmc)
-        local_size = len(data)
+        # Save the checkpoint file for each process and zip them."""
+        filename = f"{mpi_rank}_{restart_chk}"
+        with open(filename, "wb") as f:
+            pickle.dump(lrdmc, f)
 
-        # Gather the sizes of data from all processes.
-        all_sizes = mpi_comm.allgather(local_size)
+        # Wait all MPI processes
+        mpi_comm.Barrier()
 
-        # Create a header containing the sizes information and serialize it.
-        header = pickle.dumps(all_sizes)
-        header_size = len(header)
-
-        # Convert header_size to a fixed-length byte representation (8 bytes here).
-        header_size_bytes = header_size.to_bytes(8, byteorder="little")
-
-        # Open the file for writing using MPI.File.
-        fh = MPI.File.Open(mpi_comm, restart_chk, MPI.MODE_WRONLY | MPI.MODE_CREATE)
+        # Zip them.
         if mpi_rank == 0:
-            # Write the header size at the beginning of the file.
-            fh.Write_at(0, header_size_bytes)
-            # Write the header itself immediately after the header size.
-            fh.Write_at(8, header)
-
-        # Serialize the vmc object on each process.
-        data = pickle.dumps(vmc)
-        local_size = len(data)
-
-        # Gather the sizes of data from all processes.
-        all_sizes = mpi_comm.allgather(local_size)
-
-        # Create a header containing the sizes information and serialize it.
-        header = pickle.dumps(all_sizes)
-        header_size = len(header)
-
-        # Convert header_size to a fixed-length byte representation (8 bytes here).
-        header_size_bytes = header_size.to_bytes(8, byteorder="little")
-
-        # Open the file for writing using MPI.File.
-        fh = MPI.File.Open(mpi_comm, restart_chk, MPI.MODE_WRONLY | MPI.MODE_CREATE)
-        if mpi_rank == 0:
-            # Write the header size at the beginning of the file.
-            fh.Write_at(0, header_size_bytes)
-            # Write the header itself immediately after the header size.
-            fh.Write_at(8, header)
-
-        # Calculate the starting position of the data section.
-        offset_data_start = 8 + header_size
-        # Compute this process's offset by summing the sizes of data from all lower-ranked processes.
-        offset = offset_data_start + sum(all_sizes[:mpi_rank])
-
-        # Loop over the serialized data in chunks
-        for pos in range(0, local_size, chunk_size):
-            # Extract the current chunk from the data
-            chunk = data[pos : pos + chunk_size]
-            # Calculate the offset for this chunk (global file offset)
-            current_offset = offset + pos
-            # Write the chunk using collective I/O
-            fh.Write_at_all(current_offset, chunk)
+            filename_list = [f"{rank}_{restart_chk}" for rank in range(mpi_size)]
+            with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
+                for filename in filename_list:
+                    zipf.write(filename, arcname=filename)
+                    os.remove(filename)
 
         logger.info("")
 
