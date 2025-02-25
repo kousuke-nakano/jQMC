@@ -66,8 +66,9 @@ log.addHandler(stream_handler)
 
 @pytest.mark.activate_if_disable_jit
 def test_comparison_with_TurboRVB_wo_Jastrow_w_ecp(request):
+    """Test comparison with the corresponding ECP TurboRVB calculation without Jastrow factor."""
     if not request.config.getoption("--disable-jit"):
-        pytest.skip(reason="Bug of flux.struct with @jit.")
+        pytest.skip(reason="A bug of flux.struct with @jit.")
 
     (
         structure_data,
@@ -181,8 +182,9 @@ def test_comparison_with_TurboRVB_wo_Jastrow_w_ecp(request):
 
 @pytest.mark.activate_if_disable_jit
 def test_comparison_with_TurboRVB_w_2b_Jastrow_w_ecp(request):
+    """Test comparison with the corresponding ECP TurboRVB calculation with 2b Jastrow factor."""
     if not request.config.getoption("--disable-jit"):
-        pytest.skip(reason="Bug of flux.struct with @jit.")
+        pytest.skip(reason="A bug of flux.struct with @jit.")
 
     (
         structure_data,
@@ -303,8 +305,9 @@ jax.clear_caches()
 
 @pytest.mark.activate_if_disable_jit
 def test_comparison_with_TurboRVB_w_2b_3b_Jastrow_w_ecp(request):
+    """Test comparison with the corresponding ECP TurboRVB calculation with 2b,3b Jastrow factor."""
     if not request.config.getoption("--disable-jit"):
-        pytest.skip(reason="Bug of flux.struct with @jit.")
+        pytest.skip(reason="A bug of flux.struct with @jit.")
     (
         structure_data,
         _,
@@ -418,8 +421,9 @@ def test_comparison_with_TurboRVB_w_2b_3b_Jastrow_w_ecp(request):
 
 @pytest.mark.activate_if_disable_jit
 def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp(request):
+    """Test comparison with the corresponding ECP TurboRVB calculation with 2b,1b3b Jastrow factor."""
     if not request.config.getoption("--disable-jit"):
-        pytest.skip(reason="Bug of flux.struct with @jit.")
+        pytest.skip(reason="A bug of flux.struct with @jit.")
     (
         structure_data,
         _,

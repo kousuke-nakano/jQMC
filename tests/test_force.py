@@ -69,7 +69,7 @@ def test_debug_and_jax_SWCT_omega():
         _,
         geminal_mo_data,
         _,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_trexio.hdf5"))
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
 
     swct_data = SWCT_data(structure=structure_data)
 
@@ -112,7 +112,7 @@ def test_vmc_serial_force_with_SWCT(request):
         _,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_dimer_trexio.hdf5"))
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ecp_ccpvtz.h5"))
     # """
 
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5)
@@ -164,9 +164,11 @@ def test_vmc_serial_force_with_SWCT(request):
 '''
 
 
-@pytest.mark.skip(reason="A heavy calculation. Use only on a local machine.")
-def test_vmc_force_with_SWCT():
+@pytest.mark.activate_if_enable_heavy
+def test_vmc_force_with_SWCT(request):
     """Test VMC force with SWCT."""
+    if not request.config.getoption("--enable-heavy"):
+        pytest.skip(reason="A heavy calculation. Use only on a local machine.")
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,
@@ -175,7 +177,7 @@ def test_vmc_force_with_SWCT():
         _,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_dimer_trexio.hdf5"))
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ecp_ccpvtz.h5"))
     # """
 
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5)
@@ -227,9 +229,14 @@ def test_vmc_force_with_SWCT():
     np.testing.assert_almost_equal(np.array(force_std[0]), np.array(force_std[1]), decimal=6)
 
 
-@pytest.mark.skip(reason="A heavy calculation. Use only on a local machine.")
-def test_lrdmc_force_with_SWCT():
+@pytest.mark.activate_if_enable_heavy
+@pytest.mark.activate_if_disable_jit
+def test_lrdmc_force_with_SWCT(request):
     """Test LRDMC force with SWCT."""
+    if not request.config.getoption("--enable-heavy"):
+        pytest.skip(reason="A heavy calculation. Use only on a local machine.")
+    if not request.config.getoption("--disable-jit"):
+        pytest.skip(reason="A bug of flux.struct with @jit.")
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,
@@ -238,7 +245,7 @@ def test_lrdmc_force_with_SWCT():
         _,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_dimer_trexio.hdf5"))
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ecp_ccpvtz.h5"))
     # """
 
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5)

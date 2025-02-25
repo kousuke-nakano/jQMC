@@ -1,4 +1,4 @@
-name: publish phonopy gh-pages
+name: publish jqmc gh-pages
 
 on:
   push:

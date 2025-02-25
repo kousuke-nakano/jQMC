@@ -56,8 +56,8 @@ log.addHandler(stream_handler)
 
 @pytest.mark.parametrize(
     "filename",
-    ["water_trexio.hdf5"],
-    ids=["water_trexio.hdf5"],
+    ["water_ccecp_ccpvqz.h5"],
+    ids=["water_ccecp_ccpvqz.h5"],
 )
 def test_read_trexio_files(filename: str):
     """Test read_trexio files."""

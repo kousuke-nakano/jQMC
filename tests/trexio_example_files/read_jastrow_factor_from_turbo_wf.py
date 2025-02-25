@@ -9,7 +9,7 @@ from jqmc.jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_t
 from jqmc.structure import Structure_data
 
 
-suffix_list = ["w_2b_1b3b_w_ecp", "w_2b_3b_w_ecp"]
+suffix_list = ["w_2b_1b3b_w_ecp", "w_2b_3b_w_ecp", "w_1b_2b_1b3b_ae"]
 
 for suffix in suffix_list:
     turborvb_WF_file = f"turborvb_WF_{suffix}.txt"

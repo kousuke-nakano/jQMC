@@ -59,4 +59,5 @@ jobs:
 
     - name: Test jqmc (pytest) without @jit decorator (inter-software comparisons)
       run: |
-        pytest -s -v tests/test_comparison_with_references.py --disable-jit
+        pytest -s -v tests/test_comparison_with_turborvb_ECP.py --disable-jit
+        pytest -s -v tests/test_comparison_with_turborvb_AE.py --disable-jit

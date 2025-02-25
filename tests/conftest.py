@@ -4,8 +4,9 @@ import pytest
 
 
 def pytest_addoption(parser):
-    """Add option to disable jax.jit for pytests."""
+    """Add options for pytests."""
     parser.addoption("--disable-jit", action="store_true", default=False, help="Disable jax.jit for pytests")
+    parser.addoption("--enable-heavy", action="store_true", default=False, help="Enable heavy calculations for pytests")
 
 
 @pytest.fixture(autouse=True)
@@ -34,4 +35,5 @@ def pytest_itemcollected(item):
 def pytest_configure(config):
     """Pytest configuration."""
     config.addinivalue_line("markers", "activate_if_disable_jit: activate test if --disable-jit is set")
+    config.addinivalue_line("markers", "activate_if_enable_heavy: activate test if --enable-heavy is set")
     config.addinivalue_line("markers", "obsolete: tests that are obsolete and should be removed in the future")
