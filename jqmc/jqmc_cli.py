@@ -172,6 +172,11 @@ def main():
         max_time = 86400
         logger.info(f"The default value of max_time = {max_time}.")
     logger.info(f"max_time = {max_time} sec.")
+    try:
+        chunk_size = dict_toml["control"]["chunk_size"]
+    except KeyError:
+        chunk_size = 100 * 1024 * 1024  # Define the chunk size (100MB)
+        logger.info(f"The default value of chunk_size = {chunk_size}.")
     # restart
     try:
         restart = dict_toml["control"]["restart"]
@@ -287,6 +292,7 @@ def main():
         logger.info("")
 
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
+
         # Serialize the vmc object on each process.
         data = pickle.dumps(vmc)
         local_size = len(data)
@@ -313,9 +319,15 @@ def main():
         offset_data_start = 8 + header_size
         # Compute this process's offset by summing the sizes of data from all lower-ranked processes.
         offset = offset_data_start + sum(all_sizes[:mpi_rank])
-        fh.Write_at_all(offset, data)
-        fh.Close()
-        logger.info("")
+
+        # Loop over the serialized data in chunks
+        for pos in range(0, local_size, chunk_size):
+            # Extract the current chunk from the data
+            chunk = data[pos : pos + chunk_size]
+            # Calculate the offset for this chunk (global file offset)
+            current_offset = offset + pos
+            # Write the chunk using collective I/O
+            fh.Write_at_all(current_offset, chunk)
 
     # VMCopt!
     if job_type == "vmcopt":
@@ -463,12 +475,41 @@ def main():
             # Write the header itself immediately after the header size.
             fh.Write_at(8, header)
 
+        # Serialize the vmc object on each process.
+        data = pickle.dumps(vmc)
+        local_size = len(data)
+
+        # Gather the sizes of data from all processes.
+        all_sizes = mpi_comm.allgather(local_size)
+
+        # Create a header containing the sizes information and serialize it.
+        header = pickle.dumps(all_sizes)
+        header_size = len(header)
+
+        # Convert header_size to a fixed-length byte representation (8 bytes here).
+        header_size_bytes = header_size.to_bytes(8, byteorder="little")
+
+        # Open the file for writing using MPI.File.
+        fh = MPI.File.Open(mpi_comm, restart_chk, MPI.MODE_WRONLY | MPI.MODE_CREATE)
+        if mpi_rank == 0:
+            # Write the header size at the beginning of the file.
+            fh.Write_at(0, header_size_bytes)
+            # Write the header itself immediately after the header size.
+            fh.Write_at(8, header)
+
         # Calculate the starting position of the data section.
         offset_data_start = 8 + header_size
         # Compute this process's offset by summing the sizes of data from all lower-ranked processes.
         offset = offset_data_start + sum(all_sizes[:mpi_rank])
-        fh.Write_at_all(offset, data)
-        fh.Close()
+
+        # Loop over the serialized data in chunks
+        for pos in range(0, local_size, chunk_size):
+            # Extract the current chunk from the data
+            chunk = data[pos : pos + chunk_size]
+            # Calculate the offset for this chunk (global file offset)
+            current_offset = offset + pos
+            # Write the chunk using collective I/O
+            fh.Write_at_all(current_offset, chunk)
 
         logger.info("")
 
@@ -611,12 +652,41 @@ def main():
             # Write the header itself immediately after the header size.
             fh.Write_at(8, header)
 
+        # Serialize the vmc object on each process.
+        data = pickle.dumps(vmc)
+        local_size = len(data)
+
+        # Gather the sizes of data from all processes.
+        all_sizes = mpi_comm.allgather(local_size)
+
+        # Create a header containing the sizes information and serialize it.
+        header = pickle.dumps(all_sizes)
+        header_size = len(header)
+
+        # Convert header_size to a fixed-length byte representation (8 bytes here).
+        header_size_bytes = header_size.to_bytes(8, byteorder="little")
+
+        # Open the file for writing using MPI.File.
+        fh = MPI.File.Open(mpi_comm, restart_chk, MPI.MODE_WRONLY | MPI.MODE_CREATE)
+        if mpi_rank == 0:
+            # Write the header size at the beginning of the file.
+            fh.Write_at(0, header_size_bytes)
+            # Write the header itself immediately after the header size.
+            fh.Write_at(8, header)
+
         # Calculate the starting position of the data section.
         offset_data_start = 8 + header_size
         # Compute this process's offset by summing the sizes of data from all lower-ranked processes.
         offset = offset_data_start + sum(all_sizes[:mpi_rank])
-        fh.Write_at_all(offset, data)
-        fh.Close()
+
+        # Loop over the serialized data in chunks
+        for pos in range(0, local_size, chunk_size):
+            # Extract the current chunk from the data
+            chunk = data[pos : pos + chunk_size]
+            # Calculate the offset for this chunk (global file offset)
+            current_offset = offset + pos
+            # Write the chunk using collective I/O
+            fh.Write_at_all(current_offset, chunk)
 
         logger.info("")
 
