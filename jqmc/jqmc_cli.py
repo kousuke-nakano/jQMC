@@ -190,7 +190,6 @@ def main():
             logger.info(f"The default value of restart_chk = {restart_chk}.")
         hamiltonian_chk = dict_toml["control"]["hamiltonian_chk"]
         logger.info(f"restart = {restart}, hamiltonian_chk = {hamiltonian_chk}, restart_chk = {restart_chk}.")
-
     logger.info("")
 
     # VMC!
@@ -226,7 +225,6 @@ def main():
         except KeyError:
             epsilon_AS = 0.0
             logger.warning(f"The default value of epsilon_AS = {epsilon_AS}.")
-
         logger.info("")
 
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
@@ -269,9 +267,10 @@ def main():
         logger.info("")
 
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
+        logger.info("")
 
         # Save the checkpoint file for each process and zip them."""
-        filename = f"{mpi_rank}_{restart_chk}"
+        filename = f".{mpi_rank}_{restart_chk}"
         with open(filename, "wb") as f:
             pickle.dump(vmc, f)
 
@@ -280,10 +279,10 @@ def main():
 
         # Zip them.
         if mpi_rank == 0:
-            filename_list = [f"{rank}_{restart_chk}" for rank in range(mpi_size)]
+            filename_list = [f".{rank}_{restart_chk}" for rank in range(mpi_size)]
             with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
                 for filename in filename_list:
-                    zipf.write(filename, arcname=filename)
+                    zipf.write(filename, arcname=filename.lstrip("."))
                     os.remove(filename)
 
     # VMCopt!
@@ -388,8 +387,10 @@ def main():
 
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
 
+        logger.info("")
+
         # Save the checkpoint file for each process and zip them."""
-        filename = f"{mpi_rank}_{restart_chk}"
+        filename = f".{mpi_rank}_{restart_chk}"
         with open(filename, "wb") as f:
             pickle.dump(vmc, f)
 
@@ -398,10 +399,10 @@ def main():
 
         # Zip them.
         if mpi_rank == 0:
-            filename_list = [f"{rank}_{restart_chk}" for rank in range(mpi_size)]
+            filename_list = [f".{rank}_{restart_chk}" for rank in range(mpi_size)]
             with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
                 for filename in filename_list:
-                    zipf.write(filename, arcname=filename)
+                    zipf.write(filename, arcname=filename.lstrip("."))
                     os.remove(filename)
 
         logger.info("")
@@ -502,9 +503,10 @@ def main():
         logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:5f} Ha.")
         logger.info("")
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
+        logger.info("")
 
         # Save the checkpoint file for each process and zip them."""
-        filename = f"{mpi_rank}_{restart_chk}"
+        filename = f".{mpi_rank}_{restart_chk}"
         with open(filename, "wb") as f:
             pickle.dump(lrdmc, f)
 
@@ -516,7 +518,7 @@ def main():
             filename_list = [f"{rank}_{restart_chk}" for rank in range(mpi_size)]
             with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
                 for filename in filename_list:
-                    zipf.write(filename, arcname=filename)
+                    zipf.write(filename, arcname=filename.lstrip("."))
                     os.remove(filename)
 
         logger.info("")

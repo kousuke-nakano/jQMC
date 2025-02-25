@@ -41,9 +41,8 @@ import jax
 import numpy as np
 import numpy.typing as npt
 import scipy
-from jax import grad, jit, lax
+from jax import grad, jit, lax, vmap
 from jax import numpy as jnp
-from jax import vmap
 from mpi4py import MPI
 
 from .coulomb_potential import (
@@ -53,9 +52,8 @@ from .coulomb_potential import (
 )
 from .determinant import Geminal_data, compute_AS_regularization_factor_api
 from .hamiltonians import (
-    Hamiltonian_data,
+    Hamiltonian_data,  # Hamiltonian_data_deriv_R,
     Hamiltonian_data_deriv_params,
-    Hamiltonian_data_deriv_R,
     compute_kinetic_energy_api,
     compute_local_energy_api,
 )
@@ -106,7 +104,8 @@ class MCMC:
         num_walkers (int): the number of walkers.
         num_mcmc_per_measurement (int): the number of MCMC steps between a value (e.g., local energy) measurement.
         Dt (float): electron move step (bohr)
-        epsilon (float): the exponent of the AS regularization
+        epsilon_AS (float): the exponent of the AS regularization
+        adjust_epsilon_AS (bool): if True, adjust epsilon_AS to keep the average of weights close to target_weight (~0.8).
         comput_param_deriv (bool): if True, compute the derivatives of E wrt. variational parameters.
         comput_position_deriv (bool): if True, compute the derivatives of E wrt. atomic positions.
     """
@@ -119,6 +118,7 @@ class MCMC:
         num_mcmc_per_measurement: int = 16,
         Dt: float = 2.0,
         epsilon_AS: float = 1e-1,
+        adjust_epsilon_AS: bool = False,
         comput_param_deriv: bool = False,
         comput_position_deriv: bool = False,
     ) -> None:
@@ -128,6 +128,7 @@ class MCMC:
         self.__num_mcmc_per_measurement = num_mcmc_per_measurement
         self.__Dt = Dt
         self.__epsilon_AS = epsilon_AS
+        self.__adjust_epsilon_AS = adjust_epsilon_AS
         self.__comput_param_deriv = comput_param_deriv
         self.__comput_position_deriv = comput_position_deriv
 
@@ -750,6 +751,37 @@ class MCMC:
             w_L = (R_AS / R_AS_eps) ** 2
             # logger.info(f"  AS regularization: np.mean(w_L) = {np.mean(w_L)}.")
             self.__stored_w_L.append(w_L)
+
+            if self.__adjust_epsilon_AS:
+                # Update adjust_epsilon_AS so that the average of weights approaches target_weight. Proportional control.
+                epsilon_AS_max = 1.0e-0
+                epsilon_AS_min = 0.0
+                gain_weight = 5.0e-3
+                target_weight = 0.8
+                torrelance_of_weight = 0.05
+
+                ## Calculate the average of weights
+                average_weight = np.mean(w_L)
+                average_weight = mpi_comm.allreduce(average_weight, op=MPI.SUM)
+                average_weight = average_weight / mpi_size
+                # logger.info(f"      The current epsilon_AS = {self.__epsilon_AS:.5f}")
+                # logger.info(f"      The current averaged weights = {average_weight:.5f}")
+
+                ## Calculate the error as the difference between the current average and the target
+                diff_weight = average_weight - target_weight
+
+                ## switch off self.__adjust_epsilon_AS:
+                if np.abs(diff_weight) < torrelance_of_weight:
+                    # logger.info(f"      The averaged weights is converged within the torrelance of {torrelance_of_weight:.5f}.")
+                    self.__adjust_epsilon_AS = False
+                else:
+                    ## Update epsilon proportionally to the error
+                    self.__epsilon_AS = self.__epsilon_AS + gain_weight * diff_weight
+
+                    ## Clip new_epsilon to ensure it remains within defined bounds for stability
+                    self.__epsilon_AS = max(min(self.__epsilon_AS, epsilon_AS_max), epsilon_AS_min)
+
+                    logger.info(f"      epsilon_AS is updated to {self.__epsilon_AS:.5f}")
 
             if self.__comput_position_deriv:
                 # """
@@ -3921,7 +3953,8 @@ if __name__ == "__main__":
         hamiltonian_data=hamiltonian_data,
         Dt=2.0,
         mcmc_seed=mcmc_seed,
-        epsilon_AS=1.0e-3,
+        epsilon_AS=1.0e-6,
+        adjust_epsilon_AS=True,
         num_walkers=num_walkers,
         comput_position_deriv=True,
         comput_param_deriv=False,
@@ -3952,6 +3985,7 @@ if __name__ == "__main__":
         Dt=2.0,
         mcmc_seed=mcmc_seed,
         epsilon_AS=0.0,
+        adjust_epsilon_AS=True,
         num_walkers=num_walkers,
         comput_position_deriv=False,
         comput_param_deriv=True,
