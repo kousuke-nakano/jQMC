@@ -173,11 +173,6 @@ def main():
         max_time = 86400
         logger.info(f"The default value of max_time = {max_time}.")
     logger.info(f"max_time = {max_time} sec.")
-    try:
-        chunk_size = dict_toml["control"]["chunk_size"]
-    except KeyError:
-        chunk_size = 100 * 1024 * 1024  # Define the chunk size (100MB)
-        logger.info(f"The default value of chunk_size = {chunk_size}.")
     # restart
     try:
         restart = dict_toml["control"]["restart"]
