@@ -1558,6 +1558,9 @@ class GFMC:
         # init E_scf
         E_scf = self.__E_scf
 
+        # initialize numpy random seed
+        np.random.seed(self.__mpi_seed)
+
         # set timer
         timer_projection_init = 0.0
         timer_projection_total = 0.0
@@ -2299,8 +2302,11 @@ class GFMC:
                 logger.debug(f"probabilities = {probabilities}")
 
                 # correlated choice (see Sandro's textbook, page 182)
+                """ very slow w/o jax-jit!!
                 self.__jax_PRNG_key, subkey = jax.random.split(self.__jax_PRNG_key)
                 zeta = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
+                """
+                zeta = float(np.random.random())
                 z_list = [(alpha + zeta) / len(probabilities) for alpha in range(len(probabilities))]
                 logger.debug(f"z_list = {z_list}")
                 cumulative_prob = np.cumsum(probabilities)
@@ -3986,7 +3992,7 @@ if __name__ == "__main__":
     #    hamiltonian_data = pickle.load(f)
 
     # MCMC param
-    num_walkers = 4
+    num_walkers = 1
     num_mcmc_warmup_steps = 0
     num_mcmc_bin_blocks = 100
     mcmc_seed = 34356
@@ -4052,7 +4058,7 @@ if __name__ == "__main__":
 
     # """
     # GFMC param
-    num_walkers = 4
+    num_walkers = 1
     mcmc_seed = 3446
     E_scf = -1.00
     gamma = 1.0e-2
