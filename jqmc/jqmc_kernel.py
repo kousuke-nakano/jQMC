@@ -983,7 +983,13 @@ class MCMC:
         mcmc_total_end = time.perf_counter()
         timer_mcmc_total += mcmc_total_end - mcmc_total_start
         timer_misc = timer_mcmc_total - (
-            timer_mcmc_update + timer_e_L + timer_de_L_dR_dr + timer_dln_Psi_dR_dr + timer_dln_Psi_dc
+            timer_mcmc_update_init
+            + timer_mcmc_update
+            + timer_e_L
+            + timer_de_L_dR_dr
+            + timer_dln_Psi_dR_dr
+            + timer_dln_Psi_dc
+            + timer_de_L_dc
         )
 
         self.__timer_mcmc_total += timer_mcmc_total
@@ -996,19 +1002,17 @@ class MCMC:
         self.__timer_de_L_dc += timer_de_L_dc
         self.__timer_misc += timer_misc
 
-        logger.info(f"Total elapsed time for MCMC {num_mcmc_steps} steps. = {timer_mcmc_total:.2f} sec.")
+        logger.info(f"Total elapsed time for MCMC {num_mcmc_done} steps. = {timer_mcmc_total:.2f} sec.")
         logger.info(f"Pre-compilation time for MCMC = {timer_mcmc_update_init:.2f} sec.")
         logger.info(f"Net total time for MCMC = {timer_mcmc_total - timer_mcmc_update_init:.2f} sec.")
-        logger.info(f"Elapsed times per MCMC step, averaged over {num_mcmc_steps} steps.")
-        logger.info(f"  Time for MCMC updated = {timer_mcmc_update / num_mcmc_steps * 10**3:.2f} msec.")
-        logger.info(f"  Time for computing e_L = {timer_e_L / num_mcmc_steps * 10**3:.2f} msec.")
-        logger.info(f"  Time for computing de_L/dR and de_L/dr = {timer_de_L_dR_dr / num_mcmc_steps * 10**3:.2f} msec.")
-        logger.info(
-            f"  Time for computing dln_Psi/dR and dln_Psi/dr = {timer_dln_Psi_dR_dr / num_mcmc_steps * 10**3:.2f} msec."
-        )
-        logger.info(f"  Time for computing dln_Psi/dc = {timer_dln_Psi_dc / num_mcmc_steps * 10**3:.2f} msec.")
-        logger.info(f"  Time for computing de_L/dc = {timer_de_L_dc / num_mcmc_steps * 10**3:.2f} msec.")
-        logger.info(f"  Time for misc. (others) = {timer_misc / num_mcmc_steps * 10**3:.2f} msec.")
+        logger.info(f"Elapsed times per MCMC step, averaged over {num_mcmc_done} steps.")
+        logger.info(f"  Time for MCMC update = {timer_mcmc_update / num_mcmc_done * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing e_L = {timer_e_L / num_mcmc_done * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing de_L/dR and de_L/dr = {timer_de_L_dR_dr / num_mcmc_done * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing dln_Psi/dR and dln_Psi/dr = {timer_dln_Psi_dR_dr / num_mcmc_done * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing dln_Psi/dc = {timer_dln_Psi_dc / num_mcmc_done * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing de_L/dc = {timer_de_L_dc / num_mcmc_done * 10**3:.2f} msec.")
+        logger.info(f"  Time for misc. (others) = {timer_misc / num_mcmc_done * 10**3:.2f} msec.")
         logger.info(
             f"Acceptance ratio is {self.__accepted_moves / (self.__accepted_moves + self.__rejected_moves) * 100:.3f} %"
         )
@@ -1287,13 +1291,19 @@ class GFMC:
         self.__num_survived_walkers = 0
         self.__num_killed_walkers = 0
 
-        # timer
-        self.__timer_gmfc_init = 0.0
-        self.__timer_gmfc_total = 0.0
+        # timer for GFMC
+        self.__timer_gfmc_init = 0.0
+        self.__timer_gfmc_total = 0.0
         self.__timer_projection_init = 0.0
         self.__timer_projection_total = 0.0
         self.__timer_branching = 0.0
-        self.__timer_observable = 0.0
+        # time for observables
+        self.__timer_e_L = 0.0
+        self.__timer_de_L_dR_dr = 0.0
+        self.__timer_dln_Psi_dR_dr = 0.0
+        self.__timer_dln_Psi_dc = 0.0
+        self.__timer_de_L_dc = 0.0
+        self.__timer_misc = 0.0
 
         # derivative flags
         self.__comput_position_deriv = comput_position_deriv
@@ -1443,7 +1453,7 @@ class GFMC:
         _ = compute_G_L(np.zeros((self.__num_gfmc_collect_steps * 2, 1)), self.__num_gfmc_collect_steps)
 
         end = time.perf_counter()
-        self.__timer_gmfc_init += end - start
+        self.__timer_gfmc_init += end - start
         logger.info("  Compilation e_L is done.")
 
         if self.__comput_position_deriv:
@@ -1457,7 +1467,7 @@ class GFMC:
             end = time.perf_counter()
             logger.info("  Compilation dln_Psi/dR is done.")
             logger.info(f"  Elapsed Time = {end - start:.2f} sec.")
-            self.__timer_gmfc_init += end - start
+            self.__timer_gfmc_init += end - start
 
             logger.info("  Compilation domega/dR starts.")
             start = time.perf_counter()
@@ -1468,10 +1478,10 @@ class GFMC:
             end = time.perf_counter()
             logger.info("  Compilation domega/dR is done.")
             logger.info(f"  Elapsed Time = {end - start:.2f} sec.")
-            self.__timer_gmfc_init += end - start
+            self.__timer_gfmc_init += end - start
 
         logger.info("Compilation of fundamental functions is done.")
-        logger.info(f"Elapsed Time = {self.__timer_gmfc_init:.2f} sec.")
+        logger.info(f"Elapsed Time = {self.__timer_gfmc_init:.2f} sec.")
         logger.info("")
 
         # init attributes
@@ -1548,18 +1558,24 @@ class GFMC:
         # init E_scf
         E_scf = self.__E_scf
 
+        # initialize numpy random seed
+        np.random.seed(self.__mpi_seed)
+
         # set timer
         timer_projection_init = 0.0
         timer_projection_total = 0.0
-        timer_observable = 0.0
+        timer_e_L = 0.0
         timer_de_L_dR_dr = 0.0
         timer_dln_Psi_dR_dr = 0.0
+        timer_dln_Psi_dc = 0.0
+        timer_de_L_dc = 0.0
         timer_reconfiguration = 0.0
-        gmfc_total_start = time.perf_counter()
+
+        gfmc_total_start = time.perf_counter()
 
         # projection function.
         start_init = time.perf_counter()
-        logger.info("Start compilation of the GMFC projection funciton.")
+        logger.info("Start compilation of the GFMC projection funciton.")
 
         @jit
         def generate_rotation_matrix(alpha, beta, gamma):
@@ -1961,7 +1977,7 @@ class GFMC:
             )
         end_init = time.perf_counter()
         timer_projection_init += end_init - start_init
-        logger.info("End compilation of the GMFC projection funciton.")
+        logger.info("End compilation of the GFMC projection funciton.")
         logger.info(f"Elapsed Time = {timer_projection_init:.2f} sec.")
         logger.info("")
 
@@ -1969,18 +1985,18 @@ class GFMC:
         logger.info("Start GFMC")
         num_mcmc_done = 0
         progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
-        gmfc_total_current = time.perf_counter()
+        gfmc_total_current = time.perf_counter()
         logger.info(
-            f"  Progress: GFMC step = {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.0f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
+            f"  Progress: GFMC step = {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.0f} %. Elapsed time = {(gfmc_total_current - gfmc_total_start):.1f} sec."
         )
         mcmc_interval = int(np.maximum(num_mcmc_steps / 100, 1))
 
         for i_mcmc_step in range(num_mcmc_steps):
             if (i_mcmc_step + 1) % mcmc_interval == 0:
                 progress = (i_mcmc_step + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
-                gmfc_total_current = time.perf_counter()
+                gfmc_total_current = time.perf_counter()
                 logger.info(
-                    f"  Progress: GFMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
+                    f"  Progress: GFMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(gfmc_total_current - gfmc_total_start):.1f} sec."
                 )
 
             # Always set the initial weight list to 1.0
@@ -2019,7 +2035,7 @@ class GFMC:
             logger.debug("  Projection ends.")
 
             # evaluate observables
-            start_observable = time.perf_counter()
+            start = time.perf_counter()
             # V_diag and e_L
             V_diag_list, V_nondiag_list = vmap(_compute_V_elements, in_axes=(None, 0, 0, 0, None))(
                 self.__hamiltonian_data,
@@ -2029,6 +2045,10 @@ class GFMC:
                 self.__non_local_move,
             )
             e_L_list = V_diag_list + V_nondiag_list
+            e_L_list.block_until_ready()
+            end = time.perf_counter()
+            timer_e_L += end - start
+
             # atomic force related
             if self.__comput_position_deriv:
                 start = time.perf_counter()
@@ -2041,6 +2061,9 @@ class GFMC:
                     self.__jax_PRNG_key_list,
                     self.__non_local_move,
                 )
+                grad_e_L_h.block_until_ready()
+                grad_e_L_r_up.block_until_ready()
+                grad_e_L_r_dn.block_until_ready()
                 end = time.perf_counter()
                 timer_de_L_dR_dr += end - start
 
@@ -2067,6 +2090,9 @@ class GFMC:
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
+                grad_ln_Psi_h.block_until_ready()
+                grad_ln_Psi_r_up.block_until_ready()
+                grad_ln_Psi_r_dn.block_until_ready()
                 end = time.perf_counter()
                 timer_dln_Psi_dR_dr += end - start
 
@@ -2098,8 +2124,10 @@ class GFMC:
                     self.__latest_r_dn_carts,
                 )
 
-            end_observable = time.perf_counter()
-            timer_observable += end_observable - start_observable
+                omega_up.block_until_ready()
+                omega_dn.block_until_ready()
+                grad_omega_dr_up.block_until_ready()
+                grad_omega_dr_dn.block_until_ready()
 
             # Barrier before MPI operation
             # mpi_comm.Barrier()
@@ -2274,8 +2302,11 @@ class GFMC:
                 logger.debug(f"probabilities = {probabilities}")
 
                 # correlated choice (see Sandro's textbook, page 182)
+                """ very slow w/o jax-jit!!
                 self.__jax_PRNG_key, subkey = jax.random.split(self.__jax_PRNG_key)
                 zeta = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
+                """
+                zeta = float(np.random.random())
                 z_list = [(alpha + zeta) / len(probabilities) for alpha in range(len(probabilities))]
                 logger.debug(f"z_list = {z_list}")
                 cumulative_prob = np.cumsum(probabilities)
@@ -2341,8 +2372,8 @@ class GFMC:
                     logger.debug(f"    Init E_scf = {E_scf:.5f} Ha. Being equilibrated.")
 
             num_mcmc_done += 1
-            gmfc_current = time.perf_counter()
-            if max_time < gmfc_current - gmfc_total_start:
+            gfmc_current = time.perf_counter()
+            if max_time < gfmc_current - gfmc_total_start:
                 logger.info(f"  Max_time = {max_time} sec. exceeds.")
                 logger.info("  Break the branching loop.")
                 break
@@ -2356,15 +2387,30 @@ class GFMC:
         # count up mcmc_counter
         self.__mcmc_counter += num_mcmc_done
 
-        gmfc_total_end = time.perf_counter()
-        timer_gmfc_total = gmfc_total_end - gmfc_total_start
+        gfmc_total_end = time.perf_counter()
+        timer_gfmc_total = gfmc_total_end - gfmc_total_start
+        timer_misc = timer_gfmc_total - (
+            timer_projection_init
+            + timer_projection_total
+            + timer_e_L
+            + timer_de_L_dR_dr
+            + timer_dln_Psi_dR_dr
+            + timer_dln_Psi_dc
+            + timer_de_L_dc
+            + timer_reconfiguration
+        )
 
-        logger.info(f"Total GFMC time for {num_mcmc_done} branching steps = {timer_gmfc_total: .3f} sec.")
+        logger.info(f"Total GFMC time for {num_mcmc_done} branching steps = {timer_gfmc_total: .3f} sec.")
         logger.info(f"Pre-compilation time for GFMC = {timer_projection_init: .3f} sec.")
-        logger.info(f"Net GFMC time without pre-compilations = {timer_gmfc_total - timer_projection_init: .3f} sec.")
+        logger.info(f"Net GFMC time without pre-compilations = {timer_gfmc_total - timer_projection_init: .3f} sec.")
         logger.info(f"Elapsed times per branching, averaged over {num_mcmc_done} branching steps.")
-        logger.info(f"  Projection time per branching = {timer_projection_total / num_mcmc_done * 10**3: .3f} msec.")
-        logger.info(f"  Observable measurement time per branching = {timer_observable / num_mcmc_done * 10**3: .3f} msec.")
+        logger.info(f"  Projection between branching = {timer_projection_total / num_mcmc_done * 10**3: .3f} msec.")
+        logger.info(f"  Time for computing e_L = {timer_e_L / num_mcmc_done * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing de_L/dR and de_L/dr = {timer_de_L_dR_dr / num_mcmc_done * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing dln_Psi/dR and dln_Psi/dr = {timer_dln_Psi_dR_dr / num_mcmc_done * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing dln_Psi/dc = {timer_dln_Psi_dc / num_mcmc_done * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing de_L/dc = {timer_de_L_dc / num_mcmc_done * 10**3:.2f} msec.")
+        logger.info(f"  Time for misc. (others) = {timer_misc / num_mcmc_done * 10**3:.2f} msec.")
         logger.info(f"  Walker reconfiguration time per branching = {timer_reconfiguration / num_mcmc_done * 10**3: .3f} msec.")
         logger.debug(f"Survived walkers = {self.__num_survived_walkers}")
         logger.debug(f"killed walkers = {self.__num_killed_walkers}")
@@ -2377,11 +2423,15 @@ class GFMC:
         # logger.debug(f"len(self.__w_L_averaged_list) = {len(self.__w_L_averaged_list)}.")
         logger.info("")
 
-        self.__timer_gmfc_total += timer_gmfc_total
+        self.__timer_gfmc_total += timer_gfmc_total
         self.__timer_projection_init += timer_projection_init
         self.__timer_projection_total += timer_projection_total
         self.__timer_branching += timer_reconfiguration
-        self.__timer_observable += timer_observable
+        self.__timer_e_L += timer_e_L
+        self.__timer_de_L_dR_dr += timer_de_L_dR_dr
+        self.__timer_dln_Psi_dR_dr += timer_dln_Psi_dR_dr
+        self.__timer_dln_Psi_dc += timer_dln_Psi_dc
+        self.__timer_de_L_dc += timer_de_L_dc
 
     def get_E_on_the_fly(
         self, num_gfmc_warmup_steps: int = 3, num_gfmc_bin_blocks: int = 10, num_gfmc_collect_steps: int = 2
@@ -3805,7 +3855,7 @@ if __name__ == "__main__":
     logger.info(local_device_info)
     logger.info("")
 
-    """
+    # """
     # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
     (
         structure_data,
@@ -3815,9 +3865,9 @@ if __name__ == "__main__":
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"))
-    """
-
     # """
+
+    """
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,
@@ -3827,7 +3877,7 @@ if __name__ == "__main__":
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "H2_dimer_ccpv5z_trexio.hdf5"))
-    # """
+    """
 
     """
     # Ne atom cc-pV5Z with Mitas ccECP (10 electrons, feasible).
@@ -3954,7 +4004,7 @@ if __name__ == "__main__":
     #    hamiltonian_data = pickle.load(f)
 
     # MCMC param
-    num_walkers = 4
+    num_walkers = 1
     num_mcmc_warmup_steps = 0
     num_mcmc_bin_blocks = 100
     mcmc_seed = 34356
@@ -3966,9 +4016,9 @@ if __name__ == "__main__":
         Dt=2.0,
         mcmc_seed=mcmc_seed,
         epsilon_AS=1.0e-6,
-        adjust_epsilon_AS=True,
+        adjust_epsilon_AS=False,
         num_walkers=num_walkers,
-        comput_position_deriv=True,
+        comput_position_deriv=False,
         comput_param_deriv=False,
     )
     vmc = QMC(mcmc)
@@ -4018,15 +4068,14 @@ if __name__ == "__main__":
     )
     # """
 
-    """
-
+    # """
     # GFMC param
-    num_walkers = 2
+    num_walkers = 1
     mcmc_seed = 3446
     E_scf = -1.00
     gamma = 1.0e-2
     alat = 0.30
-    num_mcmc_per_measurement = 30
+    num_mcmc_per_measurement = 20
     num_gfmc_collect_steps = 5
     non_local_move = "tmove"
 
@@ -4043,13 +4092,13 @@ if __name__ == "__main__":
         non_local_move=non_local_move,
     )
     gfmc = QMC(gfmc)
-    gfmc.run(num_mcmc_steps=30, max_time=3600)
+    gfmc.run(num_mcmc_steps=100, max_time=3600)
     E_mean, E_std = gfmc.get_E(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
-    """
+    # """
 
     """
     f_mean, f_std = gfmc.get_aF(
