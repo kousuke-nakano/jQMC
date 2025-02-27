@@ -125,30 +125,28 @@ def read_trexio_file(
 
     # ao spherical part check
     if ao_cartesian:
+        logger.error("Cartesian basis functions are not supported.")
         raise NotImplementedError
 
     # mo info
     # mo_type = trexio.read_mo_type(file_r)
     mo_num = trexio.read_mo_num(file_r)
-    # mo_occupation = trexio.read_mo_occupation(file_r)
+    mo_occupation = trexio.read_mo_occupation(file_r)
     mo_coefficient_real = trexio.read_mo_coefficient(file_r)
 
     # mo spin check
-    try:
-        mo_spin = trexio.read_mo_spin(file_r)
-        if all(x == 0 for x in mo_spin):
-            spin_restricted = True
-        else:
-            spin_restricted = False
-    except trexio.Error:  # backward compatibility
-        mo_spin = [0 for _ in range(mo_num)]
-        spin_restricted = True
+    mo_spin = trexio.read_mo_spin(file_r)
+    if all(x == 0 for x in mo_spin):
+        spin_dependent = False
+    else:
+        spin_dependent = True
 
     # MO complex check
     if trexio.has_mo_coefficient_im(file_r):
         # logger.info("The WF is complex")
         # mo_coefficient_imag = trexio.read_mo_coefficient_im(file_r)
         # complex_flag = True
+        logger.error("Complex WFs are not supported.")
         raise NotImplementedError
     else:
         pass
@@ -263,31 +261,30 @@ def read_trexio_file(
     )
 
     # MOs_data instance
-    if spin_restricted:
+    threshold_mo_occ = 1.0e-6
+
+    if not spin_dependent:
         mo_indices = [i for (i, v) in enumerate(mo_spin) if v == 0]
         mo_coefficient_real_up = mo_coefficient_real_dn = mo_coefficient_real[mo_indices]
-        mo_num_up = mo_num_dn = mo_num
-        mos_data_up = MOs_data(num_mo=mo_num_up, mo_coefficients=mo_coefficient_real_up, aos_data=aos_data)
-        mos_data_dn = MOs_data(num_mo=mo_num_dn, mo_coefficients=mo_coefficient_real_dn, aos_data=aos_data)
+        mo_occ = mo_occupation[mo_indices] / 2.0
 
-        mo_lambda_paired_occ = np.eye(num_ele_up, num_ele_dn, k=0)
+        mo_considered_indices = [i for (i, v) in enumerate(mo_occ) if v >= threshold_mo_occ]
+        mo_considered_occ = mo_occ[mo_considered_indices]
+        mo_considered_num_up = mo_considered_num_dn = len(mo_considered_indices)
+        mo_considered_coefficient_real_up = mo_coefficient_real_up[mo_considered_indices]
+        mo_considered_coefficient_real_dn = mo_coefficient_real_dn[mo_considered_indices]
 
-        mo_lambda_matrix_unpaired = np.eye(num_ele_up, num_ele_up - num_ele_dn, k=-num_ele_dn)
-        mo_lambda_matrix = np.block(
-            [
-                [
-                    mo_lambda_paired_occ,
-                    np.zeros((num_ele_up, mo_num_dn - num_ele_dn)),
-                    mo_lambda_matrix_unpaired,
-                ],
-                [
-                    np.zeros((mo_num_up - num_ele_up, num_ele_dn)),
-                    np.zeros((mo_num_up - num_ele_up, mo_num_dn - num_ele_dn)),
-                    np.zeros((mo_num_up - num_ele_up, num_ele_up - num_ele_dn)),
-                ],
-            ]
+        mos_data_up = MOs_data(
+            num_mo=mo_considered_num_up, mo_coefficients=mo_considered_coefficient_real_up, aos_data=aos_data
         )
+        mos_data_dn = MOs_data(
+            num_mo=mo_considered_num_dn, mo_coefficients=mo_considered_coefficient_real_dn, aos_data=aos_data
+        )
+
+        mo_lambda_paired_occ = np.diag(mo_considered_occ)
+        mo_lambda_matrix = mo_lambda_paired_occ
     else:
+        logger.error("Spin-dependent MOs are not supported.")
         raise NotImplementedError
 
     geminal_data = Geminal_data(
