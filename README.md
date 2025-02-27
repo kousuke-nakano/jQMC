@@ -1,10 +1,22 @@
 # jQMC
-jQMC code implements two real-space ab initio quantum Monte Carlo (QMC) methods.
-Variatioinal Monte Carlo (VMC) and lattice regularized diffusion Monte Carlo (LRDMC) methods.
+**jQMC** is an ab initio quantum Monte Carlo (QMC) simulation package developed entirely from scratch using `Python` and `JAX`. Originally designed for molecular systems—with future extensions planned for periodic systems—**jQMC** implements two well-established QMC algorithms: Variational Monte Carlo (VMC) and a robust and efficient variant of Diffusion Monte Carlo algorithm known as Lattice Regularized Diffusion Monte Carlo (LRDMC).
+
+What sets **jQMC** apart:
+
+- It employs a resonating valence bond (RVB)-type wave function, such as the Jastrow Antisymmetrized Geminal (JAGP) wavefunction, which captures correlation effects beyond the conventional Jastrow-Slater wave function used in many other QMC codes.
+- It features a state-of-the-art optimization algorithm, stochastic reconfiguration, that enables stable optimization of both the amplitudes and nodal surfaces of many-body wave functions at the variational level.
+- It implements the LRDMC method, providing a numerically stable approach to diffusion Monte Carlo calculations.
+- The use of adjoint algorithmic differentiation in `JAX` allows for efficient differentiation of many-body wave functions, facilitating the computation of atomic forces analytically.
+- Written in `Python`, **jQMC** is designed to be user-friendly for executing simulations and easily extensible for developers implementing and testing new QMC methods.
+- By leveraging `JAX’s` just-in-time (`jit`) compilation and vectorized mapping (`vmap`) functionalities, the code achieves high-performance computations while remaining portable across CPUs, GPUs, and TPUs.
+- MPI support enables the execution of large-scale computations on HPC facilities.
+- To minimize bugs, the code is written in a loosely coupled manner and includes comprehensive unit tests and regression tests (managed by `pytest`).
+
+This combination of features makes **jQMC** a versatile and powerful tool for both users and developers in the field of quantum Monte Carlo simulations.
 
 ![license](https://img.shields.io/github/license/kousuke-nakano/jQMC)
 
-## Developers
+## Developer(s)
 Kosuke Nakano (National Institute for Materials Science, NIMS, Japan)
 
 
