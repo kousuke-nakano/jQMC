@@ -130,7 +130,7 @@ def read_trexio_file(
 
     # mo info
     # mo_type = trexio.read_mo_type(file_r)
-    mo_num = trexio.read_mo_num(file_r)
+    # mo_num = trexio.read_mo_num(file_r)
     mo_occupation = trexio.read_mo_occupation(file_r)
     mo_coefficient_real = trexio.read_mo_coefficient(file_r)
 
