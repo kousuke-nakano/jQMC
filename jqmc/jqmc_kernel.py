@@ -2654,8 +2654,7 @@ class QMC:
                 f_std = None
 
             # """
-            logger.info("Computing the inverse of the stochastic matrix.")
-            logger.info("(S+epsilon*I)^{-1}*f = X(X^T * X + epsilon*I)^{-1} * F...")
+            logger.info("Computing the natural gradient, i.e., {S+epsilon*I}^{-1}*f")
 
             if self.__mcmc.e_L.size != 0:
                 w_L = self.__mcmc.w_L[num_mcmc_warmup_steps:]
@@ -2669,7 +2668,7 @@ class QMC:
                 w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
                 w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
 
-                O_matrix = self.get_dln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps)
+                O_matrix = self.get_dln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps, chosen_param_index=chosen_param_index)
                 O_matrix_split = np.array_split(O_matrix, num_mcmc_bin_blocks, axis=0)
                 O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in O_matrix_split])
                 O_matrix_binned_shape = (
@@ -2726,13 +2725,26 @@ class QMC:
                 logger.info(f"X.shape = {X.shape}.")
                 logger.info(f"F.shape = {F.shape}.")
 
-                X_T_X_w = X.T @ X_w
-                logger.info(f"X_T_X_w.shape = {X_T_X_w.shape}.")
-                X_T_X_w[np.diag_indices_from(X_T_X_w)] += epsilon
-                # (X^T X_w + eps*I) x = F ->solve-> x = (X^T X_w + eps*I)^{-1} F
-                X_T_X_w_inv_F = scipy.linalg.solve(X_T_X_w, F, assume_a="sym")
-                # theta = X_w (X^T X_w + eps*I)^{-1} F
-                theta = X_w @ X_T_X_w_inv_F
+                if X.shape[0] < X.shape[1]:
+                    logger.info("X is a wide matrix. Proceed w/o the push-through identity.")
+                    logger.info("(S+epsilon*I)^{-1}*f = (X * X^T + epsilon*I)^{-1} * X F...")
+                    X_w_x_T = X_w @ X.T
+                    logger.info(f"X_w_x_T.shape = {X_w_x_T.shape}.")
+                    X_w_x_T[np.diag_indices_from(X_w_x_T)] += epsilon
+                    # (X_w X^T + eps*I) x = X_w F ->solve-> x = (X_w  X^T + eps*I)^{-1} X_w F
+                    X_w_x_T_inv_X_w_F = scipy.linalg.solve(X_w_x_T, X_w @ F, assume_a="sym")
+                    # theta = (X_w X^T + eps*I)^{-1} X_w F
+                    theta = X_w_x_T_inv_X_w_F
+                else:
+                    logger.info("X is a tall matrix. Proceed w/ the push-through identity.")
+                    logger.info("(S+epsilon*I)^{-1}*f = X(X^T * X + epsilon*I)^{-1} * F...")
+                    X_T_X_w = X.T @ X_w
+                    logger.info(f"X_T_X_w.shape = {X_T_X_w.shape}.")
+                    X_T_X_w[np.diag_indices_from(X_T_X_w)] += epsilon
+                    # (X^T X_w + eps*I) x = F ->solve-> x = (X^T X_w + eps*I)^{-1} F
+                    X_T_X_w_inv_F = scipy.linalg.solve(X_T_X_w, F, assume_a="sym")
+                    # theta = X_w (X^T X_w + eps*I)^{-1} F
+                    theta = X_w @ X_T_X_w_inv_F
 
             else:
                 theta = None
@@ -3798,8 +3810,8 @@ if __name__ == "__main__":
     (
         structure_data,
         aos_data,
-        mos_data_up,
-        mos_data_dn,
+        mos_data,
+        _,
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"))
@@ -3810,8 +3822,8 @@ if __name__ == "__main__":
     (
         structure_data,
         aos_data,
-        mos_data_up,
-        mos_data_dn,
+        mos_data,
+        _,
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "H2_dimer_ccpv5z_trexio.hdf5"))
@@ -3911,7 +3923,7 @@ if __name__ == "__main__":
 
     # """
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.75)
-    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
+    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=mos_data)
 
     # define data
     jastrow_data = Jastrow_data(
@@ -3947,7 +3959,7 @@ if __name__ == "__main__":
     num_mcmc_bin_blocks = 100
     mcmc_seed = 34356
 
-    # """
+    """
     # run VMC single-shot
     mcmc = MCMC(
         hamiltonian_data=hamiltonian_data,
@@ -3966,9 +3978,9 @@ if __name__ == "__main__":
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
-    # """
+    """
 
-    # """
+    """
     f_mean, f_std = vmc.get_aF(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
@@ -3976,9 +3988,9 @@ if __name__ == "__main__":
 
     logger.info(f"f_mean = {f_mean} Ha/bohr.")
     logger.info(f"f_std = {f_std} Ha/bohr.")
-    # """
-
     """
+
+    # """
     # run VMCopt
     mcmc = MCMC(
         hamiltonian_data=hamiltonian_data,
@@ -4002,9 +4014,9 @@ if __name__ == "__main__":
         opt_J2_param=True,
         opt_J3_param=True,
         opt_J4_param=True,
-        opt_lambda_param=False,
+        opt_lambda_param=True,
     )
-    """
+    # """
 
     """
 
