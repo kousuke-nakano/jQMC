@@ -16,6 +16,12 @@ This combination of features makes **jQMC** a versatile and powerful tool for bo
 
 ![license](https://img.shields.io/github/license/kousuke-nakano/jQMC)
 
+
+## Known issues
+- Atomic force calculations are much slower than energy and energy-optimization calculations due to the very slow compilations of dlnPsi/dR and de_L/dR. This is because `grad`, `jvp`, and `vjp` are slow for these terms for some reason. A more detailed analysis will be needed.
+- `jQMC` is 10-100 times slower than other QMC codes implemented by a compiled language, such as C++, Fortran. Further improvements from the algorith and implementation viewpoints are needed.
+- Periodic boundary condition calculations are not supoorted yet. It will be implemented in the future as `jQMC` supports complex128.
+
 ## Developer(s)
 Kosuke Nakano (National Institute for Materials Science, NIMS, Japan)
 
