@@ -1,7 +1,4 @@
 {
-    "ruff.lint.args": [
-        "--config=${workspaceFolder}/pyproject.toml",
-    ],
     "[python]": {
         "editor.defaultFormatter": "charliermarsh.ruff",
         "editor.codeActionsOnSave": {
@@ -11,6 +8,7 @@
     "ruff.lineLength": 128,
     "ruff.lint.ignore": [
         "I001",
+        "B008",
         "E501",
         "E741"
     ],

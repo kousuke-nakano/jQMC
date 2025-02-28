@@ -307,9 +307,9 @@ class MCMC:
             self.__timer_mcmc_init += end - start
             """
 
-        # print out structure info
-        logger.info("Structure information:")
-        self.__hamiltonian_data.structure_data.logger_info()
+        # print out hamiltonian info
+        logger.info("Printing out information in hamitonian_data instance.")
+        self.__hamiltonian_data.logger_info()
         logger.info("")
 
         logger.info("Compilation of fundamental functions is done.")
@@ -1405,9 +1405,9 @@ class GFMC:
         # SWCT data
         self.__swct_data = SWCT_data(structure=self.__hamiltonian_data.structure_data)
 
-        # print out structure info
-        logger.info("Structure information:")
-        self.__hamiltonian_data.structure_data.logger_info()
+        # print out hamiltonian info
+        logger.info("Printing out information in hamitonian_data instance.")
+        self.__hamiltonian_data.logger_info()
         logger.info("")
 
         logger.info("Compilation of fundamental functions starts.")
@@ -2496,6 +2496,17 @@ class GFMC:
         self.__hamiltonian_data = hamiltonian_data
         self.__init_attributes()
 
+    # collecting factor
+    @property
+    def num_gfmc_collect_steps(self):
+        """Return num_gfmc_collect_steps."""
+        return self.__num_gfmc_collect_steps
+
+    @num_gfmc_collect_steps.setter
+    def num_gfmc_collect_steps(self, num_gfmc_collect_steps):
+        """Set num_gfmc_collect_steps."""
+        self.__num_gfmc_collect_steps = num_gfmc_collect_steps
+
     # dimensions of observables
     @property
     def mcmc_counter(self) -> int:
@@ -2579,7 +2590,7 @@ class QMC:
 
     def __init__(self, mcmc: MCMC = None) -> None:
         """Initialization."""
-        self.__mcmc = mcmc
+        self.mcmc = mcmc
         self.__i_opt = 0
 
     def run(self, num_mcmc_steps: int = 0, max_time: int = 86400) -> None:
@@ -2592,7 +2603,7 @@ class QMC:
                 The maximum time (sec.) If maximum time exceeds,
                 the method exits the MCMC loop.
         """
-        self.__mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
+        self.mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
 
     def run_optimize(
         self,
@@ -2649,15 +2660,15 @@ class QMC:
                 logger.info(f"num_mcmc_steps={num_mcmc_steps}.")
 
             # run MCMC
-            self.__mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
+            self.mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
 
             # get E
             E, E_std = self.get_E(num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks)
             logger.info(f"E = {E:.5f} +- {E_std:.5f} Ha")
 
             # get opt param
-            dc_param_list = self.__mcmc.opt_param_dict["dc_param_list"]
-            dc_flattened_index_list = self.__mcmc.opt_param_dict["dc_flattened_index_list"]
+            dc_param_list = self.mcmc.opt_param_dict["dc_param_list"]
+            dc_flattened_index_list = self.mcmc.opt_param_dict["dc_flattened_index_list"]
             # Indices of variational parameters
             ## chosen_param_index
             ## index of optimized parameters in the dln_wf_dc.
@@ -2711,12 +2722,12 @@ class QMC:
             # """
             logger.info("Computing the natural gradient, i.e., {S+epsilon*I}^{-1}*f")
 
-            if self.__mcmc.e_L.size != 0:
-                w_L = self.__mcmc.w_L[num_mcmc_warmup_steps:]
+            if self.mcmc.e_L.size != 0:
+                w_L = self.mcmc.w_L[num_mcmc_warmup_steps:]
                 w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
                 w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
 
-                e_L = self.__mcmc.e_L[num_mcmc_warmup_steps:]
+                e_L = self.mcmc.e_L[num_mcmc_warmup_steps:]
                 e_L_split = np.array_split(e_L, num_mcmc_bin_blocks, axis=0)
                 e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in e_L_split]))
 
@@ -2809,14 +2820,14 @@ class QMC:
             # logger.debug(f"XX.shape for MPI-rank={mpi_rank} is {theta.shape}")
             logger.info(f"max(theta) is {np.max(theta)}")
 
-            dc_param_list = self.__mcmc.opt_param_dict["dc_param_list"]
-            dc_shape_list = self.__mcmc.opt_param_dict["dc_shape_list"]
-            dc_flattened_index_list = self.__mcmc.opt_param_dict["dc_flattened_index_list"]
+            dc_param_list = self.mcmc.opt_param_dict["dc_param_list"]
+            dc_shape_list = self.mcmc.opt_param_dict["dc_shape_list"]
+            dc_flattened_index_list = self.mcmc.opt_param_dict["dc_flattened_index_list"]
 
-            j2_param = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
-            j3_orb_data = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data
-            j3_matrix = self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix
-            lambda_matrix = self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix
+            j2_param = self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
+            j3_orb_data = self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data
+            j3_matrix = self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix
+            lambda_matrix = self.mcmc.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix
 
             logger.info(f"dX.shape for MPI-rank={mpi_rank} is {theta.shape}")
 
@@ -2848,13 +2859,13 @@ class QMC:
                     """To be implemented. Symmetrize or Anti-symmetrize the updated matrices!!!"""
                     """To be implemented. Considering symmetries of the AGP lambda matrix."""
 
-            structure_data = self.__mcmc.hamiltonian_data.structure_data
-            coulomb_potential_data = self.__mcmc.hamiltonian_data.coulomb_potential_data
+            structure_data = self.mcmc.hamiltonian_data.structure_data
+            coulomb_potential_data = self.mcmc.hamiltonian_data.coulomb_potential_data
             geminal_data = Geminal_data(
-                num_electron_up=self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data.num_electron_up,
-                num_electron_dn=self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn,
-                orb_data_up_spin=self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data.orb_data_up_spin,
-                orb_data_dn_spin=self.__mcmc.hamiltonian_data.wavefunction_data.geminal_data.orb_data_dn_spin,
+                num_electron_up=self.mcmc.hamiltonian_data.wavefunction_data.geminal_data.num_electron_up,
+                num_electron_dn=self.mcmc.hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn,
+                orb_data_up_spin=self.mcmc.hamiltonian_data.wavefunction_data.geminal_data.orb_data_up_spin,
+                orb_data_dn_spin=self.mcmc.hamiltonian_data.wavefunction_data.geminal_data.orb_data_dn_spin,
                 lambda_matrix=lambda_matrix,
             )
             jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=j2_param)
@@ -2874,7 +2885,7 @@ class QMC:
             )
 
             logger.info("WF updated")
-            self.__mcmc.hamiltonian_data = hamiltonian_data
+            self.mcmc.hamiltonian_data = hamiltonian_data
 
             # logger.warning(
             #    f"twobody param after opt. = {self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param}"
@@ -2884,7 +2895,7 @@ class QMC:
             if mpi_rank == 0:
                 if (i_opt + 1) % wf_dump_freq == 0 or (i_opt + 1) == num_opt_steps:
                     logger.info("Hamiltonian data is dumped as a checkpoint file.")
-                    self.__mcmc.hamiltonian_data.dump(f"hamiltonian_data_opt_step_{i_opt + 1}.chk")
+                    self.mcmc.hamiltonian_data.dump(f"hamiltonian_data_opt_step_{i_opt + 1}.chk")
 
             # check max time
             vmcopt_current = time.perf_counter()
@@ -2912,9 +2923,9 @@ class QMC:
                 The mean and std values of the computed local energy
                 estimated by the Jackknife method with the Args.
         """
-        if self.__mcmc.e_L.size != 0:
-            e_L = self.__mcmc.e_L[num_mcmc_warmup_steps:]
-            w_L = self.__mcmc.w_L[num_mcmc_warmup_steps:]
+        if self.mcmc.e_L.size != 0:
+            e_L = self.mcmc.e_L[num_mcmc_warmup_steps:]
+            w_L = self.mcmc.w_L[num_mcmc_warmup_steps:]
             w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
             w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
             w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
@@ -2971,19 +2982,19 @@ class QMC:
                 estimated by the Jackknife method with the Args.
                 The dimention of the arrays is (N, 3).
         """
-        if self.__mcmc.e_L.size != 0:
-            w_L = self.__mcmc.w_L[num_mcmc_warmup_steps:]
-            e_L = self.__mcmc.e_L[num_mcmc_warmup_steps:]
-            de_L_dR = self.__mcmc.de_L_dR[num_mcmc_warmup_steps:]
-            de_L_dr_up = self.__mcmc.de_L_dr_up[num_mcmc_warmup_steps:]
-            de_L_dr_dn = self.__mcmc.de_L_dr_dn[num_mcmc_warmup_steps:]
-            dln_Psi_dr_up = self.__mcmc.dln_Psi_dr_up[num_mcmc_warmup_steps:]
-            dln_Psi_dr_dn = self.__mcmc.dln_Psi_dr_dn[num_mcmc_warmup_steps:]
-            dln_Psi_dR = self.__mcmc.dln_Psi_dR[num_mcmc_warmup_steps:]
-            omega_up = self.__mcmc.omega_up[num_mcmc_warmup_steps:]
-            omega_dn = self.__mcmc.omega_dn[num_mcmc_warmup_steps:]
-            domega_dr_up = self.__mcmc.domega_dr_up[num_mcmc_warmup_steps:]
-            domega_dr_dn = self.__mcmc.domega_dr_dn[num_mcmc_warmup_steps:]
+        if self.mcmc.e_L.size != 0:
+            w_L = self.mcmc.w_L[num_mcmc_warmup_steps:]
+            e_L = self.mcmc.e_L[num_mcmc_warmup_steps:]
+            de_L_dR = self.mcmc.de_L_dR[num_mcmc_warmup_steps:]
+            de_L_dr_up = self.mcmc.de_L_dr_up[num_mcmc_warmup_steps:]
+            de_L_dr_dn = self.mcmc.de_L_dr_dn[num_mcmc_warmup_steps:]
+            dln_Psi_dr_up = self.mcmc.dln_Psi_dr_up[num_mcmc_warmup_steps:]
+            dln_Psi_dr_dn = self.mcmc.dln_Psi_dr_dn[num_mcmc_warmup_steps:]
+            dln_Psi_dR = self.mcmc.dln_Psi_dR[num_mcmc_warmup_steps:]
+            omega_up = self.mcmc.omega_up[num_mcmc_warmup_steps:]
+            omega_dn = self.mcmc.omega_dn[num_mcmc_warmup_steps:]
+            domega_dr_up = self.mcmc.domega_dr_up[num_mcmc_warmup_steps:]
+            domega_dr_dn = self.mcmc.domega_dr_dn[num_mcmc_warmup_steps:]
 
             logger.info(f"w_L.shape for MPI-rank={mpi_rank} is {w_L.shape}")
 
@@ -3148,10 +3159,10 @@ class QMC:
             where k is the flattened variational parameter index. The dimenstion
             of O_matrix is (M, nw, k), where M is the MCMC step and nw is the walker index.
         """
-        dln_Psi_dc_list = self.__mcmc.opt_param_dict["dln_Psi_dc_list"]
+        dln_Psi_dc_list = self.mcmc.opt_param_dict["dln_Psi_dc_list"]
 
         # here, the thrid index indicates the flattened variational parameter index.
-        O_matrix = np.empty((self.__mcmc.mcmc_counter, self.__mcmc.num_walkers, 0))
+        O_matrix = np.empty((self.mcmc.mcmc_counter, self.mcmc.num_walkers, 0))
 
         for dln_Psi_dc in dln_Psi_dc_list:
             logger.devel(f"dln_Psi_dc.shape={dln_Psi_dc.shape}.")
@@ -3196,12 +3207,12 @@ class QMC:
             variational parameters.
         """
         logger.info("Computing the generalized force vector f...")
-        if self.__mcmc.e_L.size != 0:
-            w_L = self.__mcmc.w_L[num_mcmc_warmup_steps:]
+        if self.mcmc.e_L.size != 0:
+            w_L = self.mcmc.w_L[num_mcmc_warmup_steps:]
             w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
             w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
 
-            e_L = self.__mcmc.e_L[num_mcmc_warmup_steps:]
+            e_L = self.mcmc.e_L[num_mcmc_warmup_steps:]
             w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
             w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
 

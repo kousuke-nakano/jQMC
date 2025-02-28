@@ -111,6 +111,22 @@ class Geminal_data:
         logger.debug(f"compute_orb={self.compute_orb_api}")
     '''
 
+    def get_info(self) -> list[str]:
+        """Return a list of strings containing the information stored in the attributes."""
+        info_lines = []
+        info_lines.append("**" + self.__class__.__name__)
+        info_lines.append(f"  dim. of lambda_matrix = {self.lambda_matrix.shape}")
+        info_lines.append(f"  lambda_matrix is symmetric? = {np.allclose(self.lambda_matrix, self.lambda_matrix.T)}")
+        info_lines.extend(self.orb_data_up_spin.get_info())
+        info_lines.extend(self.orb_data_dn_spin.get_info())
+
+        return info_lines
+
+    def logger_info(self) -> None:
+        """Log the information obtained from get_info() using logger.info."""
+        for line in self.get_info():
+            logger.info(line)
+
     @property
     def orb_num_up(self) -> int:
         """orb_num_up.

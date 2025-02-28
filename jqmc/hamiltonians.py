@@ -60,6 +60,9 @@ logger = getLogger("jqmc").getChild(__name__)
 # JAX float64
 jax.config.update("jax_enable_x64", True)
 
+# separator
+num_sep_line = 66
+
 
 @struct.dataclass
 class Hamiltonian_data:
@@ -109,6 +112,24 @@ class Hamiltonian_data:
             To be implemented.
         """
         pass
+
+    def get_info(self) -> list[str]:
+        """Return a list of strings representing the logged information."""
+        info_lines = []
+        # Add the top separator line.
+        info_lines.append("=" * num_sep_line)
+        # Replace attribute logger_info() calls with their get_info() outputs.
+        info_lines.extend(self.structure_data.get_info())
+        info_lines.extend(self.coulomb_potential_data.get_info())
+        info_lines.extend(self.wavefunction_data.get_info())
+        # Add the bottom separator line.
+        info_lines.append("=" * num_sep_line)
+        return info_lines
+
+    def logger_info(self) -> None:
+        """Log the information from get_info() using logger.info."""
+        for line in self.get_info():
+            logger.info(line)
 
     def dump(self, filepath="jqmc.chk") -> None:
         """_dump Hamiltonian data as a binary file.

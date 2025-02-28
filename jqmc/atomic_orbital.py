@@ -128,6 +128,20 @@ class AOs_data:
             raise ValueError
     '''
 
+    def get_info(self) -> list[str]:
+        """Return a list of strings containing information about the class attributes."""
+        info_lines = []
+        info_lines.extend(["**" + self.__class__.__name__])
+        info_lines.extend([f"  Number of AOs = {self.num_ao}"])
+        info_lines.extend([f"  Number of primitive AOs = {self.num_ao_prim}"])
+        info_lines.extend(["  Radial part is the real spherical (solid) Harmonics."])
+        return info_lines
+
+    def logger_info(self) -> None:
+        """Output the information from get_info using logger.info."""
+        for line in self.get_info():
+            logger.info(line)
+
     @property
     def nucleus_index_np(self) -> npt.NDArray[np.int32]:
         """nucleus_index."""

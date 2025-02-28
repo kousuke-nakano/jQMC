@@ -91,6 +91,20 @@ class Wavefunction_data:
         """
         pass
 
+    def get_info(self) -> list[str]:
+        """Return a list of strings representing the logged information."""
+        info_lines = []
+        # Replace geminal_data.logger_info() with geminal_data.get_info() output.
+        info_lines.extend(self.geminal_data.get_info())
+        # Replace jastrow_data.logger_info() with jastrow_data.get_info() output.
+        info_lines.extend(self.jastrow_data.get_info())
+        return info_lines
+
+    def logger_info(self) -> None:
+        """Log the information obtained from get_info() using logger.info."""
+        for line in self.get_info():
+            logger.info(line)
+
 
 @struct.dataclass
 class Wavefunction_data_deriv_params(Wavefunction_data):

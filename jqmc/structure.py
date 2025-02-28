@@ -86,25 +86,34 @@ class Structure_data:
     element_symbols: list[str] = struct.field(pytree_node=False, default_factory=list)
     atomic_labels: list[str] = struct.field(pytree_node=False, default_factory=list)
 
-    def logger_info(self) -> None:
-        """Print out information stored in the Structure attribute using logger."""
-        logger.info("=" * num_sep_line)
-        logger.info(f"PBC flag = {self.pbc_flag}")
+    def get_info(self) -> list[str]:
+        """Return a list of strings containing information about the Structure attribute."""
+        info_lines = []
+        info_lines.extend(["**" + self.__class__.__name__])
+        info_lines.extend([f"  PBC flag = {self.pbc_flag}"])
         if any(self.pbc_flag):
-            logger.info(f"vec A = {self.vec_a} Bohr")
-            logger.info(f"vec B = {self.vec_b} Bohr")
-            logger.info(f"vec C = {self.vec_c} Bohr")
-
-        logger.info("-" * num_sep_line)
-        logger.info("element, label, Z, x, y, z in cartesian (Bohr)")
-        logger.info("-" * num_sep_line)
+            info_lines.extend([f"  vec A = {self.vec_a} Bohr"])
+            info_lines.extend([f"  vec B = {self.vec_b} Bohr"])
+            info_lines.extend([f"  vec C = {self.vec_c} Bohr"])
+        info_lines.extend(["  " + "-" * num_sep_line])
+        info_lines.extend(["  element, label, Z, x, y, z in cartesian (Bohr)"])
+        info_lines.extend(["  " + "-" * num_sep_line])
         for atomic_number, element_symbol, atomic_label, position in zip(
             self.atomic_numbers, self.element_symbols, self.atomic_labels, self.positions_cart_np
         ):
-            logger.info(
-                f"{element_symbol:s}, {atomic_label:s}, {atomic_number:.1f}, {position[0]:.8f}, {position[1]:.8f}, {position[2]:.8f}"
+            info_lines.extend(
+                [
+                    f"  {element_symbol:s}, {atomic_label:s}, {atomic_number:.1f}, "
+                    f"{position[0]:.8f}, {position[1]:.8f}, {position[2]:.8f}"
+                ]
             )
-        logger.info("=" * num_sep_line)
+        info_lines.extend(["  " + "-" * num_sep_line])
+        return info_lines
+
+    def logger_info(self) -> None:
+        """Log the information obtained from get_info() using logger.info."""
+        for line in self.get_info():
+            logger.info(line)
 
     @property
     def cell(self) -> npt.NDArray[np.float64]:

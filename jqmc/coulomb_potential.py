@@ -195,6 +195,17 @@ class Coulomb_potential_data:
         """
         pass
 
+    def get_info(self) -> list[str]:
+        """Return a list of strings containing the attribute information."""
+        info_lines = ["**" + self.__class__.__name__]
+        info_lines.append(f"  ecp_flag = {self.ecp_flag}")
+        return info_lines
+
+    def logger_info(self) -> None:
+        """Log the information from get_info() using logger.info."""
+        for line in self.get_info():
+            logger.info(line)
+
     @property
     def effective_charges(self) -> npt.NDArray:
         """effective_charges.

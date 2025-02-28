@@ -81,6 +81,26 @@ class Jastrow_one_body_data:
         pass
     """
 
+    def get_info(self) -> list[str]:
+        """Return a list of strings representing the logged information."""
+        info_lines = []
+        info_lines.append("**" + self.__class__.__name__)
+        info_lines.append(f"  Jastrow 1b param = {self.jastrow_1b_param}")
+        info_lines.append("  1b Jastrow functional form is the exp type.")
+        return info_lines
+
+    def logger_info(self) -> None:
+        """Log the information obtained from get_info() using logger.info."""
+        for line in self.get_info():
+            logger.info(line)
+
+    def init_jastrow_one_body_data(cls, jastrow_1b_param, structure_data, core_electrons):
+        """Initialization."""
+        jastrow_one_body_data = cls(
+            jastrow_1b_param=jastrow_1b_param, structure_data=structure_data, core_electrons=core_electrons
+        )
+        return jastrow_one_body_data
+
 
 def one_body_jastrow_exp(param: float, coeff: float, r_cart: npt.NDArray[np.float64], R_cart: npt.NDArray[np.float64]) -> float:
     """Exponential form of J1."""
@@ -197,6 +217,19 @@ class Jastrow_two_body_data:
         """Post initialization."""
         pass
 
+    def get_info(self) -> list[str]:
+        """Return a list of strings representing the logged information."""
+        info_lines = []
+        info_lines.append("**" + self.__class__.__name__)
+        info_lines.append(f"  Jastrow 2b param = {self.jastrow_2b_param}")
+        info_lines.append("  2b Jastrow functional form is the pade type.")
+        return info_lines
+
+    def logger_info(self) -> None:
+        """Log the information obtained from get_info() using logger.info."""
+        for line in self.get_info():
+            logger.info(line)
+
     @classmethod
     def init_jastrow_two_body_data(cls, jastrow_2b_param=1.0):
         """Initialization."""
@@ -242,6 +275,23 @@ class Jastrow_three_body_data:
             )
             raise ValueError
     '''
+
+    def get_info(self) -> list[str]:
+        """Return a list of strings containing the information stored in the attributes."""
+        info_lines = []
+        info_lines.append("**" + self.__class__.__name__)
+        info_lines.append(f"  dim. of jastrow_3b_matrix = {self.j_matrix.shape}")
+        info_lines.append(
+            f"  j3 part of the jastrow_3b_matrix is symmetric? = {np.allclose(self.j_matrix[:, :-1], self.j_matrix[:, :-1].T)}"
+        )
+        # Replace orb_data.logger_info() with orb_data.get_info() output.
+        info_lines.extend(self.orb_data.get_info())
+        return info_lines
+
+    def logger_info(self) -> None:
+        """Log the information obtained from get_info() using logger.info."""
+        for line in self.get_info():
+            logger.info(line)
 
     @property
     def orb_num(self) -> int:
@@ -340,6 +390,25 @@ class Jastrow_data:
             ValueError: If there is an inconsistency in a dimension of a given argument.
         """
         pass
+
+    def get_info(self) -> list[str]:
+        """Return a list of strings representing the logged information from Jastrow data attributes."""
+        info_lines = []
+        # Replace jastrow_one_body_data.logger_info() with its get_info() output if available.
+        if self.jastrow_one_body_data is not None:
+            info_lines.extend(self.jastrow_one_body_data.get_info())
+        # Replace jastrow_two_body_data.logger_info() with its get_info() output if available.
+        if self.jastrow_two_body_data is not None:
+            info_lines.extend(self.jastrow_two_body_data.get_info())
+        # Replace jastrow_three_body_data.logger_info() with its get_info() output if available.
+        if self.jastrow_three_body_data is not None:
+            info_lines.extend(self.jastrow_three_body_data.get_info())
+        return info_lines
+
+    def logger_info(self) -> None:
+        """Log the information obtained from get_info() using logger.info."""
+        for line in self.get_info():
+            logger.info(line)
 
 
 @struct.dataclass

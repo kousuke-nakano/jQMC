@@ -99,6 +99,20 @@ class MOs_data:
             raise ValueError
     '''
 
+    def get_info(self) -> list[str]:
+        """Return a list of strings representing the logged information."""
+        info_lines = []
+        info_lines.append("**" + self.__class__.__name__)
+        info_lines.append(f"  Number of MOs = {self.num_mo}")
+        # Replace aos_data.logger_info() with aos_data.get_info() output.
+        info_lines.extend(self.aos_data.get_info())
+        return info_lines
+
+    def logger_info(self) -> None:
+        """Log the information obtained from get_info() using logger.info."""
+        for line in self.get_info():
+            logger.info(line)
+
     @property
     def structure_data(self):
         """Return structure_data of the aos_data instance."""
