@@ -79,6 +79,86 @@ except ValueError:
     pass
 
 
+default_parameters = {
+    "control": {
+        "job_type": None,
+        "mcmc_seed": 34456,
+        "number_of_walkers": 40,
+        "max_time": 86400,
+        "restart": False,
+        "restart_chk": "restart.chk",
+        "hamiltonian_chk": "hamiltonian.chk",
+    },
+    "control_comments": {
+        "job_type": 'Specify the job type. "vmc", "vmcopt", or "lrdmc"',
+        "mcmc_seed": "Random seed for MCMC",
+        "number_of_walkers": "Number of walkers per MPI process",
+        "max_time": "Maximum time in sec.",
+        "restart": "Restart calculation. A checkpoint file should be specified.",
+        "restart_chk": "Restart checkpoint file. If restart is True, this file is used.",
+        "hamiltonian_chk": "Hamiltonian checkpoint file. If restart is False, this file is used.",
+    },
+    "vmc": {
+        "num_mcmc_steps": None,
+        "num_mcmc_per_measurement": 40,
+        "num_mcmc_warmup_steps": 0,
+        "num_mcmc_bin_blocks": 1,
+        "epsilon_AS": 0.0,
+    },
+    "vmc_comments": {
+        "num_mcmc_steps": "Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.",
+        "num_mcmc_per_measurement": "Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.",
+        "num_mcmc_warmup_steps": "Number of observable measurement steps for warmup (i.e., discarged).",
+        "num_mcmc_bin_blocks": "Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_mcmc_bin_blocks * mpi_size * number_of_walkers.",
+        "epsilon_AS": "the epsilon parameter used in the Attacalite-Sandro regulatization method.",
+    },
+    "vmcopt": {
+        "num_mcmc_steps": None,
+        "num_mcmc_per_measurement": 40,
+        "num_mcmc_warmup_steps": 0,
+        "num_mcmc_bin_blocks": 1,
+        "epsilon_AS": 0.0,
+        "num_opt_steps": None,
+        "wf_dump_freq": 1,
+        "delta": 0.01,
+        "epsilon": 0.001,
+    },
+    "vmcopt_comments": {
+        "num_mcmc_steps": "Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.",
+        "num_mcmc_per_measurement": "Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.",
+        "num_mcmc_warmup_steps": "Number of observable measurement steps for warmup (i.e., discarged).",
+        "num_mcmc_bin_blocks": "Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_mcmc_bin_blocks * mpi_size * number_of_walkers.",
+        "epsilon_AS": "the epsilon parameter used in the Attacalite-Sandro regulatization method.",
+        "num_opt_steps": "Number of optimization steps.",
+        "wf_dump_freq": "Frequency of wavefunction (i.e. hamiltonian_data) dump.",
+        "delta": "Step size for the Stochastic reconfiguration (i.e., the natural gradient) optimization.",
+        "epsilon": "Regularization parameter, a positive number added to the diagnoal elements of the Fisher-Information matrix, used during the Stochastic reconfiguration to improve the numerical stability.",
+    },
+    "lrdmc": {
+        "num_mcmc_steps": None,
+        "num_mcmc_per_measurement": 40,
+        "alat": 0.30,
+        "non_local_move": "tmove",
+        "num_gfmc_warmup_steps": 0,
+        "num_gfmc_bin_blocks": 1,
+        "num_gfmc_collect_steps": 0,
+        "E_scf": 0.0,
+        "gamma": 0.0,
+    },
+    "lrdmc_comments": {
+        "num_mcmc_steps": "Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.",
+        "num_mcmc_per_measurement": "Number of GFMC projections per measurement. Every local energy and other observeables are measured every this projection.",
+        "alat": "The lattice discretization parameter (i.e. grid size) used for discretized the Hamiltonian and potential. The lattice spacing is alat * a0, where a0 is the Bohr radius.",
+        "non_local_move": "The treatment of the non-local term in the Effective core potential. tmove (T-move) and dltmove (Determinant locality approximation with T-move) are available.",
+        "num_gfmc_warmup_steps": "Number of observable measurement steps for warmup (i.e., discarged).",
+        "num_gfmc_bin_blocks": "Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_gfmc_bin_blocks * mpi_size * number_of_walkers.",
+        "num_gfmc_collect_steps": "Number of measurement (before binning) for collecting the weights.",
+        "E_scf": "The initial guess of the total energy. This is used to compute the initial energy shift in the GFMC.",
+        "gamma": "The regulation parameter used in the GFMC.",
+    },
+}
+
+
 def main():
     """Main function for tests."""
     logger_level = "MPI-INFO"
@@ -148,84 +228,51 @@ def main():
             logger.info(f"  {key}={item}")
         logger.info("")
 
-    # job_type
-    try:
-        job_type = dict_toml["control"]["job_type"]
-    except KeyError as e:
-        logger.error("job_type should be specified.")
-        raise ValueError from e
-    # mcmc_seed
-    try:
-        mcmc_seed = dict_toml["control"]["mcmc_seed"]
-    except KeyError:
-        mcmc_seed = 34456
-        logger.info(f"The default value of mcmc_seed = {mcmc_seed}.")
-    # number_of_walkers
-    try:
-        number_of_walkers = dict_toml["control"]["number_of_walkers"]
-    except KeyError:
-        number_of_walkers = 40
-        logger.info(f"The default value of number_of_walkers = {number_of_walkers}.")
-    # max_time
-    try:
-        max_time = dict_toml["control"]["max_time"]
-    except KeyError:
-        max_time = 86400
-        logger.info(f"The default value of max_time = {max_time}.")
-    logger.info(f"max_time = {max_time} sec.")
-    # restart
-    try:
-        restart = dict_toml["control"]["restart"]
-    except KeyError:
-        restart = False
-        logger.info(f"The default value of restart = {restart}.")
-    if restart:
-        restart_chk = dict_toml["control"]["restart_chk"]
-        logger.info(f"restart = {restart}, restart_chk = {restart_chk}.")
-    else:
-        try:
-            restart_chk = dict_toml["control"]["restart_chk"]
-        except KeyError:
-            restart_chk = "restart.chk"
-            logger.info(f"The default value of restart_chk = {restart_chk}.")
-        hamiltonian_chk = dict_toml["control"]["hamiltonian_chk"]
-        logger.info(f"restart = {restart}, hamiltonian_chk = {hamiltonian_chk}, restart_chk = {restart_chk}.")
-    logger.info("")
+    # default parameters
+    parameters = default_parameters.copy()
 
-    # VMC!
+    # control section
+    section = "control"
+    for key in parameters[section].keys():
+        try:
+            parameters[section][key] = dict_toml[section][key]
+        except KeyError:
+            if parameters[section][key] is None:
+                logger.error(f"{key} should be specified.")
+                sys.exit(1)
+            else:
+                logger.warning(f"The default value of {key} = {parameters[section][key]}.")
+
+    job_type = parameters["control"]["job_type"]
+    mcmc_seed = parameters["control"]["mcmc_seed"]
+    number_of_walkers = parameters["control"]["number_of_walkers"]
+    max_time = parameters["control"]["max_time"]
+    restart = parameters["control"]["restart"]
+    restart_chk = parameters["control"]["restart_chk"]
+    hamiltonian_chk = parameters["control"]["hamiltonian_chk"]
+
+    # VMC
     if job_type == "vmc":
         logger.info("***Variational Monte Carlo***")
-        # num_mcmc_steps
-        try:
-            num_mcmc_steps = dict_toml["vmc"]["num_mcmc_steps"]
-        except KeyError as e:
-            logger.error("num_mcmc_steps should be specified.")
-            raise KeyError from e
-        # num_mcmc_per_measurement
-        try:
-            num_mcmc_per_measurement = dict_toml["vmc"]["num_mcmc_per_measurement"]
-        except KeyError:
-            num_mcmc_per_measurement = 40
-            logger.warning(f"The default value of num_mcmc_per_measurement= {num_mcmc_per_measurement}.")
-        # num_mcmc_warmup_steps
-        try:
-            num_mcmc_warmup_steps = dict_toml["vmc"]["num_mcmc_warmup_steps"]
-        except KeyError:
-            num_mcmc_warmup_steps = 0
-            logger.warning(f"The default value of num_mcmc_warmup_steps = {num_mcmc_warmup_steps}.")
-        # num_mcmc_bin_blocks
-        try:
-            num_mcmc_bin_blocks = dict_toml["vmc"]["num_mcmc_bin_blocks"]
-        except KeyError:
-            num_mcmc_bin_blocks = 1
-            logger.warning(f"The default value of num_mcmc_bin_blocks = {num_mcmc_bin_blocks}.")
-        # epsilon_AS
-        try:
-            epsilon_AS = dict_toml["vmc"]["epsilon_AS"]
-        except KeyError:
-            epsilon_AS = 0.0
-            logger.warning(f"The default value of epsilon_AS = {epsilon_AS}.")
-        logger.info("")
+
+        # vmc section
+        section = "vmc"
+        for key in parameters[section].keys():
+            try:
+                parameters[section][key] = dict_toml[section][key]
+            except KeyError:
+                if parameters[section][key] is None:
+                    logger.error(f"{key} should be specified.")
+                    sys.exit(1)
+                else:
+                    logger.warning(f"The default value of {key} = {parameters[section][key]}.")
+
+        # parameters
+        num_mcmc_steps = parameters["vmc"]["num_mcmc_steps"]
+        num_mcmc_per_measurement = parameters["vmc"]["num_mcmc_per_measurement"]
+        num_mcmc_warmup_steps = parameters["vmc"]["num_mcmc_warmup_steps"]
+        num_mcmc_bin_blocks = parameters["vmc"]["num_mcmc_bin_blocks"]
+        epsilon_AS = parameters["vmc"]["epsilon_AS"]
 
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
         if num_mcmc_steps < num_mcmc_warmup_steps:
@@ -240,7 +287,6 @@ def main():
             with zipfile.ZipFile(restart_chk, "r") as zipf:
                 data = zipf.read(filename)
                 vmc = pickle.loads(data)
-                # os.remove(filename)
 
         else:
             with open(hamiltonian_chk, "rb") as f:
@@ -288,62 +334,31 @@ def main():
     # VMCopt!
     if job_type == "vmcopt":
         logger.info("***WF optimization with Variational Monte Carlo***")
-        # num_mcmc_steps
-        try:
-            num_mcmc_steps = dict_toml["vmcopt"]["num_mcmc_steps"]
-        except KeyError as e:
-            logger.error("num_mcmc_steps should be specified.")
-            raise KeyError from e
-        # num_mcmc_per_measurement
-        try:
-            num_mcmc_per_measurement = dict_toml["vmcopt"]["num_mcmc_per_measurement"]
-        except KeyError:
-            num_mcmc_per_measurement = 40
-            logger.warning(f"The default value of num_mcmc_per_measurement= {num_mcmc_per_measurement}.")
-        # num_opt_steps
-        try:
-            num_opt_steps = dict_toml["vmcopt"]["num_opt_steps"]
-        except KeyError as e:
-            logger.error("num_opt_steps should be specified.")
-            raise KeyError from e
-        # delta
-        try:
-            delta = dict_toml["vmcopt"]["delta"]
-        except KeyError:
-            delta = 0.01
-            logger.warning(f"The default value of delta = {delta}.")
-        # epsilon
-        try:
-            epsilon = dict_toml["vmcopt"]["epsilon"]
-        except KeyError:
-            epsilon = 0.001
-            logger.warning(f"The default value of epsilon = {epsilon}.")
-        # num_mcmc_warmup_steps
-        try:
-            num_mcmc_warmup_steps = dict_toml["vmcopt"]["num_mcmc_warmup_steps"]
-        except KeyError:
-            num_mcmc_warmup_steps = 0
-            logger.warning(f"The default value of num_mcmc_warmup_steps = {num_mcmc_warmup_steps}.")
-        # wf_dump_freq
-        try:
-            wf_dump_freq = dict_toml["vmcopt"]["wf_dump_freq"]
-        except KeyError:
-            wf_dump_freq = 1
-            logger.warning(f"The default value of wf_dump_freq = {wf_dump_freq}.")
-        # num_mcmc_bin_blocks
-        try:
-            num_mcmc_bin_blocks = dict_toml["vmcopt"]["num_mcmc_bin_blocks"]
-        except KeyError:
-            num_mcmc_bin_blocks = 1
-            logger.warning(f"The default value of num_mcmc_bin_blocks = {num_mcmc_bin_blocks}.")
-        # epsilon_AS
-        try:
-            epsilon_AS = dict_toml["vmc"]["epsilon_AS"]
-        except KeyError:
-            epsilon_AS = 0.0
-            logger.warning(f"The default value of epsilon_AS = {epsilon_AS}.")
+
+        # vmcopt section
+        section = "vmcopt"
+        for key in parameters[section].keys():
+            try:
+                parameters[section][key] = dict_toml[section][key]
+            except KeyError:
+                if parameters[section][key] is None:
+                    logger.error(f"{key} should be specified.")
+                    sys.exit(1)
+                else:
+                    logger.warning(f"The default value of {key} = {parameters[section][key]}.")
 
         logger.info("")
+
+        # parameters
+        num_mcmc_steps = parameters["vmcopt"]["num_mcmc_steps"]
+        num_mcmc_per_measurement = parameters["vmcopt"]["num_mcmc_per_measurement"]
+        num_mcmc_warmup_steps = parameters["vmcopt"]["num_mcmc_warmup_steps"]
+        num_mcmc_bin_blocks = parameters["vmcopt"]["num_mcmc_bin_blocks"]
+        epsilon_AS = parameters["vmcopt"]["epsilon_AS"]
+        num_opt_steps = parameters["vmcopt"]["num_opt_steps"]
+        wf_dump_freq = parameters["vmcopt"]["wf_dump_freq"]
+        delta = parameters["vmcopt"]["delta"]
+        epsilon = parameters["vmcopt"]["epsilon"]
 
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
         if num_mcmc_steps < num_mcmc_warmup_steps:
@@ -410,60 +425,32 @@ def main():
     # LRDMC!
     if job_type == "lrdmc":
         logger.info("***Lattice Regularized diffusion Monte Carlo***")
-        # num_mcmc_steps
-        try:
-            num_mcmc_steps = dict_toml["lrdmc"]["num_mcmc_steps"]
-        except KeyError as e:
-            logger.error("num_mcmc_steps should be specified.")
-            raise ValueError from e
-        # num_mcmc_per_measurement
-        try:
-            num_mcmc_per_measurement = dict_toml["lrdmc"]["num_mcmc_per_measurement"]
-        except KeyError:
-            num_mcmc_per_measurement = 40
-            logger.warning(f"The default value of num_mcmc_per_measurement= {num_mcmc_per_measurement}.")
-        # alat
-        try:
-            alat = dict_toml["lrdmc"]["alat"]
-        except KeyError as e:
-            logger.error("num_branching should be specified.")
-            raise ValueError from e
-        # non_local_move
-        try:
-            non_local_move = dict_toml["lrdmc"]["non_local_move"]
-        except KeyError:
-            non_local_move = "tmove"
-            logger.warning(f"The default value of non_local_move = {non_local_move}.")
-        # num_gmfc_warmup_steps:
-        try:
-            num_gfmc_warmup_steps = dict_toml["lrdmc"]["num_gfmc_warmup_steps"]
-        except KeyError:
-            num_gfmc_warmup_steps = 0
-            logger.warning(f"The default value of num_gfmc_warmup_steps = {num_gfmc_warmup_steps}.")
-        # num_gmfc_bin_blocks
-        try:
-            num_gfmc_bin_blocks = dict_toml["lrdmc"]["num_gfmc_bin_blocks"]
-        except KeyError:
-            num_gfmc_bin_blocks = 1
-            logger.warning(f"The default value of num_gfmc_bin_blocks = {num_gfmc_bin_blocks}.")
-        # num_gfmc_bin_collect
-        try:
-            num_gfmc_collect_steps = dict_toml["lrdmc"]["num_gfmc_collect_steps"]
-        except KeyError:
-            num_gfmc_collect_steps = 0
-            logger.warning(f"The default value of num_gfmc_collect_steps = {num_gfmc_collect_steps}.")
-        # E_scf
-        try:
-            E_scf = dict_toml["lrdmc"]["E_scf"]
-        except KeyError:
-            E_scf = 0
-            logger.warning(f"The default value of E_scf = {E_scf}.")
-        # gamma
-        try:
-            gamma = dict_toml["lrdmc"]["gamma"]
-        except KeyError:
-            gamma = 0
-            logger.warning(f"The default value of gamma = {gamma}.")
+
+        # vmcopt section
+        section = "lrdmc"
+        for key in parameters[section].keys():
+            try:
+                parameters[section][key] = dict_toml[section][key]
+            except KeyError:
+                if parameters[section][key] is None:
+                    logger.error(f"{key} should be specified.")
+                    sys.exit(1)
+                else:
+                    logger.warning(f"The default value of {key} = {parameters[section][key]}.")
+
+        logger.info("")
+
+        # parameters
+        num_mcmc_steps = parameters["lrdmc"]["num_mcmc_steps"]
+        num_mcmc_per_measurement = parameters["lrdmc"]["num_mcmc_per_measurement"]
+        alat = parameters["lrdmc"]["alat"]
+        non_local_move = parameters["lrdmc"]["non_local_move"]
+        num_gfmc_warmup_steps = parameters["lrdmc"]["num_gfmc_warmup_steps"]
+        num_gfmc_bin_blocks = parameters["lrdmc"]["num_gfmc_bin_blocks"]
+        num_gfmc_collect_steps = parameters["lrdmc"]["num_gfmc_collect_steps"]
+        E_scf = parameters["lrdmc"]["E_scf"]
+        gamma = parameters["lrdmc"]["gamma"]
+
         # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
         if num_mcmc_steps < num_gfmc_warmup_steps:
             raise ValueError("num_mcmc_steps should be larger than num_gfmc_warmup_steps")

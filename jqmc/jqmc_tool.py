@@ -39,19 +39,71 @@ Todo:
             collections steps
 """
 
+from typing import List, Optional, Tuple
+
+import click
+import tomlkit
 import typer
 
-app = typer.Typer()
+from .jqmc_cli import default_parameters
 
 
-@app.command("hello")
-def hello_world():
-    typer.echo("Hello World")
+@click.group()
+def cli():
+    pass
+
+
+@cli.command()
+def initdb():
+    click.echo("Initialized the database")
+
+
+@cli.command()
+def dropdb():
+    click.echo("Dropped the database")
+
+
+vmc_app = typer.Typer()
+
+
+@vmc_app.command("compute-energy")
+def vmc_compute_energy(
+    args: Tuple[int, int] = typer.Argument((1, 0), metavar="num_mcmc_bin, num_mcmc_warmups", help="xxx"),
+    rchk: str = typer.Argument("vmc.rchk", metavar="vmc.rchk file", help="xxx"),
+):
+    """VMC energy calculation."""
+    typer.echo("Typer is now below Click, the Click app is the top level")
+
+
+@vmc_app.command("generate-input")
+def vmc_generate_input():
+    """Generate an input file for VMC calculations. Default filename is vmc.toml."""
+    doc = tomlkit.document()
+
+    control_table = tomlkit.table()
+    for key, value in default_parameters["control"].items():
+        if value is None:
+            value = "None"
+        control_table[key] = str(value)
+        control_table[key].comment(default_parameters["control_comments"][key])
+    doc.add("control", control_table)
+
+    vmc_table = tomlkit.table()
+    for key, value in default_parameters["vmc"].items():
+        if value is None:
+            value = "None"
+        vmc_table[key] = value
+        vmc_table[key].comment(default_parameters["vmc_comments"][key])
+    doc.add("vmc", vmc_table)
+
+    with open("vmc.toml", "w") as f:
+        f.write(tomlkit.dumps(doc))
+
+
+typer_click_vmc = typer.main.get_command(vmc_app)
+
+cli.add_command(typer_click_vmc, "vmc")
 
 
 def main():
-    app()
-
-
-if __name__ == "__main__":
-    main()
+    cli()

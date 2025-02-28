@@ -307,6 +307,11 @@ class MCMC:
             self.__timer_mcmc_init += end - start
             """
 
+        # print out structure info
+        logger.info("Structure information:")
+        self.__hamiltonian_data.structure_data.logger_info()
+        logger.info("")
+
         logger.info("Compilation of fundamental functions is done.")
         logger.info(f"Elapsed Time = {self.__timer_mcmc_init:.2f} sec.")
         logger.info("")
