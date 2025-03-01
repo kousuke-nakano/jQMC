@@ -2,15 +2,19 @@
   "name": "Python MPI Environment",
   "dockerFile": "Dockerfile",
   "context": ".",
-  "settings": {
-    "terminal.integrated.defaultProfile.linux": "bash",
-    "editor.formatOnSave": true
+  "customizations": {
+    "vscode": {
+      "settings": {
+         "terminal.integrated.defaultProfile.linux": "bash",
+         "editor.formatOnSave": true
+         },
+      "extensions": [
+        "ms-python.python",
+        "ms-vscode.cpptools",
+        "twxs.cmake"
+       ]
+    }
   },
-  "extensions": [
-    "ms-python.python",
-    "ms-vscode.cpptools",
-    "twxs.cmake"
-  ],
   "forwardPorts": [
     8888
   ],
