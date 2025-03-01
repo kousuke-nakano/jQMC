@@ -29,3 +29,6 @@ RUN groupadd --gid $USER_GID $USERNAME \
 # switch to the created user
 USER $USERNAME
 
+# ADD a path for local pip installations
+RUN echo "export PATH=$PATH:/home/$USERNAME/.local/bin" >> ~/.bashrc
+

@@ -5,18 +5,19 @@
   "customizations": {
     "vscode": {
       "settings": {
-         "terminal.integrated.defaultProfile.linux": "bash",
-         "editor.formatOnSave": true
-         },
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "editor.formatOnSave": true
+      },
       "extensions": [
         "ms-python.python",
         "ms-vscode.cpptools",
         "twxs.cmake"
-       ]
+      ]
     }
   },
   "forwardPorts": [
     8888
   ],
-  "remoteUser": "kosuke"
+  "remoteUser": "kosuke",
+  "postCreateCommand": "pip install ."
 }
