@@ -3,6 +3,7 @@ FROM ubuntu:22.04
 
 # installing fundamental packages
 RUN apt-get update && apt-get install -y \
+    vim \
     build-essential \
     cmake \
     gfortran \

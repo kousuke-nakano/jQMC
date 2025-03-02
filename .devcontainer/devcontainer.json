@@ -19,5 +19,5 @@
     8888
   ],
   "remoteUser": "kosuke",
-  "postCreateCommand": "pip install ."
+  "postCreateCommand": "pip install -e ."
 }
