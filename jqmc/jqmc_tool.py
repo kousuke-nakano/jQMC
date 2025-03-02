@@ -20,10 +20,13 @@ import re
 import zipfile
 from enum import Enum
 
+import matplotlib.pyplot as plt
 import click
 import numpy as np
 import tomlkit
 import typer
+from typing import List
+from uncertainties import ufloat
 
 from .determinant import Geminal_data
 from .hamiltonians import Hamiltonian_data
@@ -227,20 +230,22 @@ def vmcopt_generate_input(
         control_table = tomlkit.table()
         for key, value in cli_parameters["control"].items():
             if value is None:
-                value = "None"
-            control_table[key] = value
-            if not exclude_comment:
+                control_table[key] = str(value)
+            else:
+                control_table[key] = value
+            if not exclude_comment and not isinstance(value, bool): # due to a bug of tomlkit
                 control_table[key].comment(cli_parameters["control_comments"][key])
         control_table["job_type"] = "vmcopt"
         doc.add("control", control_table)
 
         vmcopt_table = tomlkit.table()
-        for key, value in cli_parameters["vmc"].items():
-            if value is None:
-                value = "None"
-            vmcopt_table[key] = value
-            if not exclude_comment:
-                vmcopt_table[key].comment(cli_parameters["vmc_comments"][key])
+        for key, value in cli_parameters["vmcopt"].items():
+            if value is None or isinstance(value, bool):
+                vmcopt_table[key] = str(value)
+            else:
+                vmcopt_table[key] = value
+            if not exclude_comment and not isinstance(value, bool):
+                vmcopt_table[key].comment(cli_parameters["vmcopt_comments"][key])
         doc.add("vmcopt", vmcopt_table)
 
         with open(filename, "w") as f:
@@ -250,6 +255,80 @@ def vmcopt_generate_input(
     else:
         typer.echo("Activate the flag (-g) to generate an input file. See --help for more information.")
 
+@vmcopt_app.command('analyze-output')
+def vmcopt_analyze_output(
+    filenames: List[str] = typer.Argument(..., help="Output files of vmc optimizations."),
+    plot_graph: bool = typer.Option(False, help="Plot a graph summerizing the result using matplotlib."),
+    save_graph: str = typer.Option(None, help="Specify a graph filename.")
+):
+    iter_list = []
+    E_list = []
+    max_f_list = []
+    signal_to_noise_list = []
+
+    iter_pattern = re.compile(r"i_opt\s*=\s*(\d+)/\d+")
+    E_pattern = re.compile(
+        r"E\s*=\s*([-+]?\d+(?:\.\d+)?)(?:\s*\+\-\s*([-+]?\d+(?:\.\d+)?))\s*Ha"
+    )
+    max_f_pattern = re.compile(r"Max \|f\| = (\d+(?:\.\d+)?)\s*\+\-\s*(\d+(?:\.\d+)?)")
+    signal_to_noise_pattern = re.compile(
+        r"Max of signal-to-noise of f = max\(\|f\|/\|std f\|\) = ([-+]?\d+(?:\.\d+)?)(?:\.)?"
+    )
+
+    for filename in filenames:
+        with open(filename, "r") as f:
+            for line in f:
+                # iter
+                iter_match = iter_pattern.search(line)
+                if iter_match:
+                    main_value = int(iter_match.group(1))
+                    iter_list.append(main_value)
+
+                # E
+                E_match = E_pattern.search(line)
+                if E_match:
+                    main_value = float(E_match.group(1))
+                    uncertainty = float(E_match.group(2))
+                    E_list.append(ufloat(main_value, uncertainty))
+
+                # max_f
+                max_f_match = max_f_pattern.search(line)
+                if max_f_match:
+                    main_value = float(max_f_match.group(1))
+                    uncertainty = float(max_f_match.group(2))
+                    max_f_list.append(ufloat(main_value, uncertainty))
+
+                # signal_to_noise
+                signal_to_noise_match = signal_to_noise_pattern.search(line)
+                if signal_to_noise_match:
+                    main_value = float(signal_to_noise_match.group(1))
+                    signal_to_noise_list.append(main_value)
+
+    typer.echo(iter_list)
+    typer.echo(E_list)
+    typer.echo(max_f_list)
+    typer.echo(signal_to_noise_list)
+
+    # plot graphs
+    energy_values = [E.n for E in E_list]
+    error_bars = [E.s for E in E_list]
+    
+    plt.rcParams["font.size"] = 14
+    plt.rcParams["font.family"] = "sans-serif"
+
+    fig, ax1 = plt.subplots(1, 1, figsize=(6, 6), tight_layout=True)
+    ax2 = ax1.twinx()
+
+    ax1.tick_params(axis='both', which='both', direction='in')
+    ax1.errorbar(iter_list, energy_values, yerr=error_bars, fmt='o-', capsize=5)
+    ax1.set_xlabel("Iteration")
+    ax1.set_ylabel("Energy (Ha)")
+    
+    ax2.plot(iter_list, signal_to_noise_list, 'r')
+    ax2.set_ylabel("max of signal_to_noise = |f|/|std f|")
+
+    plt.show()
+    plt.savefig("test.png")
 
 typer_click_vmcopt = typer.main.get_command(vmcopt_app)
 
@@ -341,9 +420,10 @@ def vmc_generate_input(
         control_table = tomlkit.table()
         for key, value in cli_parameters["control"].items():
             if value is None:
-                value = "None"
-            control_table[key] = value
-            if not exclude_comment:
+                control_table = str(value)
+            else:
+                control_table[key] = value
+            if not exclude_comment and not isinstance(value, bool):
                 control_table[key].comment(cli_parameters["control_comments"][key])
         control_table["job_type"] = "vmc"
         doc.add("control", control_table)
@@ -351,9 +431,10 @@ def vmc_generate_input(
         vmc_table = tomlkit.table()
         for key, value in cli_parameters["vmc"].items():
             if value is None:
-                value = "None"
-            vmc_table[key] = value
-            if not exclude_comment:
+                vmc_table[key] = str(value)
+            else:
+                vmc_table[key] = value
+            if not exclude_comment and not isinstance(value, bool):
                 vmc_table[key].comment(cli_parameters["vmc_comments"][key])
         doc.add("vmc", vmc_table)
 
@@ -461,19 +542,21 @@ def lrdmc_generate_input(
         control_table = tomlkit.table()
         for key, value in cli_parameters["control"].items():
             if value is None:
-                value = "None"
-            control_table[key] = value
-            if not exclude_comment:
+                control_table[key] = str(value)
+            else:
+                control_table[key] = value
+            if not exclude_comment and not isinstance(value, bool):
                 control_table[key].comment(cli_parameters["control_comments"][key])
         control_table["job_type"] = "lrdmc"
         doc.add("control", control_table)
 
         lrdmc_table = tomlkit.table()
         for key, value in cli_parameters["lrdmc"].items():
-            if value is None:
-                value = "None"
-            lrdmc_table[key] = value
-            if not exclude_comment:
+            if value is None or isinstance(value, bool):
+                lrdmc_table[key] = str(value)
+            else:
+                lrdmc_table[key] = value
+            if not exclude_comment and not isinstance(value, bool):
                 lrdmc_table[key].comment(cli_parameters["lrdmc_comments"][key])
         doc.add("lrdmc", lrdmc_table)
 

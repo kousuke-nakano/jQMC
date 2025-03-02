@@ -2823,7 +2823,7 @@ class QMC:
             dc_param_list = self.mcmc.opt_param_dict["dc_param_list"]
             dc_shape_list = self.mcmc.opt_param_dict["dc_shape_list"]
             dc_flattened_index_list = self.mcmc.opt_param_dict["dc_flattened_index_list"]
-
+            
             j2_param = self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
             j3_orb_data = self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data
             j3_matrix = self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix
