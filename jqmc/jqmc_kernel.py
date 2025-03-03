@@ -2620,6 +2620,7 @@ class QMC:
         opt_J3_param: bool = True,
         opt_J4_param: bool = False,
         opt_lambda_param: bool = False,
+        num_param_opt: int = None,
     ):
         """Optimizing wavefunction.
 
@@ -2646,7 +2647,7 @@ class QMC:
             opt_J3_param (bool): optimize three-body Jastrow
             opt_J4_param (bool): optimize four-body Jastrow # to be implemented.
             opt_lambda_param (bool): optimize lambda_matrix in the determinant part.
-
+            num_param_opt (int): the number of parameters to optimize in the descending order of |f|/|std f|.
         """
         vmcopt_total_start = time.perf_counter()
 
@@ -2715,9 +2716,16 @@ class QMC:
                 signal_to_noise_f = np.abs(f) / f_std
                 logger.info(f"Max |f| = {np.max(np.abs(f)):.3f} +- {f_std[np.argmax(np.abs(f))]:.3f} Ha/a.u.")
                 logger.info(f"Max of signal-to-noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}.")
+                if num_param_opt is not None:
+                    signal_to_noise_f_max_indices = np.argsort(signal_to_noise_f)[::-1][:num_param_opt]
+                else:
+                    signal_to_noise_f_max_indices = np.arange(signal_to_noise_f.size)
             else:
-                f = None
-                f_std = None
+                signal_to_noise_f = None
+                signal_to_noise_f_max_indices = None
+
+            mpi_comm.bcast(signal_to_noise_f, root=0)
+            mpi_comm.bcast(signal_to_noise_f_max_indices, root=0)
 
             # """
             logger.info("Computing the natural gradient, i.e., {S+epsilon*I}^{-1}*f")
@@ -2808,7 +2816,7 @@ class QMC:
                     # (X_w X^T + eps*I) x = X_w F ->solve-> x = (X_w  X^T + eps*I)^{-1} X_w F
                     X_w_x_T_inv_X_w_F = scipy.linalg.solve(X_w_x_T, X_w @ F, assume_a="sym")
                     # theta = (X_w X^T + eps*I)^{-1} X_w F
-                    theta = X_w_x_T_inv_X_w_F
+                    theta_all = X_w_x_T_inv_X_w_F
                 else:
                     logger.info("X is a tall matrix. Proceed w/ the push-through identity.")
                     logger.info("(S+epsilon*I)^{-1}*f = X(X^T * X + epsilon*I)^{-1} * F...")
@@ -2818,10 +2826,14 @@ class QMC:
                     # (X^T X_w + eps*I) x = F ->solve-> x = (X^T X_w + eps*I)^{-1} F
                     X_T_X_w_inv_F = scipy.linalg.solve(X_T_X_w, F, assume_a="sym")
                     # theta = X_w (X^T X_w + eps*I)^{-1} F
-                    theta = X_w @ X_T_X_w_inv_F
+                    theta_all = X_w @ X_T_X_w_inv_F
 
                 # theta, back to the original scale
-                theta = theta / np.sqrt(diag_S)
+                theta_all = theta_all / np.sqrt(diag_S)
+
+                # Extract only the signal-to-noise ratio maximized parameters
+                theta = np.zeros_like(theta_all)
+                theta[signal_to_noise_f_max_indices] = theta_all[signal_to_noise_f_max_indices]
 
             else:
                 theta = None
@@ -2831,7 +2843,9 @@ class QMC:
 
             # logger.debug(f"XX for MPI-rank={mpi_rank} is {theta}")
             # logger.debug(f"XX.shape for MPI-rank={mpi_rank} is {theta.shape}")
-            logger.info(f"max(theta) is {np.max(theta)}")
+            logger.info(f"theta.size = {theta.size}.")
+            logger.info(f"np.count_nonzero(theta) = {np.count_nonzero(theta)}.")
+            logger.info(f"max(theta) is {np.max(theta)}.")
 
             dc_param_list = self.mcmc.opt_param_dict["dc_param_list"]
             dc_shape_list = self.mcmc.opt_param_dict["dc_shape_list"]
