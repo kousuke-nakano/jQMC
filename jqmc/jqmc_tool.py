@@ -1,12 +1,6 @@
 """jQMC tools.
 
 Todo:
-    vmcopt
-        generate input file
-        get energy and devmax
-        plot energy and devmax
-        average hamiltonians
-
     lrdmc
         get extrapolated energy and forces
             polynomial order
@@ -19,13 +13,13 @@ import pickle
 import re
 import zipfile
 from enum import Enum
+from typing import List
 
-import matplotlib.pyplot as plt
 import click
+import matplotlib.pyplot as plt
 import numpy as np
 import tomlkit
 import typer
-from typing import List
 from uncertainties import ufloat
 
 from .determinant import Geminal_data
@@ -233,7 +227,7 @@ def vmcopt_generate_input(
                 control_table[key] = str(value)
             else:
                 control_table[key] = value
-            if not exclude_comment and not isinstance(value, bool): # due to a bug of tomlkit
+            if not exclude_comment and not isinstance(value, bool):  # due to a bug of tomlkit
                 control_table[key].comment(cli_parameters["control_comments"][key])
         control_table["job_type"] = "vmcopt"
         doc.add("control", control_table)
@@ -255,25 +249,23 @@ def vmcopt_generate_input(
     else:
         typer.echo("Activate the flag (-g) to generate an input file. See --help for more information.")
 
-@vmcopt_app.command('analyze-output')
+
+@vmcopt_app.command("analyze-output")
 def vmcopt_analyze_output(
     filenames: List[str] = typer.Argument(..., help="Output files of vmc optimizations."),
-    plot_graph: bool = typer.Option(False, help="Plot a graph summerizing the result using matplotlib."),
-    save_graph: str = typer.Option(None, help="Specify a graph filename.")
+    plot_graph: bool = typer.Option(False, "-p", "--plot_graph", help="Plot a graph summerizing the result using matplotlib."),
+    save_graph: str = typer.Option(None, "-s", "--save-graph", help="Specify a graph filename."),
 ):
+    """Analyze the output files of vmc optimizations."""
     iter_list = []
     E_list = []
     max_f_list = []
     signal_to_noise_list = []
 
     iter_pattern = re.compile(r"i_opt\s*=\s*(\d+)/\d+")
-    E_pattern = re.compile(
-        r"E\s*=\s*([-+]?\d+(?:\.\d+)?)(?:\s*\+\-\s*([-+]?\d+(?:\.\d+)?))\s*Ha"
-    )
+    E_pattern = re.compile(r"E\s*=\s*([-+]?\d+(?:\.\d+)?)(?:\s*\+\-\s*([-+]?\d+(?:\.\d+)?))\s*Ha")
     max_f_pattern = re.compile(r"Max \|f\| = (\d+(?:\.\d+)?)\s*\+\-\s*(\d+(?:\.\d+)?)")
-    signal_to_noise_pattern = re.compile(
-        r"Max of signal-to-noise of f = max\(\|f\|/\|std f\|\) = ([-+]?\d+(?:\.\d+)?)(?:\.)?"
-    )
+    signal_to_noise_pattern = re.compile(r"Max of signal-to-noise of f = max\(\|f\|/\|std f\|\) = ([-+]?\d+(?:\.\d+)?)(?:\.)?")
 
     for filename in filenames:
         with open(filename, "r") as f:
@@ -304,31 +296,61 @@ def vmcopt_analyze_output(
                     main_value = float(signal_to_noise_match.group(1))
                     signal_to_noise_list.append(main_value)
 
-    typer.echo(iter_list)
-    typer.echo(E_list)
-    typer.echo(max_f_list)
-    typer.echo(signal_to_noise_list)
+    # typer.echo(iter_list)
+    # typer.echo(E_list)
+    # typer.echo(max_f_list)
+    # typer.echo(signal_to_noise_list)
 
     # plot graphs
-    energy_values = [E.n for E in E_list]
-    error_bars = [E.s for E in E_list]
-    
-    plt.rcParams["font.size"] = 14
-    plt.rcParams["font.family"] = "sans-serif"
+    if plot_graph:
+        E_means = [E.n for E in E_list]
+        E_errs = [E.s for E in E_list]
+        max_f_means = [max_f.n for max_f in max_f_list]
+        max_f_errs = [max_f.s for max_f in max_f_list]
 
-    fig, ax1 = plt.subplots(1, 1, figsize=(6, 6), tight_layout=True)
-    ax2 = ax1.twinx()
+        plt.rcParams["font.size"] = 8
+        plt.rcParams["font.family"] = "sans-serif"
 
-    ax1.tick_params(axis='both', which='both', direction='in')
-    ax1.errorbar(iter_list, energy_values, yerr=error_bars, fmt='o-', capsize=5)
-    ax1.set_xlabel("Iteration")
-    ax1.set_ylabel("Energy (Ha)")
-    
-    ax2.plot(iter_list, signal_to_noise_list, 'r')
-    ax2.set_ylabel("max of signal_to_noise = |f|/|std f|")
+        fig = plt.figure(figsize=(8, 4), facecolor="white", dpi=300, tight_layout=True)
 
-    plt.show()
-    plt.savefig("test.png")
+        ax11 = fig.add_subplot(1, 2, 1)
+        ax12 = ax11.twinx()
+
+        ax11.tick_params(axis="both", which="both", direction="in")
+        ax11.errorbar(iter_list, E_means, yerr=E_errs, fmt="o-", markersize=3, capsize=3, color="blue", label="Energy")
+        ax11.set_xlabel("Iteration")
+        ax11.set_ylabel("Energy (Ha)")
+
+        ax12.errorbar(iter_list, max_f_means, yerr=max_f_errs, fmt="s-", markersize=3, capsize=3, color="red", label="Max |f|")
+        ax12.set_ylabel("max of |f|")
+
+        lines11, labels11 = ax11.get_legend_handles_labels()
+        lines12, labels12 = ax12.get_legend_handles_labels()
+        ax11.legend(lines11 + lines12, labels11 + labels12, loc="best")
+
+        ax21 = fig.add_subplot(1, 2, 2)
+        ax22 = ax21.twinx()
+
+        ax21.tick_params(axis="both", which="both", direction="in")
+        ax21.errorbar(iter_list, E_means, yerr=E_errs, fmt="o-", markersize=3, capsize=3, color="blue", label="Energy")
+        ax21.set_xlabel("Iteration")
+        ax21.set_ylabel("Energy (Ha)")
+
+        ax22.plot(
+            iter_list, signal_to_noise_list, marker="s", linestyle="-", markersize=3, color="red", label="max of |f|/|std f|"
+        )
+        ax22.set_ylabel("max of signal to noise = |f|/|std f|")
+
+        # Combine legend handles and labels for the second subplot
+        lines21, labels21 = ax21.get_legend_handles_labels()
+        lines22, labels22 = ax22.get_legend_handles_labels()
+        ax21.legend(lines21 + lines22, labels21 + labels22, loc="best")
+
+        plt.show()
+
+        if save_graph is not None:
+            plt.savefig(save_graph)
+
 
 typer_click_vmcopt = typer.main.get_command(vmcopt_app)
 
