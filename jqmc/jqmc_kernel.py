@@ -2791,6 +2791,14 @@ class QMC:
                 logger.info(f"X.shape = {X.shape}.")
                 logger.info(f"F.shape = {F.shape}.")
 
+                # make the SR matrix scale-invariant (i.e., normalize)
+                S = X_w @ X.T
+                diag_S = np.diag(S)
+                X = X / np.sqrt(diag_S)[:, np.newaxis]
+                X_w = X_w / np.sqrt(diag_S)[:, np.newaxis]
+
+                logger.info(f"diag_S(mod.) = {np.diag(X_w @ X.T)}.")
+
                 if X.shape[0] < X.shape[1]:
                     logger.info("X is a wide matrix. Proceed w/o the push-through identity.")
                     logger.info("(S+epsilon*I)^{-1}*f = (X * X^T + epsilon*I)^{-1} * X F...")
@@ -2812,10 +2820,15 @@ class QMC:
                     # theta = X_w (X^T X_w + eps*I)^{-1} F
                     theta = X_w @ X_T_X_w_inv_F
 
+                # theta, back to the original scale
+                theta = theta / np.sqrt(diag_S)
+
             else:
                 theta = None
 
+            # broadcast theta
             theta = mpi_comm.bcast(theta, root=0)
+
             # logger.debug(f"XX for MPI-rank={mpi_rank} is {theta}")
             # logger.debug(f"XX.shape for MPI-rank={mpi_rank} is {theta.shape}")
             logger.info(f"max(theta) is {np.max(theta)}")
@@ -2823,7 +2836,7 @@ class QMC:
             dc_param_list = self.mcmc.opt_param_dict["dc_param_list"]
             dc_shape_list = self.mcmc.opt_param_dict["dc_shape_list"]
             dc_flattened_index_list = self.mcmc.opt_param_dict["dc_flattened_index_list"]
-            
+
             j2_param = self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
             j3_orb_data = self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data
             j3_matrix = self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix
