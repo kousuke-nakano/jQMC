@@ -49,10 +49,11 @@ from jax import jit
 
 # myqmc module
 from .atomic_orbital import (
-    AO_data,
-    AOs_data,
-    AOs_data_deriv_R,
-    compute_AO,
+    AO_sphe_data,
+    AOs_cart_data,
+    AOs_sphe_data,
+    AOs_sphe_data_deriv_R,
+    compute_AO_sphe,
     compute_AOs_api,
     compute_AOs_grad_api,
     compute_AOs_laplacian_api,
@@ -76,7 +77,7 @@ class MOs_data:
     """
 
     num_mo: int = struct.field(pytree_node=False, default=0)
-    aos_data: AOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
+    aos_data: AOs_sphe_data | AOs_cart_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
     mo_coefficients: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
     ''' This __post__init no longer works because vmap(grad) changes the dimmension of the mo_coefficients
@@ -125,28 +126,31 @@ class MOs_data:
 
 
 @struct.dataclass
-class MOs_data_deriv_R:
+class MOs_data_deriv_R(MOs_data):
     """See MOs_data class."""
 
     num_mo: int = struct.field(pytree_node=False, default=0)
-    aos_data: AOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
+    aos_data: AOs_sphe_data | AOs_cart_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
     mo_coefficients: npt.NDArray[np.float64] = struct.field(pytree_node=False, default_factory=lambda: np.array([]))
 
     @classmethod
     def from_base(cls, mos_data: MOs_data):
         """Switch pytree_node."""
         num_mo = mos_data.num_mo
-        aos_data = AOs_data_deriv_R.from_base(aos_data=mos_data.aos_data)
+        if isinstance(mos_data.aos_data, AOs_sphe_data):
+            aos_data = AOs_sphe_data_deriv_R.from_base(aos_data=mos_data.aos_data)
+        elif isinstance(mos_data.aos_data, AOs_cart_data):
+            aos_data = AOs_cart_data.from_base(aos_data=mos_data.aos_data)  # to be implemented AOs_cart_data_deriv_R
         mo_coefficients = mos_data.mo_coefficients
         return cls(num_mo, aos_data, mo_coefficients)
 
 
 @struct.dataclass
-class MOs_data_no_deriv:
+class MOs_data_no_deriv(MOs_data):
     """See MOs_data class."""
 
     num_mo: int = struct.field(pytree_node=False, default=0)
-    aos_data: AOs_data = struct.field(pytree_node=False, default_factory=lambda: AOs_data())
+    aos_data: AOs_sphe_data | AOs_cart_data = struct.field(pytree_node=False, default_factory=lambda: AOs_sphe_data())
     mo_coefficients: npt.NDArray[np.float64] = struct.field(pytree_node=False, default_factory=lambda: np.array([]))
 
     @classmethod
@@ -198,6 +202,13 @@ def _compute_MOs_jax(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]) -> np
         compute_AOs_api(aos_data=mos_data.aos_data, r_carts=r_carts),
     )
     return answer
+
+
+#############################################################################################################
+#
+# The following functions are no longer used in the main code. They are kept for future reference.
+#
+#############################################################################################################
 
 
 # no longer used in the main code
@@ -396,7 +407,7 @@ class MO_data:
     """
 
     mo_coefficients: list[float | complex] = field(default_factory=list)
-    ao_data_l: list[AO_data] = field(default_factory=list)
+    ao_data_l: list[AO_sphe_data] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Initialization of the class.
@@ -428,7 +439,7 @@ def compute_MO(mo_data: MO_data, r_cart: list[float]) -> float:
     """
     return np.inner(
         np.array(mo_data.mo_coefficients),
-        np.array([compute_AO(ao_data=ao_data, r_cart=r_cart) for ao_data in mo_data.ao_data_l]),
+        np.array([compute_AO_sphe(ao_data=ao_data, r_cart=r_cart) for ao_data in mo_data.ao_data_l]),
     )
 
 

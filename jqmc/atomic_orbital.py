@@ -63,7 +63,263 @@ jax.config.update("jax_enable_x64", True)
 
 
 @struct.dataclass
-class AOs_data:
+class AOs_cart_data:
+    """Atomic Orbitals dataclass.
+
+    The class contains data for computing atomic orbitals simltaneously. The radial part is the polynominal.
+
+    Args:
+        structure_data(Structure_data):
+            an instance of Structure_data
+        nucleus_index (list[int]):
+            One-to-one correspondence between AO items and the atom index (dim:num_ao)
+        num_ao (int):
+            the number of atomic orbitals.
+        num_ao_prim (int):
+            the number of primitive atomic orbitals.
+        orbital_indices (list[int]):
+            index for what exponents and coefficients are associated to each atomic orbital.
+            dim: num_ao_prim
+        exponents (list[float]):
+            List of exponents of the AOs. dim: num_ao_prim.
+        coefficients (list[float]):
+            List of coefficients of the AOs. dim: num_ao_prim
+        angular_momentums (list[int]):
+            Angular momentum of the AOs, i.e., l. dim: num_ao
+        polynominal_order_x (list[int]):
+            polynominal order x of the angular part. dim: num_ao
+        polynominal_order_y (list[int]):
+            polynominal order y of the angular part. dim: num_ao
+        polynominal_order_z (list[int]):
+            polynominal order z of the angular part. dim: num_ao
+    """
+
+    structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
+    nucleus_index: list[int] = struct.field(pytree_node=False, default_factory=list)
+    num_ao: int = struct.field(pytree_node=False, default=0)
+    num_ao_prim: int = struct.field(pytree_node=False, default=0)
+    orbital_indices: list[int] = struct.field(pytree_node=False, default_factory=list)
+    exponents: list[float] = struct.field(pytree_node=False, default_factory=list)
+    coefficients: list[float] = struct.field(pytree_node=False, default_factory=list)
+    angular_momentums: list[int] = struct.field(pytree_node=False, default_factory=list)
+    polynominal_order_x: list[int] = struct.field(pytree_node=False, default_factory=list)
+    polynominal_order_y: list[int] = struct.field(pytree_node=False, default_factory=list)
+    polynominal_order_z: list[int] = struct.field(pytree_node=False, default_factory=list)
+
+    def get_info(self) -> list[str]:
+        """Return a list of strings containing information about the class attributes."""
+        info_lines = []
+        info_lines.extend(["**" + self.__class__.__name__])
+        info_lines.extend([f"  Number of AOs = {self.num_ao}"])
+        info_lines.extend([f"  Number of primitive AOs = {self.num_ao_prim}"])
+        info_lines.extend(["  Radial part is the real spherical (solid) Harmonics."])
+        return info_lines
+
+    def logger_info(self) -> None:
+        """Output the information from get_info using logger.info."""
+        for line in self.get_info():
+            logger.info(line)
+
+    @property
+    def nucleus_index_np(self) -> npt.NDArray[np.int32]:
+        """nucleus_index."""
+        return np.array(self.nucleus_index, dtype=np.int32)
+
+    @property
+    def nucleus_index_jnp(self) -> jax.Array:
+        """nucleus_index."""
+        return jnp.array(self.nucleus_index, dtype=jnp.int32)
+
+    @property
+    def nucleus_index_prim_np(self) -> npt.NDArray[np.int32]:
+        """nucleus_index."""
+        return np.array(self.nucleus_index)[self.orbital_indices_np]
+
+    @property
+    def nucleus_index_prim_jnp(self) -> jax.Array:
+        """nucleus_index."""
+        return jnp.array(self.nucleus_index_prim_np, dtype=jnp.int32)
+
+    @property
+    def orbital_indices_np(self) -> npt.NDArray[np.int32]:
+        """orbital_index."""
+        return np.array(self.orbital_indices, dtype=np.int32)
+
+    @property
+    def orbital_indices_jnp(self) -> jax.Array:
+        """orbital_index."""
+        return jnp.array(self.orbital_indices, dtype=jnp.int32)
+
+    @property
+    def atomic_center_carts_np(self) -> npt.NDArray[np.float64]:
+        """Atomic positions in cartesian.
+
+        Returns atomic positions in cartesian
+
+        Returns:
+            npt.NDArray[np.float64]: atomic positions in cartesian
+        """
+        return self.structure_data.positions_cart_np[self.nucleus_index_np]
+
+    @property
+    def atomic_center_carts_jnp(self) -> jax.Array:
+        """Atomic positions in cartesian.
+
+        Returns atomic positions in cartesian
+
+        Returns:
+            jax.Array: atomic positions in cartesian
+        """
+        # this is super slow!!! Do not use list comprehension.
+        # return jnp.array([self.structure_data.positions_cart[i] for i in self.nucleus_index])
+        return self.structure_data.positions_cart_jnp[self.nucleus_index_jnp]
+
+    @property
+    def atomic_center_carts_unique_jnp(self) -> jax.Array:
+        """Unique atomic positions in cartesian.
+
+        Returns unique atomic positions in cartesian
+
+        Returns:
+            jax.Array: atomic positions in cartesian
+        """
+        return self.structure_data.positions_cart_jnp
+        """ the same as above.
+        _, first_indices = np.unique(self.nucleus_index_np, return_index=True)
+        sorted_order = jnp.argsort(first_indices)
+        return self.structure_data.positions_cart_jnp[sorted_order]
+        """
+
+    @property
+    def atomic_center_carts_prim_np(self) -> npt.NDArray[np.float64]:
+        """Atomic positions in cartesian for primitve orbitals.
+
+        Returns atomic positions in cartesian for primitive orbitals
+
+        Returns:
+            npt.NDArray[np.float]: atomic positions in cartesian for primitive orbitals
+        """
+        return self.atomic_center_carts_np[self.orbital_indices]
+
+    @property
+    def atomic_center_carts_prim_jnp(self) -> jax.Array:
+        """Atomic positions in cartesian for primitve orbitals.
+
+        Returns atomic positions in cartesian for primitive orbitals
+
+        Returns:
+            jax.Array: atomic positions in cartesian for primitive orbitals
+        """
+        # this is super slow!!! Do not use list comprehension.
+        # return jnp.array([self.atomic_center_carts_jnp[i] for i in self.orbital_indices])
+        return self.atomic_center_carts_jnp[self.orbital_indices_jnp]
+
+    @property
+    def angular_momentums_prim_np(self) -> npt.NDArray[np.int32]:
+        """Angular momentums for primitive orbitals.
+
+        Returns angular momentums for primitive orbitals
+
+        Returns:
+            npt.NDArray[np.float64]: angular momentums for primitive orbitals
+        """
+        return np.array(self.angular_momentums, dtype=np.int32)[self.orbital_indices_np]
+
+    @property
+    def angular_momentums_prim_jnp(self) -> jax.Array:
+        """Angular momentums for primitive orbitals.
+
+        Returns angular momentums for primitive orbitals
+
+        Returns:
+            jax.Array: angular momentums for primitive orbitals
+        """
+        return jnp.array(self.angular_momentums_prim_np, dtype=jnp.int32)
+
+    @property
+    def polynominal_order_x_prim_np(self) -> npt.NDArray[np.int32]:
+        """Polynominal order of x for primitive orbitals.
+
+        Returns Polynominal order of x for primitive orbitals
+
+        Returns:
+            jax.Array: Polynominal order of x for primitive orbitals
+        """
+        return np.array(self.polynominal_order_x, dtype=np.int32)[self.orbital_indices_np]
+
+    @property
+    def polynominal_order_x_prim_jnp(self) -> jax.Array:
+        """Polynominal order of x for primitive orbitals.
+
+        Returns Polynominal order of x for primitive orbitals
+
+        Returns:
+            jax.Array: Polynominal order of x for primitive orbitals
+        """
+        return jnp.array(self.polynominal_order_x_prim_np, dtype=np.int32)
+
+    @property
+    def polynominal_order_y_prim_np(self) -> npt.NDArray[np.int32]:
+        """Polynominal order of y for primitive orbitals.
+
+        Returns Polynominal order of y for primitive orbitals
+
+        Returns:
+            jax.Array: Polynominal order of y for primitive orbitals
+        """
+        return np.array(self.polynominal_order_y, dtype=np.int32)[self.orbital_indices_np]
+
+    @property
+    def polynominal_order_y_prim_jnp(self) -> jax.Array:
+        """Polynominal order of y for primitive orbitals.
+
+        Returns Polynominal order of y for primitive orbitals
+
+        Returns:
+            jax.Array: Polynominal order of y for primitive orbitals
+        """
+        return jnp.array(self.polynominal_order_y_prim_np, dtype=np.int32)
+
+    @property
+    def polynominal_order_z_prim_np(self) -> npt.NDArray[np.int32]:
+        """Polynominal order of z for primitive orbitals.
+
+        Returns Polynominal order of z for primitive orbitals
+
+        Returns:
+            jax.Array: Polynominal order of z for primitive orbitals
+        """
+        return np.array(self.polynominal_order_z, dtype=np.int32)[self.orbital_indices_np]
+
+    @property
+    def polynominal_order_z_prim_jnp(self) -> jax.Array:
+        """Polynominal order of z for primitive orbitals.
+
+        Returns Polynominal order of z for primitive orbitals
+
+        Returns:
+            jax.Array: Polynominal order of z for primitive orbitals
+        """
+        return jnp.array(self.polynominal_order_z_prim_np, dtype=np.int32)
+
+    @property
+    def exponents_jnp(self) -> jax.Array:
+        """Return exponents."""
+        return jnp.array(self.exponents, dtype=jnp.float64)
+
+    @property
+    def coefficients_jnp(self) -> jax.Array:
+        """Return coefficients."""
+        return jnp.array(self.coefficients, dtype=jnp.float64)
+
+    @property
+    def num_orb(self) -> int:
+        """Return the number of orbitals."""
+        return self.num_ao
+
+
+@struct.dataclass
+class AOs_sphe_data:
     """Atomic Orbitals dataclass.
 
     The class contains data for computing atomic orbitals simltaneously
@@ -297,7 +553,7 @@ class AOs_data:
 
 
 @struct.dataclass
-class AOs_data_deriv_R:
+class AOs_sphe_data_deriv_R(AOs_sphe_data):
     """See AOs_data."""
 
     structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
@@ -311,7 +567,7 @@ class AOs_data_deriv_R:
     magnetic_quantum_numbers: list[int] = struct.field(pytree_node=False, default_factory=list)
 
     @classmethod
-    def from_base(cls, aos_data: AOs_data):
+    def from_base(cls, aos_data: AOs_sphe_data):
         """Switch pytree_node."""
         structure_data = aos_data.structure_data
         nucleus_index = aos_data.nucleus_index
@@ -337,7 +593,7 @@ class AOs_data_deriv_R:
 
 
 @struct.dataclass
-class AOs_data_no_deriv:
+class AOs_sphe_data_no_deriv(AOs_sphe_data):
     """See AOs_data."""
 
     structure_data: Structure_data = struct.field(pytree_node=False, default_factory=lambda: Structure_data())
@@ -351,7 +607,7 @@ class AOs_data_no_deriv:
     magnetic_quantum_numbers: list[int] = struct.field(pytree_node=False, default_factory=list)
 
     @classmethod
-    def from_base(cls, aos_data: AOs_data):
+    def from_base(cls, aos_data: AOs_sphe_data):
         """Switch pytree_node."""
         structure_data = aos_data.structure_data
         nucleus_index = aos_data.nucleus_index
@@ -376,7 +632,7 @@ class AOs_data_no_deriv:
         )
 
 
-def compute_AOs_api(aos_data: AOs_data, r_carts: jnpt.ArrayLike, debug=False) -> jax.Array:
+def compute_AOs_api(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jnpt.ArrayLike, debug=False) -> jax.Array:
     """Compute AO values at the given r_carts.
 
     The method is for computing the value of the given atomic orbital at r_carts
@@ -389,29 +645,30 @@ def compute_AOs_api(aos_data: AOs_data, r_carts: jnpt.ArrayLike, debug=False) ->
     Returns:
         jax.Array: Arrays containing values of the AOs at r_carts. (dim: num_ao, N_e)
     """
-    if debug:
-        AOs = _compute_AOs_debug(aos_data, r_carts)
+    if isinstance(aos_data, AOs_sphe_data):
+        if debug:
+            AOs = _compute_AOs_shpe_debug(aos_data, r_carts)
+        else:
+            AOs = _compute_AOs_sphe_jax(aos_data, r_carts)
+
+    elif isinstance(aos_data, AOs_cart_data):
+        if debug:
+            AOs = _compute_AOs_cart_jax(aos_data, r_carts)
+        else:
+            AOs = _compute_AOs_cart_jax(aos_data, r_carts)
     else:
-        AOs = _compute_AOs_jax(aos_data, r_carts)
-
-    if AOs.shape != (aos_data.num_ao, len(r_carts)):
-        logger.error(
-            f"AOs.shape = {AOs.shape} is inconsistent with the expected one \
-                = {(aos_data.num_ao, len(r_carts))}"
-        )
-        raise ValueError
-
+        raise NotImplementedError
     return AOs
 
 
-def _compute_AOs_debug(aos_data: AOs_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+def _compute_AOs_shpe_debug(aos_data: AOs_sphe_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     """Compute AO values at the given r_carts.
 
     The method is for computing the value of the given atomic orbital at r_carts
     for debugging purpose. See compute_AOs_api.
     """
 
-    def compute_each_AO(ao_index):
+    def compute_each_AO_shpe(ao_index):
         atomic_center_cart = aos_data.atomic_center_carts_np[ao_index]
         shell_indices = [i for i, v in enumerate(aos_data.orbital_indices) if v == ao_index]
         exponents = [aos_data.exponents[i] for i in shell_indices]
@@ -420,7 +677,7 @@ def _compute_AOs_debug(aos_data: AOs_data, r_carts: npt.NDArray[np.float64]) -> 
         magnetic_quantum_number = aos_data.magnetic_quantum_numbers[ao_index]
         num_ao_prim = len(exponents)
 
-        ao_data = AO_data(
+        ao_data = AO_sphe_data(
             num_ao_prim=num_ao_prim,
             atomic_center_cart=atomic_center_cart,
             exponents=exponents,
@@ -429,17 +686,63 @@ def _compute_AOs_debug(aos_data: AOs_data, r_carts: npt.NDArray[np.float64]) -> 
             magnetic_quantum_number=magnetic_quantum_number,
         )
 
-        ao_values = np.array([compute_AO(ao_data=ao_data, r_cart=r_cart) for r_cart in r_carts])
+        ao_values = np.array([compute_AO_sphe(ao_data=ao_data, r_cart=r_cart) for r_cart in r_carts])
 
         return ao_values
 
-    aos_values = np.array([compute_each_AO(ao_index) for ao_index in range(aos_data.num_ao)])
+    aos_values = np.array([compute_each_AO_shpe(ao_index) for ao_index in range(aos_data.num_ao)])
 
     return aos_values
 
 
+def _compute_AOs_cart_jax(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.Array:
+    """Compute AO values at the given r_carts.
+
+    See compute_AOs_api
+
+    """
+    # Indices with respect to the contracted AOs
+    R_carts_jnp = aos_data.atomic_center_carts_prim_jnp
+    c_jnp = aos_data.coefficients_jnp
+    Z_jnp = aos_data.exponents_jnp
+    l_jnp = aos_data.angular_momentums_prim_jnp
+    nx_jnp = aos_data.polynominal_order_x_prim_jnp
+    ny_jnp = aos_data.polynominal_order_y_prim_jnp
+    nz_jnp = aos_data.polynominal_order_z_prim_jnp
+
+    double_factorials_denominator = (
+        (2 ** (nx_jnp - 1) * jscipy.special.factorial(nx_jnp - 1))
+        * (2 ** (ny_jnp - 1) * jscipy.special.factorial(ny_jnp - 1))
+        * (2 ** (nz_jnp - 1) * jscipy.special.factorial(nz_jnp - 1))
+    )
+    double_factorials_denominator = jnp.maximum(double_factorials_denominator, 1.0)
+    double_factorials_numerator = (
+        jscipy.special.factorial(2 * nx_jnp - 1)
+        * jscipy.special.factorial(2 * ny_jnp - 1)
+        * jscipy.special.factorial(2 * nz_jnp - 1)
+    )
+    double_factorials_numerator = jnp.maximum(double_factorials_numerator, 1.0)
+
+    N_n_dup_denominator = double_factorials_numerator / double_factorials_denominator
+    N_n_dup_numerator = jnp.sqrt((2.0 * Z_jnp / jnp.pi) ** (3.0 / 2.0) * (4.0 * Z_jnp) ** l_jnp)
+    N_n_dup = N_n_dup_numerator / N_n_dup_denominator
+    r_R_diffs = r_carts[None, :, :] - R_carts_jnp[:, None, :]
+    r_squared = jnp.sum(r_R_diffs**2, axis=-1)
+    R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
+
+    x, y, z = r_R_diffs[..., 0], r_R_diffs[..., 1], r_R_diffs[..., 2]
+    P_l_nx_ny_nz_dup = x ** (nx_jnp[:, None]) * y ** (ny_jnp[:, None]) * z ** (nz_jnp[:, None])
+
+    AOs_dup = N_n_dup[:, None] * R_n_dup * P_l_nx_ny_nz_dup
+
+    orbital_indices = aos_data.orbital_indices_jnp
+    num_segments = aos_data.num_ao
+    AOs = jax.ops.segment_sum(AOs_dup, orbital_indices, num_segments=num_segments)
+    return AOs
+
+
 @jit
-def _compute_AOs_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
+def _compute_AOs_sphe_jax(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     """Compute AO values at the given r_carts.
 
     See compute_AOs_api
@@ -716,9 +1019,16 @@ def _compute_S_l_m_batch_jax(
     return max_ml, S_l_m_values
 
 
+#############################################################################################################
+#
+# The following functions are no longer used in the main code. They are kept for future reference.
+#
+#############################################################################################################
+
+
 # no longer used in the main code
 def compute_AOs_laplacian_api(
-    aos_data: AOs_data,
+    aos_data: AOs_sphe_data,
     r_carts: jnpt.ArrayLike,
     debug=False,
 ) -> jax.Array:
@@ -744,7 +1054,7 @@ def compute_AOs_laplacian_api(
 
 # no longer used in the main code
 @jit
-def _compute_AOs_laplacian_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
+def _compute_AOs_laplacian_jax(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     """Compute laplacians of the give AOs at r_carts.
 
     See compute_AOs_laplacian_api
@@ -776,7 +1086,7 @@ def _compute_AOs_laplacian_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> j
 
 
 # no longer used in the main code
-def _compute_AOs_laplacian_debug(aos_data: AOs_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+def _compute_AOs_laplacian_debug(aos_data: AOs_sphe_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     """Compute laplacians of the give AOs at r_carts.
 
     The method is for computing the laplacians of the given atomic orbital at r_carts
@@ -838,7 +1148,9 @@ def _compute_AOs_laplacian_debug(aos_data: AOs_data, r_carts: npt.NDArray[np.flo
 
 
 # no longer used in the main code
-def compute_AOs_grad_api(aos_data: AOs_data, r_carts: jnpt.ArrayLike, debug=False) -> tuple[jax.Array, jax.Array, jax.Array]:
+def compute_AOs_grad_api(
+    aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike, debug=False
+) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Compute Cartesian Gradients of AOs.
 
     The method is for computing the Carteisan gradients (x,y,z) of
@@ -885,7 +1197,7 @@ def compute_AOs_grad_api(aos_data: AOs_data, r_carts: jnpt.ArrayLike, debug=Fals
 
 # no longer used in the main code
 @jit
-def _compute_AOs_grad_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> tuple[jax.Array, jax.Array, jax.Array]:
+def _compute_AOs_grad_jax(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Compute Cartesian Gradients of AOs.
 
     See compute_AOs_grad_api
@@ -921,7 +1233,7 @@ def _compute_AOs_grad_jax(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> tuple[
 # no longer used in the main code
 @jit
 def __compute_AOs_grad_jax_old(
-    aos_data: AOs_data,
+    aos_data: AOs_sphe_data,
     r_carts: jnpt.ArrayLike,
 ) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Compute Cartesian Gradients of AOs (old).
@@ -957,7 +1269,7 @@ def __compute_AOs_grad_jax_old(
 
 # no longer used in the main code
 def _compute_AOs_grad_debug(
-    aos_data: AOs_data,
+    aos_data: AOs_sphe_data,
     r_carts: npt.NDArray[np.float64],
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     """Compute Cartesian Gradients of AOs.
@@ -1002,7 +1314,7 @@ def _compute_AOs_grad_debug(
 
 # no longer used in the main code
 @jit
-def _compute_AOs_jax_old(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
+def _compute_AOs_jax_old(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     """Compute AO values at the given r_carts.
 
     See compute_AOs_api
@@ -1031,7 +1343,7 @@ def _compute_AOs_jax_old(aos_data: AOs_data, r_carts: jnpt.ArrayLike) -> jax.Arr
 
 # no longer used in the main code
 @dataclass
-class AO_data:
+class AO_sphe_data:
     """AO data class for debugging.
 
     The class contains data for computing an atomic orbital. Just for testing purpose.
@@ -1077,7 +1389,7 @@ class AO_data:
 
 
 # no longer used in the main code
-def compute_AO(ao_data: AO_data, r_cart: list[float]) -> float:
+def compute_AO_sphe(ao_data: AO_sphe_data, r_cart: list[float]) -> float:
     r"""Compute single AO for debugging.
 
     The method is for computing the value of the given atomic orbital at r_cart
@@ -1831,8 +2143,8 @@ if __name__ == "__main__":
 
     # print(aos_data)
 
-    aos_jax_up = _compute_AOs_jax(aos_data=aos_data, r_carts=r_up_carts)
-    aos_jax_dn = _compute_AOs_jax(aos_data=aos_data, r_carts=r_dn_carts)
+    aos_jax_up = _compute_AOs_sphe_jax(aos_data=aos_data, r_carts=r_up_carts)
+    aos_jax_dn = _compute_AOs_sphe_jax(aos_data=aos_data, r_carts=r_dn_carts)
     aos_jax_up.block_until_ready()
     aos_jax_dn.block_until_ready()
 
@@ -1841,8 +2153,8 @@ if __name__ == "__main__":
 
     start = time.perf_counter()
     for _ in range(trial):
-        aos_jax_up = _compute_AOs_jax(aos_data=aos_data, r_carts=r_up_carts)
-        aos_jax_dn = _compute_AOs_jax(aos_data=aos_data, r_carts=r_dn_carts)
+        aos_jax_up = _compute_AOs_sphe_jax(aos_data=aos_data, r_carts=r_up_carts)
+        aos_jax_dn = _compute_AOs_sphe_jax(aos_data=aos_data, r_carts=r_dn_carts)
         aos_jax_up.block_until_ready()
         aos_jax_dn.block_until_ready()
     end = time.perf_counter()

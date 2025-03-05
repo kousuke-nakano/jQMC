@@ -39,8 +39,8 @@ import numpy as np
 import pytest
 
 from ..jqmc.atomic_orbital import (
-    AO_data,
-    AOs_data,
+    AO_sphe_data,
+    AOs_sphe_data,
 )
 from ..jqmc.molecular_orbital import (
     MO_data,
@@ -93,7 +93,7 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
     mo_ans_step_by_step = []
 
     ao_data_l = [
-        AO_data(
+        AO_sphe_data(
             num_ao_prim=orbital_indices.count(i),
             atomic_center_cart=R_carts[i],
             exponents=[exponents[k] for (k, v) in enumerate(orbital_indices) if v == i],
@@ -117,7 +117,7 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
@@ -161,7 +161,7 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
     mo_ans_step_by_step = []
 
     ao_data_l = [
-        AO_data(
+        AO_sphe_data(
             num_ao_prim=orbital_indices.count(i),
             atomic_center_cart=R_carts[i],
             exponents=[exponents[k] for (k, v) in enumerate(orbital_indices) if v == i],
@@ -185,7 +185,7 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
@@ -239,7 +239,7 @@ def test_MOs_comparing_auto_and_numerical_grads():
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
@@ -295,7 +295,7 @@ def test_MOs_comparing_auto_and_numerical_grads():
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
@@ -357,7 +357,7 @@ def test_MOs_comparing_auto_and_numerical_laplacians():
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,

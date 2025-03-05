@@ -47,7 +47,13 @@ from jax import jit, vmap
 from jax import typing as jnpt
 
 # jqmc module
-from .atomic_orbital import AOs_data, AOs_data_deriv_R, compute_AOs_api, compute_AOs_grad_api, compute_AOs_laplacian_api
+from .atomic_orbital import (
+    AOs_sphe_data,
+    AOs_sphe_data_deriv_R,
+    compute_AOs_api,
+    compute_AOs_grad_api,
+    compute_AOs_laplacian_api,
+)
 from .molecular_orbital import MOs_data, MOs_data_deriv_R, compute_MOs_api, compute_MOs_grad_api, compute_MOs_laplacian_api
 
 # set logger
@@ -81,8 +87,8 @@ class Geminal_data:
 
     num_electron_up: int = struct.field(pytree_node=False, default=0)
     num_electron_dn: int = struct.field(pytree_node=False, default=0)
-    orb_data_up_spin: AOs_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
-    orb_data_dn_spin: AOs_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
+    orb_data_up_spin: AOs_sphe_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
+    orb_data_dn_spin: AOs_sphe_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
     lambda_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
     ''' This __post__init no longer works because vmap(grad) changes the dimmension of the lambda_matrix.
@@ -142,7 +148,7 @@ class Geminal_data:
                 If the instance of orb_data_up_spin is neither AOs_data nor MOs_data.
 
         """
-        if isinstance(self.orb_data_up_spin, AOs_data):
+        if isinstance(self.orb_data_up_spin, AOs_sphe_data):
             return self.orb_data_up_spin.num_ao
         elif isinstance(self.orb_data_up_spin, MOs_data):
             return self.orb_data_up_spin.num_mo
@@ -163,7 +169,7 @@ class Geminal_data:
             NotImplementedError:
                 If the instance of orb_data_dn_spin is neither AOs_data nor MOs_data.
         """
-        if isinstance(self.orb_data_dn_spin, AOs_data):
+        if isinstance(self.orb_data_dn_spin, AOs_sphe_data):
             return self.orb_data_dn_spin.num_ao
         elif isinstance(self.orb_data_dn_spin, MOs_data):
             return self.orb_data_dn_spin.num_mo
@@ -185,7 +191,7 @@ class Geminal_data:
                 If the instances of orb_data_up_spin/orb_data_dn_spin are
                 neither AOs_data/AOs_data nor MOs_data/MOs_data.
         """
-        if isinstance(self.orb_data_up_spin, AOs_data) and isinstance(self.orb_data_dn_spin, AOs_data):
+        if isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data):
             return compute_AOs_api
         elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
             return compute_MOs_api
@@ -208,7 +214,7 @@ class Geminal_data:
                 If the instances of orb_data_up_spin/orb_data_dn_spin are
                 neither AOs_data/AOs_data nor MOs_data/MOs_data.
         """
-        if isinstance(self.orb_data_up_spin, AOs_data) and isinstance(self.orb_data_dn_spin, AOs_data):
+        if isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data):
             return compute_AOs_grad_api
         elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
             return compute_MOs_grad_api
@@ -231,7 +237,7 @@ class Geminal_data:
                 If the instances of orb_data_up_spin/orb_data_dn_spin are
                 neither AOs_data/AOs_data nor MOs_data/MOs_data.
         """
-        if isinstance(self.orb_data_up_spin, AOs_data) and isinstance(self.orb_data_dn_spin, AOs_data):
+        if isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data):
             return compute_AOs_laplacian_api
         elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
             return compute_MOs_laplacian_api
@@ -241,7 +247,9 @@ class Geminal_data:
     @classmethod
     def convert_from_MOs_to_AOs(cls, geminal_data: "Geminal_data") -> "Geminal_data":
         """Convert MOs to AOs."""
-        if isinstance(geminal_data.orb_data_up_spin, AOs_data) and isinstance(geminal_data.orb_data_dn_spin, AOs_data):
+        if isinstance(geminal_data.orb_data_up_spin, AOs_sphe_data) and isinstance(
+            geminal_data.orb_data_dn_spin, AOs_sphe_data
+        ):
             return geminal_data
         elif isinstance(geminal_data.orb_data_up_spin, MOs_data) and isinstance(geminal_data.orb_data_dn_spin, MOs_data):
             # split mo_lambda_matrix
@@ -277,8 +285,8 @@ class Geminal_data_deriv_params(Geminal_data):
 
     num_electron_up: int = struct.field(pytree_node=False, default=0)
     num_electron_dn: int = struct.field(pytree_node=False, default=0)
-    orb_data_up_spin: AOs_data | MOs_data = struct.field(pytree_node=False, default_factory=lambda: AOs_data())
-    orb_data_dn_spin: AOs_data | MOs_data = struct.field(pytree_node=False, default_factory=lambda: AOs_data())
+    orb_data_up_spin: AOs_sphe_data | MOs_data = struct.field(pytree_node=False, default_factory=lambda: AOs_sphe_data())
+    orb_data_dn_spin: AOs_sphe_data | MOs_data = struct.field(pytree_node=False, default_factory=lambda: AOs_sphe_data())
     lambda_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
     @classmethod
@@ -299,8 +307,8 @@ class Geminal_data_deriv_R(Geminal_data):
 
     num_electron_up: int = struct.field(pytree_node=False, default=0)
     num_electron_dn: int = struct.field(pytree_node=False, default=0)
-    orb_data_up_spin: AOs_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
-    orb_data_dn_spin: AOs_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
+    orb_data_up_spin: AOs_sphe_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
+    orb_data_dn_spin: AOs_sphe_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
     lambda_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=False, default_factory=lambda: np.array([]))
 
     @classmethod
@@ -308,12 +316,12 @@ class Geminal_data_deriv_R(Geminal_data):
         """Switch pytree_node."""
         num_electron_up = geminal_data.num_electron_up
         num_electron_dn = geminal_data.num_electron_dn
-        if isinstance(geminal_data.orb_data_up_spin, AOs_data):
-            orb_data_up_spin = AOs_data_deriv_R.from_base(geminal_data.orb_data_up_spin)
+        if isinstance(geminal_data.orb_data_up_spin, AOs_sphe_data):
+            orb_data_up_spin = AOs_sphe_data_deriv_R.from_base(geminal_data.orb_data_up_spin)
         else:
             orb_data_up_spin = MOs_data_deriv_R.from_base(geminal_data.orb_data_up_spin)
-        if isinstance(geminal_data.orb_data_dn_spin, AOs_data):
-            orb_data_dn_spin = AOs_data_deriv_R.from_base(geminal_data.orb_data_dn_spin)
+        if isinstance(geminal_data.orb_data_dn_spin, AOs_sphe_data):
+            orb_data_dn_spin = AOs_sphe_data_deriv_R.from_base(geminal_data.orb_data_dn_spin)
         else:
             orb_data_dn_spin = MOs_data_deriv_R.from_base(geminal_data.orb_data_dn_spin)
         lambda_matrix = geminal_data.lambda_matrix
@@ -326,8 +334,8 @@ class Geminal_data_no_deriv(Geminal_data):
 
     num_electron_up: int = struct.field(pytree_node=False, default=0)
     num_electron_dn: int = struct.field(pytree_node=False, default=0)
-    orb_data_up_spin: AOs_data | MOs_data = struct.field(pytree_node=False, default_factory=lambda: AOs_data())
-    orb_data_dn_spin: AOs_data | MOs_data = struct.field(pytree_node=False, default_factory=lambda: AOs_data())
+    orb_data_up_spin: AOs_sphe_data | MOs_data = struct.field(pytree_node=False, default_factory=lambda: AOs_sphe_data())
+    orb_data_dn_spin: AOs_sphe_data | MOs_data = struct.field(pytree_node=False, default_factory=lambda: AOs_sphe_data())
     lambda_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=False, default_factory=lambda: np.array([]))
 
     @classmethod

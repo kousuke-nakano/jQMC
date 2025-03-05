@@ -4,10 +4,9 @@ import pickle
 import numpy as np
 from turbogenius.pyturbo.io_fort10 import IO_fort10
 
-from jqmc.atomic_orbital import AOs_data
-from jqmc.jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data, Jastrow_one_body_data
+from jqmc.atomic_orbital import AOs_sphe_data
+from jqmc.jastrow_factor import Jastrow_data, Jastrow_one_body_data, Jastrow_three_body_data, Jastrow_two_body_data
 from jqmc.structure import Structure_data
-
 
 suffix_list = ["w_2b_1b3b_w_ecp", "w_2b_3b_w_ecp", "w_1b_2b_1b3b_ae"]
 
@@ -121,7 +120,7 @@ for suffix in suffix_list:
         exponents += ao_exponents_all
         coefficients += ao_coefficients_all
 
-    jas_aos_data = AOs_data(
+    jas_aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=nucleus_index,
         num_ao=ao_num_count,

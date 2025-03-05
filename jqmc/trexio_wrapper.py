@@ -34,6 +34,7 @@
 
 # import python modules
 # logger
+import itertools
 from logging import Formatter, StreamHandler, getLogger
 
 import numpy as np
@@ -42,7 +43,7 @@ import scipy
 # import trexio
 import trexio
 
-from .atomic_orbital import AOs_data
+from .atomic_orbital import AOs_cart_data, AOs_sphe_data
 from .coulomb_potential import Coulomb_potential_data
 from .determinant import Geminal_data
 from .molecular_orbital import MOs_data
@@ -55,7 +56,7 @@ logger = getLogger("jqmc").getChild(__name__)
 
 def read_trexio_file(
     trexio_file: str,
-) -> tuple[Structure_data, AOs_data, MOs_data, MOs_data, Geminal_data, Coulomb_potential_data]:
+) -> tuple[Structure_data, AOs_sphe_data, MOs_data, MOs_data, Geminal_data, Coulomb_potential_data]:
     """Reading a TREXIO file.
 
     The method reads a TREXIO file and return AOs_data, MOs_data,
@@ -123,11 +124,6 @@ def read_trexio_file(
     # ao_shell = trexio.read_ao_shell(file_r)
     ao_normalization = trexio.read_ao_normalization(file_r)
 
-    # ao spherical part check
-    if ao_cartesian:
-        logger.error("Cartesian basis functions are not supported.")
-        raise NotImplementedError
-
     # mo info
     # mo_type = trexio.read_mo_type(file_r)
     # mo_num = trexio.read_mo_num(file_r)
@@ -180,85 +176,199 @@ def read_trexio_file(
         positions=coords_r,
     )
 
-    # AOs_data instance
-    ao_num_count = 0
-    ao_prim_num_count = 0
+    # ao spherical part check
+    if ao_cartesian:
+        logger.info("Cartesian basis functions.")
+        # AOs_data instance
+        ao_num_count = 0
+        ao_prim_num_count = 0
 
-    # values to be stored
-    nucleus_index = []
-    atomic_center_carts = []
-    angular_momentums = []
-    magnetic_quantum_numbers = []
-    orbital_indices = []
-    exponents = []
-    coefficients = []
+        # values to be stored
+        nucleus_index = []
+        atomic_center_carts = []
+        angular_momentums = []
+        orbital_indices = []
+        exponents = []
+        coefficients = []
+        polynominal_order_x = []
+        polynominal_order_y = []
+        polynominal_order_z = []
 
-    for i_shell in range(basis_shell_num):
-        b_nucleus_index = basis_nucleus_index[i_shell]
-        b_coord = list(coords_r[b_nucleus_index])
-        b_ang_mom = basis_shell_ang_mom[i_shell]
-        ao_mag_mom_list = [0] + [i * (-1) ** j for i in range(1, b_ang_mom + 1) for j in range(2)]
-        num_ao_mag_moms = len(ao_mag_mom_list)
+        for i_shell in range(basis_shell_num):
+            b_nucleus_index = basis_nucleus_index[i_shell]
+            b_coord = list(coords_r[b_nucleus_index])
+            b_ang_mom = basis_shell_ang_mom[i_shell]
+            if b_ang_mom == 0:
+                poly_orders = [0]
+                poly_x = [0]
+                poly_y = [0]
+                poly_z = [0]
+            else:
+                poly_orders = ["".join(p) for p in itertools.product("xyz", repeat=b_ang_mom)]
+                poly_x = [poly_order.count("x") for poly_order in poly_orders]
+                poly_y = [poly_order.count("y") for poly_order in poly_orders]
+                poly_z = [poly_order.count("z") for poly_order in poly_orders]
+            num_ao_mag_moms = len(poly_orders)
 
-        ao_nucleus_index = [b_nucleus_index for _ in range(num_ao_mag_moms)]
-        ao_coords = [b_coord for _ in range(num_ao_mag_moms)]
-        ao_ang_moms = [b_ang_mom for _ in range(num_ao_mag_moms)]
+            ao_nucleus_index = [b_nucleus_index for _ in range(num_ao_mag_moms)]
+            ao_coords = [b_coord for _ in range(num_ao_mag_moms)]
+            ao_ang_moms = [b_ang_mom for _ in range(num_ao_mag_moms)]
 
-        b_prim_indices = [i for i, v in enumerate(basis_shell_index) if v == i_shell]
-        b_prim_num = len(b_prim_indices)
-        b_normalizations = [
-            np.sqrt(
-                (
-                    2.0 ** (2 * b_ang_mom + 3)
-                    * scipy.special.factorial(b_ang_mom + 1)
-                    * (2 * basis_exponent[k]) ** (b_ang_mom + 1.5)
+            b_prim_indices = [i for i, v in enumerate(basis_shell_index) if v == i_shell]
+            b_prim_num = len(b_prim_indices)
+
+            double_factorials_denominator = [
+                (2 ** (nx - 1) * scipy.special.factorial(nx - 1))
+                * (2 ** (ny - 1) * scipy.special.factorial(ny - 1))
+                * (2 ** (nz - 1) * scipy.special.factorial(nz - 1))
+                for nx, ny, nz in zip(poly_x, poly_y, poly_z)
+            ]
+            double_factorials_denominator = np.maximum(double_factorials_denominator, 1.0)
+            double_factorials_numerator = [
+                scipy.special.factorial(2 * nx - 1) * scipy.special.factorial(2 * ny - 1) * scipy.special.factorial(2 * nz - 1)
+                for nx, ny, nz in zip(poly_x, poly_y, poly_z)
+            ]
+            double_factorials_numerator = np.maximum(double_factorials_numerator, 1.0)
+
+            N_n_dup_denominator = double_factorials_numerator / double_factorials_denominator
+
+            orbital_indices_all = [ao_num_count + j for j in range(num_ao_mag_moms) for _ in range(b_prim_num)]
+
+            N_n_dup_numerator = [
+                np.sqrt((2.0 * basis_exponent[k] / np.pi) ** (3.0 / 2.0) * (4.0 * basis_exponent[k]) ** b_ang_mom)
+                for k in b_prim_indices
+            ]
+            b_prim_exponents = [basis_exponent[k] for k in b_prim_indices]
+
+            ao_exponents = b_prim_exponents * num_ao_mag_moms
+            ao_coefficients_list = []
+            for p in range(num_ao_mag_moms):
+                ao_coefficients_list += [
+                    basis_shell_factor[i_shell]
+                    * basis_prim_factor[k]
+                    / (N_n_dup_numerator[i] / N_n_dup_denominator[p])
+                    * basis_coefficient[k]
+                    for i, k in enumerate(b_prim_indices)
+                ]
+
+            ao_polynominal_order_x = poly_x * b_prim_num
+            ao_polynominal_order_y = poly_y * b_prim_num
+            ao_polynominal_order_z = poly_z * b_prim_num
+            ao_coefficients = [
+                ao_coefficients_list[k] * ao_normalization[orbital_indices_all[k]] for k in range(len(ao_coefficients_list))
+            ]
+            ao_num_count += num_ao_mag_moms
+            ao_prim_num_count += num_ao_mag_moms * b_prim_num
+
+            nucleus_index += ao_nucleus_index
+            atomic_center_carts += ao_coords
+            angular_momentums += ao_ang_moms
+            polynominal_order_x += ao_polynominal_order_x
+            polynominal_order_y += ao_polynominal_order_y
+            polynominal_order_z += ao_polynominal_order_z
+            orbital_indices += orbital_indices_all
+            exponents += ao_exponents
+            coefficients += ao_coefficients
+
+        if ao_num_count != ao_num:
+            logger.error(f"ao_num_count = {ao_num_count} is inconsistent with the read ao_num = {ao_num}")
+            raise ValueError
+
+        aos_data = AOs_cart_data(
+            structure_data=structure_data,
+            nucleus_index=nucleus_index,
+            num_ao=ao_num_count,
+            num_ao_prim=ao_prim_num_count,
+            angular_momentums=angular_momentums,
+            polynominal_order_x=polynominal_order_x,
+            polynominal_order_y=polynominal_order_y,
+            polynominal_order_z=polynominal_order_z,
+            orbital_indices=orbital_indices,
+            exponents=exponents,
+            coefficients=coefficients,
+        )
+
+    else:
+        logger.info("Spherical basis functions.")
+        # AOs_data instance
+        ao_num_count = 0
+        ao_prim_num_count = 0
+
+        # values to be stored
+        nucleus_index = []
+        atomic_center_carts = []
+        angular_momentums = []
+        magnetic_quantum_numbers = []
+        orbital_indices = []
+        exponents = []
+        coefficients = []
+
+        for i_shell in range(basis_shell_num):
+            b_nucleus_index = basis_nucleus_index[i_shell]
+            b_coord = list(coords_r[b_nucleus_index])
+            b_ang_mom = basis_shell_ang_mom[i_shell]
+            ao_mag_mom_list = [0] + [i * (-1) ** j for i in range(1, b_ang_mom + 1) for j in range(2)]
+            num_ao_mag_moms = len(ao_mag_mom_list)
+
+            ao_nucleus_index = [b_nucleus_index for _ in range(num_ao_mag_moms)]
+            ao_coords = [b_coord for _ in range(num_ao_mag_moms)]
+            ao_ang_moms = [b_ang_mom for _ in range(num_ao_mag_moms)]
+
+            b_prim_indices = [i for i, v in enumerate(basis_shell_index) if v == i_shell]
+            b_prim_num = len(b_prim_indices)
+            b_normalizations = [
+                np.sqrt(
+                    (
+                        2.0 ** (2 * b_ang_mom + 3)
+                        * scipy.special.factorial(b_ang_mom + 1)
+                        * (2 * basis_exponent[k]) ** (b_ang_mom + 1.5)
+                    )
+                    / (scipy.special.factorial(2 * b_ang_mom + 2) * np.sqrt(np.pi))
                 )
-                / (scipy.special.factorial(2 * b_ang_mom + 2) * np.sqrt(np.pi))
-            )
-            for k in b_prim_indices
-        ]
-        b_prim_exponents = [basis_exponent[k] for k in b_prim_indices]
-        b_prim_coefficients = [
-            basis_shell_factor[i_shell]
-            * basis_prim_factor[k]
-            * np.sqrt(4 * np.pi)
-            / np.sqrt(2 * b_ang_mom + 1)
-            / b_normalizations[i]
-            * basis_coefficient[k]
-            for i, k in enumerate(b_prim_indices)
-        ]
-        orbital_indices_all = [ao_num_count + j for j in range(num_ao_mag_moms) for _ in range(b_prim_num)]
-        ao_exponents = b_prim_exponents * num_ao_mag_moms
-        ao_coefficients_list = b_prim_coefficients * num_ao_mag_moms
-        ao_coefficients = [
-            ao_coefficients_list[k] * ao_normalization[orbital_indices_all[k]] for k in range(len(ao_coefficients_list))
-        ]
-        ao_num_count += num_ao_mag_moms
-        ao_prim_num_count += num_ao_mag_moms * b_prim_num
+                for k in b_prim_indices
+            ]
+            b_prim_exponents = [basis_exponent[k] for k in b_prim_indices]
+            b_prim_coefficients = [
+                basis_shell_factor[i_shell]
+                * basis_prim_factor[k]
+                * np.sqrt(4 * np.pi)
+                / np.sqrt(2 * b_ang_mom + 1)
+                / b_normalizations[i]
+                * basis_coefficient[k]
+                for i, k in enumerate(b_prim_indices)
+            ]
+            orbital_indices_all = [ao_num_count + j for j in range(num_ao_mag_moms) for _ in range(b_prim_num)]
+            ao_exponents = b_prim_exponents * num_ao_mag_moms
+            ao_coefficients_list = b_prim_coefficients * num_ao_mag_moms
+            ao_coefficients = [
+                ao_coefficients_list[k] * ao_normalization[orbital_indices_all[k]] for k in range(len(ao_coefficients_list))
+            ]
+            ao_num_count += num_ao_mag_moms
+            ao_prim_num_count += num_ao_mag_moms * b_prim_num
 
-        nucleus_index += ao_nucleus_index
-        atomic_center_carts += ao_coords
-        angular_momentums += ao_ang_moms
-        magnetic_quantum_numbers += ao_mag_mom_list
-        orbital_indices += orbital_indices_all
-        exponents += ao_exponents
-        coefficients += ao_coefficients
+            nucleus_index += ao_nucleus_index
+            atomic_center_carts += ao_coords
+            angular_momentums += ao_ang_moms
+            magnetic_quantum_numbers += ao_mag_mom_list
+            orbital_indices += orbital_indices_all
+            exponents += ao_exponents
+            coefficients += ao_coefficients
 
-    if ao_num_count != ao_num:
-        logger.error(f"ao_num_count = {ao_num_count} is inconsistent with the read ao_num = {ao_num}")
-        raise ValueError
+        if ao_num_count != ao_num:
+            logger.error(f"ao_num_count = {ao_num_count} is inconsistent with the read ao_num = {ao_num}")
+            raise ValueError
 
-    aos_data = AOs_data(
-        structure_data=structure_data,
-        nucleus_index=nucleus_index,
-        num_ao=ao_num_count,
-        num_ao_prim=ao_prim_num_count,
-        angular_momentums=angular_momentums,
-        magnetic_quantum_numbers=magnetic_quantum_numbers,
-        orbital_indices=orbital_indices,
-        exponents=exponents,
-        coefficients=coefficients,
-    )
+        aos_data = AOs_sphe_data(
+            structure_data=structure_data,
+            nucleus_index=nucleus_index,
+            num_ao=ao_num_count,
+            num_ao_prim=ao_prim_num_count,
+            angular_momentums=angular_momentums,
+            magnetic_quantum_numbers=magnetic_quantum_numbers,
+            orbital_indices=orbital_indices,
+            exponents=exponents,
+            coefficients=coefficients,
+        )
 
     # MOs_data instance
     threshold_mo_occ = 1.0e-6

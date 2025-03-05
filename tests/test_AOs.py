@@ -42,13 +42,13 @@ from numpy import linalg as LA
 from numpy.testing import assert_almost_equal
 
 from ..jqmc.atomic_orbital import (
-    AOs_data,
-    _compute_AOs_debug,
+    AOs_sphe_data,
     _compute_AOs_grad_debug,
     _compute_AOs_grad_jax,
-    _compute_AOs_jax,
     _compute_AOs_laplacian_debug,
     _compute_AOs_laplacian_jax,
+    _compute_AOs_shpe_debug,
+    _compute_AOs_sphe_jax,
     _compute_S_l_m_batch_jax,
     _compute_S_l_m_debug,
     _compute_S_l_m_jax,
@@ -468,7 +468,7 @@ def test_AOs_comparing_jax_and_debug_implemenetations():
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
@@ -480,8 +480,8 @@ def test_AOs_comparing_jax_and_debug_implemenetations():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    aos_jax = _compute_AOs_jax(aos_data=aos_data, r_carts=r_carts)
-    aos_debug = _compute_AOs_debug(aos_data=aos_data, r_carts=r_carts)
+    aos_jax = _compute_AOs_sphe_jax(aos_data=aos_data, r_carts=r_carts)
+    aos_debug = _compute_AOs_shpe_debug(aos_data=aos_data, r_carts=r_carts)
 
     assert np.allclose(aos_jax, aos_debug, rtol=1e-12, atol=1e-05)
 
@@ -509,7 +509,7 @@ def test_AOs_comparing_jax_and_debug_implemenetations():
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
@@ -521,8 +521,8 @@ def test_AOs_comparing_jax_and_debug_implemenetations():
         magnetic_quantum_numbers=magnetic_quantum_numbers,
     )
 
-    aos_jax = _compute_AOs_jax(aos_data=aos_data, r_carts=r_carts)
-    aos_debug = _compute_AOs_debug(aos_data=aos_data, r_carts=r_carts)
+    aos_jax = _compute_AOs_sphe_jax(aos_data=aos_data, r_carts=r_carts)
+    aos_debug = _compute_AOs_shpe_debug(aos_data=aos_data, r_carts=r_carts)
 
     assert np.allclose(aos_jax, aos_debug, rtol=1e-12, atol=1e-05)
 
@@ -555,7 +555,7 @@ def test_AOs_comparing_auto_and_numerical_grads():
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
@@ -605,7 +605,7 @@ def test_AOs_comparing_auto_and_numerical_grads():
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
@@ -661,7 +661,7 @@ def test_AOs_comparing_auto_and_numerical_laplacians():
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
@@ -702,7 +702,7 @@ def test_AOs_comparing_auto_and_numerical_laplacians():
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,

@@ -48,7 +48,7 @@ from flax import struct
 from jax import grad, hessian, jit, vmap
 
 # jqmc module
-from .atomic_orbital import AOs_data, compute_AOs_api
+from .atomic_orbital import AOs_sphe_data, compute_AOs_api
 from .molecular_orbital import MOs_data, compute_MOs_api
 from .structure import Structure_data
 
@@ -249,7 +249,7 @@ class Jastrow_three_body_data:
         j_matrix (npt.NDArray[np.float64]): J matrix dim. (orb_data.num_ao, orb_data.num_ao+1))
     """
 
-    orb_data: AOs_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
+    orb_data: AOs_sphe_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
     j_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
     ''' This __post__init no longer works because vmap(grad) changes the dimmension of the j3_matrix.
@@ -316,7 +316,7 @@ class Jastrow_three_body_data:
             NotImplementedError:
                 If the instances of orb_data is neither AOs_data nor MOs_data.
         """
-        if isinstance(self.orb_data, AOs_data):
+        if isinstance(self.orb_data, AOs_sphe_data):
             return compute_AOs_api
         elif isinstance(self.orb_data, MOs_data):
             return compute_MOs_api
@@ -324,7 +324,7 @@ class Jastrow_three_body_data:
             raise NotImplementedError
 
     @classmethod
-    def init_jastrow_three_body_data(cls, orb_data: AOs_data):
+    def init_jastrow_three_body_data(cls, orb_data: AOs_sphe_data):
         """Initialization."""
         j_matrix = np.zeros((orb_data.num_orb, orb_data.num_orb + 1))
 
@@ -339,7 +339,7 @@ class Jastrow_three_body_data:
 class Jastrow_three_body_data_deriv_params(Jastrow_three_body_data):
     """See Jastrow_three_body_data."""
 
-    orb_data: MOs_data | AOs_data = struct.field(pytree_node=False, default_factory=lambda: AOs_data())
+    orb_data: MOs_data | AOs_sphe_data = struct.field(pytree_node=False, default_factory=lambda: AOs_sphe_data())
     j_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
     @classmethod
@@ -352,7 +352,7 @@ class Jastrow_three_body_data_deriv_params(Jastrow_three_body_data):
 class Jastrow_three_body_data_deriv_R(Jastrow_three_body_data):
     """See Jastrow_three_body_data."""
 
-    orb_data: MOs_data | AOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
+    orb_data: MOs_data | AOs_sphe_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
     j_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=False, default_factory=lambda: np.array([]))
 
     @classmethod
@@ -767,6 +767,13 @@ def _compute_Jastrow_two_body_jax(
     two_body_jastrow = two_body_jastrow_anti_parallel + two_body_jastrow_parallel_up + two_body_jastrow_parallel_dn
 
     return two_body_jastrow
+
+
+#############################################################################################################
+#
+# The following functions are no longer used in the main code. They are kept for future reference.
+#
+#############################################################################################################
 
 
 # no longer used in the main code

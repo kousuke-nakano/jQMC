@@ -38,7 +38,7 @@ import jax
 import numpy as np
 import pytest
 
-from ..jqmc.atomic_orbital import AOs_data
+from ..jqmc.atomic_orbital import AOs_sphe_data
 from ..jqmc.jastrow_factor import (
     Jastrow_one_body_data,
     Jastrow_three_body_data,
@@ -167,7 +167,7 @@ def test_Jastrow_threebody_part_with_AOs_data():
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
@@ -234,7 +234,7 @@ def test_Jastrow_threebody_part_with_MOs_data():
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
@@ -302,7 +302,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
@@ -398,7 +398,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,

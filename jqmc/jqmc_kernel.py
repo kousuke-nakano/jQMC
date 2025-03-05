@@ -4052,7 +4052,7 @@ if __name__ == "__main__":
     num_mcmc_bin_blocks = 100
     mcmc_seed = 34356
 
-    """
+    # """
     # run VMC single-shot
     mcmc = MCMC(
         hamiltonian_data=hamiltonian_data,
@@ -4061,7 +4061,7 @@ if __name__ == "__main__":
         epsilon_AS=1.0e-6,
         adjust_epsilon_AS=False,
         num_walkers=num_walkers,
-        comput_position_deriv=False,
+        comput_position_deriv=True,
         comput_param_deriv=False,
     )
     vmc = QMC(mcmc)
@@ -4071,9 +4071,9 @@ if __name__ == "__main__":
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
-    """
+    # """
 
-    """
+    # """
     f_mean, f_std = vmc.get_aF(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
@@ -4081,9 +4081,9 @@ if __name__ == "__main__":
 
     logger.info(f"f_mean = {f_mean} Ha/bohr.")
     logger.info(f"f_std = {f_std} Ha/bohr.")
-    """
-
     # """
+
+    """
     # run VMCopt
     mcmc = MCMC(
         hamiltonian_data=hamiltonian_data,
@@ -4109,9 +4109,9 @@ if __name__ == "__main__":
         opt_J4_param=True,
         opt_lambda_param=True,
     )
-    # """
+    """
 
-    # """
+    """
     # GFMC param
     num_walkers = 1
     mcmc_seed = 3446
@@ -4141,7 +4141,7 @@ if __name__ == "__main__":
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
-    # """
+    """
 
     """
     f_mean, f_std = gfmc.get_aF(
