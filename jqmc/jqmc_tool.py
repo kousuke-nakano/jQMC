@@ -61,9 +61,19 @@ def trexio_show_info(
         typer.echo(line)
 
 
-typer_click_trexio = typer.main.get_command(trexio_app)
+@trexio_app.command("show-detail")
+def trexio_show_detail(
+    filename: str = typer.Argument(..., help="TREXIO file name."),
+):
+    """Show information stored in the TREXIO file."""
+    (structure_data, aos_data, mos_data_up, mos_data_dn, geminal_data, coulomb_potential_data) = read_trexio_file(filename)
 
-cli.add_command(typer_click_trexio, "trexio")
+    typer.echo(structure_data)
+    typer.echo(aos_data)
+    typer.echo(mos_data_up)
+    typer.echo(mos_data_dn)
+    typer.echo(geminal_data)
+    typer.echo(coulomb_potential_data)
 
 
 class orbital_type(str, Enum):
@@ -442,7 +452,7 @@ def vmc_generate_input(
         control_table = tomlkit.table()
         for key, value in cli_parameters["control"].items():
             if value is None:
-                control_table = str(value)
+                control_table[key] = str(value)
             else:
                 control_table[key] = value
             if not exclude_comment and not isinstance(value, bool):

@@ -80,8 +80,10 @@ def read_trexio_file(
     )
 
     # check if the system is PBC or not.
-    periodic = trexio.read_pbc_periodic(file_r)
-
+    try:
+        periodic = trexio.read_pbc_periodic(file_r)
+    except trexio.Error:
+        periodic = False
     if periodic:
         # logger.info("Crystal (Periodic boundary condition)")
         pbc_flag = [True, True, True]
@@ -124,14 +126,17 @@ def read_trexio_file(
     # ao_shell = trexio.read_ao_shell(file_r)
     ao_normalization = trexio.read_ao_normalization(file_r)
 
+    # print(f"len(ao_normalization) = {len(ao_normalization)}")
+
     # mo info
     # mo_type = trexio.read_mo_type(file_r)
     # mo_num = trexio.read_mo_num(file_r)
-    mo_occupation = trexio.read_mo_occupation(file_r)
     mo_coefficient_real = trexio.read_mo_coefficient(file_r)
+    mo_occupation = trexio.read_mo_occupation(file_r)
 
     # mo spin check
     mo_spin = trexio.read_mo_spin(file_r)
+
     if all(x == 0 for x in mo_spin):
         spin_dependent = False
     else:
@@ -195,49 +200,53 @@ def read_trexio_file(
         polynominal_order_z = []
 
         for i_shell in range(basis_shell_num):
+            # print(f"i_shell={i_shell}")
             b_nucleus_index = basis_nucleus_index[i_shell]
             b_coord = list(coords_r[b_nucleus_index])
             b_ang_mom = basis_shell_ang_mom[i_shell]
+            # print(f"b_ang_mom={b_ang_mom}")
             if b_ang_mom == 0:
                 poly_orders = [0]
                 poly_x = [0]
                 poly_y = [0]
                 poly_z = [0]
             else:
-                poly_orders = ["".join(p) for p in itertools.product("xyz", repeat=b_ang_mom)]
+                poly_orders = ["".join(p) for p in itertools.combinations_with_replacement("xyz", b_ang_mom)]
                 poly_x = [poly_order.count("x") for poly_order in poly_orders]
                 poly_y = [poly_order.count("y") for poly_order in poly_orders]
                 poly_z = [poly_order.count("z") for poly_order in poly_orders]
             num_ao_mag_moms = len(poly_orders)
+            # print(f"num_ao_mag_moms={num_ao_mag_moms}")
 
             ao_nucleus_index = [b_nucleus_index for _ in range(num_ao_mag_moms)]
             ao_coords = [b_coord for _ in range(num_ao_mag_moms)]
             ao_ang_moms = [b_ang_mom for _ in range(num_ao_mag_moms)]
 
+            # print(f"ao_ang_moms={ao_ang_moms}")
+
             b_prim_indices = [i for i, v in enumerate(basis_shell_index) if v == i_shell]
             b_prim_num = len(b_prim_indices)
 
-            double_factorials_denominator = [
-                (2 ** (nx - 1) * scipy.special.factorial(nx - 1))
-                * (2 ** (ny - 1) * scipy.special.factorial(ny - 1))
-                * (2 ** (nz - 1) * scipy.special.factorial(nz - 1))
+            # print(f"b_prim_indices={b_prim_indices}")
+            # print(f"b_prim_num={b_prim_num}")
+            # print(f"poly_x={poly_x}")
+            # print(f"poly_y={poly_y}")
+            # print(f"poly_z={poly_z}")
+
+            N_n_dup_fuctorial_part = [
+                (scipy.special.factorial(nx) * scipy.special.factorial(ny) * scipy.special.factorial(nz))
+                / (scipy.special.factorial(2 * nx) * scipy.special.factorial(2 * ny) * scipy.special.factorial(2 * nz))
                 for nx, ny, nz in zip(poly_x, poly_y, poly_z)
             ]
-            double_factorials_denominator = np.maximum(double_factorials_denominator, 1.0)
-            double_factorials_numerator = [
-                scipy.special.factorial(2 * nx - 1) * scipy.special.factorial(2 * ny - 1) * scipy.special.factorial(2 * nz - 1)
-                for nx, ny, nz in zip(poly_x, poly_y, poly_z)
-            ]
-            double_factorials_numerator = np.maximum(double_factorials_numerator, 1.0)
 
-            N_n_dup_denominator = double_factorials_numerator / double_factorials_denominator
+            # print(f"len(N_n_dup_fuctorial_part) = {len(N_n_dup_fuctorial_part)}.")
+            # print(f"N_n_dup_fuctorial_part={N_n_dup_fuctorial_part}")
 
-            orbital_indices_all = [ao_num_count + j for j in range(num_ao_mag_moms) for _ in range(b_prim_num)]
-
-            N_n_dup_numerator = [
-                np.sqrt((2.0 * basis_exponent[k] / np.pi) ** (3.0 / 2.0) * (4.0 * basis_exponent[k]) ** b_ang_mom)
+            N_n_dup_Z_part = [
+                (2.0 * basis_exponent[k] / np.pi) ** (3.0 / 2.0) * (8.0 * basis_exponent[k]) ** b_ang_mom
                 for k in b_prim_indices
             ]
+            # print(f"len(N_n_dup_Z_part) = {len(N_n_dup_Z_part)}.")
             b_prim_exponents = [basis_exponent[k] for k in b_prim_indices]
 
             ao_exponents = b_prim_exponents * num_ao_mag_moms
@@ -246,14 +255,16 @@ def read_trexio_file(
                 ao_coefficients_list += [
                     basis_shell_factor[i_shell]
                     * basis_prim_factor[k]
-                    / (N_n_dup_numerator[i] / N_n_dup_denominator[p])
+                    / np.sqrt(N_n_dup_Z_part[i] * N_n_dup_fuctorial_part[p])
                     * basis_coefficient[k]
                     for i, k in enumerate(b_prim_indices)
                 ]
 
-            ao_polynominal_order_x = poly_x * b_prim_num
-            ao_polynominal_order_y = poly_y * b_prim_num
-            ao_polynominal_order_z = poly_z * b_prim_num
+            # print(f"len(ao_coefficients_list) = {len(ao_coefficients_list)}.")
+
+            orbital_indices_all = [ao_num_count + j for j in range(num_ao_mag_moms) for _ in range(b_prim_num)]
+            # print(f"orbital_indices_all={orbital_indices_all}")
+
             ao_coefficients = [
                 ao_coefficients_list[k] * ao_normalization[orbital_indices_all[k]] for k in range(len(ao_coefficients_list))
             ]
@@ -263,9 +274,9 @@ def read_trexio_file(
             nucleus_index += ao_nucleus_index
             atomic_center_carts += ao_coords
             angular_momentums += ao_ang_moms
-            polynominal_order_x += ao_polynominal_order_x
-            polynominal_order_y += ao_polynominal_order_y
-            polynominal_order_z += ao_polynominal_order_z
+            polynominal_order_x += poly_x
+            polynominal_order_y += poly_y
+            polynominal_order_z += poly_z
             orbital_indices += orbital_indices_all
             exponents += ao_exponents
             coefficients += ao_coefficients

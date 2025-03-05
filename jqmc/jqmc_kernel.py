@@ -3911,6 +3911,18 @@ if __name__ == "__main__":
     # """
 
     """
+    # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
+    (
+        structure_data,
+        aos_data,
+        mos_data,
+        _,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccecp_ccpvtz_cart.hdf5"))
+    """
+
+    """
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,
@@ -4061,7 +4073,7 @@ if __name__ == "__main__":
         epsilon_AS=1.0e-6,
         adjust_epsilon_AS=False,
         num_walkers=num_walkers,
-        comput_position_deriv=True,
+        comput_position_deriv=False,
         comput_param_deriv=False,
     )
     vmc = QMC(mcmc)
@@ -4073,7 +4085,7 @@ if __name__ == "__main__":
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
     # """
 
-    # """
+    """
     f_mean, f_std = vmc.get_aF(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
@@ -4081,7 +4093,7 @@ if __name__ == "__main__":
 
     logger.info(f"f_mean = {f_mean} Ha/bohr.")
     logger.info(f"f_std = {f_std} Ha/bohr.")
-    # """
+    """
 
     """
     # run VMCopt

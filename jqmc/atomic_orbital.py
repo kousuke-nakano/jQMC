@@ -2,9 +2,6 @@
 
 Module containing classes and methods related to Atomic Orbitals
 
-Todo:
-    * Laplacian computation without JAX
-    * Replace numpy and jax.numpy typings with jaxtyping
 """
 
 # Copyright (C) 2024- Kosuke Nakano
@@ -112,7 +109,7 @@ class AOs_cart_data:
         info_lines.extend(["**" + self.__class__.__name__])
         info_lines.extend([f"  Number of AOs = {self.num_ao}"])
         info_lines.extend([f"  Number of primitive AOs = {self.num_ao_prim}"])
-        info_lines.extend(["  Radial part is the real spherical (solid) Harmonics."])
+        info_lines.extend(["  Radial part is the polynominal (cartesian) function."])
         return info_lines
 
     def logger_info(self) -> None:
@@ -695,6 +692,7 @@ def _compute_AOs_shpe_debug(aos_data: AOs_sphe_data, r_carts: npt.NDArray[np.flo
     return aos_values
 
 
+@jit
 def _compute_AOs_cart_jax(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     """Compute AO values at the given r_carts.
 
@@ -710,28 +708,29 @@ def _compute_AOs_cart_jax(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> j
     ny_jnp = aos_data.polynominal_order_y_prim_jnp
     nz_jnp = aos_data.polynominal_order_z_prim_jnp
 
-    double_factorials_denominator = (
-        (2 ** (nx_jnp - 1) * jscipy.special.factorial(nx_jnp - 1))
-        * (2 ** (ny_jnp - 1) * jscipy.special.factorial(ny_jnp - 1))
-        * (2 ** (nz_jnp - 1) * jscipy.special.factorial(nz_jnp - 1))
-    )
-    double_factorials_denominator = jnp.maximum(double_factorials_denominator, 1.0)
-    double_factorials_numerator = (
-        jscipy.special.factorial(2 * nx_jnp - 1)
-        * jscipy.special.factorial(2 * ny_jnp - 1)
-        * jscipy.special.factorial(2 * nz_jnp - 1)
-    )
-    double_factorials_numerator = jnp.maximum(double_factorials_numerator, 1.0)
-
-    N_n_dup_denominator = double_factorials_numerator / double_factorials_denominator
-    N_n_dup_numerator = jnp.sqrt((2.0 * Z_jnp / jnp.pi) ** (3.0 / 2.0) * (4.0 * Z_jnp) ** l_jnp)
-    N_n_dup = N_n_dup_numerator / N_n_dup_denominator
+    N_n_dup_fuctorial_part = (
+        jscipy.special.factorial(nx_jnp) * jscipy.special.factorial(ny_jnp) * jscipy.special.factorial(nz_jnp)
+    ) / (jscipy.special.factorial(2 * nx_jnp) * jscipy.special.factorial(2 * ny_jnp) * jscipy.special.factorial(2 * nz_jnp))
+    N_n_dup_Z_part = (2.0 * Z_jnp / jnp.pi) ** (3.0 / 2.0) * (8.0 * Z_jnp) ** l_jnp
+    N_n_dup = jnp.sqrt(N_n_dup_Z_part * N_n_dup_fuctorial_part)
     r_R_diffs = r_carts[None, :, :] - R_carts_jnp[:, None, :]
     r_squared = jnp.sum(r_R_diffs**2, axis=-1)
     R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
 
     x, y, z = r_R_diffs[..., 0], r_R_diffs[..., 1], r_R_diffs[..., 2]
     P_l_nx_ny_nz_dup = x ** (nx_jnp[:, None]) * y ** (ny_jnp[:, None]) * z ** (nz_jnp[:, None])
+
+    """
+    logger.info(f"Z_jnp={Z_jnp}.")
+    logger.info(f"l_jnp={l_jnp}.")
+    logger.info(f"nx_jnp={nx_jnp}.")
+    logger.info(f"ny_jnp={ny_jnp}.")
+    logger.info(f"nz_jnp={nz_jnp}.")
+    logger.info(f"N_n_dup={N_n_dup.shape}, R_n_dup={R_n_dup.shape}")
+    logger.info(f"N_n_dup={N_n_dup.shape}, R_n_dup={R_n_dup.shape}")
+    logger.info(f"l_jnp={l_jnp.shape}, Z_jnp={Z_jnp.shape}.")
+    logger.info(f"nx_jnp={nx_jnp.shape}, ny_jnp={ny_jnp.shape}, nz_jnp={nz_jnp.shape}")
+    """
 
     AOs_dup = N_n_dup[:, None] * R_n_dup * P_l_nx_ny_nz_dup
 
@@ -2104,7 +2103,7 @@ if __name__ == "__main__":
         mos_data_dn,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"))
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccecp_ccpvtz_cart.hdf5"))
     # """
 
     """
@@ -2143,211 +2142,7 @@ if __name__ == "__main__":
 
     # print(aos_data)
 
-    aos_jax_up = _compute_AOs_sphe_jax(aos_data=aos_data, r_carts=r_up_carts)
-    aos_jax_dn = _compute_AOs_sphe_jax(aos_data=aos_data, r_carts=r_dn_carts)
+    aos_jax_up = _compute_AOs_cart_jax(aos_data=aos_data, r_carts=r_up_carts)
+    aos_jax_dn = _compute_AOs_cart_jax(aos_data=aos_data, r_carts=r_dn_carts)
     aos_jax_up.block_until_ready()
     aos_jax_dn.block_until_ready()
-
-    np.testing.assert_array_almost_equal(aos_jax_up, aos_jax_up, decimal=7)
-    np.testing.assert_array_almost_equal(aos_jax_dn, aos_jax_dn, decimal=7)
-
-    start = time.perf_counter()
-    for _ in range(trial):
-        aos_jax_up = _compute_AOs_sphe_jax(aos_data=aos_data, r_carts=r_up_carts)
-        aos_jax_dn = _compute_AOs_sphe_jax(aos_data=aos_data, r_carts=r_dn_carts)
-        aos_jax_up.block_until_ready()
-        aos_jax_dn.block_until_ready()
-    end = time.perf_counter()
-    print(f"Comput. AOs elapsed Time = {(end - start) / trial * 1e3:.3f} msec.")
-    time.sleep(3)
-
-    # Indices with respect to the contracted AOs
-    # compute R_n inc. the whole normalization factor
-    R_carts_jnp = aos_data.atomic_center_carts_prim_jnp
-    c_jnp = aos_data.coefficients_jnp
-    Z_jnp = aos_data.exponents_jnp
-    l_jnp = aos_data.angular_momentums_prim_jnp
-    m_jnp = aos_data.magnetic_quantum_numbers_prim_jnp
-    R_carts_unique_jnp = aos_data.atomic_center_carts_unique_jnp
-
-    r_diff = R_carts_jnp[:, None, :] - r_up_carts[None, :, :]
-    r_squared = jnp.sum(r_diff**2, axis=-1)
-
-    orbital_indices = aos_data.orbital_indices_jnp
-    num_segments = aos_data.num_ao
-    """
-    oh = jax.nn.one_hot(orbital_indices, num_segments, dtype=jnp.float64)
-    oh_sp = sparse.BCOO.fromdense(oh)
-    """
-
-    @jit
-    def _compute_N_n_dup():
-        N_n_dup = jnp.sqrt(
-            (2.0 ** (2 * l_jnp + 3) * jscipy.special.factorial(l_jnp + 1) * (2 * Z_jnp) ** (l_jnp + 1.5))
-            / (jscipy.special.factorial(2 * l_jnp + 2) * jnp.sqrt(jnp.pi))
-        )
-        return N_n_dup
-
-    @jit
-    def _compute_N_l_m_dup():
-        N_l_m_dup = jnp.sqrt((2 * l_jnp + 1) / (4 * jnp.pi))
-        return N_l_m_dup
-
-    @jit
-    def _compute_R_n_dup():
-        R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
-        return R_n_dup
-
-    @jit
-    def _compute_S_l_m_dup():
-        r_diff = r_up_carts[None, :, :] - R_carts_unique_jnp[:, None, :]
-        max_l, S_l_m_dup_all_l_m = _compute_S_l_m_batch_jax(r_diff)
-        S_l_m_dup_all_l_m_reshaped = S_l_m_dup_all_l_m.reshape(
-            (S_l_m_dup_all_l_m.shape[0] * S_l_m_dup_all_l_m.shape[1], S_l_m_dup_all_l_m.shape[2]), order="F"
-        )
-        global_l_m_index = aos_data.angular_momentums_prim_jnp**2 + (
-            aos_data.magnetic_quantum_numbers_prim_jnp + aos_data.angular_momentums_prim_jnp
-        )
-        nucleus_index_prim_np = aos_data.nucleus_index_prim_np
-        global_R_l_m_index = nucleus_index_prim_np * max_l + global_l_m_index
-        S_l_m_dup = S_l_m_dup_all_l_m_reshaped[global_R_l_m_index]
-        return S_l_m_dup
-
-    @jit
-    def _compute_AOs_dup(N_n_dup, R_n_dup, N_l_m_dup, S_l_m_dup):
-        AOs_dup = N_n_dup[:, None] * R_n_dup * N_l_m_dup[:, None] * S_l_m_dup
-        return AOs_dup
-
-    @jit
-    def _compute_AOs(AOs_dup):
-        AOs = jax.ops.segment_sum(AOs_dup, orbital_indices, num_segments=num_segments, indices_are_sorted=False)
-        return AOs
-
-    """
-    @jit
-    def compute_AOs_dup_fast(N_n_dup, R_n_dup, N_l_m_dup, S_l_m_dup):
-        AOs_dup_fast = N_n_dup[:, None] * R_n_dup * N_l_m_dup[:, None] * S_l_m_dup
-        return AOs_dup_fast
-
-    @partial(jit, static_argnums=(2))
-    def fast_segment_sum(data, indices, num_segments):
-        output_shape = (num_segments,) + data.shape[1:]
-        init = jnp.zeros(output_shape, dtype=data.dtype)
-        result = init.at[indices].add(data)
-        return result
-
-    @partial(jit, static_argnums=(2))
-    def segment_sum_with_matmul(data, indices, num_segments):
-        oh = jax.nn.one_hot(indices, num_segments, dtype=data.dtype)
-        return oh.T @ data
-
-    @jit
-    def segment_sum_with_cached_oh(oh, data):
-        return oh.T @ data
-
-    @jit
-    def segment_sum_with_cached_oh_sp(oh_sp, data):
-        return oh_sp.T @ data
-
-    @jit
-    def segment_sum_with_vmap(AOs_dup_T):
-        AOs = vmap(jax.ops.segment_sum, in_axes=(0, None, None))(AOs_dup_T, orbital_indices, num_segments)
-        return AOs.T
-
-    @jit
-    def compute_AOs_fast(AOs_dup):
-        # AOs = jax.ops.segment_sum(AOs_dup, orbital_indices, num_segments=num_segments, indices_are_sorted=False)
-        # AOs = fast_segment_sum(AOs_dup, orbital_indices, num_segments=num_segments)
-        # AOs = segment_sum_with_matmul(AOs_dup, orbital_indices, num_segments=num_segments)
-        # AOs = segment_sum_with_cached_oh(oh, AOs_dup)
-        AOs = segment_sum_with_cached_oh_sp(oh_sp, AOs_dup)
-        # AOs = segment_sum_with_vmap(AOs_dup)
-        return AOs
-    """
-
-    N_n_dup = _compute_N_n_dup()
-    N_n_dup.block_until_ready()
-    N_l_m_dup = _compute_N_l_m_dup()
-    N_l_m_dup.block_until_ready()
-    R_n_dup = _compute_R_n_dup()
-    R_n_dup.block_until_ready()
-    S_l_m_dup = _compute_S_l_m_dup()
-    S_l_m_dup.block_until_ready()
-    AOs_dup = _compute_AOs_dup(N_n_dup, R_n_dup, N_l_m_dup, S_l_m_dup)
-    AOs_dup.block_until_ready()
-    AOs = _compute_AOs(AOs_dup)
-    AOs.block_until_ready()
-
-    start = time.perf_counter()
-    for _ in range(trial):
-        N_n_dup = _compute_N_n_dup()
-        N_n_dup.block_until_ready()
-    end = time.perf_counter()
-    print(f"Comput. N_n_dup elapsed Time = {(end - start) / trial * 1e3:.3f} msec.")
-    time.sleep(3)
-
-    start = time.perf_counter()
-    for _ in range(trial):
-        N_l_m_dup = _compute_N_l_m_dup()
-        N_l_m_dup.block_until_ready()
-    end = time.perf_counter()
-    print(f"Comput. N_l_m_dup elapsed Time = {(end - start) / trial * 1e3:.3f} msec.")
-    time.sleep(3)
-
-    start = time.perf_counter()
-    for _ in range(trial):
-        R_n_dup = _compute_R_n_dup()
-        R_n_dup.block_until_ready()
-    end = time.perf_counter()
-    print(f"Comput. R_n_dup elapsed Time = {(end - start) / trial * 1e3:.3f} msec.")
-    time.sleep(3)
-
-    start = time.perf_counter()
-    for _ in range(trial):
-        S_l_m_dup = _compute_S_l_m_dup()
-        S_l_m_dup.block_until_ready()
-    end = time.perf_counter()
-    print(f"Comput. S_l_m_dup elapsed Time = {(end - start) / trial * 1e3:.3f} msec.")
-    time.sleep(3)
-
-    start = time.perf_counter()
-    for _ in range(trial):
-        AOs_dup = _compute_AOs_dup(N_n_dup, R_n_dup, N_l_m_dup, S_l_m_dup)
-        AOs_dup.block_until_ready()
-    end = time.perf_counter()
-    print(f"Comput. AOs_dup elapsed Time = {(end - start) / trial * 1e3:.3f} msec.")
-    time.sleep(3)
-
-    start = time.perf_counter()
-    for _ in range(trial):
-        AOs = _compute_AOs(AOs_dup)
-        AOs.block_until_ready()
-    end = time.perf_counter()
-    print(f"Comput. AOs elapsed Time = {(end - start) / trial * 1e3:.3f} msec.")
-    time.sleep(3)
-
-    """
-    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = compute_AOs_grad_api(
-        aos_data=aos_data, r_carts=r_carts
-    )
-
-    (
-        ao_matrix_grad_x_numerical,
-        ao_matrix_grad_y_numerical,
-        ao_matrix_grad_z_numerical,
-    ) = compute_AOs_grad_api(aos_data=aos_data, r_carts=r_carts)
-
-    np.testing.assert_array_almost_equal(ao_matrix_grad_x_auto, ao_matrix_grad_x_numerical, decimal=7)
-    np.testing.assert_array_almost_equal(ao_matrix_grad_y_auto, ao_matrix_grad_y_numerical, decimal=7)
-
-    np.testing.assert_array_almost_equal(ao_matrix_grad_z_auto, ao_matrix_grad_z_numerical, decimal=7)
-
-    ao_matrix_laplacian_numerical = compute_AOs_laplacian_api(aos_data=aos_data, r_carts=r_carts)
-
-    print(ao_matrix_laplacian_numerical)
-
-    ao_matrix_laplacian_auto = compute_AOs_laplacian_api(aos_data=aos_data, r_carts=r_carts)
-
-    np.testing.assert_array_almost_equal(ao_matrix_laplacian_auto, ao_matrix_laplacian_numerical, decimal=5)
-    np.testing.assert_array_almost_equal(ao_matrix_laplacian_auto, ao_matrix_laplacian_numerical, decimal=5)
-    """

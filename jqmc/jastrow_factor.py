@@ -48,7 +48,7 @@ from flax import struct
 from jax import grad, hessian, jit, vmap
 
 # jqmc module
-from .atomic_orbital import AOs_sphe_data, compute_AOs_api
+from .atomic_orbital import AOs_cart_data, AOs_sphe_data, compute_AOs_api
 from .molecular_orbital import MOs_data, compute_MOs_api
 from .structure import Structure_data
 
@@ -245,7 +245,7 @@ class Jastrow_three_body_data:
     The class contains data for evaluating the three-body Jastrow function.
 
     Args:
-        orb_data (AOs_data | MOs_data): AOs data for up-spin and dn-spin.
+        orb_data (AOs_sphe_data | AOs_cart_data | MOs_data): AOs data for up-spin and dn-spin.
         j_matrix (npt.NDArray[np.float64]): J matrix dim. (orb_data.num_ao, orb_data.num_ao+1))
     """
 
@@ -317,6 +317,8 @@ class Jastrow_three_body_data:
                 If the instances of orb_data is neither AOs_data nor MOs_data.
         """
         if isinstance(self.orb_data, AOs_sphe_data):
+            return compute_AOs_api
+        elif isinstance(self.orb_data, AOs_cart_data):
             return compute_AOs_api
         elif isinstance(self.orb_data, MOs_data):
             return compute_MOs_api
