@@ -123,7 +123,7 @@ class Structure_data:
         info_lines = []
         info_lines.extend(["**" + self.__class__.__name__])
         info_lines.extend([f"  PBC flag = {self.pbc_flag}"])
-        if any(self.pbc_flag):
+        if self.pbc_flag:
             info_lines.extend([f"  vec A = {self.vec_a} Bohr"])
             info_lines.extend([f"  vec B = {self.vec_b} Bohr"])
             info_lines.extend([f"  vec C = {self.vec_c} Bohr"])
