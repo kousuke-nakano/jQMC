@@ -33,10 +33,8 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import os
-from logging import Formatter, StreamHandler, getLogger
 
 import jax
-import numpy as np
 import pytest
 
 from ..jqmc.trexio_wrapper import read_trexio_file
@@ -44,14 +42,6 @@ from ..jqmc.trexio_wrapper import read_trexio_file
 # JAX float64
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
-
-log = getLogger("jqmc")
-log.setLevel("DEBUG")
-stream_handler = StreamHandler()
-stream_handler.setLevel("DEBUG")
-handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
-stream_handler.setFormatter(handler_format)
-log.addHandler(stream_handler)
 
 
 @pytest.mark.parametrize(
@@ -66,14 +56,12 @@ def test_read_trexio_files(filename: str):
 
 
 if __name__ == "__main__":
-    logger = getLogger("myqmc")
+    from logging import Formatter, StreamHandler, getLogger
+
+    logger = getLogger("jqmc")
     logger.setLevel("INFO")
     stream_handler = StreamHandler()
     stream_handler.setLevel("INFO")
     handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
     stream_handler.setFormatter(handler_format)
     logger.addHandler(stream_handler)
-
-    np.set_printoptions(threshold=1.0e8)
-
-    pass

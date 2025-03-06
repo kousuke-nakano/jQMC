@@ -80,25 +80,21 @@ class MOs_data:
     aos_data: AOs_sphe_data | AOs_cart_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
     mo_coefficients: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
-    ''' This __post__init no longer works because vmap(grad) changes the dimmension of the mo_coefficients
-    def __post_init__(self) -> None:
-        """Initialization of the class.
+    def sanity_check(self) -> None:
+        """Check attributes of the class.
 
-        This magic function checks the consistencies among the arguments.
-        To be implemented.
+        This function checks the consistencies among the arguments.
 
         Raises:
             ValueError: If there is an inconsistency in a dimension of a given argument.
         """
-        if not hasattr(self.mo_coefficients, "shape"):
-            # it sometimes has 'object' type because of JAX-jit
-            return
         if self.mo_coefficients.shape != (self.num_mo, self.aos_data.num_ao):
             logger.error(
                 f"dim. of ao_coefficients = {self.mo_coefficients.shape} is wrong. Inconsistent with the expected value = {(self.num_mo, self.aos_data.num_ao)}"
             )
-            raise ValueError
-    '''
+            raise ValueError("The dimension of a given mo_coefficients is wrong.")
+
+        self.aos_data.sanity_check()
 
     def get_info(self) -> list[str]:
         """Return a list of strings representing the logged information."""

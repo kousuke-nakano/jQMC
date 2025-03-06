@@ -103,6 +103,39 @@ class AOs_cart_data:
     polynominal_order_y: list[int] = struct.field(pytree_node=False, default_factory=list)
     polynominal_order_z: list[int] = struct.field(pytree_node=False, default_factory=list)
 
+    def sanity_check(self) -> None:
+        """Check attributes of the class.
+
+        This function checks the consistencies among the arguments.
+
+        Raises:
+            ValueError: If there is an inconsistency in a dimension of a given argument.
+        """
+        if len(self.nucleus_index) != self.num_ao:
+            logger.error("dim. of self.nucleus_index is wrong")
+            raise ValueError
+        if len(np.unique(self.orbital_indices)) != self.num_ao:
+            logger.error(f"num_ao={self.num_ao} and/or num_ao_prim={self.num_ao_prim} is wrong")
+        if len(self.exponents) != self.num_ao_prim:
+            logger.error("dim. of self.exponents is wrong")
+            raise ValueError
+        if len(self.coefficients) != self.num_ao_prim:
+            logger.error("dim. of self.coefficients is wrong")
+            raise ValueError
+        if len(self.angular_momentums) != self.num_ao:
+            logger.error("dim. of self.angular_momentums is wrong")
+            raise ValueError
+        if len(self.polynominal_order_x) != self.num_ao:
+            logger.error("dim. of self.polynominal_order_x is wrong")
+            raise ValueError
+        if len(self.polynominal_order_y) != self.num_ao:
+            logger.error("dim. of self.polynominal_order_y is wrong")
+            raise ValueError
+        if len(self.polynominal_order_z) != self.num_ao:
+            logger.error("dim. of self.polynominal_order_z is wrong")
+            raise ValueError
+        self.structure_data.sanity_check()
+
     def get_info(self) -> list[str]:
         """Return a list of strings containing information about the class attributes."""
         info_lines = []
@@ -353,11 +386,10 @@ class AOs_sphe_data:
     angular_momentums: list[int] = struct.field(pytree_node=False, default_factory=list)
     magnetic_quantum_numbers: list[int] = struct.field(pytree_node=False, default_factory=list)
 
-    '''
-    def __post_init__(self) -> None:
-        """Initialization of the class.
+    def sanity_check(self) -> None:
+        """Check attributes of the class.
 
-        This magic function checks the consistencies among the arguments.
+        This function checks the consistencies among the arguments.
 
         Raises:
             ValueError: If there is an inconsistency in a dimension of a given argument.
@@ -379,7 +411,7 @@ class AOs_sphe_data:
         if len(self.magnetic_quantum_numbers) != self.num_ao:
             logger.error("dim. of self.magnetic_quantum_numbers is wrong")
             raise ValueError
-    '''
+        self.structure_data.sanity_check()
 
     def get_info(self) -> list[str]:
         """Return a list of strings containing information about the class attributes."""
@@ -650,7 +682,7 @@ def compute_AOs_api(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jnpt.Array
 
     elif isinstance(aos_data, AOs_cart_data):
         if debug:
-            AOs = _compute_AOs_cart_jax(aos_data, r_carts)
+            AOs = _compute_AOs_cart_debug(aos_data, r_carts)
         else:
             AOs = _compute_AOs_cart_jax(aos_data, r_carts)
     else:
@@ -664,30 +696,101 @@ def _compute_AOs_shpe_debug(aos_data: AOs_sphe_data, r_carts: npt.NDArray[np.flo
     The method is for computing the value of the given atomic orbital at r_carts
     for debugging purpose. See compute_AOs_api.
     """
+    aos_values = []
 
-    def compute_each_AO_shpe(ao_index):
+    for ao_index in range(aos_data.num_ao):
         atomic_center_cart = aos_data.atomic_center_carts_np[ao_index]
         shell_indices = [i for i, v in enumerate(aos_data.orbital_indices) if v == ao_index]
         exponents = [aos_data.exponents[i] for i in shell_indices]
         coefficients = [aos_data.coefficients[i] for i in shell_indices]
         angular_momentum = aos_data.angular_momentums[ao_index]
         magnetic_quantum_number = aos_data.magnetic_quantum_numbers[ao_index]
-        num_ao_prim = len(exponents)
+        ao_value = []
+        for r_cart in r_carts:
+            # radial part
+            R_n = np.array(
+                [
+                    coefficient * np.exp(-1.0 * exponent * LA.norm(np.array(r_cart) - np.array(atomic_center_cart)) ** 2)
+                    for coefficient, exponent in zip(coefficients, exponents)
+                ]
+            )
+            # normalization part
+            N_n_l = np.array(
+                [
+                    np.sqrt(
+                        (
+                            2.0 ** (2 * angular_momentum + 3)
+                            * scipy.special.factorial(angular_momentum + 1)
+                            * (2 * Z) ** (angular_momentum + 1.5)
+                        )
+                        / (scipy.special.factorial(2 * angular_momentum + 2) * np.sqrt(np.pi))
+                    )
+                    for Z in exponents
+                ]
+            )
+            # angular part
+            S_l_m = _compute_S_l_m_debug(
+                atomic_center_cart=atomic_center_cart,
+                angular_momentum=angular_momentum,
+                magnetic_quantum_number=magnetic_quantum_number,
+                r_cart=r_cart,
+            )
 
-        ao_data = AO_sphe_data(
-            num_ao_prim=num_ao_prim,
-            atomic_center_cart=atomic_center_cart,
-            exponents=exponents,
-            coefficients=coefficients,
-            angular_momentum=angular_momentum,
-            magnetic_quantum_number=magnetic_quantum_number,
-        )
+            ao_value.append(np.sum(N_n_l * R_n) * np.sqrt((2 * angular_momentum + 1) / (4 * np.pi)) * S_l_m)
 
-        ao_values = np.array([compute_AO_sphe(ao_data=ao_data, r_cart=r_cart) for r_cart in r_carts])
+        aos_values.append(ao_value)
 
-        return ao_values
+    return aos_values
 
-    aos_values = np.array([compute_each_AO_shpe(ao_index) for ao_index in range(aos_data.num_ao)])
+
+def _compute_AOs_cart_debug(aos_data: AOs_cart_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    """Compute AO values at the given r_carts.
+
+    The method is for computing the value of the given atomic orbital at r_carts
+    for debugging purpose. See compute_AOs_api.
+    """
+    aos_values = []
+
+    for ao_index in range(aos_data.num_ao):
+        R_cart = aos_data.atomic_center_carts_np[ao_index]
+        l = aos_data.angular_momentums[ao_index]
+        shell_indices = [i for i, v in enumerate(aos_data.orbital_indices) if v == ao_index]
+        exponents = [aos_data.exponents[i] for i in shell_indices]
+        coefficients = [aos_data.coefficients[i] for i in shell_indices]
+        nx = aos_data.polynominal_order_x[ao_index]
+        ny = aos_data.polynominal_order_y[ao_index]
+        nz = aos_data.polynominal_order_z[ao_index]
+
+        ao_value = []
+        for r_cart in r_carts:
+            # radial part
+            R_n = np.array(
+                [
+                    coefficient * np.exp(-1.0 * exponent * LA.norm(np.array(r_cart) - np.array(R_cart)) ** 2)
+                    for coefficient, exponent in zip(coefficients, exponents)
+                ]
+            )
+            # normalization part
+            N_n_l = np.array(
+                [
+                    np.sqrt(
+                        (2.0 * Z / np.pi) ** (3.0 / 2.0)
+                        * (8.0 * Z) ** l
+                        * scipy.special.factorial(nx)
+                        * scipy.special.factorial(ny)
+                        * scipy.special.factorial(nz)
+                        / (scipy.special.factorial(2 * nx) * scipy.special.factorial(2 * ny) * scipy.special.factorial(2 * nz))
+                    )
+                    for Z in exponents
+                ]
+            )
+            # angular part
+            x, y, z = np.array(r_cart) - np.array(R_cart)
+            P_l_nx_ny_nz = x**nx * y**ny * z**nz
+
+            ao_value.append(np.sum(N_n_l * R_n) * P_l_nx_ny_nz)
+
+        aos_values.append(ao_value)
 
     return aos_values
 
@@ -767,7 +870,7 @@ def _compute_AOs_sphe_jax(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> j
     R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
     r_R_diffs_uq = r_carts[None, :, :] - R_carts_unique_jnp[:, None, :]
 
-    max_ml, S_l_m_dup_all_l_m = _compute_S_l_m_batch_jax(r_R_diffs_uq)
+    max_ml, S_l_m_dup_all_l_m = _compute_S_l_m_jax(r_R_diffs_uq)
     S_l_m_dup_all_l_m_reshaped = S_l_m_dup_all_l_m.reshape(
         (S_l_m_dup_all_l_m.shape[0] * S_l_m_dup_all_l_m.shape[1], S_l_m_dup_all_l_m.shape[2]), order="F"
     )
@@ -784,7 +887,7 @@ def _compute_AOs_sphe_jax(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> j
 
 
 @jit
-def _compute_S_l_m_batch_jax(
+def _compute_S_l_m_jax(
     r_R_diffs: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
     r"""Solid harmonics part of a primitve AO.
@@ -1016,6 +1119,98 @@ def _compute_S_l_m_batch_jax(
         axis=0,
     )
     return max_ml, S_l_m_values
+
+
+def _compute_S_l_m_debug(
+    angular_momentum: int,
+    magnetic_quantum_number: int,
+    atomic_center_cart: list[float],
+    r_cart: list[float],
+) -> float:
+    r"""Solid harmonics part of a primitve AO.
+
+    Compute the solid harmonics, i.e., r^l * spherical hamonics part (c.f., regular solid harmonics) of a given AO
+
+    Args:
+        angular_momentum (int): Angular momentum of the AO, i.e., l
+        magnetic_quantum_number (int): Magnetic quantum number of the AO, i.e m = -l .... +l
+        atomic_center_cart (list[float]): Center of the nucleus associated to the AO.
+        r_cart (list[float]): Cartesian coordinate of an electron
+
+    Returns:
+        float: Value of the spherical harmonics part * r^l (i.e., regular solid harmonics).
+
+    Note:
+        A real basis of spherical harmonics Y_{l,m} : S^2 -> R can be defined in terms of
+        their complex analogues  Y_{l}^{m} : S^2 -> C by setting:
+        Y_{l,m}(theta, phi) =
+                sqrt(2) * (-1)^m * \Im[Y_l^{|m|}] (if m < 0)
+                Y_l^{0} (if m = 0)
+                sqrt(2) * (-1)^m * \Re[Y_l^{|m|}] (if m > 0)
+
+        A conversion from cartesian to spherical coordinate is:
+                r = sqrt(x**2 + y**2 + z**2)
+                theta = arccos(z/r)
+                phi = sgn(y)arccos(x/sqrt(x**2+y**2))
+
+        It indicates that there are two singular points
+                1) the origin (x,y,z) = (0,0,0)
+                2) points on the z axis (0,0,z)
+
+        Therefore, instead, the so-called solid harmonics function is computed, which is defined as
+        S_{l,\pm|m|} = \sqrt(\cfrac{4 * np.pi}{2 * l + 1}) * |\vec{R} - \vec{r}|^l [Y_{l,m,\alpha}(\phi, \theta) +- Y_{l,-m,\alpha}(\phi, \theta)].
+
+        The real solid harmonics function are tabulated in many textbooks and websites such as Wikipedia.
+        They can be hardcoded into a code, or they can be computed analytically (e.g., https://en.wikipedia.org/wiki/Solid_harmonics).
+        The latter one is the strategy employed in this code,
+    """
+    R_cart = atomic_center_cart
+    x, y, z = np.array(r_cart) - np.array(R_cart)
+    r_norm = LA.norm(np.array(r_cart) - np.array(R_cart))
+    l, m = angular_momentum, magnetic_quantum_number
+    m_abs = np.abs(m)
+
+    # solid harmonics for (x,y) dependent part:
+    def A_m(x: float, y: float) -> float:
+        return np.sum(
+            [
+                scipy.special.binom(m_abs, p) * x ** (p) * y ** (m_abs - p) * np.cos((m_abs - p) * (np.pi / 2.0))
+                for p in range(0, m_abs + 1)
+            ]
+        )
+
+    def B_m(x: float, y: float) -> float:
+        return np.sum(
+            [
+                scipy.special.binom(m_abs, p) * x ** (p) * y ** (m_abs - p) * np.sin((m_abs - p) * (np.pi / 2.0))
+                for p in range(0, m_abs + 1)
+            ]
+        )
+
+    # solid harmonics for (z) dependent part:
+    def lambda_lm(k: int) -> float:
+        # logger.debug(f"l={l}, type ={type(l)}")
+        return (
+            (-1.0) ** (k)
+            * 2.0 ** (-l)
+            * scipy.special.binom(l, k)
+            * scipy.special.binom(2 * l - 2 * k, l)
+            * scipy.special.factorial(l - 2 * k)
+            / scipy.special.factorial(l - 2 * k - m_abs)
+        )
+
+    # solid harmonics for (z) dependent part:
+    def Lambda_lm(r_norm: float, z: float) -> float:
+        return np.sqrt(
+            (2 - int(m_abs == 0)) * scipy.special.factorial(l - m_abs) / scipy.special.factorial(l + m_abs)
+        ) * np.sum([lambda_lm(k) * r_norm ** (2 * k) * z ** (l - 2 * k - m_abs) for k in range(0, int((l - m_abs) / 2) + 1)])
+
+    # solid harmonics eveluated in Cartesian coord. (x,y,z):
+    if m >= 0:
+        gamma = Lambda_lm(r_norm, z) * A_m(x, y)
+    if m < 0:
+        gamma = Lambda_lm(r_norm, z) * B_m(x, y)
+    return gamma
 
 
 #############################################################################################################
@@ -1492,101 +1687,8 @@ def _compute_R_n_jax(
 
 
 # no longer used in the main code
-def _compute_S_l_m_debug(
-    angular_momentum: int,
-    magnetic_quantum_number: int,
-    atomic_center_cart: list[float],
-    r_cart: list[float],
-) -> float:
-    r"""Solid harmonics part of a primitve AO.
-
-    Compute the solid harmonics, i.e., r^l * spherical hamonics part (c.f., regular solid harmonics) of a given AO
-
-    Args:
-        angular_momentum (int): Angular momentum of the AO, i.e., l
-        magnetic_quantum_number (int): Magnetic quantum number of the AO, i.e m = -l .... +l
-        atomic_center_cart (list[float]): Center of the nucleus associated to the AO.
-        r_cart (list[float]): Cartesian coordinate of an electron
-
-    Returns:
-        float: Value of the spherical harmonics part * r^l (i.e., regular solid harmonics).
-
-    Note:
-        A real basis of spherical harmonics Y_{l,m} : S^2 -> R can be defined in terms of
-        their complex analogues  Y_{l}^{m} : S^2 -> C by setting:
-        Y_{l,m}(theta, phi) =
-                sqrt(2) * (-1)^m * \Im[Y_l^{|m|}] (if m < 0)
-                Y_l^{0} (if m = 0)
-                sqrt(2) * (-1)^m * \Re[Y_l^{|m|}] (if m > 0)
-
-        A conversion from cartesian to spherical coordinate is:
-                r = sqrt(x**2 + y**2 + z**2)
-                theta = arccos(z/r)
-                phi = sgn(y)arccos(x/sqrt(x**2+y**2))
-
-        It indicates that there are two singular points
-                1) the origin (x,y,z) = (0,0,0)
-                2) points on the z axis (0,0,z)
-
-        Therefore, instead, the so-called solid harmonics function is computed, which is defined as
-        S_{l,\pm|m|} = \sqrt(\cfrac{4 * np.pi}{2 * l + 1}) * |\vec{R} - \vec{r}|^l [Y_{l,m,\alpha}(\phi, \theta) +- Y_{l,-m,\alpha}(\phi, \theta)].
-
-        The real solid harmonics function are tabulated in many textbooks and websites such as Wikipedia.
-        They can be hardcoded into a code, or they can be computed analytically (e.g., https://en.wikipedia.org/wiki/Solid_harmonics).
-        The latter one is the strategy employed in this code,
-    """
-    R_cart = atomic_center_cart
-    x, y, z = np.array(r_cart) - np.array(R_cart)
-    r_norm = LA.norm(np.array(r_cart) - np.array(R_cart))
-    l, m = angular_momentum, magnetic_quantum_number
-    m_abs = np.abs(m)
-
-    # solid harmonics for (x,y) dependent part:
-    def A_m(x: float, y: float) -> float:
-        return np.sum(
-            [
-                scipy.special.binom(m_abs, p) * x ** (p) * y ** (m_abs - p) * np.cos((m_abs - p) * (np.pi / 2.0))
-                for p in range(0, m_abs + 1)
-            ]
-        )
-
-    def B_m(x: float, y: float) -> float:
-        return np.sum(
-            [
-                scipy.special.binom(m_abs, p) * x ** (p) * y ** (m_abs - p) * np.sin((m_abs - p) * (np.pi / 2.0))
-                for p in range(0, m_abs + 1)
-            ]
-        )
-
-    # solid harmonics for (z) dependent part:
-    def lambda_lm(k: int) -> float:
-        # logger.debug(f"l={l}, type ={type(l)}")
-        return (
-            (-1.0) ** (k)
-            * 2.0 ** (-l)
-            * scipy.special.binom(l, k)
-            * scipy.special.binom(2 * l - 2 * k, l)
-            * scipy.special.factorial(l - 2 * k)
-            / scipy.special.factorial(l - 2 * k - m_abs)
-        )
-
-    # solid harmonics for (z) dependent part:
-    def Lambda_lm(r_norm: float, z: float) -> float:
-        return np.sqrt(
-            (2 - int(m_abs == 0)) * scipy.special.factorial(l - m_abs) / scipy.special.factorial(l + m_abs)
-        ) * np.sum([lambda_lm(k) * r_norm ** (2 * k) * z ** (l - 2 * k - m_abs) for k in range(0, int((l - m_abs) / 2) + 1)])
-
-    # solid harmonics eveluated in Cartesian coord. (x,y,z):
-    if m >= 0:
-        gamma = Lambda_lm(r_norm, z) * A_m(x, y)
-    if m < 0:
-        gamma = Lambda_lm(r_norm, z) * B_m(x, y)
-    return gamma
-
-
-# no longer used in the main code
 @jit
-def _compute_S_l_m_jax(
+def _compute_S_l_m_jax_old(
     l: int,
     m: int,
     R_cart: npt.NDArray[np.float64],
@@ -1911,7 +2013,7 @@ def _compute_primitive_AOs_jax(
     """
     N_n_dup = _compute_normalization_fator_jax(l, exponent)
     R_n_dup = _compute_R_n_jax(coefficient, exponent, R_cart, r_cart)
-    S_l_m_dup = _compute_S_l_m_jax(l, m, R_cart, r_cart)
+    S_l_m_dup = _compute_S_l_m_jax_old(l, m, R_cart, r_cart)
 
     return N_n_dup * R_n_dup * jnp.sqrt((2 * l + 1) / (4 * jnp.pi)) * S_l_m_dup
 

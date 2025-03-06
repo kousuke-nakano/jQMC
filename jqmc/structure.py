@@ -78,13 +78,45 @@ class Structure_data:
     """
 
     positions: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([], dtype=np.float64))
-    pbc_flag: list[bool] = struct.field(pytree_node=False, default_factory=list)
+    pbc_flag: bool = struct.field(pytree_node=False, default=False)
     vec_a: list[float] = struct.field(pytree_node=False, default_factory=list)
     vec_b: list[float] = struct.field(pytree_node=False, default_factory=list)
     vec_c: list[float] = struct.field(pytree_node=False, default_factory=list)
     atomic_numbers: list[int] = struct.field(pytree_node=False, default_factory=list)
     element_symbols: list[str] = struct.field(pytree_node=False, default_factory=list)
     atomic_labels: list[str] = struct.field(pytree_node=False, default_factory=list)
+
+    def sanity_check(self) -> None:
+        """Check attributes of the class.
+
+        This function checks the consistencies among the arguments.
+
+        Raises:
+            ValueError: If there is an inconsistency in a dimension of a given argument.
+        """
+        if len(self.element_symbols) != len(self.atomic_numbers):
+            logger.error("The length of element_symbols and atomic_numbers must be the same.")
+            raise ValueError("The length of element_symbols and atomic_numbers must be the same.")
+        if len(self.element_symbols) != len(self.atomic_numbers):
+            logger.error("The length of element_symbols and atomic_numbers must be the same.")
+            raise ValueError("The length of element_symbols and atomic_numbers must be the same.")
+        if len(self.atomic_labels) != len(self.atomic_numbers):
+            logger.error("The length of atomic_labels and atomic_numbers must be the same.")
+            raise ValueError("The length of atomic_labels and atomic_numbers must be the same.")
+        if len(self.positions) != len(self.atomic_numbers):
+            logger.error("The length of positions and atomic_numbers must be the same.")
+            raise ValueError("The length of positions and atomic_numbers must be the same.")
+        if not isinstance(self.pbc_flag, bool):
+            logger.error("The pbc_flag must be a boolen.")
+            raise ValueError("The pbc_flag must be a boolen.")
+        if self.pbc_flag:
+            if len(self.vec_a) != 3 or len(self.vec_b) != 3 or len(self.vec_c) != 3:
+                logger.error("The length of lattice vectors must be 3.")
+                raise ValueError("The length of lattice vectors must be 3.")
+        else:
+            if len(self.vec_a) != 0 or len(self.vec_b) != 0 or len(self.vec_c) != 0:
+                logger.error("The lattice vectors must be empty.")
+                raise ValueError("The lattice vectors must be empty.")
 
     def get_info(self) -> list[str]:
         """Return a list of strings containing information about the Structure attribute."""
@@ -412,7 +444,7 @@ def find_nearest_index(structure: Structure_data, r_cart: list[float]) -> int:
     Todo:
         Implementing PBC (i.e., considering mirror images).
     """
-    if any(structure.pbc_flag):
+    if structure.pbc_flag:
         raise NotImplementedError
     else:
         return find_nearest_nucleus_indices_np(structure, r_cart, 1)[0]
@@ -431,7 +463,7 @@ def find_nearest_index_jax(structure: Structure_data, r_cart: list[float]) -> in
     Todo:
         Implementing PBC (i.e., considering mirror images).
     """
-    if any(structure.pbc_flag):
+    if structure.pbc_flag:
         raise NotImplementedError
     else:
         return find_nearest_nucleus_indices_jnp(structure, r_cart, 1)[0]
@@ -439,7 +471,7 @@ def find_nearest_index_jax(structure: Structure_data, r_cart: list[float]) -> in
 
 def find_nearest_nucleus_indices_np(structure_data: Structure_data, r_cart, N):
     """See find_nearest_index."""
-    if any(structure_data.pbc_flag):
+    if structure_data.pbc_flag:
         raise NotImplementedError
     else:
         # Calculate the distance between each row of R_carts and r_cart

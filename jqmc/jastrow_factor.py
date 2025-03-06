@@ -76,10 +76,23 @@ class Jastrow_one_body_data:
     structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
     core_electrons: list[float] = struct.field(pytree_node=False, default_factory=list())
 
-    """
-    def __post_init__(self) -> None:
-        pass
-    """
+    def sanity_check(self) -> None:
+        """Check attributes of the class.
+
+        This function checks the consistencies among the arguments.
+
+        Raises:
+            ValueError: If there is an inconsistency in a dimension of a given argument.
+        """
+        if self.jastrow_1b_param < 0.0:
+            logger.error(f"jastrow_1b_param = {self.jastrow_1b_param} must be non-negative.")
+            raise ValueError("Invalid jastrow_1b_param.")
+        if len(self.core_electrons) != len(self.structure_data.positions):
+            logger.error(
+                f"len(core_electrons) = {len(self.core_electrons)} must be the same as len(structure_data.positions) = {len(self.structure_data.positions)}."
+            )
+            raise ValueError("Inconsistent dimensions of core_electrons.")
+        self.structure_data.sanity_check()
 
     def get_info(self) -> list[str]:
         """Return a list of strings representing the logged information."""
@@ -213,9 +226,17 @@ class Jastrow_two_body_data:
 
     jastrow_2b_param: float = struct.field(pytree_node=True, default=1.0)
 
-    def __post_init__(self) -> None:
-        """Post initialization."""
-        pass
+    def sanity_check(self) -> None:
+        """Check attributes of the class.
+
+        This function checks the consistencies among the arguments.
+
+        Raises:
+            ValueError: If there is an inconsistency in a dimension of a given argument.
+        """
+        if self.jastrow_2b_param < 0.0:
+            logger.error(f"jastrow_2b_param = {self.jastrow_2b_param} must be non-negative.")
+            raise ValueError("Invalid jastrow_2b_param.")
 
     def get_info(self) -> list[str]:
         """Return a list of strings representing the logged information."""
@@ -252,19 +273,14 @@ class Jastrow_three_body_data:
     orb_data: AOs_sphe_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
     j_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
-    ''' This __post__init no longer works because vmap(grad) changes the dimmension of the j3_matrix.
-    def __post_init__(self) -> None:
-        """Initialization of the class.
+    def sanity_check(self) -> None:
+        """Check attributes of the class.
 
-        This magic function checks the consistencies among the arguments.
+        This function checks the consistencies among the arguments.
 
         Raises:
             ValueError: If there is an inconsistency in a dimension of a given argument.
         """
-        if not hasattr(self.j_matrix, "shape"):
-            # it sometimes has 'object' type because of JAX-jit
-            return
-
         if self.j_matrix.shape != (
             self.orb_num,
             self.orb_num + 1,
@@ -273,8 +289,7 @@ class Jastrow_three_body_data:
                 f"dim. of j_matrix = {self.j_matrix.shape} is imcompatible with the expected one "
                 + f"= ({self.orb_num}, {self.orb_num + 1}).",
             )
-            raise ValueError
-    '''
+            raise ValueError("Inconsistent dimensions of j_matrix.")
 
     def get_info(self) -> list[str]:
         """Return a list of strings containing the information stored in the attributes."""
@@ -382,16 +397,20 @@ class Jastrow_data:
     jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=True, default=None)
     jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=True, default=None)
 
-    def __post_init__(self) -> None:
-        """Initialization of the class.
+    def sanity_check(self) -> None:
+        """Check attributes of the class.
 
-        This magic function checks the consistencies among the arguments.
-        To be implemented.
+        This function checks the consistencies among the arguments.
 
         Raises:
             ValueError: If there is an inconsistency in a dimension of a given argument.
         """
-        pass
+        if self.jastrow_one_body_data is not None:
+            self.jastrow_one_body_data.sanity_check()
+        if self.jastrow_two_body_data is not None:
+            self.jastrow_two_body_data.sanity_check()
+        if self.jastrow_three_body_data is not None:
+            self.jastrow_three_body_data.sanity_check()
 
     def get_info(self) -> list[str]:
         """Return a list of strings representing the logged information from Jastrow data attributes."""

@@ -41,9 +41,8 @@ import jax
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import jacrev, jit
+from jax import jacrev, jit, vmap
 from jax import numpy as jnp
-from jax import vmap
 
 # jQMC modules
 from .structure import Structure_data
@@ -65,16 +64,15 @@ class SWCT_data:
 
     structure: Structure_data = struct.field(pytree_node=True)
 
-    def __post_init__(self) -> None:
-        """Initialization of the class.
+    def sanity_check(self) -> None:
+        """Check attributes of the class.
 
-        This magic function checks the consistencies among the arguments.
-        To be implemented.
+        This function checks the consistencies among the arguments.
 
         Raises:
             ValueError: If there is an inconsistency in a dimension of a given argument.
         """
-        pass
+        self.structure.sanity_check()
 
 
 def evaluate_swct_omega_api(

@@ -86,14 +86,14 @@ def read_trexio_file(
         periodic = False
     if periodic:
         # logger.info("Crystal (Periodic boundary condition)")
-        pbc_flag = [True, True, True]
+        pbc_flag = True
         # cell_a = trexio.read_cell_a(file_r)
         # cell_b = trexio.read_cell_b(file_r)
         # cell_c = trexio.read_cell_c(file_r)
         # k_point = trexio.read_pbc_k_point(file_r)
         raise NotImplementedError
     else:
-        pbc_flag = [False, False, False]
+        pbc_flag = False
         # logger.info("Molecule (Open boundary condition)")
 
     # read electron num
@@ -205,16 +205,10 @@ def read_trexio_file(
             b_coord = list(coords_r[b_nucleus_index])
             b_ang_mom = basis_shell_ang_mom[i_shell]
             # print(f"b_ang_mom={b_ang_mom}")
-            if b_ang_mom == 0:
-                poly_orders = [0]
-                poly_x = [0]
-                poly_y = [0]
-                poly_z = [0]
-            else:
-                poly_orders = ["".join(p) for p in itertools.combinations_with_replacement("xyz", b_ang_mom)]
-                poly_x = [poly_order.count("x") for poly_order in poly_orders]
-                poly_y = [poly_order.count("y") for poly_order in poly_orders]
-                poly_z = [poly_order.count("z") for poly_order in poly_orders]
+            poly_orders = ["".join(p) for p in itertools.combinations_with_replacement("xyz", b_ang_mom)]
+            poly_x = [poly_order.count("x") for poly_order in poly_orders]
+            poly_y = [poly_order.count("y") for poly_order in poly_orders]
+            poly_z = [poly_order.count("z") for poly_order in poly_orders]
             num_ao_mag_moms = len(poly_orders)
             # print(f"num_ao_mag_moms={num_ao_mag_moms}")
 

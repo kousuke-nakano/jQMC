@@ -181,19 +181,60 @@ class Coulomb_potential_data:
     coefficients: list[float] = struct.field(pytree_node=False, default_factory=list)
     powers: list[int] = struct.field(pytree_node=False, default_factory=list)
 
-    def __post_init__(self) -> None:
-        """Initialization of the class.
+    def sanity_check(self) -> None:
+        """Check attributes of the class.
 
-        This magic function checks the consistencies among the arguments.
+        This function checks the consistencies among the arguments.
 
         Raises:
             ValueError: If there is an inconsistency in a dimension of a given argument.
-
-        Todo:
-            To be implemented.
-
         """
-        pass
+        if self.ecp_flag:
+            if len(self.z_cores) != self.structure_data.natom:
+                logger.error("dim. of self.z_cores is wrong")
+                raise ValueError("dim. of self.z_cores is wrong")
+            if len(self.max_ang_mom_plus_1) != self.structure_data.natom:
+                logger.error("dim. of self.max_ang_mom_plus_1 is wrong")
+                raise ValueError("dim. of self.max_ang_mom_plus_1 is wrong")
+            if len(self.ang_moms) != self.num_ecps:
+                logger.error("dim. of self.num_ecps is wrong")
+                raise ValueError("dim. of self.num_ecps is wrong")
+            if len(self.nucleus_index) != self.num_ecps:
+                logger.error("dim. of self.nucleus_index is wrong")
+                raise ValueError("dim. of self.nucleus_index is wrong")
+            if len(self.exponents) != self.num_ecps:
+                logger.error("dim. of self.ang_moms is wrong")
+                raise ValueError("dim. of self.ang_moms is wrong")
+            if len(self.coefficients) != self.num_ecps:
+                logger.error("dim. of self.coefficients is wrong")
+                raise ValueError("dim. of self.coefficients is wrong")
+            if len(self.powers) != self.num_ecps:
+                logger.error("dim. of self.powers is wrong")
+                raise ValueError("dim. of self.powers is wrong")
+        else:
+            if len(self.z_cores) != 0:
+                logger.error("dim. of self.z_cores is wrong")
+                raise ValueError("dim. of self.z_cores is wrong")
+            if len(self.max_ang_mom_plus_1) != 0:
+                logger.error("dim. of self.max_ang_mom_plus_1 is wrong")
+                raise ValueError("dim. of self.max_ang_mom_plus_1 is wrong")
+            if len(self.ang_moms) != 0:
+                logger.error("dim. of self.ang_moms is wrong")
+                raise ValueError("dim. of self.ang_moms is wrong")
+            if len(self.nucleus_index) != 0:
+                logger.error("dim. of self.nucleus_index is wrong")
+                raise ValueError("dim. of self.nucleus_index is wrong")
+            if len(self.exponents) != 0:
+                logger.error("dim. of self.exponents is wrong")
+                raise ValueError("dim. of self.exponents is wrong")
+            if len(self.coefficients) != 0:
+                logger.error("dim. of self.coefficients is wrong")
+                raise ValueError("dim. of self.coefficients is wrong")
+            if len(self.powers) != 0:
+                logger.error("dim. of self.powers is wrong")
+                raise ValueError("dim. of self.powers is wrong")
+
+        self.structure_data.sanity_check()
 
     def get_info(self) -> list[str]:
         """Return a list of strings containing the attribute information."""

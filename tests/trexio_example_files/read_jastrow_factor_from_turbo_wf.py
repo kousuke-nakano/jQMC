@@ -50,9 +50,9 @@ for suffix in suffix_list:
 
     structure_data = Structure_data(
         pbc_flag=pbc_flag,
-        vec_a=vec_a,
-        vec_b=vec_b,
-        vec_c=vec_c,
+        vec_a=[],
+        vec_b=[],
+        vec_c=[],
         atomic_numbers=atomic_numbers,
         element_symbols=element_symbols,
         atomic_labels=atomic_labels,

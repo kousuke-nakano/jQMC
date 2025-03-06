@@ -132,6 +132,9 @@ class MCMC:
         self.__comput_param_deriv = comput_param_deriv
         self.__comput_position_deriv = comput_position_deriv
 
+        # check sanity of hamiltonian_data
+        hamiltonian_data.sanity_check()
+
         # set hamiltonian_data
         self.__hamiltonian_data = hamiltonian_data
 
@@ -1283,6 +1286,10 @@ class GFMC:
         Initialize a GFMC class, creating list holding results, etc...
 
         """
+        # check sanity of hamiltonian_data
+        hamiltonian_data.sanity_check()
+
+        # attributes
         self.__hamiltonian_data = hamiltonian_data
         self.__num_walkers = num_walkers
         self.__num_mcmc_per_measurement = num_mcmc_per_measurement
