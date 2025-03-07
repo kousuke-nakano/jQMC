@@ -2130,9 +2130,6 @@ def _compute_primitive_AOs_laplacians_jax(
 if __name__ == "__main__":
     import os
 
-    # import random
-    import time
-
     # from functools import partial
     # from jax.experimental import sparse
     from .trexio_wrapper import read_trexio_file
