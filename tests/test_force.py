@@ -40,7 +40,7 @@ import pytest
 
 from ..jqmc.hamiltonians import Hamiltonian_data
 from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
-from ..jqmc.jqmc_kernel import GFMC, MCMC, QMC
+from ..jqmc.jqmc_kernel import MCMC, QMC, GFMC_fixed_num_projection
 from ..jqmc.swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
 from ..jqmc.trexio_wrapper import read_trexio_file
 from ..jqmc.wavefunction import Wavefunction_data
@@ -263,7 +263,7 @@ def test_lrdmc_force_with_SWCT(request):
     mcmc_seed = 34356
 
     # run GFMC
-    gfmc = GFMC(
+    gfmc = GFMC_fixed_num_projection(
         hamiltonian_data=hamiltonian_data,
         num_walkers=4,
         num_mcmc_per_measurement=30,

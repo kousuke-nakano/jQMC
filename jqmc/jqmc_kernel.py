@@ -1252,7 +1252,7 @@ def compute_G_L(w_L, num_gfmc_collect_steps):
     return G_L
 
 
-class GFMC_tbra:
+class GFMC_fixed_projection_time:
     """GFMC class.
 
     GFMC class. Runing GFMC.
@@ -1309,7 +1309,7 @@ class GFMC_tbra:
 
         start = time.perf_counter()
         # Initialization
-        self.__mpi_seed = mcmc_seed * (mpi_rank + 1)
+        self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
         self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
         self.__jax_PRNG_key_list_init = jnp.array(
             [jax.random.fold_in(self.__jax_PRNG_key, nw) for nw in range(self.__num_walkers)]
@@ -1396,9 +1396,9 @@ class GFMC_tbra:
         logger.debug(f"initial r_dn_carts.shape = {self.__latest_r_dn_carts.shape}")
         logger.info("")
 
-        # print out structure info
-        logger.info("Structure information:")
-        self.__hamiltonian_data.structure_data.logger_info()
+        # print out hamiltonian info
+        logger.info("Printing out information in hamitonian_data instance.")
+        self.__hamiltonian_data.logger_info()
         logger.info("")
 
         logger.info("Compilation of fundamental functions starts.")
@@ -1471,38 +1471,8 @@ class GFMC_tbra:
         # stored local energy (e_L)
         self.__stored_e_L = []
 
-        # stored de_L / dR
-        self.__stored_grad_e_L_dR = []
-
-        # stored de_L / dr_up
-        self.__stored_grad_e_L_r_up = []
-
-        # stored de_L / dr_dn
-        self.__stored_grad_e_L_r_dn = []
-
-        # stored ln_Psi
-        self.__stored_ln_Psi = []
-
-        # stored dln_Psi / dr_up
-        self.__stored_grad_ln_Psi_r_up = []
-
-        # stored dln_Psi / dr_dn
-        self.__stored_grad_ln_Psi_r_dn = []
-
-        # stored dln_Psi / dR
-        self.__stored_grad_ln_Psi_dR = []
-
-        # stored Omega_up (SWCT)
-        self.__stored_omega_up = []
-
-        # stored Omega_dn (SWCT)
-        self.__stored_omega_dn = []
-
-        # stored sum_i d omega/d r_i for up spins (SWCT)
-        self.__stored_grad_omega_r_up = []
-
-        # stored sum_i d omega/d r_i for dn spins (SWCT)
-        self.__stored_grad_omega_r_dn = []
+        # average projection counter
+        self.__stored_average_projection_counter = []
 
         # total number of electrons
         self.__total_electrons = len(self.__latest_r_up_carts[0]) + len(self.__latest_r_dn_carts[0])
@@ -1566,56 +1536,6 @@ class GFMC_tbra:
         # logger.info(f"np.array(self.__stored_e_L).shape = {np.array(self.__stored_e_L).shape}.")
         return np.array(self.__stored_e_L)[self.__num_gfmc_collect_steps :]
 
-    @property
-    def de_L_dR(self) -> npt.NDArray:
-        """Return the stored de_L/dR array. dim: (mcmc_counter, 1)."""
-        return np.array(self.__stored_grad_e_L_dR)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def de_L_dr_up(self) -> npt.NDArray:
-        """Return the stored de_L/dr_up array. dim: (mcmc_counter, 1, num_electrons_up, 3)."""
-        return np.array(self.__stored_grad_e_L_r_up)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def de_L_dr_dn(self) -> npt.NDArray:
-        """Return the stored de_L/dr_dn array. dim: (mcmc_counter, 1, num_electrons_dn, 3)."""
-        return np.array(self.__stored_grad_e_L_r_dn)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def dln_Psi_dr_up(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dr_up array. dim: (mcmc_counter, 1, num_electrons_up, 3)."""
-        return np.array(self.__stored_grad_ln_Psi_r_up)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def dln_Psi_dr_dn(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dr_down array. dim: (mcmc_counter, 1, num_electrons_dn, 3)."""
-        return np.array(self.__stored_grad_ln_Psi_r_dn)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def dln_Psi_dR(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dR array. dim: (mcmc_counter, 1, num_atoms, 3)."""
-        return np.array(self.__stored_grad_ln_Psi_dR)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def omega_up(self) -> npt.NDArray:
-        """Return the stored Omega (for up electrons) array. dim: (mcmc_counter, 1, num_atoms, num_electrons_up)."""
-        return np.array(self.__stored_omega_up)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def omega_dn(self) -> npt.NDArray:
-        """Return the stored Omega (for down electrons) array. dim: (mcmc_counter,1, num_atoms, num_electons_dn)."""
-        return np.array(self.__stored_omega_dn)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def domega_dr_up(self) -> npt.NDArray:
-        """Return the stored dOmega/dr_up array. dim: (mcmc_counter, 1, num_electons_dn, 3)."""
-        return np.array(self.__stored_grad_omega_r_up)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def domega_dr_dn(self) -> npt.NDArray:
-        """Return the stored dOmega/dr_dn array. dim: (mcmc_counter, 1, num_electons_dn, 3)."""
-        return np.array(self.__stored_grad_omega_r_dn)[self.__num_gfmc_collect_steps :]
-
     def run(self, num_mcmc_steps: int = 50, max_time: int = 86400) -> None:
         """Run LRDMC with multiple walkers.
 
@@ -1656,8 +1576,9 @@ class GFMC_tbra:
             return R
 
         # Note: This jit drastically accelarates the computation!!
-        @partial(jit, static_argnums=5)
+        @partial(jit, static_argnums=6)
         def _projection(
+            projection_counter: int,
             tau_left: float,
             w_L: float,
             r_up_carts: jax.Array,
@@ -1670,19 +1591,32 @@ class GFMC_tbra:
             Do projection for a set of (r_up_cart, r_dn_cart).
 
             Args:
-                e_L (float): e_L before the projection.
+                projection_counter(int): the counter of projection steps
                 tau_left (float): left projection time
                 w_L (float): weight before projection
                 r_up_carts (N_e^up, 3) before projection
                 r_dn_carts (N_e^dn, 3) after projection
+                jax_PRNG_key (jax.Array): jax PRNG key
+                non_local_move (bool): treatment of the spin-flip term. tmove (Casula's T-move) or dtmove (Determinant Locality Approximation with Casula's T-move)
+
             Returns:
                 e_L (float): e_L after the final projection.
+                projection_counter(int): the counter of projection steps
                 tau_left (float): left projection time
                 w_L (float): weight after the final projection
                 r_up_carts (N_e^up, 3) after the final projection
                 r_dn_carts (N_e^dn, 3) after the final projection
+                jax_PRNG_key (jax.Array): jax PRNG key
             """
             logger.debug(f"jax_PRNG_key={jax_PRNG_key}")
+
+            # projection counter
+            projection_counter = lax.cond(
+                tau_left > 0.0,
+                lambda pc: pc + 1,
+                lambda pc: pc,
+                projection_counter,
+            )
 
             # compute non-diagonal grids and elements (kinetic)
 
@@ -1867,10 +1801,11 @@ class GFMC_tbra:
             logger.debug(f"new: r_up_carts={new_r_up_carts}.")
             logger.debug(f"new: r_dn_carts={new_r_dn_carts}.")
 
-            return (e_L, tau_left, w_L, new_r_up_carts, new_r_dn_carts, jax_PRNG_key)
+            return (e_L, projection_counter, tau_left, w_L, new_r_up_carts, new_r_dn_carts, jax_PRNG_key)
 
         # projection compilation.
         logger.info("  Compilation is in progress...")
+        projection_counter_list = jnp.array([0 for _ in range(self.__num_walkers)])
         tau_left_list = jnp.array([self.__tau for _ in range(self.__num_walkers)])
         w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
         (
@@ -1880,7 +1815,9 @@ class GFMC_tbra:
             _,
             _,
             _,
-        ) = vmap(_projection, in_axes=(0, 0, 0, 0, 0, None))(
+            _,
+        ) = vmap(_projection, in_axes=(0, 0, 0, 0, 0, 0, None))(
+            projection_counter_list,
             tau_left_list,
             w_L_list,
             self.__latest_r_up_carts,
@@ -1917,6 +1854,7 @@ class GFMC_tbra:
                 )
 
             # Always set the initial weight list to 1.0
+            projection_counter_list = jnp.array([0 for _ in range(self.__num_walkers)])
             tau_left_list = jnp.array([self.__tau for _ in range(self.__num_walkers)])
             w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
 
@@ -1936,12 +1874,14 @@ class GFMC_tbra:
                 logger.debug(f"  in: w_L_list = {w_L_list}.")
                 (
                     e_L_list,
+                    projection_counter_list,
                     tau_left_list,
                     w_L_list,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                     self.__jax_PRNG_key_list,
-                ) = vmap(_projection, in_axes=(0, 0, 0, 0, 0, None))(
+                ) = vmap(_projection, in_axes=(0, 0, 0, 0, 0, 0, None))(
+                    projection_counter_list,
                     tau_left_list,
                     w_L_list,
                     self.__latest_r_up_carts,
@@ -1958,6 +1898,7 @@ class GFMC_tbra:
 
             # sync. jax arrays computations.
             e_L_list.block_until_ready()
+            projection_counter_list.block_until_ready()
             tau_left_list.block_until_ready()
             w_L_list.block_until_ready()
             self.__latest_r_up_carts.block_until_ready()
@@ -2007,6 +1948,10 @@ class GFMC_tbra:
             e_L_gathered_dyad = mpi_comm.gather(e_L_gathered_dyad, root=0)
             w_L_gathered_dyad = (mpi_rank, w_L_latest)
             w_L_gathered_dyad = mpi_comm.gather(w_L_gathered_dyad, root=0)
+
+            # num projection counter
+            ave_projection_counter = np.mean(projection_counter_list)
+            ave_projection_counter_gathered = mpi_comm.gather(ave_projection_counter, root=0)
 
             if mpi_rank == 0:
                 logger.debug(f"e_L_gathered_dyad={e_L_gathered_dyad}")
@@ -2058,11 +2003,13 @@ class GFMC_tbra:
 
                 self.__num_survived_walkers += len(set(chosen_walker_indices))
                 self.__num_killed_walkers += len(w_L_list) - len(set(chosen_walker_indices))
+                self.__stored_average_projection_counter.append(np.mean(ave_projection_counter_gathered))
                 logger.debug(f"num_survived_walkers={self.__num_survived_walkers}")
                 logger.debug(f"num_killed_walkers={self.__num_killed_walkers}")
             else:
                 self.__num_survived_walkers = None
                 self.__num_killed_walkers = None
+                self.__stored_average_projection_counter = None
                 proposed_r_up_carts = None
                 proposed_r_dn_carts = None
 
@@ -2071,6 +2018,7 @@ class GFMC_tbra:
 
             self.__num_survived_walkers = mpi_comm.bcast(self.__num_survived_walkers, root=0)
             self.__num_killed_walkers = mpi_comm.bcast(self.__num_killed_walkers, root=0)
+            self.__stored_average_projection_counter = mpi_comm.bcast(self.__stored_average_projection_counter, root=0)
 
             proposed_r_up_carts = mpi_comm.bcast(proposed_r_up_carts, root=0)
             proposed_r_dn_carts = mpi_comm.bcast(proposed_r_dn_carts, root=0)
@@ -2127,6 +2075,7 @@ class GFMC_tbra:
         logger.info(
             f"Survived walkers ratio = {self.__num_survived_walkers / (self.__num_survived_walkers + self.__num_killed_walkers) * 100:.2f} %"
         )
+        logger.info(f"Ave. projection num. = {np.mean(self.__stored_average_projection_counter)}")
         logger.info("")
 
         self.__timer_gmfc_total += timer_gmfc_total
@@ -2136,7 +2085,7 @@ class GFMC_tbra:
         self.__timer_observable += timer_observable
 
 
-class GFMC:
+class GFMC_fixed_num_projection:
     """GFMC class. Runing GFMC with multiple walkers.
 
     Args:
@@ -2763,7 +2712,8 @@ class GFMC:
                 # compute bar_b_L
                 logger.debug(f"  diagonal_sum_hamiltonian={diagonal_sum_hamiltonian}")
                 logger.debug(f"  E_scf={E_scf}")
-                b_x = 1.0 / (diagonal_sum_hamiltonian - E_scf) ** (1.0 + self.__gamma * self.__alat**2) * b_x_bar
+                # b_x = 1.0 / (diagonal_sum_hamiltonian - E_scf) ** (1.0 + self.__gamma * self.__alat**2) * b_x_bar
+                b_x = 1.0 / (diagonal_sum_hamiltonian - E_scf) * b_x_bar
                 logger.debug(f"  b_x={b_x}")
 
                 # update weight
@@ -3036,7 +2986,11 @@ class GFMC:
                 self.__non_local_move,
             )
             e_L_list = V_diag_list + V_nondiag_list
+            # logger.info(f"  e_L_list = {e_L_list}")
+            # logger.info(f"  V_diag_list = {V_diag_list}")
+            # logger.info(f"  V_nondiag_list = {V_nondiag_list}")
             e_L_list.block_until_ready()
+
             end = time.perf_counter()
             timer_e_L += end - start
 
@@ -3130,6 +3084,11 @@ class GFMC:
             w_L_latest = np.array(w_L_list)
             e_L_latest = np.array(e_L_list)
             V_diag_E_latest = np.array(V_diag_list) - E_scf
+            # reg = 1.0 + self.__gamma * self.__alat**2
+            # logger.info(f"  reg={reg}")
+            # logger.info(f"  w_L_latest={w_L_latest}")
+            # logger.info(f"  V - E_scf={V_diag_E_latest}")
+            # logger.info(f"  1/(V - E_scf)={1 / V_diag_E_latest**reg}")
             if self.__comput_position_deriv:
                 grad_e_L_r_up_latest = np.array(grad_e_L_r_up)
                 grad_e_L_r_dn_latest = np.array(grad_e_L_r_dn)
@@ -3245,7 +3204,26 @@ class GFMC:
                         "i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_omega_dr_dn_gathered
                     )
                 # averaged
-                w_L_averaged = np.average(w_L_gathered)
+                w_L_averaged = np.average(w_L_gathered / V_diag_E_gathered**reg)
+
+                """ correct?
+                w_L_sum = np.sum(w_L_gathered)
+                e_L_sum = np.sum(w_L_gathered * e_L_gathered)
+                if self.__comput_position_deriv:
+                    grad_e_L_r_up_sum = np.einsum("i,ijk->jk", w_L_gathered, grad_e_L_r_up_gathered)
+                    grad_e_L_r_dn_sum = np.einsum("i,ijk->jk", w_L_gathered, grad_e_L_r_dn_gathered)
+                    grad_e_L_R_sum = np.einsum("i,ijk->jk", w_L_gathered, grad_e_L_R_gathered)
+                    grad_ln_Psi_r_up_sum = np.einsum("i,ijk->jk", w_L_gathered, grad_ln_Psi_r_up_gathered)
+                    grad_ln_Psi_r_dn_sum = np.einsum("i,ijk->jk", w_L_gathered, grad_ln_Psi_r_dn_gathered)
+                    grad_ln_Psi_dR_sum = np.einsum("i,ijk->jk", w_L_gathered, grad_ln_Psi_dR_gathered)
+                    omega_up_sum = np.einsum("i,ijk->jk", w_L_gathered, omega_up_gathered)
+                    omega_dn_sum = np.einsum("i,ijk->jk", w_L_gathered, omega_dn_gathered)
+                    grad_omega_dr_up_sum = np.einsum("i,ijk->jk", w_L_gathered, grad_omega_dr_up_gathered)
+                    grad_omega_dr_dn_sum = np.einsum("i,ijk->jk", w_L_gathered, grad_omega_dr_dn_gathered)
+                # averaged
+                w_L_averaged = np.average(w_L_gathered) * np.average(1.0 / V_diag_E_gathered**reg)
+                """
+
                 e_L_averaged = e_L_sum / w_L_sum
                 if self.__comput_position_deriv:
                     grad_e_L_r_up_averaged = grad_e_L_r_up_sum / w_L_sum
@@ -3353,10 +3331,13 @@ class GFMC:
             timer_reconfiguration += end_reconfiguration - start_reconfiguration
 
             # update E_scf
+            eq_steps = 20
             if (i_mcmc_step + 1) % mcmc_interval == 0:
-                if i_mcmc_step >= 20:
+                if i_mcmc_step >= eq_steps:
                     E_scf, E_scf_std = self.get_E_on_the_fly(
-                        num_gfmc_warmup_steps=10, num_gfmc_bin_blocks=5, num_gfmc_collect_steps=3
+                        num_gfmc_warmup_steps=np.minimum(eq_steps, i_mcmc_step - eq_steps),
+                        num_gfmc_bin_blocks=5,
+                        num_gfmc_collect_steps=5,
                     )
                     logger.info(f"    Updated E_scf = {E_scf:.5f} +- {E_scf_std:.5f} Ha.")
                 else:
@@ -3428,6 +3409,8 @@ class GFMC:
         if mpi_rank == 0:
             e_L_eq = self.__stored_e_L[num_gfmc_warmup_steps + num_gfmc_collect_steps :]
             w_L_eq = self.__stored_w_L[num_gfmc_warmup_steps:]
+            # logger.info(f"  (e_L_eq) = {(e_L_eq)}")
+            # logger.info(f"  (w_L_eq) = {(w_L_eq)}")
             logger.debug("  Progress: Computing G_eq and G_e_L_eq.")
 
             w_L_eq = jnp.array(w_L_eq)
@@ -3504,7 +3487,6 @@ class QMC:
         # opt_J1_param: bool = True, # to be implemented.
         opt_J2_param: bool = True,
         opt_J3_param: bool = True,
-        opt_J4_param: bool = False,
         opt_lambda_param: bool = False,
         num_param_opt: int = None,
     ):
@@ -3531,7 +3513,6 @@ class QMC:
             opt_J1_param (bool): optimize one-body Jastrow # to be implemented.
             opt_J2_param (bool): optimize two-body Jastrow
             opt_J3_param (bool): optimize three-body Jastrow
-            opt_J4_param (bool): optimize four-body Jastrow # to be implemented.
             opt_lambda_param (bool): optimize lambda_matrix in the determinant part.
             num_param_opt (int): the number of parameters to optimize in the descending order of |f|/|std f|.
         """
@@ -5008,19 +4989,19 @@ if __name__ == "__main__":
     )
     """
 
-    # """
+    """
     # GFMC param
-    num_walkers = 1
+    num_walkers = 4
     mcmc_seed = 3446
-    E_scf = -17.00
+    E_scf = -34.00
     gamma = 0.0
     alat = 0.30
-    num_mcmc_per_measurement = 40
+    num_mcmc_per_measurement = 60
     num_gfmc_collect_steps = 5
     non_local_move = "tmove"
 
     # run GFMC single-shot
-    gfmc = GFMC(
+    gfmc = GFMC_fixed_num_projection(
         hamiltonian_data=hamiltonian_data,
         num_walkers=num_walkers,
         num_mcmc_per_measurement=num_mcmc_per_measurement,
@@ -5032,13 +5013,13 @@ if __name__ == "__main__":
         non_local_move=non_local_move,
     )
     gfmc = QMC(gfmc)
-    gfmc.run(num_mcmc_steps=1000, max_time=3600)
+    gfmc.run(num_mcmc_steps=500, max_time=3600)
     E_mean, E_std = gfmc.get_E(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
-    # """
+    """
 
     """
     f_mean, f_std = gfmc.get_aF(
@@ -5050,18 +5031,17 @@ if __name__ == "__main__":
     logger.info(f"f_std = {f_std} Ha/bohr.")
     """
 
-    """
+    # """
     # GFMC param
-    num_walkers = 1
+    num_walkers = 4
     mcmc_seed = 3446
     tau = 0.10
-    alat = 0.30
-    num_mcmc_per_measurement = 20
+    alat = 0.20
     num_gfmc_collect_steps = 5
     non_local_move = "tmove"
 
     # run GFMC single-shot
-    gfmc = GFMC_tbra(
+    gfmc = GFMC_fixed_projection_time(
         hamiltonian_data=hamiltonian_data,
         num_walkers=num_walkers,
         num_gfmc_collect_steps=num_gfmc_collect_steps,
@@ -5070,10 +5050,10 @@ if __name__ == "__main__":
         non_local_move=non_local_move,
     )
     gfmc = QMC(gfmc)
-    gfmc.run(num_mcmc_steps=1000, max_time=3600)
+    gfmc.run(num_mcmc_steps=500, max_time=3600)
     E_mean, E_std = gfmc.get_E(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
-    """
+    # """

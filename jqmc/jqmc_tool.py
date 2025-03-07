@@ -244,7 +244,7 @@ def vmcopt_generate_input(
 
         vmcopt_table = tomlkit.table()
         for key, value in cli_parameters["vmcopt"].items():
-            if value is None or isinstance(value, bool):
+            if value is None:
                 vmcopt_table[key] = str(value)
             else:
                 vmcopt_table[key] = value
@@ -584,7 +584,7 @@ def lrdmc_generate_input(
 
         lrdmc_table = tomlkit.table()
         for key, value in cli_parameters["lrdmc"].items():
-            if value is None or isinstance(value, bool):
+            if value is None:
                 lrdmc_table[key] = str(value)
             else:
                 lrdmc_table[key] = value

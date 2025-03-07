@@ -43,6 +43,10 @@ cli_parameters = {
         "wf_dump_freq": 1,
         "delta": 0.01,
         "epsilon": 0.001,
+        "opt_J2_param": True,
+        "opt_J3_param": True,
+        "opt_lambda_param": False,
+        "num_param_opt": None,
     },
     "vmcopt_comments": {
         "num_mcmc_steps": "Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.",
@@ -54,6 +58,10 @@ cli_parameters = {
         "wf_dump_freq": "Frequency of wavefunction (i.e. hamiltonian_data) dump.",
         "delta": "Step size for the Stochastic reconfiguration (i.e., the natural gradient) optimization.",
         "epsilon": "Regularization parameter, a positive number added to the diagnoal elements of the Fisher-Information matrix, used during the Stochastic reconfiguration to improve the numerical stability.",
+        "opt_J2_param": "Optimize the J2 parameters.",
+        "opt_J3_param": "Optimize the J3 parameters.",
+        "opt_lambda_param": "Optimize the lambda parameters in the geminal part.",
+        "num_param_opt": "the number of parameters to optimize in the descending order of |f|/|std f|. If None, all parameters are optimized.",
     },
     "lrdmc": {
         "num_mcmc_steps": None,
