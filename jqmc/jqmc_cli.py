@@ -49,7 +49,7 @@ from mpi4py import MPI
 
 # jQMC
 from .header_footer import print_footer, print_header
-from .jqmc_kernel import GFMC, MCMC, QMC
+from .jqmc_kernel import MCMC, QMC, GFMC_fixed_num_projection
 from .jqmc_miscs import cli_parameters
 
 # MPI related
@@ -280,6 +280,10 @@ def cli():
         wf_dump_freq = parameters["vmcopt"]["wf_dump_freq"]
         delta = parameters["vmcopt"]["delta"]
         epsilon = parameters["vmcopt"]["epsilon"]
+        opt_J2_param = parameters["vmcopt"]["opt_J2_param"]
+        opt_J3_param = parameters["vmcopt"]["opt_J3_param"]
+        opt_lambda_param = parameters["vmcopt"]["opt_lambda_param"]
+        num_param_opt = parameters["vmcopt"]["num_param_opt"]
 
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
         if num_mcmc_steps < num_mcmc_warmup_steps:
@@ -317,6 +321,10 @@ def cli():
             wf_dump_freq=wf_dump_freq,
             num_mcmc_warmup_steps=num_mcmc_warmup_steps,
             num_mcmc_bin_blocks=num_mcmc_bin_blocks,
+            opt_J2_param=opt_J2_param,
+            opt_J3_param=opt_J3_param,
+            opt_lambda_param=opt_lambda_param,
+            num_param_opt=num_param_opt,
             max_time=max_time,
         )
         logger.info("")
@@ -390,7 +398,7 @@ def cli():
         else:
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
-                gfmc = GFMC(
+                gfmc = GFMC_fixed_num_projection(
                     hamiltonian_data=hamiltonian_data,
                     num_walkers=number_of_walkers,
                     num_mcmc_per_measurement=num_mcmc_per_measurement,

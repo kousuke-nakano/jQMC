@@ -80,16 +80,16 @@ class Wavefunction_data:
     jastrow_data: Jastrow_data = struct.field(pytree_node=True, default_factory=lambda: Jastrow_data())
     geminal_data: Geminal_data = struct.field(pytree_node=True, default_factory=lambda: Wavefunction_data())
 
-    def __post_init__(self) -> None:
-        """Initialization of the class.
+    def sanity_check(self) -> None:
+        """Check attributes of the class.
 
-        This magic function checks the consistencies among the arguments.
-        To be implemented.
+        This function checks the consistencies among the arguments.
 
         Raises:
             ValueError: If there is an inconsistency in a dimension of a given argument.
         """
-        pass
+        self.jastrow_data.sanity_check()
+        self.geminal_data.sanity_check()
 
     def get_info(self) -> list[str]:
         """Return a list of strings representing the logged information."""

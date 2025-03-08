@@ -33,7 +33,6 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import os
-from logging import Formatter, StreamHandler, getLogger
 
 import jax
 import numpy as np
@@ -56,15 +55,6 @@ from ..jqmc.wavefunction import Wavefunction_data
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
-# logger
-log = getLogger("jqmc")
-log.setLevel("DEBUG")
-stream_handler = StreamHandler()
-stream_handler.setLevel("DEBUG")
-handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
-stream_handler.setFormatter(handler_format)
-log.addHandler(stream_handler)
-
 
 def test_debug_and_jax_bare_coulomb():
     """Test the bare coulomb potential computation."""
@@ -76,6 +66,9 @@ def test_debug_and_jax_bare_coulomb():
         _,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
+
+    # check its input
+    coulomb_potential_data.sanity_check()
 
     old_r_up_carts = np.array(
         [
@@ -118,13 +111,16 @@ def test_debug_and_jax_bare_coulomb():
 def test_debug_and_jax_ecp_local():
     """Test the local ECP potential computation."""
     (
-        structure_data,
-        aos_data,
-        mos_data_up,
-        mos_data_dn,
-        geminal_mo_data,
+        _,
+        _,
+        _,
+        _,
+        _,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
+
+    # check its input
+    coulomb_potential_data.sanity_check()
 
     old_r_up_carts = np.array(
         [
@@ -172,6 +168,9 @@ def test_debug_and_jax_ecp_non_local():
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
+
+    # check its input
+    coulomb_potential_data.sanity_check()
 
     # n_atom
     n_atom = structure_data.natom
@@ -424,3 +423,14 @@ def test_debug_and_jax_ecp_total():
     # print(f"vpot_ecp_debug = {vpot_ecp_debug}")
     np.testing.assert_almost_equal(vpot_ecp_jax, vpot_ecp_debug, decimal=10)
 """
+
+if __name__ == "__main__":
+    from logging import Formatter, StreamHandler, getLogger
+
+    logger = getLogger("jqmc")
+    logger.setLevel("INFO")
+    stream_handler = StreamHandler()
+    stream_handler.setLevel("INFO")
+    handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
+    stream_handler.setFormatter(handler_format)
+    logger.addHandler(stream_handler)

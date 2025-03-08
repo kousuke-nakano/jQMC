@@ -34,7 +34,6 @@
 
 import os
 import pickle
-from logging import Formatter, StreamHandler, getLogger
 
 import jax
 import numpy as np
@@ -54,14 +53,6 @@ from ..jqmc.wavefunction import Wavefunction_data, compute_kinetic_energy_api, e
 # JAX float64
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
-
-log = getLogger("myqmc")
-log.setLevel("DEBUG")
-stream_handler = StreamHandler()
-stream_handler.setLevel("DEBUG")
-handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
-stream_handler.setFormatter(handler_format)
-log.addHandler(stream_handler)
 
 
 @pytest.mark.activate_if_disable_jit
@@ -84,14 +75,17 @@ def test_comparison_with_TurboRVB_wo_Jastrow_w_ecp(request):
         jastrow_two_body_data=None,
         jastrow_three_body_data=None,
     )
+    jastrow_data.sanity_check()
 
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+    wavefunction_data.sanity_check()
 
     hamiltonian_data = Hamiltonian_data(
         structure_data=structure_data,
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
     )
+    hamiltonian_data.sanity_check()
 
     old_r_up_carts = np.array(
         [
@@ -203,14 +197,17 @@ def test_comparison_with_TurboRVB_w_2b_Jastrow_w_ecp(request):
         jastrow_two_body_data=jastrow_two_body_data,
         jastrow_three_body_data=None,
     )
+    jastrow_data.sanity_check()
 
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+    wavefunction_data.sanity_check()
 
     hamiltonian_data = Hamiltonian_data(
         structure_data=structure_data,
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
     )
+    hamiltonian_data.sanity_check()
 
     old_r_up_carts = np.array(
         [
@@ -322,14 +319,17 @@ def test_comparison_with_TurboRVB_w_2b_3b_Jastrow_w_ecp(request):
         "rb",
     ) as f:
         jastrow_data = pickle.load(f)
+        jastrow_data.sanity_check()
 
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+    wavefunction_data.sanity_check()
 
     hamiltonian_data = Hamiltonian_data(
         structure_data=structure_data,
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
     )
+    hamiltonian_data.sanity_check()
 
     old_r_up_carts = np.array(
         [
@@ -438,14 +438,17 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp(request):
         "rb",
     ) as f:
         jastrow_data = pickle.load(f)
+        jastrow_data.sanity_check()
 
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+    wavefunction_data.sanity_check()
 
     hamiltonian_data = Hamiltonian_data(
         structure_data=structure_data,
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
     )
+    hamiltonian_data.sanity_check()
 
     old_r_up_carts = np.array(
         [
@@ -533,3 +536,15 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp(request):
     np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=2)
 
     jax.clear_caches()
+
+
+if __name__ == "__main__":
+    from logging import Formatter, StreamHandler, getLogger
+
+    logger = getLogger("jqmc")
+    logger.setLevel("INFO")
+    stream_handler = StreamHandler()
+    stream_handler.setLevel("INFO")
+    handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
+    stream_handler.setFormatter(handler_format)
+    logger.addHandler(stream_handler)

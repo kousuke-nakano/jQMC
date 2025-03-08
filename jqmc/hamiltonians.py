@@ -100,18 +100,17 @@ class Hamiltonian_data:
     )
     wavefunction_data: Wavefunction_data = struct.field(pytree_node=True, default_factory=lambda: Wavefunction_data())
 
-    def __post_init__(self) -> None:
-        """Initialization of the class.
+    def sanity_check(self) -> None:
+        """Check attributes of the class.
 
-        This magic function checks the consistencies among the arguments.
+        This function checks the consistencies among the arguments.
 
         Raises:
             ValueError: If there is an inconsistency in a dimension of a given argument.
-
-        Todo:
-            To be implemented.
         """
-        pass
+        self.structure_data.sanity_check()
+        self.coulomb_potential_data.sanity_check()
+        self.wavefunction_data.sanity_check()
 
     def get_info(self) -> list[str]:
         """Return a list of strings representing the logged information."""

@@ -48,7 +48,7 @@ from flax import struct
 from jax import grad, hessian, jit, vmap
 
 # jqmc module
-from .atomic_orbital import AOs_data, compute_AOs_api
+from .atomic_orbital import AOs_cart_data, AOs_sphe_data, compute_AOs_api
 from .molecular_orbital import MOs_data, compute_MOs_api
 from .structure import Structure_data
 
@@ -76,10 +76,23 @@ class Jastrow_one_body_data:
     structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
     core_electrons: list[float] = struct.field(pytree_node=False, default_factory=list())
 
-    """
-    def __post_init__(self) -> None:
-        pass
-    """
+    def sanity_check(self) -> None:
+        """Check attributes of the class.
+
+        This function checks the consistencies among the arguments.
+
+        Raises:
+            ValueError: If there is an inconsistency in a dimension of a given argument.
+        """
+        if self.jastrow_1b_param < 0.0:
+            logger.error(f"jastrow_1b_param = {self.jastrow_1b_param} must be non-negative.")
+            raise ValueError("Invalid jastrow_1b_param.")
+        if len(self.core_electrons) != len(self.structure_data.positions):
+            logger.error(
+                f"len(core_electrons) = {len(self.core_electrons)} must be the same as len(structure_data.positions) = {len(self.structure_data.positions)}."
+            )
+            raise ValueError("Inconsistent dimensions of core_electrons.")
+        self.structure_data.sanity_check()
 
     def get_info(self) -> list[str]:
         """Return a list of strings representing the logged information."""
@@ -213,9 +226,17 @@ class Jastrow_two_body_data:
 
     jastrow_2b_param: float = struct.field(pytree_node=True, default=1.0)
 
-    def __post_init__(self) -> None:
-        """Post initialization."""
-        pass
+    def sanity_check(self) -> None:
+        """Check attributes of the class.
+
+        This function checks the consistencies among the arguments.
+
+        Raises:
+            ValueError: If there is an inconsistency in a dimension of a given argument.
+        """
+        if self.jastrow_2b_param < 0.0:
+            logger.error(f"jastrow_2b_param = {self.jastrow_2b_param} must be non-negative.")
+            raise ValueError("Invalid jastrow_2b_param.")
 
     def get_info(self) -> list[str]:
         """Return a list of strings representing the logged information."""
@@ -245,26 +266,21 @@ class Jastrow_three_body_data:
     The class contains data for evaluating the three-body Jastrow function.
 
     Args:
-        orb_data (AOs_data | MOs_data): AOs data for up-spin and dn-spin.
+        orb_data (AOs_sphe_data | AOs_cart_data | MOs_data): AOs data for up-spin and dn-spin.
         j_matrix (npt.NDArray[np.float64]): J matrix dim. (orb_data.num_ao, orb_data.num_ao+1))
     """
 
-    orb_data: AOs_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
+    orb_data: AOs_sphe_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
     j_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
-    ''' This __post__init no longer works because vmap(grad) changes the dimmension of the j3_matrix.
-    def __post_init__(self) -> None:
-        """Initialization of the class.
+    def sanity_check(self) -> None:
+        """Check attributes of the class.
 
-        This magic function checks the consistencies among the arguments.
+        This function checks the consistencies among the arguments.
 
         Raises:
             ValueError: If there is an inconsistency in a dimension of a given argument.
         """
-        if not hasattr(self.j_matrix, "shape"):
-            # it sometimes has 'object' type because of JAX-jit
-            return
-
         if self.j_matrix.shape != (
             self.orb_num,
             self.orb_num + 1,
@@ -273,8 +289,7 @@ class Jastrow_three_body_data:
                 f"dim. of j_matrix = {self.j_matrix.shape} is imcompatible with the expected one "
                 + f"= ({self.orb_num}, {self.orb_num + 1}).",
             )
-            raise ValueError
-    '''
+            raise ValueError("Inconsistent dimensions of j_matrix.")
 
     def get_info(self) -> list[str]:
         """Return a list of strings containing the information stored in the attributes."""
@@ -316,7 +331,9 @@ class Jastrow_three_body_data:
             NotImplementedError:
                 If the instances of orb_data is neither AOs_data nor MOs_data.
         """
-        if isinstance(self.orb_data, AOs_data):
+        if isinstance(self.orb_data, AOs_sphe_data):
+            return compute_AOs_api
+        elif isinstance(self.orb_data, AOs_cart_data):
             return compute_AOs_api
         elif isinstance(self.orb_data, MOs_data):
             return compute_MOs_api
@@ -324,7 +341,7 @@ class Jastrow_three_body_data:
             raise NotImplementedError
 
     @classmethod
-    def init_jastrow_three_body_data(cls, orb_data: AOs_data):
+    def init_jastrow_three_body_data(cls, orb_data: AOs_sphe_data):
         """Initialization."""
         j_matrix = np.zeros((orb_data.num_orb, orb_data.num_orb + 1))
 
@@ -339,7 +356,7 @@ class Jastrow_three_body_data:
 class Jastrow_three_body_data_deriv_params(Jastrow_three_body_data):
     """See Jastrow_three_body_data."""
 
-    orb_data: MOs_data | AOs_data = struct.field(pytree_node=False, default_factory=lambda: AOs_data())
+    orb_data: MOs_data | AOs_sphe_data = struct.field(pytree_node=False, default_factory=lambda: AOs_sphe_data())
     j_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
     @classmethod
@@ -352,7 +369,7 @@ class Jastrow_three_body_data_deriv_params(Jastrow_three_body_data):
 class Jastrow_three_body_data_deriv_R(Jastrow_three_body_data):
     """See Jastrow_three_body_data."""
 
-    orb_data: MOs_data | AOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_data())
+    orb_data: MOs_data | AOs_sphe_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
     j_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=False, default_factory=lambda: np.array([]))
 
     @classmethod
@@ -380,16 +397,20 @@ class Jastrow_data:
     jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=True, default=None)
     jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=True, default=None)
 
-    def __post_init__(self) -> None:
-        """Initialization of the class.
+    def sanity_check(self) -> None:
+        """Check attributes of the class.
 
-        This magic function checks the consistencies among the arguments.
-        To be implemented.
+        This function checks the consistencies among the arguments.
 
         Raises:
             ValueError: If there is an inconsistency in a dimension of a given argument.
         """
-        pass
+        if self.jastrow_one_body_data is not None:
+            self.jastrow_one_body_data.sanity_check()
+        if self.jastrow_two_body_data is not None:
+            self.jastrow_two_body_data.sanity_check()
+        if self.jastrow_three_body_data is not None:
+            self.jastrow_three_body_data.sanity_check()
 
     def get_info(self) -> list[str]:
         """Return a list of strings representing the logged information from Jastrow data attributes."""
@@ -767,6 +788,13 @@ def _compute_Jastrow_two_body_jax(
     two_body_jastrow = two_body_jastrow_anti_parallel + two_body_jastrow_parallel_up + two_body_jastrow_parallel_dn
 
     return two_body_jastrow
+
+
+#############################################################################################################
+#
+# The following functions are no longer used in the main code. They are kept for future reference.
+#
+#############################################################################################################
 
 
 # no longer used in the main code

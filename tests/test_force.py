@@ -33,7 +33,6 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import os
-from logging import Formatter, StreamHandler, getLogger
 
 import jax
 import numpy as np
@@ -41,7 +40,7 @@ import pytest
 
 from ..jqmc.hamiltonians import Hamiltonian_data
 from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
-from ..jqmc.jqmc_kernel import GFMC, MCMC, QMC
+from ..jqmc.jqmc_kernel import MCMC, QMC, GFMC_fixed_num_projection
 from ..jqmc.swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
 from ..jqmc.trexio_wrapper import read_trexio_file
 from ..jqmc.wavefunction import Wavefunction_data
@@ -49,14 +48,6 @@ from ..jqmc.wavefunction import Wavefunction_data
 # JAX float64
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
-
-log = getLogger("myqmc")
-log.setLevel("DEBUG")
-stream_handler = StreamHandler()
-stream_handler.setLevel("DEBUG")
-handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
-stream_handler.setFormatter(handler_format)
-log.addHandler(stream_handler)
 
 
 # @pytest.mark.skip
@@ -272,7 +263,7 @@ def test_lrdmc_force_with_SWCT(request):
     mcmc_seed = 34356
 
     # run GFMC
-    gfmc = GFMC(
+    gfmc = GFMC_fixed_num_projection(
         hamiltonian_data=hamiltonian_data,
         num_walkers=4,
         num_mcmc_per_measurement=30,
@@ -300,3 +291,15 @@ def test_lrdmc_force_with_SWCT(request):
     # See [J. Chem. Phys. 156, 034101 (2022)]
     np.testing.assert_almost_equal(np.array(force_mean[0]), -1.0 * np.array(force_mean[1]), decimal=6)
     np.testing.assert_almost_equal(np.array(force_std[0]), np.array(force_std[1]), decimal=6)
+
+
+if __name__ == "__main__":
+    from logging import Formatter, StreamHandler, getLogger
+
+    logger = getLogger("jqmc")
+    logger.setLevel("INFO")
+    stream_handler = StreamHandler()
+    stream_handler.setLevel("INFO")
+    handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
+    stream_handler.setFormatter(handler_format)
+    logger.addHandler(stream_handler)

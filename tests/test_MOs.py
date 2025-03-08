@@ -32,15 +32,13 @@
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-from logging import Formatter, StreamHandler, getLogger
-
 import jax
 import numpy as np
 import pytest
 
 from ..jqmc.atomic_orbital import (
-    AO_data,
-    AOs_data,
+    AO_sphe_data,
+    AOs_sphe_data,
 )
 from ..jqmc.molecular_orbital import (
     MO_data,
@@ -58,14 +56,6 @@ from ..jqmc.structure import Structure_data
 # JAX float64
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
-
-log = getLogger("myqmc")
-log.setLevel("DEBUG")
-stream_handler = StreamHandler()
-stream_handler.setLevel("DEBUG")
-handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
-stream_handler.setFormatter(handler_format)
-log.addHandler(stream_handler)
 
 
 def test_MOs_comparing_jax_and_debug_implemenetations():
@@ -93,7 +83,7 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
     mo_ans_step_by_step = []
 
     ao_data_l = [
-        AO_data(
+        AO_sphe_data(
             num_ao_prim=orbital_indices.count(i),
             atomic_center_cart=R_carts[i],
             exponents=[exponents[k] for (k, v) in enumerate(orbital_indices) if v == i],
@@ -110,14 +100,14 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
     mo_ans_step_by_step = np.array(mo_ans_step_by_step)
 
     structure_data = Structure_data(
-        pbc_flag=[False, False, False],
+        pbc_flag=False,
         positions=R_carts,
         atomic_numbers=[0] * num_R_cart_samples,
         element_symbols=["X"] * num_R_cart_samples,
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
@@ -130,6 +120,8 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
     )
 
     mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
+
+    mos_data.sanity_check()
 
     mo_ans_all_jax = _compute_MOs_jax(mos_data=mos_data, r_carts=r_carts)
 
@@ -161,7 +153,7 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
     mo_ans_step_by_step = []
 
     ao_data_l = [
-        AO_data(
+        AO_sphe_data(
             num_ao_prim=orbital_indices.count(i),
             atomic_center_cart=R_carts[i],
             exponents=[exponents[k] for (k, v) in enumerate(orbital_indices) if v == i],
@@ -178,14 +170,14 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
     mo_ans_step_by_step = np.array(mo_ans_step_by_step)
 
     structure_data = Structure_data(
-        pbc_flag=[False, False, False],
+        pbc_flag=False,
         positions=R_carts,
         atomic_numbers=[0] * num_R_cart_samples,
         element_symbols=["X"] * num_R_cart_samples,
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
@@ -198,6 +190,7 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
     )
 
     mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
+    mos_data.sanity_check()
 
     mo_ans_all_jax = _compute_MOs_jax(mos_data=mos_data, r_carts=r_carts)
 
@@ -232,14 +225,14 @@ def test_MOs_comparing_auto_and_numerical_grads():
     mo_coefficients = np.random.rand(num_mo, num_ao)
 
     structure_data = Structure_data(
-        pbc_flag=[False, False, False],
+        pbc_flag=False,
         positions=R_carts,
         atomic_numbers=[0] * num_R_cart_samples,
         element_symbols=["X"] * num_R_cart_samples,
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
@@ -252,6 +245,7 @@ def test_MOs_comparing_auto_and_numerical_grads():
     )
 
     mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
+    mos_data.sanity_check()
 
     mo_matrix_grad_x_auto, mo_matrix_grad_y_auto, mo_matrix_grad_z_auto = _compute_MOs_grad_jax(
         mos_data=mos_data, r_carts=r_carts
@@ -288,14 +282,14 @@ def test_MOs_comparing_auto_and_numerical_grads():
     mo_coefficients = np.random.rand(num_mo, num_ao)
 
     structure_data = Structure_data(
-        pbc_flag=[False, False, False],
+        pbc_flag=False,
         positions=R_carts,
         atomic_numbers=[0] * num_R_cart_samples,
         element_symbols=["X"] * num_R_cart_samples,
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
@@ -308,6 +302,7 @@ def test_MOs_comparing_auto_and_numerical_grads():
     )
 
     mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
+    mos_data.sanity_check()
 
     mo_matrix_grad_x_auto, mo_matrix_grad_y_auto, mo_matrix_grad_z_auto = _compute_MOs_grad_jax(
         mos_data=mos_data, r_carts=r_carts
@@ -350,14 +345,14 @@ def test_MOs_comparing_auto_and_numerical_laplacians():
     mo_coefficients = np.random.rand(num_mo, num_ao)
 
     structure_data = Structure_data(
-        pbc_flag=[False, False, False],
+        pbc_flag=False,
         positions=R_carts,
         atomic_numbers=[0] * num_R_cart_samples,
         element_symbols=["X"] * num_R_cart_samples,
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
@@ -370,6 +365,7 @@ def test_MOs_comparing_auto_and_numerical_laplacians():
     )
 
     mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
+    mos_data.sanity_check()
 
     mo_matrix_laplacian_numerical = _compute_MOs_laplacian_jax(mos_data=mos_data, r_carts=r_carts)
 
@@ -381,14 +377,12 @@ def test_MOs_comparing_auto_and_numerical_laplacians():
 
 
 if __name__ == "__main__":
-    logger = getLogger("myqmc")
+    from logging import Formatter, StreamHandler, getLogger
+
+    logger = getLogger("jqmc")
     logger.setLevel("INFO")
     stream_handler = StreamHandler()
     stream_handler.setLevel("INFO")
     handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
     stream_handler.setFormatter(handler_format)
     logger.addHandler(stream_handler)
-
-    np.set_printoptions(threshold=1.0e8)
-
-    pass

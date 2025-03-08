@@ -33,7 +33,6 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import os
-from logging import Formatter, StreamHandler, getLogger
 
 import jax
 import numpy as np
@@ -56,14 +55,6 @@ from ..jqmc.wavefunction import (
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
-log = getLogger("myqmc")
-log.setLevel("DEBUG")
-stream_handler = StreamHandler()
-stream_handler.setLevel("DEBUG")
-handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
-stream_handler.setFormatter(handler_format)
-log.addHandler(stream_handler)
-
 
 def test_debug_and_jax_kinetic_energy():
     """Test the kinetic energy computation."""
@@ -83,8 +74,10 @@ def test_debug_and_jax_kinetic_energy():
         jastrow_two_body_data=jastrow_twobody_data,
         jastrow_three_body_data=None,
     )
+    jastrow_data.sanity_check()
 
     wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
+    wavefunction_data.sanity_check()
 
     num_ele_up = geminal_mo_data.num_electron_up
     num_ele_dn = geminal_mo_data.num_electron_dn
@@ -149,8 +142,10 @@ def test_debug_and_jax_discretized_kinetic_energy():
         jastrow_two_body_data=jastrow_twobody_data,
         jastrow_three_body_data=None,
     )
+    jastrow_data.sanity_check()
 
     wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
+    wavefunction_data.sanity_check()
 
     num_ele_up = geminal_mo_data.num_electron_up
     num_ele_dn = geminal_mo_data.num_electron_dn
@@ -192,3 +187,15 @@ def test_debug_and_jax_discretized_kinetic_energy():
     )
     np.testing.assert_array_almost_equal(elements_kinetic_part_jax, elements_kinetic_part_debug, decimal=8)
     np.testing.assert_array_almost_equal(elements_kinetic_part_jax_fast_update, elements_kinetic_part_debug, decimal=8)
+
+
+if __name__ == "__main__":
+    from logging import Formatter, StreamHandler, getLogger
+
+    logger = getLogger("jqmc")
+    logger.setLevel("INFO")
+    stream_handler = StreamHandler()
+    stream_handler.setLevel("INFO")
+    handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
+    stream_handler.setFormatter(handler_format)
+    logger.addHandler(stream_handler)

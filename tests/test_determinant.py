@@ -33,7 +33,6 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import os
-from logging import Formatter, StreamHandler, getLogger
 
 import jax
 import numpy as np
@@ -54,14 +53,6 @@ from ..jqmc.trexio_wrapper import read_trexio_file
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
-log = getLogger("myqmc")
-log.setLevel("DEBUG")
-stream_handler = StreamHandler()
-stream_handler.setLevel("DEBUG")
-handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
-stream_handler.setFormatter(handler_format)
-log.addHandler(stream_handler)
-
 
 def test_comparing_AO_and_MO_geminals():
     """Test the consistency between AO and MO geminals."""
@@ -73,6 +64,10 @@ def test_comparing_AO_and_MO_geminals():
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
+
+    # check geminal_data
+    geminal_mo_data.sanity_check()
+
     num_electron_up = geminal_mo_data.num_electron_up
     num_electron_dn = geminal_mo_data.num_electron_dn
 
@@ -170,6 +165,7 @@ def test_comparing_AO_and_MO_geminals():
     """
 
     geminal_ao_data = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_data)
+    geminal_ao_data.sanity_check()
 
     geminal_ao_debug = _compute_geminal_all_elements_debug(
         geminal_data=geminal_ao_data,
@@ -236,6 +232,8 @@ def test_numerial_and_auto_grads_ln_Det():
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
+
+    geminal_mo_data.sanity_check()
 
     num_electron_up = geminal_mo_data.num_electron_up
     num_electron_dn = geminal_mo_data.num_electron_dn
@@ -318,6 +316,7 @@ def test_numerial_and_auto_grads_ln_Det():
     """
 
     geminal_ao_data = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_data)
+    geminal_ao_data.sanity_check()
 
     grad_ln_D_up_numerical, grad_ln_D_dn_numerical, sum_laplacian_ln_D_numerical = _compute_grads_and_laplacian_ln_Det_debug(
         geminal_data=geminal_ao_data,
@@ -339,14 +338,12 @@ def test_numerial_and_auto_grads_ln_Det():
 
 
 if __name__ == "__main__":
-    logger = getLogger("myqmc")
+    from logging import Formatter, StreamHandler, getLogger
+
+    logger = getLogger("jqmc")
     logger.setLevel("INFO")
     stream_handler = StreamHandler()
     stream_handler.setLevel("INFO")
     handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
     stream_handler.setFormatter(handler_format)
     logger.addHandler(stream_handler)
-
-    np.set_printoptions(threshold=1.0e8)
-
-    pass

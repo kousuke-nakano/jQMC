@@ -32,13 +32,11 @@
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-from logging import Formatter, StreamHandler, getLogger
-
 import jax
 import numpy as np
 import pytest
 
-from ..jqmc.atomic_orbital import AOs_data
+from ..jqmc.atomic_orbital import AOs_sphe_data
 from ..jqmc.jastrow_factor import (
     Jastrow_one_body_data,
     Jastrow_three_body_data,
@@ -56,15 +54,6 @@ from ..jqmc.jastrow_factor import (
 )
 from ..jqmc.molecular_orbital import MOs_data
 from ..jqmc.structure import Structure_data
-
-# logger
-log = getLogger("myqmc")
-log.setLevel("DEBUG")
-stream_handler = StreamHandler()
-stream_handler.setLevel("DEBUG")
-handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
-stream_handler.setFormatter(handler_format)
-log.addHandler(stream_handler)
 
 
 def test_Jastrow_onebody_part():
@@ -167,7 +156,7 @@ def test_Jastrow_threebody_part_with_AOs_data():
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
@@ -234,7 +223,7 @@ def test_Jastrow_threebody_part_with_MOs_data():
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
@@ -302,7 +291,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
@@ -398,7 +387,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
         atomic_labels=["X"] * num_R_cart_samples,
     )
 
-    aos_data = AOs_data(
+    aos_data = AOs_sphe_data(
         structure_data=structure_data,
         nucleus_index=list(range(num_R_cart_samples)),
         num_ao=num_ao,
@@ -523,14 +512,12 @@ def test_numerical_and_auto_grads_Jastrow_twobody_part():
 
 
 if __name__ == "__main__":
-    logger = getLogger("myqmc")
+    from logging import Formatter, StreamHandler, getLogger
+
+    logger = getLogger("jqmc")
     logger.setLevel("INFO")
     stream_handler = StreamHandler()
     stream_handler.setLevel("INFO")
     handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
     stream_handler.setFormatter(handler_format)
     logger.addHandler(stream_handler)
-
-    np.set_printoptions(threshold=1.0e8)
-
-    pass
