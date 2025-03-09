@@ -291,7 +291,7 @@ def _compute_kinetic_energy_all_elements_debug(
 ) -> float | complex:
     """See compute_kinetic_energy_api."""
     # compute grad
-    diff_h = 1.0e-6
+    diff_h = 1.0e-5
 
     n_up, d_up = r_up_carts.shape
     grad_ln_Psi_up = np.zeros((n_up, d_up))
@@ -322,7 +322,7 @@ def _compute_kinetic_energy_all_elements_debug(
             grad_ln_Psi_dn[i][d] = (ln_Psi_plus - ln_Psi_minus) / (2 * diff_h)
 
     # compute laplacians
-    diff_h = 1.0e-4
+    diff_h = 1.0e-3
 
     ln_Psi = evaluate_ln_wavefunction_api(wavefunction_data, r_up_carts, r_dn_carts)
 

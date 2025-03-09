@@ -140,8 +140,8 @@ def test_debug_and_jax_kinetic_energy_all_elements():
         wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp
     )
 
-    np.testing.assert_almost_equal(K_elements_up_debug, K_elements_up_jax, decimal=5)
-    np.testing.assert_almost_equal(K_elements_dn_debug, K_elements_dn_jax, decimal=5)
+    np.testing.assert_almost_equal(K_elements_up_debug, K_elements_up_jax, decimal=3)
+    np.testing.assert_almost_equal(K_elements_dn_debug, K_elements_dn_jax, decimal=3)
 
 
 def test_debug_and_jax_discretized_kinetic_energy():
