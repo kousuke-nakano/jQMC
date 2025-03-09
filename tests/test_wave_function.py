@@ -36,6 +36,7 @@ import os
 
 import jax
 import numpy as np
+from jax import numpy as jnp
 
 from ..jqmc.determinant import compute_geminal_all_elements_api
 from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data
@@ -112,21 +113,35 @@ def test_debug_and_jax_kinetic_energy_all_elements():
 
     wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
 
-    num_ele_up = geminal_mo_data.num_electron_up
-    num_ele_dn = geminal_mo_data.num_electron_dn
-    r_cart_min, r_cart_max = -5.0, +5.0
-    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
-    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
+    r_up_carts_np = np.array(
+        [
+            [0.64878536, -0.83275288, 0.33532629],
+            [0.55271273, 0.72310605, 0.93443775],
+            [0.66767275, 0.1206456, -0.36521208],
+            [-0.93165236, -0.0120386, 0.33003036],
+        ]
+    )
+    r_dn_carts_np = np.array(
+        [
+            [1.0347816, 1.26162081, 0.42301735],
+            [-0.57843435, 1.03651987, -0.55091542],
+            [-1.56091964, -0.58952149, -0.99268141],
+            [0.61863233, -0.14903326, 0.51962683],
+        ]
+    )
+
+    r_up_carts_jnp = jnp.array(r_up_carts_np)
+    r_dn_carts_jnp = jnp.array(r_dn_carts_np)
 
     K_elements_up_debug, K_elements_dn_debug = _compute_kinetic_energy_all_elements_debug(
-        wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+        wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_np, r_dn_carts=r_dn_carts_np
     )
     K_elements_up_jax, K_elements_dn_jax = _compute_kinetic_energy_all_elements_jax(
-        wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+        wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp
     )
 
-    np.testing.assert_almost_equal(K_elements_up_debug, K_elements_up_jax, decimal=3)
-    np.testing.assert_almost_equal(K_elements_dn_debug, K_elements_dn_jax, decimal=3)
+    np.testing.assert_almost_equal(K_elements_up_debug, K_elements_up_jax, decimal=5)
+    np.testing.assert_almost_equal(K_elements_dn_debug, K_elements_dn_jax, decimal=5)
 
 
 def test_debug_and_jax_discretized_kinetic_energy():
@@ -152,34 +167,53 @@ def test_debug_and_jax_discretized_kinetic_energy():
     wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
     wavefunction_data.sanity_check()
 
-    num_ele_up = geminal_mo_data.num_electron_up
-    num_ele_dn = geminal_mo_data.num_electron_dn
-    r_cart_min, r_cart_max = -5.0, +5.0
-    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
-    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
+    r_up_carts_np = np.array(
+        [
+            [0.64878536, -0.83275288, 0.33532629],
+            [0.55271273, 0.72310605, 0.93443775],
+            [0.66767275, 0.1206456, -0.36521208],
+            [-0.93165236, -0.0120386, 0.33003036],
+        ]
+    )
+    r_dn_carts_np = np.array(
+        [
+            [1.0347816, 1.26162081, 0.42301735],
+            [-0.57843435, 1.03651987, -0.55091542],
+            [-1.56091964, -0.58952149, -0.99268141],
+            [0.61863233, -0.14903326, 0.51962683],
+        ]
+    )
+
+    r_up_carts_jnp = jnp.array(r_up_carts_np)
+    r_dn_carts_jnp = jnp.array(r_dn_carts_np)
 
     alat = 0.05
     RT = np.eye(3)
     mesh_kinetic_part_r_up_carts_debug, mesh_kinetic_part_r_dn_carts_debug, elements_kinetic_part_debug = (
         compute_discretized_kinetic_energy_debug(
-            alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+            alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_np, r_dn_carts=r_dn_carts_np
         )
     )
 
     mesh_kinetic_part_r_up_carts_jax, mesh_kinetic_part_r_dn_carts_jax, elements_kinetic_part_jax = (
         compute_discretized_kinetic_energy_api(
-            alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, RT=RT
+            alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp, RT=RT
         )
     )
 
-    A = compute_geminal_all_elements_api(geminal_data=geminal_mo_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+    A = compute_geminal_all_elements_api(geminal_data=geminal_mo_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp)
     A_old_inv = np.linalg.inv(A)
     (
         mesh_kinetic_part_r_up_carts_jax_fast_update,
         mesh_kinetic_part_r_dn_carts_jax_fast_update,
         elements_kinetic_part_jax_fast_update,
     ) = compute_discretized_kinetic_energy_api_fast_update(
-        alat=alat, A_old_inv=A_old_inv, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, RT=RT
+        alat=alat,
+        A_old_inv=A_old_inv,
+        wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts_jnp,
+        r_dn_carts=r_dn_carts_jnp,
+        RT=RT,
     )
 
     np.testing.assert_array_almost_equal(mesh_kinetic_part_r_up_carts_jax, mesh_kinetic_part_r_up_carts_debug, decimal=8)
