@@ -1882,6 +1882,27 @@ def _compute_bare_coulomb_potential_jax(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
     """See compute_bare_coulomb_potential_api."""
+    interactions_ion_ion = _compute_bare_coulomb_potential_ion_ion_jax(coulomb_potential_data)
+    interactions_el_ion_elements_up, interactions_el_ion_elements_dn = _compute_bare_coulomb_potential_el_ion_element_wise_jax(
+        coulomb_potential_data, r_up_carts, r_dn_carts
+    )
+    interactions_el_el = _compute_bare_coulomb_potential_el_el_jax(r_up_carts, r_dn_carts)
+
+    return (
+        interactions_ion_ion
+        + jnp.sum(interactions_el_ion_elements_up)
+        + jnp.sum(interactions_el_ion_elements_dn)
+        + interactions_el_el
+    )
+
+
+@jit
+def _compute_bare_coulomb_potential_el_ion_element_wise_jax(
+    coulomb_potential_data: Coulomb_potential_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+) -> tuple[jax.Array, jax.Array]:
+    """See compute_bare_coulomb_potential_api."""
     R_carts = jnp.array(coulomb_potential_data.structure_data.positions_cart_jnp)
     R_charges = np.array(coulomb_potential_data.effective_charges)
     r_up_charges = np.full(len(r_up_carts), -1.0, dtype=np.float64)
@@ -1890,8 +1911,132 @@ def _compute_bare_coulomb_potential_jax(
     r_up_carts = jnp.array(r_up_carts)
     r_dn_carts = jnp.array(r_dn_carts)
 
-    all_charges = np.hstack([R_charges, r_up_charges, r_dn_charges])
-    all_carts = jnp.vstack([R_carts, r_up_carts, r_dn_carts])
+    # Define a function to compute interaction for a pair
+    def el_ion_interaction(Z_i, Z_j, r_i, r_j):
+        distance = jnp.linalg.norm(r_i - r_j, axis=1)
+        interaction = (Z_i * Z_j) / distance
+        return interaction
+
+    # Vectorize the function over all pairs
+    interactions_R_r_up = jnp.sum(
+        jax.vmap(el_ion_interaction, in_axes=(None, 0, None, 0))(R_charges, r_up_charges, R_carts, r_up_carts), axis=1
+    )
+    interactions_R_r_dn = jnp.sum(
+        jax.vmap(el_ion_interaction, in_axes=(None, 0, None, 0))(R_charges, r_dn_charges, R_carts, r_dn_carts), axis=1
+    )
+
+    return interactions_R_r_up, interactions_R_r_dn
+
+
+@jit
+def _compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax(
+    coulomb_potential_data: Coulomb_potential_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+    alat: float,
+) -> tuple[jax.Array, jax.Array]:
+    """See compute_bare_coulomb_potential_api."""
+    R_carts = jnp.array(coulomb_potential_data.structure_data.positions_cart_jnp)
+    R_charges = np.array(coulomb_potential_data.effective_charges)
+    r_up_charges = np.full(len(r_up_carts), -1.0, dtype=np.float64)
+    r_dn_charges = np.full(len(r_dn_carts), -1.0, dtype=np.float64)
+
+    r_up_carts = jnp.array(r_up_carts)
+    r_dn_carts = jnp.array(r_dn_carts)
+
+    # Define a function to compute interaction for a pair
+    def el_ion_interaction(Z_i, Z_j, r_i, r_j, alat):
+        distance = jnp.maximum(jnp.linalg.norm(r_i - r_j, axis=1), alat)
+        interaction = (Z_i * Z_j) / distance
+        return interaction
+
+    # Vectorize the function over all pairs
+    interactions_R_r_up = jnp.sum(
+        jax.vmap(el_ion_interaction, in_axes=(None, 0, None, 0, None))(R_charges, r_up_charges, R_carts, r_up_carts, alat),
+        axis=1,
+    )
+    interactions_R_r_dn = jnp.sum(
+        jax.vmap(el_ion_interaction, in_axes=(None, 0, None, 0, None))(R_charges, r_dn_charges, R_carts, r_dn_carts, alat),
+        axis=1,
+    )
+
+    return interactions_R_r_up, interactions_R_r_dn
+
+
+def _compute_bare_coulomb_potential_el_ion_element_wise_debug(
+    coulomb_potential_data: Coulomb_potential_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """See compute_bare_coulomb_potential_api."""
+    R_carts = coulomb_potential_data.structure_data.positions_cart_np
+    R_charges = coulomb_potential_data.effective_charges
+    r_up_charges = [-1 for _ in range(len(r_up_carts))]
+    r_dn_charges = [-1 for _ in range(len(r_dn_carts))]
+
+    interactions_R_r_up = np.zeros(len(r_up_carts))
+    interactions_R_r_dn = np.zeros(len(r_dn_carts))
+
+    for i, (r_up_charge, r_up_cart) in enumerate(zip(r_up_charges, r_up_carts)):
+        interactions_R_r_up[i] = np.sum(
+            [(R_charge * r_up_charge) / np.linalg.norm(R_cart - r_up_cart) for R_charge, R_cart in zip(R_charges, R_carts)]
+        )
+
+    for i, (r_dn_charge, r_dn_cart) in enumerate(zip(r_dn_charges, r_dn_carts)):
+        interactions_R_r_dn[i] = np.sum(
+            [(R_charge * r_dn_charge) / np.linalg.norm(R_cart - r_dn_cart) for R_charge, R_cart in zip(R_charges, R_carts)]
+        )
+
+    return interactions_R_r_up, interactions_R_r_dn
+
+
+def _compute_discretized_bare_coulomb_potential_el_ion_element_wise_debug(
+    coulomb_potential_data: Coulomb_potential_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+    alat: float,
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """See compute_bare_coulomb_potential_api."""
+    R_carts = coulomb_potential_data.structure_data.positions_cart_np
+    R_charges = coulomb_potential_data.effective_charges
+    r_up_charges = [-1 for _ in range(len(r_up_carts))]
+    r_dn_charges = [-1 for _ in range(len(r_dn_carts))]
+
+    interactions_R_r_up = np.zeros(len(r_up_carts))
+    interactions_R_r_dn = np.zeros(len(r_dn_carts))
+
+    for i, (r_up_charge, r_up_cart) in enumerate(zip(r_up_charges, r_up_carts)):
+        interactions_R_r_up[i] = np.sum(
+            [
+                (R_charge * r_up_charge) / np.maximum(np.linalg.norm(R_cart - r_up_cart), alat)
+                for R_charge, R_cart in zip(R_charges, R_carts)
+            ]
+        )
+
+    for i, (r_dn_charge, r_dn_cart) in enumerate(zip(r_dn_charges, r_dn_carts)):
+        interactions_R_r_dn[i] = np.sum(
+            [
+                (R_charge * r_dn_charge) / np.maximum(np.linalg.norm(R_cart - r_dn_cart), alat)
+                for R_charge, R_cart in zip(R_charges, R_carts)
+            ]
+        )
+
+    return interactions_R_r_up, interactions_R_r_dn
+
+
+@jit
+def _compute_bare_coulomb_potential_el_el_jax(
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+) -> float:
+    r_up_charges = np.full(len(r_up_carts), -1.0, dtype=np.float64)
+    r_dn_charges = np.full(len(r_dn_carts), -1.0, dtype=np.float64)
+
+    r_up_carts = jnp.array(r_up_carts)
+    r_dn_carts = jnp.array(r_dn_carts)
+
+    all_charges = np.hstack([r_up_charges, r_dn_charges])
+    all_carts = jnp.vstack([r_up_carts, r_dn_carts])
 
     # Number of particles
     N_np = all_charges.shape[0]
@@ -1908,18 +2053,58 @@ def _compute_bare_coulomb_potential_jax(
     r_j = all_carts[idx_j_jnp]  # Shape: (M, D)
 
     # Define a function to compute interaction for a pair
-    def pair_interaction(Z_i, Z_j, r_i, r_j):
-        distance = jnp.linalg.norm(r_i - r_j) + 1e-12  # Add epsilon to avoid division by zero
+    def el_el_interaction(Z_i, Z_j, r_i, r_j):
+        distance = jnp.linalg.norm(r_i - r_j)
         interaction = (Z_i * Z_j) / distance
         return interaction
 
     # Vectorize the function over all pairs
-    interactions = jax.vmap(pair_interaction)(Z_i, Z_j, r_i, r_j)  # Shape: (M,)
+    interactions = jax.vmap(el_el_interaction)(Z_i, Z_j, r_i, r_j)  # Shape: (M,)
 
     # Sum all interactions
-    bare_coulomb_potential = jnp.sum(interactions)
+    bare_coulomb_potential_el_el = jnp.sum(interactions)
 
-    return bare_coulomb_potential
+    return bare_coulomb_potential_el_el
+
+
+@jit
+def _compute_bare_coulomb_potential_ion_ion_jax(
+    coulomb_potential_data: Coulomb_potential_data,
+) -> float:
+    """See compute_bare_coulomb_potential_api."""
+    R_carts = jnp.array(coulomb_potential_data.structure_data.positions_cart_jnp)
+    R_charges = np.array(coulomb_potential_data.effective_charges)
+
+    all_charges = R_charges
+    all_carts = R_carts
+
+    # Number of particles
+    N_np = all_charges.shape[0]
+    N_jnp = all_carts.shape[0]
+
+    # Generate all unique pairs indices (i < j)
+    idx_i_np, idx_j_np = np.triu_indices(N_np, k=1)
+    idx_i_jnp, idx_j_jnp = jnp.triu_indices(N_jnp, k=1)
+
+    # Extract charges and positions for each pair
+    Z_i = all_charges[idx_i_np]  # Shape: (M,)
+    Z_j = all_charges[idx_j_np]  # Shape: (M,)
+    r_i = all_carts[idx_i_jnp]  # Shape: (M, D)
+    r_j = all_carts[idx_j_jnp]  # Shape: (M, D)
+
+    # Define a function to compute interaction for a pair
+    def ion_ion_interaction(Z_i, Z_j, r_i, r_j):
+        distance = jnp.linalg.norm(r_i - r_j)
+        interaction = (Z_i * Z_j) / distance
+        return interaction
+
+    # Vectorize the function over all pairs
+    interactions = jax.vmap(ion_ion_interaction)(Z_i, Z_j, r_i, r_j)  # Shape: (M,)
+
+    # Sum all interactions
+    bare_coulomb_potential_ion_ion = jnp.sum(interactions)
+
+    return bare_coulomb_potential_ion_ion
 
 
 def _compute_coulomb_potential_debug(

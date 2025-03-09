@@ -5037,7 +5037,7 @@ if __name__ == "__main__":
     mcmc_seed = 3446
     tau = 0.10
     alat = 0.20
-    num_gfmc_collect_steps = 5
+    num_gfmc_collect_steps = 50
     non_local_move = "tmove"
 
     # run GFMC single-shot

@@ -277,14 +277,12 @@ def _compute_kinetic_energy_debug(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float | complex:
     """See compute_kinetic_energy_api."""
-
     kinetic_energy_all_elements_up, kinetic_energy_all_elements_dn = _compute_kinetic_energy_all_elements_debug(
-        wavefunction_data = wavefunction_data,
-        r_up_carts = r_up_carts,
-        r_dn_carts = r_dn_carts
+        wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
-    return np.sum(kinetic_energy_all_elements_up) + np.sum(kinetic_energy_all_elements_dn) 
+    return np.sum(kinetic_energy_all_elements_up) + np.sum(kinetic_energy_all_elements_dn)
+
 
 def _compute_kinetic_energy_all_elements_debug(
     wavefunction_data: Wavefunction_data,
@@ -307,7 +305,7 @@ def _compute_kinetic_energy_all_elements_debug(
             ln_Psi_plus = evaluate_ln_wavefunction_api(wavefunction_data, r_up_plus, r_dn_carts)
             ln_Psi_minus = evaluate_ln_wavefunction_api(wavefunction_data, r_up_minus, r_dn_carts)
 
-            grad_ln_Psi_up[i][d] = ((ln_Psi_plus - ln_Psi_minus) / (2 * diff_h))
+            grad_ln_Psi_up[i][d] = (ln_Psi_plus - ln_Psi_minus) / (2 * diff_h)
 
     n_dn, d_dn = r_dn_carts.shape
     grad_ln_Psi_dn = np.zeros((n_dn, d_dn))
@@ -321,7 +319,7 @@ def _compute_kinetic_energy_all_elements_debug(
             ln_Psi_plus = evaluate_ln_wavefunction_api(wavefunction_data, r_up_carts, r_dn_plus)
             ln_Psi_minus = evaluate_ln_wavefunction_api(wavefunction_data, r_up_carts, r_dn_minus)
 
-            grad_ln_Psi_dn[i][d] = ((ln_Psi_plus - ln_Psi_minus) / (2 * diff_h))
+            grad_ln_Psi_dn[i][d] = (ln_Psi_plus - ln_Psi_minus) / (2 * diff_h)
 
     # compute laplacians
     diff_h = 1.0e-3
@@ -361,6 +359,7 @@ def _compute_kinetic_energy_all_elements_debug(
 
     return (kinetic_energy_all_elements_up, kinetic_energy_all_elements_dn)
 
+
 @jit
 def _compute_kinetic_energy_all_elements_jax_old(
     wavefunction_data: Wavefunction_data,
@@ -384,6 +383,7 @@ def _compute_kinetic_energy_all_elements_jax_old(
 
     return (kinetic_energy_all_elements_up, kinetic_energy_all_elements_dn)
 
+
 @jit
 def _compute_kinetic_energy_jax(
     wavefunction_data: Wavefunction_data,
@@ -391,14 +391,12 @@ def _compute_kinetic_energy_jax(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
     """See compute_kinetic_energy_api."""
-
     kinetic_energy_all_elements_up, kinetic_energy_all_elements_dn = _compute_kinetic_energy_all_elements_jax(
-        wavefunction_data = wavefunction_data,
-        r_up_carts = r_up_carts,
-        r_dn_carts = r_dn_carts
+        wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
-    return jnp.sum(kinetic_energy_all_elements_up) + jnp.sum(kinetic_energy_all_elements_dn) 
+    return jnp.sum(kinetic_energy_all_elements_up) + jnp.sum(kinetic_energy_all_elements_dn)
+
 
 @jit
 def _compute_kinetic_energy_all_elements_jax(

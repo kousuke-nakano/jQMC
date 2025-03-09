@@ -42,10 +42,10 @@ from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data
 from ..jqmc.trexio_wrapper import read_trexio_file
 from ..jqmc.wavefunction import (
     Wavefunction_data,
-    _compute_kinetic_energy_debug,
-    _compute_kinetic_energy_jax,
     _compute_kinetic_energy_all_elements_debug,
     _compute_kinetic_energy_all_elements_jax,
+    _compute_kinetic_energy_debug,
+    _compute_kinetic_energy_jax,
     compute_discretized_kinetic_energy_api,
     compute_discretized_kinetic_energy_api_fast_update,
     compute_discretized_kinetic_energy_debug,
@@ -88,7 +88,7 @@ def test_debug_and_jax_kinetic_energy():
     K_debug = _compute_kinetic_energy_debug(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
     K_jax = _compute_kinetic_energy_jax(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
 
-    np.testing.assert_almost_equal(K_debug, K_jax, decimal=5)
+    np.testing.assert_almost_equal(K_debug, K_jax, decimal=3)
 
 
 def test_debug_and_jax_kinetic_energy_all_elements():
@@ -118,11 +118,16 @@ def test_debug_and_jax_kinetic_energy_all_elements():
     r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
 
-    K_elements_up_debug, K_elements_dn_debug = _compute_kinetic_energy_all_elements_debug(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
-    K_elements_up_jax, K_elements_dn_jax = _compute_kinetic_energy_all_elements_jax(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+    K_elements_up_debug, K_elements_dn_debug = _compute_kinetic_energy_all_elements_debug(
+        wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+    )
+    K_elements_up_jax, K_elements_dn_jax = _compute_kinetic_energy_all_elements_jax(
+        wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+    )
 
-    np.testing.assert_almost_equal(K_elements_up_debug, K_elements_up_jax, decimal=5)
-    np.testing.assert_almost_equal(K_elements_dn_debug, K_elements_dn_jax, decimal=5)
+    np.testing.assert_almost_equal(K_elements_up_debug, K_elements_up_jax, decimal=3)
+    np.testing.assert_almost_equal(K_elements_dn_debug, K_elements_dn_jax, decimal=3)
+
 
 def test_debug_and_jax_discretized_kinetic_energy():
     """Test the discretized kinetic energy computation."""

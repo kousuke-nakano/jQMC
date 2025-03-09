@@ -36,10 +36,16 @@ import os
 
 import jax
 import numpy as np
+import pytest
+from jax import numpy as jnp
 
 from ..jqmc.coulomb_potential import (
     _compute_bare_coulomb_potential_debug,
+    _compute_bare_coulomb_potential_el_ion_element_wise_debug,
+    _compute_bare_coulomb_potential_el_ion_element_wise_jax,
     _compute_bare_coulomb_potential_jax,
+    _compute_discretized_bare_coulomb_potential_el_ion_element_wise_debug,
+    _compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax,
     _compute_ecp_local_parts_all_pairs_debug,
     _compute_ecp_local_parts_all_pairs_jax,
     _compute_ecp_non_local_parts_all_pairs_debug,
@@ -70,7 +76,7 @@ def test_debug_and_jax_bare_coulomb():
     # check its input
     coulomb_potential_data.sanity_check()
 
-    old_r_up_carts = np.array(
+    r_up_carts_np = np.array(
         [
             [0.64878536, -0.83275288, 0.33532629],
             [0.55271273, 0.72310605, 0.93443775],
@@ -78,7 +84,7 @@ def test_debug_and_jax_bare_coulomb():
             [-0.93165236, -0.0120386, 0.33003036],
         ]
     )
-    old_r_dn_carts = np.array(
+    r_dn_carts_np = np.array(
         [
             [1.0347816, 1.26162081, 0.42301735],
             [-0.57843435, 1.03651987, -0.55091542],
@@ -86,21 +92,21 @@ def test_debug_and_jax_bare_coulomb():
             [0.61863233, -0.14903326, 0.51962683],
         ]
     )
-    new_r_up_carts = old_r_up_carts.copy()
-    new_r_dn_carts = old_r_dn_carts.copy()
-    new_r_dn_carts[3] = [0.618632327645002, -0.149033260668010, 0.131889254514777]
+
+    r_up_carts_jnp = jnp.array(r_up_carts_np)
+    r_dn_carts_jnp = jnp.array(r_dn_carts_np)
 
     # bare coulomb
     vpot_bare_jax = _compute_bare_coulomb_potential_jax(
         coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
+        r_up_carts=r_up_carts_jnp,
+        r_dn_carts=r_dn_carts_jnp,
     )
 
     vpot_bare_debug = _compute_bare_coulomb_potential_debug(
         coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
+        r_up_carts=r_up_carts_np,
+        r_dn_carts=r_dn_carts_np,
     )
 
     # print(f"vpot_bare_jax = {vpot_bare_jax}")
@@ -122,7 +128,7 @@ def test_debug_and_jax_ecp_local():
     # check its input
     coulomb_potential_data.sanity_check()
 
-    old_r_up_carts = np.array(
+    r_up_carts_np = np.array(
         [
             [0.64878536, -0.83275288, 0.33532629],
             [0.55271273, 0.72310605, 0.93443775],
@@ -130,7 +136,7 @@ def test_debug_and_jax_ecp_local():
             [-0.93165236, -0.0120386, 0.33003036],
         ]
     )
-    old_r_dn_carts = np.array(
+    r_dn_carts_np = np.array(
         [
             [1.0347816, 1.26162081, 0.42301735],
             [-0.57843435, 1.03651987, -0.55091542],
@@ -138,21 +144,21 @@ def test_debug_and_jax_ecp_local():
             [0.61863233, -0.14903326, 0.51962683],
         ]
     )
-    new_r_up_carts = old_r_up_carts.copy()
-    new_r_dn_carts = old_r_dn_carts.copy()
-    new_r_dn_carts[3] = [0.618632327645002, -0.149033260668010, 0.131889254514777]
+
+    r_up_carts_jnp = jnp.array(r_up_carts_np)
+    r_dn_carts_jnp = jnp.array(r_dn_carts_np)
 
     # ecp local
     vpot_ecp_local_full_NN_jax = _compute_ecp_local_parts_all_pairs_jax(
         coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
+        r_up_carts=r_up_carts_jnp,
+        r_dn_carts=r_dn_carts_jnp,
     )
 
     vpot_ecp_local_full_NN_debug = _compute_ecp_local_parts_all_pairs_debug(
         coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
+        r_up_carts=r_up_carts_np,
+        r_dn_carts=r_dn_carts_np,
     )
 
     np.testing.assert_almost_equal(vpot_ecp_local_full_NN_jax, vpot_ecp_local_full_NN_debug, decimal=10)
@@ -184,7 +190,7 @@ def test_debug_and_jax_ecp_non_local():
 
     wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
 
-    old_r_up_carts = np.array(
+    r_up_carts_np = np.array(
         [
             [0.64878536, -0.83275288, 0.33532629],
             [0.55271273, 0.72310605, 0.93443775],
@@ -192,7 +198,7 @@ def test_debug_and_jax_ecp_non_local():
             [-0.93165236, -0.0120386, 0.33003036],
         ]
     )
-    old_r_dn_carts = np.array(
+    r_dn_carts_np = np.array(
         [
             [1.0347816, 1.26162081, 0.42301735],
             [-0.57843435, 1.03651987, -0.55091542],
@@ -200,9 +206,9 @@ def test_debug_and_jax_ecp_non_local():
             [0.61863233, -0.14903326, 0.51962683],
         ]
     )
-    new_r_up_carts = old_r_up_carts.copy()
-    new_r_dn_carts = old_r_dn_carts.copy()
-    new_r_dn_carts[3] = [0.618632327645002, -0.149033260668010, 0.131889254514777]
+
+    r_up_carts_jnp = jnp.array(r_up_carts_np)
+    r_dn_carts_jnp = jnp.array(r_dn_carts_np)
 
     # ecp non-local (full_NN)
     (
@@ -213,8 +219,8 @@ def test_debug_and_jax_ecp_non_local():
     ) = _compute_ecp_non_local_parts_all_pairs_jax(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
+        r_up_carts=r_up_carts_jnp,
+        r_dn_carts=r_dn_carts_jnp,
     )
 
     (
@@ -225,8 +231,8 @@ def test_debug_and_jax_ecp_non_local():
     ) = _compute_ecp_non_local_parts_all_pairs_debug(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
+        r_up_carts=r_up_carts_np,
+        r_dn_carts=r_dn_carts_np,
     )
 
     np.testing.assert_almost_equal(sum_V_nonlocal_full_NN_debug, sum_V_nonlocal_full_NN_jax, decimal=6)
@@ -264,8 +270,8 @@ def test_debug_and_jax_ecp_non_local():
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         NN=n_atom,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
+        r_up_carts=r_up_carts_jnp,
+        r_dn_carts=r_dn_carts_jnp,
     )
 
     (
@@ -277,8 +283,8 @@ def test_debug_and_jax_ecp_non_local():
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         NN=n_atom,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
+        r_up_carts=r_up_carts_np,
+        r_dn_carts=r_dn_carts_np,
     )
 
     # debug, full-NN vs check-NN
@@ -329,8 +335,8 @@ def test_debug_and_jax_ecp_non_local():
     ) = _compute_ecp_non_local_parts_nearest_neighbors_jax(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
+        r_up_carts=r_up_carts_jnp,
+        r_dn_carts=r_dn_carts_jnp,
     )
 
     (
@@ -341,8 +347,8 @@ def test_debug_and_jax_ecp_non_local():
     ) = _compute_ecp_non_local_parts_nearest_neighbors_debug(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
+        r_up_carts=r_up_carts_np,
+        r_dn_carts=r_dn_carts_np,
     )
 
     np.testing.assert_almost_equal(sum_V_nonlocal_NN_debug, sum_V_nonlocal_NN_jax, decimal=6)
@@ -361,6 +367,118 @@ def test_debug_and_jax_ecp_non_local():
     np.testing.assert_array_almost_equal(
         mesh_non_local_r_dn_carts_max_NN_jax, mesh_non_local_r_dn_carts_max_NN_debug, decimal=6
     )
+
+
+@pytest.mark.activate_if_disable_jit
+def test_debug_and_jax_bare_el_ion_elements(request):
+    """Test the bare couloumb potential computation."""
+    if not request.config.getoption("--disable-jit"):
+        pytest.skip(reason="A bug of flux.struct with @jit.")
+    (
+        structure_data,
+        _,
+        _,
+        _,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
+
+    # check its input
+    coulomb_potential_data.sanity_check()
+
+    r_up_carts_np = np.array(
+        [
+            [0.64878536, -0.83275288, 0.33532629],
+            [0.55271273, 0.72310605, 0.93443775],
+            [0.66767275, 0.1206456, -0.36521208],
+            [-0.93165236, -0.0120386, 0.33003036],
+        ]
+    )
+    r_dn_carts_np = np.array(
+        [
+            [1.0347816, 1.26162081, 0.42301735],
+            [-0.57843435, 1.03651987, -0.55091542],
+            [-1.56091964, -0.58952149, -0.99268141],
+            [0.61863233, -0.14903326, 0.51962683],
+        ]
+    )
+
+    r_up_carts_jnp = jnp.array(r_up_carts_np)
+    r_dn_carts_jnp = jnp.array(r_dn_carts_np)
+
+    interactions_R_r_up_debug, interactions_R_r_dn_debug = _compute_bare_coulomb_potential_el_ion_element_wise_debug(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=r_up_carts_np,
+        r_dn_carts=r_dn_carts_np,
+    )
+
+    interactions_R_r_up_jax, interactions_R_r_dn_jax = _compute_bare_coulomb_potential_el_ion_element_wise_jax(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=r_up_carts_jnp,
+        r_dn_carts=r_dn_carts_jnp,
+    )
+
+    np.testing.assert_almost_equal(interactions_R_r_up_debug, interactions_R_r_up_jax, decimal=6)
+    np.testing.assert_almost_equal(interactions_R_r_dn_debug, interactions_R_r_dn_jax, decimal=6)
+
+
+@pytest.mark.activate_if_disable_jit
+def test_debug_and_jax_discretized_bare_el_ion_elements(request):
+    """Test the bare couloumb potential computation."""
+    if not request.config.getoption("--disable-jit"):
+        pytest.skip(reason="A bug of flux.struct with @jit.")
+    (
+        structure_data,
+        _,
+        _,
+        _,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
+
+    # check its input
+    coulomb_potential_data.sanity_check()
+
+    r_up_carts_np = np.array(
+        [
+            [0.64878536, -0.83275288, 0.33532629],
+            [0.55271273, 0.72310605, 0.93443775],
+            [0.66767275, 0.1206456, -0.36521208],
+            [-0.93165236, -0.0120386, 0.33003036],
+        ]
+    )
+    r_dn_carts_np = np.array(
+        [
+            [1.0347816, 1.26162081, 0.42301735],
+            [-0.57843435, 1.03651987, -0.55091542],
+            [-1.56091964, -0.58952149, -0.99268141],
+            [0.61863233, -0.14903326, 0.51962683],
+        ]
+    )
+
+    r_up_carts_jnp = jnp.array(r_up_carts_np)
+    r_dn_carts_jnp = jnp.array(r_dn_carts_np)
+
+    alat = 0.5
+
+    interactions_R_r_up_debug, interactions_R_r_dn_debug = (
+        _compute_discretized_bare_coulomb_potential_el_ion_element_wise_debug(
+            coulomb_potential_data=coulomb_potential_data,
+            r_up_carts=r_up_carts_np,
+            r_dn_carts=r_dn_carts_np,
+            alat=alat,
+        )
+    )
+
+    interactions_R_r_up_jax, interactions_R_r_dn_jax = _compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=r_up_carts_jnp,
+        r_dn_carts=r_dn_carts_jnp,
+        alat=alat,
+    )
+
+    np.testing.assert_almost_equal(interactions_R_r_up_debug, interactions_R_r_up_jax, decimal=6)
+    np.testing.assert_almost_equal(interactions_R_r_dn_debug, interactions_R_r_dn_jax, decimal=6)
 
 
 """
