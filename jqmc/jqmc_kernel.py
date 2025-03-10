@@ -160,20 +160,22 @@ class MCMC:
         self.__timer_de_L_dc = 0.0
         self.__timer_misc = 0.0
 
-        # set init electron positions
-        num_electron_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
-        num_electron_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+        # Place electrons around each nucleus with improved spin assignment
+
+        tot_num_electron_up = hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+        tot_num_electron_dn = hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
 
         r_carts_up_list = []
         r_carts_dn_list = []
 
         np.random.seed(self.__mpi_seed)
+
         for _ in range(self.__num_walkers):
             # Initialization
             r_carts_up = []
             r_carts_dn = []
-
-            total_electrons = 0
+            total_assigned_up = 0
+            total_assigned_dn = 0
 
             if hamiltonian_data.coulomb_potential_data.ecp_flag:
                 charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
@@ -182,51 +184,63 @@ class MCMC:
             else:
                 charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
 
+            logger.info(f"charges = {charges}.")
             coords = hamiltonian_data.structure_data.positions_cart_np
 
-            # Place electrons around each nucleus
+            # Place electrons for each atom
             for i in range(len(coords)):
                 charge = charges[i]
-                num_electrons = int(np.round(charge))  # Number of electrons to place based on the charge
+                n_elec = int(np.round(charge))  # Number of electrons to place for this atom
+                logger.info(f"charge = {charge}.")
+                logger.info(f"num_electrons = {n_elec}.")
 
-                # Retrieve the position coordinates
                 x, y, z = coords[i]
 
-                # Place electrons
-                for _ in range(num_electrons):
-                    # Calculate distance range
+                # Determine the number of up and dn electrons for this atom
+                if n_elec % 2 == 0:
+                    num_up = n_elec // 2
+                    num_dn = n_elec // 2
+                else:
+                    # For odd numbers, decide which spin gets the extra electron based on the overall shortage
+                    remaining_up = tot_num_electron_up - total_assigned_up
+                    remaining_dn = tot_num_electron_dn - total_assigned_dn
+                    if remaining_up >= remaining_dn:
+                        num_up = n_elec // 2 + 1
+                        num_dn = n_elec // 2
+                    else:
+                        num_up = n_elec // 2
+                        num_dn = n_elec // 2 + 1
+
+                # Place up electrons
+                for _ in range(num_up):
                     distance = np.random.uniform(0.1, 2.0)
                     theta = np.random.uniform(0, np.pi)
                     phi = np.random.uniform(0, 2 * np.pi)
-
-                    # Convert spherical to Cartesian coordinates
                     dx = distance * np.sin(theta) * np.cos(phi)
                     dy = distance * np.sin(theta) * np.sin(phi)
                     dz = distance * np.cos(theta)
-
-                    # Position of the electron
                     electron_position = np.array([x + dx, y + dy, z + dz])
+                    r_carts_up.append(electron_position)
+                total_assigned_up += num_up
 
-                    # Assign spin
-                    if len(r_carts_up) < num_electron_up:
-                        r_carts_up.append(electron_position)
-                    else:
-                        r_carts_dn.append(electron_position)
+                # Place dn electrons
+                for _ in range(num_dn):
+                    distance = np.random.uniform(0.1, 2.0)
+                    theta = np.random.uniform(0, np.pi)
+                    phi = np.random.uniform(0, 2 * np.pi)
+                    dx = distance * np.sin(theta) * np.cos(phi)
+                    dy = distance * np.sin(theta) * np.sin(phi)
+                    dz = distance * np.cos(theta)
+                    electron_position = np.array([x + dx, y + dy, z + dz])
+                    r_carts_dn.append(electron_position)
+                total_assigned_dn += num_dn
 
-                total_electrons += num_electrons
+            # Electron assignment for all atoms is complete
+            logger.debug(f"Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
+            logger.debug(f"Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
 
-            # Handle surplus electrons
-            remaining_up = num_electron_up - len(r_carts_up)
-            remaining_dn = num_electron_dn - len(r_carts_dn)
-
-            # Randomly place any remaining electrons
-            for _ in range(remaining_up):
-                r_carts_up.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
-            for _ in range(remaining_dn):
-                r_carts_dn.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
-
-            r_carts_up = np.array(r_carts_up)
-            r_carts_dn = np.array(r_carts_dn)
+            # If necessary, include a check/adjustment step to ensure the overall assignment matches the targets
+            # (Here it is assumed that sum(round(charge)) equals tot_num_electron_up + tot_num_electron_dn)
 
             r_carts_up_list.append(r_carts_up)
             r_carts_dn_list.append(r_carts_dn)
@@ -1321,20 +1335,22 @@ class GFMC_fixed_projection_time:
         )
         self.__jax_PRNG_key_list = self.__jax_PRNG_key_list_init
 
-        # Place electrons around each nucleus
-        num_electron_up = hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
-        num_electron_dn = hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+        # Place electrons around each nucleus with improved spin assignment
+
+        tot_num_electron_up = hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+        tot_num_electron_dn = hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
 
         r_carts_up_list = []
         r_carts_dn_list = []
 
         np.random.seed(self.__mpi_seed)
+
         for _ in range(self.__num_walkers):
             # Initialization
             r_carts_up = []
             r_carts_dn = []
-
-            total_electrons = 0
+            total_assigned_up = 0
+            total_assigned_dn = 0
 
             if hamiltonian_data.coulomb_potential_data.ecp_flag:
                 charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
@@ -1343,48 +1359,63 @@ class GFMC_fixed_projection_time:
             else:
                 charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
 
+            logger.info(f"charges = {charges}.")
             coords = hamiltonian_data.structure_data.positions_cart_np
 
-            # Place electrons around each nucleus
+            # Place electrons for each atom
             for i in range(len(coords)):
                 charge = charges[i]
-                num_electrons = int(np.round(charge))  # Number of electrons to place based on the charge
+                n_elec = int(np.round(charge))  # Number of electrons to place for this atom
+                logger.info(f"charge = {charge}.")
+                logger.info(f"num_electrons = {n_elec}.")
 
-                # Retrieve the position coordinates
                 x, y, z = coords[i]
 
-                # Place electrons
-                for _ in range(num_electrons):
-                    # Calculate distance range
+                # Determine the number of up and dn electrons for this atom
+                if n_elec % 2 == 0:
+                    num_up = n_elec // 2
+                    num_dn = n_elec // 2
+                else:
+                    # For odd numbers, decide which spin gets the extra electron based on the overall shortage
+                    remaining_up = tot_num_electron_up - total_assigned_up
+                    remaining_dn = tot_num_electron_dn - total_assigned_dn
+                    if remaining_up >= remaining_dn:
+                        num_up = n_elec // 2 + 1
+                        num_dn = n_elec // 2
+                    else:
+                        num_up = n_elec // 2
+                        num_dn = n_elec // 2 + 1
+
+                # Place up electrons
+                for _ in range(num_up):
                     distance = np.random.uniform(0.1, 2.0)
                     theta = np.random.uniform(0, np.pi)
                     phi = np.random.uniform(0, 2 * np.pi)
-
-                    # Convert spherical to Cartesian coordinates
                     dx = distance * np.sin(theta) * np.cos(phi)
                     dy = distance * np.sin(theta) * np.sin(phi)
                     dz = distance * np.cos(theta)
-
-                    # Position of the electron
                     electron_position = np.array([x + dx, y + dy, z + dz])
+                    r_carts_up.append(electron_position)
+                total_assigned_up += num_up
 
-                    # Assign spin
-                    if len(r_carts_up) < num_electron_up:
-                        r_carts_up.append(electron_position)
-                    else:
-                        r_carts_dn.append(electron_position)
+                # Place dn electrons
+                for _ in range(num_dn):
+                    distance = np.random.uniform(0.1, 2.0)
+                    theta = np.random.uniform(0, np.pi)
+                    phi = np.random.uniform(0, 2 * np.pi)
+                    dx = distance * np.sin(theta) * np.cos(phi)
+                    dy = distance * np.sin(theta) * np.sin(phi)
+                    dz = distance * np.cos(theta)
+                    electron_position = np.array([x + dx, y + dy, z + dz])
+                    r_carts_dn.append(electron_position)
+                total_assigned_dn += num_dn
 
-                total_electrons += num_electrons
+            # Electron assignment for all atoms is complete
+            logger.debug(f"Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
+            logger.debug(f"Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
 
-            # Handle surplus electrons
-            remaining_up = num_electron_up - len(r_carts_up)
-            remaining_dn = num_electron_dn - len(r_carts_dn)
-
-            # Randomly place any remaining electrons
-            for _ in range(remaining_up):
-                r_carts_up.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
-            for _ in range(remaining_dn):
-                r_carts_dn.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
+            # If necessary, include a check/adjustment step to ensure the overall assignment matches the targets
+            # (Here it is assumed that sum(round(charge)) equals tot_num_electron_up + tot_num_electron_dn)
 
             r_carts_up_list.append(r_carts_up)
             r_carts_dn_list.append(r_carts_dn)
@@ -2306,20 +2337,22 @@ class GFMC_fixed_num_projection:
         )
         self.__jax_PRNG_key_list = self.__jax_PRNG_key_list_init
 
-        # Place electrons around each nucleus
-        num_electron_up = hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
-        num_electron_dn = hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+        # Place electrons around each nucleus with improved spin assignment
+
+        tot_num_electron_up = hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+        tot_num_electron_dn = hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
 
         r_carts_up_list = []
         r_carts_dn_list = []
 
         np.random.seed(self.__mpi_seed)
+
         for _ in range(self.__num_walkers):
             # Initialization
             r_carts_up = []
             r_carts_dn = []
-
-            total_electrons = 0
+            total_assigned_up = 0
+            total_assigned_dn = 0
 
             if hamiltonian_data.coulomb_potential_data.ecp_flag:
                 charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
@@ -2328,48 +2361,63 @@ class GFMC_fixed_num_projection:
             else:
                 charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
 
+            logger.info(f"charges = {charges}.")
             coords = hamiltonian_data.structure_data.positions_cart_np
 
-            # Place electrons around each nucleus
+            # Place electrons for each atom
             for i in range(len(coords)):
                 charge = charges[i]
-                num_electrons = int(np.round(charge))  # Number of electrons to place based on the charge
+                n_elec = int(np.round(charge))  # Number of electrons to place for this atom
+                logger.info(f"charge = {charge}.")
+                logger.info(f"num_electrons = {n_elec}.")
 
-                # Retrieve the position coordinates
                 x, y, z = coords[i]
 
-                # Place electrons
-                for _ in range(num_electrons):
-                    # Calculate distance range
+                # Determine the number of up and dn electrons for this atom
+                if n_elec % 2 == 0:
+                    num_up = n_elec // 2
+                    num_dn = n_elec // 2
+                else:
+                    # For odd numbers, decide which spin gets the extra electron based on the overall shortage
+                    remaining_up = tot_num_electron_up - total_assigned_up
+                    remaining_dn = tot_num_electron_dn - total_assigned_dn
+                    if remaining_up >= remaining_dn:
+                        num_up = n_elec // 2 + 1
+                        num_dn = n_elec // 2
+                    else:
+                        num_up = n_elec // 2
+                        num_dn = n_elec // 2 + 1
+
+                # Place up electrons
+                for _ in range(num_up):
                     distance = np.random.uniform(0.1, 2.0)
                     theta = np.random.uniform(0, np.pi)
                     phi = np.random.uniform(0, 2 * np.pi)
-
-                    # Convert spherical to Cartesian coordinates
                     dx = distance * np.sin(theta) * np.cos(phi)
                     dy = distance * np.sin(theta) * np.sin(phi)
                     dz = distance * np.cos(theta)
-
-                    # Position of the electron
                     electron_position = np.array([x + dx, y + dy, z + dz])
+                    r_carts_up.append(electron_position)
+                total_assigned_up += num_up
 
-                    # Assign spin
-                    if len(r_carts_up) < num_electron_up:
-                        r_carts_up.append(electron_position)
-                    else:
-                        r_carts_dn.append(electron_position)
+                # Place dn electrons
+                for _ in range(num_dn):
+                    distance = np.random.uniform(0.1, 2.0)
+                    theta = np.random.uniform(0, np.pi)
+                    phi = np.random.uniform(0, 2 * np.pi)
+                    dx = distance * np.sin(theta) * np.cos(phi)
+                    dy = distance * np.sin(theta) * np.sin(phi)
+                    dz = distance * np.cos(theta)
+                    electron_position = np.array([x + dx, y + dy, z + dz])
+                    r_carts_dn.append(electron_position)
+                total_assigned_dn += num_dn
 
-                total_electrons += num_electrons
+            # Electron assignment for all atoms is complete
+            logger.debug(f"Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
+            logger.debug(f"Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
 
-            # Handle surplus electrons
-            remaining_up = num_electron_up - len(r_carts_up)
-            remaining_dn = num_electron_dn - len(r_carts_dn)
-
-            # Randomly place any remaining electrons
-            for _ in range(remaining_up):
-                r_carts_up.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
-            for _ in range(remaining_dn):
-                r_carts_dn.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
+            # If necessary, include a check/adjustment step to ensure the overall assignment matches the targets
+            # (Here it is assumed that sum(round(charge)) equals tot_num_electron_up + tot_num_electron_dn)
 
             r_carts_up_list.append(r_carts_up)
             r_carts_dn_list.append(r_carts_dn)
@@ -5346,12 +5394,13 @@ if __name__ == "__main__":
         hamiltonian_data = pickle.load(f)
 
     # MCMC param
+
+    """
     num_walkers = 4
     num_mcmc_warmup_steps = 0
     num_mcmc_bin_blocks = 50
     mcmc_seed = 34356
 
-    """
     # run VMC single-shot
     mcmc = MCMC(
         hamiltonian_data=hamiltonian_data,
