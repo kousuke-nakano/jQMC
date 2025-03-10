@@ -290,6 +290,8 @@ def _compute_kinetic_energy_all_elements_debug(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float | complex:
     """See compute_kinetic_energy_api."""
+
+    """
     # compute grad
     diff_h = 1.0e-5
 
@@ -356,6 +358,43 @@ def _compute_kinetic_energy_all_elements_debug(
 
     kinetic_energy_all_elements_up = -1.0 / 2.0 * (laplacian_ln_Psi_up + np.sum(grad_ln_Psi_up**2, axis=1))
     kinetic_energy_all_elements_dn = -1.0 / 2.0 * (laplacian_ln_Psi_dn + np.sum(grad_ln_Psi_dn**2, axis=1))
+    """
+
+    # compute laplacians
+    diff_h = 2.0e-4
+
+    Psi = evaluate_wavefunction_api(wavefunction_data, r_up_carts, r_dn_carts)
+
+    n_up, d_up = r_up_carts.shape
+    laplacian_Psi_up = np.zeros(n_up)
+    for i in range(n_up):
+        for d in range(d_up):
+            r_up_plus = r_up_carts.copy()
+            r_up_minus = r_up_carts.copy()
+            r_up_plus[i, d] += diff_h
+            r_up_minus[i, d] -= diff_h
+
+            Psi_plus = evaluate_wavefunction_api(wavefunction_data, r_up_plus, r_dn_carts)
+            Psi_minus = evaluate_wavefunction_api(wavefunction_data, r_up_minus, r_dn_carts)
+
+            laplacian_Psi_up[i] += (Psi_plus + Psi_minus - 2 * Psi) / (diff_h**2)
+
+    n_dn, d_dn = r_dn_carts.shape
+    laplacian_Psi_dn = np.zeros(n_dn)
+    for i in range(n_dn):
+        for d in range(d_dn):
+            r_dn_plus = r_dn_carts.copy()
+            r_dn_minus = r_dn_carts.copy()
+            r_dn_plus[i, d] += diff_h
+            r_dn_minus[i, d] -= diff_h
+
+            Psi_plus = evaluate_wavefunction_api(wavefunction_data, r_up_carts, r_dn_plus)
+            Psi_minus = evaluate_wavefunction_api(wavefunction_data, r_up_carts, r_dn_minus)
+
+            laplacian_Psi_dn[i] += (Psi_plus + Psi_minus - 2 * Psi) / (diff_h**2)
+
+    kinetic_energy_all_elements_up = -1.0 / 2.0 * laplacian_Psi_up / Psi
+    kinetic_energy_all_elements_dn = -1.0 / 2.0 * laplacian_Psi_dn / Psi
 
     return (kinetic_energy_all_elements_up, kinetic_energy_all_elements_dn)
 

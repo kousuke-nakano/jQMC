@@ -46,11 +46,11 @@ from jax import numpy as jnp
 from mpi4py import MPI
 
 from .coulomb_potential import (
-    _compute_bare_coulomb_potential_el_el_jax,
-    _compute_bare_coulomb_potential_el_ion_element_wise_jax,
-    _compute_bare_coulomb_potential_ion_ion_jax,
+    # _compute_bare_coulomb_potential_el_el_jax,
+    # _compute_bare_coulomb_potential_el_ion_element_wise_jax,
+    # _compute_bare_coulomb_potential_ion_ion_jax,
     _compute_bare_coulomb_potential_jax,
-    _compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax,
+    # _compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax,
     _compute_ecp_local_parts_all_pairs_jax,
     _compute_ecp_non_local_parts_nearest_neighbors_jax,
 )
@@ -66,7 +66,7 @@ from .structure import find_nearest_index_jax
 from .swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
 from .wavefunction import (
     Wavefunction_data,
-    _compute_kinetic_energy_all_elements_jax,
+    # _compute_kinetic_energy_all_elements_jax,
     compute_discretized_kinetic_energy_api,
     evaluate_ln_wavefunction_api,
     evaluate_wavefunction_api,
