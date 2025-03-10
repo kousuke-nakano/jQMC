@@ -195,6 +195,11 @@ def test_debug_and_jax_discretized_kinetic_energy():
         )
     )
 
+    # elements_kinetic_part_debug_all = np.array(elements_kinetic_part_debug).reshape(-1, 6)
+    # print(np.array(elements_kinetic_part_debug))
+    # print(elements_kinetic_part_debug_all.shape)
+    # print(elements_kinetic_part_debug_all)
+
     mesh_kinetic_part_r_up_carts_jax, mesh_kinetic_part_r_dn_carts_jax, elements_kinetic_part_jax = (
         compute_discretized_kinetic_energy_api(
             alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp, RT=RT
