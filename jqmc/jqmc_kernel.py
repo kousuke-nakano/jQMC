@@ -47,6 +47,10 @@ from mpi4py import MPI
 
 from .coulomb_potential import (
     _compute_bare_coulomb_potential_jax,
+    _compute_bare_coulomb_potential_el_ion_element_wise_jax,
+    _compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax,
+    _compute_bare_coulomb_potential_el_el_jax,
+    _compute_bare_coulomb_potential_ion_ion_jax,
     _compute_ecp_local_parts_all_pairs_jax,
     _compute_ecp_non_local_parts_nearest_neighbors_jax,
 )
@@ -63,6 +67,7 @@ from .swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
 from .wavefunction import (
     Wavefunction_data,
     compute_discretized_kinetic_energy_api,
+    _compute_kinetic_energy_all_elements_jax,
     evaluate_ln_wavefunction_api,
     evaluate_wavefunction_api,
 )
@@ -1656,6 +1661,56 @@ class GFMC_fixed_projection_time:
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
             )
+
+            # new coulomb
+            ## compute kinetic energy
+            diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = _compute_kinetic_energy_all_elements_jax(
+                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                r_up_carts=r_up_carts,
+                r_dn_carts=r_dn_carts,
+            )
+            ## compute discretized kinetic energy and mesh (with a random rotation)
+            _, _, elements_non_diagonal_kinetic_part = (
+                compute_discretized_kinetic_energy_api(
+                    alat=self.__alat,
+                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                    r_up_carts=r_up_carts,
+                    r_dn_carts=r_dn_carts,
+                    RT=R.T,
+                )
+            )
+            elements_non_diagonal_kinetic_part_all = elements_non_diagonal_kinetic_part.reshape(6, -1)
+            sign_flip_flags_elements = jnp.all(elements_non_diagonal_kinetic_part_all >= 0, axis=0)
+            non_diagonal_kinetic_part_elements = jnp.sum(elements_non_diagonal_kinetic_part_all, axis=0)
+            sign_flip_flags_elements_up, sign_flip_flags_elements_dn = jnp.split(sign_flip_flags_elements, [len(r_up_carts)])
+            non_diagonal_kinetic_part_elements_up, non_diagonal_kinetic_part_elements_dn = jnp.split(non_diagonal_kinetic_part_elements, [len(r_up_carts)])
+
+            ## compute diagonal elements, el-el
+            diagonal_bare_coulomb_part_el_el = _compute_bare_coulomb_potential_el_el_jax(r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+
+            ## compute diagonal elements, ion-ion
+            diagonal_bare_coulomb_part_ion_ion = _compute_bare_coulomb_potential_ion_ion_jax(coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data)
+
+            ## compute diagonal elements, el-ion
+            diagonal_bare_coulomb_part_el_ion_elements_up, diagonal_bare_coulomb_part_el_ion_elements_dn = _compute_bare_coulomb_potential_el_ion_element_wise_jax(coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+
+            ## compute diagonal elements, el-ion, discretized
+            diagonal_bare_coulomb_part_el_ion_discretized_elements_up, diagonal_bare_coulomb_part_el_ion_discretized_elements_dn = _compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax(coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, alat=self.__alat)
+
+            ## compose discretized el-ion potentials
+            diagonal_bare_coulomb_part_el_ion_zv_up = diagonal_bare_coulomb_part_el_ion_elements_up - 3.0/self.__alat **2 - non_diagonal_kinetic_part_elements_up + diagonal_kinetic_continuum_elements_up
+            diagonal_bare_coulomb_part_el_ion_ei_up = diagonal_bare_coulomb_part_el_ion_discretized_elements_up
+            diagonal_bare_coulomb_part_el_ion_max_up = jnp.maximum(diagonal_bare_coulomb_part_el_ion_zv_up, diagonal_bare_coulomb_part_el_ion_ei_up)
+            diagonal_bare_coulomb_part_el_ion_opt_up = jnp.where(sign_flip_flags_elements_up, diagonal_bare_coulomb_part_el_ion_max_up, diagonal_bare_coulomb_part_el_ion_zv_up)
+
+            ## compose discretized el-ion potentials
+            diagonal_bare_coulomb_part_el_ion_zv_dn = diagonal_bare_coulomb_part_el_ion_elements_dn - 3.0/self.__alat **2 - non_diagonal_kinetic_part_elements_dn + diagonal_kinetic_continuum_elements_dn
+            diagonal_bare_coulomb_part_el_ion_ei_dn = diagonal_bare_coulomb_part_el_ion_discretized_elements_dn
+            diagonal_bare_coulomb_part_el_ion_max_dn = jnp.maximum(diagonal_bare_coulomb_part_el_ion_zv_dn, diagonal_bare_coulomb_part_el_ion_ei_dn)
+            diagonal_bare_coulomb_part_el_ion_opt_dn = jnp.where(sign_flip_flags_elements_dn, diagonal_bare_coulomb_part_el_ion_max_dn, diagonal_bare_coulomb_part_el_ion_zv_dn)
+
+            ## final bare coulomb part
+            diagonal_bare_coulomb_part = diagonal_bare_coulomb_part_el_el + diagonal_bare_coulomb_part_ion_ion + jnp.sum(diagonal_bare_coulomb_part_el_ion_opt_up) + jnp.sum(diagonal_bare_coulomb_part_el_ion_opt_dn)
 
             # """ if-else for all-ele, ecp with tmove, and ecp with dltmove
             # with ECP
