@@ -61,7 +61,13 @@ from .hamiltonians import (
     compute_kinetic_energy_api,
     compute_local_energy_api,
 )
-from .jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data, compute_ratio_Jastrow_part_api
+from .jastrow_factor import (
+    Jastrow_data,
+    Jastrow_one_body_data,
+    Jastrow_three_body_data,
+    Jastrow_two_body_data,
+    compute_ratio_Jastrow_part_api,
+)
 from .structure import find_nearest_index_jax
 from .swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
 from .wavefunction import (
@@ -388,6 +394,9 @@ class MCMC:
 
         # stored sum_i d omega/d r_i for dn spins (SWCT)
         self.__stored_grad_omega_r_dn = []
+
+        # stored dln_Psi / dc_jas1b
+        self.__stored_grad_ln_Psi_jas1b = []
 
         # stored dln_Psi / dc_jas2b
         self.__stored_grad_ln_Psi_jas2b = []
@@ -950,6 +959,20 @@ class MCMC:
                 end = time.perf_counter()
                 timer_de_L_dc += end - start
 
+                # 1b Jastrow
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
+                    grad_ln_Psi_jas1b = grad_ln_Psi_h.jastrow_data.jastrow_one_body_data.jastrow_1b_param
+                    logger.devel(f"grad_ln_Psi_jas1b.shape = {grad_ln_Psi_jas1b.shape}")
+                    logger.devel(f"  grad_ln_Psi_jas1b = {grad_ln_Psi_jas1b}")
+                    self.__stored_grad_ln_Psi_jas1b.append(grad_ln_Psi_jas1b)
+
+                    """ for Linear method
+                    grad_e_L_jas2b = grad_e_L_h.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
+                    logger.devel(f"grad_e_L_jas2b.shape = {grad_e_L_jas2b.shape}")
+                    logger.devel(f"  grad_e_L_jas2b = {grad_e_L_jas2b}")
+                    self.__stored_grad_e_L_jas2b.append(grad_e_L_jas2b)
+                    """
+
                 # 2b Jastrow
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data is not None:
                     grad_ln_Psi_jas2b = grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
@@ -1138,6 +1161,11 @@ class MCMC:
         return np.array(self.__stored_grad_omega_r_dn)
 
     @property
+    def dln_Psi_dc_jas_1b(self) -> npt.NDArray:
+        """Return the stored dln_Psi/dc_J1 array. dim: (mcmc_counter, num_walkers, num_J1_param)."""
+        return np.array(self.__stored_grad_ln_Psi_jas1b)
+
+    @property
     def dln_Psi_dc_jas_2b(self) -> npt.NDArray:
         """Return the stored dln_Psi/dc_J2 array. dim: (mcmc_counter, num_walkers, num_J2_param)."""
         return np.array(self.__stored_grad_ln_Psi_jas2b)
@@ -1194,6 +1222,21 @@ class MCMC:
         dc_flattened_index_list = []
 
         if self.__comput_param_deriv:
+            # jastrow 1-body
+            if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
+                dc_param = "j1_param"
+                dln_Psi_dc = self.dln_Psi_dc_jas_1b
+                # de_L_dc = self.de_L_dc_jas_1b # for linear method
+                dc_size = 1
+                dc_shape = (1,)
+                dc_flattened_index = [len(dc_param_list)] * dc_size
+
+                dc_param_list.append(dc_param)
+                dln_Psi_dc_list.append(dln_Psi_dc)
+                # de_L_dc_list.append(de_L_dc) # for linear method
+                dc_size_list.append(dc_size)
+                dc_shape_list.append(dc_shape)
+                dc_flattened_index_list += dc_flattened_index
             # jastrow 2-body
             if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data is not None:
                 dc_param = "j2_param"
@@ -3953,7 +3996,7 @@ class QMC:
         max_time: int = 86400,
         num_mcmc_warmup_steps: int = 0,
         num_mcmc_bin_blocks: int = 100,
-        # opt_J1_param: bool = True, # to be implemented.
+        opt_J1_param: bool = True,
         opt_J2_param: bool = True,
         opt_J3_param: bool = True,
         opt_lambda_param: bool = False,
@@ -4016,6 +4059,12 @@ class QMC:
             opt_param_index_dict = {}
 
             for ii, dc_param in enumerate(dc_param_list):
+                if opt_J1_param and dc_param == "j1_param":
+                    new_param_index = [i for i, v in enumerate(dc_flattened_index_list) if v == ii]
+                    opt_param_index_dict[dc_param] = np.array(range(len(new_param_index)), dtype=np.int32) + len(
+                        chosen_param_index
+                    )
+                    chosen_param_index += new_param_index
                 if opt_J2_param and dc_param == "j2_param":
                     new_param_index = [i for i, v in enumerate(dc_flattened_index_list) if v == ii]
                     opt_param_index_dict[dc_param] = np.array(range(len(new_param_index)), dtype=np.int32) + len(
@@ -4187,10 +4236,15 @@ class QMC:
             dc_shape_list = self.mcmc.opt_param_dict["dc_shape_list"]
             dc_flattened_index_list = self.mcmc.opt_param_dict["dc_flattened_index_list"]
 
-            j2_param = self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
-            j3_orb_data = self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data
-            j3_matrix = self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix
-            lambda_matrix = self.mcmc.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix
+            # optimized parameters
+            if self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
+                j1_param = self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data.jastrow_1b_param
+            if self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data is not None:
+                j2_param = self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
+            if self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
+                j3_matrix = self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix
+            if self.mcmc.hamiltonian_data.wavefunction_data.geminal_data is not None:
+                lambda_matrix = self.mcmc.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix
 
             logger.info(f"dX.shape for MPI-rank={mpi_rank} is {theta.shape}")
 
@@ -4198,6 +4252,9 @@ class QMC:
                 dc_shape = dc_shape_list[ii]
                 if theta.shape == (1,):
                     dX = theta[0]
+                if opt_J1_param and dc_param == "j1_param":
+                    dX = theta[opt_param_index_dict[dc_param]].reshape(dc_shape)
+                    j1_param += delta * dX
                 if opt_J2_param and dc_param == "j2_param":
                     dX = theta[opt_param_index_dict[dc_param]].reshape(dc_shape)
                     j2_param += delta * dX
@@ -4231,12 +4288,27 @@ class QMC:
                 orb_data_dn_spin=self.mcmc.hamiltonian_data.wavefunction_data.geminal_data.orb_data_dn_spin,
                 lambda_matrix=lambda_matrix,
             )
-            jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=j2_param)
-            jastrow_three_body_data = Jastrow_three_body_data(
-                orb_data=j3_orb_data,
-                j_matrix=j3_matrix,
-            )
+            if self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
+                jastrow_one_body_data = Jastrow_one_body_data(
+                    jastrow_1b_param=j1_param,
+                    structure_data=self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data.structure_data,
+                    core_electron_list=self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data.core_electron_list,
+                )
+            else:
+                jastrow_one_body_data = None
+            if self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data is not None:
+                jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=j2_param)
+            else:
+                jastrow_two_body_data = None
+            if self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
+                jastrow_three_body_data = Jastrow_three_body_data(
+                    orb_data=self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data,
+                    j_matrix=j3_matrix,
+                )
+            else:
+                jastrow_three_body_data = None
             jastrow_data = Jastrow_data(
+                jastrow_one_body_data=jastrow_one_body_data,
                 jastrow_two_body_data=jastrow_two_body_data,
                 jastrow_three_body_data=jastrow_three_body_data,
             )
@@ -4246,13 +4318,8 @@ class QMC:
                 wavefunction_data=wavefunction_data,
                 coulomb_potential_data=coulomb_potential_data,
             )
-
             logger.info("WF updated")
             self.mcmc.hamiltonian_data = hamiltonian_data
-
-            # logger.warning(
-            #    f"twobody param after opt. = {self.__mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param}"
-            # )
 
             # dump WF
             if mpi_rank == 0:
