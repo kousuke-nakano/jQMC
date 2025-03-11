@@ -184,15 +184,15 @@ class MCMC:
             else:
                 charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
 
-            logger.info(f"charges = {charges}.")
+            logger.devel(f"charges = {charges}.")
             coords = hamiltonian_data.structure_data.positions_cart_np
 
             # Place electrons for each atom
             for i in range(len(coords)):
                 charge = charges[i]
                 n_elec = int(np.round(charge))  # Number of electrons to place for this atom
-                logger.info(f"charge = {charge}.")
-                logger.info(f"num_electrons = {n_elec}.")
+                logger.devel(f"charge = {charge}.")
+                logger.devel(f"num_electrons = {n_elec}.")
 
                 x, y, z = coords[i]
 
@@ -236,8 +236,8 @@ class MCMC:
                 total_assigned_dn += num_dn
 
             # Electron assignment for all atoms is complete
-            logger.debug(f"Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
-            logger.debug(f"Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
+            logger.devel(f"Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
+            logger.devel(f"Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
 
             # If necessary, include a check/adjustment step to ensure the overall assignment matches the targets
             # (Here it is assumed that sum(round(charge)) equals tot_num_electron_up + tot_num_electron_dn)
@@ -1359,15 +1359,15 @@ class GFMC_fixed_projection_time:
             else:
                 charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
 
-            logger.info(f"charges = {charges}.")
+            logger.devel(f"charges = {charges}.")
             coords = hamiltonian_data.structure_data.positions_cart_np
 
             # Place electrons for each atom
             for i in range(len(coords)):
                 charge = charges[i]
                 n_elec = int(np.round(charge))  # Number of electrons to place for this atom
-                logger.info(f"charge = {charge}.")
-                logger.info(f"num_electrons = {n_elec}.")
+                logger.devel(f"charge = {charge}.")
+                logger.devel(f"num_electrons = {n_elec}.")
 
                 x, y, z = coords[i]
 
@@ -2361,15 +2361,15 @@ class GFMC_fixed_num_projection:
             else:
                 charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
 
-            logger.info(f"charges = {charges}.")
+            logger.devel(f"charges = {charges}.")
             coords = hamiltonian_data.structure_data.positions_cart_np
 
             # Place electrons for each atom
             for i in range(len(coords)):
                 charge = charges[i]
                 n_elec = int(np.round(charge))  # Number of electrons to place for this atom
-                logger.info(f"charge = {charge}.")
-                logger.info(f"num_electrons = {n_elec}.")
+                logger.devel(f"charge = {charge}.")
+                logger.devel(f"num_electrons = {n_elec}.")
 
                 x, y, z = coords[i]
 
@@ -3808,9 +3808,9 @@ class GFMC_fixed_num_projection:
                         num_gfmc_bin_blocks=10,
                         num_gfmc_collect_steps=10,
                     )
-                    logger.info(f"    Updated E_scf = {E_scf:.5f} +- {E_scf_std:.5f} Ha.")
+                    logger.debug(f"    Updated E_scf = {E_scf:.5f} +- {E_scf_std:.5f} Ha.")
                 else:
-                    logger.info(f"    Init E_scf = {E_scf:.5f} Ha. Being equilibrated.")
+                    logger.debug(f"    Init E_scf = {E_scf:.5f} Ha. Being equilibrated.")
 
             num_mcmc_done += 1
             gfmc_current = time.perf_counter()
