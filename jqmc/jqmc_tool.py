@@ -27,6 +27,7 @@ from .hamiltonians import Hamiltonian_data
 from .jastrow_factor import Jastrow_data, Jastrow_one_body_data, Jastrow_three_body_data, Jastrow_two_body_data
 from .jqmc_miscs import cli_parameters
 from .trexio_wrapper import read_trexio_file
+from .units import Bohr_to_Angstrom
 from .wavefunction import Wavefunction_data
 
 
@@ -147,7 +148,7 @@ cli.add_command(typer_click_trexio, "trexio")
 
 
 # hamiltonian_app
-hamiltonian_app = typer.Typer()
+hamiltonian_app = typer.Typer(help="Read and convert Hamiltonian data.")
 
 
 @hamiltonian_app.command("show-info")
@@ -161,9 +162,22 @@ def hamiltonian_show_info(
             typer.echo(line)
 
 
-typer_click_hamiltonian = typer.main.get_command(hamiltonian_app)
+@hamiltonian_app.command("to-xyz")
+def hamiltonian_to_xyz(
+    hamiltonian_data: str = typer.Argument(..., help="hamiltonian_data file, e.g. hamiltonian_data.chk"),
+    xyz_file: str = typer.Option("struct.xyz", "-o", "--output", help="Output file name."),
+):
+    """Show information stored in the Hamiltonian data."""
+    with open(hamiltonian_data, "rb") as f:
+        hamiltonian = pickle.load(f)
 
-cli.add_command(typer_click_hamiltonian, "hamiltonian")
+    structure_data = hamiltonian.structure_data
+
+    with open(xyz_file, "w") as f:
+        f.write(f"{structure_data.natom}\n")
+        f.write("\n")
+        for atom, coord in zip(structure_data.atomic_labels, structure_data.positions):
+            f.write(f"{atom} {coord[0] * Bohr_to_Angstrom} {coord[1] * Bohr_to_Angstrom} {coord[2] * Bohr_to_Angstrom}\n")
 
 
 class ansatz_type(str, Enum):
@@ -311,8 +325,16 @@ def vmcopt_analyze_output(
     # typer.echo(max_f_list)
     # typer.echo(signal_to_noise_list)
 
+    sep = 54
+    typer.echo("-" * sep)
+    typer.echo(f"{'Iter':<8} {'E (Ha)':<10} {'Max f (Ha)':<12} {'Signal to Noise':<16}")
+    typer.echo("-" * sep)
+    for iter, E, max_f, signal_to_noise in zip(iter_list, E_list, max_f_list, signal_to_noise_list):
+        typer.echo(f"{iter:4}  {E:8.2uS}  {max_f:10.2uS}  {signal_to_noise:8.3f}")
+    typer.echo("-" * sep)
+
     # plot graphs
-    if plot_graph:
+    if plot_graph or save_graph is not None:
         E_means = [E.n for E in E_list]
         E_errs = [E.s for E in E_list]
         max_f_means = [max_f.n for max_f in max_f_list]
@@ -356,10 +378,11 @@ def vmcopt_analyze_output(
         lines22, labels22 = ax22.get_legend_handles_labels()
         ax21.legend(lines21 + lines22, labels21 + labels22, loc="best")
 
-        plt.show()
-
         if save_graph is not None:
             plt.savefig(save_graph)
+
+        if plot_graph:
+            plt.show()
 
 
 typer_click_vmcopt = typer.main.get_command(vmcopt_app)
