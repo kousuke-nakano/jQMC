@@ -474,9 +474,7 @@ def _compute_AS_regularization_factor_jax(
 
     # compute the AS factor
     theta = 3.0 / 8.0
-    # To do !! S should be considered or not?
     S = jnp.min(jnp.sum(geminal**2, axis=1))
-    S = 1
     R_AS = (S * jnp.sum((1.0 / geminal) ** 2)) ** (-theta)
 
     return R_AS

@@ -315,7 +315,7 @@ class Jastrow_three_body_data:
         Returns:
             int: get number of atomic orbitals.
         """
-        return self.orb_data.num_ao
+        return self.orb_data.num_orb
 
     @property
     def compute_orb_api(self) -> Callable[..., npt.NDArray[np.float64]]:

@@ -785,16 +785,18 @@ class MCMC:
             # logger.info(f"R_AS_eps = {R_AS_eps}.")
 
             w_L = (R_AS / R_AS_eps) ** 2
-            # logger.info(f"  AS regularization: np.mean(w_L) = {np.mean(w_L)}.")
+            logger.info(
+                f"  AS regularization: np.min(w_L),  np.mean(w_L) , np.max(w_L) = {np.min(w_L)}, {np.mean(w_L)}, {np.max(w_L)}."
+            )
             self.__stored_w_L.append(w_L)
 
             if self.__adjust_epsilon_AS:
                 # Update adjust_epsilon_AS so that the average of weights approaches target_weight. Proportional control.
                 epsilon_AS_max = 1.0e-0
                 epsilon_AS_min = 0.0
-                gain_weight = 5.0e-3
+                gain_weight = 5.0e-4
                 target_weight = 0.8
-                torrelance_of_weight = 0.05
+                torrelance_of_weight = 0.01
 
                 ## Calculate the average of weights
                 average_weight = np.mean(w_L)
@@ -3518,7 +3520,6 @@ class GFMC_fixed_num_projection:
                     self.__jax_PRNG_key_list,
                     self.__non_local_move,
                 )
-                grad_e_L_h.block_until_ready()
                 grad_e_L_r_up.block_until_ready()
                 grad_e_L_r_dn.block_until_ready()
                 end = time.perf_counter()
@@ -3921,7 +3922,7 @@ class GFMC_fixed_num_projection:
         if mpi_rank == 0:
             e_L_eq = self.__stored_e_L[num_gfmc_warmup_steps + num_gfmc_collect_steps :]
             w_L_eq = self.__stored_w_L[num_gfmc_warmup_steps:]
-            # logger.info(f"  (e_L_eq) = {(e_L_eq)}")
+            # logger.info(f" AS (e_L_eq) = {(e_L_eq)}")
             # logger.info(f"  (w_L_eq) = {(w_L_eq)}")
             logger.debug("  Progress: Computing G_eq and G_e_L_eq.")
 
@@ -3934,9 +3935,9 @@ class GFMC_fixed_num_projection:
 
             logger.debug(f"  Progress: Computing binned G_e_L_eq and G_eq with # binned blocks = {num_gfmc_bin_blocks}.")
             G_e_L_split = np.array_split(G_e_L_eq, num_gfmc_bin_blocks)
-            G_e_L_binned = np.array([np.average(G_e_L_list) for G_e_L_list in G_e_L_split])
+            G_e_L_binned = np.array([np.sum(G_e_L_list) for G_e_L_list in G_e_L_split])
             G_split = np.array_split(G_eq, num_gfmc_bin_blocks)
-            G_binned = np.array([np.average(G_list) for G_list in G_split])
+            G_binned = np.array([np.sum(G_list) for G_list in G_split])
 
             logger.debug(f"  Progress: Computing jackknife samples with # binned blocks = {num_gfmc_bin_blocks}.")
 
@@ -4066,6 +4067,9 @@ class QMC:
                     )
                     chosen_param_index += new_param_index
                 if opt_J2_param and dc_param == "j2_param":
+                    logger.info(
+                        f"twobody param before opt. = {self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param}"
+                    )
                     new_param_index = [i for i, v in enumerate(dc_flattened_index_list) if v == ii]
                     opt_param_index_dict[dc_param] = np.array(range(len(new_param_index)), dtype=np.int32) + len(
                         chosen_param_index
@@ -4117,36 +4121,50 @@ class QMC:
 
             if self.mcmc.e_L.size != 0:
                 w_L = self.mcmc.w_L[num_mcmc_warmup_steps:]
+                # logger.info(f"w_L  = {w_L}.")
+                # logger.info(f"w_L.shape = {w_L.shape}.")
                 w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
                 w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
 
                 e_L = self.mcmc.e_L[num_mcmc_warmup_steps:]
+                # logger.info(f"e_L.shape = {e_L.shape}.")
                 e_L_split = np.array_split(e_L, num_mcmc_bin_blocks, axis=0)
                 e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in e_L_split]))
 
                 w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
-                w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
+                w_L_e_L_binned = list(
+                    np.ravel([np.sum(w_L_e_L, axis=0) / np.sum(w_L, axis=0) for w_L_e_L, w_L in zip(w_L_e_L_split, w_L_split)])
+                )
+                # logger.info(f"w_L_e_L_binned.shape = {np.array(w_L_e_L_binned).shape}.")
 
                 O_matrix = self.get_dln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps, chosen_param_index=chosen_param_index)
+                # logger.info(f"O_matrix.shape = {O_matrix.shape}.")
                 O_matrix_split = np.array_split(O_matrix, num_mcmc_bin_blocks, axis=0)
-                O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in O_matrix_split])
+                O_matrix_ave = np.array([np.mean(O_matrix, axis=0) for O_matrix in O_matrix_split])
                 O_matrix_binned_shape = (
                     O_matrix_ave.shape[0] * O_matrix_ave.shape[1],
                     O_matrix_ave.shape[2],
                 )
                 O_matrix_binned = list(O_matrix_ave.reshape(O_matrix_binned_shape))
 
-                w_L_O_matrix_split = np.array_split(np.einsum("iw,iwj->iwj", w_L, O_matrix), num_mcmc_bin_blocks, axis=0)
-                w_L_O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in w_L_O_matrix_split])
+                w_L_O_matrix = np.einsum("iw,iwj->iwj", w_L, O_matrix)
+                # logger.info(f"w_L_O_matrix.shape = {w_L_O_matrix.shape}.")
+                w_L_O_matrix_split = np.array_split(w_L_O_matrix, num_mcmc_bin_blocks, axis=0)
+                w_L_O_matrix_ave = np.array(
+                    [
+                        np.sum(w_L_O_matrix, axis=0) / np.sum(w_L, axis=0)[:, np.newaxis]
+                        for w_L_O_matrix, w_L in zip(w_L_O_matrix_split, w_L_split)
+                    ]
+                )
                 w_L_O_matrix_binned_shape = (
                     w_L_O_matrix_ave.shape[0] * w_L_O_matrix_ave.shape[1],
                     w_L_O_matrix_ave.shape[2],
                 )
                 w_L_O_matrix_binned = list(w_L_O_matrix_ave.reshape(w_L_O_matrix_binned_shape))
 
-                logger.debug(f"O_matrix.shape = {O_matrix.shape}")
-                logger.debug(f"w_L_O_matrix_ave.shape = {w_L_O_matrix_ave.shape}")
-                logger.debug(f"w_L_O_matrix_binned.shape = {np.array(w_L_O_matrix_binned).shape}")
+                # logger.info(f"O_matrix.shape = {O_matrix.shape}")
+                # logger.info(f"w_L_O_matrix_ave.shape = {w_L_O_matrix_ave.shape}")
+                # logger.info(f"w_L_O_matrix_binned.shape = {np.array(w_L_O_matrix_binned).shape}")
 
             else:
                 w_L_binned = []
@@ -4176,17 +4194,30 @@ class QMC:
                 #     X_{i,k}: \equiv (O_{i, k} - \bar{O}_{k}),
                 #     X_w_{i,k} \equiv w_i O_{i, k} / {\sum_{i} w_i}
                 #     F_i \equiv -2.0 * (e_L_{i} - E)
+                # logger.info(f"w_L_binned={w_L_binned}")
                 X = (O_matrix_binned - O_bar).T
-                X_w = ((w_L_O_matrix_binned - O_bar) / np.sum(w_L_binned)).T
+                X_w = (w_L_O_matrix_binned - O_bar).T
                 F = -2.0 * (e_L_binned - e_L_bar).T
 
+                """
+                logger.info(f"w_L_binned.shape = {w_L_binned.shape}.")
+                logger.info(f"w_L_binned.T.shape = {w_L_binned.T.shape}.")
+                logger.info(f"w_L_O_matrix_binned.shape = {w_L_O_matrix_binned.shape}.")
+                logger.info(f"O_bar.shape = {O_bar.shape}")
                 logger.info(f"X_w.shape = {X_w.shape}.")
                 logger.info(f"X.shape = {X.shape}.")
                 logger.info(f"F.shape = {F.shape}.")
+                logger.info(f"w_L_binned = {w_L_binned}.")
+                logger.info(f"X_w = {X_w}.")
+                logger.info(f"X = {X}.")
+                logger.info(f"F = {F}.")
+                logger.info(f"X_w/X = {X_w / X}.")
+                """
 
                 # make the SR matrix scale-invariant (i.e., normalize)
                 S = X_w @ X.T
                 diag_S = np.diag(S)
+                logger.info(f"diag_S = {diag_S}.")
                 X = X / np.sqrt(diag_S)[:, np.newaxis]
                 X_w = X_w / np.sqrt(diag_S)[:, np.newaxis]
 
@@ -4357,9 +4388,9 @@ class QMC:
             e_L = self.mcmc.e_L[num_mcmc_warmup_steps:]
             w_L = self.mcmc.w_L[num_mcmc_warmup_steps:]
             w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-            w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
+            w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
             w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
-            w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
+            w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
         else:
             w_L_binned = []
             w_L_e_L_binned = []
@@ -4471,32 +4502,32 @@ class QMC:
             w_L_force_PP_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_PP), num_mcmc_bin_blocks, axis=0)
             w_L_E_L_force_PP_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, E_L_force_PP), num_mcmc_bin_blocks, axis=0)
 
-            w_L_binned = list(np.ravel(np.average(np.stack(w_L_split), axis=1)))
-            w_L_e_L_binned = list(np.ravel(np.average(np.stack(w_L_e_L_split), axis=1)))
+            w_L_binned = list(np.ravel(np.sum(np.stack(w_L_split), axis=1)))
+            w_L_e_L_binned = list(np.ravel(np.sum(np.stack(w_L_e_L_split), axis=1)))
 
-            w_L_force_HF_ave = np.array([np.mean(arr, axis=0) for arr in w_L_force_HF_split])
+            w_L_force_HF_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_HF_split])
             w_L_force_HF_binned_shape = (
-                w_L_force_HF_ave.shape[0] * w_L_force_HF_ave.shape[1],
-                w_L_force_HF_ave.shape[2],
-                w_L_force_HF_ave.shape[3],
+                w_L_force_HF_sum.shape[0] * w_L_force_HF_sum.shape[1],
+                w_L_force_HF_sum.shape[2],
+                w_L_force_HF_sum.shape[3],
             )
-            w_L_force_HF_binned = list(w_L_force_HF_ave.reshape(w_L_force_HF_binned_shape))
+            w_L_force_HF_binned = list(w_L_force_HF_sum.reshape(w_L_force_HF_binned_shape))
 
-            w_L_force_PP_ave = np.array([np.mean(arr, axis=0) for arr in w_L_force_PP_split])
+            w_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_PP_split])
             w_L_force_PP_binned_shape = (
-                w_L_force_PP_ave.shape[0] * w_L_force_PP_ave.shape[1],
-                w_L_force_PP_ave.shape[2],
-                w_L_force_PP_ave.shape[3],
+                w_L_force_PP_sum.shape[0] * w_L_force_PP_sum.shape[1],
+                w_L_force_PP_sum.shape[2],
+                w_L_force_PP_sum.shape[3],
             )
-            w_L_force_PP_binned = list(w_L_force_PP_ave.reshape(w_L_force_PP_binned_shape))
+            w_L_force_PP_binned = list(w_L_force_PP_sum.reshape(w_L_force_PP_binned_shape))
 
-            w_L_E_L_force_PP_ave = np.array([np.mean(arr, axis=0) for arr in w_L_E_L_force_PP_split])
+            w_L_E_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_E_L_force_PP_split])
             w_L_E_L_force_PP_binned_shape = (
-                w_L_E_L_force_PP_ave.shape[0] * w_L_E_L_force_PP_ave.shape[1],
-                w_L_E_L_force_PP_ave.shape[2],
-                w_L_E_L_force_PP_ave.shape[3],
+                w_L_E_L_force_PP_sum.shape[0] * w_L_E_L_force_PP_sum.shape[1],
+                w_L_E_L_force_PP_sum.shape[2],
+                w_L_E_L_force_PP_sum.shape[3],
             )
-            w_L_E_L_force_PP_binned = list(w_L_E_L_force_PP_ave.reshape(w_L_E_L_force_PP_binned_shape))
+            w_L_E_L_force_PP_binned = list(w_L_E_L_force_PP_sum.reshape(w_L_E_L_force_PP_binned_shape))
 
         else:
             w_L_binned = []
@@ -4640,37 +4671,29 @@ class QMC:
         if self.mcmc.e_L.size != 0:
             w_L = self.mcmc.w_L[num_mcmc_warmup_steps:]
             w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-            w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
+            w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
 
             e_L = self.mcmc.e_L[num_mcmc_warmup_steps:]
             w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
-            w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
+            w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
 
             O_matrix = self.get_dln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps, chosen_param_index=chosen_param_index)
             w_L_O_matrix_split = np.array_split(np.einsum("iw,iwj->iwj", w_L, O_matrix), num_mcmc_bin_blocks, axis=0)
-            w_L_O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in w_L_O_matrix_split])
+            w_L_O_matrix_sum = np.array([np.sum(arr, axis=0) for arr in w_L_O_matrix_split])
             w_L_O_matrix_binned_shape = (
-                w_L_O_matrix_ave.shape[0] * w_L_O_matrix_ave.shape[1],
-                w_L_O_matrix_ave.shape[2],
+                w_L_O_matrix_sum.shape[0] * w_L_O_matrix_sum.shape[1],
+                w_L_O_matrix_sum.shape[2],
             )
-            w_L_O_matrix_binned = list(w_L_O_matrix_ave.reshape(w_L_O_matrix_binned_shape))
-
-            logger.debug(f"O_matrix.shape = {O_matrix.shape}")
-            logger.debug(f"w_L_O_matrix_ave.shape = {w_L_O_matrix_ave.shape}")
-            logger.debug(f"w_L_O_matrix_binned.shape = {np.array(w_L_O_matrix_binned).shape}")
+            w_L_O_matrix_binned = list(w_L_O_matrix_sum.reshape(w_L_O_matrix_binned_shape))
 
             e_L_O_matrix = np.einsum("iw,iwj->iwj", e_L, O_matrix)
             w_L_e_L_O_matrix_split = np.array_split(np.einsum("iw,iwj->iwj", w_L, e_L_O_matrix), num_mcmc_bin_blocks, axis=0)
-            w_L_e_L_O_matrix_ave = np.array([np.mean(arr, axis=0) for arr in w_L_e_L_O_matrix_split])
+            w_L_e_L_O_matrix_sum = np.array([np.sum(arr, axis=0) for arr in w_L_e_L_O_matrix_split])
             w_L_e_L_O_matrix_binned_shape = (
-                w_L_e_L_O_matrix_ave.shape[0] * w_L_e_L_O_matrix_ave.shape[1],
-                w_L_e_L_O_matrix_ave.shape[2],
+                w_L_e_L_O_matrix_sum.shape[0] * w_L_e_L_O_matrix_sum.shape[1],
+                w_L_e_L_O_matrix_sum.shape[2],
             )
-            w_L_e_L_O_matrix_binned = list(w_L_e_L_O_matrix_ave.reshape(w_L_e_L_O_matrix_binned_shape))
-
-            logger.debug(f"e_L_O_matrix.shape = {e_L_O_matrix.shape}")
-            logger.debug(f"w_L_e_L_O_matrix_ave.shape = {w_L_e_L_O_matrix_ave.shape}")
-            logger.debug(f"w_L_e_L_O_matrix_binned.shape = {np.array(w_L_e_L_O_matrix_binned).shape}")
+            w_L_e_L_O_matrix_binned = list(w_L_e_L_O_matrix_sum.reshape(w_L_e_L_O_matrix_binned_shape))
         else:
             w_L_binned = []
             w_L_e_L_binned = []
@@ -5300,7 +5323,7 @@ if __name__ == "__main__":
     logger.info(local_device_info)
     logger.info("")
 
-    # """
+    """
     # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
     (
         structure_data,
@@ -5310,7 +5333,7 @@ if __name__ == "__main__":
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"))
-    # """
+    """
 
     """
     # water cc-pVTZ with Mitas ccECP (8 electrons, feasible).
@@ -5324,7 +5347,7 @@ if __name__ == "__main__":
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccecp_ccpvtz_cart.hdf5"))
     """
 
-    """
+    # """
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,
@@ -5334,7 +5357,7 @@ if __name__ == "__main__":
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "H2_dimer_ccpv5z_trexio.hdf5"))
-    """
+    # """
 
     """
     # Ne atom cc-pV5Z with Mitas ccECP (10 electrons, feasible).
@@ -5429,12 +5452,13 @@ if __name__ == "__main__":
     """
 
     # """
+    jastrow_one_body_data = None
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.75)
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=mos_data)
 
     # define data
     jastrow_data = Jastrow_data(
-        jastrow_one_body_data=None,
+        jastrow_one_body_data=jastrow_one_body_data,
         jastrow_two_body_data=jastrow_twobody_data,
         jastrow_three_body_data=jastrow_threebody_data,
     )
@@ -5452,6 +5476,8 @@ if __name__ == "__main__":
     )
     # """
 
+    '''
+    # """
     hamiltonian_chk = "hamiltonian_data_water.chk"
     # hamiltonian_chk = "hamiltonian_data_water_methane.chk"
     # hamiltonian_chk = "hamiltonian_data_benzene.chk"
@@ -5459,10 +5485,8 @@ if __name__ == "__main__":
 
     with open(hamiltonian_chk, "rb") as f:
         hamiltonian_data = pickle.load(f)
+    # """
 
-    # MCMC param
-
-    """
     num_walkers = 4
     num_mcmc_warmup_steps = 0
     num_mcmc_bin_blocks = 50
@@ -5476,7 +5500,7 @@ if __name__ == "__main__":
         epsilon_AS=1.0e-6,
         adjust_epsilon_AS=False,
         num_walkers=num_walkers,
-        comput_position_deriv=False,
+        comput_position_deriv=True,
         comput_param_deriv=False,
     )
     vmc = QMC(mcmc)
@@ -5486,9 +5510,9 @@ if __name__ == "__main__":
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
-    """
+    # """
 
-    """
+    # """
     f_mean, f_std = vmc.get_aF(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
@@ -5497,15 +5521,29 @@ if __name__ == "__main__":
     logger.info(f"f_mean = {f_mean} Ha/bohr.")
     logger.info(f"f_std = {f_std} Ha/bohr.")
     """
+    '''
 
-    """
+    # """
+    hamiltonian_chk = "hamiltonian_data_water.chk"
+    # hamiltonian_chk = "hamiltonian_data_water_methane.chk"
+    # hamiltonian_chk = "hamiltonian_data_benzene.chk"
+    # hamiltonian_chk = "hamiltonian_data_C60.chk"
+
+    with open(hamiltonian_chk, "rb") as f:
+        hamiltonian_data = pickle.load(f)
+
+    num_walkers = 4
+    num_mcmc_warmup_steps = 0
+    num_mcmc_bin_blocks = 10
+    mcmc_seed = 34356
+
     # run VMCopt
     mcmc = MCMC(
         hamiltonian_data=hamiltonian_data,
         Dt=2.0,
         mcmc_seed=mcmc_seed,
-        epsilon_AS=0.0,
-        adjust_epsilon_AS=True,
+        epsilon_AS=1.0e-4,
+        adjust_epsilon_AS=False,
         num_walkers=num_walkers,
         comput_position_deriv=False,
         comput_param_deriv=True,
@@ -5514,19 +5552,19 @@ if __name__ == "__main__":
     vmc.run_optimize(
         num_mcmc_steps=500,
         num_opt_steps=50,
-        delta=5e-2,
+        delta=5e-3,
         epsilon=1e-4,
         wf_dump_freq=10,
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
+        opt_J1_param=False,
         opt_J2_param=True,
-        opt_J3_param=True,
-        opt_J4_param=True,
-        opt_lambda_param=True,
+        opt_J3_param=False,
+        opt_lambda_param=False,
     )
-    """
-
     # """
+
+    """
     # hamiltonian
     hamiltonian_chk = "hamiltonian_data_water.chk"
     hamiltonian_chk = "hamiltonian_data_water_methane.chk"
@@ -5567,7 +5605,7 @@ if __name__ == "__main__":
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
-    # """
+    """
 
     """
     f_mean, f_std = gfmc.get_aF(

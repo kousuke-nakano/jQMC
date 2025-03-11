@@ -290,7 +290,6 @@ def _compute_kinetic_energy_all_elements_debug(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float | complex:
     """See compute_kinetic_energy_api."""
-
     """
     # compute grad
     diff_h = 1.0e-5
