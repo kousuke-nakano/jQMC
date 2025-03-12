@@ -35,7 +35,6 @@
 import pickle
 
 # python modules
-import time
 from logging import Formatter, StreamHandler, getLogger
 
 # JAX
