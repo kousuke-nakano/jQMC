@@ -286,7 +286,7 @@ def vmcopt_analyze_output(
     max_f_list = []
     signal_to_noise_list = []
 
-    iter_pattern = re.compile(r"i_opt\s*=\s*(\d+)/\d+")
+    iter_pattern = re.compile(r"Optimization\sstep\s*=\s*(\d+)/\d+")
     E_pattern = re.compile(r"E\s*=\s*([-+]?\d+(?:\.\d+)?)(?:\s*\+\-\s*([-+]?\d+(?:\.\d+)?))\s*Ha")
     max_f_pattern = re.compile(r"Max f = (\d+(?:\.\d+)?)\s*\+\-\s*(\d+(?:\.\d+)?)")
     signal_to_noise_pattern = re.compile(r"Max of signal-to-noise of f = max\(\|f\|/\|std f\|\) = ([-+]?\d+(?:\.\d+)?)(?:\.)?")
