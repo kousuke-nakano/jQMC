@@ -294,7 +294,7 @@ def read_trexio_file(
         )
 
     else:
-        logger.info("Spherical basis functions.")
+        logger.debug("Spherical basis functions.")
         # AOs_data instance
         ao_num_count = 0
         ao_prim_num_count = 0

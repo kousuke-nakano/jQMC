@@ -57,19 +57,6 @@ mpi_comm = MPI.COMM_WORLD
 mpi_rank = mpi_comm.Get_rank()
 mpi_size = mpi_comm.Get_size()
 
-# create new logger level for development
-DEVEL_LEVEL = 5
-logging.addLevelName(DEVEL_LEVEL, "DEVEL")
-
-
-# a new method to create a new logger
-def _loglevel_devel(self, message, *args, **kwargs):
-    if self.isEnabledFor(DEVEL_LEVEL):
-        self._log(DEVEL_LEVEL, message, args, **kwargs)
-
-
-logging.Logger.devel = _loglevel_devel
-
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
 
@@ -81,8 +68,29 @@ except ValueError:
 
 
 def cli():
-    """Main function for tests."""
-    logger_level = "MPI-INFO"
+    """Main function."""
+    if len(sys.argv) == 1:
+        raise ValueError("Please specify input toml file.")
+    elif len(sys.argv) > 2:
+        raise ValueError("More than one input toml files are not acceptable.")
+    else:
+        toml_file = sys.argv[1]
+        if not os.path.isfile(toml_file):
+            raise FileNotFoundError(f"toml_file = {toml_file} does not exist.")
+        else:
+            dict_toml = toml.load(open(toml_file))
+
+    # set verbosity
+    try:
+        verbosity = dict_toml["control"]["verbosity"]
+    except KeyError:
+        verbosity = cli_parameters["control"]["verbosity"]
+
+    # set logger level
+    if verbosity == "high":
+        logger_level = "MPI-DEBUG"
+    else:
+        logger_level = "MPI-INFO"
 
     log = getLogger("jqmc")
 
@@ -91,6 +99,21 @@ def cli():
             log.setLevel("INFO")
             stream_handler = StreamHandler(sys.stdout)
             stream_handler.setLevel("INFO")
+            handler_format = Formatter("%(message)s")
+            stream_handler.setFormatter(handler_format)
+            log.addHandler(stream_handler)
+        else:
+            log.setLevel("ERROR")
+            stream_handler = StreamHandler(sys.stdout)
+            stream_handler.setLevel("ERROR")
+            handler_format = Formatter(f"MPI-rank={mpi_rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
+            stream_handler.setFormatter(handler_format)
+            log.addHandler(stream_handler)
+    elif logger_level == "MPI-DEBUG":
+        if mpi_rank == 0:
+            log.setLevel("DEBUG")
+            stream_handler = StreamHandler(sys.stdout)
+            stream_handler.setLevel("DEBUG")
             handler_format = Formatter("%(message)s")
             stream_handler.setFormatter(handler_format)
             log.addHandler(stream_handler)
@@ -124,17 +147,6 @@ def cli():
     logger.info("*** XLA Local devices recognized by JAX***")
     logger.info(local_device_info)
     logger.info("")
-
-    if len(sys.argv) == 1:
-        raise ValueError("Please specify input toml file.")
-    elif len(sys.argv) > 2:
-        raise ValueError("More than one input toml files are not acceptable.")
-    else:
-        toml_file = sys.argv[1]
-        if not os.path.isfile(toml_file):
-            raise FileNotFoundError(f"toml_file = {toml_file} does not exist.")
-        else:
-            dict_toml = toml.load(open(toml_file))
 
     logger.info(f"Input file = {toml_file}")
     if not all([type(value) is dict for value in dict_toml.values()]):

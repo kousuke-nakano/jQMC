@@ -9,6 +9,7 @@ cli_parameters = {
         "restart": False,
         "restart_chk": "restart.chk",
         "hamiltonian_chk": "hamiltonian_data.chk",
+        "verbosity": "low",
     },
     "control_comments": {
         "job_type": 'Specify the job type. "vmc", "vmcopt", or "lrdmc"',
@@ -18,6 +19,7 @@ cli_parameters = {
         "restart": "Restart calculation. A checkpoint file should be specified.",
         "restart_chk": "Restart checkpoint file. If restart is True, this file is used.",
         "hamiltonian_chk": "Hamiltonian checkpoint file. If restart is False, this file is used.",
+        "verbosity": 'Verbosity level. "low" or "high"',
     },
     "vmc": {
         "num_mcmc_steps": None,

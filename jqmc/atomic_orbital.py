@@ -1189,7 +1189,7 @@ def _compute_S_l_m_debug(
 
     # solid harmonics for (z) dependent part:
     def lambda_lm(k: int) -> float:
-        # logger.debug(f"l={l}, type ={type(l)}")
+        # logger.devel(f"l={l}, type ={type(l)}")
         return (
             (-1.0) ** (k)
             * 2.0 ** (-l)

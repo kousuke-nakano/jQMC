@@ -102,6 +102,9 @@ logger = getLogger("jqmc").getChild(__name__)
 # JAX float64
 jax.config.update("jax_enable_x64", True)
 
+# separator
+num_sep_line = 66
+
 
 class MCMC:
     """MCMC with multiple walker class.
@@ -116,7 +119,7 @@ class MCMC:
         num_mcmc_per_measurement (int): the number of MCMC steps between a value (e.g., local energy) measurement.
         Dt (float): electron move step (bohr)
         epsilon_AS (float): the exponent of the AS regularization
-        adjust_epsilon_AS (bool): if True, adjust epsilon_AS to keep the average of weights close to target_weight (~0.8).
+        # adjust_epsilon_AS (bool): if True, adjust epsilon_AS to keep the average of weights close to target_weight (~0.8).
         comput_param_deriv (bool): if True, compute the derivatives of E wrt. variational parameters.
         comput_position_deriv (bool): if True, compute the derivatives of E wrt. atomic positions.
     """
@@ -129,7 +132,7 @@ class MCMC:
         num_mcmc_per_measurement: int = 16,
         Dt: float = 2.0,
         epsilon_AS: float = 1e-1,
-        adjust_epsilon_AS: bool = False,
+        # adjust_epsilon_AS: bool = False,
         comput_param_deriv: bool = False,
         comput_position_deriv: bool = False,
     ) -> None:
@@ -139,7 +142,7 @@ class MCMC:
         self.__num_mcmc_per_measurement = num_mcmc_per_measurement
         self.__Dt = Dt
         self.__epsilon_AS = epsilon_AS
-        self.__adjust_epsilon_AS = adjust_epsilon_AS
+        # self.__adjust_epsilon_AS = adjust_epsilon_AS
         self.__comput_param_deriv = comput_param_deriv
         self.__comput_position_deriv = comput_position_deriv
 
@@ -423,17 +426,6 @@ class MCMC:
         # total number of electrons
         self.__total_electrons = len(self.__latest_r_up_carts[0]) + len(self.__latest_r_dn_carts[0])
 
-        # charges
-        if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
-            self.__charges = jnp.array(self.__hamiltonian_data.structure_data.atomic_numbers) - jnp.array(
-                self.__hamiltonian_data.coulomb_potential_data.z_cores
-            )
-        else:
-            self.__charges = jnp.array(self.__hamiltonian_data.structure_data.atomic_numbers)
-
-        # coords
-        self.__coords = jnp.array(self.__hamiltonian_data.structure_data.positions_cart_np)
-
     def run(self, num_mcmc_steps: int = 0, max_time=86400) -> None:
         """Launch MCMCs with the set multiple walkers.
 
@@ -459,14 +451,19 @@ class MCMC:
 
         # Note: This jit drastically accelarates the computation!!
         @partial(jit, static_argnums=3)
-        def _update_electron_positions(init_r_up_carts, init_r_dn_carts, jax_PRNG_key, num_mcmc_per_measurement):
+        def _update_electron_positions(
+            init_r_up_carts, init_r_dn_carts, jax_PRNG_key, num_mcmc_per_measurement, hamiltonian_data, Dt, epsilon_AS
+        ):
             """Update electron positions based on the MH method.
 
             Args:
                 init_r_up_carts (jnpt.ArrayLike): up electron position. dim: (N_e^up, 3)
                 init_r_dn_carts (jnpt.ArrayLike): down electron position. dim: (N_e^dn, 3)
                 jax_PRNG_key (jnpt.ArrayLike): jax PRIN key.
-                self.__num_mcmc_per_measurement (int): the number of iterarations (i.e. the number of proposal in updating electron positions.)
+                num_mcmc_per_measurement (int): the number of iterarations (i.e. the number of proposal in updating electron positions.)
+                hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data.
+                Dt (float): the step size in the MH method.
+                epsilon_AS (float): the exponent of the AS regularization.
 
             Returns:
                 jax_PRNG_key (jnpt.ArrayLike): updated jax_PRNG_key.
@@ -482,10 +479,11 @@ class MCMC:
 
             def body_fun(_, carry):
                 accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key = carry
+                total_electrons = len(r_up_carts) + len(r_dn_carts)
 
                 # Choose randomly if the electron comes from up or dn
                 jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
-                rand_num = jax.random.randint(subkey, shape=(), minval=0, maxval=self.__total_electrons)
+                rand_num = jax.random.randint(subkey, shape=(), minval=0, maxval=total_electrons)
 
                 # boolen: "up" or "dn"
                 # is_up == True -> up、False -> dn
@@ -505,18 +503,29 @@ class MCMC:
                 old_r_cart = jnp.where(is_up, r_up_carts[selected_electron_index], r_dn_carts[selected_electron_index])
 
                 # choose the nearest atom index
-                nearest_atom_index = find_nearest_index_jax(self.__hamiltonian_data.structure_data, old_r_cart)
+                nearest_atom_index = find_nearest_index_jax(hamiltonian_data.structure_data, old_r_cart)
 
-                R_cart = self.__coords[nearest_atom_index]
-                Z = self.__charges[nearest_atom_index]
+                # charges
+                if hamiltonian_data.coulomb_potential_data.ecp_flag:
+                    charges = jnp.array(hamiltonian_data.structure_data.atomic_numbers) - jnp.array(
+                        hamiltonian_data.coulomb_potential_data.z_cores
+                    )
+                else:
+                    charges = jnp.array(hamiltonian_data.structure_data.atomic_numbers)
+
+                # coords
+                coords = jnp.array(hamiltonian_data.structure_data.positions_cart_np)
+
+                R_cart = coords[nearest_atom_index]
+                Z = charges[nearest_atom_index]
                 norm_r_R = jnp.linalg.norm(old_r_cart - R_cart)
                 f_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
 
-                logger.debug(f"nearest_atom_index = {nearest_atom_index}")
-                logger.debug(f"norm_r_R = {norm_r_R}")
-                logger.debug(f"f_l  = {f_l}")
+                logger.devel(f"nearest_atom_index = {nearest_atom_index}")
+                logger.devel(f"norm_r_R = {norm_r_R}")
+                logger.devel(f"f_l  = {f_l}")
 
-                sigma = f_l * self.__Dt
+                sigma = f_l * Dt
                 jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
                 g = jax.random.normal(subkey, shape=()) * sigma
 
@@ -528,7 +537,7 @@ class MCMC:
                 g_vector = jnp.zeros(3)
                 g_vector = g_vector.at[random_index].set(g)
 
-                logger.debug(f"jn = {random_index}, g \\equiv dstep  = {g_vector}")
+                logger.devel(f"jn = {random_index}, g \\equiv dstep  = {g_vector}")
                 new_r_cart = old_r_cart + g_vector
 
                 # set proposed r_up_carts and r_dn_carts.
@@ -547,53 +556,53 @@ class MCMC:
                 )
 
                 # choose the nearest atom index
-                nearest_atom_index = find_nearest_index_jax(self.__hamiltonian_data.structure_data, new_r_cart)
+                nearest_atom_index = find_nearest_index_jax(hamiltonian_data.structure_data, new_r_cart)
 
-                R_cart = self.__coords[nearest_atom_index]
-                Z = self.__charges[nearest_atom_index]
+                R_cart = coords[nearest_atom_index]
+                Z = charges[nearest_atom_index]
                 norm_r_R = jnp.linalg.norm(new_r_cart - R_cart)
                 f_prime_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
 
-                logger.debug(f"nearest_atom_index = {nearest_atom_index}")
-                logger.debug(f"norm_r_R = {norm_r_R}")
-                logger.debug(f"f_prime_l  = {f_prime_l}")
+                logger.devel(f"nearest_atom_index = {nearest_atom_index}")
+                logger.devel(f"norm_r_R = {norm_r_R}")
+                logger.devel(f"f_prime_l  = {f_prime_l}")
 
-                logger.debug(f"The selected electron is {selected_electron_index + 1}-th {is_up} electron.")
-                logger.debug(f"The selected electron position is {old_r_cart}.")
-                logger.debug(f"The proposed electron position is {new_r_cart}.")
+                logger.devel(f"The selected electron is {selected_electron_index + 1}-th {is_up} electron.")
+                logger.devel(f"The selected electron position is {old_r_cart}.")
+                logger.devel(f"The proposed electron position is {new_r_cart}.")
 
                 T_ratio = (f_l / f_prime_l) * jnp.exp(
                     -(jnp.linalg.norm(new_r_cart - old_r_cart) ** 2)
-                    * (1.0 / (2.0 * f_prime_l**2 * self.__Dt**2) - 1.0 / (2.0 * f_l**2 * self.__Dt**2))
+                    * (1.0 / (2.0 * f_prime_l**2 * Dt**2) - 1.0 / (2.0 * f_l**2 * Dt**2))
                 )
 
                 # original trial WFs
                 Psi_T_p = evaluate_wavefunction_api(
-                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                    wavefunction_data=hamiltonian_data.wavefunction_data,
                     r_up_carts=proposed_r_up_carts,
                     r_dn_carts=proposed_r_dn_carts,
                 )
 
                 Psi_T_o = evaluate_wavefunction_api(
-                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                    wavefunction_data=hamiltonian_data.wavefunction_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                 )
 
                 # compute AS regularization factors, R_AS and R_AS_eps
                 R_AS_p = compute_AS_regularization_factor_api(
-                    geminal_data=self.__hamiltonian_data.wavefunction_data.geminal_data,
+                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                     r_up_carts=proposed_r_up_carts,
                     r_dn_carts=proposed_r_dn_carts,
                 )
-                R_AS_p_eps = jnp.maximum(R_AS_p, self.__epsilon_AS)
+                R_AS_p_eps = jnp.maximum(R_AS_p, epsilon_AS)
 
                 R_AS_o = compute_AS_regularization_factor_api(
-                    geminal_data=self.__hamiltonian_data.wavefunction_data.geminal_data,
+                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                 )
-                R_AS_o_eps = jnp.maximum(R_AS_o, self.__epsilon_AS)
+                R_AS_o_eps = jnp.maximum(R_AS_o, epsilon_AS)
 
                 # modified trial WFs
                 Psi_G_p = R_AS_p_eps / R_AS_p * Psi_T_p
@@ -603,13 +612,13 @@ class MCMC:
                 # compute R_ratio
                 R_ratio = (Psi_G_p / Psi_G_o) ** 2.0
 
-                logger.debug(f"R_ratio, T_ratio = {R_ratio}, {T_ratio}")
+                logger.devel(f"R_ratio, T_ratio = {R_ratio}, {T_ratio}")
                 acceptance_ratio = jnp.min(jnp.array([1.0, R_ratio * T_ratio]))
-                logger.debug(f"acceptance_ratio = {acceptance_ratio}")
+                logger.devel(f"acceptance_ratio = {acceptance_ratio}")
 
                 jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
                 b = jax.random.uniform(subkey, shape=(), minval=0.0, maxval=1.0)
-                logger.debug(f"b = {b}.")
+                logger.devel(f"b = {b}.")
 
                 def _accepted_fun(_):
                     # Move accepted
@@ -641,8 +650,14 @@ class MCMC:
             _,
             _,
             _,
-        ) = vmap(_update_electron_positions, in_axes=(0, 0, 0, None))(
-            self.__latest_r_up_carts, self.__latest_r_dn_carts, self.__jax_PRNG_key_list, self.__num_mcmc_per_measurement
+        ) = vmap(_update_electron_positions, in_axes=(0, 0, 0, None, None, None, None))(
+            self.__latest_r_up_carts,
+            self.__latest_r_dn_carts,
+            self.__jax_PRNG_key_list,
+            self.__num_mcmc_per_measurement,
+            self.__hamiltonian_data,
+            self.__Dt,
+            self.__epsilon_AS,
         )
         _ = vmap(compute_local_energy_api, in_axes=(None, 0, 0))(
             self.__hamiltonian_data,
@@ -734,6 +749,8 @@ class MCMC:
         )
         mcmc_interval = max(1, int(num_mcmc_steps / 10))  # %
 
+        # adjust_epsilon_AS = self.__adjust_epsilon_AS
+
         for i_mcmc_step in range(num_mcmc_steps):
             if (i_mcmc_step + 1) % mcmc_interval == 0:
                 progress = (i_mcmc_step + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
@@ -750,8 +767,14 @@ class MCMC:
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
                 self.__jax_PRNG_key_list,
-            ) = vmap(_update_electron_positions, in_axes=(0, 0, 0, None))(
-                self.__latest_r_up_carts, self.__latest_r_dn_carts, self.__jax_PRNG_key_list, self.__num_mcmc_per_measurement
+            ) = vmap(_update_electron_positions, in_axes=(0, 0, 0, None, None, None, None))(
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+                self.__jax_PRNG_key_list,
+                self.__num_mcmc_per_measurement,
+                self.__hamiltonian_data,
+                self.__Dt,
+                self.__epsilon_AS,
             )
             end = time.perf_counter()
             timer_mcmc_update += end - start
@@ -767,7 +790,7 @@ class MCMC:
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
-            logger.debug(f"e_L = {e_L}")
+            logger.devel(f"e_L = {e_L}")
             end = time.perf_counter()
             timer_e_L += end - start
 
@@ -785,25 +808,26 @@ class MCMC:
             # logger.info(f"R_AS_eps = {R_AS_eps}.")
 
             w_L = (R_AS / R_AS_eps) ** 2
-            logger.info(
-                f"  AS regularization: np.min(w_L),  np.mean(w_L) , np.max(w_L) = {np.min(w_L)}, {np.mean(w_L)}, {np.max(w_L)}."
-            )
+            if (i_mcmc_step + 1) % mcmc_interval == 0:
+                logger.debug(f"      min, mean, max of weights are {np.min(w_L):.2f}, {np.mean(w_L):.2f}, {np.max(w_L):.2f}.")
             self.__stored_w_L.append(w_L)
 
-            if self.__adjust_epsilon_AS:
+            # logger.info(f"      The current epsilon_AS = {self.__epsilon_AS:.5f}")
+            """ deactivated for the time being
+            if adjust_epsilon_AS:
                 # Update adjust_epsilon_AS so that the average of weights approaches target_weight. Proportional control.
                 epsilon_AS_max = 1.0e-0
                 epsilon_AS_min = 0.0
-                gain_weight = 5.0e-4
+                gain_weight = 5.0e-3
                 target_weight = 0.8
-                torrelance_of_weight = 0.01
+                torrelance_of_weight = 0.05
 
                 ## Calculate the average of weights
                 average_weight = np.mean(w_L)
                 average_weight = mpi_comm.allreduce(average_weight, op=MPI.SUM)
                 average_weight = average_weight / mpi_size
-                # logger.info(f"      The current epsilon_AS = {self.__epsilon_AS:.5f}")
-                # logger.info(f"      The current averaged weights = {average_weight:.5f}")
+                logger.debug(f"      The current epsilon_AS = {self.__epsilon_AS:.5f}")
+                logger.debug(f"      The current averaged weights = {average_weight:.2f}")
 
                 ## Calculate the error as the difference between the current average and the target
                 diff_weight = average_weight - target_weight
@@ -811,7 +835,7 @@ class MCMC:
                 ## switch off self.__adjust_epsilon_AS:
                 if np.abs(diff_weight) < torrelance_of_weight:
                     # logger.info(f"      The averaged weights is converged within the torrelance of {torrelance_of_weight:.5f}.")
-                    self.__adjust_epsilon_AS = False
+                    adjust_epsilon_AS = False
                 else:
                     ## Update epsilon proportionally to the error
                     self.__epsilon_AS = self.__epsilon_AS + gain_weight * diff_weight
@@ -820,6 +844,7 @@ class MCMC:
                     self.__epsilon_AS = max(min(self.__epsilon_AS, epsilon_AS_max), epsilon_AS_min)
 
                     logger.info(f"      epsilon_AS is updated to {self.__epsilon_AS:.5f}")
+            """
 
             if self.__comput_position_deriv:
                 # """
@@ -873,8 +898,6 @@ class MCMC:
                     self.__latest_r_dn_carts,
                 )
                 end = time.perf_counter()
-                logger.devel(f"ln Psi evaluation: Time = {(end - start) * 1000:.3f} msec.")
-
                 logger.devel(f"ln_Psi = {ln_Psi}")
                 self.__stored_ln_Psi.append(ln_Psi)
 
@@ -1065,8 +1088,9 @@ class MCMC:
         logger.info(f"  Time for computing dln_Psi/dc = {timer_dln_Psi_dc / num_mcmc_done * 10**3:.2f} msec.")
         logger.info(f"  Time for computing de_L/dc = {timer_de_L_dc / num_mcmc_done * 10**3:.2f} msec.")
         logger.info(f"  Time for misc. (others) = {timer_misc / num_mcmc_done * 10**3:.2f} msec.")
+        logger.info(f"Average of walker weights is {np.mean(self.__stored_w_L):.3f}. Ideal is ~ 0.800. Adjust epsilon_AS.")
         logger.info(
-            f"Acceptance ratio is {self.__accepted_moves / (self.__accepted_moves + self.__rejected_moves) * 100:.3f} %"
+            f"Acceptance ratio is {self.__accepted_moves / (self.__accepted_moves + self.__rejected_moves) * 100:.2f} %.  Ideal is ~ 50.00%. Adjust Dt."
         )
         logger.info("")
 
@@ -1456,8 +1480,8 @@ class GFMC_fixed_projection_time:
                 total_assigned_dn += num_dn
 
             # Electron assignment for all atoms is complete
-            logger.debug(f"Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
-            logger.debug(f"Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
+            logger.devel(f"Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
+            logger.devel(f"Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
 
             # If necessary, include a check/adjustment step to ensure the overall assignment matches the targets
             # (Here it is assumed that sum(round(charge)) equals tot_num_electron_up + tot_num_electron_dn)
@@ -1471,10 +1495,10 @@ class GFMC_fixed_projection_time:
         logger.info(f"The number of MPI process = {mpi_size}.")
         logger.info(f"The number of walkers assigned for each MPI process = {self.__num_walkers}.")
 
-        logger.debug(f"initial r_up_carts= {self.__latest_r_up_carts}")
-        logger.debug(f"initial r_dn_carts = {self.__latest_r_dn_carts}")
-        logger.debug(f"initial r_up_carts.shape = {self.__latest_r_up_carts.shape}")
-        logger.debug(f"initial r_dn_carts.shape = {self.__latest_r_dn_carts.shape}")
+        logger.devel(f"initial r_up_carts= {self.__latest_r_up_carts}")
+        logger.devel(f"initial r_dn_carts = {self.__latest_r_dn_carts}")
+        logger.devel(f"initial r_up_carts.shape = {self.__latest_r_up_carts.shape}")
+        logger.devel(f"initial r_dn_carts.shape = {self.__latest_r_dn_carts.shape}")
         logger.info("")
 
         # print out hamiltonian info
@@ -1666,6 +1690,8 @@ class GFMC_fixed_projection_time:
             r_dn_carts: jax.Array,
             jax_PRNG_key: jax.Array,
             non_local_move: bool,
+            alat: float,
+            hamiltonian_data: Hamiltonian_data,
         ):
             """Do projection, compatible with vmap.
 
@@ -1679,6 +1705,8 @@ class GFMC_fixed_projection_time:
                 r_dn_carts (N_e^dn, 3) after projection
                 jax_PRNG_key (jax.Array): jax PRNG key
                 non_local_move (bool): treatment of the spin-flip term. tmove (Casula's T-move) or dtmove (Determinant Locality Approximation with Casula's T-move)
+                alat (float): discretized grid length (bohr)
+                hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
 
             Returns:
                 e_L (float): e_L after the final projection.
@@ -1689,7 +1717,7 @@ class GFMC_fixed_projection_time:
                 r_dn_carts (N_e^dn, 3) after the final projection
                 jax_PRNG_key (jax.Array): jax PRNG key
             """
-            logger.debug(f"jax_PRNG_key={jax_PRNG_key}")
+            logger.devel(f"jax_PRNG_key={jax_PRNG_key}")
 
             # projection counter
             projection_counter = lax.cond(
@@ -1701,19 +1729,19 @@ class GFMC_fixed_projection_time:
 
             #'''
             # compute diagonal elements, kinetic part
-            diagonal_kinetic_part = 3.0 / (2.0 * self.__alat**2) * (len(r_up_carts) + len(r_dn_carts))
+            diagonal_kinetic_part = 3.0 / (2.0 * alat**2) * (len(r_up_carts) + len(r_dn_carts))
 
             # compute regularized bare couloumb
             ## compute diagonal elements, bare couloumb
             diagonal_bare_coulomb_part = _compute_bare_coulomb_potential_jax(
-                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
             )
 
             ## continuum kinetic energy
             diagonal_kinetic_continuum = compute_kinetic_energy_api(
-                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                wavefunction_data=hamiltonian_data.wavefunction_data,
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
             )
@@ -1730,8 +1758,8 @@ class GFMC_fixed_projection_time:
             ### compute discretized kinetic energy and mesh (with a random rotation)
             mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
                 compute_discretized_kinetic_energy_api(
-                    alat=self.__alat,
-                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                    alat=alat,
+                    wavefunction_data=hamiltonian_data.wavefunction_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                     RT=R.T,
@@ -1740,7 +1768,7 @@ class GFMC_fixed_projection_time:
             elements_non_diagonal_kinetic_part_FN = jnp.minimum(elements_non_diagonal_kinetic_part, 0.0)
             non_diagonal_sum_hamiltonian_kinetic = jnp.sum(elements_non_diagonal_kinetic_part_FN)
             diagonal_kinetic_part_SP = jnp.sum(jnp.maximum(elements_non_diagonal_kinetic_part, 0.0))
-            diagonal_kinetic_discretized = jnp.sum(1.0 / (4.0 * self.__alat**2) + elements_non_diagonal_kinetic_part)
+            diagonal_kinetic_discretized = jnp.sum(1.0 / (4.0 * alat**2) + elements_non_diagonal_kinetic_part)
 
             ### compute discretized diagonal bare coulomb part
             discretized_diagonal_bare_coulomb_part = (
@@ -1750,12 +1778,12 @@ class GFMC_fixed_projection_time:
 
             ''' coulomb regularization
             # compute diagonal elements, kinetic part
-            diagonal_kinetic_part = 3.0 / (2.0 * self.__alat**2) * (len(r_up_carts) + len(r_dn_carts))
+            diagonal_kinetic_part = 3.0 / (2.0 * alat**2) * (len(r_up_carts) + len(r_dn_carts))
 
             # compute continuum kinetic energy
             diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
                 _compute_kinetic_energy_all_elements_jax(
-                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                    wavefunction_data=hamiltonian_data.wavefunction_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                 )
@@ -1772,8 +1800,8 @@ class GFMC_fixed_projection_time:
             # compute discretized kinetic energy and mesh (with a random rotation)
             mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
                 compute_discretized_kinetic_energy_api(
-                    alat=self.__alat,
-                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                    alat=alat,
+                    wavefunction_data=hamiltonian_data.wavefunction_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                     RT=R.T,
@@ -1787,7 +1815,7 @@ class GFMC_fixed_projection_time:
             elements_non_diagonal_kinetic_part_all = elements_non_diagonal_kinetic_part.reshape(-1, 6)
             sign_flip_flags_elements = jnp.any(elements_non_diagonal_kinetic_part_all >= 0, axis=1)
             non_diagonal_kinetic_part_elements = jnp.sum(
-                elements_non_diagonal_kinetic_part_all + 1.0 / (4.0 * self.__alat**2), axis=1
+                elements_non_diagonal_kinetic_part_all + 1.0 / (4.0 * alat**2), axis=1
             )
             sign_flip_flags_elements_up, sign_flip_flags_elements_dn = jnp.split(sign_flip_flags_elements, [len(r_up_carts)])
             non_diagonal_kinetic_part_elements_up, non_diagonal_kinetic_part_elements_dn = jnp.split(
@@ -1801,13 +1829,13 @@ class GFMC_fixed_projection_time:
 
             # compute diagonal elements, ion-ion
             diagonal_bare_coulomb_part_ion_ion = _compute_bare_coulomb_potential_ion_ion_jax(
-                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data
+                coulomb_potential_data=hamiltonian_data.coulomb_potential_data
             )
 
             # compute diagonal elements, el-ion
             diagonal_bare_coulomb_part_el_ion_elements_up, diagonal_bare_coulomb_part_el_ion_elements_dn = (
                 _compute_bare_coulomb_potential_el_ion_element_wise_jax(
-                    coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                    coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                 )
@@ -1818,7 +1846,7 @@ class GFMC_fixed_projection_time:
                 diagonal_bare_coulomb_part_el_ion_discretized_elements_up,
                 diagonal_bare_coulomb_part_el_ion_discretized_elements_dn,
             ) = _compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax(
-                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
                 alat=self.__alat,
@@ -1871,11 +1899,11 @@ class GFMC_fixed_projection_time:
 
             # """ if-else for all-ele, ecp with tmove, and ecp with dltmove
             # with ECP
-            if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
+            if hamiltonian_data.coulomb_potential_data.ecp_flag:
                 # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
                 # ecp local
                 diagonal_ecp_local_part = _compute_ecp_local_parts_all_pairs_jax(
-                    coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                    coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                 )
@@ -1884,8 +1912,8 @@ class GFMC_fixed_projection_time:
                     # ecp non-local (t-move)
                     mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
                         _compute_ecp_non_local_parts_nearest_neighbors_jax(
-                            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                            coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
+                            wavefunction_data=hamiltonian_data.wavefunction_data,
                             r_up_carts=r_up_carts,
                             r_dn_carts=r_dn_carts,
                             flag_determinant_only=False,
@@ -1900,8 +1928,8 @@ class GFMC_fixed_projection_time:
                 elif non_local_move == "dltmove":
                     mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
                         _compute_ecp_non_local_parts_nearest_neighbors_jax(
-                            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                            coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
+                            wavefunction_data=hamiltonian_data.wavefunction_data,
                             r_up_carts=r_up_carts,
                             r_dn_carts=r_dn_carts,
                             flag_determinant_only=True,
@@ -1925,7 +1953,7 @@ class GFMC_fixed_projection_time:
                     Jastrow_ratio = Jastrow_on_mesh / Jastrow_ref
                     """
                     Jastrow_ratio = compute_ratio_Jastrow_part_api(
-                        jastrow_data=self.__hamiltonian_data.wavefunction_data.jastrow_data,
+                        jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                         old_r_up_carts=r_up_carts,
                         old_r_dn_carts=r_dn_carts,
                         new_r_up_carts_arr=mesh_non_local_ecp_part_r_up_carts,
@@ -1937,7 +1965,7 @@ class GFMC_fixed_projection_time:
                     non_diagonal_sum_hamiltonian = non_diagonal_sum_hamiltonian_kinetic + non_diagonal_sum_hamiltonian_ecp
 
                 else:
-                    logger.error(f"non_local_move = {self.__non_local_move} is not yet implemented.")
+                    logger.error(f"non_local_move = {non_local_move} is not yet implemented.")
                     raise NotImplementedError
 
                 # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
@@ -1974,23 +2002,23 @@ class GFMC_fixed_projection_time:
                 non_diagonal_move_mesh_r_up_carts = mesh_kinetic_part_r_up_carts
                 non_diagonal_move_mesh_r_dn_carts = mesh_kinetic_part_r_dn_carts
 
-            logger.debug(f"  e_L={e_L}")
+            logger.devel(f"  e_L={e_L}")
             # """
 
             # compute the time the walker remaining in the same configuration
             jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
             xi = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
             tau_update = jnp.minimum(tau_left, jnp.log(1 - xi) / non_diagonal_sum_hamiltonian)
-            logger.debug(f"  tau_update={tau_update}")
+            logger.devel(f"  tau_update={tau_update}")
 
             # update weight
-            logger.debug(f"  old: w_L={w_L}")
+            logger.devel(f"  old: w_L={w_L}")
             w_L = w_L * jnp.exp(-tau_update * e_L)
-            logger.debug(f"  new: w_L={w_L}")
+            logger.devel(f"  new: w_L={w_L}")
 
             # update tau_left
             tau_left = tau_left - tau_update
-            logger.debug(f"tau_left = {tau_left}.")
+            logger.devel(f"tau_left = {tau_left}.")
 
             # electron position update
             # random choice
@@ -1999,17 +2027,17 @@ class GFMC_fixed_projection_time:
             cdf = jnp.cumsum(non_diagonal_move_probabilities)
             random_value = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
             k = jnp.searchsorted(cdf, random_value)
-            logger.debug(f"len(non_diagonal_move_probabilities) = {len(non_diagonal_move_probabilities)}.")
-            logger.debug(f"chosen update electron index, k = {k}.")
+            logger.devel(f"len(non_diagonal_move_probabilities) = {len(non_diagonal_move_probabilities)}.")
+            logger.devel(f"chosen update electron index, k = {k}.")
             proposed_r_up_carts = non_diagonal_move_mesh_r_up_carts[k]
             proposed_r_dn_carts = non_diagonal_move_mesh_r_dn_carts[k]
 
-            logger.debug(f"old: r_up_carts = {r_up_carts}")
-            logger.debug(f"old: r_dn_carts = {r_dn_carts}")
+            logger.devel(f"old: r_up_carts = {r_up_carts}")
+            logger.devel(f"old: r_dn_carts = {r_dn_carts}")
             new_r_up_carts = jnp.where(tau_left <= 0.0, r_up_carts, proposed_r_up_carts)
             new_r_dn_carts = jnp.where(tau_left <= 0.0, r_dn_carts, proposed_r_dn_carts)
-            logger.debug(f"new: r_up_carts={new_r_up_carts}.")
-            logger.debug(f"new: r_dn_carts={new_r_dn_carts}.")
+            logger.devel(f"new: r_up_carts={new_r_up_carts}.")
+            logger.devel(f"new: r_dn_carts={new_r_dn_carts}.")
 
             return (e_L, projection_counter, tau_left, w_L, new_r_up_carts, new_r_dn_carts, jax_PRNG_key)
 
@@ -2026,7 +2054,7 @@ class GFMC_fixed_projection_time:
             _,
             _,
             _,
-        ) = vmap(_projection, in_axes=(0, 0, 0, 0, 0, 0, None))(
+        ) = vmap(_projection, in_axes=(0, 0, 0, 0, 0, 0, None, None, None))(
             projection_counter_list,
             tau_left_list,
             w_L_list,
@@ -2034,6 +2062,8 @@ class GFMC_fixed_projection_time:
             self.__latest_r_dn_carts,
             self.__jax_PRNG_key_list,
             self.__non_local_move,
+            self.__alat,
+            self.__hamiltonian_data,
         )
 
         end_init = time.perf_counter()
@@ -2068,20 +2098,20 @@ class GFMC_fixed_projection_time:
             tau_left_list = jnp.array([self.__tau for _ in range(self.__num_walkers)])
             w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
 
-            logger.debug("  Projection is on going....")
+            logger.devel("  Projection is on going....")
 
             start_projection = time.perf_counter()
             # projection loop
             while True:
                 max_progress = (np.max(tau_left_list) / (self.__tau)) * 100.0
                 min_progress = (np.min(tau_left_list) / (self.__tau)) * 100.0
-                logger.debug(
+                logger.devel(
                     f"  max. Left projection time = {np.max(tau_left_list):.2f}/{self.__tau:.2f}: {max_progress:.1f} %."
                 )
-                logger.debug(
+                logger.devel(
                     f"  min. Left projection time = {np.min(tau_left_list):.2f}/{self.__tau:.2f}: {min_progress:.1f} %."
                 )
-                logger.debug(f"  in: w_L_list = {w_L_list}.")
+                logger.devel(f"  in: w_L_list = {w_L_list}.")
                 (
                     e_L_list,
                     projection_counter_list,
@@ -2090,7 +2120,7 @@ class GFMC_fixed_projection_time:
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                     self.__jax_PRNG_key_list,
-                ) = vmap(_projection, in_axes=(0, 0, 0, 0, 0, 0, None))(
+                ) = vmap(_projection, in_axes=(0, 0, 0, 0, 0, 0, None, None, None))(
                     projection_counter_list,
                     tau_left_list,
                     w_L_list,
@@ -2098,12 +2128,14 @@ class GFMC_fixed_projection_time:
                     self.__latest_r_dn_carts,
                     self.__jax_PRNG_key_list,
                     self.__non_local_move,
+                    self.__alat,
+                    self.__hamiltonian_data,
                 )
-                logger.debug(f"  out: w_L_list = {w_L_list}.")
-                logger.debug(f"max(tau_left_list) = {np.max(tau_left_list)}.")
-                logger.debug(f"min(tau_left_list) = {np.min(tau_left_list)}.")
+                logger.devel(f"  out: w_L_list = {w_L_list}.")
+                logger.devel(f"max(tau_left_list) = {np.max(tau_left_list)}.")
+                logger.devel(f"min(tau_left_list) = {np.min(tau_left_list)}.")
                 if np.max(tau_left_list) <= 0.0:
-                    logger.debug(f"max(tau_left_list) = {np.max(tau_left_list)} <= 0.0. Exit the projection loop.")
+                    logger.devel(f"max(tau_left_list) = {np.max(tau_left_list)} <= 0.0. Exit the projection loop.")
                     break
 
             # sync. jax arrays computations.
@@ -2119,7 +2151,7 @@ class GFMC_fixed_projection_time:
             timer_projection_total += end_projection - start_projection
 
             # projection ends
-            logger.debug("  Projection ends.")
+            logger.devel("  Projection ends.")
 
             # evaluate observables
             start_observable = time.perf_counter()
@@ -2177,24 +2209,24 @@ class GFMC_fixed_projection_time:
             ave_projection_counter_gathered = mpi_comm.gather(ave_projection_counter, root=0)
 
             if mpi_rank == 0:
-                logger.debug(f"e_L_gathered_dyad={e_L_gathered_dyad}")
-                logger.debug(f"w_L_gathered_dyad={w_L_gathered_dyad}")
+                logger.devel(f"e_L_gathered_dyad={e_L_gathered_dyad}")
+                logger.devel(f"w_L_gathered_dyad={w_L_gathered_dyad}")
                 r_up_carts_gathered_dict = dict(r_up_carts_gathered_dyad)
                 r_dn_carts_gathered_dict = dict(r_dn_carts_gathered_dyad)
                 e_L_gathered_dict = dict(e_L_gathered_dyad)
                 w_L_gathered_dict = dict(w_L_gathered_dyad)
-                logger.debug(f"  e_L_gathered_dict = {e_L_gathered_dict} Ha")
-                logger.debug(f"  w_L_gathered_dict = {w_L_gathered_dict}")
+                logger.devel(f"  e_L_gathered_dict = {e_L_gathered_dict} Ha")
+                logger.devel(f"  w_L_gathered_dict = {w_L_gathered_dict}")
                 r_up_carts_gathered = np.concatenate([r_up_carts_gathered_dict[i] for i in range(mpi_size)])
                 r_dn_carts_gathered = np.concatenate([r_dn_carts_gathered_dict[i] for i in range(mpi_size)])
                 e_L_gathered = np.concatenate([e_L_gathered_dict[i] for i in range(mpi_size)])
                 w_L_gathered = np.concatenate([w_L_gathered_dict[i] for i in range(mpi_size)])
-                logger.debug(f"  e_L_gathered = {e_L_gathered} Ha")
-                logger.debug(f"  w_L_gathered = {w_L_gathered}")
+                logger.devel(f"  e_L_gathered = {e_L_gathered} Ha")
+                logger.devel(f"  w_L_gathered = {w_L_gathered}")
                 e_L_averaged = np.sum(w_L_gathered * e_L_gathered) / np.sum(w_L_gathered)
                 w_L_averaged = np.average(w_L_gathered)
-                logger.debug(f"  e_L_averaged = {e_L_averaged} Ha")
-                logger.debug(f"  w_L_averaged = {w_L_averaged}")
+                logger.devel(f"  e_L_averaged = {e_L_averaged} Ha")
+                logger.devel(f"  w_L_averaged = {w_L_averaged}")
                 # add a dummy dim
                 e_L_averaged = np.expand_dims(e_L_averaged, axis=0)
                 w_L_averaged = np.expand_dims(w_L_averaged, axis=0)
@@ -2202,24 +2234,24 @@ class GFMC_fixed_projection_time:
                 self.__stored_e_L.append(e_L_averaged)
                 self.__stored_w_L.append(w_L_averaged)
                 w_L_list = w_L_gathered
-                logger.debug(f"w_L_list = {w_L_list}")
+                logger.devel(f"w_L_list = {w_L_list}")
                 probabilities = w_L_list / w_L_list.sum()
-                logger.debug(f"probabilities = {probabilities}")
+                logger.devel(f"probabilities = {probabilities}")
 
                 # correlated choice (see Sandro's textbook, page 182)
                 zeta = float(np.random.random())
                 # self.__jax_PRNG_key, subkey = jax.random.split(self.__jax_PRNG_key) # slow w/o jit!!
                 # zeta = float(jax.random.uniform(subkey, minval=0.0, maxval=1.0)) # slow w/o jit!!
                 z_list = [(alpha + zeta) / len(probabilities) for alpha in range(len(probabilities))]
-                logger.debug(f"z_list = {z_list}")
+                logger.devel(f"z_list = {z_list}")
                 cumulative_prob = np.cumsum(probabilities)
                 chosen_walker_indices = np.array(
                     [next(idx for idx, prob in enumerate(cumulative_prob) if z <= prob) for z in z_list]
                 )
-                logger.debug(f"The chosen walker indices = {chosen_walker_indices}")
-                logger.debug(f"The chosen walker indices.shape = {chosen_walker_indices.shape}")
-                logger.debug(f"r_up_carts_gathered.shape = {r_up_carts_gathered.shape}")
-                logger.debug(f"r_dn_carts_gathered.shape = {r_dn_carts_gathered.shape}")
+                logger.devel(f"The chosen walker indices = {chosen_walker_indices}")
+                logger.devel(f"The chosen walker indices.shape = {chosen_walker_indices.shape}")
+                logger.devel(f"r_up_carts_gathered.shape = {r_up_carts_gathered.shape}")
+                logger.devel(f"r_dn_carts_gathered.shape = {r_dn_carts_gathered.shape}")
 
                 proposed_r_up_carts = r_up_carts_gathered[chosen_walker_indices]
                 proposed_r_dn_carts = r_dn_carts_gathered[chosen_walker_indices]
@@ -2227,8 +2259,8 @@ class GFMC_fixed_projection_time:
                 self.__num_survived_walkers += len(set(chosen_walker_indices))
                 self.__num_killed_walkers += len(w_L_list) - len(set(chosen_walker_indices))
                 self.__stored_average_projection_counter.append(np.mean(ave_projection_counter_gathered))
-                logger.debug(f"num_survived_walkers={self.__num_survived_walkers}")
-                logger.debug(f"num_killed_walkers={self.__num_killed_walkers}")
+                logger.devel(f"num_survived_walkers={self.__num_survived_walkers}")
+                logger.devel(f"num_killed_walkers={self.__num_killed_walkers}")
             else:
                 self.__num_survived_walkers = None
                 self.__num_killed_walkers = None
@@ -2236,8 +2268,8 @@ class GFMC_fixed_projection_time:
                 proposed_r_up_carts = None
                 proposed_r_dn_carts = None
 
-            logger.debug(f"Before branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
-            logger.debug(f"Before branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
+            logger.devel(f"Before branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
+            logger.devel(f"Before branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
 
             self.__num_survived_walkers = mpi_comm.bcast(self.__num_survived_walkers, root=0)
             self.__num_killed_walkers = mpi_comm.bcast(self.__num_killed_walkers, root=0)
@@ -2261,8 +2293,8 @@ class GFMC_fixed_projection_time:
             self.__latest_r_up_carts = jnp.array(self.__latest_r_up_carts)
             self.__latest_r_dn_carts = jnp.array(self.__latest_r_dn_carts)
 
-            logger.debug(f"*After branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
-            logger.debug(f"*After branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
+            logger.devel(f"*After branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
+            logger.devel(f"*After branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
 
             end_reconfiguration = time.perf_counter()
             timer_reconfiguration += end_reconfiguration - start_reconfiguration
@@ -2293,8 +2325,8 @@ class GFMC_fixed_projection_time:
         logger.info(
             f"  Walker reconfiguration time per branching = {timer_reconfiguration / num_branching_done * 10**3: .3f} msec."
         )
-        logger.debug(f"Survived walkers = {self.__num_survived_walkers}")
-        logger.debug(f"killed walkers = {self.__num_killed_walkers}")
+        logger.devel(f"Survived walkers = {self.__num_survived_walkers}")
+        logger.devel(f"killed walkers = {self.__num_killed_walkers}")
         logger.info(
             f"Survived walkers ratio = {self.__num_survived_walkers / (self.__num_survived_walkers + self.__num_killed_walkers) * 100:.2f} %"
         )
@@ -2458,8 +2490,8 @@ class GFMC_fixed_num_projection:
                 total_assigned_dn += num_dn
 
             # Electron assignment for all atoms is complete
-            logger.debug(f"Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
-            logger.debug(f"Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
+            logger.devel(f"Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
+            logger.devel(f"Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
 
             # If necessary, include a check/adjustment step to ensure the overall assignment matches the targets
             # (Here it is assumed that sum(round(charge)) equals tot_num_electron_up + tot_num_electron_dn)
@@ -2473,10 +2505,10 @@ class GFMC_fixed_num_projection:
         logger.info(f"The number of MPI process = {mpi_size}.")
         logger.info(f"The number of walkers assigned for each MPI process = {self.__num_walkers}.")
 
-        logger.debug(f"initial r_up_carts= {self.__latest_r_up_carts}")
-        logger.debug(f"initial r_dn_carts = {self.__latest_r_dn_carts}")
-        logger.debug(f"initial r_up_carts.shape = {self.__latest_r_up_carts.shape}")
-        logger.debug(f"initial r_dn_carts.shape = {self.__latest_r_dn_carts.shape}")
+        logger.devel(f"initial r_up_carts= {self.__latest_r_up_carts}")
+        logger.devel(f"initial r_dn_carts = {self.__latest_r_dn_carts}")
+        logger.devel(f"initial r_up_carts.shape = {self.__latest_r_up_carts.shape}")
+        logger.devel(f"initial r_dn_carts.shape = {self.__latest_r_dn_carts.shape}")
         logger.info("")
 
         # SWCT data
@@ -2735,9 +2767,6 @@ class GFMC_fixed_num_projection:
             num_branching (int): number of branching (reconfiguration of walkers).
             max_time (int): maximum time in sec.
         """
-        # init E_scf
-        E_scf = self.__E_scf
-
         # initialize numpy random seed
         np.random.seed(self.__mpi_seed)
 
@@ -2783,6 +2812,8 @@ class GFMC_fixed_num_projection:
             E_scf: float,
             num_mcmc_per_measurement: int,
             non_local_move: bool,
+            alat: float,
+            hamiltonian_data: Hamiltonian_data,
         ):
             """Do projection, compatible with vmap.
 
@@ -2793,31 +2824,37 @@ class GFMC_fixed_num_projection:
                 init_w_L (float): weight before projection
                 init_r_up_carts (N_e^up, 3) before projection
                 init_r_dn_carts (N_e^dn, 3) before projection
+                E_scf (float): Self-consistent E (Hartree)
+                num_mcmc_per_measurement (int): the number of MCMC steps per measurement
+                non_local_move (bool): treatment of the spin-flip term. tmove (Casula's T-move) or dtmove (Determinant Locality Approximation with Casula's T-move)
+                alat (float): discretized grid length (bohr)
+                hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
+
             Returns:
                 latest_w_L (float): weight after the final projection
                 latest_r_up_carts (N_e^up, 3) after the final projection
                 latest_r_dn_carts (N_e^dn, 3) after the final projection
             """
-            logger.debug(f"init_jax_PRNG_key={init_jax_PRNG_key}")
+            logger.devel(f"init_jax_PRNG_key={init_jax_PRNG_key}")
 
             @jit
             def body_fun(_, carry):
                 w_L, r_up_carts, r_dn_carts, jax_PRNG_key = carry
                 #'''
                 # compute diagonal elements, kinetic part
-                diagonal_kinetic_part = 3.0 / (2.0 * self.__alat**2) * (len(r_up_carts) + len(r_dn_carts))
+                diagonal_kinetic_part = 3.0 / (2.0 * alat**2) * (len(r_up_carts) + len(r_dn_carts))
 
                 # compute regularized bare couloumb
                 ## compute diagonal elements, bare couloumb
                 diagonal_bare_coulomb_part = _compute_bare_coulomb_potential_jax(
-                    coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                    coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                 )
 
                 ## continuum kinetic energy
                 diagonal_kinetic_continuum = compute_kinetic_energy_api(
-                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                    wavefunction_data=hamiltonian_data.wavefunction_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                 )
@@ -2834,8 +2871,8 @@ class GFMC_fixed_num_projection:
                 ### compute discretized kinetic energy and mesh (with a random rotation)
                 mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
                     compute_discretized_kinetic_energy_api(
-                        alat=self.__alat,
-                        wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                        alat=alat,
+                        wavefunction_data=hamiltonian_data.wavefunction_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
                         RT=R.T,
@@ -2844,7 +2881,7 @@ class GFMC_fixed_num_projection:
                 elements_non_diagonal_kinetic_part_FN = jnp.minimum(elements_non_diagonal_kinetic_part, 0.0)
                 non_diagonal_sum_hamiltonian_kinetic = jnp.sum(elements_non_diagonal_kinetic_part_FN)
                 diagonal_kinetic_part_SP = jnp.sum(jnp.maximum(elements_non_diagonal_kinetic_part, 0.0))
-                diagonal_kinetic_discretized = jnp.sum(1.0 / (4.0 * self.__alat**2) + elements_non_diagonal_kinetic_part)
+                diagonal_kinetic_discretized = jnp.sum(1.0 / (4.0 * alat**2) + elements_non_diagonal_kinetic_part)
 
                 ### compute discretized diagonal bare coulomb part
                 discretized_diagonal_bare_coulomb_part = (
@@ -2854,12 +2891,12 @@ class GFMC_fixed_num_projection:
 
                 '''
                 # compute diagonal elements, kinetic part
-                diagonal_kinetic_part = 3.0 / (2.0 * self.__alat**2) * (len(r_up_carts) + len(r_dn_carts))
+                diagonal_kinetic_part = 3.0 / (2.0 * alat**2) * (len(r_up_carts) + len(r_dn_carts))
 
                 # compute continuum kinetic energy
                 diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
                     _compute_kinetic_energy_all_elements_jax(
-                        wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                        wavefunction_data=hamiltonian_data.wavefunction_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
                     )
@@ -2877,7 +2914,7 @@ class GFMC_fixed_num_projection:
                 mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
                     compute_discretized_kinetic_energy_api(
                         alat=self.__alat,
-                        wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                        wavefunction_data=hamiltonian_data.wavefunction_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
                         RT=R.T,
@@ -2891,7 +2928,7 @@ class GFMC_fixed_num_projection:
                 elements_non_diagonal_kinetic_part_all = elements_non_diagonal_kinetic_part.reshape(-1, 6)
                 sign_flip_flags_elements = jnp.any(elements_non_diagonal_kinetic_part_all >= 0, axis=1)
                 non_diagonal_kinetic_part_elements = jnp.sum(
-                    elements_non_diagonal_kinetic_part_all + 1.0 / (4.0 * self.__alat**2), axis=1
+                    elements_non_diagonal_kinetic_part_all + 1.0 / (4.0 * alat**2), axis=1
                 )
                 sign_flip_flags_elements_up, sign_flip_flags_elements_dn = jnp.split(
                     sign_flip_flags_elements, [len(r_up_carts)]
@@ -2907,13 +2944,13 @@ class GFMC_fixed_num_projection:
 
                 # compute diagonal elements, ion-ion
                 diagonal_bare_coulomb_part_ion_ion = _compute_bare_coulomb_potential_ion_ion_jax(
-                    coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data
+                    coulomb_potential_data=hamiltonian_data.coulomb_potential_data
                 )
 
                 # compute diagonal elements, el-ion
                 diagonal_bare_coulomb_part_el_ion_elements_up, diagonal_bare_coulomb_part_el_ion_elements_dn = (
                     _compute_bare_coulomb_potential_el_ion_element_wise_jax(
-                        coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                        coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
                     )
@@ -2924,7 +2961,7 @@ class GFMC_fixed_num_projection:
                     diagonal_bare_coulomb_part_el_ion_discretized_elements_up,
                     diagonal_bare_coulomb_part_el_ion_discretized_elements_dn,
                 ) = _compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax(
-                    coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                    coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                     alat=self.__alat,
@@ -2985,11 +3022,11 @@ class GFMC_fixed_num_projection:
 
                 # """ if-else for all-ele, ecp with tmove, and ecp with dltmove
                 # with ECP
-                if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
+                if hamiltonian_data.coulomb_potential_data.ecp_flag:
                     # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
                     # ecp local
                     diagonal_ecp_local_part = _compute_ecp_local_parts_all_pairs_jax(
-                        coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                        coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
                     )
@@ -2998,8 +3035,8 @@ class GFMC_fixed_num_projection:
                         # ecp non-local (t-move)
                         mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
                             _compute_ecp_non_local_parts_nearest_neighbors_jax(
-                                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                                coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
+                                wavefunction_data=hamiltonian_data.wavefunction_data,
                                 r_up_carts=r_up_carts,
                                 r_dn_carts=r_dn_carts,
                                 flag_determinant_only=False,
@@ -3022,8 +3059,8 @@ class GFMC_fixed_num_projection:
                     elif non_local_move == "dltmove":
                         mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
                             _compute_ecp_non_local_parts_nearest_neighbors_jax(
-                                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                                coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
+                                wavefunction_data=hamiltonian_data.wavefunction_data,
                                 r_up_carts=r_up_carts,
                                 r_dn_carts=r_dn_carts,
                                 flag_determinant_only=True,
@@ -3034,7 +3071,7 @@ class GFMC_fixed_num_projection:
                         diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
 
                         Jastrow_ratio = compute_ratio_Jastrow_part_api(
-                            jastrow_data=self.__hamiltonian_data.wavefunction_data.jastrow_data,
+                            jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                             old_r_up_carts=r_up_carts,
                             old_r_dn_carts=r_dn_carts,
                             new_r_up_carts_arr=mesh_non_local_ecp_part_r_up_carts,
@@ -3054,7 +3091,7 @@ class GFMC_fixed_num_projection:
                         )
 
                     else:
-                        logger.error(f"non_local_move = {self.__non_local_move} is not yet implemented.")
+                        logger.error(f"non_local_move = {non_local_move} is not yet implemented.")
                         raise NotImplementedError
 
                     # probability
@@ -3081,19 +3118,19 @@ class GFMC_fixed_num_projection:
 
                 # compute b_L_bar
                 b_x_bar = -1.0 * non_diagonal_sum_hamiltonian
-                logger.debug(f"  b_x_bar={b_x_bar}")
+                logger.devel(f"  b_x_bar={b_x_bar}")
 
                 # compute bar_b_L
-                logger.debug(f"  diagonal_sum_hamiltonian={diagonal_sum_hamiltonian}")
-                logger.debug(f"  E_scf={E_scf}")
+                logger.devel(f"  diagonal_sum_hamiltonian={diagonal_sum_hamiltonian}")
+                logger.devel(f"  E_scf={E_scf}")
                 # b_x = 1.0 / (diagonal_sum_hamiltonian - E_scf) ** (1.0 + self.__gamma * self.__alat**2) * b_x_bar
                 b_x = 1.0 / (diagonal_sum_hamiltonian - E_scf) * b_x_bar
-                logger.debug(f"  b_x={b_x}")
+                logger.devel(f"  b_x={b_x}")
 
                 # update weight
-                logger.debug(f"  old: w_L={w_L}")
+                logger.devel(f"  old: w_L={w_L}")
                 w_L = w_L * b_x
-                logger.debug(f"  new: w_L={w_L}")
+                logger.devel(f"  new: w_L={w_L}")
 
                 # electron position update
                 # random choice
@@ -3101,14 +3138,14 @@ class GFMC_fixed_num_projection:
                 cdf = jnp.cumsum(non_diagonal_move_probabilities)
                 random_value = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
                 k = jnp.searchsorted(cdf, random_value)
-                logger.debug(f"len(non_diagonal_move_probabilities) = {len(non_diagonal_move_probabilities)}.")
-                logger.debug(f"chosen update electron index, k = {k}.")
-                logger.debug(f"old: r_up_carts = {r_up_carts}")
-                logger.debug(f"old: r_dn_carts = {r_dn_carts}")
+                logger.devel(f"len(non_diagonal_move_probabilities) = {len(non_diagonal_move_probabilities)}.")
+                logger.devel(f"chosen update electron index, k = {k}.")
+                logger.devel(f"old: r_up_carts = {r_up_carts}")
+                logger.devel(f"old: r_dn_carts = {r_dn_carts}")
                 r_up_carts = non_diagonal_move_mesh_r_up_carts[k]
                 r_dn_carts = non_diagonal_move_mesh_r_dn_carts[k]
-                logger.debug(f"new: r_up_carts={r_up_carts}.")
-                logger.debug(f"new: r_dn_carts={r_dn_carts}.")
+                logger.devel(f"new: r_up_carts={r_up_carts}.")
+                logger.devel(f"new: r_dn_carts={r_dn_carts}.")
 
                 carry = (w_L, r_up_carts, r_dn_carts, jax_PRNG_key)
                 return carry
@@ -3126,23 +3163,24 @@ class GFMC_fixed_num_projection:
             r_dn_carts: jax.Array,
             jax_PRNG_key: jax.Array,
             non_local_move: bool,
+            alat: float,
         ):
             """Compute V elements."""
             #'''old one
             # compute diagonal elements, kinetic part
-            diagonal_kinetic_part = 3.0 / (2.0 * self.__alat**2) * (len(r_up_carts) + len(r_dn_carts))
+            diagonal_kinetic_part = 3.0 / (2.0 * alat**2) * (len(r_up_carts) + len(r_dn_carts))
 
             # compute regularized bare couloumb
             ## compute diagonal elements, bare couloumb
             diagonal_bare_coulomb_part = _compute_bare_coulomb_potential_jax(
-                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
             )
 
             ## continuum kinetic energy
             diagonal_kinetic_continuum = compute_kinetic_energy_api(
-                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                wavefunction_data=hamiltonian_data.wavefunction_data,
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
             )
@@ -3158,8 +3196,8 @@ class GFMC_fixed_num_projection:
 
             ### compute discretized kinetic energy and mesh (with a random rotation)
             _, _, elements_non_diagonal_kinetic_part = compute_discretized_kinetic_energy_api(
-                alat=self.__alat,
-                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                alat=alat,
+                wavefunction_data=hamiltonian_data.wavefunction_data,
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
                 RT=R.T,
@@ -3167,7 +3205,7 @@ class GFMC_fixed_num_projection:
             elements_non_diagonal_kinetic_part_FN = jnp.minimum(elements_non_diagonal_kinetic_part, 0.0)
             non_diagonal_sum_hamiltonian_kinetic = jnp.sum(elements_non_diagonal_kinetic_part_FN)
             diagonal_kinetic_part_SP = jnp.sum(jnp.maximum(elements_non_diagonal_kinetic_part, 0.0))
-            diagonal_kinetic_discretized = jnp.sum(1.0 / (4.0 * self.__alat**2) + elements_non_diagonal_kinetic_part)
+            diagonal_kinetic_discretized = jnp.sum(1.0 / (4.0 * alat**2) + elements_non_diagonal_kinetic_part)
 
             ### compute discretized diagonal bare coulomb part
             discretized_diagonal_bare_coulomb_part = (
@@ -3376,8 +3414,11 @@ class GFMC_fixed_num_projection:
             r_dn_carts: jax.Array,
             jax_PRNG_key: jax.Array,
             non_local_move: bool,
+            alat: float,
         ):
-            V_diag, V_nondiag = _compute_V_elements(hamiltonian_data, r_up_carts, r_dn_carts, jax_PRNG_key, non_local_move)
+            V_diag, V_nondiag = _compute_V_elements(
+                hamiltonian_data, r_up_carts, r_dn_carts, jax_PRNG_key, non_local_move, alat
+            )
             return V_diag + V_nondiag
 
         # projection compilation.
@@ -3388,31 +3429,35 @@ class GFMC_fixed_num_projection:
             _,
             _,
             _,
-        ) = vmap(_projection, in_axes=(0, 0, 0, 0, None, None, None))(
+        ) = vmap(_projection, in_axes=(0, 0, 0, 0, None, None, None, None, None))(
             w_L_list,
             self.__latest_r_up_carts,
             self.__latest_r_dn_carts,
             self.__jax_PRNG_key_list,
-            E_scf,
+            self.__E_scf,
             self.__num_mcmc_per_measurement,
             self.__non_local_move,
+            self.__alat,
+            self.__hamiltonian_data,
         )
 
-        _, _ = vmap(_compute_V_elements, in_axes=(None, 0, 0, 0, None))(
+        _, _ = vmap(_compute_V_elements, in_axes=(None, 0, 0, 0, None, None))(
             self.__hamiltonian_data,
             self.__latest_r_up_carts,
             self.__latest_r_dn_carts,
             self.__jax_PRNG_key_list,
             self.__non_local_move,
+            self.__alat,
         )
 
         if self.__comput_position_deriv:
-            _, _, _ = vmap(grad(_compute_local_energy, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0, None))(
+            _, _, _ = vmap(grad(_compute_local_energy, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0, None, None))(
                 self.__hamiltonian_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
                 self.__jax_PRNG_key_list,
                 self.__non_local_move,
+                self.__alat,
             )
         end_init = time.perf_counter()
         timer_projection_init += end_init - start_init
@@ -3441,7 +3486,7 @@ class GFMC_fixed_num_projection:
             # Always set the initial weight list to 1.0
             w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
 
-            logger.debug("  Projection is on going....")
+            logger.devel("  Projection is on going....")
 
             start_projection = time.perf_counter()
 
@@ -3451,14 +3496,16 @@ class GFMC_fixed_num_projection:
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
                 self.__jax_PRNG_key_list,
-            ) = vmap(_projection, in_axes=(0, 0, 0, 0, None, None, None))(
+            ) = vmap(_projection, in_axes=(0, 0, 0, 0, None, None, None, None, None))(
                 w_L_list,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
                 self.__jax_PRNG_key_list,
-                E_scf,
+                self.__E_scf,
                 self.__num_mcmc_per_measurement,
                 self.__non_local_move,
+                self.__alat,
+                self.__hamiltonian_data,
             )
 
             # sync. jax arrays computations.
@@ -3471,17 +3518,18 @@ class GFMC_fixed_num_projection:
             timer_projection_total += end_projection - start_projection
 
             # projection ends
-            logger.debug("  Projection ends.")
+            logger.devel("  Projection ends.")
 
             # evaluate observables
             start = time.perf_counter()
             # V_diag and e_L
-            V_diag_list, V_nondiag_list = vmap(_compute_V_elements, in_axes=(None, 0, 0, 0, None))(
+            V_diag_list, V_nondiag_list = vmap(_compute_V_elements, in_axes=(None, 0, 0, 0, None, None))(
                 self.__hamiltonian_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
                 self.__jax_PRNG_key_list,
                 self.__non_local_move,
+                self.__alat,
             )
             e_L_list = V_diag_list + V_nondiag_list
             # logger.info(f"  e_L_list = {e_L_list}")
@@ -3512,13 +3560,14 @@ class GFMC_fixed_num_projection:
             if self.__comput_position_deriv:
                 start = time.perf_counter()
                 grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = vmap(
-                    grad(_compute_local_energy, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0, None)
+                    grad(_compute_local_energy, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0, None, None)
                 )(
                     self.__hamiltonian_data,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                     self.__jax_PRNG_key_list,
                     self.__non_local_move,
+                    self.__alat,
                 )
                 grad_e_L_r_up.block_until_ready()
                 grad_e_L_r_dn.block_until_ready()
@@ -3596,7 +3645,7 @@ class GFMC_fixed_num_projection:
             # jnp.array -> np.array
             w_L_latest = np.array(w_L_list)
             e_L_latest = np.array(e_L_list)
-            V_diag_E_latest = np.array(V_diag_list) - E_scf
+            V_diag_E_latest = np.array(V_diag_list) - self.__E_scf
             # reg = 1.0 + self.__gamma * self.__alat**2
             # logger.info(f"  reg={reg}")
             # logger.info(f"  w_L_latest={w_L_latest}")
@@ -3779,9 +3828,9 @@ class GFMC_fixed_num_projection:
                     self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn_averaged)
                 # for branching
                 w_L_list = w_L_gathered
-                logger.debug(f"w_L_list = {w_L_list}")
+                logger.devel(f"w_L_list = {w_L_list}")
                 probabilities = w_L_list / w_L_list.sum()
-                logger.debug(f"probabilities = {probabilities}")
+                logger.devel(f"probabilities = {probabilities}")
 
                 # correlated choice (see Sandro's textbook, page 182)
                 """ very slow w/o jax-jit!!
@@ -3790,31 +3839,31 @@ class GFMC_fixed_num_projection:
                 """
                 zeta = float(np.random.random())
                 z_list = [(alpha + zeta) / len(probabilities) for alpha in range(len(probabilities))]
-                logger.debug(f"z_list = {z_list}")
+                logger.devel(f"z_list = {z_list}")
                 cumulative_prob = np.cumsum(probabilities)
                 chosen_walker_indices = np.array(
                     [next(idx for idx, prob in enumerate(cumulative_prob) if z <= prob) for z in z_list]
                 )
-                logger.debug(f"The chosen walker indices = {chosen_walker_indices}")
-                logger.debug(f"The chosen walker indices.shape = {chosen_walker_indices.shape}")
-                logger.debug(f"r_up_carts_gathered.shape = {r_up_carts_gathered.shape}")
-                logger.debug(f"r_dn_carts_gathered.shape = {r_dn_carts_gathered.shape}")
+                logger.devel(f"The chosen walker indices = {chosen_walker_indices}")
+                logger.devel(f"The chosen walker indices.shape = {chosen_walker_indices.shape}")
+                logger.devel(f"r_up_carts_gathered.shape = {r_up_carts_gathered.shape}")
+                logger.devel(f"r_dn_carts_gathered.shape = {r_dn_carts_gathered.shape}")
 
                 proposed_r_up_carts = r_up_carts_gathered[chosen_walker_indices]
                 proposed_r_dn_carts = r_dn_carts_gathered[chosen_walker_indices]
 
                 self.__num_survived_walkers += len(set(chosen_walker_indices))
                 self.__num_killed_walkers += len(w_L_list) - len(set(chosen_walker_indices))
-                logger.debug(f"num_survived_walkers={self.__num_survived_walkers}")
-                logger.debug(f"num_killed_walkers={self.__num_killed_walkers}")
+                logger.devel(f"num_survived_walkers={self.__num_survived_walkers}")
+                logger.devel(f"num_killed_walkers={self.__num_killed_walkers}")
             else:
                 self.__num_survived_walkers = None
                 self.__num_killed_walkers = None
                 proposed_r_up_carts = None
                 proposed_r_dn_carts = None
 
-            logger.debug(f"Before branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
-            logger.debug(f"Before branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
+            logger.devel(f"Before branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
+            logger.devel(f"Before branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
 
             self.__num_survived_walkers = mpi_comm.bcast(self.__num_survived_walkers, root=0)
             self.__num_killed_walkers = mpi_comm.bcast(self.__num_killed_walkers, root=0)
@@ -3837,8 +3886,8 @@ class GFMC_fixed_num_projection:
             self.__latest_r_up_carts = jnp.array(self.__latest_r_up_carts)
             self.__latest_r_dn_carts = jnp.array(self.__latest_r_dn_carts)
 
-            logger.debug(f"*After branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
-            logger.debug(f"*After branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
+            logger.devel(f"*After branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
+            logger.devel(f"*After branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
 
             end_reconfiguration = time.perf_counter()
             timer_reconfiguration += end_reconfiguration - start_reconfiguration
@@ -3847,14 +3896,14 @@ class GFMC_fixed_num_projection:
             eq_steps = 20
             if (i_mcmc_step + 1) % mcmc_interval == 0:
                 if i_mcmc_step >= eq_steps:
-                    E_scf, E_scf_std = self.get_E_on_the_fly(
+                    self.__E_scf, E_scf_std = self.get_E_on_the_fly(
                         num_gfmc_warmup_steps=np.minimum(eq_steps, i_mcmc_step - eq_steps),
                         num_gfmc_bin_blocks=10,
                         num_gfmc_collect_steps=10,
                     )
-                    logger.debug(f"    Updated E_scf = {E_scf:.5f} +- {E_scf_std:.5f} Ha.")
+                    logger.debug(f"    Updated E_scf = {self.__E_scf:.5f} +- {E_scf_std:.5f} Ha.")
                 else:
-                    logger.debug(f"    Init E_scf = {E_scf:.5f} Ha. Being equilibrated.")
+                    logger.debug(f"    Init E_scf = {self.__E_scf:.5f} Ha. Being equilibrated.")
 
             num_mcmc_done += 1
             gfmc_current = time.perf_counter()
@@ -3865,9 +3914,6 @@ class GFMC_fixed_num_projection:
 
         logger.info("-End branching-")
         logger.info("")
-
-        # update self.__E_scf = E_scf
-        self.__E_scf = E_scf
 
         # count up mcmc_counter
         self.__mcmc_counter += num_mcmc_done
@@ -3897,10 +3943,10 @@ class GFMC_fixed_num_projection:
         logger.info(f"  Time for computing de_L/dc = {timer_de_L_dc / num_mcmc_done * 10**3:.2f} msec.")
         logger.info(f"  Time for misc. (others) = {timer_misc / num_mcmc_done * 10**3:.2f} msec.")
         logger.info(f"  Walker reconfiguration time per branching = {timer_reconfiguration / num_mcmc_done * 10**3: .3f} msec.")
-        logger.debug(f"Survived walkers = {self.__num_survived_walkers}")
-        logger.debug(f"killed walkers = {self.__num_killed_walkers}")
+        logger.devel(f"Survived walkers = {self.__num_survived_walkers}")
+        logger.devel(f"killed walkers = {self.__num_killed_walkers}")
         logger.info(
-            f"Survived walkers ratio = {self.__num_survived_walkers / (self.__num_survived_walkers + self.__num_killed_walkers) * 100:.2f} %"
+            f"Survived walkers ratio = {self.__num_survived_walkers / (self.__num_survived_walkers + self.__num_killed_walkers) * 100:.2f} %. Ideal is ~ 98 %. Adjust num_mcmc_per_measurement."
         )
         logger.info("")
 
@@ -3918,13 +3964,13 @@ class GFMC_fixed_num_projection:
         self, num_gfmc_warmup_steps: int = 3, num_gfmc_bin_blocks: int = 10, num_gfmc_collect_steps: int = 2
     ) -> float:
         """Get e_L."""
-        logger.debug("- Comput. e_L -")
+        logger.devel("- Comput. e_L -")
         if mpi_rank == 0:
             e_L_eq = self.__stored_e_L[num_gfmc_warmup_steps + num_gfmc_collect_steps :]
             w_L_eq = self.__stored_w_L[num_gfmc_warmup_steps:]
             # logger.info(f" AS (e_L_eq) = {(e_L_eq)}")
             # logger.info(f"  (w_L_eq) = {(w_L_eq)}")
-            logger.debug("  Progress: Computing G_eq and G_e_L_eq.")
+            logger.devel("  Progress: Computing G_eq and G_e_L_eq.")
 
             w_L_eq = jnp.array(w_L_eq)
             e_L_eq = jnp.array(e_L_eq)
@@ -3933,13 +3979,13 @@ class GFMC_fixed_num_projection:
             G_eq = np.array(G_eq)
             G_e_L_eq = np.array(G_e_L_eq)
 
-            logger.debug(f"  Progress: Computing binned G_e_L_eq and G_eq with # binned blocks = {num_gfmc_bin_blocks}.")
+            logger.devel(f"  Progress: Computing binned G_e_L_eq and G_eq with # binned blocks = {num_gfmc_bin_blocks}.")
             G_e_L_split = np.array_split(G_e_L_eq, num_gfmc_bin_blocks)
             G_e_L_binned = np.array([np.sum(G_e_L_list) for G_e_L_list in G_e_L_split])
             G_split = np.array_split(G_eq, num_gfmc_bin_blocks)
             G_binned = np.array([np.sum(G_list) for G_list in G_split])
 
-            logger.debug(f"  Progress: Computing jackknife samples with # binned blocks = {num_gfmc_bin_blocks}.")
+            logger.devel(f"  Progress: Computing jackknife samples with # binned blocks = {num_gfmc_bin_blocks}.")
 
             G_e_L_binned_sum = np.sum(G_e_L_binned)
             G_binned_sum = np.sum(G_binned)
@@ -3948,7 +3994,7 @@ class GFMC_fixed_num_projection:
                 (G_e_L_binned_sum - G_e_L_binned[m]) / (G_binned_sum - G_binned[m]) for m in range(num_gfmc_bin_blocks)
             ]
 
-            logger.debug("  Progress: Computing jackknife mean and std.")
+            logger.devel("  Progress: Computing jackknife mean and std.")
             E_mean = np.average(E_jackknife)
             E_std = np.sqrt(num_gfmc_bin_blocks - 1) * np.std(E_jackknife)
             E_mean = float(E_mean)
@@ -4033,19 +4079,25 @@ class QMC:
 
         # main vmcopt loop
         for i_opt in range(num_opt_steps):
-            logger.info(f"i_opt={i_opt + 1 + self.__i_opt}/{num_opt_steps + self.__i_opt}.")
+            logger.info("=" * num_sep_line)
+            logger.info(f"Optimization step = {i_opt + 1 + self.__i_opt}/{num_opt_steps + self.__i_opt}.")
+            logger.info("=" * num_sep_line)
 
-            if mpi_rank == 0:
-                logger.info(f"num_mcmc_warmup_steps={num_mcmc_warmup_steps}.")
-                logger.info(f"num_mcmc_bin_blocks={num_mcmc_bin_blocks}.")
-                logger.info(f"num_mcmc_steps={num_mcmc_steps}.")
+            logger.info(f"MCMC steps this iteration = {num_mcmc_steps}.")
+            logger.info(f"Warmup steps = {num_mcmc_warmup_steps}.")
+            logger.info(f"Bin blocks = {num_mcmc_bin_blocks}.")
+            logger.info("")
 
             # run MCMC
             self.mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
 
             # get E
             E, E_std = self.get_E(num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks)
+            logger.info("Total Energy before update of wavefunction.")
+            logger.info("-" * num_sep_line)
             logger.info(f"E = {E:.5f} +- {E_std:.5f} Ha")
+            logger.info("-" * num_sep_line)
+            logger.info("")
 
             # get opt param
             dc_param_list = self.mcmc.opt_param_dict["dc_param_list"]
@@ -4067,8 +4119,8 @@ class QMC:
                     )
                     chosen_param_index += new_param_index
                 if opt_J2_param and dc_param == "j2_param":
-                    logger.info(
-                        f"twobody param before opt. = {self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param}"
+                    logger.devel(
+                        f"  twobody param before opt. = {self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param}"
                     )
                     new_param_index = [i for i, v in enumerate(dc_flattened_index_list) if v == ii]
                     opt_param_index_dict[dc_param] = np.array(range(len(new_param_index)), dtype=np.int32) + len(
@@ -4100,11 +4152,14 @@ class QMC:
             )
 
             if mpi_rank == 0:
-                logger.info(f"f.shape = {f.shape}.")
-                logger.info(f"f_std.shape = {f_std.shape}.")
+                logger.debug(f"shape of f = {f.shape}.")
+                logger.devel(f"f_std.shape = {f_std.shape}.")
                 signal_to_noise_f = np.abs(f) / f_std
-                logger.info(f"Max |f| = {np.max(np.abs(f)):.3f} +- {f_std[np.argmax(np.abs(f))]:.3f} Ha/a.u.")
+                f_argmax = np.argmax(np.abs(f))
+                logger.info("-" * num_sep_line)
+                logger.info(f"Max f = {f[f_argmax]:.3f} +- {f_std[f_argmax]:.3f} Ha/a.u.")
                 logger.info(f"Max of signal-to-noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}.")
+                logger.info("-" * num_sep_line)
                 if num_param_opt is not None:
                     signal_to_noise_f_max_indices = np.argsort(signal_to_noise_f)[::-1][:num_param_opt]
                 else:
@@ -4132,9 +4187,7 @@ class QMC:
                 e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in e_L_split]))
 
                 w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
-                w_L_e_L_binned = list(
-                    np.ravel([np.sum(w_L_e_L, axis=0) / np.sum(w_L, axis=0) for w_L_e_L, w_L in zip(w_L_e_L_split, w_L_split)])
-                )
+                w_L_e_L_binned = list(np.ravel([np.mean(w_L_e_L, axis=0) for w_L_e_L in zip(w_L_e_L_split)]))
                 # logger.info(f"w_L_e_L_binned.shape = {np.array(w_L_e_L_binned).shape}.")
 
                 O_matrix = self.get_dln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps, chosen_param_index=chosen_param_index)
@@ -4196,8 +4249,12 @@ class QMC:
                 #     F_i \equiv -2.0 * (e_L_{i} - E)
                 # logger.info(f"w_L_binned={w_L_binned}")
                 X = (O_matrix_binned - O_bar).T
-                X_w = (w_L_O_matrix_binned - O_bar).T
+                X_w = w_L_binned * ((w_L_O_matrix_binned - O_bar) / np.sum(w_L_binned)).T
                 F = -2.0 * (e_L_binned - e_L_bar).T
+
+                X_w_F = X_w @ F
+                f_argmax = np.argmax(np.abs(X_w_F))
+                logger.debug(f"Max dot(X_w, F) \equiv f = {X_w_F[f_argmax]:.3f} Ha/a.u.")
 
                 """
                 logger.info(f"w_L_binned.shape = {w_L_binned.shape}.")
@@ -4217,32 +4274,32 @@ class QMC:
                 # make the SR matrix scale-invariant (i.e., normalize)
                 S = X_w @ X.T
                 diag_S = np.diag(S)
-                logger.info(f"diag_S = {diag_S}.")
+                logger.debug(f"max. and min. diag_S = {np.max(diag_S)}, {np.min(diag_S)}.")
                 X = X / np.sqrt(diag_S)[:, np.newaxis]
                 X_w = X_w / np.sqrt(diag_S)[:, np.newaxis]
 
-                logger.info(f"diag_S(mod.) = {np.diag(X_w @ X.T)}.")
-
                 if X.shape[0] < X.shape[1]:
-                    logger.info("X is a wide matrix. Proceed w/o the push-through identity.")
-                    logger.info("(S+epsilon*I)^{-1}*f = (X * X^T + epsilon*I)^{-1} * X F...")
-                    X_w_x_T = X_w @ X.T
-                    logger.info(f"X_w_x_T.shape = {X_w_x_T.shape}.")
-                    X_w_x_T[np.diag_indices_from(X_w_x_T)] += epsilon
+                    logger.debug("X is a wide matrix. Proceed w/o the push-through identity.")
+                    logger.debug("theta = (S+epsilon*I)^{-1}*f = (X * X^T + epsilon*I)^{-1} * X F...")
+                    X_w_X_T = X_w @ X.T
+                    logger.debug(f"X_w @ X.T.shape = {X_w_X_T.shape}.")
+                    X_w_X_T[np.diag_indices_from(X_w_X_T)] += epsilon
                     # (X_w X^T + eps*I) x = X_w F ->solve-> x = (X_w  X^T + eps*I)^{-1} X_w F
-                    X_w_x_T_inv_X_w_F = scipy.linalg.solve(X_w_x_T, X_w @ F, assume_a="sym")
+                    X_w_X_T_inv_X_w_F = scipy.linalg.solve(X_w_X_T, X_w @ F, assume_a="sym")
                     # theta = (X_w X^T + eps*I)^{-1} X_w F
-                    theta_all = X_w_x_T_inv_X_w_F
+                    theta_all = X_w_X_T_inv_X_w_F
+                    logger.devel(f"theta_all = {theta_all}.")
                 else:
-                    logger.info("X is a tall matrix. Proceed w/ the push-through identity.")
-                    logger.info("(S+epsilon*I)^{-1}*f = X(X^T * X + epsilon*I)^{-1} * F...")
+                    logger.debug("X is a tall matrix. Proceed w/ the push-through identity.")
+                    logger.debug("theta = (S+epsilon*I)^{-1}*f = X(X^T * X + epsilon*I)^{-1} * F...")
                     X_T_X_w = X.T @ X_w
-                    logger.info(f"X_T_X_w.shape = {X_T_X_w.shape}.")
+                    logger.debug(f"X_T_X_w.shape = {X_T_X_w.shape}.")
                     X_T_X_w[np.diag_indices_from(X_T_X_w)] += epsilon
                     # (X^T X_w + eps*I) x = F ->solve-> x = (X^T X_w + eps*I)^{-1} F
                     X_T_X_w_inv_F = scipy.linalg.solve(X_T_X_w, F, assume_a="sym")
                     # theta = X_w (X^T X_w + eps*I)^{-1} F
                     theta_all = X_w @ X_T_X_w_inv_F
+                    logger.devel(f"theta_all = {theta_all}.")
 
                 # theta, back to the original scale
                 theta_all = theta_all / np.sqrt(diag_S)
@@ -4257,11 +4314,11 @@ class QMC:
             # broadcast theta
             theta = mpi_comm.bcast(theta, root=0)
 
-            # logger.debug(f"XX for MPI-rank={mpi_rank} is {theta}")
-            # logger.debug(f"XX.shape for MPI-rank={mpi_rank} is {theta.shape}")
-            logger.info(f"theta.size = {theta.size}.")
-            logger.info(f"np.count_nonzero(theta) = {np.count_nonzero(theta)}.")
-            logger.info(f"max(theta) is {np.max(theta)}.")
+            # logger.devel(f"XX for MPI-rank={mpi_rank} is {theta}")
+            # logger.devel(f"XX.shape for MPI-rank={mpi_rank} is {theta.shape}")
+            logger.debug(f"theta.size = {theta.size}.")
+            logger.debug(f"np.count_nonzero(theta) = {np.count_nonzero(theta)}.")
+            logger.debug(f"max. and min. of theta are {np.max(theta)} and {np.min(theta)}.")
 
             dc_param_list = self.mcmc.opt_param_dict["dc_param_list"]
             dc_shape_list = self.mcmc.opt_param_dict["dc_shape_list"]
@@ -4277,19 +4334,22 @@ class QMC:
             if self.mcmc.hamiltonian_data.wavefunction_data.geminal_data is not None:
                 lambda_matrix = self.mcmc.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix
 
-            logger.info(f"dX.shape for MPI-rank={mpi_rank} is {theta.shape}")
+            logger.devel(f"dX.shape for MPI-rank={mpi_rank} is {theta.shape}")
 
             for ii, dc_param in enumerate(dc_param_list):
                 dc_shape = dc_shape_list[ii]
                 if theta.shape == (1,):
                     dX = theta[0]
                 if opt_J1_param and dc_param == "j1_param":
+                    logger.info("Update J1 parameters.")
                     dX = theta[opt_param_index_dict[dc_param]].reshape(dc_shape)
                     j1_param += delta * dX
                 if opt_J2_param and dc_param == "j2_param":
+                    logger.info("Update J2 parameters.")
                     dX = theta[opt_param_index_dict[dc_param]].reshape(dc_shape)
                     j2_param += delta * dX
                 if opt_J3_param and dc_param == "j3_matrix":
+                    logger.info("Update J3 parameters.")
                     dX = theta[opt_param_index_dict[dc_param]].reshape(dc_shape)
                     # j1 part (rectanglar)
                     j3_matrix[:, -1] += delta * dX[:, -1]
@@ -4302,6 +4362,7 @@ class QMC:
                     j3_matrix[:, :-1] += delta * dX
                     """To be implemented. Opt only the block diagonal parts, i.e. only the J3 part."""
                 if opt_lambda_param and dc_param == "lambda_matrix":
+                    logger.info("Updadate lambda matrix.")
                     dX = theta[opt_param_index_dict[dc_param]].reshape(dc_shape)
                     if np.allclose(lambda_matrix, lambda_matrix.T, atol=1e-8):
                         logger.info("The lambda matrix is symmetric. Keep it while updating.")
@@ -4349,7 +4410,8 @@ class QMC:
                 wavefunction_data=wavefunction_data,
                 coulomb_potential_data=coulomb_potential_data,
             )
-            logger.info("WF updated")
+            logger.info("Wavefunction has been updated. Optimization loop is done.")
+            logger.info("")
             self.mcmc.hamiltonian_data = hamiltonian_data
 
             # dump WF
@@ -4407,7 +4469,7 @@ class QMC:
             w_L_e_L_binned_sum = np.sum(w_L_e_L_binned)
 
             M = w_L_binned.size
-            logger.info(f"Total number of binned samples = {M}")
+            logger.debug(f"Total number of binned samples = {M}")
 
             E_jackknife_binned = np.array(
                 [(w_L_e_L_binned_sum - w_L_e_L_binned[m]) / (w_L_binned_sum - w_L_binned[m]) for m in range(M)]
@@ -4416,7 +4478,7 @@ class QMC:
             E_mean = np.average(E_jackknife_binned)
             E_std = np.sqrt(M - 1) * np.std(E_jackknife_binned)
 
-            logger.debug(f"E = {E_mean} +- {E_std} Ha.")
+            logger.devel(f"E = {E_mean} +- {E_std} Ha.")
         else:
             E_mean = 0.0
             E_std = 0.0
@@ -4557,7 +4619,7 @@ class QMC:
             logger.info(f"w_L_E_L_force_PP_binned.shape for MPI-rank={mpi_rank} is {w_L_E_L_force_PP_binned.shape}")
 
             M = w_L_binned.size
-            logger.info(f"Total number of binned samples = {M}")
+            logger.debug(f"Total number of binned samples = {M}")
 
             force_HF_jn = np.array(
                 [
@@ -4635,12 +4697,12 @@ class QMC:
                 )
             O_matrix = np.concatenate((O_matrix, dln_Psi_dc_reshaped), axis=2)
 
-        logger.debug(f"O_matrix.shape = {O_matrix.shape}")
+        logger.devel(f"O_matrix.shape = {O_matrix.shape}")
         if chosen_param_index is None:
             O_matrix_chosen = O_matrix[num_mcmc_warmup_steps:]
         else:
             O_matrix_chosen = O_matrix[num_mcmc_warmup_steps:, :, chosen_param_index]  # O.... (x....) (M, nw, L) matrix
-        logger.debug(f"O_matrix_chosen.shape = {O_matrix_chosen.shape}")
+        logger.devel(f"O_matrix_chosen.shape = {O_matrix_chosen.shape}")
         return O_matrix_chosen
 
     def get_gF(
@@ -4712,7 +4774,7 @@ class QMC:
             w_L_e_L_O_matrix_binned = np.array(w_L_e_L_O_matrix_binned)
 
             M = w_L_binned.size
-            logger.info(f"Total number of binned samples = {M}")
+            logger.debug(f"Total number of binned samples = {M}")
 
             eL_O_jn = np.array(
                 [
@@ -4721,14 +4783,14 @@ class QMC:
                     for j in range(M)
                 ]
             )
-            logger.debug(f"eL_O_jn = {eL_O_jn}")
-            logger.debug(f"eL_O_jn.shape = {eL_O_jn.shape}")
+            logger.devel(f"eL_O_jn = {eL_O_jn}")
+            logger.devel(f"eL_O_jn.shape = {eL_O_jn.shape}")
 
             eL_jn = np.array(
                 [(np.sum(w_L_e_L_binned, axis=0) - w_L_e_L_binned[j]) / (np.sum(w_L_binned) - w_L_binned[j]) for j in range(M)]
             )
-            logger.debug(f"eL_jn = {eL_jn}")
-            logger.debug(f"eL_jn.shape = {eL_jn.shape}")
+            logger.devel(f"eL_jn = {eL_jn}")
+            logger.devel(f"eL_jn.shape = {eL_jn.shape}")
 
             O_jn = np.array(
                 [
@@ -4737,13 +4799,13 @@ class QMC:
                 ]
             )
 
-            logger.debug(f"O_jn = {O_jn}")
-            logger.debug(f"O_jn.shape = {O_jn.shape}")
+            logger.devel(f"O_jn = {O_jn}")
+            logger.devel(f"O_jn.shape = {O_jn.shape}")
 
             eL_barO_jn = np.einsum("i,ij->ij", eL_jn, O_jn)
 
-            logger.debug(f"eL_barO_jn = {eL_barO_jn}")
-            logger.debug(f"eL_barO_jn.shape = {eL_barO_jn.shape}")
+            logger.devel(f"eL_barO_jn = {eL_barO_jn}")
+            logger.devel(f"eL_barO_jn.shape = {eL_barO_jn.shape}")
 
             generalized_force_mean = np.average(-2.0 * (eL_O_jn - eL_barO_jn), axis=0)
             generalized_force_std = np.sqrt(M - 1) * np.std(-2.0 * (eL_O_jn - eL_barO_jn), axis=0)
@@ -4751,8 +4813,8 @@ class QMC:
             logger.devel(f"generalized_force_mean = {generalized_force_mean}")
             logger.devel(f"generalized_force_std = {generalized_force_std}")
 
-            logger.debug(f"generalized_force_mean.shape = {generalized_force_mean.shape}")
-            logger.debug(f"generalized_force_std.shape = {generalized_force_std.shape}")
+            logger.devel(f"generalized_force_mean.shape = {generalized_force_mean.shape}")
+            logger.devel(f"generalized_force_std.shape = {generalized_force_std.shape}")
 
         else:
             generalized_force_mean = None
@@ -4800,7 +4862,7 @@ class QMC:
                 de_L_dc_reshaped = de_L_dc.reshape(de_L_dc.shape[0], de_L_dc.shape[1], int(np.prod(de_L_dc.shape[2:])))
             de_L_matrix = np.concatenate((de_L_matrix, de_L_dc_reshaped), axis=2)
 
-        logger.debug(f"de_L_matrix.shape = {de_L_matrix.shape}")
+        logger.devel(f"de_L_matrix.shape = {de_L_matrix.shape}")
         return de_L_matrix[num_mcmc_warmup_steps:]  # O.... (x....) (M, nw, L) matrix
 
     def get_H(
@@ -4914,8 +4976,8 @@ class QMC:
             H_mean = B_mean + K_mean
             H_std = np.zeros(H_mean.size)
             logger.info(f"H_mean.shape = {H_mean.shape}")
-            logger.debug(f"H_mean.is_nan for MPI-rank={mpi_rank} is {np.isnan(H_mean).any()}")
-            logger.debug(f"H_mean.shape for MPI-rank={mpi_rank} is {H_mean.shape}")
+            logger.devel(f"H_mean.is_nan for MPI-rank={mpi_rank} is {np.isnan(H_mean).any()}")
+            logger.devel(f"H_mean.shape for MPI-rank={mpi_rank} is {H_mean.shape}")
         else:
             H_mean = None
             H_std = None
@@ -5003,8 +5065,8 @@ class QMC:
             S_std = np.zeros(S_mean.size)
             # logger.info(f"np.max(np.abs(S_mean - S_mean_old)) = {np.max(np.abs(S_mean - S_mean_old))}.")
             logger.info(f"S_mean.shape = {S_mean.shape}")
-            logger.debug(f"S_mean.is_nan for MPI-rank={mpi_rank} is {np.isnan(S_mean).any()}")
-            logger.debug(f"S_mean.shape for MPI-rank={mpi_rank} is {S_mean.shape}")
+            logger.devel(f"S_mean.is_nan for MPI-rank={mpi_rank} is {np.isnan(S_mean).any()}")
+            logger.devel(f"S_mean.shape for MPI-rank={mpi_rank} is {S_mean.shape}")
         else:
             S_mean = None
             S_std = None
@@ -5104,7 +5166,7 @@ class QMC:
             if mpi_rank == 0:
                 signal_to_noise_f = np.abs(f) / f_std
                 logger.info(f"Max |f| = {np.max(np.abs(f)):.3f} Ha/a.u.")
-                logger.debug(f"f_std of Max |f| = {f_std[np.argmax(np.abs(f))]:.3f} Ha/a.u.")
+                logger.devel(f"f_std of Max |f| = {f_std[np.argmax(np.abs(f))]:.3f} Ha/a.u.")
                 logger.info(f"Max of signal-to-noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}.")
 
             logger.info("Computing the inverse of the stochastic matrix S^{-1}f...")
@@ -5175,8 +5237,8 @@ class QMC:
                 X = None
 
             X = mpi_comm.bcast(X, root=0)
-            logger.debug(f"X for MPI-rank={mpi_rank} is {X}")
-            logger.debug(f"X.shape for MPI-rank={mpi_rank} is {X.shape}")
+            logger.devel(f"X for MPI-rank={mpi_rank} is {X}")
+            logger.devel(f"X.shape for MPI-rank={mpi_rank} is {X.shape}")
             logger.info(f"max(dX) for MPI-rank={mpi_rank} is {np.max(X)}")
 
             dc_param_list = self.__mcmc.opt_param_dict["dc_param_list"]
@@ -5290,9 +5352,24 @@ if __name__ == "__main__":
             stream_handler.setFormatter(handler_format)
             log.addHandler(stream_handler)
         else:
-            log.setLevel("WARNING")
+            log.setLevel("ERROR")
             stream_handler = StreamHandler()
-            stream_handler.setLevel("WARNING")
+            stream_handler.setLevel("ERROR")
+            handler_format = Formatter(f"MPI-rank={mpi_rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
+            stream_handler.setFormatter(handler_format)
+            log.addHandler(stream_handler)
+    elif logger_level == "MPI-DEBUG":
+        if mpi_rank == 0:
+            log.setLevel("DEBUG")
+            stream_handler = StreamHandler()
+            stream_handler.setLevel("DEBUG")
+            handler_format = Formatter("%(message)s")
+            stream_handler.setFormatter(handler_format)
+            log.addHandler(stream_handler)
+        else:
+            log.setLevel("ERROR")
+            stream_handler = StreamHandler()
+            stream_handler.setLevel("ERROR")
             handler_format = Formatter(f"MPI-rank={mpi_rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
             stream_handler.setFormatter(handler_format)
             log.addHandler(stream_handler)
@@ -5498,7 +5575,7 @@ if __name__ == "__main__":
         Dt=2.0,
         mcmc_seed=mcmc_seed,
         epsilon_AS=1.0e-6,
-        adjust_epsilon_AS=False,
+        # adjust_epsilon_AS=False,
         num_walkers=num_walkers,
         comput_position_deriv=True,
         comput_param_deriv=False,
@@ -5533,33 +5610,31 @@ if __name__ == "__main__":
         hamiltonian_data = pickle.load(f)
 
     num_walkers = 4
-    num_mcmc_warmup_steps = 0
-    num_mcmc_bin_blocks = 10
     mcmc_seed = 34356
 
     # run VMCopt
     mcmc = MCMC(
         hamiltonian_data=hamiltonian_data,
-        Dt=2.0,
+        Dt=1.8,
         mcmc_seed=mcmc_seed,
-        epsilon_AS=1.0e-4,
-        adjust_epsilon_AS=False,
+        epsilon_AS=1.0e-3,
+        # adjust_epsilon_AS=True,
         num_walkers=num_walkers,
         comput_position_deriv=False,
         comput_param_deriv=True,
     )
     vmc = QMC(mcmc)
     vmc.run_optimize(
-        num_mcmc_steps=500,
+        num_mcmc_steps=50,
         num_opt_steps=50,
-        delta=5e-3,
-        epsilon=1e-4,
+        delta=1e-4,
+        epsilon=1e-3,
         wf_dump_freq=10,
-        num_mcmc_warmup_steps=num_mcmc_warmup_steps,
-        num_mcmc_bin_blocks=num_mcmc_bin_blocks,
+        num_mcmc_warmup_steps=0,
+        num_mcmc_bin_blocks=50,
         opt_J1_param=False,
         opt_J2_param=True,
-        opt_J3_param=False,
+        opt_J3_param=True,
         opt_lambda_param=False,
     )
     # """

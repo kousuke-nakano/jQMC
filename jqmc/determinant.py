@@ -514,7 +514,7 @@ def compute_geminal_all_elements_api(
             raise ValueError
     else:
         pass
-        # logger.debug("There is no unpaired electrons.")
+        # logger.devel("There is no unpaired electrons.")
 
     # jprint(f"geminal:debug_flag={debug_flag}, type={type(debug_flag)}")
 
@@ -744,7 +744,7 @@ def compute_grads_and_laplacian_ln_Det_api(
             )
             raise ValueError
     else:
-        logger.debug("There is no unpaired electrons.")
+        logger.devel("There is no unpaired electrons.")
 
     if debug:
         grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = _compute_grads_and_laplacian_ln_Det_debug(

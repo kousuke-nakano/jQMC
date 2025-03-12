@@ -288,7 +288,7 @@ def vmcopt_analyze_output(
 
     iter_pattern = re.compile(r"i_opt\s*=\s*(\d+)/\d+")
     E_pattern = re.compile(r"E\s*=\s*([-+]?\d+(?:\.\d+)?)(?:\s*\+\-\s*([-+]?\d+(?:\.\d+)?))\s*Ha")
-    max_f_pattern = re.compile(r"Max \|f\| = (\d+(?:\.\d+)?)\s*\+\-\s*(\d+(?:\.\d+)?)")
+    max_f_pattern = re.compile(r"Max f = (\d+(?:\.\d+)?)\s*\+\-\s*(\d+(?:\.\d+)?)")
     signal_to_noise_pattern = re.compile(r"Max of signal-to-noise of f = max\(\|f\|/\|std f\|\) = ([-+]?\d+(?:\.\d+)?)(?:\.)?")
 
     for filename in filenames:

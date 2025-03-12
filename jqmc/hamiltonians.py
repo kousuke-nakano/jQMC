@@ -215,26 +215,18 @@ def compute_local_energy_api(
     Returns:
         float: The value of local energy (e_L) with the given wavefunction (float)
     """
-    start = time.perf_counter()
     T = compute_kinetic_energy_api(
         wavefunction_data=hamiltonian_data.wavefunction_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
-    end = time.perf_counter()
-    logger.debug(f"Kinetic part in e_L: Time = {(end - start) * 1000:.3f} msec.")
 
-    start = time.perf_counter()
     V = compute_coulomb_potential_api(
         coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
         wavefunction_data=hamiltonian_data.wavefunction_data,
     )
-    end = time.perf_counter()
-    logger.debug(f"Coulomb Potential part in e_L: Time = {(end - start) * 100:.3f} msec.")
-
-    logger.debug(f"e_L = {T + V} Ha")
 
     return T + V
 

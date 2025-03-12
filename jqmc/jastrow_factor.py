@@ -1757,7 +1757,7 @@ if __name__ == "__main__":
         r_dn_carts=r_dn_carts,
     )
 
-    # logger.debug(f"jastrow_two_body_debug = {jastrow_two_body_debug}")
+    # logger.devel(f"jastrow_two_body_debug = {jastrow_two_body_debug}")
 
     jastrow_two_body_jax = _compute_Jastrow_two_body_jax(
         jastrow_two_body_data=jastrow_two_body_data,
@@ -1765,7 +1765,7 @@ if __name__ == "__main__":
         r_dn_carts=r_dn_carts,
     )
 
-    # logger.debug(f"jastrow_two_body_jax = {jastrow_two_body_jax}")
+    # logger.devel(f"jastrow_two_body_jax = {jastrow_two_body_jax}")
 
     np.testing.assert_almost_equal(jastrow_two_body_debug, jastrow_two_body_jax, decimal=10)
 
@@ -1775,9 +1775,9 @@ if __name__ == "__main__":
         sum_laplacian_J2_debug,
     ) = _compute_grads_and_laplacian_Jastrow_two_body_debug(jastrow_two_body_data, r_up_carts, r_dn_carts)
 
-    # logger.debug(f"grad_jastrow_J2_up_debug = {grad_jastrow_J2_up_debug}")
-    # logger.debug(f"grad_jastrow_J2_dn_debug = {grad_jastrow_J2_dn_debug}")
-    # logger.debug(f"sum_laplacian_J2_debug = {sum_laplacian_J2_debug}")
+    # logger.devel(f"grad_jastrow_J2_up_debug = {grad_jastrow_J2_up_debug}")
+    # logger.devel(f"grad_jastrow_J2_dn_debug = {grad_jastrow_J2_dn_debug}")
+    # logger.devel(f"sum_laplacian_J2_debug = {sum_laplacian_J2_debug}")
 
     grad_jastrow_J2_up_jax, grad_jastrow_J2_dn_jax, sum_laplacian_J2_jax = _compute_grads_and_laplacian_Jastrow_two_body_jax(
         jastrow_two_body_data,
@@ -1785,9 +1785,9 @@ if __name__ == "__main__":
         r_dn_carts,
     )
 
-    # logger.debug(f"grad_jastrow_J2_up_jax = {grad_jastrow_J2_up_jax}")
-    # logger.debug(f"grad_jastrow_J2_dn_jax = {grad_jastrow_J2_dn_jax}")
-    # logger.debug(f"sum_laplacian_J2_jax = {sum_laplacian_J2_jax}")
+    # logger.devel(f"grad_jastrow_J2_up_jax = {grad_jastrow_J2_up_jax}")
+    # logger.devel(f"grad_jastrow_J2_dn_jax = {grad_jastrow_J2_dn_jax}")
+    # logger.devel(f"sum_laplacian_J2_jax = {sum_laplacian_J2_jax}")
 
     np.testing.assert_almost_equal(grad_jastrow_J2_up_debug, grad_jastrow_J2_up_jax, decimal=5)
     np.testing.assert_almost_equal(grad_jastrow_J2_dn_debug, grad_jastrow_J2_dn_jax, decimal=5)
@@ -1842,7 +1842,7 @@ if __name__ == "__main__":
         r_dn_carts=r_dn_carts,
     )
 
-    # logger.debug(f"J3_debug = {J3_debug}")
+    # logger.devel(f"J3_debug = {J3_debug}")
 
     J3_jax = _compute_Jastrow_three_body_jax(
         jastrow_three_body_data=jastrow_three_body_data,
@@ -1850,7 +1850,7 @@ if __name__ == "__main__":
         r_dn_carts=r_dn_carts,
     )
 
-    # logger.debug(f"J3_jax = {J3_jax}")
+    # logger.devel(f"J3_jax = {J3_jax}")
 
     np.testing.assert_almost_equal(J3_debug, J3_jax, decimal=8)
 
@@ -1864,9 +1864,9 @@ if __name__ == "__main__":
         r_dn_carts,
     )
 
-    # logger.debug(f"grad_jastrow_J3_up_debug = {grad_jastrow_J3_up_debug}")
-    # logger.debug(f"grad_jastrow_J3_dn_debug = {grad_jastrow_J3_dn_debug}")
-    # logger.debug(f"sum_laplacian_J3_debug = {sum_laplacian_J3_debug}")
+    # logger.devel(f"grad_jastrow_J3_up_debug = {grad_jastrow_J3_up_debug}")
+    # logger.devel(f"grad_jastrow_J3_dn_debug = {grad_jastrow_J3_dn_debug}")
+    # logger.devel(f"sum_laplacian_J3_debug = {sum_laplacian_J3_debug}")
 
     grad_jastrow_J3_up_jax, grad_jastrow_J3_dn_jax, sum_laplacian_J3_jax = _compute_grads_and_laplacian_Jastrow_three_body_jax(
         jastrow_three_body_data,
@@ -1874,9 +1874,9 @@ if __name__ == "__main__":
         r_dn_carts,
     )
 
-    # logger.debug(f"grad_jastrow_J3_up_jax = {grad_jastrow_J3_up_jax}")
-    # logger.debug(f"grad_jastrow_J3_dn_jax = {grad_jastrow_J3_dn_jax}")
-    # logger.debug(f"sum_laplacian_J3_jax = {sum_laplacian_J3_jax}")
+    # logger.devel(f"grad_jastrow_J3_up_jax = {grad_jastrow_J3_up_jax}")
+    # logger.devel(f"grad_jastrow_J3_dn_jax = {grad_jastrow_J3_dn_jax}")
+    # logger.devel(f"sum_laplacian_J3_jax = {sum_laplacian_J3_jax}")
 
     np.testing.assert_almost_equal(grad_jastrow_J3_up_debug, grad_jastrow_J3_up_jax, decimal=5)
     np.testing.assert_almost_equal(grad_jastrow_J3_dn_debug, grad_jastrow_J3_dn_jax, decimal=5)
