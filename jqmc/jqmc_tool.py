@@ -288,7 +288,7 @@ def vmcopt_analyze_output(
 
     iter_pattern = re.compile(r"Optimization\sstep\s*=\s*(\d+)/\d+")
     E_pattern = re.compile(r"E\s*=\s*([-+]?\d+(?:\.\d+)?)(?:\s*\+\-\s*([-+]?\d+(?:\.\d+)?))\s*Ha")
-    max_f_pattern = re.compile(r"Max f = (\d+(?:\.\d+)?)\s*\+\-\s*(\d+(?:\.\d+)?)")
+    max_f_pattern = re.compile(r"Max\sf\s=\s(-?\d+(?:\.\d+)?)\s*\+\-\s*(\d+(?:\.\d+)?)")
     signal_to_noise_pattern = re.compile(r"Max of signal-to-noise of f = max\(\|f\|/\|std f\|\) = ([-+]?\d+(?:\.\d+)?)(?:\.)?")
 
     for filename in filenames:
@@ -330,7 +330,7 @@ def vmcopt_analyze_output(
     typer.echo(f"{'Iter':<8} {'E (Ha)':<10} {'Max f (Ha)':<12} {'Signal to Noise':<16}")
     typer.echo("-" * sep)
     for iter, E, max_f, signal_to_noise in zip(iter_list, E_list, max_f_list, signal_to_noise_list):
-        typer.echo(f"{iter:4}  {E:8.2uS}  {max_f:10.2uS}  {signal_to_noise:8.3f}")
+        typer.echo(f"{iter:4}  {E:8.2uS}  {max_f:+10.2uS}  {signal_to_noise:8.3f}")
     typer.echo("-" * sep)
 
     # plot graphs
