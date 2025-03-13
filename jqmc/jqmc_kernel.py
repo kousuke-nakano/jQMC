@@ -194,7 +194,7 @@ class MCMC:
                 charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
 
             logger.devel(f"charges = {charges}.")
-            coords = hamiltonian_data.structure_data.positions_cart_np
+            coords = hamiltonian_data.structure_data.positions_cart_jnp
 
             # Place electrons for each atom
             for i in range(len(coords)):
@@ -514,7 +514,7 @@ class MCMC:
                     charges = jnp.array(hamiltonian_data.structure_data.atomic_numbers)
 
                 # coords
-                coords = jnp.array(hamiltonian_data.structure_data.positions_cart_np)
+                coords = hamiltonian_data.structure_data.positions_cart_jnp
 
                 R_cart = coords[nearest_atom_index]
                 Z = charges[nearest_atom_index]
@@ -1429,7 +1429,7 @@ class GFMC_fixed_projection_time:
                 charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
 
             logger.devel(f"charges = {charges}.")
-            coords = hamiltonian_data.structure_data.positions_cart_np
+            coords = hamiltonian_data.structure_data.positions_cart_jnp
 
             # Place electrons for each atom
             for i in range(len(coords)):
@@ -1578,20 +1578,6 @@ class GFMC_fixed_projection_time:
 
         # average projection counter
         self.__stored_average_projection_counter = []
-
-        # total number of electrons
-        self.__total_electrons = len(self.__latest_r_up_carts[0]) + len(self.__latest_r_dn_carts[0])
-
-        # charges
-        if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
-            self.__charges = jnp.array(self.__hamiltonian_data.structure_data.atomic_numbers) - jnp.array(
-                self.__hamiltonian_data.coulomb_potential_data.z_cores
-            )
-        else:
-            self.__charges = jnp.array(self.__hamiltonian_data.structure_data.atomic_numbers)
-
-        # coords
-        self.__coords = jnp.array(self.__hamiltonian_data.structure_data.positions_cart_np)
 
     # hamiltonian
     @property
@@ -2439,7 +2425,7 @@ class GFMC_fixed_num_projection:
                 charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
 
             logger.devel(f"charges = {charges}.")
-            coords = hamiltonian_data.structure_data.positions_cart_np
+            coords = hamiltonian_data.structure_data.positions_cart_jnp
 
             # Place electrons for each atom
             for i in range(len(coords)):
@@ -2647,20 +2633,6 @@ class GFMC_fixed_num_projection:
 
         # stored sum_i d omega/d r_i for dn spins (SWCT)
         self.__stored_grad_omega_r_dn = []
-
-        # total number of electrons
-        self.__total_electrons = len(self.__latest_r_up_carts[0]) + len(self.__latest_r_dn_carts[0])
-
-        # charges
-        if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
-            self.__charges = jnp.array(self.__hamiltonian_data.structure_data.atomic_numbers) - jnp.array(
-                self.__hamiltonian_data.coulomb_potential_data.z_cores
-            )
-        else:
-            self.__charges = jnp.array(self.__hamiltonian_data.structure_data.atomic_numbers)
-
-        # coords
-        self.__coords = jnp.array(self.__hamiltonian_data.structure_data.positions_cart_np)
 
     # hamiltonian
     @property
@@ -4047,7 +4019,7 @@ class QMC:
         opt_J2_param: bool = True,
         opt_J3_param: bool = True,
         opt_lambda_param: bool = False,
-        num_param_opt: int = None,
+        num_param_opt: int = 0,
     ):
         """Optimizing wavefunction.
 
@@ -4073,7 +4045,7 @@ class QMC:
             opt_J2_param (bool): optimize two-body Jastrow
             opt_J3_param (bool): optimize three-body Jastrow
             opt_lambda_param (bool): optimize lambda_matrix in the determinant part.
-            num_param_opt (int): the number of parameters to optimize in the descending order of |f|/|std f|.
+            num_param_opt (int): the number of parameters to optimize in the descending order of |f|/|std f|. If zero, all parameters are optimized.
         """
         vmcopt_total_start = time.perf_counter()
 
@@ -4092,7 +4064,7 @@ class QMC:
             self.mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
 
             # get E
-            E, E_std = self.get_E(num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks)
+            E, E_std, _, _ = self.get_E(num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks)
             logger.info("Total Energy before update of wavefunction.")
             logger.info("-" * num_sep_line)
             logger.info(f"E = {E:.5f} +- {E_std:.5f} Ha")
@@ -4160,9 +4132,15 @@ class QMC:
                 logger.info(f"Max f = {f[f_argmax]:.3f} +- {f_std[f_argmax]:.3f} Ha/a.u.")
                 logger.info(f"Max of signal-to-noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}.")
                 logger.info("-" * num_sep_line)
-                if num_param_opt is not None:
+                if num_param_opt != 0:
+                    if num_param_opt > len(signal_to_noise_f):
+                        num_param_opt = len(signal_to_noise_f)
+                    logger.info(
+                        f"Optimizing only {num_param_opt} variational parameters with the largest signal to noise ratios of f."
+                    )
                     signal_to_noise_f_max_indices = np.argsort(signal_to_noise_f)[::-1][:num_param_opt]
                 else:
+                    logger.info("Optimizing all variational parameters.")
                     signal_to_noise_f_max_indices = np.arange(signal_to_noise_f.size)
             else:
                 signal_to_noise_f = None
@@ -4443,9 +4421,9 @@ class QMC:
             num_mcmc_bin_blocks (int): the number of binning blocks
 
         Return:
-            tuple[float, float]:
-                The mean and std values of the computed local energy
-                estimated by the Jackknife method with the Args.
+            tuple[float, float, float, float]:
+                The mean and std values of the totat energy and those of the variance
+                estimated by the Jackknife method with the Args. (E_mean, E_std, Var_mean, Var_std).
         """
         if self.mcmc.e_L.size != 0:
             e_L = self.mcmc.e_L[num_mcmc_warmup_steps:]
@@ -4454,20 +4432,26 @@ class QMC:
             w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
             w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
             w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
+            w_L_e_L2_split = np.array_split(w_L * e_L**2, num_mcmc_bin_blocks, axis=0)
+            w_L_e_L2_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L2_split]))
         else:
             w_L_binned = []
             w_L_e_L_binned = []
+            w_L_e_L2_binned = []
 
         w_L_binned = mpi_comm.reduce(w_L_binned, op=MPI.SUM, root=0)
         w_L_e_L_binned = mpi_comm.reduce(w_L_e_L_binned, op=MPI.SUM, root=0)
+        w_L_e_L2_binned = mpi_comm.reduce(w_L_e_L2_binned, op=MPI.SUM, root=0)
 
         if mpi_rank == 0:
             w_L_binned = np.array(w_L_binned)
             w_L_e_L_binned = np.array(w_L_e_L_binned)
+            w_L_e_L2_binned = np.array(w_L_e_L2_binned)
 
             # jackknife implementation
             w_L_binned_sum = np.sum(w_L_binned)
             w_L_e_L_binned_sum = np.sum(w_L_e_L_binned)
+            w_L_e_L2_binned_sum = np.sum(w_L_e_L2_binned)
 
             M = w_L_binned.size
             logger.debug(f"Total number of binned samples = {M}")
@@ -4476,18 +4460,31 @@ class QMC:
                 [(w_L_e_L_binned_sum - w_L_e_L_binned[m]) / (w_L_binned_sum - w_L_binned[m]) for m in range(M)]
             )
 
+            E2_jackknife_binned = np.array(
+                [(w_L_e_L2_binned_sum - w_L_e_L2_binned[m]) / (w_L_binned_sum - w_L_binned[m]) for m in range(M)]
+            )
+
+            Var_jackknife_binned = E2_jackknife_binned - E_jackknife_binned**2  # E^2 = <E^2> - <E>^2
+
             E_mean = np.average(E_jackknife_binned)
             E_std = np.sqrt(M - 1) * np.std(E_jackknife_binned)
+            Var_mean = np.average(Var_jackknife_binned)
+            Var_std = np.sqrt(M - 1) * np.std(Var_jackknife_binned)
 
             logger.devel(f"E = {E_mean} +- {E_std} Ha.")
+            logger.devel(f"Var(E) = {Var_mean} +- {Var_std} Ha^2.")
         else:
             E_mean = 0.0
             E_std = 0.0
+            Var_mean = 0.0
+            Var_std = 0.0
 
         E_mean = mpi_comm.bcast(E_mean, root=0)
         E_std = mpi_comm.bcast(E_std, root=0)
+        Var_mean = mpi_comm.bcast(Var_mean, root=0)
+        Var_std = mpi_comm.bcast(Var_std, root=0)
 
-        return (E_mean, E_std)
+        return (E_mean, E_std, Var_mean, Var_std)
 
     def get_aF(
         self,
@@ -5340,7 +5337,7 @@ if __name__ == "__main__":
 
     from .trexio_wrapper import read_trexio_file
 
-    logger_level = "MPI-INFO"
+    logger_level = "MPI-DEBUG"
 
     log = getLogger("jqmc")
 
@@ -5554,7 +5551,7 @@ if __name__ == "__main__":
     )
     # """
 
-    '''
+    #'''
     # """
     hamiltonian_chk = "hamiltonian_data_water.chk"
     # hamiltonian_chk = "hamiltonian_data_water_methane.chk"
@@ -5578,19 +5575,20 @@ if __name__ == "__main__":
         epsilon_AS=1.0e-6,
         # adjust_epsilon_AS=False,
         num_walkers=num_walkers,
-        comput_position_deriv=True,
+        comput_position_deriv=False,
         comput_param_deriv=False,
     )
     vmc = QMC(mcmc)
     vmc.run(num_mcmc_steps=100, max_time=3600)
-    E_mean, E_std = vmc.get_E(
+    E_mean, E_std, Var_mean, Var_std = vmc.get_E(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
+    logger.info(f"Var = {Var_mean} +- {Var_std} Ha^2.")
     # """
 
-    # """
+    """
     f_mean, f_std = vmc.get_aF(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
@@ -5599,9 +5597,9 @@ if __name__ == "__main__":
     logger.info(f"f_mean = {f_mean} Ha/bohr.")
     logger.info(f"f_std = {f_std} Ha/bohr.")
     """
-    '''
+    #'''
 
-    # """
+    """
     hamiltonian_chk = "hamiltonian_data_water.chk"
     # hamiltonian_chk = "hamiltonian_data_water_methane.chk"
     # hamiltonian_chk = "hamiltonian_data_benzene.chk"
@@ -5638,7 +5636,7 @@ if __name__ == "__main__":
         opt_J3_param=True,
         opt_lambda_param=False,
     )
-    # """
+    """
 
     """
     # hamiltonian

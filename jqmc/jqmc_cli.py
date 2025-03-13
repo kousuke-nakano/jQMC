@@ -203,6 +203,7 @@ def cli():
         num_mcmc_per_measurement = parameters["vmc"]["num_mcmc_per_measurement"]
         num_mcmc_warmup_steps = parameters["vmc"]["num_mcmc_warmup_steps"]
         num_mcmc_bin_blocks = parameters["vmc"]["num_mcmc_bin_blocks"]
+        Dt = parameters["vmc"]["Dt"]
         epsilon_AS = parameters["vmc"]["epsilon_AS"]
 
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
@@ -224,7 +225,7 @@ def cli():
                 hamiltonian_data = pickle.load(f)
                 mcmc = MCMC(
                     hamiltonian_data=hamiltonian_data,
-                    Dt=2.0,
+                    Dt=Dt,
                     mcmc_seed=mcmc_seed,
                     num_walkers=number_of_walkers,
                     num_mcmc_per_measurement=num_mcmc_per_measurement,
@@ -234,13 +235,14 @@ def cli():
                 )
                 vmc = QMC(mcmc)
         vmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
-        E_mean, E_std = vmc.get_E(
+        E_mean, E_std, Var_mean, Var_std = vmc.get_E(
             num_mcmc_warmup_steps=num_mcmc_warmup_steps,
             num_mcmc_bin_blocks=num_mcmc_bin_blocks,
         )
 
         logger.info("Final output(s):")
         logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:5f} Ha.")
+        logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:5f} Ha^2.")
         logger.info("")
 
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
@@ -285,11 +287,13 @@ def cli():
         num_mcmc_per_measurement = parameters["vmcopt"]["num_mcmc_per_measurement"]
         num_mcmc_warmup_steps = parameters["vmcopt"]["num_mcmc_warmup_steps"]
         num_mcmc_bin_blocks = parameters["vmcopt"]["num_mcmc_bin_blocks"]
+        Dt = parameters["vmcopt"]["Dt"]
         epsilon_AS = parameters["vmcopt"]["epsilon_AS"]
         num_opt_steps = parameters["vmcopt"]["num_opt_steps"]
         wf_dump_freq = parameters["vmcopt"]["wf_dump_freq"]
         delta = parameters["vmcopt"]["delta"]
         epsilon = parameters["vmcopt"]["epsilon"]
+        opt_J1_param = parameters["vmcopt"]["opt_J1_param"]
         opt_J2_param = parameters["vmcopt"]["opt_J2_param"]
         opt_J3_param = parameters["vmcopt"]["opt_J3_param"]
         opt_lambda_param = parameters["vmcopt"]["opt_lambda_param"]
@@ -314,7 +318,7 @@ def cli():
 
                 mcmc = MCMC(
                     hamiltonian_data=hamiltonian_data,
-                    Dt=2.0,
+                    Dt=Dt,
                     mcmc_seed=mcmc_seed,
                     num_walkers=number_of_walkers,
                     num_mcmc_per_measurement=num_mcmc_per_measurement,
@@ -331,6 +335,7 @@ def cli():
             wf_dump_freq=wf_dump_freq,
             num_mcmc_warmup_steps=num_mcmc_warmup_steps,
             num_mcmc_bin_blocks=num_mcmc_bin_blocks,
+            opt_J1_param=opt_J1_param,
             opt_J2_param=opt_J2_param,
             opt_J3_param=opt_J3_param,
             opt_lambda_param=opt_lambda_param,
@@ -421,12 +426,13 @@ def cli():
                 )
                 lrdmc = QMC(gfmc)
         lrdmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
-        E_mean, E_std = lrdmc.get_E(
+        E_mean, E_std, Var_mean, Var_std = lrdmc.get_E(
             num_mcmc_warmup_steps=num_gfmc_warmup_steps,
             num_mcmc_bin_blocks=num_gfmc_bin_blocks,
         )
         logger.info("Final output(s):")
         logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:5f} Ha.")
+        logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:5f} Ha^2.")
         logger.info("")
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
         logger.info("")
