@@ -257,6 +257,9 @@ class MCMC:
         self.__latest_r_up_carts = jnp.array(r_carts_up_list)
         self.__latest_r_dn_carts = jnp.array(r_carts_dn_list)
 
+        logger.info(f"The number of MPI process = {mpi_size}.")
+        logger.info(f"The number of walkers assigned for each MPI process = {self.__num_walkers}.")
+
         # SWCT data
         self.__swct_data = SWCT_data(structure=self.__hamiltonian_data.structure_data)
 
