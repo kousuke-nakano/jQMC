@@ -260,6 +260,12 @@ class MCMC:
         logger.info(f"The number of MPI process = {mpi_size}.")
         logger.info(f"The number of walkers assigned for each MPI process = {self.__num_walkers}.")
 
+        logger.devel(f"initial r_up_carts= {self.__latest_r_up_carts}")
+        logger.devel(f"initial r_dn_carts = {self.__latest_r_dn_carts}")
+        logger.devel(f"initial r_up_carts.shape = {self.__latest_r_up_carts.shape}")
+        logger.devel(f"initial r_dn_carts.shape = {self.__latest_r_dn_carts.shape}")
+        logger.info("")
+
         # SWCT data
         self.__swct_data = SWCT_data(structure=self.__hamiltonian_data.structure_data)
 
