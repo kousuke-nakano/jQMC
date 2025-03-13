@@ -821,7 +821,8 @@ def _compute_AOs_cart_jax(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> j
     R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
 
     x, y, z = r_R_diffs[..., 0], r_R_diffs[..., 1], r_R_diffs[..., 2]
-    P_l_nx_ny_nz_dup = x ** (nx_jnp[:, None]) * y ** (ny_jnp[:, None]) * z ** (nz_jnp[:, None])
+    eps = 1.0e-16  # This is quite important to avoid some numerical instability in JAX!!
+    P_l_nx_ny_nz_dup = (x + eps) ** (nx_jnp[:, None]) * (y + eps) ** (ny_jnp[:, None]) * (z + eps) ** (nz_jnp[:, None])
 
     """
     logger.info(f"Z_jnp={Z_jnp}.")

@@ -8,7 +8,7 @@ What sets **jQMC** apart:
 - It implements the LRDMC method, providing a numerically stable approach to diffusion Monte Carlo calculations.
 - The use of adjoint algorithmic differentiation in `JAX` allows for efficient differentiation of many-body wave functions, facilitating the computation of atomic forces analytically.
 - Written in `Python`, **jQMC** is designed to be user-friendly for executing simulations and easily extensible for developers implementing and testing new QMC methods.
-- By leveraging `JAX’s` just-in-time (`jit`) compilation and vectorized mapping (`vmap`) functionalities, the code achieves high-performance computations while remaining portable across CPUs, GPUs, and TPUs.
+- By leveraging `JAX’s` just-in-time (`jit`) compilation and vectorized mapping (`vmap`) functionalities, the code achieves high-performance computations **especially on GPUs and TPUs** while remaining portable across CPUs, GPUs, and TPUs.
 - MPI support enables the execution of large-scale computations on HPC facilities.
 - To minimize bugs, the code is written in a loosely coupled manner and includes comprehensive unit tests and regression tests (managed by `pytest`).
 
@@ -18,9 +18,9 @@ This combination of features makes **jQMC** a versatile and powerful tool for bo
 
 
 ## Known issues
-- Atomic force calculations are much slower than energy and energy-optimization calculations due to the very slow compilations of dlnPsi/dR and de_L/dR. This is because `grad`, `jvp`, and `vjp` are slow for these terms for some reason. A more detailed analysis will be needed.
-- `jQMC` is 10-100 times slower than other QMC codes implemented by a compiled language, such as C++, Fortran. Further improvements from the algorith and implementation viewpoints are needed.
-- Periodic boundary condition calculations are not supoorted yet. It will be implemented in the future as `jQMC` supports complex128.
+- Atomic force calculations with **solid (sperical) harmonics GTOs** are much slower than energy and energy-optimization calculations due to the very slow compilations of dlnPsi/dR and de_L/dR. This is because `grad`, `jvp`, and `vjp` are slow for these terms for some reason. A more detailed analysis will be needed. Please use **cartesian GTOs** to do those calculations
+- On CPUs, `jQMC` is ~10 times slower than other QMC codes implemented by a compiled language, such as C++, Fortran. Further improvements from the algorith and implementation viewpoints are needed. On GPUs, `jQMC` should be compatible with other QMC codes, but further benchmark tests are needed to confirm this.
+- Periodic boundary condition calculations are not supoorted yet. It will be implemented in the future as `JAX` supports complex128.
 
 ## Developer(s)
 Kosuke Nakano (National Institute for Materials Science, NIMS, Japan)
@@ -28,11 +28,23 @@ Kosuke Nakano (National Institute for Materials Science, NIMS, Japan)
 
 ## How to install jQMC
 
+First please git clone this repo.
+
+```bash
+% git clone https://github.com/kousuke-nakano/jQMC
+```
+
 **jQMC** can be installed via pip
 
 ```bash
+% cd jQMC
 % pip install .
 ```
+
+> [!NOTE]
+> `jQMC` is not yet distributed from `PyPI`. So, %pip install jqmc does not work at present.
+
+
 
 ## Examples
 Examples are in `examples` directory.
