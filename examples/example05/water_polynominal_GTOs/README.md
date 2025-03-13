@@ -83,11 +83,11 @@ The final step is to run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (v
 % mpiexec -n 4 -map-by ppr:4:node jqmc vmc.toml > out_vmc 2> out_vmc.e # w/ MPI on GPU, depending the queueing system.
 ```
 
-You may get `E = -16.94456 +- 0.000605 Ha` [VMC wo/ Jastrow factors]
+You may get `E = -16.94478 +- 0.000203` [VMC wo/ Jastrow factors]
 
 These two energies should be consistent with the VMC error bar as far as the VMC implemenation is correct.
 
 ```
 E = -16.94503 Ha (Hartree Fock by PySCF)
-E = -16.94456(61) Ha (VMC wo/ Jastrow by jQMC)
+E = -16.94478(20) Ha (VMC wo/ Jastrow by jQMC)
 ```
