@@ -372,6 +372,40 @@ class Geminal_data_no_deriv(Geminal_data):
         )
 
 
+def compute_ln_det_geminal_all_elements_api(
+    geminal_data: Geminal_data,
+    r_up_carts: jnpt.ArrayLike,
+    r_dn_carts: jnpt.ArrayLike,
+    debug=False,
+) -> float:
+    """Function for computing determinant of the given geminal.
+
+    The api method to compute logarithm of determinant of the given geminal functions.
+
+    Args:
+        geminal_data (Geminal_data): an instance of Geminal_data
+        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^up, 3)
+        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^dn, 3)
+        debug (bool): if True, this is computed via _debug function for debuging purpose
+
+    Returns:
+        jax.Array:
+            Array containing laplacians of the AOs at r_carts. The dim. is (num_ao, N_e)
+
+    Return:
+        float: The log of determinant of the given geminal functions.
+    """
+    return jnp.log(
+        jnp.abs(
+            jnp.linalg.det(
+                compute_geminal_all_elements_api(
+                    geminal_data=geminal_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts, debug=debug
+                )
+            )
+        )
+    )
+
+
 def compute_det_geminal_all_elements_api(
     geminal_data: Geminal_data,
     r_up_carts: jnpt.ArrayLike,
@@ -744,7 +778,7 @@ def compute_grads_and_laplacian_ln_Det_api(
             )
             raise ValueError
     else:
-        logger.devel("There is no unpaired electrons.")
+        logger.debug("There is no unpaired electrons.")
 
     if debug:
         grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = _compute_grads_and_laplacian_ln_Det_debug(

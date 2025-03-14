@@ -54,7 +54,7 @@ from .coulomb_potential import (
     _compute_ecp_local_parts_all_pairs_jax,
     _compute_ecp_non_local_parts_nearest_neighbors_jax,
 )
-from .determinant import Geminal_data, compute_AS_regularization_factor_api
+from .determinant import Geminal_data, compute_AS_regularization_factor_api, compute_det_geminal_all_elements_api
 from .hamiltonians import (
     Hamiltonian_data,  # Hamiltonian_data_deriv_R,
     Hamiltonian_data_deriv_params,
@@ -66,6 +66,7 @@ from .jastrow_factor import (
     Jastrow_one_body_data,
     Jastrow_three_body_data,
     Jastrow_two_body_data,
+    compute_Jastrow_part_api,
     compute_ratio_Jastrow_part_api,
 )
 from .structure import find_nearest_index_jax
@@ -75,7 +76,6 @@ from .wavefunction import (
     # _compute_kinetic_energy_all_elements_jax,
     compute_discretized_kinetic_energy_api,
     evaluate_ln_wavefunction_api,
-    evaluate_wavefunction_api,
 )
 
 # MPI related
@@ -222,7 +222,7 @@ class MCMC:
 
                 # Place up electrons
                 for _ in range(num_up):
-                    distance = np.random.uniform(0.1, 2.0)
+                    distance = np.random.uniform(0.1, 1.0)
                     theta = np.random.uniform(0, np.pi)
                     phi = np.random.uniform(0, 2 * np.pi)
                     dx = distance * np.sin(theta) * np.cos(phi)
@@ -234,7 +234,7 @@ class MCMC:
 
                 # Place dn electrons
                 for _ in range(num_dn):
-                    distance = np.random.uniform(0.1, 2.0)
+                    distance = np.random.uniform(0.1, 1.0)
                     theta = np.random.uniform(0, np.pi)
                     phi = np.random.uniform(0, 2 * np.pi)
                     dx = distance * np.sin(theta) * np.cos(phi)
@@ -586,14 +586,26 @@ class MCMC:
                 )
 
                 # original trial WFs
-                Psi_T_p = evaluate_wavefunction_api(
-                    wavefunction_data=hamiltonian_data.wavefunction_data,
+                Jastrow_T_p = compute_Jastrow_part_api(
+                    jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                     r_up_carts=proposed_r_up_carts,
                     r_dn_carts=proposed_r_dn_carts,
                 )
 
-                Psi_T_o = evaluate_wavefunction_api(
-                    wavefunction_data=hamiltonian_data.wavefunction_data,
+                Jastrow_T_o = compute_Jastrow_part_api(
+                    jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
+                    r_up_carts=r_up_carts,
+                    r_dn_carts=r_dn_carts,
+                )
+
+                Det_T_p = compute_det_geminal_all_elements_api(
+                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                    r_up_carts=proposed_r_up_carts,
+                    r_dn_carts=proposed_r_dn_carts,
+                )
+
+                Det_T_o = compute_det_geminal_all_elements_api(
+                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                 )
@@ -614,12 +626,11 @@ class MCMC:
                 R_AS_o_eps = jnp.maximum(R_AS_o, epsilon_AS)
 
                 # modified trial WFs
-                Psi_G_p = R_AS_p_eps / R_AS_p * Psi_T_p
-
-                Psi_G_o = R_AS_o_eps / R_AS_o * Psi_T_o
+                R_AS_ratio = (R_AS_p_eps / R_AS_p) / (R_AS_o_eps / R_AS_o)
+                WF_ratio = jnp.exp(Jastrow_T_p - Jastrow_T_o) * (Det_T_p / Det_T_o)
 
                 # compute R_ratio
-                R_ratio = (Psi_G_p / Psi_G_o) ** 2.0
+                R_ratio = (R_AS_ratio * WF_ratio) ** 2.0
 
                 logger.devel(f"R_ratio, T_ratio = {R_ratio}, {T_ratio}")
                 acceptance_ratio = jnp.min(jnp.array([1.0, R_ratio * T_ratio]))
@@ -1466,7 +1477,7 @@ class GFMC_fixed_projection_time:
 
                 # Place up electrons
                 for _ in range(num_up):
-                    distance = np.random.uniform(0.1, 2.0)
+                    distance = np.random.uniform(0.1, 1.0)
                     theta = np.random.uniform(0, np.pi)
                     phi = np.random.uniform(0, 2 * np.pi)
                     dx = distance * np.sin(theta) * np.cos(phi)
@@ -1478,7 +1489,7 @@ class GFMC_fixed_projection_time:
 
                 # Place dn electrons
                 for _ in range(num_dn):
-                    distance = np.random.uniform(0.1, 2.0)
+                    distance = np.random.uniform(0.1, 1.0)
                     theta = np.random.uniform(0, np.pi)
                     phi = np.random.uniform(0, 2 * np.pi)
                     dx = distance * np.sin(theta) * np.cos(phi)
@@ -2462,7 +2473,7 @@ class GFMC_fixed_num_projection:
 
                 # Place up electrons
                 for _ in range(num_up):
-                    distance = np.random.uniform(0.1, 2.0)
+                    distance = np.random.uniform(0.1, 1.0)
                     theta = np.random.uniform(0, np.pi)
                     phi = np.random.uniform(0, 2 * np.pi)
                     dx = distance * np.sin(theta) * np.cos(phi)
@@ -2474,7 +2485,7 @@ class GFMC_fixed_num_projection:
 
                 # Place dn electrons
                 for _ in range(num_dn):
-                    distance = np.random.uniform(0.1, 2.0)
+                    distance = np.random.uniform(0.1, 1.0)
                     theta = np.random.uniform(0, np.pi)
                     phi = np.random.uniform(0, 2 * np.pi)
                     dx = distance * np.sin(theta) * np.cos(phi)

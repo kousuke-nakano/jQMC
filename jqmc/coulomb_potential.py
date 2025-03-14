@@ -56,7 +56,9 @@ from flax import struct
 from jax import jit, lax, vmap
 from scipy.special import eval_legendre
 
+from .determinant import compute_det_geminal_all_elements_api
 from .function_collections import legendre_tablated as jnp_legendre_tablated
+from .jastrow_factor import compute_Jastrow_part_api
 from .structure import (
     Structure_data,
     find_nearest_nucleus_indices_jnp,
@@ -64,7 +66,7 @@ from .structure import (
     get_min_dist_rel_R_cart_jnp,
     get_min_dist_rel_R_cart_np,
 )
-from .wavefunction import Wavefunction_data, evaluate_determinant_api, evaluate_wavefunction_api
+from .wavefunction import Wavefunction_data
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
@@ -710,17 +712,19 @@ def _compute_ecp_non_local_parts_all_pairs_debug(
     sum_V_nonlocal = 0.0
 
     if flag_determinant_only:
-        wf_denominator = evaluate_determinant_api(
-            wavefunction_data=wavefunction_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
-        )
+        jastrow_denominator = 1.0
     else:
-        wf_denominator = evaluate_wavefunction_api(
-            wavefunction_data=wavefunction_data,
+        jastrow_denominator = compute_Jastrow_part_api(
+            jastrow_data=wavefunction_data.jastrow_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
         )
+
+    det_denominator = compute_det_geminal_all_elements_api(
+        geminal_data=wavefunction_data.geminal_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
 
     for i_atom in range(coulomb_potential_data.structure_data.natom):
         max_ang_mom_plus_1 = coulomb_potential_data.max_ang_mom_plus_1[i_atom]
@@ -763,18 +767,21 @@ def _compute_ecp_non_local_parts_all_pairs_debug(
                     )
 
                     if flag_determinant_only:
-                        wf_numerator = evaluate_determinant_api(
-                            wavefunction_data=wavefunction_data,
-                            r_up_carts=r_up_carts_on_mesh,
-                            r_dn_carts=r_dn_carts,
-                        )
+                        jastrow_numerator = 1
                     else:
-                        wf_numerator = evaluate_wavefunction_api(
-                            wavefunction_data=wavefunction_data,
+                        jastrow_numerator = compute_Jastrow_part_api(
+                            jastrow_data=wavefunction_data.jastrow_data,
                             r_up_carts=r_up_carts_on_mesh,
                             r_dn_carts=r_dn_carts,
                         )
-                    wf_ratio = wf_numerator / wf_denominator
+
+                    det_numerator = compute_det_geminal_all_elements_api(
+                        geminal_data=wavefunction_data.geminal_data,
+                        r_up_carts=r_up_carts_on_mesh,
+                        r_dn_carts=r_dn_carts,
+                    )
+
+                    wf_ratio = np.exp(jastrow_numerator - jastrow_denominator) * det_numerator / det_denominator
 
                     P_l = (2 * ang_mom + 1) * eval_legendre(ang_mom, cos_theta) * weight * wf_ratio
 
@@ -808,19 +815,19 @@ def _compute_ecp_non_local_parts_all_pairs_debug(
                     )
 
                     if flag_determinant_only:
-                        wf_numerator = evaluate_determinant_api(
-                            wavefunction_data=wavefunction_data,
+                        det_numerator = compute_det_geminal_all_elements_api(
+                            geminal_data=wavefunction_data.geminal_data,
                             r_up_carts=r_up_carts,
                             r_dn_carts=r_dn_carts_on_mesh,
                         )
                     else:
-                        wf_numerator = evaluate_wavefunction_api(
-                            wavefunction_data=wavefunction_data,
+                        det_numerator = compute_det_geminal_all_elements_api(
+                            geminal_data=wavefunction_data.geminal_data,
                             r_up_carts=r_up_carts,
                             r_dn_carts=r_dn_carts_on_mesh,
                         )
 
-                    wf_ratio = wf_numerator / wf_denominator
+                    wf_ratio = np.exp(jastrow_numerator - jastrow_denominator) * det_numerator / det_denominator
 
                     P_l = (2 * ang_mom + 1) * eval_legendre(ang_mom, cos_theta) * weight * wf_ratio
                     mesh_non_local_ecp_part.append((r_up_carts, r_dn_carts_on_mesh))
@@ -879,17 +886,19 @@ def _compute_ecp_non_local_parts_nearest_neighbors_debug(
     sum_V_nonlocal = 0.0
 
     if flag_determinant_only:
-        wf_denominator = evaluate_determinant_api(
-            wavefunction_data=wavefunction_data,
-            r_up_carts=r_up_carts,
-            r_dn_carts=r_dn_carts,
-        )
+        jastrow_denominator = 1.0
     else:
-        wf_denominator = evaluate_wavefunction_api(
-            wavefunction_data=wavefunction_data,
+        jastrow_denominator = compute_Jastrow_part_api(
+            jastrow_data=wavefunction_data.jastrow_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
         )
+
+    det_denominator = compute_det_geminal_all_elements_api(
+        geminal_data=wavefunction_data.geminal_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
 
     i_atom_np = np.array(coulomb_potential_data.nucleus_index_non_local_part)
     ang_mom_np = np.array(coulomb_potential_data.ang_mom_non_local_part)
@@ -948,18 +957,21 @@ def _compute_ecp_non_local_parts_nearest_neighbors_debug(
                 cos_theta_list.append(cos_theta)
 
                 if flag_determinant_only:
-                    wf_numerator = evaluate_determinant_api(
-                        wavefunction_data=wavefunction_data,
-                        r_up_carts=r_up_carts_on_mesh,
-                        r_dn_carts=r_dn_carts,
-                    )
+                    jastrow_numerator = 1.0
                 else:
-                    wf_numerator = evaluate_wavefunction_api(
-                        wavefunction_data=wavefunction_data,
+                    jastrow_numerator = compute_Jastrow_part_api(
+                        jastrow_data=wavefunction_data.jastrow_data,
                         r_up_carts=r_up_carts_on_mesh,
                         r_dn_carts=r_dn_carts,
                     )
-                wf_ratio = wf_numerator / wf_denominator
+
+                det_numerator = compute_det_geminal_all_elements_api(
+                    geminal_data=wavefunction_data.geminal_data,
+                    r_up_carts=r_up_carts_on_mesh,
+                    r_dn_carts=r_dn_carts,
+                )
+
+                wf_ratio = np.exp(jastrow_numerator - jastrow_denominator) * det_numerator / det_denominator
                 wf_ratio_list.append(wf_ratio)
 
             for ang_mom in range(max_ang_mom_plus_1):
@@ -1026,18 +1038,21 @@ def _compute_ecp_non_local_parts_nearest_neighbors_debug(
                 cos_theta_list.append(cos_theta)
 
                 if flag_determinant_only:
-                    wf_numerator = evaluate_determinant_api(
-                        wavefunction_data=wavefunction_data,
-                        r_up_carts=r_up_carts,
-                        r_dn_carts=r_dn_carts_on_mesh,
-                    )
+                    jastrow_numerator = 1.0
                 else:
-                    wf_numerator = evaluate_wavefunction_api(
-                        wavefunction_data=wavefunction_data,
+                    jastrow_numerator = compute_Jastrow_part_api(
+                        jastrow_data=wavefunction_data.jastrow_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts_on_mesh,
                     )
-                wf_ratio = wf_numerator / wf_denominator
+
+                det_numerator = compute_det_geminal_all_elements_api(
+                    geminal_data=wavefunction_data.geminal_data,
+                    r_up_carts=r_up_carts,
+                    r_dn_carts=r_dn_carts_on_mesh,
+                )
+
+                wf_ratio = np.exp(jastrow_numerator - jastrow_denominator) * det_numerator / det_denominator
                 wf_ratio_list.append(wf_ratio)
 
             for ang_mom in range(max_ang_mom_plus_1):
@@ -1377,30 +1392,23 @@ def _compute_ecp_non_local_parts_nearest_neighbors_jax(
     non_local_ecp_part_r_carts_up = jnp.array(non_local_ecp_part_r_carts_up)
     non_local_ecp_part_r_carts_dn = jnp.array(non_local_ecp_part_r_carts_dn)
 
-    # wf_ratio
+    # jastrow_ratio
     if flag_determinant_only:
-        evaluate_psi_api = evaluate_determinant_api
+        jastrow_x = 1.0
+        jastrow_xp = 1.0
     else:
-        evaluate_psi_api = evaluate_wavefunction_api
-    psi_x = evaluate_psi_api(wavefunction_data, r_up_carts, r_dn_carts)
-    psi_xp = vmap(evaluate_psi_api, in_axes=(None, 0, 0))(
-        wavefunction_data, non_local_ecp_part_r_carts_up, non_local_ecp_part_r_carts_dn
+        jastrow_x = compute_Jastrow_part_api(wavefunction_data.jastrow_data, r_up_carts, r_dn_carts)
+        jastrow_xp = vmap(compute_Jastrow_part_api, in_axes=(None, 0, 0))(
+            wavefunction_data.jastrow_data, non_local_ecp_part_r_carts_up, non_local_ecp_part_r_carts_dn
+        )
+
+    # det_ratio
+    det_x = compute_det_geminal_all_elements_api(wavefunction_data.geminal_data, r_up_carts, r_dn_carts)
+    det_xp = vmap(compute_det_geminal_all_elements_api, in_axes=(None, 0, 0))(
+        wavefunction_data.geminal_data, non_local_ecp_part_r_carts_up, non_local_ecp_part_r_carts_dn
     )
 
-    """
-    def compute_psi_xp(wavefunction_data, r_carts_ups, r_carts_dns):
-        def body_fn(carry, inputs):
-            r_carts_up, r_carts_dn = inputs
-            psi_val = evaluate_psi_api(wavefunction_data, r_carts_up, r_carts_dn)
-            return carry, psi_val
-
-        inputs = (r_carts_ups, r_carts_dns)
-        _, psi_xp = lax.scan(body_fn, None, inputs)
-        return psi_xp
-    psi_xp = compute_psi_xp(wavefunction_data, non_local_ecp_part_r_carts_up, non_local_ecp_part_r_carts_dn)
-    """
-
-    wf_ratio_all = psi_xp / psi_x
+    wf_ratio_all = jnp.exp(jastrow_xp - jastrow_x) * det_xp / det_x
 
     cos_theta_all = jnp.array(cos_theta_all)
     weight_all = jnp.array(weight_all)
@@ -1582,18 +1590,13 @@ def _compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
     weights = jnp.array(weights)
     grid_points = jnp.array(grid_points)
 
-    """
-    wf_denominator = evaluate_wavefunction_api(
-        wavefunction_data=wavefunction_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
-    )
-    """
-    wf_denominator = lax.switch(
+    jastrow_denominator = lax.switch(
         flag_determinant_only,
-        (evaluate_wavefunction_api, evaluate_determinant_api),
-        *(wavefunction_data, r_up_carts, r_dn_carts),
+        (compute_Jastrow_part_api, lambda *args, **kwargs: 1.0),
+        *(wavefunction_data.jastrow_data, r_up_carts, r_dn_carts),
     )
+
+    det_denominator = compute_det_geminal_all_elements_api(wavefunction_data.geminal_data, r_up_carts, r_dn_carts)
 
     # Compute the local part. To understand the flow, please refer to the debug version.
     @jit
@@ -1631,13 +1634,15 @@ def _compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
             ((vec_delta) / jnp.linalg.norm(vec_delta)),
         )
 
-        wf_numerator_up = lax.switch(
+        jastrow_numerator_up = lax.switch(
             flag_determinant_only,
-            (evaluate_wavefunction_api, evaluate_determinant_api),
-            *(wavefunction_data, r_up_carts_on_mesh, r_dn_carts),
+            (compute_Jastrow_part_api, lambda *args, **kwargs: 1.0),
+            *(wavefunction_data.jastrow_data, r_up_carts_on_mesh, r_dn_carts),
         )
 
-        wf_ratio_up = wf_numerator_up / wf_denominator
+        det_numerator_up = compute_det_geminal_all_elements_api(wavefunction_data.geminal_data, r_up_carts_on_mesh, r_dn_carts)
+
+        wf_ratio_up = jnp.exp(jastrow_numerator_up - jastrow_denominator) * det_numerator_up / det_denominator
 
         P_l_up = (2 * ang_mom + 1) * jnp_legendre_tablated(ang_mom, cos_theta_up) * weight * wf_ratio_up
 
@@ -1662,13 +1667,15 @@ def _compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
             ((vec_delta) / jnp.linalg.norm(vec_delta)),
         )
 
-        wf_numerator_dn = lax.switch(
+        jastrow_numerator_dn = lax.switch(
             flag_determinant_only,
-            (evaluate_wavefunction_api, evaluate_determinant_api),
-            *(wavefunction_data, r_up_carts, r_dn_carts_on_mesh),
+            (compute_Jastrow_part_api, lambda *args, **kwargs: 1.0),
+            *(wavefunction_data.jastrow_data, r_up_carts, r_dn_carts_on_mesh),
         )
 
-        wf_ratio_dn = wf_numerator_dn / wf_denominator
+        det_numerator_dn = compute_det_geminal_all_elements_api(wavefunction_data.geminal_data, r_up_carts, r_dn_carts_on_mesh)
+
+        wf_ratio_dn = jnp.exp(jastrow_numerator_dn - jastrow_denominator) * det_numerator_dn / det_denominator
 
         P_l_dn = (2 * ang_mom + 1) * jnp_legendre_tablated(ang_mom, cos_theta_dn) * weight * wf_ratio_dn
         return r_dn_carts_on_mesh, P_l_dn
