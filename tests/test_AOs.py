@@ -409,19 +409,19 @@ def test_AOs_w_cartesian_angular_part_comparing_jax_and_debug_implemenetations()
 def test_AOs_comparing_auto_and_numerical_grads():
     """Test the grad AOs computation, comparing the JAX and debug implementations."""
     num_r_cart_samples = 10
-    num_R_cart_samples = 3
+    num_R_cart_samples = 4
     r_cart_min, r_cart_max = -5.0, +5.0
     R_cart_min, R_cart_max = -3.0, +3.0
     r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_cart_samples, 3) + r_cart_min
     R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
 
-    num_ao = 3
-    num_ao_prim = 4
-    orbital_indices = [0, 1, 2, 2]
-    exponents = [3.0, 1.0, 0.5, 0.5]
-    coefficients = [1.0, 1.0, 0.5, 0.5]
-    angular_momentums = [0, 0, 0]
-    magnetic_quantum_numbers = [0, 0, 0]
+    num_ao = 4
+    num_ao_prim = 5
+    orbital_indices = [0, 1, 2, 2, 3]
+    exponents = [3.0, 1.0, 0.5, 0.5, 0.5]
+    coefficients = [1.0, 1.0, 0.5, 0.5, 0.5]
+    angular_momentums = [0, 0, 0, 0]
+    magnetic_quantum_numbers = [0, 0, 0, 0]
 
     structure_data = Structure_data(
         pbc_flag=False,
@@ -461,19 +461,19 @@ def test_AOs_comparing_auto_and_numerical_grads():
     np.testing.assert_array_almost_equal(ao_matrix_grad_z_auto, ao_matrix_grad_z_numerical, decimal=7)
 
     num_r_cart_samples = 2
-    num_R_cart_samples = 3
+    num_R_cart_samples = 4
     r_cart_min, r_cart_max = -3.0, +3.0
     R_cart_min, R_cart_max = -3.0, +3.0
     r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_cart_samples, 3) + r_cart_min
     R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
 
-    num_ao = 3
-    num_ao_prim = 3
-    orbital_indices = [0, 1, 2]
-    exponents = [30.0, 10.0, 8.5]
-    coefficients = [1.0, 1.0, 1.0]
-    angular_momentums = [1, 1, 1]
-    magnetic_quantum_numbers = [0, 1, -1]
+    num_ao = 4
+    num_ao_prim = 5
+    orbital_indices = [0, 1, 2, 2, 3]
+    exponents = [3.0, 1.0, 0.5, 0.5, 0.5]
+    coefficients = [1.0, 1.0, 0.5, 0.5, 0.5]
+    angular_momentums = [0, 0, 0, 0]
+    magnetic_quantum_numbers = [0, 0, 0, 0]
 
     structure_data = Structure_data(
         pbc_flag=False,

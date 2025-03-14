@@ -46,7 +46,7 @@ import numpy as np
 import numpy.typing as npt
 import scipy
 from flax import struct
-from jax import grad, jacrev, jit, vmap
+from jax import grad, hessian, jacrev, jit, vmap
 from jax import typing as jnpt
 from numpy import linalg as LA
 
@@ -1249,33 +1249,15 @@ def compute_AOs_laplacian_api(
 
 # no longer used in the main code
 @jit
-def _compute_AOs_laplacian_jax(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> jax.Array:
+def _compute_AOs_laplacian_jax(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     """Compute laplacians of the give AOs at r_carts.
 
     See compute_AOs_laplacian_api
 
     """
-    # expansion with respect to the primitive AOs
-    # compute R_n inc. the whole normalization factor
-    R_carts_jnp = aos_data.atomic_center_carts_prim_jnp
-    c_jnp = aos_data.coefficients_jnp
-    Z_jnp = aos_data.exponents_jnp
-    l_jnp = aos_data.angular_momentums_prim_jnp
-    m_jnp = aos_data.magnetic_quantum_numbers_prim_jnp
-
-    vmap_compute_AOs_laplacian_dup = vmap(
-        vmap(
-            _compute_primitive_AOs_laplacians_jax,
-            in_axes=(None, None, None, None, None, 0),
-        ),
-        in_axes=(0, 0, 0, 0, 0, None),
-    )
-
-    AOs_laplacian_dup = vmap_compute_AOs_laplacian_dup(c_jnp, Z_jnp, l_jnp, m_jnp, R_carts_jnp, r_carts)
-
-    orbital_indices = jnp.array(aos_data.orbital_indices, dtype=jnp.int32)
-    num_segments = aos_data.num_ao
-    ao_matrix_laplacian = jax.ops.segment_sum(AOs_laplacian_dup, orbital_indices, num_segments=num_segments)
+    # not very fast, but it works.
+    ao_matrix_hessian = hessian(compute_AOs_api, argnums=1)(aos_data, r_carts)
+    ao_matrix_laplacian = jnp.einsum("m i i u i u -> mi", ao_matrix_hessian)
 
     return ao_matrix_laplacian
 
@@ -1392,11 +1374,14 @@ def compute_AOs_grad_api(
 
 # no longer used in the main code
 @jit
-def _compute_AOs_grad_jax(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> tuple[jax.Array, jax.Array, jax.Array]:
+def _compute_AOs_grad_jax(
+    aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jnpt.ArrayLike
+) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Compute Cartesian Gradients of AOs.
 
     See compute_AOs_grad_api
 
+    """
     """
     # expansion with respect to the primitive AOs
     # compute R_n inc. the whole normalization factor
@@ -1422,6 +1407,16 @@ def _compute_AOs_grad_jax(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> t
     ao_matrix_grad_x = jax.ops.segment_sum(AOs_grad_x_dup, orbital_indices, num_segments=num_segments)
     ao_matrix_grad_y = jax.ops.segment_sum(AOs_grad_y_dup, orbital_indices, num_segments=num_segments)
     ao_matrix_grad_z = jax.ops.segment_sum(AOs_grad_z_dup, orbital_indices, num_segments=num_segments)
+    return ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z
+
+    """
+
+    grad_full = jacrev(compute_AOs_api, argnums=1)(aos_data, r_carts)
+    grad_diag = jnp.diagonal(grad_full, axis1=1, axis2=2)
+    grad_diag = jnp.swapaxes(grad_diag, 1, 2)
+    ao_matrix_grad_x = grad_diag[..., 0]  # (M, N)
+    ao_matrix_grad_y = grad_diag[..., 1]  # (M, N)
+    ao_matrix_grad_z = grad_diag[..., 2]  # (M, N)
     return ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z
 
 
