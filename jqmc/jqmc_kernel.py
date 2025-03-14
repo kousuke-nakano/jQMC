@@ -374,6 +374,9 @@ class MCMC:
         # stored local energy (e_L)
         self.__stored_e_L = []
 
+        # stored local energy (e_L2)
+        self.__stored_e_L2 = []
+
         # stored de_L / dR
         self.__stored_grad_e_L_dR = []
 
@@ -815,6 +818,7 @@ class MCMC:
             timer_e_L += end - start
 
             self.__stored_e_L.append(e_L)
+            self.__stored_e_L2.append(e_L**2)
 
             # compute AS regularization factors, R_AS and R_AS_eps
             R_AS = vmap(compute_AS_regularization_factor_api, in_axes=(None, 0, 0))(
@@ -1155,6 +1159,12 @@ class MCMC:
     def e_L(self) -> npt.NDArray:
         """Return the stored e_L array. dim: (mcmc_counter, num_walkers)."""
         return np.array(self.__stored_e_L)
+
+    # observables
+    @property
+    def e_L2(self) -> npt.NDArray:
+        """Return the stored e_L^2 array. dim: (mcmc_counter, num_walkers)."""
+        return np.array(self.__stored_e_L2)
 
     @property
     def de_L_dR(self) -> npt.NDArray:
@@ -1596,6 +1606,9 @@ class GFMC_fixed_projection_time:
         # stored local energy (e_L)
         self.__stored_e_L = []
 
+        # stored local energy (e_L)
+        self.__stored_e_L2 = []
+
         # average projection counter
         self.__stored_average_projection_counter = []
 
@@ -1646,6 +1659,13 @@ class GFMC_fixed_projection_time:
         """Return the stored e_L array. dim: (mcmc_counter, 1)."""
         # logger.info(f"np.array(self.__stored_e_L).shape = {np.array(self.__stored_e_L).shape}.")
         return np.array(self.__stored_e_L)[self.__num_gfmc_collect_steps :]
+
+    # observables
+    @property
+    def e_L2(self) -> npt.NDArray:
+        """Return the stored e_L2 array. dim: (mcmc_counter, 1)."""
+        # logger.info(f"np.array(self.__stored_e_L2).shape = {np.array(self.__stored_e_L).shape}.")
+        return np.array(self.__stored_e_L2)[self.__num_gfmc_collect_steps :]
 
     def run(self, num_mcmc_steps: int = 50, max_time: int = 86400) -> None:
         """Run LRDMC with multiple walkers.
@@ -2229,14 +2249,17 @@ class GFMC_fixed_projection_time:
                 w_L_gathered = np.concatenate([w_L_gathered_dict[i] for i in range(mpi_size)])
                 logger.devel(f"  e_L_gathered = {e_L_gathered} Ha")
                 logger.devel(f"  w_L_gathered = {w_L_gathered}")
+                e_L2_averaged = np.sum(w_L_gathered * e_L_gathered**2) / np.sum(w_L_gathered)
                 e_L_averaged = np.sum(w_L_gathered * e_L_gathered) / np.sum(w_L_gathered)
                 w_L_averaged = np.average(w_L_gathered)
                 logger.devel(f"  e_L_averaged = {e_L_averaged} Ha")
                 logger.devel(f"  w_L_averaged = {w_L_averaged}")
                 # add a dummy dim
+                e_L2_averaged = np.expand_dims(e_L2_averaged, axis=0)
                 e_L_averaged = np.expand_dims(e_L_averaged, axis=0)
                 w_L_averaged = np.expand_dims(w_L_averaged, axis=0)
                 # store  # This should stored only for MPI-rank = 0 !!!
+                self.__stored_e_L2.append(e_L2_averaged)
                 self.__stored_e_L.append(e_L_averaged)
                 self.__stored_w_L.append(w_L_averaged)
                 w_L_list = w_L_gathered
@@ -2621,6 +2644,9 @@ class GFMC_fixed_num_projection:
         # stored local energy (e_L)
         self.__stored_e_L = []
 
+        # stored local energy (e_L2)
+        self.__stored_e_L2 = []
+
         # stored de_L / dR
         self.__stored_grad_e_L_dR = []
 
@@ -2701,6 +2727,13 @@ class GFMC_fixed_num_projection:
         """Return the stored e_L array. dim: (mcmc_counter, 1)."""
         # logger.info(f"np.array(self.__stored_e_L).shape = {np.array(self.__stored_e_L).shape}.")
         return np.array(self.__stored_e_L)[self.__num_gfmc_collect_steps :]
+
+    # observables
+    @property
+    def e_L2(self) -> npt.NDArray:
+        """Return the stored e_L^2 array. dim: (mcmc_counter, 1)."""
+        # logger.info(f"np.array(self.__stored_e_L2).shape = {np.array(self.__stored_e_L).shape}.")
+        return np.array(self.__stored_e_L2)[self.__num_gfmc_collect_steps :]
 
     @property
     def de_L_dR(self) -> npt.NDArray:
@@ -3738,6 +3771,7 @@ class GFMC_fixed_num_projection:
                 reg = 1.0 + self.__gamma * self.__alat**2
                 w_L_sum = np.sum(w_L_gathered / V_diag_E_gathered**reg)
                 e_L_sum = np.sum(w_L_gathered / V_diag_E_gathered**reg * e_L_gathered)
+                e_L2_sum = np.sum(w_L_gathered / V_diag_E_gathered**reg * e_L_gathered**2)
                 if self.__comput_position_deriv:
                     grad_e_L_r_up_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_e_L_r_up_gathered)
                     grad_e_L_r_dn_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_e_L_r_dn_gathered)
@@ -3760,6 +3794,7 @@ class GFMC_fixed_num_projection:
                 # averaged
                 w_L_averaged = np.average(w_L_gathered / V_diag_E_gathered**reg)
                 e_L_averaged = e_L_sum / w_L_sum
+                e_L2_averaged = e_L2_sum / w_L_sum
 
                 """ wrong maybe
                 w_L_sum = np.sum(w_L_gathered)
@@ -3791,6 +3826,7 @@ class GFMC_fixed_num_projection:
                     grad_omega_dr_up_averaged = grad_omega_dr_up_sum / w_L_sum
                     grad_omega_dr_dn_averaged = grad_omega_dr_dn_sum / w_L_sum
                 # add a dummy dim
+                e_L2_averaged = np.expand_dims(e_L2_averaged, axis=0)
                 e_L_averaged = np.expand_dims(e_L_averaged, axis=0)
                 w_L_averaged = np.expand_dims(w_L_averaged, axis=0)
                 if self.__comput_position_deriv:
@@ -3805,6 +3841,7 @@ class GFMC_fixed_num_projection:
                     grad_omega_dr_up_averaged = np.expand_dims(grad_omega_dr_up_averaged, axis=0)
                     grad_omega_dr_dn_averaged = np.expand_dims(grad_omega_dr_dn_averaged, axis=0)
                 # store  # This should stored only for MPI-rank = 0 !!!
+                self.__stored_e_L2.append(e_L2_averaged)
                 self.__stored_e_L.append(e_L_averaged)
                 self.__stored_w_L.append(w_L_averaged)
                 if self.__comput_position_deriv:
@@ -4447,12 +4484,13 @@ class QMC:
         """
         if self.mcmc.e_L.size != 0:
             e_L = self.mcmc.e_L[num_mcmc_warmup_steps:]
+            e_L2 = self.mcmc.e_L2[num_mcmc_warmup_steps:]
             w_L = self.mcmc.w_L[num_mcmc_warmup_steps:]
             w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
             w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
             w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
             w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
-            w_L_e_L2_split = np.array_split(w_L * e_L**2, num_mcmc_bin_blocks, axis=0)
+            w_L_e_L2_split = np.array_split(w_L * e_L2, num_mcmc_bin_blocks, axis=0)
             w_L_e_L2_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L2_split]))
         else:
             w_L_binned = []
@@ -5571,7 +5609,7 @@ if __name__ == "__main__":
     )
     # """
 
-    #'''
+    '''
     # """
     hamiltonian_chk = "hamiltonian_data_water.chk"
     # hamiltonian_chk = "hamiltonian_data_water_methane.chk"
@@ -5606,7 +5644,7 @@ if __name__ == "__main__":
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
     logger.info(f"Var = {Var_mean} +- {Var_std} Ha^2.")
-    # """
+    #"""
 
     """
     f_mean, f_std = vmc.get_aF(
@@ -5617,7 +5655,7 @@ if __name__ == "__main__":
     logger.info(f"f_mean = {f_mean} Ha/bohr.")
     logger.info(f"f_std = {f_std} Ha/bohr.")
     """
-    #'''
+    '''
 
     """
     hamiltonian_chk = "hamiltonian_data_water.chk"
@@ -5661,7 +5699,7 @@ if __name__ == "__main__":
     """
     # hamiltonian
     hamiltonian_chk = "hamiltonian_data_water.chk"
-    hamiltonian_chk = "hamiltonian_data_water_methane.chk"
+    # hamiltonian_chk = "hamiltonian_data_water_methane.chk"
     # hamiltonian_chk = "hamiltonian_data_benzene.chk"
     # hamiltonian_chk = "hamiltonian_data_C60.chk"
 
@@ -5671,7 +5709,7 @@ if __name__ == "__main__":
     # GFMC param
     num_walkers = 4
     mcmc_seed = 3446
-    E_scf = -25.00
+    E_scf = -17.00
     gamma = 16.0
     alat = 0.30
     num_mcmc_per_measurement = 50
@@ -5694,11 +5732,12 @@ if __name__ == "__main__":
     )
     gfmc = QMC(gfmc)
     gfmc.run(num_mcmc_steps=500, max_time=3600)
-    E_mean, E_std = gfmc.get_E(
+    E_mean, E_std, Var_mean, Var_std = gfmc.get_E(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
+    logger.info(f"Var E = {Var_mean} +- {Var_std} Ha.")
     """
 
     """
@@ -5711,7 +5750,7 @@ if __name__ == "__main__":
     logger.info(f"f_std = {f_std} Ha/bohr.")
     """
 
-    """
+    #'''
     # hamiltonian
     hamiltonian_chk = "hamiltonian_data_water.chk"
     # hamiltonian_chk = "hamiltonian_data_water_methane.chk"
@@ -5742,9 +5781,10 @@ if __name__ == "__main__":
     )
     gfmc = QMC(gfmc)
     gfmc.run(num_mcmc_steps=500, max_time=3600)
-    E_mean, E_std = gfmc.get_E(
+    E_mean, E_std, Var_mean, Var_std = gfmc.get_E(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
-    """
+    logger.info(f"Var E = {Var_mean} +- {Var_std} Ha.")
+    #'''
