@@ -12,7 +12,7 @@ cli_parameters = {
         "verbosity": "low",
     },
     "control_comments": {
-        "job_type": 'Specify the job type. "vmc", "vmcopt", or "lrdmc"',
+        "job_type": 'Specify the job type. "vmc", "vmcopt", "lrdmc", or "lrdmc-tau".',
         "mcmc_seed": "Random seed for MCMC",
         "number_of_walkers": "Number of walkers per MPI process",
         "max_time": "Maximum time in sec.",
@@ -92,5 +92,23 @@ cli_parameters = {
         "num_gfmc_collect_steps": "Number of measurement (before binning) for collecting the weights.",
         "E_scf": "The initial guess of the total energy. This is used to compute the initial energy shift in the GFMC.",
         "gamma": "The regulation parameter used in the GFMC.",
+    },
+    "lrdmc-tau": {
+        "num_mcmc_steps": None,
+        "tau": 0.10,
+        "alat": 0.30,
+        "non_local_move": "tmove",
+        "num_gfmc_warmup_steps": 0,
+        "num_gfmc_bin_blocks": 1,
+        "num_gfmc_collect_steps": 0,
+    },
+    "lrdmc-tau_comments": {
+        "num_mcmc_steps": "Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.",
+        "tau": "the imaginary time step size between projections (bohr).",
+        "alat": "The lattice discretization parameter (i.e. grid size) used for discretized the Hamiltonian and potential. The lattice spacing is alat * a0, where a0 is the Bohr radius.",
+        "non_local_move": "The treatment of the non-local term in the Effective core potential. tmove (T-move) and dltmove (Determinant locality approximation with T-move) are available.",
+        "num_gfmc_warmup_steps": "Number of observable measurement steps for warmup (i.e., discarged).",
+        "num_gfmc_bin_blocks": "Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_gfmc_bin_blocks, not num_gfmc_bin_blocks * mpi_size * number_of_walkers.",
+        "num_gfmc_collect_steps": "Number of measurement (before binning) for collecting the weights.",
     },
 }
