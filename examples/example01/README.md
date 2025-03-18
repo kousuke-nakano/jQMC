@@ -12,7 +12,7 @@ One of the easiest ways to produce it is using `pySCF` as a converter to the `TR
 from pyscf import gto, scf
 from pyscf.tools import trexio
 
-filename = 'water_ccecp_ccpvqz_cart.h5'
+filename = 'water_ccecp_ccpvtz.h5'
 
 mol = gto.Mole()
 mol.verbose  = 5
@@ -21,7 +21,7 @@ mol.atom     = '''
                H    4.06806600   6.94297500   7.56376100
                H    5.38023700   6.89696300   6.80798400
                '''
-mol.basis    = 'ccecp-ccpvqz'
+mol.basis    = 'ccecp-ccpvtz'
 mol.unit     = 'A'
 mol.ecp      = 'ccecp'
 mol.charge   = 0
@@ -48,14 +48,14 @@ Launch it on a terminal. You may get `E = -16.9450309201805 Ha` [Hartree-Forck].
 Next step is to convert the `TREXIO` file to the `jqmc` format using `jqmc-tool`
 
 ```bash
-% jqmc-tool trexio convert-to water_ccecp_ccpvqz_cart.h5 -j2 1.0 -j3 mo
+% jqmc-tool trexio convert-to water_ccecp_ccpvtz.h5 -j2 1.0 -j3 mo
 > Hamiltonian data is saved in hamiltonian_data.chk.
 ```
 
 The generated `hamiltonian_data.chk` is a wavefunction file with the `jqmc` format. `-j2` specifies the initial value of the two-body Jastrow parameter and `-j3` specifies the basis set (`ao`:atomic orbital or `mo`:molecular orbital) for the three-body Jastrow part.
 
 ## Optimize a trial WF (VMCopt)
-The next step is to optimize variational parameters included in the generated wavefunction. More in details, here, we optimize the two-body Jastrow parameter and the matrix elements of the three-body Jastrow parameter. 
+The next step is to optimize variational parameters included in the generated wavefunction. More in details, here, we optimize the two-body Jastrow parameter and the matrix elements of the three-body Jastrow parameter.
 
 You can generate a template file for a VMCopt calculation using `jqmc-tool`. Please directly edit `vmcopt.toml` if you want to change a parameter.
 
@@ -66,7 +66,31 @@ You can generate a template file for a VMCopt calculation using `jqmc-tool`. Ple
 
 ```toml:vmcopt.toml
 [control]
-xxx
+job_type = "vmcopt" # Specify the job type. "vmc", "vmcopt", "lrdmc", or "lrdmc-tau".
+mcmc_seed = 34456 # Random seed for MCMC
+number_of_walkers = 4 # Number of walkers per MPI process
+max_time = 86400 # Maximum time in sec.
+restart = false
+restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
+verbosity = "low" # Verbosity level. "low" or "high"
+
+[vmcopt]
+num_mcmc_steps = 500 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
+num_mcmc_per_measurement = 40 # Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.
+num_mcmc_warmup_steps = 0 # Number of observable measurement steps for warmup (i.e., discarged).
+num_mcmc_bin_blocks = 5 # Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_mcmc_bin_blocks * mpi_size * number_of_walkers.
+Dt = 2.0 # Step size for the MCMC update (bohr).
+epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
+num_opt_steps = 300 # Number of optimization steps.
+wf_dump_freq = 1 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
+delta = 0.01 # Step size for the Stochastic reconfiguration (i.e., the natural gradient) optimization.
+epsilon = 0.001 # Regularization parameter, a positive number added to the diagnoal elements of the Fisher-Information matrix, used during the Stochastic reconfiguration to improve the numerical stability.
+opt_J1_param = false
+opt_J2_param = true
+opt_J3_param = true
+opt_lambda_param = false
+num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If None, all parameters are optimized.
 ```
 
 Please lunch the job.
@@ -81,13 +105,29 @@ You can see and plot the outcome using `jqmc-tool`.
 
 ```bash
 % jqmc-tool vmcopt analyze-output out_vmcopt
-> xxx
-> xxx
+
+------------------------------------------------------
+Iter     E (Ha)     Max f (Ha)   Signal to Noise
+------------------------------------------------------
+   1  -16.5752(98)  +1.126(12)   114.338
+   2  -16.6269(94)  +1.074(12)   111.055
+   3  -16.6717(89)  +1.049(11)   107.720
+   4  -16.6947(89)  +0.990(11)    96.205
+   5  -16.7395(84)  +0.933(11)    98.656
+   6  -16.7417(88)  +0.896(10)    98.756
+   7  -16.8048(83)  +0.874(10)    89.545
+   8  -16.8248(79)  +0.805(10)    79.823
+   9  -16.8250(86)  +0.775(10)    80.669
+  10  -16.8525(81)  +0.729(10)    76.278
+  11  -16.8705(84)  +0.696(10)    71.823
+  12  -16.8812(77)  +0.6400(90)    74.887
+------------------------------------------------------
+
 ```
 
-The important criteria are `f_max` and `signal-to-noise`. A practical criterion is < 4~5 because it means that max of the residual force is zero in the statistical sense.
+The important criteria are `f_max` and max of `signal-to-noise` of `f`. `f_max` should be zero within the error bar. A practical criterion for `signal-to-noise` is < 4~5 because it means that all the residual forces are zero in the statistical sense.
 
-If the optimization is not converged. You can restart the optimization. 
+If the optimization is not converged. You can restart the optimization.
 
 ```toml:vmc.toml
 [control]
@@ -105,8 +145,6 @@ You can see and plot the outcome using `jqmc-tool`.
 
 ```bash
 % jqmc-tool vmcopt analyze-output out_vmcopt out_vmcopt_cont
-> xxx
-> xxx
 ```
 
 ## Compute Energy (VMC)
@@ -168,5 +206,3 @@ The final step is to run the `jqmc` jobs with several $a$.
 ```
 
 You may get `E = -xxxxx +- xxx` [VMC w/ Jastrow factors]
-
-
