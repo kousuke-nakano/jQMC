@@ -63,7 +63,7 @@ jax.config.update("jax_enable_x64", True)
 class AOs_cart_data:
     """Atomic Orbitals dataclass.
 
-    The class contains data for computing atomic orbitals simltaneously. The radial part is the polynominal.
+    The class contains data for computing atomic orbitals simltaneously. The angular part is the polynominal.
 
     Args:
         structure_data(Structure_data):
@@ -142,7 +142,7 @@ class AOs_cart_data:
         info_lines.extend(["**" + self.__class__.__name__])
         info_lines.extend([f"  Number of AOs = {self.num_ao}"])
         info_lines.extend([f"  Number of primitive AOs = {self.num_ao_prim}"])
-        info_lines.extend(["  Radial part is the polynominal (cartesian) function."])
+        info_lines.extend(["  Angular part is the polynominal (cartesian) function."])
         return info_lines
 
     def logger_info(self) -> None:
@@ -419,7 +419,7 @@ class AOs_sphe_data:
         info_lines.extend(["**" + self.__class__.__name__])
         info_lines.extend([f"  Number of AOs = {self.num_ao}"])
         info_lines.extend([f"  Number of primitive AOs = {self.num_ao_prim}"])
-        info_lines.extend(["  Radial part is the real spherical (solid) Harmonics."])
+        info_lines.extend(["  Angular part is the real spherical (solid) Harmonics."])
         return info_lines
 
     def logger_info(self) -> None:

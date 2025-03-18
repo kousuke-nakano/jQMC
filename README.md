@@ -1,5 +1,5 @@
 # jQMC
-**jQMC** is an ab initio quantum Monte Carlo (QMC) simulation package developed entirely from scratch using `Python` and `JAX`. Originally designed for molecular systems—with future extensions planned for periodic systems—**jQMC** implements two well-established QMC algorithms: Variational Monte Carlo (VMC) and a robust and efficient variant of Diffusion Monte Carlo algorithm known as Lattice Regularized Diffusion Monte Carlo (LRDMC).
+**jQMC** is an ab initio quantum Monte Carlo (QMC) simulation package developed entirely from scratch using `Python` and `JAX`. Originally designed for molecular systems—with future extensions planned for periodic systems—**jQMC** implements two well-established QMC algorithms: Variational Monte Carlo (VMC) and a robust and efficient variant of Diffusion Monte Carlo algorithm known as Lattice Regularized Diffusion Monte Carlo (LRDMC). By leveraging `JAX’s` just-in-time (`jit`) compilation and vectorized mapping (`vmap`) functionalities, `jQMC` achieves high-performance computations **especially on GPUs and TPUs** while remaining portable across CPUs, GPUs, and TPUs.
 
 What sets **jQMC** apart:
 
@@ -15,13 +15,15 @@ What sets **jQMC** apart:
 This combination of features makes **jQMC** a versatile and powerful tool for both users and developers in the field of quantum Monte Carlo simulations.
 
 ![license](https://img.shields.io/github/license/kousuke-nakano/jQMC)
-
+![release](https://img.shields.io/github/license/kousuke-nakano/jQMC/all.svg)
+![fork](https://img.shields.io/github/forks/kousuke-nakano/jQMC?style=social)
+![stars](https://img.shields.io/github/stars/kousuke-nakano/jQMC?style=social)
+![workflows](https://github.com/kousuke-nakano/jQMC/actions/workflows/jqmc-run-pytest.yml/badge.svg)
 
 ## Known issues
-- `jQMC` cannot calculate a system with many electrons (let's say more than 200 electrons) because the algorithmic differentiation by JAX shows numerical instability in computing the kinetic energy of a wavefunction (i.e., $\nabla \ln{\Psi}$ and $\nabla^2 \ln{\Psi}$). This should be solved by implemeting custum derivatives. WIP.
 - On CPUs, `jQMC` is ~10 times slower than other QMC codes implemented by a compiled language, such as C++, Fortran. Further improvements from the algorith and implementation viewpoints are needed. On GPUs, `jQMC` should be compatible with other QMC codes, but further benchmark tests are needed to confirm this.
 - Atomic force calculations with **solid (sperical) harmonics GTOs** are much slower than energy and energy-optimization calculations due to the very slow compilations of dlnPsi/dR and de_L/dR. This is because `grad`, `jvp`, and `vjp` are slow for these terms for some reason. A more detailed analysis will be needed. Please use **cartesian GTOs** to do those calculations
-- Periodic boundary condition calculations are not supoorted yet. It will be implemented in the future as `JAX` supports complex128. WIP.
+- Periodic boundary condition calculations are not supoorted yet. It will be implemented in the future as `JAX` supports complex128. Work in progress.
 
 ## Developer(s)
 Kosuke Nakano (National Institute for Materials Science, NIMS, Japan)
