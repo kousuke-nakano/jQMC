@@ -393,7 +393,6 @@ def cli():
         num_gfmc_bin_blocks = parameters["lrdmc"]["num_gfmc_bin_blocks"]
         num_gfmc_collect_steps = parameters["lrdmc"]["num_gfmc_collect_steps"]
         E_scf = parameters["lrdmc"]["E_scf"]
-        gamma = parameters["lrdmc"]["gamma"]
 
         # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
         if num_mcmc_steps < num_gfmc_warmup_steps:
@@ -420,7 +419,6 @@ def cli():
                     num_gfmc_collect_steps=num_gfmc_collect_steps,
                     mcmc_seed=mcmc_seed,
                     E_scf=E_scf,
-                    gamma=gamma,
                     alat=alat,
                     non_local_move=non_local_move,
                 )

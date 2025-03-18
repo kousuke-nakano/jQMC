@@ -2377,7 +2377,6 @@ class GFMC_fixed_num_projection:
         num_walkers (int): the number of walkers
         mcmc_seed (int): seed for the MCMC chain.
         E_scf (float): Self-consistent E (Hartree)
-        gamma (float): Reguralization of projection
         alat (float): discretized grid length (bohr)
         non_local_move (str):
             treatment of the spin-flip term. tmove (Casula's T-move) or dtmove (Determinant Locality Approximation with Casula's T-move)
@@ -2393,7 +2392,6 @@ class GFMC_fixed_num_projection:
         num_gfmc_collect_steps: int = 5,
         mcmc_seed: int = 34467,
         E_scf: float = 0.0,
-        gamma: float = 0.1,
         alat: float = 0.1,
         non_local_move: str = "tmove",
         comput_position_deriv: bool = False,
@@ -2413,7 +2411,6 @@ class GFMC_fixed_num_projection:
         self.__num_gfmc_collect_steps = num_gfmc_collect_steps
         self.__mcmc_seed = mcmc_seed
         self.__E_scf = E_scf
-        self.__gamma = gamma
         self.__alat = alat
         self.__non_local_move = non_local_move
 
@@ -3148,7 +3145,6 @@ class GFMC_fixed_num_projection:
                 # compute bar_b_L
                 logger.devel(f"  diagonal_sum_hamiltonian={diagonal_sum_hamiltonian}")
                 logger.devel(f"  E_scf={E_scf}")
-                # b_x = 1.0 / (diagonal_sum_hamiltonian - E_scf) ** (1.0 + self.__gamma * self.__alat**2) * b_x_bar
                 b_x = 1.0 / (diagonal_sum_hamiltonian - E_scf) * b_x_bar
                 logger.devel(f"  b_x={b_x}")
 
@@ -3671,11 +3667,7 @@ class GFMC_fixed_num_projection:
             w_L_latest = np.array(w_L_list)
             e_L_latest = np.array(e_L_list)
             V_diag_E_latest = np.array(V_diag_list) - self.__E_scf
-            # reg = 1.0 + self.__gamma * self.__alat**2
-            # logger.info(f"  reg={reg}")
-            # logger.info(f"  w_L_latest={w_L_latest}")
-            # logger.info(f"  V - E_scf={V_diag_E_latest}")
-            # logger.info(f"  1/(V - E_scf)={1 / V_diag_E_latest**reg}")
+
             if self.__comput_position_deriv:
                 grad_e_L_r_up_latest = np.array(grad_e_L_r_up)
                 grad_e_L_r_dn_latest = np.array(grad_e_L_r_dn)
@@ -3768,31 +3760,22 @@ class GFMC_fixed_num_projection:
                     grad_omega_dr_up_gathered = np.concatenate([grad_omega_dr_up_gathered_dict[i] for i in range(mpi_size)])
                     grad_omega_dr_dn_gathered = np.concatenate([grad_omega_dr_dn_gathered_dict[i] for i in range(mpi_size)])
                 # sum
-                reg = 1.0 + self.__gamma * self.__alat**2
-                w_L_sum = np.sum(w_L_gathered / V_diag_E_gathered**reg)
-                e_L_sum = np.sum(w_L_gathered / V_diag_E_gathered**reg * e_L_gathered)
-                e_L2_sum = np.sum(w_L_gathered / V_diag_E_gathered**reg * e_L_gathered**2)
+                w_L_sum = np.sum(w_L_gathered / V_diag_E_gathered)
+                e_L_sum = np.sum(w_L_gathered / V_diag_E_gathered * e_L_gathered)
+                e_L2_sum = np.sum(w_L_gathered / V_diag_E_gathered * e_L_gathered**2)
                 if self.__comput_position_deriv:
-                    grad_e_L_r_up_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_e_L_r_up_gathered)
-                    grad_e_L_r_dn_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_e_L_r_dn_gathered)
-                    grad_e_L_R_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_e_L_R_gathered)
-                    grad_ln_Psi_r_up_sum = np.einsum(
-                        "i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_ln_Psi_r_up_gathered
-                    )
-                    grad_ln_Psi_r_dn_sum = np.einsum(
-                        "i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_ln_Psi_r_dn_gathered
-                    )
-                    grad_ln_Psi_dR_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_ln_Psi_dR_gathered)
-                    omega_up_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, omega_up_gathered)
-                    omega_dn_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, omega_dn_gathered)
-                    grad_omega_dr_up_sum = np.einsum(
-                        "i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_omega_dr_up_gathered
-                    )
-                    grad_omega_dr_dn_sum = np.einsum(
-                        "i,ijk->jk", w_L_gathered / V_diag_E_gathered**reg, grad_omega_dr_dn_gathered
-                    )
+                    grad_e_L_r_up_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_e_L_r_up_gathered)
+                    grad_e_L_r_dn_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_e_L_r_dn_gathered)
+                    grad_e_L_R_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_e_L_R_gathered)
+                    grad_ln_Psi_r_up_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_ln_Psi_r_up_gathered)
+                    grad_ln_Psi_r_dn_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_ln_Psi_r_dn_gathered)
+                    grad_ln_Psi_dR_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_ln_Psi_dR_gathered)
+                    omega_up_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, omega_up_gathered)
+                    omega_dn_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, omega_dn_gathered)
+                    grad_omega_dr_up_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_omega_dr_up_gathered)
+                    grad_omega_dr_dn_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_omega_dr_dn_gathered)
                 # averaged
-                w_L_averaged = np.average(w_L_gathered / V_diag_E_gathered**reg)
+                w_L_averaged = np.average(w_L_gathered / V_diag_E_gathered)
                 e_L_averaged = e_L_sum / w_L_sum
                 e_L2_averaged = e_L2_sum / w_L_sum
 
@@ -3811,7 +3794,7 @@ class GFMC_fixed_num_projection:
                     grad_omega_dr_up_sum = np.einsum("i,ijk->jk", w_L_gathered, grad_omega_dr_up_gathered)
                     grad_omega_dr_dn_sum = np.einsum("i,ijk->jk", w_L_gathered, grad_omega_dr_dn_gathered)
                 # averaged
-                w_L_averaged = np.average(w_L_gathered) * np.average(1.0 / V_diag_E_gathered**reg)
+                w_L_averaged = np.average(w_L_gathered) * np.average(1.0 / V_diag_E_gathered)
                 e_L_averaged = e_L_sum / w_L_sum
                 """
                 if self.__comput_position_deriv:
@@ -5609,18 +5592,18 @@ if __name__ == "__main__":
     )
     # """
 
-    '''
+    #'''
     # """
     hamiltonian_chk = "hamiltonian_data_water.chk"
     # hamiltonian_chk = "hamiltonian_data_water_methane.chk"
     # hamiltonian_chk = "hamiltonian_data_benzene.chk"
-    # hamiltonian_chk = "hamiltonian_data_C60.chk"
+    hamiltonian_chk = "hamiltonian_data_C60.chk"
 
     with open(hamiltonian_chk, "rb") as f:
         hamiltonian_data = pickle.load(f)
     # """
 
-    num_walkers = 4
+    num_walkers = 1
     num_mcmc_warmup_steps = 0
     num_mcmc_bin_blocks = 50
     mcmc_seed = 34356
@@ -5644,7 +5627,7 @@ if __name__ == "__main__":
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
     logger.info(f"Var = {Var_mean} +- {Var_std} Ha^2.")
-    #"""
+    # """
 
     """
     f_mean, f_std = vmc.get_aF(
@@ -5655,7 +5638,7 @@ if __name__ == "__main__":
     logger.info(f"f_mean = {f_mean} Ha/bohr.")
     logger.info(f"f_std = {f_std} Ha/bohr.")
     """
-    '''
+    #'''
 
     """
     hamiltonian_chk = "hamiltonian_data_water.chk"
@@ -5710,7 +5693,6 @@ if __name__ == "__main__":
     num_walkers = 4
     mcmc_seed = 3446
     E_scf = -17.00
-    gamma = 16.0
     alat = 0.30
     num_mcmc_per_measurement = 50
     num_mcmc_bin_blocks = 20
@@ -5726,7 +5708,6 @@ if __name__ == "__main__":
         num_gfmc_collect_steps=num_gfmc_collect_steps,
         mcmc_seed=mcmc_seed,
         E_scf=E_scf,
-        gamma=gamma,
         alat=alat,
         non_local_move=non_local_move,
     )
@@ -5750,12 +5731,12 @@ if __name__ == "__main__":
     logger.info(f"f_std = {f_std} Ha/bohr.")
     """
 
-    #'''
+    """
     # hamiltonian
-    hamiltonian_chk = "hamiltonian_data_water.chk"
+    # hamiltonian_chk = "hamiltonian_data_water.chk"
     # hamiltonian_chk = "hamiltonian_data_water_methane.chk"
     # hamiltonian_chk = "hamiltonian_data_benzene.chk"
-    # hamiltonian_chk = "hamiltonian_data_C60.chk"
+    hamiltonian_chk = "hamiltonian_data_C60.chk"
 
     with open(hamiltonian_chk, "rb") as f:
         hamiltonian_data = pickle.load(f)
@@ -5765,9 +5746,9 @@ if __name__ == "__main__":
     mcmc_seed = 3446
     tau = 0.05
     alat = 0.30
-    num_mcmc_warmup_steps = 20
-    num_mcmc_bin_blocks = 50
-    num_gfmc_collect_steps = 10
+    num_mcmc_warmup_steps = 5
+    num_mcmc_bin_blocks = 5
+    num_gfmc_collect_steps = 2
     non_local_move = "tmove"
 
     # run GFMC single-shot
@@ -5780,11 +5761,11 @@ if __name__ == "__main__":
         non_local_move=non_local_move,
     )
     gfmc = QMC(gfmc)
-    gfmc.run(num_mcmc_steps=500, max_time=3600)
+    gfmc.run(num_mcmc_steps=50, max_time=3600)
     E_mean, E_std, Var_mean, Var_std = gfmc.get_E(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
     logger.info(f"Var E = {Var_mean} +- {Var_std} Ha.")
-    #'''
+    """
