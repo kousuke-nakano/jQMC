@@ -40,6 +40,7 @@ from logging import Formatter, StreamHandler, getLogger
 # from jax.debug import print as jprint
 import jax
 import jax.numpy as jnp
+import jax.scipy.linalg as jsp_linalg
 import numpy as np
 import numpy.typing as npt
 from flax import struct
@@ -372,6 +373,8 @@ class Geminal_data_no_deriv(Geminal_data):
         )
 
 
+@jax.custom_jvp
+@jit
 def compute_ln_det_geminal_all_elements_jax(
     geminal_data: Geminal_data,
     r_up_carts: jnpt.ArrayLike,
@@ -403,6 +406,48 @@ def compute_ln_det_geminal_all_elements_jax(
     )
 
 
+# Define the custom JVP rule for _compute_ln_det_geminal.
+@compute_ln_det_geminal_all_elements_jax.defjvp
+@jit
+def compute_ln_det_geminal_all_elements_jax_jvp(primals, tangents):
+    """JVP for compute_ln_det_geminal_all_elements_jax.
+
+    The custom derivative is needed for ln |Det(G)| because the jax native grad and hessian introduce numerical instability.
+    The custom derivative exploits the LU decomposition of G instead of the direct inverse of G, achieving numerically stable calculations.
+
+    """
+    geminal_data, r_up_carts, r_dn_carts = primals
+    geminal_data_dot, r_up_carts_dot, r_dn_carts_dot = tangents
+
+    # Compute geminal in the forward pass.
+    geminal = compute_geminal_all_elements_jax(geminal_data, r_up_carts, r_dn_carts)
+    primal_out = jnp.log(jnp.abs(jnp.linalg.det(geminal)))
+
+    # Compute the directional derivative of geminal using jax.jvp.
+    _, geminal_dot = jax.jvp(
+        compute_geminal_all_elements_jax,
+        (geminal_data, r_up_carts, r_dn_carts),
+        (geminal_data_dot, r_up_carts_dot, r_dn_carts_dot),
+    )
+
+    # Analytical derivative: d/dx ln|det(geminal)| = trace(geminal^{-1} * d(geminal))
+    # Use LU decomposition for a numerically stable computation instead of computing the inverse directly.
+    # Compute LU decomposition of geminal: geminal = P @ L @ U.
+    P, L, U = jsp_linalg.lu(geminal)
+
+    # Solve the linear system geminal * X = geminal_dot without explicitly computing the inverse.
+    # First solve L * Y = P @ geminal_dot for Y.
+    Y = jsp_linalg.solve_triangular(L, jnp.dot(P.T, geminal_dot), lower=True)
+    # Then solve U * X = Y for X.
+    X = jsp_linalg.solve_triangular(U, Y, lower=False)
+
+    # The analytical derivative: d/dx ln|det(geminal)| = trace(geminal^{-1} * d(geminal))　is now computed as trace(X).
+    tangent_out = jnp.trace(X)
+
+    return primal_out, tangent_out
+
+
+@jit
 def compute_det_geminal_all_elements_jax(
     geminal_data: Geminal_data,
     r_up_carts: jnpt.ArrayLike,
@@ -445,6 +490,7 @@ def compute_det_geminal_all_elements_debug(
     )
 
 
+@jit
 def compute_AS_regularization_factor_jax(
     geminal_data: Geminal_data, r_up_carts: jnpt.ArrayLike, r_dn_carts: jnpt.ArrayLike, debug: bool = False
 ) -> npt.NDArray[np.float64]:

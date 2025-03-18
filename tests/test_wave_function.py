@@ -89,7 +89,7 @@ def test_debug_and_jax_kinetic_energy():
     K_debug = compute_kinetic_energy_debug(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
     K_jax = compute_kinetic_energy_jax(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
 
-    np.testing.assert_almost_equal(K_debug, K_jax, decimal=4)
+    np.testing.assert_almost_equal(K_debug, K_jax, decimal=5)
 
 
 def test_debug_and_jax_kinetic_energy_all_elements():
@@ -140,8 +140,8 @@ def test_debug_and_jax_kinetic_energy_all_elements():
         wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp
     )
 
-    np.testing.assert_array_almost_equal(K_elements_up_debug, K_elements_up_jax, decimal=4)
-    np.testing.assert_array_almost_equal(K_elements_dn_debug, K_elements_dn_jax, decimal=4)
+    np.testing.assert_array_almost_equal(K_elements_up_debug, K_elements_up_jax, decimal=5)
+    np.testing.assert_array_almost_equal(K_elements_dn_debug, K_elements_dn_jax, decimal=5)
 
 
 def test_debug_and_jax_discretized_kinetic_energy():
