@@ -320,11 +320,6 @@ def vmcopt_analyze_output(
                     main_value = float(signal_to_noise_match.group(1))
                     signal_to_noise_list.append(main_value)
 
-    # typer.echo(iter_list)
-    # typer.echo(E_list)
-    # typer.echo(max_f_list)
-    # typer.echo(signal_to_noise_list)
-
     sep = 54
     typer.echo("-" * sep)
     typer.echo(f"{'Iter':<8} {'E (Ha)':<10} {'Max f (Ha)':<12} {'Signal to Noise':<16}")
@@ -335,10 +330,18 @@ def vmcopt_analyze_output(
 
     # plot graphs
     if plot_graph or save_graph is not None:
-        E_means = [E.n for E in E_list]
-        E_errs = [E.s for E in E_list]
-        max_f_means = [max_f.n for max_f in max_f_list]
-        max_f_errs = [max_f.s for max_f in max_f_list]
+        iters = []
+        E_means = []
+        E_errs = []
+        max_f_means = []
+        max_f_errs = []
+
+        for iter, E, max_f, signal_to_noise in zip(iter_list, E_list, max_f_list, signal_to_noise_list):
+            iters.append(iter)
+            E_means.append(E.n)
+            E_errs.append(E.s)
+            max_f_means.append(max_f.n)
+            max_f_errs.append(max_f.s)
 
         plt.rcParams["font.size"] = 8
         plt.rcParams["font.family"] = "sans-serif"
@@ -349,11 +352,11 @@ def vmcopt_analyze_output(
         ax12 = ax11.twinx()
 
         ax11.tick_params(axis="both", which="both", direction="in")
-        ax11.errorbar(iter_list, E_means, yerr=E_errs, fmt="o-", markersize=3, capsize=3, color="blue", label="Energy")
+        ax11.errorbar(iters, E_means, yerr=E_errs, fmt="o-", markersize=3, capsize=3, color="blue", label="Energy")
         ax11.set_xlabel("Iteration")
         ax11.set_ylabel("Energy (Ha)")
 
-        ax12.errorbar(iter_list, max_f_means, yerr=max_f_errs, fmt="s-", markersize=3, capsize=3, color="red", label="Max |f|")
+        ax12.errorbar(iters, max_f_means, yerr=max_f_errs, fmt="s-", markersize=3, capsize=3, color="red", label="Max |f|")
         ax12.set_ylabel("max of |f|")
 
         lines11, labels11 = ax11.get_legend_handles_labels()
@@ -364,12 +367,12 @@ def vmcopt_analyze_output(
         ax22 = ax21.twinx()
 
         ax21.tick_params(axis="both", which="both", direction="in")
-        ax21.errorbar(iter_list, E_means, yerr=E_errs, fmt="o-", markersize=3, capsize=3, color="blue", label="Energy")
+        ax21.errorbar(iters, E_means, yerr=E_errs, fmt="o-", markersize=3, capsize=3, color="blue", label="Energy")
         ax21.set_xlabel("Iteration")
         ax21.set_ylabel("Energy (Ha)")
 
         ax22.plot(
-            iter_list, signal_to_noise_list, marker="s", linestyle="-", markersize=3, color="red", label="max of |f|/|std f|"
+            iters, signal_to_noise_list, marker="s", linestyle="-", markersize=3, color="red", label="max of |f|/|std f|"
         )
         ax22.set_ylabel("max of signal to noise = |f|/|std f|")
 
