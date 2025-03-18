@@ -41,7 +41,13 @@ import pytest
 from ..jqmc.hamiltonians import Hamiltonian_data
 from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_three_body_data, Jastrow_two_body_data
 from ..jqmc.jqmc_kernel import MCMC, QMC, GFMC_fixed_num_projection
-from ..jqmc.swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
+from ..jqmc.swct import (
+    SWCT_data,
+    evaluate_swct_domega_debug,
+    evaluate_swct_domega_jax,
+    evaluate_swct_omega_debug,
+    evaluate_swct_omega_jax,
+)
 from ..jqmc.trexio_wrapper import read_trexio_file
 from ..jqmc.wavefunction import Wavefunction_data
 
@@ -70,18 +76,18 @@ def test_debug_and_jax_SWCT_omega():
     r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
 
-    omega_up_debug = evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_up_carts, debug=True)
-    omega_dn_debug = evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_dn_carts, debug=True)
-    omega_up_jax = evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_up_carts, debug=False)
-    omega_dn_jax = evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_dn_carts, debug=False)
+    omega_up_debug = evaluate_swct_omega_debug(swct_data=swct_data, r_carts=r_up_carts)
+    omega_dn_debug = evaluate_swct_omega_debug(swct_data=swct_data, r_carts=r_dn_carts)
+    omega_up_jax = evaluate_swct_omega_jax(swct_data=swct_data, r_carts=r_up_carts)
+    omega_dn_jax = evaluate_swct_omega_jax(swct_data=swct_data, r_carts=r_dn_carts)
 
     np.testing.assert_almost_equal(omega_up_debug, omega_up_jax, decimal=6)
     np.testing.assert_almost_equal(omega_dn_debug, omega_dn_jax, decimal=6)
 
-    domega_up_debug = evaluate_swct_domega_api(swct_data=swct_data, r_carts=r_up_carts, debug=True)
-    domega_dn_debug = evaluate_swct_domega_api(swct_data=swct_data, r_carts=r_dn_carts, debug=True)
-    domega_up_jax = evaluate_swct_domega_api(swct_data=swct_data, r_carts=r_up_carts, debug=False)
-    domega_dn_jax = evaluate_swct_domega_api(swct_data=swct_data, r_carts=r_dn_carts, debug=False)
+    domega_up_debug = evaluate_swct_domega_debug(swct_data=swct_data, r_carts=r_up_carts)
+    domega_dn_debug = evaluate_swct_domega_debug(swct_data=swct_data, r_carts=r_dn_carts)
+    domega_up_jax = evaluate_swct_domega_jax(swct_data=swct_data, r_carts=r_up_carts)
+    domega_dn_jax = evaluate_swct_domega_jax(swct_data=swct_data, r_carts=r_dn_carts)
 
     np.testing.assert_almost_equal(domega_up_debug, domega_up_jax, decimal=6)
     np.testing.assert_almost_equal(domega_dn_debug, domega_dn_jax, decimal=6)

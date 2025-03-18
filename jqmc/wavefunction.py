@@ -43,23 +43,24 @@ import numpy as np
 import numpy.typing as npt
 from flax import struct
 from jax import grad, hessian, jit, jvp, vmap
+from jax import typing as jnpt
 
 from .determinant import (
     Geminal_data,
     Geminal_data_deriv_params,
     Geminal_data_deriv_R,
-    _compute_ratio_determinant_part_jax,
-    compute_det_geminal_all_elements_api,
-    compute_grads_and_laplacian_ln_Det_api,
-    compute_ln_det_geminal_all_elements_api,
+    compute_det_geminal_all_elements_jax,
+    compute_grads_and_laplacian_ln_Det_jax,
+    compute_ln_det_geminal_all_elements_jax,
+    compute_ratio_determinant_part_jax,
 )
 from .jastrow_factor import (
     Jastrow_data,
     Jastrow_data_deriv_params,
     Jastrow_data_deriv_R,
-    _compute_ratio_Jastrow_part_jax,
-    compute_grads_and_laplacian_Jastrow_part_api,
-    compute_Jastrow_part_api,
+    compute_grads_and_laplacian_Jastrow_part_jax,
+    compute_Jastrow_part_jax,
+    compute_ratio_Jastrow_part_jax,
 )
 
 # set logger
@@ -138,10 +139,10 @@ class Wavefunction_data_deriv_R(Wavefunction_data):
 
 
 @jit
-def evaluate_ln_wavefunction_api(
+def evaluate_ln_wavefunction_jax(
     wavefunction_data: Wavefunction_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    r_up_carts: jnpt.ArrayLike,
+    r_dn_carts: jnpt.ArrayLike,
 ) -> float:
     """Evaluate the value of Wavefunction.
 
@@ -149,19 +150,19 @@ def evaluate_ln_wavefunction_api(
 
     Args:
         wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
-        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
+        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
     Returns:
         The log value of the given wavefunction (float)
     """
-    Jastrow_part = compute_Jastrow_part_api(
+    Jastrow_part = compute_Jastrow_part_jax(
         jastrow_data=wavefunction_data.jastrow_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
 
-    Determinant_part = compute_det_geminal_all_elements_api(
+    Determinant_part = compute_det_geminal_all_elements_jax(
         geminal_data=wavefunction_data.geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -171,28 +172,28 @@ def evaluate_ln_wavefunction_api(
 
 
 @jit
-def evaluate_wavefunction_api(
+def evaluate_wavefunction_jax(
     wavefunction_data: Wavefunction_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    r_up_carts: jnpt.ArrayLike,
+    r_dn_carts: jnpt.ArrayLike,
 ) -> float | complex:
     """The method is for evaluate wavefunction (Psi) at (r_up_carts, r_dn_carts).
 
     Args:
         wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
-        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
+        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
     Returns:
         The value of the given wavefunction (float).
     """
-    Jastrow_part = compute_Jastrow_part_api(
+    Jastrow_part = compute_Jastrow_part_jax(
         jastrow_data=wavefunction_data.jastrow_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
 
-    Determinant_part = compute_det_geminal_all_elements_api(
+    Determinant_part = compute_det_geminal_all_elements_jax(
         geminal_data=wavefunction_data.geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -201,10 +202,10 @@ def evaluate_wavefunction_api(
     return jnp.exp(Jastrow_part) * Determinant_part
 
 
-def evaluate_jastrow_api(
+def evaluate_jastrow_jax(
     wavefunction_data: Wavefunction_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    r_up_carts: jnpt.ArrayLike,
+    r_dn_carts: jnpt.ArrayLike,
 ) -> float:
     """The method is for evaluate the Jastrow part of the wavefunction (Psi) at (r_up_carts, r_dn_carts).
 
@@ -216,7 +217,7 @@ def evaluate_jastrow_api(
     Returns:
         The value of the given exp(Jastrow (float))  Notice that the Jastrow factor here includes the exp factor, i.e., exp(J).
     """
-    Jastrow_part = compute_Jastrow_part_api(
+    Jastrow_part = compute_Jastrow_part_jax(
         jastrow_data=wavefunction_data.jastrow_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -225,22 +226,22 @@ def evaluate_jastrow_api(
     return jnp.exp(Jastrow_part)
 
 
-def evaluate_determinant_api(
+def evaluate_determinant_jax(
     wavefunction_data: Wavefunction_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    r_up_carts: jnpt.ArrayLike,
+    r_dn_carts: jnpt.ArrayLike,
 ) -> float:
     """The method is for evaluate the determinant part of the wavefunction (Psi) at (r_up_carts, r_dn_carts).
 
     Args:
         wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
-        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
+        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
     Returns:
         The value of the given determinant (float)
     """
-    Determinant_part = compute_det_geminal_all_elements_api(
+    Determinant_part = compute_det_geminal_all_elements_jax(
         geminal_data=wavefunction_data.geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -249,11 +250,11 @@ def evaluate_determinant_api(
     return Determinant_part
 
 
-def compute_kinetic_energy_api(
+@jit
+def compute_kinetic_energy_jax(
     wavefunction_data: Wavefunction_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
-    debug: bool = False,
+    r_up_carts: jnpt.ArrayLike,
+    r_dn_carts: jnpt.ArrayLike,
 ) -> float | complex:
     """The method is for computing kinetic energy of the given WF at (r_up_carts, r_dn_carts).
 
@@ -261,35 +262,35 @@ def compute_kinetic_energy_api(
 
     Args:
         wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
-        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
-        debug (bool): if True, this is computed via _debug function for debuging purpose
+        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
+        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
     Returns:
         The kinetic energy with the given wavefunction (float | complex)
     """
-    if debug:
-        K = _compute_kinetic_energy_debug(wavefunction_data, r_up_carts, r_dn_carts)
-    else:
-        K = _compute_kinetic_energy_jax(wavefunction_data, r_up_carts, r_dn_carts)
+    kinetic_energy_all_elements_up, kinetic_energy_all_elements_dn = compute_kinetic_energy_all_elements_jax(
+        wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+    )
+
+    K = jnp.sum(kinetic_energy_all_elements_up) + jnp.sum(kinetic_energy_all_elements_dn)
 
     return K
 
 
-def _compute_kinetic_energy_debug(
+def compute_kinetic_energy_debug(
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float | complex:
     """See compute_kinetic_energy_api."""
-    kinetic_energy_all_elements_up, kinetic_energy_all_elements_dn = _compute_kinetic_energy_all_elements_debug(
+    kinetic_energy_all_elements_up, kinetic_energy_all_elements_dn = compute_kinetic_energy_all_elements_debug(
         wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
     return np.sum(kinetic_energy_all_elements_up) + np.sum(kinetic_energy_all_elements_dn)
 
 
-def _compute_kinetic_energy_all_elements_debug(
+def compute_kinetic_energy_all_elements_debug(
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
@@ -367,7 +368,7 @@ def _compute_kinetic_energy_all_elements_debug(
     # compute laplacians
     diff_h = 2.0e-4
 
-    Psi = evaluate_wavefunction_api(wavefunction_data, r_up_carts, r_dn_carts)
+    Psi = evaluate_wavefunction_jax(wavefunction_data, r_up_carts, r_dn_carts)
 
     n_up, d_up = r_up_carts.shape
     laplacian_Psi_up = np.zeros(n_up)
@@ -378,8 +379,8 @@ def _compute_kinetic_energy_all_elements_debug(
             r_up_plus[i, d] += diff_h
             r_up_minus[i, d] -= diff_h
 
-            Psi_plus = evaluate_wavefunction_api(wavefunction_data, r_up_plus, r_dn_carts)
-            Psi_minus = evaluate_wavefunction_api(wavefunction_data, r_up_minus, r_dn_carts)
+            Psi_plus = evaluate_wavefunction_jax(wavefunction_data, r_up_plus, r_dn_carts)
+            Psi_minus = evaluate_wavefunction_jax(wavefunction_data, r_up_minus, r_dn_carts)
 
             laplacian_Psi_up[i] += (Psi_plus + Psi_minus - 2 * Psi) / (diff_h**2)
 
@@ -392,8 +393,8 @@ def _compute_kinetic_energy_all_elements_debug(
             r_dn_plus[i, d] += diff_h
             r_dn_minus[i, d] -= diff_h
 
-            Psi_plus = evaluate_wavefunction_api(wavefunction_data, r_up_carts, r_dn_plus)
-            Psi_minus = evaluate_wavefunction_api(wavefunction_data, r_up_carts, r_dn_minus)
+            Psi_plus = evaluate_wavefunction_jax(wavefunction_data, r_up_carts, r_dn_plus)
+            Psi_minus = evaluate_wavefunction_jax(wavefunction_data, r_up_carts, r_dn_minus)
 
             laplacian_Psi_dn[i] += (Psi_plus + Psi_minus - 2 * Psi) / (diff_h**2)
 
@@ -404,19 +405,19 @@ def _compute_kinetic_energy_all_elements_debug(
 
 
 @jit
-def _compute_kinetic_energy_all_elements_jax(
+def compute_kinetic_energy_all_elements_jax(
     wavefunction_data: Wavefunction_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
-) -> float | complex:
+    r_up_carts: jnpt.ArrayLike,
+    r_dn_carts: jnpt.ArrayLike,
+) -> jax.Array:
     """See compute_kinetic_energy_api."""
     # compute gradients
-    grad_J_up = grad(compute_Jastrow_part_api, argnums=1)(wavefunction_data.jastrow_data, r_up_carts, r_dn_carts)
-    grad_J_dn = grad(compute_Jastrow_part_api, argnums=2)(wavefunction_data.jastrow_data, r_up_carts, r_dn_carts)
-    grad_ln_Det_up = grad(compute_ln_det_geminal_all_elements_api, argnums=1)(
+    grad_J_up = grad(compute_Jastrow_part_jax, argnums=1)(wavefunction_data.jastrow_data, r_up_carts, r_dn_carts)
+    grad_J_dn = grad(compute_Jastrow_part_jax, argnums=2)(wavefunction_data.jastrow_data, r_up_carts, r_dn_carts)
+    grad_ln_Det_up = grad(compute_ln_det_geminal_all_elements_jax, argnums=1)(
         wavefunction_data.geminal_data, r_up_carts, r_dn_carts
     )
-    grad_ln_Det_dn = grad(compute_ln_det_geminal_all_elements_api, argnums=2)(
+    grad_ln_Det_dn = grad(compute_ln_det_geminal_all_elements_jax, argnums=2)(
         wavefunction_data.geminal_data, r_up_carts, r_dn_carts
     )
 
@@ -424,16 +425,16 @@ def _compute_kinetic_energy_all_elements_jax(
     grad_ln_Psi_dn = grad_J_dn + grad_ln_Det_dn
 
     # compute laplacians
-    hessian_J_up = hessian(compute_Jastrow_part_api, argnums=1)(wavefunction_data.jastrow_data, r_up_carts, r_dn_carts)
+    hessian_J_up = hessian(compute_Jastrow_part_jax, argnums=1)(wavefunction_data.jastrow_data, r_up_carts, r_dn_carts)
     laplacian_J_up = jnp.einsum("ijij->i", hessian_J_up)
-    hessian_J_dn = hessian(compute_Jastrow_part_api, argnums=2)(wavefunction_data.jastrow_data, r_up_carts, r_dn_carts)
+    hessian_J_dn = hessian(compute_Jastrow_part_jax, argnums=2)(wavefunction_data.jastrow_data, r_up_carts, r_dn_carts)
     laplacian_J_dn = jnp.einsum("ijij->i", hessian_J_dn)
 
-    hessian_ln_Det_up = hessian(compute_ln_det_geminal_all_elements_api, argnums=1)(
+    hessian_ln_Det_up = hessian(compute_ln_det_geminal_all_elements_jax, argnums=1)(
         wavefunction_data.geminal_data, r_up_carts, r_dn_carts
     )
     laplacian_ln_Det_up = jnp.einsum("ijij->i", hessian_ln_Det_up)
-    hessian_ln_Det_dn = hessian(compute_ln_det_geminal_all_elements_api, argnums=2)(
+    hessian_ln_Det_dn = hessian(compute_ln_det_geminal_all_elements_jax, argnums=2)(
         wavefunction_data.geminal_data, r_up_carts, r_dn_carts
     )
     laplacian_ln_Det_dn = jnp.einsum("ijij->i", hessian_ln_Det_dn)
@@ -448,29 +449,15 @@ def _compute_kinetic_energy_all_elements_jax(
 
 
 @jit
-def _compute_kinetic_energy_jax(
+def compute_kinetic_energy_all_elements_jax_tricky(
     wavefunction_data: Wavefunction_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
-) -> float:
-    """See compute_kinetic_energy_api."""
-    kinetic_energy_all_elements_up, kinetic_energy_all_elements_dn = _compute_kinetic_energy_all_elements_jax(
-        wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
-    )
-
-    return jnp.sum(kinetic_energy_all_elements_up) + jnp.sum(kinetic_energy_all_elements_dn)
-
-
-@jit
-def _compute_kinetic_energy_all_elements_jax__(
-    wavefunction_data: Wavefunction_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    r_up_carts: jnpt.ArrayLike,
+    r_dn_carts: jnpt.ArrayLike,
 ) -> jax.Array:
     """See compute_kinetic_energy_api."""
     # compute gradients
-    grad_ln_Psi_up = grad(evaluate_ln_wavefunction_api, argnums=1)(wavefunction_data, r_up_carts, r_dn_carts)
-    grad_ln_Psi_dn = grad(evaluate_ln_wavefunction_api, argnums=2)(wavefunction_data, r_up_carts, r_dn_carts)
+    grad_ln_Psi_up = grad(evaluate_ln_wavefunction_jax, argnums=1)(wavefunction_data, r_up_carts, r_dn_carts)
+    grad_ln_Psi_dn = grad(evaluate_ln_wavefunction_jax, argnums=2)(wavefunction_data, r_up_carts, r_dn_carts)
 
     # compute laplacians. The above Hessian implemenation is redundant since the nondiagonal parts are not needed for Laplacian calculations.
     # The following implementation is more efficient, while it's a little bit tricky.
@@ -503,13 +490,13 @@ def _compute_kinetic_energy_all_elements_jax__(
 
     ## For r_up, compute the Laplacian while keeping r_dn fixed
     def f_r_up(r_up):
-        return evaluate_ln_wavefunction_api(wavefunction_data, r_up, r_dn_carts)
+        return evaluate_ln_wavefunction_jax(wavefunction_data, r_up, r_dn_carts)
 
     laplacian_r_up = laplacian_wrt_arg(f_r_up, r_up_carts).reshape(r_up_carts.shape[0], -1).sum(axis=1)
 
     ## Similarly, for r_dn, compute the Laplacian while keeping r_up fixed
     def f_r_dn(r_dn):
-        return evaluate_ln_wavefunction_api(wavefunction_data, r_up_carts, r_dn)
+        return evaluate_ln_wavefunction_jax(wavefunction_data, r_up_carts, r_dn)
 
     laplacian_r_dn = laplacian_wrt_arg(f_r_dn, r_dn_carts).reshape(r_dn_carts.shape[0], -1).sum(axis=1)
 
@@ -595,8 +582,8 @@ def compute_discretized_kinetic_energy_debug(
         float(
             -1.0
             / (2.0 * alat**2)
-            * evaluate_wavefunction_api(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_, r_dn_carts=r_dn_carts_)
-            / evaluate_wavefunction_api(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+            * evaluate_wavefunction_jax(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_, r_dn_carts=r_dn_carts_)
+            / evaluate_wavefunction_jax(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
         )
         for r_up_carts_, r_dn_carts_ in mesh_kinetic_part
     ]
@@ -608,7 +595,7 @@ def compute_discretized_kinetic_energy_debug(
 
 
 @jit
-def compute_discretized_kinetic_energy_api(
+def compute_discretized_kinetic_energy_jax(
     alat: float, wavefunction_data, r_up_carts: jnp.ndarray, r_dn_carts: jnp.ndarray, RT: jnp.ndarray
 ) -> tuple[list[tuple[npt.NDArray, npt.NDArray]], list[npt.NDArray], jax.Array]:
     r"""Function for computing discretized kinetic grid points and thier energies with a given lattice space (alat).
@@ -691,15 +678,15 @@ def compute_discretized_kinetic_energy_api(
     r_dn_carts_combined = jnp.concatenate([r_dn_carts_repeated_up, r_dn_carts_shifted], axis=0)  # Shape: (N_configs, N_dn, 3)
 
     # Evaluate the wavefunction at the original positions
-    jastrow_x = compute_Jastrow_part_api(wavefunction_data.jastrow_data, r_up_carts, r_dn_carts)
+    jastrow_x = compute_Jastrow_part_jax(wavefunction_data.jastrow_data, r_up_carts, r_dn_carts)
     # Evaluate the wavefunction at the shifted positions using vectorization
-    jastrow_xp = vmap(compute_Jastrow_part_api, in_axes=(None, 0, 0))(
+    jastrow_xp = vmap(compute_Jastrow_part_jax, in_axes=(None, 0, 0))(
         wavefunction_data.jastrow_data, r_up_carts_combined, r_dn_carts_combined
     )
     # Evaluate the wavefunction at the original positions
-    det_x = compute_det_geminal_all_elements_api(wavefunction_data.geminal_data, r_up_carts, r_dn_carts)
+    det_x = compute_det_geminal_all_elements_jax(wavefunction_data.geminal_data, r_up_carts, r_dn_carts)
     # Evaluate the wavefunction at the shifted positions using vectorization
-    det_xp = vmap(compute_det_geminal_all_elements_api, in_axes=(None, 0, 0))(
+    det_xp = vmap(compute_det_geminal_all_elements_jax, in_axes=(None, 0, 0))(
         wavefunction_data.geminal_data, r_up_carts_combined, r_dn_carts_combined
     )
     wf_ratio = jnp.exp(jastrow_xp - jastrow_x) * det_xp / det_x
@@ -713,7 +700,7 @@ def compute_discretized_kinetic_energy_api(
 
 # no longer used in the main code
 @jit
-def compute_discretized_kinetic_energy_api_fast_update(
+def compute_discretized_kinetic_energy_jax_fast_update(
     alat: float,
     wavefunction_data: Wavefunction_data,
     A_old_inv: jnp.ndarray,
@@ -802,14 +789,14 @@ def compute_discretized_kinetic_energy_api_fast_update(
     r_dn_carts_combined = jnp.concatenate([r_dn_carts_repeated_up, r_dn_carts_shifted], axis=0)  # Shape: (N_configs, N_dn, 3)
 
     # Evaluate the ratios of wavefunctions between the shifted positions and the original position
-    wf_ratio = _compute_ratio_determinant_part_jax(
+    wf_ratio = compute_ratio_determinant_part_jax(
         geminal_data=wavefunction_data.geminal_data,
         A_old_inv=A_old_inv,
         old_r_up_carts=r_up_carts,
         old_r_dn_carts=r_dn_carts,
         new_r_up_carts_arr=r_up_carts_combined,
         new_r_dn_carts_arr=r_dn_carts_combined,
-    ) * _compute_ratio_Jastrow_part_jax(
+    ) * compute_ratio_Jastrow_part_jax(
         jastrow_data=wavefunction_data.jastrow_data,
         old_r_up_carts=r_up_carts,
         old_r_dn_carts=r_dn_carts,
@@ -843,7 +830,7 @@ def compute_kinetic_energy_api_element_wise(
     """
     # grad_J_up, grad_J_dn, sum_laplacian_J = 0.0, 0.0, 0.0
     # """
-    grad_J_up, grad_J_dn, sum_laplacian_J = compute_grads_and_laplacian_Jastrow_part_api(
+    grad_J_up, grad_J_dn, sum_laplacian_J = compute_grads_and_laplacian_Jastrow_part_jax(
         jastrow_data=wavefunction_data.jastrow_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -852,7 +839,7 @@ def compute_kinetic_energy_api_element_wise(
 
     # grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = 0.0, 0.0, 0.0
     # """
-    grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = compute_grads_and_laplacian_ln_Det_api(
+    grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = compute_grads_and_laplacian_ln_Det_jax(
         geminal_data=wavefunction_data.geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -893,7 +880,7 @@ def compute_quantum_force_api(
     """
     grad_J_up, grad_J_dn, _ = 0, 0, 0  # tentative
 
-    grad_ln_D_up, grad_ln_D_dn, _ = compute_grads_and_laplacian_ln_Det_api(
+    grad_ln_D_up, grad_ln_D_dn, _ = compute_grads_and_laplacian_ln_Det_jax(
         geminal_data=wavefunction_data.geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,

@@ -40,15 +40,15 @@ import numpy as np
 import pytest
 
 from ..jqmc.coulomb_potential import (
-    _compute_bare_coulomb_potential_debug,
-    _compute_bare_coulomb_potential_jax,
-    _compute_ecp_coulomb_potential_debug,
-    _compute_ecp_coulomb_potential_jax,
+    compute_bare_coulomb_potential_debug,
+    compute_bare_coulomb_potential_jax,
+    compute_ecp_coulomb_potential_debug,
+    compute_ecp_coulomb_potential_jax,
 )
 from ..jqmc.hamiltonians import Hamiltonian_data
 from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data
 from ..jqmc.trexio_wrapper import read_trexio_file
-from ..jqmc.wavefunction import Wavefunction_data, compute_kinetic_energy_api, evaluate_wavefunction_api
+from ..jqmc.wavefunction import Wavefunction_data, compute_kinetic_energy_jax, evaluate_wavefunction_jax
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -63,9 +63,9 @@ def test_comparison_with_TurboRVB_wo_Jastrow_w_ecp(request):
 
     (
         structure_data,
-        aos_data,
-        mos_data_up,
-        mos_data_dn,
+        _,
+        _,
+        _,
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
@@ -116,31 +116,31 @@ def test_comparison_with_TurboRVB_wo_Jastrow_w_ecp(request):
     # print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
 
     WF_ratio = (
-        evaluate_wavefunction_api(
+        evaluate_wavefunction_jax(
             wavefunction_data=hamiltonian_data.wavefunction_data,
             r_up_carts=new_r_up_carts,
             r_dn_carts=new_r_dn_carts,
         )
-        / evaluate_wavefunction_api(
+        / evaluate_wavefunction_jax(
             wavefunction_data=hamiltonian_data.wavefunction_data,
             r_up_carts=old_r_up_carts,
             r_dn_carts=old_r_dn_carts,
         )
     ) ** 2.0
 
-    kinc = compute_kinetic_energy_api(
+    kinc = compute_kinetic_energy_jax(
         wavefunction_data=hamiltonian_data.wavefunction_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
     )
 
-    vpot_bare_debug = _compute_bare_coulomb_potential_debug(
+    vpot_bare_debug = compute_bare_coulomb_potential_debug(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
     )
 
-    vpot_bare_jax = _compute_bare_coulomb_potential_jax(
+    vpot_bare_jax = compute_bare_coulomb_potential_jax(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
@@ -148,14 +148,14 @@ def test_comparison_with_TurboRVB_wo_Jastrow_w_ecp(request):
 
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=6)
 
-    vpot_ecp_debug = _compute_ecp_coulomb_potential_debug(
+    vpot_ecp_debug = compute_ecp_coulomb_potential_debug(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
         wavefunction_data=wavefunction_data,
     )
 
-    vpot_ecp_jax = _compute_ecp_coulomb_potential_jax(
+    vpot_ecp_jax = compute_ecp_coulomb_potential_jax(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
@@ -239,31 +239,31 @@ def test_comparison_with_TurboRVB_w_2b_Jastrow_w_ecp(request):
     # print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
 
     WF_ratio = (
-        evaluate_wavefunction_api(
+        evaluate_wavefunction_jax(
             wavefunction_data=hamiltonian_data.wavefunction_data,
             r_up_carts=new_r_up_carts,
             r_dn_carts=new_r_dn_carts,
         )
-        / evaluate_wavefunction_api(
+        / evaluate_wavefunction_jax(
             wavefunction_data=hamiltonian_data.wavefunction_data,
             r_up_carts=old_r_up_carts,
             r_dn_carts=old_r_dn_carts,
         )
     ) ** 2.0
 
-    kinc = compute_kinetic_energy_api(
+    kinc = compute_kinetic_energy_jax(
         wavefunction_data=hamiltonian_data.wavefunction_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
     )
 
-    vpot_bare_debug = _compute_bare_coulomb_potential_debug(
+    vpot_bare_debug = compute_bare_coulomb_potential_debug(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
     )
 
-    vpot_bare_jax = _compute_bare_coulomb_potential_jax(
+    vpot_bare_jax = compute_bare_coulomb_potential_jax(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
@@ -271,14 +271,14 @@ def test_comparison_with_TurboRVB_w_2b_Jastrow_w_ecp(request):
 
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=6)
 
-    vpot_ecp_debug = _compute_ecp_coulomb_potential_debug(
+    vpot_ecp_debug = compute_ecp_coulomb_potential_debug(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
         wavefunction_data=wavefunction_data,
     )
 
-    vpot_ecp_jax = _compute_ecp_coulomb_potential_jax(
+    vpot_ecp_jax = compute_ecp_coulomb_potential_jax(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
@@ -361,31 +361,31 @@ def test_comparison_with_TurboRVB_w_2b_3b_Jastrow_w_ecp(request):
     # print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
 
     WF_ratio = (
-        evaluate_wavefunction_api(
+        evaluate_wavefunction_jax(
             wavefunction_data=hamiltonian_data.wavefunction_data,
             r_up_carts=new_r_up_carts,
             r_dn_carts=new_r_dn_carts,
         )
-        / evaluate_wavefunction_api(
+        / evaluate_wavefunction_jax(
             wavefunction_data=hamiltonian_data.wavefunction_data,
             r_up_carts=old_r_up_carts,
             r_dn_carts=old_r_dn_carts,
         )
     ) ** 2.0
 
-    kinc = compute_kinetic_energy_api(
+    kinc = compute_kinetic_energy_jax(
         wavefunction_data=hamiltonian_data.wavefunction_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
     )
 
-    vpot_bare_debug = _compute_bare_coulomb_potential_debug(
+    vpot_bare_debug = compute_bare_coulomb_potential_debug(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
     )
 
-    vpot_bare_jax = _compute_bare_coulomb_potential_jax(
+    vpot_bare_jax = compute_bare_coulomb_potential_jax(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
@@ -393,14 +393,14 @@ def test_comparison_with_TurboRVB_w_2b_3b_Jastrow_w_ecp(request):
 
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=6)
 
-    vpot_ecp_debug = _compute_ecp_coulomb_potential_debug(
+    vpot_ecp_debug = compute_ecp_coulomb_potential_debug(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
         wavefunction_data=wavefunction_data,
     )
 
-    vpot_ecp_jax = _compute_ecp_coulomb_potential_jax(
+    vpot_ecp_jax = compute_ecp_coulomb_potential_jax(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
@@ -480,31 +480,31 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp(request):
     # print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
 
     WF_ratio = (
-        evaluate_wavefunction_api(
+        evaluate_wavefunction_jax(
             wavefunction_data=hamiltonian_data.wavefunction_data,
             r_up_carts=new_r_up_carts,
             r_dn_carts=new_r_dn_carts,
         )
-        / evaluate_wavefunction_api(
+        / evaluate_wavefunction_jax(
             wavefunction_data=hamiltonian_data.wavefunction_data,
             r_up_carts=old_r_up_carts,
             r_dn_carts=old_r_dn_carts,
         )
     ) ** 2.0
 
-    kinc = compute_kinetic_energy_api(
+    kinc = compute_kinetic_energy_jax(
         wavefunction_data=hamiltonian_data.wavefunction_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
     )
 
-    vpot_bare_debug = _compute_bare_coulomb_potential_debug(
+    vpot_bare_debug = compute_bare_coulomb_potential_debug(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
     )
 
-    vpot_bare_jax = _compute_bare_coulomb_potential_jax(
+    vpot_bare_jax = compute_bare_coulomb_potential_jax(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
@@ -512,14 +512,14 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp(request):
 
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=6)
 
-    vpot_ecp_debug = _compute_ecp_coulomb_potential_debug(
+    vpot_ecp_debug = compute_ecp_coulomb_potential_debug(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
         wavefunction_data=wavefunction_data,
     )
 
-    vpot_ecp_jax = _compute_ecp_coulomb_potential_jax(
+    vpot_ecp_jax = compute_ecp_coulomb_potential_jax(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,

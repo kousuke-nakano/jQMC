@@ -38,18 +38,18 @@ import jax
 import numpy as np
 from jax import numpy as jnp
 
-from ..jqmc.determinant import compute_geminal_all_elements_api
+from ..jqmc.determinant import compute_geminal_all_elements_jax
 from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data
 from ..jqmc.trexio_wrapper import read_trexio_file
 from ..jqmc.wavefunction import (
     Wavefunction_data,
-    _compute_kinetic_energy_all_elements_debug,
-    _compute_kinetic_energy_all_elements_jax,
-    _compute_kinetic_energy_debug,
-    _compute_kinetic_energy_jax,
-    compute_discretized_kinetic_energy_api,
-    compute_discretized_kinetic_energy_api_fast_update,
     compute_discretized_kinetic_energy_debug,
+    compute_discretized_kinetic_energy_jax,
+    compute_discretized_kinetic_energy_jax_fast_update,
+    compute_kinetic_energy_all_elements_debug,
+    compute_kinetic_energy_all_elements_jax,
+    compute_kinetic_energy_debug,
+    compute_kinetic_energy_jax,
 )
 
 # JAX float64
@@ -86,8 +86,8 @@ def test_debug_and_jax_kinetic_energy():
     r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
 
-    K_debug = _compute_kinetic_energy_debug(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
-    K_jax = _compute_kinetic_energy_jax(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+    K_debug = compute_kinetic_energy_debug(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+    K_jax = compute_kinetic_energy_jax(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
 
     np.testing.assert_almost_equal(K_debug, K_jax, decimal=4)
 
@@ -133,10 +133,10 @@ def test_debug_and_jax_kinetic_energy_all_elements():
     r_up_carts_jnp = jnp.array(r_up_carts_np)
     r_dn_carts_jnp = jnp.array(r_dn_carts_np)
 
-    K_elements_up_debug, K_elements_dn_debug = _compute_kinetic_energy_all_elements_debug(
+    K_elements_up_debug, K_elements_dn_debug = compute_kinetic_energy_all_elements_debug(
         wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_np, r_dn_carts=r_dn_carts_np
     )
-    K_elements_up_jax, K_elements_dn_jax = _compute_kinetic_energy_all_elements_jax(
+    K_elements_up_jax, K_elements_dn_jax = compute_kinetic_energy_all_elements_jax(
         wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp
     )
 
@@ -201,18 +201,18 @@ def test_debug_and_jax_discretized_kinetic_energy():
     # print(elements_kinetic_part_debug_all)
 
     mesh_kinetic_part_r_up_carts_jax, mesh_kinetic_part_r_dn_carts_jax, elements_kinetic_part_jax = (
-        compute_discretized_kinetic_energy_api(
+        compute_discretized_kinetic_energy_jax(
             alat=alat, wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp, RT=RT
         )
     )
 
-    A = compute_geminal_all_elements_api(geminal_data=geminal_mo_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp)
+    A = compute_geminal_all_elements_jax(geminal_data=geminal_mo_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp)
     A_old_inv = np.linalg.inv(A)
     (
         mesh_kinetic_part_r_up_carts_jax_fast_update,
         mesh_kinetic_part_r_dn_carts_jax_fast_update,
         elements_kinetic_part_jax_fast_update,
-    ) = compute_discretized_kinetic_energy_api_fast_update(
+    ) = compute_discretized_kinetic_energy_jax_fast_update(
         alat=alat,
         A_old_inv=A_old_inv,
         wavefunction_data=wavefunction_data,

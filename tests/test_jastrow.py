@@ -41,16 +41,16 @@ from ..jqmc.jastrow_factor import (
     Jastrow_one_body_data,
     Jastrow_three_body_data,
     Jastrow_two_body_data,
-    _compute_grads_and_laplacian_Jastrow_three_body_debug,
-    _compute_grads_and_laplacian_Jastrow_three_body_jax,
-    _compute_grads_and_laplacian_Jastrow_two_body_debug,
-    _compute_grads_and_laplacian_Jastrow_two_body_jax,
-    _compute_Jastrow_one_body_debug,
-    _compute_Jastrow_one_body_jax,
-    _compute_Jastrow_three_body_debug,
-    _compute_Jastrow_three_body_jax,
-    _compute_Jastrow_two_body_debug,
-    _compute_Jastrow_two_body_jax,
+    compute_grads_and_laplacian_Jastrow_three_body_debug,
+    compute_grads_and_laplacian_Jastrow_three_body_jax,
+    compute_grads_and_laplacian_Jastrow_two_body_debug,
+    compute_grads_and_laplacian_Jastrow_two_body_jax,
+    compute_Jastrow_one_body_debug,
+    compute_Jastrow_one_body_jax,
+    compute_Jastrow_three_body_debug,
+    compute_Jastrow_three_body_jax,
+    compute_Jastrow_two_body_debug,
+    compute_Jastrow_two_body_jax,
 )
 from ..jqmc.molecular_orbital import MOs_data
 from ..jqmc.structure import Structure_data
@@ -83,13 +83,13 @@ def test_Jastrow_onebody_part():
         jastrow_1b_param=1.0, structure_data=structure_data, core_electrons=core_electrons
     )
 
-    J1_debug = _compute_Jastrow_one_body_debug(
+    J1_debug = compute_Jastrow_one_body_debug(
         jastrow_one_body_data=jastrow_one_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
 
-    J1_jax = _compute_Jastrow_one_body_jax(
+    J1_jax = compute_Jastrow_one_body_jax(
         jastrow_one_body_data=jastrow_one_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -111,13 +111,13 @@ def test_Jastrow_twobody_part():
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_dn_cart_samples, 3) + r_cart_min
 
     jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=1.0)
-    J2_debug = _compute_Jastrow_two_body_debug(
+    J2_debug = compute_Jastrow_two_body_debug(
         jastrow_two_body_data=jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
     # print(f"jastrow_two_body_debug = {jastrow_two_body_debug}")
 
-    J2_jax = _compute_Jastrow_two_body_jax(
+    J2_jax = compute_Jastrow_two_body_jax(
         jastrow_two_body_data=jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
@@ -172,7 +172,7 @@ def test_Jastrow_threebody_part_with_AOs_data():
 
     jastrow_three_body_data = Jastrow_three_body_data(orb_data=aos_data, j_matrix=j_matrix)
 
-    J3_debug = _compute_Jastrow_three_body_debug(
+    J3_debug = compute_Jastrow_three_body_debug(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -180,7 +180,7 @@ def test_Jastrow_threebody_part_with_AOs_data():
 
     # print(f"J3_debug = {J3_debug}")
 
-    J3_jax = _compute_Jastrow_three_body_jax(
+    J3_jax = compute_Jastrow_three_body_jax(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -241,7 +241,7 @@ def test_Jastrow_threebody_part_with_MOs_data():
 
     jastrow_three_body_data = Jastrow_three_body_data(orb_data=mos_data, j_matrix=j_matrix)
 
-    J3_debug = _compute_Jastrow_three_body_debug(
+    J3_debug = compute_Jastrow_three_body_debug(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -249,7 +249,7 @@ def test_Jastrow_threebody_part_with_MOs_data():
 
     # print(f"J3_debug = {J3_debug}")
 
-    J3_jax = _compute_Jastrow_three_body_jax(
+    J3_jax = compute_Jastrow_three_body_jax(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -307,7 +307,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
 
     jastrow_three_body_data = Jastrow_three_body_data(orb_data=aos_data, j_matrix=j_matrix)
 
-    J3_debug = _compute_Jastrow_three_body_debug(
+    J3_debug = compute_Jastrow_three_body_debug(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -315,7 +315,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
 
     # print(f"J3_debug = {J3_debug}")
 
-    J3_jax = _compute_Jastrow_three_body_jax(
+    J3_jax = compute_Jastrow_three_body_jax(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -329,7 +329,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
         grad_jastrow_J3_up_debug,
         grad_jastrow_J3_dn_debug,
         sum_laplacian_J3_debug,
-    ) = _compute_grads_and_laplacian_Jastrow_three_body_debug(
+    ) = compute_grads_and_laplacian_Jastrow_three_body_debug(
         jastrow_three_body_data,
         r_up_carts,
         r_dn_carts,
@@ -339,7 +339,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
     # print(f"grad_jastrow_J3_dn_debug = {grad_jastrow_J3_dn_debug}")
     # print(f"sum_laplacian_J3_debug = {sum_laplacian_J3_debug}")
 
-    grad_jastrow_J3_up_jax, grad_jastrow_J3_dn_jax, sum_laplacian_J3_jax = _compute_grads_and_laplacian_Jastrow_three_body_jax(
+    grad_jastrow_J3_up_jax, grad_jastrow_J3_dn_jax, sum_laplacian_J3_jax = compute_grads_and_laplacian_Jastrow_three_body_jax(
         jastrow_three_body_data,
         r_up_carts,
         r_dn_carts,
@@ -405,7 +405,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
 
     jastrow_three_body_data = Jastrow_three_body_data(orb_data=mos_data, j_matrix=j_matrix)
 
-    J3_debug = _compute_Jastrow_three_body_debug(
+    J3_debug = compute_Jastrow_three_body_debug(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -413,7 +413,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
 
     # print(f"J3_debug = {J3_debug}")
 
-    J3_jax = _compute_Jastrow_three_body_jax(
+    J3_jax = compute_Jastrow_three_body_jax(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -427,7 +427,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
         grad_jastrow_J3_up_debug,
         grad_jastrow_J3_dn_debug,
         sum_laplacian_J3_debug,
-    ) = _compute_grads_and_laplacian_Jastrow_three_body_debug(
+    ) = compute_grads_and_laplacian_Jastrow_three_body_debug(
         jastrow_three_body_data,
         r_up_carts,
         r_dn_carts,
@@ -437,7 +437,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
     # print(f"grad_jastrow_J3_dn_debug = {grad_jastrow_J3_dn_debug}")
     # print(f"sum_laplacian_J3_debug = {sum_laplacian_J3_debug}")
 
-    grad_jastrow_J3_up_jax, grad_jastrow_J3_dn_jax, sum_laplacian_J3_jax = _compute_grads_and_laplacian_Jastrow_three_body_jax(
+    grad_jastrow_J3_up_jax, grad_jastrow_J3_dn_jax, sum_laplacian_J3_jax = compute_grads_and_laplacian_Jastrow_three_body_jax(
         jastrow_three_body_data,
         r_up_carts,
         r_dn_carts,
@@ -466,13 +466,13 @@ def test_numerical_and_auto_grads_Jastrow_twobody_part():
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_dn_cart_samples, 3) + r_cart_min
 
     jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=1.0)
-    J2_debug = _compute_Jastrow_two_body_debug(
+    J2_debug = compute_Jastrow_two_body_debug(
         jastrow_two_body_data=jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
     # print(f"jastrow_two_body_debug = {jastrow_two_body_debug}")
 
-    J2_jax = _compute_Jastrow_two_body_jax(
+    J2_jax = compute_Jastrow_two_body_jax(
         jastrow_two_body_data=jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
@@ -484,7 +484,7 @@ def test_numerical_and_auto_grads_Jastrow_twobody_part():
         grad_J2_up_debug,
         grad_J2_dn_debug,
         sum_laplacian_J2_debug,
-    ) = _compute_grads_and_laplacian_Jastrow_two_body_debug(
+    ) = compute_grads_and_laplacian_Jastrow_two_body_debug(
         jastrow_two_body_data,
         r_up_carts,
         r_dn_carts,
@@ -494,7 +494,7 @@ def test_numerical_and_auto_grads_Jastrow_twobody_part():
     # print(f"grad_J2_dn_debug = {grad_J2_dn_debug}")
     # print(f"sum_laplacian_J2_debug = {sum_laplacian_J2_debug}")
 
-    grad_J2_up_jax, grad_J2_dn_jax, sum_laplacian_J2_jax = _compute_grads_and_laplacian_Jastrow_two_body_jax(
+    grad_J2_up_jax, grad_J2_dn_jax, sum_laplacian_J2_jax = compute_grads_and_laplacian_Jastrow_two_body_jax(
         jastrow_two_body_data,
         r_up_carts,
         r_dn_carts,

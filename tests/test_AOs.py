@@ -43,16 +43,16 @@ from numpy.testing import assert_almost_equal
 from ..jqmc.atomic_orbital import (
     AOs_cart_data,
     AOs_sphe_data,
-    _compute_AOs_cart_debug,
-    _compute_AOs_cart_jax,
-    _compute_AOs_grad_debug,
-    _compute_AOs_grad_jax,
-    _compute_AOs_laplacian_debug,
-    _compute_AOs_laplacian_jax,
-    _compute_AOs_shpe_debug,
-    _compute_AOs_sphe_jax,
     _compute_S_l_m_debug,
     _compute_S_l_m_jax,
+    compute_AOs_cart_debug,
+    compute_AOs_cart_jax,
+    compute_AOs_grad_debug,
+    compute_AOs_grad_jax,
+    compute_AOs_laplacian_debug,
+    compute_AOs_laplacian_jax,
+    compute_AOs_shpe_debug,
+    compute_AOs_sphe_jax,
 )
 from ..jqmc.structure import Structure_data
 
@@ -290,8 +290,8 @@ def test_AOs_w_spherical_angular_part_comparing_jax_and_debug_implemenetations()
     )
     aos_data.sanity_check()
 
-    aos_jax = _compute_AOs_sphe_jax(aos_data=aos_data, r_carts=r_carts)
-    aos_debug = _compute_AOs_shpe_debug(aos_data=aos_data, r_carts=r_carts)
+    aos_jax = compute_AOs_sphe_jax(aos_data=aos_data, r_carts=r_carts)
+    aos_debug = compute_AOs_shpe_debug(aos_data=aos_data, r_carts=r_carts)
 
     assert np.allclose(aos_jax, aos_debug, rtol=1e-12, atol=1e-05)
 
@@ -333,8 +333,8 @@ def test_AOs_w_spherical_angular_part_comparing_jax_and_debug_implemenetations()
     )
     aos_data.sanity_check()
 
-    aos_jax = _compute_AOs_sphe_jax(aos_data=aos_data, r_carts=r_carts)
-    aos_debug = _compute_AOs_shpe_debug(aos_data=aos_data, r_carts=r_carts)
+    aos_jax = compute_AOs_sphe_jax(aos_data=aos_data, r_carts=r_carts)
+    aos_debug = compute_AOs_shpe_debug(aos_data=aos_data, r_carts=r_carts)
 
     assert np.allclose(aos_jax, aos_debug, rtol=1e-12, atol=1e-05)
 
@@ -397,8 +397,8 @@ def test_AOs_w_cartesian_angular_part_comparing_jax_and_debug_implemenetations()
     )
     aos_data.sanity_check()
 
-    aos_jax = _compute_AOs_cart_jax(aos_data=aos_data, r_carts=r_carts)
-    aos_debug = _compute_AOs_cart_debug(aos_data=aos_data, r_carts=r_carts)
+    aos_jax = compute_AOs_cart_jax(aos_data=aos_data, r_carts=r_carts)
+    aos_debug = compute_AOs_cart_debug(aos_data=aos_data, r_carts=r_carts)
 
     assert np.allclose(aos_jax, aos_debug, rtol=1e-12, atol=1e-05)
 
@@ -445,7 +445,7 @@ def test_AOs_comparing_auto_and_numerical_grads():
     )
     aos_data.sanity_check()
 
-    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = _compute_AOs_grad_jax(
+    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = compute_AOs_grad_jax(
         aos_data=aos_data, r_carts=r_carts
     )
 
@@ -453,7 +453,7 @@ def test_AOs_comparing_auto_and_numerical_grads():
         ao_matrix_grad_x_numerical,
         ao_matrix_grad_y_numerical,
         ao_matrix_grad_z_numerical,
-    ) = _compute_AOs_grad_debug(aos_data=aos_data, r_carts=r_carts)
+    ) = compute_AOs_grad_debug(aos_data=aos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(ao_matrix_grad_x_auto, ao_matrix_grad_x_numerical, decimal=7)
     np.testing.assert_array_almost_equal(ao_matrix_grad_y_auto, ao_matrix_grad_y_numerical, decimal=7)
@@ -497,7 +497,7 @@ def test_AOs_comparing_auto_and_numerical_grads():
     )
     aos_data.sanity_check()
 
-    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = _compute_AOs_grad_jax(
+    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = compute_AOs_grad_jax(
         aos_data=aos_data, r_carts=r_carts
     )
 
@@ -505,7 +505,7 @@ def test_AOs_comparing_auto_and_numerical_grads():
         ao_matrix_grad_x_numerical,
         ao_matrix_grad_y_numerical,
         ao_matrix_grad_z_numerical,
-    ) = _compute_AOs_grad_debug(aos_data=aos_data, r_carts=r_carts)
+    ) = compute_AOs_grad_debug(aos_data=aos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(ao_matrix_grad_x_auto, ao_matrix_grad_x_numerical, decimal=7)
     np.testing.assert_array_almost_equal(ao_matrix_grad_y_auto, ao_matrix_grad_y_numerical, decimal=7)
@@ -555,9 +555,9 @@ def test_AOs_comparing_auto_and_numerical_laplacians():
     )
     aos_data.sanity_check()
 
-    ao_matrix_laplacian_numerical = _compute_AOs_laplacian_jax(aos_data=aos_data, r_carts=r_carts)
+    ao_matrix_laplacian_numerical = compute_AOs_laplacian_jax(aos_data=aos_data, r_carts=r_carts)
 
-    ao_matrix_laplacian_auto = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
+    ao_matrix_laplacian_auto = compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(ao_matrix_laplacian_auto, ao_matrix_laplacian_numerical, decimal=5)
 
@@ -598,9 +598,9 @@ def test_AOs_comparing_auto_and_numerical_laplacians():
     )
     aos_data.sanity_check()
 
-    ao_matrix_laplacian_numerical = _compute_AOs_laplacian_jax(aos_data=aos_data, r_carts=r_carts)
+    ao_matrix_laplacian_numerical = compute_AOs_laplacian_jax(aos_data=aos_data, r_carts=r_carts)
 
-    ao_matrix_laplacian_auto = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
+    ao_matrix_laplacian_auto = compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(ao_matrix_laplacian_auto, ao_matrix_laplacian_numerical, decimal=5)
 

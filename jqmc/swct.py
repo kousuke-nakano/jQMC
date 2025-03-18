@@ -43,6 +43,7 @@ import numpy.typing as npt
 from flax import struct
 from jax import jacrev, jit, vmap
 from jax import numpy as jnp
+from jax import typing as jnpt
 
 # jQMC modules
 from .structure import Structure_data
@@ -75,53 +76,20 @@ class SWCT_data:
         self.structure.sanity_check()
 
 
-def evaluate_swct_omega_api(
+@jit
+def evaluate_swct_omega_jax(
     swct_data: SWCT_data,
-    r_carts: npt.NDArray[np.float64],
-    debug: bool = False,
-) -> npt.NDArray[np.float64]:
+    r_carts: jnpt.ArrayLike,
+) -> jax.Array:
     """The method is for evaluate the omega(R_alpha, r_up_carts or r_dn_carts) for SWCT.
 
     Args:
         swct_data (SWCT_data): an instance of SWCT_data
-        r_carts (npt.NDArray[np.float64]): Cartesian coordinates of up- or dn-spin electrons (dim: N_e, 3)
-        debug: if True, numerical derivatives are computed for debuging purpose
+        r_carts (jnpt.ArrayLike): Cartesian coordinates of up- or dn-spin electrons (dim: N_e, 3)
 
     Returns:
-        The omega_up (dim: N_a, N_e_up) and omega_dn (dim: N_a, N_e_dn)
-        with the given structure (npt.NDArray[np.float64], npt.NDArray[np.float64])
+        [jax.Array] The omega (dim: N_a, N_e) with the given structure
     """
-    if debug:
-        omega = _evaluate_swct_omega_debug(swct_data=swct_data, r_carts=r_carts)
-    else:
-        omega = _evaluate_swct_omega_jax(swct_data=swct_data, r_carts=r_carts)
-
-    return omega
-
-
-def _evaluate_swct_omega_debug(
-    swct_data: SWCT_data,
-    r_carts: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64]:
-    """See _api method."""
-    R_carts = swct_data.structure.positions_cart_np
-    omega = np.zeros((len(R_carts), len(r_carts)))
-
-    for alpha in range(len(R_carts)):
-        for i in range(len(r_carts)):
-            kappa = 1.0 / np.linalg.norm(r_carts[i] - R_carts[alpha]) ** 4
-            kappa_sum = np.sum([1.0 / np.linalg.norm(r_carts[i] - R_carts[beta]) ** 4 for beta in range(len(R_carts))])
-            omega[alpha, i] = kappa / kappa_sum
-
-    return omega
-
-
-@jit
-def _evaluate_swct_omega_jax(
-    swct_data: SWCT_data,
-    r_carts: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64]:
-    """See _api method."""
     R_carts = swct_data.structure.positions_cart_jnp
 
     def compute_omega(R_cart, r_cart):
@@ -142,31 +110,43 @@ def _evaluate_swct_omega_jax(
     return omega
 
 
-def evaluate_swct_domega_api(
+def evaluate_swct_omega_debug(
     swct_data: SWCT_data,
     r_carts: npt.NDArray[np.float64],
-    debug: bool = False,
+) -> npt.NDArray[np.float64]:
+    """See _api method."""
+    R_carts = swct_data.structure.positions_cart_np
+    omega = np.zeros((len(R_carts), len(r_carts)))
+
+    for alpha in range(len(R_carts)):
+        for i in range(len(r_carts)):
+            kappa = 1.0 / np.linalg.norm(r_carts[i] - R_carts[alpha]) ** 4
+            kappa_sum = np.sum([1.0 / np.linalg.norm(r_carts[i] - R_carts[beta]) ** 4 for beta in range(len(R_carts))])
+            omega[alpha, i] = kappa / kappa_sum
+
+    return omega
+
+
+@jit
+def evaluate_swct_domega_jax(
+    swct_data: SWCT_data,
+    r_carts: jnpt.ArrayLike,
 ) -> npt.NDArray[np.float64]:
     """The method is for evaluate the sum_i domega(R_alpha, r_i_up_carts or r_i_dn_carts)/d_r_i_up_carts or d_r_i_dn_carts for SWCT.
 
     Args:
         swct_data (SWCT_data): an instance of SWCT_data
-        r_carts (npt.NDArray[np.float64]): Cartesian coordinates of up- or dn-spin electrons (dim: N_e, 3)
-        debug: if True, numerical derivatives are computed for debuging purpose
+        r_carts (jnpt.ArrayLike): Cartesian coordinates of up- or dn-spin electrons (dim: N_e, 3)
 
     Returns:
-        The omega_up (dim: N_a, N_e_up) and omega_dn (dim: N_a, N_e_dn)
-        with the given structure (npt.NDArray[np.float64], npt.NDArray[np.float64])
+        [jax.Array] The derivative of omega (dim: N_a, N_e) with the given structure
     """
-    if debug:
-        domega = _evaluate_swct_domega_debug(swct_data=swct_data, r_carts=r_carts)
-    else:
-        domega = _evaluate_swct_domega_jax(swct_data=swct_data, r_carts=r_carts)
+    domega = jnp.sum(jacrev(evaluate_swct_omega_jax, argnums=1)(swct_data, r_carts), axis=(1, 2))
 
     return domega
 
 
-def _evaluate_swct_domega_debug(
+def evaluate_swct_domega_debug(
     swct_data: SWCT_data,
     r_carts: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
@@ -215,17 +195,6 @@ def _evaluate_swct_domega_debug(
     return domega
 
 
-@jit
-def _evaluate_swct_domega_jax(
-    swct_data: SWCT_data,
-    r_carts: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64]:
-    """See _api method."""
-    domega = jnp.sum(jacrev(evaluate_swct_omega_api, argnums=1)(swct_data, r_carts), axis=(1, 2))
-
-    return domega
-
-
 if __name__ == "__main__":
     from logging import Formatter, StreamHandler
 
@@ -257,25 +226,25 @@ if __name__ == "__main__":
     r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
 
-    omega_up = evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_up_carts, debug=True)
-    omega_dn = evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_dn_carts, debug=True)
+    omega_up = evaluate_swct_omega_jax(swct_data=swct_data, r_carts=r_up_carts, debug=True)
+    omega_dn = evaluate_swct_omega_jax(swct_data=swct_data, r_carts=r_dn_carts, debug=True)
     print(omega_up)
     print(omega_dn)
-    omega_up = evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_up_carts, debug=False)
-    omega_dn = evaluate_swct_omega_api(swct_data=swct_data, r_carts=r_dn_carts, debug=False)
+    omega_up = evaluate_swct_omega_jax(swct_data=swct_data, r_carts=r_up_carts, debug=False)
+    omega_dn = evaluate_swct_omega_jax(swct_data=swct_data, r_carts=r_dn_carts, debug=False)
     print(omega_up)
     print(omega_dn)
 
-    d_omega_up = np.sum(jacrev(evaluate_swct_omega_api, argnums=1)(swct_data, r_up_carts), axis=(1, 2))
+    d_omega_up = np.sum(jacrev(evaluate_swct_omega_jax, argnums=1)(swct_data, r_up_carts), axis=(1, 2))
     print(f"shape(d_omega_up) = {d_omega_up.shape}")
-    d_omega_dn = np.sum(jacrev(evaluate_swct_omega_api, argnums=1)(swct_data, r_dn_carts), axis=(1, 2))
+    d_omega_dn = np.sum(jacrev(evaluate_swct_omega_jax, argnums=1)(swct_data, r_dn_carts), axis=(1, 2))
     print(f"shape(d_omega_dn) = {d_omega_dn.shape}")
     print(d_omega_up)
     print(d_omega_dn)
 
-    d_omega_up = _evaluate_swct_domega_debug(swct_data, r_up_carts)
+    d_omega_up = evaluate_swct_domega_debug(swct_data, r_up_carts)
     print(d_omega_up)
     print(f"shape(d_omega_up) = {d_omega_up.shape}")
-    d_omega_dn = _evaluate_swct_domega_debug(swct_data, r_dn_carts)
+    d_omega_dn = evaluate_swct_domega_debug(swct_data, r_dn_carts)
     print(d_omega_dn)
     print(f"shape(d_omega_dn) = {d_omega_dn.shape}")

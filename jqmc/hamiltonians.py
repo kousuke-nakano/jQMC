@@ -39,18 +39,17 @@ from logging import Formatter, StreamHandler, getLogger
 
 # JAX
 import jax
-import numpy as np
-import numpy.typing as npt
 from flax import struct
 from jax import jit
+from jax import typing as jnpt
 
-from .coulomb_potential import Coulomb_potential_data, compute_coulomb_potential_api
+from .coulomb_potential import Coulomb_potential_data, compute_coulomb_potential_jax
 from .structure import Structure_data
 from .wavefunction import (
     Wavefunction_data,
     Wavefunction_data_deriv_params,
     Wavefunction_data_deriv_R,
-    compute_kinetic_energy_api,
+    compute_kinetic_energy_jax,
 )
 
 # set logger
@@ -197,10 +196,10 @@ class Hamiltonian_data_deriv_R(Hamiltonian_data):
 
 
 @jit
-def compute_local_energy_api(
+def compute_local_energy_jax(
     hamiltonian_data: Hamiltonian_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    r_up_carts: jnpt.ArrayLike,
+    r_dn_carts: jnpt.ArrayLike,
 ) -> float:
     """Compute Local Energy.
 
@@ -208,19 +207,19 @@ def compute_local_energy_api(
 
     Args:
         hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
-        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
+        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
     Returns:
         float: The value of local energy (e_L) with the given wavefunction (float)
     """
-    T = compute_kinetic_energy_api(
+    T = compute_kinetic_energy_jax(
         wavefunction_data=hamiltonian_data.wavefunction_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
 
-    V = compute_coulomb_potential_api(
+    V = compute_coulomb_potential_jax(
         coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,

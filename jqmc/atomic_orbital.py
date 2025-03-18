@@ -46,7 +46,7 @@ import numpy as np
 import numpy.typing as npt
 import scipy
 from flax import struct
-from jax import grad, hessian, jacrev, jit, vmap
+from jax import grad, hessian, jacrev, jit
 from jax import typing as jnpt
 from numpy import linalg as LA
 
@@ -661,7 +661,7 @@ class AOs_sphe_data_no_deriv(AOs_sphe_data):
         )
 
 
-def compute_AOs_api(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jnpt.ArrayLike, debug=False) -> jax.Array:
+def compute_AOs_jax(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     """Compute AO values at the given r_carts.
 
     The method is for computing the value of the given atomic orbital at r_carts
@@ -669,28 +669,21 @@ def compute_AOs_api(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jnpt.Array
     Args:
         ao_datas (AOs_data): an instance of AOs_data
         r_carts (jnpt.ArrayLike): Cartesian coordinates of electrons (dim: N_e, 3)
-        debug (bool): if True, AOs are computed via _debug function for debuging purpose
 
     Returns:
         jax.Array: Arrays containing values of the AOs at r_carts. (dim: num_ao, N_e)
     """
     if isinstance(aos_data, AOs_sphe_data):
-        if debug:
-            AOs = _compute_AOs_shpe_debug(aos_data, r_carts)
-        else:
-            AOs = _compute_AOs_sphe_jax(aos_data, r_carts)
+        AOs = compute_AOs_sphe_jax(aos_data, r_carts)
 
     elif isinstance(aos_data, AOs_cart_data):
-        if debug:
-            AOs = _compute_AOs_cart_debug(aos_data, r_carts)
-        else:
-            AOs = _compute_AOs_cart_jax(aos_data, r_carts)
+        AOs = compute_AOs_cart_jax(aos_data, r_carts)
     else:
         raise NotImplementedError
     return AOs
 
 
-def _compute_AOs_shpe_debug(aos_data: AOs_sphe_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+def compute_AOs_shpe_debug(aos_data: AOs_sphe_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     """Compute AO values at the given r_carts.
 
     The method is for computing the value of the given atomic orbital at r_carts
@@ -743,7 +736,7 @@ def _compute_AOs_shpe_debug(aos_data: AOs_sphe_data, r_carts: npt.NDArray[np.flo
     return aos_values
 
 
-def _compute_AOs_cart_debug(aos_data: AOs_cart_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+def compute_AOs_cart_debug(aos_data: AOs_cart_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     """Compute AO values at the given r_carts.
 
     The method is for computing the value of the given atomic orbital at r_carts
@@ -796,7 +789,7 @@ def _compute_AOs_cart_debug(aos_data: AOs_cart_data, r_carts: npt.NDArray[np.flo
 
 
 @jit
-def _compute_AOs_cart_jax(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.Array:
+def compute_AOs_cart_jax(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     """Compute AO values at the given r_carts.
 
     See compute_AOs_api
@@ -845,7 +838,7 @@ def _compute_AOs_cart_jax(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> j
 
 
 @jit
-def _compute_AOs_sphe_jax(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> jax.Array:
+def compute_AOs_sphe_jax(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     """Compute AO values at the given r_carts.
 
     See compute_AOs_api
@@ -889,17 +882,17 @@ def _compute_AOs_sphe_jax(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> j
 
 @jit
 def _compute_S_l_m_jax(
-    r_R_diffs: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64]:
+    r_R_diffs: jnpt.ArrayLike,
+) -> jax.Array:
     r"""Solid harmonics part of a primitve AO.
 
     Compute the solid harmonics, i.e., r^l * spherical hamonics part (c.f., regular solid harmonics) of a given AO
 
     Args:
-        r_R_diffs (npt.NDArray[np.float64]): Cartesian coordinate of N electrons - Cartesian corrdinates of M nuclei. dim: (N,M,3)
+        r_R_diffs ( jnpt.ArrayLike): Cartesian coordinate of N electrons - Cartesian corrdinates of M nuclei. dim: (N,M,3)
 
     Returns:
-        npt.NDArray[np.float64]: dim:(49,N,M) arrays of the spherical harmonics part * r^l (i.e., regular solid harmonics) for all (l,m) pairs.
+        jax.Array: dim:(49,N,M) arrays of the spherical harmonics part * r^l (i.e., regular solid harmonics) for all (l,m) pairs.
     """
     x, y, z = r_R_diffs[..., 0], r_R_diffs[..., 1], r_R_diffs[..., 2]
     r_norm = jnp.sqrt(x**2 + y**2 + z**2)
@@ -1222,48 +1215,24 @@ def _compute_S_l_m_debug(
 
 
 # no longer used in the main code
-def compute_AOs_laplacian_api(
-    aos_data: AOs_sphe_data,
-    r_carts: jnpt.ArrayLike,
-    debug=False,
-) -> jax.Array:
-    """Compute laplacians of the give AOs at r_carts.
-
-    The method is for computing the laplacians of the given atomic orbital at r_carts
-
-    Args:
-        ao_datas (AOs_data): an instance of AOs_data
-        r_carts (jnpt.ArrayLike): Cartesian coordinates of electrons (dim: N_e, 3)
-        debug (bool): if True, numerical derivatives are computed via _debug function for debuging purpose
-
-    Returns:
-        jax.Array:
-            Array containing laplacians of the AOs at r_carts. The dim. is (num_ao, N_e)
-
-    """
-    if debug:
-        return _compute_AOs_laplacian_debug(aos_data, r_carts)
-    else:
-        return _compute_AOs_laplacian_jax(aos_data, r_carts)
-
-
-# no longer used in the main code
 @jit
-def _compute_AOs_laplacian_jax(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.Array:
+def compute_AOs_laplacian_jax(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.Array:
     """Compute laplacians of the give AOs at r_carts.
 
     See compute_AOs_laplacian_api
 
     """
     # not very fast, but it works.
-    ao_matrix_hessian = hessian(compute_AOs_api, argnums=1)(aos_data, r_carts)
+    ao_matrix_hessian = hessian(compute_AOs_jax, argnums=1)(aos_data, r_carts)
     ao_matrix_laplacian = jnp.einsum("m i i u i u -> mi", ao_matrix_hessian)
 
     return ao_matrix_laplacian
 
 
 # no longer used in the main code
-def _compute_AOs_laplacian_debug(aos_data: AOs_sphe_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+def compute_AOs_laplacian_debug(
+    aos_data: AOs_sphe_data | AOs_cart_data, r_carts: npt.NDArray[np.float64]
+) -> npt.NDArray[np.float64]:
     """Compute laplacians of the give AOs at r_carts.
 
     The method is for computing the laplacians of the given atomic orbital at r_carts
@@ -1282,31 +1251,31 @@ def _compute_AOs_laplacian_debug(aos_data: AOs_sphe_data, r_carts: npt.NDArray[n
     # Laplacians of AOs (numerical)
     diff_h = 1.0e-5
 
-    ao_matrix = compute_AOs_api(aos_data, r_carts)
+    ao_matrix = compute_AOs_jax(aos_data, r_carts)
 
     # laplacians x^2
     diff_p_x_r_carts = r_carts.copy()
     diff_p_x_r_carts[:, 0] += diff_h
-    ao_matrix_diff_p_x = compute_AOs_api(aos_data, diff_p_x_r_carts)
+    ao_matrix_diff_p_x = compute_AOs_jax(aos_data, diff_p_x_r_carts)
     diff_m_x_r_carts = r_carts.copy()
     diff_m_x_r_carts[:, 0] -= diff_h
-    ao_matrix_diff_m_x = compute_AOs_api(aos_data, diff_m_x_r_carts)
+    ao_matrix_diff_m_x = compute_AOs_jax(aos_data, diff_m_x_r_carts)
 
     # laplacians y^2
     diff_p_y_r_carts = r_carts.copy()
     diff_p_y_r_carts[:, 1] += diff_h
-    ao_matrix_diff_p_y = compute_AOs_api(aos_data, diff_p_y_r_carts)
+    ao_matrix_diff_p_y = compute_AOs_jax(aos_data, diff_p_y_r_carts)
     diff_m_y_r_carts = r_carts.copy()
     diff_m_y_r_carts[:, 1] -= diff_h
-    ao_matrix_diff_m_y = compute_AOs_api(aos_data, diff_m_y_r_carts)
+    ao_matrix_diff_m_y = compute_AOs_jax(aos_data, diff_m_y_r_carts)
 
     # laplacians z^2
     diff_p_z_r_carts = r_carts.copy()
     diff_p_z_r_carts[:, 2] += diff_h
-    ao_matrix_diff_p_z = compute_AOs_api(aos_data, diff_p_z_r_carts)
+    ao_matrix_diff_p_z = compute_AOs_jax(aos_data, diff_p_z_r_carts)
     diff_m_z_r_carts = r_carts.copy()
     diff_m_z_r_carts[:, 2] -= diff_h
-    ao_matrix_diff_m_z = compute_AOs_api(aos_data, diff_m_z_r_carts)
+    ao_matrix_diff_m_z = compute_AOs_jax(aos_data, diff_m_z_r_carts)
 
     ao_matrix_grad2_x = (ao_matrix_diff_p_x + ao_matrix_diff_m_x - 2 * ao_matrix) / (diff_h) ** 2
     ao_matrix_grad2_y = (ao_matrix_diff_p_y + ao_matrix_diff_m_y - 2 * ao_matrix) / (diff_h) ** 2
@@ -1325,8 +1294,8 @@ def _compute_AOs_laplacian_debug(aos_data: AOs_sphe_data, r_carts: npt.NDArray[n
 
 
 # no longer used in the main code
-def compute_AOs_grad_api(
-    aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike, debug=False
+def compute_AOs_grad_jax(
+    aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jnpt.ArrayLike
 ) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Compute Cartesian Gradients of AOs.
 
@@ -1336,17 +1305,13 @@ def compute_AOs_grad_api(
     Args:
         ao_datas(AOs_data): an instance of AOs_data
         r_carts(jnpt.ArrayLike): Cartesian coordinates of electrons (dim: N_e, 3)
-        debug (bool): if True, numerical derivatives are computed via _debug function for debuging purpose
 
     Returns:
         tuple: tuple containing gradients of the AOs at r_carts. (grad_x, grad_y, grad_z).
         The dim. of each matrix is (num_ao, N_e)
 
     """
-    if debug:
-        ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z = _compute_AOs_grad_debug(aos_data, r_carts)
-    else:
-        ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z = _compute_AOs_grad_jax(aos_data, r_carts)
+    ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z = _compute_AOs_grad_jax(aos_data, r_carts)
 
     if ao_matrix_grad_x.shape != (aos_data.num_ao, len(r_carts)):
         logger.error(
@@ -1411,7 +1376,7 @@ def _compute_AOs_grad_jax(
 
     """
 
-    grad_full = jacrev(compute_AOs_api, argnums=1)(aos_data, r_carts)
+    grad_full = jacrev(compute_AOs_jax, argnums=1)(aos_data, r_carts)
     grad_diag = jnp.diagonal(grad_full, axis1=1, axis2=2)
     grad_diag = jnp.swapaxes(grad_diag, 1, 2)
     ao_matrix_grad_x = grad_diag[..., 0]  # (M, N)
@@ -1421,44 +1386,7 @@ def _compute_AOs_grad_jax(
 
 
 # no longer used in the main code
-@jit
-def __compute_AOs_grad_jax_old(
-    aos_data: AOs_sphe_data,
-    r_carts: jnpt.ArrayLike,
-) -> tuple[jax.Array, jax.Array, jax.Array]:
-    """Compute Cartesian Gradients of AOs (old).
-
-    The method is for computing the Carteisan gradients (x,y,z) of
-    the given atomic orbital at r_carts
-
-    Args:
-        ao_datas(AOs_data): an instance of AOs_data
-        r_carts(jnpt.ArrayLike): Cartesian coordinates of electrons (dim: N_e, 3)
-
-    Returns:
-        tuple: tuple containing gradients of the AOs at r_carts. (grad_x, grad_y, grad_z).
-        The dim. of each matrix is (num_ao, N_e)
-
-    Note:
-        Gradients of AOs (autograd via google-JAX)
-        This method gives correct answers, but slow because the full Jacobian calculation is
-        not needed for computing gradients.
-        grad should be pluged into compute_AOs_jax() in the future for accelaration.
-    """
-    ao_matrix_jacrev = jacrev(compute_AOs_api, argnums=1)(aos_data, r_carts)
-
-    ao_matrix_grad_x_ = ao_matrix_jacrev[:, :, :, 0]
-    ao_matrix_grad_y_ = ao_matrix_jacrev[:, :, :, 1]
-    ao_matrix_grad_z_ = ao_matrix_jacrev[:, :, :, 2]
-    ao_matrix_grad_x = jnp.sum(ao_matrix_grad_x_, axis=2)
-    ao_matrix_grad_y = jnp.sum(ao_matrix_grad_y_, axis=2)
-    ao_matrix_grad_z = jnp.sum(ao_matrix_grad_z_, axis=2)
-
-    return ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z
-
-
-# no longer used in the main code
-def _compute_AOs_grad_debug(
+def compute_AOs_grad_debug(
     aos_data: AOs_sphe_data,
     r_carts: npt.NDArray[np.float64],
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
@@ -1474,61 +1402,32 @@ def _compute_AOs_grad_debug(
     # grad x
     diff_p_x_r_carts = r_carts.copy()
     diff_p_x_r_carts[:, 0] += diff_h
-    ao_matrix_diff_p_x = compute_AOs_api(aos_data, diff_p_x_r_carts)
+    ao_matrix_diff_p_x = compute_AOs_jax(aos_data, diff_p_x_r_carts)
     diff_m_x_r_carts = r_carts.copy()
     diff_m_x_r_carts[:, 0] -= diff_h
-    ao_matrix_diff_m_x = compute_AOs_api(aos_data, diff_m_x_r_carts)
+    ao_matrix_diff_m_x = compute_AOs_jax(aos_data, diff_m_x_r_carts)
 
     # grad y
     diff_p_y_r_carts = r_carts.copy()
     diff_p_y_r_carts[:, 1] += diff_h
-    ao_matrix_diff_p_y = compute_AOs_api(aos_data, diff_p_y_r_carts)
+    ao_matrix_diff_p_y = compute_AOs_jax(aos_data, diff_p_y_r_carts)
     diff_m_y_r_carts = r_carts.copy()
     diff_m_y_r_carts[:, 1] -= diff_h
-    ao_matrix_diff_m_y = compute_AOs_api(aos_data, diff_m_y_r_carts)
+    ao_matrix_diff_m_y = compute_AOs_jax(aos_data, diff_m_y_r_carts)
 
     # grad z
     diff_p_z_r_carts = r_carts.copy()
     diff_p_z_r_carts[:, 2] += diff_h
-    ao_matrix_diff_p_z = compute_AOs_api(aos_data, diff_p_z_r_carts)
+    ao_matrix_diff_p_z = compute_AOs_jax(aos_data, diff_p_z_r_carts)
     diff_m_z_r_carts = r_carts.copy()
     diff_m_z_r_carts[:, 2] -= diff_h
-    ao_matrix_diff_m_z = compute_AOs_api(aos_data, diff_m_z_r_carts)
+    ao_matrix_diff_m_z = compute_AOs_jax(aos_data, diff_m_z_r_carts)
 
     ao_matrix_grad_x = (ao_matrix_diff_p_x - ao_matrix_diff_m_x) / (2.0 * diff_h)
     ao_matrix_grad_y = (ao_matrix_diff_p_y - ao_matrix_diff_m_y) / (2.0 * diff_h)
     ao_matrix_grad_z = (ao_matrix_diff_p_z - ao_matrix_diff_m_z) / (2.0 * diff_h)
 
     return ao_matrix_grad_x, ao_matrix_grad_y, ao_matrix_grad_z
-
-
-# no longer used in the main code
-@jit
-def _compute_AOs_jax_old(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> jax.Array:
-    """Compute AO values at the given r_carts.
-
-    See compute_AOs_api
-
-    """
-    # Indices with respect to the contracted AOs
-    # compute R_n inc. the whole normalization factor
-    R_carts_jnp = aos_data.atomic_center_carts_prim_jnp
-    c_jnp = aos_data.coefficients_jnp
-    Z_jnp = aos_data.exponents_jnp
-    l_jnp = aos_data.angular_momentums_prim_jnp
-    m_jnp = aos_data.magnetic_quantum_numbers_prim_jnp
-
-    vmap_compute_AOs_dup = vmap(
-        vmap(_compute_primitive_AOs_jax, in_axes=(None, None, None, None, None, 0)),
-        in_axes=(0, 0, 0, 0, 0, None),
-    )
-
-    AOs_dup = vmap_compute_AOs_dup(c_jnp, Z_jnp, l_jnp, m_jnp, R_carts_jnp, r_carts)
-
-    orbital_indices = aos_data.orbital_indices_jnp
-    num_segments = aos_data.num_ao
-    AOs = jax.ops.segment_sum(AOs_dup, orbital_indices, num_segments=num_segments)
-    return AOs
 
 
 # no longer used in the main code
@@ -1579,7 +1478,7 @@ class AO_sphe_data:
 
 
 # no longer used in the main code
-def compute_AO_sphe(ao_data: AO_sphe_data, r_cart: list[float]) -> float:
+def _compute_AO_sphe(ao_data: AO_sphe_data, r_cart: list[float]) -> float:
     r"""Compute single AO for debugging.
 
     The method is for computing the value of the given atomic orbital at r_cart
@@ -2237,7 +2136,7 @@ if __name__ == "__main__":
 
     # print(aos_data)
 
-    aos_jax_up = _compute_AOs_cart_jax(aos_data=aos_data, r_carts=r_up_carts)
-    aos_jax_dn = _compute_AOs_cart_jax(aos_data=aos_data, r_carts=r_dn_carts)
+    aos_jax_up = compute_AOs_cart_jax(aos_data=aos_data, r_carts=r_up_carts)
+    aos_jax_dn = compute_AOs_cart_jax(aos_data=aos_data, r_carts=r_dn_carts)
     aos_jax_up.block_until_ready()
     aos_jax_dn.block_until_ready()

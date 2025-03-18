@@ -46,36 +46,36 @@ from jax import numpy as jnp
 from mpi4py import MPI
 
 from .coulomb_potential import (
-    # _compute_bare_coulomb_potential_el_el_jax,
-    # _compute_bare_coulomb_potential_el_ion_element_wise_jax,
-    # _compute_bare_coulomb_potential_ion_ion_jax,
-    _compute_bare_coulomb_potential_jax,
-    # _compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax,
-    _compute_ecp_local_parts_all_pairs_jax,
-    _compute_ecp_non_local_parts_nearest_neighbors_jax,
+    # compute_bare_coulomb_potential_el_el_jax,
+    # compute_bare_coulomb_potential_el_ion_element_wise_jax,
+    # compute_bare_coulomb_potential_ion_ion_jax,
+    compute_bare_coulomb_potential_jax,
+    # compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax,
+    compute_ecp_local_parts_all_pairs_jax,
+    compute_ecp_non_local_parts_nearest_neighbors_jax,
 )
-from .determinant import Geminal_data, compute_AS_regularization_factor_api, compute_det_geminal_all_elements_api
+from .determinant import Geminal_data, compute_AS_regularization_factor_jax, compute_det_geminal_all_elements_jax
 from .hamiltonians import (
     Hamiltonian_data,  # Hamiltonian_data_deriv_R,
     Hamiltonian_data_deriv_params,
-    compute_kinetic_energy_api,
-    compute_local_energy_api,
+    compute_kinetic_energy_jax,
+    compute_local_energy_jax,
 )
 from .jastrow_factor import (
     Jastrow_data,
     Jastrow_one_body_data,
     Jastrow_three_body_data,
     Jastrow_two_body_data,
-    compute_Jastrow_part_api,
-    compute_ratio_Jastrow_part_api,
+    compute_Jastrow_part_jax,
+    compute_ratio_Jastrow_part_jax,
 )
 from .structure import find_nearest_index_jax
-from .swct import SWCT_data, evaluate_swct_domega_api, evaluate_swct_omega_api
+from .swct import SWCT_data, evaluate_swct_domega_jax, evaluate_swct_omega_jax
 from .wavefunction import (
     Wavefunction_data,
-    # _compute_kinetic_energy_all_elements_jax,
-    compute_discretized_kinetic_energy_api,
-    evaluate_ln_wavefunction_api,
+    # compute_kinetic_energy_all_elements_jax,
+    compute_discretized_kinetic_energy_jax,
+    evaluate_ln_wavefunction_jax,
 )
 
 # MPI related
@@ -274,7 +274,7 @@ class MCMC:
 
         logger.info("  Compilation e_L starts.")
         start = time.perf_counter()
-        _ = compute_local_energy_api(
+        _ = compute_local_energy_jax(
             hamiltonian_data=self.__hamiltonian_data,
             r_up_carts=self.__latest_r_up_carts[0],
             r_dn_carts=self.__latest_r_dn_carts[0],
@@ -287,7 +287,7 @@ class MCMC:
         if self.__comput_position_deriv:
             logger.info("  Compilation de_L/dR starts.")
             start = time.perf_counter()
-            _, _, _ = grad(compute_local_energy_api, argnums=(0, 1, 2))(
+            _, _, _ = grad(compute_local_energy_jax, argnums=(0, 1, 2))(
                 self.__hamiltonian_data,
                 self.__latest_r_up_carts[0],
                 self.__latest_r_dn_carts[0],
@@ -299,7 +299,7 @@ class MCMC:
 
             logger.info("  Compilation dln_Psi/dR starts.")
             start = time.perf_counter()
-            _, _, _ = grad(evaluate_ln_wavefunction_api, argnums=(0, 1, 2))(
+            _, _, _ = grad(evaluate_ln_wavefunction_jax, argnums=(0, 1, 2))(
                 self.__hamiltonian_data.wavefunction_data,
                 self.__latest_r_up_carts[0],
                 self.__latest_r_dn_carts[0],
@@ -311,7 +311,7 @@ class MCMC:
 
             logger.info("  Compilation domega/dR starts.")
             start = time.perf_counter()
-            _ = evaluate_swct_domega_api(
+            _ = evaluate_swct_domega_jax(
                 self.__swct_data,
                 self.__latest_r_up_carts[0],
             )
@@ -323,7 +323,7 @@ class MCMC:
         if self.__comput_param_deriv:
             logger.info("  Compilation dln_Psi/dc starts.")
             start = time.perf_counter()
-            _ = grad(evaluate_ln_wavefunction_api, argnums=(0))(
+            _ = grad(evaluate_ln_wavefunction_jax, argnums=(0))(
                 self.__hamiltonian_data.wavefunction_data,
                 self.__latest_r_up_carts[0],
                 self.__latest_r_dn_carts[0],
@@ -589,39 +589,39 @@ class MCMC:
                 )
 
                 # original trial WFs
-                Jastrow_T_p = compute_Jastrow_part_api(
+                Jastrow_T_p = compute_Jastrow_part_jax(
                     jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                     r_up_carts=proposed_r_up_carts,
                     r_dn_carts=proposed_r_dn_carts,
                 )
 
-                Jastrow_T_o = compute_Jastrow_part_api(
+                Jastrow_T_o = compute_Jastrow_part_jax(
                     jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                 )
 
-                Det_T_p = compute_det_geminal_all_elements_api(
+                Det_T_p = compute_det_geminal_all_elements_jax(
                     geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                     r_up_carts=proposed_r_up_carts,
                     r_dn_carts=proposed_r_dn_carts,
                 )
 
-                Det_T_o = compute_det_geminal_all_elements_api(
+                Det_T_o = compute_det_geminal_all_elements_jax(
                     geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                 )
 
                 # compute AS regularization factors, R_AS and R_AS_eps
-                R_AS_p = compute_AS_regularization_factor_api(
+                R_AS_p = compute_AS_regularization_factor_jax(
                     geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                     r_up_carts=proposed_r_up_carts,
                     r_dn_carts=proposed_r_dn_carts,
                 )
                 R_AS_p_eps = jnp.maximum(R_AS_p, epsilon_AS)
 
-                R_AS_o = compute_AS_regularization_factor_api(
+                R_AS_o = compute_AS_regularization_factor_jax(
                     geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -682,67 +682,67 @@ class MCMC:
             self.__Dt,
             self.__epsilon_AS,
         )
-        _ = vmap(compute_local_energy_api, in_axes=(None, 0, 0))(
+        _ = vmap(compute_local_energy_jax, in_axes=(None, 0, 0))(
             self.__hamiltonian_data,
             self.__latest_r_up_carts,
             self.__latest_r_dn_carts,
         )
-        _ = vmap(compute_AS_regularization_factor_api, in_axes=(None, 0, 0))(
+        _ = vmap(compute_AS_regularization_factor_jax, in_axes=(None, 0, 0))(
             self.__hamiltonian_data.wavefunction_data.geminal_data,
             self.__latest_r_up_carts,
             self.__latest_r_dn_carts,
         )
-        _ = vmap(evaluate_ln_wavefunction_api, in_axes=(None, 0, 0))(
+        _ = vmap(evaluate_ln_wavefunction_jax, in_axes=(None, 0, 0))(
             self.__hamiltonian_data.wavefunction_data,
             self.__latest_r_up_carts,
             self.__latest_r_dn_carts,
         )
         if self.__comput_position_deriv:
-            _, _, _ = vmap(grad(compute_local_energy_api, argnums=(0, 1, 2)), in_axes=(None, 0, 0))(
+            _, _, _ = vmap(grad(compute_local_energy_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0))(
                 self.__hamiltonian_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
 
-            _ = vmap(evaluate_ln_wavefunction_api, in_axes=(None, 0, 0))(
+            _ = vmap(evaluate_ln_wavefunction_jax, in_axes=(None, 0, 0))(
                 self.__hamiltonian_data.wavefunction_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
 
-            _, _, _ = vmap(grad(evaluate_ln_wavefunction_api, argnums=(0, 1, 2)), in_axes=(None, 0, 0))(
+            _, _, _ = vmap(grad(evaluate_ln_wavefunction_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0))(
                 self.__hamiltonian_data.wavefunction_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
 
-            _ = vmap(evaluate_swct_omega_api, in_axes=(None, 0))(
+            _ = vmap(evaluate_swct_omega_jax, in_axes=(None, 0))(
                 self.__swct_data,
                 self.__latest_r_up_carts,
             )
 
-            _ = vmap(evaluate_swct_omega_api, in_axes=(None, 0))(
+            _ = vmap(evaluate_swct_omega_jax, in_axes=(None, 0))(
                 self.__swct_data,
                 self.__latest_r_dn_carts,
             )
 
-            _ = vmap(evaluate_swct_domega_api, in_axes=(None, 0))(
+            _ = vmap(evaluate_swct_domega_jax, in_axes=(None, 0))(
                 self.__swct_data,
                 self.__latest_r_up_carts,
             )
 
-            _ = vmap(evaluate_swct_domega_api, in_axes=(None, 0))(
+            _ = vmap(evaluate_swct_domega_jax, in_axes=(None, 0))(
                 self.__swct_data,
                 self.__latest_r_dn_carts,
             )
-            _ = vmap(grad(evaluate_ln_wavefunction_api, argnums=0), in_axes=(None, 0, 0))(
+            _ = vmap(grad(evaluate_ln_wavefunction_jax, argnums=0), in_axes=(None, 0, 0))(
                 self.__hamiltonian_data.wavefunction_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
 
         if self.__comput_param_deriv:
-            _ = vmap(grad(evaluate_ln_wavefunction_api, argnums=0), in_axes=(None, 0, 0))(
+            _ = vmap(grad(evaluate_ln_wavefunction_jax, argnums=0), in_axes=(None, 0, 0))(
                 self.__hamiltonian_data.wavefunction_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
@@ -808,7 +808,7 @@ class MCMC:
 
             # evaluate observables
             start = time.perf_counter()
-            e_L = vmap(compute_local_energy_api, in_axes=(None, 0, 0))(
+            e_L = vmap(compute_local_energy_jax, in_axes=(None, 0, 0))(
                 self.__hamiltonian_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
@@ -821,7 +821,7 @@ class MCMC:
             self.__stored_e_L2.append(e_L**2)
 
             # compute AS regularization factors, R_AS and R_AS_eps
-            R_AS = vmap(compute_AS_regularization_factor_api, in_axes=(None, 0, 0))(
+            R_AS = vmap(compute_AS_regularization_factor_jax, in_axes=(None, 0, 0))(
                 self.__hamiltonian_data.wavefunction_data.geminal_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
@@ -874,7 +874,7 @@ class MCMC:
                 # """
                 start = time.perf_counter()
                 grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = vmap(
-                    grad(compute_local_energy_api, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
+                    grad(compute_local_energy_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
                 )(
                     self.__hamiltonian_data,
                     self.__latest_r_up_carts,
@@ -916,7 +916,7 @@ class MCMC:
                 # """
 
                 start = time.perf_counter()
-                ln_Psi = vmap(evaluate_ln_wavefunction_api, in_axes=(None, 0, 0))(
+                ln_Psi = vmap(evaluate_ln_wavefunction_jax, in_axes=(None, 0, 0))(
                     self.__hamiltonian_data.wavefunction_data,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
@@ -928,7 +928,7 @@ class MCMC:
                 # """
                 start = time.perf_counter()
                 grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = vmap(
-                    grad(evaluate_ln_wavefunction_api, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
+                    grad(evaluate_ln_wavefunction_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
                 )(
                     self.__hamiltonian_data.wavefunction_data,
                     self.__latest_r_up_carts,
@@ -955,12 +955,12 @@ class MCMC:
                 self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
                 # """
 
-                omega_up = vmap(evaluate_swct_omega_api, in_axes=(None, 0))(
+                omega_up = vmap(evaluate_swct_omega_jax, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_up_carts,
                 )
 
-                omega_dn = vmap(evaluate_swct_omega_api, in_axes=(None, 0))(
+                omega_dn = vmap(evaluate_swct_omega_jax, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_dn_carts,
                 )
@@ -971,12 +971,12 @@ class MCMC:
                 self.__stored_omega_up.append(omega_up)
                 self.__stored_omega_dn.append(omega_dn)
 
-                grad_omega_dr_up = vmap(evaluate_swct_domega_api, in_axes=(None, 0))(
+                grad_omega_dr_up = vmap(evaluate_swct_domega_jax, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_up_carts,
                 )
 
-                grad_omega_dr_dn = vmap(evaluate_swct_domega_api, in_axes=(None, 0))(
+                grad_omega_dr_dn = vmap(evaluate_swct_domega_jax, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_dn_carts,
                 )
@@ -989,7 +989,7 @@ class MCMC:
 
             if self.__comput_param_deriv:
                 start = time.perf_counter()
-                grad_ln_Psi_h = vmap(grad(evaluate_ln_wavefunction_api, argnums=0), in_axes=(None, 0, 0))(
+                grad_ln_Psi_h = vmap(grad(evaluate_ln_wavefunction_jax, argnums=0), in_axes=(None, 0, 0))(
                     self.__hamiltonian_data.wavefunction_data,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
@@ -1539,30 +1539,30 @@ class GFMC_fixed_projection_time:
         logger.info("Compilation of fundamental functions starts.")
 
         logger.info("  Compilation e_L starts.")
-        _ = compute_kinetic_energy_api(
+        _ = compute_kinetic_energy_jax(
             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
             r_up_carts=self.__latest_r_up_carts[0],
             r_dn_carts=self.__latest_r_dn_carts[0],
         )
-        _, _, _ = compute_discretized_kinetic_energy_api(
+        _, _, _ = compute_discretized_kinetic_energy_jax(
             alat=self.__alat,
             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
             r_up_carts=self.__latest_r_up_carts[0],
             r_dn_carts=self.__latest_r_dn_carts[0],
             RT=jnp.eye(3, 3),
         )
-        _ = _compute_bare_coulomb_potential_jax(
+        _ = compute_bare_coulomb_potential_jax(
             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
             r_up_carts=self.__latest_r_up_carts[0],
             r_dn_carts=self.__latest_r_dn_carts[0],
         )
-        _ = _compute_ecp_local_parts_all_pairs_jax(
+        _ = compute_ecp_local_parts_all_pairs_jax(
             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
             r_up_carts=self.__latest_r_up_carts[0],
             r_dn_carts=self.__latest_r_dn_carts[0],
         )
         if self.__non_local_move == "tmove":
-            _, _, _, _ = _compute_ecp_non_local_parts_nearest_neighbors_jax(
+            _, _, _, _ = compute_ecp_non_local_parts_nearest_neighbors_jax(
                 coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                 wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                 r_up_carts=self.__latest_r_up_carts[0],
@@ -1570,7 +1570,7 @@ class GFMC_fixed_projection_time:
                 flag_determinant_only=False,
             )
         elif self.__non_local_move == "dltmove":
-            _, _, _, _ = _compute_ecp_non_local_parts_nearest_neighbors_jax(
+            _, _, _, _ = compute_ecp_non_local_parts_nearest_neighbors_jax(
                 coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                 wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                 r_up_carts=self.__latest_r_up_carts[0],
@@ -1759,14 +1759,14 @@ class GFMC_fixed_projection_time:
 
             # compute regularized bare couloumb
             ## compute diagonal elements, bare couloumb
-            diagonal_bare_coulomb_part = _compute_bare_coulomb_potential_jax(
+            diagonal_bare_coulomb_part = compute_bare_coulomb_potential_jax(
                 coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
             )
 
             ## continuum kinetic energy
-            diagonal_kinetic_continuum = compute_kinetic_energy_api(
+            diagonal_kinetic_continuum = compute_kinetic_energy_jax(
                 wavefunction_data=hamiltonian_data.wavefunction_data,
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
@@ -1783,7 +1783,7 @@ class GFMC_fixed_projection_time:
 
             ### compute discretized kinetic energy and mesh (with a random rotation)
             mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
-                compute_discretized_kinetic_energy_api(
+                compute_discretized_kinetic_energy_jax(
                     alat=alat,
                     wavefunction_data=hamiltonian_data.wavefunction_data,
                     r_up_carts=r_up_carts,
@@ -1928,7 +1928,7 @@ class GFMC_fixed_projection_time:
             if hamiltonian_data.coulomb_potential_data.ecp_flag:
                 # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
                 # ecp local
-                diagonal_ecp_local_part = _compute_ecp_local_parts_all_pairs_jax(
+                diagonal_ecp_local_part = compute_ecp_local_parts_all_pairs_jax(
                     coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -1937,7 +1937,7 @@ class GFMC_fixed_projection_time:
                 if non_local_move == "tmove":
                     # ecp non-local (t-move)
                     mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                        _compute_ecp_non_local_parts_nearest_neighbors_jax(
+                        compute_ecp_non_local_parts_nearest_neighbors_jax(
                             coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                             wavefunction_data=hamiltonian_data.wavefunction_data,
                             r_up_carts=r_up_carts,
@@ -1953,7 +1953,7 @@ class GFMC_fixed_projection_time:
 
                 elif non_local_move == "dltmove":
                     mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                        _compute_ecp_non_local_parts_nearest_neighbors_jax(
+                        compute_ecp_non_local_parts_nearest_neighbors_jax(
                             coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                             wavefunction_data=hamiltonian_data.wavefunction_data,
                             r_up_carts=r_up_carts,
@@ -1978,7 +1978,7 @@ class GFMC_fixed_projection_time:
                     )
                     Jastrow_ratio = Jastrow_on_mesh / Jastrow_ref
                     """
-                    Jastrow_ratio = compute_ratio_Jastrow_part_api(
+                    Jastrow_ratio = compute_ratio_Jastrow_part_jax(
                         jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                         old_r_up_carts=r_up_carts,
                         old_r_dn_carts=r_dn_carts,
@@ -2551,30 +2551,30 @@ class GFMC_fixed_num_projection:
         logger.info("Compilation of fundamental functions starts.")
 
         logger.info("  Compilation e_L starts.")
-        _ = compute_kinetic_energy_api(
+        _ = compute_kinetic_energy_jax(
             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
             r_up_carts=self.__latest_r_up_carts[0],
             r_dn_carts=self.__latest_r_dn_carts[0],
         )
-        _, _, _ = compute_discretized_kinetic_energy_api(
+        _, _, _ = compute_discretized_kinetic_energy_jax(
             alat=self.__alat,
             wavefunction_data=self.__hamiltonian_data.wavefunction_data,
             r_up_carts=self.__latest_r_up_carts[0],
             r_dn_carts=self.__latest_r_dn_carts[0],
             RT=jnp.eye(3, 3),
         )
-        _ = _compute_bare_coulomb_potential_jax(
+        _ = compute_bare_coulomb_potential_jax(
             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
             r_up_carts=self.__latest_r_up_carts[0],
             r_dn_carts=self.__latest_r_dn_carts[0],
         )
-        _ = _compute_ecp_local_parts_all_pairs_jax(
+        _ = compute_ecp_local_parts_all_pairs_jax(
             coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
             r_up_carts=self.__latest_r_up_carts[0],
             r_dn_carts=self.__latest_r_dn_carts[0],
         )
         if self.__non_local_move == "tmove":
-            _, _, _, _ = _compute_ecp_non_local_parts_nearest_neighbors_jax(
+            _, _, _, _ = compute_ecp_non_local_parts_nearest_neighbors_jax(
                 coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                 wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                 r_up_carts=self.__latest_r_up_carts[0],
@@ -2582,7 +2582,7 @@ class GFMC_fixed_num_projection:
                 flag_determinant_only=False,
             )
         elif self.__non_local_move == "dltmove":
-            _, _, _, _ = _compute_ecp_non_local_parts_nearest_neighbors_jax(
+            _, _, _, _ = compute_ecp_non_local_parts_nearest_neighbors_jax(
                 coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
                 wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                 r_up_carts=self.__latest_r_up_carts[0],
@@ -2602,7 +2602,7 @@ class GFMC_fixed_num_projection:
         if self.__comput_position_deriv:
             logger.info("  Compilation dln_Psi/dR starts.")
             start = time.perf_counter()
-            _, _, _ = grad(evaluate_ln_wavefunction_api, argnums=(0, 1, 2))(
+            _, _, _ = grad(evaluate_ln_wavefunction_jax, argnums=(0, 1, 2))(
                 self.__hamiltonian_data.wavefunction_data,
                 self.__latest_r_up_carts[0],
                 self.__latest_r_dn_carts[0],
@@ -2614,7 +2614,7 @@ class GFMC_fixed_num_projection:
 
             logger.info("  Compilation domega/dR starts.")
             start = time.perf_counter()
-            _ = evaluate_swct_domega_api(
+            _ = evaluate_swct_domega_jax(
                 self.__swct_data,
                 self.__latest_r_up_carts[0],
             )
@@ -2871,14 +2871,14 @@ class GFMC_fixed_num_projection:
 
                 # compute regularized bare couloumb
                 ## compute diagonal elements, bare couloumb
-                diagonal_bare_coulomb_part = _compute_bare_coulomb_potential_jax(
+                diagonal_bare_coulomb_part = compute_bare_coulomb_potential_jax(
                     coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                 )
 
                 ## continuum kinetic energy
-                diagonal_kinetic_continuum = compute_kinetic_energy_api(
+                diagonal_kinetic_continuum = compute_kinetic_energy_jax(
                     wavefunction_data=hamiltonian_data.wavefunction_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -2895,7 +2895,7 @@ class GFMC_fixed_num_projection:
 
                 ### compute discretized kinetic energy and mesh (with a random rotation)
                 mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
-                    compute_discretized_kinetic_energy_api(
+                    compute_discretized_kinetic_energy_jax(
                         alat=alat,
                         wavefunction_data=hamiltonian_data.wavefunction_data,
                         r_up_carts=r_up_carts,
@@ -3050,7 +3050,7 @@ class GFMC_fixed_num_projection:
                 if hamiltonian_data.coulomb_potential_data.ecp_flag:
                     # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
                     # ecp local
-                    diagonal_ecp_local_part = _compute_ecp_local_parts_all_pairs_jax(
+                    diagonal_ecp_local_part = compute_ecp_local_parts_all_pairs_jax(
                         coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
@@ -3059,7 +3059,7 @@ class GFMC_fixed_num_projection:
                     if non_local_move == "tmove":
                         # ecp non-local (t-move)
                         mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                            _compute_ecp_non_local_parts_nearest_neighbors_jax(
+                            compute_ecp_non_local_parts_nearest_neighbors_jax(
                                 coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                                 wavefunction_data=hamiltonian_data.wavefunction_data,
                                 r_up_carts=r_up_carts,
@@ -3083,7 +3083,7 @@ class GFMC_fixed_num_projection:
 
                     elif non_local_move == "dltmove":
                         mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                            _compute_ecp_non_local_parts_nearest_neighbors_jax(
+                            compute_ecp_non_local_parts_nearest_neighbors_jax(
                                 coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                                 wavefunction_data=hamiltonian_data.wavefunction_data,
                                 r_up_carts=r_up_carts,
@@ -3095,7 +3095,7 @@ class GFMC_fixed_num_projection:
                         V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
                         diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
 
-                        Jastrow_ratio = compute_ratio_Jastrow_part_api(
+                        Jastrow_ratio = compute_ratio_Jastrow_part_jax(
                             jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                             old_r_up_carts=r_up_carts,
                             old_r_dn_carts=r_dn_carts,
@@ -3197,14 +3197,14 @@ class GFMC_fixed_num_projection:
 
             # compute regularized bare couloumb
             ## compute diagonal elements, bare couloumb
-            diagonal_bare_coulomb_part = _compute_bare_coulomb_potential_jax(
+            diagonal_bare_coulomb_part = compute_bare_coulomb_potential_jax(
                 coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
             )
 
             ## continuum kinetic energy
-            diagonal_kinetic_continuum = compute_kinetic_energy_api(
+            diagonal_kinetic_continuum = compute_kinetic_energy_jax(
                 wavefunction_data=hamiltonian_data.wavefunction_data,
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
@@ -3220,7 +3220,7 @@ class GFMC_fixed_num_projection:
             R = generate_rotation_matrix(alpha, beta, gamma)  # Rotate in the order x -> y -> z
 
             ### compute discretized kinetic energy and mesh (with a random rotation)
-            _, _, elements_non_diagonal_kinetic_part = compute_discretized_kinetic_energy_api(
+            _, _, elements_non_diagonal_kinetic_part = compute_discretized_kinetic_energy_jax(
                 alat=alat,
                 wavefunction_data=hamiltonian_data.wavefunction_data,
                 r_up_carts=r_up_carts,
@@ -3360,7 +3360,7 @@ class GFMC_fixed_num_projection:
             # with ECP
             if hamiltonian_data.coulomb_potential_data.ecp_flag:
                 # ecp local
-                diagonal_ecp_local_part = _compute_ecp_local_parts_all_pairs_jax(
+                diagonal_ecp_local_part = compute_ecp_local_parts_all_pairs_jax(
                     coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -3369,7 +3369,7 @@ class GFMC_fixed_num_projection:
                 if non_local_move == "tmove":
                     # ecp non-local (t-move)
                     mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                        _compute_ecp_non_local_parts_nearest_neighbors_jax(
+                        compute_ecp_non_local_parts_nearest_neighbors_jax(
                             coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                             wavefunction_data=hamiltonian_data.wavefunction_data,
                             r_up_carts=r_up_carts,
@@ -3385,7 +3385,7 @@ class GFMC_fixed_num_projection:
 
                 elif non_local_move == "dltmove":
                     mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                        _compute_ecp_non_local_parts_nearest_neighbors_jax(
+                        compute_ecp_non_local_parts_nearest_neighbors_jax(
                             coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                             wavefunction_data=hamiltonian_data.wavefunction_data,
                             r_up_carts=r_up_carts,
@@ -3397,7 +3397,7 @@ class GFMC_fixed_num_projection:
                     V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
                     diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
 
-                    Jastrow_ratio = compute_ratio_Jastrow_part_api(
+                    Jastrow_ratio = compute_ratio_Jastrow_part_jax(
                         jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                         old_r_up_carts=r_up_carts,
                         old_r_dn_carts=r_dn_carts,
@@ -3616,7 +3616,7 @@ class GFMC_fixed_num_projection:
 
                 start = time.perf_counter()
                 grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = vmap(
-                    grad(evaluate_ln_wavefunction_api, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
+                    grad(evaluate_ln_wavefunction_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
                 )(
                     self.__hamiltonian_data.wavefunction_data,
                     self.__latest_r_up_carts,
@@ -3636,22 +3636,22 @@ class GFMC_fixed_num_projection:
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
                     grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
 
-                omega_up = vmap(evaluate_swct_omega_api, in_axes=(None, 0))(
+                omega_up = vmap(evaluate_swct_omega_jax, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_up_carts,
                 )
 
-                omega_dn = vmap(evaluate_swct_omega_api, in_axes=(None, 0))(
+                omega_dn = vmap(evaluate_swct_omega_jax, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_dn_carts,
                 )
 
-                grad_omega_dr_up = vmap(evaluate_swct_domega_api, in_axes=(None, 0))(
+                grad_omega_dr_up = vmap(evaluate_swct_domega_jax, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_up_carts,
                 )
 
-                grad_omega_dr_dn = vmap(evaluate_swct_domega_api, in_axes=(None, 0))(
+                grad_omega_dr_dn = vmap(evaluate_swct_domega_jax, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_dn_carts,
                 )
