@@ -46,11 +46,11 @@ from jax import numpy as jnp
 from mpi4py import MPI
 
 from .coulomb_potential import (
-    # compute_bare_coulomb_potential_el_el_jax,
-    # compute_bare_coulomb_potential_el_ion_element_wise_jax,
-    # compute_bare_coulomb_potential_ion_ion_jax,
+    compute_bare_coulomb_potential_el_el_jax,
+    compute_bare_coulomb_potential_el_ion_element_wise_jax,
+    compute_bare_coulomb_potential_ion_ion_jax,
     compute_bare_coulomb_potential_jax,
-    # compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax,
+    compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax,
     compute_ecp_local_parts_all_pairs_jax,
     compute_ecp_non_local_parts_nearest_neighbors_jax,
 )
@@ -67,14 +67,13 @@ from .jastrow_factor import (
     Jastrow_three_body_data,
     Jastrow_two_body_data,
     compute_Jastrow_part_jax,
-    compute_ratio_Jastrow_part_jax,
 )
 from .structure import find_nearest_index_jax
 from .swct import SWCT_data, evaluate_swct_domega_jax, evaluate_swct_omega_jax
 from .wavefunction import (
     Wavefunction_data,
-    # compute_kinetic_energy_all_elements_jax,
     compute_discretized_kinetic_energy_jax,
+    compute_kinetic_energy_all_elements_jax,
     evaluate_ln_wavefunction_jax,
 )
 
@@ -1753,62 +1752,13 @@ class GFMC_fixed_projection_time:
                 projection_counter,
             )
 
-            #'''
-            # compute diagonal elements, kinetic part
-            diagonal_kinetic_part = 3.0 / (2.0 * alat**2) * (len(r_up_carts) + len(r_dn_carts))
-
-            # compute regularized bare couloumb
-            ## compute diagonal elements, bare couloumb
-            diagonal_bare_coulomb_part = compute_bare_coulomb_potential_jax(
-                coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
-                r_up_carts=r_up_carts,
-                r_dn_carts=r_dn_carts,
-            )
-
-            ## continuum kinetic energy
-            diagonal_kinetic_continuum = compute_kinetic_energy_jax(
-                wavefunction_data=hamiltonian_data.wavefunction_data,
-                r_up_carts=r_up_carts,
-                r_dn_carts=r_dn_carts,
-            )
-
-            ## discretized kinetic energy
-            ### generate a random rotation matrix
-            jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
-            alpha, beta, gamma = jax.random.uniform(
-                subkey, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi
-            )  # Rotation angle around the x,y,z-axis (in radians)
-
-            R = generate_rotation_matrix(alpha, beta, gamma)  # Rotate in the order x -> y -> z
-
-            ### compute discretized kinetic energy and mesh (with a random rotation)
-            mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
-                compute_discretized_kinetic_energy_jax(
-                    alat=alat,
-                    wavefunction_data=hamiltonian_data.wavefunction_data,
-                    r_up_carts=r_up_carts,
-                    r_dn_carts=r_dn_carts,
-                    RT=R.T,
-                )
-            )
-            elements_non_diagonal_kinetic_part_FN = jnp.minimum(elements_non_diagonal_kinetic_part, 0.0)
-            non_diagonal_sum_hamiltonian_kinetic = jnp.sum(elements_non_diagonal_kinetic_part_FN)
-            diagonal_kinetic_part_SP = jnp.sum(jnp.maximum(elements_non_diagonal_kinetic_part, 0.0))
-            diagonal_kinetic_discretized = jnp.sum(1.0 / (4.0 * alat**2) + elements_non_diagonal_kinetic_part)
-
-            ### compute discretized diagonal bare coulomb part
-            discretized_diagonal_bare_coulomb_part = (
-                diagonal_bare_coulomb_part + diagonal_kinetic_continuum - diagonal_kinetic_discretized
-            )
-            #'''
-
-            ''' coulomb regularization
+            #''' coulomb regularization
             # compute diagonal elements, kinetic part
             diagonal_kinetic_part = 3.0 / (2.0 * alat**2) * (len(r_up_carts) + len(r_dn_carts))
 
             # compute continuum kinetic energy
             diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
-                _compute_kinetic_energy_all_elements_jax(
+                compute_kinetic_energy_all_elements_jax(
                     wavefunction_data=hamiltonian_data.wavefunction_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -1825,7 +1775,7 @@ class GFMC_fixed_projection_time:
 
             # compute discretized kinetic energy and mesh (with a random rotation)
             mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
-                compute_discretized_kinetic_energy_api(
+                compute_discretized_kinetic_energy_jax(
                     alat=alat,
                     wavefunction_data=hamiltonian_data.wavefunction_data,
                     r_up_carts=r_up_carts,
@@ -1840,27 +1790,25 @@ class GFMC_fixed_projection_time:
             # regularizations
             elements_non_diagonal_kinetic_part_all = elements_non_diagonal_kinetic_part.reshape(-1, 6)
             sign_flip_flags_elements = jnp.any(elements_non_diagonal_kinetic_part_all >= 0, axis=1)
-            non_diagonal_kinetic_part_elements = jnp.sum(
-                elements_non_diagonal_kinetic_part_all + 1.0 / (4.0 * alat**2), axis=1
-            )
+            non_diagonal_kinetic_part_elements = jnp.sum(elements_non_diagonal_kinetic_part_all + 1.0 / (4.0 * alat**2), axis=1)
             sign_flip_flags_elements_up, sign_flip_flags_elements_dn = jnp.split(sign_flip_flags_elements, [len(r_up_carts)])
             non_diagonal_kinetic_part_elements_up, non_diagonal_kinetic_part_elements_dn = jnp.split(
                 non_diagonal_kinetic_part_elements, [len(r_up_carts)]
             )
 
             # compute diagonal elements, el-el
-            diagonal_bare_coulomb_part_el_el = _compute_bare_coulomb_potential_el_el_jax(
+            diagonal_bare_coulomb_part_el_el = compute_bare_coulomb_potential_el_el_jax(
                 r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
             )
 
             # compute diagonal elements, ion-ion
-            diagonal_bare_coulomb_part_ion_ion = _compute_bare_coulomb_potential_ion_ion_jax(
+            diagonal_bare_coulomb_part_ion_ion = compute_bare_coulomb_potential_ion_ion_jax(
                 coulomb_potential_data=hamiltonian_data.coulomb_potential_data
             )
 
             # compute diagonal elements, el-ion
             diagonal_bare_coulomb_part_el_ion_elements_up, diagonal_bare_coulomb_part_el_ion_elements_dn = (
-                _compute_bare_coulomb_potential_el_ion_element_wise_jax(
+                compute_bare_coulomb_potential_el_ion_element_wise_jax(
                     coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -1871,11 +1819,11 @@ class GFMC_fixed_projection_time:
             (
                 diagonal_bare_coulomb_part_el_ion_discretized_elements_up,
                 diagonal_bare_coulomb_part_el_ion_discretized_elements_dn,
-            ) = _compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax(
+            ) = compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax(
                 coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
-                alat=self.__alat,
+                alat=alat,
             )
 
             # compose discretized el-ion potentials
@@ -1885,7 +1833,12 @@ class GFMC_fixed_projection_time:
                 - non_diagonal_kinetic_part_elements_up
             )
             # """
-            diagonal_bare_coulomb_part_el_ion_ei_up = diagonal_bare_coulomb_part_el_ion_discretized_elements_up
+            # The singularity of the bare coulomb potential is cut only for all-electron calculations. (c.f., parcutg=2 in TurboRVB).
+            # The discretized bare coulomb potential is replaced with the standard bare coulomb potential without any truncation for effectice core potential calculations. (c.f., parcutg=1 in TurboRVB).
+            if hamiltonian_data.coulomb_potential_data.ecp_flag:
+                diagonal_bare_coulomb_part_el_ion_ei_up = diagonal_bare_coulomb_part_el_ion_elements_up
+            else:
+                diagonal_bare_coulomb_part_el_ion_ei_up = diagonal_bare_coulomb_part_el_ion_discretized_elements_up
             diagonal_bare_coulomb_part_el_ion_max_up = jnp.maximum(
                 diagonal_bare_coulomb_part_el_ion_zv_up, diagonal_bare_coulomb_part_el_ion_ei_up
             )
@@ -1903,7 +1856,12 @@ class GFMC_fixed_projection_time:
                 - non_diagonal_kinetic_part_elements_dn
             )
             # """
-            diagonal_bare_coulomb_part_el_ion_ei_dn = diagonal_bare_coulomb_part_el_ion_discretized_elements_dn
+            # The singularity of the bare coulomb potential is cut only for all-electron calculations. (c.f., parcutg=2 in TurboRVB).
+            # The discretized bare coulomb potential is replaced with the standard bare coulomb potential without any truncation for effectice core potential calculations. (c.f., parcutg=1 in TurboRVB).
+            if hamiltonian_data.coulomb_potential_data.ecp_flag:
+                diagonal_bare_coulomb_part_el_ion_ei_dn = diagonal_bare_coulomb_part_el_ion_elements_dn
+            else:
+                diagonal_bare_coulomb_part_el_ion_ei_dn = diagonal_bare_coulomb_part_el_ion_discretized_elements_dn
             diagonal_bare_coulomb_part_el_ion_max_dn = jnp.maximum(
                 diagonal_bare_coulomb_part_el_ion_zv_dn, diagonal_bare_coulomb_part_el_ion_ei_dn
             )
@@ -1921,7 +1879,7 @@ class GFMC_fixed_projection_time:
                 + jnp.sum(diagonal_bare_coulomb_part_el_ion_opt_up)
                 + jnp.sum(diagonal_bare_coulomb_part_el_ion_opt_dn)
             )
-            '''
+            #'''
 
             # """ if-else for all-ele, ecp with tmove, and ecp with dltmove
             # with ECP
@@ -1964,27 +1922,18 @@ class GFMC_fixed_projection_time:
 
                     V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
                     diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
-                    """ obsolete
-                    Jastrow_ref = evaluate_jastrow_api(
-                        wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                    Jastrow_ref = compute_Jastrow_part_jax(
+                        wavefunction_data=hamiltonian_data.wavefunction_data.jastrow_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
                     )
 
-                    Jastrow_on_mesh = vmap(evaluate_jastrow_api, in_axes=(None, 0, 0))(
-                        self.__hamiltonian_data.wavefunction_data,
+                    Jastrow_on_mesh = vmap(compute_Jastrow_part_jax, in_axes=(None, 0, 0))(
+                        hamiltonian_data.wavefunction_data.jastrow_data,
                         mesh_non_local_ecp_part_r_up_carts,
                         mesh_non_local_ecp_part_r_dn_carts,
                     )
                     Jastrow_ratio = Jastrow_on_mesh / Jastrow_ref
-                    """
-                    Jastrow_ratio = compute_ratio_Jastrow_part_jax(
-                        jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
-                        old_r_up_carts=r_up_carts,
-                        old_r_dn_carts=r_dn_carts,
-                        new_r_up_carts_arr=mesh_non_local_ecp_part_r_up_carts,
-                        new_r_dn_carts_arr=mesh_non_local_ecp_part_r_dn_carts,
-                    )
                     V_nonlocal_FN = V_nonlocal_FN * Jastrow_ratio
 
                     non_diagonal_sum_hamiltonian_ecp = jnp.sum(V_nonlocal_FN)
@@ -2862,62 +2811,13 @@ class GFMC_fixed_num_projection:
             @jit
             def body_fun(_, carry):
                 w_L, r_up_carts, r_dn_carts, jax_PRNG_key = carry
-                #'''
-                # compute diagonal elements, kinetic part
-                diagonal_kinetic_part = 3.0 / (2.0 * alat**2) * (len(r_up_carts) + len(r_dn_carts))
 
-                # compute regularized bare couloumb
-                ## compute diagonal elements, bare couloumb
-                diagonal_bare_coulomb_part = compute_bare_coulomb_potential_jax(
-                    coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
-                    r_up_carts=r_up_carts,
-                    r_dn_carts=r_dn_carts,
-                )
-
-                ## continuum kinetic energy
-                diagonal_kinetic_continuum = compute_kinetic_energy_jax(
-                    wavefunction_data=hamiltonian_data.wavefunction_data,
-                    r_up_carts=r_up_carts,
-                    r_dn_carts=r_dn_carts,
-                )
-
-                ## discretized kinetic energy
-                ### generate a random rotation matrix
-                jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
-                alpha, beta, gamma = jax.random.uniform(
-                    subkey, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi
-                )  # Rotation angle around the x,y,z-axis (in radians)
-
-                R = generate_rotation_matrix(alpha, beta, gamma)  # Rotate in the order x -> y -> z
-
-                ### compute discretized kinetic energy and mesh (with a random rotation)
-                mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
-                    compute_discretized_kinetic_energy_jax(
-                        alat=alat,
-                        wavefunction_data=hamiltonian_data.wavefunction_data,
-                        r_up_carts=r_up_carts,
-                        r_dn_carts=r_dn_carts,
-                        RT=R.T,
-                    )
-                )
-                elements_non_diagonal_kinetic_part_FN = jnp.minimum(elements_non_diagonal_kinetic_part, 0.0)
-                non_diagonal_sum_hamiltonian_kinetic = jnp.sum(elements_non_diagonal_kinetic_part_FN)
-                diagonal_kinetic_part_SP = jnp.sum(jnp.maximum(elements_non_diagonal_kinetic_part, 0.0))
-                diagonal_kinetic_discretized = jnp.sum(1.0 / (4.0 * alat**2) + elements_non_diagonal_kinetic_part)
-
-                ### compute discretized diagonal bare coulomb part
-                discretized_diagonal_bare_coulomb_part = (
-                    diagonal_bare_coulomb_part + diagonal_kinetic_continuum - diagonal_kinetic_discretized
-                )
-                #'''
-
-                '''
                 # compute diagonal elements, kinetic part
                 diagonal_kinetic_part = 3.0 / (2.0 * alat**2) * (len(r_up_carts) + len(r_dn_carts))
 
                 # compute continuum kinetic energy
                 diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
-                    _compute_kinetic_energy_all_elements_jax(
+                    compute_kinetic_energy_all_elements_jax(
                         wavefunction_data=hamiltonian_data.wavefunction_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
@@ -2934,8 +2834,8 @@ class GFMC_fixed_num_projection:
 
                 # compute discretized kinetic energy and mesh (with a random rotation)
                 mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
-                    compute_discretized_kinetic_energy_api(
-                        alat=self.__alat,
+                    compute_discretized_kinetic_energy_jax(
+                        alat=alat,
                         wavefunction_data=hamiltonian_data.wavefunction_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
@@ -2960,18 +2860,18 @@ class GFMC_fixed_num_projection:
                 )
 
                 # compute diagonal elements, el-el
-                diagonal_bare_coulomb_part_el_el = _compute_bare_coulomb_potential_el_el_jax(
+                diagonal_bare_coulomb_part_el_el = compute_bare_coulomb_potential_el_el_jax(
                     r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
                 )
 
                 # compute diagonal elements, ion-ion
-                diagonal_bare_coulomb_part_ion_ion = _compute_bare_coulomb_potential_ion_ion_jax(
+                diagonal_bare_coulomb_part_ion_ion = compute_bare_coulomb_potential_ion_ion_jax(
                     coulomb_potential_data=hamiltonian_data.coulomb_potential_data
                 )
 
                 # compute diagonal elements, el-ion
                 diagonal_bare_coulomb_part_el_ion_elements_up, diagonal_bare_coulomb_part_el_ion_elements_dn = (
-                    _compute_bare_coulomb_potential_el_ion_element_wise_jax(
+                    compute_bare_coulomb_potential_el_ion_element_wise_jax(
                         coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
@@ -2982,11 +2882,11 @@ class GFMC_fixed_num_projection:
                 (
                     diagonal_bare_coulomb_part_el_ion_discretized_elements_up,
                     diagonal_bare_coulomb_part_el_ion_discretized_elements_dn,
-                ) = _compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax(
+                ) = compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax(
                     coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
-                    alat=self.__alat,
+                    alat=alat,
                 )
 
                 # compose discretized el-ion potentials
@@ -2996,7 +2896,12 @@ class GFMC_fixed_num_projection:
                     - non_diagonal_kinetic_part_elements_up
                 )
                 # """
-                diagonal_bare_coulomb_part_el_ion_ei_up = diagonal_bare_coulomb_part_el_ion_discretized_elements_up
+                # The singularity of the bare coulomb potential is cut only for all-electron calculations. (c.f., parcutg=2 in TurboRVB).
+                # The discretized bare coulomb potential is replaced with the standard bare coulomb potential without any truncation for effectice core potential calculations. (c.f., parcutg=1 in TurboRVB).
+                if hamiltonian_data.coulomb_potential_data.ecp_flag:
+                    diagonal_bare_coulomb_part_el_ion_ei_up = diagonal_bare_coulomb_part_el_ion_elements_up
+                else:
+                    diagonal_bare_coulomb_part_el_ion_ei_up = diagonal_bare_coulomb_part_el_ion_discretized_elements_up
                 diagonal_bare_coulomb_part_el_ion_max_up = jnp.maximum(
                     diagonal_bare_coulomb_part_el_ion_zv_up, diagonal_bare_coulomb_part_el_ion_ei_up
                 )
@@ -3018,7 +2923,12 @@ class GFMC_fixed_num_projection:
                     - non_diagonal_kinetic_part_elements_dn
                 )
                 # """
-                diagonal_bare_coulomb_part_el_ion_ei_dn = diagonal_bare_coulomb_part_el_ion_discretized_elements_dn
+                # The singularity of the bare coulomb potential is cut only for all-electron calculations. (c.f., parcutg=2 in TurboRVB).
+                # The discretized bare coulomb potential is replaced with the standard bare coulomb potential without any truncation for effectice core potential calculations. (c.f., parcutg=1 in TurboRVB).
+                if hamiltonian_data.coulomb_potential_data.ecp_flag:
+                    diagonal_bare_coulomb_part_el_ion_ei_dn = diagonal_bare_coulomb_part_el_ion_elements_dn
+                else:
+                    diagonal_bare_coulomb_part_el_ion_ei_dn = diagonal_bare_coulomb_part_el_ion_discretized_elements_dn
                 diagonal_bare_coulomb_part_el_ion_max_dn = jnp.maximum(
                     diagonal_bare_coulomb_part_el_ion_zv_dn, diagonal_bare_coulomb_part_el_ion_ei_dn
                 )
@@ -3040,7 +2950,6 @@ class GFMC_fixed_num_projection:
                     + jnp.sum(diagonal_bare_coulomb_part_el_ion_opt_up)
                     + jnp.sum(diagonal_bare_coulomb_part_el_ion_opt_dn)
                 )
-                '''
 
                 # """ if-else for all-ele, ecp with tmove, and ecp with dltmove
                 # with ECP
@@ -3092,13 +3001,18 @@ class GFMC_fixed_num_projection:
                         V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
                         diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
 
-                        Jastrow_ratio = compute_ratio_Jastrow_part_jax(
-                            jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
-                            old_r_up_carts=r_up_carts,
-                            old_r_dn_carts=r_dn_carts,
-                            new_r_up_carts_arr=mesh_non_local_ecp_part_r_up_carts,
-                            new_r_dn_carts_arr=mesh_non_local_ecp_part_r_dn_carts,
+                        Jastrow_ref = compute_Jastrow_part_jax(
+                            wavefunction_data=hamiltonian_data.wavefunction_data.jastrow_data,
+                            r_up_carts=r_up_carts,
+                            r_dn_carts=r_dn_carts,
                         )
+                        Jastrow_on_mesh = vmap(compute_Jastrow_part_jax, in_axes=(None, 0, 0))(
+                            hamiltonian_data.wavefunction_data.jastrow_data,
+                            mesh_non_local_ecp_part_r_up_carts,
+                            mesh_non_local_ecp_part_r_dn_carts,
+                        )
+                        Jastrow_ratio = Jastrow_on_mesh / Jastrow_ref
+
                         V_nonlocal_FN = V_nonlocal_FN * Jastrow_ratio
 
                         non_diagonal_sum_hamiltonian_ecp = jnp.sum(V_nonlocal_FN)
@@ -3187,61 +3101,14 @@ class GFMC_fixed_num_projection:
             alat: float,
         ):
             """Compute V elements."""
-            #'''old one
+            #''' coulomb reguralization
             # compute diagonal elements, kinetic part
             diagonal_kinetic_part = 3.0 / (2.0 * alat**2) * (len(r_up_carts) + len(r_dn_carts))
 
-            # compute regularized bare couloumb
-            ## compute diagonal elements, bare couloumb
-            diagonal_bare_coulomb_part = compute_bare_coulomb_potential_jax(
-                coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
-                r_up_carts=r_up_carts,
-                r_dn_carts=r_dn_carts,
-            )
-
-            ## continuum kinetic energy
-            diagonal_kinetic_continuum = compute_kinetic_energy_jax(
-                wavefunction_data=hamiltonian_data.wavefunction_data,
-                r_up_carts=r_up_carts,
-                r_dn_carts=r_dn_carts,
-            )
-
-            ## discretized kinetic energy
-            ### generate a random rotation matrix
-            jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
-            alpha, beta, gamma = jax.random.uniform(
-                subkey, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi
-            )  # Rotation angle around the x,y,z-axis (in radians)
-
-            R = generate_rotation_matrix(alpha, beta, gamma)  # Rotate in the order x -> y -> z
-
-            ### compute discretized kinetic energy and mesh (with a random rotation)
-            _, _, elements_non_diagonal_kinetic_part = compute_discretized_kinetic_energy_jax(
-                alat=alat,
-                wavefunction_data=hamiltonian_data.wavefunction_data,
-                r_up_carts=r_up_carts,
-                r_dn_carts=r_dn_carts,
-                RT=R.T,
-            )
-            elements_non_diagonal_kinetic_part_FN = jnp.minimum(elements_non_diagonal_kinetic_part, 0.0)
-            non_diagonal_sum_hamiltonian_kinetic = jnp.sum(elements_non_diagonal_kinetic_part_FN)
-            diagonal_kinetic_part_SP = jnp.sum(jnp.maximum(elements_non_diagonal_kinetic_part, 0.0))
-            diagonal_kinetic_discretized = jnp.sum(1.0 / (4.0 * alat**2) + elements_non_diagonal_kinetic_part)
-
-            ### compute discretized diagonal bare coulomb part
-            discretized_diagonal_bare_coulomb_part = (
-                diagonal_bare_coulomb_part + diagonal_kinetic_continuum - diagonal_kinetic_discretized
-            )
-            #'''
-
-            ''' coulomb reguralization
-            # compute diagonal elements, kinetic part
-            diagonal_kinetic_part = 3.0 / (2.0 * self.__alat**2) * (len(r_up_carts) + len(r_dn_carts))
-
             # compute continuum kinetic energy
             diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
-                _compute_kinetic_energy_all_elements_jax(
-                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                compute_kinetic_energy_all_elements_jax(
+                    wavefunction_data=hamiltonian_data.wavefunction_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                 )
@@ -3256,9 +3123,9 @@ class GFMC_fixed_num_projection:
             R = generate_rotation_matrix(alpha, beta, gamma)  # Rotate in the order x -> y -> z
 
             # compute discretized kinetic energy and mesh (with a random rotation)
-            _, _, elements_non_diagonal_kinetic_part = compute_discretized_kinetic_energy_api(
-                alat=self.__alat,
-                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+            _, _, elements_non_diagonal_kinetic_part = compute_discretized_kinetic_energy_jax(
+                alat=alat,
+                wavefunction_data=hamiltonian_data.wavefunction_data,
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
                 RT=R.T,
@@ -3270,28 +3137,26 @@ class GFMC_fixed_num_projection:
             # regularizations
             elements_non_diagonal_kinetic_part_all = elements_non_diagonal_kinetic_part.reshape(-1, 6)
             sign_flip_flags_elements = jnp.any(elements_non_diagonal_kinetic_part_all >= 0, axis=1)
-            non_diagonal_kinetic_part_elements = jnp.sum(
-                elements_non_diagonal_kinetic_part_all + 1.0 / (4.0 * self.__alat**2), axis=1
-            )
+            non_diagonal_kinetic_part_elements = jnp.sum(elements_non_diagonal_kinetic_part_all + 1.0 / (4.0 * alat**2), axis=1)
             sign_flip_flags_elements_up, sign_flip_flags_elements_dn = jnp.split(sign_flip_flags_elements, [len(r_up_carts)])
             non_diagonal_kinetic_part_elements_up, non_diagonal_kinetic_part_elements_dn = jnp.split(
                 non_diagonal_kinetic_part_elements, [len(r_up_carts)]
             )
 
             # compute diagonal elements, el-el
-            diagonal_bare_coulomb_part_el_el = _compute_bare_coulomb_potential_el_el_jax(
+            diagonal_bare_coulomb_part_el_el = compute_bare_coulomb_potential_el_el_jax(
                 r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
             )
 
             # compute diagonal elements, ion-ion
-            diagonal_bare_coulomb_part_ion_ion = _compute_bare_coulomb_potential_ion_ion_jax(
-                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data
+            diagonal_bare_coulomb_part_ion_ion = compute_bare_coulomb_potential_ion_ion_jax(
+                coulomb_potential_data=hamiltonian_data.coulomb_potential_data
             )
 
             # compute diagonal elements, el-ion
             diagonal_bare_coulomb_part_el_ion_elements_up, diagonal_bare_coulomb_part_el_ion_elements_dn = (
-                _compute_bare_coulomb_potential_el_ion_element_wise_jax(
-                    coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                compute_bare_coulomb_potential_el_ion_element_wise_jax(
+                    coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                 )
@@ -3301,11 +3166,11 @@ class GFMC_fixed_num_projection:
             (
                 diagonal_bare_coulomb_part_el_ion_discretized_elements_up,
                 diagonal_bare_coulomb_part_el_ion_discretized_elements_dn,
-            ) = _compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax(
-                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+            ) = compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax(
+                coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
-                alat=self.__alat,
+                alat=alat,
             )
 
             # compose discretized el-ion potentials
@@ -3315,7 +3180,12 @@ class GFMC_fixed_num_projection:
                 - non_diagonal_kinetic_part_elements_up
             )
             # """
-            diagonal_bare_coulomb_part_el_ion_ei_up = diagonal_bare_coulomb_part_el_ion_discretized_elements_up
+            # The singularity of the bare coulomb potential is cut only for all-electron calculations. (c.f., parcutg=2 in TurboRVB).
+            # The discretized bare coulomb potential is replaced with the standard bare coulomb potential without any truncation for effectice core potential calculations. (c.f., parcutg=1 in TurboRVB).
+            if hamiltonian_data.coulomb_potential_data.ecp_flag:
+                diagonal_bare_coulomb_part_el_ion_ei_up = diagonal_bare_coulomb_part_el_ion_elements_up
+            else:
+                diagonal_bare_coulomb_part_el_ion_ei_up = diagonal_bare_coulomb_part_el_ion_discretized_elements_up
             diagonal_bare_coulomb_part_el_ion_max_up = jnp.maximum(
                 diagonal_bare_coulomb_part_el_ion_zv_up, diagonal_bare_coulomb_part_el_ion_ei_up
             )
@@ -3333,7 +3203,12 @@ class GFMC_fixed_num_projection:
                 - non_diagonal_kinetic_part_elements_dn
             )
             # """
-            diagonal_bare_coulomb_part_el_ion_ei_dn = diagonal_bare_coulomb_part_el_ion_discretized_elements_dn
+            # The singularity of the bare coulomb potential is cut only for all-electron calculations. (c.f., parcutg=2 in TurboRVB).
+            # The discretized bare coulomb potential is replaced with the standard bare coulomb potential without any truncation for effectice core potential calculations. (c.f., parcutg=1 in TurboRVB).
+            if hamiltonian_data.coulomb_potential_data.ecp_flag:
+                diagonal_bare_coulomb_part_el_ion_ei_dn = diagonal_bare_coulomb_part_el_ion_elements_dn
+            else:
+                diagonal_bare_coulomb_part_el_ion_ei_dn = diagonal_bare_coulomb_part_el_ion_discretized_elements_dn
             diagonal_bare_coulomb_part_el_ion_max_dn = jnp.maximum(
                 diagonal_bare_coulomb_part_el_ion_zv_dn, diagonal_bare_coulomb_part_el_ion_ei_dn
             )
@@ -3351,7 +3226,7 @@ class GFMC_fixed_num_projection:
                 + jnp.sum(diagonal_bare_coulomb_part_el_ion_opt_up)
                 + jnp.sum(diagonal_bare_coulomb_part_el_ion_opt_dn)
             )
-            '''
+            #'''
 
             # with ECP
             if hamiltonian_data.coulomb_potential_data.ecp_flag:
@@ -3393,13 +3268,18 @@ class GFMC_fixed_num_projection:
                     V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
                     diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
 
-                    Jastrow_ratio = compute_ratio_Jastrow_part_jax(
-                        jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
-                        old_r_up_carts=r_up_carts,
-                        old_r_dn_carts=r_dn_carts,
-                        new_r_up_carts_arr=mesh_non_local_ecp_part_r_up_carts,
-                        new_r_dn_carts_arr=mesh_non_local_ecp_part_r_dn_carts,
+                    Jastrow_ref = compute_Jastrow_part_jax(
+                        wavefunction_data=hamiltonian_data.wavefunction_data.jastrow_data,
+                        r_up_carts=r_up_carts,
+                        r_dn_carts=r_dn_carts,
                     )
+
+                    Jastrow_on_mesh = vmap(compute_Jastrow_part_jax, in_axes=(None, 0, 0))(
+                        hamiltonian_data.wavefunction_data.jastrow_data,
+                        mesh_non_local_ecp_part_r_up_carts,
+                        mesh_non_local_ecp_part_r_dn_carts,
+                    )
+                    Jastrow_ratio = Jastrow_on_mesh / Jastrow_ref
                     V_nonlocal_FN = V_nonlocal_FN * Jastrow_ratio
 
                     non_diagonal_sum_hamiltonian_ecp = jnp.sum(V_nonlocal_FN)
