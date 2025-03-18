@@ -1,6 +1,12 @@
 # jQMC
 **jQMC** is an ab initio quantum Monte Carlo (QMC) simulation package developed entirely from scratch using `Python` and `JAX`. Originally designed for molecular systems—with future extensions planned for periodic systems—**jQMC** implements two well-established QMC algorithms: Variational Monte Carlo (VMC) and a robust and efficient variant of Diffusion Monte Carlo algorithm known as Lattice Regularized Diffusion Monte Carlo (LRDMC). By leveraging `JAX’s` just-in-time (`jit`) compilation and vectorized mapping (`vmap`) functionalities, `jQMC` achieves high-performance computations **especially on GPUs and TPUs** while remaining portable across CPUs, GPUs, and TPUs.
 
+![license](https://img.shields.io/github/license/kousuke-nakano/jQMC)
+![release](https://img.shields.io/github/release/kousuke-nakano/jQMC/all.svg)
+![fork](https://img.shields.io/github/forks/kousuke-nakano/jQMC?style=social)
+![stars](https://img.shields.io/github/stars/kousuke-nakano/jQMC?style=social)
+![workflows](https://github.com/kousuke-nakano/jQMC/actions/workflows/jqmc-run-pytest.yml/badge.svg)
+
 What sets **jQMC** apart:
 
 - It employs a resonating valence bond (RVB)-type wave function, such as the Jastrow Antisymmetrized Geminal (JAGP) wavefunction, which captures correlation effects beyond the conventional Jastrow-Slater wave function used in many other QMC codes.
@@ -13,12 +19,6 @@ What sets **jQMC** apart:
 - To minimize bugs, the code is written in a loosely coupled manner and includes comprehensive unit tests and regression tests (managed by `pytest`).
 
 This combination of features makes **jQMC** a versatile and powerful tool for both users and developers in the field of quantum Monte Carlo simulations.
-
-![license](https://img.shields.io/github/license/kousuke-nakano/jQMC)
-![release](https://img.shields.io/github/release/kousuke-nakano/jQMC/all.svg)
-![fork](https://img.shields.io/github/forks/kousuke-nakano/jQMC?style=social)
-![stars](https://img.shields.io/github/stars/kousuke-nakano/jQMC?style=social)
-![workflows](https://github.com/kousuke-nakano/jQMC/actions/workflows/jqmc-run-pytest.yml/badge.svg)
 
 ## Known issues
 - On CPUs, `jQMC` is ~10 times slower than other QMC codes implemented by a compiled language, such as C++, Fortran. Further improvements from the algorith and implementation viewpoints are needed. On GPUs, `jQMC` should be compatible with other QMC codes, but further benchmark tests are needed to confirm this.

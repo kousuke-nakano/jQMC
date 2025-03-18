@@ -1923,7 +1923,7 @@ class GFMC_fixed_projection_time:
                     V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
                     diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
                     Jastrow_ref = compute_Jastrow_part_jax(
-                        wavefunction_data=hamiltonian_data.wavefunction_data.jastrow_data,
+                        jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
                     )
@@ -3002,7 +3002,7 @@ class GFMC_fixed_num_projection:
                         diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
 
                         Jastrow_ref = compute_Jastrow_part_jax(
-                            wavefunction_data=hamiltonian_data.wavefunction_data.jastrow_data,
+                            jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                             r_up_carts=r_up_carts,
                             r_dn_carts=r_dn_carts,
                         )
@@ -3269,7 +3269,7 @@ class GFMC_fixed_num_projection:
                     diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
 
                     Jastrow_ref = compute_Jastrow_part_jax(
-                        wavefunction_data=hamiltonian_data.wavefunction_data.jastrow_data,
+                        jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
                     )
