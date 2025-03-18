@@ -15,7 +15,7 @@ What sets **jQMC** apart:
 This combination of features makes **jQMC** a versatile and powerful tool for both users and developers in the field of quantum Monte Carlo simulations.
 
 ![license](https://img.shields.io/github/license/kousuke-nakano/jQMC)
-![release](https://img.shields.io/github/license/kousuke-nakano/jQMC/all.svg)
+![release](https://img.shields.io/github/release/kousuke-nakano/jQMC/all.svg)
 ![fork](https://img.shields.io/github/forks/kousuke-nakano/jQMC?style=social)
 ![stars](https://img.shields.io/github/stars/kousuke-nakano/jQMC?style=social)
 ![workflows](https://github.com/kousuke-nakano/jQMC/actions/workflows/jqmc-run-pytest.yml/badge.svg)
