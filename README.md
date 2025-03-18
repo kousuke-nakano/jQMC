@@ -18,9 +18,10 @@ This combination of features makes **jQMC** a versatile and powerful tool for bo
 
 
 ## Known issues
-- Atomic force calculations with **solid (sperical) harmonics GTOs** are much slower than energy and energy-optimization calculations due to the very slow compilations of dlnPsi/dR and de_L/dR. This is because `grad`, `jvp`, and `vjp` are slow for these terms for some reason. A more detailed analysis will be needed. Please use **cartesian GTOs** to do those calculations
+- `jQMC` cannot calculate a system with many electrons (let's say more than 200 electrons) because the algorithmic differentiation by JAX shows numerical instability in computing the kinetic energy of a wavefunction (i.e., $\nabla \ln{\Psi}$ and $\nabla^2 \ln{\Psi}$). This should be solved by implemeting custum derivatives. WIP.
 - On CPUs, `jQMC` is ~10 times slower than other QMC codes implemented by a compiled language, such as C++, Fortran. Further improvements from the algorith and implementation viewpoints are needed. On GPUs, `jQMC` should be compatible with other QMC codes, but further benchmark tests are needed to confirm this.
-- Periodic boundary condition calculations are not supoorted yet. It will be implemented in the future as `JAX` supports complex128.
+- Atomic force calculations with **solid (sperical) harmonics GTOs** are much slower than energy and energy-optimization calculations due to the very slow compilations of dlnPsi/dR and de_L/dR. This is because `grad`, `jvp`, and `vjp` are slow for these terms for some reason. A more detailed analysis will be needed. Please use **cartesian GTOs** to do those calculations
+- Periodic boundary condition calculations are not supoorted yet. It will be implemented in the future as `JAX` supports complex128. WIP.
 
 ## Developer(s)
 Kosuke Nakano (National Institute for Materials Science, NIMS, Japan)

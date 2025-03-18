@@ -47,7 +47,7 @@ from mpi4py import MPI
 
 # jQMC
 from .header_footer import print_footer, print_header
-from .jqmc_kernel import MCMC, QMC, GFMC_fixed_num_projection
+from .jqmc_kernel import MCMC, QMC, GFMC_fixed_num_projection, GFMC_fixed_projection_time
 from .jqmc_miscs import cli_parameters
 
 # MPI related
@@ -419,6 +419,91 @@ def cli():
                     num_gfmc_collect_steps=num_gfmc_collect_steps,
                     mcmc_seed=mcmc_seed,
                     E_scf=E_scf,
+                    alat=alat,
+                    non_local_move=non_local_move,
+                )
+                lrdmc = QMC(gfmc)
+        lrdmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
+        E_mean, E_std, Var_mean, Var_std = lrdmc.get_E(
+            num_mcmc_warmup_steps=num_gfmc_warmup_steps,
+            num_mcmc_bin_blocks=num_gfmc_bin_blocks,
+        )
+        logger.info("Final output(s):")
+        logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:5f} Ha.")
+        logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:5f} Ha^2.")
+        logger.info("")
+        logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
+        logger.info("")
+
+        # Save the checkpoint file for each process and zip them."""
+        filename = f".{mpi_rank}_{restart_chk}"
+        with open(filename, "wb") as f:
+            pickle.dump(lrdmc, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+        # Wait all MPI processes
+        mpi_comm.Barrier()
+
+        # Zip them.
+        if mpi_rank == 0:
+            filename_list = [f".{rank}_{restart_chk}" for rank in range(mpi_size)]
+            with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
+                for filename in filename_list:
+                    zipf.write(filename, arcname=filename.lstrip("."))
+                    os.remove(filename)
+
+        logger.info("")
+
+    # LRDMC with fixed time!
+    if job_type == "lrdmc-tau":
+        logger.info("***Lattice Regularized diffusion Monte Carlo with a fixed projection time***")
+
+        # vmcopt section
+        section = "lrdmc-tau"
+        for key in parameters[section].keys():
+            try:
+                parameters[section][key] = dict_toml[section][key]
+            except KeyError:
+                if parameters[section][key] is None:
+                    logger.error(f"{key} should be specified.")
+                    sys.exit(1)
+                else:
+                    logger.warning(f"The default value of {key} = {parameters[section][key]}.")
+
+        logger.info("")
+
+        # parameters
+        num_mcmc_steps = parameters["lrdmc-tau"]["num_mcmc_steps"]
+        tau = parameters["lrdmc-tau"]["tau"]
+        alat = parameters["lrdmc-tau"]["alat"]
+        non_local_move = parameters["lrdmc-tau"]["non_local_move"]
+        num_gfmc_warmup_steps = parameters["lrdmc-tau"]["num_gfmc_warmup_steps"]
+        num_gfmc_bin_blocks = parameters["lrdmc-tau"]["num_gfmc_bin_blocks"]
+        num_gfmc_collect_steps = parameters["lrdmc-tau"]["num_gfmc_collect_steps"]
+
+        # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
+        if num_mcmc_steps < num_gfmc_warmup_steps:
+            raise ValueError("num_mcmc_steps should be larger than num_gfmc_warmup_steps")
+        if num_mcmc_steps - num_gfmc_warmup_steps < num_gfmc_bin_blocks:
+            raise ValueError("(num_mcmc_steps - num_gfmc_warmup_steps) should be larger than num_gfmc_bin_blocks.")
+        if num_gfmc_bin_blocks < num_gfmc_collect_steps:
+            raise ValueError("num_gfmc_bin_blocks should be larger than num_gfmc_collect_steps.")
+
+        if restart:
+            logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
+            """Unzip the checkpoint file for each process and load them."""
+            filename = f"{mpi_rank}_{restart_chk}"
+            with zipfile.ZipFile(restart_chk, "r") as zipf:
+                data = zipf.read(filename)
+                lrdmc = pickle.loads(data)
+        else:
+            with open(hamiltonian_chk, "rb") as f:
+                hamiltonian_data = pickle.load(f)
+                gfmc = GFMC_fixed_projection_time(
+                    hamiltonian_data=hamiltonian_data,
+                    num_walkers=number_of_walkers,
+                    tau=tau,
+                    num_gfmc_collect_steps=num_gfmc_collect_steps,
+                    mcmc_seed=mcmc_seed,
                     alat=alat,
                     non_local_move=non_local_move,
                 )

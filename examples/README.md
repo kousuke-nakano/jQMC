@@ -4,7 +4,7 @@ A collection of examples of jQMC codes.
 
 ## example01
 
-Total energy of water molecule. One can learn how to obtain the VMC and DMC (in the extrapolated limit) energies of the water molecule, starting from scratch (i.e., DFT calculation by pySCF), with cartesian GTOs.
+Total energy of water molecule with the Jastrow-Slater anstaz. One can learn how to obtain the VMC and DMC (in the extrapolated limit) energies of the water molecule, starting from scratch (i.e., DFT calculation by pySCF), with cartesian GTOs.
 
 ## example02
 
