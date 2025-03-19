@@ -1933,7 +1933,7 @@ class GFMC_fixed_projection_time:
                         mesh_non_local_ecp_part_r_up_carts,
                         mesh_non_local_ecp_part_r_dn_carts,
                     )
-                    Jastrow_ratio = Jastrow_on_mesh / Jastrow_ref
+                    Jastrow_ratio = jnp.exp(Jastrow_on_mesh - Jastrow_ref)
                     V_nonlocal_FN = V_nonlocal_FN * Jastrow_ratio
 
                     non_diagonal_sum_hamiltonian_ecp = jnp.sum(V_nonlocal_FN)
@@ -3011,7 +3011,7 @@ class GFMC_fixed_num_projection:
                             mesh_non_local_ecp_part_r_up_carts,
                             mesh_non_local_ecp_part_r_dn_carts,
                         )
-                        Jastrow_ratio = Jastrow_on_mesh / Jastrow_ref
+                        Jastrow_ratio = jnp.exp(Jastrow_on_mesh - Jastrow_ref)
 
                         V_nonlocal_FN = V_nonlocal_FN * Jastrow_ratio
 
@@ -3279,7 +3279,7 @@ class GFMC_fixed_num_projection:
                         mesh_non_local_ecp_part_r_up_carts,
                         mesh_non_local_ecp_part_r_dn_carts,
                     )
-                    Jastrow_ratio = Jastrow_on_mesh / Jastrow_ref
+                    Jastrow_ratio = jnp.exp(Jastrow_on_mesh - Jastrow_ref)
                     V_nonlocal_FN = V_nonlocal_FN * Jastrow_ratio
 
                     non_diagonal_sum_hamiltonian_ecp = jnp.sum(V_nonlocal_FN)
