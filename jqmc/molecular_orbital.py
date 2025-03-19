@@ -52,6 +52,7 @@ from jax import typing as jnpt
 from .atomic_orbital import (
     AO_sphe_data,
     AOs_cart_data,
+    AOs_cart_data_deriv_R,
     AOs_sphe_data,
     AOs_sphe_data_deriv_R,
     _compute_AO_sphe,
@@ -128,7 +129,9 @@ class MOs_data_deriv_R(MOs_data):
 
     num_mo: int = struct.field(pytree_node=False, default=0)
     aos_data: AOs_sphe_data | AOs_cart_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
-    mo_coefficients: npt.NDArray[np.float64] = struct.field(pytree_node=False, default_factory=lambda: np.array([]))
+    mo_coefficients: npt.NDArray[np.float64] = struct.field(
+        pytree_node=True, default_factory=lambda: np.array([])
+    )  # pytree_node cannot be set False because it is np.array. it should be replaced with jax.ArrayLike in future.
 
     @classmethod
     def from_base(cls, mos_data: MOs_data):
@@ -137,7 +140,7 @@ class MOs_data_deriv_R(MOs_data):
         if isinstance(mos_data.aos_data, AOs_sphe_data):
             aos_data = AOs_sphe_data_deriv_R.from_base(aos_data=mos_data.aos_data)
         elif isinstance(mos_data.aos_data, AOs_cart_data):
-            aos_data = AOs_cart_data.from_base(aos_data=mos_data.aos_data)  # to be implemented AOs_cart_data_deriv_R
+            aos_data = AOs_cart_data_deriv_R.from_base(aos_data=mos_data.aos_data)
         mo_coefficients = mos_data.mo_coefficients
         return cls(num_mo, aos_data, mo_coefficients)
 

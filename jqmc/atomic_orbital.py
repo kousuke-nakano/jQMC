@@ -349,6 +349,98 @@ class AOs_cart_data:
 
 
 @struct.dataclass
+class AOs_cart_data_deriv_R(AOs_cart_data):
+    """See AOs_data."""
+
+    structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
+    nucleus_index: list[int] = struct.field(pytree_node=False, default_factory=list)
+    num_ao: int = struct.field(pytree_node=False, default=0)
+    num_ao_prim: int = struct.field(pytree_node=False, default=0)
+    orbital_indices: list[int] = struct.field(pytree_node=False, default_factory=list)
+    exponents: list[float] = struct.field(pytree_node=False, default_factory=list)
+    coefficients: list[float] = struct.field(pytree_node=False, default_factory=list)
+    angular_momentums: list[int] = struct.field(pytree_node=False, default_factory=list)
+    polynominal_order_x: list[int] = struct.field(pytree_node=False, default_factory=list)
+    polynominal_order_y: list[int] = struct.field(pytree_node=False, default_factory=list)
+    polynominal_order_z: list[int] = struct.field(pytree_node=False, default_factory=list)
+
+    @classmethod
+    def from_base(cls, aos_data: AOs_cart_data):
+        """Switch pytree_node."""
+        structure_data = aos_data.structure_data
+        nucleus_index = aos_data.nucleus_index
+        num_ao = aos_data.num_ao
+        num_ao_prim = aos_data.num_ao_prim
+        orbital_indices = aos_data.orbital_indices
+        exponents = aos_data.exponents
+        coefficients = aos_data.coefficients
+        angular_momentums = aos_data.angular_momentums
+        polynominal_order_x = aos_data.polynominal_order_x
+        polynominal_order_y = aos_data.polynominal_order_y
+        polynominal_order_z = aos_data.polynominal_order_z
+
+        return cls(
+            structure_data,
+            nucleus_index,
+            num_ao,
+            num_ao_prim,
+            orbital_indices,
+            exponents,
+            coefficients,
+            angular_momentums,
+            polynominal_order_x,
+            polynominal_order_y,
+            polynominal_order_z,
+        )
+
+
+@struct.dataclass
+class AOs_cart_data_no_deriv(AOs_cart_data):
+    """See AOs_data."""
+
+    structure_data: Structure_data = struct.field(pytree_node=False, default_factory=lambda: Structure_data())
+    nucleus_index: list[int] = struct.field(pytree_node=False, default_factory=list)
+    num_ao: int = struct.field(pytree_node=False, default=0)
+    num_ao_prim: int = struct.field(pytree_node=False, default=0)
+    orbital_indices: list[int] = struct.field(pytree_node=False, default_factory=list)
+    exponents: list[float] = struct.field(pytree_node=False, default_factory=list)
+    coefficients: list[float] = struct.field(pytree_node=False, default_factory=list)
+    angular_momentums: list[int] = struct.field(pytree_node=False, default_factory=list)
+    polynominal_order_x: list[int] = struct.field(pytree_node=False, default_factory=list)
+    polynominal_order_y: list[int] = struct.field(pytree_node=False, default_factory=list)
+    polynominal_order_z: list[int] = struct.field(pytree_node=False, default_factory=list)
+
+    @classmethod
+    def from_base(cls, aos_data: AOs_cart_data):
+        """Switch pytree_node."""
+        structure_data = aos_data.structure_data
+        nucleus_index = aos_data.nucleus_index
+        num_ao = aos_data.num_ao
+        num_ao_prim = aos_data.num_ao_prim
+        orbital_indices = aos_data.orbital_indices
+        exponents = aos_data.exponents
+        coefficients = aos_data.coefficients
+        angular_momentums = aos_data.angular_momentums
+        polynominal_order_x = aos_data.polynominal_order_x
+        polynominal_order_y = aos_data.polynominal_order_y
+        polynominal_order_z = aos_data.polynominal_order_z
+
+        return cls(
+            structure_data,
+            nucleus_index,
+            num_ao,
+            num_ao_prim,
+            orbital_indices,
+            exponents,
+            coefficients,
+            angular_momentums,
+            polynominal_order_x,
+            polynominal_order_y,
+            polynominal_order_z,
+        )
+
+
+@struct.dataclass
 class AOs_sphe_data:
     """Atomic Orbitals dataclass.
 

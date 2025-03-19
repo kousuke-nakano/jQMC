@@ -418,7 +418,7 @@ class Jastrow_three_body_data:
         j_matrix (npt.NDArray[np.float64]): J matrix dim. (orb_data.num_ao, orb_data.num_ao+1))
     """
 
-    orb_data: AOs_sphe_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
+    orb_data: AOs_sphe_data | AOs_cart_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
     j_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
     def sanity_check(self) -> None:
@@ -489,10 +489,10 @@ class Jastrow_three_body_data:
             raise NotImplementedError
 
     @classmethod
-    def init_jastrow_three_body_data(cls, orb_data: AOs_sphe_data):
+    def init_jastrow_three_body_data(cls, orb_data: AOs_sphe_data | AOs_cart_data | MOs_data):
         """Initialization."""
         j_matrix = np.zeros((orb_data.num_orb, orb_data.num_orb + 1))
-
+        j_matrix = np.random.uniform(0.01, 0.10, size=(orb_data.num_orb, orb_data.num_orb + 1))
         jastrow_three_body_data = cls(
             orb_data=orb_data,
             j_matrix=j_matrix,
@@ -504,7 +504,9 @@ class Jastrow_three_body_data:
 class Jastrow_three_body_data_deriv_params(Jastrow_three_body_data):
     """See Jastrow_three_body_data."""
 
-    orb_data: MOs_data | AOs_sphe_data = struct.field(pytree_node=False, default_factory=lambda: AOs_sphe_data())
+    orb_data: MOs_data | AOs_sphe_data | AOs_cart_data = struct.field(
+        pytree_node=False, default_factory=lambda: AOs_sphe_data()
+    )
     j_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
     @classmethod
@@ -517,7 +519,7 @@ class Jastrow_three_body_data_deriv_params(Jastrow_three_body_data):
 class Jastrow_three_body_data_deriv_R(Jastrow_three_body_data):
     """See Jastrow_three_body_data."""
 
-    orb_data: MOs_data | AOs_sphe_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
+    orb_data: MOs_data | AOs_sphe_data | AOs_cart_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
     j_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=False, default_factory=lambda: np.array([]))
 
     @classmethod

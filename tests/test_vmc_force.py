@@ -104,7 +104,6 @@ def test_vmc_force_with_SWCT_ecp():
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
-    # print(force_mean, force_std)
 
     # See [J. Chem. Phys. 156, 034101 (2022)]
     np.testing.assert_almost_equal(np.array(force_mean[0]), -1.0 * np.array(force_mean[1]), decimal=6)
@@ -117,7 +116,7 @@ def test_vmc_force_with_SWCT_ae():
     (
         structure_data,
         aos_data,
-        _,
+        mos_data,
         _,
         geminal_mo_data,
         coulomb_potential_data,
@@ -125,10 +124,11 @@ def test_vmc_force_with_SWCT_ae():
     # """
 
     jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
-        jastrow_1b_param=1.0, structure_data=structure_data, core_electrons=[0, 0]
+        jastrow_1b_param=0.5, structure_data=structure_data, core_electrons=[0, 0]
     )
-    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5)
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.3)
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
+    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=mos_data)
 
     # define data
     jastrow_data = Jastrow_data(
@@ -169,7 +169,6 @@ def test_vmc_force_with_SWCT_ae():
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
-    # print(force_mean, force_std)
 
     # See [J. Chem. Phys. 156, 034101 (2022)]
     np.testing.assert_almost_equal(np.array(force_mean[0]), -1.0 * np.array(force_mean[1]), decimal=6)

@@ -56,8 +56,9 @@ from .coulomb_potential import (
 )
 from .determinant import Geminal_data, compute_AS_regularization_factor_jax, compute_det_geminal_all_elements_jax
 from .hamiltonians import (
-    Hamiltonian_data,  # Hamiltonian_data_deriv_R,
+    Hamiltonian_data,
     Hamiltonian_data_deriv_params,
+    Hamiltonian_data_deriv_R,
     compute_kinetic_energy_jax,
     compute_local_energy_jax,
 )
@@ -821,15 +822,14 @@ class MCMC:
             )
             R_AS_eps = jnp.maximum(R_AS, self.__epsilon_AS)
 
-            # logger.info(f"R_AS = {R_AS}.")
-            # logger.info(f"R_AS_eps = {R_AS_eps}.")
+            logger.devel(f"R_AS = {R_AS}.")
+            logger.devel(f"R_AS_eps = {R_AS_eps}.")
 
             w_L = (R_AS / R_AS_eps) ** 2
             if (i_mcmc_step + 1) % mcmc_interval == 0:
                 logger.debug(f"      min, mean, max of weights are {np.min(w_L):.2f}, {np.mean(w_L):.2f}, {np.max(w_L):.2f}.")
             self.__stored_w_L.append(w_L)
 
-            # logger.info(f"      The current epsilon_AS = {self.__epsilon_AS:.5f}")
             """ deactivated for the time being
             if adjust_epsilon_AS:
                 # Update adjust_epsilon_AS so that the average of weights approaches target_weight. Proportional control.
@@ -1118,9 +1118,8 @@ class MCMC:
         """Set hamiltonian_data."""
         if self.__comput_param_deriv and not self.__comput_position_deriv:
             self.__hamiltonian_data = Hamiltonian_data_deriv_params.from_base(hamiltonian_data)
-        # bug?
-        # elif not self.__comput_param_deriv and self.__comput_position_deriv:
-        #    self.__hamiltonian_data = Hamiltonian_data_deriv_R.from_base(hamiltonian_data)
+        elif not self.__comput_param_deriv and self.__comput_position_deriv:
+            self.__hamiltonian_data = Hamiltonian_data_deriv_R.from_base(hamiltonian_data)
         else:
             self.__hamiltonian_data = hamiltonian_data
         self.__init_attributes()
@@ -1585,6 +1584,7 @@ class GFMC_fixed_projection_time:
         logger.info("")
 
         # init attributes
+        self.hamiltonian_data = self.__hamiltonian_data
         self.__init_attributes()
 
     def __init_attributes(self):
@@ -2572,6 +2572,7 @@ class GFMC_fixed_num_projection:
         logger.info("")
 
         # init attributes
+        self.hamiltonian_data = self.__hamiltonian_data
         self.__init_attributes()
 
     def __init_attributes(self):
@@ -2630,7 +2631,10 @@ class GFMC_fixed_num_projection:
     @hamiltonian_data.setter
     def hamiltonian_data(self, hamiltonian_data):
         """Set hamiltonian_data."""
-        self.__hamiltonian_data = hamiltonian_data
+        if self.__comput_position_deriv:
+            self.__hamiltonian_data = Hamiltonian_data_deriv_R.from_base(hamiltonian_data)
+        else:
+            self.__hamiltonian_data = hamiltonian_data
         self.__init_attributes()
 
     # collecting factor
@@ -4476,11 +4480,11 @@ class QMC:
 
             E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
 
-            logger.devel(f"w_L.shape for MPI-rank={mpi_rank} is {w_L.shape}")
-            logger.devel(f"e_L.shape for MPI-rank={mpi_rank} is {e_L.shape}")
-            logger.devel(f"force_HF.shape for MPI-rank={mpi_rank} is {force_HF.shape}")
-            logger.devel(f"force_PP.shape for MPI-rank={mpi_rank} is {force_PP.shape}")
-            logger.devel(f"E_L_force_PP.shape for MPI-rank={mpi_rank} is {E_L_force_PP.shape}")
+            logger.debug(f"w_L.shape for MPI-rank={mpi_rank} is {w_L.shape}")
+            logger.debug(f"e_L.shape for MPI-rank={mpi_rank} is {e_L.shape}")
+            logger.debug(f"force_HF.shape for MPI-rank={mpi_rank} is {force_HF.shape}")
+            logger.debug(f"force_PP.shape for MPI-rank={mpi_rank} is {force_PP.shape}")
+            logger.debug(f"E_L_force_PP.shape for MPI-rank={mpi_rank} is {E_L_force_PP.shape}")
 
             # split and binning with multiple walkers
             w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
@@ -4489,8 +4493,9 @@ class QMC:
             w_L_force_PP_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_PP), num_mcmc_bin_blocks, axis=0)
             w_L_E_L_force_PP_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, E_L_force_PP), num_mcmc_bin_blocks, axis=0)
 
-            w_L_binned = list(np.ravel(np.sum(np.stack(w_L_split), axis=1)))
-            w_L_e_L_binned = list(np.ravel(np.sum(np.stack(w_L_e_L_split), axis=1)))
+            # binned sum
+            w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
+            w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
 
             w_L_force_HF_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_HF_split])
             w_L_force_HF_binned_shape = (

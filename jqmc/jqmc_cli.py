@@ -253,11 +253,11 @@ def cli():
             logger.info("  Atomic Forces:")
             sep = 16 * 3
             logger.info("  " + "-" * sep)
-            logger.info("  Label       Fx           Fy           Fz")
+            logger.info("  Label   Fx(Ha/bohr) Fy(Ha/bohr) Fz(Ha/bohr)")
             logger.info("  " + "-" * sep)
             for i in range(len(hamiltonian_data.structure_data.atomic_labels)):
                 atomic_label = str(hamiltonian_data.structure_data.atomic_labels[i])
-                row_values = [f"{ufloat(f_mean[i, j], f_std[i, j]):+2uS}" for j in range(f_mean.shape[1])]
+                row_values = [f"{ufloat(f_mean[i, j], f_std[i, j]):+2uS}" for j in range(3)]
                 row_str = "  " + atomic_label.ljust(8) + "".join(val.ljust(12) for val in row_values)
                 logger.info(row_str)
             logger.info("  " + "-" * sep)
@@ -459,11 +459,11 @@ def cli():
             logger.info("  Atomic Forces:")
             sep = 16 * 3
             logger.info("  " + "-" * sep)
-            logger.info("  Label        Fx           Fy           Fz")
+            logger.info("  Label   Fx(Ha/bohr) Fy(Ha/bohr) Fz(Ha/bohr)")
             logger.info("  " + "-" * sep)
             for i in range(len(hamiltonian_data.structure_data.atomic_labels)):
                 atomic_label = str(hamiltonian_data.structure_data.atomic_labels[i])
-                row_values = [f"{ufloat(f_mean[i, j], f_std[i, j]):+2uS}" for j in range(f_mean.shape[1])]
+                row_values = [f"{ufloat(f_mean[i, j], f_std[i, j]):+2uS}" for j in range(3)]
                 row_str = "  " + atomic_label.ljust(8) + "".join(val.ljust(12) for val in row_values)
                 logger.info(row_str)
             logger.info("  " + "-" * sep)
