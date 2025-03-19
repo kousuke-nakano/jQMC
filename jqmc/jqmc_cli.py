@@ -44,6 +44,7 @@ import toml
 
 # MPI
 from mpi4py import MPI
+from uncertainties import ufloat
 
 # jQMC
 from .header_footer import print_footer, print_header
@@ -205,6 +206,7 @@ def cli():
         num_mcmc_bin_blocks = parameters["vmc"]["num_mcmc_bin_blocks"]
         Dt = parameters["vmc"]["Dt"]
         epsilon_AS = parameters["vmc"]["epsilon_AS"]
+        atomic_force = parameters["vmc"]["atomic_force"]
 
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
         if num_mcmc_steps < num_mcmc_warmup_steps:
@@ -230,7 +232,7 @@ def cli():
                     num_walkers=number_of_walkers,
                     num_mcmc_per_measurement=num_mcmc_per_measurement,
                     epsilon_AS=epsilon_AS,
-                    comput_position_deriv=False,
+                    comput_position_deriv=atomic_force,
                     comput_param_deriv=False,
                 )
                 vmc = QMC(mcmc)
@@ -239,12 +241,27 @@ def cli():
             num_mcmc_warmup_steps=num_mcmc_warmup_steps,
             num_mcmc_bin_blocks=num_mcmc_bin_blocks,
         )
-
+        if mcmc.comput_position_deriv:
+            f_mean, f_std = vmc.get_aF(
+                num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+                num_mcmc_bin_blocks=num_mcmc_bin_blocks,
+            )
         logger.info("Final output(s):")
         logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:5f} Ha.")
         logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:5f} Ha^2.")
+        if mcmc.comput_position_deriv:
+            logger.info("  Atomic Forces:")
+            sep = 16 * 3
+            logger.info("  " + "-" * sep)
+            logger.info("  Label       Fx           Fy           Fz")
+            logger.info("  " + "-" * sep)
+            for i in range(len(hamiltonian_data.structure_data.atomic_labels)):
+                atomic_label = str(hamiltonian_data.structure_data.atomic_labels[i])
+                row_values = [f"{ufloat(f_mean[i, j], f_std[i, j]):+2uS}" for j in range(f_mean.shape[1])]
+                row_str = "  " + atomic_label.ljust(8) + "".join(val.ljust(12) for val in row_values)
+                logger.info(row_str)
+            logger.info("  " + "-" * sep)
         logger.info("")
-
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
         logger.info("")
 
@@ -393,6 +410,7 @@ def cli():
         num_gfmc_bin_blocks = parameters["lrdmc"]["num_gfmc_bin_blocks"]
         num_gfmc_collect_steps = parameters["lrdmc"]["num_gfmc_collect_steps"]
         E_scf = parameters["lrdmc"]["E_scf"]
+        atomic_force = parameters["lrdmc"]["atomic_force"]
 
         # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
         if num_mcmc_steps < num_gfmc_warmup_steps:
@@ -421,6 +439,7 @@ def cli():
                     E_scf=E_scf,
                     alat=alat,
                     non_local_move=non_local_move,
+                    comput_position_deriv=atomic_force,
                 )
                 lrdmc = QMC(gfmc)
         lrdmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
@@ -428,9 +447,26 @@ def cli():
             num_mcmc_warmup_steps=num_gfmc_warmup_steps,
             num_mcmc_bin_blocks=num_gfmc_bin_blocks,
         )
+        if gfmc.comput_position_deriv:
+            f_mean, f_std = lrdmc.get_aF(
+                num_mcmc_warmup_steps=num_gfmc_warmup_steps,
+                num_mcmc_bin_blocks=num_gfmc_bin_blocks,
+            )
         logger.info("Final output(s):")
         logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:5f} Ha.")
         logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:5f} Ha^2.")
+        if gfmc.comput_position_deriv:
+            logger.info("  Atomic Forces:")
+            sep = 16 * 3
+            logger.info("  " + "-" * sep)
+            logger.info("  Label        Fx           Fy           Fz")
+            logger.info("  " + "-" * sep)
+            for i in range(len(hamiltonian_data.structure_data.atomic_labels)):
+                atomic_label = str(hamiltonian_data.structure_data.atomic_labels[i])
+                row_values = [f"{ufloat(f_mean[i, j], f_std[i, j]):+2uS}" for j in range(f_mean.shape[1])]
+                row_str = "  " + atomic_label.ljust(8) + "".join(val.ljust(12) for val in row_values)
+                logger.info(row_str)
+            logger.info("  " + "-" * sep)
         logger.info("")
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
         logger.info("")

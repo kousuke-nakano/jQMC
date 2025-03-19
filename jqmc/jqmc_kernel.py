@@ -265,6 +265,11 @@ class MCMC:
         logger.devel(f"initial r_dn_carts.shape = {self.__latest_r_dn_carts.shape}")
         logger.info("")
 
+        # print out hamiltonian info
+        logger.info("Printing out information in hamitonian_data instance.")
+        self.__hamiltonian_data.logger_info()
+        logger.info("")
+
         # SWCT data
         self.__swct_data = SWCT_data(structure=self.__hamiltonian_data.structure_data)
 
@@ -346,11 +351,6 @@ class MCMC:
             self.__timer_mcmc_init += end - start
             """
 
-        # print out hamiltonian info
-        logger.info("Printing out information in hamitonian_data instance.")
-        self.__hamiltonian_data.logger_info()
-        logger.info("")
-
         logger.info("Compilation of fundamental functions is done.")
         logger.info(f"Elapsed Time = {self.__timer_mcmc_init:.2f} sec.")
         logger.info("")
@@ -384,9 +384,6 @@ class MCMC:
 
         # stored de_L / dr_dn
         self.__stored_grad_e_L_r_dn = []
-
-        # stored ln_Psi
-        self.__stored_ln_Psi = []
 
         # stored dln_Psi / dr_up
         self.__stored_grad_ln_Psi_r_up = []
@@ -433,9 +430,6 @@ class MCMC:
         # stored de_L / dc_lambda_matrix
         self.__stored_grad_e_L_lambda_matrix = []
         """
-
-        # total number of electrons
-        self.__total_electrons = len(self.__latest_r_up_carts[0]) + len(self.__latest_r_dn_carts[0])
 
     def run(self, num_mcmc_steps: int = 0, max_time=86400) -> None:
         """Launch MCMCs with the set multiple walkers.
@@ -899,6 +893,9 @@ class MCMC:
                     + grad_e_L_h.coulomb_potential_data.structure_data.positions
                 )
 
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
+                    grad_e_L_R += grad_e_L_h.wavefunction_data.jastrow_data.jastrow_one_body_data.structure_data.positions
+
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
                     grad_e_L_R += (
                         grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
@@ -913,16 +910,6 @@ class MCMC:
                 logger.devel(f"de_L_dr_up = {grad_e_L_r_up}")
                 logger.devel(f"de_L_dr_dn= {grad_e_L_r_dn}")
                 # """
-
-                start = time.perf_counter()
-                ln_Psi = vmap(evaluate_ln_wavefunction_jax, in_axes=(None, 0, 0))(
-                    self.__hamiltonian_data.wavefunction_data,
-                    self.__latest_r_up_carts,
-                    self.__latest_r_dn_carts,
-                )
-                end = time.perf_counter()
-                logger.devel(f"ln_Psi = {ln_Psi}")
-                self.__stored_ln_Psi.append(ln_Psi)
 
                 # """
                 start = time.perf_counter()
@@ -945,6 +932,9 @@ class MCMC:
                     grad_ln_Psi_h.geminal_data.orb_data_up_spin.structure_data.positions
                     + grad_ln_Psi_h.geminal_data.orb_data_dn_spin.structure_data.positions
                 )
+
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
+                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_one_body_data.structure_data.positions
 
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
                     grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
@@ -1254,6 +1244,11 @@ class MCMC:
         return np.array(self.__stored_grad_e_L_lambda_matrix)
     '''
 
+    @property
+    def comput_position_deriv(self) -> bool:
+        """Return the flag for computing the derivatives of E wrt. atomic positions."""
+        return self.__comput_position_deriv
+
     # dict for WF optimization
     @property
     def opt_param_dict(self):
@@ -1555,30 +1550,31 @@ class GFMC_fixed_projection_time:
             r_up_carts=self.__latest_r_up_carts[0],
             r_dn_carts=self.__latest_r_dn_carts[0],
         )
-        _ = compute_ecp_local_parts_all_pairs_jax(
-            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-            r_up_carts=self.__latest_r_up_carts[0],
-            r_dn_carts=self.__latest_r_dn_carts[0],
-        )
-        if self.__non_local_move == "tmove":
-            _, _, _, _ = compute_ecp_non_local_parts_nearest_neighbors_jax(
+        if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
+            _ = compute_ecp_local_parts_all_pairs_jax(
                 coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                 r_up_carts=self.__latest_r_up_carts[0],
                 r_dn_carts=self.__latest_r_dn_carts[0],
-                flag_determinant_only=False,
             )
-        elif self.__non_local_move == "dltmove":
-            _, _, _, _ = compute_ecp_non_local_parts_nearest_neighbors_jax(
-                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                r_up_carts=self.__latest_r_up_carts[0],
-                r_dn_carts=self.__latest_r_dn_carts[0],
-                flag_determinant_only=True,
-            )
-        else:
-            logger.error(f"non_local_move = {self.__non_local_move} is not yet implemented.")
-            raise NotImplementedError
+            if self.__non_local_move == "tmove":
+                _, _, _, _ = compute_ecp_non_local_parts_nearest_neighbors_jax(
+                    coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                    r_up_carts=self.__latest_r_up_carts[0],
+                    r_dn_carts=self.__latest_r_dn_carts[0],
+                    flag_determinant_only=False,
+                )
+            elif self.__non_local_move == "dltmove":
+                _, _, _, _ = compute_ecp_non_local_parts_nearest_neighbors_jax(
+                    coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                    r_up_carts=self.__latest_r_up_carts[0],
+                    r_dn_carts=self.__latest_r_dn_carts[0],
+                    flag_determinant_only=True,
+                )
+            else:
+                logger.error(f"non_local_move = {self.__non_local_move} is not yet implemented.")
+                raise NotImplementedError
 
         end = time.perf_counter()
         self.__timer_gmfc_init += end - start
@@ -1964,6 +1960,7 @@ class GFMC_fixed_projection_time:
 
             # with all electrons
             else:
+                non_diagonal_sum_hamiltonian = non_diagonal_sum_hamiltonian_kinetic
                 # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
                 e_L = (
                     diagonal_kinetic_part
@@ -2514,30 +2511,31 @@ class GFMC_fixed_num_projection:
             r_up_carts=self.__latest_r_up_carts[0],
             r_dn_carts=self.__latest_r_dn_carts[0],
         )
-        _ = compute_ecp_local_parts_all_pairs_jax(
-            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-            r_up_carts=self.__latest_r_up_carts[0],
-            r_dn_carts=self.__latest_r_dn_carts[0],
-        )
-        if self.__non_local_move == "tmove":
-            _, _, _, _ = compute_ecp_non_local_parts_nearest_neighbors_jax(
+        if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
+            _ = compute_ecp_local_parts_all_pairs_jax(
                 coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
                 r_up_carts=self.__latest_r_up_carts[0],
                 r_dn_carts=self.__latest_r_dn_carts[0],
-                flag_determinant_only=False,
             )
-        elif self.__non_local_move == "dltmove":
-            _, _, _, _ = compute_ecp_non_local_parts_nearest_neighbors_jax(
-                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                r_up_carts=self.__latest_r_up_carts[0],
-                r_dn_carts=self.__latest_r_dn_carts[0],
-                flag_determinant_only=True,
-            )
-        else:
-            logger.error(f"non_local_move = {self.__non_local_move} is not yet implemented.")
-            raise NotImplementedError
+            if self.__non_local_move == "tmove":
+                _, _, _, _ = compute_ecp_non_local_parts_nearest_neighbors_jax(
+                    coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                    r_up_carts=self.__latest_r_up_carts[0],
+                    r_dn_carts=self.__latest_r_dn_carts[0],
+                    flag_determinant_only=False,
+                )
+            elif self.__non_local_move == "dltmove":
+                _, _, _, _ = compute_ecp_non_local_parts_nearest_neighbors_jax(
+                    coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
+                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
+                    r_up_carts=self.__latest_r_up_carts[0],
+                    r_dn_carts=self.__latest_r_dn_carts[0],
+                    flag_determinant_only=True,
+                )
+            else:
+                logger.error(f"non_local_move = {self.__non_local_move} is not yet implemented.")
+                raise NotImplementedError
 
         _ = compute_G_L(np.zeros((self.__num_gfmc_collect_steps * 2, 1)), self.__num_gfmc_collect_steps)
 
@@ -2601,9 +2599,6 @@ class GFMC_fixed_num_projection:
 
         # stored de_L / dr_dn
         self.__stored_grad_e_L_r_dn = []
-
-        # stored ln_Psi
-        self.__stored_ln_Psi = []
 
         # stored dln_Psi / dr_up
         self.__stored_grad_ln_Psi_r_up = []
@@ -2730,6 +2725,11 @@ class GFMC_fixed_num_projection:
     def domega_dr_dn(self) -> npt.NDArray:
         """Return the stored dOmega/dr_dn array. dim: (mcmc_counter, 1, num_electons_dn, 3)."""
         return np.array(self.__stored_grad_omega_r_dn)[self.__num_gfmc_collect_steps :]
+
+    @property
+    def comput_position_deriv(self) -> bool:
+        """Return the flag for computing the derivatives of E wrt. atomic positions."""
+        return self.__comput_position_deriv
 
     def run(self, num_mcmc_steps: int = 50, max_time: int = 86400) -> None:
         """Run LRDMC with multiple walkers.
@@ -3042,6 +3042,7 @@ class GFMC_fixed_num_projection:
 
                 # with all electrons
                 else:
+                    non_diagonal_sum_hamiltonian = non_diagonal_sum_hamiltonian_kinetic
                     # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
                     p_list = jnp.ravel(elements_non_diagonal_kinetic_part_FN)
                     non_diagonal_move_probabilities = p_list / p_list.sum()
@@ -3481,6 +3482,9 @@ class GFMC_fixed_num_projection:
                     + grad_e_L_h.coulomb_potential_data.structure_data.positions
                 )
 
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
+                    grad_e_L_R += grad_e_L_h.wavefunction_data.jastrow_data.jastrow_one_body_data.structure_data.positions
+
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
                     grad_e_L_R += (
                         grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
@@ -3498,7 +3502,6 @@ class GFMC_fixed_num_projection:
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
-                grad_ln_Psi_h.block_until_ready()
                 grad_ln_Psi_r_up.block_until_ready()
                 grad_ln_Psi_r_dn.block_until_ready()
                 end = time.perf_counter()
@@ -3508,6 +3511,9 @@ class GFMC_fixed_num_projection:
                     grad_ln_Psi_h.geminal_data.orb_data_up_spin.structure_data.positions
                     + grad_ln_Psi_h.geminal_data.orb_data_dn_spin.structure_data.positions
                 )
+
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
+                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_one_body_data.structure_data.positions
 
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
                     grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
@@ -4438,22 +4444,22 @@ class QMC:
             domega_dr_up = self.mcmc.domega_dr_up[num_mcmc_warmup_steps:]
             domega_dr_dn = self.mcmc.domega_dr_dn[num_mcmc_warmup_steps:]
 
-            logger.info(f"w_L.shape for MPI-rank={mpi_rank} is {w_L.shape}")
+            logger.devel(f"w_L.shape for MPI-rank={mpi_rank} is {w_L.shape}")
 
-            logger.info(f"e_L.shape for MPI-rank={mpi_rank} is {e_L.shape}")
+            logger.devel(f"e_L.shape for MPI-rank={mpi_rank} is {e_L.shape}")
 
-            logger.info(f"de_L_dR.shape for MPI-rank={mpi_rank} is {de_L_dR.shape}")
-            logger.info(f"de_L_dr_up.shape for MPI-rank={mpi_rank} is {de_L_dr_up.shape}")
-            logger.info(f"de_L_dr_dn.shape for MPI-rank={mpi_rank} is {de_L_dr_dn.shape}")
+            logger.devel(f"de_L_dR.shape for MPI-rank={mpi_rank} is {de_L_dR.shape}")
+            logger.devel(f"de_L_dr_up.shape for MPI-rank={mpi_rank} is {de_L_dr_up.shape}")
+            logger.devel(f"de_L_dr_dn.shape for MPI-rank={mpi_rank} is {de_L_dr_dn.shape}")
 
-            logger.info(f"dln_Psi_dr_up.shape for MPI-rank={mpi_rank} is {dln_Psi_dr_up.shape}")
-            logger.info(f"dln_Psi_dr_dn.shape for MPI-rank={mpi_rank} is {dln_Psi_dr_dn.shape}")
-            logger.info(f"dln_Psi_dR.shape for MPI-rank={mpi_rank} is {dln_Psi_dR.shape}")
+            logger.devel(f"dln_Psi_dr_up.shape for MPI-rank={mpi_rank} is {dln_Psi_dr_up.shape}")
+            logger.devel(f"dln_Psi_dr_dn.shape for MPI-rank={mpi_rank} is {dln_Psi_dr_dn.shape}")
+            logger.devel(f"dln_Psi_dR.shape for MPI-rank={mpi_rank} is {dln_Psi_dR.shape}")
 
-            logger.info(f"omega_up.shape for MPI-rank={mpi_rank} is {omega_up.shape}")
-            logger.info(f"omega_dn.shape for MPI-rank={mpi_rank} is {omega_dn.shape}")
-            logger.info(f"domega_dr_up.shape for MPI-rank={mpi_rank} is {domega_dr_up.shape}")
-            logger.info(f"domega_dr_dn.shape for MPI-rank={mpi_rank} is {domega_dr_dn.shape}")
+            logger.devel(f"omega_up.shape for MPI-rank={mpi_rank} is {omega_up.shape}")
+            logger.devel(f"omega_dn.shape for MPI-rank={mpi_rank} is {omega_dn.shape}")
+            logger.devel(f"domega_dr_up.shape for MPI-rank={mpi_rank} is {domega_dr_up.shape}")
+            logger.devel(f"domega_dr_dn.shape for MPI-rank={mpi_rank} is {domega_dr_dn.shape}")
 
             force_HF = (
                 de_L_dR
@@ -4470,11 +4476,11 @@ class QMC:
 
             E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
 
-            logger.info(f"w_L.shape for MPI-rank={mpi_rank} is {w_L.shape}")
-            logger.info(f"e_L.shape for MPI-rank={mpi_rank} is {e_L.shape}")
-            logger.info(f"force_HF.shape for MPI-rank={mpi_rank} is {force_HF.shape}")
-            logger.info(f"force_PP.shape for MPI-rank={mpi_rank} is {force_PP.shape}")
-            logger.info(f"E_L_force_PP.shape for MPI-rank={mpi_rank} is {E_L_force_PP.shape}")
+            logger.devel(f"w_L.shape for MPI-rank={mpi_rank} is {w_L.shape}")
+            logger.devel(f"e_L.shape for MPI-rank={mpi_rank} is {e_L.shape}")
+            logger.devel(f"force_HF.shape for MPI-rank={mpi_rank} is {force_HF.shape}")
+            logger.devel(f"force_PP.shape for MPI-rank={mpi_rank} is {force_PP.shape}")
+            logger.devel(f"E_L_force_PP.shape for MPI-rank={mpi_rank} is {E_L_force_PP.shape}")
 
             # split and binning with multiple walkers
             w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
@@ -4531,14 +4537,14 @@ class QMC:
             w_L_force_PP_binned = np.array(w_L_force_PP_binned)
             w_L_E_L_force_PP_binned = np.array(w_L_E_L_force_PP_binned)
 
-            logger.info(f"w_L_binned.shape for MPI-rank={mpi_rank} is {w_L_binned.shape}")
-            logger.info(f"w_L_e_L_binned.shape for MPI-rank={mpi_rank} is {w_L_e_L_binned.shape}")
-            logger.info(f"w_L_force_HF_binned.shape for MPI-rank={mpi_rank} is {w_L_force_HF_binned.shape}")
-            logger.info(f"w_L_force_PP_binned.shape for MPI-rank={mpi_rank} is {w_L_force_PP_binned.shape}")
-            logger.info(f"w_L_E_L_force_PP_binned.shape for MPI-rank={mpi_rank} is {w_L_E_L_force_PP_binned.shape}")
+            logger.devel(f"w_L_binned.shape for MPI-rank={mpi_rank} is {w_L_binned.shape}")
+            logger.devel(f"w_L_e_L_binned.shape for MPI-rank={mpi_rank} is {w_L_e_L_binned.shape}")
+            logger.devel(f"w_L_force_HF_binned.shape for MPI-rank={mpi_rank} is {w_L_force_HF_binned.shape}")
+            logger.devel(f"w_L_force_PP_binned.shape for MPI-rank={mpi_rank} is {w_L_force_PP_binned.shape}")
+            logger.devel(f"w_L_E_L_force_PP_binned.shape for MPI-rank={mpi_rank} is {w_L_E_L_force_PP_binned.shape}")
 
             M = w_L_binned.size
-            logger.debug(f"Total number of binned samples = {M}")
+            logger.devel(f"Total number of binned samples = {M}")
 
             force_HF_jn = np.array(
                 [
@@ -4565,16 +4571,16 @@ class QMC:
                 ]
             )
 
-            logger.info(f"force_HF_jn.shape for MPI-rank={mpi_rank} is {force_HF_jn.shape}")
-            logger.info(f"force_Pulay_jn.shape for MPI-rank={mpi_rank} is {force_Pulay_jn.shape}")
+            logger.devel(f"force_HF_jn.shape for MPI-rank={mpi_rank} is {force_HF_jn.shape}")
+            logger.devel(f"force_Pulay_jn.shape for MPI-rank={mpi_rank} is {force_Pulay_jn.shape}")
 
             force_jn = force_HF_jn + force_Pulay_jn
 
             force_mean = np.average(force_jn, axis=0)
             force_std = np.sqrt(M - 1) * np.std(force_jn, axis=0)
 
-            logger.info(f"force_mean.shape  = {force_mean.shape}.")
-            logger.info(f"force_std.shape  = {force_std.shape}.")
+            logger.devel(f"force_mean.shape  = {force_mean.shape}.")
+            logger.devel(f"force_std.shape  = {force_std.shape}.")
 
             logger.devel(f"force = {force_mean} +- {force_std} Ha.")
 

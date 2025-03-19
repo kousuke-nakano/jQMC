@@ -28,6 +28,7 @@ cli_parameters = {
         "num_mcmc_bin_blocks": 1,
         "Dt": 2.0,
         "epsilon_AS": 0.0,
+        "atomic_force": False,
     },
     "vmc_comments": {
         "num_mcmc_steps": "Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.",
@@ -36,6 +37,7 @@ cli_parameters = {
         "num_mcmc_bin_blocks": "Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_mcmc_bin_blocks * mpi_size * number_of_walkers.",
         "Dt": "Step size for the MCMC update (bohr).",
         "epsilon_AS": "the epsilon parameter used in the Attacalite-Sandro regulatization method.",
+        "atomic_force": "If true, compute atomic forces.",
     },
     "vmcopt": {
         "num_mcmc_steps": None,
@@ -80,6 +82,7 @@ cli_parameters = {
         "num_gfmc_bin_blocks": 1,
         "num_gfmc_collect_steps": 0,
         "E_scf": 0.0,
+        "atomic_force": False,
     },
     "lrdmc_comments": {
         "num_mcmc_steps": "Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.",
@@ -90,6 +93,7 @@ cli_parameters = {
         "num_gfmc_bin_blocks": "Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_gfmc_bin_blocks, not num_gfmc_bin_blocks * mpi_size * number_of_walkers.",
         "num_gfmc_collect_steps": "Number of measurement (before binning) for collecting the weights.",
         "E_scf": "The initial guess of the total energy. This is used to compute the initial energy shift in the GFMC.",
+        "atomic_force": "If true, compute atomic forces.",
     },
     "lrdmc-tau": {
         "num_mcmc_steps": None,
