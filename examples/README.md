@@ -17,3 +17,7 @@ Binding energy of water-methane dimer, one of the validation tests for ab initio
 ## example04
 
 VMC and HF energies of water molecule, for validation of the VMC implementation of jQMC, with spherical or cartesian GTOs.
+
+## example05
+
+Potential energy surface of hydrogen molecule with cartesian GTOs. All electron calculations. Comparison atomic forces with the derivative of the PES.
