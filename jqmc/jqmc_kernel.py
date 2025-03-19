@@ -4282,7 +4282,7 @@ class QMC:
                 jastrow_one_body_data = Jastrow_one_body_data(
                     jastrow_1b_param=j1_param,
                     structure_data=self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data.structure_data,
-                    core_electron_list=self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data.core_electron_list,
+                    core_electrons=self.mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data.core_electrons,
                 )
             else:
                 jastrow_one_body_data = None
