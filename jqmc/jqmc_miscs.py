@@ -69,7 +69,7 @@ cli_parameters = {
         "opt_J2_param": "Optimize the J2 parameter.",
         "opt_J3_param": "Optimize the J3 parameters.",
         "opt_lambda_param": "Optimize the lambda parameters in the geminal part.",
-        "num_param_opt": "the number of parameters to optimize in the descending order of |f|/|std f|. If None, all parameters are optimized.",
+        "num_param_opt": "the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.",
     },
     "lrdmc": {
         "num_mcmc_steps": None,

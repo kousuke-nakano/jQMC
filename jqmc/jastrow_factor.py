@@ -108,6 +108,7 @@ class Jastrow_one_body_data:
         for line in self.get_info():
             logger.info(line)
 
+    @classmethod
     def init_jastrow_one_body_data(cls, jastrow_1b_param, structure_data, core_electrons):
         """Initialization."""
         jastrow_one_body_data = cls(

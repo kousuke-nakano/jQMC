@@ -101,7 +101,7 @@ def trexio_convert_to(
         if coulomb_potential_data.ecp_flag:
             core_electrons = coulomb_potential_data.z_cores
         else:
-            core_electrons = [0] * coulomb_potential_data.n_atom
+            core_electrons = [0] * structure_data.natom
         jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
             jastrow_1b_param=j1_parmeter, structure_data=structure_data, core_electrons=core_electrons
         )
@@ -322,7 +322,7 @@ def vmcopt_analyze_output(
 
     sep = 54
     typer.echo("-" * sep)
-    typer.echo(f"{'Iter':<8} {'E (Ha)':<10} {'Max f (Ha)':<12} {'Signal to Noise':<16}")
+    typer.echo(f"{'Iter':<8} {'E (Ha)':<10} {'Max f (Ha)':<12} {'Max of signal to noise of f':<16}")
     typer.echo("-" * sep)
     for iter, E, max_f, signal_to_noise in zip(iter_list, E_list, max_f_list, signal_to_noise_list):
         typer.echo(f"{iter:4}  {E:8.2uS}  {max_f:+10.2uS}  {signal_to_noise:8.3f}")
@@ -336,7 +336,7 @@ def vmcopt_analyze_output(
         max_f_means = []
         max_f_errs = []
 
-        for iter, E, max_f, signal_to_noise in zip(iter_list, E_list, max_f_list, signal_to_noise_list):
+        for iter, E, max_f, _ in zip(iter_list, E_list, max_f_list, signal_to_noise_list):
             iters.append(iter)
             E_means.append(E.n)
             E_errs.append(E.s)
@@ -371,9 +371,7 @@ def vmcopt_analyze_output(
         ax21.set_xlabel("Iteration")
         ax21.set_ylabel("Energy (Ha)")
 
-        ax22.plot(
-            iters, signal_to_noise_list, marker="s", linestyle="-", markersize=3, color="red", label="max of |f|/|std f|"
-        )
+        ax22.plot(iters, signal_to_noise_list, marker="s", linestyle="-", markersize=3, color="red", label="max of |f|/|std f|")
         ax22.set_ylabel("max of signal to noise = |f|/|std f|")
 
         # Combine legend handles and labels for the second subplot
