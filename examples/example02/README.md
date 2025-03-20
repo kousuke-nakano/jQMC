@@ -25,7 +25,7 @@ The benchmark calculations were performed using four molecular systems:
 
 - **Pseudopotential:** The [ccECP pseudopotential](https://pseudopotentiallibrary.org) was employed for all calculations.
 - **Trial Wavefunctions:** Generated using [pySCF](https://pyscf.org) with Gaussian basis functions (Cartesian).
-- **Hardware Configuration:** Benchmarks were measured on the supercomputer [Genkai(玄界)]((https://www.cc.kyushu-u.ac.jp/scp/eng/system/Genkai/hardware/)) at Kyusyu University in Japan, with a dual-socket Xeon Platinum 8490H (60 cores × 2) CPU system and NVIDIA H100 (Hopper) GPUs. For the LRDMC calculations, the CPU runs used 128 MPI processes (i.e. the maximum efficiency), while the GPU runs used 4 MPI processes across 4 GPUs.
+- **Hardware Configuration:** Benchmarks were measured on the supercomputer [Genkai(玄界)](https://www.cc.kyushu-u.ac.jp/scp/eng/system/Genkai/hardware/) at Kyusyu University in Japan, with a dual-socket Xeon Platinum 8490H (60 cores × 2) CPU system and NVIDIA H100 (Hopper) GPUs. For the LRDMC calculations, the CPU runs used 128 MPI processes (i.e. the maximum efficiency), while the GPU runs used 4 MPI processes across 4 GPUs.
 
 ---
 
