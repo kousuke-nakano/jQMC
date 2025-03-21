@@ -21,3 +21,11 @@ VMC and HF energies of water molecule, for validation of the VMC implementation 
 ## example05
 
 Potential energy surface of hydrogen molecule with cartesian GTOs. All electron calculations. Comparison atomic forces with the derivative of the PES.
+
+## example06
+
+Binding energy of the water-water dimer with the JAGP anstaz.
+
+## example07
+
+Weak scalings of VMC and LRDMC using the water molecule.
