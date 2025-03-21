@@ -4084,100 +4084,56 @@ class QMC:
 
             if self.mcmc.e_L.size != 0:
                 w_L = self.mcmc.w_L[num_mcmc_warmup_steps:]
-                # logger.info(f"w_L  = {w_L}.")
-                # logger.info(f"w_L.shape = {w_L.shape}.")
-                w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-                w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
+                w_L = list(np.ravel(w_L))
 
                 e_L = self.mcmc.e_L[num_mcmc_warmup_steps:]
-                # logger.info(f"e_L.shape = {e_L.shape}.")
-                e_L_split = np.array_split(e_L, num_mcmc_bin_blocks, axis=0)
-                e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in e_L_split]))
-
-                w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
-                w_L_e_L_binned = list(np.ravel([np.mean(w_L_e_L, axis=0) for w_L_e_L in zip(w_L_e_L_split)]))
-                # logger.info(f"w_L_e_L_binned.shape = {np.array(w_L_e_L_binned).shape}.")
+                e_L = list(np.ravel(e_L))
 
                 O_matrix = self.get_dln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps, chosen_param_index=chosen_param_index)
-                # logger.info(f"O_matrix.shape = {O_matrix.shape}.")
-                O_matrix_split = np.array_split(O_matrix, num_mcmc_bin_blocks, axis=0)
-                O_matrix_ave = np.array([np.mean(O_matrix, axis=0) for O_matrix in O_matrix_split])
-                O_matrix_binned_shape = (
-                    O_matrix_ave.shape[0] * O_matrix_ave.shape[1],
-                    O_matrix_ave.shape[2],
+                O_matrix_shape = (
+                    O_matrix.shape[0] * O_matrix.shape[1],
+                    O_matrix.shape[2],
                 )
-                O_matrix_binned = list(O_matrix_ave.reshape(O_matrix_binned_shape))
-
-                w_L_O_matrix = np.einsum("iw,iwj->iwj", w_L, O_matrix)
-                # logger.info(f"w_L_O_matrix.shape = {w_L_O_matrix.shape}.")
-                w_L_O_matrix_split = np.array_split(w_L_O_matrix, num_mcmc_bin_blocks, axis=0)
-                w_L_O_matrix_ave = np.array(
-                    [
-                        np.sum(w_L_O_matrix, axis=0) / np.sum(w_L, axis=0)[:, np.newaxis]
-                        for w_L_O_matrix, w_L in zip(w_L_O_matrix_split, w_L_split)
-                    ]
-                )
-                w_L_O_matrix_binned_shape = (
-                    w_L_O_matrix_ave.shape[0] * w_L_O_matrix_ave.shape[1],
-                    w_L_O_matrix_ave.shape[2],
-                )
-                w_L_O_matrix_binned = list(w_L_O_matrix_ave.reshape(w_L_O_matrix_binned_shape))
-
-                # logger.info(f"O_matrix.shape = {O_matrix.shape}")
-                # logger.info(f"w_L_O_matrix_ave.shape = {w_L_O_matrix_ave.shape}")
-                # logger.info(f"w_L_O_matrix_binned.shape = {np.array(w_L_O_matrix_binned).shape}")
+                O_matrix = list(O_matrix.reshape(O_matrix_shape))
 
             else:
-                w_L_binned = []
-                e_L_binned = []
-                O_matrix_binned = []
-                w_L_e_L_binned = []
-                w_L_O_matrix_binned = []
+                w_L = []
+                e_L = []
+                O_matrix = []
 
-            w_L_binned = mpi_comm.reduce(w_L_binned, op=MPI.SUM, root=0)
-            e_L_binned = mpi_comm.reduce(e_L_binned, op=MPI.SUM, root=0)
-            O_matrix_binned = mpi_comm.reduce(O_matrix_binned, op=MPI.SUM, root=0)
-            w_L_e_L_binned = mpi_comm.reduce(w_L_e_L_binned, op=MPI.SUM, root=0)
-            w_L_O_matrix_binned = mpi_comm.reduce(w_L_O_matrix_binned, op=MPI.SUM, root=0)
+            w_L = mpi_comm.reduce(w_L, op=MPI.SUM, root=0)
+            e_L = mpi_comm.reduce(e_L, op=MPI.SUM, root=0)
+            O_matrix = mpi_comm.reduce(O_matrix, op=MPI.SUM, root=0)
 
             if mpi_rank == 0:
-                w_L_binned = np.array(w_L_binned)
-                e_L_binned = np.array(e_L_binned)
-                O_matrix_binned = np.array(O_matrix_binned)
-                w_L_e_L_binned = np.array(w_L_e_L_binned)
-                w_L_O_matrix_binned = np.array(w_L_O_matrix_binned)
+                w_L = np.array(w_L)
+                e_L = np.array(e_L)
+                O_matrix = np.array(O_matrix)
+
+                # info
+                logger.info("The binning technique is not used to compute the natural gradient.")
+                logger.info(f"Total number of samples is {w_L.size}.")
 
                 # compute weighted averages
-                O_bar = np.sum(w_L_O_matrix_binned, axis=0) / np.sum(w_L_binned)
-                e_L_bar = np.sum(w_L_e_L_binned) / np.sum(w_L_binned)
+                O_bar = np.einsum("i,ij->j", w_L, O_matrix) / np.sum(w_L)
+                e_L_bar = np.einsum("i,i->", w_L, e_L) / np.sum(w_L)
+                logger.devel(f"O_bar = {O_bar}")
+                logger.devel(f"e_L_bar = {e_L_bar}")
 
                 # compute the following variables
                 #     X_{i,k}: \equiv (O_{i, k} - \bar{O}_{k}),
                 #     X_w_{i,k} \equiv w_i O_{i, k} / {\sum_{i} w_i}
                 #     F_i \equiv -2.0 * (e_L_{i} - E)
                 # logger.info(f"w_L_binned={w_L_binned}")
-                X = (O_matrix_binned - O_bar).T
-                X_w = w_L_binned * ((w_L_O_matrix_binned - O_bar) / np.sum(w_L_binned)).T
-                F = -2.0 * (e_L_binned - e_L_bar).T
+                X = (O_matrix - O_bar).T
+                X_w = ((O_matrix - O_bar) * w_L[:, np.newaxis] / np.sum(w_L)).T
+                F = -2.0 * (e_L - e_L_bar).T
 
                 X_w_F = X_w @ F
                 f_argmax = np.argmax(np.abs(X_w_F))
-                logger.debug(f"Max dot(X_w, F) \equiv f = {X_w_F[f_argmax]:.3f} Ha/a.u.")
-
-                """
-                logger.info(f"w_L_binned.shape = {w_L_binned.shape}.")
-                logger.info(f"w_L_binned.T.shape = {w_L_binned.T.shape}.")
-                logger.info(f"w_L_O_matrix_binned.shape = {w_L_O_matrix_binned.shape}.")
-                logger.info(f"O_bar.shape = {O_bar.shape}")
-                logger.info(f"X_w.shape = {X_w.shape}.")
-                logger.info(f"X.shape = {X.shape}.")
-                logger.info(f"F.shape = {F.shape}.")
-                logger.info(f"w_L_binned = {w_L_binned}.")
-                logger.info(f"X_w = {X_w}.")
-                logger.info(f"X = {X}.")
-                logger.info(f"F = {F}.")
-                logger.info(f"X_w/X = {X_w / X}.")
-                """
+                logger.info(
+                    f"Max dot(X_w, F) = {X_w_F[f_argmax]:.3f} Ha/a.u. should be equal to Max f = {f[f_argmax]:.3f} Ha/a.u."
+                )
 
                 # make the SR matrix scale-invariant (i.e., normalize)
                 S = X_w @ X.T
@@ -4666,7 +4622,7 @@ class QMC:
             w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
 
             e_L = self.mcmc.e_L[num_mcmc_warmup_steps:]
-            w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
+            w_L_e_L_split = np.array_split(np.einsum("iw,iw->iw", w_L, e_L), num_mcmc_bin_blocks, axis=0)
             w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
 
             O_matrix = self.get_dln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps, chosen_param_index=chosen_param_index)
@@ -4704,7 +4660,7 @@ class QMC:
             w_L_e_L_O_matrix_binned = np.array(w_L_e_L_O_matrix_binned)
 
             M = w_L_binned.size
-            logger.debug(f"Total number of binned samples = {M}")
+            logger.info(f"Total number of binned samples = {M}")
 
             eL_O_jn = np.array(
                 [
@@ -4717,7 +4673,7 @@ class QMC:
             logger.devel(f"eL_O_jn.shape = {eL_O_jn.shape}")
 
             eL_jn = np.array(
-                [(np.sum(w_L_e_L_binned, axis=0) - w_L_e_L_binned[j]) / (np.sum(w_L_binned) - w_L_binned[j]) for j in range(M)]
+                [(np.sum(w_L_e_L_binned) - w_L_e_L_binned[j]) / (np.sum(w_L_binned) - w_L_binned[j]) for j in range(M)]
             )
             logger.devel(f"eL_jn = {eL_jn}")
             logger.devel(f"eL_jn.shape = {eL_jn.shape}")
@@ -4732,13 +4688,13 @@ class QMC:
             logger.devel(f"O_jn = {O_jn}")
             logger.devel(f"O_jn.shape = {O_jn.shape}")
 
-            eL_barO_jn = np.einsum("i,ij->ij", eL_jn, O_jn)
+            bar_eL_bar_O_jn = np.einsum("i,ij->ij", eL_jn, O_jn)
 
-            logger.devel(f"eL_barO_jn = {eL_barO_jn}")
-            logger.devel(f"eL_barO_jn.shape = {eL_barO_jn.shape}")
+            logger.devel(f"bar_eL_bar_O_jn = {bar_eL_bar_O_jn}")
+            logger.devel(f"bar_eL_bar_O_jn.shape = {bar_eL_bar_O_jn.shape}")
 
-            generalized_force_mean = np.average(-2.0 * (eL_O_jn - eL_barO_jn), axis=0)
-            generalized_force_std = np.sqrt(M - 1) * np.std(-2.0 * (eL_O_jn - eL_barO_jn), axis=0)
+            generalized_force_mean = np.average(-2.0 * (eL_O_jn - bar_eL_bar_O_jn), axis=0)
+            generalized_force_std = np.sqrt(M - 1) * np.std(-2.0 * (eL_O_jn - bar_eL_bar_O_jn), axis=0)
 
             logger.devel(f"generalized_force_mean = {generalized_force_mean}")
             logger.devel(f"generalized_force_std = {generalized_force_std}")
@@ -5269,7 +5225,7 @@ if __name__ == "__main__":
 
     from .trexio_wrapper import read_trexio_file
 
-    logger_level = "MPI-DEBUG"
+    logger_level = "MPI-INFO"
 
     log = getLogger("jqmc")
 
@@ -5483,7 +5439,7 @@ if __name__ == "__main__":
     )
     # """
 
-    #'''
+    '''
     # """
     hamiltonian_chk = "hamiltonian_data_water.chk"
     # hamiltonian_chk = "hamiltonian_data_water_methane.chk"
@@ -5529,9 +5485,9 @@ if __name__ == "__main__":
     logger.info(f"f_mean = {f_mean} Ha/bohr.")
     logger.info(f"f_std = {f_std} Ha/bohr.")
     """
-    #'''
+    '''
 
-    """
+    # """
     hamiltonian_chk = "hamiltonian_data_water.chk"
     # hamiltonian_chk = "hamiltonian_data_water_methane.chk"
     # hamiltonian_chk = "hamiltonian_data_benzene.chk"
@@ -5548,8 +5504,7 @@ if __name__ == "__main__":
         hamiltonian_data=hamiltonian_data,
         Dt=1.8,
         mcmc_seed=mcmc_seed,
-        epsilon_AS=1.0e-3,
-        # adjust_epsilon_AS=True,
+        epsilon_AS=0.0,
         num_walkers=num_walkers,
         comput_position_deriv=False,
         comput_param_deriv=True,
@@ -5557,18 +5512,18 @@ if __name__ == "__main__":
     vmc = QMC(mcmc)
     vmc.run_optimize(
         num_mcmc_steps=50,
-        num_opt_steps=50,
+        num_opt_steps=1,
         delta=1e-4,
         epsilon=1e-3,
         wf_dump_freq=10,
         num_mcmc_warmup_steps=0,
-        num_mcmc_bin_blocks=50,
+        num_mcmc_bin_blocks=10,
         opt_J1_param=False,
         opt_J2_param=True,
         opt_J3_param=True,
         opt_lambda_param=False,
     )
-    """
+    # """
 
     """
     # hamiltonian
