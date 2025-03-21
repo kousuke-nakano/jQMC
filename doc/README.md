@@ -24,10 +24,10 @@ rm -r .buildinfo .doctrees *
 
 In the directory, please compile the sphinx doc.,
 ```
-rsync -avh _build/ <phonopy-repository-directory>/
+rsync -avh _build/ <jqmc-repository-directory>/
 ```
 
-Again, at the phonopy github top directory,
+Again, at the jqmc github top directory,
 ```
 git add .
 git commit -a -m "Update documentation ..."

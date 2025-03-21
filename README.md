@@ -1,5 +1,5 @@
 # jQMC
-**jQMC** is an ab initio quantum Monte Carlo (QMC) simulation package developed entirely from scratch using `Python` and `JAX`. Originally designed for molecular systems—with future extensions planned for periodic systems—**jQMC** implements two well-established QMC algorithms: Variational Monte Carlo (VMC) and a robust and efficient variant of Diffusion Monte Carlo algorithm known as Lattice Regularized Diffusion Monte Carlo (LRDMC). By leveraging `JAX’s` just-in-time (`jit`) compilation and vectorized mapping (`vmap`) functionalities, `jQMC` achieves high-performance computations **especially on GPUs and TPUs** while remaining portable across CPUs, GPUs, and TPUs.
+**jQMC** is an ab initio quantum Monte Carlo (QMC) simulation package developed entirely from scratch using `Python` and `JAX`. Originally designed for molecular systems—with future extensions planned for periodic systems—**jQMC** implements two well-established QMC algorithms: Variational Monte Carlo (VMC) and a robust and efficient variant of Diffusion Monte Carlo algorithm known as Lattice Regularized Diffusion Monte Carlo (LRDMC). By leveraging `JAX` just-in-time (`jit`) compilation and vectorized mapping (`vmap`) functionalities, `jQMC` achieves high-performance computations **especially on GPUs and TPUs** while remaining portable across CPUs, GPUs, and TPUs. See [here](http://jax.readthedocs.io/) for the details of `JAX`.
 
 ![license](https://img.shields.io/github/license/kousuke-nakano/jQMC)
 ![release](https://img.shields.io/github/release/kousuke-nakano/jQMC/all.svg)
@@ -14,7 +14,7 @@ What sets **jQMC** apart:
 - It implements the LRDMC method, providing a numerically stable approach to diffusion Monte Carlo calculations.
 - The use of adjoint algorithmic differentiation in `JAX` allows for efficient differentiation of many-body wave functions, facilitating the computation of atomic forces analytically.
 - Written in `Python`, **jQMC** is designed to be user-friendly for executing simulations and easily extensible for developers implementing and testing new QMC methods.
-- By leveraging `JAX’s` just-in-time (`jit`) compilation and vectorized mapping (`vmap`) functionalities, the code achieves high-performance computations **especially on GPUs and TPUs** while remaining portable across CPUs, GPUs, and TPUs.
+- By leveraging `JAX` just-in-time (`jit`) compilation and vectorized mapping (`vmap`) functionalities, the code achieves high-performance computations **especially on GPUs and TPUs** while remaining portable across CPUs, GPUs, and TPUs.
 - MPI support enables the execution of large-scale computations on HPC facilities.
 - To minimize bugs, the code is written in a loosely coupled manner and includes comprehensive unit tests and regression tests (managed by `pytest`).
 
