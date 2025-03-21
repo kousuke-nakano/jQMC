@@ -8,6 +8,9 @@ The first step of ab-initio QMC is to generate a trial WF by a mean-field theory
 
 One of the easiest ways to produce it is using `pySCF` as a converter to the `TREXIO` format is implemented. The following is a script to run a HF calculation of the water molecule and dump it as a `TREXIO` file.
 
+> [!NOTE]
+> This `TREXIO` converter is being develped in the `pySCF-forge` [repository](https://github.com/pyscf/pyscf-forge) and not yet merged to the main repository of `pySCF`. Please use `pySCF-forge`.
+
 ```python:run_pyscf.py
 from pyscf import gto, scf
 from pyscf.tools import trexio
@@ -101,31 +104,44 @@ Please lunch the job.
 % mpiexec -n 4 -map-by ppr:4:node jqmc vmcopt.toml > out_vmcopt 2> out_vmcopt.e # w/ MPI on GPU, depending the queueing system.
 ```
 
-You can see and plot the outcome using `jqmc-tool`.
+You can see the outcome using `jqmc-tool`.
 
 ```bash
 % jqmc-tool vmcopt analyze-output out_vmcopt
 
 ------------------------------------------------------
-Iter     E (Ha)     Max f (Ha)   Signal to Noise
+Iter     E (Ha)     Max f (Ha)   Max of signal to noise of f
 ------------------------------------------------------
-   1  -16.5752(98)  +1.126(12)   114.338
-   2  -16.6269(94)  +1.074(12)   111.055
-   3  -16.6717(89)  +1.049(11)   107.720
-   4  -16.6947(89)  +0.990(11)    96.205
-   5  -16.7395(84)  +0.933(11)    98.656
-   6  -16.7417(88)  +0.896(10)    98.756
-   7  -16.8048(83)  +0.874(10)    89.545
-   8  -16.8248(79)  +0.805(10)    79.823
-   9  -16.8250(86)  +0.775(10)    80.669
-  10  -16.8525(81)  +0.729(10)    76.278
-  11  -16.8705(84)  +0.696(10)    71.823
-  12  -16.8812(77)  +0.6400(90)    74.887
+   1  -16.5743(97)  +1.132(12)   110.335
+   2  -16.5921(96)  +1.097(12)   109.386
+   3  -16.6117(95)  +1.084(12)   104.849
+   4  -16.6399(93)  +1.059(12)   104.245
+   5  -16.6678(91)  +1.029(12)   102.269
+   6  -16.6819(90)  +1.009(12)   100.122
+   7  -16.7028(90)  +0.993(12)    97.718
+   8  -16.6974(87)  +0.963(12)    96.040
+   9  -16.7200(87)  +0.948(11)    94.616
+  10  -16.7511(87)  +0.914(11)    91.563
+  11  -16.7602(85)  +0.895(11)    90.790
+  12  -16.7714(85)  +0.878(11)    88.758
+  13  -16.7867(85)  +0.848(10)    87.979
+  14  -16.7940(86)  +0.835(11)    83.253
+  15  -16.8065(83)  +0.787(10)    82.875
+  16  -16.8112(83)  +0.777(10)    81.196
+  17  -16.8284(82)  +0.741(10)    80.058
+  18  -16.8327(83)  +0.743(10)    76.214
 ------------------------------------------------------
-
 ```
 
-The important criteria are `f_max` and max of `signal-to-noise` of `f`. `f_max` should be zero within the error bar. A practical criterion for `signal-to-noise` is < 4~5 because it means that all the residual forces are zero in the statistical sense.
+The important criteria are `Max f` and `Max of signal to noise of f`. `Max f` should be zero within the error bar. A practical criterion for the `signal to noise` is < 4~5 because it means that all the residual forces are zero in the statistical sense.
+
+You can also plot them and make a figure.
+
+```bash
+% jqmc-tool vmcopt analyze-output out_vmcopt -p -s vmcopt.jpg
+```
+
+![VMC optimization](03vmcopt_JSD/vmcopt.jpg)
 
 If the optimization is not converged. You can restart the optimization.
 
@@ -206,3 +222,5 @@ The final step is to run the `jqmc` jobs with several $a$.
 ```
 
 You may get `E = -xxxxx +- xxx` [VMC w/ Jastrow factors]
+
+WIP:

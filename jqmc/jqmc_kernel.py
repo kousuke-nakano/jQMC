@@ -4131,7 +4131,7 @@ class QMC:
 
                 X_w_F = X_w @ F
                 f_argmax = np.argmax(np.abs(X_w_F))
-                logger.info(
+                logger.debug(
                     f"Max dot(X_w, F) = {X_w_F[f_argmax]:.3f} Ha/a.u. should be equal to Max f = {f[f_argmax]:.3f} Ha/a.u."
                 )
 
