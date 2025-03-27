@@ -2366,6 +2366,9 @@ class GFMC_fixed_num_projection:
         self.__timer_projection_init = 0.0
         self.__timer_projection_total = 0.0
         self.__timer_branching = 0.0
+        self.__timer_branching_1 = 0.0
+        self.__timer_branching_2 = 0.0
+        self.__timer_branching_3 = 0.0
         # time for observables
         self.__timer_e_L = 0.0
         self.__timer_de_L_dR_dr = 0.0
@@ -2754,6 +2757,10 @@ class GFMC_fixed_num_projection:
         timer_dln_Psi_dc = 0.0
         timer_de_L_dc = 0.0
         timer_reconfiguration = 0.0
+        timer_reconfiguration_1 = 0.0
+        timer_reconfiguration_2 = 0.0
+        timer_reconfiguration_3 = 0.0
+        timer_reconfiguration_4 = 0.0
 
         gfmc_total_start = time.perf_counter()
 
@@ -3554,6 +3561,7 @@ class GFMC_fixed_num_projection:
             start_reconfiguration = time.perf_counter()
 
             # jnp.array -> np.array
+            start_reconfiguration_1 = time.perf_counter()
             w_L_latest = np.array(w_L_list)
             e_L_latest = np.array(e_L_list)
             V_diag_E_latest = np.array(V_diag_list) - self.__E_scf
@@ -3614,6 +3622,9 @@ class GFMC_fixed_num_projection:
                 grad_omega_dr_up_dyad = mpi_comm.gather(grad_omega_dr_up_dyad, root=0)
                 grad_omega_dr_dn_dyad = mpi_comm.gather(grad_omega_dr_dn_dyad, root=0)
 
+            end_reconfiguration_1 = time.perf_counter()
+
+            start_reconfiguration_2 = time.perf_counter()
             if mpi_rank == 0:
                 # dict
                 r_up_carts_gathered_dict = dict(r_up_carts_gathered_dyad)
@@ -3764,6 +3775,9 @@ class GFMC_fixed_num_projection:
                 proposed_r_up_carts = None
                 proposed_r_dn_carts = None
 
+            end_reconfiguration_2 = time.perf_counter()
+
+            start_reconfiguration_3 = time.perf_counter()
             logger.devel(f"Before branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
             logger.devel(f"Before branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
 
@@ -3791,7 +3805,12 @@ class GFMC_fixed_num_projection:
             logger.devel(f"*After branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
             logger.devel(f"*After branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
 
+            end_reconfiguration_3 = time.perf_counter()
             end_reconfiguration = time.perf_counter()
+
+            timer_reconfiguration_1 += end_reconfiguration_1 - start_reconfiguration_1
+            timer_reconfiguration_2 += end_reconfiguration_2 - start_reconfiguration_2
+            timer_reconfiguration_3 += end_reconfiguration_3 - start_reconfiguration_3
             timer_reconfiguration += end_reconfiguration - start_reconfiguration
 
             # update E_scf
@@ -3845,6 +3864,9 @@ class GFMC_fixed_num_projection:
         logger.info(f"  Time for computing de_L/dc = {timer_de_L_dc / num_mcmc_done * 10**3:.2f} msec.")
         logger.info(f"  Time for misc. (others) = {timer_misc / num_mcmc_done * 10**3:.2f} msec.")
         logger.info(f"  Walker reconfiguration time per branching = {timer_reconfiguration / num_mcmc_done * 10**3: .3f} msec.")
+        logger.info(f"      Time for Reduce(MPI) = {timer_reconfiguration_1 / num_mcmc_done * 10**3: .3f} msec.")
+        logger.info(f"      Time for Branching = {timer_reconfiguration_2 / num_mcmc_done * 10**3: .3f} msec.")
+        logger.info(f"      Time for Broadcast(MPI) = {timer_reconfiguration_3 / num_mcmc_done * 10**3: .3f} msec.")
         logger.devel(f"Survived walkers = {self.__num_survived_walkers}")
         logger.devel(f"killed walkers = {self.__num_killed_walkers}")
         logger.info(
@@ -3856,6 +3878,9 @@ class GFMC_fixed_num_projection:
         self.__timer_projection_init += timer_projection_init
         self.__timer_projection_total += timer_projection_total
         self.__timer_branching += timer_reconfiguration
+        self.__timer_branching_1 += timer_reconfiguration_1
+        self.__timer_branching_2 += timer_reconfiguration_2
+        self.__timer_branching_3 += timer_reconfiguration_3
         self.__timer_e_L += timer_e_L
         self.__timer_de_L_dR_dr += timer_de_L_dR_dr
         self.__timer_dln_Psi_dR_dr += timer_dln_Psi_dR_dr
@@ -5487,7 +5512,7 @@ if __name__ == "__main__":
     """
     '''
 
-    # """
+    """
     hamiltonian_chk = "hamiltonian_data_water.chk"
     # hamiltonian_chk = "hamiltonian_data_water_methane.chk"
     # hamiltonian_chk = "hamiltonian_data_benzene.chk"
@@ -5523,9 +5548,9 @@ if __name__ == "__main__":
         opt_J3_param=True,
         opt_lambda_param=False,
     )
-    # """
-
     """
+
+    # """
     # hamiltonian
     hamiltonian_chk = "hamiltonian_data_water.chk"
     # hamiltonian_chk = "hamiltonian_data_water_methane.chk"
@@ -5536,11 +5561,11 @@ if __name__ == "__main__":
         hamiltonian_data = pickle.load(f)
 
     # GFMC param
-    num_walkers = 4
+    num_walkers = 1
     mcmc_seed = 3446
     E_scf = -17.00
     alat = 0.30
-    num_mcmc_per_measurement = 50
+    num_mcmc_per_measurement = 20
     num_mcmc_bin_blocks = 20
     num_mcmc_warmup_steps = 10
     num_gfmc_collect_steps = 10
@@ -5558,14 +5583,14 @@ if __name__ == "__main__":
         non_local_move=non_local_move,
     )
     gfmc = QMC(gfmc)
-    gfmc.run(num_mcmc_steps=500, max_time=3600)
+    gfmc.run(num_mcmc_steps=50, max_time=3600)
     E_mean, E_std, Var_mean, Var_std = gfmc.get_E(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
     logger.info(f"Var E = {Var_mean} +- {Var_std} Ha.")
-    """
+    # """
 
     """
     f_mean, f_std = gfmc.get_aF(
