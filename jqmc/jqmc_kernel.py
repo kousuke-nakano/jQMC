@@ -2375,7 +2375,6 @@ class GFMC_fixed_num_projection:
         self.__timer_dln_Psi_dR_dr = 0.0
         self.__timer_dln_Psi_dc = 0.0
         self.__timer_de_L_dc = 0.0
-        self.__timer_misc = 0.0
 
         # derivative flags
         self.__comput_position_deriv = comput_position_deriv
@@ -2757,10 +2756,7 @@ class GFMC_fixed_num_projection:
         timer_dln_Psi_dc = 0.0
         timer_de_L_dc = 0.0
         timer_reconfiguration = 0.0
-        timer_reconfiguration_1 = 0.0
-        timer_reconfiguration_2 = 0.0
-        timer_reconfiguration_3 = 0.0
-        timer_reconfiguration_4 = 0.0
+        timer_reconfiguration_ = 0.0
 
         gfmc_total_start = time.perf_counter()
 
@@ -3557,11 +3553,21 @@ class GFMC_fixed_num_projection:
             # Barrier before MPI operation
             # mpi_comm.Barrier()
 
+            # random number for the later use
+            """ very slow w/o jax-jit!!
+            self.__jax_PRNG_key, subkey = jax.random.split(self.__jax_PRNG_key)
+            zeta = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
+            """
+            zeta = float(np.random.random())
+
             # Branching starts
             start_reconfiguration = time.perf_counter()
 
+            #############################################################
+            # Old MPI code
+            #############################################################
+
             # jnp.array -> np.array
-            start_reconfiguration_1 = time.perf_counter()
             w_L_latest = np.array(w_L_list)
             e_L_latest = np.array(e_L_list)
             V_diag_E_latest = np.array(V_diag_list) - self.__E_scf
@@ -3579,14 +3585,14 @@ class GFMC_fixed_num_projection:
                 grad_omega_dr_dn_latest = np.array(grad_omega_dr_dn)
 
             # jnp.array -> np.array
-            self.__latest_r_up_carts = np.array(self.__latest_r_up_carts)
-            self.__latest_r_dn_carts = np.array(self.__latest_r_dn_carts)
+            latest_r_up_carts_before_branching_old = np.array(self.__latest_r_up_carts)
+            latest_r_dn_carts_before_branching_old = np.array(self.__latest_r_dn_carts)
 
             # MPI reduce
-            r_up_carts_shape = self.__latest_r_up_carts.shape
-            r_up_carts_gathered_dyad = (mpi_rank, self.__latest_r_up_carts)
-            r_dn_carts_shape = self.__latest_r_dn_carts.shape
-            r_dn_carts_gathered_dyad = (mpi_rank, self.__latest_r_dn_carts)
+            r_up_carts_shape = latest_r_up_carts_before_branching_old.shape
+            r_up_carts_gathered_dyad = (mpi_rank, latest_r_up_carts_before_branching_old)
+            r_dn_carts_shape = latest_r_dn_carts_before_branching_old.shape
+            r_dn_carts_gathered_dyad = (mpi_rank, latest_r_dn_carts_before_branching_old)
 
             r_up_carts_gathered_dyad = mpi_comm.gather(r_up_carts_gathered_dyad, root=0)
             r_dn_carts_gathered_dyad = mpi_comm.gather(r_dn_carts_gathered_dyad, root=0)
@@ -3622,9 +3628,6 @@ class GFMC_fixed_num_projection:
                 grad_omega_dr_up_dyad = mpi_comm.gather(grad_omega_dr_up_dyad, root=0)
                 grad_omega_dr_dn_dyad = mpi_comm.gather(grad_omega_dr_dn_dyad, root=0)
 
-            end_reconfiguration_1 = time.perf_counter()
-
-            start_reconfiguration_2 = time.perf_counter()
             if mpi_rank == 0:
                 # dict
                 r_up_carts_gathered_dict = dict(r_up_carts_gathered_dyad)
@@ -3676,28 +3679,161 @@ class GFMC_fixed_num_projection:
                     grad_omega_dr_up_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_omega_dr_up_gathered)
                     grad_omega_dr_dn_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_omega_dr_dn_gathered)
                 # averaged
-                w_L_averaged = np.average(w_L_gathered / V_diag_E_gathered)
+                w_L_averaged_old = np.average(w_L_gathered / V_diag_E_gathered)
+                e_L_averaged_old = e_L_sum / w_L_sum
+                e_L2_averaged_old = e_L2_sum / w_L_sum
+                if self.__comput_position_deriv:
+                    grad_e_L_r_up_averaged_old = grad_e_L_r_up_sum / w_L_sum
+                    grad_e_L_r_dn_averaged_old = grad_e_L_r_dn_sum / w_L_sum
+                    grad_e_L_R_averaged_old = grad_e_L_R_sum / w_L_sum
+                    grad_ln_Psi_r_up_averaged_old = grad_ln_Psi_r_up_sum / w_L_sum
+                    grad_ln_Psi_r_dn_averaged_old = grad_ln_Psi_r_dn_sum / w_L_sum
+                    grad_ln_Psi_dR_averaged_old = grad_ln_Psi_dR_sum / w_L_sum
+                    omega_up_averaged_old = omega_up_sum / w_L_sum
+                    omega_dn_averaged_old = omega_dn_sum / w_L_sum
+                    grad_omega_dr_up_averaged_old = grad_omega_dr_up_sum / w_L_sum
+                    grad_omega_dr_dn_averaged_old = grad_omega_dr_dn_sum / w_L_sum
+                # add a dummy dim
+                e_L2_averaged_old = np.expand_dims(e_L2_averaged_old, axis=0)
+                e_L_averaged_old = np.expand_dims(e_L_averaged_old, axis=0)
+                w_L_averaged_old = np.expand_dims(w_L_averaged_old, axis=0)
+                if self.__comput_position_deriv:
+                    grad_e_L_r_up_averaged_old = np.expand_dims(grad_e_L_r_up_averaged_old, axis=0)
+                    grad_e_L_r_dn_averaged_old = np.expand_dims(grad_e_L_r_dn_averaged_old, axis=0)
+                    grad_e_L_R_averaged_old = np.expand_dims(grad_e_L_R_averaged_old, axis=0)
+                    grad_ln_Psi_r_up_averaged_old = np.expand_dims(grad_ln_Psi_r_up_averaged_old, axis=0)
+                    grad_ln_Psi_r_dn_averaged_old = np.expand_dims(grad_ln_Psi_r_dn_averaged_old, axis=0)
+                    grad_ln_Psi_dR_averaged_old = np.expand_dims(grad_ln_Psi_dR_averaged_old, axis=0)
+                    omega_up_averaged_old = np.expand_dims(omega_up_averaged_old, axis=0)
+                    omega_dn_averaged_old = np.expand_dims(omega_dn_averaged_old, axis=0)
+                    grad_omega_dr_up_averaged_old = np.expand_dims(grad_omega_dr_up_averaged_old, axis=0)
+                    grad_omega_dr_dn_averaged_old = np.expand_dims(grad_omega_dr_dn_averaged_old, axis=0)
+                """
+                # store  # This should stored only for MPI-rank = 0 !!!
+                self.__stored_e_L2.append(e_L2_averaged)
+                self.__stored_e_L.append(e_L_averaged)
+                self.__stored_w_L.append(w_L_averaged)
+                if self.__comput_position_deriv:
+                    self.__stored_grad_e_L_r_up.append(grad_e_L_r_up_averaged)
+                    self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn_averaged)
+                    self.__stored_grad_e_L_dR.append(grad_e_L_R_averaged)
+                    self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up_averaged)
+                    self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn_averaged)
+                    self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR_averaged)
+                    self.__stored_omega_up.append(omega_up_averaged)
+                    self.__stored_omega_dn.append(omega_dn_averaged)
+                    self.__stored_grad_omega_r_up.append(grad_omega_dr_up_averaged)
+                    self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn_averaged)
+                """
+                # Start branching
+                logger.devel(f"w_L_gathered = {w_L_gathered}")
+                probabilities = w_L_gathered / w_L_gathered.sum()
+                logger.devel(f"probabilities = {probabilities}")
+
+                # correlated choice (see Sandro's textbook, page 182)
+                z_list = [(alpha + zeta) / len(probabilities) for alpha in range(len(probabilities))]
+                logger.devel(f"z_list = {z_list}")
+                cumulative_prob = np.cumsum(probabilities)
+                chosen_walker_indices_old = np.array(
+                    [next(idx for idx, prob in enumerate(cumulative_prob) if z <= prob) for z in z_list]
+                )
+                logger.devel(f"The chosen walker indices = {chosen_walker_indices_old}")
+                logger.devel(f"The chosen walker indices.shape = {chosen_walker_indices_old.shape}")
+                logger.devel(f"r_up_carts_gathered.shape = {r_up_carts_gathered.shape}")
+                logger.devel(f"r_dn_carts_gathered.shape = {r_dn_carts_gathered.shape}")
+
+                proposed_r_up_carts = r_up_carts_gathered[chosen_walker_indices_old]
+                proposed_r_dn_carts = r_dn_carts_gathered[chosen_walker_indices_old]
+
+                num_survived_walkers_old = len(set(chosen_walker_indices_old))
+                num_killed_walkers_old = len(w_L_gathered) - len(set(chosen_walker_indices_old))
+                logger.devel(f"num_survived_walkers={num_survived_walkers_old}")
+                logger.devel(f"num_killed_walkers={num_killed_walkers_old}")
+            else:
+                num_survived_walkers_old = None
+                num_killed_walkers_old = None
+                proposed_r_up_carts = None
+                proposed_r_dn_carts = None
+
+            logger.devel(f"Before branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
+            logger.devel(f"Before branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
+
+            num_survived_walkers_old = mpi_comm.bcast(num_survived_walkers_old, root=0)
+            num_killed_walkers_old = mpi_comm.bcast(num_killed_walkers_old, root=0)
+
+            proposed_r_up_carts = mpi_comm.bcast(proposed_r_up_carts, root=0)
+            proposed_r_dn_carts = mpi_comm.bcast(proposed_r_dn_carts, root=0)
+
+            proposed_r_up_carts = proposed_r_up_carts.reshape(
+                mpi_size, r_up_carts_shape[0], r_up_carts_shape[1], r_up_carts_shape[2]
+            )
+            proposed_r_dn_carts = proposed_r_dn_carts.reshape(
+                mpi_size, r_dn_carts_shape[0], r_dn_carts_shape[1], r_dn_carts_shape[2]
+            )
+
+            # set new r_up_carts and r_dn_carts, and, np.array -> jnp.array
+            latest_r_up_carts_after_branching_old = proposed_r_up_carts[mpi_rank, :, :, :]
+            latest_r_dn_carts_after_branching_old = proposed_r_dn_carts[mpi_rank, :, :, :]
+
+            #############################################################
+            # New MPI code
+            #############################################################
+
+            # jnp.array -> np.array
+            w_L_latest = np.array(w_L_list)
+            e_L_latest = np.array(e_L_list)
+            V_diag_E_latest = np.array(V_diag_list) - self.__E_scf
+
+            if self.__comput_position_deriv:
+                grad_e_L_r_up_latest = np.array(grad_e_L_r_up)
+                grad_e_L_r_dn_latest = np.array(grad_e_L_r_dn)
+                grad_e_L_R_latest = np.array(grad_e_L_R)
+                grad_ln_Psi_r_up_latest = np.array(grad_ln_Psi_r_up)
+                grad_ln_Psi_r_dn_latest = np.array(grad_ln_Psi_r_dn)
+                grad_ln_Psi_dR_latest = np.array(grad_ln_Psi_dR)
+                omega_up_latest = np.array(omega_up)
+                omega_dn_latest = np.array(omega_dn)
+                grad_omega_dr_up_latest = np.array(grad_omega_dr_up)
+                grad_omega_dr_dn_latest = np.array(grad_omega_dr_dn)
+
+            # sum
+            nw_sum = len(w_L_latest)
+            w_L_sum = np.sum(w_L_latest / V_diag_E_latest)
+            e_L_sum = np.sum(w_L_latest / V_diag_E_latest * e_L_latest)
+            e_L2_sum = np.sum(w_L_latest / V_diag_E_latest * e_L_latest**2)
+            if self.__comput_position_deriv:
+                grad_e_L_r_up_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_e_L_r_up_latest)
+                grad_e_L_r_dn_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_e_L_r_dn_latest)
+                grad_e_L_R_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_e_L_R_latest)
+                grad_ln_Psi_r_up_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_ln_Psi_r_up_latest)
+                grad_ln_Psi_r_dn_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_ln_Psi_r_dn_latest)
+                grad_ln_Psi_dR_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_ln_Psi_dR_latest)
+                omega_up_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, omega_up_latest)
+                omega_dn_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, omega_dn_latest)
+                grad_omega_dr_up_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_omega_dr_up_latest)
+                grad_omega_dr_dn_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_omega_dr_dn_latest)
+            # reduce
+            nw_sum = mpi_comm.reduce(nw_sum, op=MPI.SUM, root=0)
+            w_L_sum = mpi_comm.reduce(w_L_sum, op=MPI.SUM, root=0)
+            e_L_sum = mpi_comm.reduce(e_L_sum, op=MPI.SUM, root=0)
+            e_L2_sum = mpi_comm.reduce(e_L2_sum, op=MPI.SUM, root=0)
+            if self.__comput_position_deriv:
+                grad_e_L_r_up_sum = mpi_comm.reduce(grad_e_L_r_up_sum, op=MPI.SUM, root=0)
+                grad_e_L_r_dn_sum = mpi_comm.reduce(grad_e_L_r_dn_sum, op=MPI.SUM, root=0)
+                grad_e_L_R_sum = mpi_comm.reduce(grad_e_L_R_sum, op=MPI.SUM, root=0)
+                grad_ln_Psi_r_up_sum = mpi_comm.reduce(grad_ln_Psi_r_up_sum, op=MPI.SUM, root=0)
+                grad_ln_Psi_r_dn_sum = mpi_comm.reduce(grad_ln_Psi_r_dn_sum, op=MPI.SUM, root=0)
+                grad_ln_Psi_dR_sum = mpi_comm.reduce(grad_ln_Psi_dR_sum, op=MPI.SUM, root=0)
+                omega_up_sum = mpi_comm.reduce(omega_up_sum, op=MPI.SUM, root=0)
+                omega_dn_sum = mpi_comm.reduce(omega_dn_sum, op=MPI.SUM, root=0)
+                grad_omega_dr_up_sum = mpi_comm.reduce(grad_omega_dr_up_sum, op=MPI.SUM, root=0)
+                grad_omega_dr_dn_sum = mpi_comm.reduce(grad_omega_dr_dn_sum, op=MPI.SUM, root=0)
+
+            if mpi_rank == 0:
+                # averaged
+                w_L_averaged = w_L_sum / nw_sum
                 e_L_averaged = e_L_sum / w_L_sum
                 e_L2_averaged = e_L2_sum / w_L_sum
-
-                """ wrong maybe
-                w_L_sum = np.sum(w_L_gathered)
-                e_L_sum = np.sum(w_L_gathered * e_L_gathered)
-                if self.__comput_position_deriv:
-                    grad_e_L_r_up_sum = np.einsum("i,ijk->jk", w_L_gathered, grad_e_L_r_up_gathered)
-                    grad_e_L_r_dn_sum = np.einsum("i,ijk->jk", w_L_gathered, grad_e_L_r_dn_gathered)
-                    grad_e_L_R_sum = np.einsum("i,ijk->jk", w_L_gathered, grad_e_L_R_gathered)
-                    grad_ln_Psi_r_up_sum = np.einsum("i,ijk->jk", w_L_gathered, grad_ln_Psi_r_up_gathered)
-                    grad_ln_Psi_r_dn_sum = np.einsum("i,ijk->jk", w_L_gathered, grad_ln_Psi_r_dn_gathered)
-                    grad_ln_Psi_dR_sum = np.einsum("i,ijk->jk", w_L_gathered, grad_ln_Psi_dR_gathered)
-                    omega_up_sum = np.einsum("i,ijk->jk", w_L_gathered, omega_up_gathered)
-                    omega_dn_sum = np.einsum("i,ijk->jk", w_L_gathered, omega_dn_gathered)
-                    grad_omega_dr_up_sum = np.einsum("i,ijk->jk", w_L_gathered, grad_omega_dr_up_gathered)
-                    grad_omega_dr_dn_sum = np.einsum("i,ijk->jk", w_L_gathered, grad_omega_dr_dn_gathered)
-                # averaged
-                w_L_averaged = np.average(w_L_gathered) * np.average(1.0 / V_diag_E_gathered)
-                e_L_averaged = e_L_sum / w_L_sum
-                """
                 if self.__comput_position_deriv:
                     grad_e_L_r_up_averaged = grad_e_L_r_up_sum / w_L_sum
                     grad_e_L_r_dn_averaged = grad_e_L_r_dn_sum / w_L_sum
@@ -3724,6 +3860,7 @@ class GFMC_fixed_num_projection:
                     omega_dn_averaged = np.expand_dims(omega_dn_averaged, axis=0)
                     grad_omega_dr_up_averaged = np.expand_dims(grad_omega_dr_up_averaged, axis=0)
                     grad_omega_dr_dn_averaged = np.expand_dims(grad_omega_dr_dn_averaged, axis=0)
+
                 # store  # This should stored only for MPI-rank = 0 !!!
                 self.__stored_e_L2.append(e_L2_averaged)
                 self.__stored_e_L.append(e_L_averaged)
@@ -3739,50 +3876,56 @@ class GFMC_fixed_num_projection:
                     self.__stored_omega_dn.append(omega_dn_averaged)
                     self.__stored_grad_omega_r_up.append(grad_omega_dr_up_averaged)
                     self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn_averaged)
-                # for branching
-                w_L_list = w_L_gathered
-                logger.devel(f"w_L_list = {w_L_list}")
-                probabilities = w_L_list / w_L_list.sum()
+
+            # branching
+            # jnp.array -> np.array
+            latest_r_up_carts_before_branching = np.array(self.__latest_r_up_carts)
+            latest_r_dn_carts_before_branching = np.array(self.__latest_r_dn_carts)
+            # MPI reduce
+            r_up_carts_shape = latest_r_up_carts_before_branching.shape
+            r_up_carts_gathered_dyad = (mpi_rank, latest_r_up_carts_before_branching)
+            r_dn_carts_shape = latest_r_dn_carts_before_branching.shape
+            r_dn_carts_gathered_dyad = (mpi_rank, latest_r_dn_carts_before_branching)
+            r_up_carts_gathered_dyad = mpi_comm.gather(r_up_carts_gathered_dyad, root=0)
+            r_dn_carts_gathered_dyad = mpi_comm.gather(r_dn_carts_gathered_dyad, root=0)
+
+            # MPI gather
+            w_L_gathered_dyad = (mpi_rank, w_L_latest)
+            w_L_gathered_dyad = mpi_comm.gather(w_L_gathered_dyad, root=0)
+
+            if mpi_rank == 0:
+                w_L_gathered_dict = dict(w_L_gathered_dyad)
+                r_up_carts_gathered_dict = dict(r_up_carts_gathered_dyad)
+                r_dn_carts_gathered_dict = dict(r_dn_carts_gathered_dyad)
+
+                w_L_gathered = np.concatenate([w_L_gathered_dict[i] for i in range(mpi_size)])
+                r_up_carts_gathered = np.concatenate([r_up_carts_gathered_dict[i] for i in range(mpi_size)])
+                r_dn_carts_gathered = np.concatenate([r_dn_carts_gathered_dict[i] for i in range(mpi_size)])
+
+                logger.devel(f"w_L_gathered = {w_L_gathered}")
+                probabilities = w_L_gathered / w_L_gathered.sum()
                 logger.devel(f"probabilities = {probabilities}")
 
                 # correlated choice (see Sandro's textbook, page 182)
-                """ very slow w/o jax-jit!!
-                self.__jax_PRNG_key, subkey = jax.random.split(self.__jax_PRNG_key)
-                zeta = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
-                """
-                zeta = float(np.random.random())
                 z_list = [(alpha + zeta) / len(probabilities) for alpha in range(len(probabilities))]
                 logger.devel(f"z_list = {z_list}")
                 cumulative_prob = np.cumsum(probabilities)
                 chosen_walker_indices = np.array(
                     [next(idx for idx, prob in enumerate(cumulative_prob) if z <= prob) for z in z_list]
                 )
-                logger.devel(f"The chosen walker indices = {chosen_walker_indices}")
-                logger.devel(f"The chosen walker indices.shape = {chosen_walker_indices.shape}")
-                logger.devel(f"r_up_carts_gathered.shape = {r_up_carts_gathered.shape}")
-                logger.devel(f"r_dn_carts_gathered.shape = {r_dn_carts_gathered.shape}")
-
                 proposed_r_up_carts = r_up_carts_gathered[chosen_walker_indices]
                 proposed_r_dn_carts = r_dn_carts_gathered[chosen_walker_indices]
 
-                self.__num_survived_walkers += len(set(chosen_walker_indices))
-                self.__num_killed_walkers += len(w_L_list) - len(set(chosen_walker_indices))
-                logger.devel(f"num_survived_walkers={self.__num_survived_walkers}")
-                logger.devel(f"num_killed_walkers={self.__num_killed_walkers}")
+                num_survived_walkers = len(set(chosen_walker_indices))
+                num_killed_walkers = len(w_L_gathered) - len(set(chosen_walker_indices))
             else:
-                self.__num_survived_walkers = None
-                self.__num_killed_walkers = None
+                num_survived_walkers = None
+                num_killed_walkers = None
                 proposed_r_up_carts = None
                 proposed_r_dn_carts = None
 
-            end_reconfiguration_2 = time.perf_counter()
-
-            start_reconfiguration_3 = time.perf_counter()
-            logger.devel(f"Before branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
-            logger.devel(f"Before branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
-
-            self.__num_survived_walkers = mpi_comm.bcast(self.__num_survived_walkers, root=0)
-            self.__num_killed_walkers = mpi_comm.bcast(self.__num_killed_walkers, root=0)
+            num_survived_walkers = mpi_comm.bcast(num_survived_walkers, root=0)
+            num_killed_walkers = mpi_comm.bcast(num_killed_walkers, root=0)
 
             proposed_r_up_carts = mpi_comm.bcast(proposed_r_up_carts, root=0)
             proposed_r_dn_carts = mpi_comm.bcast(proposed_r_dn_carts, root=0)
@@ -3795,22 +3938,29 @@ class GFMC_fixed_num_projection:
             )
 
             # set new r_up_carts and r_dn_carts, and, np.array -> jnp.array
-            self.__latest_r_up_carts = proposed_r_up_carts[mpi_rank, :, :, :]
-            self.__latest_r_dn_carts = proposed_r_dn_carts[mpi_rank, :, :, :]
+            latest_r_up_carts_after_branching = proposed_r_up_carts[mpi_rank, :, :, :]
+            latest_r_dn_carts_after_branching = proposed_r_dn_carts[mpi_rank, :, :, :]
 
-            # np.array -> jnp.array
-            self.__latest_r_up_carts = jnp.array(self.__latest_r_up_carts)
-            self.__latest_r_dn_carts = jnp.array(self.__latest_r_dn_carts)
+            # check consistency between the new and old MPI processes.
+            if mpi_rank == 0:
+                np.testing.assert_array_almost_equal(e_L2_averaged, e_L2_averaged_old)
+                np.testing.assert_array_almost_equal(e_L_averaged, e_L_averaged_old)
+                np.testing.assert_array_almost_equal(w_L_averaged, w_L_averaged_old)
+                np.testing.assert_equal(chosen_walker_indices, chosen_walker_indices_old)
+            np.testing.assert_equal(num_survived_walkers, num_survived_walkers_old)
+            np.testing.assert_equal(num_killed_walkers, num_killed_walkers_old)
+            np.testing.assert_array_almost_equal(latest_r_up_carts_before_branching, latest_r_up_carts_before_branching_old)
+            np.testing.assert_array_almost_equal(latest_r_dn_carts_before_branching, latest_r_dn_carts_before_branching_old)
+            np.testing.assert_array_almost_equal(latest_r_up_carts_after_branching, latest_r_up_carts_after_branching_old)
+            np.testing.assert_array_almost_equal(latest_r_dn_carts_after_branching, latest_r_dn_carts_after_branching_old)
 
-            logger.devel(f"*After branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
-            logger.devel(f"*After branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
+            # here update the walker positions!!
+            self.__num_survived_walkers += num_survived_walkers
+            self.__num_killed_walkers += num_killed_walkers
+            self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
+            self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
 
-            end_reconfiguration_3 = time.perf_counter()
             end_reconfiguration = time.perf_counter()
-
-            timer_reconfiguration_1 += end_reconfiguration_1 - start_reconfiguration_1
-            timer_reconfiguration_2 += end_reconfiguration_2 - start_reconfiguration_2
-            timer_reconfiguration_3 += end_reconfiguration_3 - start_reconfiguration_3
             timer_reconfiguration += end_reconfiguration - start_reconfiguration
 
             # update E_scf
@@ -3864,9 +4014,6 @@ class GFMC_fixed_num_projection:
         logger.info(f"  Time for computing de_L/dc = {timer_de_L_dc / num_mcmc_done * 10**3:.2f} msec.")
         logger.info(f"  Time for misc. (others) = {timer_misc / num_mcmc_done * 10**3:.2f} msec.")
         logger.info(f"  Walker reconfiguration time per branching = {timer_reconfiguration / num_mcmc_done * 10**3: .3f} msec.")
-        logger.info(f"      Time for Reduce(MPI) = {timer_reconfiguration_1 / num_mcmc_done * 10**3: .3f} msec.")
-        logger.info(f"      Time for Branching = {timer_reconfiguration_2 / num_mcmc_done * 10**3: .3f} msec.")
-        logger.info(f"      Time for Broadcast(MPI) = {timer_reconfiguration_3 / num_mcmc_done * 10**3: .3f} msec.")
         logger.devel(f"Survived walkers = {self.__num_survived_walkers}")
         logger.devel(f"killed walkers = {self.__num_killed_walkers}")
         logger.info(
@@ -3878,9 +4025,6 @@ class GFMC_fixed_num_projection:
         self.__timer_projection_init += timer_projection_init
         self.__timer_projection_total += timer_projection_total
         self.__timer_branching += timer_reconfiguration
-        self.__timer_branching_1 += timer_reconfiguration_1
-        self.__timer_branching_2 += timer_reconfiguration_2
-        self.__timer_branching_3 += timer_reconfiguration_3
         self.__timer_e_L += timer_e_L
         self.__timer_de_L_dR_dr += timer_de_L_dR_dr
         self.__timer_dln_Psi_dR_dr += timer_dln_Psi_dR_dr
