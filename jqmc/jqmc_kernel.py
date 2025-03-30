@@ -2152,23 +2152,35 @@ class GFMC_fixed_projection_time:
             timer_mpi_barrier += end_mpi_barrier - start_mpi_barrier
 
             # Branching starts
+            # random number for the later use
+            """ very slow w/o jax-jit!!
+            self.__jax_PRNG_key, subkey = jax.random.split(self.__jax_PRNG_key)
+            zeta = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
+            """
+            zeta = float(np.random.random())
+
+            # Branching starts
             start_reconfiguration = time.perf_counter()
 
+            #############################################################
+            # Old MPI code
+            #############################################################
+            '''
             # jnp.array -> np.array
             w_L_latest = np.array(w_L_list)
             e_L_latest = np.array(e_L_list)
 
             # jnp.array -> np.array
-            self.__latest_r_up_carts = np.array(self.__latest_r_up_carts)
-            self.__latest_r_dn_carts = np.array(self.__latest_r_dn_carts)
+            latest_r_up_carts_before_branching_old = np.array(self.__latest_r_up_carts)
+            latest_r_dn_carts_before_branching_old = np.array(self.__latest_r_dn_carts)
 
             # MPI reduce
-            r_up_carts_shape = self.__latest_r_up_carts.shape
-            r_up_carts_gathered_dyad = (mpi_rank, self.__latest_r_up_carts)
+            r_up_carts_shape = latest_r_up_carts_before_branching_old.shape
+            r_up_carts_gathered_dyad = (mpi_rank, latest_r_up_carts_before_branching_old)
             r_up_carts_gathered_dyad = mpi_comm.gather(r_up_carts_gathered_dyad, root=0)
 
-            r_dn_carts_shape = self.__latest_r_dn_carts.shape
-            r_dn_carts_gathered_dyad = (mpi_rank, self.__latest_r_dn_carts)
+            r_dn_carts_shape = latest_r_dn_carts_before_branching_old.shape
+            r_dn_carts_gathered_dyad = (mpi_rank, latest_r_dn_carts_before_branching_old)
             r_dn_carts_gathered_dyad = mpi_comm.gather(r_dn_carts_gathered_dyad, root=0)
 
             e_L_gathered_dyad = (mpi_rank, e_L_latest)
@@ -2181,74 +2193,53 @@ class GFMC_fixed_projection_time:
             ave_projection_counter_gathered = mpi_comm.gather(ave_projection_counter, root=0)
 
             if mpi_rank == 0:
-                logger.devel(f"e_L_gathered_dyad={e_L_gathered_dyad}")
-                logger.devel(f"w_L_gathered_dyad={w_L_gathered_dyad}")
                 r_up_carts_gathered_dict = dict(r_up_carts_gathered_dyad)
                 r_dn_carts_gathered_dict = dict(r_dn_carts_gathered_dyad)
                 e_L_gathered_dict = dict(e_L_gathered_dyad)
                 w_L_gathered_dict = dict(w_L_gathered_dyad)
-                logger.devel(f"  e_L_gathered_dict = {e_L_gathered_dict} Ha")
-                logger.devel(f"  w_L_gathered_dict = {w_L_gathered_dict}")
                 r_up_carts_gathered = np.concatenate([r_up_carts_gathered_dict[i] for i in range(mpi_size)])
                 r_dn_carts_gathered = np.concatenate([r_dn_carts_gathered_dict[i] for i in range(mpi_size)])
                 e_L_gathered = np.concatenate([e_L_gathered_dict[i] for i in range(mpi_size)])
                 w_L_gathered = np.concatenate([w_L_gathered_dict[i] for i in range(mpi_size)])
-                logger.devel(f"  e_L_gathered = {e_L_gathered} Ha")
-                logger.devel(f"  w_L_gathered = {w_L_gathered}")
-                e_L2_averaged = np.sum(w_L_gathered * e_L_gathered**2) / np.sum(w_L_gathered)
-                e_L_averaged = np.sum(w_L_gathered * e_L_gathered) / np.sum(w_L_gathered)
-                w_L_averaged = np.average(w_L_gathered)
-                logger.devel(f"  e_L_averaged = {e_L_averaged} Ha")
-                logger.devel(f"  w_L_averaged = {w_L_averaged}")
+                e_L2_averaged_old = np.sum(w_L_gathered * e_L_gathered**2) / np.sum(w_L_gathered)
+                e_L_averaged_old = np.sum(w_L_gathered * e_L_gathered) / np.sum(w_L_gathered)
+                w_L_averaged_old = np.average(w_L_gathered)
                 # add a dummy dim
-                e_L2_averaged = np.expand_dims(e_L2_averaged, axis=0)
-                e_L_averaged = np.expand_dims(e_L_averaged, axis=0)
-                w_L_averaged = np.expand_dims(w_L_averaged, axis=0)
+                e_L2_averaged_old = np.expand_dims(e_L2_averaged_old, axis=0)
+                e_L_averaged_old = np.expand_dims(e_L_averaged_old, axis=0)
+                w_L_averaged_old = np.expand_dims(w_L_averaged_old, axis=0)
+                """
                 # store  # This should stored only for MPI-rank = 0 !!!
                 self.__stored_e_L2.append(e_L2_averaged)
                 self.__stored_e_L.append(e_L_averaged)
                 self.__stored_w_L.append(w_L_averaged)
-                w_L_list = w_L_gathered
-                logger.devel(f"w_L_list = {w_L_list}")
-                probabilities = w_L_list / w_L_list.sum()
-                logger.devel(f"probabilities = {probabilities}")
+                """
 
+                # branching
+                probabilities = w_L_gathered / w_L_gathered.sum()
                 # correlated choice (see Sandro's textbook, page 182)
-                zeta = float(np.random.random())
-                # self.__jax_PRNG_key, subkey = jax.random.split(self.__jax_PRNG_key) # slow w/o jit!!
-                # zeta = float(jax.random.uniform(subkey, minval=0.0, maxval=1.0)) # slow w/o jit!!
                 z_list = [(alpha + zeta) / len(probabilities) for alpha in range(len(probabilities))]
                 logger.devel(f"z_list = {z_list}")
                 cumulative_prob = np.cumsum(probabilities)
-                chosen_walker_indices = np.array(
+                chosen_walker_indices_old = np.array(
                     [next(idx for idx, prob in enumerate(cumulative_prob) if z <= prob) for z in z_list]
                 )
-                logger.devel(f"The chosen walker indices = {chosen_walker_indices}")
-                logger.devel(f"The chosen walker indices.shape = {chosen_walker_indices.shape}")
-                logger.devel(f"r_up_carts_gathered.shape = {r_up_carts_gathered.shape}")
-                logger.devel(f"r_dn_carts_gathered.shape = {r_dn_carts_gathered.shape}")
+                proposed_r_up_carts = r_up_carts_gathered[chosen_walker_indices_old]
+                proposed_r_dn_carts = r_dn_carts_gathered[chosen_walker_indices_old]
 
-                proposed_r_up_carts = r_up_carts_gathered[chosen_walker_indices]
-                proposed_r_dn_carts = r_dn_carts_gathered[chosen_walker_indices]
-
-                self.__num_survived_walkers += len(set(chosen_walker_indices))
-                self.__num_killed_walkers += len(w_L_list) - len(set(chosen_walker_indices))
-                self.__stored_average_projection_counter.append(np.mean(ave_projection_counter_gathered))
-                logger.devel(f"num_survived_walkers={self.__num_survived_walkers}")
-                logger.devel(f"num_killed_walkers={self.__num_killed_walkers}")
+                num_survived_walkers_old = len(set(chosen_walker_indices_old))
+                num_killed_walkers_old = len(w_L_gathered) - len(set(chosen_walker_indices_old))
+                stored_average_projection_counter_old = np.mean(ave_projection_counter_gathered)
             else:
-                self.__num_survived_walkers = None
-                self.__num_killed_walkers = None
-                self.__stored_average_projection_counter = None
+                num_survived_walkers_old = None
+                num_killed_walkers_old = None
+                stored_average_projection_counter_old = None
                 proposed_r_up_carts = None
                 proposed_r_dn_carts = None
 
-            logger.devel(f"Before branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
-            logger.devel(f"Before branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
-
-            self.__num_survived_walkers = mpi_comm.bcast(self.__num_survived_walkers, root=0)
-            self.__num_killed_walkers = mpi_comm.bcast(self.__num_killed_walkers, root=0)
-            self.__stored_average_projection_counter = mpi_comm.bcast(self.__stored_average_projection_counter, root=0)
+            num_survived_walkers_old = mpi_comm.bcast(num_survived_walkers_old, root=0)
+            num_killed_walkers_old = mpi_comm.bcast(num_killed_walkers_old, root=0)
+            stored_average_projection_counter_old = mpi_comm.bcast(stored_average_projection_counter_old, root=0)
 
             proposed_r_up_carts = mpi_comm.bcast(proposed_r_up_carts, root=0)
             proposed_r_dn_carts = mpi_comm.bcast(proposed_r_dn_carts, root=0)
@@ -2261,12 +2252,198 @@ class GFMC_fixed_projection_time:
             )
 
             # set new r_up_carts and r_dn_carts, and, np.array -> jnp.array
-            self.__latest_r_up_carts = proposed_r_up_carts[mpi_rank, :, :, :]
-            self.__latest_r_dn_carts = proposed_r_dn_carts[mpi_rank, :, :, :]
+            latest_r_up_carts_after_branching_old = proposed_r_up_carts[mpi_rank, :, :, :]
+            latest_r_dn_carts_after_branching_old = proposed_r_dn_carts[mpi_rank, :, :, :]
+            '''
+
+            #############################################################
+            # New MPI code
+            #############################################################
+
+            # jnp.array -> np.array
+            w_L_latest = np.array(w_L_list)
+            e_L_latest = np.array(e_L_list)
+
+            # sum
+            nw_sum = len(w_L_latest)
+            w_L_sum = np.sum(w_L_latest)
+            e_L_sum = np.sum(w_L_latest * e_L_latest)
+            e_L2_sum = np.sum(w_L_latest * e_L_latest**2)
+
+            # reduce
+            nw_sum = mpi_comm.reduce(nw_sum, op=MPI.SUM, root=0)
+            w_L_sum = mpi_comm.reduce(w_L_sum, op=MPI.SUM, root=0)
+            e_L_sum = mpi_comm.reduce(e_L_sum, op=MPI.SUM, root=0)
+            e_L2_sum = mpi_comm.reduce(e_L2_sum, op=MPI.SUM, root=0)
+
+            if mpi_rank == 0:
+                # averaged
+                w_L_averaged = w_L_sum / nw_sum
+                e_L_averaged = e_L_sum / w_L_sum
+                e_L2_averaged = e_L2_sum / w_L_sum
+
+                # add a dummy dim
+                e_L2_averaged = np.expand_dims(e_L2_averaged, axis=0)
+                e_L_averaged = np.expand_dims(e_L_averaged, axis=0)
+                w_L_averaged = np.expand_dims(w_L_averaged, axis=0)
+
+                # store  # This should stored only for MPI-rank = 0 !!!
+                self.__stored_e_L2.append(e_L2_averaged)
+                self.__stored_e_L.append(e_L_averaged)
+                self.__stored_w_L.append(w_L_averaged)
+
+            # branching
+            latest_r_up_carts_before_branching = np.array(self.__latest_r_up_carts)
+            latest_r_dn_carts_before_branching = np.array(self.__latest_r_dn_carts)
+
+            #########################################
+            # 1. Gather only the weights to MPI_rank=0 and perform branching calculation
+            #########################################
+            w_L_gathered_dyad = (mpi_rank, w_L_latest)
+            w_L_gathered_dyad = mpi_comm.gather(w_L_gathered_dyad, root=0)
+
+            # num projection counter
+            ave_projection_counter = np.mean(projection_counter_list)
+            ave_projection_counter_gathered = mpi_comm.gather(ave_projection_counter, root=0)
+
+            if mpi_rank == 0:
+                # Concatenate all weights into a 1D array (total number of walkers is mpi_size * Nw)
+                w_L_gathered_dict = dict(w_L_gathered_dyad)
+                w_L_gathered = np.concatenate([w_L_gathered_dict[i] for i in range(mpi_size)])
+                probabilities = w_L_gathered / w_L_gathered.sum()
+                # Create a shifted list of random numbers for each walker
+                z_list = [(alpha + zeta) / len(probabilities) for alpha in range(len(probabilities))]
+                cumulative_prob = np.cumsum(probabilities)
+                # For each z, select the smallest index where cumulative_prob exceeds z
+                chosen_walker_indices = np.array([np.searchsorted(cumulative_prob, z) for z in z_list])
+                num_survived_walkers = len(set(chosen_walker_indices))
+                num_killed_walkers = len(w_L_gathered) - len(set(chosen_walker_indices))
+
+                # At this point, the global walker ordering (from 0 to len(probabilities)-1) is determined,
+                # so determine from which MPI process (src_rank) and with which local index (src_local_idx)
+                # each walker is obtained.
+                # Assume that each process is assigned exactly Nw walkers.
+                new_assignment = {p: [] for p in range(mpi_size)}
+                for new_global_idx in range(len(probabilities)):
+                    # The global index of the selected walker
+                    src_global_idx = chosen_walker_indices[new_global_idx]
+                    src_rank = src_global_idx // self.num_walkers
+                    src_local_idx = src_global_idx % self.num_walkers
+                    # The new destination is simply determined from the global order
+                    dest_rank = new_global_idx // self.num_walkers
+                    new_assignment[dest_rank].append((src_rank, src_local_idx))
+
+                stored_average_projection_counter = np.mean(ave_projection_counter_gathered)
+            else:
+                new_assignment = None
+                num_survived_walkers = None
+                num_killed_walkers = None
+                stored_average_projection_counter = None
+
+            # Distribute the new walker source list to each process using scatter.
+            # Each process should receive a list of length Nw.
+            # Convert the dictionary to a list ordered by MPI rank
+            new_assignment = mpi_comm.bcast(new_assignment, root=0)
+            local_assignment = new_assignment[mpi_rank]
+            # local_assignment is a list of (src_rank, src_local_idx) for each walker
+            num_survived_walkers = mpi_comm.bcast(num_survived_walkers, root=0)
+            num_killed_walkers = mpi_comm.bcast(num_killed_walkers, root=0)
+            stored_average_projection_counter = mpi_comm.bcast(stored_average_projection_counter, root=0)
+
+            #########################################
+            # 2. In each process, prepare for data exchange based on the new walker selection
+            #########################################
+            # Prepare arrays to store the new walker information
+            latest_r_up_carts_after_branching = np.empty_like(latest_r_up_carts_before_branching)
+            latest_r_dn_carts_after_branching = np.empty_like(latest_r_dn_carts_before_branching)
+
+            # Separate the walkers that can be copied locally from those that need to be received from remote processes.
+            # Here, we create a dictionary called reqs that gathers the local index information required from other processes (src_rank).
+            # The key is the destination MPI rank, and the value is a list of tuples (dest_local_index, src_local_idx).
+            reqs = {}
+            for dest_idx, (src_rank, src_local_idx) in enumerate(local_assignment):
+                if src_rank == mpi_rank:
+                    # If within the same process, simply copy directly
+                    latest_r_up_carts_after_branching[dest_idx] = latest_r_up_carts_before_branching[src_local_idx]
+                    latest_r_dn_carts_after_branching[dest_idx] = latest_r_dn_carts_before_branching[src_local_idx]
+                else:
+                    reqs.setdefault(src_rank, []).append((dest_idx, src_local_idx))
+
+            #########################################
+            # 3. Exchange only the necessary walker data between processes using point-to-point communication
+            #########################################
+            # 3-1. Each process has the information (reqs) regarding what it needs to request from other processes.
+            #      Here, each process communicates with all processes, sending even an empty request.
+            #      Since reqs is a pickleable object, we send it as is.
+            all_reqs = mpi_comm.allgather(reqs)
+
+            # 3-2. Each process extracts the requests for walker data for which it is the source,
+            #      i.e., what requests have come from other processes.
+            # incoming_reqs: A list of send requests from other processes for your walker data.
+            incoming_reqs = []
+            for p in range(mpi_size):
+                if p == mpi_rank:
+                    continue
+                # If another process p has requested a walker from this process (mpi_rank),
+                # all_reqs[p] is a dictionary keyed by destination.
+                # Extract the list corresponding to the key mpi_rank.
+                req_list = all_reqs[p].get(mpi_rank, [])
+                # Each element of req_list is (dest_idx_on_p, src_local_idx)
+                # Here, extract the walker data that should be sent from this process.
+                for dest_idx, src_local_idx in req_list:
+                    incoming_reqs.append((p, src_local_idx, dest_idx))
+            # 3-3. For each walker that you have requested, receive the walker data from the corresponding process.
+            #      Here, we use a simple blocking recv.
+            for src, req_list in reqs.items():
+                # For each remote process src, req_list is a list of (dest_local_idx, src_local_idx).
+                # Receive the walker data (lists of r_up and r_dn) as a single message.
+                # Communicate using tag 200.
+                r_up_list, r_dn_list = mpi_comm.recv(source=src, tag=200)
+                for (dest_idx, _), r_up_walker, r_dn_walker in zip(req_list, r_up_list, r_dn_list):
+                    latest_r_up_carts_after_branching[dest_idx] = r_up_walker
+                    latest_r_dn_carts_after_branching[dest_idx] = r_dn_walker
+
+            # 3-4. Meanwhile, based on incoming_reqs, compile the walker data that you need to provide,
+            #      and send it to each process that requested it.
+            # Here, group the data by destination.
+            send_data = {}
+            for dest_rank, src_local_idx, dest_idx in incoming_reqs:
+                send_data.setdefault(dest_rank, []).append((dest_idx, src_local_idx))
+
+            for dest_rank, req_list in send_data.items():
+                r_up_send = []
+                r_dn_send = []
+                for _, local_idx in req_list:
+                    r_up_send.append(latest_r_up_carts_before_branching[local_idx])
+                    r_dn_send.append(latest_r_dn_carts_before_branching[local_idx])
+                # Send using tag 200
+                mpi_comm.send((r_up_send, r_dn_send), dest=dest_rank, tag=200)
+
+            """ consistency test
+            if mpi_rank == 0:
+                logger.info(f"chosen_walker_indices_old = {chosen_walker_indices_old}")
+                logger.info(f"chosen_walker_indices = {chosen_walker_indices}")
+            # check consistency between the new and old MPI processes.
+            if mpi_rank == 0:
+                np.testing.assert_array_almost_equal(e_L2_averaged, e_L2_averaged_old)
+                np.testing.assert_array_almost_equal(e_L_averaged, e_L_averaged_old)
+                np.testing.assert_array_almost_equal(w_L_averaged, w_L_averaged_old)
+                np.testing.assert_equal(chosen_walker_indices, chosen_walker_indices_old)
+            np.testing.assert_equal(num_survived_walkers, num_survived_walkers_old)
+            np.testing.assert_equal(num_killed_walkers, num_killed_walkers_old)
+            np.testing.assert_equal(stored_average_projection_counter, stored_average_projection_counter_old)
+            np.testing.assert_array_almost_equal(latest_r_up_carts_before_branching, latest_r_up_carts_before_branching_old)
+            np.testing.assert_array_almost_equal(latest_r_dn_carts_before_branching, latest_r_dn_carts_before_branching_old)
+            np.testing.assert_array_almost_equal(latest_r_up_carts_after_branching, latest_r_up_carts_after_branching_old)
+            np.testing.assert_array_almost_equal(latest_r_dn_carts_after_branching, latest_r_dn_carts_after_branching_old)
+            """
 
             # np.array -> jnp.array
-            self.__latest_r_up_carts = jnp.array(self.__latest_r_up_carts)
-            self.__latest_r_dn_carts = jnp.array(self.__latest_r_dn_carts)
+            self.__num_survived_walkers += num_survived_walkers
+            self.__num_killed_walkers += num_killed_walkers
+            self.__stored_average_projection_counter.append(stored_average_projection_counter)
+            self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
+            self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
 
             logger.devel(f"*After branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
             logger.devel(f"*After branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
@@ -2756,7 +2933,6 @@ class GFMC_fixed_num_projection:
         timer_dln_Psi_dc = 0.0
         timer_de_L_dc = 0.0
         timer_reconfiguration = 0.0
-        timer_reconfiguration_ = 0.0
 
         gfmc_total_start = time.perf_counter()
 
@@ -3566,7 +3742,7 @@ class GFMC_fixed_num_projection:
             #############################################################
             # Old MPI code
             #############################################################
-
+            '''
             # jnp.array -> np.array
             w_L_latest = np.array(w_L_list)
             e_L_latest = np.array(e_L_list)
@@ -3774,6 +3950,7 @@ class GFMC_fixed_num_projection:
             # set new r_up_carts and r_dn_carts, and, np.array -> jnp.array
             latest_r_up_carts_after_branching_old = proposed_r_up_carts[mpi_rank, :, :, :]
             latest_r_dn_carts_after_branching_old = proposed_r_dn_carts[mpi_rank, :, :, :]
+            '''
 
             #############################################################
             # New MPI code
@@ -3878,69 +4055,128 @@ class GFMC_fixed_num_projection:
                     self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn_averaged)
 
             # branching
-            # jnp.array -> np.array
             latest_r_up_carts_before_branching = np.array(self.__latest_r_up_carts)
             latest_r_dn_carts_before_branching = np.array(self.__latest_r_dn_carts)
-            # MPI reduce
-            r_up_carts_shape = latest_r_up_carts_before_branching.shape
-            r_up_carts_gathered_dyad = (mpi_rank, latest_r_up_carts_before_branching)
-            r_dn_carts_shape = latest_r_dn_carts_before_branching.shape
-            r_dn_carts_gathered_dyad = (mpi_rank, latest_r_dn_carts_before_branching)
-            r_up_carts_gathered_dyad = mpi_comm.gather(r_up_carts_gathered_dyad, root=0)
-            r_dn_carts_gathered_dyad = mpi_comm.gather(r_dn_carts_gathered_dyad, root=0)
 
-            # MPI gather
+            #########################################
+            # 1. Gather only the weights to MPI_rank=0 and perform branching calculation
+            #########################################
             w_L_gathered_dyad = (mpi_rank, w_L_latest)
             w_L_gathered_dyad = mpi_comm.gather(w_L_gathered_dyad, root=0)
 
             if mpi_rank == 0:
+                # Concatenate all weights into a 1D array (total number of walkers is mpi_size * Nw)
                 w_L_gathered_dict = dict(w_L_gathered_dyad)
-                r_up_carts_gathered_dict = dict(r_up_carts_gathered_dyad)
-                r_dn_carts_gathered_dict = dict(r_dn_carts_gathered_dyad)
-
                 w_L_gathered = np.concatenate([w_L_gathered_dict[i] for i in range(mpi_size)])
-                r_up_carts_gathered = np.concatenate([r_up_carts_gathered_dict[i] for i in range(mpi_size)])
-                r_dn_carts_gathered = np.concatenate([r_dn_carts_gathered_dict[i] for i in range(mpi_size)])
-
-                logger.devel(f"w_L_gathered = {w_L_gathered}")
                 probabilities = w_L_gathered / w_L_gathered.sum()
-                logger.devel(f"probabilities = {probabilities}")
-
-                # correlated choice (see Sandro's textbook, page 182)
+                # Create a shifted list of random numbers for each walker
                 z_list = [(alpha + zeta) / len(probabilities) for alpha in range(len(probabilities))]
-                logger.devel(f"z_list = {z_list}")
                 cumulative_prob = np.cumsum(probabilities)
-                chosen_walker_indices = np.array(
-                    [next(idx for idx, prob in enumerate(cumulative_prob) if z <= prob) for z in z_list]
-                )
-                proposed_r_up_carts = r_up_carts_gathered[chosen_walker_indices]
-                proposed_r_dn_carts = r_dn_carts_gathered[chosen_walker_indices]
-
+                # For each z, select the smallest index where cumulative_prob exceeds z
+                chosen_walker_indices = np.array([np.searchsorted(cumulative_prob, z) for z in z_list])
                 num_survived_walkers = len(set(chosen_walker_indices))
                 num_killed_walkers = len(w_L_gathered) - len(set(chosen_walker_indices))
+
+                # At this point, the global walker ordering (from 0 to len(probabilities)-1) is determined,
+                # so determine from which MPI process (src_rank) and with which local index (src_local_idx)
+                # each walker is obtained.
+                # Assume that each process is assigned exactly Nw walkers.
+                new_assignment = {p: [] for p in range(mpi_size)}
+                for new_global_idx in range(len(probabilities)):
+                    # The global index of the selected walker
+                    src_global_idx = chosen_walker_indices[new_global_idx]
+                    src_rank = src_global_idx // self.num_walkers
+                    src_local_idx = src_global_idx % self.num_walkers
+                    # The new destination is simply determined from the global order
+                    dest_rank = new_global_idx // self.num_walkers
+                    new_assignment[dest_rank].append((src_rank, src_local_idx))
             else:
+                new_assignment = None
                 num_survived_walkers = None
                 num_killed_walkers = None
-                proposed_r_up_carts = None
-                proposed_r_dn_carts = None
 
+            # Distribute the new walker source list to each process using scatter.
+            # Each process should receive a list of length Nw.
+            # Convert the dictionary to a list ordered by MPI rank
+            new_assignment = mpi_comm.bcast(new_assignment, root=0)
+            local_assignment = new_assignment[mpi_rank]
+            # local_assignment is a list of (src_rank, src_local_idx) for each walker
             num_survived_walkers = mpi_comm.bcast(num_survived_walkers, root=0)
             num_killed_walkers = mpi_comm.bcast(num_killed_walkers, root=0)
 
-            proposed_r_up_carts = mpi_comm.bcast(proposed_r_up_carts, root=0)
-            proposed_r_dn_carts = mpi_comm.bcast(proposed_r_dn_carts, root=0)
+            #########################################
+            # 2. In each process, prepare for data exchange based on the new walker selection
+            #########################################
+            # Prepare arrays to store the new walker information
+            latest_r_up_carts_after_branching = np.empty_like(latest_r_up_carts_before_branching)
+            latest_r_dn_carts_after_branching = np.empty_like(latest_r_dn_carts_before_branching)
 
-            proposed_r_up_carts = proposed_r_up_carts.reshape(
-                mpi_size, r_up_carts_shape[0], r_up_carts_shape[1], r_up_carts_shape[2]
-            )
-            proposed_r_dn_carts = proposed_r_dn_carts.reshape(
-                mpi_size, r_dn_carts_shape[0], r_dn_carts_shape[1], r_dn_carts_shape[2]
-            )
+            # Separate the walkers that can be copied locally from those that need to be received from remote processes.
+            # Here, we create a dictionary called reqs that gathers the local index information required from other processes (src_rank).
+            # The key is the destination MPI rank, and the value is a list of tuples (dest_local_index, src_local_idx).
+            reqs = {}
+            for dest_idx, (src_rank, src_local_idx) in enumerate(local_assignment):
+                if src_rank == mpi_rank:
+                    # If within the same process, simply copy directly
+                    latest_r_up_carts_after_branching[dest_idx] = latest_r_up_carts_before_branching[src_local_idx]
+                    latest_r_dn_carts_after_branching[dest_idx] = latest_r_dn_carts_before_branching[src_local_idx]
+                else:
+                    reqs.setdefault(src_rank, []).append((dest_idx, src_local_idx))
 
-            # set new r_up_carts and r_dn_carts, and, np.array -> jnp.array
-            latest_r_up_carts_after_branching = proposed_r_up_carts[mpi_rank, :, :, :]
-            latest_r_dn_carts_after_branching = proposed_r_dn_carts[mpi_rank, :, :, :]
+            #########################################
+            # 3. Exchange only the necessary walker data between processes using point-to-point communication
+            #########################################
+            # 3-1. Each process has the information (reqs) regarding what it needs to request from other processes.
+            #      Here, each process communicates with all processes, sending even an empty request.
+            #      Since reqs is a pickleable object, we send it as is.
+            all_reqs = mpi_comm.allgather(reqs)
 
+            # 3-2. Each process extracts the requests for walker data for which it is the source,
+            #      i.e., what requests have come from other processes.
+            # incoming_reqs: A list of send requests from other processes for your walker data.
+            incoming_reqs = []
+            for p in range(mpi_size):
+                if p == mpi_rank:
+                    continue
+                # If another process p has requested a walker from this process (mpi_rank),
+                # all_reqs[p] is a dictionary keyed by destination.
+                # Extract the list corresponding to the key mpi_rank.
+                req_list = all_reqs[p].get(mpi_rank, [])
+                # Each element of req_list is (dest_idx_on_p, src_local_idx)
+                # Here, extract the walker data that should be sent from this process.
+                for dest_idx, src_local_idx in req_list:
+                    incoming_reqs.append((p, src_local_idx, dest_idx))
+            # 3-3. For each walker that you have requested, receive the walker data from the corresponding process.
+            #      Here, we use a simple blocking recv.
+            for src, req_list in reqs.items():
+                # For each remote process src, req_list is a list of (dest_local_idx, src_local_idx).
+                # Receive the walker data (lists of r_up and r_dn) as a single message.
+                # Communicate using tag 200.
+                r_up_list, r_dn_list = mpi_comm.recv(source=src, tag=200)
+                for (dest_idx, _), r_up_walker, r_dn_walker in zip(req_list, r_up_list, r_dn_list):
+                    latest_r_up_carts_after_branching[dest_idx] = r_up_walker
+                    latest_r_dn_carts_after_branching[dest_idx] = r_dn_walker
+
+            # 3-4. Meanwhile, based on incoming_reqs, compile the walker data that you need to provide,
+            #      and send it to each process that requested it.
+            # Here, group the data by destination.
+            send_data = {}
+            for dest_rank, src_local_idx, dest_idx in incoming_reqs:
+                send_data.setdefault(dest_rank, []).append((dest_idx, src_local_idx))
+
+            for dest_rank, req_list in send_data.items():
+                r_up_send = []
+                r_dn_send = []
+                for _, local_idx in req_list:
+                    r_up_send.append(latest_r_up_carts_before_branching[local_idx])
+                    r_dn_send.append(latest_r_dn_carts_before_branching[local_idx])
+                # Send using tag 200
+                mpi_comm.send((r_up_send, r_dn_send), dest=dest_rank, tag=200)
+
+            """ consistency test
+            if mpi_rank == 0:
+                logger.info(f"chosen_walker_indices_old = {chosen_walker_indices_old}")
+                logger.info(f"chosen_walker_indices = {chosen_walker_indices}")
             # check consistency between the new and old MPI processes.
             if mpi_rank == 0:
                 np.testing.assert_array_almost_equal(e_L2_averaged, e_L2_averaged_old)
@@ -3953,6 +4189,7 @@ class GFMC_fixed_num_projection:
             np.testing.assert_array_almost_equal(latest_r_dn_carts_before_branching, latest_r_dn_carts_before_branching_old)
             np.testing.assert_array_almost_equal(latest_r_up_carts_after_branching, latest_r_up_carts_after_branching_old)
             np.testing.assert_array_almost_equal(latest_r_dn_carts_after_branching, latest_r_dn_carts_after_branching_old)
+            """
 
             # here update the walker positions!!
             self.__num_survived_walkers += num_survived_walkers
@@ -5694,7 +5931,7 @@ if __name__ == "__main__":
     )
     """
 
-    # """
+    """
     # hamiltonian
     hamiltonian_chk = "hamiltonian_data_water.chk"
     # hamiltonian_chk = "hamiltonian_data_water_methane.chk"
@@ -5705,7 +5942,7 @@ if __name__ == "__main__":
         hamiltonian_data = pickle.load(f)
 
     # GFMC param
-    num_walkers = 1
+    num_walkers = 3
     mcmc_seed = 3446
     E_scf = -17.00
     alat = 0.30
@@ -5734,7 +5971,7 @@ if __name__ == "__main__":
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
     logger.info(f"Var E = {Var_mean} +- {Var_std} Ha.")
-    # """
+    """
 
     """
     f_mean, f_std = gfmc.get_aF(
@@ -5746,12 +5983,12 @@ if __name__ == "__main__":
     logger.info(f"f_std = {f_std} Ha/bohr.")
     """
 
-    """
+    # """
     # hamiltonian
-    # hamiltonian_chk = "hamiltonian_data_water.chk"
+    hamiltonian_chk = "hamiltonian_data_water.chk"
     # hamiltonian_chk = "hamiltonian_data_water_methane.chk"
     # hamiltonian_chk = "hamiltonian_data_benzene.chk"
-    hamiltonian_chk = "hamiltonian_data_C60.chk"
+    # hamiltonian_chk = "hamiltonian_data_C60.chk"
 
     with open(hamiltonian_chk, "rb") as f:
         hamiltonian_data = pickle.load(f)
@@ -5759,7 +5996,7 @@ if __name__ == "__main__":
     # GFMC param
     num_walkers = 4
     mcmc_seed = 3446
-    tau = 0.05
+    tau = 0.10
     alat = 0.30
     num_mcmc_warmup_steps = 5
     num_mcmc_bin_blocks = 5
@@ -5783,4 +6020,4 @@ if __name__ == "__main__":
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
     logger.info(f"Var E = {Var_mean} +- {Var_std} Ha.")
-    """
+    # """
