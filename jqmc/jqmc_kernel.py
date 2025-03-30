@@ -2543,9 +2543,6 @@ class GFMC_fixed_num_projection:
         self.__timer_projection_init = 0.0
         self.__timer_projection_total = 0.0
         self.__timer_branching = 0.0
-        self.__timer_branching_1 = 0.0
-        self.__timer_branching_2 = 0.0
-        self.__timer_branching_3 = 0.0
         # time for observables
         self.__timer_e_L = 0.0
         self.__timer_de_L_dR_dr = 0.0
@@ -2933,6 +2930,7 @@ class GFMC_fixed_num_projection:
         timer_dln_Psi_dc = 0.0
         timer_de_L_dc = 0.0
         timer_reconfiguration = 0.0
+        timer_collection = 0.0
 
         gfmc_total_start = time.perf_counter()
 
@@ -3737,7 +3735,7 @@ class GFMC_fixed_num_projection:
             zeta = float(np.random.random())
 
             # Branching starts
-            start_reconfiguration = time.perf_counter()
+            start_collection = time.perf_counter()
 
             #############################################################
             # Old MPI code
@@ -4054,7 +4052,11 @@ class GFMC_fixed_num_projection:
                     self.__stored_grad_omega_r_up.append(grad_omega_dr_up_averaged)
                     self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn_averaged)
 
+            end_collection = time.perf_counter()
+            timer_collection += end_collection - start_collection
+
             # branching
+            start_reconfiguration = time.perf_counter()
             latest_r_up_carts_before_branching = np.array(self.__latest_r_up_carts)
             latest_r_dn_carts_before_branching = np.array(self.__latest_r_dn_carts)
 
@@ -4237,6 +4239,7 @@ class GFMC_fixed_num_projection:
             + timer_dln_Psi_dc
             + timer_de_L_dc
             + timer_reconfiguration
+            + timer_collection
         )
 
         logger.info(f"Total GFMC time for {num_mcmc_done} branching steps = {timer_gfmc_total: .3f} sec.")
@@ -4250,6 +4253,9 @@ class GFMC_fixed_num_projection:
         logger.info(f"  Time for computing dln_Psi/dc = {timer_dln_Psi_dc / num_mcmc_done * 10**3:.2f} msec.")
         logger.info(f"  Time for computing de_L/dc = {timer_de_L_dc / num_mcmc_done * 10**3:.2f} msec.")
         logger.info(f"  Time for misc. (others) = {timer_misc / num_mcmc_done * 10**3:.2f} msec.")
+        logger.info(
+            f"  Walker observable collections time per branching = {timer_collection / num_mcmc_done * 10**3: .3f} msec."
+        )
         logger.info(f"  Walker reconfiguration time per branching = {timer_reconfiguration / num_mcmc_done * 10**3: .3f} msec.")
         logger.devel(f"Survived walkers = {self.__num_survived_walkers}")
         logger.devel(f"killed walkers = {self.__num_killed_walkers}")
@@ -4261,7 +4267,7 @@ class GFMC_fixed_num_projection:
         self.__timer_gfmc_total += timer_gfmc_total
         self.__timer_projection_init += timer_projection_init
         self.__timer_projection_total += timer_projection_total
-        self.__timer_branching += timer_reconfiguration
+        self.__timer_branching += timer_reconfiguration + timer_collection
         self.__timer_e_L += timer_e_L
         self.__timer_de_L_dR_dr += timer_de_L_dR_dr
         self.__timer_dln_Psi_dR_dr += timer_dln_Psi_dR_dr
