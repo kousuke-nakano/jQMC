@@ -3988,10 +3988,14 @@ class GFMC_fixed_num_projection:
                 grad_omega_dr_up_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_omega_dr_up_latest)
                 grad_omega_dr_dn_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_omega_dr_dn_latest)
             # reduce
+            local_sum_data = np.hstack([nw_sum, w_L_sum, e_L_sum, e_L2_sum])
+            global_sum_data = mpi_comm.reduce(local_sum_data, op=MPI.SUM, root=0)
+            """
             nw_sum = mpi_comm.reduce(nw_sum, op=MPI.SUM, root=0)
             w_L_sum = mpi_comm.reduce(w_L_sum, op=MPI.SUM, root=0)
             e_L_sum = mpi_comm.reduce(e_L_sum, op=MPI.SUM, root=0)
             e_L2_sum = mpi_comm.reduce(e_L2_sum, op=MPI.SUM, root=0)
+            """
             if self.__comput_position_deriv:
                 grad_e_L_r_up_sum = mpi_comm.reduce(grad_e_L_r_up_sum, op=MPI.SUM, root=0)
                 grad_e_L_r_dn_sum = mpi_comm.reduce(grad_e_L_r_dn_sum, op=MPI.SUM, root=0)
@@ -4006,6 +4010,7 @@ class GFMC_fixed_num_projection:
 
             if mpi_rank == 0:
                 # averaged
+                nw_sum, w_L_sum, e_L_sum, e_L2_sum = global_sum_data
                 w_L_averaged = w_L_sum / nw_sum
                 e_L_averaged = e_L_sum / w_L_sum
                 e_L2_averaged = e_L2_sum / w_L_sum
