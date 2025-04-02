@@ -1412,8 +1412,10 @@ class GFMC_fixed_projection_time:
         self.__timer_gmfc_total = 0.0
         self.__timer_projection_init = 0.0
         self.__timer_projection_total = 0.0
+        self.__timer_mpi_barrier = 0.0
         self.__timer_branching = 0.0
         self.__timer_observable = 0.0
+        self.__timer_misc = 0.0
 
         # gfmc branching counter
         self.__gfmc_branching_counter = 0
@@ -1674,8 +1676,9 @@ class GFMC_fixed_projection_time:
         timer_projection_total = 0.0
         timer_observable = 0.0
         timer_mpi_barrier = 0.0
+        timer_collection = 0.0
         timer_reconfiguration = 0.0
-        gmfc_total_start = time.perf_counter()
+        gfmc_total_start = time.perf_counter()
 
         # initialize numpy random seed
         np.random.seed(self.__mpi_seed)
@@ -2051,10 +2054,10 @@ class GFMC_fixed_projection_time:
         progress = (self.__gfmc_branching_counter) / (num_mcmc_steps + self.__gfmc_branching_counter) * 100.0
         gmfc_total_current = time.perf_counter()
         logger.info(
-            f"  branching step = {self.__gfmc_branching_counter}/{num_mcmc_steps + self.__gfmc_branching_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
+            f"  branching step = {self.__gfmc_branching_counter}/{num_mcmc_steps + self.__gfmc_branching_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gfmc_total_start):.1f} sec."
         )
 
-        num_branching_done = 0
+        num_mcmc_done = 0
         for i_branching in range(num_mcmc_steps):
             if (i_branching + 1) % gfmc_interval == 0:
                 progress = (
@@ -2062,7 +2065,7 @@ class GFMC_fixed_projection_time:
                 )
                 gmfc_total_current = time.perf_counter()
                 logger.info(
-                    f"  branching step = {i_branching + self.__gfmc_branching_counter + 1}/{num_mcmc_steps + self.__gfmc_branching_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gmfc_total_start):.1f} sec."
+                    f"  branching step = {i_branching + self.__gfmc_branching_counter + 1}/{num_mcmc_steps + self.__gfmc_branching_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gfmc_total_start):.1f} sec."
                 )
 
             # Always set the initial weight list to 1.0
@@ -2152,15 +2155,14 @@ class GFMC_fixed_projection_time:
             timer_mpi_barrier += end_mpi_barrier - start_mpi_barrier
 
             # Branching starts
+            start_collection = time.perf_counter()
+
             # random number for the later use
             """ very slow w/o jax-jit!!
             self.__jax_PRNG_key, subkey = jax.random.split(self.__jax_PRNG_key)
             zeta = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
             """
             zeta = float(np.random.random())
-
-            # Branching starts
-            start_reconfiguration = time.perf_counter()
 
             #############################################################
             # Old MPI code
@@ -2291,6 +2293,11 @@ class GFMC_fixed_projection_time:
                 self.__stored_e_L2.append(e_L2_averaged)
                 self.__stored_e_L.append(e_L_averaged)
                 self.__stored_w_L.append(w_L_averaged)
+
+            end_collection = time.perf_counter()
+            timer_collection += end_collection - start_collection
+
+            start_reconfiguration = time.perf_counter()
 
             # branching
             latest_r_up_carts_before_branching = np.array(self.__latest_r_up_carts)
@@ -2445,15 +2452,16 @@ class GFMC_fixed_projection_time:
             self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
             self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
 
-            logger.devel(f"*After branching: rank={mpi_rank}:gfmc.r_up_carts = {self.__latest_r_up_carts}")
-            logger.devel(f"*After branching: rank={mpi_rank}:gfmc.r_dn_carts = {self.__latest_r_dn_carts}")
+            # Barrier after MPI operation
+            mpi_comm.Barrier()
 
+            # timer end
             end_reconfiguration = time.perf_counter()
             timer_reconfiguration += end_reconfiguration - start_reconfiguration
 
-            num_branching_done += 1
+            num_mcmc_done += 1
             gmfc_current = time.perf_counter()
-            if max_time < gmfc_current - gmfc_total_start:
+            if max_time < gmfc_current - gfmc_total_start:
                 logger.info(f"  Max_time = {max_time} sec. exceeds.")
                 logger.info("  Break the branching loop.")
                 break
@@ -2464,31 +2472,45 @@ class GFMC_fixed_projection_time:
         # count up
         self.__gfmc_branching_counter += i_branching + 1
 
-        gmfc_total_end = time.perf_counter()
-        timer_gmfc_total = gmfc_total_end - gmfc_total_start
-
-        logger.info(f"Total GFMC time for {num_branching_done} branching steps = {timer_gmfc_total: .3f} sec.")
-        logger.info(f"Pre-compilation time for GFMC = {timer_projection_init: .3f} sec.")
-        logger.info(f"Net GFMC time without pre-compilations = {timer_gmfc_total - timer_projection_init: .3f} sec.")
-        logger.info(f"Elapsed times per branching, averaged over {num_branching_done} branching steps.")
-        logger.info(f"  Projection time per branching = {timer_projection_total / num_branching_done * 10**3: .3f} msec.")
-        logger.info(f"  Observable measurement time per branching = {timer_observable / num_branching_done * 10**3: .3f} msec.")
-        logger.info(f"  MPI barrier time per branching = {timer_mpi_barrier / num_branching_done * 10**3: .3f} msec.")
-        logger.info(
-            f"  Walker reconfiguration time per branching = {timer_reconfiguration / num_branching_done * 10**3: .3f} msec."
+        gfmc_total_end = time.perf_counter()
+        timer_gfmc_total = gfmc_total_end - gfmc_total_start
+        timer_misc = timer_gfmc_total - (
+            timer_projection_init
+            + timer_projection_total
+            + timer_observable
+            + timer_mpi_barrier
+            + timer_reconfiguration
+            + timer_collection
         )
-        logger.devel(f"Survived walkers = {self.__num_survived_walkers}")
-        logger.devel(f"killed walkers = {self.__num_killed_walkers}")
+
+        logger.info(f"Total GFMC time for {num_mcmc_done} branching steps = {timer_gfmc_total: .3f} sec.")
+        logger.info(f"Pre-compilation time for GFMC = {timer_projection_init: .3f} sec.")
+        logger.info(f"Net GFMC time without pre-compilations = {timer_gfmc_total - timer_projection_init: .3f} sec.")
+        logger.info(f"Elapsed times per branching, averaged over {num_mcmc_done} branching steps.")
+        logger.info(f"  Projection time per branching = {timer_projection_total / num_mcmc_done * 10**3: .3f} msec.")
+        logger.info(
+            f"  Time for Observable measurement time per branching = {timer_observable / num_mcmc_done * 10**3: .3f} msec."
+        )
+        logger.info(f"  Time for MPI barrier before branching = {timer_mpi_barrier / num_mcmc_done * 10**3:.2f} msec.")
+        logger.info(
+            f"  Time for walker observable collections time per branching = {timer_collection / num_mcmc_done * 10**3: .3f} msec."
+        )
+        logger.info(
+            f"  Time for walker reconfiguration time per branching = {timer_reconfiguration / num_mcmc_done * 10**3: .3f} msec."
+        )
+        logger.info(f"  Time for misc. (others) = {timer_misc / num_mcmc_done * 10**3:.2f} msec.")
         logger.info(
             f"Survived walkers ratio = {self.__num_survived_walkers / (self.__num_survived_walkers + self.__num_killed_walkers) * 100:.2f} %"
         )
-        logger.info(f"Ave. projection num. = {np.mean(self.__stored_average_projection_counter)}")
+        logger.info(f"Average of the number of projections  = {np.mean(self.__stored_average_projection_counter):.0f}")
         logger.info("")
 
-        self.__timer_gmfc_total += timer_gmfc_total
+        self.__timer_gmfc_total += timer_gfmc_total
         self.__timer_projection_init += timer_projection_init
         self.__timer_projection_total += timer_projection_total
-        self.__timer_branching += timer_reconfiguration
+        self.__timer_mpi_barrier += timer_mpi_barrier
+        self.__timer_branching += timer_reconfiguration + timer_collection
+        self.__timer_misc += timer_misc
         self.__timer_observable += timer_observable
 
 
@@ -2542,7 +2564,9 @@ class GFMC_fixed_num_projection:
         self.__timer_gfmc_total = 0.0
         self.__timer_projection_init = 0.0
         self.__timer_projection_total = 0.0
+        self.__timer_mpi_barrier = 0.0
         self.__timer_branching = 0.0
+        self.__timer_misc = 0.0
         # time for observables
         self.__timer_e_L = 0.0
         self.__timer_de_L_dR_dr = 0.0
@@ -2929,6 +2953,7 @@ class GFMC_fixed_num_projection:
         timer_dln_Psi_dR_dr = 0.0
         timer_dln_Psi_dc = 0.0
         timer_de_L_dc = 0.0
+        timer_mpi_barrier = 0.0
         timer_reconfiguration = 0.0
         timer_collection = 0.0
 
@@ -3725,7 +3750,13 @@ class GFMC_fixed_num_projection:
                 grad_omega_dr_dn.block_until_ready()
 
             # Barrier before MPI operation
-            # mpi_comm.Barrier()
+            start_mpi_barrier = time.perf_counter()
+            mpi_comm.Barrier()
+            end_mpi_barrier = time.perf_counter()
+            timer_mpi_barrier += end_mpi_barrier - start_mpi_barrier
+
+            # Branching starts
+            start_collection = time.perf_counter()
 
             # random number for the later use
             """ very slow w/o jax-jit!!
@@ -3733,9 +3764,6 @@ class GFMC_fixed_num_projection:
             zeta = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
             """
             zeta = float(np.random.random())
-
-            # Branching starts
-            start_collection = time.perf_counter()
 
             #############################################################
             # Old MPI code
@@ -3988,14 +4016,10 @@ class GFMC_fixed_num_projection:
                 grad_omega_dr_up_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_omega_dr_up_latest)
                 grad_omega_dr_dn_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_omega_dr_dn_latest)
             # reduce
-            local_sum_data = np.hstack([nw_sum, w_L_sum, e_L_sum, e_L2_sum])
-            global_sum_data = mpi_comm.reduce(local_sum_data, op=MPI.SUM, root=0)
-            """
             nw_sum = mpi_comm.reduce(nw_sum, op=MPI.SUM, root=0)
             w_L_sum = mpi_comm.reduce(w_L_sum, op=MPI.SUM, root=0)
             e_L_sum = mpi_comm.reduce(e_L_sum, op=MPI.SUM, root=0)
             e_L2_sum = mpi_comm.reduce(e_L2_sum, op=MPI.SUM, root=0)
-            """
             if self.__comput_position_deriv:
                 grad_e_L_r_up_sum = mpi_comm.reduce(grad_e_L_r_up_sum, op=MPI.SUM, root=0)
                 grad_e_L_r_dn_sum = mpi_comm.reduce(grad_e_L_r_dn_sum, op=MPI.SUM, root=0)
@@ -4010,7 +4034,6 @@ class GFMC_fixed_num_projection:
 
             if mpi_rank == 0:
                 # averaged
-                nw_sum, w_L_sum, e_L_sum, e_L2_sum = global_sum_data
                 w_L_averaged = w_L_sum / nw_sum
                 e_L_averaged = e_L_sum / w_L_sum
                 e_L2_averaged = e_L2_sum / w_L_sum
@@ -4204,6 +4227,9 @@ class GFMC_fixed_num_projection:
             self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
             self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
 
+            # Barrier after MPI operation
+            mpi_comm.Barrier()
+
             end_reconfiguration = time.perf_counter()
             timer_reconfiguration += end_reconfiguration - start_reconfiguration
 
@@ -4243,8 +4269,9 @@ class GFMC_fixed_num_projection:
             + timer_dln_Psi_dR_dr
             + timer_dln_Psi_dc
             + timer_de_L_dc
-            + timer_reconfiguration
+            + timer_mpi_barrier
             + timer_collection
+            + timer_reconfiguration
         )
 
         logger.info(f"Total GFMC time for {num_mcmc_done} branching steps = {timer_gfmc_total: .3f} sec.")
@@ -4257,13 +4284,14 @@ class GFMC_fixed_num_projection:
         logger.info(f"  Time for computing dln_Psi/dR and dln_Psi/dr = {timer_dln_Psi_dR_dr / num_mcmc_done * 10**3:.2f} msec.")
         logger.info(f"  Time for computing dln_Psi/dc = {timer_dln_Psi_dc / num_mcmc_done * 10**3:.2f} msec.")
         logger.info(f"  Time for computing de_L/dc = {timer_de_L_dc / num_mcmc_done * 10**3:.2f} msec.")
-        logger.info(f"  Time for misc. (others) = {timer_misc / num_mcmc_done * 10**3:.2f} msec.")
+        logger.info(f"  Time for MPI barrier before branching = {timer_mpi_barrier / num_mcmc_done * 10**3:.2f} msec.")
         logger.info(
-            f"  Walker observable collections time per branching = {timer_collection / num_mcmc_done * 10**3: .3f} msec."
+            f"  Time for walker observable collections time per branching = {timer_collection / num_mcmc_done * 10**3: .3f} msec."
         )
-        logger.info(f"  Walker reconfiguration time per branching = {timer_reconfiguration / num_mcmc_done * 10**3: .3f} msec.")
-        logger.devel(f"Survived walkers = {self.__num_survived_walkers}")
-        logger.devel(f"killed walkers = {self.__num_killed_walkers}")
+        logger.info(
+            f"  Time for walker reconfiguration time per branching = {timer_reconfiguration / num_mcmc_done * 10**3: .3f} msec."
+        )
+        logger.info(f"  Time for misc. (others) = {timer_misc / num_mcmc_done * 10**3:.2f} msec.")
         logger.info(
             f"Survived walkers ratio = {self.__num_survived_walkers / (self.__num_survived_walkers + self.__num_killed_walkers) * 100:.2f} %. Ideal is ~ 98 %. Adjust num_mcmc_per_measurement."
         )
@@ -4272,7 +4300,9 @@ class GFMC_fixed_num_projection:
         self.__timer_gfmc_total += timer_gfmc_total
         self.__timer_projection_init += timer_projection_init
         self.__timer_projection_total += timer_projection_total
+        self.__timer_mpi_barrier += timer_mpi_barrier
         self.__timer_branching += timer_reconfiguration + timer_collection
+        self.__timer_misc += timer_misc
         self.__timer_e_L += timer_e_L
         self.__timer_de_L_dR_dr += timer_de_L_dR_dr
         self.__timer_dln_Psi_dR_dr += timer_dln_Psi_dR_dr
@@ -5942,7 +5972,7 @@ if __name__ == "__main__":
     )
     """
 
-    """
+    # """
     # hamiltonian
     hamiltonian_chk = "hamiltonian_data_water.chk"
     # hamiltonian_chk = "hamiltonian_data_water_methane.chk"
@@ -5953,7 +5983,7 @@ if __name__ == "__main__":
         hamiltonian_data = pickle.load(f)
 
     # GFMC param
-    num_walkers = 3
+    num_walkers = 4
     mcmc_seed = 3446
     E_scf = -17.00
     alat = 0.30
@@ -5982,7 +6012,7 @@ if __name__ == "__main__":
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
     logger.info(f"Var E = {Var_mean} +- {Var_std} Ha.")
-    """
+    # """
 
     """
     f_mean, f_std = gfmc.get_aF(
@@ -5994,7 +6024,7 @@ if __name__ == "__main__":
     logger.info(f"f_std = {f_std} Ha/bohr.")
     """
 
-    # """
+    """
     # hamiltonian
     hamiltonian_chk = "hamiltonian_data_water.chk"
     # hamiltonian_chk = "hamiltonian_data_water_methane.chk"
@@ -6031,4 +6061,4 @@ if __name__ == "__main__":
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
     logger.info(f"Var E = {Var_mean} +- {Var_std} Ha.")
-    # """
+    """
