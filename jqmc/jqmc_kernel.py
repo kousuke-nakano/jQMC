@@ -4085,8 +4085,6 @@ class GFMC_fixed_num_projection:
 
             # branching
             start_reconfiguration = time.perf_counter()
-
-            """
             latest_r_up_carts_before_branching = np.array(self.__latest_r_up_carts)
             latest_r_dn_carts_before_branching = np.array(self.__latest_r_dn_carts)
 
@@ -4204,69 +4202,6 @@ class GFMC_fixed_num_projection:
                     r_dn_send.append(latest_r_dn_carts_before_branching[local_idx])
                 # Send using tag 200
                 mpi_comm.send((r_up_send, r_dn_send), dest=dest_rank, tag=200)
-            """
-
-            # branch
-            latest_r_up_carts_before_branching = np.array(self.__latest_r_up_carts)
-            latest_r_dn_carts_before_branching = np.array(self.__latest_r_dn_carts)
-
-            # MPI reduce
-            r_up_carts_shape = latest_r_up_carts_before_branching.shape
-            r_up_carts_gathered_dyad = (mpi_rank, latest_r_up_carts_before_branching)
-            r_dn_carts_shape = latest_r_dn_carts_before_branching.shape
-            r_dn_carts_gathered_dyad = (mpi_rank, latest_r_dn_carts_before_branching)
-
-            # MPI reduce
-            r_up_carts_gathered_dyad = mpi_comm.gather(r_up_carts_gathered_dyad, root=0)
-            r_dn_carts_gathered_dyad = mpi_comm.gather(r_dn_carts_gathered_dyad, root=0)
-
-            # branching
-            w_L_gathered_dyad = (mpi_rank, w_L_latest)
-            w_L_gathered_dyad = mpi_comm.gather(w_L_gathered_dyad, root=0)
-
-            if mpi_rank == 0:
-                # positions
-                r_up_carts_gathered_dict = dict(r_up_carts_gathered_dyad)
-                r_dn_carts_gathered_dict = dict(r_dn_carts_gathered_dyad)
-                r_up_carts_gathered = np.concatenate([r_up_carts_gathered_dict[i] for i in range(mpi_size)])
-                r_dn_carts_gathered = np.concatenate([r_dn_carts_gathered_dict[i] for i in range(mpi_size)])
-                # weights
-                w_L_gathered_dict = dict(w_L_gathered_dyad)
-                w_L_gathered = np.concatenate([w_L_gathered_dict[i] for i in range(mpi_size)])
-                # correlated samplings and branching
-                probabilities = w_L_gathered / w_L_gathered.sum()
-                z_list = [(alpha + zeta) / len(probabilities) for alpha in range(len(probabilities))]
-                cumulative_prob = np.cumsum(probabilities)
-                chosen_walker_indices = np.array(
-                    [next(idx for idx, prob in enumerate(cumulative_prob) if z <= prob) for z in z_list]
-                )
-                proposed_r_up_carts = r_up_carts_gathered[chosen_walker_indices]
-                proposed_r_dn_carts = r_dn_carts_gathered[chosen_walker_indices]
-                num_survived_walkers = len(set(chosen_walker_indices))
-                num_killed_walkers = len(w_L_gathered) - len(set(chosen_walker_indices))
-
-            else:
-                proposed_r_up_carts = None
-                proposed_r_dn_carts = None
-                num_survived_walkers = None
-                num_killed_walkers = None
-
-            num_survived_walkers = mpi_comm.bcast(num_survived_walkers, root=0)
-            num_killed_walkers = mpi_comm.bcast(num_killed_walkers, root=0)
-
-            proposed_r_up_carts = mpi_comm.bcast(proposed_r_up_carts, root=0)
-            proposed_r_dn_carts = mpi_comm.bcast(proposed_r_dn_carts, root=0)
-
-            proposed_r_up_carts = proposed_r_up_carts.reshape(
-                mpi_size, r_up_carts_shape[0], r_up_carts_shape[1], r_up_carts_shape[2]
-            )
-            proposed_r_dn_carts = proposed_r_dn_carts.reshape(
-                mpi_size, r_dn_carts_shape[0], r_dn_carts_shape[1], r_dn_carts_shape[2]
-            )
-
-            # set new r_up_carts and r_dn_carts, and, np.array -> jnp.array
-            latest_r_up_carts_after_branching = proposed_r_up_carts[mpi_rank, :, :, :]
-            latest_r_dn_carts_after_branching = proposed_r_dn_carts[mpi_rank, :, :, :]
 
             """ consistency test
             if mpi_rank == 0:
