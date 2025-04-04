@@ -2314,7 +2314,7 @@ class GFMC_fixed_projection_time:
             ave_projection_counter_gathered = mpi_comm.gather(ave_projection_counter, root=0)
 
             if mpi_rank == 0:
-                # Concatenate all weights into a 1D array (total number of walkers is mpi_size * Nw)
+                # Concatenate all weights into a 1D array
                 w_L_gathered_dict = dict(w_L_gathered_dyad)
                 w_L_gathered = np.concatenate([w_L_gathered_dict[i] for i in range(mpi_size)])
                 probabilities = w_L_gathered / w_L_gathered.sum()
@@ -2326,17 +2326,13 @@ class GFMC_fixed_projection_time:
                 num_survived_walkers = len(set(chosen_walker_indices))
                 num_killed_walkers = len(w_L_gathered) - len(set(chosen_walker_indices))
 
-                # At this point, the global walker ordering (from 0 to len(probabilities)-1) is determined,
-                # so determine from which MPI process (src_rank) and with which local index (src_local_idx)
-                # each walker is obtained.
-                # Assume that each process is assigned exactly Nw walkers.
+                # Determine from which MPI process (src_rank) and with which local index (src_local_idx)
+                # each walker is obtained. Assume that each process is assigned exactly Nw walkers.
                 new_assignment = {p: [] for p in range(mpi_size)}
                 for new_global_idx in range(len(probabilities)):
-                    # The global index of the selected walker
                     src_global_idx = chosen_walker_indices[new_global_idx]
                     src_rank = src_global_idx // self.num_walkers
                     src_local_idx = src_global_idx % self.num_walkers
-                    # The new destination is simply determined from the global order
                     dest_rank = new_global_idx // self.num_walkers
                     new_assignment[dest_rank].append((src_rank, src_local_idx))
 
@@ -2347,12 +2343,9 @@ class GFMC_fixed_projection_time:
                 num_killed_walkers = None
                 stored_average_projection_counter = None
 
-            # Distribute the new walker source list to each process using scatter.
-            # Each process should receive a list of length Nw.
-            # Convert the dictionary to a list ordered by MPI rank
+            # Distribute the new walker source list to each process.
             new_assignment = mpi_comm.bcast(new_assignment, root=0)
             local_assignment = new_assignment[mpi_rank]
-            # local_assignment is a list of (src_rank, src_local_idx) for each walker
             num_survived_walkers = mpi_comm.bcast(num_survived_walkers, root=0)
             num_killed_walkers = mpi_comm.bcast(num_killed_walkers, root=0)
             stored_average_projection_counter = mpi_comm.bcast(stored_average_projection_counter, root=0)
@@ -2364,67 +2357,66 @@ class GFMC_fixed_projection_time:
             latest_r_up_carts_after_branching = np.empty_like(latest_r_up_carts_before_branching)
             latest_r_dn_carts_after_branching = np.empty_like(latest_r_dn_carts_before_branching)
 
-            # Separate the walkers that can be copied locally from those that need to be received from remote processes.
-            # Here, we create a dictionary called reqs that gathers the local index information required from other processes (src_rank).
-            # The key is the destination MPI rank, and the value is a list of tuples (dest_local_index, src_local_idx).
+            # Split the walkers into local copies and those to be exchanged
+            # Create a dictionary (reqs) with keys as source process and values as list of (dest_local_index, src_local_idx)
             reqs = {}
             for dest_idx, (src_rank, src_local_idx) in enumerate(local_assignment):
                 if src_rank == mpi_rank:
-                    # If within the same process, simply copy directly
+                    # Local copy: no communication needed
                     latest_r_up_carts_after_branching[dest_idx] = latest_r_up_carts_before_branching[src_local_idx]
                     latest_r_dn_carts_after_branching[dest_idx] = latest_r_dn_carts_before_branching[src_local_idx]
                 else:
                     reqs.setdefault(src_rank, []).append((dest_idx, src_local_idx))
 
             #########################################
-            # 3. Exchange only the necessary walker data between processes using point-to-point communication
+            # 3. Exchange only the necessary walker data between processes using asynchronous communication
             #########################################
-            # 3-1. Each process has the information (reqs) regarding what it needs to request from other processes.
-            #      Here, each process communicates with all processes, sending even an empty request.
-            #      Since reqs is a pickleable object, we send it as is.
+            # 3-1. Each process gathers the reqs from all processes.
             all_reqs = mpi_comm.allgather(reqs)
 
-            # 3-2. Each process extracts the requests for walker data for which it is the source,
-            #      i.e., what requests have come from other processes.
-            # incoming_reqs: A list of send requests from other processes for your walker data.
+            # 3-2. Build incoming_reqs: determine which walker data this process must send to others.
             incoming_reqs = []
             for p in range(mpi_size):
                 if p == mpi_rank:
                     continue
-                # If another process p has requested a walker from this process (mpi_rank),
-                # all_reqs[p] is a dictionary keyed by destination.
-                # Extract the list corresponding to the key mpi_rank.
                 req_list = all_reqs[p].get(mpi_rank, [])
-                # Each element of req_list is (dest_idx_on_p, src_local_idx)
-                # Here, extract the walker data that should be sent from this process.
                 for dest_idx, src_local_idx in req_list:
                     incoming_reqs.append((p, src_local_idx, dest_idx))
-            # 3-3. For each walker that you have requested, receive the walker data from the corresponding process.
-            #      Here, we use a simple blocking recv.
-            for src, req_list in reqs.items():
-                # For each remote process src, req_list is a list of (dest_local_idx, src_local_idx).
-                # Receive the walker data (lists of r_up and r_dn) as a single message.
-                # Communicate using tag 200.
-                r_up_list, r_dn_list = mpi_comm.recv(source=src, tag=200)
-                for (dest_idx, _), r_up_walker, r_dn_walker in zip(req_list, r_up_list, r_dn_list):
-                    latest_r_up_carts_after_branching[dest_idx] = r_up_walker
-                    latest_r_dn_carts_after_branching[dest_idx] = r_dn_walker
 
-            # 3-4. Meanwhile, based on incoming_reqs, compile the walker data that you need to provide,
-            #      and send it to each process that requested it.
-            # Here, group the data by destination.
+            # 3-3. Post nonblocking receives for walker data that this process has requested from remote processes.
+            recv_requests = {}
+            for src, _ in reqs.items():
+                # Post an asynchronous receive from process 'src' with tag 200.
+                recv_requests[src] = mpi_comm.irecv(source=src, tag=200)
+
+            # 3-4. Prepare and post nonblocking sends for the walker data that this process needs to provide.
+            # Group the data to send by destination process.
             send_data = {}
             for dest_rank, src_local_idx, dest_idx in incoming_reqs:
                 send_data.setdefault(dest_rank, []).append((dest_idx, src_local_idx))
 
+            send_requests = {}
             for dest_rank, req_list in send_data.items():
                 r_up_send = []
                 r_dn_send = []
                 for _, local_idx in req_list:
                     r_up_send.append(latest_r_up_carts_before_branching[local_idx])
                     r_dn_send.append(latest_r_dn_carts_before_branching[local_idx])
-                # Send using tag 200
-                mpi_comm.send((r_up_send, r_dn_send), dest=dest_rank, tag=200)
+                # Post an asynchronous send to process 'dest_rank' with tag 200.
+                send_requests[dest_rank] = mpi_comm.isend((r_up_send, r_dn_send), dest=dest_rank, tag=200)
+
+            # 3-5. Wait for all nonblocking send operations to complete.
+            for req in send_requests.values():
+                req.wait()
+
+            # 3-6. Process the received walker data from remote processes.
+            for src, req_list in reqs.items():
+                # Wait for the asynchronous receive from process 'src' to complete.
+                r_up_list, r_dn_list = recv_requests[src].wait()
+                # Distribute the received walker data to the appropriate destination indices.
+                for (dest_idx, _), r_up_walker, r_dn_walker in zip(req_list, r_up_list, r_dn_list):
+                    latest_r_up_carts_after_branching[dest_idx] = r_up_walker
+                    latest_r_dn_carts_after_branching[dest_idx] = r_dn_walker
 
             """ consistency test
             if mpi_rank == 0:
@@ -4095,7 +4087,7 @@ class GFMC_fixed_num_projection:
             w_L_gathered_dyad = mpi_comm.gather(w_L_gathered_dyad, root=0)
 
             if mpi_rank == 0:
-                # Concatenate all weights into a 1D array (total number of walkers is mpi_size * Nw)
+                # Concatenate all weights into a 1D array
                 w_L_gathered_dict = dict(w_L_gathered_dyad)
                 w_L_gathered = np.concatenate([w_L_gathered_dict[i] for i in range(mpi_size)])
                 probabilities = w_L_gathered / w_L_gathered.sum()
@@ -4107,17 +4099,13 @@ class GFMC_fixed_num_projection:
                 num_survived_walkers = len(set(chosen_walker_indices))
                 num_killed_walkers = len(w_L_gathered) - len(set(chosen_walker_indices))
 
-                # At this point, the global walker ordering (from 0 to len(probabilities)-1) is determined,
-                # so determine from which MPI process (src_rank) and with which local index (src_local_idx)
-                # each walker is obtained.
-                # Assume that each process is assigned exactly Nw walkers.
+                # Determine from which MPI process (src_rank) and with which local index (src_local_idx)
+                # each walker is obtained. Assume that each process is assigned exactly Nw walkers.
                 new_assignment = {p: [] for p in range(mpi_size)}
                 for new_global_idx in range(len(probabilities)):
-                    # The global index of the selected walker
                     src_global_idx = chosen_walker_indices[new_global_idx]
                     src_rank = src_global_idx // self.num_walkers
                     src_local_idx = src_global_idx % self.num_walkers
-                    # The new destination is simply determined from the global order
                     dest_rank = new_global_idx // self.num_walkers
                     new_assignment[dest_rank].append((src_rank, src_local_idx))
             else:
@@ -4125,12 +4113,9 @@ class GFMC_fixed_num_projection:
                 num_survived_walkers = None
                 num_killed_walkers = None
 
-            # Distribute the new walker source list to each process using scatter.
-            # Each process should receive a list of length Nw.
-            # Convert the dictionary to a list ordered by MPI rank
+            # Distribute the new walker source list to each process.
             new_assignment = mpi_comm.bcast(new_assignment, root=0)
             local_assignment = new_assignment[mpi_rank]
-            # local_assignment is a list of (src_rank, src_local_idx) for each walker
             num_survived_walkers = mpi_comm.bcast(num_survived_walkers, root=0)
             num_killed_walkers = mpi_comm.bcast(num_killed_walkers, root=0)
 
@@ -4141,67 +4126,66 @@ class GFMC_fixed_num_projection:
             latest_r_up_carts_after_branching = np.empty_like(latest_r_up_carts_before_branching)
             latest_r_dn_carts_after_branching = np.empty_like(latest_r_dn_carts_before_branching)
 
-            # Separate the walkers that can be copied locally from those that need to be received from remote processes.
-            # Here, we create a dictionary called reqs that gathers the local index information required from other processes (src_rank).
-            # The key is the destination MPI rank, and the value is a list of tuples (dest_local_index, src_local_idx).
+            # Split the walkers into local copies and those to be exchanged
+            # Create a dictionary (reqs) with keys as source process and values as list of (dest_local_index, src_local_idx)
             reqs = {}
             for dest_idx, (src_rank, src_local_idx) in enumerate(local_assignment):
                 if src_rank == mpi_rank:
-                    # If within the same process, simply copy directly
+                    # Local copy: no communication needed
                     latest_r_up_carts_after_branching[dest_idx] = latest_r_up_carts_before_branching[src_local_idx]
                     latest_r_dn_carts_after_branching[dest_idx] = latest_r_dn_carts_before_branching[src_local_idx]
                 else:
                     reqs.setdefault(src_rank, []).append((dest_idx, src_local_idx))
 
             #########################################
-            # 3. Exchange only the necessary walker data between processes using point-to-point communication
+            # 3. Exchange only the necessary walker data between processes using asynchronous communication
             #########################################
-            # 3-1. Each process has the information (reqs) regarding what it needs to request from other processes.
-            #      Here, each process communicates with all processes, sending even an empty request.
-            #      Since reqs is a pickleable object, we send it as is.
+            # 3-1. Each process gathers the reqs from all processes.
             all_reqs = mpi_comm.allgather(reqs)
 
-            # 3-2. Each process extracts the requests for walker data for which it is the source,
-            #      i.e., what requests have come from other processes.
-            # incoming_reqs: A list of send requests from other processes for your walker data.
+            # 3-2. Build incoming_reqs: determine which walker data this process must send to others.
             incoming_reqs = []
             for p in range(mpi_size):
                 if p == mpi_rank:
                     continue
-                # If another process p has requested a walker from this process (mpi_rank),
-                # all_reqs[p] is a dictionary keyed by destination.
-                # Extract the list corresponding to the key mpi_rank.
                 req_list = all_reqs[p].get(mpi_rank, [])
-                # Each element of req_list is (dest_idx_on_p, src_local_idx)
-                # Here, extract the walker data that should be sent from this process.
                 for dest_idx, src_local_idx in req_list:
                     incoming_reqs.append((p, src_local_idx, dest_idx))
-            # 3-3. For each walker that you have requested, receive the walker data from the corresponding process.
-            #      Here, we use a simple blocking recv.
-            for src, req_list in reqs.items():
-                # For each remote process src, req_list is a list of (dest_local_idx, src_local_idx).
-                # Receive the walker data (lists of r_up and r_dn) as a single message.
-                # Communicate using tag 200.
-                r_up_list, r_dn_list = mpi_comm.recv(source=src, tag=200)
-                for (dest_idx, _), r_up_walker, r_dn_walker in zip(req_list, r_up_list, r_dn_list):
-                    latest_r_up_carts_after_branching[dest_idx] = r_up_walker
-                    latest_r_dn_carts_after_branching[dest_idx] = r_dn_walker
 
-            # 3-4. Meanwhile, based on incoming_reqs, compile the walker data that you need to provide,
-            #      and send it to each process that requested it.
-            # Here, group the data by destination.
+            # 3-3. Post nonblocking receives for walker data that this process has requested from remote processes.
+            recv_requests = {}
+            for src, _ in reqs.items():
+                # Post an asynchronous receive from process 'src' with tag 200.
+                recv_requests[src] = mpi_comm.irecv(source=src, tag=200)
+
+            # 3-4. Prepare and post nonblocking sends for the walker data that this process needs to provide.
+            # Group the data to send by destination process.
             send_data = {}
             for dest_rank, src_local_idx, dest_idx in incoming_reqs:
                 send_data.setdefault(dest_rank, []).append((dest_idx, src_local_idx))
 
+            send_requests = {}
             for dest_rank, req_list in send_data.items():
                 r_up_send = []
                 r_dn_send = []
                 for _, local_idx in req_list:
                     r_up_send.append(latest_r_up_carts_before_branching[local_idx])
                     r_dn_send.append(latest_r_dn_carts_before_branching[local_idx])
-                # Send using tag 200
-                mpi_comm.send((r_up_send, r_dn_send), dest=dest_rank, tag=200)
+                # Post an asynchronous send to process 'dest_rank' with tag 200.
+                send_requests[dest_rank] = mpi_comm.isend((r_up_send, r_dn_send), dest=dest_rank, tag=200)
+
+            # 3-5. Wait for all nonblocking send operations to complete.
+            for req in send_requests.values():
+                req.wait()
+
+            # 3-6. Process the received walker data from remote processes.
+            for src, req_list in reqs.items():
+                # Wait for the asynchronous receive from process 'src' to complete.
+                r_up_list, r_dn_list = recv_requests[src].wait()
+                # Distribute the received walker data to the appropriate destination indices.
+                for (dest_idx, _), r_up_walker, r_dn_walker in zip(req_list, r_up_list, r_dn_list):
+                    latest_r_up_carts_after_branching[dest_idx] = r_up_walker
+                    latest_r_dn_carts_after_branching[dest_idx] = r_dn_walker
 
             """ consistency test
             if mpi_rank == 0:
