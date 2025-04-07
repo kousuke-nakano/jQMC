@@ -2406,8 +2406,7 @@ class GFMC_fixed_projection_time:
                 send_requests[dest_rank] = mpi_comm.isend((r_up_send, r_dn_send), dest=dest_rank, tag=200)
 
             # 3-5. Wait for all nonblocking send operations to complete.
-            for req in send_requests.values():
-                req.wait()
+            MPI.Request.Waitall(list(send_requests.values()))
 
             # 3-6. Process the received walker data from remote processes.
             for src, req_list in reqs.items():
@@ -4175,8 +4174,7 @@ class GFMC_fixed_num_projection:
                 send_requests[dest_rank] = mpi_comm.isend((r_up_send, r_dn_send), dest=dest_rank, tag=200)
 
             # 3-5. Wait for all nonblocking send operations to complete.
-            for req in send_requests.values():
-                req.wait()
+            MPI.Request.Waitall(list(send_requests.values()))
 
             # 3-6. Process the received walker data from remote processes.
             for src, req_list in reqs.items():
