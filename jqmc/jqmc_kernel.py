@@ -2162,7 +2162,11 @@ class GFMC_fixed_projection_time:
             self.__jax_PRNG_key, subkey = jax.random.split(self.__jax_PRNG_key)
             zeta = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
             """
-            zeta = float(np.random.random())
+            if mpi_rank == 0:
+                zeta = float(np.random.random())
+            else:
+                zeta = None
+            zeta = mpi_comm.bcast(zeta, root=0)
 
             #############################################################
             # Old MPI code
@@ -2306,49 +2310,72 @@ class GFMC_fixed_projection_time:
             #########################################
             # 1. Gather only the weights to MPI_rank=0 and perform branching calculation
             #########################################
-            w_L_gathered_dyad = (mpi_rank, w_L_latest)
-            w_L_gathered_dyad = mpi_comm.gather(w_L_gathered_dyad, root=0)
+            #########################################
+            # 1. Gather only the weights to MPI_rank=0 and perform branching calculation
+            #########################################
+            # Each process computes the sum of its local walker weights.
+            local_weight_sum = np.sum(w_L_latest)
+
+            # Calculate the global weight sum using MPI_ALLREDUCE (avoiding a gather on rank 0).
+            global_weight_sum = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)
+
+            # Compute the local probabilities for each walker.
+            local_probabilities = w_L_latest / global_weight_sum
+
+            # Compute the local cumulative probabilities.
+            local_cumprob = np.cumsum(local_probabilities)
+
+            # Gather each process's probability sum (each equals np.sum(local_probabilities)).
+            local_probability_sums = mpi_comm.allgather(np.sum(local_probabilities))
+
+            # Calculate the offset for this process by summing the probability sums from all lower-ranked processes.
+            # Adjust the local cumulative probabilities so that they form a continuous global cumulative distribution.
+            offset = np.sum(local_probability_sums[:mpi_rank])
+            local_cumprob += offset
+
+            # Gather the local cumulative probability arrays from all processes.
+            # Concatenate them in order of MPI ranks to form the global cumulative probability array.
+            global_cumprob_list = mpi_comm.allgather(local_cumprob)
+            global_cumprob = np.concatenate(global_cumprob_list)
+
+            # Total number of walkers across all processes.
+            num_total_walkers = len(global_cumprob)  # mpi_size * self.num_walkers
+
+            # Create a shifted list of random numbers for systematic resampling.
+            # zeta is a random shift uniformly distributed in [0, 1).
+            z_list = [(alpha + zeta) / num_total_walkers for alpha in range(num_total_walkers)]
+
+            # For each z, select the smallest index where global cumulative probability exceeds z.
+            chosen_walker_indices = np.array([np.searchsorted(global_cumprob, z) for z in z_list])
+
+            # Compute the total number of survived walkers and killed walkers.
+            # Although each process computes these global values identically, we perform an allreduce for consistency.
+            num_survived_walkers = len(set(chosen_walker_indices))
+            num_killed_walkers = num_total_walkers - num_survived_walkers
+
+            # Compute the local assignment directly.
+            # Each process is responsible for a block of self.num_walkers assignments.
+            local_assignment = []
+            start_idx = mpi_rank * self.num_walkers
+            end_idx = (mpi_rank + 1) * self.num_walkers
+            for new_global_idx in range(start_idx, end_idx):
+                # Determine the source walker global index for this assignment.
+                src_global_idx = chosen_walker_indices[new_global_idx]
+                # Compute the source MPI rank and the local walker index on that rank.
+                src_rank = src_global_idx // self.num_walkers
+                src_local_idx = src_global_idx % self.num_walkers
+                # Append the tuple (src_rank, src_local_idx) to the local assignment.
+                local_assignment.append((src_rank, src_local_idx))
 
             # num projection counter
+            ## Compute the local average of the projection counter list.
             ave_projection_counter = np.mean(projection_counter_list)
-            ave_projection_counter_gathered = mpi_comm.gather(ave_projection_counter, root=0)
 
-            if mpi_rank == 0:
-                # Concatenate all weights into a 1D array
-                w_L_gathered_dict = dict(w_L_gathered_dyad)
-                w_L_gathered = np.concatenate([w_L_gathered_dict[i] for i in range(mpi_size)])
-                probabilities = w_L_gathered / w_L_gathered.sum()
-                # Create a shifted list of random numbers for each walker
-                z_list = [(alpha + zeta) / len(probabilities) for alpha in range(len(probabilities))]
-                cumulative_prob = np.cumsum(probabilities)
-                # For each z, select the smallest index where cumulative_prob exceeds z
-                chosen_walker_indices = np.array([np.searchsorted(cumulative_prob, z) for z in z_list])
-                num_survived_walkers = len(set(chosen_walker_indices))
-                num_killed_walkers = len(w_L_gathered) - len(set(chosen_walker_indices))
+            ## Use MPI allgather to collect the local averages from all processes.
+            ave_projection_counter_gathered = mpi_comm.allgather(ave_projection_counter)
 
-                # Determine from which MPI process (src_rank) and with which local index (src_local_idx)
-                # each walker is obtained. Assume that each process is assigned exactly Nw walkers.
-                new_assignment = {p: [] for p in range(mpi_size)}
-                for new_global_idx in range(len(probabilities)):
-                    src_global_idx = chosen_walker_indices[new_global_idx]
-                    src_rank = src_global_idx // self.num_walkers
-                    src_local_idx = src_global_idx % self.num_walkers
-                    dest_rank = new_global_idx // self.num_walkers
-                    new_assignment[dest_rank].append((src_rank, src_local_idx))
-
-                stored_average_projection_counter = np.mean(ave_projection_counter_gathered)
-            else:
-                new_assignment = None
-                num_survived_walkers = None
-                num_killed_walkers = None
-                stored_average_projection_counter = None
-
-            # Distribute the new walker source list to each process.
-            new_assignment = mpi_comm.bcast(new_assignment, root=0)
-            local_assignment = new_assignment[mpi_rank]
-            num_survived_walkers = mpi_comm.bcast(num_survived_walkers, root=0)
-            num_killed_walkers = mpi_comm.bcast(num_killed_walkers, root=0)
-            stored_average_projection_counter = mpi_comm.bcast(stored_average_projection_counter, root=0)
+            ## Each process computes the overall (global) average projection counter.
+            stored_average_projection_counter = np.mean(ave_projection_counter_gathered)
 
             #########################################
             # 2. In each process, prepare for data exchange based on the new walker selection
@@ -3754,7 +3781,11 @@ class GFMC_fixed_num_projection:
             self.__jax_PRNG_key, subkey = jax.random.split(self.__jax_PRNG_key)
             zeta = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
             """
-            zeta = float(np.random.random())
+            if mpi_rank == 0:
+                zeta = float(np.random.random())
+            else:
+                zeta = None
+            zeta = mpi_comm.bcast(zeta, root=0)
 
             #############################################################
             # Old MPI code
@@ -4082,41 +4113,59 @@ class GFMC_fixed_num_projection:
             #########################################
             # 1. Gather only the weights to MPI_rank=0 and perform branching calculation
             #########################################
-            w_L_gathered_dyad = (mpi_rank, w_L_latest)
-            w_L_gathered_dyad = mpi_comm.gather(w_L_gathered_dyad, root=0)
+            # Each process computes the sum of its local walker weights.
+            local_weight_sum = np.sum(w_L_latest)
 
-            if mpi_rank == 0:
-                # Concatenate all weights into a 1D array
-                w_L_gathered_dict = dict(w_L_gathered_dyad)
-                w_L_gathered = np.concatenate([w_L_gathered_dict[i] for i in range(mpi_size)])
-                probabilities = w_L_gathered / w_L_gathered.sum()
-                # Create a shifted list of random numbers for each walker
-                z_list = [(alpha + zeta) / len(probabilities) for alpha in range(len(probabilities))]
-                cumulative_prob = np.cumsum(probabilities)
-                # For each z, select the smallest index where cumulative_prob exceeds z
-                chosen_walker_indices = np.array([np.searchsorted(cumulative_prob, z) for z in z_list])
-                num_survived_walkers = len(set(chosen_walker_indices))
-                num_killed_walkers = len(w_L_gathered) - len(set(chosen_walker_indices))
+            # Calculate the global weight sum using MPI_ALLREDUCE (avoiding a gather on rank 0).
+            global_weight_sum = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)
 
-                # Determine from which MPI process (src_rank) and with which local index (src_local_idx)
-                # each walker is obtained. Assume that each process is assigned exactly Nw walkers.
-                new_assignment = {p: [] for p in range(mpi_size)}
-                for new_global_idx in range(len(probabilities)):
-                    src_global_idx = chosen_walker_indices[new_global_idx]
-                    src_rank = src_global_idx // self.num_walkers
-                    src_local_idx = src_global_idx % self.num_walkers
-                    dest_rank = new_global_idx // self.num_walkers
-                    new_assignment[dest_rank].append((src_rank, src_local_idx))
-            else:
-                new_assignment = None
-                num_survived_walkers = None
-                num_killed_walkers = None
+            # Compute the local probabilities for each walker.
+            local_probabilities = w_L_latest / global_weight_sum
 
-            # Distribute the new walker source list to each process.
-            new_assignment = mpi_comm.bcast(new_assignment, root=0)
-            local_assignment = new_assignment[mpi_rank]
-            num_survived_walkers = mpi_comm.bcast(num_survived_walkers, root=0)
-            num_killed_walkers = mpi_comm.bcast(num_killed_walkers, root=0)
+            # Compute the local cumulative probabilities.
+            local_cumprob = np.cumsum(local_probabilities)
+
+            # Gather each process's probability sum (each equals np.sum(local_probabilities)).
+            local_probability_sums = mpi_comm.allgather(np.sum(local_probabilities))
+
+            # Calculate the offset for this process by summing the probability sums from all lower-ranked processes.
+            # Adjust the local cumulative probabilities so that they form a continuous global cumulative distribution.
+            offset = np.sum(local_probability_sums[:mpi_rank])
+            local_cumprob += offset
+
+            # Gather the local cumulative probability arrays from all processes.
+            # Concatenate them in order of MPI ranks to form the global cumulative probability array.
+            global_cumprob_list = mpi_comm.allgather(local_cumprob)
+            global_cumprob = np.concatenate(global_cumprob_list)
+
+            # Total number of walkers across all processes.
+            num_total_walkers = len(global_cumprob)  # mpi_size * self.num_walkers
+
+            # Create a shifted list of random numbers for systematic resampling.
+            # zeta is a random shift uniformly distributed in [0, 1).
+            z_list = [(alpha + zeta) / num_total_walkers for alpha in range(num_total_walkers)]
+
+            # For each z, select the smallest index where global cumulative probability exceeds z.
+            chosen_walker_indices = np.array([np.searchsorted(global_cumprob, z) for z in z_list])
+
+            # Compute the total number of survived walkers and killed walkers.
+            # Although each process computes these global values identically, we perform an allreduce for consistency.
+            num_survived_walkers = len(set(chosen_walker_indices))
+            num_killed_walkers = num_total_walkers - num_survived_walkers
+
+            # Compute the local assignment directly.
+            # Each process is responsible for a block of self.num_walkers assignments.
+            local_assignment = []
+            start_idx = mpi_rank * self.num_walkers
+            end_idx = (mpi_rank + 1) * self.num_walkers
+            for new_global_idx in range(start_idx, end_idx):
+                # Determine the source walker global index for this assignment.
+                src_global_idx = chosen_walker_indices[new_global_idx]
+                # Compute the source MPI rank and the local walker index on that rank.
+                src_rank = src_global_idx // self.num_walkers
+                src_local_idx = src_global_idx % self.num_walkers
+                # Append the tuple (src_rank, src_local_idx) to the local assignment.
+                local_assignment.append((src_rank, src_local_idx))
 
             #########################################
             # 2. In each process, prepare for data exchange based on the new walker selection
@@ -5954,7 +6003,7 @@ if __name__ == "__main__":
     )
     """
 
-    # """
+    """
     # hamiltonian
     hamiltonian_chk = "hamiltonian_data_water.chk"
     # hamiltonian_chk = "hamiltonian_data_water_methane.chk"
@@ -5994,7 +6043,7 @@ if __name__ == "__main__":
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
     logger.info(f"Var E = {Var_mean} +- {Var_std} Ha.")
-    # """
+    """
 
     """
     f_mean, f_std = gfmc.get_aF(
@@ -6006,7 +6055,7 @@ if __name__ == "__main__":
     logger.info(f"f_std = {f_std} Ha/bohr.")
     """
 
-    """
+    # """
     # hamiltonian
     hamiltonian_chk = "hamiltonian_data_water.chk"
     # hamiltonian_chk = "hamiltonian_data_water_methane.chk"
@@ -6043,4 +6092,4 @@ if __name__ == "__main__":
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
     logger.info(f"Var E = {Var_mean} +- {Var_std} Ha.")
-    """
+    # """
