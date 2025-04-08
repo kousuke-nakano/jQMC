@@ -35,6 +35,7 @@
 import logging
 import time
 from functools import partial
+from itertools import groupby
 from logging import getLogger
 
 import jax
@@ -2298,6 +2299,8 @@ class GFMC_fixed_projection_time:
                 self.__stored_e_L.append(e_L_averaged)
                 self.__stored_w_L.append(w_L_averaged)
 
+            mpi_comm.Barrier()
+
             end_collection = time.perf_counter()
             timer_collection += end_collection - start_collection
 
@@ -2307,9 +2310,6 @@ class GFMC_fixed_projection_time:
             latest_r_up_carts_before_branching = np.array(self.__latest_r_up_carts)
             latest_r_dn_carts_before_branching = np.array(self.__latest_r_dn_carts)
 
-            #########################################
-            # 1. Gather only the weights to MPI_rank=0 and perform branching calculation
-            #########################################
             #########################################
             # 1. Gather only the weights to MPI_rank=0 and perform branching calculation
             #########################################
@@ -2398,39 +2398,48 @@ class GFMC_fixed_projection_time:
             #########################################
             # 3. Exchange only the necessary walker data between processes using asynchronous communication
             #########################################
-            # 3-1. Each process gathers the reqs from all processes.
+
+            # 3-1. Gather the request dictionaries from all processes.
             all_reqs = mpi_comm.allgather(reqs)
 
+            # Filter out empty request dictionaries to reduce unnecessary iterations.
+            # non_empty_all_reqs becomes a list of tuples (process_rank, req_dict) for non-empty entries.
+            non_empty_all_reqs = [(p, proc_req) for p, proc_req in enumerate(all_reqs) if proc_req]
+
             # 3-2. Build incoming_reqs: determine which walker data this process must send to others.
-            incoming_reqs = []
-            for p in range(mpi_size):
-                if p == mpi_rank:
-                    continue
-                req_list = all_reqs[p].get(mpi_rank, [])
-                for dest_idx, src_local_idx in req_list:
-                    incoming_reqs.append((p, src_local_idx, dest_idx))
+            # This list comprehension iterates only over processes that have non-empty requests.
+            incoming_reqs = [
+                (p, src_local_idx, dest_idx)
+                for p, proc_req in non_empty_all_reqs
+                if p != mpi_rank
+                for dest_idx, src_local_idx in proc_req.get(mpi_rank, [])
+            ]
 
             # 3-3. Post nonblocking receives for walker data that this process has requested from remote processes.
-            recv_requests = {}
-            for src, _ in reqs.items():
-                # Post an asynchronous receive from process 'src' with tag 200.
-                recv_requests[src] = mpi_comm.irecv(source=src, tag=200)
+            # We post a receive for each source listed in our own reqs dictionary.
+            recv_requests = {src: mpi_comm.irecv(source=src, tag=200) for src in reqs.keys()}
 
             # 3-4. Prepare and post nonblocking sends for the walker data that this process needs to provide.
-            # Group the data to send by destination process.
-            send_data = {}
-            for dest_rank, src_local_idx, dest_idx in incoming_reqs:
-                send_data.setdefault(dest_rank, []).append((dest_idx, src_local_idx))
+            # Group the send requests by destination process.
+            # Sort incoming_reqs by destination rank for efficient grouping.
+            incoming_reqs_sorted = sorted(incoming_reqs, key=lambda x: x[0])
+            send_data = {
+                dest_rank: [(dest_idx, src_local_idx) for (_, src_local_idx, dest_idx) in group]
+                for dest_rank, group in groupby(incoming_reqs_sorted, key=lambda x: x[0])
+            }
 
-            send_requests = {}
-            for dest_rank, req_list in send_data.items():
-                r_up_send = []
-                r_dn_send = []
-                for _, local_idx in req_list:
-                    r_up_send.append(latest_r_up_carts_before_branching[local_idx])
-                    r_dn_send.append(latest_r_dn_carts_before_branching[local_idx])
-                # Post an asynchronous send to process 'dest_rank' with tag 200.
-                send_requests[dest_rank] = mpi_comm.isend((r_up_send, r_dn_send), dest=dest_rank, tag=200)
+            # Post asynchronous sends for each destination process.
+            send_requests = {
+                dest_rank: mpi_comm.isend(
+                    (
+                        [latest_r_up_carts_before_branching[src_local_idx] for dest_idx, src_local_idx in req_list],
+                        [latest_r_dn_carts_before_branching[src_local_idx] for dest_idx, src_local_idx in req_list],
+                    ),
+                    dest=dest_rank,
+                    tag=200,
+                )
+                for dest_rank, req_list in send_data.items()
+            }
 
             # 3-5. Wait for all nonblocking send operations to complete.
             MPI.Request.Waitall(list(send_requests.values()))
@@ -2439,10 +2448,13 @@ class GFMC_fixed_projection_time:
             for src, req_list in reqs.items():
                 # Wait for the asynchronous receive from process 'src' to complete.
                 r_up_list, r_dn_list = recv_requests[src].wait()
-                # Distribute the received walker data to the appropriate destination indices.
-                for (dest_idx, _), r_up_walker, r_dn_walker in zip(req_list, r_up_list, r_dn_list):
-                    latest_r_up_carts_after_branching[dest_idx] = r_up_walker
-                    latest_r_dn_carts_after_branching[dest_idx] = r_dn_walker
+                if req_list:  # Only process if there is any request from this source.
+                    # Convert the request list to a NumPy array for vectorized assignment.
+                    req_array = np.array(req_list)  # Each row is (dest_idx, _)
+                    dest_indices = req_array[:, 0]
+                    # Use advanced indexing for vectorized assignment.
+                    latest_r_up_carts_after_branching[dest_indices] = r_up_list
+                    latest_r_dn_carts_after_branching[dest_indices] = r_dn_list
 
             """ consistency test
             if mpi_rank == 0:
@@ -4102,6 +4114,8 @@ class GFMC_fixed_num_projection:
                     self.__stored_grad_omega_r_up.append(grad_omega_dr_up_averaged)
                     self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn_averaged)
 
+            mpi_comm.Barrier()
+
             end_collection = time.perf_counter()
             timer_collection += end_collection - start_collection
 
@@ -4188,39 +4202,48 @@ class GFMC_fixed_num_projection:
             #########################################
             # 3. Exchange only the necessary walker data between processes using asynchronous communication
             #########################################
-            # 3-1. Each process gathers the reqs from all processes.
+
+            # 3-1. Gather the request dictionaries from all processes.
             all_reqs = mpi_comm.allgather(reqs)
 
+            # Filter out empty request dictionaries to reduce unnecessary iterations.
+            # non_empty_all_reqs becomes a list of tuples (process_rank, req_dict) for non-empty entries.
+            non_empty_all_reqs = [(p, proc_req) for p, proc_req in enumerate(all_reqs) if proc_req]
+
             # 3-2. Build incoming_reqs: determine which walker data this process must send to others.
-            incoming_reqs = []
-            for p in range(mpi_size):
-                if p == mpi_rank:
-                    continue
-                req_list = all_reqs[p].get(mpi_rank, [])
-                for dest_idx, src_local_idx in req_list:
-                    incoming_reqs.append((p, src_local_idx, dest_idx))
+            # This list comprehension iterates only over processes that have non-empty requests.
+            incoming_reqs = [
+                (p, src_local_idx, dest_idx)
+                for p, proc_req in non_empty_all_reqs
+                if p != mpi_rank
+                for dest_idx, src_local_idx in proc_req.get(mpi_rank, [])
+            ]
 
             # 3-3. Post nonblocking receives for walker data that this process has requested from remote processes.
-            recv_requests = {}
-            for src, _ in reqs.items():
-                # Post an asynchronous receive from process 'src' with tag 200.
-                recv_requests[src] = mpi_comm.irecv(source=src, tag=200)
+            # We post a receive for each source listed in our own reqs dictionary.
+            recv_requests = {src: mpi_comm.irecv(source=src, tag=200) for src in reqs.keys()}
 
             # 3-4. Prepare and post nonblocking sends for the walker data that this process needs to provide.
-            # Group the data to send by destination process.
-            send_data = {}
-            for dest_rank, src_local_idx, dest_idx in incoming_reqs:
-                send_data.setdefault(dest_rank, []).append((dest_idx, src_local_idx))
+            # Group the send requests by destination process.
+            # Sort incoming_reqs by destination rank for efficient grouping.
+            incoming_reqs_sorted = sorted(incoming_reqs, key=lambda x: x[0])
+            send_data = {
+                dest_rank: [(dest_idx, src_local_idx) for (_, src_local_idx, dest_idx) in group]
+                for dest_rank, group in groupby(incoming_reqs_sorted, key=lambda x: x[0])
+            }
 
-            send_requests = {}
-            for dest_rank, req_list in send_data.items():
-                r_up_send = []
-                r_dn_send = []
-                for _, local_idx in req_list:
-                    r_up_send.append(latest_r_up_carts_before_branching[local_idx])
-                    r_dn_send.append(latest_r_dn_carts_before_branching[local_idx])
-                # Post an asynchronous send to process 'dest_rank' with tag 200.
-                send_requests[dest_rank] = mpi_comm.isend((r_up_send, r_dn_send), dest=dest_rank, tag=200)
+            # Post asynchronous sends for each destination process.
+            send_requests = {
+                dest_rank: mpi_comm.isend(
+                    (
+                        [latest_r_up_carts_before_branching[src_local_idx] for dest_idx, src_local_idx in req_list],
+                        [latest_r_dn_carts_before_branching[src_local_idx] for dest_idx, src_local_idx in req_list],
+                    ),
+                    dest=dest_rank,
+                    tag=200,
+                )
+                for dest_rank, req_list in send_data.items()
+            }
 
             # 3-5. Wait for all nonblocking send operations to complete.
             MPI.Request.Waitall(list(send_requests.values()))
@@ -4229,10 +4252,13 @@ class GFMC_fixed_num_projection:
             for src, req_list in reqs.items():
                 # Wait for the asynchronous receive from process 'src' to complete.
                 r_up_list, r_dn_list = recv_requests[src].wait()
-                # Distribute the received walker data to the appropriate destination indices.
-                for (dest_idx, _), r_up_walker, r_dn_walker in zip(req_list, r_up_list, r_dn_list):
-                    latest_r_up_carts_after_branching[dest_idx] = r_up_walker
-                    latest_r_dn_carts_after_branching[dest_idx] = r_dn_walker
+                if req_list:  # Only process if there is any request from this source.
+                    # Convert the request list to a NumPy array for vectorized assignment.
+                    req_array = np.array(req_list)  # Each row is (dest_idx, _)
+                    dest_indices = req_array[:, 0]
+                    # Use advanced indexing for vectorized assignment.
+                    latest_r_up_carts_after_branching[dest_indices] = r_up_list
+                    latest_r_dn_carts_after_branching[dest_indices] = r_dn_list
 
             """ consistency test
             if mpi_rank == 0:
@@ -6003,7 +6029,7 @@ if __name__ == "__main__":
     )
     """
 
-    """
+    # """
     # hamiltonian
     hamiltonian_chk = "hamiltonian_data_water.chk"
     # hamiltonian_chk = "hamiltonian_data_water_methane.chk"
@@ -6043,7 +6069,7 @@ if __name__ == "__main__":
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
     logger.info(f"Var E = {Var_mean} +- {Var_std} Ha.")
-    """
+    # """
 
     """
     f_mean, f_std = gfmc.get_aF(
@@ -6055,7 +6081,7 @@ if __name__ == "__main__":
     logger.info(f"f_std = {f_std} Ha/bohr.")
     """
 
-    # """
+    """
     # hamiltonian
     hamiltonian_chk = "hamiltonian_data_water.chk"
     # hamiltonian_chk = "hamiltonian_data_water_methane.chk"
@@ -6092,4 +6118,4 @@ if __name__ == "__main__":
     )
     logger.info(f"E = {E_mean} +- {E_std} Ha.")
     logger.info(f"Var E = {Var_mean} +- {Var_std} Ha.")
-    # """
+    """
