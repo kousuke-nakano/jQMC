@@ -4291,42 +4291,42 @@ class GFMC_fixed_num_projection:
             timer_reconfiguration += end_reconfiguration - start_reconfiguration
 
             # Detail of timer
-            if logger.getEffectiveLevel() <= logging.DEBUG:
-                # projection time
-                p = (end_projection - start_projection) * 10**3
-                p_list = mpi_comm.gather(p, root=0)
-                if mpi_rank == 0:
-                    p_max = np.max(p_list)
-                    p_min = np.min(p_list)
-                    logger.info(f"    max-min time projection = {p_max: .3f}, {p_min: .3f} msec.")
-                # e_L time
-                e = (end_e_L - start_e_L) * 10**3
-                e_list = mpi_comm.gather(e, root=0)
-                if mpi_rank == 0:
-                    e_max = np.max(e_list)
-                    e_min = np.min(e_list)
-                    logger.info(f"    max-min time compute e_L = {e_max: .3f}, {e_min: .3f} msec.")
-                # mpi barrier time
-                m = (end_mpi_barrier - start_mpi_barrier) * 10**3
-                m_list = mpi_comm.gather(m, root=0)
-                if mpi_rank == 0:
-                    m_max = np.max(m_list)
-                    m_min = np.min(m_list)
-                    logger.info(f"    max-min time mpi barrier = {m_max: .3f}, {m_min: .3f} msec.")
-                # collection time
-                c = (end_collection - start_collection) * 10**3
-                c_list = mpi_comm.gather(c, root=0)
-                if mpi_rank == 0:
-                    c_max = np.max(c_list)
-                    c_min = np.min(c_list)
-                    logger.info(f"    max-min time collection = {c_max: .3f}, {c_min: .3f} msec.")
-                # reconfiguration time
-                r = (end_reconfiguration - start_reconfiguration) * 10**3
-                r_list = mpi_comm.gather(r, root=0)
-                if mpi_rank == 0:
-                    r_max = np.max(r_list)
-                    r_min = np.min(r_list)
-                    logger.info(f"    max-min time reconfiguration = {r_max: .3f}, {r_min: .3f} msec.")
+            ## projection time
+            p = (end_projection - start_projection) * 10**3
+            p_list = mpi_comm.gather(p, root=0)
+            if mpi_rank == 0:
+                p_max = np.max(p_list)
+                p_min = np.min(p_list)
+                logger.info(f"    max-min time projection = {p_max: .3f}, {p_min: .3f} msec.")
+            ## e_L time
+            e = (end_e_L - start_e_L) * 10**3
+            e_list = mpi_comm.gather(e, root=0)
+            if mpi_rank == 0:
+                e_max = np.max(e_list)
+                e_min = np.min(e_list)
+                logger.info(f"    max-min time compute e_L = {e_max: .3f}, {e_min: .3f} msec.")
+            ## mpi barrier time
+            m = (end_mpi_barrier - start_mpi_barrier) * 10**3
+            m_list = mpi_comm.gather(m, root=0)
+            if mpi_rank == 0:
+                m_max = np.max(m_list)
+                m_min = np.min(m_list)
+                logger.info(f"    max-min time mpi barrier = {m_max: .3f}, {m_min: .3f} msec.")
+            ## collection time
+            c = (end_collection - start_collection) * 10**3
+            print(f"{mpi_rank}: {c:.3f} msec.")
+            c_list = mpi_comm.gather(c, root=0)
+            if mpi_rank == 0:
+                c_max = np.max(c_list)
+                c_min = np.min(c_list)
+                logger.info(f"    max-min time collection = {c_max: .3f}, {c_min: .3f} msec.")
+            ## reconfiguration time
+            r = (end_reconfiguration - start_reconfiguration) * 10**3
+            r_list = mpi_comm.gather(r, root=0)
+            if mpi_rank == 0:
+                r_max = np.max(r_list)
+                r_min = np.min(r_list)
+                logger.info(f"    max-min time reconfiguration = {r_max: .3f}, {r_min: .3f} msec.")
 
             # update E_scf
             eq_steps = 20
