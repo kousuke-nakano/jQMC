@@ -4314,7 +4314,6 @@ class GFMC_fixed_num_projection:
                 logger.info(f"    max-min time mpi barrier = {m_max: .3f}, {m_min: .3f} msec.")
             ## collection time
             c = (end_collection - start_collection) * 10**3
-            print(f"{mpi_rank}: {c:.3f} msec.")
             c_list = mpi_comm.gather(c, root=0)
             if mpi_rank == 0:
                 c_max = np.max(c_list)
