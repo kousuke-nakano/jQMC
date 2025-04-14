@@ -60,10 +60,7 @@ mpi_size = mpi_comm.Get_size()
 logger = getLogger("jqmc").getChild(__name__)
 
 # jax-MPI related
-try:
-    jax.distributed.initialize()
-except ValueError:
-    pass
+jax.distributed.initialize(cluster_detection_method="mpi4py")
 
 
 def cli():

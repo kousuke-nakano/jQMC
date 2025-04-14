@@ -5809,10 +5809,7 @@ if __name__ == "__main__":
         log.addHandler(stream_handler)
 
     # jax-MPI related
-    try:
-        jax.distributed.initialize()
-    except ValueError:
-        pass
+    jax.distributed.initialize(cluster_detection_method="mpi4py")
 
     # global JAX device
     global_device_info = jax.devices()
