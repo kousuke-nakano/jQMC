@@ -4290,6 +4290,7 @@ class GFMC_fixed_num_projection:
             end_reconfiguration = time.perf_counter()
             timer_reconfiguration += end_reconfiguration - start_reconfiguration
 
+            """
             # Detail of timer
             ## projection time
             p = (end_projection - start_projection) * 10**3
@@ -4326,6 +4327,7 @@ class GFMC_fixed_num_projection:
                 r_max = np.max(r_list)
                 r_min = np.min(r_list)
                 logger.info(f"    max-min time reconfiguration = {r_max: .3f}, {r_min: .3f} msec.")
+            """
 
             # update E_scf
             eq_steps = 20
