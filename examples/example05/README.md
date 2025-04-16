@@ -1,12 +1,16 @@
 # example05
 
-Potential energy surface of hydrogen molecule with cartesian GTOs. All electron calculations. Comparison atomic forces with the derivative of the PES.
+Potential energy surface of hydrogen molecule with cartesian GTOs. All electron calculations. Comparison of atomic forces with the derivative of the PES.
 
 ## Generate a trial WF
 
 The first step of ab-initio QMC is to generate a trial WF by a mean-field theory such as DFT/HF. `jQMC` interfaces with other DFT/HF software packages via `TREXIO`.
 
 One of the easiest ways to produce it is using `pySCF` as a converter to the `TREXIO` format is implemented. The following is a script to run a HF calculation of the water molecule and dump it as a `TREXIO` file.
+
+```bash
+% cd 01trialWF_DFT
+```
 
 ```python:run_pyscf.py
 from pyscf import gto, scf
@@ -49,6 +53,7 @@ Launch it on a terminal. You may get `E = -1.13700890749411 Ha` [DFT-LDA-PZ].
 Next step is to convert the `TREXIO` file to the `jqmc` format using `jqmc-tool`
 
 ```bash
+% cd 02convert_DFT_to_JSD
 % jqmc-tool trexio convert-to H2_R_0.74.h5 -j1 1.0 -j2 1.0 -j3 mo
 > Hamiltonian data is saved in hamiltonian_data.chk.
 ```
@@ -61,6 +66,7 @@ The next step is to optimize variational parameters included in the generated wa
 You can generate a template file for a VMCopt calculation using `jqmc-tool`. Please directly edit `vmcopt.toml` if you want to change a parameter.
 
 ```bash
+% cd 03vmcopt_JSD
 % jqmc-tool vmcopt generate-input -g
 > Input file is generated: vmcopt.toml
 ```
@@ -110,43 +116,27 @@ You can see and plot the outcome using `jqmc-tool`.
 ------------------------------------------------------------
 Iter     E (Ha)     Max f (Ha)   Max signal to noise of f
 ------------------------------------------------------------
-   1  -0.9591(84)  +0.4370(70)    65.126
-   2  -1.0080(32)  +1.0180(80)   183.299
-   3  -1.0534(24)  +0.8800(80)   124.577
-   4  -1.0883(26)  +0.7810(60)   126.926
-   5  -1.1001(22)  +0.6730(70)   101.442
-   6  -1.1122(23)  +0.5990(60)   104.694
-   7  -1.1205(25)  +0.5280(60)    89.668
-   8  -1.1299(22)  +0.4800(60)    79.839
-   9  -1.1336(19)  +0.4500(50)    93.379
-  10  -1.1384(20)  +0.4020(50)    81.551
-  11  -1.1426(20)  +0.3630(50)    76.426
-  12  -1.1481(21)  +0.3190(50)    63.541
-  13  -1.1505(19)  +0.2820(40)    66.548
-  14  -1.1570(18)  +0.2390(40)    60.177
-  15  -1.1588(15)  +0.2190(40)    60.633
-  16  -1.1585(17)  +0.2140(30)    64.229
-  17  -1.1595(14)  +0.1800(30)    57.780
-  18  -1.1672(14)  +0.1620(30)    49.647
-  19  -1.1648(13)  +0.1580(30)    56.120
-  20  -1.1645(14)  +0.1490(30)    56.617
-  21  -1.1646(13)  +0.1320(30)    45.242
-  22  -1.1666(12)  +0.1180(30)    44.301
-  23  -1.1678(13)  +0.1060(30)    38.721
-  24  -1.1663(10)  +0.1000(20)    45.989
-  25  -1.1652(10)  +0.0950(30)    38.079
-  ...
-  90  -1.17014(86)  +0.0060(20)     3.136
-  91  -1.16973(96)  +0.0120(20)     6.641
-  92  -1.16976(94)  +0.0060(20)     2.916
-  93  -1.17070(86)  +0.0120(20)     6.649
-  94  -1.17152(92)  +0.0110(20)     5.675
-  95  -1.16896(86)  +0.0070(20)     3.924
-  96  -1.17063(85)  +0.0040(20)     2.648
-  97  -1.16826(95)  +0.0050(20)     2.783
-  98  -1.16788(79)  +0.0110(20)     8.350
-  99  -1.16882(96)  +0.0050(20)     2.976
- 100  -1.17031(82)  +0.0050(20)     2.758
+   1  -0.9543(42)  +0.4320(40)   129.023
+   2  -0.8488(21)  +1.6470(70)   311.388
+   3  -0.9400(19)  +1.3950(60)   240.943
+   4  -0.9955(17)  +1.1830(60)   206.101
+   5  -1.0330(16)  +1.0330(50)   203.363
+   6  -1.0612(15)  +0.8890(50)   195.200
+   7  -1.0826(14)  +0.7780(40)   196.997
+   8  -1.1026(13)  +0.6830(40)   186.626
+   9  -1.1141(12)  +0.5990(30)   190.358
+  10  -1.1238(12)  +0.5240(30)   186.276
+ ...
+ 191  -1.16993(48)  +0.0000(10)     0.430
+ 192  -1.17020(45)  -0.0000(10)     0.448
+ 193  -1.16920(47)  +0.0010(10)     1.656
+ 194  -1.16956(46)  +0.0000(10)     0.389
+ 195  -1.17023(47)  +0.0000(00)     0.774
+ 196  -1.16927(45)  +0.0020(10)     2.858
+ 197  -1.17070(47)  -0.0010(10)     1.263
+ 198  -1.16959(47)  -0.0020(10)     2.805
+ 199  -1.16965(46)  -0.0000(10)     0.874
+ 200  -1.16922(47)  -0.0000(10)     0.550
 ------------------------------------------------------------
 
 ```
@@ -158,6 +148,7 @@ The important criteria are `Max f` and `max signal to noise of f`. `f_max` shoul
 The next step is VMC calculation. You can generate a template file for a VMC calculation using `jqmc-tool`. Please directly edit `vmc.toml` if you want to change a parameter.
 
 ```bash
+% cd 04vmc_JSD
 % jqmc-tool vmc generate-input -g
 > Input file is generated: vmc.toml
 ```
@@ -174,10 +165,10 @@ hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If resta
 verbosity = "low" # Verbosity level. "low" or "high"
 
 [vmc]
-num_mcmc_steps = 1000 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
-num_mcmc_per_measurement = 30 # Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.
+num_mcmc_steps = 10000 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
+num_mcmc_per_measurement = 40 # Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.
 num_mcmc_warmup_steps = 10 # Number of observable measurement steps for warmup (i.e., discarged).
-num_mcmc_bin_blocks = 50 # Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_mcmc_bin_blocks * mpi_size * number_of_walkers.
+num_mcmc_bin_blocks = 5 # Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_mcmc_bin_blocks * mpi_size * number_of_walkers.
 Dt = 1.2 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 atomic_force = true
@@ -191,7 +182,7 @@ Run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing sys
 % mpiexec -n 4 -map-by ppr:4:node jqmc vmc.toml > out_vmc 2> out_vmc.e # w/ MPI on GPU, depending the queueing system.
 ```
 
-You may get `E = -1.17034 +- 0.000522` and  `Var(E) = 0.03412 +- 0.000707 Ha^2`.
+You may get `E = -1.16986 +- 0.000079 Ha` and  `Var(E) = 0.03025 +- 0.000071 Ha^2`.
 
 and `F =`
 
@@ -199,10 +190,280 @@ and `F =`
   ------------------------------------------------
   Label   Fx(Ha/bohr) Fy(Ha/bohr) Fz(Ha/bohr)
   ------------------------------------------------
-  H       -0.00018(31)+0.00009(31)-0.0530(14)
-  H       +0.00018(31)-0.00009(31)+0.0530(14)
+  H       -0.00010(5) -4(5)e-05   -0.05295(20)
+  H       +0.00010(5) +4(5)e-05   +0.05295(20)
   ------------------------------------------------
 ```
 
-## PES of the Hydrogen dimer
-xxx
+> [!NOTE]
+> Umm, there is something wrong with the all-electron force calculation. Fz = -Fz is OK, but I forgot to put some other terms? or just becase the Jastrow factor is so small that the self-consistency error becomes bigger? WIP, 16 Apr. 2025.
+
+## Compute Energy and Atomic forces (LRDMC)
+The next step is LRDMC calculation. You can generate a template file for a LRDMC calculation using `jqmc-tool`. Please directly edit `lrdmc.toml` if you want to change a parameter.
+
+```bash
+% cd 05lrdmc_JSD
+% jqmc-tool lrdmc generate-input -g
+> Input file is generated: lrdmc.toml
+```
+
+```toml:lrdmc.toml
+[control]
+job_type = "lrdmc" # Specify the job type. "vmc", "vmcopt", "lrdmc", or "lrdmc-tau".
+mcmc_seed = 34456 # Random seed for MCMC
+number_of_walkers = 4 # Number of walkers per MPI process
+max_time = 86400 # Maximum time in sec.
+restart = false
+restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
+verbosity = "low" # Verbosity level. "low" or "high"
+
+[lrdmc]
+num_mcmc_steps = 10000 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
+num_mcmc_per_measurement = 30 # Number of GFMC projections per measurement. Every local energy and other observeables are measured every this projection.
+alat = 0.10 # The lattice discretization parameter (i.e. grid size) used for discretized the Hamiltonian and potential. The lattice spacing is alat * a0, where a0 is the Bohr radius.
+non_local_move = "tmove" # The treatment of the non-local term in the Effective core potential. tmove (T-move) and dltmove (Determinant locality approximation with T-move) are available.
+num_gfmc_warmup_steps = 10 # Number of observable measurement steps for warmup (i.e., discarged).
+num_gfmc_bin_blocks = 10 # Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_gfmc_bin_blocks, not num_gfmc_bin_blocks * mpi_size * number_of_walkers.
+num_gfmc_collect_steps = 5 # Number of measurement (before binning) for collecting the weights.
+E_scf = -1.0 # The initial guess of the total energy. This is used to compute the initial energy shift in the GFMC.
+atomic_force = true
+```
+
+Run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing system such as PBS).
+
+```bash
+% jqmc lrdmc.toml > out_lrdmc 2> out_lrdmc.e # w/o MPI on CPU
+% mpirun -np 4 jqmc lrdmc.toml > out_lrdmc 2> out_lrdmc.e # w/ MPI on CPU
+% mpiexec -n 4 -map-by ppr:4:node jqmc lrdmc.toml > out_lrdmc 2> out_lrdmc.e # w/ MPI on GPU, depending the queueing system.
+```
+
+You may get `E = -1.17485 +- 0.000248 Ha` and  `Var(E) = 0.02985 +- 0.000165 Ha^2`.
+
+and `F =`
+
+```bash
+  ------------------------------------------------
+  Label   Fx(Ha/bohr) Fy(Ha/bohr) Fz(Ha/bohr)
+  ------------------------------------------------
+  H       +0.0001(4)  +0.0000(5)  +0.0399(5)
+  H       -0.0001(4)  -0.0000(5)  -0.0399(5)
+  ------------------------------------------------
+```
+
+> [!NOTE]
+> Umm, there is something wrong with the all-electron force calculation. Fz = -Fz is OK, but I forgot to put some other terms? or just becase the Jastrow factor is so small that the self-consistency error becomes bigger? WIP, 16 Apr. 2025.
+
+## PES of the Hydrogen dimer (VMC and LRDMC with JSD)
+You should repeat the above calculations with many $R$ to compute the PES.
+
+WIP
+
+## Conversion of WF: from JSD to JAGP
+
+The next step is to convert the optimized JSD ansatz to JAGP one.
+
+```bash
+% cd 06convert_JSD_to_JAGP
+% cp ../04vmc_JSD/hamiltonian_data.chk ./hamiltonian_data_JSD.chk
+% jqmc-tool hamiltonian conv-wf --convert-to jagp hamiltonian_data_JSD.chk
+> Convert SD to AGP.
+> Hamiltonian data is saved in hamiltonian_data_conv.chk.
+% mv hamiltonian_data_conv.chk hamiltonian_data_JAGP.chk
+```
+
+## Optimize a trial WF (VMCopt)
+The next step is to optimize variational parameters included in the generated wavefunction. Here, we optimize all the variational parameters.
+
+```bash
+% cd 07vmcopt_JAGP
+% cp ../06convert_JSD_to_JAGP/hamiltonian_data_JAGP.chk ./hamiltonian_data.chk
+% jqmc-tool vmcopt generate-input -g
+> Input file is generated: vmcopt.toml
+```
+
+```vmcopt.toml
+[control]
+job_type = "vmcopt" # Specify the job type. "vmc", "vmcopt", "lrdmc", or "lrdmc-tau".
+mcmc_seed = 34456 # Random seed for MCMC
+number_of_walkers = 4 # Number of walkers per MPI process
+max_time = 86400 # Maximum time in sec.
+restart = false
+restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
+verbosity = "low" # Verbosity level. "low" or "high"
+
+[vmcopt]
+num_mcmc_steps = 300 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
+num_mcmc_per_measurement = 40 # Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.
+num_mcmc_warmup_steps = 0 # Number of observable measurement steps for warmup (i.e., discarged).
+num_mcmc_bin_blocks = 1 # Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_mcmc_bin_blocks * mpi_size * number_of_walkers.
+Dt = 1.0 # Step size for the MCMC update (bohr).
+epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
+num_opt_steps = 200 # Number of optimization steps.
+wf_dump_freq = 10 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
+delta = 0.05 # Step size for the Stochastic reconfiguration (i.e., the natural gradient) optimization.
+epsilon = 0.001 # Regularization parameter, a positive number added to the diagnoal elements of the Fisher-Information matrix, used during the Stochastic reconfiguration to improve the numerical stability.
+opt_J1_param = true
+opt_J2_param = true
+opt_J3_param = true
+opt_lambda_param = true
+num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If None, all parameters are optimized.
+```
+
+Please lunch the job.
+
+```bash
+% jqmc vmcopt.toml > out_vmcopt 2> out_vmcopt.e # w/o MPI on CPU
+% mpirun -np 4 jqmc vmcopt.toml > out_vmcopt 2> out_vmcopt.e # w/ MPI on CPU
+% mpiexec -n 4 -map-by ppr:4:node jqmc vmcopt.toml > out_vmcopt 2> out_vmcopt.e # w/ MPI on GPU, depending the queueing system.
+```
+
+You can see and plot the outcome using `jqmc-tool`.
+
+```bash
+% jqmc-tool vmcopt analyze-output out_vmcopt
+
+------------------------------------------------------
+Iter     E (Ha)     Max f (Ha)   Max of signal to noise of f
+------------------------------------------------------
+   1  -1.17025(46)  +0.0690(10)    79.768
+   2  -1.17148(31)  +0.0570(10)    68.719
+   3  -1.17300(21)  +0.0340(10)    70.244
+   4  -1.17354(17)  -0.0300(10)    72.861
+   5  -1.17376(15)  -0.0260(10)    66.032
+   6  -1.17371(14)  -0.0220(10)    62.463
+   7  -1.17405(14)  -0.0190(10)    57.303
+   8  -1.17381(14)  -0.0150(10)    52.436
+   9  -1.17401(13)  -0.0130(10)    43.747
+  10  -1.17420(14)  -0.0110(10)    40.793
+  11  -1.17404(14)  -0.0100(10)    35.368
+  12  -1.17415(13)  -0.0080(10)    29.669
+  13  -1.17403(13)  -0.0060(10)    27.673
+  14  -1.17408(14)  -0.0050(10)    24.524
+  15  -1.17414(15)  -0.0050(10)    21.827
+  16  -1.17426(14)  -0.0050(10)    20.321
+  17  -1.17405(14)  -0.0040(10)    15.438
+  18  -1.17401(13)  -0.0050(10)    15.205
+  19  -1.17419(14)  -0.0020(10)    12.648
+  20  -1.17404(14)  -0.0030(10)    10.937
+  21  -1.17403(14)  -0.0020(10)    10.505
+  22  -1.17409(14)  -0.0020(10)    10.847
+  23  -1.17413(15)  -0.0020(10)     7.368
+  24  -1.17424(14)  -0.0020(10)     7.243
+  25  -1.17414(14)  -0.0020(10)     6.574
+  26  -1.17409(13)  +0.0010(10)     5.080
+  27  -1.17407(15)  -0.0020(10)     4.100
+  28  -1.17414(14)  -0.0010(10)     4.578
+  29  -1.17368(14)  -0.0002(00)     4.743
+  30  -1.17407(15)  +0.0010(10)     3.801
+```
+
+You should gain energy with repect to the JSD one.
+
+## Compute Energy and Atomic forces (VMC)
+The following steps are the same as those with JSD.
+
+```bash
+% cd 08vmc_JAGP
+% jqmc-tool vmc generate-input -g
+> Input file is generated: vmc.toml
+```
+
+```toml:vmc.toml
+[control]
+job_type = "vmc" # Specify the job type. "vmc", "vmcopt", "lrdmc", or "lrdmc-tau".
+mcmc_seed = 34456 # Random seed for MCMC
+number_of_walkers = 4 # Number of walkers per MPI process
+max_time = 86400 # Maximum time in sec.
+restart = false
+restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
+verbosity = "low" # Verbosity level. "low" or "high"
+
+[vmc]
+num_mcmc_steps = 10000 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
+num_mcmc_per_measurement = 40 # Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.
+num_mcmc_warmup_steps = 10 # Number of observable measurement steps for warmup (i.e., discarged).
+num_mcmc_bin_blocks = 5 # Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_mcmc_bin_blocks * mpi_size * number_of_walkers.
+Dt = 1.2 # Step size for the MCMC update (bohr).
+epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
+atomic_force = true
+```
+
+Run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing system such as PBS).
+
+```bash
+% jqmc vmc.toml > out_vmc 2> out_vmc.e # w/o MPI on CPU
+% mpirun -np 4 jqmc vmc.toml > out_vmc 2> out_vmc.e # w/ MPI on CPU
+% mpiexec -n 4 -map-by ppr:4:node jqmc vmc.toml > out_vmc 2> out_vmc.e # w/ MPI on GPU, depending the queueing system.
+```
+
+You may get `E = xxx Ha` and  `Var(E) = xxx Ha^2`.
+
+and `F =`
+
+```bash
+  ------------------------------------------------
+  Label   Fx(Ha/bohr) Fy(Ha/bohr) Fz(Ha/bohr)
+  ------------------------------------------------
+  xxx
+  ------------------------------------------------
+```
+
+## Compute Energy and Atomic forces (LRDMC)
+The next step is LRDMC calculation. You can generate a template file for a LRDMC calculation using `jqmc-tool`. Please directly edit `lrdmc.toml` if you want to change a parameter.
+
+```bash
+% cd 09lrdmc_JAGP
+% jqmc-tool lrdmc generate-input -g
+> Input file is generated: lrdmc.toml
+```
+
+```toml:lrdmc.toml
+[control]
+job_type = "lrdmc" # Specify the job type. "vmc", "vmcopt", "lrdmc", or "lrdmc-tau".
+mcmc_seed = 34456 # Random seed for MCMC
+number_of_walkers = 4 # Number of walkers per MPI process
+max_time = 86400 # Maximum time in sec.
+restart = false
+restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
+verbosity = "low" # Verbosity level. "low" or "high"
+
+[lrdmc]
+num_mcmc_steps = 10000 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
+num_mcmc_per_measurement = 30 # Number of GFMC projections per measurement. Every local energy and other observeables are measured every this projection.
+alat = 0.10 # The lattice discretization parameter (i.e. grid size) used for discretized the Hamiltonian and potential. The lattice spacing is alat * a0, where a0 is the Bohr radius.
+non_local_move = "tmove" # The treatment of the non-local term in the Effective core potential. tmove (T-move) and dltmove (Determinant locality approximation with T-move) are available.
+num_gfmc_warmup_steps = 10 # Number of observable measurement steps for warmup (i.e., discarged).
+num_gfmc_bin_blocks = 10 # Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_gfmc_bin_blocks, not num_gfmc_bin_blocks * mpi_size * number_of_walkers.
+num_gfmc_collect_steps = 5 # Number of measurement (before binning) for collecting the weights.
+E_scf = -1.0 # The initial guess of the total energy. This is used to compute the initial energy shift in the GFMC.
+atomic_force = true
+```
+
+Run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing system such as PBS).
+
+```bash
+% jqmc lrdmc.toml > out_lrdmc 2> out_lrdmc.e # w/o MPI on CPU
+% mpirun -np 4 jqmc lrdmc.toml > out_lrdmc 2> out_lrdmc.e # w/ MPI on CPU
+% mpiexec -n 4 -map-by ppr:4:node jqmc lrdmc.toml > out_lrdmc 2> out_lrdmc.e # w/ MPI on GPU, depending the queueing system.
+```
+
+You may get `E = xxx Ha` and  `Var(E) = xxx Ha^2`.
+
+and `F =`
+
+```bash
+  ------------------------------------------------
+  Label   Fx(Ha/bohr) Fy(Ha/bohr) Fz(Ha/bohr)
+  ------------------------------------------------
+  xxx
+  ------------------------------------------------
+```
+
+## PES of the Hydrogen dimer (VMC and LRDMC with JAGP)
+You should repeat the above calculations with many $R$ to compute the PES.
+
+WIP
