@@ -1644,6 +1644,11 @@ class GFMC_fixed_projection_time:
         """The number of walkers."""
         return self.__num_walkers
 
+    @property
+    def alat(self):
+        """Return alat."""
+        return self.__alat
+
     # weights
     @property
     def w_L(self) -> npt.NDArray:
@@ -2888,6 +2893,11 @@ class GFMC_fixed_num_projection:
     def num_walkers(self):
         """The number of walkers."""
         return self.__num_walkers
+
+    @property
+    def alat(self):
+        """Return alat."""
+        return self.__alat
 
     # weights
     @property

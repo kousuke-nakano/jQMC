@@ -198,29 +198,85 @@ The final step is to run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (v
 % mpiexec -n 4 -map-by ppr:4:node jqmc vmc.toml > out_vmc 2> out_vmc.e # w/ MPI on GPU, depending the queueing system.
 ```
 
-You may get `E = -xxxxx +- xxx` [VMC w/ Jastrow factors]
+You may get `E = -16.97202 +- 0.000288 Ha` and `Var(E) = 1.99127 +- 0.000901 Ha^2` [VMC w/ Jastrow factors]
 
 ## Compute Energy (LRDMC)
 The final step is LRDMC calculation. You can generate a template file for a LRDMC calculation using `jqmc-tool`. Please directly edit `lrdmc.toml` if you want to change a parameter.
 
 ```bash
-% jqmc-tool lrdmc generate-input -g lrdmc_a_0.30.toml
-> Input file is generated: lrdmc_a_0.30.toml
+% cd alat_0.30
+% jqmc-tool lrdmc generate-input -g lrdmc.toml
+> Input file is generated: lrdmc.toml
 ```
 
 ```toml:lrdmc.toml
 [control]
-...
+  job_type = 'lrdmc'
+  mcmc_seed = 34467
+  number_of_walkers = 300
+  max_time = 10400
+  restart = false
+  restart_chk = 'lrdmc.rchk'
+  hamiltonian_chk = '../hamiltonian_data.chk'
+  verbosity = 'low'
+
+[lrdmc]
+  num_mcmc_steps  = 40000
+  num_mcmc_per_measurement = 30
+  alat = 0.30
+  non_local_move = "dltmove"
+  num_gfmc_warmup_steps = 50
+  num_gfmc_bin_blocks = 50
+  num_gfmc_collect_steps = 20
+  E_scf = -17.00
 ```
 
 LRDMC energy is biased with the discretized lattice space ($a$) by $O(a^2)$. It means that, to get an unbiased energy, one should compute LRDMC energies with several lattice parameters ($a$) extrapolate them into $a \rightarrow 0$.
 
-The final step is to run the `jqmc` jobs with several $a$.
+The final step is to run the `jqmc` jobs with several $a$, e.g.
 
 ```bash
+% cd alat_0.30
 % jqmc lrdmc.toml > out_lrdmc 2> out_lrdmc.e
 ```
 
-You may get `E = -xxxxx +- xxx` [VMC w/ Jastrow factors]
+You may get:
 
-WIP:
+| a (bohr)   | E (Ha)                  |  Var (Ha^2)             |
+|------------|-------------------------|-------------------------|
+| 0.10       | -17.23667 ± 0.000277    | 1.61602 +- 0.000643     |
+| 0.15       | -17.23821 ± 0.000286    | 1.61417 +- 0.000773     |
+| 0.20       | -17.24097 ± 0.000325    | 1.69783 +- 0.079714     |
+| 0.25       | -17.24402 ± 0.000270    | 1.63235 +- 0.006160     |
+| 0.30       | -17.24786 ± 0.000269    | 1.78517 +- 0.066418     |
+
+You can extrapolate them into $a \rightarrow 0$ by `jqmc-tool`
+
+```bash
+% jqmc-tool lrdmc extrapolate-energy alat_0.10/lrdmc.rchk alat_0.15/lrdmc.rchk alat_0.20/lrdmc.rchk alat_0.25/lrdmc.rchk alat_0.30/lrdmc.rchk -s lrdmc_ext.jpg
+> ------------------------------------------------------------------------
+> Read restart checkpoint files from ['alat_0.10/lrdmc.rchk', 'alat_0.15/lrdmc.rchk', 'alat_0.20/lrdmc.rchk', 'alat_0.25/lrdmc.rchk', 'alat_0.30/lrdmc.rchk'].
+>   Total number of binned samples = 5
+>   For a = 0.1 bohr: E = -17.236661112856858 +- 0.00032635704517869677 Ha.
+>   Total number of binned samples = 5
+>   For a = 0.15 bohr: E = -17.2382052864809 +- 0.00029723715520135464 Ha.
+>   Total number of binned samples = 5
+>   For a = 0.2 bohr: E = -17.240993162088692 +- 0.00025740878490131835 Ha.
+>   Total number of binned samples = 5
+>   For a = 0.25 bohr: E = -17.24401036198691 +- 0.0002365677591168457 Ha.
+>   Total number of binned samples = 5
+>   For a = 0.3 bohr: E = -17.247804041851044 +- 0.00032247173445041217 Ha.
+> ------------------------------------------------------------------------
+> Extrapolation of the energy with respect to a^2.
+>   Polynomial order = 2.
+>   For a -> 0 bohr: E = -17.235093943871842 +- 0.00045277462865289897 Ha.
+> ------------------------------------------------------------------------
+> Graph is saved in lrdmc_ext.jpg.
+> ------------------------------------------------------------------------
+> Extrapolation is finished.
+
+```
+
+You may get `E = -17.235094 +- 0.00045 Ha` [LRDMC a -> 0]. This is the final result of this tutorial.
+
+![VMC optimization](05lrdmc_JSD/lrdmc_ext.jpg)

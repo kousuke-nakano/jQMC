@@ -3,4 +3,4 @@ One of the validation tests for ab initio DMC implementation. See the [paper](ht
 
 ![LRDMC validation](jqmc_validation_water_methane.jpg)
 
-WIP:
+Reproduced water and methane LRDMC energies. So. the LRDMC implementations in `jqmc` should be correct. Water-Methane calculations are WIP.
