@@ -50,6 +50,7 @@ from jax import typing as jnpt
 # jqmc module
 from .atomic_orbital import (
     AOs_cart_data,
+    AOs_cart_data_deriv_R,
     AOs_sphe_data,
     AOs_sphe_data_deriv_R,
     compute_AOs_grad_jax,
@@ -337,10 +338,14 @@ class Geminal_data_deriv_R(Geminal_data):
         num_electron_dn = geminal_data.num_electron_dn
         if isinstance(geminal_data.orb_data_up_spin, AOs_sphe_data):
             orb_data_up_spin = AOs_sphe_data_deriv_R.from_base(geminal_data.orb_data_up_spin)
+        elif isinstance(geminal_data.orb_data_up_spin, AOs_cart_data):
+            orb_data_up_spin = AOs_cart_data_deriv_R.from_base(geminal_data.orb_data_up_spin)
         else:
             orb_data_up_spin = MOs_data_deriv_R.from_base(geminal_data.orb_data_up_spin)
         if isinstance(geminal_data.orb_data_dn_spin, AOs_sphe_data):
             orb_data_dn_spin = AOs_sphe_data_deriv_R.from_base(geminal_data.orb_data_dn_spin)
+        elif isinstance(geminal_data.orb_data_dn_spin, AOs_cart_data):
+            orb_data_dn_spin = AOs_cart_data_deriv_R.from_base(geminal_data.orb_data_dn_spin)
         else:
             orb_data_dn_spin = MOs_data_deriv_R.from_base(geminal_data.orb_data_dn_spin)
         lambda_matrix = geminal_data.lambda_matrix
