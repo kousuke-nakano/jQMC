@@ -1,14 +1,6 @@
-"""jQMC tools.
+"""jQMC tools."""
 
-Todo:
-    lrdmc
-        get extrapolated energy and forces
-            polynomial order
-            num_blocks
-            warmup_steps
-            collections steps
-"""
-
+import os
 import pickle
 import re
 import zipfile
@@ -381,6 +373,7 @@ def vmcopt_analyze_output(
 
         if save_graph is not None:
             plt.savefig(save_graph)
+            typer.echo(f"Graph is saved in {save_graph}.")
 
         if plot_graph:
             plt.show()
@@ -421,7 +414,7 @@ def vmc_compute_energy(
             if match:
                 mpi_ranks.append(int(match.group(1)))
 
-    typer.echo(f"Found {len(mpi_ranks)} MPI ranks.")
+    # typer.echo(f"Found {len(mpi_ranks)} MPI ranks.")
 
     filenames = [f"{mpi_rank}_{restart_chk}" for mpi_rank in mpi_ranks]
 
@@ -530,18 +523,19 @@ def lrdmc_compute_energy(
     """LRDMC energy calculation."""
     typer.echo(f"Read restart checkpoint file(s) from {restart_chk}.")
 
-    pattern = re.compile(rf"(\d+)_{restart_chk}")
+    basename_restart_chk = os.path.basename(restart_chk)
+    pattern = re.compile(rf"(\d+)_{basename_restart_chk}")
 
     mpi_ranks = []
     with zipfile.ZipFile(restart_chk, "r") as z:
         for file_name in z.namelist():
-            match = pattern.match(file_name)
+            match = pattern.match(os.path.basename(file_name))
             if match:
                 mpi_ranks.append(int(match.group(1)))
 
-    typer.echo(f"Found {len(mpi_ranks)} MPI ranks.")
+    # typer.echo(f"Found {len(mpi_ranks)} MPI ranks.")
 
-    filenames = [f"{mpi_rank}_{restart_chk}" for mpi_rank in mpi_ranks]
+    filenames = [f"{mpi_rank}_{basename_restart_chk}" for mpi_rank in mpi_ranks]
 
     w_L_binned_list = []
     w_L_e_L_binned_list = []
@@ -583,6 +577,182 @@ def lrdmc_compute_energy(
     E_std = np.sqrt(M - 1) * np.std(E_jackknife_binned)
 
     typer.echo(f"E = {E_mean} +- {E_std} Ha.")
+
+
+@lrdmc_app.command("extrapolate-energy")
+def lrdmc_extrapolate_energy(
+    restart_chks: List[str] = typer.Argument(..., help="Restart checkpoint files, e.g. lrdmc.rchk"),
+    polynomial_order: int = typer.Option(
+        2,
+        "-p",
+        "--polynomial-order",
+        help="Polynomial order with respect to a^2 for extrapolation. Default is 2. i.e., E_0 + a^2 * E_2 + a^4 * E_4.",
+    ),
+    plot_graph: bool = typer.Option(False, "-g", "--plot-graph", help="Plot a graph summerizing the result using matplotlib."),
+    save_graph: str = typer.Option(None, "-s", "--save-graph", help="Specify a graph filename."),
+    num_gfmc_bin_block: int = typer.Option(
+        5,
+        "-b",
+        "--num_gfmc_bin_blocks",
+        help="Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_gfmc_bin_blocks, not num_gfmc_bin_blocks * mpi_size * number_of_walkers.",
+    ),
+    num_gfmc_warmup_steps: int = typer.Option(
+        0, "-w", "--num_gfmc_warmup_steps", help="Number of observable measurement steps for warmup (i.e., discarged)."
+    ),
+    num_gfmc_collect_steps: int = typer.Option(
+        5, "-c", "--num_gfmc_collect_steps", help="Number of measurement (before binning) for collecting the weights."
+    ),
+):
+    """LRDMC energy calculation."""
+    sep = 72
+    typer.echo("-" * sep)
+    typer.echo(f"Read restart checkpoint files from {restart_chks}.")
+
+    alat_list = []
+    energy_list = []
+    energy_error_list = []
+
+    for restart_chk in restart_chks:
+        basename_restart_chk = os.path.basename(restart_chk)
+        pattern = re.compile(rf"(\d+)_{basename_restart_chk}")
+
+        mpi_ranks = []
+        with zipfile.ZipFile(restart_chk, "r") as z:
+            for file_name in z.namelist():
+                match = pattern.match(os.path.basename(file_name))
+                if match:
+                    mpi_ranks.append(int(match.group(1)))
+
+        # typer.echo(f"Found {len(mpi_ranks)} MPI ranks.")
+
+        filenames = [f"{mpi_rank}_{basename_restart_chk}" for mpi_rank in mpi_ranks]
+
+        w_L_binned_list = []
+        w_L_e_L_binned_list = []
+
+        num_mcmc_warmup_steps = num_gfmc_warmup_steps
+        num_mcmc_bin_blocks = num_gfmc_bin_block
+
+        for filename in filenames:
+            with zipfile.ZipFile(restart_chk, "r") as zipf:
+                data = zipf.read(filename)
+                lrdmc = pickle.loads(data)
+                lrdmc.mcmc.num_gfmc_collect_steps = num_gfmc_collect_steps
+
+                if lrdmc.mcmc.e_L.size != 0:
+                    e_L = lrdmc.mcmc.e_L[num_mcmc_warmup_steps:]
+                    w_L = lrdmc.mcmc.w_L[num_mcmc_warmup_steps:]
+                    w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
+                    w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
+                    w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
+                    w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
+                    w_L_binned_list += w_L_binned
+                    w_L_e_L_binned_list += w_L_e_L_binned
+                    alat = lrdmc.mcmc.alat
+
+        w_L_binned = np.array(w_L_binned_list)
+        w_L_e_L_binned = np.array(w_L_e_L_binned_list)
+
+        # jackknife implementation
+        w_L_binned_sum = np.sum(w_L_binned)
+        w_L_e_L_binned_sum = np.sum(w_L_e_L_binned)
+
+        M = w_L_binned.size
+        typer.echo(f"  Total number of binned samples = {M}")
+
+        E_jackknife_binned = np.array(
+            [(w_L_e_L_binned_sum - w_L_e_L_binned[m]) / (w_L_binned_sum - w_L_binned[m]) for m in range(M)]
+        )
+
+        E_mean = np.average(E_jackknife_binned)
+        E_std = np.sqrt(M - 1) * np.std(E_jackknife_binned)
+        a = alat
+
+        alat_list.append(a)
+        energy_list.append(E_mean)
+        energy_error_list.append(E_std)
+
+        typer.echo(f"  For a = {a} bohr: E = {E_mean} +- {E_std} Ha.")
+
+    typer.echo("-" * sep)
+
+    typer.echo("Extrapolation of the energy with respect to a^2.")
+    typer.echo(f"  Polynomial order = {polynomial_order}.")
+
+    # Prepare data for polynomial fitting
+    monte_carlo_loop = 1000
+    interpolate_num = 1000
+    order_fit = polynomial_order
+    x = np.array(alat_list) ** 2
+    y = np.array(energy_list)
+    y_err = np.array(energy_error_list)
+    xs = np.linspace(0.0, np.max(x) * 1.2, interpolate_num)
+
+    # Lists to store evaluated polynomial values for each Monte Carlo iteration at x and xs
+    vals = []  # Stores np.polyval(w, x) for each iteration
+    vals_plot = []  # Stores np.polyval(w, xs) for each iteration
+
+    # Lists to store local minima results
+    y0_list = []
+
+    # Pre-generate Monte Carlo random deviations for each data point
+    sigma_list = [np.random.randn(monte_carlo_loop) for _ in y]
+
+    # Monte Carlo loop: iterate over each random realization
+    for m in range(monte_carlo_loop):
+        # Generate y values with added noise
+        y_gen = [y[i] + y_err[i] * sigma_list[i][m] for i in range(len(y))]
+
+        # Fit a polynomial of degree order_fit
+        w = np.polyfit(x, y_gen, order_fit)
+
+        # Evaluate the fitted polynomial at points xs
+        ys_plot = np.polyval(w, xs)
+
+        # Record the polynomial evaluations
+        vals_plot.append(ys_plot)
+
+        # a -> 0
+        poly = np.poly1d(w)
+        y0_list.append(poly(0.0))
+
+    # Convert lists to NumPy arrays and calculate the mean and standard deviation
+    vals = np.array(vals)  # shape: (monte_calro_loop, len(x))
+    vals_plot = np.array(vals_plot)  # shape: (monte_calro_loop, len(xs))
+
+    y0_list = np.array(y0_list)  # shape: (monte_calro_loop,)
+    y_mean_plot = np.mean(vals_plot, axis=0)
+
+    E_0_mean = np.mean(y0_list)
+    E_0_std = np.std(y0_list)
+
+    typer.echo(f"  For a -> 0 bohr: E = {E_0_mean} +- {E_0_std} Ha.")
+    typer.echo("-" * sep)
+
+    # plot graphs
+    if plot_graph or save_graph is not None:
+        plt.rcParams["font.size"] = 8
+        plt.rcParams["font.family"] = "sans-serif"
+
+        fig = plt.figure(figsize=(4, 4), facecolor="white", dpi=300, tight_layout=True)
+
+        ax1 = fig.add_subplot(1, 1, 1)
+        ax1.tick_params(axis="both", which="both", direction="in")
+        ax1.errorbar(x, y, yerr=y_err, fmt="o", markersize=4, capsize=3, color="blue", label="Data")
+        ax1.errorbar(0.0, E_0_mean, yerr=E_0_std, fmt="s", markersize=4, capsize=3, color="red", label="Extrapolated")
+        ax1.plot(xs, y_mean_plot, ls="--", color="blue")
+        ax1.set_xlabel(r"Lattice discretization $a^2$ (bohr$^2$)")
+        ax1.set_ylabel("LRDMC Energy (Ha)")
+        ax1.legend(loc="best")
+
+        if save_graph is not None:
+            plt.savefig(save_graph)
+            typer.echo(f"Graph is saved in {save_graph}.")
+
+        if plot_graph:
+            plt.show()
+    typer.echo("-" * sep)
+    typer.echo("Extrapolation is finished.")
 
 
 @lrdmc_app.command("generate-input")
