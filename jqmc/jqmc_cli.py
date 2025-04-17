@@ -255,7 +255,7 @@ def cli():
             for i in range(len(hamiltonian_data.structure_data.atomic_labels)):
                 atomic_label = str(hamiltonian_data.structure_data.atomic_labels[i])
                 row_values = [f"{ufloat(f_mean[i, j], f_std[i, j]):+2uS}" for j in range(3)]
-                row_str = "  " + atomic_label.ljust(8) + "".join(val.ljust(12) for val in row_values)
+                row_str = "  " + atomic_label.ljust(8) + " ".join(val.ljust(12) for val in row_values)
                 logger.info(row_str)
             logger.info("  " + "-" * sep)
         logger.info("")
