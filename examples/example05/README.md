@@ -1,6 +1,6 @@
 # example05
 
-Potential energy surface of hydrogen molecule with cartesian GTOs. All electron calculations. Comparison of atomic forces with the derivative of the PES.
+Potential energy surface of hydrogen molecule with cartesian GTOs. All electron calculations. Comparison of atomic forces with the derivative of the PES. The atomic forces are computed by fully exploiting algorithmic differentiation (AD) as implemented in **JAX**. The pioneering application of AD in ab initio QMC was first introduced by S. Sorella and L. Capriotti in 2010 [^2010SORjcp].
 
 ## Generate a trial WF
 
@@ -196,7 +196,7 @@ and `F =`
 ```
 
 > [!NOTE]
-> Umm, there is something wrong with the all-electron force calculation. Fz = -Fz is OK, but I forgot to put some other terms? or just becase the Jastrow factor is so small that the self-consistency error becomes bigger? WIP, 16 Apr. 2025.
+> The forces are finite even close to the equilibrium position. The origin of the discrepancy is the so-called self-consistency error [^2021NAKjcp][^2022TIHjcp]. See later sections for the detail.
 
 ## Compute Energy and Atomic forces (LRDMC)
 The next step is LRDMC calculation. You can generate a template file for a LRDMC calculation using `jqmc-tool`. Please directly edit `lrdmc.toml` if you want to change a parameter.
@@ -246,18 +246,13 @@ and `F =`
   ------------------------------------------------
   Label   Fx(Ha/bohr) Fy(Ha/bohr) Fz(Ha/bohr)
   ------------------------------------------------
-  H       +0.0001(4)  +0.0000(5)  +0.0399(5)
-  H       -0.0001(4)  -0.0000(5)  -0.0399(5)
+  H       +0.0001(4)   +0.0000(5)   +0.0399(5)
+  H       -0.0001(4)   -0.0000(5)   -0.0399(5)
   ------------------------------------------------
 ```
 
 > [!NOTE]
-> Umm, there is something wrong with the all-electron force calculation. Fz = -Fz is OK, but I forgot to put some other terms? or just becase the Jastrow factor is so small that the self-consistency error becomes bigger? WIP, 16 Apr. 2025.
-
-## PES of the Hydrogen dimer (VMC and LRDMC with JSD)
-You should repeat the above calculations with many $R$ to compute the PES.
-
-WIP
+> The LRDMC forces are intringically biased because the so-called Reynolds approximation[^1989REYijqc] is employed. See benchmark papers[^2021NAKjcp] [^2022TIHjcp].
 
 ## Conversion of WF: from JSD to JAGP
 
@@ -359,7 +354,7 @@ Iter     E (Ha)     Max f (Ha)   Max of signal to noise of f
   30  -1.17407(15)  +0.0010(10)     3.801
 ```
 
-You should gain energy with repect to the JSD one.
+One should gain energy with repect to the JSD one.
 
 ## Compute Energy and Atomic forces (VMC)
 The following steps are the same as those with JSD.
@@ -399,7 +394,7 @@ Run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing sys
 % mpiexec -n 4 -map-by ppr:4:node jqmc vmc.toml > out_vmc 2> out_vmc.e # w/ MPI on GPU, depending the queueing system.
 ```
 
-You may get `E = xxx Ha` and  `Var(E) = xxx Ha^2`.
+You may get `E = -1.17543 +- 0.001343 Ha` and  `Var(E) = 0.00327 +- 0.000475 Ha^2`.
 
 and `F =`
 
@@ -407,7 +402,8 @@ and `F =`
   ------------------------------------------------
   Label   Fx(Ha/bohr) Fy(Ha/bohr) Fz(Ha/bohr)
   ------------------------------------------------
-  xxx
+  H       -2.0(2.4)e-05 -5.5(2.4)e-05 +0.00523(13)
+  H       +2.0(2.4)e-05 +5.5(2.4)e-05 -0.00523(13)
   ------------------------------------------------
 ```
 
@@ -451,7 +447,7 @@ Run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing sys
 % mpiexec -n 4 -map-by ppr:4:node jqmc lrdmc.toml > out_lrdmc 2> out_lrdmc.e # w/ MPI on GPU, depending the queueing system.
 ```
 
-You may get `E = xxx Ha` and  `Var(E) = xxx Ha^2`.
+You may get `E = -1.17442 +- 0.000069 Ha` and  `Var(E) = 0.00287 +- 0.000010 Ha^2`.
 
 and `F =`
 
@@ -459,11 +455,27 @@ and `F =`
   ------------------------------------------------
   Label   Fx(Ha/bohr) Fy(Ha/bohr) Fz(Ha/bohr)
   ------------------------------------------------
-  xxx
+  H       +0.00019(8) -2(9)e-05   +0.0040(4)
+  H       -0.00019(8) +2(9)e-05   -0.0040(4)
   ------------------------------------------------
 ```
 
-## PES of the Hydrogen dimer (VMC and LRDMC with JAGP)
-You should repeat the above calculations with many $R$ to compute the PES.
+## Summary: PES of the Hydrogen dimer
+One should repeat the above calculations with many $R$ to compute the PES. Here, we plot the PESs, thier derivatives, and forces obtained with JSD and JAGP anstaz by VMC calculations.
 
-WIP
+
+![H2 VMC PES](03vmcopt_JSD/vmcopt.jpg)
+
+The forces shown in the left panel (JSD) remain finite even near the equilibrium position of the PES. This discrepancy originates from the so-called self-consistency error[^2021NAKjcp][^2022TIHjcp]. In the JSD calculation, only the Jastrow factor was optimized, while the determinant part was kept fixed to the DFT solution. Although the DFT orbitals satisfy the stationary condition of the Kohn–Sham equations, they are not stationary with respect to the VMC energy. As a result, if the variational parameters in the determinant part are not optimized, an additional contribution should be considered in the force evaluation, which is not captured by standard VMC and DMC formalisms.
+
+There are two ways to eliminate this bias. One is to optimize all variational parameters, including those in the determinant part[^2024SLOjctc]. Indeed, the forces shown in the left panel obtained using the JAGP ansatz exhibit no such inconsistency: the derivative of the PES agrees with the calculated force values. The other approach is to explicitly correct for the missing contribution[^2024NAKprb]. If one is intereted the latter approach, please contact a `jQMC` develper.
+
+[^2010SORjcp]: S. Sorella and L. Capriotti, J. Chem. Phys. **133** 234111 (2010) [https://doi.org/10.1063/1.3516208](https://doi.org/10.1063/1.3516208)
+
+[^2021NAKjcp]: K. Nakano et al. J. Chem. Phys. **154**, 204111 (2021), [https://doi.org/10.1063/5.0076302](https://doi.org/10.1063/5.0076302)
+[^2022TIHjcp]: J. Tiihonen et al. J. Chem. Phys. **156**, 034101 (2022), [https://doi.org/10.1063/5.0052266](https://doi.org/10.1063/5.0052266)
+[^1989REYijqc]: P.J. Reynolds et al. Int. J. Quantum Chem. **29**, 589 (1986). [https://doi.org/10.1063/5.0052266](https://doi.org/10.1063/5.0052266)
+[^2024SLOjctc]: E. Slootman et al. J. Chem. Theory Comput. **20**, 6020–6027 (2024), [https://doi.org/10.1021/acs.jctc.4c00498](https://doi.org/10.1021/acs.jctc.4c00498)
+[^2024NAKprb]: K. Nakano et al. Phys. Rev. B **109**, 205151 (2024), [https://doi.org/10.1103/PhysRevB.109.205151](https://doi.org/10.1103/PhysRevB.109.205151)
+
+
