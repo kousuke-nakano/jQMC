@@ -464,7 +464,7 @@ and `F =`
 One should repeat the above calculations with many $R$ to compute the PES. Here, we plot the PESs, thier derivatives, and forces obtained with JSD and JAGP anstaz by VMC calculations.
 
 
-![H2 VMC PES](03vmcopt_JSD/vmcopt.jpg)
+![H2 VMC PES](H2_PES_VMC.jpg)
 
 The forces shown in the left panel (JSD) remain finite even near the equilibrium position of the PES. This discrepancy originates from the so-called self-consistency error[^2021NAKjcp][^2022TIHjcp]. In the JSD calculation, only the Jastrow factor was optimized, while the determinant part was kept fixed to the DFT solution. Although the DFT orbitals satisfy the stationary condition of the Kohn–Sham equations, they are not stationary with respect to the VMC energy. As a result, if the variational parameters in the determinant part are not optimized, an additional contribution should be considered in the force evaluation, which is not captured by standard VMC and DMC formalisms.
 
