@@ -2299,23 +2299,10 @@ class GFMC_fixed_projection_time:
                 e_L_averaged = np.expand_dims(e_L_averaged, axis=0)
                 w_L_averaged = np.expand_dims(w_L_averaged, axis=0)
 
-            else:
                 # store  # This should stored only for MPI-rank = 0 !!!
-                e_L2_averaged = None
-                e_L_averaged = None
-                w_L_averaged = None
-
-            # broadcast
-            e_L2_averaged = mpi_comm.bcast(e_L2_averaged, root=0)
-            e_L_averaged = mpi_comm.bcast(e_L_averaged, root=0)
-            w_L_averaged = mpi_comm.bcast(w_L_averaged, root=0)
-
-            # They are stored for all MPI-ranks.
-            # This is redundant, but for the sake of consistency between GFMC and MCMC, we do this.
-            # This redundancy does not affect the statistics.
-            self.__stored_e_L2.append(e_L2_averaged)
-            self.__stored_e_L.append(e_L_averaged)
-            self.__stored_w_L.append(w_L_averaged)
+                self.__stored_e_L2.append(e_L2_averaged)
+                self.__stored_e_L.append(e_L_averaged)
+                self.__stored_w_L.append(w_L_averaged)
 
             mpi_comm.Barrier()
 
@@ -4121,54 +4108,21 @@ class GFMC_fixed_num_projection:
                     grad_omega_dr_up_averaged = np.expand_dims(grad_omega_dr_up_averaged, axis=0)
                     grad_omega_dr_dn_averaged = np.expand_dims(grad_omega_dr_dn_averaged, axis=0)
 
-            else:
-                e_L2_averaged = None
-                e_L_averaged = None
-                w_L_averaged = None
+                # store  # This should stored only for MPI-rank = 0 !!!
+                self.__stored_e_L2.append(e_L2_averaged)
+                self.__stored_e_L.append(e_L_averaged)
+                self.__stored_w_L.append(w_L_averaged)
                 if self.__comput_position_deriv:
-                    grad_e_L_r_up_averaged = None
-                    grad_e_L_r_dn_averaged = None
-                    grad_e_L_R_averaged = None
-                    grad_ln_Psi_r_up_averaged = None
-                    grad_ln_Psi_r_dn_averaged = None
-                    grad_ln_Psi_dR_averaged = None
-                    omega_up_averaged = None
-                    omega_dn_averaged = None
-                    grad_omega_dr_up_averaged = None
-                    grad_omega_dr_dn_averaged = None
-
-            e_L2_averaged = mpi_comm.bcast(e_L2_averaged, root=0)
-            e_L_averaged = mpi_comm.bcast(e_L_averaged, root=0)
-            w_L_averaged = mpi_comm.bcast(w_L_averaged, root=0)
-            if self.__comput_position_deriv:
-                grad_e_L_r_up_averaged = mpi_comm.bcast(grad_e_L_r_up_averaged, root=0)
-                grad_e_L_r_dn_averaged = mpi_comm.bcast(grad_e_L_r_dn_averaged, root=0)
-                grad_e_L_R_averaged = mpi_comm.bcast(grad_e_L_R_averaged, root=0)
-                grad_ln_Psi_r_up_averaged = mpi_comm.bcast(grad_ln_Psi_r_up_averaged, root=0)
-                grad_ln_Psi_r_dn_averaged = mpi_comm.bcast(grad_ln_Psi_r_dn_averaged, root=0)
-                grad_ln_Psi_dR_averaged = mpi_comm.bcast(grad_ln_Psi_dR_averaged, root=0)
-                omega_up_averaged = mpi_comm.bcast(omega_up_averaged, root=0)
-                omega_dn_averaged = mpi_comm.bcast(omega_dn_averaged, root=0)
-                grad_omega_dr_up_averaged = mpi_comm.bcast(grad_omega_dr_up_averaged, root=0)
-                grad_omega_dr_dn_averaged = mpi_comm.bcast(grad_omega_dr_dn_averaged, root=0)
-
-            # They are stored for all MPI-ranks.
-            # This is redundant, but for the sake of consistency between GFMC and MCMC, we do this.
-            # This redundancy does not affect the statistics.
-            self.__stored_e_L2.append(e_L2_averaged)
-            self.__stored_e_L.append(e_L_averaged)
-            self.__stored_w_L.append(w_L_averaged)
-            if self.__comput_position_deriv:
-                self.__stored_grad_e_L_r_up.append(grad_e_L_r_up_averaged)
-                self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn_averaged)
-                self.__stored_grad_e_L_dR.append(grad_e_L_R_averaged)
-                self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up_averaged)
-                self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn_averaged)
-                self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR_averaged)
-                self.__stored_omega_up.append(omega_up_averaged)
-                self.__stored_omega_dn.append(omega_dn_averaged)
-                self.__stored_grad_omega_r_up.append(grad_omega_dr_up_averaged)
-                self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn_averaged)
+                    self.__stored_grad_e_L_r_up.append(grad_e_L_r_up_averaged)
+                    self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn_averaged)
+                    self.__stored_grad_e_L_dR.append(grad_e_L_R_averaged)
+                    self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up_averaged)
+                    self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn_averaged)
+                    self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR_averaged)
+                    self.__stored_omega_up.append(omega_up_averaged)
+                    self.__stored_omega_dn.append(omega_dn_averaged)
+                    self.__stored_grad_omega_r_up.append(grad_omega_dr_up_averaged)
+                    self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn_averaged)
 
             mpi_comm.Barrier()
 
@@ -4681,18 +4635,24 @@ class QMC:
             # """
             logger.info("Computing the natural gradient, i.e., {S+epsilon*I}^{-1}*f")
 
-            w_L = self.mcmc.w_L[num_mcmc_warmup_steps:]
-            w_L = list(np.ravel(w_L))
+            if self.mcmc.e_L.size != 0:
+                w_L = self.mcmc.w_L[num_mcmc_warmup_steps:]
+                w_L = list(np.ravel(w_L))
 
-            e_L = self.mcmc.e_L[num_mcmc_warmup_steps:]
-            e_L = list(np.ravel(e_L))
+                e_L = self.mcmc.e_L[num_mcmc_warmup_steps:]
+                e_L = list(np.ravel(e_L))
 
-            O_matrix = self.get_dln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps, chosen_param_index=chosen_param_index)
-            O_matrix_shape = (
-                O_matrix.shape[0] * O_matrix.shape[1],
-                O_matrix.shape[2],
-            )
-            O_matrix = list(O_matrix.reshape(O_matrix_shape))
+                O_matrix = self.get_dln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps, chosen_param_index=chosen_param_index)
+                O_matrix_shape = (
+                    O_matrix.shape[0] * O_matrix.shape[1],
+                    O_matrix.shape[2],
+                )
+                O_matrix = list(O_matrix.reshape(O_matrix_shape))
+
+            else:
+                w_L = []
+                e_L = []
+                O_matrix = []
 
             w_L = mpi_comm.reduce(w_L, op=MPI.SUM, root=0)
             e_L = mpi_comm.reduce(e_L, op=MPI.SUM, root=0)
@@ -4904,15 +4864,20 @@ class QMC:
                 The mean and std values of the totat energy and those of the variance
                 estimated by the Jackknife method with the Args. (E_mean, E_std, Var_mean, Var_std).
         """
-        e_L = self.mcmc.e_L[num_mcmc_warmup_steps:]
-        e_L2 = self.mcmc.e_L2[num_mcmc_warmup_steps:]
-        w_L = self.mcmc.w_L[num_mcmc_warmup_steps:]
-        w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-        w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
-        w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
-        w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
-        w_L_e_L2_split = np.array_split(w_L * e_L2, num_mcmc_bin_blocks, axis=0)
-        w_L_e_L2_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L2_split]))
+        if self.mcmc.e_L.size != 0:
+            e_L = self.mcmc.e_L[num_mcmc_warmup_steps:]
+            e_L2 = self.mcmc.e_L2[num_mcmc_warmup_steps:]
+            w_L = self.mcmc.w_L[num_mcmc_warmup_steps:]
+            w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
+            w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
+            w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
+            w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
+            w_L_e_L2_split = np.array_split(w_L * e_L2, num_mcmc_bin_blocks, axis=0)
+            w_L_e_L2_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L2_split]))
+        else:
+            w_L_binned = []
+            w_L_e_L_binned = []
+            w_L_e_L2_binned = []
 
         w_L_binned = mpi_comm.reduce(w_L_binned, op=MPI.SUM, root=0)
         w_L_e_L_binned = mpi_comm.reduce(w_L_e_L_binned, op=MPI.SUM, root=0)
@@ -4978,89 +4943,99 @@ class QMC:
                 estimated by the Jackknife method with the Args.
                 The dimention of the arrays is (N, 3).
         """
-        w_L = self.mcmc.w_L[num_mcmc_warmup_steps:]
-        e_L = self.mcmc.e_L[num_mcmc_warmup_steps:]
-        de_L_dR = self.mcmc.de_L_dR[num_mcmc_warmup_steps:]
-        de_L_dr_up = self.mcmc.de_L_dr_up[num_mcmc_warmup_steps:]
-        de_L_dr_dn = self.mcmc.de_L_dr_dn[num_mcmc_warmup_steps:]
-        dln_Psi_dr_up = self.mcmc.dln_Psi_dr_up[num_mcmc_warmup_steps:]
-        dln_Psi_dr_dn = self.mcmc.dln_Psi_dr_dn[num_mcmc_warmup_steps:]
-        dln_Psi_dR = self.mcmc.dln_Psi_dR[num_mcmc_warmup_steps:]
-        omega_up = self.mcmc.omega_up[num_mcmc_warmup_steps:]
-        omega_dn = self.mcmc.omega_dn[num_mcmc_warmup_steps:]
-        domega_dr_up = self.mcmc.domega_dr_up[num_mcmc_warmup_steps:]
-        domega_dr_dn = self.mcmc.domega_dr_dn[num_mcmc_warmup_steps:]
+        if self.mcmc.e_L.size != 0:
+            w_L = self.mcmc.w_L[num_mcmc_warmup_steps:]
+            e_L = self.mcmc.e_L[num_mcmc_warmup_steps:]
+            de_L_dR = self.mcmc.de_L_dR[num_mcmc_warmup_steps:]
+            de_L_dr_up = self.mcmc.de_L_dr_up[num_mcmc_warmup_steps:]
+            de_L_dr_dn = self.mcmc.de_L_dr_dn[num_mcmc_warmup_steps:]
+            dln_Psi_dr_up = self.mcmc.dln_Psi_dr_up[num_mcmc_warmup_steps:]
+            dln_Psi_dr_dn = self.mcmc.dln_Psi_dr_dn[num_mcmc_warmup_steps:]
+            dln_Psi_dR = self.mcmc.dln_Psi_dR[num_mcmc_warmup_steps:]
+            omega_up = self.mcmc.omega_up[num_mcmc_warmup_steps:]
+            omega_dn = self.mcmc.omega_dn[num_mcmc_warmup_steps:]
+            domega_dr_up = self.mcmc.domega_dr_up[num_mcmc_warmup_steps:]
+            domega_dr_dn = self.mcmc.domega_dr_dn[num_mcmc_warmup_steps:]
 
-        logger.devel(f"w_L.shape for MPI-rank={mpi_rank} is {w_L.shape}")
+            logger.devel(f"w_L.shape for MPI-rank={mpi_rank} is {w_L.shape}")
 
-        logger.devel(f"e_L.shape for MPI-rank={mpi_rank} is {e_L.shape}")
+            logger.devel(f"e_L.shape for MPI-rank={mpi_rank} is {e_L.shape}")
 
-        logger.devel(f"de_L_dR.shape for MPI-rank={mpi_rank} is {de_L_dR.shape}")
-        logger.devel(f"de_L_dr_up.shape for MPI-rank={mpi_rank} is {de_L_dr_up.shape}")
-        logger.devel(f"de_L_dr_dn.shape for MPI-rank={mpi_rank} is {de_L_dr_dn.shape}")
+            logger.devel(f"de_L_dR.shape for MPI-rank={mpi_rank} is {de_L_dR.shape}")
+            logger.devel(f"de_L_dr_up.shape for MPI-rank={mpi_rank} is {de_L_dr_up.shape}")
+            logger.devel(f"de_L_dr_dn.shape for MPI-rank={mpi_rank} is {de_L_dr_dn.shape}")
 
-        logger.devel(f"dln_Psi_dr_up.shape for MPI-rank={mpi_rank} is {dln_Psi_dr_up.shape}")
-        logger.devel(f"dln_Psi_dr_dn.shape for MPI-rank={mpi_rank} is {dln_Psi_dr_dn.shape}")
-        logger.devel(f"dln_Psi_dR.shape for MPI-rank={mpi_rank} is {dln_Psi_dR.shape}")
+            logger.devel(f"dln_Psi_dr_up.shape for MPI-rank={mpi_rank} is {dln_Psi_dr_up.shape}")
+            logger.devel(f"dln_Psi_dr_dn.shape for MPI-rank={mpi_rank} is {dln_Psi_dr_dn.shape}")
+            logger.devel(f"dln_Psi_dR.shape for MPI-rank={mpi_rank} is {dln_Psi_dR.shape}")
 
-        logger.devel(f"omega_up.shape for MPI-rank={mpi_rank} is {omega_up.shape}")
-        logger.devel(f"omega_dn.shape for MPI-rank={mpi_rank} is {omega_dn.shape}")
-        logger.devel(f"domega_dr_up.shape for MPI-rank={mpi_rank} is {domega_dr_up.shape}")
-        logger.devel(f"domega_dr_dn.shape for MPI-rank={mpi_rank} is {domega_dr_dn.shape}")
+            logger.devel(f"omega_up.shape for MPI-rank={mpi_rank} is {omega_up.shape}")
+            logger.devel(f"omega_dn.shape for MPI-rank={mpi_rank} is {omega_dn.shape}")
+            logger.devel(f"domega_dr_up.shape for MPI-rank={mpi_rank} is {domega_dr_up.shape}")
+            logger.devel(f"domega_dr_dn.shape for MPI-rank={mpi_rank} is {domega_dr_dn.shape}")
 
-        force_HF = (
-            de_L_dR + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up) + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
-        )
+            force_HF = (
+                de_L_dR
+                + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up)
+                + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
+            )
 
-        force_PP = (
-            dln_Psi_dR
-            + np.einsum("iwjk,iwkl->iwjl", omega_up, dln_Psi_dr_up)
-            + np.einsum("iwjk,iwkl->iwjl", omega_dn, dln_Psi_dr_dn)
-            + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
-        )
+            force_PP = (
+                dln_Psi_dR
+                + np.einsum("iwjk,iwkl->iwjl", omega_up, dln_Psi_dr_up)
+                + np.einsum("iwjk,iwkl->iwjl", omega_dn, dln_Psi_dr_dn)
+                + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
+            )
 
-        E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
+            E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
 
-        logger.debug(f"w_L.shape for MPI-rank={mpi_rank} is {w_L.shape}")
-        logger.debug(f"e_L.shape for MPI-rank={mpi_rank} is {e_L.shape}")
-        logger.debug(f"force_HF.shape for MPI-rank={mpi_rank} is {force_HF.shape}")
-        logger.debug(f"force_PP.shape for MPI-rank={mpi_rank} is {force_PP.shape}")
-        logger.debug(f"E_L_force_PP.shape for MPI-rank={mpi_rank} is {E_L_force_PP.shape}")
+            logger.debug(f"w_L.shape for MPI-rank={mpi_rank} is {w_L.shape}")
+            logger.debug(f"e_L.shape for MPI-rank={mpi_rank} is {e_L.shape}")
+            logger.debug(f"force_HF.shape for MPI-rank={mpi_rank} is {force_HF.shape}")
+            logger.debug(f"force_PP.shape for MPI-rank={mpi_rank} is {force_PP.shape}")
+            logger.debug(f"E_L_force_PP.shape for MPI-rank={mpi_rank} is {E_L_force_PP.shape}")
 
-        # split and binning with multiple walkers
-        w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-        w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
-        w_L_force_HF_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_HF), num_mcmc_bin_blocks, axis=0)
-        w_L_force_PP_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_PP), num_mcmc_bin_blocks, axis=0)
-        w_L_E_L_force_PP_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, E_L_force_PP), num_mcmc_bin_blocks, axis=0)
+            # split and binning with multiple walkers
+            w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
+            w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
+            w_L_force_HF_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_HF), num_mcmc_bin_blocks, axis=0)
+            w_L_force_PP_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_PP), num_mcmc_bin_blocks, axis=0)
+            w_L_E_L_force_PP_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, E_L_force_PP), num_mcmc_bin_blocks, axis=0)
 
-        # binned sum
-        w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
-        w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
+            # binned sum
+            w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
+            w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
 
-        w_L_force_HF_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_HF_split])
-        w_L_force_HF_binned_shape = (
-            w_L_force_HF_sum.shape[0] * w_L_force_HF_sum.shape[1],
-            w_L_force_HF_sum.shape[2],
-            w_L_force_HF_sum.shape[3],
-        )
-        w_L_force_HF_binned = list(w_L_force_HF_sum.reshape(w_L_force_HF_binned_shape))
+            w_L_force_HF_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_HF_split])
+            w_L_force_HF_binned_shape = (
+                w_L_force_HF_sum.shape[0] * w_L_force_HF_sum.shape[1],
+                w_L_force_HF_sum.shape[2],
+                w_L_force_HF_sum.shape[3],
+            )
+            w_L_force_HF_binned = list(w_L_force_HF_sum.reshape(w_L_force_HF_binned_shape))
 
-        w_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_PP_split])
-        w_L_force_PP_binned_shape = (
-            w_L_force_PP_sum.shape[0] * w_L_force_PP_sum.shape[1],
-            w_L_force_PP_sum.shape[2],
-            w_L_force_PP_sum.shape[3],
-        )
-        w_L_force_PP_binned = list(w_L_force_PP_sum.reshape(w_L_force_PP_binned_shape))
+            w_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_PP_split])
+            w_L_force_PP_binned_shape = (
+                w_L_force_PP_sum.shape[0] * w_L_force_PP_sum.shape[1],
+                w_L_force_PP_sum.shape[2],
+                w_L_force_PP_sum.shape[3],
+            )
+            w_L_force_PP_binned = list(w_L_force_PP_sum.reshape(w_L_force_PP_binned_shape))
 
-        w_L_E_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_E_L_force_PP_split])
-        w_L_E_L_force_PP_binned_shape = (
-            w_L_E_L_force_PP_sum.shape[0] * w_L_E_L_force_PP_sum.shape[1],
-            w_L_E_L_force_PP_sum.shape[2],
-            w_L_E_L_force_PP_sum.shape[3],
-        )
-        w_L_E_L_force_PP_binned = list(w_L_E_L_force_PP_sum.reshape(w_L_E_L_force_PP_binned_shape))
+            w_L_E_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_E_L_force_PP_split])
+            w_L_E_L_force_PP_binned_shape = (
+                w_L_E_L_force_PP_sum.shape[0] * w_L_E_L_force_PP_sum.shape[1],
+                w_L_E_L_force_PP_sum.shape[2],
+                w_L_E_L_force_PP_sum.shape[3],
+            )
+            w_L_E_L_force_PP_binned = list(w_L_E_L_force_PP_sum.reshape(w_L_E_L_force_PP_binned_shape))
+
+        else:
+            w_L_binned = []
+            w_L_e_L_binned = []
+            w_L_force_HF_binned = []
+            w_L_force_PP_binned = []
+            w_L_E_L_force_PP_binned = []
 
         # MPI reduce
         w_L_binned = mpi_comm.reduce(w_L_binned, op=MPI.SUM, root=0)
@@ -5194,31 +5169,37 @@ class QMC:
             variational parameters.
         """
         logger.info("Computing the generalized force vector f...")
-        w_L = self.mcmc.w_L[num_mcmc_warmup_steps:]
-        w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-        w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
+        if self.mcmc.e_L.size != 0:
+            w_L = self.mcmc.w_L[num_mcmc_warmup_steps:]
+            w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
+            w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
 
-        e_L = self.mcmc.e_L[num_mcmc_warmup_steps:]
-        w_L_e_L_split = np.array_split(np.einsum("iw,iw->iw", w_L, e_L), num_mcmc_bin_blocks, axis=0)
-        w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
+            e_L = self.mcmc.e_L[num_mcmc_warmup_steps:]
+            w_L_e_L_split = np.array_split(np.einsum("iw,iw->iw", w_L, e_L), num_mcmc_bin_blocks, axis=0)
+            w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
 
-        O_matrix = self.get_dln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps, chosen_param_index=chosen_param_index)
-        w_L_O_matrix_split = np.array_split(np.einsum("iw,iwj->iwj", w_L, O_matrix), num_mcmc_bin_blocks, axis=0)
-        w_L_O_matrix_sum = np.array([np.sum(arr, axis=0) for arr in w_L_O_matrix_split])
-        w_L_O_matrix_binned_shape = (
-            w_L_O_matrix_sum.shape[0] * w_L_O_matrix_sum.shape[1],
-            w_L_O_matrix_sum.shape[2],
-        )
-        w_L_O_matrix_binned = list(w_L_O_matrix_sum.reshape(w_L_O_matrix_binned_shape))
+            O_matrix = self.get_dln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps, chosen_param_index=chosen_param_index)
+            w_L_O_matrix_split = np.array_split(np.einsum("iw,iwj->iwj", w_L, O_matrix), num_mcmc_bin_blocks, axis=0)
+            w_L_O_matrix_sum = np.array([np.sum(arr, axis=0) for arr in w_L_O_matrix_split])
+            w_L_O_matrix_binned_shape = (
+                w_L_O_matrix_sum.shape[0] * w_L_O_matrix_sum.shape[1],
+                w_L_O_matrix_sum.shape[2],
+            )
+            w_L_O_matrix_binned = list(w_L_O_matrix_sum.reshape(w_L_O_matrix_binned_shape))
 
-        e_L_O_matrix = np.einsum("iw,iwj->iwj", e_L, O_matrix)
-        w_L_e_L_O_matrix_split = np.array_split(np.einsum("iw,iwj->iwj", w_L, e_L_O_matrix), num_mcmc_bin_blocks, axis=0)
-        w_L_e_L_O_matrix_sum = np.array([np.sum(arr, axis=0) for arr in w_L_e_L_O_matrix_split])
-        w_L_e_L_O_matrix_binned_shape = (
-            w_L_e_L_O_matrix_sum.shape[0] * w_L_e_L_O_matrix_sum.shape[1],
-            w_L_e_L_O_matrix_sum.shape[2],
-        )
-        w_L_e_L_O_matrix_binned = list(w_L_e_L_O_matrix_sum.reshape(w_L_e_L_O_matrix_binned_shape))
+            e_L_O_matrix = np.einsum("iw,iwj->iwj", e_L, O_matrix)
+            w_L_e_L_O_matrix_split = np.array_split(np.einsum("iw,iwj->iwj", w_L, e_L_O_matrix), num_mcmc_bin_blocks, axis=0)
+            w_L_e_L_O_matrix_sum = np.array([np.sum(arr, axis=0) for arr in w_L_e_L_O_matrix_split])
+            w_L_e_L_O_matrix_binned_shape = (
+                w_L_e_L_O_matrix_sum.shape[0] * w_L_e_L_O_matrix_sum.shape[1],
+                w_L_e_L_O_matrix_sum.shape[2],
+            )
+            w_L_e_L_O_matrix_binned = list(w_L_e_L_O_matrix_sum.reshape(w_L_e_L_O_matrix_binned_shape))
+        else:
+            w_L_binned = []
+            w_L_e_L_binned = []
+            w_L_O_matrix_binned = []
+            w_L_e_L_O_matrix_binned = []
 
         w_L_binned = mpi_comm.reduce(w_L_binned, op=MPI.SUM, root=0)
         w_L_e_L_binned = mpi_comm.reduce(w_L_e_L_binned, op=MPI.SUM, root=0)

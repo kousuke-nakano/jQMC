@@ -426,14 +426,15 @@ def vmc_compute_energy(
             data = zipf.read(filename)
             vmc = pickle.loads(data)
 
-            e_L = vmc.mcmc.e_L[num_mcmc_warmup_steps:]
-            w_L = vmc.mcmc.w_L[num_mcmc_warmup_steps:]
-            w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-            w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
-            w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
-            w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
-            w_L_binned_list += w_L_binned
-            w_L_e_L_binned_list += w_L_e_L_binned
+            if vmc.mcmc.e_L.size != 0:
+                e_L = vmc.mcmc.e_L[num_mcmc_warmup_steps:]
+                w_L = vmc.mcmc.w_L[num_mcmc_warmup_steps:]
+                w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
+                w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
+                w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
+                w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
+                w_L_binned_list += w_L_binned
+                w_L_e_L_binned_list += w_L_e_L_binned
 
     w_L_binned = np.array(w_L_binned_list)
     w_L_e_L_binned = np.array(w_L_e_L_binned_list)
@@ -548,14 +549,15 @@ def lrdmc_compute_energy(
             lrdmc = pickle.loads(data)
             lrdmc.mcmc.num_gfmc_collect_steps = num_gfmc_collect_steps
 
-            e_L = lrdmc.mcmc.e_L[num_mcmc_warmup_steps:]
-            w_L = lrdmc.mcmc.w_L[num_mcmc_warmup_steps:]
-            w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-            w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
-            w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
-            w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
-            w_L_binned_list += w_L_binned
-            w_L_e_L_binned_list += w_L_e_L_binned
+            if lrdmc.mcmc.e_L.size != 0:
+                e_L = lrdmc.mcmc.e_L[num_mcmc_warmup_steps:]
+                w_L = lrdmc.mcmc.w_L[num_mcmc_warmup_steps:]
+                w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
+                w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
+                w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
+                w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
+                w_L_binned_list += w_L_binned
+                w_L_e_L_binned_list += w_L_e_L_binned
 
     w_L_binned = np.array(w_L_binned_list)
     w_L_e_L_binned = np.array(w_L_e_L_binned_list)
@@ -637,15 +639,16 @@ def lrdmc_extrapolate_energy(
                 lrdmc = pickle.loads(data)
                 lrdmc.mcmc.num_gfmc_collect_steps = num_gfmc_collect_steps
 
-                e_L = lrdmc.mcmc.e_L[num_mcmc_warmup_steps:]
-                w_L = lrdmc.mcmc.w_L[num_mcmc_warmup_steps:]
-                w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-                w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
-                w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
-                w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
-                w_L_binned_list += w_L_binned
-                w_L_e_L_binned_list += w_L_e_L_binned
-                alat = lrdmc.mcmc.alat
+                if lrdmc.mcmc.e_L.size != 0:
+                    e_L = lrdmc.mcmc.e_L[num_mcmc_warmup_steps:]
+                    w_L = lrdmc.mcmc.w_L[num_mcmc_warmup_steps:]
+                    w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
+                    w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
+                    w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
+                    w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
+                    w_L_binned_list += w_L_binned
+                    w_L_e_L_binned_list += w_L_e_L_binned
+                    alat = lrdmc.mcmc.alat
 
         w_L_binned = np.array(w_L_binned_list)
         w_L_e_L_binned = np.array(w_L_e_L_binned_list)
