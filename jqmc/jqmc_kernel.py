@@ -4884,11 +4884,6 @@ class QMC:
 
         if e_L_global_empty_flag > 0:
             # GFMC case
-            w_L_binned = mpi_comm.reduce(w_L_binned, op=MPI.SUM, root=0)
-            w_L_e_L_binned = mpi_comm.reduce(w_L_e_L_binned, op=MPI.SUM, root=0)
-            w_L_e_L2_binned = mpi_comm.reduce(w_L_e_L2_binned, op=MPI.SUM, root=0)
-
-            # mpi scatter
             if mpi_rank == 0:
                 w_L_binned_split = np.array_split(w_L_binned, mpi_size)
                 w_L_e_L_binned_split = np.array_split(w_L_e_L_binned, mpi_size)
@@ -4902,9 +4897,13 @@ class QMC:
             w_L_e_L2_binned_local = mpi_comm.scatter(w_L_e_L2_binned_split, root=0)
         else:
             # MCMC case
-            w_L_binned_local = np.array(w_L_binned)
-            w_L_e_L_binned_local = np.array(w_L_e_L_binned)
-            w_L_e_L2_binned_local = np.array(w_L_e_L2_binned)
+            w_L_binned_local = w_L_binned
+            w_L_e_L_binned_local = w_L_e_L_binned
+            w_L_e_L2_binned_local = w_L_e_L2_binned
+
+        w_L_binned_local = np.array(w_L_binned_local)
+        w_L_e_L_binned_local = np.array(w_L_e_L_binned_local)
+        w_L_e_L2_binned_local = np.array(w_L_e_L2_binned_local)
 
         w_L_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_binned_local, axis=0), op=MPI.SUM)
         w_L_e_L_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_e_L_binned_local, axis=0), op=MPI.SUM)
@@ -4975,23 +4974,6 @@ class QMC:
             domega_dr_up = self.mcmc.domega_dr_up[num_mcmc_warmup_steps:]
             domega_dr_dn = self.mcmc.domega_dr_dn[num_mcmc_warmup_steps:]
 
-            logger.devel(f"w_L.shape for MPI-rank={mpi_rank} is {w_L.shape}")
-
-            logger.devel(f"e_L.shape for MPI-rank={mpi_rank} is {e_L.shape}")
-
-            logger.devel(f"de_L_dR.shape for MPI-rank={mpi_rank} is {de_L_dR.shape}")
-            logger.devel(f"de_L_dr_up.shape for MPI-rank={mpi_rank} is {de_L_dr_up.shape}")
-            logger.devel(f"de_L_dr_dn.shape for MPI-rank={mpi_rank} is {de_L_dr_dn.shape}")
-
-            logger.devel(f"dln_Psi_dr_up.shape for MPI-rank={mpi_rank} is {dln_Psi_dr_up.shape}")
-            logger.devel(f"dln_Psi_dr_dn.shape for MPI-rank={mpi_rank} is {dln_Psi_dr_dn.shape}")
-            logger.devel(f"dln_Psi_dR.shape for MPI-rank={mpi_rank} is {dln_Psi_dR.shape}")
-
-            logger.devel(f"omega_up.shape for MPI-rank={mpi_rank} is {omega_up.shape}")
-            logger.devel(f"omega_dn.shape for MPI-rank={mpi_rank} is {omega_dn.shape}")
-            logger.devel(f"domega_dr_up.shape for MPI-rank={mpi_rank} is {domega_dr_up.shape}")
-            logger.devel(f"domega_dr_dn.shape for MPI-rank={mpi_rank} is {domega_dr_dn.shape}")
-
             force_HF = (
                 de_L_dR
                 + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up)
@@ -5055,73 +5037,100 @@ class QMC:
             w_L_force_PP_binned = []
             w_L_E_L_force_PP_binned = []
 
-        # MPI reduce
-        w_L_binned = mpi_comm.reduce(w_L_binned, op=MPI.SUM, root=0)
-        w_L_e_L_binned = mpi_comm.reduce(w_L_e_L_binned, op=MPI.SUM, root=0)
-        w_L_force_HF_binned = mpi_comm.reduce(w_L_force_HF_binned, op=MPI.SUM, root=0)
-        w_L_force_PP_binned = mpi_comm.reduce(w_L_force_PP_binned, op=MPI.SUM, root=0)
-        w_L_E_L_force_PP_binned = mpi_comm.reduce(w_L_E_L_force_PP_binned, op=MPI.SUM, root=0)
+        e_L_local_empty_flag = 1 if self.mcmc.e_L.size == 0 else 0
+        e_L_global_empty_flag = mpi_comm.allreduce(e_L_local_empty_flag, op=MPI.SUM)
 
-        if mpi_rank == 0:
-            w_L_binned = np.array(w_L_binned)
-            w_L_e_L_binned = np.array(w_L_e_L_binned)
-            w_L_force_HF_binned = np.array(w_L_force_HF_binned)
-            w_L_force_PP_binned = np.array(w_L_force_PP_binned)
-            w_L_E_L_force_PP_binned = np.array(w_L_E_L_force_PP_binned)
-
-            logger.devel(f"w_L_binned.shape for MPI-rank={mpi_rank} is {w_L_binned.shape}")
-            logger.devel(f"w_L_e_L_binned.shape for MPI-rank={mpi_rank} is {w_L_e_L_binned.shape}")
-            logger.devel(f"w_L_force_HF_binned.shape for MPI-rank={mpi_rank} is {w_L_force_HF_binned.shape}")
-            logger.devel(f"w_L_force_PP_binned.shape for MPI-rank={mpi_rank} is {w_L_force_PP_binned.shape}")
-            logger.devel(f"w_L_E_L_force_PP_binned.shape for MPI-rank={mpi_rank} is {w_L_E_L_force_PP_binned.shape}")
-
-            M_total = w_L_binned.size
-            logger.devel(f"Total number of binned samples = {M_total}")
-
-            force_HF_jn = np.array(
-                [
-                    (np.sum(w_L_force_HF_binned, axis=0) - w_L_force_HF_binned[j])
-                    / (np.sum(w_L_binned, axis=0) - w_L_binned[j])
-                    for j in range(M_total)
-                ]
-            )
-
-            force_Pulay_jn = np.array(
-                [
-                    -2.0
-                    * (
-                        (np.sum(w_L_E_L_force_PP_binned, axis=0) - w_L_E_L_force_PP_binned[j])
-                        / (np.sum(w_L_binned) - w_L_binned[j])
-                        - (
-                            (np.sum(w_L_e_L_binned) - w_L_e_L_binned[j])
-                            / (np.sum(w_L_binned) - w_L_binned[j])
-                            * (np.sum(w_L_force_PP_binned, axis=0) - w_L_force_PP_binned[j])
-                            / (np.sum(w_L_binned) - w_L_binned[j])
-                        )
-                    )
-                    for j in range(M_total)
-                ]
-            )
-
-            logger.devel(f"force_HF_jn.shape for MPI-rank={mpi_rank} is {force_HF_jn.shape}")
-            logger.devel(f"force_Pulay_jn.shape for MPI-rank={mpi_rank} is {force_Pulay_jn.shape}")
-
-            force_jn = force_HF_jn + force_Pulay_jn
-
-            force_mean = np.average(force_jn, axis=0)
-            force_std = np.sqrt(M_total - 1) * np.std(force_jn, axis=0)
-
-            logger.devel(f"force_mean.shape  = {force_mean.shape}.")
-            logger.devel(f"force_std.shape  = {force_std.shape}.")
-
-            logger.devel(f"force = {force_mean} +- {force_std} Ha.")
-
+        if e_L_global_empty_flag > 0:
+            # GFMC case
+            if mpi_rank == 0:
+                w_L_binned_split = np.array_split(w_L_binned, mpi_size)
+                w_L_e_L_binned_split = np.array_split(w_L_e_L_binned, mpi_size)
+                w_L_force_HF_binned_split = np.array_split(w_L_force_HF_binned, mpi_size)
+                w_L_force_PP_binned_split = np.array_split(w_L_force_PP_binned, mpi_size)
+                w_L_E_L_force_PP_binned_split = np.array_split(w_L_E_L_force_PP_binned, mpi_size)
+            else:
+                w_L_binned_split = None
+                w_L_e_L_binned_split = None
+                w_L_force_HF_binned_split = None
+                w_L_force_PP_binned_split = None
+                w_L_E_L_force_PP_binned_split = None
+            w_L_binned_local = mpi_comm.scatter(w_L_binned_split, root=0)
+            w_L_e_L_binned_local = mpi_comm.scatter(w_L_e_L_binned_split, root=0)
+            w_L_force_HF_binned_local = mpi_comm.scatter(w_L_force_HF_binned_split, root=0)
+            w_L_force_PP_binned_local = mpi_comm.scatter(w_L_force_PP_binned_split, root=0)
+            w_L_E_L_force_PP_binned_local = mpi_comm.scatter(w_L_E_L_force_PP_binned_split, root=0)
         else:
-            force_mean = np.array([])
-            force_std = np.array([])
+            # MCMC case
+            w_L_binned_local = w_L_binned
+            w_L_e_L_binned_local = w_L_e_L_binned
+            w_L_force_HF_binned_local = w_L_force_HF_binned
+            w_L_force_PP_binned_local = w_L_force_PP_binned
+            w_L_E_L_force_PP_binned_local = w_L_E_L_force_PP_binned
 
-        force_mean = mpi_comm.bcast(force_mean, root=0)
-        force_std = mpi_comm.bcast(force_std, root=0)
+        w_L_binned_local = np.array(w_L_binned_local)
+        w_L_e_L_binned_local = np.array(w_L_e_L_binned_local)
+        w_L_force_HF_binned_local = np.array(w_L_force_HF_binned_local)
+        w_L_force_PP_binned_local = np.array(w_L_force_PP_binned_local)
+        w_L_E_L_force_PP_binned_local = np.array(w_L_E_L_force_PP_binned_local)
+
+        # MPI allreduce
+        w_L_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_binned_local, axis=0), op=MPI.SUM)
+        w_L_e_L_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_e_L_binned_local, axis=0), op=MPI.SUM)
+        w_L_force_HF_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_force_HF_binned_local, axis=0), op=MPI.SUM)
+        w_L_force_PP_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_force_PP_binned_local, axis=0), op=MPI.SUM)
+        w_L_E_L_force_PP_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_E_L_force_PP_binned_local, axis=0), op=MPI.SUM)
+
+        logger.devel(f"w_L_binned.shape for MPI-rank={mpi_rank} is {w_L_binned_local.shape}")
+        logger.devel(f"w_L_e_L_binned.shape for MPI-rank={mpi_rank} is {w_L_e_L_binned_local.shape}")
+        logger.devel(f"w_L_force_HF_binned.shape for MPI-rank={mpi_rank} is {w_L_force_HF_binned_local.shape}")
+        logger.devel(f"w_L_force_PP_binned.shape for MPI-rank={mpi_rank} is {w_L_force_PP_binned_local.shape}")
+        logger.devel(f"w_L_E_L_force_PP_binned.shape for MPI-rank={mpi_rank} is {w_L_E_L_force_PP_binned_local.shape}")
+
+        M_local = w_L_binned_local.size
+        logger.debug(f"The number of local binned samples = {M_local}")
+
+        force_HF_jn_local = np.array(
+            [
+                (w_L_force_HF_binned_global_sum - w_L_force_HF_binned_local[j]) / (w_L_binned_global_sum - w_L_binned_local[j])
+                for j in range(M_local)
+            ]
+        )
+
+        force_Pulay_jn_local = np.array(
+            [
+                -2.0
+                * (
+                    (w_L_E_L_force_PP_binned_global_sum - w_L_E_L_force_PP_binned_local[j])
+                    / (w_L_binned_global_sum - w_L_binned_local[j])
+                    - (
+                        (w_L_e_L_binned_global_sum - w_L_e_L_binned_local[j])
+                        / (w_L_binned_global_sum - w_L_binned_local[j])
+                        * (w_L_force_PP_binned_global_sum - w_L_force_PP_binned_local[j])
+                        / (w_L_binned_global_sum - w_L_binned_local[j])
+                    )
+                )
+                for j in range(M_local)
+            ]
+        )
+
+        logger.devel(f"force_HF_jn_local.shape for MPI-rank={mpi_rank} is {force_HF_jn_local.shape}")
+        logger.devel(f"force_Pulay_jn_local.shape for MPI-rank={mpi_rank} is {force_Pulay_jn_local.shape}")
+
+        force_jn_local = list(force_HF_jn_local + force_Pulay_jn_local)
+
+        # MPI allreduce
+        force_jn = mpi_comm.allreduce(force_jn_local, op=MPI.SUM)
+        force_jn = np.array(force_jn)
+        M_total = len(force_jn)
+        logger.debug(f"The number of total binned samples = {M_total}")
+
+        force_mean = np.average(force_jn, axis=0)
+        force_std = np.sqrt(M_total - 1) * np.std(force_jn, axis=0)
+
+        logger.devel(f"force_mean.shape  = {force_mean.shape}.")
+        logger.devel(f"force_std.shape  = {force_std.shape}.")
+
+        logger.devel(f"force = {force_mean} +- {force_std} Ha.")
 
         return (force_mean, force_std)
 
@@ -5224,12 +5233,6 @@ class QMC:
 
         if e_L_global_empty_flag > 0:
             # GFMC case
-            w_L_binned = mpi_comm.reduce(w_L_binned, op=MPI.SUM, root=0)
-            w_L_e_L_binned = mpi_comm.reduce(w_L_e_L_binned, op=MPI.SUM, root=0)
-            w_L_O_matrix_binned = mpi_comm.reduce(w_L_O_matrix_binned, op=MPI.SUM, root=0)
-            w_L_e_L_O_matrix_binned = mpi_comm.reduce(w_L_e_L_O_matrix_binned, op=MPI.SUM, root=0)
-
-            # mpi scatter
             if mpi_rank == 0:
                 w_L_binned_split = np.array_split(w_L_binned, mpi_size)
                 w_L_e_L_binned_split = np.array_split(w_L_e_L_binned, mpi_size)
@@ -5246,10 +5249,15 @@ class QMC:
             w_L_e_L_O_matrix_binned_local = mpi_comm.scatter(w_L_e_L_O_matrix_binned_split, root=0)
         else:
             # MCMC case
-            w_L_binned_local = np.array(w_L_binned)
-            w_L_e_L_binned_local = np.array(w_L_e_L_binned)
-            w_L_O_matrix_binned_local = np.array(w_L_O_matrix_binned)
-            w_L_e_L_O_matrix_binned_local = np.array(w_L_e_L_O_matrix_binned)
+            w_L_binned_local = w_L_binned
+            w_L_e_L_binned_local = w_L_e_L_binned
+            w_L_O_matrix_binned_local = w_L_O_matrix_binned
+            w_L_e_L_O_matrix_binned_local = w_L_e_L_O_matrix_binned
+
+        w_L_binned_local = np.array(w_L_binned_local)
+        w_L_e_L_binned_local = np.array(w_L_e_L_binned_local)
+        w_L_O_matrix_binned_local = np.array(w_L_O_matrix_binned_local)
+        w_L_e_L_O_matrix_binned_local = np.array(w_L_e_L_O_matrix_binned_local)
 
         logger.devel(f"w_L_binned_local.shape = {w_L_binned_local.shape}")
         logger.devel(f"w_L_e_L_binned_local.shape = {w_L_e_L_binned_local.shape}")
