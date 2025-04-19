@@ -238,7 +238,7 @@ def cli():
             num_mcmc_warmup_steps=num_mcmc_warmup_steps,
             num_mcmc_bin_blocks=num_mcmc_bin_blocks,
         )
-        if mcmc.comput_position_deriv:
+        if vmc.mcmc.comput_position_deriv:
             f_mean, f_std = vmc.get_aF(
                 num_mcmc_warmup_steps=num_mcmc_warmup_steps,
                 num_mcmc_bin_blocks=num_mcmc_bin_blocks,
@@ -246,7 +246,7 @@ def cli():
         logger.info("Final output(s):")
         logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:5f} Ha.")
         logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:5f} Ha^2.")
-        if mcmc.comput_position_deriv:
+        if vmc.mcmc.comput_position_deriv:
             logger.info("  Atomic Forces:")
             sep = 16 * 3
             logger.info("  " + "-" * sep)
@@ -444,7 +444,7 @@ def cli():
             num_mcmc_warmup_steps=num_gfmc_warmup_steps,
             num_mcmc_bin_blocks=num_gfmc_bin_blocks,
         )
-        if gfmc.comput_position_deriv:
+        if lrdmc.mcmc.comput_position_deriv:
             f_mean, f_std = lrdmc.get_aF(
                 num_mcmc_warmup_steps=num_gfmc_warmup_steps,
                 num_mcmc_bin_blocks=num_gfmc_bin_blocks,
@@ -452,7 +452,7 @@ def cli():
         logger.info("Final output(s):")
         logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:5f} Ha.")
         logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:5f} Ha^2.")
-        if gfmc.comput_position_deriv:
+        if lrdmc.mcmc.comput_position_deriv:
             logger.info("  Atomic Forces:")
             sep = 16 * 3
             logger.info("  " + "-" * sep)
