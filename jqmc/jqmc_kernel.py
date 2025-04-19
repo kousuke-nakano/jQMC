@@ -4600,7 +4600,7 @@ class QMC:
 
             # get f and f_std (generalized forces)
             f, f_std = self.get_gF(
-                mpi_broadcast=False,
+                mpi_broadcast=True,
                 num_mcmc_warmup_steps=num_mcmc_warmup_steps,
                 num_mcmc_bin_blocks=num_mcmc_bin_blocks,
                 chosen_param_index=chosen_param_index,
@@ -4629,12 +4629,13 @@ class QMC:
                 signal_to_noise_f = None
                 signal_to_noise_f_max_indices = None
 
-            mpi_comm.bcast(signal_to_noise_f, root=0)
-            mpi_comm.bcast(signal_to_noise_f_max_indices, root=0)
+            signal_to_noise_f = mpi_comm.bcast(signal_to_noise_f, root=0)
+            signal_to_noise_f_max_indices = mpi_comm.bcast(signal_to_noise_f_max_indices, root=0)
 
             # """
             logger.info("Computing the natural gradient, i.e., {S+epsilon*I}^{-1}*f")
 
+            """ old SR, keep this for the time being for debugging
             if self.mcmc.e_L.size != 0:
                 w_L = self.mcmc.w_L[num_mcmc_warmup_steps:]
                 w_L = list(np.ravel(w_L))
@@ -4695,7 +4696,8 @@ class QMC:
                 X = X / np.sqrt(diag_S)[:, np.newaxis]
                 X_w = X_w / np.sqrt(diag_S)[:, np.newaxis]
 
-                if X.shape[0] < X.shape[1]:
+                # if X.shape[0] < X.shape[1]:
+                if True:
                     logger.debug("X is a wide matrix. Proceed w/o the push-through identity.")
                     logger.debug("theta = (S+epsilon*I)^{-1}*f = (X * X^T + epsilon*I)^{-1} * X F...")
                     X_w_X_T = X_w @ X.T
@@ -4705,8 +4707,9 @@ class QMC:
                     X_w_X_T_inv_X_w_F = scipy.linalg.solve(X_w_X_T, X_w @ F, assume_a="sym")
                     # theta = (X_w X^T + eps*I)^{-1} X_w F
                     theta_all = X_w_X_T_inv_X_w_F
-                    logger.devel(f"theta_all = {theta_all}.")
-                else:
+                    logger.debug(f"[old] theta_all (w/o the push through identity) = {theta_all}.")
+                # else:
+                if True:
                     logger.debug("X is a tall matrix. Proceed w/ the push-through identity.")
                     logger.debug("theta = (S+epsilon*I)^{-1}*f = X(X^T * X + epsilon*I)^{-1} * F...")
                     X_T_X_w = X.T @ X_w
@@ -4716,7 +4719,7 @@ class QMC:
                     X_T_X_w_inv_F = scipy.linalg.solve(X_T_X_w, F, assume_a="sym")
                     # theta = X_w (X^T X_w + eps*I)^{-1} F
                     theta_all = X_w @ X_T_X_w_inv_F
-                    logger.devel(f"theta_all = {theta_all}.")
+                    logger.debug(f"[old] theta_all (w the push through identity) = {theta_all}.")
 
                 # theta, back to the original scale
                 theta_all = theta_all / np.sqrt(diag_S)
@@ -4730,6 +4733,236 @@ class QMC:
 
             # broadcast theta
             theta = mpi_comm.bcast(theta, root=0)
+            """
+
+            # Retrieve local data (samples assigned to this rank)
+            if self.mcmc.e_L.size != 0:
+                w_L_local = self.mcmc.w_L[num_mcmc_warmup_steps:]  # shape: (num_mcmc, num_walker)
+                e_L_local = self.mcmc.e_L[num_mcmc_warmup_steps:]  # shape: (num_mcmc, num_walker)
+                w_L_local = list(np.ravel(w_L_local))  # shape: (num_mcmc * num_walker, )s
+                e_L_local = list(np.ravel(e_L_local))  # shape: (num_mcmc * num_walker, )
+                O_matrix_local = self.get_dln_WF(
+                    num_mcmc_warmup_steps=num_mcmc_warmup_steps, chosen_param_index=chosen_param_index
+                )  # shape: (num_mcmc, num_walker, num_param)
+                O_matrix_local_shape = (
+                    O_matrix_local.shape[0] * O_matrix_local.shape[1],
+                    O_matrix_local.shape[2],
+                )
+                O_matrix_local = list(O_matrix_local.reshape(O_matrix_local_shape))  # shape: (num_mcmc * num_walker, num_param)
+
+                # Compute local partial sums
+                local_Ow = list(
+                    np.einsum("i,ij->j", w_L_local, O_matrix_local)
+                )  # weighted sum for observables, shape: (num_param,)
+                local_Ew = np.dot(w_L_local, e_L_local)  # weighted sum of energies, shape: scalar
+                local_weight_sum = np.sum(w_L_local)  # scalar: sum of weights, shape: scalar
+
+            else:
+                # list
+                w_L_local = None
+                e_L_local = None
+                O_matrix_local = None
+                local_Ow = None
+                # scalar
+                local_Ew = None
+                local_weight_sum = None
+
+            e_L_local_empty_flag = 1 if self.mcmc.e_L.size == 0 else 0
+            e_L_global_empty_flag = mpi_comm.allreduce(e_L_local_empty_flag, op=MPI.SUM)
+
+            if e_L_global_empty_flag > 0:
+                # GFMC case
+                w_L_local = mpi_comm.reduce(w_L_local, op=MPI.SUM, root=0)
+                e_L_local = mpi_comm.reduce(e_L_local, op=MPI.SUM, root=0)
+                local_Ow = mpi_comm.reduce(local_Ow, op=MPI.SUM, root=0)
+                local_Ew = mpi_comm.gather(local_Ew, root=0)
+                local_weight_sum = mpi_comm.gather(local_weight_sum, root=0)
+
+                # mpi scatter
+                if mpi_rank == 0:
+                    w_L_local_split = np.array_split(w_L_local, mpi_size)
+                    e_L_local_split = np.array_split(e_L_local, mpi_size)
+                    local_Ow_split = np.array_split(local_Ow, mpi_size)
+                    local_Ew_split = np.array_split(local_Ew, mpi_size)
+                    local_weight_sum_split = np.array_split(local_weight_sum, mpi_size)
+                else:
+                    w_L_local_split = None
+                    e_L_local_split = None
+                    local_Ow_split = None
+                    local_Ew_split = None
+                    local_weight_sum_split = None
+
+                w_L_local = mpi_comm.scatter(w_L_local_split, root=0)
+                e_L_local = mpi_comm.scatter(e_L_local_split, root=0)
+                local_Ow = mpi_comm.scatter(local_Ow_split, root=0)
+                local_Ew = mpi_comm.scatter(local_Ew_split, root=0)
+                local_weight_sum = mpi_comm.scatter(local_weight_sum_split, root=0)
+            else:
+                # MCMC case
+                w_L_local = w_L_local
+                e_L_local = e_L_local
+                local_Ow = local_Ow
+                local_Ew = local_Ew
+                local_weight_sum = local_weight_sum
+
+            w_L_local = np.array(w_L_local)
+            e_L_local = np.array(e_L_local)
+            local_Ow = np.array(local_Ow)
+            local_Ew = np.array(local_Ew)
+            local_weight_sum = np.array(local_weight_sum)
+
+            # Aggregate across all ranks
+            total_weight = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)  # total sum of weights, shape: scalar
+            total_Ow = mpi_comm.allreduce(local_Ow, op=MPI.SUM)  # aggregated observable sums, shape: (num_param,)
+            total_Ew = mpi_comm.allreduce(local_Ew, op=MPI.SUM)  # aggregated energy sum, shape: scalar
+
+            # Compute global averages
+            O_bar = total_Ow / total_weight  # average observables, shape: (num_param,)
+            e_L_bar = total_Ew / total_weight  # average energy, shape: scalar
+
+            # compute the following variables
+            #     X_{i,k}: \equiv (O_{i, k} - \bar{O}_{k}),
+            #     X_w_{i,k} \equiv w_i O_{i, k} / {\sum_{i} w_i}
+            #     F_i \equiv -2.0 * (e_L_{i} - E)
+
+            X_local = (O_matrix_local - O_bar).T  # shape (num_param, num_mcmc * num_walker) because it's transposed.
+            X_w_local = (
+                (O_matrix_local - O_bar) * w_L_local[:, np.newaxis] / total_weight
+            ).T  # shape (num_param, num_mcmc * num_walker) because it's transposed.
+            F_local = -2.0 * (e_L_local - e_L_bar)  # shape (num_mcmc * num_walker, )
+
+            # compute X_w@F
+            X_w_F_local = X_w_local @ F_local  # shape (num_param, )
+            X_w_F = mpi_comm.allreduce(X_w_F_local, op=MPI.SUM)  # global sum, shape: (num_param,)
+
+            # compute f_argmax
+            f_argmax = np.argmax(np.abs(X_w_F))
+            logger.debug(
+                f"Max dot(X_w, F) = {X_w_F[f_argmax]:.3f} Ha/a.u. should be equal to Max f = {f[f_argmax]:.3f} Ha/a.u."
+            )
+
+            # make the SR matrix scale-invariant (i.e., normalize)
+            ## compute X_w@X.T
+            S_local = X_w_local @ X_local.T  # (num_param, num_mcmc * num_walker) @ (num_mcmc * num_walker, num_param)
+            S = mpi_comm.allreduce(S_local, op=MPI.SUM)  # global sum, shape: (num_param, num_param)
+            diag_S = np.diag(S)
+            logger.debug(f"max. and min. diag_S = {np.max(diag_S)}, {np.min(diag_S)}.")
+            X_local = X_local / np.sqrt(diag_S)[:, np.newaxis]  # shape (num_param, num_mcmc * num_walker)
+            X_w_local = X_w_local / np.sqrt(diag_S)[:, np.newaxis]  # shape (num_param, num_mcmc * num_walker)
+
+            # matrix shape info
+            num_params = X_local.shape[0]
+            num_samples_local = X_local.shape[1]
+            num_samples_total = mpi_comm.allreduce(num_samples_local, op=MPI.SUM)
+
+            # info
+            logger.info("The binning technique is not used to compute the natural gradient.")
+            logger.info(f"The number of local samples is {num_samples_local}.")
+            logger.info(f"The number of total samples is {num_samples_total}.")
+            logger.info(f"The total number of variational parameters is {num_params}.")
+
+            if num_params < num_samples_total:
+                logger.debug("X is a wide matrix. Proceed w/o the push-through identity.")
+                logger.debug("theta = (S+epsilon*I)^{-1}*f = (X * X^T + epsilon*I)^{-1} * X F...")
+                # compute local sum of X * X^T
+                X_w_X_T_local = X_w_local @ X_local.T
+                # compute global sum of X * X^T
+                X_w_X_T = mpi_comm.allreduce(X_w_X_T_local, op=MPI.SUM)
+                logger.debug(f"X_w @ X.T.shape = {X_w_X_T.shape}.")
+                X_w_X_T[np.diag_indices_from(X_w_X_T)] += epsilon
+                # (X_w X^T + eps*I) x = X_w F ->solve-> x = (X_w  X^T + eps*I)^{-1} X_w F
+                X_w_F_local = X_w_local @ F_local  # shape (num_param, )
+                X_w_F = mpi_comm.allreduce(X_w_F_local, op=MPI.SUM)  # global sum, shape: (num_param,)
+                X_w_X_T_inv_X_w_F = scipy.linalg.solve(X_w_X_T, X_w_F, assume_a="sym")
+                # theta = (X_w X^T + eps*I)^{-1} X_w F
+                theta_all = X_w_X_T_inv_X_w_F
+                logger.devel(f"[new] theta_all (w/o the push through identity) = {theta_all}.")
+
+            else:  # num_params >= num_samples:
+                logger.debug("X is a tall matrix. Proceed w/ the push-through identity.")
+                logger.debug("theta = (S+epsilon*I)^{-1}*f = X(X^T * X + epsilon*I)^{-1} * F...")
+
+                # Get local shapes
+                N, M = X_local.shape
+                P = mpi_size  # number of ranks
+
+                # Compute how many rows each rank should own (distribute the remainder)
+                counts = [N // P + (1 if i < (N % P) else 0) for i in range(P)]
+
+                # Compute starting row index for each rank in the original array
+                displs = [sum(counts[:i]) for i in range(P)]
+                N_local = counts[mpi_rank]  # number of rows this rank will receive
+
+                # Build send buffers by slicing X and Xw into P row‑chunks
+                # Each chunk is flattened so we can send in one go.
+                sendbuf_X = np.concatenate([X_local[displs[i] : displs[i] + counts[i], :].ravel() for i in range(P)])
+                sendbuf_Xw = np.concatenate([X_w_local[displs[i] : displs[i] + counts[i], :].ravel() for i in range(P)])
+
+                # Prepare sendcounts and displacements in units of elements
+                sendcounts = [counts[i] * M for i in range(P)]
+                sdispls = [sum(sendcounts[:i]) for i in range(P)]
+
+                # Prepare recvcounts and displacements:
+                # each rank will receive 'counts[mpi_rank]*M' elements from each of the P ranks
+                recvcounts = [counts[mpi_rank] * M] * P
+                rdispls = [i * counts[mpi_rank] * M for i in range(P)]
+
+                # Allocate receive buffers
+                recvbuf_X = np.empty(sum(recvcounts), dtype=X_local.dtype)
+                recvbuf_Xw = np.empty(sum(recvcounts), dtype=X_w_local.dtype)
+
+                # Perform the all‑to‑all variable‑sized exchange
+                mpi_comm.Alltoallv([sendbuf_X, sendcounts, sdispls, MPI.DOUBLE], [recvbuf_X, recvcounts, rdispls, MPI.DOUBLE])
+
+                mpi_comm.Alltoallv([sendbuf_Xw, sendcounts, sdispls, MPI.DOUBLE], [recvbuf_Xw, recvcounts, rdispls, MPI.DOUBLE])
+
+                # Reshape the flat receive buffer into a 3D array
+                #    shape = (P sources, N_local rows, M cols)
+                buf_X = recvbuf_X.reshape(P, N_local, M)
+                buf_Xw = recvbuf_Xw.reshape(P, N_local, M)
+
+                # Rearrange into final 2D arrays of shape (N_local, M * P)
+                #    by stacking each source’s M columns side by side
+                X_re_local = np.hstack([buf_X[i] for i in range(P)])  # shape (num_param/P, num_mcmc * num_walker * P)
+                X_w_re_local = np.hstack([buf_Xw[i] for i in range(P)])  # shape (num_param/P, num_mcmc * num_walker * P)
+
+                # compute local sum of X^T * X
+                X_T_X_w_local = X_re_local.T @ X_w_re_local
+                # compute global sum of X^T * X
+                X_T_X_w = mpi_comm.allreduce(X_T_X_w_local, op=MPI.SUM)
+                logger.debug(f"X_T_X_w.shape = {X_T_X_w.shape}.")
+                X_T_X_w[np.diag_indices_from(X_T_X_w)] += epsilon
+                # (X^T X_w + eps*I) x = F ->solve-> x = (X^T X_w + eps*I)^{-1} F
+                F_local_list = list(F_local)
+                F_list = mpi_comm.reduce(F_local_list, op=MPI.SUM, root=0)
+                if mpi_rank == 0:
+                    F = np.array(F_list)
+                    X_T_X_w_inv_F = scipy.linalg.solve(X_T_X_w, F, assume_a="sym")
+                    K = X_T_X_w_inv_F.shape[0] // mpi_size
+                else:
+                    X_T_X_w_inv_F = None
+                    K = None
+                # Broadcast K to all ranks so they know how big each chunk is
+                K = mpi_comm.bcast(K, root=0)
+
+                X_T_X_w_inv_F_local = np.empty(K, dtype=np.float64)
+
+                mpi_comm.Scatter(
+                    [X_T_X_w_inv_F, MPI.DOUBLE],  # send buffer (only significant on root)
+                    X_T_X_w_inv_F_local,  # receive buffer (on each rank)
+                    root=0,
+                )
+                # theta = X_w (X^T X_w + eps*I)^{-1} F
+                theta_all_local = X_w_local @ X_T_X_w_inv_F_local
+                theta_all = mpi_comm.allreduce(theta_all_local, op=MPI.SUM)
+                logger.devel(f"[new] theta_all (w/ the push through identity) = {theta_all}.")
+
+            # theta, back to the original scale
+            theta_all = theta_all / np.sqrt(diag_S)
+
+            # Extract only the signal-to-noise ratio maximized parameters
+            theta = np.zeros_like(theta_all)
+            theta[signal_to_noise_f_max_indices] = theta_all[signal_to_noise_f_max_indices]
 
             # logger.devel(f"XX for MPI-rank={mpi_rank} is {theta}")
             # logger.devel(f"XX.shape for MPI-rank={mpi_rank} is {theta.shape}")
