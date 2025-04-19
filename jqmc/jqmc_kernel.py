@@ -4843,9 +4843,8 @@ class QMC:
 
             # make the SR matrix scale-invariant (i.e., normalize)
             ## compute X_w@X.T
-            S_local = X_w_local @ X_local.T  # (num_param, num_mcmc * num_walker) @ (num_mcmc * num_walker, num_param)
-            S = mpi_comm.allreduce(S_local, op=MPI.SUM)  # global sum, shape: (num_param, num_param)
-            diag_S = np.diag(S)
+            diag_S_local = np.einsum("jk,kj->j", X_w_local, X_local.T)
+            diag_S = mpi_comm.allreduce(diag_S_local, op=MPI.SUM)
             logger.debug(f"max. and min. diag_S = {np.max(diag_S)}, {np.min(diag_S)}.")
             X_local = X_local / np.sqrt(diag_S)[:, np.newaxis]  # shape (num_param, num_mcmc * num_walker)
             X_w_local = X_w_local / np.sqrt(diag_S)[:, np.newaxis]  # shape (num_param, num_mcmc * num_walker)
