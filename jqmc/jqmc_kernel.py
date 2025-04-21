@@ -4873,6 +4873,7 @@ class QMC:
                 )
                 # compute local sum of X * X^T
                 X_w_X_T_local = X_w_local @ X_local.T
+                logger.debug(f"X_w_X_T_local.shape = {X_w_X_T_local.shape}.")
                 # compute global sum of X * X^T
                 #X_w_X_T = mpi_comm.reduce(X_w_X_T_local, op=MPI.SUM, root=0)
                 if mpi_rank == 0:
@@ -4882,6 +4883,7 @@ class QMC:
                 comm.Reduce(X_w_X_T_local, X_w_X_T, op=MPI.SUM, root=0)
                 # compute local sum of X @ F
                 X_w_F_local = X_w_local @ F_local  # shape (num_param, )
+                logger.debug(f"X_w_F_local.shape = {X_w_F_local.shape}.")
                 # compute global sum of X @ F
                 #X_w_F = mpi_comm.reduce(X_w_F_local, op=MPI.SUM, root=0)  # global sum, shape: (num_param,)
                 if mpi_rank == 0:
