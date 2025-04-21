@@ -39,6 +39,7 @@ from itertools import groupby
 from logging import getLogger
 
 import jax
+import mpi4jax
 import numpy as np
 import numpy.typing as npt
 import scipy
@@ -4884,6 +4885,119 @@ class QMC:
                 # Broadcast theta_all to all ranks
                 theta_all = mpi_comm.bcast(theta_all, root=0)
                 logger.debug(f"[new] theta_all (w/o the push through identity) = {theta_all}.")
+
+                '''
+                # conjugate gradient solver
+                tol = 1e-10
+                max_iter = 1000
+
+                # Step 1: Compute b = X @ F (distributed)
+                X_F_local = X_local @ F_local  # shape (num_param, )
+                X_F = np.zeros_like(X_F_local)
+                mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
+                b = X_F
+
+                # Step 2: Solve (X X^T + eps*I) x = X F via CG
+                """
+                Conjugate Gradient solver for A @ x = b using matrix-free matvec.
+                Compute A @ v = X (X^T v) + epsilon * v in a matrix-free, distributed way.
+                """
+                v = np.zeros_like(b)
+                z_local = X_local.T @ v  # shape: (M_local,)
+                u_local = X_local @ z_local  # shape: (N,)
+                u = np.zeros_like(u_local)
+                mpi_comm.Allreduce(u_local, u, op=MPI.SUM)
+                Au = u + epsilon * v
+                r = b - Au
+                p = r.copy()
+                rs_old = np.dot(r, r)
+
+                for i in range(max_iter):
+                    z_local = X_local.T @ p  # shape: (M_local,)
+                    u_local = X_local @ z_local  # shape: (N,)
+                    u = np.zeros_like(u_local)
+                    mpi_comm.Allreduce(u_local, u, op=MPI.SUM)
+                    Ap = u + epsilon * p
+                    alpha = rs_old / np.dot(p, Ap)
+                    v += alpha * p
+                    r -= alpha * Ap
+                    rs_new = np.dot(r, r)
+                    logger.debug(f"[CG] Iteration {i}: rs_new = {rs_new:.2e}.")
+                    if np.sqrt(rs_new) < tol:
+                        if mpi_rank == 0:
+                            logger.info(f"[CG] Converged at iteration {i}, residual = {np.sqrt(rs_new):.2e}")
+                        break
+                    p = r + (rs_new / rs_old) * p
+                    rs_old = rs_new
+                theta_all = v
+                logger.debug(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
+                '''
+
+                # Step 1: Compute b = X @ F (distributed)
+                X_F_local = X_local @ F_local  # shape (num_param, )
+                X_F = np.zeros_like(X_F_local)
+                mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
+
+                M_local = X_local.shape[1]  # number of samples this rank owns
+
+                # ---- Helper: build global index offset ----
+                def get_displacements(local_sizes):
+                    displs = [0]
+                    for s in local_sizes[:-1]:
+                        displs.append(displs[-1] + s)
+                    return displs
+
+                all_M_local = mpi_comm.allgather(M_local)  # shape (P,)
+
+                displs = get_displacements(all_M_local)
+                start_idx = displs[mpi_rank]
+
+                # ---- Matrix-free matvec: apply_S_jax ----
+                @partial(jax.jit, static_argnums=(2, 3))  # start_idx, epsilon
+                def apply_S_jax(v, X_local, start_idx, epsilon):
+                    XTv_local = X_local.T @ v
+                    XTv_full = jnp.zeros((XTv_local.shape[0] * mpi_size,), dtype=XTv_local.dtype)
+                    XTv_full = XTv_full.at[start_idx : start_idx + XTv_local.shape[0]].set(XTv_local)
+
+                    XTv_full, _ = mpi4jax.allreduce(XTv_full, op=MPI.SUM, comm=mpi_comm)
+                    XTv_my_block = XTv_full[start_idx : start_idx + XTv_local.shape[0]]
+
+                    XXTv_local = X_local @ XTv_my_block
+                    XXTv, _ = mpi4jax.allreduce(XXTv_local, op=MPI.SUM, comm=mpi_comm)
+
+                    return XXTv + epsilon * v
+
+                # ---- Conjugate Gradient Solver ----
+                @partial(jax.jit, static_argnums=(1, 3, 4))  # apply_A, start_idx, epsilon are static
+                def conjugate_gradient_jax(b, apply_A, X_local, start_idx, epsilon, max_iter=100, tol=1e-8):
+                    def body_fun(state):
+                        x, r, p, rs_old, i = state
+                        Ap = apply_A(p, X_local, start_idx, epsilon)
+                        alpha = rs_old / jnp.dot(p, Ap)
+                        x_new = x + alpha * p
+                        r_new = r - alpha * Ap
+                        rs_new = jnp.dot(r_new, r_new)
+                        beta = rs_new / rs_old
+                        p_new = r_new + beta * p
+                        return (x_new, r_new, p_new, rs_new, i + 1)
+
+                    def cond_fun(state):
+                        _, _, _, rs_old, i = state
+                        return jnp.logical_and(jnp.sqrt(rs_old) > tol, i < max_iter)
+
+                    # Initial guess x = 0
+                    x0 = jnp.zeros_like(b)
+                    r0 = b - apply_A(x0, X_local, start_idx, epsilon)
+                    p0 = r0
+                    rs0 = jnp.dot(r0, r0)
+
+                    init_state = (x0, r0, p0, rs0, 0)
+                    final_state = jax.lax.while_loop(cond_fun, body_fun, init_state)
+                    x_final = final_state[0]
+                    return x_final
+
+                theta_all = conjugate_gradient_jax(jnp.array(X_F), apply_S_jax, X_local, start_idx, epsilon)
+                logger.debug(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
 
             else:  # num_params >= num_samples:
                 # if True:
