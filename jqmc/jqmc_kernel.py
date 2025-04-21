@@ -4696,30 +4696,16 @@ class QMC:
                 X = X / np.sqrt(diag_S)[:, np.newaxis]
                 X_w = X_w / np.sqrt(diag_S)[:, np.newaxis]
 
-                # if X.shape[0] < X.shape[1]:
-                if True:
-                    logger.debug("X is a wide matrix. Proceed w/o the push-through identity.")
-                    logger.debug("theta = (S+epsilon*I)^{-1}*f = (X * X^T + epsilon*I)^{-1} * X F...")
-                    X_w_X_T = X_w @ X.T
-                    logger.debug(f"X_w @ X.T.shape = {X_w_X_T.shape}.")
-                    X_w_X_T[np.diag_indices_from(X_w_X_T)] += epsilon
-                    # (X_w X^T + eps*I) x = X_w F ->solve-> x = (X_w  X^T + eps*I)^{-1} X_w F
-                    X_w_X_T_inv_X_w_F = scipy.linalg.solve(X_w_X_T, X_w @ F, assume_a="sym")
-                    # theta = (X_w X^T + eps*I)^{-1} X_w F
-                    theta_all = X_w_X_T_inv_X_w_F
-                    logger.debug(f"[old] theta_all (w/o the push through identity) = {theta_all}.")
-                # else:
-                if True:
-                    logger.debug("X is a tall matrix. Proceed w/ the push-through identity.")
-                    logger.debug("theta = (S+epsilon*I)^{-1}*f = X(X^T * X + epsilon*I)^{-1} * F...")
-                    X_T_X_w = X.T @ X_w
-                    logger.debug(f"X_T_X_w.shape = {X_T_X_w.shape}.")
-                    X_T_X_w[np.diag_indices_from(X_T_X_w)] += epsilon
-                    # (X^T X_w + eps*I) x = F ->solve-> x = (X^T X_w + eps*I)^{-1} F
-                    X_T_X_w_inv_F = scipy.linalg.solve(X_T_X_w, F, assume_a="sym")
-                    # theta = X_w (X^T X_w + eps*I)^{-1} F
-                    theta_all = X_w @ X_T_X_w_inv_F
-                    logger.debug(f"[old] theta_all (w the push through identity) = {theta_all}.")
+                logger.debug("X is a wide matrix. Proceed w/o the push-through identity.")
+                logger.debug("theta = (S+epsilon*I)^{-1}*f = (X * X^T + epsilon*I)^{-1} * X F...")
+                X_w_X_T = X_w @ X.T
+                logger.debug(f"X_w @ X.T.shape = {X_w_X_T.shape}.")
+                X_w_X_T[np.diag_indices_from(X_w_X_T)] += epsilon
+                # (X_w X^T + eps*I) x = X_w F ->solve-> x = (X_w  X^T + eps*I)^{-1} X_w F
+                X_w_X_T_inv_X_w_F = scipy.linalg.solve(X_w_X_T, X_w @ F, assume_a="sym")
+                # theta = (X_w X^T + eps*I)^{-1} X_w F
+                theta_all = X_w_X_T_inv_X_w_F
+                logger.debug(f"[old] theta_all (w/o the push through identity) = {theta_all}.")
 
                 # theta, back to the original scale
                 theta_all = theta_all / np.sqrt(diag_S)
@@ -4821,37 +4807,32 @@ class QMC:
             e_L_bar = total_Ew / total_weight  # average energy, shape: scalar
 
             # compute the following variables
-            #     X_{i,k}: \equiv (O_{i, k} - \bar{O}_{k}),
-            #     X_w_{i,k} \equiv w_i O_{i, k} / {\sum_{i} w_i}
-            #     F_i \equiv -2.0 * (e_L_{i} - E)
+            #     X_{i,k} \equiv np.sqrt(w_i) O_{i, k} / np.sqrt({\sum_{i} w_i})
+            #     F_i \equiv -2.0 * np.sqrt(w_i) (e_L_{i} - E) / np.sqrt({\sum_{i} w_i})
 
-            X_local = (O_matrix_local - O_bar).T  # shape (num_param, num_mcmc * num_walker) because it's transposed.
-            X_w_local = (
-                (O_matrix_local - O_bar) * w_L_local[:, np.newaxis] / total_weight
+            X_local = (
+                (O_matrix_local - O_bar) * np.sqrt(w_L_local)[:, np.newaxis] / np.sqrt(total_weight)
             ).T  # shape (num_param, num_mcmc * num_walker) because it's transposed.
-            F_local = -2.0 * (e_L_local - e_L_bar)  # shape (num_mcmc * num_walker, )
+            F_local = (
+                -2.0 * np.sqrt(w_L_local) * (e_L_local - e_L_bar) / np.sqrt(total_weight)
+            )  # shape (num_mcmc * num_walker, )
 
             # compute X_w@F
-            X_w_F_local = X_w_local @ F_local  # shape (num_param, )
-            # X_w_F = mpi_comm.allreduce(X_w_F_local, op=MPI.SUM)  # global sum, shape: (num_param,)
-            X_w_F = np.empty(X_w_F_local.shape, dtype=np.float64)
-            mpi_comm.Allreduce(X_w_F_local, X_w_F, op=MPI.SUM)
+            X_F_local = X_local @ F_local  # shape (num_param, )
+            X_F = np.empty(X_F_local.shape, dtype=np.float64)
+            mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
 
             # compute f_argmax
-            f_argmax = np.argmax(np.abs(X_w_F))
-            logger.debug(
-                f"Max dot(X_w, F) = {X_w_F[f_argmax]:.3f} Ha/a.u. should be equal to Max f = {f[f_argmax]:.3f} Ha/a.u."
-            )
+            f_argmax = np.argmax(np.abs(X_F))
+            logger.debug(f"Max dot(X, F) = {X_F[f_argmax]:.3f} Ha/a.u. should be equal to Max f = {f[f_argmax]:.3f} Ha/a.u.")
 
             # make the SR matrix scale-invariant (i.e., normalize)
             ## compute X_w@X.T
-            diag_S_local = np.einsum("jk,kj->j", X_w_local, X_local.T)
+            diag_S_local = np.einsum("jk,kj->j", X_local, X_local.T)
             diag_S = np.empty(diag_S_local.shape, dtype=np.float64)
             mpi_comm.Allreduce(diag_S_local, diag_S, op=MPI.SUM)
-            # diag_S = mpi_comm.allreduce(diag_S_local, op=MPI.SUM)
             logger.debug(f"max. and min. diag_S = {np.max(diag_S)}, {np.min(diag_S)}.")
             X_local = X_local / np.sqrt(diag_S)[:, np.newaxis]  # shape (num_param, num_mcmc * num_walker)
-            X_w_local = X_w_local / np.sqrt(diag_S)[:, np.newaxis]  # shape (num_param, num_mcmc * num_walker)
 
             # matrix shape info
             num_params = X_local.shape[0]
@@ -4872,39 +4853,37 @@ class QMC:
                     f"Estimated X_local @ X_local.T.bytes per MPI = {X_local.shape[0] ** 2 * X_local.dtype.itemsize / (2**30)} gib."
                 )
                 # compute local sum of X * X^T
-                X_w_X_T_local = X_w_local @ X_local.T
-                logger.debug(f"X_w_X_T_local.shape = {X_w_X_T_local.shape}.")
+                X_X_T_local = X_local @ X_local.T
+                logger.debug(f"X_X_T_local.shape = {X_X_T_local.shape}.")
                 # compute global sum of X * X^T
-                # X_w_X_T = mpi_comm.reduce(X_w_X_T_local, op=MPI.SUM, root=0)
                 if mpi_rank == 0:
-                    X_w_X_T = np.empty(X_w_X_T_local.shape, dtype=np.float64)
+                    X_X_T = np.empty(X_X_T_local.shape, dtype=np.float64)
                 else:
-                    X_w_X_T = None
-                mpi_comm.Reduce(X_w_X_T_local, X_w_X_T, op=MPI.SUM, root=0)
+                    X_X_T = None
+                mpi_comm.Reduce(X_X_T_local, X_X_T, op=MPI.SUM, root=0)
                 # compute local sum of X @ F
-                X_w_F_local = X_w_local @ F_local  # shape (num_param, )
-                logger.debug(f"X_w_F_local.shape = {X_w_F_local.shape}.")
+                X_F_local = X_local @ F_local  # shape (num_param, )
+                logger.debug(f"X_F_local.shape = {X_F_local.shape}.")
                 # compute global sum of X @ F
-                # X_w_F = mpi_comm.reduce(X_w_F_local, op=MPI.SUM, root=0)  # global sum, shape: (num_param,)
                 if mpi_rank == 0:
-                    X_w_F = np.empty(X_w_F_local.shape, dtype=np.float64)
+                    X_F = np.empty(X_F_local.shape, dtype=np.float64)
                 else:
-                    X_w_F = None
-                mpi_comm.Reduce(X_w_F_local, X_w_F, op=MPI.SUM, root=0)
+                    X_F = None
+                mpi_comm.Reduce(X_F_local, X_F, op=MPI.SUM, root=0)
                 # compute theta
                 if mpi_rank == 0:
-                    logger.debug(f"X_w @ X.T.shape = {X_w_X_T.shape}.")
-                    logger.debug(f"X_w @ F.shape = {X_w_F.shape}.")
-                    # (X_w X^T + eps*I) x = X_w F ->solve-> x = (X_w  X^T + eps*I)^{-1} X_w F
-                    X_w_X_T[np.diag_indices_from(X_w_X_T)] += epsilon
-                    X_w_X_T_inv_X_w_F = scipy.linalg.solve(X_w_X_T, X_w_F, assume_a="sym")
+                    logger.debug(f"X @ X.T.shape = {X_X_T.shape}.")
+                    logger.debug(f"X @ F.shape = {X_F.shape}.")
+                    # (X X^T + eps*I) x = X F ->solve-> x = (X  X^T + eps*I)^{-1} X F
+                    X_X_T[np.diag_indices_from(X_X_T)] += epsilon
+                    X_X_T_inv_X_F = scipy.linalg.solve(X_X_T, X_F, assume_a="sym")
                     # theta = (X_w X^T + eps*I)^{-1} X_w F
-                    theta_all = X_w_X_T_inv_X_w_F
+                    theta_all = X_X_T_inv_X_F
                 else:
                     theta_all = None
                 # Broadcast theta_all to all ranks
                 theta_all = mpi_comm.bcast(theta_all, root=0)
-                logger.devel(f"[new] theta_all (w/o the push through identity) = {theta_all}.")
+                logger.debug(f"[new] theta_all (w/o the push through identity) = {theta_all}.")
 
             else:  # num_params >= num_samples:
                 # if True:
@@ -4925,7 +4904,6 @@ class QMC:
                 # Build send buffers by slicing X and Xw into P row‑chunks
                 # Each chunk is flattened so we can send in one go.
                 sendbuf_X = np.concatenate([X_local[displs[i] : displs[i] + counts[i], :].ravel() for i in range(P)])
-                sendbuf_Xw = np.concatenate([X_w_local[displs[i] : displs[i] + counts[i], :].ravel() for i in range(P)])
 
                 # Prepare sendcounts and displacements in units of elements
                 sendcounts = [counts[i] * M for i in range(P)]
@@ -4938,65 +4916,60 @@ class QMC:
 
                 # Allocate receive buffers
                 recvbuf_X = np.empty(sum(recvcounts), dtype=X_local.dtype)
-                recvbuf_Xw = np.empty(sum(recvcounts), dtype=X_w_local.dtype)
 
                 # Perform the all‑to‑all variable‑sized exchange
                 mpi_comm.Alltoallv([sendbuf_X, sendcounts, sdispls, MPI.DOUBLE], [recvbuf_X, recvcounts, rdispls, MPI.DOUBLE])
 
-                mpi_comm.Alltoallv([sendbuf_Xw, sendcounts, sdispls, MPI.DOUBLE], [recvbuf_Xw, recvcounts, rdispls, MPI.DOUBLE])
-
                 # Reshape the flat receive buffer into a 3D array
                 #    shape = (P sources, N_local rows, M cols)
                 buf_X = recvbuf_X.reshape(P, N_local, M)
-                buf_Xw = recvbuf_Xw.reshape(P, N_local, M)
 
                 # Rearrange into final 2D arrays of shape (N_local, M * P)
                 #    by stacking each source’s M columns side by side
                 X_re_local = np.hstack([buf_X[i] for i in range(P)])  # shape (num_param/P, num_mcmc * num_walker * P)
-                X_w_re_local = np.hstack([buf_Xw[i] for i in range(P)])  # shape (num_param/P, num_mcmc * num_walker * P)
                 logger.debug(
                     f"Estimated X_local.T @ X_local.bytes per MPI = {X_re_local.shape[1] ** 2 * X_re_local.dtype.itemsize / (2**30)} gib."
                 )
 
                 # compute local sum of X^T * X
-                X_T_X_w_local = X_re_local.T @ X_w_re_local
-                logger.debug(f"X_T_X_w_local.shape = {X_T_X_w_local.shape}.")
+                X_T_X_local = X_re_local.T @ X_re_local
+                logger.debug(f"X_T_X_local.shape = {X_T_X_local.shape}.")
                 # compute global sum of X^T * X
                 if mpi_rank == 0:
-                    X_T_X_w = np.empty(X_T_X_w_local.shape, dtype=np.float64)
+                    X_T_X = np.empty(X_T_X_local.shape, dtype=np.float64)
                 else:
-                    X_T_X_w = None
-                mpi_comm.Reduce(X_T_X_w_local, X_T_X_w, op=MPI.SUM, root=0)
+                    X_T_X = None
+                mpi_comm.Reduce(X_T_X_local, X_T_X, op=MPI.SUM, root=0)
                 # compute local sum of X @ F
                 F_local_list = list(F_local)
                 F_list = mpi_comm.reduce(F_local_list, op=MPI.SUM, root=0)
                 if mpi_rank == 0:
                     F = np.array(F_list)
-                    logger.debug(f"X_T_X_w.shape = {X_T_X_w.shape}.")
+                    logger.debug(f"X_T_X.shape = {X_T_X.shape}.")
                     logger.debug(f"F.shape = {F.shape}.")
-                    X_T_X_w[np.diag_indices_from(X_T_X_w)] += epsilon
+                    X_T_X[np.diag_indices_from(X_T_X)] += epsilon
                     # (X^T X_w + eps*I) x = F ->solve-> x = (X^T X_w + eps*I)^{-1} F
-                    X_T_X_w_inv_F = scipy.linalg.solve(X_T_X_w, F, assume_a="sym")
-                    K = X_T_X_w_inv_F.shape[0] // mpi_size
+                    X_T_X_inv_F = scipy.linalg.solve(X_T_X, F, assume_a="sym")
+                    K = X_T_X_inv_F.shape[0] // mpi_size
                 else:
-                    X_T_X_w_inv_F = None
+                    X_T_X_inv_F = None
                     K = None
                 # Broadcast K to all ranks so they know how big each chunk is
                 K = mpi_comm.bcast(K, root=0)
 
-                X_T_X_w_inv_F_local = np.empty(K, dtype=np.float64)
+                X_T_X_inv_F_local = np.empty(K, dtype=np.float64)
 
                 mpi_comm.Scatter(
-                    [X_T_X_w_inv_F, MPI.DOUBLE],  # send buffer (only significant on root)
-                    X_T_X_w_inv_F_local,  # receive buffer (on each rank)
+                    [X_T_X_inv_F, MPI.DOUBLE],  # send buffer (only significant on root)
+                    X_T_X_inv_F_local,  # receive buffer (on each rank)
                     root=0,
                 )
                 # theta = X_w (X^T X_w + eps*I)^{-1} F
-                theta_all_local = X_w_local @ X_T_X_w_inv_F_local
+                theta_all_local = X_local @ X_T_X_inv_F_local
                 # theta_all = mpi_comm.allreduce(theta_all_local, op=MPI.SUM)
                 theta_all = np.empty(theta_all_local.shape, dtype=np.float64)
                 mpi_comm.Allreduce(theta_all_local, theta_all, op=MPI.SUM)
-                logger.devel(f"[new] theta_all (w/ the push through identity) = {theta_all}.")
+                logger.debug(f"[new] theta_all (w/ the push through identity) = {theta_all}.")
 
             # theta, back to the original scale
             theta_all = theta_all / np.sqrt(diag_S)
