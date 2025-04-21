@@ -4504,6 +4504,9 @@ class QMC:
         opt_J3_param: bool = True,
         opt_lambda_param: bool = False,
         num_param_opt: int = 0,
+        cg_flag: bool = True,
+        cg_max_iter=1e6,
+        cg_tol=1e-8,
     ):
         """Optimizing wavefunction.
 
@@ -4530,6 +4533,9 @@ class QMC:
             opt_J3_param (bool): optimize three-body Jastrow
             opt_lambda_param (bool): optimize lambda_matrix in the determinant part.
             num_param_opt (int): the number of parameters to optimize in the descending order of |f|/|std f|. If zero, all parameters are optimized.
+            cg_flag (bool): if True, use conjugate gradient method for inverse S matrix.
+            cg_max_iter (int): maximum number of iterations for conjugate gradient method.
+            cg_tol (float): tolerance for conjugate gradient method.
         """
         vmcopt_total_start = time.perf_counter()
 
@@ -4849,6 +4855,37 @@ class QMC:
             logger.info(f"The number of total samples is {num_samples_total}.")
             logger.info(f"The total number of variational parameters is {num_params}.")
 
+            # ---- Conjugate Gradient Solver ----
+            @partial(jax.jit, static_argnums=(1, 3))
+            def conjugate_gradient_jax(b, apply_A, X_local, epsilon, x0, max_iter=1e6, tol=1e-8):
+                def body_fun(state):
+                    x, r, p, rs_old, i = state
+                    Ap = apply_A(p, X_local, epsilon)
+                    alpha = rs_old / jnp.dot(p, Ap)
+                    x_new = x + alpha * p
+                    r_new = r - alpha * Ap
+                    rs_new = jnp.dot(r_new, r_new)
+                    beta = rs_new / rs_old
+                    p_new = r_new + beta * p
+                    return (x_new, r_new, p_new, rs_new, i + 1)
+
+                def cond_fun(state):
+                    _, _, _, rs_old, i = state
+                    return jnp.logical_and(jnp.sqrt(rs_old) > tol, i < max_iter)
+
+                # Initialize variables
+                # x0 = jnp.zeros_like(b)
+                r0 = b - apply_A(x0, X_local, epsilon)
+                p0 = r0
+                rs0 = jnp.dot(r0, r0)
+
+                init_state = (x0, r0, p0, rs0, 0)
+                final_state = jax.lax.while_loop(cond_fun, body_fun, init_state)
+
+                x_final, _, _, rs_final, num_iter = final_state
+
+                return x_final, jnp.sqrt(rs_final), num_iter
+
             if num_params < num_samples_total:
                 # if True:
                 logger.debug("X is a wide matrix. Proceed w/o the push-through identity.")
@@ -4856,113 +4893,77 @@ class QMC:
                 logger.debug(
                     f"Estimated X_local @ X_local.T.bytes per MPI = {X_local.shape[0] ** 2 * X_local.dtype.itemsize / (2**30)} gib."
                 )
-                # compute local sum of X * X^T
-                X_X_T_local = X_local @ X_local.T
-                logger.debug(f"X_X_T_local.shape = {X_X_T_local.shape}.")
-                # compute global sum of X * X^T
-                if mpi_rank == 0:
-                    X_X_T = np.empty(X_X_T_local.shape, dtype=np.float64)
+                if not cg_flag:
+                    logger.info("Using the direct solver for the inverse of S.")
+                    # compute local sum of X * X^T
+                    X_X_T_local = X_local @ X_local.T
+                    logger.debug(f"X_X_T_local.shape = {X_X_T_local.shape}.")
+                    # compute global sum of X * X^T
+                    if mpi_rank == 0:
+                        X_X_T = np.empty(X_X_T_local.shape, dtype=np.float64)
+                    else:
+                        X_X_T = None
+                    mpi_comm.Reduce(X_X_T_local, X_X_T, op=MPI.SUM, root=0)
+                    # compute local sum of X @ F
+                    X_F_local = X_local @ F_local  # shape (num_param, )
+                    logger.debug(f"X_F_local.shape = {X_F_local.shape}.")
+                    # compute global sum of X @ F
+                    if mpi_rank == 0:
+                        X_F = np.empty(X_F_local.shape, dtype=np.float64)
+                    else:
+                        X_F = None
+                    mpi_comm.Reduce(X_F_local, X_F, op=MPI.SUM, root=0)
+                    # compute theta
+                    if mpi_rank == 0:
+                        logger.debug(f"X @ X.T.shape = {X_X_T.shape}.")
+                        logger.debug(f"X @ F.shape = {X_F.shape}.")
+                        # (X X^T + eps*I) x = X F ->solve-> x = (X  X^T + eps*I)^{-1} X F
+                        X_X_T[np.diag_indices_from(X_X_T)] += epsilon
+                        X_X_T_inv_X_F = scipy.linalg.solve(X_X_T, X_F, assume_a="sym")
+                        # theta = (X_w X^T + eps*I)^{-1} X_w F
+                        theta_all = X_X_T_inv_X_F
+                    else:
+                        theta_all = None
+                    # Broadcast theta_all to all ranks
+                    theta_all = mpi_comm.bcast(theta_all, root=0)
+                    logger.devel(f"[new] theta_all (w/o the push through identity) = {theta_all}.")
+                    logger.debug(
+                        f"[new] theta_all (w/o the push through identity): min, max = {np.max(theta_all)}, {np.max(theta_all)}."
+                    )
                 else:
-                    X_X_T = None
-                mpi_comm.Reduce(X_X_T_local, X_X_T, op=MPI.SUM, root=0)
-                # compute local sum of X @ F
-                X_F_local = X_local @ F_local  # shape (num_param, )
-                logger.debug(f"X_F_local.shape = {X_F_local.shape}.")
-                # compute global sum of X @ F
-                if mpi_rank == 0:
-                    X_F = np.empty(X_F_local.shape, dtype=np.float64)
-                else:
-                    X_F = None
-                mpi_comm.Reduce(X_F_local, X_F, op=MPI.SUM, root=0)
-                # compute theta
-                if mpi_rank == 0:
-                    logger.debug(f"X @ X.T.shape = {X_X_T.shape}.")
-                    logger.debug(f"X @ F.shape = {X_F.shape}.")
-                    # (X X^T + eps*I) x = X F ->solve-> x = (X  X^T + eps*I)^{-1} X F
-                    X_X_T[np.diag_indices_from(X_X_T)] += epsilon
-                    X_X_T_inv_X_F = scipy.linalg.solve(X_X_T, X_F, assume_a="sym")
-                    # theta = (X_w X^T + eps*I)^{-1} X_w F
-                    theta_all = X_X_T_inv_X_F
-                else:
-                    theta_all = None
-                # Broadcast theta_all to all ranks
-                theta_all = mpi_comm.bcast(theta_all, root=0)
-                logger.debug(f"[new] theta_all (w/o the push through identity) = {theta_all}.")
+                    logger.info("Using conjugate gradient for the inverse of S.")
+                    # conjugate gradient solver
+                    # Compute b = X @ F (distributed)
+                    X_F_local = X_local @ F_local  # shape (num_param, )
+                    X_F = np.zeros_like(X_F_local)
+                    mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
 
-                # conjugate gradient solver
-                # Compute b = X @ F (distributed)
-                X_F_local = X_local @ F_local  # shape (num_param, )
-                X_F = np.zeros_like(X_F_local)
-                mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
+                    # ---- Matrix-free matvec: apply_S_jax ----
+                    @partial(jax.jit, static_argnums=(2))  # epsilon
+                    def apply_S_primal_jax(v, X_local, epsilon):
+                        # Local computation of X^T v
+                        XTv_local = X_local.T @ v  # shape (M_local,)
 
-                M_local = X_local.shape[1]  # number of samples this rank owns
+                        # Local computation of X (X^T v)
+                        XXTv_local = X_local @ XTv_local  # shape (N,)
 
-                # ---- Helper: build global index offset ----
-                def get_displacements(local_sizes):
-                    displs = [0]
-                    for s in local_sizes[:-1]:
-                        displs.append(displs[-1] + s)
-                    return displs
+                        # Global sum over all processes
+                        XXTv_global, _ = mpi4jax.allreduce(XXTv_local, op=MPI.SUM, comm=MPI.COMM_WORLD)
 
-                all_M_local = mpi_comm.allgather(M_local)  # shape (P,)
-                displs = get_displacements(all_M_local)
-                start_idx = displs[mpi_rank]
+                        return XXTv_global + epsilon * v
 
-                # ---- Matrix-free matvec: apply_S_jax ----
-                @partial(jax.jit, static_argnums=(2, 3))  # start_idx, epsilon
-                def apply_S_jax(v, X_local, start_idx, epsilon):
-                    XTv_local = X_local.T @ v
-                    XTv_full = jnp.zeros((XTv_local.shape[0] * mpi_size,), dtype=XTv_local.dtype)
-                    XTv_full = XTv_full.at[start_idx : start_idx + XTv_local.shape[0]].set(XTv_local)
-
-                    XTv_full, _ = mpi4jax.allreduce(XTv_full, op=MPI.SUM, comm=mpi_comm)
-                    XTv_my_block = XTv_full[start_idx : start_idx + XTv_local.shape[0]]
-
-                    XXTv_local = X_local @ XTv_my_block
-                    XXTv, _ = mpi4jax.allreduce(XXTv_local, op=MPI.SUM, comm=mpi_comm)
-
-                    return XXTv + epsilon * v
-
-                # ---- Conjugate Gradient Solver ----
-                @partial(jax.jit, static_argnums=(1, 3, 4))
-                def conjugate_gradient_jax(b, apply_A, X_local, start_idx, epsilon, max_iter=1e6, tol=1e-8):
-                    def body_fun(state):
-                        x, r, p, rs_old, i = state
-                        Ap = apply_A(p, X_local, start_idx, epsilon)
-                        alpha = rs_old / jnp.dot(p, Ap)
-                        x_new = x + alpha * p
-                        r_new = r - alpha * Ap
-                        rs_new = jnp.dot(r_new, r_new)
-                        beta = rs_new / rs_old
-                        p_new = r_new + beta * p
-                        return (x_new, r_new, p_new, rs_new, i + 1)
-
-                    def cond_fun(state):
-                        _, _, _, rs_old, i = state
-                        return jnp.logical_and(jnp.sqrt(rs_old) > tol, i < max_iter)
-
-                    # Initialize variables
-                    # x0 = jnp.zeros_like(b)
-                    diag = jnp.sum(X_local**2, axis=1)  # approximate diag(X X^T)
-                    diag_global, _ = mpi4jax.allreduce(diag, op=MPI.SUM, comm=mpi_comm)
-                    x0 = b / (diag_global + epsilon)
-                    r0 = b - apply_A(x0, X_local, start_idx, epsilon)
-                    p0 = r0
-                    rs0 = jnp.dot(r0, r0)
-
-                    init_state = (x0, r0, p0, rs0, 0)
-                    final_state = jax.lax.while_loop(cond_fun, body_fun, init_state)
-
-                    x_final, _, _, rs_final, num_iter = final_state
-
-                    return x_final, jnp.sqrt(rs_final), num_iter
-
-                theta_all, final_residual, num_steps = conjugate_gradient_jax(
-                    jnp.array(X_F), apply_S_jax, X_local, start_idx, epsilon
-                )
-                logger.debug(f"[CG] Final residual: {final_residual:.3e}")
-                logger.debug(f"[CG] Converged in {num_steps} steps")
-                logger.debug(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
+                    x0 = X_F
+                    theta_all, final_residual, num_steps = conjugate_gradient_jax(
+                        jnp.array(X_F), apply_S_primal_jax, X_local, epsilon, x0, cg_max_iter, cg_tol
+                    )
+                    logger.debug(f"[CG] Final residual: {final_residual:.3e}")
+                    logger.debug(f"[CG] Converged in {num_steps} steps")
+                    if num_steps == cg_max_iter:
+                        logger.logger("[CG] Conjugate gradient did not converge.")
+                    logger.devel(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
+                    logger.debug(
+                        f"[new/cg] theta_all (w/o the push through identity): min, max = {np.max(theta_all)}, {np.max(theta_all)}."
+                    )
 
             else:  # num_params >= num_samples:
                 # if True:
@@ -5011,45 +5012,91 @@ class QMC:
                     f"Estimated X_local.T @ X_local.bytes per MPI = {X_re_local.shape[1] ** 2 * X_re_local.dtype.itemsize / (2**30)} gib."
                 )
 
-                # compute local sum of X^T * X
-                X_T_X_local = X_re_local.T @ X_re_local
-                logger.debug(f"X_T_X_local.shape = {X_T_X_local.shape}.")
-                # compute global sum of X^T * X
-                if mpi_rank == 0:
-                    X_T_X = np.empty(X_T_X_local.shape, dtype=np.float64)
-                else:
-                    X_T_X = None
-                mpi_comm.Reduce(X_T_X_local, X_T_X, op=MPI.SUM, root=0)
-                # compute local sum of X @ F
-                F_local_list = list(F_local)
-                F_list = mpi_comm.reduce(F_local_list, op=MPI.SUM, root=0)
-                if mpi_rank == 0:
-                    F = np.array(F_list)
-                    logger.debug(f"X_T_X.shape = {X_T_X.shape}.")
-                    logger.debug(f"F.shape = {F.shape}.")
-                    X_T_X[np.diag_indices_from(X_T_X)] += epsilon
-                    # (X^T X_w + eps*I) x = F ->solve-> x = (X^T X_w + eps*I)^{-1} F
-                    X_T_X_inv_F = scipy.linalg.solve(X_T_X, F, assume_a="sym")
-                    K = X_T_X_inv_F.shape[0] // mpi_size
-                else:
-                    X_T_X_inv_F = None
-                    K = None
-                # Broadcast K to all ranks so they know how big each chunk is
-                K = mpi_comm.bcast(K, root=0)
+                if not cg_flag:
+                    logger.info("Using the direct solver for the inverse of S.")
+                    # compute local sum of X^T * X
+                    X_T_X_local = X_re_local.T @ X_re_local
+                    logger.debug(f"X_T_X_local.shape = {X_T_X_local.shape}.")
+                    # compute global sum of X^T * X
+                    if mpi_rank == 0:
+                        X_T_X = np.empty(X_T_X_local.shape, dtype=np.float64)
+                    else:
+                        X_T_X = None
+                    mpi_comm.Reduce(X_T_X_local, X_T_X, op=MPI.SUM, root=0)
+                    # compute local sum of X @ F
+                    F_local_list = list(F_local)
+                    F_list = mpi_comm.reduce(F_local_list, op=MPI.SUM, root=0)
+                    if mpi_rank == 0:
+                        F = np.array(F_list)
+                        logger.debug(f"X_T_X.shape = {X_T_X.shape}.")
+                        logger.debug(f"F.shape = {F.shape}.")
+                        X_T_X[np.diag_indices_from(X_T_X)] += epsilon
+                        # (X^T X_w + eps*I) x = F ->solve-> x = (X^T X_w + eps*I)^{-1} F
+                        X_T_X_inv_F = scipy.linalg.solve(X_T_X, F, assume_a="sym")
+                        K = X_T_X_inv_F.shape[0] // mpi_size
+                    else:
+                        X_T_X_inv_F = None
+                        K = None
+                    # Broadcast K to all ranks so they know how big each chunk is
+                    K = mpi_comm.bcast(K, root=0)
 
-                X_T_X_inv_F_local = np.empty(K, dtype=np.float64)
+                    X_T_X_inv_F_local = np.empty(K, dtype=np.float64)
 
-                mpi_comm.Scatter(
-                    [X_T_X_inv_F, MPI.DOUBLE],  # send buffer (only significant on root)
-                    X_T_X_inv_F_local,  # receive buffer (on each rank)
-                    root=0,
-                )
-                # theta = X_w (X^T X_w + eps*I)^{-1} F
-                theta_all_local = X_local @ X_T_X_inv_F_local
-                # theta_all = mpi_comm.allreduce(theta_all_local, op=MPI.SUM)
-                theta_all = np.empty(theta_all_local.shape, dtype=np.float64)
-                mpi_comm.Allreduce(theta_all_local, theta_all, op=MPI.SUM)
-                logger.debug(f"[new] theta_all (w/ the push through identity) = {theta_all}.")
+                    mpi_comm.Scatter(
+                        [X_T_X_inv_F, MPI.DOUBLE],  # send buffer (only significant on root)
+                        X_T_X_inv_F_local,  # receive buffer (on each rank)
+                        root=0,
+                    )
+                    # theta = X_w (X^T X_w + eps*I)^{-1} F
+                    theta_all_local = X_local @ X_T_X_inv_F_local
+                    theta_all = np.empty(theta_all_local.shape, dtype=np.float64)
+                    mpi_comm.Allreduce(theta_all_local, theta_all, op=MPI.SUM)
+                    logger.devel(f"[new] theta_all (w/ the push through identity) = {theta_all}.")
+                    logger.debug(
+                        f"[new] theta_all (w/ the push through identity): max, min = {np.max(theta_all)}, {np.min(theta_all)}."
+                    )
+                else:
+                    logger.info("Using conjugate gradient for the inverse of S.")
+
+                    @partial(jax.jit, static_argnums=(2,))
+                    def apply_dual_S_jax(v, X_local, epsilon):
+                        # X_local_T: shape (M_local, N/P)
+                        Xv_local = X_local @ v  # (M_local,)
+                        XTXv_local = X_local.T @ Xv_local  # (N_local,)
+                        XTXv_global, _ = mpi4jax.allreduce(XTXv_local, op=MPI.SUM, comm=mpi_comm)
+                        return XTXv_global + epsilon * v
+
+                    # X_re_local: shape (N_local, M_total)
+                    X_re_local = jnp.array(X_re_local)  # shape (M_total, N_local)
+
+                    # Solve (X^T X + εI)^(-1) @ F
+                    F_local_list = list(F_local)
+                    F_list = mpi_comm.allreduce(F_local_list, op=MPI.SUM)
+                    F_total = np.array(F_list)
+                    x0 = F_total
+                    x_sol, final_residual, num_steps = conjugate_gradient_jax(
+                        jnp.array(F_total), apply_dual_S_jax, X_re_local, epsilon, x0, cg_max_iter, cg_tol
+                    )
+
+                    # theta = X @ x_sol, evaluated locally over X_re_local (N_local rows)
+                    theta_local = X_re_local @ x_sol  # shape (N_local,)
+                    theta_local = np.asarray(theta_local)
+                    N_local = theta_local.shape[0]
+
+                    recvcounts = mpi_comm.allgather(N_local)
+                    displs = [sum(recvcounts[:i]) for i in range(mpi_comm.Get_size())]
+
+                    theta_all = np.empty(sum(recvcounts), dtype=theta_local.dtype)
+                    mpi_comm.Allgatherv([theta_local, MPI.DOUBLE], [theta_all, (recvcounts, displs), MPI.DOUBLE])
+
+                    logger.debug(f"[CG] Final residual: {final_residual:.3e}")
+                    logger.debug(f"[CG] Converged in {num_steps} steps")
+                    if num_steps == cg_max_iter:
+                        logger.logger("[CG] Conjugate gradient did not converge.")
+                    logger.devel(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
+                    logger.debug(
+                        f"[new/cg] theta_all (w/ the push through identity): max, min = {np.max(theta_all)}, {np.min(theta_all)}."
+                    )
 
             # theta, back to the original scale
             theta_all = theta_all / np.sqrt(diag_S)
