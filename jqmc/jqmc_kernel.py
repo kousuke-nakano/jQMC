@@ -4818,6 +4818,9 @@ class QMC:
                 -2.0 * np.sqrt(w_L_local) * (e_L_local - e_L_bar) / np.sqrt(total_weight)
             )  # shape (num_mcmc * num_walker, )
 
+            logger.debug(f"X_local.shape = {X_local.shape}.")
+            logger.debug(f"F_local.shape = {F_local.shape}.")
+
             # compute X_w@F
             X_F_local = X_local @ F_local  # shape (num_param, )
             X_F = np.empty(X_F_local.shape, dtype=np.float64)
@@ -4886,54 +4889,8 @@ class QMC:
                 theta_all = mpi_comm.bcast(theta_all, root=0)
                 logger.debug(f"[new] theta_all (w/o the push through identity) = {theta_all}.")
 
-                '''
                 # conjugate gradient solver
-                tol = 1e-10
-                max_iter = 1000
-
-                # Step 1: Compute b = X @ F (distributed)
-                X_F_local = X_local @ F_local  # shape (num_param, )
-                X_F = np.zeros_like(X_F_local)
-                mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
-                b = X_F
-
-                # Step 2: Solve (X X^T + eps*I) x = X F via CG
-                """
-                Conjugate Gradient solver for A @ x = b using matrix-free matvec.
-                Compute A @ v = X (X^T v) + epsilon * v in a matrix-free, distributed way.
-                """
-                v = np.zeros_like(b)
-                z_local = X_local.T @ v  # shape: (M_local,)
-                u_local = X_local @ z_local  # shape: (N,)
-                u = np.zeros_like(u_local)
-                mpi_comm.Allreduce(u_local, u, op=MPI.SUM)
-                Au = u + epsilon * v
-                r = b - Au
-                p = r.copy()
-                rs_old = np.dot(r, r)
-
-                for i in range(max_iter):
-                    z_local = X_local.T @ p  # shape: (M_local,)
-                    u_local = X_local @ z_local  # shape: (N,)
-                    u = np.zeros_like(u_local)
-                    mpi_comm.Allreduce(u_local, u, op=MPI.SUM)
-                    Ap = u + epsilon * p
-                    alpha = rs_old / np.dot(p, Ap)
-                    v += alpha * p
-                    r -= alpha * Ap
-                    rs_new = np.dot(r, r)
-                    logger.debug(f"[CG] Iteration {i}: rs_new = {rs_new:.2e}.")
-                    if np.sqrt(rs_new) < tol:
-                        if mpi_rank == 0:
-                            logger.info(f"[CG] Converged at iteration {i}, residual = {np.sqrt(rs_new):.2e}")
-                        break
-                    p = r + (rs_new / rs_old) * p
-                    rs_old = rs_new
-                theta_all = v
-                logger.debug(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
-                '''
-
-                # Step 1: Compute b = X @ F (distributed)
+                # Compute b = X @ F (distributed)
                 X_F_local = X_local @ F_local  # shape (num_param, )
                 X_F = np.zeros_like(X_F_local)
                 mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
@@ -4948,7 +4905,6 @@ class QMC:
                     return displs
 
                 all_M_local = mpi_comm.allgather(M_local)  # shape (P,)
-
                 displs = get_displacements(all_M_local)
                 start_idx = displs[mpi_rank]
 
@@ -4968,8 +4924,8 @@ class QMC:
                     return XXTv + epsilon * v
 
                 # ---- Conjugate Gradient Solver ----
-                @partial(jax.jit, static_argnums=(1, 3, 4))  # apply_A, start_idx, epsilon are static
-                def conjugate_gradient_jax(b, apply_A, X_local, start_idx, epsilon, max_iter=100, tol=1e-8):
+                @partial(jax.jit, static_argnums=(1, 3, 4))
+                def conjugate_gradient_jax(b, apply_A, X_local, start_idx, epsilon, max_iter=1e6, tol=1e-8):
                     def body_fun(state):
                         x, r, p, rs_old, i = state
                         Ap = apply_A(p, X_local, start_idx, epsilon)
@@ -4985,18 +4941,27 @@ class QMC:
                         _, _, _, rs_old, i = state
                         return jnp.logical_and(jnp.sqrt(rs_old) > tol, i < max_iter)
 
-                    # Initial guess x = 0
-                    x0 = jnp.zeros_like(b)
+                    # Initialize variables
+                    # x0 = jnp.zeros_like(b)
+                    diag = jnp.sum(X_local**2, axis=1)  # approximate diag(X X^T)
+                    diag_global, _ = mpi4jax.allreduce(diag, op=MPI.SUM, comm=mpi_comm)
+                    x0 = b / (diag_global + epsilon)
                     r0 = b - apply_A(x0, X_local, start_idx, epsilon)
                     p0 = r0
                     rs0 = jnp.dot(r0, r0)
 
                     init_state = (x0, r0, p0, rs0, 0)
                     final_state = jax.lax.while_loop(cond_fun, body_fun, init_state)
-                    x_final = final_state[0]
-                    return x_final
 
-                theta_all = conjugate_gradient_jax(jnp.array(X_F), apply_S_jax, X_local, start_idx, epsilon)
+                    x_final, _, _, rs_final, num_iter = final_state
+
+                    return x_final, jnp.sqrt(rs_final), num_iter
+
+                theta_all, final_residual, num_steps = conjugate_gradient_jax(
+                    jnp.array(X_F), apply_S_jax, X_local, start_idx, epsilon
+                )
+                logger.debug(f"[CG] Final residual: {final_residual:.3e}")
+                logger.debug(f"[CG] Converged in {num_steps} steps")
                 logger.debug(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
 
             else:  # num_params >= num_samples:
@@ -5041,6 +5006,7 @@ class QMC:
                 # Rearrange into final 2D arrays of shape (N_local, M * P)
                 #    by stacking each source’s M columns side by side
                 X_re_local = np.hstack([buf_X[i] for i in range(P)])  # shape (num_param/P, num_mcmc * num_walker * P)
+                logger.debug(f"X_re_local.shape = {X_re_local.shape}.")
                 logger.debug(
                     f"Estimated X_local.T @ X_local.bytes per MPI = {X_re_local.shape[1] ** 2 * X_re_local.dtype.itemsize / (2**30)} gib."
                 )
