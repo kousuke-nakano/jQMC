@@ -4833,7 +4833,9 @@ class QMC:
 
             # compute X_w@F
             X_w_F_local = X_w_local @ F_local  # shape (num_param, )
-            X_w_F = mpi_comm.allreduce(X_w_F_local, op=MPI.SUM)  # global sum, shape: (num_param,)
+            #X_w_F = mpi_comm.allreduce(X_w_F_local, op=MPI.SUM)  # global sum, shape: (num_param,)
+            X_w_F = np.empty(X_w_F_local.shape, dtype=np.float64)
+            mpi_comm.Allreduce(X_w_F_local, X_w_F, op=MPI.SUM)
 
             # compute f_argmax
             f_argmax = np.argmax(np.abs(X_w_F))
@@ -4844,7 +4846,9 @@ class QMC:
             # make the SR matrix scale-invariant (i.e., normalize)
             ## compute X_w@X.T
             diag_S_local = np.einsum("jk,kj->j", X_w_local, X_local.T)
-            diag_S = mpi_comm.allreduce(diag_S_local, op=MPI.SUM)
+            diag_S = np.empty(diag_S_local.shape, dtype=np.float64)
+            mpi_comm.Allreduce(diag_S_local, diag_S, op=MPI.SUM)
+            #diag_S = mpi_comm.allreduce(diag_S_local, op=MPI.SUM)
             logger.debug(f"max. and min. diag_S = {np.max(diag_S)}, {np.min(diag_S)}.")
             X_local = X_local / np.sqrt(diag_S)[:, np.newaxis]  # shape (num_param, num_mcmc * num_walker)
             X_w_local = X_w_local / np.sqrt(diag_S)[:, np.newaxis]  # shape (num_param, num_mcmc * num_walker)
@@ -4870,11 +4874,21 @@ class QMC:
                 # compute local sum of X * X^T
                 X_w_X_T_local = X_w_local @ X_local.T
                 # compute global sum of X * X^T
-                X_w_X_T = mpi_comm.reduce(X_w_X_T_local, op=MPI.SUM, root=0)
+                #X_w_X_T = mpi_comm.reduce(X_w_X_T_local, op=MPI.SUM, root=0)
+                if mpi_rank == 0:
+                    X_w_X_T = np.empty(X_w_X_T_local.shape, dtype=np.float64)
+                else:
+                    X_w_X_T = None
+                comm.Reduce(X_w_X_T_local, X_w_X_T, op=MPI.SUM, root=0)
                 # compute local sum of X @ F
                 X_w_F_local = X_w_local @ F_local  # shape (num_param, )
                 # compute global sum of X @ F
-                X_w_F = mpi_comm.reduce(X_w_F_local, op=MPI.SUM, root=0)  # global sum, shape: (num_param,)
+                #X_w_F = mpi_comm.reduce(X_w_F_local, op=MPI.SUM, root=0)  # global sum, shape: (num_param,)
+                if mpi_rank == 0:
+                    X_w_F = np.empty(X_w_F_local.shape, dtype=np.float64)
+                else:
+                    X_w_F = None
+                comm.Reduce(X_w_F_local, X_w_F, op=MPI.SUM, root=0)
                 # compute theta
                 if mpi_rank == 0:
                     logger.debug(f"X_w @ X.T.shape = {X_w_X_T.shape}.")
@@ -4944,8 +4958,13 @@ class QMC:
 
                 # compute local sum of X^T * X
                 X_T_X_w_local = X_re_local.T @ X_w_re_local
+                logger.debug(f"X_T_X_w_local.shape = {X_T_X_w_local.shape}.")
                 # compute global sum of X^T * X
-                X_T_X_w = mpi_comm.reduce(X_T_X_w_local, op=MPI.SUM, root=0)
+                if mpi_rank == 0:
+                    X_T_X_w = np.empty(X_T_X_w_local.shape, dtype=np.float64)
+                else:
+                    X_T_X_w = None
+                mpi_comm.Reduce(X_T_X_w_local, X_T_X_w, op=MPI.SUM, root=0)
                 # compute local sum of X @ F
                 F_local_list = list(F_local)
                 F_list = mpi_comm.reduce(F_local_list, op=MPI.SUM, root=0)
@@ -4972,7 +4991,9 @@ class QMC:
                 )
                 # theta = X_w (X^T X_w + eps*I)^{-1} F
                 theta_all_local = X_w_local @ X_T_X_w_inv_F_local
-                theta_all = mpi_comm.allreduce(theta_all_local, op=MPI.SUM)
+                #theta_all = mpi_comm.allreduce(theta_all_local, op=MPI.SUM)
+                theta_all = np.empty(theta_all_local.shape, dtype=np.float64)
+                mpi_comm.Allreduce(theta_all_local, theta_all, op=MPI.SUM)
                 logger.devel(f"[new] theta_all (w/ the push through identity) = {theta_all}.")
 
             # theta, back to the original scale
