@@ -4890,11 +4890,11 @@ class QMC:
                 # if True:
                 logger.debug("X is a wide matrix. Proceed w/o the push-through identity.")
                 logger.debug("theta = (S+epsilon*I)^{-1}*f = (X * X^T + epsilon*I)^{-1} * X F...")
-                logger.debug(
-                    f"Estimated X_local @ X_local.T.bytes per MPI = {X_local.shape[0] ** 2 * X_local.dtype.itemsize / (2**30)} gib."
-                )
                 if not cg_flag:
                     logger.info("Using the direct solver for the inverse of S.")
+                    logger.debug(
+                        f"Estimated X_local @ X_local.T.bytes per MPI = {X_local.shape[0] ** 2 * X_local.dtype.itemsize / (2**30)} gib."
+                    )
                     # compute local sum of X * X^T
                     X_X_T_local = X_local @ X_local.T
                     logger.debug(f"X_X_T_local.shape = {X_X_T_local.shape}.")
@@ -4928,10 +4928,12 @@ class QMC:
                     theta_all = mpi_comm.bcast(theta_all, root=0)
                     logger.devel(f"[new] theta_all (w/o the push through identity) = {theta_all}.")
                     logger.debug(
-                        f"[new] theta_all (w/o the push through identity): min, max = {np.max(theta_all)}, {np.max(theta_all)}."
+                        f"[new] theta_all (w/o the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
                     )
                 else:
                     logger.info("Using conjugate gradient for the inverse of S.")
+                    logger.info(f"  [CG] threshold {cg_tol}.")
+                    logger.info(f"  [CG] max iteration: {cg_max_iter}.")
                     # conjugate gradient solver
                     # Compute b = X @ F (distributed)
                     X_F_local = X_local @ F_local  # shape (num_param, )
@@ -4939,7 +4941,7 @@ class QMC:
                     mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
 
                     # ---- Matrix-free matvec: apply_S_jax ----
-                    @partial(jax.jit, static_argnums=(2))  # epsilon
+                    @partial(jax.jit, static_argnums=(2,))  # epsilon
                     def apply_S_primal_jax(v, X_local, epsilon):
                         # Local computation of X^T v
                         XTv_local = X_local.T @ v  # shape (M_local,)
@@ -4956,13 +4958,13 @@ class QMC:
                     theta_all, final_residual, num_steps = conjugate_gradient_jax(
                         jnp.array(X_F), apply_S_primal_jax, X_local, epsilon, x0, cg_max_iter, cg_tol
                     )
-                    logger.debug(f"[CG] Final residual: {final_residual:.3e}")
-                    logger.debug(f"[CG] Converged in {num_steps} steps")
+                    logger.debug(f"  [CG] Final residual: {final_residual:.3e}")
+                    logger.info(f"  [CG] Converged in {num_steps} steps")
                     if num_steps == cg_max_iter:
-                        logger.logger("[CG] Conjugate gradient did not converge.")
+                        logger.logger("  [CG] Conjugate gradient did not converge!!")
                     logger.devel(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
                     logger.debug(
-                        f"[new/cg] theta_all (w/o the push through identity): min, max = {np.max(theta_all)}, {np.max(theta_all)}."
+                        f"[new/cg] theta_all (w/o the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
                     )
 
             else:  # num_params >= num_samples:
@@ -5008,12 +5010,12 @@ class QMC:
                 #    by stacking each source’s M columns side by side
                 X_re_local = np.hstack([buf_X[i] for i in range(P)])  # shape (num_param/P, num_mcmc * num_walker * P)
                 logger.debug(f"X_re_local.shape = {X_re_local.shape}.")
-                logger.debug(
-                    f"Estimated X_local.T @ X_local.bytes per MPI = {X_re_local.shape[1] ** 2 * X_re_local.dtype.itemsize / (2**30)} gib."
-                )
 
                 if not cg_flag:
                     logger.info("Using the direct solver for the inverse of S.")
+                    logger.debug(
+                        f"Estimated X_local.T @ X_local.bytes per MPI = {X_re_local.shape[1] ** 2 * X_re_local.dtype.itemsize / (2**30)} gib."
+                    )
                     # compute local sum of X^T * X
                     X_T_X_local = X_re_local.T @ X_re_local
                     logger.debug(f"X_T_X_local.shape = {X_T_X_local.shape}.")
@@ -5053,10 +5055,12 @@ class QMC:
                     mpi_comm.Allreduce(theta_all_local, theta_all, op=MPI.SUM)
                     logger.devel(f"[new] theta_all (w/ the push through identity) = {theta_all}.")
                     logger.debug(
-                        f"[new] theta_all (w/ the push through identity): max, min = {np.max(theta_all)}, {np.min(theta_all)}."
+                        f"[new] theta_all (w/ the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
                     )
                 else:
                     logger.info("Using conjugate gradient for the inverse of S.")
+                    logger.info(f"  [CG] threshold {cg_tol}.")
+                    logger.info(f"  [CG] max iteration: {cg_max_iter}.")
 
                     @partial(jax.jit, static_argnums=(2,))
                     def apply_dual_S_jax(v, X_local, epsilon):
@@ -5089,13 +5093,13 @@ class QMC:
                     theta_all = np.empty(sum(recvcounts), dtype=theta_local.dtype)
                     mpi_comm.Allgatherv([theta_local, MPI.DOUBLE], [theta_all, (recvcounts, displs), MPI.DOUBLE])
 
-                    logger.debug(f"[CG] Final residual: {final_residual:.3e}")
-                    logger.debug(f"[CG] Converged in {num_steps} steps")
+                    logger.debug(f"  [CG] Final residual: {final_residual:.3e}")
+                    logger.info(f"  [CG] Converged in {num_steps} steps")
                     if num_steps == cg_max_iter:
-                        logger.logger("[CG] Conjugate gradient did not converge.")
+                        logger.logger("  [CG] Conjugate gradient did not converge!")
                     logger.devel(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
                     logger.debug(
-                        f"[new/cg] theta_all (w/ the push through identity): max, min = {np.max(theta_all)}, {np.min(theta_all)}."
+                        f"[new/cg] theta_all (w/ the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
                     )
 
             # theta, back to the original scale

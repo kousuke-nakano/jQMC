@@ -312,6 +312,9 @@ def cli():
         opt_J3_param = parameters["vmcopt"]["opt_J3_param"]
         opt_lambda_param = parameters["vmcopt"]["opt_lambda_param"]
         num_param_opt = parameters["vmcopt"]["num_param_opt"]
+        cg_flag = parameters["vmcopt"]["cg_flag"]
+        cg_max_iter = parameters["vmcopt"]["cg_max_iter"]
+        cg_tol = parameters["vmcopt"]["cg_tol"]
 
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
         if num_mcmc_steps < num_mcmc_warmup_steps:
@@ -355,6 +358,9 @@ def cli():
             opt_lambda_param=opt_lambda_param,
             num_param_opt=num_param_opt,
             max_time=max_time,
+            cg_flag=cg_flag,
+            cg_max_iter=cg_max_iter,
+            cg_tol=cg_tol,
         )
         logger.info("")
 
@@ -384,7 +390,7 @@ def cli():
     if job_type == "lrdmc":
         logger.info("***Lattice Regularized diffusion Monte Carlo***")
 
-        # vmcopt section
+        # lrdmc section
         section = "lrdmc"
         for key in parameters[section].keys():
             try:
@@ -490,7 +496,7 @@ def cli():
     if job_type == "lrdmc-tau":
         logger.info("***Lattice Regularized diffusion Monte Carlo with a fixed projection time***")
 
-        # vmcopt section
+        # lrdmc-tau section
         section = "lrdmc-tau"
         for key in parameters[section].keys():
             try:

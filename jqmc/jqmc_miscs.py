@@ -55,6 +55,9 @@ cli_parameters = {
         "opt_J3_param": True,
         "opt_lambda_param": False,
         "num_param_opt": 0,
+        "cg_flag": False,
+        "cg_max_iter": 10e4,
+        "cg_tol": 1e-4,
     },
     "vmcopt_comments": {
         "num_mcmc_steps": "Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.",
@@ -72,6 +75,9 @@ cli_parameters = {
         "opt_J3_param": "Optimize the J3 parameters.",
         "opt_lambda_param": "Optimize the lambda parameters in the geminal part.",
         "num_param_opt": "the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.",
+        "cg_flag": "If true, use the conjugate gradient method for the optimization.",
+        "cg_max_iter": "Maximum number of iterations for the conjugate gradient method.",
+        "cg_tol": "Tolerance for the conjugate gradient method.",
     },
     "lrdmc": {
         "num_mcmc_steps": None,
