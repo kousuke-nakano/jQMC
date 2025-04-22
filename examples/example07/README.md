@@ -30,8 +30,8 @@ The weak-scaling calculations were performed using the water molecule:
 
 ![CPU Benchmark](jqmc_weak_scaling_on_cpu.jpg)
 
-### Important notice
-First of all, the degradation of weak scaling in the LRDMC calculations as the number of MPI processes increases is not solely due to MPI communication. On CPUs, we have observed that when allocating many JAX processes across a large number of CPU cores, some processes randomly become extremely slow. Since this issue does not occur when running JAX processes on GPUs, we believe it is likely unexpected behavior of the XLA compiler on CPUs. See also our [JAX GitHub discussion](https://github.com/jax-ml/jax/discussions/27949) for more details.
+> [!NOTE]
+> The degradation of weak scaling in the LRDMC calculations as the number of MPI processes increases is not solely due to MPI communication. On CPUs, we have observed that when allocating many JAX processes across a large number of CPU cores, some processes randomly become extremely slow. Since this issue does not occur when running JAX processes on GPUs, we believe it is likely unexpected behavior of the XLA compiler on CPUs. See also our [JAX GitHub discussion](https://github.com/jax-ml/jax/discussions/27949) for more details.
 
 The plot above shows the weak‑scaling behavior of `jQMC` on the CPU cluster, measured from 120 up to 3840 MPI processes (120 MPI processes per node, 1–32 nodes).  Each curve is the elapsed time normalized to the 120 MPI processes baseline:
 
