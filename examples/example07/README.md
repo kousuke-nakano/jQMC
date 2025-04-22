@@ -43,13 +43,13 @@ The plot above shows the weak‑scaling behavior of `jQMC` on the CPU cluster, m
    - Stays within ±2% of the 480‑rank run even at 3 840 ranks.
    - Very low synchronization cost ⇒ near‑ideal weak scaling on CPUs.
 
-2. **LR‑DMC, fixed branching count (nbra, blue ■)**
+2. **LR‑DMC, fixed branching count (nbra, blue)**
    - Gradual overhead growth:
      - ~2% at 960 ranks
      - ~45% at 3 840 ranks
    - Fixing the *number* of branches maintains a balanced workload per rank, yielding reasonably good scalability.
 
-3. **LR‑DMC, fixed branching time (tau, green ▲)**
+3. **LR‑DMC, fixed branching time (tau, green)**
    - Overhead increases sharply with rank count:
      - ~20% at 240 ranks
      - ~40% at 480 ranks
@@ -63,7 +63,7 @@ The plot above shows the weak‑scaling behavior of `jQMC` on the CPU cluster, m
 - For large‑scale CPU LRDMC runs, prefer the **fixed‑nbra** algorithm to minimize overhead.
 - When extreme scalability is required without branching, pure **VMC** remains the most efficient choice on CPU clusters.
 
-### Important notice!!
+### *Important notice*
 
 By the way, the degradation of weak scaling in LRDMC as the number of MPI processes increases is not solely due to MPI communication. On CPUs, we have observed that when allocating many JAX processes across a large number of CPU cores, some processes randomly become extremely slow. Since this issue does not occur when running JAX processes on GPUs, we believe it is likely unexpected behavior of the XLA compiler on CPUs. See also our [JAX GitHub discussion](https://github.com/jax-ml/jax/discussions/27949) for more details: .
 
@@ -82,7 +82,7 @@ The plot above shows the weak‑scaling behavior of `jQMC` code measured on up t
 
 1. **VMC (red)**
    - Remains within ±1% of the 4‑GPUs baseline all the way to 1024 GPUs.
-   - Very little inter‑GPU communication in pure VMC -> near-ideal weak scaling.
+   - Very little inter‑GPU communication in pure VMC ⇒ near-ideal weak scaling.
 
 2. **LR‑DMC, fixed branching count (nbra, blue)**
    - Overhead grows slowly:
