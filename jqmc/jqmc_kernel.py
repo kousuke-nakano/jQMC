@@ -2348,27 +2348,27 @@ class GFMC_fixed_projection_time:
             mpi_comm.Allgather([local_cumprob, MPI.DOUBLE], [global_cumprob, MPI.DOUBLE])
 
             # Total number of walkers across all processes.
-            num_total_walkers = len(global_cumprob)
-
-            # Create a shifted list of random numbers for systematic resampling.
-            z_list = [(alpha + zeta) / num_total_walkers for alpha in range(num_total_walkers)]
-
-            # For each z, select the smallest index where global cumulative probability exceeds z.
-            chosen_walker_indices = np.array([np.searchsorted(global_cumprob, z) for z in z_list])
-
-            # Compute the total number of survived and killed walkers.
-            num_survived_walkers = len(set(chosen_walker_indices))
-            num_killed_walkers = num_total_walkers - num_survived_walkers
-
-            # Compute the local assignment directly.
-            local_assignment = []
+            # Compute index range for this rank
             start_idx = mpi_rank * self.num_walkers
-            end_idx = (mpi_rank + 1) * self.num_walkers
-            for new_global_idx in range(start_idx, end_idx):
-                src_global_idx = chosen_walker_indices[new_global_idx]
-                src_rank = src_global_idx // self.num_walkers
-                src_local_idx = src_global_idx % self.num_walkers
-                local_assignment.append((src_rank, src_local_idx))
+            end_idx = start_idx + self.num_walkers
+
+            # Build only local z-array (length = self.num_walkers)
+            z_local = (np.arange(start_idx, end_idx) + zeta) / total_walkers
+
+            # Each rank finds chosen global indices for its z_local
+            local_chosen_indices = np.searchsorted(global_cumprob, z_local)
+
+            # Gather all local_chosen_indices to compute global stats
+            all_chosen = mpi_comm.allgather(local_chosen_indices)
+            chosen_walker_indices = np.concatenate(all_chosen)
+            num_survived_walkers = len(set(chosen_walker_indices))
+            num_killed_walkers = total_walkers - num_survived_walkers
+
+            # Build local_assignment: list of (src_rank, src_local_idx) for this rank
+            local_assignment = [
+                (src_global_idx // self.num_walkers, src_global_idx % self.num_walkers)
+                for src_global_idx in local_chosen_indices
+            ]
 
             # num projection counter
             ## Compute the local average of the projection counter list.
@@ -4129,7 +4129,6 @@ class GFMC_fixed_num_projection:
             #########################################
             # 1. Gather only the weights to MPI_rank=0 and perform branching calculation
             #########################################
-
             # Each process computes the sum of its local walker weights.
             local_weight_sum = np.sum(w_L_latest)
 
@@ -4158,27 +4157,27 @@ class GFMC_fixed_num_projection:
             mpi_comm.Allgather([local_cumprob, MPI.DOUBLE], [global_cumprob, MPI.DOUBLE])
 
             # Total number of walkers across all processes.
-            num_total_walkers = len(global_cumprob)
-
-            # Create a shifted list of random numbers for systematic resampling.
-            z_list = [(alpha + zeta) / num_total_walkers for alpha in range(num_total_walkers)]
-
-            # For each z, select the smallest index where global cumulative probability exceeds z.
-            chosen_walker_indices = np.array([np.searchsorted(global_cumprob, z) for z in z_list])
-
-            # Compute the total number of survived and killed walkers.
-            num_survived_walkers = len(set(chosen_walker_indices))
-            num_killed_walkers = num_total_walkers - num_survived_walkers
-
-            # Compute the local assignment directly.
-            local_assignment = []
+            # Compute index range for this rank
             start_idx = mpi_rank * self.num_walkers
-            end_idx = (mpi_rank + 1) * self.num_walkers
-            for new_global_idx in range(start_idx, end_idx):
-                src_global_idx = chosen_walker_indices[new_global_idx]
-                src_rank = src_global_idx // self.num_walkers
-                src_local_idx = src_global_idx % self.num_walkers
-                local_assignment.append((src_rank, src_local_idx))
+            end_idx = start_idx + self.num_walkers
+
+            # Build only local z-array (length = self.num_walkers)
+            z_local = (np.arange(start_idx, end_idx) + zeta) / total_walkers
+
+            # Each rank finds chosen global indices for its z_local
+            local_chosen_indices = np.searchsorted(global_cumprob, z_local)
+
+            # Gather all local_chosen_indices to compute global stats
+            all_chosen = mpi_comm.allgather(local_chosen_indices)
+            chosen_walker_indices = np.concatenate(all_chosen)
+            num_survived_walkers = len(set(chosen_walker_indices))
+            num_killed_walkers = total_walkers - num_survived_walkers
+
+            # Build local_assignment: list of (src_rank, src_local_idx) for this rank
+            local_assignment = [
+                (src_global_idx // self.num_walkers, src_global_idx % self.num_walkers)
+                for src_global_idx in local_chosen_indices
+            ]
 
             #########################################
             # 2. In each process, prepare for data exchange based on the new walker selection
