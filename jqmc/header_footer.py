@@ -3,7 +3,7 @@
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
 #
-# This file is part of phonopy.
+# This file is part of jqmc.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -17,7 +17,7 @@
 #   the documentation and/or other materials provided with the
 #   distribution.
 #
-# * Neither the name of the phonopy project nor the names of its
+# * Neither the name of the jqmc project nor the names of its
 #   contributors may be used to endorse or promote products derived
 #   from this software without specific prior written permission.
 #

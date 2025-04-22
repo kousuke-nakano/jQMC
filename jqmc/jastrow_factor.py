@@ -15,7 +15,7 @@
 #   the documentation and/or other materials provided with the
 #   distribution.
 #
-# * Neither the name of the phonopy project nor the names of its
+# * Neither the name of the jqmc project nor the names of its
 #   contributors may be used to endorse or promote products derived
 #   from this software without specific prior written permission.
 #
@@ -492,7 +492,7 @@ class Jastrow_three_body_data:
     def init_jastrow_three_body_data(cls, orb_data: AOs_sphe_data | AOs_cart_data | MOs_data):
         """Initialization."""
         j_matrix = np.zeros((orb_data.num_orb, orb_data.num_orb + 1))
-        #j_matrix = np.random.uniform(0.01, 0.10, size=(orb_data.num_orb, orb_data.num_orb + 1))
+        # j_matrix = np.random.uniform(0.01, 0.10, size=(orb_data.num_orb, orb_data.num_orb + 1))
         jastrow_three_body_data = cls(
             orb_data=orb_data,
             j_matrix=j_matrix,
