@@ -144,63 +144,88 @@ def trexio_convert_to(
     if j3_basis_type is not None:
         if j3_basis_type in {"ao", "ao-full", "ao-small", "ao-medium", "ao-large"}:
             selected_ao_indices_total = []
-            # 1) For each nucleus, collect its AO indices and sort them by "key exponent"
+
+            # 1) Loop over each nucleus in the AO dataset
             for nucleus in set(aos_data.nucleus_index):
-                # all AO-indices for this nucleus
+                # collect AO indices that belong to this nucleus
                 ao_idxs = [i for i, nuc in enumerate(aos_data.nucleus_index) if nuc == nucleus]
-                key_exps = []
-                for i in ao_idxs:
-                    # find all primitive indices belonging to AO i
-                    prims = [p for p, orb in enumerate(aos_data.orbital_indices) if orb == i]
-                    # pick the primitive with the largest |coefficient|
-                    max_p = max(prims, key=lambda p: abs(aos_data.coefficients[p]))
-                    key_exps.append((i, aos_data.exponents[max_p]))
-                # sort AO indices by that key exponent
-                sorted_ao = [i for i, _ in sorted(key_exps, key=lambda x: x[1])]
 
-                # 2) Partition and pick middle slice(s)
-                if j3_basis_type == "ao-small":
-                    parts = np.array_split(sorted_ao, 3)
-                    sel = parts[1]
-                elif j3_basis_type == "ao-medium":
-                    parts = np.array_split(sorted_ao, 4)
-                    sel = np.concatenate(parts[1:3])
-                elif j3_basis_type == "ao-large":
-                    parts = np.array_split(sorted_ao, 5)
-                    sel = np.concatenate(parts[1:4])
-                else:  # 'ao' or 'ao-full'
-                    sel = sorted_ao
+                # 2) Within this nucleus, group AOs by their angular momentum quantum number l
+                for l in set(aos_data.angular_momentums):
+                    ao_idxs_l = [i for i in ao_idxs if aos_data.angular_momentums[i] == l]
+                    if not ao_idxs_l:
+                        continue
 
-                selected_ao_indices_total.extend(sel.tolist() if isinstance(sel, np.ndarray) else sel)
+                    # 3) For each AO index, determine its “key exponent”
+                    #    as the exponent of the primitive with the largest absolute coefficient
+                    key_exps = []
+                    for i in ao_idxs_l:
+                        prims = [p for p, orb in enumerate(aos_data.orbital_indices) if orb == i]
+                        max_p = max(prims, key=lambda p: abs(aos_data.coefficients[p]))
+                        key_exps.append((i, aos_data.exponents[max_p]))
 
-            # 3) Deduplicate and sort globally
+                    # 4) Extract the unique basis exponents (Z values) and sort them
+                    basis_exps = sorted({exp for _, exp in key_exps})
+                    B = len(basis_exps)
+
+                    # 5) Exception-aware partitioning of the basis exponents
+                    if j3_basis_type in ("ao-small", "ao-medium", "ao-large"):
+                        # define desired number of equal splits depending on mode
+                        desired = {"ao-small": 3, "ao-medium": 4, "ao-large": 5}[j3_basis_type]
+                        # if the number of distinct basis exponents is too small,
+                        # pick the single central exponent
+                        if B <= desired - 1:
+                            sel_basis = [basis_exps[B // 2]]
+                        else:
+                            # otherwise, split into `desired` parts
+                            parts = np.array_split(basis_exps, desired)
+                            if j3_basis_type == "ao-small":
+                                # keep only the central part
+                                idx = desired // 2
+                                sel_basis = parts[idx]
+                            elif j3_basis_type == "ao-medium":
+                                # keep the two central parts
+                                start = (desired - 2) // 2
+                                sel_basis = np.concatenate(parts[start : start + 2])
+                            else:  # ao-large
+                                # keep the three central parts
+                                start = (desired - 3) // 2
+                                sel_basis = np.concatenate(parts[start : start + 3])
+                    else:
+                        # 'ao' or 'ao-full' → include all basis exponents
+                        sel_basis = basis_exps
+
+                    # 6) Select AO indices whose key exponent is in the chosen basis group
+                    sel_ao = [i for (i, exp) in key_exps if exp in sel_basis]
+                    selected_ao_indices_total.extend(sel_ao)
+
+            # 7) Remove duplicates and sort the selected AO indices globally
             selected_ao_indices = sorted(set(selected_ao_indices_total))
 
-            # 4) Build mapping from old AO-index → new AO-index
+            # 8) Build a mapping from old AO-index to new AO-index
             new_idx_map = {old: new for new, old in enumerate(selected_ao_indices)}
 
-            # 5) Pick only the primitives whose orbital_indices appear in selected_ao_indices
+            # 9) Filter primitives: keep those whose orbital_indices appear in the new AO set
             new_prims = [p for p, orb in enumerate(aos_data.orbital_indices) if orb in new_idx_map]
 
-            # 6) Reconstruct all common fields for the new AOs data
+            # 10) Reconstruct all common dataclass fields for the new AO object
             new_orbital_indices = [new_idx_map[aos_data.orbital_indices[p]] for p in new_prims]
             new_exponents = [aos_data.exponents[p] for p in new_prims]
             new_coefficients = [aos_data.coefficients[p] for p in new_prims]
             new_nucleus_index = [aos_data.nucleus_index[i] for i in selected_ao_indices]
             new_angular_momentums = [aos_data.angular_momentums[i] for i in selected_ao_indices]
 
-            # 7) Reconstruct the class-specific fields
+            # 11) Reconstruct class-specific fields depending on data type
             if isinstance(aos_data, AOs_cart_data):
-                # Cartesian case
                 new_polynominal_order_x = [aos_data.polynominal_order_x[i] for i in selected_ao_indices]
                 new_polynominal_order_y = [aos_data.polynominal_order_y[i] for i in selected_ao_indices]
                 new_polynominal_order_z = [aos_data.polynominal_order_z[i] for i in selected_ao_indices]
             elif isinstance(aos_data, AOs_sphe_data):
-                # Spherical case
                 new_magnetic_quantum_numbers = [aos_data.magnetic_quantum_numbers[i] for i in selected_ao_indices]
             else:
                 raise ImportError(f"Invalid AOs data type: {type(aos_data)}")
-            # 8) Build kwargs for the new dataclass instance
+
+            # 12) Assemble keyword arguments for the new dataclass constructor
             common_kwargs = {
                 "structure_data": aos_data.structure_data,
                 "nucleus_index": new_nucleus_index,
@@ -212,7 +237,6 @@ def trexio_convert_to(
                 "angular_momentums": new_angular_momentums,
             }
 
-            # 9) Attach the extra fields depending on the type
             if isinstance(aos_data, AOs_cart_data):
                 common_kwargs.update(
                     {
@@ -221,15 +245,11 @@ def trexio_convert_to(
                         "polynominal_order_z": new_polynominal_order_z,
                     }
                 )
-            elif isinstance(aos_data, AOs_sphe_data):
-                common_kwargs["magnetic_quantum_numbers"] = new_magnetic_quantum_numbers
             else:
-                raise ImportError(f"Invalid AOs data type: {type(aos_data)}")
+                common_kwargs["magnetic_quantum_numbers"] = new_magnetic_quantum_numbers
 
-            # 10) Finally, construct the new AOs instance of the same class as the input
+            # 13) Construct a new instance of the same class with trimmed AO basis
             aos_data = type(aos_data)(**common_kwargs)
-
-            print(aos_data)
 
             jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
         elif j3_basis_type == "mo":
@@ -276,6 +296,7 @@ def hamiltonian_show_info(
     """Show information stored in the Hamiltonian data."""
     with open(hamiltonian_data, "rb") as f:
         hamiltonian = pickle.load(f)
+        hamiltonian.sanity_check()
         for line in hamiltonian.get_info():
             typer.echo(line)
 

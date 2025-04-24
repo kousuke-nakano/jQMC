@@ -58,6 +58,10 @@ logger = getLogger("jqmc").getChild(__name__)
 # JAX float64
 jax.config.update("jax_enable_x64", True)
 
+# Tolerances for comparing float values
+rtol = 1e-6
+atol = 1e-8
+
 
 @struct.dataclass
 class AOs_cart_data:
@@ -134,15 +138,178 @@ class AOs_cart_data:
         if len(self.polynominal_order_z) != self.num_ao:
             logger.error("dim. of self.polynominal_order_z is wrong")
             raise ValueError
+
+        # Assert that, for each nucleus_index:
+        # 1) primitives are clustered by (exp, coef, l) within tol,
+        # 2) each cluster contains (l+2)(l+1)/2 primitives,
+        # 3) all combinations of nx+ny+nz = l are present.
+        primitive_info = []
+        for prim_idx, ao_idx in enumerate(self.orbital_indices):
+            # validate ao_idx range
+            if not (0 <= ao_idx < self.num_ao):
+                logger.error(f"Primitive {prim_idx}: AO index {ao_idx} out of range [0, {self.num_ao})")
+                raise ValueError
+            Z = self.exponents[prim_idx]
+            coeff = self.coefficients[prim_idx]
+            l = self.angular_momentums[ao_idx]
+            nx = self.polynominal_order_x[ao_idx]
+            ny = self.polynominal_order_y[ao_idx]
+            nz = self.polynominal_order_z[ao_idx]
+
+            # Consider the normalization factor
+            fact_term = (scipy.special.factorial(nx) * scipy.special.factorial(ny) * scipy.special.factorial(nz)) / (
+                scipy.special.factorial(2 * nx) * scipy.special.factorial(2 * ny) * scipy.special.factorial(2 * nz)
+            )
+            z_term = (2.0 * Z / np.pi) ** (3.0 / 2.0) * (8.0 * Z) ** l
+            Norm = np.sqrt(fact_term * z_term)  # both are ok, but it is better to use the one which is used below (get_info()).
+            Norm = np.sqrt(fact_term)  # both are ok, but it is better to use the one which is used below (get_info()).
+            coeff = coeff * Norm
+
+            info = {
+                "prim_index": prim_idx,
+                "ao_index": ao_idx,
+                "exponent": Z,
+                "coefficient": coeff,
+                "l": l,
+                "nx": nx,
+                "ny": ny,
+                "nz": nz,
+            }
+            primitive_info.append(info)
+
+        # 1) Attach nucleus index to each info entry
+        for info in primitive_info:
+            ao_idx = info["ao_index"]
+            info["nucleus"] = self.nucleus_index[ao_idx]
+
+        # 2) Process primitives for each nucleus
+        for nucleus in set(self.nucleus_index):
+            infos_nuc = [info for info in primitive_info if info["nucleus"] == nucleus]
+            if not infos_nuc:
+                continue  # skip if no primitives for this nucleus
+
+            # --- Clustering based on (exp, coef, l) within tolerance ---
+            # each entry in clusters is [cluster_exp, cluster_coef, l, [infos list]]
+            clusters = []
+            for info in infos_nuc:
+                exp, coef, l = info["exponent"], info["coefficient"], info["l"]
+                # search for a matching existing cluster
+                for c_exp, c_coef, c_l, c_infos in clusters:
+                    if (
+                        c_l == l
+                        and np.isclose(exp, c_exp, atol=atol, rtol=rtol)
+                        and np.isclose(coef, c_coef, atol=atol, rtol=rtol)
+                    ):
+                        c_infos.append(info)
+                        break
+                else:
+                    # create a new cluster
+                    clusters.append([exp, coef, l, [info]])
+
+            # --- Check each cluster ---
+            for c_exp, c_coef, l, c_infos in clusters:
+                expected_count = (l + 2) * (l + 1) // 2
+                actual_coords = {(i["nx"], i["ny"], i["nz"]) for i in c_infos}
+                expected_coords = {(nx, ny, l - nx - ny) for nx in range(l + 1) for ny in range(l + 1 - nx)}
+
+                # 3.1 Count check
+                if len(c_infos) != expected_count:
+                    logger.error(
+                        f"[nucleus={nucleus}] "
+                        f"(exp={c_exp:.5g}, coef={c_coef:.5g}, l={l}): "
+                        f"found {len(c_infos)}, expected {expected_count}"
+                    )
+                    raise ValueError
+
+                # 3.2 Coverage check
+                missing = expected_coords - actual_coords
+                extra = actual_coords - expected_coords
+                if len(missing) != 0 or len(extra) != 0:
+                    logger.error(
+                        f"[nucleus={nucleus}] "
+                        f"(exp={c_exp:.5g}, coef={c_coef:.5g}, l={l}):\n"
+                        f"  missing combos:   {missing}\n"
+                        f"  unexpected combos:{extra}"
+                    )
+                    raise ValueError
+
         self.structure_data.sanity_check()
 
     def get_info(self) -> list[str]:
         """Return a list of strings containing information about the class attributes."""
         info_lines = []
-        info_lines.extend(["**" + self.__class__.__name__])
-        info_lines.extend([f"  Number of AOs = {self.num_ao}"])
-        info_lines.extend([f"  Number of primitive AOs = {self.num_ao_prim}"])
-        info_lines.extend(["  Angular part is the polynominal (cartesian) function."])
+        info_lines.append(f"**{self.__class__.__name__}**")
+        info_lines.append(f"  Number of AOs = {self.num_ao}")
+        info_lines.append(f"  Number of primitive AOs = {self.num_ao_prim}")
+        info_lines.append("  Angular part is the polynomial (Cartesian) function.")
+
+        # Map angular momentum quantum number to NWChem shell label
+        l_map = {0: "s", 1: "p", 2: "d", 3: "f", 4: "g", 5: "h", 6: "i"}
+
+        # Build mapping from AO index to its list of primitive indices
+        prim_per_ao = {}
+        for prim_idx, ao_idx in enumerate(self.orbital_indices):
+            prim_per_ao.setdefault(ao_idx, []).append(prim_idx)
+
+        # Build mapping from atom index to its list of AO indices
+        ao_per_atom = {}
+        for ao_idx, atom_idx in enumerate(self.nucleus_index):
+            ao_per_atom.setdefault(atom_idx, []).append(ao_idx)
+
+        # Loop over atoms in sorted order
+        for atom_idx in sorted(ao_per_atom):
+            symbol = self.structure_data.atomic_labels[atom_idx]
+            info_lines.append("  " + "-" * 36)
+            info_lines.append(f"  **basis set for atom index {atom_idx + 1}: {symbol}**")
+            info_lines.append("  " + "-" * 36)
+
+            # Collect unique shells with approximate comparison
+            shell_groups = []
+
+            for ao_idx in ao_per_atom[atom_idx]:
+                prim_idxs = prim_per_ao.get(ao_idx, [])
+                nx = self.polynominal_order_x[ao_idx]
+                ny = self.polynominal_order_y[ao_idx]
+                nz = self.polynominal_order_z[ao_idx]
+                l = self.angular_momentums[ao_idx]
+
+                # Recover original coefficients and build (exp, coef) pairs
+                ec_pairs = []
+                for prim_idx in prim_idxs:
+                    Z = self.exponents[prim_idx]
+                    stored_coef = self.coefficients[prim_idx]
+                    # Consider the normalization factor
+                    fact_term = (scipy.special.factorial(nx) * scipy.special.factorial(ny) * scipy.special.factorial(nz)) / (
+                        scipy.special.factorial(2 * nx) * scipy.special.factorial(2 * ny) * scipy.special.factorial(2 * nz)
+                    )
+                    z_term = (2.0 * Z / np.pi) ** (3.0 / 2.0) * (8.0 * Z) ** l
+                    Norm = np.sqrt(fact_term * z_term)  # which is better for its output?? Todo.
+                    Norm = np.sqrt(fact_term)  # which is better for its output?? Todo.
+                    orig_coef = stored_coef * Norm
+                    ec_pairs.append((Z, orig_coef))
+
+                # Attempt to match existing group within tolerance
+                matched = False
+                for existing_ec, _ in shell_groups:
+                    if len(existing_ec) == len(ec_pairs):
+                        exps1, coefs1 = zip(*existing_ec)
+                        exps2, coefs2 = zip(*ec_pairs)
+                        if np.allclose(exps1, exps2, rtol=rtol, atol=atol) and np.allclose(
+                            coefs1, coefs2, rtol=rtol, atol=atol
+                        ):
+                            matched = True
+                            break
+                if not matched:
+                    shell_groups.append((ec_pairs, ao_idx))
+
+            # Output one entry per unique shell
+            for ec_pairs, rep_ao_idx in shell_groups:
+                l = self.angular_momentums[rep_ao_idx]
+                shell_label = l_map.get(l, "l > i")
+                info_lines.append(f"  {symbol} {shell_label}")
+                for Z, coef in ec_pairs:
+                    info_lines.append(f"    {Z:.6f} {coef:.7f}")
+
         return info_lines
 
     def logger_info(self) -> None:
@@ -503,6 +670,86 @@ class AOs_sphe_data:
         if len(self.magnetic_quantum_numbers) != self.num_ao:
             logger.error("dim. of self.magnetic_quantum_numbers is wrong")
             raise ValueError
+
+        # For each nucleus_index:
+        # 1) cluster primitives by (exponent, coefficient, l) within tol,
+        # 2) assert each cluster has exactly 2*l+1 entries,
+        # 3) assert m covers all integers from -l to +l.
+        primitive_info = []
+        for prim_idx, ao_idx in enumerate(self.orbital_indices):
+            # validate AO index
+            if not (0 <= ao_idx < self.num_ao):
+                logger.error(f"Primitive {prim_idx}: AO index {ao_idx} out of range [0, {self.num_ao})")
+                raise ValueError(f"AO index {ao_idx} out of range")
+            exp = self.exponents[prim_idx]
+            coef = self.coefficients[prim_idx]
+            l = self.angular_momentums[ao_idx]
+            m = self.magnetic_quantum_numbers[ao_idx]
+            primitive_info.append(
+                {
+                    "prim_index": prim_idx,
+                    "ao_index": ao_idx,
+                    "exponent": exp,
+                    "coefficient": coef,
+                    "l": l,
+                    "m": m,
+                }
+            )
+
+        # 2) attach nucleus to each primitive
+        for info in primitive_info:
+            ao_idx = info["ao_index"]
+            info["nucleus"] = self.nucleus_index[ao_idx]
+
+        # 3) loop over each nucleus
+        for nucleus in set(self.nucleus_index):
+            infos_nuc = [info for info in primitive_info if info["nucleus"] == nucleus]
+            if not infos_nuc:
+                continue  # nothing to check for this nucleus
+
+            # --- cluster by (exp, coef, l) ---
+            clusters: list[list] = []
+            for info in infos_nuc:
+                exp, coef, l = info["exponent"], info["coefficient"], info["l"]
+                for c_exp, c_coef, c_l, c_infos in clusters:
+                    if (
+                        c_l == l
+                        and np.isclose(exp, c_exp, atol=atol, rtol=rtol)
+                        and np.isclose(coef, c_coef, atol=atol, rtol=rtol)
+                    ):
+                        c_infos.append(info)
+                        break
+                else:
+                    # no matching cluster → create new
+                    clusters.append([exp, coef, l, [info]])
+
+            # --- validate each cluster ---
+            for c_exp, c_coef, l, c_infos in clusters:
+                expected_count = 2 * l + 1
+                actual_ms = {i["m"] for i in c_infos}
+                expected_ms = set(range(-l, l + 1))
+
+                # 3.1 count check
+                if len(c_infos) != expected_count:
+                    logger.error(
+                        f"[nucleus={nucleus}] "
+                        f"(exp≈{c_exp:.5g}, coef≈{c_coef:.5g}, l={l}): "
+                        f"found {len(c_infos)} entries, expected {expected_count}"
+                    )
+                    raise ValueError(f"Spherical completeness count failed for nucleus {nucleus}")
+
+                # 3.2 coverage check
+                missing = expected_ms - actual_ms
+                extra = actual_ms - expected_ms
+                if missing or extra:
+                    logger.error(
+                        f"[nucleus={nucleus}] "
+                        f"(exp≈{c_exp:.5g}, coef≈{c_coef:.5g}, l={l}):\n"
+                        f"  missing m-values:   {sorted(missing)}\n"
+                        f"  unexpected m-values:{sorted(extra)}"
+                    )
+                    raise ValueError(f"Spherical completeness m-coverage failed for nucleus {nucleus}")
+
         self.structure_data.sanity_check()
 
     def get_info(self) -> list[str]:
@@ -512,6 +759,72 @@ class AOs_sphe_data:
         info_lines.extend([f"  Number of AOs = {self.num_ao}"])
         info_lines.extend([f"  Number of primitive AOs = {self.num_ao_prim}"])
         info_lines.extend(["  Angular part is the real spherical (solid) Harmonics."])
+
+        # Map angular momentum quantum number to NWChem shell label
+        l_map = {0: "s", 1: "p", 2: "d", 3: "f", 4: "g", 5: "h", 6: "i"}
+
+        # Build mapping from AO index to its list of primitive indices
+        prim_per_ao: dict[int, list[int]] = {}
+        for prim_idx, ao_idx in enumerate(self.orbital_indices):
+            prim_per_ao.setdefault(ao_idx, []).append(prim_idx)
+
+        # Build mapping from atom index to its list of AO indices
+        ao_per_atom: dict[int, list[int]] = {}
+        for ao_idx, atom_idx in enumerate(self.nucleus_index):
+            ao_per_atom.setdefault(atom_idx, []).append(ao_idx)
+
+        # Loop over atoms in sorted order
+        for atom_idx in sorted(ao_per_atom):
+            symbol = self.structure_data.atomic_labels[atom_idx]
+            info_lines.append("  " + "-" * 36)
+            info_lines.append(f"  **basis set for atom index {atom_idx + 1}: {symbol}**")
+            info_lines.append("  " + "-" * 36)
+
+            # Collect unique shells with approximate comparison
+            shell_groups: list[tuple[list[tuple[float, float]], int]] = []
+
+            for ao_idx in ao_per_atom[atom_idx]:
+                prim_idxs = prim_per_ao.get(ao_idx, [])
+                l = self.angular_momentums[ao_idx]
+
+                # Recover original coefficients and build (exp, coef) pairs
+                ec_pairs = []
+                for prim_idx in prim_idxs:
+                    Z = self.exponents[prim_idx]
+                    stored_coef = self.coefficients[prim_idx]
+                    # consider the normalization factor
+                    N_l_m = np.sqrt((2 * l + 1) / (4 * np.pi))
+                    N_n = np.sqrt(
+                        (2.0 ** (2 * l + 3) * scipy.special.factorial(l + 1) * (2 * Z) ** (l + 1.5))
+                        / (scipy.special.factorial(2 * l + 2) * np.sqrt(np.pi))
+                    )
+                    Norm = N_l_m * N_n  # which is better for its output? Todo.
+                    Norm = 1  # which is better for its output? Todo.
+                    orig_coef = stored_coef * Norm
+                    ec_pairs.append((Z, orig_coef))
+
+                # Attempt to match existing group within tolerance
+                matched = False
+                for existing_ec, _ in shell_groups:
+                    if len(existing_ec) == len(ec_pairs):
+                        exps1, coefs1 = zip(*existing_ec)
+                        exps2, coefs2 = zip(*ec_pairs)
+                        if np.allclose(exps1, exps2, rtol=rtol, atol=atol) and np.allclose(
+                            coefs1, coefs2, rtol=rtol, atol=atol
+                        ):
+                            matched = True
+                            break
+                if not matched:
+                    shell_groups.append((ec_pairs, ao_idx))
+
+            # Output one entry per unique shell
+            for ec_pairs, rep_ao_idx in shell_groups:
+                l = self.angular_momentums[rep_ao_idx]
+                shell_label = l_map.get(l, "l > i")
+                info_lines.append(f"  {symbol} {shell_label}")
+                for Z, coef in ec_pairs:
+                    info_lines.append(f"    {Z:.6f} {coef:.7f}")
+
         return info_lines
 
     def logger_info(self) -> None:

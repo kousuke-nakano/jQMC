@@ -103,6 +103,7 @@ class MOs_data:
         info_lines = []
         info_lines.append("**" + self.__class__.__name__)
         info_lines.append(f"  Number of MOs = {self.num_mo}")
+        info_lines.append(f"  dim. of MOs coeff = {self.mo_coefficients.shape}")
         # Replace aos_data.logger_info() with aos_data.get_info() output.
         info_lines.extend(self.aos_data.get_info())
         return info_lines
