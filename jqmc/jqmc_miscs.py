@@ -87,8 +87,8 @@ cli_parameters = {
         "opt_J3_param": True,
         "opt_lambda_param": False,
         "num_param_opt": 0,
-        "cg_flag": False,
-        "cg_max_iter": 10e4,
+        "cg_flag": True,
+        "cg_max_iter": 10000,
         "cg_tol": 1e-4,
     },
     "vmcopt_comments": {
