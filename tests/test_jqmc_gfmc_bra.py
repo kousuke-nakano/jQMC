@@ -37,20 +37,26 @@ import pickle
 
 import jax
 import numpy as np
+from mpi4py import MPI
 
 from ..jqmc.hamiltonians import Hamiltonian_data
-from ..jqmc.jqmc_kernel import MCMC
-from ..jqmc.jqmc_mcmc import MCMC_debug
+from ..jqmc.jqmc_gfmc import GFMC_fixed_num_projection_debug
+from ..jqmc.jqmc_kernel import GFMC_fixed_num_projection
 from ..jqmc.trexio_wrapper import read_trexio_file
 from ..jqmc.wavefunction import Wavefunction_data
+
+# MPI related
+mpi_comm = MPI.COMM_WORLD
+mpi_rank = mpi_comm.Get_rank()
+mpi_size = mpi_comm.Get_size()
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
 
-def test_jqmc_mcmc():
-    """Test comparison with the corresponding ECP TurboRVB calculation with 2b,1b3b Jastrow factor."""
+def test_jqmc_gfmc_fixed_number_of_branching_tmove():
+    """LRDMC with tmove non-local move."""
     (
         structure_data,
         _,
@@ -77,49 +83,57 @@ def test_jqmc_mcmc():
     )
     hamiltonian_data.sanity_check()
 
-    num_walkers = 4
-    num_mcmc_steps = 20
-    mcmc_seed = 34356
-    Dt = 2.0
-    epsilon_AS = 1.0e-6
+    # GFMC param
+    num_mcmc_steps = 10
+    num_walkers = 3
+    mcmc_seed = 3446
+    E_scf = -17.00
+    alat = 0.30
+    num_mcmc_per_measurement = 10
+    num_gfmc_collect_steps = 2
+    non_local_move = "tmove"
 
-    # run VMC single-shot
-    mcmc_debug = MCMC_debug(
+    # run LRDMC single-shots
+    gfmc_debug = GFMC_fixed_num_projection_debug(
         hamiltonian_data=hamiltonian_data,
-        Dt=Dt,
-        mcmc_seed=mcmc_seed,
-        epsilon_AS=epsilon_AS,
         num_walkers=num_walkers,
-        comput_position_deriv=False,
-        comput_param_deriv=False,
+        num_mcmc_per_measurement=num_mcmc_per_measurement,
+        num_gfmc_collect_steps=num_gfmc_collect_steps,
+        mcmc_seed=mcmc_seed,
+        E_scf=E_scf,
+        alat=alat,
+        non_local_move=non_local_move,
     )
-    mcmc_debug.run(num_mcmc_steps=num_mcmc_steps)
+    gfmc_debug.run(num_mcmc_steps=num_mcmc_steps)
 
-    mcmc_jax = MCMC(
+    # run LRDMC single-shots
+    gfmc_jax = GFMC_fixed_num_projection(
         hamiltonian_data=hamiltonian_data,
-        Dt=Dt,
-        mcmc_seed=mcmc_seed,
-        epsilon_AS=epsilon_AS,
         num_walkers=num_walkers,
-        comput_position_deriv=False,
-        comput_param_deriv=False,
+        num_mcmc_per_measurement=num_mcmc_per_measurement,
+        num_gfmc_collect_steps=num_gfmc_collect_steps,
+        mcmc_seed=mcmc_seed,
+        E_scf=E_scf,
+        alat=alat,
+        non_local_move=non_local_move,
     )
-    mcmc_jax.run(num_mcmc_steps=num_mcmc_steps)
+    gfmc_jax.run(num_mcmc_steps=num_mcmc_steps)
 
-    # w_L
-    w_L_debug = mcmc_debug.w_L
-    w_L_jax = mcmc_jax.w_L
-    np.testing.assert_array_almost_equal(w_L_debug, w_L_jax, decimal=6)
+    if mpi_rank == 0:
+        # w_L
+        w_L_debug = gfmc_debug.w_L
+        w_L_jax = gfmc_jax.w_L
+        np.testing.assert_array_almost_equal(w_L_debug, w_L_jax, decimal=6)
 
-    # e_L
-    e_L_debug = mcmc_debug.e_L
-    e_L_jax = mcmc_jax.e_L
-    np.testing.assert_array_almost_equal(e_L_debug, e_L_jax, decimal=6)
+        # e_L
+        e_L_debug = gfmc_debug.e_L
+        e_L_jax = gfmc_jax.e_L
+        np.testing.assert_array_almost_equal(e_L_debug, e_L_jax, decimal=6)
 
-    # e_L2
-    e_L2_debug = mcmc_debug.e_L2
-    e_L2_jax = mcmc_jax.e_L2
-    np.testing.assert_array_almost_equal(e_L2_debug, e_L2_jax, decimal=6)
+        # e_L2
+        e_L2_debug = gfmc_debug.e_L2
+        e_L2_jax = gfmc_jax.e_L2
+        np.testing.assert_array_almost_equal(e_L2_debug, e_L2_jax, decimal=6)
 
     jax.clear_caches()
 
