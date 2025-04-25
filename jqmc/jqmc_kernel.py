@@ -3795,6 +3795,7 @@ class GFMC_fixed_num_projection:
             #########################################
             # 1. Gather only the weights to MPI_rank=0 and perform branching calculation
             #########################################
+            start = time.perf_counter()
             # Each process computes the sum of its local walker weights.
             local_weight_sum = np.sum(w_L_latest)
 
@@ -3844,11 +3845,13 @@ class GFMC_fixed_num_projection:
                 (src_global_idx // self.num_walkers, src_global_idx % self.num_walkers)
                 for src_global_idx in local_chosen_indices
             ]
+            end = time.perf_counter()
+            logger.debug(f"step 1 = {(end - start) * 10e3} msec.")
 
             #########################################
             # 2. In each process, prepare for data exchange based on the new walker selection
             #########################################
-
+            start = time.perf_counter()
             latest_r_up_carts_after_branching = np.empty_like(latest_r_up_carts_before_branching)
             latest_r_dn_carts_after_branching = np.empty_like(latest_r_dn_carts_before_branching)
 
@@ -3860,26 +3863,78 @@ class GFMC_fixed_num_projection:
                     latest_r_dn_carts_after_branching[dest_idx] = latest_r_dn_carts_before_branching[src_local_idx]
                 else:
                     reqs.setdefault(src_rank, []).append((dest_idx, src_local_idx))
+            end = time.perf_counter()
+            logger.debug(f"step 2 = {(end - start) * 10e3} msec.")
 
             #########################################
             # 3. Exchange only the necessary walker data between processes using asynchronous communication
             #########################################
+            start = time.perf_counter()
+            # --- 3-1. Encode reqs as flat arrays and exchange via Allgather/Allgatherv ---
+            # Flatten local requests into arrays
+            src_ranks = []
+            dest_indices = []
+            src_local_indices = []
+            for src_rank, pairs in reqs.items():
+                for dest_idx, src_local_idx in pairs:
+                    src_ranks.append(src_rank)
+                    dest_indices.append(dest_idx)
+                    src_local_indices.append(src_local_idx)
 
-            # 3-1. Gather the request dictionaries from all processes (pickle-based).
-            all_reqs = mpi_comm.allgather(reqs)
+            src_ranks = np.array(src_ranks, dtype=np.int32)
+            dest_indices = np.array(dest_indices, dtype=np.int32)
+            src_local_indices = np.array(src_local_indices, dtype=np.int32)
 
-            # Filter out empty request dictionaries.
-            non_empty_all_reqs = [(p, proc_req) for p, proc_req in enumerate(all_reqs) if proc_req]
+            # 1) Gather counts
+            local_count = np.array([len(src_ranks)], dtype=np.int32)
+            all_counts = np.empty(mpi_size, dtype=np.int32)
+            mpi_comm.Allgather([local_count, MPI.INT], [all_counts, MPI.INT])
 
-            # 3-2. Build incoming_reqs: who needs data from me?
+            # 2) Compute displacements for Allgatherv
+            displs = np.insert(np.cumsum(all_counts), 0, 0)[:-1]
+            total_count = int(np.sum(all_counts))
+
+            # 3) Allocate global arrays
+            global_src_ranks = np.empty(total_count, dtype=np.int32)
+            global_dest_indices = np.empty(total_count, dtype=np.int32)
+            global_src_local_idxs = np.empty(total_count, dtype=np.int32)
+
+            # 4) Allgatherv each flat array
+            mpi_comm.Allgatherv([src_ranks, MPI.INT], [global_src_ranks, (all_counts, displs), MPI.INT])
+            mpi_comm.Allgatherv([dest_indices, MPI.INT], [global_dest_indices, (all_counts, displs), MPI.INT])
+            mpi_comm.Allgatherv([src_local_indices, MPI.INT], [global_src_local_idxs, (all_counts, displs), MPI.INT])
+
+            # 5) Reconstruct all_reqs as list of dicts
+            all_reqs = []
+            for p in range(mpi_size):
+                start = displs[p]
+                end = start + int(all_counts[p])
+                proc_dict = {}
+                for i in range(start, end):
+                    sr = int(global_src_ranks[i])
+                    di = int(global_dest_indices[i])
+                    sli = int(global_src_local_idxs[i])
+                    proc_dict.setdefault(sr, []).append((di, sli))
+                all_reqs.append(proc_dict)
+
+            # Filter out empty request dicts
+            non_empty_all_reqs = [(p, req_dict) for p, req_dict in enumerate(all_reqs) if req_dict]
+            end = time.perf_counter()
+            logger.debug(f"step 3.1 = {(end - start) * 10e3} msec.")
+
+            # --- 3-2. Build incoming_reqs: who needs data from me? ---
+            start = time.perf_counter()
             incoming_reqs = [
                 (p, src_local_idx, dest_idx)
                 for p, proc_req in non_empty_all_reqs
                 if p != mpi_rank
                 for dest_idx, src_local_idx in proc_req.get(mpi_rank, [])
             ]
+            end = time.perf_counter()
+            logger.debug(f"step 3.2 = {(end - start) * 10e3} msec.")
 
-            # 3-3. Post nonblocking receives using Irecv for both up and dn buffers.
+            # --- 3-3. Post nonblocking receives using Irecv for both up and dn buffers. ---
+            start = time.perf_counter()
             recv_buffers = {}
             recv_reqs_up = {}
             recv_reqs_dn = {}
@@ -3893,8 +3948,11 @@ class GFMC_fixed_num_projection:
                 recv_buffers[src_rank] = (buf_up, buf_dn)
                 recv_reqs_up[src_rank] = mpi_comm.Irecv([buf_up, MPI.DOUBLE], source=src_rank, tag=200)
                 recv_reqs_dn[src_rank] = mpi_comm.Irecv([buf_dn, MPI.DOUBLE], source=src_rank, tag=201)
+            end = time.perf_counter()
+            logger.debug(f"step 3.3 = {(end - start) * 10e3} msec.")
 
-            # 3-4. Prepare and post nonblocking sends using Isend.
+            # --- 3-4. Prepare and post nonblocking sends using Isend. ---
+            start = time.perf_counter()
             send_requests = []
             for dest_rank, group in groupby(sorted(incoming_reqs, key=lambda x: x[0]), key=lambda x: x[0]):
                 idxs = [src_local for (_, src_local, _) in group]
@@ -3902,21 +3960,28 @@ class GFMC_fixed_num_projection:
                 buf_dn = latest_r_dn_carts_before_branching[idxs]
                 send_requests.append(mpi_comm.Isend([buf_up, MPI.DOUBLE], dest=dest_rank, tag=200))
                 send_requests.append(mpi_comm.Isend([buf_dn, MPI.DOUBLE], dest=dest_rank, tag=201))
+            end = time.perf_counter()
+            logger.debug(f"step 3.4 = {(end - start) * 10e3} msec.")
 
-            # 3-5. Wait for all nonblocking sends to complete.
+            # --- 3-5. Wait for all nonblocking sends to complete. ---
+            start = time.perf_counter()
             MPI.Request.Waitall(send_requests)
+            end = time.perf_counter()
+            logger.debug(f"step 3.5 = {(end - start) * 10e3} msec.")
 
-            # 3-6. Process the received walker data.
+            # --- 3-6. Process the received walker data. ---
+            start = time.perf_counter()
             for src_rank, req_list in reqs.items():
                 if not req_list:
                     continue
-                # Wait for both up and dn receives
                 recv_reqs_up[src_rank].Wait()
                 recv_reqs_dn[src_rank].Wait()
                 buf_up, buf_dn = recv_buffers[src_rank]
-                dest_indices = [dest for (dest, _) in req_list]
-                latest_r_up_carts_after_branching[dest_indices] = buf_up
-                latest_r_dn_carts_after_branching[dest_indices] = buf_dn
+                dest_idxs = [dest for (dest, _) in req_list]
+                latest_r_up_carts_after_branching[dest_idxs] = buf_up
+                latest_r_dn_carts_after_branching[dest_idxs] = buf_dn
+            end = time.perf_counter()
+            logger.debug(f"step 3.6 = {(end - start) * 10e3} msec.")
 
             # here update the walker positions!!
             self.__num_survived_walkers += num_survived_walkers
