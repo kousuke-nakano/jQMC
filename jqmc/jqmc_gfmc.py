@@ -646,13 +646,6 @@ class GFMC_fixed_projection_time_debug:
 
             logger.debug("  Projection ends.")
 
-            # random number for the later use
-            if mpi_rank == 0:
-                zeta = float(np.random.random())
-            else:
-                zeta = None
-            zeta = mpi_comm.bcast(zeta, root=0)
-
             # jnp.array -> np.array
             w_L_latest = np.array(w_L_list)
             e_L_latest = np.array(e_L_list)
@@ -680,6 +673,7 @@ class GFMC_fixed_projection_time_debug:
             ave_projection_counter_gathered = mpi_comm.gather(ave_projection_counter, root=0)
 
             if mpi_rank == 0:
+                zeta = float(np.random.random())
                 r_up_carts_gathered_dict = dict(r_up_carts_gathered_dyad)
                 r_dn_carts_gathered_dict = dict(r_dn_carts_gathered_dyad)
                 e_L_gathered_dict = dict(e_L_gathered_dyad)
@@ -1040,7 +1034,7 @@ class GFMC_fixed_num_projection_debug:
         """Return the flag for computing the derivatives of E wrt. atomic positions."""
         return self.__comput_position_deriv
 
-    def run(self, num_mcmc_steps: int = 50, max_time: int = 86400) -> None:
+    def run(self, num_mcmc_steps: int = 50) -> None:
         """Run LRDMC with multiple walkers.
 
         Args:
@@ -1724,12 +1718,6 @@ class GFMC_fixed_num_projection_debug:
                     self.__latest_r_dn_carts,
                 )
 
-            if mpi_rank == 0:
-                zeta = float(np.random.random())
-            else:
-                zeta = None
-            zeta = mpi_comm.bcast(zeta, root=0)
-
             # jnp.array -> np.array
             w_L_latest = np.array(w_L_list)
             e_L_latest = np.array(e_L_list)
@@ -1892,6 +1880,7 @@ class GFMC_fixed_num_projection_debug:
                 logger.devel(f"probabilities = {probabilities}")
 
                 # correlated choice (see Sandro's textbook, page 182)
+                zeta = float(np.random.random())
                 z_list = [(alpha + zeta) / len(probabilities) for alpha in range(len(probabilities))]
                 logger.devel(f"z_list = {z_list}")
                 cumulative_prob = np.cumsum(probabilities)
