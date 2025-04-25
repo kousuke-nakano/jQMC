@@ -39,7 +39,6 @@ import jax
 import numpy as np
 
 from ..jqmc.hamiltonians import Hamiltonian_data
-from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data
 from ..jqmc.jqmc_kernel import MCMC
 from ..jqmc.jqmc_mcmc import MCMC_debug
 from ..jqmc.trexio_wrapper import read_trexio_file

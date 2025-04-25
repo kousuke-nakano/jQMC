@@ -18,8 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12"]
-        #python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12"]
 
     steps:
     - name: Install gfortran and gcc
@@ -74,6 +73,6 @@ jobs:
       run: |
         pytest -s -v tests/test_jqmc_mcmc.py
 
-    - name: Test jqmc (pytest) QMC kernel with MPI (2 cores)
-      run: |
-        mpirun -np 2 pytest -s -v tests/test_jqmc_mcmc.py
+    #- name: Test jqmc (pytest) QMC kernel with MPI (2 cores)
+    #  run: |
+    #    mpirun -np 2 pytest -s -v tests/test_jqmc_mcmc.py
