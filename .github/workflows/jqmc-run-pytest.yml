@@ -68,3 +68,11 @@ jobs:
       run: |
         pytest -s -v tests/test_comparison_with_turborvb_ECP.py --disable-jit
         pytest -s -v tests/test_comparison_with_turborvb_AE.py --disable-jit
+
+    - name: Test jqmc (pytest) QMC kernel without MPI
+      run: |
+        pytest -s -v tests/test_jqmc_mcmc.py
+
+    - name: Test jqmc (pytest) QMC kernel with MPI (2 cores)
+      run: |
+        mpirun -np 2 pytest -s -v tests/test_jqmc_mcmc.py
