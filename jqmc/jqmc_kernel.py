@@ -3910,23 +3910,31 @@ class GFMC_fixed_num_projection:
             # Build only local z-array (length = self.num_walkers)
             z_local = (np.arange(start_idx, end_idx) + zeta) / total_walkers
 
-            # Each rank finds chosen global indices for its z_local
-            local_chosen_indices = np.searchsorted(global_cumprob, z_local)
+            # Perform searchsorted and cast the result to int32
+            local_chosen_indices = np.searchsorted(global_cumprob, z_local).astype(np.int32)
             end_ = time.perf_counter()
             logger.debug(f"    reconfig: step 1.4 = {(end_ - start_) * 1e3:.3f} msec.")
 
+            # Gather all local_chosen_indices across ranks using MPI.INT
             start_ = time.perf_counter()
-            # Gather all local_chosen_indices to compute global stats
-            all_chosen = mpi_comm.allgather(local_chosen_indices)
-            chosen_walker_indices = np.concatenate(all_chosen)
-            num_survived_walkers = len(set(chosen_walker_indices))
+
+            # Allocate buffer to receive all ranks' indices (Number of indices per rank is identical on every rank)
+            all_chosen_buf = np.empty(self.num_walkers * mpi_size, dtype=np.int32)
+
+            # Perform the all-gather operation with 32-bit integers
+            mpi_comm.Allgather([local_chosen_indices, MPI.INT], [all_chosen_buf, MPI.INT])
+
+            # Use the gathered indices for global statistics
+            chosen_walker_indices = all_chosen_buf
+            num_survived_walkers = len(np.unique(chosen_walker_indices))
             num_killed_walkers = total_walkers - num_survived_walkers
 
-            # Build local_assignment: list of (src_rank, src_local_idx) for this rank
+            # Build the local assignment list of (source_rank, source_local_index)
             local_assignment = [
                 (src_global_idx // self.num_walkers, src_global_idx % self.num_walkers)
                 for src_global_idx in local_chosen_indices
             ]
+
             end_ = time.perf_counter()
             logger.debug(f"    reconfig: step 1.5 = {(end_ - start_) * 1e3:.3f} msec.")
 
