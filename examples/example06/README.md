@@ -57,14 +57,14 @@ Launch it on a terminal. You may get `E = -34.3124355699676 Ha` [Hartree-Forck].
 Next step is to convert the `TREXIO` file to the `jqmc` format using `jqmc-tool`
 
 ```bash
-% jqmc-tool trexio convert-to water_dimer.h5 -j2 1.0 -j3 ao
+% jqmc-tool trexio convert-to water_dimer.h5 -j2 1.0 -j3 ao-medium
 > Hamiltonian data is saved in hamiltonian_data.chk.
 ```
 
-The generated `hamiltonian_data.chk` is a wavefunction file with the `jqmc` format. `-j2` specifies the initial value of the two-body Jastrow parameter and `-j3` specifies the basis set (`ao`:atomic orbital or `mo`:molecular orbital) for the three-body Jastrow part.
+The generated `hamiltonian_data.chk` is a wavefunction file with the `jqmc` format. `-j2` specifies the initial value of the two-body Jastrow parameter and `-j3` specifies the basis set (`ao-xxx`:atomic orbital or `mo`:molecular orbital) for the three-body Jastrow part.
 
 [!NOTE]
-> The `-j3` option in `jqmc-tool` controls how the atomic orbital (AO) basis is partitioned by Gaussian exponent strength for each nucleus. When you specify `ao-small`, `jqmc-tool` sorts each atom’s contracted AOs by the exponent of the primitive shell with the largest coefficient, divides them into **three** equal groups, and retains only the central group (i.e., 1/3). Specifying `ao-medium` divides into **four** groups and keeps the **two** central groups (i.e., 2/4), while `ao-large` divides into **five** groups and keeps the **three** central groups (i.e., 3/5). Using `ao` or `ao-full` disables any partitioning and includes all AOs from the original dataset. This mechanism lets you tailor the trade-off between computational cost and accuracy by focusing on the most representative subset of basis functions.
+> The `-j3` option in `jqmc-tool` controls how the atomic orbital (AO) basis is partitioned by Gaussian exponent strength for each nucleus. When you specify `ao-small`, `jqmc-tool` sorts each atom’s contracted AOs by the exponent of the primitive shell with the largest coefficient, divides them into **three** equal groups, and retains only the central group (i.e., 1/3). Specifying `ao-medium` divides into **four** groups and keeps the **two** central groups (i.e., 2/4), while `ao-large` divides into **five** groups and keeps the **three** central groups (i.e., 3/5). Using `ao` or `ao-full` disables any partitioning and includes all AOs from the original dataset. Using `mo` includes all MOs. This mechanism lets you tailor the trade-off between computational cost and accuracy by focusing on the most representative subset of basis functions.
 
 ## Optimize a trial WF (VMCopt)
 The next step is to optimize variational parameters included in the generated wavefunction. More in details, here, we optimize the two-body Jastrow parameter and the matrix elements of the three-body Jastrow parameter.
@@ -80,7 +80,7 @@ You can generate a template file for a VMCopt calculation using `jqmc-tool`. Ple
 [control]
 job_type = "vmcopt" # Specify the job type. "vmc", "vmcopt", "lrdmc", or "lrdmc-tau".
 mcmc_seed = 34456 # Random seed for MCMC
-number_of_walkers = 4 # Number of walkers per MPI process
+number_of_walkers = 1 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
 restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
@@ -88,21 +88,24 @@ hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If resta
 verbosity = "low" # Verbosity level. "low" or "high"
 
 [vmcopt]
-num_mcmc_steps = 500 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
+num_mcmc_steps = 300 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
 num_mcmc_per_measurement = 40 # Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.
 num_mcmc_warmup_steps = 0 # Number of observable measurement steps for warmup (i.e., discarged).
-num_mcmc_bin_blocks = 5 # Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_mcmc_bin_blocks * mpi_size * number_of_walkers.
+num_mcmc_bin_blocks = 1 # Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_mcmc_bin_blocks * mpi_size * number_of_walkers.
 Dt = 2.0 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
-num_opt_steps = 300 # Number of optimization steps.
-wf_dump_freq = 1 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
+num_opt_steps = 200 # Number of optimization steps.
+wf_dump_freq = 20 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
 delta = 0.01 # Step size for the Stochastic reconfiguration (i.e., the natural gradient) optimization.
 epsilon = 0.001 # Regularization parameter, a positive number added to the diagnoal elements of the Fisher-Information matrix, used during the Stochastic reconfiguration to improve the numerical stability.
 opt_J1_param = false
 opt_J2_param = true
 opt_J3_param = true
 opt_lambda_param = false
-num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If None, all parameters are optimized.
+num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
+cg_flag = true
+cg_max_iter = 100000 # Maximum number of iterations for the conjugate gradient method.
+cg_tol = 0.0001 # Tolerance for the conjugate gradient method.
 ```
 
 Please lunch the job.
@@ -207,7 +210,10 @@ The final step is to run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (v
 % mpiexec -n 4 -map-by ppr:4:node jqmc vmc.toml > out_vmc 2> out_vmc.e # w/ MPI on GPU, depending the queueing system.
 ```
 
-You may get `E = -16.97202 +- 0.000288 Ha` and `Var(E) = 1.99127 +- 0.000901 Ha^2` [VMC w/ Jastrow factors]
+You may get `E = -xx.xxxx +- x.xxxxx Ha` [VMC w/ Jastrow factors]
+
+> [!NOTE]
+> We are going to discuss the sub kcal/mol accuracy in the binding energy. So, we need to decrease the error bars of the mononer and dimer calculations up to $\sim$ 0.10 mHa and $\sim$ 0.15 mHa.
 
 ## Compute Energy (LRDMC)
 The final step is LRDMC calculation. You can generate a template file for a LRDMC calculation using `jqmc-tool`. Please directly edit `lrdmc.toml` if you want to change a parameter.
@@ -286,6 +292,120 @@ You can extrapolate them into $a \rightarrow 0$ by `jqmc-tool`
 
 ```
 
-You may get `E = -17.235094 +- 0.00045 Ha` [LRDMC a -> 0]. This is the final result of this tutorial.
+You may get `E = -xx.xxxx +- x.xxxxx Ha` [LRDMC w/ Jastrow factor in a -> 0].
 
-![VMC optimization](05lrdmc_JSD/lrdmc_ext.jpg)
+> [!NOTE]
+> We are going to discuss the sub kcal/mol accuracy in the binding energy. So, we need to decrease the error bars of the mononer and dimer calculations up to $\sim$ 0.10 mHa and $\sim$ 0.15 mHa.
+
+Your binding enery is....
+
+| Ansatz     | Method                  | Binding energy          |  ref      |
+|------------|-------------------------|-------------------------|-----------|
+| JDFT       | VMC                     | 1.61602 +- 0.000643     | this work |
+
+## Conversion of WF: from JSD to JAGP
+
+The next step is to convert the optimized JSD ansatz to JAGP one.
+
+```bash
+% cd 06convert_JSD_to_JAGP
+% cp ../04vmc_JSD/hamiltonian_data.chk ./hamiltonian_data_JSD.chk
+% jqmc-tool hamiltonian conv-wf --convert-to jagp hamiltonian_data_JSD.chk
+> Convert SD to AGP.
+> Hamiltonian data is saved in hamiltonian_data_conv.chk.
+% mv hamiltonian_data_conv.chk hamiltonian_data_JAGP.chk
+```
+
+
+## Optimize a trial WF (VMCopt)
+The next step is to optimize variational parameters included in the generated wavefunction. More in details, here, we optimize the two-body Jastrow parameter and the matrix elements of the three-body Jastrow parameter and the AGP matrix elements!
+
+You can generate a template file for a VMCopt calculation using `jqmc-tool`. Please directly edit `vmcopt.toml` if you want to change a parameter.
+
+```bash
+% cd 07vmcopt_JAGP
+% cp ../06convert_JSD_to_JAGP/hamiltonian_data_JAGP.chk ./hamiltonian_data.chk
+% jqmc-tool vmcopt generate-input -g
+> Input file is generated: vmcopt.toml
+```
+
+```toml:vmcopt.toml
+[control]
+job_type = "vmcopt" # Specify the job type. "vmc", "vmcopt", "lrdmc", or "lrdmc-tau".
+mcmc_seed = 34456 # Random seed for MCMC
+number_of_walkers = 1 # Number of walkers per MPI process
+max_time = 86400 # Maximum time in sec.
+restart = false
+restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
+verbosity = "low" # Verbosity level. "low" or "high"
+
+[vmcopt]
+num_mcmc_steps = 300 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
+num_mcmc_per_measurement = 40 # Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.
+num_mcmc_warmup_steps = 0 # Number of observable measurement steps for warmup (i.e., discarged).
+num_mcmc_bin_blocks = 1 # Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_mcmc_bin_blocks * mpi_size * number_of_walkers.
+Dt = 2.0 # Step size for the MCMC update (bohr).
+epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
+num_opt_steps = 200 # Number of optimization steps.
+wf_dump_freq = 20 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
+delta = 0.01 # Step size for the Stochastic reconfiguration (i.e., the natural gradient) optimization.
+epsilon = 0.001 # Regularization parameter, a positive number added to the diagnoal elements of the Fisher-Information matrix, used during the Stochastic reconfiguration to improve the numerical stability.
+opt_J1_param = false
+opt_J2_param = true
+opt_J3_param = true
+opt_lambda_param = true
+num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
+cg_flag = true
+cg_max_iter = 100000 # Maximum number of iterations for the conjugate gradient method.
+cg_tol = 0.0001 # Tolerance for the conjugate gradient method.
+```
+
+Please lunch the job.
+
+```bash
+% jqmc vmcopt.toml > out_vmcopt 2> out_vmcopt.e # w/o MPI on CPU
+% mpirun -np 4 jqmc vmcopt.toml > out_vmcopt 2> out_vmcopt.e # w/ MPI on CPU
+% mpiexec -n 4 -map-by ppr:4:node jqmc vmcopt.toml > out_vmcopt 2> out_vmcopt.e # w/ MPI on GPU, depending the queueing system.
+```
+
+You can see the outcome using `jqmc-tool`.
+
+```bash
+% jqmc-tool vmcopt analyze-output out_vmcopt
+
+------------------------------------------------------
+Iter     E (Ha)     Max f (Ha)   Max of signal to noise of f
+------------------------------------------------------
+   1  -16.5743(97)  +1.132(12)   110.335
+   2  -16.5921(96)  +1.097(12)   109.386
+   3  -16.6117(95)  +1.084(12)   104.849
+   4  -16.6399(93)  +1.059(12)   104.245
+   5  -16.6678(91)  +1.029(12)   102.269
+   6  -16.6819(90)  +1.009(12)   100.122
+   7  -16.7028(90)  +0.993(12)    97.718
+   8  -16.6974(87)  +0.963(12)    96.040
+   9  -16.7200(87)  +0.948(11)    94.616
+  10  -16.7511(87)  +0.914(11)    91.563
+  11  -16.7602(85)  +0.895(11)    90.790
+  12  -16.7714(85)  +0.878(11)    88.758
+  13  -16.7867(85)  +0.848(10)    87.979
+  14  -16.7940(86)  +0.835(11)    83.253
+  15  -16.8065(83)  +0.787(10)    82.875
+  16  -16.8112(83)  +0.777(10)    81.196
+  17  -16.8284(82)  +0.741(10)    80.058
+  18  -16.8327(83)  +0.743(10)    76.214
+------------------------------------------------------
+```
+
+The important criteria are `Max f` and `Max of signal to noise of f`. `Max f` should be zero within the error bar. A practical criterion for the `signal to noise` is < 4~5 because it means that all the residual forces are zero in the statistical sense.
+
+You can also plot them and make a figure.
+
+```bash
+% jqmc-tool vmcopt analyze-output out_vmcopt -p -s vmcopt.jpg
+```
+
+![VMC optimization](03vmcopt_JSD/vmcopt.jpg)
+
+You should gain the energy with respect the the JSD value; otherwise, the optimization went wrong.
