@@ -2222,11 +2222,17 @@ class GFMC_fixed_projection_time:
             # 1. Gather only the weights to MPI_rank=0 and perform branching calculation
             #########################################
             start_ = time.perf_counter()
+
             # Each process computes the sum of its local walker weights.
             local_weight_sum = np.sum(w_L_latest)
 
             # Use pickle‐based allreduce here (allowed for this part)
             global_weight_sum = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)
+
+            end_ = time.perf_counter()
+            logger.debug(f"    reconfig: step 1.1 = {(end_ - start_) * 1e3:.3f} msec.")
+
+            start_ = time.perf_counter()
 
             # Compute the local probabilities for each walker.
             local_probabilities = w_L_latest / global_weight_sum
@@ -2244,29 +2250,47 @@ class GFMC_fixed_projection_time:
             offset = np.sum(local_probability_sums[:mpi_rank])
             local_cumprob += offset
 
+            end_ = time.perf_counter()
+            logger.debug(f"    reconfig: step 1.2 = {(end_ - start_) * 1e3:.3f} msec.")
+
+            start_ = time.perf_counter()
+
             # Gather the local cumulative probability arrays from all processes.
             total_walkers = self.num_walkers * mpi_size
             global_cumprob = np.empty(total_walkers, dtype=np.float64)
             mpi_comm.Allgather([local_cumprob, MPI.DOUBLE], [global_cumprob, MPI.DOUBLE])
+            end_ = time.perf_counter()
+            logger.debug(f"    reconfig: step 1.3 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # Total number of walkers across all processes.
             # Compute index range for this rank
+            start_ = time.perf_counter()
             start_idx = mpi_rank * self.num_walkers
             end_idx = start_idx + self.num_walkers
 
             # Build only local z-array (length = self.num_walkers)
             z_local = (np.arange(start_idx, end_idx) + zeta) / total_walkers
 
-            # Each rank finds chosen global indices for its z_local
-            local_chosen_indices = np.searchsorted(global_cumprob, z_local)
+            # Perform searchsorted and cast the result to int32
+            local_chosen_indices = np.searchsorted(global_cumprob, z_local).astype(np.int32)
+            end_ = time.perf_counter()
+            logger.debug(f"    reconfig: step 1.4 = {(end_ - start_) * 1e3:.3f} msec.")
 
-            # Gather all local_chosen_indices to compute global stats
-            all_chosen = mpi_comm.allgather(local_chosen_indices)
-            chosen_walker_indices = np.concatenate(all_chosen)
-            num_survived_walkers = len(set(chosen_walker_indices))
+            # Gather all local_chosen_indices across ranks using MPI.INT
+            start_ = time.perf_counter()
+
+            # Allocate buffer to receive all ranks' indices (Number of indices per rank is identical on every rank)
+            all_chosen_buf = np.empty(self.num_walkers * mpi_size, dtype=np.int32)
+
+            # Perform the all-gather operation with 32-bit integers
+            mpi_comm.Allgather([local_chosen_indices, MPI.INT], [all_chosen_buf, MPI.INT])
+
+            # Use the gathered indices for global statistics
+            chosen_walker_indices = all_chosen_buf
+            num_survived_walkers = len(np.unique(chosen_walker_indices))
             num_killed_walkers = total_walkers - num_survived_walkers
 
-            # Build local_assignment: list of (src_rank, src_local_idx) for this rank
+            # Build the local assignment list of (source_rank, source_local_index)
             local_assignment = [
                 (src_global_idx // self.num_walkers, src_global_idx % self.num_walkers)
                 for src_global_idx in local_chosen_indices
@@ -2283,7 +2307,7 @@ class GFMC_fixed_projection_time:
             stored_average_projection_counter = np.mean(ave_projection_counter_gathered)
 
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 1 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.debug(f"    reconfig: step 1.5 = {(end_ - start_) * 1e3:.3f} msec.")
 
             #########################################
             # 2. In each process, prepare for data exchange based on the new walker selection
