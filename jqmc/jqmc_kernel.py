@@ -33,6 +33,7 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import logging
+import os
 import time
 from functools import partial
 from itertools import groupby
@@ -43,6 +44,7 @@ import mpi4jax
 import numpy as np
 import numpy.typing as npt
 import scipy
+import toml
 from jax import grad, jit, lax, vmap
 from jax import numpy as jnp
 from mpi4py import MPI
@@ -452,6 +454,20 @@ class MCMC:
         timer_dln_Psi_dc = 0.0
         timer_de_L_dc = 0.0
         mcmc_total_start = time.perf_counter()
+
+        # toml(control) filename
+        toml_filename = "external_control_mcmc.toml"
+
+        # create a toml file to control the run
+        data = {"external_control": {"stop": False}}
+        # Check if file exists
+        if os.path.exists(toml_filename):
+            logger.info(f"{toml_filename} exists, overwriting it.")
+        # Write (or overwrite) the TOML file
+        with open(toml_filename, "w") as f:
+            logger.info(f"{toml_filename} is generated. ")
+            toml.dump(data, f)
+        logger.info("")
 
         # MCMC electron position update function
         mcmc_update_init_start = time.perf_counter()
@@ -1059,9 +1075,21 @@ class MCMC:
             # check max time
             mcmc_current = time.perf_counter()
             if max_time < mcmc_current - mcmc_total_start:
-                logger.info(f"max_time = {max_time} sec. exceeds.")
-                logger.info("break the mcmc loop.")
+                logger.info(f"  Stopping... max_time = {max_time} sec. exceeds.")
+                logger.info("  Break the mcmc loop.")
                 break
+
+            # check toml file (stop flag)
+            if os.path.isfile(toml_filename):
+                dict_toml = toml.load(open(toml_filename))
+                try:
+                    stop_flag = dict_toml["external_control"]["stop"]
+                except KeyError:
+                    stop_flag = False
+                if stop_flag:
+                    logger.info(f"  Stopping... stop_flag in {toml_filename} is true.")
+                    logger.info("  Break the mcmc loop.")
+                    break
 
         logger.info("End MCMC")
         logger.info("")
@@ -1091,6 +1119,11 @@ class MCMC:
         self.__timer_dln_Psi_dc += timer_dln_Psi_dc
         self.__timer_de_L_dc += timer_de_L_dc
         self.__timer_misc += timer_misc
+
+        # remove the toml file
+        if os.path.isfile(toml_filename):
+            logger.info(f"Delete {toml_filename}")
+            os.remove(toml_filename)
 
         logger.info(f"Total elapsed time for MCMC {num_mcmc_done} steps. = {timer_mcmc_total:.2f} sec.")
         logger.info(f"Pre-compilation time for MCMC = {timer_mcmc_update_init:.2f} sec.")
@@ -1686,6 +1719,20 @@ class GFMC_fixed_projection_time:
         timer_collection = 0.0
         timer_reconfiguration = 0.0
         gfmc_total_start = time.perf_counter()
+
+        # toml(control) filename
+        toml_filename = "external_control_gfmc.toml"
+
+        # create a toml file to control the run
+        data = {"external_control": {"stop": False}}
+        # Check if file exists
+        if os.path.exists(toml_filename):
+            logger.info(f"{toml_filename} exists, overwriting it.")
+        # Write (or overwrite) the TOML file
+        with open(toml_filename, "w") as f:
+            logger.info(f"{toml_filename} is generated. ")
+            toml.dump(data, f)
+        logger.info("")
 
         # initialize numpy random seed
         np.random.seed(self.__mpi_seed)
@@ -2437,9 +2484,21 @@ class GFMC_fixed_projection_time:
             num_mcmc_done += 1
             gmfc_current = time.perf_counter()
             if max_time < gmfc_current - gfmc_total_start:
-                logger.info(f"  Max_time = {max_time} sec. exceeds.")
+                logger.info(f"  Stopping... Max_time = {max_time} sec. exceeds.")
                 logger.info("  Break the branching loop.")
                 break
+
+            # check toml file (stop flag)
+            if os.path.isfile(toml_filename):
+                dict_toml = toml.load(open(toml_filename))
+                try:
+                    stop_flag = dict_toml["external_control"]["stop"]
+                except KeyError:
+                    stop_flag = False
+                if stop_flag:
+                    logger.info(f"  Stopping... stop_flag in {toml_filename} is true.")
+                    logger.info("  Break the mcmc loop.")
+                    break
 
         logger.info("-End branching-")
         logger.info("")
@@ -2457,6 +2516,11 @@ class GFMC_fixed_projection_time:
             + timer_reconfiguration
             + timer_collection
         )
+
+        # remove the toml file
+        if os.path.isfile(toml_filename):
+            logger.info(f"Delete {toml_filename}")
+            os.remove(toml_filename)
 
         logger.info(f"Total GFMC time for {num_mcmc_done} branching steps = {timer_gfmc_total: .3f} sec.")
         logger.info(f"Pre-compilation time for GFMC = {timer_projection_init: .3f} sec.")
@@ -2936,6 +3000,20 @@ class GFMC_fixed_num_projection:
         timer_mpi_barrier = 0.0
         timer_reconfiguration = 0.0
         timer_collection = 0.0
+
+        # toml(control) filename
+        toml_filename = "external_control_gfmc.toml"
+
+        # create a toml file to control the run
+        data = {"external_control": {"stop": False}}
+        # Check if file exists
+        if os.path.exists(toml_filename):
+            logger.info(f"{toml_filename} exists, overwriting it.")
+        # Write (or overwrite) the TOML file
+        with open(toml_filename, "w") as f:
+            logger.info(f"{toml_filename} is generated. ")
+            toml.dump(data, f)
+        logger.info("")
 
         gfmc_total_start = time.perf_counter()
 
@@ -4092,10 +4170,23 @@ class GFMC_fixed_num_projection:
 
             num_mcmc_done += 1
             gfmc_current = time.perf_counter()
+
             if max_time < gfmc_current - gfmc_total_start:
-                logger.info(f"  Max_time = {max_time} sec. exceeds.")
+                logger.info(f"  Stopping... Max_time = {max_time} sec. exceeds.")
                 logger.info("  Break the branching loop.")
                 break
+
+            # check toml file (stop flag)
+            if os.path.isfile(toml_filename):
+                dict_toml = toml.load(open(toml_filename))
+                try:
+                    stop_flag = dict_toml["external_control"]["stop"]
+                except KeyError:
+                    stop_flag = False
+                if stop_flag:
+                    logger.info(f"  Stopping... stop_flag in {toml_filename} is true.")
+                    logger.info("  Break the mcmc loop.")
+                    break
 
         logger.info("-End branching-")
         logger.info("")
@@ -4117,6 +4208,11 @@ class GFMC_fixed_num_projection:
             + timer_collection
             + timer_reconfiguration
         )
+
+        # remove the toml file
+        if os.path.isfile(toml_filename):
+            logger.info(f"Delete {toml_filename}")
+            os.remove(toml_filename)
 
         logger.info(f"Total GFMC time for {num_mcmc_done} branching steps = {timer_gfmc_total: .3f} sec.")
         logger.info(f"Pre-compilation time for GFMC = {timer_projection_init: .3f} sec.")
@@ -4274,6 +4370,21 @@ class QMC:
             cg_max_iter (int): maximum number of iterations for conjugate gradient method.
             cg_tol (float): tolerance for conjugate gradient method.
         """
+        # toml(control) filename
+        toml_filename = "external_control_opt.toml"
+
+        # create a toml file to control the run
+        data = {"external_control": {"stop": False}}
+        # Check if file exists
+        if os.path.exists(toml_filename):
+            logger.info(f"{toml_filename} exists, overwriting it.")
+        # Write (or overwrite) the TOML file
+        with open(toml_filename, "w") as f:
+            logger.info(f"{toml_filename} is generated. ")
+            toml.dump(data, f)
+        logger.info("")
+
+        # timer
         vmcopt_total_start = time.perf_counter()
 
         # main vmcopt loop
@@ -4955,10 +5066,23 @@ class QMC:
 
             # check max time
             vmcopt_current = time.perf_counter()
+
             if max_time < vmcopt_current - vmcopt_total_start:
-                logger.info(f"max_time = {max_time} sec. exceeds.")
-                logger.info("break the vmcopt loop.")
+                logger.info(f"Stopping... max_time = {max_time} sec. exceeds.")
+                logger.info("Break the vmcopt loop.")
                 break
+
+            # check toml file (stop flag)
+            if os.path.isfile(toml_filename):
+                dict_toml = toml.load(open(toml_filename))
+                try:
+                    stop_flag = dict_toml["external_control"]["stop"]
+                except KeyError:
+                    stop_flag = False
+                if stop_flag:
+                    logger.info(f"Stopping... stop_flag in {toml_filename} is true.")
+                    logger.info("Break the optimization loop.")
+                    break
 
         # update WF opt counter
         self.__i_opt += i_opt + 1
