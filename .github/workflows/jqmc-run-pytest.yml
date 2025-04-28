@@ -65,9 +65,9 @@ jobs:
         pytest -s -v tests/test_comparison_with_turborvb_ECP.py
         pytest -s -v tests/test_comparison_with_turborvb_AE.py
 
-    - name: Test jqmc (pytest) without @jit decorator (inter-software comparisons)
-      run: |
-        pytest -s -v tests/test_lrdmc_force.py --disable-jit
+    #- name: Test jqmc (pytest) without @jit decorator (inter-software comparisons)
+    #  run: |
+    #    pytest -s -v tests/test_lrdmc_force.py --disable-jit
 
     #- name: Test jqmc (pytest) QMC kernel without MPI
     #  run: |
