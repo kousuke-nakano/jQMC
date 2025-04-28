@@ -331,6 +331,8 @@ def hamiltonian_fix_types(
     with open(hamiltonian_data_filename, "rb") as f:
         hamiltonian_data = pickle.load(f)
 
+    hamiltonian_data.dump("backup_before_fix_" + hamiltonian_data_filename)
+
     def fix_structure_data(structure_data):
         # structure_data
         positions = np.array(structure_data.positions)
