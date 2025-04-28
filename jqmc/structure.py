@@ -94,19 +94,27 @@ class Structure_data:
 
         """
         if not isinstance(self.pbc_flag, bool):
-            raise ValueError(f"pbc_flag = {type(self.pbc_flag)} must be a boolen.")
+            logger.warning(
+                f"pbc_flag = {type(self.pbc_flag)} must be a boolen. In a future release, this will raise a ValueError."
+            )
         if not isinstance(self.vec_a, tuple):
-            raise ValueError(f"vec_a = {type(self.vec_a)} must be a tuple.")
+            logger.warning(f"vec_a = {type(self.vec_a)} must be a tuple. In a future release, this will raise a ValueError.")
         if not isinstance(self.vec_b, tuple):
-            raise ValueError(f"vec_b = {type(self.vec_b)} must be a tuple.")
+            logger.warning(f"vec_b = {type(self.vec_b)} must be a tuple. In a future release, this will raise a ValueError.")
         if not isinstance(self.vec_c, tuple):
-            raise ValueError(f"vec_c = {type(self.vec_c)} must be a tuple.")
+            logger.warning(f"vec_c = {type(self.vec_c)} must be a tuple. In a future release, this will raise a ValueError.")
         if not isinstance(self.atomic_numbers, tuple):
-            raise ValueError(f"atomic_numbers = {type(self.atomic_numbers)} must be a tuple.")
+            logger.warning(
+                f"atomic_numbers = {type(self.atomic_numbers)} must be a tuple. In a future release, this will raise a ValueError."
+            )
         if not isinstance(self.element_symbols, tuple):
-            raise ValueError(f"element_symbols = {type(self.element_symbols)} must be a tuple.")
+            logger.warning(
+                f"element_symbols = {type(self.element_symbols)} must be a tuple. In a future release, this will raise a ValueError."
+            )
         if not isinstance(self.atomic_labels, tuple):
-            raise ValueError(f"atomic_labels = {type(self.atomic_labels)} must be a tuple.")
+            logger.warning(
+                f"atomic_labels = {type(self.atomic_labels)} must be a tuple. In a future release, this will raise a ValueError."
+            )
 
     def sanity_check(self) -> None:
         """Check attributes of the class.

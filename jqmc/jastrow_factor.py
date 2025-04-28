@@ -86,7 +86,9 @@ class Jastrow_one_body_data:
 
         """
         if not isinstance(self.core_electrons, tuple):
-            raise ValueError(f"core_electrons = {type(self.core_electrons)} must be a tuple.")
+            logger.warning(
+                f"core_electrons = {type(self.core_electrons)} must be a tuple. In a future release, this will raise a ValueError."
+            )
 
     def sanity_check(self) -> None:
         """Check attributes of the class.

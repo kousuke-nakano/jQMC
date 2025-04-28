@@ -115,25 +115,43 @@ class AOs_cart_data:
 
         """
         if not isinstance(self.nucleus_index, tuple):
-            raise ValueError(f"nucleus_index = {type(self.nucleus_index)} must be a tuple.")
+            logger.warning(
+                f"nucleus_index = {type(self.nucleus_index)} must be a tuple. In a future release, this will raise a ValueError."
+            )
         if not isinstance(self.num_ao, int):
-            raise ValueError(f"num_ao = {type(self.num_ao)} must be an int.")
+            logger.warning(f"num_ao = {type(self.num_ao)} must be an int. In a future release, this will raise a ValueError.")
         if not isinstance(self.num_ao_prim, int):
-            raise ValueError(f"num_ao_prim = {type(self.num_ao_prim)} must be an int.")
+            logger.warning(
+                f"num_ao_prim = {type(self.num_ao_prim)} must be an int. In a future release, this will raise a ValueError."
+            )
         if not isinstance(self.orbital_indices, tuple):
-            raise ValueError(f"orbital_indices = {type(self.orbital_indices)} must be a tuple.")
+            logger.warning(
+                f"orbital_indices = {type(self.orbital_indices)} must be a tuple. In a future release, this will raise a ValueError."
+            )
         if not isinstance(self.exponents, tuple):
-            raise ValueError(f"exponents = {type(self.exponents)} must be a tuple.")
+            logger.warning(
+                f"exponents = {type(self.exponents)} must be a tuple. In a future release, this will raise a ValueError."
+            )
         if not isinstance(self.coefficients, tuple):
-            raise ValueError(f"coefficients = {type(self.coefficients)} must be a tuple.")
+            logger.warning(
+                f"coefficients = {type(self.coefficients)} must be a tuple. In a future release, this will raise a ValueError."
+            )
         if not isinstance(self.angular_momentums, tuple):
-            raise ValueError(f"angular_momentums = {type(self.angular_momentums)} must be a tuple.")
+            logger.warning(
+                f"angular_momentums = {type(self.angular_momentums)} must be a tuple. In a future release, this will raise a ValueError."
+            )
         if not isinstance(self.polynominal_order_x, tuple):
-            raise ValueError(f"polynominal_order_x = {type(self.polynominal_order_x)} must be a tuple.")
+            logger.warning(
+                f"polynominal_order_x = {type(self.polynominal_order_x)} must be a tuple. In a future release, this will raise a ValueError."
+            )
         if not isinstance(self.polynominal_order_y, tuple):
-            raise ValueError(f"polynominal_order_y = {type(self.polynominal_order_y)} must be a tuple.")
+            logger.warning(
+                f"polynominal_order_y = {type(self.polynominal_order_y)} must be a tuple. In a future release, this will raise a ValueError."
+            )
         if not isinstance(self.polynominal_order_z, tuple):
-            raise ValueError(f"polynominal_order_z = {type(self.polynominal_order_z)} must be a tuple.")
+            logger.warning(
+                f"polynominal_order_z = {type(self.polynominal_order_z)} must be a tuple. In a future release, this will raise a ValueError."
+            )
 
     def sanity_check(self) -> None:
         """Check attributes of the class.

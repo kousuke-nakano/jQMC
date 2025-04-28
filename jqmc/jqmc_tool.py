@@ -48,10 +48,13 @@ import typer
 from uncertainties import ufloat
 
 from .atomic_orbital import AOs_cart_data, AOs_sphe_data
+from .coulomb_potential import Coulomb_potential_data
 from .determinant import Geminal_data
 from .hamiltonians import Hamiltonian_data
 from .jastrow_factor import Jastrow_data, Jastrow_one_body_data, Jastrow_three_body_data, Jastrow_two_body_data
 from .jqmc_miscs import cli_parameters
+from .molecular_orbital import MOs_data
+from .structure import Structure_data
 from .trexio_wrapper import read_trexio_file
 from .units import Bohr_to_Angstrom
 from .wavefunction import Wavefunction_data
@@ -317,6 +320,224 @@ def hamiltonian_to_xyz(
         f.write("\n")
         for atom, coord in zip(structure_data.atomic_labels, structure_data.positions):
             f.write(f"{atom} {coord[0] * Bohr_to_Angstrom} {coord[1] * Bohr_to_Angstrom} {coord[2] * Bohr_to_Angstrom}\n")
+
+
+# This should be removed in future release since it will be no longer useful.
+@hamiltonian_app.command("fix")
+def hamiltonian_fix_types(
+    hamiltonian_data_filename: str = typer.Argument(..., help="hamiltonian_data file, e.g. hamiltonian_data.chk"),
+):
+    """Fix data stored in the Hamiltonian data."""
+    with open(hamiltonian_data_filename, "rb") as f:
+        hamiltonian_data = pickle.load(f)
+
+    def fix_structure_data(structure_data):
+        # structure_data
+        positions = np.array(structure_data.positions)
+        pbc_flag = bool(structure_data.pbc_flag)
+        vec_a = tuple(structure_data.vec_a)
+        vec_b = tuple(structure_data.vec_b)
+        vec_c = tuple(structure_data.vec_c)
+        atomic_numbers = tuple(structure_data.atomic_numbers)
+        element_symbols = tuple(structure_data.element_symbols)
+        atomic_labels = tuple(structure_data.atomic_labels)
+        structure_data = Structure_data(
+            positions=positions,
+            pbc_flag=pbc_flag,
+            vec_a=vec_a,
+            vec_b=vec_b,
+            vec_c=vec_c,
+            atomic_numbers=atomic_numbers,
+            element_symbols=element_symbols,
+            atomic_labels=atomic_labels,
+        )
+        return structure_data
+
+    def fix_orb_data(orb_data):
+        if isinstance(orb_data, MOs_data):
+            num_mo = orb_data.num_mo
+            aos_data = orb_data.aos_data
+            mo_coefficients = orb_data.mo_coefficients
+
+            if isinstance(aos_data, AOs_sphe_data):
+                structure_data = fix_structure_data(structure_data=orb_data.structure_data)
+                nucleus_index = tuple(aos_data.nucleus_index)
+                num_ao = int(aos_data.num_ao)
+                num_ao_prim = int(aos_data.num_ao_prim)
+                orbital_indices = tuple(aos_data.orbital_indices)
+                exponents = tuple(aos_data.exponents)
+                coefficients = tuple(aos_data.coefficients)
+                angular_momentums = tuple(aos_data.angular_momentums)
+                magnetic_quantum_numbers = tuple(aos_data.magnetic_quantum_numbers)
+
+                aos_data = AOs_sphe_data(
+                    structure_data=structure_data,
+                    nucleus_index=nucleus_index,
+                    num_ao=num_ao,
+                    num_ao_prim=num_ao_prim,
+                    orbital_indices=orbital_indices,
+                    exponents=exponents,
+                    coefficients=coefficients,
+                    angular_momentums=angular_momentums,
+                    magnetic_quantum_numbers=magnetic_quantum_numbers,
+                )
+
+            elif isinstance(aos_data, AOs_cart_data):
+                structure_data = fix_structure_data(structure_data=orb_data.structure_data)
+                nucleus_index = tuple(aos_data.nucleus_index)
+                num_ao = int(aos_data.num_ao)
+                num_ao_prim = int(aos_data.num_ao_prim)
+                orbital_indices = tuple(aos_data.orbital_indices)
+                exponents = tuple(aos_data.exponents)
+                coefficients = tuple(aos_data.coefficients)
+                angular_momentums = tuple(aos_data.angular_momentums)
+                polynominal_order_x = tuple(aos_data.polynominal_order_x)
+                polynominal_order_y = tuple(aos_data.polynominal_order_y)
+                polynominal_order_z = tuple(aos_data.polynominal_order_z)
+
+                aos_data = AOs_cart_data(
+                    structure_data=structure_data,
+                    nucleus_index=nucleus_index,
+                    num_ao=num_ao,
+                    num_ao_prim=num_ao_prim,
+                    orbital_indices=orbital_indices,
+                    exponents=exponents,
+                    coefficients=coefficients,
+                    angular_momentums=angular_momentums,
+                    polynominal_order_x=polynominal_order_x,
+                    polynominal_order_y=polynominal_order_y,
+                    polynominal_order_z=polynominal_order_z,
+                )
+            orb_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
+
+        elif isinstance(orb_data, AOs_sphe_data):
+            structure_data = fix_structure_data(structure_data=orb_data.structure_data)
+            nucleus_index = tuple(orb_data.nucleus_index)
+            num_ao = int(orb_data.num_ao)
+            num_ao_prim = int(orb_data.num_ao_prim)
+            orbital_indices = tuple(orb_data.orbital_indices)
+            exponents = tuple(orb_data.exponents)
+            coefficients = tuple(orb_data.coefficients)
+            angular_momentums = tuple(orb_data.angular_momentums)
+            magnetic_quantum_numbers = tuple(orb_data.magnetic_quantum_numbers)
+
+            orb_data = AOs_sphe_data(
+                structure_data=structure_data,
+                nucleus_index=nucleus_index,
+                num_ao=num_ao,
+                num_ao_prim=num_ao_prim,
+                orbital_indices=orbital_indices,
+                exponents=exponents,
+                coefficients=coefficients,
+                angular_momentums=angular_momentums,
+                magnetic_quantum_numbers=magnetic_quantum_numbers,
+            )
+        elif isinstance(orb_data, AOs_cart_data):
+            structure_data = fix_structure_data(structure_data=orb_data.structure_data)
+            nucleus_index = tuple(orb_data.nucleus_index)
+            num_ao = int(orb_data.num_ao)
+            num_ao_prim = int(orb_data.num_ao_prim)
+            orbital_indices = tuple(orb_data.orbital_indices)
+            exponents = tuple(orb_data.exponents)
+            coefficients = tuple(orb_data.coefficients)
+            angular_momentums = tuple(orb_data.angular_momentums)
+            polynominal_order_x = tuple(orb_data.polynominal_order_x)
+            polynominal_order_y = tuple(orb_data.polynominal_order_y)
+            polynominal_order_z = tuple(orb_data.polynominal_order_z)
+
+            orb_data = AOs_cart_data(
+                structure_data=structure_data,
+                nucleus_index=nucleus_index,
+                num_ao=num_ao,
+                num_ao_prim=num_ao_prim,
+                orbital_indices=orbital_indices,
+                exponents=exponents,
+                coefficients=coefficients,
+                angular_momentums=angular_momentums,
+                polynominal_order_x=polynominal_order_x,
+                polynominal_order_y=polynominal_order_y,
+                polynominal_order_z=polynominal_order_z,
+            )
+
+        return orb_data
+
+    structure_data = hamiltonian_data.structure_data
+    structure_data = fix_structure_data(structure_data=structure_data)
+
+    # coulomb_potential_data
+    coulomb_potential_data = hamiltonian_data.coulomb_potential_data
+    ecp_flag = bool(coulomb_potential_data.ecp_flag)
+    z_cores = tuple(coulomb_potential_data.z_cores)
+    max_ang_mom_plus_1 = tuple(coulomb_potential_data.max_ang_mom_plus_1)
+    num_ecps = int(coulomb_potential_data.num_ecps)
+    ang_moms = tuple(coulomb_potential_data.ang_moms)
+    nucleus_index = tuple(coulomb_potential_data.nucleus_index)
+    exponents = tuple(coulomb_potential_data.exponents)
+    coefficients = tuple(coulomb_potential_data.coefficients)
+    powers = tuple(coulomb_potential_data.powers)
+    coulomb_potential_data = Coulomb_potential_data(
+        structure_data=structure_data,
+        ecp_flag=ecp_flag,
+        z_cores=z_cores,
+        max_ang_mom_plus_1=max_ang_mom_plus_1,
+        num_ecps=num_ecps,
+        ang_moms=ang_moms,
+        nucleus_index=nucleus_index,
+        exponents=exponents,
+        coefficients=coefficients,
+        powers=powers,
+    )
+
+    # wavefunction
+    wavefunction_data = hamiltonian_data.wavefunction_data
+    jastrow_data = wavefunction_data.jastrow_data
+    geminal_data = wavefunction_data.geminal_data
+
+    # jastrow data
+    jastrow_one_body_data = jastrow_data.jastrow_one_body_data
+    jastrow_two_body_data = jastrow_data.jastrow_two_body_data
+    jastrow_three_body_data = jastrow_data.jastrow_three_body_data
+
+    if jastrow_one_body_data is not None:
+        jastrow_1b_param = float(jastrow_one_body_data.jastrow_1b_param)
+        core_electrons = tuple(jastrow_one_body_data.core_electrons)
+        jastrow_one_body_data = Jastrow_one_body_data(
+            jastrow_1b_param=jastrow_1b_param, structure_data=structure_data, core_electrons=core_electrons
+        )
+    if jastrow_three_body_data is not None:
+        orb_data = jastrow_three_body_data.orb_data
+        j_matrix = jastrow_three_body_data.j_matrix
+        orb_data = fix_orb_data(orb_data=orb_data)
+        jastrow_three_body_data = Jastrow_three_body_data(orb_data=orb_data, j_matrix=j_matrix)
+
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=jastrow_one_body_data,
+        jastrow_two_body_data=jastrow_two_body_data,
+        jastrow_three_body_data=jastrow_three_body_data,
+    )
+
+    # geminal_data
+    num_electron_up = geminal_data.num_electron_up
+    num_electron_dn = geminal_data.num_electron_dn
+    lambda_matrix = geminal_data.lambda_matrix
+    orb_data_up_spin = fix_orb_data(geminal_data.orb_data_up_spin)
+    orb_data_dn_spin = fix_orb_data(geminal_data.orb_data_dn_spin)
+    geminal_data = Geminal_data(
+        num_electron_up=num_electron_up,
+        num_electron_dn=num_electron_dn,
+        lambda_matrix=lambda_matrix,
+        orb_data_up_spin=orb_data_up_spin,
+        orb_data_dn_spin=orb_data_dn_spin,
+    )
+
+    # new hamiltonian data with correct types
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_data)
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
+    )
+
+    # dump fixed hamiltonian data
+    hamiltonian_data.dump(hamiltonian_data_filename)
 
 
 class ansatz_type(str, Enum):

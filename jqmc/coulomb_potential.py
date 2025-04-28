@@ -157,7 +157,7 @@ class Coulomb_potential_data:
         max_ang_mom_plus_1 (tuple[int]):
             l_{max}+1, one higher than the max angular momentum in the
             removed core orbitals (dim: num_atoms)
-        num_ecps (tuple[int]):
+        num_ecps (int):
             Total number of ECP functions for all atoms and all values of l
         ang_moms (tuple[int]):
             One-to-one correspondence between ECP items and the angular momentum l (dim:num_ecps)
@@ -178,12 +178,50 @@ class Coulomb_potential_data:
     ecp_flag: bool = struct.field(pytree_node=False, default=False)
     z_cores: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
     max_ang_mom_plus_1: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
-    num_ecps: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    num_ecps: int = struct.field(pytree_node=False, default_factory=0)
     ang_moms: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
     nucleus_index: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
     exponents: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
     coefficients: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
     powers: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+
+    def __post_init__(self):
+        """Post-initialization method to check the types of the attributes.
+
+        Notice that only the static attributes (i.e., pytree_node=False with an immutable attribute) are checked.
+        Otherwise the backprogragation will not work.
+
+        """
+        if not isinstance(self.ecp_flag, bool):
+            logger.warning(
+                f"ecp_flag = {type(self.ecp_flag)} must be a bool. In a future release, this will raise a ValueError."
+            )
+        if not isinstance(self.z_cores, tuple):
+            logger.warning(
+                f"z_cores = {type(self.z_cores)} must be a tuple. In a future release, this will raise a ValueError."
+            )
+        if not isinstance(self.max_ang_mom_plus_1, tuple):
+            logger.warning(
+                f"max_ang_mom_plus_1 = {type(self.max_ang_mom_plus_1)} must be a tuple. In a future release, this will raise a ValueError."
+            )
+        if not isinstance(self.num_ecps, int):
+            logger.warning(
+                f"num_ecps = {type(self.num_ecps)} must be an int. In a future release, this will raise a ValueError."
+            )
+        if not isinstance(self.ang_moms, tuple):
+            logger.warning(
+                f"ang_moms = {type(self.ang_moms)} must be a tuple. In a future release, this will raise a ValueError."
+            )
+        if not isinstance(self.exponents, tuple):
+            logger.warning(
+                f"exponents = {type(self.exponents)} must be a tuple. In a future release, this will raise a ValueError."
+            )
+        if not isinstance(self.coefficients, tuple):
+            logger.warning(
+                f"coefficients = {type(self.coefficients)} must be a tuple. In a future release, this will raise a ValueError."
+            )
+        if not isinstance(self.powers, tuple):
+            logger.warning(f"powers = {type(self.powers)} must be a tuple. In a future release, this will raise a ValueError.")
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
