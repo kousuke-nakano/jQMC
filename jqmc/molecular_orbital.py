@@ -82,16 +82,6 @@ class MOs_data:
     aos_data: AOs_sphe_data | AOs_cart_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
     mo_coefficients: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
-    def __post_init__(self):
-        """Post-initialization method to check the types of the attributes.
-
-        Notice that only the static attributes (i.e., pytree_node=False with an immutable attribute) are checked.
-        Otherwise the backprogragation will not work.
-
-        """
-        if not isinstance(self.num_mo, int):
-            raise ValueError(f"num_mo = {type(self.num_mo)} must be an int.")
-
     def sanity_check(self) -> None:
         """Check attributes of the class.
 
@@ -101,11 +91,11 @@ class MOs_data:
             ValueError: If there is an inconsistency in a dimension of a given argument.
         """
         if self.mo_coefficients.shape != (self.num_mo, self.aos_data.num_ao):
-            logger.error(
+            raise ValueError(
                 f"dim. of ao_coefficients = {self.mo_coefficients.shape} is wrong. Inconsistent with the expected value = {(self.num_mo, self.aos_data.num_ao)}"
             )
-            raise ValueError("The dimension of a given mo_coefficients is wrong.")
-
+        if not isinstance(self.num_mo, int):
+            raise ValueError(f"num_mo = {type(self.num_mo)} must be an int.")
         self.aos_data.sanity_check()
 
     def get_info(self) -> list[str]:

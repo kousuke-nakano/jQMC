@@ -63,7 +63,9 @@ def test_comparing_AO_and_MO_geminals():
         _,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+    )
 
     # check geminal_data
     geminal_mo_data.sanity_check()
@@ -231,7 +233,9 @@ def test_numerial_and_auto_grads_ln_Det():
         mos_data_dn,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+    )
 
     geminal_mo_data.sanity_check()
 

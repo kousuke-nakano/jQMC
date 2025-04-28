@@ -64,7 +64,9 @@ def test_comparison_with_TurboRVB_wo_Jastrow_w_ecp():
         _,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+    )
 
     jastrow_data = Jastrow_data(
         jastrow_one_body_data=None,
@@ -179,7 +181,9 @@ def test_comparison_with_TurboRVB_w_2b_Jastrow_w_ecp():
         mos_data_dn,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+    )
 
     turborvb_2b_param = 0.676718854150191  # -5 !!
     jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=turborvb_2b_param)
@@ -298,7 +302,9 @@ def test_comparison_with_TurboRVB_w_2b_3b_Jastrow_w_ecp():
         _,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+    )
 
     with open(
         os.path.join(os.path.dirname(__file__), "trexio_example_files", "jastrow_data_w_2b_3b_w_ecp.pkl"),
@@ -414,7 +420,9 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp():
         _,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+    )
 
     with open(
         os.path.join(os.path.dirname(__file__), "trexio_example_files", "jastrow_data_w_2b_1b3b_w_ecp.pkl"),

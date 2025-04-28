@@ -70,7 +70,9 @@ def test_debug_and_jax_bare_coulomb():
         _,
         _,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+    )
 
     # check its input
     coulomb_potential_data.sanity_check()
@@ -122,7 +124,9 @@ def test_debug_and_jax_ecp_local():
         _,
         _,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+    )
 
     # check its input
     coulomb_potential_data.sanity_check()
@@ -172,7 +176,9 @@ def test_debug_and_jax_ecp_non_local():
         _,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+    )
 
     # check its input
     coulomb_potential_data.sanity_check()
@@ -377,7 +383,9 @@ def test_debug_and_jax_bare_el_ion_elements():
         _,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+    )
 
     # check its input
     coulomb_potential_data.sanity_check()
@@ -427,7 +435,9 @@ def test_debug_and_jax_discretized_bare_el_ion_elements():
         _,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+    )
 
     # check its input
     coulomb_potential_data.sanity_check()
@@ -481,7 +491,7 @@ def test_debug_and_jax_ecp_total():
         mos_data_dn,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
+    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True)
 
     # define data
     jastrow_data = Jastrow_data(

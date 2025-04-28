@@ -58,7 +58,9 @@ def test_comparison_with_TurboRVB_wo_Jastrow_AE():
         _,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ae_ccpvqz.h5"))
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ae_ccpvqz.h5"), store_tuple=True
+    )
 
     jastrow_data = Jastrow_data(
         jastrow_one_body_data=None,
@@ -145,7 +147,9 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_AE():
         _,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ae_ccpvqz.h5"))
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ae_ccpvqz.h5"), store_tuple=True
+    )
 
     with open(
         os.path.join(os.path.dirname(__file__), "trexio_example_files", "jastrow_data_w_1b_2b_1b3b_ae.pkl"),

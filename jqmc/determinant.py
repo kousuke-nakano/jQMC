@@ -99,18 +99,6 @@ class Geminal_data:
     )
     lambda_matrix: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
-    def __post_init__(self):
-        """Post-initialization method to check the types of the attributes.
-
-        Notice that only the static attributes (i.e., pytree_node=False with an immutable attribute) are checked.
-        Otherwise the backprogragation will not work.
-
-        """
-        if not isinstance(self.num_electron_up, int):
-            raise ValueError(f"num_electron_up = {type(self.num_electron_up)} must be an int.")
-        if not isinstance(self.num_electron_dn, int):
-            raise ValueError(f"num_electron_dn = {type(self.num_electron_dn)} must be an int.")
-
     def sanity_check(self) -> None:
         """Check attributes of the class.
 
@@ -123,11 +111,14 @@ class Geminal_data:
             self.orb_num_up,
             self.orb_num_dn + (self.num_electron_up - self.num_electron_dn),
         ):
-            logger.error(
+            raise ValueError(
                 f"dim. of lambda_matrix = {self.lambda_matrix.shape} is imcompatible with the expected one "
                 + f"= ({self.orb_num_up}, {self.orb_num_dn + (self.num_electron_up - self.num_electron_dn)}).",
             )
-            raise ValueError("Inconsistent dimension of lambda_matrix.")
+        if not isinstance(self.num_electron_up, int):
+            raise ValueError(f"num_electron_up = {type(self.num_electron_up)} must be an int.")
+        if not isinstance(self.num_electron_dn, int):
+            raise ValueError(f"num_electron_dn = {type(self.num_electron_dn)} must be an int.")
 
         self.orb_data_up_spin.sanity_check()
         self.orb_data_dn_spin.sanity_check()

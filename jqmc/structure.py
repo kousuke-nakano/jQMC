@@ -68,53 +68,23 @@ class Structure_data:
 
     Args:
         positions (npt.NDArray | jnpt.ArrayLike): (N x 3) np.array containing atomic positions in cartesian. The unit is Bohr
-        pbc_flag (list[bool]): pbc_flags in the a, b, and c directions.
-        vec_a (tuple[float]): lattice vector a. The unit is Bohr
-        vec_b (tuple[float]): lattice vector b. The unit is Bohr
-        vec_c (tuple[float]): lattice vector c. The unit is Bohr
-        atomic_numbers (tuple[int]): list of atomic numbers in the system.
-        element_symbols (tuple[str]): list of element symbols in the system.
-        atomic_labels (tuple[str]): list of labels for the atoms in the system.
+        pbc_flag (bool): pbc_flags in the a, b, and c directions.
+        vec_a (list[float] | tuple[float]): lattice vector a. The unit is Bohr
+        vec_b (list[float] | tuple[float]): lattice vector b. The unit is Bohr
+        vec_c (list[float] | tuple[float]): lattice vector c. The unit is Bohr
+        atomic_numbers (list[int] | tuple[int]): list of atomic numbers in the system.
+        element_symbols (list[str] | tuple[str]): list of element symbols in the system.
+        atomic_labels (list[str] | tuple[str]): list of labels for the atoms in the system.
     """
 
     positions: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
     pbc_flag: bool = struct.field(pytree_node=False, default=False)
-    vec_a: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
-    vec_b: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
-    vec_c: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
-    atomic_numbers: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
-    element_symbols: tuple[str] = struct.field(pytree_node=False, default_factory=tuple)
-    atomic_labels: tuple[str] = struct.field(pytree_node=False, default_factory=tuple)
-
-    def __post_init__(self):
-        """Post-initialization method to check the types of the attributes.
-
-        Notice that only the static attributes (i.e., pytree_node=False with an immutable attribute) are checked.
-        Otherwise the backprogragation will not work.
-
-        """
-        if not isinstance(self.pbc_flag, bool):
-            logger.warning(
-                f"pbc_flag = {type(self.pbc_flag)} must be a boolen. In a future release, this will raise a ValueError."
-            )
-        if not isinstance(self.vec_a, tuple):
-            logger.warning(f"vec_a = {type(self.vec_a)} must be a tuple. In a future release, this will raise a ValueError.")
-        if not isinstance(self.vec_b, tuple):
-            logger.warning(f"vec_b = {type(self.vec_b)} must be a tuple. In a future release, this will raise a ValueError.")
-        if not isinstance(self.vec_c, tuple):
-            logger.warning(f"vec_c = {type(self.vec_c)} must be a tuple. In a future release, this will raise a ValueError.")
-        if not isinstance(self.atomic_numbers, tuple):
-            logger.warning(
-                f"atomic_numbers = {type(self.atomic_numbers)} must be a tuple. In a future release, this will raise a ValueError."
-            )
-        if not isinstance(self.element_symbols, tuple):
-            logger.warning(
-                f"element_symbols = {type(self.element_symbols)} must be a tuple. In a future release, this will raise a ValueError."
-            )
-        if not isinstance(self.atomic_labels, tuple):
-            logger.warning(
-                f"atomic_labels = {type(self.atomic_labels)} must be a tuple. In a future release, this will raise a ValueError."
-            )
+    vec_a: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    vec_b: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    vec_c: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    atomic_numbers: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    element_symbols: list[str] | tuple[str] = struct.field(pytree_node=False, default_factory=tuple)
+    atomic_labels: list[str] | tuple[str] = struct.field(pytree_node=False, default_factory=tuple)
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -125,28 +95,36 @@ class Structure_data:
             ValueError: If there is an inconsistency in a dimension of a given argument.
         """
         if len(self.element_symbols) != len(self.atomic_numbers):
-            logger.error("The length of element_symbols and atomic_numbers must be the same.")
             raise ValueError("The length of element_symbols and atomic_numbers must be the same.")
         if len(self.element_symbols) != len(self.atomic_numbers):
-            logger.error("The length of element_symbols and atomic_numbers must be the same.")
             raise ValueError("The length of element_symbols and atomic_numbers must be the same.")
         if len(self.atomic_labels) != len(self.atomic_numbers):
-            logger.error("The length of atomic_labels and atomic_numbers must be the same.")
             raise ValueError("The length of atomic_labels and atomic_numbers must be the same.")
         if len(self.positions) != len(self.atomic_numbers):
-            logger.error("The length of positions and atomic_numbers must be the same.")
             raise ValueError("The length of positions and atomic_numbers must be the same.")
         if not isinstance(self.pbc_flag, bool):
-            logger.error("The pbc_flag must be a boolen.")
             raise ValueError("The pbc_flag must be a boolen.")
         if self.pbc_flag:
             if len(self.vec_a) != 3 or len(self.vec_b) != 3 or len(self.vec_c) != 3:
-                logger.error("The length of lattice vectors must be 3.")
                 raise ValueError("The length of lattice vectors must be 3.")
         else:
             if len(self.vec_a) != 0 or len(self.vec_b) != 0 or len(self.vec_c) != 0:
-                logger.error("The lattice vectors must be empty.")
                 raise ValueError("The lattice vectors must be empty.")
+
+        if not isinstance(self.pbc_flag, bool):
+            raise ValueError(f"pbc_flag = {type(self.pbc_flag)} must be a boolen.")
+        if not isinstance(self.vec_a, (list, tuple)):
+            raise ValueError(f"vec_a = {type(self.vec_a)} must be a list or tuple.")
+        if not isinstance(self.vec_b, (list, tuple)):
+            raise ValueError(f"vec_b = {type(self.vec_b)} must be a list or tuple.")
+        if not isinstance(self.vec_c, (list, tuple)):
+            raise ValueError(f"vec_c = {type(self.vec_c)} must be a list or tuple.")
+        if not isinstance(self.atomic_numbers, (list, tuple)):
+            raise ValueError(f"atomic_numbers = {type(self.atomic_numbers)} must be a list or tuple.")
+        if not isinstance(self.element_symbols, (list, tuple)):
+            raise ValueError(f"element_symbols = {type(self.element_symbols)} must be a list or tuple.")
+        if not isinstance(self.atomic_labels, (list, tuple)):
+            raise ValueError(f"atomic_labels = {type(self.atomic_labels)} must be a list or tuple.")
 
     def get_info(self) -> list[str]:
         """Return a list of strings containing information about the Structure attribute."""

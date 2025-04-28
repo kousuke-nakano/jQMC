@@ -61,7 +61,9 @@ def test_debug_and_jax_SWCT_omega():
         _,
         geminal_mo_data,
         _,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+    )
 
     swct_data = SWCT_data(structure=structure_data)
 

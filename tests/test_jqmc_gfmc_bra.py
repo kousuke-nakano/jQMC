@@ -64,7 +64,9 @@ def test_jqmc_gfmc_fixed_number_of_branching_tmove():
         _,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"))
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+    )
 
     with open(
         os.path.join(os.path.dirname(__file__), "trexio_example_files", "jastrow_data_w_2b_1b3b_w_ecp.pkl"),

@@ -58,7 +58,9 @@ def test_vmc_force_with_SWCT_ecp():
         _,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ecp_ccpvtz_cart.h5"))
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ecp_ccpvtz_cart.h5"), store_tuple=True
+    )
     # """
 
     jastrow_onebody_data = None
@@ -120,7 +122,9 @@ def test_vmc_force_with_SWCT_ae():
         _,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ae_ccpvtz_cart.h5"))
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ae_ccpvtz_cart.h5"), store_tuple=True
+    )
     # """
 
     jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(

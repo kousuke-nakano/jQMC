@@ -152,22 +152,22 @@ class Coulomb_potential_data:
     Args:
         ecp_flag (bool) :
             If True, ECPs are used. The following values should be defined.
-        z_cores (tuple[float]]):
+        z_cores (list[float] | tuple[float]]):
             Number of core electrons to remove per atom (dim: num_atoms).
-        max_ang_mom_plus_1 (tuple[int]):
+        max_ang_mom_plus_1 (list[int] | tuple[int]):
             l_{max}+1, one higher than the max angular momentum in the
             removed core orbitals (dim: num_atoms)
         num_ecps (int):
             Total number of ECP functions for all atoms and all values of l
-        ang_moms (tuple[int]):
+        ang_moms (list[int] | tuple[int]):
             One-to-one correspondence between ECP items and the angular momentum l (dim:num_ecps)
-        nucleus_index (tuple[int]):
+        nucleus_index (list[int] | tuple[int]):
             One-to-one correspondence between ECP items and the atom index (dim:num_ecps)
-        exponents (tuple[float]):
+        exponents (list[float] | tuple[float]):
             all ECP exponents (dim:num_ecps)
-        coefficients (tuple[float]):
+        coefficients (list[float] | tuple[float]):
             all ECP coefficients (dim:num_ecps)
-        powers (tuple[int]):
+        powers (list[int] | tuple[int]):
             all ECP powers (dim:num_ecps)
         structure_data (Structure_data):
             Instance of a structure_data
@@ -176,52 +176,14 @@ class Coulomb_potential_data:
 
     structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
     ecp_flag: bool = struct.field(pytree_node=False, default=False)
-    z_cores: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
-    max_ang_mom_plus_1: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    z_cores: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    max_ang_mom_plus_1: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
     num_ecps: int = struct.field(pytree_node=False, default=0)
-    ang_moms: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
-    nucleus_index: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
-    exponents: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
-    coefficients: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
-    powers: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
-
-    def __post_init__(self):
-        """Post-initialization method to check the types of the attributes.
-
-        Notice that only the static attributes (i.e., pytree_node=False with an immutable attribute) are checked.
-        Otherwise the backprogragation will not work.
-
-        """
-        if not isinstance(self.ecp_flag, bool):
-            logger.warning(
-                f"ecp_flag = {type(self.ecp_flag)} must be a bool. In a future release, this will raise a ValueError."
-            )
-        if not isinstance(self.z_cores, tuple):
-            logger.warning(
-                f"z_cores = {type(self.z_cores)} must be a tuple. In a future release, this will raise a ValueError."
-            )
-        if not isinstance(self.max_ang_mom_plus_1, tuple):
-            logger.warning(
-                f"max_ang_mom_plus_1 = {type(self.max_ang_mom_plus_1)} must be a tuple. In a future release, this will raise a ValueError."
-            )
-        if not isinstance(self.num_ecps, int):
-            logger.warning(
-                f"num_ecps = {type(self.num_ecps)} must be an int. In a future release, this will raise a ValueError."
-            )
-        if not isinstance(self.ang_moms, tuple):
-            logger.warning(
-                f"ang_moms = {type(self.ang_moms)} must be a tuple. In a future release, this will raise a ValueError."
-            )
-        if not isinstance(self.exponents, tuple):
-            logger.warning(
-                f"exponents = {type(self.exponents)} must be a tuple. In a future release, this will raise a ValueError."
-            )
-        if not isinstance(self.coefficients, tuple):
-            logger.warning(
-                f"coefficients = {type(self.coefficients)} must be a tuple. In a future release, this will raise a ValueError."
-            )
-        if not isinstance(self.powers, tuple):
-            logger.warning(f"powers = {type(self.powers)} must be a tuple. In a future release, this will raise a ValueError.")
+    ang_moms: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    nucleus_index: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    exponents: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    coefficients: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    powers: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -233,48 +195,51 @@ class Coulomb_potential_data:
         """
         if self.ecp_flag:
             if len(self.z_cores) != self.structure_data.natom:
-                logger.error("dim. of self.z_cores is wrong")
                 raise ValueError("dim. of self.z_cores is wrong")
             if len(self.max_ang_mom_plus_1) != self.structure_data.natom:
-                logger.error("dim. of self.max_ang_mom_plus_1 is wrong")
                 raise ValueError("dim. of self.max_ang_mom_plus_1 is wrong")
             if len(self.ang_moms) != self.num_ecps:
-                logger.error("dim. of self.num_ecps is wrong")
                 raise ValueError("dim. of self.num_ecps is wrong")
             if len(self.nucleus_index) != self.num_ecps:
-                logger.error("dim. of self.nucleus_index is wrong")
                 raise ValueError("dim. of self.nucleus_index is wrong")
             if len(self.exponents) != self.num_ecps:
-                logger.error("dim. of self.ang_moms is wrong")
                 raise ValueError("dim. of self.ang_moms is wrong")
             if len(self.coefficients) != self.num_ecps:
-                logger.error("dim. of self.coefficients is wrong")
                 raise ValueError("dim. of self.coefficients is wrong")
             if len(self.powers) != self.num_ecps:
-                logger.error("dim. of self.powers is wrong")
                 raise ValueError("dim. of self.powers is wrong")
         else:
             if len(self.z_cores) != 0:
-                logger.error("dim. of self.z_cores is wrong")
                 raise ValueError("dim. of self.z_cores is wrong")
             if len(self.max_ang_mom_plus_1) != 0:
-                logger.error("dim. of self.max_ang_mom_plus_1 is wrong")
                 raise ValueError("dim. of self.max_ang_mom_plus_1 is wrong")
             if len(self.ang_moms) != 0:
-                logger.error("dim. of self.ang_moms is wrong")
                 raise ValueError("dim. of self.ang_moms is wrong")
             if len(self.nucleus_index) != 0:
-                logger.error("dim. of self.nucleus_index is wrong")
                 raise ValueError("dim. of self.nucleus_index is wrong")
             if len(self.exponents) != 0:
-                logger.error("dim. of self.exponents is wrong")
                 raise ValueError("dim. of self.exponents is wrong")
             if len(self.coefficients) != 0:
-                logger.error("dim. of self.coefficients is wrong")
                 raise ValueError("dim. of self.coefficients is wrong")
             if len(self.powers) != 0:
-                logger.error("dim. of self.powers is wrong")
                 raise ValueError("dim. of self.powers is wrong")
+
+        if not isinstance(self.ecp_flag, bool):
+            raise ValueError(f"ecp_flag = {type(self.ecp_flag)} must be a bool.")
+        if not isinstance(self.z_cores, (list, tuple)):
+            raise ValueError(f"z_cores = {type(self.z_cores)} must be a list or tuple.")
+        if not isinstance(self.max_ang_mom_plus_1, (list, tuple)):
+            raise ValueError(f"max_ang_mom_plus_1 = {type(self.max_ang_mom_plus_1)} must be a list or tuple.")
+        if not isinstance(self.num_ecps, int):
+            raise ValueError(f"num_ecps = {type(self.num_ecps)} must be an int.")
+        if not isinstance(self.ang_moms, (list, tuple)):
+            raise ValueError(f"ang_moms = {type(self.ang_moms)} must be a list or tuple.")
+        if not isinstance(self.exponents, (list, tuple)):
+            raise ValueError(f"exponents = {type(self.exponents)} must be a list or tuple.")
+        if not isinstance(self.coefficients, (list, tuple)):
+            raise ValueError(f"coefficients = {type(self.coefficients)} must be a list or tuple.")
+        if not isinstance(self.powers, (list, tuple)):
+            raise ValueError(f"powers = {type(self.powers)} must be a list or tuple.")
 
         self.structure_data.sanity_check()
 

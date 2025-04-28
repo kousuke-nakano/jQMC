@@ -55,7 +55,7 @@ logger = getLogger("jqmc").getChild(__name__)
 
 
 def read_trexio_file(
-    trexio_file: str,
+    trexio_file: str, store_tuple: bool = False
 ) -> tuple[Structure_data, AOs_sphe_data, MOs_data, MOs_data, Geminal_data, Coulomb_potential_data]:
     """Reading a TREXIO file.
 
@@ -64,10 +64,11 @@ def read_trexio_file(
 
     Args:
         trexio_file (str): the path to a TREXIO file
+        store_tuple (bool): store a list varibale as tuple. This is needed for pytest because of jax implmentation,
+        but slow in production runs. Choose false for production runs.
 
     Returns:
-        instances of AOs_data, MOs_data, Structure_data, and
-        Coulomb_potential_data.
+        instances of AOs_data, MOs_data, Structure_data, and Coulomb_potential_data.
     """
     # prefix and file names
     # logger.info(f"TREXIO file = {trexio_file}")
@@ -170,16 +171,28 @@ def read_trexio_file(
     file_r.close()
 
     # Structure_data instance
-    structure_data = Structure_data(
-        pbc_flag=pbc_flag,
-        vec_a=(),
-        vec_b=(),
-        vec_c=(),
-        atomic_numbers=tuple(convert_from_atomic_labels_to_atomic_numbers(labels_r)),
-        element_symbols=tuple(labels_r),
-        atomic_labels=tuple(labels_r),
-        positions=np.array(coords_r),
-    )
+    if store_tuple:
+        structure_data = Structure_data(
+            pbc_flag=pbc_flag,
+            vec_a=(),
+            vec_b=(),
+            vec_c=(),
+            atomic_numbers=tuple(convert_from_atomic_labels_to_atomic_numbers(labels_r)),
+            element_symbols=tuple(labels_r),
+            atomic_labels=tuple(labels_r),
+            positions=np.array(coords_r),
+        )
+    else:
+        structure_data = Structure_data(
+            pbc_flag=pbc_flag,
+            vec_a=[],
+            vec_b=[],
+            vec_c=[],
+            atomic_numbers=list(convert_from_atomic_labels_to_atomic_numbers(labels_r)),
+            element_symbols=list(labels_r),
+            atomic_labels=list(labels_r),
+            positions=np.array(coords_r),
+        )
 
     # ao spherical part check
     if ao_cartesian:
@@ -279,20 +292,34 @@ def read_trexio_file(
             logger.error(f"ao_num_count = {ao_num_count} is inconsistent with the read ao_num = {ao_num}")
             raise ValueError
 
-        aos_data = AOs_cart_data(
-            structure_data=structure_data,
-            nucleus_index=tuple(nucleus_index),
-            num_ao=ao_num_count,
-            num_ao_prim=ao_prim_num_count,
-            angular_momentums=tuple(angular_momentums),
-            polynominal_order_x=tuple(polynominal_order_x),
-            polynominal_order_y=tuple(polynominal_order_y),
-            polynominal_order_z=tuple(polynominal_order_z),
-            orbital_indices=tuple(orbital_indices),
-            exponents=tuple(exponents),
-            coefficients=tuple(coefficients),
-        )
-
+        if store_tuple:
+            aos_data = AOs_cart_data(
+                structure_data=structure_data,
+                nucleus_index=tuple(nucleus_index),
+                num_ao=ao_num_count,
+                num_ao_prim=ao_prim_num_count,
+                angular_momentums=tuple(angular_momentums),
+                polynominal_order_x=tuple(polynominal_order_x),
+                polynominal_order_y=tuple(polynominal_order_y),
+                polynominal_order_z=tuple(polynominal_order_z),
+                orbital_indices=tuple(orbital_indices),
+                exponents=tuple(exponents),
+                coefficients=tuple(coefficients),
+            )
+        else:
+            aos_data = AOs_cart_data(
+                structure_data=structure_data,
+                nucleus_index=list(nucleus_index),
+                num_ao=ao_num_count,
+                num_ao_prim=ao_prim_num_count,
+                angular_momentums=list(angular_momentums),
+                polynominal_order_x=list(polynominal_order_x),
+                polynominal_order_y=list(polynominal_order_y),
+                polynominal_order_z=list(polynominal_order_z),
+                orbital_indices=list(orbital_indices),
+                exponents=list(exponents),
+                coefficients=list(coefficients),
+            )
     else:
         logger.debug("Spherical basis functions.")
         # AOs_data instance
@@ -363,17 +390,30 @@ def read_trexio_file(
             logger.error(f"ao_num_count = {ao_num_count} is inconsistent with the read ao_num = {ao_num}")
             raise ValueError
 
-        aos_data = AOs_sphe_data(
-            structure_data=structure_data,
-            nucleus_index=tuple(nucleus_index),
-            num_ao=ao_num_count,
-            num_ao_prim=ao_prim_num_count,
-            angular_momentums=tuple(angular_momentums),
-            magnetic_quantum_numbers=tuple(magnetic_quantum_numbers),
-            orbital_indices=tuple(orbital_indices),
-            exponents=tuple(exponents),
-            coefficients=tuple(coefficients),
-        )
+        if store_tuple:
+            aos_data = AOs_sphe_data(
+                structure_data=structure_data,
+                nucleus_index=tuple(nucleus_index),
+                num_ao=ao_num_count,
+                num_ao_prim=ao_prim_num_count,
+                angular_momentums=tuple(angular_momentums),
+                magnetic_quantum_numbers=tuple(magnetic_quantum_numbers),
+                orbital_indices=tuple(orbital_indices),
+                exponents=tuple(exponents),
+                coefficients=tuple(coefficients),
+            )
+        else:
+            aos_data = AOs_sphe_data(
+                structure_data=structure_data,
+                nucleus_index=list(nucleus_index),
+                num_ao=ao_num_count,
+                num_ao_prim=ao_prim_num_count,
+                angular_momentums=list(angular_momentums),
+                magnetic_quantum_numbers=list(magnetic_quantum_numbers),
+                orbital_indices=list(orbital_indices),
+                exponents=list(exponents),
+                coefficients=list(coefficients),
+            )
 
     # MOs_data instance
     threshold_mo_occ = 1.0e-6
@@ -412,18 +452,32 @@ def read_trexio_file(
 
     # Coulomb_potential_data instance
     if ecp_flag:
-        coulomb_potential_data = Coulomb_potential_data(
-            structure_data=structure_data,
-            ecp_flag=True,
-            z_cores=tuple(ecp_z_core),
-            max_ang_mom_plus_1=tuple(ecp_max_ang_mom_plus_1),
-            num_ecps=ecp_num,
-            ang_moms=tuple(ecp_ang_mom),
-            nucleus_index=tuple(ecp_nucleus_index),
-            exponents=tuple(ecp_exponent),
-            coefficients=tuple(ecp_coefficient),
-            powers=tuple(ecp_power + 2),
-        )
+        if store_tuple:
+            coulomb_potential_data = Coulomb_potential_data(
+                structure_data=structure_data,
+                ecp_flag=True,
+                z_cores=tuple(ecp_z_core),
+                max_ang_mom_plus_1=tuple(ecp_max_ang_mom_plus_1),
+                num_ecps=ecp_num,
+                ang_moms=tuple(ecp_ang_mom),
+                nucleus_index=tuple(ecp_nucleus_index),
+                exponents=tuple(ecp_exponent),
+                coefficients=tuple(ecp_coefficient),
+                powers=tuple(ecp_power + 2),
+            )
+        else:
+            coulomb_potential_data = Coulomb_potential_data(
+                structure_data=structure_data,
+                ecp_flag=True,
+                z_cores=list(ecp_z_core),
+                max_ang_mom_plus_1=list(ecp_max_ang_mom_plus_1),
+                num_ecps=ecp_num,
+                ang_moms=list(ecp_ang_mom),
+                nucleus_index=list(ecp_nucleus_index),
+                exponents=list(ecp_exponent),
+                coefficients=list(ecp_coefficient),
+                powers=list(ecp_power + 2),
+            )
     else:
         coulomb_potential_data = Coulomb_potential_data(structure_data=structure_data, ecp_flag=False)
 

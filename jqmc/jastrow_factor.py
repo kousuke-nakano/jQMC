@@ -76,19 +76,7 @@ class Jastrow_one_body_data:
 
     jastrow_1b_param: float = struct.field(pytree_node=True, default=1.0)
     structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
-    core_electrons: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
-
-    def __post_init__(self):
-        """Post-initialization method to check the types of the attributes.
-
-        Notice that only the static attributes (i.e., pytree_node=False with an immutable attribute) are checked.
-        Otherwise the backprogragation will not work.
-
-        """
-        if not isinstance(self.core_electrons, tuple):
-            logger.warning(
-                f"core_electrons = {type(self.core_electrons)} must be a tuple. In a future release, this will raise a ValueError."
-            )
+    core_electrons: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -99,13 +87,13 @@ class Jastrow_one_body_data:
             ValueError: If there is an inconsistency in a dimension of a given argument.
         """
         if self.jastrow_1b_param < 0.0:
-            logger.error(f"jastrow_1b_param = {self.jastrow_1b_param} must be non-negative.")
-            raise ValueError("Invalid jastrow_1b_param.")
+            raise ValueError(f"jastrow_1b_param = {self.jastrow_1b_param} must be non-negative.")
         if len(self.core_electrons) != len(self.structure_data.positions):
-            logger.error(
+            raise ValueError(
                 f"len(core_electrons) = {len(self.core_electrons)} must be the same as len(structure_data.positions) = {len(self.structure_data.positions)}."
             )
-            raise ValueError("Inconsistent dimensions of core_electrons.")
+        if not isinstance(self.core_electrons, (list, tuple)):
+            raise ValueError(f"core_electrons = {type(self.core_electrons)} must be a list or tuple.")
         self.structure_data.sanity_check()
 
     def get_info(self) -> list[str]:
@@ -239,15 +227,6 @@ class Jastrow_two_body_data:
 
     jastrow_2b_param: float = struct.field(pytree_node=True, default=1.0)
 
-    def __post_init__(self):
-        """Post-initialization method to check the types of the attributes.
-
-        Notice that only the static attributes (i.e., pytree_node=False with an immutable attribute) are checked.
-        Otherwise the backprogragation will not work.
-
-        """
-        pass
-
     def sanity_check(self) -> None:
         """Check attributes of the class.
 
@@ -257,8 +236,7 @@ class Jastrow_two_body_data:
             ValueError: If there is an inconsistency in a dimension of a given argument.
         """
         if self.jastrow_2b_param < 0.0:
-            logger.error(f"jastrow_2b_param = {self.jastrow_2b_param} must be non-negative.")
-            raise ValueError("Invalid jastrow_2b_param.")
+            raise ValueError(f"jastrow_2b_param = {self.jastrow_2b_param} must be non-negative.")
 
     def get_info(self) -> list[str]:
         """Return a list of strings representing the logged information."""
@@ -443,15 +421,6 @@ class Jastrow_three_body_data:
     orb_data: AOs_sphe_data | AOs_cart_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
     j_matrix: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
-    def __post_init__(self):
-        """Post-initialization method to check the types of the attributes.
-
-        Notice that only the static attributes (i.e., pytree_node=False with an immutable attribute) are checked.
-        Otherwise the backprogragation will not work.
-
-        """
-        pass
-
     def sanity_check(self) -> None:
         """Check attributes of the class.
 
@@ -464,11 +433,10 @@ class Jastrow_three_body_data:
             self.orb_num,
             self.orb_num + 1,
         ):
-            logger.error(
+            raise ValueError(
                 f"dim. of j_matrix = {self.j_matrix.shape} is imcompatible with the expected one "
                 + f"= ({self.orb_num}, {self.orb_num + 1}).",
             )
-            raise ValueError("Inconsistent dimensions of j_matrix.")
 
     def get_info(self) -> list[str]:
         """Return a list of strings containing the information stored in the attributes."""
@@ -694,15 +662,6 @@ class Jastrow_data:
     jastrow_one_body_data: Jastrow_one_body_data = struct.field(pytree_node=True, default=None)
     jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=True, default=None)
     jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=True, default=None)
-
-    def __post_init__(self):
-        """Post-initialization method to check the types of the attributes.
-
-        Notice that only the static attributes (i.e., pytree_node=False with an immutable attribute) are checked.
-        Otherwise the backprogragation will not work.
-
-        """
-        pass
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
