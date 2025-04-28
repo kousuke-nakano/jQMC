@@ -178,7 +178,7 @@ class Coulomb_potential_data:
     ecp_flag: bool = struct.field(pytree_node=False, default=False)
     z_cores: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
     max_ang_mom_plus_1: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
-    num_ecps: int = struct.field(pytree_node=False, default_factory=0)
+    num_ecps: int = struct.field(pytree_node=False, default=0)
     ang_moms: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
     nucleus_index: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
     exponents: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
