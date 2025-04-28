@@ -70,14 +70,14 @@ def test_Jastrow_onebody_part():
     R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
 
     structure_data = Structure_data(
-        pbc_flag=[False, False, False],
+        pbc_flag=False,
         positions=R_carts,
-        atomic_numbers=[6] * num_R_cart_samples,
-        element_symbols=["X"] * num_R_cart_samples,
-        atomic_labels=["X"] * num_R_cart_samples,
+        atomic_numbers=tuple([6] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
     )
 
-    core_electrons = [3] * num_R_cart_samples
+    core_electrons = tuple([3] * num_R_cart_samples)
 
     jastrow_one_body_data = Jastrow_one_body_data(
         jastrow_1b_param=1.0, structure_data=structure_data, core_electrons=core_electrons
@@ -141,6 +141,12 @@ def test_Jastrow_threebody_part_with_AOs_data():
     angular_momentums = [0, 0, 0, 1, 1, 1]
     magnetic_quantum_numbers = [0, 0, 0, 0, +1, -1]
 
+    orbital_indices = tuple(orbital_indices)
+    exponents = tuple(exponents)
+    coefficients = tuple(coefficients)
+    angular_momentums = tuple(angular_momentums)
+    magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
+
     # generate matrices for the test
     r_cart_min, r_cart_max = -1.0, 1.0
     R_cart_min, R_cart_max = 0.0, 0.0
@@ -149,16 +155,16 @@ def test_Jastrow_threebody_part_with_AOs_data():
     R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
 
     structure_data = Structure_data(
-        pbc_flag=[False, False, False],
+        pbc_flag=False,
         positions=R_carts,
-        atomic_numbers=[0] * num_R_cart_samples,
-        element_symbols=["X"] * num_R_cart_samples,
-        atomic_labels=["X"] * num_R_cart_samples,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
     )
 
     aos_data = AOs_sphe_data(
         structure_data=structure_data,
-        nucleus_index=list(range(num_R_cart_samples)),
+        nucleus_index=tuple(list(range(num_R_cart_samples))),
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         orbital_indices=orbital_indices,
@@ -205,6 +211,12 @@ def test_Jastrow_threebody_part_with_MOs_data():
     angular_momentums = [1, 1, 1]
     magnetic_quantum_numbers = [0, 0, -1]
 
+    orbital_indices = tuple(orbital_indices)
+    exponents = tuple(exponents)
+    coefficients = tuple(coefficients)
+    angular_momentums = tuple(angular_momentums)
+    magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
+
     num_r_up_cart_samples = num_r_dn_cart_samples = num_el
     num_R_cart_samples = num_ao
     r_cart_min, r_cart_max = -5.0, 5.0
@@ -216,16 +228,16 @@ def test_Jastrow_threebody_part_with_MOs_data():
     mo_coefficients = np.random.rand(num_mo, num_ao)
 
     structure_data = Structure_data(
-        pbc_flag=[False, False, False],
+        pbc_flag=False,
         positions=R_carts,
-        atomic_numbers=[0] * num_R_cart_samples,
-        element_symbols=["X"] * num_R_cart_samples,
-        atomic_labels=["X"] * num_R_cart_samples,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
     )
 
     aos_data = AOs_sphe_data(
         structure_data=structure_data,
-        nucleus_index=list(range(num_R_cart_samples)),
+        nucleus_index=tuple(list(range(num_R_cart_samples))),
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         orbital_indices=orbital_indices,
@@ -276,6 +288,12 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
     angular_momentums = [0, 0, 0, 1, 1, 1]
     magnetic_quantum_numbers = [0, 0, 0, 0, +1, -1]
 
+    orbital_indices = tuple(orbital_indices)
+    exponents = tuple(exponents)
+    coefficients = tuple(coefficients)
+    angular_momentums = tuple(angular_momentums)
+    magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
+
     # generate matrices for the test
     r_cart_min, r_cart_max = -1.0, 1.0
     R_cart_min, R_cart_max = 0.0, 0.0
@@ -284,16 +302,16 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
     R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
 
     structure_data = Structure_data(
-        pbc_flag=[False, False, False],
+        pbc_flag=False,
         positions=R_carts,
-        atomic_numbers=[0] * num_R_cart_samples,
-        element_symbols=["X"] * num_R_cart_samples,
-        atomic_labels=["X"] * num_R_cart_samples,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
     )
 
     aos_data = AOs_sphe_data(
         structure_data=structure_data,
-        nucleus_index=list(range(num_R_cart_samples)),
+        nucleus_index=tuple(list(range(num_R_cart_samples))),
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         orbital_indices=orbital_indices,
@@ -369,6 +387,12 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
     angular_momentums = [1, 1, 1]
     magnetic_quantum_numbers = [0, 0, -1]
 
+    orbital_indices = tuple(orbital_indices)
+    exponents = tuple(exponents)
+    coefficients = tuple(coefficients)
+    angular_momentums = tuple(angular_momentums)
+    magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
+
     num_r_up_cart_samples = num_r_dn_cart_samples = num_el
     num_R_cart_samples = num_ao
     r_cart_min, r_cart_max = -5.0, 5.0
@@ -380,16 +404,16 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
     mo_coefficients = np.random.rand(num_mo, num_ao)
 
     structure_data = Structure_data(
-        pbc_flag=[False, False, False],
+        pbc_flag=False,
         positions=R_carts,
-        atomic_numbers=[0] * num_R_cart_samples,
-        element_symbols=["X"] * num_R_cart_samples,
-        atomic_labels=["X"] * num_R_cart_samples,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
     )
 
     aos_data = AOs_sphe_data(
         structure_data=structure_data,
-        nucleus_index=list(range(num_R_cart_samples)),
+        nucleus_index=tuple(list(range(num_R_cart_samples))),
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         orbital_indices=orbital_indices,

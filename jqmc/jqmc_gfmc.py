@@ -39,6 +39,7 @@ import numpy as np
 import numpy.typing as npt
 from jax import grad, vmap
 from jax import numpy as jnp
+from jax import typing as jnpt
 from mpi4py import MPI
 
 from .coulomb_potential import (
@@ -60,16 +61,17 @@ from .wavefunction import (
     evaluate_ln_wavefunction_jax,
 )
 
-# MPI related
-mpi_comm = MPI.COMM_WORLD
-mpi_rank = mpi_comm.Get_rank()
-mpi_size = mpi_comm.Get_size()
-
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_traceback_filtering", "off")
+
+# MPI related
+mpi_comm = MPI.COMM_WORLD
+mpi_rank = mpi_comm.Get_rank()
+mpi_size = mpi_comm.Get_size()
 
 
 # accumurate weights
@@ -1062,9 +1064,9 @@ class GFMC_fixed_num_projection_debug:
 
         def _projection(
             init_w_L: float,
-            init_r_up_carts: jax.Array,
-            init_r_dn_carts: jax.Array,
-            init_jax_PRNG_key: jax.Array,
+            init_r_up_carts: jnpt.ArrayLike,
+            init_r_dn_carts: jnpt.ArrayLike,
+            init_jax_PRNG_key: jnpt.ArrayLike,
             E_scf: float,
             num_mcmc_per_measurement: int,
             non_local_move: bool,
@@ -1359,9 +1361,9 @@ class GFMC_fixed_num_projection_debug:
 
         def _compute_V_elements(
             hamiltonian_data: Hamiltonian_data,
-            r_up_carts: jax.Array,
-            r_dn_carts: jax.Array,
-            jax_PRNG_key: jax.Array,
+            r_up_carts: jnpt.ArrayLike,
+            r_dn_carts: jnpt.ArrayLike,
+            jax_PRNG_key: jnpt.ArrayLike,
             non_local_move: bool,
             alat: float,
         ):
@@ -1575,9 +1577,9 @@ class GFMC_fixed_num_projection_debug:
 
         def _compute_local_energy(
             hamiltonian_data: Hamiltonian_data,
-            r_up_carts: jax.Array,
-            r_dn_carts: jax.Array,
-            jax_PRNG_key: jax.Array,
+            r_up_carts: jnpt.ArrayLike,
+            r_dn_carts: jnpt.ArrayLike,
+            jax_PRNG_key: jnpt.ArrayLike,
             non_local_move: bool,
             alat: float,
         ):

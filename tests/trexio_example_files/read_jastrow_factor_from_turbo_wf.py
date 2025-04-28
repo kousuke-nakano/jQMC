@@ -45,14 +45,24 @@ for suffix in suffix_list:
     element_symbols = f10structure.structure.element_symbols
     atomic_labels = f10structure.structure.element_symbols
     positions = f10structure.positions
-
     core_electrons = [Z - Z_val for Z, Z_val in zip(atomic_numbers, valence_electrons)]
+
+    pbc_flag = bool(pbc_flag)
+    vec_a = tuple(vec_a)
+    vec_b = tuple(vec_b)
+    vec_c = tuple(vec_c)
+    atomic_numbers = tuple(atomic_numbers)
+    valence_electrons = tuple(valence_electrons)
+    element_symbols = tuple(element_symbols)
+    atomic_labels = tuple(atomic_labels)
+    core_electrons = tuple(core_electrons)
+    positions = np.array(positions)
 
     structure_data = Structure_data(
         pbc_flag=pbc_flag,
-        vec_a=[],
-        vec_b=[],
-        vec_c=[],
+        vec_a=(),
+        vec_b=(),
+        vec_c=(),
         atomic_numbers=atomic_numbers,
         element_symbols=element_symbols,
         atomic_labels=atomic_labels,
@@ -119,6 +129,13 @@ for suffix in suffix_list:
         orbital_indices += orbital_indices_all
         exponents += ao_exponents_all
         coefficients += ao_coefficients_all
+
+    nucleus_index = tuple(nucleus_index)
+    angular_momentums = tuple(angular_momentums)
+    magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
+    orbital_indices = tuple(orbital_indices)
+    exponents = tuple(exponents)
+    coefficients = tuple(coefficients)
 
     jas_aos_data = AOs_sphe_data(
         structure_data=structure_data,

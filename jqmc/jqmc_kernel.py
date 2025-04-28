@@ -47,6 +47,7 @@ import scipy
 import toml
 from jax import grad, jit, lax, vmap
 from jax import numpy as jnp
+from jax import typing as jnpt
 from mpi4py import MPI
 
 from .coulomb_potential import (
@@ -82,11 +83,6 @@ from .wavefunction import (
     evaluate_ln_wavefunction_jax,
 )
 
-# MPI related
-mpi_comm = MPI.COMM_WORLD
-mpi_rank = mpi_comm.Get_rank()
-mpi_size = mpi_comm.Get_size()
-
 # create new logger level for development
 DEVEL_LEVEL = 5
 logging.addLevelName(DEVEL_LEVEL, "DEVEL")
@@ -105,9 +101,15 @@ logger = getLogger("jqmc").getChild(__name__)
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_traceback_filtering", "off")
 
 # separator
 num_sep_line = 66
+
+# MPI related
+mpi_comm = MPI.COMM_WORLD
+mpi_rank = mpi_comm.Get_rank()
+mpi_size = mpi_comm.Get_size()
 
 
 class MCMC:
@@ -1764,9 +1766,9 @@ class GFMC_fixed_projection_time:
             projection_counter: int,
             tau_left: float,
             w_L: float,
-            r_up_carts: jax.Array,
-            r_dn_carts: jax.Array,
-            jax_PRNG_key: jax.Array,
+            r_up_carts: jnpt.ArrayLike,
+            r_dn_carts: jnpt.ArrayLike,
+            jax_PRNG_key: jnpt.ArrayLike,
             non_local_move: bool,
             alat: float,
             hamiltonian_data: Hamiltonian_data,
@@ -1781,7 +1783,7 @@ class GFMC_fixed_projection_time:
                 w_L (float): weight before projection
                 r_up_carts (N_e^up, 3) before projection
                 r_dn_carts (N_e^dn, 3) after projection
-                jax_PRNG_key (jax.Array): jax PRNG key
+                jax_PRNG_key (jnpt.ArrayLike): jax PRNG key
                 non_local_move (bool): treatment of the spin-flip term. tmove (Casula's T-move) or dtmove (Determinant Locality Approximation with Casula's T-move)
                 alat (float): discretized grid length (bohr)
                 hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
@@ -1793,7 +1795,7 @@ class GFMC_fixed_projection_time:
                 w_L (float): weight after the final projection
                 r_up_carts (N_e^up, 3) after the final projection
                 r_dn_carts (N_e^dn, 3) after the final projection
-                jax_PRNG_key (jax.Array): jax PRNG key
+                jax_PRNG_key (jnpt.ArrayLike): jax PRNG key
             """
             logger.devel(f"jax_PRNG_key={jax_PRNG_key}")
 
@@ -3041,9 +3043,9 @@ class GFMC_fixed_num_projection:
         @partial(jit, static_argnums=6)
         def _projection(
             init_w_L: float,
-            init_r_up_carts: jax.Array,
-            init_r_dn_carts: jax.Array,
-            init_jax_PRNG_key: jax.Array,
+            init_r_up_carts: jnpt.ArrayLike,
+            init_r_dn_carts: jnpt.ArrayLike,
+            init_jax_PRNG_key: jnpt.ArrayLike,
             E_scf: float,
             num_mcmc_per_measurement: int,
             non_local_move: bool,
@@ -3359,9 +3361,9 @@ class GFMC_fixed_num_projection:
         @partial(jit, static_argnums=4)
         def _compute_V_elements(
             hamiltonian_data: Hamiltonian_data,
-            r_up_carts: jax.Array,
-            r_dn_carts: jax.Array,
-            jax_PRNG_key: jax.Array,
+            r_up_carts: jnpt.ArrayLike,
+            r_dn_carts: jnpt.ArrayLike,
+            jax_PRNG_key: jnpt.ArrayLike,
             non_local_move: bool,
             alat: float,
         ):
@@ -3576,9 +3578,9 @@ class GFMC_fixed_num_projection:
         @partial(jit, static_argnums=4)
         def _compute_local_energy(
             hamiltonian_data: Hamiltonian_data,
-            r_up_carts: jax.Array,
-            r_dn_carts: jax.Array,
-            jax_PRNG_key: jax.Array,
+            r_up_carts: jnpt.ArrayLike,
+            r_dn_carts: jnpt.ArrayLike,
+            jax_PRNG_key: jnpt.ArrayLike,
             non_local_move: bool,
             alat: float,
         ):
@@ -4370,6 +4372,12 @@ class QMC:
             cg_max_iter (int): maximum number of iterations for conjugate gradient method.
             cg_tol (float): tolerance for conjugate gradient method.
         """
+        if isinstance(self.mcmc, MCMC):
+            logger.debug(f"WF optimization is implemented for mcmc = {type(self.mcmc)}")
+        else:
+            logger.error(f"WF optimization is not implemented for mcmc = {type(self.mcmc)}")
+            raise NotImplementedError
+
         # toml(control) filename
         toml_filename = "external_control_opt.toml"
 
@@ -5199,6 +5207,11 @@ class QMC:
                 estimated by the Jackknife method with the Args.
                 The dimention of the arrays is (N, 3).
         """
+        if isinstance(self.mcmc, (MCMC, GFMC_fixed_num_projection)):
+            logger.debug(f"Atomic Force calculation is implemented for mcmc = {type(self.mcmc)}")
+        else:
+            logger.error(f"Atomic Force calculation is not implemented for mcmc = {type(self.mcmc)}")
+            raise NotImplementedError
         if self.mcmc.e_L.size != 0:
             w_L = self.mcmc.w_L[num_mcmc_warmup_steps:]
             e_L = self.mcmc.e_L[num_mcmc_warmup_steps:]
@@ -5387,6 +5400,11 @@ class QMC:
             where k is the flattened variational parameter index. The dimenstion
             of O_matrix is (M, nw, k), where M is the MCMC step and nw is the walker index.
         """
+        if isinstance(self.mcmc, MCMC):
+            logger.debug(f"WF optimization is implemented for mcmc = {type(self.mcmc)}")
+        else:
+            logger.error(f"WF optimization is not implemented for mcmc = {type(self.mcmc)}")
+            raise NotImplementedError
         dln_Psi_dc_list = self.mcmc.opt_param_dict["dln_Psi_dc_list"]
 
         # here, the thrid index indicates the flattened variational parameter index.
@@ -5434,6 +5452,11 @@ class QMC:
             Dim. is 1D vector with L elements, where L is the number of flattened
             variational parameters.
         """
+        if isinstance(self.mcmc, MCMC):
+            logger.debug(f"WF optimization is implemented for mcmc = {type(self.mcmc)}")
+        else:
+            logger.error(f"WF optimization is not implemented for mcmc = {type(self.mcmc)}")
+            raise NotImplementedError
         logger.info("Computing the generalized force vector f...")
         if self.mcmc.e_L.size != 0:
             w_L = self.mcmc.w_L[num_mcmc_warmup_steps:]

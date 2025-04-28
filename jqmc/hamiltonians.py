@@ -57,6 +57,7 @@ logger = getLogger("jqmc").getChild(__name__)
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_traceback_filtering", "off")
 
 # separator
 num_sep_line = 66
@@ -97,6 +98,15 @@ class Hamiltonian_data:
         pytree_node=True, default_factory=lambda: Coulomb_potential_data()
     )
     wavefunction_data: Wavefunction_data = struct.field(pytree_node=True, default_factory=lambda: Wavefunction_data())
+
+    def __post_init__(self):
+        """Post-initialization method to check the types of the attributes.
+
+        Notice that only the static attributes (i.e., pytree_node=False with an immutable attribute) are checked.
+        Otherwise the backprogragation will not work.
+
+        """
+        pass
 
     def sanity_check(self) -> None:
         """Check attributes of the class.

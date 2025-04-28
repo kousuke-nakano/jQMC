@@ -92,7 +92,7 @@ def test_vmc_force_with_SWCT_ecp():
         mcmc_seed=mcmc_seed,
         num_walkers=4,
         comput_position_deriv=True,
-        comput_param_deriv=False,
+        comput_param_deriv=True,
     )
     vmc = QMC(mcmc)
     vmc.run(num_mcmc_steps=20)
@@ -124,11 +124,10 @@ def test_vmc_force_with_SWCT_ae():
     # """
 
     jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
-        jastrow_1b_param=0.5, structure_data=structure_data, core_electrons=[0, 0]
+        jastrow_1b_param=0.5, structure_data=structure_data, core_electrons=tuple([0, 0])
     )
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.3)
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
-    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=mos_data)
 
     # define data
     jastrow_data = Jastrow_data(
@@ -157,7 +156,7 @@ def test_vmc_force_with_SWCT_ae():
         mcmc_seed=mcmc_seed,
         num_walkers=4,
         comput_position_deriv=True,
-        comput_param_deriv=False,
+        comput_param_deriv=True,
     )
     vmc = QMC(mcmc)
     vmc.run(num_mcmc_steps=20)

@@ -58,6 +58,7 @@ logger = getLogger("jqmc").getChild(__name__)
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_traceback_filtering", "off")
 
 
 # @dataclass
@@ -70,12 +71,22 @@ class Jastrow_one_body_data:
     Args:
         jastrow_1b_param (float): the parameter for 1b Jastrow part
         structure_data (Structure_data): an instance of Struructure_data
-        core_electrons (list[float]): a list containing the number of removed core electrons (for ECPs)
+        core_electrons (tuple[float]): a tuple containing the number of removed core electrons (for ECPs)
     """
 
     jastrow_1b_param: float = struct.field(pytree_node=True, default=1.0)
     structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
-    core_electrons: list[float] = struct.field(pytree_node=False, default_factory=list())
+    core_electrons: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+
+    def __post_init__(self):
+        """Post-initialization method to check the types of the attributes.
+
+        Notice that only the static attributes (i.e., pytree_node=False with an immutable attribute) are checked.
+        Otherwise the backprogragation will not work.
+
+        """
+        if not isinstance(self.core_electrons, tuple):
+            raise ValueError(f"core_electrons = {type(self.core_electrons)} must be a tuple.")
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -225,6 +236,15 @@ class Jastrow_two_body_data:
     """
 
     jastrow_2b_param: float = struct.field(pytree_node=True, default=1.0)
+
+    def __post_init__(self):
+        """Post-initialization method to check the types of the attributes.
+
+        Notice that only the static attributes (i.e., pytree_node=False with an immutable attribute) are checked.
+        Otherwise the backprogragation will not work.
+
+        """
+        pass
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -415,11 +435,20 @@ class Jastrow_three_body_data:
 
     Args:
         orb_data (AOs_sphe_data | AOs_cart_data | MOs_data): AOs data for up-spin and dn-spin.
-        j_matrix (npt.NDArray[np.float64]): J matrix dim. (orb_data.num_ao, orb_data.num_ao+1))
+        j_matrix (npt.NDArray | jnpt.ArrayLike): J matrix dim. (orb_data.num_ao, orb_data.num_ao+1))
     """
 
     orb_data: AOs_sphe_data | AOs_cart_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
-    j_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
+    j_matrix: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
+
+    def __post_init__(self):
+        """Post-initialization method to check the types of the attributes.
+
+        Notice that only the static attributes (i.e., pytree_node=False with an immutable attribute) are checked.
+        Otherwise the backprogragation will not work.
+
+        """
+        pass
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -507,7 +536,7 @@ class Jastrow_three_body_data_deriv_params(Jastrow_three_body_data):
     orb_data: MOs_data | AOs_sphe_data | AOs_cart_data = struct.field(
         pytree_node=False, default_factory=lambda: AOs_sphe_data()
     )
-    j_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
+    j_matrix: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
     @classmethod
     def from_base(cls, jastrow_three_body_data: Jastrow_three_body_data):
@@ -520,7 +549,7 @@ class Jastrow_three_body_data_deriv_R(Jastrow_three_body_data):
     """See Jastrow_three_body_data."""
 
     orb_data: MOs_data | AOs_sphe_data | AOs_cart_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
-    j_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=False, default_factory=lambda: np.array([]))
+    j_matrix: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=False, default_factory=lambda: np.array([]))
 
     @classmethod
     def from_base(cls, jastrow_three_body_data: Jastrow_three_body_data):
@@ -663,6 +692,15 @@ class Jastrow_data:
     jastrow_one_body_data: Jastrow_one_body_data = struct.field(pytree_node=True, default=None)
     jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=True, default=None)
     jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=True, default=None)
+
+    def __post_init__(self):
+        """Post-initialization method to check the types of the attributes.
+
+        Notice that only the static attributes (i.e., pytree_node=False with an immutable attribute) are checked.
+        Otherwise the backprogragation will not work.
+
+        """
+        pass
 
     def sanity_check(self) -> None:
         """Check attributes of the class.

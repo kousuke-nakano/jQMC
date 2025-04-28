@@ -45,6 +45,7 @@ from jax import typing as jnpt
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_traceback_filtering", "off")
 
 
 @jit

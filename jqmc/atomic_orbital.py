@@ -72,40 +72,68 @@ class AOs_cart_data:
     Args:
         structure_data(Structure_data):
             an instance of Structure_data
-        nucleus_index (list[int]):
+        nucleus_index (tuple[int]):
             One-to-one correspondence between AO items and the atom index (dim:num_ao)
         num_ao (int):
             the number of atomic orbitals.
         num_ao_prim (int):
             the number of primitive atomic orbitals.
-        orbital_indices (list[int]):
+        orbital_indices (tuple[int]):
             index for what exponents and coefficients are associated to each atomic orbital.
             dim: num_ao_prim
-        exponents (list[float]):
+        exponents (tuple[float]):
             List of exponents of the AOs. dim: num_ao_prim.
-        coefficients (list[float]):
+        coefficients (tuple[float]):
             List of coefficients of the AOs. dim: num_ao_prim
-        angular_momentums (list[int]):
+        angular_momentums (tuple[int]):
             Angular momentum of the AOs, i.e., l. dim: num_ao
-        polynominal_order_x (list[int]):
+        polynominal_order_x (tuple[int]):
             polynominal order x of the angular part. dim: num_ao
-        polynominal_order_y (list[int]):
+        polynominal_order_y (tuple[int]):
             polynominal order y of the angular part. dim: num_ao
-        polynominal_order_z (list[int]):
+        polynominal_order_z (tuple[int]):
             polynominal order z of the angular part. dim: num_ao
     """
 
     structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
-    nucleus_index: list[int] = struct.field(pytree_node=False, default_factory=list)
+    nucleus_index: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
     num_ao: int = struct.field(pytree_node=False, default=0)
     num_ao_prim: int = struct.field(pytree_node=False, default=0)
-    orbital_indices: list[int] = struct.field(pytree_node=False, default_factory=list)
-    exponents: list[float] = struct.field(pytree_node=False, default_factory=list)
-    coefficients: list[float] = struct.field(pytree_node=False, default_factory=list)
-    angular_momentums: list[int] = struct.field(pytree_node=False, default_factory=list)
-    polynominal_order_x: list[int] = struct.field(pytree_node=False, default_factory=list)
-    polynominal_order_y: list[int] = struct.field(pytree_node=False, default_factory=list)
-    polynominal_order_z: list[int] = struct.field(pytree_node=False, default_factory=list)
+    orbital_indices: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    exponents: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    coefficients: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    angular_momentums: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    polynominal_order_x: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    polynominal_order_y: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    polynominal_order_z: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+
+    def __post_init__(self):
+        """Post-initialization method to check the types of the attributes.
+
+        Notice that only the static attributes (i.e., pytree_node=False with an immutable attribute) are checked.
+        Otherwise the backprogragation will not work.
+
+        """
+        if not isinstance(self.nucleus_index, tuple):
+            raise ValueError(f"nucleus_index = {type(self.nucleus_index)} must be a tuple.")
+        if not isinstance(self.num_ao, int):
+            raise ValueError(f"num_ao = {type(self.num_ao)} must be an int.")
+        if not isinstance(self.num_ao_prim, int):
+            raise ValueError(f"num_ao_prim = {type(self.num_ao_prim)} must be an int.")
+        if not isinstance(self.orbital_indices, tuple):
+            raise ValueError(f"orbital_indices = {type(self.orbital_indices)} must be a tuple.")
+        if not isinstance(self.exponents, tuple):
+            raise ValueError(f"exponents = {type(self.exponents)} must be a tuple.")
+        if not isinstance(self.coefficients, tuple):
+            raise ValueError(f"coefficients = {type(self.coefficients)} must be a tuple.")
+        if not isinstance(self.angular_momentums, tuple):
+            raise ValueError(f"angular_momentums = {type(self.angular_momentums)} must be a tuple.")
+        if not isinstance(self.polynominal_order_x, tuple):
+            raise ValueError(f"polynominal_order_x = {type(self.polynominal_order_x)} must be a tuple.")
+        if not isinstance(self.polynominal_order_y, tuple):
+            raise ValueError(f"polynominal_order_y = {type(self.polynominal_order_y)} must be a tuple.")
+        if not isinstance(self.polynominal_order_z, tuple):
+            raise ValueError(f"polynominal_order_z = {type(self.polynominal_order_z)} must be a tuple.")
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -521,16 +549,16 @@ class AOs_cart_data_deriv_R(AOs_cart_data):
     """See AOs_data."""
 
     structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
-    nucleus_index: list[int] = struct.field(pytree_node=False, default_factory=list)
+    nucleus_index: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
     num_ao: int = struct.field(pytree_node=False, default=0)
     num_ao_prim: int = struct.field(pytree_node=False, default=0)
-    orbital_indices: list[int] = struct.field(pytree_node=False, default_factory=list)
-    exponents: list[float] = struct.field(pytree_node=False, default_factory=list)
-    coefficients: list[float] = struct.field(pytree_node=False, default_factory=list)
-    angular_momentums: list[int] = struct.field(pytree_node=False, default_factory=list)
-    polynominal_order_x: list[int] = struct.field(pytree_node=False, default_factory=list)
-    polynominal_order_y: list[int] = struct.field(pytree_node=False, default_factory=list)
-    polynominal_order_z: list[int] = struct.field(pytree_node=False, default_factory=list)
+    orbital_indices: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    exponents: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    coefficients: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    angular_momentums: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    polynominal_order_x: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    polynominal_order_y: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    polynominal_order_z: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
 
     @classmethod
     def from_base(cls, aos_data: AOs_cart_data):
@@ -567,16 +595,16 @@ class AOs_cart_data_no_deriv(AOs_cart_data):
     """See AOs_data."""
 
     structure_data: Structure_data = struct.field(pytree_node=False, default_factory=lambda: Structure_data())
-    nucleus_index: list[int] = struct.field(pytree_node=False, default_factory=list)
+    nucleus_index: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
     num_ao: int = struct.field(pytree_node=False, default=0)
     num_ao_prim: int = struct.field(pytree_node=False, default=0)
-    orbital_indices: list[int] = struct.field(pytree_node=False, default_factory=list)
-    exponents: list[float] = struct.field(pytree_node=False, default_factory=list)
-    coefficients: list[float] = struct.field(pytree_node=False, default_factory=list)
-    angular_momentums: list[int] = struct.field(pytree_node=False, default_factory=list)
-    polynominal_order_x: list[int] = struct.field(pytree_node=False, default_factory=list)
-    polynominal_order_y: list[int] = struct.field(pytree_node=False, default_factory=list)
-    polynominal_order_z: list[int] = struct.field(pytree_node=False, default_factory=list)
+    orbital_indices: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    exponents: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    coefficients: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    angular_momentums: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    polynominal_order_x: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    polynominal_order_y: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    polynominal_order_z: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
 
     @classmethod
     def from_base(cls, aos_data: AOs_cart_data):
@@ -617,34 +645,58 @@ class AOs_sphe_data:
     Args:
         structure_data(Structure_data):
             an instance of Structure_data
-        nucleus_index (list[int]):
+        nucleus_index (tuple[int]):
             One-to-one correspondence between AO items and the atom index (dim:num_ao)
         num_ao (int):
             the number of atomic orbitals.
         num_ao_prim (int):
             the number of primitive atomic orbitals.
-        orbital_indices (list[int]):
+        orbital_indices (tuple[int]):
             index for what exponents and coefficients are associated to each atomic orbital.
             dim: num_ao_prim
-        exponents (list[float]):
+        exponents (tuple[float]):
             List of exponents of the AOs. dim: num_ao_prim.
-        coefficients (list[float]):
+        coefficients (tuple[float]):
             List of coefficients of the AOs. dim: num_ao_prim
-        angular_momentums (list[int]):
+        angular_momentums (tuple[int]):
             Angular momentum of the AOs, i.e., l. dim: num_ao
-        magnetic_quantum_numbers (list[int]):
+        magnetic_quantum_numbers (tuple[int]):
             Magnetic quantum number of the AOs, i.e m = -l .... +l. dim: num_ao
     """
 
     structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
-    nucleus_index: list[int] = struct.field(pytree_node=False, default_factory=list)
+    nucleus_index: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
     num_ao: int = struct.field(pytree_node=False, default=0)
     num_ao_prim: int = struct.field(pytree_node=False, default=0)
-    orbital_indices: list[int] = struct.field(pytree_node=False, default_factory=list)
-    exponents: list[float] = struct.field(pytree_node=False, default_factory=list)
-    coefficients: list[float] = struct.field(pytree_node=False, default_factory=list)
-    angular_momentums: list[int] = struct.field(pytree_node=False, default_factory=list)
-    magnetic_quantum_numbers: list[int] = struct.field(pytree_node=False, default_factory=list)
+    orbital_indices: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    exponents: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    coefficients: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    angular_momentums: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    magnetic_quantum_numbers: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+
+    def __post_init__(self):
+        """Post-initialization method to check the types of the attributes.
+
+        Notice that only the static attributes (i.e., pytree_node=False with an immutable attribute) are checked.
+        Otherwise the backprogragation will not work.
+
+        """
+        if not isinstance(self.nucleus_index, tuple):
+            raise ValueError(f"nucleus_index = {type(self.nucleus_index)} must be a tuple.")
+        if not isinstance(self.num_ao, int):
+            raise ValueError(f"num_ao = {type(self.num_ao)} must be an int.")
+        if not isinstance(self.num_ao_prim, int):
+            raise ValueError(f"num_ao_prim = {type(self.num_ao_prim)} must be an int.")
+        if not isinstance(self.orbital_indices, tuple):
+            raise ValueError(f"orbital_indices = {type(self.orbital_indices)} must be a tuple.")
+        if not isinstance(self.exponents, tuple):
+            raise ValueError(f"exponents = {type(self.exponents)} must be a tuple.")
+        if not isinstance(self.coefficients, tuple):
+            raise ValueError(f"coefficients = {type(self.coefficients)} must be a tuple.")
+        if not isinstance(self.angular_momentums, tuple):
+            raise ValueError(f"angular_momentums = {type(self.angular_momentums)} must be a tuple.")
+        if not isinstance(self.magnetic_quantum_numbers, tuple):
+            raise ValueError(f"magnetic_quantum_numbers = {type(self.magnetic_quantum_numbers)} must be a tuple.")
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -994,14 +1046,14 @@ class AOs_sphe_data_deriv_R(AOs_sphe_data):
     """See AOs_data."""
 
     structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
-    nucleus_index: list[int] = struct.field(pytree_node=False, default_factory=list)
+    nucleus_index: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
     num_ao: int = struct.field(pytree_node=False, default=0)
     num_ao_prim: int = struct.field(pytree_node=False, default=0)
-    orbital_indices: list[int] = struct.field(pytree_node=False, default_factory=list)
-    exponents: list[float] = struct.field(pytree_node=False, default_factory=list)
-    coefficients: list[float] = struct.field(pytree_node=False, default_factory=list)
-    angular_momentums: list[int] = struct.field(pytree_node=False, default_factory=list)
-    magnetic_quantum_numbers: list[int] = struct.field(pytree_node=False, default_factory=list)
+    orbital_indices: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    exponents: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    coefficients: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    angular_momentums: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    magnetic_quantum_numbers: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
 
     @classmethod
     def from_base(cls, aos_data: AOs_sphe_data):
@@ -1034,14 +1086,14 @@ class AOs_sphe_data_no_deriv(AOs_sphe_data):
     """See AOs_data."""
 
     structure_data: Structure_data = struct.field(pytree_node=False, default_factory=lambda: Structure_data())
-    nucleus_index: list[int] = struct.field(pytree_node=False, default_factory=list)
+    nucleus_index: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
     num_ao: int = struct.field(pytree_node=False, default=0)
     num_ao_prim: int = struct.field(pytree_node=False, default=0)
-    orbital_indices: list[int] = struct.field(pytree_node=False, default_factory=list)
-    exponents: list[float] = struct.field(pytree_node=False, default_factory=list)
-    coefficients: list[float] = struct.field(pytree_node=False, default_factory=list)
-    angular_momentums: list[int] = struct.field(pytree_node=False, default_factory=list)
-    magnetic_quantum_numbers: list[int] = struct.field(pytree_node=False, default_factory=list)
+    orbital_indices: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    exponents: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    coefficients: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    angular_momentums: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    magnetic_quantum_numbers: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
 
     @classmethod
     def from_base(cls, aos_data: AOs_sphe_data):

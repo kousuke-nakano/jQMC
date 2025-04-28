@@ -53,7 +53,7 @@ jax.config.update("jax_traceback_filtering", "off")
 def test_lrdmc_force_with_SWCT_ecp(request):
     """Test LRDMC force with SWCT."""
     if not request.config.getoption("--disable-jit"):
-        pytest.skip(reason="A bug of flux.struct with @jit.")
+        pytest.skip(reason="A limilation of flux.struct (pytree_node=False) with @jit. See #24204 in jax repo.")
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,
@@ -119,8 +119,11 @@ def test_lrdmc_force_with_SWCT_ecp(request):
     np.testing.assert_almost_equal(np.array(force_std[0]), np.array(force_std[1]), decimal=6)
 
 
-def test_lrdmc_force_with_SWCT_ae():
+@pytest.mark.activate_if_disable_jit
+def test_lrdmc_force_with_SWCT_ae(request):
     """Test LRDMC force with SWCT."""
+    if not request.config.getoption("--disable-jit"):
+        pytest.skip(reason="A limilation of flux.struct (pytree_node=False) with @jit. See #24204 in jax repo.")
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,
@@ -133,7 +136,7 @@ def test_lrdmc_force_with_SWCT_ae():
     # """
 
     jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
-        jastrow_1b_param=1.0, structure_data=structure_data, core_electrons=[0, 0]
+        jastrow_1b_param=1.0, structure_data=structure_data, core_electrons=tuple([0, 0])
     )
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5)
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)

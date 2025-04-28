@@ -75,12 +75,22 @@ class MOs_data:
     Args:
         num_mo: The number of MOs.
         aos_data (AOs_data): aos_data instances
-        mo_coefficients (npt.NDArray[np.float64|np.complex128]): array of MO coefficients. dim. num_mo, num_ao
+        mo_coefficients (npt.NDArray | jnpt.ArrayLike): array of MO coefficients. dim. num_mo, num_ao
     """
 
     num_mo: int = struct.field(pytree_node=False, default=0)
     aos_data: AOs_sphe_data | AOs_cart_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
-    mo_coefficients: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
+    mo_coefficients: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
+
+    def __post_init__(self):
+        """Post-initialization method to check the types of the attributes.
+
+        Notice that only the static attributes (i.e., pytree_node=False with an immutable attribute) are checked.
+        Otherwise the backprogragation will not work.
+
+        """
+        if not isinstance(self.num_mo, int):
+            raise ValueError(f"num_mo = {type(self.num_mo)} must be an int.")
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -130,9 +140,7 @@ class MOs_data_deriv_R(MOs_data):
 
     num_mo: int = struct.field(pytree_node=False, default=0)
     aos_data: AOs_sphe_data | AOs_cart_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
-    mo_coefficients: npt.NDArray[np.float64] = struct.field(
-        pytree_node=True, default_factory=lambda: np.array([])
-    )  # pytree_node cannot be set False because it is np.array. it should be replaced with jax.ArrayLike in future.
+    mo_coefficients: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=False, default_factory=lambda: np.array([]))
 
     @classmethod
     def from_base(cls, mos_data: MOs_data):
@@ -152,7 +160,7 @@ class MOs_data_no_deriv(MOs_data):
 
     num_mo: int = struct.field(pytree_node=False, default=0)
     aos_data: AOs_sphe_data | AOs_cart_data = struct.field(pytree_node=False, default_factory=lambda: AOs_sphe_data())
-    mo_coefficients: npt.NDArray[np.float64] = struct.field(pytree_node=False, default_factory=lambda: np.array([]))
+    mo_coefficients: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=False, default_factory=lambda: np.array([]))
 
     @classmethod
     def from_base(cls, mos_data: MOs_data):

@@ -44,6 +44,7 @@ import numpy.typing as npt
 from flax import struct
 from jax import jit, lax
 from jax import numpy as jnp
+from jax import typing as jnpt
 from numpy import linalg as LA
 
 # modules
@@ -66,25 +67,46 @@ class Structure_data:
     This class contains information about the given structure.
 
     Args:
-        positions (npt.NDArray[np.float64]):
-            (N x 3) np.array containing atomic positions in cartesian. The unit is Bohr
+        positions (npt.NDArray | jnpt.ArrayLike): (N x 3) np.array containing atomic positions in cartesian. The unit is Bohr
         pbc_flag (list[bool]): pbc_flags in the a, b, and c directions.
-        vec_a (list[float]): lattice vector a. The unit is Bohr
-        vec_b (list[float]): lattice vector b. The unit is Bohr
-        vec_c (list[float]): lattice vector c. The unit is Bohr
-        atomic_numbers (list[int]): list of atomic numbers in the system.
-        element_symbols (list[str]): list of element symbols in the system.
-        atomic_labels (list[str]): list of labels for the atoms in the system.
+        vec_a (tuple[float]): lattice vector a. The unit is Bohr
+        vec_b (tuple[float]): lattice vector b. The unit is Bohr
+        vec_c (tuple[float]): lattice vector c. The unit is Bohr
+        atomic_numbers (tuple[int]): list of atomic numbers in the system.
+        element_symbols (tuple[str]): list of element symbols in the system.
+        atomic_labels (tuple[str]): list of labels for the atoms in the system.
     """
 
-    positions: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([], dtype=np.float64))
+    positions: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
     pbc_flag: bool = struct.field(pytree_node=False, default=False)
-    vec_a: list[float] = struct.field(pytree_node=False, default_factory=list)
-    vec_b: list[float] = struct.field(pytree_node=False, default_factory=list)
-    vec_c: list[float] = struct.field(pytree_node=False, default_factory=list)
-    atomic_numbers: list[int] = struct.field(pytree_node=False, default_factory=list)
-    element_symbols: list[str] = struct.field(pytree_node=False, default_factory=list)
-    atomic_labels: list[str] = struct.field(pytree_node=False, default_factory=list)
+    vec_a: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    vec_b: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    vec_c: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    atomic_numbers: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    element_symbols: tuple[str] = struct.field(pytree_node=False, default_factory=tuple)
+    atomic_labels: tuple[str] = struct.field(pytree_node=False, default_factory=tuple)
+
+    def __post_init__(self):
+        """Post-initialization method to check the types of the attributes.
+
+        Notice that only the static attributes (i.e., pytree_node=False with an immutable attribute) are checked.
+        Otherwise the backprogragation will not work.
+
+        """
+        if not isinstance(self.pbc_flag, bool):
+            raise ValueError(f"pbc_flag = {type(self.pbc_flag)} must be a boolen.")
+        if not isinstance(self.vec_a, tuple):
+            raise ValueError(f"vec_a = {type(self.vec_a)} must be a tuple.")
+        if not isinstance(self.vec_b, tuple):
+            raise ValueError(f"vec_b = {type(self.vec_b)} must be a tuple.")
+        if not isinstance(self.vec_c, tuple):
+            raise ValueError(f"vec_c = {type(self.vec_c)} must be a tuple.")
+        if not isinstance(self.atomic_numbers, tuple):
+            raise ValueError(f"atomic_numbers = {type(self.atomic_numbers)} must be a tuple.")
+        if not isinstance(self.element_symbols, tuple):
+            raise ValueError(f"element_symbols = {type(self.element_symbols)} must be a tuple.")
+        if not isinstance(self.atomic_labels, tuple):
+            raise ValueError(f"atomic_labels = {type(self.atomic_labels)} must be a tuple.")
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -199,64 +221,64 @@ class Structure_data:
         return recip_cell
 
     @property
-    def lattice_vec_a(self) -> list:
+    def lattice_vec_a(self) -> tuple:
         """Return lattice vector A (in Bohr).
 
         Returns:
-            list[np.float64]: the lattice vector A (in Bohr).
+            tuple[np.float64]: the lattice vector A (in Bohr).
 
         """
-        return list(self.cell[0])
+        return tuple(self.cell[0])
 
     @property
-    def lattice_vec_b(self) -> list:
+    def lattice_vec_b(self) -> tuple:
         """Return lattice vector B (in Bohr).
 
         Returns:
-            list[np.float64]: the lattice vector B (in Bohr).
+            tuple[np.float64]: the lattice vector B (in Bohr).
 
         """
-        return list(self.cell[1])
+        return tuple(self.cell[1])
 
     @property
-    def lattice_vec_c(self) -> list:
+    def lattice_vec_c(self) -> tuple:
         """Return lattice vector C (in Bohr).
 
         Returns:
-            list[np.float64]: the lattice vector C (in Bohr).
+            tuple[np.float64]: the lattice vector C (in Bohr).
 
         """
-        return list(self.cell[2])
+        return tuple(self.cell[2])
 
     @property
-    def recip_vec_a(self) -> list:
+    def recip_vec_a(self) -> tuple:
         """Return reciprocal lattice vector A (in Bohr).
 
         Returns:
-            list[np.float64]: the reciprocal lattice vector A (in Bohr).
+            tuple[np.float64]: the reciprocal lattice vector A (in Bohr).
 
         """
-        return list(self.recip_cell[0])
+        return tuple(self.recip_cell[0])
 
     @property
-    def recip_vec_b(self) -> list:
+    def recip_vec_b(self) -> tuple:
         """Return reciprocal lattice vector B (in Bohr).
 
         Returns:
-            list[np.float64]: the reciprocal lattice vector B (in Bohr).
+            tuple[np.float64]: the reciprocal lattice vector B (in Bohr).
 
         """
-        return list(self.recip_cell[1])
+        return tuple(self.recip_cell[1])
 
     @property
-    def recip_vec_c(self) -> list:
+    def recip_vec_c(self) -> tuple:
         """Return reciprocal lattice vector C (in Bohr).
 
         Returns:
-            list[np.float64]: the reciprocal lattice vector C (in Bohr).
+            tuple[np.float64]: the reciprocal lattice vector C (in Bohr).
 
         """
-        return list(self.recip_cell[2])
+        return tuple(self.recip_cell[2])
 
     @property
     def norm_vec_a(self) -> float:

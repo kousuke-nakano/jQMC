@@ -64,6 +64,7 @@ logger = getLogger("jqmc").getChild(__name__)
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_traceback_filtering", "off")
 
 
 # @dataclass
@@ -82,7 +83,7 @@ class Geminal_data:
             AOs data or MOs data for up-spin.
         orb_data_dn_spin (AOs_data | MOs_data):
             AOs data or MOs data for dn-spin.
-        lambda_matrix (npt.NDArray[np.float64]):
+        lambda_matrix (npt.NDArray | jnpt.ArrayLike):
             geminal matrix. for the employed orb_data, MOs or AOs.
             The dim. is [orb_data_up_spin.num_ao/mo, orb_data_dn_spin.num_ao/mo +
             (num_electron_up - num_electron_dn)].
@@ -96,7 +97,19 @@ class Geminal_data:
     orb_data_dn_spin: AOs_sphe_data | AOs_cart_data | MOs_data = struct.field(
         pytree_node=True, default_factory=lambda: AOs_sphe_data()
     )
-    lambda_matrix: npt.NDArray[np.float64] = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
+    lambda_matrix: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
+
+    def __post_init__(self):
+        """Post-initialization method to check the types of the attributes.
+
+        Notice that only the static attributes (i.e., pytree_node=False with an immutable attribute) are checked.
+        Otherwise the backprogragation will not work.
+
+        """
+        if not isinstance(self.num_electron_up, int):
+            raise ValueError(f"num_electron_up = {type(self.num_electron_up)} must be an int.")
+        if not isinstance(self.num_electron_dn, int):
+            raise ValueError(f"num_electron_dn = {type(self.num_electron_dn)} must be an int.")
 
     def sanity_check(self) -> None:
         """Check attributes of the class.

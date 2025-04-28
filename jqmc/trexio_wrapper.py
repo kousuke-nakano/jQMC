@@ -172,13 +172,13 @@ def read_trexio_file(
     # Structure_data instance
     structure_data = Structure_data(
         pbc_flag=pbc_flag,
-        vec_a=[],
-        vec_b=[],
-        vec_c=[],
-        atomic_numbers=_convert_from_atomic_labels_to_atomic_numbers(labels_r),
-        element_symbols=labels_r,
-        atomic_labels=labels_r,
-        positions=coords_r,
+        vec_a=(),
+        vec_b=(),
+        vec_c=(),
+        atomic_numbers=tuple(convert_from_atomic_labels_to_atomic_numbers(labels_r)),
+        element_symbols=tuple(labels_r),
+        atomic_labels=tuple(labels_r),
+        positions=np.array(coords_r),
     )
 
     # ao spherical part check
@@ -281,16 +281,16 @@ def read_trexio_file(
 
         aos_data = AOs_cart_data(
             structure_data=structure_data,
-            nucleus_index=nucleus_index,
+            nucleus_index=tuple(nucleus_index),
             num_ao=ao_num_count,
             num_ao_prim=ao_prim_num_count,
-            angular_momentums=angular_momentums,
-            polynominal_order_x=polynominal_order_x,
-            polynominal_order_y=polynominal_order_y,
-            polynominal_order_z=polynominal_order_z,
-            orbital_indices=orbital_indices,
-            exponents=exponents,
-            coefficients=coefficients,
+            angular_momentums=tuple(angular_momentums),
+            polynominal_order_x=tuple(polynominal_order_x),
+            polynominal_order_y=tuple(polynominal_order_y),
+            polynominal_order_z=tuple(polynominal_order_z),
+            orbital_indices=tuple(orbital_indices),
+            exponents=tuple(exponents),
+            coefficients=tuple(coefficients),
         )
 
     else:
@@ -365,14 +365,14 @@ def read_trexio_file(
 
         aos_data = AOs_sphe_data(
             structure_data=structure_data,
-            nucleus_index=nucleus_index,
+            nucleus_index=tuple(nucleus_index),
             num_ao=ao_num_count,
             num_ao_prim=ao_prim_num_count,
-            angular_momentums=angular_momentums,
-            magnetic_quantum_numbers=magnetic_quantum_numbers,
-            orbital_indices=orbital_indices,
-            exponents=exponents,
-            coefficients=coefficients,
+            angular_momentums=tuple(angular_momentums),
+            magnetic_quantum_numbers=tuple(magnetic_quantum_numbers),
+            orbital_indices=tuple(orbital_indices),
+            exponents=tuple(exponents),
+            coefficients=tuple(coefficients),
         )
 
     # MOs_data instance
@@ -415,14 +415,14 @@ def read_trexio_file(
         coulomb_potential_data = Coulomb_potential_data(
             structure_data=structure_data,
             ecp_flag=True,
-            z_cores=ecp_z_core,
-            max_ang_mom_plus_1=ecp_max_ang_mom_plus_1,
+            z_cores=tuple(ecp_z_core),
+            max_ang_mom_plus_1=tuple(ecp_max_ang_mom_plus_1),
             num_ecps=ecp_num,
-            ang_moms=ecp_ang_mom,
-            nucleus_index=ecp_nucleus_index,
-            exponents=ecp_exponent,
-            coefficients=ecp_coefficient,
-            powers=ecp_power + 2,
+            ang_moms=tuple(ecp_ang_mom),
+            nucleus_index=tuple(ecp_nucleus_index),
+            exponents=tuple(ecp_exponent),
+            coefficients=tuple(ecp_coefficient),
+            powers=tuple(ecp_power + 2),
         )
     else:
         coulomb_potential_data = Coulomb_potential_data(structure_data=structure_data, ecp_flag=False)
@@ -544,8 +544,8 @@ def _convert_from_atomic_numbers_to_atomic_labels(charges_r: list[int]) -> list[
     return labels_r
 
 
-def _convert_from_atomic_labels_to_atomic_numbers(labels_r: list[str]) -> list[int]:
-    # Mapping of element symbols to their atomic numbers up to 86
+def convert_from_atomic_labels_to_atomic_numbers(labels_r: list[str]) -> list[int]:
+    """Mapping of element symbols to their atomic numbers up to 86."""
     element_to_number = {
         "H": 1,
         "He": 2,

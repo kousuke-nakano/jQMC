@@ -37,7 +37,6 @@ import pickle
 
 import jax
 import numpy as np
-import pytest
 
 from ..jqmc.coulomb_potential import compute_bare_coulomb_potential_debug, compute_bare_coulomb_potential_jax
 from ..jqmc.hamiltonians import Hamiltonian_data
@@ -50,12 +49,8 @@ jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
 
-@pytest.mark.activate_if_disable_jit
-def test_comparison_with_TurboRVB_wo_Jastrow_AE(request):
+def test_comparison_with_TurboRVB_wo_Jastrow_AE():
     """Test comparison with the corresponding all-electron TurboRVB calculation without Jastrow factor."""
-    if not request.config.getoption("--disable-jit"):
-        pytest.skip(reason="A bug of flux.struct with @jit.")
-
     (
         structure_data,
         _,
@@ -141,11 +136,8 @@ def test_comparison_with_TurboRVB_wo_Jastrow_AE(request):
     jax.clear_caches()
 
 
-@pytest.mark.activate_if_disable_jit
-def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_AE(request):
+def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_AE():
     """Test comparison with the corresponding all-electron TurboRVB calculation with the full Jastrow factor."""
-    if not request.config.getoption("--disable-jit"):
-        pytest.skip(reason="A bug of flux.struct with @jit.")
     (
         structure_data,
         _,

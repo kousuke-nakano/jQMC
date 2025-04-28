@@ -36,7 +36,6 @@ import os
 
 import jax
 import numpy as np
-import pytest
 from jax import numpy as jnp
 
 from ..jqmc.coulomb_potential import (
@@ -369,11 +368,8 @@ def test_debug_and_jax_ecp_non_local():
     )
 
 
-@pytest.mark.activate_if_disable_jit
-def test_debug_and_jax_bare_el_ion_elements(request):
+def test_debug_and_jax_bare_el_ion_elements():
     """Test the bare couloumb potential computation."""
-    if not request.config.getoption("--disable-jit"):
-        pytest.skip(reason="A bug of flux.struct with @jit.")
     (
         structure_data,
         _,
@@ -422,11 +418,8 @@ def test_debug_and_jax_bare_el_ion_elements(request):
     np.testing.assert_almost_equal(interactions_R_r_dn_debug, interactions_R_r_dn_jax, decimal=6)
 
 
-@pytest.mark.activate_if_disable_jit
-def test_debug_and_jax_discretized_bare_el_ion_elements(request):
+def test_debug_and_jax_discretized_bare_el_ion_elements():
     """Test the bare couloumb potential computation."""
-    if not request.config.getoption("--disable-jit"):
-        pytest.skip(reason="A bug of flux.struct with @jit.")
     (
         structure_data,
         _,

@@ -261,6 +261,12 @@ def test_AOs_w_spherical_angular_part_comparing_jax_and_debug_implemenetations()
     angular_momentums = [l for l, _ in ml_list]
     magnetic_quantum_numbers = [m for _, m in ml_list]
 
+    orbital_indices = tuple(orbital_indices)
+    exponents = tuple(exponents)
+    coefficients = tuple(coefficients)
+    angular_momentums = tuple(angular_momentums)
+    magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
+
     num_r_cart_samples = num_el
     num_R_cart_samples = num_ao
     r_cart_min, r_cart_max = -1.0, 1.0
@@ -271,15 +277,15 @@ def test_AOs_w_spherical_angular_part_comparing_jax_and_debug_implemenetations()
     structure_data = Structure_data(
         pbc_flag=False,
         positions=R_carts,
-        atomic_numbers=[0] * num_R_cart_samples,
-        element_symbols=["X"] * num_R_cart_samples,
-        atomic_labels=["X"] * num_R_cart_samples,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
     )
     structure_data.sanity_check()
 
     aos_data = AOs_sphe_data(
         structure_data=structure_data,
-        nucleus_index=list(range(num_R_cart_samples)),
+        nucleus_index=tuple(list(range(num_R_cart_samples))),
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         orbital_indices=orbital_indices,
@@ -304,6 +310,12 @@ def test_AOs_w_spherical_angular_part_comparing_jax_and_debug_implemenetations()
     angular_momentums = angular_momentums
     magnetic_quantum_numbers = magnetic_quantum_numbers
 
+    orbital_indices = tuple(orbital_indices)
+    exponents = tuple(exponents)
+    coefficients = tuple(coefficients)
+    angular_momentums = tuple(angular_momentums)
+    magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
+
     num_r_cart_samples = num_el
     num_R_cart_samples = num_ao
     r_cart_min, r_cart_max = -1.0, 1.0
@@ -314,15 +326,15 @@ def test_AOs_w_spherical_angular_part_comparing_jax_and_debug_implemenetations()
     structure_data = Structure_data(
         pbc_flag=False,
         positions=R_carts,
-        atomic_numbers=[0] * num_R_cart_samples,
-        element_symbols=["X"] * num_R_cart_samples,
-        atomic_labels=["X"] * num_R_cart_samples,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
     )
     structure_data.sanity_check()
 
     aos_data = AOs_sphe_data(
         structure_data=structure_data,
-        nucleus_index=list(range(num_R_cart_samples)),
+        nucleus_index=tuple(list(range(num_R_cart_samples))),
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         orbital_indices=orbital_indices,
@@ -366,6 +378,14 @@ def test_AOs_w_cartesian_angular_part_comparing_jax_and_debug_implemenetations()
     exponents = [5.0] * num_ao
     coefficients = [1.0] * num_ao
 
+    orbital_indices = tuple(orbital_indices)
+    exponents = tuple(exponents)
+    coefficients = tuple(coefficients)
+    angular_momentums = tuple(angular_momentums)
+    polynominal_order_x = tuple(polynominal_order_x)
+    polynominal_order_y = tuple(polynominal_order_y)
+    polynominal_order_z = tuple(polynominal_order_z)
+
     num_r_cart_samples = num_el
     num_R_cart_samples = num_ao
     r_cart_min, r_cart_max = -1.0, 1.0
@@ -376,15 +396,15 @@ def test_AOs_w_cartesian_angular_part_comparing_jax_and_debug_implemenetations()
     structure_data = Structure_data(
         pbc_flag=False,
         positions=R_carts,
-        atomic_numbers=[0] * num_R_cart_samples,
-        element_symbols=["X"] * num_R_cart_samples,
-        atomic_labels=["X"] * num_R_cart_samples,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
     )
     structure_data.sanity_check()
 
     aos_data = AOs_cart_data(
         structure_data=structure_data,
-        nucleus_index=list(range(num_R_cart_samples)),
+        nucleus_index=tuple(list(range(num_R_cart_samples))),
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         orbital_indices=orbital_indices,
@@ -423,18 +443,24 @@ def test_AOs_comparing_auto_and_numerical_grads():
     angular_momentums = [0, 0, 0, 0]
     magnetic_quantum_numbers = [0, 0, 0, 0]
 
+    orbital_indices = tuple(orbital_indices)
+    exponents = tuple(exponents)
+    coefficients = tuple(coefficients)
+    angular_momentums = tuple(angular_momentums)
+    magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
+
     structure_data = Structure_data(
         pbc_flag=False,
         positions=R_carts,
-        atomic_numbers=[0] * num_R_cart_samples,
-        element_symbols=["X"] * num_R_cart_samples,
-        atomic_labels=["X"] * num_R_cart_samples,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
     )
     structure_data.sanity_check()
 
     aos_data = AOs_sphe_data(
         structure_data=structure_data,
-        nucleus_index=list(range(num_R_cart_samples)),
+        nucleus_index=tuple(list(range(num_R_cart_samples))),
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         orbital_indices=orbital_indices,
@@ -475,18 +501,24 @@ def test_AOs_comparing_auto_and_numerical_grads():
     angular_momentums = [0, 0, 0, 0]
     magnetic_quantum_numbers = [0, 0, 0, 0]
 
+    orbital_indices = tuple(orbital_indices)
+    exponents = tuple(exponents)
+    coefficients = tuple(coefficients)
+    angular_momentums = tuple(angular_momentums)
+    magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
+
     structure_data = Structure_data(
         pbc_flag=False,
         positions=R_carts,
-        atomic_numbers=[0] * num_R_cart_samples,
-        element_symbols=["X"] * num_R_cart_samples,
-        atomic_labels=["X"] * num_R_cart_samples,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
     )
     structure_data.sanity_check()
 
     aos_data = AOs_sphe_data(
         structure_data=structure_data,
-        nucleus_index=list(range(num_R_cart_samples)),
+        nucleus_index=tuple(list(range(num_R_cart_samples))),
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         orbital_indices=orbital_indices,
@@ -533,18 +565,24 @@ def test_AOs_comparing_auto_and_numerical_laplacians():
     angular_momentums = [0, 0, 0]
     magnetic_quantum_numbers = [0, 0, 0]
 
+    orbital_indices = tuple(orbital_indices)
+    exponents = tuple(exponents)
+    coefficients = tuple(coefficients)
+    angular_momentums = tuple(angular_momentums)
+    magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
+
     structure_data = Structure_data(
         pbc_flag=False,
         positions=R_carts,
-        atomic_numbers=[0] * num_R_cart_samples,
-        element_symbols=["X"] * num_R_cart_samples,
-        atomic_labels=["X"] * num_R_cart_samples,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
     )
     structure_data.sanity_check()
 
     aos_data = AOs_sphe_data(
         structure_data=structure_data,
-        nucleus_index=list(range(num_R_cart_samples)),
+        nucleus_index=tuple(list(range(num_R_cart_samples))),
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         orbital_indices=orbital_indices,
@@ -576,18 +614,24 @@ def test_AOs_comparing_auto_and_numerical_laplacians():
     angular_momentums = [1, 1, 1]
     magnetic_quantum_numbers = [0, 1, -1]
 
+    orbital_indices = tuple(orbital_indices)
+    exponents = tuple(exponents)
+    coefficients = tuple(coefficients)
+    angular_momentums = tuple(angular_momentums)
+    magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
+
     structure_data = Structure_data(
         pbc_flag=False,
         positions=R_carts,
-        atomic_numbers=[0] * num_R_cart_samples,
-        element_symbols=["X"] * num_R_cart_samples,
-        atomic_labels=["X"] * num_R_cart_samples,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
     )
     structure_data.sanity_check()
 
     aos_data = AOs_sphe_data(
         structure_data=structure_data,
-        nucleus_index=list(range(num_R_cart_samples)),
+        nucleus_index=tuple(list(range(num_R_cart_samples))),
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         orbital_indices=orbital_indices,

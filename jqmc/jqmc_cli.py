@@ -51,6 +51,10 @@ from .header_footer import print_footer, print_header
 from .jqmc_kernel import MCMC, QMC, GFMC_fixed_num_projection, GFMC_fixed_projection_time
 from .jqmc_miscs import cli_parameters
 
+# JAX float64
+jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_traceback_filtering", "off")
+
 # MPI related
 mpi_comm = MPI.COMM_WORLD
 mpi_rank = mpi_comm.Get_rank()

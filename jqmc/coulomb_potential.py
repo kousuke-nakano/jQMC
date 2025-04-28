@@ -78,6 +78,7 @@ jax.config.update("jax_traceback_filtering", "off")
 
 
 # non local PPs, Mesh Info. taken from Mitas's paper [J. Chem. Phys., 95, 5, (1991)]
+# why namedtuple? because it should be immutable
 class _Mesh(NamedTuple):
     Nv: int
     weights: list[float]
@@ -151,22 +152,22 @@ class Coulomb_potential_data:
     Args:
         ecp_flag (bool) :
             If True, ECPs are used. The following values should be defined.
-        z_cores (list[float]]):
+        z_cores (tuple[float]]):
             Number of core electrons to remove per atom (dim: num_atoms).
-        max_ang_mom_plus_1 (list[int]):
+        max_ang_mom_plus_1 (tuple[int]):
             l_{max}+1, one higher than the max angular momentum in the
             removed core orbitals (dim: num_atoms)
-        num_ecps (list[int]):
+        num_ecps (tuple[int]):
             Total number of ECP functions for all atoms and all values of l
-        ang_moms (list[int]):
+        ang_moms (tuple[int]):
             One-to-one correspondence between ECP items and the angular momentum l (dim:num_ecps)
-        nucleus_index (list[int]):
+        nucleus_index (tuple[int]):
             One-to-one correspondence between ECP items and the atom index (dim:num_ecps)
-        exponents (list[float]):
+        exponents (tuple[float]):
             all ECP exponents (dim:num_ecps)
-        coefficients (list[float]):
+        coefficients (tuple[float]):
             all ECP coefficients (dim:num_ecps)
-        powers (list[int]):
+        powers (tuple[int]):
             all ECP powers (dim:num_ecps)
         structure_data (Structure_data):
             Instance of a structure_data
@@ -175,14 +176,14 @@ class Coulomb_potential_data:
 
     structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
     ecp_flag: bool = struct.field(pytree_node=False, default=False)
-    z_cores: list[float] = struct.field(pytree_node=False, default_factory=list)
-    max_ang_mom_plus_1: list[int] = struct.field(pytree_node=False, default_factory=list)
-    num_ecps: list[int] = struct.field(pytree_node=False, default_factory=list)
-    ang_moms: list[int] = struct.field(pytree_node=False, default_factory=list)
-    nucleus_index: list[int] = struct.field(pytree_node=False, default_factory=list)
-    exponents: list[float] = struct.field(pytree_node=False, default_factory=list)
-    coefficients: list[float] = struct.field(pytree_node=False, default_factory=list)
-    powers: list[int] = struct.field(pytree_node=False, default_factory=list)
+    z_cores: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    max_ang_mom_plus_1: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    num_ecps: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    ang_moms: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    nucleus_index: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    exponents: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    coefficients: tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    powers: tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -289,7 +290,7 @@ class Coulomb_potential_data:
         Return:
             npt.NDAarray: momentum of the non_local part (effective charge)
         """
-        return np.array(self.ang_moms[self.non_local_part_index])
+        return np.array(self.ang_moms)[self.non_local_part_index]
 
     @property
     def local_part_index(self) -> npt.NDArray:
