@@ -138,6 +138,21 @@ class Wavefunction_data_deriv_R(Wavefunction_data):
         return cls(jastrow_data=jastrow_data, geminal_data=geminal_data)
 
 
+@struct.dataclass
+class Wavefunction_data_no_deriv(Wavefunction_data):
+    """See Wavefunction_data."""
+
+    jastrow_data: Jastrow_data = struct.field(pytree_node=False)
+    geminal_data: Geminal_data = struct.field(pytree_node=False)
+
+    @classmethod
+    def from_base(cls, wavefunction_data: Wavefunction_data):
+        """Switch pytree_node."""
+        jastrow_data = wavefunction_data.jastrow_data
+        geminal_data = wavefunction_data.geminal_data
+        return cls(jastrow_data=jastrow_data, geminal_data=geminal_data)
+
+
 @jit
 def evaluate_ln_wavefunction_jax(
     wavefunction_data: Wavefunction_data,

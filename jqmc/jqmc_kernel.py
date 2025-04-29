@@ -64,6 +64,7 @@ from .hamiltonians import (
     Hamiltonian_data,
     Hamiltonian_data_deriv_params,
     Hamiltonian_data_deriv_R,
+    Hamiltonian_data_no_deriv,
     compute_kinetic_energy_jax,
     compute_local_energy_jax,
 )
@@ -1159,6 +1160,8 @@ class MCMC:
             self.__hamiltonian_data = Hamiltonian_data_deriv_params.from_base(hamiltonian_data)
         elif not self.__comput_param_deriv and self.__comput_position_deriv:
             self.__hamiltonian_data = Hamiltonian_data_deriv_R.from_base(hamiltonian_data)
+        elif not self.__comput_param_deriv and not self.__comput_position_deriv:
+            self.__hamiltonian_data = Hamiltonian_data_no_deriv.from_base(hamiltonian_data)
         else:
             self.__hamiltonian_data = hamiltonian_data
         self.__init_attributes()
@@ -1657,7 +1660,7 @@ class GFMC_fixed_projection_time:
     @hamiltonian_data.setter
     def hamiltonian_data(self, hamiltonian_data):
         """Set hamiltonian_data."""
-        self.__hamiltonian_data = hamiltonian_data
+        self.__hamiltonian_data = Hamiltonian_data_no_deriv.from_base(hamiltonian_data)
         self.__init_attributes()
 
     # collecting factor
@@ -2903,7 +2906,7 @@ class GFMC_fixed_num_projection:
         if self.__comput_position_deriv:
             self.__hamiltonian_data = Hamiltonian_data_deriv_R.from_base(hamiltonian_data)
         else:
-            self.__hamiltonian_data = hamiltonian_data
+            self.__hamiltonian_data = Hamiltonian_data_no_deriv.from_base(hamiltonian_data)
         self.__init_attributes()
 
     # collecting factor

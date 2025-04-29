@@ -742,6 +742,28 @@ class Jastrow_data_deriv_R(Jastrow_data):
         )
 
 
+@struct.dataclass
+class Jastrow_data_no_deriv(Jastrow_data):
+    """See Jastrow_data."""
+
+    jastrow_one_body_data: Jastrow_one_body_data = struct.field(pytree_node=False, default=None)
+    jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=False, default=None)
+    jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=False, default=None)
+
+    @classmethod
+    def from_base(cls, jastrow_data: Jastrow_data):
+        """Switch pytree_node."""
+        jastrow_one_body_data = jastrow_data.jastrow_one_body_data
+        jastrow_two_body_data = jastrow_data.jastrow_two_body_data
+        jastrow_three_body_data = jastrow_data.jastrow_three_body_data
+
+        return cls(
+            jastrow_one_body_data=jastrow_one_body_data,
+            jastrow_two_body_data=jastrow_two_body_data,
+            jastrow_three_body_data=jastrow_three_body_data,
+        )
+
+
 def compute_Jastrow_part_jax(jastrow_data: Jastrow_data, r_up_carts: jnpt.ArrayLike, r_dn_carts: jnpt.ArrayLike) -> float:
     """Function for computing Jastrow factor with the given jastrow_data.
 

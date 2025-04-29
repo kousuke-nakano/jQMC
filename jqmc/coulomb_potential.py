@@ -227,19 +227,27 @@ class Coulomb_potential_data:
         if not isinstance(self.ecp_flag, bool):
             raise ValueError(f"ecp_flag = {type(self.ecp_flag)} must be a bool.")
         if not isinstance(self.z_cores, (list, tuple)):
-            raise ValueError(f"z_cores = {type(self.z_cores)} must be a list or tuple.")
+            logger.warning(f"z_cores = {type(self.z_cores)} must be a list or tuple. ValueError in a future release.")
+            # raise ValueError(f"z_cores = {type(self.z_cores)} must be a list or tuple.")
         if not isinstance(self.max_ang_mom_plus_1, (list, tuple)):
-            raise ValueError(f"max_ang_mom_plus_1 = {type(self.max_ang_mom_plus_1)} must be a list or tuple.")
+            logger.warning(
+                f"max_ang_mom_plus_1 = {type(self.max_ang_mom_plus_1)} must be a list or tuple. ValueError in a future release."
+            )
+            # raise ValueError(f"max_ang_mom_plus_1 = {type(self.max_ang_mom_plus_1)} must be a list or tuple.")
         if not isinstance(self.num_ecps, int):
             raise ValueError(f"num_ecps = {type(self.num_ecps)} must be an int.")
         if not isinstance(self.ang_moms, (list, tuple)):
-            raise ValueError(f"ang_moms = {type(self.ang_moms)} must be a list or tuple.")
+            logger.warning(f"ang_moms = {type(self.ang_moms)} must be a list or tuple. ValueError in a future release.")
+            # raise ValueError(f"ang_moms = {type(self.ang_moms)} must be a list or tuple.")
         if not isinstance(self.exponents, (list, tuple)):
-            raise ValueError(f"exponents = {type(self.exponents)} must be a list or tuple.")
+            logger.warning(f"exponents = {type(self.exponents)} must be a list or tuple. ValueError in a future release.")
+            # raise ValueError(f"exponents = {type(self.exponents)} must be a list or tuple.")
         if not isinstance(self.coefficients, (list, tuple)):
-            raise ValueError(f"coefficients = {type(self.coefficients)} must be a list or tuple.")
+            logger.warning(f"coefficients = {type(self.coefficients)} must be a list or tuple. ValueError in a future release.")
+            # raise ValueError(f"coefficients = {type(self.coefficients)} must be a list or tuple.")
         if not isinstance(self.powers, (list, tuple)):
-            raise ValueError(f"powers = {type(self.powers)} must be a list or tuple.")
+            logger.warning(f"powers = {type(self.powers)} must be a list or tuple. ValueError in a future release.")
+            # raise ValueError(f"powers = {type(self.powers)} must be a list or tuple.")
 
         self.structure_data.sanity_check()
 

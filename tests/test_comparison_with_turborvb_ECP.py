@@ -37,7 +37,6 @@ import pickle
 
 import jax
 import numpy as np
-import pytest
 
 from ..jqmc.coulomb_potential import (
     compute_bare_coulomb_potential_debug,
