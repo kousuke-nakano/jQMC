@@ -548,14 +548,14 @@ class Coulomb_potential_data_no_deriv:
 
     structure_data: Structure_data = struct.field(pytree_node=False, default_factory=lambda: Structure_data())
     ecp_flag: bool = struct.field(pytree_node=False, default=False)
-    z_cores: list[float] = struct.field(pytree_node=False, default_factory=list)
-    max_ang_mom_plus_1: list[int] = struct.field(pytree_node=False, default_factory=list)
-    num_ecps: list[int] = struct.field(pytree_node=False, default_factory=list)
-    ang_moms: list[int] = struct.field(pytree_node=False, default_factory=list)
-    nucleus_index: list[int] = struct.field(pytree_node=False, default_factory=list)
-    exponents: list[float] = struct.field(pytree_node=False, default_factory=list)
-    coefficients: list[float] = struct.field(pytree_node=False, default_factory=list)
-    powers: list[int] = struct.field(pytree_node=False, default_factory=list)
+    z_cores: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    max_ang_mom_plus_1: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    num_ecps: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    ang_moms: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    nucleus_index: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    exponents: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    coefficients: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    powers: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
 
     @classmethod
     def from_base(cls, coulomb_potential_data: Coulomb_potential_data):

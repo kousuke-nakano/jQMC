@@ -324,25 +324,31 @@ def hamiltonian_to_xyz(
 
 # This should be removed in future release since it will be no longer useful.
 @hamiltonian_app.command("fix")
-def hamiltonian_fix_types(
+def hamiltonian_fix(
     hamiltonian_data_filename: str = typer.Argument(..., help="hamiltonian_data file, e.g. hamiltonian_data.chk"),
+    store_tuple: bool = typer.Option(False, "-s", "--store-tuple", help="store tuple"),
 ):
     """Fix data stored in the Hamiltonian data."""
     with open(hamiltonian_data_filename, "rb") as f:
         hamiltonian_data = pickle.load(f)
 
-    hamiltonian_data.dump("backup_before_fix_" + hamiltonian_data_filename)
+    if store_tuple:
+        op = tuple
+        op_str = "tuple"
+    else:
+        op = list
+        op_str = "list"
 
     def fix_structure_data(structure_data):
         # structure_data
         positions = np.array(structure_data.positions)
         pbc_flag = bool(structure_data.pbc_flag)
-        vec_a = tuple(structure_data.vec_a)
-        vec_b = tuple(structure_data.vec_b)
-        vec_c = tuple(structure_data.vec_c)
-        atomic_numbers = tuple(structure_data.atomic_numbers)
-        element_symbols = tuple(structure_data.element_symbols)
-        atomic_labels = tuple(structure_data.atomic_labels)
+        vec_a = op(structure_data.vec_a)
+        vec_b = op(structure_data.vec_b)
+        vec_c = op(structure_data.vec_c)
+        atomic_numbers = op(structure_data.atomic_numbers)
+        element_symbols = op(structure_data.element_symbols)
+        atomic_labels = op(structure_data.atomic_labels)
         structure_data = Structure_data(
             positions=positions,
             pbc_flag=pbc_flag,
@@ -363,14 +369,14 @@ def hamiltonian_fix_types(
 
             if isinstance(aos_data, AOs_sphe_data):
                 structure_data = fix_structure_data(structure_data=orb_data.structure_data)
-                nucleus_index = tuple(aos_data.nucleus_index)
+                nucleus_index = op(aos_data.nucleus_index)
                 num_ao = int(aos_data.num_ao)
                 num_ao_prim = int(aos_data.num_ao_prim)
-                orbital_indices = tuple(aos_data.orbital_indices)
-                exponents = tuple(aos_data.exponents)
-                coefficients = tuple(aos_data.coefficients)
-                angular_momentums = tuple(aos_data.angular_momentums)
-                magnetic_quantum_numbers = tuple(aos_data.magnetic_quantum_numbers)
+                orbital_indices = op(aos_data.orbital_indices)
+                exponents = op(aos_data.exponents)
+                coefficients = op(aos_data.coefficients)
+                angular_momentums = op(aos_data.angular_momentums)
+                magnetic_quantum_numbers = op(aos_data.magnetic_quantum_numbers)
 
                 aos_data = AOs_sphe_data(
                     structure_data=structure_data,
@@ -386,16 +392,16 @@ def hamiltonian_fix_types(
 
             elif isinstance(aos_data, AOs_cart_data):
                 structure_data = fix_structure_data(structure_data=orb_data.structure_data)
-                nucleus_index = tuple(aos_data.nucleus_index)
+                nucleus_index = op(aos_data.nucleus_index)
                 num_ao = int(aos_data.num_ao)
                 num_ao_prim = int(aos_data.num_ao_prim)
-                orbital_indices = tuple(aos_data.orbital_indices)
-                exponents = tuple(aos_data.exponents)
-                coefficients = tuple(aos_data.coefficients)
-                angular_momentums = tuple(aos_data.angular_momentums)
-                polynominal_order_x = tuple(aos_data.polynominal_order_x)
-                polynominal_order_y = tuple(aos_data.polynominal_order_y)
-                polynominal_order_z = tuple(aos_data.polynominal_order_z)
+                orbital_indices = op(aos_data.orbital_indices)
+                exponents = op(aos_data.exponents)
+                coefficients = op(aos_data.coefficients)
+                angular_momentums = op(aos_data.angular_momentums)
+                polynominal_order_x = op(aos_data.polynominal_order_x)
+                polynominal_order_y = op(aos_data.polynominal_order_y)
+                polynominal_order_z = op(aos_data.polynominal_order_z)
 
                 aos_data = AOs_cart_data(
                     structure_data=structure_data,
@@ -414,14 +420,14 @@ def hamiltonian_fix_types(
 
         elif isinstance(orb_data, AOs_sphe_data):
             structure_data = fix_structure_data(structure_data=orb_data.structure_data)
-            nucleus_index = tuple(orb_data.nucleus_index)
+            nucleus_index = op(orb_data.nucleus_index)
             num_ao = int(orb_data.num_ao)
             num_ao_prim = int(orb_data.num_ao_prim)
-            orbital_indices = tuple(orb_data.orbital_indices)
-            exponents = tuple(orb_data.exponents)
-            coefficients = tuple(orb_data.coefficients)
-            angular_momentums = tuple(orb_data.angular_momentums)
-            magnetic_quantum_numbers = tuple(orb_data.magnetic_quantum_numbers)
+            orbital_indices = op(orb_data.orbital_indices)
+            exponents = op(orb_data.exponents)
+            coefficients = op(orb_data.coefficients)
+            angular_momentums = op(orb_data.angular_momentums)
+            magnetic_quantum_numbers = op(orb_data.magnetic_quantum_numbers)
 
             orb_data = AOs_sphe_data(
                 structure_data=structure_data,
@@ -436,16 +442,16 @@ def hamiltonian_fix_types(
             )
         elif isinstance(orb_data, AOs_cart_data):
             structure_data = fix_structure_data(structure_data=orb_data.structure_data)
-            nucleus_index = tuple(orb_data.nucleus_index)
+            nucleus_index = op(orb_data.nucleus_index)
             num_ao = int(orb_data.num_ao)
             num_ao_prim = int(orb_data.num_ao_prim)
-            orbital_indices = tuple(orb_data.orbital_indices)
-            exponents = tuple(orb_data.exponents)
-            coefficients = tuple(orb_data.coefficients)
-            angular_momentums = tuple(orb_data.angular_momentums)
-            polynominal_order_x = tuple(orb_data.polynominal_order_x)
-            polynominal_order_y = tuple(orb_data.polynominal_order_y)
-            polynominal_order_z = tuple(orb_data.polynominal_order_z)
+            orbital_indices = op(orb_data.orbital_indices)
+            exponents = op(orb_data.exponents)
+            coefficients = op(orb_data.coefficients)
+            angular_momentums = op(orb_data.angular_momentums)
+            polynominal_order_x = op(orb_data.polynominal_order_x)
+            polynominal_order_y = op(orb_data.polynominal_order_y)
+            polynominal_order_z = op(orb_data.polynominal_order_z)
 
             orb_data = AOs_cart_data(
                 structure_data=structure_data,
@@ -469,14 +475,14 @@ def hamiltonian_fix_types(
     # coulomb_potential_data
     coulomb_potential_data = hamiltonian_data.coulomb_potential_data
     ecp_flag = bool(coulomb_potential_data.ecp_flag)
-    z_cores = tuple(coulomb_potential_data.z_cores)
-    max_ang_mom_plus_1 = tuple(coulomb_potential_data.max_ang_mom_plus_1)
+    z_cores = op(coulomb_potential_data.z_cores)
+    max_ang_mom_plus_1 = op(coulomb_potential_data.max_ang_mom_plus_1)
     num_ecps = int(coulomb_potential_data.num_ecps)
-    ang_moms = tuple(coulomb_potential_data.ang_moms)
-    nucleus_index = tuple(coulomb_potential_data.nucleus_index)
-    exponents = tuple(coulomb_potential_data.exponents)
-    coefficients = tuple(coulomb_potential_data.coefficients)
-    powers = tuple(coulomb_potential_data.powers)
+    ang_moms = op(coulomb_potential_data.ang_moms)
+    nucleus_index = op(coulomb_potential_data.nucleus_index)
+    exponents = op(coulomb_potential_data.exponents)
+    coefficients = op(coulomb_potential_data.coefficients)
+    powers = op(coulomb_potential_data.powers)
     coulomb_potential_data = Coulomb_potential_data(
         structure_data=structure_data,
         ecp_flag=ecp_flag,
@@ -502,7 +508,7 @@ def hamiltonian_fix_types(
 
     if jastrow_one_body_data is not None:
         jastrow_1b_param = float(jastrow_one_body_data.jastrow_1b_param)
-        core_electrons = tuple(jastrow_one_body_data.core_electrons)
+        core_electrons = op(jastrow_one_body_data.core_electrons)
         jastrow_one_body_data = Jastrow_one_body_data(
             jastrow_1b_param=jastrow_1b_param, structure_data=structure_data, core_electrons=core_electrons
         )
@@ -539,7 +545,7 @@ def hamiltonian_fix_types(
     )
 
     # dump fixed hamiltonian data
-    hamiltonian_data.dump(hamiltonian_data_filename)
+    hamiltonian_data.dump(f"{op_str}_" + hamiltonian_data_filename)
 
 
 class ansatz_type(str, Enum):

@@ -461,15 +461,16 @@ class MCMC:
         toml_filename = "external_control_mcmc.toml"
 
         # create a toml file to control the run
-        data = {"external_control": {"stop": False}}
-        # Check if file exists
-        if os.path.exists(toml_filename):
-            logger.info(f"{toml_filename} exists, overwriting it.")
-        # Write (or overwrite) the TOML file
-        with open(toml_filename, "w") as f:
-            logger.info(f"{toml_filename} is generated. ")
-            toml.dump(data, f)
-        logger.info("")
+        if mpi_rank == 0:
+            data = {"external_control": {"stop": False}}
+            # Check if file exists
+            if os.path.exists(toml_filename):
+                logger.info(f"{toml_filename} exists, overwriting it.")
+            # Write (or overwrite) the TOML file
+            with open(toml_filename, "w") as f:
+                logger.info(f"{toml_filename} is generated. ")
+                toml.dump(data, f)
+            logger.info("")
 
         # MCMC electron position update function
         mcmc_update_init_start = time.perf_counter()
@@ -1123,9 +1124,10 @@ class MCMC:
         self.__timer_misc += timer_misc
 
         # remove the toml file
-        if os.path.isfile(toml_filename):
-            logger.info(f"Delete {toml_filename}")
-            os.remove(toml_filename)
+        if mpi_rank == 0:
+            if os.path.isfile(toml_filename):
+                logger.info(f"Delete {toml_filename}")
+                os.remove(toml_filename)
 
         logger.info(f"Total elapsed time for MCMC {num_mcmc_done} steps. = {timer_mcmc_total:.2f} sec.")
         logger.info(f"Pre-compilation time for MCMC = {timer_mcmc_update_init:.2f} sec.")
@@ -1726,15 +1728,16 @@ class GFMC_fixed_projection_time:
         toml_filename = "external_control_gfmc.toml"
 
         # create a toml file to control the run
-        data = {"external_control": {"stop": False}}
-        # Check if file exists
-        if os.path.exists(toml_filename):
-            logger.info(f"{toml_filename} exists, overwriting it.")
-        # Write (or overwrite) the TOML file
-        with open(toml_filename, "w") as f:
-            logger.info(f"{toml_filename} is generated. ")
-            toml.dump(data, f)
-        logger.info("")
+        if mpi_rank == 0:
+            data = {"external_control": {"stop": False}}
+            # Check if file exists
+            if os.path.exists(toml_filename):
+                logger.info(f"{toml_filename} exists, overwriting it.")
+            # Write (or overwrite) the TOML file
+            with open(toml_filename, "w") as f:
+                logger.info(f"{toml_filename} is generated. ")
+                toml.dump(data, f)
+            logger.info("")
 
         # initialize numpy random seed
         np.random.seed(self.__mpi_seed)
@@ -2544,9 +2547,10 @@ class GFMC_fixed_projection_time:
         )
 
         # remove the toml file
-        if os.path.isfile(toml_filename):
-            logger.info(f"Delete {toml_filename}")
-            os.remove(toml_filename)
+        if mpi_rank == 0:
+            if os.path.isfile(toml_filename):
+                logger.info(f"Delete {toml_filename}")
+                os.remove(toml_filename)
 
         logger.info(f"Total GFMC time for {num_mcmc_done} branching steps = {timer_gfmc_total: .3f} sec.")
         logger.info(f"Pre-compilation time for GFMC = {timer_projection_init: .3f} sec.")
@@ -3031,15 +3035,16 @@ class GFMC_fixed_num_projection:
         toml_filename = "external_control_gfmc.toml"
 
         # create a toml file to control the run
-        data = {"external_control": {"stop": False}}
-        # Check if file exists
-        if os.path.exists(toml_filename):
-            logger.info(f"{toml_filename} exists, overwriting it.")
-        # Write (or overwrite) the TOML file
-        with open(toml_filename, "w") as f:
-            logger.info(f"{toml_filename} is generated. ")
-            toml.dump(data, f)
-        logger.info("")
+        if mpi_rank == 0:
+            data = {"external_control": {"stop": False}}
+            # Check if file exists
+            if os.path.exists(toml_filename):
+                logger.info(f"{toml_filename} exists, overwriting it.")
+            # Write (or overwrite) the TOML file
+            with open(toml_filename, "w") as f:
+                logger.info(f"{toml_filename} is generated. ")
+                toml.dump(data, f)
+            logger.info("")
 
         gfmc_total_start = time.perf_counter()
 
@@ -4244,9 +4249,10 @@ class GFMC_fixed_num_projection:
         )
 
         # remove the toml file
-        if os.path.isfile(toml_filename):
-            logger.info(f"Delete {toml_filename}")
-            os.remove(toml_filename)
+        if mpi_rank == 0:
+            if os.path.isfile(toml_filename):
+                logger.info(f"Delete {toml_filename}")
+                os.remove(toml_filename)
 
         logger.info(f"Total GFMC time for {num_mcmc_done} branching steps = {timer_gfmc_total: .3f} sec.")
         logger.info(f"Pre-compilation time for GFMC = {timer_projection_init: .3f} sec.")
@@ -4414,15 +4420,16 @@ class QMC:
         toml_filename = "external_control_opt.toml"
 
         # create a toml file to control the run
-        data = {"external_control": {"stop": False}}
-        # Check if file exists
-        if os.path.exists(toml_filename):
-            logger.info(f"{toml_filename} exists, overwriting it.")
-        # Write (or overwrite) the TOML file
-        with open(toml_filename, "w") as f:
-            logger.info(f"{toml_filename} is generated. ")
-            toml.dump(data, f)
-        logger.info("")
+        if mpi_rank == 0:
+            data = {"external_control": {"stop": False}}
+            # Check if file exists
+            if os.path.exists(toml_filename):
+                logger.info(f"{toml_filename} exists, overwriting it.")
+            # Write (or overwrite) the TOML file
+            with open(toml_filename, "w") as f:
+                logger.info(f"{toml_filename} is generated. ")
+                toml.dump(data, f)
+            logger.info("")
 
         # timer
         vmcopt_total_start = time.perf_counter()
