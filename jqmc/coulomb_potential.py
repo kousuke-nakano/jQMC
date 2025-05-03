@@ -76,6 +76,10 @@ logger = getLogger("jqmc").getChild(__name__)
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
+# system default Nv and NN
+Nv_default = 12
+NN_default = 1
+
 
 # non local PPs, Mesh Info. taken from Mitas's paper [J. Chem. Phys., 95, 5, (1991)]
 # why namedtuple? because it should be immutable
@@ -110,6 +114,33 @@ octahedron_sym_mesh_Nv6 = _Mesh(
         ]
     ),
 )
+
+# Icosahedron symmetry quadrature (Nv=12)
+A = 1.0 / 12.0
+B = 1.0 / 12.0
+grid_points_sphe = np.array(
+    [
+        [0.0, 0.0],
+        [np.pi, 0.0],
+        [np.arctan(2), (2.0 * 0 * np.pi) / 5.0],
+        [np.arctan(2), (2.0 * 1 * np.pi) / 5.0],
+        [np.arctan(2), (2.0 * 2 * np.pi) / 5.0],
+        [np.arctan(2), (2.0 * 3 * np.pi) / 5.0],
+        [np.arctan(2), (2.0 * 4 * np.pi) / 5.0],
+        [np.pi - np.arctan(2), (((2.0 * 0) + 1.0) * np.pi) / 5.0],
+        [np.pi - np.arctan(2), (((2.0 * 1) + 1.0) * np.pi) / 5.0],
+        [np.pi - np.arctan(2), (((2.0 * 2) + 1.0) * np.pi) / 5.0],
+        [np.pi - np.arctan(2), (((2.0 * 3) + 1.0) * np.pi) / 5.0],
+        [np.pi - np.arctan(2), (((2.0 * 4) + 1.0) * np.pi) / 5.0],
+    ]
+)
+theta = grid_points_sphe[:, 0]
+phi = grid_points_sphe[:, 1]
+x = np.sin(theta) * np.cos(phi)
+y = np.sin(theta) * np.sin(phi)
+z = np.cos(theta)
+grid_points_cart = np.vstack((x, y, z)).T
+icosahedron_sym_mesh_Nv12 = _Mesh(Nv=12, weights=[A, A, B, B, B, B, B, B, B, B, B, B], grid_points=grid_points_cart)
 
 # Octahedron symmetry quadrature (Nv=18)
 A = 1.0 / 6.0
@@ -606,7 +637,6 @@ def compute_ecp_local_parts_all_pairs_debug(
         coulomb_potential_data (Coulomb_potential_data): an instance of Coulomb_potential_data
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
-        Nv (int): The number of quadrature points for the spherical part.
 
     Returns:
         float: The sum of local part of the given ECPs with r_up_carts and r_dn_carts.
@@ -656,7 +686,7 @@ def compute_ecp_non_local_parts_all_pairs_debug(
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
-    Nv: int = 6,
+    Nv: int = Nv_default,
     flag_determinant_only: bool = False,
 ) -> float:
     """Compute ecp non-local parts, considering all nucleus-electron pairs.
@@ -683,6 +713,9 @@ def compute_ecp_non_local_parts_all_pairs_debug(
     elif Nv == 6:
         weights = octahedron_sym_mesh_Nv6.weights
         grid_points = octahedron_sym_mesh_Nv6.grid_points
+    elif Nv == 12:
+        weights = icosahedron_sym_mesh_Nv12.weights
+        grid_points = icosahedron_sym_mesh_Nv12.grid_points
     elif Nv == 18:
         weights = octahedron_sym_mesh_Nv18.weights
         grid_points = octahedron_sym_mesh_Nv18.grid_points
@@ -828,8 +861,8 @@ def compute_ecp_non_local_parts_nearest_neighbors_debug(
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
-    NN: int = 1,
-    Nv: int = 6,
+    NN: int = NN_default,
+    Nv: int = Nv_default,
     flag_determinant_only: bool = False,
 ) -> float:
     """Compute ecp non-local parts.
@@ -858,6 +891,9 @@ def compute_ecp_non_local_parts_nearest_neighbors_debug(
     elif Nv == 6:
         weights = octahedron_sym_mesh_Nv6.weights
         grid_points = octahedron_sym_mesh_Nv6.grid_points
+    elif Nv == 12:
+        weights = icosahedron_sym_mesh_Nv12.weights
+        grid_points = icosahedron_sym_mesh_Nv12.grid_points
     elif Nv == 18:
         weights = octahedron_sym_mesh_Nv18.weights
         grid_points = octahedron_sym_mesh_Nv18.grid_points
@@ -1062,7 +1098,8 @@ def compute_ecp_coulomb_potential_debug(
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
-    Nv: int = 6,
+    NN: int = NN_default,
+    Nv: int = Nv_default,
 ) -> float:
     """Compute ecp local and non-local parts.
 
@@ -1074,6 +1111,7 @@ def compute_ecp_coulomb_potential_debug(
         wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        NN (int): Consider only up to NN-th nearest neighbors.
         Nv (int): The number of quadrature points for the spherical part.
 
     Returns:
@@ -1089,6 +1127,7 @@ def compute_ecp_coulomb_potential_debug(
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
         Nv=Nv,
+        NN=NN,
     )
 
     V_ecp = ecp_local_parts + ecp_nonlocal_parts
@@ -1204,8 +1243,8 @@ def compute_ecp_non_local_parts_nearest_neighbors_jax(
     wavefunction_data: Wavefunction_data,
     r_up_carts: jnpt.ArrayLike,
     r_dn_carts: jnpt.ArrayLike,
-    NN: int = 1,
-    Nv: int = 6,
+    NN: int = NN_default,
+    Nv: int = Nv_default,
     flag_determinant_only: bool = False,
 ) -> float:
     """Compute ecp non-local parts.
@@ -1233,6 +1272,9 @@ def compute_ecp_non_local_parts_nearest_neighbors_jax(
     elif Nv == 6:
         weights = jnp.array(octahedron_sym_mesh_Nv6.weights)
         grid_points = jnp.array(octahedron_sym_mesh_Nv6.grid_points)
+    elif Nv == 12:
+        weights = jnp.array(icosahedron_sym_mesh_Nv12.weights)
+        grid_points = jnp.array(icosahedron_sym_mesh_Nv12.grid_points)
     elif Nv == 18:
         weights = jnp.array(octahedron_sym_mesh_Nv18.weights)
         grid_points = jnp.array(octahedron_sym_mesh_Nv18.grid_points)
@@ -1413,7 +1455,7 @@ def compute_ecp_non_local_parts_all_pairs_jax(
     wavefunction_data: Wavefunction_data,
     r_up_carts: jnpt.ArrayLike,
     r_dn_carts: jnpt.ArrayLike,
-    Nv: int = 6,
+    Nv: int = Nv_default,
     flag_determinant_only: bool = False,
 ) -> float:
     """Compute ecp non-local parts using JAX, considering all nucleus-electron pairs.
@@ -1439,6 +1481,9 @@ def compute_ecp_non_local_parts_all_pairs_jax(
     elif Nv == 6:
         weights = octahedron_sym_mesh_Nv6.weights
         grid_points = octahedron_sym_mesh_Nv6.grid_points
+    elif Nv == 12:
+        weights = icosahedron_sym_mesh_Nv12.weights
+        grid_points = icosahedron_sym_mesh_Nv12.grid_points
     elif Nv == 18:
         weights = octahedron_sym_mesh_Nv18.weights
         grid_points = octahedron_sym_mesh_Nv18.grid_points
@@ -1767,7 +1812,8 @@ def compute_ecp_coulomb_potential_jax(
     wavefunction_data: Wavefunction_data,
     r_up_carts: jnpt.ArrayLike,
     r_dn_carts: jnpt.ArrayLike,
-    Nv: int = 6,
+    NN: int = NN_default,
+    Nv: int = Nv_default,
 ) -> float:
     """Compute effective core potential term.
 
@@ -1778,6 +1824,7 @@ def compute_ecp_coulomb_potential_jax(
         coulomb_potential_data (Coulomb_potential_data): an instance of Coulomb_potential_data
         r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        NN (int): Consider only up to NN-th nearest neighbors.
         Nv (int): The number of quadrature points for the spherical part.
 
     Returns:
@@ -1804,6 +1851,7 @@ def compute_ecp_coulomb_potential_jax(
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
         Nv=Nv,
+        NN=NN,
     )
     #'''
 
@@ -2111,7 +2159,7 @@ def compute_coulomb_potential_debug(
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
             wavefunction_data=wavefunction_data,
-            Nv=6,
+            Nv=Nv_default,
         )
 
     return bare_coulomb_potential + ecp_coulomb_potential
@@ -2136,7 +2184,6 @@ def compute_coulomb_potential_jax(
         r_dn_carts (npt.NDArray[np.float64]):
             Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
         wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
-        debug (bool): if True, the value is computed via _debug function for debuging purpose
 
     Returns:
         float:  The sum of bare electron-ion, electron-electron, local and non-local parts of the given
@@ -2160,7 +2207,7 @@ def compute_coulomb_potential_jax(
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
             wavefunction_data=wavefunction_data,
-            Nv=6,
+            Nv=Nv_default,
         )
 
     return bare_coulomb_potential + ecp_coulomb_potential
