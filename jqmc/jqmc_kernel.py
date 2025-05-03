@@ -3990,15 +3990,13 @@ class GFMC_fixed_num_projection:
 
             # Compute the local cumulative probabilities.
             local_cumprob = np.cumsum(local_probabilities)
-
-            # Gather each process's probability sum (each equals np.sum(local_probabilities))
-            local_prob_sum_arr = np.array(np.sum(local_probabilities), dtype=np.float64)
-            all_prob_sums_arr = np.zeros(mpi_size, dtype=np.float64)
-            mpi_comm.Allgather([local_prob_sum_arr, MPI.DOUBLE], [all_prob_sums_arr, MPI.DOUBLE])
-            local_probability_sums = all_prob_sums_arr.tolist()
-
-            # Calculate the offset for this process
-            offset = np.sum(local_probability_sums[:mpi_rank])
+            local_sum_arr = np.array(np.sum(local_probabilities), dtype=np.float64)
+            offset_arr = np.zeros(1, dtype=np.float64)
+            mpi_comm.Exscan([local_sum_arr, MPI.DOUBLE], [offset_arr, MPI.DOUBLE], op=MPI.SUM)
+            if mpi_rank == 0:
+                offset = 0.0
+            else:
+                offset = float(offset_arr[0])
             local_cumprob += offset
 
             end_ = time.perf_counter()
@@ -4071,9 +4069,10 @@ class GFMC_fixed_num_projection:
             #########################################
             # 3. Exchange only the necessary walker data between processes using asynchronous communication
             #########################################
-            start_ = time.perf_counter()
-            # --- 3-1. Encode reqs as flat arrays and exchange via Allgather/Allgatherv ---
-            # Flatten local requests into arrays
+
+            # --- 3-1. Encode local reqs, exchange counts via Alltoall, then do one Alltoallv ---
+
+            # 1) Flatten requests into triplets (src_rank, dest_idx, src_local_idx)
             src_ranks = []
             dest_indices = []
             src_local_indices = []
@@ -4087,40 +4086,60 @@ class GFMC_fixed_num_projection:
             dest_indices = np.array(dest_indices, dtype=np.int32)
             src_local_indices = np.array(src_local_indices, dtype=np.int32)
 
-            # 1) Gather counts
-            local_count = np.array([len(src_ranks)], dtype=np.int32)
-            all_counts = np.empty(mpi_size, dtype=np.int32)
-            mpi_comm.Allgather([local_count, MPI.INT], [all_counts, MPI.INT])
+            # 2) Build send_counts: how many integers to send to each rank?
+            #    (we send 3 ints per request)
+            send_counts = np.zeros(mpi_size, dtype=np.int32)
+            for p in range(mpi_size):
+                send_counts[p] = len(reqs.get(p, [])) * 3
 
-            # 2) Compute displacements for Allgatherv
-            displs = np.insert(np.cumsum(all_counts), 0, 0)[:-1]
-            total_count = int(np.sum(all_counts))
+            # 3) Exchange send_counts to get recv_counts
+            recv_counts = np.empty_like(send_counts)
+            mpi_comm.Alltoall([send_counts, MPI.INT], [recv_counts, MPI.INT])
 
-            # 3) Allocate global arrays
-            global_src_ranks = np.empty(total_count, dtype=np.int32)
-            global_dest_indices = np.empty(total_count, dtype=np.int32)
-            global_src_local_idxs = np.empty(total_count, dtype=np.int32)
+            # 4) Build send_displs / recv_displs from counts
+            send_displs = np.insert(np.cumsum(send_counts), 0, 0)[:-1]
+            recv_displs = np.insert(np.cumsum(recv_counts), 0, 0)[:-1]
 
-            # 4) Allgatherv each flat array
-            mpi_comm.Allgatherv([src_ranks, MPI.INT], [global_src_ranks, (all_counts, displs), MPI.INT])
-            mpi_comm.Allgatherv([dest_indices, MPI.INT], [global_dest_indices, (all_counts, displs), MPI.INT])
-            mpi_comm.Allgatherv([src_local_indices, MPI.INT], [global_src_local_idxs, (all_counts, displs), MPI.INT])
+            # 5) Pack send_buf: interleave triplets in the order of dest ranks
+            total_send = int(np.sum(send_counts))
+            send_buf = np.empty(total_send, dtype=np.int32)
+            pos = 0
+            for p in range(mpi_size):
+                n = send_counts[p] // 3
+                if n > 0:
+                    # collect the p→* triplets
+                    mask = src_ranks == p
+                    block = np.empty(n * 3, dtype=np.int32)
+                    block[0::3] = src_ranks[mask]
+                    block[1::3] = dest_indices[mask]
+                    block[2::3] = src_local_indices[mask]
+                    send_buf[pos : pos + n * 3] = block
+                pos += n * 3
 
-            # 5) Reconstruct all_reqs as list of dicts
+            # 6) Allocate recv_buf of the exact total size
+            total_recv = int(np.sum(recv_counts))
+            recv_buf = np.empty(total_recv, dtype=np.int32)
+
+            # 7) Perform the single Alltoallv
+            mpi_comm.Alltoallv([send_buf, send_counts, send_displs, MPI.INT], [recv_buf, recv_counts, recv_displs, MPI.INT])
+
+            # 8) Reconstruct per‐process request dicts from recv_buf
             all_reqs = []
             for p in range(mpi_size):
-                start = displs[p]
-                end = start + int(all_counts[p])
+                start = recv_displs[p]
+                end = start + recv_counts[p]
+                block = recv_buf[start:end]
+                if block.size == 0:
+                    all_reqs.append({})
+                    continue
+                triplets = block.reshape(-1, 3)
                 proc_dict = {}
-                for i in range(start, end):
-                    sr = int(global_src_ranks[i])
-                    di = int(global_dest_indices[i])
-                    sli = int(global_src_local_idxs[i])
-                    proc_dict.setdefault(sr, []).append((di, sli))
+                for sr, dest_idx, src_local_idx in triplets:
+                    proc_dict.setdefault(int(sr), []).append((int(dest_idx), int(src_local_idx)))
                 all_reqs.append(proc_dict)
 
-            # Filter out empty request dicts
-            non_empty_all_reqs = [(p, req_dict) for p, req_dict in enumerate(all_reqs) if req_dict]
+            # 9) Filter out empty requests
+            non_empty_all_reqs = [(p, rd) for p, rd in enumerate(all_reqs) if rd]
             end_ = time.perf_counter()
             logger.debug(f"    reconfig: step 3.1 = {(end_ - start_) * 1e3:.3f} msec.")
 
