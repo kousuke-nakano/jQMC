@@ -63,17 +63,6 @@ mpi_size = mpi_comm.Get_size()
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
 
-# jax-MPI related
-try:
-    jax.distributed.initialize(cluster_detection_method="mpi4py")
-    logger.info("JAX distributed initialization is successful.")
-    logger.info(f"JAX backend = {jax.default_backend()}.")
-    logger.info("")
-except Exception as e:
-    logger.info("Running on CPUs or single GPU. JAX distributed initialization is skipped.")
-    logger.debug(f"Distributed initialization Exception: {e}")
-    logger.info("")
-
 
 def cli():
     """Main function."""
@@ -142,6 +131,17 @@ def cli():
 
     # print header
     print_header()
+
+    # jax-MPI related
+    try:
+        jax.distributed.initialize(cluster_detection_method="mpi4py")
+        logger.info("JAX distributed initialization is successful.")
+        logger.info(f"JAX backend = {jax.default_backend()}.")
+        logger.info("")
+    except Exception as e:
+        logger.info("Running on CPUs or single GPU. JAX distributed initialization is skipped.")
+        logger.debug(f"Distributed initialization Exception: {e}")
+        logger.info("")
 
     if jax.distributed.is_initialized():
         # global JAX device
