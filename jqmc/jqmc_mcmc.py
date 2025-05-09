@@ -750,17 +750,26 @@ if __name__ == "__main__":
         log.addHandler(stream_handler)
 
     # jax-MPI related
-    jax.distributed.initialize(cluster_detection_method="mpi4py")
+    try:
+        jax.distributed.initialize(cluster_detection_method="mpi4py")
+        logger.info("JAX distributed initialization is successful.")
+        logger.info(f"JAX backend = {jax.default_backend()}.")
+        logger.info("")
+    except Exception as e:
+        logger.info("Running on CPUs or single GPU. JAX distributed initialization is skipped.")
+        logger.debug(f"Distributed initialization Exception: {e}")
+        logger.info("")
 
-    # global JAX device
-    global_device_info = jax.devices()
-    # local JAX device
-    num_devices = jax.local_devices()
-    device_info_str = f"Rank {mpi_rank}: {num_devices}"
-    local_device_info = mpi_comm.allgather(device_info_str)
-    # print recognized XLA devices
-    logger.info("*** XLA Global devices recognized by JAX***")
-    logger.info(global_device_info)
-    logger.info("*** XLA Local devices recognized by JAX***")
-    logger.info(local_device_info)
-    logger.info("")
+    if jax.distributed.is_initialized():
+        # global JAX device
+        global_device_info = jax.devices()
+        # local JAX device
+        num_devices = jax.local_devices()
+        device_info_str = f"Rank {mpi_rank}: {num_devices}"
+        local_device_info = mpi_comm.allgather(device_info_str)
+        # print recognized XLA devices
+        logger.info("*** XLA Global devices recognized by JAX***")
+        logger.info(global_device_info)
+        logger.info("*** XLA Local devices recognized by JAX***")
+        logger.info(local_device_info)
+        logger.info("")
