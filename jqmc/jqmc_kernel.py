@@ -174,6 +174,7 @@ class MCMC:
         self.__timer_dln_Psi_dR_dr = 0.0
         self.__timer_dln_Psi_dc = 0.0
         self.__timer_de_L_dc = 0.0
+        self.__timer_MPI_barrier = 0.0
         self.__timer_misc = 0.0
 
         # Place electrons around each nucleus with improved spin assignment
@@ -456,6 +457,7 @@ class MCMC:
         timer_dln_Psi_dR_dr = 0.0
         timer_dln_Psi_dc = 0.0
         timer_de_L_dc = 0.0
+        timer_MPI_barrier = 0.0
         mcmc_total_start = time.perf_counter()
 
         # toml(control) filename
@@ -472,6 +474,7 @@ class MCMC:
                 logger.info(f"{toml_filename} is generated. ")
                 toml.dump(data, f)
             logger.info("")
+        mpi_comm.Barrier()
 
         # MCMC electron position update function
         mcmc_update_init_start = time.perf_counter()
@@ -1095,6 +1098,12 @@ class MCMC:
                     logger.info("  Break the mcmc loop.")
                     break
 
+        # Barrier after MCMC operation
+        start = time.perf_counter()
+        mpi_comm.Barrier()
+        end = time.perf_counter()
+        timer_MPI_barrier += end - start
+
         logger.info("End MCMC")
         logger.info("")
 
@@ -1112,6 +1121,7 @@ class MCMC:
             + timer_dln_Psi_dR_dr
             + timer_dln_Psi_dc
             + timer_de_L_dc
+            + timer_MPI_barrier
         )
 
         self.__timer_mcmc_total += timer_mcmc_total
@@ -1122,6 +1132,7 @@ class MCMC:
         self.__timer_dln_Psi_dR_dr += timer_dln_Psi_dR_dr
         self.__timer_dln_Psi_dc += timer_dln_Psi_dc
         self.__timer_de_L_dc += timer_de_L_dc
+        self.__timer_MPI_barrier += timer_MPI_barrier
         self.__timer_misc += timer_misc
 
         # remove the toml file
@@ -1140,6 +1151,7 @@ class MCMC:
         logger.info(f"  Time for computing dln_Psi/dR and dln_Psi/dr = {timer_dln_Psi_dR_dr / num_mcmc_done * 10**3:.2f} msec.")
         logger.info(f"  Time for computing dln_Psi/dc = {timer_dln_Psi_dc / num_mcmc_done * 10**3:.2f} msec.")
         logger.info(f"  Time for computing de_L/dc = {timer_de_L_dc / num_mcmc_done * 10**3:.2f} msec.")
+        logger.info(f"  Time for MPI barrier after MCMC update = {timer_MPI_barrier / num_mcmc_done * 10**3:.2f} msec.")
         logger.info(f"  Time for misc. (others) = {timer_misc / num_mcmc_done * 10**3:.2f} msec.")
         logger.info(f"Average of walker weights is {np.mean(self.__stored_w_L):.3f}. Ideal is ~ 0.800. Adjust epsilon_AS.")
         logger.info(
@@ -1741,6 +1753,7 @@ class GFMC_fixed_projection_time:
                 logger.info(f"{toml_filename} is generated. ")
                 toml.dump(data, f)
             logger.info("")
+        mpi_comm.Barrier()
 
         # initialize numpy random seed
         np.random.seed(self.__mpi_seed)
@@ -3078,6 +3091,7 @@ class GFMC_fixed_num_projection:
                 logger.info(f"{toml_filename} is generated. ")
                 toml.dump(data, f)
             logger.info("")
+        mpi_comm.Barrier()
 
         gfmc_total_start = time.perf_counter()
 
@@ -4493,6 +4507,7 @@ class QMC:
                 logger.info(f"{toml_filename} is generated. ")
                 toml.dump(data, f)
             logger.info("")
+        mpi_comm.Barrier()
 
         # timer
         vmcopt_total_start = time.perf_counter()
@@ -5181,6 +5196,9 @@ class QMC:
                 logger.info(f"Stopping... max_time = {max_time} sec. exceeds.")
                 logger.info("Break the vmcopt loop.")
                 break
+
+            # MPI barrier after all optimization operation
+            mpi_comm.Barrier()
 
             # check toml file (stop flag)
             if os.path.isfile(toml_filename):
