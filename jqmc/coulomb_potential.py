@@ -686,9 +686,10 @@ def compute_ecp_non_local_parts_all_pairs_debug(
     wavefunction_data: Wavefunction_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
+    RT: npt.NDArray = np.eye(3),
     Nv: int = Nv_default,
     flag_determinant_only: bool = False,
-) -> float:
+) -> tuple[list, list, list, float]:
     """Compute ecp non-local parts, considering all nucleus-electron pairs.
 
     The method is for computing the non-local part of the given ECPs at (r_up_carts, r_dn_carts).
@@ -699,11 +700,13 @@ def compute_ecp_non_local_parts_all_pairs_debug(
         wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
         r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        RT (npt.NDArray): Rotation matrix. equiv R.T
         Nv (int): The number of quadrature points for the spherical part.
         flag_determinant_only (bool): If True, only the determinant part is considered for the non-local ECP part.
 
     Returns:
-        list[(np.NDArray, np.NDArray)]: The list of grids on which the non-local part is computed.
+        list[npt.NDArray]: The list of grids for up electrons on which the non-local part is computed.
+        list[npt.NDArray]: The list of grids for dn electrons on which the non-local part is computed.
         list[float]: The list of non-local part of the given ECPs with r_up_carts and r_dn_carts.
         float: sum of the V_nonlocal
     """
@@ -721,6 +724,8 @@ def compute_ecp_non_local_parts_all_pairs_debug(
         grid_points = octahedron_sym_mesh_Nv18.grid_points
     else:
         raise NotImplementedError
+
+    grid_points = grid_points @ RT  # rotate the grid points. dim. (N,3) @ (3,3) = (N,3)
 
     mesh_non_local_ecp_part = []
     V_nonlocal = []
@@ -863,8 +868,9 @@ def compute_ecp_non_local_parts_nearest_neighbors_debug(
     r_dn_carts: npt.NDArray[np.float64],
     NN: int = NN_default,
     Nv: int = Nv_default,
+    RT: npt.NDArray = np.eye(3),
     flag_determinant_only: bool = False,
-) -> float:
+) -> tuple[list, list, list, float]:
     """Compute ecp non-local parts.
 
     The method is for computing the non-local part of the given ECPs at (r_up_carts, r_dn_carts)
@@ -878,10 +884,12 @@ def compute_ecp_non_local_parts_nearest_neighbors_debug(
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
         NN (int): Consider only up to NN-th nearest neighbors.
         Nv (int): The number of quadrature points for the spherical part.
+        RT (npt.NDArray): Rotation matrix. equiv R.T
         flag_determinant_only (bool): If True, only the determinant part is considered for the non-local ECP part.
 
     Returns:
-        list[(np.NDArray, np.NDArray)]: The list of grids on which the non-local part is computed.
+        list[npt.NDArray]: The list of grids for up electrons on which the non-local part is computed.
+        list[npt.NDArray]: The list of grids for dn electrons on which the non-local part is computed.
         list[float]: The list of non-local part of the given ECPs with r_up_carts and r_dn_carts.
         float: sum of the V_nonlocal
     """
@@ -899,6 +907,8 @@ def compute_ecp_non_local_parts_nearest_neighbors_debug(
         grid_points = octahedron_sym_mesh_Nv18.grid_points
     else:
         raise NotImplementedError
+
+    grid_points = grid_points @ RT  # rotate the grid points. dim. (N,3) @ (3,3) = (N,3)
 
     V_nonlocal = []
     sum_V_nonlocal = 0.0
@@ -1100,6 +1110,7 @@ def compute_ecp_coulomb_potential_debug(
     r_dn_carts: npt.NDArray[np.float64],
     NN: int = NN_default,
     Nv: int = Nv_default,
+    RT: npt.NDArray = np.eye(3),
 ) -> float:
     """Compute ecp local and non-local parts.
 
@@ -1113,7 +1124,7 @@ def compute_ecp_coulomb_potential_debug(
         r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
         NN (int): Consider only up to NN-th nearest neighbors.
         Nv (int): The number of quadrature points for the spherical part.
-
+        RT (npt.NDArray): Rotation matrix. equiv R.T used for non-local part
     Returns:
         float: The sum of non-local part of the given ECPs with r_up_carts and r_dn_carts.
     """
@@ -1128,6 +1139,8 @@ def compute_ecp_coulomb_potential_debug(
         r_dn_carts=r_dn_carts,
         Nv=Nv,
         NN=NN,
+        RT=RT,
+        flag_determinant_only=False,
     )
 
     V_ecp = ecp_local_parts + ecp_nonlocal_parts
@@ -1237,7 +1250,7 @@ def compute_ecp_local_parts_all_pairs_jax(
     return V_ecp
 
 
-@partial(jit, static_argnums=(4, 5, 6))
+@partial(jit, static_argnums=(4, 5, 7))
 def compute_ecp_non_local_parts_nearest_neighbors_jax(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
@@ -1245,8 +1258,9 @@ def compute_ecp_non_local_parts_nearest_neighbors_jax(
     r_dn_carts: jnpt.ArrayLike,
     NN: int = NN_default,
     Nv: int = Nv_default,
+    RT: jnpt.ArrayLike = jnp.eye(3),
     flag_determinant_only: bool = False,
-) -> float:
+) -> tuple[list, list, list, float]:
     """Compute ecp non-local parts.
 
     The method is for computing the non-local part of the given ECPs at (r_up_carts, r_dn_carts)
@@ -1259,10 +1273,12 @@ def compute_ecp_non_local_parts_nearest_neighbors_jax(
         r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
         NN (int): Consider only up to N-th nearest neighbors.
         Nv (int): The number of quadrature points for the spherical part.
+        RT (jnpt.ArrayLike): Rotation matrix. equiv R.T
         flag_determinant_only (bool): If True, only the determinant part is considered for the non-local ECP part.
 
     Returns:
-        list[(np.NDArray, np.NDArray)]: The list of grids on which the non-local part is computed.
+        list[jax.Array]: The list of grids for up electrons on which the non-local part is computed.
+        list[jax.Array]: The list of grids for dn electrons on which the non-local part is computed.
         list[float]: The list of non-local part of the given ECPs with r_up_carts and r_dn_carts.
         float: sum of the V_nonlocal
     """
@@ -1280,6 +1296,8 @@ def compute_ecp_non_local_parts_nearest_neighbors_jax(
         grid_points = jnp.array(octahedron_sym_mesh_Nv18.grid_points)
     else:
         raise NotImplementedError
+
+    grid_points = grid_points @ RT  # rotate the grid points. dim. (N,3) @ (3,3) = (N,3)
 
     # jnp variables
     ang_mom_all, exponent_all, coefficient_all, power_all = coulomb_potential_data.padded_parameters_tuple
@@ -1449,15 +1467,16 @@ def compute_ecp_non_local_parts_nearest_neighbors_jax(
     return non_local_ecp_part_r_carts_up, non_local_ecp_part_r_carts_dn, V_nonlocal, sum_V_nonlocal
 
 
-@partial(jit, static_argnums=(4, 5))
+@partial(jit, static_argnums=(4, 6))
 def compute_ecp_non_local_parts_all_pairs_jax(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
     r_up_carts: jnpt.ArrayLike,
     r_dn_carts: jnpt.ArrayLike,
     Nv: int = Nv_default,
+    RT: jnpt.ArrayLike = jnp.eye(3),
     flag_determinant_only: bool = False,
-) -> float:
+) -> tuple[list, list, list, float]:
     """Compute ecp non-local parts using JAX, considering all nucleus-electron pairs.
 
     The method is for computing the non-local part of the given ECPs at (r_up_carts, r_dn_carts).
@@ -1468,10 +1487,12 @@ def compute_ecp_non_local_parts_all_pairs_jax(
         r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
         Nv (int): The number of quadrature points for the spherical part.
+        RT (jnpt.ArrayLike): Rotation matrix. equiv R.T
         flag_determinant_only (bool): If True, only the determinant part is considered for the non-local ECP part.
 
     Returns:
-        list[(np.NDArray, np.NDArray)]: The list of grids on which the non-local part is computed.
+        list[jax.Array]: The list of grids for up electrons on which the non-local part is computed.
+        list[jax.Array]: The list of grids for dn electrons on which the non-local part is computed.
         list[float]: The list of non-local part of the given ECPs with r_up_carts and r_dn_carts.
         float: The sum of non-local part of the given ECPs with r_up_carts and r_dn_carts.
     """
@@ -1489,6 +1510,8 @@ def compute_ecp_non_local_parts_all_pairs_jax(
         grid_points = octahedron_sym_mesh_Nv18.grid_points
     else:
         raise NotImplementedError
+
+    grid_points = grid_points @ RT  # rotate the grid points. dim. (N,3) @ (3,3) = (N,3)
 
     # start = time.perf_counter()
     r_up_carts_on_mesh, r_dn_carts_on_mesh, V_ecp_up, V_ecp_dn, sum_V_nonlocal = (
@@ -1814,6 +1837,7 @@ def compute_ecp_coulomb_potential_jax(
     r_dn_carts: jnpt.ArrayLike,
     NN: int = NN_default,
     Nv: int = Nv_default,
+    RT: jnpt.ArrayLike = jnp.eye(3),
 ) -> float:
     """Compute effective core potential term.
 
@@ -1826,6 +1850,7 @@ def compute_ecp_coulomb_potential_jax(
         r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
         NN (int): Consider only up to NN-th nearest neighbors.
         Nv (int): The number of quadrature points for the spherical part.
+        RT (jnpt.ArrayLike): Rotation matrix. equiv R.T used for the non-local part.
 
     Returns:
         float: The sum of local and non-local parts of the given ECPs with r_up_carts and r_dn_carts. (float)
@@ -1841,6 +1866,8 @@ def compute_ecp_coulomb_potential_jax(
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
         Nv=Nv,
+        RT=RT,
+        flag_determinant_only=False,
     )
     """
 
@@ -1852,6 +1879,8 @@ def compute_ecp_coulomb_potential_jax(
         r_dn_carts=r_dn_carts,
         Nv=Nv,
         NN=NN,
+        RT=RT,
+        flag_determinant_only=False,
     )
     #'''
 
@@ -2134,6 +2163,9 @@ def compute_coulomb_potential_debug(
     coulomb_potential_data: Coulomb_potential_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
+    NN: int = NN_default,
+    Nv: int = Nv_default,
+    RT: npt.NDArray = np.eye(3),
     wavefunction_data: Wavefunction_data = None,
 ) -> float:
     """See compute_coulomb_potential_api."""
@@ -2159,7 +2191,9 @@ def compute_coulomb_potential_debug(
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
             wavefunction_data=wavefunction_data,
-            Nv=Nv_default,
+            Nv=Nv,
+            NN=NN,
+            RT=RT,
         )
 
     return bare_coulomb_potential + ecp_coulomb_potential
@@ -2169,6 +2203,9 @@ def compute_coulomb_potential_jax(
     coulomb_potential_data: Coulomb_potential_data,
     r_up_carts: jnpt.ArrayLike,
     r_dn_carts: jnpt.ArrayLike,
+    NN: int = NN_default,
+    Nv: int = Nv_default,
+    RT: jnpt.ArrayLike = jnp.eye(3),
     wavefunction_data: Wavefunction_data = None,
 ) -> float:
     """Compute coulomb potential including bare electron-ion, electron-electron, ecp local and non-local parts.
@@ -2179,10 +2216,13 @@ def compute_coulomb_potential_jax(
     Args:
         coulomb_potential_data (Coulomb_potential_data):
             an instance of Coulomb_potential_data
-        r_up_carts (npt.NDArray[np.float64]):
+        r_up_carts (jnpt.ArrayLike):
             Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (npt.NDArray[np.float64]):
+        r_dn_carts (jnpt.ArrayLike):
             Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        NN (int): Consider only up to NN-th nearest neighbors.
+        Nv (int): The number of quadrature points for the spherical part.
+        RT (jnpt.ArrayLike): Rotation matrix. equiv R.T used for non-local part
         wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
 
     Returns:
@@ -2207,7 +2247,9 @@ def compute_coulomb_potential_jax(
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
             wavefunction_data=wavefunction_data,
-            Nv=Nv_default,
+            NN=NN,
+            Nv=Nv,
+            RT=RT,
         )
 
     return bare_coulomb_potential + ecp_coulomb_potential

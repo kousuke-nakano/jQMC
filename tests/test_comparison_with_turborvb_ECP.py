@@ -53,7 +53,7 @@ from ..jqmc.wavefunction import Wavefunction_data, compute_kinetic_energy_jax, e
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
-Nv = 12
+Nv = 6
 NN = 1
 
 
@@ -110,10 +110,12 @@ def test_comparison_with_TurboRVB_wo_Jastrow_w_ecp():
     WF_ratio_ref_turborvb = 0.919592366177397
     kinc_ref_turborvb = 14.6961809426982
     vpot_ref_turborvb = -17.0152290468758
-    vpotoff_ref_turborvb = 0.329197252921634
-    # print(f"wf_ratio_ref={WF_ratio_ref_turborvb} Ha")
-    # print(f"kinc_ref={kinc_ref_turborvb} Ha")
-    # print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
+    vpotoff_ref_turborvb = 0.329197252921634  # with rotation
+    vpotoff_ref_turborvb = 0.328893830058865  # without rotation
+
+    print(f"wf_ratio_ref={WF_ratio_ref_turborvb} Ha")
+    print(f"kinc_ref={kinc_ref_turborvb} Ha")
+    print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
 
     WF_ratio = (
         evaluate_wavefunction_jax(
@@ -169,14 +171,14 @@ def test_comparison_with_TurboRVB_wo_Jastrow_w_ecp():
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=10)
     np.testing.assert_almost_equal(vpot_ecp_debug, vpot_ecp_jax, decimal=10)
 
-    # print(f"wf_ratio={WF_ratio} Ha")
-    # print(f"kinc={kinc} Ha")
-    # print(f"vpot={vpot_bare_jax + vpot_ecp_jax} Ha")
+    print(f"wf_ratio={WF_ratio} Ha")
+    print(f"kinc={kinc} Ha")
+    print(f"vpot={vpot_bare_jax + vpot_ecp_jax} Ha")
 
     np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=6)
     np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
-    np.testing.assert_almost_equal(vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3)
-    np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3)
+    np.testing.assert_almost_equal(vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
+    np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
 
     jax.clear_caches()
 
@@ -237,11 +239,12 @@ def test_comparison_with_TurboRVB_w_2b_Jastrow_w_ecp():
     WF_ratio_ref_turborvb = 0.881124604511419
     kinc_ref_turborvb = 11.1237599317225
     vpot_ref_turborvb = -27.03387193107
-    vpotoff_ref_turborvb = 0.244575316335042
+    vpotoff_ref_turborvb = 0.244575316335042  # with rotation
+    vpotoff_ref_turborvb = 0.243517439611676  # without rotation
 
-    # print(f"wf_ratio_ref={WF_ratio_ref_turborvb} Ha")
-    # print(f"kinc_ref={kinc_ref_turborvb} Ha")
-    # print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
+    print(f"wf_ratio_ref={WF_ratio_ref_turborvb} Ha")
+    print(f"kinc_ref={kinc_ref_turborvb} Ha")
+    print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
 
     WF_ratio = (
         evaluate_wavefunction_jax(
@@ -297,14 +300,14 @@ def test_comparison_with_TurboRVB_w_2b_Jastrow_w_ecp():
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=10)
     np.testing.assert_almost_equal(vpot_ecp_debug, vpot_ecp_jax, decimal=10)
 
-    # print(f"wf_ratio={WF_ratio} Ha")
-    # print(f"kinc={kinc} Ha")
-    # print(f"vpot={vpot_bare_jax + vpot_ecp_jax} Ha")
+    print(f"wf_ratio={WF_ratio} Ha")
+    print(f"kinc={kinc} Ha")
+    print(f"vpot={vpot_bare_jax + vpot_ecp_jax} Ha")
 
     np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=6)
     np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
-    np.testing.assert_almost_equal(vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3)
-    np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3)
+    np.testing.assert_almost_equal(vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
+    np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
 
     jax.clear_caches()
 
@@ -362,11 +365,12 @@ def test_comparison_with_TurboRVB_w_2b_3b_Jastrow_w_ecp():
     WF_ratio_ref_turborvb = 0.858468162763939
     kinc_ref_turborvb = 5.82890200054949
     vpot_ref_turborvb = -19.1676316230828
-    vpotoff_ref_turborvb = 0.285186134621918
+    vpotoff_ref_turborvb = 0.285186134621918  # with rotation
+    vpotoff_ref_turborvb = 0.284240877900265  # without rotation
 
-    # print(f"wf_ratio_ref={WF_ratio_ref_turborvb} Ha")
-    # print(f"kinc_ref={kinc_ref_turborvb} Ha")
-    # print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
+    print(f"wf_ratio_ref={WF_ratio_ref_turborvb} Ha")
+    print(f"kinc_ref={kinc_ref_turborvb} Ha")
+    print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
 
     WF_ratio = (
         evaluate_wavefunction_jax(
@@ -422,14 +426,14 @@ def test_comparison_with_TurboRVB_w_2b_3b_Jastrow_w_ecp():
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=10)
     np.testing.assert_almost_equal(vpot_ecp_debug, vpot_ecp_jax, decimal=10)
 
-    # print(f"wf_ratio={WF_ratio} Ha")
-    # print(f"kinc={kinc} Ha")
-    # print(f"vpot={vpot_bare_jax + vpot_ecp_jax} Ha")
+    print(f"wf_ratio={WF_ratio} Ha")
+    print(f"kinc={kinc} Ha")
+    print(f"vpot={vpot_bare_jax + vpot_ecp_jax} Ha")
 
     np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=6)
     np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
-    np.testing.assert_almost_equal(vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3)
-    np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3)
+    np.testing.assert_almost_equal(vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
+    np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
 
     jax.clear_caches()
 
@@ -487,11 +491,12 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp():
     WF_ratio_ref_turborvb = 0.268078593287622
     kinc_ref_turborvb = 9.84051921791642
     vpot_ref_turborvb = -27.1676371839677
-    vpotoff_ref_turborvb = 0.02700582402227284
+    vpotoff_ref_turborvb = 0.02700582402227284  # with rotation
+    vpotoff_ref_turborvb = 0.02774284473669801  # without rotation
 
-    # print(f"wf_ratio_ref={WF_ratio_ref_turborvb} Ha")
-    # print(f"kinc_ref={kinc_ref_turborvb} Ha")
-    # print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
+    print(f"wf_ratio_ref={WF_ratio_ref_turborvb} Ha")
+    print(f"kinc_ref={kinc_ref_turborvb} Ha")
+    print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
 
     WF_ratio = (
         evaluate_wavefunction_jax(
@@ -547,14 +552,14 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp():
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=10)
     np.testing.assert_almost_equal(vpot_ecp_debug, vpot_ecp_jax, decimal=10)
 
-    # print(f"wf_ratio={WF_ratio} Ha")
-    # print(f"kinc={kinc} Ha")
-    # print(f"vpot={vpot_bare_jax + vpot_ecp_jax} Ha")
+    print(f"wf_ratio={WF_ratio} Ha")
+    print(f"kinc={kinc} Ha")
+    print(f"vpot={vpot_bare_jax + vpot_ecp_jax} Ha")
 
     np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=6)
     np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
-    np.testing.assert_almost_equal(vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3)
-    np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=3)
+    np.testing.assert_almost_equal(vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
+    np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
 
     jax.clear_caches()
 

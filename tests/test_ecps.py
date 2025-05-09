@@ -61,6 +61,28 @@ from ..jqmc.wavefunction import Wavefunction_data
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
+# params
+angle_values = [
+    (0.0, 0.0, 0.0),
+    (+1.0 / 18.0 * np.pi, -1.0 / 12.0 * np.pi, +1.0 / 95.0 * np.pi),
+    (+1.0 / 12.0 * np.pi, -1.0 / 17.0 * np.pi, +1.0 / 15.0 * np.pi),
+    (+1.0 / 22.0 * np.pi, +1.0 / 54.0 * np.pi, +1.0 / 75.0 * np.pi),
+    (-1.0 / 56.0 * np.pi, -1.0 / 13.0 * np.pi, +1.0 / 25.0 * np.pi),
+    (+np.pi, +np.pi, +np.pi),
+    (-np.pi, -np.pi, -np.pi),
+    (+2.0 * np.pi, +2.0 * np.pi, +2.0 * np.pi),
+    (-2.0 * np.pi, -2.0 * np.pi, -2.0 * np.pi),
+]
+
+# angle parameters
+angle_params = [
+    pytest.param(alpha, beta, gamma, id=f"(alpha,beta,gamma)=({alpha:.2f},{beta:.2f},{gamma:.2f})")
+    for alpha, beta, gamma in angle_values
+]
+
+# Nv parameters
+Nv_params = [pytest.param(Nv, id=f"Nv={Nv}") for Nv in (4, 6, 12, 18)]
+
 
 def test_debug_and_jax_bare_coulomb():
     """Test the bare coulomb potential computation."""
@@ -168,8 +190,9 @@ def test_debug_and_jax_ecp_local():
     np.testing.assert_almost_equal(vpot_ecp_local_full_NN_jax, vpot_ecp_local_full_NN_debug, decimal=10)
 
 
-@pytest.mark.parametrize("Nv", [pytest.param(Nv, id=f"Nv={Nv}") for Nv in (4, 6, 12, 18)])
-def test_debug_and_jax_ecp_non_local_full_NN(Nv):
+@pytest.mark.parametrize("Nv", Nv_params)
+@pytest.mark.parametrize("alpha, beta, gamma", angle_params)
+def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
     """Test the non-local ECP potential computation with the full neibohrs."""
     (
         structure_data,
@@ -217,6 +240,19 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv):
     r_up_carts_jnp = jnp.array(r_up_carts_np)
     r_dn_carts_jnp = jnp.array(r_dn_carts_np)
 
+    cos_a, sin_a = np.cos(alpha), np.sin(alpha)
+    cos_b, sin_b = np.cos(beta), np.sin(beta)
+    cos_g, sin_g = np.cos(gamma), np.sin(gamma)
+
+    R_np = np.array(
+        [
+            [cos_b * cos_g, cos_g * sin_a * sin_b - cos_a * sin_g, sin_a * sin_g + cos_a * cos_g * sin_b],
+            [cos_b * sin_g, cos_a * cos_g + sin_a * sin_b * sin_g, cos_a * sin_b * sin_g - cos_g * sin_a],
+            [-sin_b, cos_b * sin_a, cos_a * cos_b],
+        ]
+    )
+    R_jnp = jnp.array(R_np)
+
     # ecp non-local (full_NN)
     (
         mesh_non_local_ecp_part_r_up_carts_full_NN_jax,
@@ -229,6 +265,7 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv):
         r_up_carts=r_up_carts_jnp,
         r_dn_carts=r_dn_carts_jnp,
         Nv=Nv,
+        RT=R_jnp.T,
     )
 
     (
@@ -242,6 +279,7 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv):
         r_up_carts=r_up_carts_np,
         r_dn_carts=r_dn_carts_np,
         Nv=Nv,
+        RT=R_np.T,
     )
 
     np.testing.assert_almost_equal(sum_V_nonlocal_full_NN_debug, sum_V_nonlocal_full_NN_jax, decimal=6)
@@ -280,6 +318,7 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv):
         wavefunction_data=wavefunction_data,
         NN=n_atom,
         Nv=Nv,
+        RT=R_jnp.T,
         r_up_carts=r_up_carts_jnp,
         r_dn_carts=r_dn_carts_jnp,
     )
@@ -294,6 +333,7 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv):
         wavefunction_data=wavefunction_data,
         NN=n_atom,
         Nv=Nv,
+        RT=R_np.T,
         r_up_carts=r_up_carts_np,
         r_dn_carts=r_dn_carts_np,
     )
@@ -338,8 +378,9 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv):
     )
 
 
-@pytest.mark.parametrize("Nv", [pytest.param(Nv, id=f"Nv={Nv}") for Nv in (4, 6, 12, 18)])
-def test_debug_and_jax_ecp_non_local_partial_NN(Nv):
+@pytest.mark.parametrize("Nv", Nv_params)
+@pytest.mark.parametrize("alpha, beta, gamma", angle_params)
+def test_debug_and_jax_ecp_non_local_partial_NN(Nv, alpha, beta, gamma):
     """Test the non-local ECP potential computation with partial neibohrs."""
     (
         structure_data,
@@ -387,6 +428,19 @@ def test_debug_and_jax_ecp_non_local_partial_NN(Nv):
     r_up_carts_jnp = jnp.array(r_up_carts_np)
     r_dn_carts_jnp = jnp.array(r_dn_carts_np)
 
+    cos_a, sin_a = np.cos(alpha), np.sin(alpha)
+    cos_b, sin_b = np.cos(beta), np.sin(beta)
+    cos_g, sin_g = np.cos(gamma), np.sin(gamma)
+
+    R_np = np.array(
+        [
+            [cos_b * cos_g, cos_g * sin_a * sin_b - cos_a * sin_g, sin_a * sin_g + cos_a * cos_g * sin_b],
+            [cos_b * sin_g, cos_a * cos_g + sin_a * sin_b * sin_g, cos_a * sin_b * sin_g - cos_g * sin_a],
+            [-sin_b, cos_b * sin_a, cos_a * cos_b],
+        ]
+    )
+    R_jnp = jnp.array(R_np)
+
     for NN in range(1, n_atom):
         # ecp non-local (NN, NN=NN)
         (
@@ -401,6 +455,7 @@ def test_debug_and_jax_ecp_non_local_partial_NN(Nv):
             r_dn_carts=r_dn_carts_jnp,
             Nv=Nv,
             NN=NN,
+            RT=R_jnp.T,
         )
 
         (
@@ -415,6 +470,7 @@ def test_debug_and_jax_ecp_non_local_partial_NN(Nv):
             r_dn_carts=r_dn_carts_np,
             Nv=Nv,
             NN=NN,
+            RT=R_np.T,
         )
 
         np.testing.assert_almost_equal(sum_V_nonlocal_NN_debug, sum_V_nonlocal_NN_jax, decimal=6)
