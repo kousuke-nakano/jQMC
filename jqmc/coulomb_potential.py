@@ -1122,6 +1122,7 @@ def compute_ecp_coulomb_potential_debug(
         RT (npt.NDArray): Rotation matrix. equiv R.T used for non-local part
         NN (int): Consider only up to NN-th nearest neighbors.
         Nv (int): The number of quadrature points for the spherical part.
+
     Returns:
         float: The sum of non-local part of the given ECPs with r_up_carts and r_dn_carts.
     """
@@ -1832,7 +1833,7 @@ def compute_ecp_coulomb_potential_jax(
     wavefunction_data: Wavefunction_data,
     r_up_carts: jnpt.ArrayLike,
     r_dn_carts: jnpt.ArrayLike,
-    RT: jnpt.ArrayLike = jnp.eye(3),
+    RT: jnpt.ArrayLike,
     NN: int = NN_default,
     Nv: int = Nv_default,
 ) -> float:
@@ -2201,7 +2202,7 @@ def compute_coulomb_potential_jax(
     coulomb_potential_data: Coulomb_potential_data,
     r_up_carts: jnpt.ArrayLike,
     r_dn_carts: jnpt.ArrayLike,
-    RT: jnpt.ArrayLike = jnp.eye(3),
+    RT: jnpt.ArrayLike,
     NN: int = NN_default,
     Nv: int = Nv_default,
     wavefunction_data: Wavefunction_data = None,
