@@ -6336,12 +6336,14 @@ if __name__ == "__main__":
         logger.info("JAX distributed initialization is successful.")
         logger.info(f"JAX backend = {jax.default_backend()}.")
         logger.info("")
+        jax_distributed_is_initialized = True
     except Exception as e:
         logger.info("Running on CPUs or single GPU. JAX distributed initialization is skipped.")
         logger.debug(f"Distributed initialization Exception: {e}")
         logger.info("")
+        jax_distributed_is_initialized = False
 
-    if jax.distributed.is_initialized():
+    if jax_distributed_is_initialized:
         # global JAX device
         global_device_info = jax.devices()
         # local JAX device
