@@ -224,7 +224,7 @@ def compute_local_energy_jax(
     hamiltonian_data: Hamiltonian_data,
     r_up_carts: jnpt.ArrayLike,
     r_dn_carts: jnpt.ArrayLike,
-    RT: jnpt.ArrayLike = jnp.eye(3),
+    RT: jnpt.ArrayLike,
 ) -> float:
     """Compute Local Energy.
 

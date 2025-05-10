@@ -293,6 +293,7 @@ class MCMC:
             hamiltonian_data=self.__hamiltonian_data,
             r_up_carts=self.__latest_r_up_carts[0],
             r_dn_carts=self.__latest_r_dn_carts[0],
+            RT=jnp.eye(3),
         )
         end = time.perf_counter()
         logger.info("  Compilation e_L is done.")
@@ -306,6 +307,7 @@ class MCMC:
                 self.__hamiltonian_data,
                 self.__latest_r_up_carts[0],
                 self.__latest_r_dn_carts[0],
+                RT=jnp.eye(3),
             )
             end = time.perf_counter()
             logger.info("  Compilation de_L/dR is done.")
@@ -707,6 +709,7 @@ class MCMC:
 
         # MCMC update compilation.
         logger.info("  Compilation is in progress...")
+        RTs = jnp.broadcast_to(jnp.eye(3), (len(self.__jax_PRNG_key_list), 3, 3))
         (
             _,
             _,
@@ -722,10 +725,8 @@ class MCMC:
             self.__Dt,
             self.__epsilon_AS,
         )
-        _ = vmap(compute_local_energy_jax, in_axes=(None, 0, 0))(
-            self.__hamiltonian_data,
-            self.__latest_r_up_carts,
-            self.__latest_r_dn_carts,
+        _ = vmap(compute_local_energy_jax, in_axes=(None, 0, 0, 0))(
+            self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs
         )
         _ = vmap(compute_AS_regularization_factor_jax, in_axes=(None, 0, 0))(
             self.__hamiltonian_data.wavefunction_data.geminal_data,
@@ -738,10 +739,11 @@ class MCMC:
             self.__latest_r_dn_carts,
         )
         if self.__comput_position_deriv:
-            _, _, _ = vmap(grad(compute_local_energy_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0))(
+            _, _, _ = vmap(grad(compute_local_energy_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0))(
                 self.__hamiltonian_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
+                RTs,
             )
 
             _ = vmap(evaluate_ln_wavefunction_jax, in_axes=(None, 0, 0))(
@@ -1649,6 +1651,7 @@ class GFMC_fixed_projection_time:
                     r_up_carts=self.__latest_r_up_carts[0],
                     r_dn_carts=self.__latest_r_dn_carts[0],
                     flag_determinant_only=False,
+                    RT=jnp.eye(3),
                 )
             elif self.__non_local_move == "dltmove":
                 _, _, _, _ = compute_ecp_non_local_parts_nearest_neighbors_jax(
@@ -1657,6 +1660,7 @@ class GFMC_fixed_projection_time:
                     r_up_carts=self.__latest_r_up_carts[0],
                     r_dn_carts=self.__latest_r_dn_carts[0],
                     flag_determinant_only=True,
+                    RT=jnp.eye(3),
                 )
             else:
                 logger.error(f"non_local_move = {self.__non_local_move} is not yet implemented.")
@@ -2876,6 +2880,7 @@ class GFMC_fixed_num_projection:
                     r_up_carts=self.__latest_r_up_carts[0],
                     r_dn_carts=self.__latest_r_dn_carts[0],
                     flag_determinant_only=False,
+                    RT=jnp.eye(3),
                 )
             elif self.__non_local_move == "dltmove":
                 _, _, _, _ = compute_ecp_non_local_parts_nearest_neighbors_jax(
@@ -2884,6 +2889,7 @@ class GFMC_fixed_num_projection:
                     r_up_carts=self.__latest_r_up_carts[0],
                     r_dn_carts=self.__latest_r_dn_carts[0],
                     flag_determinant_only=True,
+                    RT=jnp.eye(3),
                 )
             else:
                 logger.error(f"non_local_move = {self.__non_local_move} is not yet implemented.")
