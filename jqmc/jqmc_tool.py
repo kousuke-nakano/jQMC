@@ -54,9 +54,9 @@ from .hamiltonians import Hamiltonian_data
 from .jastrow_factor import Jastrow_data, Jastrow_one_body_data, Jastrow_three_body_data, Jastrow_two_body_data
 from .jqmc_miscs import cli_parameters
 from .molecular_orbital import MOs_data
+from .setting import Bohr_to_Angstrom
 from .structure import Structure_data
 from .trexio_wrapper import read_trexio_file
-from .units import Bohr_to_Angstrom
 from .wavefunction import Wavefunction_data
 
 

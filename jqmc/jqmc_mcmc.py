@@ -95,6 +95,7 @@ class MCMC_debug:
         epsilon_AS: float = 1e-1,
         comput_param_deriv: bool = False,
         comput_position_deriv: bool = False,
+        random_discretized_mesh: bool = True,
     ) -> None:
         """Initialize a MCMC class, creating list holding results."""
         self.__mcmc_seed = mcmc_seed
@@ -104,6 +105,7 @@ class MCMC_debug:
         self.__epsilon_AS = epsilon_AS
         self.__comput_param_deriv = comput_param_deriv
         self.__comput_position_deriv = comput_position_deriv
+        self.__random_discretized_mesh = random_discretized_mesh
 
         # set hamiltonian_data
         self.__hamiltonian_data = hamiltonian_data
@@ -466,11 +468,34 @@ class MCMC_debug:
             self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts)
             self.__jax_PRNG_key_list = jnp.array(jax_PRNG_key_list)
 
+            # generate rotation matrices (for non-local ECPs)
+            RTs = []
+            for jax_PRNG_key in self.__jax_PRNG_key_list:
+                if self.__random_discretized_mesh:
+                    # key -> (new_key, subkey)
+                    _, subkey = jax.random.split(jax_PRNG_key)
+                    # sampling angles
+                    alpha, beta, gamma = jax.random.uniform(subkey, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi)
+                    # Precompute all necessary cosines and sines
+                    cos_a, sin_a = jnp.cos(alpha), jnp.sin(alpha)
+                    cos_b, sin_b = jnp.cos(beta), jnp.sin(beta)
+                    cos_g, sin_g = jnp.cos(gamma), jnp.sin(gamma)
+                    # Combine the rotations directly
+                    R = jnp.array(
+                        [
+                            [cos_b * cos_g, cos_g * sin_a * sin_b - cos_a * sin_g, sin_a * sin_g + cos_a * cos_g * sin_b],
+                            [cos_b * sin_g, cos_a * cos_g + sin_a * sin_b * sin_g, cos_a * sin_b * sin_g - cos_g * sin_a],
+                            [-sin_b, cos_b * sin_a, cos_a * cos_b],
+                        ]
+                    )
+                    RTs.append(R.T)
+                else:
+                    RTs.append(jnp.eye(3))
+            RTs = jnp.array(RTs)
+
             # evaluate observables
-            e_L = vmap(compute_local_energy_jax, in_axes=(None, 0, 0))(
-                self.__hamiltonian_data,
-                self.__latest_r_up_carts,
-                self.__latest_r_dn_carts,
+            e_L = vmap(compute_local_energy_jax, in_axes=(None, 0, 0, 0))(
+                self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs
             )
             self.__stored_e_L.append(e_L)
             self.__stored_e_L2.append(e_L**2)
@@ -488,12 +513,8 @@ class MCMC_debug:
 
             if self.__comput_position_deriv:
                 grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = vmap(
-                    grad(compute_local_energy_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
-                )(
-                    self.__hamiltonian_data,
-                    self.__latest_r_up_carts,
-                    self.__latest_r_dn_carts,
-                )
+                    grad(compute_local_energy_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0)
+                )(self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs)
 
                 self.__stored_grad_e_L_r_up.append(grad_e_L_r_up)
                 self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn)

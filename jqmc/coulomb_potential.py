@@ -60,6 +60,7 @@ from scipy.special import eval_legendre
 from .determinant import compute_det_geminal_all_elements_jax
 from .function_collections import legendre_tablated as jnp_legendre_tablated
 from .jastrow_factor import compute_Jastrow_part_jax
+from .setting import NN_default, Nv_default
 from .structure import (
     Structure_data,
     find_nearest_nucleus_indices_jnp,
@@ -75,10 +76,6 @@ logger = getLogger("jqmc").getChild(__name__)
 # JAX float64
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
-
-# system default Nv and NN
-Nv_default = 12
-NN_default = 1
 
 
 # non local PPs, Mesh Info. taken from Mitas's paper [J. Chem. Phys., 95, 5, (1991)]

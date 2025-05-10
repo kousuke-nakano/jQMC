@@ -292,23 +292,6 @@ class GFMC_fixed_projection_time_debug:
         # initialize numpy random seed
         np.random.seed(self.__mpi_seed)
 
-        # projection function.
-        def generate_rotation_matrix(alpha, beta, gamma):
-            # Precompute all necessary cosines and sines
-            cos_a, sin_a = jnp.cos(alpha), jnp.sin(alpha)
-            cos_b, sin_b = jnp.cos(beta), jnp.sin(beta)
-            cos_g, sin_g = jnp.cos(gamma), jnp.sin(gamma)
-
-            # Combine the rotations directly
-            R = jnp.array(
-                [
-                    [cos_b * cos_g, cos_g * sin_a * sin_b - cos_a * sin_g, sin_a * sin_g + cos_a * cos_g * sin_b],
-                    [cos_b * sin_g, cos_a * cos_g + sin_a * sin_b * sin_g, cos_a * sin_b * sin_g - cos_g * sin_a],
-                    [-sin_b, cos_b * sin_a, cos_a * cos_b],
-                ]
-            )
-            return R
-
         # Main branching loop.
         gfmc_interval = int(np.maximum(num_mcmc_steps / 100, 1))  # gfmc_projection set print-interval
 
@@ -374,11 +357,7 @@ class GFMC_fixed_projection_time_debug:
 
                     # generate a random rotation matrix
                     jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
-                    alpha, beta, gamma = jax.random.uniform(
-                        subkey, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi
-                    )  # Rotation angle around the x,y,z-axis (in radians)
-
-                    R = generate_rotation_matrix(alpha, beta, gamma)  # Rotate in the order x -> y -> z
+                    R = jnp.eye(3)  # Rotate in the order x -> y -> z
 
                     # compute discretized kinetic energy and mesh (with a random rotation)
                     mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
@@ -508,6 +487,7 @@ class GFMC_fixed_projection_time_debug:
                                     r_up_carts=r_up_carts,
                                     r_dn_carts=r_dn_carts,
                                     flag_determinant_only=False,
+                                    RT=R.T,
                                 )
                             )
 
@@ -526,6 +506,7 @@ class GFMC_fixed_projection_time_debug:
                                     r_up_carts=r_up_carts,
                                     r_dn_carts=r_dn_carts,
                                     flag_determinant_only=True,
+                                    RT=R.T,
                                 )
                             )
 
@@ -778,6 +759,7 @@ class GFMC_fixed_num_projection_debug:
         alat: float = 0.1,
         non_local_move: str = "tmove",
         comput_position_deriv: bool = False,
+        random_discretized_mesh=False,
     ) -> None:
         """Init.
 
@@ -795,6 +777,7 @@ class GFMC_fixed_num_projection_debug:
         self.__mcmc_seed = mcmc_seed
         self.__E_scf = E_scf
         self.__alat = alat
+        self.__random_discretized_mesh = random_discretized_mesh
         self.__non_local_move = non_local_move
 
         # derivative flags
@@ -1110,11 +1093,13 @@ class GFMC_fixed_num_projection_debug:
 
                 # generate a random rotation matrix
                 jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
-                alpha, beta, gamma = jax.random.uniform(
-                    subkey, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi
-                )  # Rotation angle around the x,y,z-axis (in radians)
-
-                R = generate_rotation_matrix(alpha, beta, gamma)  # Rotate in the order x -> y -> z
+                if self.__random_discretized_mesh:
+                    alpha, beta, gamma = jax.random.uniform(
+                        subkey, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi
+                    )  # Rotation angle around the x,y,z-axis (in radians)
+                else:
+                    alpha, beta, gamma = (0.0, 0.0, 0.0)
+                R = generate_rotation_matrix(alpha, beta, gamma)
 
                 # compute discretized kinetic energy and mesh (with a random rotation)
                 mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
@@ -1255,6 +1240,7 @@ class GFMC_fixed_num_projection_debug:
                                 r_up_carts=r_up_carts,
                                 r_dn_carts=r_dn_carts,
                                 flag_determinant_only=False,
+                                RT=R.T,
                             )
                         )
 
@@ -1279,6 +1265,7 @@ class GFMC_fixed_num_projection_debug:
                                 r_up_carts=r_up_carts,
                                 r_dn_carts=r_dn_carts,
                                 flag_determinant_only=True,
+                                RT=R.T,
                             )
                         )
 
@@ -1355,15 +1342,21 @@ class GFMC_fixed_num_projection_debug:
                 r_up_carts = non_diagonal_move_mesh_r_up_carts[k]
                 r_dn_carts = non_diagonal_move_mesh_r_dn_carts[k]
 
-            latest_w_L, latest_r_up_carts, latest_r_dn_carts, latest_jax_PRNG_key = w_L, r_up_carts, r_dn_carts, jax_PRNG_key
+            latest_w_L, latest_r_up_carts, latest_r_dn_carts, latest_jax_PRNG_key, latest_RT = (
+                w_L,
+                r_up_carts,
+                r_dn_carts,
+                jax_PRNG_key,
+                R.T,
+            )
 
-            return (latest_w_L, latest_r_up_carts, latest_r_dn_carts, latest_jax_PRNG_key)
+            return (latest_w_L, latest_r_up_carts, latest_r_dn_carts, latest_jax_PRNG_key, latest_RT)
 
         def _compute_V_elements(
             hamiltonian_data: Hamiltonian_data,
             r_up_carts: jnpt.ArrayLike,
             r_dn_carts: jnpt.ArrayLike,
-            jax_PRNG_key: jnpt.ArrayLike,
+            RT: jnpt.ArrayLike,
             non_local_move: bool,
             alat: float,
         ):
@@ -1381,21 +1374,13 @@ class GFMC_fixed_num_projection_debug:
                 )
             )
 
-            # generate a random rotation matrix
-            jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
-            alpha, beta, gamma = jax.random.uniform(
-                subkey, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi
-            )  # Rotation angle around the x,y,z-axis (in radians)
-
-            R = generate_rotation_matrix(alpha, beta, gamma)  # Rotate in the order x -> y -> z
-
             # compute discretized kinetic energy and mesh (with a random rotation)
             _, _, elements_non_diagonal_kinetic_part = compute_discretized_kinetic_energy_jax(
                 alat=alat,
                 wavefunction_data=hamiltonian_data.wavefunction_data,
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
-                RT=R.T,
+                RT=RT,
             )
             # spin-filp
             elements_non_diagonal_kinetic_part_FN = jnp.minimum(elements_non_diagonal_kinetic_part, 0.0)
@@ -1513,6 +1498,7 @@ class GFMC_fixed_num_projection_debug:
                             r_up_carts=r_up_carts,
                             r_dn_carts=r_dn_carts,
                             flag_determinant_only=False,
+                            RT=RT,
                         )
                     )
 
@@ -1529,6 +1515,7 @@ class GFMC_fixed_num_projection_debug:
                             r_up_carts=r_up_carts,
                             r_dn_carts=r_dn_carts,
                             flag_determinant_only=True,
+                            RT=RT,
                         )
                     )
 
@@ -1579,13 +1566,11 @@ class GFMC_fixed_num_projection_debug:
             hamiltonian_data: Hamiltonian_data,
             r_up_carts: jnpt.ArrayLike,
             r_dn_carts: jnpt.ArrayLike,
-            jax_PRNG_key: jnpt.ArrayLike,
+            RT: jnpt.ArrayLike,
             non_local_move: bool,
             alat: float,
         ):
-            V_diag, V_nondiag = _compute_V_elements(
-                hamiltonian_data, r_up_carts, r_dn_carts, jax_PRNG_key, non_local_move, alat
-            )
+            V_diag, V_nondiag = _compute_V_elements(hamiltonian_data, r_up_carts, r_dn_carts, RT, non_local_move, alat)
             return V_diag + V_nondiag
 
         # MAIN MCMC loop from here !!!
@@ -1609,12 +1594,9 @@ class GFMC_fixed_num_projection_debug:
             logger.devel("  Projection is on going....")
 
             # projection loop
-            (
-                w_L_list,
-                self.__latest_r_up_carts,
-                self.__latest_r_dn_carts,
-                self.__jax_PRNG_key_list,
-            ) = vmap(_projection, in_axes=(0, 0, 0, 0, None, None, None, None, None))(
+            (w_L_list, self.__latest_r_up_carts, self.__latest_r_dn_carts, self.__jax_PRNG_key_list, latest_RT) = vmap(
+                _projection, in_axes=(0, 0, 0, 0, None, None, None, None, None)
+            )(
                 w_L_list,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
@@ -1635,17 +1617,18 @@ class GFMC_fixed_num_projection_debug:
                 self.__hamiltonian_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
-                self.__jax_PRNG_key_list,
+                latest_RT,
                 self.__non_local_move,
                 self.__alat,
             )
             e_L_list = V_diag_list + V_nondiag_list
 
             if self.__non_local_move == "tmove":
-                e_list_debug = vmap(compute_local_energy_jax, in_axes=(None, 0, 0))(
+                e_list_debug = vmap(compute_local_energy_jax, in_axes=(None, 0, 0, 0))(
                     self.__hamiltonian_data,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
+                    latest_RT,
                 )
                 if np.max(np.abs(e_L_list - e_list_debug)) > 1.0e-6:
                     logger.info(f"max(e_list - e_list_debug) = {np.max(np.abs(e_L_list - e_list_debug))}.")
@@ -1662,7 +1645,7 @@ class GFMC_fixed_num_projection_debug:
                     self.__hamiltonian_data,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
-                    self.__jax_PRNG_key_list,
+                    latest_RT,
                     self.__non_local_move,
                     self.__alat,
                 )

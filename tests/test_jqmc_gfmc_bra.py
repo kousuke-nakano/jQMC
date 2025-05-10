@@ -104,6 +104,7 @@ def test_jqmc_gfmc_fixed_number_of_branching_tmove():
         mcmc_seed=mcmc_seed,
         E_scf=E_scf,
         alat=alat,
+        random_discretized_mesh=True,
         non_local_move=non_local_move,
     )
     gfmc_debug.run(num_mcmc_steps=num_mcmc_steps)
@@ -117,6 +118,7 @@ def test_jqmc_gfmc_fixed_number_of_branching_tmove():
         mcmc_seed=mcmc_seed,
         E_scf=E_scf,
         alat=alat,
+        random_discretized_mesh=True,
         non_local_move=non_local_move,
     )
     gfmc_jax.run(num_mcmc_steps=num_mcmc_steps)

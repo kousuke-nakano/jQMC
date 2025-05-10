@@ -94,6 +94,7 @@ def test_jqmc_mcmc():
         num_walkers=num_walkers,
         comput_position_deriv=False,
         comput_param_deriv=False,
+        random_discretized_mesh=True,
     )
     mcmc_debug.run(num_mcmc_steps=num_mcmc_steps)
 
@@ -105,6 +106,7 @@ def test_jqmc_mcmc():
         num_walkers=num_walkers,
         comput_position_deriv=False,
         comput_param_deriv=False,
+        random_discretized_mesh=True,
     )
     mcmc_jax.run(num_mcmc_steps=num_mcmc_steps)
 

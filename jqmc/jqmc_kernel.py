@@ -126,9 +126,9 @@ class MCMC:
         num_mcmc_per_measurement (int): the number of MCMC steps between a value (e.g., local energy) measurement.
         Dt (float): electron move step (bohr)
         epsilon_AS (float): the exponent of the AS regularization
-        # adjust_epsilon_AS (bool): if True, adjust epsilon_AS to keep the average of weights close to target_weight (~0.8).
         comput_param_deriv (bool): if True, compute the derivatives of E wrt. variational parameters.
         comput_position_deriv (bool): if True, compute the derivatives of E wrt. atomic positions.
+        random_discretized_mesh (bool): Flag for the random quadrature mesh in the non-local part of ECPs. Valid only for ECP calculations.
     """
 
     def __init__(
@@ -142,6 +142,7 @@ class MCMC:
         # adjust_epsilon_AS: bool = False,
         comput_param_deriv: bool = False,
         comput_position_deriv: bool = False,
+        random_discretized_mesh: bool = True,
     ) -> None:
         """Initialize a MCMC class, creating list holding results."""
         self.__mcmc_seed = mcmc_seed
@@ -152,6 +153,7 @@ class MCMC:
         # self.__adjust_epsilon_AS = adjust_epsilon_AS
         self.__comput_param_deriv = comput_param_deriv
         self.__comput_position_deriv = comput_position_deriv
+        self.__random_discretized_mesh = random_discretized_mesh
 
         # check sanity of hamiltonian_data
         hamiltonian_data.sanity_check()
@@ -444,9 +446,8 @@ class MCMC:
         """Launch MCMCs with the set multiple walkers.
 
         Args:
-            num_mcmc_steps (int): the number of total mcmc steps per walker.
-            max_time(int):
-                Max elapsed time (sec.). If the elapsed time exceeds max_time, the methods exits the mcmc loop.
+            num_mcmc_steps (int): The number of total mcmc steps per walker.
+            max_time(int): Max elapsed time (sec.). If the elapsed time exceeds max_time, the methods exits the mcmc loop.
         """
         # timer_counter
         timer_mcmc_total = 0.0
@@ -479,6 +480,26 @@ class MCMC:
         # MCMC electron position update function
         mcmc_update_init_start = time.perf_counter()
         logger.info("Start compilation of the MCMC_update funciton.")
+
+        @jit
+        def generate_RTs(jax_PRNG_key):
+            # key -> (new_key, subkey)
+            _, subkey = jax.random.split(jax_PRNG_key)
+            # sampling angles
+            alpha, beta, gamma = jax.random.uniform(subkey, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi)
+            # Precompute all necessary cosines and sines
+            cos_a, sin_a = jnp.cos(alpha), jnp.sin(alpha)
+            cos_b, sin_b = jnp.cos(beta), jnp.sin(beta)
+            cos_g, sin_g = jnp.cos(gamma), jnp.sin(gamma)
+            # Combine the rotations directly
+            R = jnp.array(
+                [
+                    [cos_b * cos_g, cos_g * sin_a * sin_b - cos_a * sin_g, sin_a * sin_g + cos_a * cos_g * sin_b],
+                    [cos_b * sin_g, cos_a * cos_g + sin_a * sin_b * sin_g, cos_a * sin_b * sin_g - cos_g * sin_a],
+                    [-sin_b, cos_b * sin_a, cos_a * cos_b],
+                ]
+            )
+            return R.T
 
         # Note: This jit drastically accelarates the computation!!
         @partial(jit, static_argnums=3)
@@ -825,12 +846,16 @@ class MCMC:
             self.__accepted_moves += jnp.sum(accepted_moves_nw)
             self.__rejected_moves += jnp.sum(rejected_moves_nw)
 
+            # generate rotation matrices (for non-local ECPs)
+            if self.__random_discretized_mesh:
+                RTs = vmap(generate_RTs, in_axes=0)(self.__jax_PRNG_key_list)
+            else:
+                RTs = jnp.broadcast_to(jnp.eye(3), (len(self.__jax_PRNG_key_list), 3, 3))
+
             # evaluate observables
             start = time.perf_counter()
-            e_L = vmap(compute_local_energy_jax, in_axes=(None, 0, 0))(
-                self.__hamiltonian_data,
-                self.__latest_r_up_carts,
-                self.__latest_r_dn_carts,
+            e_L = vmap(compute_local_energy_jax, in_axes=(None, 0, 0, 0))(
+                self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs
             )
             logger.devel(f"e_L = {e_L}")
             end = time.perf_counter()
@@ -892,11 +917,12 @@ class MCMC:
                 # """
                 start = time.perf_counter()
                 grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = vmap(
-                    grad(compute_local_energy_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
+                    grad(compute_local_energy_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0)
                 )(
                     self.__hamiltonian_data,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
+                    RTs,
                 )
                 end = time.perf_counter()
                 timer_de_L_dR_dr += end - start
@@ -1429,6 +1455,9 @@ class GFMC_fixed_projection_time:
         mcmc_seed (int): seed for the MCMC chain.
         tau (float): projection time (bohr^-1)
         alat (float): discretized grid length (bohr)
+        random_discretized_mesh (bool)
+            Flag for the random discretization mesh in the kinetic part and in the non-local part of ECPs.
+            Valid both for all-electron and ECP calculations.
         non_local_move (str):
             treatment of the spin-flip term. tmove (Casula's T-move) or dtmove (Determinant Locality Approximation with Casula's T-move)
             Valid only for ECP calculations. All-electron calculations, do not specify this value.
@@ -1442,6 +1471,7 @@ class GFMC_fixed_projection_time:
         mcmc_seed: int = 34467,
         tau: float = 0.1,
         alat: float = 0.1,
+        random_discretized_mesh: bool = True,
         non_local_move: str = "tmove",
     ) -> None:
         """Init.
@@ -1459,6 +1489,7 @@ class GFMC_fixed_projection_time:
         self.__mcmc_seed = mcmc_seed
         self.__tau = tau
         self.__alat = alat
+        self.__random_discretized_mesh = random_discretized_mesh
         self.__non_local_move = non_local_move
 
         # timer
@@ -1780,7 +1811,7 @@ class GFMC_fixed_projection_time:
             return R
 
         # Note: This jit drastically accelarates the computation!!
-        @partial(jit, static_argnums=6)
+        @partial(jit, static_argnums=(6, 7))
         def _projection(
             projection_counter: int,
             tau_left: float,
@@ -1788,6 +1819,7 @@ class GFMC_fixed_projection_time:
             r_up_carts: jnpt.ArrayLike,
             r_dn_carts: jnpt.ArrayLike,
             jax_PRNG_key: jnpt.ArrayLike,
+            random_discretized_mesh: bool,
             non_local_move: bool,
             alat: float,
             hamiltonian_data: Hamiltonian_data,
@@ -1803,6 +1835,7 @@ class GFMC_fixed_projection_time:
                 r_up_carts (N_e^up, 3) before projection
                 r_dn_carts (N_e^dn, 3) after projection
                 jax_PRNG_key (jnpt.ArrayLike): jax PRNG key
+                random_discretized_mesh (bool): Flag for the random discretization mesh in the kinetic part and the non-local part of ECPs.
                 non_local_move (bool): treatment of the spin-flip term. tmove (Casula's T-move) or dtmove (Determinant Locality Approximation with Casula's T-move)
                 alat (float): discretized grid length (bohr)
                 hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
@@ -1841,10 +1874,12 @@ class GFMC_fixed_projection_time:
 
             # generate a random rotation matrix
             jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
-            alpha, beta, gamma = jax.random.uniform(
-                subkey, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi
-            )  # Rotation angle around the x,y,z-axis (in radians)
-
+            if random_discretized_mesh:
+                alpha, beta, gamma = jax.random.uniform(
+                    subkey, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi
+                )  # Rotation angle around the x,y,z-axis (in radians)
+            else:
+                alpha, beta, gamma = 0.0, 0.0, 0.0
             R = generate_rotation_matrix(alpha, beta, gamma)  # Rotate in the order x -> y -> z
 
             # compute discretized kinetic energy and mesh (with a random rotation)
@@ -1975,6 +2010,7 @@ class GFMC_fixed_projection_time:
                             r_up_carts=r_up_carts,
                             r_dn_carts=r_dn_carts,
                             flag_determinant_only=False,
+                            RT=R.T,
                         )
                     )
 
@@ -1991,6 +2027,7 @@ class GFMC_fixed_projection_time:
                             r_up_carts=r_up_carts,
                             r_dn_carts=r_dn_carts,
                             flag_determinant_only=True,
+                            RT=R.T,
                         )
                     )
 
@@ -2089,28 +2126,21 @@ class GFMC_fixed_projection_time:
             logger.devel(f"new: r_up_carts={new_r_up_carts}.")
             logger.devel(f"new: r_dn_carts={new_r_dn_carts}.")
 
-            return (e_L, projection_counter, tau_left, w_L, new_r_up_carts, new_r_dn_carts, jax_PRNG_key)
+            return (e_L, projection_counter, tau_left, w_L, new_r_up_carts, new_r_dn_carts, jax_PRNG_key, R.T)
 
         # projection compilation.
         logger.info("  Compilation is in progress...")
         projection_counter_list = jnp.array([0 for _ in range(self.__num_walkers)])
         tau_left_list = jnp.array([self.__tau for _ in range(self.__num_walkers)])
         w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
-        (
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-        ) = vmap(_projection, in_axes=(0, 0, 0, 0, 0, 0, None, None, None))(
+        (_, _, _, _, _, _, _, _) = vmap(_projection, in_axes=(0, 0, 0, 0, 0, 0, None, None, None, None))(
             projection_counter_list,
             tau_left_list,
             w_L_list,
             self.__latest_r_up_carts,
             self.__latest_r_dn_carts,
             self.__jax_PRNG_key_list,
+            self.__random_discretized_mesh,
             self.__non_local_move,
             self.__alat,
             self.__hamiltonian_data,
@@ -2170,13 +2200,15 @@ class GFMC_fixed_projection_time:
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                     self.__jax_PRNG_key_list,
-                ) = vmap(_projection, in_axes=(0, 0, 0, 0, 0, 0, None, None, None))(
+                    _,
+                ) = vmap(_projection, in_axes=(0, 0, 0, 0, 0, 0, None, None, None, None))(
                     projection_counter_list,
                     tau_left_list,
                     w_L_list,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                     self.__jax_PRNG_key_list,
+                    self.__random_discretized_mesh,
                     self.__non_local_move,
                     self.__alat,
                     self.__hamiltonian_data,
@@ -2638,6 +2670,9 @@ class GFMC_fixed_num_projection:
         mcmc_seed (int): seed for the MCMC chain.
         E_scf (float): Self-consistent E (Hartree)
         alat (float): discretized grid length (bohr)
+        random_discretized_mesh (bool)
+            Flag for the random discretization mesh in the kinetic part and the non-local part of ECPs.
+            Valid both for all-electron and ECP calculations.
         non_local_move (str):
             treatment of the spin-flip term. tmove (Casula's T-move) or dtmove (Determinant Locality Approximation with Casula's T-move)
             Valid only for ECP calculations. Do not specify this value for all-electron calculations.
@@ -2653,6 +2688,7 @@ class GFMC_fixed_num_projection:
         mcmc_seed: int = 34467,
         E_scf: float = 0.0,
         alat: float = 0.1,
+        random_discretized_mesh: bool = True,
         non_local_move: str = "tmove",
         comput_position_deriv: bool = False,
     ) -> None:
@@ -2672,6 +2708,7 @@ class GFMC_fixed_num_projection:
         self.__mcmc_seed = mcmc_seed
         self.__E_scf = E_scf
         self.__alat = alat
+        self.__random_discretized_mesh = random_discretized_mesh
         self.__non_local_move = non_local_move
 
         # timer for GFMC
@@ -3116,7 +3153,7 @@ class GFMC_fixed_num_projection:
             )
             return R
 
-        @partial(jit, static_argnums=6)
+        @partial(jit, static_argnums=(6, 7))
         def _projection(
             init_w_L: float,
             init_r_up_carts: jnpt.ArrayLike,
@@ -3124,6 +3161,7 @@ class GFMC_fixed_num_projection:
             init_jax_PRNG_key: jnpt.ArrayLike,
             E_scf: float,
             num_mcmc_per_measurement: int,
+            random_discretized_mesh: bool,
             non_local_move: bool,
             alat: float,
             hamiltonian_data: Hamiltonian_data,
@@ -3139,6 +3177,7 @@ class GFMC_fixed_num_projection:
                 init_r_dn_carts (N_e^dn, 3) before projection
                 E_scf (float): Self-consistent E (Hartree)
                 num_mcmc_per_measurement (int): the number of MCMC steps per measurement
+                random_discretized_mesh (bool): Flag for the random discretization mesh in the kinetic part.
                 non_local_move (bool): treatment of the spin-flip term. tmove (Casula's T-move) or dtmove (Determinant Locality Approximation with Casula's T-move)
                 alat (float): discretized grid length (bohr)
                 hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
@@ -3147,12 +3186,12 @@ class GFMC_fixed_num_projection:
                 latest_w_L (float): weight after the final projection
                 latest_r_up_carts (N_e^up, 3) after the final projection
                 latest_r_dn_carts (N_e^dn, 3) after the final projection
+                latest_RT (3, 3) rotation matrix used in the last projection
             """
-            logger.devel(f"init_jax_PRNG_key={init_jax_PRNG_key}")
 
             @jit
             def body_fun(_, carry):
-                w_L, r_up_carts, r_dn_carts, jax_PRNG_key = carry
+                w_L, r_up_carts, r_dn_carts, jax_PRNG_key, _ = carry
 
                 # compute diagonal elements, kinetic part
                 diagonal_kinetic_part = 3.0 / (2.0 * alat**2) * (len(r_up_carts) + len(r_dn_carts))
@@ -3168,10 +3207,12 @@ class GFMC_fixed_num_projection:
 
                 # generate a random rotation matrix
                 jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
-                alpha, beta, gamma = jax.random.uniform(
-                    subkey, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi
-                )  # Rotation angle around the x,y,z-axis (in radians)
-
+                if random_discretized_mesh:
+                    alpha, beta, gamma = jax.random.uniform(
+                        subkey, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi
+                    )  # Rotation angle around the x,y,z-axis (in radians)
+                else:
+                    alpha, beta, gamma = (0.0, 0.0, 0.0)
                 R = generate_rotation_matrix(alpha, beta, gamma)  # Rotate in the order x -> y -> z
 
                 # compute discretized kinetic energy and mesh (with a random rotation)
@@ -3313,6 +3354,7 @@ class GFMC_fixed_num_projection:
                                 r_up_carts=r_up_carts,
                                 r_dn_carts=r_dn_carts,
                                 flag_determinant_only=False,
+                                RT=R.T,
                             )
                         )
 
@@ -3337,6 +3379,7 @@ class GFMC_fixed_num_projection:
                                 r_up_carts=r_up_carts,
                                 r_dn_carts=r_dn_carts,
                                 flag_determinant_only=True,
+                                RT=R.T,
                             )
                         )
 
@@ -3425,21 +3468,24 @@ class GFMC_fixed_num_projection:
                 logger.devel(f"new: r_up_carts={r_up_carts}.")
                 logger.devel(f"new: r_dn_carts={r_dn_carts}.")
 
-                carry = (w_L, r_up_carts, r_dn_carts, jax_PRNG_key)
+                carry = (w_L, r_up_carts, r_dn_carts, jax_PRNG_key, R.T)
                 return carry
 
-            latest_w_L, latest_r_up_carts, latest_r_dn_carts, latest_jax_PRNG_key = jax.lax.fori_loop(
-                0, num_mcmc_per_measurement, body_fun, (init_w_L, init_r_up_carts, init_r_dn_carts, init_jax_PRNG_key)
+            latest_w_L, latest_r_up_carts, latest_r_dn_carts, latest_jax_PRNG_key, latest_RT = jax.lax.fori_loop(
+                0,
+                num_mcmc_per_measurement,
+                body_fun,
+                (init_w_L, init_r_up_carts, init_r_dn_carts, init_jax_PRNG_key, jnp.eye(3)),
             )
 
-            return (latest_w_L, latest_r_up_carts, latest_r_dn_carts, latest_jax_PRNG_key)
+            return (latest_w_L, latest_r_up_carts, latest_r_dn_carts, latest_jax_PRNG_key, latest_RT)
 
         @partial(jit, static_argnums=4)
         def _compute_V_elements(
             hamiltonian_data: Hamiltonian_data,
             r_up_carts: jnpt.ArrayLike,
             r_dn_carts: jnpt.ArrayLike,
-            jax_PRNG_key: jnpt.ArrayLike,
+            RT: jnpt.ArrayLike,
             non_local_move: bool,
             alat: float,
         ):
@@ -3457,21 +3503,13 @@ class GFMC_fixed_num_projection:
                 )
             )
 
-            # generate a random rotation matrix
-            jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
-            alpha, beta, gamma = jax.random.uniform(
-                subkey, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi
-            )  # Rotation angle around the x,y,z-axis (in radians)
-
-            R = generate_rotation_matrix(alpha, beta, gamma)  # Rotate in the order x -> y -> z
-
             # compute discretized kinetic energy and mesh (with a random rotation)
             _, _, elements_non_diagonal_kinetic_part = compute_discretized_kinetic_energy_jax(
                 alat=alat,
                 wavefunction_data=hamiltonian_data.wavefunction_data,
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
-                RT=R.T,
+                RT=RT,
             )
             # spin-filp
             elements_non_diagonal_kinetic_part_FN = jnp.minimum(elements_non_diagonal_kinetic_part, 0.0)
@@ -3589,6 +3627,7 @@ class GFMC_fixed_num_projection:
                             r_up_carts=r_up_carts,
                             r_dn_carts=r_dn_carts,
                             flag_determinant_only=False,
+                            RT=RT,
                         )
                     )
 
@@ -3605,6 +3644,7 @@ class GFMC_fixed_num_projection:
                             r_up_carts=r_up_carts,
                             r_dn_carts=r_dn_carts,
                             flag_determinant_only=True,
+                            RT=RT,
                         )
                     )
 
@@ -3656,30 +3696,31 @@ class GFMC_fixed_num_projection:
             hamiltonian_data: Hamiltonian_data,
             r_up_carts: jnpt.ArrayLike,
             r_dn_carts: jnpt.ArrayLike,
-            jax_PRNG_key: jnpt.ArrayLike,
+            RT: jnpt.ArrayLike,
             non_local_move: bool,
             alat: float,
         ):
             V_diag, V_nondiag = _compute_V_elements(
-                hamiltonian_data, r_up_carts, r_dn_carts, jax_PRNG_key, non_local_move, alat
+                hamiltonian_data=hamiltonian_data,
+                r_up_carts=r_up_carts,
+                r_dn_carts=r_dn_carts,
+                RT=RT,
+                non_local_move=non_local_move,
+                alat=alat,
             )
             return V_diag + V_nondiag
 
         # projection compilation.
         logger.info("  Compilation is in progress...")
         w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
-        (
-            _,
-            _,
-            _,
-            _,
-        ) = vmap(_projection, in_axes=(0, 0, 0, 0, None, None, None, None, None))(
+        (_, _, _, _, RTs) = vmap(_projection, in_axes=(0, 0, 0, 0, None, None, None, None, None, None))(
             w_L_list,
             self.__latest_r_up_carts,
             self.__latest_r_dn_carts,
             self.__jax_PRNG_key_list,
             self.__E_scf,
             self.__num_mcmc_per_measurement,
+            self.__random_discretized_mesh,
             self.__non_local_move,
             self.__alat,
             self.__hamiltonian_data,
@@ -3689,7 +3730,7 @@ class GFMC_fixed_num_projection:
             self.__hamiltonian_data,
             self.__latest_r_up_carts,
             self.__latest_r_dn_carts,
-            self.__jax_PRNG_key_list,
+            RTs,
             self.__non_local_move,
             self.__alat,
         )
@@ -3699,7 +3740,7 @@ class GFMC_fixed_num_projection:
                 self.__hamiltonian_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
-                self.__jax_PRNG_key_list,
+                RTs,
                 self.__non_local_move,
                 self.__alat,
             )
@@ -3735,18 +3776,16 @@ class GFMC_fixed_num_projection:
             start_projection = time.perf_counter()
 
             # projection loop
-            (
-                w_L_list,
-                self.__latest_r_up_carts,
-                self.__latest_r_dn_carts,
-                self.__jax_PRNG_key_list,
-            ) = vmap(_projection, in_axes=(0, 0, 0, 0, None, None, None, None, None))(
+            (w_L_list, self.__latest_r_up_carts, self.__latest_r_dn_carts, self.__jax_PRNG_key_list, latest_RTs) = vmap(
+                _projection, in_axes=(0, 0, 0, 0, None, None, None, None, None, None)
+            )(
                 w_L_list,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
                 self.__jax_PRNG_key_list,
                 self.__E_scf,
                 self.__num_mcmc_per_measurement,
+                self.__random_discretized_mesh,
                 self.__non_local_move,
                 self.__alat,
                 self.__hamiltonian_data,
@@ -3771,7 +3810,7 @@ class GFMC_fixed_num_projection:
                 self.__hamiltonian_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
-                self.__jax_PRNG_key_list,
+                latest_RTs,
                 self.__non_local_move,
                 self.__alat,
             )
@@ -3809,7 +3848,7 @@ class GFMC_fixed_num_projection:
                     self.__hamiltonian_data,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
-                    self.__jax_PRNG_key_list,
+                    latest_RTs,
                     self.__non_local_move,
                     self.__alat,
                 )

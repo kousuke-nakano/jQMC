@@ -114,6 +114,7 @@ def test_jqmc_gfmc_fixed_projection_time_tmove():
         mcmc_seed=mcmc_seed,
         tau=tau,
         alat=alat,
+        random_discretized_mesh=False,
         non_local_move=non_local_move,
     )
     gfmc_jax.run(num_mcmc_steps=num_mcmc_steps)

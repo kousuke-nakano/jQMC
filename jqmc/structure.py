@@ -48,7 +48,7 @@ from jax import typing as jnpt
 from numpy import linalg as LA
 
 # modules
-from .units import Bohr_to_Angstrom
+from .setting import Bohr_to_Angstrom
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
