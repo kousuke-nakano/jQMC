@@ -37,6 +37,7 @@ import pickle
 
 import jax
 import numpy as np
+from jax import numpy as jnp
 
 from ..jqmc.coulomb_potential import (
     compute_bare_coulomb_potential_debug,
@@ -157,6 +158,7 @@ def test_comparison_with_TurboRVB_wo_Jastrow_w_ecp():
         wavefunction_data=wavefunction_data,
         Nv=Nv,
         NN=NN,
+        RT=np.eye(3),
     )
 
     vpot_ecp_jax = compute_ecp_coulomb_potential_jax(
@@ -166,6 +168,7 @@ def test_comparison_with_TurboRVB_wo_Jastrow_w_ecp():
         wavefunction_data=wavefunction_data,
         Nv=Nv,
         NN=NN,
+        RT=jnp.eye(3),
     )
 
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=10)
@@ -286,6 +289,7 @@ def test_comparison_with_TurboRVB_w_2b_Jastrow_w_ecp():
         wavefunction_data=wavefunction_data,
         Nv=Nv,
         NN=NN,
+        RT=np.eye(3),
     )
 
     vpot_ecp_jax = compute_ecp_coulomb_potential_jax(
@@ -295,6 +299,7 @@ def test_comparison_with_TurboRVB_w_2b_Jastrow_w_ecp():
         wavefunction_data=wavefunction_data,
         Nv=Nv,
         NN=NN,
+        RT=jnp.eye(3),
     )
 
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=10)
@@ -412,6 +417,7 @@ def test_comparison_with_TurboRVB_w_2b_3b_Jastrow_w_ecp():
         wavefunction_data=wavefunction_data,
         Nv=Nv,
         NN=NN,
+        RT=np.eye(3),
     )
 
     vpot_ecp_jax = compute_ecp_coulomb_potential_jax(
@@ -421,6 +427,7 @@ def test_comparison_with_TurboRVB_w_2b_3b_Jastrow_w_ecp():
         wavefunction_data=wavefunction_data,
         Nv=Nv,
         NN=NN,
+        RT=jnp.eye(3),
     )
 
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=10)
@@ -538,6 +545,7 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp():
         wavefunction_data=wavefunction_data,
         Nv=Nv,
         NN=NN,
+        RT=np.eye(3),
     )
 
     vpot_ecp_jax = compute_ecp_coulomb_potential_jax(
@@ -547,6 +555,7 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp():
         wavefunction_data=wavefunction_data,
         Nv=Nv,
         NN=NN,
+        RT=jnp.eye(3),
     )
 
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=10)
