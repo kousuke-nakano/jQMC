@@ -41,7 +41,6 @@ from logging import Formatter, StreamHandler, getLogger
 import jax
 from flax import struct
 from jax import jit
-from jax import numpy as jnp
 from jax import typing as jnpt
 
 from .coulomb_potential import Coulomb_potential_data, compute_coulomb_potential_jax

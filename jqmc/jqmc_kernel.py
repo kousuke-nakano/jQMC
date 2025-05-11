@@ -1169,18 +1169,34 @@ class MCMC:
                 logger.info(f"Delete {toml_filename}")
                 os.remove(toml_filename)
 
-        logger.info(f"Total elapsed time for MCMC {num_mcmc_done} steps. = {timer_mcmc_total:.2f} sec.")
-        logger.info(f"Pre-compilation time for MCMC = {timer_mcmc_update_init:.2f} sec.")
-        logger.info(f"Net total time for MCMC = {timer_mcmc_total - timer_mcmc_update_init:.2f} sec.")
+        # net MCMC time
+        timer_net_mcmc_total = timer_mcmc_total - timer_mcmc_update_init
+
+        # average among MPI processes
+        ave_timer_mcmc_total = mpi_comm.allreduce(timer_mcmc_total, op=MPI.SUM) / mpi_size
+        ave_timer_mcmc_update_init = mpi_comm.allreduce(timer_mcmc_update_init, op=MPI.SUM) / mpi_size
+        ave_timer_net_mcmc_total = mpi_comm.allreduce(timer_net_mcmc_total, op=MPI.SUM) / mpi_size
+        ave_timer_mcmc_update = mpi_comm.allreduce(timer_mcmc_update, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_e_L = mpi_comm.allreduce(timer_e_L, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_de_L_dR_dr = mpi_comm.allreduce(timer_de_L_dR_dr, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_dln_Psi_dR_dr = mpi_comm.allreduce(timer_dln_Psi_dR_dr, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_dln_Psi_dc = mpi_comm.allreduce(timer_dln_Psi_dc, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_de_L_dc = mpi_comm.allreduce(timer_de_L_dc, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_MPI_barrier = mpi_comm.allreduce(timer_MPI_barrier, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_misc = mpi_comm.allreduce(timer_misc, op=MPI.SUM) / mpi_size / num_mcmc_done
+
+        logger.info(f"Total elapsed time for MCMC {num_mcmc_done} steps. = {ave_timer_mcmc_total:.2f} sec.")
+        logger.info(f"Pre-compilation time for MCMC = {ave_timer_mcmc_update_init:.2f} sec.")
+        logger.info(f"Net total time for MCMC = {ave_timer_net_mcmc_total:.2f} sec.")
         logger.info(f"Elapsed times per MCMC step, averaged over {num_mcmc_done} steps.")
-        logger.info(f"  Time for MCMC update = {timer_mcmc_update / num_mcmc_done * 10**3:.2f} msec.")
-        logger.info(f"  Time for computing e_L = {timer_e_L / num_mcmc_done * 10**3:.2f} msec.")
-        logger.info(f"  Time for computing de_L/dR and de_L/dr = {timer_de_L_dR_dr / num_mcmc_done * 10**3:.2f} msec.")
-        logger.info(f"  Time for computing dln_Psi/dR and dln_Psi/dr = {timer_dln_Psi_dR_dr / num_mcmc_done * 10**3:.2f} msec.")
-        logger.info(f"  Time for computing dln_Psi/dc = {timer_dln_Psi_dc / num_mcmc_done * 10**3:.2f} msec.")
-        logger.info(f"  Time for computing de_L/dc = {timer_de_L_dc / num_mcmc_done * 10**3:.2f} msec.")
-        logger.info(f"  Time for MPI barrier after MCMC update = {timer_MPI_barrier / num_mcmc_done * 10**3:.2f} msec.")
-        logger.info(f"  Time for misc. (others) = {timer_misc / num_mcmc_done * 10**3:.2f} msec.")
+        logger.info(f"  Time for MCMC update = {ave_timer_mcmc_update * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing e_L = {ave_timer_e_L * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing de_L/dR and de_L/dr = {ave_timer_de_L_dR_dr * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing dln_Psi/dR and dln_Psi/dr = {ave_timer_dln_Psi_dR_dr * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing dln_Psi/dc = {ave_timer_dln_Psi_dc * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing de_L/dc = {ave_timer_de_L_dc * 10**3:.2f} msec.")
+        logger.info(f"  Time for MPI barrier after MCMC update = {ave_timer_MPI_barrier * 10**3:.2f} msec.")
+        logger.info(f"  Time for misc. (others) = {ave_timer_misc * 10**3:.2f} msec.")
         logger.info(f"Average of walker weights is {np.mean(self.__stored_w_L):.3f}. Ideal is ~ 0.800. Adjust epsilon_AS.")
         logger.info(
             f"Acceptance ratio is {self.__accepted_moves / (self.__accepted_moves + self.__rejected_moves) * 100:.2f} %.  Ideal is ~ 50.00%. Adjust Dt."
@@ -1199,7 +1215,8 @@ class MCMC:
         if self.__comput_param_deriv and not self.__comput_position_deriv:
             self.__hamiltonian_data = Hamiltonian_data_deriv_params.from_base(hamiltonian_data)
         elif not self.__comput_param_deriv and self.__comput_position_deriv:
-            self.__hamiltonian_data = Hamiltonian_data_deriv_R.from_base(hamiltonian_data)
+            self.__hamiltonian_data = Hamiltonian_data_deriv_R.from_base(hamiltonian_data)  # it doesn't work...
+            # self.__hamiltonian_data = Hamiltonian_data.from_base(hamiltonian_data)
         elif not self.__comput_param_deriv and not self.__comput_position_deriv:
             self.__hamiltonian_data = Hamiltonian_data_no_deriv.from_base(hamiltonian_data)
         else:
@@ -1795,7 +1812,7 @@ class GFMC_fixed_projection_time:
 
         # projection function.
         start_init = time.perf_counter()
-        logger.info("Start compilation of the GMFC projection funciton.")
+        logger.info("Start compilation of the GFMC projection funciton.")
 
         @jit
         def generate_rotation_matrix(alpha, beta, gamma):
@@ -2152,7 +2169,7 @@ class GFMC_fixed_projection_time:
 
         end_init = time.perf_counter()
         timer_projection_init += end_init - start_init
-        logger.info("End compilation of the GMFC projection funciton.")
+        logger.info("End compilation of the GFMC projection funciton.")
         logger.info(f"Elapsed Time = {timer_projection_init:.2f} sec.")
         logger.info("")
 
@@ -2634,22 +2651,30 @@ class GFMC_fixed_projection_time:
                 logger.info(f"Delete {toml_filename}")
                 os.remove(toml_filename)
 
-        logger.info(f"Total GFMC time for {num_mcmc_done} branching steps = {timer_gfmc_total: .3f} sec.")
-        logger.info(f"Pre-compilation time for GFMC = {timer_projection_init: .3f} sec.")
-        logger.info(f"Net GFMC time without pre-compilations = {timer_gfmc_total - timer_projection_init: .3f} sec.")
+        # net GFMC time
+        timer_net_gfmc_total = timer_gfmc_total - timer_projection_init
+
+        # average among MPI processes
+        ave_timer_gfmc_total = mpi_comm.allreduce(timer_gfmc_total, op=MPI.SUM) / mpi_size
+        ave_timer_projection_init = mpi_comm.allreduce(timer_projection_init, op=MPI.SUM) / mpi_size
+        ave_timer_net_gfmc_total = mpi_comm.allreduce(timer_net_gfmc_total, op=MPI.SUM) / mpi_size
+        ave_timer_projection_total = mpi_comm.allreduce(timer_projection_total, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_observable = mpi_comm.allreduce(timer_observable, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_mpi_barrier = mpi_comm.allreduce(timer_mpi_barrier, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_collection = mpi_comm.allreduce(timer_collection, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_reconfiguration = mpi_comm.allreduce(timer_reconfiguration, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_misc = mpi_comm.allreduce(timer_misc, op=MPI.SUM) / mpi_size / num_mcmc_done
+
+        logger.info(f"Total GFMC time for {num_mcmc_done} branching steps = {ave_timer_gfmc_total: .3f} sec.")
+        logger.info(f"Pre-compilation time for GFMC = {ave_timer_projection_init: .3f} sec.")
+        logger.info(f"Net GFMC time without pre-compilations = {ave_timer_net_gfmc_total: .3f} sec.")
         logger.info(f"Elapsed times per branching, averaged over {num_mcmc_done} branching steps.")
-        logger.info(f"  Projection time per branching = {timer_projection_total / num_mcmc_done * 10**3: .3f} msec.")
-        logger.info(
-            f"  Time for Observable measurement time per branching = {timer_observable / num_mcmc_done * 10**3: .3f} msec."
-        )
-        logger.info(f"  Time for MPI barrier before branching = {timer_mpi_barrier / num_mcmc_done * 10**3:.2f} msec.")
-        logger.info(
-            f"  Time for walker observable collections time per branching = {timer_collection / num_mcmc_done * 10**3: .3f} msec."
-        )
-        logger.info(
-            f"  Time for walker reconfiguration time per branching = {timer_reconfiguration / num_mcmc_done * 10**3: .3f} msec."
-        )
-        logger.info(f"  Time for misc. (others) = {timer_misc / num_mcmc_done * 10**3:.2f} msec.")
+        logger.info(f"  Projection time per branching = {ave_timer_projection_total * 10**3: .3f} msec.")
+        logger.info(f"  Time for Observable measurement time per branching = {ave_timer_observable * 10**3: .3f} msec.")
+        logger.info(f"  Time for MPI barrier before branching = {ave_timer_mpi_barrier * 10**3:.2f} msec.")
+        logger.info(f"  Time for walker observable collections time per branching = {ave_timer_collection * 10**3: .3f} msec.")
+        logger.info(f"  Time for walker reconfiguration time per branching = {ave_timer_reconfiguration * 10**3: .3f} msec.")
+        logger.info(f"  Time for misc. (others) = {ave_timer_misc * 10**3:.2f} msec.")
         logger.info(
             f"Survived walkers ratio = {self.__num_survived_walkers / (self.__num_survived_walkers + self.__num_killed_walkers) * 100:.2f} %"
         )
@@ -2723,6 +2748,7 @@ class GFMC_fixed_num_projection:
         self.__timer_mpi_barrier = 0.0
         self.__timer_branching = 0.0
         self.__timer_misc = 0.0
+        self.__timer_update_E_scf = 0.0
         # time for observables
         self.__timer_e_L = 0.0
         self.__timer_de_L_dR_dr = 0.0
@@ -2990,7 +3016,8 @@ class GFMC_fixed_num_projection:
     def hamiltonian_data(self, hamiltonian_data):
         """Set hamiltonian_data."""
         if self.__comput_position_deriv:
-            self.__hamiltonian_data = Hamiltonian_data_deriv_R.from_base(hamiltonian_data)
+            self.__hamiltonian_data = Hamiltonian_data_deriv_R.from_base(hamiltonian_data)  # it doesn't work...
+            # self.__hamiltonian_data = Hamiltonian_data.from_base(hamiltonian_data)
         else:
             self.__hamiltonian_data = Hamiltonian_data_no_deriv.from_base(hamiltonian_data)
         self.__init_attributes()
@@ -3119,6 +3146,7 @@ class GFMC_fixed_num_projection:
         timer_mpi_barrier = 0.0
         timer_reconfiguration = 0.0
         timer_collection = 0.0
+        timer_update_E_scf = 0.0
 
         # toml(control) filename
         toml_filename = "external_control_gfmc.toml"
@@ -4310,13 +4338,13 @@ class GFMC_fixed_num_projection:
             self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
             self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
 
-            # Barrier after MPI operation
             mpi_comm.Barrier()
 
             end_reconfiguration = time.perf_counter()
             timer_reconfiguration += end_reconfiguration - start_reconfiguration
 
             # update E_scf
+            start_update_E_scf = time.perf_counter()
             eq_steps = 20
             if (i_mcmc_step + 1) % mcmc_interval == 0:
                 if i_mcmc_step >= eq_steps:
@@ -4328,6 +4356,9 @@ class GFMC_fixed_num_projection:
                     logger.debug(f"    Updated E_scf = {self.__E_scf:.5f} +- {E_scf_std:.5f} Ha.")
                 else:
                     logger.debug(f"    Init E_scf = {self.__E_scf:.5f} Ha. Being equilibrated.")
+            mpi_comm.Barrier()
+            end_update_E_scf = time.perf_counter()
+            timer_update_E_scf += end_update_E_scf - start_update_E_scf
 
             num_mcmc_done += 1
             gfmc_current = time.perf_counter()
@@ -4368,6 +4399,7 @@ class GFMC_fixed_num_projection:
             + timer_mpi_barrier
             + timer_collection
             + timer_reconfiguration
+            + timer_update_E_scf
         )
 
         # remove the toml file
@@ -4376,24 +4408,40 @@ class GFMC_fixed_num_projection:
                 logger.info(f"Delete {toml_filename}")
                 os.remove(toml_filename)
 
-        logger.info(f"Total GFMC time for {num_mcmc_done} branching steps = {timer_gfmc_total: .3f} sec.")
-        logger.info(f"Pre-compilation time for GFMC = {timer_projection_init: .3f} sec.")
-        logger.info(f"Net GFMC time without pre-compilations = {timer_gfmc_total - timer_projection_init: .3f} sec.")
+        # net GFMC time
+        timer_net_gfmc_total = timer_gfmc_total - timer_projection_init
+
+        # average among MPI processes
+        ave_timer_gfmc_total = mpi_comm.allreduce(timer_gfmc_total, op=MPI.SUM) / mpi_size
+        ave_timer_projection_init = mpi_comm.allreduce(timer_projection_init, op=MPI.SUM) / mpi_size
+        ave_timer_net_gfmc_total = mpi_comm.allreduce(timer_net_gfmc_total, op=MPI.SUM) / mpi_size
+        ave_timer_projection_total = mpi_comm.allreduce(timer_projection_total, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_e_L = mpi_comm.allreduce(timer_e_L, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_de_L_dR_dr = mpi_comm.allreduce(timer_de_L_dR_dr, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_dln_Psi_dR_dr = mpi_comm.allreduce(timer_dln_Psi_dR_dr, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_dln_Psi_dc = mpi_comm.allreduce(timer_dln_Psi_dc, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_de_L_dc = mpi_comm.allreduce(timer_de_L_dc, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_mpi_barrier = mpi_comm.allreduce(timer_mpi_barrier, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_collection = mpi_comm.allreduce(timer_collection, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_reconfiguration = mpi_comm.allreduce(timer_reconfiguration, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_update_E_scf = mpi_comm.allreduce(timer_update_E_scf, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_misc = mpi_comm.allreduce(timer_misc, op=MPI.SUM) / mpi_size / num_mcmc_done
+
+        logger.info(f"Total GFMC time for {num_mcmc_done} branching steps = {ave_timer_gfmc_total: .3f} sec.")
+        logger.info(f"Pre-compilation time for GFMC = {ave_timer_projection_init: .3f} sec.")
+        logger.info(f"Net GFMC time without pre-compilations = {ave_timer_net_gfmc_total: .3f} sec.")
         logger.info(f"Elapsed times per branching, averaged over {num_mcmc_done} branching steps.")
-        logger.info(f"  Projection between branching = {timer_projection_total / num_mcmc_done * 10**3: .3f} msec.")
-        logger.info(f"  Time for computing e_L = {timer_e_L / num_mcmc_done * 10**3:.2f} msec.")
-        logger.info(f"  Time for computing de_L/dR and de_L/dr = {timer_de_L_dR_dr / num_mcmc_done * 10**3:.2f} msec.")
-        logger.info(f"  Time for computing dln_Psi/dR and dln_Psi/dr = {timer_dln_Psi_dR_dr / num_mcmc_done * 10**3:.2f} msec.")
-        logger.info(f"  Time for computing dln_Psi/dc = {timer_dln_Psi_dc / num_mcmc_done * 10**3:.2f} msec.")
-        logger.info(f"  Time for computing de_L/dc = {timer_de_L_dc / num_mcmc_done * 10**3:.2f} msec.")
-        logger.info(f"  Time for MPI barrier before branching = {timer_mpi_barrier / num_mcmc_done * 10**3:.2f} msec.")
-        logger.info(
-            f"  Time for walker observable collections time per branching = {timer_collection / num_mcmc_done * 10**3: .3f} msec."
-        )
-        logger.info(
-            f"  Time for walker reconfiguration time per branching = {timer_reconfiguration / num_mcmc_done * 10**3: .3f} msec."
-        )
-        logger.info(f"  Time for misc. (others) = {timer_misc / num_mcmc_done * 10**3:.2f} msec.")
+        logger.info(f"  Projection between branching = {ave_timer_projection_total * 10**3: .3f} msec.")
+        logger.info(f"  Time for computing e_L = {ave_timer_e_L * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing de_L/dR and de_L/dr = {ave_timer_de_L_dR_dr * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing dln_Psi/dR and dln_Psi/dr = {ave_timer_dln_Psi_dR_dr * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing dln_Psi/dc = {ave_timer_dln_Psi_dc * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing de_L/dc = {ave_timer_de_L_dc * 10**3:.2f} msec.")
+        logger.info(f"  Time for MPI barrier before branching = {ave_timer_mpi_barrier * 10**3:.2f} msec.")
+        logger.info(f"  Time for walker observable collections time per branching = {ave_timer_collection * 10**3: .3f} msec.")
+        logger.info(f"  Time for walker reconfiguration time per branching = {ave_timer_reconfiguration * 10**3: .3f} msec.")
+        logger.info(f"  Time for updating E_scf = {ave_timer_update_E_scf * 10**3:.2f} msec.")
+        logger.info(f"  Time for misc. (others) = {ave_timer_misc * 10**3:.2f} msec.")
         logger.info(
             f"Survived walkers ratio = {self.__num_survived_walkers / (self.__num_survived_walkers + self.__num_killed_walkers) * 100:.2f} %. Ideal is ~ 98 %. Adjust num_mcmc_per_measurement."
         )
@@ -4404,6 +4452,7 @@ class GFMC_fixed_num_projection:
         self.__timer_projection_total += timer_projection_total
         self.__timer_mpi_barrier += timer_mpi_barrier
         self.__timer_branching += timer_reconfiguration + timer_collection
+        self.__timer_update_E_scf += timer_update_E_scf
         self.__timer_misc += timer_misc
         self.__timer_e_L += timer_e_L
         self.__timer_de_L_dR_dr += timer_de_L_dR_dr
