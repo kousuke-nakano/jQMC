@@ -107,6 +107,13 @@ class Wavefunction_data:
         for line in self.get_info():
             logger.info(line)
 
+    @classmethod
+    def from_base(cls, wavefunction_data: "Wavefunction_data"):
+        """Switch pytree_node."""
+        jastrow_data = Jastrow_data.from_base(wavefunction_data.jastrow_data)
+        geminal_data = Geminal_data.from_base(wavefunction_data.geminal_data)
+        return cls(jastrow_data=jastrow_data, geminal_data=geminal_data)
+
 
 @struct.dataclass
 class Wavefunction_data_deriv_params(Wavefunction_data):

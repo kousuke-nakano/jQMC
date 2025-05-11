@@ -1215,8 +1215,8 @@ class MCMC:
         if self.__comput_param_deriv and not self.__comput_position_deriv:
             self.__hamiltonian_data = Hamiltonian_data_deriv_params.from_base(hamiltonian_data)
         elif not self.__comput_param_deriv and self.__comput_position_deriv:
-            self.__hamiltonian_data = Hamiltonian_data_deriv_R.from_base(hamiltonian_data)  # it doesn't work...
-            # self.__hamiltonian_data = Hamiltonian_data.from_base(hamiltonian_data)
+            # self.__hamiltonian_data = Hamiltonian_data_deriv_R.from_base(hamiltonian_data)  # it doesn't work...
+            self.__hamiltonian_data = Hamiltonian_data.from_base(hamiltonian_data)
         elif not self.__comput_param_deriv and not self.__comput_position_deriv:
             self.__hamiltonian_data = Hamiltonian_data_no_deriv.from_base(hamiltonian_data)
         else:
@@ -3016,8 +3016,8 @@ class GFMC_fixed_num_projection:
     def hamiltonian_data(self, hamiltonian_data):
         """Set hamiltonian_data."""
         if self.__comput_position_deriv:
-            self.__hamiltonian_data = Hamiltonian_data_deriv_R.from_base(hamiltonian_data)  # it doesn't work...
-            # self.__hamiltonian_data = Hamiltonian_data.from_base(hamiltonian_data)
+            # self.__hamiltonian_data = Hamiltonian_data_deriv_R.from_base(hamiltonian_data)  # it doesn't work...
+            self.__hamiltonian_data = Hamiltonian_data.from_base(hamiltonian_data)
         else:
             self.__hamiltonian_data = Hamiltonian_data_no_deriv.from_base(hamiltonian_data)
         self.__init_attributes()

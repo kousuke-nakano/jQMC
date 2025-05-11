@@ -123,6 +123,17 @@ class MOs_data:
         """Return the number of orbitals."""
         return self.num_mo
 
+    @classmethod
+    def from_base(cls, mos_data: "MOs_data"):
+        """Switch pytree_node."""
+        num_mo = mos_data.num_mo
+        if isinstance(mos_data.aos_data, AOs_sphe_data):
+            aos_data = AOs_sphe_data.from_base(aos_data=mos_data.aos_data)
+        elif isinstance(mos_data.aos_data, AOs_cart_data):
+            aos_data = AOs_cart_data.from_base(aos_data=mos_data.aos_data)
+        mo_coefficients = mos_data.mo_coefficients
+        return cls(num_mo, aos_data, mo_coefficients)
+
 
 @struct.dataclass
 class MOs_data_deriv_R(MOs_data):

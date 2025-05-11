@@ -498,6 +498,11 @@ class Jastrow_three_body_data:
         )
         return jastrow_three_body_data
 
+    @classmethod
+    def from_base(cls, jastrow_three_body_data: "Jastrow_three_body_data"):
+        """Switch pytree_node."""
+        return cls(orb_data=jastrow_three_body_data.orb_data, j_matrix=jastrow_three_body_data.j_matrix)
+
 
 @struct.dataclass
 class Jastrow_three_body_data_deriv_params(Jastrow_three_body_data):
@@ -696,6 +701,19 @@ class Jastrow_data:
         """Log the information obtained from get_info() using logger.info."""
         for line in self.get_info():
             logger.info(line)
+
+    @classmethod
+    def from_base(cls, jastrow_data: "Jastrow_data"):
+        """Switch pytree_node."""
+        jastrow_one_body_data = jastrow_data.jastrow_one_body_data
+        jastrow_two_body_data = jastrow_data.jastrow_two_body_data
+        jastrow_three_body_data = Jastrow_three_body_data.from_base(jastrow_data.jastrow_three_body_data)
+
+        return cls(
+            jastrow_one_body_data=jastrow_one_body_data,
+            jastrow_two_body_data=jastrow_two_body_data,
+            jastrow_three_body_data=jastrow_three_body_data,
+        )
 
 
 @struct.dataclass

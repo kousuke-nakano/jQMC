@@ -532,6 +532,35 @@ class AOs_cart_data:
         """Return the number of orbitals."""
         return self.num_ao
 
+    @classmethod
+    def from_base(cls, aos_data: "AOs_cart_data"):
+        """Switch pytree_node."""
+        structure_data = aos_data.structure_data
+        nucleus_index = aos_data.nucleus_index
+        num_ao = aos_data.num_ao
+        num_ao_prim = aos_data.num_ao_prim
+        orbital_indices = aos_data.orbital_indices
+        exponents = aos_data.exponents
+        coefficients = aos_data.coefficients
+        angular_momentums = aos_data.angular_momentums
+        polynominal_order_x = aos_data.polynominal_order_x
+        polynominal_order_y = aos_data.polynominal_order_y
+        polynominal_order_z = aos_data.polynominal_order_z
+
+        return cls(
+            structure_data,
+            nucleus_index,
+            num_ao,
+            num_ao_prim,
+            orbital_indices,
+            exponents,
+            coefficients,
+            angular_momentums,
+            polynominal_order_x,
+            polynominal_order_y,
+            polynominal_order_z,
+        )
+
 
 @struct.dataclass
 class AOs_cart_data_deriv_R(AOs_cart_data):
@@ -1016,6 +1045,31 @@ class AOs_sphe_data:
     def num_orb(self) -> int:
         """Return the number of orbitals."""
         return self.num_ao
+
+    @classmethod
+    def from_base(cls, aos_data: "AOs_sphe_data"):
+        """Switch pytree_node."""
+        structure_data = aos_data.structure_data
+        nucleus_index = aos_data.nucleus_index
+        num_ao = aos_data.num_ao
+        num_ao_prim = aos_data.num_ao_prim
+        orbital_indices = aos_data.orbital_indices
+        exponents = aos_data.exponents
+        coefficients = aos_data.coefficients
+        angular_momentums = aos_data.angular_momentums
+        magnetic_quantum_numbers = aos_data.magnetic_quantum_numbers
+
+        return cls(
+            structure_data,
+            nucleus_index,
+            num_ao,
+            num_ao_prim,
+            orbital_indices,
+            exponents,
+            coefficients,
+            angular_momentums,
+            magnetic_quantum_numbers,
+        )
 
 
 @struct.dataclass

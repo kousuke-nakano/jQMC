@@ -151,6 +151,17 @@ class Hamiltonian_data:
         with open(filepath, "rb") as f:
             return pickle.load(f)
 
+    @classmethod
+    def from_base(cls, hamiltonian_data: "Hamiltonian_data"):
+        """Switch pytree_node."""
+        structure_data = hamiltonian_data.structure_data
+        coulomb_potential_data = Coulomb_potential_data.from_base(hamiltonian_data.coulomb_potential_data)
+        wavefunction_data = Wavefunction_data.from_base(hamiltonian_data.wavefunction_data)
+
+        return cls(
+            structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
+        )
+
 
 @struct.dataclass
 class Hamiltonian_data_deriv_params(Hamiltonian_data):

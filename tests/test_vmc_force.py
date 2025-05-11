@@ -94,7 +94,7 @@ def test_vmc_force_with_SWCT_ecp():
         mcmc_seed=mcmc_seed,
         num_walkers=4,
         comput_position_deriv=True,
-        comput_param_deriv=True,
+        comput_param_deriv=False,
     )
     vmc = QMC(mcmc)
     vmc.run(num_mcmc_steps=20)
@@ -160,7 +160,7 @@ def test_vmc_force_with_SWCT_ae():
         mcmc_seed=mcmc_seed,
         num_walkers=4,
         comput_position_deriv=True,
-        comput_param_deriv=True,
+        comput_param_deriv=False,
     )
     vmc = QMC(mcmc)
     vmc.run(num_mcmc_steps=20)

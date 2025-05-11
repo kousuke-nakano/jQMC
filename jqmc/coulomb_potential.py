@@ -577,6 +577,32 @@ class Coulomb_potential_data:
             powers_non_local_part_padded_jnp,
         )
 
+    @classmethod
+    def from_base(cls, coulomb_potential_data: "Coulomb_potential_data"):
+        """Switch pytree_node."""
+        structure_data = coulomb_potential_data.structure_data
+        ecp_flag = coulomb_potential_data.ecp_flag
+        z_cores = coulomb_potential_data.z_cores
+        max_ang_mom_plus_1 = coulomb_potential_data.max_ang_mom_plus_1
+        num_ecps = coulomb_potential_data.num_ecps
+        ang_moms = coulomb_potential_data.ang_moms
+        nucleus_index = coulomb_potential_data.nucleus_index
+        exponents = coulomb_potential_data.exponents
+        coefficients = coulomb_potential_data.coefficients
+        powers = coulomb_potential_data.powers
+        return cls(
+            structure_data,
+            ecp_flag,
+            z_cores,
+            max_ang_mom_plus_1,
+            num_ecps,
+            ang_moms,
+            nucleus_index,
+            exponents,
+            coefficients,
+            powers,
+        )
+
 
 @struct.dataclass
 class Coulomb_potential_data_no_deriv:
