@@ -1164,6 +1164,7 @@ class MCMC:
         self.__timer_misc += timer_misc
 
         # remove the toml file
+        mpi_comm.Barrier()
         if mpi_rank == 0:
             if os.path.isfile(toml_filename):
                 logger.info(f"Delete {toml_filename}")
@@ -2646,6 +2647,7 @@ class GFMC_fixed_projection_time:
         )
 
         # remove the toml file
+        mpi_comm.Barrier()
         if mpi_rank == 0:
             if os.path.isfile(toml_filename):
                 logger.info(f"Delete {toml_filename}")
@@ -4403,6 +4405,7 @@ class GFMC_fixed_num_projection:
         )
 
         # remove the toml file
+        mpi_comm.Barrier()
         if mpi_rank == 0:
             if os.path.isfile(toml_filename):
                 logger.info(f"Delete {toml_filename}")
