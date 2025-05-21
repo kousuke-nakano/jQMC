@@ -427,7 +427,7 @@ def compute_kinetic_energy_all_elements_debug(
 
 
 @jit
-def compute_kinetic_energy_all_elements_jax(
+def compute_kinetic_energy_all_elements_jax_straightforward(
     wavefunction_data: Wavefunction_data,
     r_up_carts: jnpt.ArrayLike,
     r_dn_carts: jnpt.ArrayLike,
@@ -471,7 +471,7 @@ def compute_kinetic_energy_all_elements_jax(
 
 
 @jit
-def compute_kinetic_energy_all_elements_jax_tricky(
+def compute_kinetic_energy_all_elements_jax(
     wavefunction_data: Wavefunction_data,
     r_up_carts: jnpt.ArrayLike,
     r_dn_carts: jnpt.ArrayLike,
