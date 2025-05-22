@@ -42,6 +42,8 @@ from ..jqmc.determinant import (
     Geminal_data,
     _compute_geminal_all_elements_jax,
     _compute_grads_and_laplacian_ln_Det_jax,
+    compute_AS_regularization_factor_debug,
+    compute_AS_regularization_factor_jax,
     compute_det_geminal_all_elements_debug,
     compute_det_geminal_all_elements_jax,
     compute_geminal_all_elements_debug,
@@ -219,6 +221,93 @@ def test_comparing_AO_and_MO_geminals():
     det_geminal_ao = det_geminal_ao_jax
 
     np.testing.assert_almost_equal(det_geminal_ao, det_geminal_mo, decimal=15)
+
+    jax.clear_caches()
+
+
+def test_comparing_AS_regularization():
+    """Test the consistency between AS_regularization_debug and AS_regularization_jax."""
+    (
+        structure_data,
+        _,
+        _,
+        _,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+    )
+
+    # check geminal_data
+    geminal_mo_data.sanity_check()
+
+    num_electron_up = geminal_mo_data.num_electron_up
+    num_electron_dn = geminal_mo_data.num_electron_dn
+
+    # Initialization
+    r_up_carts = []
+    r_dn_carts = []
+
+    total_electrons = 0
+
+    if coulomb_potential_data.ecp_flag:
+        charges = np.array(structure_data.atomic_numbers) - np.array(coulomb_potential_data.z_cores)
+    else:
+        charges = np.array(structure_data.atomic_numbers)
+
+    coords = structure_data.positions_cart_np
+
+    # Place electrons around each nucleus
+    for i in range(len(coords)):
+        charge = charges[i]
+        num_electrons = int(np.round(charge))  # Number of electrons to place based on the charge
+
+        # Retrieve the position coordinates
+        x, y, z = coords[i]
+
+        # Place electrons
+        for _ in range(num_electrons):
+            # Calculate distance range
+            distance = np.random.uniform(1.0 / charge, 2.0 / charge)
+            theta = np.random.uniform(0, np.pi)
+            phi = np.random.uniform(0, 2 * np.pi)
+
+            # Convert spherical to Cartesian coordinates
+            dx = distance * np.sin(theta) * np.cos(phi)
+            dy = distance * np.sin(theta) * np.sin(phi)
+            dz = distance * np.cos(theta)
+
+            # Position of the electron
+            electron_position = np.array([x + dx, y + dy, z + dz])
+
+            # Assign spin
+            if len(r_up_carts) < num_electron_up:
+                r_up_carts.append(electron_position)
+            else:
+                r_dn_carts.append(electron_position)
+
+        total_electrons += num_electrons
+
+    # Handle surplus electrons
+    remaining_up = num_electron_up - len(r_up_carts)
+    remaining_dn = num_electron_dn - len(r_dn_carts)
+
+    # Randomly place any remaining electrons
+    for _ in range(remaining_up):
+        r_up_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
+    for _ in range(remaining_dn):
+        r_dn_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
+
+    r_up_carts = np.array(r_up_carts)
+    r_dn_carts = np.array(r_dn_carts)
+
+    R_AS_debug = compute_AS_regularization_factor_debug(
+        geminal_data=geminal_mo_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+    )
+
+    R_AS_jax = compute_AS_regularization_factor_jax(geminal_data=geminal_mo_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+
+    np.testing.assert_almost_equal(R_AS_debug, R_AS_jax, decimal=8)
 
     jax.clear_caches()
 

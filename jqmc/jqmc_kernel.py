@@ -883,11 +883,12 @@ class MCMC:
             self.__stored_w_L.append(w_L)
 
             """ deactivated for the time being
+            adjust_epsilon_AS = True
             if adjust_epsilon_AS:
                 # Update adjust_epsilon_AS so that the average of weights approaches target_weight. Proportional control.
                 epsilon_AS_max = 1.0e-0
                 epsilon_AS_min = 0.0
-                gain_weight = 5.0e-3
+                gain_weight = 1.0e-2
                 target_weight = 0.8
                 torrelance_of_weight = 0.05
 

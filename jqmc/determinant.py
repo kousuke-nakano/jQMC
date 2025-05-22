@@ -519,10 +519,32 @@ def compute_det_geminal_all_elements_debug(
     )
 
 
+def compute_AS_regularization_factor_debug(
+    geminal_data: Geminal_data, r_up_carts: npt.NDArray[np.float64], r_dn_carts: npt.NDArray[np.float64]
+) -> npt.NDArray[np.float64]:
+    """See compute_AS_regularization_factor_jax."""
+    geminal = compute_geminal_all_elements_jax(geminal_data, r_up_carts, r_dn_carts)
+
+    # compute the AS factor
+    theta = 3.0 / 8.0
+
+    # compute F \equiv the square of Frobenius norm of geminal_inv
+    geminal_inv = np.linalg.inv(geminal)
+    F = np.sum(geminal_inv**2)
+
+    # compute the scaling factor
+    S = np.min(np.sum(geminal**2, axis=1))
+
+    # compute R_AS
+    R_AS = (S * F) ** (-theta)
+
+    return R_AS
+
+
 @jit
 def compute_AS_regularization_factor_jax(
-    geminal_data: Geminal_data, r_up_carts: jnpt.ArrayLike, r_dn_carts: jnpt.ArrayLike, debug: bool = False
-) -> npt.NDArray[np.float64]:
+    geminal_data: Geminal_data, r_up_carts: jnpt.ArrayLike, r_dn_carts: jnpt.ArrayLike
+) -> jax.Array:
     """Compute the Attaccalite and Sorella regularization factor.
 
     The method is for computing the Attaccalite and Sorella regularization factor with a given geminal data at (r_up_carts, r_dn_carts).
@@ -540,8 +562,16 @@ def compute_AS_regularization_factor_jax(
 
     # compute the AS factor
     theta = 3.0 / 8.0
+
+    # compute F \equiv the square of Frobenius norm of geminal_inv
+    sigma = jnp.linalg.svd(geminal, compute_uv=False)
+    F = jnp.sum(1.0 / (sigma**2))
+
+    # compute the scaling factor
     S = jnp.min(jnp.sum(geminal**2, axis=1))
-    R_AS = (S * jnp.sum((1.0 / geminal) ** 2)) ** (-theta)
+
+    # compute R_AS
+    R_AS = (S * F) ** (-theta)
 
     return R_AS
 
