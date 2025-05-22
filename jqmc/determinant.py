@@ -533,7 +533,7 @@ def compute_AS_regularization_factor_debug(
     F = np.sum(geminal_inv**2)
 
     # compute the scaling factor
-    S = np.min(np.sum(geminal**2, axis=1))
+    S = np.min(np.sum(geminal**2, axis=0))
 
     # compute R_AS
     R_AS = (S * F) ** (-theta)
@@ -568,7 +568,7 @@ def compute_AS_regularization_factor_jax(
     F = jnp.sum(1.0 / (sigma**2))
 
     # compute the scaling factor
-    S = jnp.min(jnp.sum(geminal**2, axis=1))
+    S = jnp.min(jnp.sum(geminal**2, axis=0))
 
     # compute R_AS
     R_AS = (S * F) ** (-theta)
