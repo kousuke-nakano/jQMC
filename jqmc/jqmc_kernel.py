@@ -671,7 +671,7 @@ class MCMC:
                 R_AS_o_eps = jnp.maximum(R_AS_o, epsilon_AS)
 
                 # modified trial WFs
-                R_AS_ratio = (R_AS_p_eps / R_AS_p) / (R_AS_o_eps / R_AS_o)
+                R_AS_ratio = R_AS_p_eps / R_AS_o_eps
                 WF_ratio = jnp.exp(Jastrow_T_p - Jastrow_T_o) * (Det_T_p / Det_T_o)
 
                 # compute R_ratio
