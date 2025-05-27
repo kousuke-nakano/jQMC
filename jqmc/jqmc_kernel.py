@@ -1444,26 +1444,6 @@ class MCMC:
         }
 
 
-# accumurate weights
-@partial(jit, static_argnums=1)
-def compute_G_L(w_L, num_gfmc_collect_steps):
-    """Return accumulate weights for multi-dimensional w_L.
-
-    Note: The dimension of w_L is (num_mcmc, num_walkers)
-
-    """
-    A, x = w_L.shape
-
-    def get_slice(n):
-        return jax.lax.dynamic_slice(w_L, (n - num_gfmc_collect_steps, 0), (num_gfmc_collect_steps, x))
-
-    indices = jnp.arange(num_gfmc_collect_steps, A)
-    G_L_matrix = vmap(get_slice)(indices)  # (A - num_gfmc_collect_steps, num_gfmc_collect_steps, x)
-    G_L = jnp.prod(G_L_matrix, axis=1)  # (A - num_gfmc_collect_steps, x)
-
-    return G_L
-
-
 class GFMC_fixed_projection_time:
     """GFMC class.
 
@@ -3009,6 +2989,10 @@ class GFMC_fixed_num_projection:
         # stored sum_i d omega/d r_i for dn spins (SWCT)
         self.__stored_grad_omega_r_dn = []
 
+        # stored G_L and G_e_L for updating the E_scf
+        self.__G_L = []
+        self.__G_e_L = []
+
     # hamiltonian
     @property
     def hamiltonian_data(self):
@@ -4348,17 +4332,55 @@ class GFMC_fixed_num_projection:
 
             # update E_scf
             start_update_E_scf = time.perf_counter()
+
+            ## parameters for E_scf
             eq_steps = 20
+            num_gfmc_collect_steps = 10
+            num_gfmc_bin_blocks = 10
+
+            if mpi_rank == 0:
+                if i_mcmc_step >= num_gfmc_collect_steps:
+                    e_L = self.__stored_e_L[-1]
+                    w_L = self.__stored_w_L[-num_gfmc_collect_steps:]
+                    G_L = np.prod(w_L, axis=0)
+                    self.__G_L.append(G_L)
+                    self.__G_e_L.append(G_L * e_L)
+
             if (i_mcmc_step + 1) % mcmc_interval == 0:
                 if i_mcmc_step >= eq_steps:
-                    self.__E_scf, E_scf_std = self.get_E_on_the_fly(
-                        num_gfmc_warmup_steps=np.minimum(eq_steps, i_mcmc_step - eq_steps),
-                        num_gfmc_bin_blocks=10,
-                        num_gfmc_collect_steps=10,
-                    )
+                    if mpi_rank == 0:
+                        num_gfmc_warmup_steps = np.minimum(eq_steps, i_mcmc_step - eq_steps)
+                        logger.debug(f"  Progress: Computing E_scf at step {i_mcmc_step}.")
+                        G_eq = np.array(self.__G_L[num_gfmc_warmup_steps:])
+                        G_e_L_eq = np.array(self.__G_e_L[num_gfmc_warmup_steps:])
+                        G_e_L_split = np.array_split(G_e_L_eq, num_gfmc_bin_blocks)
+                        G_e_L_binned = np.array([np.sum(G_e_L_list) for G_e_L_list in G_e_L_split])
+                        G_split = np.array_split(G_eq, num_gfmc_bin_blocks)
+                        G_binned = np.array([np.sum(G_list) for G_list in G_split])
+                        G_e_L_binned_sum = np.sum(G_e_L_binned)
+                        G_binned_sum = np.sum(G_binned)
+                        E_jackknife = [
+                            (G_e_L_binned_sum - G_e_L_binned[m]) / (G_binned_sum - G_binned[m])
+                            for m in range(num_gfmc_bin_blocks)
+                        ]
+                        E_mean = np.average(E_jackknife)
+                        E_std = np.sqrt(num_gfmc_bin_blocks - 1) * np.std(E_jackknife)
+                        E_mean = float(E_mean)
+                        E_std = float(E_std)
+                    else:
+                        E_mean = None
+                        E_std = None
+
+                    E_mean = mpi_comm.bcast(E_mean, root=0)
+                    E_std = mpi_comm.bcast(E_std, root=0)
+
+                    self.__E_scf = E_mean
+                    E_scf_std = E_std
+
                     logger.debug(f"    Updated E_scf = {self.__E_scf:.5f} +- {E_scf_std:.5f} Ha.")
                 else:
                     logger.debug(f"    Init E_scf = {self.__E_scf:.5f} Ha. Being equilibrated.")
+
             mpi_comm.Barrier()
             end_update_E_scf = time.perf_counter()
             timer_update_E_scf += end_update_E_scf - start_update_E_scf
@@ -4464,53 +4486,25 @@ class GFMC_fixed_num_projection:
         self.__timer_dln_Psi_dc += timer_dln_Psi_dc
         self.__timer_de_L_dc += timer_de_L_dc
 
-    def get_E_on_the_fly(
-        self, num_gfmc_warmup_steps: int = 3, num_gfmc_bin_blocks: int = 10, num_gfmc_collect_steps: int = 2
-    ) -> float:
-        """Get e_L."""
-        logger.devel("- Comput. e_L -")
-        if mpi_rank == 0:
-            e_L_eq = self.__stored_e_L[num_gfmc_warmup_steps + num_gfmc_collect_steps :]
-            w_L_eq = self.__stored_w_L[num_gfmc_warmup_steps:]
-            # logger.info(f" AS (e_L_eq) = {(e_L_eq)}")
-            # logger.info(f"  (w_L_eq) = {(w_L_eq)}")
-            logger.devel("  Progress: Computing G_eq and G_e_L_eq.")
 
-            w_L_eq = jnp.array(w_L_eq)
-            e_L_eq = jnp.array(e_L_eq)
-            G_eq = compute_G_L(w_L_eq, num_gfmc_collect_steps)
-            G_e_L_eq = e_L_eq * G_eq
-            G_eq = np.array(G_eq)
-            G_e_L_eq = np.array(G_e_L_eq)
+# accumurate weights
+@partial(jit, static_argnums=1)
+def compute_G_L(w_L, num_gfmc_collect_steps):
+    """Return accumulate weights for multi-dimensional w_L.
 
-            logger.devel(f"  Progress: Computing binned G_e_L_eq and G_eq with # binned blocks = {num_gfmc_bin_blocks}.")
-            G_e_L_split = np.array_split(G_e_L_eq, num_gfmc_bin_blocks)
-            G_e_L_binned = np.array([np.sum(G_e_L_list) for G_e_L_list in G_e_L_split])
-            G_split = np.array_split(G_eq, num_gfmc_bin_blocks)
-            G_binned = np.array([np.sum(G_list) for G_list in G_split])
+    Note: The dimension of w_L is (num_mcmc, 1)
 
-            logger.devel(f"  Progress: Computing jackknife samples with # binned blocks = {num_gfmc_bin_blocks}.")
+    """
+    A, x = w_L.shape
 
-            G_e_L_binned_sum = np.sum(G_e_L_binned)
-            G_binned_sum = np.sum(G_binned)
+    def get_slice(n):
+        return jax.lax.dynamic_slice(w_L, (n - num_gfmc_collect_steps, 0), (num_gfmc_collect_steps, x))
 
-            E_jackknife = [
-                (G_e_L_binned_sum - G_e_L_binned[m]) / (G_binned_sum - G_binned[m]) for m in range(num_gfmc_bin_blocks)
-            ]
+    indices = jnp.arange(num_gfmc_collect_steps, A)
+    G_L_matrix = vmap(get_slice)(indices)  # (A - num_gfmc_collect_steps, num_gfmc_collect_steps, x)
+    G_L = jnp.prod(G_L_matrix, axis=1)  # (A - num_gfmc_collect_steps, x)
 
-            logger.devel("  Progress: Computing jackknife mean and std.")
-            E_mean = np.average(E_jackknife)
-            E_std = np.sqrt(num_gfmc_bin_blocks - 1) * np.std(E_jackknife)
-            E_mean = float(E_mean)
-            E_std = float(E_std)
-        else:
-            E_mean = None
-            E_std = None
-
-        E_mean = mpi_comm.bcast(E_mean, root=0)
-        E_std = mpi_comm.bcast(E_std, root=0)
-
-        return E_mean, E_std
+    return G_L
 
 
 class QMC:
