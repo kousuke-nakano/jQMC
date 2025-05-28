@@ -45,6 +45,7 @@ from ..jqmc.coulomb_potential import (
     compute_ecp_coulomb_potential_debug,
     compute_ecp_coulomb_potential_jax,
 )
+from ..jqmc.determinant import compute_geminal_all_elements_jax
 from ..jqmc.hamiltonians import Hamiltonian_data
 from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data
 from ..jqmc.trexio_wrapper import read_trexio_file
@@ -566,6 +567,181 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp():
     # print(f"vpot={vpot_bare_jax + vpot_ecp_jax} Ha")
 
     np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=6)
+    np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
+    np.testing.assert_almost_equal(vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
+    np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
+
+    jax.clear_caches()
+
+
+def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp_w_AS():
+    """Test comparison with the corresponding ECP TurboRVB calculation with 2b,1b3b Jastrow factor."""
+    (
+        structure_data,
+        _,
+        _,
+        _,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+    )
+
+    with open(
+        os.path.join(os.path.dirname(__file__), "trexio_example_files", "jastrow_data_w_2b_1b3b_w_ecp.pkl"),
+        "rb",
+    ) as f:
+        jastrow_data = pickle.load(f)
+        jastrow_data.sanity_check()
+
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+    wavefunction_data.sanity_check()
+
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+    hamiltonian_data.sanity_check()
+
+    old_r_up_carts = np.array(
+        [
+            [-1.13450385875760, -0.698914730480577, -6.290951981744008e-003],
+            [-2.25378719009775, 0.693895756460611, -4.612006323250584e-002],
+            [-0.753191857352684, 0.314330338959413, 0.456739833308641],
+            [-1.60902246286275, 0.499927465264998, 0.700105816369930],
+        ]
+    )
+    old_r_dn_carts = np.array(
+        [
+            [-1.52590493546481, -1.13601932859996, 0.586518269898014],
+            [0.635659512640246, 0.398999201990364, -0.745191606127732],
+            [-2.00590358216444, -0.465069404417879, 0.360171216755478],
+            [-0.302866379660751, -0.890252305196045, 0.345597836490454],
+        ]
+    )
+    new_r_up_carts = old_r_up_carts.copy()
+    new_r_dn_carts = old_r_dn_carts.copy()
+    new_r_up_carts[2] = [-0.753191857352684, -1.183650619518406e-002, 0.456739833308641]
+
+    WF_ratio_ref_turborvb = 0.846407844801284
+    kinc_ref_turborvb = 13.8637480286375
+    vpot_ref_turborvb = -30.808883190726
+    vpotoff_ref_turborvb = 0.168465630163985
+    R_AS_turborvb_old = 0.124245223553222
+    R_AS_turborvb_new = 0.116703654039403
+    reweight_turborvb = 0.151330476290540  # (R_AS/R_AS_new)**2
+
+    print(f"wf_ratio_ref={WF_ratio_ref_turborvb}")
+    print(f"kinc_ref={kinc_ref_turborvb} Ha")
+    print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
+    print(f"R_AS_old={R_AS_turborvb_old}")
+    print(f"R_AS_new={R_AS_turborvb_new}")
+    print(f"reweight={reweight_turborvb}")
+
+    WF_ratio = (
+        evaluate_wavefunction_jax(
+            wavefunction_data=hamiltonian_data.wavefunction_data,
+            r_up_carts=new_r_up_carts,
+            r_dn_carts=new_r_dn_carts,
+        )
+        / evaluate_wavefunction_jax(
+            wavefunction_data=hamiltonian_data.wavefunction_data,
+            r_up_carts=old_r_up_carts,
+            r_dn_carts=old_r_dn_carts,
+        )
+    ) ** 2.0
+
+    kinc = compute_kinetic_energy_jax(
+        wavefunction_data=hamiltonian_data.wavefunction_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+    )
+
+    vpot_bare_debug = compute_bare_coulomb_potential_debug(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+    )
+
+    vpot_bare_jax = compute_bare_coulomb_potential_jax(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+    )
+
+    np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=6)
+
+    vpot_ecp_debug = compute_ecp_coulomb_potential_debug(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+        wavefunction_data=wavefunction_data,
+        Nv=Nv,
+        NN=NN,
+        RT=np.eye(3),
+    )
+
+    vpot_ecp_jax = compute_ecp_coulomb_potential_jax(
+        coulomb_potential_data=coulomb_potential_data,
+        r_up_carts=new_r_up_carts,
+        r_dn_carts=new_r_dn_carts,
+        wavefunction_data=wavefunction_data,
+        Nv=Nv,
+        NN=NN,
+        RT=jnp.eye(3),
+    )
+
+    # compute the AS factor
+    theta = 3.0 / 8.0
+    epsilon = 0.30
+
+    geminal_old = compute_geminal_all_elements_jax(
+        hamiltonian_data.wavefunction_data.geminal_data, old_r_up_carts, old_r_dn_carts
+    )
+
+    # compute F \equiv the square of Frobenius norm of geminal_inv
+    geminal_old_inv = np.linalg.inv(geminal_old)
+    F_old = np.sum(geminal_old_inv**2)
+
+    # compute the scaling factor
+    S_old = np.min(np.sum(geminal_old**2, axis=0))
+
+    # compute R_AS
+    R_AS_old = (S_old * F_old) ** (-theta)
+
+    geminal_new = compute_geminal_all_elements_jax(
+        hamiltonian_data.wavefunction_data.geminal_data, new_r_up_carts, new_r_dn_carts
+    )
+
+    # compute F \equiv the square of Frobenius norm of geminal_inv
+    geminal_new_inv = np.linalg.inv(geminal_new)
+    F_new = np.sum(geminal_new_inv**2)
+
+    # compute the scaling factor
+    S_new = np.min(np.sum(geminal_new**2, axis=0))
+
+    # compute R_AS
+    R_AS_new = (S_new * F_new) ** (-theta)
+
+    # eps
+    R_AS_new_eps = jnp.maximum(R_AS_new, epsilon)
+    R_AS_old_eps = jnp.maximum(R_AS_old, epsilon)
+    R_AS_ratio = ((R_AS_new_eps / R_AS_new) / (R_AS_old_eps / R_AS_old)) ** 2
+    WF_ratio = WF_ratio * R_AS_ratio
+    reweight = (R_AS_new / R_AS_new_eps) ** 2
+
+    np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=10)
+    np.testing.assert_almost_equal(vpot_ecp_debug, vpot_ecp_jax, decimal=10)
+
+    print(f"wf_ratio={WF_ratio}")
+    print(f"kinc={kinc} Ha")
+    print(f"vpot={vpot_bare_jax + vpot_ecp_jax} Ha")
+    print(f"R_AS_old={R_AS_old}")
+    print(f"R_AS_new={R_AS_new}")
+    print(f"reweight={reweight}")
+
+    # np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=6)
     np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
     np.testing.assert_almost_equal(vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
     np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
