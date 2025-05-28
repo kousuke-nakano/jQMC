@@ -107,6 +107,10 @@ class Geminal_data:
         Raises:
             ValueError: If there is an inconsistency in a dimension of a given argument.
         """
+        if self.orb_num_up != self.orb_num_dn:
+            raise ValueError(
+                f"The number of up and down orbitals ({self.orb_num_up}, {self.orb_num_dn}) should be the same such that the lambda_matrix is square."
+            )
         if self.lambda_matrix.shape != (
             self.orb_num_up,
             self.orb_num_dn + (self.num_electron_up - self.num_electron_dn),
@@ -128,7 +132,9 @@ class Geminal_data:
         info_lines = []
         info_lines.append("**" + self.__class__.__name__)
         info_lines.append(f"  dim. of lambda_matrix = {self.lambda_matrix.shape}")
-        info_lines.append(f"  lambda_matrix is symmetric? = {np.allclose(self.lambda_matrix, self.lambda_matrix.T)}")
+        info_lines.append(
+            f"  lambda_matrix is symmetric? = {np.allclose(self.lambda_matrix[: self.orb_num_up, : self.orb_num_up], self.lambda_matrix[: self.orb_num_up, : self.orb_num_up].T)}"
+        )
         info_lines.extend(self.orb_data_up_spin.get_info())
         info_lines.extend(self.orb_data_dn_spin.get_info())
 
@@ -600,16 +606,11 @@ def compute_geminal_all_elements_jax(
         raise ValueError
 
     if len(r_up_carts) != len(r_dn_carts):
-        if len(r_up_carts) - len(r_dn_carts) > 0:
-            logger.info(f"Number of up and dn electrons are different. (N_el - N_dn = {len(r_up_carts) - len(r_dn_carts)})")
-        else:
+        if len(r_up_carts) - len(r_dn_carts) < 0:
             logger.error(
-                f"Number of up electron is smaller than dn electrons. (N_el - N_dn = {len(r_up_carts) - len(r_dn_carts)})"
+                f"Number of up electron is smaller than dn electrons. (N_up - N_dn = {len(r_up_carts) - len(r_dn_carts)})"
             )
             raise ValueError
-    else:
-        pass
-
     geminal = _compute_geminal_all_elements_jax(geminal_data, r_up_carts, r_dn_carts)
 
     if geminal.shape != (len(r_up_carts), len(r_up_carts)):

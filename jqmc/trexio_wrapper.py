@@ -96,10 +96,17 @@ def read_trexio_file(
     else:
         pbc_flag = False
         # logger.info("Molecule (Open boundary condition)")
+    logger.info(f"pbc_flag = {pbc_flag}")
 
     # read electron num
     num_ele_up = trexio.read_electron_up_num(file_r)
     num_ele_dn = trexio.read_electron_dn_num(file_r)
+
+    if num_ele_up - num_ele_dn != 0:
+        spin_polarized = True
+    else:
+        spin_polarized = False
+    logger.info(f"num_ele_up = {num_ele_up}, num_ele_dn = {num_ele_dn}, spin_polarized = {spin_polarized}")
 
     # read structure info.
     # nucleus_num_r = trexio.read_nucleus_num(file_r)
@@ -142,6 +149,8 @@ def read_trexio_file(
         spin_dependent = False
     else:
         spin_dependent = True
+
+    logger.info(f"spin_dependent MOs = {spin_dependent}")
 
     # MO complex check
     if trexio.has_mo_coefficient_im(file_r):
@@ -418,28 +427,67 @@ def read_trexio_file(
     # MOs_data instance
     threshold_mo_occ = 1.0e-6
 
-    if not spin_dependent:
+    if (not spin_dependent and not spin_polarized) or (
+        not spin_dependent and spin_polarized
+    ):  # RHF for closed shell or ORHF for open shell
         mo_indices = [i for (i, v) in enumerate(mo_spin) if v == 0]
         mo_coefficient_real_up = mo_coefficient_real_dn = mo_coefficient_real[mo_indices]
-        mo_occ = mo_occupation[mo_indices] / 2.0
-
+        mo_occ = mo_occupation[mo_indices]
         mo_considered_indices = [i for (i, v) in enumerate(mo_occ) if v >= threshold_mo_occ]
-        mo_considered_occ = mo_occ[mo_considered_indices]
-        mo_considered_num_up = mo_considered_num_dn = len(mo_considered_indices)
+        # mo_considered_occ = mo_occ[mo_considered_indices]
+        mo_considered_num = len(mo_considered_indices)
         mo_considered_coefficient_real_up = mo_coefficient_real_up[mo_considered_indices]
         mo_considered_coefficient_real_dn = mo_coefficient_real_dn[mo_considered_indices]
 
-        mos_data_up = MOs_data(
-            num_mo=mo_considered_num_up, mo_coefficients=mo_considered_coefficient_real_up, aos_data=aos_data
-        )
-        mos_data_dn = MOs_data(
-            num_mo=mo_considered_num_dn, mo_coefficients=mo_considered_coefficient_real_dn, aos_data=aos_data
+        mos_data_up = MOs_data(num_mo=mo_considered_num, mo_coefficients=mo_considered_coefficient_real_up, aos_data=aos_data)
+        mos_data_dn = MOs_data(num_mo=mo_considered_num, mo_coefficients=mo_considered_coefficient_real_dn, aos_data=aos_data)
+
+        num_ele_diff = num_ele_up - num_ele_dn
+
+        mo_lambda_paired = np.pad(
+            np.eye(num_ele_dn, dtype=np.float64), ((0, mo_considered_num - num_ele_dn), (0, mo_considered_num - num_ele_dn))
         )
 
-        mo_lambda_paired_occ = np.diag(mo_considered_occ)
-        mo_lambda_matrix = mo_lambda_paired_occ
+        mo_lambda_unpaired = np.pad(
+            np.eye(num_ele_diff, dtype=np.float64), ((num_ele_dn, mo_considered_num - num_ele_dn - num_ele_diff), (0, 0))
+        )
+        mo_lambda_matrix = np.hstack([mo_lambda_paired, mo_lambda_unpaired])
+
+    elif spin_dependent and spin_polarized:  # UHF for open shell
+        raise NotImplementedError
+
+        """WIP"""
+        mo_indices_up = [i for (i, v) in enumerate(mo_spin) if v == 0]
+        mo_indices_dn = [i for (i, v) in enumerate(mo_spin) if v == 1]
+        mo_coefficient_real_up = mo_coefficient_real[mo_indices_up]
+        mo_coefficient_real_dn = mo_coefficient_real[mo_indices_dn]
+        mo_occ_up = mo_occupation[mo_indices_up]
+        mo_occ_dn = mo_occupation[mo_indices_dn]
+
+        mo_considered_indices_up = [i for (i, v) in enumerate(mo_occ_up) if v >= threshold_mo_occ]
+        mo_considered_indices_dn = [i for (i, v) in enumerate(mo_occ_dn) if v >= threshold_mo_occ]
+
+        mo_considered_num = min(len(mo_considered_indices_up), len(mo_considered_indices_dn))
+        mo_considered_indices_up = mo_considered_indices_up[:mo_considered_num]
+        mo_considered_indices_dn = mo_considered_indices_dn[:mo_considered_num]
+
+        mo_considered_coefficient_real_up = mo_coefficient_real_up[mo_considered_indices_up]
+        mo_considered_coefficient_real_dn = mo_coefficient_real_dn[mo_considered_indices_dn]
+        # mo_considered_occ_up = mo_occ_up[mo_considered_indices_up]
+        # mo_considered_occ_dn = mo_occ_dn[mo_considered_indices_dn]
+
+        num_ele_diff = num_ele_up - num_ele_dn
+
+        mo_lambda_paired = np.pad(
+            np.eye(num_ele_dn, dtype=np.float64), ((0, mo_considered_num - num_ele_dn), (0, mo_considered_num - num_ele_dn))
+        )
+
+        mo_lambda_unpaired = np.pad(
+            np.eye(num_ele_diff, dtype=np.float64), ((num_ele_dn, mo_considered_num - num_ele_dn - num_ele_diff), (0, 0))
+        )
+        mo_lambda_matrix = np.hstack([mo_lambda_paired, mo_lambda_unpaired])
+
     else:
-        logger.error("Spin-dependent MOs are not supported.")
         raise NotImplementedError
 
     geminal_data = Geminal_data(

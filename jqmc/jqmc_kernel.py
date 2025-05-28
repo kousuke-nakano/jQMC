@@ -207,56 +207,83 @@ class MCMC:
             coords = hamiltonian_data.structure_data.positions_cart_jnp
 
             # Place electrons for each atom
-            for i in range(len(coords)):
-                charge = charges[i]
-                n_elec = int(np.round(charge))  # Number of electrons to place for this atom
-                logger.devel(f"charge = {charge}.")
-                logger.devel(f"num_electrons = {n_elec}.")
+            # 1) Convert each atomic charge to an integer electron count
+            n_i_list = [int(round(charge)) for charge in charges]
 
-                x, y, z = coords[i]
+            # 2) Determine the base number of paired electrons for each atom: floor(n_i/2)
+            base_up_list = [n_i // 2 for n_i in n_i_list]
+            base_dn_list = base_up_list.copy()
 
-                # Determine the number of up and dn electrons for this atom
-                if n_elec % 2 == 0:
-                    num_up = n_elec // 2
-                    num_dn = n_elec // 2
-                else:
-                    # For odd numbers, decide which spin gets the extra electron based on the overall shortage
-                    remaining_up = tot_num_electron_up - total_assigned_up
-                    remaining_dn = tot_num_electron_dn - total_assigned_dn
-                    if remaining_up >= remaining_dn:
-                        num_up = n_elec // 2 + 1
-                        num_dn = n_elec // 2
-                    else:
-                        num_up = n_elec // 2
-                        num_dn = n_elec // 2 + 1
+            # 3) If an atom has an odd number of electrons, assign the leftover one to up-spin
+            leftover_list = [n_i - 2 * base for n_i, base in zip(n_i_list, base_up_list)]
+            # leftover_i is either 0 or 1
+            base_up_list = [u + o for u, o in zip(base_up_list, leftover_list)]
 
-                # Place up electrons
-                for _ in range(num_up):
+            # 4) Compute the current totals of up and down electrons
+            base_up_sum = sum(base_up_list)
+            # base_dn_sum = sum(base_dn_list)
+
+            # 5) Compute how many extra up/down electrons are needed to reach the target totals
+            extra_up = tot_num_electron_up - base_up_sum  # positive → need more up; negative → need more down
+
+            # 6) Initialize final per-atom assignment lists
+            assign_up = base_up_list.copy()
+            assign_dn = base_dn_list.copy()
+
+            # 7) Distribute extra up-spin electrons in a round-robin fashion if extra_up > 0
+            if extra_up > 0:
+                # Prefer atoms that currently have at least one down-spin electron; fall back to all atoms
+                eligible = [i for i, dn in enumerate(assign_dn) if dn > 0]
+                if not eligible:
+                    eligible = list(range(len(coords)))
+                for k in range(extra_up):
+                    atom = eligible[k % len(eligible)]
+                    assign_up[atom] += 1
+                    assign_dn[atom] -= 1
+
+            # 8) Distribute extra down-spin electrons in a round-robin fashion if extra_up < 0
+            elif extra_up < 0:
+                # Now extra_dn = -extra_up > 0
+                eligible = [i for i, up in enumerate(assign_up) if up > 0]
+                if not eligible:
+                    eligible = list(range(len(coords)))
+                for k in range(-extra_up):
+                    atom = eligible[k % len(eligible)]
+                    assign_up[atom] -= 1
+                    assign_dn[atom] += 1
+
+            # 9) Recompute totals and log them
+            total_assigned_up = sum(assign_up)
+            total_assigned_dn = sum(assign_dn)
+
+            # 10) Random placement of electrons using assign_up and assign_dn
+            r_carts_up = []
+            r_carts_dn = []
+            for i, (x, y, z) in enumerate(coords):
+                # Place up-spin electrons for atom i
+                for _ in range(assign_up[i]):
                     distance = np.random.uniform(0.1, 1.0)
                     theta = np.random.uniform(0, np.pi)
                     phi = np.random.uniform(0, 2 * np.pi)
                     dx = distance * np.sin(theta) * np.cos(phi)
                     dy = distance * np.sin(theta) * np.sin(phi)
                     dz = distance * np.cos(theta)
-                    electron_position = np.array([x + dx, y + dy, z + dz])
-                    r_carts_up.append(electron_position)
-                total_assigned_up += num_up
+                    r_carts_up.append([x + dx, y + dy, z + dz])
 
-                # Place dn electrons
-                for _ in range(num_dn):
+                # Place down-spin electrons for atom i
+                for _ in range(assign_dn[i]):
                     distance = np.random.uniform(0.1, 1.0)
                     theta = np.random.uniform(0, np.pi)
                     phi = np.random.uniform(0, 2 * np.pi)
                     dx = distance * np.sin(theta) * np.cos(phi)
                     dy = distance * np.sin(theta) * np.sin(phi)
                     dz = distance * np.cos(theta)
-                    electron_position = np.array([x + dx, y + dy, z + dz])
-                    r_carts_dn.append(electron_position)
-                total_assigned_dn += num_dn
+                    r_carts_dn.append([x + dx, y + dy, z + dz])
 
             # Electron assignment for all atoms is complete
-            logger.devel(f"Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
-            logger.devel(f"Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
+            logger.info(f"Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
+            logger.info(f"Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
+            logger.info("")
 
             # If necessary, include a check/adjustment step to ensure the overall assignment matches the targets
             # (Here it is assumed that sum(round(charge)) equals tot_num_electron_up + tot_num_electron_dn)
@@ -1529,8 +1556,6 @@ class GFMC_fixed_projection_time:
             # Initialization
             r_carts_up = []
             r_carts_dn = []
-            total_assigned_up = 0
-            total_assigned_dn = 0
 
             if hamiltonian_data.coulomb_potential_data.ecp_flag:
                 charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
@@ -1543,56 +1568,81 @@ class GFMC_fixed_projection_time:
             coords = hamiltonian_data.structure_data.positions_cart_jnp
 
             # Place electrons for each atom
-            for i in range(len(coords)):
-                charge = charges[i]
-                n_elec = int(np.round(charge))  # Number of electrons to place for this atom
-                logger.devel(f"charge = {charge}.")
-                logger.devel(f"num_electrons = {n_elec}.")
+            # 1) Convert each atomic charge to an integer electron count
+            n_i_list = [int(round(charge)) for charge in charges]
 
-                x, y, z = coords[i]
+            # 2) Determine the base number of paired electrons for each atom: floor(n_i/2)
+            base_up_list = [n_i // 2 for n_i in n_i_list]
+            base_dn_list = base_up_list.copy()
 
-                # Determine the number of up and dn electrons for this atom
-                if n_elec % 2 == 0:
-                    num_up = n_elec // 2
-                    num_dn = n_elec // 2
-                else:
-                    # For odd numbers, decide which spin gets the extra electron based on the overall shortage
-                    remaining_up = tot_num_electron_up - total_assigned_up
-                    remaining_dn = tot_num_electron_dn - total_assigned_dn
-                    if remaining_up >= remaining_dn:
-                        num_up = n_elec // 2 + 1
-                        num_dn = n_elec // 2
-                    else:
-                        num_up = n_elec // 2
-                        num_dn = n_elec // 2 + 1
+            # 3) If an atom has an odd number of electrons, assign the leftover one to up-spin
+            leftover_list = [n_i - 2 * base for n_i, base in zip(n_i_list, base_up_list)]
+            # leftover_i is either 0 or 1
+            base_up_list = [u + o for u, o in zip(base_up_list, leftover_list)]
 
-                # Place up electrons
-                for _ in range(num_up):
+            # 4) Compute the current totals of up and down electrons
+            base_up_sum = sum(base_up_list)
+            # base_dn_sum = sum(base_dn_list)
+
+            # 5) Compute how many extra up/down electrons are needed to reach the target totals
+            extra_up = tot_num_electron_up - base_up_sum  # positive → need more up; negative → need more down
+
+            # 6) Initialize final per-atom assignment lists
+            assign_up = base_up_list.copy()
+            assign_dn = base_dn_list.copy()
+
+            # 7) Distribute extra up-spin electrons in a round-robin fashion if extra_up > 0
+            if extra_up > 0:
+                # Prefer atoms that currently have at least one down-spin electron; fall back to all atoms
+                eligible = [i for i, dn in enumerate(assign_dn) if dn > 0]
+                if not eligible:
+                    eligible = list(range(len(coords)))
+                for k in range(extra_up):
+                    atom = eligible[k % len(eligible)]
+                    assign_up[atom] += 1
+                    assign_dn[atom] -= 1
+
+            # 8) Distribute extra down-spin electrons in a round-robin fashion if extra_up < 0
+            elif extra_up < 0:
+                # Now extra_dn = -extra_up > 0
+                eligible = [i for i, up in enumerate(assign_up) if up > 0]
+                if not eligible:
+                    eligible = list(range(len(coords)))
+                for k in range(-extra_up):
+                    atom = eligible[k % len(eligible)]
+                    assign_up[atom] -= 1
+                    assign_dn[atom] += 1
+
+            # 9) Recompute totals and log them
+            total_assigned_up = sum(assign_up)
+            total_assigned_dn = sum(assign_dn)
+
+            # 10) Random placement of electrons using assign_up and assign_dn
+            for i, (x, y, z) in enumerate(coords):
+                # Place up-spin electrons for atom i
+                for _ in range(assign_up[i]):
                     distance = np.random.uniform(0.1, 1.0)
                     theta = np.random.uniform(0, np.pi)
                     phi = np.random.uniform(0, 2 * np.pi)
                     dx = distance * np.sin(theta) * np.cos(phi)
                     dy = distance * np.sin(theta) * np.sin(phi)
                     dz = distance * np.cos(theta)
-                    electron_position = np.array([x + dx, y + dy, z + dz])
-                    r_carts_up.append(electron_position)
-                total_assigned_up += num_up
+                    r_carts_up.append([x + dx, y + dy, z + dz])
 
-                # Place dn electrons
-                for _ in range(num_dn):
+                # Place down-spin electrons for atom i
+                for _ in range(assign_dn[i]):
                     distance = np.random.uniform(0.1, 1.0)
                     theta = np.random.uniform(0, np.pi)
                     phi = np.random.uniform(0, 2 * np.pi)
                     dx = distance * np.sin(theta) * np.cos(phi)
                     dy = distance * np.sin(theta) * np.sin(phi)
                     dz = distance * np.cos(theta)
-                    electron_position = np.array([x + dx, y + dy, z + dz])
-                    r_carts_dn.append(electron_position)
-                total_assigned_dn += num_dn
+                    r_carts_dn.append([x + dx, y + dy, z + dz])
 
             # Electron assignment for all atoms is complete
-            logger.devel(f"Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
-            logger.devel(f"Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
+            logger.info(f"Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
+            logger.info(f"Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
+            logger.info("")
 
             # If necessary, include a check/adjustment step to ensure the overall assignment matches the targets
             # (Here it is assumed that sum(round(charge)) equals tot_num_electron_up + tot_num_electron_dn)
@@ -2765,8 +2815,6 @@ class GFMC_fixed_num_projection:
             # Initialization
             r_carts_up = []
             r_carts_dn = []
-            total_assigned_up = 0
-            total_assigned_dn = 0
 
             if hamiltonian_data.coulomb_potential_data.ecp_flag:
                 charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
@@ -2779,56 +2827,81 @@ class GFMC_fixed_num_projection:
             coords = hamiltonian_data.structure_data.positions_cart_jnp
 
             # Place electrons for each atom
-            for i in range(len(coords)):
-                charge = charges[i]
-                n_elec = int(np.round(charge))  # Number of electrons to place for this atom
-                logger.devel(f"charge = {charge}.")
-                logger.devel(f"num_electrons = {n_elec}.")
+            # 1) Convert each atomic charge to an integer electron count
+            n_i_list = [int(round(charge)) for charge in charges]
 
-                x, y, z = coords[i]
+            # 2) Determine the base number of paired electrons for each atom: floor(n_i/2)
+            base_up_list = [n_i // 2 for n_i in n_i_list]
+            base_dn_list = base_up_list.copy()
 
-                # Determine the number of up and dn electrons for this atom
-                if n_elec % 2 == 0:
-                    num_up = n_elec // 2
-                    num_dn = n_elec // 2
-                else:
-                    # For odd numbers, decide which spin gets the extra electron based on the overall shortage
-                    remaining_up = tot_num_electron_up - total_assigned_up
-                    remaining_dn = tot_num_electron_dn - total_assigned_dn
-                    if remaining_up >= remaining_dn:
-                        num_up = n_elec // 2 + 1
-                        num_dn = n_elec // 2
-                    else:
-                        num_up = n_elec // 2
-                        num_dn = n_elec // 2 + 1
+            # 3) If an atom has an odd number of electrons, assign the leftover one to up-spin
+            leftover_list = [n_i - 2 * base for n_i, base in zip(n_i_list, base_up_list)]
+            # leftover_i is either 0 or 1
+            base_up_list = [u + o for u, o in zip(base_up_list, leftover_list)]
 
-                # Place up electrons
-                for _ in range(num_up):
+            # 4) Compute the current totals of up and down electrons
+            base_up_sum = sum(base_up_list)
+            # base_dn_sum = sum(base_dn_list)
+
+            # 5) Compute how many extra up/down electrons are needed to reach the target totals
+            extra_up = tot_num_electron_up - base_up_sum  # positive → need more up; negative → need more down
+
+            # 6) Initialize final per-atom assignment lists
+            assign_up = base_up_list.copy()
+            assign_dn = base_dn_list.copy()
+
+            # 7) Distribute extra up-spin electrons in a round-robin fashion if extra_up > 0
+            if extra_up > 0:
+                # Prefer atoms that currently have at least one down-spin electron; fall back to all atoms
+                eligible = [i for i, dn in enumerate(assign_dn) if dn > 0]
+                if not eligible:
+                    eligible = list(range(len(coords)))
+                for k in range(extra_up):
+                    atom = eligible[k % len(eligible)]
+                    assign_up[atom] += 1
+                    assign_dn[atom] -= 1
+
+            # 8) Distribute extra down-spin electrons in a round-robin fashion if extra_up < 0
+            elif extra_up < 0:
+                # Now extra_dn = -extra_up > 0
+                eligible = [i for i, up in enumerate(assign_up) if up > 0]
+                if not eligible:
+                    eligible = list(range(len(coords)))
+                for k in range(-extra_up):
+                    atom = eligible[k % len(eligible)]
+                    assign_up[atom] -= 1
+                    assign_dn[atom] += 1
+
+            # 9) Recompute totals and log them
+            total_assigned_up = sum(assign_up)
+            total_assigned_dn = sum(assign_dn)
+
+            # 10) Random placement of electrons using assign_up and assign_dn
+            for i, (x, y, z) in enumerate(coords):
+                # Place up-spin electrons for atom i
+                for _ in range(assign_up[i]):
                     distance = np.random.uniform(0.1, 1.0)
                     theta = np.random.uniform(0, np.pi)
                     phi = np.random.uniform(0, 2 * np.pi)
                     dx = distance * np.sin(theta) * np.cos(phi)
                     dy = distance * np.sin(theta) * np.sin(phi)
                     dz = distance * np.cos(theta)
-                    electron_position = np.array([x + dx, y + dy, z + dz])
-                    r_carts_up.append(electron_position)
-                total_assigned_up += num_up
+                    r_carts_up.append([x + dx, y + dy, z + dz])
 
-                # Place dn electrons
-                for _ in range(num_dn):
+                # Place down-spin electrons for atom i
+                for _ in range(assign_dn[i]):
                     distance = np.random.uniform(0.1, 1.0)
                     theta = np.random.uniform(0, np.pi)
                     phi = np.random.uniform(0, 2 * np.pi)
                     dx = distance * np.sin(theta) * np.cos(phi)
                     dy = distance * np.sin(theta) * np.sin(phi)
                     dz = distance * np.cos(theta)
-                    electron_position = np.array([x + dx, y + dy, z + dz])
-                    r_carts_dn.append(electron_position)
-                total_assigned_dn += num_dn
+                    r_carts_dn.append([x + dx, y + dy, z + dz])
 
             # Electron assignment for all atoms is complete
-            logger.devel(f"Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
-            logger.devel(f"Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
+            logger.info(f"Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
+            logger.info(f"Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
+            logger.info("")
 
             # If necessary, include a check/adjustment step to ensure the overall assignment matches the targets
             # (Here it is assumed that sum(round(charge)) equals tot_num_electron_up + tot_num_electron_dn)
