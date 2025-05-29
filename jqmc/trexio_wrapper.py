@@ -454,9 +454,6 @@ def read_trexio_file(
         mo_lambda_matrix = np.hstack([mo_lambda_paired, mo_lambda_unpaired])
 
     elif spin_dependent and spin_polarized:  # UHF for open shell
-        raise NotImplementedError
-
-        """WIP"""
         mo_indices_up = [i for (i, v) in enumerate(mo_spin) if v == 0]
         mo_indices_dn = [i for (i, v) in enumerate(mo_spin) if v == 1]
         mo_coefficient_real_up = mo_coefficient_real[mo_indices_up]
@@ -466,16 +463,19 @@ def read_trexio_file(
 
         mo_considered_indices_up = [i for (i, v) in enumerate(mo_occ_up) if v >= threshold_mo_occ]
         mo_considered_indices_dn = [i for (i, v) in enumerate(mo_occ_dn) if v >= threshold_mo_occ]
+        
+        if len(mo_considered_indices_up) < len(mo_considered_indices_dn):
+            raise ValueError(f"The number of occ. orbitals for up spins = {len(mo_considered_indices_up)} should be larger than those of down spins = {len(mo_considered_indices_dn)}.")
 
-        mo_considered_num = min(len(mo_considered_indices_up), len(mo_considered_indices_dn))
-        mo_considered_indices_up = mo_considered_indices_up[:mo_considered_num]
-        mo_considered_indices_dn = mo_considered_indices_dn[:mo_considered_num]
+        mo_considered_num = len(mo_considered_indices_up)
+        mo_considered_indices = mo_considered_indices_up[:mo_considered_num]
 
-        mo_considered_coefficient_real_up = mo_coefficient_real_up[mo_considered_indices_up]
-        mo_considered_coefficient_real_dn = mo_coefficient_real_dn[mo_considered_indices_dn]
-        # mo_considered_occ_up = mo_occ_up[mo_considered_indices_up]
-        # mo_considered_occ_dn = mo_occ_dn[mo_considered_indices_dn]
-
+        mo_considered_coefficient_real_up = mo_coefficient_real_up[mo_considered_indices]
+        mo_considered_coefficient_real_dn = mo_coefficient_real_dn[mo_considered_indices]
+        
+        mos_data_up = MOs_data(num_mo=mo_considered_num, mo_coefficients=mo_considered_coefficient_real_up, aos_data=aos_data)
+        mos_data_dn = MOs_data(num_mo=mo_considered_num, mo_coefficients=mo_considered_coefficient_real_dn, aos_data=aos_data)
+        
         num_ele_diff = num_ele_up - num_ele_dn
 
         mo_lambda_paired = np.pad(
@@ -486,7 +486,6 @@ def read_trexio_file(
             np.eye(num_ele_diff, dtype=np.float64), ((num_ele_dn, mo_considered_num - num_ele_dn - num_ele_diff), (0, 0))
         )
         mo_lambda_matrix = np.hstack([mo_lambda_paired, mo_lambda_unpaired])
-
     else:
         raise NotImplementedError
 
