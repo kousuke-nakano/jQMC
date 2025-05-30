@@ -1,6 +1,6 @@
-# Water molecule
+# VMC validation
 
-The first step of ab-initio QMC is to generate a trial WF by HF. `jQMC` interfaces with other QC software packages via `TREXIO`. One of the easiest ways to produce it is using `pySCF` as a converter to the `TREXIO` format is implemented. The following is a script to run a HF calculation of the water molecule and dump it as a `TREXIO` file.
+`jQMC` interfaces with other QC software packages via `TREXIO`. One of the easiest ways to produce it is using `pySCF` as a converter to the `TREXIO` format is implemented. The following is a script to run a HF calculation of the water molecule and dump it as a `TREXIO` file.
 
 ```python:run_pyscf.py
 from pyscf import gto, scf
@@ -87,7 +87,24 @@ You may get `E = -16.94478 +- 0.000203` [VMC wo/ Jastrow factors]
 
 These two energies should be consistent with the VMC error bar as far as the VMC implemenation is correct.
 
-```
-E = -16.94503 Ha (Hartree Fock by PySCF)
-E = -16.94478(20) Ha (VMC wo/ Jastrow by jQMC)
-```
+Here is the summary of the Validation test (WIP).
+
+| System  | Spin     |  Type    |   basis        |  ECP    |GTOs           |  HF (Ha)      | VMC (Ha)      |
+|---------|----------|----------|----------------|---------|---------------|---------------|---------------|
+| H2O     | 0        | RHF      | ccecp-ccpvqz   |  ccECP  | Cartesian     | -16.94503     | -16.94487(28) |
+| H2O     | 0        | RHF      | ccecp-ccpvqz   |  ccECP  | Spherical     | -16.94490     | -16.94482(28) |
+|---------|----------|----------|----------------|---------|---------------|---------------|---------------|
+| Ar      | 0        | RHF      | ccecp-ccpv5z   |  ccECP  | Cartesian     | -20.77966     | -20.77960(22) |
+| Ar      | 0        | RHF      | ccecp-ccpv5z   |  ccECP  | Spherical     | -20.77966     | -20.77960(22) |
+|---------|----------|----------|----------------|---------|---------------|---------------|---------------|
+| N       | 3        | ROHF     | ccecp-ccpvqz   |  ccECP  | Cartesian     |  -9.63387     |  -9.63371(28) |
+| N       | 3        | ROHF     | ccecp-ccpvqz   |  ccECP  | Spherical     |  -9.63387     |  -9.63350(28) |
+|---------|----------|----------|----------------|---------|---------------|---------------|---------------|
+| N       | 3        | UHF      | ccecp-ccpvqz   |  ccECP  | Cartesian     |  -9.63859     |  -9.63815(27) |
+| N       | 3        | UHF      | ccecp-ccpvqz   |  ccECP  | Spherical     |  -9.63856     |  -9.63835(28) |
+|---------|----------|----------|----------------|---------|---------------|---------------|---------------|
+| O2      | 2        | ROHF     | ccecp-ccpvqz   |  ccECP  | Cartesian     | -31.42286     |               |
+| O2      | 2        | ROHF     | ccecp-ccpvqz   |  ccECP  | Spherical     | -31.42194     |               |
+|---------|----------|----------|----------------|---------|---------------|---------------|---------------|
+| O2      | 2        | UHF      | ccecp-ccpvqz   |  ccECP  | Cartesian     | -31.44677     |               |
+| O2      | 2        | UHF      | ccecp-ccpvqz   |  ccECP  | Spherical     | -31.44579     |               |
