@@ -632,12 +632,12 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp_w_AS():
     R_AS_turborvb_new = 0.116703654039403
     reweight_turborvb = 0.151330476290540  # (R_AS/R_AS_new)**2
 
-    print(f"wf_ratio_ref={WF_ratio_ref_turborvb}")
-    print(f"kinc_ref={kinc_ref_turborvb} Ha")
-    print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
-    print(f"R_AS_old={R_AS_turborvb_old}")
-    print(f"R_AS_new={R_AS_turborvb_new}")
-    print(f"reweight={reweight_turborvb}")
+    # print(f"wf_ratio_ref={WF_ratio_ref_turborvb}")
+    # print(f"kinc_ref={kinc_ref_turborvb} Ha")
+    # print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
+    # print(f"R_AS_old={R_AS_turborvb_old}")
+    # print(f"R_AS_new={R_AS_turborvb_new}")
+    # print(f"reweight={reweight_turborvb}")
 
     WF_ratio = (
         evaluate_wavefunction_jax(
@@ -734,17 +734,21 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp_w_AS():
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=10)
     np.testing.assert_almost_equal(vpot_ecp_debug, vpot_ecp_jax, decimal=10)
 
-    print(f"wf_ratio={WF_ratio}")
-    print(f"kinc={kinc} Ha")
-    print(f"vpot={vpot_bare_jax + vpot_ecp_jax} Ha")
-    print(f"R_AS_old={R_AS_old}")
-    print(f"R_AS_new={R_AS_new}")
-    print(f"reweight={reweight}")
+    # print(f"wf_ratio={WF_ratio}")
+    # print(f"kinc={kinc} Ha")
+    # print(f"vpot={vpot_bare_jax + vpot_ecp_jax} Ha")
+    # print(f"R_AS_old={R_AS_old}")
+    # print(f"R_AS_new={R_AS_new}")
+    # print(f"reweight={reweight}")
 
-    # np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=6)
+    np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=6)
     np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
     np.testing.assert_almost_equal(vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
     np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
+
+    np.testing.assert_almost_equal(R_AS_turborvb_old, R_AS_old, decimal=6)
+    np.testing.assert_almost_equal(R_AS_turborvb_new, R_AS_new, decimal=6)
+    np.testing.assert_almost_equal(reweight_turborvb, reweight, decimal=6)
 
     jax.clear_caches()
 
