@@ -408,7 +408,7 @@ class Geminal_data_no_deriv(Geminal_data):
         )
 
 
-@jax.custom_jvp
+@jax.custom_vjp
 @jit
 def compute_ln_det_geminal_all_elements_jax(
     geminal_data: Geminal_data,
@@ -441,45 +441,65 @@ def compute_ln_det_geminal_all_elements_jax(
     )
 
 
-# Define the custom JVP rule for _compute_ln_det_geminal.
-@compute_ln_det_geminal_all_elements_jax.defjvp
-@jit
-def compute_ln_det_geminal_all_elements_jax_jvp(primals, tangents):
-    """JVP for compute_ln_det_geminal_all_elements_jax.
+# Forward pass for custom VJP.
+def _ln_det_fwd(geminal_data, r_up_carts, r_dn_carts):
+    """Forward pass for custom VJP.
 
-    The custom derivative is needed for ln |Det(G)| because the jax native grad and hessian introduce numerical instability.
-    The custom derivative exploits the LU decomposition of G instead of the direct inverse of G, achieving numerically stable calculations.
+    The custom derivative is needed for ln |Det(G)| because the jax native grad
+    and hessian introduce numerical instability. The custom derivative exploits
+    the LU decomposition of G instead of the direct inverse of G, achieving
+    numerically stable calculations.
 
+    Returns:
+        - primal output: ln|det(G)|
+        - residuals: (inputs and LU factors) for use in backward pass
     """
-    geminal_data, r_up_carts, r_dn_carts = primals
-    geminal_data_dot, r_up_carts_dot, r_dn_carts_dot = tangents
+    G = compute_geminal_all_elements_jax(geminal_data, r_up_carts, r_dn_carts)
+    ln_det = jnp.log(jnp.abs(jnp.linalg.det(G)))
+    # Compute LU decomposition: G = P @ L @ U
+    P, L, U = jsp_linalg.lu(G)
+    # We stash the original inputs plus the LU factors for the backward pass
+    return ln_det, (geminal_data, r_up_carts, r_dn_carts, P, L, U)
 
-    # Compute geminal in the forward pass.
-    geminal = compute_geminal_all_elements_jax(geminal_data, r_up_carts, r_dn_carts)
-    primal_out = jnp.log(jnp.abs(jnp.linalg.det(geminal)))
 
-    # Compute the directional derivative of geminal using jax.jvp.
-    _, geminal_dot = jax.jvp(
-        compute_geminal_all_elements_jax,
-        (geminal_data, r_up_carts, r_dn_carts),
-        (geminal_data_dot, r_up_carts_dot, r_dn_carts_dot),
-    )
+# Backward pass for custom VJP.
+def _ln_det_bwd(res, g):
+    """Backward pass for custom VJP.
 
-    # Analytical derivative: d/dx ln|det(geminal)| = trace(geminal^{-1} * d(geminal))
-    # Use LU decomposition for a numerically stable computation instead of computing the inverse directly.
-    # Compute LU decomposition of geminal: geminal = P @ L @ U.
-    P, L, U = jsp_linalg.lu(geminal)
+    The custom derivative is needed for ln |Det(G)| because the jax native grad
+    and hessian introduce numerical instability. The custom derivative exploits
+    the LU decomposition of G instead of the direct inverse of G, achieving
+    numerically stable calculations.
 
-    # Solve the linear system geminal * X = geminal_dot without explicitly computing the inverse.
-    # First solve L * Y = P @ geminal_dot for Y.
-    Y = jsp_linalg.solve_triangular(L, jnp.dot(P.T, geminal_dot), lower=True)
-    # Then solve U * X = Y for X.
+    Args:
+        res: residuals from forward pass
+        g: cotangent of the primal output
+
+    Returns:
+        Gradients with respect to (geminal_data, r_up_carts, r_dn_carts)
+    """
+    geminal_data, r_up_carts, r_dn_carts, P, L, U = res
+
+    # Build identity matrix of appropriate shape
+    n = U.shape[0]
+    I = jnp.eye(n, dtype=U.dtype)
+
+    # Solve L @ Y = P^T @ I  for Y
+    Y = jsp_linalg.solve_triangular(L, jnp.dot(P.T, I), lower=True)
+    # Solve U @ X = Y for X, so that X = G^{-1}
     X = jsp_linalg.solve_triangular(U, Y, lower=False)
 
-    # The analytical derivative: d/dx ln|det(geminal)| = trace(geminal^{-1} * d(geminal))　is now computed as trace(X).
-    tangent_out = jnp.trace(X)
+    # d ln|det G| / dG = (G^{-1})^T, scaled by incoming cotangent g
+    grad_G = g * X.T
 
-    return primal_out, tangent_out
+    # Now backpropagate through compute_geminal_all_elements_jax
+    _, vjp_fun = jax.vjp(compute_geminal_all_elements_jax, geminal_data, r_up_carts, r_dn_carts)
+    # Apply VJP to produce gradients for each input
+    return vjp_fun(grad_G)
+
+
+# Register the custom VJP rule !!
+compute_ln_det_geminal_all_elements_jax.defvjp(_ln_det_fwd, _ln_det_bwd)
 
 
 @jit
