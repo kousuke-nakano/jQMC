@@ -103,8 +103,8 @@ Here is the summary of the Validation test (WIP).
 | N       | 3        | UHF      | ccecp-ccpvqz   |  ccECP  | Cartesian     |  -9.63859     |  -9.63815(27) |
 | N       | 3        | UHF      | ccecp-ccpvqz   |  ccECP  | Spherical     |  -9.63856     |  -9.63835(28) |
 |---------|----------|----------|----------------|---------|---------------|---------------|---------------|
-| O2      | 2        | ROHF     | ccecp-ccpvqz   |  ccECP  | Cartesian     | -31.42286     |               |
-| O2      | 2        | ROHF     | ccecp-ccpvqz   |  ccECP  | Spherical     | -31.42194     |               |
+| O2      | 2        | ROHF     | ccecp-ccpvqz   |  ccECP  | Cartesian     | -31.42286     | -31.42254(19) |
+| O2      | 2        | ROHF     | ccecp-ccpvqz   |  ccECP  | Spherical     | -31.42194     | -31.42177(18) |
 |---------|----------|----------|----------------|---------|---------------|---------------|---------------|
-| O2      | 2        | UHF      | ccecp-ccpvqz   |  ccECP  | Cartesian     | -31.44677     |               |
-| O2      | 2        | UHF      | ccecp-ccpvqz   |  ccECP  | Spherical     | -31.44579     |               |
+| O2      | 2        | UHF      | ccecp-ccpvqz   |  ccECP  | Cartesian     | -31.44677     | -31.44668(18) |
+| O2      | 2        | UHF      | ccecp-ccpvqz   |  ccECP  | Spherical     | -31.44579     | -31.44589(18) |
