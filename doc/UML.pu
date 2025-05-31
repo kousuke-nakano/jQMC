@@ -1,0 +1,182 @@
+@startuml complex_example
+allowmixing
+
+' ===============================
+' Class definitions
+' ===============================
+
+class Hamiltonian_data <<flax.struct.dataclass>> {
+    Contains data for computing kinetic and potential energy terms.
+    --
+    - structure_data: Structure_data
+    - coulomb_potential_data: Coulomb_potential_data
+    - wavefunction_data: Wavefunction_data
+}
+
+class Structure_data <<flax.struct.dataclass>> {
+    - positions: jax.Array
+    - atomic_numbers: tuple[int]
+    - element_symbols: tuple[str]
+    - atomic_labels: tuple[str]
+}
+
+class AOs_cart_data <<flax.struct.dataclass>> {
+    - structure_data: Structure_data
+    - nucleus_index: tuple[int]
+    - num_ao: int
+    - num_ao_prim: int
+    - orbital_indices: tuple[int]
+    - exponents: tuple[float]
+    - coefficients: tuple[float]
+    - angular_momentums: tuple[int]
+    - polynominal_order_x: tuple[int]
+    - polynominal_order_y: tuple[int]
+    - polynominal_order_z: tuple[int]
+}
+
+class AOs_sphe_data <<flax.struct.dataclass>> {
+    - structure_data: Structure_data
+    - nucleus_index: tuple[int]
+    - num_ao: int
+    - num_ao_prim: int
+    - orbital_indices: tuple[int]
+    - exponents: tuple[float]
+    - coefficients: tuple[float]
+    - angular_momentums: tuple[int]
+    - magnetic_quantum_numbers: tuple[int]
+}
+
+class Coulomb_potential_data <<flax.struct.dataclass>> {
+    - structure_data: Structure_data
+    - ecp_flag: bool
+    - z_cores: tuple[float]
+    - max_ang_mom_plus_1: tuple[int]
+    - num_ecps: int
+    - ang_moms: tuple[int]
+    - nucleus_index: tuple[int]
+    - exponents: tuple[float]
+    - coefficients: tuple[float]
+    - powers: tuple[int]
+}
+
+class MOs_data <<flax.struct.dataclass>> {
+    - num_mo: int
+    - aos_data: AOs_sphe_data | AOs_cart_data
+    - mo_coefficients: jax.Array
+}
+
+class Geminal_data <<flax.struct.dataclass>> {
+    - num_electron_up: int
+    - num_electron_dn: int
+    - orb_data_up_spin: AOs_sphe_data | AOs_cart_data | MOs_data
+    - orb_data_dn_spin: AOs_sphe_data | AOs_cart_data | MOs_data
+    - lambda_matrix: jax.Array
+}
+
+class Jastrow_data <<flax.struct.dataclass>> {
+    - jastrow_one_body_data: Jastrow_one_body_data
+    - jastrow_two_body_data: Jastrow_two_body_data
+    - jastrow_three_body_data: Jastrow_three_body_data
+}
+
+class Wavefunction_data <<flax.struct.dataclass>> {
+    - jastrow_data: Jastrow_data
+    - geminal_data: Geminal_data
+}
+
+class Jastrow_one_body_data <<flax.struct.dataclass>> {
+    - jastrow_1b_param : float
+    - structure_data : Structure_data
+    - core_electrons : tuple[float]
+}
+
+class Jastrow_two_body_data <<flax.struct.dataclass>> {
+    - jastrow_2b_param : float
+}
+
+class Jastrow_three_body_data <<flax.struct.dataclass>> {
+    - orb_data : AOs_sphe_data | AOs_cart_data | MOs_data
+    - j_matrix : jax.Array
+}
+
+class MCMC {
+    - hamiltonian_data : Hamiltonian_data
+    - mcmc_seed : int
+    - num_walkers : int
+    + run(num_mcmc_steps: int, max_time: int) : None
+}
+
+class GFMC {
+    - hamiltonian_data : Hamiltonian_data
+    - mcmc_seed : int
+    - num_walkers : int
+    + run(num_gfmc_steps: int, max_time: int) : None
+}
+
+class QMC {
+    - mcmc : MCMC | GFMC
+    + run(num_mcmc_steps: int, max_time: int) : None
+    + run_optimize(...) : None
+    + get_E(...) : tuple
+    + get_aF(...) : tuple
+    + get_gF(...) : tuple
+}
+
+' Functions
+rectangle "compute_local_energy_jax(\n    hamiltonian_data: Hamiltonian_data,\n    r_up_carts: jax.Array,\n    r_dn_carts: jax.Array\n) -> float" as compute_local_energy_jax
+rectangle "jax.grad(compute_local_energy_jax)(\n    hamiltonian_data: Hamiltonian_data,\n    r_up_carts: jax.Array,\n    r_dn_carts: jax.Array\n) -> float" as grad_compute_local_energy_jax
+rectangle "compute_discretized_kinetic_energy_jax(\n    alat: float,\n    wavefunction_data: Wavefunction_data,\n    r_up_carts: jax.Array,\n    r_dn_carts: jax.Array\n)" as compute_discretized_kinetic_energy_jax
+rectangle "compute_ecp_non_local_parts_jax(\n coulomb_potential_data: Coulomb_potential_data,\n    wavefunction_data: Wavefunction_data,\n    r_up_carts: jax.Array,\n    r_dn_carts: jax.Array\n)" as compute_ecp_non_local_parts_jax
+
+' Dependency relationships
+note top of compute_local_energy_jax
+This function computes the local energy
+with a given Hamiltonian_data and electron
+positions (r_up_cart and r_dn_carts).
+end note
+
+note bottom of grad_compute_local_energy_jax
+This function computes **derivatives** of
+the local energy with a given Hamiltonian_data
+and electron positions (r_up_cart and r_dn_carts).
+end note
+
+' ===============================
+' Class relationships (composition/aggregation)
+' ===============================
+
+QMC *-- MCMC
+QMC *-- GFMC
+MCMC *-- Hamiltonian_data
+GFMC *-- Hamiltonian_data
+MCMC ..> compute_local_energy_jax: calls
+MCMC ..> grad_compute_local_energy_jax: calls
+GFMC ..> compute_discretized_kinetic_energy_jax: calls
+GFMC ..> compute_ecp_non_local_parts_jax: calls
+Jastrow_one_body_data *-- Structure_data
+Jastrow_three_body_data *-- AOs_sphe_data
+Jastrow_three_body_data *-- AOs_cart_data
+Jastrow_three_body_data *-- MOs_data
+
+Hamiltonian_data *-- Structure_data
+Hamiltonian_data *-- Coulomb_potential_data
+Hamiltonian_data *-- Wavefunction_data
+
+Coulomb_potential_data *-- Structure_data
+AOs_cart_data *-- Structure_data
+AOs_sphe_data *-- Structure_data
+MOs_data *-- AOs_cart_data
+MOs_data *-- AOs_sphe_data
+
+Geminal_data *-- AOs_cart_data
+Geminal_data *-- AOs_sphe_data
+Geminal_data *-- MOs_data
+
+Wavefunction_data *-- Jastrow_data
+Wavefunction_data *-- Geminal_data
+
+Jastrow_data *-- Jastrow_one_body_data
+Jastrow_data *-- Jastrow_two_body_data
+Jastrow_data *-- Jastrow_three_body_data
+
+@enduml
