@@ -212,6 +212,9 @@ class MCMC_debug:
                     dz = distance * np.cos(theta)
                     r_carts_dn.append([x + dx, y + dy, z + dz])
 
+            r_carts_up = jnp.array(r_carts_up, dtype=jnp.float64)
+            r_carts_dn = jnp.array(r_carts_dn, dtype=jnp.float64)
+
             # Electron assignment for all atoms is complete
             logger.info(f"Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
             logger.info(f"Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")

@@ -189,7 +189,8 @@ class MCMC:
 
         np.random.seed(self.__mpi_seed)
 
-        for _ in range(self.__num_walkers):
+        logger.debug("")
+        for i_walker in range(self.__num_walkers):
             # Initialization
             r_carts_up = []
             r_carts_dn = []
@@ -280,16 +281,20 @@ class MCMC:
                     dz = distance * np.cos(theta)
                     r_carts_dn.append([x + dx, y + dy, z + dz])
 
+            r_carts_up = jnp.array(r_carts_up, dtype=jnp.float64)
+            r_carts_dn = jnp.array(r_carts_dn, dtype=jnp.float64)
+
             # Electron assignment for all atoms is complete
-            logger.info(f"Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
-            logger.info(f"Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
-            logger.info("")
+            logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
+            logger.debug(f"  Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
+            logger.debug(f"  Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
 
             # If necessary, include a check/adjustment step to ensure the overall assignment matches the targets
             # (Here it is assumed that sum(round(charge)) equals tot_num_electron_up + tot_num_electron_dn)
 
             r_carts_up_list.append(r_carts_up)
             r_carts_dn_list.append(r_carts_dn)
+        logger.debug("")
 
         self.__latest_r_up_carts = jnp.array(r_carts_up_list)
         self.__latest_r_dn_carts = jnp.array(r_carts_dn_list)
@@ -906,7 +911,7 @@ class MCMC:
 
             w_L = (R_AS / R_AS_eps) ** 2
             if (i_mcmc_step + 1) % mcmc_interval == 0:
-                logger.debug(f"      min, mean, max of weights are {np.min(w_L):.2f}, {np.mean(w_L):.2f}, {np.max(w_L):.2f}.")
+                logger.devel(f"      min, mean, max of weights are {np.min(w_L):.2f}, {np.mean(w_L):.2f}, {np.max(w_L):.2f}.")
             self.__stored_w_L.append(w_L)
 
             """ deactivated for the time being
@@ -1552,10 +1557,13 @@ class GFMC_fixed_projection_time:
 
         np.random.seed(self.__mpi_seed)
 
-        for _ in range(self.__num_walkers):
+        logger.debug("")
+        for i_walker in range(self.__num_walkers):
             # Initialization
             r_carts_up = []
             r_carts_dn = []
+            total_assigned_up = 0
+            total_assigned_dn = 0
 
             if hamiltonian_data.coulomb_potential_data.ecp_flag:
                 charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
@@ -1618,6 +1626,8 @@ class GFMC_fixed_projection_time:
             total_assigned_dn = sum(assign_dn)
 
             # 10) Random placement of electrons using assign_up and assign_dn
+            r_carts_up = []
+            r_carts_dn = []
             for i, (x, y, z) in enumerate(coords):
                 # Place up-spin electrons for atom i
                 for _ in range(assign_up[i]):
@@ -1639,16 +1649,20 @@ class GFMC_fixed_projection_time:
                     dz = distance * np.cos(theta)
                     r_carts_dn.append([x + dx, y + dy, z + dz])
 
+            r_carts_up = jnp.array(r_carts_up, dtype=jnp.float64)
+            r_carts_dn = jnp.array(r_carts_dn, dtype=jnp.float64)
+
             # Electron assignment for all atoms is complete
-            logger.info(f"Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
-            logger.info(f"Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
-            logger.info("")
+            logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
+            logger.debug(f"  Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
+            logger.debug(f"  Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
 
             # If necessary, include a check/adjustment step to ensure the overall assignment matches the targets
             # (Here it is assumed that sum(round(charge)) equals tot_num_electron_up + tot_num_electron_dn)
 
             r_carts_up_list.append(r_carts_up)
             r_carts_dn_list.append(r_carts_dn)
+        logger.debug("")
 
         self.__latest_r_up_carts = jnp.array(r_carts_up_list)
         self.__latest_r_dn_carts = jnp.array(r_carts_dn_list)
@@ -2811,10 +2825,13 @@ class GFMC_fixed_num_projection:
 
         np.random.seed(self.__mpi_seed)
 
-        for _ in range(self.__num_walkers):
+        logger.debug("")
+        for i_walker in range(self.__num_walkers):
             # Initialization
             r_carts_up = []
             r_carts_dn = []
+            total_assigned_up = 0
+            total_assigned_dn = 0
 
             if hamiltonian_data.coulomb_potential_data.ecp_flag:
                 charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
@@ -2877,6 +2894,8 @@ class GFMC_fixed_num_projection:
             total_assigned_dn = sum(assign_dn)
 
             # 10) Random placement of electrons using assign_up and assign_dn
+            r_carts_up = []
+            r_carts_dn = []
             for i, (x, y, z) in enumerate(coords):
                 # Place up-spin electrons for atom i
                 for _ in range(assign_up[i]):
@@ -2898,16 +2917,20 @@ class GFMC_fixed_num_projection:
                     dz = distance * np.cos(theta)
                     r_carts_dn.append([x + dx, y + dy, z + dz])
 
+            r_carts_up = jnp.array(r_carts_up, dtype=jnp.float64)
+            r_carts_dn = jnp.array(r_carts_dn, dtype=jnp.float64)
+
             # Electron assignment for all atoms is complete
-            logger.info(f"Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
-            logger.info(f"Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
-            logger.info("")
+            logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
+            logger.debug(f"  Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
+            logger.debug(f"  Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
 
             # If necessary, include a check/adjustment step to ensure the overall assignment matches the targets
             # (Here it is assumed that sum(round(charge)) equals tot_num_electron_up + tot_num_electron_dn)
 
             r_carts_up_list.append(r_carts_up)
             r_carts_dn_list.append(r_carts_dn)
+        logger.debug("")
 
         self.__latest_r_up_carts = jnp.array(r_carts_up_list)
         self.__latest_r_dn_carts = jnp.array(r_carts_dn_list)
@@ -4745,7 +4768,6 @@ class QMC:
 
             # get f and f_std (generalized forces)
             f, f_std = self.get_gF(
-                mpi_broadcast=True,
                 num_mcmc_warmup_steps=num_mcmc_warmup_steps,
                 num_mcmc_bin_blocks=num_mcmc_bin_blocks,
                 chosen_param_index=chosen_param_index,
@@ -5380,6 +5402,13 @@ class QMC:
         # update WF opt counter
         self.__i_opt += i_opt + 1
 
+        # remove the toml file
+        mpi_comm.Barrier()
+        if mpi_rank == 0:
+            if os.path.isfile(toml_filename):
+                logger.info(f"Delete {toml_filename}")
+                os.remove(toml_filename)
+
     def get_E(
         self,
         num_mcmc_warmup_steps: int = 50,
@@ -5437,6 +5466,8 @@ class QMC:
         w_L_e_L_binned_local = np.array(w_L_e_L_binned_local)
         w_L_e_L2_binned_local = np.array(w_L_e_L2_binned_local)
 
+        # old implementation (keep this just for debug, for the time being. To be deleted.)
+        """
         w_L_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_binned_local, axis=0), op=MPI.SUM)
         w_L_e_L_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_e_L_binned_local, axis=0), op=MPI.SUM)
         w_L_e_L2_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_e_L2_binned_local, axis=0), op=MPI.SUM)
@@ -5469,6 +5500,74 @@ class QMC:
         E_std = np.sqrt(M_total - 1) * np.std(E_jackknife_binned)
         Var_mean = np.average(Var_jackknife_binned)
         Var_std = np.sqrt(M_total - 1) * np.std(Var_jackknife_binned)
+
+        logger.info(f"E = {E_mean} +- {E_std} Ha.")
+        logger.info(f"Var(E) = {Var_mean} +- {Var_std} Ha^2.")
+        """
+
+        # new implementation
+        ## local sum
+        w_L_binned_local_sum = np.sum(w_L_binned_local, axis=0)
+        w_L_e_L_binned_local_sum = np.sum(w_L_e_L_binned_local, axis=0)
+        w_L_e_L2_binned_local_sum = np.sum(w_L_e_L2_binned_local, axis=0)
+
+        ## glolbal sum
+        w_L_binned_global_sum = np.empty_like(w_L_binned_local_sum)
+        w_L_e_L_binned_global_sum = np.empty_like(w_L_e_L_binned_local_sum)
+        w_L_e_L2_binned_global_sum = np.empty_like(w_L_e_L2_binned_local_sum)
+
+        ## mpi Allreduce
+        mpi_comm.Allreduce([w_L_binned_local_sum, MPI.DOUBLE], [w_L_binned_global_sum, MPI.DOUBLE], op=MPI.SUM)
+        mpi_comm.Allreduce([w_L_e_L_binned_local_sum, MPI.DOUBLE], [w_L_e_L_binned_global_sum, MPI.DOUBLE], op=MPI.SUM)
+        mpi_comm.Allreduce([w_L_e_L2_binned_local_sum, MPI.DOUBLE], [w_L_e_L2_binned_global_sum, MPI.DOUBLE], op=MPI.SUM)
+
+        ## jackknie binned samples
+        M_local = w_L_binned_local.size
+        M_total = mpi_comm.allreduce(M_local, op=MPI.SUM)
+
+        E_jackknife_binned_local = np.array(
+            [
+                (w_L_e_L_binned_global_sum - w_L_e_L_binned_local[m]) / (w_L_binned_global_sum - w_L_binned_local[m])
+                for m in range(M_local)
+            ]
+        )
+
+        E2_jackknife_binned_local = np.array(
+            [
+                (w_L_e_L2_binned_global_sum - w_L_e_L2_binned_local[m]) / (w_L_binned_global_sum - w_L_binned_local[m])
+                for m in range(M_local)
+            ]
+        )
+
+        Var_jackknife_binned_local = E2_jackknife_binned_local - E_jackknife_binned_local**2
+
+        # E: jackknife mean and std
+        sum_E_local = np.sum(E_jackknife_binned_local)
+        sumsq_E_local = np.sum(E_jackknife_binned_local**2)
+
+        sum_E_global = np.empty_like(sum_E_local)
+        sumsq_E_global = np.empty_like(sumsq_E_local)
+
+        mpi_comm.Allreduce([sum_E_local, MPI.DOUBLE], [sum_E_global, MPI.DOUBLE], op=MPI.SUM)
+        mpi_comm.Allreduce([sumsq_E_local, MPI.DOUBLE], [sumsq_E_global, MPI.DOUBLE], op=MPI.SUM)
+
+        E_mean = sum_E_global / M_total
+        E_var = (sumsq_E_global / M_total) - (sum_E_global / M_total) ** 2
+        E_std = np.sqrt((M_total - 1) * E_var)
+
+        # Var: jackknife mean and std
+        sum_Var_local = np.sum(Var_jackknife_binned_local)
+        sumsq_Var_local = np.sum(Var_jackknife_binned_local**2)
+
+        sum_Var_global = np.empty_like(sum_Var_local)
+        sumsq_Var_global = np.empty_like(sumsq_Var_local)
+
+        mpi_comm.Allreduce([sum_Var_local, MPI.DOUBLE], [sum_Var_global, MPI.DOUBLE], op=MPI.SUM)
+        mpi_comm.Allreduce([sumsq_Var_local, MPI.DOUBLE], [sumsq_Var_global, MPI.DOUBLE], op=MPI.SUM)
+
+        Var_mean = sum_Var_global / M_total
+        Var_var = (sumsq_Var_global / M_total) - (sum_Var_global / M_total) ** 2
+        Var_std = np.sqrt((M_total - 1) * Var_var)
 
         logger.devel(f"E = {E_mean} +- {E_std} Ha.")
         logger.devel(f"Var(E) = {Var_mean} +- {Var_std} Ha^2.")
@@ -5610,7 +5709,8 @@ class QMC:
         w_L_force_PP_binned_local = np.array(w_L_force_PP_binned_local)
         w_L_E_L_force_PP_binned_local = np.array(w_L_E_L_force_PP_binned_local)
 
-        # MPI allreduce
+        # old implementation (keep this just for debug, for the time being. To be deleted.)
+        """
         w_L_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_binned_local, axis=0), op=MPI.SUM)
         w_L_e_L_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_e_L_binned_local, axis=0), op=MPI.SUM)
         w_L_force_HF_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_force_HF_binned_local, axis=0), op=MPI.SUM)
@@ -5664,9 +5764,94 @@ class QMC:
         force_mean = np.average(force_jn, axis=0)
         force_std = np.sqrt(M_total - 1) * np.std(force_jn, axis=0)
 
+        logger.info(f"force_mean.shape  = {force_mean.shape}.")
+        logger.info(f"force_std.shape  = {force_std.shape}.")
+        logger.info(f"force = {force_mean} +- {force_std} Ha.")
+
+        w_L_binned_local = np.array(w_L_binned_local)
+        w_L_e_L_binned_local = np.array(w_L_e_L_binned_local)
+        w_L_force_HF_binned_local = np.array(w_L_force_HF_binned_local)
+        w_L_force_PP_binned_local = np.array(w_L_force_PP_binned_local)
+        w_L_E_L_force_PP_binned_local = np.array(w_L_E_L_force_PP_binned_local)
+        """
+
+        # new implementation
+        ## local sum
+        w_L_binned_local_sum = np.sum(w_L_binned_local, axis=0)
+        w_L_e_L_binned_local_sum = np.sum(w_L_e_L_binned_local, axis=0)
+        w_L_force_HF_binned_local_sum = np.sum(w_L_force_HF_binned_local, axis=0)
+        w_L_force_PP_binned_local_sum = np.sum(w_L_force_PP_binned_local, axis=0)
+        w_L_E_L_force_PP_binned_local_sum = np.sum(w_L_E_L_force_PP_binned_local, axis=0)
+
+        ## glolbal sum
+        w_L_binned_global_sum = np.empty_like(w_L_binned_local_sum)
+        w_L_e_L_binned_global_sum = np.empty_like(w_L_e_L_binned_local_sum)
+        w_L_force_HF_binned_global_sum = np.empty_like(w_L_force_HF_binned_local_sum)
+        w_L_force_PP_binned_global_sum = np.empty_like(w_L_force_PP_binned_local_sum)
+        w_L_E_L_force_PP_binned_global_sum = np.empty_like(w_L_E_L_force_PP_binned_local_sum)
+
+        ## mpi Allreduce
+        mpi_comm.Allreduce([w_L_binned_local_sum, MPI.DOUBLE], [w_L_binned_global_sum, MPI.DOUBLE], op=MPI.SUM)
+        mpi_comm.Allreduce([w_L_e_L_binned_local_sum, MPI.DOUBLE], [w_L_e_L_binned_global_sum, MPI.DOUBLE], op=MPI.SUM)
+        mpi_comm.Allreduce(
+            [w_L_force_HF_binned_local_sum, MPI.DOUBLE], [w_L_force_HF_binned_global_sum, MPI.DOUBLE], op=MPI.SUM
+        )
+        mpi_comm.Allreduce(
+            [w_L_force_PP_binned_local_sum, MPI.DOUBLE], [w_L_force_PP_binned_global_sum, MPI.DOUBLE], op=MPI.SUM
+        )
+        mpi_comm.Allreduce(
+            [w_L_E_L_force_PP_binned_local_sum, MPI.DOUBLE], [w_L_E_L_force_PP_binned_global_sum, MPI.DOUBLE], op=MPI.SUM
+        )
+
+        ## jackknie binned samples
+        M_local = w_L_binned_local.size
+        M_total = mpi_comm.allreduce(M_local, op=MPI.SUM)
+
+        force_HF_jn_local = np.array(
+            [
+                (w_L_force_HF_binned_global_sum - w_L_force_HF_binned_local[j]) / (w_L_binned_global_sum - w_L_binned_local[j])
+                for j in range(M_local)
+            ]
+        )
+
+        force_Pulay_jn_local = np.array(
+            [
+                -2.0
+                * (
+                    (w_L_E_L_force_PP_binned_global_sum - w_L_E_L_force_PP_binned_local[j])
+                    / (w_L_binned_global_sum - w_L_binned_local[j])
+                    - (
+                        (w_L_e_L_binned_global_sum - w_L_e_L_binned_local[j])
+                        / (w_L_binned_global_sum - w_L_binned_local[j])
+                        * (w_L_force_PP_binned_global_sum - w_L_force_PP_binned_local[j])
+                        / (w_L_binned_global_sum - w_L_binned_local[j])
+                    )
+                )
+                for j in range(M_local)
+            ]
+        )
+
+        force_jn_local = force_HF_jn_local + force_Pulay_jn_local
+
+        sum_force_local = np.sum(force_jn_local, axis=0)
+        sumsq_force_local = np.sum(force_jn_local**2, axis=0)
+
+        sum_force_global = np.empty_like(sum_force_local)
+        sumsq_force_global = np.empty_like(sumsq_force_local)
+
+        mpi_comm.Allreduce([sum_force_local, MPI.DOUBLE], [sum_force_global, MPI.DOUBLE], op=MPI.SUM)
+        mpi_comm.Allreduce([sumsq_force_local, MPI.DOUBLE], [sumsq_force_global, MPI.DOUBLE], op=MPI.SUM)
+
+        ## mean and var = E[x^2] - (E[x])^2
+        mean_force_global = sum_force_global / M_total
+        var_force_global = (sumsq_force_global / M_total) - (sum_force_global / M_total) ** 2
+
+        ## mean and std
+        force_mean = mean_force_global
+        force_std = np.sqrt((M_total - 1) * var_force_global)
+
         logger.devel(f"force_mean.shape  = {force_mean.shape}.")
         logger.devel(f"force_std.shape  = {force_std.shape}.")
-
         logger.devel(f"force = {force_mean} +- {force_std} Ha.")
 
         return (force_mean, force_std)
@@ -5715,7 +5900,6 @@ class QMC:
 
     def get_gF(
         self,
-        mpi_broadcast: bool = True,
         num_mcmc_warmup_steps: int = 50,
         num_mcmc_bin_blocks: int = 10,
         chosen_param_index: list = None,
@@ -5723,9 +5907,6 @@ class QMC:
         """Compute the derivatives of E wrt variational parameters, a.k.a. generalized forces.
 
         Args:
-            mpi_broadcast (bool):
-                If true, the computed S is shared among all MPI processes.
-                If false, only the root node has it.
             num_mcmc_warmup_steps (int): The number of warmup steps.
             num_mcmc_bin_blocks (int): the number of binning blocks
             chosen_param_index (npt.NDArray):
@@ -5806,20 +5987,12 @@ class QMC:
         w_L_O_matrix_binned_local = np.array(w_L_O_matrix_binned_local)
         w_L_e_L_O_matrix_binned_local = np.array(w_L_e_L_O_matrix_binned_local)
 
-        logger.devel(f"w_L_binned_local.shape = {w_L_binned_local.shape}")
-        logger.devel(f"w_L_e_L_binned_local.shape = {w_L_e_L_binned_local.shape}")
-        logger.devel(f"w_L_O_matrix_binned_local.shape = {w_L_O_matrix_binned_local.shape}")
-        logger.devel(f"w_L_e_L_O_matrix_binned_local.shape = {w_L_e_L_O_matrix_binned_local.shape}")
-
+        # old implementation (keep this just for debug, for the time being. To be deleted.)
+        """
         w_L_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_binned_local, axis=0), op=MPI.SUM)
         w_L_e_L_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_e_L_binned_local, axis=0), op=MPI.SUM)
         w_L_O_matrix_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_O_matrix_binned_local, axis=0), op=MPI.SUM)
         w_L_e_L_O_matrix_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_e_L_O_matrix_binned_local, axis=0), op=MPI.SUM)
-
-        logger.devel(f"w_L_binned_global_sum.shape = {w_L_binned_global_sum.shape}")
-        logger.devel(f"w_L_e_L_binned_global_sum.shape = {w_L_e_L_binned_global_sum.shape}")
-        logger.devel(f"w_L_O_matrix_binned_global_sum.shape = {w_L_O_matrix_binned_global_sum.shape}")
-        logger.devel(f"w_L_e_L_O_matrix_binned_global_sum.shape = {w_L_e_L_O_matrix_binned_global_sum.shape}")
 
         M_local = w_L_binned_local.size
         logger.debug(f"The number of local binned samples = {M_local}")
@@ -5852,48 +6025,96 @@ class QMC:
         logger.devel(f"bar_eL_bar_O_jn = {bar_eL_bar_O_jn_local}")
         # logger.devel(f"bar_eL_bar_O_jn.shape = {bar_eL_bar_O_jn_local.shape}")
 
-        if mpi_broadcast:
-            # MPI allreduce
-            eL_O_jn = mpi_comm.allreduce(eL_O_jn_local, op=MPI.SUM)
-            bar_eL_bar_O_jn = mpi_comm.allreduce(bar_eL_bar_O_jn_local, op=MPI.SUM)
-            eL_O_jn = np.array(eL_O_jn)
-            bar_eL_bar_O_jn = np.array(bar_eL_bar_O_jn)
-            M_total = len(eL_O_jn)
-            logger.debug(f"The number of total binned samples = {M_total}")
+        # MPI allreduce
+        eL_O_jn = mpi_comm.allreduce(eL_O_jn_local, op=MPI.SUM)
+        bar_eL_bar_O_jn = mpi_comm.allreduce(bar_eL_bar_O_jn_local, op=MPI.SUM)
+        eL_O_jn = np.array(eL_O_jn)
+        bar_eL_bar_O_jn = np.array(bar_eL_bar_O_jn)
+        M_total = len(eL_O_jn)
+        logger.debug(f"The number of total binned samples = {M_total}")
 
-            logger.devel(f"eL_O_jn.shape = {eL_O_jn.shape}")
-            logger.devel(f"bar_eL_bar_O_jn.shape = {bar_eL_bar_O_jn.shape}")
+        generalized_force_mean = np.average(-2.0 * (eL_O_jn - bar_eL_bar_O_jn), axis=0)
+        generalized_force_std = np.sqrt(M_total - 1) * np.std(-2.0 * (eL_O_jn - bar_eL_bar_O_jn), axis=0)
 
-            generalized_force_mean = np.average(-2.0 * (eL_O_jn - bar_eL_bar_O_jn), axis=0)
-            generalized_force_std = np.sqrt(M_total - 1) * np.std(-2.0 * (eL_O_jn - bar_eL_bar_O_jn), axis=0)
+        logger.info(f"generalized_force_mean = {generalized_force_mean}")
+        logger.info(f"generalized_force_std = {generalized_force_std}")
+        logger.info(f"generalized_force_mean.shape = {generalized_force_mean.shape}")
+        logger.info(f"generalized_force_std.shape = {generalized_force_std.shape}")
+        """
 
-            logger.devel(f"generalized_force_mean = {generalized_force_mean}")
-            logger.devel(f"generalized_force_std = {generalized_force_std}")
+        # New implementation
+        ## local sum
+        w_L_binned_local_sum = np.sum(w_L_binned_local, axis=0)
+        w_L_e_L_binned_local_sum = np.sum(w_L_e_L_binned_local, axis=0)
+        w_L_O_matrix_binned_local_sum = np.sum(w_L_O_matrix_binned_local, axis=0)
+        w_L_e_L_O_matrix_binned_local_sum = np.sum(w_L_e_L_O_matrix_binned_local, axis=0)
 
-            logger.devel(f"generalized_force_mean.shape = {generalized_force_mean.shape}")
-            logger.devel(f"generalized_force_std.shape = {generalized_force_std.shape}")
+        ## glolbal sum
+        w_L_binned_global_sum = np.empty_like(w_L_binned_local_sum)
+        w_L_e_L_binned_global_sum = np.empty_like(w_L_e_L_binned_local_sum)
+        w_L_O_matrix_binned_global_sum = np.empty_like(w_L_O_matrix_binned_local_sum)
+        w_L_e_L_O_matrix_binned_global_sum = np.empty_like(w_L_e_L_O_matrix_binned_local_sum)
 
-        else:
-            # MPI reduce
-            eL_O_jn = mpi_comm.reduce(eL_O_jn_local, op=MPI.SUM, root=0)
-            bar_eL_bar_O_jn = mpi_comm.reduce(bar_eL_bar_O_jn_local, op=MPI.SUM, root=0)
-            if mpi_rank == 0:
-                eL_O_jn = np.array(eL_O_jn)
-                bar_eL_bar_O_jn = np.array(bar_eL_bar_O_jn)
-                M_total = len(eL_O_jn)
-                logger.info(f"The number of total binned samples = {M_total}")
-                logger.devel(f"eL_O_jn.shape = {eL_O_jn.shape}")
-                logger.devel(f"bar_eL_bar_O_jn.shape = {bar_eL_bar_O_jn.shape}")
-                generalized_force_mean = np.average(-2.0 * (eL_O_jn - bar_eL_bar_O_jn), axis=0)
-                generalized_force_std = np.sqrt(M_total - 1) * np.std(-2.0 * (eL_O_jn - bar_eL_bar_O_jn), axis=0)
-                logger.devel(f"generalized_force_mean = {generalized_force_mean}")
-                logger.devel(f"generalized_force_std = {generalized_force_std}")
+        ## mpi Allreduce
+        mpi_comm.Allreduce([w_L_binned_local_sum, MPI.DOUBLE], [w_L_binned_global_sum, MPI.DOUBLE], op=MPI.SUM)
+        mpi_comm.Allreduce([w_L_e_L_binned_local_sum, MPI.DOUBLE], [w_L_e_L_binned_global_sum, MPI.DOUBLE], op=MPI.SUM)
+        mpi_comm.Allreduce(
+            [w_L_O_matrix_binned_local_sum, MPI.DOUBLE], [w_L_O_matrix_binned_global_sum, MPI.DOUBLE], op=MPI.SUM
+        )
+        mpi_comm.Allreduce(
+            [w_L_e_L_O_matrix_binned_local_sum, MPI.DOUBLE], [w_L_e_L_O_matrix_binned_global_sum, MPI.DOUBLE], op=MPI.SUM
+        )
 
-                logger.devel(f"generalized_force_mean.shape = {generalized_force_mean.shape}")
-                logger.devel(f"generalized_force_std.shape = {generalized_force_std.shape}")
-            else:
-                generalized_force_mean = None
-                generalized_force_std = None
+        ## jackknie binned samples
+        M_local = w_L_binned_local.size
+        M_total = mpi_comm.allreduce(M_local, op=MPI.SUM)
+
+        eL_O_jn_local = np.array(
+            [
+                (w_L_e_L_O_matrix_binned_global_sum - w_L_e_L_O_matrix_binned_local[j])
+                / (w_L_binned_global_sum - w_L_binned_local[j])
+                for j in range(M_local)
+            ]
+        )
+
+        eL_jn_local = np.array(
+            [
+                (w_L_e_L_binned_global_sum - w_L_e_L_binned_local[j]) / (w_L_binned_global_sum - w_L_binned_local[j])
+                for j in range(M_local)
+            ]
+        )
+
+        O_jn_local = np.array(
+            [
+                (w_L_O_matrix_binned_global_sum - w_L_O_matrix_binned_local[j]) / (w_L_binned_global_sum - w_L_binned_local[j])
+                for j in range(M_local)
+            ]
+        )
+
+        bar_eL_bar_O_jn_local = np.einsum("i,ij->ij", eL_jn_local, O_jn_local)
+
+        force_local = -2.0 * (eL_O_jn_local - bar_eL_bar_O_jn_local)  # (M_local, D)
+        sum_local = np.sum(force_local, axis=0)  # shape (D,)
+        sumsq_local = np.sum(force_local**2, axis=0)  # shape (D,)
+
+        sum_global = np.empty_like(sum_local)
+        sumsq_global = np.empty_like(sumsq_local)
+
+        mpi_comm.Allreduce([sum_local, MPI.DOUBLE], [sum_global, MPI.DOUBLE], op=MPI.SUM)
+        mpi_comm.Allreduce([sumsq_local, MPI.DOUBLE], [sumsq_global, MPI.DOUBLE], op=MPI.SUM)
+
+        ## mean and var = E[x^2] - (E[x])^2
+        mean_global = sum_global / M_total
+        var_global = (sumsq_global / M_total) - (sum_global / M_total) ** 2
+
+        ## mean and std
+        generalized_force_mean = mean_global
+        generalized_force_std = np.sqrt((M_total - 1) * var_global)
+
+        logger.devel(f"generalized_force_mean = {generalized_force_mean}")
+        logger.devel(f"generalized_force_std = {generalized_force_std}")
+        logger.devel(f"generalized_force_mean.shape = {generalized_force_mean.shape}")
+        logger.devel(f"generalized_force_std.shape = {generalized_force_std.shape}")
 
         return (
             generalized_force_mean,
