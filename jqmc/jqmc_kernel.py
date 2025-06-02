@@ -5726,17 +5726,16 @@ class QMC:
         M_local = w_L_binned_local.size
         logger.debug(f"The number of local binned samples = {M_local}")
 
-        force_HF_jn_local = np.array(
+        force_HF_jn_local = -1.0 * np.array(
             [
                 (w_L_force_HF_binned_global_sum - w_L_force_HF_binned_local[j]) / (w_L_binned_global_sum - w_L_binned_local[j])
                 for j in range(M_local)
             ]
         )
 
-        force_Pulay_jn_local = np.array(
+        force_Pulay_jn_local = -2.0 * np.array(
             [
-                -2.0
-                * (
+                (
                     (w_L_E_L_force_PP_binned_global_sum - w_L_E_L_force_PP_binned_local[j])
                     / (w_L_binned_global_sum - w_L_binned_local[j])
                     - (
@@ -5764,8 +5763,8 @@ class QMC:
         force_mean = np.average(force_jn, axis=0)
         force_std = np.sqrt(M_total - 1) * np.std(force_jn, axis=0)
 
-        logger.info(f"force_mean.shape  = {force_mean.shape}.")
-        logger.info(f"force_std.shape  = {force_std.shape}.")
+        logger.devel(f"force_mean.shape  = {force_mean.shape}.")
+        logger.devel(f"force_std.shape  = {force_std.shape}.")
         logger.info(f"force = {force_mean} +- {force_std} Ha.")
 
         w_L_binned_local = np.array(w_L_binned_local)
@@ -5807,17 +5806,16 @@ class QMC:
         M_local = w_L_binned_local.size
         M_total = mpi_comm.allreduce(M_local, op=MPI.SUM)
 
-        force_HF_jn_local = np.array(
+        force_HF_jn_local = -1.0 * np.array(
             [
                 (w_L_force_HF_binned_global_sum - w_L_force_HF_binned_local[j]) / (w_L_binned_global_sum - w_L_binned_local[j])
                 for j in range(M_local)
             ]
         )
 
-        force_Pulay_jn_local = np.array(
+        force_Pulay_jn_local = -2.0 * np.array(
             [
-                -2.0
-                * (
+                (
                     (w_L_E_L_force_PP_binned_global_sum - w_L_E_L_force_PP_binned_local[j])
                     / (w_L_binned_global_sum - w_L_binned_local[j])
                     - (
