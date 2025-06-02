@@ -147,6 +147,9 @@ class MCMC:
         # set hamiltonian_data
         self.__hamiltonian_data = hamiltonian_data
 
+        # optimization counter
+        self.__i_opt = 0
+
         # seeds
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
         self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
