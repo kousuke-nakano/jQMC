@@ -830,7 +830,7 @@ class MCMC:
         logger.info(
             f"  Progress: MCMC step= {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.0f} %. Elapsed time = {(mcmc_total_current - mcmc_total_start):.1f} sec."
         )
-        mcmc_interval = max(1, int(num_mcmc_steps / 10))  # %
+        mcmc_interval = max(1, int(num_mcmc_steps / 100))  # %
 
         # adjust_epsilon_AS = self.__adjust_epsilon_AS
 
