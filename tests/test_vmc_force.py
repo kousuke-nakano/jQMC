@@ -39,7 +39,7 @@ import numpy as np
 
 from ..jqmc.hamiltonians import Hamiltonian_data
 from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_one_body_data, Jastrow_three_body_data, Jastrow_two_body_data
-from ..jqmc.jqmc_kernel import MCMC, QMC
+from ..jqmc.jqmc_mcmc import MCMC
 from ..jqmc.trexio_wrapper import read_trexio_file
 from ..jqmc.wavefunction import Wavefunction_data
 
@@ -96,13 +96,12 @@ def test_vmc_force_with_SWCT_ecp():
         comput_position_deriv=True,
         comput_param_deriv=False,
     )
-    vmc = QMC(mcmc)
-    vmc.run(num_mcmc_steps=20)
-    vmc.get_E(
+    mcmc.run(num_mcmc_steps=20)
+    mcmc.get_E(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
-    force_mean, force_std = vmc.get_aF(
+    force_mean, force_std = mcmc.get_aF(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
@@ -162,13 +161,12 @@ def test_vmc_force_with_SWCT_ae():
         comput_position_deriv=True,
         comput_param_deriv=False,
     )
-    vmc = QMC(mcmc)
-    vmc.run(num_mcmc_steps=20)
-    vmc.get_E(
+    mcmc.run(num_mcmc_steps=20)
+    mcmc.get_E(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
-    force_mean, force_std = vmc.get_aF(
+    force_mean, force_std = mcmc.get_aF(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )

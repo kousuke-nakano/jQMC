@@ -36,11 +36,10 @@ import os
 
 import jax
 import numpy as np
-import pytest
 
 from ..jqmc.hamiltonians import Hamiltonian_data
 from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_one_body_data, Jastrow_three_body_data, Jastrow_two_body_data
-from ..jqmc.jqmc_kernel import QMC, GFMC_fixed_num_projection
+from ..jqmc.jqmc_gfmc import GFMC_fixed_num_projection
 from ..jqmc.trexio_wrapper import read_trexio_file
 from ..jqmc.wavefunction import Wavefunction_data
 
@@ -48,12 +47,17 @@ from ..jqmc.wavefunction import Wavefunction_data
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
-
+'''
 @pytest.mark.activate_if_disable_jit
 def test_lrdmc_force_with_SWCT_ecp(request):
     """Test LRDMC force with SWCT."""
     if not request.config.getoption("--disable-jit"):
         pytest.skip(reason="A limilation of flux.struct (pytree_node=False) with @jit. See #24204 in jax repo.")
+'''
+
+
+def test_lrdmc_force_with_SWCT_ecp():
+    """Test LRDMC force with SWCT."""
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,
@@ -102,13 +106,12 @@ def test_lrdmc_force_with_SWCT_ecp(request):
         comput_position_deriv=True,
     )
 
-    lrdmc = QMC(gfmc)
-    lrdmc.run(num_mcmc_steps=50)
-    lrdmc.get_E(
+    gfmc.run(num_mcmc_steps=50)
+    gfmc.get_E(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
-    force_mean, force_std = lrdmc.get_aF(
+    force_mean, force_std = gfmc.get_aF(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
@@ -119,11 +122,17 @@ def test_lrdmc_force_with_SWCT_ecp(request):
     np.testing.assert_almost_equal(np.array(force_std[0]), np.array(force_std[1]), decimal=6)
 
 
+'''
 @pytest.mark.activate_if_disable_jit
 def test_lrdmc_force_with_SWCT_ae(request):
     """Test LRDMC force with SWCT."""
     if not request.config.getoption("--disable-jit"):
         pytest.skip(reason="A limilation of flux.struct (pytree_node=False) with @jit. See #24204 in jax repo.")
+'''
+
+
+def test_lrdmc_force_with_SWCT_ae():
+    """Test LRDMC force with SWCT."""
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,
@@ -176,17 +185,15 @@ def test_lrdmc_force_with_SWCT_ae(request):
         comput_position_deriv=True,
     )
 
-    lrdmc = QMC(gfmc)
-    lrdmc.run(num_mcmc_steps=50)
-    lrdmc.get_E(
+    gfmc.run(num_mcmc_steps=50)
+    gfmc.get_E(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
-    force_mean, force_std = lrdmc.get_aF(
+    force_mean, force_std = gfmc.get_aF(
         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
         num_mcmc_bin_blocks=num_mcmc_bin_blocks,
     )
-    # print(force_mean, force_std)
 
     # See [J. Chem. Phys. 156, 034101 (2022)]
     np.testing.assert_almost_equal(np.array(force_mean[0]), -1.0 * np.array(force_mean[1]), decimal=6)

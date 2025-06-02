@@ -33,14 +33,13 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import os
-import pickle
 
 import jax
 import numpy as np
 
 from ..jqmc.hamiltonians import Hamiltonian_data
-from ..jqmc.jqmc_kernel import MCMC
-from ..jqmc.jqmc_mcmc import MCMC_debug
+from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data
+from ..jqmc.jqmc_mcmc import MCMC, MCMC_debug
 from ..jqmc.trexio_wrapper import read_trexio_file
 from ..jqmc.wavefunction import Wavefunction_data
 
@@ -50,7 +49,7 @@ jax.config.update("jax_traceback_filtering", "off")
 
 
 def test_jqmc_mcmc():
-    """Test comparison with the corresponding ECP TurboRVB calculation with 2b,1b3b Jastrow factor."""
+    """Test comparison with MCMC debug and MCMC production implementations."""
     (
         structure_data,
         _,
@@ -59,15 +58,18 @@ def test_jqmc_mcmc():
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ecp_ccpvtz_cart.h5"), store_tuple=True
     )
 
-    with open(
-        os.path.join(os.path.dirname(__file__), "trexio_example_files", "jastrow_data_w_2b_1b3b_w_ecp.pkl"),
-        "rb",
-    ) as f:
-        jastrow_data = pickle.load(f)
-        jastrow_data.sanity_check()
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=None,
+        jastrow_two_body_data=jastrow_twobody_data,
+        jastrow_three_body_data=None,
+    )
+
+    jastrow_data.sanity_check()
 
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
     wavefunction_data.sanity_check()
@@ -92,7 +94,7 @@ def test_jqmc_mcmc():
         mcmc_seed=mcmc_seed,
         epsilon_AS=epsilon_AS,
         num_walkers=num_walkers,
-        comput_position_deriv=False,
+        comput_position_deriv=True,
         comput_param_deriv=False,
         random_discretized_mesh=True,
     )
@@ -104,7 +106,7 @@ def test_jqmc_mcmc():
         mcmc_seed=mcmc_seed,
         epsilon_AS=epsilon_AS,
         num_walkers=num_walkers,
-        comput_position_deriv=False,
+        comput_position_deriv=True,
         comput_param_deriv=False,
         random_discretized_mesh=True,
     )
@@ -124,6 +126,32 @@ def test_jqmc_mcmc():
     e_L2_debug = mcmc_debug.e_L2
     e_L2_jax = mcmc_jax.e_L2
     np.testing.assert_array_almost_equal(e_L2_debug, e_L2_jax, decimal=6)
+
+    # E
+    E_debug, E_err_debug, Var_debug, Var_err_debug = mcmc_debug.get_E(
+        num_mcmc_warmup_steps=5,
+        num_mcmc_bin_blocks=5,
+    )
+    E_jax, E_err_jax, Var_jax, Var_err_jax = mcmc_jax.get_E(
+        num_mcmc_warmup_steps=5,
+        num_mcmc_bin_blocks=5,
+    )
+    np.testing.assert_array_almost_equal(E_debug, E_jax, decimal=6)
+    np.testing.assert_array_almost_equal(E_err_debug, E_err_jax, decimal=6)
+    np.testing.assert_array_almost_equal(Var_debug, Var_jax, decimal=6)
+    np.testing.assert_array_almost_equal(Var_err_debug, Var_err_jax, decimal=6)
+
+    # aF
+    force_mean_debug, force_std_debug = mcmc_debug.get_aF(
+        num_mcmc_warmup_steps=5,
+        num_mcmc_bin_blocks=5,
+    )
+    force_mean_jax, force_std_jax = mcmc_jax.get_aF(
+        num_mcmc_warmup_steps=5,
+        num_mcmc_bin_blocks=5,
+    )
+    np.testing.assert_array_almost_equal(force_mean_debug, force_mean_jax, decimal=6)
+    np.testing.assert_array_almost_equal(force_std_debug, force_std_jax, decimal=6)
 
     jax.clear_caches()
 

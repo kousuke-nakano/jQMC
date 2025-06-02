@@ -707,8 +707,10 @@ class Jastrow_data:
         """Switch pytree_node."""
         jastrow_one_body_data = jastrow_data.jastrow_one_body_data
         jastrow_two_body_data = jastrow_data.jastrow_two_body_data
-        jastrow_three_body_data = Jastrow_three_body_data.from_base(jastrow_data.jastrow_three_body_data)
-
+        if jastrow_data.jastrow_three_body_data is not None:
+            jastrow_three_body_data = Jastrow_three_body_data.from_base(jastrow_data.jastrow_three_body_data)
+        else:
+            jastrow_three_body_data = jastrow_data.jastrow_three_body_data
         return cls(
             jastrow_one_body_data=jastrow_one_body_data,
             jastrow_two_body_data=jastrow_two_body_data,
@@ -729,8 +731,11 @@ class Jastrow_data_deriv_params(Jastrow_data):
         """Switch pytree_node."""
         jastrow_one_body_data = jastrow_data.jastrow_one_body_data
         jastrow_two_body_data = jastrow_data.jastrow_two_body_data
-        jastrow_three_body_data = Jastrow_three_body_data_deriv_params.from_base(jastrow_data.jastrow_three_body_data)
-
+        if jastrow_data.jastrow_three_body_data is not None:
+            jastrow_three_body_data = Jastrow_three_body_data_deriv_params.from_base(jastrow_data.jastrow_three_body_data)
+        else:
+            jastrow_three_body_data = jastrow_data.jastrow_three_body_data
+        # Return a new instance of Jastrow_data with the updated jastrow_three_body_data
         return cls(
             jastrow_one_body_data=jastrow_one_body_data,
             jastrow_two_body_data=jastrow_two_body_data,
@@ -751,8 +756,11 @@ class Jastrow_data_deriv_R(Jastrow_data):
         """Switch pytree_node."""
         jastrow_one_body_data = jastrow_data.jastrow_one_body_data
         jastrow_two_body_data = jastrow_data.jastrow_two_body_data
-        jastrow_three_body_data = Jastrow_three_body_data_deriv_R.from_base(jastrow_data.jastrow_three_body_data)
-
+        if jastrow_data.jastrow_three_body_data is not None:
+            jastrow_three_body_data = Jastrow_three_body_data_deriv_R.from_base(jastrow_data.jastrow_three_body_data)
+        else:
+            jastrow_three_body_data = jastrow_data.jastrow_three_body_data
+        # Return a new instance of Jastrow_data with the updated jastrow_three_body_data
         return cls(
             jastrow_one_body_data=jastrow_one_body_data,
             jastrow_two_body_data=jastrow_two_body_data,

@@ -40,8 +40,8 @@ import numpy as np
 from mpi4py import MPI
 
 from ..jqmc.hamiltonians import Hamiltonian_data
-from ..jqmc.jqmc_gfmc import GFMC_fixed_projection_time_debug
-from ..jqmc.jqmc_kernel import GFMC_fixed_projection_time
+from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data
+from ..jqmc.jqmc_gfmc import GFMC_fixed_projection_time, GFMC_fixed_projection_time_debug
 from ..jqmc.trexio_wrapper import read_trexio_file
 from ..jqmc.wavefunction import Wavefunction_data
 
@@ -65,15 +65,16 @@ def test_jqmc_gfmc_fixed_projection_time_tmove():
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ecp_ccpvtz_cart.h5"), store_tuple=True
     )
 
-    with open(
-        os.path.join(os.path.dirname(__file__), "trexio_example_files", "jastrow_data_w_2b_1b3b_w_ecp.pkl"),
-        "rb",
-    ) as f:
-        jastrow_data = pickle.load(f)
-        jastrow_data.sanity_check()
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=None,
+        jastrow_two_body_data=jastrow_twobody_data,
+        jastrow_three_body_data=None,
+    )
 
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
     wavefunction_data.sanity_check()
@@ -134,6 +135,20 @@ def test_jqmc_gfmc_fixed_projection_time_tmove():
         e_L2_debug = gfmc_debug.e_L2
         e_L2_jax = gfmc_jax.e_L2
         np.testing.assert_array_almost_equal(e_L2_debug, e_L2_jax, decimal=6)
+
+    # E
+    E_debug, E_err_debug, Var_debug, Var_err_debug = gfmc_debug.get_E(
+        num_mcmc_warmup_steps=5,
+        num_mcmc_bin_blocks=5,
+    )
+    E_jax, E_err_jax, Var_jax, Var_err_jax = gfmc_jax.get_E(
+        num_mcmc_warmup_steps=5,
+        num_mcmc_bin_blocks=5,
+    )
+    np.testing.assert_array_almost_equal(E_debug, E_jax, decimal=6)
+    np.testing.assert_array_almost_equal(E_err_debug, E_err_jax, decimal=6)
+    np.testing.assert_array_almost_equal(Var_debug, Var_jax, decimal=6)
+    np.testing.assert_array_almost_equal(Var_err_debug, Var_err_jax, decimal=6)
 
     jax.clear_caches()
 

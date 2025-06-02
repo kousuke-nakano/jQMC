@@ -1,4 +1,4 @@
-"""LRDMC module."""
+"""command-line module."""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
@@ -48,7 +48,8 @@ from uncertainties import ufloat
 
 # jQMC
 from .header_footer import print_footer, print_header
-from .jqmc_kernel import MCMC, QMC, GFMC_fixed_num_projection, GFMC_fixed_projection_time
+from .jqmc_gfmc import GFMC_fixed_num_projection, GFMC_fixed_projection_time
+from .jqmc_mcmc import MCMC
 from .jqmc_miscs import cli_parameters
 
 # JAX float64
@@ -237,7 +238,7 @@ def cli():
         else:
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
-                mcmc = MCMC(
+                vmc = MCMC(
                     hamiltonian_data=hamiltonian_data,
                     Dt=Dt,
                     mcmc_seed=mcmc_seed,
@@ -247,13 +248,12 @@ def cli():
                     comput_position_deriv=atomic_force,
                     comput_param_deriv=False,
                 )
-                vmc = QMC(mcmc)
         vmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = vmc.get_E(
             num_mcmc_warmup_steps=num_mcmc_warmup_steps,
             num_mcmc_bin_blocks=num_mcmc_bin_blocks,
         )
-        if vmc.mcmc.comput_position_deriv:
+        if vmc.comput_position_deriv:
             f_mean, f_std = vmc.get_aF(
                 num_mcmc_warmup_steps=num_mcmc_warmup_steps,
                 num_mcmc_bin_blocks=num_mcmc_bin_blocks,
@@ -261,7 +261,7 @@ def cli():
         logger.info("Final output(s):")
         logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:5f} Ha.")
         logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:5f} Ha^2.")
-        if vmc.mcmc.comput_position_deriv:
+        if vmc.comput_position_deriv:
             logger.info("  Atomic Forces:")
             sep = 16 * 3
             logger.info("  " + "-" * sep)
@@ -348,7 +348,7 @@ def cli():
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
 
-                mcmc = MCMC(
+                vmc = MCMC(
                     hamiltonian_data=hamiltonian_data,
                     Dt=Dt,
                     mcmc_seed=mcmc_seed,
@@ -358,7 +358,6 @@ def cli():
                     comput_position_deriv=False,
                     comput_param_deriv=True,
                 )
-                vmc = QMC(mcmc)
         vmc.run_optimize(
             num_mcmc_steps=num_mcmc_steps,
             num_opt_steps=num_opt_steps,
@@ -448,7 +447,7 @@ def cli():
         else:
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
-                gfmc = GFMC_fixed_num_projection(
+                lrdmc = GFMC_fixed_num_projection(
                     hamiltonian_data=hamiltonian_data,
                     num_walkers=number_of_walkers,
                     num_mcmc_per_measurement=num_mcmc_per_measurement,
@@ -459,13 +458,12 @@ def cli():
                     non_local_move=non_local_move,
                     comput_position_deriv=atomic_force,
                 )
-                lrdmc = QMC(gfmc)
         lrdmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = lrdmc.get_E(
             num_mcmc_warmup_steps=num_gfmc_warmup_steps,
             num_mcmc_bin_blocks=num_gfmc_bin_blocks,
         )
-        if lrdmc.mcmc.comput_position_deriv:
+        if lrdmc.comput_position_deriv:
             f_mean, f_std = lrdmc.get_aF(
                 num_mcmc_warmup_steps=num_gfmc_warmup_steps,
                 num_mcmc_bin_blocks=num_gfmc_bin_blocks,
@@ -473,7 +471,7 @@ def cli():
         logger.info("Final output(s):")
         logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:5f} Ha.")
         logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:5f} Ha^2.")
-        if lrdmc.mcmc.comput_position_deriv:
+        if lrdmc.comput_position_deriv:
             logger.info("  Atomic Forces:")
             sep = 16 * 3
             logger.info("  " + "-" * sep)
@@ -552,7 +550,7 @@ def cli():
         else:
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
-                gfmc = GFMC_fixed_projection_time(
+                lrdmc = GFMC_fixed_projection_time(
                     hamiltonian_data=hamiltonian_data,
                     num_walkers=number_of_walkers,
                     tau=tau,
@@ -561,7 +559,6 @@ def cli():
                     alat=alat,
                     non_local_move=non_local_move,
                 )
-                lrdmc = QMC(gfmc)
         lrdmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = lrdmc.get_E(
             num_mcmc_warmup_steps=num_gfmc_warmup_steps,
