@@ -51,7 +51,7 @@ cli_parameters = {
         "restart": "Restart calculation. A checkpoint file should be specified.",
         "restart_chk": "Restart checkpoint file. If restart is True, this file is used.",
         "hamiltonian_chk": "Hamiltonian checkpoint file. If restart is False, this file is used.",
-        "verbosity": 'Verbosity level. "low" or "high"',
+        "verbosity": 'Verbosity level. "low", "high", "devel", "mpi-low", "mpi-high", "mpi-devel"',
     },
     "vmc": {
         "num_mcmc_steps": None,

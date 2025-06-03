@@ -37,7 +37,7 @@ import os
 import pickle
 import sys
 import zipfile
-from logging import Formatter, StreamHandler, getLogger
+from logging import FileHandler, Formatter, StreamHandler, getLogger
 
 import jax
 import toml
@@ -85,14 +85,24 @@ def cli():
         verbosity = cli_parameters["control"]["verbosity"]
 
     # set logger level
-    if verbosity == "high":
+    if verbosity == "devel":
+        logger_level = "DEVEL"
+    elif verbosity == "high":
+        logger_level = "DEBUG"
+    elif verbosity == "low":
+        logger_level = "INFO"
+    elif verbosity == "mpi-devel":
+        logger_level = "MPI-DEVEL"
+    elif verbosity == "mpi-high":
         logger_level = "MPI-DEBUG"
-    else:
+    elif verbosity == "mpi-low":
         logger_level = "MPI-INFO"
+    else:
+        logger_level = "INFO"
 
     log = getLogger("jqmc")
 
-    if logger_level == "MPI-INFO":
+    if logger_level == "INFO":
         if mpi_rank == 0:
             log.setLevel("INFO")
             stream_handler = StreamHandler(sys.stdout)
@@ -104,10 +114,10 @@ def cli():
             log.setLevel("ERROR")
             stream_handler = StreamHandler(sys.stdout)
             stream_handler.setLevel("ERROR")
-            handler_format = Formatter(f"MPI-rank={mpi_rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
+            handler_format = Formatter("%(message)s")
             stream_handler.setFormatter(handler_format)
             log.addHandler(stream_handler)
-    elif logger_level == "MPI-DEBUG":
+    elif logger_level == "DEBUG":
         if mpi_rank == 0:
             log.setLevel("DEBUG")
             stream_handler = StreamHandler(sys.stdout)
@@ -119,17 +129,60 @@ def cli():
             log.setLevel("ERROR")
             stream_handler = StreamHandler(sys.stdout)
             stream_handler.setLevel("ERROR")
-            handler_format = Formatter(f"MPI-rank={mpi_rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
+            handler_format = Formatter("%(message)s")
             stream_handler.setFormatter(handler_format)
             log.addHandler(stream_handler)
+    elif logger_level == "DEVEL":
+        if mpi_rank == 0:
+            log.setLevel("DEVEL")
+            stream_handler = StreamHandler(sys.stdout)
+            stream_handler.setLevel("DEVEL")
+            handler_format = Formatter("%(message)s")
+            stream_handler.setFormatter(handler_format)
+            log.addHandler(stream_handler)
+        else:
+            log.setLevel("ERROR")
+            stream_handler = StreamHandler(sys.stdout)
+            stream_handler.setLevel("ERROR")
+            handler_format = Formatter("%(message)s")
+            stream_handler.setFormatter(handler_format)
+            log.addHandler(stream_handler)
+    elif logger_level == "MPI-INFO":
+        log.setLevel("INFO")
+        file_handler = FileHandler(f"log_jqmc_mpirank_{mpi_rank}.log", mode="w")
+        file_handler.setLevel("INFO")
+        formatter = Formatter("%(message)s")
+        file_handler.setFormatter(formatter)
+        log.addHandler(file_handler)
+    elif logger_level == "MPI-DEBUG":
+        log.setLevel("DEBUG")
+        file_handler = FileHandler(f"log_jqmc_mpirank_{mpi_rank}.log", mode="w")
+        file_handler.setLevel("DEBUG")
+        formatter = Formatter("%(message)s")
+        file_handler.setFormatter(formatter)
+        log.addHandler(file_handler)
+    elif logger_level == "MPI-DEVEL":
+        log.setLevel("DEVEL")
+        file_handler = FileHandler(f"log_jqmc_mpirank_{mpi_rank}.log", mode="w")
+        file_handler.setLevel("DEVEL")
+        formatter = Formatter("%(message)s")
+        file_handler.setFormatter(formatter)
+        log.addHandler(file_handler)
     else:
-        log.setLevel(logger_level)
-        stream_handler = StreamHandler(sys.stdout)
-        stream_handler.setLevel(logger_level)
-        handler_format = Formatter(f"MPI-rank={mpi_rank}: %(name)s - %(levelname)s - %(lineno)d - %(message)s")
-        stream_handler.setFormatter(handler_format)
-        log.addHandler(stream_handler)
-
+        if mpi_rank == 0:
+            log.setLevel("INFO")
+            stream_handler = StreamHandler(sys.stdout)
+            stream_handler.setLevel("INFO")
+            handler_format = Formatter("%(message)s")
+            stream_handler.setFormatter(handler_format)
+            log.addHandler(stream_handler)
+        else:
+            log.setLevel("ERROR")
+            stream_handler = StreamHandler(sys.stdout)
+            stream_handler.setLevel("ERROR")
+            handler_format = Formatter("%(message)s")
+            stream_handler.setFormatter(handler_format)
+            log.addHandler(stream_handler)
     # print header
     print_header()
 

@@ -453,8 +453,6 @@ if __name__ == "__main__":
     stream_handler.setFormatter(handler_format)
     log.addHandler(stream_handler)
 
-    logger.devel("test")
-
     (
         structure_data,
         aos_data,

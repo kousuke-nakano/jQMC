@@ -596,10 +596,6 @@ class MCMC:
                 norm_r_R = jnp.linalg.norm(old_r_cart - R_cart)
                 f_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
 
-                logger.devel(f"nearest_atom_index = {nearest_atom_index}")
-                logger.devel(f"norm_r_R = {norm_r_R}")
-                logger.devel(f"f_l  = {f_l}")
-
                 sigma = f_l * Dt
                 jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
                 g = jax.random.normal(subkey, shape=()) * sigma
@@ -612,7 +608,6 @@ class MCMC:
                 g_vector = jnp.zeros(3)
                 g_vector = g_vector.at[random_index].set(g)
 
-                logger.devel(f"jn = {random_index}, g \\equiv dstep  = {g_vector}")
                 new_r_cart = old_r_cart + g_vector
 
                 # set proposed r_up_carts and r_dn_carts.
@@ -637,14 +632,6 @@ class MCMC:
                 Z = charges[nearest_atom_index]
                 norm_r_R = jnp.linalg.norm(new_r_cart - R_cart)
                 f_prime_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
-
-                logger.devel(f"nearest_atom_index = {nearest_atom_index}")
-                logger.devel(f"norm_r_R = {norm_r_R}")
-                logger.devel(f"f_prime_l  = {f_prime_l}")
-
-                logger.devel(f"The selected electron is {selected_electron_index + 1}-th {is_up} electron.")
-                logger.devel(f"The selected electron position is {old_r_cart}.")
-                logger.devel(f"The proposed electron position is {new_r_cart}.")
 
                 T_ratio = (f_l / f_prime_l) * jnp.exp(
                     -(jnp.linalg.norm(new_r_cart - old_r_cart) ** 2)
@@ -698,13 +685,10 @@ class MCMC:
                 # compute R_ratio
                 R_ratio = (R_AS_ratio * WF_ratio) ** 2.0
 
-                logger.devel(f"R_ratio, T_ratio = {R_ratio}, {T_ratio}")
                 acceptance_ratio = jnp.min(jnp.array([1.0, R_ratio * T_ratio]))
-                logger.devel(f"acceptance_ratio = {acceptance_ratio}")
 
                 jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
                 b = jax.random.uniform(subkey, shape=(), minval=0.0, maxval=1.0)
-                logger.devel(f"b = {b}.")
 
                 def _accepted_fun(_):
                     # Move accepted

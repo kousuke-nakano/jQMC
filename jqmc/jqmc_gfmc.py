@@ -581,8 +581,6 @@ class GFMC_fixed_projection_time:
                 r_dn_carts (N_e^dn, 3) after the final projection
                 jax_PRNG_key (jnpt.ArrayLike): jax PRNG key
             """
-            logger.devel(f"jax_PRNG_key={jax_PRNG_key}")
-
             # projection counter
             projection_counter = lax.cond(
                 tau_left > 0.0,
@@ -820,24 +818,18 @@ class GFMC_fixed_projection_time:
                 non_diagonal_move_probabilities = p_list / p_list.sum()
                 non_diagonal_move_mesh_r_up_carts = mesh_kinetic_part_r_up_carts
                 non_diagonal_move_mesh_r_dn_carts = mesh_kinetic_part_r_dn_carts
-
-            logger.devel(f"  e_L={e_L}")
             # """
 
             # compute the time the walker remaining in the same configuration
             jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
             xi = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
             tau_update = jnp.minimum(tau_left, jnp.log(1 - xi) / non_diagonal_sum_hamiltonian)
-            logger.devel(f"  tau_update={tau_update}")
 
             # update weight
-            logger.devel(f"  old: w_L={w_L}")
             w_L = w_L * jnp.exp(-tau_update * e_L)
-            logger.devel(f"  new: w_L={w_L}")
 
             # update tau_left
             tau_left = tau_left - tau_update
-            logger.devel(f"tau_left = {tau_left}.")
 
             # electron position update
             # random choice
@@ -846,17 +838,11 @@ class GFMC_fixed_projection_time:
             cdf = jnp.cumsum(non_diagonal_move_probabilities)
             random_value = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
             k = jnp.searchsorted(cdf, random_value)
-            logger.devel(f"len(non_diagonal_move_probabilities) = {len(non_diagonal_move_probabilities)}.")
-            logger.devel(f"chosen update electron index, k = {k}.")
             proposed_r_up_carts = non_diagonal_move_mesh_r_up_carts[k]
             proposed_r_dn_carts = non_diagonal_move_mesh_r_dn_carts[k]
 
-            logger.devel(f"old: r_up_carts = {r_up_carts}")
-            logger.devel(f"old: r_dn_carts = {r_dn_carts}")
             new_r_up_carts = jnp.where(tau_left <= 0.0, r_up_carts, proposed_r_up_carts)  # '=' is very important!!!
             new_r_dn_carts = jnp.where(tau_left <= 0.0, r_dn_carts, proposed_r_dn_carts)  # '=' is very important!!!
-            logger.devel(f"new: r_up_carts={new_r_up_carts}.")
-            logger.devel(f"new: r_dn_carts={new_r_dn_carts}.")
 
             return (e_L, projection_counter, tau_left, w_L, new_r_up_carts, new_r_dn_carts, jax_PRNG_key, R.T)
 
@@ -910,8 +896,6 @@ class GFMC_fixed_projection_time:
             tau_left_list = jnp.array([self.__tau for _ in range(self.__num_walkers)])
             w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
 
-            logger.devel("  Projection is on going....")
-
             start_projection = time.perf_counter()
             # projection loop
             while True:
@@ -923,7 +907,6 @@ class GFMC_fixed_projection_time:
                 logger.devel(
                     f"  min. Left projection time = {np.min(tau_left_list):.2f}/{self.__tau:.2f}: {min_progress:.1f} %."
                 )
-                logger.devel(f"  in: w_L_list = {w_L_list}.")
                 (
                     e_L_list,
                     projection_counter_list,
@@ -945,7 +928,6 @@ class GFMC_fixed_projection_time:
                     self.__alat,
                     self.__hamiltonian_data,
                 )
-                logger.devel(f"  out: w_L_list = {w_L_list}.")
                 logger.devel(f"max(tau_left_list) = {np.max(tau_left_list)}.")
                 logger.devel(f"min(tau_left_list) = {np.min(tau_left_list)}.")
                 if np.max(tau_left_list) <= 0.0:
@@ -963,9 +945,6 @@ class GFMC_fixed_projection_time:
 
             end_projection = time.perf_counter()
             timer_projection_total += end_projection - start_projection
-
-            # projection ends
-            logger.devel("  Projection ends.")
 
             # evaluate observables
             start_observable = time.perf_counter()
@@ -1062,7 +1041,7 @@ class GFMC_fixed_projection_time:
             global_weight_sum = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)
 
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 1.1 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.debug(f"    timer_reconfigration step 1.1 = {(end_ - start_) * 1e3:.3f} msec.")
 
             start_ = time.perf_counter()
 
@@ -1081,7 +1060,7 @@ class GFMC_fixed_projection_time:
             local_cumprob += offset
 
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 1.2 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.debug(f"    timer_reconfigration step 1.2 = {(end_ - start_) * 1e3:.3f} msec.")
 
             start_ = time.perf_counter()
 
@@ -1090,7 +1069,7 @@ class GFMC_fixed_projection_time:
             global_cumprob = np.empty(total_walkers, dtype=np.float64)
             mpi_comm.Allgather([local_cumprob, MPI.DOUBLE], [global_cumprob, MPI.DOUBLE])
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 1.3 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.debug(f"    timer_reconfigration step 1.3 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # Total number of walkers across all processes.
             # Compute index range for this rank
@@ -1104,7 +1083,7 @@ class GFMC_fixed_projection_time:
             # Perform searchsorted and cast the result to int32
             local_chosen_indices = np.searchsorted(global_cumprob, z_local).astype(np.int32)
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 1.4 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.debug(f"    timer_reconfigration step 1.4 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # Gather all local_chosen_indices across ranks using MPI.INT
             start_ = time.perf_counter()
@@ -1137,7 +1116,7 @@ class GFMC_fixed_projection_time:
             stored_average_projection_counter = np.mean(ave_projection_counter_gathered)
 
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 1.5 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.debug(f"    timer_reconfigration step 1.5 = {(end_ - start_) * 1e3:.3f} msec.")
 
             #########################################
             # 2. In each process, prepare for data exchange based on the new walker selection
@@ -1155,7 +1134,7 @@ class GFMC_fixed_projection_time:
                 else:
                     reqs.setdefault(src_rank, []).append((dest_idx, src_local_idx))
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 2 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.debug(f"    timer_reconfigration step 2 = {(end_ - start_) * 1e3:.3f} msec.")
 
             #########################################
             # 3. Exchange only the necessary walker data between processes using asynchronous communication
@@ -1168,21 +1147,21 @@ class GFMC_fixed_projection_time:
             ]
             triplets = np.array(flat_list, dtype=np.int32) if flat_list else np.empty((0, 3), dtype=np.int32)
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.1.1 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.debug(f"    timer_reconfigration step 3.1.1 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.2: Compute how many ints to send to each rank (3 ints per request)
             start_ = time.perf_counter()
             counts_per_rank = np.bincount(triplets[:, 0], minlength=mpi_size)  # # reqs per src_rank
             send_counts = (counts_per_rank * 3).astype(np.int32)  # # ints per src_rank
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.1.2 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.debug(f"    timer_reconfigration step 3.1.2 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.3: Post nonblocking Alltoall to exchange counts
             start_ = time.perf_counter()
             recv_counts = np.empty_like(send_counts)
             req_counts = mpi_comm.Ialltoall([send_counts, MPI.INT], [recv_counts, MPI.INT])
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.1.3 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.debug(f"    timer_reconfigration step 3.1.3 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.4: Build send_buf while counts exchange is in flight
             start_ = time.perf_counter()
@@ -1191,13 +1170,13 @@ class GFMC_fixed_projection_time:
             sorted_tr = triplets[order]  # shape = (N_req, 3)
             send_buf = sorted_tr.ravel()  # shape = (N_req*3,)
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.1.4 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.debug(f"    timer_reconfigration step 3.1.4 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.5: Wait for counts exchange to complete
             start_ = time.perf_counter()
             req_counts.Wait()
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.1.5 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.debug(f"    timer_reconfigration step 3.1.5 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.6: Build displacements for send/recv from counts
             start_ = time.perf_counter()
@@ -1206,20 +1185,20 @@ class GFMC_fixed_projection_time:
             recv_displs = np.zeros_like(recv_counts)
             recv_displs[1:] = np.cumsum(recv_counts)[:-1]
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.1.6 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.debug(f"    timer_reconfigration step 3.1.6 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.7: Allocate recv buffer of the exact size
             start_ = time.perf_counter()
             total_recv = int(np.sum(recv_counts))
             recv_buf = np.empty(total_recv, dtype=np.int32)
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.1.7 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.debug(f"    timer_reconfigration step 3.1.7 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.8: Post blocking Alltoallv to exchange the triplets
             start_ = time.perf_counter()
             mpi_comm.Alltoallv([send_buf, send_counts, send_displs, MPI.INT], [recv_buf, recv_counts, recv_displs, MPI.INT])
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.1.8 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.debug(f"    timer_reconfigration step 3.1.8 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.9: Wait for data to arrive and reconstruct per‐process request dicts
             start_ = time.perf_counter()
@@ -1237,13 +1216,13 @@ class GFMC_fixed_projection_time:
                     proc_dict.setdefault(int(sr), []).append((int(dest_idx), int(src_local_idx)))
                 all_reqs.append(proc_dict)
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.1.9 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.debug(f"    timer_reconfigration step 3.1.9 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.10: Filter out empty request dicts
             start_ = time.perf_counter()
             non_empty_all_reqs = [(p, rd) for p, rd in enumerate(all_reqs) if rd]
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.1.10 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.debug(f"    timer_reconfigration step 3.1.10 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # --- 3-2. Build incoming_reqs: who needs data from me? ---
             start_ = time.perf_counter()
@@ -1254,7 +1233,7 @@ class GFMC_fixed_projection_time:
                 for dest_idx, src_local_idx in proc_req.get(mpi_rank, [])
             ]
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.2 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.debug(f"    timer_reconfigration step 3.2 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # --- 3-3. Post nonblocking receives using Irecv for both up and dn buffers. ---
             start_ = time.perf_counter()
@@ -1272,7 +1251,7 @@ class GFMC_fixed_projection_time:
                 recv_reqs_up[src_rank] = mpi_comm.Irecv([buf_up, MPI.DOUBLE], source=src_rank, tag=200)
                 recv_reqs_dn[src_rank] = mpi_comm.Irecv([buf_dn, MPI.DOUBLE], source=src_rank, tag=201)
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.3 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.debug(f"    timer_reconfigration step 3.3 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # --- 3-4. Prepare and post nonblocking sends using Isend. ---
             start_ = time.perf_counter()
@@ -1284,13 +1263,13 @@ class GFMC_fixed_projection_time:
                 send_requests.append(mpi_comm.Isend([buf_up, MPI.DOUBLE], dest=dest_rank, tag=200))
                 send_requests.append(mpi_comm.Isend([buf_dn, MPI.DOUBLE], dest=dest_rank, tag=201))
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.4 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.debug(f"    timer_reconfigration step 3.4 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # --- 3-5. Wait for all nonblocking sends to complete. ---
             start_ = time.perf_counter()
             MPI.Request.Waitall(send_requests)
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.5 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.debug(f"    timer_reconfigration step 3.5 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # --- 3-6. Process the received walker data. ---
             start_ = time.perf_counter()
@@ -1304,7 +1283,7 @@ class GFMC_fixed_projection_time:
                 latest_r_up_carts_after_branching[dest_idxs] = buf_up
                 latest_r_dn_carts_after_branching[dest_idxs] = buf_dn
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.6 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.debug(f"    timer_reconfigration step 3.6 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # np.array -> jnp.array
             self.__num_survived_walkers += num_survived_walkers
@@ -1339,7 +1318,6 @@ class GFMC_fixed_projection_time:
                     logger.info("  Break the mcmc loop.")
                     break
 
-        logger.info("-End branching-")
         logger.info("")
 
         # count up
@@ -1474,9 +1452,6 @@ class GFMC_fixed_projection_time:
                 Var_var = (sumsq_Var_local / M_total) - (sum_Var_local / M_local) ** 2
                 Var_std = np.sqrt((M_total - 1) * Var_var)
 
-                logger.devel(f"E = {E_mean} +- {E_std} Ha.")
-                logger.devel(f"Var(E) = {Var_mean} +- {Var_std} Ha^2.")
-
             else:
                 E_mean = None
                 E_std = None
@@ -1585,9 +1560,6 @@ class GFMC_fixed_projection_time:
             Var_mean = sum_Var_global / M_total
             Var_var = (sumsq_Var_global / M_total) - (sum_Var_global / M_total) ** 2
             Var_std = np.sqrt((M_total - 1) * Var_var)
-
-            logger.devel(f"E = {E_mean} +- {E_std} Ha.")
-            logger.devel(f"Var(E) = {Var_mean} +- {Var_std} Ha^2.")
 
         # return
         return (E_mean, E_std, Var_mean, Var_std)
@@ -2256,7 +2228,6 @@ class GFMC_fixed_projection_time_debug:
 
             num_mcmc_done += 1
 
-        logger.info("-End branching-")
         logger.info("")
 
         # count up
@@ -3168,18 +3139,12 @@ class GFMC_fixed_num_projection:
 
                 # compute b_L_bar
                 b_x_bar = -1.0 * non_diagonal_sum_hamiltonian
-                logger.devel(f"  b_x_bar={b_x_bar}")
 
                 # compute bar_b_L
-                logger.devel(f"  diagonal_sum_hamiltonian={diagonal_sum_hamiltonian}")
-                logger.devel(f"  E_scf={E_scf}")
                 b_x = 1.0 / (diagonal_sum_hamiltonian - E_scf) * b_x_bar
-                logger.devel(f"  b_x={b_x}")
 
                 # update weight
-                logger.devel(f"  old: w_L={w_L}")
                 w_L = w_L * b_x
-                logger.devel(f"  new: w_L={w_L}")
 
                 # electron position update
                 # random choice
@@ -3187,14 +3152,8 @@ class GFMC_fixed_num_projection:
                 cdf = jnp.cumsum(non_diagonal_move_probabilities)
                 random_value = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
                 k = jnp.searchsorted(cdf, random_value)
-                logger.devel(f"len(non_diagonal_move_probabilities) = {len(non_diagonal_move_probabilities)}.")
-                logger.devel(f"chosen update electron index, k = {k}.")
-                logger.devel(f"old: r_up_carts = {r_up_carts}")
-                logger.devel(f"old: r_dn_carts = {r_dn_carts}")
                 r_up_carts = non_diagonal_move_mesh_r_up_carts[k]
                 r_dn_carts = non_diagonal_move_mesh_r_dn_carts[k]
-                logger.devel(f"new: r_up_carts={r_up_carts}.")
-                logger.devel(f"new: r_dn_carts={r_dn_carts}.")
 
                 carry = (w_L, r_up_carts, r_dn_carts, jax_PRNG_key, R.T)
                 return carry
@@ -3495,11 +3454,10 @@ class GFMC_fixed_num_projection:
                 logger.info(
                     f"  Progress: GFMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(gfmc_total_current - gfmc_total_start):.1f} sec."
                 )
+                logger.devel(f"    GFMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}")
 
             # Always set the initial weight list to 1.0
             w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
-
-            logger.devel("  Projection is on going....")
 
             start_projection = time.perf_counter()
 
@@ -3527,9 +3485,7 @@ class GFMC_fixed_num_projection:
 
             end_projection = time.perf_counter()
             timer_projection_total += end_projection - start_projection
-
-            # projection ends
-            logger.devel("  Projection ends.")
+            logger.devel(f"    timer_projection_total = {(end_projection - start_projection) * 1e3:.2f} msec.")
 
             # evaluate observables
             start_e_L = time.perf_counter()
@@ -3566,6 +3522,7 @@ class GFMC_fixed_num_projection:
 
             end_e_L = time.perf_counter()
             timer_e_L += end_e_L - start_e_L
+            logger.devel(f"    timer_e_L = {(end_e_L - start_e_L) * 1e3:.2f} msec.")
 
             # atomic force related
             if self.__comput_position_deriv:
@@ -3584,6 +3541,8 @@ class GFMC_fixed_num_projection:
                 grad_e_L_r_dn.block_until_ready()
                 end = time.perf_counter()
                 timer_de_L_dR_dr += end - start
+                logger.devel(f"    timer_de_L_dR_dr = {(end - start) * 1e3:.2f} msec.")
+                # grad_e_L_r_up and grad_e_L_r_dn are jax arrays, so we need to convert them to numpy arrays
 
                 grad_e_L_R = (
                     grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.structure_data.positions
@@ -3599,10 +3558,6 @@ class GFMC_fixed_num_projection:
                         grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
                     )
 
-                logger.devel(f"de_L_dR = {grad_e_L_R}")
-                logger.devel(f"de_L_dr_up = {grad_e_L_r_up}")
-                logger.devel(f"de_L_dr_dn= {grad_e_L_r_dn}")
-
                 start = time.perf_counter()
                 grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = vmap(
                     grad(evaluate_ln_wavefunction_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
@@ -3615,6 +3570,7 @@ class GFMC_fixed_num_projection:
                 grad_ln_Psi_r_dn.block_until_ready()
                 end = time.perf_counter()
                 timer_dln_Psi_dR_dr += end - start
+                logger.devel(f"    timer_dln_Psi_dR_dr = {(end - start) * 1e3:.2f} msec.")
 
                 grad_ln_Psi_dR = (
                     grad_ln_Psi_h.geminal_data.orb_data_up_spin.structure_data.positions
@@ -3657,6 +3613,7 @@ class GFMC_fixed_num_projection:
             mpi_comm.Barrier()
             end_mpi_barrier = time.perf_counter()
             timer_mpi_barrier += end_mpi_barrier - start_mpi_barrier
+            logger.devel(f"    timer_mpi_barrier = {(end_mpi_barrier - start_mpi_barrier) * 1e3:.2f} msec.")
 
             # Branching starts
             start_collection = time.perf_counter()
@@ -3774,6 +3731,7 @@ class GFMC_fixed_num_projection:
 
             end_collection = time.perf_counter()
             timer_collection += end_collection - start_collection
+            logger.devel(f"    timer_collection = {(end_collection - start_collection) * 1e3:.2f} msec.")
 
             # branching
             start_reconfiguration = time.perf_counter()
@@ -3792,7 +3750,7 @@ class GFMC_fixed_num_projection:
             global_weight_sum = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)
 
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 1.1 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 1.1 = {(end_ - start_) * 1e3:.3f} msec.")
 
             start_ = time.perf_counter()
 
@@ -3811,7 +3769,7 @@ class GFMC_fixed_num_projection:
             local_cumprob += offset
 
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 1.2 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 1.2 = {(end_ - start_) * 1e3:.3f} msec.")
 
             start_ = time.perf_counter()
 
@@ -3820,7 +3778,7 @@ class GFMC_fixed_num_projection:
             global_cumprob = np.empty(total_walkers, dtype=np.float64)
             mpi_comm.Allgather([local_cumprob, MPI.DOUBLE], [global_cumprob, MPI.DOUBLE])
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 1.3 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 1.3 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # Total number of walkers across all processes.
             # Compute index range for this rank
@@ -3834,7 +3792,7 @@ class GFMC_fixed_num_projection:
             # Perform searchsorted and cast the result to int32
             local_chosen_indices = np.searchsorted(global_cumprob, z_local).astype(np.int32)
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 1.4 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 1.4 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # Gather all local_chosen_indices across ranks using MPI.INT
             start_ = time.perf_counter()
@@ -3857,7 +3815,7 @@ class GFMC_fixed_num_projection:
             ]
 
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 1.5 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 1.5 = {(end_ - start_) * 1e3:.3f} msec.")
 
             #########################################
             # 2. In each process, prepare for data exchange based on the new walker selection
@@ -3875,7 +3833,7 @@ class GFMC_fixed_num_projection:
                 else:
                     reqs.setdefault(src_rank, []).append((dest_idx, src_local_idx))
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 2 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 2 = {(end_ - start_) * 1e3:.3f} msec.")
 
             #########################################
             # 3. Exchange only the necessary walker data between processes using asynchronous communication
@@ -3888,21 +3846,21 @@ class GFMC_fixed_num_projection:
             ]
             triplets = np.array(flat_list, dtype=np.int32) if flat_list else np.empty((0, 3), dtype=np.int32)
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.1.1 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.1.1 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.2: Compute how many ints to send to each rank (3 ints per request)
             start_ = time.perf_counter()
             counts_per_rank = np.bincount(triplets[:, 0], minlength=mpi_size)  # # reqs per src_rank
             send_counts = (counts_per_rank * 3).astype(np.int32)  # # ints per src_rank
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.1.2 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.1.2 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.3: Post nonblocking Alltoall to exchange counts
             start_ = time.perf_counter()
             recv_counts = np.empty_like(send_counts)
             req_counts = mpi_comm.Ialltoall([send_counts, MPI.INT], [recv_counts, MPI.INT])
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.1.3 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.1.3 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.4: Build send_buf while counts exchange is in flight
             start_ = time.perf_counter()
@@ -3911,13 +3869,13 @@ class GFMC_fixed_num_projection:
             sorted_tr = triplets[order]  # shape = (N_req, 3)
             send_buf = sorted_tr.ravel()  # shape = (N_req*3,)
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.1.4 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.1.4 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.5: Wait for counts exchange to complete
             start_ = time.perf_counter()
             req_counts.Wait()
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.1.5 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.1.5 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.6: Build displacements for send/recv from counts
             start_ = time.perf_counter()
@@ -3926,20 +3884,20 @@ class GFMC_fixed_num_projection:
             recv_displs = np.zeros_like(recv_counts)
             recv_displs[1:] = np.cumsum(recv_counts)[:-1]
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.1.6 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.1.6 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.7: Allocate recv buffer of the exact size
             start_ = time.perf_counter()
             total_recv = int(np.sum(recv_counts))
             recv_buf = np.empty(total_recv, dtype=np.int32)
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.1.7 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.1.7 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.8: Post blocking Alltoallv to exchange the triplets
             start_ = time.perf_counter()
             mpi_comm.Alltoallv([send_buf, send_counts, send_displs, MPI.INT], [recv_buf, recv_counts, recv_displs, MPI.INT])
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.1.8 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.1.8 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.9: Wait for data to arrive and reconstruct per‐process request dicts
             start_ = time.perf_counter()
@@ -3957,13 +3915,13 @@ class GFMC_fixed_num_projection:
                     proc_dict.setdefault(int(sr), []).append((int(dest_idx), int(src_local_idx)))
                 all_reqs.append(proc_dict)
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.1.9 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.1.9 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.10: Filter out empty request dicts
             start_ = time.perf_counter()
             non_empty_all_reqs = [(p, rd) for p, rd in enumerate(all_reqs) if rd]
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.1.10 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.1.10 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # --- 3-2. Build incoming_reqs: who needs data from me? ---
             start_ = time.perf_counter()
@@ -3974,7 +3932,7 @@ class GFMC_fixed_num_projection:
                 for dest_idx, src_local_idx in proc_req.get(mpi_rank, [])
             ]
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.2 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.2 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # --- 3-3. Post nonblocking receives using Irecv for both up and dn buffers. ---
             start_ = time.perf_counter()
@@ -3992,7 +3950,7 @@ class GFMC_fixed_num_projection:
                 recv_reqs_up[src_rank] = mpi_comm.Irecv([buf_up, MPI.DOUBLE], source=src_rank, tag=200)
                 recv_reqs_dn[src_rank] = mpi_comm.Irecv([buf_dn, MPI.DOUBLE], source=src_rank, tag=201)
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.3 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.3 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # --- 3-4. Prepare and post nonblocking sends using Isend. ---
             start_ = time.perf_counter()
@@ -4004,13 +3962,13 @@ class GFMC_fixed_num_projection:
                 send_requests.append(mpi_comm.Isend([buf_up, MPI.DOUBLE], dest=dest_rank, tag=200))
                 send_requests.append(mpi_comm.Isend([buf_dn, MPI.DOUBLE], dest=dest_rank, tag=201))
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.4 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.4 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # --- 3-5. Wait for all nonblocking sends to complete. ---
             start_ = time.perf_counter()
             MPI.Request.Waitall(send_requests)
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.5 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.5 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # --- 3-6. Process the received walker data. ---
             start_ = time.perf_counter()
@@ -4024,7 +3982,7 @@ class GFMC_fixed_num_projection:
                 latest_r_up_carts_after_branching[dest_idxs] = buf_up
                 latest_r_dn_carts_after_branching[dest_idxs] = buf_dn
             end_ = time.perf_counter()
-            logger.debug(f"    reconfig: step 3.6 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.6 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # here update the walker positions!!
             self.__num_survived_walkers += num_survived_walkers
@@ -4036,6 +3994,7 @@ class GFMC_fixed_num_projection:
 
             end_reconfiguration = time.perf_counter()
             timer_reconfiguration += end_reconfiguration - start_reconfiguration
+            logger.devel(f"    timer_reconfiguration total = {(end_reconfiguration - start_reconfiguration) * 1e3:.2f} msec.")
 
             # update E_scf
             start_update_E_scf = time.perf_counter()
@@ -4057,7 +4016,7 @@ class GFMC_fixed_num_projection:
                 if i_mcmc_step >= eq_steps:
                     if mpi_rank == 0:
                         num_gfmc_warmup_steps = np.minimum(eq_steps, i_mcmc_step - eq_steps)
-                        logger.debug(f"  Progress: Computing E_scf at step {i_mcmc_step}.")
+                        logger.debug(f"    Computing E_scf at step {i_mcmc_step}.")
                         G_eq = np.array(self.__G_L[num_gfmc_warmup_steps:])
                         G_e_L_eq = np.array(self.__G_e_L[num_gfmc_warmup_steps:])
                         G_e_L_split = np.array_split(G_e_L_eq, num_gfmc_bin_blocks)
@@ -4091,6 +4050,7 @@ class GFMC_fixed_num_projection:
             mpi_comm.Barrier()
             end_update_E_scf = time.perf_counter()
             timer_update_E_scf += end_update_E_scf - start_update_E_scf
+            logger.devel(f"    timer_update_E_scf = {(end_update_E_scf - start_update_E_scf) * 1e3:.2f} msec.")
 
             num_mcmc_done += 1
             gfmc_current = time.perf_counter()
@@ -4112,7 +4072,6 @@ class GFMC_fixed_num_projection:
                     logger.info("  Break the mcmc loop.")
                     break
 
-        logger.info("-End branching-")
         logger.info("")
 
         # count up mcmc_counter
@@ -4266,9 +4225,6 @@ class GFMC_fixed_num_projection:
                 Var_var = (sumsq_Var_local / M_total) - (sum_Var_local / M_local) ** 2
                 Var_std = np.sqrt((M_total - 1) * Var_var)
 
-                logger.devel(f"E = {E_mean} +- {E_std} Ha.")
-                logger.devel(f"Var(E) = {Var_mean} +- {Var_std} Ha^2.")
-
             else:
                 E_mean = None
                 E_std = None
@@ -4377,9 +4333,6 @@ class GFMC_fixed_num_projection:
             Var_mean = sum_Var_global / M_total
             Var_var = (sumsq_Var_global / M_total) - (sum_Var_global / M_total) ** 2
             Var_std = np.sqrt((M_total - 1) * Var_var)
-
-            logger.devel(f"E = {E_mean} +- {E_std} Ha.")
-            logger.devel(f"Var(E) = {Var_mean} +- {Var_std} Ha^2.")
 
         # return
         return (E_mean, E_std, Var_mean, Var_std)
@@ -4520,10 +4473,6 @@ class GFMC_fixed_num_projection:
                 ## mean and std
                 force_mean = mean_force_global
                 force_std = np.sqrt((M_local - 1) * var_force_global)
-
-                logger.devel(f"force_mean.shape  = {force_mean.shape}.")
-                logger.devel(f"force_std.shape  = {force_std.shape}.")
-                logger.devel(f"force = {force_mean} +- {force_std} Ha.")
 
             else:
                 force_mean = None
@@ -4707,10 +4656,6 @@ class GFMC_fixed_num_projection:
             ## mean and std
             force_mean = mean_force_global
             force_std = np.sqrt((M_total - 1) * var_force_global)
-
-            logger.devel(f"force_mean.shape  = {force_mean.shape}.")
-            logger.devel(f"force_std.shape  = {force_std.shape}.")
-            logger.devel(f"force = {force_mean} +- {force_std} Ha.")
 
         return (force_mean, force_std)
 
@@ -5933,7 +5878,6 @@ class GFMC_fixed_num_projection_debug:
 
             num_mcmc_done += 1
 
-        logger.info("-End branching-")
         logger.info("")
 
         # count up mcmc_counter
