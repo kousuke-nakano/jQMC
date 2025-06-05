@@ -1,12 +1,6 @@
-# jQMC Benchmark Results on CPUs and GPUs
+# jQMC Vectorization Benchmark Results on GPUs
 
-This directory contains benchmark results for **jQMC**. The benchmarks compare the performance of Variational Monte Carlo (VMC) and Lattice Regularized Diffusion Monte Carlo (LRDMC) calculations on CPU versus GPU.
-
-The attached graphs are as follows:
-
-- VMC benchmark: CPU vs. GPU.
-- LRDMC benchmark: CPU vs. GPU.
-- Summary of GPU speedup from both VMC and LRDMC calculations.
+This directory contains vectroziationi benchmark results. The benchmarks compare the throughputs of Variational Monte Carlo (VMC) and Lattice Regularized Diffusion Monte Carlo (LRDMC) calculations on GPU with respect to the number of walkers assigned to one GPU. The attached graphs are summaries of the throughputs of both VMC and LRDMC calculations with respect to the number of walkers per GPU.
 
 ---
 
@@ -17,15 +11,15 @@ The benchmark calculations were performed using four molecular systems:
 | Molecule         | Number of electrons | Basis Set           |   ECP          |
 |------------------|---------------------|---------------------|----------------|
 | Water            | 8                   | `ccecp_ccpvtz`      |  ccECP         |
-| Acetic Acid      | 24                  | `ccecp_augccpvtz`   |  ccECP         |
+| Water dimer      | 16                  | `ccecp_ccpvtz`      |  ccECP         |
 | Benzene          | 30                  | `ccecp_augccpvtz`   |  ccECP         |
-| Benzene Dimer    | 60                  | `ccecp_augccpvtz`   |  ccECP         |
+| Benzene dimer    | 60                  | `ccecp_augccpvtz`   |  ccECP         |
 
 **Additional details:**
 
 - **Pseudopotential:** The [ccECP pseudopotential](https://pseudopotentiallibrary.org) was employed for all calculations.
 - **Trial Wavefunctions:** Generated using [pySCF](https://pyscf.org) with Gaussian basis functions (Cartesian).
-- **Hardware Configuration:** Benchmarks were measured on the supercomputer [Genkai(玄界)](https://www.cc.kyushu-u.ac.jp/scp/eng/system/Genkai/hardware/) at Kyusyu University in Japan. One node is equipped with a dual-socket Xeon Platinum 8490H (60 cores × 2) CPU system and with or without NVIDIA H100 (Hopper) GPUs. For the LRDMC calculations, the CPU runs used 128 MPI processes (i.e. the maximum efficiency), while the GPU runs used 4 MPI processes across 4 GPUs.
+- **Hardware Configuration:** Benchmarks were measured on the supercomputer [Miyabi](https://www.cc.u-tokyo.ac.jp/en/supercomputer/miyabi/system.php) at the University of Tokyo in Japan. One node is equipped with a NVIDIA Grace CPU with an NVIDIA H100 (Hopper) GPU. One node (i.e., 1 CPU + 1 GPU) is used for this benchmark test.
 
 ---
 
@@ -33,29 +27,15 @@ The benchmark calculations were performed using four molecular systems:
 
 ### VMC Benchmark
 
-The following graph compares the CPU and GPU performance for VMC calculations:
+The following graph plots GPU throughput for VMC calculations:
 
-![VMC Benchmark](jqmc_VMC_benchmark.jpg)
-
-*Observations:*
-- The VMC results demonstrate a substantial speedup when utilizing GPUs.
-- Speedup factors observed range from approximately **17.65×** (Water) to **33.72×** (Benzene Dimer).
+![VMC Benchmark](jqmc_VMC_vectorization_benchmark.jpg)
 
 ### LRDMC Benchmark
 
-The following graph shows the CPU vs. GPU performance for LRDMC calculations:
+The following graph plots GPU throughput for LRDMC calculations:
 
-![LRDMC Benchmark](jqmc_LRDMC_benchmark.jpg)
-
-*Observations:*
-- Similar to VMC, the LRDMC benchmarks highlight significant acceleration when using GPUs.
-- Reported speedups for LRDMC range from around **18.18×** (Water) to **60.88×** (Benzene Dimer).
-
-### Summary of GPU Speedup
-
-This summary graph consolidates the overall GPU speedup achieved across both VMC and LRDMC calculations:
-
-![GPU Speedup Summary](jqmc_summary_VMC_LRDMC_benchmark.jpg)
+![LRDMC Benchmark](jqmc_LRDMC_vectorization_benchmark.jpg)
 
 ---
 
