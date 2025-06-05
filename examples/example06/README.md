@@ -147,14 +147,6 @@ Iter     E (Ha)     Max f (Ha)   Max of signal to noise of f
 
 The important criteria are `Max f` and `Max of signal to noise of f`. `Max f` should be zero within the error bar. A practical criterion for the `signal to noise` is < 4~5 because it means that all the residual forces are zero in the statistical sense.
 
-You can also plot them and make a figure.
-
-```bash
-% jqmc-tool vmcopt analyze-output out_vmcopt -p -s vmcopt.jpg
-```
-
-![VMC optimization](03vmcopt_JSD/vmcopt.jpg)
-
 If the optimization is not converged. You can restart the optimization.
 
 ```toml:vmc.toml
@@ -179,6 +171,8 @@ You can see and plot the outcome using `jqmc-tool`.
 The next step is VMC calculation. You can generate a template file for a VMC calculation using `jqmc-tool`. Please directly edit `vmc.toml` if you want to change a parameter.
 
 ```bash
+% cd 04vmc_JSD
+% cp ../03vmcopt_JSD/hamiltonian_data_opt_step_200.chk ./hamiltonian_data.chk
 % jqmc-tool vmc generate-input -g
 > Input file is generated: vmc.toml
 ```
@@ -210,7 +204,7 @@ The final step is to run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (v
 % mpiexec -n 4 -map-by ppr:4:node jqmc vmc.toml > out_vmc 2> out_vmc.e # w/ MPI on GPU, depending the queueing system.
 ```
 
-You may get `E = -xx.xxxx +- x.xxxxx Ha` [VMC w/ Jastrow factors]
+You may get `E = -34.45005 +- 0.000506 Ha` [VMC]
 
 > [!NOTE]
 > We are going to discuss the sub kcal/mol accuracy in the binding energy. So, we need to decrease the error bars of the mononer and dimer calculations up to $\sim$ 0.10 mHa and $\sim$ 0.15 mHa.
@@ -219,7 +213,8 @@ You may get `E = -xx.xxxx +- x.xxxxx Ha` [VMC w/ Jastrow factors]
 The final step is LRDMC calculation. You can generate a template file for a LRDMC calculation using `jqmc-tool`. Please directly edit `lrdmc.toml` if you want to change a parameter.
 
 ```bash
-% cd alat_0.30
+% cd 05lrdmc_JSD
+% cp ../04vmc_JSD/hamiltonian_data.chk ./hamiltonian_data.chk
 % jqmc-tool lrdmc generate-input -g lrdmc.toml
 > Input file is generated: lrdmc.toml
 ```
@@ -238,70 +233,41 @@ The final step is LRDMC calculation. You can generate a template file for a LRDM
 [lrdmc]
   num_mcmc_steps  = 40000
   num_mcmc_per_measurement = 30
-  alat = 0.30
+  alat = 0.20
   non_local_move = "dltmove"
   num_gfmc_warmup_steps = 50
   num_gfmc_bin_blocks = 50
   num_gfmc_collect_steps = 20
-  E_scf = -17.00
+  E_scf = -34.00
 ```
 
-LRDMC energy is biased with the discretized lattice space ($a$) by $O(a^2)$. It means that, to get an unbiased energy, one should compute LRDMC energies with several lattice parameters ($a$) extrapolate them into $a \rightarrow 0$.
-
-The final step is to run the `jqmc` jobs with several $a$, e.g.
+LRDMC energy is biased with the discretized lattice space ($a$) by $O(a^2)$. It means that, to get an unbiased energy, one should compute LRDMC energies with several lattice parameters ($a$) extrapolate them into $a \rightarrow 0$. However, in this benchmark, we simply choose $a = 0.20$ Bohr because the error canceltion might work for the binding energy calculation. The final step is to run the `jqmc` jobs with the given $a$, e.g.
 
 ```bash
-% cd alat_0.30
 % jqmc lrdmc.toml > out_lrdmc 2> out_lrdmc.e
 ```
 
-You may get:
-
-| a (bohr)   | E (Ha)                  |  Var (Ha^2)             |
-|------------|-------------------------|-------------------------|
-| 0.10       | -17.23667 ± 0.000277    | 1.61602 +- 0.000643     |
-| 0.15       | -17.23821 ± 0.000286    | 1.61417 +- 0.000773     |
-| 0.20       | -17.24097 ± 0.000325    | 1.69783 +- 0.079714     |
-| 0.25       | -17.24402 ± 0.000270    | 1.63235 +- 0.006160     |
-| 0.30       | -17.24786 ± 0.000269    | 1.78517 +- 0.066418     |
-
-You can extrapolate them into $a \rightarrow 0$ by `jqmc-tool`
-
-```bash
-% jqmc-tool lrdmc extrapolate-energy alat_0.10/lrdmc.rchk alat_0.15/lrdmc.rchk alat_0.20/lrdmc.rchk alat_0.25/lrdmc.rchk alat_0.30/lrdmc.rchk -s lrdmc_ext.jpg
-> ------------------------------------------------------------------------
-> Read restart checkpoint files from ['alat_0.10/lrdmc.rchk', 'alat_0.15/lrdmc.rchk', 'alat_0.20/lrdmc.rchk', 'alat_0.25/lrdmc.rchk', 'alat_0.30/lrdmc.rchk'].
->   Total number of binned samples = 5
->   For a = 0.1 bohr: E = -17.236661112856858 +- 0.00032635704517869677 Ha.
->   Total number of binned samples = 5
->   For a = 0.15 bohr: E = -17.2382052864809 +- 0.00029723715520135464 Ha.
->   Total number of binned samples = 5
->   For a = 0.2 bohr: E = -17.240993162088692 +- 0.00025740878490131835 Ha.
->   Total number of binned samples = 5
->   For a = 0.25 bohr: E = -17.24401036198691 +- 0.0002365677591168457 Ha.
->   Total number of binned samples = 5
->   For a = 0.3 bohr: E = -17.247804041851044 +- 0.00032247173445041217 Ha.
-> ------------------------------------------------------------------------
-> Extrapolation of the energy with respect to a^2.
->   Polynomial order = 2.
->   For a -> 0 bohr: E = -17.235093943871842 +- 0.00045277462865289897 Ha.
-> ------------------------------------------------------------------------
-> Graph is saved in lrdmc_ext.jpg.
-> ------------------------------------------------------------------------
-> Extrapolation is finished.
-
-```
-
-You may get `E = -xx.xxxx +- x.xxxxx Ha` [LRDMC w/ Jastrow factor in a -> 0].
+You may get `E = -34.49139 +- 0.000651 Ha` [LRDMC with a = 0.2].
 
 > [!NOTE]
 > We are going to discuss the sub kcal/mol accuracy in the binding energy. So, we need to decrease the error bars of the mononer and dimer calculations up to $\sim$ 0.10 mHa and $\sim$ 0.15 mHa.
 
-Your binding enery is....
+Your total energies of the water-water dimer are:
 
-| Ansatz     | Method                  | Binding energy          |  ref      |
+| Ansatz     | Method                  | Total energy (Ha)       |  ref      |
 |------------|-------------------------|-------------------------|-----------|
-| JDFT       | VMC                     | 1.61602 +- 0.000643     | this work |
+| JSD        | VMC                     | -34.45005 +- 0.000506   | this work |
+| JSD        | LRDMC ($a = 0.2$)       | -34.49139 +- 0.000651   | this work |
+
+
+Your binding energies are:
+
+| Ansatz     | Method                  | Binding energy (kcal/mol)  |  ref                 |
+|------------|-------------------------|----------------------------|----------------------|
+| JSD        | VMC                     | -5.1 +- 0.4                | this work            |
+| JSD        | LRDMC ($a = 0.2$)       | -5.1 +- 0.5                | this work            |
+| JSD        | VMC                     | -4.61 +- 0.05              | Zen et al.[^2015ZEN] |
+| JSD        | LRDMC ($a = 0.2$)       | -4.94 +- 0.07              | Zen et al.[^2015ZEN] |
 
 ## Conversion of WF: from JSD to JAGP
 
@@ -400,12 +366,113 @@ Iter     E (Ha)     Max f (Ha)   Max of signal to noise of f
 
 The important criteria are `Max f` and `Max of signal to noise of f`. `Max f` should be zero within the error bar. A practical criterion for the `signal to noise` is < 4~5 because it means that all the residual forces are zero in the statistical sense.
 
-You can also plot them and make a figure.
+## Compute Energy (VMC)
+The next step is VMC calculation. You can generate a template file for a VMC calculation using `jqmc-tool`. Please directly edit `vmc.toml` if you want to change a parameter.
 
 ```bash
-% jqmc-tool vmcopt analyze-output out_vmcopt -p -s vmcopt.jpg
+% cd 08vmc_JAGP
+% cp ../07vmcopt_JAGP/hamiltonian_data_opt_step_200.chk ./hamiltonian_data.chk
+% jqmc-tool vmc generate-input -g
+> Input file is generated: vmc.toml
 ```
 
-![VMC optimization](03vmcopt_JSD/vmcopt.jpg)
+```toml:vmc.toml
+[control]
+job_type = "vmc" # Specify the job type. "vmc", "vmcopt", or "lrdmc"
+mcmc_seed = 34456 # Random seed for MCMC
+number_of_walkers = 300 # Number of walkers per MPI process
+max_time = 86400 # Maximum time in sec.
+restart = false
+restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
+verbosity = "low" # Verbosity level. "low" or "high"
+[vmc]
+num_mcmc_steps = 90000 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
+num_mcmc_per_measurement = 40 # Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.
+num_mcmc_warmup_steps = 0 # Number of observable measurement steps for warmup (i.e., discarged).
+num_mcmc_bin_blocks = 5 # Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_mcmc_bin_blocks * mpi_size * number_of_walkers.
+Dt = 2.0 # Step size for the MCMC update (bohr).
+epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
+```
+
+The final step is to run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing system such as PBS).
+
+```bash
+% jqmc vmc.toml > out_vmc 2> out_vmc.e # w/o MPI on CPU
+% mpirun -np 4 jqmc vmc.toml > out_vmc 2> out_vmc.e # w/ MPI on CPU
+% mpiexec -n 4 -map-by ppr:4:node jqmc vmc.toml > out_vmc 2> out_vmc.e # w/ MPI on GPU, depending the queueing system.
+```
+
+You may get `E = -34.46554 +- 0.000476 Ha` [VMC]
 
 You should gain the energy with respect the the JSD value; otherwise, the optimization went wrong.
+
+## Compute Energy (LRDMC)
+The final step is LRDMC calculation. You can generate a template file for a LRDMC calculation using `jqmc-tool`. Please directly edit `lrdmc.toml` if you want to change a parameter.
+
+```bash
+% cd 09lrdmc_JAGP
+% cp ../08vmc_JAGP/hamiltonian_data.chk ./hamiltonian_data.chk
+% jqmc-tool lrdmc generate-input -g lrdmc.toml
+> Input file is generated: lrdmc.toml
+```
+
+```toml:lrdmc.toml
+[control]
+  job_type = 'lrdmc'
+  mcmc_seed = 34467
+  number_of_walkers = 300
+  max_time = 10400
+  restart = false
+  restart_chk = 'lrdmc.rchk'
+  hamiltonian_chk = '../hamiltonian_data.chk'
+  verbosity = 'low'
+
+[lrdmc]
+  num_mcmc_steps  = 40000
+  num_mcmc_per_measurement = 30
+  alat = 0.20
+  non_local_move = "dltmove"
+  num_gfmc_warmup_steps = 50
+  num_gfmc_bin_blocks = 50
+  num_gfmc_collect_steps = 20
+  E_scf = -17.00
+```
+
+LRDMC energy is biased with the discretized lattice space ($a$) by $O(a^2)$. It means that, to get an unbiased energy, one should compute LRDMC energies with several lattice parameters ($a$) extrapolate them into $a \rightarrow 0$. However, in this benchmark, we simply choose $a = 0.20$ Bohr because the error canceltion might work for the binding energy calculation. The final step is to run the `jqmc` jobs with the given $a$, e.g.
+
+```bash
+% jqmc lrdmc.toml > out_lrdmc 2> out_lrdmc.e
+```
+
+You may get `E = -34.49444 +- 0.000529 Ha` [LRDMC with a = 0.2]
+
+You should gain the energy with respect the the JSD value; otherwise, the optimization went wrong.
+
+> [!NOTE]
+> We are going to discuss the sub kcal/mol accuracy in the binding energy. So, we need to decrease the error bars of the mononer and dimer calculations up to $\sim$ 0.10 mHa and $\sim$ 0.15 mHa.
+
+Your total energies of the water-water dimer are:
+
+| Ansatz     | Method                  | Total energy (Ha)       |  ref      |
+|------------|-------------------------|-------------------------|-----------|
+| JSD        | VMC                     | -34.45005 +- 0.000506   | this work |
+| JAGPs      | VMC                     | -34.46554 +- 0.000476   | this work |
+| JSD        | LRDMC ($a = 0.2$)       | -34.49139 +- 0.000651   | this work |
+| JAGPs      | LRDMC ($a = 0.2$)       | -34.49444 +- 0.000529   | this work |
+
+
+Your binding energies are:
+
+| Ansatz     | Method                  | Binding energy (kcal/mol)  |  ref                 |
+|------------|-------------------------|----------------------------|----------------------|
+| JSD        | VMC                     | -5.1 +- 0.4                | this work            |
+| JSD        | VMC                     | -4.61 +- 0.05              | Zen et al.[^2015ZEN] |
+| JAGPs      | VMC                     | -3.9 +- 0.4                | this work            |
+| JAGPs      | VMC                     | -4.17 +- 0.1               | Zen et al.[^2015ZEN] |
+| JSD        | LRDMC ($a = 0.2$)       | -5.1 +- 0.5                | this work            |
+| JSD        | LRDMC ($a = 0.2$)       | -4.94 +- 0.07              | Zen et al.[^2015ZEN] |
+| JAGPs      | LRDMC ($a = 0.2$)       | -4.9 +- 0.4                | this work            |
+| JAGPs      | LRDMC ($a = 0.2$)       | -4.88 +- 0.06              | Zen et al.[^2015ZEN] |
+
+[2015ZEN]: A. Zen et al. J. Chem. Phys. 142, 144111 (2015) [https://doi.org/10.1063/1.4917171](https://doi.org/10.1063/1.4917171)
