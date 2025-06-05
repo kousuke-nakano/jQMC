@@ -87,7 +87,7 @@ You may get `E = -16.94478 +- 0.000203` [VMC wo/ Jastrow factors]
 
 These two energies should be consistent with the VMC error bar as far as the VMC implemenation is correct.
 
-Here is the summary of the Validation test (WIP).
+Here is the summary of the Validation tests.
 
 | System  | Spin     |  Type    |   basis        |  ECP    |GTOs           |  HF (Ha)      | VMC (Ha)      |
 |---------|----------|----------|----------------|---------|---------------|---------------|---------------|

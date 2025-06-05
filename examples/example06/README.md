@@ -475,4 +475,4 @@ Your binding energies are:
 | JAGPs      | LRDMC ($a = 0.2$)       | -4.9 +- 0.4                | this work            |
 | JAGPs      | LRDMC ($a = 0.2$)       | -4.88 +- 0.06              | Zen et al.[^2015ZEN] |
 
-[2015ZEN]: A. Zen et al. J. Chem. Phys. 142, 144111 (2015) [https://doi.org/10.1063/1.4917171](https://doi.org/10.1063/1.4917171)
+[^2015ZEN]: A. Zen et al. J. Chem. Phys. 142, 144111 (2015) [https://doi.org/10.1063/1.4917171](https://doi.org/10.1063/1.4917171)
