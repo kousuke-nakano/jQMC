@@ -1273,6 +1273,12 @@ class GFMC_fixed_projection_time:
         ave_timer_reconfiguration = mpi_comm.allreduce(timer_reconfiguration, op=MPI.SUM) / mpi_size / num_mcmc_done
         ave_timer_misc = mpi_comm.allreduce(timer_misc, op=MPI.SUM) / mpi_size / num_mcmc_done
 
+        sum_killed_walkers = mpi_comm.allreduce(self.__num_killed_walkers, op=MPI.SUM)
+        sum_survived_walkers = mpi_comm.allreduce(self.__num_survived_walkers, op=MPI.SUM)
+        ave_stored_average_projection_counter = (
+            mpi_comm.allreduce(np.mean(self.__stored_average_projection_counter), op=MPI.SUM) / mpi_size
+        )
+
         logger.info(f"Total GFMC time for {num_mcmc_done} branching steps = {ave_timer_gfmc_total: .3f} sec.")
         logger.info(f"Pre-compilation time for GFMC = {ave_timer_projection_init: .3f} sec.")
         logger.info(f"Net GFMC time without pre-compilations = {ave_timer_net_gfmc_total: .3f} sec.")
@@ -1284,9 +1290,9 @@ class GFMC_fixed_projection_time:
         logger.info(f"  Time for walker reconfiguration time per branching = {ave_timer_reconfiguration * 10**3: .3f} msec.")
         logger.info(f"  Time for misc. (others) = {ave_timer_misc * 10**3:.2f} msec.")
         logger.info(
-            f"Survived walkers ratio = {self.__num_survived_walkers / (self.__num_survived_walkers + self.__num_killed_walkers) * 100:.2f} %"
+            f"Survived walkers ratio = {sum_survived_walkers / (sum_survived_walkers + sum_killed_walkers) * 100:.2f} %"
         )
-        logger.info(f"Average of the number of projections  = {np.mean(self.__stored_average_projection_counter):.0f}")
+        logger.info(f"Average of the number of projections  = {ave_stored_average_projection_counter:.0f}")
         logger.info("")
 
         self.__timer_gmfc_total += timer_gfmc_total
@@ -3881,6 +3887,8 @@ class GFMC_fixed_num_projection:
         ave_timer_reconfiguration = mpi_comm.allreduce(timer_reconfiguration, op=MPI.SUM) / mpi_size / num_mcmc_done
         ave_timer_update_E_scf = mpi_comm.allreduce(timer_update_E_scf, op=MPI.SUM) / mpi_size / num_mcmc_done
         ave_timer_misc = mpi_comm.allreduce(timer_misc, op=MPI.SUM) / mpi_size / num_mcmc_done
+        sum_killed_walkers = mpi_comm.allreduce(self.__num_killed_walkers, op=MPI.SUM)
+        sum_survived_walkers = mpi_comm.allreduce(self.__num_survived_walkers, op=MPI.SUM)
 
         logger.info(f"Total GFMC time for {num_mcmc_done} branching steps = {ave_timer_gfmc_total: .3f} sec.")
         logger.info(f"Pre-compilation time for GFMC = {ave_timer_projection_init: .3f} sec.")
@@ -3898,7 +3906,7 @@ class GFMC_fixed_num_projection:
         logger.info(f"  Time for updating E_scf = {ave_timer_update_E_scf * 10**3:.2f} msec.")
         logger.info(f"  Time for misc. (others) = {ave_timer_misc * 10**3:.2f} msec.")
         logger.info(
-            f"Survived walkers ratio = {self.__num_survived_walkers / (self.__num_survived_walkers + self.__num_killed_walkers) * 100:.2f} %. Ideal is ~ 98 %. Adjust num_mcmc_per_measurement."
+            f"Survived walkers ratio = {sum_survived_walkers / (sum_survived_walkers + sum_killed_walkers) * 100:.2f} %. Ideal is ~ 98 %. Adjust num_mcmc_per_measurement."
         )
         logger.info("")
 

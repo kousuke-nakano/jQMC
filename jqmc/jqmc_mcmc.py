@@ -1109,6 +1109,9 @@ class MCMC:
         ave_timer_de_L_dc = mpi_comm.allreduce(timer_de_L_dc, op=MPI.SUM) / mpi_size / num_mcmc_done
         ave_timer_MPI_barrier = mpi_comm.allreduce(timer_MPI_barrier, op=MPI.SUM) / mpi_size / num_mcmc_done
         ave_timer_misc = mpi_comm.allreduce(timer_misc, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_stored_w_L = mpi_comm.allreduce(np.mean(self.__stored_w_L), op=MPI.SUM) / mpi_size
+        sum_accepted_moves = mpi_comm.allreduce(self.__accepted_moves, op=MPI.SUM)
+        sum_rejected_moves = mpi_comm.allreduce(self.__rejected_moves, op=MPI.SUM)
 
         logger.info(f"Total elapsed time for MCMC {num_mcmc_done} steps. = {ave_timer_mcmc_total:.2f} sec.")
         logger.info(f"Pre-compilation time for MCMC = {ave_timer_mcmc_update_init:.2f} sec.")
@@ -1122,9 +1125,9 @@ class MCMC:
         logger.info(f"  Time for computing de_L/dc = {ave_timer_de_L_dc * 10**3:.2f} msec.")
         logger.info(f"  Time for MPI barrier after MCMC update = {ave_timer_MPI_barrier * 10**3:.2f} msec.")
         logger.info(f"  Time for misc. (others) = {ave_timer_misc * 10**3:.2f} msec.")
-        logger.info(f"Average of walker weights is {np.mean(self.__stored_w_L):.3f}. Ideal is ~ 0.800. Adjust epsilon_AS.")
+        logger.info(f"Average of walker weights is {ave_stored_w_L:.3f}. Ideal is ~ 0.800. Adjust epsilon_AS.")
         logger.info(
-            f"Acceptance ratio is {self.__accepted_moves / (self.__accepted_moves + self.__rejected_moves) * 100:.2f} %.  Ideal is ~ 50.00%. Adjust Dt."
+            f"Acceptance ratio is {sum_accepted_moves / (sum_accepted_moves + sum_rejected_moves) * 100:.2f} %.  Ideal is ~ 50.00%. Adjust Dt."
         )
         logger.info("")
 
