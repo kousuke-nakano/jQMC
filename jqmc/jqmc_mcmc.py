@@ -63,6 +63,7 @@ from .jastrow_factor import (
     Jastrow_two_body_data,
     compute_Jastrow_part_jax,
 )
+from .jqmc_utility import generate_init_electron_configurations
 from .structure import find_nearest_index_jax
 from .swct import SWCT_data, evaluate_swct_domega_jax, evaluate_swct_omega_jax
 from .wavefunction import (
@@ -168,133 +169,50 @@ class MCMC:
         self.__timer_MPI_barrier = 0.0
         self.__timer_misc = 0.0
 
-        # Place electrons around each nucleus with improved spin assignment
-
-        tot_num_electron_up = hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
-        tot_num_electron_dn = hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
-
-        r_carts_up_list = []
-        r_carts_dn_list = []
-
+        # initialize random seed
         np.random.seed(self.__mpi_seed)
 
-        logger.debug("")
+        # Place electrons around each nucleus with improved spin assignment
+        ## check the number of electrons
+        tot_num_electron_up = hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+        tot_num_electron_dn = hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+        if hamiltonian_data.coulomb_potential_data.ecp_flag:
+            charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
+                hamiltonian_data.coulomb_potential_data.z_cores
+            )
+        else:
+            charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
+
+        coords = hamiltonian_data.structure_data.positions_cart_jnp
+
+        ## generate initial electron configurations
+        r_carts_up, r_carts_dn, up_owner, dn_owner = generate_init_electron_configurations(
+            tot_num_electron_up, tot_num_electron_dn, self.__num_walkers, charges, coords
+        )
+
+        ## Electron assignment for all atoms is complete. Check the assignment.
         for i_walker in range(self.__num_walkers):
-            # Initialization
-            r_carts_up = []
-            r_carts_dn = []
-            total_assigned_up = 0
-            total_assigned_dn = 0
-
-            if hamiltonian_data.coulomb_potential_data.ecp_flag:
-                charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
-                    hamiltonian_data.coulomb_potential_data.z_cores
-                )
-            else:
-                charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
-
-            logger.devel(f"charges = {charges}.")
-            coords = hamiltonian_data.structure_data.positions_cart_jnp
-
-            # Place electrons for each atom
-            # 1) Convert each atomic charge to an integer electron count
-            n_i_list = [int(round(charge)) for charge in charges]
-
-            # 2) Determine the base number of paired electrons for each atom: floor(n_i/2)
-            base_up_list = [n_i // 2 for n_i in n_i_list]
-            base_dn_list = base_up_list.copy()
-
-            # 3) If an atom has an odd number of electrons, assign the leftover one to up-spin
-            leftover_list = [n_i - 2 * base for n_i, base in zip(n_i_list, base_up_list)]
-            # leftover_i is either 0 or 1
-            base_up_list = [u + o for u, o in zip(base_up_list, leftover_list)]
-
-            # 4) Compute the current totals of up and down electrons
-            base_up_sum = sum(base_up_list)
-            # base_dn_sum = sum(base_dn_list)
-
-            # 5) Compute how many extra up/down electrons are needed to reach the target totals
-            extra_up = tot_num_electron_up - base_up_sum  # positive → need more up; negative → need more down
-
-            # 6) Initialize final per-atom assignment lists
-            assign_up = base_up_list.copy()
-            assign_dn = base_dn_list.copy()
-
-            # 7) Distribute extra up-spin electrons in a round-robin fashion if extra_up > 0
-            if extra_up > 0:
-                # Prefer atoms that currently have at least one down-spin electron; fall back to all atoms
-                eligible = [i for i, dn in enumerate(assign_dn) if dn > 0]
-                if not eligible:
-                    eligible = list(range(len(coords)))
-                for k in range(extra_up):
-                    atom = eligible[k % len(eligible)]
-                    assign_up[atom] += 1
-                    assign_dn[atom] -= 1
-
-            # 8) Distribute extra down-spin electrons in a round-robin fashion if extra_up < 0
-            elif extra_up < 0:
-                # Now extra_dn = -extra_up > 0
-                eligible = [i for i, up in enumerate(assign_up) if up > 0]
-                if not eligible:
-                    eligible = list(range(len(coords)))
-                for k in range(-extra_up):
-                    atom = eligible[k % len(eligible)]
-                    assign_up[atom] -= 1
-                    assign_dn[atom] += 1
-
-            # 9) Recompute totals and log them
-            total_assigned_up = sum(assign_up)
-            total_assigned_dn = sum(assign_dn)
-
-            # 10) Random placement of electrons using assign_up and assign_dn
-            r_carts_up = []
-            r_carts_dn = []
-            for i, (x, y, z) in enumerate(coords):
-                # Place up-spin electrons for atom i
-                for _ in range(assign_up[i]):
-                    distance = np.random.uniform(0.1, 1.0)
-                    theta = np.random.uniform(0, np.pi)
-                    phi = np.random.uniform(0, 2 * np.pi)
-                    dx = distance * np.sin(theta) * np.cos(phi)
-                    dy = distance * np.sin(theta) * np.sin(phi)
-                    dz = distance * np.cos(theta)
-                    r_carts_up.append([x + dx, y + dy, z + dz])
-
-                # Place down-spin electrons for atom i
-                for _ in range(assign_dn[i]):
-                    distance = np.random.uniform(0.1, 1.0)
-                    theta = np.random.uniform(0, np.pi)
-                    phi = np.random.uniform(0, 2 * np.pi)
-                    dx = distance * np.sin(theta) * np.cos(phi)
-                    dy = distance * np.sin(theta) * np.sin(phi)
-                    dz = distance * np.cos(theta)
-                    r_carts_dn.append([x + dx, y + dy, z + dz])
-
-            r_carts_up = jnp.array(r_carts_up, dtype=jnp.float64)
-            r_carts_dn = jnp.array(r_carts_dn, dtype=jnp.float64)
-
-            # Electron assignment for all atoms is complete
             logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
-            logger.debug(f"  Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
-            logger.debug(f"  Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
+            nion = coords.shape[0]
+            up_counts = np.bincount(up_owner[i_walker], minlength=nion)
+            dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
+            logger.debug(f"  Charges: {charges}")
+            logger.debug(f"  up counts: {up_counts}")
+            logger.debug(f"  dn counts: {dn_counts}")
+            logger.debug(f"  Total counts: {up_counts + dn_counts}")
 
-            # If necessary, include a check/adjustment step to ensure the overall assignment matches the targets
-            # (Here it is assumed that sum(round(charge)) equals tot_num_electron_up + tot_num_electron_dn)
+        self.__latest_r_up_carts = jnp.array(r_carts_up)
+        self.__latest_r_dn_carts = jnp.array(r_carts_dn)
 
-            r_carts_up_list.append(r_carts_up)
-            r_carts_dn_list.append(r_carts_dn)
+        logger.debug(f"  initial r_up_carts= {self.__latest_r_up_carts}")
+        logger.debug(f"  initial r_dn_carts = {self.__latest_r_dn_carts}")
+        logger.debug(f"  initial r_up_carts.shape = {self.__latest_r_up_carts.shape}")
+        logger.debug(f"  initial r_dn_carts.shape = {self.__latest_r_dn_carts.shape}")
         logger.debug("")
 
-        self.__latest_r_up_carts = jnp.array(r_carts_up_list)
-        self.__latest_r_dn_carts = jnp.array(r_carts_dn_list)
-
+        # print out the number of walkers/MPI processes
         logger.info(f"The number of MPI process = {mpi_size}.")
         logger.info(f"The number of walkers assigned for each MPI process = {self.__num_walkers}.")
-
-        logger.devel(f"initial r_up_carts= {self.__latest_r_up_carts}")
-        logger.devel(f"initial r_dn_carts = {self.__latest_r_dn_carts}")
-        logger.devel(f"initial r_up_carts.shape = {self.__latest_r_up_carts.shape}")
-        logger.devel(f"initial r_dn_carts.shape = {self.__latest_r_dn_carts.shape}")
         logger.info("")
 
         # print out hamiltonian info
@@ -2642,120 +2560,48 @@ class MCMC_debug:
         self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
         self.__jax_PRNG_key_list = jnp.array([jax.random.fold_in(self.__jax_PRNG_key, nw) for nw in range(self.__num_walkers)])
 
-        # Place electrons around each nucleus with improved spin assignment
-
-        tot_num_electron_up = hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
-        tot_num_electron_dn = hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
-
-        r_carts_up_list = []
-        r_carts_dn_list = []
-
+        # initialize random seed
         np.random.seed(self.__mpi_seed)
 
-        for _ in range(self.__num_walkers):
-            # Initialization
-            r_carts_up = []
-            r_carts_dn = []
+        # Place electrons around each nucleus with improved spin assignment
+        ## check the number of electrons
+        tot_num_electron_up = hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+        tot_num_electron_dn = hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+        if hamiltonian_data.coulomb_potential_data.ecp_flag:
+            charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
+                hamiltonian_data.coulomb_potential_data.z_cores
+            )
+        else:
+            charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
 
-            if hamiltonian_data.coulomb_potential_data.ecp_flag:
-                charges = np.array(hamiltonian_data.structure_data.atomic_numbers) - np.array(
-                    hamiltonian_data.coulomb_potential_data.z_cores
-                )
-            else:
-                charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
+        coords = hamiltonian_data.structure_data.positions_cart_jnp
 
-            logger.devel(f"charges = {charges}.")
-            coords = hamiltonian_data.structure_data.positions_cart_jnp
+        ## generate initial electron configurations
+        r_carts_up, r_carts_dn, up_owner, dn_owner = generate_init_electron_configurations(
+            tot_num_electron_up, tot_num_electron_dn, self.__num_walkers, charges, coords
+        )
 
-            # Place electrons for each atom
-            # 1) Convert each atomic charge to an integer electron count
-            n_i_list = [int(round(charge)) for charge in charges]
+        ## Electron assignment for all atoms is complete. Check the assignment.
+        for i_walker in range(self.__num_walkers):
+            logger.debug(f"--Walker No.{i_walker + 1}: electrons assignment--")
+            nion = coords.shape[0]
+            up_counts = np.bincount(up_owner[i_walker], minlength=nion)
+            dn_counts = np.bincount(dn_owner[i_walker], minlength=nion)
+            logger.debug(f"  Charges: {charges}")
+            logger.debug(f"  up counts: {up_counts}")
+            logger.debug(f"  dn counts: {dn_counts}")
+            logger.debug(f"  Total counts: {up_counts + dn_counts}")
 
-            # 2) Determine the base number of paired electrons for each atom: floor(n_i/2)
-            base_up_list = [n_i // 2 for n_i in n_i_list]
-            base_dn_list = base_up_list.copy()
+        self.__latest_r_up_carts = jnp.array(r_carts_up)
+        self.__latest_r_dn_carts = jnp.array(r_carts_dn)
 
-            # 3) If an atom has an odd number of electrons, assign the leftover one to up-spin
-            leftover_list = [n_i - 2 * base for n_i, base in zip(n_i_list, base_up_list)]
-            # leftover_i is either 0 or 1
-            base_up_list = [u + o for u, o in zip(base_up_list, leftover_list)]
+        logger.debug(f"  initial r_up_carts= {self.__latest_r_up_carts}")
+        logger.debug(f"  initial r_dn_carts = {self.__latest_r_dn_carts}")
+        logger.debug(f"  initial r_up_carts.shape = {self.__latest_r_up_carts.shape}")
+        logger.debug(f"  initial r_dn_carts.shape = {self.__latest_r_dn_carts.shape}")
+        logger.debug("")
 
-            # 4) Compute the current totals of up and down electrons
-            base_up_sum = sum(base_up_list)
-            # base_dn_sum = sum(base_dn_list)
-
-            # 5) Compute how many extra up/down electrons are needed to reach the target totals
-            extra_up = tot_num_electron_up - base_up_sum  # positive → need more up; negative → need more down
-
-            # 6) Initialize final per-atom assignment lists
-            assign_up = base_up_list.copy()
-            assign_dn = base_dn_list.copy()
-
-            # 7) Distribute extra up-spin electrons in a round-robin fashion if extra_up > 0
-            if extra_up > 0:
-                # Prefer atoms that currently have at least one down-spin electron; fall back to all atoms
-                eligible = [i for i, dn in enumerate(assign_dn) if dn > 0]
-                if not eligible:
-                    eligible = list(range(len(coords)))
-                for k in range(extra_up):
-                    atom = eligible[k % len(eligible)]
-                    assign_up[atom] += 1
-                    assign_dn[atom] -= 1
-
-            # 8) Distribute extra down-spin electrons in a round-robin fashion if extra_up < 0
-            elif extra_up < 0:
-                # Now extra_dn = -extra_up > 0
-                eligible = [i for i, up in enumerate(assign_up) if up > 0]
-                if not eligible:
-                    eligible = list(range(len(coords)))
-                for k in range(-extra_up):
-                    atom = eligible[k % len(eligible)]
-                    assign_up[atom] -= 1
-                    assign_dn[atom] += 1
-
-            # 9) Recompute totals and log them
-            total_assigned_up = sum(assign_up)
-            total_assigned_dn = sum(assign_dn)
-
-            # 10) Random placement of electrons using assign_up and assign_dn
-            for i, (x, y, z) in enumerate(coords):
-                # Place up-spin electrons for atom i
-                for _ in range(assign_up[i]):
-                    distance = np.random.uniform(0.1, 1.0)
-                    theta = np.random.uniform(0, np.pi)
-                    phi = np.random.uniform(0, 2 * np.pi)
-                    dx = distance * np.sin(theta) * np.cos(phi)
-                    dy = distance * np.sin(theta) * np.sin(phi)
-                    dz = distance * np.cos(theta)
-                    r_carts_up.append([x + dx, y + dy, z + dz])
-
-                # Place down-spin electrons for atom i
-                for _ in range(assign_dn[i]):
-                    distance = np.random.uniform(0.1, 1.0)
-                    theta = np.random.uniform(0, np.pi)
-                    phi = np.random.uniform(0, 2 * np.pi)
-                    dx = distance * np.sin(theta) * np.cos(phi)
-                    dy = distance * np.sin(theta) * np.sin(phi)
-                    dz = distance * np.cos(theta)
-                    r_carts_dn.append([x + dx, y + dy, z + dz])
-
-            r_carts_up = jnp.array(r_carts_up, dtype=jnp.float64)
-            r_carts_dn = jnp.array(r_carts_dn, dtype=jnp.float64)
-
-            # Electron assignment for all atoms is complete
-            logger.info(f"Total assigned up electrons: {total_assigned_up} (target {tot_num_electron_up}).")
-            logger.info(f"Total assigned dn electrons: {total_assigned_dn} (target {tot_num_electron_dn}).")
-            logger.info("")
-
-            # If necessary, include a check/adjustment step to ensure the overall assignment matches the targets
-            # (Here it is assumed that sum(round(charge)) equals tot_num_electron_up + tot_num_electron_dn)
-
-            r_carts_up_list.append(r_carts_up)
-            r_carts_dn_list.append(r_carts_dn)
-
-        self.__latest_r_up_carts = jnp.array(r_carts_up_list)
-        self.__latest_r_dn_carts = jnp.array(r_carts_dn_list)
-
+        # print out the number of walkers/MPI processes
         logger.info(f"The number of MPI process = {mpi_size}.")
         logger.info(f"The number of walkers assigned for each MPI process = {self.__num_walkers}.")
         logger.info("")
