@@ -48,6 +48,7 @@ from ..jqmc.coulomb_potential import (
 from ..jqmc.determinant import compute_geminal_all_elements_jax
 from ..jqmc.hamiltonians import Hamiltonian_data
 from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data
+from ..jqmc.structure import find_nearest_index_jax
 from ..jqmc.trexio_wrapper import read_trexio_file
 from ..jqmc.wavefunction import Wavefunction_data, compute_kinetic_energy_jax, evaluate_wavefunction_jax
 
@@ -574,7 +575,7 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp():
     jax.clear_caches()
 
 
-def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp_w_AS():
+def test_full_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp():
     """Test comparison with the corresponding ECP TurboRVB calculation with 2b,1b3b Jastrow factor."""
     (
         structure_data,
@@ -624,6 +625,10 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp_w_AS():
     new_r_dn_carts = old_r_dn_carts.copy()
     new_r_up_carts[2] = [-0.753191857352684, -1.183650619518406e-002, 0.456739833308641]
 
+    fa_turbo = 0.470249568592385
+    fb_turbo = 0.437344721251066
+    T_ratio_turbo = 1.06518922117014
+    final_ratio_turbo = 0.901584512996174
     WF_ratio_ref_turborvb = 0.846407844801284
     kinc_ref_turborvb = 13.8637480286375
     vpot_ref_turborvb = -30.808883190726
@@ -671,6 +676,9 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp_w_AS():
     F_new_turborvb = 54231.8526090902
     S_new_turborvb = 5.669181330133306e-003
 
+    # print(f"fa={fa_turbo}")
+    # print(f"fb={fb_turbo}")
+    # print(f"T_ratio={T_ratio_turbo}")
     # print(f"wf_ratio_ref={WF_ratio_ref_turborvb}")
     # print(f"kinc_ref={kinc_ref_turborvb} Ha")
     # print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
@@ -683,6 +691,35 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp_w_AS():
     # print(f"S_new_turborvb={S_new_turborvb}")
     # print(f"F_old_turborvb={F_old_turborvb}")
     # print(f"F_new_turborvb={F_new_turborvb}")
+
+    # Dt parameter
+    Dt = 2.0
+    # charges
+    charges = jnp.array(hamiltonian_data.structure_data.atomic_numbers) - jnp.array(
+        hamiltonian_data.coulomb_potential_data.z_cores
+    )
+    # coords
+    coords = hamiltonian_data.structure_data.positions_cart_jnp
+
+    # comput f_a
+    old_r_cart = old_r_up_carts[2]
+    nearest_atom_index = find_nearest_index_jax(hamiltonian_data.structure_data, old_r_cart)
+    R_cart = coords[nearest_atom_index]
+    Z = charges[nearest_atom_index]
+    norm_r_R = jnp.linalg.norm(old_r_cart - R_cart)
+    fa = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
+
+    # comput f_b
+    new_r_cart = new_r_up_carts[2]
+    nearest_atom_index = find_nearest_index_jax(hamiltonian_data.structure_data, new_r_cart)
+    R_cart = coords[nearest_atom_index]
+    Z = charges[nearest_atom_index]
+    norm_r_R = jnp.linalg.norm(new_r_cart - R_cart)
+    fb = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
+
+    T_ratio = (fa / fb) * jnp.exp(
+        -(jnp.linalg.norm(new_r_cart - old_r_cart) ** 2) * (1.0 / (2.0 * fb**2 * Dt**2) - 1.0 / (2.0 * fa**2 * Dt**2))
+    )
 
     WF_ratio = (
         evaluate_wavefunction_jax(
@@ -776,9 +813,14 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp_w_AS():
     WF_ratio = WF_ratio * R_AS_ratio
     reweight = (R_AS_new / R_AS_new_eps) ** 2
 
+    final_ratio = WF_ratio * T_ratio
+
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=10)
     np.testing.assert_almost_equal(vpot_ecp_debug, vpot_ecp_jax, decimal=10)
 
+    # print(f"fa={fa}")
+    # print(f"fb={fb}")
+    # print(f"T_ratio={T_ratio}")
     # print(f"wf_ratio={WF_ratio}")
     # print(f"kinc={kinc} Ha")
     # print(f"vpot={vpot_bare_jax + vpot_ecp_jax} Ha")
@@ -792,7 +834,11 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp_w_AS():
     # print(f"F_old={F_old}")
     # print(f"F_new={F_new}")
 
+    np.testing.assert_almost_equal(fa_turbo, fa, decimal=6)
+    np.testing.assert_almost_equal(fb_turbo, fb, decimal=6)
+    np.testing.assert_almost_equal(T_ratio_turbo, T_ratio, decimal=6)
     np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=6)
+    np.testing.assert_almost_equal(final_ratio_turbo, final_ratio, decimal=6)
     np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
     np.testing.assert_almost_equal(vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
     np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
