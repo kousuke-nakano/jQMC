@@ -632,12 +632,57 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp_w_AS():
     R_AS_turborvb_new = 0.116703654039403
     reweight_turborvb = 0.151330476290540  # (R_AS/R_AS_new)**2
 
+    geminal_old_turborvb = np.array(
+        [
+            [0.186887184114679, 7.221020612173907e-003, 2.919097229181558e-002, 5.283664938570871e-002],
+            [2.711743127945612e-002, -1.872067172512451e-002, 5.968147400894821e-002, -1.363982711796792e-002],
+            [0.196787090743597, 9.308561211374290e-002, 5.042625023653007e-003, 0.135256480405370],
+            [0.152575006966341, -3.569426461507245e-002, 9.441528784169728e-002, 1.156481954187638e-002],
+        ]
+    ).T
+    geminal_old_inv_turborvb = np.array(
+        [
+            [28.3428553785392, 25.1090600332577, -6.46293061989623, -24.2896159779225],
+            [60.8384654289715, 107.593342484689, -5.51752310057257, -86.5266697623310],
+            [-12.6799632376411, 13.7073868055362, 5.86243683627820, 5.53407554454391],
+            [-82.6337748432271, -111.090072627085, 20.3750774128231, 94.6820779038449],
+        ]
+    ).T
+
+    F_old_turborvb = 53823.3438428566
+    S_old_turborvb = 4.833741852724715e-003
+
+    geminal_new_turborvb = np.array(
+        [
+            [0.186887184114679, 7.221020612173907e-03, 7.892154586169434e-02, 5.283664938570871e-02],
+            [2.711743127945612e-02, -1.872067172512451e-02, 6.631227501216763e-02, -1.363982711796792e-02],
+            [0.196787090743597, 9.308561211374290e-02, 4.145830624511430e-02, 0.135256480405370],
+            [0.152575006966341, -3.569426461507245e-02, 0.140717058457383, 1.156481954187638e-02],
+        ]
+    ).T
+    geminal_new_inv_turborvb = np.array(
+        [
+            [31.2877172833434, 21.9255838305659, -7.82445403955623, -25.5748790298734],
+            [54.4536972959671, 114.495451333313, -2.56559814680722, -83.7400852494081],
+            [-13.6339111349753, 14.7386305541198, 6.30348380056440, 5.95041900157655],
+            [-78.8179295346585, -115.215105693377, 18.6108647192022, 93.0166806303557],
+        ]
+    ).T
+    F_new_turborvb = 54231.8526090902
+    S_new_turborvb = 5.669181330133306e-003
+
     # print(f"wf_ratio_ref={WF_ratio_ref_turborvb}")
     # print(f"kinc_ref={kinc_ref_turborvb} Ha")
     # print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
     # print(f"R_AS_old={R_AS_turborvb_old}")
     # print(f"R_AS_new={R_AS_turborvb_new}")
     # print(f"reweight={reweight_turborvb}")
+    # print(f"geminal_old_inv={geminal_old_inv_turborvb}")
+    # print(f"geminal_new_inv={geminal_new_inv_turborvb}")
+    # print(f"S_old_turborvb={S_old_turborvb}")
+    # print(f"S_new_turborvb={S_new_turborvb}")
+    # print(f"F_old_turborvb={F_old_turborvb}")
+    # print(f"F_new_turborvb={F_new_turborvb}")
 
     WF_ratio = (
         evaluate_wavefunction_jax(
@@ -740,11 +785,27 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp_w_AS():
     # print(f"R_AS_old={R_AS_old}")
     # print(f"R_AS_new={R_AS_new}")
     # print(f"reweight={reweight}")
+    # print(f"geminal_old_inv={geminal_old_inv}")
+    # print(f"geminal_new_inv={geminal_new_inv}")
+    # print(f"S_old={S_old}")
+    # print(f"S_new={S_new}")
+    # print(f"F_old={F_old}")
+    # print(f"F_new={F_new}")
 
     np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=6)
     np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
     np.testing.assert_almost_equal(vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
     np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
+
+    np.testing.assert_almost_equal(geminal_old_turborvb, geminal_old, decimal=6)
+    np.testing.assert_almost_equal(geminal_new_turborvb, geminal_new, decimal=6)
+    np.testing.assert_almost_equal(S_old_turborvb, S_old, decimal=6)
+    np.testing.assert_almost_equal(S_new_turborvb, S_new, decimal=6)
+
+    # np.testing.assert_almost_equal(geminal_old_inv_turborvb, geminal_old_inv, decimal=4)
+    # np.testing.assert_almost_equal(geminal_new_inv_turborvb, geminal_new_inv, decimal=4)
+    # np.testing.assert_almost_equal(F_old_turborvb, F_old, decimal=4)
+    # np.testing.assert_almost_equal(F_new_turborvb, F_new, decimal=4)
 
     np.testing.assert_almost_equal(R_AS_turborvb_old, R_AS_old, decimal=6)
     np.testing.assert_almost_equal(R_AS_turborvb_new, R_AS_new, decimal=6)
