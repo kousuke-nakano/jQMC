@@ -33,6 +33,7 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 # python modules
+import gzip
 import os
 import pickle
 import sys
@@ -283,10 +284,11 @@ def cli():
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
             """Unzip the checkpoint file for each process and load them."""
-            filename = f"{mpi_rank}_{restart_chk}"
-            with zipfile.ZipFile(restart_chk, "r") as zipf:
-                data = zipf.read(filename)
-                vmc = pickle.loads(data)
+            with zipfile.ZipFile(restart_chk, "r") as zf:
+                arcname = f"{mpi_rank}_{restart_chk}.pkl.gz"
+                with zf.open(arcname) as zipped_gz_fobj:
+                    with gzip.open(zipped_gz_fobj, "rb") as gz:
+                        vmc = pickle.load(gz)
 
         else:
             with open(hamiltonian_chk, "rb") as f:
@@ -320,8 +322,8 @@ def cli():
             logger.info("  " + "-" * sep)
             logger.info("  Label   Fx(Ha/bohr) Fy(Ha/bohr) Fz(Ha/bohr)")
             logger.info("  " + "-" * sep)
-            for i in range(len(hamiltonian_data.structure_data.atomic_labels)):
-                atomic_label = str(hamiltonian_data.structure_data.atomic_labels[i])
+            for i in range(len(vmc.hamiltonian_data.structure_data.atomic_labels)):
+                atomic_label = str(vmc.hamiltonian_data.structure_data.atomic_labels[i])
                 row_values = [f"{ufloat(f_mean[i, j], f_std[i, j]):+2uS}" for j in range(3)]
                 row_str = "  " + atomic_label.ljust(8) + " ".join(val.ljust(12) for val in row_values)
                 logger.info(row_str)
@@ -331,20 +333,25 @@ def cli():
         logger.info("")
 
         # Save the checkpoint file for each process and zip them."""
-        filename = f".{mpi_rank}_{restart_chk}"
-        with open(filename, "wb") as f:
-            pickle.dump(vmc, f, protocol=pickle.HIGHEST_PROTOCOL)
+        tmp_gz_filename = f".{mpi_rank}_{restart_chk}.pkl.gz"
 
-        # Wait all MPI processes
+        with gzip.open(tmp_gz_filename, "wb") as gz:
+            pickle.dump(vmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
+
         mpi_comm.Barrier()
 
-        # Zip them.
         if mpi_rank == 0:
-            filename_list = [f".{rank}_{restart_chk}" for rank in range(mpi_size)]
+            if os.path.exists(restart_chk):
+                os.remove(restart_chk)
+
             with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
-                for filename in filename_list:
-                    zipf.write(filename, arcname=filename.lstrip("."))
-                    os.remove(filename)
+                for r in range(mpi_size):
+                    gz_name = f".{r}_{restart_chk}.pkl.gz"
+                    arcname = gz_name.lstrip(".")
+                    zipf.write(gz_name, arcname=arcname)
+                    os.remove(gz_name)
+
+        mpi_comm.Barrier()
 
     # VMCopt!
     if job_type == "vmcopt":
@@ -393,10 +400,11 @@ def cli():
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
             """Unzip the checkpoint file for each process and load them."""
-            filename = f"{mpi_rank}_{restart_chk}"
-            with zipfile.ZipFile(restart_chk, "r") as zipf:
-                data = zipf.read(filename)
-                vmc = pickle.loads(data)
+            with zipfile.ZipFile(restart_chk, "r") as zf:
+                arcname = f"{mpi_rank}_{restart_chk}.pkl.gz"
+                with zf.open(arcname) as zipped_gz_fobj:
+                    with gzip.open(zipped_gz_fobj, "rb") as gz:
+                        vmc = pickle.load(gz)
         else:
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
@@ -436,22 +444,25 @@ def cli():
         logger.info("")
 
         # Save the checkpoint file for each process and zip them."""
-        filename = f".{mpi_rank}_{restart_chk}"
-        with open(filename, "wb") as f:
-            pickle.dump(vmc, f, protocol=pickle.HIGHEST_PROTOCOL)
+        tmp_gz_filename = f".{mpi_rank}_{restart_chk}.pkl.gz"
 
-        # Wait all MPI processes
+        with gzip.open(tmp_gz_filename, "wb") as gz:
+            pickle.dump(vmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
+
         mpi_comm.Barrier()
 
-        # Zip them.
         if mpi_rank == 0:
-            filename_list = [f".{rank}_{restart_chk}" for rank in range(mpi_size)]
-            with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
-                for filename in filename_list:
-                    zipf.write(filename, arcname=filename.lstrip("."))
-                    os.remove(filename)
+            if os.path.exists(restart_chk):
+                os.remove(restart_chk)
 
-        logger.info("")
+            with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
+                for r in range(mpi_size):
+                    gz_name = f".{r}_{restart_chk}.pkl.gz"
+                    arcname = gz_name.lstrip(".")
+                    zipf.write(gz_name, arcname=arcname)
+                    os.remove(gz_name)
+
+        mpi_comm.Barrier()
 
     # LRDMC!
     if job_type == "lrdmc":
@@ -493,10 +504,11 @@ def cli():
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
             """Unzip the checkpoint file for each process and load them."""
-            filename = f"{mpi_rank}_{restart_chk}"
-            with zipfile.ZipFile(restart_chk, "r") as zipf:
-                data = zipf.read(filename)
-                lrdmc = pickle.loads(data)
+            with zipfile.ZipFile(restart_chk, "r") as zf:
+                arcname = f"{mpi_rank}_{restart_chk}.pkl.gz"
+                with zf.open(arcname) as zipped_gz_fobj:
+                    with gzip.open(zipped_gz_fobj, "rb") as gz:
+                        lrdmc = pickle.load(gz)
         else:
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
@@ -530,8 +542,8 @@ def cli():
             logger.info("  " + "-" * sep)
             logger.info("  Label   Fx(Ha/bohr) Fy(Ha/bohr) Fz(Ha/bohr)")
             logger.info("  " + "-" * sep)
-            for i in range(len(hamiltonian_data.structure_data.atomic_labels)):
-                atomic_label = str(hamiltonian_data.structure_data.atomic_labels[i])
+            for i in range(len(lrdmc.hamiltonian_data.structure_data.atomic_labels)):
+                atomic_label = str(lrdmc.hamiltonian_data.structure_data.atomic_labels[i])
                 row_values = [f"{ufloat(f_mean[i, j], f_std[i, j]):+2uS}" for j in range(3)]
                 row_str = "  " + atomic_label.ljust(8) + "".join(val.ljust(12) for val in row_values)
                 logger.info(row_str)
@@ -541,22 +553,25 @@ def cli():
         logger.info("")
 
         # Save the checkpoint file for each process and zip them."""
-        filename = f".{mpi_rank}_{restart_chk}"
-        with open(filename, "wb") as f:
-            pickle.dump(lrdmc, f, protocol=pickle.HIGHEST_PROTOCOL)
+        tmp_gz_filename = f".{mpi_rank}_{restart_chk}.pkl.gz"
 
-        # Wait all MPI processes
+        with gzip.open(tmp_gz_filename, "wb") as gz:
+            pickle.dump(lrdmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
+
         mpi_comm.Barrier()
 
-        # Zip them.
         if mpi_rank == 0:
-            filename_list = [f".{rank}_{restart_chk}" for rank in range(mpi_size)]
-            with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
-                for filename in filename_list:
-                    zipf.write(filename, arcname=filename.lstrip("."))
-                    os.remove(filename)
+            if os.path.exists(restart_chk):
+                os.remove(restart_chk)
 
-        logger.info("")
+            with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
+                for r in range(mpi_size):
+                    gz_name = f".{r}_{restart_chk}.pkl.gz"
+                    arcname = gz_name.lstrip(".")
+                    zipf.write(gz_name, arcname=arcname)
+                    os.remove(gz_name)
+
+        mpi_comm.Barrier()
 
     # LRDMC with fixed time!
     if job_type == "lrdmc-tau":
