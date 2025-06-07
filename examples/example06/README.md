@@ -124,24 +124,27 @@ You can see the outcome using `jqmc-tool`.
 ------------------------------------------------------
 Iter     E (Ha)     Max f (Ha)   Max of signal to noise of f
 ------------------------------------------------------
-   1  -16.5743(97)  +1.132(12)   110.335
-   2  -16.5921(96)  +1.097(12)   109.386
-   3  -16.6117(95)  +1.084(12)   104.849
-   4  -16.6399(93)  +1.059(12)   104.245
-   5  -16.6678(91)  +1.029(12)   102.269
-   6  -16.6819(90)  +1.009(12)   100.122
-   7  -16.7028(90)  +0.993(12)    97.718
-   8  -16.6974(87)  +0.963(12)    96.040
-   9  -16.7200(87)  +0.948(11)    94.616
-  10  -16.7511(87)  +0.914(11)    91.563
-  11  -16.7602(85)  +0.895(11)    90.790
-  12  -16.7714(85)  +0.878(11)    88.758
-  13  -16.7867(85)  +0.848(10)    87.979
-  14  -16.7940(86)  +0.835(11)    83.253
-  15  -16.8065(83)  +0.787(10)    82.875
-  16  -16.8112(83)  +0.777(10)    81.196
-  17  -16.8284(82)  +0.741(10)    80.058
-  18  -16.8327(83)  +0.743(10)    76.214
+   1  -34.4508(14)  -0.262(19)    15.415
+   2  -34.4517(14)  -0.245(25)    18.438
+   3  -34.4513(13)  -0.221(11)    19.472
+   4  -34.4524(13)  -0.238(34)    18.540
+   5  -34.4520(14)   +0.30(26)    15.594
+   6  -34.4547(13)  -0.218(14)    15.248
+   7  -34.4555(13)  -0.186(22)    13.766
+   8  -34.4592(13)  -0.146(13)    15.021
+   9  -34.4566(13)  -0.156(21)    15.199
+  10  -34.4569(13)   +0.57(60)    13.896
+  ...
+  91  -34.4647(13)   -0.14(12)     4.680
+  92  -34.4657(13)   +0.17(18)     3.916
+  93  -34.4653(12)   +0.16(12)     4.260
+  94  -34.4651(12)   -0.15(13)     4.895
+  95  -34.4670(12)   -0.13(14)     4.310
+  96  -34.4641(13)   -0.74(73)     4.135
+  97  -34.4666(12)   -0.12(10)     6.130
+  98  -34.4670(12)  -0.071(77)     4.565
+  99  -34.4637(13)  -0.121(76)     4.880
+ 100  -34.4661(12)   -0.14(12)     5.124
 ------------------------------------------------------
 ```
 
@@ -166,6 +169,14 @@ You can see and plot the outcome using `jqmc-tool`.
 ```bash
 % jqmc-tool vmcopt analyze-output out_vmcopt out_vmcopt_cont
 ```
+
+You can also plot them and save it.
+
+```bash
+% jqmc-tool vmcopt analyze-output out_vmcopt -p -s vmcopt_JSD.jpg
+```
+
+![VMC JSD optimization](03_S22_water_dimer/03vmcopt_JSD/vmcopt_JSD.jpg)
 
 ## Compute Energy (VMC)
 The next step is VMC calculation. You can generate a template file for a VMC calculation using `jqmc-tool`. Please directly edit `vmc.toml` if you want to change a parameter.
@@ -312,7 +323,7 @@ num_mcmc_per_measurement = 40 # Number of MCMC updates per measurement. Every lo
 num_mcmc_warmup_steps = 0 # Number of observable measurement steps for warmup (i.e., discarged).
 num_mcmc_bin_blocks = 1 # Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_mcmc_bin_blocks * mpi_size * number_of_walkers.
 Dt = 2.0 # Step size for the MCMC update (bohr).
-epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
+epsilon_AS = 0.05 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 num_opt_steps = 200 # Number of optimization steps.
 wf_dump_freq = 20 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
 delta = 0.01 # Step size for the Stochastic reconfiguration (i.e., the natural gradient) optimization.
@@ -343,28 +354,46 @@ You can see the outcome using `jqmc-tool`.
 ------------------------------------------------------
 Iter     E (Ha)     Max f (Ha)   Max of signal to noise of f
 ------------------------------------------------------
-   1  -16.5743(97)  +1.132(12)   110.335
-   2  -16.5921(96)  +1.097(12)   109.386
-   3  -16.6117(95)  +1.084(12)   104.849
-   4  -16.6399(93)  +1.059(12)   104.245
-   5  -16.6678(91)  +1.029(12)   102.269
-   6  -16.6819(90)  +1.009(12)   100.122
-   7  -16.7028(90)  +0.993(12)    97.718
-   8  -16.6974(87)  +0.963(12)    96.040
-   9  -16.7200(87)  +0.948(11)    94.616
-  10  -16.7511(87)  +0.914(11)    91.563
-  11  -16.7602(85)  +0.895(11)    90.790
-  12  -16.7714(85)  +0.878(11)    88.758
-  13  -16.7867(85)  +0.848(10)    87.979
-  14  -16.7940(86)  +0.835(11)    83.253
-  15  -16.8065(83)  +0.787(10)    82.875
-  16  -16.8112(83)  +0.777(10)    81.196
-  17  -16.8284(82)  +0.741(10)    80.058
-  18  -16.8327(83)  +0.743(10)    76.214
+   1  -34.4508(14)  -0.262(19)    15.415
+   2  -34.4517(14)  -0.245(25)    18.438
+   3  -34.4513(13)  -0.221(11)    19.472
+   4  -34.4524(13)  -0.238(34)    18.540
+   5  -34.4520(14)   +0.30(26)    15.594
+   6  -34.4547(13)  -0.218(14)    15.248
+   7  -34.4555(13)  -0.186(22)    13.766
+   8  -34.4592(13)  -0.146(13)    15.021
+   9  -34.4566(13)  -0.156(21)    15.199
+  10  -34.4569(13)   +0.57(60)    13.896
+  ...
+  90  -34.4643(12)   -0.16(16)     4.384
+  91  -34.4647(13)   -0.14(12)     4.680
+  92  -34.4657(13)   +0.17(18)     3.916
+  93  -34.4653(12)   +0.16(12)     4.260
+  94  -34.4651(12)   -0.15(13)     4.895
+  95  -34.4670(12)   -0.13(14)     4.310
+  96  -34.4641(13)   -0.74(73)     4.135
+  97  -34.4666(12)   -0.12(10)     6.130
+  98  -34.4670(12)  -0.071(77)     4.565
+  99  -34.4637(13)  -0.121(76)     4.880
+ 100  -34.4661(12)   -0.14(12)     5.124
 ------------------------------------------------------
 ```
 
-The important criteria are `Max f` and `Max of signal to noise of f`. `Max f` should be zero within the error bar. A practical criterion for the `signal to noise` is < 4~5 because it means that all the residual forces are zero in the statistical sense.
+The important criteria are `Max f` and `Max of signal to noise of f`. Again, a practical criterion for the `signal to noise` is < 4~5 because it means that all the residual forces are zero in the statistical sense. However, `Max f` is different from the Jastrow optimization above. Despite the signal-to-noise ratio approaching below 4, unlike the Jastrow factor optimization, the `Max f` remains with a large error bar rather than driving it toward zero. The determinant part modifies the nodal surface of the wave function, and its parameter derivatives are known to *diverge* near those nodes. As a result, when one Monte Carlo samples the energy derivative $F \equiv -\cfrac{\partial E}{\partial c_{\rm det}}$ divergences appear, leading to the so-called infinite-variance problem. To address this, techniques such as reweighting[^2008ATT][^2015UMR] and regularization[^2020PAT] have been developed. jQMC implements the reweighting scheme invented by Attaccalite and Sorella[^2008ATT]. However, as Pathak and Wagner have shown, when the wave function (i.e., the nodal surface) becomes sufficiently complex, even these reweighting or regularization procedures cannot completely remove all divergent contributions[^2020PAT]. Because the variance of the derivatives exhibits the so-called *fat tail* behavior, it is inherently difficult to eliminate every divergence encountered during Monte Carlo sampling. Nevertheless, Pathak and Wagner also report that these remaining divergences are effectively masked in optimizations of the wave function in practice[^2020PAT], so they do not pose a serious issue in applications. Therefore, once the `signal-to-noise` ratio has converged to a satisfactory level (< 4), one may regard the optimization as effectively converged.
+
+[^2008ATT]: C. Attaccalite and S. Sorella, *Phys. Rev. Lett.* **100**, 114501 (2008).
+
+[^2015UMR]: C. J. Umrigar, *J. Chem. Phys.* **143**, 164105 (2015).
+
+[^2020PAT]: S. Pathak and L. K. Wagner, *AIP Advances* **10**, 085213 (2020).
+
+You can also plot them and save it.
+
+```bash
+% jqmc-tool vmcopt analyze-output out_vmcopt -p -s vmcopt_JAGP.jpg
+```
+
+![VMC JSD optimization](03_S22_water_dimer/07vmcopt_JAGP/vmcopt_JAGP.jpg)
 
 ## Compute Energy (VMC)
 The next step is VMC calculation. You can generate a template file for a VMC calculation using `jqmc-tool`. Please directly edit `vmc.toml` if you want to change a parameter.
