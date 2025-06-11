@@ -1,108 +1,71 @@
-# jQMC weak scaling results on CPUs and GPUs
+# jQMC weak scaling results on GPUs
 
-This directory contains weak-scaling results for **jQMC**. The weak scaling were measured for Variational Monte Carlo (VMC) and Lattice Regularized Diffusion Monte Carlo (LRDMC) calculations on CPUs and GPUs.
-
-The attached graphs are as follows:
-
-- Weak-scaling on CPUs (measured on the supercomputer [Genkai(玄界)](https://www.cc.kyushu-u.ac.jp/scp/eng/system/Genkai/hardware/) at Kyusyu University in Japan.)
-- Weak-scaling on GPUs (measured on on the supercomputer [Leonardo](https://www.hpc.cineca.it/systems/hardware/leonardo/) at CINECA in Italy.)
+This directory contains weak-scaling results for **jQMC**. The weak scaling were measured for Variational Monte Carlo (VMC) and Lattice Regularized Diffusion Monte Carlo (LRDMC) calculations on GPUs. The weak-scaling were measured on the supercomputer [Leonardo](https://www.hpc.cineca.it/systems/hardware/leonardo/) at CINECA in Italy and on the supercomputer [Miyabi](https://www.cc.u-tokyo.ac.jp/en/supercomputer/miyabi/system.php) at the University of Tokyo in Japan.
 
 ---
 
-## Weak-scaling Setup
+## Target System
 
-The weak-scaling calculations were performed using the water molecule:
+The weak-scaling calculations were performed using the benzene molecule:
 
 | Molecule         | Number of electrons | Basis Set           |   ECP          |
 |------------------|---------------------|---------------------|----------------|
-| Water            | 8                   | `ccecp_ccpvtz`      |  ccECP         |
-
-**Additional details:**
+| Benzene          | 30                  | `ccecp-aug-ccpvtz`  |  ccECP         |
 
 - **Pseudopotential:** The [ccECP pseudopotential](https://pseudopotentiallibrary.org) was employed for all calculations.
 - **Trial Wavefunctions:** Generated using [pySCF](https://pyscf.org) with Gaussian basis functions (Cartesian).
-- **Hardware Configuration (CPUs):** CPU Benchmarks were measured on the supercomputer [Genkai(玄界)](https://www.cc.kyushu-u.ac.jp/scp/eng/system/Genkai/hardware/) at Kyusyu University in Japan. One node is equipped with a dual-socket Xeon Platinum 8490H (60 cores × 2) CPU system. The CPU runs used 128 MPI processes (i.e. the maximum efficiency).
-- **Hardware Configuration (GPUs):** GPU Benchmarks were measured on the supercomputer [Leonardo](https://www.hpc.cineca.it/systems/hardware/leonardo/) at CINECA in Italy. One node is equipped with single socket 32 cores Intel Ice Lake CPU (Intel Xeon Platinum 8358, 2.60GHz) and 4 NVIDIA custom Ampere A100 GPUs (64GB HBM2e). The GPU runs used 4 MPI processes per node (i.e., 1 MPI is bound to one GPU).
+
+## Hardware configurations
+
+Here is the Hardware configurations used in these benchmark tests.
+
+| Category                | Component            | Leonardo                              | Miyabi                           |
+| ----------------------- | -------------------- | ------------------------------------- | -------------------------------- |
+| **Cluster name**        |                      | Leonardo                              | Miyabi                           |
+| **Vendor & Model**      |                      | BullSequana XH2000, Atos              | PRIMERGY CX2550 M7, Fujitsu      |
+| **Operator & Location** |                      | CINECA in Italy                       | The University of Tokyo in Japan |
+| **CPU**                 | Processor name       | Intel Xeon Platinum 8358              | NVIDIA Grace CPU C1              |
+|                         | Number of processors | 1 CPU                                 | 1 CPU                            |
+|                         | Number of cores      | 32 cores                              | 72 cores                         |
+|                         | Frequency            | 2.6 GHz                               | 3.0 GHz                          |
+|                         | Memory               | 512 GB                                | 120 GB                           |
+|                         | Memory bandwidth     | –                                     | 512 GB/s                         |
+| **GPU**                 | Processor name       | NVIDIA custom A100                    | NVIDIA H100                      |
+|                         | Number of processors | 4                                     | 1                                |
+|                         | Memory               | 64 GB                                 | 96 GB                            |
+|                         | Memory bandwidth     | 461 GB/s                              | 4.02 TB/s                        |
+|                         | CPU–GPU connection   | NVLink 3.0 (200 GB/s)                 | NVLink C2C (450 GB/s)            |
+|                         | Interconnect         | InfiniBand 2×dual-port HDR (400 Gbps) | InfiniBand NDR (200 Gbps)        |
+| **Total nodes**         |                      | 3456                                  | 1096                             |
+| **Total GPUs**          |                      | 13 824 GPUs                           | 1096 GPUs                        |
+
+## Results
+
+Although JAX provides native support for multi-processing via its distributed runtime, jQMC currently enables multi-GPU execution through explicit MPI parallelization using `mpi4py` and `mpi4jax`.
+
+A key factor in evaluating the efficiency of multi-GPU computations is scalability—specifically, weak-scaling behavior. This metric quantifies how effectively additional GPUs contribute to performance gains under different workload scenarios.
+
+Figure 1 presents the results of the weak test for the textbook and load-balancing LRDMC algorithms. These benchmarks provide a quantitative assessment of the parallel efficiency of jQMC across multiple GPUs and serve as critical indicators of its suitability for large-scale QMC simulations. As clearly shown in the figure, the textbook algorithm exhibits a steep decline in computational efficiency as the number of walkers (i.e., the degree of GPU parallelization) increases. As explained in the Methods section, this is because the textbook algorithm determines the length of each projection step using random numbers, resulting in significant load imbalance among parallel walkers. Since all walkers must wait until the longest projection operation is completed, many walkers remain idle for extended periods. This behavior leads to an increased likelihood of encountering “slow” walkers with long projection times as the number of walkers grows, resulting in a linear degradation of weak-scaling efficiency.
+
+In contrast, the load-balanced LRDMC algorithm implemented in jQMC ensures, by design, that the computational workload is uniformly distributed among walkers. Consequently, the benchmark results demonstrate that jQMC maintains stable weak scaling even as the number of walkers (GPUs) increases.
+
+![Comparison of the weak-scaling benchmark between the textbook and load-balancing LRDMC algorithms, measured on Miyabi using the benzene molecule ($N_e = 30$).](jqmc_tau_nbra_comparison_benzene_on_gpu.jpg)
+
+*Figure 1: Comparison of the weak-scaling benchmark between the textbook and load-balancing LRDMC algorithms, measured on Miyabi using the benzene molecule ($N_e = 30$).*
 
 ---
 
-## Weak-scaling Results on CPUs
+Figure 2 presents the results of a weak-scaling test for the LRDMC algorithm. These benchmarks provide a quantitative assessment of the parallel efficiency of jQMC across multiple GPUs and serve as critical indicators of its suitability for large-scale QMC simulations.
 
-![CPU Benchmark](jqmc_weak_scaling_on_cpu.jpg)
+As shown in Figure 2 (b), both the Miyabi and Leonardo systems maintain high parallel efficiency—close to the ideal value of 1—even up to 1024 GPUs (102 400 walkers). In both cases, increasing the number of GPUs to 1024 results in only about a \~2 % reduction in computation speed, demonstrating that jQMC achieves exceptionally efficient parallel scaling.
 
-> [!NOTE]
-> The degradation of weak scaling in the LRDMC calculations as the number of MPI processes increases is not solely due to MPI communication. On CPUs, we have observed that when allocating many JAX processes across a large number of CPU cores, some processes randomly become extremely slow. Since this issue does not occur when running JAX processes on GPUs, we believe it is likely unexpected behavior of the XLA compiler on CPUs. See also our [JAX GitHub discussion](https://github.com/jax-ml/jax/discussions/27949) for more details.
+Notice that the slightly lower weak-scaling performance observed on Miyabi compared to Leonardo is due to differences in hardware architecture: Miyabi is configured with one GPU per node, whereas Leonardo uses four GPUs per node. As a result, for the same number of GPUs, Miyabi requires more inter-node MPI communication, which contributes to the minor decline in scaling efficiency.
 
-The plot above shows the weak‑scaling behavior of `jQMC` on the CPU cluster, measured from 120 up to 3840 MPI processes (120 MPI processes per node, 1–32 nodes).  Each curve is the elapsed time normalized to the 120 MPI processes baseline:
+Additionally, Figure 2 (a) shows that the actual wall-clock execution time on Miyabi is shorter than on Leonardo—about 1.7× faster. This reflects the higher performance of the GPUs installed on Miyabi.
 
-- **Ideal** (dashed blue): perfectly flat at 1.00
-- **VMC** (red): Variational Monte Carlo
-- **LRDMC (tau)** (green): LRDMC with a fixed *projection time* per branching cycle. $\tau$ is set 0.1 a.u., resulting in 27 projections in average.
-- **LRDMC (nbra)** (blue): LRDMC with a fixed *number* of branching steps. 27 projections between branchings for all walkers.
+![Weak-scaling benchmark measured on Miyabi and Leonardo using the benzene molecule ($N_e = 30$). (a) The elapsed times of the LRDMC runs with respect to the number of GPUs. (b) The normalized times of LRDMC runs with respect to the number of GPUs. These benchmark tests were measured on Leonardo and Miyabi supercomputers.](jqmc_weak_scaling_benzene_on_gpu.jpg)
 
-### Key observations
-
-1. **VMC (red)**
-   - Stays within ±2% of the 480‑rank run even at 3 840 ranks.
-   - Very low synchronization cost ⇒ near‑ideal weak scaling on CPUs.
-
-2. **LRDMC, fixed branching count (nbra, blue)**
-   - Gradual overhead growth:
-     - ~2% at 960 MPIs
-     - ~45% at 3840 MPIs
-   - Fixing the *number* of branches maintains a balanced workload per rank, yielding reasonably good scalability.
-
-3. **LRDMC, fixed branching time (tau, green)**
-   - Overhead increases sharply with rank count:
-     - ~20% at 240 MPIs
-     - ~40% at 480 MPIs
-     - ~75% at 960 MPIs
-     - ~150% at 1920 MPIs
-     - ~300% at 3840 MPIs
-   - Fixing the *time* per cycle causes load imbalance and bursty communication, severely degrading CPU scaling.
-
-### Recommendations
-
-- For large‑scale CPU LRDMC runs, prefer the **nbra** algorithm to minimize overhead.
-- When extreme scalability is required without branching, pure **VMC** remains the most efficient choice on CPU clusters.
-
-## Weak-scaling Results on GPUs
-
-![GPU Benchmark](jqmc_weak_scaling_on_gpu.jpg)
-
-The plot above shows the weak‑scaling behavior of `jQMC` code measured on up to 1024 GPUs.  Each curve plots the elapsed time normalized to the 4GPUs run:
-
-- **Ideal** (dashed blue): perfectly flat at 1.00
-- **VMC** (red): Variational Monte Carlo
-- **LRDMC (tau)** (green): LRDMC with a fixed *projection time* per branching cycle. $\tau$ is set 0.1 a.u., resulting in 27 projections in average.
-- **LRDMC (nbra)** (blue): LRDMC with a fixed *number* of branching steps. 27 projections between branchings for all walkers.
-
-### Key observations
-
-1. **VMC (red)**
-   - Remains within ±1% of the 4‑GPUs baseline all the way to 1024 GPUs.
-   - Very little inter‑GPU communication in pure VMC ⇒ near-ideal weak scaling.
-
-2. **LRDMC, fixed branching count (nbra, blue)**
-   - Overhead grows slowly:
-     - ~2% at 64 GPUs
-     - ~8% at 256 GPUs
-     - ~32% at 1024 GPUs
-   - Fixing the *number* of branches yields more uniform work per rank and smoother scaling.
-
-3. **LRDMC, fixed branching time (tau, green)**
-   - Overhead rises quickly as GPUs increase:
-     - ~7% at 16 GPUs
-     - ~36% at 256 GPUs
-     - ~94% at 1024 GPUs
-   - Fixing the *time* per cycle introduces load imbalance and bursty communication, degrading scalability.
-
-### Recommendations
-
-- For large-scale LRDMC production runs, prefer the **nbra** algorithm to maintain efficiency.
-- Pure VMC remains the most scalable option when you need maximum GPU throughput with minimal synchronization.
-
----
+*Figure 2: Weak-scaling benchmark measured on Miyabi and Leonardo using the benzene molecule ($N_e = 30$). (a) The elapsed times of the LRDMC runs with respect to the number of GPUs. (b) The normalized times of LRDMC runs with respect to the number of GPUs. These benchmark tests were measured on Leonardo and Miyabi supercomputers.*
 
 ## Reproducing the Benchmarks
 
