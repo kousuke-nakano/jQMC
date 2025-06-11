@@ -190,13 +190,10 @@ and `F =`
   ------------------------------------------------
   Label   Fx(Ha/bohr) Fy(Ha/bohr) Fz(Ha/bohr)
   ------------------------------------------------
-  H       -0.00010(5) -4(5)e-05   -0.05295(20)
-  H       +0.00010(5) +4(5)e-05   +0.05295(20)
+  H       -9(9)e-05    +6(9)e-05    +0.00311(22)
+  H       +9(9)e-05    -6(9)e-05    -0.00311(22)
   ------------------------------------------------
 ```
-
-> [!NOTE]
-> The forces are finite even close to the equilibrium position. The origin of the discrepancy is the so-called self-consistency error [^2021NAKjcp][^2022TIHjcp]. See later sections for the detail.
 
 ## Compute Energy and Atomic forces (LRDMC)
 The next step is LRDMC calculation. You can generate a template file for a LRDMC calculation using `jqmc-tool`. Please directly edit `lrdmc.toml` if you want to change a parameter.
@@ -246,8 +243,8 @@ and `F =`
   ------------------------------------------------
   Label   Fx(Ha/bohr) Fy(Ha/bohr) Fz(Ha/bohr)
   ------------------------------------------------
-  H       +0.0001(4)   +0.0000(5)   +0.0399(5)
-  H       -0.0001(4)   -0.0000(5)   -0.0399(5)
+  H       -0.0009(6)  +0.0006(7)  -0.0066(8)
+  H       +0.0009(6)  -0.0006(7)  +0.0066(8)
   ------------------------------------------------
 ```
 
@@ -402,8 +399,8 @@ and `F =`
   ------------------------------------------------
   Label   Fx(Ha/bohr) Fy(Ha/bohr) Fz(Ha/bohr)
   ------------------------------------------------
-  H       -2.0(2.4)e-05 -5.5(2.4)e-05 +0.00523(13)
-  H       +2.0(2.4)e-05 +5.5(2.4)e-05 -0.00523(13)
+  H       +0.00015(5)  -3(5)e-05    -0.00042(20)
+  H       -0.00015(5)  +3(5)e-05    +0.00042(20)
   ------------------------------------------------
 ```
 
@@ -455,8 +452,8 @@ and `F =`
   ------------------------------------------------
   Label   Fx(Ha/bohr) Fy(Ha/bohr) Fz(Ha/bohr)
   ------------------------------------------------
-  H       +0.00019(8) -2(9)e-05   +0.0040(4)
-  H       -0.00019(8) +2(9)e-05   -0.0040(4)
+  H       -0.0007(6)  +0.0009(10) -0.0058(10)
+  H       +0.0007(6)  -0.0009(10) +0.0058(10)
   ------------------------------------------------
 ```
 
@@ -464,9 +461,9 @@ and `F =`
 One should repeat the above calculations with many $R$ to compute the PES. Here, we plot the PESs, thier derivatives, and forces obtained with JSD and JAGP anstaz by VMC calculations.
 
 
-![H2 VMC PES](H2_PES_VMC.jpg)
+![H2 VMC PES](H2/H2_PES_vmc.jpg)
 
-The forces shown in the left panel (JSD) remain finite even near the equilibrium position of the PES. This discrepancy originates from the so-called self-consistency error[^2021NAKjcp][^2022TIHjcp]. In the JSD calculation, only the Jastrow factor was optimized, while the determinant part was kept fixed to the DFT solution. Although the DFT orbitals satisfy the stationary condition of the Kohn–Sham equations, they are not stationary with respect to the VMC energy. As a result, if the variational parameters in the determinant part are not optimized, an additional contribution should be considered in the force evaluation, which is not captured by standard VMC and DMC formalisms.
+We notice that the forces shown in the left panel (JSD) remain finite even near the equilibrium position of the PES, though it is negligible for the simple molecule, H$_2$. This discrepancy originates from the so-called self-consistency error[^2021NAKjcp][^2022TIHjcp]. In the JSD calculation, only the Jastrow factor was optimized, while the determinant part was kept fixed to the DFT solution. Although the DFT orbitals satisfy the stationary condition of the Kohn–Sham equations, they are not stationary with respect to the VMC energy. As a result, if the variational parameters in the determinant part are not optimized, an additional contribution should be considered in the force evaluation, which is not captured by standard VMC and DMC formalisms.
 
 There are two ways to eliminate this bias. One is to optimize all variational parameters, including those in the determinant part[^2024SLOjctc]. Indeed, the forces shown in the left panel obtained using the JAGP ansatz exhibit no such inconsistency: the derivative of the PES agrees with the calculated force values. The other approach is to explicitly correct for the missing contribution[^2024NAKprb]. If one is intereted the latter approach, please contact a `jQMC` develper.
 
