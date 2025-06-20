@@ -3417,53 +3417,55 @@ class GFMC_fixed_num_projection:
 
             # sum
             nw_sum = len(w_L_latest)
-            w_L_sum = np.sum(w_L_latest / V_diag_E_latest)
-            e_L_sum = np.sum(w_L_latest / V_diag_E_latest * e_L_latest)
-            e_L2_sum = np.sum(w_L_latest / V_diag_E_latest * e_L_latest**2)
+            w_L_sum = np.sum(w_L_latest)
+            w_L_weighted_sum = np.sum(w_L_latest / V_diag_E_latest)
+            e_L_weighted_sum = np.sum(w_L_latest / V_diag_E_latest * e_L_latest)
+            e_L2_weighted_sum = np.sum(w_L_latest / V_diag_E_latest * e_L_latest**2)
             if self.__comput_position_deriv:
-                grad_e_L_r_up_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_e_L_r_up_latest)
-                grad_e_L_r_dn_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_e_L_r_dn_latest)
-                grad_e_L_R_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_e_L_R_latest)
-                grad_ln_Psi_r_up_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_ln_Psi_r_up_latest)
-                grad_ln_Psi_r_dn_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_ln_Psi_r_dn_latest)
-                grad_ln_Psi_dR_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_ln_Psi_dR_latest)
-                omega_up_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, omega_up_latest)
-                omega_dn_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, omega_dn_latest)
-                grad_omega_dr_up_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_omega_dr_up_latest)
-                grad_omega_dr_dn_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_omega_dr_dn_latest)
+                grad_e_L_r_up_weighted_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_e_L_r_up_latest)
+                grad_e_L_r_dn_weighted_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_e_L_r_dn_latest)
+                grad_e_L_R_weighted_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_e_L_R_latest)
+                grad_ln_Psi_r_up_weighted_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_ln_Psi_r_up_latest)
+                grad_ln_Psi_r_dn_weighted_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_ln_Psi_r_dn_latest)
+                grad_ln_Psi_dR_weighted_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_ln_Psi_dR_latest)
+                omega_up_weighted_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, omega_up_latest)
+                omega_dn_weighted_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, omega_dn_latest)
+                grad_omega_dr_up_weighted_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_omega_dr_up_latest)
+                grad_omega_dr_dn_weighted_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_omega_dr_dn_latest)
             # reduce
             nw_sum = mpi_comm.reduce(nw_sum, op=MPI.SUM, root=0)
             w_L_sum = mpi_comm.reduce(w_L_sum, op=MPI.SUM, root=0)
-            e_L_sum = mpi_comm.reduce(e_L_sum, op=MPI.SUM, root=0)
-            e_L2_sum = mpi_comm.reduce(e_L2_sum, op=MPI.SUM, root=0)
+            w_L_weighted_sum = mpi_comm.reduce(w_L_weighted_sum, op=MPI.SUM, root=0)
+            e_L_weighted_sum = mpi_comm.reduce(e_L_weighted_sum, op=MPI.SUM, root=0)
+            e_L2_weighted_sum = mpi_comm.reduce(e_L2_weighted_sum, op=MPI.SUM, root=0)
             if self.__comput_position_deriv:
-                grad_e_L_r_up_sum = mpi_comm.reduce(grad_e_L_r_up_sum, op=MPI.SUM, root=0)
-                grad_e_L_r_dn_sum = mpi_comm.reduce(grad_e_L_r_dn_sum, op=MPI.SUM, root=0)
-                grad_e_L_R_sum = mpi_comm.reduce(grad_e_L_R_sum, op=MPI.SUM, root=0)
-                grad_ln_Psi_r_up_sum = mpi_comm.reduce(grad_ln_Psi_r_up_sum, op=MPI.SUM, root=0)
-                grad_ln_Psi_r_dn_sum = mpi_comm.reduce(grad_ln_Psi_r_dn_sum, op=MPI.SUM, root=0)
-                grad_ln_Psi_dR_sum = mpi_comm.reduce(grad_ln_Psi_dR_sum, op=MPI.SUM, root=0)
-                omega_up_sum = mpi_comm.reduce(omega_up_sum, op=MPI.SUM, root=0)
-                omega_dn_sum = mpi_comm.reduce(omega_dn_sum, op=MPI.SUM, root=0)
-                grad_omega_dr_up_sum = mpi_comm.reduce(grad_omega_dr_up_sum, op=MPI.SUM, root=0)
-                grad_omega_dr_dn_sum = mpi_comm.reduce(grad_omega_dr_dn_sum, op=MPI.SUM, root=0)
+                grad_e_L_r_up_weighted_sum = mpi_comm.reduce(grad_e_L_r_up_weighted_sum, op=MPI.SUM, root=0)
+                grad_e_L_r_dn_weighted_sum = mpi_comm.reduce(grad_e_L_r_dn_weighted_sum, op=MPI.SUM, root=0)
+                grad_e_L_R_weighted_sum = mpi_comm.reduce(grad_e_L_R_weighted_sum, op=MPI.SUM, root=0)
+                grad_ln_Psi_r_up_weighted_sum = mpi_comm.reduce(grad_ln_Psi_r_up_weighted_sum, op=MPI.SUM, root=0)
+                grad_ln_Psi_r_dn_weighted_sum = mpi_comm.reduce(grad_ln_Psi_r_dn_weighted_sum, op=MPI.SUM, root=0)
+                grad_ln_Psi_dR_weighted_sum = mpi_comm.reduce(grad_ln_Psi_dR_weighted_sum, op=MPI.SUM, root=0)
+                omega_up_weighted_sum = mpi_comm.reduce(omega_up_weighted_sum, op=MPI.SUM, root=0)
+                omega_dn_weighted_sum = mpi_comm.reduce(omega_dn_weighted_sum, op=MPI.SUM, root=0)
+                grad_omega_dr_up_weighted_sum = mpi_comm.reduce(grad_omega_dr_up_weighted_sum, op=MPI.SUM, root=0)
+                grad_omega_dr_dn_weighted_sum = mpi_comm.reduce(grad_omega_dr_dn_weighted_sum, op=MPI.SUM, root=0)
 
             if mpi_rank == 0:
                 # averaged
                 w_L_averaged = w_L_sum / nw_sum
-                e_L_averaged = e_L_sum / w_L_sum
-                e_L2_averaged = e_L2_sum / w_L_sum
+                e_L_averaged = e_L_weighted_sum / w_L_weighted_sum
+                e_L2_averaged = e_L2_weighted_sum / w_L_weighted_sum
                 if self.__comput_position_deriv:
-                    grad_e_L_r_up_averaged = grad_e_L_r_up_sum / w_L_sum
-                    grad_e_L_r_dn_averaged = grad_e_L_r_dn_sum / w_L_sum
-                    grad_e_L_R_averaged = grad_e_L_R_sum / w_L_sum
-                    grad_ln_Psi_r_up_averaged = grad_ln_Psi_r_up_sum / w_L_sum
-                    grad_ln_Psi_r_dn_averaged = grad_ln_Psi_r_dn_sum / w_L_sum
-                    grad_ln_Psi_dR_averaged = grad_ln_Psi_dR_sum / w_L_sum
-                    omega_up_averaged = omega_up_sum / w_L_sum
-                    omega_dn_averaged = omega_dn_sum / w_L_sum
-                    grad_omega_dr_up_averaged = grad_omega_dr_up_sum / w_L_sum
-                    grad_omega_dr_dn_averaged = grad_omega_dr_dn_sum / w_L_sum
+                    grad_e_L_r_up_averaged = grad_e_L_r_up_weighted_sum / w_L_weighted_sum
+                    grad_e_L_r_dn_averaged = grad_e_L_r_dn_weighted_sum / w_L_weighted_sum
+                    grad_e_L_R_averaged = grad_e_L_R_weighted_sum / w_L_weighted_sum
+                    grad_ln_Psi_r_up_averaged = grad_ln_Psi_r_up_weighted_sum / w_L_weighted_sum
+                    grad_ln_Psi_r_dn_averaged = grad_ln_Psi_r_dn_weighted_sum / w_L_weighted_sum
+                    grad_ln_Psi_dR_averaged = grad_ln_Psi_dR_weighted_sum / w_L_weighted_sum
+                    omega_up_averaged = omega_up_weighted_sum / w_L_weighted_sum
+                    omega_dn_averaged = omega_dn_weighted_sum / w_L_weighted_sum
+                    grad_omega_dr_up_averaged = grad_omega_dr_up_weighted_sum / w_L_weighted_sum
+                    grad_omega_dr_dn_averaged = grad_omega_dr_dn_weighted_sum / w_L_weighted_sum
                 # add a dummy dim
                 e_L2_averaged = np.expand_dims(e_L2_averaged, axis=0)
                 e_L_averaged = np.expand_dims(e_L_averaged, axis=0)
@@ -5456,35 +5458,49 @@ class GFMC_fixed_num_projection_debug:
                     grad_omega_dr_up_gathered = np.concatenate([grad_omega_dr_up_gathered_dict[i] for i in range(mpi_size)])
                     grad_omega_dr_dn_gathered = np.concatenate([grad_omega_dr_dn_gathered_dict[i] for i in range(mpi_size)])
                 # sum
-                w_L_sum = np.sum(w_L_gathered / V_diag_E_gathered)
-                e_L_sum = np.sum(w_L_gathered / V_diag_E_gathered * e_L_gathered)
-                e_L2_sum = np.sum(w_L_gathered / V_diag_E_gathered * e_L_gathered**2)
+                w_L_weighted_sum = np.sum(w_L_gathered / V_diag_E_gathered)
+                e_L_weighted_sum = np.sum(w_L_gathered / V_diag_E_gathered * e_L_gathered)
+                e_L2_weighted_sum = np.sum(w_L_gathered / V_diag_E_gathered * e_L_gathered**2)
                 if self.__comput_position_deriv:
-                    grad_e_L_r_up_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_e_L_r_up_gathered)
-                    grad_e_L_r_dn_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_e_L_r_dn_gathered)
-                    grad_e_L_R_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_e_L_R_gathered)
-                    grad_ln_Psi_r_up_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_ln_Psi_r_up_gathered)
-                    grad_ln_Psi_r_dn_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_ln_Psi_r_dn_gathered)
-                    grad_ln_Psi_dR_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_ln_Psi_dR_gathered)
-                    omega_up_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, omega_up_gathered)
-                    omega_dn_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, omega_dn_gathered)
-                    grad_omega_dr_up_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_omega_dr_up_gathered)
-                    grad_omega_dr_dn_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_omega_dr_dn_gathered)
+                    grad_e_L_r_up_weighted_sum = np.einsum(
+                        "i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_e_L_r_up_gathered
+                    )
+                    grad_e_L_r_dn_weighted_sum = np.einsum(
+                        "i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_e_L_r_dn_gathered
+                    )
+                    grad_e_L_R_weighted_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_e_L_R_gathered)
+                    grad_ln_Psi_r_up_weighted_sum = np.einsum(
+                        "i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_ln_Psi_r_up_gathered
+                    )
+                    grad_ln_Psi_r_dn_weighted_sum = np.einsum(
+                        "i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_ln_Psi_r_dn_gathered
+                    )
+                    grad_ln_Psi_dR_weighted_sum = np.einsum(
+                        "i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_ln_Psi_dR_gathered
+                    )
+                    omega_up_weighted_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, omega_up_gathered)
+                    omega_dn_weighted_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, omega_dn_gathered)
+                    grad_omega_dr_up_weighted_sum = np.einsum(
+                        "i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_omega_dr_up_gathered
+                    )
+                    grad_omega_dr_dn_weighted_sum = np.einsum(
+                        "i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_omega_dr_dn_gathered
+                    )
                 # averaged
-                w_L_averaged = np.average(w_L_gathered / V_diag_E_gathered)
-                e_L_averaged = e_L_sum / w_L_sum
-                e_L2_averaged = e_L2_sum / w_L_sum
+                w_L_averaged = np.average(w_L_gathered)
+                e_L_averaged = e_L_weighted_sum / w_L_weighted_sum
+                e_L2_averaged = e_L2_weighted_sum / w_L_weighted_sum
                 if self.__comput_position_deriv:
-                    grad_e_L_r_up_averaged = grad_e_L_r_up_sum / w_L_sum
-                    grad_e_L_r_dn_averaged = grad_e_L_r_dn_sum / w_L_sum
-                    grad_e_L_R_averaged = grad_e_L_R_sum / w_L_sum
-                    grad_ln_Psi_r_up_averaged = grad_ln_Psi_r_up_sum / w_L_sum
-                    grad_ln_Psi_r_dn_averaged = grad_ln_Psi_r_dn_sum / w_L_sum
-                    grad_ln_Psi_dR_averaged = grad_ln_Psi_dR_sum / w_L_sum
-                    omega_up_averaged = omega_up_sum / w_L_sum
-                    omega_dn_averaged = omega_dn_sum / w_L_sum
-                    grad_omega_dr_up_averaged = grad_omega_dr_up_sum / w_L_sum
-                    grad_omega_dr_dn_averaged = grad_omega_dr_dn_sum / w_L_sum
+                    grad_e_L_r_up_averaged = grad_e_L_r_up_weighted_sum / w_L_weighted_sum
+                    grad_e_L_r_dn_averaged = grad_e_L_r_dn_weighted_sum / w_L_weighted_sum
+                    grad_e_L_R_averaged = grad_e_L_R_weighted_sum / w_L_weighted_sum
+                    grad_ln_Psi_r_up_averaged = grad_ln_Psi_r_up_weighted_sum / w_L_weighted_sum
+                    grad_ln_Psi_r_dn_averaged = grad_ln_Psi_r_dn_weighted_sum / w_L_weighted_sum
+                    grad_ln_Psi_dR_averaged = grad_ln_Psi_dR_weighted_sum / w_L_weighted_sum
+                    omega_up_averaged = omega_up_weighted_sum / w_L_weighted_sum
+                    omega_dn_averaged = omega_dn_weighted_sum / w_L_weighted_sum
+                    grad_omega_dr_up_averaged = grad_omega_dr_up_weighted_sum / w_L_weighted_sum
+                    grad_omega_dr_dn_averaged = grad_omega_dr_dn_weighted_sum / w_L_weighted_sum
                 # add a dummy dim
                 e_L2_averaged = np.expand_dims(e_L2_averaged, axis=0)
                 e_L_averaged = np.expand_dims(e_L_averaged, axis=0)
