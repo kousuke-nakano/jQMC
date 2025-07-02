@@ -463,19 +463,21 @@ def read_trexio_file(
 
         mo_considered_indices_up = [i for (i, v) in enumerate(mo_occ_up) if v >= threshold_mo_occ]
         mo_considered_indices_dn = [i for (i, v) in enumerate(mo_occ_dn) if v >= threshold_mo_occ]
-        
+
         if len(mo_considered_indices_up) < len(mo_considered_indices_dn):
-            raise ValueError(f"The number of occ. orbitals for up spins = {len(mo_considered_indices_up)} should be larger than those of down spins = {len(mo_considered_indices_dn)}.")
+            raise ValueError(
+                f"The number of occ. orbitals for up spins = {len(mo_considered_indices_up)} should be larger than those of down spins = {len(mo_considered_indices_dn)}."
+            )
 
         mo_considered_num = len(mo_considered_indices_up)
         mo_considered_indices = mo_considered_indices_up[:mo_considered_num]
 
         mo_considered_coefficient_real_up = mo_coefficient_real_up[mo_considered_indices]
         mo_considered_coefficient_real_dn = mo_coefficient_real_dn[mo_considered_indices]
-        
+
         mos_data_up = MOs_data(num_mo=mo_considered_num, mo_coefficients=mo_considered_coefficient_real_up, aos_data=aos_data)
         mos_data_dn = MOs_data(num_mo=mo_considered_num, mo_coefficients=mo_considered_coefficient_real_dn, aos_data=aos_data)
-        
+
         num_ele_diff = num_ele_up - num_ele_dn
 
         mo_lambda_paired = np.pad(
