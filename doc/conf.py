@@ -29,6 +29,7 @@ extensions = [
     "myst_parser",
     "IPython.sphinxext.ipython_console_highlighting",
     "IPython.sphinxext.ipython_directive",
+    "sphinx.ext.autodoc",
 ]
 myst_enable_extensions = ["linkify", "dollarmath", "amsmath"]
 

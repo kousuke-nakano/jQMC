@@ -1,5 +1,12 @@
-@startuml complex_example
+@startuml uml
+' size
+scale 595*842
+
+' PlantUML configuration
 allowmixing
+
+' Command + Shift + P to toggle the PlantUML export mode
+' inkscape uml.svg -o uml.pdf
 
 ' ===============================
 ' Class definitions
@@ -104,6 +111,10 @@ class MCMC {
     - mcmc_seed : int
     - num_walkers : int
     + run(num_mcmc_steps: int, max_time: int) : None
+    + run_optimize(...) : None
+    + get_E(...) : tuple
+    + get_aF(...) : tuple
+    + get_gF(...) : tuple
 }
 
 class GFMC {
@@ -111,22 +122,15 @@ class GFMC {
     - mcmc_seed : int
     - num_walkers : int
     + run(num_gfmc_steps: int, max_time: int) : None
-}
-
-class QMC {
-    - mcmc : MCMC | GFMC
-    + run(num_mcmc_steps: int, max_time: int) : None
-    + run_optimize(...) : None
     + get_E(...) : tuple
     + get_aF(...) : tuple
-    + get_gF(...) : tuple
 }
 
 ' Functions
 rectangle "compute_local_energy_jax(\n    hamiltonian_data: Hamiltonian_data,\n    r_up_carts: jax.Array,\n    r_dn_carts: jax.Array\n) -> float" as compute_local_energy_jax
 rectangle "jax.grad(compute_local_energy_jax)(\n    hamiltonian_data: Hamiltonian_data,\n    r_up_carts: jax.Array,\n    r_dn_carts: jax.Array\n) -> float" as grad_compute_local_energy_jax
 rectangle "compute_discretized_kinetic_energy_jax(\n    alat: float,\n    wavefunction_data: Wavefunction_data,\n    r_up_carts: jax.Array,\n    r_dn_carts: jax.Array\n)" as compute_discretized_kinetic_energy_jax
-rectangle "compute_ecp_non_local_parts_jax(\n coulomb_potential_data: Coulomb_potential_data,\n    wavefunction_data: Wavefunction_data,\n    r_up_carts: jax.Array,\n    r_dn_carts: jax.Array\n)" as compute_ecp_non_local_parts_jax
+' rectangle "compute_ecp_non_local_parts_jax(\n coulomb_potential_data: Coulomb_potential_data,\n    wavefunction_data: Wavefunction_data,\n    r_up_carts: jax.Array,\n    r_dn_carts: jax.Array\n)" as compute_ecp_non_local_parts_jax
 
 ' Dependency relationships
 note top of compute_local_energy_jax
@@ -145,14 +149,12 @@ end note
 ' Class relationships (composition/aggregation)
 ' ===============================
 
-QMC *-- MCMC
-QMC *-- GFMC
 MCMC *-- Hamiltonian_data
 GFMC *-- Hamiltonian_data
 MCMC ..> compute_local_energy_jax: calls
 MCMC ..> grad_compute_local_energy_jax: calls
 GFMC ..> compute_discretized_kinetic_energy_jax: calls
-GFMC ..> compute_ecp_non_local_parts_jax: calls
+' GFMC ..> compute_ecp_non_local_parts_jax: calls
 Jastrow_one_body_data *-- Structure_data
 Jastrow_three_body_data *-- AOs_sphe_data
 Jastrow_three_body_data *-- AOs_cart_data
@@ -163,6 +165,8 @@ Hamiltonian_data *-- Coulomb_potential_data
 Hamiltonian_data *-- Wavefunction_data
 
 Coulomb_potential_data *-- Structure_data
+Coulomb_potential_data *-- Wavefunction_data
+
 AOs_cart_data *-- Structure_data
 AOs_sphe_data *-- Structure_data
 MOs_data *-- AOs_cart_data
