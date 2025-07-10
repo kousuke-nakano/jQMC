@@ -54,31 +54,39 @@ def generate_init_electron_configurations(
     """Generate initial electron configurations for walkers.
 
     Generate initial electron configurations (up/down positions) for a set of walkers,
-    using the same “ion_seq” idea as the Fortran initconf routine, but without
+    using the same ion_seq idea as the Fortran initconf routine, but without
     any periodic boundary conditions or lattice parameters.
 
     Parameters:
-    tot_num_electron_up : int
-        Total number of spin-up electrons in the system.
-    tot_num_electron_dn : int
-        Total number of spin-down electrons in the system.
-    num_walkers : int
-        Number of independent walkers (configurations) to generate.
-    charges : np.ndarray of shape (nion,)
-        Atomic charges (should reflect valence electron count, e.g. atomic_number or atomic_number - z_core).
-        They will be rounded to integers internally.
-    coords : np.ndarray of shape (nion, 3)
-        Cartesian coordinates of each atom in the system.
+        tot_num_electron_up (int):
+            Total number of spin-up electrons in the system.
+
+        tot_num_electron_dn (int):
+            Total number of spin-down electrons in the system.
+
+        num_walkers (int):
+            Number of independent walkers (configurations) to generate.
+
+        charges (np.ndarray of shape (nion,)):
+            Atomic charges (should reflect valence electron count, e.g.
+            atomic_number or atomic_number - z_core). They will be rounded to
+            integers internally.
+
+        coords (np.ndarray of shape (nion, 3)):
+            Cartesian coordinates of each atom in the system.
 
     Returns:
-    r_carts_up : np.ndarray of shape (num_walkers, tot_num_electron_up, 3)
-        Generated positions of all spin-up electrons for each walker.
-    r_carts_dn : np.ndarray of shape (num_walkers, tot_num_electron_dn, 3)
-        Generated positions of all spin-down electrons for each walker.
-    up_owner : np.ndarray of shape (num_walkers, tot_num_electron_up), dtype=int
-        For each walker iw and each up-electron k, the atom-index it was assigned to.
-    dn_owner : np.ndarray of shape (num_walkers, tot_num_electron_dn), dtype=int
-        For each walker iw and each down-electron k, the atom-index it was assigned to.
+        r_carts_up (np.ndarray of shape (num_walkers, tot_num_electron_up, 3)):
+            Generated positions of all spin-up electrons for each walker.
+
+        r_carts_dn (np.ndarray of shape (num_walkers, tot_num_electron_dn, 3)):
+            Generated positions of all spin-down electrons for each walker.
+
+        up_owner (np.ndarray of shape (num_walkers, tot_num_electron_up), dtype=int):
+            For each walker `iw` and each up-electron `k`, the atom-index it was assigned to.
+
+        dn_owner (np.ndarray of shape (num_walkers, tot_num_electron_dn), dtype=int):
+            For each walker `iw` and each down-electron `k`, the atom-index it was assigned to.
     """
     # Fixed random displacement range (±dst/2 in each coordinate)
     min_dst = 0.1

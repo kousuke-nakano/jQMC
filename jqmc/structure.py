@@ -323,7 +323,7 @@ class Structure_data:
         Returns:
             npt.NDAarray[np.float64]:
                 (N x 3) np.array containing atomic positions in crystal (fractional) coordinate.
-            The unit is Bohr
+                The unit is Bohr
         """
         h = np.array([self.vec_a, self.vec_b, self.vec_c])
         positions_frac = np.array([np.dot(np.array(pos), np.linalg.inv(h)) for pos in self.positions_cart_np])

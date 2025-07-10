@@ -241,9 +241,12 @@ def compute_local_energy_jax(
     The method is for computing the local energy at (r_up_carts, r_dn_carts).
 
     Args:
-        hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
-        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        hamiltonian_data (Hamiltonian_data):
+            an instance of Hamiltonian_data
+        r_up_carts (jnpt.ArrayLike):
+            Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
+        r_dn_carts (jnpt.ArrayLike):
+            Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
         RT (jnpt.ArrayLike):
             Rotation matrix. equiv R.T used for non-local part. It does not affect all-electron calculations.
 

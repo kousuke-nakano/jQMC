@@ -168,7 +168,7 @@ def evaluate_ln_wavefunction_jax(
 ) -> float:
     """Evaluate the value of Wavefunction.
 
-    The method is for evaluate the logarithm of |wavefunction| (ln |Psi|) at (r_up_carts, r_dn_carts).
+    The method is for evaluate the logarithm of ``|wavefunction|`` (:math:`ln|Psi|`) at (r_up_carts, r_dn_carts).
 
     Args:
         wavefunction_data (Wavefunction_data): an instance of Wavefunction_data

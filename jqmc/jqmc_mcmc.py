@@ -1407,15 +1407,18 @@ class MCMC:
         """Return the derivativs of ln_WF wrt variational parameters.
 
         Args:
-            num_mcmc_warmup_steps (int): The number of warmup steps.
+            num_mcmc_warmup_steps (int):
+                The number of warmup steps.
             chosen_param_index (list):
                 The chosen parameter index to compute the generalized forces.
                 if None, all parameters are used.
 
         Return:
-            O_matrix(npt.NDArray): The matrix containing O_k = d ln Psi / dc_k,
-            where k is the flattened variational parameter index. The dimenstion
-            of O_matrix is (M, nw, k), where M is the MCMC step and nw is the walker index.
+            O_matrix(npt.NDArray):
+                The matrix containing O_k = d ln Psi / dc_k,
+                where k is the flattened variational parameter index.
+                The dimenstion　of O_matrix is (M, nw, k),
+                where M is the MCMC step and nw is the walker index.
         """
         dln_Psi_dc_list = self.opt_param_dict["dln_Psi_dc_list"]
 
@@ -1449,8 +1452,10 @@ class MCMC:
         """Compute the derivatives of E wrt variational parameters, a.k.a. generalized forces.
 
         Args:
-            num_mcmc_warmup_steps (int): The number of warmup steps.
-            num_mcmc_bin_blocks (int): the number of binning blocks
+            num_mcmc_warmup_steps (int):
+                The number of warmup steps.
+            num_mcmc_bin_blocks (int):
+                the number of binning blocks
             chosen_param_index (npt.NDArray):
                 The chosen parameter index to compute the generalized forces.
                 If None, all parameters are used.
@@ -1655,8 +1660,10 @@ class MCMC:
         Optimizing Wavefunction using the Stochastic Reconfiguration Method.
 
         Args:
-            num_mcmc_steps(int): The number of MCMC samples per walker.
-            num_opt_steps(int): The number of WF optimization step.
+            num_mcmc_steps(int):
+                The number of MCMC samples per walker.
+            num_opt_steps(int):
+                The number of WF optimization step.
             delta(float):
                 The prefactor of the SR matrix for adjusting the optimization step.
                 i.e., c_i <- c_i + delta * S^{-1} f
@@ -1668,16 +1675,27 @@ class MCMC:
             max_time(int):
                 The maximum time (sec.) If maximum time exceeds,
                 the method exits the MCMC loop.
-            num_mcmc_warmup_steps (int): number of equilibration steps.
-            num_mcmc_bin_blocks (int): number of blocks for reblocking.
-            opt_J1_param (bool): optimize one-body Jastrow # to be implemented.
-            opt_J2_param (bool): optimize two-body Jastrow
-            opt_J3_param (bool): optimize three-body Jastrow
-            opt_lambda_param (bool): optimize lambda_matrix in the determinant part.
-            num_param_opt (int): the number of parameters to optimize in the descending order of |f|/|std f|. If zero, all parameters are optimized.
-            cg_flag (bool): if True, use conjugate gradient method for inverse S matrix.
-            cg_max_iter (int): maximum number of iterations for conjugate gradient method.
-            cg_tol (float): tolerance for conjugate gradient method.
+            num_mcmc_warmup_steps (int):
+                number of equilibration steps.
+            num_mcmc_bin_blocks (int):
+                number of blocks for reblocking.
+            opt_J1_param (bool):
+                optimize one-body Jastrow # to be implemented.
+            opt_J2_param (bool):
+                optimize two-body Jastrow
+            opt_J3_param (bool):
+                optimize three-body Jastrow
+            opt_lambda_param (bool):
+                optimize lambda_matrix in the determinant part.
+            num_param_opt (int):
+                the number of parameters to optimize in the descending order of ``|f|/|std f|``.
+                If zero, all parameters are optimized.
+            cg_flag (bool):
+                if True, use conjugate gradient method for inverse S matrix.
+            cg_max_iter (int):
+                maximum number of iterations for conjugate gradient method.
+            cg_tol (float):
+                tolerance for conjugate gradient method.
         """
         # toml(control) filename
         toml_filename = "external_control_opt.toml"
@@ -2429,12 +2447,16 @@ class MCMC:
         Refactoring in progress.
 
         Return:
-            dc_param_list (list): labels of the parameters with derivatives computed.
-            dln_Psi_dc_list (list): dln_Psi_dc instances computed by JAX-grad.
-            dc_size_list (list): sizes of dln_Psi_dc instances
-            dc_shape_list (list): shapes of dln_Psi_dc instances
-            dc_flattened_index_list (list): indices of dln_Psi_dc instances for the flattened parameter
-        #
+            dc_param_list (list):
+                labels of the parameters with derivatives computed.
+            dln_Psi_dc_list (list):
+                dln_Psi_dc instances computed by JAX-grad.
+            dc_size_list (list):
+                sizes of dln_Psi_dc instances
+            dc_shape_list (list):
+                shapes of dln_Psi_dc instances
+            dc_flattened_index_list (list):
+                indices of dln_Psi_dc instances for the flattened parameter
         """
         dc_param_list = []
         dln_Psi_dc_list = []
@@ -2678,7 +2700,8 @@ class MCMC_debug:
         """Launch MCMCs with the set multiple walkers.
 
         Args:
-            num_mcmc_steps (int): the number of total mcmc steps per walker.
+            num_mcmc_steps (int):
+                the number of total mcmc steps per walker.
             max_time(int):
                 Max elapsed time (sec.). If the elapsed time exceeds max_time, the methods exits the mcmc loop.
         """

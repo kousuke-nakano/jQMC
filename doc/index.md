@@ -13,6 +13,8 @@ The following features of **jQMC** are highlighted:
 :hidden:
 install
 examples
+notes/technical_notes
+source/modules
 citation
 reference
 changelog

@@ -148,12 +148,18 @@ class GFMC_fixed_projection_time:
     GFMC class. Runing GFMC.
 
     Args:
-        hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
-        num_walkers (int): the number of walkers
-        num_gfmc_collect_steps(int): the number of steps to collect the GFMC data
-        mcmc_seed (int): seed for the MCMC chain.
-        tau (float): projection time (bohr^-1)
-        alat (float): discretized grid length (bohr)
+        hamiltonian_data (Hamiltonian_data):
+            an instance of Hamiltonian_data
+        num_walkers (int):
+            the number of walkers
+        num_gfmc_collect_steps(int):
+            the number of steps to collect the GFMC data
+        mcmc_seed (int):
+            seed for the MCMC chain.
+        tau (float):
+            projection time (bohr^-1)
+        alat (float):
+            discretized grid length (bohr)
         random_discretized_mesh (bool)
             Flag for the random discretization mesh in the kinetic part and in the non-local part of ECPs.
             Valid both for all-electron and ECP calculations.
@@ -1495,12 +1501,18 @@ class GFMC_fixed_projection_time_debug:
     GFMC class. Runing GFMC.
 
     Args:
-        hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
-        num_walkers (int): the number of walkers
-        num_gfmc_collect_steps(int): the number of steps to collect the GFMC data
-        mcmc_seed (int): seed for the MCMC chain.
-        tau (float): projection time (bohr^-1)
-        alat (float): discretized grid length (bohr)
+        hamiltonian_data (Hamiltonian_data):
+            an instance of Hamiltonian_data
+        num_walkers (int):
+            the number of walkers
+        num_gfmc_collect_steps(int):
+            the number of steps to collect the GFMC data
+        mcmc_seed (int):
+            seed for the MCMC chain.
+        tau (float):
+            projection time (bohr^-1)
+        alat (float):
+            discretized grid length (bohr)
         non_local_move (str):
             treatment of the spin-flip term. tmove (Casula's T-move) or dtmove (Determinant Locality Approximation with Casula's T-move)
             Valid only for ECP calculations. All-electron calculations, do not specify this value.
@@ -2175,18 +2187,24 @@ class GFMC_fixed_num_projection:
     """GFMC class. Runing GFMC with multiple walkers.
 
     Args:
-        hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
-        num_walkers (int): the number of walkers
-        mcmc_seed (int): seed for the MCMC chain.
-        E_scf (float): Self-consistent E (Hartree)
-        alat (float): discretized grid length (bohr)
+        hamiltonian_data (Hamiltonian_data):
+            an instance of Hamiltonian_data
+        num_walkers (int):
+            the number of walkers
+        mcmc_seed (int):
+            seed for the MCMC chain.
+        E_scf (float):
+            Self-consistent E (Hartree)
+        alat (float):
+            discretized grid length (bohr)
         random_discretized_mesh (bool)
             Flag for the random discretization mesh in the kinetic part and the non-local part of ECPs.
             Valid both for all-electron and ECP calculations.
         non_local_move (str):
             treatment of the spin-flip term. tmove (Casula's T-move) or dtmove (Determinant Locality Approximation with Casula's T-move)
             Valid only for ECP calculations. Do not specify this value for all-electron calculations.
-        comput_position_deriv (bool): if True, compute the derivatives of E wrt. atomic positions.
+        comput_position_deriv (bool):
+            if True, compute the derivatives of E wrt. atomic positions.
     """
 
     def __init__(
@@ -4437,15 +4455,21 @@ class GFMC_fixed_num_projection_debug:
     """GFMC class. Runing GFMC with multiple walkers.
 
     Args:
-        hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data
-        num_walkers (int): the number of walkers
-        mcmc_seed (int): seed for the MCMC chain.
-        E_scf (float): Self-consistent E (Hartree)
-        alat (float): discretized grid length (bohr)
+        hamiltonian_data (Hamiltonian_data):
+            an instance of Hamiltonian_data
+        num_walkers (int):
+            the number of walkers
+        mcmc_seed (int):
+            seed for the MCMC chain.
+        E_scf (float):
+            Self-consistent E (Hartree)
+        alat (float):
+            discretized grid length (bohr)
         non_local_move (str):
             treatment of the spin-flip term. tmove (Casula's T-move) or dtmove (Determinant Locality Approximation with Casula's T-move)
             Valid only for ECP calculations. Do not specify this value for all-electron calculations.
-        comput_position_deriv (bool): if True, compute the derivatives of E wrt. atomic positions.
+        comput_position_deriv (bool):
+            if True, compute the derivatives of E wrt. atomic positions.
     """
 
     def __init__(

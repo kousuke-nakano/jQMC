@@ -178,7 +178,7 @@ class Coulomb_potential_data:
     The class contains data for computing effective core potentials (ECPs).
 
     Args:
-        ecp_flag (bool) :
+        ecp_flag (bool):
             If True, ECPs are used. The following values should be defined.
         z_cores (list[float] | tuple[float]]):
             Number of core electrons to remove per atom (dim: num_atoms).
@@ -471,10 +471,12 @@ class Coulomb_potential_data:
         append a dummy element with ang_mom = global_ang_mom_non_local_part.
 
         Returns updated lists of:
-            -ang_mom_non_local_part_padded_jnp,
-            -exponents_non_local_part_padded_jnp,
-            -coefficients_non_local_part_padded_jnp,
-            -powers_non_local_part_padded_jnp,
+
+            - ang_mom_non_local_part_padded_jnp
+            - exponents_non_local_part_padded_jnp
+            - coefficients_non_local_part_padded_jnp
+            - powers_non_local_part_padded_jnp
+
         so that each atom's maximum ang_mom matches the global max,
         and the same dim. for i_atom (nucleus index).
         """
@@ -1637,22 +1639,33 @@ def compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
     exploitted in the method.
 
     Args:
-        coulomb_potential_data (Coulomb_potential_data): an instance of Bare_coulomb_potential_data
-        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
-        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
-        weights (list[np.float]): weights for numerical integration
-        grid_points (npt.NDArray[np.float64]): grid_points for numerical integration
+        coulomb_potential_data (Coulomb_potential_data):
+            an instance of Bare_coulomb_potential_data
+        wavefunction_data (Wavefunction_data):
+            an instance of Wavefunction_data
+        r_up_carts (jnpt.ArrayLike):
+            Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
+        r_dn_carts (jnpt.ArrayLike):
+            Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        weights (list[np.float]):
+            weights for numerical integration
+        grid_points (npt.NDArray[np.float64]):
+            grid_points for numerical integration
         flag_determinant_only (int):
             If True (i.e., 1), only the determinant part is considered for the non-local ECP part.
             If False (i.e., 0), both the Jastrow and determinant part is considered for the non-local ECP part.
 
     Returns:
-        jnpt.ArrayLike: grid points used for the up electron
-        jnpt.ArrayLike: grid points used for the dn electron
-        jnpt.ArrayLike: V_ecp_up for the grid points for up electron
-        jnpt.ArrayLike: V_ecp_dn for the grid points for up electron
-        float: The sum of non-local part of the given ECPs with r_up_carts and r_dn_carts.
+        jnpt.ArrayLike:
+            grid points used for the up electron
+        jnpt.ArrayLike:
+            grid points used for the dn electron
+        jnpt.ArrayLike:
+            V_ecp_up for the grid points for up electron
+        jnpt.ArrayLike:
+            V_ecp_dn for the grid points for up electron
+        float:
+            The sum of non-local part of the given ECPs with r_up_carts and r_dn_carts.
 
     Notes:
         This part of @jit drastically accelarates the computation!
@@ -2245,10 +2258,14 @@ def compute_coulomb_potential_jax(
             Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
         r_dn_carts (jnpt.ArrayLike):
             Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
-        RT (jnpt.ArrayLike): Rotation matrix. equiv R.T used for non-local part
-        NN (int): Consider only up to NN-th nearest neighbors.
-        Nv (int): The number of quadrature points for the spherical part.
-        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
+        RT (jnpt.ArrayLike):
+            Rotation matrix. equiv R.T used for non-local part
+        NN (int):
+            Consider only up to NN-th nearest neighbors.
+        Nv (int):
+            The number of quadrature points for the spherical part.
+        wavefunction_data (Wavefunction_data):
+            an instance of Wavefunction_data
 
     Returns:
         float:  The sum of bare electron-ion, electron-electron, local and non-local parts of the given
