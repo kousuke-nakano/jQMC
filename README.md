@@ -59,14 +59,12 @@ Examples are in `examples` directory.
 ## Supporting HF/DFT packages
 `jQMC` can prepare a trial wavefunction from a `TREX-IO` file. Below is the list of HF/DFT packages that adopt `TREX-IO` for reading writing wave functions:
 
-| Software                                                                       |
-| ------------------------------------------------------------------------------ |
-| [Quantum Package](https://github.com/QuantumPackage/qp2)                       |
-| [PySCF](https://github.com/pyscf/pyscf)                                        |
-| [FHI-aims](https://fhi-aims.org/)                                              |
-| [CP2K](https://github.com/cp2k/cp2k)                                           |
-| [Dirac](https://www.diracprogram.org)                                          |
-| [pymolpro](https://molpro.github.io/pymolpro)                                  |
+- [Quantum Package](https://github.com/QuantumPackage/qp2)
+- [PySCF](https://github.com/pyscf/pyscf)
+- [FHI-aims](https://fhi-aims.org/)
+- [CP2K](https://github.com/cp2k/cp2k)
+- [Dirac](https://www.diracprogram.org)
+- [pymolpro](https://molpro.github.io/pymolpro)
 
 See the [TREX-IO website](https://github.com/TREX-CoE/trexio) for the detail.
 
