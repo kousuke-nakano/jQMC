@@ -1,0 +1,20 @@
+[control]
+job_type = "lrdmc" # Specify the job type. "vmc", "vmcopt", "lrdmc", or "lrdmc-tau".
+mcmc_seed = 34456 # Random seed for MCMC
+number_of_walkers = 4 # Number of walkers per MPI process
+max_time = 86400 # Maximum time in sec.
+restart = false
+restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
+verbosity = "low" # Verbosity level. "low" or "high"
+
+[lrdmc]
+num_mcmc_steps = 10000 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
+num_mcmc_per_measurement = 30 # Number of GFMC projections per measurement. Every local energy and other observeables are measured every this projection.
+alat = 0.10 # The lattice discretization parameter (i.e. grid size) used for discretized the Hamiltonian and potential. The lattice spacing is alat * a0, where a0 is the Bohr radius.
+non_local_move = "tmove" # The treatment of the non-local term in the Effective core potential. tmove (T-move) and dltmove (Determinant locality approximation with T-move) are available.
+num_gfmc_warmup_steps = 10 # Number of observable measurement steps for warmup (i.e., discarged).
+num_gfmc_bin_blocks = 10 # Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_gfmc_bin_blocks, not num_gfmc_bin_blocks * mpi_size * number_of_walkers.
+num_gfmc_collect_steps = 5 # Number of measurement (before binning) for collecting the weights.
+E_scf = -1.0 # The initial guess of the total energy. This is used to compute the initial energy shift in the GFMC.
+atomic_force = true
