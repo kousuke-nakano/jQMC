@@ -1,0 +1,104 @@
+&global
+  project      water_ccecp_ccpvtz
+  print_level  medium
+  run_type     energy
+&end
+
+&force_eval
+  method quickstep
+
+  &subsys
+    &cell
+      abc  15.0 15.0 15.0
+      periodic none
+    &end
+
+    &topology
+      coord_file_format  xyz
+      coord_file_name    water.xyz
+    &end
+
+    &kind H
+      basis_set  ccecp-cc-pVTZ
+      potential  ecp ccECP
+    &end
+
+    &kind O
+      basis_set  ccecp-cc-pVTZ
+      potential  ecp ccECP
+    &end
+&end
+
+  &dft
+    multiplicity  1
+    uks           false
+    charge        0
+
+    basis_set_file_name  ./basis.cp2k
+    potential_file_name  ./ecp.cp2k
+
+    &qs
+      method gpw
+      eps_default  1.0e-15
+    &end
+
+    &xc
+      &xc_functional
+        &lda_x
+        &end
+        &lda_c_pz
+        &end
+      &end
+    &end
+
+    &poisson
+      psolver   wavelet
+      periodic  none
+    &end
+
+    &mgrid
+    cutoff 1000
+    rel_cutoff 50
+    &end
+
+    &scf
+     scf_guess  atomic
+     eps_scf    1.0e-7
+     max_scf    5
+     eps_diis   0.1
+     &ot on
+        minimizer cg
+        linesearch adapt
+        preconditioner full_single_inverse
+        max_scf_diis 50
+     &end ot
+     &outer_scf
+        eps_scf    1.0e-7
+        max_scf    3
+     &end outer_scf
+      &print
+        &restart on
+        &end
+        &restart_history off
+        &end
+      &end
+    &end
+
+    &print
+      &trexio
+      &end
+      &mo
+        energies      true
+        occnums       false
+        cartesian     false
+        coefficients  true
+        &each
+          qs_scf  0
+        &end
+      &end mo
+      &overlap_condition on
+        diagonalization   .true.
+      &end overlap_condition
+    &end print
+  &end dft
+&end
