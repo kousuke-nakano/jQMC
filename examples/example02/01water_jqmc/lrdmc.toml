@@ -1,0 +1,19 @@
+[control]
+  job_type = 'lrdmc' # vmc, vmcopt, lrdmc
+  mcmc_seed = 34467
+  number_of_walkers = !nw!
+  max_time = 86400
+  restart = false
+  restart_chk = 'lrdmc.rchk'
+  hamiltonian_chk = '../hamiltonian_data.chk' # if restart is false
+  verbosity = 'low'
+
+[lrdmc]
+  num_mcmc_steps  = 100
+  num_mcmc_per_measurement = 30
+  alat = 0.30
+  non_local_move = "tmove"
+  num_gfmc_warmup_steps = 20
+  num_gfmc_bin_blocks = 20
+  num_gfmc_collect_steps = 10
+  E_scf = -17.00
