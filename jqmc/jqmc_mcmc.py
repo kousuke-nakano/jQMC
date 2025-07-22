@@ -185,6 +185,13 @@ class MCMC:
 
         coords = hamiltonian_data.structure_data.positions_cart_jnp
 
+        # check if only up electrons are updated
+        if tot_num_electron_dn == 0:
+            logger.info("  Only up electrons are updated in the MCMC.")
+            self.only_up_electron = True
+        else:
+            self.only_up_electron = False
+
         ## generate initial electron configurations
         r_carts_up, r_carts_dn, up_owner, dn_owner = generate_init_electron_configurations(
             tot_num_electron_up, tot_num_electron_dn, self.__num_walkers, charges, coords
@@ -630,24 +637,186 @@ class MCMC:
 
             return (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key)
 
+        @partial(jit, static_argnums=3)
+        def _update_electron_positions_only_up_electron(
+            init_r_up_carts, init_r_dn_carts, jax_PRNG_key, num_mcmc_per_measurement, hamiltonian_data, Dt, epsilon_AS
+        ):
+            """Update electron positions based on the MH method. See _update_electron_positions_ for the details."""
+            accepted_moves = 0
+            rejected_moves = 0
+            r_up_carts = init_r_up_carts
+            r_dn_carts = init_r_dn_carts
+
+            def body_fun(_, carry):
+                accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key = carry
+
+                # Choose randomly if the electron comes from up or dn
+                jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
+                up_index = jax.random.randint(subkey, shape=(), minval=0, maxval=len(r_up_carts))
+                selected_electron_index = up_index
+
+                # choose an up or dn electron from old_r_cart
+                old_r_cart = r_up_carts[selected_electron_index]
+
+                # choose the nearest atom index
+                nearest_atom_index = find_nearest_index_jax(hamiltonian_data.structure_data, old_r_cart)
+
+                # charges
+                if hamiltonian_data.coulomb_potential_data.ecp_flag:
+                    charges = jnp.array(hamiltonian_data.structure_data.atomic_numbers) - jnp.array(
+                        hamiltonian_data.coulomb_potential_data.z_cores
+                    )
+                else:
+                    charges = jnp.array(hamiltonian_data.structure_data.atomic_numbers)
+
+                # coords
+                coords = hamiltonian_data.structure_data.positions_cart_jnp
+
+                R_cart = coords[nearest_atom_index]
+                Z = charges[nearest_atom_index]
+                norm_r_R = jnp.linalg.norm(old_r_cart - R_cart)
+                f_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
+
+                sigma = f_l * Dt
+                jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
+                g = jax.random.normal(subkey, shape=()) * sigma
+
+                # choose x,y,or,z
+                jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
+                random_index = jax.random.randint(subkey, shape=(), minval=0, maxval=3)
+
+                # plug g into g_vector
+                g_vector = jnp.zeros(3)
+                g_vector = g_vector.at[random_index].set(g)
+
+                new_r_cart = old_r_cart + g_vector
+
+                # set proposed r_up_carts and r_dn_carts.
+                proposed_r_up_carts = r_up_carts.at[selected_electron_index].set(new_r_cart)
+                proposed_r_dn_carts = r_dn_carts
+
+                # choose the nearest atom index
+                nearest_atom_index = find_nearest_index_jax(hamiltonian_data.structure_data, new_r_cart)
+
+                R_cart = coords[nearest_atom_index]
+                Z = charges[nearest_atom_index]
+                norm_r_R = jnp.linalg.norm(new_r_cart - R_cart)
+                f_prime_l = 1 / Z**2 * (1 + Z**2 * norm_r_R) / (1 + norm_r_R)
+
+                T_ratio = (f_l / f_prime_l) * jnp.exp(
+                    -(jnp.linalg.norm(new_r_cart - old_r_cart) ** 2)
+                    * (1.0 / (2.0 * f_prime_l**2 * Dt**2) - 1.0 / (2.0 * f_l**2 * Dt**2))
+                )
+
+                # original trial WFs
+                Jastrow_T_p = compute_Jastrow_part_jax(
+                    jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
+                    r_up_carts=proposed_r_up_carts,
+                    r_dn_carts=proposed_r_dn_carts,
+                )
+
+                Jastrow_T_o = compute_Jastrow_part_jax(
+                    jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
+                    r_up_carts=r_up_carts,
+                    r_dn_carts=r_dn_carts,
+                )
+
+                Det_T_p = compute_det_geminal_all_elements_jax(
+                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                    r_up_carts=proposed_r_up_carts,
+                    r_dn_carts=proposed_r_dn_carts,
+                )
+
+                Det_T_o = compute_det_geminal_all_elements_jax(
+                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                    r_up_carts=r_up_carts,
+                    r_dn_carts=r_dn_carts,
+                )
+
+                # compute AS regularization factors, R_AS and R_AS_eps
+                R_AS_p = compute_AS_regularization_factor_jax(
+                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                    r_up_carts=proposed_r_up_carts,
+                    r_dn_carts=proposed_r_dn_carts,
+                )
+                R_AS_p_eps = jnp.maximum(R_AS_p, epsilon_AS)
+
+                R_AS_o = compute_AS_regularization_factor_jax(
+                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                    r_up_carts=r_up_carts,
+                    r_dn_carts=r_dn_carts,
+                )
+                R_AS_o_eps = jnp.maximum(R_AS_o, epsilon_AS)
+
+                # modified trial WFs
+                R_AS_ratio = (R_AS_p_eps / R_AS_p) / (R_AS_o_eps / R_AS_o)
+                WF_ratio = jnp.exp(Jastrow_T_p - Jastrow_T_o) * (Det_T_p / Det_T_o)
+
+                # compute R_ratio
+                R_ratio = (R_AS_ratio * WF_ratio) ** 2.0
+
+                acceptance_ratio = jnp.min(jnp.array([1.0, R_ratio * T_ratio]))
+
+                jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
+                b = jax.random.uniform(subkey, shape=(), minval=0.0, maxval=1.0)
+
+                def _accepted_fun(_):
+                    # Move accepted
+                    return (accepted_moves + 1, rejected_moves, proposed_r_up_carts, proposed_r_dn_carts)
+
+                def _rejected_fun(_):
+                    # Move rejected
+                    return (accepted_moves, rejected_moves + 1, r_up_carts, r_dn_carts)
+
+                # judge accept or reject the propsed move using jax.lax.cond
+                accepted_moves, rejected_moves, r_up_carts, r_dn_carts = lax.cond(
+                    b < acceptance_ratio, _accepted_fun, _rejected_fun, operand=None
+                )
+
+                carry = (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key)
+                return carry
+
+            accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key = jax.lax.fori_loop(
+                0, num_mcmc_per_measurement, body_fun, (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key)
+            )
+
+            return (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key)
+
         # MCMC update compilation.
         logger.info("  Compilation is in progress...")
         RTs = jnp.broadcast_to(jnp.eye(3), (len(self.__jax_PRNG_key_list), 3, 3))
-        (
-            _,
-            _,
-            _,
-            _,
-            _,
-        ) = vmap(_update_electron_positions, in_axes=(0, 0, 0, None, None, None, None))(
-            self.__latest_r_up_carts,
-            self.__latest_r_dn_carts,
-            self.__jax_PRNG_key_list,
-            self.__num_mcmc_per_measurement,
-            self.__hamiltonian_data,
-            self.__Dt,
-            self.__epsilon_AS,
-        )
+        if self.only_up_electron:
+            (
+                _,
+                _,
+                _,
+                _,
+                _,
+            ) = vmap(_update_electron_positions_only_up_electron, in_axes=(0, 0, 0, None, None, None, None))(
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+                self.__jax_PRNG_key_list,
+                self.__num_mcmc_per_measurement,
+                self.__hamiltonian_data,
+                self.__Dt,
+                self.__epsilon_AS,
+            )
+        else:
+            (
+                _,
+                _,
+                _,
+                _,
+                _,
+            ) = vmap(_update_electron_positions, in_axes=(0, 0, 0, None, None, None, None))(
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+                self.__jax_PRNG_key_list,
+                self.__num_mcmc_per_measurement,
+                self.__hamiltonian_data,
+                self.__Dt,
+                self.__epsilon_AS,
+            )
         _ = vmap(compute_local_energy_jax, in_axes=(None, 0, 0, 0))(
             self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs
         )
@@ -749,21 +918,38 @@ class MCMC:
 
             # electron positions are goint to be updated!
             start = time.perf_counter()
-            (
-                accepted_moves_nw,
-                rejected_moves_nw,
-                self.__latest_r_up_carts,
-                self.__latest_r_dn_carts,
-                self.__jax_PRNG_key_list,
-            ) = vmap(_update_electron_positions, in_axes=(0, 0, 0, None, None, None, None))(
-                self.__latest_r_up_carts,
-                self.__latest_r_dn_carts,
-                self.__jax_PRNG_key_list,
-                self.__num_mcmc_per_measurement,
-                self.__hamiltonian_data,
-                self.__Dt,
-                self.__epsilon_AS,
-            )
+            if self.only_up_electron:
+                (
+                    accepted_moves_nw,
+                    rejected_moves_nw,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                    self.__jax_PRNG_key_list,
+                ) = vmap(_update_electron_positions_only_up_electron, in_axes=(0, 0, 0, None, None, None, None))(
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                    self.__jax_PRNG_key_list,
+                    self.__num_mcmc_per_measurement,
+                    self.__hamiltonian_data,
+                    self.__Dt,
+                    self.__epsilon_AS,
+                )
+            else:
+                (
+                    accepted_moves_nw,
+                    rejected_moves_nw,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                    self.__jax_PRNG_key_list,
+                ) = vmap(_update_electron_positions, in_axes=(0, 0, 0, None, None, None, None))(
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                    self.__jax_PRNG_key_list,
+                    self.__num_mcmc_per_measurement,
+                    self.__hamiltonian_data,
+                    self.__Dt,
+                    self.__epsilon_AS,
+                )
             end = time.perf_counter()
             timer_mcmc_update += end - start
 
