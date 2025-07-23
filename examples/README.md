@@ -29,3 +29,7 @@ Binding energy of the water-water dimer with the JAGP anstaz.
 ## example07
 
 Weak scalings of VMC and LRDMC using the water molecule.
+
+## example08
+
+How to call modules of `jQMC` from a `python` script.
