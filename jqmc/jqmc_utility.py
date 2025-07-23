@@ -384,6 +384,7 @@ def generate_init_electron_configurations(
     return r_carts_up, r_carts_dn, up_owner, dn_owner
 
 
+'''
 if __name__ == "__main__":
 
     def assign_electrons_to_atoms(electrons, coords):
@@ -477,3 +478,4 @@ if __name__ == "__main__":
         print("  Dn  counts:", dn_counts)
         print("  Total counts:", up_counts + dn_counts)
         print()
+'''

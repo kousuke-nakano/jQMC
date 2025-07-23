@@ -68,6 +68,7 @@ def legendre_tablated(n: int, x: float) -> float:
     return jnp.select(conditions, P_n, jnp.nan)
 
 
+'''
 @jit
 def eval_legendre(n: jnpt.ArrayLike, x: jnpt.ArrayLike) -> jax.Array:
     """Evaluate Legendre polynomials of specified degrees at provided point(s).
@@ -106,7 +107,7 @@ def eval_legendre(n: jnpt.ArrayLike, x: jnpt.ArrayLike) -> jax.Array:
     )
 
     return jnp.squeeze(p)
-
+'''
 
 """
 if __name__ == "__main__":

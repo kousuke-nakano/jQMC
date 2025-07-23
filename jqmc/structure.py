@@ -405,6 +405,7 @@ class Structure_data:
         atoms = read(filename)
         return cls.parse_structure_from_ase_atom(atoms)
 
+    '''
     def write_to_file(self, filename: str) -> None:
         """Write the stored sturcute information to a file.
 
@@ -437,6 +438,7 @@ class Structure_data:
             ase_atom.set_pbc(self.pbc_flag)
 
         write(filename, ase_atom)
+    '''
 
 
 def find_nearest_index(structure: Structure_data, r_cart: list[float]) -> int:

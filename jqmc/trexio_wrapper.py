@@ -540,6 +540,7 @@ def read_trexio_file(
     )
 
 
+"""
 def _convert_from_atomic_numbers_to_atomic_labels(charges_r: list[int]) -> list[str]:
     # Dictionary mapping atomic numbers to symbols, up to atomic number 86
     atomic_number_to_element = {
@@ -645,6 +646,7 @@ def _convert_from_atomic_numbers_to_atomic_labels(charges_r: list[int]) -> list[
             raise ValueError(f"No element for atomic number: {charge}")
 
     return labels_r
+"""
 
 
 def convert_from_atomic_labels_to_atomic_numbers(labels_r: list[str]) -> list[int]:
