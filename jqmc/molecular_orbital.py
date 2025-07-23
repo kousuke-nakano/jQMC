@@ -440,6 +440,7 @@ def compute_MO(mo_data: MO_data, r_cart: list[float]) -> float:
     )
 
 
+"""
 if __name__ == "__main__":
     import os
 
@@ -526,3 +527,4 @@ if __name__ == "__main__":
     mos_up_jax = _compute_MOs_jax(mos_data=mos_data_up, r_carts=r_up_carts)
 
     print(mos_up_debug - mos_up_jax)
+"""

@@ -108,6 +108,7 @@ def eval_legendre(n: jnpt.ArrayLike, x: jnpt.ArrayLike) -> jax.Array:
     return jnp.squeeze(p)
 
 
+"""
 if __name__ == "__main__":
     n = np.arange(7)
     print(jnp.max(n))
@@ -132,3 +133,4 @@ if __name__ == "__main__":
 
     assert np.allclose(y_pred, y, rtol=1e-5, atol=1e-8), "Results do not match"
     print("Results match")
+"""

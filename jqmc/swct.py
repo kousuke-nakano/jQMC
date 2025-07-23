@@ -195,6 +195,7 @@ def evaluate_swct_domega_debug(
     return domega
 
 
+"""
 if __name__ == "__main__":
     from logging import Formatter, StreamHandler
 
@@ -248,3 +249,4 @@ if __name__ == "__main__":
     d_omega_dn = evaluate_swct_domega_debug(swct_data, r_dn_carts)
     print(d_omega_dn)
     print(f"shape(d_omega_dn) = {d_omega_dn.shape}")
+"""

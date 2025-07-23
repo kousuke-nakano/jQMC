@@ -2197,6 +2197,20 @@ def compute_bare_coulomb_potential_ion_ion_jax(
     return bare_coulomb_potential_ion_ion
 
 
+@jit
+def compute_bare_coulomb_potential_el_ion_jax(
+    coulomb_potential_data: Coulomb_potential_data,
+    r_up_carts: jnpt.ArrayLike,
+    r_dn_carts: jnpt.ArrayLike,
+) -> float:
+    """See compute_bare_coulomb_potential_api."""
+    interactions_el_ion_elements_up, interactions_el_ion_elements_dn = compute_bare_coulomb_potential_el_ion_element_wise_jax(
+        coulomb_potential_data, r_up_carts, r_dn_carts
+    )
+
+    return jnp.sum(interactions_el_ion_elements_up) + jnp.sum(interactions_el_ion_elements_dn)
+
+
 def compute_coulomb_potential_debug(
     coulomb_potential_data: Coulomb_potential_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -2297,6 +2311,7 @@ def compute_coulomb_potential_jax(
     return bare_coulomb_potential + ecp_coulomb_potential
 
 
+'''
 if __name__ == "__main__":
     import pickle
 
@@ -2577,3 +2592,4 @@ if __name__ == "__main__":
     sum_V_nonlocal_jax.block_until_ready()
     end = time.perf_counter()
     print(f"Total elapsed Time = {(end - start) * 1e3:.3f} msec.")
+'''

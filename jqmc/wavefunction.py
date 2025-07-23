@@ -914,6 +914,7 @@ def compute_quantum_force_api(
     return 2.0 * grad_ln_WF_up, 2.0 * grad_ln_WF_dn
 
 
+'''
 if __name__ == "__main__":
     log = getLogger("jqmc")
     log.setLevel("DEBUG")
@@ -987,3 +988,4 @@ if __name__ == "__main__":
 
     np.testing.assert_almost_equal(grad_ln_Psi_jastrow2b_param_fdm, grad_ln_Psi_jastrow2b_param_jax, decimal=6)
     """
+'''

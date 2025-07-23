@@ -2513,6 +2513,7 @@ def _compute_primitive_AOs_laplacians_jax(
     return laplacians
 
 
+'''
 if __name__ == "__main__":
     import os
 
@@ -2631,3 +2632,4 @@ if __name__ == "__main__":
     aos_jax_dn = compute_AOs_cart_jax(aos_data=aos_data, r_carts=r_dn_carts)
     aos_jax_up.block_until_ready()
     aos_jax_dn.block_until_ready()
+'''

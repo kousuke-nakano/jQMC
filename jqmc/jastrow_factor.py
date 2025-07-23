@@ -1789,6 +1789,7 @@ def compute_grads_and_laplacian_Jastrow_three_body_debug(
     return grad_J3_up, grad_J3_dn, sum_laplacian_J3
 
 
+'''
 if __name__ == "__main__":
     import pickle
     import time
@@ -2134,3 +2135,4 @@ if __name__ == "__main__":
     # print(jastrow_ratios_jax)
 
     np.testing.assert_almost_equal(jastrow_ratios_debug, jastrow_ratios_jax, decimal=12)
+'''

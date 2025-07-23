@@ -751,6 +751,7 @@ def convert_from_atomic_labels_to_atomic_numbers(labels_r: list[str]) -> list[in
     return atomic_numbers
 
 
+"""
 if __name__ == "__main__":
     log = getLogger("jqmc")
     log.setLevel("DEBUG")
@@ -760,3 +761,4 @@ if __name__ == "__main__":
     stream_handler.setFormatter(handler_format)
     log.addHandler(stream_handler)
     log.addHandler(stream_handler)
+"""

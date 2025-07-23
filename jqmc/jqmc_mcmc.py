@@ -3572,6 +3572,7 @@ class MCMC_debug:
         return np.array(self.__stored_grad_ln_Psi_lambda_matrix)
 
 
+"""
 if __name__ == "__main__":
     from logging import Formatter, StreamHandler, getLogger
 
@@ -3641,3 +3642,4 @@ if __name__ == "__main__":
         logger.info("*** XLA Local devices recognized by JAX***")
         logger.info(local_device_info)
         logger.info("")
+"""

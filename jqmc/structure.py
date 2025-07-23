@@ -554,6 +554,7 @@ def get_min_dist_rel_R_cart_jnp(structure_data: Structure_data, r_cart: list[flo
     return rel_R_cart_min_dist
 
 
+"""
 if __name__ == "__main__":
     import os
 
@@ -581,3 +582,4 @@ if __name__ == "__main__":
     ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_files", "water_ccpvtz_trexio.hdf5"))
 
     structure_data.logger_info()
+"""

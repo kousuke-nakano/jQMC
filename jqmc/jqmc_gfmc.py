@@ -5900,6 +5900,7 @@ class GFMC_fixed_num_projection_debug:
         return (force_mean, force_std)
 
 
+"""
 if __name__ == "__main__":
     from logging import Formatter, StreamHandler, getLogger
 
@@ -5969,3 +5970,4 @@ if __name__ == "__main__":
         logger.info("*** XLA Local devices recognized by JAX***")
         logger.info(local_device_info)
         logger.info("")
+"""

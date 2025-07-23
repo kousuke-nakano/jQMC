@@ -135,6 +135,11 @@ class Geminal_data:
         info_lines.append(
             f"  lambda_matrix is symmetric? = {np.allclose(self.lambda_matrix[: self.orb_num_up, : self.orb_num_up], self.lambda_matrix[: self.orb_num_up, : self.orb_num_up].T)}"
         )
+        lambda_matrix_paired, lambda_matrix_unpaired = np.hsplit(self.lambda_matrix, [self.orb_num_dn])
+        info_lines.append(f"  lambda_matrix_paired.shape = {lambda_matrix_paired.shape}")
+        info_lines.append(f"  lambda_matrix_unpaired.shape = {lambda_matrix_unpaired.shape}")
+        info_lines.append(f"  num_electron_up = {self.num_electron_up}")
+        info_lines.append(f"  num_electron_dn = {self.num_electron_dn}")
         info_lines.extend(self.orb_data_up_spin.get_info())
         info_lines.extend(self.orb_data_dn_spin.get_info())
 
@@ -1323,6 +1328,7 @@ def compute_grads_and_laplacian_ln_Det_debug(
     return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D
 
 
+'''
 if __name__ == "__main__":
     import pickle
     import time
@@ -1632,3 +1638,4 @@ if __name__ == "__main__":
     # print(determinant_ratios_jax)
 
     np.testing.assert_array_almost_equal(determinant_ratios_debug, determinant_ratios_jax, decimal=12)
+'''
