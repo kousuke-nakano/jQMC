@@ -51,7 +51,7 @@ In contrast, the load-balanced LRDMC algorithm implemented in jQMC ensures, by d
 
 ![Comparison of the weak-scaling benchmark between the textbook and load-balancing LRDMC algorithms, measured on Miyabi using the benzene molecule ($N_e = 30$).](jqmc_tau_nbra_comparison_benzene_on_gpu.jpg)
 
-*Figure 1: Comparison of the weak-scaling benchmark between the textbook and load-balancing LRDMC algorithms, measured on Miyabi using the benzene molecule ($N_e = 30$).*
+Figure 1: Comparison of the weak-scaling benchmark between the textbook and load-balancing LRDMC algorithms, measured on Miyabi using the benzene molecule ($N_e = 30$).
 
 ---
 
