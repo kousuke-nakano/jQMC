@@ -65,7 +65,7 @@ Additionally, Figure 2 (a) shows that the actual wall-clock execution time on Mi
 
 ![Weak-scaling benchmark measured on Miyabi and Leonardo using the benzene molecule ($N_e = 30$). (a) The elapsed times of the LRDMC runs with respect to the number of GPUs. (b) The normalized times of LRDMC runs with respect to the number of GPUs. These benchmark tests were measured on Leonardo and Miyabi supercomputers.](jqmc_weak_scaling_benzene_on_gpu.jpg)
 
-*Figure 2: Weak-scaling benchmark measured on Miyabi and Leonardo using the benzene molecule ($N_e = 30$). (a) The elapsed times of the LRDMC runs with respect to the number of GPUs. (b) The normalized times of LRDMC runs with respect to the number of GPUs. These benchmark tests were measured on Leonardo and Miyabi supercomputers.*
+Figure 2: Weak-scaling benchmark measured on Miyabi and Leonardo using the benzene molecule ($N_e = 30$). (a) The elapsed times of the LRDMC runs with respect to the number of GPUs. (b) The normalized times of LRDMC runs with respect to the number of GPUs. These benchmark tests were measured on Leonardo and Miyabi supercomputers.
 
 ## Reproducing the Benchmarks
 
