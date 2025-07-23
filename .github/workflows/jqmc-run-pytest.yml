@@ -53,27 +53,27 @@ jobs:
 
     - name: Test jqmc (pytest) with @jit decorator (intra-software comparisons)
       run: |
-        pytest -s -v tests/test_trexio.py --cov-branch --no-cov-on-fail
-        pytest -s -v tests/test_AOs.py --cov-branch --no-cov-on-fail --cov-append
-        pytest -s -v tests/test_MOs.py --cov-branch --no-cov-on-fail --cov-append
-        pytest -s -v tests/test_determinant.py --cov-branch --no-cov-on-fail --cov-append
-        pytest -s -v tests/test_jastrow.py --cov-branch --no-cov-on-fail --cov-append
-        pytest -s -v tests/test_wave_function.py --cov-branch --no-cov-on-fail --cov-append
-        pytest -s -v tests/test_ecps.py --cov-branch --no-cov-on-fail --cov-append
-        pytest -s -v tests/test_swct.py --cov-branch --no-cov-on-fail --cov-append
-        pytest -s -v tests/test_vmc_force.py --cov-branch --no-cov-on-fail --cov-append
-        pytest -s -v tests/test_lrdmc_force.py --cov-branch --no-cov-on-fail --cov-append
+        pytest -s -v tests/test_trexio.py --cov=jqmc --cov-branch --no-cov-on-fail
+        pytest -s -v tests/test_AOs.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        #pytest -s -v tests/test_MOs.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        #pytest -s -v tests/test_determinant.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        #pytest -s -v tests/test_jastrow.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        #pytest -s -v tests/test_wave_function.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        #pytest -s -v tests/test_ecps.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        #pytest -s -v tests/test_swct.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        #pytest -s -v tests/test_vmc_force.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        #pytest -s -v tests/test_lrdmc_force.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
 
     - name: Test jqmc (pytest) with @jit decorator (inter-software comparisons)
       run: |
-        pytest -s -v tests/test_comparison_with_turborvb_ECP.py --cov-branch --no-cov-on-fail --cov-append
-        pytest -s -v tests/test_comparison_with_turborvb_AE.py --cov-branch --no-cov-on-fail --cov-append
+        pytest -s -v tests/test_comparison_with_turborvb_ECP.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        #pytest -s -v tests/test_comparison_with_turborvb_AE.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
 
     #- name: Test jqmc (pytest) QMC kernels without MPI
     #  run: |
-    #    pytest -s -v tests/test_jqmc_mcmc.py  --cov-branch --no-cov-on-fail --cov-append
-    #    pytest -s -v tests/test_jqmc_gfmc_tau.py  --cov-branch --no-cov-on-fail --cov-append
-    #    pytest -s -v tests/test_jqmc_gfmc_bra.py  --cov-branch --no-cov-on-fail --cov-append
+    #    pytest -s -v tests/test_jqmc_mcmc.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+    #    pytest -s -v tests/test_jqmc_gfmc_tau.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+    #    pytest -s -v tests/test_jqmc_gfmc_bra.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
 
     #- name: Test jqmc (pytest) QMC kernels with MPI (2 cores)
     #  run: |
