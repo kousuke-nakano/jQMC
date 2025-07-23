@@ -9,6 +9,7 @@
 ![fork](https://img.shields.io/github/forks/kousuke-nakano/jQMC?style=social)
 ![stars](https://img.shields.io/github/stars/kousuke-nakano/jQMC?style=social)
 ![workflows](https://github.com/kousuke-nakano/jQMC/actions/workflows/jqmc-run-pytest.yml/badge.svg)
+![codecov](https://codecov.io/github/kousuke-nakano/jQMC/graph/badge.svg?token=H0Z7M86C1E)
 
 What sets **jQMC** apart:
 
