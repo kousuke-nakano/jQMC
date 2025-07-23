@@ -650,10 +650,16 @@ class MCMC:
             def body_fun(_, carry):
                 accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key = carry
 
+                # dummy jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
+                jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
+
                 # Choose randomly if the electron comes from up or dn
                 jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
                 up_index = jax.random.randint(subkey, shape=(), minval=0, maxval=len(r_up_carts))
                 selected_electron_index = up_index
+
+                # dummy jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
+                jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
 
                 # choose an up or dn electron from old_r_cart
                 old_r_cart = r_up_carts[selected_electron_index]
@@ -2784,6 +2790,12 @@ class MCMC_debug:
             )
         else:
             charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
+
+        # check if only up electrons are updated
+        if tot_num_electron_dn == 0:
+            self.only_up_electron = True
+        else:
+            self.only_up_electron = False
 
         coords = hamiltonian_data.structure_data.positions_cart_jnp
 

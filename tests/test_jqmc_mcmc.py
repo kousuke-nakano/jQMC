@@ -36,6 +36,7 @@ import os
 
 import jax
 import numpy as np
+import pytest
 
 from ..jqmc.hamiltonians import Hamiltonian_data
 from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data
@@ -47,8 +48,11 @@ from ..jqmc.wavefunction import Wavefunction_data
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
+test_trexio_files = ["H2_ecp_ccpvtz_cart.h5", "H_ecp_ccpvqz.h5"]
 
-def test_jqmc_mcmc():
+
+@pytest.mark.parametrize("trexio_file", test_trexio_files)
+def test_jqmc_mcmc(trexio_file):
     """Test comparison with MCMC debug and MCMC production implementations."""
     (
         structure_data,
@@ -58,7 +62,7 @@ def test_jqmc_mcmc():
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ecp_ccpvtz_cart.h5"), store_tuple=True
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
     )
 
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)

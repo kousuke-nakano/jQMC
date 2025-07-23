@@ -36,6 +36,7 @@ import os
 
 import jax
 import numpy as np
+import pytest
 from mpi4py import MPI
 
 from ..jqmc.hamiltonians import Hamiltonian_data
@@ -53,8 +54,11 @@ mpi_size = mpi_comm.Get_size()
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
+test_trexio_files = ["H2_ecp_ccpvtz_cart.h5", "H_ecp_ccpvqz.h5"]
 
-def test_jqmc_gfmc_fixed_number_of_branching_tmove():
+
+@pytest.mark.parametrize("trexio_file", test_trexio_files)
+def test_jqmc_gfmc_fixed_number_of_branching_tmove(trexio_file):
     """LRDMC with tmove non-local move."""
     (
         structure_data,
@@ -64,7 +68,7 @@ def test_jqmc_gfmc_fixed_number_of_branching_tmove():
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ecp_ccpvtz_cart.h5"), store_tuple=True
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
     )
 
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
