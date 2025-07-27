@@ -4,7 +4,7 @@ A collection of examples of jQMC codes.
 
 ## example01
 
-Total energy of water molecule with the Jastrow-Slater determinant (JSD) anstaz. One can learn how to obtain the VMC and LRDMC (in the extrapolated limit) energies of the water molecule, starting from scratch (i.e., DFT calculation by `pySCF` or `CP2K`), with cartesian GTOs. In this example, users can learn how to perform energy calculations using VMC and LRDMC methods with the simplest JSD, starting from either `PySCF` or `CP2K`. Additional applications can be explored by appropriately modifying the input files provided for `PySCF` or `CP2K` in this example.
+Total energy of water molecule with the Jastrow-Slater determinant (JSD) ansatz. One can learn how to obtain the VMC and LRDMC (in the extrapolated limit) energies of the water molecule, starting from scratch (i.e., DFT calculation by `pySCF` or `CP2K`), with cartesian GTOs. In this example, users can learn how to perform energy calculations using VMC and LRDMC methods with the simplest JSD, starting from either `PySCF` or `CP2K`. Additional applications can be explored by appropriately modifying the input files provided for `PySCF` or `CP2K` in this example.
 
 ## example02
 
@@ -24,7 +24,7 @@ Potential energy surface of hydrogen molecule with cartesian GTOs. All electron 
 
 ## example06
 
-Binding energy of the water-water dimer with the Jastrow Antisymmetrized Geminal Power (JAGP) anstaz. This example demonstrates how to perform energy calculations using the JAGP ansatz, which goes beyond the JSD ansatz to incorporate more sophisticated electron correlation. Both VMC and LRDMC methods are covered, starting from either `PySCF` or `CP2K`. Further applications can be carried out by adapting the input files provided in this example.
+Binding energy of the water-water dimer with the Jastrow Antisymmetrized Geminal Power (JAGP) ansatz. This example demonstrates how to perform energy calculations using the JAGP ansatz, which goes beyond the JSD ansatz to incorporate more sophisticated electron correlation. Both VMC and LRDMC methods are covered, starting from either `PySCF` or `CP2K`. Further applications can be carried out by adapting the input files provided in this example.
 
 ## example07
 
