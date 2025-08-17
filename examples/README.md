@@ -4,7 +4,7 @@ A collection of examples of jQMC codes.
 
 ## example01
 
-Total energy of water molecule with the Jastrow-Slater anstaz. One can learn how to obtain the VMC and DMC (in the extrapolated limit) energies of the water molecule, starting from scratch (i.e., DFT calculation by pySCF), with cartesian GTOs.
+Total energy of water molecule with the Jastrow-Slater determinant (JSD) ansatz. One can learn how to obtain the VMC and LRDMC (in the extrapolated limit) energies of the water molecule, starting from scratch (i.e., DFT calculation by `pySCF` or `CP2K`), with cartesian GTOs. In this example, users can learn how to perform energy calculations using VMC and LRDMC methods with the simplest JSD, starting from either `PySCF` or `CP2K`. Additional applications can be explored by appropriately modifying the input files provided for `PySCF` or `CP2K` in this example.
 
 ## example02
 
@@ -20,11 +20,11 @@ VMC and HF energies of water molecule, for validation of the VMC implementation 
 
 ## example05
 
-Potential energy surface of hydrogen molecule with cartesian GTOs. All electron calculations. Comparison atomic forces with the derivative of the PES.
+Potential energy surface of hydrogen molecule with cartesian GTOs. All electron calculations. Comparison atomic forces with the derivative of the PES. In this example, users will learn how to compute atomic forces using a hydrogen molecule as a test system. Note, however, that atomic force calculations in QMC are still under active methodological development and should be considered advanced. We recommend consulting with experts before using such results in research studies.
 
 ## example06
 
-Binding energy of the water-water dimer with the JAGP anstaz.
+Binding energy of the water-water dimer with the Jastrow Antisymmetrized Geminal Power (JAGP) ansatz. This example demonstrates how to perform energy calculations using the JAGP ansatz, which goes beyond the JSD ansatz to incorporate more sophisticated electron correlation. Both VMC and LRDMC methods are covered, starting from either `PySCF` or `CP2K`. Further applications can be carried out by adapting the input files provided in this example.
 
 ## example07
 
