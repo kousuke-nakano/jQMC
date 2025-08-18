@@ -2,6 +2,6 @@
 
 # Change Log
 
-## Nov-22-2024: Version 0.1-beta
+## Nov-22-2024: v0.1.0b0
 
-- Release of the very first version of **jQMC**.
+- Release of the first beta version of **jQMC**.
