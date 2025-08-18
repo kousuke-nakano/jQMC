@@ -1,0 +1,15 @@
+[control]
+  job_type = 'vmc' # vmc, vmcopt, lrdmc
+  mcmc_seed = 34467
+  number_of_walkers = 100
+  max_time = 2400000
+  restart = false
+  restart_chk = 'vmc.rchk'
+  hamiltonian_chk = 'hamiltonian_data.chk' # if restart is false
+  verbosity = 'low'
+
+[vmc]
+  num_mcmc_steps = 500
+  num_mcmc_per_measurement = 30
+  num_mcmc_warmup_steps = 5
+  num_mcmc_bin_blocks = 5
