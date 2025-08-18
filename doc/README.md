@@ -1,6 +1,6 @@
 # How to write jQMC documentation
 
-This directory contains python-sphinx documentation source.
+This directory contains `python-sphinx` documentation source.
 
 ## How to compile
 
@@ -10,26 +10,11 @@ make html
 
 ## Source files
 
+* `Makefile` Makefile.
 * `conf.py` contains the sphinx setting confiuration.
 * `*.rst` are restructuredtext documentation source files.
 * `*.md` are markdown documentation source files.
 
-## How to publish
+## How to deploy the documentation
 
-Web page files are copied to `gh-pages` branch. At the jQMC github top directory,
-```
-git checkout gh-pages
-rm -r .buildinfo .doctrees *
-```
-
-In the directory, please compile the sphinx doc.,
-```
-rsync -avh _build/ <jqmc-repository-directory>/
-```
-
-Again, at the jqmc github top directory,
-```
-git add .
-git commit -a -m "Update documentation ..."
-git push
-```
+Once the main (or another) repository is pushed to `rc-gh-pages` branch, the implemented `GitHub Actions` automatically compile the `sphinx` documentation and deploy it to the `github-pages`.
