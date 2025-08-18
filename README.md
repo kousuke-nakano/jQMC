@@ -78,10 +78,10 @@ stored in `doc` directory. Please see how to write the documentation at
 
 ## Branches
 
- - `main`: main repository
- - `devel`: development repository.
- - `rc`: the latest stable version ready for deployment of the package
- - `rc-gh-pages`: the latest stable version ready for deployment of the documentation
+ - `main`: main branch.
+ - `devel`: development branch.
+ - `rc`: the latest stable version ready for deployment of the package.
+ - `rc-gh-pages`: the latest stable version ready for deployment of the documentation.
 
 Every time a change is pushed to the `main` or `devel` branch, the `GitHub` workflow launches the implemented unit and integration tests (`jqmc-run-short-pytest.yml` and `jqmc-run-full-pytest.yml` for the `main` and `devel` branches, respectively).
 
