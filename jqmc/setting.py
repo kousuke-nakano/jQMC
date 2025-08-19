@@ -32,14 +32,24 @@
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-# fundamental units
-Hartree = 1.0
-Bohr = 1.0
-
-# units
+# Unit conversion
 Bohr_to_Angstrom = 0.529177210903
 Angstrom_to_Bohr = 1.0 / Bohr_to_Angstrom
 
-# default parameters
+# default ECP integral parameters
 Nv_default = 6
 NN_default = 1
+
+# Minimal warmup steps (VMC)
+MCMC_MIN_WARMUP_STEPS = 30
+MCMC_MIN_BIN_BLOCKS = 10
+
+# Minimal warmup steps (GFMC)
+GFMC_MIN_WARMUP_STEPS = 25
+GFMC_MIN_BIN_BLOCKS = 10
+GFMC_MIN_COLLECT_STEPS = 5
+
+# on the fly statistics param
+GFMC_ON_THE_FLY_WARMUP_STEPS = 20
+GFMC_ON_THE_FLY_COLLECT_STEPS = 10
+GFMC_ON_THE_FLY_BIN_BLOCKS = 10

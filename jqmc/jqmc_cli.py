@@ -498,8 +498,6 @@ def cli():
             raise ValueError("num_mcmc_steps should be larger than num_gfmc_warmup_steps")
         if num_mcmc_steps - num_gfmc_warmup_steps < num_gfmc_bin_blocks:
             raise ValueError("(num_mcmc_steps - num_gfmc_warmup_steps) should be larger than num_gfmc_bin_blocks.")
-        if num_gfmc_bin_blocks < num_gfmc_collect_steps:
-            raise ValueError("num_gfmc_bin_blocks should be larger than num_gfmc_collect_steps.")
 
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
@@ -605,16 +603,15 @@ def cli():
             raise ValueError("num_mcmc_steps should be larger than num_gfmc_warmup_steps")
         if num_mcmc_steps - num_gfmc_warmup_steps < num_gfmc_bin_blocks:
             raise ValueError("(num_mcmc_steps - num_gfmc_warmup_steps) should be larger than num_gfmc_bin_blocks.")
-        if num_gfmc_bin_blocks < num_gfmc_collect_steps:
-            raise ValueError("num_gfmc_bin_blocks should be larger than num_gfmc_collect_steps.")
 
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
             """Unzip the checkpoint file for each process and load them."""
-            filename = f"{mpi_rank}_{restart_chk}"
-            with zipfile.ZipFile(restart_chk, "r") as zipf:
-                data = zipf.read(filename)
-                lrdmc = pickle.loads(data)
+            with zipfile.ZipFile(restart_chk, "r") as zf:
+                arcname = f"{mpi_rank}_{restart_chk}.pkl.gz"
+                with zf.open(arcname) as zipped_gz_fobj:
+                    with gzip.open(zipped_gz_fobj, "rb") as gz:
+                        lrdmc = pickle.load(gz)
         else:
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
@@ -640,22 +637,25 @@ def cli():
         logger.info("")
 
         # Save the checkpoint file for each process and zip them."""
-        filename = f".{mpi_rank}_{restart_chk}"
-        with open(filename, "wb") as f:
-            pickle.dump(lrdmc, f, protocol=pickle.HIGHEST_PROTOCOL)
+        tmp_gz_filename = f".{mpi_rank}_{restart_chk}.pkl.gz"
 
-        # Wait all MPI processes
+        with gzip.open(tmp_gz_filename, "wb") as gz:
+            pickle.dump(lrdmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
+
         mpi_comm.Barrier()
 
-        # Zip them.
         if mpi_rank == 0:
-            filename_list = [f".{rank}_{restart_chk}" for rank in range(mpi_size)]
-            with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
-                for filename in filename_list:
-                    zipf.write(filename, arcname=filename.lstrip("."))
-                    os.remove(filename)
+            if os.path.exists(restart_chk):
+                os.remove(restart_chk)
 
-        logger.info("")
+            with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
+                for r in range(mpi_size):
+                    gz_name = f".{r}_{restart_chk}.pkl.gz"
+                    arcname = gz_name.lstrip(".")
+                    zipf.write(gz_name, arcname=arcname)
+                    os.remove(gz_name)
+
+        mpi_comm.Barrier()
 
     print_footer()
 

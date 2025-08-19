@@ -68,6 +68,14 @@ from .jastrow_factor import (
     compute_Jastrow_part_jax,
 )
 from .jqmc_utility import generate_init_electron_configurations
+from .setting import (
+    GFMC_MIN_BIN_BLOCKS,
+    GFMC_MIN_COLLECT_STEPS,
+    GFMC_MIN_WARMUP_STEPS,
+    GFMC_ON_THE_FLY_BIN_BLOCKS,
+    GFMC_ON_THE_FLY_COLLECT_STEPS,
+    GFMC_ON_THE_FLY_WARMUP_STEPS,
+)
 from .swct import SWCT_data, evaluate_swct_domega_jax, evaluate_swct_omega_jax
 from .wavefunction import (
     compute_discretized_kinetic_energy_jax,
@@ -395,6 +403,13 @@ class GFMC_fixed_projection_time:
         """Return the stored weight array. dim: (mcmc_counter, 1)."""
         # logger.info(f"np.array(self.__stored_w_L).shape = {np.array(self.__stored_w_L).shape}.")
         return compute_G_L(np.array(self.__stored_w_L), self.__num_gfmc_collect_steps)
+
+    # weights
+    @property
+    def bare_w_L(self) -> npt.NDArray:
+        """Return the stored weight array. dim: (mcmc_counter, 1)."""
+        # logger.info(f"np.array(self.__stored_w_L).shape = {np.array(self.__stored_w_L).shape}.")
+        return np.array(self.__stored_w_L)
 
     # observables
     @property
@@ -1325,6 +1340,20 @@ class GFMC_fixed_projection_time:
                 The mean and std values of the totat energy and those of the variance
                 estimated by the Jackknife method with the Args. (E_mean, E_std, Var_mean, Var_std).
         """
+        # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
+        if num_mcmc_warmup_steps < GFMC_MIN_WARMUP_STEPS:
+            logger.warning(f"num_mcmc_warmup_steps should be larger than {GFMC_MIN_WARMUP_STEPS}")
+        if num_mcmc_bin_blocks < GFMC_MIN_BIN_BLOCKS:
+            logger.warning(f"num_mcmc_bin_blocks should be larger than {GFMC_MIN_BIN_BLOCKS}")
+
+        # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
+        if self.mcmc_counter < num_mcmc_warmup_steps:
+            logger.error("mcmc_counter should be larger than num_mcmc_warmup_steps")
+            raise ValueError
+        if self.mcmc_counter - num_mcmc_warmup_steps < num_mcmc_bin_blocks:
+            logger.error("(mcmc_counter - num_mcmc_warmup_steps) should be larger than num_mcmc_bin_blocks.")
+            raise ValueError
+
         if num_mcmc_bin_blocks < mpi_size or mpi_size == 1:
             if mpi_rank == 0:
                 e_L = self.e_L[num_mcmc_warmup_steps:]
@@ -2483,6 +2512,8 @@ class GFMC_fixed_num_projection:
     @num_gfmc_collect_steps.setter
     def num_gfmc_collect_steps(self, num_gfmc_collect_steps):
         """Set num_gfmc_collect_steps."""
+        if num_gfmc_collect_steps < GFMC_MIN_COLLECT_STEPS:
+            logger.warning(f"num_gfmc_collect_steps should be larger than {GFMC_MIN_COLLECT_STEPS}")
         self.__num_gfmc_collect_steps = num_gfmc_collect_steps
 
     # dimensions of observables
@@ -2507,6 +2538,13 @@ class GFMC_fixed_num_projection:
         """Return the stored weight array. dim: (mcmc_counter, 1)."""
         # logger.info(f"np.array(self.__stored_w_L).shape = {np.array(self.__stored_w_L).shape}.")
         return compute_G_L(np.array(self.__stored_w_L), self.__num_gfmc_collect_steps)
+
+    # weights
+    @property
+    def bare_w_L(self) -> npt.NDArray:
+        """Return the stored weight array. dim: (mcmc_counter, 1)."""
+        # logger.info(f"np.array(self.__stored_w_L).shape = {np.array(self.__stored_w_L).shape}.")
+        return np.array(self.__stored_w_L)
 
     # observables
     @property
@@ -3286,9 +3324,9 @@ class GFMC_fixed_num_projection:
                 self.__alat,
             )
             e_L_list = V_diag_list + V_nondiag_list
-            # logger.info(f"  e_L_list = {e_L_list}")
-            # logger.info(f"  V_diag_list = {V_diag_list}")
-            # logger.info(f"  V_nondiag_list = {V_nondiag_list}")
+            logger.info(f"  e_L_list = {e_L_list}")
+            logger.info(f"  V_diag_list = {V_diag_list}")
+            logger.info(f"  V_nondiag_list = {V_nondiag_list}")
             e_L_list.block_until_ready()
 
             """
@@ -3789,9 +3827,9 @@ class GFMC_fixed_num_projection:
             start_update_E_scf = time.perf_counter()
 
             ## parameters for E_scf
-            eq_steps = 20
-            num_gfmc_collect_steps = 10
-            num_gfmc_bin_blocks = 10
+            eq_steps = GFMC_ON_THE_FLY_WARMUP_STEPS
+            num_gfmc_collect_steps = GFMC_ON_THE_FLY_COLLECT_STEPS
+            num_gfmc_bin_blocks = GFMC_ON_THE_FLY_BIN_BLOCKS
 
             if mpi_rank == 0:
                 if i_mcmc_step >= num_gfmc_collect_steps:
@@ -3802,7 +3840,7 @@ class GFMC_fixed_num_projection:
                     self.__G_e_L.append(G_L * e_L)
 
             if (i_mcmc_step + 1) % mcmc_interval == 0:
-                if i_mcmc_step >= eq_steps:
+                if i_mcmc_step > eq_steps:
                     if mpi_rank == 0:
                         num_gfmc_warmup_steps = np.minimum(eq_steps, i_mcmc_step - eq_steps)
                         logger.debug(f"    Computing E_scf at step {i_mcmc_step}.")
@@ -3959,6 +3997,20 @@ class GFMC_fixed_num_projection:
                 The mean and std values of the totat energy and those of the variance
                 estimated by the Jackknife method with the Args. (E_mean, E_std, Var_mean, Var_std).
         """
+        # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
+        if num_mcmc_warmup_steps < GFMC_MIN_WARMUP_STEPS:
+            logger.warning(f"num_mcmc_warmup_steps should be larger than {GFMC_MIN_WARMUP_STEPS}")
+        if num_mcmc_bin_blocks < GFMC_MIN_BIN_BLOCKS:
+            logger.warning(f"num_mcmc_bin_blocks should be larger than {GFMC_MIN_BIN_BLOCKS}")
+
+        # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
+        if self.mcmc_counter < num_mcmc_warmup_steps:
+            logger.error("mcmc_counter should be larger than num_mcmc_warmup_steps")
+            raise ValueError
+        if self.mcmc_counter - num_mcmc_warmup_steps < num_mcmc_bin_blocks:
+            logger.error("(mcmc_counter - num_mcmc_warmup_steps) should be larger than num_mcmc_bin_blocks.")
+            raise ValueError
+
         if num_mcmc_bin_blocks < mpi_size or mpi_size == 1:
             if mpi_rank == 0:
                 e_L = self.e_L[num_mcmc_warmup_steps:]
@@ -4623,6 +4675,8 @@ class GFMC_fixed_num_projection_debug:
     @num_gfmc_collect_steps.setter
     def num_gfmc_collect_steps(self, num_gfmc_collect_steps):
         """Set num_gfmc_collect_steps."""
+        if num_gfmc_collect_steps < GFMC_MIN_COLLECT_STEPS:
+            logger.warning(f"num_gfmc_collect_steps should be larger than {GFMC_MIN_COLLECT_STEPS}.")
         self.__num_gfmc_collect_steps = num_gfmc_collect_steps
 
     # weights
@@ -5603,13 +5657,15 @@ class GFMC_fixed_num_projection_debug:
             self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
 
             # update E_scf
-            eq_steps = 20
+            eq_steps = GFMC_ON_THE_FLY_WARMUP_STEPS
+            num_gfmc_collect_steps = GFMC_ON_THE_FLY_COLLECT_STEPS
+            num_gfmc_bin_blocks = GFMC_ON_THE_FLY_BIN_BLOCKS
             if (i_mcmc_step + 1) % mcmc_interval == 0:
-                if i_mcmc_step >= eq_steps:
+                if i_mcmc_step > eq_steps:
                     self.__E_scf, E_scf_std = self.get_E_on_the_fly(
                         num_gfmc_warmup_steps=np.minimum(eq_steps, i_mcmc_step - eq_steps),
-                        num_gfmc_bin_blocks=10,
-                        num_gfmc_collect_steps=10,
+                        num_gfmc_bin_blocks=num_gfmc_bin_blocks,
+                        num_gfmc_collect_steps=num_gfmc_collect_steps,
                     )
                     logger.debug(f"    Updated E_scf = {self.__E_scf:.5f} +- {E_scf_std:.5f} Ha.")
                 else:

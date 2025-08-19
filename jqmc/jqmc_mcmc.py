@@ -64,6 +64,10 @@ from .jastrow_factor import (
     compute_Jastrow_part_jax,
 )
 from .jqmc_utility import generate_init_electron_configurations
+from .setting import (
+    MCMC_MIN_BIN_BLOCKS,
+    MCMC_MIN_WARMUP_STEPS,
+)
 from .structure import find_nearest_index_jax
 from .swct import SWCT_data, evaluate_swct_domega_jax, evaluate_swct_omega_jax
 from .wavefunction import (
@@ -1339,6 +1343,19 @@ class MCMC:
                 The mean and std values of the totat energy and those of the variance
                 estimated by the Jackknife method with the Args. (E_mean, E_std, Var_mean, Var_std).
         """
+        # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
+        if num_mcmc_warmup_steps < MCMC_MIN_WARMUP_STEPS:
+            logger.warning(f"num_mcmc_warmup_steps should be larger than {MCMC_MIN_WARMUP_STEPS}")
+        if num_mcmc_bin_blocks < MCMC_MIN_BIN_BLOCKS:
+            logger.warning(f"num_mcmc_bin_blocks should be larger than {MCMC_MIN_BIN_BLOCKS}")
+
+        # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
+        if self.mcmc_counter < num_mcmc_warmup_steps:
+            logger.error("mcmc_counter should be larger than num_mcmc_warmup_steps")
+            raise ValueError
+        if self.mcmc_counter - num_mcmc_warmup_steps < num_mcmc_bin_blocks:
+            logger.error("(mcmc_counter - num_mcmc_warmup_steps) should be larger than num_mcmc_bin_blocks.")
+            raise ValueError
         e_L = self.e_L[num_mcmc_warmup_steps:]
         e_L2 = self.e_L2[num_mcmc_warmup_steps:]
         w_L = self.w_L[num_mcmc_warmup_steps:]
