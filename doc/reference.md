@@ -22,6 +22,6 @@ Two LRDMC algorithms are implemented in jQMC. The first is the original LRDMC al
 
 The second, referred to as `lrdmc` in `jQMC`, is a slightly modified version of the original algorithm designed to maintain better load balancing across walkers. Details are provided below:
 
-- K. Nakano, S. Sorella, and M. Casula in preparation (2025)
+- [K. Nakano, S. Sorella, and M. Casula, arXiv, 2508.12033 (2025)](https://doi.org/10.48550/arXiv.2508.12033)
 
 Although the latter algorithm (`lrdmc`) offers superior parallel efficiency, both implementations are algorithmically equivalent and have been verified to yield consistent results.
