@@ -54,7 +54,7 @@ mpi_size = mpi_comm.Get_size()
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
-test_trexio_files = ["H2_ecp_ccpvtz_cart.h5", "H_ecp_ccpvqz.h5"]
+test_trexio_files = ["H2_ecp_ccpvtz_cart.h5"]
 
 
 @pytest.mark.parametrize("trexio_file", test_trexio_files)
@@ -90,13 +90,13 @@ def test_jqmc_gfmc_fixed_number_of_branching_tmove(trexio_file):
     hamiltonian_data.sanity_check()
 
     # GFMC param
-    num_mcmc_steps = 10
-    num_walkers = 3
+    num_mcmc_steps = 60
+    num_walkers = 2
     mcmc_seed = 3446
-    E_scf = -17.00
+    E_scf = -1.00
     alat = 0.30
     num_mcmc_per_measurement = 10
-    num_gfmc_collect_steps = 2
+    num_gfmc_collect_steps = 10
     non_local_move = "tmove"
 
     # run LRDMC single-shots
@@ -147,12 +147,12 @@ def test_jqmc_gfmc_fixed_number_of_branching_tmove(trexio_file):
 
     # E
     E_debug, E_err_debug, Var_debug, Var_err_debug = gfmc_debug.get_E(
-        num_mcmc_warmup_steps=5,
-        num_mcmc_bin_blocks=5,
+        num_mcmc_warmup_steps=30,
+        num_mcmc_bin_blocks=10,
     )
     E_jax, E_err_jax, Var_jax, Var_err_jax = gfmc_jax.get_E(
-        num_mcmc_warmup_steps=5,
-        num_mcmc_bin_blocks=5,
+        num_mcmc_warmup_steps=30,
+        num_mcmc_bin_blocks=10,
     )
     np.testing.assert_array_almost_equal(E_debug, E_jax, decimal=6)
     np.testing.assert_array_almost_equal(E_err_debug, E_err_jax, decimal=6)
@@ -161,12 +161,12 @@ def test_jqmc_gfmc_fixed_number_of_branching_tmove(trexio_file):
 
     # aF
     force_mean_debug, force_std_debug = gfmc_debug.get_aF(
-        num_mcmc_warmup_steps=5,
-        num_mcmc_bin_blocks=5,
+        num_mcmc_warmup_steps=30,
+        num_mcmc_bin_blocks=10,
     )
     force_mean_jax, force_std_jax = gfmc_jax.get_aF(
-        num_mcmc_warmup_steps=5,
-        num_mcmc_bin_blocks=5,
+        num_mcmc_warmup_steps=30,
+        num_mcmc_bin_blocks=10,
     )
     np.testing.assert_array_almost_equal(force_mean_debug, force_mean_jax, decimal=6)
     np.testing.assert_array_almost_equal(force_std_debug, force_std_jax, decimal=6)

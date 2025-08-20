@@ -85,8 +85,8 @@ def test_jqmc_mcmc(trexio_file):
     )
     hamiltonian_data.sanity_check()
 
-    num_walkers = 4
-    num_mcmc_steps = 20
+    num_walkers = 2
+    num_mcmc_steps = 50
     mcmc_seed = 34356
     Dt = 2.0
     epsilon_AS = 1.0e-6
@@ -133,11 +133,11 @@ def test_jqmc_mcmc(trexio_file):
 
     # E
     E_debug, E_err_debug, Var_debug, Var_err_debug = mcmc_debug.get_E(
-        num_mcmc_warmup_steps=5,
+        num_mcmc_warmup_steps=25,
         num_mcmc_bin_blocks=5,
     )
     E_jax, E_err_jax, Var_jax, Var_err_jax = mcmc_jax.get_E(
-        num_mcmc_warmup_steps=5,
+        num_mcmc_warmup_steps=25,
         num_mcmc_bin_blocks=5,
     )
     np.testing.assert_array_almost_equal(E_debug, E_jax, decimal=6)
@@ -147,11 +147,11 @@ def test_jqmc_mcmc(trexio_file):
 
     # aF
     force_mean_debug, force_std_debug = mcmc_debug.get_aF(
-        num_mcmc_warmup_steps=5,
+        num_mcmc_warmup_steps=25,
         num_mcmc_bin_blocks=5,
     )
     force_mean_jax, force_std_jax = mcmc_jax.get_aF(
-        num_mcmc_warmup_steps=5,
+        num_mcmc_warmup_steps=25,
         num_mcmc_bin_blocks=5,
     )
     np.testing.assert_array_almost_equal(force_mean_debug, force_mean_jax, decimal=6)

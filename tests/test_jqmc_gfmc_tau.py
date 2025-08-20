@@ -90,12 +90,12 @@ def test_jqmc_gfmc_fixed_projection_time_tmove(trexio_file):
     hamiltonian_data.sanity_check()
 
     # GFMC param
-    num_mcmc_steps = 20
-    num_walkers = 4
+    num_mcmc_steps = 60
+    num_walkers = 2
     mcmc_seed = 3446
     alat = 0.30
     tau = 0.20
-    num_gfmc_collect_steps = 2
+    num_gfmc_collect_steps = 10
     non_local_move = "tmove"
 
     # run LRDMC single-shots
@@ -141,12 +141,12 @@ def test_jqmc_gfmc_fixed_projection_time_tmove(trexio_file):
 
     # E
     E_debug, E_err_debug, Var_debug, Var_err_debug = gfmc_debug.get_E(
-        num_mcmc_warmup_steps=5,
-        num_mcmc_bin_blocks=5,
+        num_mcmc_warmup_steps=30,
+        num_mcmc_bin_blocks=10,
     )
     E_jax, E_err_jax, Var_jax, Var_err_jax = gfmc_jax.get_E(
-        num_mcmc_warmup_steps=5,
-        num_mcmc_bin_blocks=5,
+        num_mcmc_warmup_steps=30,
+        num_mcmc_bin_blocks=10,
     )
     np.testing.assert_array_almost_equal(E_debug, E_jax, decimal=6)
     np.testing.assert_array_almost_equal(E_err_debug, E_err_jax, decimal=6)

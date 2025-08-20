@@ -36,6 +36,9 @@ import jax
 import numpy as np
 import pytest
 
+# MPI
+from mpi4py import MPI
+
 from ..jqmc.atomic_orbital import (
     AO_sphe_data,
     AOs_sphe_data,

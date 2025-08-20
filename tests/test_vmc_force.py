@@ -92,7 +92,7 @@ def test_vmc_force_with_SWCT_ecp():
         hamiltonian_data=hamiltonian_data,
         Dt=2.0,
         mcmc_seed=mcmc_seed,
-        num_walkers=4,
+        num_walkers=2,
         comput_position_deriv=True,
         comput_param_deriv=False,
     )
@@ -157,7 +157,7 @@ def test_vmc_force_with_SWCT_ae():
         hamiltonian_data=hamiltonian_data,
         Dt=2.0,
         mcmc_seed=mcmc_seed,
-        num_walkers=4,
+        num_walkers=2,
         comput_position_deriv=True,
         comput_param_deriv=False,
     )

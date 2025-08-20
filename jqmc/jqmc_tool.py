@@ -81,6 +81,7 @@ log.addHandler(stream_handler)
 
 @click.group()
 def cli():
+    """The jQMC tools."""
     pass
 
 
@@ -146,7 +147,9 @@ def trexio_convert_to(
     ),
 ):
     """Convert a TREXIO file to hamiltonian_data."""
-    (structure_data, aos_data, mos_data, _, geminal_data, coulomb_potential_data) = read_trexio_file(trexio_file)
+    (structure_data, aos_data, mos_data, _, geminal_data, coulomb_potential_data) = read_trexio_file(
+        trexio_file, store_tuple=True
+    )
 
     if j1_parmeter is not None:
         if coulomb_potential_data.ecp_flag:
@@ -621,6 +624,46 @@ cli.add_command(typer_click_hamiltonian, "hamiltonian")
 vmcopt_app = typer.Typer(help="Pre- and Post-Processing for VMC-opt calculations.")
 
 
+# This should be removed in future release since it will be no longer useful.
+@vmcopt_app.command("fix")
+def vmcopt_chk_fix(
+    restart_chk: str = typer.Argument(..., help="old chk file, e.g. vmcopt.chk"),
+):
+    """VMCopt chk file fix."""
+    typer.echo(f"Fix checkpoint file(s) from {restart_chk}.")
+    typer.echo(f"Backup to checkpoint file(s) bak_{restart_chk}.")
+    shutil.copy(restart_chk, f"bak_{restart_chk}")
+
+    basename_restart_chk = os.path.basename(restart_chk)
+    pattern = re.compile(rf"(\d+)_{basename_restart_chk}")
+
+    mpi_ranks = []
+    with zipfile.ZipFile(restart_chk, "r") as z:
+        for file_name in z.namelist():
+            match = pattern.match(os.path.basename(file_name))
+            if match:
+                mpi_ranks.append(int(match.group(1)))
+
+    typer.echo(f"Found {len(mpi_ranks)} MPI ranks.")
+
+    filenames = [f"{mpi_rank}_{basename_restart_chk}.pkl.gz" for mpi_rank in mpi_ranks]
+
+    for filename, mpi_rank in zip(filenames, mpi_ranks):
+        with zipfile.ZipFile(restart_chk, "r") as zipf:
+            data = zipf.read(filename)
+            vmc = pickle.loads(data)
+            tmp_gz_filename = f".{mpi_rank}.pkl.gz"
+            with gzip.open(tmp_gz_filename, "wb") as gz:
+                pickle.dump(vmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
+
+    with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
+        for mpi_rank in mpi_ranks:
+            gz_name = f".{mpi_rank}.pkl.gz"
+            arcname = gz_name.lstrip(".")
+            zipf.write(gz_name, arcname=arcname)
+            os.remove(gz_name)
+
+
 @vmcopt_app.command("generate-input")
 def vmcopt_generate_input(
     flag: bool = typer.Option(False, "-g", "--generate", help="Generate input file for VMCopt calculations."),
@@ -804,19 +847,19 @@ def vmc_chk_fix(
 
     typer.echo(f"Found {len(mpi_ranks)} MPI ranks.")
 
-    filenames = [f"{mpi_rank}_{basename_restart_chk}" for mpi_rank in mpi_ranks]
+    filenames = [f"{mpi_rank}_{basename_restart_chk}.pkl.gz" for mpi_rank in mpi_ranks]
 
     for filename, mpi_rank in zip(filenames, mpi_ranks):
         with zipfile.ZipFile(restart_chk, "r") as zipf:
             data = zipf.read(filename)
             vmc = pickle.loads(data)
-            tmp_gz_filename = f".{mpi_rank}_{basename_restart_chk}.pkl.gz"
+            tmp_gz_filename = f".{mpi_rank}.pkl.gz"
             with gzip.open(tmp_gz_filename, "wb") as gz:
                 pickle.dump(vmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
 
     with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
-        for r in mpi_ranks:
-            gz_name = f".{r}_{basename_restart_chk}.pkl.gz"
+        for mpi_rank in mpi_ranks:
+            gz_name = f".{mpi_rank}.pkl.gz"
             arcname = gz_name.lstrip(".")
             zipf.write(gz_name, arcname=arcname)
             os.remove(gz_name)
@@ -844,8 +887,7 @@ def vmc_compute_energy(
         typer.echo(f"num_mcmc_bin_blocks should be larger than {MCMC_MIN_BIN_BLOCKS}.")
 
     """Unzip the checkpoint file for each process and load them."""
-    basename_restart_chk = os.path.basename(restart_chk)
-    pattern = re.compile(rf"(\d+)_{basename_restart_chk}")
+    pattern = re.compile(r"(\d+).pkl.gz")
 
     mpi_ranks = []
     with zipfile.ZipFile(restart_chk, "r") as z:
@@ -856,7 +898,7 @@ def vmc_compute_energy(
 
     typer.echo(f"Found {len(mpi_ranks)} MPI ranks.")
 
-    filenames = [f"{mpi_rank}_{basename_restart_chk}.pkl.gz" for mpi_rank in mpi_ranks]
+    filenames = [f"{mpi_rank}.pkl.gz" for mpi_rank in mpi_ranks]
 
     w_L_binned_list = []
     w_L_e_L_binned_list = []
@@ -965,19 +1007,19 @@ def lrdmc_chk_fix(
 
     typer.echo(f"Found {len(mpi_ranks)} MPI ranks.")
 
-    filenames = [f"{mpi_rank}_{basename_restart_chk}" for mpi_rank in mpi_ranks]
+    filenames = [f"{mpi_rank}_{basename_restart_chk}.pkl.gz" for mpi_rank in mpi_ranks]
 
     for filename, mpi_rank in zip(filenames, mpi_ranks):
         with zipfile.ZipFile(restart_chk, "r") as zipf:
             data = zipf.read(filename)
             lrdmc = pickle.loads(data)
-            tmp_gz_filename = f".{mpi_rank}_{basename_restart_chk}.pkl.gz"
+            tmp_gz_filename = f".{mpi_rank}.pkl.gz"
             with gzip.open(tmp_gz_filename, "wb") as gz:
                 pickle.dump(lrdmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
 
     with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
-        for r in mpi_ranks:
-            gz_name = f".{r}_{basename_restart_chk}.pkl.gz"
+        for mpi_rank in mpi_ranks:
+            gz_name = f".{mpi_rank}.pkl.gz"
             arcname = gz_name.lstrip(".")
             zipf.write(gz_name, arcname=arcname)
             os.remove(gz_name)
@@ -1009,8 +1051,7 @@ def lrdmc_compute_energy(
     if num_gfmc_collect_steps < GFMC_MIN_COLLECT_STEPS:
         typer.echo(f"num_gfmc_collect_steps should be larger than {GFMC_MIN_COLLECT_STEPS}.")
 
-    basename_restart_chk = os.path.basename(restart_chk)
-    pattern = re.compile(rf"(\d+)_{basename_restart_chk}")
+    pattern = re.compile(r"(\d+).pkl.gz")
 
     mpi_ranks = []
     with zipfile.ZipFile(restart_chk, "r") as z:
@@ -1021,7 +1062,7 @@ def lrdmc_compute_energy(
 
     typer.echo(f"Found {len(mpi_ranks)} MPI ranks.")
 
-    filenames = [f"{mpi_rank}_{basename_restart_chk}.pkl.gz" for mpi_rank in mpi_ranks]
+    filenames = [f"{mpi_rank}.pkl.gz" for mpi_rank in mpi_ranks]
 
     w_L_binned_list = []
     w_L_e_L_binned_list = []
@@ -1031,7 +1072,6 @@ def lrdmc_compute_energy(
 
     for filename in filenames:
         with zipfile.ZipFile(restart_chk, "r") as zipf:
-            # lrdmc-bra
             with zipf.open(filename) as zipped_gz_fobj:
                 with gzip.open(zipped_gz_fobj, "rb") as gz:
                     lrdmc = pickle.load(gz)
@@ -1101,8 +1141,7 @@ def lrdmc_extrapolate_energy(
     energy_error_list = []
 
     for restart_chk in restart_chks:
-        basename_restart_chk = os.path.basename(restart_chk)
-        pattern = re.compile(rf"(\d+)_{basename_restart_chk}")
+        pattern = re.compile(r"(\d+).pkl.gz")
 
         mpi_ranks = []
         with zipfile.ZipFile(restart_chk, "r") as z:
@@ -1111,9 +1150,9 @@ def lrdmc_extrapolate_energy(
                 if match:
                     mpi_ranks.append(int(match.group(1)))
 
-        # typer.echo(f"Found {len(mpi_ranks)} MPI ranks.")
+        typer.echo(f"Found {len(mpi_ranks)} MPI ranks.")
 
-        filenames = [f"{mpi_rank}_{basename_restart_chk}" for mpi_rank in mpi_ranks]
+        filenames = [f"{mpi_rank}.pkl.gz" for mpi_rank in mpi_ranks]
 
         w_L_binned_list = []
         w_L_e_L_binned_list = []
@@ -1123,8 +1162,9 @@ def lrdmc_extrapolate_energy(
 
         for filename in filenames:
             with zipfile.ZipFile(restart_chk, "r") as zipf:
-                data = zipf.read(filename)
-                lrdmc = pickle.loads(data)
+                with zipf.open(filename) as zipped_gz_fobj:
+                    with gzip.open(zipped_gz_fobj, "rb") as gz:
+                        lrdmc = pickle.load(gz)
                 lrdmc.num_gfmc_collect_steps = num_gfmc_collect_steps
 
                 if lrdmc.e_L.size != 0:

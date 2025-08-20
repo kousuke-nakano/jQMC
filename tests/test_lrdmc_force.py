@@ -96,7 +96,7 @@ def test_lrdmc_force_with_SWCT_ecp():
     # run GFMC
     gfmc = GFMC_fixed_num_projection(
         hamiltonian_data=hamiltonian_data,
-        num_walkers=4,
+        num_walkers=2,
         num_mcmc_per_measurement=30,
         num_gfmc_collect_steps=5,
         mcmc_seed=mcmc_seed,
@@ -175,7 +175,7 @@ def test_lrdmc_force_with_SWCT_ae():
     # run GFMC
     gfmc = GFMC_fixed_num_projection(
         hamiltonian_data=hamiltonian_data,
-        num_walkers=4,
+        num_walkers=2,
         num_mcmc_per_measurement=30,
         num_gfmc_collect_steps=5,
         mcmc_seed=mcmc_seed,

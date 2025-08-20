@@ -57,11 +57,6 @@ from .jqmc_miscs import cli_parameters
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
-# MPI related
-mpi_comm = MPI.COMM_WORLD
-mpi_rank = mpi_comm.Get_rank()
-mpi_size = mpi_comm.Get_size()
-
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
 
@@ -77,7 +72,13 @@ def cli():
         if not os.path.isfile(toml_file):
             raise FileNotFoundError(f"toml_file = {toml_file} does not exist.")
         else:
-            dict_toml = toml.load(open(toml_file))
+            with open(toml_file, "r") as f:
+                dict_toml = toml.load(f)
+
+    # MPI related
+    mpi_comm = MPI.COMM_WORLD
+    mpi_rank = mpi_comm.Get_rank()
+    mpi_size = mpi_comm.Get_size()
 
     # set verbosity
     try:
@@ -276,16 +277,17 @@ def cli():
         atomic_force = parameters["vmc"]["atomic_force"]
 
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
-        if num_mcmc_steps < num_mcmc_warmup_steps:
-            raise ValueError("num_mcmc_steps should be larger than num_mcmc_warmup_steps")
-        if num_mcmc_steps - num_mcmc_warmup_steps < num_mcmc_bin_blocks:
-            raise ValueError("(num_mcmc_steps - num_mcmc_warmup_steps) should be larger than num_mcmc_bin_blocks.")
+        if not restart:
+            if num_mcmc_steps < num_mcmc_warmup_steps:
+                raise ValueError("num_mcmc_steps should be larger than num_mcmc_warmup_steps")
+            if num_mcmc_steps - num_mcmc_warmup_steps < num_mcmc_bin_blocks:
+                raise ValueError("(num_mcmc_steps - num_mcmc_warmup_steps) should be larger than num_mcmc_bin_blocks.")
 
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
             """Unzip the checkpoint file for each process and load them."""
             with zipfile.ZipFile(restart_chk, "r") as zf:
-                arcname = f"{mpi_rank}_{restart_chk}.pkl.gz"
+                arcname = f"{mpi_rank}.pkl.gz"
                 with zf.open(arcname) as zipped_gz_fobj:
                     with gzip.open(zipped_gz_fobj, "rb") as gz:
                         vmc = pickle.load(gz)
@@ -333,7 +335,7 @@ def cli():
         logger.info("")
 
         # Save the checkpoint file for each process and zip them."""
-        tmp_gz_filename = f".{mpi_rank}_{restart_chk}.pkl.gz"
+        tmp_gz_filename = f".{mpi_rank}.pkl.gz"
 
         with gzip.open(tmp_gz_filename, "wb") as gz:
             pickle.dump(vmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
@@ -345,8 +347,8 @@ def cli():
                 os.remove(restart_chk)
 
             with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
-                for r in range(mpi_size):
-                    gz_name = f".{r}_{restart_chk}.pkl.gz"
+                for mpi_rank in range(mpi_size):
+                    gz_name = f".{mpi_rank}.pkl.gz"
                     arcname = gz_name.lstrip(".")
                     zipf.write(gz_name, arcname=arcname)
                     os.remove(gz_name)
@@ -401,7 +403,7 @@ def cli():
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
             """Unzip the checkpoint file for each process and load them."""
             with zipfile.ZipFile(restart_chk, "r") as zf:
-                arcname = f"{mpi_rank}_{restart_chk}.pkl.gz"
+                arcname = f"{mpi_rank}.pkl.gz"
                 with zf.open(arcname) as zipped_gz_fobj:
                     with gzip.open(zipped_gz_fobj, "rb") as gz:
                         vmc = pickle.load(gz)
@@ -444,7 +446,7 @@ def cli():
         logger.info("")
 
         # Save the checkpoint file for each process and zip them."""
-        tmp_gz_filename = f".{mpi_rank}_{restart_chk}.pkl.gz"
+        tmp_gz_filename = f".{mpi_rank}.pkl.gz"
 
         with gzip.open(tmp_gz_filename, "wb") as gz:
             pickle.dump(vmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
@@ -456,8 +458,8 @@ def cli():
                 os.remove(restart_chk)
 
             with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
-                for r in range(mpi_size):
-                    gz_name = f".{r}_{restart_chk}.pkl.gz"
+                for mpi_rank in range(mpi_size):
+                    gz_name = f".{mpi_rank}.pkl.gz"
                     arcname = gz_name.lstrip(".")
                     zipf.write(gz_name, arcname=arcname)
                     os.remove(gz_name)
@@ -494,16 +496,17 @@ def cli():
         atomic_force = parameters["lrdmc"]["atomic_force"]
 
         # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
-        if num_mcmc_steps < num_gfmc_warmup_steps:
-            raise ValueError("num_mcmc_steps should be larger than num_gfmc_warmup_steps")
-        if num_mcmc_steps - num_gfmc_warmup_steps < num_gfmc_bin_blocks:
-            raise ValueError("(num_mcmc_steps - num_gfmc_warmup_steps) should be larger than num_gfmc_bin_blocks.")
+        if not restart:
+            if num_mcmc_steps < num_gfmc_warmup_steps:
+                raise ValueError("num_mcmc_steps should be larger than num_gfmc_warmup_steps")
+            if num_mcmc_steps - num_gfmc_warmup_steps < num_gfmc_bin_blocks:
+                raise ValueError("(num_mcmc_steps - num_gfmc_warmup_steps) should be larger than num_gfmc_bin_blocks.")
 
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
             """Unzip the checkpoint file for each process and load them."""
             with zipfile.ZipFile(restart_chk, "r") as zf:
-                arcname = f"{mpi_rank}_{restart_chk}.pkl.gz"
+                arcname = f"{mpi_rank}.pkl.gz"
                 with zf.open(arcname) as zipped_gz_fobj:
                     with gzip.open(zipped_gz_fobj, "rb") as gz:
                         lrdmc = pickle.load(gz)
@@ -551,7 +554,7 @@ def cli():
         logger.info("")
 
         # Save the checkpoint file for each process and zip them."""
-        tmp_gz_filename = f".{mpi_rank}_{restart_chk}.pkl.gz"
+        tmp_gz_filename = f".{mpi_rank}.pkl.gz"
 
         with gzip.open(tmp_gz_filename, "wb") as gz:
             pickle.dump(lrdmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
@@ -563,8 +566,8 @@ def cli():
                 os.remove(restart_chk)
 
             with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
-                for r in range(mpi_size):
-                    gz_name = f".{r}_{restart_chk}.pkl.gz"
+                for mpi_rank in range(mpi_size):
+                    gz_name = f".{mpi_rank}.pkl.gz"
                     arcname = gz_name.lstrip(".")
                     zipf.write(gz_name, arcname=arcname)
                     os.remove(gz_name)
@@ -599,16 +602,17 @@ def cli():
         num_gfmc_collect_steps = parameters["lrdmc-tau"]["num_gfmc_collect_steps"]
 
         # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
-        if num_mcmc_steps < num_gfmc_warmup_steps:
-            raise ValueError("num_mcmc_steps should be larger than num_gfmc_warmup_steps")
-        if num_mcmc_steps - num_gfmc_warmup_steps < num_gfmc_bin_blocks:
-            raise ValueError("(num_mcmc_steps - num_gfmc_warmup_steps) should be larger than num_gfmc_bin_blocks.")
+        if not restart:
+            if num_mcmc_steps < num_gfmc_warmup_steps:
+                raise ValueError("num_mcmc_steps should be larger than num_gfmc_warmup_steps")
+            if num_mcmc_steps - num_gfmc_warmup_steps < num_gfmc_bin_blocks:
+                raise ValueError("(num_mcmc_steps - num_gfmc_warmup_steps) should be larger than num_gfmc_bin_blocks.")
 
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
             """Unzip the checkpoint file for each process and load them."""
             with zipfile.ZipFile(restart_chk, "r") as zf:
-                arcname = f"{mpi_rank}_{restart_chk}.pkl.gz"
+                arcname = f"{mpi_rank}.pkl.gz"
                 with zf.open(arcname) as zipped_gz_fobj:
                     with gzip.open(zipped_gz_fobj, "rb") as gz:
                         lrdmc = pickle.load(gz)
@@ -637,7 +641,7 @@ def cli():
         logger.info("")
 
         # Save the checkpoint file for each process and zip them."""
-        tmp_gz_filename = f".{mpi_rank}_{restart_chk}.pkl.gz"
+        tmp_gz_filename = f".{mpi_rank}.pkl.gz"
 
         with gzip.open(tmp_gz_filename, "wb") as gz:
             pickle.dump(lrdmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
@@ -649,8 +653,8 @@ def cli():
                 os.remove(restart_chk)
 
             with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
-                for r in range(mpi_size):
-                    gz_name = f".{r}_{restart_chk}.pkl.gz"
+                for mpi_rank in range(mpi_size):
+                    gz_name = f".{mpi_rank}.pkl.gz"
                     arcname = gz_name.lstrip(".")
                     zipf.write(gz_name, arcname=arcname)
                     os.remove(gz_name)

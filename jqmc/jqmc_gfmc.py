@@ -216,7 +216,7 @@ class GFMC_fixed_projection_time:
         self.__timer_misc = 0.0
 
         # gfmc branching counter
-        self.__gfmc_branching_counter = 0
+        self.__mcmc_counter = 0
 
         start = time.perf_counter()
         # Initialization
@@ -813,21 +813,19 @@ class GFMC_fixed_projection_time:
         gfmc_interval = int(np.maximum(num_mcmc_steps / 100, 1))  # gfmc_projection set print-interval
 
         logger.info("-Start branching-")
-        progress = (self.__gfmc_branching_counter) / (num_mcmc_steps + self.__gfmc_branching_counter) * 100.0
+        progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
         gmfc_total_current = time.perf_counter()
         logger.info(
-            f"  branching step = {self.__gfmc_branching_counter}/{num_mcmc_steps + self.__gfmc_branching_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gfmc_total_start):.1f} sec."
+            f"  branching step = {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gfmc_total_start):.1f} sec."
         )
 
         num_mcmc_done = 0
         for i_branching in range(num_mcmc_steps):
             if (i_branching + 1) % gfmc_interval == 0:
-                progress = (
-                    (i_branching + self.__gfmc_branching_counter + 1) / (num_mcmc_steps + self.__gfmc_branching_counter) * 100.0
-                )
+                progress = (i_branching + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
                 gmfc_total_current = time.perf_counter()
                 logger.info(
-                    f"  branching step = {i_branching + self.__gfmc_branching_counter + 1}/{num_mcmc_steps + self.__gfmc_branching_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gfmc_total_start):.1f} sec."
+                    f"  branching step = {i_branching + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(gmfc_total_current - gfmc_total_start):.1f} sec."
                 )
 
             # Always set the initial weight list to 1.0
@@ -1238,7 +1236,7 @@ class GFMC_fixed_projection_time:
             end_reconfiguration = time.perf_counter()
             timer_reconfiguration += end_reconfiguration - start_reconfiguration
 
-            num_mcmc_done += 1
+            # check current time
             gmfc_current = time.perf_counter()
             if max_time < gmfc_current - gfmc_total_start:
                 logger.info(f"  Stopping... Max_time = {max_time} sec. exceeds.")
@@ -1257,10 +1255,13 @@ class GFMC_fixed_projection_time:
                     logger.info("  Break the mcmc loop.")
                     break
 
+            # count up, here is the end of the branching step.
+            num_mcmc_done += 1
+
         logger.info("")
 
         # count up
-        self.__gfmc_branching_counter += i_branching + 1
+        self.__mcmc_counter += num_mcmc_done
 
         gfmc_total_end = time.perf_counter()
         timer_gfmc_total = gfmc_total_end - gfmc_total_start
@@ -1574,9 +1575,6 @@ class GFMC_fixed_projection_time_debug:
         self.__alat = alat
         self.__non_local_move = non_local_move
 
-        # gfmc branching counter
-        self.__gfmc_branching_counter = 0
-
         # Initialization
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
         self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
@@ -1634,6 +1632,9 @@ class GFMC_fixed_projection_time_debug:
         self.__init_attributes()
 
     def __init_attributes(self):
+        # mcmc counter
+        self.__mcmc_counter = 0
+
         # gfmc accepted/rejected moves
         self.__num_survived_walkers = 0
         self.__num_killed_walkers = 0
@@ -1691,19 +1692,15 @@ class GFMC_fixed_projection_time_debug:
         gfmc_interval = int(np.maximum(num_mcmc_steps / 100, 1))  # gfmc_projection set print-interval
 
         logger.info("-Start branching-")
-        progress = (self.__gfmc_branching_counter) / (num_mcmc_steps + self.__gfmc_branching_counter) * 100.0
-        logger.info(
-            f"  branching step = {self.__gfmc_branching_counter}/{num_mcmc_steps + self.__gfmc_branching_counter}: {progress:.1f} %."
-        )
+        progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
+        logger.info(f"  branching step = {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %.")
 
         num_mcmc_done = 0
         for i_branching in range(num_mcmc_steps):
             if (i_branching + 1) % gfmc_interval == 0:
-                progress = (
-                    (i_branching + self.__gfmc_branching_counter + 1) / (num_mcmc_steps + self.__gfmc_branching_counter) * 100.0
-                )
+                progress = (i_branching + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
                 logger.info(
-                    f"  branching step = {i_branching + self.__gfmc_branching_counter + 1}/{num_mcmc_steps + self.__gfmc_branching_counter}: {progress:.1f} %."
+                    f"  branching step = {i_branching + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %."
                 )
 
             # Always set the initial weight list to 1.0
@@ -2119,12 +2116,13 @@ class GFMC_fixed_projection_time_debug:
             self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
             self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
 
+            # count up, here is the end of the branching step.
             num_mcmc_done += 1
 
         logger.info("")
 
-        # count up
-        self.__gfmc_branching_counter += i_branching + 1
+        # count up mcmc_counter
+        self.__mcmc_counter += num_mcmc_done
 
     def get_E(
         self,
@@ -3834,7 +3832,7 @@ class GFMC_fixed_num_projection:
             if mpi_rank == 0:
                 if i_mcmc_step >= num_gfmc_collect_steps:
                     e_L = self.__stored_e_L[-1]
-                    w_L = self.__stored_w_L[-num_gfmc_collect_steps:]
+                    w_L = self.__stored_w_L[-num_gfmc_collect_steps - 1 : -1]
                     G_L = np.prod(w_L, axis=0)
                     self.__G_L.append(G_L)
                     self.__G_e_L.append(G_L * e_L)
@@ -3879,7 +3877,6 @@ class GFMC_fixed_num_projection:
             timer_update_E_scf += end_update_E_scf - start_update_E_scf
             logger.devel(f"    timer_update_E_scf = {(end_update_E_scf - start_update_E_scf) * 1e3:.2f} msec.")
 
-            num_mcmc_done += 1
             gfmc_current = time.perf_counter()
 
             if max_time < gfmc_current - gfmc_total_start:
@@ -3898,6 +3895,9 @@ class GFMC_fixed_num_projection:
                     logger.info(f"  Stopping... stop_flag in {toml_filename} is true.")
                     logger.info("  Break the mcmc loop.")
                     break
+
+            # count up, here is the end of the branching step.
+            num_mcmc_done += 1
 
         logger.info("")
 
@@ -5671,6 +5671,7 @@ class GFMC_fixed_num_projection_debug:
                 else:
                     logger.debug(f"    Init E_scf = {self.__E_scf:.5f} Ha. Being equilibrated.")
 
+            # count up, here is the end of the branching step.
             num_mcmc_done += 1
 
         logger.info("")
