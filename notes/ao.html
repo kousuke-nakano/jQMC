@@ -1,0 +1,768 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Atomic orbitals (AOs) and Basis sets &#8212; jQMC v0.1.0a0</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+
+  
+  <link href="../_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/sphinx-book-theme.css?v=eba8b062" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
+  <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+    <script src="../_static/documentation_options.js?v=f502e871"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
+    <script>window.MathJax = {"options": {"processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'notes/ao';</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Variational Monte Carlo (VMC)" href="vmc.html" />
+    <link rel="prev" title="Technical notes" href="technical_notes.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-primary-sidebar-checkbox"/>
+  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-secondary-sidebar-checkbox"/>
+  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search..."
+         aria-label="Search..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">jQMC v0.1.0a0</p>
+  
+</a></div>
+        <div class="sidebar-primary-item">
+
+ <script>
+ document.write(`
+   <button class="btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script></div>
+        <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
+    <div class="bd-toc-item navbar-nav active">
+        <ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="technical_notes.html">Technical notes</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">Atomic orbitals (AOs) and Basis sets</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vmc.html">Variational Monte Carlo (VMC)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vmcopt.html">Variational Monte Carlo: Wavefuntion Optimization (VMCopt)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="lrdmc.html">Lattice Regularized Diffusion Monte Carlo (LRDMC)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="atomic-forces.html">Atomic forces calculations by VMC and LRDMC</a></li>
+<li class="toctree-l2"><a class="reference internal" href="jax.html">JAX compatible modules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="trexio.html">Interfaces with TREX-IO</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../modules.html">jqmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../jqmc.html">jqmc package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="../citation.html">How to cite jQMC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../reference.html">References</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">Change Log</a></li>
+</ul>
+
+    </div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+
+<div class="sbt-scroll-pixel-helper"></div>
+
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item"><button class="sidebar-toggle primary-toggle btn btn-sm" title="Toggle primary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <span class="fa-solid fa-bars"></span>
+</button></div>
+      
+    </div>
+  
+  
+    <div class="header-article-items__end">
+      
+        <div class="header-article-item">
+
+<div class="article-header-buttons">
+
+
+
+
+
+<div class="dropdown dropdown-download-buttons">
+  <button class="btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Download this page">
+    <i class="fas fa-download"></i>
+  </button>
+  <ul class="dropdown-menu">
+      
+      
+      
+      <li><a href="../_sources/notes/ao.md" target="_blank"
+   class="btn btn-sm btn-download-source-button dropdown-item"
+   title="Download source file"
+   data-bs-placement="left" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-file"></i>
+  </span>
+<span class="btn__text-container">.md</span>
+</a>
+</li>
+      
+      
+      
+      
+      <li>
+<button onclick="window.print()"
+  class="btn btn-sm btn-download-pdf-button dropdown-item"
+  title="Print to PDF"
+  data-bs-placement="left" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-file-pdf"></i>
+  </span>
+<span class="btn__text-container">.pdf</span>
+</button>
+</li>
+      
+  </ul>
+</div>
+
+
+
+
+<button onclick="toggleFullScreen()"
+  class="btn btn-sm btn-fullscreen-button"
+  title="Fullscreen mode"
+  data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-expand"></i>
+  </span>
+
+</button>
+
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
+  </button>
+`);
+</script>
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm pst-navbar-icon search-button search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass fa-lg"></i>
+  </button>
+`);
+</script>
+<button class="sidebar-toggle secondary-toggle btn btn-sm" title="Toggle secondary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="fa-solid fa-list"></span>
+</button>
+</div></div>
+      
+    </div>
+  
+</div>
+</div>
+              
+              
+
+<div id="jb-print-docs-body" class="onlyprint">
+    <h1>Atomic orbitals (AOs) and Basis sets</h1>
+    <!-- Table of contents -->
+    <div id="print-main-content">
+        <div id="jb-print-toc">
+            
+            <div>
+                <h2> Contents </h2>
+            </div>
+            <nav aria-label="Page">
+                <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#atomic-orbitals-for-the-pairing-function-and-the-jastrow-factor">Atomic orbitals for the pairing function and the Jastrow factor</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#gaussiantype-orbitals-with-solidharmonic-basis">Gaussian‑Type Orbitals with Solid‑Harmonic Basis</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#gaussiantype-orbitals-with-cartesian-basis">Gaussian‑Type Orbitals with Cartesian Basis</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#practical-tip">Practical Tip</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#real-spherical-and-solid-harmonics">Real Spherical and Solid Harmonics</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#polynomial-form-of-solid-harmonics">Polynomial Form of Solid Harmonics</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#normalization-of-the-radial-part">Normalization of the Radial Part</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#practical-implementation-note">Practical Implementation Note</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#tables-of-real-solid-harmonics">Tables of Real Solid Harmonics</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#l-0-s-orbital"><span class="math notranslate nohighlight">\(l=0\)</span> (<span class="math notranslate nohighlight">\(s\)</span> orbital)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#l-1-p-orbitals"><span class="math notranslate nohighlight">\(l=1\)</span> (<span class="math notranslate nohighlight">\(p\)</span> orbitals)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#l-2-d-orbitals"><span class="math notranslate nohighlight">\(l=2\)</span> (<span class="math notranslate nohighlight">\(d\)</span> orbitals)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#l-3-f-orbitals"><span class="math notranslate nohighlight">\(l=3\)</span> (<span class="math notranslate nohighlight">\(f\)</span> orbitals)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#l-4-g-orbitals"><span class="math notranslate nohighlight">\(l=4\)</span> (<span class="math notranslate nohighlight">\(g\)</span> orbitals)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#l-5-h-orbitals"><span class="math notranslate nohighlight">\(l=5\)</span> (<span class="math notranslate nohighlight">\(h\)</span> orbitals)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#l-6-i-orbitals"><span class="math notranslate nohighlight">\(l=6\)</span> (<span class="math notranslate nohighlight">\(i\)</span> orbitals)</a></li>
+</ul>
+</li>
+</ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section class="tex2jax_ignore mathjax_ignore" id="atomic-orbitals-aos-and-basis-sets">
+<h1>Atomic orbitals (AOs) and Basis sets<a class="headerlink" href="#atomic-orbitals-aos-and-basis-sets" title="Link to this heading">#</a></h1>
+<section id="atomic-orbitals-for-the-pairing-function-and-the-jastrow-factor">
+<h2>Atomic orbitals for the pairing function and the Jastrow factor<a class="headerlink" href="#atomic-orbitals-for-the-pairing-function-and-the-jastrow-factor" title="Link to this heading">#</a></h2>
+<p>One of the most common choices for atomic orbitals in QMC is atom‑centered Gaussian‑type orbitals (GTOs). A primitive GTO <span class="math notranslate nohighlight">\(\psi_{l,m,\alpha}(\mathbf{r})\)</span> can be constructed using either solid harmonics or Cartesian polynomial basis functions.</p>
+<section id="gaussiantype-orbitals-with-solidharmonic-basis">
+<h3>Gaussian‑Type Orbitals with Solid‑Harmonic Basis<a class="headerlink" href="#gaussiantype-orbitals-with-solidharmonic-basis" title="Link to this heading">#</a></h3>
+<p>Primitive orbitals with regular solid harmonics are given by:</p>
+<div class="math notranslate nohighlight">
+\[\psi_{l,m,\alpha}(\mathbf{r}) = \mathcal{N}^{\rm solid}_{l,m,\alpha}\;\mathcal{R}_{\alpha}(\mathbf{r})\;\mathcal{S}_{l,m,\alpha}(\mathbf{r})\]</div>
+<p>where the radial part is</p>
+<div class="math notranslate nohighlight">
+\[\mathcal{R}_{\alpha}(\mathbf{r}) = e^{-Z_\alpha\,|\mathbf{r}-\mathbf{R}_\alpha|^2}\]</div>
+<p>and the solid harmonics are</p>
+<div class="math notranslate nohighlight">
+\[\mathcal{S}_{l,m,\alpha}(\mathbf{r}) = \sqrt{\frac{2l+1}{4\pi}}\;|\mathbf{r}-\mathbf{R}_\alpha|^l\;\mathcal{Y}_{l,m}(\theta_\alpha,\phi_\alpha).\]</div>
+<p>Here <span class="math notranslate nohighlight">\(\mathcal{Y}_{l,m}(\theta,\phi)\)</span> are real spherical harmonics, and the Racah normalization ensures</p>
+<div class="math notranslate nohighlight">
+\[\int_0^\pi\!\int_0^{2\pi} \sin\theta\,\mathcal{S}_{l,m,\alpha}^*(\mathbf{r})\,\mathcal{S}_{l,m,\alpha}(\mathbf{r})\,\mathrm{d}\phi\,\mathrm{d}\theta = \frac{4\pi}{2l+1}\;r^{2l}.\]</div>
+<p>The normalization constant is</p>
+<div class="math notranslate nohighlight">
+\[\mathcal{N}^{\rm solid}_{l,m,\alpha} = \sqrt{\frac{(2Z_\alpha/\pi)^{3/2}\,(4Z_\alpha)^l}{(2l-1)!!}}.\]</div>
+<p>One may also write GTOs with spherical harmonics normalization</p>
+<div class="math notranslate nohighlight">
+\[\psi_{l,m,\alpha}(\mathbf{r}) = \mathcal{N}^{\rm sphe}_{l,m,\alpha}\;|\mathbf{r}-\mathbf{R}_\alpha|^l\;\mathcal{R}_{\alpha}(\mathbf{r})\;\mathcal{Y}_{l,m}(\theta_\alpha,\phi_\alpha)\]</div>
+<p>with</p>
+<div class="math notranslate nohighlight">
+\[\mathcal{N}^{\rm sphe}_{l,m,\alpha} = \sqrt{\frac{2^{2l+3}(l+1)!(2Z_\alpha)^{l+3/2}}{(2l+2)!\,\sqrt{\pi}}}.\]</div>
+<p>These two normalizations satisfy</p>
+<div class="math notranslate nohighlight">
+\[\frac{\mathcal{N}^{\rm solid}_{l,m,\alpha}}{\mathcal{N}^{\rm sphe}_{l,m,\alpha}} = \sqrt{\frac{2l+1}{4\pi}}.\]</div>
+</section>
+<section id="gaussiantype-orbitals-with-cartesian-basis">
+<h3>Gaussian‑Type Orbitals with Cartesian Basis<a class="headerlink" href="#gaussiantype-orbitals-with-cartesian-basis" title="Link to this heading">#</a></h3>
+<p>Primitive orbitals in the Cartesian basis are</p>
+<div class="math notranslate nohighlight">
+\[\psi_{n_x,n_y,n_z,\alpha}(\mathbf{r}) = \mathcal{N}^{\rm cart}_{n_x,n_y,n_z,\alpha}\;e^{-Z_\alpha\,|\mathbf{r}-\mathbf{R}_\alpha|^2}\;x^{n_x}y^{n_y}z^{n_z}.\]</div>
+<p>The normalization is</p>
+<div class="math notranslate nohighlight">
+\[\mathcal{N}^{\rm cart}_{n_x,n_y,n_z,\alpha} = \sqrt{\frac{(2Z_\alpha/\pi)^{3/2}\,(4Z_\alpha)^{n_x+n_y+n_z}}{(2n_x-1)!!\,(2n_y-1)!!\,(2n_z-1)!!}} = \sqrt{\frac{(2Z_\alpha/\pi)^{3/2}\,(8Z_\alpha)^{n_x+n_y+n_z}n_x!n_y!n_z!}{(2n_x)!(2n_y)!(2n_z)!}}.\]</div>
+<p>We define the total angular momentum as <span class="math notranslate nohighlight">\(l=n_x+n_y+n_z\)</span>.  A basis of order <span class="math notranslate nohighlight">\(l\)</span> includes all monomials of that degree (e.g., <span class="math notranslate nohighlight">\(l=2\)</span> gives <span class="math notranslate nohighlight">\(d_{xx},d_{xy},\dots,d_{zz}\)</span>).  Note that normalization constants differ among Cartesian orbitals with the same <span class="math notranslate nohighlight">\(l\)</span> (except for <span class="math notranslate nohighlight">\(s\)</span> and <span class="math notranslate nohighlight">\(p\)</span> shells).  For example:</p>
+<div class="math notranslate nohighlight">
+\[\mathcal{N}^{\rm cart}_{2,0,0,\alpha} = \sqrt{\frac{(2Z_\alpha/\pi)^{3/2}(4Z_\alpha)^2}{3\cdot1}},\]</div>
+<div class="math notranslate nohighlight">
+\[\mathcal{N}^{\rm cart}_{1,1,0,\alpha} = \sqrt{\frac{(2Z_\alpha/\pi)^{3/2}(4Z_\alpha)^2}{1\cdot1}}.\]</div>
+</section>
+<section id="practical-tip">
+<h3>Practical Tip<a class="headerlink" href="#practical-tip" title="Link to this heading">#</a></h3>
+<p>In jQMC (JAX), Cartesian GTOs are computationally faster than spherical ones when using <code class="docutils literal notranslate"><span class="pre">jit</span></code> and <code class="docutils literal notranslate"><span class="pre">grad</span></code>, since they avoid branching logic by varying only polynomial exponents rather than basis‑function forms.</p>
+</section>
+</section>
+<section id="real-spherical-and-solid-harmonics">
+<h2>Real Spherical and Solid Harmonics<a class="headerlink" href="#real-spherical-and-solid-harmonics" title="Link to this heading">#</a></h2>
+<p>The <strong>real spherical harmonics</strong> <span class="math notranslate nohighlight">\(\mathcal{Y}_{l,m}(\theta,\phi)\)</span> are built from the complex spherical harmonics <span class="math notranslate nohighlight">\(Y_{l,m}(\theta,\phi)\)</span> with the Condon–Shortley phase:</p>
+<div class="math notranslate nohighlight" id="equation-eq-real-spherical">
+<span class="eqno">(1)<a class="headerlink" href="#equation-eq-real-spherical" title="Link to this equation">#</a></span>\[\begin{split}\mathcal{Y}_{l,m}(\theta,\phi) =
+\begin{cases}
+\displaystyle
+\frac{1}{\sqrt{2}}\bigl(Y_{l,-|m|}(\theta,\phi) + (-1)^m\,Y_{l,|m|}(\theta,\phi)\bigr), &amp; m&gt;0,\\[1em]
+Y_{l,0}(\theta,\phi), &amp; m=0,\\[0.75em]
+\displaystyle
+\frac{i}{\sqrt{2}}\bigl(Y_{l,-|m|}(\theta,\phi) - (-1)^m\,Y_{l,|m|}(\theta,\phi)\bigr), &amp; m&lt;0.
+\end{cases}\end{split}\]</div>
+<p>Because the complex spherical harmonics satisfy</p>
+<div class="math notranslate nohighlight" id="equation-eq-ortho-complex">
+<span class="eqno">(2)<a class="headerlink" href="#equation-eq-ortho-complex" title="Link to this equation">#</a></span>\[\int_{0}^{\pi}\!\!\int_{0}^{2\pi}
+Y_{l',m'}^*(\theta,\phi)\,Y_{l,m}(\theta,\phi)\,
+\sin\theta\,d\phi\,d\theta
+= \delta_{l,l'}\,\delta_{m,m'},\]</div>
+<p>the real ones are also orthonormal:</p>
+<div class="math notranslate nohighlight" id="equation-eq-ortho-real">
+<span class="eqno">(3)<a class="headerlink" href="#equation-eq-ortho-real" title="Link to this equation">#</a></span>\[\int_{0}^{\pi}\!\!\int_{0}^{2\pi}
+\mathcal{Y}_{l',m'}(\theta,\phi)\,\mathcal{Y}_{l,m}(\theta,\phi)\,
+\sin\theta\,d\phi\,d\theta
+= \delta_{l,l'}\,\delta_{m,m'}.\]</div>
+<p>The spherical harmonics have singularities at the origin <span class="math notranslate nohighlight">\((x,y,z)=(0,0,0)\)</span>. In practice one uses the <strong>regular solid harmonics</strong> centered at <span class="math notranslate nohighlight">\(\mathbf{R}_\alpha\)</span>:</p>
+<div class="math notranslate nohighlight" id="equation-eq-solid-harmonic-def">
+<span class="eqno">(4)<a class="headerlink" href="#equation-eq-solid-harmonic-def" title="Link to this equation">#</a></span>\[\mathcal{S}_{l,m,\alpha}(\mathbf{r})
+= \sqrt{\frac{2l+1}{4\pi}}\;
+|\mathbf{R}_\alpha-\mathbf{r}|^l\;
+\mathcal{Y}_{l,m}(\theta_\alpha,\phi_\alpha).\]</div>
+<section id="polynomial-form-of-solid-harmonics">
+<h3>Polynomial Form of Solid Harmonics<a class="headerlink" href="#polynomial-form-of-solid-harmonics" title="Link to this heading">#</a></h3>
+<p>One efficient way to compute <span class="math notranslate nohighlight">\(\mathcal{S}_{l,m}\)</span> is via polynomials in <span class="math notranslate nohighlight">\((x,y,z)\)</span>. Define:</p>
+<div class="math notranslate nohighlight" id="equation-eq-cm">
+<span class="eqno">(5)<a class="headerlink" href="#equation-eq-cm" title="Link to this equation">#</a></span>\[\begin{split}C_m(x,y) =
+\begin{cases}
+\displaystyle
+\sum_{p=0}^{|m|}\binom{|m|}{p}x^p\,y^{|m|-p}\,\cos\!\bigl(\tfrac\pi2(|m|-p)\bigr),
+&amp; m\ge0,\\[0.75em]
+\displaystyle
+\sum_{p=0}^{|m|}\binom{|m|}{p}x^p\,y^{|m|-p}\,\sin\!\bigl(\tfrac\pi2(|m|-p)\bigr),
+&amp; m&lt;0,
+\end{cases}\end{split}\]</div>
+<div class="math notranslate nohighlight" id="equation-eq-gamma-lmk">
+<span class="eqno">(6)<a class="headerlink" href="#equation-eq-gamma-lmk" title="Link to this equation">#</a></span>\[\gamma_{l,m,k}(z)
+= (-1)^k\,2^{-l}
+\,\binom{l}{k}\,\binom{2l-2k}{l}\,
+\frac{(l-2k)!}{(l-2k-|m|)!},\]</div>
+<div class="math notranslate nohighlight" id="equation-eq-gamma-lm">
+<span class="eqno">(7)<a class="headerlink" href="#equation-eq-gamma-lm" title="Link to this equation">#</a></span>\[\Gamma_{l,m}(z)
+= \sum_{k=0}^{\lfloor (l-|m|)/2\rfloor}
+\gamma_{l,m,k}(z)\;
+|\mathbf{r}|^{2k}\;z^{\,l-2k-|m|}.\]</div>
+<p>Then</p>
+<div class="math notranslate nohighlight" id="equation-eq-solid-harmonic-poly">
+<span class="eqno">(8)<a class="headerlink" href="#equation-eq-solid-harmonic-poly" title="Link to this equation">#</a></span>\[\mathcal{S}_{l,m,\alpha}(\mathbf{r})
+= \sqrt{\frac{(2-\delta_{m,0})(l-|m|)!}{(l+|m|)!}}\;
+C_m(x-\!X_\alpha,\;y-\!Y_\alpha)\;
+\Gamma_{l,m}(z-\!Z_\alpha).\]</div>
+</section>
+<section id="normalization-of-the-radial-part">
+<h3>Normalization of the Radial Part<a class="headerlink" href="#normalization-of-the-radial-part" title="Link to this heading">#</a></h3>
+<p>For a Gaussian radial factor
+<span class="math notranslate nohighlight">\(\psi_{l,m,\alpha}(\mathbf{r})=\mathcal{N}_{l,\alpha}\,r^l\,e^{-Z_\alpha r^2}\,\mathcal{Y}_{l,m}(\theta,\phi)\)</span>,
+the overall normalization requires</p>
+<div class="math notranslate nohighlight" id="equation-eq-normalization-integral">
+<span class="eqno">(9)<a class="headerlink" href="#equation-eq-normalization-integral" title="Link to this equation">#</a></span>\[\int_{\mathbb{R}^3}
+\bigl|\psi_{l,m,\alpha}(\mathbf{r})\bigr|^2\,d\mathbf{r}
+=1.\]</div>
+<p>Separating radial and angular parts:</p>
+<div class="math notranslate nohighlight" id="equation-eq-radial-integral">
+<span class="eqno">(10)<a class="headerlink" href="#equation-eq-radial-integral" title="Link to this equation">#</a></span>\[\mathcal{N}_{l,\alpha}^2
+\int_{0}^{\infty}r^{2l+2}\,e^{-2Z_\alpha r^2}\,dr
+=1
+\;\Longrightarrow\;
+\mathcal{N}_{l,\alpha}^2
+\frac{(2l+2)!\,\sqrt{\pi}}{2^{2l+3}(l+1)!\,(2Z_\alpha)^{l+\frac{3}{2}}}
+=1,\]</div>
+<div class="math notranslate nohighlight" id="equation-eq-angular-integral">
+<span class="eqno">(11)<a class="headerlink" href="#equation-eq-angular-integral" title="Link to this equation">#</a></span>\[\int_{0}^{\pi}\!\!\int_{0}^{2\pi}
+\bigl|\mathcal{Y}_{l,m}(\theta,\phi)\bigr|^2\,
+\sin\theta\,d\phi\,d\theta
+=1.\]</div>
+<p>Hence the <strong>radial normalization constant</strong> is</p>
+<div class="math notranslate nohighlight" id="equation-eq-normalization-factor">
+<span class="eqno">(12)<a class="headerlink" href="#equation-eq-normalization-factor" title="Link to this equation">#</a></span>\[\mathcal{N}_{l,\alpha}
+= \sqrt{
+\frac{2^{2l+3}(l+1)!\,(2Z_\alpha)^{\,l+\tfrac{3}{2}}}
+     {(2l+2)!\,\sqrt{\pi}}
+}.\]</div>
+<p>This factor is <em>identical</em> for all <span class="math notranslate nohighlight">\((l,m)\)</span> in the same shell.</p>
+</section>
+<section id="practical-implementation-note">
+<h3>Practical Implementation Note<a class="headerlink" href="#practical-implementation-note" title="Link to this heading">#</a></h3>
+<p>In JAX-based codes, <strong>Cartesian GTOs</strong> (polynomials in <span class="math notranslate nohighlight">\(x,y,z\)</span>) are often faster than spherical ones, because they avoid branching logic over <span class="math notranslate nohighlight">\((l,m)\)</span>.</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="tables-of-real-solid-harmonics">
+<h2>Tables of Real Solid Harmonics<a class="headerlink" href="#tables-of-real-solid-harmonics" title="Link to this heading">#</a></h2>
+<p>Below are the explicit real solid harmonics up to <span class="math notranslate nohighlight">\(l=6\)</span>.  Let <span class="math notranslate nohighlight">\(r=\sqrt{x^2+y^2+z^2}\)</span>.</p>
+<section id="l-0-s-orbital">
+<h3><span class="math notranslate nohighlight">\(l=0\)</span> (<span class="math notranslate nohighlight">\(s\)</span> orbital)<a class="headerlink" href="#l-0-s-orbital" title="Link to this heading">#</a></h3>
+<div class="math notranslate nohighlight" id="equation-eq-l0">
+<span class="eqno">(13)<a class="headerlink" href="#equation-eq-l0" title="Link to this equation">#</a></span>\[Y_{0,0} = \frac{1}{2}\,\sqrt{\frac{1}{\pi}}.\]</div>
+</section>
+<section id="l-1-p-orbitals">
+<h3><span class="math notranslate nohighlight">\(l=1\)</span> (<span class="math notranslate nohighlight">\(p\)</span> orbitals)<a class="headerlink" href="#l-1-p-orbitals" title="Link to this heading">#</a></h3>
+<div class="math notranslate nohighlight" id="equation-eq-l1">
+<span class="eqno">(14)<a class="headerlink" href="#equation-eq-l1" title="Link to this equation">#</a></span>\[\begin{split}\begin{aligned}
+Y_{1,-1} &amp;= i\sqrt{\tfrac12}\bigl(Y_1^{-1}+Y_1^1\bigr)
+= \sqrt{\tfrac{3}{4\pi}}\;\frac{y}{r},\\
+Y_{1,0}  &amp;= \;\;Y_1^0
+= \sqrt{\tfrac{3}{4\pi}}\;\frac{z}{r},\\
+Y_{1,1}  &amp;= \sqrt{\tfrac12}\bigl(Y_1^{-1}-Y_1^1\bigr)
+= \sqrt{\tfrac{3}{4\pi}}\;\frac{x}{r}.
+\end{aligned}\end{split}\]</div>
+</section>
+<section id="l-2-d-orbitals">
+<h3><span class="math notranslate nohighlight">\(l=2\)</span> (<span class="math notranslate nohighlight">\(d\)</span> orbitals)<a class="headerlink" href="#l-2-d-orbitals" title="Link to this heading">#</a></h3>
+<div class="math notranslate nohighlight" id="equation-eq-l2">
+<span class="eqno">(15)<a class="headerlink" href="#equation-eq-l2" title="Link to this equation">#</a></span>\[\begin{split}\begin{aligned}
+Y_{2,-2} &amp;= i\sqrt{\tfrac12}\bigl(Y_2^{-2}-Y_2^2\bigr)
+= \tfrac12\sqrt{\tfrac{15}{\pi}}\;\frac{xy}{r^2},\\
+Y_{2,-1} &amp;= i\sqrt{\tfrac12}\bigl(Y_2^{-1}+Y_2^1\bigr)
+= \tfrac12\sqrt{\tfrac{15}{\pi}}\;\frac{yz}{r^2},\\
+Y_{2,0}  &amp;= \;\;Y_2^0
+= \tfrac14\sqrt{\tfrac{5}{\pi}}\;\frac{3z^2-r^2}{r^2},\\
+Y_{2,1}  &amp;= \sqrt{\tfrac12}\bigl(Y_2^{-1}-Y_2^1\bigr)
+= \tfrac12\sqrt{\tfrac{15}{\pi}}\;\frac{xz}{r^2},\\
+Y_{2,2}  &amp;= \sqrt{\tfrac12}\bigl(Y_2^{-2}+Y_2^2\bigr)
+= \tfrac14\sqrt{\tfrac{15}{\pi}}\;\frac{x^2-y^2}{r^2}.
+\end{aligned}\end{split}\]</div>
+</section>
+<section id="l-3-f-orbitals">
+<h3><span class="math notranslate nohighlight">\(l=3\)</span> (<span class="math notranslate nohighlight">\(f\)</span> orbitals)<a class="headerlink" href="#l-3-f-orbitals" title="Link to this heading">#</a></h3>
+<div class="math notranslate nohighlight" id="equation-eq-l3">
+<span class="eqno">(16)<a class="headerlink" href="#equation-eq-l3" title="Link to this equation">#</a></span>\[\begin{split}\begin{aligned}
+Y_{3,-3} &amp;= i\sqrt{\tfrac12}\bigl(Y_3^{-3}+Y_3^3\bigr)
+= \tfrac14\sqrt{\tfrac{35}{2\pi}}\;\frac{y(3x^2-y^2)}{r^3},\\
+Y_{3,-2} &amp;= i\sqrt{\tfrac12}\bigl(Y_3^{-2}-Y_3^2\bigr)
+= \tfrac12\sqrt{\tfrac{105}{\pi}}\;\frac{xyz}{r^3},\\
+Y_{3,-1} &amp;= i\sqrt{\tfrac12}\bigl(Y_3^{-1}+Y_3^1\bigr)
+= \tfrac14\sqrt{\tfrac{21}{2\pi}}\;\frac{y(5z^2-r^2)}{r^3},\\
+Y_{3,0}  &amp;= \;\;Y_3^0
+= \tfrac14\sqrt{\tfrac{7}{\pi}}\;\frac{5z^3-3zr^2}{r^3},\\
+Y_{3,1}  &amp;= \sqrt{\tfrac12}\bigl(Y_3^{-1}-Y_3^1\bigr)
+= \tfrac14\sqrt{\tfrac{21}{2\pi}}\;\frac{x(5z^2-r^2)}{r^3},\\
+Y_{3,2}  &amp;= \sqrt{\tfrac12}\bigl(Y_3^{-2}+Y_3^2\bigr)
+= \tfrac14\sqrt{\tfrac{105}{\pi}}\;\frac{(x^2-y^2)z}{r^3},\\
+Y_{3,3}  &amp;= \sqrt{\tfrac12}\bigl(Y_3^{-3}-Y_3^3\bigr)
+= \tfrac14\sqrt{\tfrac{35}{2\pi}}\;\frac{x(x^2-3y^2)}{r^3}.
+\end{aligned}\end{split}\]</div>
+</section>
+<section id="l-4-g-orbitals">
+<h3><span class="math notranslate nohighlight">\(l=4\)</span> (<span class="math notranslate nohighlight">\(g\)</span> orbitals)<a class="headerlink" href="#l-4-g-orbitals" title="Link to this heading">#</a></h3>
+<div class="math notranslate nohighlight" id="equation-eq-l4">
+<span class="eqno">(17)<a class="headerlink" href="#equation-eq-l4" title="Link to this equation">#</a></span>\[\begin{split}\begin{aligned}
+Y_{4,-4} &amp;= i\sqrt{\tfrac12}\bigl(Y_4^{-4}-Y_4^4\bigr)
+= \tfrac34\sqrt{\tfrac{35}{\pi}}\;\frac{xy(x^2-y^2)}{r^4},\\
+Y_{4,-3} &amp;= i\sqrt{\tfrac12}\bigl(Y_4^{-3}+Y_4^3\bigr)
+= \tfrac34\sqrt{\tfrac{35}{2\pi}}\;\frac{y(3x^2-y^2)z}{r^4},\\
+Y_{4,-2} &amp;= i\sqrt{\tfrac12}\bigl(Y_4^{-2}-Y_4^2\bigr)
+= \tfrac34\sqrt{\tfrac{5}{\pi}}\;\frac{xy(7z^2-r^2)}{r^4},\\
+Y_{4,-1} &amp;= i\sqrt{\tfrac12}\bigl(Y_4^{-1}+Y_4^1\bigr)
+= \tfrac34\sqrt{\tfrac{5}{2\pi}}\;\frac{y(7z^3-3zr^2)}{r^4},\\
+Y_{4,0}  &amp;= \;\;Y_4^0
+= \tfrac{3}{16}\sqrt{\tfrac{1}{\pi}}\;\frac{35z^4-30z^2r^2+3r^4}{r^4},\\
+Y_{4,1}  &amp;= \sqrt{\tfrac12}\bigl(Y_4^{-1}-Y_4^1\bigr)
+= \tfrac34\sqrt{\tfrac{5}{2\pi}}\;\frac{x(7z^3-3zr^2)}{r^4},\\
+Y_{4,2}  &amp;= \sqrt{\tfrac12}\bigl(Y_4^{-2}+Y_4^2\bigr)
+= \tfrac38\sqrt{\tfrac{5}{\pi}}\;\frac{(x^2-y^2)(7z^2-r^2)}{r^4},\\
+Y_{4,3}  &amp;= \sqrt{\tfrac12}\bigl(Y_4^{-3}-Y_4^3\bigr)
+= \tfrac34\sqrt{\tfrac{35}{2\pi}}\;\frac{x(x^2-3y^2)z}{r^4},\\
+Y_{4,4}  &amp;= \sqrt{\tfrac12}\bigl(Y_4^{-4}+Y_4^4\bigr)
+= \tfrac{3}{16}\sqrt{\tfrac{35}{\pi}}\;\frac{x^2(x^2-3y^2)-y^2(3x^2-y^2)}{r^4}.
+\end{aligned}\end{split}\]</div>
+</section>
+<section id="l-5-h-orbitals">
+<h3><span class="math notranslate nohighlight">\(l=5\)</span> (<span class="math notranslate nohighlight">\(h\)</span> orbitals)<a class="headerlink" href="#l-5-h-orbitals" title="Link to this heading">#</a></h3>
+<div class="math notranslate nohighlight" id="equation-eq-l5">
+<span class="eqno">(18)<a class="headerlink" href="#equation-eq-l5" title="Link to this equation">#</a></span>\[\begin{split}\begin{aligned}
+Y_{5,-5} &amp;= i\sqrt{\tfrac12}\bigl(Y_5^{-5}+Y_5^5\bigr)
+= \tfrac{3}{16}\sqrt{\tfrac{77}{2\pi}}\;\frac{5x^4y-10x^2y^3+y^5}{r^5},\\
+Y_{5,-4} &amp;= i\sqrt{\tfrac12}\bigl(Y_5^{-4}-Y_5^4\bigr)
+= \tfrac{3}{16}\sqrt{\tfrac{385}{\pi}}\;\frac{4xyz(x^2-y^2)}{r^5},\\
+Y_{5,-3} &amp;= i\sqrt{\tfrac12}\bigl(Y_5^{-3}+Y_5^3\bigr)
+= \tfrac{1}{16}\sqrt{\tfrac{385}{2\pi}}\;\frac{-(y^3-3x^2y)(9z^2-r^2)}{r^5},\\
+Y_{5,-2} &amp;= i\sqrt{\tfrac12}\bigl(Y_5^{-2}-Y_5^2\bigr)
+= \tfrac{1}{8}\sqrt{\tfrac{1155}{\pi}}\;\frac{2xy(3z^3-zr^2)}{r^5},\\
+Y_{5,-1} &amp;= i\sqrt{\tfrac12}\bigl(Y_5^{-1}+Y_5^1\bigr)
+= \tfrac{1}{16}\sqrt{\tfrac{165}{\pi}}\;\frac{y(21z^4-14z^2r^2+r^4)}{r^5},\\
+Y_{5,0}  &amp;= \;\;Y_5^0
+= \tfrac{1}{16}\sqrt{\tfrac{11}{\pi}}\;\frac{63z^5-70z^3r^2+15zr^4}{r^5},\\
+Y_{5,1}  &amp;= \sqrt{\tfrac12}\bigl(Y_5^{-1}-Y_5^1\bigr)
+= \tfrac{1}{16}\sqrt{\tfrac{165}{\pi}}\;\frac{x(21z^4-14z^2r^2+r^4)}{r^5},\\
+Y_{5,2}  &amp;= \sqrt{\tfrac12}\bigl(Y_5^{-2}+Y_5^2\bigr)
+= \tfrac{1}{8}\sqrt{\tfrac{1155}{\pi}}\;\frac{(x^2-y^2)(3z^3-zr^2)}{r^5},\\
+Y_{5,3}  &amp;= \sqrt{\tfrac12}\bigl(Y_5^{-3}-Y_5^3\bigr)
+= \tfrac{1}{16}\sqrt{\tfrac{385}{2\pi}}\;\frac{(x^3-3xy^2)(9z^2-r^2)}{r^5},\\
+Y_{5,4}  &amp;= \sqrt{\tfrac12}\bigl(Y_5^{-4}+Y_5^4\bigr)
+= \tfrac{3}{16}\sqrt{\tfrac{385}{\pi}}\;\frac{x^2z(x^2-3y^2)-y^2z(3x^2-y^2)}{r^5},\\
+Y_{5,5}  &amp;= \sqrt{\tfrac12}\bigl(Y_5^{-5}-Y_5^5\bigr)
+= \tfrac{3}{16}\sqrt{\tfrac{77}{2\pi}}\;\frac{x^5-10x^3y^2+5xy^4}{r^5}.
+\end{aligned}\end{split}\]</div>
+</section>
+<section id="l-6-i-orbitals">
+<h3><span class="math notranslate nohighlight">\(l=6\)</span> (<span class="math notranslate nohighlight">\(i\)</span> orbitals)<a class="headerlink" href="#l-6-i-orbitals" title="Link to this heading">#</a></h3>
+<div class="math notranslate nohighlight" id="equation-eq-l6">
+<span class="eqno">(19)<a class="headerlink" href="#equation-eq-l6" title="Link to this equation">#</a></span>\[\begin{split}\begin{aligned}
+Y_{6,-6} &amp;= i\sqrt{\tfrac12}\bigl(Y_6^{-6}-Y_6^6\bigr)
+= \tfrac{1}{64}\sqrt{\tfrac{6006}{\pi}}\;\frac{6x^5y-20x^3y^3+6xy^5}{r^6},\\
+Y_{6,-5} &amp;= i\sqrt{\tfrac12}\bigl(Y_6^{-5}+Y_6^5\bigr)
+= \tfrac{3}{32}\sqrt{\tfrac{2002}{\pi}}\;\frac{z(5x^4y-10x^2y^3+y^5)}{r^6},\\
+Y_{6,-4} &amp;= i\sqrt{\tfrac12}\bigl(Y_6^{-4}-Y_6^4\bigr)
+= \tfrac{3}{32}\sqrt{\tfrac{91}{\pi}}\;\frac{4xy(11z^2-r^2)(x^2-y^2)}{r^6},\\
+Y_{6,-3} &amp;= i\sqrt{\tfrac12}\bigl(Y_6^{-3}+Y_6^3\bigr)
+= \tfrac{1}{32}\sqrt{\tfrac{2730}{\pi}}\;\frac{-(11z^3-3zr^2)(y^3-3x^2y)}{r^6},\\
+Y_{6,-2} &amp;= i\sqrt{\tfrac12}\bigl(Y_6^{-2}-Y_6^2\bigr)
+= \tfrac{1}{64}\sqrt{\tfrac{2730}{\pi}}\;\frac{2xy(33z^4-18z^2r^2+r^4)}{r^6},\\
+Y_{6,-1} &amp;= i\sqrt{\tfrac12}\bigl(Y_6^{-1}+Y_6^1\bigr)
+= \tfrac{1}{16}\sqrt{\tfrac{273}{\pi}}\;\frac{y(33z^5-30z^3r^2+5zr^4)}{r^6},\\
+Y_{6,0}  &amp;= \;\;Y_6^0
+= \tfrac{1}{32}\sqrt{\tfrac{13}{\pi}}\;\frac{231z^6-315z^4r^2+105z^2r^4-5r^6}{r^6},\\
+Y_{6,1}  &amp;= \sqrt{\tfrac12}\bigl(Y_6^{-1}-Y_6^1\bigr)
+= \tfrac{1}{16}\sqrt{\tfrac{273}{\pi}}\;\frac{x(33z^5-30z^3r^2+5zr^4)}{r^6},\\
+Y_{6,2}  &amp;= \sqrt{\tfrac12}\bigl(Y_6^{-2}+Y_6^2\bigr)
+= \tfrac{1}{64}\sqrt{\tfrac{2730}{\pi}}\;\frac{(x^2-y^2)(33z^4-18z^2r^2+r^4)}{r^6},\\
+Y_{6,3}  &amp;= \sqrt{\tfrac12}\bigl(Y_6^{-3}-Y_6^3\bigr)
+= \tfrac{1}{32}\sqrt{\tfrac{2730}{\pi}}\;\frac{(11z^3-3zr^2)(x^3-3xy^2)}{r^6},\\
+Y_{6,4}  &amp;= \sqrt{\tfrac12}\bigl(Y_6^{-4}+Y_6^4\bigr)
+= \tfrac{3}{32}\sqrt{\tfrac{91}{\pi}}\;\frac{(11z^2-r^2)\bigl[x^2(x^2-3y^2)+y^2(y^2-3x^2)\bigr]}{r^6},\\
+Y_{6,5}  &amp;= \sqrt{\tfrac12}\bigl(Y_6^{-5}-Y_6^5\bigr)
+= \tfrac{3}{32}\sqrt{\tfrac{2002}{\pi}}\;\frac{z(x^5-10x^3y^2+5xy^4)}{r^6},\\
+Y_{6,6}  &amp;= \sqrt{\tfrac12}\bigl(Y_6^{-6}+Y_6^6\bigr)
+= \tfrac{1}{64}\sqrt{\tfrac{6006}{\pi}}\;\frac{x^6-15x^4y^2+15x^2y^4-y^6}{r^6}.
+\end{aligned}\end{split}\]</div>
+<p><em><span class="math notranslate nohighlight">\(l\ge7\)</span> harmonics are rarely needed in practice.</em></p>
+</section>
+</section>
+</section>
+
+
+                </article>
+              
+
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="technical_notes.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Technical notes</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="vmc.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Variational Monte Carlo (VMC)</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+  <div class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> Contents
+  </div>
+  <nav class="bd-toc-nav page-toc">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#atomic-orbitals-for-the-pairing-function-and-the-jastrow-factor">Atomic orbitals for the pairing function and the Jastrow factor</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#gaussiantype-orbitals-with-solidharmonic-basis">Gaussian‑Type Orbitals with Solid‑Harmonic Basis</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#gaussiantype-orbitals-with-cartesian-basis">Gaussian‑Type Orbitals with Cartesian Basis</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#practical-tip">Practical Tip</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#real-spherical-and-solid-harmonics">Real Spherical and Solid Harmonics</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#polynomial-form-of-solid-harmonics">Polynomial Form of Solid Harmonics</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#normalization-of-the-radial-part">Normalization of the Radial Part</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#practical-implementation-note">Practical Implementation Note</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#tables-of-real-solid-harmonics">Tables of Real Solid Harmonics</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#l-0-s-orbital"><span class="math notranslate nohighlight">\(l=0\)</span> (<span class="math notranslate nohighlight">\(s\)</span> orbital)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#l-1-p-orbitals"><span class="math notranslate nohighlight">\(l=1\)</span> (<span class="math notranslate nohighlight">\(p\)</span> orbitals)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#l-2-d-orbitals"><span class="math notranslate nohighlight">\(l=2\)</span> (<span class="math notranslate nohighlight">\(d\)</span> orbitals)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#l-3-f-orbitals"><span class="math notranslate nohighlight">\(l=3\)</span> (<span class="math notranslate nohighlight">\(f\)</span> orbitals)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#l-4-g-orbitals"><span class="math notranslate nohighlight">\(l=4\)</span> (<span class="math notranslate nohighlight">\(g\)</span> orbitals)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#l-5-h-orbitals"><span class="math notranslate nohighlight">\(l=5\)</span> (<span class="math notranslate nohighlight">\(h\)</span> orbitals)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#l-6-i-orbitals"><span class="math notranslate nohighlight">\(l=6\)</span> (<span class="math notranslate nohighlight">\(i\)</span> orbitals)</a></li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+<div class="bd-footer-content__inner container">
+  
+  <div class="footer-item">
+    
+<p class="component-author">
+By Author name not set
+</p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+
+  <p class="copyright">
+    
+      © Copyright 2024, Kosuke Nakano.
+      <br/>
+    
+  </p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+</div>
+          </footer>
+        
+
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
+<script src="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+  <footer class="bd-footer">
+  </footer>
+  </body>
+</html>
