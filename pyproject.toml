@@ -5,6 +5,7 @@ build-backend = "setuptools.build_meta"
 # pyproject.toml
 [tool.setuptools_scm]
 write_to = "jqmc/_version.py"
+local_scheme = "no-local-version"
 
 [tool.ruff]
 line-length = 128
