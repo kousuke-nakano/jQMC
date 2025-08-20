@@ -10,7 +10,7 @@ jobs:
   # validate tag
   validate_tag:
     # Run only if this repository is rc
-    if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'kosuke-nakano/jQMC'
+    if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'kousuke-nakano/jQMC'
     runs-on: ubuntu-latest
     steps:
       # Check out the repository
@@ -82,7 +82,7 @@ jobs:
   # deploy
   deploy-pypi:
     # Run only if this repository is rc
-    if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'kosuke-nakano/jQMC'
+    if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'kousuke-nakano/jQMC'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
