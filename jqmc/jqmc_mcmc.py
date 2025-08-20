@@ -2205,8 +2205,10 @@ class MCMC:
                         XXTv_local = X_local @ XTv_local  # shape (N,)
 
                         # Global sum over all processes
-                        XXTv_global, _ = mpi4jax.allreduce(XXTv_local, op=MPI.SUM, comm=MPI.COMM_WORLD)
-
+                        try:
+                            XXTv_global, _ = mpi4jax.allreduce(XXTv_local, op=MPI.SUM, comm=MPI.COMM_WORLD)
+                        except ValueError:  # mpi4jax.allreduce does not return token since mpi4jax v0.8.0（2025-07-07)
+                            XXTv_global = mpi4jax.allreduce(XXTv_local, op=MPI.SUM, comm=MPI.COMM_WORLD)
                         return XXTv_global + epsilon * v
 
                     x0 = X_F
@@ -2322,7 +2324,10 @@ class MCMC:
                         # X_local_T: shape (M_local, N/P)
                         Xv_local = X_local @ v  # (M_local,)
                         XTXv_local = X_local.T @ Xv_local  # (N_local,)
-                        XTXv_global, _ = mpi4jax.allreduce(XTXv_local, op=MPI.SUM, comm=mpi_comm)
+                        try:
+                            XTXv_global, _ = mpi4jax.allreduce(XTXv_local, op=MPI.SUM, comm=mpi_comm)
+                        except ValueError:  # mpi4jax.allreduce does not return token since mpi4jax v0.8.0（2025-07-07)
+                            XTXv_global = mpi4jax.allreduce(XTXv_local, op=MPI.SUM, comm=mpi_comm)
                         return XTXv_global + epsilon * v
 
                     # X_re_local: shape (N_local, M_total)
