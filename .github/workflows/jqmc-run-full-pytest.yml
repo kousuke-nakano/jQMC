@@ -1,0 +1,93 @@
+# A full test of jqmc.
+
+name: jqmc full test
+
+on:
+  push:
+    branches: [ "main", "rc" ]
+    paths-ignore:
+      - 'doc/**'
+      - 'examples/**'
+      - 'README.md'
+  pull_request:
+    branches: [ "main", "rc" ]
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+    - name: Install gfortran and gcc
+      run: |
+        sudo apt-get update
+        sudo apt-get install gfortran
+
+    - name: Install OpenBLAS and LAPACK
+      run: sudo apt-get install libopenblas-dev liblapack-dev
+
+    - name: Install OpenMPI
+      run: sudo apt-get install openmpi-bin libopenmpi-dev
+
+    - uses: actions/checkout@v3
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v3
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install jqmc
+      run: |
+        python -m pip install flake8 pytest pytest-cov
+        python -m pip install .
+
+    #- name: Lint jqmc with flake8
+    #  run: |
+    #    # stop the build if there are Python syntax errors or undefined names
+    #    flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+    #    # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+    #    flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Test jqmc (pytest) with @jit decorator (intra-software comparisons)
+      run: |
+        pytest -s -v tests/test_trexio.py --cov=jqmc --cov-branch --no-cov-on-fail
+        pytest -s -v tests/test_AOs.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        pytest -s -v tests/test_MOs.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        pytest -s -v tests/test_determinant.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        pytest -s -v tests/test_jastrow.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        pytest -s -v tests/test_wave_function.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        pytest -s -v tests/test_ecps.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        pytest -s -v tests/test_swct.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        pytest -s -v tests/test_vmc_force.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        pytest -s -v tests/test_lrdmc_force.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+
+    - name: Test jqmc (pytest) with @jit decorator (inter-software comparisons)
+      run: |
+        pytest -s -v tests/test_comparison_with_turborvb_ECP.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        pytest -s -v tests/test_comparison_with_turborvb_AE.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+
+    - name: Test jqmc (pytest) QMC kernels without MPI
+      run: |
+        pytest -s -v tests/test_jqmc_mcmc.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        pytest -s -v tests/test_jqmc_gfmc_tau.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        pytest -s -v tests/test_jqmc_gfmc_bra.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+
+    #- name: Test jqmc (pytest) QMC kernels with MPI (2 cores)
+    #  run: |
+    #    mpirun -np 2 pytest -s -v tests/test_jqmc_mcmc.py
+    #    mpirun -np 2 pytest -s -v tests/test_jqmc_gfmc_tau.py
+    #    mpirun -np 2 pytest -s -v tests/test_jqmc_gfmc_bra.py
+
+    - name: Combine Codecov xml files
+      run: |
+        coverage xml -o coverage.xml
+
+    - name: Upload coverage reports to Codecov
+      if: matrix.python-version == '3.12'
+      uses: codecov/codecov-action@v5
+      with:
+        files: coverage.xml
+        token: ${{ secrets.CODECOV_TOKEN }}

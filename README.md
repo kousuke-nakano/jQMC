@@ -2,13 +2,14 @@
 
 ![jqmc_logo](logo/logo_yoko2.jpg)
 
-**jQMC** is an ab initio quantum Monte Carlo (QMC) simulation package developed entirely from scratch using `Python` and `JAX`. Originally designed for molecular systems—with future extensions planned for periodic systems—**jQMC** implements two well-established QMC algorithms: Variational Monte Carlo (VMC) and a robust and efficient variant of Diffusion Monte Carlo algorithm known as Lattice Regularized Diffusion Monte Carlo (LRDMC). By leveraging `JAX` just-in-time (`jit`) compilation and vectorized mapping (`vmap`) functionalities, `jQMC` achieves high-performance computations **especially on GPUs and TPUs** while remaining portable across CPUs, GPUs, and TPUs. See [here](http://jax.readthedocs.io/) for the details of `JAX`.
+**jQMC** is an ab initio quantum Monte Carlo (QMC) simulation package developed entirely from scratch using `Python` and `JAX`. Originally designed for molecular systems --with future extensions planned for periodic systems-- **jQMC** implements two well-established QMC algorithms: Variational Monte Carlo (VMC) and a robust and efficient variant of Diffusion Monte Carlo algorithm known as Lattice Regularized Diffusion Monte Carlo (LRDMC). By leveraging `JAX` just-in-time (`jit`) compilation and vectorized mapping (`vmap`) functionalities, `jQMC` achieves high-performance computations **especially on GPUs** while remaining portable across CPUs, GPUs, and TPUs. See [here](http://jax.readthedocs.io/) for the details of `JAX`.
 
 ![license](https://img.shields.io/github/license/kousuke-nakano/jQMC)
 ![release](https://img.shields.io/github/release/kousuke-nakano/jQMC/all.svg)
 ![fork](https://img.shields.io/github/forks/kousuke-nakano/jQMC?style=social)
 ![stars](https://img.shields.io/github/stars/kousuke-nakano/jQMC?style=social)
-![workflows](https://github.com/kousuke-nakano/jQMC/actions/workflows/jqmc-run-pytest.yml/badge.svg)
+![short-pytest](https://github.com/kousuke-nakano/jQMC/actions/workflows/jqmc-run-short-pytest.yml/badge.svg)
+![full-pytest](https://github.com/kousuke-nakano/jQMC/actions/workflows/jqmc-run-full-pytest.yml/badge.svg)
 ![codecov](https://codecov.io/github/kousuke-nakano/jQMC/graph/badge.svg?token=H0Z7M86C1E)
 
 What sets **jQMC** apart:
@@ -25,12 +26,12 @@ What sets **jQMC** apart:
 This combination of features makes **jQMC** a versatile and powerful tool for both users and developers in the field of quantum Monte Carlo simulations.
 
 ## Known issues
-- On CPUs, `jQMC` is ~10 times slower than other QMC codes implemented by a compiled language, such as C++, Fortran. Further improvements from the algorith and implementation viewpoints are needed. On GPUs, `jQMC` should be compatible with other QMC codes, but further benchmark tests are needed to confirm this.
+- **`jQMC` is significantly slower than other QMC packages written in compiled languages (e.g., C++ or Fortran) although all the implemented functions are `jit`-compiled and `vmap`-vectorized by `JAX`. Further improvements are needed on both the algorithmic and implementation fronts. As this is an initial release, there remain many bottlenecks and hot spots to address.**
 - Atomic force calculations with **solid (sperical) harmonics GTOs** are much slower than energy and energy-optimization calculations due to the very slow compilations of dlnPsi/dR and de_L/dR. This is because `grad`, `jvp`, and `vjp` are slow for these terms for some reason. A more detailed analysis will be needed. Please use **cartesian GTOs** to do those calculations
-- Periodic boundary condition calculations are not supoorted yet. It will be implemented in the future as `JAX` supports complex128. Work in progress.
+- Periodic boundary condition calculations are not supoorted yet. It will be implemented in the future as `JAX` supports `complex128`. Work in progress.
 
 ## Developer(s)
-Kosuke Nakano (National Institute for Materials Science, NIMS, Japan)
+Kosuke Nakano (National Institute for Materials Science [NIMS], Japan)
 
 
 ## How to install jQMC
@@ -41,7 +42,7 @@ First please git clone this repo.
 % git clone https://github.com/kousuke-nakano/jQMC
 ```
 
-**jQMC** can be installed via pip
+**jQMC** can be installed via pip from the cloned GitHub repository.
 
 ```bash
 % cd jQMC
@@ -58,7 +59,7 @@ Examples are in `examples` directory.
 
 
 ## Supporting HF/DFT packages
-`jQMC` can prepare a trial wavefunction from a `TREX-IO` file. Below is the list of HF/DFT packages that adopt `TREX-IO` for writing wave functions:
+`jQMC` can prepare a trial (guiding) wavefunction from a `TREX-IO` file. Below is the list of HF/DFT packages that adopt `TREX-IO` for writing wave functions:
 
 - [Quantum Package](https://github.com/QuantumPackage/qp2)
 - [PySCF](https://github.com/pyscf/pyscf)
@@ -76,22 +77,28 @@ See the [TREX-IO website](https://github.com/TREX-CoE/trexio) for the detail.
 stored in `doc` directory. Please see how to write the documentation at
 `doc/README.md`.
 
+## Branches
+
+ - `main`: main branch.
+ - `devel`: development branch.
+ - `rc`: the latest stable version ready for deployment of the package.
+ - `rc-gh-pages`: the latest stable version ready for deployment of the documentation.
+
+Every time a change is pushed to the `main` or `devel` branch, the `GitHub` workflow launches the implemented unit and integration tests (`jqmc-run-short-pytest.yml` and `jqmc-run-full-pytest.yml` for the `main` and `devel` branches, respectively).
+
+## How to deploy the package
+
+Once the `main` repository is merged into the `rc` repository, the `GitHub` workflow launches the implemented unit and integration tests (`jqmc-run-full-pytest.yml`) and test a deployment using `test-PyPI`. Then, once a tag is attached to (the latest) commit in the `rc` repository, the `GitHub` workflow checks the tag format (PEP 440 with the starting v, e.g., v0.1.0b4, v0.1.1, v1.0) and deploy the package to `PyPI`.
+
 ## Contribution
 
 Please see [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
-
-## Develpment branch
-
-The development of jQMC is managed on the `devel` branch of github jQMC repository.
-
-- Github issues is the place to discuss about jQMC issues.
-- Github pull request is the place to request merging source code.
 
 ## Formatting
 
 Formatting rules are written in `pyproject.toml`.
 
-## pre-commit
+## Pre-commit
 
 Pre-commit (https://pre-commit.com/) is mainly used for applying the formatting
 rules automatically. Therefore, it is strongly encouraged to use it at or before

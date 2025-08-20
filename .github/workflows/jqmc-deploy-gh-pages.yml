@@ -2,7 +2,7 @@ name: publish jqmc gh-pages
 
 on:
   push:
-    branches: [publish-gh-pages]
+    branches: [rc-gh-pages]
 
 jobs:
   docs:
@@ -10,9 +10,6 @@ jobs:
     defaults:
       run:
         shell: bash -l {0}
-    strategy:
-      matrix:
-        python-version: ["3.11"]
 
     steps:
     - uses: actions/checkout@v2
@@ -21,19 +18,20 @@ jobs:
         auto-update-conda: true
         channels: conda-forge
         channel-priority: strict
-        python-version: ${{ matrix.python-version }}
+        python-version: 3.11
     - name: Install dependencies
       run: |
-        conda activate test
-        conda install --yes -c conda-forge python=${{ matrix.python-version }}
+        conda activate rc-gh-pages
+        conda install --yes -c conda-forge python=3.11
         conda install --yes -c conda-forge sphinx-book-theme linkify-it-py myst-parser sphinxcontrib-bibtex ipython
     - name: Build
       run: |
-        conda activate test
+        conda activate rc-gh-pages
+        sphinx-apidoc -o doc/ jqmc/
         sphinx-build doc docs_build
 
     - name: Deploy docs at develop branch
-      if: ${{ github.ref == 'refs/heads/publish-gh-pages' }}
+      if: ${{ github.ref == 'refs/heads/rc-gh-pages' }}
       uses: peaceiris/actions-gh-pages@v3
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
