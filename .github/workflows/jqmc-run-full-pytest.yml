@@ -71,7 +71,7 @@ jobs:
 
     - name: Test jqmc (pytest) QMC kernels without MPI
       run: |
-        pytest -s -v test_jqmc_command_lines.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        pytest -s -v tests/test_jqmc_command_lines.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_jqmc_mcmc.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_jqmc_gfmc_tau.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_jqmc_gfmc_bra.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
