@@ -19,6 +19,7 @@ jobs:
         channels: conda-forge
         channel-priority: strict
         python-version: 3.11
+        activate-environment: rc-gh-pages
     - name: Install dependencies
       run: |
         conda activate rc-gh-pages
