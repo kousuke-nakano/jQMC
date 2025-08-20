@@ -8,7 +8,6 @@
 ![release](https://img.shields.io/github/release/kousuke-nakano/jQMC/all.svg)
 ![fork](https://img.shields.io/github/forks/kousuke-nakano/jQMC?style=social)
 ![stars](https://img.shields.io/github/stars/kousuke-nakano/jQMC?style=social)
-![short-pytest](https://github.com/kousuke-nakano/jQMC/actions/workflows/jqmc-run-short-pytest.yml/badge.svg)
 ![full-pytest](https://github.com/kousuke-nakano/jQMC/actions/workflows/jqmc-run-full-pytest.yml/badge.svg)
 ![codecov](https://codecov.io/github/kousuke-nakano/jQMC/graph/badge.svg?token=H0Z7M86C1E)
 
@@ -133,3 +132,41 @@ The tests can be run by
 % pytest -s -v  # with jax-jit
 % pytest -s -v --disable-jit  # without jax jit
 ```
+
+## Citation of jQMC
+
+If you used `jQMC` in your reseach project, please cite the following articles. This indeed helps the `jQMC` project to continue:
+
+- "jQMC: JAX-based ab initio Quantum Monte Carlo package",
+
+  Kousuke Nakano and Michele Casula, in preparation (2025)
+
+  ```
+  @article{jqmc,
+    author  = {Nakano, Kousuke and Casula, Michele},
+    title   = {jQMC: JAX-based ab initio Quantum Monte Carlo package},
+    journal = {in preparation},
+    %volume  = {},
+    %number  = {},
+    %pages   = {},
+    year    = {2025},
+    %doi     = {}
+  }
+  ```
+
+- "Load-Balanced Diffusion Monte Carlo Method with Lattice Regularization",
+
+  [K. Nakano, S. Sorella, and M. Casula, arXiv, 2508.12033 (2025)](https://doi.org/10.48550/arXiv.2508.12033)
+
+  ```
+  @article{load-balanced-lrdmc,
+    author  = {Nakano, Kousuke and  Sorella, Sandro and Casula, Michele},
+    title   = {Load-Balanced Diffusion Monte Carlo Method with Lattice Regularization},
+    journal = {arXiv},
+    %volume  = {},
+    number  = {2508.12033},
+    %pages   = {},
+    year    = {2025},
+    %doi     = {}
+  }
+  ```
