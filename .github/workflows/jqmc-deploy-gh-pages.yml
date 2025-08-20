@@ -15,6 +15,17 @@ jobs:
         shell: bash -l {0}
 
     steps:
+    - name: Install gfortran and gcc
+      run: |
+        sudo apt-get update
+        sudo apt-get install gfortran
+
+    - name: Install OpenBLAS and LAPACK
+      run: sudo apt-get install libopenblas-dev liblapack-dev
+
+    - name: Install OpenMPI
+      run: sudo apt-get install openmpi-bin libopenmpi-dev
+
     - uses: actions/checkout@v4
 
     - uses: conda-incubator/setup-miniconda@v2
@@ -29,7 +40,7 @@ jobs:
       shell: bash -l {0}
       run: |
         conda install -y -c conda-forge sphinx-book-theme linkify-it-py myst-parser sphinxcontrib-bibtex ipython pip
-        python -m pip install -e . --no-deps
+        python -m pip install -e .
 
     - name: Build
       shell: bash -l {0}
