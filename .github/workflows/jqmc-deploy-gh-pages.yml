@@ -12,7 +12,8 @@ jobs:
         shell: bash -l {0}
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
+
     - uses: conda-incubator/setup-miniconda@v2
       with:
         auto-update-conda: true
@@ -20,12 +21,17 @@ jobs:
         channel-priority: strict
         python-version: 3.11
         activate-environment: rc-gh-pages
+
     - name: Install dependencies
+      shell: bash -l {0}
       run: |
         conda activate rc-gh-pages
         conda install --yes -c conda-forge python=3.11
         conda install --yes -c conda-forge sphinx-book-theme linkify-it-py myst-parser sphinxcontrib-bibtex ipython
+        python -m pip install -e .
+
     - name: Build
+      shell: bash -l {0}
       run: |
         conda activate rc-gh-pages
         sphinx-apidoc -o doc/ jqmc/

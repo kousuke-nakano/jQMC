@@ -96,6 +96,8 @@ pygments_style = "sphinx"
 # A list of ignored prefixes for module index sorting.
 # modindex_common_prefix = []
 
+# mock modules
+autodoc_mock_imports = ["jax", "jaxlib", "mpi4py", "mpi4jax", "numpy", "scipy"]
 
 # -- Options for HTML output ---------------------------------------------------
 
