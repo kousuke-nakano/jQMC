@@ -28,10 +28,11 @@ jobs:
       - name: Install validator deps
         run: python -m pip install --upgrade pip packaging
 
-      - name: Guard: tag must be on rc
+      - name: tag must be on rc
+        shell: bash
         run: |
           git fetch origin rc
-          if git branch -r --contains "$GITHUB_SHA" | grep -q 'origin/rc$'; then
+          if git merge-base --is-ancestor "$GITHUB_SHA" origin/rc; then
             echo "Tag is on rc."
           else
             echo "Tag is not on rc."
