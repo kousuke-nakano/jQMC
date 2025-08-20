@@ -6,6 +6,8 @@ on:
   push:
     branches: [ "devel" ]
     paths-ignore:
+      - '.gitignore'
+      - '.github/**'
       - 'doc/**'
       - 'examples/**'
       - 'README.md'
