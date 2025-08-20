@@ -31,27 +31,24 @@ This combination of features makes **jQMC** a versatile and powerful tool for bo
 - Periodic boundary condition calculations are not supoorted yet. It will be implemented in the future as `JAX` supports `complex128`. Work in progress.
 
 ## Developer(s)
-Kosuke Nakano (National Institute for Materials Science [NIMS], Japan)
+Kosuke Nakano (National Institute for Materials Science (NIMS), Japan)
 
 
 ## How to install jQMC
 
-First please git clone this repo.
+**The release version of jQMC** can be installed from `PyPI` via pip.
+
+```bash
+% pip install jqmc
+```
+
+**The latest version of jQMC** can be installed via pip from the cloned GitHub repository.
 
 ```bash
 % git clone https://github.com/kousuke-nakano/jQMC
-```
-
-**jQMC** can be installed via pip from the cloned GitHub repository.
-
-```bash
 % cd jQMC
 % pip install .
 ```
-
-> [!NOTE]
-> `jQMC` is not yet distributed from `PyPI`. So, %pip install jqmc does not work at present.
-
 
 
 ## Examples
