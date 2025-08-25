@@ -95,7 +95,7 @@ print(key_nw)
 
 # JAX-compatible version
 for i_mcmc in range(num_mcmc):
-    print(f"i_mcmc={i_mcmc+1}/{num_mcmc}")
+    print(f"i_mcmc={i_mcmc + 1}/{num_mcmc}")
 
     # @jit
     def run_mcmc(latest_r_up_carts, latest_r_dn_carts, key, A, B):
@@ -180,7 +180,7 @@ for i_mcmc in range(num_mcmc):
                 operand=None,
             )
 
-            print(f"  The selected electron is {selected_electron_index+1}-th {selected_electron_spin} electron.")
+            print(f"  The selected electron is {selected_electron_index + 1}-th {selected_electron_spin} electron.")
             print(f"  The selected electron position is {old_r_cart}.")
             print(f"  The proposed electron position is {new_r_cart}.")
 

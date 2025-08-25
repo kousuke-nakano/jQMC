@@ -37,14 +37,9 @@ structure_data = Structure_data(
 
 # coulomb
 if io_fort10.pp_flag:
-    pseudopotentials = Pseudopotentials.parse_pseudopotential_from_turborvb_pseudo_dat(
-        file="pseudo.dat"
-    )
+    pseudopotentials = Pseudopotentials.parse_pseudopotential_from_turborvb_pseudo_dat(file="pseudo.dat")
 
-    z_cores = [
-        num_atomic - num_valence
-        for num_atomic, num_valence in zip(atomic_numbers, valence_electrons)
-    ]
+    z_cores = [num_atomic - num_valence for num_atomic, num_valence in zip(atomic_numbers, valence_electrons)]
     max_ang_mom_plus_1 = pseudopotentials.max_ang_mom_plus_1
     ang_moms = pseudopotentials.ang_mom
     nucleus_index = pseudopotentials.nucleus_index
@@ -118,9 +113,7 @@ for i_shell in range(basis_shell_num):
     ao_exponents = [basis_exponent[k] for k in ao_prim_indices]
     ao_coefficients = [basis_coefficient[k] for k in ao_prim_indices]
 
-    orbital_indices_all = [
-        ao_num_count + j for j in range(num_mag_moms) for _ in range(ao_prim_num)
-    ]
+    orbital_indices_all = [ao_num_count + j for j in range(num_mag_moms) for _ in range(ao_prim_num)]
     ao_exponents_all = ao_exponents * num_mag_moms
     ao_coefficients_all = ao_coefficients * num_mag_moms
 
@@ -149,14 +142,10 @@ det_aos_data_dn = det_aos_data_up = AOs_data(
 # mo_coefficients / MO_data
 num_mo_up = 0
 mo_coefficients_up = 0
-det_mos_data_up = MOs_data(
-    num_mo=num_mo_up, mo_coefficients=mo_coefficients_up, aos_data=det_aos_data_up
-)
+det_mos_data_up = MOs_data(num_mo=num_mo_up, mo_coefficients=mo_coefficients_up, aos_data=det_aos_data_up)
 num_mo_dn = 0
 mo_coefficients_dn = 0
-det_mos_data_dn = MOs_data(
-    num_mo=num_mo_dn, mo_coefficients=mo_coefficients_dn, aos_data=det_aos_data_dn
-)
+det_mos_data_dn = MOs_data(num_mo=num_mo_dn, mo_coefficients=mo_coefficients_dn, aos_data=det_aos_data_dn)
 
 # Geminal
 f10detmatrix = io_fort10.f10detmatrix

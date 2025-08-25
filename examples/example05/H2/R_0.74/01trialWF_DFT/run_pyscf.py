@@ -7,8 +7,8 @@ filename = f"H2_R_{R:.2f}.h5"
 mol = gto.Mole()
 mol.verbose = 5
 mol.atom = f"""
-H    0.000000000   0.000000000  {-R/2}
-H    0.000000000   0.000000000  {+R/2}
+H    0.000000000   0.000000000  {-R / 2}
+H    0.000000000   0.000000000  {+R / 2}
 """
 mol.basis = "ccpvtz"
 mol.unit = "A"

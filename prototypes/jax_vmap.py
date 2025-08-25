@@ -18,12 +18,8 @@ num_r_dn_cart_samples = 2
 
 r_cart_min, r_cart_max = -1.0, 1.0
 
-r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(
-    num_r_up_cart_samples, 3
-) + r_cart_min
-r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(
-    num_r_dn_cart_samples, 3
-) + r_cart_min
+r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_up_cart_samples, 3) + r_cart_min
+r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_dn_cart_samples, 3) + r_cart_min
 
 print(r_up_carts)
 print(r_dn_carts)

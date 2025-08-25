@@ -106,10 +106,7 @@ class Basis_sets:
             len(self.nucleus_index) == len(self.shell_ang_mom),
             len(self.nucleus_index) == len(self.shell_ang_mom_turbo_notation),
             len(self.nucleus_index) == len(self.shell_factor),
-            (
-                len(self.coefficient) == len(self.coefficient_imag)
-                or len(self.coefficient_imag) == 0
-            ),
+            (len(self.coefficient) == len(self.coefficient_imag) or len(self.coefficient_imag) == 0),
         )
 
         if not all(check_flags):
@@ -363,10 +360,7 @@ class Basis_sets:
             check_flags = (
                 num_nucleus_index_a_cut == num_nucleus_index_b_cut - 1,
                 num_shell_ang_mom_a_cut == num_shell_ang_mom_b_cut - 1,
-                (
-                    num_shell_ang_mom_turbo_notation_a_cut
-                    == num_shell_ang_mom_turbo_notation_b_cut - 1
-                ),
+                (num_shell_ang_mom_turbo_notation_a_cut == num_shell_ang_mom_turbo_notation_b_cut - 1),
                 num_shell_factor_a_cut == num_shell_factor_b_cut - 1,
             )
             if not all(check_flags):
@@ -456,9 +450,7 @@ class Basis_sets:
                         # shell
                         shell_factor.append(None)
                         shell_ang_mom.append(shell_ang_mom_n)
-                        shell_ang_mom_turbo_notation.append(
-                            turbo_prim_orb_type_num(return_orbchr(shell_ang_mom_n))
-                        )
+                        shell_ang_mom_turbo_notation.append(turbo_prim_orb_type_num(return_orbchr(shell_ang_mom_n)))
 
         self.nucleus_index = nucleus_index
         self.exponent = exponent
@@ -528,9 +520,7 @@ class Basis_sets:
         return cls.parse_basis_sets_from_texts(texts=texts, format="eCEPP")
 
     @classmethod
-    def parse_basis_sets_from_texts(
-        cls, texts: Optional[list] = None, format: str = "gamess"
-    ):  # -> cls
+    def parse_basis_sets_from_texts(cls, texts: Optional[list] = None, format: str = "gamess"):  # -> cls
         """
         parse basis sets from texts (gamess or eCEPP)
 
@@ -572,9 +562,7 @@ class Basis_sets:
             shell_index += list(np.array(basis_set.shell_index) + shell_num)
             exponent += basis_set.exponent_list
             coefficient += basis_set.coefficient_list
-            prim_factor += [
-                1.0
-            ] * basis_set.prim_num  # for the time being. / this can be computed analytically.
+            prim_factor += [1.0] * basis_set.prim_num  # for the time being. / this can be computed analytically.
 
             shell_num += basis_set.shell_num
             prim_num += basis_set.prim_num
@@ -586,13 +574,9 @@ class Basis_sets:
                 contraction = False
 
             if contraction:
-                shell_ang_mom_turbo_notation.append(
-                    turbo_cont_orb_type_num(orb_type_chr=return_orbchr(ang_mom=ang_mom))
-                )
+                shell_ang_mom_turbo_notation.append(turbo_cont_orb_type_num(orb_type_chr=return_orbchr(ang_mom=ang_mom)))
             else:
-                shell_ang_mom_turbo_notation.append(
-                    turbo_prim_orb_type_num(orb_type_chr=return_orbchr(ang_mom=ang_mom))
-                )
+                shell_ang_mom_turbo_notation.append(turbo_prim_orb_type_num(orb_type_chr=return_orbchr(ang_mom=ang_mom)))
 
         return cls(
             nucleus_index=nucleus_index,
@@ -657,10 +641,7 @@ class Basis_set:
         check_flags = (
             len(self.exponent_list) == len(self.coefficient_list),
             len(self.exponent_list) == len(self.shell_index),
-            (
-                len(self.coefficient_list) == len(self.coefficient_imag_list)
-                or len(self.coefficient_imag_list) == 0
-            ),
+            (len(self.coefficient_list) == len(self.coefficient_imag_list) or len(self.coefficient_imag_list) == 0),
         )
         if not all(check_flags):
             raise ValueError
@@ -849,12 +830,8 @@ class Basis_set:
                     else:
                         raise ValueError("The pseudo potential format seems wrong")
 
-                    exponent_list_.append(
-                        float(float(lines[i + j].split()[stride + 0].replace("D", "E")))
-                    )
-                    coefficient_list_.append(
-                        float(float(lines[i + j].split()[stride + 1].replace("D", "E")))
-                    )
+                    exponent_list_.append(float(float(lines[i + j].split()[stride + 0].replace("D", "E"))))
+                    coefficient_list_.append(float(float(lines[i + j].split()[stride + 1].replace("D", "E"))))
                     shell_index.append(shell_num)
 
                 exponent_list += exponent_list_
@@ -891,7 +868,7 @@ class Basis_set:
                 raise ValueError
 
             for kk, (exponent, coefficient) in enumerate(zip(t_exponent_list, t_coefficient_list)):
-                line = f" {kk+1:d}    {exponent:.8f}   {coefficient:8f}\n"
+                line = f" {kk + 1:d}    {exponent:.8f}   {coefficient:8f}\n"
                 text += line
 
         return text
