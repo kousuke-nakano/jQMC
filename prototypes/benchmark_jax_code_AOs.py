@@ -22,7 +22,7 @@ from jqmc.trexio_wrapper import read_trexio_file
 os.environ["NUM_INTER_THREADS"] = "1"
 os.environ["NUM_INTRA_THREADS"] = "1"
 
-os.environ["XLA_FLAGS"] = "--xla_cpu_multi_thread_eigen=false " "intra_op_parallelism_threads=1"
+os.environ["XLA_FLAGS"] = "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
 
 # taskset -c 0,1,2,3 mpirun -np 2 python benchmark.py works as expected on a linux machine (i.e. 2 MPI processes and 2 threads per MPI process) to limit the maximum thread numbers per task.
 # mpirun -np 4 python benchmark.py simply works :-)
@@ -94,7 +94,7 @@ for _ in range(trial):
     ao = _compute_primitive_AOs_jax(coefficient=coefficient, exponent=exponent, l=l, m=m, R_cart=R_cart, r_cart=r_cart)
     ao.block_until_ready()
 end = time.perf_counter()
-print(f"Comput. elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+print(f"Comput. elapsed Time = {(end - start) / trial * 1e3:.3f} msec.")
 time.sleep(3)
 
 N_n_dup = _compute_normalization_fator_jax(l, exponent)
@@ -106,7 +106,7 @@ for _ in range(trial):
     N_n_dup = _compute_normalization_fator_jax(l, exponent)
     N_n_dup.block_until_ready()
 end = time.perf_counter()
-print(f"N_n_dup Comput. elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+print(f"N_n_dup Comput. elapsed Time = {(end - start) / trial * 1e3:.3f} msec.")
 time.sleep(3)
 
 start = time.perf_counter()
@@ -114,7 +114,7 @@ for _ in range(trial):
     R_n_dup = _compute_R_n_jax(coefficient, exponent, R_cart, r_cart)
     R_n_dup.block_until_ready()
 end = time.perf_counter()
-print(f"R_n_dup Comput. elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+print(f"R_n_dup Comput. elapsed Time = {(end - start) / trial * 1e3:.3f} msec.")
 time.sleep(3)
 
 start = time.perf_counter()
@@ -122,5 +122,5 @@ for _ in range(trial):
     S_l_m_dup = _compute_S_l_m_jax(l, m, R_cart, r_cart)
     S_l_m_dup.block_until_ready()
 end = time.perf_counter()
-print(f"S_l_m_dup Comput. elapsed Time = {(end-start)/trial*1e3:.3f} msec.")
+print(f"S_l_m_dup Comput. elapsed Time = {(end - start) / trial * 1e3:.3f} msec.")
 time.sleep(3)

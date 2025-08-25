@@ -168,7 +168,7 @@ r_up_carts_combined, r_dn_carts_combined = generate_mesh(alat=alat, r_up_carts=r
 r_up_carts_combined.block_until_ready()
 r_dn_carts_combined.block_until_ready()
 end = time.perf_counter()
-print(f"Init elapsed Time = {(end-start)*1e3:.3f} msec.")
+print(f"Init elapsed Time = {(end - start) * 1e3:.3f} msec.")
 
 """ fast update
 _ = _compute_ratio_determinant_part_jax(
@@ -225,7 +225,7 @@ start = time.perf_counter()
 psi_j = compute_Jastrow_part_api(hamiltonian_data.wavefunction_data.jastrow_data, r_up_carts, r_dn_carts)
 psi_j.block_until_ready()
 end = time.perf_counter()
-print(f"Comput. elapsed Time (jas) = {(end-start)*1e3:.3f} msec.")
+print(f"Comput. elapsed Time (jas) = {(end - start) * 1e3:.3f} msec.")
 
 start = time.perf_counter()
 psi_jp = vmap(compute_Jastrow_part_api, in_axes=(None, 0, 0))(
@@ -233,13 +233,13 @@ psi_jp = vmap(compute_Jastrow_part_api, in_axes=(None, 0, 0))(
 )
 psi_jp.block_until_ready()
 end = time.perf_counter()
-print(f"Comput. elapsed Time (jas-vmap) = {(end-start)*1e3:.3f} msec.")
+print(f"Comput. elapsed Time (jas-vmap) = {(end - start) * 1e3:.3f} msec.")
 
 start = time.perf_counter()
 psi_d = _compute_det_geminal_all_elements_jax(hamiltonian_data.wavefunction_data.geminal_data, r_up_carts, r_dn_carts)
 psi_d.block_until_ready()
 end = time.perf_counter()
-print(f"Comput. elapsed Time (det) = {(end-start)*1e3:.3f} msec.")
+print(f"Comput. elapsed Time (det) = {(end - start) * 1e3:.3f} msec.")
 
 start = time.perf_counter()
 psi_dp = vmap(_compute_det_geminal_all_elements_jax, in_axes=(None, 0, 0))(
@@ -247,7 +247,7 @@ psi_dp = vmap(_compute_det_geminal_all_elements_jax, in_axes=(None, 0, 0))(
 )
 psi_dp.block_until_ready()
 end = time.perf_counter()
-print(f"Comput. elapsed Time (det-vmap) = {(end-start)*1e3:.3f} msec.")
+print(f"Comput. elapsed Time (det-vmap) = {(end - start) * 1e3:.3f} msec.")
 
 
 wf_ratio = psi_jp * psi_dp / (psi_j * psi_d)

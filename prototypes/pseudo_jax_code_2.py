@@ -53,11 +53,7 @@ def laplacian_compute(laplacian_data: Laplacian_data, r):
     a = laplacian_data.a
     b = laplacian_data.b
     aos_data = laplacian_data.aos_data
-    return (
-        a * jnp.sin(b) * r
-        - aos_compute(aos_data, r)
-        + jnp.sum(np.array([10.0 for _ in range(10)]))
-    )
+    return a * jnp.sin(b) * r - aos_compute(aos_data, r) + jnp.sum(np.array([10.0 for _ in range(10)]))
 
 
 ###############################################################
@@ -112,20 +108,10 @@ def coulomb_compute(coulomb_data: Coulomb_data, A_old, r_old, flag, r):
 
     # this lax statement is compatible with git
     def true_fun(b, c, A, B):
-        return (
-            b * jnp.cos(c) * r
-            + jnp.exp(-b * c**2)
-            + jnp.trace(jnp.dot(A, B))
-            + jnp.trace(jnp.dot(r_old * A_old, B))
-        )
+        return b * jnp.cos(c) * r + jnp.exp(-b * c**2) + jnp.trace(jnp.dot(A, B)) + jnp.trace(jnp.dot(r_old * A_old, B))
 
     def false_fun(b, c, A, B):
-        return (
-            b * jnp.cos(c) * r
-            + jnp.exp(-b * c**2)
-            + jnp.trace(jnp.dot(A, B))
-            + jnp.trace(jnp.dot(r_old * A_old, B))
-        )
+        return b * jnp.cos(c) * r + jnp.exp(-b * c**2) + jnp.trace(jnp.dot(A, B)) + jnp.trace(jnp.dot(r_old * A_old, B))
 
     return lax.cond(b < 2.0, true_fun, false_fun, b, c, A_dup, B)
 
@@ -148,21 +134,14 @@ class Hamiltonian_data:
 def compute_local_energy(hamiltonian_data: Hamiltonian_data, A_old, r_old, flag, r):
     laplacian_data = hamiltonian_data.laplacian_data
     coulomb_data = hamiltonian_data.coulomb_data
-    e_L = (
-        laplacian_compute(laplacian_data, r)
-        * coulomb_compute(coulomb_data, A_old, r_old, flag, r) ** 2
-    )
+    e_L = laplacian_compute(laplacian_data, r) * coulomb_compute(coulomb_data, A_old, r_old, flag, r) ** 2
 
     return e_L
 
 
 # the same calculation as above, while it is realized with a single function
 def validation_jnp(a, b, c, d, A, B, A_old, r_old, flag, r):
-    laplacian = (
-        a * jnp.sin(b) * r
-        - d * jnp.tan(d) * r
-        + jnp.sum(jnp.array([10.0 for _ in range(10)]))
-    )
+    laplacian = a * jnp.sin(b) * r - d * jnp.tan(d) * r + jnp.sum(jnp.array([10.0 for _ in range(10)]))
 
     A_dup = jnp.zeros(A.shape)
     if flag:
@@ -170,28 +149,14 @@ def validation_jnp(a, b, c, d, A, B, A_old, r_old, flag, r):
     else:
         A_dup = 3.0 * A
     if b < 2.0:
-        coulomb = (
-            b * jnp.cos(c) * r
-            + jnp.exp(-b * c**2)
-            + jnp.trace(jnp.dot(A_dup, B))
-            + jnp.trace(jnp.dot(r_old * A_old, B))
-        )
+        coulomb = b * jnp.cos(c) * r + jnp.exp(-b * c**2) + jnp.trace(jnp.dot(A_dup, B)) + jnp.trace(jnp.dot(r_old * A_old, B))
     else:
-        coulomb = (
-            b * jnp.cos(c) * r
-            + jnp.exp(-b * c**2)
-            + jnp.trace(jnp.dot(A_dup, B))
-            + jnp.trace(jnp.dot(r_old * A_old, B))
-        )
+        coulomb = b * jnp.cos(c) * r + jnp.exp(-b * c**2) + jnp.trace(jnp.dot(A_dup, B)) + jnp.trace(jnp.dot(r_old * A_old, B))
     return laplacian * coulomb**2
 
 
 def validation_np(a, b, c, d, A, B, A_old, r_old, flag, r):
-    laplacian = (
-        a * np.sin(b) * r
-        - d * np.tan(d) * r
-        + np.sum(np.array([10.0 for _ in range(10)]))
-    )
+    laplacian = a * np.sin(b) * r - d * np.tan(d) * r + np.sum(np.array([10.0 for _ in range(10)]))
 
     A_dup = np.zeros(A.shape)
     if flag:
@@ -199,19 +164,9 @@ def validation_np(a, b, c, d, A, B, A_old, r_old, flag, r):
     else:
         A_dup = 3.0 * A
     if b < 2.0:
-        coulomb = (
-            b * np.cos(c) * r
-            + np.exp(-b * c**2)
-            + np.trace(np.dot(A_dup, B))
-            + np.trace(np.dot(r_old * A_old, B))
-        )
+        coulomb = b * np.cos(c) * r + np.exp(-b * c**2) + np.trace(np.dot(A_dup, B)) + np.trace(np.dot(r_old * A_old, B))
     else:
-        coulomb = (
-            b * np.cos(c) * r
-            + np.exp(-b * c**2)
-            + np.trace(np.dot(A_dup, B))
-            + np.trace(np.dot(r_old * A_old, B))
-        )
+        coulomb = b * np.cos(c) * r + np.exp(-b * c**2) + np.trace(np.dot(A_dup, B)) + np.trace(np.dot(r_old * A_old, B))
     return laplacian * coulomb**2
 
 
@@ -231,22 +186,16 @@ A_old = A
 r_old = 3
 flag = True
 
-print(
-    "Computing e_L with JAX-JIT and it derivatives using JAX-auto-grad with dataclass inheretance"
-)
+print("Computing e_L with JAX-JIT and it derivatives using JAX-auto-grad with dataclass inheretance")
 # jax-based e_L and its auto-grad computations
 aos_data = AOs_data(d=d, t="test")
 coulomb_data = Coulomb_data(b=b, c=c, A=A, B=B)
 laplacian_data = Laplacian_data(a=a, b=b, aos_data=aos_data)
-hamiltonian_data = Hamiltonian_data(
-    laplacian_data=laplacian_data, coulomb_data=coulomb_data
-)
+hamiltonian_data = Hamiltonian_data(laplacian_data=laplacian_data, coulomb_data=coulomb_data)
 e_L = compute_local_energy(hamiltonian_data, A_old, r_old, flag, r)
-de_L_param, de_L_r = grad(compute_local_energy, argnums=(0, 4))(
-    hamiltonian_data, A_old, r_old, flag, r
-)
+de_L_param, de_L_r = grad(compute_local_energy, argnums=(0, 4))(hamiltonian_data, A_old, r_old, flag, r)
 print(f"  e_L = {e_L}")
-print(f"  de_L_db = {de_L_param.laplacian_data.b +de_L_param.coulomb_data.b}")
+print(f"  de_L_db = {de_L_param.laplacian_data.b + de_L_param.coulomb_data.b}")
 print(f"  de_L_dr = {de_L_r}")
 
 print(
@@ -256,17 +205,13 @@ diff_b = 5.0e-8
 aos_data = AOs_data(d=d, t="test")
 coulomb_data = Coulomb_data(b=b + diff_b, c=c, A=A, B=B)
 laplacian_data = Laplacian_data(a=a, b=b + diff_b, aos_data=aos_data)
-hamiltonian_data = Hamiltonian_data(
-    laplacian_data=laplacian_data, coulomb_data=coulomb_data
-)
+hamiltonian_data = Hamiltonian_data(laplacian_data=laplacian_data, coulomb_data=coulomb_data)
 de_L_p_b = compute_local_energy(hamiltonian_data, A_old, r_old, flag, r)
 
 aos_data = AOs_data(d=d, t="test")
 coulomb_data = Coulomb_data(b=b - diff_b, c=c, A=A, B=B)
 laplacian_data = Laplacian_data(a=a, b=b - diff_b, aos_data=aos_data)
-hamiltonian_data = Hamiltonian_data(
-    laplacian_data=laplacian_data, coulomb_data=coulomb_data
-)
+hamiltonian_data = Hamiltonian_data(laplacian_data=laplacian_data, coulomb_data=coulomb_data)
 de_L_m_b = compute_local_energy(hamiltonian_data, A_old, r_old, flag, r)
 
 de_L_db = (de_L_p_b - de_L_m_b) / (2 * diff_b)
@@ -275,9 +220,7 @@ diff_r = 5.0e-8
 aos_data = AOs_data(d=d, t="test")
 coulomb_data = Coulomb_data(b=b, c=c, A=A, B=B)
 laplacian_data = Laplacian_data(a=a, b=b, aos_data=aos_data)
-hamiltonian_data = Hamiltonian_data(
-    laplacian_data=laplacian_data, coulomb_data=coulomb_data
-)
+hamiltonian_data = Hamiltonian_data(laplacian_data=laplacian_data, coulomb_data=coulomb_data)
 de_L_p_r = compute_local_energy(hamiltonian_data, A_old, r_old, flag, r + diff_r)
 de_L_m_r = compute_local_energy(hamiltonian_data, A_old, r_old, flag, r - diff_r)
 de_L_dr = (de_L_p_r - de_L_m_r) / (2 * diff_r)
@@ -286,15 +229,9 @@ print(f"  e_L = {e_L}")
 print(f"  de_L_db = {de_L_db}")
 print(f"  de_L_dr = {de_L_dr}")
 
-print(
-    "Computing e_L without JAX-numpy and its derivatives using JAX-auto-grad with a single function"
-)
-e_L = validation_jnp(
-    a=a, b=b, c=c, d=d, A=A, B=B, A_old=A_old, r_old=r_old, flag=flag, r=r
-)
-de_L = grad(validation_jnp, argnums=(0, 1, 2, 3, 4, 5, 9))(
-    a, b, c, d, A, B, A_old, r_old, flag, r
-)
+print("Computing e_L without JAX-numpy and its derivatives using JAX-auto-grad with a single function")
+e_L = validation_jnp(a=a, b=b, c=c, d=d, A=A, B=B, A_old=A_old, r_old=r_old, flag=flag, r=r)
+de_L = grad(validation_jnp, argnums=(0, 1, 2, 3, 4, 5, 9))(a, b, c, d, A, B, A_old, r_old, flag, r)
 print(f"  e_L = {e_L}")
 print(f"  de_L_db = {de_L[1]}")
 print(f"  de_L_dr = {de_L[-1]}")
@@ -302,26 +239,16 @@ print(f"  de_L_dr = {de_L[-1]}")
 print(
     "Computing e_L with JAX-numpy and its derivatives without JAX auto-grad (i.e., numerical derivatives) with a single function"
 )
-e_L = validation_jnp(
-    a=a, b=b, c=c, d=d, A=A, B=B, A_old=A_old, r_old=r_old, flag=flag, r=r
-)
+e_L = validation_jnp(a=a, b=b, c=c, d=d, A=A, B=B, A_old=A_old, r_old=r_old, flag=flag, r=r)
 diff_b = 5.0e-8
-de_L_p_b = validation_jnp(
-    a=a, b=b + diff_b, c=c, d=d, A=A, B=B, A_old=A_old, r_old=r_old, flag=flag, r=r
-)
-de_L_m_b = validation_jnp(
-    a=a, b=b - diff_b, c=c, d=d, A=A, B=B, A_old=A_old, r_old=r_old, flag=flag, r=r
-)
+de_L_p_b = validation_jnp(a=a, b=b + diff_b, c=c, d=d, A=A, B=B, A_old=A_old, r_old=r_old, flag=flag, r=r)
+de_L_m_b = validation_jnp(a=a, b=b - diff_b, c=c, d=d, A=A, B=B, A_old=A_old, r_old=r_old, flag=flag, r=r)
 
 de_L_db = (de_L_p_b - de_L_m_b) / (2 * diff_b)
 
 diff_r = 5.0e-8
-de_L_p_r = validation_jnp(
-    a=a, b=b, c=c, d=d, A=A, B=B, A_old=A_old, r_old=r_old, flag=flag, r=r + diff_r
-)
-de_L_m_r = validation_jnp(
-    a=a, b=b, c=c, d=d, A=A, B=B, A_old=A_old, r_old=r_old, flag=flag, r=r - diff_r
-)
+de_L_p_r = validation_jnp(a=a, b=b, c=c, d=d, A=A, B=B, A_old=A_old, r_old=r_old, flag=flag, r=r + diff_r)
+de_L_m_r = validation_jnp(a=a, b=b, c=c, d=d, A=A, B=B, A_old=A_old, r_old=r_old, flag=flag, r=r - diff_r)
 de_L_dr = (de_L_p_r - de_L_m_r) / (2 * diff_r)
 
 print(f"  e_L = {e_L}")
@@ -331,26 +258,16 @@ print(f"  de_L_dr = {de_L_dr}")
 print(
     "Computing e_L with native numpy and its derivatives without JAX auto-grad (i.e., numerical derivatives) with a single function"
 )
-e_L = validation_np(
-    a=a, b=b, c=c, d=d, A=A, B=B, A_old=A_old, r_old=r_old, flag=flag, r=r
-)
+e_L = validation_np(a=a, b=b, c=c, d=d, A=A, B=B, A_old=A_old, r_old=r_old, flag=flag, r=r)
 diff_b = 5.0e-8
-de_L_p_b = validation_np(
-    a=a, b=b + diff_b, c=c, d=d, A=A, B=B, A_old=A_old, r_old=r_old, flag=flag, r=r
-)
-de_L_m_b = validation_np(
-    a=a, b=b - diff_b, c=c, d=d, A=A, B=B, A_old=A_old, r_old=r_old, flag=flag, r=r
-)
+de_L_p_b = validation_np(a=a, b=b + diff_b, c=c, d=d, A=A, B=B, A_old=A_old, r_old=r_old, flag=flag, r=r)
+de_L_m_b = validation_np(a=a, b=b - diff_b, c=c, d=d, A=A, B=B, A_old=A_old, r_old=r_old, flag=flag, r=r)
 
 de_L_db = (de_L_p_b - de_L_m_b) / (2 * diff_b)
 
 diff_r = 5.0e-4
-de_L_p_r = validation_np(
-    a=a, b=b, c=c, d=d, A=A, B=B, A_old=A_old, r_old=r_old, flag=flag, r=r + diff_r
-)
-de_L_m_r = validation_np(
-    a=a, b=b, c=c, d=d, A=A, B=B, A_old=A_old, r_old=r_old, flag=flag, r=r - diff_r
-)
+de_L_p_r = validation_np(a=a, b=b, c=c, d=d, A=A, B=B, A_old=A_old, r_old=r_old, flag=flag, r=r + diff_r)
+de_L_m_r = validation_np(a=a, b=b, c=c, d=d, A=A, B=B, A_old=A_old, r_old=r_old, flag=flag, r=r - diff_r)
 de_L_dr = (de_L_p_r - de_L_m_r) / (2 * diff_r)
 
 print(f"  e_L = {e_L}")
