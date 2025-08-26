@@ -108,7 +108,7 @@ lambda_matrix_paired, lambda_matrix_unpaired = split_lambda_matrix(geminal_data.
 lambda_matrix_paired.block_until_ready()
 lambda_matrix_unpaired.block_until_ready()
 end = time.perf_counter()
-print(f"Split elapsed Time = {(end-start)*1e3:.3f} msec.")
+print(f"Split elapsed Time = {(end - start) * 1e3:.3f} msec.")
 
 d_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
 d_up.block_until_ready()
@@ -121,7 +121,7 @@ orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn
 orb_matrix_up.block_until_ready()
 orb_matrix_dn.block_until_ready()
 end = time.perf_counter()
-print(f"Comput. MOs elapsed Time = {(end-start)*1e3:.3f} msec.")
+print(f"Comput. MOs elapsed Time = {(end - start) * 1e3:.3f} msec.")
 
 """
 d_up = _compute_MOs_jax(mos_data=geminal_data.orb_data_up_spin, r_carts=r_up_carts)
@@ -152,4 +152,4 @@ start = time.perf_counter()
 geminal = construct_geminal(orb_matrix_up, orb_matrix_dn, lambda_matrix_paired, lambda_matrix_unpaired)
 geminal.block_until_ready()
 end = time.perf_counter()
-print(f"Construct elapsed Time = {(end-start)*1e3:.3f} msec.")
+print(f"Construct elapsed Time = {(end - start) * 1e3:.3f} msec.")

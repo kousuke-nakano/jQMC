@@ -112,21 +112,15 @@ class Pseudopotentials:
             output.append("ECP\n")
 
             for i, nuclei_i in enumerate(set(self.nucleus_index)):
-                max_ang_mom_plus_1 = self.max_ang_mom_plus_1[
-                    i
-                ]  # ask to Sandro and Michele!!
+                max_ang_mom_plus_1 = self.max_ang_mom_plus_1[i]  # ask to Sandro and Michele!!
                 element = self.element_list[i]  # not used.
                 z_core = self.z_core[i]  # not used.
                 cutoff = self.cutoff[i]
                 output.append(
-                    "{:14d}  {:14f}  {:14d}\n".format(
-                        nuclei_i + 1, cutoff, max_ang_mom_plus_1 + 1
-                    )
+                    "{:14d}  {:14f}  {:14d}\n".format(nuclei_i + 1, cutoff, max_ang_mom_plus_1 + 1)
                 )  # ask to Sandro and Michele!!
 
-                nindex_list = [
-                    i for i, x in enumerate(self.nucleus_index) if x == nuclei_i
-                ]
+                nindex_list = [i for i, x in enumerate(self.nucleus_index) if x == nuclei_i]
                 ang_mom_n = [self.ang_mom[n] for n in nindex_list]
                 exponent_n = [self.exponent[n] for n in nindex_list]
                 coefficient_n = [self.coefficient[n] for n in nindex_list]
@@ -155,9 +149,7 @@ class Pseudopotentials:
                     logger.debug(power_l)
 
                     for exp, coeff, pow in zip(exponent_l, coefficient_l, power_l):
-                        output.append(
-                            "{:14f}  {:14f}  {:14f}\n".format(coeff, pow + 2, exp)
-                        )
+                        output.append("{:14f}  {:14f}  {:14f}\n".format(coeff, pow + 2, exp))
 
             f.writelines(output)
 
@@ -168,9 +160,7 @@ class Pseudopotentials:
 
         try:
             num_string = 15
-            rand_string = "".join(
-                random.choices(string.ascii_letters + string.digits, k=num_string)
-            )
+            rand_string = "".join(random.choices(string.ascii_letters + string.digits, k=num_string))
             pyturbo_tmp_rand_dir = os.path.join(pyturbo_tmp_dir, rand_string)
             os.makedirs(pyturbo_tmp_rand_dir, exist_ok=True)
             os.chdir(pyturbo_tmp_rand_dir)
@@ -184,15 +174,9 @@ class Pseudopotentials:
                     element = self.element_list[i]  # not used.
                     z_core = self.z_core[i]  # not used.
                     cutoff = self.cutoff[i]
-                    output.append(
-                        "{:14d}  {:14f}  {:14d}\n".format(
-                            1, cutoff, max_ang_mom_plus_1 + 1
-                        )
-                    )
+                    output.append("{:14d}  {:14f}  {:14d}\n".format(1, cutoff, max_ang_mom_plus_1 + 1))
 
-                    nindex_list = [
-                        i for i, x in enumerate(self.nucleus_index) if x == nuclei_i
-                    ]
+                    nindex_list = [i for i, x in enumerate(self.nucleus_index) if x == nuclei_i]
                     ang_mom_n = [self.ang_mom[n] for n in nindex_list]
                     exponent_n = [self.exponent[n] for n in nindex_list]
                     coefficient_n = [self.coefficient[n] for n in nindex_list]
@@ -210,27 +194,17 @@ class Pseudopotentials:
                         power_l = [power_n[n] for n in lindex_list]
 
                         for exp, coeff, pow in zip(exponent_l, coefficient_l, power_l):
-                            output.append(
-                                "{:14f}  {:14f}  {:14f}\n".format(coeff, pow + 2, exp)
-                            )
+                            output.append("{:14f}  {:14f}  {:14f}\n".format(coeff, pow + 2, exp))
 
                     f.writelines(output)
 
                 out_pp = "out_pp"
-                cmd = (
-                    f"echo {tollerance} | {os.path.join(turborvb_bin_root, 'pseudo.x')}"
-                )
+                cmd = f"echo {tollerance} | {os.path.join(turborvb_bin_root, 'pseudo.x')}"
                 run(binary=cmd, output_name=out_pp)
                 lineno = pygrep_lineno(file=out_pp, keyword="Suggested cut-off pseudo")
-                suggested_cutoff = float(
-                    pygetline(filename=out_pp, lineno=lineno, clearcache=True).split()[
-                        4
-                    ]
-                )
+                suggested_cutoff = float(pygetline(filename=out_pp, lineno=lineno, clearcache=True).split()[4])
                 new_cutoff.append(suggested_cutoff)
-                logger.info(
-                    f"suggested_cutoff for nuculei index = {i} is rc = {suggested_cutoff} Bohr"
-                )
+                logger.info(f"suggested_cutoff for nuculei index = {i} is rc = {suggested_cutoff} Bohr")
 
                 # clean files
                 os.remove(file)
@@ -312,9 +286,7 @@ class Pseudopotentials:
             if text is None:
                 continue
 
-            pseudo_potential = (
-                Pseudopotential.parse_pseudopotential_from_gamess_format_text(text)
-            )
+            pseudo_potential = Pseudopotential.parse_pseudopotential_from_gamess_format_text(text)
 
             # storing
             max_ang_mom_plus_1.append(pseudo_potential.max_ang_mom_plus_1)
@@ -371,9 +343,7 @@ class Pseudopotentials:
             if file is None:
                 continue
 
-            pseudo_potential = (
-                Pseudopotential.parse_pseudopotential_from_turborvb_format_file(file)
-            )
+            pseudo_potential = Pseudopotential.parse_pseudopotential_from_turborvb_format_file(file)
 
             # storing
             max_ang_mom_plus_1.append(pseudo_potential.max_ang_mom_plus_1)
@@ -480,9 +450,7 @@ class Pseudopotential:
 
         """
         lines = text.split("\n")
-        c = [
-            line for line in lines if re.match(r"^\s*\S+.*", line)
-        ]  # remove blank lines
+        c = [line for line in lines if re.match(r"^\s*\S+.*", line)]  # remove blank lines
 
         ang_mom = []
         exponent_list = []
@@ -548,23 +516,17 @@ class Pseudopotential:
         assert len(m.groups()) == 2
         z_core = int(m.groups()[1]) - int(m.groups()[0])
         element = return_element_symbol(int(m.groups()[1]))
-        return cls.parse_pseudopotential_from_turborvb_format_test(
-            text=text, z_core=z_core, element=element
-        )
+        return cls.parse_pseudopotential_from_turborvb_format_test(text=text, z_core=z_core, element=element)
 
     @classmethod
-    def parse_pseudopotential_from_turborvb_format_test(
-        cls, text: str, z_core: int, element: str
-    ):
+    def parse_pseudopotential_from_turborvb_format_test(cls, text: str, z_core: int, element: str):
         ang_mom = []
         exponent_list = []
         coefficient_list = []
         power_list = []
 
         lines = text.split("\n")
-        c = [
-            line for line in lines if re.match(r"^\s*\S+.*", line)
-        ]  # remove blank lines
+        c = [line for line in lines if re.match(r"^\s*\S+.*", line)]  # remove blank lines
 
         dummy_name = str(c[0])
         dummy_index, cutoff, lmax_plus_2 = c[1].split()
@@ -615,9 +577,7 @@ class Pseudopotential:
         power_list = []
 
         lines = text.split("\n")
-        lines = [
-            line for line in lines if re.match(r"^\s*\S+.*", line)
-        ]  # remove blank lines
+        lines = [line for line in lines if re.match(r"^\s*\S+.*", line)]  # remove blank lines
         logger.info(lines[0])
         _, element, z_core, max_ang_mom_plus_1, _ = lines[0].split(",")
         element = str(element)
@@ -665,9 +625,7 @@ class Pseudopotential:
     def to_text_gamess_format(self):
         text = ""
         text += f"{self.element:s}  GEN  {self.z_core:d}  {self.max_ang_mom_plus_1:d}\n"
-        l_index = [
-            i for i, x in enumerate(self.ang_mom) if x == self.max_ang_mom_plus_1
-        ]
+        l_index = [i for i, x in enumerate(self.ang_mom) if x == self.max_ang_mom_plus_1]
         text += f"{len(l_index)}\n"
         for ll in l_index:
             text += f"{self.coefficient[ll]:.8f}  {self.power[ll] + 2:d}  {self.exponent[ll]:.8f}\n"
@@ -683,9 +641,7 @@ class Pseudopotential:
     def to_text_nwchem_format(self):
         text = ""
         text += f"{self.element:s} nelec {self.z_core:d}\n"
-        l_index = [
-            i for i, x in enumerate(self.ang_mom) if x == self.max_ang_mom_plus_1
-        ]
+        l_index = [i for i, x in enumerate(self.ang_mom) if x == self.max_ang_mom_plus_1]
         text += f"{self.element:s} ul\n"
         for ll in l_index:
             text += f"  {self.power[ll] + 2:d}  {self.exponent[ll]:.8f}  {self.coefficient[ll]:.8f}\n"
@@ -714,9 +670,7 @@ def main():
     stream_handler = StreamHandler()
     stream_handler.setLevel(args.loglevel)
     if args.loglevel in {"DEBUG"}:
-        handler_format = Formatter(
-            "%(name)s - %(levelname)s - %(lineno)d - %(message)s"
-        )
+        handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
     else:
         handler_format = Formatter("%(message)s")
     stream_handler.setFormatter(handler_format)

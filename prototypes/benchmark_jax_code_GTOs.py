@@ -87,8 +87,8 @@ for _ in range(trial):
 end = time.perf_counter()
 vmap_time = (end - start) / trial
 
-print(f"vmap computation time: {vmap_time*10e3:.3f} msec.")
-print(f"Batch computation time: {batch_time*10e3:.3f} msec.")
+print(f"vmap computation time: {vmap_time * 10e3:.3f} msec.")
+print(f"Batch computation time: {batch_time * 10e3:.3f} msec.")
 
 print(result_batch.shape)
 print(result_vmap.shape)
