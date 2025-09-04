@@ -1,0 +1,785 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="./" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Input parameters &#8212; jQMC v0.1.0a0</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+
+  
+  <link href="_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/sphinx-book-theme.css?v=eba8b062" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
+<link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
+  <script src="_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+    <script src="_static/documentation_options.js?v=f502e871"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'input_jqmc';</script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Examples" href="examples.html" />
+    <link rel="prev" title="Installation" href="install.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-primary-sidebar-checkbox"/>
+  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-secondary-sidebar-checkbox"/>
+  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search..."
+         aria-label="Search..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">jQMC v0.1.0a0</p>
+  
+</a></div>
+        <div class="sidebar-primary-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/kousuke-nakano/jQMC" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+        <div class="sidebar-primary-item">
+
+ <script>
+ document.write(`
+   <button class="btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script></div>
+        <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
+    <div class="bd-toc-item navbar-nav active">
+        <ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="install.html">Installation</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Input parameters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="notes/technical_notes.html">Technical notes</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="notes/ao.html">Atomic orbitals (AOs) and Basis sets</a></li>
+<li class="toctree-l2"><a class="reference internal" href="notes/vmc.html">Variational Monte Carlo (VMC)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="notes/vmcopt.html">Variational Monte Carlo: Wavefuntion Optimization (VMCopt)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="notes/lrdmc.html">Lattice Regularized Diffusion Monte Carlo (LRDMC)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="notes/atomic-forces.html">Atomic forces calculations by VMC and LRDMC</a></li>
+<li class="toctree-l2"><a class="reference internal" href="notes/jax.html">JAX compatible modules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="notes/trexio.html">Interfaces with TREX-IO</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="modules.html">jqmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="jqmc.html">jqmc package</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="citation.html">How to cite jQMC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reference.html">References</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Change Log</a></li>
+</ul>
+
+    </div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+
+<div class="sbt-scroll-pixel-helper"></div>
+
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item"><button class="sidebar-toggle primary-toggle btn btn-sm" title="Toggle primary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <span class="fa-solid fa-bars"></span>
+</button></div>
+      
+    </div>
+  
+  
+    <div class="header-article-items__end">
+      
+        <div class="header-article-item">
+
+<div class="article-header-buttons">
+
+
+
+
+
+<div class="dropdown dropdown-download-buttons">
+  <button class="btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Download this page">
+    <i class="fas fa-download"></i>
+  </button>
+  <ul class="dropdown-menu">
+      
+      
+      
+      <li><a href="_sources/input_jqmc.md" target="_blank"
+   class="btn btn-sm btn-download-source-button dropdown-item"
+   title="Download source file"
+   data-bs-placement="left" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-file"></i>
+  </span>
+<span class="btn__text-container">.md</span>
+</a>
+</li>
+      
+      
+      
+      
+      <li>
+<button onclick="window.print()"
+  class="btn btn-sm btn-download-pdf-button dropdown-item"
+  title="Print to PDF"
+  data-bs-placement="left" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-file-pdf"></i>
+  </span>
+<span class="btn__text-container">.pdf</span>
+</button>
+</li>
+      
+  </ul>
+</div>
+
+
+
+
+<button onclick="toggleFullScreen()"
+  class="btn btn-sm btn-fullscreen-button"
+  title="Fullscreen mode"
+  data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-expand"></i>
+  </span>
+
+</button>
+
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
+  </button>
+`);
+</script>
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm pst-navbar-icon search-button search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass fa-lg"></i>
+  </button>
+`);
+</script>
+<button class="sidebar-toggle secondary-toggle btn btn-sm" title="Toggle secondary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="fa-solid fa-list"></span>
+</button>
+</div></div>
+      
+    </div>
+  
+</div>
+</div>
+              
+              
+
+<div id="jb-print-docs-body" class="onlyprint">
+    <h1>Input parameters</h1>
+    <!-- Table of contents -->
+    <div id="print-main-content">
+        <div id="jb-print-toc">
+            
+            <div>
+                <h2> Contents </h2>
+            </div>
+            <nav aria-label="Page">
+                <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#command-line-jqmc-usage">Command-line <code class="docutils literal notranslate"><span class="pre">jqmc</span></code> usage</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#input-parameters-for-the-command-line-jqmc">Input parameters for the command-line <code class="docutils literal notranslate"><span class="pre">jqmc</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#control"><code class="docutils literal notranslate"><span class="pre">control</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#vmc-i-e-a-single-shot-mcmc-without-wf-optimization"><code class="docutils literal notranslate"><span class="pre">vmc</span></code> (i.e., a single-shot MCMC without WF optimization)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#vmcopt-stochastic-reconfiguration-natural-gradient-optimization"><code class="docutils literal notranslate"><span class="pre">vmcopt</span></code> (stochastic reconfiguration / natural-gradient optimization)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lrdmc"><code class="docutils literal notranslate"><span class="pre">lrdmc</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lrdmc-tau"><code class="docutils literal notranslate"><span class="pre">lrdmc-tau</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#minimal-schema-example">Minimal schema example</a></li>
+</ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section class="tex2jax_ignore mathjax_ignore" id="input-parameters">
+<span id="input-jqmc-link"></span><h1>Input parameters<a class="headerlink" href="#input-parameters" title="Link to this heading">#</a></h1>
+<section id="command-line-jqmc-usage">
+<h2>Command-line <code class="docutils literal notranslate"><span class="pre">jqmc</span></code> usage<a class="headerlink" href="#command-line-jqmc-usage" title="Link to this heading">#</a></h2>
+<p>You can run <code class="docutils literal notranslate"><span class="pre">jqmc</span></code> tasks (<code class="docutils literal notranslate"><span class="pre">vmc</span></code>, <code class="docutils literal notranslate"><span class="pre">vmcopt</span></code>, <code class="docutils literal notranslate"><span class="pre">lrdmc</span></code>, and <code class="docutils literal notranslate"><span class="pre">lrdmc-tau</span></code>) from the command line:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Serial run</span>
+jqmc<span class="w"> </span>&lt;input-file&gt;<span class="w"> </span>&gt;<span class="w"> </span>&lt;output.log&gt;
+
+<span class="c1"># MPI parallel run</span>
+mpirun<span class="w"> </span>-np<span class="w"> </span>&lt;N&gt;<span class="w"> </span>jqmc<span class="w"> </span>&lt;input-file&gt;<span class="w"> </span>&gt;<span class="w"> </span>&lt;output.log&gt;
+</pre></div>
+</div>
+<p>The input file is a JSON/YAML document whose keys match the parameters listed below.</p>
+<blockquote>
+<div><p><strong>Note</strong>
+Throughout this document, “per MPI process and per walker” means the quantity is counted for each MPI rank and for each walker on that rank. When relevant, the total across all ranks and walkers is indicated explicitly.</p>
+</div></blockquote>
+</section>
+<hr class="docutils" />
+<section id="input-parameters-for-the-command-line-jqmc">
+<h2>Input parameters for the command-line <code class="docutils literal notranslate"><span class="pre">jqmc</span></code><a class="headerlink" href="#input-parameters-for-the-command-line-jqmc" title="Link to this heading">#</a></h2>
+<section id="control">
+<h3><code class="docutils literal notranslate"><span class="pre">control</span></code><a class="headerlink" href="#control" title="Link to this heading">#</a></h3>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head text-right"><p>Default</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">job_type</span></code></p></td>
+<td class="text-right"><p><strong>required</strong></p></td>
+<td><p>Select the job: <code class="docutils literal notranslate"><span class="pre">&quot;vmc&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;vmcopt&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;lrdmc&quot;</span></code>, or <code class="docutils literal notranslate"><span class="pre">&quot;lrdmc-tau&quot;</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">mcmc_seed</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">34456</span></code></p></td>
+<td><p>Random seed for MCMC/GFMC chain.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">number_of_walkers</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">4</span></code></p></td>
+<td><p>Number of walkers <strong>per MPI process</strong>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_time</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">86400</span></code></p></td>
+<td><p>Wall time limit in seconds.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">restart</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>If <code class="docutils literal notranslate"><span class="pre">true</span></code>, restart from a checkpoint.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">restart_chk</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">&quot;restart.chk&quot;</span></code></p></td>
+<td><p>Path to the restart checkpoint file (used when <code class="docutils literal notranslate"><span class="pre">restart=true</span></code>).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">hamiltonian_chk</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">&quot;hamiltonian_data.chk&quot;</span></code></p></td>
+<td><p>Hamiltonian checkpoint file. When <code class="docutils literal notranslate"><span class="pre">restart=false</span></code>, this file is used to initialize/record Hamiltonian data as appropriate.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">verbosity</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">&quot;low&quot;</span></code></p></td>
+<td><p>Verbosity level: <code class="docutils literal notranslate"><span class="pre">&quot;low&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;high&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;devel&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;mpi-low&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;mpi-high&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;mpi-devel&quot;</span></code>.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<hr class="docutils" />
+<section id="vmc-i-e-a-single-shot-mcmc-without-wf-optimization">
+<h3><code class="docutils literal notranslate"><span class="pre">vmc</span></code> (i.e., a single-shot MCMC without WF optimization)<a class="headerlink" href="#vmc-i-e-a-single-shot-mcmc-without-wf-optimization" title="Link to this heading">#</a></h3>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head text-right"><p>Default</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">num_mcmc_steps</span></code></p></td>
+<td class="text-right"><p><strong>required</strong></p></td>
+<td><p>Number of <strong>measurement</strong> steps per MPI process and per walker. Local energy and other observables are measured <code class="docutils literal notranslate"><span class="pre">num_mcmc_steps</span></code> times in total per (rank × walker). The global total equals <code class="docutils literal notranslate"><span class="pre">num_mcmc_steps</span> <span class="pre">×</span> <span class="pre">mpi_size</span> <span class="pre">×</span> <span class="pre">number_of_walkers</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">num_mcmc_per_measurement</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">40</span></code></p></td>
+<td><p>MCMC updates between successive measurements. Observables are recorded every <code class="docutils literal notranslate"><span class="pre">num_mcmc_per_measurement</span></code> steps.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">num_mcmc_warmup_steps</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
+<td><p>Number of <strong>warm-up</strong> measurement steps to be discarded.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">num_mcmc_bin_blocks</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">1</span></code></p></td>
+<td><p>Number of binning blocks per MPI process and per walker (total binned blocks = <code class="docutils literal notranslate"><span class="pre">num_mcmc_bin_blocks</span> <span class="pre">×</span> <span class="pre">mpi_size</span> <span class="pre">×</span> <span class="pre">number_of_walkers</span></code>).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Dt</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">2.0</span></code></p></td>
+<td><p>MCMC step size (Bohr).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">epsilon_AS</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">0.0</span></code></p></td>
+<td><p>ε parameter for the Attaccalite–Sorella regularization.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">atomic_force</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>If <code class="docutils literal notranslate"><span class="pre">true</span></code>, compute atomic forces.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<hr class="docutils" />
+<section id="vmcopt-stochastic-reconfiguration-natural-gradient-optimization">
+<h3><code class="docutils literal notranslate"><span class="pre">vmcopt</span></code> (stochastic reconfiguration / natural-gradient optimization)<a class="headerlink" href="#vmcopt-stochastic-reconfiguration-natural-gradient-optimization" title="Link to this heading">#</a></h3>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head text-right"><p>Default</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">num_mcmc_steps</span></code></p></td>
+<td class="text-right"><p><strong>required</strong></p></td>
+<td><p>Same definition as in <code class="docutils literal notranslate"><span class="pre">vmc</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">num_mcmc_per_measurement</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">40</span></code></p></td>
+<td><p>Same as <code class="docutils literal notranslate"><span class="pre">vmc</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">num_mcmc_warmup_steps</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
+<td><p>Warm-up steps to discard.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">num_mcmc_bin_blocks</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">1</span></code></p></td>
+<td><p>Binning blocks per MPI process and per walker.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Dt</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">2.0</span></code></p></td>
+<td><p>MCMC step size (Bohr).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">epsilon_AS</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">0.0</span></code></p></td>
+<td><p>ε for Attaccalite–Sorella regularization.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">num_opt_steps</span></code></p></td>
+<td class="text-right"><p><strong>required</strong></p></td>
+<td><p>Number of optimization iterations.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">wf_dump_freq</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">1</span></code></p></td>
+<td><p>Write wavefunction/Hamiltonian checkpoint every this many optimization steps.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">delta</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">0.01</span></code></p></td>
+<td><p>SR (natural-gradient) step size.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">epsilon</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">0.001</span></code></p></td>
+<td><p>SR regularization (added to diagonal of the Fisher information matrix) to improve numerical stability.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">opt_J1_param</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>Optimize J1 parameters.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">opt_J2_param</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
+<td><p>Optimize J2 parameters.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">opt_J3_param</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
+<td><p>Optimize J3 parameters.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">opt_lambda_param</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>Optimize geminal (λ) parameters.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">num_param_opt</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
+<td><p>Number of parameters to optimize, chosen in descending order of |f| / std(f). If <code class="docutils literal notranslate"><span class="pre">0</span></code>, optimize <strong>all</strong> parameters.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">cg_flag</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
+<td><p>Use conjugate-gradient solver for the SR linear system.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">cg_max_iter</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">10000</span></code></p></td>
+<td><p>Maximum CG iterations.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">cg_tol</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">1e-4</span></code></p></td>
+<td><p>CG convergence tolerance.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<hr class="docutils" />
+<section id="lrdmc">
+<h3><code class="docutils literal notranslate"><span class="pre">lrdmc</span></code><a class="headerlink" href="#lrdmc" title="Link to this heading">#</a></h3>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head text-right"><p>Default</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">num_mcmc_steps</span></code></p></td>
+<td class="text-right"><p><strong>required</strong></p></td>
+<td><p>Number of <strong>measurement</strong> steps per MPI process and per walker during LRDMC.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">num_mcmc_per_measurement</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">40</span></code></p></td>
+<td><p>Number of GFMC projections between measurements (observables recorded after each block of projections).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">alat</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">0.30</span></code></p></td>
+<td><p>Lattice discretization parameter (grid spacing). The lattice spacing is <code class="docutils literal notranslate"><span class="pre">alat</span> <span class="pre">×</span> <span class="pre">a₀</span></code>, where <code class="docutils literal notranslate"><span class="pre">a₀</span></code> is the Bohr radius.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">non_local_move</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">&quot;tmove&quot;</span></code></p></td>
+<td><p>Treatment of non-local ECP terms: <code class="docutils literal notranslate"><span class="pre">&quot;tmove&quot;</span></code> (T-move) or <code class="docutils literal notranslate"><span class="pre">&quot;dltmove&quot;</span></code> (determinant-locality + T-move).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">num_gfmc_warmup_steps</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
+<td><p>Number of warm-up measurement steps to discard.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">num_gfmc_bin_blocks</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">1</span></code></p></td>
+<td><p>Number of binning blocks for GFMC. <strong>Total binned blocks = <code class="docutils literal notranslate"><span class="pre">num_gfmc_bin_blocks</span></code></strong> (not multiplied by <code class="docutils literal notranslate"><span class="pre">mpi_size</span> <span class="pre">×</span> <span class="pre">number_of_walkers</span></code>).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">num_gfmc_collect_steps</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
+<td><p>Number of pre-binning measurements used to collect/accumulate weights.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">E_scf</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">0.0</span></code></p></td>
+<td><p>Initial total-energy guess used to set the initial GFMC energy shift.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">atomic_force</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
+<td><p>If <code class="docutils literal notranslate"><span class="pre">true</span></code>, compute atomic forces.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<hr class="docutils" />
+<section id="lrdmc-tau">
+<h3><code class="docutils literal notranslate"><span class="pre">lrdmc-tau</span></code><a class="headerlink" href="#lrdmc-tau" title="Link to this heading">#</a></h3>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head text-right"><p>Default</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">num_mcmc_steps</span></code></p></td>
+<td class="text-right"><p><strong>required</strong></p></td>
+<td><p>Number of <strong>measurement</strong> steps per MPI process and per walker.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">tau</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">0.10</span></code></p></td>
+<td><p>Imaginary-time step size between projections.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">alat</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">0.30</span></code></p></td>
+<td><p>Lattice discretization parameter; lattice spacing <code class="docutils literal notranslate"><span class="pre">alat</span> <span class="pre">×</span> <span class="pre">a₀</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">non_local_move</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">&quot;tmove&quot;</span></code></p></td>
+<td><p>Non-local ECP treatment: <code class="docutils literal notranslate"><span class="pre">&quot;tmove&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;dltmove&quot;</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">num_gfmc_warmup_steps</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
+<td><p>Warm-up steps to discard.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">num_gfmc_bin_blocks</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">1</span></code></p></td>
+<td><p>Binning blocks for GFMC (total binned blocks = <code class="docutils literal notranslate"><span class="pre">num_gfmc_bin_blocks</span></code>).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">num_gfmc_collect_steps</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
+<td><p>Pre-binning measurement count for weight collection.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+</section>
+<hr class="docutils" />
+<section id="minimal-schema-example">
+<h2>Minimal schema example<a class="headerlink" href="#minimal-schema-example" title="Link to this heading">#</a></h2>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;control&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;job_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;vmc&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;number_of_walkers&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;verbosity&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;low&quot;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;vmc&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;num_mcmc_steps&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;num_mcmc_per_measurement&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">40</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;Dt&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">2.0</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<blockquote>
+<div><p><strong>Tips</strong></p>
+<ul class="simple">
+<li><p>Set <code class="docutils literal notranslate"><span class="pre">num_mcmc_warmup_steps</span></code> to a nonzero value to ensure equilibrated sampling before measurements.</p></li>
+<li><p>For reproducibility across MPI runs, keep <code class="docutils literal notranslate"><span class="pre">mcmc_seed</span></code> fixed and the MPI topology unchanged.</p></li>
+<li><p>Start LRDMC with a reasonable <code class="docutils literal notranslate"><span class="pre">E_scf</span></code> to reduce initial transients in the population control.</p></li>
+</ul>
+</div></blockquote>
+</section>
+</section>
+
+
+                </article>
+              
+
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="install.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Installation</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="examples.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Examples</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+  <div class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> Contents
+  </div>
+  <nav class="bd-toc-nav page-toc">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#command-line-jqmc-usage">Command-line <code class="docutils literal notranslate"><span class="pre">jqmc</span></code> usage</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#input-parameters-for-the-command-line-jqmc">Input parameters for the command-line <code class="docutils literal notranslate"><span class="pre">jqmc</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#control"><code class="docutils literal notranslate"><span class="pre">control</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#vmc-i-e-a-single-shot-mcmc-without-wf-optimization"><code class="docutils literal notranslate"><span class="pre">vmc</span></code> (i.e., a single-shot MCMC without WF optimization)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#vmcopt-stochastic-reconfiguration-natural-gradient-optimization"><code class="docutils literal notranslate"><span class="pre">vmcopt</span></code> (stochastic reconfiguration / natural-gradient optimization)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lrdmc"><code class="docutils literal notranslate"><span class="pre">lrdmc</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lrdmc-tau"><code class="docutils literal notranslate"><span class="pre">lrdmc-tau</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#minimal-schema-example">Minimal schema example</a></li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+<div class="bd-footer-content__inner container">
+  
+  <div class="footer-item">
+    
+<p class="component-author">
+By Kosuke Nakano
+</p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+
+  <p class="copyright">
+    
+      © Copyright 2025, Kosuke Nakano.
+      <br/>
+    
+  </p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+</div>
+          </footer>
+        
+
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
+<script src="_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+  <footer class="bd-footer">
+  </footer>
+  </body>
+</html>
