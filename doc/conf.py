@@ -20,6 +20,8 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 # sys.path.append(os.path.abspath('.'))
 
+from datetime import datetime
+
 # -- General configuration -----------------------------------------------------
 
 # Add any Sphinx extension module names here, as strings. They can be extensions
@@ -47,7 +49,8 @@ master_doc = "index"
 
 # General information about the project.
 project = "jQMC"
-copyright = "2024, Kosuke Nakano"
+author = "Kosuke Nakano"
+copyright = f"{datetime.now().year}, {author}"
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -108,7 +111,11 @@ pygments_style = "sphinx"
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
-# html_theme_options = {}
+html_theme_options = {
+    "icon_links": [
+        {"name": "GitHub", "url": "https://github.com/kousuke-nakano/jQMC", "icon": "fa-brands fa-github"},
+    ],
+}
 # html_theme_options = {
 #     # Navigation bar title. (Default: ``project`` value)
 #     "navbar_title": "jQMC",
