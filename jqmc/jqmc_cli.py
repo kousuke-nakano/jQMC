@@ -251,12 +251,12 @@ def cli():
     restart_chk = parameters["control"]["restart_chk"]
     hamiltonian_chk = parameters["control"]["hamiltonian_chk"]
 
-    # VMC
-    if job_type == "vmc":
+    # MCMC
+    if job_type == "mcmc":
         logger.info("***Variational Monte Carlo***")
 
         # vmc section
-        section = "vmc"
+        section = "mcmc"
         for key in parameters[section].keys():
             try:
                 parameters[section][key] = dict_toml[section][key]
@@ -268,13 +268,13 @@ def cli():
                     logger.warning(f"The default value of {key} = {parameters[section][key]}.")
 
         # parameters
-        num_mcmc_steps = parameters["vmc"]["num_mcmc_steps"]
-        num_mcmc_per_measurement = parameters["vmc"]["num_mcmc_per_measurement"]
-        num_mcmc_warmup_steps = parameters["vmc"]["num_mcmc_warmup_steps"]
-        num_mcmc_bin_blocks = parameters["vmc"]["num_mcmc_bin_blocks"]
-        Dt = parameters["vmc"]["Dt"]
-        epsilon_AS = parameters["vmc"]["epsilon_AS"]
-        atomic_force = parameters["vmc"]["atomic_force"]
+        num_mcmc_steps = parameters[section]["num_mcmc_steps"]
+        num_mcmc_per_measurement = parameters[section]["num_mcmc_per_measurement"]
+        num_mcmc_warmup_steps = parameters[section]["num_mcmc_warmup_steps"]
+        num_mcmc_bin_blocks = parameters[section]["num_mcmc_bin_blocks"]
+        Dt = parameters[section]["Dt"]
+        epsilon_AS = parameters[section]["epsilon_AS"]
+        atomic_force = parameters[section]["atomic_force"]
 
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
         if not restart:
@@ -290,12 +290,12 @@ def cli():
                 arcname = f"{mpi_rank}.pkl.gz"
                 with zf.open(arcname) as zipped_gz_fobj:
                     with gzip.open(zipped_gz_fobj, "rb") as gz:
-                        vmc = pickle.load(gz)
+                        mcmc = pickle.load(gz)
 
         else:
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
-                vmc = MCMC(
+                mcmc = MCMC(
                     hamiltonian_data=hamiltonian_data,
                     Dt=Dt,
                     mcmc_seed=mcmc_seed,
@@ -305,27 +305,27 @@ def cli():
                     comput_position_deriv=atomic_force,
                     comput_param_deriv=False,
                 )
-        vmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
-        E_mean, E_std, Var_mean, Var_std = vmc.get_E(
+        mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
+        E_mean, E_std, Var_mean, Var_std = mcmc.get_E(
             num_mcmc_warmup_steps=num_mcmc_warmup_steps,
             num_mcmc_bin_blocks=num_mcmc_bin_blocks,
         )
-        if vmc.comput_position_deriv:
-            f_mean, f_std = vmc.get_aF(
+        if mcmc.comput_position_deriv:
+            f_mean, f_std = mcmc.get_aF(
                 num_mcmc_warmup_steps=num_mcmc_warmup_steps,
                 num_mcmc_bin_blocks=num_mcmc_bin_blocks,
             )
         logger.info("Final output(s):")
         logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:5f} Ha.")
         logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:5f} Ha^2.")
-        if vmc.comput_position_deriv:
+        if mcmc.comput_position_deriv:
             logger.info("  Atomic Forces:")
             sep = 16 * 3
             logger.info("  " + "-" * sep)
             logger.info("  Label   Fx(Ha/bohr) Fy(Ha/bohr) Fz(Ha/bohr)")
             logger.info("  " + "-" * sep)
-            for i in range(len(vmc.hamiltonian_data.structure_data.atomic_labels)):
-                atomic_label = str(vmc.hamiltonian_data.structure_data.atomic_labels[i])
+            for i in range(len(mcmc.hamiltonian_data.structure_data.atomic_labels)):
+                atomic_label = str(mcmc.hamiltonian_data.structure_data.atomic_labels[i])
                 row_values = [f"{ufloat(f_mean[i, j], f_std[i, j]):+2uS}" for j in range(3)]
                 row_str = "  " + atomic_label.ljust(8) + " ".join(val.ljust(12) for val in row_values)
                 logger.info(row_str)
@@ -338,7 +338,7 @@ def cli():
         tmp_gz_filename = f".{mpi_rank}.pkl.gz"
 
         with gzip.open(tmp_gz_filename, "wb") as gz:
-            pickle.dump(vmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(mcmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
 
         mpi_comm.Barrier()
 
@@ -355,12 +355,12 @@ def cli():
 
         mpi_comm.Barrier()
 
-    # VMCopt!
-    if job_type == "vmcopt":
+    # VMC
+    if job_type == "vmc":
         logger.info("***WF optimization with Variational Monte Carlo***")
 
         # vmcopt section
-        section = "vmcopt"
+        section = "vmc"
         for key in parameters[section].keys():
             try:
                 parameters[section][key] = dict_toml[section][key]
@@ -374,24 +374,24 @@ def cli():
         logger.info("")
 
         # parameters
-        num_mcmc_steps = parameters["vmcopt"]["num_mcmc_steps"]
-        num_mcmc_per_measurement = parameters["vmcopt"]["num_mcmc_per_measurement"]
-        num_mcmc_warmup_steps = parameters["vmcopt"]["num_mcmc_warmup_steps"]
-        num_mcmc_bin_blocks = parameters["vmcopt"]["num_mcmc_bin_blocks"]
-        Dt = parameters["vmcopt"]["Dt"]
-        epsilon_AS = parameters["vmcopt"]["epsilon_AS"]
-        num_opt_steps = parameters["vmcopt"]["num_opt_steps"]
-        wf_dump_freq = parameters["vmcopt"]["wf_dump_freq"]
-        delta = parameters["vmcopt"]["delta"]
-        epsilon = parameters["vmcopt"]["epsilon"]
-        opt_J1_param = parameters["vmcopt"]["opt_J1_param"]
-        opt_J2_param = parameters["vmcopt"]["opt_J2_param"]
-        opt_J3_param = parameters["vmcopt"]["opt_J3_param"]
-        opt_lambda_param = parameters["vmcopt"]["opt_lambda_param"]
-        num_param_opt = parameters["vmcopt"]["num_param_opt"]
-        cg_flag = parameters["vmcopt"]["cg_flag"]
-        cg_max_iter = parameters["vmcopt"]["cg_max_iter"]
-        cg_tol = parameters["vmcopt"]["cg_tol"]
+        num_mcmc_steps = parameters[section]["num_mcmc_steps"]
+        num_mcmc_per_measurement = parameters[section]["num_mcmc_per_measurement"]
+        num_mcmc_warmup_steps = parameters[section]["num_mcmc_warmup_steps"]
+        num_mcmc_bin_blocks = parameters[section]["num_mcmc_bin_blocks"]
+        Dt = parameters[section]["Dt"]
+        epsilon_AS = parameters[section]["epsilon_AS"]
+        num_opt_steps = parameters[section]["num_opt_steps"]
+        wf_dump_freq = parameters[section]["wf_dump_freq"]
+        delta = parameters[section]["delta"]
+        epsilon = parameters[section]["epsilon"]
+        opt_J1_param = parameters[section]["opt_J1_param"]
+        opt_J2_param = parameters[section]["opt_J2_param"]
+        opt_J3_param = parameters[section]["opt_J3_param"]
+        opt_lambda_param = parameters[section]["opt_lambda_param"]
+        num_param_opt = parameters[section]["num_param_opt"]
+        cg_flag = parameters[section]["cg_flag"]
+        cg_max_iter = parameters[section]["cg_max_iter"]
+        cg_tol = parameters[section]["cg_tol"]
 
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
         if num_mcmc_steps < num_mcmc_warmup_steps:
@@ -406,12 +406,12 @@ def cli():
                 arcname = f"{mpi_rank}.pkl.gz"
                 with zf.open(arcname) as zipped_gz_fobj:
                     with gzip.open(zipped_gz_fobj, "rb") as gz:
-                        vmc = pickle.load(gz)
+                        mcmc = pickle.load(gz)
         else:
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
 
-                vmc = MCMC(
+                mcmc = MCMC(
                     hamiltonian_data=hamiltonian_data,
                     Dt=Dt,
                     mcmc_seed=mcmc_seed,
@@ -421,7 +421,7 @@ def cli():
                     comput_position_deriv=False,
                     comput_param_deriv=True,
                 )
-        vmc.run_optimize(
+        mcmc.run_optimize(
             num_mcmc_steps=num_mcmc_steps,
             num_opt_steps=num_opt_steps,
             delta=delta,
@@ -449,7 +449,7 @@ def cli():
         tmp_gz_filename = f".{mpi_rank}.pkl.gz"
 
         with gzip.open(tmp_gz_filename, "wb") as gz:
-            pickle.dump(vmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(mcmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
 
         mpi_comm.Barrier()
 
@@ -485,15 +485,15 @@ def cli():
         logger.info("")
 
         # parameters
-        num_mcmc_steps = parameters["lrdmc"]["num_mcmc_steps"]
-        num_mcmc_per_measurement = parameters["lrdmc"]["num_mcmc_per_measurement"]
-        alat = parameters["lrdmc"]["alat"]
-        non_local_move = parameters["lrdmc"]["non_local_move"]
-        num_gfmc_warmup_steps = parameters["lrdmc"]["num_gfmc_warmup_steps"]
-        num_gfmc_bin_blocks = parameters["lrdmc"]["num_gfmc_bin_blocks"]
-        num_gfmc_collect_steps = parameters["lrdmc"]["num_gfmc_collect_steps"]
-        E_scf = parameters["lrdmc"]["E_scf"]
-        atomic_force = parameters["lrdmc"]["atomic_force"]
+        num_mcmc_steps = parameters[section]["num_mcmc_steps"]
+        num_mcmc_per_measurement = parameters[section]["num_mcmc_per_measurement"]
+        alat = parameters[section]["alat"]
+        non_local_move = parameters[section]["non_local_move"]
+        num_gfmc_warmup_steps = parameters[section]["num_gfmc_warmup_steps"]
+        num_gfmc_bin_blocks = parameters[section]["num_gfmc_bin_blocks"]
+        num_gfmc_collect_steps = parameters[section]["num_gfmc_collect_steps"]
+        E_scf = parameters[section]["E_scf"]
+        atomic_force = parameters[section]["atomic_force"]
 
         # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
         if not restart:
@@ -593,13 +593,13 @@ def cli():
         logger.info("")
 
         # parameters
-        num_mcmc_steps = parameters["lrdmc-tau"]["num_mcmc_steps"]
-        tau = parameters["lrdmc-tau"]["tau"]
-        alat = parameters["lrdmc-tau"]["alat"]
-        non_local_move = parameters["lrdmc-tau"]["non_local_move"]
-        num_gfmc_warmup_steps = parameters["lrdmc-tau"]["num_gfmc_warmup_steps"]
-        num_gfmc_bin_blocks = parameters["lrdmc-tau"]["num_gfmc_bin_blocks"]
-        num_gfmc_collect_steps = parameters["lrdmc-tau"]["num_gfmc_collect_steps"]
+        num_mcmc_steps = parameters[section]["num_mcmc_steps"]
+        tau = parameters[section]["tau"]
+        alat = parameters[section]["alat"]
+        non_local_move = parameters[section]["non_local_move"]
+        num_gfmc_warmup_steps = parameters[section]["num_gfmc_warmup_steps"]
+        num_gfmc_bin_blocks = parameters[section]["num_gfmc_bin_blocks"]
+        num_gfmc_collect_steps = parameters[section]["num_gfmc_collect_steps"]
 
         # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
         if not restart:

@@ -620,14 +620,14 @@ typer_click_hamiltonian = typer.main.get_command(hamiltonian_app)
 
 cli.add_command(typer_click_hamiltonian, "hamiltonian")
 
-# VMCopt_app
-vmcopt_app = typer.Typer(help="Pre- and Post-Processing for VMC-opt calculations.")
+# VMC app
+vmc_app = typer.Typer(help="Pre- and Post-Processing for VMC calculations.")
 
 
 # This should be removed in future release since it will be no longer useful.
-@vmcopt_app.command("fix")
-def vmcopt_chk_fix(
-    restart_chk: str = typer.Argument(..., help="old chk file, e.g. vmcopt.chk"),
+@vmc_app.command("fix")
+def vmc_chk_fix(
+    restart_chk: str = typer.Argument(..., help="old chk file, e.g. vmc.chk"),
 ):
     """VMCopt chk file fix."""
     typer.echo(f"Fix checkpoint file(s) from {restart_chk}.")
@@ -664,10 +664,10 @@ def vmcopt_chk_fix(
             os.remove(gz_name)
 
 
-@vmcopt_app.command("generate-input")
-def vmcopt_generate_input(
+@vmc_app.command("generate-input")
+def vmc_generate_input(
     flag: bool = typer.Option(False, "-g", "--generate", help="Generate input file for VMCopt calculations."),
-    filename: str = typer.Option("vmcopt.toml", "-f", "--filename", help="Filename for the input file."),
+    filename: str = typer.Option("vmc.toml", "-f", "--filename", help="Filename for the input file."),
     exclude_comment: bool = typer.Option(False, "-nc", "--without-comment", help="Exclude comments in the input file."),
 ):
     """Generate an input file for VMCopt calculations."""
@@ -682,18 +682,18 @@ def vmcopt_generate_input(
                 control_table[key] = value
             if not exclude_comment and not isinstance(value, bool):  # due to a bug of tomlkit
                 control_table[key].comment(cli_parameters["control_comments"][key])
-        control_table["job_type"] = "vmcopt"
+        control_table["job_type"] = "vmc"
         doc.add("control", control_table)
 
-        vmcopt_table = tomlkit.table()
-        for key, value in cli_parameters["vmcopt"].items():
+        vmc_table = tomlkit.table()
+        for key, value in cli_parameters["vmc"].items():
             if value is None:
-                vmcopt_table[key] = str(value)
+                vmc_table[key] = str(value)
             else:
-                vmcopt_table[key] = value
+                vmc_table[key] = value
             if not exclude_comment and not isinstance(value, bool):
-                vmcopt_table[key].comment(cli_parameters["vmcopt_comments"][key])
-        doc.add("vmcopt", vmcopt_table)
+                vmc_table[key].comment(cli_parameters["vmc_comments"][key])
+        doc.add("vmc", vmc_table)
 
         with open(filename, "w") as f:
             f.write(tomlkit.dumps(doc))
@@ -703,8 +703,8 @@ def vmcopt_generate_input(
         typer.echo("Activate the flag (-g) to generate an input file. See --help for more information.")
 
 
-@vmcopt_app.command("analyze-output")
-def vmcopt_analyze_output(
+@vmc_app.command("analyze-output")
+def vmc_analyze_output(
     filenames: List[str] = typer.Argument(..., help="Output files of vmc optimizations."),
     plot_graph: bool = typer.Option(False, "-p", "--plot_graph", help="Plot a graph summerizing the result using matplotlib."),
     save_graph: str = typer.Option(None, "-s", "--save-graph", help="Specify a graph filename."),
@@ -816,19 +816,19 @@ def vmcopt_analyze_output(
             plt.show()
 
 
-typer_click_vmcopt = typer.main.get_command(vmcopt_app)
+typer_click_vmc = typer.main.get_command(vmc_app)
 
-cli.add_command(typer_click_vmcopt, "vmcopt")
+cli.add_command(typer_click_vmc, "vmc")
 
 
-# VMC_app
-vmc_app = typer.Typer(help="Pre- and Post-Processing for VMC calculations.")
+# mcmc app
+mcmc_app = typer.Typer(help="Pre- and Post-Processing for MCMC calculations.")
 
 
 # This should be removed in future release since it will be no longer useful.
-@vmc_app.command("fix")
-def vmc_chk_fix(
-    restart_chk: str = typer.Argument(..., help="old chk file, e.g. vmc.chk"),
+@mcmc_app.command("fix")
+def mcmc_chk_fix(
+    restart_chk: str = typer.Argument(..., help="old chk file, e.g. mcmc.chk"),
 ):
     """VMC chk file fix."""
     typer.echo(f"Fix checkpoint file(s) from {restart_chk}.")
@@ -852,10 +852,10 @@ def vmc_chk_fix(
     for filename, mpi_rank in zip(filenames, mpi_ranks):
         with zipfile.ZipFile(restart_chk, "r") as zipf:
             data = zipf.read(filename)
-            vmc = pickle.loads(data)
+            mcmc = pickle.loads(data)
             tmp_gz_filename = f".{mpi_rank}.pkl.gz"
             with gzip.open(tmp_gz_filename, "wb") as gz:
-                pickle.dump(vmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
+                pickle.dump(mcmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
 
     with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
         for mpi_rank in mpi_ranks:
@@ -865,9 +865,9 @@ def vmc_chk_fix(
             os.remove(gz_name)
 
 
-@vmc_app.command("compute-energy")
-def vmc_compute_energy(
-    restart_chk: str = typer.Argument(..., help="Restart checkpoint file, e.g. vmc.rchk"),
+@mcmc_app.command("compute-energy")
+def mcmc_compute_energy(
+    restart_chk: str = typer.Argument(..., help="Restart checkpoint file, e.g. mcmc.rchk"),
     num_mcmc_bin_blocks: int = typer.Option(
         1,
         "-b",
@@ -907,9 +907,9 @@ def vmc_compute_energy(
         with zipfile.ZipFile(restart_chk, "r") as zipf:
             with zipf.open(filename) as zipped_gz_fobj:
                 with gzip.open(zipped_gz_fobj, "rb") as gz:
-                    vmc = pickle.load(gz)
-                    e_L = vmc.e_L[num_mcmc_warmup_steps:]
-                    w_L = vmc.w_L[num_mcmc_warmup_steps:]
+                    mcmc = pickle.load(gz)
+                    e_L = mcmc.e_L[num_mcmc_warmup_steps:]
+                    w_L = mcmc.w_L[num_mcmc_warmup_steps:]
                     w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
                     w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
                     w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
@@ -937,10 +937,10 @@ def vmc_compute_energy(
     typer.echo(f"E = {E_mean} +- {E_std} Ha.")
 
 
-@vmc_app.command("generate-input")
-def vmc_generate_input(
+@mcmc_app.command("generate-input")
+def mcmc_generate_input(
     flag: bool = typer.Option(False, "-g", "--generate", help="Generate input file for VMC calculations."),
-    filename: str = typer.Option("vmc.toml", "-f", "--filename", help="Filename for the input file."),
+    filename: str = typer.Option("mcmc.toml", "-f", "--filename", help="Filename for the input file."),
     exclude_comment: bool = typer.Option(False, "-nc", "--without-comment", help="Exclude comments in the input file."),
 ):
     """Generate an input file for VMC calculations."""
@@ -955,18 +955,18 @@ def vmc_generate_input(
                 control_table[key] = value
             if not exclude_comment and not isinstance(value, bool):
                 control_table[key].comment(cli_parameters["control_comments"][key])
-        control_table["job_type"] = "vmc"
+        control_table["job_type"] = "mcmc"
         doc.add("control", control_table)
 
-        vmc_table = tomlkit.table()
-        for key, value in cli_parameters["vmc"].items():
+        mcmc_table = tomlkit.table()
+        for key, value in cli_parameters["mcmc"].items():
             if value is None:
-                vmc_table[key] = str(value)
+                mcmc_table[key] = str(value)
             else:
-                vmc_table[key] = value
+                mcmc_table[key] = value
             if not exclude_comment and not isinstance(value, bool):
-                vmc_table[key].comment(cli_parameters["vmc_comments"][key])
-        doc.add("vmc", vmc_table)
+                mcmc_table[key].comment(cli_parameters["mcmc_comments"][key])
+        doc.add("mcmc", mcmc_table)
 
         with open(filename, "w") as f:
             f.write(tomlkit.dumps(doc))
@@ -976,9 +976,9 @@ def vmc_generate_input(
         typer.echo("Activate the flag (-g) to generate an input file. See --help for more information.")
 
 
-typer_click_vmc = typer.main.get_command(vmc_app)
+typer_click_mcmc = typer.main.get_command(mcmc_app)
 
-cli.add_command(typer_click_vmc, "vmc")
+cli.add_command(typer_click_mcmc, "mcmc")
 
 
 # LRDMC_app

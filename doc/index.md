@@ -6,8 +6,7 @@
 
 The following features of **jQMC** are highlighted:
 
-- {ref}`Variational Monte Carlo (VMC) <vmc_tags>`
-- {ref}`Variational Monte Carlo: Wavefuntion Optimization (VMCopt) <vmcopt_tags>`
+- {ref}`Variational Monte Carlo: Wavefuntion Optimization (VMC) <vmc_tags>`
 - {ref}`Lattice Regularized Diffusion Monte Carlo (LRDMC) <lrdmc_tags>`
 - {ref}`Atomic forces calculations by VMC and LRDMC <atomic_forces_tags>`
 - {ref}`JAX-compaible modules <jax_compatible_modules_tags>`

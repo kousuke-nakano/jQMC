@@ -6,7 +6,6 @@ Technical notes of **jQMC**.
 :hidden:
 ao
 vmc
-vmcopt
 lrdmc
 atomic-forces
 jax

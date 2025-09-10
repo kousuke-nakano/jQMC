@@ -4,7 +4,7 @@
 
 ## Command-line `jqmc` usage
 
-You can run `jqmc` tasks (`vmc`, `vmcopt`, `lrdmc`, and `lrdmc-tau`) from the command line:
+You can run `jqmc` tasks (`mcmc`, `vmc`, `lrdmc`, and `lrdmc-tau`) from the command line:
 
 ```bash
 # Serial run
@@ -27,8 +27,8 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 
 | Key                 |                  Default | Description                                                                                                                |
 | ------------------- | -----------------------: | -------------------------------------------------------------------------------------------------------------------------- |
-| `job_type`          |             **required** | Select the job: `"vmc"`, `"vmcopt"`, `"lrdmc"`, or `"lrdmc-tau"`.                                                          |
-| `mcmc_seed`         |                  `34456` | Random seed for MCMC/GFMC chain.                                                                                                      |
+| `job_type`          |             **required** | Select the job: `"mcmc"`, `"vmc"`, `"lrdmc"`, or `"lrdmc-tau"`.                                                            |
+| `mcmc_seed`         |                  `34456` | Random seed for MCMC/GFMC chain.                                                                                           |
 | `number_of_walkers` |                      `4` | Number of walkers **per MPI process**.                                                                                     |
 | `max_time`          |                  `86400` | Wall time limit in seconds.                                                                                                |
 | `restart`           |                  `false` | If `true`, restart from a checkpoint.                                                                                      |
@@ -38,7 +38,7 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 
 ---
 
-### `vmc` (i.e., a single-shot MCMC without WF optimization)
+### `mcmc` (i.e., a single-shot MCMC without WF optimization)
 
 | Key                        |      Default | Description                                                                                                                                                                                                                                   |
 | -------------------------- | -----------: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -52,7 +52,7 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 
 ---
 
-### `vmcopt` (stochastic reconfiguration / natural-gradient optimization)
+### `vmc` (stochastic reconfiguration / natural-gradient optimization)
 
 | Key                        |      Default | Description                                                                                                          |
 | -------------------------- | -----------: | -------------------------------------------------------------------------------------------------------------------- |
@@ -112,11 +112,11 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 ```json
 {
   "control": {
-    "job_type": "vmc",
+    "job_type": "mcmc",
     "number_of_walkers": 4,
     "verbosity": "low"
   },
-  "vmc": {
+  "mcmc": {
     "num_mcmc_steps": 1000,
     "num_mcmc_per_measurement": 40,
     "Dt": 2.0

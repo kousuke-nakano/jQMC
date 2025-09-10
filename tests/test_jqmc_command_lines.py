@@ -34,7 +34,6 @@
 
 import os
 import sys
-from logging import root
 
 import toml
 
@@ -43,10 +42,10 @@ from ..jqmc.jqmc_tool import (
     lrdmc_compute_energy,
     lrdmc_extrapolate_energy,
     lrdmc_generate_input,
+    mcmc_compute_energy,
+    mcmc_generate_input,
     trexio_convert_to,
-    vmc_compute_energy,
     vmc_generate_input,
-    vmcopt_generate_input,
 )
 
 
@@ -59,6 +58,68 @@ def test_jqmc_tool_trexio_conversion(tmp_path):
         j2_parmeter=1.0,
         j3_basis_type="ao-medium",
     )
+
+
+def test_jqmc_cli_run_mcmc(tmp_path, monkeypatch):
+    """Test the MCMC run command."""
+    root_dir = os.getcwd()
+    # trexio conversion
+    os.chdir(root_dir)
+    trexio_convert_to(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ecp_ccpvtz_cart.h5"),
+        hamiltonian_file=os.path.join(tmp_path, "hamiltonian_data.chk"),
+        j1_parmeter=None,
+        j2_parmeter=1.0,
+        j3_basis_type="ao-small",
+    )
+    os.chdir(root_dir)
+
+    # generate input
+    os.chdir(root_dir)
+    mcmc_generate_input(flag=True, filename=os.path.join(tmp_path, "mcmc_input.toml"), exclude_comment=True)
+    with open(os.path.join(tmp_path, "mcmc_input.toml"), "r") as f:
+        dict_toml = toml.load(f)
+        dict_toml["control"]["restart"] = False
+        dict_toml["control"]["hamiltonian_chk"] = "hamiltonian_data.chk"
+        dict_toml["control"]["restart_chk"] = "restart.chk"
+        dict_toml["mcmc"]["num_mcmc_steps"] = 50
+        dict_toml["mcmc"]["num_mcmc_bin_blocks"] = 5
+        dict_toml["mcmc"]["num_mcmc_warmup_steps"] = 30
+    with open(os.path.join(tmp_path, "mcmc_input.toml"), "w") as f:
+        toml.dump(dict_toml, f)
+    os.chdir(root_dir)
+
+    # run MCMC
+    os.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["jqmc", "mcmc_input.toml"])
+    cli()
+    os.chdir(root_dir)
+
+    # post MCMC
+    os.chdir(root_dir)
+    mcmc_compute_energy(restart_chk=os.path.join(tmp_path, "restart.chk"), num_mcmc_bin_blocks=5, num_mcmc_warmup_steps=30)
+    os.chdir(root_dir)
+
+    os.chdir(tmp_path)
+    mcmc_compute_energy(restart_chk="restart.chk", num_mcmc_bin_blocks=5, num_mcmc_warmup_steps=30)
+    os.chdir(root_dir)
+
+    """ WIP: it does not work due to a JAX internal error.
+    # run MCMC(restart)
+    os.chdir(root_dir)
+    with open(os.path.join(tmp_path, "mcmc_input.toml"), "r") as f:
+        dict_toml = toml.load(f)
+        dict_toml["control"]["restart"] = True
+        dict_toml["control"]["hamiltonian_chk"] = None
+        dict_toml["control"]["restart_chk"] = "restart.chk"
+        dict_toml["mcmc"]["num_mcmc_steps"] = 10
+    with open(os.path.join(tmp_path, "mcmc_input.toml"), "w") as f:
+        toml.dump(dict_toml, f)
+    os.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["jqmc", "mcmc_input.toml"])
+    cli()
+    os.chdir(root_dir)
+    """
 
 
 def test_jqmc_cli_run_vmc(tmp_path, monkeypatch):
@@ -83,9 +144,10 @@ def test_jqmc_cli_run_vmc(tmp_path, monkeypatch):
         dict_toml["control"]["restart"] = False
         dict_toml["control"]["hamiltonian_chk"] = "hamiltonian_data.chk"
         dict_toml["control"]["restart_chk"] = "restart.chk"
+        dict_toml["vmc"]["num_opt_steps"] = 2
         dict_toml["vmc"]["num_mcmc_steps"] = 50
-        dict_toml["vmc"]["num_mcmc_bin_blocks"] = 5
-        dict_toml["vmc"]["num_mcmc_warmup_steps"] = 30
+        dict_toml["vmc"]["num_mcmc_bin_blocks"] = 10
+        dict_toml["vmc"]["num_mcmc_warmup_steps"] = 0
     with open(os.path.join(tmp_path, "vmc_input.toml"), "w") as f:
         toml.dump(dict_toml, f)
     os.chdir(root_dir)
@@ -96,81 +158,18 @@ def test_jqmc_cli_run_vmc(tmp_path, monkeypatch):
     cli()
     os.chdir(root_dir)
 
-    # post VMC
-    os.chdir(root_dir)
-    vmc_compute_energy(restart_chk=os.path.join(tmp_path, "restart.chk"), num_mcmc_bin_blocks=5, num_mcmc_warmup_steps=30)
-    os.chdir(root_dir)
-
-    os.chdir(tmp_path)
-    vmc_compute_energy(restart_chk="restart.chk", num_mcmc_bin_blocks=5, num_mcmc_warmup_steps=30)
-    os.chdir(root_dir)
-
     """ WIP: it does not work due to a JAX internal error.
-    # run VMC(restart)
+    # run VMCopt(restart)
     os.chdir(root_dir)
     with open(os.path.join(tmp_path, "vmc_input.toml"), "r") as f:
         dict_toml = toml.load(f)
         dict_toml["control"]["restart"] = True
         dict_toml["control"]["hamiltonian_chk"] = None
         dict_toml["control"]["restart_chk"] = "restart.chk"
-        dict_toml["vmc"]["num_mcmc_steps"] = 10
     with open(os.path.join(tmp_path, "vmc_input.toml"), "w") as f:
         toml.dump(dict_toml, f)
     os.chdir(tmp_path)
     monkeypatch.setattr(sys, "argv", ["jqmc", "vmc_input.toml"])
-    cli()
-    os.chdir(root_dir)
-    """
-
-
-def test_jqmc_cli_run_vmcopt(tmp_path, monkeypatch):
-    """Test the VMCopt run command."""
-    root_dir = os.getcwd()
-    # trexio conversion
-    os.chdir(root_dir)
-    trexio_convert_to(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ecp_ccpvtz_cart.h5"),
-        hamiltonian_file=os.path.join(tmp_path, "hamiltonian_data.chk"),
-        j1_parmeter=None,
-        j2_parmeter=1.0,
-        j3_basis_type="ao-small",
-    )
-    os.chdir(root_dir)
-
-    # generate input
-    os.chdir(root_dir)
-    vmcopt_generate_input(flag=True, filename=os.path.join(tmp_path, "vmcopt_input.toml"), exclude_comment=True)
-    with open(os.path.join(tmp_path, "vmcopt_input.toml"), "r") as f:
-        dict_toml = toml.load(f)
-        dict_toml["control"]["restart"] = False
-        dict_toml["control"]["hamiltonian_chk"] = "hamiltonian_data.chk"
-        dict_toml["control"]["restart_chk"] = "restart.chk"
-        dict_toml["vmcopt"]["num_opt_steps"] = 2
-        dict_toml["vmcopt"]["num_mcmc_steps"] = 50
-        dict_toml["vmcopt"]["num_mcmc_bin_blocks"] = 10
-        dict_toml["vmcopt"]["num_mcmc_warmup_steps"] = 0
-    with open(os.path.join(tmp_path, "vmcopt_input.toml"), "w") as f:
-        toml.dump(dict_toml, f)
-    os.chdir(root_dir)
-
-    # run VMCopt
-    os.chdir(tmp_path)
-    monkeypatch.setattr(sys, "argv", ["jqmc", "vmcopt_input.toml"])
-    cli()
-    os.chdir(root_dir)
-
-    """ WIP: it does not work due to a JAX internal error.
-    # run VMCopt(restart)
-    os.chdir(root_dir)
-    with open(os.path.join(tmp_path, "vmcopt_input.toml"), "r") as f:
-        dict_toml = toml.load(f)
-        dict_toml["control"]["restart"] = True
-        dict_toml["control"]["hamiltonian_chk"] = None
-        dict_toml["control"]["restart_chk"] = "restart.chk"
-    with open(os.path.join(tmp_path, "vmcopt_input.toml"), "w") as f:
-        toml.dump(dict_toml, f)
-    os.chdir(tmp_path)
-    monkeypatch.setattr(sys, "argv", ["jqmc", "vmcopt_input.toml"])
     cli()
     os.chdir(root_dir)
     """

@@ -44,7 +44,7 @@ cli_parameters = {
         "verbosity": "low",
     },
     "control_comments": {
-        "job_type": 'Specify the job type. "vmc", "vmcopt", "lrdmc", or "lrdmc-tau".',
+        "job_type": 'Specify the job type. "mcmc", "vmc", "lrdmc", or "lrdmc-tau".',
         "mcmc_seed": "Random seed for MCMC",
         "number_of_walkers": "Number of walkers per MPI process",
         "max_time": "Maximum time in sec.",
@@ -53,7 +53,7 @@ cli_parameters = {
         "hamiltonian_chk": "Hamiltonian checkpoint file. If restart is False, this file is used.",
         "verbosity": 'Verbosity level. "low", "high", "devel", "mpi-low", "mpi-high", "mpi-devel"',
     },
-    "vmc": {
+    "mcmc": {
         "num_mcmc_steps": None,
         "num_mcmc_per_measurement": 40,
         "num_mcmc_warmup_steps": 0,
@@ -62,7 +62,7 @@ cli_parameters = {
         "epsilon_AS": 0.0,
         "atomic_force": False,
     },
-    "vmc_comments": {
+    "mcmc_comments": {
         "num_mcmc_steps": "Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.",
         "num_mcmc_per_measurement": "Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.",
         "num_mcmc_warmup_steps": "Number of observable measurement steps for warmup (i.e., discarged).",
@@ -71,7 +71,7 @@ cli_parameters = {
         "epsilon_AS": "the epsilon parameter used in the Attacalite-Sandro regulatization method.",
         "atomic_force": "If true, compute atomic forces.",
     },
-    "vmcopt": {
+    "vmc": {
         "num_mcmc_steps": None,
         "num_mcmc_per_measurement": 40,
         "num_mcmc_warmup_steps": 0,
@@ -91,7 +91,7 @@ cli_parameters = {
         "cg_max_iter": 10000,
         "cg_tol": 1e-4,
     },
-    "vmcopt_comments": {
+    "vmc_comments": {
         "num_mcmc_steps": "Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.",
         "num_mcmc_per_measurement": "Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.",
         "num_mcmc_warmup_steps": "Number of observable measurement steps for warmup (i.e., discarged).",
