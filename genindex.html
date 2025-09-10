@@ -169,7 +169,6 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="notes/technical_notes.html">Technical notes</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="notes/ao.html">Atomic orbitals (AOs) and Basis sets</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/vmc.html">Variational Monte Carlo (VMC)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="notes/vmcopt.html">Variational Monte Carlo: Wavefuntion Optimization (VMCopt)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/lrdmc.html">Lattice Regularized Diffusion Monte Carlo (LRDMC)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/atomic-forces.html">Atomic forces calculations by VMC and LRDMC</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/jax.html">JAX compatible modules</a></li>
@@ -1415,6 +1414,10 @@ document.write(`
       </ul></li>
       <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC">MCMC (class in jqmc.jqmc_mcmc)</a>
 </li>
+      <li><a href="jqmc.html#jqmc.jqmc_tool.mcmc_chk_fix">mcmc_chk_fix() (in module jqmc.jqmc_tool)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.jqmc_tool.mcmc_compute_energy">mcmc_compute_energy() (in module jqmc.jqmc_tool)</a>
+</li>
       <li><a href="jqmc.html#jqmc.jqmc_gfmc.GFMC_fixed_num_projection.mcmc_counter">mcmc_counter (jqmc.jqmc_gfmc.GFMC_fixed_num_projection property)</a>
 
       <ul>
@@ -1426,6 +1429,8 @@ document.write(`
 </li>
       </ul></li>
       <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug">MCMC_debug (class in jqmc.jqmc_mcmc)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.jqmc_tool.mcmc_generate_input">mcmc_generate_input() (in module jqmc.jqmc_tool)</a>
 </li>
       <li><a href="jqmc.html#jqmc.jqmc_tool.orbital_type.mo">mo (jqmc.jqmc_tool.orbital_type attribute)</a>
 </li>
@@ -1441,6 +1446,8 @@ document.write(`
       </ul></li>
       <li><a href="jqmc.html#jqmc.molecular_orbital.MO_data">MO_data (class in jqmc.molecular_orbital)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     module
 
@@ -1486,8 +1493,6 @@ document.write(`
         <li><a href="jqmc.html#module-jqmc.wavefunction">jqmc.wavefunction</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="jqmc.html#jqmc.molecular_orbital.MOs_data">MOs_data (class in jqmc.molecular_orbital)</a>
 </li>
       <li><a href="jqmc.html#jqmc.molecular_orbital.MOs_data_deriv_R">MOs_data_deriv_R (class in jqmc.molecular_orbital)</a>
@@ -2020,19 +2025,13 @@ document.write(`
 </li>
       <li><a href="jqmc.html#jqmc.structure.Structure_data.vec_c">vec_c (jqmc.structure.Structure_data attribute)</a>
 </li>
-      <li><a href="jqmc.html#jqmc.jqmc_tool.vmc_chk_fix">vmc_chk_fix() (in module jqmc.jqmc_tool)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="jqmc.html#jqmc.jqmc_tool.vmc_compute_energy">vmc_compute_energy() (in module jqmc.jqmc_tool)</a>
+      <li><a href="jqmc.html#jqmc.jqmc_tool.vmc_analyze_output">vmc_analyze_output() (in module jqmc.jqmc_tool)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.jqmc_tool.vmc_chk_fix">vmc_chk_fix() (in module jqmc.jqmc_tool)</a>
 </li>
       <li><a href="jqmc.html#jqmc.jqmc_tool.vmc_generate_input">vmc_generate_input() (in module jqmc.jqmc_tool)</a>
-</li>
-      <li><a href="jqmc.html#jqmc.jqmc_tool.vmcopt_analyze_output">vmcopt_analyze_output() (in module jqmc.jqmc_tool)</a>
-</li>
-      <li><a href="jqmc.html#jqmc.jqmc_tool.vmcopt_chk_fix">vmcopt_chk_fix() (in module jqmc.jqmc_tool)</a>
-</li>
-      <li><a href="jqmc.html#jqmc.jqmc_tool.vmcopt_generate_input">vmcopt_generate_input() (in module jqmc.jqmc_tool)</a>
 </li>
   </ul></td>
 </tr></table>

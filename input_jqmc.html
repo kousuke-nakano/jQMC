@@ -170,7 +170,6 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="notes/technical_notes.html">Technical notes</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="notes/ao.html">Atomic orbitals (AOs) and Basis sets</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/vmc.html">Variational Monte Carlo (VMC)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="notes/vmcopt.html">Variational Monte Carlo: Wavefuntion Optimization (VMCopt)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/lrdmc.html">Lattice Regularized Diffusion Monte Carlo (LRDMC)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/atomic-forces.html">Atomic forces calculations by VMC and LRDMC</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/jax.html">JAX compatible modules</a></li>
@@ -335,8 +334,8 @@ document.write(`
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#command-line-jqmc-usage">Command-line <code class="docutils literal notranslate"><span class="pre">jqmc</span></code> usage</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#input-parameters-for-the-command-line-jqmc">Input parameters for the command-line <code class="docutils literal notranslate"><span class="pre">jqmc</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#control"><code class="docutils literal notranslate"><span class="pre">control</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#vmc-i-e-a-single-shot-mcmc-without-wf-optimization"><code class="docutils literal notranslate"><span class="pre">vmc</span></code> (i.e., a single-shot MCMC without WF optimization)</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#vmcopt-stochastic-reconfiguration-natural-gradient-optimization"><code class="docutils literal notranslate"><span class="pre">vmcopt</span></code> (stochastic reconfiguration / natural-gradient optimization)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#mcmc-i-e-a-single-shot-mcmc-without-wf-optimization"><code class="docutils literal notranslate"><span class="pre">mcmc</span></code> (i.e., a single-shot MCMC without WF optimization)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#vmc-stochastic-reconfiguration-natural-gradient-optimization"><code class="docutils literal notranslate"><span class="pre">vmc</span></code> (stochastic reconfiguration / natural-gradient optimization)</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lrdmc"><code class="docutils literal notranslate"><span class="pre">lrdmc</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lrdmc-tau"><code class="docutils literal notranslate"><span class="pre">lrdmc-tau</span></code></a></li>
 </ul>
@@ -357,7 +356,7 @@ document.write(`
 <span id="input-jqmc-link"></span><h1>Input parameters<a class="headerlink" href="#input-parameters" title="Link to this heading">#</a></h1>
 <section id="command-line-jqmc-usage">
 <h2>Command-line <code class="docutils literal notranslate"><span class="pre">jqmc</span></code> usage<a class="headerlink" href="#command-line-jqmc-usage" title="Link to this heading">#</a></h2>
-<p>You can run <code class="docutils literal notranslate"><span class="pre">jqmc</span></code> tasks (<code class="docutils literal notranslate"><span class="pre">vmc</span></code>, <code class="docutils literal notranslate"><span class="pre">vmcopt</span></code>, <code class="docutils literal notranslate"><span class="pre">lrdmc</span></code>, and <code class="docutils literal notranslate"><span class="pre">lrdmc-tau</span></code>) from the command line:</p>
+<p>You can run <code class="docutils literal notranslate"><span class="pre">jqmc</span></code> tasks (<code class="docutils literal notranslate"><span class="pre">mcmc</span></code>, <code class="docutils literal notranslate"><span class="pre">vmc</span></code>, <code class="docutils literal notranslate"><span class="pre">lrdmc</span></code>, and <code class="docutils literal notranslate"><span class="pre">lrdmc-tau</span></code>) from the command line:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Serial run</span>
 jqmc<span class="w"> </span>&lt;input-file&gt;<span class="w"> </span>&gt;<span class="w"> </span>&lt;output.log&gt;
 
@@ -386,7 +385,7 @@ Throughout this document, “per MPI process and per walker” means the quantit
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">job_type</span></code></p></td>
 <td class="text-right"><p><strong>required</strong></p></td>
-<td><p>Select the job: <code class="docutils literal notranslate"><span class="pre">&quot;vmc&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;vmcopt&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;lrdmc&quot;</span></code>, or <code class="docutils literal notranslate"><span class="pre">&quot;lrdmc-tau&quot;</span></code>.</p></td>
+<td><p>Select the job: <code class="docutils literal notranslate"><span class="pre">&quot;mcmc&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;vmc&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;lrdmc&quot;</span></code>, or <code class="docutils literal notranslate"><span class="pre">&quot;lrdmc-tau&quot;</span></code>.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">mcmc_seed</span></code></p></td>
 <td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">34456</span></code></p></td>
@@ -421,8 +420,8 @@ Throughout this document, “per MPI process and per walker” means the quantit
 </div>
 </section>
 <hr class="docutils" />
-<section id="vmc-i-e-a-single-shot-mcmc-without-wf-optimization">
-<h3><code class="docutils literal notranslate"><span class="pre">vmc</span></code> (i.e., a single-shot MCMC without WF optimization)<a class="headerlink" href="#vmc-i-e-a-single-shot-mcmc-without-wf-optimization" title="Link to this heading">#</a></h3>
+<section id="mcmc-i-e-a-single-shot-mcmc-without-wf-optimization">
+<h3><code class="docutils literal notranslate"><span class="pre">mcmc</span></code> (i.e., a single-shot MCMC without WF optimization)<a class="headerlink" href="#mcmc-i-e-a-single-shot-mcmc-without-wf-optimization" title="Link to this heading">#</a></h3>
 <div class="pst-scrollable-table-container"><table class="table">
 <thead>
 <tr class="row-odd"><th class="head"><p>Key</p></th>
@@ -464,8 +463,8 @@ Throughout this document, “per MPI process and per walker” means the quantit
 </div>
 </section>
 <hr class="docutils" />
-<section id="vmcopt-stochastic-reconfiguration-natural-gradient-optimization">
-<h3><code class="docutils literal notranslate"><span class="pre">vmcopt</span></code> (stochastic reconfiguration / natural-gradient optimization)<a class="headerlink" href="#vmcopt-stochastic-reconfiguration-natural-gradient-optimization" title="Link to this heading">#</a></h3>
+<section id="vmc-stochastic-reconfiguration-natural-gradient-optimization">
+<h3><code class="docutils literal notranslate"><span class="pre">vmc</span></code> (stochastic reconfiguration / natural-gradient optimization)<a class="headerlink" href="#vmc-stochastic-reconfiguration-natural-gradient-optimization" title="Link to this heading">#</a></h3>
 <div class="pst-scrollable-table-container"><table class="table">
 <thead>
 <tr class="row-odd"><th class="head"><p>Key</p></th>
@@ -650,11 +649,11 @@ Throughout this document, “per MPI process and per walker” means the quantit
 <h2>Minimal schema example<a class="headerlink" href="#minimal-schema-example" title="Link to this heading">#</a></h2>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">  </span><span class="nt">&quot;control&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;job_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;vmc&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;job_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mcmc&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;number_of_walkers&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;verbosity&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;low&quot;</span>
 <span class="w">  </span><span class="p">},</span>
-<span class="w">  </span><span class="nt">&quot;vmc&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;mcmc&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">&quot;num_mcmc_steps&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;num_mcmc_per_measurement&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">40</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;Dt&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">2.0</span>
@@ -721,8 +720,8 @@ Throughout this document, “per MPI process and per walker” means the quantit
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#command-line-jqmc-usage">Command-line <code class="docutils literal notranslate"><span class="pre">jqmc</span></code> usage</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#input-parameters-for-the-command-line-jqmc">Input parameters for the command-line <code class="docutils literal notranslate"><span class="pre">jqmc</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#control"><code class="docutils literal notranslate"><span class="pre">control</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#vmc-i-e-a-single-shot-mcmc-without-wf-optimization"><code class="docutils literal notranslate"><span class="pre">vmc</span></code> (i.e., a single-shot MCMC without WF optimization)</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#vmcopt-stochastic-reconfiguration-natural-gradient-optimization"><code class="docutils literal notranslate"><span class="pre">vmcopt</span></code> (stochastic reconfiguration / natural-gradient optimization)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#mcmc-i-e-a-single-shot-mcmc-without-wf-optimization"><code class="docutils literal notranslate"><span class="pre">mcmc</span></code> (i.e., a single-shot MCMC without WF optimization)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#vmc-stochastic-reconfiguration-natural-gradient-optimization"><code class="docutils literal notranslate"><span class="pre">vmc</span></code> (stochastic reconfiguration / natural-gradient optimization)</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lrdmc"><code class="docutils literal notranslate"><span class="pre">lrdmc</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#lrdmc-tau"><code class="docutils literal notranslate"><span class="pre">lrdmc-tau</span></code></a></li>
 </ul>

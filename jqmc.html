@@ -172,7 +172,6 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="notes/technical_notes.html">Technical notes</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="notes/ao.html">Atomic orbitals (AOs) and Basis sets</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/vmc.html">Variational Monte Carlo (VMC)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="notes/vmcopt.html">Variational Monte Carlo: Wavefuntion Optimization (VMCopt)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/lrdmc.html">Lattice Regularized Diffusion Monte Carlo (LRDMC)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/atomic-forces.html">Atomic forces calculations by VMC and LRDMC</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/jax.html">JAX compatible modules</a></li>
@@ -931,6 +930,9 @@ document.write(`
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.lrdmc_compute_energy"><code class="docutils literal notranslate"><span class="pre">lrdmc_compute_energy()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.lrdmc_extrapolate_energy"><code class="docutils literal notranslate"><span class="pre">lrdmc_extrapolate_energy()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.lrdmc_generate_input"><code class="docutils literal notranslate"><span class="pre">lrdmc_generate_input()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.mcmc_chk_fix"><code class="docutils literal notranslate"><span class="pre">mcmc_chk_fix()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.mcmc_compute_energy"><code class="docutils literal notranslate"><span class="pre">mcmc_compute_energy()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.mcmc_generate_input"><code class="docutils literal notranslate"><span class="pre">mcmc_generate_input()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.orbital_type"><code class="docutils literal notranslate"><span class="pre">orbital_type</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.orbital_type.ao"><code class="docutils literal notranslate"><span class="pre">orbital_type.ao</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.orbital_type.ao_full"><code class="docutils literal notranslate"><span class="pre">orbital_type.ao_full</span></code></a></li>
@@ -943,12 +945,9 @@ document.write(`
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.trexio_convert_to"><code class="docutils literal notranslate"><span class="pre">trexio_convert_to()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.trexio_show_detail"><code class="docutils literal notranslate"><span class="pre">trexio_show_detail()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.trexio_show_info"><code class="docutils literal notranslate"><span class="pre">trexio_show_info()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.vmc_analyze_output"><code class="docutils literal notranslate"><span class="pre">vmc_analyze_output()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.vmc_chk_fix"><code class="docutils literal notranslate"><span class="pre">vmc_chk_fix()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.vmc_compute_energy"><code class="docutils literal notranslate"><span class="pre">vmc_compute_energy()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.vmc_generate_input"><code class="docutils literal notranslate"><span class="pre">vmc_generate_input()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.vmcopt_analyze_output"><code class="docutils literal notranslate"><span class="pre">vmcopt_analyze_output()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.vmcopt_chk_fix"><code class="docutils literal notranslate"><span class="pre">vmcopt_chk_fix()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.vmcopt_generate_input"><code class="docutils literal notranslate"><span class="pre">vmcopt_generate_input()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-jqmc.jqmc_utility">jqmc.jqmc_utility module</a><ul class="nav section-nav flex-column">
@@ -5310,6 +5309,24 @@ The dimention of the arrays is (N, 3).</p>
 <dd><p>Generate an input file for LRDMC calculations.</p>
 </dd></dl>
 
+<dl class="py function">
+<dt class="sig sig-object py" id="jqmc.jqmc_tool.mcmc_chk_fix">
+<span class="sig-prename descclassname"><span class="pre">jqmc.jqmc_tool.</span></span><span class="sig-name descname"><span class="pre">mcmc_chk_fix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">restart_chk:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.ArgumentInfo</span> <span class="pre">object&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.jqmc_tool.mcmc_chk_fix" title="Link to this definition">#</a></dt>
+<dd><p>VMC chk file fix.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jqmc.jqmc_tool.mcmc_compute_energy">
+<span class="sig-prename descclassname"><span class="pre">jqmc.jqmc_tool.</span></span><span class="sig-name descname"><span class="pre">mcmc_compute_energy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">restart_chk:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.ArgumentInfo</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_mcmc_bin_blocks:</span> <span class="pre">int</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.OptionInfo</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_mcmc_warmup_steps:</span> <span class="pre">int</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.OptionInfo</span> <span class="pre">object&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.jqmc_tool.mcmc_compute_energy" title="Link to this definition">#</a></dt>
+<dd><p>VMC energy calculation.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jqmc.jqmc_tool.mcmc_generate_input">
+<span class="sig-prename descclassname"><span class="pre">jqmc.jqmc_tool.</span></span><span class="sig-name descname"><span class="pre">mcmc_generate_input</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">flag:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.OptionInfo</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filename:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.OptionInfo</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_comment:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.OptionInfo</span> <span class="pre">object&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.jqmc_tool.mcmc_generate_input" title="Link to this definition">#</a></dt>
+<dd><p>Generate an input file for VMC calculations.</p>
+</dd></dl>
+
 <dl class="py class">
 <dt class="sig sig-object py" id="jqmc.jqmc_tool.orbital_type">
 <em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jqmc.jqmc_tool.</span></span><span class="sig-name descname"><span class="pre">orbital_type</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.jqmc_tool.orbital_type" title="Link to this definition">#</a></dt>
@@ -5366,38 +5383,20 @@ The dimention of the arrays is (N, 3).</p>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="jqmc.jqmc_tool.vmc_chk_fix">
-<span class="sig-prename descclassname"><span class="pre">jqmc.jqmc_tool.</span></span><span class="sig-name descname"><span class="pre">vmc_chk_fix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">restart_chk:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.ArgumentInfo</span> <span class="pre">object&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.jqmc_tool.vmc_chk_fix" title="Link to this definition">#</a></dt>
-<dd><p>VMC chk file fix.</p>
+<dt class="sig sig-object py" id="jqmc.jqmc_tool.vmc_analyze_output">
+<span class="sig-prename descclassname"><span class="pre">jqmc.jqmc_tool.</span></span><span class="sig-name descname"><span class="pre">vmc_analyze_output</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filenames:</span> <span class="pre">~typing.List[str]</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.ArgumentInfo</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot_graph:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.OptionInfo</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save_graph:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.OptionInfo</span> <span class="pre">object&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.jqmc_tool.vmc_analyze_output" title="Link to this definition">#</a></dt>
+<dd><p>Analyze the output files of vmc optimizations.</p>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="jqmc.jqmc_tool.vmc_compute_energy">
-<span class="sig-prename descclassname"><span class="pre">jqmc.jqmc_tool.</span></span><span class="sig-name descname"><span class="pre">vmc_compute_energy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">restart_chk:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.ArgumentInfo</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_mcmc_bin_blocks:</span> <span class="pre">int</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.OptionInfo</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_mcmc_warmup_steps:</span> <span class="pre">int</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.OptionInfo</span> <span class="pre">object&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.jqmc_tool.vmc_compute_energy" title="Link to this definition">#</a></dt>
-<dd><p>VMC energy calculation.</p>
+<dt class="sig sig-object py" id="jqmc.jqmc_tool.vmc_chk_fix">
+<span class="sig-prename descclassname"><span class="pre">jqmc.jqmc_tool.</span></span><span class="sig-name descname"><span class="pre">vmc_chk_fix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">restart_chk:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.ArgumentInfo</span> <span class="pre">object&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.jqmc_tool.vmc_chk_fix" title="Link to this definition">#</a></dt>
+<dd><p>VMCopt chk file fix.</p>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="jqmc.jqmc_tool.vmc_generate_input">
 <span class="sig-prename descclassname"><span class="pre">jqmc.jqmc_tool.</span></span><span class="sig-name descname"><span class="pre">vmc_generate_input</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">flag:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.OptionInfo</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filename:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.OptionInfo</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_comment:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.OptionInfo</span> <span class="pre">object&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.jqmc_tool.vmc_generate_input" title="Link to this definition">#</a></dt>
-<dd><p>Generate an input file for VMC calculations.</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="jqmc.jqmc_tool.vmcopt_analyze_output">
-<span class="sig-prename descclassname"><span class="pre">jqmc.jqmc_tool.</span></span><span class="sig-name descname"><span class="pre">vmcopt_analyze_output</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filenames:</span> <span class="pre">~typing.List[str]</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.ArgumentInfo</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot_graph:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.OptionInfo</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save_graph:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.OptionInfo</span> <span class="pre">object&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.jqmc_tool.vmcopt_analyze_output" title="Link to this definition">#</a></dt>
-<dd><p>Analyze the output files of vmc optimizations.</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="jqmc.jqmc_tool.vmcopt_chk_fix">
-<span class="sig-prename descclassname"><span class="pre">jqmc.jqmc_tool.</span></span><span class="sig-name descname"><span class="pre">vmcopt_chk_fix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">restart_chk:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.ArgumentInfo</span> <span class="pre">object&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.jqmc_tool.vmcopt_chk_fix" title="Link to this definition">#</a></dt>
-<dd><p>VMCopt chk file fix.</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="jqmc.jqmc_tool.vmcopt_generate_input">
-<span class="sig-prename descclassname"><span class="pre">jqmc.jqmc_tool.</span></span><span class="sig-name descname"><span class="pre">vmcopt_generate_input</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">flag:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.OptionInfo</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filename:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.OptionInfo</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_comment:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">&lt;typer.models.OptionInfo</span> <span class="pre">object&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.jqmc_tool.vmcopt_generate_input" title="Link to this definition">#</a></dt>
 <dd><p>Generate an input file for VMCopt calculations.</p>
 </dd></dl>
 
@@ -7129,6 +7128,9 @@ r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.lrdmc_compute_energy"><code class="docutils literal notranslate"><span class="pre">lrdmc_compute_energy()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.lrdmc_extrapolate_energy"><code class="docutils literal notranslate"><span class="pre">lrdmc_extrapolate_energy()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.lrdmc_generate_input"><code class="docutils literal notranslate"><span class="pre">lrdmc_generate_input()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.mcmc_chk_fix"><code class="docutils literal notranslate"><span class="pre">mcmc_chk_fix()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.mcmc_compute_energy"><code class="docutils literal notranslate"><span class="pre">mcmc_compute_energy()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.mcmc_generate_input"><code class="docutils literal notranslate"><span class="pre">mcmc_generate_input()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.orbital_type"><code class="docutils literal notranslate"><span class="pre">orbital_type</span></code></a><ul class="nav section-nav flex-column">
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.orbital_type.ao"><code class="docutils literal notranslate"><span class="pre">orbital_type.ao</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.orbital_type.ao_full"><code class="docutils literal notranslate"><span class="pre">orbital_type.ao_full</span></code></a></li>
@@ -7141,12 +7143,9 @@ r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.trexio_convert_to"><code class="docutils literal notranslate"><span class="pre">trexio_convert_to()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.trexio_show_detail"><code class="docutils literal notranslate"><span class="pre">trexio_show_detail()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.trexio_show_info"><code class="docutils literal notranslate"><span class="pre">trexio_show_info()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.vmc_analyze_output"><code class="docutils literal notranslate"><span class="pre">vmc_analyze_output()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.vmc_chk_fix"><code class="docutils literal notranslate"><span class="pre">vmc_chk_fix()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.vmc_compute_energy"><code class="docutils literal notranslate"><span class="pre">vmc_compute_energy()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.vmc_generate_input"><code class="docutils literal notranslate"><span class="pre">vmc_generate_input()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.vmcopt_analyze_output"><code class="docutils literal notranslate"><span class="pre">vmcopt_analyze_output()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.vmcopt_chk_fix"><code class="docutils literal notranslate"><span class="pre">vmcopt_chk_fix()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.vmcopt_generate_input"><code class="docutils literal notranslate"><span class="pre">vmcopt_generate_input()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-jqmc.jqmc_utility">jqmc.jqmc_utility module</a><ul class="nav section-nav flex-column">

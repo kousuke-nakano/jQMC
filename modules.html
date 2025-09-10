@@ -170,7 +170,6 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="notes/technical_notes.html">Technical notes</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="notes/ao.html">Atomic orbitals (AOs) and Basis sets</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/vmc.html">Variational Monte Carlo (VMC)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="notes/vmcopt.html">Variational Monte Carlo: Wavefuntion Optimization (VMCopt)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/lrdmc.html">Lattice Regularized Diffusion Monte Carlo (LRDMC)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/atomic-forces.html">Atomic forces calculations by VMC and LRDMC</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/jax.html">JAX compatible modules</a></li>
@@ -936,6 +935,9 @@ document.write(`
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.lrdmc_compute_energy"><code class="docutils literal notranslate"><span class="pre">lrdmc_compute_energy()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.lrdmc_extrapolate_energy"><code class="docutils literal notranslate"><span class="pre">lrdmc_extrapolate_energy()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.lrdmc_generate_input"><code class="docutils literal notranslate"><span class="pre">lrdmc_generate_input()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.mcmc_chk_fix"><code class="docutils literal notranslate"><span class="pre">mcmc_chk_fix()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.mcmc_compute_energy"><code class="docutils literal notranslate"><span class="pre">mcmc_compute_energy()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.mcmc_generate_input"><code class="docutils literal notranslate"><span class="pre">mcmc_generate_input()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.orbital_type"><code class="docutils literal notranslate"><span class="pre">orbital_type</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.orbital_type.ao"><code class="docutils literal notranslate"><span class="pre">orbital_type.ao</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.orbital_type.ao_full"><code class="docutils literal notranslate"><span class="pre">orbital_type.ao_full</span></code></a></li>
@@ -948,12 +950,9 @@ document.write(`
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.trexio_convert_to"><code class="docutils literal notranslate"><span class="pre">trexio_convert_to()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.trexio_show_detail"><code class="docutils literal notranslate"><span class="pre">trexio_show_detail()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.trexio_show_info"><code class="docutils literal notranslate"><span class="pre">trexio_show_info()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.vmc_analyze_output"><code class="docutils literal notranslate"><span class="pre">vmc_analyze_output()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.vmc_chk_fix"><code class="docutils literal notranslate"><span class="pre">vmc_chk_fix()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.vmc_compute_energy"><code class="docutils literal notranslate"><span class="pre">vmc_compute_energy()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.vmc_generate_input"><code class="docutils literal notranslate"><span class="pre">vmc_generate_input()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.vmcopt_analyze_output"><code class="docutils literal notranslate"><span class="pre">vmcopt_analyze_output()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.vmcopt_chk_fix"><code class="docutils literal notranslate"><span class="pre">vmcopt_chk_fix()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.vmcopt_generate_input"><code class="docutils literal notranslate"><span class="pre">vmcopt_generate_input()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.jqmc_utility">jqmc.jqmc_utility module</a><ul>
