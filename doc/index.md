@@ -17,6 +17,7 @@ The following features of **jQMC** are highlighted:
 ```{toctree}
 :hidden:
 install
+input_jqmc
 examples
 notes/technical_notes
 modules
