@@ -1,6 +1,6 @@
 # jQMC weak scaling results on GPUs
 
-This directory contains weak-scaling results for **jQMC**. The weak scaling were measured for Variational Monte Carlo (VMC) and Lattice Regularized Diffusion Monte Carlo (LRDMC) calculations on GPUs. The weak-scaling were measured on the supercomputer [Leonardo](https://www.hpc.cineca.it/systems/hardware/leonardo/) at CINECA in Italy and on the supercomputer [Miyabi](https://www.cc.u-tokyo.ac.jp/en/supercomputer/miyabi/system.php) at the University of Tokyo in Japan.
+This directory contains weak-scaling results for **jQMC**. The weak scaling is measured for Lattice Regularized Diffusion Monte Carlo (LRDMC) calculations on GPUs. The weak-scaling were measured on the supercomputer [Leonardo](https://www.hpc.cineca.it/systems/hardware/leonardo/) at CINECA in Italy and on the supercomputer [Miyabi](https://www.cc.u-tokyo.ac.jp/en/supercomputer/miyabi/system.php) at the University of Tokyo in Japan.
 
 ---
 

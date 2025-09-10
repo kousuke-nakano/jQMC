@@ -2,7 +2,7 @@
 
 Binding energy of the water-water dimer with the JSD and JAGP anstaz. One can learn how to obtain the VMC and DMC (in the extrapolated limit) energies of the Water dimer, starting from scratch (i.e., DFT calculation), with cartesian GTOs, and one can see how the binding energy is improved by optimizing the nodal surface. The following calculation is for the water-water dimer. The water molecule fragments should also be computed to get the binding energy. In this example, the water-water dimer geometry is taken from the S22 dataset[^2006JURpccp].
 
-[2006JURpccp]: P. Jurecka, et al. Phys Chem Chem Phys, 8, 1985-1993 (2006) [https://doi.org/10.1039/B600027D](https://doi.org/10.1039/B600027D)
+[^2006JURpccp]: P. Jurecka, et al. Phys Chem Chem Phys, 8, 1985-1993 (2006) [https://doi.org/10.1039/B600027D](https://doi.org/10.1039/B600027D)
 
 ## Generate a trial WF
 
@@ -66,10 +66,10 @@ The generated `hamiltonian_data.chk` is a wavefunction file with the `jqmc` form
 [!NOTE]
 > The `-j3` option in `jqmc-tool` controls how the atomic orbital (AO) basis is partitioned by Gaussian exponent strength for each nucleus. When you specify `ao-small`, `jqmc-tool` sorts each atom’s contracted AOs by the exponent of the primitive shell with the largest coefficient, divides them into **three** equal groups, and retains only the central group (i.e., 1/3). Specifying `ao-medium` divides into **four** groups and keeps the **two** central groups (i.e., 2/4), while `ao-large` divides into **five** groups and keeps the **three** central groups (i.e., 3/5). Using `ao` or `ao-full` disables any partitioning and includes all AOs from the original dataset. Using `mo` includes all MOs. This mechanism lets you tailor the trade-off between computational cost and accuracy by focusing on the most representative subset of basis functions.
 
-## Optimize a trial WF (VMCopt)
+## Optimize a trial WF (VMC)
 The next step is to optimize variational parameters included in the generated wavefunction. More in details, here, we optimize the two-body Jastrow parameter and the matrix elements of the three-body Jastrow parameter.
 
-You can generate a template file for a VMCopt calculation using `jqmc-tool`. Please directly edit `mcmcopt.toml` if you want to change a parameter.
+You can generate a template file for a VMC calculation using `jqmc-tool`. Please directly edit `mcmcopt.toml` if you want to change a parameter.
 
 ```bash
 % jqmc-tool vmc generate-input -g
@@ -179,7 +179,7 @@ You can also plot them and save it.
 ![VMC JSD optimization](03_S22_water_dimer/03vmc_JSD/vmc_JSD.jpg)
 
 ## Compute Energy (MCMC)
-The next step is VMC calculation. You can generate a template file for a VMC calculation using `jqmc-tool`. Please directly edit `mcmc.toml` if you want to change a parameter.
+The next step is MCMC calculation. You can generate a template file for a MCMC calculation using `jqmc-tool`. Please directly edit `mcmc.toml` if you want to change a parameter.
 
 ```bash
 % cd 04mcmc_JSD
@@ -215,7 +215,7 @@ The final step is to run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (v
 % mpiexec -n 4 -map-by ppr:4:node jqmc mcmc.toml > out_mcmc 2> out_mcmc.e # w/ MPI on GPU, depending the queueing system.
 ```
 
-You may get `E = -34.45005 +- 0.000506 Ha` [VMC]
+You may get `E = -34.45005 +- 0.000506 Ha` [MCMC]
 
 > [!NOTE]
 > We are going to discuss the sub kcal/mol accuracy in the binding energy. So, we need to decrease the error bars of the mononer and dimer calculations up to $\sim$ 0.10 mHa and $\sim$ 0.15 mHa.
@@ -294,10 +294,10 @@ The next step is to convert the optimized JSD ansatz to JAGP one.
 ```
 
 
-## Optimize a trial WF (VMCopt)
+## Optimize a trial WF (VMC)
 The next step is to optimize variational parameters included in the generated wavefunction. More in details, here, we optimize the two-body Jastrow parameter and the matrix elements of the three-body Jastrow parameter and the AGP matrix elements!
 
-You can generate a template file for a VMCopt calculation using `jqmc-tool`. Please directly edit `vmc.toml` if you want to change a parameter.
+You can generate a template file for a VMC calculation using `jqmc-tool`. Please directly edit `vmc.toml` if you want to change a parameter.
 
 ```bash
 % cd 07vmc_JAGP
@@ -432,7 +432,7 @@ The final step is to run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (v
 % mpiexec -n 4 -map-by ppr:4:node jqmc mcmc.toml > out_mcmc 2> out_mcmc.e # w/ MPI on GPU, depending the queueing system.
 ```
 
-You may get `E = -34.46554 +- 0.000476 Ha` [VMC]
+You may get `E = -34.46554 +- 0.000476 Ha` [MCMC]
 
 You should gain the energy with respect the the JSD value; otherwise, the optimization went wrong.
 

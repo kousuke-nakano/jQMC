@@ -16,7 +16,7 @@ Binding energy of water-methane dimer, one of the validation tests for ab initio
 
 ## example04
 
-VMC and HF energies of water molecule, for validation of the VMC implementation of jQMC, with spherical or cartesian GTOs.
+MCMC and HF energies of water molecule, for validation of the MCMC implementation of jQMC, with spherical or cartesian GTOs.
 
 ## example05
 
@@ -28,7 +28,7 @@ Binding energy of the water-water dimer with the Jastrow Antisymmetrized Geminal
 
 ## example07
 
-Weak scalings of VMC and LRDMC using the water molecule.
+Weak scalings of LRDMC using the water molecule.
 
 ## example08
 

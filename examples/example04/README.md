@@ -1,4 +1,4 @@
-# VMC validation
+# MCMC validation
 
 `jQMC` interfaces with other QC software packages via `TREXIO`. One of the easiest ways to produce it is using `pySCF` as a converter to the `TREXIO` format is implemented. The following is a script to run a HF calculation of the water molecule and dump it as a `TREXIO` file.
 
@@ -48,7 +48,7 @@ Next step is to convert the `TREXIO` file to the `jqmc` format using `jqmc-tool`
 
 The generated `hamiltonian_data.chk` is a wavefunction file with the `jqmc` format. No Jastrow factors are added here.
 
-Then, you can generate a template file for a VMC calculation using `jqmc-tool`. Please directly edit `mcmc.toml` if you want to change a parameter.
+Then, you can generate a template file for a MCMC calculation using `jqmc-tool`. Please directly edit `mcmc.toml` if you want to change a parameter.
 
 ```bash
 % jqmc-tool mcmc generate-input -g
@@ -83,13 +83,13 @@ The final step is to run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (v
 % mpiexec -n 4 -map-by ppr:4:node jqmc mcmc.toml > out_mcmc 2> out_mcmc.e # w/ MPI on GPU, depending the queueing system.
 ```
 
-You may get `E = -16.94478 +- 0.000203` [VMC wo/ Jastrow factors]
+You may get `E = -16.94478 +- 0.000203` [MCMC wo/ Jastrow factors]
 
-These two energies should be consistent with the VMC error bar as far as the VMC implemenation is correct.
+These two energies should be consistent with the MCMC error bar as far as the MCMC implemenation is correct.
 
 Here is the summary of the Validation tests.
 
-| System  | Spin     |  Type    |   basis        |  ECP    |GTOs           |  HF (Ha)      | VMC (Ha)      |
+| System  | Spin     |  Type    |   basis        |  ECP    |GTOs           |  HF (Ha)      | MCMC (Ha)     |
 |---------|----------|----------|----------------|---------|---------------|---------------|---------------|
 | H2O     | 0        | RHF      | ccecp-ccpvqz   |  ccECP  | Cartesian     | -16.94503     | -16.94487(28) |
 | H2O     | 0        | RHF      | ccecp-ccpvqz   |  ccECP  | Spherical     | -16.94490     | -16.94482(28) |

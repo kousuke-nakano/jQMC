@@ -60,10 +60,10 @@ Next step is to convert the `TREXIO` file to the `jqmc` format using `jqmc-tool`
 
 The generated `hamiltonian_data.chk` is a wavefunction file with the `jqmc` format. `-j2` specifies the initial value of the one-body Jastrow parameter, `-j2` specifies the initial value of the two-body Jastrow parameter, and `-j3` specifies the basis set (`ao`:atomic orbital or `mo`:molecular orbital) for the three-body Jastrow part.
 
-## Optimize a trial WF (VMCopt)
+## Optimize a trial WF (MCMC)
 The next step is to optimize variational parameters included in the generated wavefunction. More in details, here, we optimize the two-body Jastrow parameter and the matrix elements of the three-body Jastrow parameter.
 
-You can generate a template file for a VMCopt calculation using `jqmc-tool`. Please directly edit `vmc.toml` if you want to change a parameter.
+You can generate a template file for a MCMC calculation using `jqmc-tool`. Please directly edit `vmc.toml` if you want to change a parameter.
 
 ```bash
 % cd 03vmc_JSD
@@ -145,7 +145,7 @@ The important criteria are `Max f` and `max signal to noise of f`. `f_max` shoul
 
 
 ## Compute Energy and Atomic forces (MCMC)
-The next step is VMC calculation. You can generate a template file for a VMC calculation using `jqmc-tool`. Please directly edit `mcmc.toml` if you want to change a parameter.
+The next step is MCMC calculation. You can generate a template file for a MCMC calculation using `jqmc-tool`. Please directly edit `mcmc.toml` if you want to change a parameter.
 
 ```bash
 % cd 04mcmc_JSD
@@ -264,7 +264,7 @@ The next step is to convert the optimized JSD ansatz to JAGP one.
 % mv hamiltonian_data_conv.chk hamiltonian_data_JAGP.chk
 ```
 
-## Optimize a trial WF (VMCopt)
+## Optimize a trial WF (MCMC)
 The next step is to optimize variational parameters included in the generated wavefunction. Here, we optimize all the variational parameters.
 
 ```bash
@@ -458,12 +458,12 @@ and `F =`
 ```
 
 ## Summary: PES of the Hydrogen dimer
-One should repeat the above calculations with many $R$ to compute the PES. Here, we plot the PESs, thier derivatives, and forces obtained with JSD and JAGP anstaz by VMC calculations.
+One should repeat the above calculations with many $R$ to compute the PES. Here, we plot the PESs, thier derivatives, and forces obtained with JSD and JAGP anstaz.
 
 
-![H2 VMC PES](H2/H2_PES_mcmc.jpg)
+![H2 MCMC PES](H2/H2_PES_mcmc.jpg)
 
-We notice that the forces shown in the left panel (JSD) remain finite even near the equilibrium position of the PES, though it is negligible for the simple molecule, H$_2$. This discrepancy originates from the so-called self-consistency error[^2021NAKjcp][^2022TIHjcp]. In the JSD calculation, only the Jastrow factor was optimized, while the determinant part was kept fixed to the DFT solution. Although the DFT orbitals satisfy the stationary condition of the Kohn–Sham equations, they are not stationary with respect to the VMC energy. As a result, if the variational parameters in the determinant part are not optimized, an additional contribution should be considered in the force evaluation, which is not captured by standard VMC and DMC formalisms.
+We notice that the forces shown in the left panel (JSD) remain finite even near the equilibrium position of the PES, though it is negligible for the simple molecule, H$_2$. This discrepancy originates from the so-called self-consistency error[^2021NAKjcp][^2022TIHjcp]. In the JSD calculation, only the Jastrow factor was optimized, while the determinant part was kept fixed to the DFT solution. Although the DFT orbitals satisfy the stationary condition of the Kohn–Sham equations, they are not stationary with respect to the MCMC energy. As a result, if the variational parameters in the determinant part are not optimized, an additional contribution should be considered in the force evaluation, which is not captured by standard MCMC and DMC formalisms.
 
 There are two ways to eliminate this bias. One is to optimize all variational parameters, including those in the determinant part[^2024SLOjctc]. Indeed, the forces shown in the left panel obtained using the JAGP ansatz exhibit no such inconsistency: the derivative of the PES agrees with the calculated force values. The other approach is to explicitly correct for the missing contribution[^2024NAKprb]. If one is intereted the latter approach, please contact a `jQMC` develper.
 
