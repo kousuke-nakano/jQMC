@@ -1,6 +1,6 @@
 # jQMC Vectorization Benchmark Results on GPUs
 
-This directory contains vectroziationi benchmark results. The benchmarks compare the throughputs of Variational Monte Carlo (VMC) and Lattice Regularized Diffusion Monte Carlo (LRDMC) calculations on GPU with respect to the number of walkers assigned to one GPU. The attached graphs are summaries of the throughputs of both VMC and LRDMC calculations with respect to the number of walkers per GPU.
+This directory contains vectroziationi benchmark results. The benchmarks compare the throughputs of Markov-Chain Monte Carlo (MCMC) and Lattice Regularized Diffusion Monte Carlo (LRDMC) calculations on GPU with respect to the number of walkers assigned to one GPU. The attached graphs are summaries of the throughputs of both VMC and LRDMC calculations with respect to the number of walkers per GPU.
 
 ---
 
@@ -25,11 +25,11 @@ The benchmark calculations were performed using four molecular systems:
 
 ## Benchmark Results
 
-### VMC Benchmark
+### MCMC Benchmark
 
-The following graph plots GPU throughput for VMC calculations:
+The following graph plots GPU throughput for MCMC calculations:
 
-![VMC Benchmark](jqmc_VMC_vectorization_benchmark.jpg)
+![MCMC Benchmark](jqmc_MCMC_vectorization_benchmark.jpg)
 
 ### LRDMC Benchmark
 

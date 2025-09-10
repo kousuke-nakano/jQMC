@@ -69,16 +69,16 @@ The generated `hamiltonian_data.chk` is a wavefunction file with the `jqmc` form
 ## Optimize a trial WF (VMCopt)
 The next step is to optimize variational parameters included in the generated wavefunction. More in details, here, we optimize the two-body Jastrow parameter and the matrix elements of the three-body Jastrow parameter.
 
-You can generate a template file for a VMCopt calculation using `jqmc-tool`. Please directly edit `vmcopt.toml` if you want to change a parameter.
+You can generate a template file for a VMCopt calculation using `jqmc-tool`. Please directly edit `mcmcopt.toml` if you want to change a parameter.
 
 ```bash
-% jqmc-tool vmcopt generate-input -g
-> Input file is generated: vmcopt.toml
+% jqmc-tool vmc generate-input -g
+> Input file is generated: vmc.toml
 ```
 
-```toml:vmcopt.toml
+```toml:vmc.toml
 [control]
-job_type = "vmcopt" # Specify the job type. "vmc", "vmcopt", "lrdmc", or "lrdmc-tau".
+job_type = "vmc" # Specify the job type. "mcmc", "vmc", "lrdmc", or "lrdmc-tau".
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 1 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
@@ -87,7 +87,7 @@ restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this 
 hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 
-[vmcopt]
+[vmc]
 num_mcmc_steps = 300 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
 num_mcmc_per_measurement = 40 # Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.
 num_mcmc_warmup_steps = 0 # Number of observable measurement steps for warmup (i.e., discarged).
@@ -111,15 +111,15 @@ cg_tol = 0.0001 # Tolerance for the conjugate gradient method.
 Please lunch the job.
 
 ```bash
-% jqmc vmcopt.toml > out_vmcopt 2> out_vmcopt.e # w/o MPI on CPU
-% mpirun -np 4 jqmc vmcopt.toml > out_vmcopt 2> out_vmcopt.e # w/ MPI on CPU
-% mpiexec -n 4 -map-by ppr:4:node jqmc vmcopt.toml > out_vmcopt 2> out_vmcopt.e # w/ MPI on GPU, depending the queueing system.
+% jqmc vmc.toml > out_vmc 2> out_vmc.e # w/o MPI on CPU
+% mpirun -np 4 jqmc vmc.toml > out_vmc 2> out_vmc.e # w/ MPI on CPU
+% mpiexec -n 4 -map-by ppr:4:node jqmc vmc.toml > out_vmc 2> out_vmc.e # w/ MPI on GPU, depending the queueing system.
 ```
 
 You can see the outcome using `jqmc-tool`.
 
 ```bash
-% jqmc-tool vmcopt analyze-output out_vmcopt
+% jqmc-tool vmc analyze-output out_vmc
 
 ------------------------------------------------------
 Iter     E (Ha)     Max f (Ha)   Max of signal to noise of f
@@ -161,36 +161,36 @@ restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this 
 ```
 
 ```bash
-% jqmc vmcopt.toml > out_vmcopt_cont 2> out_vmcopt_cont.e
+% jqmc vmc.toml > out_vmc_cont 2> out_vmc_cont.e
 ```
 
 You can see and plot the outcome using `jqmc-tool`.
 
 ```bash
-% jqmc-tool vmcopt analyze-output out_vmcopt out_vmcopt_cont
+% jqmc-tool vmc analyze-output out_vmc out_vmc_cont
 ```
 
 You can also plot them and save it.
 
 ```bash
-% jqmc-tool vmcopt analyze-output out_vmcopt -p -s vmcopt_JSD.jpg
+% jqmc-tool vmc analyze-output out_vmc -p -s vmc_JSD.jpg
 ```
 
-![VMC JSD optimization](03_S22_water_dimer/03vmcopt_JSD/vmcopt_JSD.jpg)
+![VMC JSD optimization](03_S22_water_dimer/03vmc_JSD/vmc_JSD.jpg)
 
-## Compute Energy (VMC)
-The next step is VMC calculation. You can generate a template file for a VMC calculation using `jqmc-tool`. Please directly edit `vmc.toml` if you want to change a parameter.
+## Compute Energy (MCMC)
+The next step is VMC calculation. You can generate a template file for a VMC calculation using `jqmc-tool`. Please directly edit `mcmc.toml` if you want to change a parameter.
 
 ```bash
-% cd 04vmc_JSD
-% cp ../03vmcopt_JSD/hamiltonian_data_opt_step_200.chk ./hamiltonian_data.chk
-% jqmc-tool vmc generate-input -g
-> Input file is generated: vmc.toml
+% cd 04mcmc_JSD
+% cp ../03vmc_JSD/hamiltonian_data_opt_step_200.chk ./hamiltonian_data.chk
+% jqmc-tool mcmc generate-input -g
+> Input file is generated: mcmc.toml
 ```
 
-```toml:vmc.toml
+```toml:mcmc.toml
 [control]
-job_type = "vmc" # Specify the job type. "vmc", "vmcopt", or "lrdmc"
+job_type = "mcmc" # Specify the job type. "mcmc", "vmc", or "lrdmc"
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 300 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
@@ -198,7 +198,7 @@ restart = false
 restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
 hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
-[vmc]
+[mcmc]
 num_mcmc_steps = 90000 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
 num_mcmc_per_measurement = 40 # Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.
 num_mcmc_warmup_steps = 0 # Number of observable measurement steps for warmup (i.e., discarged).
@@ -210,9 +210,9 @@ epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatiz
 The final step is to run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing system such as PBS).
 
 ```bash
-% jqmc vmc.toml > out_vmc 2> out_vmc.e # w/o MPI on CPU
-% mpirun -np 4 jqmc vmc.toml > out_vmc 2> out_vmc.e # w/ MPI on CPU
-% mpiexec -n 4 -map-by ppr:4:node jqmc vmc.toml > out_vmc 2> out_vmc.e # w/ MPI on GPU, depending the queueing system.
+% jqmc mcmc.toml > out_mcmc 2> out_mcmc.e # w/o MPI on CPU
+% mpirun -np 4 jqmc mcmc.toml > out_mcmc 2> out_mcmc.e # w/ MPI on CPU
+% mpiexec -n 4 -map-by ppr:4:node jqmc mcmc.toml > out_mcmc 2> out_mcmc.e # w/ MPI on GPU, depending the queueing system.
 ```
 
 You may get `E = -34.45005 +- 0.000506 Ha` [VMC]
@@ -225,7 +225,7 @@ The final step is LRDMC calculation. You can generate a template file for a LRDM
 
 ```bash
 % cd 05lrdmc_JSD
-% cp ../04vmc_JSD/hamiltonian_data.chk ./hamiltonian_data.chk
+% cp ../04mcmc_JSD/hamiltonian_data.chk ./hamiltonian_data.chk
 % jqmc-tool lrdmc generate-input -g lrdmc.toml
 > Input file is generated: lrdmc.toml
 ```
@@ -286,7 +286,7 @@ The next step is to convert the optimized JSD ansatz to JAGP one.
 
 ```bash
 % cd 06convert_JSD_to_JAGP
-% cp ../04vmc_JSD/hamiltonian_data.chk ./hamiltonian_data_JSD.chk
+% cp ../04mcmc_JSD/hamiltonian_data.chk ./hamiltonian_data_JSD.chk
 % jqmc-tool hamiltonian conv-wf --convert-to jagp hamiltonian_data_JSD.chk
 > Convert SD to AGP.
 > Hamiltonian data is saved in hamiltonian_data_conv.chk.
@@ -297,18 +297,18 @@ The next step is to convert the optimized JSD ansatz to JAGP one.
 ## Optimize a trial WF (VMCopt)
 The next step is to optimize variational parameters included in the generated wavefunction. More in details, here, we optimize the two-body Jastrow parameter and the matrix elements of the three-body Jastrow parameter and the AGP matrix elements!
 
-You can generate a template file for a VMCopt calculation using `jqmc-tool`. Please directly edit `vmcopt.toml` if you want to change a parameter.
+You can generate a template file for a VMCopt calculation using `jqmc-tool`. Please directly edit `vmc.toml` if you want to change a parameter.
 
 ```bash
-% cd 07vmcopt_JAGP
+% cd 07vmc_JAGP
 % cp ../06convert_JSD_to_JAGP/hamiltonian_data_JAGP.chk ./hamiltonian_data.chk
-% jqmc-tool vmcopt generate-input -g
-> Input file is generated: vmcopt.toml
+% jqmc-tool vmc generate-input -g
+> Input file is generated: vmc.toml
 ```
 
-```toml:vmcopt.toml
+```toml:vmc.toml
 [control]
-job_type = "vmcopt" # Specify the job type. "vmc", "vmcopt", "lrdmc", or "lrdmc-tau".
+job_type = "vmc" # Specify the job type. "mcmc", "vmc", "lrdmc", or "lrdmc-tau".
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 1 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
@@ -317,7 +317,7 @@ restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this 
 hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 
-[vmcopt]
+[vmc]
 num_mcmc_steps = 300 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
 num_mcmc_per_measurement = 40 # Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.
 num_mcmc_warmup_steps = 0 # Number of observable measurement steps for warmup (i.e., discarged).
@@ -341,15 +341,15 @@ cg_tol = 0.0001 # Tolerance for the conjugate gradient method.
 Please lunch the job.
 
 ```bash
-% jqmc vmcopt.toml > out_vmcopt 2> out_vmcopt.e # w/o MPI on CPU
-% mpirun -np 4 jqmc vmcopt.toml > out_vmcopt 2> out_vmcopt.e # w/ MPI on CPU
-% mpiexec -n 4 -map-by ppr:4:node jqmc vmcopt.toml > out_vmcopt 2> out_vmcopt.e # w/ MPI on GPU, depending the queueing system.
+% jqmc vmc.toml > out_vmc 2> out_vmc.e # w/o MPI on CPU
+% mpirun -np 4 jqmc vmc.toml > out_vmc 2> out_vmc.e # w/ MPI on CPU
+% mpiexec -n 4 -map-by ppr:4:node jqmc vmc.toml > out_vmc 2> out_vmc.e # w/ MPI on GPU, depending the queueing system.
 ```
 
 You can see the outcome using `jqmc-tool`.
 
 ```bash
-% jqmc-tool vmcopt analyze-output out_vmcopt
+% jqmc-tool vmc analyze-output out_vmc
 
 ------------------------------------------------------
 Iter     E (Ha)     Max f (Ha)   Max of signal to noise of f
@@ -390,24 +390,24 @@ The important criteria are `Max f` and `Max of signal to noise of f`. Again, a p
 You can also plot them and save it.
 
 ```bash
-% jqmc-tool vmcopt analyze-output out_vmcopt -p -s vmcopt_JAGP.jpg
+% jqmc-tool vmc analyze-output out_vmc -p -s vmc_JAGP.jpg
 ```
 
-![VMC JSD optimization](03_S22_water_dimer/07vmcopt_JAGP/vmcopt_JAGP.jpg)
+![VMC JSD optimization](03_S22_water_dimer/07vmc_JAGP/vmc_JAGP.jpg)
 
-## Compute Energy (VMC)
-The next step is VMC calculation. You can generate a template file for a VMC calculation using `jqmc-tool`. Please directly edit `vmc.toml` if you want to change a parameter.
+## Compute Energy (MCMC)
+The next step is MCMC calculation. You can generate a template file for a MCMC calculation using `jqmc-tool`. Please directly edit `mcmc.toml` if you want to change a parameter.
 
 ```bash
-% cd 08vmc_JAGP
-% cp ../07vmcopt_JAGP/hamiltonian_data_opt_step_200.chk ./hamiltonian_data.chk
-% jqmc-tool vmc generate-input -g
-> Input file is generated: vmc.toml
+% cd 08mcmc_JAGP
+% cp ../07vmc_JAGP/hamiltonian_data_opt_step_200.chk ./hamiltonian_data.chk
+% jqmc-tool mcmc generate-input -g
+> Input file is generated: mcmc.toml
 ```
 
-```toml:vmc.toml
+```toml:mcmc.toml
 [control]
-job_type = "vmc" # Specify the job type. "vmc", "vmcopt", or "lrdmc"
+job_type = "mcmc" # Specify the job type. "mcmc", "vmc", or "lrdmc"
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 300 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
@@ -415,7 +415,7 @@ restart = false
 restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
 hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
-[vmc]
+[mcmc]
 num_mcmc_steps = 90000 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
 num_mcmc_per_measurement = 40 # Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.
 num_mcmc_warmup_steps = 0 # Number of observable measurement steps for warmup (i.e., discarged).
@@ -427,9 +427,9 @@ epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatiz
 The final step is to run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing system such as PBS).
 
 ```bash
-% jqmc vmc.toml > out_vmc 2> out_vmc.e # w/o MPI on CPU
-% mpirun -np 4 jqmc vmc.toml > out_vmc 2> out_vmc.e # w/ MPI on CPU
-% mpiexec -n 4 -map-by ppr:4:node jqmc vmc.toml > out_vmc 2> out_vmc.e # w/ MPI on GPU, depending the queueing system.
+% jqmc mcmc.toml > out_mcmc 2> out_mcmc.e # w/o MPI on CPU
+% mpirun -np 4 jqmc mcmc.toml > out_mcmc 2> out_mcmc.e # w/ MPI on CPU
+% mpiexec -n 4 -map-by ppr:4:node jqmc mcmc.toml > out_mcmc 2> out_mcmc.e # w/ MPI on GPU, depending the queueing system.
 ```
 
 You may get `E = -34.46554 +- 0.000476 Ha` [VMC]
@@ -441,7 +441,7 @@ The final step is LRDMC calculation. You can generate a template file for a LRDM
 
 ```bash
 % cd 09lrdmc_JAGP
-% cp ../08vmc_JAGP/hamiltonian_data.chk ./hamiltonian_data.chk
+% cp ../08mcmc_JAGP/hamiltonian_data.chk ./hamiltonian_data.chk
 % jqmc-tool lrdmc generate-input -g lrdmc.toml
 > Input file is generated: lrdmc.toml
 ```
