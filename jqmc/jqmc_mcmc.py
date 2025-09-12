@@ -312,7 +312,6 @@ class MCMC:
         timer_de_L_dR_dr = 0.0
         timer_dln_Psi_dR_dr = 0.0
         timer_dln_Psi_dc = 0.0
-        timer_de_L_dc = 0.0
         timer_MPI_barrier = 0.0
 
         # mcmc timer starts
@@ -931,7 +930,6 @@ class MCMC:
                     self.__latest_r_dn_carts,
                     RTs,
                 )
-                grad_e_L_h.block_until_ready()
                 grad_e_L_r_up.block_until_ready()
                 grad_e_L_r_dn.block_until_ready()
                 end = time.perf_counter()
@@ -974,7 +972,6 @@ class MCMC:
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
-                grad_ln_Psi_h.block_until_ready()
                 grad_ln_Psi_r_up.block_until_ready()
                 grad_ln_Psi_r_dn.block_until_ready()
                 end = time.perf_counter()
@@ -1031,45 +1028,33 @@ class MCMC:
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
-                grad_ln_Psi_h.block_until_ready()
-                end = time.perf_counter()
-                timer_dln_Psi_dc += end - start
-
-                start = time.perf_counter()
-                """ for Linear method
-                grad_e_L_h = vmap(grad(compute_local_energy_api, argnums=0), in_axes=(None, 0, 0))(
-                    self.__hamiltonian_data,
-                    self.__latest_r_up_carts,
-                    self.__latest_r_dn_carts,
-                )
-                """
-                end = time.perf_counter()
-                timer_de_L_dc += end - start
 
                 # 1b Jastrow
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
                     grad_ln_Psi_jas1b = grad_ln_Psi_h.jastrow_data.jastrow_one_body_data.jastrow_1b_param
+                    # logger.devel(f"grad_ln_Psi_jas1b.shape = {grad_ln_Psi_jas1b.shape}")
                     self.__stored_grad_ln_Psi_jas1b.append(grad_ln_Psi_jas1b)
 
                 # 2b Jastrow
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data is not None:
                     grad_ln_Psi_jas2b = grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
-                    logger.devel(f"grad_ln_Psi_jas2b.shape = {grad_ln_Psi_jas2b.shape}")
-                    logger.devel(f"  grad_ln_Psi_jas2b = {grad_ln_Psi_jas2b}")
+                    # logger.devel(f"grad_ln_Psi_jas2b.shape = {grad_ln_Psi_jas2b.shape}")
                     self.__stored_grad_ln_Psi_jas2b.append(grad_ln_Psi_jas2b)
 
                 # 3b Jastrow
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
                     grad_ln_Psi_jas1b3b_j_matrix = grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix
-                    logger.devel(f"grad_ln_Psi_jas1b3b_j_matrix.shape={grad_ln_Psi_jas1b3b_j_matrix.shape}")
-                    logger.devel(f"  grad_ln_Psi_jas1b3b_j_matrix = {grad_ln_Psi_jas1b3b_j_matrix}")
+                    # logger.devel(f"grad_ln_Psi_jas1b3b_j_matrix.shape={grad_ln_Psi_jas1b3b_j_matrix.shape}")
                     self.__stored_grad_ln_Psi_jas1b3b_j_matrix.append(grad_ln_Psi_jas1b3b_j_matrix)
 
                 # lambda_matrix
                 grad_ln_Psi_lambda_matrix = grad_ln_Psi_h.geminal_data.lambda_matrix
-                logger.devel(f"grad_ln_Psi_lambda_matrix.shape={grad_ln_Psi_lambda_matrix.shape}")
-                logger.devel(f"  grad_ln_Psi_lambda_matrix = {grad_ln_Psi_lambda_matrix}")
+                # logger.devel(f"grad_ln_Psi_lambda_matrix.shape={grad_ln_Psi_lambda_matrix.shape}")
                 self.__stored_grad_ln_Psi_lambda_matrix.append(grad_ln_Psi_lambda_matrix)
+
+                grad_ln_Psi_lambda_matrix.block_until_ready()
+                end = time.perf_counter()
+                timer_dln_Psi_dc += end - start
 
             num_mcmc_done += 1
 
@@ -1114,7 +1099,6 @@ class MCMC:
             + timer_de_L_dR_dr
             + timer_dln_Psi_dR_dr
             + timer_dln_Psi_dc
-            + timer_de_L_dc
             + timer_MPI_barrier
         )
 
@@ -1137,7 +1121,6 @@ class MCMC:
         ave_timer_de_L_dR_dr = mpi_comm.allreduce(timer_de_L_dR_dr, op=MPI.SUM) / mpi_size / num_mcmc_done
         ave_timer_dln_Psi_dR_dr = mpi_comm.allreduce(timer_dln_Psi_dR_dr, op=MPI.SUM) / mpi_size / num_mcmc_done
         ave_timer_dln_Psi_dc = mpi_comm.allreduce(timer_dln_Psi_dc, op=MPI.SUM) / mpi_size / num_mcmc_done
-        ave_timer_de_L_dc = mpi_comm.allreduce(timer_de_L_dc, op=MPI.SUM) / mpi_size / num_mcmc_done
         ave_timer_MPI_barrier = mpi_comm.allreduce(timer_MPI_barrier, op=MPI.SUM) / mpi_size / num_mcmc_done
         ave_timer_misc = mpi_comm.allreduce(timer_misc, op=MPI.SUM) / mpi_size / num_mcmc_done
         ave_stored_w_L = mpi_comm.allreduce(np.mean(self.__stored_w_L), op=MPI.SUM) / mpi_size
@@ -1153,7 +1136,6 @@ class MCMC:
         logger.info(f"  Time for computing de_L/dR and de_L/dr = {ave_timer_de_L_dR_dr * 10**3:.2f} msec.")
         logger.info(f"  Time for computing dln_Psi/dR and dln_Psi/dr = {ave_timer_dln_Psi_dR_dr * 10**3:.2f} msec.")
         logger.info(f"  Time for computing dln_Psi/dc = {ave_timer_dln_Psi_dc * 10**3:.2f} msec.")
-        logger.info(f"  Time for computing de_L/dc = {ave_timer_de_L_dc * 10**3:.2f} msec.")
         logger.info(f"  Time for MPI barrier after MCMC update = {ave_timer_MPI_barrier * 10**3:.2f} msec.")
         logger.info(f"  Time for misc. (others) = {ave_timer_misc * 10**3:.2f} msec.")
         logger.info(f"Average of walker weights is {ave_stored_w_L:.3f}. Ideal is ~ 0.800. Adjust epsilon_AS.")
