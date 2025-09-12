@@ -205,20 +205,9 @@ class GFMC_fixed_projection_time:
         self.__random_discretized_mesh = random_discretized_mesh
         self.__non_local_move = non_local_move
 
-        # timer
-        self.__timer_gmfc_init = 0.0
-        self.__timer_gmfc_total = 0.0
-        self.__timer_projection_init = 0.0
-        self.__timer_projection_total = 0.0
-        self.__timer_mpi_barrier = 0.0
-        self.__timer_branching = 0.0
-        self.__timer_observable = 0.0
-        self.__timer_misc = 0.0
-
         # gfmc branching counter
         self.__mcmc_counter = 0
 
-        start = time.perf_counter()
         # Initialization
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
         self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
@@ -276,62 +265,6 @@ class GFMC_fixed_projection_time:
         # print out hamiltonian info
         logger.info("Printing out information in hamitonian_data instance.")
         self.__hamiltonian_data.logger_info()
-        logger.info("")
-
-        logger.info("Compilation of fundamental functions starts.")
-
-        logger.info("  Compilation e_L starts.")
-        _ = compute_kinetic_energy_jax(
-            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-            r_up_carts=self.__latest_r_up_carts[0],
-            r_dn_carts=self.__latest_r_dn_carts[0],
-        )
-        _, _, _ = compute_discretized_kinetic_energy_jax(
-            alat=self.__alat,
-            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-            r_up_carts=self.__latest_r_up_carts[0],
-            r_dn_carts=self.__latest_r_dn_carts[0],
-            RT=jnp.eye(3, 3),
-        )
-        _ = compute_bare_coulomb_potential_jax(
-            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-            r_up_carts=self.__latest_r_up_carts[0],
-            r_dn_carts=self.__latest_r_dn_carts[0],
-        )
-        if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
-            _ = compute_ecp_local_parts_all_pairs_jax(
-                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                r_up_carts=self.__latest_r_up_carts[0],
-                r_dn_carts=self.__latest_r_dn_carts[0],
-            )
-            if self.__non_local_move == "tmove":
-                _, _, _, _ = compute_ecp_non_local_parts_nearest_neighbors_jax(
-                    coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                    r_up_carts=self.__latest_r_up_carts[0],
-                    r_dn_carts=self.__latest_r_dn_carts[0],
-                    flag_determinant_only=False,
-                    RT=jnp.eye(3),
-                )
-            elif self.__non_local_move == "dltmove":
-                _, _, _, _ = compute_ecp_non_local_parts_nearest_neighbors_jax(
-                    coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                    r_up_carts=self.__latest_r_up_carts[0],
-                    r_dn_carts=self.__latest_r_dn_carts[0],
-                    flag_determinant_only=True,
-                    RT=jnp.eye(3),
-                )
-            else:
-                logger.error(f"non_local_move = {self.__non_local_move} is not yet implemented.")
-                raise NotImplementedError
-
-        end = time.perf_counter()
-        self.__timer_gmfc_init += end - start
-        logger.info("  Compilation e_L is done.")
-
-        logger.info("Compilation of fundamental functions is done.")
-        logger.info(f"Elapsed Time = {self.__timer_gmfc_init:.2f} sec.")
         logger.info("")
 
         # init attributes
@@ -461,9 +394,6 @@ class GFMC_fixed_projection_time:
         np.random.seed(self.__mpi_seed)
 
         # projection function.
-        start_init = time.perf_counter()
-        logger.info("Start compilation of the GFMC projection funciton.")
-
         @jit
         def generate_rotation_matrix(alpha, beta, gamma):
             # Precompute all necessary cosines and sines
@@ -786,6 +716,8 @@ class GFMC_fixed_projection_time:
             return (e_L, projection_counter, tau_left, w_L, new_r_up_carts, new_r_dn_carts, jax_PRNG_key, R.T)
 
         # projection compilation.
+        start_init = time.perf_counter()
+        logger.info("Start compilation of the GFMC projection funciton.")
         logger.info("  Compilation is in progress...")
         projection_counter_list = jnp.array([0 for _ in range(self.__num_walkers)])
         tau_left_list = jnp.array([self.__tau for _ in range(self.__num_walkers)])
@@ -802,7 +734,6 @@ class GFMC_fixed_projection_time:
             self.__alat,
             self.__hamiltonian_data,
         )
-
         end_init = time.perf_counter()
         timer_projection_init += end_init - start_init
         logger.info("End compilation of the GFMC projection funciton.")
@@ -836,14 +767,6 @@ class GFMC_fixed_projection_time:
             start_projection = time.perf_counter()
             # projection loop
             while True:
-                max_progress = (np.max(tau_left_list) / (self.__tau)) * 100.0
-                min_progress = (np.min(tau_left_list) / (self.__tau)) * 100.0
-                logger.devel(
-                    f"  max. Left projection time = {np.max(tau_left_list):.2f}/{self.__tau:.2f}: {max_progress:.1f} %."
-                )
-                logger.devel(
-                    f"  min. Left projection time = {np.min(tau_left_list):.2f}/{self.__tau:.2f}: {min_progress:.1f} %."
-                )
                 (
                     e_L_list,
                     projection_counter_list,
@@ -865,10 +788,7 @@ class GFMC_fixed_projection_time:
                     self.__alat,
                     self.__hamiltonian_data,
                 )
-                logger.devel(f"max(tau_left_list) = {np.max(tau_left_list)}.")
-                logger.devel(f"min(tau_left_list) = {np.min(tau_left_list)}.")
                 if np.max(tau_left_list) <= 0.0:
-                    logger.devel(f"max(tau_left_list) = {np.max(tau_left_list)} <= 0.0. Exit the projection loop.")
                     break
 
             # sync. jax arrays computations.
@@ -1316,14 +1236,6 @@ class GFMC_fixed_projection_time:
         )
         logger.info(f"Average of the number of projections  = {ave_stored_average_projection_counter:.0f}")
         logger.info("")
-
-        self.__timer_gmfc_total += timer_gfmc_total
-        self.__timer_projection_init += timer_projection_init
-        self.__timer_projection_total += timer_projection_total
-        self.__timer_mpi_barrier += timer_mpi_barrier
-        self.__timer_branching += timer_reconfiguration + timer_collection
-        self.__timer_misc += timer_misc
-        self.__timer_observable += timer_observable
 
     def get_E(
         self,
@@ -2266,26 +2178,9 @@ class GFMC_fixed_num_projection:
         self.__random_discretized_mesh = random_discretized_mesh
         self.__non_local_move = non_local_move
 
-        # timer for GFMC
-        self.__timer_gfmc_init = 0.0
-        self.__timer_gfmc_total = 0.0
-        self.__timer_projection_init = 0.0
-        self.__timer_projection_total = 0.0
-        self.__timer_mpi_barrier = 0.0
-        self.__timer_branching = 0.0
-        self.__timer_misc = 0.0
-        self.__timer_update_E_scf = 0.0
-        # time for observables
-        self.__timer_e_L = 0.0
-        self.__timer_de_L_dR_dr = 0.0
-        self.__timer_dln_Psi_dR_dr = 0.0
-        self.__timer_dln_Psi_dc = 0.0
-        self.__timer_de_L_dc = 0.0
-
         # derivative flags
         self.__comput_position_deriv = comput_position_deriv
 
-        start = time.perf_counter()
         # Initialization
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
         self.__jax_PRNG_key = jax.random.PRNGKey(self.__mpi_seed)
@@ -2346,88 +2241,6 @@ class GFMC_fixed_num_projection:
         # print out hamiltonian info
         logger.info("Printing out information in hamitonian_data instance.")
         self.__hamiltonian_data.logger_info()
-        logger.info("")
-
-        logger.info("Compilation of fundamental functions starts.")
-
-        logger.info("  Compilation e_L starts.")
-        _ = compute_kinetic_energy_jax(
-            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-            r_up_carts=self.__latest_r_up_carts[0],
-            r_dn_carts=self.__latest_r_dn_carts[0],
-        )
-        _, _, _ = compute_discretized_kinetic_energy_jax(
-            alat=self.__alat,
-            wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-            r_up_carts=self.__latest_r_up_carts[0],
-            r_dn_carts=self.__latest_r_dn_carts[0],
-            RT=jnp.eye(3, 3),
-        )
-        _ = compute_bare_coulomb_potential_jax(
-            coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-            r_up_carts=self.__latest_r_up_carts[0],
-            r_dn_carts=self.__latest_r_dn_carts[0],
-        )
-        if self.__hamiltonian_data.coulomb_potential_data.ecp_flag:
-            _ = compute_ecp_local_parts_all_pairs_jax(
-                coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                r_up_carts=self.__latest_r_up_carts[0],
-                r_dn_carts=self.__latest_r_dn_carts[0],
-            )
-            if self.__non_local_move == "tmove":
-                _, _, _, _ = compute_ecp_non_local_parts_nearest_neighbors_jax(
-                    coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                    r_up_carts=self.__latest_r_up_carts[0],
-                    r_dn_carts=self.__latest_r_dn_carts[0],
-                    flag_determinant_only=False,
-                    RT=jnp.eye(3),
-                )
-            elif self.__non_local_move == "dltmove":
-                _, _, _, _ = compute_ecp_non_local_parts_nearest_neighbors_jax(
-                    coulomb_potential_data=self.__hamiltonian_data.coulomb_potential_data,
-                    wavefunction_data=self.__hamiltonian_data.wavefunction_data,
-                    r_up_carts=self.__latest_r_up_carts[0],
-                    r_dn_carts=self.__latest_r_dn_carts[0],
-                    flag_determinant_only=True,
-                    RT=jnp.eye(3),
-                )
-            else:
-                logger.error(f"non_local_move = {self.__non_local_move} is not yet implemented.")
-                raise NotImplementedError
-
-        _ = compute_G_L(np.zeros((self.__num_gfmc_collect_steps * 2, 1)), self.__num_gfmc_collect_steps)
-
-        end = time.perf_counter()
-        self.__timer_gfmc_init += end - start
-        logger.info("  Compilation e_L is done.")
-
-        if self.__comput_position_deriv:
-            logger.info("  Compilation dln_Psi/dR starts.")
-            start = time.perf_counter()
-            _, _, _ = grad(evaluate_ln_wavefunction_jax, argnums=(0, 1, 2))(
-                self.__hamiltonian_data.wavefunction_data,
-                self.__latest_r_up_carts[0],
-                self.__latest_r_dn_carts[0],
-            )
-            end = time.perf_counter()
-            logger.info("  Compilation dln_Psi/dR is done.")
-            logger.info(f"  Elapsed Time = {end - start:.2f} sec.")
-            self.__timer_gfmc_init += end - start
-
-            logger.info("  Compilation domega/dR starts.")
-            start = time.perf_counter()
-            _ = evaluate_swct_domega_jax(
-                self.__swct_data,
-                self.__latest_r_up_carts[0],
-            )
-            end = time.perf_counter()
-            logger.info("  Compilation domega/dR is done.")
-            logger.info(f"  Elapsed Time = {end - start:.2f} sec.")
-            self.__timer_gfmc_init += end - start
-
-        logger.info("Compilation of fundamental functions is done.")
-        logger.info(f"Elapsed Time = {self.__timer_gfmc_init:.2f} sec.")
         logger.info("")
 
         # init attributes
@@ -2655,9 +2468,6 @@ class GFMC_fixed_num_projection:
         gfmc_total_start = time.perf_counter()
 
         # projection function.
-        start_init = time.perf_counter()
-        logger.info("Start compilation of the GFMC projection funciton.")
-
         @jit
         def generate_rotation_matrix(alpha, beta, gamma):
             # Precompute all necessary cosines and sines
@@ -3221,6 +3031,8 @@ class GFMC_fixed_num_projection:
             return V_diag + V_nondiag
 
         # projection compilation.
+        start_init = time.perf_counter()
+        logger.info("Start compilation of the GFMC projection funciton.")
         logger.info("  Compilation is in progress...")
         w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
         (_, _, _, _, RTs) = vmap(_projection, in_axes=(0, 0, 0, 0, None, None, None, None, None, None))(
@@ -3277,7 +3089,6 @@ class GFMC_fixed_num_projection:
                 logger.info(
                     f"  Progress: GFMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.1f} %. Elapsed time = {(gfmc_total_current - gfmc_total_start):.1f} sec."
                 )
-                logger.devel(f"    GFMC step = {i_mcmc_step + self.__mcmc_counter + 1}/{num_mcmc_steps + self.__mcmc_counter}")
 
             # Always set the initial weight list to 1.0
             w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
@@ -3322,9 +3133,6 @@ class GFMC_fixed_num_projection:
                 self.__alat,
             )
             e_L_list = V_diag_list + V_nondiag_list
-            logger.info(f"  e_L_list = {e_L_list}")
-            logger.info(f"  V_diag_list = {V_diag_list}")
-            logger.info(f"  V_nondiag_list = {V_nondiag_list}")
             e_L_list.block_until_ready()
 
             """
@@ -3345,7 +3153,6 @@ class GFMC_fixed_num_projection:
 
             end_e_L = time.perf_counter()
             timer_e_L += end_e_L - start_e_L
-            logger.devel(f"    timer_e_L = {(end_e_L - start_e_L) * 1e3:.2f} msec.")
 
             # atomic force related
             if self.__comput_position_deriv:
@@ -3393,7 +3200,6 @@ class GFMC_fixed_num_projection:
                 grad_ln_Psi_r_dn.block_until_ready()
                 end = time.perf_counter()
                 timer_dln_Psi_dR_dr += end - start
-                logger.devel(f"    timer_dln_Psi_dR_dr = {(end - start) * 1e3:.2f} msec.")
 
                 grad_ln_Psi_dR = (
                     grad_ln_Psi_h.geminal_data.orb_data_up_spin.structure_data.positions
@@ -3436,7 +3242,6 @@ class GFMC_fixed_num_projection:
             mpi_comm.Barrier()
             end_mpi_barrier = time.perf_counter()
             timer_mpi_barrier += end_mpi_barrier - start_mpi_barrier
-            logger.devel(f"    timer_mpi_barrier = {(end_mpi_barrier - start_mpi_barrier) * 1e3:.2f} msec.")
 
             # Branching starts
             start_collection = time.perf_counter()
@@ -3967,19 +3772,6 @@ class GFMC_fixed_num_projection:
             f"Survived walkers ratio = {sum_survived_walkers / (sum_survived_walkers + sum_killed_walkers) * 100:.2f} %. Ideal is ~ 98 %. Adjust num_mcmc_per_measurement."
         )
         logger.info("")
-
-        self.__timer_gfmc_total += timer_gfmc_total
-        self.__timer_projection_init += timer_projection_init
-        self.__timer_projection_total += timer_projection_total
-        self.__timer_mpi_barrier += timer_mpi_barrier
-        self.__timer_branching += timer_reconfiguration + timer_collection
-        self.__timer_update_E_scf += timer_update_E_scf
-        self.__timer_misc += timer_misc
-        self.__timer_e_L += timer_e_L
-        self.__timer_de_L_dR_dr += timer_de_L_dR_dr
-        self.__timer_dln_Psi_dR_dr += timer_dln_Psi_dR_dr
-        self.__timer_dln_Psi_dc += timer_dln_Psi_dc
-        self.__timer_de_L_dc += timer_de_L_dc
 
     def get_E(
         self,
