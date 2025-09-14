@@ -365,10 +365,44 @@ class MCMC:
             )
             return R.T
 
+        # --- single-sample: (N_up,3), (N_dn,3) -> (N_up,N_up), (N_up,N_up), (N_up,)
+        def _geminal_inv_single(geminal_data, I, r_up_carts, r_dn_carts):
+            # Build geminal for one walker/config
+            G = compute_geminal_all_elements_jax(
+                geminal_data=geminal_data,
+                r_up_carts=r_up_carts,  # (N_up, 3)
+                r_dn_carts=r_dn_carts,  # (N_dn, 3)
+            )
+            # LU factorization and inverse via solve
+            lu, piv = lu_factor(G)  # lu: (N_up,N_up), piv: (N_up,)
+            Ginv = lu_solve((lu, piv), I)  # (N_up,N_up); more stable than jnp.linalg.inv
+            return Ginv, lu, piv
+
+        # --- batched front-end: (B,N_up,3), (B,N_dn,3) -> batched inverses and factors
+        def _geminal_inv_batched(geminal_data, r_up_batch, r_dn_batch):
+            # Prebuild eye(N) once outside vmap to avoid dynamic shape creation inside the loop
+            N_up = r_up_batch.shape[-2]
+            I = jnp.eye(N_up)  # dtype will auto-promote to match geminal
+
+            vmapped = jax.vmap(
+                lambda r_up, r_dn: _geminal_inv_single(geminal_data, I, r_up, r_dn),
+                in_axes=(0, 0),  # map over batch dimension of r_up_batch and r_dn_batch
+                out_axes=(0, 0, 0),
+            )
+            Ginv_b, lu_b, piv_b = vmapped(r_up_batch, r_dn_batch)
+            return Ginv_b, lu_b, piv_b
+
         # Note: This jit drastically accelarates the computation!!
         @partial(jit, static_argnums=3)
         def _update_electron_positions(
-            init_r_up_carts, init_r_dn_carts, jax_PRNG_key, num_mcmc_per_measurement, hamiltonian_data, Dt, epsilon_AS
+            init_r_up_carts,
+            init_r_dn_carts,
+            jax_PRNG_key,
+            num_mcmc_per_measurement,
+            hamiltonian_data,
+            Dt,
+            epsilon_AS,
+            geminal_inv_init,
         ):
             """Update electron positions based on the MH method.
 
@@ -392,6 +426,7 @@ class MCMC:
             rejected_moves = 0
             r_up_carts = init_r_up_carts
             r_dn_carts = init_r_dn_carts
+            geminal_inv = geminal_inv_init
 
             def body_fun(_, carry):
                 accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv = carry
@@ -583,17 +618,6 @@ class MCMC:
                 carry = (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv)
                 return carry
 
-            # Determinant initial inv calc.!
-            geminal = compute_geminal_all_elements_jax(
-                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                r_up_carts=r_up_carts,
-                r_dn_carts=r_dn_carts,
-            )
-            # LU factorization (pivoted)
-            lu, piv = lu_factor(geminal)
-            I = jnp.eye(geminal.shape[0], dtype=geminal.dtype)
-            geminal_inv = lu_solve((lu, piv), I)  # more stable than jnp.linalg.inv
-
             # main MCMC loop
             accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv = jax.lax.fori_loop(
                 0,
@@ -602,17 +626,25 @@ class MCMC:
                 (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv),
             )
 
-            return (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key)
+            return (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv)
 
         @partial(jit, static_argnums=3)
         def _update_electron_positions_only_up_electron(
-            init_r_up_carts, init_r_dn_carts, jax_PRNG_key, num_mcmc_per_measurement, hamiltonian_data, Dt, epsilon_AS
+            init_r_up_carts,
+            init_r_dn_carts,
+            jax_PRNG_key,
+            num_mcmc_per_measurement,
+            hamiltonian_data,
+            Dt,
+            epsilon_AS,
+            geminal_inv_init,
         ):
             """Update electron positions based on the MH method. See _update_electron_positions_ for the details."""
             accepted_moves = 0
             rejected_moves = 0
             r_up_carts = init_r_up_carts
             r_dn_carts = init_r_dn_carts
+            geminal_inv = geminal_inv_init
 
             def body_fun(_, carry):
                 accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv = carry
@@ -764,17 +796,6 @@ class MCMC:
                 carry = (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv)
                 return carry
 
-            # Determinant initial inv calc.!
-            geminal = compute_geminal_all_elements_jax(
-                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                r_up_carts=r_up_carts,
-                r_dn_carts=r_dn_carts,
-            )
-            # LU factorization (pivoted)
-            lu, piv = lu_factor(geminal)
-            I = jnp.eye(geminal.shape[0], dtype=geminal.dtype)
-            geminal_inv = lu_solve((lu, piv), I)  # more stable than jnp.linalg.inv
-
             # main MCMC loop
             accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv = jax.lax.fori_loop(
                 0,
@@ -783,10 +804,17 @@ class MCMC:
                 (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv),
             )
 
-            return (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key)
+            return (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv)
 
         # MCMC update compilation.
         logger.info("  Compilation is in progress...")
+
+        geminal_inv, _, _ = _geminal_inv_batched(
+            self.__hamiltonian_data.wavefunction_data.geminal_data,
+            self.__latest_r_up_carts,
+            self.__latest_r_dn_carts,
+        )
+
         RTs = jnp.broadcast_to(jnp.eye(3), (len(self.__jax_PRNG_key_list), 3, 3))
         if self.only_up_electron:
             (
@@ -795,7 +823,8 @@ class MCMC:
                 _,
                 _,
                 _,
-            ) = vmap(_update_electron_positions_only_up_electron, in_axes=(0, 0, 0, None, None, None, None))(
+                _,
+            ) = vmap(_update_electron_positions_only_up_electron, in_axes=(0, 0, 0, None, None, None, None, 0))(
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
                 self.__jax_PRNG_key_list,
@@ -803,6 +832,7 @@ class MCMC:
                 self.__hamiltonian_data,
                 self.__Dt,
                 self.__epsilon_AS,
+                geminal_inv,
             )
         else:
             (
@@ -811,7 +841,8 @@ class MCMC:
                 _,
                 _,
                 _,
-            ) = vmap(_update_electron_positions, in_axes=(0, 0, 0, None, None, None, None))(
+                _,
+            ) = vmap(_update_electron_positions, in_axes=(0, 0, 0, None, None, None, None, 0))(
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
                 self.__jax_PRNG_key_list,
@@ -819,6 +850,7 @@ class MCMC:
                 self.__hamiltonian_data,
                 self.__Dt,
                 self.__epsilon_AS,
+                geminal_inv,
             )
         _ = vmap(compute_local_energy_jax, in_axes=(None, 0, 0, 0))(
             self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs
@@ -892,6 +924,12 @@ class MCMC:
 
         # adjust_epsilon_AS = self.__adjust_epsilon_AS
 
+        geminal_inv, _, _ = _geminal_inv_batched(
+            self.__hamiltonian_data.wavefunction_data.geminal_data,
+            self.__latest_r_up_carts,
+            self.__latest_r_dn_carts,
+        )
+
         for i_mcmc_step in range(num_mcmc_steps):
             if (i_mcmc_step + 1) % mcmc_interval == 0:
                 progress = (i_mcmc_step + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
@@ -909,7 +947,8 @@ class MCMC:
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                     self.__jax_PRNG_key_list,
-                ) = vmap(_update_electron_positions_only_up_electron, in_axes=(0, 0, 0, None, None, None, None))(
+                    geminal_inv,
+                ) = vmap(_update_electron_positions_only_up_electron, in_axes=(0, 0, 0, None, None, None, None, 0))(
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                     self.__jax_PRNG_key_list,
@@ -917,6 +956,7 @@ class MCMC:
                     self.__hamiltonian_data,
                     self.__Dt,
                     self.__epsilon_AS,
+                    geminal_inv,
                 )
             else:
                 (
@@ -925,7 +965,8 @@ class MCMC:
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                     self.__jax_PRNG_key_list,
-                ) = vmap(_update_electron_positions, in_axes=(0, 0, 0, None, None, None, None))(
+                    geminal_inv,
+                ) = vmap(_update_electron_positions, in_axes=(0, 0, 0, None, None, None, None, 0))(
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                     self.__jax_PRNG_key_list,
@@ -933,6 +974,7 @@ class MCMC:
                     self.__hamiltonian_data,
                     self.__Dt,
                     self.__epsilon_AS,
+                    geminal_inv,
                 )
             self.__latest_r_up_carts.block_until_ready()
             self.__latest_r_dn_carts.block_until_ready()
