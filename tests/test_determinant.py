@@ -47,6 +47,9 @@ from ..jqmc.determinant import (
     compute_det_geminal_all_elements_debug,
     compute_det_geminal_all_elements_jax,
     compute_geminal_all_elements_debug,
+    compute_geminal_all_elements_jax,
+    compute_geminal_dn_one_column_elements_jax,
+    compute_geminal_up_one_row_elements_jax,
     compute_grads_and_laplacian_ln_Det_debug,
 )
 from ..jqmc.trexio_wrapper import read_trexio_file
@@ -310,6 +313,119 @@ def test_comparing_AS_regularization():
     np.testing.assert_almost_equal(R_AS_debug, R_AS_jax, decimal=8)
 
     jax.clear_caches()
+
+
+def test_one_row_or_one_column_update():
+    """Test the update of one row or one column in the geminal wave function."""
+    """Test the consistency between AS_regularization_debug and AS_regularization_jax."""
+    (
+        structure_data,
+        _,
+        _,
+        _,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+    )
+
+    # check geminal_data
+    geminal_mo_data.sanity_check()
+
+    num_electron_up = geminal_mo_data.num_electron_up
+    num_electron_dn = geminal_mo_data.num_electron_dn
+
+    # Initialization
+    r_up_carts = []
+    r_dn_carts = []
+
+    total_electrons = 0
+
+    if coulomb_potential_data.ecp_flag:
+        charges = np.array(structure_data.atomic_numbers) - np.array(coulomb_potential_data.z_cores)
+    else:
+        charges = np.array(structure_data.atomic_numbers)
+
+    coords = structure_data.positions_cart_np
+
+    # Place electrons around each nucleus
+    for i in range(len(coords)):
+        charge = charges[i]
+        num_electrons = int(np.round(charge))  # Number of electrons to place based on the charge
+
+        # Retrieve the position coordinates
+        x, y, z = coords[i]
+
+        # Place electrons
+        for _ in range(num_electrons):
+            # Calculate distance range
+            distance = np.random.uniform(1.0 / charge, 2.0 / charge)
+            theta = np.random.uniform(0, np.pi)
+            phi = np.random.uniform(0, 2 * np.pi)
+
+            # Convert spherical to Cartesian coordinates
+            dx = distance * np.sin(theta) * np.cos(phi)
+            dy = distance * np.sin(theta) * np.sin(phi)
+            dz = distance * np.cos(theta)
+
+            # Position of the electron
+            electron_position = np.array([x + dx, y + dy, z + dz])
+
+            # Assign spin
+            if len(r_up_carts) < num_electron_up:
+                r_up_carts.append(electron_position)
+            else:
+                r_dn_carts.append(electron_position)
+
+        total_electrons += num_electrons
+
+    # Handle surplus electrons
+    remaining_up = num_electron_up - len(r_up_carts)
+    remaining_dn = num_electron_dn - len(r_dn_carts)
+
+    # Randomly place any remaining electrons
+    for _ in range(remaining_up):
+        r_up_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
+    for _ in range(remaining_dn):
+        r_dn_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
+
+    r_up_carts = np.array(r_up_carts)
+    r_dn_carts = np.array(r_dn_carts)
+
+    geminal_mo = compute_geminal_all_elements_jax(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    # Pick test indices (any valid indices are fine)
+    i_up = 0
+    j_dn = 0
+
+    # Compute the single "up row" against all dn electrons
+    geminal_mo_up_one_row = compute_geminal_up_one_row_elements_jax(
+        geminal_data=geminal_mo_data,
+        r_up_cart=np.reshape(r_up_carts[i_up], (1, 3)),  # enforce (1,3) for single point
+        r_dn_carts=r_dn_carts,
+    )
+
+    # Compute the single "dn column" against all up electrons
+    geminal_mo_dn_one_column = compute_geminal_dn_one_column_elements_jax(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up_carts,
+        r_dn_cart=np.reshape(r_dn_carts[j_dn], (1, 3)),  # enforce (1,3) for single point
+    )
+
+    # --- Numerical consistency asserts (no shape checks) ---
+    # up-one-row must equal the i-th row of the full geminal
+    assert bool(np.allclose(geminal_mo_up_one_row, geminal_mo[i_up, :], rtol=1e-8, atol=1e-12)), (
+        "up-one-row does not match the corresponding row of the full geminal"
+    )
+
+    # dn-one-column must equal the j-th *paired* column of the full geminal
+    assert bool(np.allclose(geminal_mo_dn_one_column, geminal_mo[:, j_dn], rtol=1e-8, atol=1e-12)), (
+        "dn-one-column does not match the corresponding paired column of the full geminal"
+    )
 
 
 @pytest.mark.obsolete(reasons="Gradients are now implemented by fully exploiting JAX modules.")

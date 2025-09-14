@@ -34,7 +34,7 @@
 
 # python modules
 from collections.abc import Callable
-from logging import Formatter, StreamHandler, getLogger
+from logging import getLogger
 
 # jax modules
 # from jax.debug import print as jprint
@@ -636,6 +636,7 @@ def compute_geminal_all_elements_jax(
                 f"Number of up electron is smaller than dn electrons. (N_up - N_dn = {len(r_up_carts) - len(r_dn_carts)})"
             )
             raise ValueError
+
     geminal = _compute_geminal_all_elements_jax(geminal_data, r_up_carts, r_dn_carts)
 
     if geminal.shape != (len(r_up_carts), len(r_up_carts)):
@@ -684,6 +685,80 @@ def compute_geminal_all_elements_debug(
     geminal = np.hstack([geminal_paired, geminal_unpaired])
 
     return geminal
+
+
+@jax.jit
+def compute_geminal_up_one_row_elements_jax(
+    geminal_data,
+    r_up_cart: jnpt.ArrayLike,  # shape: (3,) or (1,3)
+    r_dn_carts: jnpt.ArrayLike,  # shape: (N_dn, 3)
+) -> jax.Array:
+    """Return a single geminal row for one up-electron and all dn-electrons.
+
+    Output shape: (N_dn + num_unpaired,)
+    This is the i-th row of:
+        geminal = [ orb_up(T) @ (lambda_paired @ orb_dn) , orb_up(T) @ lambda_unpaired ]
+    """
+    # Split lambda into paired/unpaired blocks along columns
+    lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(
+        geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
+    )  # shapes: (n_orb_up, n_orb_dn), (n_orb_up, num_unpaired)
+
+    # Orbital values:
+    # - up: single position -> 1D vector (n_orb_up,)
+    # - dn: batched positions -> (n_orb_dn, N_dn)
+    orb_up_vec = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_cart)
+    orb_up_vec = jnp.reshape(orb_up_vec, (-1,))  # ensure (n_orb_up,)
+    orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts)
+    # ensure (n_orb_dn, N_dn)
+    orb_matrix_dn = jnp.asarray(orb_matrix_dn)
+
+    # Paired block row:  (n_orb_up,) @ (n_orb_up, N_dn) -> (N_dn,)
+    paired_right = lambda_matrix_paired @ orb_matrix_dn  # (n_orb_up, N_dn)
+    row_paired = orb_up_vec @ paired_right  # (N_dn,)
+
+    # Unpaired block row: (n_orb_up,) @ (n_orb_up, num_unpaired) -> (num_unpaired,)
+    row_unpaired = orb_up_vec @ lambda_matrix_unpaired  # (num_unpaired,)
+
+    # Concatenate horizontally to match the full geminal row
+    row = jnp.hstack([row_paired, row_unpaired])  # (N_dn + num_unpaired,)
+    return row
+
+
+@jax.jit
+def compute_geminal_dn_one_column_elements_jax(
+    geminal_data,
+    r_up_carts: jnpt.ArrayLike,  # shape: (N_up, 3)
+    r_dn_cart: jnpt.ArrayLike,  # shape: (3,) or (1,3)
+) -> jax.Array:
+    """Return a single geminal column for all up-electrons and one dn-electron.
+
+    Output shape: (N_up,)
+    This corresponds to the j-th column of the *paired* block:
+        col = orb_up(T) @ (lambda_paired @ orb_dn_vec)
+    Note: unpaired columns do not depend on dn positions, so they are not part of this column.
+    """
+    # Split lambda into paired/unpaired blocks along columns
+    lambda_matrix_paired, _lambda_matrix_unpaired = jnp.hsplit(
+        geminal_data.lambda_matrix, [geminal_data.orb_num_dn]
+    )  # lambda_matrix_paired: (n_orb_up, n_orb_dn)
+
+    # Orbital values:
+    # - up: batched positions -> (n_orb_up, N_up)
+    # - dn: single position -> 1D vector (n_orb_dn,)
+    orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
+    orb_matrix_up = jnp.asarray(orb_matrix_up)  # (n_orb_up, N_up)
+
+    orb_dn_vec = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_cart)
+    orb_dn_vec = jnp.reshape(orb_dn_vec, (-1,))  # (n_orb_dn,)
+
+    # Column of paired block:
+    # w = (n_orb_up, n_orb_dn) @ (n_orb_dn,) -> (n_orb_up,)
+    w = lambda_matrix_paired @ orb_dn_vec  # (n_orb_up,)
+    # col = (N_up, n_orb_up) @ (n_orb_up,) -> (N_up,)
+    col = orb_matrix_up.T @ w  # (N_up,)
+
+    return col
 
 
 # no longer used in the main code

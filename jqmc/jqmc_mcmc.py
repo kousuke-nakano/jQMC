@@ -46,9 +46,17 @@ import scipy
 import toml
 from jax import grad, jit, lax, vmap
 from jax import numpy as jnp
+from jax.scipy.linalg import lu_factor, lu_solve
 from mpi4py import MPI
 
-from .determinant import Geminal_data, compute_AS_regularization_factor_jax, compute_det_geminal_all_elements_jax
+from .determinant import (
+    Geminal_data,
+    compute_AS_regularization_factor_jax,
+    compute_det_geminal_all_elements_jax,
+    compute_geminal_all_elements_jax,
+    compute_geminal_dn_one_column_elements_jax,
+    compute_geminal_up_one_row_elements_jax,
+)
 from .hamiltonians import (
     Hamiltonian_data,
     Hamiltonian_data_deriv_params,
@@ -386,8 +394,9 @@ class MCMC:
             r_dn_carts = init_r_dn_carts
 
             def body_fun(_, carry):
-                accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key = carry
+                accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv = carry
                 total_electrons = len(r_up_carts) + len(r_dn_carts)
+                num_up_electrons = len(r_up_carts)
 
                 # Choose randomly if the electron comes from up or dn
                 jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
@@ -484,17 +493,52 @@ class MCMC:
                     r_dn_carts=r_dn_carts,
                 )
 
-                Det_T_p = compute_det_geminal_all_elements_jax(
-                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                    r_up_carts=proposed_r_up_carts,
-                    r_dn_carts=proposed_r_dn_carts,
+                # Determinant part, fast update using the matrix determinant lemma
+                v = lax.cond(
+                    is_up,
+                    lambda _: (
+                        compute_geminal_up_one_row_elements_jax(
+                            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                            # inline "as_row3": force (1,3) even if source is (3,)
+                            r_up_cart=jnp.reshape(proposed_r_up_carts[selected_electron_index], (1, 3)),
+                            r_dn_carts=r_dn_carts,
+                        )
+                        - compute_geminal_up_one_row_elements_jax(
+                            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                            r_up_cart=jnp.reshape(r_up_carts[selected_electron_index], (1, 3)),
+                            r_dn_carts=r_dn_carts,
+                        )
+                    )[:, None],
+                    lambda _: jax.nn.one_hot(selected_electron_index, num_up_electrons)[:, None],
+                    operand=None,
                 )
 
-                Det_T_o = compute_det_geminal_all_elements_jax(
-                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                    r_up_carts=r_up_carts,
-                    r_dn_carts=r_dn_carts,
+                u = lax.cond(
+                    is_up,
+                    lambda _: jax.nn.one_hot(selected_electron_index, num_up_electrons)[:, None],  # (N_up, 1)
+                    lambda _: (
+                        compute_geminal_dn_one_column_elements_jax(
+                            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                            r_up_carts=r_up_carts,
+                            r_dn_cart=jnp.reshape(proposed_r_dn_carts[selected_electron_index], (1, 3)),  # inline "as_row3"
+                        )
+                        - compute_geminal_dn_one_column_elements_jax(
+                            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                            r_up_carts=r_up_carts,
+                            r_dn_cart=jnp.reshape(r_dn_carts[selected_electron_index], (1, 3)),
+                        )
+                    )[:, None],  # -> (N_up, 1)
+                    operand=None,
                 )
+
+                # Determinant ratio and rank-1 inverse update:
+                # det(A+uv^T)/det(A) = 1 + v^T A^{-1} u
+                Ainv_u = geminal_inv @ u  # (N_up,1)
+                vT_Ainv = v.T @ geminal_inv  # (1,N_up)
+                Det_T_ratio = 1.0 + (v.T @ Ainv_u)[0, 0]  # scalar
+
+                # (A+uv^T)^{-1} = A^{-1} - (A^{-1} u v^T A^{-1}) / (1 + v^T A^{-1} u)
+                geminal_inv_new = geminal_inv - (Ainv_u @ vT_Ainv) / Det_T_ratio
 
                 # compute AS regularization factors, R_AS and R_AS_eps
                 R_AS_p = compute_AS_regularization_factor_jax(
@@ -513,7 +557,7 @@ class MCMC:
 
                 # modified trial WFs
                 R_AS_ratio = (R_AS_p_eps / R_AS_p) / (R_AS_o_eps / R_AS_o)
-                WF_ratio = jnp.exp(Jastrow_T_p - Jastrow_T_o) * (Det_T_p / Det_T_o)
+                WF_ratio = jnp.exp(Jastrow_T_p - Jastrow_T_o) * (Det_T_ratio)
 
                 # compute R_ratio
                 R_ratio = (R_AS_ratio * WF_ratio) ** 2.0
@@ -525,22 +569,37 @@ class MCMC:
 
                 def _accepted_fun(_):
                     # Move accepted
-                    return (accepted_moves + 1, rejected_moves, proposed_r_up_carts, proposed_r_dn_carts)
+                    return (accepted_moves + 1, rejected_moves, proposed_r_up_carts, proposed_r_dn_carts, geminal_inv_new)
 
                 def _rejected_fun(_):
                     # Move rejected
-                    return (accepted_moves, rejected_moves + 1, r_up_carts, r_dn_carts)
+                    return (accepted_moves, rejected_moves + 1, r_up_carts, r_dn_carts, geminal_inv)
 
                 # judge accept or reject the propsed move using jax.lax.cond
-                accepted_moves, rejected_moves, r_up_carts, r_dn_carts = lax.cond(
+                accepted_moves, rejected_moves, r_up_carts, r_dn_carts, geminal_inv = lax.cond(
                     b < acceptance_ratio, _accepted_fun, _rejected_fun, operand=None
                 )
 
-                carry = (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key)
+                carry = (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv)
                 return carry
 
-            accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key = jax.lax.fori_loop(
-                0, num_mcmc_per_measurement, body_fun, (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key)
+            # Determinant initial inv calc.!
+            geminal = compute_geminal_all_elements_jax(
+                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                r_up_carts=r_up_carts,
+                r_dn_carts=r_dn_carts,
+            )
+            # LU factorization (pivoted)
+            lu, piv = lu_factor(geminal)
+            I = jnp.eye(geminal.shape[0], dtype=geminal.dtype)
+            geminal_inv = lu_solve((lu, piv), I)  # more stable than jnp.linalg.inv
+
+            # main MCMC loop
+            accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv = jax.lax.fori_loop(
+                0,
+                num_mcmc_per_measurement,
+                body_fun,
+                (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv),
             )
 
             return (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key)
@@ -556,7 +615,8 @@ class MCMC:
             r_dn_carts = init_r_dn_carts
 
             def body_fun(_, carry):
-                accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key = carry
+                accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv = carry
+                num_up_electrons = len(r_up_carts)
 
                 # dummy jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
                 jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
@@ -635,17 +695,31 @@ class MCMC:
                     r_dn_carts=r_dn_carts,
                 )
 
-                Det_T_p = compute_det_geminal_all_elements_jax(
-                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                    r_up_carts=proposed_r_up_carts,
-                    r_dn_carts=proposed_r_dn_carts,
-                )
+                # Determinant part, fast update using the matrix determinant lemma
+                v = (
+                    compute_geminal_up_one_row_elements_jax(
+                        geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                        # inline "as_row3": force (1,3) even if source is (3,)
+                        r_up_cart=jnp.reshape(proposed_r_up_carts[selected_electron_index], (1, 3)),
+                        r_dn_carts=r_dn_carts,
+                    )
+                    - compute_geminal_up_one_row_elements_jax(
+                        geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                        r_up_cart=jnp.reshape(r_up_carts[selected_electron_index], (1, 3)),
+                        r_dn_carts=r_dn_carts,
+                    )
+                )[:, None]
 
-                Det_T_o = compute_det_geminal_all_elements_jax(
-                    geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                    r_up_carts=r_up_carts,
-                    r_dn_carts=r_dn_carts,
-                )
+                u = jax.nn.one_hot(selected_electron_index, num_up_electrons)[:, None]
+
+                # Determinant ratio and rank-1 inverse update:
+                # det(A+uv^T)/det(A) = 1 + v^T A^{-1} u
+                Ainv_u = geminal_inv @ u
+                vT_Ainv = v.T @ geminal_inv
+                Det_T_ratio = 1.0 + (v.T @ Ainv_u)[0, 0]  # scalar
+
+                # (A+uv^T)^{-1} = A^{-1} - (A^{-1} u v^T A^{-1}) / (1 + v^T A^{-1} u)
+                geminal_inv_new = geminal_inv - (Ainv_u @ vT_Ainv) / Det_T_ratio
 
                 # compute AS regularization factors, R_AS and R_AS_eps
                 R_AS_p = compute_AS_regularization_factor_jax(
@@ -664,7 +738,7 @@ class MCMC:
 
                 # modified trial WFs
                 R_AS_ratio = (R_AS_p_eps / R_AS_p) / (R_AS_o_eps / R_AS_o)
-                WF_ratio = jnp.exp(Jastrow_T_p - Jastrow_T_o) * (Det_T_p / Det_T_o)
+                WF_ratio = jnp.exp(Jastrow_T_p - Jastrow_T_o) * (Det_T_ratio)
 
                 # compute R_ratio
                 R_ratio = (R_AS_ratio * WF_ratio) ** 2.0
@@ -676,22 +750,37 @@ class MCMC:
 
                 def _accepted_fun(_):
                     # Move accepted
-                    return (accepted_moves + 1, rejected_moves, proposed_r_up_carts, proposed_r_dn_carts)
+                    return (accepted_moves + 1, rejected_moves, proposed_r_up_carts, proposed_r_dn_carts, geminal_inv_new)
 
                 def _rejected_fun(_):
                     # Move rejected
-                    return (accepted_moves, rejected_moves + 1, r_up_carts, r_dn_carts)
+                    return (accepted_moves, rejected_moves + 1, r_up_carts, r_dn_carts, geminal_inv)
 
                 # judge accept or reject the propsed move using jax.lax.cond
-                accepted_moves, rejected_moves, r_up_carts, r_dn_carts = lax.cond(
+                accepted_moves, rejected_moves, r_up_carts, r_dn_carts, geminal_inv = lax.cond(
                     b < acceptance_ratio, _accepted_fun, _rejected_fun, operand=None
                 )
 
-                carry = (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key)
+                carry = (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv)
                 return carry
 
-            accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key = jax.lax.fori_loop(
-                0, num_mcmc_per_measurement, body_fun, (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key)
+            # Determinant initial inv calc.!
+            geminal = compute_geminal_all_elements_jax(
+                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                r_up_carts=r_up_carts,
+                r_dn_carts=r_dn_carts,
+            )
+            # LU factorization (pivoted)
+            lu, piv = lu_factor(geminal)
+            I = jnp.eye(geminal.shape[0], dtype=geminal.dtype)
+            geminal_inv = lu_solve((lu, piv), I)  # more stable than jnp.linalg.inv
+
+            # main MCMC loop
+            accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv = jax.lax.fori_loop(
+                0,
+                num_mcmc_per_measurement,
+                body_fun,
+                (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key, geminal_inv),
             )
 
             return (accepted_moves, rejected_moves, r_up_carts, r_dn_carts, jax_PRNG_key)

@@ -34,7 +34,7 @@
 
 # python modules
 # from dataclasses import dataclass
-from logging import Formatter, StreamHandler, getLogger
+from logging import getLogger
 
 # import jax
 import jax
