@@ -550,6 +550,35 @@ def compute_det_geminal_all_elements_debug(
     )
 
 
+def compute_AS_regularization_factor_fast_update_jax(
+    geminal: npt.NDArray[np.float64], geminal_inv: npt.NDArray[np.float64]
+) -> jax.Array:
+    """Compute the Attaccalite and Sorella regularization factor with the fast update.
+
+    The method is for computing the Attaccalite and Sorella regularization factor with a given geminal data at (r_up_carts, r_dn_carts).
+
+    Args:
+        geminal (npt.NDArray[np.float64]): Geminal matrix. The dim. is [N_e^{up}, N_e^{up}].
+        geminal_inv (npt.NDArray[np.float64]): Inverse of the geminal matrix. The dim. is [N_e^{up}, N_e^{up}].
+
+    Returns:
+        float: The Attaccalite and Sorella regularization factor
+    """
+    # compute the AS factor
+    theta = 3.0 / 8.0
+
+    # compute F \equiv the square of Frobenius norm of geminal_inv
+    F = jnp.sum(geminal_inv**2)
+
+    # compute the scaling factor
+    S = jnp.min(jnp.sum(geminal**2, axis=0))
+
+    # compute R_AS
+    R_AS = (S * F) ** (-theta)
+
+    return R_AS
+
+
 def compute_AS_regularization_factor_debug(
     geminal_data: Geminal_data, r_up_carts: npt.NDArray[np.float64], r_dn_carts: npt.NDArray[np.float64]
 ) -> npt.NDArray[np.float64]:
