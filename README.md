@@ -28,7 +28,7 @@ What sets **jQMC** apart:
 This combination of features makes **jQMC** a versatile and powerful tool for both users and developers in the field of quantum Monte Carlo simulations.
 
 ## Known issues
-- **`jQMC` is significantly slower than other QMC packages written in compiled languages (e.g., C++ or Fortran) although all the implemented functions are `jit`-compiled and `vmap`-vectorized by `JAX`. Further improvements are needed on both the algorithmic and implementation fronts. As this is an initial release, there remain many bottlenecks and hot spots to address.**
+- On CPUs, **`jQMC` is significantly slower than other QMC packages written in compiled languages (e.g., C++ or Fortran) although all the implemented functions are `jit`-compiled and `vmap`-vectorized by `JAX`. Further improvements are needed on both the algorithmic and implementation fronts. As this is an initial release, there remain many bottlenecks and hot spots to address.** Please use GPUs with a large number of walkers to achieve comparable speed.
 - Atomic force calculations with **solid (sperical) harmonics GTOs** are much slower than energy and energy-optimization calculations due to the very slow compilations of dlnPsi/dR and de_L/dR. This is because `grad`, `jvp`, and `vjp` are slow for these terms for some reason. A more detailed analysis will be needed. Please use **cartesian GTOs** to do those calculations
 - Periodic boundary condition calculations are not supoorted yet. It will be implemented in the future as `JAX` supports `complex128`. Work in progress.
 
