@@ -275,6 +275,7 @@ def cli():
         Dt = parameters[section]["Dt"]
         epsilon_AS = parameters[section]["epsilon_AS"]
         atomic_force = parameters[section]["atomic_force"]
+        parameter_derivatives = parameters[section]["parameter_derivatives"]
 
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
         if not restart:
@@ -303,7 +304,7 @@ def cli():
                     num_mcmc_per_measurement=num_mcmc_per_measurement,
                     epsilon_AS=epsilon_AS,
                     comput_position_deriv=atomic_force,
-                    comput_param_deriv=False,
+                    comput_param_deriv=parameter_derivatives,
                 )
         mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = mcmc.get_E(
@@ -330,6 +331,8 @@ def cli():
                 row_str = "  " + atomic_label.ljust(8) + " ".join(val.ljust(12) for val in row_values)
                 logger.info(row_str)
             logger.info("  " + "-" * sep)
+        if mcmc.comput_param_deriv:
+            logger.info("  Parameter Derivatives are computed.")
         logger.info("")
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
         logger.info("")

@@ -2619,6 +2619,11 @@ class MCMC:
         """Return the flag for computing the derivatives of E wrt. atomic positions."""
         return self.__comput_position_deriv
 
+    @property
+    def comput_param_deriv(self) -> bool:
+        """Return the flag for computing the derivatives of E wrt. variational parameters."""
+        return self.__comput_param_deriv
+
     # dict for WF optimization
     @property
     def opt_param_dict(self):

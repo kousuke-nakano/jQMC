@@ -61,6 +61,7 @@ cli_parameters = {
         "Dt": 2.0,
         "epsilon_AS": 0.0,
         "atomic_force": False,
+        "parameter_derivatives": False,
     },
     "mcmc_comments": {
         "num_mcmc_steps": "Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.",
@@ -70,6 +71,7 @@ cli_parameters = {
         "Dt": "Step size for the MCMC update (bohr).",
         "epsilon_AS": "the epsilon parameter used in the Attacalite-Sandro regulatization method.",
         "atomic_force": "If true, compute atomic forces.",
+        "parameter_derivatives": "If true, compute parameter derivatives.",
     },
     "vmc": {
         "num_mcmc_steps": None,
