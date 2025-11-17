@@ -36,6 +36,9 @@
 from collections.abc import Callable
 from logging import getLogger
 
+# jqmc module
+from typing import TYPE_CHECKING
+
 # jax modules
 # from jax.debug import print as jprint
 import jax
@@ -47,7 +50,6 @@ from flax import struct
 from jax import jit, vmap
 from jax import typing as jnpt
 
-# jqmc module
 from .atomic_orbital import (
     AOs_cart_data,
     AOs_cart_data_deriv_R,
@@ -58,6 +60,9 @@ from .atomic_orbital import (
     compute_AOs_laplacian_jax,
 )
 from .molecular_orbital import MOs_data, MOs_data_deriv_R, compute_MOs_grad_jax, compute_MOs_jax, compute_MOs_laplacian_jax
+
+if TYPE_CHECKING:  # pragma: no cover - typing-only import to avoid circular dependency
+    from .wavefunction import VariationalParameterBlock
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
@@ -149,6 +154,63 @@ class Geminal_data:
         """Log the information obtained from get_info() using logger.info."""
         for line in self.get_info():
             logger.info(line)
+
+    def apply_block_update(self, block: "VariationalParameterBlock") -> "Geminal_data":
+        """Apply a single variational-parameter block update to this Geminal object.
+
+        This method is the Geminal-specific counterpart of
+        :meth:`Wavefunction_data.apply_block_updates`.  It receives a generic
+        :class:`VariationalParameterBlock` whose ``values`` have already been
+        updated (typically by ``block.apply_update`` inside the SR/MCMC driver),
+        and interprets that block according to the structure of the geminal
+        (lambda) matrix.
+
+        Responsibilities of this method are:
+
+        * Map the block name (currently ``"lambda_matrix"``) to the internal
+        geminal parameters.
+        * Handle the splitting of a rectangular lambda matrix into paired and
+        unpaired parts when needed.
+        * Enforce Geminal-specific structural constraints, especially the
+        symmetry conditions on the paired block of the lambda matrix.
+
+        All details about how the lambda parameters are stored and constrained
+        live here (and in the surrounding ``Geminal_data`` class), not in
+        :class:`VariationalParameterBlock` or in the optimizer.  This keeps the
+        SR/MCMC machinery and the block abstraction structure-agnostic: adding
+        new Geminal parameters should only require updating the block
+        construction in ``Wavefunction_data.get_variational_blocks`` and adding
+        the corresponding handling in this method.
+        """
+        if block.name != "lambda_matrix":
+            return self
+
+        lambda_old = np.array(self.lambda_matrix)
+        lambda_new = np.array(block.values)
+
+        # If the paired part of lambda_matrix is symmetric, keep it symmetric
+        # after the update. The unpaired block (if any) is left as-is.
+        if self.orb_num_up == self.orb_num_dn:
+            # Full square matrix: check and enforce symmetry on the whole block.
+            if np.allclose(lambda_old, lambda_old.T, atol=1e-8):
+                lambda_new = 0.5 * (lambda_new + lambda_new.T)
+        else:
+            # Rectangular: split into paired (square) and unpaired parts.
+            paired_old, unpaired_old = np.hsplit(lambda_old, [self.orb_num_dn])
+            paired_new, unpaired_new = np.hsplit(lambda_new, [self.orb_num_dn])
+
+            if np.allclose(paired_old, paired_old.T, atol=1e-8):
+                paired_new = 0.5 * (paired_new + paired_new.T)
+
+            lambda_new = np.hstack([paired_new, unpaired_new])
+
+        return Geminal_data(
+            num_electron_up=self.num_electron_up,
+            num_electron_dn=self.num_electron_dn,
+            orb_data_up_spin=self.orb_data_up_spin,
+            orb_data_dn_spin=self.orb_data_dn_spin,
+            lambda_matrix=lambda_new,
+        )
 
     @property
     def orb_num_up(self) -> int:
@@ -894,7 +956,7 @@ def compute_ratio_determinant_part_debug(
         [
             compute_det_geminal_all_elements_jax(geminal_data, new_r_up_carts, new_r_dn_carts)
             / compute_det_geminal_all_elements_jax(geminal_data, old_r_up_carts, old_r_dn_carts)
-            for new_r_up_carts, new_r_dn_carts in zip(new_r_up_carts_arr, new_r_dn_carts_arr)
+            for new_r_up_carts, new_r_dn_carts in zip(new_r_up_carts_arr, new_r_dn_carts_arr, strict=True)
         ]
     )
 

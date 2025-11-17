@@ -37,7 +37,10 @@ import itertools
 from collections.abc import Callable
 
 # set logger
-from logging import Formatter, StreamHandler, getLogger
+from logging import getLogger
+
+# jqmc module
+from typing import TYPE_CHECKING
 
 # jax modules
 import jax
@@ -48,10 +51,12 @@ from flax import struct
 from jax import grad, hessian, jit, vmap
 from jax import typing as jnpt
 
-# jqmc module
 from .atomic_orbital import AOs_cart_data, AOs_sphe_data, compute_AOs_jax
 from .molecular_orbital import MOs_data, compute_MOs_jax
 from .structure import Structure_data
+
+if TYPE_CHECKING:  # typing-only import to avoid circular dependency
+    from .wavefunction import VariationalParameterBlock
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
@@ -195,7 +200,7 @@ def compute_Jastrow_one_body_debug(
 
     J1_up = 0.0
     for r_up in r_up_carts:
-        for R_cart, Z_eff in zip(positions, effective_charges):
+        for R_cart, Z_eff in zip(positions, effective_charges, strict=True):
             coeff = (2.0 * Z_eff) ** (1.0 / 4.0)
             J1_up += -((2.0 * Z_eff) ** (3.0 / 4.0)) * one_body_jastrow_exp(
                 jastrow_one_body_data.jastrow_1b_param, coeff, r_up, R_cart
@@ -203,7 +208,7 @@ def compute_Jastrow_one_body_debug(
 
     J1_dn = 0.0
     for r_up in r_dn_carts:
-        for R_cart, Z_eff in zip(positions, effective_charges):
+        for R_cart, Z_eff in zip(positions, effective_charges, strict=True):
             coeff = (2.0 * Z_eff) ** (1.0 / 4.0)
             J1_dn += -((2.0 * Z_eff) ** (3.0 / 4.0)) * one_body_jastrow_exp(
                 jastrow_one_body_data.jastrow_1b_param, coeff, r_up, R_cart
@@ -717,6 +722,73 @@ class Jastrow_data:
             jastrow_three_body_data=jastrow_three_body_data,
         )
 
+    def apply_block_update(self, block: "VariationalParameterBlock") -> "Jastrow_data":
+        """Apply a single variational-parameter block update to this Jastrow object.
+
+        This method is the Jastrow-specific counterpart of
+        :meth:`Wavefunction_data.apply_block_updates`.  It receives a generic
+        :class:`VariationalParameterBlock` whose ``values`` have already been
+        updated (typically by ``block.apply_update`` inside the SR/MCMC driver),
+        and interprets that block according to Jastrow semantics.
+
+        Responsibilities of this method are:
+
+        * Map the block name (e.g. ``"j1_param"``, ``"j2_param"``,
+        ``"j3_matrix"``) to the corresponding internal Jastrow field(s).
+        * Enforce Jastrow-specific structural constraints when copying the
+        block values into the internal arrays.  In particular, for the
+        three-body Jastrow term (J3) this includes:
+
+        - Handling the case where only the last column is variational and the
+            rest of the matrix is constrained.
+        - Handling the fully square J3 matrix case.
+        - Enforcing the required symmetry of the square J3 block.
+
+        By keeping all J1/J2/J3 interpretation and constraints in this method
+        (and in the surrounding ``Jastrow_data`` class), the optimizer and
+        :class:`VariationalParameterBlock` remain completely structure-agnostic.
+        To introduce a new Jastrow parameter, extend the block construction
+        in ``Wavefunction_data.get_variational_blocks`` and add the
+        corresponding handling here, without touching the SR/MCMC driver.
+        """
+        j1 = self.jastrow_one_body_data
+        j2 = self.jastrow_two_body_data
+        j3 = self.jastrow_three_body_data
+
+        if block.name == "j1_param" and j1 is not None:
+            new_param = float(np.array(block.values).reshape(()))
+            j1 = Jastrow_one_body_data(
+                jastrow_1b_param=new_param,
+                structure_data=j1.structure_data,
+                core_electrons=j1.core_electrons,
+            )
+        elif block.name == "j2_param" and j2 is not None:
+            new_param = float(np.array(block.values).reshape(()))
+            j2 = Jastrow_two_body_data(jastrow_2b_param=new_param)
+        elif block.name == "j3_matrix" and j3 is not None:
+            # Enforce J3 structural constraints here. The last column corresponds
+            # to the J1-like rectangular part, while the remaining square block
+            # is kept symmetric when the original matrix is symmetric.
+            j3_old = np.array(j3.j_matrix)
+            j3_new = np.array(block.values)
+
+            # Split into square + last-column parts
+            square_old = j3_old[:, :-1]
+            square_new = j3_new[:, :-1]
+
+            # If the original square block is symmetric, enforce symmetry on the update
+            if np.allclose(square_old, square_old.T, atol=1e-8):
+                square_new = 0.5 * (square_new + square_new.T)
+                j3_new[:, :-1] = square_new
+
+            j3 = Jastrow_three_body_data(orb_data=j3.orb_data, j_matrix=j3_new)
+
+        return Jastrow_data(
+            jastrow_one_body_data=j1,
+            jastrow_two_body_data=j2,
+            jastrow_three_body_data=j3,
+        )
+
 
 @struct.dataclass
 class Jastrow_data_deriv_params(Jastrow_data):
@@ -1089,7 +1161,7 @@ def compute_ratio_Jastrow_part_debug(
         [
             np.exp(compute_Jastrow_part_jax(jastrow_data, new_r_up_carts, new_r_dn_carts))
             / np.exp(compute_Jastrow_part_jax(jastrow_data, old_r_up_carts, old_r_dn_carts))
-            for new_r_up_carts, new_r_dn_carts in zip(new_r_up_carts_arr, new_r_dn_carts_arr)
+            for new_r_up_carts, new_r_dn_carts in zip(new_r_up_carts_arr, new_r_dn_carts_arr, strict=True)
         ]
     )
 

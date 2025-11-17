@@ -35,7 +35,7 @@
 import pickle
 
 # python modules
-from logging import Formatter, StreamHandler, getLogger
+from logging import getLogger
 
 # JAX
 import jax

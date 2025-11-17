@@ -71,6 +71,63 @@ jax.config.update("jax_enable_x64", True)
 
 
 @struct.dataclass
+class VariationalParameterBlock:
+    """A block of variational parameters (e.g., J1, J2, J3, lambda).
+
+    Design overview
+    ----------------
+    * A *block* is the smallest unit that the optimizer (MCMC + SR) sees.
+    Each block corresponds to a contiguous slice in the global
+    variational parameter vector and carries enough metadata to
+    reconstruct its original shape (name, values, shape, size).
+    * This class is intentionally **structure-agnostic**: it does not
+    know anything about Jastrow vs Geminal, matrix symmetry, or how a
+    block maps to concrete fields in :class:`Jastrow_data` or
+    :class:`Geminal_data`.
+    * All physics- and structure-specific semantics are owned by the
+    corresponding data classes via their ``get_variational_blocks`` and
+    ``apply_block_update`` methods.
+
+    The goal is that adding or modifying a variational parameter only
+    requires changes on the wavefunction side (Jastrow/Geminal data),
+    while the MCMC/SR driver remains completely agnostic and operates
+    purely on a list of blocks.
+    """
+
+    name: str
+    values: jnpt.ArrayLike = struct.field(pytree_node=True)
+    shape: tuple[int, ...] = struct.field(pytree_node=False)
+    size: int = struct.field(pytree_node=False)
+
+    def apply_update(self, delta_flat: npt.NDArray, learning_rate: float) -> "VariationalParameterBlock":
+        r"""Return a new block with values updated by a generic additive rule.
+
+        This method is intentionally *structure-agnostic* and only performs a
+        simple additive update::
+
+            X_new = X_old + learning_rate * delta
+
+        Any parameter-specific constraints (e.g., symmetry of J3 or
+        ``lambda_matrix``) must be enforced by the owner of the parameter
+        (``jastrow_data``, ``geminal_data``, etc.) inside their
+        ``apply_block_update`` implementations.
+
+        Args:
+            delta_flat: Flattened update vector with length equal to ``size``.
+            learning_rate: Scaling factor for the update.
+        """
+        dX = delta_flat.reshape(self.shape)
+        new_values = np.array(self.values) + learning_rate * dX
+
+        return VariationalParameterBlock(
+            name=self.name,
+            values=new_values,
+            shape=new_values.shape,
+            size=new_values.size,
+        )
+
+
+@struct.dataclass
 class Wavefunction_data:
     """The class contains data for computing wavefunction.
 
@@ -80,7 +137,7 @@ class Wavefunction_data:
     """
 
     jastrow_data: Jastrow_data = struct.field(pytree_node=True, default_factory=lambda: Jastrow_data())
-    geminal_data: Geminal_data = struct.field(pytree_node=True, default_factory=lambda: Wavefunction_data())
+    geminal_data: Geminal_data = struct.field(pytree_node=True, default_factory=lambda: Geminal_data())
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -106,6 +163,126 @@ class Wavefunction_data:
         """Log the information obtained from get_info() using logger.info."""
         for line in self.get_info():
             logger.info(line)
+
+    def apply_block_updates(
+        self,
+        blocks: list[VariationalParameterBlock],
+        thetas: npt.NDArray,
+        learning_rate: float,
+    ) -> "Wavefunction_data":
+        """Return a new :class:`Wavefunction_data` with variational blocks updated.
+
+        Design notes
+        ------------
+        * ``blocks`` defines the ordering and shapes of all variational
+        parameters; ``thetas`` is a single flattened update vector in
+        the same order.
+        * This method is responsible for slicing ``thetas`` into
+        per-block pieces and performing a generic additive update via
+        :meth:`VariationalParameterBlock.apply_update`.
+        * The *interpretation* of each block ("this is J1", "this is the
+        J3 matrix", "this is lambda") and any structural constraints
+        (symmetry, rectangular layout, etc.) are delegated to
+        :meth:`Jastrow_data.apply_block_update` and
+        :meth:`Geminal_data.apply_block_update`.
+
+        Because of this separation of concerns, the MCMC/SR driver only
+        needs to work with the flattened ``thetas`` vector and the list of
+        blocks; it never touches Jastrow/Geminal internals directly. To
+        add a new parameter to the optimization, one only needs to
+        (1) expose it in :meth:`get_variational_blocks`, and
+        (2) handle it in the corresponding ``apply_block_update`` method.
+        """
+        jastrow_data = self.jastrow_data
+        geminal_data = self.geminal_data
+
+        pos = 0
+        for block in blocks:
+            start = pos
+            end = pos + block.size
+            pos = end
+            delta_flat = thetas[start:end]
+            if np.all(delta_flat == 0.0):
+                continue
+
+            updated_block = block.apply_update(delta_flat, learning_rate=learning_rate)
+
+            # Delegate the mapping from block to internal parameters to
+            # Jastrow_data and Geminal_data.
+            if jastrow_data is not None:
+                jastrow_data = jastrow_data.apply_block_update(updated_block)
+            if geminal_data is not None:
+                geminal_data = geminal_data.apply_block_update(updated_block)
+
+        return Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_data)
+
+    def get_variational_blocks(
+        self,
+        opt_J1_param: bool = True,
+        opt_J2_param: bool = True,
+        opt_J3_param: bool = True,
+        opt_lambda_param: bool = False,
+    ) -> list[VariationalParameterBlock]:
+        """Collect variational parameter blocks from Jastrow and Geminal parts.
+
+        Each block corresponds to a contiguous group of variational parameters
+        (e.g., J1, J2, J3 matrix, lambda matrix). This method only exposes the
+        parameter arrays; the corresponding gradients are handled on the MCMC side.
+        """
+        blocks: list[VariationalParameterBlock] = []
+
+        # Jastrow part
+        if self.jastrow_data is not None:
+            if opt_J1_param and self.jastrow_data.jastrow_one_body_data is not None:
+                j1 = self.jastrow_data.jastrow_one_body_data.jastrow_1b_param
+                j1_arr = np.array(j1, copy=False)
+                blocks.append(
+                    VariationalParameterBlock(
+                        name="j1_param",
+                        values=j1_arr,
+                        shape=j1_arr.shape if hasattr(j1_arr, "shape") else (),
+                        size=int(j1_arr.size) if hasattr(j1_arr, "size") else 1,
+                    )
+                )
+
+            if opt_J2_param and self.jastrow_data.jastrow_two_body_data is not None:
+                j2 = self.jastrow_data.jastrow_two_body_data.jastrow_2b_param
+                j2_arr = np.array(j2, copy=False)
+                blocks.append(
+                    VariationalParameterBlock(
+                        name="j2_param",
+                        values=j2_arr,
+                        shape=j2_arr.shape if hasattr(j2_arr, "shape") else (),
+                        size=int(j2_arr.size) if hasattr(j2_arr, "size") else 1,
+                    )
+                )
+
+            if opt_J3_param and self.jastrow_data.jastrow_three_body_data is not None:
+                j3 = self.jastrow_data.jastrow_three_body_data.j_matrix
+                j3_arr = np.array(j3, copy=False)
+                blocks.append(
+                    VariationalParameterBlock(
+                        name="j3_matrix",
+                        values=j3_arr,
+                        shape=j3_arr.shape,
+                        size=int(j3_arr.size),
+                    )
+                )
+
+        # Geminal part
+        if opt_lambda_param and self.geminal_data is not None and self.geminal_data.lambda_matrix is not None:
+            lam = self.geminal_data.lambda_matrix
+            lam_arr = np.array(lam, copy=False)
+            blocks.append(
+                VariationalParameterBlock(
+                    name="lambda_matrix",
+                    values=lam_arr,
+                    shape=lam_arr.shape,
+                    size=int(lam_arr.size),
+                )
+            )
+
+        return blocks
 
     @classmethod
     def from_base(cls, wavefunction_data: "Wavefunction_data"):

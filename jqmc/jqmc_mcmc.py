@@ -50,7 +50,6 @@ from jax.scipy.linalg import lu_factor, lu_solve
 from mpi4py import MPI
 
 from .determinant import (
-    Geminal_data,
     compute_AS_regularization_factor_fast_update_jax,
     compute_AS_regularization_factor_jax,
     compute_det_geminal_all_elements_jax,
@@ -65,13 +64,7 @@ from .hamiltonians import (
     Hamiltonian_data_no_deriv,
     compute_local_energy_jax,
 )
-from .jastrow_factor import (
-    Jastrow_data,
-    Jastrow_one_body_data,
-    Jastrow_three_body_data,
-    Jastrow_two_body_data,
-    compute_Jastrow_part_jax,
-)
+from .jastrow_factor import compute_Jastrow_part_jax
 from .jqmc_utility import generate_init_electron_configurations
 from .setting import (
     MCMC_MIN_BIN_BLOCKS,
@@ -79,10 +72,7 @@ from .setting import (
 )
 from .structure import find_nearest_index_jax
 from .swct import SWCT_data, evaluate_swct_domega_jax, evaluate_swct_omega_jax
-from .wavefunction import (
-    Wavefunction_data,
-    evaluate_ln_wavefunction_jax,
-)
+from .wavefunction import evaluate_ln_wavefunction_jax
 
 # create new logger level for development
 DEVEL_LEVEL = 5
@@ -1578,7 +1568,12 @@ class MCMC:
 
         return (force_mean, force_std)
 
-    def get_dln_WF(self, num_mcmc_warmup_steps: int = 50, chosen_param_index: list = None):
+    def get_dln_WF(
+        self,
+        blocks: list,
+        num_mcmc_warmup_steps: int = 50,
+        chosen_param_index: list | None = None,
+    ):
         """Return the derivativs of ln_WF wrt variational parameters.
 
         Args:
@@ -1592,23 +1587,43 @@ class MCMC:
             O_matrix(npt.NDArray):
                 The matrix containing O_k = d ln Psi / dc_k,
                 where k is the flattened variational parameter index.
-                The dimenstion　of O_matrix is (M, nw, k),
+                The dimenstion of O_matrix is (M, nw, k),
                 where M is the MCMC step and nw is the walker index.
         """
-        dln_Psi_dc_list = self.opt_param_dict["dln_Psi_dc_list"]
+        # Map block names to stored gradient arrays.
+        grad_map = {
+            "j1_param": self.dln_Psi_dc_jas_1b,
+            "j2_param": self.dln_Psi_dc_jas_2b,
+            "j3_matrix": self.dln_Psi_dc_jas_1b3b,
+            "lambda_matrix": self.dln_Psi_dc_lambda_matrix,
+        }
 
-        # here, the thrid index indicates the flattened variational parameter index.
+        # Collect gradients in the order of the provided variational blocks.
+        # We assume blocks is always provided and defines the optimization
+        # parameter ordering; no backward-compatibility fallback is needed.
+        dln_Psi_dc_list = []
+        for block in blocks:
+            if block.name in grad_map:
+                dln_Psi_dc_list.append(grad_map[block.name])
+
+        # here, the third index indicates the flattened variational parameter index.
         O_matrix = np.empty((self.mcmc_counter, self.num_walkers, 0))
 
         for dln_Psi_dc in dln_Psi_dc_list:
             logger.devel(f"dln_Psi_dc.shape={dln_Psi_dc.shape}.")
-            if dln_Psi_dc.ndim == 2:  # i.e., sclar variational param.
+            if dln_Psi_dc.ndim == 2:  # scalar variational param.
                 dln_Psi_dc_reshaped = dln_Psi_dc.reshape(dln_Psi_dc.shape[0], dln_Psi_dc.shape[1], 1)
             else:
                 dln_Psi_dc_reshaped = dln_Psi_dc.reshape(
                     dln_Psi_dc.shape[0], dln_Psi_dc.shape[1], int(np.prod(dln_Psi_dc.shape[2:]))
                 )
             O_matrix = np.concatenate((O_matrix, dln_Psi_dc_reshaped), axis=2)
+
+        # basic sanity check for consistency with blocks
+        total_size_from_blocks = sum(block.size for block in blocks)
+        assert total_size_from_blocks == O_matrix.shape[2], (
+            "Mismatch between total block size and O_matrix parameter dimension."
+        )
 
         logger.devel(f"O_matrix.shape = {O_matrix.shape}")
         if chosen_param_index is None:
@@ -1622,7 +1637,8 @@ class MCMC:
         self,
         num_mcmc_warmup_steps: int = 50,
         num_mcmc_bin_blocks: int = 10,
-        chosen_param_index: list = None,
+        chosen_param_index: list | None = None,
+        blocks: list | None = None,
     ) -> tuple[npt.NDArray, npt.NDArray]:
         """Compute the derivatives of E wrt variational parameters, a.k.a. generalized forces.
 
@@ -1648,7 +1664,11 @@ class MCMC:
         w_L_e_L_split = np.array_split(np.einsum("iw,iw->iw", w_L, e_L), num_mcmc_bin_blocks, axis=0)
         w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
 
-        O_matrix = self.get_dln_WF(num_mcmc_warmup_steps=num_mcmc_warmup_steps, chosen_param_index=chosen_param_index)
+        O_matrix = self.get_dln_WF(
+            num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+            chosen_param_index=chosen_param_index,
+            blocks=blocks,
+        )
         w_L_O_matrix_split = np.array_split(np.einsum("iw,iwj->iwj", w_L, O_matrix), num_mcmc_bin_blocks, axis=0)
         w_L_O_matrix_sum = np.array([np.sum(arr, axis=0) for arr in w_L_O_matrix_split])
         w_L_O_matrix_binned_shape = (
@@ -1913,48 +1933,23 @@ class MCMC:
             logger.info("-" * num_sep_line)
             logger.info("")
 
-            # get opt param
-            dc_param_list = self.opt_param_dict["dc_param_list"]
-            dc_flattened_index_list = self.opt_param_dict["dc_flattened_index_list"]
-            # Indices of variational parameters
-            ## chosen_param_index
-            ## index of optimized parameters in the dln_wf_dc.
-            chosen_param_index = []
-            ## opt_param_index_dict
-            ## index in the vector theta (i.e., natural gradient) for the chosen opt parameters.
-            ## This is used when updating the parameters.
-            opt_param_index_dict = {}
+            # collect variational parameter blocks from the wavefunction data
+            blocks = self.hamiltonian_data.wavefunction_data.get_variational_blocks(
+                opt_J1_param=opt_J1_param,
+                opt_J2_param=opt_J2_param,
+                opt_J3_param=opt_J3_param,
+                opt_lambda_param=opt_lambda_param,
+            )
 
-            for ii, dc_param in enumerate(dc_param_list):
-                if opt_J1_param and dc_param == "j1_param":
-                    new_param_index = [i for i, v in enumerate(dc_flattened_index_list) if v == ii]
-                    opt_param_index_dict[dc_param] = np.array(range(len(new_param_index)), dtype=np.int32) + len(
-                        chosen_param_index
-                    )
-                    chosen_param_index += new_param_index
-                if opt_J2_param and dc_param == "j2_param":
-                    logger.devel(
-                        f"  twobody param before opt. = {self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param}"
-                    )
-                    new_param_index = [i for i, v in enumerate(dc_flattened_index_list) if v == ii]
-                    opt_param_index_dict[dc_param] = np.array(range(len(new_param_index)), dtype=np.int32) + len(
-                        chosen_param_index
-                    )
-                    chosen_param_index += new_param_index
-                if opt_J3_param and dc_param == "j3_matrix":
-                    new_param_index = [i for i, v in enumerate(dc_flattened_index_list) if v == ii]
-                    opt_param_index_dict[dc_param] = np.array(range(len(new_param_index)), dtype=np.int32) + len(
-                        chosen_param_index
-                    )
-                    chosen_param_index += new_param_index
-                if opt_lambda_param and dc_param == "lambda_matrix":
-                    new_param_index = [i for i, v in enumerate(dc_flattened_index_list) if v == ii]
-                    opt_param_index_dict[dc_param] = np.array(range(len(new_param_index)), dtype=np.int32) + len(
-                        chosen_param_index
-                    )
-                    chosen_param_index += new_param_index
-            chosen_param_index = np.array(chosen_param_index)
+            # flatten index mapping for the blocks
+            offsets = []
+            start = 0
+            for block in blocks:
+                offsets.append((block, start, start + block.size))
+                start += block.size
+            total_num_params = start
 
+            chosen_param_index = np.arange(total_num_params, dtype=np.int32)
             logger.info(f"Number of variational parameters = {len(chosen_param_index)}.")
 
             # get f and f_std (generalized forces)
@@ -1962,6 +1957,7 @@ class MCMC:
                 num_mcmc_warmup_steps=num_mcmc_warmup_steps,
                 num_mcmc_bin_blocks=num_mcmc_bin_blocks,
                 chosen_param_index=chosen_param_index,
+                blocks=blocks,
             )
 
             if mpi_rank == 0:
@@ -1998,7 +1994,9 @@ class MCMC:
             w_L_local = list(np.ravel(w_L_local))  # shape: (num_mcmc * num_walker, )s
             e_L_local = list(np.ravel(e_L_local))  # shape: (num_mcmc * num_walker, )
             O_matrix_local = self.get_dln_WF(
-                num_mcmc_warmup_steps=num_mcmc_warmup_steps, chosen_param_index=chosen_param_index
+                num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+                chosen_param_index=chosen_param_index,
+                blocks=blocks,
             )  # shape: (num_mcmc, num_walker, num_param)
             O_matrix_local_shape = (
                 O_matrix_local.shape[0] * O_matrix_local.shape[1],
@@ -2341,91 +2339,16 @@ class MCMC:
             logger.debug(f"np.count_nonzero(theta) = {np.count_nonzero(theta)}.")
             logger.debug(f"max. and min. of theta are {np.max(theta)} and {np.min(theta)}.")
 
-            dc_param_list = self.opt_param_dict["dc_param_list"]
-            dc_shape_list = self.opt_param_dict["dc_shape_list"]
-            dc_flattened_index_list = self.opt_param_dict["dc_flattened_index_list"]
-
-            # optimized parameters
-            if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
-                j1_param = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data.jastrow_1b_param
-            if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data is not None:
-                j2_param = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param
-            if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
-                j3_matrix = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix
-            if self.hamiltonian_data.wavefunction_data.geminal_data is not None:
-                lambda_matrix = self.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix
-
+            # Apply updates via Wavefunction_data, which in turn delegates
+            # to Jastrow_data and Geminal_data. MCMC does not need to know
+            # internal parameter names such as j1_param or lambda_matrix.
             logger.devel(f"dX.shape for MPI-rank={mpi_rank} is {theta.shape}")
-
-            for ii, dc_param in enumerate(dc_param_list):
-                dc_shape = dc_shape_list[ii]
-                if theta.shape == (1,):
-                    dX = theta[0]
-                if opt_J1_param and dc_param == "j1_param":
-                    logger.info("Update J1 parameters.")
-                    dX = theta[opt_param_index_dict[dc_param]].reshape(dc_shape)
-                    j1_param += delta * dX
-                if opt_J2_param and dc_param == "j2_param":
-                    logger.info("Update J2 parameters.")
-                    dX = theta[opt_param_index_dict[dc_param]].reshape(dc_shape)
-                    j2_param += delta * dX
-                if opt_J3_param and dc_param == "j3_matrix":
-                    logger.info("Update J3 parameters.")
-                    dX = theta[opt_param_index_dict[dc_param]].reshape(dc_shape)
-                    # j1 part (rectanglar)
-                    j3_matrix[:, -1] += delta * dX[:, -1]
-                    # j3 part (square)
-                    if np.allclose(j3_matrix[:, :-1], j3_matrix[:, :-1].T, atol=1e-8):
-                        logger.info("The j3 matrix is symmetric. Keep it while updating.")
-                        dX = 1.0 / 2.0 * (dX[:, :-1] + dX[:, :-1].T)
-                    else:
-                        dX = dX[:, :-1]
-                    j3_matrix[:, :-1] += delta * dX
-                    """To be implemented. Opt only the block diagonal parts, i.e. only the J3 part."""
-                if opt_lambda_param and dc_param == "lambda_matrix":
-                    logger.info("Updadate lambda matrix.")
-                    dX = theta[opt_param_index_dict[dc_param]].reshape(dc_shape)
-                    if np.allclose(lambda_matrix, lambda_matrix.T, atol=1e-8):
-                        logger.info("The lambda matrix is symmetric. Keep it while updating.")
-                        dX = 1.0 / 2.0 * (dX + dX.T)
-                    lambda_matrix += delta * dX
-                    """To be implemented. Symmetrize or Anti-symmetrize the updated matrices!!!"""
-                    """To be implemented. Considering symmetries of the AGP lambda matrix."""
 
             structure_data = self.hamiltonian_data.structure_data
             coulomb_potential_data = self.hamiltonian_data.coulomb_potential_data
-            geminal_data = Geminal_data(
-                num_electron_up=self.hamiltonian_data.wavefunction_data.geminal_data.num_electron_up,
-                num_electron_dn=self.hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn,
-                orb_data_up_spin=self.hamiltonian_data.wavefunction_data.geminal_data.orb_data_up_spin,
-                orb_data_dn_spin=self.hamiltonian_data.wavefunction_data.geminal_data.orb_data_dn_spin,
-                lambda_matrix=lambda_matrix,
-            )
-            if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
-                jastrow_one_body_data = Jastrow_one_body_data(
-                    jastrow_1b_param=j1_param,
-                    structure_data=self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data.structure_data,
-                    core_electrons=self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data.core_electrons,
-                )
-            else:
-                jastrow_one_body_data = None
-            if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data is not None:
-                jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=j2_param)
-            else:
-                jastrow_two_body_data = None
-            if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
-                jastrow_three_body_data = Jastrow_three_body_data(
-                    orb_data=self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data,
-                    j_matrix=j3_matrix,
-                )
-            else:
-                jastrow_three_body_data = None
-            jastrow_data = Jastrow_data(
-                jastrow_one_body_data=jastrow_one_body_data,
-                jastrow_two_body_data=jastrow_two_body_data,
-                jastrow_three_body_data=jastrow_three_body_data,
-            )
-            wavefunction_data = Wavefunction_data(geminal_data=geminal_data, jastrow_data=jastrow_data)
+
+            wavefunction_data_old = self.hamiltonian_data.wavefunction_data
+            wavefunction_data = wavefunction_data_old.apply_block_updates(blocks=blocks, thetas=theta, learning_rate=delta)
             hamiltonian_data = Hamiltonian_data(
                 structure_data=structure_data,
                 wavefunction_data=wavefunction_data,
@@ -2623,104 +2546,6 @@ class MCMC:
     def comput_param_deriv(self) -> bool:
         """Return the flag for computing the derivatives of E wrt. variational parameters."""
         return self.__comput_param_deriv
-
-    # dict for WF optimization
-    @property
-    def opt_param_dict(self):
-        """Return a dictionary containing information about variational parameters to be optimized.
-
-        Refactoring in progress.
-
-        Return:
-            dc_param_list (list):
-                labels of the parameters with derivatives computed.
-            dln_Psi_dc_list (list):
-                dln_Psi_dc instances computed by JAX-grad.
-            dc_size_list (list):
-                sizes of dln_Psi_dc instances
-            dc_shape_list (list):
-                shapes of dln_Psi_dc instances
-            dc_flattened_index_list (list):
-                indices of dln_Psi_dc instances for the flattened parameter
-        """
-        dc_param_list = []
-        dln_Psi_dc_list = []
-        # de_L_dc_list = [] # for linear method
-        dc_size_list = []
-        dc_shape_list = []
-        dc_flattened_index_list = []
-
-        if self.__comput_param_deriv:
-            # jastrow 1-body
-            if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
-                dc_param = "j1_param"
-                dln_Psi_dc = self.dln_Psi_dc_jas_1b
-                # de_L_dc = self.de_L_dc_jas_1b # for linear method
-                dc_size = 1
-                dc_shape = (1,)
-                dc_flattened_index = [len(dc_param_list)] * dc_size
-
-                dc_param_list.append(dc_param)
-                dln_Psi_dc_list.append(dln_Psi_dc)
-                # de_L_dc_list.append(de_L_dc) # for linear method
-                dc_size_list.append(dc_size)
-                dc_shape_list.append(dc_shape)
-                dc_flattened_index_list += dc_flattened_index
-            # jastrow 2-body
-            if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data is not None:
-                dc_param = "j2_param"
-                dln_Psi_dc = self.dln_Psi_dc_jas_2b
-                # de_L_dc = self.de_L_dc_jas_2b # for linear method
-                dc_size = 1
-                dc_shape = (1,)
-                dc_flattened_index = [len(dc_param_list)] * dc_size
-
-                dc_param_list.append(dc_param)
-                dln_Psi_dc_list.append(dln_Psi_dc)
-                # de_L_dc_list.append(de_L_dc) # for linear method
-                dc_size_list.append(dc_size)
-                dc_shape_list.append(dc_shape)
-                dc_flattened_index_list += dc_flattened_index
-
-            # jastrow 3-body
-            if self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
-                dc_param = "j3_matrix"
-                dln_Psi_dc = self.dln_Psi_dc_jas_1b3b
-                # de_L_dc = self.de_L_dc_jas_1b3b # for linear method
-                dc_size = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix.size
-                dc_shape = self.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix.shape
-                dc_flattened_index = [len(dc_param_list)] * dc_size
-
-                dc_param_list.append(dc_param)
-                dln_Psi_dc_list.append(dln_Psi_dc)
-                # de_L_dc_list.append(de_L_dc) # for linear method
-                dc_size_list.append(dc_size)
-                dc_shape_list.append(dc_shape)
-                dc_flattened_index_list += dc_flattened_index
-
-            # lambda_matrix
-            dc_param = "lambda_matrix"
-            dln_Psi_dc = self.dln_Psi_dc_lambda_matrix
-            # de_L_dc = self.de_L_dc_lambda # for linear method
-            dc_size = self.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix.size
-            dc_shape = self.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix.shape
-            dc_flattened_index = [len(dc_param_list)] * dc_size
-
-            dc_param_list.append(dc_param)
-            dln_Psi_dc_list.append(dln_Psi_dc)
-            # de_L_dc_list.append(de_L_dc) # for linear method
-            dc_size_list.append(dc_size)
-            dc_shape_list.append(dc_shape)
-            dc_flattened_index_list += dc_flattened_index
-
-        return {
-            "dc_param_list": dc_param_list,
-            "dln_Psi_dc_list": dln_Psi_dc_list,
-            # "de_L_dc_list": de_L_dc_list, # for linear method
-            "dc_size_list": dc_size_list,
-            "dc_shape_list": dc_shape_list,
-            "dc_flattened_index_list": dc_flattened_index_list,
-        }
 
 
 class MCMC_debug:

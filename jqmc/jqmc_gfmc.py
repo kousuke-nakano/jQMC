@@ -52,7 +52,7 @@ from .coulomb_potential import (
     compute_bare_coulomb_potential_el_el_jax,
     compute_bare_coulomb_potential_el_ion_element_wise_jax,
     compute_bare_coulomb_potential_ion_ion_jax,
-    compute_bare_coulomb_potential_jax,
+    # compute_bare_coulomb_potential_jax,
     compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax,
     compute_ecp_local_parts_all_pairs_jax,
     compute_ecp_non_local_parts_nearest_neighbors_jax,
@@ -61,7 +61,7 @@ from .hamiltonians import (
     Hamiltonian_data,
     # Hamiltonian_data_deriv_R,
     Hamiltonian_data_no_deriv,
-    compute_kinetic_energy_jax,
+    # compute_kinetic_energy_jax,
     compute_local_energy_jax,
 )
 from .jastrow_factor import (
