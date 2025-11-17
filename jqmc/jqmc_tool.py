@@ -55,7 +55,13 @@ from .atomic_orbital import AOs_cart_data, AOs_sphe_data
 from .coulomb_potential import Coulomb_potential_data
 from .determinant import Geminal_data
 from .hamiltonians import Hamiltonian_data
-from .jastrow_factor import Jastrow_data, Jastrow_one_body_data, Jastrow_three_body_data, Jastrow_two_body_data
+from .jastrow_factor import (
+    Jastrow_data,
+    Jastrow_one_body_data,
+    Jastrow_three_body_data,
+    Jastrow_two_body_data,
+    NN_Jastrow_data,
+)
 from .jqmc_miscs import cli_parameters
 from .molecular_orbital import MOs_data
 from .setting import (
@@ -134,6 +140,7 @@ class orbital_type(str, Enum):
     ao_small = "ao-small"
     ao_medium = "ao-medium"
     ao_large = "ao-large"
+    none = "none"
 
 
 @trexio_app.command("convert-to")
@@ -143,10 +150,27 @@ def trexio_convert_to(
     j1_parmeter: float = typer.Option(None, "-j1", "--jastrow-1b-parameter", help="Jastrow one-body parameter."),
     j2_parmeter: float = typer.Option(None, "-j2", "--jastrow-2b-parameter", help="Jastrow two-body parameter."),
     j3_basis_type: orbital_type = typer.Option(
-        None, "-j3", "--jastrow-3b-basis-set-type", help="Jastrow three-body basis-set type"
+        orbital_type.none,
+        "-j3",
+        "--jastrow-3b-basis-set-type",
+        help="Jastrow three-body basis-set type (use 'none' to disable analytic J3).",
+    ),
+    j_nn_type: str = typer.Option(
+        None,
+        "-j-nn-type",
+        "--jastrow-nn-type",
+        help="NN Jastrow type (e.g. 'schnet'). If set, an NN-based J3 term is added even when -j3 is none.",
     ),
 ):
     """Convert a TREXIO file to hamiltonian_data."""
+    # Allow direct string inputs when trexio_convert_to is called programmatically (e.g., in tests)
+    if isinstance(j3_basis_type, str):
+        try:
+            j3_basis_type = orbital_type(j3_basis_type)
+        except ValueError:
+            # Leave as-is; downstream validation will raise a clearer error message.
+            pass
+
     (structure_data, aos_data, mos_data, _, geminal_data, coulomb_potential_data) = read_trexio_file(
         trexio_file, store_tuple=True
     )
@@ -165,8 +189,16 @@ def trexio_convert_to(
         jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=j2_parmeter)
     else:
         jastrow_twobody_data = None
-    if j3_basis_type is not None:
-        if j3_basis_type in {"ao", "ao-full", "ao-small", "ao-medium", "ao-large"}:
+    if j3_basis_type is None:
+        j3_choice = None
+    else:
+        j3_choice = getattr(j3_basis_type, "value", j3_basis_type)
+
+    if j3_choice == "none":
+        j3_choice = None
+
+    if j3_choice is not None:
+        if j3_choice in {"ao", "ao-full", "ao-small", "ao-medium", "ao-large"}:
             selected_ao_indices_total = []
 
             # 1) Loop over each nucleus in the AO dataset
@@ -193,9 +225,9 @@ def trexio_convert_to(
                     B = len(basis_exps)
 
                     # 5) Exception-aware partitioning of the basis exponents
-                    if j3_basis_type in ("ao-small", "ao-medium", "ao-large"):
+                    if j3_choice in ("ao-small", "ao-medium", "ao-large"):
                         # define desired number of equal splits depending on mode
-                        desired = {"ao-small": 3, "ao-medium": 4, "ao-large": 5}[j3_basis_type]
+                        desired = {"ao-small": 3, "ao-medium": 4, "ao-large": 5}[j3_choice]
                         # if the number of distinct basis exponents is too small,
                         # pick the single central exponent
                         if B <= desired - 1:
@@ -203,11 +235,11 @@ def trexio_convert_to(
                         else:
                             # otherwise, split into `desired` parts
                             parts = np.array_split(basis_exps, desired)
-                            if j3_basis_type == "ao-small":
+                            if j3_choice == "ao-small":
                                 # keep only the central part
                                 idx = desired // 2
                                 sel_basis = parts[idx]
-                            elif j3_basis_type == "ao-medium":
+                            elif j3_choice == "ao-medium":
                                 # keep the two central parts
                                 start = (desired - 2) // 2
                                 sel_basis = np.concatenate(parts[start : start + 2])
@@ -276,17 +308,28 @@ def trexio_convert_to(
             aos_data = type(aos_data)(**common_kwargs)
 
             jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
-        elif j3_basis_type == "mo":
+        elif j3_choice == "mo":
             jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=mos_data)
         else:
-            raise ImportError(f"Invalid j3_basis_type = {j3_basis_type}.")
+            raise ImportError(f"Invalid j3_basis_type = {j3_choice}.")
     else:
         jastrow_threebody_data = None
+
+    # NN three-body Jastrow (SchNet-like). If requested, initialize NN_Jastrow_data
+    # from the structure information and attach it to Jastrow_data.
+    nn_jastrow_three_body_data = None
+    if j_nn_type is not None:
+        if j_nn_type.lower() == "schnet":
+            nn_jastrow_three_body_data = NN_Jastrow_data.init_from_structure(structure_data)
+        else:
+            raise ImportError(f"Invalid j_nn_type = {j_nn_type}. Supported types: 'schnet'.")
+
     # define data
     jastrow_data = Jastrow_data(
         jastrow_one_body_data=jastrow_onebody_data,
         jastrow_two_body_data=jastrow_twobody_data,
         jastrow_three_body_data=jastrow_threebody_data,
+        nn_jastrow_three_body_data=nn_jastrow_three_body_data,
     )
 
     # geminal_data = geminal_mo_data
@@ -339,8 +382,8 @@ def hamiltonian_to_xyz(
     with open(xyz_file, "w") as f:
         f.write(f"{structure_data.natom}\n")
         f.write("\n")
-        for atom, coord in zip(structure_data.atomic_labels, structure_data.positions):
-            f.write(f"{atom} {coord[0] * Bohr_to_Angstrom} {coord[1] * Bohr_to_Angstrom} {coord[2] * Bohr_to_Angstrom}\n")
+    for atom, coord in zip(structure_data.atomic_labels, structure_data.positions, strict=True):
+        f.write(f"{atom} {coord[0] * Bohr_to_Angstrom} {coord[1] * Bohr_to_Angstrom} {coord[2] * Bohr_to_Angstrom}\n")
 
 
 # This should be removed in future release since it will be no longer useful.
@@ -648,7 +691,7 @@ def vmc_chk_fix(
 
     filenames = [f"{mpi_rank}_{basename_restart_chk}.pkl.gz" for mpi_rank in mpi_ranks]
 
-    for filename, mpi_rank in zip(filenames, mpi_ranks):
+    for filename, mpi_rank in zip(filenames, mpi_ranks, strict=True):
         with zipfile.ZipFile(restart_chk, "r") as zipf:
             data = zipf.read(filename)
             vmc = pickle.loads(data)
@@ -753,7 +796,7 @@ def vmc_analyze_output(
     typer.echo("-" * sep)
     typer.echo(f"{'Iter':<8} {'E (Ha)':<10} {'Max f (Ha)':<12} {'Max of signal to noise of f':<16}")
     typer.echo("-" * sep)
-    for iter, E, max_f, signal_to_noise in zip(iter_list, E_list, max_f_list, signal_to_noise_list):
+    for iter, E, max_f, signal_to_noise in zip(iter_list, E_list, max_f_list, signal_to_noise_list, strict=True):
         typer.echo(f"{iter:4}  {E:8.2uS}  {max_f:+10.2uS}  {signal_to_noise:8.3f}")
     typer.echo("-" * sep)
 
@@ -765,7 +808,7 @@ def vmc_analyze_output(
         max_f_means = []
         max_f_errs = []
 
-        for iter, E, max_f, _ in zip(iter_list, E_list, max_f_list, signal_to_noise_list):
+        for iter, E, max_f, _ in zip(iter_list, E_list, max_f_list, signal_to_noise_list, strict=True):
             iters.append(iter)
             E_means.append(E.n)
             E_errs.append(E.s)
@@ -849,7 +892,7 @@ def mcmc_chk_fix(
 
     filenames = [f"{mpi_rank}_{basename_restart_chk}.pkl.gz" for mpi_rank in mpi_ranks]
 
-    for filename, mpi_rank in zip(filenames, mpi_ranks):
+    for filename, mpi_rank in zip(filenames, mpi_ranks, strict=True):
         with zipfile.ZipFile(restart_chk, "r") as zipf:
             data = zipf.read(filename)
             mcmc = pickle.loads(data)
@@ -1009,7 +1052,7 @@ def lrdmc_chk_fix(
 
     filenames = [f"{mpi_rank}_{basename_restart_chk}.pkl.gz" for mpi_rank in mpi_ranks]
 
-    for filename, mpi_rank in zip(filenames, mpi_ranks):
+    for filename, mpi_rank in zip(filenames, mpi_ranks, strict=True):
         with zipfile.ZipFile(restart_chk, "r") as zipf:
             data = zipf.read(filename)
             lrdmc = pickle.loads(data)

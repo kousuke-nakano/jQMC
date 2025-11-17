@@ -44,7 +44,7 @@ import numpy as np
 import numpy.typing as npt
 import scipy
 import toml
-from jax import grad, jit, lax, vmap
+from jax import grad, jit, lax, tree_util, vmap
 from jax import numpy as jnp
 from jax.scipy.linalg import lu_factor, lu_solve
 from mpi4py import MPI
@@ -279,6 +279,9 @@ class MCMC:
 
         # stored dln_Psi / dc_jas1b3b
         self.__stored_grad_ln_Psi_jas1b3b_j_matrix = []
+
+        # stored dln_Psi / dc_nn_j3
+        self.__stored_grad_ln_Psi_nn_j3 = []
 
         """ linear method
         # stored de_L / dc_jas2b
@@ -1186,6 +1189,23 @@ class MCMC:
                     # logger.devel(f"grad_ln_Psi_jas1b3b_j_matrix.shape={grad_ln_Psi_jas1b3b_j_matrix.shape}")
                     self.__stored_grad_ln_Psi_jas1b3b_j_matrix.append(grad_ln_Psi_jas1b3b_j_matrix)
 
+                # NN J3
+                nn_j3_data = self.__hamiltonian_data.wavefunction_data.jastrow_data.nn_jastrow_three_body_data
+                if nn_j3_data is not None and nn_j3_data.params is not None and nn_j3_data.num_params > 0:
+                    grad_ln_Psi_nn_params = grad_ln_Psi_h.jastrow_data.nn_jastrow_three_body_data.params
+
+                    def _slice_walker(idx):
+                        return tree_util.tree_map(lambda x: x[idx], grad_ln_Psi_nn_params)
+
+                    nn_grad_list = []
+                    for walker_idx in range(self.__num_walkers):
+                        walker_grad_tree = _slice_walker(walker_idx)
+                        flat = np.array(nn_j3_data.flatten_fn(walker_grad_tree))
+                        nn_grad_list.append(flat)
+
+                    grad_nn_flat = np.stack(nn_grad_list, axis=0)
+                    self.__stored_grad_ln_Psi_nn_j3.append(grad_nn_flat)
+
                 # lambda_matrix
                 grad_ln_Psi_lambda_matrix = grad_ln_Psi_h.geminal_data.lambda_matrix
                 # logger.devel(f"grad_ln_Psi_lambda_matrix.shape={grad_ln_Psi_lambda_matrix.shape}")
@@ -1595,6 +1615,7 @@ class MCMC:
             "j1_param": self.dln_Psi_dc_jas_1b,
             "j2_param": self.dln_Psi_dc_jas_2b,
             "j3_matrix": self.dln_Psi_dc_jas_1b3b,
+            "nn_j3": self.dln_Psi_dc_nn_j3,
             "lambda_matrix": self.dln_Psi_dc_lambda_matrix,
         }
 
@@ -1844,6 +1865,7 @@ class MCMC:
         opt_J1_param: bool = True,
         opt_J2_param: bool = True,
         opt_J3_param: bool = True,
+        opt_JNN_param: bool = True,
         opt_lambda_param: bool = False,
         num_param_opt: int = 0,
         cg_flag: bool = True,
@@ -1879,7 +1901,9 @@ class MCMC:
             opt_J2_param (bool):
                 optimize two-body Jastrow
             opt_J3_param (bool):
-                optimize three-body Jastrow
+                optimize analytic three-body Jastrow parameters
+            opt_JNN_param (bool):
+                optimize neural-network Jastrow parameters
             opt_lambda_param (bool):
                 optimize lambda_matrix in the determinant part.
             num_param_opt (int):
@@ -1938,6 +1962,7 @@ class MCMC:
                 opt_J1_param=opt_J1_param,
                 opt_J2_param=opt_J2_param,
                 opt_J3_param=opt_J3_param,
+                opt_JNN_param=opt_JNN_param,
                 opt_lambda_param=opt_lambda_param,
             )
 
@@ -1963,7 +1988,10 @@ class MCMC:
             if mpi_rank == 0:
                 logger.debug(f"shape of f = {f.shape}.")
                 logger.devel(f"f_std.shape = {f_std.shape}.")
-                signal_to_noise_f = np.abs(f) / f_std
+                tol = np.finfo(f_std.dtype).eps if np.issubdtype(f_std.dtype, np.floating) else 0.0
+                finite_mask = np.isfinite(f_std) & (np.abs(f_std) > tol)
+                signal_to_noise_f = np.zeros_like(f)
+                signal_to_noise_f[finite_mask] = np.abs(f[finite_mask]) / f_std[finite_mask]
                 f_argmax = np.argmax(np.abs(f))
                 logger.info("-" * num_sep_line)
                 logger.info(f"Max f = {f[f_argmax]:.3f} +- {f_std[f_argmax]:.3f} Ha/a.u.")
@@ -2060,7 +2088,9 @@ class MCMC:
             diag_S_local = np.einsum("jk,kj->j", X_local, X_local.T)
             diag_S = np.empty(diag_S_local.shape, dtype=np.float64)
             mpi_comm.Allreduce(diag_S_local, diag_S, op=MPI.SUM)
-            logger.debug(f"max. and min. diag_S = {np.max(diag_S)}, {np.min(diag_S)}.")
+            logger.info(f"max. and min. diag_S = {np.max(diag_S)}, {np.min(diag_S)}.")
+            diag_eps = np.finfo(diag_S.dtype).tiny
+            diag_S = np.where(np.isfinite(diag_S) & (diag_S > diag_eps), diag_S, diag_eps)
             X_local = X_local / np.sqrt(diag_S)[:, np.newaxis]  # shape (num_param, num_mcmc * num_walker)
 
             # matrix shape info
@@ -2339,6 +2369,38 @@ class MCMC:
             logger.debug(f"np.count_nonzero(theta) = {np.count_nonzero(theta)}.")
             logger.debug(f"max. and min. of theta are {np.max(theta)} and {np.min(theta)}.")
 
+            # Guard against NaN/Inf components before applying the update and
+            # report which blocks contain problematic entries.
+            non_finite_mask = ~np.isfinite(theta)
+            if np.any(non_finite_mask):
+                bad_blocks: list[str] = []
+                for block, start, end in offsets:
+                    block_mask = non_finite_mask[start:end]
+                    if np.any(block_mask):
+                        count_bad = int(np.count_nonzero(block_mask))
+                        bad_blocks.append(f"{block.name}({count_bad}/{block.size})")
+                logger.error(
+                    "Detected non-finite entries in SR update vector; zeroing them. Blocks=%s",
+                    ", ".join(bad_blocks) if bad_blocks else "unknown",
+                )
+                theta = np.where(np.isfinite(theta), theta, 0.0)
+
+            # Emit per-block statistics so we can confirm that parameters are
+            # actually updated (or detect suspiciously large steps).
+            for block, start, end in offsets:
+                block_theta = theta[start:end]
+                if not np.any(block_theta):
+                    continue
+                block_norm = float(np.linalg.norm(block_theta))
+                block_max = float(np.max(np.abs(block_theta)))
+                logger.debug(
+                    "SR update summary – block=%s size=%d ||theta||_2=%.3e max|theta|=%.3e",
+                    block.name,
+                    block.size,
+                    block_norm,
+                    block_max,
+                )
+
             # Apply updates via Wavefunction_data, which in turn delegates
             # to Jastrow_data and Geminal_data. MCMC does not need to know
             # internal parameter names such as j1_param or lambda_matrix.
@@ -2512,6 +2574,11 @@ class MCMC:
     def dln_Psi_dc_jas_1b3b(self) -> npt.NDArray:
         """Return the stored dln_Psi/dc_J1_3 array. dim: (mcmc_counter, num_walkers, num_J1_J3_param)."""
         return np.array(self.__stored_grad_ln_Psi_jas1b3b_j_matrix)
+
+    @property
+    def dln_Psi_dc_nn_j3(self) -> npt.NDArray:
+        """Return the stored dln_Psi/dc_NN_J3 array. dim: (mcmc_counter, num_walkers, num_nn_params)."""
+        return np.array(self.__stored_grad_ln_Psi_nn_j3)
 
     '''
     @property

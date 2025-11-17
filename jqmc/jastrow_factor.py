@@ -40,13 +40,14 @@ from collections.abc import Callable
 from logging import getLogger
 
 # jqmc module
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Sequence
 
 # jax modules
 import jax
 import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
+from flax import linen as nn
 from flax import struct
 from jax import grad, hessian, jit, vmap
 from jax import typing as jnpt
@@ -64,6 +65,419 @@ logger = getLogger("jqmc").getChild(__name__)
 # JAX float64
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
+
+
+def _flatten_params_with_treedef(params: Any) -> tuple[jnp.ndarray, Any, list[tuple[int, ...]]]:
+    """Flatten a PyTree of params into a 1D vector, returning treedef and shapes.
+
+    This helper is defined at module scope so that closures built from it
+    are picklable (needed for storing NN_Jastrow_data inside
+    Hamiltonian_data via pickle).
+    """
+    from jax import tree_flatten
+
+    leaves, treedef = tree_flatten(params)
+    flat = jnp.concatenate([jnp.ravel(x) for x in leaves])
+    shapes: list[tuple[int, ...]] = [tuple(x.shape) for x in leaves]
+    return flat, treedef, shapes
+
+
+def _make_flatten_fn(treedef: Any) -> Callable[[Any], jnp.ndarray]:
+    """Create a flatten function based on a reference treedef.
+
+    The resulting function flattens any params PyTree that matches the
+    same treedef structure into a 1D JAX array.
+    """
+    from jax import tree_flatten
+
+    def flatten_fn(p: Any) -> jnp.ndarray:
+        leaves_p, treedef_p = tree_flatten(p)
+        # Optional: could assert treedef_p == treedef for extra safety.
+        return jnp.concatenate([jnp.ravel(x) for x in leaves_p])
+
+    # Expose the treedef used to build this function so that pickle can
+    # correctly restore it as a top-level function reference rather than a
+    # local closure. This makes the object picklable when NN_Jastrow_data
+    # instances are stored inside Hamiltonian_data.
+    flatten_fn.__module__ = __name__
+    flatten_fn.__qualname__ = "_make_flatten_fn_flatten_fn"
+
+    return flatten_fn
+
+
+def _make_unflatten_fn(treedef: Any, shapes: Sequence[tuple[int, ...]]) -> Callable[[jnp.ndarray], Any]:
+    """Create an unflatten function using a treedef and per-leaf shapes."""
+    from jax import tree_unflatten
+
+    def unflatten_fn(flat_vec: jnp.ndarray) -> Any:
+        leaves_new = []
+        idx = 0
+        for shape in shapes:
+            size = int(np.prod(shape))
+            leaves_new.append(flat_vec[idx : idx + size].reshape(shape))
+            idx += size
+        return tree_unflatten(treedef, leaves_new)
+
+    # As with _make_flatten_fn, make sure this nested function is picklable by
+    # giving it a stable module and qualname so that pickle can resolve it as
+    # a top-level attribute.
+    unflatten_fn.__module__ = __name__
+    unflatten_fn.__qualname__ = "_make_unflatten_fn_unflatten_fn"
+
+    return unflatten_fn
+
+
+class NNJastrow(nn.Module):
+    r"""PauliNet-inspired NN that outputs a three-body Jastrow correction.
+
+    The network implements the iteration rules described in the PauliNet
+    manuscript (Eq. 1–2). Electron embeddings :math:`\mathbf{x}_i^{(n)}` are
+    iteratively refined by three message channels:
+
+    * ``(+ )``: same-spin electrons, enforcing antisymmetry indirectly by keeping
+        the messages exchange-equivariant.
+    * ``(- )``: opposite-spin electrons, capturing pairing terms.
+    * ``(n)``: nuclei, represented by fixed species embeddings.
+
+    After ``num_layers`` iterations the final electron embeddings are summed and
+    fed through :math:`\eta_\theta` to produce a symmetric correction that is
+    added on top of the analytic three-body Jastrow.
+    """
+
+    hidden_dim: int = 64
+    num_layers: int = 3
+    num_rbf: int = 32
+    cutoff: float = 5.0
+    species_lookup: npt.NDArray[np.int32] | jnp.ndarray | None = None
+    num_species: int | None = None
+
+    class PhysNetRadialLayer(nn.Module):
+        r"""Cuspless PhysNet-inspired radial features :math:`e_k(r)`.
+
+        The basis follows Eq. (3) in the PauliNet supplement with a PhysNet-style
+        envelope that forces both the value and the derivative of each Gaussian
+        to vanish at the cutoff and the origin.  These features are reused across
+        all message channels, ensuring consistent geometric encoding.
+        """
+
+        num_rbf: int
+        cutoff: float
+
+        @nn.compact
+        def __call__(self, distances: jnp.ndarray) -> jnp.ndarray:
+            r"""Evaluate the PhysNet radial envelope :math:`e_k(r)`.
+
+            The basis functions follow PauliNet's supplementary Eq. (3):
+
+            .. math::
+
+                e_k(r) = r^2 \exp\left[-r - \frac{(r-\mu_k)^2}{\sigma_k^2}\right] f_c(r)
+
+            where :math:`f_c(r)` is a differentiable cutoff ensuring :math:`e_k(0)=e_k(r_c)=0`.
+
+            Args:
+                distances: Array of shape ``(...,)`` containing non-negative inter-particle
+                    distances in Bohr. Arbitrary batch dimensions are supported.
+
+            Returns:
+                jnp.ndarray: ``distances.shape + (num_rbf,)`` radial feature tensor with the
+                same dtype as ``distances``. Values outside ``cutoff`` are masked to zero.
+
+            Raises:
+                ValueError: If ``num_rbf`` is not strictly positive.
+            """
+            if self.num_rbf <= 0:
+                raise ValueError("num_rbf must be positive for PhysNet radial features.")
+
+            q = jnp.linspace(0.0, 1.0, self.num_rbf + 2, dtype=distances.dtype)[1:-1]
+            mu = self.cutoff * q**2
+            sigma = (1.0 / 7.0) * (1.0 + self.cutoff * q)
+
+            d = jnp.clip(distances, a_min=0.0, a_max=self.cutoff)
+            d = d[..., None]
+            mu = mu[None, ...]
+            sigma = sigma[None, ...]
+
+            features = (d**2) * jnp.exp(-d - ((d - mu) ** 2) / (sigma**2 + 1e-12))
+            mask = (distances[..., None] <= self.cutoff).astype(distances.dtype)
+            return features * mask
+
+    class TwoLayerMLP(nn.Module):
+        r"""Utility MLP used for :math:`w_\theta`, :math:`h_\theta`, :math:`g_\theta`, and :math:`\eta_\theta`."""
+
+        width: int
+        out_dim: int
+
+        @nn.compact
+        def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
+            """Apply a SiLU-activated two-layer perceptron.
+
+            Args:
+                x: Input tensor of shape ``(..., features)`` whose trailing axis is interpreted
+                    as the feature dimension.
+
+            Returns:
+                jnp.ndarray: Tensor with the same leading dimensions as ``x`` and a trailing
+                dimension of ``out_dim``.
+            """
+            y = nn.Dense(self.width)(x)
+            y = nn.silu(y)
+            y = nn.Dense(self.out_dim)(y)
+            return y
+
+    class PauliNetBlock(nn.Module):
+        r"""Single PauliNet message-passing iteration following Eq. (1).
+
+        Each block mixes three message channels per electron: same-spin ``(+ )``,
+        opposite-spin ``(- )``, and nucleus-electron ``(n)``. The sender network
+        is shared across channels to match the PauliNet weight-tying scheme, while
+        separate weighting/receiver networks parameterize the contribution of every
+        channel.
+        """
+
+        hidden_dim: int
+
+        def setup(self):
+            """Instantiate the shared sender/receiver networks for this block."""
+            self.sender_net = NNJastrow.TwoLayerMLP(width=self.hidden_dim, out_dim=self.hidden_dim)
+            self.weight_same = NNJastrow.TwoLayerMLP(width=self.hidden_dim, out_dim=self.hidden_dim)
+            self.weight_opposite = NNJastrow.TwoLayerMLP(width=self.hidden_dim, out_dim=self.hidden_dim)
+            self.weight_nuc = NNJastrow.TwoLayerMLP(width=self.hidden_dim, out_dim=self.hidden_dim)
+
+            self.receiver_same = NNJastrow.TwoLayerMLP(width=self.hidden_dim, out_dim=self.hidden_dim)
+            self.receiver_opposite = NNJastrow.TwoLayerMLP(width=self.hidden_dim, out_dim=self.hidden_dim)
+            self.receiver_nuc = NNJastrow.TwoLayerMLP(width=self.hidden_dim, out_dim=self.hidden_dim)
+
+        def _aggregate_pair_channel(
+            self,
+            weights_net: nn.Module,
+            radial_features: jnp.ndarray,
+            sender_proj: jnp.ndarray,
+            mask: jnp.ndarray | None = None,
+        ) -> jnp.ndarray:
+            """Aggregate electron-electron messages for a given spin sector.
+
+            Args:
+                weights_net: Channel-specific MLP producing pair weights of shape
+                    ``(n_i, n_j, hidden_dim)`` from PhysNet features.
+                radial_features: Output of ``PhysNetRadialLayer`` for the considered
+                    electron pair distances.
+                sender_proj: Projected sender embeddings (``n_j, hidden_dim``).
+                mask: Optional ``(n_i, n_j)`` mask that zeroes self-interactions in the
+                    same-spin channel.
+
+            Returns:
+                jnp.ndarray: Aggregated messages of shape ``(n_i, hidden_dim)``.
+            """
+            weights = weights_net(radial_features)
+            if mask is not None:
+                weights = weights * mask[..., None]
+            messages = weights * sender_proj[None, :, :]
+            return jnp.sum(messages, axis=1)
+
+        def _aggregate_nuclear_channel(
+            self,
+            weights_net: nn.Module,
+            radial_features: jnp.ndarray,
+            nuclear_embeddings: jnp.ndarray,
+        ) -> jnp.ndarray:
+            """Aggregate messages coming from the fixed nuclear embeddings.
+
+            Args:
+                weights_net: MLP that maps electron-nucleus PhysNet features to weights.
+                radial_features: Electron-nucleus features with shape ``(n_e, n_nuc, hidden_dim)``.
+                nuclear_embeddings: Learned species embeddings ``(n_nuc, hidden_dim)``.
+
+            Returns:
+                jnp.ndarray: ``(n_e, hidden_dim)`` messages summarizing nuclear influence.
+            """
+            if nuclear_embeddings.shape[0] == 0:
+                return jnp.zeros((radial_features.shape[0], self.hidden_dim))
+            weights = weights_net(radial_features)
+            messages = weights * nuclear_embeddings[None, :, :]
+            return jnp.sum(messages, axis=1)
+
+        def __call__(
+            self,
+            x_up: jnp.ndarray,
+            x_dn: jnp.ndarray,
+            feat_up_up: jnp.ndarray,
+            feat_up_dn: jnp.ndarray,
+            feat_dn_dn: jnp.ndarray,
+            feat_up_nuc: jnp.ndarray,
+            feat_dn_nuc: jnp.ndarray,
+            nuclear_embeddings: jnp.ndarray,
+        ) -> tuple[jnp.ndarray, jnp.ndarray]:
+            r"""Apply Eq. (1) to update spin-resolved embeddings.
+
+            Args:
+                x_up: ``(n_up, hidden_dim)`` features for :math:`\alpha` electrons.
+                x_dn: ``(n_dn, hidden_dim)`` features for :math:`\beta` electrons.
+                feat_*: PhysNet feature tensors for every pair/channel computed outside the block.
+                nuclear_embeddings: ``(n_nuc, hidden_dim)`` lookup embeddings per species.
+
+            Returns:
+                Tuple[jnp.ndarray, jnp.ndarray]: Updated ``(n_up, hidden_dim)`` and
+                ``(n_dn, hidden_dim)`` embeddings to be fed into the next block.
+            """
+            n_up = x_up.shape[0]
+            sender_proj = self.sender_net(jnp.concatenate([x_up, x_dn], axis=0))
+            sender_up = sender_proj[:n_up]
+            sender_dn = sender_proj[n_up:]
+
+            mask_up = 1.0 - jnp.eye(feat_up_up.shape[0], dtype=feat_up_up.dtype)
+            mask_dn = 1.0 - jnp.eye(feat_dn_dn.shape[0], dtype=feat_dn_dn.dtype)
+
+            z_same_up = self._aggregate_pair_channel(self.weight_same, feat_up_up, sender_up, mask_up)
+            z_same_dn = self._aggregate_pair_channel(self.weight_same, feat_dn_dn, sender_dn, mask_dn)
+
+            z_op_up = self._aggregate_pair_channel(self.weight_opposite, feat_up_dn, sender_dn)
+            z_op_dn = self._aggregate_pair_channel(self.weight_opposite, jnp.swapaxes(feat_up_dn, 0, 1), sender_up)
+
+            z_nuc_up = self._aggregate_nuclear_channel(self.weight_nuc, feat_up_nuc, nuclear_embeddings)
+            z_nuc_dn = self._aggregate_nuclear_channel(self.weight_nuc, feat_dn_nuc, nuclear_embeddings)
+
+            delta_up = self.receiver_same(z_same_up) + self.receiver_opposite(z_op_up) + self.receiver_nuc(z_nuc_up)
+            delta_dn = self.receiver_same(z_same_dn) + self.receiver_opposite(z_op_dn) + self.receiver_nuc(z_nuc_dn)
+
+            return x_up + delta_up, x_dn + delta_dn
+
+    def setup(self):
+        """Instantiate PauliNet components and validate required metadata.
+
+        Raises:
+            ValueError: If ``species_lookup`` or ``num_species`` were not provided via
+                the host dataclass before module initialization.
+        """
+        if self.species_lookup is None or self.num_species is None:
+            raise ValueError("NNJastrow requires species_lookup and num_species to be set before initialization.")
+        self.featurizer = NNJastrow.PhysNetRadialLayer(num_rbf=self.num_rbf, cutoff=self.cutoff)
+        self.blocks = tuple(NNJastrow.PauliNetBlock(hidden_dim=self.hidden_dim) for _ in range(self.num_layers))
+        self.spin_embedding = nn.Embed(num_embeddings=2, features=self.hidden_dim)
+        self.init_env_net = NNJastrow.TwoLayerMLP(width=self.hidden_dim, out_dim=self.hidden_dim)
+        self.readout_net = NNJastrow.TwoLayerMLP(width=self.hidden_dim, out_dim=1)
+        self.nuclear_species_embedding = nn.Embed(num_embeddings=self.num_species, features=self.hidden_dim)
+
+    def _pairwise_distances(self, A: jnp.ndarray, B: jnp.ndarray) -> jnp.ndarray:
+        """Compute pairwise Euclidean distances with numerical stabilization.
+
+        Args:
+            A: ``(n_a, 3)`` Cartesian coordinates.
+            B: ``(n_b, 3)`` Cartesian coordinates.
+
+        Returns:
+            jnp.ndarray: ``(n_a, n_b)`` matrix with a small epsilon added before the square
+            root to keep gradients finite when particles coincide.
+        """
+        if A.shape[0] == 0 or B.shape[0] == 0:
+            return jnp.zeros((A.shape[0], B.shape[0]))
+        diff = A[:, None, :] - B[None, :, :]
+        return jnp.sqrt(jnp.sum(diff**2, axis=-1) + 1e-12)
+
+    def _nuclear_embeddings(self, Z_n: jnp.ndarray) -> jnp.ndarray:
+        """Convert atomic numbers into learned embedding vectors.
+
+        Args:
+            Z_n: Integer array of atomic numbers with shape ``(n_nuc,)``.
+
+        Returns:
+            jnp.ndarray: ``(n_nuc, hidden_dim)`` embeddings looked up through
+            ``species_lookup``. Returns an empty array when no nuclei are present.
+        """
+        n_nuc = Z_n.shape[0]
+        if n_nuc == 0:
+            return jnp.zeros((0, self.hidden_dim))
+
+        lookup = jnp.asarray(self.species_lookup)
+        species_ids = jnp.take(lookup, Z_n.astype(jnp.int32), mode="clip")
+        return self.nuclear_species_embedding(species_ids)
+
+    def _initial_electron_features(
+        self,
+        n_up: int,
+        n_dn: int,
+        feat_up_nuc: jnp.ndarray,
+        feat_dn_nuc: jnp.ndarray,
+    ) -> tuple[jnp.ndarray, jnp.ndarray]:
+        r"""Form the iteration-0 embeddings incorporating spin and nuclei.
+
+        Args:
+            n_up: Number of spin-up electrons.
+            n_dn: Number of spin-down electrons.
+            feat_up_nuc: PhysNet features ``(n_up, n_nuc, num_rbf)``.
+            feat_dn_nuc: PhysNet features ``(n_dn, n_nuc, num_rbf)``.
+
+        Returns:
+            Tuple[jnp.ndarray, jnp.ndarray]: Spin-conditioned embeddings that already
+            include the ``h_\theta`` initialization term from PauliNet.
+        """
+        spin_ids = jnp.concatenate([jnp.zeros((n_up,), dtype=jnp.int32), jnp.ones((n_dn,), dtype=jnp.int32)], axis=0)
+        spin_embed = self.spin_embedding(spin_ids)
+        x_up = spin_embed[:n_up]
+        x_dn = spin_embed[n_up:]
+
+        if feat_up_nuc.size:
+            x_up = x_up + jnp.sum(self.init_env_net(feat_up_nuc), axis=1)
+        if feat_dn_nuc.size:
+            x_dn = x_dn + jnp.sum(self.init_env_net(feat_dn_nuc), axis=1)
+
+        return x_up, x_dn
+
+    def __call__(
+        self,
+        r_up: jnp.ndarray,
+        r_dn: jnp.ndarray,
+        R_n: jnp.ndarray,
+        Z_n: jnp.ndarray,
+    ) -> jnp.ndarray:
+        r"""Evaluate :math:`J_\text{NN}` in Eq. (2) for the provided configuration.
+
+        Args:
+            r_up: ``(n_up, 3)`` spin-up electron coordinates in Bohr.
+            r_dn: ``(n_dn, 3)`` spin-down electron coordinates in Bohr.
+            R_n: ``(n_nuc, 3)`` nuclear positions.
+            Z_n: ``(n_nuc,)`` atomic numbers matching ``R_n``.
+
+        Returns:
+            jnp.ndarray: Scalar NN-corrected three-body Jastrow contribution.
+
+        Notes:
+            The network is permutation equivariant within each spin channel and rotation
+            invariant by construction of the PhysNet radial features.
+        """
+        r_up = jnp.asarray(r_up)
+        r_dn = jnp.asarray(r_dn)
+        R_n = jnp.asarray(R_n)
+        Z_n = jnp.asarray(Z_n)
+
+        n_up = r_up.shape[0]
+        n_dn = r_dn.shape[0]
+
+        feat_up_up = self.featurizer(self._pairwise_distances(r_up, r_up))
+        feat_dn_dn = self.featurizer(self._pairwise_distances(r_dn, r_dn))
+        feat_up_dn = self.featurizer(self._pairwise_distances(r_up, r_dn))
+        feat_up_nuc = self.featurizer(self._pairwise_distances(r_up, R_n))
+        feat_dn_nuc = self.featurizer(self._pairwise_distances(r_dn, R_n))
+
+        nuclear_embeddings = self._nuclear_embeddings(Z_n)
+        x_up, x_dn = self._initial_electron_features(n_up, n_dn, feat_up_nuc, feat_dn_nuc)
+
+        for block in self.blocks:
+            x_up, x_dn = block(
+                x_up,
+                x_dn,
+                feat_up_up,
+                feat_up_dn,
+                feat_dn_dn,
+                feat_up_nuc,
+                feat_dn_nuc,
+                nuclear_embeddings,
+            )
+
+        x_final = jnp.concatenate([x_up, x_dn], axis=0)
+        summed = jnp.sum(x_final, axis=0)
+        j_val = self.readout_net(summed)
+        return jnp.squeeze(j_val, axis=-1)
 
 
 # @dataclass
@@ -537,6 +951,210 @@ class Jastrow_three_body_data_deriv_R(Jastrow_three_body_data):
         return cls(orb_data=jastrow_three_body_data.orb_data, j_matrix=jastrow_three_body_data.j_matrix)
 
 
+@struct.dataclass
+class NN_Jastrow_data:
+    """Container for NN-based three-body Jastrow factor.
+
+    This dataclass stores both the neural network definition and its
+    parameters, together with helper functions that integrate the NN
+    Jastrow-3b term into the variational-parameter block machinery.
+
+    The intended usage is:
+
+    * ``nn_def`` holds a Flax/SchNet-like module (e.g. NNJastrow).
+    * ``params`` holds the corresponding PyTree of parameters.
+    * ``flatten_fn`` / ``unflatten_fn`` convert between the PyTree and a
+      1D parameter vector for SR/MCMC.
+    * If this dataclass is set to ``None`` inside :class:`Jastrow_data`,
+      the NN J3 contribution is simply turned off. If it is not ``None``,
+      its contribution is evaluated and added on top of the analytic
+      three-body Jastrow (if present).
+    """
+
+    # Flax module definition (e.g. NNJastrow); not a pytree node.
+    nn_def: Any = struct.field(pytree_node=False, default=None)
+
+    # Flax parameters PyTree (typically a FrozenDict); this is the actual
+    # variational parameter set.
+    params: Any = struct.field(pytree_node=True, default=None)
+
+    # Utilities to flatten/unflatten params for VariationalParameterBlock.
+    # NOTE: We do *not* store these function objects directly as dataclass
+    # fields because they are not reliably picklable. Instead we store only
+    # simple metadata (treedef, shapes) and reconstruct the functions on the
+    # fly via properties below.
+    flat_shape: tuple[int, ...] = struct.field(pytree_node=False, default=())
+    num_params: int = struct.field(pytree_node=False, default=0)
+
+    # Metadata needed to reconstruct flatten_fn/unflatten_fn.
+    treedef: Any = struct.field(pytree_node=False, default=None)
+    shapes: list[tuple[int, ...]] = struct.field(pytree_node=False, default_factory=list)
+
+    # Optional architecture/hyperparameters for logging and reproducibility.
+    hidden_dim: int = struct.field(pytree_node=False, default=64)
+    num_layers: int = struct.field(pytree_node=False, default=3)
+    num_rbf: int = struct.field(pytree_node=False, default=16)
+    cutoff: float = struct.field(pytree_node=False, default=5.0)
+    num_species: int = struct.field(pytree_node=False, default=0)
+    species_lookup: npt.NDArray[np.int32] = struct.field(
+        pytree_node=False, default_factory=lambda: np.array([0], dtype=np.int32)
+    )
+    species_values: tuple[int, ...] = struct.field(pytree_node=False, default_factory=tuple)
+
+    # Structure information required to evaluate the NN J3 term.
+    # This is a pytree node so that gradients with respect to nuclear positions
+    # (atomic forces) can propagate into structure_data.positions, consistent
+    # with the rest of the codebase.
+    structure_data: Structure_data | None = struct.field(pytree_node=True, default=None)
+
+    def __post_init__(self):
+        """Populate flat_shape/num_params/treedef/shapes from params if needed.
+
+        We *do not* attach flatten/unflatten functions here; instead they are
+        exposed as properties that reconstruct the closures on demand so that
+        this dataclass remains pickle-friendly (only pure data is serialized).
+        """
+        if self.params is None:
+            return
+
+        # If treedef/shapes are missing, infer them from params.
+        if self.treedef is None or not self.shapes:
+            flat, treedef, shapes = _flatten_params_with_treedef(self.params)
+            object.__setattr__(self, "flat_shape", tuple(flat.shape))
+            object.__setattr__(self, "num_params", int(flat.size))
+            object.__setattr__(self, "treedef", treedef)
+            object.__setattr__(self, "shapes", list(shapes))
+
+    # --- Lazy, non-serialised helpers for SR/MCMC ---
+
+    @property
+    def flatten_fn(self) -> Callable[[Any], jnp.ndarray]:
+        """Return a flatten function built from ``treedef``.
+
+        This is constructed on each access and is not part of the
+        serialized state (so it will not cause pickle errors).
+        """
+        if self.treedef is None:
+            # Fallback: infer treedef/shapes from current params.
+            flat, treedef, shapes = _flatten_params_with_treedef(self.params)
+            object.__setattr__(self, "flat_shape", tuple(flat.shape))
+            object.__setattr__(self, "num_params", int(flat.size))
+            object.__setattr__(self, "treedef", treedef)
+            object.__setattr__(self, "shapes", list(shapes))
+        return _make_flatten_fn(self.treedef)
+
+    @property
+    def unflatten_fn(self) -> Callable[[jnp.ndarray], Any]:
+        """Return an unflatten function built from ``treedef`` and ``shapes``.
+
+        As with :py:meth:`flatten_fn`, this is constructed on each access and
+        not stored inside the pickled state.
+        """
+        if self.treedef is None or not self.shapes:
+            flat, treedef, shapes = _flatten_params_with_treedef(self.params)
+            object.__setattr__(self, "flat_shape", tuple(flat.shape))
+            object.__setattr__(self, "num_params", int(flat.size))
+            object.__setattr__(self, "treedef", treedef)
+            object.__setattr__(self, "shapes", list(shapes))
+        return _make_unflatten_fn(self.treedef, self.shapes)
+
+    @classmethod
+    def init_from_structure(
+        cls,
+        structure_data: "Structure_data",
+        hidden_dim: int = 64,
+        num_layers: int = 3,
+        num_rbf: int = 16,
+        cutoff: float = 5.0,
+        key=None,
+    ) -> "NN_Jastrow_data":
+        """Initialize NN J3 from structure information.
+
+        This creates a PauliNet-style NNJastrow module, initializes its
+        parameters with a dummy electron configuration, and prepares
+        flatten/unflatten utilities for SR/MCMC.
+        """
+        if key is None:
+            key = jax.random.PRNGKey(0)
+
+        atomic_numbers = np.asarray(structure_data.atomic_numbers, dtype=np.int32)
+        species_values = np.unique(np.concatenate([atomic_numbers, np.array([0], dtype=np.int32)]))
+        num_species = int(species_values.shape[0])
+        max_species = int(species_values.max())
+        species_lookup = np.zeros(max_species + 1, dtype=np.int32)
+        for idx, species in enumerate(species_values):
+            species_lookup[species] = idx
+
+        nn_def = NNJastrow(
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            num_rbf=num_rbf,
+            cutoff=cutoff,
+            species_lookup=species_lookup,
+            num_species=num_species,
+        )
+
+        # Dummy electron positions for parameter initialization:
+        # use one spin-up and one spin-down electron at the origin so that
+        # both PauliNet channels are initialized with valid shapes.
+        r_up_init = jnp.zeros((1, 3))
+        r_dn_init = jnp.zeros((1, 3))
+        R_n = jnp.asarray(structure_data.positions)  # (n_nuc, 3)
+        Z_n = jnp.asarray(structure_data.atomic_numbers)  # (n_nuc,)
+
+        variables = nn_def.init(key, r_up_init, r_dn_init, R_n, Z_n)
+        params = variables["params"]
+        # Initialize the NN parameters with small random values so that the
+        # NN J3 contribution starts near zero but still has gradient signal.
+        from jax import tree_flatten, tree_unflatten
+
+        leaves, treedef = tree_flatten(params)
+        noise_keys = jax.random.split(key, len(leaves) + 1)
+        key = noise_keys[0]
+        noise_subkeys = noise_keys[1:]
+        scale = 1e-10
+        noisy_leaves = [leaf + scale * jax.random.normal(k, leaf.shape) for leaf, k in zip(leaves, noise_subkeys, strict=True)]
+        params = tree_unflatten(treedef, noisy_leaves)
+
+        # Build metadata needed to reconstruct flatten / unflatten
+        # utilities. The actual callables are created lazily in
+        # __post_init__ to keep this dataclass pickle-friendly.
+        flat, treedef, shapes = _flatten_params_with_treedef(params)
+
+        return cls(
+            nn_def=nn_def,
+            params=params,
+            flat_shape=flat.shape,
+            num_params=int(flat.size),
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            num_rbf=num_rbf,
+            cutoff=cutoff,
+            num_species=num_species,
+            species_lookup=species_lookup,
+            species_values=tuple(int(x) for x in species_values.tolist()),
+            structure_data=structure_data,
+            treedef=treedef,
+            shapes=list(shapes),
+        )
+
+    def get_info(self) -> list[str]:
+        """Return a list of human-readable strings describing this NN Jastrow."""
+        info = []
+        info.append("**NN_Jastrow_data")
+        info.append(f"  hidden_dim = {self.hidden_dim}")
+        info.append(f"  num_layers = {self.num_layers}")
+        info.append(f"  num_rbf = {self.num_rbf}")
+        info.append(f"  cutoff = {self.cutoff}")
+        info.append(f"  num_species = {self.num_species}")
+        if self.species_values:
+            info.append(f"  species_values = {self.species_values}")
+        info.append(f"  num_params = {self.num_params}")
+        if self.params is None:
+            info.append("  params = None (NN J3 disabled)")
+        return info
+
+
 def compute_Jastrow_three_body_jax(
     jastrow_three_body_data: Jastrow_three_body_data,
     r_up_carts: jnpt.ArrayLike,
@@ -667,11 +1285,17 @@ class Jastrow_data:
             An instance of Jastrow_two_body_data. If None, the two-body Jastrow is turned off.
         jastrow_three_body_data (Jastrow_three_body_data):
             An instance of Jastrow_three_body_data. if None, the three-body Jastrow is turned off.
+        nn_jastrow_three_body_data (NN_Jastrow_data | None):
+            Optional container for a NN-based three-body Jastrow term. If None,
+            the NN J3 contribution is turned off.
     """
 
     jastrow_one_body_data: Jastrow_one_body_data = struct.field(pytree_node=True, default=None)
     jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=True, default=None)
     jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=True, default=None)
+
+    # New: NN-based three-body Jastrow data (parameters + helpers).
+    nn_jastrow_three_body_data: NN_Jastrow_data | None = struct.field(pytree_node=True, default=None)
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -700,6 +1324,8 @@ class Jastrow_data:
         # Replace jastrow_three_body_data.logger_info() with its get_info() output if available.
         if self.jastrow_three_body_data is not None:
             info_lines.extend(self.jastrow_three_body_data.get_info())
+        if self.nn_jastrow_three_body_data is not None:
+            info_lines.extend(self.nn_jastrow_three_body_data.get_info())
         return info_lines
 
     def logger_info(self) -> None:
@@ -716,10 +1342,16 @@ class Jastrow_data:
             jastrow_three_body_data = Jastrow_three_body_data.from_base(jastrow_data.jastrow_three_body_data)
         else:
             jastrow_three_body_data = jastrow_data.jastrow_three_body_data
+        # NN J3 is a pure data container and should be copied as-is so that
+        # derived wavefunction/jastrow objects keep access to the NN
+        # variational parameters and their flatten/unflatten utilities.
+        nn_jastrow_three_body_data = jastrow_data.nn_jastrow_three_body_data
+
         return cls(
             jastrow_one_body_data=jastrow_one_body_data,
             jastrow_two_body_data=jastrow_two_body_data,
             jastrow_three_body_data=jastrow_three_body_data,
+            nn_jastrow_three_body_data=nn_jastrow_three_body_data,
         )
 
     def apply_block_update(self, block: "VariationalParameterBlock") -> "Jastrow_data":
@@ -754,6 +1386,7 @@ class Jastrow_data:
         j1 = self.jastrow_one_body_data
         j2 = self.jastrow_two_body_data
         j3 = self.jastrow_three_body_data
+        nn3 = self.nn_jastrow_three_body_data
 
         if block.name == "j1_param" and j1 is not None:
             new_param = float(np.array(block.values).reshape(()))
@@ -782,11 +1415,17 @@ class Jastrow_data:
                 j3_new[:, :-1] = square_new
 
             j3 = Jastrow_three_body_data(orb_data=j3.orb_data, j_matrix=j3_new)
+        elif block.name == "nn_j3" and nn3 is not None:
+            # Update NN J3 parameters: block.values is the flattened parameter vector.
+            flat = jnp.asarray(block.values).reshape(-1)
+            params_new = nn3.unflatten_fn(flat)
+            nn3 = nn3.replace(params=params_new)
 
         return Jastrow_data(
             jastrow_one_body_data=j1,
             jastrow_two_body_data=j2,
             jastrow_three_body_data=j3,
+            nn_jastrow_three_body_data=nn3,
         )
 
 
@@ -807,11 +1446,16 @@ class Jastrow_data_deriv_params(Jastrow_data):
             jastrow_three_body_data = Jastrow_three_body_data_deriv_params.from_base(jastrow_data.jastrow_three_body_data)
         else:
             jastrow_three_body_data = jastrow_data.jastrow_three_body_data
+        # Propagate NN J3 as-is so that parameter-derivative objects keep
+        # access to the NN variational parameters.
+        nn_jastrow_three_body_data = jastrow_data.nn_jastrow_three_body_data
+
         # Return a new instance of Jastrow_data with the updated jastrow_three_body_data
         return cls(
             jastrow_one_body_data=jastrow_one_body_data,
             jastrow_two_body_data=jastrow_two_body_data,
             jastrow_three_body_data=jastrow_three_body_data,
+            nn_jastrow_three_body_data=nn_jastrow_three_body_data,
         )
 
 
@@ -832,11 +1476,16 @@ class Jastrow_data_deriv_R(Jastrow_data):
             jastrow_three_body_data = Jastrow_three_body_data_deriv_R.from_base(jastrow_data.jastrow_three_body_data)
         else:
             jastrow_three_body_data = jastrow_data.jastrow_three_body_data
+        # Propagate NN J3 as-is so that coordinate-derivative objects keep
+        # access to the NN variational parameters.
+        nn_jastrow_three_body_data = jastrow_data.nn_jastrow_three_body_data
+
         # Return a new instance of Jastrow_data with the updated jastrow_three_body_data
         return cls(
             jastrow_one_body_data=jastrow_one_body_data,
             jastrow_two_body_data=jastrow_two_body_data,
             jastrow_three_body_data=jastrow_three_body_data,
+            nn_jastrow_three_body_data=nn_jastrow_three_body_data,
         )
 
 
@@ -855,10 +1504,14 @@ class Jastrow_data_no_deriv(Jastrow_data):
         jastrow_two_body_data = jastrow_data.jastrow_two_body_data
         jastrow_three_body_data = jastrow_data.jastrow_three_body_data
 
+        # Propagate NN J3 as-is also for the no-derivative variant.
+        nn_jastrow_three_body_data = jastrow_data.nn_jastrow_three_body_data
+
         return cls(
             jastrow_one_body_data=jastrow_one_body_data,
             jastrow_two_body_data=jastrow_two_body_data,
             jastrow_three_body_data=jastrow_three_body_data,
+            nn_jastrow_three_body_data=nn_jastrow_three_body_data,
         )
 
 
@@ -890,9 +1543,20 @@ def compute_Jastrow_part_jax(jastrow_data: Jastrow_data, r_up_carts: jnpt.ArrayL
     if jastrow_data.jastrow_two_body_data is not None:
         J2 += compute_Jastrow_two_body_jax(jastrow_data.jastrow_two_body_data, r_up_carts, r_dn_carts)
 
-    # three-body
+    # three-body (analytic)
     if jastrow_data.jastrow_three_body_data is not None:
         J3 += compute_Jastrow_three_body_jax(jastrow_data.jastrow_three_body_data, r_up_carts, r_dn_carts)
+
+    # three-body (NN)
+    if jastrow_data.nn_jastrow_three_body_data is not None:
+        nn3 = jastrow_data.nn_jastrow_three_body_data
+        if nn3.structure_data is None:
+            raise ValueError("NN_Jastrow_data.structure_data must be set to evaluate NN J3.")
+
+        R_n = jnp.asarray(nn3.structure_data.positions)
+        Z_n = jnp.asarray(nn3.structure_data.atomic_numbers)
+        J3_nn = nn3.nn_def.apply({"params": nn3.params}, r_up_carts, r_dn_carts, R_n, Z_n)
+        J3 = J3 + J3_nn
 
     J = J1 + J2 + J3
 
@@ -915,9 +1579,24 @@ def compute_Jastrow_part_debug(
     if jastrow_data.jastrow_two_body_data is not None:
         J2 += compute_Jastrow_two_body_debug(jastrow_data.jastrow_two_body_data, r_up_carts, r_dn_carts)
 
-    # three-body
+    # three-body (analytic)
     if jastrow_data.jastrow_three_body_data is not None:
         J3 += compute_Jastrow_three_body_debug(jastrow_data.jastrow_three_body_data, r_up_carts, r_dn_carts)
+
+    # three-body (NN)
+    if jastrow_data.nn_jastrow_three_body_data is not None:
+        nn3 = jastrow_data.nn_jastrow_three_body_data
+        if nn3.structure_data is None:
+            raise ValueError("NN_Jastrow_data.structure_data must be set to evaluate NN J3 (debug).")
+
+        R_n = np.asarray(nn3.structure_data.positions, dtype=float)
+        Z_n = np.asarray(nn3.structure_data.atomic_numbers, dtype=float)
+
+        # Use JAX NN for debug as well; convert inputs to jnp and back to float
+        J3_nn = nn3.nn_def.apply(
+            {"params": nn3.params}, jnp.asarray(r_up_carts), jnp.asarray(r_dn_carts), jnp.asarray(R_n), jnp.asarray(Z_n)
+        )
+        J3 += float(J3_nn)
 
     J = J1 + J2 + J3
 

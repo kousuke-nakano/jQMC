@@ -221,12 +221,13 @@ class Wavefunction_data:
         opt_J1_param: bool = True,
         opt_J2_param: bool = True,
         opt_J3_param: bool = True,
+        opt_JNN_param: bool = True,
         opt_lambda_param: bool = False,
     ) -> list[VariationalParameterBlock]:
         """Collect variational parameter blocks from Jastrow and Geminal parts.
 
         Each block corresponds to a contiguous group of variational parameters
-        (e.g., J1, J2, J3 matrix, lambda matrix). This method only exposes the
+        (e.g., J1, J2, J3 matrix, NN Jastrow, lambda matrix). This method only exposes the
         parameter arrays; the corresponding gradients are handled on the MCMC side.
         """
         blocks: list[VariationalParameterBlock] = []
@@ -268,6 +269,19 @@ class Wavefunction_data:
                         size=int(j3_arr.size),
                     )
                 )
+
+            if opt_JNN_param and self.jastrow_data.nn_jastrow_three_body_data is not None:
+                nn3 = self.jastrow_data.nn_jastrow_three_body_data
+                if nn3.params is not None and nn3.num_params > 0:
+                    flat_params = np.array(nn3.flatten_fn(nn3.params))
+                    blocks.append(
+                        VariationalParameterBlock(
+                            name="nn_j3",
+                            values=flat_params,
+                            shape=flat_params.shape,
+                            size=int(flat_params.size),
+                        )
+                    )
 
         # Geminal part
         if opt_lambda_param and self.geminal_data is not None and self.geminal_data.lambda_matrix is not None:

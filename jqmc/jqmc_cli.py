@@ -390,6 +390,7 @@ def cli():
         opt_J1_param = parameters[section]["opt_J1_param"]
         opt_J2_param = parameters[section]["opt_J2_param"]
         opt_J3_param = parameters[section]["opt_J3_param"]
+        opt_JNN_param = parameters[section]["opt_JNN_param"]
         opt_lambda_param = parameters[section]["opt_lambda_param"]
         num_param_opt = parameters[section]["num_param_opt"]
         cg_flag = parameters[section]["cg_flag"]
@@ -413,7 +414,6 @@ def cli():
         else:
             with open(hamiltonian_chk, "rb") as f:
                 hamiltonian_data = pickle.load(f)
-
                 mcmc = MCMC(
                     hamiltonian_data=hamiltonian_data,
                     Dt=Dt,
@@ -435,6 +435,7 @@ def cli():
             opt_J1_param=opt_J1_param,
             opt_J2_param=opt_J2_param,
             opt_J3_param=opt_J3_param,
+            opt_JNN_param=opt_JNN_param,
             opt_lambda_param=opt_lambda_param,
             num_param_opt=num_param_opt,
             max_time=max_time,
