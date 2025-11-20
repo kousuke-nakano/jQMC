@@ -276,7 +276,7 @@ class Wavefunction_data:
                     flat_params = np.array(nn3.flatten_fn(nn3.params))
                     blocks.append(
                         VariationalParameterBlock(
-                            name="nn_j3",
+                            name="nn_jastrow",
                             values=flat_params,
                             shape=flat_params.shape,
                             size=int(flat_params.size),

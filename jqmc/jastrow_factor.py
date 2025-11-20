@@ -1415,8 +1415,8 @@ class Jastrow_data:
                 j3_new[:, :-1] = square_new
 
             j3 = Jastrow_three_body_data(orb_data=j3.orb_data, j_matrix=j3_new)
-        elif block.name == "nn_j3" and nn3 is not None:
-            # Update NN J3 parameters: block.values is the flattened parameter vector.
+        elif block.name == "nn_jastrow" and nn3 is not None:
+            # Update NN Jastrow parameters: block.values is the flattened parameter vector.
             flat = jnp.asarray(block.values).reshape(-1)
             params_new = nn3.unflatten_fn(flat)
             nn3 = nn3.replace(params=params_new)

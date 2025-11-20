@@ -280,8 +280,8 @@ class MCMC:
         # stored dln_Psi / dc_jas1b3b
         self.__stored_grad_ln_Psi_jas1b3b_j_matrix = []
 
-        # stored dln_Psi / dc_nn_j3
-        self.__stored_grad_ln_Psi_nn_j3 = []
+        # stored dln_Psi / dc_nn_jastrow
+        self.__stored_grad_ln_Psi_nn_jastrow = []
 
         """ linear method
         # stored de_L / dc_jas2b
@@ -1189,9 +1189,9 @@ class MCMC:
                     # logger.devel(f"grad_ln_Psi_jas1b3b_j_matrix.shape={grad_ln_Psi_jas1b3b_j_matrix.shape}")
                     self.__stored_grad_ln_Psi_jas1b3b_j_matrix.append(grad_ln_Psi_jas1b3b_j_matrix)
 
-                # NN J3
-                nn_j3_data = self.__hamiltonian_data.wavefunction_data.jastrow_data.nn_jastrow_three_body_data
-                if nn_j3_data is not None and nn_j3_data.params is not None and nn_j3_data.num_params > 0:
+                # NN Jastrow
+                nn_jastrow_data = self.__hamiltonian_data.wavefunction_data.jastrow_data.nn_jastrow_three_body_data
+                if nn_jastrow_data is not None and nn_jastrow_data.params is not None and nn_jastrow_data.num_params > 0:
                     grad_ln_Psi_nn_params = grad_ln_Psi_h.jastrow_data.nn_jastrow_three_body_data.params
 
                     def _slice_walker(idx):
@@ -1200,11 +1200,11 @@ class MCMC:
                     nn_grad_list = []
                     for walker_idx in range(self.__num_walkers):
                         walker_grad_tree = _slice_walker(walker_idx)
-                        flat = np.array(nn_j3_data.flatten_fn(walker_grad_tree))
+                        flat = np.array(nn_jastrow_data.flatten_fn(walker_grad_tree))
                         nn_grad_list.append(flat)
 
                     grad_nn_flat = np.stack(nn_grad_list, axis=0)
-                    self.__stored_grad_ln_Psi_nn_j3.append(grad_nn_flat)
+                    self.__stored_grad_ln_Psi_nn_jastrow.append(grad_nn_flat)
 
                 # lambda_matrix
                 grad_ln_Psi_lambda_matrix = grad_ln_Psi_h.geminal_data.lambda_matrix
@@ -1615,7 +1615,7 @@ class MCMC:
             "j1_param": self.dln_Psi_dc_jas_1b,
             "j2_param": self.dln_Psi_dc_jas_2b,
             "j3_matrix": self.dln_Psi_dc_jas_1b3b,
-            "nn_j3": self.dln_Psi_dc_nn_j3,
+            "nn_jastrow": self.dln_Psi_dc_nn_jastrow,
             "lambda_matrix": self.dln_Psi_dc_lambda_matrix,
         }
 
@@ -2576,9 +2576,9 @@ class MCMC:
         return np.array(self.__stored_grad_ln_Psi_jas1b3b_j_matrix)
 
     @property
-    def dln_Psi_dc_nn_j3(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dc_NN_J3 array. dim: (mcmc_counter, num_walkers, num_nn_params)."""
-        return np.array(self.__stored_grad_ln_Psi_nn_j3)
+    def dln_Psi_dc_nn_jastrow(self) -> npt.NDArray:
+        """Return the stored dln_Psi/dc_NN_Jastrow array. dim: (mcmc_counter, num_walkers, num_nn_params)."""
+        return np.array(self.__stored_grad_ln_Psi_nn_jastrow)
 
     '''
     @property
