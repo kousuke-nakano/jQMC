@@ -42,6 +42,7 @@ import jax
 import mpi4jax
 import numpy as np
 import numpy.typing as npt
+import optax
 import scipy
 import toml
 from jax import grad, jit, lax, tree_util, vmap
@@ -1856,8 +1857,6 @@ class MCMC:
         self,
         num_mcmc_steps: int = 100,
         num_opt_steps: int = 1,
-        delta: float = 0.001,
-        epsilon: float = 1.0e-3,
         wf_dump_freq: int = 10,
         max_time: int = 86400,
         num_mcmc_warmup_steps: int = 0,
@@ -1871,6 +1870,8 @@ class MCMC:
         cg_flag: bool = True,
         cg_max_iter=1e6,
         cg_tol=1e-8,
+        optimizer: str | None = "sr",
+        optimizer_kwargs: dict | None = None,
     ):
         """Optimizing wavefunction.
 
@@ -1881,12 +1882,6 @@ class MCMC:
                 The number of MCMC samples per walker.
             num_opt_steps(int):
                 The number of WF optimization step.
-            delta(float):
-                The prefactor of the SR matrix for adjusting the optimization step.
-                i.e., c_i <- c_i + delta * S^{-1} f
-            epsilon(float):
-                The regralization factor of the SR matrix
-                i.e., S <- S + I * delta
             wf_dump_freq(int):
                 The frequency of WF data (i.e., hamiltonian_data.chk)
             max_time(int):
@@ -1915,7 +1910,60 @@ class MCMC:
                 maximum number of iterations for conjugate gradient method.
             cg_tol (float):
                 tolerance for conjugate gradient method.
+            optimizer (str | None):
+                Name of the optimizer backend. "sr" (default) keeps the stochastic reconfiguration workflow;
+                any other string selects the corresponding optax optimizer (e.g., "adam", "sgd").
+            optimizer_kwargs (dict | None):
+                Extra keyword arguments forwarded to the selected optimizer. When ``optimizer == "sr"``,
+                the recognized keys are ``delta`` (prefactor in ``c_i <- c_i + delta * S^{-1} f``) and
+                ``epsilon`` (regularization strength added to ``S``). When another optimizer is selected,
+                the dictionary is passed directly to the optax constructor (for example,
+                ``{"learning_rate": 1.0e-3}``).
         """
+        optax_supported = {
+            "sgd": optax.sgd,
+            "adam": optax.adam,
+            "adamw": optax.adamw,
+            "rmsprop": optax.rmsprop,
+            "adagrad": optax.adagrad,
+            "yogi": optax.yogi,
+        }
+
+        optimizer_mode = (optimizer or "sr").lower()
+        use_sr = optimizer_mode == "sr"
+        optax_name = optimizer_mode if not use_sr else None
+        optimizer_kwargs = dict(optimizer_kwargs or {})
+        sr_delta = float(optimizer_kwargs.get("delta", 1.0e-3))
+        sr_epsilon = float(optimizer_kwargs.get("epsilon", 1.0e-3))
+        optax_kwargs = {k: v for k, v in optimizer_kwargs.items() if k not in {"delta", "epsilon"}}
+
+        optax_tx = None
+        optax_state = None
+        optax_param_size = None
+
+        optimizer_hparams: dict[str, float | int | str] = {}
+
+        if not use_sr:
+            if optax_name not in optax_supported:
+                raise ValueError(f"Unsupported optimizer '{optimizer}'. Supported optax options: {sorted(optax_supported)}.")
+            optax_config = dict(optax_kwargs)
+            optax_config.setdefault("learning_rate", sr_delta)
+            optax_tx = optax_supported[optax_name](**optax_config)
+            optimizer_hparams = dict(optax_config)
+        else:
+            optimizer_hparams = {"delta": sr_delta, "epsilon": sr_epsilon}
+
+        # optimizer info
+        logger.info(f"The chosen optimizer is '{optimizer_mode}'.")
+        if use_sr:
+            logger.info("  The homemade 'SR (aka natural gradient)' optimizer is used for wavefunction optimization.")
+            logger.info("  Hyperparameters: %s", ", ".join(f"{k}={v}" for k, v in sorted(optimizer_hparams.items())))
+            logger.info("")
+        else:
+            logger.info(f"  The optax '{optax_name}' optimizer is used for wavefunction optimization.")
+            logger.info("  Hyperparameters: %s", ", ".join(f"{k}={v}" for k, v in sorted(optimizer_hparams.items())))
+            logger.info("")
+
         # toml(control) filename
         toml_filename = "external_control_opt.toml"
 
@@ -1977,6 +2025,18 @@ class MCMC:
             chosen_param_index = np.arange(total_num_params, dtype=np.int32)
             logger.info(f"Number of variational parameters = {len(chosen_param_index)}.")
 
+            if not use_sr:
+                if blocks:
+                    flat_param_vector = np.concatenate([np.ravel(np.array(block.values, dtype=np.float64)) for block in blocks])
+                else:
+                    flat_param_vector = np.array([], dtype=np.float64)
+
+                if optax_state is None:
+                    optax_param_size = flat_param_vector.size
+                    optax_state = optax_tx.init(jnp.array(flat_param_vector))
+                elif flat_param_vector.size != optax_param_size:
+                    raise ValueError("The number of variational parameters changed after initializing the optax optimizer.")
+
             # get f and f_std (generalized forces)
             f, f_std = self.get_gF(
                 num_mcmc_warmup_steps=num_mcmc_warmup_steps,
@@ -2014,350 +2074,361 @@ class MCMC:
             signal_to_noise_f = mpi_comm.bcast(signal_to_noise_f, root=0)
             signal_to_noise_f_max_indices = mpi_comm.bcast(signal_to_noise_f_max_indices, root=0)
 
-            logger.info("Computing the natural gradient, i.e., {S+epsilon*I}^{-1}*f")
+            if use_sr:
+                logger.info("Computing the natural gradient, i.e., {S+epsilon*I}^{-1}*f")
+                epsilon = sr_epsilon
 
-            # Retrieve local data (samples assigned to this rank)
-            w_L_local = self.w_L[num_mcmc_warmup_steps:]  # shape: (num_mcmc, num_walker)
-            e_L_local = self.e_L[num_mcmc_warmup_steps:]  # shape: (num_mcmc, num_walker)
-            w_L_local = list(np.ravel(w_L_local))  # shape: (num_mcmc * num_walker, )s
-            e_L_local = list(np.ravel(e_L_local))  # shape: (num_mcmc * num_walker, )
-            O_matrix_local = self.get_dln_WF(
-                num_mcmc_warmup_steps=num_mcmc_warmup_steps,
-                chosen_param_index=chosen_param_index,
-                blocks=blocks,
-            )  # shape: (num_mcmc, num_walker, num_param)
-            O_matrix_local_shape = (
-                O_matrix_local.shape[0] * O_matrix_local.shape[1],
-                O_matrix_local.shape[2],
-            )
-            O_matrix_local = list(O_matrix_local.reshape(O_matrix_local_shape))  # shape: (num_mcmc * num_walker, num_param)
+                # Retrieve local data (samples assigned to this rank)
+                w_L_local = self.w_L[num_mcmc_warmup_steps:]  # shape: (num_mcmc, num_walker)
+                e_L_local = self.e_L[num_mcmc_warmup_steps:]  # shape: (num_mcmc, num_walker)
+                w_L_local = list(np.ravel(w_L_local))  # shape: (num_mcmc * num_walker, )s
+                e_L_local = list(np.ravel(e_L_local))  # shape: (num_mcmc * num_walker, )
+                O_matrix_local = self.get_dln_WF(
+                    num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+                    chosen_param_index=chosen_param_index,
+                    blocks=blocks,
+                )  # shape: (num_mcmc, num_walker, num_param)
+                O_matrix_local_shape = (
+                    O_matrix_local.shape[0] * O_matrix_local.shape[1],
+                    O_matrix_local.shape[2],
+                )
+                O_matrix_local = list(O_matrix_local.reshape(O_matrix_local_shape))  # shape: (num_mcmc * num_walker, num_param)
 
-            # Compute local partial sums
-            local_Ow = list(
-                np.einsum("i,ij->j", w_L_local, O_matrix_local)
-            )  # weighted sum for observables, shape: (num_param,)
-            local_Ew = np.dot(w_L_local, e_L_local)  # weighted sum of energies, shape: scalar
-            local_weight_sum = np.sum(w_L_local)  # scalar: sum of weights, shape: scalar
+                # Compute local partial sums
+                local_Ow = list(
+                    np.einsum("i,ij->j", w_L_local, O_matrix_local)
+                )  # weighted sum for observables, shape: (num_param,)
+                local_Ew = np.dot(w_L_local, e_L_local)  # weighted sum of energies, shape: scalar
+                local_weight_sum = np.sum(w_L_local)  # scalar: sum of weights, shape: scalar
 
-            w_L_local = w_L_local
-            e_L_local = e_L_local
-            local_Ow = local_Ow
-            local_Ew = local_Ew
-            local_weight_sum = local_weight_sum
+                w_L_local = w_L_local
+                e_L_local = e_L_local
+                local_Ow = local_Ow
+                local_Ew = local_Ew
+                local_weight_sum = local_weight_sum
 
-            w_L_local = np.array(w_L_local)
-            e_L_local = np.array(e_L_local)
-            local_Ow = np.array(local_Ow)
-            local_Ew = np.array(local_Ew)
-            local_weight_sum = np.array(local_weight_sum)
+                w_L_local = np.array(w_L_local)
+                e_L_local = np.array(e_L_local)
+                local_Ow = np.array(local_Ow)
+                local_Ew = np.array(local_Ew)
+                local_weight_sum = np.array(local_weight_sum)
 
-            # Aggregate across all ranks
-            total_weight = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)  # total sum of weights, shape: scalar
-            total_Ow = mpi_comm.allreduce(local_Ow, op=MPI.SUM)  # aggregated observable sums, shape: (num_param,)
-            total_Ew = mpi_comm.allreduce(local_Ew, op=MPI.SUM)  # aggregated energy sum, shape: scalar
+                # Aggregate across all ranks
+                total_weight = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)  # total sum of weights, shape: scalar
+                total_Ow = mpi_comm.allreduce(local_Ow, op=MPI.SUM)  # aggregated observable sums, shape: (num_param,)
+                total_Ew = mpi_comm.allreduce(local_Ew, op=MPI.SUM)  # aggregated energy sum, shape: scalar
 
-            # Compute global averages
-            O_bar = total_Ow / total_weight  # average observables, shape: (num_param,)
-            e_L_bar = total_Ew / total_weight  # average energy, shape: scalar
+                # Compute global averages
+                O_bar = total_Ow / total_weight  # average observables, shape: (num_param,)
+                e_L_bar = total_Ew / total_weight  # average energy, shape: scalar
 
-            # compute the following variables
-            #     X_{i,k} \equiv np.sqrt(w_i) O_{i, k} / np.sqrt({\sum_{i} w_i})
-            #     F_i \equiv -2.0 * np.sqrt(w_i) (e_L_{i} - E) / np.sqrt({\sum_{i} w_i})
+                # compute the following variables
+                #     X_{i,k} \equiv np.sqrt(w_i) O_{i, k} / np.sqrt({\sum_{i} w_i})
+                #     F_i \equiv -2.0 * np.sqrt(w_i) (e_L_{i} - E) / np.sqrt({\sum_{i} w_i})
 
-            X_local = (
-                (O_matrix_local - O_bar) * np.sqrt(w_L_local)[:, np.newaxis] / np.sqrt(total_weight)
-            ).T  # shape (num_param, num_mcmc * num_walker) because it's transposed.
-            F_local = (
-                -2.0 * np.sqrt(w_L_local) * (e_L_local - e_L_bar) / np.sqrt(total_weight)
-            )  # shape (num_mcmc * num_walker, )
+                X_local = (
+                    (O_matrix_local - O_bar) * np.sqrt(w_L_local)[:, np.newaxis] / np.sqrt(total_weight)
+                ).T  # shape (num_param, num_mcmc * num_walker) because it's transposed.
+                F_local = (
+                    -2.0 * np.sqrt(w_L_local) * (e_L_local - e_L_bar) / np.sqrt(total_weight)
+                )  # shape (num_mcmc * num_walker, )
 
-            logger.debug(f"X_local.shape = {X_local.shape}.")
-            logger.debug(f"F_local.shape = {F_local.shape}.")
+                logger.debug(f"X_local.shape = {X_local.shape}.")
+                logger.debug(f"F_local.shape = {F_local.shape}.")
 
-            # compute X_w@F
-            X_F_local = X_local @ F_local  # shape (num_param, )
-            X_F = np.empty(X_F_local.shape, dtype=np.float64)
-            mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
+                # compute X_w@F
+                X_F_local = X_local @ F_local  # shape (num_param, )
+                X_F = np.empty(X_F_local.shape, dtype=np.float64)
+                mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
 
-            # compute f_argmax
-            f_argmax = np.argmax(np.abs(X_F))
-            logger.debug(f"Max dot(X, F) = {X_F[f_argmax]:.3f} Ha/a.u. should be equal to Max f = {f[f_argmax]:.3f} Ha/a.u.")
+                # compute f_argmax
+                f_argmax = np.argmax(np.abs(X_F))
+                logger.debug(
+                    f"Max dot(X, F) = {X_F[f_argmax]:.3f} Ha/a.u. should be equal to Max f = {f[f_argmax]:.3f} Ha/a.u."
+                )
 
-            # make the SR matrix scale-invariant (i.e., normalize)
-            ## compute X_w@X.T
-            diag_S_local = np.einsum("jk,kj->j", X_local, X_local.T)
-            diag_S = np.empty(diag_S_local.shape, dtype=np.float64)
-            mpi_comm.Allreduce(diag_S_local, diag_S, op=MPI.SUM)
-            logger.info(f"max. and min. diag_S = {np.max(diag_S)}, {np.min(diag_S)}.")
-            diag_eps = np.finfo(diag_S.dtype).tiny
-            diag_S = np.where(np.isfinite(diag_S) & (diag_S > diag_eps), diag_S, diag_eps)
-            X_local = X_local / np.sqrt(diag_S)[:, np.newaxis]  # shape (num_param, num_mcmc * num_walker)
+                # make the SR matrix scale-invariant (i.e., normalize)
+                ## compute X_w@X.T
+                diag_S_local = np.einsum("jk,kj->j", X_local, X_local.T)
+                diag_S = np.empty(diag_S_local.shape, dtype=np.float64)
+                mpi_comm.Allreduce(diag_S_local, diag_S, op=MPI.SUM)
+                logger.info(f"max. and min. diag_S = {np.max(diag_S)}, {np.min(diag_S)}.")
+                diag_eps = np.finfo(diag_S.dtype).tiny
+                diag_S = np.where(np.isfinite(diag_S) & (diag_S > diag_eps), diag_S, diag_eps)
+                X_local = X_local / np.sqrt(diag_S)[:, np.newaxis]  # shape (num_param, num_mcmc * num_walker)
 
-            # matrix shape info
-            num_params = X_local.shape[0]
-            num_samples_local = X_local.shape[1]
-            num_samples_total = mpi_comm.allreduce(num_samples_local, op=MPI.SUM)
+                # matrix shape info
+                num_params = X_local.shape[0]
+                num_samples_local = X_local.shape[1]
+                num_samples_total = mpi_comm.allreduce(num_samples_local, op=MPI.SUM)
 
-            # info
-            logger.info("The binning technique is not used to compute the natural gradient.")
-            logger.info(f"The number of local samples is {num_samples_local}.")
-            logger.info(f"The number of total samples is {num_samples_total}.")
-            logger.info(f"The total number of variational parameters is {num_params}.")
+                # info
+                logger.info("The binning technique is not used to compute the natural gradient.")
+                logger.info(f"The number of local samples is {num_samples_local}.")
+                logger.info(f"The number of total samples is {num_samples_total}.")
+                logger.info(f"The total number of variational parameters is {num_params}.")
 
-            # ---- Conjugate Gradient Solver ----
-            @partial(jax.jit, static_argnums=(1, 3))
-            def conjugate_gradient_jax(b, apply_A, X_local, epsilon, x0, max_iter=1e6, tol=1e-8):
-                def body_fun(state):
-                    x, r, p, rs_old, i = state
-                    Ap = apply_A(p, X_local, epsilon)
-                    alpha = rs_old / jnp.dot(p, Ap)
-                    x_new = x + alpha * p
-                    r_new = r - alpha * Ap
-                    rs_new = jnp.dot(r_new, r_new)
-                    beta = rs_new / rs_old
-                    p_new = r_new + beta * p
-                    return (x_new, r_new, p_new, rs_new, i + 1)
+                # ---- Conjugate Gradient Solver ----
+                @partial(jax.jit, static_argnums=(1, 3))
+                def conjugate_gradient_jax(b, apply_A, X_local, epsilon, x0, max_iter=1e6, tol=1e-8):
+                    def body_fun(state):
+                        x, r, p, rs_old, i = state
+                        Ap = apply_A(p, X_local, epsilon)
+                        alpha = rs_old / jnp.dot(p, Ap)
+                        x_new = x + alpha * p
+                        r_new = r - alpha * Ap
+                        rs_new = jnp.dot(r_new, r_new)
+                        beta = rs_new / rs_old
+                        p_new = r_new + beta * p
+                        return (x_new, r_new, p_new, rs_new, i + 1)
 
-                def cond_fun(state):
-                    _, _, _, rs_old, i = state
-                    return jnp.logical_and(jnp.sqrt(rs_old) > tol, i < max_iter)
+                    def cond_fun(state):
+                        _, _, _, rs_old, i = state
+                        return jnp.logical_and(jnp.sqrt(rs_old) > tol, i < max_iter)
 
-                # Initialize variables
-                # x0 = jnp.zeros_like(b)
-                r0 = b - apply_A(x0, X_local, epsilon)
-                p0 = r0
-                rs0 = jnp.dot(r0, r0)
+                    # Initialize variables
+                    # x0 = jnp.zeros_like(b)
+                    r0 = b - apply_A(x0, X_local, epsilon)
+                    p0 = r0
+                    rs0 = jnp.dot(r0, r0)
 
-                init_state = (x0, r0, p0, rs0, 0)
-                final_state = jax.lax.while_loop(cond_fun, body_fun, init_state)
+                    init_state = (x0, r0, p0, rs0, 0)
+                    final_state = jax.lax.while_loop(cond_fun, body_fun, init_state)
 
-                x_final, _, _, rs_final, num_iter = final_state
+                    x_final, _, _, rs_final, num_iter = final_state
 
-                return x_final, jnp.sqrt(rs_final), num_iter
+                    return x_final, jnp.sqrt(rs_final), num_iter
 
-            if num_params < num_samples_total:
-                # if True:
-                logger.debug("X is a wide matrix. Proceed w/o the push-through identity.")
-                logger.debug("theta = (S+epsilon*I)^{-1}*f = (X * X^T + epsilon*I)^{-1} * X F...")
-                if not cg_flag:
-                    logger.info("Using the direct solver for the inverse of S.")
-                    logger.debug(
-                        f"Estimated X_local @ X_local.T.bytes per MPI = {X_local.shape[0] ** 2 * X_local.dtype.itemsize / (2**30)} gib."
-                    )
-                    # compute local sum of X * X^T
-                    X_X_T_local = X_local @ X_local.T
-                    logger.debug(f"X_X_T_local.shape = {X_X_T_local.shape}.")
-                    # compute global sum of X * X^T
-                    if mpi_rank == 0:
-                        X_X_T = np.empty(X_X_T_local.shape, dtype=np.float64)
+                if num_params < num_samples_total:
+                    # if True:
+                    logger.debug("X is a wide matrix. Proceed w/o the push-through identity.")
+                    logger.debug("theta = (S+epsilon*I)^{-1}*f = (X * X^T + epsilon*I)^{-1} * X F...")
+                    if not cg_flag:
+                        logger.info("Using the direct solver for the inverse of S.")
+                        logger.debug(
+                            f"Estimated X_local @ X_local.T.bytes per MPI = {X_local.shape[0] ** 2 * X_local.dtype.itemsize / (2**30)} gib."
+                        )
+                        # compute local sum of X * X^T
+                        X_X_T_local = X_local @ X_local.T
+                        logger.debug(f"X_X_T_local.shape = {X_X_T_local.shape}.")
+                        # compute global sum of X * X^T
+                        if mpi_rank == 0:
+                            X_X_T = np.empty(X_X_T_local.shape, dtype=np.float64)
+                        else:
+                            X_X_T = None
+                        mpi_comm.Reduce(X_X_T_local, X_X_T, op=MPI.SUM, root=0)
+                        # compute local sum of X @ F
+                        X_F_local = X_local @ F_local  # shape (num_param, )
+                        logger.debug(f"X_F_local.shape = {X_F_local.shape}.")
+                        # compute global sum of X @ F
+                        if mpi_rank == 0:
+                            X_F = np.empty(X_F_local.shape, dtype=np.float64)
+                        else:
+                            X_F = None
+                        mpi_comm.Reduce(X_F_local, X_F, op=MPI.SUM, root=0)
+                        # compute theta
+                        if mpi_rank == 0:
+                            logger.debug(f"X @ X.T.shape = {X_X_T.shape}.")
+                            logger.debug(f"X @ F.shape = {X_F.shape}.")
+                            # (X X^T + eps*I) x = X F ->solve-> x = (X  X^T + eps*I)^{-1} X F
+                            X_X_T[np.diag_indices_from(X_X_T)] += epsilon
+                            X_X_T_inv_X_F = scipy.linalg.solve(X_X_T, X_F, assume_a="sym")
+                            # theta = (X_w X^T + eps*I)^{-1} X_w F
+                            theta_all = X_X_T_inv_X_F
+                        else:
+                            theta_all = None
+                        # Broadcast theta_all to all ranks
+                        theta_all = mpi_comm.bcast(theta_all, root=0)
+                        logger.devel(f"[new] theta_all (w/o the push through identity) = {theta_all}.")
+                        logger.debug(
+                            f"[new] theta_all (w/o the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
+                        )
                     else:
-                        X_X_T = None
-                    mpi_comm.Reduce(X_X_T_local, X_X_T, op=MPI.SUM, root=0)
-                    # compute local sum of X @ F
-                    X_F_local = X_local @ F_local  # shape (num_param, )
-                    logger.debug(f"X_F_local.shape = {X_F_local.shape}.")
-                    # compute global sum of X @ F
-                    if mpi_rank == 0:
-                        X_F = np.empty(X_F_local.shape, dtype=np.float64)
+                        logger.info("Using conjugate gradient for the inverse of S.")
+                        logger.info(f"  [CG] threshold {cg_tol}.")
+                        logger.info(f"  [CG] max iteration: {cg_max_iter}.")
+                        # conjugate gradient solver
+                        # Compute b = X @ F (distributed)
+                        X_F_local = X_local @ F_local  # shape (num_param, )
+                        X_F = np.zeros_like(X_F_local)
+                        mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
+
+                        # ---- Matrix-free matvec: apply_S_jax ----
+                        @partial(jax.jit, static_argnums=(2,))  # epsilon
+                        def apply_S_primal_jax(v, X_local, epsilon):
+                            # Local computation of X^T v
+                            XTv_local = X_local.T @ v  # shape (M_local,)
+
+                            # Local computation of X (X^T v)
+                            XXTv_local = X_local @ XTv_local  # shape (N,)
+
+                            # Global sum over all processes
+                            try:
+                                XXTv_global, _ = mpi4jax.allreduce(XXTv_local, op=MPI.SUM, comm=MPI.COMM_WORLD)
+                            except ValueError:  # mpi4jax.allreduce does not return token since mpi4jax v0.8.0（2025-07-07)
+                                XXTv_global = mpi4jax.allreduce(XXTv_local, op=MPI.SUM, comm=MPI.COMM_WORLD)
+                            return XXTv_global + epsilon * v
+
+                        x0 = X_F
+                        theta_all, final_residual, num_steps = conjugate_gradient_jax(
+                            jnp.array(X_F), apply_S_primal_jax, X_local, epsilon, x0, cg_max_iter, cg_tol
+                        )
+                        logger.debug(f"  [CG] Final residual: {final_residual:.3e}")
+                        logger.info(f"  [CG] Converged in {num_steps} steps")
+                        if num_steps == cg_max_iter:
+                            logger.info("  [CG] Conjugate gradient did not converge!!")
+                        logger.devel(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
+                        logger.debug(
+                            f"[new/cg] theta_all (w/o the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
+                        )
+
+                else:  # num_params >= num_samples:
+                    # if True:
+                    logger.debug("X is a tall matrix. Proceed w/ the push-through identity.")
+                    logger.debug("theta = (S+epsilon*I)^{-1}*f = X(X^T * X + epsilon*I)^{-1} * F...")
+
+                    # Get local shapes
+                    N, M = X_local.shape
+                    P = mpi_size  # number of ranks
+
+                    # Compute how many rows each rank should own (distribute the remainder)
+                    counts = [N // P + (1 if i < (N % P) else 0) for i in range(P)]
+
+                    # Compute starting row index for each rank in the original array
+                    displs = [sum(counts[:i]) for i in range(P)]
+                    N_local = counts[mpi_rank]  # number of rows this rank will receive
+
+                    # Build send buffers by slicing X and Xw into P row‑chunks
+                    # Each chunk is flattened so we can send in one go.
+                    sendbuf_X = np.concatenate([X_local[displs[i] : displs[i] + counts[i], :].ravel() for i in range(P)])
+
+                    # Prepare sendcounts and displacements in units of elements
+                    sendcounts = [counts[i] * M for i in range(P)]
+                    sdispls = [sum(sendcounts[:i]) for i in range(P)]
+
+                    # Prepare recvcounts and displacements:
+                    # each rank will receive 'counts[mpi_rank]*M' elements from each of the P ranks
+                    recvcounts = [counts[mpi_rank] * M] * P
+                    rdispls = [i * counts[mpi_rank] * M for i in range(P)]
+
+                    # Allocate receive buffers
+                    recvbuf_X = np.empty(sum(recvcounts), dtype=X_local.dtype)
+
+                    # Perform the all‑to‑all variable‑sized exchange
+                    mpi_comm.Alltoallv(
+                        [sendbuf_X, sendcounts, sdispls, MPI.DOUBLE], [recvbuf_X, recvcounts, rdispls, MPI.DOUBLE]
+                    )
+
+                    # Reshape the flat receive buffer into a 3D array
+                    #    shape = (P sources, N_local rows, M cols)
+                    buf_X = recvbuf_X.reshape(P, N_local, M)
+
+                    # Rearrange into final 2D arrays of shape (N_local, M * P)
+                    #    by stacking each source’s M columns side by side
+                    X_re_local = np.hstack([buf_X[i] for i in range(P)])  # shape (num_param/P, num_mcmc * num_walker * P)
+                    logger.debug(f"X_re_local.shape = {X_re_local.shape}.")
+
+                    if not cg_flag:
+                        logger.info("Using the direct solver for the inverse of S.")
+                        logger.debug(
+                            f"Estimated X_local.T @ X_local.bytes per MPI = {X_re_local.shape[1] ** 2 * X_re_local.dtype.itemsize / (2**30)} gib."
+                        )
+                        # compute local sum of X^T * X
+                        X_T_X_local = X_re_local.T @ X_re_local
+                        logger.debug(f"X_T_X_local.shape = {X_T_X_local.shape}.")
+                        # compute global sum of X^T * X
+                        if mpi_rank == 0:
+                            X_T_X = np.empty(X_T_X_local.shape, dtype=np.float64)
+                        else:
+                            X_T_X = None
+                        mpi_comm.Reduce(X_T_X_local, X_T_X, op=MPI.SUM, root=0)
+                        # compute local sum of X @ F
+                        F_local_list = list(F_local)
+                        F_list = mpi_comm.reduce(F_local_list, op=MPI.SUM, root=0)
+                        if mpi_rank == 0:
+                            F = np.array(F_list)
+                            logger.debug(f"X_T_X.shape = {X_T_X.shape}.")
+                            logger.debug(f"F.shape = {F.shape}.")
+                            X_T_X[np.diag_indices_from(X_T_X)] += epsilon
+                            # (X^T X_w + eps*I) x = F ->solve-> x = (X^T X_w + eps*I)^{-1} F
+                            X_T_X_inv_F = scipy.linalg.solve(X_T_X, F, assume_a="sym")
+                            K = X_T_X_inv_F.shape[0] // mpi_size
+                        else:
+                            X_T_X_inv_F = None
+                            K = None
+                        # Broadcast K to all ranks so they know how big each chunk is
+                        K = mpi_comm.bcast(K, root=0)
+
+                        X_T_X_inv_F_local = np.empty(K, dtype=np.float64)
+
+                        mpi_comm.Scatter(
+                            [X_T_X_inv_F, MPI.DOUBLE],  # send buffer (only significant on root)
+                            X_T_X_inv_F_local,  # receive buffer (on each rank)
+                            root=0,
+                        )
+                        # theta = X_w (X^T X_w + eps*I)^{-1} F
+                        theta_all_local = X_local @ X_T_X_inv_F_local
+                        theta_all = np.empty(theta_all_local.shape, dtype=np.float64)
+                        mpi_comm.Allreduce(theta_all_local, theta_all, op=MPI.SUM)
+                        logger.devel(f"[new] theta_all (w/ the push through identity) = {theta_all}.")
+                        logger.debug(
+                            f"[new] theta_all (w/ the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
+                        )
                     else:
-                        X_F = None
-                    mpi_comm.Reduce(X_F_local, X_F, op=MPI.SUM, root=0)
-                    # compute theta
-                    if mpi_rank == 0:
-                        logger.debug(f"X @ X.T.shape = {X_X_T.shape}.")
-                        logger.debug(f"X @ F.shape = {X_F.shape}.")
-                        # (X X^T + eps*I) x = X F ->solve-> x = (X  X^T + eps*I)^{-1} X F
-                        X_X_T[np.diag_indices_from(X_X_T)] += epsilon
-                        X_X_T_inv_X_F = scipy.linalg.solve(X_X_T, X_F, assume_a="sym")
-                        # theta = (X_w X^T + eps*I)^{-1} X_w F
-                        theta_all = X_X_T_inv_X_F
-                    else:
-                        theta_all = None
-                    # Broadcast theta_all to all ranks
-                    theta_all = mpi_comm.bcast(theta_all, root=0)
-                    logger.devel(f"[new] theta_all (w/o the push through identity) = {theta_all}.")
-                    logger.debug(
-                        f"[new] theta_all (w/o the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
-                    )
-                else:
-                    logger.info("Using conjugate gradient for the inverse of S.")
-                    logger.info(f"  [CG] threshold {cg_tol}.")
-                    logger.info(f"  [CG] max iteration: {cg_max_iter}.")
-                    # conjugate gradient solver
-                    # Compute b = X @ F (distributed)
-                    X_F_local = X_local @ F_local  # shape (num_param, )
-                    X_F = np.zeros_like(X_F_local)
-                    mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
+                        logger.info("Using conjugate gradient for the inverse of S.")
+                        logger.info(f"  [CG] threshold {cg_tol}.")
+                        logger.info(f"  [CG] max iteration: {cg_max_iter}.")
 
-                    # ---- Matrix-free matvec: apply_S_jax ----
-                    @partial(jax.jit, static_argnums=(2,))  # epsilon
-                    def apply_S_primal_jax(v, X_local, epsilon):
-                        # Local computation of X^T v
-                        XTv_local = X_local.T @ v  # shape (M_local,)
+                        @partial(jax.jit, static_argnums=(2,))
+                        def apply_dual_S_jax(v, X_local, epsilon):
+                            # X_local_T: shape (M_local, N/P)
+                            Xv_local = X_local @ v  # (M_local,)
+                            XTXv_local = X_local.T @ Xv_local  # (N_local,)
+                            try:
+                                XTXv_global, _ = mpi4jax.allreduce(XTXv_local, op=MPI.SUM, comm=mpi_comm)
+                            except ValueError:  # mpi4jax.allreduce does not return token since mpi4jax v0.8.0（2025-07-07)
+                                XTXv_global = mpi4jax.allreduce(XTXv_local, op=MPI.SUM, comm=mpi_comm)
+                            return XTXv_global + epsilon * v
 
-                        # Local computation of X (X^T v)
-                        XXTv_local = X_local @ XTv_local  # shape (N,)
+                        # X_re_local: shape (N_local, M_total)
+                        X_re_local = jnp.array(X_re_local)  # shape (M_total, N_local)
 
-                        # Global sum over all processes
-                        try:
-                            XXTv_global, _ = mpi4jax.allreduce(XXTv_local, op=MPI.SUM, comm=MPI.COMM_WORLD)
-                        except ValueError:  # mpi4jax.allreduce does not return token since mpi4jax v0.8.0（2025-07-07)
-                            XXTv_global = mpi4jax.allreduce(XXTv_local, op=MPI.SUM, comm=MPI.COMM_WORLD)
-                        return XXTv_global + epsilon * v
+                        # Solve (X^T X + εI)^(-1) @ F
+                        F_local_list = list(F_local)
+                        F_list = mpi_comm.allreduce(F_local_list, op=MPI.SUM)
+                        F_total = np.array(F_list)
+                        x0 = F_total
+                        x_sol, final_residual, num_steps = conjugate_gradient_jax(
+                            jnp.array(F_total), apply_dual_S_jax, X_re_local, epsilon, x0, cg_max_iter, cg_tol
+                        )
 
-                    x0 = X_F
-                    theta_all, final_residual, num_steps = conjugate_gradient_jax(
-                        jnp.array(X_F), apply_S_primal_jax, X_local, epsilon, x0, cg_max_iter, cg_tol
-                    )
-                    logger.debug(f"  [CG] Final residual: {final_residual:.3e}")
-                    logger.info(f"  [CG] Converged in {num_steps} steps")
-                    if num_steps == cg_max_iter:
-                        logger.info("  [CG] Conjugate gradient did not converge!!")
-                    logger.devel(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
-                    logger.debug(
-                        f"[new/cg] theta_all (w/o the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
-                    )
+                        # theta = X @ x_sol, evaluated locally over X_re_local (N_local rows)
+                        theta_local = X_re_local @ x_sol  # shape (N_local,)
+                        theta_local = np.asarray(theta_local)
+                        N_local = theta_local.shape[0]
 
-            else:  # num_params >= num_samples:
-                # if True:
-                logger.debug("X is a tall matrix. Proceed w/ the push-through identity.")
-                logger.debug("theta = (S+epsilon*I)^{-1}*f = X(X^T * X + epsilon*I)^{-1} * F...")
+                        recvcounts = mpi_comm.allgather(N_local)
+                        displs = [sum(recvcounts[:i]) for i in range(mpi_comm.Get_size())]
 
-                # Get local shapes
-                N, M = X_local.shape
-                P = mpi_size  # number of ranks
+                        theta_all = np.empty(sum(recvcounts), dtype=theta_local.dtype)
+                        mpi_comm.Allgatherv([theta_local, MPI.DOUBLE], [theta_all, (recvcounts, displs), MPI.DOUBLE])
 
-                # Compute how many rows each rank should own (distribute the remainder)
-                counts = [N // P + (1 if i < (N % P) else 0) for i in range(P)]
+                        logger.debug(f"  [CG] Final residual: {final_residual:.3e}")
+                        logger.info(f"  [CG] Converged in {num_steps} steps")
+                        if num_steps == cg_max_iter:
+                            logger.logger("  [CG] Conjugate gradient did not converge!")
+                        logger.devel(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
+                        logger.debug(
+                            f"[new/cg] theta_all (w/ the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
+                        )
 
-                # Compute starting row index for each rank in the original array
-                displs = [sum(counts[:i]) for i in range(P)]
-                N_local = counts[mpi_rank]  # number of rows this rank will receive
-
-                # Build send buffers by slicing X and Xw into P row‑chunks
-                # Each chunk is flattened so we can send in one go.
-                sendbuf_X = np.concatenate([X_local[displs[i] : displs[i] + counts[i], :].ravel() for i in range(P)])
-
-                # Prepare sendcounts and displacements in units of elements
-                sendcounts = [counts[i] * M for i in range(P)]
-                sdispls = [sum(sendcounts[:i]) for i in range(P)]
-
-                # Prepare recvcounts and displacements:
-                # each rank will receive 'counts[mpi_rank]*M' elements from each of the P ranks
-                recvcounts = [counts[mpi_rank] * M] * P
-                rdispls = [i * counts[mpi_rank] * M for i in range(P)]
-
-                # Allocate receive buffers
-                recvbuf_X = np.empty(sum(recvcounts), dtype=X_local.dtype)
-
-                # Perform the all‑to‑all variable‑sized exchange
-                mpi_comm.Alltoallv([sendbuf_X, sendcounts, sdispls, MPI.DOUBLE], [recvbuf_X, recvcounts, rdispls, MPI.DOUBLE])
-
-                # Reshape the flat receive buffer into a 3D array
-                #    shape = (P sources, N_local rows, M cols)
-                buf_X = recvbuf_X.reshape(P, N_local, M)
-
-                # Rearrange into final 2D arrays of shape (N_local, M * P)
-                #    by stacking each source’s M columns side by side
-                X_re_local = np.hstack([buf_X[i] for i in range(P)])  # shape (num_param/P, num_mcmc * num_walker * P)
-                logger.debug(f"X_re_local.shape = {X_re_local.shape}.")
-
-                if not cg_flag:
-                    logger.info("Using the direct solver for the inverse of S.")
-                    logger.debug(
-                        f"Estimated X_local.T @ X_local.bytes per MPI = {X_re_local.shape[1] ** 2 * X_re_local.dtype.itemsize / (2**30)} gib."
-                    )
-                    # compute local sum of X^T * X
-                    X_T_X_local = X_re_local.T @ X_re_local
-                    logger.debug(f"X_T_X_local.shape = {X_T_X_local.shape}.")
-                    # compute global sum of X^T * X
-                    if mpi_rank == 0:
-                        X_T_X = np.empty(X_T_X_local.shape, dtype=np.float64)
-                    else:
-                        X_T_X = None
-                    mpi_comm.Reduce(X_T_X_local, X_T_X, op=MPI.SUM, root=0)
-                    # compute local sum of X @ F
-                    F_local_list = list(F_local)
-                    F_list = mpi_comm.reduce(F_local_list, op=MPI.SUM, root=0)
-                    if mpi_rank == 0:
-                        F = np.array(F_list)
-                        logger.debug(f"X_T_X.shape = {X_T_X.shape}.")
-                        logger.debug(f"F.shape = {F.shape}.")
-                        X_T_X[np.diag_indices_from(X_T_X)] += epsilon
-                        # (X^T X_w + eps*I) x = F ->solve-> x = (X^T X_w + eps*I)^{-1} F
-                        X_T_X_inv_F = scipy.linalg.solve(X_T_X, F, assume_a="sym")
-                        K = X_T_X_inv_F.shape[0] // mpi_size
-                    else:
-                        X_T_X_inv_F = None
-                        K = None
-                    # Broadcast K to all ranks so they know how big each chunk is
-                    K = mpi_comm.bcast(K, root=0)
-
-                    X_T_X_inv_F_local = np.empty(K, dtype=np.float64)
-
-                    mpi_comm.Scatter(
-                        [X_T_X_inv_F, MPI.DOUBLE],  # send buffer (only significant on root)
-                        X_T_X_inv_F_local,  # receive buffer (on each rank)
-                        root=0,
-                    )
-                    # theta = X_w (X^T X_w + eps*I)^{-1} F
-                    theta_all_local = X_local @ X_T_X_inv_F_local
-                    theta_all = np.empty(theta_all_local.shape, dtype=np.float64)
-                    mpi_comm.Allreduce(theta_all_local, theta_all, op=MPI.SUM)
-                    logger.devel(f"[new] theta_all (w/ the push through identity) = {theta_all}.")
-                    logger.debug(
-                        f"[new] theta_all (w/ the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
-                    )
-                else:
-                    logger.info("Using conjugate gradient for the inverse of S.")
-                    logger.info(f"  [CG] threshold {cg_tol}.")
-                    logger.info(f"  [CG] max iteration: {cg_max_iter}.")
-
-                    @partial(jax.jit, static_argnums=(2,))
-                    def apply_dual_S_jax(v, X_local, epsilon):
-                        # X_local_T: shape (M_local, N/P)
-                        Xv_local = X_local @ v  # (M_local,)
-                        XTXv_local = X_local.T @ Xv_local  # (N_local,)
-                        try:
-                            XTXv_global, _ = mpi4jax.allreduce(XTXv_local, op=MPI.SUM, comm=mpi_comm)
-                        except ValueError:  # mpi4jax.allreduce does not return token since mpi4jax v0.8.0（2025-07-07)
-                            XTXv_global = mpi4jax.allreduce(XTXv_local, op=MPI.SUM, comm=mpi_comm)
-                        return XTXv_global + epsilon * v
-
-                    # X_re_local: shape (N_local, M_total)
-                    X_re_local = jnp.array(X_re_local)  # shape (M_total, N_local)
-
-                    # Solve (X^T X + εI)^(-1) @ F
-                    F_local_list = list(F_local)
-                    F_list = mpi_comm.allreduce(F_local_list, op=MPI.SUM)
-                    F_total = np.array(F_list)
-                    x0 = F_total
-                    x_sol, final_residual, num_steps = conjugate_gradient_jax(
-                        jnp.array(F_total), apply_dual_S_jax, X_re_local, epsilon, x0, cg_max_iter, cg_tol
-                    )
-
-                    # theta = X @ x_sol, evaluated locally over X_re_local (N_local rows)
-                    theta_local = X_re_local @ x_sol  # shape (N_local,)
-                    theta_local = np.asarray(theta_local)
-                    N_local = theta_local.shape[0]
-
-                    recvcounts = mpi_comm.allgather(N_local)
-                    displs = [sum(recvcounts[:i]) for i in range(mpi_comm.Get_size())]
-
-                    theta_all = np.empty(sum(recvcounts), dtype=theta_local.dtype)
-                    mpi_comm.Allgatherv([theta_local, MPI.DOUBLE], [theta_all, (recvcounts, displs), MPI.DOUBLE])
-
-                    logger.debug(f"  [CG] Final residual: {final_residual:.3e}")
-                    logger.info(f"  [CG] Converged in {num_steps} steps")
-                    if num_steps == cg_max_iter:
-                        logger.logger("  [CG] Conjugate gradient did not converge!")
-                    logger.devel(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
-                    logger.debug(
-                        f"[new/cg] theta_all (w/ the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
-                    )
-
-            # theta, back to the original scale
-            theta_all = theta_all / np.sqrt(diag_S)
+                # theta, back to the original scale
+                theta_all = theta_all / np.sqrt(diag_S)
+            else:
+                params = jnp.array(flat_param_vector)
+                grads = -jnp.array(f)
+                updates, optax_state = optax_tx.update(grads, optax_state, params)
+                theta_all = np.array(updates, dtype=np.float64)
 
             # Extract only the signal-to-noise ratio maximized parameters
             theta = np.zeros_like(theta_all)
@@ -2404,13 +2475,19 @@ class MCMC:
             # Apply updates via Wavefunction_data, which in turn delegates
             # to Jastrow_data and Geminal_data. MCMC does not need to know
             # internal parameter names such as j1_param or lambda_matrix.
+            logger.info(f"Updating parameters with optimizer '{optimizer_mode}'.")
             logger.devel(f"dX.shape for MPI-rank={mpi_rank} is {theta.shape}")
 
             structure_data = self.hamiltonian_data.structure_data
             coulomb_potential_data = self.hamiltonian_data.coulomb_potential_data
 
             wavefunction_data_old = self.hamiltonian_data.wavefunction_data
-            wavefunction_data = wavefunction_data_old.apply_block_updates(blocks=blocks, thetas=theta, learning_rate=delta)
+            block_learning_rate = sr_delta if use_sr else 1.0
+            wavefunction_data = wavefunction_data_old.apply_block_updates(
+                blocks=blocks,
+                thetas=theta,
+                learning_rate=block_learning_rate,
+            )
             hamiltonian_data = Hamiltonian_data(
                 structure_data=structure_data,
                 wavefunction_data=wavefunction_data,

@@ -82,8 +82,6 @@ cli_parameters = {
         "epsilon_AS": 0.0,
         "num_opt_steps": None,
         "wf_dump_freq": 1,
-        "delta": 0.01,
-        "epsilon": 0.001,
         "opt_J1_param": False,
         "opt_J2_param": True,
         "opt_J3_param": True,
@@ -93,6 +91,8 @@ cli_parameters = {
         "cg_flag": True,
         "cg_max_iter": 10000,
         "cg_tol": 1e-4,
+        "optimizer": "sr",
+        "optimizer_kwargs": {"delta": 0.01, "epsilon": 0.001},
     },
     "vmc_comments": {
         "num_mcmc_steps": "Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.",
@@ -103,8 +103,6 @@ cli_parameters = {
         "epsilon_AS": "the epsilon parameter used in the Attacalite-Sandro regulatization method.",
         "num_opt_steps": "Number of optimization steps.",
         "wf_dump_freq": "Frequency of wavefunction (i.e. hamiltonian_data) dump.",
-        "delta": "Step size for the Stochastic reconfiguration (i.e., the natural gradient) optimization.",
-        "epsilon": "Regularization parameter, a positive number added to the diagnoal elements of the Fisher-Information matrix, used during the Stochastic reconfiguration to improve the numerical stability.",
         "opt_J1_param": "Optimize the J1 parameter",
         "opt_J2_param": "Optimize the J2 parameter.",
         "opt_J3_param": "Optimize the J3 parameters.",
@@ -114,6 +112,12 @@ cli_parameters = {
         "cg_flag": "If true, use the conjugate gradient method for the optimization.",
         "cg_max_iter": "Maximum number of iterations for the conjugate gradient method.",
         "cg_tol": "Tolerance for the conjugate gradient method.",
+        "optimizer": 'Optimizer backend used for parameter updates. "sr" keeps the stochastic reconfiguration scheme; any other value should be the name of an optax optimizer (e.g., "adam").',
+        "optimizer_kwargs": (
+            'Additional keyword arguments for the selected optimizer. When "sr", use "delta" (prefactor in '
+            'c_i <- c_i + delta * S^{-1} f) and "epsilon" (regularization strength added to S). For optax '
+            "optimizers, this table is forwarded directly to optax (e.g., {learning_rate = 1e-3})."
+        ),
     },
     "lrdmc": {
         "num_mcmc_steps": None,

@@ -385,8 +385,6 @@ def cli():
         epsilon_AS = parameters[section]["epsilon_AS"]
         num_opt_steps = parameters[section]["num_opt_steps"]
         wf_dump_freq = parameters[section]["wf_dump_freq"]
-        delta = parameters[section]["delta"]
-        epsilon = parameters[section]["epsilon"]
         opt_J1_param = parameters[section]["opt_J1_param"]
         opt_J2_param = parameters[section]["opt_J2_param"]
         opt_J3_param = parameters[section]["opt_J3_param"]
@@ -396,6 +394,8 @@ def cli():
         cg_flag = parameters[section]["cg_flag"]
         cg_max_iter = parameters[section]["cg_max_iter"]
         cg_tol = parameters[section]["cg_tol"]
+        optimizer = parameters[section]["optimizer"]
+        optimizer_kwargs = parameters[section]["optimizer_kwargs"]
 
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
         if num_mcmc_steps < num_mcmc_warmup_steps:
@@ -427,8 +427,6 @@ def cli():
         mcmc.run_optimize(
             num_mcmc_steps=num_mcmc_steps,
             num_opt_steps=num_opt_steps,
-            delta=delta,
-            epsilon=epsilon,
             wf_dump_freq=wf_dump_freq,
             num_mcmc_warmup_steps=num_mcmc_warmup_steps,
             num_mcmc_bin_blocks=num_mcmc_bin_blocks,
@@ -442,6 +440,8 @@ def cli():
             cg_flag=cg_flag,
             cg_max_iter=cg_max_iter,
             cg_tol=cg_tol,
+            optimizer=optimizer,
+            optimizer_kwargs=optimizer_kwargs,
         )
         logger.info("")
 
