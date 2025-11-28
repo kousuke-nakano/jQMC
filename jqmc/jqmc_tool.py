@@ -804,7 +804,7 @@ def vmc_analyze_output(
     typer.echo("-" * sep)
     typer.echo(f"{'Iter':<8} {'E (Ha)':<10} {'Max f (Ha)':<12} {'Max of signal to noise of f':<16}")
     typer.echo("-" * sep)
-    for iter, E, max_f, signal_to_noise in zip(iter_list, E_list, max_f_list, signal_to_noise_list, strict=True):
+    for iter, E, max_f, signal_to_noise in zip(iter_list, E_list, max_f_list, signal_to_noise_list, strict=False):
         typer.echo(f"{iter:4}  {E:8.2uS}  {max_f:+10.2uS}  {signal_to_noise:8.3f}")
     typer.echo("-" * sep)
 
