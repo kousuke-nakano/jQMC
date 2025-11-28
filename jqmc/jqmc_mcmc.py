@@ -37,6 +37,7 @@ import os
 import time
 from functools import partial
 from logging import getLogger
+from typing import Any
 
 import jax
 import mpi4jax
@@ -151,6 +152,10 @@ class MCMC:
 
         # set hamiltonian_data
         self.__hamiltonian_data = hamiltonian_data
+
+        # optimizer runtime container (used for optax restarts)
+        self.__optimizer_runtime = None
+        self.__ensure_optimizer_runtime()
 
         # optimization counter
         self.__i_opt = 0
@@ -299,6 +304,32 @@ class MCMC:
         # stored de_L / dc_lambda_matrix
         self.__stored_grad_e_L_lambda_matrix = []
         """
+
+    def __ensure_optimizer_runtime(self) -> None:
+        if not hasattr(self, "_MCMC__optimizer_runtime") or self.__optimizer_runtime is None:
+            self.__optimizer_runtime = {
+                "method": None,
+                "hyperparameters": None,
+                "optax_state": None,
+                "optax_param_size": None,
+            }
+
+    def __set_optimizer_runtime(
+        self,
+        *,
+        method: str | None,
+        hyperparameters: dict[str, Any] | None,
+        optax_state: Any,
+        optax_param_size: int | None,
+    ) -> None:
+        self.__ensure_optimizer_runtime()
+        hyper_copy = dict(hyperparameters) if hyperparameters is not None else None
+        self.__optimizer_runtime = {
+            "method": method,
+            "hyperparameters": hyper_copy,
+            "optax_state": optax_state,
+            "optax_param_size": optax_param_size,
+        }
 
     def run(self, num_mcmc_steps: int = 0, max_time=86400) -> None:
         """Launch MCMCs with the set multiple walkers.
@@ -1938,6 +1969,13 @@ class MCMC:
         optax_state = None
         optax_param_size = None
 
+        self.__ensure_optimizer_runtime()
+        optimizer_runtime = self.__optimizer_runtime
+        stored_method = optimizer_runtime.get("method")
+        stored_hparams = optimizer_runtime.get("hyperparameters")
+        stored_optax_state = optimizer_runtime.get("optax_state")
+        stored_param_size = optimizer_runtime.get("optax_param_size")
+
         optimizer_hparams: dict[str, float | int | str] = {"method": optimizer_mode}
 
         if not use_sr:
@@ -1958,6 +1996,36 @@ class MCMC:
                 "cg_max_iter": sr_cg_max_iter,
                 "cg_tol": sr_cg_tol,
             }
+
+        if use_sr:
+            self.__set_optimizer_runtime(
+                method=optimizer_mode,
+                hyperparameters=optimizer_hparams,
+                optax_state=None,
+                optax_param_size=None,
+            )
+        else:
+            if stored_method == optimizer_mode and stored_hparams == optimizer_hparams:
+                optax_state = stored_optax_state
+                optax_param_size = stored_param_size
+                if optax_state is not None:
+                    logger.info("Resuming optax '%s' optimizer state from checkpoint.", optax_name)
+            else:
+                if stored_optax_state is not None:
+                    if stored_method is not None and stored_method != optimizer_mode:
+                        logger.info(
+                            "Stored optimizer state for method '%s' ignored because '%s' was requested.",
+                            stored_method,
+                            optimizer_mode,
+                        )
+                    else:
+                        logger.info("Stored optimizer hyperparameters differ from requested values; resetting optimizer state.")
+                self.__set_optimizer_runtime(
+                    method=optimizer_mode,
+                    hyperparameters=optimizer_hparams,
+                    optax_state=None,
+                    optax_param_size=None,
+                )
 
         # optimizer info
         logger.info(f"The chosen optimizer is '{optimizer_mode}'.")
@@ -2447,6 +2515,14 @@ class MCMC:
                 grads = -jnp.array(f)
                 updates, optax_state = optax_tx.update(grads, optax_state, params)
                 theta_all = np.array(updates, dtype=np.float64)
+                if optax_param_size is None:
+                    optax_param_size = flat_param_vector.size
+                self.__set_optimizer_runtime(
+                    method=optimizer_mode,
+                    hyperparameters=optimizer_hparams,
+                    optax_state=optax_state,
+                    optax_param_size=optax_param_size,
+                )
 
             # Extract only the signal-to-noise ratio maximized parameters
             theta = np.zeros_like(theta_all)
