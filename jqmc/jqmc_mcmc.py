@@ -1867,10 +1867,6 @@ class MCMC:
         opt_JNN_param: bool = True,
         opt_lambda_param: bool = False,
         num_param_opt: int = 0,
-        cg_flag: bool = True,
-        cg_max_iter=1e6,
-        cg_tol=1e-8,
-        optimizer: str | None = "sr",
         optimizer_kwargs: dict | None = None,
     ):
         """Optimizing wavefunction.
@@ -1904,20 +1900,13 @@ class MCMC:
             num_param_opt (int):
                 the number of parameters to optimize in the descending order of ``|f|/|std f|``.
                 If zero, all parameters are optimized.
-            cg_flag (bool):
-                if True, use conjugate gradient method for inverse S matrix.
-            cg_max_iter (int):
-                maximum number of iterations for conjugate gradient method.
-            cg_tol (float):
-                tolerance for conjugate gradient method.
-            optimizer (str | None):
-                Name of the optimizer backend. "sr" (default) keeps the stochastic reconfiguration workflow;
-                any other string selects the corresponding optax optimizer (e.g., "adam", "sgd").
             optimizer_kwargs (dict | None):
-                Extra keyword arguments forwarded to the selected optimizer. When ``optimizer == "sr"``,
-                the recognized keys are ``delta`` (prefactor in ``c_i <- c_i + delta * S^{-1} f``) and
-                ``epsilon`` (regularization strength added to ``S``). When another optimizer is selected,
-                the dictionary is passed directly to the optax constructor (for example,
+                Dictionary that configures the optimizer. The ``method`` entry selects the backend: ``"sr"``
+                (default) keeps the stochastic reconfiguration workflow; any other value should be the name of an
+                optax optimizer (e.g., ``"adam"``, ``"sgd"``). When ``method == "sr"``, the recognized keys are
+                ``delta`` (prefactor in ``c_i <- c_i + delta * S^{-1} f``), ``epsilon`` (regularization strength added
+                to ``S``), ``cg_flag``, ``cg_max_iter``, and ``cg_tol``. When another optimizer is selected, the
+                remaining dictionary entries are forwarded directly to the optax constructor (for example,
                 ``{"learning_rate": 1.0e-3}``).
         """
         optax_supported = {
@@ -1929,29 +1918,46 @@ class MCMC:
             "yogi": optax.yogi,
         }
 
-        optimizer_mode = (optimizer or "sr").lower()
+        optimizer_kwargs = dict(optimizer_kwargs or {})
+        optimizer_mode = optimizer_kwargs.pop("method", "sr")
+        if not isinstance(optimizer_mode, str):
+            raise TypeError("optimizer_kwargs['method'] must be a string if provided.")
+        optimizer_mode = optimizer_mode.lower()
         use_sr = optimizer_mode == "sr"
         optax_name = optimizer_mode if not use_sr else None
-        optimizer_kwargs = dict(optimizer_kwargs or {})
         sr_delta = float(optimizer_kwargs.get("delta", 1.0e-3))
         sr_epsilon = float(optimizer_kwargs.get("epsilon", 1.0e-3))
-        optax_kwargs = {k: v for k, v in optimizer_kwargs.items() if k not in {"delta", "epsilon"}}
+        sr_cg_flag = bool(optimizer_kwargs.get("cg_flag", True))
+        sr_cg_max_iter = int(optimizer_kwargs.get("cg_max_iter", int(1e6)))
+        sr_cg_tol = float(optimizer_kwargs.get("cg_tol", 1.0e-8))
+        optax_kwargs = {
+            k: v for k, v in optimizer_kwargs.items() if k not in {"delta", "epsilon", "cg_flag", "cg_max_iter", "cg_tol"}
+        }
 
         optax_tx = None
         optax_state = None
         optax_param_size = None
 
-        optimizer_hparams: dict[str, float | int | str] = {}
+        optimizer_hparams: dict[str, float | int | str] = {"method": optimizer_mode}
 
         if not use_sr:
             if optax_name not in optax_supported:
-                raise ValueError(f"Unsupported optimizer '{optimizer}'. Supported optax options: {sorted(optax_supported)}.")
+                raise ValueError(
+                    f"Unsupported optimizer '{optimizer_mode}'. Supported optax options: {sorted(optax_supported)}."
+                )
             optax_config = dict(optax_kwargs)
             optax_config.setdefault("learning_rate", sr_delta)
             optax_tx = optax_supported[optax_name](**optax_config)
-            optimizer_hparams = dict(optax_config)
+            optimizer_hparams = {"method": optimizer_mode, **optax_config}
         else:
-            optimizer_hparams = {"delta": sr_delta, "epsilon": sr_epsilon}
+            optimizer_hparams = {
+                "method": optimizer_mode,
+                "delta": sr_delta,
+                "epsilon": sr_epsilon,
+                "cg_flag": sr_cg_flag,
+                "cg_max_iter": sr_cg_max_iter,
+                "cg_tol": sr_cg_tol,
+            }
 
         # optimizer info
         logger.info(f"The chosen optimizer is '{optimizer_mode}'.")
@@ -2203,7 +2209,7 @@ class MCMC:
                     # if True:
                     logger.debug("X is a wide matrix. Proceed w/o the push-through identity.")
                     logger.debug("theta = (S+epsilon*I)^{-1}*f = (X * X^T + epsilon*I)^{-1} * X F...")
-                    if not cg_flag:
+                    if not sr_cg_flag:
                         logger.info("Using the direct solver for the inverse of S.")
                         logger.debug(
                             f"Estimated X_local @ X_local.T.bytes per MPI = {X_local.shape[0] ** 2 * X_local.dtype.itemsize / (2**30)} gib."
@@ -2245,8 +2251,8 @@ class MCMC:
                         )
                     else:
                         logger.info("Using conjugate gradient for the inverse of S.")
-                        logger.info(f"  [CG] threshold {cg_tol}.")
-                        logger.info(f"  [CG] max iteration: {cg_max_iter}.")
+                        logger.info(f"  [CG] threshold {sr_cg_tol}.")
+                        logger.info(f"  [CG] max iteration: {sr_cg_max_iter}.")
                         # conjugate gradient solver
                         # Compute b = X @ F (distributed)
                         X_F_local = X_local @ F_local  # shape (num_param, )
@@ -2271,11 +2277,17 @@ class MCMC:
 
                         x0 = X_F
                         theta_all, final_residual, num_steps = conjugate_gradient_jax(
-                            jnp.array(X_F), apply_S_primal_jax, X_local, epsilon, x0, cg_max_iter, cg_tol
+                            jnp.array(X_F),
+                            apply_S_primal_jax,
+                            X_local,
+                            epsilon,
+                            x0,
+                            sr_cg_max_iter,
+                            sr_cg_tol,
                         )
                         logger.debug(f"  [CG] Final residual: {final_residual:.3e}")
                         logger.info(f"  [CG] Converged in {num_steps} steps")
-                        if num_steps == cg_max_iter:
+                        if num_steps == sr_cg_max_iter:
                             logger.info("  [CG] Conjugate gradient did not converge!!")
                         logger.devel(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
                         logger.debug(
@@ -2328,7 +2340,7 @@ class MCMC:
                     X_re_local = np.hstack([buf_X[i] for i in range(P)])  # shape (num_param/P, num_mcmc * num_walker * P)
                     logger.debug(f"X_re_local.shape = {X_re_local.shape}.")
 
-                    if not cg_flag:
+                    if not sr_cg_flag:
                         logger.info("Using the direct solver for the inverse of S.")
                         logger.debug(
                             f"Estimated X_local.T @ X_local.bytes per MPI = {X_re_local.shape[1] ** 2 * X_re_local.dtype.itemsize / (2**30)} gib."
@@ -2376,8 +2388,8 @@ class MCMC:
                         )
                     else:
                         logger.info("Using conjugate gradient for the inverse of S.")
-                        logger.info(f"  [CG] threshold {cg_tol}.")
-                        logger.info(f"  [CG] max iteration: {cg_max_iter}.")
+                        logger.info(f"  [CG] threshold {sr_cg_tol}.")
+                        logger.info(f"  [CG] max iteration: {sr_cg_max_iter}.")
 
                         @partial(jax.jit, static_argnums=(2,))
                         def apply_dual_S_jax(v, X_local, epsilon):
@@ -2399,7 +2411,13 @@ class MCMC:
                         F_total = np.array(F_list)
                         x0 = F_total
                         x_sol, final_residual, num_steps = conjugate_gradient_jax(
-                            jnp.array(F_total), apply_dual_S_jax, X_re_local, epsilon, x0, cg_max_iter, cg_tol
+                            jnp.array(F_total),
+                            apply_dual_S_jax,
+                            X_re_local,
+                            epsilon,
+                            x0,
+                            sr_cg_max_iter,
+                            sr_cg_tol,
                         )
 
                         # theta = X @ x_sol, evaluated locally over X_re_local (N_local rows)
@@ -2415,7 +2433,7 @@ class MCMC:
 
                         logger.debug(f"  [CG] Final residual: {final_residual:.3e}")
                         logger.info(f"  [CG] Converged in {num_steps} steps")
-                        if num_steps == cg_max_iter:
+                        if num_steps == sr_cg_max_iter:
                             logger.logger("  [CG] Conjugate gradient did not converge!")
                         logger.devel(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
                         logger.debug(

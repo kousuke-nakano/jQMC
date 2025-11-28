@@ -391,11 +391,25 @@ def cli():
         opt_JNN_param = parameters[section]["opt_JNN_param"]
         opt_lambda_param = parameters[section]["opt_lambda_param"]
         num_param_opt = parameters[section]["num_param_opt"]
-        cg_flag = parameters[section]["cg_flag"]
-        cg_max_iter = parameters[section]["cg_max_iter"]
-        cg_tol = parameters[section]["cg_tol"]
-        optimizer = parameters[section]["optimizer"]
         optimizer_kwargs = parameters[section]["optimizer_kwargs"]
+        if optimizer_kwargs is None:
+            optimizer_kwargs = {}
+        elif not isinstance(optimizer_kwargs, dict):
+            raise TypeError("optimizer_kwargs must be a dictionary when provided in the VMC section.")
+        else:
+            optimizer_kwargs = dict(optimizer_kwargs)
+
+        vmc_section = dict_toml.get(section, {}) if isinstance(dict_toml.get(section, {}), dict) else {}
+        optimizer_method = vmc_section.get("optimizer")
+        if optimizer_method is not None and not isinstance(optimizer_method, str):
+            raise TypeError("The 'optimizer' key must be a string when provided in the VMC section.")
+        if optimizer_method is not None:
+            logger.warning("The 'optimizer' key is deprecated. Please move the value under optimizer_kwargs.method instead.")
+            optimizer_kwargs.setdefault("method", optimizer_method)
+
+        optimizer_kwargs.setdefault("method", "sr")
+        if not isinstance(optimizer_kwargs["method"], str):
+            raise TypeError("optimizer_kwargs['method'] must be a string when provided in the VMC section.")
 
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
         if num_mcmc_steps < num_mcmc_warmup_steps:
@@ -437,10 +451,6 @@ def cli():
             opt_lambda_param=opt_lambda_param,
             num_param_opt=num_param_opt,
             max_time=max_time,
-            cg_flag=cg_flag,
-            cg_max_iter=cg_max_iter,
-            cg_tol=cg_tol,
-            optimizer=optimizer,
             optimizer_kwargs=optimizer_kwargs,
         )
         logger.info("")

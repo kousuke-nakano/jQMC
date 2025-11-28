@@ -22,5 +22,5 @@ opt_J2_param = true
 opt_J3_param = false
 opt_JNN_param = true
 opt_lambda_param = false
-optimizer = 'adagrad'
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If None, all parameters are optimized.
+optimizer_kwargs = { method = "adagrad" } # Optimizer configuration. Set method to an optax optimizer name such as "adagrad".

@@ -88,11 +88,14 @@ cli_parameters = {
         "opt_JNN_param": True,
         "opt_lambda_param": False,
         "num_param_opt": 0,
-        "cg_flag": True,
-        "cg_max_iter": 10000,
-        "cg_tol": 1e-4,
-        "optimizer": "sr",
-        "optimizer_kwargs": {"delta": 0.01, "epsilon": 0.001},
+        "optimizer_kwargs": {
+            "method": "sr",
+            "delta": 0.01,
+            "epsilon": 0.001,
+            "cg_flag": True,
+            "cg_max_iter": 10000,
+            "cg_tol": 1e-4,
+        },
     },
     "vmc_comments": {
         "num_mcmc_steps": "Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.",
@@ -109,14 +112,12 @@ cli_parameters = {
         "opt_JNN_param": "Optimize the neural-network Jastrow parameters.",
         "opt_lambda_param": "Optimize the lambda parameters in the geminal part.",
         "num_param_opt": "the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.",
-        "cg_flag": "If true, use the conjugate gradient method for the optimization.",
-        "cg_max_iter": "Maximum number of iterations for the conjugate gradient method.",
-        "cg_tol": "Tolerance for the conjugate gradient method.",
-        "optimizer": 'Optimizer backend used for parameter updates. "sr" keeps the stochastic reconfiguration scheme; any other value should be the name of an optax optimizer (e.g., "adam").',
         "optimizer_kwargs": (
-            'Additional keyword arguments for the selected optimizer. When "sr", use "delta" (prefactor in '
-            'c_i <- c_i + delta * S^{-1} f) and "epsilon" (regularization strength added to S). For optax '
-            "optimizers, this table is forwarded directly to optax (e.g., {learning_rate = 1e-3})."
+            "Optimizer configuration. Set 'method' to 'sr' (default) for stochastic reconfiguration or to any "
+            "optax optimizer name (e.g., 'adam'). For SR, keep the 'delta' (prefactor in c_i <- c_i + delta * "
+            "S^{-1} f), 'epsilon' (regularization strength added to S), and optional 'cg_flag'/'cg_max_iter'/'cg_tol' "
+            "entries controlling the conjugate-gradient solver. For optax optimizers, the remaining keys are passed "
+            "directly to optax (e.g., {method = 'adam', learning_rate = 1e-3})."
         ),
     },
     "lrdmc": {
