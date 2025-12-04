@@ -288,9 +288,34 @@ You can generate a template file for a VMCopt calculation using `jqmc-tool`. Ple
 > Input file is generated: vmc.toml
 ```
 
-```{literalinclude} 03vmc_JSD/vmc.toml
-:language: toml
-:caption: vmc.toml
+<!-- include: 03vmc_JSD/vmc.toml -->
+```toml
+[control]
+job_type = "vmc" # Specify the job type. "mcmc", "vmc", "lrdmc", or "lrdmc-tau".
+mcmc_seed = 34456 # Random seed for MCMC
+number_of_walkers = 4 # Number of walkers per MPI process
+max_time = 86400 # Maximum time in sec.
+restart = false
+restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
+verbosity = "low" # Verbosity level. "low" or "high"
+
+[vmc]
+num_mcmc_steps = 500 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
+num_mcmc_per_measurement = 40 # Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.
+num_mcmc_warmup_steps = 0 # Number of observable measurement steps for warmup (i.e., discarged).
+num_mcmc_bin_blocks = 5 # Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_mcmc_bin_blocks * mpi_size * number_of_walkers.
+Dt = 2.0 # Step size for the MCMC update (bohr).
+epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
+num_opt_steps = 300 # Number of optimization steps.
+wf_dump_freq = 1 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
+optimizer_kwargs = { method = "sr", delta = 0.01, epsilon = 0.001 } # SR optimizer configuration (method plus step/regularization).
+opt_J1_param = false
+opt_J2_param = true
+opt_J3_param = true
+opt_lambda_param = false
+num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If None, all parameters are optimized.
+```
 
 Please lunch the job.
 
@@ -367,9 +392,24 @@ The next step is MCMC calculation. You can generate a template file for a MCMC c
 > Input file is generated: mcmc.toml
 ```
 
-```{literalinclude} 04mcmc_JSD/vmc.toml
-:language: toml
-:caption: mcmc.toml
+<!-- include: 04mcmc_JSD/mcmc.toml -->
+```toml
+[control]
+job_type = "mcmc" # Specify the job type. "mcmc", "vmc", or "lrdmc"
+mcmc_seed = 34456 # Random seed for MCMC
+number_of_walkers = 300 # Number of walkers per MPI process
+max_time = 86400 # Maximum time in sec.
+restart = false
+restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
+verbosity = "low" # Verbosity level. "low" or "high"
+[mcmc]
+num_mcmc_steps = 90000 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
+num_mcmc_per_measurement = 40 # Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.
+num_mcmc_warmup_steps = 0 # Number of observable measurement steps for warmup (i.e., discarged).
+num_mcmc_bin_blocks = 5 # Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_mcmc_bin_blocks * mpi_size * number_of_walkers.
+Dt = 2.0 # Step size for the MCMC update (bohr).
+epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 ```
 
 The final step is to run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing system such as PBS).
