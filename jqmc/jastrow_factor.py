@@ -1341,13 +1341,13 @@ class Jastrow_data:
         # NN J3 is a pure data container and should be copied as-is so that
         # derived wavefunction/jastrow objects keep access to the NN
         # variational parameters and their flatten/unflatten utilities.
-        nn_jastrow_three_body_data = jastrow_data.nn_jastrow_data
+        nn_jastrow_data = jastrow_data.nn_jastrow_data
 
         return cls(
             jastrow_one_body_data=jastrow_one_body_data,
             jastrow_two_body_data=jastrow_two_body_data,
             jastrow_three_body_data=jastrow_three_body_data,
-            nn_jastrow_three_body_data=nn_jastrow_three_body_data,
+            nn_jastrow_data=nn_jastrow_data,
         )
 
     def apply_block_update(self, block: "VariationalParameterBlock") -> "Jastrow_data":
@@ -1444,14 +1444,14 @@ class Jastrow_data_deriv_params(Jastrow_data):
             jastrow_three_body_data = jastrow_data.jastrow_three_body_data
         # Propagate NN J3 as-is so that parameter-derivative objects keep
         # access to the NN variational parameters.
-        nn_jastrow_three_body_data = jastrow_data.nn_jastrow_data
+        nn_jastrow_data = jastrow_data.nn_jastrow_data
 
         # Return a new instance of Jastrow_data with the updated jastrow_three_body_data
         return cls(
             jastrow_one_body_data=jastrow_one_body_data,
             jastrow_two_body_data=jastrow_two_body_data,
             jastrow_three_body_data=jastrow_three_body_data,
-            nn_jastrow_three_body_data=nn_jastrow_three_body_data,
+            nn_jastrow_data=nn_jastrow_data,
         )
 
 
@@ -1474,14 +1474,14 @@ class Jastrow_data_deriv_R(Jastrow_data):
             jastrow_three_body_data = jastrow_data.jastrow_three_body_data
         # Propagate NN J3 as-is so that coordinate-derivative objects keep
         # access to the NN variational parameters.
-        nn_jastrow_three_body_data = jastrow_data.nn_jastrow_data
+        nn_jastrow_data = jastrow_data.nn_jastrow_data
 
         # Return a new instance of Jastrow_data with the updated jastrow_three_body_data
         return cls(
             jastrow_one_body_data=jastrow_one_body_data,
             jastrow_two_body_data=jastrow_two_body_data,
             jastrow_three_body_data=jastrow_three_body_data,
-            nn_jastrow_three_body_data=nn_jastrow_three_body_data,
+            nn_jastrow_data=nn_jastrow_data,
         )
 
 
@@ -1501,13 +1501,13 @@ class Jastrow_data_no_deriv(Jastrow_data):
         jastrow_three_body_data = jastrow_data.jastrow_three_body_data
 
         # Propagate NN J3 as-is also for the no-derivative variant.
-        nn_jastrow_three_body_data = jastrow_data.nn_jastrow_data
+        nn_jastrow_data = jastrow_data.nn_jastrow_data
 
         return cls(
             jastrow_one_body_data=jastrow_one_body_data,
             jastrow_two_body_data=jastrow_two_body_data,
             jastrow_three_body_data=jastrow_three_body_data,
-            nn_jastrow_three_body_data=nn_jastrow_three_body_data,
+            nn_jastrow_data=nn_jastrow_data,
         )
 
 
