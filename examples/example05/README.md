@@ -55,10 +55,10 @@ Next step is to convert the `TREXIO` file to the `jqmc` format using `jqmc-tool`
 ```bash
 % cd 02convert_DFT_to_JSD
 % jqmc-tool trexio convert-to H2_R_0.74.h5 -j1 1.0 -j2 1.0 -j3 mo
-> Hamiltonian data is saved in hamiltonian_data.chk.
+> Hamiltonian data is saved in hamiltonian_data.h5.
 ```
 
-The generated `hamiltonian_data.chk` is a wavefunction file with the `jqmc` format. `-j2` specifies the initial value of the one-body Jastrow parameter, `-j2` specifies the initial value of the two-body Jastrow parameter, and `-j3` specifies the basis set (`ao`:atomic orbital or `mo`:molecular orbital) for the three-body Jastrow part.
+The generated `hamiltonian_data.h5` is a wavefunction file with the `jqmc` format. `-j2` specifies the initial value of the one-body Jastrow parameter, `-j2` specifies the initial value of the two-body Jastrow parameter, and `-j3` specifies the basis set (`ao`:atomic orbital or `mo`:molecular orbital) for the three-body Jastrow part.
 
 ## Optimize a trial WF (MCMC)
 The next step is to optimize variational parameters included in the generated wavefunction. More in details, here, we optimize the two-body Jastrow parameter and the matrix elements of the three-body Jastrow parameter.
@@ -79,7 +79,7 @@ number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
 restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
-hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
+hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 
 [vmc]
@@ -160,7 +160,7 @@ number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
 restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
-hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
+hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 
 [mcmc]
@@ -211,7 +211,7 @@ number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
 restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
-hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
+hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 
 [lrdmc]
@@ -256,11 +256,11 @@ The next step is to convert the optimized JSD ansatz to JAGP one.
 
 ```bash
 % cd 06convert_JSD_to_JAGP
-% cp ../04mcmc_JSD/hamiltonian_data.chk ./hamiltonian_data_JSD.chk
-% jqmc-tool hamiltonian conv-wf --convert-to jagp hamiltonian_data_JSD.chk
+% cp ../04mcmc_JSD/hamiltonian_data.h5 ./hamiltonian_data_JSD.h5
+% jqmc-tool hamiltonian conv-wf --convert-to jagp hamiltonian_data_JSD.h5
 > Convert SD to AGP.
-> Hamiltonian data is saved in hamiltonian_data_conv.chk.
-% mv hamiltonian_data_conv.chk hamiltonian_data_JAGP.chk
+> Hamiltonian data is saved in hamiltonian_data_conv.h5.
+% mv hamiltonian_data_conv.h5 hamiltonian_data_JAGP.h5
 ```
 
 ## Optimize a trial WF (MCMC)
@@ -268,7 +268,7 @@ The next step is to optimize variational parameters included in the generated wa
 
 ```bash
 % cd 07vmc_JAGP
-% cp ../06convert_JSD_to_JAGP/hamiltonian_data_JAGP.chk ./hamiltonian_data.chk
+% cp ../06convert_JSD_to_JAGP/hamiltonian_data_JAGP.h5 ./hamiltonian_data.h5
 % jqmc-tool vmc generate-input -g
 > Input file is generated: vmc.toml
 ```
@@ -281,7 +281,7 @@ number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
 restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
-hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
+hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 
 [vmc]
@@ -368,7 +368,7 @@ number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
 restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
-hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
+hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 
 [mcmc]
@@ -419,7 +419,7 @@ number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
 restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
-hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
+hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 
 [lrdmc]

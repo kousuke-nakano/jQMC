@@ -34,6 +34,7 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import gzip
+import inspect
 import os
 import pickle
 import re
@@ -52,7 +53,6 @@ import typer
 from uncertainties import ufloat
 
 from .atomic_orbital import AOs_cart_data, AOs_sphe_data
-from .coulomb_potential import Coulomb_potential_data
 from .determinant import Geminal_data
 from .hamiltonians import Hamiltonian_data
 from .jastrow_factor import (
@@ -63,7 +63,6 @@ from .jastrow_factor import (
     NN_Jastrow_data,
 )
 from .jqmc_miscs import cli_parameters
-from .molecular_orbital import MOs_data
 from .setting import (
     GFMC_MIN_BIN_BLOCKS,
     GFMC_MIN_COLLECT_STEPS,
@@ -72,7 +71,6 @@ from .setting import (
     MCMC_MIN_WARMUP_STEPS,
     Bohr_to_Angstrom,
 )
-from .structure import Structure_data
 from .trexio_wrapper import read_trexio_file
 from .wavefunction import Wavefunction_data
 
@@ -143,23 +141,51 @@ class orbital_type(str, Enum):
     none = "none"
 
 
+def _get_nn_jastrow_help_msg() -> str:
+    """Generate help message for NN Jastrow parameters dynamically."""
+    try:
+        sig = inspect.signature(NN_Jastrow_data.init_from_structure)
+        params_list = []
+        for name, param in sig.parameters.items():
+            if name in ("structure_data", "key", "cls"):
+                continue
+            # Extract type name if possible
+            type_name = getattr(param.annotation, "__name__", str(param.annotation)).replace("builtins.", "")
+            # Format: name (type, default=value)
+            params_list.append(f"{name} ({type_name}, default={param.default})")
+
+        return (
+            f"Parameters for NN Jastrow. Specify as 'key=value'. "
+            f"Use multiple flags for multiple parameters (e.g. -jp hidden_dim=64 -jp num_layers=5). "
+            f"Supported params for 'schnet': {', '.join(params_list)}."
+        )
+    except Exception:
+        return "Parameters for NN Jastrow. Specify as 'key=value'. Can be used multiple times."
+
+
 @trexio_app.command("convert-to")
 def trexio_convert_to(
     trexio_file: str = typer.Argument(..., help="TREXIO filename."),
-    hamiltonian_file: str = typer.Option("hamiltonian_data.chk", "-o", "--output", help="Output file name."),
+    hamiltonian_file: str = typer.Option("hamiltonian_data.h5", "-o", "--output", help="Output file name."),
     j1_parmeter: float = typer.Option(None, "-j1", "--jastrow-1b-parameter", help="Jastrow one-body parameter."),
     j2_parmeter: float = typer.Option(None, "-j2", "--jastrow-2b-parameter", help="Jastrow two-body parameter."),
     j3_basis_type: orbital_type = typer.Option(
         orbital_type.none,
         "-j3",
         "--jastrow-3b-basis-set-type",
-        help="Jastrow three-body basis-set type (use 'none' to disable analytic J3).",
+        help="Jastrow three-body basis-set type (use 'none' to disable atomic/molecular-orbital-based J3 term).",
     ),
     j_nn_type: str = typer.Option(
         None,
         "-j-nn-type",
         "--jastrow-nn-type",
-        help="NN Jastrow type (e.g. 'schnet'). If set, an NN-based J3 term is added even when -j3 is none.",
+        help="NN Jastrow type (e.g. 'schnet'). If set, an NN-based Jastrow term is added.",
+    ),
+    j_nn_params: List[str] = typer.Option(
+        None,
+        "-jp",
+        "--jastrow-nn-param",
+        help=_get_nn_jastrow_help_msg(),
     ),
 ):
     """Convert a TREXIO file to hamiltonian_data."""
@@ -170,6 +196,9 @@ def trexio_convert_to(
         except ValueError:
             # Leave as-is; downstream validation will raise a clearer error message.
             pass
+
+    if isinstance(j_nn_type, typer.models.OptionInfo):
+        j_nn_type = j_nn_type.default
 
     (structure_data, aos_data, mos_data, _, geminal_data, coulomb_potential_data) = read_trexio_file(
         trexio_file, store_tuple=True
@@ -325,10 +354,27 @@ def trexio_convert_to(
         default_value = getattr(j_nn_type, "default", None)
         j_nn_choice = default_value.lower() if isinstance(default_value, str) else None
 
-    nn_jastrow_three_body_data = None
+    nn_jastrow_data = None
     if j_nn_choice is not None:
         if j_nn_choice == "schnet":
-            nn_jastrow_three_body_data = NN_Jastrow_data.init_from_structure(structure_data)
+            kwargs = {}
+            if j_nn_params is not None:
+                for param in j_nn_params:
+                    if "=" in param:
+                        key, value = param.split("=", 1)
+                        try:
+                            if "." in value:
+                                value = float(value)
+                            else:
+                                value = int(value)
+                        except ValueError:
+                            pass  # keep as string
+                        kwargs[key] = value
+
+            nn_jastrow_data = NN_Jastrow_data.init_from_structure(
+                structure_data,
+                **kwargs,
+            )
         else:
             raise ImportError(f"Invalid j_nn_type = {j_nn_type}. Supported types: 'schnet'.")
 
@@ -337,7 +383,7 @@ def trexio_convert_to(
         jastrow_one_body_data=jastrow_onebody_data,
         jastrow_two_body_data=jastrow_twobody_data,
         jastrow_three_body_data=jastrow_threebody_data,
-        nn_jastrow_three_body_data=nn_jastrow_three_body_data,
+        nn_jastrow_data=nn_jastrow_data,
     )
 
     # geminal_data = geminal_mo_data
@@ -349,8 +395,7 @@ def trexio_convert_to(
         wavefunction_data=wavefunction_data,
     )
 
-    with open(hamiltonian_file, "wb") as f:
-        pickle.dump(hamiltonian_data, f)
+    hamiltonian_data.save_to_hdf5(hamiltonian_file)
 
     typer.echo(f"Hamiltonian data is saved in {hamiltonian_file}.")
 
@@ -369,11 +414,10 @@ def hamiltonian_show_info(
     hamiltonian_data: str = typer.Argument(..., help="hamiltonian_data file, e.g. hamiltonian_data.chk"),
 ):
     """Show information stored in the Hamiltonian data."""
-    with open(hamiltonian_data, "rb") as f:
-        hamiltonian = pickle.load(f)
-        hamiltonian.sanity_check()
-        for line in hamiltonian.get_info():
-            typer.echo(line)
+    hamiltonian = Hamiltonian_data.load_from_hdf5(hamiltonian_data)
+    hamiltonian.sanity_check()
+    for line in hamiltonian.get_info():
+        typer.echo(line)
 
 
 @hamiltonian_app.command("to-xyz")
@@ -382,9 +426,7 @@ def hamiltonian_to_xyz(
     xyz_file: str = typer.Option("struct.xyz", "-o", "--output", help="Output file name."),
 ):
     """Show information stored in the Hamiltonian data."""
-    with open(hamiltonian_data, "rb") as f:
-        hamiltonian = pickle.load(f)
-
+    hamiltonian = Hamiltonian_data.load_from_hdf5(hamiltonian_data)
     structure_data = hamiltonian.structure_data
 
     with open(xyz_file, "w") as f:
@@ -392,232 +434,6 @@ def hamiltonian_to_xyz(
         f.write("\n")
     for atom, coord in zip(structure_data.atomic_labels, structure_data.positions, strict=True):
         f.write(f"{atom} {coord[0] * Bohr_to_Angstrom} {coord[1] * Bohr_to_Angstrom} {coord[2] * Bohr_to_Angstrom}\n")
-
-
-# This should be removed in future release since it will be no longer useful.
-@hamiltonian_app.command("fix")
-def hamiltonian_fix(
-    hamiltonian_data_filename: str = typer.Argument(..., help="hamiltonian_data file, e.g. hamiltonian_data.chk"),
-    store_tuple: bool = typer.Option(False, "-s", "--store-tuple", help="store tuple"),
-):
-    """Fix data stored in the Hamiltonian data."""
-    with open(hamiltonian_data_filename, "rb") as f:
-        hamiltonian_data = pickle.load(f)
-
-    if store_tuple:
-        op = tuple
-        op_str = "tuple"
-    else:
-        op = list
-        op_str = "list"
-
-    def fix_structure_data(structure_data):
-        # structure_data
-        positions = np.array(structure_data.positions)
-        pbc_flag = bool(structure_data.pbc_flag)
-        vec_a = op(structure_data.vec_a)
-        vec_b = op(structure_data.vec_b)
-        vec_c = op(structure_data.vec_c)
-        atomic_numbers = op(structure_data.atomic_numbers)
-        element_symbols = op(structure_data.element_symbols)
-        atomic_labels = op(structure_data.atomic_labels)
-        structure_data = Structure_data(
-            positions=positions,
-            pbc_flag=pbc_flag,
-            vec_a=vec_a,
-            vec_b=vec_b,
-            vec_c=vec_c,
-            atomic_numbers=atomic_numbers,
-            element_symbols=element_symbols,
-            atomic_labels=atomic_labels,
-        )
-        return structure_data
-
-    def fix_orb_data(orb_data):
-        if isinstance(orb_data, MOs_data):
-            num_mo = orb_data.num_mo
-            aos_data = orb_data.aos_data
-            mo_coefficients = orb_data.mo_coefficients
-
-            if isinstance(aos_data, AOs_sphe_data):
-                structure_data = fix_structure_data(structure_data=orb_data.structure_data)
-                nucleus_index = op(aos_data.nucleus_index)
-                num_ao = int(aos_data.num_ao)
-                num_ao_prim = int(aos_data.num_ao_prim)
-                orbital_indices = op(aos_data.orbital_indices)
-                exponents = op(aos_data.exponents)
-                coefficients = op(aos_data.coefficients)
-                angular_momentums = op(aos_data.angular_momentums)
-                magnetic_quantum_numbers = op(aos_data.magnetic_quantum_numbers)
-
-                aos_data = AOs_sphe_data(
-                    structure_data=structure_data,
-                    nucleus_index=nucleus_index,
-                    num_ao=num_ao,
-                    num_ao_prim=num_ao_prim,
-                    orbital_indices=orbital_indices,
-                    exponents=exponents,
-                    coefficients=coefficients,
-                    angular_momentums=angular_momentums,
-                    magnetic_quantum_numbers=magnetic_quantum_numbers,
-                )
-
-            elif isinstance(aos_data, AOs_cart_data):
-                structure_data = fix_structure_data(structure_data=orb_data.structure_data)
-                nucleus_index = op(aos_data.nucleus_index)
-                num_ao = int(aos_data.num_ao)
-                num_ao_prim = int(aos_data.num_ao_prim)
-                orbital_indices = op(aos_data.orbital_indices)
-                exponents = op(aos_data.exponents)
-                coefficients = op(aos_data.coefficients)
-                angular_momentums = op(aos_data.angular_momentums)
-                polynominal_order_x = op(aos_data.polynominal_order_x)
-                polynominal_order_y = op(aos_data.polynominal_order_y)
-                polynominal_order_z = op(aos_data.polynominal_order_z)
-
-                aos_data = AOs_cart_data(
-                    structure_data=structure_data,
-                    nucleus_index=nucleus_index,
-                    num_ao=num_ao,
-                    num_ao_prim=num_ao_prim,
-                    orbital_indices=orbital_indices,
-                    exponents=exponents,
-                    coefficients=coefficients,
-                    angular_momentums=angular_momentums,
-                    polynominal_order_x=polynominal_order_x,
-                    polynominal_order_y=polynominal_order_y,
-                    polynominal_order_z=polynominal_order_z,
-                )
-            orb_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
-
-        elif isinstance(orb_data, AOs_sphe_data):
-            structure_data = fix_structure_data(structure_data=orb_data.structure_data)
-            nucleus_index = op(orb_data.nucleus_index)
-            num_ao = int(orb_data.num_ao)
-            num_ao_prim = int(orb_data.num_ao_prim)
-            orbital_indices = op(orb_data.orbital_indices)
-            exponents = op(orb_data.exponents)
-            coefficients = op(orb_data.coefficients)
-            angular_momentums = op(orb_data.angular_momentums)
-            magnetic_quantum_numbers = op(orb_data.magnetic_quantum_numbers)
-
-            orb_data = AOs_sphe_data(
-                structure_data=structure_data,
-                nucleus_index=nucleus_index,
-                num_ao=num_ao,
-                num_ao_prim=num_ao_prim,
-                orbital_indices=orbital_indices,
-                exponents=exponents,
-                coefficients=coefficients,
-                angular_momentums=angular_momentums,
-                magnetic_quantum_numbers=magnetic_quantum_numbers,
-            )
-        elif isinstance(orb_data, AOs_cart_data):
-            structure_data = fix_structure_data(structure_data=orb_data.structure_data)
-            nucleus_index = op(orb_data.nucleus_index)
-            num_ao = int(orb_data.num_ao)
-            num_ao_prim = int(orb_data.num_ao_prim)
-            orbital_indices = op(orb_data.orbital_indices)
-            exponents = op(orb_data.exponents)
-            coefficients = op(orb_data.coefficients)
-            angular_momentums = op(orb_data.angular_momentums)
-            polynominal_order_x = op(orb_data.polynominal_order_x)
-            polynominal_order_y = op(orb_data.polynominal_order_y)
-            polynominal_order_z = op(orb_data.polynominal_order_z)
-
-            orb_data = AOs_cart_data(
-                structure_data=structure_data,
-                nucleus_index=nucleus_index,
-                num_ao=num_ao,
-                num_ao_prim=num_ao_prim,
-                orbital_indices=orbital_indices,
-                exponents=exponents,
-                coefficients=coefficients,
-                angular_momentums=angular_momentums,
-                polynominal_order_x=polynominal_order_x,
-                polynominal_order_y=polynominal_order_y,
-                polynominal_order_z=polynominal_order_z,
-            )
-
-        return orb_data
-
-    structure_data = hamiltonian_data.structure_data
-    structure_data = fix_structure_data(structure_data=structure_data)
-
-    # coulomb_potential_data
-    coulomb_potential_data = hamiltonian_data.coulomb_potential_data
-    ecp_flag = bool(coulomb_potential_data.ecp_flag)
-    z_cores = op(coulomb_potential_data.z_cores)
-    max_ang_mom_plus_1 = op(coulomb_potential_data.max_ang_mom_plus_1)
-    num_ecps = int(coulomb_potential_data.num_ecps)
-    ang_moms = op(coulomb_potential_data.ang_moms)
-    nucleus_index = op(coulomb_potential_data.nucleus_index)
-    exponents = op(coulomb_potential_data.exponents)
-    coefficients = op(coulomb_potential_data.coefficients)
-    powers = op(coulomb_potential_data.powers)
-    coulomb_potential_data = Coulomb_potential_data(
-        structure_data=structure_data,
-        ecp_flag=ecp_flag,
-        z_cores=z_cores,
-        max_ang_mom_plus_1=max_ang_mom_plus_1,
-        num_ecps=num_ecps,
-        ang_moms=ang_moms,
-        nucleus_index=nucleus_index,
-        exponents=exponents,
-        coefficients=coefficients,
-        powers=powers,
-    )
-
-    # wavefunction
-    wavefunction_data = hamiltonian_data.wavefunction_data
-    jastrow_data = wavefunction_data.jastrow_data
-    geminal_data = wavefunction_data.geminal_data
-
-    # jastrow data
-    jastrow_one_body_data = jastrow_data.jastrow_one_body_data
-    jastrow_two_body_data = jastrow_data.jastrow_two_body_data
-    jastrow_three_body_data = jastrow_data.jastrow_three_body_data
-
-    if jastrow_one_body_data is not None:
-        jastrow_1b_param = float(jastrow_one_body_data.jastrow_1b_param)
-        core_electrons = op(jastrow_one_body_data.core_electrons)
-        jastrow_one_body_data = Jastrow_one_body_data(
-            jastrow_1b_param=jastrow_1b_param, structure_data=structure_data, core_electrons=core_electrons
-        )
-    if jastrow_three_body_data is not None:
-        orb_data = jastrow_three_body_data.orb_data
-        j_matrix = jastrow_three_body_data.j_matrix
-        orb_data = fix_orb_data(orb_data=orb_data)
-        jastrow_three_body_data = Jastrow_three_body_data(orb_data=orb_data, j_matrix=j_matrix)
-
-    jastrow_data = Jastrow_data(
-        jastrow_one_body_data=jastrow_one_body_data,
-        jastrow_two_body_data=jastrow_two_body_data,
-        jastrow_three_body_data=jastrow_three_body_data,
-    )
-
-    # geminal_data
-    num_electron_up = geminal_data.num_electron_up
-    num_electron_dn = geminal_data.num_electron_dn
-    lambda_matrix = geminal_data.lambda_matrix
-    orb_data_up_spin = fix_orb_data(geminal_data.orb_data_up_spin)
-    orb_data_dn_spin = fix_orb_data(geminal_data.orb_data_dn_spin)
-    geminal_data = Geminal_data(
-        num_electron_up=num_electron_up,
-        num_electron_dn=num_electron_dn,
-        lambda_matrix=lambda_matrix,
-        orb_data_up_spin=orb_data_up_spin,
-        orb_data_dn_spin=orb_data_dn_spin,
-    )
-
-    # new hamiltonian data with correct types
-    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_data)
-    hamiltonian_data = Hamiltonian_data(
-        structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
-    )
-
-    # dump fixed hamiltonian data
-    hamiltonian_data.dump(f"{op_str}_" + hamiltonian_data_filename)
 
 
 class ansatz_type(str, Enum):
@@ -632,12 +448,11 @@ def hamiltonian_convert_wavefunction(
     hamiltonian_data_org_file: str = typer.Argument(..., help="hamiltonian_data file, e.g. hamiltonian_data.chk"),
     convert_to: ansatz_type = typer.Option(None, "-c", "--convert-to", help="Convert to another type of anstaz."),
     hamiltonian_data_conv_file: str = typer.Option(
-        "hamiltonian_data_conv.chk", "-o", "--output", help="Output hamiltonian_data file."
+        "hamiltonian_data_conv.h5", "-o", "--output", help="Output hamiltonian_data file."
     ),
 ):
     """Convert wavefunction data in the Hamiltonian data."""
-    with open(hamiltonian_data_org_file, "rb") as f:
-        hamiltonian_org = pickle.load(f)
+    hamiltonian_org = Hamiltonian_data.load_from_hdf5(hamiltonian_data_org_file)
 
     wavefunction_data = hamiltonian_org.wavefunction_data
     structure_data = hamiltonian_org.structure_data
@@ -661,8 +476,7 @@ def hamiltonian_convert_wavefunction(
         structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
     )
 
-    with open(hamiltonian_data_conv_file, "wb") as f:
-        pickle.dump(hamiltonian_conv_data, f)
+    hamiltonian_conv_data.save_to_hdf5(hamiltonian_data_conv_file)
 
     typer.echo(f"Hamiltonian data is saved in {hamiltonian_data_conv_file}.")
 

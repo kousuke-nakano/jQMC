@@ -36,7 +36,7 @@
 from dataclasses import dataclass, field
 
 # set logger
-from logging import Formatter, StreamHandler, getLogger
+from logging import getLogger
 
 # jax modules
 # from jax.debug import print as jprint
@@ -94,7 +94,7 @@ class MOs_data:
             raise ValueError(
                 f"dim. of ao_coefficients = {self.mo_coefficients.shape} is wrong. Inconsistent with the expected value = {(self.num_mo, self.aos_data.num_ao)}"
             )
-        if not isinstance(self.num_mo, int):
+        if not isinstance(self.num_mo, (int, np.integer)):
             raise ValueError(f"num_mo = {type(self.num_mo)} must be an int.")
         self.aos_data.sanity_check()
 

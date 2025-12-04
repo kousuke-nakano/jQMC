@@ -33,18 +33,24 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import os
+import sys
+from pathlib import Path
 
 import jax
 import numpy as np
 
-from ..jqmc.swct import (
+project_root = str(Path(__file__).parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from jqmc.swct import (  # noqa: E402
     SWCT_data,
     evaluate_swct_domega_debug,
     evaluate_swct_domega_jax,
     evaluate_swct_omega_debug,
     evaluate_swct_omega_jax,
 )
-from ..jqmc.trexio_wrapper import read_trexio_file
+from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)

@@ -270,8 +270,8 @@ class Wavefunction_data:
                     )
                 )
 
-            if opt_JNN_param and self.jastrow_data.nn_jastrow_three_body_data is not None:
-                nn3 = self.jastrow_data.nn_jastrow_three_body_data
+            if opt_JNN_param and self.jastrow_data.nn_jastrow_data is not None:
+                nn3 = self.jastrow_data.nn_jastrow_data
                 if nn3.params is not None and nn3.num_params > 0:
                     flat_params = np.array(nn3.flatten_fn(nn3.params))
                     blocks.append(

@@ -37,7 +37,7 @@ Module containing classes and methods related to Atomic Orbitals
 # POSSIBILITY OF SUCH DAMAGE.
 
 from dataclasses import dataclass, field
-from logging import Formatter, StreamHandler, getLogger
+from logging import getLogger
 
 import jax
 import jax.numpy as jnp
@@ -137,9 +137,9 @@ class AOs_cart_data:
 
         if not isinstance(self.nucleus_index, (tuple, list)):
             raise ValueError(f"nucleus_index = {type(self.nucleus_index)} must be a list or tuple.")
-        if not isinstance(self.num_ao, int):
+        if not isinstance(self.num_ao, (int, np.integer)):
             raise ValueError(f"num_ao = {type(self.num_ao)} must be an int.")
-        if not isinstance(self.num_ao_prim, int):
+        if not isinstance(self.num_ao_prim, (int, np.integer)):
             raise ValueError(f"num_ao_prim = {type(self.num_ao_prim)} must be an int.")
         if not isinstance(self.orbital_indices, (tuple, list)):
             raise ValueError(f"orbital_indices = {type(self.orbital_indices)} must be a list or tuple.")
@@ -310,8 +310,8 @@ class AOs_cart_data:
                 matched = False
                 for existing_ec, _ in shell_groups:
                     if len(existing_ec) == len(ec_pairs):
-                        exps1, coefs1 = zip(*existing_ec)
-                        exps2, coefs2 = zip(*ec_pairs)
+                        exps1, coefs1 = zip(*existing_ec, strict=True)
+                        exps2, coefs2 = zip(*ec_pairs, strict=True)
                         if np.allclose(exps1, exps2, rtol=rtol, atol=atol) and np.allclose(
                             coefs1, coefs2, rtol=rtol, atol=atol
                         ):
@@ -868,8 +868,8 @@ class AOs_sphe_data:
                 matched = False
                 for existing_ec, _ in shell_groups:
                     if len(existing_ec) == len(ec_pairs):
-                        exps1, coefs1 = zip(*existing_ec)
-                        exps2, coefs2 = zip(*ec_pairs)
+                        exps1, coefs1 = zip(*existing_ec, strict=True)
+                        exps2, coefs2 = zip(*ec_pairs, strict=True)
                         if np.allclose(exps1, exps2, rtol=rtol, atol=atol) and np.allclose(
                             coefs1, coefs2, rtol=rtol, atol=atol
                         ):
@@ -1195,7 +1195,7 @@ def compute_AOs_shpe_debug(aos_data: AOs_sphe_data, r_carts: npt.NDArray[np.floa
             R_n = np.array(
                 [
                     coefficient * np.exp(-1.0 * exponent * LA.norm(np.array(r_cart) - np.array(atomic_center_cart)) ** 2)
-                    for coefficient, exponent in zip(coefficients, exponents)
+                    for coefficient, exponent in zip(coefficients, exponents, strict=True)
                 ]
             )
             # normalization part
@@ -1251,7 +1251,7 @@ def compute_AOs_cart_debug(aos_data: AOs_cart_data, r_carts: npt.NDArray[np.floa
             R_n = np.array(
                 [
                     coefficient * np.exp(-1.0 * exponent * LA.norm(np.array(r_cart) - np.array(R_cart)) ** 2)
-                    for coefficient, exponent in zip(coefficients, exponents)
+                    for coefficient, exponent in zip(coefficients, exponents, strict=True)
                 ]
             )
             # normalization part
@@ -2010,7 +2010,7 @@ def _compute_AO_sphe(ao_data: AO_sphe_data, r_cart: list[float]) -> float:
                 R_cart=ao_data.atomic_center_cart,
                 r_cart=r_cart,
             )
-            for c, Z in zip(ao_data.coefficients, ao_data.exponents)
+            for c, Z in zip(ao_data.coefficients, ao_data.exponents, strict=True)
         ]
     )
     N_n_l = np.array([_compute_normalization_fator_debug(ao_data.angular_momentum, Z) for Z in ao_data.exponents])

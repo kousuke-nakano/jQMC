@@ -33,15 +33,22 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import os
+import sys
+from pathlib import Path
 
 import jax
 import numpy as np
+import pytest
 from jax import numpy as jnp
 
-from ..jqmc.determinant import compute_geminal_all_elements_jax
-from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data
-from ..jqmc.trexio_wrapper import read_trexio_file
-from ..jqmc.wavefunction import (
+project_root = str(Path(__file__).parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from jqmc.determinant import compute_geminal_all_elements_jax  # noqa: E402
+from jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data  # noqa: E402
+from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
+from jqmc.wavefunction import (  # noqa: E402
     Wavefunction_data,
     compute_discretized_kinetic_energy_debug,
     compute_discretized_kinetic_energy_jax,
