@@ -443,8 +443,10 @@ def load_dataclass_from_hdf5(cls: Type[T], group: h5py.Group) -> T:
                     val = []
                 elif field.default_factory is tuple:
                     val = ()
-            elif isinstance(val, np.ndarray) and (
-                field.type is list or field.type is tuple or "list" in str(field.type) or "tuple" in str(field.type)
+            elif (
+                isinstance(val, np.ndarray)
+                and (field.type is list or field.type is tuple or "list" in str(field.type) or "tuple" in str(field.type))
+                and not ("Array" in str(field.type) or "ndarray" in str(field.type))
             ):
                 val = val.tolist()
                 if isinstance(field.type, type) and issubclass(field.type, tuple):

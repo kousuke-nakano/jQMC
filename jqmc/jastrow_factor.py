@@ -924,9 +924,7 @@ class Jastrow_three_body_data:
 class Jastrow_three_body_data_deriv_params(Jastrow_three_body_data):
     """See Jastrow_three_body_data."""
 
-    orb_data: MOs_data | AOs_sphe_data | AOs_cart_data = struct.field(
-        pytree_node=False, default_factory=lambda: AOs_sphe_data()
-    )
+    orb_data: MOs_data | AOs_sphe_data | AOs_cart_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
     j_matrix: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
     @classmethod
@@ -940,7 +938,7 @@ class Jastrow_three_body_data_deriv_R(Jastrow_three_body_data):
     """See Jastrow_three_body_data."""
 
     orb_data: MOs_data | AOs_sphe_data | AOs_cart_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
-    j_matrix: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=False, default_factory=lambda: np.array([]))
+    j_matrix: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
     @classmethod
     def from_base(cls, jastrow_three_body_data: Jastrow_three_body_data):
@@ -1432,6 +1430,7 @@ class Jastrow_data_deriv_params(Jastrow_data):
     jastrow_one_body_data: Jastrow_one_body_data = struct.field(pytree_node=True, default=None)
     jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=True, default=None)
     jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=True, default=None)
+    nn_jastrow_data: NN_Jastrow_data | None = struct.field(pytree_node=True, default=None)
 
     @classmethod
     def from_base(cls, jastrow_data: Jastrow_data):
@@ -1460,8 +1459,9 @@ class Jastrow_data_deriv_R(Jastrow_data):
     """See Jastrow_data."""
 
     jastrow_one_body_data: Jastrow_one_body_data = struct.field(pytree_node=True, default=None)
-    jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=False, default=None)
+    jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=True, default=None)
     jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=True, default=None)
+    nn_jastrow_data: NN_Jastrow_data | None = struct.field(pytree_node=True, default=None)
 
     @classmethod
     def from_base(cls, jastrow_data: Jastrow_data):
@@ -1489,9 +1489,10 @@ class Jastrow_data_deriv_R(Jastrow_data):
 class Jastrow_data_no_deriv(Jastrow_data):
     """See Jastrow_data."""
 
-    jastrow_one_body_data: Jastrow_one_body_data = struct.field(pytree_node=False, default=None)
-    jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=False, default=None)
-    jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=False, default=None)
+    jastrow_one_body_data: Jastrow_one_body_data = struct.field(pytree_node=True, default=None)
+    jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=True, default=None)
+    jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=True, default=None)
+    nn_jastrow_data: NN_Jastrow_data | None = struct.field(pytree_node=True, default=None)
 
     @classmethod
     def from_base(cls, jastrow_data: Jastrow_data):

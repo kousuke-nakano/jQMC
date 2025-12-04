@@ -1224,7 +1224,7 @@ class MCMC:
                 # NN Jastrow
                 nn_jastrow_data = self.__hamiltonian_data.wavefunction_data.jastrow_data.nn_jastrow_data
                 if nn_jastrow_data is not None and nn_jastrow_data.params is not None and nn_jastrow_data.num_params > 0:
-                    grad_ln_Psi_nn_params = grad_ln_Psi_h.jastrow_data.nn_jastrow_three_body_data.params
+                    grad_ln_Psi_nn_params = grad_ln_Psi_h.jastrow_data.nn_jastrow_data.params
 
                     def _slice_walker(idx):
                         return tree_util.tree_map(lambda x: x[idx], grad_ln_Psi_nn_params)
