@@ -924,7 +924,9 @@ class Jastrow_three_body_data:
 class Jastrow_three_body_data_deriv_params(Jastrow_three_body_data):
     """See Jastrow_three_body_data."""
 
-    orb_data: MOs_data | AOs_sphe_data | AOs_cart_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
+    orb_data: MOs_data | AOs_sphe_data | AOs_cart_data = struct.field(
+        pytree_node=False, default_factory=lambda: AOs_sphe_data()
+    )
     j_matrix: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
     @classmethod
@@ -938,7 +940,7 @@ class Jastrow_three_body_data_deriv_R(Jastrow_three_body_data):
     """See Jastrow_three_body_data."""
 
     orb_data: MOs_data | AOs_sphe_data | AOs_cart_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
-    j_matrix: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
+    j_matrix: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=False, default_factory=lambda: np.array([]))
 
     @classmethod
     def from_base(cls, jastrow_three_body_data: Jastrow_three_body_data):
@@ -948,11 +950,11 @@ class Jastrow_three_body_data_deriv_R(Jastrow_three_body_data):
 
 @struct.dataclass
 class NN_Jastrow_data:
-    """Container for NN-based three-body Jastrow factor.
+    """Container for NN-based Jastrow factor.
 
     This dataclass stores both the neural network definition and its
     parameters, together with helper functions that integrate the NN
-    Jastrow-3b term into the variational-parameter block machinery.
+    Jastrow term into the variational-parameter block machinery.
 
     The intended usage is:
 
@@ -961,7 +963,7 @@ class NN_Jastrow_data:
     * ``flatten_fn`` / ``unflatten_fn`` convert between the PyTree and a
         1D parameter vector for SR/MCMC.
     * If this dataclass is set to ``None`` inside :class:`Jastrow_data`,
-        the NN J3 contribution is simply turned off. If it is not ``None``,
+        the NN contribution is simply turned off. If it is not ``None``,
         its contribution is evaluated and added on top of the analytic
         three-body Jastrow (if present).
     """

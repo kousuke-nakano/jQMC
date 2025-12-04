@@ -715,9 +715,9 @@ class AOs_sphe_data:
 
         if not isinstance(self.nucleus_index, (list, tuple)):
             raise ValueError(f"nucleus_index = {type(self.nucleus_index)} must be a list or tuple.")
-        if not isinstance(self.num_ao, int):
+        if not isinstance(self.num_ao, (int, np.integer)):
             raise ValueError(f"num_ao = {type(self.num_ao)} must be an int.")
-        if not isinstance(self.num_ao_prim, int):
+        if not isinstance(self.num_ao_prim, (int, np.integer)):
             raise ValueError(f"num_ao_prim = {type(self.num_ao_prim)} must be an int.")
         if not isinstance(self.orbital_indices, (list, tuple)):
             raise ValueError(f"orbital_indices = {type(self.orbital_indices)} must be a list or tuple.")
