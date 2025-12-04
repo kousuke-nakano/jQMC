@@ -47,6 +47,8 @@ import toml
 from mpi4py import MPI
 from uncertainties import ufloat
 
+from .hamiltonians import Hamiltonian_data
+
 # jQMC
 from .header_footer import print_footer, print_header
 from .jqmc_gfmc import GFMC_fixed_num_projection, GFMC_fixed_projection_time
@@ -249,7 +251,7 @@ def cli():
     max_time = parameters["control"]["max_time"]
     restart = parameters["control"]["restart"]
     restart_chk = parameters["control"]["restart_chk"]
-    hamiltonian_chk = parameters["control"]["hamiltonian_chk"]
+    hamiltonian_h5 = parameters["control"]["hamiltonian_h5"]
 
     # MCMC
     if job_type == "mcmc":
@@ -292,20 +294,19 @@ def cli():
                 with zf.open(arcname) as zipped_gz_fobj:
                     with gzip.open(zipped_gz_fobj, "rb") as gz:
                         mcmc = pickle.load(gz)
-
         else:
-            with open(hamiltonian_chk, "rb") as f:
-                hamiltonian_data = pickle.load(f)
-                mcmc = MCMC(
-                    hamiltonian_data=hamiltonian_data,
-                    Dt=Dt,
-                    mcmc_seed=mcmc_seed,
-                    num_walkers=number_of_walkers,
-                    num_mcmc_per_measurement=num_mcmc_per_measurement,
-                    epsilon_AS=epsilon_AS,
-                    comput_position_deriv=atomic_force,
-                    comput_param_deriv=parameter_derivatives,
-                )
+            hamiltonian_data = Hamiltonian_data.load_from_hdf5(hamiltonian_h5)
+
+            mcmc = MCMC(
+                hamiltonian_data=hamiltonian_data,
+                Dt=Dt,
+                mcmc_seed=mcmc_seed,
+                num_walkers=number_of_walkers,
+                num_mcmc_per_measurement=num_mcmc_per_measurement,
+                epsilon_AS=epsilon_AS,
+                comput_position_deriv=atomic_force,
+                comput_param_deriv=parameter_derivatives,
+            )
         mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = mcmc.get_E(
             num_mcmc_warmup_steps=num_mcmc_warmup_steps,
@@ -412,18 +413,18 @@ def cli():
                     with gzip.open(zipped_gz_fobj, "rb") as gz:
                         mcmc = pickle.load(gz)
         else:
-            with open(hamiltonian_chk, "rb") as f:
-                hamiltonian_data = pickle.load(f)
-                mcmc = MCMC(
-                    hamiltonian_data=hamiltonian_data,
-                    Dt=Dt,
-                    mcmc_seed=mcmc_seed,
-                    num_walkers=number_of_walkers,
-                    num_mcmc_per_measurement=num_mcmc_per_measurement,
-                    epsilon_AS=epsilon_AS,
-                    comput_position_deriv=False,
-                    comput_param_deriv=True,
-                )
+            hamiltonian_data = Hamiltonian_data.load_from_hdf5(hamiltonian_h5)
+
+            mcmc = MCMC(
+                hamiltonian_data=hamiltonian_data,
+                Dt=Dt,
+                mcmc_seed=mcmc_seed,
+                num_walkers=number_of_walkers,
+                num_mcmc_per_measurement=num_mcmc_per_measurement,
+                epsilon_AS=epsilon_AS,
+                comput_position_deriv=False,
+                comput_param_deriv=True,
+            )
         mcmc.run_optimize(
             num_mcmc_steps=num_mcmc_steps,
             num_opt_steps=num_opt_steps,
@@ -515,19 +516,19 @@ def cli():
                     with gzip.open(zipped_gz_fobj, "rb") as gz:
                         lrdmc = pickle.load(gz)
         else:
-            with open(hamiltonian_chk, "rb") as f:
-                hamiltonian_data = pickle.load(f)
-                lrdmc = GFMC_fixed_num_projection(
-                    hamiltonian_data=hamiltonian_data,
-                    num_walkers=number_of_walkers,
-                    num_mcmc_per_measurement=num_mcmc_per_measurement,
-                    num_gfmc_collect_steps=num_gfmc_collect_steps,
-                    mcmc_seed=mcmc_seed,
-                    E_scf=E_scf,
-                    alat=alat,
-                    non_local_move=non_local_move,
-                    comput_position_deriv=atomic_force,
-                )
+            hamiltonian_data = Hamiltonian_data.load_from_hdf5(hamiltonian_h5)
+
+            lrdmc = GFMC_fixed_num_projection(
+                hamiltonian_data=hamiltonian_data,
+                num_walkers=number_of_walkers,
+                num_mcmc_per_measurement=num_mcmc_per_measurement,
+                num_gfmc_collect_steps=num_gfmc_collect_steps,
+                mcmc_seed=mcmc_seed,
+                E_scf=E_scf,
+                alat=alat,
+                non_local_move=non_local_move,
+                comput_position_deriv=atomic_force,
+            )
         lrdmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = lrdmc.get_E(
             num_mcmc_warmup_steps=num_gfmc_warmup_steps,
@@ -621,17 +622,17 @@ def cli():
                     with gzip.open(zipped_gz_fobj, "rb") as gz:
                         lrdmc = pickle.load(gz)
         else:
-            with open(hamiltonian_chk, "rb") as f:
-                hamiltonian_data = pickle.load(f)
-                lrdmc = GFMC_fixed_projection_time(
-                    hamiltonian_data=hamiltonian_data,
-                    num_walkers=number_of_walkers,
-                    tau=tau,
-                    num_gfmc_collect_steps=num_gfmc_collect_steps,
-                    mcmc_seed=mcmc_seed,
-                    alat=alat,
-                    non_local_move=non_local_move,
-                )
+            hamiltonian_data = Hamiltonian_data.load_from_hdf5(hamiltonian_h5)
+
+            lrdmc = GFMC_fixed_projection_time(
+                hamiltonian_data=hamiltonian_data,
+                num_walkers=number_of_walkers,
+                tau=tau,
+                num_gfmc_collect_steps=num_gfmc_collect_steps,
+                mcmc_seed=mcmc_seed,
+                alat=alat,
+                non_local_move=non_local_move,
+            )
         lrdmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = lrdmc.get_E(
             num_mcmc_warmup_steps=num_gfmc_warmup_steps,

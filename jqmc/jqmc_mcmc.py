@@ -2502,7 +2502,7 @@ class MCMC:
                 if (i_opt + 1) % wf_dump_freq == 0 or (i_opt + 1) == num_opt_steps:
                     hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.chk"
                     logger.info(f"Hamiltonian data is dumped as a checkpoint file: {hamiltonian_data_filename}.")
-                    self.hamiltonian_data.dump(hamiltonian_data_filename)
+                    self.hamiltonian_data.save_to_hdf5(hamiltonian_data_filename)
 
             # check max time
             vmcopt_current = time.perf_counter()

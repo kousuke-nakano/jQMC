@@ -42,9 +42,8 @@ Todo:
 # POSSIBILITY OF SUCH DAMAGE.
 
 import itertools
-import time
 from functools import partial
-from logging import Formatter, StreamHandler, getLogger
+from logging import getLogger
 from typing import NamedTuple
 
 # JAX
@@ -262,7 +261,7 @@ class Coulomb_potential_data:
                 f"max_ang_mom_plus_1 = {type(self.max_ang_mom_plus_1)} must be a list or tuple. ValueError in a future release."
             )
             # raise ValueError(f"max_ang_mom_plus_1 = {type(self.max_ang_mom_plus_1)} must be a list or tuple.")
-        if not isinstance(self.num_ecps, int):
+        if not isinstance(self.num_ecps, (int, np.integer)):
             raise ValueError(f"num_ecps = {type(self.num_ecps)} must be an int.")
         if not isinstance(self.ang_moms, (list, tuple)):
             logger.warning(f"ang_moms = {type(self.ang_moms)} must be a list or tuple. ValueError in a future release.")
@@ -688,7 +687,7 @@ def compute_ecp_local_parts_all_pairs_debug(
             V_local += np.linalg.norm(rel_R_cart_min_dist) ** -2.0 * np.sum(
                 [
                     a * np.linalg.norm(rel_R_cart_min_dist) ** n * np.exp(-b * np.linalg.norm(rel_R_cart_min_dist) ** 2)
-                    for a, n, b in zip(coefficients, powers, exponents)
+                    for a, n, b in zip(coefficients, powers, exponents, strict=True)
                 ]
             )
         for r_dn_cart in r_dn_carts:
@@ -700,7 +699,7 @@ def compute_ecp_local_parts_all_pairs_debug(
             V_local += np.linalg.norm(rel_R_cart_min_dist) ** -2.0 * np.sum(
                 [
                     a * np.linalg.norm(rel_R_cart_min_dist) ** n * np.exp(-b * np.linalg.norm(rel_R_cart_min_dist) ** 2)
-                    for a, n, b in zip(coefficients, powers, exponents)
+                    for a, n, b in zip(coefficients, powers, exponents, strict=True)
                 ]
             )
     return V_local
@@ -796,11 +795,11 @@ def compute_ecp_non_local_parts_all_pairs_debug(
                 V_l = np.linalg.norm(rel_R_cart_min_dist) ** -2.0 * np.sum(
                     [
                         a * np.linalg.norm(rel_R_cart_min_dist) ** n * np.exp(-b * np.linalg.norm(rel_R_cart_min_dist) ** 2.0)
-                        for a, n, b in zip(coefficients, powers, exponents)
+                        for a, n, b in zip(coefficients, powers, exponents, strict=True)
                     ]
                 )
 
-                for weight, vec_delta in zip(weights, grid_points):
+                for weight, vec_delta in zip(weights, grid_points, strict=True):
                     r_up_carts_on_mesh = r_up_carts.copy()
                     r_up_carts_on_mesh[r_up_i] = (
                         r_up_cart + rel_R_cart_min_dist + np.linalg.norm(rel_R_cart_min_dist) * vec_delta
@@ -844,11 +843,11 @@ def compute_ecp_non_local_parts_all_pairs_debug(
                 V_l = np.linalg.norm(rel_R_cart_min_dist) ** -2 * np.sum(
                     [
                         a * np.linalg.norm(rel_R_cart_min_dist) ** n * np.exp(-b * np.linalg.norm(rel_R_cart_min_dist) ** 2)
-                        for a, n, b in zip(coefficients, powers, exponents)
+                        for a, n, b in zip(coefficients, powers, exponents, strict=True)
                     ]
                 )
 
-                for weight, vec_delta in zip(weights, grid_points):
+                for weight, vec_delta in zip(weights, grid_points, strict=True):
                     r_dn_carts_on_mesh = r_dn_carts.copy()
                     r_dn_carts_on_mesh[r_dn_i] = (
                         r_dn_cart + rel_R_cart_min_dist + np.linalg.norm(rel_R_cart_min_dist) * vec_delta
@@ -996,7 +995,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_debug(
             weight_list = []
             cos_theta_list = []
             wf_ratio_list = []
-            for weight, vec_delta in zip(weights, grid_points):
+            for weight, vec_delta in zip(weights, grid_points, strict=True):
                 weight_list.append(weight)
                 r_up_carts_on_mesh = r_up_carts.copy()
                 r_up_carts_on_mesh[r_up_i] = r_up_cart + rel_R_cart_min_dist + np.linalg.norm(rel_R_cart_min_dist) * vec_delta
@@ -1033,7 +1032,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_debug(
                 P_l = np.array(
                     [
                         (2 * ang_mom + 1) * eval_legendre(ang_mom, cos_theta) * weight * wf_ratio
-                        for cos_theta, weight, wf_ratio in zip(cos_theta_list, weight_list, wf_ratio_list)
+                        for cos_theta, weight, wf_ratio in zip(cos_theta_list, weight_list, wf_ratio_list, strict=True)
                     ]
                 )
                 ans = list(V_l * P_l)
@@ -1077,7 +1076,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_debug(
             weight_list = []
             cos_theta_list = []
             wf_ratio_list = []
-            for weight, vec_delta in zip(weights, grid_points):
+            for weight, vec_delta in zip(weights, grid_points, strict=True):
                 weight_list.append(weight)
                 r_dn_carts_on_mesh = r_dn_carts.copy()
                 r_dn_carts_on_mesh[r_dn_i] = r_dn_cart + rel_R_cart_min_dist + np.linalg.norm(rel_R_cart_min_dist) * vec_delta
@@ -1114,7 +1113,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_debug(
                 P_l = np.array(
                     [
                         (2 * ang_mom + 1) * eval_legendre(ang_mom, cos_theta) * weight * wf_ratio
-                        for cos_theta, weight, wf_ratio in zip(cos_theta_list, weight_list, wf_ratio_list)
+                        for cos_theta, weight, wf_ratio in zip(cos_theta_list, weight_list, wf_ratio_list, strict=True)
                     ]
                 )
                 ans = list(V_l * P_l)
@@ -1944,7 +1943,7 @@ def compute_bare_coulomb_potential_debug(
     bare_coulomb_potential = np.sum(
         [
             (Z_a * Z_b) / np.linalg.norm(r_a - r_b)
-            for (Z_a, r_a), (Z_b, r_b) in itertools.combinations(zip(all_charges, all_carts), 2)
+            for (Z_a, r_a), (Z_b, r_b) in itertools.combinations(zip(all_charges, all_carts, strict=True), 2)
         ]
     )
 
@@ -2066,14 +2065,20 @@ def compute_bare_coulomb_potential_el_ion_element_wise_debug(
     interactions_R_r_up = np.zeros(len(r_up_carts))
     interactions_R_r_dn = np.zeros(len(r_dn_carts))
 
-    for i, (r_up_charge, r_up_cart) in enumerate(zip(r_up_charges, r_up_carts)):
+    for i, (r_up_charge, r_up_cart) in enumerate(zip(r_up_charges, r_up_carts, strict=True)):
         interactions_R_r_up[i] = np.sum(
-            [(R_charge * r_up_charge) / np.linalg.norm(R_cart - r_up_cart) for R_charge, R_cart in zip(R_charges, R_carts)]
+            [
+                (R_charge * r_up_charge) / np.linalg.norm(R_cart - r_up_cart)
+                for R_charge, R_cart in zip(R_charges, R_carts, strict=True)
+            ]
         )
 
-    for i, (r_dn_charge, r_dn_cart) in enumerate(zip(r_dn_charges, r_dn_carts)):
+    for i, (r_dn_charge, r_dn_cart) in enumerate(zip(r_dn_charges, r_dn_carts, strict=True)):
         interactions_R_r_dn[i] = np.sum(
-            [(R_charge * r_dn_charge) / np.linalg.norm(R_cart - r_dn_cart) for R_charge, R_cart in zip(R_charges, R_carts)]
+            [
+                (R_charge * r_dn_charge) / np.linalg.norm(R_cart - r_dn_cart)
+                for R_charge, R_cart in zip(R_charges, R_carts, strict=True)
+            ]
         )
 
     return interactions_R_r_up, interactions_R_r_dn
@@ -2094,19 +2099,19 @@ def compute_discretized_bare_coulomb_potential_el_ion_element_wise_debug(
     interactions_R_r_up = np.zeros(len(r_up_carts))
     interactions_R_r_dn = np.zeros(len(r_dn_carts))
 
-    for i, (r_up_charge, r_up_cart) in enumerate(zip(r_up_charges, r_up_carts)):
+    for i, (r_up_charge, r_up_cart) in enumerate(zip(r_up_charges, r_up_carts, strict=True)):
         interactions_R_r_up[i] = np.sum(
             [
                 (R_charge * r_up_charge) / np.maximum(np.linalg.norm(R_cart - r_up_cart), alat)
-                for R_charge, R_cart in zip(R_charges, R_carts)
+                for R_charge, R_cart in zip(R_charges, R_carts, strict=True)
             ]
         )
 
-    for i, (r_dn_charge, r_dn_cart) in enumerate(zip(r_dn_charges, r_dn_carts)):
+    for i, (r_dn_charge, r_dn_cart) in enumerate(zip(r_dn_charges, r_dn_carts, strict=True)):
         interactions_R_r_dn[i] = np.sum(
             [
                 (R_charge * r_dn_charge) / np.maximum(np.linalg.norm(R_cart - r_dn_cart), alat)
-                for R_charge, R_cart in zip(R_charges, R_carts)
+                for R_charge, R_cart in zip(R_charges, R_carts, strict=True)
             ]
         )
 

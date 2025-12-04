@@ -33,17 +33,23 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import os
+import sys
+from pathlib import Path
 
 import jax
 import numpy as np
 import pytest
 from mpi4py import MPI
 
-from ..jqmc.hamiltonians import Hamiltonian_data
-from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data
-from ..jqmc.jqmc_gfmc import GFMC_fixed_num_projection, GFMC_fixed_num_projection_debug
-from ..jqmc.trexio_wrapper import read_trexio_file
-from ..jqmc.wavefunction import Wavefunction_data
+project_root = str(Path(__file__).parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
+from jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data  # noqa: E402
+from jqmc.jqmc_gfmc import GFMC_fixed_num_projection, GFMC_fixed_num_projection_debug  # noqa: E402
+from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
+from jqmc.wavefunction import Wavefunction_data  # noqa: E402
 
 # MPI related
 mpi_comm = MPI.COMM_WORLD

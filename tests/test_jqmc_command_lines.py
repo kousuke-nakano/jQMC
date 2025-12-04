@@ -34,11 +34,16 @@
 
 import os
 import sys
+from pathlib import Path
 
 import toml
 
-from ..jqmc.jqmc_cli import cli
-from ..jqmc.jqmc_tool import (
+project_root = str(Path(__file__).parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from jqmc.jqmc_cli import cli  # noqa: E402
+from jqmc.jqmc_tool import (  # noqa: E402
     lrdmc_compute_energy,
     lrdmc_extrapolate_energy,
     lrdmc_generate_input,
@@ -53,7 +58,7 @@ def test_jqmc_tool_trexio_conversion(tmp_path):
     """Test the conversion of TREXIO files to Hamiltonian data."""
     trexio_convert_to(
         trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"),
-        hamiltonian_file=os.path.join(tmp_path, "hamiltonian_data.chk"),
+        hamiltonian_file=os.path.join(tmp_path, "hamiltonian_data.h5"),
         j1_parmeter=1.0,
         j2_parmeter=1.0,
         j3_basis_type="ao-medium",
@@ -67,7 +72,7 @@ def test_jqmc_cli_run_mcmc(tmp_path, monkeypatch):
     os.chdir(root_dir)
     trexio_convert_to(
         trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ecp_ccpvtz_cart.h5"),
-        hamiltonian_file=os.path.join(tmp_path, "hamiltonian_data.chk"),
+        hamiltonian_file=os.path.join(tmp_path, "hamiltonian_data.h5"),
         j1_parmeter=None,
         j2_parmeter=1.0,
         j3_basis_type="ao-small",
@@ -80,7 +85,7 @@ def test_jqmc_cli_run_mcmc(tmp_path, monkeypatch):
     with open(os.path.join(tmp_path, "mcmc_input.toml"), "r") as f:
         dict_toml = toml.load(f)
         dict_toml["control"]["restart"] = False
-        dict_toml["control"]["hamiltonian_chk"] = "hamiltonian_data.chk"
+        dict_toml["control"]["hamiltonian_h5"] = "hamiltonian_data.h5"
         dict_toml["control"]["restart_chk"] = "restart.chk"
         dict_toml["mcmc"]["num_mcmc_steps"] = 50
         dict_toml["mcmc"]["num_mcmc_bin_blocks"] = 5
@@ -129,7 +134,7 @@ def test_jqmc_cli_run_vmc(tmp_path, monkeypatch):
     os.chdir(root_dir)
     trexio_convert_to(
         trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ecp_ccpvtz_cart.h5"),
-        hamiltonian_file=os.path.join(tmp_path, "hamiltonian_data.chk"),
+        hamiltonian_file=os.path.join(tmp_path, "hamiltonian_data.h5"),
         j1_parmeter=None,
         j2_parmeter=1.0,
         j3_basis_type="ao-small",
@@ -142,7 +147,7 @@ def test_jqmc_cli_run_vmc(tmp_path, monkeypatch):
     with open(os.path.join(tmp_path, "vmc_input.toml"), "r") as f:
         dict_toml = toml.load(f)
         dict_toml["control"]["restart"] = False
-        dict_toml["control"]["hamiltonian_chk"] = "hamiltonian_data.chk"
+        dict_toml["control"]["hamiltonian_h5"] = "hamiltonian_data.h5"
         dict_toml["control"]["restart_chk"] = "restart.chk"
         dict_toml["vmc"]["num_opt_steps"] = 2
         dict_toml["vmc"]["num_mcmc_steps"] = 50
@@ -192,7 +197,7 @@ def test_jqmc_cli_run_lrdmc(tmp_path, monkeypatch):
         os.chdir(root_dir)
         trexio_convert_to(
             trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ecp_ccpvtz_cart.h5"),
-            hamiltonian_file=os.path.join(tmp_alat_path, "hamiltonian_data.chk"),
+            hamiltonian_file=os.path.join(tmp_alat_path, "hamiltonian_data.h5"),
             j1_parmeter=None,
             j2_parmeter=1.0,
             j3_basis_type="ao-small",
@@ -202,7 +207,7 @@ def test_jqmc_cli_run_lrdmc(tmp_path, monkeypatch):
         with open(os.path.join(tmp_alat_path, "lrdmc_input.toml"), "r") as f:
             dict_toml = toml.load(f)
             dict_toml["control"]["restart"] = False
-            dict_toml["control"]["hamiltonian_chk"] = "hamiltonian_data.chk"
+            dict_toml["control"]["hamiltonian_h5"] = "hamiltonian_data.h5"
             dict_toml["control"]["restart_chk"] = "restart.chk"
             dict_toml["lrdmc"]["num_mcmc_steps"] = 50
             dict_toml["lrdmc"]["alat"] = alat
@@ -269,3 +274,38 @@ def test_jqmc_cli_run_lrdmc(tmp_path, monkeypatch):
         cli()
     os.chdir(root_dir)
     """
+
+
+if __name__ == "__main__":
+    import tempfile
+    from logging import Formatter, StreamHandler, getLogger
+
+    logger = getLogger("jqmc")
+    logger.setLevel("INFO")
+    stream_handler = StreamHandler()
+    stream_handler.setLevel("INFO")
+    handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
+    stream_handler.setFormatter(handler_format)
+    logger.addHandler(stream_handler)
+
+    class _MonkeyPatch:
+        def setattr(self, target, name, value):
+            setattr(target, name, value)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        print(f"Running tests in {tmp_dir}")
+        monkeypatch = _MonkeyPatch()
+
+        print("Running test_jqmc_tool_trexio_conversion...")
+        test_jqmc_tool_trexio_conversion(tmp_dir)
+
+        print("Running test_jqmc_cli_run_mcmc...")
+        test_jqmc_cli_run_mcmc(tmp_dir, monkeypatch)
+
+        print("Running test_jqmc_cli_run_vmc...")
+        test_jqmc_cli_run_vmc(tmp_dir, monkeypatch)
+
+        print("Running test_jqmc_cli_run_lrdmc...")
+        test_jqmc_cli_run_lrdmc(tmp_dir, monkeypatch)
+
+        print("All tests passed!")

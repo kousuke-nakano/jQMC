@@ -33,6 +33,8 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import itertools
+import sys
+from pathlib import Path
 
 import jax
 import numpy as np
@@ -40,7 +42,14 @@ import pytest
 from numpy import linalg as LA
 from numpy.testing import assert_almost_equal
 
-from ..jqmc.atomic_orbital import (
+# Add the project root directory to sys.path to allow executing this script directly
+# This is necessary because relative imports (e.g. 'from ..jqmc') are not allowed
+# when running a script directly (as __main__).
+project_root = str(Path(__file__).parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from jqmc.atomic_orbital import (  # noqa: E402
     AOs_cart_data,
     AOs_sphe_data,
     _compute_S_l_m_debug,
@@ -54,7 +63,7 @@ from ..jqmc.atomic_orbital import (
     compute_AOs_shpe_debug,
     compute_AOs_sphe_jax,
 )
-from ..jqmc.structure import Structure_data
+from jqmc.structure import Structure_data  # noqa: E402
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -194,7 +203,7 @@ def test_spherical_harmonics_hard_coded_vs_analytic_expressions(l, m):
     r_y_rand = (r_cart_max - r_cart_min) * np.random.rand(num_samples) + r_cart_min
     r_z_rand = (r_cart_max - r_cart_min) * np.random.rand(num_samples) + r_cart_min
 
-    for r_cart in zip(r_x_rand, r_y_rand, r_z_rand):
+    for r_cart in zip(r_x_rand, r_y_rand, r_z_rand, strict=True):
         r_norm = LA.norm(np.array(R_cart) - np.array(r_cart))
         r_cart_rel = np.array(r_cart) - np.array(R_cart)
         test_S_lm = _compute_S_l_m_debug(

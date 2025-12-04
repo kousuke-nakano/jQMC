@@ -13,35 +13,9 @@ The following is a script to run a HF calculation for the water molecule using `
 > [!NOTE]
 > This `TREX-IO` converter is being develped in the `pySCF-forge` [repository](https://github.com/pyscf/pyscf-forge) and not yet merged to the main repository of `pySCF`. Please use `pySCF-forge`.
 
-```python:run_pyscf.py
-from pyscf import gto, scf
-from pyscf.tools import trexio
-
-filename = 'water_ccecp_ccpvtz.h5'
-
-mol = gto.Mole()
-mol.verbose  = 5
-mol.atom     = '''
-               O    5.00000000   7.14707700   7.65097100
-               H    4.06806600   6.94297500   7.56376100
-               H    5.38023700   6.89696300   6.80798400
-               '''
-mol.basis    = 'ccecp-ccpvtz'
-mol.unit     = 'A'
-mol.ecp      = 'ccecp'
-mol.charge   = 0
-mol.spin     = 0
-mol.symmetry = False
-mol.cart = True
-mol.output   = 'water.out'
-mol.build()
-
-mf = scf.HF(mol)
-mf.max_cycle=200
-mf_scf = mf.kernel()
-
-trexio.to_trexio(mf, filename)
-
+```{literalinclude} 01DFT/01pyscf-forge/run_pyscf.py
+:language: python
+:caption: run_pyscf.py
 ```
 
 Launch it on a terminal. You may get `E = -16.9450309201805 Ha` [Hartree-Forck].
@@ -52,207 +26,24 @@ Launch it on a terminal. You may get `E = -16.9450309201805 Ha` [Hartree-Forck].
 
 The following is a script to run a LDA calculation for the water molecule using `cp2k` and dump it as a `TREXIO` file.
 
-```bash: water.xyz
-3
-
-O    5.00000000   7.14707700   7.65097100
-H    4.06806600   6.94297500   7.56376100
-H    5.38023700   6.89696300   6.80798400
+```{literalinclude} 01DFT/02cp2k/water.xyz
+:language: bash
+:caption: water.xyz
 ```
 
-```bash:water_ccecp_ccpvtz.inp
-&global
-  project      water_ccecp_ccpvtz
-  print_level  medium
-  run_type     energy
-&end
-
-&force_eval
-  method quickstep
-
-  &subsys
-    &cell
-      abc  15.0 15.0 15.0
-      periodic none
-    &end
-
-    &topology
-      coord_file_format  xyz
-      coord_file_name    water.xyz
-    &end
-
-    &kind H
-      basis_set  ccecp-cc-pVTZ
-      potential  ecp ccECP
-    &end
-
-    &kind O
-      basis_set  ccecp-cc-pVTZ
-      potential  ecp ccECP
-    &end
-&end
-
-  &dft
-    multiplicity  1
-    uks           false
-    charge        0
-
-    basis_set_file_name  ./basis.cp2k
-    potential_file_name  ./ecp.cp2k
-
-    &qs
-      method gpw
-      eps_default  1.0e-15
-    &end
-
-    &xc
-      &xc_functional
-        &lda_x
-        &end
-        &lda_c_pz
-        &end
-      &end
-    &end
-
-    &poisson
-      psolver   wavelet
-      periodic  none
-    &end
-
-    &mgrid
-    cutoff 1000
-    rel_cutoff 50
-    &end
-
-    &scf
-     scf_guess  atomic
-     eps_scf    1.0e-7
-     max_scf    5
-     eps_diis   0.1
-     &ot on
-        minimizer cg
-        linesearch adapt
-        preconditioner full_single_inverse
-        max_scf_diis 50
-     &end ot
-     &outer_scf
-        eps_scf    1.0e-7
-        max_scf    3
-     &end outer_scf
-      &print
-        &restart on
-        &end
-        &restart_history off
-        &end
-      &end
-    &end
-
-    &print
-      &trexio
-      &end
-      &mo
-        energies      true
-        occnums       false
-        cartesian     false
-        coefficients  true
-        &each
-          qs_scf  0
-        &end
-      &end mo
-      &overlap_condition on
-        diagonalization   .true.
-      &end overlap_condition
-    &end print
-  &end dft
-&end
+```{literalinclude} 01DFT/02cp2k/water_ccecp_ccpvtz.inp
+:language: bash
+:caption: water_ccecp_ccpvtz.inp
 ```
 
-```bash: basis.cp2k
-# ccecp-cc-pVTZ
-# SOURCE: https://pseudopotentiallibrary.org/recipes/H/ccECP/H.cc-pVTZ.nwchem
-# SOURCE: https://pseudopotentiallibrary.org/recipes/O/ccECP/O.cc-pVTZ.nwchem
-####
-H ccecp-cc-pVTZ
-6
-1  0  0  8  1
-  23.843185  0.00411490
-  10.212443  0.01046440
-  4.374164  0.02801110
-  1.873529  0.07588620
-  0.802465  0.18210620
-  0.343709  0.34852140
-  0.147217  0.37823130
-  0.063055  0.11642410
-1  0  0  1  1
-  0.091791  1.00000000
-1  0  0  1  1
-  0.287637  1.00000000
-1  1  1  1  1
-  0.393954  1.00000000
-1  1  1  1  1
-  1.462694  1.00000000
-1  2  2  1  1
-  1.065841  1.0000000
-####
-O ccecp-cc-pVTZ
-9
-2  0  0  9  1
-  54.775216 -0.0012444
-  25.616801 0.0107330
-  11.980245 0.0018889
-  6.992317 -0.1742537
-  2.620277 0.0017622
-  1.225429 0.3161846
-  0.577797 0.4512023
-  0.268022 0.3121534
-  0.125346 0.0511167
-2  0  0  1  1
-  1.686633 1.0000000
-2  0  0  1  1
-  0.237997 1.0000000
-2  1  1  9  1
-  22.217266 0.0104866
-  10.74755 0.0366435
-  5.315785 0.0803674
-  2.660761 0.1627010
-  1.331816 0.2377791
-  0.678626 0.2811422
-  0.333673 0.2643189
-  0.167017 0.1466014
-  0.083598 0.0458145
-2  1  1  1  1
-  0.600621 1.0000000
-2  1  1  1  1
-  0.184696 1.0000000
-3  2  2  1  1
-  2.404278 1.0000000
-3  2  2  1  1
-  0.669340 1.0000000
-4  3  3  1  1
-  1.423104 1.0000000
+```{literalinclude} 01DFT/02cp2k/basis.cp2k
+:language: bash
+:caption: basis.cp2k
 ```
 
-```bash: ecp.cp2k
-# ccecp-cc-pVTZ
-# SOURCE: https://pseudopotentiallibrary.org/recipes/H/ccECP/H.ccECP.nwchem
-# SOURCE: https://pseudopotentiallibrary.org/recipes/O/ccECP/O.ccECP.nwchem
-ccECP
-H nelec 0
-H ul
-1 21.24359508259891 1.00000000000000
-3 21.24359508259891 21.24359508259891
-2 21.77696655044365 -10.85192405303825
-H S
-2 1.000000000000000 0.00000000000000
-O nelec 2
-O ul
-1 12.30997 6.000000
-3 14.76962 73.85984
-2 13.71419 -47.87600
-O S
-2 13.65512 85.86406
-####
-END ccECP
+```{literalinclude} 01DFT/02cp2k/ecp.cp2k
+:language: bash
+:caption: ecp.cp2k
 ```
 
 Launch it on a terminal. You may get `E = -17.146760756813901 Ha` [LDA].
@@ -284,33 +75,9 @@ You can generate a template file for a VMCopt calculation using `jqmc-tool`. Ple
 > Input file is generated: vmc.toml
 ```
 
-```toml:vmc.toml
-[control]
-job_type = "vmc" # Specify the job type. "mcmc", "vmc", "lrdmc", or "lrdmc-tau".
-mcmc_seed = 34456 # Random seed for MCMC
-number_of_walkers = 4 # Number of walkers per MPI process
-max_time = 86400 # Maximum time in sec.
-restart = false
-restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
-hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
-verbosity = "low" # Verbosity level. "low" or "high"
-
-[vmc]
-num_mcmc_steps = 500 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
-num_mcmc_per_measurement = 40 # Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.
-num_mcmc_warmup_steps = 0 # Number of observable measurement steps for warmup (i.e., discarged).
-num_mcmc_bin_blocks = 5 # Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_mcmc_bin_blocks * mpi_size * number_of_walkers.
-Dt = 2.0 # Step size for the MCMC update (bohr).
-epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
-num_opt_steps = 300 # Number of optimization steps.
-wf_dump_freq = 1 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
-optimizer = "sr" # Use stochastic reconfiguration (i.e., the natural gradient) optimizer.
-optimizer_kwargs = { delta = 0.01, epsilon = 0.001 } # SR step size and diagonal regularization used for numerical stability.
-opt_J1_param = false
-opt_J2_param = true
-opt_J3_param = true
-opt_lambda_param = false
-num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If None, all parameters are optimized.
+```{literalinclude} 03vmc_JSD/vmc.toml
+:language: toml
+:caption: vmc.toml
 ```
 
 Please lunch the job.
@@ -388,23 +155,9 @@ The next step is MCMC calculation. You can generate a template file for a MCMC c
 > Input file is generated: mcmc.toml
 ```
 
-```toml:mcmc.toml
-[control]
-job_type = "mcmc" # Specify the job type. "mcmc", "vmc", or "lrdmc"
-mcmc_seed = 34456 # Random seed for MCMC
-number_of_walkers = 300 # Number of walkers per MPI process
-max_time = 86400 # Maximum time in sec.
-restart = false
-restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
-hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
-verbosity = "low" # Verbosity level. "low" or "high"
-[mcmc]
-num_mcmc_steps = 90000 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
-num_mcmc_per_measurement = 40 # Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.
-num_mcmc_warmup_steps = 0 # Number of observable measurement steps for warmup (i.e., discarged).
-num_mcmc_bin_blocks = 5 # Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_mcmc_bin_blocks * mpi_size * number_of_walkers.
-Dt = 2.0 # Step size for the MCMC update (bohr).
-epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
+```{literalinclude} 04mcmc_JSD/vmc.toml
+:language: toml
+:caption: mcmc.toml
 ```
 
 The final step is to run the `jqmc` job w/ or w/o MPI on a CPU or GPU machine (via a job queueing system such as PBS).
@@ -426,26 +179,9 @@ The final step is LRDMC calculation. You can generate a template file for a LRDM
 > Input file is generated: lrdmc.toml
 ```
 
-```toml:lrdmc.toml
-[control]
-  job_type = 'lrdmc'
-  mcmc_seed = 34467
-  number_of_walkers = 300
-  max_time = 10400
-  restart = false
-  restart_chk = 'lrdmc.rchk'
-  hamiltonian_chk = '../hamiltonian_data.chk'
-  verbosity = 'low'
-
-[lrdmc]
-  num_mcmc_steps  = 40000
-  num_mcmc_per_measurement = 30
-  alat = 0.30
-  non_local_move = "dltmove"
-  num_gfmc_warmup_steps = 50
-  num_gfmc_bin_blocks = 50
-  num_gfmc_collect_steps = 20
-  E_scf = -17.00
+```{literalinclude} 05lrdmc_JSD/lrdmc.toml
+:language: toml
+:caption: lrdmc.toml
 ```
 
 LRDMC energy is biased with the discretized lattice space ($a$) by $O(a^2)$. It means that, to get an unbiased energy, one should compute LRDMC energies with several lattice parameters ($a$) extrapolate them into $a \rightarrow 0$.

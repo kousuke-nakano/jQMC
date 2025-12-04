@@ -124,9 +124,9 @@ class Geminal_data:
                 f"dim. of lambda_matrix = {self.lambda_matrix.shape} is imcompatible with the expected one "
                 + f"= ({self.orb_num_up}, {self.orb_num_dn + (self.num_electron_up - self.num_electron_dn)}).",
             )
-        if not isinstance(self.num_electron_up, int):
+        if not isinstance(self.num_electron_up, (int, np.integer)):
             raise ValueError(f"num_electron_up = {type(self.num_electron_up)} must be an int.")
-        if not isinstance(self.num_electron_dn, int):
+        if not isinstance(self.num_electron_dn, (int, np.integer)):
             raise ValueError(f"num_electron_dn = {type(self.num_electron_dn)} must be an int.")
 
         self.orb_data_up_spin.sanity_check()

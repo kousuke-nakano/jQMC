@@ -33,16 +33,25 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import os
+import sys
+from pathlib import Path
 
 import jax
 import numpy as np
 import pytest
 
-from ..jqmc.hamiltonians import Hamiltonian_data
-from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data
-from ..jqmc.jqmc_mcmc import MCMC, MCMC_debug
-from ..jqmc.trexio_wrapper import read_trexio_file
-from ..jqmc.wavefunction import Wavefunction_data
+# Add the project root directory to sys.path to allow executing this script directly
+# This is necessary because relative imports (e.g. 'from ..jqmc') are not allowed
+# when running a script directly (as __main__).
+project_root = str(Path(__file__).parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
+from jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data  # noqa: E402
+from jqmc.jqmc_mcmc import MCMC, MCMC_debug  # noqa: E402
+from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
+from jqmc.wavefunction import Wavefunction_data  # noqa: E402
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -170,3 +179,6 @@ if __name__ == "__main__":
     handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
     stream_handler.setFormatter(handler_format)
     logger.addHandler(stream_handler)
+
+    for trexio_file in test_trexio_files:
+        test_jqmc_mcmc(trexio_file=trexio_file)

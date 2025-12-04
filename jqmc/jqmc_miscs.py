@@ -40,7 +40,7 @@ cli_parameters = {
         "max_time": 86400,
         "restart": False,
         "restart_chk": "restart.chk",
-        "hamiltonian_chk": "hamiltonian_data.chk",
+        "hamiltonian_h5": "hamiltonian_data.h5",
         "verbosity": "low",
     },
     "control_comments": {
@@ -50,7 +50,7 @@ cli_parameters = {
         "max_time": "Maximum time in sec.",
         "restart": "Restart calculation. A checkpoint file should be specified.",
         "restart_chk": "Restart checkpoint file. If restart is True, this file is used.",
-        "hamiltonian_chk": "Hamiltonian checkpoint file. If restart is False, this file is used.",
+        "hamiltonian_h5": "Hamiltonian checkpoint file. If restart is False, this file is used.",
         "verbosity": 'Verbosity level. "low", "high", "devel", "mpi-low", "mpi-high", "mpi-devel"',
     },
     "mcmc": {

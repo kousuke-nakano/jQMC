@@ -32,6 +32,10 @@
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
+import os
+import sys
+from pathlib import Path
+
 import jax
 import numpy as np
 import pytest
@@ -39,11 +43,18 @@ import pytest
 # MPI
 from mpi4py import MPI
 
-from ..jqmc.atomic_orbital import (
+# Add the project root directory to sys.path to allow executing this script directly
+# This is necessary because relative imports (e.g. 'from ..jqmc') are not allowed
+# when running a script directly (as __main__).
+project_root = str(Path(__file__).parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from jqmc.atomic_orbital import (  # noqa: E402
     AO_sphe_data,
     AOs_sphe_data,
 )
-from ..jqmc.molecular_orbital import (
+from jqmc.molecular_orbital import (  # noqa: E402
     MO_data,
     MOs_data,
     compute_MO,
@@ -54,7 +65,7 @@ from ..jqmc.molecular_orbital import (
     compute_MOs_laplacian_debug,
     compute_MOs_laplacian_jax,
 )
-from ..jqmc.structure import Structure_data
+from jqmc.structure import Structure_data  # noqa: E402
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
