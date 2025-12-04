@@ -158,17 +158,18 @@ If you used `jQMC` in your reseach project, please cite the following articles. 
 
 - "Load-Balanced Diffusion Monte Carlo Method with Lattice Regularization",
 
-  [K. Nakano, S. Sorella, and M. Casula, arXiv, 2508.12033 (2025)](https://doi.org/10.48550/arXiv.2508.12033)
+  [K. Nakano, S. Sorella, and M. Casula, J. Chem. Phys. 163, 194117 (2025)](https://doi.org/10.1063/5.0296986)
 
   ```
-  @article{load-balanced-lrdmc,
-    author  = {Nakano, Kousuke and  Sorella, Sandro and Casula, Michele},
-    title   = {Load-Balanced Diffusion Monte Carlo Method with Lattice Regularization},
-    journal = {arXiv},
-    %volume  = {},
-    number  = {2508.12033},
-    %pages   = {},
-    year    = {2025},
-    %doi     = {}
+  @article{10.1063/5.0296986,
+      author = {Nakano, Kousuke and Sorella, Sandro and Casula, Michele},
+      title = {Load-balanced diffusion Monte Carlo method with lattice regularization},
+      journal = {J. Chem. Phys.},
+      volume = {163},
+      number = {19},
+      pages = {194117},
+      year = {2025},
+      month = {11},
+      doi = {10.1063/5.0296986}
   }
   ```
