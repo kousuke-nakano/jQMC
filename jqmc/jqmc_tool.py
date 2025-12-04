@@ -317,9 +317,17 @@ def trexio_convert_to(
 
     # NN three-body Jastrow (SchNet-like). If requested, initialize NN_Jastrow_data
     # from the structure information and attach it to Jastrow_data.
+    if isinstance(j_nn_type, str):
+        j_nn_choice = j_nn_type.lower()
+    elif j_nn_type is None:
+        j_nn_choice = None
+    else:
+        default_value = getattr(j_nn_type, "default", None)
+        j_nn_choice = default_value.lower() if isinstance(default_value, str) else None
+
     nn_jastrow_three_body_data = None
-    if j_nn_type is not None:
-        if j_nn_type.lower() == "schnet":
+    if j_nn_choice is not None:
+        if j_nn_choice == "schnet":
             nn_jastrow_three_body_data = NN_Jastrow_data.init_from_structure(structure_data)
         else:
             raise ImportError(f"Invalid j_nn_type = {j_nn_type}. Supported types: 'schnet'.")

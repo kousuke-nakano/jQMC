@@ -236,7 +236,7 @@ class Wavefunction_data:
         if self.jastrow_data is not None:
             if opt_J1_param and self.jastrow_data.jastrow_one_body_data is not None:
                 j1 = self.jastrow_data.jastrow_one_body_data.jastrow_1b_param
-                j1_arr = np.array(j1, copy=False)
+                j1_arr = np.asarray(j1)
                 blocks.append(
                     VariationalParameterBlock(
                         name="j1_param",
@@ -248,7 +248,7 @@ class Wavefunction_data:
 
             if opt_J2_param and self.jastrow_data.jastrow_two_body_data is not None:
                 j2 = self.jastrow_data.jastrow_two_body_data.jastrow_2b_param
-                j2_arr = np.array(j2, copy=False)
+                j2_arr = np.asarray(j2)
                 blocks.append(
                     VariationalParameterBlock(
                         name="j2_param",
@@ -260,7 +260,7 @@ class Wavefunction_data:
 
             if opt_J3_param and self.jastrow_data.jastrow_three_body_data is not None:
                 j3 = self.jastrow_data.jastrow_three_body_data.j_matrix
-                j3_arr = np.array(j3, copy=False)
+                j3_arr = np.asarray(j3)
                 blocks.append(
                     VariationalParameterBlock(
                         name="j3_matrix",
@@ -286,7 +286,7 @@ class Wavefunction_data:
         # Geminal part
         if opt_lambda_param and self.geminal_data is not None and self.geminal_data.lambda_matrix is not None:
             lam = self.geminal_data.lambda_matrix
-            lam_arr = np.array(lam, copy=False)
+            lam_arr = np.asarray(lam)
             blocks.append(
                 VariationalParameterBlock(
                     name="lambda_matrix",

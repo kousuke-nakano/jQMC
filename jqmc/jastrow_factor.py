@@ -51,6 +51,7 @@ from flax import linen as nn
 from flax import struct
 from jax import grad, hessian, jit, vmap
 from jax import typing as jnpt
+from jax.tree_util import tree_flatten, tree_unflatten
 
 from .atomic_orbital import AOs_cart_data, AOs_sphe_data, compute_AOs_jax
 from .molecular_orbital import MOs_data, compute_MOs_jax
@@ -74,7 +75,6 @@ def _flatten_params_with_treedef(params: Any) -> tuple[jnp.ndarray, Any, list[tu
     are picklable (needed for storing NN_Jastrow_data inside
     Hamiltonian_data via pickle).
     """
-    from jax import tree_flatten
 
     leaves, treedef = tree_flatten(params)
     flat = jnp.concatenate([jnp.ravel(x) for x in leaves])
@@ -88,7 +88,6 @@ def _make_flatten_fn(treedef: Any) -> Callable[[Any], jnp.ndarray]:
     The resulting function flattens any params PyTree that matches the
     same treedef structure into a 1D JAX array.
     """
-    from jax import tree_flatten
 
     def flatten_fn(p: Any) -> jnp.ndarray:
         leaves_p, treedef_p = tree_flatten(p)
@@ -107,7 +106,6 @@ def _make_flatten_fn(treedef: Any) -> Callable[[Any], jnp.ndarray]:
 
 def _make_unflatten_fn(treedef: Any, shapes: Sequence[tuple[int, ...]]) -> Callable[[jnp.ndarray], Any]:
     """Create an unflatten function using a treedef and per-leaf shapes."""
-    from jax import tree_unflatten
 
     def unflatten_fn(flat_vec: jnp.ndarray) -> Any:
         leaves_new = []
@@ -1106,7 +1104,6 @@ class NN_Jastrow_data:
         params = variables["params"]
         # Initialize the NN parameters with small random values so that the
         # NN J3 contribution starts near zero but still has gradient signal.
-        from jax import tree_flatten, tree_unflatten
 
         leaves, treedef = tree_flatten(params)
         noise_keys = jax.random.split(key, len(leaves) + 1)

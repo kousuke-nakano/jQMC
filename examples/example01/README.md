@@ -78,7 +78,6 @@ You can generate a template file for a VMCopt calculation using `jqmc-tool`. Ple
 ```{literalinclude} 03vmc_JSD/vmc.toml
 :language: toml
 :caption: vmc.toml
-```
 
 Please lunch the job.
 
