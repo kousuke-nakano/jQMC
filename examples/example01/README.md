@@ -273,7 +273,7 @@ Next step is to convert the `TREXIO` file to the `jqmc` format using `jqmc-tool`
 
 ```bash
 % jqmc-tool trexio convert-to water_ccecp_ccpvtz.h5 -j2 1.0 -j3 mo
-> Hamiltonian data is saved in hamiltonian_data.chk.
+> Hamiltonian data is saved in hamiltonian_data.h5.
 ```
 
 The generated `hamiltonian_data.chk` is a wavefunction file with the `jqmc` format. `-j2` specifies the initial value of the two-body Jastrow parameter and `-j3` specifies the basis set (`ao`:atomic orbital or `mo`:molecular orbital) for the three-body Jastrow part.
