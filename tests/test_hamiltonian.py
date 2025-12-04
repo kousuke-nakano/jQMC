@@ -159,7 +159,7 @@ def test_hamiltonian_hdf5(trexio_file, use_1b, use_2b, use_3b, use_nn, geminal_t
         jastrow_one_body_data=jastrow_one_body_data,
         jastrow_two_body_data=jastrow_two_body_data,
         jastrow_three_body_data=jastrow_three_body_data,
-        nn_jastrow_three_body_data=nn_jastrow_data,
+        nn_jastrow_data=nn_jastrow_data,
     )
 
     jastrow_data.sanity_check()

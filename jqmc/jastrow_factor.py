@@ -75,7 +75,6 @@ def _flatten_params_with_treedef(params: Any) -> tuple[jnp.ndarray, Any, list[tu
     are picklable (needed for storing NN_Jastrow_data inside
     Hamiltonian_data via pickle).
     """
-
     leaves, treedef = tree_flatten(params)
     flat = jnp.concatenate([jnp.ravel(x) for x in leaves])
     shapes: list[tuple[int, ...]] = [tuple(x.shape) for x in leaves]
@@ -962,11 +961,11 @@ class NN_Jastrow_data:
     * ``nn_def`` holds a Flax/SchNet-like module (e.g. NNJastrow).
     * ``params`` holds the corresponding PyTree of parameters.
     * ``flatten_fn`` / ``unflatten_fn`` convert between the PyTree and a
-      1D parameter vector for SR/MCMC.
+        1D parameter vector for SR/MCMC.
     * If this dataclass is set to ``None`` inside :class:`Jastrow_data`,
-      the NN J3 contribution is simply turned off. If it is not ``None``,
-      its contribution is evaluated and added on top of the analytic
-      three-body Jastrow (if present).
+        the NN J3 contribution is simply turned off. If it is not ``None``,
+        its contribution is evaluated and added on top of the analytic
+        three-body Jastrow (if present).
     """
 
     # Flax module definition (e.g. NNJastrow); not a pytree node.
@@ -1282,7 +1281,7 @@ class Jastrow_data:
             An instance of Jastrow_two_body_data. If None, the two-body Jastrow is turned off.
         jastrow_three_body_data (Jastrow_three_body_data):
             An instance of Jastrow_three_body_data. if None, the three-body Jastrow is turned off.
-        nn_jastrow_three_body_data (NN_Jastrow_data | None):
+        nn_jastrow_data (NN_Jastrow_data | None):
             Optional container for a NN-based three-body Jastrow term. If None,
             the NN J3 contribution is turned off.
     """
@@ -1292,7 +1291,7 @@ class Jastrow_data:
     jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=True, default=None)
 
     # New: NN-based three-body Jastrow data (parameters + helpers).
-    nn_jastrow_three_body_data: NN_Jastrow_data | None = struct.field(pytree_node=True, default=None)
+    nn_jastrow_data: NN_Jastrow_data | None = struct.field(pytree_node=True, default=None)
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -1321,8 +1320,8 @@ class Jastrow_data:
         # Replace jastrow_three_body_data.logger_info() with its get_info() output if available.
         if self.jastrow_three_body_data is not None:
             info_lines.extend(self.jastrow_three_body_data.get_info())
-        if self.nn_jastrow_three_body_data is not None:
-            info_lines.extend(self.nn_jastrow_three_body_data.get_info())
+        if self.nn_jastrow_data is not None:
+            info_lines.extend(self.nn_jastrow_data.get_info())
         return info_lines
 
     def logger_info(self) -> None:
@@ -1342,7 +1341,7 @@ class Jastrow_data:
         # NN J3 is a pure data container and should be copied as-is so that
         # derived wavefunction/jastrow objects keep access to the NN
         # variational parameters and their flatten/unflatten utilities.
-        nn_jastrow_three_body_data = jastrow_data.nn_jastrow_three_body_data
+        nn_jastrow_three_body_data = jastrow_data.nn_jastrow_data
 
         return cls(
             jastrow_one_body_data=jastrow_one_body_data,
@@ -1383,7 +1382,7 @@ class Jastrow_data:
         j1 = self.jastrow_one_body_data
         j2 = self.jastrow_two_body_data
         j3 = self.jastrow_three_body_data
-        nn3 = self.nn_jastrow_three_body_data
+        nn3 = self.nn_jastrow_data
 
         if block.name == "j1_param" and j1 is not None:
             new_param = float(np.array(block.values).reshape(()))
@@ -1422,7 +1421,7 @@ class Jastrow_data:
             jastrow_one_body_data=j1,
             jastrow_two_body_data=j2,
             jastrow_three_body_data=j3,
-            nn_jastrow_three_body_data=nn3,
+            nn_jastrow_data=nn3,
         )
 
 
@@ -1445,7 +1444,7 @@ class Jastrow_data_deriv_params(Jastrow_data):
             jastrow_three_body_data = jastrow_data.jastrow_three_body_data
         # Propagate NN J3 as-is so that parameter-derivative objects keep
         # access to the NN variational parameters.
-        nn_jastrow_three_body_data = jastrow_data.nn_jastrow_three_body_data
+        nn_jastrow_three_body_data = jastrow_data.nn_jastrow_data
 
         # Return a new instance of Jastrow_data with the updated jastrow_three_body_data
         return cls(
@@ -1475,7 +1474,7 @@ class Jastrow_data_deriv_R(Jastrow_data):
             jastrow_three_body_data = jastrow_data.jastrow_three_body_data
         # Propagate NN J3 as-is so that coordinate-derivative objects keep
         # access to the NN variational parameters.
-        nn_jastrow_three_body_data = jastrow_data.nn_jastrow_three_body_data
+        nn_jastrow_three_body_data = jastrow_data.nn_jastrow_data
 
         # Return a new instance of Jastrow_data with the updated jastrow_three_body_data
         return cls(
@@ -1502,7 +1501,7 @@ class Jastrow_data_no_deriv(Jastrow_data):
         jastrow_three_body_data = jastrow_data.jastrow_three_body_data
 
         # Propagate NN J3 as-is also for the no-derivative variant.
-        nn_jastrow_three_body_data = jastrow_data.nn_jastrow_three_body_data
+        nn_jastrow_three_body_data = jastrow_data.nn_jastrow_data
 
         return cls(
             jastrow_one_body_data=jastrow_one_body_data,
@@ -1545,8 +1544,8 @@ def compute_Jastrow_part_jax(jastrow_data: Jastrow_data, r_up_carts: jnpt.ArrayL
         J3 += compute_Jastrow_three_body_jax(jastrow_data.jastrow_three_body_data, r_up_carts, r_dn_carts)
 
     # three-body (NN)
-    if jastrow_data.nn_jastrow_three_body_data is not None:
-        nn3 = jastrow_data.nn_jastrow_three_body_data
+    if jastrow_data.nn_jastrow_data is not None:
+        nn3 = jastrow_data.nn_jastrow_data
         if nn3.structure_data is None:
             raise ValueError("NN_Jastrow_data.structure_data must be set to evaluate NN J3.")
 
@@ -1581,8 +1580,8 @@ def compute_Jastrow_part_debug(
         J3 += compute_Jastrow_three_body_debug(jastrow_data.jastrow_three_body_data, r_up_carts, r_dn_carts)
 
     # three-body (NN)
-    if jastrow_data.nn_jastrow_three_body_data is not None:
-        nn3 = jastrow_data.nn_jastrow_three_body_data
+    if jastrow_data.nn_jastrow_data is not None:
+        nn3 = jastrow_data.nn_jastrow_data
         if nn3.structure_data is None:
             raise ValueError("NN_Jastrow_data.structure_data must be set to evaluate NN J3 (debug).")
 

@@ -34,6 +34,7 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import gzip
+import inspect
 import os
 import pickle
 import re
@@ -140,6 +141,28 @@ class orbital_type(str, Enum):
     none = "none"
 
 
+def _get_nn_jastrow_help_msg() -> str:
+    """Generate help message for NN Jastrow parameters dynamically."""
+    try:
+        sig = inspect.signature(NN_Jastrow_data.init_from_structure)
+        params_list = []
+        for name, param in sig.parameters.items():
+            if name in ("structure_data", "key", "cls"):
+                continue
+            # Extract type name if possible
+            type_name = getattr(param.annotation, "__name__", str(param.annotation)).replace("builtins.", "")
+            # Format: name (type, default=value)
+            params_list.append(f"{name} ({type_name}, default={param.default})")
+
+        return (
+            f"Parameters for NN Jastrow. Specify as 'key=value'. "
+            f"Use multiple flags for multiple parameters (e.g. -jp hidden_dim=64 -jp num_layers=5). "
+            f"Supported params for 'schnet': {', '.join(params_list)}."
+        )
+    except Exception:
+        return "Parameters for NN Jastrow. Specify as 'key=value'. Can be used multiple times."
+
+
 @trexio_app.command("convert-to")
 def trexio_convert_to(
     trexio_file: str = typer.Argument(..., help="TREXIO filename."),
@@ -150,13 +173,19 @@ def trexio_convert_to(
         orbital_type.none,
         "-j3",
         "--jastrow-3b-basis-set-type",
-        help="Jastrow three-body basis-set type (use 'none' to disable analytic J3).",
+        help="Jastrow three-body basis-set type (use 'none' to disable atomic/molecular-orbital-based J3 term).",
     ),
     j_nn_type: str = typer.Option(
         None,
         "-j-nn-type",
         "--jastrow-nn-type",
-        help="NN Jastrow type (e.g. 'schnet'). If set, an NN-based J3 term is added even when -j3 is none.",
+        help="NN Jastrow type (e.g. 'schnet'). If set, an NN-based Jastrow term is added.",
+    ),
+    j_nn_params: List[str] = typer.Option(
+        None,
+        "-jp",
+        "--jastrow-nn-param",
+        help=_get_nn_jastrow_help_msg(),
     ),
 ):
     """Convert a TREXIO file to hamiltonian_data."""
@@ -325,10 +354,27 @@ def trexio_convert_to(
         default_value = getattr(j_nn_type, "default", None)
         j_nn_choice = default_value.lower() if isinstance(default_value, str) else None
 
-    nn_jastrow_three_body_data = None
+    nn_jastrow_data = None
     if j_nn_choice is not None:
         if j_nn_choice == "schnet":
-            nn_jastrow_three_body_data = NN_Jastrow_data.init_from_structure(structure_data)
+            kwargs = {}
+            if j_nn_params is not None:
+                for param in j_nn_params:
+                    if "=" in param:
+                        key, value = param.split("=", 1)
+                        try:
+                            if "." in value:
+                                value = float(value)
+                            else:
+                                value = int(value)
+                        except ValueError:
+                            pass  # keep as string
+                        kwargs[key] = value
+
+            nn_jastrow_data = NN_Jastrow_data.init_from_structure(
+                structure_data,
+                **kwargs,
+            )
         else:
             raise ImportError(f"Invalid j_nn_type = {j_nn_type}. Supported types: 'schnet'.")
 
@@ -337,7 +383,7 @@ def trexio_convert_to(
         jastrow_one_body_data=jastrow_onebody_data,
         jastrow_two_body_data=jastrow_twobody_data,
         jastrow_three_body_data=jastrow_threebody_data,
-        nn_jastrow_three_body_data=nn_jastrow_three_body_data,
+        nn_jastrow_data=nn_jastrow_data,
     )
 
     # geminal_data = geminal_mo_data
@@ -402,7 +448,7 @@ def hamiltonian_convert_wavefunction(
     hamiltonian_data_org_file: str = typer.Argument(..., help="hamiltonian_data file, e.g. hamiltonian_data.chk"),
     convert_to: ansatz_type = typer.Option(None, "-c", "--convert-to", help="Convert to another type of anstaz."),
     hamiltonian_data_conv_file: str = typer.Option(
-        "hamiltonian_data_conv.chk", "-o", "--output", help="Output hamiltonian_data file."
+        "hamiltonian_data_conv.h5", "-o", "--output", help="Output hamiltonian_data file."
     ),
 ):
     """Convert wavefunction data in the Hamiltonian data."""
@@ -430,8 +476,7 @@ def hamiltonian_convert_wavefunction(
         structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
     )
 
-    with open(hamiltonian_data_conv_file, "wb") as f:
-        pickle.dump(hamiltonian_conv_data, f)
+    hamiltonian_conv_data.save_to_hdf5(hamiltonian_data_conv_file)
 
     typer.echo(f"Hamiltonian data is saved in {hamiltonian_data_conv_file}.")
 

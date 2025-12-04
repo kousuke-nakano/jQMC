@@ -278,6 +278,49 @@ Next step is to convert the `TREXIO` file to the `jqmc` format using `jqmc-tool`
 
 The generated `hamiltonian_data.chk` is a wavefunction file with the `jqmc` format. `-j2` specifies the initial value of the two-body Jastrow parameter and `-j3` specifies the basis set (`ao`:atomic orbital or `mo`:molecular orbital) for the three-body Jastrow part.
 
+You can see the content of `hamiltonian_data.h5` by `jqmc-tool`
+
+```bash
+% jqmc-tool hamiltonian show-info hamiltonian_data.h5
+
+Structure_data
+  PBC flag = False
+  --------------------------------------------------
+  element, label, Z, x, y, z in cartesian (Bohr)
+  --------------------------------------------------
+  O, O, 8.0, 9.44863062, 13.50601812, 14.45823978
+  H, H, 1.0, 7.68753060, 13.12032124, 14.29343676
+  H, H, 1.0, 10.16717442, 13.03337116, 12.86522522
+  --------------------------------------------------
+Coulomb_potential_data
+  ecp_flag = True
+...
+
+```
+
+You can also see all the variables stored in `hamiltonian_data.h5` by `h5dump` if it is installed on your machine.
+
+```bash
+% h5dump hamiltonian_data.h5
+
+HDF5 "hamiltonian_data.h5" {
+GROUP "/" {
+   ATTRIBUTE "_class_name" {
+      DATATYPE  H5T_STRING {
+         STRSIZE H5T_VARIABLE;
+         STRPAD H5T_STR_NULLTERM;
+         CSET H5T_CSET_UTF8;
+         CTYPE H5T_C_S1;
+      }
+      DATASPACE  SCALAR
+      DATA {
+      (0): "Hamiltonian_data"
+      }
+   }
+...
+
+```
+
 ## Optimize a trial WF (VMC)
 The next step is to optimize variational parameters included in the generated wavefunction. More in details, here, we optimize the two-body Jastrow parameter and the matrix elements of the three-body Jastrow parameter.
 

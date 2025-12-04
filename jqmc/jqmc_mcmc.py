@@ -1222,7 +1222,7 @@ class MCMC:
                     self.__stored_grad_ln_Psi_jas1b3b_j_matrix.append(grad_ln_Psi_jas1b3b_j_matrix)
 
                 # NN Jastrow
-                nn_jastrow_data = self.__hamiltonian_data.wavefunction_data.jastrow_data.nn_jastrow_three_body_data
+                nn_jastrow_data = self.__hamiltonian_data.wavefunction_data.jastrow_data.nn_jastrow_data
                 if nn_jastrow_data is not None and nn_jastrow_data.params is not None and nn_jastrow_data.num_params > 0:
                     grad_ln_Psi_nn_params = grad_ln_Psi_h.jastrow_data.nn_jastrow_three_body_data.params
 
@@ -2594,8 +2594,8 @@ class MCMC:
             # dump WF
             if mpi_rank == 0:
                 if (i_opt + 1) % wf_dump_freq == 0 or (i_opt + 1) == num_opt_steps:
-                    hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.chk"
-                    logger.info(f"Hamiltonian data is dumped as a checkpoint file: {hamiltonian_data_filename}.")
+                    hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.h5"
+                    logger.info(f"Hamiltonian data is dumped as an HDF5 file: {hamiltonian_data_filename}.")
                     self.hamiltonian_data.save_to_hdf5(hamiltonian_data_filename)
 
             # check max time

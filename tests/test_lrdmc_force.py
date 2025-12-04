@@ -44,7 +44,12 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
-from jqmc.jastrow_factor import Jastrow_data, Jastrow_one_body_data, Jastrow_three_body_data, Jastrow_two_body_data  # noqa: E402
+from jqmc.jastrow_factor import (  # noqa: E402
+    Jastrow_data,
+    Jastrow_one_body_data,
+    Jastrow_three_body_data,
+    Jastrow_two_body_data,
+)
 from jqmc.jqmc_gfmc import GFMC_fixed_num_projection  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import Wavefunction_data  # noqa: E402
