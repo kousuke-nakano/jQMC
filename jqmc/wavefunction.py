@@ -42,7 +42,7 @@ import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import grad, hessian, jit, jvp, vmap
+from jax import grad, hessian, jit, jvp, tree_util, vmap
 from jax import typing as jnpt
 
 from .determinant import (
@@ -236,6 +236,34 @@ class Wavefunction_data:
             grads.update(self.geminal_data.collect_param_grads(grad_wavefunction.geminal_data))
         return grads
 
+    def flatten_param_grads(self, param_grads: dict[str, object], num_walkers: int) -> dict[str, np.ndarray]:
+        """Return parameter gradients as numpy arrays ready for storage.
+
+        The caller does not need to know the internal block structure (e.g., NN trees);
+        any necessary flattening is handled here.
+        """
+
+        flat: dict[str, np.ndarray] = {}
+        jastrow_nn_data = self.jastrow_data.jastrow_nn_data if self.jastrow_data is not None else None
+
+        for name, grad in param_grads.items():
+            if name == "jastrow_nn_params" and jastrow_nn_data is not None:
+
+                def _slice_walker(idx):
+                    return tree_util.tree_map(lambda x: x[idx], grad)
+
+                nn_grad_list = []
+                for walker_idx in range(num_walkers):
+                    walker_grad_tree = _slice_walker(walker_idx)
+                    flat_vec = np.array(jastrow_nn_data.flatten_fn(walker_grad_tree))
+                    nn_grad_list.append(flat_vec)
+
+                flat[name] = np.stack(nn_grad_list, axis=0)
+            else:
+                flat[name] = np.array(grad)
+
+        return flat
+
     def get_variational_blocks(
         self,
         opt_J1_param: bool = True,
@@ -296,7 +324,7 @@ class Wavefunction_data:
                     flat_params = np.array(nn3.flatten_fn(nn3.params))
                     blocks.append(
                         VariationalParameterBlock(
-                            name="nn_jastrow",
+                            name="jastrow_nn_params",
                             values=flat_params,
                             shape=flat_params.shape,
                             size=int(flat_params.size),
