@@ -286,8 +286,8 @@ class MCMC:
         # stored dln_Psi / dc_jas1b3b
         self.__stored_grad_ln_Psi_jas1b3b_j_matrix = []
 
-        # stored dln_Psi / dc_nn_jastrow
-        self.__stored_grad_ln_Psi_nn_jastrow = []
+        # stored dln_Psi / dc_jastrow_nn
+        self.__stored_grad_ln_Psi_jastrow_nn = []
 
         """ linear method
         # stored de_L / dc_jas2b
@@ -1112,24 +1112,7 @@ class MCMC:
                 self.__stored_grad_e_L_r_up.append(grad_e_L_r_up)
                 self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn)
 
-                grad_e_L_R = (
-                    grad_e_L_h.structure_data.positions
-                    + grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.structure_data.positions
-                    + grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.structure_data.positions
-                    + grad_e_L_h.coulomb_potential_data.structure_data.positions
-                )
-
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
-                    grad_e_L_R += grad_e_L_h.wavefunction_data.jastrow_data.jastrow_one_body_data.structure_data.positions
-
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
-                    grad_e_L_R += (
-                        grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
-                    )
-
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.nn_jastrow_data is not None:
-                    grad_e_L_R += grad_e_L_h.wavefunction_data.jastrow_data.nn_jastrow_data.structure_data.positions
-
+                grad_e_L_R = self.__hamiltonian_data.accumulate_position_grad(grad_e_L_h)
                 self.__stored_grad_e_L_dR.append(grad_e_L_R)
                 # """
 
@@ -1150,21 +1133,7 @@ class MCMC:
                 self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up)
                 self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn)
 
-                grad_ln_Psi_dR = (
-                    grad_ln_Psi_h.geminal_data.orb_data_up_spin.structure_data.positions
-                    + grad_ln_Psi_h.geminal_data.orb_data_dn_spin.structure_data.positions
-                )
-
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
-                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_one_body_data.structure_data.positions
-
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
-                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
-
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.nn_jastrow_data is not None:
-                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.nn_jastrow_data.structure_data.positions
-
-                # stored dln_Psi / dR
+                grad_ln_Psi_dR = self.__hamiltonian_data.wavefunction_data.accumulate_position_grad(grad_ln_Psi_h)
                 self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
                 # """
 
@@ -1201,48 +1170,38 @@ class MCMC:
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
+                param_grads = self.__hamiltonian_data.wavefunction_data.collect_param_grads(grad_ln_Psi_h)
 
-                # 1b Jastrow
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
-                    grad_ln_Psi_jas1b = grad_ln_Psi_h.jastrow_data.jastrow_one_body_data.jastrow_1b_param
-                    # logger.devel(f"grad_ln_Psi_jas1b.shape = {grad_ln_Psi_jas1b.shape}")
-                    self.__stored_grad_ln_Psi_jas1b.append(grad_ln_Psi_jas1b)
+                if "j1_param" in param_grads:
+                    self.__stored_grad_ln_Psi_jas1b.append(param_grads["j1_param"])
 
-                # 2b Jastrow
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data is not None:
-                    grad_ln_Psi_jas2b = grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
-                    # logger.devel(f"grad_ln_Psi_jas2b.shape = {grad_ln_Psi_jas2b.shape}")
-                    self.__stored_grad_ln_Psi_jas2b.append(grad_ln_Psi_jas2b)
+                if "j2_param" in param_grads:
+                    self.__stored_grad_ln_Psi_jas2b.append(param_grads["j2_param"])
 
-                # 3b Jastrow
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
-                    grad_ln_Psi_jas1b3b_j_matrix = grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix
-                    # logger.devel(f"grad_ln_Psi_jas1b3b_j_matrix.shape={grad_ln_Psi_jas1b3b_j_matrix.shape}")
-                    self.__stored_grad_ln_Psi_jas1b3b_j_matrix.append(grad_ln_Psi_jas1b3b_j_matrix)
+                if "j3_matrix" in param_grads:
+                    self.__stored_grad_ln_Psi_jas1b3b_j_matrix.append(param_grads["j3_matrix"])
 
-                # NN Jastrow
-                nn_jastrow_data = self.__hamiltonian_data.wavefunction_data.jastrow_data.nn_jastrow_data
-                if nn_jastrow_data is not None and nn_jastrow_data.params is not None and nn_jastrow_data.num_params > 0:
-                    grad_ln_Psi_nn_params = grad_ln_Psi_h.jastrow_data.nn_jastrow_data.params
+                if "jastrow_nn_params" in param_grads:
+                    jastrow_nn_data = self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_nn_data
 
                     def _slice_walker(idx):
-                        return tree_util.tree_map(lambda x: x[idx], grad_ln_Psi_nn_params)
+                        return tree_util.tree_map(lambda x: x[idx], param_grads["jastrow_nn_params"])
 
                     nn_grad_list = []
                     for walker_idx in range(self.__num_walkers):
                         walker_grad_tree = _slice_walker(walker_idx)
-                        flat = np.array(nn_jastrow_data.flatten_fn(walker_grad_tree))
+                        flat = np.array(jastrow_nn_data.flatten_fn(walker_grad_tree))
                         nn_grad_list.append(flat)
 
                     grad_nn_flat = np.stack(nn_grad_list, axis=0)
-                    self.__stored_grad_ln_Psi_nn_jastrow.append(grad_nn_flat)
+                    self.__stored_grad_ln_Psi_jastrow_nn.append(grad_nn_flat)
 
-                # lambda_matrix
-                grad_ln_Psi_lambda_matrix = grad_ln_Psi_h.geminal_data.lambda_matrix
-                # logger.devel(f"grad_ln_Psi_lambda_matrix.shape={grad_ln_Psi_lambda_matrix.shape}")
-                self.__stored_grad_ln_Psi_lambda_matrix.append(grad_ln_Psi_lambda_matrix)
+                if "lambda_matrix" in param_grads:
+                    grad_ln_Psi_lambda_matrix = param_grads["lambda_matrix"]
+                    self.__stored_grad_ln_Psi_lambda_matrix.append(grad_ln_Psi_lambda_matrix)
+                    grad_ln_Psi_lambda_matrix.block_until_ready()
+                    grad_ln_Psi_lambda_matrix.block_until_ready()
 
-                grad_ln_Psi_lambda_matrix.block_until_ready()
                 end = time.perf_counter()
                 timer_dln_Psi_dc += end - start
 
@@ -1646,7 +1605,7 @@ class MCMC:
             "j1_param": self.dln_Psi_dc_jas_1b,
             "j2_param": self.dln_Psi_dc_jas_2b,
             "j3_matrix": self.dln_Psi_dc_jas_1b3b,
-            "nn_jastrow": self.dln_Psi_dc_nn_jastrow,
+            "jastrow_nn": self.dln_Psi_dc_jastrow_nn,
             "lambda_matrix": self.dln_Psi_dc_lambda_matrix,
         }
 
@@ -2746,9 +2705,9 @@ class MCMC:
         return np.array(self.__stored_grad_ln_Psi_jas1b3b_j_matrix)
 
     @property
-    def dln_Psi_dc_nn_jastrow(self) -> npt.NDArray:
+    def dln_Psi_dc_jastrow_nn(self) -> npt.NDArray:
         """Return the stored dln_Psi/dc_NN_Jastrow array. dim: (mcmc_counter, num_walkers, num_nn_params)."""
-        return np.array(self.__stored_grad_ln_Psi_nn_jastrow)
+        return np.array(self.__stored_grad_ln_Psi_jastrow_nn)
 
     '''
     @property
@@ -3197,21 +3156,7 @@ class MCMC_debug:
                 self.__stored_grad_e_L_r_up.append(grad_e_L_r_up)
                 self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn)
 
-                grad_e_L_R = (
-                    grad_e_L_h.structure_data.positions
-                    + grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.structure_data.positions
-                    + grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.structure_data.positions
-                    + grad_e_L_h.coulomb_potential_data.structure_data.positions
-                )
-
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
-                    grad_e_L_R += grad_e_L_h.wavefunction_data.jastrow_data.jastrow_one_body_data.structure_data.positions
-
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
-                    grad_e_L_R += (
-                        grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
-                    )
-
+                grad_e_L_R = self.__hamiltonian_data.accumulate_position_grad(grad_e_L_h)
                 self.__stored_grad_e_L_dR.append(grad_e_L_R)
 
                 grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = vmap(
@@ -3225,20 +3170,7 @@ class MCMC_debug:
                 self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up)
                 self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn)
 
-                grad_ln_Psi_dR = (
-                    grad_ln_Psi_h.geminal_data.orb_data_up_spin.structure_data.positions
-                    + grad_ln_Psi_h.geminal_data.orb_data_dn_spin.structure_data.positions
-                )
-
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
-                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_one_body_data.structure_data.positions
-
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
-                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
-
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.nn_jastrow_data is not None:
-                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.nn_jastrow_data.structure_data.positions
-
+                grad_ln_Psi_dR = self.__hamiltonian_data.wavefunction_data.accumulate_position_grad(grad_ln_Psi_h)
                 self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
 
                 omega_up = vmap(evaluate_swct_omega_jax, in_axes=(None, 0))(
@@ -3274,24 +3206,35 @@ class MCMC_debug:
                     self.__latest_r_dn_carts,
                 )
 
-                # 1b Jastrow
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
-                    grad_ln_Psi_jas1b = grad_ln_Psi_h.jastrow_data.jastrow_one_body_data.jastrow_1b_param
-                    self.__stored_grad_ln_Psi_jas1b.append(grad_ln_Psi_jas1b)
+                param_grads = self.__hamiltonian_data.wavefunction_data.collect_param_grads(grad_ln_Psi_h)
 
-                # 2b Jastrow
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data is not None:
-                    grad_ln_Psi_jas2b = grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
-                    self.__stored_grad_ln_Psi_jas2b.append(grad_ln_Psi_jas2b)
+                if "j1_param" in param_grads:
+                    self.__stored_grad_ln_Psi_jas1b.append(param_grads["j1_param"])
 
-                # 3b Jastrow
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
-                    grad_ln_Psi_jas1b3b_j_matrix = grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix
-                    self.__stored_grad_ln_Psi_jas1b3b_j_matrix.append(grad_ln_Psi_jas1b3b_j_matrix)
+                if "j2_param" in param_grads:
+                    self.__stored_grad_ln_Psi_jas2b.append(param_grads["j2_param"])
 
-                # lambda_matrix
-                grad_ln_Psi_lambda_matrix = grad_ln_Psi_h.geminal_data.lambda_matrix
-                self.__stored_grad_ln_Psi_lambda_matrix.append(grad_ln_Psi_lambda_matrix)
+                if "j3_matrix" in param_grads:
+                    self.__stored_grad_ln_Psi_jas1b3b_j_matrix.append(param_grads["j3_matrix"])
+
+                if "jastrow_nn_params" in param_grads:
+                    jastrow_nn_data = self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_nn_data
+
+                    def _slice_walker(idx):
+                        return tree_util.tree_map(lambda x: x[idx], param_grads["jastrow_nn_params"])
+
+                    nn_grad_list = []
+                    for walker_idx in range(self.__num_walkers):
+                        walker_grad_tree = _slice_walker(walker_idx)
+                        flat = np.array(jastrow_nn_data.flatten_fn(walker_grad_tree))
+                        nn_grad_list.append(flat)
+
+                    grad_nn_flat = np.stack(nn_grad_list, axis=0)
+                    self.__stored_grad_ln_Psi_jastrow_nn.append(grad_nn_flat)
+
+                if "lambda_matrix" in param_grads:
+                    grad_ln_Psi_lambda_matrix = param_grads["lambda_matrix"]
+                    self.__stored_grad_ln_Psi_lambda_matrix.append(grad_ln_Psi_lambda_matrix)
 
             num_mcmc_done += 1
 

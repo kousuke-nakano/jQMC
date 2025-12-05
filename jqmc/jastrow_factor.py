@@ -949,7 +949,7 @@ class Jastrow_three_body_data_deriv_R(Jastrow_three_body_data):
 
 
 @struct.dataclass
-class NN_Jastrow_data:
+class Jastrow_NN_data:
     """Container for NN-based Jastrow factor.
 
     This dataclass stores both the neural network definition and its
@@ -1064,8 +1064,8 @@ class NN_Jastrow_data:
         num_rbf: int = 16,
         cutoff: float = 5.0,
         key=None,
-    ) -> "NN_Jastrow_data":
-        """Initialize NN J3 from structure information.
+    ) -> "Jastrow_NN_data":
+        """Initialize NN Jastrow from structure information.
 
         This creates a PauliNet-style NNJastrow module, initializes its
         parameters with a dummy electron configuration, and prepares
@@ -1137,7 +1137,7 @@ class NN_Jastrow_data:
     def get_info(self) -> list[str]:
         """Return a list of human-readable strings describing this NN Jastrow."""
         info = []
-        info.append("**NN_Jastrow_data")
+        info.append("**Jastrow_NN_data")
         info.append(f"  hidden_dim = {self.hidden_dim}")
         info.append(f"  num_layers = {self.num_layers}")
         info.append(f"  num_rbf = {self.num_rbf}")
@@ -1147,7 +1147,7 @@ class NN_Jastrow_data:
             info.append(f"  species_values = {self.species_values}")
         info.append(f"  num_params = {self.num_params}")
         if self.params is None:
-            info.append("  params = None (NN J3 disabled)")
+            info.append("  params = None (Neural-Network Jastrow disabled)")
         return info
 
 
@@ -1281,15 +1281,15 @@ class Jastrow_data:
             An instance of Jastrow_two_body_data. If None, the two-body Jastrow is turned off.
         jastrow_three_body_data (Jastrow_three_body_data):
             An instance of Jastrow_three_body_data. if None, the three-body Jastrow is turned off.
-        nn_jastrow_data (NN_Jastrow_data | None):
+        jastrow_nn_data (Jastrow_NN_data | None):
             Optional container for a NN-based three-body Jastrow term. If None,
-            the NN J3 contribution is turned off.
+            the Jastrow NN contribution is turned off.
     """
 
     jastrow_one_body_data: Jastrow_one_body_data | None = struct.field(pytree_node=True, default=None)
     jastrow_two_body_data: Jastrow_two_body_data | None = struct.field(pytree_node=True, default=None)
     jastrow_three_body_data: Jastrow_three_body_data | None = struct.field(pytree_node=True, default=None)
-    nn_jastrow_data: NN_Jastrow_data | None = struct.field(pytree_node=True, default=None)
+    jastrow_nn_data: Jastrow_NN_data | None = struct.field(pytree_node=True, default=None)
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -1318,8 +1318,8 @@ class Jastrow_data:
         # Replace jastrow_three_body_data.logger_info() with its get_info() output if available.
         if self.jastrow_three_body_data is not None:
             info_lines.extend(self.jastrow_three_body_data.get_info())
-        if self.nn_jastrow_data is not None:
-            info_lines.extend(self.nn_jastrow_data.get_info())
+        if self.jastrow_nn_data is not None:
+            info_lines.extend(self.jastrow_nn_data.get_info())
         return info_lines
 
     def logger_info(self) -> None:
@@ -1339,13 +1339,13 @@ class Jastrow_data:
         # NN J3 is a pure data container and should be copied as-is so that
         # derived wavefunction/jastrow objects keep access to the NN
         # variational parameters and their flatten/unflatten utilities.
-        nn_jastrow_data = jastrow_data.nn_jastrow_data
+        jastrow_nn_data = jastrow_data.jastrow_nn_data
 
         return cls(
             jastrow_one_body_data=jastrow_one_body_data,
             jastrow_two_body_data=jastrow_two_body_data,
             jastrow_three_body_data=jastrow_three_body_data,
-            nn_jastrow_data=nn_jastrow_data,
+            jastrow_nn_data=jastrow_nn_data,
         )
 
     def apply_block_update(self, block: "VariationalParameterBlock") -> "Jastrow_data":
@@ -1380,7 +1380,7 @@ class Jastrow_data:
         j1 = self.jastrow_one_body_data
         j2 = self.jastrow_two_body_data
         j3 = self.jastrow_three_body_data
-        nn3 = self.nn_jastrow_data
+        nn3 = self.jastrow_nn_data
 
         if block.name == "j1_param" and j1 is not None:
             new_param = float(np.array(block.values).reshape(()))
@@ -1409,7 +1409,7 @@ class Jastrow_data:
                 j3_new[:, :-1] = square_new
 
             j3 = Jastrow_three_body_data(orb_data=j3.orb_data, j_matrix=j3_new)
-        elif block.name == "nn_jastrow" and nn3 is not None:
+        elif block.name == "jastrow_nn" and nn3 is not None:
             # Update NN Jastrow parameters: block.values is the flattened parameter vector.
             flat = jnp.asarray(block.values).reshape(-1)
             params_new = nn3.unflatten_fn(flat)
@@ -1419,8 +1419,32 @@ class Jastrow_data:
             jastrow_one_body_data=j1,
             jastrow_two_body_data=j2,
             jastrow_three_body_data=j3,
-            nn_jastrow_data=nn3,
+            jastrow_nn_data=nn3,
         )
+
+    def accumulate_position_grad(self, grad_jastrow: "Jastrow_data"):
+        """Aggregate position gradients from all active Jastrow components."""
+        grad = 0.0
+        if grad_jastrow.jastrow_one_body_data is not None:
+            grad += grad_jastrow.jastrow_one_body_data.structure_data.positions
+        if grad_jastrow.jastrow_three_body_data is not None:
+            grad += grad_jastrow.jastrow_three_body_data.orb_data.structure_data.positions
+        if grad_jastrow.jastrow_nn_data is not None:
+            grad += grad_jastrow.jastrow_nn_data.structure_data.positions
+        return grad
+
+    def collect_param_grads(self, grad_jastrow: "Jastrow_data") -> dict[str, object]:
+        """Collect parameter gradients into a flat dict keyed by block name."""
+        grads: dict[str, object] = {}
+        if grad_jastrow.jastrow_one_body_data is not None:
+            grads["j1_param"] = grad_jastrow.jastrow_one_body_data.jastrow_1b_param
+        if grad_jastrow.jastrow_two_body_data is not None:
+            grads["j2_param"] = grad_jastrow.jastrow_two_body_data.jastrow_2b_param
+        if grad_jastrow.jastrow_three_body_data is not None:
+            grads["j3_matrix"] = grad_jastrow.jastrow_three_body_data.j_matrix
+        if grad_jastrow.jastrow_nn_data is not None and grad_jastrow.jastrow_nn_data.params is not None:
+            grads["jastrow_nn_params"] = grad_jastrow.jastrow_nn_data.params
+        return grads
 
 
 @struct.dataclass
@@ -1430,7 +1454,7 @@ class Jastrow_data_deriv_params(Jastrow_data):
     jastrow_one_body_data: Jastrow_one_body_data = struct.field(pytree_node=True, default=None)
     jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=True, default=None)
     jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=True, default=None)
-    nn_jastrow_data: NN_Jastrow_data | None = struct.field(pytree_node=True, default=None)
+    jastrow_nn_data: Jastrow_NN_data | None = struct.field(pytree_node=True, default=None)
 
     @classmethod
     def from_base(cls, jastrow_data: Jastrow_data):
@@ -1443,14 +1467,14 @@ class Jastrow_data_deriv_params(Jastrow_data):
             jastrow_three_body_data = jastrow_data.jastrow_three_body_data
         # Propagate NN J3 as-is so that parameter-derivative objects keep
         # access to the NN variational parameters.
-        nn_jastrow_data = jastrow_data.nn_jastrow_data
+        jastrow_nn_data = jastrow_data.jastrow_nn_data
 
         # Return a new instance of Jastrow_data with the updated jastrow_three_body_data
         return cls(
             jastrow_one_body_data=jastrow_one_body_data,
             jastrow_two_body_data=jastrow_two_body_data,
             jastrow_three_body_data=jastrow_three_body_data,
-            nn_jastrow_data=nn_jastrow_data,
+            jastrow_nn_data=jastrow_nn_data,
         )
 
 
@@ -1461,7 +1485,7 @@ class Jastrow_data_deriv_R(Jastrow_data):
     jastrow_one_body_data: Jastrow_one_body_data = struct.field(pytree_node=True, default=None)
     jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=True, default=None)
     jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=True, default=None)
-    nn_jastrow_data: NN_Jastrow_data | None = struct.field(pytree_node=True, default=None)
+    jastrow_nn_data: Jastrow_NN_data | None = struct.field(pytree_node=True, default=None)
 
     @classmethod
     def from_base(cls, jastrow_data: Jastrow_data):
@@ -1474,14 +1498,14 @@ class Jastrow_data_deriv_R(Jastrow_data):
             jastrow_three_body_data = jastrow_data.jastrow_three_body_data
         # Propagate NN J3 as-is so that coordinate-derivative objects keep
         # access to the NN variational parameters.
-        nn_jastrow_data = jastrow_data.nn_jastrow_data
+        jastrow_nn_data = jastrow_data.jastrow_nn_data
 
         # Return a new instance of Jastrow_data with the updated jastrow_three_body_data
         return cls(
             jastrow_one_body_data=jastrow_one_body_data,
             jastrow_two_body_data=jastrow_two_body_data,
             jastrow_three_body_data=jastrow_three_body_data,
-            nn_jastrow_data=nn_jastrow_data,
+            jastrow_nn_data=jastrow_nn_data,
         )
 
 
@@ -1489,10 +1513,10 @@ class Jastrow_data_deriv_R(Jastrow_data):
 class Jastrow_data_no_deriv(Jastrow_data):
     """See Jastrow_data."""
 
-    jastrow_one_body_data: Jastrow_one_body_data = struct.field(pytree_node=True, default=None)
-    jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=True, default=None)
-    jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=True, default=None)
-    nn_jastrow_data: NN_Jastrow_data | None = struct.field(pytree_node=True, default=None)
+    jastrow_one_body_data: Jastrow_one_body_data | None = struct.field(pytree_node=True, default=None)
+    jastrow_two_body_data: Jastrow_two_body_data | None = struct.field(pytree_node=True, default=None)
+    jastrow_three_body_data: Jastrow_three_body_data | None = struct.field(pytree_node=True, default=None)
+    jastrow_nn_data: Jastrow_NN_data | None = struct.field(pytree_node=True, default=None)
 
     @classmethod
     def from_base(cls, jastrow_data: Jastrow_data):
@@ -1502,13 +1526,13 @@ class Jastrow_data_no_deriv(Jastrow_data):
         jastrow_three_body_data = jastrow_data.jastrow_three_body_data
 
         # Propagate NN J3 as-is also for the no-derivative variant.
-        nn_jastrow_data = jastrow_data.nn_jastrow_data
+        jastrow_nn_data = jastrow_data.jastrow_nn_data
 
         return cls(
             jastrow_one_body_data=jastrow_one_body_data,
             jastrow_two_body_data=jastrow_two_body_data,
             jastrow_three_body_data=jastrow_three_body_data,
-            nn_jastrow_data=nn_jastrow_data,
+            jastrow_nn_data=jastrow_nn_data,
         )
 
 
@@ -1545,8 +1569,8 @@ def compute_Jastrow_part_jax(jastrow_data: Jastrow_data, r_up_carts: jnpt.ArrayL
         J3 += compute_Jastrow_three_body_jax(jastrow_data.jastrow_three_body_data, r_up_carts, r_dn_carts)
 
     # three-body (NN)
-    if jastrow_data.nn_jastrow_data is not None:
-        nn3 = jastrow_data.nn_jastrow_data
+    if jastrow_data.jastrow_nn_data is not None:
+        nn3 = jastrow_data.jastrow_nn_data
         if nn3.structure_data is None:
             raise ValueError("NN_Jastrow_data.structure_data must be set to evaluate NN J3.")
 
@@ -1581,8 +1605,8 @@ def compute_Jastrow_part_debug(
         J3 += compute_Jastrow_three_body_debug(jastrow_data.jastrow_three_body_data, r_up_carts, r_dn_carts)
 
     # three-body (NN)
-    if jastrow_data.nn_jastrow_data is not None:
-        nn3 = jastrow_data.nn_jastrow_data
+    if jastrow_data.jastrow_nn_data is not None:
+        nn3 = jastrow_data.jastrow_nn_data
         if nn3.structure_data is None:
             raise ValueError("NN_Jastrow_data.structure_data must be set to evaluate NN J3 (debug).")
 

@@ -137,6 +137,14 @@ class Hamiltonian_data:
         for line in self.get_info():
             logger.info(line)
 
+    def accumulate_position_grad(self, grad_hamiltonian: "Hamiltonian_data"):
+        """Aggregate position gradients from Hamiltonian components (structure + wavefunction)."""
+        grad = grad_hamiltonian.structure_data.positions
+        grad += grad_hamiltonian.coulomb_potential_data.structure_data.positions
+        if self.wavefunction_data is not None and grad_hamiltonian.wavefunction_data is not None:
+            grad += self.wavefunction_data.accumulate_position_grad(grad_hamiltonian.wavefunction_data)
+        return grad
+
     def save_to_hdf5(self, filepath="jqmc.h5") -> None:
         """Save Hamiltonian data to an HDF5 file.
 

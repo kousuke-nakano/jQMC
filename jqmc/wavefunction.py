@@ -216,6 +216,26 @@ class Wavefunction_data:
 
         return Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_data)
 
+    def accumulate_position_grad(self, grad_wavefunction: "Wavefunction_data"):
+        """Aggregate position gradients from geminal and Jastrow parts."""
+
+        grad = 0.0
+        if self.geminal_data is not None and grad_wavefunction.geminal_data is not None:
+            grad += self.geminal_data.accumulate_position_grad(grad_wavefunction.geminal_data)
+        if self.jastrow_data is not None and grad_wavefunction.jastrow_data is not None:
+            grad += self.jastrow_data.accumulate_position_grad(grad_wavefunction.jastrow_data)
+        return grad
+
+    def collect_param_grads(self, grad_wavefunction: "Wavefunction_data") -> dict[str, object]:
+        """Collect parameter gradients from Jastrow and Geminal into a flat dict."""
+
+        grads: dict[str, object] = {}
+        if self.jastrow_data is not None and grad_wavefunction.jastrow_data is not None:
+            grads.update(self.jastrow_data.collect_param_grads(grad_wavefunction.jastrow_data))
+        if self.geminal_data is not None and grad_wavefunction.geminal_data is not None:
+            grads.update(self.geminal_data.collect_param_grads(grad_wavefunction.geminal_data))
+        return grads
+
     def get_variational_blocks(
         self,
         opt_J1_param: bool = True,
@@ -270,8 +290,8 @@ class Wavefunction_data:
                     )
                 )
 
-            if opt_JNN_param and self.jastrow_data.nn_jastrow_data is not None:
-                nn3 = self.jastrow_data.nn_jastrow_data
+            if opt_JNN_param and self.jastrow_data.jastrow_nn_data is not None:
+                nn3 = self.jastrow_data.jastrow_nn_data
                 if nn3.params is not None and nn3.num_params > 0:
                     flat_params = np.array(nn3.flatten_fn(nn3.params))
                     blocks.append(

@@ -49,10 +49,10 @@ from jqmc.determinant import Geminal_data  # noqa: E402
 from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
 from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_data,
+    Jastrow_NN_data,
     Jastrow_one_body_data,
     Jastrow_three_body_data,
     Jastrow_two_body_data,
-    NN_Jastrow_data,
 )
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import (  # noqa: E402
@@ -153,13 +153,13 @@ def test_hamiltonian_hdf5(trexio_file, use_1b, use_2b, use_3b, use_nn, geminal_t
 
     nn_jastrow_data = None
     if use_nn:
-        nn_jastrow_data = NN_Jastrow_data.init_from_structure(structure_data=structure_data)
+        nn_jastrow_data = Jastrow_NN_data.init_from_structure(structure_data=structure_data)
 
     jastrow_data = Jastrow_data(
         jastrow_one_body_data=jastrow_one_body_data,
         jastrow_two_body_data=jastrow_two_body_data,
         jastrow_three_body_data=jastrow_three_body_data,
-        nn_jastrow_data=nn_jastrow_data,
+        jastrow_nn_data=nn_jastrow_data,
     )
 
     jastrow_data.sanity_check()
