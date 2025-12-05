@@ -33,3 +33,7 @@ Weak scalings of LRDMC using the water molecule.
 ## example08
 
 How to call modules of `jQMC` from a `python` script.
+
+## example09
+
+Total energy of water molecule with the Neural-Network-Jastrow-Slater determinant (JNNSD) ansatz. One can learn how to obtain the VMC energy of the water molecule, starting from scratch (i.e., DFT calculation by `pySCF`), with cartesian GTOs.
