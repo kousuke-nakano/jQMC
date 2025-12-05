@@ -59,14 +59,6 @@ from jqmc.wavefunction import Wavefunction_data  # noqa: E402
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
-'''
-@pytest.mark.activate_if_disable_jit
-def test_lrdmc_force_with_SWCT_ecp(request):
-    """Test LRDMC force with SWCT."""
-    if not request.config.getoption("--disable-jit"):
-        pytest.skip(reason="A limilation of flux.struct (pytree_node=False) with @jit. See #24204 in jax repo.")
-'''
-
 
 def test_lrdmc_force_with_SWCT_ecp():
     """Test LRDMC force with SWCT."""
@@ -134,15 +126,6 @@ def test_lrdmc_force_with_SWCT_ecp():
     # See [J. Chem. Phys. 156, 034101 (2022)]
     np.testing.assert_almost_equal(np.array(force_mean[0]), -1.0 * np.array(force_mean[1]), decimal=6)
     np.testing.assert_almost_equal(np.array(force_std[0]), np.array(force_std[1]), decimal=6)
-
-
-'''
-@pytest.mark.activate_if_disable_jit
-def test_lrdmc_force_with_SWCT_ae(request):
-    """Test LRDMC force with SWCT."""
-    if not request.config.getoption("--disable-jit"):
-        pytest.skip(reason="A limilation of flux.struct (pytree_node=False) with @jit. See #24204 in jax repo.")
-'''
 
 
 def test_lrdmc_force_with_SWCT_ae():

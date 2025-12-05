@@ -38,7 +38,6 @@ from pathlib import Path
 
 import jax
 import numpy as np
-import pytest
 
 project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
@@ -126,7 +125,6 @@ def test_vmc_force_with_SWCT_ecp():
     np.testing.assert_almost_equal(np.array(force_std[0]), np.array(force_std[1]), decimal=6)
 
 
-@pytest.mark.skip(reason="Currently, this test fails due to a JAX bug.")
 def test_vmc_force_with_SWCT_ae():
     """Test VMC force with SWCT."""
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).

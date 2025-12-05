@@ -2637,7 +2637,6 @@ class MCMC:
     @property
     def dln_Psi_dc(self) -> dict[str, npt.NDArray]:
         """Return stored parameter gradients keyed by block name."""
-
         return {name: np.array(values) for name, values in self.__stored_param_grads.items()}
 
     @property
@@ -3434,7 +3433,6 @@ class MCMC_debug:
     @property
     def dln_Psi_dc(self) -> dict[str, npt.NDArray]:
         """Return stored parameter gradients keyed by block name."""
-
         return {name: np.array(values) for name, values in self.__stored_param_grads.items()}
 
 

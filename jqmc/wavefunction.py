@@ -47,17 +47,14 @@ from jax import typing as jnpt
 
 from .determinant import (
     Geminal_data,
-    Geminal_data_deriv_params,
-    Geminal_data_deriv_R,
     compute_det_geminal_all_elements_jax,
     compute_grads_and_laplacian_ln_Det_jax,
     compute_ln_det_geminal_all_elements_jax,
     compute_ratio_determinant_part_jax,
 )
+from .diff_mask import DiffMask, apply_diff_mask
 from .jastrow_factor import (
     Jastrow_data,
-    Jastrow_data_deriv_params,
-    Jastrow_data_deriv_R,
     compute_grads_and_laplacian_Jastrow_part_jax,
     compute_Jastrow_part_jax,
     compute_ratio_Jastrow_part_jax,
@@ -216,9 +213,12 @@ class Wavefunction_data:
 
         return Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_data)
 
+    def with_diff_mask(self, *, params: bool = True, coords: bool = True) -> "Wavefunction_data":
+        """Return a copy with gradients masked according to the provided flags."""
+        return apply_diff_mask(self, DiffMask(params=params, coords=coords))
+
     def accumulate_position_grad(self, grad_wavefunction: "Wavefunction_data"):
         """Aggregate position gradients from geminal and Jastrow parts."""
-
         grad = 0.0
         if self.geminal_data is not None and grad_wavefunction.geminal_data is not None:
             grad += self.geminal_data.accumulate_position_grad(grad_wavefunction.geminal_data)
@@ -228,7 +228,6 @@ class Wavefunction_data:
 
     def collect_param_grads(self, grad_wavefunction: "Wavefunction_data") -> dict[str, object]:
         """Collect parameter gradients from Jastrow and Geminal into a flat dict."""
-
         grads: dict[str, object] = {}
         if self.jastrow_data is not None and grad_wavefunction.jastrow_data is not None:
             grads.update(self.jastrow_data.collect_param_grads(grad_wavefunction.jastrow_data))
@@ -242,15 +241,14 @@ class Wavefunction_data:
         The caller does not need to know the internal block structure (e.g., NN trees);
         any necessary flattening is handled here.
         """
-
         flat: dict[str, np.ndarray] = {}
         jastrow_nn_data = self.jastrow_data.jastrow_nn_data if self.jastrow_data is not None else None
 
-        for name, grad in param_grads.items():
+        for name, param_grad in param_grads.items():
             if name == "jastrow_nn_params" and jastrow_nn_data is not None:
 
                 def _slice_walker(idx):
-                    return tree_util.tree_map(lambda x: x[idx], grad)
+                    return tree_util.tree_map(lambda x: x[idx], param_grad)
 
                 nn_grad_list = []
                 for walker_idx in range(num_walkers):
@@ -260,7 +258,7 @@ class Wavefunction_data:
 
                 flat[name] = np.stack(nn_grad_list, axis=0)
             else:
-                flat[name] = np.array(grad)
+                flat[name] = np.array(param_grad)
 
         return flat
 
@@ -351,51 +349,6 @@ class Wavefunction_data:
         """Switch pytree_node."""
         jastrow_data = Jastrow_data.from_base(wavefunction_data.jastrow_data)
         geminal_data = Geminal_data.from_base(wavefunction_data.geminal_data)
-        return cls(jastrow_data=jastrow_data, geminal_data=geminal_data)
-
-
-@struct.dataclass
-class Wavefunction_data_deriv_params(Wavefunction_data):
-    """See Wavefunction_data."""
-
-    jastrow_data: Jastrow_data = struct.field(pytree_node=True)
-    geminal_data: Geminal_data = struct.field(pytree_node=True)
-
-    @classmethod
-    def from_base(cls, wavefunction_data: Wavefunction_data):
-        """Switch pytree_node."""
-        jastrow_data = Jastrow_data_deriv_params.from_base(wavefunction_data.jastrow_data)
-        geminal_data = Geminal_data_deriv_params.from_base(wavefunction_data.geminal_data)
-        return cls(jastrow_data=jastrow_data, geminal_data=geminal_data)
-
-
-@struct.dataclass
-class Wavefunction_data_deriv_R(Wavefunction_data):
-    """See Wavefunction_data."""
-
-    jastrow_data: Jastrow_data = struct.field(pytree_node=True)
-    geminal_data: Geminal_data = struct.field(pytree_node=True)
-
-    @classmethod
-    def from_base(cls, wavefunction_data: Wavefunction_data):
-        """Switch pytree_node."""
-        jastrow_data = Jastrow_data_deriv_R.from_base(wavefunction_data.jastrow_data)
-        geminal_data = Geminal_data_deriv_R.from_base(wavefunction_data.geminal_data)
-        return cls(jastrow_data=jastrow_data, geminal_data=geminal_data)
-
-
-@struct.dataclass
-class Wavefunction_data_no_deriv(Wavefunction_data):
-    """See Wavefunction_data."""
-
-    jastrow_data: Jastrow_data = struct.field(pytree_node=False)
-    geminal_data: Geminal_data = struct.field(pytree_node=False)
-
-    @classmethod
-    def from_base(cls, wavefunction_data: Wavefunction_data):
-        """Switch pytree_node."""
-        jastrow_data = wavefunction_data.jastrow_data
-        geminal_data = wavefunction_data.geminal_data
         return cls(jastrow_data=jastrow_data, geminal_data=geminal_data)
 
 
