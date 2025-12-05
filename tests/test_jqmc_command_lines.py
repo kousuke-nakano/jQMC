@@ -109,13 +109,12 @@ def test_jqmc_cli_run_mcmc(tmp_path, monkeypatch):
     mcmc_compute_energy(restart_chk="restart.chk", num_mcmc_bin_blocks=5, num_mcmc_warmup_steps=30)
     os.chdir(root_dir)
 
-    """ WIP: it does not work due to a JAX internal error.
     # run MCMC(restart)
     os.chdir(root_dir)
     with open(os.path.join(tmp_path, "mcmc_input.toml"), "r") as f:
         dict_toml = toml.load(f)
         dict_toml["control"]["restart"] = True
-        dict_toml["control"]["hamiltonian_chk"] = None
+        dict_toml["control"]["hamiltonian_h5"] = None
         dict_toml["control"]["restart_chk"] = "restart.chk"
         dict_toml["mcmc"]["num_mcmc_steps"] = 10
     with open(os.path.join(tmp_path, "mcmc_input.toml"), "w") as f:
@@ -124,7 +123,6 @@ def test_jqmc_cli_run_mcmc(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["jqmc", "mcmc_input.toml"])
     cli()
     os.chdir(root_dir)
-    """
 
 
 def test_jqmc_cli_run_vmc(tmp_path, monkeypatch):
@@ -163,7 +161,6 @@ def test_jqmc_cli_run_vmc(tmp_path, monkeypatch):
     cli()
     os.chdir(root_dir)
 
-    """ WIP: it does not work due to a JAX internal error.
     # run VMCopt(restart)
     os.chdir(root_dir)
     with open(os.path.join(tmp_path, "vmc_input.toml"), "r") as f:
@@ -177,7 +174,6 @@ def test_jqmc_cli_run_vmc(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["jqmc", "vmc_input.toml"])
     cli()
     os.chdir(root_dir)
-    """
 
 
 def test_jqmc_cli_run_lrdmc(tmp_path, monkeypatch):
@@ -240,7 +236,6 @@ def test_jqmc_cli_run_lrdmc(tmp_path, monkeypatch):
         )
         os.chdir(root_dir)
 
-    # """
     # post LRDMC (extrapolation)
     os.chdir(tmp_path)
     restart_chks = [os.path.join(tmp_path, str(alat), "restart.chk") for alat in alat_list]
@@ -254,17 +249,15 @@ def test_jqmc_cli_run_lrdmc(tmp_path, monkeypatch):
         num_gfmc_collect_steps=5,
     )
     os.chdir(root_dir)
-    # """
 
-    """ WIP: it does not work due to a JAX internal error.
     # run LRDMC(restart)
     os.chdir(root_dir)
     for alat in alat_list:
-        tmp_alat_path = os.path.join(tmp_path, alat)
+        tmp_alat_path = os.path.join(tmp_path, str(alat))
         with open(os.path.join(tmp_alat_path, "lrdmc_input.toml"), "r") as f:
             dict_toml = toml.load(f)
             dict_toml["control"]["restart"] = True
-            dict_toml["control"]["hamiltonian_chk"] = None
+            dict_toml["control"]["hamiltonian_h5"] = None
             dict_toml["control"]["restart_chk"] = "restart.chk"
             dict_toml["lrdmc"]["num_mcmc_steps"] = 10
         with open(os.path.join(tmp_alat_path, "lrdmc_input.toml"), "w") as f:
@@ -273,7 +266,6 @@ def test_jqmc_cli_run_lrdmc(tmp_path, monkeypatch):
         monkeypatch.setattr(sys, "argv", ["jqmc", "lrdmc_input.toml"])
         cli()
     os.chdir(root_dir)
-    """
 
 
 if __name__ == "__main__":

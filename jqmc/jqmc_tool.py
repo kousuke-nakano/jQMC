@@ -57,10 +57,10 @@ from .determinant import Geminal_data
 from .hamiltonians import Hamiltonian_data
 from .jastrow_factor import (
     Jastrow_data,
+    Jastrow_NN_data,
     Jastrow_one_body_data,
     Jastrow_three_body_data,
     Jastrow_two_body_data,
-    NN_Jastrow_data,
 )
 from .jqmc_miscs import cli_parameters
 from .setting import (
@@ -144,7 +144,7 @@ class orbital_type(str, Enum):
 def _get_nn_jastrow_help_msg() -> str:
     """Generate help message for NN Jastrow parameters dynamically."""
     try:
-        sig = inspect.signature(NN_Jastrow_data.init_from_structure)
+        sig = inspect.signature(Jastrow_NN_data.init_from_structure)
         params_list = []
         for name, param in sig.parameters.items():
             if name in ("structure_data", "key", "cls"):
@@ -371,7 +371,7 @@ def trexio_convert_to(
                             pass  # keep as string
                         kwargs[key] = value
 
-            nn_jastrow_data = NN_Jastrow_data.init_from_structure(
+            nn_jastrow_data = Jastrow_NN_data.init_from_structure(
                 structure_data,
                 **kwargs,
             )
@@ -383,7 +383,7 @@ def trexio_convert_to(
         jastrow_one_body_data=jastrow_onebody_data,
         jastrow_two_body_data=jastrow_twobody_data,
         jastrow_three_body_data=jastrow_threebody_data,
-        nn_jastrow_data=nn_jastrow_data,
+        jastrow_nn_data=nn_jastrow_data,
     )
 
     # geminal_data = geminal_mo_data

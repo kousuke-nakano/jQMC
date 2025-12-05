@@ -36,12 +36,8 @@
 # from typing import Any, Callable, Mapping, Optional
 # JAX
 import jax
-import numpy as np
-import scipy
-import scipy.special
 from jax import jit
 from jax import numpy as jnp
-from jax import typing as jnpt
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)

@@ -47,10 +47,10 @@ if project_root not in sys.path:
 from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
 from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_data,
+    Jastrow_NN_data,
     Jastrow_one_body_data,
     Jastrow_three_body_data,
     Jastrow_two_body_data,
-    NN_Jastrow_data,
 )
 from jqmc.jqmc_mcmc import MCMC  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
@@ -79,12 +79,14 @@ def test_vmc_force_with_SWCT_ecp():
     jastrow_onebody_data = None
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5)
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
+    jastrow_nn_data = Jastrow_NN_data.init_from_structure(structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0)
 
     # define data
     jastrow_data = Jastrow_data(
         jastrow_one_body_data=jastrow_onebody_data,
         jastrow_two_body_data=jastrow_twobody_data,
         jastrow_three_body_data=jastrow_threebody_data,
+        jastrow_nn_data=jastrow_nn_data,
     )
 
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
@@ -144,80 +146,14 @@ def test_vmc_force_with_SWCT_ae():
     )
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.3)
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
+    jastrow_nn_data = Jastrow_NN_data.init_from_structure(structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0)
 
     # define data
     jastrow_data = Jastrow_data(
         jastrow_one_body_data=jastrow_onebody_data,
         jastrow_two_body_data=jastrow_twobody_data,
         jastrow_three_body_data=jastrow_threebody_data,
-    )
-
-    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
-
-    hamiltonian_data = Hamiltonian_data(
-        structure_data=structure_data,
-        coulomb_potential_data=coulomb_potential_data,
-        wavefunction_data=wavefunction_data,
-    )
-
-    # VMC parameters
-    num_mcmc_warmup_steps = 5
-    num_mcmc_bin_blocks = 5
-    mcmc_seed = 34356
-
-    # run VMC
-    mcmc = MCMC(
-        hamiltonian_data=hamiltonian_data,
-        Dt=2.0,
-        mcmc_seed=mcmc_seed,
-        num_walkers=2,
-        comput_position_deriv=True,
-        comput_param_deriv=False,
-    )
-    mcmc.run(num_mcmc_steps=20)
-    mcmc.get_E(
-        num_mcmc_warmup_steps=num_mcmc_warmup_steps,
-        num_mcmc_bin_blocks=num_mcmc_bin_blocks,
-    )
-    force_mean, force_std = mcmc.get_aF(
-        num_mcmc_warmup_steps=num_mcmc_warmup_steps,
-        num_mcmc_bin_blocks=num_mcmc_bin_blocks,
-    )
-
-    # See [J. Chem. Phys. 156, 034101 (2022)]
-    np.testing.assert_almost_equal(np.array(force_mean[0]), -1.0 * np.array(force_mean[1]), decimal=6)
-    np.testing.assert_almost_equal(np.array(force_std[0]), np.array(force_std[1]), decimal=6)
-
-
-@pytest.mark.skip(reason="NN Jastrow has some bug in force calc.")
-def test_NN_vmc_force_with_SWCT_ae():
-    """Test VMC force with SWCT."""
-    # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
-    (
-        structure_data,
-        aos_data,
-        mos_data,
-        _,
-        geminal_mo_data,
-        coulomb_potential_data,
-    ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ae_ccpvtz_cart.h5"), store_tuple=True
-    )
-    # """
-
-    jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
-        jastrow_1b_param=0.5, structure_data=structure_data, core_electrons=tuple([0, 0])
-    )
-    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.3)
-    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
-    nn_jastrow_data = NN_Jastrow_data.init_from_structure(structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0)
-
-    # define data
-    jastrow_data = Jastrow_data(
-        jastrow_one_body_data=jastrow_onebody_data,
-        jastrow_two_body_data=jastrow_twobody_data,
-        jastrow_three_body_data=jastrow_threebody_data,
-        nn_jastrow_data=nn_jastrow_data,
+        jastrow_nn_data=jastrow_nn_data,
     )
 
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)

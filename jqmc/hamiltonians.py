@@ -50,11 +50,10 @@ from jax import jit
 from jax import typing as jnpt
 
 from .coulomb_potential import Coulomb_potential_data, compute_coulomb_potential_jax
+from .diff_mask import DiffMask, apply_diff_mask
 from .structure import Structure_data
 from .wavefunction import (
     Wavefunction_data,
-    Wavefunction_data_deriv_params,
-    Wavefunction_data_deriv_R,
     compute_kinetic_energy_jax,
 )
 
@@ -137,6 +136,14 @@ class Hamiltonian_data:
         for line in self.get_info():
             logger.info(line)
 
+    def accumulate_position_grad(self, grad_hamiltonian: "Hamiltonian_data"):
+        """Aggregate position gradients from Hamiltonian components (structure + wavefunction)."""
+        grad = grad_hamiltonian.structure_data.positions
+        grad += grad_hamiltonian.coulomb_potential_data.structure_data.positions
+        if self.wavefunction_data is not None and grad_hamiltonian.wavefunction_data is not None:
+            grad += self.wavefunction_data.accumulate_position_grad(grad_hamiltonian.wavefunction_data)
+        return grad
+
     def save_to_hdf5(self, filepath="jqmc.h5") -> None:
         """Save Hamiltonian data to an HDF5 file.
 
@@ -183,14 +190,8 @@ class Hamiltonian_data_deriv_params(Hamiltonian_data):
 
     @classmethod
     def from_base(cls, hamiltonian_data: Hamiltonian_data):
-        """Switch pytree_node."""
-        structure_data = hamiltonian_data.structure_data
-        coulomb_potential_data = hamiltonian_data.coulomb_potential_data
-        wavefunction_data = Wavefunction_data_deriv_params.from_base(hamiltonian_data.wavefunction_data)
-
-        return cls(
-            structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
-        )
+        """Return a parameter-differentiable copy using the shared mask helper."""
+        return apply_diff_mask(hamiltonian_data, DiffMask(params=True, coords=False))
 
 
 @struct.dataclass
@@ -205,14 +206,8 @@ class Hamiltonian_data_deriv_R(Hamiltonian_data):
 
     @classmethod
     def from_base(cls, hamiltonian_data: Hamiltonian_data):
-        """Switch pytree_node."""
-        structure_data = hamiltonian_data.structure_data
-        coulomb_potential_data = hamiltonian_data.coulomb_potential_data
-        wavefunction_data = Wavefunction_data_deriv_R.from_base(hamiltonian_data.wavefunction_data)
-
-        return cls(
-            structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
-        )
+        """Return a coordinate-differentiable copy using the shared mask helper."""
+        return apply_diff_mask(hamiltonian_data, DiffMask(params=False, coords=True))
 
 
 @struct.dataclass
@@ -227,14 +222,8 @@ class Hamiltonian_data_no_deriv(Hamiltonian_data):
 
     @classmethod
     def from_base(cls, hamiltonian_data: Hamiltonian_data):
-        """Switch pytree_node."""
-        structure_data = hamiltonian_data.structure_data
-        coulomb_potential_data = hamiltonian_data.coulomb_potential_data
-        wavefunction_data = hamiltonian_data.wavefunction_data
-
-        return cls(
-            structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
-        )
+        """Return a fully static copy using the shared mask helper."""
+        return apply_diff_mask(hamiltonian_data, DiffMask(params=False, coords=False))
 
 
 @jit
