@@ -1286,11 +1286,9 @@ class Jastrow_data:
             the NN J3 contribution is turned off.
     """
 
-    jastrow_one_body_data: Jastrow_one_body_data = struct.field(pytree_node=True, default=None)
-    jastrow_two_body_data: Jastrow_two_body_data = struct.field(pytree_node=True, default=None)
-    jastrow_three_body_data: Jastrow_three_body_data = struct.field(pytree_node=True, default=None)
-
-    # New: NN-based three-body Jastrow data (parameters + helpers).
+    jastrow_one_body_data: Jastrow_one_body_data | None = struct.field(pytree_node=True, default=None)
+    jastrow_two_body_data: Jastrow_two_body_data | None = struct.field(pytree_node=True, default=None)
+    jastrow_three_body_data: Jastrow_three_body_data | None = struct.field(pytree_node=True, default=None)
     nn_jastrow_data: NN_Jastrow_data | None = struct.field(pytree_node=True, default=None)
 
     def sanity_check(self) -> None:

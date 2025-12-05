@@ -49,6 +49,7 @@ from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_one_body_data,
     Jastrow_three_body_data,
     Jastrow_two_body_data,
+    NN_Jastrow_data,
 )
 from jqmc.jqmc_gfmc import GFMC_fixed_num_projection  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
@@ -83,12 +84,14 @@ def test_lrdmc_force_with_SWCT_ecp():
     jastrow_onebody_data = None
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5)
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
+    nn_jastrow_data = NN_Jastrow_data.init_from_structure(structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0)
 
     # define data
     jastrow_data = Jastrow_data(
         jastrow_one_body_data=jastrow_onebody_data,
         jastrow_two_body_data=jastrow_twobody_data,
         jastrow_three_body_data=jastrow_threebody_data,
+        nn_jastrow_data=nn_jastrow_data,
     )
 
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
@@ -162,12 +165,14 @@ def test_lrdmc_force_with_SWCT_ae():
     )
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5)
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
+    nn_jastrow_data = NN_Jastrow_data.init_from_structure(structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0)
 
     # define data
     jastrow_data = Jastrow_data(
         jastrow_one_body_data=jastrow_onebody_data,
         jastrow_two_body_data=jastrow_twobody_data,
         jastrow_three_body_data=jastrow_threebody_data,
+        nn_jastrow_data=nn_jastrow_data,
     )
 
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)

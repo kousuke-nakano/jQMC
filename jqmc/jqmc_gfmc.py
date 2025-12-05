@@ -3188,6 +3188,9 @@ class GFMC_fixed_num_projection:
                         grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
                     )
 
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.nn_jastrow_data is not None:
+                    grad_e_L_R += grad_e_L_h.wavefunction_data.jastrow_data.nn_jastrow_data.structure_data.positions
+
                 start = time.perf_counter()
                 grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = vmap(
                     grad(evaluate_ln_wavefunction_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
@@ -3211,6 +3214,9 @@ class GFMC_fixed_num_projection:
 
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
                     grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
+
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.nn_jastrow_data is not None:
+                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.nn_jastrow_data.structure_data.positions
 
                 omega_up = vmap(evaluate_swct_omega_jax, in_axes=(None, 0))(
                     self.__swct_data,

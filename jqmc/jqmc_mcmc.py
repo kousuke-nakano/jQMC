@@ -1113,7 +1113,8 @@ class MCMC:
                 self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn)
 
                 grad_e_L_R = (
-                    grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.structure_data.positions
+                    grad_e_L_h.structure_data.positions
+                    + grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.structure_data.positions
                     + grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.structure_data.positions
                     + grad_e_L_h.coulomb_potential_data.structure_data.positions
                 )
@@ -1159,6 +1160,9 @@ class MCMC:
 
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
                     grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
+
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.nn_jastrow_data is not None:
+                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.nn_jastrow_data.structure_data.positions
 
                 # stored dln_Psi / dR
                 self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
@@ -3194,7 +3198,8 @@ class MCMC_debug:
                 self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn)
 
                 grad_e_L_R = (
-                    grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.structure_data.positions
+                    grad_e_L_h.structure_data.positions
+                    + grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.structure_data.positions
                     + grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.structure_data.positions
                     + grad_e_L_h.coulomb_potential_data.structure_data.positions
                 )
@@ -3230,6 +3235,9 @@ class MCMC_debug:
 
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
                     grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
+
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.nn_jastrow_data is not None:
+                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.nn_jastrow_data.structure_data.positions
 
                 self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
 
