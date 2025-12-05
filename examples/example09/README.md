@@ -13,8 +13,35 @@ The following is a script to run a HF calculation for the water molecule using `
 > [!NOTE]
 > This `TREX-IO` converter is being develped in the `pySCF-forge` [repository](https://github.com/pyscf/pyscf-forge) and not yet merged to the main repository of `pySCF`. Please use `pySCF-forge`.
 
-<!-- include: 01DFT/01pyscf-forge/run_pyscf.py -->
+<!-- include: 01DFT/run_pyscf.py -->
 ```python
+from pyscf import gto, scf
+from pyscf.tools import trexio
+
+filename = "water_ccecp_ccpvtz.h5"
+
+mol = gto.Mole()
+mol.verbose = 5
+mol.atom = """
+               O    5.00000000   7.14707700   7.65097100
+               H    4.06806600   6.94297500   7.56376100
+               H    5.38023700   6.89696300   6.80798400
+               """
+mol.basis = "ccecp-ccpvtz"
+mol.unit = "A"
+mol.ecp = "ccecp"
+mol.charge = 0
+mol.spin = 0
+mol.symmetry = False
+mol.cart = True
+mol.output = "water.out"
+mol.build()
+
+mf = scf.HF(mol)
+mf.max_cycle = 200
+mf_scf = mf.kernel()
+
+trexio.to_trexio(mf, filename)
 ```
 
 Launch it on a terminal. You may get `E = -16.9450309201805 Ha` [Hartree-Forck].
@@ -112,7 +139,7 @@ The next step is MCMC calculation. You can generate a template file for a MCMC c
 > Input file is generated: mcmc.toml
 ```
 
-<!-- include: 04mcmc_JSD/mcmc.toml -->
+<!-- include: 04mcmc_JNNSD/mcmc.toml -->
 ```toml
 [control]
 job_type = "mcmc" # Specify the job type. "mcmc", "vmc", or "lrdmc"
