@@ -1,6 +1,6 @@
-(input_jqmc_link)=
+(api_reference_cli_link)=
 
-# Input parameters
+# API reference for the command-line interface (jqmc)
 
 ## Command-line `jqmc` usage
 

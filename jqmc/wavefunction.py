@@ -226,7 +226,22 @@ class Wavefunction_data:
         opt_JNN_param: bool = True,
         opt_lambda_param: bool = True,
     ) -> "Wavefunction_data":
-        """Return a copy where disabled parameter blocks stop propagating gradients."""
+        """Return a copy where disabled parameter blocks stop propagating gradients.
+
+        Developer note
+        -------------
+        * The per-block flags (``opt_J1_param`` etc.) decide which high-level blocks are
+            masked. Disabled blocks are wrapped with ``DiffMask(params=False, coords=True)``,
+            meaning parameter gradients are stopped while coordinate gradients still flow.
+        * Within each disabled block, ``apply_diff_mask`` uses field-name heuristics
+            (see ``diff_mask._PARAM_FIELD_NAMES``) to tag parameter leaves such as
+            ``lambda_matrix``, ``j_matrix``, ``jastrow_1b_param``, ``jastrow_2b_param``,
+            ``jastrow_3b_param``, and ``params``. Those tagged leaves receive
+            ``jax.lax.stop_gradient``, so their backpropagated gradients become zero.
+        * Example: if ``opt_J1_param=False`` and others are True, only the J1 block is
+            masked; its parameter leaves are stopped, while J2/J3/NN/lambda continue to
+            propagate gradients normally.
+        """
         mask_off = DiffMask(params=False, coords=True)
 
         def _maybe_mask(block, enabled):

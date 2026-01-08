@@ -16,10 +16,10 @@ The following features of **jQMC** are highlighted:
 ```{toctree}
 :hidden:
 install
-input_jqmc
 examples
 notes/technical_notes
-modules
+api_reference_cli
+api_reference_mod/modules
 citation
 reference
 changelog
