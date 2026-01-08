@@ -105,6 +105,8 @@ def cli():
         logger_level = "INFO"
 
     log = getLogger("jqmc")
+    if log.hasHandlers():
+        log.handlers.clear()
 
     if logger_level == "INFO":
         if mpi_rank == 0:

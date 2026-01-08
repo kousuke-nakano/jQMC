@@ -471,7 +471,7 @@ def load_dataclass_from_hdf5(cls: Type[T], group: h5py.Group) -> T:
             and hasattr(obj, "num_species")
             and obj.num_species > 0
         ):
-            species_lookup = np.array(obj.species_lookup, dtype=np.int32)
+            species_lookup = tuple(int(x) for x in obj.species_lookup)
 
             object.__setattr__(
                 obj,

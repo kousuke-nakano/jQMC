@@ -145,7 +145,7 @@ class NNJastrow(nn.Module):
     num_layers: int = 3
     num_rbf: int = 32
     cutoff: float = 5.0
-    species_lookup: npt.NDArray[np.int32] | jnp.ndarray | None = None
+    species_lookup: npt.NDArray[np.int32] | jnp.ndarray | tuple[int, ...] | None = None
     num_species: int | None = None
 
     class PhysNetRadialLayer(nn.Module):
@@ -965,9 +965,7 @@ class Jastrow_NN_data:
     num_rbf: int = struct.field(pytree_node=False, default=16)
     cutoff: float = struct.field(pytree_node=False, default=5.0)
     num_species: int = struct.field(pytree_node=False, default=0)
-    species_lookup: npt.NDArray[np.int32] = struct.field(
-        pytree_node=False, default_factory=lambda: np.array([0], dtype=np.int32)
-    )
+    species_lookup: tuple[int, ...] = struct.field(pytree_node=False, default=(0,))
     species_values: tuple[int, ...] = struct.field(pytree_node=False, default_factory=tuple)
 
     # Structure information required to evaluate the NN J3 term.
@@ -1054,12 +1052,14 @@ class Jastrow_NN_data:
         for idx, species in enumerate(species_values):
             species_lookup[species] = idx
 
+        species_lookup_tuple = tuple(int(x) for x in species_lookup)
+
         nn_def = NNJastrow(
             hidden_dim=hidden_dim,
             num_layers=num_layers,
             num_rbf=num_rbf,
             cutoff=cutoff,
-            species_lookup=species_lookup,
+            species_lookup=species_lookup_tuple,
             num_species=num_species,
         )
 
@@ -1099,7 +1099,7 @@ class Jastrow_NN_data:
             num_rbf=num_rbf,
             cutoff=cutoff,
             num_species=num_species,
-            species_lookup=species_lookup,
+            species_lookup=species_lookup_tuple,
             species_values=tuple(int(x) for x in species_values.tolist()),
             structure_data=structure_data,
             treedef=treedef,

@@ -217,6 +217,61 @@ class Wavefunction_data:
         """Return a copy with gradients masked according to the provided flags."""
         return apply_diff_mask(self, DiffMask(params=params, coords=coords))
 
+    def with_param_grad_mask(
+        self,
+        *,
+        opt_J1_param: bool = True,
+        opt_J2_param: bool = True,
+        opt_J3_param: bool = True,
+        opt_JNN_param: bool = True,
+        opt_lambda_param: bool = True,
+    ) -> "Wavefunction_data":
+        """Return a copy where disabled parameter blocks stop propagating gradients."""
+
+        mask_off = DiffMask(params=False, coords=True)
+
+        def _maybe_mask(block, enabled):
+            if enabled or block is None:
+                return block, False
+            return apply_diff_mask(block, mask_off), True
+
+        jastrow_data = self.jastrow_data
+        jastrow_updates = {}
+        if jastrow_data is not None:
+            j1_block, changed = _maybe_mask(jastrow_data.jastrow_one_body_data, opt_J1_param)
+            if changed:
+                jastrow_updates["jastrow_one_body_data"] = j1_block
+
+            j2_block, changed = _maybe_mask(jastrow_data.jastrow_two_body_data, opt_J2_param)
+            if changed:
+                jastrow_updates["jastrow_two_body_data"] = j2_block
+
+            j3_block, changed = _maybe_mask(jastrow_data.jastrow_three_body_data, opt_J3_param)
+            if changed:
+                jastrow_updates["jastrow_three_body_data"] = j3_block
+
+            jnn_block, changed = _maybe_mask(jastrow_data.jastrow_nn_data, opt_JNN_param)
+            if changed:
+                jastrow_updates["jastrow_nn_data"] = jnn_block
+
+            if jastrow_updates:
+                jastrow_data = jastrow_data.replace(**jastrow_updates)
+
+        geminal_data = self.geminal_data
+        geminal_updates = {}
+        if geminal_data is not None:
+            geminal_masked, changed = _maybe_mask(geminal_data, opt_lambda_param)
+            if changed:
+                geminal_updates["lambda_matrix"] = geminal_masked.lambda_matrix
+
+            if geminal_updates:
+                geminal_data = geminal_data.replace(**geminal_updates)
+
+        if jastrow_updates or geminal_updates:
+            return Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_data)
+
+        return self
+
     def accumulate_position_grad(self, grad_wavefunction: "Wavefunction_data"):
         """Aggregate position gradients from geminal and Jastrow parts."""
         grad = 0.0

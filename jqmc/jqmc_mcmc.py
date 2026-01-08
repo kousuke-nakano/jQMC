@@ -153,6 +153,7 @@ class MCMC:
 
         # set hamiltonian_data
         self.__hamiltonian_data = hamiltonian_data
+        self.__param_grad_flags = self.__default_param_grad_flags()
 
         # optimizer runtime container (used for optax restarts)
         self.__optimizer_runtime = None
@@ -280,6 +281,58 @@ class MCMC:
 
         # stored parameter gradients keyed by block name
         self.__stored_param_grads: dict[str, list] = defaultdict(list)
+
+    @staticmethod
+    def __default_param_grad_flags() -> dict[str, bool]:
+        return {
+            "j1_param": True,
+            "j2_param": True,
+            "j3_matrix": True,
+            "jastrow_nn_params": True,
+            "lambda_matrix": True,
+        }
+
+    def param_gradient_flags(self) -> dict[str, bool]:
+        """Return a copy of the current per-block gradient flags."""
+        return dict(self.__param_grad_flags)
+
+    def set_param_gradient_flags(self, **flags: bool | None) -> None:
+        """Update per-block gradient flags (True enables, False disables)."""
+        allowed = set(self.__param_grad_flags)
+        for name, value in flags.items():
+            if name not in allowed:
+                raise ValueError(f"Unknown variational block '{name}'.")
+            if value is None:
+                continue
+            self.__param_grad_flags[name] = bool(value)
+
+    def __needs_param_grad_mask(self) -> bool:
+        return any(not enabled for enabled in self.__param_grad_flags.values())
+
+    def __wavefunction_data_for_param_grads(self):
+        flags = self.__param_grad_flags
+        return self.__hamiltonian_data.wavefunction_data.with_param_grad_mask(
+            opt_J1_param=flags.get("j1_param", True),
+            opt_J2_param=flags.get("j2_param", True),
+            opt_J3_param=flags.get("j3_matrix", True),
+            opt_JNN_param=flags.get("jastrow_nn_params", True),
+            opt_lambda_param=flags.get("lambda_matrix", True),
+        )
+
+    def __prepare_param_grad_objects(self):
+        wavefunction_data = self.__hamiltonian_data.wavefunction_data
+        if not (self.__comput_param_deriv or self.__comput_position_deriv):
+            return wavefunction_data, self.__hamiltonian_data
+
+        if not self.__needs_param_grad_mask():
+            return wavefunction_data, self.__hamiltonian_data
+
+        masked_wavefunction = self.__wavefunction_data_for_param_grads()
+        if masked_wavefunction is wavefunction_data:
+            return wavefunction_data, self.__hamiltonian_data
+
+        masked_hamiltonian = self.__hamiltonian_data.replace(wavefunction_data=masked_wavefunction)
+        return masked_wavefunction, masked_hamiltonian
 
     def __ensure_optimizer_runtime(self) -> None:
         if not hasattr(self, "_MCMC__optimizer_runtime") or self.__optimizer_runtime is None:
@@ -824,6 +877,8 @@ class MCMC:
         # MCMC update compilation.
         logger.info("  Compilation is in progress...")
 
+        wavefunction_for_param_grads, hamiltonian_for_param_grads = self.__prepare_param_grad_objects()
+
         geminal, geminal_inv, _, _ = _geminal_inv_batched(
             self.__hamiltonian_data.wavefunction_data.geminal_data,
             self.__latest_r_up_carts,
@@ -881,14 +936,14 @@ class MCMC:
         )
         if self.__comput_position_deriv:
             _, _, _ = vmap(grad(compute_local_energy_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0))(
-                self.__hamiltonian_data,
+                hamiltonian_for_param_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
                 RTs,
             )
 
             _, _, _ = vmap(grad(evaluate_ln_wavefunction_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0))(
-                self.__hamiltonian_data.wavefunction_data,
+                wavefunction_for_param_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
@@ -913,14 +968,14 @@ class MCMC:
                 self.__latest_r_dn_carts,
             )
             _ = vmap(grad(evaluate_ln_wavefunction_jax, argnums=0), in_axes=(None, 0, 0))(
-                self.__hamiltonian_data.wavefunction_data,
+                wavefunction_for_param_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
 
         if self.__comput_param_deriv:
             _ = vmap(grad(evaluate_ln_wavefunction_jax, argnums=0), in_axes=(None, 0, 0))(
-                self.__hamiltonian_data.wavefunction_data,
+                wavefunction_for_param_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
@@ -1075,7 +1130,7 @@ class MCMC:
                 grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = vmap(
                     grad(compute_local_energy_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0)
                 )(
-                    self.__hamiltonian_data,
+                    hamiltonian_for_param_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                     RTs,
@@ -1097,7 +1152,7 @@ class MCMC:
                 grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = vmap(
                     grad(evaluate_ln_wavefunction_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
                 )(
-                    self.__hamiltonian_data.wavefunction_data,
+                    wavefunction_for_param_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
@@ -1142,7 +1197,7 @@ class MCMC:
             if self.__comput_param_deriv:
                 start = time.perf_counter()
                 grad_ln_Psi_h = vmap(grad(evaluate_ln_wavefunction_jax, argnums=0), in_axes=(None, 0, 0))(
-                    self.__hamiltonian_data.wavefunction_data,
+                    wavefunction_for_param_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
@@ -1152,6 +1207,8 @@ class MCMC:
                 )
 
                 for name, grad_val in flat_param_grads.items():
+                    if not self.__param_grad_flags.get(name, True):
+                        continue
                     self.__stored_param_grads[name].append(grad_val)
                     if hasattr(grad_val, "block_until_ready"):
                         grad_val.block_until_ready()
@@ -1941,6 +1998,14 @@ class MCMC:
             logger.info("  Hyperparameters: %s", ", ".join(f"{k}={v}" for k, v in sorted(optimizer_hparams.items())))
             logger.info("")
 
+        self.set_param_gradient_flags(
+            j1_param=opt_J1_param,
+            j2_param=opt_J2_param,
+            j3_matrix=opt_J3_param,
+            jastrow_nn_params=opt_JNN_param,
+            lambda_matrix=opt_lambda_param,
+        )
+
         # toml(control) filename
         toml_filename = "external_control_opt.toml"
 
@@ -2691,6 +2756,7 @@ class MCMC_debug:
 
         # set hamiltonian_data
         self.__hamiltonian_data = hamiltonian_data
+        self.__param_grad_flags = self.__default_param_grad_flags()
 
         # seeds
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
@@ -2805,6 +2871,58 @@ class MCMC_debug:
         # stored parameter gradients keyed by block name
         self.__stored_param_grads: dict[str, list] = defaultdict(list)
 
+    @staticmethod
+    def __default_param_grad_flags() -> dict[str, bool]:
+        return {
+            "j1_param": True,
+            "j2_param": True,
+            "j3_matrix": True,
+            "jastrow_nn_params": True,
+            "lambda_matrix": True,
+        }
+
+    def param_gradient_flags(self) -> dict[str, bool]:
+        """Return a copy of the current per-block gradient flags."""
+        return dict(self.__param_grad_flags)
+
+    def set_param_gradient_flags(self, **flags: bool | None) -> None:
+        """Update per-block gradient flags (True enables, False disables)."""
+        allowed = set(self.__param_grad_flags)
+        for name, value in flags.items():
+            if name not in allowed:
+                raise ValueError(f"Unknown variational block '{name}'.")
+            if value is None:
+                continue
+            self.__param_grad_flags[name] = bool(value)
+
+    def __needs_param_grad_mask(self) -> bool:
+        return any(not enabled for enabled in self.__param_grad_flags.values())
+
+    def __wavefunction_data_for_param_grads(self):
+        flags = self.__param_grad_flags
+        return self.__hamiltonian_data.wavefunction_data.with_param_grad_mask(
+            opt_J1_param=flags.get("j1_param", True),
+            opt_J2_param=flags.get("j2_param", True),
+            opt_J3_param=flags.get("j3_matrix", True),
+            opt_JNN_param=flags.get("jastrow_nn_params", True),
+            opt_lambda_param=flags.get("lambda_matrix", True),
+        )
+
+    def __prepare_param_grad_objects(self):
+        wavefunction_data = self.__hamiltonian_data.wavefunction_data
+        if not (self.__comput_param_deriv or self.__comput_position_deriv):
+            return wavefunction_data, self.__hamiltonian_data
+
+        if not self.__needs_param_grad_mask():
+            return wavefunction_data, self.__hamiltonian_data
+
+        masked_wavefunction = self.__wavefunction_data_for_param_grads()
+        if masked_wavefunction is wavefunction_data:
+            return wavefunction_data, self.__hamiltonian_data
+
+        masked_hamiltonian = self.__hamiltonian_data.replace(wavefunction_data=masked_wavefunction)
+        return masked_wavefunction, masked_hamiltonian
+
     def run(self, num_mcmc_steps: int = 0) -> None:
         """Launch MCMCs with the set multiple walkers.
 
@@ -2820,6 +2938,8 @@ class MCMC_debug:
         progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
         logger.info(f"  Progress: MCMC step= {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.0f} %.")
         mcmc_interval = max(1, int(num_mcmc_steps / 10))  # %
+
+        wavefunction_for_param_grads, hamiltonian_for_param_grads = self.__prepare_param_grad_objects()
 
         for i_mcmc_step in range(num_mcmc_steps):
             if (i_mcmc_step + 1) % mcmc_interval == 0:
@@ -3048,7 +3168,7 @@ class MCMC_debug:
             if self.__comput_position_deriv:
                 grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = vmap(
                     grad(compute_local_energy_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0)
-                )(self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs)
+                )(hamiltonian_for_param_grads, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs)
 
                 self.__stored_grad_e_L_r_up.append(grad_e_L_r_up)
                 self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn)
@@ -3059,7 +3179,7 @@ class MCMC_debug:
                 grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = vmap(
                     grad(evaluate_ln_wavefunction_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
                 )(
-                    self.__hamiltonian_data.wavefunction_data,
+                    wavefunction_for_param_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
@@ -3098,7 +3218,7 @@ class MCMC_debug:
 
             if self.__comput_param_deriv:
                 grad_ln_Psi_h = vmap(grad(evaluate_ln_wavefunction_jax, argnums=0), in_axes=(None, 0, 0))(
-                    self.__hamiltonian_data.wavefunction_data,
+                    wavefunction_for_param_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
@@ -3109,6 +3229,8 @@ class MCMC_debug:
                 )
 
                 for name, grad_val in flat_param_grads.items():
+                    if not self.__param_grad_flags.get(name, True):
+                        continue
                     self.__stored_param_grads[name].append(grad_val)
                     if hasattr(grad_val, "block_until_ready"):
                         grad_val.block_until_ready()

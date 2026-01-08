@@ -88,8 +88,8 @@ def assert_dataclasses_equal(d1, d2):
             assert_dataclasses_equal(d1[k], d2[k])
     elif isinstance(d1, (np.ndarray, jnp.ndarray, jax.Array)) or isinstance(d2, (np.ndarray, jnp.ndarray, jax.Array)):
         # Handle JAX arrays by converting to numpy
-        a1 = np.array(d1) if isinstance(d1, (np.ndarray, jnp.ndarray, jax.Array)) else d1
-        a2 = np.array(d2) if isinstance(d2, (np.ndarray, jnp.ndarray, jax.Array)) else d2
+        a1 = np.asarray(d1)
+        a2 = np.asarray(d2)
 
         # Check for string arrays (which might be bytes vs str)
         if a1.dtype.kind in ("S", "U") and a2.dtype.kind in ("S", "U"):
