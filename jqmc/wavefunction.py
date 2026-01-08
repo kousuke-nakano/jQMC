@@ -227,7 +227,6 @@ class Wavefunction_data:
         opt_lambda_param: bool = True,
     ) -> "Wavefunction_data":
         """Return a copy where disabled parameter blocks stop propagating gradients."""
-
         mask_off = DiffMask(params=False, coords=True)
 
         def _maybe_mask(block, enabled):

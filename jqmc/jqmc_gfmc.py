@@ -57,10 +57,10 @@ from .coulomb_potential import (
     compute_ecp_local_parts_all_pairs_jax,
     compute_ecp_non_local_parts_nearest_neighbors_jax,
 )
+from .diff_mask import DiffMask, apply_diff_mask
 from .hamiltonians import (
     Hamiltonian_data,
     # Hamiltonian_data_deriv_R,
-    Hamiltonian_data_no_deriv,
     # compute_kinetic_energy_jax,
     compute_local_energy_jax,
 )
@@ -300,7 +300,7 @@ class GFMC_fixed_projection_time:
     @hamiltonian_data.setter
     def hamiltonian_data(self, hamiltonian_data):
         """Set hamiltonian_data."""
-        self.__hamiltonian_data = Hamiltonian_data_no_deriv.from_base(hamiltonian_data)
+        self.__hamiltonian_data = apply_diff_mask(hamiltonian_data, DiffMask(params=False, coords=False))
         self.__init_attributes()
 
     # collecting factor
@@ -2311,7 +2311,7 @@ class GFMC_fixed_num_projection:
             # self.__hamiltonian_data = Hamiltonian_data_deriv_R.from_base(hamiltonian_data)  # it doesn't work...
             self.__hamiltonian_data = Hamiltonian_data.from_base(hamiltonian_data)
         else:
-            self.__hamiltonian_data = Hamiltonian_data_no_deriv.from_base(hamiltonian_data)
+            self.__hamiltonian_data = apply_diff_mask(hamiltonian_data, DiffMask(params=False, coords=False))
         self.__init_attributes()
 
     # collecting factor

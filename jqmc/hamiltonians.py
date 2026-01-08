@@ -178,54 +178,6 @@ class Hamiltonian_data:
         )
 
 
-@struct.dataclass
-class Hamiltonian_data_deriv_params(Hamiltonian_data):
-    """See Hamiltonian_data."""
-
-    structure_data: Structure_data = struct.field(pytree_node=False, default_factory=lambda: Structure_data())
-    coulomb_potential_data: Coulomb_potential_data = struct.field(
-        pytree_node=False, default_factory=lambda: Coulomb_potential_data()
-    )
-    wavefunction_data: Wavefunction_data = struct.field(pytree_node=True, default_factory=lambda: Wavefunction_data())
-
-    @classmethod
-    def from_base(cls, hamiltonian_data: Hamiltonian_data):
-        """Return a parameter-differentiable copy using the shared mask helper."""
-        return apply_diff_mask(hamiltonian_data, DiffMask(params=True, coords=False))
-
-
-@struct.dataclass
-class Hamiltonian_data_deriv_R(Hamiltonian_data):
-    """See Hamiltonian_data."""
-
-    structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
-    coulomb_potential_data: Coulomb_potential_data = struct.field(
-        pytree_node=True, default_factory=lambda: Coulomb_potential_data()
-    )
-    wavefunction_data: Wavefunction_data = struct.field(pytree_node=True, default_factory=lambda: Wavefunction_data())
-
-    @classmethod
-    def from_base(cls, hamiltonian_data: Hamiltonian_data):
-        """Return a coordinate-differentiable copy using the shared mask helper."""
-        return apply_diff_mask(hamiltonian_data, DiffMask(params=False, coords=True))
-
-
-@struct.dataclass
-class Hamiltonian_data_no_deriv(Hamiltonian_data):
-    """See Hamiltonian_data."""
-
-    structure_data: Structure_data = struct.field(pytree_node=False, default_factory=lambda: Structure_data())
-    coulomb_potential_data: Coulomb_potential_data = struct.field(
-        pytree_node=False, default_factory=lambda: Coulomb_potential_data()
-    )
-    wavefunction_data: Wavefunction_data = struct.field(pytree_node=False, default_factory=lambda: Wavefunction_data())
-
-    @classmethod
-    def from_base(cls, hamiltonian_data: Hamiltonian_data):
-        """Return a fully static copy using the shared mask helper."""
-        return apply_diff_mask(hamiltonian_data, DiffMask(params=False, coords=False))
-
-
 @jit
 def compute_local_energy_jax(
     hamiltonian_data: Hamiltonian_data,

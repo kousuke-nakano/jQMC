@@ -52,9 +52,7 @@ from jax import typing as jnpt
 from .atomic_orbital import (
     AO_sphe_data,
     AOs_cart_data,
-    AOs_cart_data_deriv_R,
     AOs_sphe_data,
-    AOs_sphe_data_deriv_R,
     _compute_AO_sphe,
     compute_AOs_grad_jax,
     compute_AOs_jax,
@@ -131,43 +129,6 @@ class MOs_data:
             aos_data = AOs_sphe_data.from_base(aos_data=mos_data.aos_data)
         elif isinstance(mos_data.aos_data, AOs_cart_data):
             aos_data = AOs_cart_data.from_base(aos_data=mos_data.aos_data)
-        mo_coefficients = mos_data.mo_coefficients
-        return cls(num_mo, aos_data, mo_coefficients)
-
-
-@struct.dataclass
-class MOs_data_deriv_R(MOs_data):
-    """See MOs_data class."""
-
-    num_mo: int = struct.field(pytree_node=False, default=0)
-    aos_data: AOs_sphe_data | AOs_cart_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
-    mo_coefficients: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=False, default_factory=lambda: np.array([]))
-
-    @classmethod
-    def from_base(cls, mos_data: MOs_data):
-        """Switch pytree_node."""
-        num_mo = mos_data.num_mo
-        if isinstance(mos_data.aos_data, AOs_sphe_data):
-            aos_data = AOs_sphe_data_deriv_R.from_base(aos_data=mos_data.aos_data)
-        elif isinstance(mos_data.aos_data, AOs_cart_data):
-            aos_data = AOs_cart_data_deriv_R.from_base(aos_data=mos_data.aos_data)
-        mo_coefficients = mos_data.mo_coefficients
-        return cls(num_mo, aos_data, mo_coefficients)
-
-
-@struct.dataclass
-class MOs_data_no_deriv(MOs_data):
-    """See MOs_data class."""
-
-    num_mo: int = struct.field(pytree_node=False, default=0)
-    aos_data: AOs_sphe_data | AOs_cart_data = struct.field(pytree_node=False, default_factory=lambda: AOs_sphe_data())
-    mo_coefficients: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=False, default_factory=lambda: np.array([]))
-
-    @classmethod
-    def from_base(cls, mos_data: MOs_data):
-        """Switch pytree_node."""
-        num_mo = mos_data.num_mo
-        aos_data = mos_data.aos_data
         mo_coefficients = mos_data.mo_coefficients
         return cls(num_mo, aos_data, mo_coefficients)
 

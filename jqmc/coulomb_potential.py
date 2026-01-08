@@ -605,48 +605,6 @@ class Coulomb_potential_data:
         )
 
 
-@struct.dataclass
-class Coulomb_potential_data_no_deriv:
-    """See Coulomb_potential_data."""
-
-    structure_data: Structure_data = struct.field(pytree_node=False, default_factory=lambda: Structure_data())
-    ecp_flag: bool = struct.field(pytree_node=False, default=False)
-    z_cores: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
-    max_ang_mom_plus_1: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
-    num_ecps: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
-    ang_moms: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
-    nucleus_index: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
-    exponents: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
-    coefficients: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
-    powers: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
-
-    @classmethod
-    def from_base(cls, coulomb_potential_data: Coulomb_potential_data):
-        """Switch pytree_node."""
-        structure_data = coulomb_potential_data.structure_data
-        ecp_flag = coulomb_potential_data.ecp_flag
-        z_cores = coulomb_potential_data.z_cores
-        max_ang_mom_plus_1 = coulomb_potential_data.max_ang_mom_plus_1
-        num_ecps = coulomb_potential_data.num_ecps
-        ang_moms = coulomb_potential_data.ang_moms
-        nucleus_index = coulomb_potential_data.nucleus_index
-        exponents = coulomb_potential_data.exponents
-        coefficients = coulomb_potential_data.coefficients
-        powers = coulomb_potential_data.powers
-        return cls(
-            structure_data,
-            ecp_flag,
-            z_cores,
-            max_ang_mom_plus_1,
-            num_ecps,
-            ang_moms,
-            nucleus_index,
-            exponents,
-            coefficients,
-            powers,
-        )
-
-
 def compute_ecp_local_parts_all_pairs_debug(
     coulomb_potential_data: Coulomb_potential_data,
     r_up_carts: npt.NDArray[np.float64],

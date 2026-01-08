@@ -60,11 +60,9 @@ from .determinant import (
     compute_geminal_dn_one_column_elements_jax,
     compute_geminal_up_one_row_elements_jax,
 )
+from .diff_mask import DiffMask, apply_diff_mask
 from .hamiltonians import (
     Hamiltonian_data,
-    Hamiltonian_data_deriv_params,
-    # Hamiltonian_data_deriv_R,
-    Hamiltonian_data_no_deriv,
     compute_local_energy_jax,
 )
 from .jastrow_factor import compute_Jastrow_part_jax
@@ -2609,12 +2607,12 @@ class MCMC:
     def hamiltonian_data(self, hamiltonian_data):
         """Set hamiltonian_data."""
         if self.__comput_param_deriv and not self.__comput_position_deriv:
-            self.__hamiltonian_data = Hamiltonian_data_deriv_params.from_base(hamiltonian_data)
+            self.__hamiltonian_data = apply_diff_mask(hamiltonian_data, DiffMask(params=True, coords=False))
         elif not self.__comput_param_deriv and self.__comput_position_deriv:
-            # self.__hamiltonian_data = Hamiltonian_data_deriv_R.from_base(hamiltonian_data)  # it doesn't work...
-            self.__hamiltonian_data = Hamiltonian_data.from_base(hamiltonian_data)
+            # self.__hamiltonian_data = Hamiltonian_data.from_base(hamiltonian_data)
+            self.__hamiltonian_data = apply_diff_mask(hamiltonian_data, DiffMask(params=False, coords=True))
         elif not self.__comput_param_deriv and not self.__comput_position_deriv:
-            self.__hamiltonian_data = Hamiltonian_data_no_deriv.from_base(hamiltonian_data)
+            self.__hamiltonian_data = apply_diff_mask(hamiltonian_data, DiffMask(params=False, coords=False))
         else:
             self.__hamiltonian_data = hamiltonian_data
         self.__init_attributes()
