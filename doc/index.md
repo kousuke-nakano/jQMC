@@ -19,6 +19,7 @@ install
 examples
 notes/technical_notes
 api_reference_cli
+api_reference_cli_tool
 api_reference_mod/modules
 citation
 reference
