@@ -182,7 +182,7 @@ def test_jqmc_cli_run_lrdmc(tmp_path, monkeypatch):
 
     # alat
     ## WIP: multiple alat values are not accepted due to a JAX compilation error
-    alat_list = [0.2]
+    alat_list = [0.2, 0.3, 0.4, 0.5]
 
     # generate input
     os.chdir(root_dir)

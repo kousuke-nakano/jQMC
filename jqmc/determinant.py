@@ -206,7 +206,6 @@ class Geminal_data:
 
     def accumulate_position_grad(self, grad_geminal: "Geminal_data"):
         """Aggregate position gradients from geminal-related structures."""
-
         grad = 0.0
         if hasattr(grad_geminal, "orb_data_up_spin"):
             grad += grad_geminal.orb_data_up_spin.structure_data.positions
@@ -216,7 +215,6 @@ class Geminal_data:
 
     def collect_param_grads(self, grad_geminal: "Geminal_data") -> dict[str, object]:
         """Collect parameter gradients into a flat dict keyed by block name."""
-
         grads: dict[str, any] = {}
         if hasattr(grad_geminal, "lambda_matrix"):
             grads["lambda_matrix"] = grad_geminal.lambda_matrix

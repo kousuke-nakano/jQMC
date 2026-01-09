@@ -190,7 +190,7 @@ class NNJastrow(nn.Module):
             mu = self.cutoff * q**2
             sigma = (1.0 / 7.0) * (1.0 + self.cutoff * q)
 
-            d = jnp.clip(distances, a_min=0.0, a_max=self.cutoff)
+            d = jnp.clip(distances, min=0.0, max=self.cutoff)
             d = d[..., None]
             mu = mu[None, ...]
             sigma = sigma[None, ...]
