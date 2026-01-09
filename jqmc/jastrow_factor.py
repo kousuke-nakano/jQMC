@@ -1077,11 +1077,9 @@ class Jastrow_NN_data:
         # NN J3 contribution starts near zero but still has gradient signal.
 
         leaves, treedef = tree_flatten(params)
-        noise_keys = jax.random.split(key, len(leaves) + 1)
-        key = noise_keys[0]
-        noise_subkeys = noise_keys[1:]
+        noise_keys = jax.random.split(key, len(leaves))
         scale = 1e-10
-        noisy_leaves = [leaf + scale * jax.random.normal(k, leaf.shape) for leaf, k in zip(leaves, noise_subkeys, strict=True)]
+        noisy_leaves = [leaf + scale * jax.random.normal(k, leaf.shape) for leaf, k in zip(leaves, noise_keys, strict=True)]
         params = tree_unflatten(treedef, noisy_leaves)
 
         # Build metadata needed to reconstruct flatten / unflatten

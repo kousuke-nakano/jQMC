@@ -49,8 +49,8 @@ from flax import struct
 from jax import jit
 from jax import typing as jnpt
 
+
 from .coulomb_potential import Coulomb_potential_data, compute_coulomb_potential_jax
-from .diff_mask import DiffMask, apply_diff_mask
 from .structure import Structure_data
 from .wavefunction import (
     Wavefunction_data,

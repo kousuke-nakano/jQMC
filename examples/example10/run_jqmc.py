@@ -8,9 +8,7 @@ import numpy as np
 from jqmc.hamiltonians import Hamiltonian_data
 from jqmc.jastrow_factor import (
     Jastrow_data,
-    Jastrow_NN_data,
     Jastrow_one_body_data,
-    Jastrow_three_body_data,
     Jastrow_two_body_data,
 )
 from jqmc.jqmc_gfmc import GFMC_fixed_num_projection

@@ -2141,12 +2141,6 @@ class MCMC:
                 local_Ew = np.dot(w_L_local, e_L_local)  # weighted sum of energies, shape: scalar
                 local_weight_sum = np.sum(w_L_local)  # scalar: sum of weights, shape: scalar
 
-                w_L_local = w_L_local
-                e_L_local = e_L_local
-                local_Ow = local_Ow
-                local_Ew = local_Ew
-                local_weight_sum = local_weight_sum
-
                 w_L_local = np.array(w_L_local)
                 e_L_local = np.array(e_L_local)
                 local_Ow = np.array(local_Ow)
