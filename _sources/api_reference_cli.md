@@ -1,6 +1,6 @@
-(input_jqmc_link)=
+(api_reference_cli_link)=
 
-# Input parameters
+# API reference for the command-line interface (jqmc)
 
 ## Command-line `jqmc` usage
 
@@ -64,16 +64,12 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 | `epsilon_AS`               |        `0.0` | ε for Attaccalite–Sorella regularization.                                                                            |
 | `num_opt_steps`            | **required** | Number of optimization iterations.                                                                                   |
 | `wf_dump_freq`             |          `1` | Write wavefunction/Hamiltonian checkpoint every this many optimization steps.                                        |
-| `delta`                    |       `0.01` | SR (natural-gradient) step size.                                                                                     |
-| `epsilon`                  |      `0.001` | SR regularization (added to diagonal of the Fisher information matrix) to improve numerical stability.               |
+| `optimizer_kwargs`         | `{ "method": "sr", "delta": 0.01, "epsilon": 0.001, "cg_flag": true, "cg_max_iter": 10000, "cg_tol": 1e-4 }` | Optimizer configuration. Set `method` to `"sr"` for stochastic reconfiguration or to an optax optimizer name (e.g., `"adam"`). `delta`/`epsilon` control SR step size and regularization; `cg_*` entries tune the SR conjugate-gradient solver. Any additional keys are forwarded to optax when `method` ≠ `"sr"`. |
 | `opt_J1_param`             |      `false` | Optimize J1 parameters.                                                                                              |
 | `opt_J2_param`             |       `true` | Optimize J2 parameters.                                                                                              |
 | `opt_J3_param`             |       `true` | Optimize J3 parameters.                                                                                              |
 | `opt_lambda_param`         |      `false` | Optimize geminal (λ) parameters.                                                                                     |
 | `num_param_opt`            |          `0` | Number of parameters to optimize, chosen in descending order of \|f\| / std(f). If `0`, optimize **all** parameters. |
-| `cg_flag`                  |       `true` | Use conjugate-gradient solver for the SR linear system.                                                              |
-| `cg_max_iter`              |      `10000` | Maximum CG iterations.                                                                                               |
-| `cg_tol`                   |       `1e-4` | CG convergence tolerance.                                                                                            |
 
 ---
 

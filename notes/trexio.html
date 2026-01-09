@@ -40,10 +40,12 @@
     <script src="../_static/doctools.js?v=9bcbadda"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
+    <script>window.MathJax = {"options": {"processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <script>DOCUMENTATION_OPTIONS.pagename = 'notes/trexio';</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="jqmc" href="../modules.html" />
+    <link rel="next" title="API reference for the command-line interface (jqmc)" href="../api_reference_cli.html" />
     <link rel="prev" title="JAX compatible modules" href="jax.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -165,10 +167,10 @@
     <div class="bd-toc-item navbar-nav active">
         <ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../install.html">Installation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../input_jqmc.html">Input parameters</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="technical_notes.html">Technical notes</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="ao.html">Atomic orbitals (AOs) and Basis sets</a></li>
+<li class="toctree-l2"><a class="reference internal" href="wavefunction.html">Wave functions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="vmc.html">Variational Monte Carlo (VMC)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="lrdmc.html">Lattice Regularized Diffusion Monte Carlo (LRDMC)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="atomic-forces.html">Atomic forces calculations by VMC and LRDMC</a></li>
@@ -176,10 +178,8 @@
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">Interfaces with TREX-IO</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../modules.html">jqmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="../jqmc.html">jqmc package</a></li>
-</ul>
-</details></li>
+<li class="toctree-l1"><a class="reference internal" href="../api_reference_cli.html">API reference for the command-line interface (jqmc)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api_reference_cli_tool.html">API reference for the command-line tool (jqmc-tool)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../citation.html">How to cite jQMC</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../reference.html">References</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../changelog.html">Change Log</a></li>
@@ -331,7 +331,18 @@ document.write(`
             </div>
             <nav aria-label="Page">
                 <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#conventions-employed-in-jqmc-and-trex-io">Conventions employed in jQMC and TREX-IO</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#conventions-employed-in-jqmc-and-trex-io">Conventions employed in jQMC and TREX-IO</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#the-read-trexio-file-function">The <code class="docutils literal notranslate"><span class="pre">read_trexio_file</span></code> Function</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#implementation-details">Implementation Details</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#system-structure">1. System Structure</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#electron-configuration">2. Electron Configuration</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#atomic-orbitals-aos">3. Atomic Orbitals (AOs)</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#molecular-orbitals-mos">4. Molecular Orbitals (MOs)</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#pseudopotentials-ecps">5. Pseudopotentials (ECPs)</a></li>
+</ul>
+</li>
+</ul>
+</li>
 </ul>
             </nav>
         </div>
@@ -347,7 +358,102 @@ document.write(`
 <h1>Interfaces with TREX-IO<a class="headerlink" href="#interfaces-with-trex-io" title="Link to this heading">#</a></h1>
 <section id="conventions-employed-in-jqmc-and-trex-io">
 <span id="trexio-tags"></span><h2>Conventions employed in jQMC and TREX-IO<a class="headerlink" href="#conventions-employed-in-jqmc-and-trex-io" title="Link to this heading">#</a></h2>
-<p>Work in progress.</p>
+<p>jQMC utilizes the <a class="reference external" href="https://github.com/TREX-CoE/trexio">TREX-IO</a> library for handling input and output of quantum chemical data. This interface ensures standardization and portability of wavefunction parameters and system coordinate data. The current implementation supports reading from TREXIO files using the HDF5 backend.</p>
+<section id="the-read-trexio-file-function">
+<h3>The <code class="docutils literal notranslate"><span class="pre">read_trexio_file</span></code> Function<a class="headerlink" href="#the-read-trexio-file-function" title="Link to this heading">#</a></h3>
+<p>The core function for data ingestion is <code class="docutils literal notranslate"><span class="pre">read_trexio_file</span></code>, located in <code class="docutils literal notranslate"><span class="pre">jqmc/trexio_wrapper.py</span></code>. This function parses a TREXIO file and populates internal jQMC data structures.</p>
+<p><strong>Signature:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">read_trexio_file</span><span class="p">(</span>
+    <span class="n">trexio_file</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">store_tuple</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Structure_data</span><span class="p">,</span> <span class="n">AOs_data</span><span class="p">,</span> <span class="n">MOs_data</span><span class="p">,</span> <span class="n">MOs_data</span><span class="p">,</span> <span class="n">Geminal_data</span><span class="p">,</span> <span class="n">Coulomb_potential_data</span><span class="p">]:</span>
+</pre></div>
+</div>
+<p><strong>Arguments:</strong></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">trexio_file</span></code> (str): The file path to the TREXIO file (typically <code class="docutils literal notranslate"><span class="pre">.h5</span></code>).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">store_tuple</span></code> (bool, default=<code class="docutils literal notranslate"><span class="pre">False</span></code>): If <code class="docutils literal notranslate"><span class="pre">True</span></code>, stores list variables as tuples. This is primarily for internal testing (e.g., with JAX JIT compilation compatibility checks) but is slower for production runs.</p></li>
+</ul>
+<p><strong>Returns:</strong></p>
+<p>Ordering of the returned tuple:</p>
+<ol class="arabic simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">Structure_data</span></code>: Molecular geometry and atomic information.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">AOs_data</span></code> (<code class="docutils literal notranslate"><span class="pre">AOs_cart_data</span></code> or <code class="docutils literal notranslate"><span class="pre">AOs_sphe_data</span></code>): Atomic Orbital basis set information.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">MOs_data</span></code> (Up): Molecular Orbitals for spin-up electrons.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">MOs_data</span></code> (Down): Molecular Orbitals for spin-down electrons.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Geminal_data</span></code>: Data relevant for Antisymmetrized Geminal Power (AGP) wavefunctions.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Coulomb_potential_data</span></code>: Information on pseudopotentials (ECPs) if present.</p></li>
+</ol>
+</section>
+<hr class="docutils" />
+<section id="implementation-details">
+<h3>Implementation Details<a class="headerlink" href="#implementation-details" title="Link to this heading">#</a></h3>
+<section id="system-structure">
+<h4>1. System Structure<a class="headerlink" href="#system-structure" title="Link to this heading">#</a></h4>
+<ul class="simple">
+<li><p><strong>Boundary Conditions</strong>: The wrapper currently checks <code class="docutils literal notranslate"><span class="pre">trexio.read_pbc_periodic</span></code>.</p>
+<ul>
+<li><p><strong>Open Boundary Conditions (Molecules)</strong>: Fully supported.</p></li>
+<li><p><strong>Periodic Boundary Conditions (Crystals)</strong>: Detected but currently raises <code class="docutils literal notranslate"><span class="pre">NotImplementedError</span></code>.</p></li>
+</ul>
+</li>
+<li><p><strong>Atomic Information</strong>: Reads nuclear labels (<code class="docutils literal notranslate"><span class="pre">H</span></code>, <code class="docutils literal notranslate"><span class="pre">C</span></code>, etc.) and coordinates. Labels are converted to atomic numbers (Z) using an internal mapping supporting elements up to Radon (Z=86).</p></li>
+</ul>
+</section>
+<section id="electron-configuration">
+<h4>2. Electron Configuration<a class="headerlink" href="#electron-configuration" title="Link to this heading">#</a></h4>
+<ul class="simple">
+<li><p>Reads <code class="docutils literal notranslate"><span class="pre">electron_up_num</span></code> and <code class="docutils literal notranslate"><span class="pre">electron_dn_num</span></code>.</p></li>
+<li><p>Determines if the system is <strong>spin-polarized</strong>:</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">spin_polarized</span> <span class="pre">=</span> <span class="pre">True</span></code> if <span class="math notranslate nohighlight">\(N_{\uparrow} \neq N_{\downarrow}\)</span>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">spin_polarized</span> <span class="pre">=</span> <span class="pre">False</span></code> if <span class="math notranslate nohighlight">\(N_{\uparrow} = N_{\downarrow}\)</span>.</p></li>
+</ul>
+</li>
+</ul>
+</section>
+<section id="atomic-orbitals-aos">
+<h4>3. Atomic Orbitals (AOs)<a class="headerlink" href="#atomic-orbitals-aos" title="Link to this heading">#</a></h4>
+<p>The wrapper distinguishes between Cartesian and Spherical Harmonic basis sets via <code class="docutils literal notranslate"><span class="pre">trexio.read_ao_cartesian</span></code>.</p>
+<p><strong>Cartesian Gaussians:</strong></p>
+<ul class="simple">
+<li><p>Polynomial orders (<span class="math notranslate nohighlight">\(n_x, n_y, n_z\)</span>) for each orbital are reconstructed based on the angular momentum <span class="math notranslate nohighlight">\(L\)</span>.</p></li>
+<li><p>In the case of polynomials, the canonical (or alphabetical) ordering is used (e.g., <span class="math notranslate nohighlight">\(xx, xy, xz, yy, yz, zz\)</span> for <span class="math notranslate nohighlight">\(d\)</span>-orbitals).</p></li>
+<li><p>Basis function normalization and coefficients are computed and stored in <code class="docutils literal notranslate"><span class="pre">AOs_cart_data</span></code>.</p></li>
+</ul>
+<p><strong>Spherical Harmonics:</strong></p>
+<ul class="simple">
+<li><p>If <code class="docutils literal notranslate"><span class="pre">ao_cartesian</span></code> is false, <code class="docutils literal notranslate"><span class="pre">AOs_sphe_data</span></code> is initialized.</p></li>
+<li><p>The Magnetic quantum numbers (<span class="math notranslate nohighlight">\(m\)</span>) follow the TREXIO canonical order: <span class="math notranslate nohighlight">\(0, 1, -1, 2, -2, \dots\)</span> for a given <span class="math notranslate nohighlight">\(L\)</span>.</p></li>
+</ul>
+</section>
+<section id="molecular-orbitals-mos">
+<h4>4. Molecular Orbitals (MOs)<a class="headerlink" href="#molecular-orbitals-mos" title="Link to this heading">#</a></h4>
+<ul class="simple">
+<li><p><strong>Real vs. Complex</strong>: Checks <code class="docutils literal notranslate"><span class="pre">trexio.has_mo_coefficient_im</span></code>. Currently, <strong>only real wavefunctions are supported</strong>; complex coefficients raise <code class="docutils literal notranslate"><span class="pre">NotImplementedError</span></code>.</p></li>
+<li><p><strong>Spin Handling</strong>:</p>
+<ul>
+<li><p><strong>Restricted (RHF/ROHF)</strong>: Used when <code class="docutils literal notranslate"><span class="pre">spin_dependent</span></code> is false. Up and Down orbitals share the same spatial coefficients.</p></li>
+<li><p><strong>Unrestricted (UHF)</strong>: Used when <code class="docutils literal notranslate"><span class="pre">spin_dependent</span></code> is true and system is polarized. Up and Down coefficients are read separately.</p></li>
+</ul>
+</li>
+<li><p><strong>Occupation Threshold</strong>: Orbitals are only loaded if their occupation number is <span class="math notranslate nohighlight">\(\ge 10^{-6}\)</span>. This filters out virtual orbitals with effectively zero occupation from the active space calculation.</p></li>
+</ul>
+</section>
+<section id="pseudopotentials-ecps">
+<h4>5. Pseudopotentials (ECPs)<a class="headerlink" href="#pseudopotentials-ecps" title="Link to this heading">#</a></h4>
+<ul class="simple">
+<li><p>The function checks for the existence of ECP data using <code class="docutils literal notranslate"><span class="pre">trexio.has_ecp_num</span></code>.</p></li>
+<li><p>If present, <code class="docutils literal notranslate"><span class="pre">Coulomb_potential_data</span></code> is populated with:</p>
+<ul>
+<li><p>Core charges (<span class="math notranslate nohighlight">\(Z_{\text{core}}\)</span>)</p></li>
+<li><p>Angular momentum limits</p></li>
+<li><p>Exponents, coefficients, and powers (<span class="math notranslate nohighlight">\(n\)</span>) for the Gaussian expansion of the potential.</p></li>
+</ul>
+</li>
+</ul>
+</section>
+</section>
 </section>
 </section>
 
@@ -372,11 +478,11 @@ document.write(`
       </div>
     </a>
     <a class="right-next"
-       href="../modules.html"
+       href="../api_reference_cli.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">jqmc</p>
+        <p class="prev-next-title">API reference for the command-line interface (jqmc)</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -396,7 +502,18 @@ document.write(`
   </div>
   <nav class="bd-toc-nav page-toc">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#conventions-employed-in-jqmc-and-trex-io">Conventions employed in jQMC and TREX-IO</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#conventions-employed-in-jqmc-and-trex-io">Conventions employed in jQMC and TREX-IO</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#the-read-trexio-file-function">The <code class="docutils literal notranslate"><span class="pre">read_trexio_file</span></code> Function</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#implementation-details">Implementation Details</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#system-structure">1. System Structure</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#electron-configuration">2. Electron Configuration</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#atomic-orbitals-aos">3. Atomic Orbitals (AOs)</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#molecular-orbitals-mos">4. Molecular Orbitals (MOs)</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#pseudopotentials-ecps">5. Pseudopotentials (ECPs)</a></li>
+</ul>
+</li>
+</ul>
+</li>
 </ul>
   </nav></div>
 
@@ -421,7 +538,7 @@ By Kosuke Nakano
 
   <p class="copyright">
     
-      © Copyright 2025, Kosuke Nakano.
+      © Copyright 2026, Kosuke Nakano.
       <br/>
     
   </p>

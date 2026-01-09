@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Input parameters &#8212; jQMC v0.1.0a0</title>
+    <title>API reference for the command-line interface (jqmc) &#8212; jQMC v0.1.0a0</title>
   
   
   
@@ -40,11 +40,11 @@
     <script src="_static/doctools.js?v=9bcbadda"></script>
     <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'input_jqmc';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'api_reference_cli';</script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Examples" href="examples.html" />
-    <link rel="prev" title="Installation" href="install.html" />
+    <link rel="next" title="API reference for the command-line tool (jqmc-tool)" href="api_reference_cli_tool.html" />
+    <link rel="prev" title="Interfaces with TREX-IO" href="notes/trexio.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   </head>
@@ -165,10 +165,10 @@
     <div class="bd-toc-item navbar-nav active">
         <ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="install.html">Installation</a></li>
-<li class="toctree-l1 current active"><a class="current reference internal" href="#">Input parameters</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="notes/technical_notes.html">Technical notes</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="notes/ao.html">Atomic orbitals (AOs) and Basis sets</a></li>
+<li class="toctree-l2"><a class="reference internal" href="notes/wavefunction.html">Wave functions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/vmc.html">Variational Monte Carlo (VMC)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/lrdmc.html">Lattice Regularized Diffusion Monte Carlo (LRDMC)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/atomic-forces.html">Atomic forces calculations by VMC and LRDMC</a></li>
@@ -176,10 +176,8 @@
 <li class="toctree-l2"><a class="reference internal" href="notes/trexio.html">Interfaces with TREX-IO</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="modules.html">jqmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="jqmc.html">jqmc package</a></li>
-</ul>
-</details></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">API reference for the command-line interface (jqmc)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference_cli_tool.html">API reference for the command-line tool (jqmc-tool)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="citation.html">How to cite jQMC</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reference.html">References</a></li>
 <li class="toctree-l1"><a class="reference internal" href="changelog.html">Change Log</a></li>
@@ -237,7 +235,7 @@
       
       
       
-      <li><a href="_sources/input_jqmc.md" target="_blank"
+      <li><a href="_sources/api_reference_cli.md" target="_blank"
    class="btn btn-sm btn-download-source-button dropdown-item"
    title="Download source file"
    data-bs-placement="left" data-bs-toggle="tooltip"
@@ -321,7 +319,7 @@ document.write(`
               
 
 <div id="jb-print-docs-body" class="onlyprint">
-    <h1>Input parameters</h1>
+    <h1>API reference for the command-line interface (jqmc)</h1>
     <!-- Table of contents -->
     <div id="print-main-content">
         <div id="jb-print-toc">
@@ -352,8 +350,8 @@ document.write(`
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section class="tex2jax_ignore mathjax_ignore" id="input-parameters">
-<span id="input-jqmc-link"></span><h1>Input parameters<a class="headerlink" href="#input-parameters" title="Link to this heading">#</a></h1>
+  <section class="tex2jax_ignore mathjax_ignore" id="api-reference-for-the-command-line-interface-jqmc">
+<span id="api-reference-cli-link"></span><h1>API reference for the command-line interface (jqmc)<a class="headerlink" href="#api-reference-for-the-command-line-interface-jqmc" title="Link to this heading">#</a></h1>
 <section id="command-line-jqmc-usage">
 <h2>Command-line <code class="docutils literal notranslate"><span class="pre">jqmc</span></code> usage<a class="headerlink" href="#command-line-jqmc-usage" title="Link to this heading">#</a></h2>
 <p>You can run <code class="docutils literal notranslate"><span class="pre">jqmc</span></code> tasks (<code class="docutils literal notranslate"><span class="pre">mcmc</span></code>, <code class="docutils literal notranslate"><span class="pre">vmc</span></code>, <code class="docutils literal notranslate"><span class="pre">lrdmc</span></code>, and <code class="docutils literal notranslate"><span class="pre">lrdmc-tau</span></code>) from the command line:</p>
@@ -505,45 +503,29 @@ Throughout this document, “per MPI process and per walker” means the quantit
 <td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">1</span></code></p></td>
 <td><p>Write wavefunction/Hamiltonian checkpoint every this many optimization steps.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">delta</span></code></p></td>
-<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">0.01</span></code></p></td>
-<td><p>SR (natural-gradient) step size.</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">optimizer_kwargs</span></code></p></td>
+<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">&quot;method&quot;:</span> <span class="pre">&quot;sr&quot;,</span> <span class="pre">&quot;delta&quot;:</span> <span class="pre">0.01,</span> <span class="pre">&quot;epsilon&quot;:</span> <span class="pre">0.001,</span> <span class="pre">&quot;cg_flag&quot;:</span> <span class="pre">true,</span> <span class="pre">&quot;cg_max_iter&quot;:</span> <span class="pre">10000,</span> <span class="pre">&quot;cg_tol&quot;:</span> <span class="pre">1e-4</span> <span class="pre">}</span></code></p></td>
+<td><p>Optimizer configuration. Set <code class="docutils literal notranslate"><span class="pre">method</span></code> to <code class="docutils literal notranslate"><span class="pre">&quot;sr&quot;</span></code> for stochastic reconfiguration or to an optax optimizer name (e.g., <code class="docutils literal notranslate"><span class="pre">&quot;adam&quot;</span></code>). <code class="docutils literal notranslate"><span class="pre">delta</span></code>/<code class="docutils literal notranslate"><span class="pre">epsilon</span></code> control SR step size and regularization; <code class="docutils literal notranslate"><span class="pre">cg_*</span></code> entries tune the SR conjugate-gradient solver. Any additional keys are forwarded to optax when <code class="docutils literal notranslate"><span class="pre">method</span></code> ≠ <code class="docutils literal notranslate"><span class="pre">&quot;sr&quot;</span></code>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">epsilon</span></code></p></td>
-<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">0.001</span></code></p></td>
-<td><p>SR regularization (added to diagonal of the Fisher information matrix) to improve numerical stability.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">opt_J1_param</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">opt_J1_param</span></code></p></td>
 <td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
 <td><p>Optimize J1 parameters.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">opt_J2_param</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">opt_J2_param</span></code></p></td>
 <td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
 <td><p>Optimize J2 parameters.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">opt_J3_param</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">opt_J3_param</span></code></p></td>
 <td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
 <td><p>Optimize J3 parameters.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">opt_lambda_param</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">opt_lambda_param</span></code></p></td>
 <td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
 <td><p>Optimize geminal (λ) parameters.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">num_param_opt</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">num_param_opt</span></code></p></td>
 <td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
 <td><p>Number of parameters to optimize, chosen in descending order of |f| / std(f). If <code class="docutils literal notranslate"><span class="pre">0</span></code>, optimize <strong>all</strong> parameters.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">cg_flag</span></code></p></td>
-<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">true</span></code></p></td>
-<td><p>Use conjugate-gradient solver for the SR linear system.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">cg_max_iter</span></code></p></td>
-<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">10000</span></code></p></td>
-<td><p>Maximum CG iterations.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">cg_tol</span></code></p></td>
-<td class="text-right"><p><code class="docutils literal notranslate"><span class="pre">1e-4</span></code></p></td>
-<td><p>CG convergence tolerance.</p></td>
 </tr>
 </tbody>
 </table>
@@ -684,20 +666,20 @@ Throughout this document, “per MPI process and per walker” means the quantit
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="install.html"
+       href="notes/trexio.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Installation</p>
+        <p class="prev-next-title">Interfaces with TREX-IO</p>
       </div>
     </a>
     <a class="right-next"
-       href="examples.html"
+       href="api_reference_cli_tool.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Examples</p>
+        <p class="prev-next-title">API reference for the command-line tool (jqmc-tool)</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -751,7 +733,7 @@ By Kosuke Nakano
 
   <p class="copyright">
     
-      © Copyright 2025, Kosuke Nakano.
+      © Copyright 2026, Kosuke Nakano.
       <br/>
     
   </p>

@@ -45,7 +45,7 @@
     <script>DOCUMENTATION_OPTIONS.pagename = 'notes/ao';</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Variational Monte Carlo (VMC)" href="vmc.html" />
+    <link rel="next" title="Wave functions" href="wavefunction.html" />
     <link rel="prev" title="Technical notes" href="technical_notes.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -167,10 +167,10 @@
     <div class="bd-toc-item navbar-nav active">
         <ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../install.html">Installation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../input_jqmc.html">Input parameters</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="technical_notes.html">Technical notes</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">Atomic orbitals (AOs) and Basis sets</a></li>
+<li class="toctree-l2"><a class="reference internal" href="wavefunction.html">Wave functions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="vmc.html">Variational Monte Carlo (VMC)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="lrdmc.html">Lattice Regularized Diffusion Monte Carlo (LRDMC)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="atomic-forces.html">Atomic forces calculations by VMC and LRDMC</a></li>
@@ -178,10 +178,8 @@
 <li class="toctree-l2"><a class="reference internal" href="trexio.html">Interfaces with TREX-IO</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../modules.html">jqmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="../jqmc.html">jqmc package</a></li>
-</ul>
-</details></li>
+<li class="toctree-l1"><a class="reference internal" href="../api_reference_cli.html">API reference for the command-line interface (jqmc)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api_reference_cli_tool.html">API reference for the command-line tool (jqmc-tool)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../citation.html">How to cite jQMC</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../reference.html">References</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../changelog.html">Change Log</a></li>
@@ -367,7 +365,7 @@ document.write(`
                 <article class="bd-article">
                   
   <section class="tex2jax_ignore mathjax_ignore" id="atomic-orbitals-aos-and-basis-sets">
-<h1>Atomic orbitals (AOs) and Basis sets<a class="headerlink" href="#atomic-orbitals-aos-and-basis-sets" title="Link to this heading">#</a></h1>
+<span id="sec-atomic-orbitals"></span><h1>Atomic orbitals (AOs) and Basis sets<a class="headerlink" href="#atomic-orbitals-aos-and-basis-sets" title="Link to this heading">#</a></h1>
 <section id="atomic-orbitals-for-the-pairing-function-and-the-jastrow-factor">
 <h2>Atomic orbitals for the pairing function and the Jastrow factor<a class="headerlink" href="#atomic-orbitals-for-the-pairing-function-and-the-jastrow-factor" title="Link to this heading">#</a></h2>
 <p>One of the most common choices for atomic orbitals in QMC is atom‑centered Gaussian‑type orbitals (GTOs). A primitive GTO <span class="math notranslate nohighlight">\(\psi_{l,m,\alpha}(\mathbf{r})\)</span> can be constructed using either solid harmonics or Cartesian polynomial basis functions.</p>
@@ -680,11 +678,11 @@ Y_{6,6}  &amp;= \sqrt{\tfrac12}\bigl(Y_6^{-6}+Y_6^6\bigr)
       </div>
     </a>
     <a class="right-next"
-       href="vmc.html"
+       href="wavefunction.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Variational Monte Carlo (VMC)</p>
+        <p class="prev-next-title">Wave functions</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -750,7 +748,7 @@ By Kosuke Nakano
 
   <p class="copyright">
     
-      © Copyright 2025, Kosuke Nakano.
+      © Copyright 2026, Kosuke Nakano.
       <br/>
     
   </p>

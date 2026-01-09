@@ -43,8 +43,6 @@
     <script>DOCUMENTATION_OPTIONS.pagename = 'modules';</script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="jqmc package" href="jqmc.html" />
-    <link rel="prev" title="Interfaces with TREX-IO" href="notes/trexio.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   </head>
@@ -107,6 +105,8 @@
       
       
       
+        
+      
       <div class="bd-sidebar-primary bd-sidebar">
         
 
@@ -163,12 +163,12 @@
  </script></div>
         <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
     <div class="bd-toc-item navbar-nav active">
-        <ul class="current nav bd-sidenav">
+        <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="install.html">Installation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="input_jqmc.html">Input parameters</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="notes/technical_notes.html">Technical notes</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="notes/ao.html">Atomic orbitals (AOs) and Basis sets</a></li>
+<li class="toctree-l2"><a class="reference internal" href="notes/wavefunction.html">Wave functions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/vmc.html">Variational Monte Carlo (VMC)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/lrdmc.html">Lattice Regularized Diffusion Monte Carlo (LRDMC)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/atomic-forces.html">Atomic forces calculations by VMC and LRDMC</a></li>
@@ -176,10 +176,8 @@
 <li class="toctree-l2"><a class="reference internal" href="notes/trexio.html">Interfaces with TREX-IO</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">jqmc</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="jqmc.html">jqmc package</a></li>
-</ul>
-</details></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference_cli.html">API reference for the command-line interface (jqmc)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference_cli_tool.html">API reference for the command-line tool (jqmc-tool)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="citation.html">How to cite jQMC</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reference.html">References</a></li>
 <li class="toctree-l1"><a class="reference internal" href="changelog.html">Change Log</a></li>
@@ -390,38 +388,6 @@ document.write(`
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.structure_data"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data.structure_data</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_deriv_R</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.angular_momentums"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_deriv_R.angular_momentums</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.coefficients"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_deriv_R.coefficients</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.exponents"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_deriv_R.exponents</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.from_base"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_deriv_R.from_base()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.nucleus_index"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_deriv_R.nucleus_index</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.num_ao"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_deriv_R.num_ao</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.num_ao_prim"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_deriv_R.num_ao_prim</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.orbital_indices"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_deriv_R.orbital_indices</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.polynominal_order_x"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_deriv_R.polynominal_order_x</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.polynominal_order_y"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_deriv_R.polynominal_order_y</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.polynominal_order_z"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_deriv_R.polynominal_order_z</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.replace"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_deriv_R.replace()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.structure_data"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_deriv_R.structure_data</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_no_deriv</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.angular_momentums"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_no_deriv.angular_momentums</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.coefficients"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_no_deriv.coefficients</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.exponents"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_no_deriv.exponents</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.from_base"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_no_deriv.from_base()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.nucleus_index"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_no_deriv.nucleus_index</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.num_ao"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_no_deriv.num_ao</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.num_ao_prim"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_no_deriv.num_ao_prim</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.orbital_indices"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_no_deriv.orbital_indices</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.polynominal_order_x"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_no_deriv.polynominal_order_x</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.polynominal_order_y"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_no_deriv.polynominal_order_y</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.polynominal_order_z"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_no_deriv.polynominal_order_z</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.replace"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_no_deriv.replace()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.structure_data"><code class="docutils literal notranslate"><span class="pre">AOs_cart_data_no_deriv.structure_data</span></code></a></li>
-</ul>
-</li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data.angular_momentums"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data.angular_momentums</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data.angular_momentums_prim_jnp"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data.angular_momentums_prim_jnp</span></code></a></li>
@@ -455,34 +421,6 @@ document.write(`
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data.replace"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data.replace()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data.sanity_check"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data.sanity_check()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data.structure_data"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data.structure_data</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_deriv_R</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R.angular_momentums"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_deriv_R.angular_momentums</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R.coefficients"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_deriv_R.coefficients</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R.exponents"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_deriv_R.exponents</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R.from_base"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_deriv_R.from_base()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R.magnetic_quantum_numbers"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_deriv_R.magnetic_quantum_numbers</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R.nucleus_index"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_deriv_R.nucleus_index</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R.num_ao"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_deriv_R.num_ao</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R.num_ao_prim"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_deriv_R.num_ao_prim</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R.orbital_indices"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_deriv_R.orbital_indices</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R.replace"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_deriv_R.replace()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R.structure_data"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_deriv_R.structure_data</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_no_deriv</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv.angular_momentums"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_no_deriv.angular_momentums</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv.coefficients"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_no_deriv.coefficients</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv.exponents"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_no_deriv.exponents</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv.from_base"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_no_deriv.from_base()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv.magnetic_quantum_numbers"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_no_deriv.magnetic_quantum_numbers</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv.nucleus_index"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_no_deriv.nucleus_index</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv.num_ao"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_no_deriv.num_ao</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv.num_ao_prim"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_no_deriv.num_ao_prim</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv.orbital_indices"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_no_deriv.orbital_indices</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv.replace"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_no_deriv.replace()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv.structure_data"><code class="docutils literal notranslate"><span class="pre">AOs_sphe_data_no_deriv.structure_data</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.compute_AOs_cart_debug"><code class="docutils literal notranslate"><span class="pre">compute_AOs_cart_debug()</span></code></a></li>
@@ -531,21 +469,6 @@ document.write(`
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.z_cores"><code class="docutils literal notranslate"><span class="pre">Coulomb_potential_data.z_cores</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv"><code class="docutils literal notranslate"><span class="pre">Coulomb_potential_data_no_deriv</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.ang_moms"><code class="docutils literal notranslate"><span class="pre">Coulomb_potential_data_no_deriv.ang_moms</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.coefficients"><code class="docutils literal notranslate"><span class="pre">Coulomb_potential_data_no_deriv.coefficients</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.ecp_flag"><code class="docutils literal notranslate"><span class="pre">Coulomb_potential_data_no_deriv.ecp_flag</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.exponents"><code class="docutils literal notranslate"><span class="pre">Coulomb_potential_data_no_deriv.exponents</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.from_base"><code class="docutils literal notranslate"><span class="pre">Coulomb_potential_data_no_deriv.from_base()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.max_ang_mom_plus_1"><code class="docutils literal notranslate"><span class="pre">Coulomb_potential_data_no_deriv.max_ang_mom_plus_1</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.nucleus_index"><code class="docutils literal notranslate"><span class="pre">Coulomb_potential_data_no_deriv.nucleus_index</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.num_ecps"><code class="docutils literal notranslate"><span class="pre">Coulomb_potential_data_no_deriv.num_ecps</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.powers"><code class="docutils literal notranslate"><span class="pre">Coulomb_potential_data_no_deriv.powers</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.replace"><code class="docutils literal notranslate"><span class="pre">Coulomb_potential_data_no_deriv.replace()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.structure_data"><code class="docutils literal notranslate"><span class="pre">Coulomb_potential_data_no_deriv.structure_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.z_cores"><code class="docutils literal notranslate"><span class="pre">Coulomb_potential_data_no_deriv.z_cores</span></code></a></li>
-</ul>
-</li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.compute_bare_coulomb_potential_debug"><code class="docutils literal notranslate"><span class="pre">compute_bare_coulomb_potential_debug()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.compute_bare_coulomb_potential_el_el_jax"><code class="docutils literal notranslate"><span class="pre">compute_bare_coulomb_potential_el_el_jax()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.compute_bare_coulomb_potential_el_ion_element_wise_debug"><code class="docutils literal notranslate"><span class="pre">compute_bare_coulomb_potential_el_ion_element_wise_debug()</span></code></a></li>
@@ -570,6 +493,9 @@ document.write(`
 </li>
 <li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.determinant">jqmc.determinant module</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data"><code class="docutils literal notranslate"><span class="pre">Geminal_data</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.accumulate_position_grad"><code class="docutils literal notranslate"><span class="pre">Geminal_data.accumulate_position_grad()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.apply_block_update"><code class="docutils literal notranslate"><span class="pre">Geminal_data.apply_block_update()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.collect_param_grads"><code class="docutils literal notranslate"><span class="pre">Geminal_data.collect_param_grads()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.compute_orb_api"><code class="docutils literal notranslate"><span class="pre">Geminal_data.compute_orb_api</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.compute_orb_grad_api"><code class="docutils literal notranslate"><span class="pre">Geminal_data.compute_orb_grad_api</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.compute_orb_laplacian_api"><code class="docutils literal notranslate"><span class="pre">Geminal_data.compute_orb_laplacian_api</span></code></a></li>
@@ -588,46 +514,29 @@ document.write(`
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.sanity_check"><code class="docutils literal notranslate"><span class="pre">Geminal_data.sanity_check()</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_deriv_R"><code class="docutils literal notranslate"><span class="pre">Geminal_data_deriv_R</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_deriv_R.from_base"><code class="docutils literal notranslate"><span class="pre">Geminal_data_deriv_R.from_base()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_deriv_R.lambda_matrix"><code class="docutils literal notranslate"><span class="pre">Geminal_data_deriv_R.lambda_matrix</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_deriv_R.num_electron_dn"><code class="docutils literal notranslate"><span class="pre">Geminal_data_deriv_R.num_electron_dn</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_deriv_R.num_electron_up"><code class="docutils literal notranslate"><span class="pre">Geminal_data_deriv_R.num_electron_up</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_deriv_R.orb_data_dn_spin"><code class="docutils literal notranslate"><span class="pre">Geminal_data_deriv_R.orb_data_dn_spin</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_deriv_R.orb_data_up_spin"><code class="docutils literal notranslate"><span class="pre">Geminal_data_deriv_R.orb_data_up_spin</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_deriv_R.replace"><code class="docutils literal notranslate"><span class="pre">Geminal_data_deriv_R.replace()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_deriv_params"><code class="docutils literal notranslate"><span class="pre">Geminal_data_deriv_params</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_deriv_params.from_base"><code class="docutils literal notranslate"><span class="pre">Geminal_data_deriv_params.from_base()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_deriv_params.lambda_matrix"><code class="docutils literal notranslate"><span class="pre">Geminal_data_deriv_params.lambda_matrix</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_deriv_params.num_electron_dn"><code class="docutils literal notranslate"><span class="pre">Geminal_data_deriv_params.num_electron_dn</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_deriv_params.num_electron_up"><code class="docutils literal notranslate"><span class="pre">Geminal_data_deriv_params.num_electron_up</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_deriv_params.orb_data_dn_spin"><code class="docutils literal notranslate"><span class="pre">Geminal_data_deriv_params.orb_data_dn_spin</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_deriv_params.orb_data_up_spin"><code class="docutils literal notranslate"><span class="pre">Geminal_data_deriv_params.orb_data_up_spin</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_deriv_params.replace"><code class="docutils literal notranslate"><span class="pre">Geminal_data_deriv_params.replace()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_no_deriv"><code class="docutils literal notranslate"><span class="pre">Geminal_data_no_deriv</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_no_deriv.from_base"><code class="docutils literal notranslate"><span class="pre">Geminal_data_no_deriv.from_base()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_no_deriv.lambda_matrix"><code class="docutils literal notranslate"><span class="pre">Geminal_data_no_deriv.lambda_matrix</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_no_deriv.num_electron_dn"><code class="docutils literal notranslate"><span class="pre">Geminal_data_no_deriv.num_electron_dn</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_no_deriv.num_electron_up"><code class="docutils literal notranslate"><span class="pre">Geminal_data_no_deriv.num_electron_up</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_no_deriv.orb_data_dn_spin"><code class="docutils literal notranslate"><span class="pre">Geminal_data_no_deriv.orb_data_dn_spin</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_no_deriv.orb_data_up_spin"><code class="docutils literal notranslate"><span class="pre">Geminal_data_no_deriv.orb_data_up_spin</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data_no_deriv.replace"><code class="docutils literal notranslate"><span class="pre">Geminal_data_no_deriv.replace()</span></code></a></li>
-</ul>
-</li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.compute_AS_regularization_factor_debug"><code class="docutils literal notranslate"><span class="pre">compute_AS_regularization_factor_debug()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.compute_AS_regularization_factor_fast_update_jax"><code class="docutils literal notranslate"><span class="pre">compute_AS_regularization_factor_fast_update_jax()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.compute_AS_regularization_factor_jax"><code class="docutils literal notranslate"><span class="pre">compute_AS_regularization_factor_jax()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.compute_det_geminal_all_elements_debug"><code class="docutils literal notranslate"><span class="pre">compute_det_geminal_all_elements_debug()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.compute_det_geminal_all_elements_jax"><code class="docutils literal notranslate"><span class="pre">compute_det_geminal_all_elements_jax()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.compute_geminal_all_elements_debug"><code class="docutils literal notranslate"><span class="pre">compute_geminal_all_elements_debug()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.compute_geminal_all_elements_jax"><code class="docutils literal notranslate"><span class="pre">compute_geminal_all_elements_jax()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.compute_geminal_dn_one_column_elements_jax"><code class="docutils literal notranslate"><span class="pre">compute_geminal_dn_one_column_elements_jax()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.compute_geminal_up_one_row_elements_jax"><code class="docutils literal notranslate"><span class="pre">compute_geminal_up_one_row_elements_jax()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.compute_grads_and_laplacian_ln_Det_debug"><code class="docutils literal notranslate"><span class="pre">compute_grads_and_laplacian_ln_Det_debug()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.compute_grads_and_laplacian_ln_Det_jax"><code class="docutils literal notranslate"><span class="pre">compute_grads_and_laplacian_ln_Det_jax()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.compute_ratio_determinant_part_debug"><code class="docutils literal notranslate"><span class="pre">compute_ratio_determinant_part_debug()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.compute_ratio_determinant_part_jax"><code class="docutils literal notranslate"><span class="pre">compute_ratio_determinant_part_jax()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.diff_mask">jqmc.diff_mask module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.diff_mask.DiffMask"><code class="docutils literal notranslate"><span class="pre">DiffMask</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.diff_mask.DiffMask.coords"><code class="docutils literal notranslate"><span class="pre">DiffMask.coords</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.diff_mask.DiffMask.params"><code class="docutils literal notranslate"><span class="pre">DiffMask.params</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.diff_mask.DiffMask.update"><code class="docutils literal notranslate"><span class="pre">DiffMask.update()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.diff_mask.apply_diff_mask"><code class="docutils literal notranslate"><span class="pre">apply_diff_mask()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.function_collections">jqmc.function_collections module</a><ul>
@@ -636,43 +545,23 @@ document.write(`
 </li>
 <li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.hamiltonians">jqmc.hamiltonians module</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.accumulate_position_grad"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data.accumulate_position_grad()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.coulomb_potential_data"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data.coulomb_potential_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.dump"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data.dump()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.from_base"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data.from_base()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.get_info"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data.get_info()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.load"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data.load()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.load_from_hdf5"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data.load_from_hdf5()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.logger_info"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data.logger_info()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.replace"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data.replace()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.sanity_check"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data.sanity_check()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.save_to_hdf5"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data.save_to_hdf5()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.structure_data"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data.structure_data</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.wavefunction_data"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data.wavefunction_data</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_R"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data_deriv_R</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_R.coulomb_potential_data"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data_deriv_R.coulomb_potential_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_R.from_base"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data_deriv_R.from_base()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_R.replace"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data_deriv_R.replace()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_R.structure_data"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data_deriv_R.structure_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_R.wavefunction_data"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data_deriv_R.wavefunction_data</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_params"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data_deriv_params</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_params.coulomb_potential_data"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data_deriv_params.coulomb_potential_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_params.from_base"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data_deriv_params.from_base()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_params.replace"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data_deriv_params.replace()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_params.structure_data"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data_deriv_params.structure_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_params.wavefunction_data"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data_deriv_params.wavefunction_data</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_no_deriv"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data_no_deriv</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_no_deriv.coulomb_potential_data"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data_no_deriv.coulomb_potential_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_no_deriv.from_base"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data_no_deriv.from_base()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_no_deriv.replace"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data_no_deriv.replace()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_no_deriv.structure_data"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data_no_deriv.structure_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_no_deriv.wavefunction_data"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data_no_deriv.wavefunction_data</span></code></a></li>
-</ul>
-</li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.compute_local_energy_jax"><code class="docutils literal notranslate"><span class="pre">compute_local_energy_jax()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.load_dataclass_from_hdf5"><code class="docutils literal notranslate"><span class="pre">load_dataclass_from_hdf5()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.reconstruct_dataclass"><code class="docutils literal notranslate"><span class="pre">reconstruct_dataclass()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.save_dataclass_to_hdf5"><code class="docutils literal notranslate"><span class="pre">save_dataclass_to_hdf5()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.header_footer">jqmc.header_footer module</a><ul>
@@ -681,39 +570,41 @@ document.write(`
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.jastrow_factor">jqmc.jastrow_factor module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.cutoff"><code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data.cutoff</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.flat_shape"><code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data.flat_shape</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.flatten_fn"><code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data.flatten_fn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.get_info"><code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data.get_info()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.hidden_dim"><code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data.hidden_dim</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.init_from_structure"><code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data.init_from_structure()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.nn_def"><code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data.nn_def</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.num_layers"><code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data.num_layers</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.num_params"><code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data.num_params</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.num_rbf"><code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data.num_rbf</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.num_species"><code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data.num_species</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.params"><code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data.params</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.replace"><code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data.replace()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.shapes"><code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data.shapes</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.species_lookup"><code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data.species_lookup</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.species_values"><code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data.species_values</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.structure_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data.structure_data</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.treedef"><code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data.treedef</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.unflatten_fn"><code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data.unflatten_fn</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_data</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data.accumulate_position_grad"><code class="docutils literal notranslate"><span class="pre">Jastrow_data.accumulate_position_grad()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data.apply_block_update"><code class="docutils literal notranslate"><span class="pre">Jastrow_data.apply_block_update()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data.collect_param_grads"><code class="docutils literal notranslate"><span class="pre">Jastrow_data.collect_param_grads()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data.from_base"><code class="docutils literal notranslate"><span class="pre">Jastrow_data.from_base()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data.get_info"><code class="docutils literal notranslate"><span class="pre">Jastrow_data.get_info()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data.jastrow_nn_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_data.jastrow_nn_data</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data.jastrow_one_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_data.jastrow_one_body_data</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data.jastrow_three_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_data.jastrow_three_body_data</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data.jastrow_two_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_data.jastrow_two_body_data</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data.logger_info"><code class="docutils literal notranslate"><span class="pre">Jastrow_data.logger_info()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data.replace"><code class="docutils literal notranslate"><span class="pre">Jastrow_data.replace()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data.sanity_check"><code class="docutils literal notranslate"><span class="pre">Jastrow_data.sanity_check()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_R"><code class="docutils literal notranslate"><span class="pre">Jastrow_data_deriv_R</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_R.from_base"><code class="docutils literal notranslate"><span class="pre">Jastrow_data_deriv_R.from_base()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_R.jastrow_one_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_data_deriv_R.jastrow_one_body_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_R.jastrow_three_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_data_deriv_R.jastrow_three_body_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_R.jastrow_two_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_data_deriv_R.jastrow_two_body_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_R.replace"><code class="docutils literal notranslate"><span class="pre">Jastrow_data_deriv_R.replace()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_params"><code class="docutils literal notranslate"><span class="pre">Jastrow_data_deriv_params</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_params.from_base"><code class="docutils literal notranslate"><span class="pre">Jastrow_data_deriv_params.from_base()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_params.jastrow_one_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_data_deriv_params.jastrow_one_body_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_params.jastrow_three_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_data_deriv_params.jastrow_three_body_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_params.jastrow_two_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_data_deriv_params.jastrow_two_body_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_params.replace"><code class="docutils literal notranslate"><span class="pre">Jastrow_data_deriv_params.replace()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_no_deriv"><code class="docutils literal notranslate"><span class="pre">Jastrow_data_no_deriv</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_no_deriv.from_base"><code class="docutils literal notranslate"><span class="pre">Jastrow_data_no_deriv.from_base()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_no_deriv.jastrow_one_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_data_no_deriv.jastrow_one_body_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_no_deriv.jastrow_three_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_data_no_deriv.jastrow_three_body_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_no_deriv.jastrow_two_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_data_no_deriv.jastrow_two_body_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_no_deriv.replace"><code class="docutils literal notranslate"><span class="pre">Jastrow_data_no_deriv.replace()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_one_body_data</span></code></a><ul>
@@ -740,20 +631,6 @@ document.write(`
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data.sanity_check"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data.sanity_check()</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data_deriv_R"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data_deriv_R</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data_deriv_R.from_base"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data_deriv_R.from_base()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data_deriv_R.j_matrix"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data_deriv_R.j_matrix</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data_deriv_R.orb_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data_deriv_R.orb_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data_deriv_R.replace"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data_deriv_R.replace()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data_deriv_params"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data_deriv_params</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data_deriv_params.from_base"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data_deriv_params.from_base()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data_deriv_params.j_matrix"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data_deriv_params.j_matrix</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data_deriv_params.orb_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data_deriv_params.orb_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data_deriv_params.replace"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data_deriv_params.replace()</span></code></a></li>
-</ul>
-</li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_data</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data.get_info"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_data.get_info()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data.init_jastrow_two_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_data.init_jastrow_two_body_data()</span></code></a></li>
@@ -761,6 +638,22 @@ document.write(`
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data.logger_info"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_data.logger_info()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data.replace"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_data.replace()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data.sanity_check"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_data.sanity_check()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.NNJastrow"><code class="docutils literal notranslate"><span class="pre">NNJastrow</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.NNJastrow.PauliNetBlock"><code class="docutils literal notranslate"><span class="pre">NNJastrow.PauliNetBlock</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.NNJastrow.PhysNetRadialLayer"><code class="docutils literal notranslate"><span class="pre">NNJastrow.PhysNetRadialLayer</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.NNJastrow.TwoLayerMLP"><code class="docutils literal notranslate"><span class="pre">NNJastrow.TwoLayerMLP</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.NNJastrow.cutoff"><code class="docutils literal notranslate"><span class="pre">NNJastrow.cutoff</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.NNJastrow.hidden_dim"><code class="docutils literal notranslate"><span class="pre">NNJastrow.hidden_dim</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.NNJastrow.name"><code class="docutils literal notranslate"><span class="pre">NNJastrow.name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.NNJastrow.num_layers"><code class="docutils literal notranslate"><span class="pre">NNJastrow.num_layers</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.NNJastrow.num_rbf"><code class="docutils literal notranslate"><span class="pre">NNJastrow.num_rbf</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.NNJastrow.num_species"><code class="docutils literal notranslate"><span class="pre">NNJastrow.num_species</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.NNJastrow.parent"><code class="docutils literal notranslate"><span class="pre">NNJastrow.parent</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.NNJastrow.scope"><code class="docutils literal notranslate"><span class="pre">NNJastrow.scope</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.NNJastrow.setup"><code class="docutils literal notranslate"><span class="pre">NNJastrow.setup()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.NNJastrow.species_lookup"><code class="docutils literal notranslate"><span class="pre">NNJastrow.species_lookup</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.compute_Jastrow_one_body_debug"><code class="docutils literal notranslate"><span class="pre">compute_Jastrow_one_body_debug()</span></code></a></li>
@@ -862,15 +755,13 @@ document.write(`
 </li>
 <li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.jqmc_mcmc">jqmc.jqmc_mcmc module</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC"><code class="docutils literal notranslate"><span class="pre">MCMC</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.comput_param_deriv"><code class="docutils literal notranslate"><span class="pre">MCMC.comput_param_deriv</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.comput_position_deriv"><code class="docutils literal notranslate"><span class="pre">MCMC.comput_position_deriv</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.de_L_dR"><code class="docutils literal notranslate"><span class="pre">MCMC.de_L_dR</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.de_L_dr_dn"><code class="docutils literal notranslate"><span class="pre">MCMC.de_L_dr_dn</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.de_L_dr_up"><code class="docutils literal notranslate"><span class="pre">MCMC.de_L_dr_up</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.dln_Psi_dR"><code class="docutils literal notranslate"><span class="pre">MCMC.dln_Psi_dR</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.dln_Psi_dc_jas_1b"><code class="docutils literal notranslate"><span class="pre">MCMC.dln_Psi_dc_jas_1b</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.dln_Psi_dc_jas_1b3b"><code class="docutils literal notranslate"><span class="pre">MCMC.dln_Psi_dc_jas_1b3b</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.dln_Psi_dc_jas_2b"><code class="docutils literal notranslate"><span class="pre">MCMC.dln_Psi_dc_jas_2b</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.dln_Psi_dc_lambda_matrix"><code class="docutils literal notranslate"><span class="pre">MCMC.dln_Psi_dc_lambda_matrix</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.dln_Psi_dc"><code class="docutils literal notranslate"><span class="pre">MCMC.dln_Psi_dc</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.dln_Psi_dr_dn"><code class="docutils literal notranslate"><span class="pre">MCMC.dln_Psi_dr_dn</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.dln_Psi_dr_up"><code class="docutils literal notranslate"><span class="pre">MCMC.dln_Psi_dr_up</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.domega_dr_dn"><code class="docutils literal notranslate"><span class="pre">MCMC.domega_dr_dn</span></code></a></li>
@@ -886,9 +777,10 @@ document.write(`
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.num_walkers"><code class="docutils literal notranslate"><span class="pre">MCMC.num_walkers</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.omega_dn"><code class="docutils literal notranslate"><span class="pre">MCMC.omega_dn</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.omega_up"><code class="docutils literal notranslate"><span class="pre">MCMC.omega_up</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.opt_param_dict"><code class="docutils literal notranslate"><span class="pre">MCMC.opt_param_dict</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.param_gradient_flags"><code class="docutils literal notranslate"><span class="pre">MCMC.param_gradient_flags()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.run"><code class="docutils literal notranslate"><span class="pre">MCMC.run()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.run_optimize"><code class="docutils literal notranslate"><span class="pre">MCMC.run_optimize()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.set_param_gradient_flags"><code class="docutils literal notranslate"><span class="pre">MCMC.set_param_gradient_flags()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.w_L"><code class="docutils literal notranslate"><span class="pre">MCMC.w_L</span></code></a></li>
 </ul>
 </li>
@@ -897,10 +789,7 @@ document.write(`
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.de_L_dr_dn"><code class="docutils literal notranslate"><span class="pre">MCMC_debug.de_L_dr_dn</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.de_L_dr_up"><code class="docutils literal notranslate"><span class="pre">MCMC_debug.de_L_dr_up</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.dln_Psi_dR"><code class="docutils literal notranslate"><span class="pre">MCMC_debug.dln_Psi_dR</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.dln_Psi_dc_jas_1b"><code class="docutils literal notranslate"><span class="pre">MCMC_debug.dln_Psi_dc_jas_1b</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.dln_Psi_dc_jas_1b3b"><code class="docutils literal notranslate"><span class="pre">MCMC_debug.dln_Psi_dc_jas_1b3b</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.dln_Psi_dc_jas_2b"><code class="docutils literal notranslate"><span class="pre">MCMC_debug.dln_Psi_dc_jas_2b</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.dln_Psi_dc_lambda_matrix"><code class="docutils literal notranslate"><span class="pre">MCMC_debug.dln_Psi_dc_lambda_matrix</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.dln_Psi_dc"><code class="docutils literal notranslate"><span class="pre">MCMC_debug.dln_Psi_dc</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.dln_Psi_dr_dn"><code class="docutils literal notranslate"><span class="pre">MCMC_debug.dln_Psi_dr_dn</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.dln_Psi_dr_up"><code class="docutils literal notranslate"><span class="pre">MCMC_debug.dln_Psi_dr_up</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.domega_dr_dn"><code class="docutils literal notranslate"><span class="pre">MCMC_debug.domega_dr_dn</span></code></a></li>
@@ -914,7 +803,9 @@ document.write(`
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.num_walkers"><code class="docutils literal notranslate"><span class="pre">MCMC_debug.num_walkers</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.omega_dn"><code class="docutils literal notranslate"><span class="pre">MCMC_debug.omega_dn</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.omega_up"><code class="docutils literal notranslate"><span class="pre">MCMC_debug.omega_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.param_gradient_flags"><code class="docutils literal notranslate"><span class="pre">MCMC_debug.param_gradient_flags()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.run"><code class="docutils literal notranslate"><span class="pre">MCMC_debug.run()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.set_param_gradient_flags"><code class="docutils literal notranslate"><span class="pre">MCMC_debug.set_param_gradient_flags()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.w_L"><code class="docutils literal notranslate"><span class="pre">MCMC_debug.w_L</span></code></a></li>
 </ul>
 </li>
@@ -928,7 +819,6 @@ document.write(`
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.hamiltonian_convert_wavefunction"><code class="docutils literal notranslate"><span class="pre">hamiltonian_convert_wavefunction()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.hamiltonian_fix"><code class="docutils literal notranslate"><span class="pre">hamiltonian_fix()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.hamiltonian_show_info"><code class="docutils literal notranslate"><span class="pre">hamiltonian_show_info()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.hamiltonian_to_xyz"><code class="docutils literal notranslate"><span class="pre">hamiltonian_to_xyz()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.lrdmc_chk_fix"><code class="docutils literal notranslate"><span class="pre">lrdmc_chk_fix()</span></code></a></li>
@@ -945,6 +835,7 @@ document.write(`
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.orbital_type.ao_medium"><code class="docutils literal notranslate"><span class="pre">orbital_type.ao_medium</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.orbital_type.ao_small"><code class="docutils literal notranslate"><span class="pre">orbital_type.ao_small</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.orbital_type.mo"><code class="docutils literal notranslate"><span class="pre">orbital_type.mo</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.orbital_type.none"><code class="docutils literal notranslate"><span class="pre">orbital_type.none</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.trexio_convert_to"><code class="docutils literal notranslate"><span class="pre">trexio_convert_to()</span></code></a></li>
@@ -976,22 +867,6 @@ document.write(`
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.MOs_data.replace"><code class="docutils literal notranslate"><span class="pre">MOs_data.replace()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.MOs_data.sanity_check"><code class="docutils literal notranslate"><span class="pre">MOs_data.sanity_check()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.MOs_data.structure_data"><code class="docutils literal notranslate"><span class="pre">MOs_data.structure_data</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.MOs_data_deriv_R"><code class="docutils literal notranslate"><span class="pre">MOs_data_deriv_R</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.MOs_data_deriv_R.aos_data"><code class="docutils literal notranslate"><span class="pre">MOs_data_deriv_R.aos_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.MOs_data_deriv_R.from_base"><code class="docutils literal notranslate"><span class="pre">MOs_data_deriv_R.from_base()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.MOs_data_deriv_R.mo_coefficients"><code class="docutils literal notranslate"><span class="pre">MOs_data_deriv_R.mo_coefficients</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.MOs_data_deriv_R.num_mo"><code class="docutils literal notranslate"><span class="pre">MOs_data_deriv_R.num_mo</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.MOs_data_deriv_R.replace"><code class="docutils literal notranslate"><span class="pre">MOs_data_deriv_R.replace()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.MOs_data_no_deriv"><code class="docutils literal notranslate"><span class="pre">MOs_data_no_deriv</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.MOs_data_no_deriv.aos_data"><code class="docutils literal notranslate"><span class="pre">MOs_data_no_deriv.aos_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.MOs_data_no_deriv.from_base"><code class="docutils literal notranslate"><span class="pre">MOs_data_no_deriv.from_base()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.MOs_data_no_deriv.mo_coefficients"><code class="docutils literal notranslate"><span class="pre">MOs_data_no_deriv.mo_coefficients</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.MOs_data_no_deriv.num_mo"><code class="docutils literal notranslate"><span class="pre">MOs_data_no_deriv.num_mo</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.MOs_data_no_deriv.replace"><code class="docutils literal notranslate"><span class="pre">MOs_data_no_deriv.replace()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.compute_MO"><code class="docutils literal notranslate"><span class="pre">compute_MO()</span></code></a></li>
@@ -1064,35 +939,30 @@ document.write(`
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.wavefunction">jqmc.wavefunction module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.VariationalParameterBlock"><code class="docutils literal notranslate"><span class="pre">VariationalParameterBlock</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.VariationalParameterBlock.apply_update"><code class="docutils literal notranslate"><span class="pre">VariationalParameterBlock.apply_update()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.VariationalParameterBlock.name"><code class="docutils literal notranslate"><span class="pre">VariationalParameterBlock.name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.VariationalParameterBlock.replace"><code class="docutils literal notranslate"><span class="pre">VariationalParameterBlock.replace()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.VariationalParameterBlock.shape"><code class="docutils literal notranslate"><span class="pre">VariationalParameterBlock.shape</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.VariationalParameterBlock.size"><code class="docutils literal notranslate"><span class="pre">VariationalParameterBlock.size</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.VariationalParameterBlock.values"><code class="docutils literal notranslate"><span class="pre">VariationalParameterBlock.values</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data.accumulate_position_grad"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data.accumulate_position_grad()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data.apply_block_updates"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data.apply_block_updates()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data.collect_param_grads"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data.collect_param_grads()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data.flatten_param_grads"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data.flatten_param_grads()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data.from_base"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data.from_base()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data.geminal_data"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data.geminal_data</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data.get_info"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data.get_info()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data.get_variational_blocks"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data.get_variational_blocks()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data.jastrow_data"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data.jastrow_data</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data.logger_info"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data.logger_info()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data.replace"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data.replace()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data.sanity_check"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data.sanity_check()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data_deriv_R"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data_deriv_R</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data_deriv_R.from_base"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data_deriv_R.from_base()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data_deriv_R.geminal_data"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data_deriv_R.geminal_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data_deriv_R.jastrow_data"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data_deriv_R.jastrow_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data_deriv_R.replace"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data_deriv_R.replace()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data_deriv_params"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data_deriv_params</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data_deriv_params.from_base"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data_deriv_params.from_base()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data_deriv_params.geminal_data"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data_deriv_params.geminal_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data_deriv_params.jastrow_data"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data_deriv_params.jastrow_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data_deriv_params.replace"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data_deriv_params.replace()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data_no_deriv"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data_no_deriv</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data_no_deriv.from_base"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data_no_deriv.from_base()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data_no_deriv.geminal_data"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data_no_deriv.geminal_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data_no_deriv.jastrow_data"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data_no_deriv.jastrow_data</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data_no_deriv.replace"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data_no_deriv.replace()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data.with_diff_mask"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data.with_diff_mask()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.Wavefunction_data.with_param_grad_mask"><code class="docutils literal notranslate"><span class="pre">Wavefunction_data.with_param_grad_mask()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.compute_discretized_kinetic_energy_debug"><code class="docutils literal notranslate"><span class="pre">compute_discretized_kinetic_energy_debug()</span></code></a></li>
@@ -1129,24 +999,6 @@ document.write(`
                 <footer class="prev-next-footer d-print-none">
                   
 <div class="prev-next-area">
-    <a class="left-prev"
-       href="notes/trexio.html"
-       title="previous page">
-      <i class="fa-solid fa-angle-left"></i>
-      <div class="prev-next-info">
-        <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Interfaces with TREX-IO</p>
-      </div>
-    </a>
-    <a class="right-next"
-       href="jqmc.html"
-       title="next page">
-      <div class="prev-next-info">
-        <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">jqmc package</p>
-      </div>
-      <i class="fa-solid fa-angle-right"></i>
-    </a>
 </div>
                 </footer>
               
@@ -1173,7 +1025,7 @@ By Kosuke Nakano
 
   <p class="copyright">
     
-      © Copyright 2025, Kosuke Nakano.
+      © Copyright 2026, Kosuke Nakano.
       <br/>
     
   </p>

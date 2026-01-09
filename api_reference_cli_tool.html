@@ -1,0 +1,690 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="./" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>API reference for the command-line tool (jqmc-tool) &#8212; jQMC v0.1.0a0</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+
+  
+  <link href="_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/sphinx-book-theme.css?v=eba8b062" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
+<link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
+  <script src="_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+    <script src="_static/documentation_options.js?v=f502e871"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
+    <script>window.MathJax = {"options": {"processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'api_reference_cli_tool';</script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="How to cite jQMC" href="citation.html" />
+    <link rel="prev" title="API reference for the command-line interface (jqmc)" href="api_reference_cli.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-primary-sidebar-checkbox"/>
+  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-secondary-sidebar-checkbox"/>
+  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search..."
+         aria-label="Search..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">jQMC v0.1.0a0</p>
+  
+</a></div>
+        <div class="sidebar-primary-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/kousuke-nakano/jQMC" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+        <div class="sidebar-primary-item">
+
+ <script>
+ document.write(`
+   <button class="btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script></div>
+        <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
+    <div class="bd-toc-item navbar-nav active">
+        <ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="notes/technical_notes.html">Technical notes</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="notes/ao.html">Atomic orbitals (AOs) and Basis sets</a></li>
+<li class="toctree-l2"><a class="reference internal" href="notes/wavefunction.html">Wave functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="notes/vmc.html">Variational Monte Carlo (VMC)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="notes/lrdmc.html">Lattice Regularized Diffusion Monte Carlo (LRDMC)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="notes/atomic-forces.html">Atomic forces calculations by VMC and LRDMC</a></li>
+<li class="toctree-l2"><a class="reference internal" href="notes/jax.html">JAX compatible modules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="notes/trexio.html">Interfaces with TREX-IO</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference_cli.html">API reference for the command-line interface (jqmc)</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">API reference for the command-line tool (jqmc-tool)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="citation.html">How to cite jQMC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reference.html">References</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Change Log</a></li>
+</ul>
+
+    </div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+
+<div class="sbt-scroll-pixel-helper"></div>
+
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item"><button class="sidebar-toggle primary-toggle btn btn-sm" title="Toggle primary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <span class="fa-solid fa-bars"></span>
+</button></div>
+      
+    </div>
+  
+  
+    <div class="header-article-items__end">
+      
+        <div class="header-article-item">
+
+<div class="article-header-buttons">
+
+
+
+
+
+<div class="dropdown dropdown-download-buttons">
+  <button class="btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Download this page">
+    <i class="fas fa-download"></i>
+  </button>
+  <ul class="dropdown-menu">
+      
+      
+      
+      <li><a href="_sources/api_reference_cli_tool.md" target="_blank"
+   class="btn btn-sm btn-download-source-button dropdown-item"
+   title="Download source file"
+   data-bs-placement="left" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-file"></i>
+  </span>
+<span class="btn__text-container">.md</span>
+</a>
+</li>
+      
+      
+      
+      
+      <li>
+<button onclick="window.print()"
+  class="btn btn-sm btn-download-pdf-button dropdown-item"
+  title="Print to PDF"
+  data-bs-placement="left" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-file-pdf"></i>
+  </span>
+<span class="btn__text-container">.pdf</span>
+</button>
+</li>
+      
+  </ul>
+</div>
+
+
+
+
+<button onclick="toggleFullScreen()"
+  class="btn btn-sm btn-fullscreen-button"
+  title="Fullscreen mode"
+  data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-expand"></i>
+  </span>
+
+</button>
+
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
+  </button>
+`);
+</script>
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm pst-navbar-icon search-button search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass fa-lg"></i>
+  </button>
+`);
+</script>
+<button class="sidebar-toggle secondary-toggle btn btn-sm" title="Toggle secondary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="fa-solid fa-list"></span>
+</button>
+</div></div>
+      
+    </div>
+  
+</div>
+</div>
+              
+              
+
+<div id="jb-print-docs-body" class="onlyprint">
+    <h1>API reference for the command-line tool (jqmc-tool)</h1>
+    <!-- Table of contents -->
+    <div id="print-main-content">
+        <div id="jb-print-toc">
+            
+            <div>
+                <h2> Contents </h2>
+            </div>
+            <nav aria-label="Page">
+                <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#trexio-group"><code class="docutils literal notranslate"><span class="pre">trexio</span></code> group</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#show-info"><code class="docutils literal notranslate"><span class="pre">show-info</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#show-detail"><code class="docutils literal notranslate"><span class="pre">show-detail</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#convert-to"><code class="docutils literal notranslate"><span class="pre">convert-to</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#hamiltonian-group"><code class="docutils literal notranslate"><span class="pre">hamiltonian</span></code> group</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id1"><code class="docutils literal notranslate"><span class="pre">show-info</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#to-xyz"><code class="docutils literal notranslate"><span class="pre">to-xyz</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#conv-wf"><code class="docutils literal notranslate"><span class="pre">conv-wf</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#vmc-group-pre-post-utilities"><code class="docutils literal notranslate"><span class="pre">vmc</span></code> group (pre/post utilities)</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#fix-legacy"><code class="docutils literal notranslate"><span class="pre">fix</span></code> (legacy)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#generate-input"><code class="docutils literal notranslate"><span class="pre">generate-input</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#analyze-output"><code class="docutils literal notranslate"><span class="pre">analyze-output</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#mcmc-group-pre-post-utilities"><code class="docutils literal notranslate"><span class="pre">mcmc</span></code> group (pre/post utilities)</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id2"><code class="docutils literal notranslate"><span class="pre">fix</span></code> (legacy)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#compute-energy"><code class="docutils literal notranslate"><span class="pre">compute-energy</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id3"><code class="docutils literal notranslate"><span class="pre">generate-input</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#lrdmc-group-pre-post-utilities"><code class="docutils literal notranslate"><span class="pre">lrdmc</span></code> group (pre/post utilities)</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id4"><code class="docutils literal notranslate"><span class="pre">fix</span></code> (legacy)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id5"><code class="docutils literal notranslate"><span class="pre">compute-energy</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#extrapolate-energy"><code class="docutils literal notranslate"><span class="pre">extrapolate-energy</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id6"><code class="docutils literal notranslate"><span class="pre">generate-input</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#notes-on-variational-parameters-when-nn-jastrow-is-enabled">Notes on variational parameters (when NN Jastrow is enabled)</a></li>
+</ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section class="tex2jax_ignore mathjax_ignore" id="api-reference-for-the-command-line-tool-jqmc-tool">
+<span id="api-reference-cli-tool-link"></span><h1>API reference for the command-line tool (jqmc-tool)<a class="headerlink" href="#api-reference-for-the-command-line-tool-jqmc-tool" title="Link to this heading">#</a></h1>
+<p><code class="docutils literal notranslate"><span class="pre">jqmc-tool</span></code> provides ancillary CLI utilities for TREXIO conversion, Hamiltonian inspection/conversion, and pre/post-processing of VMC/MCMC/LRDMC workflows. Typical invocation:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>jqmc-tool<span class="w"> </span>&lt;group&gt;<span class="w"> </span>&lt;command&gt;<span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+<span class="c1"># or, module-style</span>
+python<span class="w"> </span>-m<span class="w"> </span>jqmc.jqmc_tool<span class="w"> </span>&lt;group&gt;<span class="w"> </span>&lt;command&gt;<span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</pre></div>
+</div>
+<p>Groups: <code class="docutils literal notranslate"><span class="pre">trexio</span></code>, <code class="docutils literal notranslate"><span class="pre">hamiltonian</span></code>, <code class="docutils literal notranslate"><span class="pre">vmc</span></code>, <code class="docutils literal notranslate"><span class="pre">mcmc</span></code>, <code class="docutils literal notranslate"><span class="pre">lrdmc</span></code>.</p>
+<hr class="docutils" />
+<section id="trexio-group">
+<h2><code class="docutils literal notranslate"><span class="pre">trexio</span></code> group<a class="headerlink" href="#trexio-group" title="Link to this heading">#</a></h2>
+<section id="show-info">
+<h3><code class="docutils literal notranslate"><span class="pre">show-info</span></code><a class="headerlink" href="#show-info" title="Link to this heading">#</a></h3>
+<p>Show concise metadata stored in a TREXIO file.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">jqmc</span><span class="o">-</span><span class="n">tool</span> <span class="n">trexio</span> <span class="n">show</span><span class="o">-</span><span class="n">info</span> <span class="o">&lt;</span><span class="n">filename</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">filename</span></code> (arg): TREXIO file.</p></li>
+</ul>
+</section>
+<section id="show-detail">
+<h3><code class="docutils literal notranslate"><span class="pre">show-detail</span></code><a class="headerlink" href="#show-detail" title="Link to this heading">#</a></h3>
+<p>Dump full objects (structure, AOs, MOs, geminal, Coulomb).</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">jqmc</span><span class="o">-</span><span class="n">tool</span> <span class="n">trexio</span> <span class="n">show</span><span class="o">-</span><span class="n">detail</span> <span class="o">&lt;</span><span class="n">filename</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">filename</span></code> (arg): TREXIO file.</p></li>
+</ul>
+</section>
+<section id="convert-to">
+<h3><code class="docutils literal notranslate"><span class="pre">convert-to</span></code><a class="headerlink" href="#convert-to" title="Link to this heading">#</a></h3>
+<p>Convert TREXIO to <code class="docutils literal notranslate"><span class="pre">hamiltonian_data.h5</span></code> with optional Jastrow setup.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">jqmc</span><span class="o">-</span><span class="n">tool</span> <span class="n">trexio</span> <span class="n">convert</span><span class="o">-</span><span class="n">to</span> <span class="o">&lt;</span><span class="n">trexio_file</span><span class="o">&gt;</span> <span class="p">[</span><span class="n">options</span><span class="p">]</span>
+</pre></div>
+</div>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">-o,</span> <span class="pre">--output</span></code> (str, default <code class="docutils literal notranslate"><span class="pre">hamiltonian_data.h5</span></code>): Output filename.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-j1,</span> <span class="pre">--jastrow-1b-parameter</span></code> (float|None): J1 parameter. If set and ECP is present, core electrons are taken from ECP; otherwise zeroed.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-j2,</span> <span class="pre">--jastrow-2b-parameter</span></code> (float|None): J2 parameter.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-j3,</span> <span class="pre">--jastrow-3b-basis-set-type</span></code> (<code class="docutils literal notranslate"><span class="pre">ao|ao-full|ao-small|ao-medium|ao-large|mo|none</span></code>, default <code class="docutils literal notranslate"><span class="pre">none</span></code>): Choose J3 basis; <code class="docutils literal notranslate"><span class="pre">ao-*</span></code> trims AOs by key exponent grouping, <code class="docutils literal notranslate"><span class="pre">mo</span></code> uses MOs, <code class="docutils literal notranslate"><span class="pre">none</span></code> disables J3.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-j-nn-type,</span> <span class="pre">--jastrow-nn-type</span></code> (str|None): Add NN Jastrow (e.g., <code class="docutils literal notranslate"><span class="pre">schnet</span></code>).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-jp,</span> <span class="pre">--jastrow-nn-param</span></code> (repeatable <code class="docutils literal notranslate"><span class="pre">key=value</span></code>): Hyperparameters forwarded to <code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data.init_from_structure</span></code>; supported keys (type, default): <code class="docutils literal notranslate"><span class="pre">hidden_dim</span> <span class="pre">(int,</span> <span class="pre">64)</span></code>, <code class="docutils literal notranslate"><span class="pre">num_layers</span> <span class="pre">(int,</span> <span class="pre">3)</span></code>, <code class="docutils literal notranslate"><span class="pre">num_rbf</span> <span class="pre">(int,</span> <span class="pre">16)</span></code>, <code class="docutils literal notranslate"><span class="pre">cutoff</span> <span class="pre">(float,</span> <span class="pre">5.0)</span></code>.</p></li>
+</ul>
+<p>Outputs an HDF5 <code class="docutils literal notranslate"><span class="pre">Hamiltonian_data</span></code> with Jastrow/Geminal embedded.</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="hamiltonian-group">
+<h2><code class="docutils literal notranslate"><span class="pre">hamiltonian</span></code> group<a class="headerlink" href="#hamiltonian-group" title="Link to this heading">#</a></h2>
+<section id="id1">
+<h3><code class="docutils literal notranslate"><span class="pre">show-info</span></code><a class="headerlink" href="#id1" title="Link to this heading">#</a></h3>
+<p>Print metadata from an existing Hamiltonian HDF5/checkpoint.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">jqmc</span><span class="o">-</span><span class="n">tool</span> <span class="n">hamiltonian</span> <span class="n">show</span><span class="o">-</span><span class="n">info</span> <span class="o">&lt;</span><span class="n">hamiltonian_data</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+</section>
+<section id="to-xyz">
+<h3><code class="docutils literal notranslate"><span class="pre">to-xyz</span></code><a class="headerlink" href="#to-xyz" title="Link to this heading">#</a></h3>
+<p>Export nuclear geometry to XYZ (Bohr -&gt; Å).</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">jqmc</span><span class="o">-</span><span class="n">tool</span> <span class="n">hamiltonian</span> <span class="n">to</span><span class="o">-</span><span class="n">xyz</span> <span class="o">&lt;</span><span class="n">hamiltonian_data</span><span class="o">&gt;</span> <span class="p">[</span><span class="o">-</span><span class="n">o</span> <span class="n">struct</span><span class="o">.</span><span class="n">xyz</span><span class="p">]</span>
+</pre></div>
+</div>
+</section>
+<section id="conv-wf">
+<h3><code class="docutils literal notranslate"><span class="pre">conv-wf</span></code><a class="headerlink" href="#conv-wf" title="Link to this heading">#</a></h3>
+<p>Convert wavefunction ansatz inside a Hamiltonian file.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">jqmc</span><span class="o">-</span><span class="n">tool</span> <span class="n">hamiltonian</span> <span class="n">conv</span><span class="o">-</span><span class="n">wf</span> <span class="o">&lt;</span><span class="n">hamiltonian_data</span><span class="o">&gt;</span> <span class="o">-</span><span class="n">c</span> <span class="p">{</span><span class="n">jsd</span><span class="o">|</span><span class="n">jagp</span><span class="p">}</span> <span class="p">[</span><span class="o">-</span><span class="n">o</span> <span class="n">output</span><span class="o">.</span><span class="n">h5</span><span class="p">]</span>
+</pre></div>
+</div>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">-c,</span> <span class="pre">--convert-to</span></code>: <code class="docutils literal notranslate"><span class="pre">jagp</span></code> converts SD→AGP (AOs); <code class="docutils literal notranslate"><span class="pre">jsd</span></code> is not implemented.</p></li>
+</ul>
+</section>
+</section>
+<hr class="docutils" />
+<section id="vmc-group-pre-post-utilities">
+<h2><code class="docutils literal notranslate"><span class="pre">vmc</span></code> group (pre/post utilities)<a class="headerlink" href="#vmc-group-pre-post-utilities" title="Link to this heading">#</a></h2>
+<section id="fix-legacy">
+<h3><code class="docutils literal notranslate"><span class="pre">fix</span></code> (legacy)<a class="headerlink" href="#fix-legacy" title="Link to this heading">#</a></h3>
+<p>Rewrite <code class="docutils literal notranslate"><span class="pre">vmc.chk</span></code> archives to per-rank gzip members; creates <code class="docutils literal notranslate"><span class="pre">bak_&lt;chk&gt;</span></code> backup.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">jqmc</span><span class="o">-</span><span class="n">tool</span> <span class="n">vmc</span> <span class="n">fix</span> <span class="o">&lt;</span><span class="n">restart_chk</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+</section>
+<section id="generate-input">
+<h3><code class="docutils literal notranslate"><span class="pre">generate-input</span></code><a class="headerlink" href="#generate-input" title="Link to this heading">#</a></h3>
+<p>Emit a VMC <code class="docutils literal notranslate"><span class="pre">toml</span></code> template (sets <code class="docutils literal notranslate"><span class="pre">control.job_type</span> <span class="pre">=</span> <span class="pre">&quot;vmc&quot;</span></code>).</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">jqmc</span><span class="o">-</span><span class="n">tool</span> <span class="n">vmc</span> <span class="n">generate</span><span class="o">-</span><span class="nb">input</span> <span class="o">-</span><span class="n">g</span> <span class="p">[</span><span class="o">-</span><span class="n">f</span> <span class="n">vmc</span><span class="o">.</span><span class="n">toml</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">without</span><span class="o">-</span><span class="n">comment</span><span class="p">]</span>
+</pre></div>
+</div>
+</section>
+<section id="analyze-output">
+<h3><code class="docutils literal notranslate"><span class="pre">analyze-output</span></code><a class="headerlink" href="#analyze-output" title="Link to this heading">#</a></h3>
+<p>Parse VMC optimization logs (energies, |f|, signal-to-noise) and optionally plot.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">jqmc</span><span class="o">-</span><span class="n">tool</span> <span class="n">vmc</span> <span class="n">analyze</span><span class="o">-</span><span class="n">output</span> <span class="o">&lt;</span><span class="n">log</span><span class="o">...&gt;</span> <span class="p">[</span><span class="o">-</span><span class="n">p</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">save</span><span class="o">-</span><span class="n">graph</span> <span class="n">file</span><span class="p">]</span>
+</pre></div>
+</div>
+</section>
+</section>
+<hr class="docutils" />
+<section id="mcmc-group-pre-post-utilities">
+<h2><code class="docutils literal notranslate"><span class="pre">mcmc</span></code> group (pre/post utilities)<a class="headerlink" href="#mcmc-group-pre-post-utilities" title="Link to this heading">#</a></h2>
+<section id="id2">
+<h3><code class="docutils literal notranslate"><span class="pre">fix</span></code> (legacy)<a class="headerlink" href="#id2" title="Link to this heading">#</a></h3>
+<p>Rewrite <code class="docutils literal notranslate"><span class="pre">mcmc.chk</span></code> archives to per-rank gzip members; creates <code class="docutils literal notranslate"><span class="pre">bak_&lt;chk&gt;</span></code> backup.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">jqmc</span><span class="o">-</span><span class="n">tool</span> <span class="n">mcmc</span> <span class="n">fix</span> <span class="o">&lt;</span><span class="n">restart_chk</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+</section>
+<section id="compute-energy">
+<h3><code class="docutils literal notranslate"><span class="pre">compute-energy</span></code><a class="headerlink" href="#compute-energy" title="Link to this heading">#</a></h3>
+<p>Jackknife estimator of VMC energy from an MCMC restart archive.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">jqmc</span><span class="o">-</span><span class="n">tool</span> <span class="n">mcmc</span> <span class="n">compute</span><span class="o">-</span><span class="n">energy</span> <span class="o">&lt;</span><span class="n">restart_chk</span><span class="o">&gt;</span> <span class="p">[</span><span class="o">-</span><span class="n">b</span> <span class="n">N</span><span class="p">]</span> <span class="p">[</span><span class="o">-</span><span class="n">w</span> <span class="n">W</span><span class="p">]</span>
+</pre></div>
+</div>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">-b,</span> <span class="pre">--num_mcmc_bin_blocks</span></code> (int, default 1): Binning blocks per MPI × walker; total blocks = <code class="docutils literal notranslate"><span class="pre">b</span> <span class="pre">*</span> <span class="pre">mpi_size</span> <span class="pre">*</span> <span class="pre">walkers</span></code>. Must be ≥ <code class="docutils literal notranslate"><span class="pre">MCMC_MIN_BIN_BLOCKS</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-w,</span> <span class="pre">--num_mcmc_warmup_steps</span></code> (int, default 0): Discarded warmup measurements; must be ≥ <code class="docutils literal notranslate"><span class="pre">MCMC_MIN_WARMUP_STEPS</span></code>.</p></li>
+</ul>
+</section>
+<section id="id3">
+<h3><code class="docutils literal notranslate"><span class="pre">generate-input</span></code><a class="headerlink" href="#id3" title="Link to this heading">#</a></h3>
+<p>Emit an MCMC <code class="docutils literal notranslate"><span class="pre">toml</span></code> template (sets <code class="docutils literal notranslate"><span class="pre">control.job_type</span> <span class="pre">=</span> <span class="pre">&quot;mcmc&quot;</span></code>).</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">jqmc</span><span class="o">-</span><span class="n">tool</span> <span class="n">mcmc</span> <span class="n">generate</span><span class="o">-</span><span class="nb">input</span> <span class="o">-</span><span class="n">g</span> <span class="p">[</span><span class="o">-</span><span class="n">f</span> <span class="n">mcmc</span><span class="o">.</span><span class="n">toml</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">without</span><span class="o">-</span><span class="n">comment</span><span class="p">]</span>
+</pre></div>
+</div>
+</section>
+</section>
+<hr class="docutils" />
+<section id="lrdmc-group-pre-post-utilities">
+<h2><code class="docutils literal notranslate"><span class="pre">lrdmc</span></code> group (pre/post utilities)<a class="headerlink" href="#lrdmc-group-pre-post-utilities" title="Link to this heading">#</a></h2>
+<section id="id4">
+<h3><code class="docutils literal notranslate"><span class="pre">fix</span></code> (legacy)<a class="headerlink" href="#id4" title="Link to this heading">#</a></h3>
+<p>Rewrite <code class="docutils literal notranslate"><span class="pre">lrdmc.chk</span></code> archives to per-rank gzip members; creates <code class="docutils literal notranslate"><span class="pre">bak_&lt;chk&gt;</span></code> backup.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">jqmc</span><span class="o">-</span><span class="n">tool</span> <span class="n">lrdmc</span> <span class="n">fix</span> <span class="o">&lt;</span><span class="n">restart_chk</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+</section>
+<section id="id5">
+<h3><code class="docutils literal notranslate"><span class="pre">compute-energy</span></code><a class="headerlink" href="#id5" title="Link to this heading">#</a></h3>
+<p>Jackknife estimator of LRDMC energy from an LRDMC restart archive.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">jqmc</span><span class="o">-</span><span class="n">tool</span> <span class="n">lrdmc</span> <span class="n">compute</span><span class="o">-</span><span class="n">energy</span> <span class="o">&lt;</span><span class="n">restart_chk</span><span class="o">&gt;</span> <span class="p">[</span><span class="o">-</span><span class="n">b</span> <span class="n">N</span><span class="p">]</span> <span class="p">[</span><span class="o">-</span><span class="n">w</span> <span class="n">W</span><span class="p">]</span> <span class="p">[</span><span class="o">-</span><span class="n">c</span> <span class="n">C</span><span class="p">]</span>
+</pre></div>
+</div>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">-b,</span> <span class="pre">--num_gfmc_bin_blocks</span></code> (int, default 5): Binning blocks per MPI × walker (note: total blocks = <code class="docutils literal notranslate"><span class="pre">b</span></code>, not multiplied by ranks × walkers). Must be ≥ <code class="docutils literal notranslate"><span class="pre">GFMC_MIN_BIN_BLOCKS</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-w,</span> <span class="pre">--num_gfmc_warmup_steps</span></code> (int, default 0): Discarded warmup steps; must be ≥ <code class="docutils literal notranslate"><span class="pre">GFMC_MIN_WARMUP_STEPS</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-c,</span> <span class="pre">--num_gfmc_collect_steps</span></code> (int, default 5): Pre-binning measurements used to collect weights; must be ≥ <code class="docutils literal notranslate"><span class="pre">GFMC_MIN_COLLECT_STEPS</span></code>.</p></li>
+</ul>
+</section>
+<section id="extrapolate-energy">
+<h3><code class="docutils literal notranslate"><span class="pre">extrapolate-energy</span></code><a class="headerlink" href="#extrapolate-energy" title="Link to this heading">#</a></h3>
+<p>Fit energy vs <span class="math notranslate nohighlight">\(a^2\)</span> from multiple LRDMC restart archives and extrapolate <span class="math notranslate nohighlight">\(a\to 0\)</span>.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">jqmc</span><span class="o">-</span><span class="n">tool</span> <span class="n">lrdmc</span> <span class="n">extrapolate</span><span class="o">-</span><span class="n">energy</span> <span class="o">&lt;</span><span class="n">restart_chk</span><span class="o">...&gt;</span> <span class="p">[</span><span class="o">-</span><span class="n">p</span> <span class="n">order</span><span class="p">]</span> <span class="p">[</span><span class="o">-</span><span class="n">b</span> <span class="n">N</span><span class="p">]</span> <span class="p">[</span><span class="o">-</span><span class="n">w</span> <span class="n">W</span><span class="p">]</span> <span class="p">[</span><span class="o">-</span><span class="n">c</span> <span class="n">C</span><span class="p">]</span> <span class="p">[</span><span class="o">-</span><span class="n">g</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">save</span><span class="o">-</span><span class="n">graph</span> <span class="n">file</span><span class="p">]</span>
+</pre></div>
+</div>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">-p,</span> <span class="pre">--polynomial-order</span></code> (int, default 2): Fit <span class="math notranslate nohighlight">\(E(a^2) = E_0 + a^2 E_2 + a^4 E_4 + \dots\)</span>.</p></li>
+<li><p>Other options as in <code class="docutils literal notranslate"><span class="pre">compute-energy</span></code>.</p></li>
+</ul>
+</section>
+<section id="id6">
+<h3><code class="docutils literal notranslate"><span class="pre">generate-input</span></code><a class="headerlink" href="#id6" title="Link to this heading">#</a></h3>
+<p>Emit an LRDMC <code class="docutils literal notranslate"><span class="pre">toml</span></code> template (sets <code class="docutils literal notranslate"><span class="pre">control.job_type</span> <span class="pre">=</span> <span class="pre">&quot;lrdmc&quot;</span></code>).</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">jqmc</span><span class="o">-</span><span class="n">tool</span> <span class="n">lrdmc</span> <span class="n">generate</span><span class="o">-</span><span class="nb">input</span> <span class="o">-</span><span class="n">g</span> <span class="p">[</span><span class="o">-</span><span class="n">f</span> <span class="n">lrdmc</span><span class="o">.</span><span class="n">toml</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">without</span><span class="o">-</span><span class="n">comment</span><span class="p">]</span>
+</pre></div>
+</div>
+</section>
+</section>
+<hr class="docutils" />
+<section id="notes-on-variational-parameters-when-nn-jastrow-is-enabled">
+<h2>Notes on variational parameters (when NN Jastrow is enabled)<a class="headerlink" href="#notes-on-variational-parameters-when-nn-jastrow-is-enabled" title="Link to this heading">#</a></h2>
+<ul class="simple">
+<li><p>All trainable weights/biases of the NN Jastrow (message, receiver, readout networks) plus spin and species embeddings are treated as variational parameters within VMC.</p></li>
+<li><p>NN hyperparameters are provided via <code class="docutils literal notranslate"><span class="pre">-j-nn-type</span></code> and <code class="docutils literal notranslate"><span class="pre">-jp</span> <span class="pre">key=value</span></code> on <code class="docutils literal notranslate"><span class="pre">trexio</span> <span class="pre">convert-to</span></code>; unsupported keys are passed through and validated by <code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data.init_from_structure</span></code>.</p></li>
+</ul>
+</section>
+</section>
+
+
+                </article>
+              
+
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="api_reference_cli.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">API reference for the command-line interface (jqmc)</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="citation.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">How to cite jQMC</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+  <div class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> Contents
+  </div>
+  <nav class="bd-toc-nav page-toc">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#trexio-group"><code class="docutils literal notranslate"><span class="pre">trexio</span></code> group</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#show-info"><code class="docutils literal notranslate"><span class="pre">show-info</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#show-detail"><code class="docutils literal notranslate"><span class="pre">show-detail</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#convert-to"><code class="docutils literal notranslate"><span class="pre">convert-to</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#hamiltonian-group"><code class="docutils literal notranslate"><span class="pre">hamiltonian</span></code> group</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id1"><code class="docutils literal notranslate"><span class="pre">show-info</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#to-xyz"><code class="docutils literal notranslate"><span class="pre">to-xyz</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#conv-wf"><code class="docutils literal notranslate"><span class="pre">conv-wf</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#vmc-group-pre-post-utilities"><code class="docutils literal notranslate"><span class="pre">vmc</span></code> group (pre/post utilities)</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#fix-legacy"><code class="docutils literal notranslate"><span class="pre">fix</span></code> (legacy)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#generate-input"><code class="docutils literal notranslate"><span class="pre">generate-input</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#analyze-output"><code class="docutils literal notranslate"><span class="pre">analyze-output</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#mcmc-group-pre-post-utilities"><code class="docutils literal notranslate"><span class="pre">mcmc</span></code> group (pre/post utilities)</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id2"><code class="docutils literal notranslate"><span class="pre">fix</span></code> (legacy)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#compute-energy"><code class="docutils literal notranslate"><span class="pre">compute-energy</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id3"><code class="docutils literal notranslate"><span class="pre">generate-input</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#lrdmc-group-pre-post-utilities"><code class="docutils literal notranslate"><span class="pre">lrdmc</span></code> group (pre/post utilities)</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id4"><code class="docutils literal notranslate"><span class="pre">fix</span></code> (legacy)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id5"><code class="docutils literal notranslate"><span class="pre">compute-energy</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#extrapolate-energy"><code class="docutils literal notranslate"><span class="pre">extrapolate-energy</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id6"><code class="docutils literal notranslate"><span class="pre">generate-input</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#notes-on-variational-parameters-when-nn-jastrow-is-enabled">Notes on variational parameters (when NN Jastrow is enabled)</a></li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+<div class="bd-footer-content__inner container">
+  
+  <div class="footer-item">
+    
+<p class="component-author">
+By Kosuke Nakano
+</p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+
+  <p class="copyright">
+    
+      © Copyright 2026, Kosuke Nakano.
+      <br/>
+    
+  </p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+</div>
+          </footer>
+        
+
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
+<script src="_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+  <footer class="bd-footer">
+  </footer>
+  </body>
+</html>

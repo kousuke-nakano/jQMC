@@ -164,10 +164,10 @@
     <div class="bd-toc-item navbar-nav active">
         <ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="install.html">Installation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="input_jqmc.html">Input parameters</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="notes/technical_notes.html">Technical notes</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="notes/ao.html">Atomic orbitals (AOs) and Basis sets</a></li>
+<li class="toctree-l2"><a class="reference internal" href="notes/wavefunction.html">Wave functions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/vmc.html">Variational Monte Carlo (VMC)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/lrdmc.html">Lattice Regularized Diffusion Monte Carlo (LRDMC)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/atomic-forces.html">Atomic forces calculations by VMC and LRDMC</a></li>
@@ -175,10 +175,8 @@
 <li class="toctree-l2"><a class="reference internal" href="notes/trexio.html">Interfaces with TREX-IO</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="modules.html">jqmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="jqmc.html">jqmc package</a></li>
-</ul>
-</details></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference_cli.html">API reference for the command-line interface (jqmc)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference_cli_tool.html">API reference for the command-line tool (jqmc-tool)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="citation.html">How to cite jQMC</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reference.html">References</a></li>
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">Change Log</a></li>
@@ -330,7 +328,11 @@ document.write(`
             </div>
             <nav aria-label="Page">
                 <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aug-20-2025-v0-1-0a0">Aug-20-2025: v0.1.0a0</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aug-20-2025-v0-1-0a0">Aug-20-2025: v0.1.0a0</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#key-features">Key Features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#known-limitations-alpha">Known Limitations (Alpha)</a></li>
+</ul>
+</li>
 </ul>
             </nav>
         </div>
@@ -349,6 +351,50 @@ document.write(`
 <ul class="simple">
 <li><p>Release of the first alpha version of <strong>jQMC</strong>.</p></li>
 </ul>
+<p>We are pleased to announce the first alpha release of <strong>jQMC</strong>, a Python-based Quantum Monte Carlo package built on <strong>JAX</strong>.</p>
+<section id="key-features">
+<h3>Key Features<a class="headerlink" href="#key-features" title="Link to this heading">#</a></h3>
+<ul class="simple">
+<li><p><strong>JAX-based Core</strong>: Fully utilizes JAX’s Just-In-Time (JIT) compilation and automatic vectorization (<code class="docutils literal notranslate"><span class="pre">vmap</span></code>) for high-performance simulations on GPUs and TPUs.</p></li>
+<li><p><strong>Algorithms</strong>:</p>
+<ul>
+<li><p><strong>Variational Monte Carlo (VMC)</strong>: Supports wavefunction optimization via Stochastic Reconfiguration (SR) and Natural Gradient methods.</p></li>
+<li><p><strong>Lattice Regularized Diffusion Monte Carlo (LRDMC)</strong>: A stable and efficient projection method for ground state calculations.</p></li>
+</ul>
+</li>
+<li><p><strong>Wavefunctions</strong>:</p>
+<ul>
+<li><p><strong>Ansatz</strong>: Supports Jastrow-Slater Determinant (JSD) and Jastrow-Antisymmetrized Geminal Power (JAGP).</p></li>
+<li><p><strong>Jastrow Factors</strong>: Includes One-body, Two-body, Three/Four-body terms.</p></li>
+<li><p><strong>Determinant Types</strong>: Single Determinant (SD), Antisymmetrized Geminal Power (AGP), and Number-constrained AGP (AGPn).</p></li>
+</ul>
+</li>
+<li><p><strong>I/O &amp; Interoperability</strong>:</p>
+<ul>
+<li><p><strong>TREX-IO Support</strong>: Interfaces with the <a class="reference external" href="https://github.com/TREX-CoE/trexio">TREX-IO</a> library (HDF5 backend) for standardized input of molecular structure and basis sets (Cartesian &amp; Spherical GTOs).</p></li>
+</ul>
+</li>
+<li><p><strong>Parallelization</strong>:</p>
+<ul>
+<li><p><strong>MPI Support</strong>: Implements <code class="docutils literal notranslate"><span class="pre">mpi4py</span></code> for efficient parallelization across multiple nodes.</p></li>
+</ul>
+</li>
+<li><p><strong>Documentation</strong>:</p>
+<ul>
+<li><p>Comprehensive technical notes on Wavefunctions, VMC, LRDMC, and JAX implementation details.</p></li>
+<li><p>Examples demonstrating usage for various systems (H2, N2, Water, etc.).</p></li>
+</ul>
+</li>
+</ul>
+</section>
+<section id="known-limitations-alpha">
+<h3>Known Limitations (Alpha)<a class="headerlink" href="#known-limitations-alpha" title="Link to this heading">#</a></h3>
+<ul class="simple">
+<li><p>Periodic Boundary Conditions (PBC) are currently in development.</p></li>
+<li><p>Atomic force calculations with spherical harmonics are computationally intensive on current JAX versions.</p></li>
+<li><p>Complex wavefunctions are not yet supported.</p></li>
+</ul>
+</section>
 </section>
 </section>
 
@@ -388,7 +434,11 @@ document.write(`
   </div>
   <nav class="bd-toc-nav page-toc">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aug-20-2025-v0-1-0a0">Aug-20-2025: v0.1.0a0</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aug-20-2025-v0-1-0a0">Aug-20-2025: v0.1.0a0</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#key-features">Key Features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#known-limitations-alpha">Known Limitations (Alpha)</a></li>
+</ul>
+</li>
 </ul>
   </nav></div>
 
@@ -413,7 +463,7 @@ By Kosuke Nakano
 
   <p class="copyright">
     
-      © Copyright 2025, Kosuke Nakano.
+      © Copyright 2026, Kosuke Nakano.
       <br/>
     
   </p>

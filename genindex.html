@@ -164,10 +164,10 @@
     <div class="bd-toc-item navbar-nav active">
         <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="install.html">Installation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="input_jqmc.html">Input parameters</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="notes/technical_notes.html">Technical notes</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="notes/ao.html">Atomic orbitals (AOs) and Basis sets</a></li>
+<li class="toctree-l2"><a class="reference internal" href="notes/wavefunction.html">Wave functions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/vmc.html">Variational Monte Carlo (VMC)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/lrdmc.html">Lattice Regularized Diffusion Monte Carlo (LRDMC)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/atomic-forces.html">Atomic forces calculations by VMC and LRDMC</a></li>
@@ -175,10 +175,8 @@
 <li class="toctree-l2"><a class="reference internal" href="notes/trexio.html">Interfaces with TREX-IO</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="modules.html">jqmc</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="jqmc.html">jqmc package</a></li>
-</ul>
-</details></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference_cli.html">API reference for the command-line interface (jqmc)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_reference_cli_tool.html">API reference for the command-line tool (jqmc-tool)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="citation.html">How to cite jQMC</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reference.html">References</a></li>
 <li class="toctree-l1"><a class="reference internal" href="changelog.html">Change Log</a></li>
@@ -306,6 +304,7 @@ document.write(`
  | <a href="#R"><strong>R</strong></a>
  | <a href="#S"><strong>S</strong></a>
  | <a href="#T"><strong>T</strong></a>
+ | <a href="#U"><strong>U</strong></a>
  | <a href="#V"><strong>V</strong></a>
  | <a href="#W"><strong>W</strong></a>
  | <a href="#Z"><strong>Z</strong></a>
@@ -314,6 +313,16 @@ document.write(`
 <h2 id="A">A</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="jqmc.html#jqmc.determinant.Geminal_data.accumulate_position_grad">accumulate_position_grad() (jqmc.determinant.Geminal_data method)</a>
+
+      <ul>
+        <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.accumulate_position_grad">(jqmc.hamiltonians.Hamiltonian_data method)</a>
+</li>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data.accumulate_position_grad">(jqmc.jastrow_factor.Jastrow_data method)</a>
+</li>
+        <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data.accumulate_position_grad">(jqmc.wavefunction.Wavefunction_data method)</a>
+</li>
+      </ul></li>
       <li><a href="jqmc.html#jqmc.jqmc_gfmc.GFMC_fixed_num_projection.alat">alat (jqmc.jqmc_gfmc.GFMC_fixed_num_projection property)</a>
 
       <ul>
@@ -325,25 +334,13 @@ document.write(`
       <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.ang_mom_non_local_part">ang_mom_non_local_part (jqmc.coulomb_potential.Coulomb_potential_data property)</a>
 </li>
       <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.ang_moms">ang_moms (jqmc.coulomb_potential.Coulomb_potential_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.ang_moms">(jqmc.coulomb_potential.Coulomb_potential_data_no_deriv attribute)</a>
 </li>
-      </ul></li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AO_sphe_data.angular_momentum">angular_momentum (jqmc.atomic_orbital.AO_sphe_data attribute)</a>
 </li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.angular_momentums">angular_momentums (jqmc.atomic_orbital.AOs_cart_data attribute)</a>
 
       <ul>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.angular_momentums">(jqmc.atomic_orbital.AOs_cart_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.angular_momentums">(jqmc.atomic_orbital.AOs_cart_data_no_deriv attribute)</a>
-</li>
         <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data.angular_momentums">(jqmc.atomic_orbital.AOs_sphe_data attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R.angular_momentums">(jqmc.atomic_orbital.AOs_sphe_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv.angular_momentums">(jqmc.atomic_orbital.AOs_sphe_data_no_deriv attribute)</a>
 </li>
       </ul></li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.angular_momentums_prim_jnp">angular_momentums_prim_jnp (jqmc.atomic_orbital.AOs_cart_data property)</a>
@@ -378,23 +375,21 @@ document.write(`
 </li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data">AOs_cart_data (class in jqmc.atomic_orbital)</a>
 </li>
-      <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R">AOs_cart_data_deriv_R (class in jqmc.atomic_orbital)</a>
-</li>
-      <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv">AOs_cart_data_no_deriv (class in jqmc.atomic_orbital)</a>
-</li>
       <li><a href="jqmc.html#jqmc.molecular_orbital.MOs_data.aos_data">aos_data (jqmc.molecular_orbital.MOs_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.molecular_orbital.MOs_data_deriv_R.aos_data">(jqmc.molecular_orbital.MOs_data_deriv_R attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.molecular_orbital.MOs_data_no_deriv.aos_data">(jqmc.molecular_orbital.MOs_data_no_deriv attribute)</a>
-</li>
-      </ul></li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data">AOs_sphe_data (class in jqmc.atomic_orbital)</a>
 </li>
-      <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R">AOs_sphe_data_deriv_R (class in jqmc.atomic_orbital)</a>
+      <li><a href="jqmc.html#jqmc.determinant.Geminal_data.apply_block_update">apply_block_update() (jqmc.determinant.Geminal_data method)</a>
+
+      <ul>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data.apply_block_update">(jqmc.jastrow_factor.Jastrow_data method)</a>
 </li>
-      <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv">AOs_sphe_data_no_deriv (class in jqmc.atomic_orbital)</a>
+      </ul></li>
+      <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data.apply_block_updates">apply_block_updates() (jqmc.wavefunction.Wavefunction_data method)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.diff_mask.apply_diff_mask">apply_diff_mask() (in module jqmc.diff_mask)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.wavefunction.VariationalParameterBlock.apply_update">apply_update() (jqmc.wavefunction.VariationalParameterBlock method)</a>
 </li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AO_sphe_data.atomic_center_cart">atomic_center_cart (jqmc.atomic_orbital.AO_sphe_data attribute)</a>
 </li>
@@ -459,19 +454,9 @@ document.write(`
       <ul>
         <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.coefficients">(jqmc.atomic_orbital.AOs_cart_data attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.coefficients">(jqmc.atomic_orbital.AOs_cart_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.coefficients">(jqmc.atomic_orbital.AOs_cart_data_no_deriv attribute)</a>
-</li>
         <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data.coefficients">(jqmc.atomic_orbital.AOs_sphe_data attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R.coefficients">(jqmc.atomic_orbital.AOs_sphe_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv.coefficients">(jqmc.atomic_orbital.AOs_sphe_data_no_deriv attribute)</a>
-</li>
         <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.coefficients">(jqmc.coulomb_potential.Coulomb_potential_data attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.coefficients">(jqmc.coulomb_potential.Coulomb_potential_data_no_deriv attribute)</a>
 </li>
       </ul></li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.coefficients_jnp">coefficients_jnp (jqmc.atomic_orbital.AOs_cart_data property)</a>
@@ -483,6 +468,16 @@ document.write(`
       <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.coefficients_local_part">coefficients_local_part (jqmc.coulomb_potential.Coulomb_potential_data property)</a>
 </li>
       <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.coefficients_non_local_part">coefficients_non_local_part (jqmc.coulomb_potential.Coulomb_potential_data property)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.determinant.Geminal_data.collect_param_grads">collect_param_grads() (jqmc.determinant.Geminal_data method)</a>
+
+      <ul>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data.collect_param_grads">(jqmc.jastrow_factor.Jastrow_data method)</a>
+</li>
+        <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data.collect_param_grads">(jqmc.wavefunction.Wavefunction_data method)</a>
+</li>
+      </ul></li>
+      <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC.comput_param_deriv">comput_param_deriv (jqmc.jqmc_mcmc.MCMC property)</a>
 </li>
       <li><a href="jqmc.html#jqmc.jqmc_gfmc.GFMC_fixed_num_projection.comput_position_deriv">comput_position_deriv (jqmc.jqmc_gfmc.GFMC_fixed_num_projection property)</a>
 
@@ -511,6 +506,8 @@ document.write(`
       <li><a href="jqmc.html#jqmc.atomic_orbital.compute_AOs_sphe_jax">compute_AOs_sphe_jax() (in module jqmc.atomic_orbital)</a>
 </li>
       <li><a href="jqmc.html#jqmc.determinant.compute_AS_regularization_factor_debug">compute_AS_regularization_factor_debug() (in module jqmc.determinant)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.determinant.compute_AS_regularization_factor_fast_update_jax">compute_AS_regularization_factor_fast_update_jax() (in module jqmc.determinant)</a>
 </li>
       <li><a href="jqmc.html#jqmc.determinant.compute_AS_regularization_factor_jax">compute_AS_regularization_factor_jax() (in module jqmc.determinant)</a>
 </li>
@@ -560,10 +557,10 @@ document.write(`
 </li>
       <li><a href="jqmc.html#jqmc.coulomb_potential.compute_ecp_non_local_parts_all_pairs_jax">compute_ecp_non_local_parts_all_pairs_jax() (in module jqmc.coulomb_potential)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="jqmc.html#jqmc.coulomb_potential.compute_ecp_non_local_parts_nearest_neighbors_debug">compute_ecp_non_local_parts_nearest_neighbors_debug() (in module jqmc.coulomb_potential)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="jqmc.html#jqmc.coulomb_potential.compute_ecp_non_local_parts_nearest_neighbors_jax">compute_ecp_non_local_parts_nearest_neighbors_jax() (in module jqmc.coulomb_potential)</a>
 </li>
       <li><a href="jqmc.html#jqmc.jqmc_gfmc.compute_G_L">compute_G_L() (in module jqmc.jqmc_gfmc)</a>
@@ -573,6 +570,10 @@ document.write(`
       <li><a href="jqmc.html#jqmc.determinant.compute_geminal_all_elements_debug">compute_geminal_all_elements_debug() (in module jqmc.determinant)</a>
 </li>
       <li><a href="jqmc.html#jqmc.determinant.compute_geminal_all_elements_jax">compute_geminal_all_elements_jax() (in module jqmc.determinant)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.determinant.compute_geminal_dn_one_column_elements_jax">compute_geminal_dn_one_column_elements_jax() (in module jqmc.determinant)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.determinant.compute_geminal_up_one_row_elements_jax">compute_geminal_up_one_row_elements_jax() (in module jqmc.determinant)</a>
 </li>
       <li><a href="jqmc.html#jqmc.jastrow_factor.compute_grads_and_laplacian_Jastrow_part_jax">compute_grads_and_laplacian_Jastrow_part_jax() (in module jqmc.jastrow_factor)</a>
 </li>
@@ -656,22 +657,22 @@ document.write(`
 </li>
       <li><a href="jqmc.html#jqmc.determinant.Geminal_data.convert_from_MOs_to_AOs">convert_from_MOs_to_AOs() (jqmc.determinant.Geminal_data class method)</a>
 </li>
+      <li><a href="jqmc.html#jqmc.diff_mask.DiffMask.coords">coords (jqmc.diff_mask.DiffMask attribute)</a>
+</li>
       <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_data.core_electrons">core_electrons (jqmc.jastrow_factor.Jastrow_one_body_data attribute)</a>
 </li>
       <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data">Coulomb_potential_data (class in jqmc.coulomb_potential)</a>
 </li>
       <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.coulomb_potential_data">coulomb_potential_data (jqmc.hamiltonians.Hamiltonian_data attribute)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.cutoff">cutoff (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
 
       <ul>
-        <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_params.coulomb_potential_data">(jqmc.hamiltonians.Hamiltonian_data_deriv_params attribute)</a>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.cutoff">(jqmc.jastrow_factor.NNJastrow attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_R.coulomb_potential_data">(jqmc.hamiltonians.Hamiltonian_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_no_deriv.coulomb_potential_data">(jqmc.hamiltonians.Hamiltonian_data_no_deriv attribute)</a>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.PhysNetRadialLayer.cutoff">(jqmc.jastrow_factor.NNJastrow.PhysNetRadialLayer attribute)</a>
 </li>
       </ul></li>
-      <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv">Coulomb_potential_data_no_deriv (class in jqmc.coulomb_potential)</a>
-</li>
   </ul></td>
 </tr></table>
 
@@ -708,32 +709,14 @@ document.write(`
         <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.de_L_dr_up">(jqmc.jqmc_mcmc.MCMC_debug property)</a>
 </li>
       </ul></li>
-      <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC.dln_Psi_dc_jas_1b">dln_Psi_dc_jas_1b (jqmc.jqmc_mcmc.MCMC property)</a>
+      <li><a href="jqmc.html#jqmc.diff_mask.DiffMask">DiffMask (class in jqmc.diff_mask)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC.dln_Psi_dc">dln_Psi_dc (jqmc.jqmc_mcmc.MCMC property)</a>
 
       <ul>
-        <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.dln_Psi_dc_jas_1b">(jqmc.jqmc_mcmc.MCMC_debug property)</a>
+        <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.dln_Psi_dc">(jqmc.jqmc_mcmc.MCMC_debug property)</a>
 </li>
       </ul></li>
-      <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC.dln_Psi_dc_jas_1b3b">dln_Psi_dc_jas_1b3b (jqmc.jqmc_mcmc.MCMC property)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.dln_Psi_dc_jas_1b3b">(jqmc.jqmc_mcmc.MCMC_debug property)</a>
-</li>
-      </ul></li>
-      <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC.dln_Psi_dc_jas_2b">dln_Psi_dc_jas_2b (jqmc.jqmc_mcmc.MCMC property)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.dln_Psi_dc_jas_2b">(jqmc.jqmc_mcmc.MCMC_debug property)</a>
-</li>
-      </ul></li>
-      <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC.dln_Psi_dc_lambda_matrix">dln_Psi_dc_lambda_matrix (jqmc.jqmc_mcmc.MCMC property)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.dln_Psi_dc_lambda_matrix">(jqmc.jqmc_mcmc.MCMC_debug property)</a>
-</li>
-      </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="jqmc.html#jqmc.jqmc_gfmc.GFMC_fixed_num_projection.dln_Psi_dR">dln_Psi_dR (jqmc.jqmc_gfmc.GFMC_fixed_num_projection property)</a>
 
       <ul>
@@ -744,6 +727,8 @@ document.write(`
         <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.dln_Psi_dR">(jqmc.jqmc_mcmc.MCMC_debug property)</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="jqmc.html#jqmc.jqmc_gfmc.GFMC_fixed_num_projection.dln_Psi_dr_dn">dln_Psi_dr_dn (jqmc.jqmc_gfmc.GFMC_fixed_num_projection property)</a>
 
       <ul>
@@ -784,8 +769,6 @@ document.write(`
         <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.domega_dr_up">(jqmc.jqmc_mcmc.MCMC_debug property)</a>
 </li>
       </ul></li>
-      <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.dump">dump() (jqmc.hamiltonians.Hamiltonian_data method)</a>
-</li>
   </ul></td>
 </tr></table>
 
@@ -821,21 +804,17 @@ document.write(`
 </li>
       </ul></li>
       <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.ecp_flag">ecp_flag (jqmc.coulomb_potential.Coulomb_potential_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.ecp_flag">(jqmc.coulomb_potential.Coulomb_potential_data_no_deriv attribute)</a>
 </li>
-      </ul></li>
       <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.effective_charges">effective_charges (jqmc.coulomb_potential.Coulomb_potential_data property)</a>
 </li>
       <li><a href="jqmc.html#jqmc.structure.Structure_data.element_symbols">element_symbols (jqmc.structure.Structure_data attribute)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="jqmc.html#jqmc.wavefunction.evaluate_determinant_jax">evaluate_determinant_jax() (in module jqmc.wavefunction)</a>
 </li>
       <li><a href="jqmc.html#jqmc.wavefunction.evaluate_jastrow_jax">evaluate_jastrow_jax() (in module jqmc.wavefunction)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="jqmc.html#jqmc.wavefunction.evaluate_ln_wavefunction_jax">evaluate_ln_wavefunction_jax() (in module jqmc.wavefunction)</a>
 </li>
       <li><a href="jqmc.html#jqmc.swct.evaluate_swct_domega_debug">evaluate_swct_domega_debug() (in module jqmc.swct)</a>
@@ -853,19 +832,9 @@ document.write(`
       <ul>
         <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.exponents">(jqmc.atomic_orbital.AOs_cart_data attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.exponents">(jqmc.atomic_orbital.AOs_cart_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.exponents">(jqmc.atomic_orbital.AOs_cart_data_no_deriv attribute)</a>
-</li>
         <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data.exponents">(jqmc.atomic_orbital.AOs_sphe_data attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R.exponents">(jqmc.atomic_orbital.AOs_sphe_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv.exponents">(jqmc.atomic_orbital.AOs_sphe_data_no_deriv attribute)</a>
-</li>
         <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.exponents">(jqmc.coulomb_potential.Coulomb_potential_data attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.exponents">(jqmc.coulomb_potential.Coulomb_potential_data_no_deriv attribute)</a>
 </li>
       </ul></li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.exponents_jnp">exponents_jnp (jqmc.atomic_orbital.AOs_cart_data property)</a>
@@ -892,66 +861,30 @@ document.write(`
 </li>
       <li><a href="jqmc.html#jqmc.structure.find_nearest_nucleus_indices_np">find_nearest_nucleus_indices_np() (in module jqmc.structure)</a>
 </li>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.flat_shape">flat_shape (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.flatten_fn">flatten_fn (jqmc.jastrow_factor.Jastrow_NN_data property)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data.flatten_param_grads">flatten_param_grads() (jqmc.wavefunction.Wavefunction_data method)</a>
+</li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.from_base">from_base() (jqmc.atomic_orbital.AOs_cart_data class method)</a>
 
       <ul>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.from_base">(jqmc.atomic_orbital.AOs_cart_data_deriv_R class method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.from_base">(jqmc.atomic_orbital.AOs_cart_data_no_deriv class method)</a>
-</li>
         <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data.from_base">(jqmc.atomic_orbital.AOs_sphe_data class method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R.from_base">(jqmc.atomic_orbital.AOs_sphe_data_deriv_R class method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv.from_base">(jqmc.atomic_orbital.AOs_sphe_data_no_deriv class method)</a>
 </li>
         <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.from_base">(jqmc.coulomb_potential.Coulomb_potential_data class method)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.from_base">(jqmc.coulomb_potential.Coulomb_potential_data_no_deriv class method)</a>
-</li>
         <li><a href="jqmc.html#jqmc.determinant.Geminal_data.from_base">(jqmc.determinant.Geminal_data class method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.determinant.Geminal_data_deriv_params.from_base">(jqmc.determinant.Geminal_data_deriv_params class method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.determinant.Geminal_data_deriv_R.from_base">(jqmc.determinant.Geminal_data_deriv_R class method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.determinant.Geminal_data_no_deriv.from_base">(jqmc.determinant.Geminal_data_no_deriv class method)</a>
 </li>
         <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.from_base">(jqmc.hamiltonians.Hamiltonian_data class method)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_params.from_base">(jqmc.hamiltonians.Hamiltonian_data_deriv_params class method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_R.from_base">(jqmc.hamiltonians.Hamiltonian_data_deriv_R class method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_no_deriv.from_base">(jqmc.hamiltonians.Hamiltonian_data_no_deriv class method)</a>
-</li>
         <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data.from_base">(jqmc.jastrow_factor.Jastrow_data class method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_params.from_base">(jqmc.jastrow_factor.Jastrow_data_deriv_params class method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_R.from_base">(jqmc.jastrow_factor.Jastrow_data_deriv_R class method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_no_deriv.from_base">(jqmc.jastrow_factor.Jastrow_data_no_deriv class method)</a>
 </li>
         <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data.from_base">(jqmc.jastrow_factor.Jastrow_three_body_data class method)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data_deriv_params.from_base">(jqmc.jastrow_factor.Jastrow_three_body_data_deriv_params class method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data_deriv_R.from_base">(jqmc.jastrow_factor.Jastrow_three_body_data_deriv_R class method)</a>
-</li>
         <li><a href="jqmc.html#jqmc.molecular_orbital.MOs_data.from_base">(jqmc.molecular_orbital.MOs_data class method)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.molecular_orbital.MOs_data_deriv_R.from_base">(jqmc.molecular_orbital.MOs_data_deriv_R class method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.molecular_orbital.MOs_data_no_deriv.from_base">(jqmc.molecular_orbital.MOs_data_no_deriv class method)</a>
-</li>
         <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data.from_base">(jqmc.wavefunction.Wavefunction_data class method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data_deriv_params.from_base">(jqmc.wavefunction.Wavefunction_data_deriv_params class method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data_deriv_R.from_base">(jqmc.wavefunction.Wavefunction_data_deriv_R class method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data_no_deriv.from_base">(jqmc.wavefunction.Wavefunction_data_no_deriv class method)</a>
 </li>
       </ul></li>
   </ul></td>
@@ -963,20 +896,6 @@ document.write(`
       <li><a href="jqmc.html#jqmc.determinant.Geminal_data">Geminal_data (class in jqmc.determinant)</a>
 </li>
       <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data.geminal_data">geminal_data (jqmc.wavefunction.Wavefunction_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data_deriv_params.geminal_data">(jqmc.wavefunction.Wavefunction_data_deriv_params attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data_deriv_R.geminal_data">(jqmc.wavefunction.Wavefunction_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data_no_deriv.geminal_data">(jqmc.wavefunction.Wavefunction_data_no_deriv attribute)</a>
-</li>
-      </ul></li>
-      <li><a href="jqmc.html#jqmc.determinant.Geminal_data_deriv_params">Geminal_data_deriv_params (class in jqmc.determinant)</a>
-</li>
-      <li><a href="jqmc.html#jqmc.determinant.Geminal_data_deriv_R">Geminal_data_deriv_R (class in jqmc.determinant)</a>
-</li>
-      <li><a href="jqmc.html#jqmc.determinant.Geminal_data_no_deriv">Geminal_data_no_deriv (class in jqmc.determinant)</a>
 </li>
       <li><a href="jqmc.html#jqmc.jqmc_utility.generate_init_electron_configurations">generate_init_electron_configurations() (in module jqmc.jqmc_utility)</a>
 </li>
@@ -1006,8 +925,6 @@ document.write(`
         <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.get_E">(jqmc.jqmc_mcmc.MCMC_debug method)</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="jqmc.html#jqmc.jqmc_gfmc.GFMC_fixed_num_projection_debug.get_E_on_the_fly">get_E_on_the_fly() (jqmc.jqmc_gfmc.GFMC_fixed_num_projection_debug method)</a>
 </li>
       <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC.get_gF">get_gF() (jqmc.jqmc_mcmc.MCMC method)</a>
@@ -1025,6 +942,8 @@ document.write(`
 </li>
         <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data.get_info">(jqmc.jastrow_factor.Jastrow_data method)</a>
 </li>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.get_info">(jqmc.jastrow_factor.Jastrow_NN_data method)</a>
+</li>
         <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_data.get_info">(jqmc.jastrow_factor.Jastrow_one_body_data method)</a>
 </li>
         <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data.get_info">(jqmc.jastrow_factor.Jastrow_three_body_data method)</a>
@@ -1038,9 +957,13 @@ document.write(`
         <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data.get_info">(jqmc.wavefunction.Wavefunction_data method)</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="jqmc.html#jqmc.structure.get_min_dist_rel_R_cart_jnp">get_min_dist_rel_R_cart_jnp() (in module jqmc.structure)</a>
 </li>
       <li><a href="jqmc.html#jqmc.structure.get_min_dist_rel_R_cart_np">get_min_dist_rel_R_cart_np() (in module jqmc.structure)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data.get_variational_blocks">get_variational_blocks() (jqmc.wavefunction.Wavefunction_data method)</a>
 </li>
       <li><a href="jqmc.html#jqmc.jqmc_gfmc.GFMC_fixed_num_projection">GFMC_fixed_num_projection (class in jqmc.jqmc_gfmc)</a>
 </li>
@@ -1074,24 +997,26 @@ document.write(`
       </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_params">Hamiltonian_data_deriv_params (class in jqmc.hamiltonians)</a>
-</li>
-      <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_R">Hamiltonian_data_deriv_R (class in jqmc.hamiltonians)</a>
-</li>
-      <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_no_deriv">Hamiltonian_data_no_deriv (class in jqmc.hamiltonians)</a>
-</li>
-      <li><a href="jqmc.html#jqmc.jqmc_tool.hamiltonian_fix">hamiltonian_fix() (in module jqmc.jqmc_tool)</a>
-</li>
       <li><a href="jqmc.html#jqmc.jqmc_tool.hamiltonian_show_info">hamiltonian_show_info() (in module jqmc.jqmc_tool)</a>
 </li>
       <li><a href="jqmc.html#jqmc.jqmc_tool.hamiltonian_to_xyz">hamiltonian_to_xyz() (in module jqmc.jqmc_tool)</a>
 </li>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.hidden_dim">hidden_dim (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
+
+      <ul>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.hidden_dim">(jqmc.jastrow_factor.NNJastrow attribute)</a>
+</li>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.PauliNetBlock.hidden_dim">(jqmc.jastrow_factor.NNJastrow.PauliNetBlock attribute)</a>
+</li>
+      </ul></li>
   </ul></td>
 </tr></table>
 
 <h2 id="I">I</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.init_from_structure">init_from_structure() (jqmc.jastrow_factor.Jastrow_NN_data class method)</a>
+</li>
       <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_data.init_jastrow_one_body_data">init_jastrow_one_body_data() (jqmc.jastrow_factor.Jastrow_one_body_data class method)</a>
 </li>
   </ul></td>
@@ -1107,13 +1032,7 @@ document.write(`
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data.j_matrix">j_matrix (jqmc.jastrow_factor.Jastrow_three_body_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data_deriv_params.j_matrix">(jqmc.jastrow_factor.Jastrow_three_body_data_deriv_params attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data_deriv_R.j_matrix">(jqmc.jastrow_factor.Jastrow_three_body_data_deriv_R attribute)</a>
-</li>
-      </ul></li>
       <li><a href="jqmc.html#jqmc.jqmc_tool.ansatz_type.jagp">jagp (jqmc.jqmc_tool.ansatz_type attribute)</a>
 </li>
       <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_data.jastrow_1b_param">jastrow_1b_param (jqmc.jastrow_factor.Jastrow_one_body_data attribute)</a>
@@ -1123,61 +1042,23 @@ document.write(`
       <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data">Jastrow_data (class in jqmc.jastrow_factor)</a>
 </li>
       <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data.jastrow_data">jastrow_data (jqmc.wavefunction.Wavefunction_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data_deriv_params.jastrow_data">(jqmc.wavefunction.Wavefunction_data_deriv_params attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data_deriv_R.jastrow_data">(jqmc.wavefunction.Wavefunction_data_deriv_R attribute)</a>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data">Jastrow_NN_data (class in jqmc.jastrow_factor)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data_no_deriv.jastrow_data">(jqmc.wavefunction.Wavefunction_data_no_deriv attribute)</a>
-</li>
-      </ul></li>
-      <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_params">Jastrow_data_deriv_params (class in jqmc.jastrow_factor)</a>
-</li>
-      <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_R">Jastrow_data_deriv_R (class in jqmc.jastrow_factor)</a>
-</li>
-      <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_no_deriv">Jastrow_data_no_deriv (class in jqmc.jastrow_factor)</a>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data.jastrow_nn_data">jastrow_nn_data (jqmc.jastrow_factor.Jastrow_data attribute)</a>
 </li>
       <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_data">Jastrow_one_body_data (class in jqmc.jastrow_factor)</a>
 </li>
       <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data.jastrow_one_body_data">jastrow_one_body_data (jqmc.jastrow_factor.Jastrow_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_params.jastrow_one_body_data">(jqmc.jastrow_factor.Jastrow_data_deriv_params attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_R.jastrow_one_body_data">(jqmc.jastrow_factor.Jastrow_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_no_deriv.jastrow_one_body_data">(jqmc.jastrow_factor.Jastrow_data_no_deriv attribute)</a>
-</li>
-      </ul></li>
       <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data">Jastrow_three_body_data (class in jqmc.jastrow_factor)</a>
 </li>
       <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data.jastrow_three_body_data">jastrow_three_body_data (jqmc.jastrow_factor.Jastrow_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_params.jastrow_three_body_data">(jqmc.jastrow_factor.Jastrow_data_deriv_params attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_R.jastrow_three_body_data">(jqmc.jastrow_factor.Jastrow_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_no_deriv.jastrow_three_body_data">(jqmc.jastrow_factor.Jastrow_data_no_deriv attribute)</a>
-</li>
-      </ul></li>
-      <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data_deriv_params">Jastrow_three_body_data_deriv_params (class in jqmc.jastrow_factor)</a>
-</li>
-      <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data_deriv_R">Jastrow_three_body_data_deriv_R (class in jqmc.jastrow_factor)</a>
 </li>
       <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data">Jastrow_two_body_data (class in jqmc.jastrow_factor)</a>
 </li>
       <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data.jastrow_two_body_data">jastrow_two_body_data (jqmc.jastrow_factor.Jastrow_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_params.jastrow_two_body_data">(jqmc.jastrow_factor.Jastrow_data_deriv_params attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_R.jastrow_two_body_data">(jqmc.jastrow_factor.Jastrow_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_no_deriv.jastrow_two_body_data">(jqmc.jastrow_factor.Jastrow_data_no_deriv attribute)</a>
-</li>
-      </ul></li>
       <li>
     jqmc
 
@@ -1199,13 +1080,18 @@ document.write(`
         <li><a href="jqmc.html#module-jqmc.coulomb_potential">module</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     jqmc.determinant
 
       <ul>
         <li><a href="jqmc.html#module-jqmc.determinant">module</a>
+</li>
+      </ul></li>
+      <li>
+    jqmc.diff_mask
+
+      <ul>
+        <li><a href="jqmc.html#module-jqmc.diff_mask">module</a>
 </li>
       </ul></li>
       <li>
@@ -1222,6 +1108,8 @@ document.write(`
         <li><a href="jqmc.html#module-jqmc.hamiltonians">module</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     jqmc.header_footer
 
@@ -1329,15 +1217,7 @@ document.write(`
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="jqmc.html#jqmc.determinant.Geminal_data.lambda_matrix">lambda_matrix (jqmc.determinant.Geminal_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.determinant.Geminal_data_deriv_params.lambda_matrix">(jqmc.determinant.Geminal_data_deriv_params attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.determinant.Geminal_data_deriv_R.lambda_matrix">(jqmc.determinant.Geminal_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.determinant.Geminal_data_no_deriv.lambda_matrix">(jqmc.determinant.Geminal_data_no_deriv attribute)</a>
-</li>
-      </ul></li>
       <li><a href="jqmc.html#jqmc.structure.Structure_data.lattice_vec_a">lattice_vec_a (jqmc.structure.Structure_data property)</a>
 </li>
       <li><a href="jqmc.html#jqmc.structure.Structure_data.lattice_vec_b">lattice_vec_b (jqmc.structure.Structure_data property)</a>
@@ -1346,7 +1226,9 @@ document.write(`
 </li>
       <li><a href="jqmc.html#jqmc.function_collections.legendre_tablated">legendre_tablated() (in module jqmc.function_collections)</a>
 </li>
-      <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.load">load() (jqmc.hamiltonians.Hamiltonian_data static method)</a>
+      <li><a href="jqmc.html#jqmc.hamiltonians.load_dataclass_from_hdf5">load_dataclass_from_hdf5() (in module jqmc.hamiltonians)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.load_from_hdf5">load_from_hdf5() (jqmc.hamiltonians.Hamiltonian_data static method)</a>
 </li>
       <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.local_part_index">local_part_index (jqmc.coulomb_potential.Coulomb_potential_data property)</a>
 </li>
@@ -1395,23 +1277,13 @@ document.write(`
       <li><a href="jqmc.html#jqmc.atomic_orbital.AO_sphe_data.magnetic_quantum_number">magnetic_quantum_number (jqmc.atomic_orbital.AO_sphe_data attribute)</a>
 </li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data.magnetic_quantum_numbers">magnetic_quantum_numbers (jqmc.atomic_orbital.AOs_sphe_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R.magnetic_quantum_numbers">(jqmc.atomic_orbital.AOs_sphe_data_deriv_R attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv.magnetic_quantum_numbers">(jqmc.atomic_orbital.AOs_sphe_data_no_deriv attribute)</a>
-</li>
-      </ul></li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data.magnetic_quantum_numbers_prim_jnp">magnetic_quantum_numbers_prim_jnp (jqmc.atomic_orbital.AOs_sphe_data property)</a>
 </li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data.magnetic_quantum_numbers_prim_np">magnetic_quantum_numbers_prim_np (jqmc.atomic_orbital.AOs_sphe_data property)</a>
 </li>
       <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.max_ang_mom_plus_1">max_ang_mom_plus_1 (jqmc.coulomb_potential.Coulomb_potential_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.max_ang_mom_plus_1">(jqmc.coulomb_potential.Coulomb_potential_data_no_deriv attribute)</a>
 </li>
-      </ul></li>
       <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC">MCMC (class in jqmc.jqmc_mcmc)</a>
 </li>
       <li><a href="jqmc.html#jqmc.jqmc_tool.mcmc_chk_fix">mcmc_chk_fix() (in module jqmc.jqmc_tool)</a>
@@ -1439,15 +1311,9 @@ document.write(`
       <ul>
         <li><a href="jqmc.html#jqmc.molecular_orbital.MOs_data.mo_coefficients">(jqmc.molecular_orbital.MOs_data attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.molecular_orbital.MOs_data_deriv_R.mo_coefficients">(jqmc.molecular_orbital.MOs_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.molecular_orbital.MOs_data_no_deriv.mo_coefficients">(jqmc.molecular_orbital.MOs_data_no_deriv attribute)</a>
-</li>
       </ul></li>
       <li><a href="jqmc.html#jqmc.molecular_orbital.MO_data">MO_data (class in jqmc.molecular_orbital)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     module
 
@@ -1459,6 +1325,8 @@ document.write(`
         <li><a href="jqmc.html#module-jqmc.coulomb_potential">jqmc.coulomb_potential</a>
 </li>
         <li><a href="jqmc.html#module-jqmc.determinant">jqmc.determinant</a>
+</li>
+        <li><a href="jqmc.html#module-jqmc.diff_mask">jqmc.diff_mask</a>
 </li>
         <li><a href="jqmc.html#module-jqmc.function_collections">jqmc.function_collections</a>
 </li>
@@ -1493,11 +1361,9 @@ document.write(`
         <li><a href="jqmc.html#module-jqmc.wavefunction">jqmc.wavefunction</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="jqmc.html#jqmc.molecular_orbital.MOs_data">MOs_data (class in jqmc.molecular_orbital)</a>
-</li>
-      <li><a href="jqmc.html#jqmc.molecular_orbital.MOs_data_deriv_R">MOs_data_deriv_R (class in jqmc.molecular_orbital)</a>
-</li>
-      <li><a href="jqmc.html#jqmc.molecular_orbital.MOs_data_no_deriv">MOs_data_no_deriv (class in jqmc.molecular_orbital)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -1507,9 +1373,33 @@ document.write(`
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.n_atom">n_atom (jqmc.coulomb_potential.Coulomb_potential_data property)</a>
 </li>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.name">name (jqmc.jastrow_factor.NNJastrow attribute)</a>
+
+      <ul>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.PauliNetBlock.name">(jqmc.jastrow_factor.NNJastrow.PauliNetBlock attribute)</a>
+</li>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.PhysNetRadialLayer.name">(jqmc.jastrow_factor.NNJastrow.PhysNetRadialLayer attribute)</a>
+</li>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.TwoLayerMLP.name">(jqmc.jastrow_factor.NNJastrow.TwoLayerMLP attribute)</a>
+</li>
+        <li><a href="jqmc.html#jqmc.wavefunction.VariationalParameterBlock.name">(jqmc.wavefunction.VariationalParameterBlock attribute)</a>
+</li>
+      </ul></li>
       <li><a href="jqmc.html#jqmc.structure.Structure_data.natom">natom (jqmc.structure.Structure_data property)</a>
 </li>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.nn_def">nn_def (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow">NNJastrow (class in jqmc.jastrow_factor)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.PauliNetBlock">NNJastrow.PauliNetBlock (class in jqmc.jastrow_factor)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.PhysNetRadialLayer">NNJastrow.PhysNetRadialLayer (class in jqmc.jastrow_factor)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.TwoLayerMLP">NNJastrow.TwoLayerMLP (class in jqmc.jastrow_factor)</a>
+</li>
       <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.non_local_part_index">non_local_part_index (jqmc.coulomb_potential.Coulomb_potential_data property)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.jqmc_tool.orbital_type.none">none (jqmc.jqmc_tool.orbital_type attribute)</a>
 </li>
       <li><a href="jqmc.html#jqmc.structure.Structure_data.norm_vec_a">norm_vec_a (jqmc.structure.Structure_data property)</a>
 </li>
@@ -1522,19 +1412,9 @@ document.write(`
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.nucleus_index">nucleus_index (jqmc.atomic_orbital.AOs_cart_data attribute)</a>
 
       <ul>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.nucleus_index">(jqmc.atomic_orbital.AOs_cart_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.nucleus_index">(jqmc.atomic_orbital.AOs_cart_data_no_deriv attribute)</a>
-</li>
         <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data.nucleus_index">(jqmc.atomic_orbital.AOs_sphe_data attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R.nucleus_index">(jqmc.atomic_orbital.AOs_sphe_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv.nucleus_index">(jqmc.atomic_orbital.AOs_sphe_data_no_deriv attribute)</a>
-</li>
         <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.nucleus_index">(jqmc.coulomb_potential.Coulomb_potential_data attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.nucleus_index">(jqmc.coulomb_potential.Coulomb_potential_data_no_deriv attribute)</a>
 </li>
       </ul></li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.nucleus_index_jnp">nucleus_index_jnp (jqmc.atomic_orbital.AOs_cart_data property)</a>
@@ -1559,6 +1439,8 @@ document.write(`
         <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data.nucleus_index_prim_jnp">(jqmc.atomic_orbital.AOs_sphe_data property)</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.nucleus_index_prim_np">nucleus_index_prim_np (jqmc.atomic_orbital.AOs_cart_data property)</a>
 
       <ul>
@@ -1568,61 +1450,23 @@ document.write(`
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.num_ao">num_ao (jqmc.atomic_orbital.AOs_cart_data attribute)</a>
 
       <ul>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.num_ao">(jqmc.atomic_orbital.AOs_cart_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.num_ao">(jqmc.atomic_orbital.AOs_cart_data_no_deriv attribute)</a>
-</li>
         <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data.num_ao">(jqmc.atomic_orbital.AOs_sphe_data attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R.num_ao">(jqmc.atomic_orbital.AOs_sphe_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv.num_ao">(jqmc.atomic_orbital.AOs_sphe_data_no_deriv attribute)</a>
-</li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AO_sphe_data.num_ao_prim">num_ao_prim (jqmc.atomic_orbital.AO_sphe_data attribute)</a>
 
       <ul>
         <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.num_ao_prim">(jqmc.atomic_orbital.AOs_cart_data attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.num_ao_prim">(jqmc.atomic_orbital.AOs_cart_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.num_ao_prim">(jqmc.atomic_orbital.AOs_cart_data_no_deriv attribute)</a>
-</li>
         <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data.num_ao_prim">(jqmc.atomic_orbital.AOs_sphe_data attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R.num_ao_prim">(jqmc.atomic_orbital.AOs_sphe_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv.num_ao_prim">(jqmc.atomic_orbital.AOs_sphe_data_no_deriv attribute)</a>
 </li>
       </ul></li>
       <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.num_ecps">num_ecps (jqmc.coulomb_potential.Coulomb_potential_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.num_ecps">(jqmc.coulomb_potential.Coulomb_potential_data_no_deriv attribute)</a>
 </li>
-      </ul></li>
       <li><a href="jqmc.html#jqmc.determinant.Geminal_data.num_electron_dn">num_electron_dn (jqmc.determinant.Geminal_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.determinant.Geminal_data_deriv_params.num_electron_dn">(jqmc.determinant.Geminal_data_deriv_params attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.determinant.Geminal_data_deriv_R.num_electron_dn">(jqmc.determinant.Geminal_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.determinant.Geminal_data_no_deriv.num_electron_dn">(jqmc.determinant.Geminal_data_no_deriv attribute)</a>
-</li>
-      </ul></li>
       <li><a href="jqmc.html#jqmc.determinant.Geminal_data.num_electron_up">num_electron_up (jqmc.determinant.Geminal_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.determinant.Geminal_data_deriv_params.num_electron_up">(jqmc.determinant.Geminal_data_deriv_params attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.determinant.Geminal_data_deriv_R.num_electron_up">(jqmc.determinant.Geminal_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.determinant.Geminal_data_no_deriv.num_electron_up">(jqmc.determinant.Geminal_data_no_deriv attribute)</a>
-</li>
-      </ul></li>
       <li><a href="jqmc.html#jqmc.jqmc_gfmc.GFMC_fixed_num_projection.num_gfmc_collect_steps">num_gfmc_collect_steps (jqmc.jqmc_gfmc.GFMC_fixed_num_projection property)</a>
 
       <ul>
@@ -1633,20 +1477,36 @@ document.write(`
         <li><a href="jqmc.html#jqmc.jqmc_gfmc.GFMC_fixed_projection_time_debug.num_gfmc_collect_steps">(jqmc.jqmc_gfmc.GFMC_fixed_projection_time_debug property)</a>
 </li>
       </ul></li>
-      <li><a href="jqmc.html#jqmc.molecular_orbital.MOs_data.num_mo">num_mo (jqmc.molecular_orbital.MOs_data attribute)</a>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.num_layers">num_layers (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
 
       <ul>
-        <li><a href="jqmc.html#jqmc.molecular_orbital.MOs_data_deriv_R.num_mo">(jqmc.molecular_orbital.MOs_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.molecular_orbital.MOs_data_no_deriv.num_mo">(jqmc.molecular_orbital.MOs_data_no_deriv attribute)</a>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.num_layers">(jqmc.jastrow_factor.NNJastrow attribute)</a>
 </li>
       </ul></li>
+      <li><a href="jqmc.html#jqmc.molecular_orbital.MOs_data.num_mo">num_mo (jqmc.molecular_orbital.MOs_data attribute)</a>
+</li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.num_orb">num_orb (jqmc.atomic_orbital.AOs_cart_data property)</a>
 
       <ul>
         <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data.num_orb">(jqmc.atomic_orbital.AOs_sphe_data property)</a>
 </li>
         <li><a href="jqmc.html#jqmc.molecular_orbital.MOs_data.num_orb">(jqmc.molecular_orbital.MOs_data property)</a>
+</li>
+      </ul></li>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.num_params">num_params (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.num_rbf">num_rbf (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
+
+      <ul>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.num_rbf">(jqmc.jastrow_factor.NNJastrow attribute)</a>
+</li>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.PhysNetRadialLayer.num_rbf">(jqmc.jastrow_factor.NNJastrow.PhysNetRadialLayer attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.num_species">num_species (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
+
+      <ul>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.num_species">(jqmc.jastrow_factor.NNJastrow attribute)</a>
 </li>
       </ul></li>
       <li><a href="jqmc.html#jqmc.jqmc_gfmc.GFMC_fixed_num_projection.num_walkers">num_walkers (jqmc.jqmc_gfmc.GFMC_fixed_num_projection property)</a>
@@ -1685,36 +1545,12 @@ document.write(`
         <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.omega_up">(jqmc.jqmc_mcmc.MCMC_debug property)</a>
 </li>
       </ul></li>
-      <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC.opt_param_dict">opt_param_dict (jqmc.jqmc_mcmc.MCMC property)</a>
-</li>
       <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data.orb_data">orb_data (jqmc.jastrow_factor.Jastrow_three_body_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data_deriv_params.orb_data">(jqmc.jastrow_factor.Jastrow_three_body_data_deriv_params attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data_deriv_R.orb_data">(jqmc.jastrow_factor.Jastrow_three_body_data_deriv_R attribute)</a>
-</li>
-      </ul></li>
       <li><a href="jqmc.html#jqmc.determinant.Geminal_data.orb_data_dn_spin">orb_data_dn_spin (jqmc.determinant.Geminal_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.determinant.Geminal_data_deriv_params.orb_data_dn_spin">(jqmc.determinant.Geminal_data_deriv_params attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.determinant.Geminal_data_deriv_R.orb_data_dn_spin">(jqmc.determinant.Geminal_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.determinant.Geminal_data_no_deriv.orb_data_dn_spin">(jqmc.determinant.Geminal_data_no_deriv attribute)</a>
-</li>
-      </ul></li>
       <li><a href="jqmc.html#jqmc.determinant.Geminal_data.orb_data_up_spin">orb_data_up_spin (jqmc.determinant.Geminal_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.determinant.Geminal_data_deriv_params.orb_data_up_spin">(jqmc.determinant.Geminal_data_deriv_params attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.determinant.Geminal_data_deriv_R.orb_data_up_spin">(jqmc.determinant.Geminal_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.determinant.Geminal_data_no_deriv.orb_data_up_spin">(jqmc.determinant.Geminal_data_no_deriv attribute)</a>
-</li>
-      </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data.orb_num">orb_num (jqmc.jastrow_factor.Jastrow_three_body_data property)</a>
@@ -1726,15 +1562,7 @@ document.write(`
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.orbital_indices">orbital_indices (jqmc.atomic_orbital.AOs_cart_data attribute)</a>
 
       <ul>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.orbital_indices">(jqmc.atomic_orbital.AOs_cart_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.orbital_indices">(jqmc.atomic_orbital.AOs_cart_data_no_deriv attribute)</a>
-</li>
         <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data.orbital_indices">(jqmc.atomic_orbital.AOs_sphe_data attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R.orbital_indices">(jqmc.atomic_orbital.AOs_sphe_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv.orbital_indices">(jqmc.atomic_orbital.AOs_sphe_data_no_deriv attribute)</a>
 </li>
       </ul></li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.orbital_indices_jnp">orbital_indices_jnp (jqmc.atomic_orbital.AOs_cart_data property)</a>
@@ -1751,6 +1579,8 @@ document.write(`
       </ul></li>
       <li><a href="jqmc.html#jqmc.jqmc_tool.orbital_type">orbital_type (class in jqmc.jqmc_tool)</a>
 </li>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.TwoLayerMLP.out_dim">out_dim (jqmc.jastrow_factor.NNJastrow.TwoLayerMLP attribute)</a>
+</li>
   </ul></td>
 </tr></table>
 
@@ -1759,44 +1589,48 @@ document.write(`
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.padded_parameters_tuple">padded_parameters_tuple (jqmc.coulomb_potential.Coulomb_potential_data property)</a>
 </li>
+      <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC.param_gradient_flags">param_gradient_flags() (jqmc.jqmc_mcmc.MCMC method)</a>
+
+      <ul>
+        <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.param_gradient_flags">(jqmc.jqmc_mcmc.MCMC_debug method)</a>
+</li>
+      </ul></li>
+      <li><a href="jqmc.html#jqmc.diff_mask.DiffMask.params">params (jqmc.diff_mask.DiffMask attribute)</a>
+
+      <ul>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.params">(jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.parent">parent (jqmc.jastrow_factor.NNJastrow attribute)</a>
+
+      <ul>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.PauliNetBlock.parent">(jqmc.jastrow_factor.NNJastrow.PauliNetBlock attribute)</a>
+</li>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.PhysNetRadialLayer.parent">(jqmc.jastrow_factor.NNJastrow.PhysNetRadialLayer attribute)</a>
+</li>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.TwoLayerMLP.parent">(jqmc.jastrow_factor.NNJastrow.TwoLayerMLP attribute)</a>
+</li>
+      </ul></li>
       <li><a href="jqmc.html#jqmc.structure.Structure_data.parse_structure_from_file">parse_structure_from_file() (jqmc.structure.Structure_data class method)</a>
 </li>
       <li><a href="jqmc.html#jqmc.structure.Structure_data.pbc_flag">pbc_flag (jqmc.structure.Structure_data attribute)</a>
 </li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.polynominal_order_x">polynominal_order_x (jqmc.atomic_orbital.AOs_cart_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.polynominal_order_x">(jqmc.atomic_orbital.AOs_cart_data_deriv_R attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.polynominal_order_x">(jqmc.atomic_orbital.AOs_cart_data_no_deriv attribute)</a>
-</li>
-      </ul></li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.polynominal_order_x_prim_jnp">polynominal_order_x_prim_jnp (jqmc.atomic_orbital.AOs_cart_data property)</a>
 </li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.polynominal_order_x_prim_np">polynominal_order_x_prim_np (jqmc.atomic_orbital.AOs_cart_data property)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.polynominal_order_y">polynominal_order_y (jqmc.atomic_orbital.AOs_cart_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.polynominal_order_y">(jqmc.atomic_orbital.AOs_cart_data_deriv_R attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.polynominal_order_y">(jqmc.atomic_orbital.AOs_cart_data_no_deriv attribute)</a>
-</li>
-      </ul></li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.polynominal_order_y_prim_jnp">polynominal_order_y_prim_jnp (jqmc.atomic_orbital.AOs_cart_data property)</a>
 </li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.polynominal_order_y_prim_np">polynominal_order_y_prim_np (jqmc.atomic_orbital.AOs_cart_data property)</a>
 </li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.polynominal_order_z">polynominal_order_z (jqmc.atomic_orbital.AOs_cart_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.polynominal_order_z">(jqmc.atomic_orbital.AOs_cart_data_deriv_R attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.polynominal_order_z">(jqmc.atomic_orbital.AOs_cart_data_no_deriv attribute)</a>
-</li>
-      </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.polynominal_order_z_prim_jnp">polynominal_order_z_prim_jnp (jqmc.atomic_orbital.AOs_cart_data property)</a>
 </li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.polynominal_order_z_prim_np">polynominal_order_z_prim_np (jqmc.atomic_orbital.AOs_cart_data property)</a>
@@ -1810,11 +1644,7 @@ document.write(`
       <li><a href="jqmc.html#jqmc.structure.Structure_data.positions_frac">positions_frac (jqmc.structure.Structure_data property)</a>
 </li>
       <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.powers">powers (jqmc.coulomb_potential.Coulomb_potential_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.powers">(jqmc.coulomb_potential.Coulomb_potential_data_no_deriv attribute)</a>
 </li>
-      </ul></li>
       <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.powers_local_part">powers_local_part (jqmc.coulomb_potential.Coulomb_potential_data property)</a>
 </li>
       <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.powers_non_local_part">powers_non_local_part (jqmc.coulomb_potential.Coulomb_potential_data property)</a>
@@ -1839,74 +1669,38 @@ document.write(`
 </li>
       <li><a href="jqmc.html#jqmc.structure.Structure_data.recip_vec_c">recip_vec_c (jqmc.structure.Structure_data property)</a>
 </li>
+      <li><a href="jqmc.html#jqmc.hamiltonians.reconstruct_dataclass">reconstruct_dataclass() (in module jqmc.hamiltonians)</a>
+</li>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.replace">replace() (jqmc.atomic_orbital.AOs_cart_data method)</a>
 
       <ul>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.replace">(jqmc.atomic_orbital.AOs_cart_data_deriv_R method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.replace">(jqmc.atomic_orbital.AOs_cart_data_no_deriv method)</a>
-</li>
         <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data.replace">(jqmc.atomic_orbital.AOs_sphe_data method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R.replace">(jqmc.atomic_orbital.AOs_sphe_data_deriv_R method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv.replace">(jqmc.atomic_orbital.AOs_sphe_data_no_deriv method)</a>
 </li>
         <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.replace">(jqmc.coulomb_potential.Coulomb_potential_data method)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.replace">(jqmc.coulomb_potential.Coulomb_potential_data_no_deriv method)</a>
-</li>
         <li><a href="jqmc.html#jqmc.determinant.Geminal_data.replace">(jqmc.determinant.Geminal_data method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.determinant.Geminal_data_deriv_params.replace">(jqmc.determinant.Geminal_data_deriv_params method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.determinant.Geminal_data_deriv_R.replace">(jqmc.determinant.Geminal_data_deriv_R method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.determinant.Geminal_data_no_deriv.replace">(jqmc.determinant.Geminal_data_no_deriv method)</a>
 </li>
         <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.replace">(jqmc.hamiltonians.Hamiltonian_data method)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_params.replace">(jqmc.hamiltonians.Hamiltonian_data_deriv_params method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_R.replace">(jqmc.hamiltonians.Hamiltonian_data_deriv_R method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_no_deriv.replace">(jqmc.hamiltonians.Hamiltonian_data_no_deriv method)</a>
-</li>
         <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data.replace">(jqmc.jastrow_factor.Jastrow_data method)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_params.replace">(jqmc.jastrow_factor.Jastrow_data_deriv_params method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_deriv_R.replace">(jqmc.jastrow_factor.Jastrow_data_deriv_R method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_data_no_deriv.replace">(jqmc.jastrow_factor.Jastrow_data_no_deriv method)</a>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.replace">(jqmc.jastrow_factor.Jastrow_NN_data method)</a>
 </li>
         <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_data.replace">(jqmc.jastrow_factor.Jastrow_one_body_data method)</a>
 </li>
         <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data.replace">(jqmc.jastrow_factor.Jastrow_three_body_data method)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data_deriv_params.replace">(jqmc.jastrow_factor.Jastrow_three_body_data_deriv_params method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data_deriv_R.replace">(jqmc.jastrow_factor.Jastrow_three_body_data_deriv_R method)</a>
-</li>
         <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data.replace">(jqmc.jastrow_factor.Jastrow_two_body_data method)</a>
 </li>
         <li><a href="jqmc.html#jqmc.molecular_orbital.MOs_data.replace">(jqmc.molecular_orbital.MOs_data method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.molecular_orbital.MOs_data_deriv_R.replace">(jqmc.molecular_orbital.MOs_data_deriv_R method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.molecular_orbital.MOs_data_no_deriv.replace">(jqmc.molecular_orbital.MOs_data_no_deriv method)</a>
 </li>
         <li><a href="jqmc.html#jqmc.structure.Structure_data.replace">(jqmc.structure.Structure_data method)</a>
 </li>
         <li><a href="jqmc.html#jqmc.swct.SWCT_data.replace">(jqmc.swct.SWCT_data method)</a>
 </li>
+        <li><a href="jqmc.html#jqmc.wavefunction.VariationalParameterBlock.replace">(jqmc.wavefunction.VariationalParameterBlock method)</a>
+</li>
         <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data.replace">(jqmc.wavefunction.Wavefunction_data method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data_deriv_params.replace">(jqmc.wavefunction.Wavefunction_data_deriv_params method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data_deriv_R.replace">(jqmc.wavefunction.Wavefunction_data_deriv_R method)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data_no_deriv.replace">(jqmc.wavefunction.Wavefunction_data_no_deriv method)</a>
 </li>
       </ul></li>
   </ul></td>
@@ -1961,36 +1755,62 @@ document.write(`
         <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data.sanity_check">(jqmc.wavefunction.Wavefunction_data method)</a>
 </li>
       </ul></li>
+      <li><a href="jqmc.html#jqmc.hamiltonians.save_dataclass_to_hdf5">save_dataclass_to_hdf5() (in module jqmc.hamiltonians)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.save_to_hdf5">save_to_hdf5() (jqmc.hamiltonians.Hamiltonian_data method)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.scope">scope (jqmc.jastrow_factor.NNJastrow attribute)</a>
+
+      <ul>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.PauliNetBlock.scope">(jqmc.jastrow_factor.NNJastrow.PauliNetBlock attribute)</a>
+</li>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.PhysNetRadialLayer.scope">(jqmc.jastrow_factor.NNJastrow.PhysNetRadialLayer attribute)</a>
+</li>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.TwoLayerMLP.scope">(jqmc.jastrow_factor.NNJastrow.TwoLayerMLP attribute)</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC.set_param_gradient_flags">set_param_gradient_flags() (jqmc.jqmc_mcmc.MCMC method)</a>
+
+      <ul>
+        <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.set_param_gradient_flags">(jqmc.jqmc_mcmc.MCMC_debug method)</a>
+</li>
+      </ul></li>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.setup">setup() (jqmc.jastrow_factor.NNJastrow method)</a>
+
+      <ul>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.PauliNetBlock.setup">(jqmc.jastrow_factor.NNJastrow.PauliNetBlock method)</a>
+</li>
+      </ul></li>
+      <li><a href="jqmc.html#jqmc.wavefunction.VariationalParameterBlock.shape">shape (jqmc.wavefunction.VariationalParameterBlock attribute)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.shapes">shapes (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.wavefunction.VariationalParameterBlock.size">size (jqmc.wavefunction.VariationalParameterBlock attribute)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.species_lookup">species_lookup (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
+
+      <ul>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.species_lookup">(jqmc.jastrow_factor.NNJastrow attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.species_values">species_values (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
+</li>
       <li><a href="jqmc.html#jqmc.swct.SWCT_data.structure">structure (jqmc.swct.SWCT_data attribute)</a>
 </li>
       <li><a href="jqmc.html#jqmc.structure.Structure_data">Structure_data (class in jqmc.structure)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data.structure_data">structure_data (jqmc.atomic_orbital.AOs_cart_data attribute)</a>
 
       <ul>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_deriv_R.structure_data">(jqmc.atomic_orbital.AOs_cart_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_cart_data_no_deriv.structure_data">(jqmc.atomic_orbital.AOs_cart_data_no_deriv attribute)</a>
-</li>
         <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data.structure_data">(jqmc.atomic_orbital.AOs_sphe_data attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_deriv_R.structure_data">(jqmc.atomic_orbital.AOs_sphe_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.atomic_orbital.AOs_sphe_data_no_deriv.structure_data">(jqmc.atomic_orbital.AOs_sphe_data_no_deriv attribute)</a>
 </li>
         <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.structure_data">(jqmc.coulomb_potential.Coulomb_potential_data attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.structure_data">(jqmc.coulomb_potential.Coulomb_potential_data_no_deriv attribute)</a>
-</li>
         <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.structure_data">(jqmc.hamiltonians.Hamiltonian_data attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_params.structure_data">(jqmc.hamiltonians.Hamiltonian_data_deriv_params attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_R.structure_data">(jqmc.hamiltonians.Hamiltonian_data_deriv_R attribute)</a>
-</li>
-        <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_no_deriv.structure_data">(jqmc.hamiltonians.Hamiltonian_data_no_deriv attribute)</a>
+        <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.structure_data">(jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
 </li>
         <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_data.structure_data">(jqmc.jastrow_factor.Jastrow_one_body_data attribute)</a>
 </li>
@@ -2005,6 +1825,8 @@ document.write(`
 <h2 id="T">T</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.treedef">treedef (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
+</li>
       <li><a href="jqmc.html#jqmc.jqmc_tool.trexio_convert_to">trexio_convert_to() (in module jqmc.jqmc_tool)</a>
 </li>
   </ul></td>
@@ -2016,17 +1838,33 @@ document.write(`
   </ul></td>
 </tr></table>
 
+<h2 id="U">U</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.unflatten_fn">unflatten_fn (jqmc.jastrow_factor.Jastrow_NN_data property)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="jqmc.html#jqmc.diff_mask.DiffMask.update">update() (jqmc.diff_mask.DiffMask method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
 <h2 id="V">V</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="jqmc.html#jqmc.wavefunction.VariationalParameterBlock.values">values (jqmc.wavefunction.VariationalParameterBlock attribute)</a>
+</li>
+      <li><a href="jqmc.html#jqmc.wavefunction.VariationalParameterBlock">VariationalParameterBlock (class in jqmc.wavefunction)</a>
+</li>
       <li><a href="jqmc.html#jqmc.structure.Structure_data.vec_a">vec_a (jqmc.structure.Structure_data attribute)</a>
 </li>
       <li><a href="jqmc.html#jqmc.structure.Structure_data.vec_b">vec_b (jqmc.structure.Structure_data attribute)</a>
 </li>
-      <li><a href="jqmc.html#jqmc.structure.Structure_data.vec_c">vec_c (jqmc.structure.Structure_data attribute)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="jqmc.html#jqmc.structure.Structure_data.vec_c">vec_c (jqmc.structure.Structure_data attribute)</a>
+</li>
       <li><a href="jqmc.html#jqmc.jqmc_tool.vmc_analyze_output">vmc_analyze_output() (in module jqmc.jqmc_tool)</a>
 </li>
       <li><a href="jqmc.html#jqmc.jqmc_tool.vmc_chk_fix">vmc_chk_fix() (in module jqmc.jqmc_tool)</a>
@@ -2053,25 +1891,17 @@ document.write(`
         <li><a href="jqmc.html#jqmc.jqmc_mcmc.MCMC_debug.w_L">(jqmc.jqmc_mcmc.MCMC_debug property)</a>
 </li>
       </ul></li>
-      <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data">Wavefunction_data (class in jqmc.wavefunction)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data">Wavefunction_data (class in jqmc.wavefunction)</a>
+</li>
       <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.wavefunction_data">wavefunction_data (jqmc.hamiltonians.Hamiltonian_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_params.wavefunction_data">(jqmc.hamiltonians.Hamiltonian_data_deriv_params attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_deriv_R.wavefunction_data">(jqmc.hamiltonians.Hamiltonian_data_deriv_R attribute)</a>
+      <li><a href="jqmc.html#jqmc.jastrow_factor.NNJastrow.TwoLayerMLP.width">width (jqmc.jastrow_factor.NNJastrow.TwoLayerMLP attribute)</a>
 </li>
-        <li><a href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data_no_deriv.wavefunction_data">(jqmc.hamiltonians.Hamiltonian_data_no_deriv attribute)</a>
+      <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data.with_diff_mask">with_diff_mask() (jqmc.wavefunction.Wavefunction_data method)</a>
 </li>
-      </ul></li>
-      <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data_deriv_params">Wavefunction_data_deriv_params (class in jqmc.wavefunction)</a>
-</li>
-      <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data_deriv_R">Wavefunction_data_deriv_R (class in jqmc.wavefunction)</a>
-</li>
-      <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data_no_deriv">Wavefunction_data_no_deriv (class in jqmc.wavefunction)</a>
+      <li><a href="jqmc.html#jqmc.wavefunction.Wavefunction_data.with_param_grad_mask">with_param_grad_mask() (jqmc.wavefunction.Wavefunction_data method)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -2080,11 +1910,7 @@ document.write(`
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.z_cores">z_cores (jqmc.coulomb_potential.Coulomb_potential_data attribute)</a>
-
-      <ul>
-        <li><a href="jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data_no_deriv.z_cores">(jqmc.coulomb_potential.Coulomb_potential_data_no_deriv attribute)</a>
 </li>
-      </ul></li>
   </ul></td>
 </tr></table>
 
@@ -2126,7 +1952,7 @@ By Kosuke Nakano
 
   <p class="copyright">
     
-      © Copyright 2025, Kosuke Nakano.
+      © Copyright 2026, Kosuke Nakano.
       <br/>
     
   </p>

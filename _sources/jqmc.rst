@@ -28,6 +28,14 @@ jqmc.determinant module
    :show-inheritance:
    :undoc-members:
 
+jqmc.diff\_mask module
+----------------------
+
+.. automodule:: jqmc.diff_mask
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
 jqmc.function\_collections module
 ---------------------------------
 

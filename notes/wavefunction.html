@@ -1,0 +1,979 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Wave functions &#8212; jQMC v0.1.0a0</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+
+  
+  <link href="../_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/sphinx-book-theme.css?v=eba8b062" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
+  <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+    <script src="../_static/documentation_options.js?v=f502e871"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
+    <script>window.MathJax = {"options": {"processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'notes/wavefunction';</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Variational Monte Carlo (VMC)" href="vmc.html" />
+    <link rel="prev" title="Atomic orbitals (AOs) and Basis sets" href="ao.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-primary-sidebar-checkbox"/>
+  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-secondary-sidebar-checkbox"/>
+  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search..."
+         aria-label="Search..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">jQMC v0.1.0a0</p>
+  
+</a></div>
+        <div class="sidebar-primary-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/kousuke-nakano/jQMC" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+        <div class="sidebar-primary-item">
+
+ <script>
+ document.write(`
+   <button class="btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script></div>
+        <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
+    <div class="bd-toc-item navbar-nav active">
+        <ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="technical_notes.html">Technical notes</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="ao.html">Atomic orbitals (AOs) and Basis sets</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">Wave functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vmc.html">Variational Monte Carlo (VMC)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="lrdmc.html">Lattice Regularized Diffusion Monte Carlo (LRDMC)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="atomic-forces.html">Atomic forces calculations by VMC and LRDMC</a></li>
+<li class="toctree-l2"><a class="reference internal" href="jax.html">JAX compatible modules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="trexio.html">Interfaces with TREX-IO</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="../api_reference_cli.html">API reference for the command-line interface (jqmc)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api_reference_cli_tool.html">API reference for the command-line tool (jqmc-tool)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../citation.html">How to cite jQMC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../reference.html">References</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">Change Log</a></li>
+</ul>
+
+    </div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+
+<div class="sbt-scroll-pixel-helper"></div>
+
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item"><button class="sidebar-toggle primary-toggle btn btn-sm" title="Toggle primary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <span class="fa-solid fa-bars"></span>
+</button></div>
+      
+    </div>
+  
+  
+    <div class="header-article-items__end">
+      
+        <div class="header-article-item">
+
+<div class="article-header-buttons">
+
+
+
+
+
+<div class="dropdown dropdown-download-buttons">
+  <button class="btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Download this page">
+    <i class="fas fa-download"></i>
+  </button>
+  <ul class="dropdown-menu">
+      
+      
+      
+      <li><a href="../_sources/notes/wavefunction.md" target="_blank"
+   class="btn btn-sm btn-download-source-button dropdown-item"
+   title="Download source file"
+   data-bs-placement="left" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-file"></i>
+  </span>
+<span class="btn__text-container">.md</span>
+</a>
+</li>
+      
+      
+      
+      
+      <li>
+<button onclick="window.print()"
+  class="btn btn-sm btn-download-pdf-button dropdown-item"
+  title="Print to PDF"
+  data-bs-placement="left" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-file-pdf"></i>
+  </span>
+<span class="btn__text-container">.pdf</span>
+</button>
+</li>
+      
+  </ul>
+</div>
+
+
+
+
+<button onclick="toggleFullScreen()"
+  class="btn btn-sm btn-fullscreen-button"
+  title="Fullscreen mode"
+  data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-expand"></i>
+  </span>
+
+</button>
+
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
+  </button>
+`);
+</script>
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm pst-navbar-icon search-button search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass fa-lg"></i>
+  </button>
+`);
+</script>
+<button class="sidebar-toggle secondary-toggle btn btn-sm" title="Toggle secondary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="fa-solid fa-list"></span>
+</button>
+</div></div>
+      
+    </div>
+  
+</div>
+</div>
+              
+              
+
+<div id="jb-print-docs-body" class="onlyprint">
+    <h1>Wave functions</h1>
+    <!-- Table of contents -->
+    <div id="print-main-content">
+        <div id="jb-print-toc">
+            
+            <div>
+                <h2> Contents </h2>
+            </div>
+            <nav aria-label="Page">
+                <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jastrow-factor-j">Jastrow factor (J)</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#neural-network-jastrow-factor">Neural Network Jastrow Factor</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#input-features">Input Features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#interaction-layers">Interaction Layers</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#global-readout">Global Readout</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#antisymmetrized-geminal-power-agp">Antisymmetrized Geminal Power (AGP)</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#agp-with-constrained-number-of-molecular-orbital-agpn">AGP with constrained number of molecular orbital (AGPn)</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#single-slater-determinant-sd">Single Slater determinant (SD)</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#fast-update-of-the-determinant-part">Fast update of the determinant part</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#summary-many-body-wavefunction">Summary: Many-body wavefunction</a></li>
+</ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section class="tex2jax_ignore mathjax_ignore" id="wave-functions">
+<h1>Wave functions<a class="headerlink" href="#wave-functions" title="Link to this heading">#</a></h1>
+<p>Both the accuracy and the computational efficiency of QMC approaches crucially depend on the WF ansatz.
+The optimal ansatz is typically a tradeoff between accuracy and efficiency.
+On the one side, a very accurate ansatz can be involved and cumbersome, having many parameters and being expensive to evaluate.
+On the other hand, an efficient ansatz is described  only by the most relevant  parameters and can be quickly and easily evaluated.
+In particular, in the previous sections, we have seen that QMC algorithms, both at the variational and fixed-node level, imply several calculations of the local energy <span class="math notranslate nohighlight">\(e_L(\mathbf{x})\)</span> and the ratio <span class="math notranslate nohighlight">\(\Psi(\mathbf{x})/\Psi(\mathbf{x}')\)</span> for different electronic configurations <span class="math notranslate nohighlight">\(\mathbf{x}\)</span> and <span class="math notranslate nohighlight">\(\mathbf{x}'\)</span>. The computational cost of these operations determines the overall efficiency of QMC and its scaling with systems size.</p>
+<p>jQMC employs a many-body WF ansatz <span class="math notranslate nohighlight">\(\Psi\)</span> which can be written as the product of two terms:</p>
+<div class="math notranslate nohighlight">
+\[
+\Psi  =  \Phi _\text{AS} \times \exp J \,,
+\]</div>
+<p>where the term <span class="math notranslate nohighlight">\(\exp J\)</span>, conventionally dubbed Jastrow factor, is symmetric under electron exchange, and the term <span class="math notranslate nohighlight">\(\Phi _\text{AS}\)</span>, also referred to as the determinant part of the WF, is antisymmetric.
+The resulting WF <span class="math notranslate nohighlight">\(\Psi\)</span> is antisymmetric, thus fermionic.</p>
+<p>In the majority of QMC applications, the chosen <span class="math notranslate nohighlight">\(\Phi _\text{AS}\)</span> is a single Slater determinant (SD) <span class="math notranslate nohighlight">\(\Phi _\text{SD}\)</span>, {\it i.e.}, an antisymmetrized product of single-electron WFs. % (<span class="math notranslate nohighlight">\({\cal A}\{\psi_1(1) \psi_2(2) \ldots \psi_N(N) \}\)</span>).
+Clearly, SD alone does not include any correlation other than the exchange. However, when a Jastrow factor, explicitly depending on the inter-electronic distances, is applied to <span class="math notranslate nohighlight">\(\Phi _\text{SD}\)</span> the resulting ansatz <span class="math notranslate nohighlight">\(\Psi_\text{JSD} = \Phi _\text{SD} * \exp J\)</span>
+often provides over 70% of the correlation energy<a class="footnote-reference brackets" href="#id3" id="id1" role="doc-noteref"><span class="fn-bracket">[</span>1<span class="fn-bracket">]</span></a> at the variational level.
+Thus, the Jastrow factor proves very effective in describing the correlation, employing only a relatively small number of parameters, and therefore providing a very efficient way to improve the ansatz.<a class="footnote-reference brackets" href="#id4" id="id2" role="doc-noteref"><span class="fn-bracket">[</span>2<span class="fn-bracket">]</span></a>
+A Jastrow correlated SD (JSD) function yields a computational cost for QMC simulations  – both VMC and FN – about <span class="math notranslate nohighlight">\(\propto N^3\)</span>, namely  the same scaling of  most DFT codes. Therefore, although QMC has a much larger prefactor,  it represents an approach much cheaper than traditional quantum chemistry ones,
+at  least for large enough systems.</p>
+<p>While the JSD ansatz is quite satisfactory in several applications, there are situations where very high accuracy is required, and a more advanced
+ansatz is necessary.
+The route to improve JSD is not unique, and different approaches have been attempted within the QMC community.
+First, it should be mentioned that improving the Jastrow factors is not an effective approach to achieve higher accuracy at the FN level, as the Jastrow is positive and cannot change the nodal surface.</p>
+<p>The strategy employed in jQMC is inspired by the pioneering work of TurboRVB and is that the route toward an improved ansatz should not compromise the efficiency and good scaling of QMC. For this reason, neither backflow nor explicit multideterminant expansions are implemented in the code. Within the jQMC project, the main goal is instead to consider an ansatz that can be implicitly equivalent to a multideterminant expansion, but remains
+in practice as efficient as a single determinant.</p>
+<p>jQMC currently offers three alternatives for the choice of <span class="math notranslate nohighlight">\(\Phi_\text{AS}\)</span>, which correspond to</p>
+<ol class="arabic simple">
+<li><p>the Antisymmetrized Geminal Power (AGP),</p></li>
+<li><p>the AGP with constrained number of molecular orbitals (AGPn), and</p></li>
+<li><p>the single Slater determinant.</p></li>
+</ol>
+<p>In QMC, the WFs are always meant to include the Jastrow factor, which proves fundamental to improve the properties of the overall WF. For instance, AGP carries more correlation than SD. However, it is not size-consistent unless it is multiplied by a Jastrow factor.
+Thus, a fundamental step to take advantage of the WF ansatz  is the possibility  to perform reliable optimizations of the parameters. Optimization will be discussed in section <a class="reference internal" href="vmc.html#sec-opt-wf"><span class="std std-ref">Variational Monte Carlo (VMC)</span></a>.
+In this section, we will describe the functional form of the Jastrow factor implemented in jQMC (sec. <a class="reference internal" href="#sec-jastrow"><span class="std std-ref">Jastrow factor (J)</span></a>), the AGP (sec. <a class="reference internal" href="#sec-agp"><span class="std std-ref">Antisymmetrized Geminal Power (AGP)</span></a>), the AGPn (sec. <a class="reference internal" href="#sec-agpn"><span class="std std-ref">AGP with constrained number of molecular orbital (AGPn)</span></a>), the SD (sec. <a class="reference internal" href="#sec-sd"><span class="std std-ref">Single Slater determinant (SD)</span></a>), the summary of the anstaz (sec. <a class="reference internal" href="#sec-summary-anstaz"><span class="std std-ref">Summary: Many-body wavefunction</span></a>), and the basis set and atomic orbitals used in the Jastrow and the AS parts (sec. <a class="reference internal" href="ao.html#sec-atomic-orbitals"><span class="std std-ref">Atomic orbitals (AOs) and Basis sets</span></a>).</p>
+<section id="jastrow-factor-j">
+<span id="sec-jastrow"></span><h2>Jastrow factor (J)<a class="headerlink" href="#jastrow-factor-j" title="Link to this heading">#</a></h2>
+<p>The Jastrow factor (<span class="math notranslate nohighlight">\(\exp J\)</span>) plays an important role
+in improving the correlation of the WF and in fulfilling Kato’s cusp condition [T. Kato, Commun. Pure Appl. Math. 10, 151 (1957)].
+jQMC implements the Jastrow term composed of one-body, two-body, and three/four-body factors (<span class="math notranslate nohighlight">\(J = {J_1}+{J_2}+{J_{3/4}}\)</span>).
+The one-body and two-body factors are used to fulfill the electron-ion and electron-electron cusp conditions, respectively, and the three/four-body factors are employed to consider a systematic expansion, in principle converging
+to the most general  independent  electron pairs contribution.
+The one-body Jastrow factor <span class="math notranslate nohighlight">\(J_1\)</span> is the sum of two parts, the homogeneous part (enforcing the electron-ion cusp condition):</p>
+<div class="math notranslate nohighlight" id="equation-onebody-j-hom">
+<span class="eqno">(1)<a class="headerlink" href="#equation-onebody-j-hom" title="Link to this equation">#</a></span>\[
+J_1^{\rm h} \left( \mathbf{r}_1,\ldots,\mathbf{r}_N \right) = \sum_{i=1}^{N_{\rm{e}}} \sum_{\alpha=1}^{N_\text{a}} \left( { { - {{\left( {2{Z_{\alpha}}} \right)}^{3/4}}u\left( {(2{Z_{\alpha}})^{1/4}\left| {{\mathbf{r}_i} - {{\mathbf{R}}_{\alpha}}} \right|} \right)} } \right),
+\]</div>
+<p>and the corresponding inhomogeneous part:</p>
+<div class="math notranslate nohighlight" id="equation-onebody-j-inhom">
+<span class="eqno">(2)<a class="headerlink" href="#equation-onebody-j-inhom" title="Link to this equation">#</a></span>\[
+{J_1^{\rm inh}}\left( {{{\mathbf{r}}_1}, \ldots, {{\mathbf{r}}_N}} \right) =  \sum_{i=1}^{N_{\rm{e}}} \sum_{\alpha=1}^{N_\text{a}} \left( {\sum\limits_{l} {M_{\alpha,l} \chi_{\alpha,l}\left( {{{\mathbf{r}}_i}} \right)} } \right) ,
+\]</div>
+<p>where <span class="math notranslate nohighlight">\({{{\mathbf{r}}_i}}\)</span> are the electron positions, <span class="math notranslate nohighlight">\({{{\mathbf{R}}_{\alpha}}}\)</span> are the atomic positions with corresponding atomic number <span class="math notranslate nohighlight">\(Z_{\alpha}\)</span>, <span class="math notranslate nohighlight">\(l\)</span> runs over atomic orbitals <span class="math notranslate nohighlight">\(\chi _{\alpha,l}\)</span> ({\it e.g.}, GTO) centered on the atom <span class="math notranslate nohighlight">\(a\)</span>, <span class="math notranslate nohighlight">\(\{ M_{\alpha,l} \}\)</span> are variational parameters,
+and <span class="math notranslate nohighlight">\({u_a\left( \mathbf{r} \right)}\)</span> is a simple bounded function. In jQMC, the most common choice for <span class="math notranslate nohighlight">\(u\)</span> is:</p>
+<div class="math notranslate nohighlight" id="equation-onebody-u">
+<span class="eqno">(3)<a class="headerlink" href="#equation-onebody-u" title="Link to this equation">#</a></span>\[
+u\left( r \right) = \frac{ 1 }{2 b_{\text{ei}}} \left( {1 - {e^{ - r b_{\text{ei}}}}} \right) \,,
+\]</div>
+<p>depending on a single variational parameter <span class="math notranslate nohighlight">\( b_{\text{ei}}\)</span>.</p>
+<p>The two-body Jastrow factor is defined as:</p>
+<div class="math notranslate nohighlight" id="equation-twobody-jastrow">
+<span class="eqno">(4)<a class="headerlink" href="#equation-twobody-jastrow" title="Link to this equation">#</a></span>\[
+{J_2}\left( {{{\mathbf{r}}_1}, \ldots, {{\mathbf{r}}_N}} \right) =  {\sum\limits_{i &lt; j} {{v_{{\sigma _i},{\sigma _j}}}\left( {\left| {{{\mathbf{r}}_i} - {{\mathbf{r}}_j}} \right|} \right)} },
+\]</div>
+<p>where
+<span class="math notranslate nohighlight">\(v_{{\sigma _i},{\sigma _j}}\)</span>
+is another  simple bounded  function. There are several possible choices for <span class="math notranslate nohighlight">\(v_{{\sigma _i},{\sigma _j}}\)</span> implemented in jQMC is the following spin-independent form:</p>
+<div class="math notranslate nohighlight" id="equation-twobody-v">
+<span class="eqno">(5)<a class="headerlink" href="#equation-twobody-v" title="Link to this equation">#</a></span>\[\begin{split}
+  {v_{{\sigma _i},{\sigma _j}}}\left( {{r_{i,j}}} \right) =
+  \begin{cases}
+    \cfrac{{{r_{i,j}}}}{2} \cdot {\left( {1 + b_{\rm{ee}} \cdot {{r_{i,j}}}} \right)^{ - 1}} &amp; ({\sigma _i} = {\sigma _j}) \\
+    \cfrac{{{r_{i,j}}}}{2} \cdot {\left( {1 + b_{\rm{ee}} \cdot {{r_{i,j}}}} \right)^{ - 1}} &amp; ({\sigma _i} \neq {\sigma _j})
+  \end{cases}
+\end{split}\]</div>
+<p>where  <span class="math notranslate nohighlight">\({r_{i,j}} = \left| {{{\mathbf{r}}_i} - {{\mathbf{r}}_j}} \right|\)</span>,
+and <span class="math notranslate nohighlight">\(b_{\rm{ee}}\)</span> is the common variational parameter.</p>
+<p>The three/four-body Jastrow factor reads:</p>
+<div class="math notranslate nohighlight" id="equation-threebody-jastrow">
+<span class="eqno">(6)<a class="headerlink" href="#equation-threebody-jastrow" title="Link to this equation">#</a></span>\[
+J_{3/4}\left( {{{\mathbf{r}}_1}, \ldots, {{\mathbf{r}}_N}} \right) =
+\sum_{i &lt; j}
+\left(
+\sum_{l} \sum_{l'}
+M_{l,l'}
+\chi _{l}( \mathbf{r}_i )
+\chi _{l'}( \mathbf{r}_j )
+\right),
+\]</div>
+<p>where the indices <span class="math notranslate nohighlight">\(l\)</span> and <span class="math notranslate nohighlight">\(l'\)</span> indicate different orbitals and <span class="math notranslate nohighlight">\(\{ M_{l,l'} \}\)</span> are variational parameters.</p>
+<p>To exploit JAX accelerations, one should implement computations with the numpy style (i.e., matrix-vector and/or matrix-matrix operations). The inhomogeneous one-body (<span class="math notranslate nohighlight">\(J_{\rm inh}\)</span>) and three/four-body Jastrow (<span class="math notranslate nohighlight">\(J_{3/4}\)</span>) factors can be implemented by matrix-vector and matrix-matrix operations. The one-body term <span class="math notranslate nohighlight">\({J_1^{inh}}\left(\ldots, {{\mathbf{r}}_i}, \ldots \right)\)</span> is computed as:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}
+\begin{aligned}
+{J_1^{\rm inh}}\left(\ldots, {{\mathbf{r}}_i}, \ldots \right) &amp;= \sum_{u=1}^{N_e^{\uparrow}} \sum_{l=1}^{L} \left( { {M_{l} \chi_{l} ( \vec{r}_u^{\uparrow})} } \right) + \sum_{d=1}^{N_e^{\downarrow}} \sum_{l=1}^{L} \left( { {M_{l} \chi_{l} ( \vec{r}_d^{\downarrow})} } \right) \\
+&amp;=
+M X^{\uparrow} \vec{e}^{N_e^{\uparrow}} + M X^{\downarrow} \vec{e}^{N_e^{\downarrow}},
+\end{aligned}
+\end{split}\]</div>
+<p>where <span class="math notranslate nohighlight">\(\vec{e}^{N_e^{\uparrow}}\)</span> and <span class="math notranslate nohighlight">\(\vec{e}^{N_e^{\downarrow}}\)</span> are <span class="math notranslate nohighlight">\((N_e^{\uparrow}, 1)\)</span> and <span class="math notranslate nohighlight">\((N_e^{\downarrow}, 1)\)</span> unit column vectors, <span class="math notranslate nohighlight">\(X^{\uparrow}_{l,u} \equiv \chi _{l}( \vec{r}_{u}^{\uparrow} )\)</span> is <span class="math notranslate nohighlight">\((L, N_e^{\uparrow})\)</span> matrix, <span class="math notranslate nohighlight">\(X^{\downarrow}_{l',d} \equiv \chi _{l'}( \vec{r}_{d}^{\downarrow} )\)</span> is <span class="math notranslate nohighlight">\((L, N_e^{\downarrow})\)</span> matrix, and <span class="math notranslate nohighlight">\(M\)</span> is <span class="math notranslate nohighlight">\((L, L)\)</span> matrix.</p>
+<p>The three-body term <span class="math notranslate nohighlight">\(J_{3/4}\left( {{{\mathbf{r}}_1}, \ldots, {{\mathbf{r}}_N}} \right)\)</span> is computed as:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}
+\begin{aligned}
+J_{3/4}\left( {{{\mathbf{r}}_1}, \ldots, {{\mathbf{r}}_N}} \right)
+&amp;=
+\sum_{u' &gt; u}^{N_e^{\uparrow}, N_e^{\uparrow}}
+\left(
+\sum_{l,l'}^{L, L}
+\chi _{l}( \vec{r}_{u}^{\uparrow} )
+M_{l,l'}
+\chi _{l'}( \vec{r}_{u'}^{\uparrow} )
+\right)
++
+\sum_{d' &gt; d}^{N_e^{\downarrow}, N_e^{\downarrow}}
+\left(
+\sum_{l,l'}^{L, L}
+\chi _{l}( \vec{r}_{d}^{\downarrow} )
+M_{l,l'}
+\chi _{l'}( \vec{r}_{d'}^{\downarrow} )
+\right)
++
+\sum_{u,d}^{N_e^{\uparrow}, N_e^{\downarrow}}
+\left(
+\sum_{l,l'}^{L, L}
+\chi _{l}( \vec{r}_{u}^{\uparrow} )
+M_{l,l'}
+\chi _{l'}( \vec{r}_{d}^{\downarrow} )
+\right) \\
+&amp;=
+\operatorname{tr}
+\left(
+(X^{\uparrow})^T
+M
+X^{\uparrow}
+K^{\uparrow}
+\right)
++
+\operatorname{tr}
+\left(
+(X^{\downarrow})^T
+M
+X^{\downarrow}
+K^{\downarrow}
+\right)
++
+(\vec{e}^{N_e^{\uparrow}})^T
+(X^{\uparrow})^T
+M
+X^{\downarrow}
+\vec{e}^{N_e^{\downarrow}},
+\end{aligned}
+\end{split}\]</div>
+<p>where <span class="math notranslate nohighlight">\(K^{\uparrow}\)</span> and <span class="math notranslate nohighlight">\(K^{\downarrow}\)</span> are <span class="math notranslate nohighlight">\((N_e^{\uparrow}, N_e^{\uparrow})\)</span> and <span class="math notranslate nohighlight">\((N_e^{\downarrow}, N_e^{\downarrow})\)</span> matrices, reading:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}
+\kappa_{i,j} =
+\begin{cases}
+1  &amp; (i &gt; j) \\
+0 &amp;(i \le j)
+\end{cases}.
+\end{split}\]</div>
+</section>
+<section id="neural-network-jastrow-factor">
+<h2>Neural Network Jastrow Factor<a class="headerlink" href="#neural-network-jastrow-factor" title="Link to this heading">#</a></h2>
+<p>We augment the Jastrow factor with a neural-network term <span class="math notranslate nohighlight">\(J_{\text{NN}}\)</span> using a PauliNet-inspired GNN [Hermann et al., Nat. Chem. 12, 891 (2020)]. Inputs are electron coordinates <span class="math notranslate nohighlight">\(\{\mathbf{r}_i\}_{i=1}^{N_e}\)</span> with spins <span class="math notranslate nohighlight">\(s_i \in \{\uparrow,\downarrow\}\)</span>, nuclear coordinates <span class="math notranslate nohighlight">\(\{\mathbf{R}_I\}_{I=1}^{N_n}\)</span>, and atomic numbers <span class="math notranslate nohighlight">\(\{Z_I\}\)</span>. The architecture is translationally and rotationally invariant and symmetric under exchange of electrons within each spin channel; fermionic antisymmetry is carried by the Slater/Geminal part. Variational parameters in this VMC setting are all trainable weights and biases of the neural networks described below, including spin embeddings, nuclear (species) embeddings, the message/receiver networks, and the readout network.</p>
+<section id="input-features">
+<h3>Input Features<a class="headerlink" href="#input-features" title="Link to this heading">#</a></h3>
+<p>Geometry is encoded solely by scalar distances: electron–electron <span class="math notranslate nohighlight">\(r_{ij}=|\mathbf{r}_i-\mathbf{r}_j|\)</span> and electron–nucleus <span class="math notranslate nohighlight">\(r_{iI}=|\mathbf{r}_i-\mathbf{R}_I|\)</span> (nucleus–nucleus distances are constant under the Born–Oppenheimer approximation). Each distance is expanded into PhysNet-style radial basis functions (RBFs):</p>
+<div class="math notranslate nohighlight">
+\[
+e_k(r) = r^2 \exp\!\left[-r - \frac{(r-\mu_k)^2}{\sigma_k^2}\right] f_c(r),
+\]</div>
+<p>where <span class="math notranslate nohighlight">\(f_c(r)\)</span> is a smooth cutoff. The prefactor <span class="math notranslate nohighlight">\(r^2\)</span> makes the feature and its derivative vanish at <span class="math notranslate nohighlight">\(r=0\)</span>, so <span class="math notranslate nohighlight">\(J_{\text{NN}}\)</span> preserves the electron–nucleus cusp enforced by analytic terms. The number of basis functions <span class="math notranslate nohighlight">\(K\)</span> is set by <code class="docutils literal notranslate"><span class="pre">num_rbf</span></code>, and the cutoff radius by <code class="docutils literal notranslate"><span class="pre">cutoff</span></code> (user inputs).</p>
+</section>
+<section id="interaction-layers">
+<h3>Interaction Layers<a class="headerlink" href="#interaction-layers" title="Link to this heading">#</a></h3>
+<p>Each electron carries a latent feature <span class="math notranslate nohighlight">\(\mathbf{x}_i^{(l)} \in \mathbb{R}^F\)</span> at layer <span class="math notranslate nohighlight">\(l\)</span>, where the latent width <span class="math notranslate nohighlight">\(F\)</span> is set by <code class="docutils literal notranslate"><span class="pre">hidden_dim</span></code> (user input). Initialization (<span class="math notranslate nohighlight">\(l=0\)</span>) is the sum of a spin embedding (depends on <span class="math notranslate nohighlight">\(s_i\)</span>) and a one-body nuclear context. The total number of message-passing layers <span class="math notranslate nohighlight">\(L\)</span> is set by <code class="docutils literal notranslate"><span class="pre">num_layers</span></code> (user input). For <span class="math notranslate nohighlight">\(l=0,\dots,L-1\)</span>, we update <span class="math notranslate nohighlight">\(\mathbf{x}_i^{(l)}\)</span> by aggregating channel-specific neighborhoods: same-spin <span class="math notranslate nohighlight">\(\mathcal{N}_{\parallel}(i)=\{j\neq i \mid s_j=s_i\}\)</span>, opposite-spin <span class="math notranslate nohighlight">\(\mathcal{N}_{\perp}(i)=\{j \mid s_j\neq s_i\}\)</span>, and nuclei <span class="math notranslate nohighlight">\(\mathcal{N}_{n}(i)=\{I \mid 1\le I\le N_n\}\)</span>. The update is</p>
+<div class="math notranslate nohighlight">
+\[
+\mathbf{x}_i^{(l+1)} = \mathbf{x}_i^{(l)} +
+\sum_{\nu \in \{\parallel,\perp,n\}} \mathcal{F}_{\text{recv}}^{(\nu)} \!\left(
+    \sum_{j \in \mathcal{N}_\nu(i)} \mathcal{G}^{(\nu)}(\mathbf{e}(r_{ij})) \odot \mathbf{h}_j^{(\nu)}
+\right),
+\]</div>
+<p>where <span class="math notranslate nohighlight">\(\mathbf{e}(r_{ij})\)</span> is the RBF vector for the relevant distance (<span class="math notranslate nohighlight">\(r_{ij}\)</span> for electrons, <span class="math notranslate nohighlight">\(r_{iI}\)</span> for nuclei). For electron channels (<span class="math notranslate nohighlight">\(\nu\in\{\parallel,\perp\}\)</span>), the sender feature is <span class="math notranslate nohighlight">\(\mathbf{h}_j^{(\nu)}=\mathbf{x}_j^{(l)}\)</span>; for the nuclear channel (<span class="math notranslate nohighlight">\(\nu=n\)</span>), <span class="math notranslate nohighlight">\(\mathbf{h}_I^{(n)}\)</span> is a learnable species embedding determined by <span class="math notranslate nohighlight">\(Z_I\)</span> (layer-independent). Both <span class="math notranslate nohighlight">\(\mathcal{G}^{(\nu)}:\mathbb{R}^K \to \mathbb{R}^F\)</span> and <span class="math notranslate nohighlight">\(\mathcal{F}_{\text{recv}}^{(\nu)}:\mathbb{R}^F \to \mathbb{R}^F\)</span> are standard fully-connected neural networks (two linear layers with SiLU activation). The Hadamard product <span class="math notranslate nohighlight">\(\odot\)</span> applies the interaction filter to the sender feature, and the residual addition stabilizes training. All weights/biases in these networks, including embeddings, are variational parameters.</p>
+</section>
+<section id="global-readout">
+<h3>Global Readout<a class="headerlink" href="#global-readout" title="Link to this heading">#</a></h3>
+<p>After <span class="math notranslate nohighlight">\(L\)</span> layers, permutation invariance is enforced by summing the outputs of a channel-wise readout network:</p>
+<div class="math notranslate nohighlight">
+\[
+J_{\text{NN}} = \sum_{i=1}^{N_e} \text{NN}_{\text{readout}}(\mathbf{x}_i^{(L)}).
+\]</div>
+<p>The readout uses a fully-connected neural network (two linear layers with SiLU, output dimension 1). The summation over all electrons ensures the symmetry required for the Jastrow factor. The readout weights and biases are also variational parameters optimized within VMC.</p>
+</section>
+</section>
+<section id="antisymmetrized-geminal-power-agp">
+<span id="sec-agp"></span><h2>Antisymmetrized Geminal Power (AGP)<a class="headerlink" href="#antisymmetrized-geminal-power-agp" title="Link to this heading">#</a></h2>
+<p>jQMC implementes Antisymmetrized Geminal Power (AGP) anstaz for the antisymmetric part, which was applied to the {\it ab initio} calculation by M. Casula and S. Sorella [M. Casula and S. Sorella, J. Chem. Phys. 119, 6500 (2003)] for the first time in 2003; then it has been  also implemented in other QMC codes. For simplicity, let us first consider a system with an even number <span class="math notranslate nohighlight">\(N\)</span> of electrons.
+The WF, written in terms of pairing functions, is:</p>
+<div class="math notranslate nohighlight" id="equation-eq-wfpf0">
+<span class="eqno">(7)<a class="headerlink" href="#equation-eq-wfpf0" title="Link to this equation">#</a></span>\[
+\Phi_\text{AS} (\mathbf{1},\ldots,\mathbf{N}) = {\cal A} \left\{ g(\mathbf{1},\mathbf{2}) g(\mathbf{3},\mathbf{4}) \ldots g(\mathbf{N-1},\mathbf{N}) \right\}
+\]</div>
+<p>where <span class="math notranslate nohighlight">\({\cal A}\)</span> is the antisymmetrization operator:</p>
+<div class="math notranslate nohighlight">
+\[
+{\cal A} \equiv {1\over N!} \sum_{P\in S_N} \epsilon_P \hat P,
+\]</div>
+<p><span class="math notranslate nohighlight">\(S_N\)</span> the permutation group of <span class="math notranslate nohighlight">\(N\)</span> elements, <span class="math notranslate nohighlight">\(\hat P\)</span> the operator corresponding to  the generic permutation <span class="math notranslate nohighlight">\(P\)</span>, and <span class="math notranslate nohighlight">\(\epsilon_P\)</span>  its sign. We denote with  the generic bolded index <span class="math notranslate nohighlight">\(\mathbf{i}\)</span> both the space <span class="math notranslate nohighlight">\({\bf r}_i\)</span> coordinates and the spin values <span class="math notranslate nohighlight">\(\sigma_i\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[
+\mathbf{i} \leftrightarrow ({\bf r}_i, \sigma_i)
+\]</div>
+<p>corresponding to the <span class="math notranslate nohighlight">\(i^{th}\)</span> electron.</p>
+<p>Let us define <span class="math notranslate nohighlight">\(G\)</span> the <span class="math notranslate nohighlight">\(N\times N\)</span> matrix with elements <span class="math notranslate nohighlight">\(G_{i,j} = g(\mathbf{i},\mathbf{j})\)</span>.
+Notice that</p>
+<div class="math notranslate nohighlight">
+\[
+g(\mathbf{i},\mathbf{j}) = -g(\mathbf{j},\mathbf{i}) \; (\text{and} \; G_{i,j} = -G_{j,i}),
+\]</div>
+<p>as a consequence of the statistics of fermionic particles, thus <span class="math notranslate nohighlight">\(G\)</span> is skew-symmetric ({\it i.e.}, <span class="math notranslate nohighlight">\(G^T = -G\)</span>, being <span class="math notranslate nohighlight">\(^T\)</span> the transpose operator).</p>
+<p>We parameterize the pairing function <span class="math notranslate nohighlight">\(g\)</span> with generalized spin-dependent orbitals <span class="math notranslate nohighlight">\(\phi(r, \sigma) \equiv \psi(r)\chi(\sigma)\)</span>, where <span class="math notranslate nohighlight">\(\psi\)</span> is its spatial part and <span class="math notranslate nohighlight">\(\chi\)</span> is the spin function. For 2<span class="math notranslate nohighlight">\(L\)</span> orbitals,</p>
+<div class="math notranslate nohighlight">
+\[
+(\psi_1^{\alpha}(r)\alpha_1(\sigma) \cdots \psi_L^{\alpha}(r)\alpha_L(\sigma) \cdots \psi_1^{\beta}(r)\beta_1(\sigma) \cdots \psi_L^{\beta}(r)\beta_L(\sigma) ),
+\]</div>
+<p>the pairing function is parameterized as:</p>
+<div class="math notranslate nohighlight">
+\[
+g(i, j) = \sum_{\mu,\nu} A_{\mu,\nu} \phi_{\mu}(r_i, \sigma_i) \phi_{\nu}(r_j, \sigma_j) \equiv \sum_{\mu,\nu} A_{\mu,\nu} \psi_{\mu}(r_i)\psi_{\nu}(r_j)\chi_{\mu}(\sigma_i)\chi_{\nu}(\sigma_j)
+\]</div>
+<p>where <span class="math notranslate nohighlight">\(A_{\mu,\nu}\)</span> is a <span class="math notranslate nohighlight">\((2L,2L)\)</span> skew-symmetric matrix as a consequence of <span class="math notranslate nohighlight">\(g(i,j) = - g(j,i)\)</span>.</p>
+<p>jQMC currently considers only the pairing functions with opposite spins, thus, the antisymmetrization operator corresponds to the determinant of the up-down or down-up pairing matrix <span class="math notranslate nohighlight">\(G\)</span>, i.e.,</p>
+<div class="math notranslate nohighlight">
+\[
+\Phi(1 \cdots N) = \det(G_{u,d}) = - \det(G_{d,n})
+\]</div>
+<p>We denote block matrices <span class="math notranslate nohighlight">\(\Lambda^{\uparrow, \downarrow}_{l,l'} \equiv A_{u,d}\)</span> and <span class="math notranslate nohighlight">\(\Lambda^{\downarrow, \uparrow}_{l,l'} \equiv A_{d,n}\)</span>, where <span class="math notranslate nohighlight">\(l\)</span> and <span class="math notranslate nohighlight">\(l'\)</span> run over from 1 to <span class="math notranslate nohighlight">\(L\)</span>. Since <span class="math notranslate nohighlight">\(A\)</span> is skew-symmetric, <span class="math notranslate nohighlight">\(\Lambda^{\uparrow, \downarrow}_{l,l'} = - \Lambda^{\downarrow, \uparrow}_{l',l}\)</span>. Indeed, one can consider up and down pairs without loss of generality. Say, we can omit the spin-dependent part in practice, and for a spatial generic pairing function <span class="math notranslate nohighlight">\(F_{i,j} \equiv f(r_i^{\uparrow}, r_j^{\downarrow})\)</span> we have</p>
+<div class="math notranslate nohighlight" id="equation-agp-expansion">
+<span class="eqno">(8)<a class="headerlink" href="#equation-agp-expansion" title="Link to this equation">#</a></span>\[
+f\left( {{{\mathbf{r}}_i^{\uparrow}},{{\mathbf{r}}_j}^{\downarrow}} \right) = \sum\limits_{l,l'} {\Lambda_{l,l'}^{\uparrow, \downarrow} {\psi_{l}^{\uparrow}}\left( {{{\mathbf{r}}_i^{\uparrow}}} \right){\psi _{l'}^{\downarrow}}\left( {{{\mathbf{r}}_j^{\downarrow}}} \right)},
+\]</div>
+<p>and</p>
+<div class="math notranslate nohighlight">
+\[
+\Phi(1 \cdots N) = \det(G_{u,d}) = \det(F).
+\]</div>
+<p>Hereafter, we think about cases with spin-independent orbitals <span class="math notranslate nohighlight">\(\psi^{\alpha} = \psi^{\beta}\)</span>. In such a case, the generalized pairing function for opposite spins is parametrized as</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}
+\begin{aligned}
+g(i, j) &amp;=  \sum_{l,l'} \Lambda_{l,l'}^{\uparrow, \downarrow} \psi_{l}(r_i)\psi_{l'}(r_j)\alpha(\sigma_i)\beta(\sigma_j) + \sum_{l,l'} \Lambda_{l,l'}^{\downarrow, \uparrow} \psi_{l}(r_i)\psi_{l'}(r_j)\beta(\sigma_i)\alpha(\sigma_j) \\
+&amp;=  \sum_{l,l'} \Lambda_{l,l'}^{\uparrow, \downarrow} \psi_{l}(r_i)\psi_{l'}(r_j)\alpha(\sigma_i)\beta(\sigma_j) - \sum_{l,l'} \Lambda_{l',l}^{\uparrow, \downarrow} \psi_{l}(r_i)\psi_{l'}(r_j)\beta(\sigma_i)\alpha(\sigma_j) \\
+\end{aligned}
+\end{split}\]</div>
+<p>If <span class="math notranslate nohighlight">\(\Lambda_{l,l'}\)</span> is symmetric, <span class="math notranslate nohighlight">\( \Lambda_{l',l}^{\uparrow, \downarrow} =  \Lambda_{l,l'}^{\uparrow, \downarrow} \equiv \Lambda_{l,l'}^S \)</span>, leading to:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}
+\begin{aligned}
+g(i, j) &amp;=  \sum_{l,l'} \Lambda_{l,l'}^{\uparrow, \downarrow} \psi_{l}(r_i)\psi_{l'}(r_j)(\alpha(\sigma_i)\beta(\sigma_j) - \beta(\sigma_i)\alpha(\sigma_j)) \\
+&amp;=  \sum_{l,l'} \Lambda_{l,l'}^{S} \psi_{l}(r_i)\psi_{l'}(r_j)(\alpha(\sigma_i)\beta(\sigma_j) - \beta(\sigma_i)\alpha(\sigma_j)) \\
+&amp;\equiv f_{S}({\bf r}_i,{\bf r}_j) ({ {\left| \uparrow  \downarrow \right\rangle - \left| \downarrow  \uparrow \right\rangle}}),
+\end{aligned}
+\end{split}\]</div>
+<p>which is dubbed as AGP with spin-singlet pairs (AGPs).</p>
+<p>If <span class="math notranslate nohighlight">\(\Lambda_{l,l'}\)</span> is skew-symmetric, <span class="math notranslate nohighlight">\( \Lambda_{l',l}^{\uparrow, \downarrow} =  - \Lambda_{l,l'}^{\uparrow, \downarrow} \equiv \Lambda_{l,l'}^A \)</span>, leading to:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}
+\begin{aligned}
+g(i, j) &amp;=  \sum_{l,l'} \Lambda_{l,l'}^{\uparrow, \downarrow} \psi_{l}(r_i)\psi_{l'}(r_j)(\alpha(\sigma_i)\beta(\sigma_j) + \beta(\sigma_i)\alpha(\sigma_j)) \\
+&amp;=  \sum_{l,l'} \Lambda_{l,l'}^{A} \psi_{l}(r_i)\psi_{l'}(r_j)(\alpha(\sigma_i)\beta(\sigma_j) + \beta(\sigma_i)\alpha(\sigma_j)) \\
+&amp;\equiv f_{T}({\bf r}_i,{\bf r}_j) ({ {\left| \uparrow  \downarrow \right\rangle + \left| \downarrow  \uparrow \right\rangle}}),
+\end{aligned}
+\end{split}\]</div>
+<p>which is dubbed as AGP with spin-singlet pairs with triplet correlations (AGPt).</p>
+<p>Even if <span class="math notranslate nohighlight">\(\Lambda^{l,l'}\)</span> is neither symmetric nor skew-symmetric, the components corresponding to AGPs and AGPu can be uniquely recovered because any square matrix can be uniquely decomposed into a sum of a symmetric and a skew-symmetric matrix [G. Strang, Linear Algebra and Its Applications (2009)]. In such a case, the resultant pairing function is the combination of AGPs and AGPt.</p>
+<p>In this sense, if basis is spin-dependent, the sptial and spin parts cannot be separated and the spin-singlet pairings are no longer eigenstates, introducing a spin-contaminated pairing function, dubbed as AGPc.</p>
+<p>In the above formalism, AGPs, AGPt, AGPs+AGPt, AGPc are separately defined. However, in the actual implementation, we define only one matrix <span class="math notranslate nohighlight">\(\Lambda_{l,m}\)</span> and compute the spatial part of the pairing function as:</p>
+<div class="math notranslate nohighlight">
+\[
+f(\mathbf{r}_i, \mathbf{r}_j) = \sum_{l,m} \Lambda_{l,l'}^{\uparrow, \downarrow} \, \phi_l^{\uparrow}(\mathbf{r}_i)\, \phi^{\downarrow}_{l'}(\mathbf{r}_j).
+\]</div>
+<p>Accordingly, in the implementation, the distinction between AGPs, AGPt, AGPs + AGPt, and AGPc is determined by the spatial part of the basis and the symmetry of the matrix <span class="math notranslate nohighlight">\(\Lambda^{\uparrow, \downarrow}\)</span>-whether it is symmetric, skew-symmetric, or neither-allowing all cases to be handled within a unified framework.</p>
+<p>The AGP ansatz can be generalized to describe polarized systems, {\it i.e.}, systems where the number <span class="math notranslate nohighlight">\(N_u\)</span> of electrons of spin up is different from the number <span class="math notranslate nohighlight">\(N_d\)</span> of electrons with spin down.
+With no loss of generality, we can assume that <span class="math notranslate nohighlight">\(N_u&gt;N_d\)</span>, thus the system is constituted by a number <span class="math notranslate nohighlight">\(p=N_d\)</span> of electron pairs and a number <span class="math notranslate nohighlight">\(k=N_u-N_d\)</span> of unpaired electrons (clearly, <span class="math notranslate nohighlight">\(N=N_u+N_d=2p+k\)</span>). For spin-polarized systems with unpaired orbitals,  we can add <span class="math notranslate nohighlight">\(k\)</span> fictitious entries to <span class="math notranslate nohighlight">\(g(\mathbf{i},\mathbf{j})\)</span>, such that <span class="math notranslate nohighlight">\(g(\mathbf{i},\mathbf{N+l})=-g(\mathbf{N+l},\mathbf{i}) = \phi_l(\mathbf{i})\)</span> for <span class="math notranslate nohighlight">\(l=1,\ldots,k\)</span> and <span class="math notranslate nohighlight">\(i=1,\ldots,N_u\)</span>.</p>
+<p>Thus, we need to evaluate:</p>
+<div class="math notranslate nohighlight" id="equation-eq-wfagpunpaired">
+<span class="eqno">(9)<a class="headerlink" href="#equation-eq-wfagpunpaired" title="Link to this equation">#</a></span>\[
+\Phi_\text{AGP} = \det(\tilde G) \,.
+\]</div>
+<p>with the <span class="math notranslate nohighlight">\(N_u\times N_u\)</span> matrix <span class="math notranslate nohighlight">\(\tilde G = \left[\begin{array}{c|c} G_{ud} &amp; \Phi \end{array}\right]\)</span>, where the <span class="math notranslate nohighlight">\(N_u\times N_d\)</span> matrix <span class="math notranslate nohighlight">\(G_{ud}\)</span> describes the pairing between the <span class="math notranslate nohighlight">\(N_u\)</span> spin up electrons and the <span class="math notranslate nohighlight">\(N_d\)</span> spin down electrons, and the <span class="math notranslate nohighlight">\(N_u\times k\)</span> matrix  <span class="math notranslate nohighlight">\(\Phi\)</span> describes the <span class="math notranslate nohighlight">\(k\)</span> unpaired orbitals.</p>
+<p>Here, we describe a practical implementation of the pairing function calculation. As written above, to exploit JAX accelerations, one should implement computations with the numpy style (i.e., matrix-vector and/or matrix-matrix operations). Suppose one evaluates the value of a many-body WF at <span class="math notranslate nohighlight">\(\vec{x}^{\uparrow} = (\vec{r}_1^{\uparrow}, \cdots, \vec{r}_i^{\uparrow}, \cdots, \vec{r}^{\uparrow}_{N_{e}^{\uparrow}})\)</span> and <span class="math notranslate nohighlight">\(\vec{x}^{\downarrow} = (\vec{r}_1^{\downarrow}, \cdots, \vec{r}_j^{\downarrow}, \cdots, \vec{r}^{\downarrow}_{N_{e}^{\downarrow}})\)</span>.</p>
+<p>The basis set expanding AGP pairing function is arbitary; thus, jQMC support the expansion with both atomic and molecular orbitals. Both AGP with Molecular Orbitals and AGP with Atomic Orbitals can be treated in the same way in practice.</p>
+<p>For the paired parts with AOs, we can prepare for a lambda matrix <span class="math notranslate nohighlight">\(\Lambda^{\uparrow, \downarrow}\)</span>, i.e., <span class="math notranslate nohighlight">\(\lambda_{l,m}^{\uparrow, \downarrow}\)</span>, whose dimension is (<span class="math notranslate nohighlight">\(M_{ao}, M_{ao}\)</span>) and, atomic or molecular orbitals matrix, <span class="math notranslate nohighlight">\(\Psi_{l,i}^{\uparrow} = \psi^{\uparrow}_l(\vec{r}_i^{\uparrow})\)</span>, <span class="math notranslate nohighlight">\(\Psi_{m,j}^{\downarrow} = \psi^{\downarrow}_m(\vec{r}_j^{\downarrow})\)</span>, whose dimensions are <span class="math notranslate nohighlight">\((M_{ao}, N_{e}^{\uparrow})\)</span> and <span class="math notranslate nohighlight">\((M_{ao}, N_{e}^{\downarrow})\)</span>. Here, we assume that the number of AOs is the same for up and down electrons such that the geminal matrix <span class="math notranslate nohighlight">\(\Lambda^{\uparrow, \downarrow}\)</span> is square. Then, the pairing geminal matrix is <span class="math notranslate nohighlight">\(F(\vec{x}^{\uparrow}, \vec{x}^{\downarrow}) = (\Psi^{\uparrow})^T \Lambda^{\uparrow, \downarrow} \Psi^{\downarrow}\)</span>, where <span class="math notranslate nohighlight">\(F_{i,j} = \sum_{l,m} \Psi_{i,l}^{\uparrow} \lambda_{l,m}^{\uparrow, \downarrow} \Psi_{m,j}^{\downarrow}\)</span>. The dimension of <span class="math notranslate nohighlight">\(F\)</span> matrix is <span class="math notranslate nohighlight">\((N_{e}^{\uparrow}, N_{e}^{\downarrow})\)</span>. For the unpaired part, a lambda matrix <span class="math notranslate nohighlight">\(\Lambda^{\uparrow}\)</span>, whose dimension is (<span class="math notranslate nohighlight">\(M_{ao}, N_{e}^{\uparrow} - N_{e}^{\downarrow}\)</span>), and <span class="math notranslate nohighlight">\(\Psi_{l,i}^{\uparrow} = \psi^{\uparrow}_l(\vec{r}_i^{\uparrow})\)</span>, whose dimensions are <span class="math notranslate nohighlight">\((M_{ao}, N_{e}^{\uparrow})\)</span>. The unpaired part can be computed as <span class="math notranslate nohighlight">\(F(\vec{x}^{\uparrow}) = (\Psi^{\uparrow})^T \Lambda^{\uparrow}\)</span>, where <span class="math notranslate nohighlight">\(F_{i,k} = \sum_{l} \Psi_{i,l}^{\uparrow} \lambda_{l,k}^{\uparrow}\)</span>, whose dimension is <span class="math notranslate nohighlight">\((N_{e}^{\uparrow}, N_{e}^{\uparrow} - N_{e}^{\downarrow})\)</span>.</p>
+<p>Then, the determinant part is computed as <span class="math notranslate nohighlight">\(\det (\tilde{F}(\vec{x}^{\uparrow}, \vec{x}^{\downarrow}))\)</span>, where <span class="math notranslate nohighlight">\(\tilde{F}(\vec{x}^{\uparrow}, \vec{x}^{\downarrow})\)</span> is the concatenated matrix, whose dimension is <span class="math notranslate nohighlight">\((N_{e}^{\uparrow}, N_{e}^{\uparrow})\)</span>, i.e., <span class="math notranslate nohighlight">\(\tilde{F}(\vec{x}^{\uparrow}, \vec{x}^{\downarrow}) = [(\Psi^{\uparrow})^T \Lambda^{\uparrow, \downarrow} \Psi^{\downarrow} | (\Psi^{\uparrow})^T \Lambda^{\uparrow} ]\)</span>. From the practical view point, we can set the input variational parameters as a concatenated matrix <span class="math notranslate nohighlight">\(\tilde{\Lambda} \equiv [\Lambda^{\uparrow, \downarrow} | \Lambda^{\uparrow}]\)</span>, whose dimension is <span class="math notranslate nohighlight">\((M_{ao}, M_{ao} + N_{e}^{\uparrow} - N_{e}^{\downarrow})\)</span>.</p>
+<p>MO cases are the same as the AO cases by setting <span class="math notranslate nohighlight">\(\Psi_{l,i}^{\uparrow} = \phi_l^{\uparrow}(\vec{r}_i^{\uparrow})\)</span>, <span class="math notranslate nohighlight">\(\Psi_{m,j}^{\downarrow} = \phi_m^{\downarrow}(\vec{r}_j^{\downarrow})\)</span>, whose dimensions are <span class="math notranslate nohighlight">\((M_{mo}, N_{e}^{\uparrow})\)</span> and <span class="math notranslate nohighlight">\((M_{mo}, N_{e}^{\downarrow})\)</span>. The MOs can be different for up and down electrons in the case of UHF/UKS calculations.</p>
+<p>Since MOs and AOs are connected via the following relation:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}
+\begin{gathered}
+\Phi^{\uparrow} = C^{\uparrow} \Psi^{\uparrow} \\
+\Phi^{\downarrow} = C^{\downarrow} \Psi^{\downarrow} \\
+\end{gathered}
+\end{split}\]</div>
+<p>where <span class="math notranslate nohighlight">\(C^{\uparrow}\)</span> and <span class="math notranslate nohighlight">\(C^{\downarrow}\)</span> are molecular orbital coefficients for up and down orbitals, whose dimensions are <span class="math notranslate nohighlight">\((M_{mo}, M_{ao})\)</span> and <span class="math notranslate nohighlight">\((M_{mo}, M_{ao})\)</span>, respectively. Thus, the relation between the AO and MO representations are:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}
+\begin{gathered}
+\Lambda_A^{\uparrow, \downarrow} = (C^{\uparrow})^T \Lambda_M^{\uparrow, \downarrow} C_{\downarrow} \\
+\Lambda_A^{\uparrow} = (C^{\uparrow})^T \Lambda_M^{\uparrow}.
+\end{gathered}
+\end{split}\]</div>
+<p>Indeed, the following matrices are the same, i.e., <span class="math notranslate nohighlight">\(\tilde{F}^{AO}(\vec{x}^{\uparrow}, \vec{x}^{\downarrow}) = \tilde{F}^{MO}(\vec{x}^{\uparrow}, \vec{x}^{\downarrow})\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}
+\begin{gathered}
+\tilde{F}^{AO}(\vec{x}^{\uparrow}, \vec{x}^{\downarrow}) = [(\Psi^{\uparrow})^T \Lambda_A^{\uparrow, \downarrow} \Psi^{\downarrow} | (\Psi^{\uparrow})^T \Lambda_A^{\uparrow} ] \\
+\tilde{F}^{MO}(\vec{x}^{\uparrow}, \vec{x}^{\downarrow}) = [(\Phi^{\uparrow})^T \Lambda_M^{\uparrow, \downarrow} \Phi^{\downarrow} | (\Phi^{\uparrow})^T \Lambda_M^{\uparrow} ].
+\end{gathered}
+\end{split}\]</div>
+</section>
+<section id="agp-with-constrained-number-of-molecular-orbital-agpn">
+<span id="sec-agpn"></span><h2>AGP with constrained number of molecular orbital (AGPn)<a class="headerlink" href="#agp-with-constrained-number-of-molecular-orbital-agpn" title="Link to this heading">#</a></h2>
+<p>If one expands the AGP pairing function with molecular orbitals, and neglect the non-diagonal terms of the pairing matrix, the resultant pairing function reads:</p>
+<div class="math notranslate nohighlight">
+\[
+\tilde{F}^{MO}(\vec{x}^{\uparrow}, \vec{x}^{\downarrow}) = [(\Phi^{\uparrow})^T \Lambda_{M, {\rm diag}}^{\uparrow, \downarrow} \Phi^{\downarrow} | (\Phi^{\uparrow})^T \Lambda_M^{\uparrow} ],
+\]</div>
+<p>where <span class="math notranslate nohighlight">\(\Lambda_{M, {\rm diag}}^{\uparrow, \downarrow}\)</span> is the diagonal matrix (i.e., the non-diagonal terms are set to zero, neglecting couplings different molecular orbital indices). This is what we call the AGPn ansatz.</p>
+</section>
+<section id="single-slater-determinant-sd">
+<span id="sec-sd"></span><h2>Single Slater determinant (SD)<a class="headerlink" href="#single-slater-determinant-sd" title="Link to this heading">#</a></h2>
+<p>The AGP WF is reduced to the Slater Determinant if one restricts <span class="math notranslate nohighlight">\(M_{mo} = N_{e}^{\uparrow}\)</span>. We neglect the non-diagonal elements of  <span class="math notranslate nohighlight">\(\Lambda^{\uparrow, \downarrow}\)</span> and <span class="math notranslate nohighlight">\(\Lambda^{\uparrow}\)</span>, i.e., <span class="math notranslate nohighlight">\(\lambda_{i,j}^{\uparrow, \downarrow} = \delta_{i,j}\)</span>  (dim.: <span class="math notranslate nohighlight">\(N^{\downarrow}_{e}, N^{\downarrow}_{e}\)</span>) and <span class="math notranslate nohighlight">\(\lambda_{l,k}^{\uparrow} = \delta_{l,k+N_{e}^{\downarrow}}\)</span> (dim: <span class="math notranslate nohighlight">\(N_{e}^{\uparrow}, N_{e}^{\uparrow} - N_{e}^{\downarrow}\)</span>).</p>
+</section>
+<section id="fast-update-of-the-determinant-part">
+<h2>Fast update of the determinant part<a class="headerlink" href="#fast-update-of-the-determinant-part" title="Link to this heading">#</a></h2>
+<p>Suppose <span class="math notranslate nohighlight">\(l\)</span>-th electron is updated between the old and new electron coordinates,
+the new matrix <span class="math notranslate nohighlight">\(A_{new}\)</span> is</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}
+A^{new}=
+\begin{pmatrix}
+A_{1,1}  &amp; \cdots &amp; A_{1,j}  &amp; \cdots &amp; A_{1,n}  \\
+\vdots   &amp; \ddots &amp;          &amp;        &amp; \vdots   \\
+A'_{l,1} &amp;        &amp; A'_{l,j} &amp;        &amp; A'_{l,n} \\
+\vdots   &amp;        &amp;          &amp; \ddots &amp; \vdots   \\
+A_{n,1}  &amp; \cdots &amp; A_{n,j}  &amp; \cdots &amp; A_{n,n}
+\end{pmatrix}
+,\:
+A^{old}=
+\begin{pmatrix}
+A_{1,1} &amp; \cdots &amp; A_{1,j} &amp; \cdots &amp; A_{1,n}   \\
+\vdots  &amp; \ddots &amp;         &amp;        &amp; \vdots    \\
+A_{l,1} &amp;        &amp; A_{l,j} &amp;        &amp; A_{l,n}   \\
+\vdots  &amp;        &amp;         &amp; \ddots &amp; \vdots    \\
+A_{n,1} &amp; \cdots &amp; A_{n,j} &amp; \cdots &amp; A_{n,n}
+\end{pmatrix}
+\end{split}\]</div>
+<p>if <span class="math notranslate nohighlight">\(l\)</span> is up-electron index, and</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}
+A^{new}=
+\begin{pmatrix}
+A_{1,1} &amp; \cdots &amp; A'_{1,l} &amp; \cdots &amp; A_{1,n} \\
+\vdots  &amp; \ddots &amp;          &amp;        &amp; \vdots  \\
+A_{i,1} &amp;        &amp; A'_{i,l} &amp;        &amp; A_{i,n} \\
+\vdots  &amp;        &amp;          &amp; \ddots &amp; \vdots  \\
+A_{n,1} &amp; \cdots &amp; A'_{n,l} &amp; \cdots &amp; A_{n,n}
+\end{pmatrix}
+,\:
+A^{old}=
+\begin{pmatrix}
+A_{1,1} &amp; \cdots &amp; A_{1,l} &amp; \cdots &amp; A_{1,n} \\
+\vdots  &amp; \ddots &amp;         &amp;        &amp; \vdots  \\
+A_{i,1} &amp;        &amp; A_{i,l} &amp;        &amp; A_{i,n} \\
+\vdots  &amp;        &amp;         &amp; \ddots &amp; \vdots  \\
+A_{n,1} &amp; \cdots &amp; A_{n,l} &amp; \cdots &amp; A_{n,n}
+\end{pmatrix}
+\end{split}\]</div>
+<p>if <span class="math notranslate nohighlight">\(l\)</span> is down-electron index,</p>
+<p>where <span class="math notranslate nohighlight">\(A_{i,j} = f(\vec{r}_{i}^{\uparrow}, \vec{r}_{j}^{\downarrow})\)</span>, <span class="math notranslate nohighlight">\(A'_{l,j} = f(\vec{r}_{l}^{\uparrow, new}, \vec{r}_{j}^{\downarrow})\)</span>, and <span class="math notranslate nohighlight">\(A'_{i,l} = f(\vec{r}_{i}^{\uparrow}, \vec{r}_{l}^{\downarrow, new})\)</span>. We notice that the Slater determinant is also treated like this since the SD is a special case of the AGP ansatz.</p>
+<p>We can immediately derive:</p>
+<div class="math notranslate nohighlight">
+\[
+A^{new} = A^{old} + \vec{u} \cdot \vec{v}_l^T
+\]</div>
+<p>where,</p>
+<p>if <span class="math notranslate nohighlight">\(l\)</span> is up-electron index, <span class="math notranslate nohighlight">\(\vec{v}_l\)</span> and <span class="math notranslate nohighlight">\(\vec{u}_l\)</span> are</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}
+\vec{v}_l=
+\begin{pmatrix}
+ \vdots \\ A'_{l,j} - A_{l,j} \\ \vdots
+\end{pmatrix}
+, \:
+\vec{u}_l=
+\begin{pmatrix}
+ 0 \\ \vdots \\ 1 \\ \vdots \\ 0
+\end{pmatrix}
+\end{split}\]</div>
+<p>if <span class="math notranslate nohighlight">\(l\)</span> is down-electron index, <span class="math notranslate nohighlight">\(\vec{v}_l\)</span> and <span class="math notranslate nohighlight">\(\vec{u}_l\)</span> are</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}
+\vec{v}_l=
+\begin{pmatrix}
+ 0 \\ \vdots \\ 1 \\ \vdots \\ 0
+\end{pmatrix}
+, \:
+\vec{u}_l=
+\begin{pmatrix}
+ \vdots \\ A'_{i,l} - A_{i,l} \\ \vdots
+\end{pmatrix}
+\end{split}\]</div>
+<p>The probability <span class="math notranslate nohighlight">\(p\)</span> can be found via the matrix determinant formula:</p>
+<div class="math notranslate nohighlight">
+\[
+\det(A^{new}) = \det(A^{old}+\vec{u}\vec{v}_l^T) = (1+\vec{v}_l^T (A^{old})^{-1} \vec{u})\det(A^{old}).
+\]</div>
+<p>The factor can be written as:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}
+(1+\vec{v}_l^T (A^{old})^{-1} \vec{u}_l) =
+\begin{cases}
+\sum_{j=1} ({A^{old}})^{-1}_{l,j} A^{new}_{l,j} &amp; (l = \uparrow) \\
+\sum_{i=1} ({A^{old}})^{-1}_{i,l} A^{new}_{i,l} &amp; (l = \downarrow)  \\
+\end{cases}
+\end{split}\]</div>
+<p>Thus, the ratio <span class="math notranslate nohighlight">\(p\)</span> can be computed via:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}
+p =
+\frac{\det(A^{new})}{\det(A^{old})} = (1+\vec{v}_l^T ({A^{old}})^{-1} \vec{u}_l) =
+\begin{cases}
+\sum_{j=1} ({A^{old}})^{-1}_{l,j} A^{new}_{l,j} &amp; (l = \uparrow) \\
+\sum_{i=1} ({A^{old}})^{-1}_{i,l} A^{new}_{i,l} &amp; (l = \downarrow)  \\
+\end{cases}
+\end{split}\]</div>
+<p>This equation shows that, to compute the probability <span class="math notranslate nohighlight">\(p\)</span>,  one does not have to compute the full rank of <span class="math notranslate nohighlight">\(\det(A^{new})\)</span>, but we can just compute <span class="math notranslate nohighlight">\(\vec{u}\)</span> using the new electron configuration and combine the computed <span class="math notranslate nohighlight">\(\vec{u}\)</span> with the old matrix <span class="math notranslate nohighlight">\(\det(A^{old})\)</span> that can be stored on a memory. Notice that, <span class="math notranslate nohighlight">\(\det(A^{new})\)</span> itself is not needed to compute the probability, but one needs <span class="math notranslate nohighlight">\(\det(A^{new})^{-1}\)</span> to compute the next probability. Therefore, in the standard VMC implementation, every time a proposed move is accepted, the matrix inverse is updated using a rank-1 update using the so-called {\it Sherman–Morrison} formula:</p>
+<div class="math notranslate nohighlight">
+\[
+(A^{new})^{-1} = (A^{old}+\vec{u}\vec{v}_l^T)^{-1} = (A^{old})^{-1} - (A^{old})^{-1}\vec{u}(1+\vec{v}_l^T (A^{old})^{-1} \vec{u})^{-1} \vec{v}_l^T (A^{old})^{-1}.
+\]</div>
+<p>The performance of the above standard procedure is dominated by the performance of the matrix-vector operation and memory bandwidth. Therefore, McDaniel et al. [J. Chem. Phys. 147, 174107 (2017)] proposed a new update method called ‘delayed update’. This is an advanced topic (to be written).</p>
+</section>
+<section id="summary-many-body-wavefunction">
+<span id="sec-summary-anstaz"></span><h2>Summary: Many-body wavefunction<a class="headerlink" href="#summary-many-body-wavefunction" title="Link to this heading">#</a></h2>
+<p>As a summary, with a given electron positions <span class="math notranslate nohighlight">\(\vec{x}^{\uparrow} = (\vec{r}_1^{\uparrow}, \cdots, \vec{r}_i^{\uparrow}, \cdots, \vec{r}^{\uparrow}_{N_{e}^{\uparrow}})\)</span> and <span class="math notranslate nohighlight">\(\vec{x}^{\downarrow} = (\vec{r}_1^{\downarrow}, \cdots, \vec{r}_j^{\downarrow}, \cdots, \vec{r}^{\downarrow}_{N_{e}^{\downarrow}})\)</span>, a practical implementation to compute the value <span class="math notranslate nohighlight">\(\Psi \left(\vec{x}^{\uparrow}, \vec{x}^{\downarrow} \right)\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}
+\begin{aligned}
+\Psi \left(\vec{x}^{\uparrow}, \vec{x}^{\downarrow} \right)
+&amp;= \det [(\Psi^{\uparrow})^T \Lambda^{\uparrow, \downarrow} \Psi^{\downarrow} | (\Psi^{\uparrow})^T \Lambda^{\uparrow}] \\
+&amp;\times \exp \left[
+\sum_{i=1}^{N_e^{\uparrow}} \sum_{a=1}^{N_\text{at}} \left( { { - {{\left( {2{Z_a}} \right)}^{3/4}}u_a\left( {(2{Z_a})^{1/4}\left| {{\vec{x}_i^{\uparrow}} - {{\vec{R}}_a}} \right|} \right)} } \right)
+\right]\\
+&amp;\times \exp \left[
+\sum_{i=1}^{N_e^{\downarrow}} \sum_{a=1}^{N_\text{at}} \left( { { - {{\left( {2{Z_a}} \right)}^{3/4}}u_a\left( {(2{Z_a})^{1/4}\left| {{\vec{x}_i^{\downarrow}} - {{\vec{R}}_a}} \right|} \right)} } \right)
+\right]\\
+&amp;\times \exp \left[
+{\sum\limits_{i &lt; j}^{N_e^{\uparrow}, N_e^{\uparrow}} {{v_{{\uparrow},{\uparrow}}}\left( {\left| {{{\vec{x}}_i^{\uparrow}} - {{\vec{x}}_j}^{\uparrow}} \right|} \right)} }
+\right]
+\times \exp \left[
+{\sum\limits_{i &lt; j}^{N_e^{\downarrow}, N_e^{\downarrow}} {{v_{{\downarrow},{\downarrow}}}\left( {\left| {{{\vec{x}}_i^{\downarrow}} - {{\vec{x}}_j^{\downarrow}}} \right|} \right)} }
+\right]\\
+&amp;\times \exp \left[
+{\sum\limits_{i, j}^{N_e^{\uparrow}, N_e^{\downarrow}} {{v_{{\uparrow},{\downarrow}}}\left( {\left| {{{\vec{x}}_i^{\uparrow}} - {{\vec{x}}_j^{\downarrow}}} \right|} \right)} }
+\right]\\
+&amp;\times \exp \left[
+M^{\uparrow} X^{\uparrow} \vec{e}^{N_e^{\uparrow}} + M^{\downarrow} X^{\downarrow} \vec{e}^{N_e^{\downarrow}} \right] \\
+&amp;\times
+\exp \left[
+\operatorname{tr}
+\left(
+(X^{\uparrow})^T
+\bar{M}^{\uparrow, \uparrow}
+\bar{X}^{\uparrow}
+K^{\uparrow}
+\right)
++
+\operatorname{tr}
+\left(
+(X^{\downarrow})^T
+\bar{M}^{\downarrow, \downarrow}
+\bar{X}^{\downarrow}
+K^{\downarrow}
+\right)
++
+(\vec{e}^{N_e^{\uparrow}})^T
+(X^{\uparrow})^T
+M^{\uparrow, \downarrow}
+X^{\downarrow}
+\vec{e}^{N_e^{\downarrow}}
+\right].
+\end{aligned}
+\end{split}\]</div>
+</section>
+</section>
+<hr class="footnotes docutils" />
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="id3" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id1">1</a><span class="fn-bracket">]</span></span>
+<p>The correlation energy is typically defined as the difference between the exact energy and the Hartree-Fock energy, which is the variational minimum for a SD ansatz.</p>
+</aside>
+<aside class="footnote brackets" id="id4" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id2">2</a><span class="fn-bracket">]</span></span>
+<p>However, the Jastrow factor makes <span class="math notranslate nohighlight">\(\Psi\)</span> not factorizable when expectation values of quantum operators are evaluated. For this reason it is not a feasible route to traditional quantum chemistry approaches, as it requires  stochastic approaches to evaluate efficiently the corresponding multidimensional integrals.</p>
+</aside>
+</aside>
+
+
+                </article>
+              
+
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="ao.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Atomic orbitals (AOs) and Basis sets</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="vmc.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Variational Monte Carlo (VMC)</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+  <div class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> Contents
+  </div>
+  <nav class="bd-toc-nav page-toc">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jastrow-factor-j">Jastrow factor (J)</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#neural-network-jastrow-factor">Neural Network Jastrow Factor</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#input-features">Input Features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#interaction-layers">Interaction Layers</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#global-readout">Global Readout</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#antisymmetrized-geminal-power-agp">Antisymmetrized Geminal Power (AGP)</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#agp-with-constrained-number-of-molecular-orbital-agpn">AGP with constrained number of molecular orbital (AGPn)</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#single-slater-determinant-sd">Single Slater determinant (SD)</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#fast-update-of-the-determinant-part">Fast update of the determinant part</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#summary-many-body-wavefunction">Summary: Many-body wavefunction</a></li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+<div class="bd-footer-content__inner container">
+  
+  <div class="footer-item">
+    
+<p class="component-author">
+By Kosuke Nakano
+</p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+
+  <p class="copyright">
+    
+      © Copyright 2026, Kosuke Nakano.
+      <br/>
+    
+  </p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+</div>
+          </footer>
+        
+
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
+<script src="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+  <footer class="bd-footer">
+  </footer>
+  </body>
+</html>

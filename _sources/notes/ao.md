@@ -1,3 +1,4 @@
+(sec:atomic_orbitals)=
 # Atomic orbitals (AOs) and Basis sets
 
 ## Atomic orbitals for the pairing function and the Jastrow factor
