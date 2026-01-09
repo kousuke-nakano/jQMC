@@ -1,3 +1,4 @@
+(sec_opt_wf)=
 # Variational Monte Carlo (VMC)
 
 (vmc_tags)=
