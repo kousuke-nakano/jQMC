@@ -33,12 +33,18 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import os
+import sys
+from pathlib import Path
 
 import jax
 import numpy as np
 import pytest
 
-from ..jqmc.determinant import (
+project_root = str(Path(__file__).parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from jqmc.determinant import (  # noqa: E402
     Geminal_data,
     _compute_geminal_all_elements_jax,
     _compute_grads_and_laplacian_ln_Det_jax,
@@ -52,7 +58,7 @@ from ..jqmc.determinant import (
     compute_geminal_up_one_row_elements_jax,
     compute_grads_and_laplacian_ln_Det_debug,
 )
-from ..jqmc.trexio_wrapper import read_trexio_file
+from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)

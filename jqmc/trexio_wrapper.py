@@ -35,7 +35,7 @@
 # import python modules
 # logger
 import itertools
-from logging import Formatter, StreamHandler, getLogger
+from logging import getLogger
 
 import numpy as np
 import scipy
@@ -252,7 +252,7 @@ def read_trexio_file(
             N_n_dup_fuctorial_part = [
                 (scipy.special.factorial(nx) * scipy.special.factorial(ny) * scipy.special.factorial(nz))
                 / (scipy.special.factorial(2 * nx) * scipy.special.factorial(2 * ny) * scipy.special.factorial(2 * nz))
-                for nx, ny, nz in zip(poly_x, poly_y, poly_z)
+                for nx, ny, nz in zip(poly_x, poly_y, poly_z, strict=True)
             ]
 
             # print(f"len(N_n_dup_fuctorial_part) = {len(N_n_dup_fuctorial_part)}.")

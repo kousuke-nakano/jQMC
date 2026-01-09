@@ -27,10 +27,17 @@ What sets **jQMC** apart:
 
 This combination of features makes **jQMC** a versatile and powerful tool for both users and developers in the field of quantum Monte Carlo simulations.
 
+
 ## Known issues
 - On CPUs, **`jQMC` is significantly slower than other QMC packages written in compiled languages (e.g., C++ or Fortran) although all the implemented functions are `jit`-compiled and `vmap`-vectorized by `JAX`. Further improvements are needed on both the algorithmic and implementation fronts. As this is an initial release, there remain many bottlenecks and hot spots to address.** Please use GPUs with a large number of walkers to achieve comparable speed.
 - Atomic force calculations with **solid (sperical) harmonics GTOs** are much slower than energy and energy-optimization calculations due to the very slow compilations of dlnPsi/dR and de_L/dR. This is because `grad`, `jvp`, and `vjp` are slow for these terms for some reason. A more detailed analysis will be needed. Please use **cartesian GTOs** to do those calculations
 - Periodic boundary condition calculations are not supoorted yet. It will be implemented in the future as `JAX` supports `complex128`. Work in progress.
+
+
+## Ongoing works
+- Improving the computational performance of VMC and LRDMC. The current implementation remains slow due to several reasons (especially for LRDMC); however, substantial speedups should be possible with code optimization.
+- Implementing periodic boundary conditions (PBC), at least at the Gamma point (i.e., using a real-space wave function).
+
 
 ## Developer(s)
 Kosuke Nakano (National Institute for Materials Science (NIMS), Japan)
@@ -76,25 +83,31 @@ See the [TREX-IO website](https://github.com/TREX-CoE/trexio) for the detail.
 stored in `doc` directory. Please see how to write the documentation at
 `doc/README.md`.
 
+
 ## Branches
 
  - `main`: main branch.
+ - `devel*`: development branches.
  - `rc`: the latest stable version ready for deployment of the package.
  - `rc-gh-pages`: the latest stable version ready for deployment of the documentation.
 
-Every time a change is pushed to the `main` branch, the `GitHub` workflow launches the implemented unit and integration test (`jqmc-run-full-pytest.yml` for the `main` branch).
+Every time a change is pushed to the `main` or `devel*` branch, the `GitHub` workflow launches the implemented unit and integration tests (`jqmc-run-short-pytest.yml` and `jqmc-run-full-pytest.yml` for the `main` and `devel*` branches, respectively).
+
 
 ## How to deploy the package
 
 Once the `main` repository is merged into the `rc` repository, the `GitHub` workflow launches the implemented unit and integration tests (`jqmc-run-full-pytest.yml`) and test a deployment using `test-PyPI`. Then, once a tag is attached to (the latest) commit in the `rc` repository, the `GitHub` workflow checks the tag format (PEP 440 with the starting v, e.g., v0.1.0b4, v0.1.1, v1.0) and deploy the package to `PyPI`.
 
+
 ## Contribution
 
 Please see [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
 
+
 ## Formatting
 
 Formatting rules are written in `pyproject.toml`.
+
 
 ## Pre-commit
 
@@ -109,6 +122,7 @@ git-commit. Pre-commit is set-up and used in the following way:
 
 Unless running pre-commit, pre-commit.ci may push the fix at PR by github
 action. In this case, the fix should be merged by the contributor's repository.
+
 
 ## VSCode setting
 - Not strictly, but VSCode's `settings.json` may be written like below
@@ -125,6 +139,7 @@ action. In this case, the fix should be merged by the contributor's repository.
   },
   ```
 
+
 ## How to run tests
 
 Tests are written using pytest. To run tests, pytest has to be installed.
@@ -134,6 +149,7 @@ The tests can be run by
 % pytest -s -v  # with jax-jit
 % pytest -s -v --disable-jit  # without jax jit
 ```
+
 
 ## Citation of jQMC
 
@@ -158,17 +174,18 @@ If you used `jQMC` in your reseach project, please cite the following articles. 
 
 - "Load-Balanced Diffusion Monte Carlo Method with Lattice Regularization",
 
-  [K. Nakano, S. Sorella, and M. Casula, arXiv, 2508.12033 (2025)](https://doi.org/10.48550/arXiv.2508.12033)
+  [K. Nakano, S. Sorella, and M. Casula, J. Chem. Phys. 163, 194117 (2025)](https://doi.org/10.1063/5.0296986)
 
   ```
-  @article{load-balanced-lrdmc,
-    author  = {Nakano, Kousuke and  Sorella, Sandro and Casula, Michele},
-    title   = {Load-Balanced Diffusion Monte Carlo Method with Lattice Regularization},
-    journal = {arXiv},
-    %volume  = {},
-    number  = {2508.12033},
-    %pages   = {},
-    year    = {2025},
-    %doi     = {}
+  @article{10.1063/5.0296986,
+      author = {Nakano, Kousuke and Sorella, Sandro and Casula, Michele},
+      title = {Load-balanced diffusion Monte Carlo method with lattice regularization},
+      journal = {J. Chem. Phys.},
+      volume = {163},
+      number = {19},
+      pages = {194117},
+      year = {2025},
+      month = {11},
+      doi = {10.1063/5.0296986}
   }
   ```

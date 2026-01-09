@@ -43,10 +43,10 @@ Next step is to convert the `TREXIO` file to the `jqmc` format using `jqmc-tool`
 
 ```bash
 % jqmc-tool trexio convert-to water_ccecp_ccpvqz_cart.h5
-> Hamiltonian data is saved in hamiltonian_data.chk.
+> Hamiltonian data is saved in hamiltonian_data.h5.
 ```
 
-The generated `hamiltonian_data.chk` is a wavefunction file with the `jqmc` format. No Jastrow factors are added here.
+The generated `hamiltonian_data.h5` is a wavefunction file with the `jqmc` format. No Jastrow factors are added here.
 
 Then, you can generate a template file for a MCMC calculation using `jqmc-tool`. Please directly edit `mcmc.toml` if you want to change a parameter.
 
@@ -64,7 +64,7 @@ number_of_walkers = 300 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
 restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
-hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
+hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 [mcmc]
 num_mcmc_steps = 90000 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.

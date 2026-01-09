@@ -35,13 +35,16 @@
 import logging
 import os
 import time
+from collections import defaultdict
 from functools import partial
 from logging import getLogger
+from typing import Any
 
 import jax
 import mpi4jax
 import numpy as np
 import numpy.typing as npt
+import optax
 import scipy
 import toml
 from jax import grad, jit, lax, vmap
@@ -57,11 +60,9 @@ from .determinant import (
     compute_geminal_dn_one_column_elements_jax,
     compute_geminal_up_one_row_elements_jax,
 )
+from .diff_mask import DiffMask, apply_diff_mask
 from .hamiltonians import (
     Hamiltonian_data,
-    Hamiltonian_data_deriv_params,
-    # Hamiltonian_data_deriv_R,
-    Hamiltonian_data_no_deriv,
     compute_local_energy_jax,
 )
 from .jastrow_factor import compute_Jastrow_part_jax
@@ -150,6 +151,11 @@ class MCMC:
 
         # set hamiltonian_data
         self.__hamiltonian_data = hamiltonian_data
+        self.__param_grad_flags = self.__default_param_grad_flags()
+
+        # optimizer runtime container (used for optax restarts)
+        self.__optimizer_runtime = None
+        self.__ensure_optimizer_runtime()
 
         # optimization counter
         self.__i_opt = 0
@@ -271,30 +277,86 @@ class MCMC:
         # stored sum_i d omega/d r_i for dn spins (SWCT)
         self.__stored_grad_omega_r_dn = []
 
-        # stored dln_Psi / dc_jas1b
-        self.__stored_grad_ln_Psi_jas1b = []
+        # stored parameter gradients keyed by block name
+        self.__stored_param_grads: dict[str, list] = defaultdict(list)
 
-        # stored dln_Psi / dc_jas2b
-        self.__stored_grad_ln_Psi_jas2b = []
+    @staticmethod
+    def __default_param_grad_flags() -> dict[str, bool]:
+        return {
+            "j1_param": True,
+            "j2_param": True,
+            "j3_matrix": True,
+            "jastrow_nn_params": True,
+            "lambda_matrix": True,
+        }
 
-        # stored dln_Psi / dc_jas1b3b
-        self.__stored_grad_ln_Psi_jas1b3b_j_matrix = []
+    def param_gradient_flags(self) -> dict[str, bool]:
+        """Return a copy of the current per-block gradient flags."""
+        return dict(self.__param_grad_flags)
 
-        """ linear method
-        # stored de_L / dc_jas2b
-        self.__stored_grad_e_L_jas2b = []
+    def set_param_gradient_flags(self, **flags: bool | None) -> None:
+        """Update per-block gradient flags (True enables, False disables)."""
+        allowed = set(self.__param_grad_flags)
+        for name, value in flags.items():
+            if name not in allowed:
+                raise ValueError(f"Unknown variational block '{name}'.")
+            if value is None:
+                continue
+            self.__param_grad_flags[name] = bool(value)
 
-        # stored de_L / dc_jas1b3b
-        self.__stored_grad_e_L_jas1b3b_j_matrix = []
-        """
+    def __needs_param_grad_mask(self) -> bool:
+        return any(not enabled for enabled in self.__param_grad_flags.values())
 
-        # stored dln_Psi / dc_lambda_matrix
-        self.__stored_grad_ln_Psi_lambda_matrix = []
+    def __wavefunction_data_for_param_grads(self):
+        flags = self.__param_grad_flags
+        return self.__hamiltonian_data.wavefunction_data.with_param_grad_mask(
+            opt_J1_param=flags.get("j1_param", True),
+            opt_J2_param=flags.get("j2_param", True),
+            opt_J3_param=flags.get("j3_matrix", True),
+            opt_JNN_param=flags.get("jastrow_nn_params", True),
+            opt_lambda_param=flags.get("lambda_matrix", True),
+        )
 
-        """ linear method
-        # stored de_L / dc_lambda_matrix
-        self.__stored_grad_e_L_lambda_matrix = []
-        """
+    def __prepare_param_grad_objects(self):
+        wavefunction_data = self.__hamiltonian_data.wavefunction_data
+        if not (self.__comput_param_deriv or self.__comput_position_deriv):
+            return wavefunction_data, self.__hamiltonian_data
+
+        if not self.__needs_param_grad_mask():
+            return wavefunction_data, self.__hamiltonian_data
+
+        masked_wavefunction = self.__wavefunction_data_for_param_grads()
+        if masked_wavefunction is wavefunction_data:
+            return wavefunction_data, self.__hamiltonian_data
+
+        masked_hamiltonian = self.__hamiltonian_data.replace(wavefunction_data=masked_wavefunction)
+        return masked_wavefunction, masked_hamiltonian
+
+    def __ensure_optimizer_runtime(self) -> None:
+        if not hasattr(self, "_MCMC__optimizer_runtime") or self.__optimizer_runtime is None:
+            self.__optimizer_runtime = {
+                "method": None,
+                "hyperparameters": None,
+                "optax_state": None,
+                "optax_param_size": None,
+            }
+
+    def __set_optimizer_runtime(
+        self,
+        *,
+        method: str | None,
+        hyperparameters: dict[str, Any] | None,
+        optax_state: Any,
+        optax_param_size: int | None,
+    ) -> None:
+        self.__ensure_optimizer_runtime()
+        hyper_copy = dict(hyperparameters) if hyperparameters is not None else None
+        self.__optimizer_runtime = {
+            "method": method,
+            "hyperparameters": hyper_copy,
+            "optax_state": optax_state,
+            "optax_param_size": optax_param_size,
+        }
 
     def run(self, num_mcmc_steps: int = 0, max_time=86400) -> None:
         """Launch MCMCs with the set multiple walkers.
@@ -813,6 +875,8 @@ class MCMC:
         # MCMC update compilation.
         logger.info("  Compilation is in progress...")
 
+        wavefunction_for_param_grads, hamiltonian_for_param_grads = self.__prepare_param_grad_objects()
+
         geminal, geminal_inv, _, _ = _geminal_inv_batched(
             self.__hamiltonian_data.wavefunction_data.geminal_data,
             self.__latest_r_up_carts,
@@ -870,14 +934,14 @@ class MCMC:
         )
         if self.__comput_position_deriv:
             _, _, _ = vmap(grad(compute_local_energy_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0))(
-                self.__hamiltonian_data,
+                hamiltonian_for_param_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
                 RTs,
             )
 
             _, _, _ = vmap(grad(evaluate_ln_wavefunction_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0))(
-                self.__hamiltonian_data.wavefunction_data,
+                wavefunction_for_param_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
@@ -902,14 +966,14 @@ class MCMC:
                 self.__latest_r_dn_carts,
             )
             _ = vmap(grad(evaluate_ln_wavefunction_jax, argnums=0), in_axes=(None, 0, 0))(
-                self.__hamiltonian_data.wavefunction_data,
+                wavefunction_for_param_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
 
         if self.__comput_param_deriv:
             _ = vmap(grad(evaluate_ln_wavefunction_jax, argnums=0), in_axes=(None, 0, 0))(
-                self.__hamiltonian_data.wavefunction_data,
+                wavefunction_for_param_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
@@ -1064,7 +1128,7 @@ class MCMC:
                 grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = vmap(
                     grad(compute_local_energy_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0)
                 )(
-                    self.__hamiltonian_data,
+                    hamiltonian_for_param_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                     RTs,
@@ -1077,28 +1141,7 @@ class MCMC:
                 self.__stored_grad_e_L_r_up.append(grad_e_L_r_up)
                 self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn)
 
-                """ it works only for MOs_data
-                grad_e_L_R = (
-                    grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.aos_data.structure_data.positions
-                    + grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.aos_data.structure_data.positions
-                    + grad_e_L_h.coulomb_potential_data.structure_data.positions
-                )
-                """
-
-                grad_e_L_R = (
-                    grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.structure_data.positions
-                    + grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.structure_data.positions
-                    + grad_e_L_h.coulomb_potential_data.structure_data.positions
-                )
-
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
-                    grad_e_L_R += grad_e_L_h.wavefunction_data.jastrow_data.jastrow_one_body_data.structure_data.positions
-
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
-                    grad_e_L_R += (
-                        grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
-                    )
-
+                grad_e_L_R = self.__hamiltonian_data.accumulate_position_grad(grad_e_L_h)
                 self.__stored_grad_e_L_dR.append(grad_e_L_R)
                 # """
 
@@ -1107,7 +1150,7 @@ class MCMC:
                 grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = vmap(
                     grad(evaluate_ln_wavefunction_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
                 )(
-                    self.__hamiltonian_data.wavefunction_data,
+                    wavefunction_for_param_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
@@ -1119,18 +1162,7 @@ class MCMC:
                 self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up)
                 self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn)
 
-                grad_ln_Psi_dR = (
-                    grad_ln_Psi_h.geminal_data.orb_data_up_spin.structure_data.positions
-                    + grad_ln_Psi_h.geminal_data.orb_data_dn_spin.structure_data.positions
-                )
-
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
-                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_one_body_data.structure_data.positions
-
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
-                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
-
-                # stored dln_Psi / dR
+                grad_ln_Psi_dR = self.__hamiltonian_data.wavefunction_data.accumulate_position_grad(grad_ln_Psi_h)
                 self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
                 # """
 
@@ -1163,35 +1195,22 @@ class MCMC:
             if self.__comput_param_deriv:
                 start = time.perf_counter()
                 grad_ln_Psi_h = vmap(grad(evaluate_ln_wavefunction_jax, argnums=0), in_axes=(None, 0, 0))(
-                    self.__hamiltonian_data.wavefunction_data,
+                    wavefunction_for_param_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
+                param_grads = self.__hamiltonian_data.wavefunction_data.collect_param_grads(grad_ln_Psi_h)
+                flat_param_grads = self.__hamiltonian_data.wavefunction_data.flatten_param_grads(
+                    param_grads, self.__num_walkers
+                )
 
-                # 1b Jastrow
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
-                    grad_ln_Psi_jas1b = grad_ln_Psi_h.jastrow_data.jastrow_one_body_data.jastrow_1b_param
-                    # logger.devel(f"grad_ln_Psi_jas1b.shape = {grad_ln_Psi_jas1b.shape}")
-                    self.__stored_grad_ln_Psi_jas1b.append(grad_ln_Psi_jas1b)
+                for name, grad_val in flat_param_grads.items():
+                    if not self.__param_grad_flags.get(name, True):
+                        continue
+                    self.__stored_param_grads[name].append(grad_val)
+                    if hasattr(grad_val, "block_until_ready"):
+                        grad_val.block_until_ready()
 
-                # 2b Jastrow
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data is not None:
-                    grad_ln_Psi_jas2b = grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
-                    # logger.devel(f"grad_ln_Psi_jas2b.shape = {grad_ln_Psi_jas2b.shape}")
-                    self.__stored_grad_ln_Psi_jas2b.append(grad_ln_Psi_jas2b)
-
-                # 3b Jastrow
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
-                    grad_ln_Psi_jas1b3b_j_matrix = grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix
-                    # logger.devel(f"grad_ln_Psi_jas1b3b_j_matrix.shape={grad_ln_Psi_jas1b3b_j_matrix.shape}")
-                    self.__stored_grad_ln_Psi_jas1b3b_j_matrix.append(grad_ln_Psi_jas1b3b_j_matrix)
-
-                # lambda_matrix
-                grad_ln_Psi_lambda_matrix = grad_ln_Psi_h.geminal_data.lambda_matrix
-                # logger.devel(f"grad_ln_Psi_lambda_matrix.shape={grad_ln_Psi_lambda_matrix.shape}")
-                self.__stored_grad_ln_Psi_lambda_matrix.append(grad_ln_Psi_lambda_matrix)
-
-                grad_ln_Psi_lambda_matrix.block_until_ready()
                 end = time.perf_counter()
                 timer_dln_Psi_dc += end - start
 
@@ -1590,17 +1609,9 @@ class MCMC:
                 The dimenstion of O_matrix is (M, nw, k),
                 where M is the MCMC step and nw is the walker index.
         """
-        # Map block names to stored gradient arrays.
-        grad_map = {
-            "j1_param": self.dln_Psi_dc_jas_1b,
-            "j2_param": self.dln_Psi_dc_jas_2b,
-            "j3_matrix": self.dln_Psi_dc_jas_1b3b,
-            "lambda_matrix": self.dln_Psi_dc_lambda_matrix,
-        }
+        grad_map = self.dln_Psi_dc
 
         # Collect gradients in the order of the provided variational blocks.
-        # We assume blocks is always provided and defines the optimization
-        # parameter ordering; no backward-compatibility fallback is needed.
         dln_Psi_dc_list = []
         for block in blocks:
             if block.name in grad_map:
@@ -1835,8 +1846,6 @@ class MCMC:
         self,
         num_mcmc_steps: int = 100,
         num_opt_steps: int = 1,
-        delta: float = 0.001,
-        epsilon: float = 1.0e-3,
         wf_dump_freq: int = 10,
         max_time: int = 86400,
         num_mcmc_warmup_steps: int = 0,
@@ -1844,11 +1853,10 @@ class MCMC:
         opt_J1_param: bool = True,
         opt_J2_param: bool = True,
         opt_J3_param: bool = True,
+        opt_JNN_param: bool = True,
         opt_lambda_param: bool = False,
         num_param_opt: int = 0,
-        cg_flag: bool = True,
-        cg_max_iter=1e6,
-        cg_tol=1e-8,
+        optimizer_kwargs: dict | None = None,
     ):
         """Optimizing wavefunction.
 
@@ -1859,12 +1867,6 @@ class MCMC:
                 The number of MCMC samples per walker.
             num_opt_steps(int):
                 The number of WF optimization step.
-            delta(float):
-                The prefactor of the SR matrix for adjusting the optimization step.
-                i.e., c_i <- c_i + delta * S^{-1} f
-            epsilon(float):
-                The regralization factor of the SR matrix
-                i.e., S <- S + I * delta
             wf_dump_freq(int):
                 The frequency of WF data (i.e., hamiltonian_data.chk)
             max_time(int):
@@ -1879,19 +1881,129 @@ class MCMC:
             opt_J2_param (bool):
                 optimize two-body Jastrow
             opt_J3_param (bool):
-                optimize three-body Jastrow
+                optimize analytic three-body Jastrow parameters
+            opt_JNN_param (bool):
+                optimize neural-network Jastrow parameters
             opt_lambda_param (bool):
                 optimize lambda_matrix in the determinant part.
             num_param_opt (int):
                 the number of parameters to optimize in the descending order of ``|f|/|std f|``.
                 If zero, all parameters are optimized.
-            cg_flag (bool):
-                if True, use conjugate gradient method for inverse S matrix.
-            cg_max_iter (int):
-                maximum number of iterations for conjugate gradient method.
-            cg_tol (float):
-                tolerance for conjugate gradient method.
+            optimizer_kwargs (dict | None):
+                Dictionary that configures the optimizer. The ``method`` entry selects the backend: ``"sr"``
+                (default) keeps the stochastic reconfiguration workflow; any other value should be the name of an
+                optax optimizer (e.g., ``"adam"``, ``"sgd"``). When ``method == "sr"``, the recognized keys are
+                ``delta`` (prefactor in ``c_i <- c_i + delta * S^{-1} f``), ``epsilon`` (regularization strength added
+                to ``S``), ``cg_flag``, ``cg_max_iter``, and ``cg_tol``. When another optimizer is selected, the
+                remaining dictionary entries are forwarded directly to the optax constructor (for example,
+                ``{"learning_rate": 1.0e-3}``).
         """
+        optax_supported = {
+            "sgd": optax.sgd,
+            "adam": optax.adam,
+            "adamw": optax.adamw,
+            "rmsprop": optax.rmsprop,
+            "adagrad": optax.adagrad,
+            "yogi": optax.yogi,
+        }
+
+        optimizer_kwargs = dict(optimizer_kwargs or {})
+        optimizer_mode = optimizer_kwargs.pop("method", "sr")
+        if not isinstance(optimizer_mode, str):
+            raise TypeError("optimizer_kwargs['method'] must be a string if provided.")
+        optimizer_mode = optimizer_mode.lower()
+        use_sr = optimizer_mode == "sr"
+        optax_name = optimizer_mode if not use_sr else None
+        sr_delta = float(optimizer_kwargs.get("delta", 1.0e-3))
+        sr_epsilon = float(optimizer_kwargs.get("epsilon", 1.0e-3))
+        sr_cg_flag = bool(optimizer_kwargs.get("cg_flag", True))
+        sr_cg_max_iter = int(optimizer_kwargs.get("cg_max_iter", int(1e6)))
+        sr_cg_tol = float(optimizer_kwargs.get("cg_tol", 1.0e-8))
+        optax_kwargs = {
+            k: v for k, v in optimizer_kwargs.items() if k not in {"delta", "epsilon", "cg_flag", "cg_max_iter", "cg_tol"}
+        }
+
+        optax_tx = None
+        optax_state = None
+        optax_param_size = None
+
+        self.__ensure_optimizer_runtime()
+        optimizer_runtime = self.__optimizer_runtime
+        stored_method = optimizer_runtime.get("method")
+        stored_hparams = optimizer_runtime.get("hyperparameters")
+        stored_optax_state = optimizer_runtime.get("optax_state")
+        stored_param_size = optimizer_runtime.get("optax_param_size")
+
+        optimizer_hparams: dict[str, float | int | str] = {"method": optimizer_mode}
+
+        if not use_sr:
+            if optax_name not in optax_supported:
+                raise ValueError(
+                    f"Unsupported optimizer '{optimizer_mode}'. Supported optax options: {sorted(optax_supported)}."
+                )
+            optax_config = dict(optax_kwargs)
+            optax_config.setdefault("learning_rate", sr_delta)
+            optax_tx = optax_supported[optax_name](**optax_config)
+            optimizer_hparams = {"method": optimizer_mode, **optax_config}
+        else:
+            optimizer_hparams = {
+                "method": optimizer_mode,
+                "delta": sr_delta,
+                "epsilon": sr_epsilon,
+                "cg_flag": sr_cg_flag,
+                "cg_max_iter": sr_cg_max_iter,
+                "cg_tol": sr_cg_tol,
+            }
+
+        if use_sr:
+            self.__set_optimizer_runtime(
+                method=optimizer_mode,
+                hyperparameters=optimizer_hparams,
+                optax_state=None,
+                optax_param_size=None,
+            )
+        else:
+            if stored_method == optimizer_mode and stored_hparams == optimizer_hparams:
+                optax_state = stored_optax_state
+                optax_param_size = stored_param_size
+                if optax_state is not None:
+                    logger.info("Resuming optax '%s' optimizer state from checkpoint.", optax_name)
+            else:
+                if stored_optax_state is not None:
+                    if stored_method is not None and stored_method != optimizer_mode:
+                        logger.info(
+                            "Stored optimizer state for method '%s' ignored because '%s' was requested.",
+                            stored_method,
+                            optimizer_mode,
+                        )
+                    else:
+                        logger.info("Stored optimizer hyperparameters differ from requested values; resetting optimizer state.")
+                self.__set_optimizer_runtime(
+                    method=optimizer_mode,
+                    hyperparameters=optimizer_hparams,
+                    optax_state=None,
+                    optax_param_size=None,
+                )
+
+        # optimizer info
+        logger.info(f"The chosen optimizer is '{optimizer_mode}'.")
+        if use_sr:
+            logger.info("  The homemade 'SR (aka natural gradient)' optimizer is used for wavefunction optimization.")
+            logger.info("  Hyperparameters: %s", ", ".join(f"{k}={v}" for k, v in sorted(optimizer_hparams.items())))
+            logger.info("")
+        else:
+            logger.info(f"  The optax '{optax_name}' optimizer is used for wavefunction optimization.")
+            logger.info("  Hyperparameters: %s", ", ".join(f"{k}={v}" for k, v in sorted(optimizer_hparams.items())))
+            logger.info("")
+
+        self.set_param_gradient_flags(
+            j1_param=opt_J1_param,
+            j2_param=opt_J2_param,
+            j3_matrix=opt_J3_param,
+            jastrow_nn_params=opt_JNN_param,
+            lambda_matrix=opt_lambda_param,
+        )
+
         # toml(control) filename
         toml_filename = "external_control_opt.toml"
 
@@ -1938,6 +2050,7 @@ class MCMC:
                 opt_J1_param=opt_J1_param,
                 opt_J2_param=opt_J2_param,
                 opt_J3_param=opt_J3_param,
+                opt_JNN_param=opt_JNN_param,
                 opt_lambda_param=opt_lambda_param,
             )
 
@@ -1952,6 +2065,18 @@ class MCMC:
             chosen_param_index = np.arange(total_num_params, dtype=np.int32)
             logger.info(f"Number of variational parameters = {len(chosen_param_index)}.")
 
+            if not use_sr:
+                if blocks:
+                    flat_param_vector = np.concatenate([np.ravel(np.array(block.values, dtype=np.float64)) for block in blocks])
+                else:
+                    flat_param_vector = np.array([], dtype=np.float64)
+
+                if optax_state is None:
+                    optax_param_size = flat_param_vector.size
+                    optax_state = optax_tx.init(jnp.array(flat_param_vector))
+                elif flat_param_vector.size != optax_param_size:
+                    raise ValueError("The number of variational parameters changed after initializing the optax optimizer.")
+
             # get f and f_std (generalized forces)
             f, f_std = self.get_gF(
                 num_mcmc_warmup_steps=num_mcmc_warmup_steps,
@@ -1963,7 +2088,10 @@ class MCMC:
             if mpi_rank == 0:
                 logger.debug(f"shape of f = {f.shape}.")
                 logger.devel(f"f_std.shape = {f_std.shape}.")
-                signal_to_noise_f = np.abs(f) / f_std
+                tol = np.finfo(f_std.dtype).eps if np.issubdtype(f_std.dtype, np.floating) else 0.0
+                finite_mask = np.isfinite(f_std) & (np.abs(f_std) > tol)
+                signal_to_noise_f = np.zeros_like(f)
+                signal_to_noise_f[finite_mask] = np.abs(f[finite_mask]) / f_std[finite_mask]
                 f_argmax = np.argmax(np.abs(f))
                 logger.info("-" * num_sep_line)
                 logger.info(f"Max f = {f[f_argmax]:.3f} +- {f_std[f_argmax]:.3f} Ha/a.u.")
@@ -1986,348 +2114,375 @@ class MCMC:
             signal_to_noise_f = mpi_comm.bcast(signal_to_noise_f, root=0)
             signal_to_noise_f_max_indices = mpi_comm.bcast(signal_to_noise_f_max_indices, root=0)
 
-            logger.info("Computing the natural gradient, i.e., {S+epsilon*I}^{-1}*f")
+            if use_sr:
+                logger.info("Computing the natural gradient, i.e., {S+epsilon*I}^{-1}*f")
+                epsilon = sr_epsilon
 
-            # Retrieve local data (samples assigned to this rank)
-            w_L_local = self.w_L[num_mcmc_warmup_steps:]  # shape: (num_mcmc, num_walker)
-            e_L_local = self.e_L[num_mcmc_warmup_steps:]  # shape: (num_mcmc, num_walker)
-            w_L_local = list(np.ravel(w_L_local))  # shape: (num_mcmc * num_walker, )s
-            e_L_local = list(np.ravel(e_L_local))  # shape: (num_mcmc * num_walker, )
-            O_matrix_local = self.get_dln_WF(
-                num_mcmc_warmup_steps=num_mcmc_warmup_steps,
-                chosen_param_index=chosen_param_index,
-                blocks=blocks,
-            )  # shape: (num_mcmc, num_walker, num_param)
-            O_matrix_local_shape = (
-                O_matrix_local.shape[0] * O_matrix_local.shape[1],
-                O_matrix_local.shape[2],
-            )
-            O_matrix_local = list(O_matrix_local.reshape(O_matrix_local_shape))  # shape: (num_mcmc * num_walker, num_param)
+                # Retrieve local data (samples assigned to this rank)
+                w_L_local = self.w_L[num_mcmc_warmup_steps:]  # shape: (num_mcmc, num_walker)
+                e_L_local = self.e_L[num_mcmc_warmup_steps:]  # shape: (num_mcmc, num_walker)
+                w_L_local = list(np.ravel(w_L_local))  # shape: (num_mcmc * num_walker, )s
+                e_L_local = list(np.ravel(e_L_local))  # shape: (num_mcmc * num_walker, )
+                O_matrix_local = self.get_dln_WF(
+                    num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+                    chosen_param_index=chosen_param_index,
+                    blocks=blocks,
+                )  # shape: (num_mcmc, num_walker, num_param)
+                O_matrix_local_shape = (
+                    O_matrix_local.shape[0] * O_matrix_local.shape[1],
+                    O_matrix_local.shape[2],
+                )
+                O_matrix_local = list(O_matrix_local.reshape(O_matrix_local_shape))  # shape: (num_mcmc * num_walker, num_param)
 
-            # Compute local partial sums
-            local_Ow = list(
-                np.einsum("i,ij->j", w_L_local, O_matrix_local)
-            )  # weighted sum for observables, shape: (num_param,)
-            local_Ew = np.dot(w_L_local, e_L_local)  # weighted sum of energies, shape: scalar
-            local_weight_sum = np.sum(w_L_local)  # scalar: sum of weights, shape: scalar
+                # Compute local partial sums
+                local_Ow = list(
+                    np.einsum("i,ij->j", w_L_local, O_matrix_local)
+                )  # weighted sum for observables, shape: (num_param,)
+                local_Ew = np.dot(w_L_local, e_L_local)  # weighted sum of energies, shape: scalar
+                local_weight_sum = np.sum(w_L_local)  # scalar: sum of weights, shape: scalar
 
-            w_L_local = w_L_local
-            e_L_local = e_L_local
-            local_Ow = local_Ow
-            local_Ew = local_Ew
-            local_weight_sum = local_weight_sum
+                w_L_local = np.array(w_L_local)
+                e_L_local = np.array(e_L_local)
+                local_Ow = np.array(local_Ow)
+                local_Ew = np.array(local_Ew)
+                local_weight_sum = np.array(local_weight_sum)
 
-            w_L_local = np.array(w_L_local)
-            e_L_local = np.array(e_L_local)
-            local_Ow = np.array(local_Ow)
-            local_Ew = np.array(local_Ew)
-            local_weight_sum = np.array(local_weight_sum)
+                # Aggregate across all ranks
+                total_weight = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)  # total sum of weights, shape: scalar
+                total_Ow = mpi_comm.allreduce(local_Ow, op=MPI.SUM)  # aggregated observable sums, shape: (num_param,)
+                total_Ew = mpi_comm.allreduce(local_Ew, op=MPI.SUM)  # aggregated energy sum, shape: scalar
 
-            # Aggregate across all ranks
-            total_weight = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)  # total sum of weights, shape: scalar
-            total_Ow = mpi_comm.allreduce(local_Ow, op=MPI.SUM)  # aggregated observable sums, shape: (num_param,)
-            total_Ew = mpi_comm.allreduce(local_Ew, op=MPI.SUM)  # aggregated energy sum, shape: scalar
+                # Compute global averages
+                O_bar = total_Ow / total_weight  # average observables, shape: (num_param,)
+                e_L_bar = total_Ew / total_weight  # average energy, shape: scalar
 
-            # Compute global averages
-            O_bar = total_Ow / total_weight  # average observables, shape: (num_param,)
-            e_L_bar = total_Ew / total_weight  # average energy, shape: scalar
+                # compute the following variables
+                #     X_{i,k} \equiv np.sqrt(w_i) O_{i, k} / np.sqrt({\sum_{i} w_i})
+                #     F_i \equiv -2.0 * np.sqrt(w_i) (e_L_{i} - E) / np.sqrt({\sum_{i} w_i})
 
-            # compute the following variables
-            #     X_{i,k} \equiv np.sqrt(w_i) O_{i, k} / np.sqrt({\sum_{i} w_i})
-            #     F_i \equiv -2.0 * np.sqrt(w_i) (e_L_{i} - E) / np.sqrt({\sum_{i} w_i})
+                X_local = (
+                    (O_matrix_local - O_bar) * np.sqrt(w_L_local)[:, np.newaxis] / np.sqrt(total_weight)
+                ).T  # shape (num_param, num_mcmc * num_walker) because it's transposed.
+                F_local = (
+                    -2.0 * np.sqrt(w_L_local) * (e_L_local - e_L_bar) / np.sqrt(total_weight)
+                )  # shape (num_mcmc * num_walker, )
 
-            X_local = (
-                (O_matrix_local - O_bar) * np.sqrt(w_L_local)[:, np.newaxis] / np.sqrt(total_weight)
-            ).T  # shape (num_param, num_mcmc * num_walker) because it's transposed.
-            F_local = (
-                -2.0 * np.sqrt(w_L_local) * (e_L_local - e_L_bar) / np.sqrt(total_weight)
-            )  # shape (num_mcmc * num_walker, )
+                logger.debug(f"X_local.shape = {X_local.shape}.")
+                logger.debug(f"F_local.shape = {F_local.shape}.")
 
-            logger.debug(f"X_local.shape = {X_local.shape}.")
-            logger.debug(f"F_local.shape = {F_local.shape}.")
+                # compute X_w@F
+                X_F_local = X_local @ F_local  # shape (num_param, )
+                X_F = np.empty(X_F_local.shape, dtype=np.float64)
+                mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
 
-            # compute X_w@F
-            X_F_local = X_local @ F_local  # shape (num_param, )
-            X_F = np.empty(X_F_local.shape, dtype=np.float64)
-            mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
+                # compute f_argmax
+                f_argmax = np.argmax(np.abs(X_F))
+                logger.debug(
+                    f"Max dot(X, F) = {X_F[f_argmax]:.3f} Ha/a.u. should be equal to Max f = {f[f_argmax]:.3f} Ha/a.u."
+                )
 
-            # compute f_argmax
-            f_argmax = np.argmax(np.abs(X_F))
-            logger.debug(f"Max dot(X, F) = {X_F[f_argmax]:.3f} Ha/a.u. should be equal to Max f = {f[f_argmax]:.3f} Ha/a.u.")
+                # make the SR matrix scale-invariant (i.e., normalize)
+                ## compute X_w@X.T
+                diag_S_local = np.einsum("jk,kj->j", X_local, X_local.T)
+                diag_S = np.empty(diag_S_local.shape, dtype=np.float64)
+                mpi_comm.Allreduce(diag_S_local, diag_S, op=MPI.SUM)
+                logger.info(f"max. and min. diag_S = {np.max(diag_S)}, {np.min(diag_S)}.")
+                diag_eps = np.finfo(diag_S.dtype).tiny
+                diag_S = np.where(np.isfinite(diag_S) & (diag_S > diag_eps), diag_S, diag_eps)
+                X_local = X_local / np.sqrt(diag_S)[:, np.newaxis]  # shape (num_param, num_mcmc * num_walker)
 
-            # make the SR matrix scale-invariant (i.e., normalize)
-            ## compute X_w@X.T
-            diag_S_local = np.einsum("jk,kj->j", X_local, X_local.T)
-            diag_S = np.empty(diag_S_local.shape, dtype=np.float64)
-            mpi_comm.Allreduce(diag_S_local, diag_S, op=MPI.SUM)
-            logger.debug(f"max. and min. diag_S = {np.max(diag_S)}, {np.min(diag_S)}.")
-            X_local = X_local / np.sqrt(diag_S)[:, np.newaxis]  # shape (num_param, num_mcmc * num_walker)
+                # matrix shape info
+                num_params = X_local.shape[0]
+                num_samples_local = X_local.shape[1]
+                num_samples_total = mpi_comm.allreduce(num_samples_local, op=MPI.SUM)
 
-            # matrix shape info
-            num_params = X_local.shape[0]
-            num_samples_local = X_local.shape[1]
-            num_samples_total = mpi_comm.allreduce(num_samples_local, op=MPI.SUM)
+                # info
+                logger.info("The binning technique is not used to compute the natural gradient.")
+                logger.info(f"The number of local samples is {num_samples_local}.")
+                logger.info(f"The number of total samples is {num_samples_total}.")
+                logger.info(f"The total number of variational parameters is {num_params}.")
 
-            # info
-            logger.info("The binning technique is not used to compute the natural gradient.")
-            logger.info(f"The number of local samples is {num_samples_local}.")
-            logger.info(f"The number of total samples is {num_samples_total}.")
-            logger.info(f"The total number of variational parameters is {num_params}.")
+                # ---- Conjugate Gradient Solver ----
+                @partial(jax.jit, static_argnums=(1, 3))
+                def conjugate_gradient_jax(b, apply_A, X_local, epsilon, x0, max_iter=1e6, tol=1e-8):
+                    def body_fun(state):
+                        x, r, p, rs_old, i = state
+                        Ap = apply_A(p, X_local, epsilon)
+                        alpha = rs_old / jnp.dot(p, Ap)
+                        x_new = x + alpha * p
+                        r_new = r - alpha * Ap
+                        rs_new = jnp.dot(r_new, r_new)
+                        beta = rs_new / rs_old
+                        p_new = r_new + beta * p
+                        return (x_new, r_new, p_new, rs_new, i + 1)
 
-            # ---- Conjugate Gradient Solver ----
-            @partial(jax.jit, static_argnums=(1, 3))
-            def conjugate_gradient_jax(b, apply_A, X_local, epsilon, x0, max_iter=1e6, tol=1e-8):
-                def body_fun(state):
-                    x, r, p, rs_old, i = state
-                    Ap = apply_A(p, X_local, epsilon)
-                    alpha = rs_old / jnp.dot(p, Ap)
-                    x_new = x + alpha * p
-                    r_new = r - alpha * Ap
-                    rs_new = jnp.dot(r_new, r_new)
-                    beta = rs_new / rs_old
-                    p_new = r_new + beta * p
-                    return (x_new, r_new, p_new, rs_new, i + 1)
+                    def cond_fun(state):
+                        _, _, _, rs_old, i = state
+                        return jnp.logical_and(jnp.sqrt(rs_old) > tol, i < max_iter)
 
-                def cond_fun(state):
-                    _, _, _, rs_old, i = state
-                    return jnp.logical_and(jnp.sqrt(rs_old) > tol, i < max_iter)
+                    # Initialize variables
+                    # x0 = jnp.zeros_like(b)
+                    r0 = b - apply_A(x0, X_local, epsilon)
+                    p0 = r0
+                    rs0 = jnp.dot(r0, r0)
 
-                # Initialize variables
-                # x0 = jnp.zeros_like(b)
-                r0 = b - apply_A(x0, X_local, epsilon)
-                p0 = r0
-                rs0 = jnp.dot(r0, r0)
+                    init_state = (x0, r0, p0, rs0, 0)
+                    final_state = jax.lax.while_loop(cond_fun, body_fun, init_state)
 
-                init_state = (x0, r0, p0, rs0, 0)
-                final_state = jax.lax.while_loop(cond_fun, body_fun, init_state)
+                    x_final, _, _, rs_final, num_iter = final_state
 
-                x_final, _, _, rs_final, num_iter = final_state
+                    return x_final, jnp.sqrt(rs_final), num_iter
 
-                return x_final, jnp.sqrt(rs_final), num_iter
-
-            if num_params < num_samples_total:
-                # if True:
-                logger.debug("X is a wide matrix. Proceed w/o the push-through identity.")
-                logger.debug("theta = (S+epsilon*I)^{-1}*f = (X * X^T + epsilon*I)^{-1} * X F...")
-                if not cg_flag:
-                    logger.info("Using the direct solver for the inverse of S.")
-                    logger.debug(
-                        f"Estimated X_local @ X_local.T.bytes per MPI = {X_local.shape[0] ** 2 * X_local.dtype.itemsize / (2**30)} gib."
-                    )
-                    # compute local sum of X * X^T
-                    X_X_T_local = X_local @ X_local.T
-                    logger.debug(f"X_X_T_local.shape = {X_X_T_local.shape}.")
-                    # compute global sum of X * X^T
-                    if mpi_rank == 0:
-                        X_X_T = np.empty(X_X_T_local.shape, dtype=np.float64)
+                if num_params < num_samples_total:
+                    # if True:
+                    logger.debug("X is a wide matrix. Proceed w/o the push-through identity.")
+                    logger.debug("theta = (S+epsilon*I)^{-1}*f = (X * X^T + epsilon*I)^{-1} * X F...")
+                    if not sr_cg_flag:
+                        logger.info("Using the direct solver for the inverse of S.")
+                        logger.debug(
+                            f"Estimated X_local @ X_local.T.bytes per MPI = {X_local.shape[0] ** 2 * X_local.dtype.itemsize / (2**30)} gib."
+                        )
+                        # compute local sum of X * X^T
+                        X_X_T_local = X_local @ X_local.T
+                        logger.debug(f"X_X_T_local.shape = {X_X_T_local.shape}.")
+                        # compute global sum of X * X^T
+                        if mpi_rank == 0:
+                            X_X_T = np.empty(X_X_T_local.shape, dtype=np.float64)
+                        else:
+                            X_X_T = None
+                        mpi_comm.Reduce(X_X_T_local, X_X_T, op=MPI.SUM, root=0)
+                        # compute local sum of X @ F
+                        X_F_local = X_local @ F_local  # shape (num_param, )
+                        logger.debug(f"X_F_local.shape = {X_F_local.shape}.")
+                        # compute global sum of X @ F
+                        if mpi_rank == 0:
+                            X_F = np.empty(X_F_local.shape, dtype=np.float64)
+                        else:
+                            X_F = None
+                        mpi_comm.Reduce(X_F_local, X_F, op=MPI.SUM, root=0)
+                        # compute theta
+                        if mpi_rank == 0:
+                            logger.debug(f"X @ X.T.shape = {X_X_T.shape}.")
+                            logger.debug(f"X @ F.shape = {X_F.shape}.")
+                            # (X X^T + eps*I) x = X F ->solve-> x = (X  X^T + eps*I)^{-1} X F
+                            X_X_T[np.diag_indices_from(X_X_T)] += epsilon
+                            X_X_T_inv_X_F = scipy.linalg.solve(X_X_T, X_F, assume_a="sym")
+                            # theta = (X_w X^T + eps*I)^{-1} X_w F
+                            theta_all = X_X_T_inv_X_F
+                        else:
+                            theta_all = None
+                        # Broadcast theta_all to all ranks
+                        theta_all = mpi_comm.bcast(theta_all, root=0)
+                        logger.devel(f"[new] theta_all (w/o the push through identity) = {theta_all}.")
+                        logger.debug(
+                            f"[new] theta_all (w/o the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
+                        )
                     else:
-                        X_X_T = None
-                    mpi_comm.Reduce(X_X_T_local, X_X_T, op=MPI.SUM, root=0)
-                    # compute local sum of X @ F
-                    X_F_local = X_local @ F_local  # shape (num_param, )
-                    logger.debug(f"X_F_local.shape = {X_F_local.shape}.")
-                    # compute global sum of X @ F
-                    if mpi_rank == 0:
-                        X_F = np.empty(X_F_local.shape, dtype=np.float64)
+                        logger.info("Using conjugate gradient for the inverse of S.")
+                        logger.info(f"  [CG] threshold {sr_cg_tol}.")
+                        logger.info(f"  [CG] max iteration: {sr_cg_max_iter}.")
+                        # conjugate gradient solver
+                        # Compute b = X @ F (distributed)
+                        X_F_local = X_local @ F_local  # shape (num_param, )
+                        X_F = np.zeros_like(X_F_local)
+                        mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
+
+                        # ---- Matrix-free matvec: apply_S_jax ----
+                        @partial(jax.jit, static_argnums=(2,))  # epsilon
+                        def apply_S_primal_jax(v, X_local, epsilon):
+                            # Local computation of X^T v
+                            XTv_local = X_local.T @ v  # shape (M_local,)
+
+                            # Local computation of X (X^T v)
+                            XXTv_local = X_local @ XTv_local  # shape (N,)
+
+                            # Global sum over all processes
+                            try:
+                                XXTv_global, _ = mpi4jax.allreduce(XXTv_local, op=MPI.SUM, comm=MPI.COMM_WORLD)
+                            except ValueError:  # mpi4jax.allreduce does not return token since mpi4jax v0.8.0（2025-07-07)
+                                XXTv_global = mpi4jax.allreduce(XXTv_local, op=MPI.SUM, comm=MPI.COMM_WORLD)
+                            return XXTv_global + epsilon * v
+
+                        x0 = X_F
+                        theta_all, final_residual, num_steps = conjugate_gradient_jax(
+                            jnp.array(X_F),
+                            apply_S_primal_jax,
+                            X_local,
+                            epsilon,
+                            x0,
+                            sr_cg_max_iter,
+                            sr_cg_tol,
+                        )
+                        logger.debug(f"  [CG] Final residual: {final_residual:.3e}")
+                        logger.info(f"  [CG] Converged in {num_steps} steps")
+                        if num_steps == sr_cg_max_iter:
+                            logger.info("  [CG] Conjugate gradient did not converge!!")
+                        logger.devel(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
+                        logger.debug(
+                            f"[new/cg] theta_all (w/o the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
+                        )
+
+                else:  # num_params >= num_samples:
+                    # if True:
+                    logger.debug("X is a tall matrix. Proceed w/ the push-through identity.")
+                    logger.debug("theta = (S+epsilon*I)^{-1}*f = X(X^T * X + epsilon*I)^{-1} * F...")
+
+                    # Get local shapes
+                    N, M = X_local.shape
+                    P = mpi_size  # number of ranks
+
+                    # Compute how many rows each rank should own (distribute the remainder)
+                    counts = [N // P + (1 if i < (N % P) else 0) for i in range(P)]
+
+                    # Compute starting row index for each rank in the original array
+                    displs = [sum(counts[:i]) for i in range(P)]
+                    N_local = counts[mpi_rank]  # number of rows this rank will receive
+
+                    # Build send buffers by slicing X and Xw into P row‑chunks
+                    # Each chunk is flattened so we can send in one go.
+                    sendbuf_X = np.concatenate([X_local[displs[i] : displs[i] + counts[i], :].ravel() for i in range(P)])
+
+                    # Prepare sendcounts and displacements in units of elements
+                    sendcounts = [counts[i] * M for i in range(P)]
+                    sdispls = [sum(sendcounts[:i]) for i in range(P)]
+
+                    # Prepare recvcounts and displacements:
+                    # each rank will receive 'counts[mpi_rank]*M' elements from each of the P ranks
+                    recvcounts = [counts[mpi_rank] * M] * P
+                    rdispls = [i * counts[mpi_rank] * M for i in range(P)]
+
+                    # Allocate receive buffers
+                    recvbuf_X = np.empty(sum(recvcounts), dtype=X_local.dtype)
+
+                    # Perform the all‑to‑all variable‑sized exchange
+                    mpi_comm.Alltoallv(
+                        [sendbuf_X, sendcounts, sdispls, MPI.DOUBLE], [recvbuf_X, recvcounts, rdispls, MPI.DOUBLE]
+                    )
+
+                    # Reshape the flat receive buffer into a 3D array
+                    #    shape = (P sources, N_local rows, M cols)
+                    buf_X = recvbuf_X.reshape(P, N_local, M)
+
+                    # Rearrange into final 2D arrays of shape (N_local, M * P)
+                    #    by stacking each source’s M columns side by side
+                    X_re_local = np.hstack([buf_X[i] for i in range(P)])  # shape (num_param/P, num_mcmc * num_walker * P)
+                    logger.debug(f"X_re_local.shape = {X_re_local.shape}.")
+
+                    if not sr_cg_flag:
+                        logger.info("Using the direct solver for the inverse of S.")
+                        logger.debug(
+                            f"Estimated X_local.T @ X_local.bytes per MPI = {X_re_local.shape[1] ** 2 * X_re_local.dtype.itemsize / (2**30)} gib."
+                        )
+                        # compute local sum of X^T * X
+                        X_T_X_local = X_re_local.T @ X_re_local
+                        logger.debug(f"X_T_X_local.shape = {X_T_X_local.shape}.")
+                        # compute global sum of X^T * X
+                        if mpi_rank == 0:
+                            X_T_X = np.empty(X_T_X_local.shape, dtype=np.float64)
+                        else:
+                            X_T_X = None
+                        mpi_comm.Reduce(X_T_X_local, X_T_X, op=MPI.SUM, root=0)
+                        # compute local sum of X @ F
+                        F_local_list = list(F_local)
+                        F_list = mpi_comm.reduce(F_local_list, op=MPI.SUM, root=0)
+                        if mpi_rank == 0:
+                            F = np.array(F_list)
+                            logger.debug(f"X_T_X.shape = {X_T_X.shape}.")
+                            logger.debug(f"F.shape = {F.shape}.")
+                            X_T_X[np.diag_indices_from(X_T_X)] += epsilon
+                            # (X^T X_w + eps*I) x = F ->solve-> x = (X^T X_w + eps*I)^{-1} F
+                            X_T_X_inv_F = scipy.linalg.solve(X_T_X, F, assume_a="sym")
+                            K = X_T_X_inv_F.shape[0] // mpi_size
+                        else:
+                            X_T_X_inv_F = None
+                            K = None
+                        # Broadcast K to all ranks so they know how big each chunk is
+                        K = mpi_comm.bcast(K, root=0)
+
+                        X_T_X_inv_F_local = np.empty(K, dtype=np.float64)
+
+                        mpi_comm.Scatter(
+                            [X_T_X_inv_F, MPI.DOUBLE],  # send buffer (only significant on root)
+                            X_T_X_inv_F_local,  # receive buffer (on each rank)
+                            root=0,
+                        )
+                        # theta = X_w (X^T X_w + eps*I)^{-1} F
+                        theta_all_local = X_local @ X_T_X_inv_F_local
+                        theta_all = np.empty(theta_all_local.shape, dtype=np.float64)
+                        mpi_comm.Allreduce(theta_all_local, theta_all, op=MPI.SUM)
+                        logger.devel(f"[new] theta_all (w/ the push through identity) = {theta_all}.")
+                        logger.debug(
+                            f"[new] theta_all (w/ the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
+                        )
                     else:
-                        X_F = None
-                    mpi_comm.Reduce(X_F_local, X_F, op=MPI.SUM, root=0)
-                    # compute theta
-                    if mpi_rank == 0:
-                        logger.debug(f"X @ X.T.shape = {X_X_T.shape}.")
-                        logger.debug(f"X @ F.shape = {X_F.shape}.")
-                        # (X X^T + eps*I) x = X F ->solve-> x = (X  X^T + eps*I)^{-1} X F
-                        X_X_T[np.diag_indices_from(X_X_T)] += epsilon
-                        X_X_T_inv_X_F = scipy.linalg.solve(X_X_T, X_F, assume_a="sym")
-                        # theta = (X_w X^T + eps*I)^{-1} X_w F
-                        theta_all = X_X_T_inv_X_F
-                    else:
-                        theta_all = None
-                    # Broadcast theta_all to all ranks
-                    theta_all = mpi_comm.bcast(theta_all, root=0)
-                    logger.devel(f"[new] theta_all (w/o the push through identity) = {theta_all}.")
-                    logger.debug(
-                        f"[new] theta_all (w/o the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
-                    )
-                else:
-                    logger.info("Using conjugate gradient for the inverse of S.")
-                    logger.info(f"  [CG] threshold {cg_tol}.")
-                    logger.info(f"  [CG] max iteration: {cg_max_iter}.")
-                    # conjugate gradient solver
-                    # Compute b = X @ F (distributed)
-                    X_F_local = X_local @ F_local  # shape (num_param, )
-                    X_F = np.zeros_like(X_F_local)
-                    mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
+                        logger.info("Using conjugate gradient for the inverse of S.")
+                        logger.info(f"  [CG] threshold {sr_cg_tol}.")
+                        logger.info(f"  [CG] max iteration: {sr_cg_max_iter}.")
 
-                    # ---- Matrix-free matvec: apply_S_jax ----
-                    @partial(jax.jit, static_argnums=(2,))  # epsilon
-                    def apply_S_primal_jax(v, X_local, epsilon):
-                        # Local computation of X^T v
-                        XTv_local = X_local.T @ v  # shape (M_local,)
+                        @partial(jax.jit, static_argnums=(2,))
+                        def apply_dual_S_jax(v, X_local, epsilon):
+                            # X_local_T: shape (M_local, N/P)
+                            Xv_local = X_local @ v  # (M_local,)
+                            XTXv_local = X_local.T @ Xv_local  # (N_local,)
+                            try:
+                                XTXv_global, _ = mpi4jax.allreduce(XTXv_local, op=MPI.SUM, comm=mpi_comm)
+                            except ValueError:  # mpi4jax.allreduce does not return token since mpi4jax v0.8.0（2025-07-07)
+                                XTXv_global = mpi4jax.allreduce(XTXv_local, op=MPI.SUM, comm=mpi_comm)
+                            return XTXv_global + epsilon * v
 
-                        # Local computation of X (X^T v)
-                        XXTv_local = X_local @ XTv_local  # shape (N,)
+                        # X_re_local: shape (N_local, M_total)
+                        X_re_local = jnp.array(X_re_local)  # shape (M_total, N_local)
 
-                        # Global sum over all processes
-                        try:
-                            XXTv_global, _ = mpi4jax.allreduce(XXTv_local, op=MPI.SUM, comm=MPI.COMM_WORLD)
-                        except ValueError:  # mpi4jax.allreduce does not return token since mpi4jax v0.8.0（2025-07-07)
-                            XXTv_global = mpi4jax.allreduce(XXTv_local, op=MPI.SUM, comm=MPI.COMM_WORLD)
-                        return XXTv_global + epsilon * v
+                        # Solve (X^T X + εI)^(-1) @ F
+                        F_local_list = list(F_local)
+                        F_list = mpi_comm.allreduce(F_local_list, op=MPI.SUM)
+                        F_total = np.array(F_list)
+                        x0 = F_total
+                        x_sol, final_residual, num_steps = conjugate_gradient_jax(
+                            jnp.array(F_total),
+                            apply_dual_S_jax,
+                            X_re_local,
+                            epsilon,
+                            x0,
+                            sr_cg_max_iter,
+                            sr_cg_tol,
+                        )
 
-                    x0 = X_F
-                    theta_all, final_residual, num_steps = conjugate_gradient_jax(
-                        jnp.array(X_F), apply_S_primal_jax, X_local, epsilon, x0, cg_max_iter, cg_tol
-                    )
-                    logger.debug(f"  [CG] Final residual: {final_residual:.3e}")
-                    logger.info(f"  [CG] Converged in {num_steps} steps")
-                    if num_steps == cg_max_iter:
-                        logger.info("  [CG] Conjugate gradient did not converge!!")
-                    logger.devel(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
-                    logger.debug(
-                        f"[new/cg] theta_all (w/o the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
-                    )
+                        # theta = X @ x_sol, evaluated locally over X_re_local (N_local rows)
+                        theta_local = X_re_local @ x_sol  # shape (N_local,)
+                        theta_local = np.asarray(theta_local)
+                        N_local = theta_local.shape[0]
 
-            else:  # num_params >= num_samples:
-                # if True:
-                logger.debug("X is a tall matrix. Proceed w/ the push-through identity.")
-                logger.debug("theta = (S+epsilon*I)^{-1}*f = X(X^T * X + epsilon*I)^{-1} * F...")
+                        recvcounts = mpi_comm.allgather(N_local)
+                        displs = [sum(recvcounts[:i]) for i in range(mpi_comm.Get_size())]
 
-                # Get local shapes
-                N, M = X_local.shape
-                P = mpi_size  # number of ranks
+                        theta_all = np.empty(sum(recvcounts), dtype=theta_local.dtype)
+                        mpi_comm.Allgatherv([theta_local, MPI.DOUBLE], [theta_all, (recvcounts, displs), MPI.DOUBLE])
 
-                # Compute how many rows each rank should own (distribute the remainder)
-                counts = [N // P + (1 if i < (N % P) else 0) for i in range(P)]
+                        logger.debug(f"  [CG] Final residual: {final_residual:.3e}")
+                        logger.info(f"  [CG] Converged in {num_steps} steps")
+                        if num_steps == sr_cg_max_iter:
+                            logger.logger("  [CG] Conjugate gradient did not converge!")
+                        logger.devel(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
+                        logger.debug(
+                            f"[new/cg] theta_all (w/ the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
+                        )
 
-                # Compute starting row index for each rank in the original array
-                displs = [sum(counts[:i]) for i in range(P)]
-                N_local = counts[mpi_rank]  # number of rows this rank will receive
-
-                # Build send buffers by slicing X and Xw into P row‑chunks
-                # Each chunk is flattened so we can send in one go.
-                sendbuf_X = np.concatenate([X_local[displs[i] : displs[i] + counts[i], :].ravel() for i in range(P)])
-
-                # Prepare sendcounts and displacements in units of elements
-                sendcounts = [counts[i] * M for i in range(P)]
-                sdispls = [sum(sendcounts[:i]) for i in range(P)]
-
-                # Prepare recvcounts and displacements:
-                # each rank will receive 'counts[mpi_rank]*M' elements from each of the P ranks
-                recvcounts = [counts[mpi_rank] * M] * P
-                rdispls = [i * counts[mpi_rank] * M for i in range(P)]
-
-                # Allocate receive buffers
-                recvbuf_X = np.empty(sum(recvcounts), dtype=X_local.dtype)
-
-                # Perform the all‑to‑all variable‑sized exchange
-                mpi_comm.Alltoallv([sendbuf_X, sendcounts, sdispls, MPI.DOUBLE], [recvbuf_X, recvcounts, rdispls, MPI.DOUBLE])
-
-                # Reshape the flat receive buffer into a 3D array
-                #    shape = (P sources, N_local rows, M cols)
-                buf_X = recvbuf_X.reshape(P, N_local, M)
-
-                # Rearrange into final 2D arrays of shape (N_local, M * P)
-                #    by stacking each source’s M columns side by side
-                X_re_local = np.hstack([buf_X[i] for i in range(P)])  # shape (num_param/P, num_mcmc * num_walker * P)
-                logger.debug(f"X_re_local.shape = {X_re_local.shape}.")
-
-                if not cg_flag:
-                    logger.info("Using the direct solver for the inverse of S.")
-                    logger.debug(
-                        f"Estimated X_local.T @ X_local.bytes per MPI = {X_re_local.shape[1] ** 2 * X_re_local.dtype.itemsize / (2**30)} gib."
-                    )
-                    # compute local sum of X^T * X
-                    X_T_X_local = X_re_local.T @ X_re_local
-                    logger.debug(f"X_T_X_local.shape = {X_T_X_local.shape}.")
-                    # compute global sum of X^T * X
-                    if mpi_rank == 0:
-                        X_T_X = np.empty(X_T_X_local.shape, dtype=np.float64)
-                    else:
-                        X_T_X = None
-                    mpi_comm.Reduce(X_T_X_local, X_T_X, op=MPI.SUM, root=0)
-                    # compute local sum of X @ F
-                    F_local_list = list(F_local)
-                    F_list = mpi_comm.reduce(F_local_list, op=MPI.SUM, root=0)
-                    if mpi_rank == 0:
-                        F = np.array(F_list)
-                        logger.debug(f"X_T_X.shape = {X_T_X.shape}.")
-                        logger.debug(f"F.shape = {F.shape}.")
-                        X_T_X[np.diag_indices_from(X_T_X)] += epsilon
-                        # (X^T X_w + eps*I) x = F ->solve-> x = (X^T X_w + eps*I)^{-1} F
-                        X_T_X_inv_F = scipy.linalg.solve(X_T_X, F, assume_a="sym")
-                        K = X_T_X_inv_F.shape[0] // mpi_size
-                    else:
-                        X_T_X_inv_F = None
-                        K = None
-                    # Broadcast K to all ranks so they know how big each chunk is
-                    K = mpi_comm.bcast(K, root=0)
-
-                    X_T_X_inv_F_local = np.empty(K, dtype=np.float64)
-
-                    mpi_comm.Scatter(
-                        [X_T_X_inv_F, MPI.DOUBLE],  # send buffer (only significant on root)
-                        X_T_X_inv_F_local,  # receive buffer (on each rank)
-                        root=0,
-                    )
-                    # theta = X_w (X^T X_w + eps*I)^{-1} F
-                    theta_all_local = X_local @ X_T_X_inv_F_local
-                    theta_all = np.empty(theta_all_local.shape, dtype=np.float64)
-                    mpi_comm.Allreduce(theta_all_local, theta_all, op=MPI.SUM)
-                    logger.devel(f"[new] theta_all (w/ the push through identity) = {theta_all}.")
-                    logger.debug(
-                        f"[new] theta_all (w/ the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
-                    )
-                else:
-                    logger.info("Using conjugate gradient for the inverse of S.")
-                    logger.info(f"  [CG] threshold {cg_tol}.")
-                    logger.info(f"  [CG] max iteration: {cg_max_iter}.")
-
-                    @partial(jax.jit, static_argnums=(2,))
-                    def apply_dual_S_jax(v, X_local, epsilon):
-                        # X_local_T: shape (M_local, N/P)
-                        Xv_local = X_local @ v  # (M_local,)
-                        XTXv_local = X_local.T @ Xv_local  # (N_local,)
-                        try:
-                            XTXv_global, _ = mpi4jax.allreduce(XTXv_local, op=MPI.SUM, comm=mpi_comm)
-                        except ValueError:  # mpi4jax.allreduce does not return token since mpi4jax v0.8.0（2025-07-07)
-                            XTXv_global = mpi4jax.allreduce(XTXv_local, op=MPI.SUM, comm=mpi_comm)
-                        return XTXv_global + epsilon * v
-
-                    # X_re_local: shape (N_local, M_total)
-                    X_re_local = jnp.array(X_re_local)  # shape (M_total, N_local)
-
-                    # Solve (X^T X + εI)^(-1) @ F
-                    F_local_list = list(F_local)
-                    F_list = mpi_comm.allreduce(F_local_list, op=MPI.SUM)
-                    F_total = np.array(F_list)
-                    x0 = F_total
-                    x_sol, final_residual, num_steps = conjugate_gradient_jax(
-                        jnp.array(F_total), apply_dual_S_jax, X_re_local, epsilon, x0, cg_max_iter, cg_tol
-                    )
-
-                    # theta = X @ x_sol, evaluated locally over X_re_local (N_local rows)
-                    theta_local = X_re_local @ x_sol  # shape (N_local,)
-                    theta_local = np.asarray(theta_local)
-                    N_local = theta_local.shape[0]
-
-                    recvcounts = mpi_comm.allgather(N_local)
-                    displs = [sum(recvcounts[:i]) for i in range(mpi_comm.Get_size())]
-
-                    theta_all = np.empty(sum(recvcounts), dtype=theta_local.dtype)
-                    mpi_comm.Allgatherv([theta_local, MPI.DOUBLE], [theta_all, (recvcounts, displs), MPI.DOUBLE])
-
-                    logger.debug(f"  [CG] Final residual: {final_residual:.3e}")
-                    logger.info(f"  [CG] Converged in {num_steps} steps")
-                    if num_steps == cg_max_iter:
-                        logger.logger("  [CG] Conjugate gradient did not converge!")
-                    logger.devel(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
-                    logger.debug(
-                        f"[new/cg] theta_all (w/ the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
-                    )
-
-            # theta, back to the original scale
-            theta_all = theta_all / np.sqrt(diag_S)
+                # theta, back to the original scale
+                theta_all = theta_all / np.sqrt(diag_S)
+            else:
+                params = jnp.array(flat_param_vector)
+                grads = -jnp.array(f)
+                updates, optax_state = optax_tx.update(grads, optax_state, params)
+                theta_all = np.array(updates, dtype=np.float64)
+                if optax_param_size is None:
+                    optax_param_size = flat_param_vector.size
+                self.__set_optimizer_runtime(
+                    method=optimizer_mode,
+                    hyperparameters=optimizer_hparams,
+                    optax_state=optax_state,
+                    optax_param_size=optax_param_size,
+                )
 
             # Extract only the signal-to-noise ratio maximized parameters
             theta = np.zeros_like(theta_all)
@@ -2339,16 +2494,54 @@ class MCMC:
             logger.debug(f"np.count_nonzero(theta) = {np.count_nonzero(theta)}.")
             logger.debug(f"max. and min. of theta are {np.max(theta)} and {np.min(theta)}.")
 
+            # Guard against NaN/Inf components before applying the update and
+            # report which blocks contain problematic entries.
+            non_finite_mask = ~np.isfinite(theta)
+            if np.any(non_finite_mask):
+                bad_blocks: list[str] = []
+                for block, start, end in offsets:
+                    block_mask = non_finite_mask[start:end]
+                    if np.any(block_mask):
+                        count_bad = int(np.count_nonzero(block_mask))
+                        bad_blocks.append(f"{block.name}({count_bad}/{block.size})")
+                logger.error(
+                    "Detected non-finite entries in SR update vector; zeroing them. Blocks=%s",
+                    ", ".join(bad_blocks) if bad_blocks else "unknown",
+                )
+                theta = np.where(np.isfinite(theta), theta, 0.0)
+
+            # Emit per-block statistics so we can confirm that parameters are
+            # actually updated (or detect suspiciously large steps).
+            for block, start, end in offsets:
+                block_theta = theta[start:end]
+                if not np.any(block_theta):
+                    continue
+                block_norm = float(np.linalg.norm(block_theta))
+                block_max = float(np.max(np.abs(block_theta)))
+                logger.debug(
+                    "SR update summary – block=%s size=%d ||theta||_2=%.3e max|theta|=%.3e",
+                    block.name,
+                    block.size,
+                    block_norm,
+                    block_max,
+                )
+
             # Apply updates via Wavefunction_data, which in turn delegates
             # to Jastrow_data and Geminal_data. MCMC does not need to know
             # internal parameter names such as j1_param or lambda_matrix.
+            logger.info(f"Updating parameters with optimizer '{optimizer_mode}'.")
             logger.devel(f"dX.shape for MPI-rank={mpi_rank} is {theta.shape}")
 
             structure_data = self.hamiltonian_data.structure_data
             coulomb_potential_data = self.hamiltonian_data.coulomb_potential_data
 
             wavefunction_data_old = self.hamiltonian_data.wavefunction_data
-            wavefunction_data = wavefunction_data_old.apply_block_updates(blocks=blocks, thetas=theta, learning_rate=delta)
+            block_learning_rate = sr_delta if use_sr else 1.0
+            wavefunction_data = wavefunction_data_old.apply_block_updates(
+                blocks=blocks,
+                thetas=theta,
+                learning_rate=block_learning_rate,
+            )
             hamiltonian_data = Hamiltonian_data(
                 structure_data=structure_data,
                 wavefunction_data=wavefunction_data,
@@ -2361,9 +2554,9 @@ class MCMC:
             # dump WF
             if mpi_rank == 0:
                 if (i_opt + 1) % wf_dump_freq == 0 or (i_opt + 1) == num_opt_steps:
-                    hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.chk"
-                    logger.info(f"Hamiltonian data is dumped as a checkpoint file: {hamiltonian_data_filename}.")
-                    self.hamiltonian_data.dump(hamiltonian_data_filename)
+                    hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.h5"
+                    logger.info(f"Hamiltonian data is dumped as an HDF5 file: {hamiltonian_data_filename}.")
+                    self.hamiltonian_data.save_to_hdf5(hamiltonian_data_filename)
 
             # check max time
             vmcopt_current = time.perf_counter()
@@ -2408,12 +2601,12 @@ class MCMC:
     def hamiltonian_data(self, hamiltonian_data):
         """Set hamiltonian_data."""
         if self.__comput_param_deriv and not self.__comput_position_deriv:
-            self.__hamiltonian_data = Hamiltonian_data_deriv_params.from_base(hamiltonian_data)
+            self.__hamiltonian_data = apply_diff_mask(hamiltonian_data, DiffMask(params=True, coords=False))
         elif not self.__comput_param_deriv and self.__comput_position_deriv:
-            # self.__hamiltonian_data = Hamiltonian_data_deriv_R.from_base(hamiltonian_data)  # it doesn't work...
-            self.__hamiltonian_data = Hamiltonian_data.from_base(hamiltonian_data)
+            # self.__hamiltonian_data = Hamiltonian_data.from_base(hamiltonian_data)
+            self.__hamiltonian_data = apply_diff_mask(hamiltonian_data, DiffMask(params=False, coords=True))
         elif not self.__comput_param_deriv and not self.__comput_position_deriv:
-            self.__hamiltonian_data = Hamiltonian_data_no_deriv.from_base(hamiltonian_data)
+            self.__hamiltonian_data = apply_diff_mask(hamiltonian_data, DiffMask(params=False, coords=False))
         else:
             self.__hamiltonian_data = hamiltonian_data
         self.__init_attributes()
@@ -2499,43 +2692,9 @@ class MCMC:
         return np.array(self.__stored_grad_omega_r_dn)
 
     @property
-    def dln_Psi_dc_jas_1b(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dc_J1 array. dim: (mcmc_counter, num_walkers, num_J1_param)."""
-        return np.array(self.__stored_grad_ln_Psi_jas1b)
-
-    @property
-    def dln_Psi_dc_jas_2b(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dc_J2 array. dim: (mcmc_counter, num_walkers, num_J2_param)."""
-        return np.array(self.__stored_grad_ln_Psi_jas2b)
-
-    @property
-    def dln_Psi_dc_jas_1b3b(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dc_J1_3 array. dim: (mcmc_counter, num_walkers, num_J1_J3_param)."""
-        return np.array(self.__stored_grad_ln_Psi_jas1b3b_j_matrix)
-
-    '''
-    @property
-    def de_L_dc_jas_2b(self) -> npt.NDArray:
-        """Return the stored de_L/dc_J2 array. dim: (mcmc_counter, num_walkers, num_J2_param)."""
-        return np.array(self.__stored_grad_e_L_jas2b)
-
-    @property
-    def de_L_dc_jas_1b3b(self) -> npt.NDArray:
-        """Return the stored de_L/dc_J1_3 array. dim: (mcmc_counter, num_walkers, num_J1_J3_param)."""
-        return np.array(self.__stored_grad_e_L_jas1b3b_j_matrix)
-    '''
-
-    @property
-    def dln_Psi_dc_lambda_matrix(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dc_lambda_matrix array. dim: (mcmc_counter, num_walkers, num_lambda_matrix_param)."""
-        return np.array(self.__stored_grad_ln_Psi_lambda_matrix)
-
-    '''
-    @property
-    def de_L_dc_lambda_matrix(self) -> npt.NDArray:
-        """Return the stored de_L/dc_lambda_matrix array. dim: (mcmc_counter, num_walkers, num_lambda_matrix_param)."""
-        return np.array(self.__stored_grad_e_L_lambda_matrix)
-    '''
+    def dln_Psi_dc(self) -> dict[str, npt.NDArray]:
+        """Return stored parameter gradients keyed by block name."""
+        return {name: np.array(values) for name, values in self.__stored_param_grads.items()}
 
     @property
     def comput_position_deriv(self) -> bool:
@@ -2589,6 +2748,7 @@ class MCMC_debug:
 
         # set hamiltonian_data
         self.__hamiltonian_data = hamiltonian_data
+        self.__param_grad_flags = self.__default_param_grad_flags()
 
         # seeds
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
@@ -2700,17 +2860,60 @@ class MCMC_debug:
         # stored sum_i d omega/d r_i for dn spins (SWCT)
         self.__stored_grad_omega_r_dn = []
 
-        # stored dln_Psi / dc_jas1b
-        self.__stored_grad_ln_Psi_jas1b = []
+        # stored parameter gradients keyed by block name
+        self.__stored_param_grads: dict[str, list] = defaultdict(list)
 
-        # stored dln_Psi / dc_jas2b
-        self.__stored_grad_ln_Psi_jas2b = []
+    @staticmethod
+    def __default_param_grad_flags() -> dict[str, bool]:
+        return {
+            "j1_param": True,
+            "j2_param": True,
+            "j3_matrix": True,
+            "jastrow_nn_params": True,
+            "lambda_matrix": True,
+        }
 
-        # stored dln_Psi / dc_jas1b3b
-        self.__stored_grad_ln_Psi_jas1b3b_j_matrix = []
+    def param_gradient_flags(self) -> dict[str, bool]:
+        """Return a copy of the current per-block gradient flags."""
+        return dict(self.__param_grad_flags)
 
-        # stored dln_Psi / dc_lambda_matrix
-        self.__stored_grad_ln_Psi_lambda_matrix = []
+    def set_param_gradient_flags(self, **flags: bool | None) -> None:
+        """Update per-block gradient flags (True enables, False disables)."""
+        allowed = set(self.__param_grad_flags)
+        for name, value in flags.items():
+            if name not in allowed:
+                raise ValueError(f"Unknown variational block '{name}'.")
+            if value is None:
+                continue
+            self.__param_grad_flags[name] = bool(value)
+
+    def __needs_param_grad_mask(self) -> bool:
+        return any(not enabled for enabled in self.__param_grad_flags.values())
+
+    def __wavefunction_data_for_param_grads(self):
+        flags = self.__param_grad_flags
+        return self.__hamiltonian_data.wavefunction_data.with_param_grad_mask(
+            opt_J1_param=flags.get("j1_param", True),
+            opt_J2_param=flags.get("j2_param", True),
+            opt_J3_param=flags.get("j3_matrix", True),
+            opt_JNN_param=flags.get("jastrow_nn_params", True),
+            opt_lambda_param=flags.get("lambda_matrix", True),
+        )
+
+    def __prepare_param_grad_objects(self):
+        wavefunction_data = self.__hamiltonian_data.wavefunction_data
+        if not (self.__comput_param_deriv or self.__comput_position_deriv):
+            return wavefunction_data, self.__hamiltonian_data
+
+        if not self.__needs_param_grad_mask():
+            return wavefunction_data, self.__hamiltonian_data
+
+        masked_wavefunction = self.__wavefunction_data_for_param_grads()
+        if masked_wavefunction is wavefunction_data:
+            return wavefunction_data, self.__hamiltonian_data
+
+        masked_hamiltonian = self.__hamiltonian_data.replace(wavefunction_data=masked_wavefunction)
+        return masked_wavefunction, masked_hamiltonian
 
     def run(self, num_mcmc_steps: int = 0) -> None:
         """Launch MCMCs with the set multiple walkers.
@@ -2727,6 +2930,8 @@ class MCMC_debug:
         progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
         logger.info(f"  Progress: MCMC step= {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.0f} %.")
         mcmc_interval = max(1, int(num_mcmc_steps / 10))  # %
+
+        wavefunction_for_param_grads, hamiltonian_for_param_grads = self.__prepare_param_grad_objects()
 
         for i_mcmc_step in range(num_mcmc_steps):
             if (i_mcmc_step + 1) % mcmc_interval == 0:
@@ -2955,31 +3160,18 @@ class MCMC_debug:
             if self.__comput_position_deriv:
                 grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = vmap(
                     grad(compute_local_energy_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0)
-                )(self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs)
+                )(hamiltonian_for_param_grads, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs)
 
                 self.__stored_grad_e_L_r_up.append(grad_e_L_r_up)
                 self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn)
 
-                grad_e_L_R = (
-                    grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.structure_data.positions
-                    + grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.structure_data.positions
-                    + grad_e_L_h.coulomb_potential_data.structure_data.positions
-                )
-
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
-                    grad_e_L_R += grad_e_L_h.wavefunction_data.jastrow_data.jastrow_one_body_data.structure_data.positions
-
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
-                    grad_e_L_R += (
-                        grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
-                    )
-
+                grad_e_L_R = self.__hamiltonian_data.accumulate_position_grad(grad_e_L_h)
                 self.__stored_grad_e_L_dR.append(grad_e_L_R)
 
                 grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = vmap(
                     grad(evaluate_ln_wavefunction_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
                 )(
-                    self.__hamiltonian_data.wavefunction_data,
+                    wavefunction_for_param_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
@@ -2987,17 +3179,7 @@ class MCMC_debug:
                 self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up)
                 self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn)
 
-                grad_ln_Psi_dR = (
-                    grad_ln_Psi_h.geminal_data.orb_data_up_spin.structure_data.positions
-                    + grad_ln_Psi_h.geminal_data.orb_data_dn_spin.structure_data.positions
-                )
-
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
-                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_one_body_data.structure_data.positions
-
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
-                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
-
+                grad_ln_Psi_dR = self.__hamiltonian_data.wavefunction_data.accumulate_position_grad(grad_ln_Psi_h)
                 self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
 
                 omega_up = vmap(evaluate_swct_omega_jax, in_axes=(None, 0))(
@@ -3028,29 +3210,22 @@ class MCMC_debug:
 
             if self.__comput_param_deriv:
                 grad_ln_Psi_h = vmap(grad(evaluate_ln_wavefunction_jax, argnums=0), in_axes=(None, 0, 0))(
-                    self.__hamiltonian_data.wavefunction_data,
+                    wavefunction_for_param_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
 
-                # 1b Jastrow
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
-                    grad_ln_Psi_jas1b = grad_ln_Psi_h.jastrow_data.jastrow_one_body_data.jastrow_1b_param
-                    self.__stored_grad_ln_Psi_jas1b.append(grad_ln_Psi_jas1b)
+                param_grads = self.__hamiltonian_data.wavefunction_data.collect_param_grads(grad_ln_Psi_h)
+                flat_param_grads = self.__hamiltonian_data.wavefunction_data.flatten_param_grads(
+                    param_grads, self.__num_walkers
+                )
 
-                # 2b Jastrow
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_two_body_data is not None:
-                    grad_ln_Psi_jas2b = grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
-                    self.__stored_grad_ln_Psi_jas2b.append(grad_ln_Psi_jas2b)
-
-                # 3b Jastrow
-                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
-                    grad_ln_Psi_jas1b3b_j_matrix = grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.j_matrix
-                    self.__stored_grad_ln_Psi_jas1b3b_j_matrix.append(grad_ln_Psi_jas1b3b_j_matrix)
-
-                # lambda_matrix
-                grad_ln_Psi_lambda_matrix = grad_ln_Psi_h.geminal_data.lambda_matrix
-                self.__stored_grad_ln_Psi_lambda_matrix.append(grad_ln_Psi_lambda_matrix)
+                for name, grad_val in flat_param_grads.items():
+                    if not self.__param_grad_flags.get(name, True):
+                        continue
+                    self.__stored_param_grads[name].append(grad_val)
+                    if hasattr(grad_val, "block_until_ready"):
+                        grad_val.block_until_ready()
 
             num_mcmc_done += 1
 
@@ -3370,24 +3545,9 @@ class MCMC_debug:
         return np.array(self.__stored_grad_omega_r_dn)
 
     @property
-    def dln_Psi_dc_jas_1b(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dc_J1 array. dim: (mcmc_counter, num_walkers, num_J1_param)."""
-        return np.array(self.__stored_grad_ln_Psi_jas1b)
-
-    @property
-    def dln_Psi_dc_jas_2b(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dc_J2 array. dim: (mcmc_counter, num_walkers, num_J2_param)."""
-        return np.array(self.__stored_grad_ln_Psi_jas2b)
-
-    @property
-    def dln_Psi_dc_jas_1b3b(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dc_J1_3 array. dim: (mcmc_counter, num_walkers, num_J1_J3_param)."""
-        return np.array(self.__stored_grad_ln_Psi_jas1b3b_j_matrix)
-
-    @property
-    def dln_Psi_dc_lambda_matrix(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dc_lambda_matrix array. dim: (mcmc_counter, num_walkers, num_lambda_matrix_param)."""
-        return np.array(self.__stored_grad_ln_Psi_lambda_matrix)
+    def dln_Psi_dc(self) -> dict[str, npt.NDArray]:
+        """Return stored parameter gradients keyed by block name."""
+        return {name: np.array(values) for name, values in self.__stored_param_grads.items()}
 
 
 """

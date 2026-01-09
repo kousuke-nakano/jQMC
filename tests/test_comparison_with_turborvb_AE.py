@@ -34,15 +34,24 @@
 
 import os
 import pickle
+import sys
+from pathlib import Path
 
 import jax
 import numpy as np
 
-from ..jqmc.coulomb_potential import compute_bare_coulomb_potential_debug, compute_bare_coulomb_potential_jax
-from ..jqmc.hamiltonians import Hamiltonian_data
-from ..jqmc.jastrow_factor import Jastrow_data
-from ..jqmc.trexio_wrapper import read_trexio_file
-from ..jqmc.wavefunction import Wavefunction_data, compute_kinetic_energy_jax, evaluate_wavefunction_jax
+# Add the project root directory to sys.path to allow executing this script directly
+# This is necessary because relative imports (e.g. 'from ..jqmc') are not allowed
+# when running a script directly (as __main__).
+project_root = str(Path(__file__).parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from jqmc.coulomb_potential import compute_bare_coulomb_potential_debug, compute_bare_coulomb_potential_jax  # noqa: E402
+from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
+from jqmc.jastrow_factor import Jastrow_data  # noqa: E402
+from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
+from jqmc.wavefunction import Wavefunction_data, compute_kinetic_energy_jax, evaluate_wavefunction_jax  # noqa: E402
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)

@@ -47,6 +47,8 @@ import toml
 from mpi4py import MPI
 from uncertainties import ufloat
 
+from .hamiltonians import Hamiltonian_data
+
 # jQMC
 from .header_footer import print_footer, print_header
 from .jqmc_gfmc import GFMC_fixed_num_projection, GFMC_fixed_projection_time
@@ -103,6 +105,8 @@ def cli():
         logger_level = "INFO"
 
     log = getLogger("jqmc")
+    if log.hasHandlers():
+        log.handlers.clear()
 
     if logger_level == "INFO":
         if mpi_rank == 0:
@@ -249,7 +253,7 @@ def cli():
     max_time = parameters["control"]["max_time"]
     restart = parameters["control"]["restart"]
     restart_chk = parameters["control"]["restart_chk"]
-    hamiltonian_chk = parameters["control"]["hamiltonian_chk"]
+    hamiltonian_h5 = parameters["control"]["hamiltonian_h5"]
 
     # MCMC
     if job_type == "mcmc":
@@ -292,20 +296,19 @@ def cli():
                 with zf.open(arcname) as zipped_gz_fobj:
                     with gzip.open(zipped_gz_fobj, "rb") as gz:
                         mcmc = pickle.load(gz)
-
         else:
-            with open(hamiltonian_chk, "rb") as f:
-                hamiltonian_data = pickle.load(f)
-                mcmc = MCMC(
-                    hamiltonian_data=hamiltonian_data,
-                    Dt=Dt,
-                    mcmc_seed=mcmc_seed,
-                    num_walkers=number_of_walkers,
-                    num_mcmc_per_measurement=num_mcmc_per_measurement,
-                    epsilon_AS=epsilon_AS,
-                    comput_position_deriv=atomic_force,
-                    comput_param_deriv=parameter_derivatives,
-                )
+            hamiltonian_data = Hamiltonian_data.load_from_hdf5(hamiltonian_h5)
+
+            mcmc = MCMC(
+                hamiltonian_data=hamiltonian_data,
+                Dt=Dt,
+                mcmc_seed=mcmc_seed,
+                num_walkers=number_of_walkers,
+                num_mcmc_per_measurement=num_mcmc_per_measurement,
+                epsilon_AS=epsilon_AS,
+                comput_position_deriv=atomic_force,
+                comput_param_deriv=parameter_derivatives,
+            )
         mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = mcmc.get_E(
             num_mcmc_warmup_steps=num_mcmc_warmup_steps,
@@ -385,16 +388,31 @@ def cli():
         epsilon_AS = parameters[section]["epsilon_AS"]
         num_opt_steps = parameters[section]["num_opt_steps"]
         wf_dump_freq = parameters[section]["wf_dump_freq"]
-        delta = parameters[section]["delta"]
-        epsilon = parameters[section]["epsilon"]
         opt_J1_param = parameters[section]["opt_J1_param"]
         opt_J2_param = parameters[section]["opt_J2_param"]
         opt_J3_param = parameters[section]["opt_J3_param"]
+        opt_JNN_param = parameters[section]["opt_JNN_param"]
         opt_lambda_param = parameters[section]["opt_lambda_param"]
         num_param_opt = parameters[section]["num_param_opt"]
-        cg_flag = parameters[section]["cg_flag"]
-        cg_max_iter = parameters[section]["cg_max_iter"]
-        cg_tol = parameters[section]["cg_tol"]
+        optimizer_kwargs = parameters[section]["optimizer_kwargs"]
+        if optimizer_kwargs is None:
+            optimizer_kwargs = {}
+        elif not isinstance(optimizer_kwargs, dict):
+            raise TypeError("optimizer_kwargs must be a dictionary when provided in the VMC section.")
+        else:
+            optimizer_kwargs = dict(optimizer_kwargs)
+
+        vmc_section = dict_toml.get(section, {}) if isinstance(dict_toml.get(section, {}), dict) else {}
+        optimizer_method = vmc_section.get("optimizer")
+        if optimizer_method is not None and not isinstance(optimizer_method, str):
+            raise TypeError("The 'optimizer' key must be a string when provided in the VMC section.")
+        if optimizer_method is not None:
+            logger.warning("The 'optimizer' key is deprecated. Please move the value under optimizer_kwargs.method instead.")
+            optimizer_kwargs.setdefault("method", optimizer_method)
+
+        optimizer_kwargs.setdefault("method", "sr")
+        if not isinstance(optimizer_kwargs["method"], str):
+            raise TypeError("optimizer_kwargs['method'] must be a string when provided in the VMC section.")
 
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
         if num_mcmc_steps < num_mcmc_warmup_steps:
@@ -411,36 +429,32 @@ def cli():
                     with gzip.open(zipped_gz_fobj, "rb") as gz:
                         mcmc = pickle.load(gz)
         else:
-            with open(hamiltonian_chk, "rb") as f:
-                hamiltonian_data = pickle.load(f)
+            hamiltonian_data = Hamiltonian_data.load_from_hdf5(hamiltonian_h5)
 
-                mcmc = MCMC(
-                    hamiltonian_data=hamiltonian_data,
-                    Dt=Dt,
-                    mcmc_seed=mcmc_seed,
-                    num_walkers=number_of_walkers,
-                    num_mcmc_per_measurement=num_mcmc_per_measurement,
-                    epsilon_AS=epsilon_AS,
-                    comput_position_deriv=False,
-                    comput_param_deriv=True,
-                )
+            mcmc = MCMC(
+                hamiltonian_data=hamiltonian_data,
+                Dt=Dt,
+                mcmc_seed=mcmc_seed,
+                num_walkers=number_of_walkers,
+                num_mcmc_per_measurement=num_mcmc_per_measurement,
+                epsilon_AS=epsilon_AS,
+                comput_position_deriv=False,
+                comput_param_deriv=True,
+            )
         mcmc.run_optimize(
             num_mcmc_steps=num_mcmc_steps,
             num_opt_steps=num_opt_steps,
-            delta=delta,
-            epsilon=epsilon,
             wf_dump_freq=wf_dump_freq,
             num_mcmc_warmup_steps=num_mcmc_warmup_steps,
             num_mcmc_bin_blocks=num_mcmc_bin_blocks,
             opt_J1_param=opt_J1_param,
             opt_J2_param=opt_J2_param,
             opt_J3_param=opt_J3_param,
+            opt_JNN_param=opt_JNN_param,
             opt_lambda_param=opt_lambda_param,
             num_param_opt=num_param_opt,
             max_time=max_time,
-            cg_flag=cg_flag,
-            cg_max_iter=cg_max_iter,
-            cg_tol=cg_tol,
+            optimizer_kwargs=optimizer_kwargs,
         )
         logger.info("")
 
@@ -514,19 +528,19 @@ def cli():
                     with gzip.open(zipped_gz_fobj, "rb") as gz:
                         lrdmc = pickle.load(gz)
         else:
-            with open(hamiltonian_chk, "rb") as f:
-                hamiltonian_data = pickle.load(f)
-                lrdmc = GFMC_fixed_num_projection(
-                    hamiltonian_data=hamiltonian_data,
-                    num_walkers=number_of_walkers,
-                    num_mcmc_per_measurement=num_mcmc_per_measurement,
-                    num_gfmc_collect_steps=num_gfmc_collect_steps,
-                    mcmc_seed=mcmc_seed,
-                    E_scf=E_scf,
-                    alat=alat,
-                    non_local_move=non_local_move,
-                    comput_position_deriv=atomic_force,
-                )
+            hamiltonian_data = Hamiltonian_data.load_from_hdf5(hamiltonian_h5)
+
+            lrdmc = GFMC_fixed_num_projection(
+                hamiltonian_data=hamiltonian_data,
+                num_walkers=number_of_walkers,
+                num_mcmc_per_measurement=num_mcmc_per_measurement,
+                num_gfmc_collect_steps=num_gfmc_collect_steps,
+                mcmc_seed=mcmc_seed,
+                E_scf=E_scf,
+                alat=alat,
+                non_local_move=non_local_move,
+                comput_position_deriv=atomic_force,
+            )
         lrdmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = lrdmc.get_E(
             num_mcmc_warmup_steps=num_gfmc_warmup_steps,
@@ -620,17 +634,17 @@ def cli():
                     with gzip.open(zipped_gz_fobj, "rb") as gz:
                         lrdmc = pickle.load(gz)
         else:
-            with open(hamiltonian_chk, "rb") as f:
-                hamiltonian_data = pickle.load(f)
-                lrdmc = GFMC_fixed_projection_time(
-                    hamiltonian_data=hamiltonian_data,
-                    num_walkers=number_of_walkers,
-                    tau=tau,
-                    num_gfmc_collect_steps=num_gfmc_collect_steps,
-                    mcmc_seed=mcmc_seed,
-                    alat=alat,
-                    non_local_move=non_local_move,
-                )
+            hamiltonian_data = Hamiltonian_data.load_from_hdf5(hamiltonian_h5)
+
+            lrdmc = GFMC_fixed_projection_time(
+                hamiltonian_data=hamiltonian_data,
+                num_walkers=number_of_walkers,
+                tau=tau,
+                num_gfmc_collect_steps=num_gfmc_collect_steps,
+                mcmc_seed=mcmc_seed,
+                alat=alat,
+                non_local_move=non_local_move,
+            )
         lrdmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = lrdmc.get_E(
             num_mcmc_warmup_steps=num_gfmc_warmup_steps,

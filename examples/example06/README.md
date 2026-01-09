@@ -58,10 +58,10 @@ Next step is to convert the `TREXIO` file to the `jqmc` format using `jqmc-tool`
 
 ```bash
 % jqmc-tool trexio convert-to water_dimer.h5 -j2 1.0 -j3 ao-medium
-> Hamiltonian data is saved in hamiltonian_data.chk.
+> Hamiltonian data is saved in hamiltonian_data.h5.
 ```
 
-The generated `hamiltonian_data.chk` is a wavefunction file with the `jqmc` format. `-j2` specifies the initial value of the two-body Jastrow parameter and `-j3` specifies the basis set (`ao-xxx`:atomic orbital or `mo`:molecular orbital) for the three-body Jastrow part.
+The generated `hamiltonian_data.h5` is a wavefunction file with the `jqmc` format. `-j2` specifies the initial value of the two-body Jastrow parameter and `-j3` specifies the basis set (`ao-xxx`:atomic orbital or `mo`:molecular orbital) for the three-body Jastrow part.
 
 [!NOTE]
 > The `-j3` option in `jqmc-tool` controls how the atomic orbital (AO) basis is partitioned by Gaussian exponent strength for each nucleus. When you specify `ao-small`, `jqmc-tool` sorts each atom’s contracted AOs by the exponent of the primitive shell with the largest coefficient, divides them into **three** equal groups, and retains only the central group (i.e., 1/3). Specifying `ao-medium` divides into **four** groups and keeps the **two** central groups (i.e., 2/4), while `ao-large` divides into **five** groups and keeps the **three** central groups (i.e., 3/5). Using `ao` or `ao-full` disables any partitioning and includes all AOs from the original dataset. Using `mo` includes all MOs. This mechanism lets you tailor the trade-off between computational cost and accuracy by focusing on the most representative subset of basis functions.
@@ -84,7 +84,7 @@ number_of_walkers = 1 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
 restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
-hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
+hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 
 [vmc]
@@ -96,16 +96,12 @@ Dt = 2.0 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 num_opt_steps = 200 # Number of optimization steps.
 wf_dump_freq = 20 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
-delta = 0.01 # Step size for the Stochastic reconfiguration (i.e., the natural gradient) optimization.
-epsilon = 0.001 # Regularization parameter, a positive number added to the diagnoal elements of the Fisher-Information matrix, used during the Stochastic reconfiguration to improve the numerical stability.
+optimizer_kwargs = { method = "sr", delta = 0.01, epsilon = 0.001, cg_flag = true, cg_max_iter = 100000, cg_tol = 0.0001 } # SR optimizer configuration (method, step/regularization, and CG settings).
 opt_J1_param = false
 opt_J2_param = true
 opt_J3_param = true
 opt_lambda_param = false
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
-cg_flag = true
-cg_max_iter = 100000 # Maximum number of iterations for the conjugate gradient method.
-cg_tol = 0.0001 # Tolerance for the conjugate gradient method.
 ```
 
 Please lunch the job.
@@ -183,7 +179,7 @@ The next step is MCMC calculation. You can generate a template file for a MCMC c
 
 ```bash
 % cd 04mcmc_JSD
-% cp ../03vmc_JSD/hamiltonian_data_opt_step_200.chk ./hamiltonian_data.chk
+% cp ../03vmc_JSD/hamiltonian_data_opt_step_200.h5 ./hamiltonian_data.h5
 % jqmc-tool mcmc generate-input -g
 > Input file is generated: mcmc.toml
 ```
@@ -196,7 +192,7 @@ number_of_walkers = 300 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
 restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
-hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
+hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 [mcmc]
 num_mcmc_steps = 90000 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
@@ -225,7 +221,7 @@ The final step is LRDMC calculation. You can generate a template file for a LRDM
 
 ```bash
 % cd 05lrdmc_JSD
-% cp ../04mcmc_JSD/hamiltonian_data.chk ./hamiltonian_data.chk
+% cp ../04mcmc_JSD/hamiltonian_data.h5 ./hamiltonian_data.h5
 % jqmc-tool lrdmc generate-input -g lrdmc.toml
 > Input file is generated: lrdmc.toml
 ```
@@ -238,7 +234,7 @@ The final step is LRDMC calculation. You can generate a template file for a LRDM
   max_time = 10400
   restart = false
   restart_chk = 'lrdmc.rchk'
-  hamiltonian_chk = '../hamiltonian_data.chk'
+  hamiltonian_h5 = '../hamiltonian_data.h5'
   verbosity = 'low'
 
 [lrdmc]
@@ -286,11 +282,11 @@ The next step is to convert the optimized JSD ansatz to JAGP one.
 
 ```bash
 % cd 06convert_JSD_to_JAGP
-% cp ../04mcmc_JSD/hamiltonian_data.chk ./hamiltonian_data_JSD.chk
-% jqmc-tool hamiltonian conv-wf --convert-to jagp hamiltonian_data_JSD.chk
+% cp ../04mcmc_JSD/hamiltonian_data.h5 ./hamiltonian_data_JSD.h5
+% jqmc-tool hamiltonian conv-wf --convert-to jagp hamiltonian_data_JSD.h5
 > Convert SD to AGP.
-> Hamiltonian data is saved in hamiltonian_data_conv.chk.
-% mv hamiltonian_data_conv.chk hamiltonian_data_JAGP.chk
+> Hamiltonian data is saved in hamiltonian_data_conv.h5.
+% mv hamiltonian_data_conv.h5 hamiltonian_data_JAGP.h5
 ```
 
 
@@ -301,7 +297,7 @@ You can generate a template file for a VMC calculation using `jqmc-tool`. Please
 
 ```bash
 % cd 07vmc_JAGP
-% cp ../06convert_JSD_to_JAGP/hamiltonian_data_JAGP.chk ./hamiltonian_data.chk
+% cp ../06convert_JSD_to_JAGP/hamiltonian_data_JAGP.h5 ./hamiltonian_data.h5
 % jqmc-tool vmc generate-input -g
 > Input file is generated: vmc.toml
 ```
@@ -314,7 +310,7 @@ number_of_walkers = 1 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
 restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
-hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
+hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 
 [vmc]
@@ -326,16 +322,12 @@ Dt = 2.0 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.05 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 num_opt_steps = 200 # Number of optimization steps.
 wf_dump_freq = 20 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
-delta = 0.01 # Step size for the Stochastic reconfiguration (i.e., the natural gradient) optimization.
-epsilon = 0.001 # Regularization parameter, a positive number added to the diagnoal elements of the Fisher-Information matrix, used during the Stochastic reconfiguration to improve the numerical stability.
+optimizer_kwargs = { method = "sr", delta = 0.01, epsilon = 0.001, cg_flag = true, cg_max_iter = 100000, cg_tol = 0.0001 } # SR optimizer configuration (method, step/regularization, and CG settings).
 opt_J1_param = false
 opt_J2_param = true
 opt_J3_param = true
 opt_lambda_param = true
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
-cg_flag = true
-cg_max_iter = 100000 # Maximum number of iterations for the conjugate gradient method.
-cg_tol = 0.0001 # Tolerance for the conjugate gradient method.
 ```
 
 Please lunch the job.
@@ -400,7 +392,7 @@ The next step is MCMC calculation. You can generate a template file for a MCMC c
 
 ```bash
 % cd 08mcmc_JAGP
-% cp ../07vmc_JAGP/hamiltonian_data_opt_step_200.chk ./hamiltonian_data.chk
+% cp ../07vmc_JAGP/hamiltonian_data_opt_step_200.h5 ./hamiltonian_data.h5
 % jqmc-tool mcmc generate-input -g
 > Input file is generated: mcmc.toml
 ```
@@ -413,7 +405,7 @@ number_of_walkers = 300 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
 restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
-hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
+hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 [mcmc]
 num_mcmc_steps = 90000 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
@@ -441,7 +433,7 @@ The final step is LRDMC calculation. You can generate a template file for a LRDM
 
 ```bash
 % cd 09lrdmc_JAGP
-% cp ../08mcmc_JAGP/hamiltonian_data.chk ./hamiltonian_data.chk
+% cp ../08mcmc_JAGP/hamiltonian_data.h5 ./hamiltonian_data.h5
 % jqmc-tool lrdmc generate-input -g lrdmc.toml
 > Input file is generated: lrdmc.toml
 ```
@@ -454,7 +446,7 @@ The final step is LRDMC calculation. You can generate a template file for a LRDM
   max_time = 10400
   restart = false
   restart_chk = 'lrdmc.rchk'
-  hamiltonian_chk = '../hamiltonian_data.chk'
+  hamiltonian_h5 = '../hamiltonian_data.h5'
   verbosity = 'low'
 
 [lrdmc]

@@ -33,27 +33,31 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import os
+import sys
+from pathlib import Path
 
 import jax
 import numpy as np
 
-from ..jqmc.hamiltonians import Hamiltonian_data
-from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_one_body_data, Jastrow_three_body_data, Jastrow_two_body_data
-from ..jqmc.jqmc_gfmc import GFMC_fixed_num_projection
-from ..jqmc.trexio_wrapper import read_trexio_file
-from ..jqmc.wavefunction import Wavefunction_data
+project_root = str(Path(__file__).parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
+from jqmc.jastrow_factor import (  # noqa: E402
+    Jastrow_data,
+    Jastrow_NN_data,
+    Jastrow_one_body_data,
+    Jastrow_three_body_data,
+    Jastrow_two_body_data,
+)
+from jqmc.jqmc_gfmc import GFMC_fixed_num_projection  # noqa: E402
+from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
+from jqmc.wavefunction import Wavefunction_data  # noqa: E402
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
-
-'''
-@pytest.mark.activate_if_disable_jit
-def test_lrdmc_force_with_SWCT_ecp(request):
-    """Test LRDMC force with SWCT."""
-    if not request.config.getoption("--disable-jit"):
-        pytest.skip(reason="A limilation of flux.struct (pytree_node=False) with @jit. See #24204 in jax repo.")
-'''
 
 
 def test_lrdmc_force_with_SWCT_ecp():
@@ -72,12 +76,14 @@ def test_lrdmc_force_with_SWCT_ecp():
     jastrow_onebody_data = None
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5)
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
+    jastrow_nn_data = Jastrow_NN_data.init_from_structure(structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0)
 
     # define data
     jastrow_data = Jastrow_data(
         jastrow_one_body_data=jastrow_onebody_data,
         jastrow_two_body_data=jastrow_twobody_data,
         jastrow_three_body_data=jastrow_threebody_data,
+        jastrow_nn_data=jastrow_nn_data,
     )
 
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
@@ -122,15 +128,6 @@ def test_lrdmc_force_with_SWCT_ecp():
     np.testing.assert_almost_equal(np.array(force_std[0]), np.array(force_std[1]), decimal=6)
 
 
-'''
-@pytest.mark.activate_if_disable_jit
-def test_lrdmc_force_with_SWCT_ae(request):
-    """Test LRDMC force with SWCT."""
-    if not request.config.getoption("--disable-jit"):
-        pytest.skip(reason="A limilation of flux.struct (pytree_node=False) with @jit. See #24204 in jax repo.")
-'''
-
-
 def test_lrdmc_force_with_SWCT_ae():
     """Test LRDMC force with SWCT."""
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
@@ -151,12 +148,14 @@ def test_lrdmc_force_with_SWCT_ae():
     )
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5)
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
+    jastrow_nn_data = Jastrow_NN_data.init_from_structure(structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0)
 
     # define data
     jastrow_data = Jastrow_data(
         jastrow_one_body_data=jastrow_onebody_data,
         jastrow_two_body_data=jastrow_twobody_data,
         jastrow_three_body_data=jastrow_threebody_data,
+        jastrow_nn_data=jastrow_nn_data,
     )
 
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)

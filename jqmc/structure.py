@@ -35,7 +35,7 @@
 # python modules
 import itertools
 from functools import partial
-from logging import Formatter, StreamHandler, getLogger
+from logging import getLogger
 
 # JAX
 import jax
@@ -46,9 +46,6 @@ from jax import jit, lax
 from jax import numpy as jnp
 from jax import typing as jnpt
 from numpy import linalg as LA
-
-# modules
-from .setting import Bohr_to_Angstrom
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
@@ -139,7 +136,7 @@ class Structure_data:
         info_lines.extend(["  element, label, Z, x, y, z in cartesian (Bohr)"])
         info_lines.extend(["  " + "-" * num_sep_line])
         for atomic_number, element_symbol, atomic_label, position in zip(
-            self.atomic_numbers, self.element_symbols, self.atomic_labels, self.positions_cart_np
+            self.atomic_numbers, self.element_symbols, self.atomic_labels, self.positions_cart_np, strict=True
         ):
             info_lines.extend(
                 [

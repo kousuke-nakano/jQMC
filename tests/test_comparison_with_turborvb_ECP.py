@@ -34,23 +34,32 @@
 
 import os
 import pickle
+import sys
+from pathlib import Path
 
 import jax
 import numpy as np
 from jax import numpy as jnp
 
-from ..jqmc.coulomb_potential import (
+# Add the project root directory to sys.path to allow executing this script directly
+# This is necessary because relative imports (e.g. 'from ..jqmc') are not allowed
+# when running a script directly (as __main__).
+project_root = str(Path(__file__).parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from jqmc.coulomb_potential import (  # noqa: E402
     compute_bare_coulomb_potential_debug,
     compute_bare_coulomb_potential_jax,
     compute_ecp_coulomb_potential_debug,
     compute_ecp_coulomb_potential_jax,
 )
-from ..jqmc.determinant import compute_geminal_all_elements_jax
-from ..jqmc.hamiltonians import Hamiltonian_data
-from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data
-from ..jqmc.structure import find_nearest_index_jax
-from ..jqmc.trexio_wrapper import read_trexio_file
-from ..jqmc.wavefunction import Wavefunction_data, compute_kinetic_energy_jax, evaluate_wavefunction_jax
+from jqmc.determinant import compute_geminal_all_elements_jax  # noqa: E402
+from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
+from jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data  # noqa: E402
+from jqmc.structure import find_nearest_index_jax  # noqa: E402
+from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
+from jqmc.wavefunction import Wavefunction_data, compute_kinetic_energy_jax, evaluate_wavefunction_jax  # noqa: E402
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)

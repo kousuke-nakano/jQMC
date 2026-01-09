@@ -42,22 +42,19 @@ import jax.numpy as jnp
 import numpy as np
 import numpy.typing as npt
 from flax import struct
-from jax import grad, hessian, jit, jvp, vmap
+from jax import grad, hessian, jit, jvp, tree_util, vmap
 from jax import typing as jnpt
 
 from .determinant import (
     Geminal_data,
-    Geminal_data_deriv_params,
-    Geminal_data_deriv_R,
     compute_det_geminal_all_elements_jax,
     compute_grads_and_laplacian_ln_Det_jax,
     compute_ln_det_geminal_all_elements_jax,
     compute_ratio_determinant_part_jax,
 )
+from .diff_mask import DiffMask, apply_diff_mask
 from .jastrow_factor import (
     Jastrow_data,
-    Jastrow_data_deriv_params,
-    Jastrow_data_deriv_R,
     compute_grads_and_laplacian_Jastrow_part_jax,
     compute_Jastrow_part_jax,
     compute_ratio_Jastrow_part_jax,
@@ -216,17 +213,136 @@ class Wavefunction_data:
 
         return Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_data)
 
+    def with_diff_mask(self, *, params: bool = True, coords: bool = True) -> "Wavefunction_data":
+        """Return a copy with gradients masked according to the provided flags."""
+        return apply_diff_mask(self, DiffMask(params=params, coords=coords))
+
+    def with_param_grad_mask(
+        self,
+        *,
+        opt_J1_param: bool = True,
+        opt_J2_param: bool = True,
+        opt_J3_param: bool = True,
+        opt_JNN_param: bool = True,
+        opt_lambda_param: bool = True,
+    ) -> "Wavefunction_data":
+        """Return a copy where disabled parameter blocks stop propagating gradients.
+
+        Developer note
+        -------------
+        * The per-block flags (``opt_J1_param`` etc.) decide which high-level blocks are
+            masked. Disabled blocks are wrapped with ``DiffMask(params=False, coords=True)``,
+            meaning parameter gradients are stopped while coordinate gradients still flow.
+        * Within each disabled block, ``apply_diff_mask`` uses field-name heuristics
+            (see ``diff_mask._PARAM_FIELD_NAMES``) to tag parameter leaves such as
+            ``lambda_matrix``, ``j_matrix``, ``jastrow_1b_param``, ``jastrow_2b_param``,
+            ``jastrow_3b_param``, and ``params``. Those tagged leaves receive
+            ``jax.lax.stop_gradient``, so their backpropagated gradients become zero.
+        * Example: if ``opt_J1_param=False`` and others are True, only the J1 block is
+            masked; its parameter leaves are stopped, while J2/J3/NN/lambda continue to
+            propagate gradients normally.
+        """
+        mask_off = DiffMask(params=False, coords=True)
+
+        def _maybe_mask(block, enabled):
+            if enabled or block is None:
+                return block, False
+            return apply_diff_mask(block, mask_off), True
+
+        jastrow_data = self.jastrow_data
+        jastrow_updates = {}
+        if jastrow_data is not None:
+            j1_block, changed = _maybe_mask(jastrow_data.jastrow_one_body_data, opt_J1_param)
+            if changed:
+                jastrow_updates["jastrow_one_body_data"] = j1_block
+
+            j2_block, changed = _maybe_mask(jastrow_data.jastrow_two_body_data, opt_J2_param)
+            if changed:
+                jastrow_updates["jastrow_two_body_data"] = j2_block
+
+            j3_block, changed = _maybe_mask(jastrow_data.jastrow_three_body_data, opt_J3_param)
+            if changed:
+                jastrow_updates["jastrow_three_body_data"] = j3_block
+
+            jnn_block, changed = _maybe_mask(jastrow_data.jastrow_nn_data, opt_JNN_param)
+            if changed:
+                jastrow_updates["jastrow_nn_data"] = jnn_block
+
+            if jastrow_updates:
+                jastrow_data = jastrow_data.replace(**jastrow_updates)
+
+        geminal_data = self.geminal_data
+        geminal_updates = {}
+        if geminal_data is not None:
+            geminal_masked, changed = _maybe_mask(geminal_data, opt_lambda_param)
+            if changed:
+                geminal_updates["lambda_matrix"] = geminal_masked.lambda_matrix
+
+            if geminal_updates:
+                geminal_data = geminal_data.replace(**geminal_updates)
+
+        if jastrow_updates or geminal_updates:
+            return Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_data)
+
+        return self
+
+    def accumulate_position_grad(self, grad_wavefunction: "Wavefunction_data"):
+        """Aggregate position gradients from geminal and Jastrow parts."""
+        grad = 0.0
+        if self.geminal_data is not None and grad_wavefunction.geminal_data is not None:
+            grad += self.geminal_data.accumulate_position_grad(grad_wavefunction.geminal_data)
+        if self.jastrow_data is not None and grad_wavefunction.jastrow_data is not None:
+            grad += self.jastrow_data.accumulate_position_grad(grad_wavefunction.jastrow_data)
+        return grad
+
+    def collect_param_grads(self, grad_wavefunction: "Wavefunction_data") -> dict[str, object]:
+        """Collect parameter gradients from Jastrow and Geminal into a flat dict."""
+        grads: dict[str, object] = {}
+        if self.jastrow_data is not None and grad_wavefunction.jastrow_data is not None:
+            grads.update(self.jastrow_data.collect_param_grads(grad_wavefunction.jastrow_data))
+        if self.geminal_data is not None and grad_wavefunction.geminal_data is not None:
+            grads.update(self.geminal_data.collect_param_grads(grad_wavefunction.geminal_data))
+        return grads
+
+    def flatten_param_grads(self, param_grads: dict[str, object], num_walkers: int) -> dict[str, np.ndarray]:
+        """Return parameter gradients as numpy arrays ready for storage.
+
+        The caller does not need to know the internal block structure (e.g., NN trees);
+        any necessary flattening is handled here.
+        """
+        flat: dict[str, np.ndarray] = {}
+        jastrow_nn_data = self.jastrow_data.jastrow_nn_data if self.jastrow_data is not None else None
+
+        for name, param_grad in param_grads.items():
+            if name == "jastrow_nn_params" and jastrow_nn_data is not None:
+
+                def _slice_walker(idx):
+                    return tree_util.tree_map(lambda x: x[idx], param_grad)
+
+                nn_grad_list = []
+                for walker_idx in range(num_walkers):
+                    walker_grad_tree = _slice_walker(walker_idx)
+                    flat_vec = np.array(jastrow_nn_data.flatten_fn(walker_grad_tree))
+                    nn_grad_list.append(flat_vec)
+
+                flat[name] = np.stack(nn_grad_list, axis=0)
+            else:
+                flat[name] = np.array(param_grad)
+
+        return flat
+
     def get_variational_blocks(
         self,
         opt_J1_param: bool = True,
         opt_J2_param: bool = True,
         opt_J3_param: bool = True,
+        opt_JNN_param: bool = True,
         opt_lambda_param: bool = False,
     ) -> list[VariationalParameterBlock]:
         """Collect variational parameter blocks from Jastrow and Geminal parts.
 
         Each block corresponds to a contiguous group of variational parameters
-        (e.g., J1, J2, J3 matrix, lambda matrix). This method only exposes the
+        (e.g., J1, J2, J3 matrix, NN Jastrow, lambda matrix). This method only exposes the
         parameter arrays; the corresponding gradients are handled on the MCMC side.
         """
         blocks: list[VariationalParameterBlock] = []
@@ -235,7 +351,7 @@ class Wavefunction_data:
         if self.jastrow_data is not None:
             if opt_J1_param and self.jastrow_data.jastrow_one_body_data is not None:
                 j1 = self.jastrow_data.jastrow_one_body_data.jastrow_1b_param
-                j1_arr = np.array(j1, copy=False)
+                j1_arr = np.asarray(j1)
                 blocks.append(
                     VariationalParameterBlock(
                         name="j1_param",
@@ -247,7 +363,7 @@ class Wavefunction_data:
 
             if opt_J2_param and self.jastrow_data.jastrow_two_body_data is not None:
                 j2 = self.jastrow_data.jastrow_two_body_data.jastrow_2b_param
-                j2_arr = np.array(j2, copy=False)
+                j2_arr = np.asarray(j2)
                 blocks.append(
                     VariationalParameterBlock(
                         name="j2_param",
@@ -259,7 +375,7 @@ class Wavefunction_data:
 
             if opt_J3_param and self.jastrow_data.jastrow_three_body_data is not None:
                 j3 = self.jastrow_data.jastrow_three_body_data.j_matrix
-                j3_arr = np.array(j3, copy=False)
+                j3_arr = np.asarray(j3)
                 blocks.append(
                     VariationalParameterBlock(
                         name="j3_matrix",
@@ -269,10 +385,23 @@ class Wavefunction_data:
                     )
                 )
 
+            if opt_JNN_param and self.jastrow_data.jastrow_nn_data is not None:
+                nn3 = self.jastrow_data.jastrow_nn_data
+                if nn3.params is not None and nn3.num_params > 0:
+                    flat_params = np.array(nn3.flatten_fn(nn3.params))
+                    blocks.append(
+                        VariationalParameterBlock(
+                            name="jastrow_nn_params",
+                            values=flat_params,
+                            shape=flat_params.shape,
+                            size=int(flat_params.size),
+                        )
+                    )
+
         # Geminal part
         if opt_lambda_param and self.geminal_data is not None and self.geminal_data.lambda_matrix is not None:
             lam = self.geminal_data.lambda_matrix
-            lam_arr = np.array(lam, copy=False)
+            lam_arr = np.asarray(lam)
             blocks.append(
                 VariationalParameterBlock(
                     name="lambda_matrix",
@@ -289,51 +418,6 @@ class Wavefunction_data:
         """Switch pytree_node."""
         jastrow_data = Jastrow_data.from_base(wavefunction_data.jastrow_data)
         geminal_data = Geminal_data.from_base(wavefunction_data.geminal_data)
-        return cls(jastrow_data=jastrow_data, geminal_data=geminal_data)
-
-
-@struct.dataclass
-class Wavefunction_data_deriv_params(Wavefunction_data):
-    """See Wavefunction_data."""
-
-    jastrow_data: Jastrow_data = struct.field(pytree_node=True)
-    geminal_data: Geminal_data = struct.field(pytree_node=True)
-
-    @classmethod
-    def from_base(cls, wavefunction_data: Wavefunction_data):
-        """Switch pytree_node."""
-        jastrow_data = Jastrow_data_deriv_params.from_base(wavefunction_data.jastrow_data)
-        geminal_data = Geminal_data_deriv_params.from_base(wavefunction_data.geminal_data)
-        return cls(jastrow_data=jastrow_data, geminal_data=geminal_data)
-
-
-@struct.dataclass
-class Wavefunction_data_deriv_R(Wavefunction_data):
-    """See Wavefunction_data."""
-
-    jastrow_data: Jastrow_data = struct.field(pytree_node=True)
-    geminal_data: Geminal_data = struct.field(pytree_node=True)
-
-    @classmethod
-    def from_base(cls, wavefunction_data: Wavefunction_data):
-        """Switch pytree_node."""
-        jastrow_data = Jastrow_data_deriv_R.from_base(wavefunction_data.jastrow_data)
-        geminal_data = Geminal_data_deriv_R.from_base(wavefunction_data.geminal_data)
-        return cls(jastrow_data=jastrow_data, geminal_data=geminal_data)
-
-
-@struct.dataclass
-class Wavefunction_data_no_deriv(Wavefunction_data):
-    """See Wavefunction_data."""
-
-    jastrow_data: Jastrow_data = struct.field(pytree_node=False)
-    geminal_data: Geminal_data = struct.field(pytree_node=False)
-
-    @classmethod
-    def from_base(cls, wavefunction_data: Wavefunction_data):
-        """Switch pytree_node."""
-        jastrow_data = wavefunction_data.jastrow_data
-        geminal_data = wavefunction_data.geminal_data
         return cls(jastrow_data=jastrow_data, geminal_data=geminal_data)
 
 

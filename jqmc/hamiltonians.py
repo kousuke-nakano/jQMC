@@ -32,25 +32,32 @@
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-import pickle
-
 # python modules
+import collections.abc
+import dataclasses
+import importlib
 from logging import getLogger
+from typing import Any, Type, TypeVar, Union
+
+import h5py
 
 # JAX
 import jax
+import jax.numpy as jnp
+import numpy as np
 from flax import struct
 from jax import jit
 from jax import typing as jnpt
+
 
 from .coulomb_potential import Coulomb_potential_data, compute_coulomb_potential_jax
 from .structure import Structure_data
 from .wavefunction import (
     Wavefunction_data,
-    Wavefunction_data_deriv_params,
-    Wavefunction_data_deriv_R,
     compute_kinetic_energy_jax,
 )
+
+T = TypeVar("T")
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
@@ -129,18 +136,26 @@ class Hamiltonian_data:
         for line in self.get_info():
             logger.info(line)
 
-    def dump(self, filepath="jqmc.chk") -> None:
-        """_dump Hamiltonian data as a binary file.
+    def accumulate_position_grad(self, grad_hamiltonian: "Hamiltonian_data"):
+        """Aggregate position gradients from Hamiltonian components (structure + wavefunction)."""
+        grad = grad_hamiltonian.structure_data.positions
+        grad += grad_hamiltonian.coulomb_potential_data.structure_data.positions
+        if self.wavefunction_data is not None and grad_hamiltonian.wavefunction_data is not None:
+            grad += self.wavefunction_data.accumulate_position_grad(grad_hamiltonian.wavefunction_data)
+        return grad
+
+    def save_to_hdf5(self, filepath="jqmc.h5") -> None:
+        """Save Hamiltonian data to an HDF5 file.
 
         Args:
             filepath (str, optional): file path
         """
-        with open(filepath, "wb") as f:
-            pickle.dump(self, f)
+        with h5py.File(filepath, "w") as f:
+            save_dataclass_to_hdf5(f, self)
 
     @staticmethod
-    def load(filepath="jqmc.chk") -> "Hamiltonian_data":
-        """Read Hamiltonian data from a binary file.
+    def load_from_hdf5(filepath="jqmc.h5") -> "Hamiltonian_data":
+        """Load Hamiltonian data from an HDF5 file.
 
         Args:
             filepath (str, optional): file path
@@ -148,8 +163,8 @@ class Hamiltonian_data:
         Returns:
             Hamiltonian_data: An instance of Hamiltonian_data.
         """
-        with open(filepath, "rb") as f:
-            return pickle.load(f)
+        with h5py.File(filepath, "r") as f:
+            return load_dataclass_from_hdf5(Hamiltonian_data, f)
 
     @classmethod
     def from_base(cls, hamiltonian_data: "Hamiltonian_data"):
@@ -157,72 +172,6 @@ class Hamiltonian_data:
         structure_data = hamiltonian_data.structure_data
         coulomb_potential_data = Coulomb_potential_data.from_base(hamiltonian_data.coulomb_potential_data)
         wavefunction_data = Wavefunction_data.from_base(hamiltonian_data.wavefunction_data)
-
-        return cls(
-            structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
-        )
-
-
-@struct.dataclass
-class Hamiltonian_data_deriv_params(Hamiltonian_data):
-    """See Hamiltonian_data."""
-
-    structure_data: Structure_data = struct.field(pytree_node=False, default_factory=lambda: Structure_data())
-    coulomb_potential_data: Coulomb_potential_data = struct.field(
-        pytree_node=False, default_factory=lambda: Coulomb_potential_data()
-    )
-    wavefunction_data: Wavefunction_data = struct.field(pytree_node=True, default_factory=lambda: Wavefunction_data())
-
-    @classmethod
-    def from_base(cls, hamiltonian_data: Hamiltonian_data):
-        """Switch pytree_node."""
-        structure_data = hamiltonian_data.structure_data
-        coulomb_potential_data = hamiltonian_data.coulomb_potential_data
-        wavefunction_data = Wavefunction_data_deriv_params.from_base(hamiltonian_data.wavefunction_data)
-
-        return cls(
-            structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
-        )
-
-
-@struct.dataclass
-class Hamiltonian_data_deriv_R(Hamiltonian_data):
-    """See Hamiltonian_data."""
-
-    structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
-    coulomb_potential_data: Coulomb_potential_data = struct.field(
-        pytree_node=True, default_factory=lambda: Coulomb_potential_data()
-    )
-    wavefunction_data: Wavefunction_data = struct.field(pytree_node=True, default_factory=lambda: Wavefunction_data())
-
-    @classmethod
-    def from_base(cls, hamiltonian_data: Hamiltonian_data):
-        """Switch pytree_node."""
-        structure_data = hamiltonian_data.structure_data
-        coulomb_potential_data = hamiltonian_data.coulomb_potential_data
-        wavefunction_data = Wavefunction_data_deriv_R.from_base(hamiltonian_data.wavefunction_data)
-
-        return cls(
-            structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
-        )
-
-
-@struct.dataclass
-class Hamiltonian_data_no_deriv(Hamiltonian_data):
-    """See Hamiltonian_data."""
-
-    structure_data: Structure_data = struct.field(pytree_node=False, default_factory=lambda: Structure_data())
-    coulomb_potential_data: Coulomb_potential_data = struct.field(
-        pytree_node=False, default_factory=lambda: Coulomb_potential_data()
-    )
-    wavefunction_data: Wavefunction_data = struct.field(pytree_node=False, default_factory=lambda: Wavefunction_data())
-
-    @classmethod
-    def from_base(cls, hamiltonian_data: Hamiltonian_data):
-        """Switch pytree_node."""
-        structure_data = hamiltonian_data.structure_data
-        coulomb_potential_data = hamiltonian_data.coulomb_potential_data
-        wavefunction_data = hamiltonian_data.wavefunction_data
 
         return cls(
             structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
@@ -268,6 +217,229 @@ def compute_local_energy_jax(
     )
 
     return T + V
+
+
+def reconstruct_dataclass(cls, obj):
+    """Restore a dataclass instance from an object.
+
+    Reconstructs an instance of `cls` from `obj`, handling missing/extra fields.
+    This is useful for backward compatibility when loading pickled objects
+    where the class definition might have changed (e.g. new fields added).
+
+    """
+    if not dataclasses.is_dataclass(cls):
+        return obj
+
+    kwargs = {}
+    for field in dataclasses.fields(cls):
+        field_name = field.name
+        if hasattr(obj, field_name):
+            val = getattr(obj, field_name)
+
+            # Recursively reconstruct if the field type is a dataclass
+            # This handles nested dataclasses that might also have changed.
+            # We check if field.type is a class and is a dataclass.
+            # Note: This assumes field.type is the actual class, not a string.
+            if isinstance(field.type, type) and dataclasses.is_dataclass(field.type):
+                val = reconstruct_dataclass(field.type, val)
+
+            kwargs[field_name] = val
+        # If field is missing in obj, we skip it so cls() uses its default value/factory.
+
+    return cls(**kwargs)
+
+
+def _save_item(group: h5py.Group, name: str, value: Any) -> None:
+    """Helper to save an item to HDF5 group."""
+    if value is None:
+        return
+
+    if hasattr(value, "device_buffer") or isinstance(value, jnp.ndarray):
+        value = np.array(value)
+
+    if isinstance(value, np.ndarray):
+        group.create_dataset(name, data=value)
+    elif dataclasses.is_dataclass(value):
+        subgroup = group.create_group(name)
+        save_dataclass_to_hdf5(subgroup, value)
+    elif isinstance(value, (dict, collections.abc.Mapping)):
+        subgroup = group.create_group(name)
+        subgroup.attrs["_is_dict"] = True
+        for k, v in value.items():
+            _save_item(subgroup, str(k), v)
+    elif isinstance(value, (list, tuple)):
+        if len(value) > 0:
+            if all(isinstance(v, (int, float, bool, str, np.number, np.bool_)) for v in value):
+                group.create_dataset(name, data=value)
+            elif all(isinstance(v, (np.ndarray, jnp.ndarray)) for v in value):
+                subgroup = group.create_group(name)
+                subgroup.attrs["_is_list"] = True
+                for i, v in enumerate(value):
+                    v_np = np.array(v) if hasattr(v, "device_buffer") or isinstance(v, jnp.ndarray) else v
+                    subgroup.create_dataset(str(i), data=v_np)
+            else:
+                subgroup = group.create_group(name)
+                subgroup.attrs["_is_list"] = True
+                for i, v in enumerate(value):
+                    _save_item(subgroup, str(i), v)
+        else:
+            group.create_dataset(name, data=np.array([]))
+    elif isinstance(value, (int, float, bool, str)):
+        group.attrs[name] = value
+    else:
+        try:
+            group.attrs[name] = value
+        except Exception:
+            pass
+
+
+def save_dataclass_to_hdf5(group: h5py.Group, obj: Any) -> None:
+    """Recursively save a dataclass to an HDF5 group.
+
+    Args:
+        group (h5py.Group): The HDF5 group to save to.
+        obj (Any): The dataclass instance to save.
+    """
+    if not dataclasses.is_dataclass(obj):
+        raise ValueError(f"Object {obj} is not a dataclass.")
+
+    # Save class name for verification/reconstruction
+    group.attrs["_class_name"] = obj.__class__.__name__
+    group.attrs["_module_name"] = obj.__class__.__module__
+
+    for field in dataclasses.fields(obj):
+        value = getattr(obj, field.name)
+        _save_item(group, field.name, value)
+
+
+def _load_item(item: Union[h5py.Group, h5py.Dataset, Any]) -> Any:
+    """Helper to load an item from HDF5."""
+    if isinstance(item, h5py.Dataset):
+        val = item[()]
+        if isinstance(val, bytes):
+            val = val.decode("utf-8")
+        elif isinstance(val, np.ndarray):
+            if val.dtype.kind == "S":
+                val = np.char.decode(val, "utf-8")
+            elif val.dtype.kind == "O" and val.size > 0 and isinstance(val.flat[0], bytes):
+                val = np.array([v.decode("utf-8") for v in val.flat]).reshape(val.shape)
+        return val
+    elif isinstance(item, h5py.Group):
+        if item.attrs.get("_is_list"):
+            lst = []
+            # Combine keys from subgroups/datasets and attributes
+            all_keys = set(item.keys())
+            for k in item.attrs.keys():
+                if k.isdigit():
+                    all_keys.add(k)
+
+            sorted_keys = sorted(all_keys, key=int)
+            for k in sorted_keys:
+                if k in item:
+                    lst.append(_load_item(item[k]))
+                elif k in item.attrs:
+                    lst.append(item.attrs[k])
+            return lst
+        elif item.attrs.get("_is_dict"):
+            d = {}
+            for k in item.keys():
+                d[k] = _load_item(item[k])
+            return d
+        else:
+            # Dataclass or generic group
+            class_name = item.attrs.get("_class_name")
+            module_name = item.attrs.get("_module_name")
+            if class_name and module_name:
+                module = importlib.import_module(module_name)
+                sub_cls = getattr(module, class_name)
+                return load_dataclass_from_hdf5(sub_cls, item)
+            else:
+                # Fallback for dicts saved without _is_dict or unknown structures
+                d = {}
+                for k in item.keys():
+                    d[k] = _load_item(item[k])
+                return d
+    return item
+
+
+def load_dataclass_from_hdf5(cls: Type[T], group: h5py.Group) -> T:
+    """Recursively load a dataclass from an HDF5 group.
+
+    Args:
+        cls (Type[T]): The class to reconstruct.
+        group (h5py.Group): The HDF5 group to load from.
+
+    Returns:
+        T: The reconstructed dataclass instance.
+    """
+    init_args = {}
+
+    for field in dataclasses.fields(cls):
+        if field.name in group:
+            val = _load_item(group[field.name])
+
+            # Type conversion for list/tuple/array
+            if isinstance(val, np.ndarray) and val.size == 0:
+                if field.default_factory is list:
+                    val = []
+                elif field.default_factory is tuple:
+                    val = ()
+            elif (
+                isinstance(val, np.ndarray)
+                and (field.type is list or field.type is tuple or "list" in str(field.type) or "tuple" in str(field.type))
+                and not ("Array" in str(field.type) or "ndarray" in str(field.type))
+            ):
+                val = val.tolist()
+                if isinstance(field.type, type) and issubclass(field.type, tuple):
+                    val = tuple(val)
+            elif isinstance(val, list) and (field.type is tuple or "tuple" in str(field.type)):
+                val = tuple(val)
+
+            init_args[field.name] = val
+        elif field.name in group.attrs:
+            val = group.attrs[field.name]
+            if field.type is bool:
+                val = bool(val)
+            init_args[field.name] = val
+
+    # Check for missing fields and fill with defaults
+    for field in dataclasses.fields(cls):
+        if field.name not in init_args:
+            if field.default is not dataclasses.MISSING:
+                init_args[field.name] = field.default
+            elif field.default_factory is not dataclasses.MISSING:
+                init_args[field.name] = field.default_factory()
+
+    obj = cls(**init_args)
+
+    # Special handling for NN_Jastrow_data to reconstruct nn_def
+    if cls.__name__ == "NN_Jastrow_data":
+        # Reconstruct nn_def
+        from .jastrow_factor import NNJastrow
+
+        if (
+            hasattr(obj, "species_lookup")
+            and obj.species_lookup is not None
+            and hasattr(obj, "num_species")
+            and obj.num_species > 0
+        ):
+            species_lookup = tuple(int(x) for x in obj.species_lookup)
+
+            object.__setattr__(
+                obj,
+                "nn_def",
+                NNJastrow(
+                    hidden_dim=obj.hidden_dim,
+                    num_layers=obj.num_layers,
+                    num_rbf=obj.num_rbf,
+                    cutoff=obj.cutoff,
+                    species_lookup=species_lookup,
+                    num_species=obj.num_species,
+                ),
+            )
+            obj.__post_init__()
+
+    return obj
 
 
 """

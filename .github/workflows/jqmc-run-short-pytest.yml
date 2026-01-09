@@ -1,0 +1,76 @@
+# A short test jqmc.
+
+name: jqmc short test
+
+on:
+  push:
+    branches: [ "devel*" ]
+    paths-ignore:
+      - '.gitignore'
+      - '.github/**'
+      - 'doc/**'
+      - 'examples/**'
+      - 'README.md'
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+    - name: Install gfortran and gcc
+      run: |
+        sudo apt-get update
+        sudo apt-get install gfortran
+
+    - name: Install OpenBLAS and LAPACK
+      run: sudo apt-get install libopenblas-dev liblapack-dev
+
+    - name: Install OpenMPI
+      run: sudo apt-get install openmpi-bin libopenmpi-dev
+
+    - uses: actions/checkout@v3
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v3
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install jqmc
+      run: |
+        python -m pip install flake8 pytest pytest-cov
+        python -m pip install .
+
+    #- name: Lint jqmc with flake8
+    #  run: |
+    #    # stop the build if there are Python syntax errors or undefined names
+    #    flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+    #    # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+    #    flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Test jqmc (pytest) with @jit decorator (intra-software comparisons)
+      run: |
+        pytest -s -v tests/test_trexio.py
+        pytest -s -v tests/test_AOs.py
+        pytest -s -v tests/test_MOs.py
+        pytest -s -v tests/test_determinant.py
+        pytest -s -v tests/test_jastrow.py
+        pytest -s -v tests/test_wave_function.py
+        pytest -s -v tests/test_ecps.py
+        pytest -s -v tests/test_swct.py
+        pytest -s -v tests/test_vmc_force.py
+        pytest -s -v tests/test_lrdmc_force.py
+
+    - name: Test jqmc (pytest) with @jit decorator (inter-software comparisons)
+      run: |
+        pytest -s -v tests/test_comparison_with_turborvb_ECP.py
+        pytest -s -v tests/test_comparison_with_turborvb_AE.py
+
+    - name: Test jqmc (pytest) QMC kernels without MPI
+      run: |
+        pytest -s -v tests/test_jqmc_mcmc.py
+        pytest -s -v tests/test_jqmc_gfmc_tau.py
+        pytest -s -v tests/test_jqmc_gfmc_bra.py

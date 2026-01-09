@@ -32,12 +32,19 @@
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
+import sys
+from pathlib import Path
+
 import jax
 import numpy as np
 import pytest
 
-from ..jqmc.atomic_orbital import AOs_sphe_data
-from ..jqmc.jastrow_factor import (
+project_root = str(Path(__file__).parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from jqmc.atomic_orbital import AOs_sphe_data  # noqa: E402
+from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_one_body_data,
     Jastrow_three_body_data,
     Jastrow_two_body_data,
@@ -52,8 +59,8 @@ from ..jqmc.jastrow_factor import (
     compute_Jastrow_two_body_debug,
     compute_Jastrow_two_body_jax,
 )
-from ..jqmc.molecular_orbital import MOs_data
-from ..jqmc.structure import Structure_data
+from jqmc.molecular_orbital import MOs_data  # noqa: E402
+from jqmc.structure import Structure_data  # noqa: E402
 
 
 def test_Jastrow_onebody_part():

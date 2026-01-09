@@ -5,7 +5,7 @@
   max_time = 10400
   restart = false
   restart_chk = 'lrdmc.rchk'
-  hamiltonian_chk = '../hamiltonian_data.chk'
+  hamiltonian_h5 = '../hamiltonian_data.h5'
   verbosity = 'low'
 
 [lrdmc]

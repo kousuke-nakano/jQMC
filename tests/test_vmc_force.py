@@ -33,15 +33,28 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import os
+import sys
+from pathlib import Path
 
 import jax
 import numpy as np
+import pytest
 
-from ..jqmc.hamiltonians import Hamiltonian_data
-from ..jqmc.jastrow_factor import Jastrow_data, Jastrow_one_body_data, Jastrow_three_body_data, Jastrow_two_body_data
-from ..jqmc.jqmc_mcmc import MCMC
-from ..jqmc.trexio_wrapper import read_trexio_file
-from ..jqmc.wavefunction import Wavefunction_data
+project_root = str(Path(__file__).parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
+from jqmc.jastrow_factor import (  # noqa: E402
+    Jastrow_data,
+    Jastrow_NN_data,
+    Jastrow_one_body_data,
+    Jastrow_three_body_data,
+    Jastrow_two_body_data,
+)
+from jqmc.jqmc_mcmc import MCMC  # noqa: E402
+from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
+from jqmc.wavefunction import Wavefunction_data  # noqa: E402
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -66,12 +79,14 @@ def test_vmc_force_with_SWCT_ecp():
     jastrow_onebody_data = None
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5)
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
+    jastrow_nn_data = Jastrow_NN_data.init_from_structure(structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0)
 
     # define data
     jastrow_data = Jastrow_data(
         jastrow_one_body_data=jastrow_onebody_data,
         jastrow_two_body_data=jastrow_twobody_data,
         jastrow_three_body_data=jastrow_threebody_data,
+        jastrow_nn_data=jastrow_nn_data,
     )
 
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
@@ -131,12 +146,14 @@ def test_vmc_force_with_SWCT_ae():
     )
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.3)
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
+    jastrow_nn_data = Jastrow_NN_data.init_from_structure(structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0)
 
     # define data
     jastrow_data = Jastrow_data(
         jastrow_one_body_data=jastrow_onebody_data,
         jastrow_two_body_data=jastrow_twobody_data,
         jastrow_three_body_data=jastrow_threebody_data,
+        jastrow_nn_data=jastrow_nn_data,
     )
 
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)

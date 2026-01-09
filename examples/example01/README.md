@@ -13,35 +13,35 @@ The following is a script to run a HF calculation for the water molecule using `
 > [!NOTE]
 > This `TREX-IO` converter is being develped in the `pySCF-forge` [repository](https://github.com/pyscf/pyscf-forge) and not yet merged to the main repository of `pySCF`. Please use `pySCF-forge`.
 
-```python:run_pyscf.py
+<!-- include: 01DFT/01pyscf-forge/run_pyscf.py -->
+```python
 from pyscf import gto, scf
 from pyscf.tools import trexio
 
-filename = 'water_ccecp_ccpvtz.h5'
+filename = "water_ccecp_ccpvtz.h5"
 
 mol = gto.Mole()
-mol.verbose  = 5
-mol.atom     = '''
+mol.verbose = 5
+mol.atom = """
                O    5.00000000   7.14707700   7.65097100
                H    4.06806600   6.94297500   7.56376100
                H    5.38023700   6.89696300   6.80798400
-               '''
-mol.basis    = 'ccecp-ccpvtz'
-mol.unit     = 'A'
-mol.ecp      = 'ccecp'
-mol.charge   = 0
-mol.spin     = 0
+               """
+mol.basis = "ccecp-ccpvtz"
+mol.unit = "A"
+mol.ecp = "ccecp"
+mol.charge = 0
+mol.spin = 0
 mol.symmetry = False
 mol.cart = True
-mol.output   = 'water.out'
+mol.output = "water.out"
 mol.build()
 
 mf = scf.HF(mol)
-mf.max_cycle=200
+mf.max_cycle = 200
 mf_scf = mf.kernel()
 
 trexio.to_trexio(mf, filename)
-
 ```
 
 Launch it on a terminal. You may get `E = -16.9450309201805 Ha` [Hartree-Forck].
@@ -52,7 +52,8 @@ Launch it on a terminal. You may get `E = -16.9450309201805 Ha` [Hartree-Forck].
 
 The following is a script to run a LDA calculation for the water molecule using `cp2k` and dump it as a `TREXIO` file.
 
-```bash: water.xyz
+<!-- include: 01DFT/02cp2k/water.xyz -->
+```bash
 3
 
 O    5.00000000   7.14707700   7.65097100
@@ -60,7 +61,8 @@ H    4.06806600   6.94297500   7.56376100
 H    5.38023700   6.89696300   6.80798400
 ```
 
-```bash:water_ccecp_ccpvtz.inp
+<!-- include: 01DFT/02cp2k/water_ccecp_ccpvtz.inp -->
+```bash
 &global
   project      water_ccecp_ccpvtz
   print_level  medium
@@ -167,7 +169,8 @@ H    5.38023700   6.89696300   6.80798400
 &end
 ```
 
-```bash: basis.cp2k
+<!-- include: 01DFT/02cp2k/basis.cp2k -->
+```bash
 # ccecp-cc-pVTZ
 # SOURCE: https://pseudopotentiallibrary.org/recipes/H/ccECP/H.cc-pVTZ.nwchem
 # SOURCE: https://pseudopotentiallibrary.org/recipes/O/ccECP/O.cc-pVTZ.nwchem
@@ -232,7 +235,8 @@ O ccecp-cc-pVTZ
   1.423104 1.0000000
 ```
 
-```bash: ecp.cp2k
+<!-- include: 01DFT/02cp2k/ecp.cp2k -->
+```bash
 # ccecp-cc-pVTZ
 # SOURCE: https://pseudopotentiallibrary.org/recipes/H/ccECP/H.ccECP.nwchem
 # SOURCE: https://pseudopotentiallibrary.org/recipes/O/ccECP/O.ccECP.nwchem
@@ -269,10 +273,53 @@ Next step is to convert the `TREXIO` file to the `jqmc` format using `jqmc-tool`
 
 ```bash
 % jqmc-tool trexio convert-to water_ccecp_ccpvtz.h5 -j2 1.0 -j3 mo
-> Hamiltonian data is saved in hamiltonian_data.chk.
+> Hamiltonian data is saved in hamiltonian_data.h5.
 ```
 
 The generated `hamiltonian_data.chk` is a wavefunction file with the `jqmc` format. `-j2` specifies the initial value of the two-body Jastrow parameter and `-j3` specifies the basis set (`ao`:atomic orbital or `mo`:molecular orbital) for the three-body Jastrow part.
+
+You can see the content of `hamiltonian_data.h5` by `jqmc-tool`
+
+```bash
+% jqmc-tool hamiltonian show-info hamiltonian_data.h5
+
+Structure_data
+  PBC flag = False
+  --------------------------------------------------
+  element, label, Z, x, y, z in cartesian (Bohr)
+  --------------------------------------------------
+  O, O, 8.0, 9.44863062, 13.50601812, 14.45823978
+  H, H, 1.0, 7.68753060, 13.12032124, 14.29343676
+  H, H, 1.0, 10.16717442, 13.03337116, 12.86522522
+  --------------------------------------------------
+Coulomb_potential_data
+  ecp_flag = True
+...
+
+```
+
+You can also see all the variables stored in `hamiltonian_data.h5` by `h5dump` if it is installed on your machine.
+
+```bash
+% h5dump hamiltonian_data.h5
+
+HDF5 "hamiltonian_data.h5" {
+GROUP "/" {
+   ATTRIBUTE "_class_name" {
+      DATATYPE  H5T_STRING {
+         STRSIZE H5T_VARIABLE;
+         STRPAD H5T_STR_NULLTERM;
+         CSET H5T_CSET_UTF8;
+         CTYPE H5T_C_S1;
+      }
+      DATASPACE  SCALAR
+      DATA {
+      (0): "Hamiltonian_data"
+      }
+   }
+...
+
+```
 
 ## Optimize a trial WF (VMC)
 The next step is to optimize variational parameters included in the generated wavefunction. More in details, here, we optimize the two-body Jastrow parameter and the matrix elements of the three-body Jastrow parameter.
@@ -284,7 +331,8 @@ You can generate a template file for a VMCopt calculation using `jqmc-tool`. Ple
 > Input file is generated: vmc.toml
 ```
 
-```toml:vmc.toml
+<!-- include: 03vmc_JSD/vmc.toml -->
+```toml
 [control]
 job_type = "vmc" # Specify the job type. "mcmc", "vmc", "lrdmc", or "lrdmc-tau".
 mcmc_seed = 34456 # Random seed for MCMC
@@ -304,8 +352,7 @@ Dt = 2.0 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 num_opt_steps = 300 # Number of optimization steps.
 wf_dump_freq = 1 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
-delta = 0.01 # Step size for the Stochastic reconfiguration (i.e., the natural gradient) optimization.
-epsilon = 0.001 # Regularization parameter, a positive number added to the diagnoal elements of the Fisher-Information matrix, used during the Stochastic reconfiguration to improve the numerical stability.
+optimizer_kwargs = { method = "sr", delta = 0.01, epsilon = 0.001 } # SR optimizer configuration (method plus step/regularization).
 opt_J1_param = false
 opt_J2_param = true
 opt_J3_param = true
@@ -388,7 +435,8 @@ The next step is MCMC calculation. You can generate a template file for a MCMC c
 > Input file is generated: mcmc.toml
 ```
 
-```toml:mcmc.toml
+<!-- include: 04mcmc_JSD/mcmc.toml -->
+```toml
 [control]
 job_type = "mcmc" # Specify the job type. "mcmc", "vmc", or "lrdmc"
 mcmc_seed = 34456 # Random seed for MCMC
@@ -396,7 +444,7 @@ number_of_walkers = 300 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
 restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
-hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
+hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 [mcmc]
 num_mcmc_steps = 90000 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
@@ -426,7 +474,8 @@ The final step is LRDMC calculation. You can generate a template file for a LRDM
 > Input file is generated: lrdmc.toml
 ```
 
-```toml:lrdmc.toml
+<!-- include: 05lrdmc_JSD/lrdmc.toml -->
+```toml
 [control]
   job_type = 'lrdmc'
   mcmc_seed = 34467
@@ -434,7 +483,7 @@ The final step is LRDMC calculation. You can generate a template file for a LRDM
   max_time = 10400
   restart = false
   restart_chk = 'lrdmc.rchk'
-  hamiltonian_chk = '../hamiltonian_data.chk'
+  hamiltonian_h5 = '../hamiltonian_data.h5'
   verbosity = 'low'
 
 [lrdmc]
