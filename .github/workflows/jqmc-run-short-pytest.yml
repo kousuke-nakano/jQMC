@@ -11,8 +11,6 @@ on:
       - 'doc/**'
       - 'examples/**'
       - 'README.md'
-  pull_request:
-    branches: [ "devel*" ]
 
 jobs:
   run:
