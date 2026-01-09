@@ -211,19 +211,13 @@ $$
 where $\mathbf{e}(r_{ij})$ is the RBF vector for the relevant distance ($r_{ij}$ for electrons, $r_{iI}$ for nuclei). For electron channels ($\nu\in\{\parallel,\perp\}$), the sender feature is $\mathbf{h}_j^{(\nu)}=\mathbf{x}_j^{(l)}$; for the nuclear channel ($\nu=n$), $\mathbf{h}_I^{(n)}$ is a learnable species embedding determined by $Z_I$ (layer-independent). Both $\mathcal{G}^{(\nu)}:\mathbb{R}^K \to \mathbb{R}^F$ and $\mathcal{F}_{\text{recv}}^{(\nu)}:\mathbb{R}^F \to \mathbb{R}^F$ are standard fully-connected neural networks (two linear layers with SiLU activation). The Hadamard product $\odot$ applies the interaction filter to the sender feature, and the residual addition stabilizes training. All weights/biases in these networks, including embeddings, are variational parameters.
 
 ### Global Readout
-After $L$ layers, permutation invariance is enforced by summing the electron embeddings:
+After $L$ layers, permutation invariance is enforced by summing the outputs of a channel-wise readout network:
 
 $$
-\mathbf{X}_{\text{total}} = \sum_{i=1}^{N_e} \mathbf{x}_i^{(L)}.
+J_{\text{NN}} = \sum_{i=1}^{N_e} \text{NN}_{\text{readout}}(\mathbf{x}_i^{(L)}).
 $$
 
-A fully-connected neural network readout (two linear layers with SiLU, output dimension 1) maps $\mathbf{X}_{\text{total}}$ to the scalar correction:
-
-$$
-J_{\text{NN}} = \text{NN}_{\text{readout}}(\mathbf{X}_{\text{total}}).
-$$
-
-The readout weights and biases are also variational parameters optimized within VMC.
+The readout uses a fully-connected neural network (two linear layers with SiLU, output dimension 1). The summation over all electrons ensures the symmetry required for the Jastrow factor. The readout weights and biases are also variational parameters optimized within VMC.
 
 (sec:AGP)=
 ## Antisymmetrized Geminal Power (AGP)

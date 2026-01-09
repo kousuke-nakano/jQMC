@@ -472,9 +472,9 @@ class NNJastrow(nn.Module):
             )
 
         x_final = jnp.concatenate([x_up, x_dn], axis=0)
-        summed = jnp.sum(x_final, axis=0)
-        j_val = self.readout_net(summed)
-        return jnp.squeeze(j_val, axis=-1)
+        j_vals = self.readout_net(x_final)
+        j_val = jnp.sum(j_vals)
+        return j_val
 
 
 # @dataclass
