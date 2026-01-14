@@ -328,8 +328,13 @@ document.write(`
             </div>
             <nav aria-label="Page">
                 <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aug-20-2025-v0-1-0a0">Aug-20-2025: v0.1.0a0</a><ul class="nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jan-14-2026-v0-1-0a1">Jan-14-2026: v0.1.0a1</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#key-features">Key Features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#enhancements-fixes">Enhancements &amp; Fixes</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aug-20-2025-v0-1-0a0">Aug-20-2025: v0.1.0a0</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id1">Key Features</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#known-limitations-alpha">Known Limitations (Alpha)</a></li>
 </ul>
 </li>
@@ -346,14 +351,44 @@ document.write(`
                   
   <section class="tex2jax_ignore mathjax_ignore" id="change-log">
 <span id="changelog"></span><h1>Change Log<a class="headerlink" href="#change-log" title="Link to this heading">#</a></h1>
+<section id="jan-14-2026-v0-1-0a1">
+<h2>Jan-14-2026: v0.1.0a1<a class="headerlink" href="#jan-14-2026-v0-1-0a1" title="Link to this heading">#</a></h2>
+<ul class="simple">
+<li><p>Release of the second alpha version of <strong>jQMC</strong>.</p></li>
+</ul>
+<section id="key-features">
+<h3>Key Features<a class="headerlink" href="#key-features" title="Link to this heading">#</a></h3>
+<ul class="simple">
+<li><p><strong>Neural Network Jastrow</strong>:</p>
+<ul>
+<li><p>Introduced <code class="docutils literal notranslate"><span class="pre">NNJastrow</span></code>, a PauliNet-inspired neural network architecture for many-body Jastrow factors, enabling more accurate wavefunction ansatz.</p></li>
+</ul>
+</li>
+<li><p><strong>Optimization Control</strong>:</p>
+<ul>
+<li><p>Implemented proper gradient masking mechanisms (e.g., <code class="docutils literal notranslate"><span class="pre">with_param_grad_mask</span></code>). This allows for selectively freezing or optimizing specific parameter blocks (One-body, Two-body, Three-body, NN, and Geminal coefficients) during the VMC optimizations.</p></li>
+</ul>
+</li>
+</ul>
+</section>
+<section id="enhancements-fixes">
+<h3>Enhancements &amp; Fixes<a class="headerlink" href="#enhancements-fixes" title="Link to this heading">#</a></h3>
+<ul class="simple">
+<li><p><strong>I/O</strong>: Changed the storage format for <code class="docutils literal notranslate"><span class="pre">hamiltonian_data</span></code> from pickled binary files to HDF5 (<code class="docutils literal notranslate"><span class="pre">.h5</span></code>) for better portability and compatibility.</p></li>
+<li><p><strong>Documentation</strong>: Updated <code class="docutils literal notranslate"><span class="pre">README.md</span></code>, docstrings, and API references to reflect recent changes and fix Sphinx warnings.</p></li>
+<li><p><strong>CI/CD</strong>: Updated pre-commit configurations and GitHub workflow triggers.</p></li>
+<li><p><strong>Code Quality</strong>: Refactored code based on suggestions and improved type hinting.</p></li>
+</ul>
+</section>
+</section>
 <section id="aug-20-2025-v0-1-0a0">
 <h2>Aug-20-2025: v0.1.0a0<a class="headerlink" href="#aug-20-2025-v0-1-0a0" title="Link to this heading">#</a></h2>
 <ul class="simple">
 <li><p>Release of the first alpha version of <strong>jQMC</strong>.</p></li>
 </ul>
 <p>We are pleased to announce the first alpha release of <strong>jQMC</strong>, a Python-based Quantum Monte Carlo package built on <strong>JAX</strong>.</p>
-<section id="key-features">
-<h3>Key Features<a class="headerlink" href="#key-features" title="Link to this heading">#</a></h3>
+<section id="id1">
+<h3>Key Features<a class="headerlink" href="#id1" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p><strong>JAX-based Core</strong>: Fully utilizes JAX’s Just-In-Time (JIT) compilation and automatic vectorization (<code class="docutils literal notranslate"><span class="pre">vmap</span></code>) for high-performance simulations on GPUs and TPUs.</p></li>
 <li><p><strong>Algorithms</strong>:</p>
@@ -434,8 +469,13 @@ document.write(`
   </div>
   <nav class="bd-toc-nav page-toc">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aug-20-2025-v0-1-0a0">Aug-20-2025: v0.1.0a0</a><ul class="nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jan-14-2026-v0-1-0a1">Jan-14-2026: v0.1.0a1</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#key-features">Key Features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#enhancements-fixes">Enhancements &amp; Fixes</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aug-20-2025-v0-1-0a0">Aug-20-2025: v0.1.0a0</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id1">Key Features</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#known-limitations-alpha">Known Limitations (Alpha)</a></li>
 </ul>
 </li>

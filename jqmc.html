@@ -2413,13 +2413,13 @@ and interprets that block according to the structure of the geminal
 (lambda) matrix.</p>
 <p>Responsibilities of this method are:</p>
 <ul class="simple">
-<li><p>Map the block name (currently <code class="docutils literal notranslate"><span class="pre">&quot;lambda_matrix&quot;</span></code>) to the internal</p></li>
+<li><p>Map the block name (currently <code class="docutils literal notranslate"><span class="pre">&quot;lambda_matrix&quot;</span></code>) to the internal
+geminal parameters.</p></li>
+<li><p>Handle the splitting of a rectangular lambda matrix into paired and
+unpaired parts when needed.</p></li>
+<li><p>Enforce Geminal-specific structural constraints, especially the
+symmetry conditions on the paired block of the lambda matrix.</p></li>
 </ul>
-<p>geminal parameters.
-* Handle the splitting of a rectangular lambda matrix into paired and
-unpaired parts when needed.
-* Enforce Geminal-specific structural constraints, especially the
-symmetry conditions on the paired block of the lambda matrix.</p>
 <p>All details about how the lambda parameters are stored and constrained
 live here (and in the surrounding <code class="docutils literal notranslate"><span class="pre">Geminal_data</span></code> class), not in
 <code class="xref py py-class docutils literal notranslate"><span class="pre">VariationalParameterBlock</span></code> or in the optimizer.  This keeps the
@@ -2682,9 +2682,9 @@ where r_up_carts[i] and r_dn_carts[j]. (dim: N_e^{up}, N_e^{up})</p>
 <dd><p>Return a single geminal column for all up-electrons and one dn-electron.</p>
 <p>Output shape: (N_up,)
 This corresponds to the j-th column of the <em>paired</em> block:</p>
-<blockquote>
-<div><p>col = orb_up(T) &#64; (lambda_paired &#64; orb_dn_vec)</p>
-</div></blockquote>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">col</span> <span class="o">=</span> <span class="n">orb_up</span><span class="p">(</span><span class="n">T</span><span class="p">)</span> <span class="o">@</span> <span class="p">(</span><span class="n">lambda_paired</span> <span class="o">@</span> <span class="n">orb_dn_vec</span><span class="p">)</span>
+</pre></div>
+</div>
 <p>Note: unpaired columns do not depend on dn positions, so they are not part of this column.</p>
 </dd></dl>
 
@@ -2694,9 +2694,9 @@ This corresponds to the j-th column of the <em>paired</em> block:</p>
 <dd><p>Return a single geminal row for one up-electron and all dn-electrons.</p>
 <p>Output shape: (N_dn + num_unpaired,)
 This is the i-th row of:</p>
-<blockquote>
-<div><p>geminal = [ orb_up(T) &#64; (lambda_paired &#64; orb_dn) , orb_up(T) &#64; lambda_unpaired ]</p>
-</div></blockquote>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">geminal</span> <span class="o">=</span> <span class="p">[</span> <span class="n">orb_up</span><span class="p">(</span><span class="n">T</span><span class="p">)</span> <span class="o">@</span> <span class="p">(</span><span class="n">lambda_paired</span> <span class="o">@</span> <span class="n">orb_dn</span><span class="p">)</span> <span class="p">,</span> <span class="n">orb_up</span><span class="p">(</span><span class="n">T</span><span class="p">)</span> <span class="o">@</span> <span class="n">lambda_unpaired</span> <span class="p">]</span>
+</pre></div>
+</div>
 </dd></dl>
 
 <dl class="py function">
@@ -3167,20 +3167,18 @@ updated (typically by <code class="docutils literal notranslate"><span class="pr
 and interprets that block according to Jastrow semantics.</p>
 <p>Responsibilities of this method are:</p>
 <ul class="simple">
-<li><p>Map the block name (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;j1_param&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;j2_param&quot;</span></code>,</p></li>
-</ul>
-<p><code class="docutils literal notranslate"><span class="pre">&quot;j3_matrix&quot;</span></code>) to the corresponding internal Jastrow field(s).
-* Enforce Jastrow-specific structural constraints when copying the
+<li><p>Map the block name (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;j1_param&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;j2_param&quot;</span></code>,
+<code class="docutils literal notranslate"><span class="pre">&quot;j3_matrix&quot;</span></code>) to the corresponding internal Jastrow field(s).</p></li>
+<li><p>Enforce Jastrow-specific structural constraints when copying the
 block values into the internal arrays.  In particular, for the
 three-body Jastrow term (J3) this includes:</p>
-<ul class="simple">
-<li><dl class="simple">
-<dt>Handling the case where only the last column is variational and the</dt><dd><p>rest of the matrix is constrained.</p>
-</dd>
-</dl>
-</li>
+<ul>
+<li><p>Handling the case where only the last column is variational and the
+rest of the matrix is constrained.</p></li>
 <li><p>Handling the fully square J3 matrix case.</p></li>
 <li><p>Enforcing the required symmetry of the square J3 block.</p></li>
+</ul>
+</li>
 </ul>
 <p>By keeping all J1/J2/J3 interpretation and constraints in this method
 (and in the surrounding <code class="docutils literal notranslate"><span class="pre">Jastrow_data</span></code> class), the optimizer and
@@ -5742,18 +5740,18 @@ but slow in production runs. Choose false for production runs.</p>
 <section id="design-overview">
 <h3>Design overview<a class="headerlink" href="#design-overview" title="Link to this heading">#</a></h3>
 <ul class="simple">
-<li><p>A <em>block</em> is the smallest unit that the optimizer (MCMC + SR) sees.</p></li>
-</ul>
-<p>Each block corresponds to a contiguous slice in the global
+<li><p>A <em>block</em> is the smallest unit that the optimizer (MCMC + SR) sees.
+Each block corresponds to a contiguous slice in the global
 variational parameter vector and carries enough metadata to
-reconstruct its original shape (name, values, shape, size).
-* This class is intentionally <strong>structure-agnostic</strong>: it does not
+reconstruct its original shape (name, values, shape, size).</p></li>
+<li><p>This class is intentionally <strong>structure-agnostic</strong>: it does not
 know anything about Jastrow vs Geminal, matrix symmetry, or how a
 block maps to concrete fields in <code class="xref py py-class docutils literal notranslate"><span class="pre">Jastrow_data</span></code> or
-<code class="xref py py-class docutils literal notranslate"><span class="pre">Geminal_data</span></code>.
-* All physics- and structure-specific semantics are owned by the
+<code class="xref py py-class docutils literal notranslate"><span class="pre">Geminal_data</span></code>.</p></li>
+<li><p>All physics- and structure-specific semantics are owned by the
 corresponding data classes via their <code class="docutils literal notranslate"><span class="pre">get_variational_blocks</span></code> and
-<code class="docutils literal notranslate"><span class="pre">apply_block_update</span></code> methods.</p>
+<code class="docutils literal notranslate"><span class="pre">apply_block_update</span></code> methods.</p></li>
+</ul>
 <p>The goal is that adding or modifying a variational parameter only
 requires changes on the wavefunction side (Jastrow/Geminal data),
 while the MCMC/SR driver remains completely agnostic and operates
@@ -5830,18 +5828,18 @@ geminal_data (Geminal_data)</p>
 <section id="design-notes">
 <h3>Design notes<a class="headerlink" href="#design-notes" title="Link to this heading">#</a></h3>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">blocks</span></code> defines the ordering and shapes of all variational</p></li>
-</ul>
-<p>parameters; <code class="docutils literal notranslate"><span class="pre">thetas</span></code> is a single flattened update vector in
-the same order.
-* This method is responsible for slicing <code class="docutils literal notranslate"><span class="pre">thetas</span></code> into
+<li><p><code class="docutils literal notranslate"><span class="pre">blocks</span></code> defines the ordering and shapes of all variational
+parameters; <code class="docutils literal notranslate"><span class="pre">thetas</span></code> is a single flattened update vector in
+the same order.</p></li>
+<li><p>This method is responsible for slicing <code class="docutils literal notranslate"><span class="pre">thetas</span></code> into
 per-block pieces and performing a generic additive update via
-<a class="reference internal" href="#jqmc.wavefunction.VariationalParameterBlock.apply_update" title="jqmc.wavefunction.VariationalParameterBlock.apply_update"><code class="xref py py-meth docutils literal notranslate"><span class="pre">VariationalParameterBlock.apply_update()</span></code></a>.
-* The <em>interpretation</em> of each block (“this is J1”, “this is the
+<a class="reference internal" href="#jqmc.wavefunction.VariationalParameterBlock.apply_update" title="jqmc.wavefunction.VariationalParameterBlock.apply_update"><code class="xref py py-meth docutils literal notranslate"><span class="pre">VariationalParameterBlock.apply_update()</span></code></a>.</p></li>
+<li><p>The <em>interpretation</em> of each block (“this is J1”, “this is the
 J3 matrix”, “this is lambda”) and any structural constraints
 (symmetry, rectangular layout, etc.) are delegated to
 <code class="xref py py-meth docutils literal notranslate"><span class="pre">Jastrow_data.apply_block_update()</span></code> and
-<code class="xref py py-meth docutils literal notranslate"><span class="pre">Geminal_data.apply_block_update()</span></code>.</p>
+<code class="xref py py-meth docutils literal notranslate"><span class="pre">Geminal_data.apply_block_update()</span></code>.</p></li>
+</ul>
 <p>Because of this separation of concerns, the MCMC/SR driver only
 needs to work with the flattened <code class="docutils literal notranslate"><span class="pre">thetas</span></code> vector and the list of
 blocks; it never touches Jastrow/Geminal internals directly. To

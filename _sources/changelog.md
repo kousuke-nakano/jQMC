@@ -2,6 +2,24 @@
 
 # Change Log
 
+## Jan-14-2026: v0.1.0a1
+
+- Release of the second alpha version of **jQMC**.
+
+### Key Features
+
+*   **Neural Network Jastrow**:
+    *   Introduced `NNJastrow`, a PauliNet-inspired neural network architecture for many-body Jastrow factors, enabling more accurate wavefunction ansatz.
+*   **Optimization Control**:
+    *   Implemented proper gradient masking mechanisms (e.g., `with_param_grad_mask`). This allows for selectively freezing or optimizing specific parameter blocks (One-body, Two-body, Three-body, NN, and Geminal coefficients) during the VMC optimizations.
+
+### Enhancements & Fixes
+
+*   **I/O**: Changed the storage format for `hamiltonian_data` from pickled binary files to HDF5 (`.h5`) for better portability and compatibility.
+*   **Documentation**: Updated `README.md`, docstrings, and API references to reflect recent changes and fix Sphinx warnings.
+*   **CI/CD**: Updated pre-commit configurations and GitHub workflow triggers.
+*   **Code Quality**: Refactored code based on suggestions and improved type hinting.
+
 ## Aug-20-2025: v0.1.0a0
 
 - Release of the first alpha version of **jQMC**.
