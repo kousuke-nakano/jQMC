@@ -164,21 +164,23 @@ class NNJastrow(nn.Module):
         def __call__(self, distances: jnp.ndarray) -> jnp.ndarray:
             r"""Evaluate the PhysNet radial envelope :math:`e_k(r)`.
 
-            The basis functions follow PauliNet's supplementary Eq. (3):
+            The basis functions follow PauliNet's implementation Eq. (12)
+            [Nat. Chem. 12, 891-897 (2020)] (https://doi.org/10.1038/s41557-020-0544-y):
 
             .. math::
 
-                e_k(r) = r^2 \exp\left[-r - \frac{(r-\mu_k)^2}{\sigma_k^2}\right] f_c(r)
+                e_k(r) = r^2 \exp\left[-r - \frac{(r-\mu_k)^2}{\sigma_k^2}\right]
 
-            where :math:`f_c(r)` is a differentiable cutoff ensuring :math:`e_k(0)=e_k(r_c)=0`.
+            where :math:`\mu_k` and :math:`\sigma_k` are fixed hyperparameters distributed up to :math:`r_c`.
+            Note that unlike PhysNet, this PauliNet implementation does not enforce a hard spatial cutoff
+            on the basis functions themselves, relying instead on natural decay.
 
             Args:
                 distances: Array of shape ``(...,)`` containing non-negative inter-particle
                     distances in Bohr. Arbitrary batch dimensions are supported.
 
             Returns:
-                jnp.ndarray: ``distances.shape + (num_rbf,)`` radial feature tensor with the
-                same dtype as ``distances``. Values outside ``cutoff`` are masked to zero.
+                jnp.ndarray: ``distances.shape + (num_rbf,)`` radial feature tensor.
 
             Raises:
                 ValueError: If ``num_rbf`` is not strictly positive.
@@ -190,14 +192,12 @@ class NNJastrow(nn.Module):
             mu = self.cutoff * q**2
             sigma = (1.0 / 7.0) * (1.0 + self.cutoff * q)
 
-            d = jnp.clip(distances, min=0.0, max=self.cutoff)
-            d = d[..., None]
+            d = distances[..., None]
             mu = mu[None, ...]
             sigma = sigma[None, ...]
 
             features = (d**2) * jnp.exp(-d - ((d - mu) ** 2) / (sigma**2 + 1e-12))
-            mask = (distances[..., None] <= self.cutoff).astype(distances.dtype)
-            return features * mask
+            return features
 
     class TwoLayerMLP(nn.Module):
         r"""Utility MLP used for :math:`w_\theta`, :math:`h_\theta`, :math:`g_\theta`, and :math:`\eta_\theta`."""
