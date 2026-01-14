@@ -96,11 +96,11 @@ Every time a change is pushed to the `main` or `devel*` branch, the `GitHub` wor
 
 ## How to deploy the package
 
-Once the `main` repository is merged into the `rc` repository, the `GitHub` workflow launches the implemented unit and integration tests (`jqmc-run-full-pytest.yml`) and test a deployment using `test-PyPI`. Then, once a tag is attached to (the latest) commit in the `rc` repository, the `GitHub` workflow checks the tag format (PEP 440 with the starting v, e.g., v0.1.0b4, v0.1.1, v1.0) and deploy the package to `PyPI`.
+Once the `main` branch is merged into the `rc` branch, the `GitHub` workflow launches the implemented unit and integration tests (`jqmc-run-full-pytest.yml`) and test a deployment using `test-PyPI`. Then, once a tag is attached to (the latest) commit in the `rc` branch, the `GitHub` workflow checks the tag format (PEP 440 with the starting v, e.g., v0.1.0b4, v0.1.1, v1.0) and deploy the package to `PyPI`.
 
 ## How to deploy the documentation
 
-Once the `main` repository is merged into the `rc-gh-pages` repository, the `GitHub` workflow launches the implemented documentaion building process (`jqmc-deploy-gh-pages.yml`) and deploy the compiled documentaiton to [GitHub Pages](https://kousuke-nakano.github.io/jQMC/).
+Once the `main` branch is merged into the `rc-gh-pages` branch, the `GitHub` workflow launches the implemented documentaion building process (`jqmc-deploy-gh-pages.yml`) and deploy the compiled documentaiton to [GitHub Pages](https://kousuke-nakano.github.io/jQMC/).
 
 ## Contribution
 
