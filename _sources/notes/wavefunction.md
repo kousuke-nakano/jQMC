@@ -190,13 +190,15 @@ $$
 We augment the Jastrow factor with a neural-network term $J_{\text{NN}}$ using a PauliNet-inspired GNN [Hermann et al., Nat. Chem. 12, 891 (2020)]. Inputs are electron coordinates $\{\mathbf{r}_i\}_{i=1}^{N_e}$ with spins $s_i \in \{\uparrow,\downarrow\}$, nuclear coordinates $\{\mathbf{R}_I\}_{I=1}^{N_n}$, and atomic numbers $\{Z_I\}$. The architecture is translationally and rotationally invariant and symmetric under exchange of electrons within each spin channel; fermionic antisymmetry is carried by the Slater/Geminal part. Variational parameters in this VMC setting are all trainable weights and biases of the neural networks described below, including spin embeddings, nuclear (species) embeddings, the message/receiver networks, and the readout network.
 
 ### Input Features
-Geometry is encoded solely by scalar distances: electron–electron $r_{ij}=|\mathbf{r}_i-\mathbf{r}_j|$ and electron–nucleus $r_{iI}=|\mathbf{r}_i-\mathbf{R}_I|$ (nucleus–nucleus distances are constant under the Born–Oppenheimer approximation). Each distance is expanded into PhysNet-style radial basis functions (RBFs):
+Geometry is encoded solely by scalar distances: electron–electron $r_{ij}=|\mathbf{r}_i-\mathbf{r}_j|$ and electron–nucleus $r_{iI}=|\mathbf{r}_i-\mathbf{R}_I|$ (nucleus–nucleus distances are constant under the Born–Oppenheimer approximation). Each distance is expanded into PhysNet-style radial basis functions (RBFs) parametrized in the [PauliNet paper](https://doi.org/10.1038/s41557-020-0544-y):
 
 $$
-e_k(r) = r^2 \exp\!\left[-r - \frac{(r-\mu_k)^2}{\sigma_k^2}\right] f_c(r),
+e_k(r) = r^2 \exp\!\left[-r - \frac{(r-\mu_k)^2}{\sigma_k^2}\right],
 $$
 
-where $f_c(r)$ is a smooth cutoff. The prefactor $r^2$ makes the feature and its derivative vanish at $r=0$, so $J_{\text{NN}}$ preserves the electron–nucleus cusp enforced by analytic terms. The number of basis functions $K$ is set by `num_rbf`, and the cutoff radius by `cutoff` (user inputs).
+where $\mu_k$ and $\sigma_k$ are hyperparameters determined by the grid points $q_k$. The prefactor $r^2$ makes the feature and its derivative vanish at $r=0$, so $J_{\text{NN}}$ preserves the electron–nucleus cusp enforced by analytic terms. The number of basis functions $K$ is set by `num_rbf`, and the parameter `cutoff` ($r_c$) determines the distribution range of the basis function centers (user inputs). The parameters are defined as $\mu_k = r_c q_k^2, \quad \sigma_k = \frac{1}{7}(1 + r_c q_k)$, where $\{q_k\}_{k=1}^K$ are $K$ points evenly spaced in the interval $(0, 1)$.
+
+![PauliNet RBF features](paulinet_rbf_plot.png)
 
 ### Interaction Layers
 Each electron carries a latent feature $\mathbf{x}_i^{(l)} \in \mathbb{R}^F$ at layer $l$, where the latent width $F$ is set by `hidden_dim` (user input). Initialization ($l=0$) is the sum of a spin embedding (depends on $s_i$) and a one-body nuclear context. The total number of message-passing layers $L$ is set by `num_layers` (user input). For $l=0,\dots,L-1$, we update $\mathbf{x}_i^{(l)}$ by aggregating channel-specific neighborhoods: same-spin $\mathcal{N}_{\parallel}(i)=\{j\neq i \mid s_j=s_i\}$, opposite-spin $\mathcal{N}_{\perp}(i)=\{j \mid s_j\neq s_i\}$, and nuclei $\mathcal{N}_{n}(i)=\{I \mid 1\le I\le N_n\}$. The update is

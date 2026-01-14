@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Wave functions &#8212; jQMC v0.1.0a0</title>
+    <title>Wave functions &#8212; jQMC v0.1.0a1</title>
   
   
   
@@ -36,7 +36,7 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../_static/documentation_options.js?v=f502e871"></script>
+    <script src="../_static/documentation_options.js?v=4efe6a6c"></script>
     <script src="../_static/doctools.js?v=9bcbadda"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
@@ -134,7 +134,7 @@
   
   
   
-    <p class="title logo__title">jQMC v0.1.0a0</p>
+    <p class="title logo__title">jQMC v0.1.0a1</p>
   
 </a></div>
         <div class="sidebar-primary-item"><ul class="navbar-icon-links"
@@ -522,12 +522,13 @@ X^{\downarrow}
 <p>We augment the Jastrow factor with a neural-network term <span class="math notranslate nohighlight">\(J_{\text{NN}}\)</span> using a PauliNet-inspired GNN [Hermann et al., Nat. Chem. 12, 891 (2020)]. Inputs are electron coordinates <span class="math notranslate nohighlight">\(\{\mathbf{r}_i\}_{i=1}^{N_e}\)</span> with spins <span class="math notranslate nohighlight">\(s_i \in \{\uparrow,\downarrow\}\)</span>, nuclear coordinates <span class="math notranslate nohighlight">\(\{\mathbf{R}_I\}_{I=1}^{N_n}\)</span>, and atomic numbers <span class="math notranslate nohighlight">\(\{Z_I\}\)</span>. The architecture is translationally and rotationally invariant and symmetric under exchange of electrons within each spin channel; fermionic antisymmetry is carried by the Slater/Geminal part. Variational parameters in this VMC setting are all trainable weights and biases of the neural networks described below, including spin embeddings, nuclear (species) embeddings, the message/receiver networks, and the readout network.</p>
 <section id="input-features">
 <h3>Input Features<a class="headerlink" href="#input-features" title="Link to this heading">#</a></h3>
-<p>Geometry is encoded solely by scalar distances: electron–electron <span class="math notranslate nohighlight">\(r_{ij}=|\mathbf{r}_i-\mathbf{r}_j|\)</span> and electron–nucleus <span class="math notranslate nohighlight">\(r_{iI}=|\mathbf{r}_i-\mathbf{R}_I|\)</span> (nucleus–nucleus distances are constant under the Born–Oppenheimer approximation). Each distance is expanded into PhysNet-style radial basis functions (RBFs):</p>
+<p>Geometry is encoded solely by scalar distances: electron–electron <span class="math notranslate nohighlight">\(r_{ij}=|\mathbf{r}_i-\mathbf{r}_j|\)</span> and electron–nucleus <span class="math notranslate nohighlight">\(r_{iI}=|\mathbf{r}_i-\mathbf{R}_I|\)</span> (nucleus–nucleus distances are constant under the Born–Oppenheimer approximation). Each distance is expanded into PhysNet-style radial basis functions (RBFs) parametrized in the <a class="reference external" href="https://doi.org/10.1038/s41557-020-0544-y">PauliNet paper</a>:</p>
 <div class="math notranslate nohighlight">
 \[
-e_k(r) = r^2 \exp\!\left[-r - \frac{(r-\mu_k)^2}{\sigma_k^2}\right] f_c(r),
+e_k(r) = r^2 \exp\!\left[-r - \frac{(r-\mu_k)^2}{\sigma_k^2}\right],
 \]</div>
-<p>where <span class="math notranslate nohighlight">\(f_c(r)\)</span> is a smooth cutoff. The prefactor <span class="math notranslate nohighlight">\(r^2\)</span> makes the feature and its derivative vanish at <span class="math notranslate nohighlight">\(r=0\)</span>, so <span class="math notranslate nohighlight">\(J_{\text{NN}}\)</span> preserves the electron–nucleus cusp enforced by analytic terms. The number of basis functions <span class="math notranslate nohighlight">\(K\)</span> is set by <code class="docutils literal notranslate"><span class="pre">num_rbf</span></code>, and the cutoff radius by <code class="docutils literal notranslate"><span class="pre">cutoff</span></code> (user inputs).</p>
+<p>where <span class="math notranslate nohighlight">\(\mu_k\)</span> and <span class="math notranslate nohighlight">\(\sigma_k\)</span> are hyperparameters determined by the grid points <span class="math notranslate nohighlight">\(q_k\)</span>. The prefactor <span class="math notranslate nohighlight">\(r^2\)</span> makes the feature and its derivative vanish at <span class="math notranslate nohighlight">\(r=0\)</span>, so <span class="math notranslate nohighlight">\(J_{\text{NN}}\)</span> preserves the electron–nucleus cusp enforced by analytic terms. The number of basis functions <span class="math notranslate nohighlight">\(K\)</span> is set by <code class="docutils literal notranslate"><span class="pre">num_rbf</span></code>, and the parameter <code class="docutils literal notranslate"><span class="pre">cutoff</span></code> (<span class="math notranslate nohighlight">\(r_c\)</span>) determines the distribution range of the basis function centers (user inputs). The parameters are defined as <span class="math notranslate nohighlight">\(\mu_k = r_c q_k^2, \quad \sigma_k = \frac{1}{7}(1 + r_c q_k)\)</span>, where <span class="math notranslate nohighlight">\(\{q_k\}_{k=1}^K\)</span> are <span class="math notranslate nohighlight">\(K\)</span> points evenly spaced in the interval <span class="math notranslate nohighlight">\((0, 1)\)</span>.</p>
+<p><img alt="PauliNet RBF features" src="../_images/paulinet_rbf_plot.png" /></p>
 </section>
 <section id="interaction-layers">
 <h3>Interaction Layers<a class="headerlink" href="#interaction-layers" title="Link to this heading">#</a></h3>
