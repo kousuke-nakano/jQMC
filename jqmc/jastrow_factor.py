@@ -1330,15 +1330,15 @@ class Jastrow_data:
         Responsibilities of this method are:
 
         * Map the block name (e.g. ``"j1_param"``, ``"j2_param"``,
-        ``"j3_matrix"``) to the corresponding internal Jastrow field(s).
+          ``"j3_matrix"``) to the corresponding internal Jastrow field(s).
         * Enforce Jastrow-specific structural constraints when copying the
-        block values into the internal arrays.  In particular, for the
-        three-body Jastrow term (J3) this includes:
+          block values into the internal arrays.  In particular, for the
+          three-body Jastrow term (J3) this includes:
 
-        - Handling the case where only the last column is variational and the
+          - Handling the case where only the last column is variational and the
             rest of the matrix is constrained.
-        - Handling the fully square J3 matrix case.
-        - Enforcing the required symmetry of the square J3 block.
+          - Handling the fully square J3 matrix case.
+          - Enforcing the required symmetry of the square J3 block.
 
         By keeping all J1/J2/J3 interpretation and constraints in this method
         (and in the surrounding ``Jastrow_data`` class), the optimizer and

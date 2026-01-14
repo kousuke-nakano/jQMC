@@ -74,16 +74,16 @@ class VariationalParameterBlock:
     Design overview
     ----------------
     * A *block* is the smallest unit that the optimizer (MCMC + SR) sees.
-    Each block corresponds to a contiguous slice in the global
-    variational parameter vector and carries enough metadata to
-    reconstruct its original shape (name, values, shape, size).
+      Each block corresponds to a contiguous slice in the global
+      variational parameter vector and carries enough metadata to
+      reconstruct its original shape (name, values, shape, size).
     * This class is intentionally **structure-agnostic**: it does not
-    know anything about Jastrow vs Geminal, matrix symmetry, or how a
-    block maps to concrete fields in :class:`Jastrow_data` or
-    :class:`Geminal_data`.
+      know anything about Jastrow vs Geminal, matrix symmetry, or how a
+      block maps to concrete fields in :class:`Jastrow_data` or
+      :class:`Geminal_data`.
     * All physics- and structure-specific semantics are owned by the
-    corresponding data classes via their ``get_variational_blocks`` and
-    ``apply_block_update`` methods.
+      corresponding data classes via their ``get_variational_blocks`` and
+      ``apply_block_update`` methods.
 
     The goal is that adding or modifying a variational parameter only
     requires changes on the wavefunction side (Jastrow/Geminal data),
@@ -172,16 +172,16 @@ class Wavefunction_data:
         Design notes
         ------------
         * ``blocks`` defines the ordering and shapes of all variational
-        parameters; ``thetas`` is a single flattened update vector in
-        the same order.
+          parameters; ``thetas`` is a single flattened update vector in
+          the same order.
         * This method is responsible for slicing ``thetas`` into
-        per-block pieces and performing a generic additive update via
-        :meth:`VariationalParameterBlock.apply_update`.
+          per-block pieces and performing a generic additive update via
+          :meth:`VariationalParameterBlock.apply_update`.
         * The *interpretation* of each block ("this is J1", "this is the
-        J3 matrix", "this is lambda") and any structural constraints
-        (symmetry, rectangular layout, etc.) are delegated to
-        :meth:`Jastrow_data.apply_block_update` and
-        :meth:`Geminal_data.apply_block_update`.
+          J3 matrix", "this is lambda") and any structural constraints
+          (symmetry, rectangular layout, etc.) are delegated to
+          :meth:`Jastrow_data.apply_block_update` and
+          :meth:`Geminal_data.apply_block_update`.
 
         Because of this separation of concerns, the MCMC/SR driver only
         needs to work with the flattened ``thetas`` vector and the list of
@@ -229,7 +229,7 @@ class Wavefunction_data:
         """Return a copy where disabled parameter blocks stop propagating gradients.
 
         Developer note
-        -------------
+        --------------
         * The per-block flags (``opt_J1_param`` etc.) decide which high-level blocks are
             masked. Disabled blocks are wrapped with ``DiffMask(params=False, coords=True)``,
             meaning parameter gradients are stopped while coordinate gradients still flow.

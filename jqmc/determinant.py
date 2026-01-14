@@ -160,11 +160,11 @@ class Geminal_data:
         Responsibilities of this method are:
 
         * Map the block name (currently ``"lambda_matrix"``) to the internal
-        geminal parameters.
+          geminal parameters.
         * Handle the splitting of a rectangular lambda matrix into paired and
-        unpaired parts when needed.
+          unpaired parts when needed.
         * Enforce Geminal-specific structural constraints, especially the
-        symmetry conditions on the paired block of the lambda matrix.
+          symmetry conditions on the paired block of the lambda matrix.
 
         All details about how the lambda parameters are stored and constrained
         live here (and in the surrounding ``Geminal_data`` class), not in
@@ -708,7 +708,8 @@ def compute_geminal_up_one_row_elements_jax(
     """Return a single geminal row for one up-electron and all dn-electrons.
 
     Output shape: (N_dn + num_unpaired,)
-    This is the i-th row of:
+    This is the i-th row of::
+
         geminal = [ orb_up(T) @ (lambda_paired @ orb_dn) , orb_up(T) @ lambda_unpaired ]
     """
     # Split lambda into paired/unpaired blocks along columns
@@ -746,8 +747,10 @@ def compute_geminal_dn_one_column_elements_jax(
     """Return a single geminal column for all up-electrons and one dn-electron.
 
     Output shape: (N_up,)
-    This corresponds to the j-th column of the *paired* block:
+    This corresponds to the j-th column of the *paired* block::
+
         col = orb_up(T) @ (lambda_paired @ orb_dn_vec)
+
     Note: unpaired columns do not depend on dn positions, so they are not part of this column.
     """
     # Split lambda into paired/unpaired blocks along columns

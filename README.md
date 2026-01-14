@@ -2,7 +2,7 @@
 
 ![jqmc_logo](logo/logo_yoko2.jpg)
 
-**jQMC** is an ab initio quantum Monte Carlo (QMC) simulation package developed entirely from scratch using `Python` and `JAX`. Originally designed for molecular systems --with future extensions planned for periodic systems-- **jQMC** implements two well-established QMC algorithms: Variational Monte Carlo (VMC) and a robust and efficient variant of Diffusion Monte Carlo algorithm known as Lattice Regularized Diffusion Monte Carlo (LRDMC). By leveraging `JAX` just-in-time (`jit`) compilation and vectorized mapping (`vmap`) functionalities, `jQMC` achieves high-performance computations **especially on GPUs** while remaining portable across CPUs, GPUs, and TPUs. See [here](http://jax.readthedocs.io/) for the details of `JAX`.
+**jQMC** is an ab initio quantum Monte Carlo (QMC) simulation package developed entirely from scratch using `Python` and `JAX`. Originally designed for molecular systems --with future extensions planned for periodic systems-- **jQMC** implements two well-established QMC algorithms: Variational Monte Carlo (VMC) and a robust and efficient variant of Diffusion Monte Carlo algorithm known as Lattice Regularized Diffusion Monte Carlo (LRDMC). By leveraging `JAX` just-in-time (`jit`) compilation and vectorized mapping (`vmap`) functionalities, `jQMC` achieves high-performance computations **especially on GPUs** while remaining portable across CPUs, GPUs, and TPUs. See [here](http://jax.readthedocs.io/) for the details of `JAX`. The **jQMC** users and developers manual is available from [GitHub Pages](https://kousuke-nakano.github.io/jQMC/).
 
 ![license](https://img.shields.io/github/license/kousuke-nakano/jQMC)
 ![tag](https://img.shields.io/github/v/tag/kousuke-nakano/jQMC)
@@ -98,6 +98,9 @@ Every time a change is pushed to the `main` or `devel*` branch, the `GitHub` wor
 
 Once the `main` repository is merged into the `rc` repository, the `GitHub` workflow launches the implemented unit and integration tests (`jqmc-run-full-pytest.yml`) and test a deployment using `test-PyPI`. Then, once a tag is attached to (the latest) commit in the `rc` repository, the `GitHub` workflow checks the tag format (PEP 440 with the starting v, e.g., v0.1.0b4, v0.1.1, v1.0) and deploy the package to `PyPI`.
 
+## How to deploy the documentation
+
+Once the `main` repository is merged into the `rc-gh-pages` repository, the `GitHub` workflow launches the implemented documentaion building process (`jqmc-deploy-gh-pages.yml`) and deploy the compiled documentaiton to [GitHub Pages](https://kousuke-nakano.github.io/jQMC/).
 
 ## Contribution
 
