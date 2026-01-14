@@ -11,6 +11,7 @@ on:
       - 'doc/**'
       - 'examples/**'
       - 'README.md'
+      - '.pre-commit-config.yaml'
   pull_request:
     branches: [ "main", "rc" ]
 
