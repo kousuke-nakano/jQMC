@@ -57,7 +57,7 @@ from .atomic_orbital import (
     _compute_AOs_laplacian_autodiff,
     compute_AOs,
 )
-from .molecular_orbital import MOs_data, compute_MOs, compute_MOs_grad, compute_MOs_laplacian_jax
+from .molecular_orbital import MOs_data, _compute_MOs_laplacian_autodiff, compute_MOs, compute_MOs_grad
 
 if TYPE_CHECKING:  # pragma: no cover - typing-only import to avoid circular dependency
     from .wavefunction import VariationalParameterBlock
@@ -339,7 +339,7 @@ class Geminal_data:
         elif isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data):
             return _compute_AOs_laplacian_autodiff
         elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
-            return compute_MOs_laplacian_jax
+            return _compute_MOs_laplacian_autodiff
         else:
             raise NotImplementedError
 

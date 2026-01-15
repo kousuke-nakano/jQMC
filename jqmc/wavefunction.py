@@ -55,7 +55,7 @@ from .determinant import (
 from .diff_mask import DiffMask, apply_diff_mask
 from .jastrow_factor import (
     Jastrow_data,
-    compute_grads_and_laplacian_Jastrow_part_jax,
+    compute_grads_and_laplacian_Jastrow_part_auto,
     compute_Jastrow_part,
     compute_ratio_Jastrow_part_jax,
 )
@@ -1112,7 +1112,7 @@ def compute_kinetic_energy_element_wise(
     """
     # grad_J_up, grad_J_dn, sum_laplacian_J = 0.0, 0.0, 0.0
     # """
-    grad_J_up, grad_J_dn, sum_laplacian_J = compute_grads_and_laplacian_Jastrow_part_jax(
+    grad_J_up, grad_J_dn, sum_laplacian_J = compute_grads_and_laplacian_Jastrow_part_auto(
         jastrow_data=wavefunction_data.jastrow_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,

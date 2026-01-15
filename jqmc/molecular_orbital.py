@@ -53,6 +53,8 @@ from .atomic_orbital import (
     _compute_AOs_grad_autodiff,
     _compute_AOs_laplacian_autodiff,
     compute_AOs,
+    compute_AOs_grad,
+    compute_AOs_laplacian,
 )
 
 # set logger
@@ -158,7 +160,18 @@ def _compute_MOs_debug(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]) -> 
 
 
 @jit
-def compute_MOs_laplacian_jax(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+def _compute_MOs_laplacian_autodiff(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    """See _api method."""
+    mo_matrix_laplacian = jnp.dot(
+        mos_data.mo_coefficients,
+        _compute_AOs_laplacian_autodiff(mos_data.aos_data, r_carts),
+    )
+
+    return mo_matrix_laplacian
+
+
+@jit
+def compute_MOs_laplacian(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]) -> jax.Array:
     """Function for computing laplacians with a given MOs_data.
 
     The method is for computing the laplacians of the given molecular orbital (MOs_data) at r_carts.
@@ -170,12 +183,8 @@ def compute_MOs_laplacian_jax(mos_data: MOs_data, r_carts: npt.NDArray[np.float6
     Returns:
         An array containing laplacians of the MOs at r_carts. The dim. is (num_mo, N_e)
     """
-    mo_matrix_laplacian = jnp.dot(
-        mos_data.mo_coefficients,
-        _compute_AOs_laplacian_autodiff(mos_data.aos_data, r_carts),
-    )
-
-    return mo_matrix_laplacian
+    ao_lap = compute_AOs_laplacian(mos_data.aos_data, r_carts)
+    return jnp.dot(mos_data.mo_coefficients, ao_lap)
 
 
 def _compute_MOs_laplacian_debug(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]):
@@ -236,6 +245,23 @@ def compute_MOs_grad(
     Returns:
         tuple containing gradients of the MOs at r_carts. (grad_x, grad_y, grad_z). The dim. of each matrix is (num_mo, N_e)
     """
+    mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z = compute_AOs_grad(mos_data.aos_data, r_carts)
+    mo_matrix_grad_x = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_x)
+    mo_matrix_grad_y = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_y)
+    mo_matrix_grad_z = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_z)
+
+    return mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z
+
+
+@jit
+def _compute_MOs_grad_autodiff(
+    mos_data: MOs_data, r_carts: npt.NDArray[np.float64]
+) -> tuple[
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+]:
+    """This method is for computing the gradients (x,y,z) of the given molecular orbital at r_carts."""
     mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z = _compute_AOs_grad_autodiff(mos_data.aos_data, r_carts)
     mo_matrix_grad_x = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_x)
     mo_matrix_grad_y = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_y)
