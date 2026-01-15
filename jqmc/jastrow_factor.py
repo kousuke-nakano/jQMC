@@ -53,8 +53,8 @@ from jax import grad, hessian, jit, vmap
 from jax import typing as jnpt
 from jax.tree_util import tree_flatten, tree_unflatten
 
-from .atomic_orbital import AOs_cart_data, AOs_sphe_data, compute_AOs_jax
-from .molecular_orbital import MOs_data, compute_MOs_jax
+from .atomic_orbital import AOs_cart_data, AOs_sphe_data, compute_AOs
+from .molecular_orbital import MOs_data, compute_MOs
 from .structure import Structure_data
 
 if TYPE_CHECKING:  # typing-only import to avoid circular dependency
@@ -477,7 +477,6 @@ class NNJastrow(nn.Module):
         return j_val
 
 
-# @dataclass
 @struct.dataclass
 class Jastrow_one_body_data:
     """Jastrow one-body dataclass.
@@ -535,7 +534,7 @@ class Jastrow_one_body_data:
 
 
 @jit
-def compute_Jastrow_one_body_jax(
+def compute_Jastrow_one_body(
     jastrow_one_body_data: Jastrow_one_body_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
@@ -591,7 +590,7 @@ def compute_Jastrow_one_body_jax(
     return J1_up + J1_dn
 
 
-def compute_Jastrow_one_body_debug(
+def _compute_Jastrow_one_body_debug(
     jastrow_one_body_data: Jastrow_one_body_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
@@ -630,7 +629,6 @@ def compute_Jastrow_one_body_debug(
     return J1
 
 
-# @dataclass
 @struct.dataclass
 class Jastrow_two_body_data:
     """Jastrow two-body dataclass.
@@ -675,7 +673,7 @@ class Jastrow_two_body_data:
 
 
 @jit
-def compute_Jastrow_two_body_jax(
+def compute_Jastrow_two_body(
     jastrow_two_body_data: Jastrow_two_body_data,
     r_up_carts: jnpt.ArrayLike,
     r_dn_carts: jnpt.ArrayLike,
@@ -747,7 +745,7 @@ def compute_Jastrow_two_body_jax(
     return two_body_jastrow
 
 
-def compute_Jastrow_two_body_debug(
+def _compute_Jastrow_two_body_debug(
     jastrow_two_body_data: Jastrow_two_body_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
@@ -895,11 +893,11 @@ class Jastrow_three_body_data:
                 If the instances of orb_data is neither AOs_data nor MOs_data.
         """
         if isinstance(self.orb_data, AOs_sphe_data):
-            return compute_AOs_jax
+            return compute_AOs
         elif isinstance(self.orb_data, AOs_cart_data):
-            return compute_AOs_jax
+            return compute_AOs
         elif isinstance(self.orb_data, MOs_data):
-            return compute_MOs_jax
+            return compute_MOs
         else:
             raise NotImplementedError
 
@@ -1121,7 +1119,7 @@ class Jastrow_NN_data:
         return info
 
 
-def compute_Jastrow_three_body_jax(
+def compute_Jastrow_three_body(
     jastrow_three_body_data: Jastrow_three_body_data,
     r_up_carts: jnpt.ArrayLike,
     r_dn_carts: jnpt.ArrayLike,
@@ -1178,7 +1176,7 @@ def compute_Jastrow_three_body_jax(
     return J3
 
 
-def compute_Jastrow_three_body_debug(
+def _compute_Jastrow_three_body_debug(
     jastrow_three_body_data: Jastrow_three_body_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
@@ -1417,7 +1415,7 @@ class Jastrow_data:
         return grads
 
 
-def compute_Jastrow_part_jax(jastrow_data: Jastrow_data, r_up_carts: jnpt.ArrayLike, r_dn_carts: jnpt.ArrayLike) -> float:
+def compute_Jastrow_part(jastrow_data: Jastrow_data, r_up_carts: jnpt.ArrayLike, r_dn_carts: jnpt.ArrayLike) -> float:
     """Function for computing Jastrow factor with the given jastrow_data.
 
     The api method to compute Jastrow factor with the given jastrow_data.
@@ -1439,15 +1437,15 @@ def compute_Jastrow_part_jax(jastrow_data: Jastrow_data, r_up_carts: jnpt.ArrayL
 
     # one-body
     if jastrow_data.jastrow_one_body_data is not None:
-        J1 += compute_Jastrow_one_body_jax(jastrow_data.jastrow_one_body_data, r_up_carts, r_dn_carts)
+        J1 += compute_Jastrow_one_body(jastrow_data.jastrow_one_body_data, r_up_carts, r_dn_carts)
 
     # two-body
     if jastrow_data.jastrow_two_body_data is not None:
-        J2 += compute_Jastrow_two_body_jax(jastrow_data.jastrow_two_body_data, r_up_carts, r_dn_carts)
+        J2 += compute_Jastrow_two_body(jastrow_data.jastrow_two_body_data, r_up_carts, r_dn_carts)
 
     # three-body (analytic)
     if jastrow_data.jastrow_three_body_data is not None:
-        J3 += compute_Jastrow_three_body_jax(jastrow_data.jastrow_three_body_data, r_up_carts, r_dn_carts)
+        J3 += compute_Jastrow_three_body(jastrow_data.jastrow_three_body_data, r_up_carts, r_dn_carts)
 
     # three-body (NN)
     if jastrow_data.jastrow_nn_data is not None:
@@ -1465,7 +1463,7 @@ def compute_Jastrow_part_jax(jastrow_data: Jastrow_data, r_up_carts: jnpt.ArrayL
     return J
 
 
-def compute_Jastrow_part_debug(
+def _compute_Jastrow_part_debug(
     jastrow_data: Jastrow_data, r_up_carts: npt.NDArray[np.float64], r_dn_carts: npt.NDArray[np.float64]
 ) -> float:
     """See compute_Jastrow_part_jax for more details."""
@@ -1475,15 +1473,15 @@ def compute_Jastrow_part_debug(
 
     # one-body
     if jastrow_data.jastrow_one_body_data is not None:
-        J1 += compute_Jastrow_one_body_debug(jastrow_data.jastrow_one_body_data, r_up_carts, r_dn_carts)
+        J1 += _compute_Jastrow_one_body_debug(jastrow_data.jastrow_one_body_data, r_up_carts, r_dn_carts)
 
     # two-body
     if jastrow_data.jastrow_two_body_data is not None:
-        J2 += compute_Jastrow_two_body_debug(jastrow_data.jastrow_two_body_data, r_up_carts, r_dn_carts)
+        J2 += _compute_Jastrow_two_body_debug(jastrow_data.jastrow_two_body_data, r_up_carts, r_dn_carts)
 
     # three-body (analytic)
     if jastrow_data.jastrow_three_body_data is not None:
-        J3 += compute_Jastrow_three_body_debug(jastrow_data.jastrow_three_body_data, r_up_carts, r_dn_carts)
+        J3 += _compute_Jastrow_three_body_debug(jastrow_data.jastrow_three_body_data, r_up_carts, r_dn_carts)
 
     # three-body (NN)
     if jastrow_data.jastrow_nn_data is not None:
@@ -1740,8 +1738,8 @@ def compute_ratio_Jastrow_part_debug(
     """See _api method."""
     return np.array(
         [
-            np.exp(compute_Jastrow_part_jax(jastrow_data, new_r_up_carts, new_r_dn_carts))
-            / np.exp(compute_Jastrow_part_jax(jastrow_data, old_r_up_carts, old_r_dn_carts))
+            np.exp(compute_Jastrow_part(jastrow_data, new_r_up_carts, new_r_dn_carts))
+            / np.exp(compute_Jastrow_part(jastrow_data, old_r_up_carts, old_r_dn_carts))
             for new_r_up_carts, new_r_dn_carts in zip(new_r_up_carts_arr, new_r_dn_carts_arr, strict=True)
         ]
     )
@@ -1859,15 +1857,15 @@ def _compute_grads_and_laplacian_Jastrow_two_body_jax(
     r_dn_carts = jnp.array(r_dn_carts)
 
     # compute grad
-    grad_J2_up = grad(compute_Jastrow_two_body_jax, argnums=1)(jastrow_two_body_data, r_up_carts, r_dn_carts)
+    grad_J2_up = grad(compute_Jastrow_two_body, argnums=1)(jastrow_two_body_data, r_up_carts, r_dn_carts)
 
-    grad_J2_dn = grad(compute_Jastrow_two_body_jax, argnums=2)(jastrow_two_body_data, r_up_carts, r_dn_carts)
+    grad_J2_dn = grad(compute_Jastrow_two_body, argnums=2)(jastrow_two_body_data, r_up_carts, r_dn_carts)
 
     # compute laplacians
-    hessian_J2_up = hessian(compute_Jastrow_two_body_jax, argnums=1)(jastrow_two_body_data, r_up_carts, r_dn_carts)
+    hessian_J2_up = hessian(compute_Jastrow_two_body, argnums=1)(jastrow_two_body_data, r_up_carts, r_dn_carts)
     sum_laplacian_J2_up = jnp.einsum("ijij->", hessian_J2_up)
 
-    hessian_J2_dn = hessian(compute_Jastrow_two_body_jax, argnums=2)(jastrow_two_body_data, r_up_carts, r_dn_carts)
+    hessian_J2_dn = hessian(compute_Jastrow_two_body, argnums=2)(jastrow_two_body_data, r_up_carts, r_dn_carts)
     sum_laplacian_J2_dn = jnp.einsum("ijij->", hessian_J2_dn)
 
     sum_laplacian_J2 = sum_laplacian_J2_up + sum_laplacian_J2_dn
@@ -1900,17 +1898,17 @@ def compute_grads_and_laplacian_Jastrow_two_body_debug(
         diff_p_y_r_up_carts[r_i][1] += diff_h
         diff_p_z_r_up_carts[r_i][2] += diff_h
 
-        J2_p_x_up = compute_Jastrow_two_body_jax(
+        J2_p_x_up = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=diff_p_x_r_up_carts,
             r_dn_carts=r_dn_carts,
         )
-        J2_p_y_up = compute_Jastrow_two_body_jax(
+        J2_p_y_up = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=diff_p_y_r_up_carts,
             r_dn_carts=r_dn_carts,
         )
-        J2_p_z_up = compute_Jastrow_two_body_jax(
+        J2_p_z_up = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=diff_p_z_r_up_carts,
             r_dn_carts=r_dn_carts,
@@ -1923,17 +1921,17 @@ def compute_grads_and_laplacian_Jastrow_two_body_debug(
         diff_m_y_r_up_carts[r_i][1] -= diff_h
         diff_m_z_r_up_carts[r_i][2] -= diff_h
 
-        J2_m_x_up = compute_Jastrow_two_body_jax(
+        J2_m_x_up = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=diff_m_x_r_up_carts,
             r_dn_carts=r_dn_carts,
         )
-        J2_m_y_up = compute_Jastrow_two_body_jax(
+        J2_m_y_up = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=diff_m_y_r_up_carts,
             r_dn_carts=r_dn_carts,
         )
-        J2_m_z_up = compute_Jastrow_two_body_jax(
+        J2_m_z_up = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=diff_m_z_r_up_carts,
             r_dn_carts=r_dn_carts,
@@ -1955,17 +1953,17 @@ def compute_grads_and_laplacian_Jastrow_two_body_debug(
         diff_p_y_r_dn_carts[r_i][1] += diff_h
         diff_p_z_r_dn_carts[r_i][2] += diff_h
 
-        J2_p_x_dn = compute_Jastrow_two_body_jax(
+        J2_p_x_dn = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_p_x_r_dn_carts,
         )
-        J2_p_y_dn = compute_Jastrow_two_body_jax(
+        J2_p_y_dn = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_p_y_r_dn_carts,
         )
-        J2_p_z_dn = compute_Jastrow_two_body_jax(
+        J2_p_z_dn = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_p_z_r_dn_carts,
@@ -1978,17 +1976,17 @@ def compute_grads_and_laplacian_Jastrow_two_body_debug(
         diff_m_y_r_dn_carts[r_i][1] -= diff_h
         diff_m_z_r_dn_carts[r_i][2] -= diff_h
 
-        J2_m_x_dn = compute_Jastrow_two_body_jax(
+        J2_m_x_dn = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_m_x_r_dn_carts,
         )
-        J2_m_y_dn = compute_Jastrow_two_body_jax(
+        J2_m_y_dn = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_m_y_r_dn_carts,
         )
-        J2_m_z_dn = compute_Jastrow_two_body_jax(
+        J2_m_z_dn = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_m_z_r_dn_carts,
@@ -2004,7 +2002,7 @@ def compute_grads_and_laplacian_Jastrow_two_body_debug(
     # laplacian
     diff_h2 = 1.0e-3  # for laplacian
 
-    J2_ref = compute_Jastrow_two_body_jax(
+    J2_ref = compute_Jastrow_two_body(
         jastrow_two_body_data=jastrow_two_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -2021,18 +2019,18 @@ def compute_grads_and_laplacian_Jastrow_two_body_debug(
         diff_p_y_r_up2_carts[r_i][1] += diff_h2
         diff_p_z_r_up2_carts[r_i][2] += diff_h2
 
-        J2_p_x_up2 = compute_Jastrow_two_body_jax(
+        J2_p_x_up2 = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=diff_p_x_r_up2_carts,
             r_dn_carts=r_dn_carts,
         )
-        J2_p_y_up2 = compute_Jastrow_two_body_jax(
+        J2_p_y_up2 = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=diff_p_y_r_up2_carts,
             r_dn_carts=r_dn_carts,
         )
 
-        J2_p_z_up2 = compute_Jastrow_two_body_jax(
+        J2_p_z_up2 = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=diff_p_z_r_up2_carts,
             r_dn_carts=r_dn_carts,
@@ -2045,17 +2043,17 @@ def compute_grads_and_laplacian_Jastrow_two_body_debug(
         diff_m_y_r_up2_carts[r_i][1] -= diff_h2
         diff_m_z_r_up2_carts[r_i][2] -= diff_h2
 
-        J2_m_x_up2 = compute_Jastrow_two_body_jax(
+        J2_m_x_up2 = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=diff_m_x_r_up2_carts,
             r_dn_carts=r_dn_carts,
         )
-        J2_m_y_up2 = compute_Jastrow_two_body_jax(
+        J2_m_y_up2 = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=diff_m_y_r_up2_carts,
             r_dn_carts=r_dn_carts,
         )
-        J2_m_z_up2 = compute_Jastrow_two_body_jax(
+        J2_m_z_up2 = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=diff_m_z_r_up2_carts,
             r_dn_carts=r_dn_carts,
@@ -2076,18 +2074,18 @@ def compute_grads_and_laplacian_Jastrow_two_body_debug(
         diff_p_y_r_dn2_carts[r_i][1] += diff_h2
         diff_p_z_r_dn2_carts[r_i][2] += diff_h2
 
-        J2_p_x_dn2 = compute_Jastrow_two_body_jax(
+        J2_p_x_dn2 = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_p_x_r_dn2_carts,
         )
-        J2_p_y_dn2 = compute_Jastrow_two_body_jax(
+        J2_p_y_dn2 = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_p_y_r_dn2_carts,
         )
 
-        J2_p_z_dn2 = compute_Jastrow_two_body_jax(
+        J2_p_z_dn2 = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_p_z_r_dn2_carts,
@@ -2100,17 +2098,17 @@ def compute_grads_and_laplacian_Jastrow_two_body_debug(
         diff_m_y_r_dn2_carts[r_i][1] -= diff_h2
         diff_m_z_r_dn2_carts[r_i][2] -= diff_h2
 
-        J2_m_x_dn2 = compute_Jastrow_two_body_jax(
+        J2_m_x_dn2 = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_m_x_r_dn2_carts,
         )
-        J2_m_y_dn2 = compute_Jastrow_two_body_jax(
+        J2_m_y_dn2 = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_m_y_r_dn2_carts,
         )
-        J2_m_z_dn2 = compute_Jastrow_two_body_jax(
+        J2_m_z_dn2 = compute_Jastrow_two_body(
             jastrow_two_body_data=jastrow_two_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_m_z_r_dn2_carts,
@@ -2176,15 +2174,15 @@ def _compute_grads_and_laplacian_Jastrow_three_body_jax(
 ]:
     """See _api method."""
     # compute grad
-    grad_J3_up = grad(compute_Jastrow_three_body_jax, argnums=1)(jastrow_three_body_data, r_up_carts, r_dn_carts)
+    grad_J3_up = grad(compute_Jastrow_three_body, argnums=1)(jastrow_three_body_data, r_up_carts, r_dn_carts)
 
-    grad_J3_dn = grad(compute_Jastrow_three_body_jax, argnums=2)(jastrow_three_body_data, r_up_carts, r_dn_carts)
+    grad_J3_dn = grad(compute_Jastrow_three_body, argnums=2)(jastrow_three_body_data, r_up_carts, r_dn_carts)
 
     # compute laplacians
-    hessian_J3_up = hessian(compute_Jastrow_three_body_jax, argnums=1)(jastrow_three_body_data, r_up_carts, r_dn_carts)
+    hessian_J3_up = hessian(compute_Jastrow_three_body, argnums=1)(jastrow_three_body_data, r_up_carts, r_dn_carts)
     sum_laplacian_J3_up = jnp.einsum("ijij->", hessian_J3_up)
 
-    hessian_J3_dn = hessian(compute_Jastrow_three_body_jax, argnums=2)(jastrow_three_body_data, r_up_carts, r_dn_carts)
+    hessian_J3_dn = hessian(compute_Jastrow_three_body, argnums=2)(jastrow_three_body_data, r_up_carts, r_dn_carts)
     sum_laplacian_J3_dn = jnp.einsum("ijij->", hessian_J3_dn)
 
     sum_laplacian_J3 = sum_laplacian_J3_up + sum_laplacian_J3_dn
@@ -2217,17 +2215,17 @@ def compute_grads_and_laplacian_Jastrow_three_body_debug(
         diff_p_y_r_up_carts[r_i][1] += diff_h
         diff_p_z_r_up_carts[r_i][2] += diff_h
 
-        J3_p_x_up = compute_Jastrow_three_body_jax(
+        J3_p_x_up = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=diff_p_x_r_up_carts,
             r_dn_carts=r_dn_carts,
         )
-        J3_p_y_up = compute_Jastrow_three_body_jax(
+        J3_p_y_up = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=diff_p_y_r_up_carts,
             r_dn_carts=r_dn_carts,
         )
-        J3_p_z_up = compute_Jastrow_three_body_jax(
+        J3_p_z_up = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=diff_p_z_r_up_carts,
             r_dn_carts=r_dn_carts,
@@ -2240,17 +2238,17 @@ def compute_grads_and_laplacian_Jastrow_three_body_debug(
         diff_m_y_r_up_carts[r_i][1] -= diff_h
         diff_m_z_r_up_carts[r_i][2] -= diff_h
 
-        J3_m_x_up = compute_Jastrow_three_body_jax(
+        J3_m_x_up = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=diff_m_x_r_up_carts,
             r_dn_carts=r_dn_carts,
         )
-        J3_m_y_up = compute_Jastrow_three_body_jax(
+        J3_m_y_up = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=diff_m_y_r_up_carts,
             r_dn_carts=r_dn_carts,
         )
-        J3_m_z_up = compute_Jastrow_three_body_jax(
+        J3_m_z_up = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=diff_m_z_r_up_carts,
             r_dn_carts=r_dn_carts,
@@ -2272,17 +2270,17 @@ def compute_grads_and_laplacian_Jastrow_three_body_debug(
         diff_p_y_r_dn_carts[r_i][1] += diff_h
         diff_p_z_r_dn_carts[r_i][2] += diff_h
 
-        J3_p_x_dn = compute_Jastrow_three_body_jax(
+        J3_p_x_dn = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_p_x_r_dn_carts,
         )
-        J3_p_y_dn = compute_Jastrow_three_body_jax(
+        J3_p_y_dn = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_p_y_r_dn_carts,
         )
-        J3_p_z_dn = compute_Jastrow_three_body_jax(
+        J3_p_z_dn = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_p_z_r_dn_carts,
@@ -2295,17 +2293,17 @@ def compute_grads_and_laplacian_Jastrow_three_body_debug(
         diff_m_y_r_dn_carts[r_i][1] -= diff_h
         diff_m_z_r_dn_carts[r_i][2] -= diff_h
 
-        J3_m_x_dn = compute_Jastrow_three_body_jax(
+        J3_m_x_dn = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_m_x_r_dn_carts,
         )
-        J3_m_y_dn = compute_Jastrow_three_body_jax(
+        J3_m_y_dn = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_m_y_r_dn_carts,
         )
-        J3_m_z_dn = compute_Jastrow_three_body_jax(
+        J3_m_z_dn = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_m_z_r_dn_carts,
@@ -2321,7 +2319,7 @@ def compute_grads_and_laplacian_Jastrow_three_body_debug(
     # laplacian
     diff_h2 = 1.0e-3  # for laplacian
 
-    J3_ref = compute_Jastrow_three_body_jax(
+    J3_ref = compute_Jastrow_three_body(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -2338,18 +2336,18 @@ def compute_grads_and_laplacian_Jastrow_three_body_debug(
         diff_p_y_r_up2_carts[r_i][1] += diff_h2
         diff_p_z_r_up2_carts[r_i][2] += diff_h2
 
-        J3_p_x_up2 = compute_Jastrow_three_body_jax(
+        J3_p_x_up2 = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=diff_p_x_r_up2_carts,
             r_dn_carts=r_dn_carts,
         )
-        J3_p_y_up2 = compute_Jastrow_three_body_jax(
+        J3_p_y_up2 = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=diff_p_y_r_up2_carts,
             r_dn_carts=r_dn_carts,
         )
 
-        J3_p_z_up2 = compute_Jastrow_three_body_jax(
+        J3_p_z_up2 = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=diff_p_z_r_up2_carts,
             r_dn_carts=r_dn_carts,
@@ -2362,17 +2360,17 @@ def compute_grads_and_laplacian_Jastrow_three_body_debug(
         diff_m_y_r_up2_carts[r_i][1] -= diff_h2
         diff_m_z_r_up2_carts[r_i][2] -= diff_h2
 
-        J3_m_x_up2 = compute_Jastrow_three_body_jax(
+        J3_m_x_up2 = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=diff_m_x_r_up2_carts,
             r_dn_carts=r_dn_carts,
         )
-        J3_m_y_up2 = compute_Jastrow_three_body_jax(
+        J3_m_y_up2 = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=diff_m_y_r_up2_carts,
             r_dn_carts=r_dn_carts,
         )
-        J3_m_z_up2 = compute_Jastrow_three_body_jax(
+        J3_m_z_up2 = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=diff_m_z_r_up2_carts,
             r_dn_carts=r_dn_carts,
@@ -2393,18 +2391,18 @@ def compute_grads_and_laplacian_Jastrow_three_body_debug(
         diff_p_y_r_dn2_carts[r_i][1] += diff_h2
         diff_p_z_r_dn2_carts[r_i][2] += diff_h2
 
-        J3_p_x_dn2 = compute_Jastrow_three_body_jax(
+        J3_p_x_dn2 = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_p_x_r_dn2_carts,
         )
-        J3_p_y_dn2 = compute_Jastrow_three_body_jax(
+        J3_p_y_dn2 = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_p_y_r_dn2_carts,
         )
 
-        J3_p_z_dn2 = compute_Jastrow_three_body_jax(
+        J3_p_z_dn2 = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_p_z_r_dn2_carts,
@@ -2417,17 +2415,17 @@ def compute_grads_and_laplacian_Jastrow_three_body_debug(
         diff_m_y_r_dn2_carts[r_i][1] -= diff_h2
         diff_m_z_r_dn2_carts[r_i][2] -= diff_h2
 
-        J3_m_x_dn2 = compute_Jastrow_three_body_jax(
+        J3_m_x_dn2 = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_m_x_r_dn2_carts,
         )
-        J3_m_y_dn2 = compute_Jastrow_three_body_jax(
+        J3_m_y_dn2 = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_m_y_r_dn2_carts,
         )
-        J3_m_z_dn2 = compute_Jastrow_three_body_jax(
+        J3_m_z_dn2 = compute_Jastrow_three_body(
             jastrow_three_body_data=jastrow_three_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_m_z_r_dn2_carts,

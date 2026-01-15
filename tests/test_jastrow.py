@@ -48,16 +48,16 @@ from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_one_body_data,
     Jastrow_three_body_data,
     Jastrow_two_body_data,
+    _compute_Jastrow_one_body_debug,
+    _compute_Jastrow_three_body_debug,
+    _compute_Jastrow_two_body_debug,
     compute_grads_and_laplacian_Jastrow_three_body_debug,
     compute_grads_and_laplacian_Jastrow_three_body_jax,
     compute_grads_and_laplacian_Jastrow_two_body_debug,
     compute_grads_and_laplacian_Jastrow_two_body_jax,
-    compute_Jastrow_one_body_debug,
-    compute_Jastrow_one_body_jax,
-    compute_Jastrow_three_body_debug,
-    compute_Jastrow_three_body_jax,
-    compute_Jastrow_two_body_debug,
-    compute_Jastrow_two_body_jax,
+    compute_Jastrow_one_body,
+    compute_Jastrow_three_body,
+    compute_Jastrow_two_body,
 )
 from jqmc.molecular_orbital import MOs_data  # noqa: E402
 from jqmc.structure import Structure_data  # noqa: E402
@@ -90,13 +90,13 @@ def test_Jastrow_onebody_part():
         jastrow_1b_param=1.0, structure_data=structure_data, core_electrons=core_electrons
     )
 
-    J1_debug = compute_Jastrow_one_body_debug(
+    J1_debug = _compute_Jastrow_one_body_debug(
         jastrow_one_body_data=jastrow_one_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
 
-    J1_jax = compute_Jastrow_one_body_jax(
+    J1_jax = compute_Jastrow_one_body(
         jastrow_one_body_data=jastrow_one_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -118,15 +118,13 @@ def test_Jastrow_twobody_part():
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_dn_cart_samples, 3) + r_cart_min
 
     jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=1.0)
-    J2_debug = compute_Jastrow_two_body_debug(
+    J2_debug = _compute_Jastrow_two_body_debug(
         jastrow_two_body_data=jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
     # print(f"jastrow_two_body_debug = {jastrow_two_body_debug}")
 
-    J2_jax = compute_Jastrow_two_body_jax(
-        jastrow_two_body_data=jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
-    )
+    J2_jax = compute_Jastrow_two_body(jastrow_two_body_data=jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
 
     # print(f"jastrow_two_body_jax = {jastrow_two_body_jax}")
 
@@ -185,7 +183,7 @@ def test_Jastrow_threebody_part_with_AOs_data():
 
     jastrow_three_body_data = Jastrow_three_body_data(orb_data=aos_data, j_matrix=j_matrix)
 
-    J3_debug = compute_Jastrow_three_body_debug(
+    J3_debug = _compute_Jastrow_three_body_debug(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -193,7 +191,7 @@ def test_Jastrow_threebody_part_with_AOs_data():
 
     # print(f"J3_debug = {J3_debug}")
 
-    J3_jax = compute_Jastrow_three_body_jax(
+    J3_jax = compute_Jastrow_three_body(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -260,7 +258,7 @@ def test_Jastrow_threebody_part_with_MOs_data():
 
     jastrow_three_body_data = Jastrow_three_body_data(orb_data=mos_data, j_matrix=j_matrix)
 
-    J3_debug = compute_Jastrow_three_body_debug(
+    J3_debug = _compute_Jastrow_three_body_debug(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -268,7 +266,7 @@ def test_Jastrow_threebody_part_with_MOs_data():
 
     # print(f"J3_debug = {J3_debug}")
 
-    J3_jax = compute_Jastrow_three_body_jax(
+    J3_jax = compute_Jastrow_three_body(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -281,7 +279,6 @@ def test_Jastrow_threebody_part_with_MOs_data():
     jax.clear_caches()
 
 
-@pytest.mark.obsolete(reasons="Gradients are now implemented by fully exploiting JAX modules.")
 def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
     """Test numerical and JAX grads of the three-body Jastrow factor, comparing the debug and JAX implementations, using AOs data."""
     num_r_up_cart_samples = 4
@@ -332,7 +329,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
 
     jastrow_three_body_data = Jastrow_three_body_data(orb_data=aos_data, j_matrix=j_matrix)
 
-    J3_debug = compute_Jastrow_three_body_debug(
+    J3_debug = _compute_Jastrow_three_body_debug(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -340,7 +337,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
 
     # print(f"J3_debug = {J3_debug}")
 
-    J3_jax = compute_Jastrow_three_body_jax(
+    J3_jax = compute_Jastrow_three_body(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -381,7 +378,6 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
     jax.clear_caches()
 
 
-@pytest.mark.obsolete(reasons="Gradients are now implemented by fully exploiting JAX modules.")
 def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
     """Test numerical and JAX grads of the three-body Jastrow factor, comparing the debug and JAX implementations, using MOs data."""
     num_el = 10
@@ -436,7 +432,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
 
     jastrow_three_body_data = Jastrow_three_body_data(orb_data=mos_data, j_matrix=j_matrix)
 
-    J3_debug = compute_Jastrow_three_body_debug(
+    J3_debug = _compute_Jastrow_three_body_debug(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -444,7 +440,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
 
     # print(f"J3_debug = {J3_debug}")
 
-    J3_jax = compute_Jastrow_three_body_jax(
+    J3_jax = compute_Jastrow_three_body(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -485,7 +481,6 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
     jax.clear_caches()
 
 
-@pytest.mark.obsolete(reasons="Gradients are now implemented by fully exploiting JAX modules.")
 def test_numerical_and_auto_grads_Jastrow_twobody_part():
     """Test numerical and JAX grads of the two-body Jastrow factor, comparing the debug and JAX implementations."""
     num_r_up_cart_samples = 5
@@ -497,15 +492,13 @@ def test_numerical_and_auto_grads_Jastrow_twobody_part():
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_dn_cart_samples, 3) + r_cart_min
 
     jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=1.0)
-    J2_debug = compute_Jastrow_two_body_debug(
+    J2_debug = _compute_Jastrow_two_body_debug(
         jastrow_two_body_data=jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
     # print(f"jastrow_two_body_debug = {jastrow_two_body_debug}")
 
-    J2_jax = compute_Jastrow_two_body_jax(
-        jastrow_two_body_data=jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
-    )
+    J2_jax = compute_Jastrow_two_body(jastrow_two_body_data=jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
 
     # print(f"jastrow_two_body_jax = {jastrow_two_body_jax}")
 

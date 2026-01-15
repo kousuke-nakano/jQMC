@@ -65,7 +65,7 @@ from .hamiltonians import (
     Hamiltonian_data,
     compute_local_energy_jax,
 )
-from .jastrow_factor import compute_Jastrow_part_jax
+from .jastrow_factor import compute_Jastrow_part
 from .jqmc_utility import generate_init_electron_configurations
 from .setting import (
     MCMC_MIN_BIN_BLOCKS,
@@ -572,13 +572,13 @@ class MCMC:
                 )
 
                 # original trial WFs
-                Jastrow_T_p = compute_Jastrow_part_jax(
+                Jastrow_T_p = compute_Jastrow_part(
                     jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                     r_up_carts=proposed_r_up_carts,
                     r_dn_carts=proposed_r_dn_carts,
                 )
 
-                Jastrow_T_o = compute_Jastrow_part_jax(
+                Jastrow_T_o = compute_Jastrow_part(
                     jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -780,13 +780,13 @@ class MCMC:
                 )
 
                 # original trial WFs
-                Jastrow_T_p = compute_Jastrow_part_jax(
+                Jastrow_T_p = compute_Jastrow_part(
                     jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                     r_up_carts=proposed_r_up_carts,
                     r_dn_carts=proposed_r_dn_carts,
                 )
 
-                Jastrow_T_o = compute_Jastrow_part_jax(
+                Jastrow_T_o = compute_Jastrow_part(
                     jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -3041,13 +3041,13 @@ class MCMC_debug:
                     )
 
                     # original trial WFs
-                    Jastrow_T_p = compute_Jastrow_part_jax(
+                    Jastrow_T_p = compute_Jastrow_part(
                         jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                         r_up_carts=proposed_r_up_carts,
                         r_dn_carts=proposed_r_dn_carts,
                     )
 
-                    Jastrow_T_o = compute_Jastrow_part_jax(
+                    Jastrow_T_o = compute_Jastrow_part(
                         jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,

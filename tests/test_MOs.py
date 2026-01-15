@@ -32,16 +32,11 @@
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-import os
 import sys
 from pathlib import Path
 
 import jax
 import numpy as np
-import pytest
-
-# MPI
-from mpi4py import MPI
 
 # Add the project root directory to sys.path to allow executing this script directly
 # This is necessary because relative imports (e.g. 'from ..jqmc') are not allowed
@@ -51,18 +46,15 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from jqmc.atomic_orbital import (  # noqa: E402
-    AO_sphe_data,
     AOs_sphe_data,
 )
 from jqmc.molecular_orbital import (  # noqa: E402
-    MO_data,
     MOs_data,
-    compute_MO,
-    compute_MOs_debug,
-    compute_MOs_grad_debug,
-    compute_MOs_grad_jax,
-    compute_MOs_jax,
-    compute_MOs_laplacian_debug,
+    _compute_MOs_debug,
+    _compute_MOs_grad_debug,
+    _compute_MOs_laplacian_debug,
+    compute_MOs,
+    compute_MOs_grad,
     compute_MOs_laplacian_jax,
 )
 from jqmc.structure import Structure_data  # noqa: E402
@@ -99,26 +91,6 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
 
     mo_coefficients = np.random.rand(num_mo, num_ao)
 
-    # compute each MO step by step
-    mo_ans_step_by_step = []
-
-    ao_data_l = [
-        AO_sphe_data(
-            num_ao_prim=orbital_indices.count(i),
-            atomic_center_cart=R_carts[i],
-            exponents=tuple([exponents[k] for (k, v) in enumerate(orbital_indices) if v == i]),
-            coefficients=tuple([coefficients[k] for (k, v) in enumerate(orbital_indices) if v == i]),
-            angular_momentum=angular_momentums[i],
-            magnetic_quantum_number=magnetic_quantum_numbers[i],
-        )
-        for i in range(num_ao)
-    ]
-
-    for mo_coeff in mo_coefficients:
-        mo_data = MO_data(ao_data_l=ao_data_l, mo_coefficients=mo_coeff)
-        mo_ans_step_by_step.append([compute_MO(mo_data=mo_data, r_cart=r_cart) for r_cart in r_carts])
-    mo_ans_step_by_step = np.array(mo_ans_step_by_step)
-
     structure_data = Structure_data(
         pbc_flag=False,
         positions=R_carts,
@@ -143,12 +115,11 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
 
     mos_data.sanity_check()
 
-    mo_ans_all_jax = compute_MOs_jax(mos_data=mos_data, r_carts=r_carts)
+    mo_ans_all_jax = compute_MOs(mos_data=mos_data, r_carts=r_carts)
 
-    mo_ans_all_debug = compute_MOs_debug(mos_data=mos_data, r_carts=r_carts)
+    mo_ans_all_debug = _compute_MOs_debug(mos_data=mos_data, r_carts=r_carts)
 
-    assert np.allclose(mo_ans_step_by_step, mo_ans_all_jax)
-    assert np.allclose(mo_ans_step_by_step, mo_ans_all_debug)
+    np.testing.assert_almost_equal(mo_ans_all_debug, mo_ans_all_jax, decimal=12)
 
     num_el = 10
     num_mo = 5
@@ -175,26 +146,6 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
 
     mo_coefficients = np.random.rand(num_mo, num_ao)
 
-    # compute each MO step by step
-    mo_ans_step_by_step = []
-
-    ao_data_l = [
-        AO_sphe_data(
-            num_ao_prim=orbital_indices.count(i),
-            atomic_center_cart=R_carts[i],
-            exponents=tuple([exponents[k] for (k, v) in enumerate(orbital_indices) if v == i]),
-            coefficients=tuple([coefficients[k] for (k, v) in enumerate(orbital_indices) if v == i]),
-            angular_momentum=angular_momentums[i],
-            magnetic_quantum_number=magnetic_quantum_numbers[i],
-        )
-        for i in range(num_ao)
-    ]
-
-    for mo_coeff in mo_coefficients:
-        mo_data = MO_data(ao_data_l=ao_data_l, mo_coefficients=mo_coeff)
-        mo_ans_step_by_step.append([compute_MO(mo_data=mo_data, r_cart=r_cart) for r_cart in r_carts])
-    mo_ans_step_by_step = np.array(mo_ans_step_by_step)
-
     structure_data = Structure_data(
         pbc_flag=False,
         positions=R_carts,
@@ -218,17 +169,15 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
     mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
     mos_data.sanity_check()
 
-    mo_ans_all_jax = compute_MOs_jax(mos_data=mos_data, r_carts=r_carts)
+    mo_ans_all_jax = compute_MOs(mos_data=mos_data, r_carts=r_carts)
 
-    mo_ans_all_debug = compute_MOs_debug(mos_data=mos_data, r_carts=r_carts)
+    mo_ans_all_debug = _compute_MOs_debug(mos_data=mos_data, r_carts=r_carts)
 
-    assert np.allclose(mo_ans_step_by_step, mo_ans_all_jax)
-    assert np.allclose(mo_ans_step_by_step, mo_ans_all_debug)
+    np.testing.assert_almost_equal(mo_ans_all_debug, mo_ans_all_jax, decimal=12)
 
     jax.clear_caches()
 
 
-@pytest.mark.obsolete(reasons="Gradients are now implemented by fully exploiting JAX modules.")
 def test_MOs_comparing_auto_and_numerical_grads():
     """Test the MO gradient computation, comparing JAX and debug implementations."""
     num_el = 10
@@ -279,15 +228,13 @@ def test_MOs_comparing_auto_and_numerical_grads():
     mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
     mos_data.sanity_check()
 
-    mo_matrix_grad_x_auto, mo_matrix_grad_y_auto, mo_matrix_grad_z_auto = compute_MOs_grad_jax(
-        mos_data=mos_data, r_carts=r_carts
-    )
+    mo_matrix_grad_x_auto, mo_matrix_grad_y_auto, mo_matrix_grad_z_auto = compute_MOs_grad(mos_data=mos_data, r_carts=r_carts)
 
     (
         mo_matrix_grad_x_numerical,
         mo_matrix_grad_y_numerical,
         mo_matrix_grad_z_numerical,
-    ) = compute_MOs_grad_debug(mos_data=mos_data, r_carts=r_carts)
+    ) = _compute_MOs_grad_debug(mos_data=mos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, decimal=6)
     np.testing.assert_array_almost_equal(mo_matrix_grad_y_auto, mo_matrix_grad_y_numerical, decimal=6)
@@ -342,15 +289,13 @@ def test_MOs_comparing_auto_and_numerical_grads():
     mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
     mos_data.sanity_check()
 
-    mo_matrix_grad_x_auto, mo_matrix_grad_y_auto, mo_matrix_grad_z_auto = compute_MOs_grad_jax(
-        mos_data=mos_data, r_carts=r_carts
-    )
+    mo_matrix_grad_x_auto, mo_matrix_grad_y_auto, mo_matrix_grad_z_auto = compute_MOs_grad(mos_data=mos_data, r_carts=r_carts)
 
     (
         mo_matrix_grad_x_numerical,
         mo_matrix_grad_y_numerical,
         mo_matrix_grad_z_numerical,
-    ) = compute_MOs_grad_debug(mos_data=mos_data, r_carts=r_carts)
+    ) = _compute_MOs_grad_debug(mos_data=mos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, decimal=6)
     np.testing.assert_array_almost_equal(mo_matrix_grad_y_auto, mo_matrix_grad_y_numerical, decimal=6)
@@ -360,7 +305,6 @@ def test_MOs_comparing_auto_and_numerical_grads():
     jax.clear_caches()
 
 
-@pytest.mark.obsolete(reasons="Laplacians are now implemented by fully exploiting JAX modules.")
 def test_MOs_comparing_auto_and_numerical_laplacians():
     """Test the MO Laplacian computation, comparing JAX and debug implementations."""
     num_el = 10
@@ -413,7 +357,7 @@ def test_MOs_comparing_auto_and_numerical_laplacians():
 
     mo_matrix_laplacian_numerical = compute_MOs_laplacian_jax(mos_data=mos_data, r_carts=r_carts)
 
-    mo_matrix_laplacian_auto = compute_MOs_laplacian_debug(mos_data=mos_data, r_carts=r_carts)
+    mo_matrix_laplacian_auto = _compute_MOs_laplacian_debug(mos_data=mos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(mo_matrix_laplacian_auto, mo_matrix_laplacian_numerical, decimal=6)
 

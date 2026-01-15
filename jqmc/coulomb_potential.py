@@ -58,7 +58,7 @@ from scipy.special import eval_legendre
 
 from .determinant import compute_det_geminal_all_elements_jax
 from .function_collections import legendre_tablated as jnp_legendre_tablated
-from .jastrow_factor import compute_Jastrow_part_jax
+from .jastrow_factor import compute_Jastrow_part
 from .setting import NN_default, Nv_default
 from .structure import (
     Structure_data,
@@ -716,7 +716,7 @@ def compute_ecp_non_local_parts_all_pairs_debug(
     if flag_determinant_only:
         jastrow_denominator = 1.0
     else:
-        jastrow_denominator = compute_Jastrow_part_jax(
+        jastrow_denominator = compute_Jastrow_part(
             jastrow_data=wavefunction_data.jastrow_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
@@ -771,7 +771,7 @@ def compute_ecp_non_local_parts_all_pairs_debug(
                     if flag_determinant_only:
                         jastrow_numerator = 1
                     else:
-                        jastrow_numerator = compute_Jastrow_part_jax(
+                        jastrow_numerator = compute_Jastrow_part(
                             jastrow_data=wavefunction_data.jastrow_data,
                             r_up_carts=r_up_carts_on_mesh,
                             r_dn_carts=r_dn_carts,
@@ -898,7 +898,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_debug(
     if flag_determinant_only:
         jastrow_denominator = 1.0
     else:
-        jastrow_denominator = compute_Jastrow_part_jax(
+        jastrow_denominator = compute_Jastrow_part(
             jastrow_data=wavefunction_data.jastrow_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
@@ -969,7 +969,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_debug(
                 if flag_determinant_only:
                     jastrow_numerator = 1.0
                 else:
-                    jastrow_numerator = compute_Jastrow_part_jax(
+                    jastrow_numerator = compute_Jastrow_part(
                         jastrow_data=wavefunction_data.jastrow_data,
                         r_up_carts=r_up_carts_on_mesh,
                         r_dn_carts=r_dn_carts,
@@ -1050,7 +1050,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_debug(
                 if flag_determinant_only:
                     jastrow_numerator = 1.0
                 else:
-                    jastrow_numerator = compute_Jastrow_part_jax(
+                    jastrow_numerator = compute_Jastrow_part(
                         jastrow_data=wavefunction_data.jastrow_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts_on_mesh,
@@ -1422,8 +1422,8 @@ def compute_ecp_non_local_parts_nearest_neighbors_jax(
         jastrow_x = 1.0
         jastrow_xp = 1.0
     else:
-        jastrow_x = compute_Jastrow_part_jax(wavefunction_data.jastrow_data, r_up_carts, r_dn_carts)
-        jastrow_xp = vmap(compute_Jastrow_part_jax, in_axes=(None, 0, 0))(
+        jastrow_x = compute_Jastrow_part(wavefunction_data.jastrow_data, r_up_carts, r_dn_carts)
+        jastrow_xp = vmap(compute_Jastrow_part, in_axes=(None, 0, 0))(
             wavefunction_data.jastrow_data, non_local_ecp_part_r_carts_up, non_local_ecp_part_r_carts_dn
         )
 
@@ -1636,7 +1636,7 @@ def compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
 
     jastrow_denominator = lax.switch(
         flag_determinant_only,
-        (compute_Jastrow_part_jax, lambda *args, **kwargs: 1.0),
+        (compute_Jastrow_part, lambda *args, **kwargs: 1.0),
         *(wavefunction_data.jastrow_data, r_up_carts, r_dn_carts),
     )
 
@@ -1680,7 +1680,7 @@ def compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
 
         jastrow_numerator_up = lax.switch(
             flag_determinant_only,
-            (compute_Jastrow_part_jax, lambda *args, **kwargs: 1.0),
+            (compute_Jastrow_part, lambda *args, **kwargs: 1.0),
             *(wavefunction_data.jastrow_data, r_up_carts_on_mesh, r_dn_carts),
         )
 
@@ -1713,7 +1713,7 @@ def compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
 
         jastrow_numerator_dn = lax.switch(
             flag_determinant_only,
-            (compute_Jastrow_part_jax, lambda *args, **kwargs: 1.0),
+            (compute_Jastrow_part, lambda *args, **kwargs: 1.0),
             *(wavefunction_data.jastrow_data, r_up_carts, r_dn_carts_on_mesh),
         )
 

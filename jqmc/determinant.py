@@ -50,8 +50,14 @@ from flax import struct
 from jax import jit, vmap
 from jax import typing as jnpt
 
-from .atomic_orbital import AOs_cart_data, AOs_sphe_data, compute_AOs_grad_jax, compute_AOs_jax, compute_AOs_laplacian_jax
-from .molecular_orbital import MOs_data, compute_MOs_grad_jax, compute_MOs_jax, compute_MOs_laplacian_jax
+from .atomic_orbital import (
+    AOs_cart_data,
+    AOs_sphe_data,
+    _compute_AOs_grad_autodiff,
+    _compute_AOs_laplacian_autodiff,
+    compute_AOs,
+)
+from .molecular_orbital import MOs_data, compute_MOs, compute_MOs_grad, compute_MOs_laplacian_jax
 
 if TYPE_CHECKING:  # pragma: no cover - typing-only import to avoid circular dependency
     from .wavefunction import VariationalParameterBlock
@@ -279,11 +285,11 @@ class Geminal_data:
                 neither AOs_data/AOs_data nor MOs_data/MOs_data.
         """
         if isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data):
-            return compute_AOs_jax
+            return compute_AOs
         elif isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data):
-            return compute_AOs_jax
+            return compute_AOs
         elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
-            return compute_MOs_jax
+            return compute_MOs
         else:
             raise NotImplementedError
 
@@ -304,11 +310,11 @@ class Geminal_data:
                 neither AOs_data/AOs_data nor MOs_data/MOs_data.
         """
         if isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data):
-            return compute_AOs_grad_jax
+            return _compute_AOs_grad_autodiff
         elif isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data):
-            return compute_AOs_grad_jax
+            return _compute_AOs_grad_autodiff
         elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
-            return compute_MOs_grad_jax
+            return compute_MOs_grad
         else:
             raise NotImplementedError
 
@@ -329,9 +335,9 @@ class Geminal_data:
                 neither AOs_data/AOs_data nor MOs_data/MOs_data.
         """
         if isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data):
-            return compute_AOs_laplacian_jax
+            return _compute_AOs_laplacian_autodiff
         elif isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data):
-            return compute_AOs_laplacian_jax
+            return _compute_AOs_laplacian_autodiff
         elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
             return compute_MOs_laplacian_jax
         else:
@@ -885,8 +891,8 @@ def compute_ratio_determinant_part_debug(
     )
 
 
-# no longer used in the main code
-def compute_grads_and_laplacian_ln_Det_jax(
+@jit
+def compute_grads_and_laplacian_ln_Det(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
@@ -911,55 +917,6 @@ def compute_grads_and_laplacian_ln_Det_jax(
         the gradients(x,y,z) of ln Det for up and dn electron positions and
         the sum of laplacians of ln Det at (r_up_carts, r_dn_carts).
     """
-    if len(r_up_carts) != geminal_data.num_electron_up or len(r_dn_carts) != geminal_data.num_electron_dn:
-        logger.info(
-            f"Number of up and dn electrons (N_up, N_dn) = ({len(r_up_carts)}, {len(r_dn_carts)}) are not consistent "
-            + f"with the expected values. (N_up, N_dn) = {geminal_data.num_electron_up}, {geminal_data.num_electron_dn})"
-        )
-        raise ValueError
-
-    if len(r_up_carts) != len(r_dn_carts):
-        if len(r_up_carts) - len(r_dn_carts) > 0:
-            logger.info(f"Number of up and dn electrons are different. (N_el - N_dn = {len(r_up_carts) - len(r_dn_carts)})")
-        else:
-            logger.error(
-                f"Number of up electron is smaller than dn electrons. (N_el - N_dn = {len(r_up_carts) - len(r_dn_carts)})"
-            )
-            raise ValueError
-    else:
-        logger.debug("There is no unpaired electrons.")
-
-    grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = _compute_grads_and_laplacian_ln_Det_jax(
-        geminal_data, r_up_carts, r_dn_carts
-    )
-
-    if grad_ln_D_up.shape != (geminal_data.num_electron_up, 3):
-        logger.error(
-            f"grad_ln_D_up.shape = {grad_ln_D_up.shape} is inconsistent with the expected one = {(geminal_data.num_electron_up, 3)}"
-        )
-        raise ValueError
-
-    if grad_ln_D_dn.shape != (geminal_data.num_electron_dn, 3):
-        logger.error(
-            f"grad_ln_D_up.shape = {grad_ln_D_up.shape} is inconsistent with the expected one = {(geminal_data.num_electron_dn, 3)}"
-        )
-        raise ValueError
-
-    return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D
-
-
-# no longer used in the main code
-@jit
-def _compute_grads_and_laplacian_ln_Det_jax(
-    geminal_data: Geminal_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
-) -> tuple[
-    npt.NDArray[np.float64],
-    npt.NDArray[np.float64],
-    float,
-]:
-    """See compute_grads_and_laplacian_ln_Det_api."""
     lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
 
     # AOs/MOs

@@ -65,7 +65,7 @@ from .hamiltonians import (
     compute_local_energy_jax,
 )
 from .jastrow_factor import (
-    compute_Jastrow_part_jax,
+    compute_Jastrow_part,
 )
 from .jqmc_utility import generate_init_electron_configurations
 from .setting import (
@@ -632,13 +632,13 @@ class GFMC_fixed_projection_time:
 
                     V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
                     diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
-                    Jastrow_ref = compute_Jastrow_part_jax(
+                    Jastrow_ref = compute_Jastrow_part(
                         jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
                     )
 
-                    Jastrow_on_mesh = vmap(compute_Jastrow_part_jax, in_axes=(None, 0, 0))(
+                    Jastrow_on_mesh = vmap(compute_Jastrow_part, in_axes=(None, 0, 0))(
                         hamiltonian_data.wavefunction_data.jastrow_data,
                         mesh_non_local_ecp_part_r_up_carts,
                         mesh_non_local_ecp_part_r_dn_carts,
@@ -1816,13 +1816,13 @@ class GFMC_fixed_projection_time_debug:
 
                             V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
                             diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
-                            Jastrow_ref = compute_Jastrow_part_jax(
+                            Jastrow_ref = compute_Jastrow_part(
                                 jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                                 r_up_carts=r_up_carts,
                                 r_dn_carts=r_dn_carts,
                             )
 
-                            Jastrow_on_mesh = vmap(compute_Jastrow_part_jax, in_axes=(None, 0, 0))(
+                            Jastrow_on_mesh = vmap(compute_Jastrow_part, in_axes=(None, 0, 0))(
                                 hamiltonian_data.wavefunction_data.jastrow_data,
                                 mesh_non_local_ecp_part_r_up_carts,
                                 mesh_non_local_ecp_part_r_dn_carts,
@@ -2718,12 +2718,12 @@ class GFMC_fixed_num_projection:
                         V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
                         diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
 
-                        Jastrow_ref = compute_Jastrow_part_jax(
+                        Jastrow_ref = compute_Jastrow_part(
                             jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                             r_up_carts=r_up_carts,
                             r_dn_carts=r_dn_carts,
                         )
-                        Jastrow_on_mesh = vmap(compute_Jastrow_part_jax, in_axes=(None, 0, 0))(
+                        Jastrow_on_mesh = vmap(compute_Jastrow_part, in_axes=(None, 0, 0))(
                             hamiltonian_data.wavefunction_data.jastrow_data,
                             mesh_non_local_ecp_part_r_up_carts,
                             mesh_non_local_ecp_part_r_dn_carts,
@@ -2971,13 +2971,13 @@ class GFMC_fixed_num_projection:
                     V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
                     diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
 
-                    Jastrow_ref = compute_Jastrow_part_jax(
+                    Jastrow_ref = compute_Jastrow_part(
                         jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
                     )
 
-                    Jastrow_on_mesh = vmap(compute_Jastrow_part_jax, in_axes=(None, 0, 0))(
+                    Jastrow_on_mesh = vmap(compute_Jastrow_part, in_axes=(None, 0, 0))(
                         hamiltonian_data.wavefunction_data.jastrow_data,
                         mesh_non_local_ecp_part_r_up_carts,
                         mesh_non_local_ecp_part_r_dn_carts,
@@ -4806,12 +4806,12 @@ class GFMC_fixed_num_projection_debug:
                         V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
                         diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
 
-                        Jastrow_ref = compute_Jastrow_part_jax(
+                        Jastrow_ref = compute_Jastrow_part(
                             jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                             r_up_carts=r_up_carts,
                             r_dn_carts=r_dn_carts,
                         )
-                        Jastrow_on_mesh = vmap(compute_Jastrow_part_jax, in_axes=(None, 0, 0))(
+                        Jastrow_on_mesh = vmap(compute_Jastrow_part, in_axes=(None, 0, 0))(
                             hamiltonian_data.wavefunction_data.jastrow_data,
                             mesh_non_local_ecp_part_r_up_carts,
                             mesh_non_local_ecp_part_r_dn_carts,
@@ -5056,13 +5056,13 @@ class GFMC_fixed_num_projection_debug:
                     V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
                     diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
 
-                    Jastrow_ref = compute_Jastrow_part_jax(
+                    Jastrow_ref = compute_Jastrow_part(
                         jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
                     )
 
-                    Jastrow_on_mesh = vmap(compute_Jastrow_part_jax, in_axes=(None, 0, 0))(
+                    Jastrow_on_mesh = vmap(compute_Jastrow_part, in_axes=(None, 0, 0))(
                         hamiltonian_data.wavefunction_data.jastrow_data,
                         mesh_non_local_ecp_part_r_up_carts,
                         mesh_non_local_ecp_part_r_dn_carts,

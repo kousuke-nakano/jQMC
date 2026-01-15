@@ -47,7 +47,6 @@ if project_root not in sys.path:
 from jqmc.determinant import (  # noqa: E402
     Geminal_data,
     _compute_geminal_all_elements_jax,
-    _compute_grads_and_laplacian_ln_Det_jax,
     compute_AS_regularization_factor_debug,
     compute_AS_regularization_factor_jax,
     compute_det_geminal_all_elements_debug,
@@ -56,6 +55,7 @@ from jqmc.determinant import (  # noqa: E402
     compute_geminal_all_elements_jax,
     compute_geminal_dn_one_column_elements_jax,
     compute_geminal_up_one_row_elements_jax,
+    compute_grads_and_laplacian_ln_Det,
     compute_grads_and_laplacian_ln_Det_debug,
 )
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
@@ -434,7 +434,6 @@ def test_one_row_or_one_column_update():
     )
 
 
-@pytest.mark.obsolete(reasons="Gradients are now implemented by fully exploiting JAX modules.")
 def test_numerial_and_auto_grads_ln_Det():
     """Test the numerical and automatic gradients of the logarithm of the determinant of the geminal wave function."""
     (
@@ -539,7 +538,7 @@ def test_numerial_and_auto_grads_ln_Det():
         r_dn_carts=r_dn_carts,
     )
 
-    grad_ln_D_up_auto, grad_ln_D_dn_auto, sum_laplacian_ln_D_auto = _compute_grads_and_laplacian_ln_Det_jax(
+    grad_ln_D_up_auto, grad_ln_D_dn_auto, sum_laplacian_ln_D_auto = compute_grads_and_laplacian_ln_Det(
         geminal_data=geminal_ao_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,

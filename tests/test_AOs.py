@@ -52,16 +52,19 @@ if project_root not in sys.path:
 from jqmc.atomic_orbital import (  # noqa: E402
     AOs_cart_data,
     AOs_sphe_data,
+    _compute_AOs_cart,
+    _compute_AOs_cart_debug,
+    _compute_AOs_grad_autodiff,
+    _compute_AOs_grad_debug,
+    _compute_AOs_laplacian_autodiff,
+    _compute_AOs_laplacian_debug,
+    _compute_AOs_sphe,
+    _compute_AOs_sphe_debug,
+    _compute_S_l_m,
     _compute_S_l_m_debug,
-    _compute_S_l_m_jax,
-    compute_AOs_cart_debug,
-    compute_AOs_cart_jax,
-    compute_AOs_grad_debug,
-    compute_AOs_grad_jax,
-    compute_AOs_laplacian_debug,
-    compute_AOs_laplacian_jax,
-    compute_AOs_shpe_debug,
-    compute_AOs_sphe_jax,
+    # compute_AOs,
+    compute_AOs_grad,
+    compute_AOs_laplacian,
 )
 from jqmc.structure import Structure_data  # noqa: E402
 
@@ -250,7 +253,7 @@ def test_solid_harmonics_hard_coded_vs_analytic_expressions():
     )
 
     # S_l_m jax
-    _, S_l_m_jax = _compute_S_l_m_jax(r_R_diffs_uq)
+    _, S_l_m_jax = _compute_S_l_m(r_R_diffs_uq)
 
     # print(f"batch_S_l_m.shape = {batch_S_l_m.shape}.")
 
@@ -305,8 +308,8 @@ def test_AOs_w_spherical_angular_part_comparing_jax_and_debug_implemenetations()
     )
     aos_data.sanity_check()
 
-    aos_jax = compute_AOs_sphe_jax(aos_data=aos_data, r_carts=r_carts)
-    aos_debug = compute_AOs_shpe_debug(aos_data=aos_data, r_carts=r_carts)
+    aos_jax = _compute_AOs_sphe(aos_data=aos_data, r_carts=r_carts)
+    aos_debug = _compute_AOs_sphe_debug(aos_data=aos_data, r_carts=r_carts)
 
     assert np.allclose(aos_jax, aos_debug, rtol=1e-12, atol=1e-05)
 
@@ -354,10 +357,106 @@ def test_AOs_w_spherical_angular_part_comparing_jax_and_debug_implemenetations()
     )
     aos_data.sanity_check()
 
-    aos_jax = compute_AOs_sphe_jax(aos_data=aos_data, r_carts=r_carts)
-    aos_debug = compute_AOs_shpe_debug(aos_data=aos_data, r_carts=r_carts)
+    aos_jax = _compute_AOs_sphe(aos_data=aos_data, r_carts=r_carts)
+    aos_debug = _compute_AOs_sphe_debug(aos_data=aos_data, r_carts=r_carts)
 
     assert np.allclose(aos_jax, aos_debug, rtol=1e-12, atol=1e-05)
+
+    jax.clear_caches()
+
+
+def test_compute_AOs_matches_debug_cartesian():
+    """Public compute_AOs matches cartesian debug implementation."""
+    seed = 5678
+    np.random.seed(seed)
+
+    num_r_cart_samples = 5
+    num_R_cart_samples = 3
+    r_carts = np.random.uniform(-1.5, 1.5, size=(num_r_cart_samples, 3))
+    R_carts = np.random.uniform(-0.8, 0.8, size=(num_R_cart_samples, 3))
+
+    orbital_indices = (0, 1, 1, 2)
+    exponents = (1.3, 0.9, 0.9, 1.1)
+    coefficients = (1.0, 0.7, 0.6, 0.8)
+    angular_momentums = (0, 1, 1)
+    polynominal_order_x = (0, 1, 0)
+    polynominal_order_y = (0, 0, 1)
+    polynominal_order_z = (0, 0, 0)
+
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=R_carts,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
+    )
+    structure_data.sanity_check()
+
+    aos_data = AOs_cart_data(
+        structure_data=structure_data,
+        nucleus_index=tuple(range(num_R_cart_samples)),
+        num_ao=3,
+        num_ao_prim=4,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        polynominal_order_x=polynominal_order_x,
+        polynominal_order_y=polynominal_order_y,
+        polynominal_order_z=polynominal_order_z,
+    )
+    aos_data.sanity_check()
+
+    aos_public = _compute_AOs_cart(aos_data=aos_data, r_carts=r_carts)
+    aos_debug = _compute_AOs_cart_debug(aos_data=aos_data, r_carts=r_carts)
+
+    np.testing.assert_array_almost_equal(aos_public, np.array(aos_debug), decimal=12)
+
+    jax.clear_caches()
+
+
+def test_compute_AOs_matches_debug_spherical():
+    """Public compute_AOs matches spherical debug implementation."""
+    seed = 1234
+    np.random.seed(seed)
+
+    num_r_cart_samples = 6
+    num_R_cart_samples = 4
+    r_carts = np.random.uniform(-2.0, 2.0, size=(num_r_cart_samples, 3))
+    R_carts = np.random.uniform(-1.0, 1.0, size=(num_R_cart_samples, 3))
+
+    orbital_indices = (0, 0, 1, 2, 3)
+    exponents = (2.2, 1.5, 0.9, 1.1, 0.7)
+    coefficients = (1.0, 0.8, 1.1, 0.6, 0.9)
+    angular_momentums = (0, 0, 1, 1)
+    magnetic_quantum_numbers = (0, 0, -1, 1)
+
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=R_carts,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
+    )
+    structure_data.sanity_check()
+
+    aos_data = AOs_sphe_data(
+        structure_data=structure_data,
+        nucleus_index=tuple(range(num_R_cart_samples)),
+        num_ao=4,
+        num_ao_prim=5,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        magnetic_quantum_numbers=magnetic_quantum_numbers,
+    )
+    aos_data.sanity_check()
+
+    aos_public = _compute_AOs_sphe(aos_data=aos_data, r_carts=r_carts)
+    aos_debug = _compute_AOs_sphe_debug(aos_data=aos_data, r_carts=r_carts)
+
+    np.testing.assert_array_almost_equal(aos_public, np.array(aos_debug), decimal=12)
 
     jax.clear_caches()
 
@@ -426,37 +525,33 @@ def test_AOs_w_cartesian_angular_part_comparing_jax_and_debug_implemenetations()
     )
     aos_data.sanity_check()
 
-    aos_jax = compute_AOs_cart_jax(aos_data=aos_data, r_carts=r_carts)
-    aos_debug = compute_AOs_cart_debug(aos_data=aos_data, r_carts=r_carts)
+    aos_jax = _compute_AOs_cart(aos_data=aos_data, r_carts=r_carts)
+    aos_debug = _compute_AOs_cart_debug(aos_data=aos_data, r_carts=r_carts)
 
     assert np.allclose(aos_jax, aos_debug, rtol=1e-12, atol=1e-05)
 
     jax.clear_caches()
 
 
-@pytest.mark.obsolete(reasons="Gradients are now implemented by fully exploiting JAX modules.")
-def test_AOs_comparing_auto_and_numerical_grads():
-    """Test the grad AOs computation, comparing the JAX and debug implementations."""
-    num_r_cart_samples = 10
-    num_R_cart_samples = 4
-    r_cart_min, r_cart_max = -5.0, +5.0
-    R_cart_min, R_cart_max = -3.0, +3.0
-    r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_cart_samples, 3) + r_cart_min
-    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
+def test_AOs_grads_comparing_analytic_and_auto_implemenetations():
+    """Analytic AOs gradients match JAX autodiff implementation."""
+    seed = 2025
+    np.random.seed(seed)
 
-    num_ao = 4
-    num_ao_prim = 5
-    orbital_indices = [0, 1, 2, 2, 3]
-    exponents = [3.0, 1.0, 0.5, 0.5, 0.5]
-    coefficients = [1.0, 1.0, 0.5, 0.5, 0.5]
-    angular_momentums = [0, 0, 0, 0]
-    magnetic_quantum_numbers = [0, 0, 0, 0]
+    num_r_cart_samples = 6
+    num_R_cart_samples = 3
+    r_carts = np.random.uniform(-1.5, 1.5, size=(num_r_cart_samples, 3))
+    R_carts = np.random.uniform(-0.5, 0.5, size=(num_R_cart_samples, 3))
 
-    orbital_indices = tuple(orbital_indices)
-    exponents = tuple(exponents)
-    coefficients = tuple(coefficients)
-    angular_momentums = tuple(angular_momentums)
-    magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
+    num_ao = 3
+    num_ao_prim = 3
+    orbital_indices = tuple(range(num_ao))
+    exponents = tuple([0.8, 1.1, 0.6])
+    coefficients = tuple([1.0, 0.7, 1.3])
+    angular_momentums = tuple([0, 1, 2])
+    polynominal_order_x = tuple([0, 1, 2])
+    polynominal_order_y = tuple([0, 0, 0])
+    polynominal_order_z = tuple([0, 0, 0])
 
     structure_data = Structure_data(
         pbc_flag=False,
@@ -467,33 +562,27 @@ def test_AOs_comparing_auto_and_numerical_grads():
     )
     structure_data.sanity_check()
 
-    aos_data = AOs_sphe_data(
+    aos_data = AOs_cart_data(
         structure_data=structure_data,
-        nucleus_index=tuple(list(range(num_R_cart_samples))),
+        nucleus_index=tuple(range(num_R_cart_samples)),
         num_ao=num_ao,
         num_ao_prim=num_ao_prim,
         orbital_indices=orbital_indices,
         exponents=exponents,
         coefficients=coefficients,
         angular_momentums=angular_momentums,
-        magnetic_quantum_numbers=magnetic_quantum_numbers,
+        polynominal_order_x=polynominal_order_x,
+        polynominal_order_y=polynominal_order_y,
+        polynominal_order_z=polynominal_order_z,
     )
     aos_data.sanity_check()
 
-    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = compute_AOs_grad_jax(
-        aos_data=aos_data, r_carts=r_carts
-    )
+    gx_ref, gy_ref, gz_ref = _compute_AOs_grad_autodiff(aos_data=aos_data, r_carts=r_carts)
+    gx_an, gy_an, gz_an = compute_AOs_grad(aos_data=aos_data, r_carts=r_carts)
 
-    (
-        ao_matrix_grad_x_numerical,
-        ao_matrix_grad_y_numerical,
-        ao_matrix_grad_z_numerical,
-    ) = compute_AOs_grad_debug(aos_data=aos_data, r_carts=r_carts)
-
-    np.testing.assert_array_almost_equal(ao_matrix_grad_x_auto, ao_matrix_grad_x_numerical, decimal=7)
-    np.testing.assert_array_almost_equal(ao_matrix_grad_y_auto, ao_matrix_grad_y_numerical, decimal=7)
-
-    np.testing.assert_array_almost_equal(ao_matrix_grad_z_auto, ao_matrix_grad_z_numerical, decimal=7)
+    np.testing.assert_allclose(gx_an, np.array(gx_ref), rtol=1e-9, atol=5e-8)
+    np.testing.assert_allclose(gy_an, np.array(gy_ref), rtol=1e-9, atol=5e-8)
+    np.testing.assert_allclose(gz_an, np.array(gz_ref), rtol=1e-9, atol=5e-8)
 
     num_r_cart_samples = 2
     num_R_cart_samples = 4
@@ -538,7 +627,124 @@ def test_AOs_comparing_auto_and_numerical_grads():
     )
     aos_data.sanity_check()
 
-    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = compute_AOs_grad_jax(
+    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = _compute_AOs_grad_autodiff(
+        aos_data=aos_data, r_carts=r_carts
+    )
+    gx_an_sphe, gy_an_sphe, gz_an_sphe = compute_AOs_grad(aos_data=aos_data, r_carts=r_carts)
+
+    (
+        ao_matrix_grad_x_numerical,
+        ao_matrix_grad_y_numerical,
+        ao_matrix_grad_z_numerical,
+    ) = _compute_AOs_grad_debug(aos_data=aos_data, r_carts=r_carts)
+
+    np.testing.assert_array_almost_equal(ao_matrix_grad_x_auto, ao_matrix_grad_x_numerical, decimal=7)
+    np.testing.assert_array_almost_equal(ao_matrix_grad_y_auto, ao_matrix_grad_y_numerical, decimal=7)
+    np.testing.assert_array_almost_equal(ao_matrix_grad_z_auto, ao_matrix_grad_z_numerical, decimal=7)
+
+    np.testing.assert_allclose(gx_an_sphe, np.array(ao_matrix_grad_x_auto), rtol=1e-9, atol=5e-8)
+    np.testing.assert_allclose(gy_an_sphe, np.array(ao_matrix_grad_y_auto), rtol=1e-9, atol=5e-8)
+    np.testing.assert_allclose(gz_an_sphe, np.array(ao_matrix_grad_z_auto), rtol=1e-9, atol=5e-8)
+
+    jax.clear_caches()
+
+
+def test_AOs_grads_comparing_auto_and_numerical_implemenetations():
+    """Test the grad AOs computation, comparing the JAX and debug implementations."""
+    # Cartesian case
+    num_r_cart_samples = 8
+    num_R_cart_samples = 3
+    r_cart_min, r_cart_max = -2.0, +2.0
+    R_cart_min, R_cart_max = -1.0, +1.0
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_cart_samples, 3) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
+
+    num_ao = 3
+    num_ao_prim = 3
+    orbital_indices = tuple(range(num_ao))
+    exponents = tuple([1.2, 0.9, 0.7])
+    coefficients = tuple([1.0, 0.8, 0.6])
+    angular_momentums = tuple([0, 1, 2])
+    polynominal_order_x = tuple([0, 1, 2])
+    polynominal_order_y = tuple([0, 0, 0])
+    polynominal_order_z = tuple([0, 0, 0])
+
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=R_carts,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
+    )
+    structure_data.sanity_check()
+
+    aos_data_cart = AOs_cart_data(
+        structure_data=structure_data,
+        nucleus_index=tuple(list(range(num_R_cart_samples))),
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        polynominal_order_x=polynominal_order_x,
+        polynominal_order_y=polynominal_order_y,
+        polynominal_order_z=polynominal_order_z,
+    )
+    aos_data_cart.sanity_check()
+
+    gx_auto_cart, gy_auto_cart, gz_auto_cart = _compute_AOs_grad_autodiff(aos_data=aos_data_cart, r_carts=r_carts)
+    gx_num_cart, gy_num_cart, gz_num_cart = _compute_AOs_grad_debug(aos_data=aos_data_cart, r_carts=r_carts)
+
+    np.testing.assert_array_almost_equal(gx_auto_cart, gx_num_cart, decimal=7)
+    np.testing.assert_array_almost_equal(gy_auto_cart, gy_num_cart, decimal=7)
+    np.testing.assert_array_almost_equal(gz_auto_cart, gz_num_cart, decimal=7)
+
+    # Spherical case
+    num_r_cart_samples = 10
+    num_R_cart_samples = 4
+    r_cart_min, r_cart_max = -5.0, +5.0
+    R_cart_min, R_cart_max = -3.0, +3.0
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_cart_samples, 3) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
+
+    num_ao = 4
+    num_ao_prim = 5
+    orbital_indices = [0, 1, 2, 2, 3]
+    exponents = [3.0, 1.0, 0.5, 0.5, 0.5]
+    coefficients = [1.0, 1.0, 0.5, 0.5, 0.5]
+    angular_momentums = [0, 0, 0, 0]
+    magnetic_quantum_numbers = [0, 0, 0, 0]
+
+    orbital_indices = tuple(orbital_indices)
+    exponents = tuple(exponents)
+    coefficients = tuple(coefficients)
+    angular_momentums = tuple(angular_momentums)
+    magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
+
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=R_carts,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
+    )
+    structure_data.sanity_check()
+
+    aos_data = AOs_sphe_data(
+        structure_data=structure_data,
+        nucleus_index=tuple(list(range(num_R_cart_samples))),
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        magnetic_quantum_numbers=magnetic_quantum_numbers,
+    )
+    aos_data.sanity_check()
+
+    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = _compute_AOs_grad_autodiff(
         aos_data=aos_data, r_carts=r_carts
     )
 
@@ -546,19 +752,350 @@ def test_AOs_comparing_auto_and_numerical_grads():
         ao_matrix_grad_x_numerical,
         ao_matrix_grad_y_numerical,
         ao_matrix_grad_z_numerical,
-    ) = compute_AOs_grad_debug(aos_data=aos_data, r_carts=r_carts)
+    ) = _compute_AOs_grad_debug(aos_data=aos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(ao_matrix_grad_x_auto, ao_matrix_grad_x_numerical, decimal=7)
     np.testing.assert_array_almost_equal(ao_matrix_grad_y_auto, ao_matrix_grad_y_numerical, decimal=7)
 
     np.testing.assert_array_almost_equal(ao_matrix_grad_z_auto, ao_matrix_grad_z_numerical, decimal=7)
 
+
+def test_AOs_grads_comparing_analytic_and_numerical_implemenetations():
+    """Analytic AO gradients match numerical finite-difference implementation."""
+    seed = 2028
+    np.random.seed(seed)
+
+    # Cartesian case
+    num_r_cart_samples = 5
+    num_R_cart_samples = 3
+    r_carts = np.random.uniform(-1.2, 1.2, size=(num_r_cart_samples, 3))
+    R_carts = np.random.uniform(-0.6, 0.6, size=(num_R_cart_samples, 3))
+
+    num_ao = 3
+    num_ao_prim = 3
+    orbital_indices = tuple(range(num_ao))
+    exponents = tuple([0.9, 1.3, 0.7])
+    coefficients = tuple([1.0, 0.8, 1.2])
+    angular_momentums = tuple([0, 1, 2])
+    polynominal_order_x = tuple([0, 1, 2])
+    polynominal_order_y = tuple([0, 0, 0])
+    polynominal_order_z = tuple([0, 0, 0])
+
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=R_carts,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
+    )
+    structure_data.sanity_check()
+
+    aos_data = AOs_cart_data(
+        structure_data=structure_data,
+        nucleus_index=tuple(range(num_R_cart_samples)),
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        polynominal_order_x=polynominal_order_x,
+        polynominal_order_y=polynominal_order_y,
+        polynominal_order_z=polynominal_order_z,
+    )
+    aos_data.sanity_check()
+
+    gx_num, gy_num, gz_num = _compute_AOs_grad_debug(aos_data=aos_data, r_carts=r_carts)
+    gx_an, gy_an, gz_an = compute_AOs_grad(aos_data=aos_data, r_carts=r_carts)
+
+    np.testing.assert_array_almost_equal(gx_an, np.array(gx_num), decimal=6)
+    np.testing.assert_array_almost_equal(gy_an, np.array(gy_num), decimal=6)
+    np.testing.assert_array_almost_equal(gz_an, np.array(gz_num), decimal=6)
+
+    # Spherical case
+    num_r_cart_samples = 3
+    num_R_cart_samples = 4
+    r_carts = np.random.uniform(-2.5, 2.5, size=(num_r_cart_samples, 3))
+    R_carts = np.random.uniform(-1.0, 1.0, size=(num_R_cart_samples, 3))
+
+    num_ao = 4
+    num_ao_prim = 5
+    orbital_indices = tuple([0, 1, 2, 2, 3])
+    exponents = tuple([3.0, 1.6, 0.9, 0.9, 2.2])
+    coefficients = tuple([1.0, 0.9, 1.1, 0.7, 1.0])
+    angular_momentums = tuple([0, 1, 1, 2])
+    magnetic_quantum_numbers = tuple([0, -1, 1, 0])
+
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=R_carts,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
+    )
+    structure_data.sanity_check()
+
+    aos_data = AOs_sphe_data(
+        structure_data=structure_data,
+        nucleus_index=tuple(list(range(num_R_cart_samples))),
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        magnetic_quantum_numbers=magnetic_quantum_numbers,
+    )
+    aos_data.sanity_check()
+
+    gx_num_sphe, gy_num_sphe, gz_num_sphe = _compute_AOs_grad_debug(aos_data=aos_data, r_carts=r_carts)
+    gx_an_sphe, gy_an_sphe, gz_an_sphe = compute_AOs_grad(aos_data=aos_data, r_carts=r_carts)
+
+    np.testing.assert_array_almost_equal(gx_an_sphe, np.array(gx_num_sphe), decimal=6)
+    np.testing.assert_array_almost_equal(gy_an_sphe, np.array(gy_num_sphe), decimal=6)
+    np.testing.assert_array_almost_equal(gz_an_sphe, np.array(gz_num_sphe), decimal=6)
+
     jax.clear_caches()
 
 
-@pytest.mark.obsolete(reasons="Laplacians are now implemented by fully exploiting JAX modules.")
-def test_AOs_comparing_auto_and_numerical_laplacians():
+def test_AOs_laplacians_comparing_analytic_and_auto_implemenetations():
+    """Analytic AO Laplacians match JAX autodiff implementation."""
+    seed = 2026
+    np.random.seed(seed)
+
+    # Cartesian case
+    num_r_cart_samples = 5
+    num_R_cart_samples = 3
+    r_carts = np.random.uniform(-1.2, 1.2, size=(num_r_cart_samples, 3))
+    R_carts = np.random.uniform(-0.4, 0.4, size=(num_R_cart_samples, 3))
+
+    num_ao = 3
+    num_ao_prim = 3
+    orbital_indices = tuple(range(num_ao))
+    exponents = tuple([0.9, 1.2, 0.7])
+    coefficients = tuple([1.0, 0.8, 1.1])
+    angular_momentums = tuple([0, 1, 2])
+    polynominal_order_x = tuple([0, 1, 2])
+    polynominal_order_y = tuple([0, 0, 0])
+    polynominal_order_z = tuple([0, 0, 0])
+
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=R_carts,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
+    )
+    structure_data.sanity_check()
+
+    aos_data = AOs_cart_data(
+        structure_data=structure_data,
+        nucleus_index=tuple(range(num_R_cart_samples)),
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        polynominal_order_x=polynominal_order_x,
+        polynominal_order_y=polynominal_order_y,
+        polynominal_order_z=polynominal_order_z,
+    )
+    aos_data.sanity_check()
+
+    lap_ref_cart = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
+    lap_an_cart = compute_AOs_laplacian(aos_data=aos_data, r_carts=r_carts)
+
+    np.testing.assert_allclose(lap_an_cart, np.array(lap_ref_cart), rtol=1e-9, atol=5e-7)
+
+    # Spherical case
+    num_r_cart_samples = 3
+    num_R_cart_samples = 4
+    r_carts = np.random.uniform(-2.0, 2.0, size=(num_r_cart_samples, 3))
+    R_carts = np.random.uniform(-0.7, 0.7, size=(num_R_cart_samples, 3))
+
+    num_ao = 4
+    num_ao_prim = 5
+    orbital_indices = tuple([0, 1, 2, 2, 3])
+    exponents = tuple([3.0, 1.5, 0.8, 0.8, 2.2])
+    coefficients = tuple([1.0, 0.9, 1.1, 0.7, 1.0])
+    angular_momentums = tuple([0, 1, 1, 2])
+    magnetic_quantum_numbers = tuple([0, -1, 1, 0])
+
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=R_carts,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
+    )
+    structure_data.sanity_check()
+
+    aos_data = AOs_sphe_data(
+        structure_data=structure_data,
+        nucleus_index=tuple(list(range(num_R_cart_samples))),
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        magnetic_quantum_numbers=magnetic_quantum_numbers,
+    )
+    aos_data.sanity_check()
+
+    lap_ref_sphe = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
+    lap_an_sphe = compute_AOs_laplacian(aos_data=aos_data, r_carts=r_carts)
+
+    np.testing.assert_allclose(lap_an_sphe, np.array(lap_ref_sphe), rtol=1e-9, atol=5e-7)
+
+    jax.clear_caches()
+
+
+def test_AOs_laplacians_comparing_analytic_and_numerical_implemenetations():
+    """Analytic Laplacians match numerical finite-difference implementation."""
+    seed = 2027
+    np.random.seed(seed)
+
+    # Cartesian case
+    num_r_cart_samples = 4
+    num_R_cart_samples = 2
+    r_carts = np.random.uniform(-1.0, 1.0, size=(num_r_cart_samples, 3))
+    R_carts = np.random.uniform(-0.6, 0.6, size=(num_R_cart_samples, 3))
+
+    num_ao = 2
+    num_ao_prim = 3
+    orbital_indices = tuple([0, 0, 1])
+    exponents = tuple([1.4, 0.9, 1.1])
+    coefficients = tuple([1.0, 0.7, 0.9])
+    angular_momentums = tuple([0, 1])
+    polynominal_order_x = tuple([0, 1])
+    polynominal_order_y = tuple([0, 0])
+    polynominal_order_z = tuple([0, 0])
+
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=R_carts,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
+    )
+    structure_data.sanity_check()
+
+    aos_data = AOs_cart_data(
+        structure_data=structure_data,
+        nucleus_index=tuple(range(num_R_cart_samples)),
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        polynominal_order_x=polynominal_order_x,
+        polynominal_order_y=polynominal_order_y,
+        polynominal_order_z=polynominal_order_z,
+    )
+    aos_data.sanity_check()
+
+    lap_num_cart = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
+    lap_an_cart = compute_AOs_laplacian(aos_data=aos_data, r_carts=r_carts)
+
+    np.testing.assert_array_almost_equal(lap_an_cart, np.array(lap_num_cart), decimal=5)
+
+    # Spherical case
+    num_r_cart_samples = 3
+    num_R_cart_samples = 3
+    r_carts = np.random.uniform(-1.5, 1.5, size=(num_r_cart_samples, 3))
+    R_carts = np.random.uniform(-0.8, 0.8, size=(num_R_cart_samples, 3))
+
+    num_ao = 3
+    num_ao_prim = 4
+    orbital_indices = tuple([0, 1, 1, 2])
+    exponents = tuple([2.0, 1.6, 1.1, 0.9])
+    coefficients = tuple([1.0, 0.8, 1.2, 0.7])
+    angular_momentums = tuple([0, 1, 1])
+    magnetic_quantum_numbers = tuple([0, 0, 1])
+
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=R_carts,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
+    )
+    structure_data.sanity_check()
+
+    aos_data = AOs_sphe_data(
+        structure_data=structure_data,
+        nucleus_index=tuple(list(range(num_R_cart_samples))),
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        magnetic_quantum_numbers=magnetic_quantum_numbers,
+    )
+    aos_data.sanity_check()
+
+    lap_num_sphe = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
+    lap_an_sphe = compute_AOs_laplacian(aos_data=aos_data, r_carts=r_carts)
+
+    np.testing.assert_array_almost_equal(lap_an_sphe, np.array(lap_num_sphe), decimal=5)
+
+    jax.clear_caches()
+
+
+def test_AOs_laplacians_comparing_auto_and_numerical_implemenetations():
     """Test the laplacian AOs computation, comparing the JAX and debug implementations."""
+    # Cartesian case
+    num_r_cart_samples = 5
+    num_R_cart_samples = 3
+    r_cart_min, r_cart_max = -2.0, +2.0
+    R_cart_min, R_cart_max = -1.0, +1.0
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_cart_samples, 3) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
+
+    num_ao = 3
+    num_ao_prim = 4
+    orbital_indices = [0, 1, 2, 2]
+    exponents = [1.4, 0.9, 0.7, 0.7]
+    coefficients = [1.0, 0.8, 0.6, 0.5]
+    angular_momentums = [0, 1, 1]
+    polynominal_order_x = [0, 1, 1]
+    polynominal_order_y = [0, 0, 0]
+    polynominal_order_z = [0, 0, 0]
+
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=R_carts,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
+    )
+    structure_data.sanity_check()
+
+    aos_data = AOs_cart_data(
+        structure_data=structure_data,
+        nucleus_index=tuple(list(range(num_R_cart_samples))),
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        orbital_indices=tuple(orbital_indices),
+        exponents=tuple(exponents),
+        coefficients=tuple(coefficients),
+        angular_momentums=tuple(angular_momentums),
+        polynominal_order_x=tuple(polynominal_order_x),
+        polynominal_order_y=tuple(polynominal_order_y),
+        polynominal_order_z=tuple(polynominal_order_z),
+    )
+    aos_data.sanity_check()
+
+    ao_matrix_laplacian_num_cart = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
+    ao_matrix_laplacian_auto_cart = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
+
+    np.testing.assert_array_almost_equal(ao_matrix_laplacian_auto_cart, ao_matrix_laplacian_num_cart, decimal=5)
+
+    # Spherical cases
     num_r_cart_samples = 10
     num_R_cart_samples = 3
     r_cart_min, r_cart_max = -5.0, +5.0
@@ -602,9 +1139,9 @@ def test_AOs_comparing_auto_and_numerical_laplacians():
     )
     aos_data.sanity_check()
 
-    ao_matrix_laplacian_numerical = compute_AOs_laplacian_jax(aos_data=aos_data, r_carts=r_carts)
+    ao_matrix_laplacian_numerical = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
 
-    ao_matrix_laplacian_auto = compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
+    ao_matrix_laplacian_auto = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(ao_matrix_laplacian_auto, ao_matrix_laplacian_numerical, decimal=5)
 
@@ -651,9 +1188,9 @@ def test_AOs_comparing_auto_and_numerical_laplacians():
     )
     aos_data.sanity_check()
 
-    ao_matrix_laplacian_numerical = compute_AOs_laplacian_jax(aos_data=aos_data, r_carts=r_carts)
+    ao_matrix_laplacian_numerical = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
 
-    ao_matrix_laplacian_auto = compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
+    ao_matrix_laplacian_auto = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(ao_matrix_laplacian_auto, ao_matrix_laplacian_numerical, decimal=5)
 
