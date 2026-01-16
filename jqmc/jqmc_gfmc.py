@@ -77,7 +77,7 @@ from .setting import (
 from .swct import SWCT_data, evaluate_swct_domega_jax, evaluate_swct_omega_jax
 from .wavefunction import (
     compute_discretized_kinetic_energy,
-    compute_kinetic_energy_all_elements_auto,
+    compute_kinetic_energy_all_elements,
     evaluate_ln_wavefunction,
 )
 
@@ -462,7 +462,7 @@ class GFMC_fixed_projection_time:
 
             # compute continuum kinetic energy
             diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
-                compute_kinetic_energy_all_elements_auto(
+                compute_kinetic_energy_all_elements(
                     wavefunction_data=hamiltonian_data.wavefunction_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -1650,7 +1650,7 @@ class GFMC_fixed_projection_time_debug:
 
                     # compute continuum kinetic energy
                     diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
-                        compute_kinetic_energy_all_elements_auto(
+                        compute_kinetic_energy_all_elements(
                             wavefunction_data=hamiltonian_data.wavefunction_data,
                             r_up_carts=r_up_carts,
                             r_dn_carts=r_dn_carts,
@@ -2528,7 +2528,7 @@ class GFMC_fixed_num_projection:
 
                 # compute continuum kinetic energy
                 diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
-                    compute_kinetic_energy_all_elements_auto(
+                    compute_kinetic_energy_all_elements(
                         wavefunction_data=hamiltonian_data.wavefunction_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
@@ -2814,7 +2814,7 @@ class GFMC_fixed_num_projection:
 
             # compute continuum kinetic energy
             diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
-                compute_kinetic_energy_all_elements_auto(
+                compute_kinetic_energy_all_elements(
                     wavefunction_data=hamiltonian_data.wavefunction_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -4616,7 +4616,7 @@ class GFMC_fixed_num_projection_debug:
 
                 # compute continuum kinetic energy
                 diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
-                    compute_kinetic_energy_all_elements_auto(
+                    compute_kinetic_energy_all_elements(
                         wavefunction_data=hamiltonian_data.wavefunction_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
@@ -4899,7 +4899,7 @@ class GFMC_fixed_num_projection_debug:
 
             # compute continuum kinetic energy
             diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
-                compute_kinetic_energy_all_elements_auto(
+                compute_kinetic_energy_all_elements(
                     wavefunction_data=hamiltonian_data.wavefunction_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,

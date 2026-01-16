@@ -631,12 +631,13 @@ def _compute_Jastrow_one_body_debug(
 
 def _compute_grads_and_laplacian_Jastrow_one_body_debug(
     jastrow_one_body_data: Jastrow_one_body_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    r_up_carts: np.ndarray,
+    r_dn_carts: np.ndarray,
 ) -> tuple[
-    npt.NDArray[np.float64 | np.complex128],
-    npt.NDArray[np.float64 | np.complex128],
-    float | complex,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
 ]:
     """Numerical gradients and Laplacian for one-body Jastrow (debug)."""
     diff_h = 1.0e-5
@@ -712,7 +713,7 @@ def _compute_grads_and_laplacian_Jastrow_one_body_debug(
     diff_h2 = 1.0e-3
     J_ref = _compute_Jastrow_one_body_debug(jastrow_one_body_data, r_up_carts, r_dn_carts)
 
-    sum_laplacian_J1 = 0.0
+    lap_J1_up = np.zeros(len(r_up_carts), dtype=float)
 
     # laplacians up
     for r_i, _ in enumerate(r_up_carts):
@@ -742,7 +743,9 @@ def _compute_grads_and_laplacian_Jastrow_one_body_debug(
         gradgrad_y_up = (J_p_y_up2 + J_m_y_up2 - 2 * J_ref) / (diff_h2**2)
         gradgrad_z_up = (J_p_z_up2 + J_m_z_up2 - 2 * J_ref) / (diff_h2**2)
 
-        sum_laplacian_J1 += gradgrad_x_up + gradgrad_y_up + gradgrad_z_up
+        lap_J1_up[r_i] = gradgrad_x_up + gradgrad_y_up + gradgrad_z_up
+
+    lap_J1_dn = np.zeros(len(r_dn_carts), dtype=float)
 
     # laplacians dn
     for r_i, _ in enumerate(r_dn_carts):
@@ -772,19 +775,21 @@ def _compute_grads_and_laplacian_Jastrow_one_body_debug(
         gradgrad_y_dn = (J_p_y_dn2 + J_m_y_dn2 - 2 * J_ref) / (diff_h2**2)
         gradgrad_z_dn = (J_p_z_dn2 + J_m_z_dn2 - 2 * J_ref) / (diff_h2**2)
 
-        sum_laplacian_J1 += gradgrad_x_dn + gradgrad_y_dn + gradgrad_z_dn
+        lap_J1_dn[r_i] = gradgrad_x_dn + gradgrad_y_dn + gradgrad_z_dn
 
-    return grad_J1_up, grad_J1_dn, sum_laplacian_J1
+    return grad_J1_up, grad_J1_dn, lap_J1_up, lap_J1_dn
 
 
+@jit
 def _compute_grads_and_laplacian_Jastrow_one_body_auto(
     jastrow_one_body_data: Jastrow_one_body_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> tuple[
-    npt.NDArray[np.float64],
-    npt.NDArray[np.float64],
-    float,
+    jax.Array,
+    jax.Array,
+    jax.Array,
+    jax.Array,
 ]:
     """Auto-diff gradients and Laplacian for one-body Jastrow."""
     r_up_carts = jnp.array(r_up_carts)
@@ -794,23 +799,21 @@ def _compute_grads_and_laplacian_Jastrow_one_body_auto(
     grad_J1_dn = grad(compute_Jastrow_one_body, argnums=2)(jastrow_one_body_data, r_up_carts, r_dn_carts)
 
     hessian_J1_up = hessian(compute_Jastrow_one_body, argnums=1)(jastrow_one_body_data, r_up_carts, r_dn_carts)
-    sum_laplacian_J1_up = jnp.einsum("ijij->", hessian_J1_up)
+    laplacian_J1_up = jnp.einsum("ijij->i", hessian_J1_up)
 
     hessian_J1_dn = hessian(compute_Jastrow_one_body, argnums=2)(jastrow_one_body_data, r_up_carts, r_dn_carts)
-    sum_laplacian_J1_dn = jnp.einsum("ijij->", hessian_J1_dn)
+    laplacian_J1_dn = jnp.einsum("ijij->i", hessian_J1_dn)
 
-    sum_laplacian_J1 = sum_laplacian_J1_up + sum_laplacian_J1_dn
-
-    return grad_J1_up, grad_J1_dn, sum_laplacian_J1
+    return grad_J1_up, grad_J1_dn, laplacian_J1_up, laplacian_J1_dn
 
 
 @jit
 def compute_grads_and_laplacian_Jastrow_one_body(
     jastrow_one_body_data: Jastrow_one_body_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
-) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], float]:
-    """Analytic gradients and Laplacian for one-body Jastrow."""
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
+    """Analytic gradients and per-electron Laplacians for one-body Jastrow."""
     positions = jnp.asarray(jastrow_one_body_data.structure_data.positions)
     atomic_numbers = jnp.asarray(jastrow_one_body_data.structure_data.atomic_numbers)
     core_electrons = jnp.asarray(jastrow_one_body_data.core_electrons)
@@ -833,14 +836,13 @@ def compute_grads_and_laplacian_Jastrow_one_body(
 
         fsecond = A[None, :] * (a * c[None, :] * c[None, :] / 2.0) * exp_term
         lap = fsecond - A[None, :] * c[None, :] * exp_term / r_safe
-        lap_sum = jnp.sum(lap)
-        return grad, lap_sum
+        lap_e = jnp.sum(lap, axis=1)
+        return grad, lap_e
 
     grad_up, lap_up = _grad_lap_one_spin(jnp.asarray(r_up_carts))
     grad_dn, lap_dn = _grad_lap_one_spin(jnp.asarray(r_dn_carts))
-    sum_laplacian = lap_up + lap_dn
 
-    return grad_up, grad_dn, sum_laplacian
+    return grad_up, grad_dn, lap_up, lap_dn
 
 
 @struct.dataclass
@@ -2014,48 +2016,65 @@ def _compute_ratio_Jastrow_part_debug(
     )
 
 
+@jit
 def compute_grads_and_laplacian_Jastrow_part(
     jastrow_data: Jastrow_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> tuple[
-    npt.NDArray[np.float64],
-    npt.NDArray[np.float64],
-    float | complex,
+    jax.Array,
+    jax.Array,
+    jax.Array,
+    jax.Array,
 ]:
     """Analytic-based gradients and Laplacian for the full Jastrow factor.
 
     Uses analytic expressions for J1/J2/J3 when available. If NN-Jastrow
     is present, its contribution is computed via autodiff.
     """
-    grad_J1_up, grad_J1_dn, sum_laplacian_J1 = 0.0, 0.0, 0.0
-    grad_J2_up, grad_J2_dn, sum_laplacian_J2 = 0.0, 0.0, 0.0
-    grad_J3_up, grad_J3_dn, sum_laplacian_J3 = 0.0, 0.0, 0.0
-    grad_JNN_up, grad_JNN_dn, sum_laplacian_JNN = 0.0, 0.0, 0.0
+    r_up = jnp.asarray(r_up_carts)
+    r_dn = jnp.asarray(r_dn_carts)
+
+    grad_J_up = jnp.zeros_like(r_up)
+    grad_J_dn = jnp.zeros_like(r_dn)
+    lap_J_up = jnp.zeros((r_up.shape[0],))
+    lap_J_dn = jnp.zeros((r_dn.shape[0],))
 
     # one-body (analytic)
     if jastrow_data.jastrow_one_body_data is not None:
-        grad_J1_up, grad_J1_dn, sum_laplacian_J1 = compute_grads_and_laplacian_Jastrow_one_body(
+        grad_J1_up, grad_J1_dn, lap_J1_up, lap_J1_dn = compute_grads_and_laplacian_Jastrow_one_body(
             jastrow_data.jastrow_one_body_data,
             r_up_carts,
             r_dn_carts,
         )
+        grad_J_up = grad_J_up + grad_J1_up
+        grad_J_dn = grad_J_dn + grad_J1_dn
+        lap_J_up = lap_J_up + lap_J1_up
+        lap_J_dn = lap_J_dn + lap_J1_dn
 
     # two-body (analytic)
     if jastrow_data.jastrow_two_body_data is not None:
-        grad_J2_up, grad_J2_dn, sum_laplacian_J2 = compute_grads_and_laplacian_Jastrow_two_body(
+        grad_J2_up, grad_J2_dn, lap_J2_up, lap_J2_dn = compute_grads_and_laplacian_Jastrow_two_body(
             jastrow_data.jastrow_two_body_data,
             r_up_carts,
             r_dn_carts,
         )
+        grad_J_up = grad_J_up + grad_J2_up
+        grad_J_dn = grad_J_dn + grad_J2_dn
+        lap_J_up = lap_J_up + lap_J2_up
+        lap_J_dn = lap_J_dn + lap_J2_dn
 
     # three-body (analytic)
     if jastrow_data.jastrow_three_body_data is not None:
-        grad_J3_up, grad_J3_dn, sum_laplacian_J3 = compute_grads_and_laplacian_Jastrow_three_body(
+        grad_J3_up, grad_J3_dn, lap_J3_up, lap_J3_dn = compute_grads_and_laplacian_Jastrow_three_body(
             jastrow_data.jastrow_three_body_data,
             r_up_carts,
             r_dn_carts,
         )
+        grad_J_up = grad_J_up + grad_J3_up
+        grad_J_dn = grad_J_dn + grad_J3_dn
+        lap_J_up = lap_J_up + lap_J3_up
+        lap_J_dn = lap_J_dn + lap_J3_dn
 
     # NN three-body (autodiff)
     if jastrow_data.jastrow_nn_data is not None:
@@ -2075,28 +2094,29 @@ def compute_grads_and_laplacian_Jastrow_part(
         grad_JNN_dn = grad(_compute_Jastrow_nn_only, argnums=1)(r_up_carts_jnp, r_dn_carts_jnp)
 
         hessian_JNN_up = hessian(_compute_Jastrow_nn_only, argnums=0)(r_up_carts_jnp, r_dn_carts_jnp)
-        sum_laplacian_JNN_up = jnp.einsum("ijij->", hessian_JNN_up)
+        lap_JNN_up = jnp.einsum("ijij->i", hessian_JNN_up)
 
         hessian_JNN_dn = hessian(_compute_Jastrow_nn_only, argnums=1)(r_up_carts_jnp, r_dn_carts_jnp)
-        sum_laplacian_JNN_dn = jnp.einsum("ijij->", hessian_JNN_dn)
+        lap_JNN_dn = jnp.einsum("ijij->i", hessian_JNN_dn)
 
-        sum_laplacian_JNN = sum_laplacian_JNN_up + sum_laplacian_JNN_dn
+        grad_J_up = grad_J_up + grad_JNN_up
+        grad_J_dn = grad_J_dn + grad_JNN_dn
+        lap_J_up = lap_J_up + lap_JNN_up
+        lap_J_dn = lap_J_dn + lap_JNN_dn
 
-    grad_J_up = grad_J1_up + grad_J2_up + grad_J3_up + grad_JNN_up
-    grad_J_dn = grad_J1_dn + grad_J2_dn + grad_J3_dn + grad_JNN_dn
-    sum_laplacian_J = sum_laplacian_J1 + sum_laplacian_J2 + sum_laplacian_J3 + sum_laplacian_JNN
-
-    return grad_J_up, grad_J_dn, sum_laplacian_J
+    return grad_J_up, grad_J_dn, lap_J_up, lap_J_dn
 
 
+@jit
 def _compute_grads_and_laplacian_Jastrow_part_auto(
     jastrow_data: Jastrow_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> tuple[
-    npt.NDArray[np.float64],
-    npt.NDArray[np.float64],
-    float | complex,
+    jax.Array,
+    jax.Array,
+    jax.Array,
+    jax.Array,
 ]:
     """Function for computing grads and laplacians with a given Jastrow_data.
 
@@ -2111,13 +2131,13 @@ def _compute_grads_and_laplacian_Jastrow_part_auto(
     Returns:
         the gradients(x,y,z) of J and the sum of laplacians of J at (r_up_carts, r_dn_carts).
     """
-    grad_J1_up, grad_J1_dn, sum_laplacian_J1 = 0.0, 0.0, 0.0
-    grad_J2_up, grad_J2_dn, sum_laplacian_J2 = 0.0, 0.0, 0.0
-    grad_J3_up, grad_J3_dn, sum_laplacian_J3 = 0.0, 0.0, 0.0
-    grad_JNN_up, grad_JNN_dn, sum_laplacian_JNN = 0.0, 0.0, 0.0
-
     r_up_carts_jnp = jnp.array(r_up_carts)
     r_dn_carts_jnp = jnp.array(r_dn_carts)
+
+    grad_J_up = jnp.zeros_like(r_up_carts_jnp)
+    grad_J_dn = jnp.zeros_like(r_dn_carts_jnp)
+    lap_J_up = jnp.zeros((r_up_carts_jnp.shape[0],))
+    lap_J_dn = jnp.zeros((r_dn_carts_jnp.shape[0],))
 
     # one-body
     if jastrow_data.jastrow_one_body_data is not None:
@@ -2131,31 +2151,39 @@ def _compute_grads_and_laplacian_Jastrow_part_auto(
         hessian_J1_up = hessian(compute_Jastrow_one_body, argnums=1)(
             jastrow_data.jastrow_one_body_data, r_up_carts_jnp, r_dn_carts_jnp
         )
-        sum_laplacian_J1_up = jnp.einsum("ijij->", hessian_J1_up)
+        laplacian_J1_up = jnp.einsum("ijij->i", hessian_J1_up)
 
         hessian_J1_dn = hessian(compute_Jastrow_one_body, argnums=2)(
             jastrow_data.jastrow_one_body_data, r_up_carts_jnp, r_dn_carts_jnp
         )
-        sum_laplacian_J1_dn = jnp.einsum("ijij->", hessian_J1_dn)
+        laplacian_J1_dn = jnp.einsum("ijij->i", hessian_J1_dn)
 
-        sum_laplacian_J1 = sum_laplacian_J1_up + sum_laplacian_J1_dn
+        grad_J_up = grad_J_up + grad_J1_up
+        grad_J_dn = grad_J_dn + grad_J1_dn
+        lap_J_up = lap_J_up + laplacian_J1_up
+        lap_J_dn = lap_J_dn + laplacian_J1_dn
 
     # two-body
     if jastrow_data.jastrow_two_body_data is not None:
-        grad_J2_up, grad_J2_dn, sum_laplacian_J2 = _compute_grads_and_laplacian_Jastrow_two_body_auto(
+        grad_J2_up, grad_J2_dn, lap_J2_up, lap_J2_dn = _compute_grads_and_laplacian_Jastrow_two_body_auto(
             jastrow_data.jastrow_two_body_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
         )
+        grad_J_up = grad_J_up + grad_J2_up
+        grad_J_dn = grad_J_dn + grad_J2_dn
+        lap_J_up = lap_J_up + lap_J2_up
+        lap_J_dn = lap_J_dn + lap_J2_dn
 
     # three-body
     if jastrow_data.jastrow_three_body_data is not None:
-        grad_J3_up_add, grad_J3_dn_add, sum_laplacian_J3_add = _compute_grads_and_laplacian_Jastrow_three_body_auto(
+        grad_J3_up_add, grad_J3_dn_add, lap_J3_up_add, lap_J3_dn_add = _compute_grads_and_laplacian_Jastrow_three_body_auto(
             jastrow_data.jastrow_three_body_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
         )
-        grad_J3_up += grad_J3_up_add
-        grad_J3_dn += grad_J3_dn_add
-        sum_laplacian_J3 += sum_laplacian_J3_add
+        grad_J_up = grad_J_up + grad_J3_up_add
+        grad_J_dn = grad_J_dn + grad_J3_dn_add
+        lap_J_up = lap_J_up + lap_J3_up_add
+        lap_J_dn = lap_J_dn + lap_J3_dn_add
 
     # three-body (NN)
     if jastrow_data.jastrow_nn_data is not None:
@@ -2173,28 +2201,28 @@ def _compute_grads_and_laplacian_Jastrow_part_auto(
         grad_JNN_dn = grad(_compute_Jastrow_nn_only, argnums=1)(r_up_carts_jnp, r_dn_carts_jnp)
 
         hessian_JNN_up = hessian(_compute_Jastrow_nn_only, argnums=0)(r_up_carts_jnp, r_dn_carts_jnp)
-        sum_laplacian_JNN_up = jnp.einsum("ijij->", hessian_JNN_up)
+        lap_JNN_up = jnp.einsum("ijij->i", hessian_JNN_up)
 
         hessian_JNN_dn = hessian(_compute_Jastrow_nn_only, argnums=1)(r_up_carts_jnp, r_dn_carts_jnp)
-        sum_laplacian_JNN_dn = jnp.einsum("ijij->", hessian_JNN_dn)
+        lap_JNN_dn = jnp.einsum("ijij->i", hessian_JNN_dn)
 
-        sum_laplacian_JNN = sum_laplacian_JNN_up + sum_laplacian_JNN_dn
+        grad_J_up = grad_J_up + grad_JNN_up
+        grad_J_dn = grad_J_dn + grad_JNN_dn
+        lap_J_up = lap_J_up + lap_JNN_up
+        lap_J_dn = lap_J_dn + lap_JNN_dn
 
-    grad_J_up = grad_J1_up + grad_J2_up + grad_J3_up + grad_JNN_up
-    grad_J_dn = grad_J1_dn + grad_J2_dn + grad_J3_dn + grad_JNN_dn
-    sum_laplacian_J = sum_laplacian_J1 + sum_laplacian_J2 + sum_laplacian_J3 + sum_laplacian_JNN
-
-    return grad_J_up, grad_J_dn, sum_laplacian_J
+    return grad_J_up, grad_J_dn, lap_J_up, lap_J_dn
 
 
 def _compute_grads_and_laplacian_Jastrow_part_debug(
     jastrow_data: Jastrow_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    r_up_carts: np.ndarray,
+    r_dn_carts: np.ndarray,
 ) -> tuple[
-    npt.NDArray[np.float64 | np.complex128],
-    npt.NDArray[np.float64 | np.complex128],
-    float | complex,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
 ]:
     """Numerical gradients and Laplacian for the full Jastrow factor.
 
@@ -2275,7 +2303,7 @@ def _compute_grads_and_laplacian_Jastrow_part_debug(
     diff_h2 = 1.0e-3
     J_ref = compute_Jastrow_part(jastrow_data=jastrow_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
 
-    sum_laplacian_J = 0.0
+    lap_J_up = np.zeros(len(r_up_carts), dtype=float)
 
     # laplacians up
     for r_i, _ in enumerate(r_up_carts):
@@ -2305,7 +2333,9 @@ def _compute_grads_and_laplacian_Jastrow_part_debug(
         gradgrad_y_up = (J_p_y_up2 + J_m_y_up2 - 2 * J_ref) / (diff_h2**2)
         gradgrad_z_up = (J_p_z_up2 + J_m_z_up2 - 2 * J_ref) / (diff_h2**2)
 
-        sum_laplacian_J += gradgrad_x_up + gradgrad_y_up + gradgrad_z_up
+        lap_J_up[r_i] = gradgrad_x_up + gradgrad_y_up + gradgrad_z_up
+
+    lap_J_dn = np.zeros(len(r_dn_carts), dtype=float)
 
     # laplacians dn
     for r_i, _ in enumerate(r_dn_carts):
@@ -2335,19 +2365,21 @@ def _compute_grads_and_laplacian_Jastrow_part_debug(
         gradgrad_y_dn = (J_p_y_dn2 + J_m_y_dn2 - 2 * J_ref) / (diff_h2**2)
         gradgrad_z_dn = (J_p_z_dn2 + J_m_z_dn2 - 2 * J_ref) / (diff_h2**2)
 
-        sum_laplacian_J += gradgrad_x_dn + gradgrad_y_dn + gradgrad_z_dn
+        lap_J_dn[r_i] = gradgrad_x_dn + gradgrad_y_dn + gradgrad_z_dn
 
-    return grad_J_up, grad_J_dn, sum_laplacian_J
+    return grad_J_up, grad_J_dn, lap_J_up, lap_J_dn
 
 
+@jit
 def _compute_grads_and_laplacian_Jastrow_two_body_auto(
     jastrow_two_body_data: Jastrow_two_body_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> tuple[
-    npt.NDArray[np.float64],
-    npt.NDArray[np.float64],
-    float,
+    jax.Array,
+    jax.Array,
+    jax.Array,
+    jax.Array,
 ]:
     """Function for computing grads and laplacians with a given Jastrow_two_body_data.
 
@@ -2377,22 +2409,20 @@ def _compute_grads_and_laplacian_Jastrow_two_body_auto(
 
     # compute laplacians
     hessian_J2_up = hessian(compute_Jastrow_two_body, argnums=1)(jastrow_two_body_data, r_up_carts, r_dn_carts)
-    sum_laplacian_J2_up = jnp.einsum("ijij->", hessian_J2_up)
+    laplacian_J2_up = jnp.einsum("ijij->i", hessian_J2_up)
 
     hessian_J2_dn = hessian(compute_Jastrow_two_body, argnums=2)(jastrow_two_body_data, r_up_carts, r_dn_carts)
-    sum_laplacian_J2_dn = jnp.einsum("ijij->", hessian_J2_dn)
+    laplacian_J2_dn = jnp.einsum("ijij->i", hessian_J2_dn)
 
-    sum_laplacian_J2 = sum_laplacian_J2_up + sum_laplacian_J2_dn
-
-    return grad_J2_up, grad_J2_dn, sum_laplacian_J2
+    return grad_J2_up, grad_J2_dn, laplacian_J2_up, laplacian_J2_dn
 
 
 @jit
 def compute_grads_and_laplacian_Jastrow_two_body(
     jastrow_two_body_data: Jastrow_two_body_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
-) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], float]:
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
     """Analytic gradients and Laplacian for the Pade two-body Jastrow.
 
     Uses the functional form J2(r) = r / (2 * (1 + a r)) with a=jastrow_2b_param.
@@ -2450,19 +2480,18 @@ def compute_grads_and_laplacian_Jastrow_two_body(
         lap_up = lap_up + jnp.sum(lap_pair, axis=1)
         lap_dn = lap_dn + jnp.sum(lap_pair, axis=0)
 
-    sum_laplacian = jnp.sum(lap_up) + jnp.sum(lap_dn)
-
-    return grad_up, grad_dn, sum_laplacian
+    return grad_up, grad_dn, lap_up, lap_dn
 
 
 def _compute_grads_and_laplacian_Jastrow_two_body_debug(
     jastrow_two_body_data: Jastrow_two_body_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    r_up_carts: np.ndarray,
+    r_dn_carts: np.ndarray,
 ) -> tuple[
-    npt.NDArray[np.float64 | np.complex128],
-    npt.NDArray[np.float64 | np.complex128],
-    float,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
 ]:
     """See _api method."""
     diff_h = 1.0e-5
@@ -2589,7 +2618,7 @@ def _compute_grads_and_laplacian_Jastrow_two_body_debug(
         r_dn_carts=r_dn_carts,
     )
 
-    sum_laplacian_J2 = 0.0
+    lap_J2_up = np.zeros(len(r_up_carts), dtype=float)
 
     # laplacians up
     for r_i, _ in enumerate(r_up_carts):
@@ -2644,7 +2673,9 @@ def _compute_grads_and_laplacian_Jastrow_two_body_debug(
         gradgrad_y_up = (J2_p_y_up2 + J2_m_y_up2 - 2 * J2_ref) / (diff_h2**2)
         gradgrad_z_up = (J2_p_z_up2 + J2_m_z_up2 - 2 * J2_ref) / (diff_h2**2)
 
-        sum_laplacian_J2 += gradgrad_x_up + gradgrad_y_up + gradgrad_z_up
+        lap_J2_up[r_i] = gradgrad_x_up + gradgrad_y_up + gradgrad_z_up
+
+    lap_J2_dn = np.zeros(len(r_dn_carts), dtype=float)
 
     # laplacians dn
     for r_i, _ in enumerate(r_dn_carts):
@@ -2699,19 +2730,21 @@ def _compute_grads_and_laplacian_Jastrow_two_body_debug(
         gradgrad_y_dn = (J2_p_y_dn2 + J2_m_y_dn2 - 2 * J2_ref) / (diff_h2**2)
         gradgrad_z_dn = (J2_p_z_dn2 + J2_m_z_dn2 - 2 * J2_ref) / (diff_h2**2)
 
-        sum_laplacian_J2 += gradgrad_x_dn + gradgrad_y_dn + gradgrad_z_dn
+        lap_J2_dn[r_i] = gradgrad_x_dn + gradgrad_y_dn + gradgrad_z_dn
 
-    return grad_J2_up, grad_J2_dn, sum_laplacian_J2
+    return grad_J2_up, grad_J2_dn, lap_J2_up, lap_J2_dn
 
 
+@jit
 def _compute_grads_and_laplacian_Jastrow_three_body_auto(
     jastrow_three_body_data: Jastrow_three_body_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> tuple[
-    npt.NDArray[np.float64 | np.complex128],
-    npt.NDArray[np.float64 | np.complex128],
-    float | complex,
+    jax.Array,
+    jax.Array,
+    jax.Array,
+    jax.Array,
 ]:
     """Function for computing grads and laplacians with a given Jastrow_three_body_data.
 
@@ -2733,22 +2766,20 @@ def _compute_grads_and_laplacian_Jastrow_three_body_auto(
 
     # compute laplacians
     hessian_J3_up = hessian(compute_Jastrow_three_body, argnums=1)(jastrow_three_body_data, r_up_carts, r_dn_carts)
-    sum_laplacian_J3_up = jnp.einsum("ijij->", hessian_J3_up)
+    laplacian_J3_up = jnp.einsum("ijij->i", hessian_J3_up)
 
     hessian_J3_dn = hessian(compute_Jastrow_three_body, argnums=2)(jastrow_three_body_data, r_up_carts, r_dn_carts)
-    sum_laplacian_J3_dn = jnp.einsum("ijij->", hessian_J3_dn)
+    laplacian_J3_dn = jnp.einsum("ijij->i", hessian_J3_dn)
 
-    sum_laplacian_J3 = sum_laplacian_J3_up + sum_laplacian_J3_dn
-
-    return grad_J3_up, grad_J3_dn, sum_laplacian_J3
+    return grad_J3_up, grad_J3_dn, laplacian_J3_up, laplacian_J3_dn
 
 
 @jit
 def compute_grads_and_laplacian_Jastrow_three_body(
     jastrow_three_body_data: Jastrow_three_body_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
-) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], float]:
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
     """Analytic gradients and Laplacian for the three-body Jastrow.
 
     Uses analytic AO/MO gradients and Laplacians and exploits the fact that
@@ -2817,19 +2848,18 @@ def compute_grads_and_laplacian_Jastrow_three_body(
     lap_up_contrib = jnp.einsum("on,on->n", g_up, lap_up)
     lap_dn_contrib = jnp.einsum("on,on->n", g_dn, lap_dn)
 
-    sum_laplacian_J3 = jnp.sum(lap_up_contrib) + jnp.sum(lap_dn_contrib)
-
-    return grad_J3_up, grad_J3_dn, sum_laplacian_J3
+    return grad_J3_up, grad_J3_dn, lap_up_contrib, lap_dn_contrib
 
 
 def _compute_grads_and_laplacian_Jastrow_three_body_debug(
     jastrow_three_body_data: Jastrow_three_body_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    r_up_carts: np.ndarray,
+    r_dn_carts: np.ndarray,
 ) -> tuple[
-    npt.NDArray[np.float64],
-    npt.NDArray[np.float64],
-    float,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
 ]:
     """See _api method."""
     diff_h = 1.0e-5
@@ -2956,7 +2986,7 @@ def _compute_grads_and_laplacian_Jastrow_three_body_debug(
         r_dn_carts=r_dn_carts,
     )
 
-    sum_laplacian_J3 = 0.0
+    lap_J3_up = np.zeros(len(r_up_carts), dtype=float)
 
     # laplacians up
     for r_i, _ in enumerate(r_up_carts):
@@ -3011,7 +3041,9 @@ def _compute_grads_and_laplacian_Jastrow_three_body_debug(
         gradgrad_y_up = (J3_p_y_up2 + J3_m_y_up2 - 2 * J3_ref) / (diff_h2**2)
         gradgrad_z_up = (J3_p_z_up2 + J3_m_z_up2 - 2 * J3_ref) / (diff_h2**2)
 
-        sum_laplacian_J3 += gradgrad_x_up + gradgrad_y_up + gradgrad_z_up
+        lap_J3_up[r_i] = gradgrad_x_up + gradgrad_y_up + gradgrad_z_up
+
+    lap_J3_dn = np.zeros(len(r_dn_carts), dtype=float)
 
     # laplacians dn
     for r_i, _ in enumerate(r_dn_carts):
@@ -3066,9 +3098,9 @@ def _compute_grads_and_laplacian_Jastrow_three_body_debug(
         gradgrad_y_dn = (J3_p_y_dn2 + J3_m_y_dn2 - 2 * J3_ref) / (diff_h2**2)
         gradgrad_z_dn = (J3_p_z_dn2 + J3_m_z_dn2 - 2 * J3_ref) / (diff_h2**2)
 
-        sum_laplacian_J3 += gradgrad_x_dn + gradgrad_y_dn + gradgrad_z_dn
+        lap_J3_dn[r_i] = gradgrad_x_dn + gradgrad_y_dn + gradgrad_z_dn
 
-    return grad_J3_up, grad_J3_dn, sum_laplacian_J3
+    return grad_J3_up, grad_J3_dn, lap_J3_up, lap_J3_dn
 
 
 """

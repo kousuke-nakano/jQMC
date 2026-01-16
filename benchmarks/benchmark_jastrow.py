@@ -110,17 +110,17 @@ print(
 
 
 def _analytic_j123(r_up, r_dn):
-    grad_J1_up, grad_J1_dn, lap_J1 = compute_grads_and_laplacian_Jastrow_one_body(
+    grad_J1_up, grad_J1_dn, lap_J1_up, lap_J1_dn = compute_grads_and_laplacian_Jastrow_one_body(
         jastrow_one_body_data,
         r_up,
         r_dn,
     )
-    grad_J2_up, grad_J2_dn, lap_J2 = compute_grads_and_laplacian_Jastrow_two_body(
+    grad_J2_up, grad_J2_dn, lap_J2_up, lap_J2_dn = compute_grads_and_laplacian_Jastrow_two_body(
         jastrow_two_body_data,
         r_up,
         r_dn,
     )
-    grad_J3_up, grad_J3_dn, lap_J3 = compute_grads_and_laplacian_Jastrow_three_body(
+    grad_J3_up, grad_J3_dn, lap_J3_up, lap_J3_dn = compute_grads_and_laplacian_Jastrow_three_body(
         jastrow_three_body_data,
         r_up,
         r_dn,
@@ -128,8 +128,9 @@ def _analytic_j123(r_up, r_dn):
 
     grad_up = jnp.asarray(grad_J1_up) + jnp.asarray(grad_J2_up) + jnp.asarray(grad_J3_up)
     grad_dn = jnp.asarray(grad_J1_dn) + jnp.asarray(grad_J2_dn) + jnp.asarray(grad_J3_dn)
-    lap = jnp.asarray(lap_J1) + jnp.asarray(lap_J2) + jnp.asarray(lap_J3)
-    return grad_up, grad_dn, lap
+    lap_up = jnp.asarray(lap_J1_up) + jnp.asarray(lap_J2_up) + jnp.asarray(lap_J3_up)
+    lap_dn = jnp.asarray(lap_J1_dn) + jnp.asarray(lap_J2_dn) + jnp.asarray(lap_J3_dn)
+    return grad_up, grad_dn, lap_up, lap_dn
 
 
 # --- J1 + J2 + J3 benchmark ---

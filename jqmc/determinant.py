@@ -892,32 +892,21 @@ def _compute_ratio_determinant_part_debug(
 @jit
 def compute_grads_and_laplacian_ln_Det(
     geminal_data: Geminal_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> tuple[
-    npt.NDArray[np.float64],
-    npt.NDArray[np.float64],
-    float,
+    jax.Array,
+    jax.Array,
+    jax.Array,
+    jax.Array,
 ]:
-    """Compute grads and laplacians of ln Det.
+    """Per-electron gradients and Laplacians of ln Det.
 
-    The method is for computing the gradients(x,y,z) of ln Det and the sum of laplacians of ln Det at
-    the given electronic positions (r_up_carts, r_dn_carts).
-
-    Args:
-        geminal_data (Geminal_data): an instance of Geminal_data class
-        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
-        debug (bool): if True, this is computed via _debug function for debuging purpose
-
-    Returns:
-        tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], float]: containing
-        the gradients(x,y,z) of ln Det for up and dn electron positions and
-        the sum of laplacians of ln Det at (r_up_carts, r_dn_carts).
+    Returns gradients (N_up,3)/(N_dn,3) and per-electron Laplacians
+    (N_up,)/(N_dn,).
     """
     lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
 
-    # AOs/MOs
     ao_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
     ao_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts)
 
@@ -930,12 +919,10 @@ def compute_grads_and_laplacian_ln_Det(
     ao_matrix_laplacian_up = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_up_spin, r_up_carts)
     ao_matrix_laplacian_dn = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_dn_spin, r_dn_carts)
 
-    # compute Laplacians of Geminal
     geminal_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
     geminal_unpaired = jnp.dot(ao_matrix_up.T, lambda_matrix_unpaired)
     geminal = jnp.hstack([geminal_paired, geminal_unpaired])
 
-    # up electron
     geminal_grad_up_x_paired = jnp.dot(ao_matrix_up_grad_x.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
     geminal_grad_up_x_unpaired = jnp.dot(ao_matrix_up_grad_x.T, lambda_matrix_unpaired)
     geminal_grad_up_x = jnp.hstack([geminal_grad_up_x_paired, geminal_grad_up_x_unpaired])
@@ -952,7 +939,6 @@ def compute_grads_and_laplacian_ln_Det(
     geminal_laplacian_up_unpaired = jnp.dot(ao_matrix_laplacian_up.T, lambda_matrix_unpaired)
     geminal_laplacian_up = jnp.hstack([geminal_laplacian_up_paired, geminal_laplacian_up_unpaired])
 
-    # dn electron
     geminal_grad_dn_x_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn_grad_x))
     geminal_grad_dn_x_unpaired = jnp.zeros(
         [
@@ -989,8 +975,6 @@ def compute_grads_and_laplacian_ln_Det(
     )
     geminal_laplacian_dn = jnp.hstack([geminal_laplacian_dn_paired, geminal_laplacian_dn_unpaired])
 
-    # Use LU decomposition to build a numerically stable inverse of geminal
-    # G = P @ L @ U => G^{-1} = U^{-1} @ L^{-1} @ P^T
     P, L, U = jsp_linalg.lu(geminal)
     n = geminal.shape[0]
     I = jnp.eye(n, dtype=geminal.dtype)
@@ -1007,37 +991,32 @@ def compute_grads_and_laplacian_ln_Det(
     grad_ln_D_up = jnp.array([grad_ln_D_up_x, grad_ln_D_up_y, grad_ln_D_up_z]).T
     grad_ln_D_dn = jnp.array([grad_ln_D_dn_x, grad_ln_D_dn_y, grad_ln_D_dn_z]).T
 
-    sum_laplacian_ln_D = (
-        -1
-        * (
-            (jnp.trace(jnp.dot(geminal_grad_up_x, geminal_inverse) ** 2.0))
-            + (jnp.trace(jnp.dot(geminal_grad_up_y, geminal_inverse) ** 2.0))
-            + (jnp.trace(jnp.dot(geminal_grad_up_z, geminal_inverse) ** 2.0))
-            + (jnp.trace(jnp.dot(geminal_inverse, geminal_grad_dn_x) ** 2.0))
-            + (jnp.trace(jnp.dot(geminal_inverse, geminal_grad_dn_y) ** 2.0))
-            + (jnp.trace(jnp.dot(geminal_inverse, geminal_grad_dn_z) ** 2.0))
-        )
-        + (jnp.trace(jnp.dot(geminal_laplacian_up, geminal_inverse)))
-        + (jnp.trace(jnp.dot(geminal_inverse, geminal_laplacian_dn)))
-    )
+    lap_ln_D_up = -(
+        grad_ln_D_up_x * grad_ln_D_up_x + grad_ln_D_up_y * grad_ln_D_up_y + grad_ln_D_up_z * grad_ln_D_up_z
+    ) + jnp.diag(jnp.dot(geminal_laplacian_up, geminal_inverse))
 
-    return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D
+    lap_ln_D_dn = -(
+        grad_ln_D_dn_x * grad_ln_D_dn_x + grad_ln_D_dn_y * grad_ln_D_dn_y + grad_ln_D_dn_z * grad_ln_D_dn_z
+    ) + jnp.diag(jnp.dot(geminal_inverse, geminal_laplacian_dn))
+
+    return grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn
 
 
 @jit
 def _compute_grads_and_laplacian_ln_Det_auto(
     geminal_data: Geminal_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> tuple[
-    npt.NDArray[np.float64],
-    npt.NDArray[np.float64],
-    float,
+    jax.Array,
+    jax.Array,
+    jax.Array,
+    jax.Array,
 ]:
     """Auto-diff version of grads and laplacian of ln Det.
 
     Uses autodiff on ln|det(G)| to compute gradients w.r.t. electron positions
-    and the sum of laplacians.
+    and per-electron Laplacians.
     """
 
     def ln_det_fn(r_up, r_dn):
@@ -1055,19 +1034,21 @@ def _compute_grads_and_laplacian_ln_Det_auto(
     jac_up = jax.jacfwd(grad_up_fn)(r_up_carts)
     jac_dn = jax.jacfwd(grad_dn_fn)(r_dn_carts)
 
-    sum_laplacian_ln_D = jnp.einsum("ijij->", jac_up) + jnp.einsum("ijij->", jac_dn)
+    laplacian_ln_D_up = jnp.einsum("ijij->i", jac_up)
+    laplacian_ln_D_dn = jnp.einsum("ijij->i", jac_dn)
 
-    return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D
+    return grad_ln_D_up, grad_ln_D_dn, laplacian_ln_D_up, laplacian_ln_D_dn
 
 
 def _compute_grads_and_laplacian_ln_Det_debug(
     geminal_data: Geminal_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    r_up_carts: np.ndarray,
+    r_dn_carts: np.ndarray,
 ) -> tuple[
-    npt.NDArray[np.float64],
-    npt.NDArray[np.float64],
-    float,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
 ]:
     """See compute_grads_and_laplacian_ln_Det_api."""
     det_geminal = compute_det_geminal_all_elements(
@@ -1236,7 +1217,8 @@ def _compute_grads_and_laplacian_ln_Det_debug(
 
     diff_h2 = 1.0e-4  # for laplacian
 
-    sum_laplacian_ln_D = 0.0
+    laplacian_ln_D_up = np.zeros(len(r_up_carts))
+    laplacian_ln_D_dn = np.zeros(len(r_dn_carts))
 
     # laplacians up
     for r_i, _ in enumerate(r_up_carts):
@@ -1318,7 +1300,7 @@ def _compute_grads_and_laplacian_ln_Det_debug(
         _grad_z_up = grad_z_up[r_i]
 
         # since d^2/dx^2 ln(|f(x)|) = (f''(x)*f(x) - f'(x)^2) / f(x)^2
-        sum_laplacian_ln_D += (
+        laplacian_ln_D_up[r_i] = (
             (gradgrad_x_up * det_geminal - _grad_x_up**2) / det_geminal**2
             + (gradgrad_y_up * det_geminal - _grad_y_up**2) / det_geminal**2
             + (gradgrad_z_up * det_geminal - _grad_z_up**2) / det_geminal**2
@@ -1404,14 +1386,14 @@ def _compute_grads_and_laplacian_ln_Det_debug(
         _grad_z_dn = grad_z_dn[r_i]
 
         # since d^2/dx^2 ln(|f(x)|) = (f''(x)*f(x) - f'(x)^2) / f(x)^2
-        sum_laplacian_ln_D += (
+        laplacian_ln_D_dn[r_i] = (
             (gradgrad_x_dn * det_geminal - _grad_x_dn**2) / det_geminal**2
             + (gradgrad_y_dn * det_geminal - _grad_y_dn**2) / det_geminal**2
             + (gradgrad_z_dn * det_geminal - _grad_z_dn**2) / det_geminal**2
         )
 
     # Returning answers
-    return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D
+    return grad_ln_D_up, grad_ln_D_dn, laplacian_ln_D_up, laplacian_ln_D_dn
 
 
 '''

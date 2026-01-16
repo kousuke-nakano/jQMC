@@ -142,13 +142,13 @@ def test_numerical_and_auto_grads_Jastrow_onebody_part():
     jastrow_one_body_data = Jastrow_one_body_data(
         jastrow_1b_param=1.0, structure_data=structure_data, core_electrons=core_electrons
     )
-    grad_up_num, grad_dn_num, lap_num = _compute_grads_and_laplacian_Jastrow_one_body_debug(
+    grad_up_num, grad_dn_num, lap_up_num, lap_dn_num = _compute_grads_and_laplacian_Jastrow_one_body_debug(
         jastrow_one_body_data,
         r_up_carts,
         r_dn_carts,
     )
 
-    grad_up_auto, grad_dn_auto, lap_auto = _compute_grads_and_laplacian_Jastrow_one_body_auto(
+    grad_up_auto, grad_dn_auto, lap_up_auto, lap_dn_auto = _compute_grads_and_laplacian_Jastrow_one_body_auto(
         jastrow_one_body_data,
         r_up_carts,
         r_dn_carts,
@@ -156,7 +156,8 @@ def test_numerical_and_auto_grads_Jastrow_onebody_part():
 
     np.testing.assert_almost_equal(np.asarray(grad_up_num), np.asarray(grad_up_auto), decimal=6)
     np.testing.assert_almost_equal(np.asarray(grad_dn_num), np.asarray(grad_dn_auto), decimal=6)
-    np.testing.assert_almost_equal(np.asarray(lap_num), np.asarray(lap_auto), decimal=4)
+    np.testing.assert_almost_equal(np.asarray(lap_up_num), np.asarray(lap_up_auto), decimal=4)
+    np.testing.assert_almost_equal(np.asarray(lap_dn_num), np.asarray(lap_dn_auto), decimal=4)
 
     jax.clear_caches()
 
@@ -185,13 +186,13 @@ def test_analytical_and_auto_grads_Jastrow_onebody_part():
     jastrow_one_body_data = Jastrow_one_body_data(
         jastrow_1b_param=1.0, structure_data=structure_data, core_electrons=core_electrons
     )
-    grad_up_an, grad_dn_an, lap_an = compute_grads_and_laplacian_Jastrow_one_body(
+    grad_up_an, grad_dn_an, lap_up_an, lap_dn_an = compute_grads_and_laplacian_Jastrow_one_body(
         jastrow_one_body_data,
         r_up_carts,
         r_dn_carts,
     )
 
-    grad_up_auto, grad_dn_auto, lap_auto = _compute_grads_and_laplacian_Jastrow_one_body_auto(
+    grad_up_auto, grad_dn_auto, lap_up_auto, lap_dn_auto = _compute_grads_and_laplacian_Jastrow_one_body_auto(
         jastrow_one_body_data,
         r_up_carts,
         r_dn_carts,
@@ -199,7 +200,8 @@ def test_analytical_and_auto_grads_Jastrow_onebody_part():
 
     np.testing.assert_almost_equal(np.asarray(grad_up_an), np.asarray(grad_up_auto), decimal=6)
     np.testing.assert_almost_equal(np.asarray(grad_dn_an), np.asarray(grad_dn_auto), decimal=6)
-    np.testing.assert_almost_equal(np.asarray(lap_an), np.asarray(lap_auto), decimal=6)
+    np.testing.assert_almost_equal(np.asarray(lap_up_an), np.asarray(lap_up_auto), decimal=6)
+    np.testing.assert_almost_equal(np.asarray(lap_dn_an), np.asarray(lap_dn_auto), decimal=6)
 
     jax.clear_caches()
 
@@ -447,7 +449,8 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
     (
         grad_jastrow_J3_up_debug,
         grad_jastrow_J3_dn_debug,
-        sum_laplacian_J3_debug,
+        lap_J3_up_debug,
+        lap_J3_dn_debug,
     ) = _compute_grads_and_laplacian_Jastrow_three_body_debug(
         jastrow_three_body_data,
         r_up_carts,
@@ -458,10 +461,12 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
     # print(f"grad_jastrow_J3_dn_debug = {grad_jastrow_J3_dn_debug}")
     # print(f"sum_laplacian_J3_debug = {sum_laplacian_J3_debug}")
 
-    grad_jastrow_J3_up_jax, grad_jastrow_J3_dn_jax, sum_laplacian_J3_jax = _compute_grads_and_laplacian_Jastrow_three_body_auto(
-        jastrow_three_body_data,
-        r_up_carts,
-        r_dn_carts,
+    grad_jastrow_J3_up_jax, grad_jastrow_J3_dn_jax, lap_J3_up_jax, lap_J3_dn_jax = (
+        _compute_grads_and_laplacian_Jastrow_three_body_auto(
+            jastrow_three_body_data,
+            r_up_carts,
+            r_dn_carts,
+        )
     )
 
     # print(f"grad_jastrow_J3_up_jax = {grad_jastrow_J3_up_jax}")
@@ -470,7 +475,8 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
 
     np.testing.assert_almost_equal(grad_jastrow_J3_up_debug, grad_jastrow_J3_up_jax, decimal=4)
     np.testing.assert_almost_equal(grad_jastrow_J3_dn_debug, grad_jastrow_J3_dn_jax, decimal=4)
-    np.testing.assert_almost_equal(sum_laplacian_J3_debug, sum_laplacian_J3_jax, decimal=4)
+    np.testing.assert_almost_equal(lap_J3_up_debug, lap_J3_up_jax, decimal=4)
+    np.testing.assert_almost_equal(lap_J3_dn_debug, lap_J3_dn_jax, decimal=4)
 
     jax.clear_caches()
 
@@ -550,7 +556,8 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
     (
         grad_jastrow_J3_up_debug,
         grad_jastrow_J3_dn_debug,
-        sum_laplacian_J3_debug,
+        lap_J3_up_debug,
+        lap_J3_dn_debug,
     ) = _compute_grads_and_laplacian_Jastrow_three_body_debug(
         jastrow_three_body_data,
         r_up_carts,
@@ -561,10 +568,12 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
     # print(f"grad_jastrow_J3_dn_debug = {grad_jastrow_J3_dn_debug}")
     # print(f"sum_laplacian_J3_debug = {sum_laplacian_J3_debug}")
 
-    grad_jastrow_J3_up_jax, grad_jastrow_J3_dn_jax, sum_laplacian_J3_jax = _compute_grads_and_laplacian_Jastrow_three_body_auto(
-        jastrow_three_body_data,
-        r_up_carts,
-        r_dn_carts,
+    grad_jastrow_J3_up_jax, grad_jastrow_J3_dn_jax, lap_J3_up_jax, lap_J3_dn_jax = (
+        _compute_grads_and_laplacian_Jastrow_three_body_auto(
+            jastrow_three_body_data,
+            r_up_carts,
+            r_dn_carts,
+        )
     )
 
     # print(f"grad_jastrow_J3_up_jax = {grad_jastrow_J3_up_jax}")
@@ -573,7 +582,8 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
 
     np.testing.assert_almost_equal(grad_jastrow_J3_up_debug, grad_jastrow_J3_up_jax, decimal=4)
     np.testing.assert_almost_equal(grad_jastrow_J3_dn_debug, grad_jastrow_J3_dn_jax, decimal=4)
-    np.testing.assert_almost_equal(sum_laplacian_J3_debug, sum_laplacian_J3_jax, decimal=4)
+    np.testing.assert_almost_equal(lap_J3_up_debug, lap_J3_up_jax, decimal=4)
+    np.testing.assert_almost_equal(lap_J3_dn_debug, lap_J3_dn_jax, decimal=4)
 
     jax.clear_caches()
 
@@ -604,7 +614,8 @@ def test_numerical_and_auto_grads_Jastrow_twobody_part():
     (
         grad_J2_up_debug,
         grad_J2_dn_debug,
-        sum_laplacian_J2_debug,
+        lap_J2_up_debug,
+        lap_J2_dn_debug,
     ) = _compute_grads_and_laplacian_Jastrow_two_body_debug(
         jastrow_two_body_data,
         r_up_carts,
@@ -615,7 +626,7 @@ def test_numerical_and_auto_grads_Jastrow_twobody_part():
     # print(f"grad_J2_dn_debug = {grad_J2_dn_debug}")
     # print(f"sum_laplacian_J2_debug = {sum_laplacian_J2_debug}")
 
-    grad_J2_up_jax, grad_J2_dn_jax, sum_laplacian_J2_jax = _compute_grads_and_laplacian_Jastrow_two_body_auto(
+    grad_J2_up_jax, grad_J2_dn_jax, lap_J2_up_jax, lap_J2_dn_jax = _compute_grads_and_laplacian_Jastrow_two_body_auto(
         jastrow_two_body_data,
         r_up_carts,
         r_dn_carts,
@@ -627,7 +638,8 @@ def test_numerical_and_auto_grads_Jastrow_twobody_part():
 
     np.testing.assert_almost_equal(grad_J2_up_debug, grad_J2_up_jax, decimal=8)
     np.testing.assert_almost_equal(grad_J2_dn_debug, grad_J2_dn_jax, decimal=8)
-    np.testing.assert_almost_equal(sum_laplacian_J2_debug, sum_laplacian_J2_jax, decimal=4)
+    np.testing.assert_almost_equal(lap_J2_up_debug, lap_J2_up_jax, decimal=4)
+    np.testing.assert_almost_equal(lap_J2_dn_debug, lap_J2_dn_jax, decimal=4)
 
     jax.clear_caches()
 
@@ -674,13 +686,13 @@ def test_analytic_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
     j_matrix = np.random.rand(aos_data.num_ao, aos_data.num_ao + 1)
     jastrow_three_body_data = Jastrow_three_body_data(orb_data=aos_data, j_matrix=j_matrix)
 
-    grad_up_an, grad_dn_an, lap_an = compute_grads_and_laplacian_Jastrow_three_body(
+    grad_up_an, grad_dn_an, lap_up_an, lap_dn_an = compute_grads_and_laplacian_Jastrow_three_body(
         jastrow_three_body_data,
         r_up_carts,
         r_dn_carts,
     )
 
-    grad_up_auto, grad_dn_auto, lap_auto = _compute_grads_and_laplacian_Jastrow_three_body_auto(
+    grad_up_auto, grad_dn_auto, lap_up_auto, lap_dn_auto = _compute_grads_and_laplacian_Jastrow_three_body_auto(
         jastrow_three_body_data,
         r_up_carts,
         r_dn_carts,
@@ -688,7 +700,8 @@ def test_analytic_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
 
     np.testing.assert_almost_equal(np.asarray(grad_up_an), np.asarray(grad_up_auto), decimal=6)
     np.testing.assert_almost_equal(np.asarray(grad_dn_an), np.asarray(grad_dn_auto), decimal=6)
-    np.testing.assert_almost_equal(np.asarray(lap_an), np.asarray(lap_auto), decimal=6)
+    np.testing.assert_almost_equal(np.asarray(lap_up_an), np.asarray(lap_up_auto), decimal=6)
+    np.testing.assert_almost_equal(np.asarray(lap_dn_an), np.asarray(lap_dn_auto), decimal=6)
 
     jax.clear_caches()
 
@@ -738,13 +751,13 @@ def test_analytic_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
     j_matrix = np.random.rand(mos_data.num_mo, mos_data.num_mo + 1)
     jastrow_three_body_data = Jastrow_three_body_data(orb_data=mos_data, j_matrix=j_matrix)
 
-    grad_up_an, grad_dn_an, lap_an = compute_grads_and_laplacian_Jastrow_three_body(
+    grad_up_an, grad_dn_an, lap_up_an, lap_dn_an = compute_grads_and_laplacian_Jastrow_three_body(
         jastrow_three_body_data,
         r_up_carts,
         r_dn_carts,
     )
 
-    grad_up_auto, grad_dn_auto, lap_auto = _compute_grads_and_laplacian_Jastrow_three_body_auto(
+    grad_up_auto, grad_dn_auto, lap_up_auto, lap_dn_auto = _compute_grads_and_laplacian_Jastrow_three_body_auto(
         jastrow_three_body_data,
         r_up_carts,
         r_dn_carts,
@@ -752,7 +765,8 @@ def test_analytic_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
 
     np.testing.assert_almost_equal(np.asarray(grad_up_an), np.asarray(grad_up_auto), decimal=5)
     np.testing.assert_almost_equal(np.asarray(grad_dn_an), np.asarray(grad_dn_auto), decimal=5)
-    np.testing.assert_almost_equal(np.asarray(lap_an), np.asarray(lap_auto), decimal=5)
+    np.testing.assert_almost_equal(np.asarray(lap_up_an), np.asarray(lap_up_auto), decimal=5)
+    np.testing.assert_almost_equal(np.asarray(lap_dn_an), np.asarray(lap_dn_auto), decimal=5)
 
     jax.clear_caches()
 
@@ -769,13 +783,15 @@ def test_analytic_and_auto_grads_Jastrow_twobody_part():
 
     jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=1.0)
 
-    grad_J2_up_analytic, grad_J2_dn_analytic, sum_laplacian_J2_analytic = compute_grads_and_laplacian_Jastrow_two_body(
-        jastrow_two_body_data,
-        r_up_carts,
-        r_dn_carts,
+    grad_J2_up_analytic, grad_J2_dn_analytic, lap_J2_up_analytic, lap_J2_dn_analytic = (
+        compute_grads_and_laplacian_Jastrow_two_body(
+            jastrow_two_body_data,
+            r_up_carts,
+            r_dn_carts,
+        )
     )
 
-    grad_J2_up_auto, grad_J2_dn_auto, sum_laplacian_J2_auto = _compute_grads_and_laplacian_Jastrow_two_body_auto(
+    grad_J2_up_auto, grad_J2_dn_auto, lap_J2_up_auto, lap_J2_dn_auto = _compute_grads_and_laplacian_Jastrow_two_body_auto(
         jastrow_two_body_data,
         r_up_carts,
         r_dn_carts,
@@ -783,7 +799,8 @@ def test_analytic_and_auto_grads_Jastrow_twobody_part():
 
     np.testing.assert_almost_equal(np.asarray(grad_J2_up_analytic), np.asarray(grad_J2_up_auto), decimal=8)
     np.testing.assert_almost_equal(np.asarray(grad_J2_dn_analytic), np.asarray(grad_J2_dn_auto), decimal=8)
-    np.testing.assert_almost_equal(np.asarray(sum_laplacian_J2_analytic), np.asarray(sum_laplacian_J2_auto), decimal=8)
+    np.testing.assert_almost_equal(np.asarray(lap_J2_up_analytic), np.asarray(lap_J2_up_auto), decimal=8)
+    np.testing.assert_almost_equal(np.asarray(lap_J2_dn_analytic), np.asarray(lap_J2_dn_auto), decimal=8)
 
     jax.clear_caches()
 
@@ -862,13 +879,13 @@ def test_numerical_and_auto_grads_Jastrow_part():
     """Numerical vs auto-diff gradients/laplacian for J1+J2+J3."""
     jastrow_data, r_up_carts, r_dn_carts = _build_jastrow_data_for_part_tests(include_nn=False)
 
-    grad_up_num, grad_dn_num, lap_num = _compute_grads_and_laplacian_Jastrow_part_debug(
+    grad_up_num, grad_dn_num, lap_up_num, lap_dn_num = _compute_grads_and_laplacian_Jastrow_part_debug(
         jastrow_data,
         r_up_carts,
         r_dn_carts,
     )
 
-    grad_up_auto, grad_dn_auto, lap_auto = _compute_grads_and_laplacian_Jastrow_part_auto(
+    grad_up_auto, grad_dn_auto, lap_up_auto, lap_dn_auto = _compute_grads_and_laplacian_Jastrow_part_auto(
         jastrow_data,
         r_up_carts,
         r_dn_carts,
@@ -876,7 +893,8 @@ def test_numerical_and_auto_grads_Jastrow_part():
 
     np.testing.assert_almost_equal(np.asarray(grad_up_num), np.asarray(grad_up_auto), decimal=5)
     np.testing.assert_almost_equal(np.asarray(grad_dn_num), np.asarray(grad_dn_auto), decimal=5)
-    np.testing.assert_almost_equal(np.asarray(lap_num), np.asarray(lap_auto), decimal=3)
+    np.testing.assert_almost_equal(np.asarray(lap_up_num), np.asarray(lap_up_auto), decimal=3)
+    np.testing.assert_almost_equal(np.asarray(lap_dn_num), np.asarray(lap_dn_auto), decimal=3)
 
     jax.clear_caches()
 
@@ -885,13 +903,13 @@ def test_numerical_and_auto_grads_Jastrow_part_with_NN():
     """Numerical vs auto-diff gradients/laplacian for J1+J2+J3+JNN."""
     jastrow_data, r_up_carts, r_dn_carts = _build_jastrow_data_for_part_tests(include_nn=True)
 
-    grad_up_num, grad_dn_num, lap_num = _compute_grads_and_laplacian_Jastrow_part_debug(
+    grad_up_num, grad_dn_num, lap_up_num, lap_dn_num = _compute_grads_and_laplacian_Jastrow_part_debug(
         jastrow_data,
         r_up_carts,
         r_dn_carts,
     )
 
-    grad_up_auto, grad_dn_auto, lap_auto = _compute_grads_and_laplacian_Jastrow_part_auto(
+    grad_up_auto, grad_dn_auto, lap_up_auto, lap_dn_auto = _compute_grads_and_laplacian_Jastrow_part_auto(
         jastrow_data,
         r_up_carts,
         r_dn_carts,
@@ -899,7 +917,8 @@ def test_numerical_and_auto_grads_Jastrow_part_with_NN():
 
     np.testing.assert_almost_equal(np.asarray(grad_up_num), np.asarray(grad_up_auto), decimal=4)
     np.testing.assert_almost_equal(np.asarray(grad_dn_num), np.asarray(grad_dn_auto), decimal=4)
-    np.testing.assert_almost_equal(np.asarray(lap_num), np.asarray(lap_auto), decimal=2)
+    np.testing.assert_almost_equal(np.asarray(lap_up_num), np.asarray(lap_up_auto), decimal=3)
+    np.testing.assert_almost_equal(np.asarray(lap_dn_num), np.asarray(lap_dn_auto), decimal=3)
 
     jax.clear_caches()
 
@@ -908,13 +927,13 @@ def test_analytical_and_auto_grads_Jastrow_part():
     """Analytic vs auto-diff gradients/laplacian for J1+J2+J3."""
     jastrow_data, r_up_carts, r_dn_carts = _build_jastrow_data_for_part_tests(include_nn=False)
 
-    grad_up_an, grad_dn_an, lap_an = compute_grads_and_laplacian_Jastrow_part(
+    grad_up_an, grad_dn_an, lap_up_an, lap_dn_an = compute_grads_and_laplacian_Jastrow_part(
         jastrow_data,
         r_up_carts,
         r_dn_carts,
     )
 
-    grad_up_auto, grad_dn_auto, lap_auto = _compute_grads_and_laplacian_Jastrow_part_auto(
+    grad_up_auto, grad_dn_auto, lap_up_auto, lap_dn_auto = _compute_grads_and_laplacian_Jastrow_part_auto(
         jastrow_data,
         r_up_carts,
         r_dn_carts,
@@ -922,7 +941,8 @@ def test_analytical_and_auto_grads_Jastrow_part():
 
     np.testing.assert_almost_equal(np.asarray(grad_up_an), np.asarray(grad_up_auto), decimal=5)
     np.testing.assert_almost_equal(np.asarray(grad_dn_an), np.asarray(grad_dn_auto), decimal=5)
-    np.testing.assert_almost_equal(np.asarray(lap_an), np.asarray(lap_auto), decimal=5)
+    np.testing.assert_almost_equal(np.asarray(lap_up_an), np.asarray(lap_up_auto), decimal=5)
+    np.testing.assert_almost_equal(np.asarray(lap_dn_an), np.asarray(lap_dn_auto), decimal=5)
 
     jax.clear_caches()
 
@@ -931,13 +951,13 @@ def test_analytical_and_auto_grads_Jastrow_part_with_NN():
     """Analytic (J1+J2+J3) + auto (JNN) vs auto (full)."""
     jastrow_data, r_up_carts, r_dn_carts = _build_jastrow_data_for_part_tests(include_nn=True)
 
-    grad_up_an, grad_dn_an, lap_an = compute_grads_and_laplacian_Jastrow_part(
+    grad_up_an, grad_dn_an, lap_up_an, lap_dn_an = compute_grads_and_laplacian_Jastrow_part(
         jastrow_data,
         r_up_carts,
         r_dn_carts,
     )
 
-    grad_up_auto, grad_dn_auto, lap_auto = _compute_grads_and_laplacian_Jastrow_part_auto(
+    grad_up_auto, grad_dn_auto, lap_up_auto, lap_dn_auto = _compute_grads_and_laplacian_Jastrow_part_auto(
         jastrow_data,
         r_up_carts,
         r_dn_carts,
@@ -945,7 +965,8 @@ def test_analytical_and_auto_grads_Jastrow_part_with_NN():
 
     np.testing.assert_almost_equal(np.asarray(grad_up_an), np.asarray(grad_up_auto), decimal=5)
     np.testing.assert_almost_equal(np.asarray(grad_dn_an), np.asarray(grad_dn_auto), decimal=5)
-    np.testing.assert_almost_equal(np.asarray(lap_an), np.asarray(lap_auto), decimal=5)
+    np.testing.assert_almost_equal(np.asarray(lap_up_an), np.asarray(lap_up_auto), decimal=5)
+    np.testing.assert_almost_equal(np.asarray(lap_dn_an), np.asarray(lap_dn_auto), decimal=5)
 
     jax.clear_caches()
 

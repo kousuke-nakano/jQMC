@@ -13,7 +13,13 @@ import numpy as np
 
 from jqmc.jastrow_factor import Jastrow_data, Jastrow_NN_data, Jastrow_two_body_data
 from jqmc.trexio_wrapper import read_trexio_file
-from jqmc.wavefunction import Wavefunction_data, compute_kinetic_energy, compute_kinetic_energy_auto
+from jqmc.wavefunction import (
+    Wavefunction_data,
+    _compute_kinetic_energy_all_elements_auto,
+    _compute_kinetic_energy_auto,
+    compute_kinetic_energy,
+    compute_kinetic_energy_all_elements,
+)
 
 REPEATS = 3
 SEED = 0
@@ -64,7 +70,7 @@ out_analytic = compute_kinetic_energy(wavefunction_data, r_up_carts, r_dn_carts)
 for leaf in jax.tree_util.tree_leaves(out_analytic):
     leaf.block_until_ready()
 
-out_auto = compute_kinetic_energy_auto(wavefunction_data, r_up_carts, r_dn_carts)
+out_auto = _compute_kinetic_energy_auto(wavefunction_data, r_up_carts, r_dn_carts)
 for leaf in jax.tree_util.tree_leaves(out_auto):
     leaf.block_until_ready()
 
@@ -79,7 +85,7 @@ for _ in range(REPEATS):
 auto_times = []
 for _ in range(REPEATS):
     start = time.perf_counter()
-    out = compute_kinetic_energy_auto(wavefunction_data, r_up_carts, r_dn_carts)
+    out = _compute_kinetic_energy_auto(wavefunction_data, r_up_carts, r_dn_carts)
     for leaf in jax.tree_util.tree_leaves(out):
         leaf.block_until_ready()
     auto_times.append(time.perf_counter() - start)
@@ -88,6 +94,33 @@ print("Kinetic energy benchmark (seconds, mean over repeats):")
 print("  (no NN)")
 print(f"    analytic : {np.mean(analytic_times):.6f}")
 print(f"    autodiff : {np.mean(auto_times):.6f}")
+
+out_all_elements_analytic = compute_kinetic_energy_all_elements(wavefunction_data, r_up_carts, r_dn_carts)
+for leaf in jax.tree_util.tree_leaves(out_all_elements_analytic):
+    leaf.block_until_ready()
+
+out_all_elements_auto = _compute_kinetic_energy_all_elements_auto(wavefunction_data, r_up_carts, r_dn_carts)
+for leaf in jax.tree_util.tree_leaves(out_all_elements_auto):
+    leaf.block_until_ready()
+
+all_elements_analytic_times = []
+for _ in range(REPEATS):
+    start = time.perf_counter()
+    out = compute_kinetic_energy_all_elements(wavefunction_data, r_up_carts, r_dn_carts)
+    for leaf in jax.tree_util.tree_leaves(out):
+        leaf.block_until_ready()
+    all_elements_analytic_times.append(time.perf_counter() - start)
+
+all_elements_auto_times = []
+for _ in range(REPEATS):
+    start = time.perf_counter()
+    out = _compute_kinetic_energy_all_elements_auto(wavefunction_data, r_up_carts, r_dn_carts)
+    for leaf in jax.tree_util.tree_leaves(out):
+        leaf.block_until_ready()
+    all_elements_auto_times.append(time.perf_counter() - start)
+
+print("    all_elements analytic : {:.6f}".format(np.mean(all_elements_analytic_times)))
+print("    all_elements autodiff : {:.6f}".format(np.mean(all_elements_auto_times)))
 
 if BENCH_NN:
     jastrow_nn_data = Jastrow_NN_data.init_from_structure(
@@ -110,7 +143,7 @@ if BENCH_NN:
     for leaf in jax.tree_util.tree_leaves(out_analytic):
         leaf.block_until_ready()
 
-    out_auto = compute_kinetic_energy_auto(wavefunction_data_nn, r_up_carts, r_dn_carts)
+    out_auto = _compute_kinetic_energy_auto(wavefunction_data_nn, r_up_carts, r_dn_carts)
     for leaf in jax.tree_util.tree_leaves(out_auto):
         leaf.block_until_ready()
 
@@ -125,7 +158,7 @@ if BENCH_NN:
     auto_times = []
     for _ in range(REPEATS):
         start = time.perf_counter()
-        out = compute_kinetic_energy_auto(wavefunction_data_nn, r_up_carts, r_dn_carts)
+        out = _compute_kinetic_energy_auto(wavefunction_data_nn, r_up_carts, r_dn_carts)
         for leaf in jax.tree_util.tree_leaves(out):
             leaf.block_until_ready()
         auto_times.append(time.perf_counter() - start)
@@ -133,3 +166,30 @@ if BENCH_NN:
     print("  (with NN)")
     print(f"    analytic : {np.mean(analytic_times):.6f}")
     print(f"    autodiff : {np.mean(auto_times):.6f}")
+
+    out_all_elements_analytic = compute_kinetic_energy_all_elements(wavefunction_data_nn, r_up_carts, r_dn_carts)
+    for leaf in jax.tree_util.tree_leaves(out_all_elements_analytic):
+        leaf.block_until_ready()
+
+    out_all_elements_auto = _compute_kinetic_energy_all_elements_auto(wavefunction_data_nn, r_up_carts, r_dn_carts)
+    for leaf in jax.tree_util.tree_leaves(out_all_elements_auto):
+        leaf.block_until_ready()
+
+    all_elements_analytic_times = []
+    for _ in range(REPEATS):
+        start = time.perf_counter()
+        out = compute_kinetic_energy_all_elements(wavefunction_data_nn, r_up_carts, r_dn_carts)
+        for leaf in jax.tree_util.tree_leaves(out):
+            leaf.block_until_ready()
+        all_elements_analytic_times.append(time.perf_counter() - start)
+
+    all_elements_auto_times = []
+    for _ in range(REPEATS):
+        start = time.perf_counter()
+        out = _compute_kinetic_energy_all_elements_auto(wavefunction_data_nn, r_up_carts, r_dn_carts)
+        for leaf in jax.tree_util.tree_leaves(out):
+            leaf.block_until_ready()
+        all_elements_auto_times.append(time.perf_counter() - start)
+
+    print("    all_elements analytic : {:.6f}".format(np.mean(all_elements_analytic_times)))
+    print("    all_elements autodiff : {:.6f}".format(np.mean(all_elements_auto_times)))

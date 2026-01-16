@@ -534,13 +534,15 @@ def test_numerial_and_auto_grads_and_laplacians_ln_Det():
     geminal_ao_data = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_data)
     geminal_ao_data.sanity_check()
 
-    grad_ln_D_up_numerical, grad_ln_D_dn_numerical, sum_laplacian_ln_D_numerical = _compute_grads_and_laplacian_ln_Det_debug(
-        geminal_data=geminal_ao_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
+    grad_ln_D_up_numerical, grad_ln_D_dn_numerical, lap_ln_D_up_numerical, lap_ln_D_dn_numerical = (
+        _compute_grads_and_laplacian_ln_Det_debug(
+            geminal_data=geminal_ao_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+        )
     )
 
-    grad_ln_D_up_auto, grad_ln_D_dn_auto, sum_laplacian_ln_D_auto = _compute_grads_and_laplacian_ln_Det_auto(
+    grad_ln_D_up_auto, grad_ln_D_dn_auto, lap_ln_D_up_auto, lap_ln_D_dn_auto = _compute_grads_and_laplacian_ln_Det_auto(
         geminal_data=geminal_ao_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -548,11 +550,8 @@ def test_numerial_and_auto_grads_and_laplacians_ln_Det():
 
     np.testing.assert_almost_equal(np.array(grad_ln_D_up_numerical), np.array(grad_ln_D_up_auto), decimal=5)
     np.testing.assert_almost_equal(np.array(grad_ln_D_dn_numerical), np.array(grad_ln_D_dn_auto), decimal=5)
-    np.testing.assert_almost_equal(
-        sum_laplacian_ln_D_numerical,
-        sum_laplacian_ln_D_auto,
-        decimal=1,
-    )
+    np.testing.assert_almost_equal(np.array(lap_ln_D_up_numerical), np.array(lap_ln_D_up_auto), decimal=5)
+    np.testing.assert_almost_equal(np.array(lap_ln_D_dn_numerical), np.array(lap_ln_D_dn_auto), decimal=5)
 
     jax.clear_caches()
 
@@ -640,13 +639,15 @@ def test_analytic_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
     geminal_ao_data = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_data)
     geminal_ao_data.sanity_check()
 
-    grad_ln_D_up_analytic, grad_ln_D_dn_analytic, sum_laplacian_ln_D_analytic = compute_grads_and_laplacian_ln_Det(
-        geminal_data=geminal_ao_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
+    grad_ln_D_up_analytic, grad_ln_D_dn_analytic, lap_ln_D_up_analytic, lap_ln_D_dn_analytic = (
+        compute_grads_and_laplacian_ln_Det(
+            geminal_data=geminal_ao_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+        )
     )
 
-    grad_ln_D_up_auto, grad_ln_D_dn_auto, sum_laplacian_ln_D_auto = _compute_grads_and_laplacian_ln_Det_auto(
+    grad_ln_D_up_auto, grad_ln_D_dn_auto, lap_ln_D_up_auto, lap_ln_D_dn_auto = _compute_grads_and_laplacian_ln_Det_auto(
         geminal_data=geminal_ao_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -654,11 +655,8 @@ def test_analytic_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
 
     np.testing.assert_almost_equal(np.array(grad_ln_D_up_analytic), np.array(grad_ln_D_up_auto), decimal=4)
     np.testing.assert_almost_equal(np.array(grad_ln_D_dn_analytic), np.array(grad_ln_D_dn_auto), decimal=4)
-    np.testing.assert_almost_equal(
-        sum_laplacian_ln_D_analytic,
-        sum_laplacian_ln_D_auto,
-        decimal=1,
-    )
+    np.testing.assert_almost_equal(np.array(lap_ln_D_up_analytic), np.array(lap_ln_D_up_auto), decimal=1)
+    np.testing.assert_almost_equal(np.array(lap_ln_D_dn_analytic), np.array(lap_ln_D_dn_auto), decimal=1)
 
     jax.clear_caches()
 

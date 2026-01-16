@@ -53,8 +53,8 @@ from .coulomb_potential import Coulomb_potential_data, compute_coulomb_potential
 from .structure import Structure_data
 from .wavefunction import (
     Wavefunction_data,
+    _compute_kinetic_energy_auto,
     compute_kinetic_energy,
-    compute_kinetic_energy_auto,
 )
 
 T = TypeVar("T")
@@ -242,7 +242,7 @@ def _compute_local_energy_auto(
     Returns:
         float: The value of local energy (e_L) with the given wavefunction (float)
     """
-    T = compute_kinetic_energy_auto(
+    T = _compute_kinetic_energy_auto(
         wavefunction_data=hamiltonian_data.wavefunction_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,

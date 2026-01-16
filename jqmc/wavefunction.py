@@ -553,7 +553,7 @@ def compute_kinetic_energy(
     """
     # grad_J_up, grad_J_dn, sum_laplacian_J = 0.0, 0.0, 0.0
     # """
-    grad_J_up, grad_J_dn, sum_laplacian_J = compute_grads_and_laplacian_Jastrow_part(
+    grad_J_up, grad_J_dn, lap_J_up, lap_J_dn = compute_grads_and_laplacian_Jastrow_part(
         jastrow_data=wavefunction_data.jastrow_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -562,7 +562,7 @@ def compute_kinetic_energy(
 
     # grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = 0.0, 0.0, 0.0
     # """
-    grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = compute_grads_and_laplacian_ln_Det(
+    grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn = compute_grads_and_laplacian_ln_Det(
         geminal_data=wavefunction_data.geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -574,7 +574,7 @@ def compute_kinetic_energy(
         1.0
         / 2.0
         * (
-            -(sum_laplacian_J + sum_laplacian_ln_D)
+            -(jnp.sum(lap_J_up) + jnp.sum(lap_J_dn) + jnp.sum(lap_ln_D_up) + jnp.sum(lap_ln_D_dn))
             - (
                 jnp.sum((grad_J_up + grad_ln_D_up) * (grad_J_up + grad_ln_D_up))
                 + jnp.sum((grad_J_dn + grad_ln_D_dn) * (grad_J_dn + grad_ln_D_dn))
@@ -586,7 +586,7 @@ def compute_kinetic_energy(
 
 
 @jit
-def compute_kinetic_energy_auto(
+def _compute_kinetic_energy_auto(
     wavefunction_data: Wavefunction_data,
     r_up_carts: jnpt.ArrayLike,
     r_dn_carts: jnpt.ArrayLike,
@@ -603,7 +603,7 @@ def compute_kinetic_energy_auto(
     Returns:
         The kinetic energy with the given wavefunction (float | complex)
     """
-    kinetic_energy_all_elements_up, kinetic_energy_all_elements_dn = compute_kinetic_energy_all_elements_auto(
+    kinetic_energy_all_elements_up, kinetic_energy_all_elements_dn = _compute_kinetic_energy_all_elements_auto(
         wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
@@ -671,7 +671,7 @@ def _compute_kinetic_energy_all_elements_debug(
 
 
 @jit
-def compute_kinetic_energy_all_elements_auto(
+def _compute_kinetic_energy_all_elements_auto(
     wavefunction_data: Wavefunction_data,
     r_up_carts: jnpt.ArrayLike,
     r_dn_carts: jnpt.ArrayLike,
@@ -710,6 +710,43 @@ def compute_kinetic_energy_all_elements_auto(
 
     kinetic_energy_all_elements_up = -1.0 / 2.0 * (laplacian_Psi_up + jnp.sum(grad_ln_Psi_up**2, axis=1))
     kinetic_energy_all_elements_dn = -1.0 / 2.0 * (laplacian_Psi_dn + jnp.sum(grad_ln_Psi_dn**2, axis=1))
+
+    return (kinetic_energy_all_elements_up, kinetic_energy_all_elements_dn)
+
+
+@jit
+def compute_kinetic_energy_all_elements(
+    wavefunction_data: Wavefunction_data,
+    r_up_carts: jnpt.ArrayLike,
+    r_dn_carts: jnpt.ArrayLike,
+) -> jax.Array:
+    """Analytic-derivative kinetic energy per electron (matches auto output shape)."""
+    r_up = jnp.asarray(r_up_carts)
+    r_dn = jnp.asarray(r_dn_carts)
+
+    # --- Jastrow contributions (per-electron Laplacians) ---
+    grad_J_up, grad_J_dn, lap_J_up, lap_J_dn = compute_grads_and_laplacian_Jastrow_part(
+        jastrow_data=wavefunction_data.jastrow_data,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
+    )
+
+    # --- Determinant contributions (per-electron Laplacians) ---
+    grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn = compute_grads_and_laplacian_ln_Det(
+        geminal_data=wavefunction_data.geminal_data,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
+    )
+
+    # --- Assemble kinetic energy per electron ---
+    grad_ln_Psi_up = grad_J_up + grad_ln_D_up
+    grad_ln_Psi_dn = grad_J_dn + grad_ln_D_dn
+
+    lap_ln_Psi_up = lap_J_up + lap_ln_D_up
+    lap_ln_Psi_dn = lap_J_dn + lap_ln_D_dn
+
+    kinetic_energy_all_elements_up = -0.5 * (lap_ln_Psi_up + jnp.sum(grad_ln_Psi_up**2, axis=1))
+    kinetic_energy_all_elements_dn = -0.5 * (lap_ln_Psi_dn + jnp.sum(grad_ln_Psi_dn**2, axis=1))
 
     return (kinetic_energy_all_elements_up, kinetic_energy_all_elements_dn)
 
