@@ -50,6 +50,7 @@ from jqmc.determinant import (  # noqa: E402
     _compute_det_geminal_all_elements_debug,
     _compute_geminal_all_elements,
     _compute_geminal_all_elements_debug,
+    _compute_grads_and_laplacian_ln_Det_auto,
     _compute_grads_and_laplacian_ln_Det_debug,
     compute_AS_regularization_factor,
     compute_det_geminal_all_elements,
@@ -434,7 +435,7 @@ def test_one_row_or_one_column_update():
     )
 
 
-def test_numerial_and_auto_grads_ln_Det():
+def test_numerial_and_auto_grads_and_laplacians_ln_Det():
     """Test the numerical and automatic gradients of the logarithm of the determinant of the geminal wave function."""
     (
         structure_data,
@@ -444,7 +445,8 @@ def test_numerial_and_auto_grads_ln_Det():
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"),
+        store_tuple=True,
     )
 
     geminal_mo_data.sanity_check()
@@ -538,7 +540,7 @@ def test_numerial_and_auto_grads_ln_Det():
         r_dn_carts=r_dn_carts,
     )
 
-    grad_ln_D_up_auto, grad_ln_D_dn_auto, sum_laplacian_ln_D_auto = compute_grads_and_laplacian_ln_Det(
+    grad_ln_D_up_auto, grad_ln_D_dn_auto, sum_laplacian_ln_D_auto = _compute_grads_and_laplacian_ln_Det_auto(
         geminal_data=geminal_ao_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -546,7 +548,117 @@ def test_numerial_and_auto_grads_ln_Det():
 
     np.testing.assert_almost_equal(np.array(grad_ln_D_up_numerical), np.array(grad_ln_D_up_auto), decimal=5)
     np.testing.assert_almost_equal(np.array(grad_ln_D_dn_numerical), np.array(grad_ln_D_dn_auto), decimal=5)
-    np.testing.assert_almost_equal(sum_laplacian_ln_D_numerical, sum_laplacian_ln_D_auto, decimal=1)
+    np.testing.assert_almost_equal(
+        sum_laplacian_ln_D_numerical,
+        sum_laplacian_ln_D_auto,
+        decimal=1,
+    )
+
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize(
+    "trexio_file",
+    ["H2_ae_ccpvqz.h5", "H2_ae_ccpvtz_cart.h5", "H2_ecp_ccpvtz.h5", "H2_ecp_ccpvtz_cart.h5", "water_ccecp_ccpvqz.h5"],
+)
+def test_analytic_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
+    """Test the analytic and automatic gradients of the logarithm of the determinant of the geminal wave function."""
+    (
+        structure_data,
+        aos_data,
+        mos_data_up,
+        mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+
+    geminal_mo_data.sanity_check()
+
+    num_electron_up = geminal_mo_data.num_electron_up
+    num_electron_dn = geminal_mo_data.num_electron_dn
+
+    # Initialization
+    r_up_carts = []
+    r_dn_carts = []
+
+    total_electrons = 0
+
+    if coulomb_potential_data.ecp_flag:
+        charges = np.array(structure_data.atomic_numbers) - np.array(coulomb_potential_data.z_cores)
+    else:
+        charges = np.array(structure_data.atomic_numbers)
+
+    coords = structure_data.positions_cart_np
+
+    # Place electrons around each nucleus
+    for i in range(len(coords)):
+        charge = charges[i]
+        num_electrons = int(np.round(charge))  # Number of electrons to place based on the charge
+
+        # Retrieve the position coordinates
+        x, y, z = coords[i]
+
+        # Place electrons
+        for _ in range(num_electrons):
+            # Calculate distance range
+            distance = np.random.uniform(0.5 / charge, 1.5 / charge)
+            theta = np.random.uniform(0, np.pi)
+            phi = np.random.uniform(0, 2 * np.pi)
+
+            # Convert spherical to Cartesian coordinates
+            dx = distance * np.sin(theta) * np.cos(phi)
+            dy = distance * np.sin(theta) * np.sin(phi)
+            dz = distance * np.cos(theta)
+
+            # Position of the electron
+            electron_position = np.array([x + dx, y + dy, z + dz])
+
+            # Assign spin
+            if len(r_up_carts) < num_electron_up:
+                r_up_carts.append(electron_position)
+            else:
+                r_dn_carts.append(electron_position)
+
+        total_electrons += num_electrons
+
+    # Handle surplus electrons
+    remaining_up = num_electron_up - len(r_up_carts)
+    remaining_dn = num_electron_dn - len(r_dn_carts)
+
+    # Randomly place any remaining electrons
+    for _ in range(remaining_up):
+        r_up_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
+    for _ in range(remaining_dn):
+        r_dn_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
+
+    r_up_carts = np.array(r_up_carts)
+    r_dn_carts = np.array(r_dn_carts)
+
+    geminal_ao_data = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_data)
+    geminal_ao_data.sanity_check()
+
+    grad_ln_D_up_analytic, grad_ln_D_dn_analytic, sum_laplacian_ln_D_analytic = compute_grads_and_laplacian_ln_Det(
+        geminal_data=geminal_ao_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    grad_ln_D_up_auto, grad_ln_D_dn_auto, sum_laplacian_ln_D_auto = _compute_grads_and_laplacian_ln_Det_auto(
+        geminal_data=geminal_ao_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    np.testing.assert_almost_equal(np.array(grad_ln_D_up_analytic), np.array(grad_ln_D_up_auto), decimal=4)
+    np.testing.assert_almost_equal(np.array(grad_ln_D_dn_analytic), np.array(grad_ln_D_dn_auto), decimal=4)
+    np.testing.assert_almost_equal(
+        sum_laplacian_ln_D_analytic,
+        sum_laplacian_ln_D_auto,
+        decimal=3,
+    )
 
     jax.clear_caches()
 

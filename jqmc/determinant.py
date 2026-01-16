@@ -53,11 +53,11 @@ from jax import typing as jnpt
 from .atomic_orbital import (
     AOs_cart_data,
     AOs_sphe_data,
-    _compute_AOs_grad_autodiff,
-    _compute_AOs_laplacian_autodiff,
     compute_AOs,
+    compute_AOs_grad,
+    compute_AOs_laplacian,
 )
-from .molecular_orbital import MOs_data, _compute_MOs_laplacian_autodiff, compute_MOs, compute_MOs_grad
+from .molecular_orbital import MOs_data, compute_MOs, compute_MOs_grad, compute_MOs_laplacian
 
 if TYPE_CHECKING:  # pragma: no cover - typing-only import to avoid circular dependency
     from .wavefunction import VariationalParameterBlock
@@ -310,9 +310,9 @@ class Geminal_data:
                 neither AOs_data/AOs_data nor MOs_data/MOs_data.
         """
         if isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data):
-            return _compute_AOs_grad_autodiff
+            return compute_AOs_grad
         elif isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data):
-            return _compute_AOs_grad_autodiff
+            return compute_AOs_grad
         elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
             return compute_MOs_grad
         else:
@@ -335,11 +335,11 @@ class Geminal_data:
                 neither AOs_data/AOs_data nor MOs_data/MOs_data.
         """
         if isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data):
-            return _compute_AOs_laplacian_autodiff
+            return compute_AOs_laplacian
         elif isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data):
-            return _compute_AOs_laplacian_autodiff
+            return compute_AOs_laplacian
         elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
-            return _compute_MOs_laplacian_autodiff
+            return compute_MOs_laplacian
         else:
             raise NotImplementedError
 
@@ -989,7 +989,13 @@ def compute_grads_and_laplacian_ln_Det(
     )
     geminal_laplacian_dn = jnp.hstack([geminal_laplacian_dn_paired, geminal_laplacian_dn_unpaired])
 
-    geminal_inverse = jnp.linalg.inv(geminal)
+    # Use LU decomposition to build a numerically stable inverse of geminal
+    # G = P @ L @ U => G^{-1} = U^{-1} @ L^{-1} @ P^T
+    P, L, U = jsp_linalg.lu(geminal)
+    n = geminal.shape[0]
+    I = jnp.eye(n, dtype=geminal.dtype)
+    Y = jsp_linalg.solve_triangular(L, jnp.dot(P.T, I), lower=True)
+    geminal_inverse = jsp_linalg.solve_triangular(U, Y, lower=False)
 
     grad_ln_D_up_x = jnp.diag(jnp.dot(geminal_grad_up_x, geminal_inverse))
     grad_ln_D_up_y = jnp.diag(jnp.dot(geminal_grad_up_y, geminal_inverse))
@@ -1014,6 +1020,42 @@ def compute_grads_and_laplacian_ln_Det(
         + (jnp.trace(jnp.dot(geminal_laplacian_up, geminal_inverse)))
         + (jnp.trace(jnp.dot(geminal_inverse, geminal_laplacian_dn)))
     )
+
+    return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D
+
+
+@jit
+def _compute_grads_and_laplacian_ln_Det_auto(
+    geminal_data: Geminal_data,
+    r_up_carts: npt.NDArray[np.float64],
+    r_dn_carts: npt.NDArray[np.float64],
+) -> tuple[
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    float,
+]:
+    """Auto-diff version of grads and laplacian of ln Det.
+
+    Uses autodiff on ln|det(G)| to compute gradients w.r.t. electron positions
+    and the sum of laplacians.
+    """
+
+    def ln_det_fn(r_up, r_dn):
+        return compute_ln_det_geminal_all_elements(geminal_data, r_up, r_dn)
+
+    grad_ln_D_up = jax.grad(ln_det_fn, argnums=0)(r_up_carts, r_dn_carts)
+    grad_ln_D_dn = jax.grad(ln_det_fn, argnums=1)(r_up_carts, r_dn_carts)
+
+    def grad_up_fn(r_up):
+        return jax.grad(ln_det_fn, argnums=0)(r_up, r_dn_carts)
+
+    def grad_dn_fn(r_dn):
+        return jax.grad(ln_det_fn, argnums=1)(r_up_carts, r_dn)
+
+    jac_up = jax.jacfwd(grad_up_fn)(r_up_carts)
+    jac_dn = jax.jacfwd(grad_dn_fn)(r_dn_carts)
+
+    sum_laplacian_ln_D = jnp.einsum("ijij->", jac_up) + jnp.einsum("ijij->", jac_dn)
 
     return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D
 

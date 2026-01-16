@@ -63,7 +63,7 @@ from .determinant import (
 from .diff_mask import DiffMask, apply_diff_mask
 from .hamiltonians import (
     Hamiltonian_data,
-    compute_local_energy_auto,
+    _compute_local_energy_auto,
 )
 from .jastrow_factor import compute_Jastrow_part
 from .jqmc_utility import generate_init_electron_configurations
@@ -924,7 +924,7 @@ class MCMC:
                 geminal_inv,
                 geminal,
             )
-        _ = vmap(compute_local_energy_auto, in_axes=(None, 0, 0, 0))(
+        _ = vmap(_compute_local_energy_auto, in_axes=(None, 0, 0, 0))(
             self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs
         )
         _ = vmap(compute_AS_regularization_factor, in_axes=(None, 0, 0))(
@@ -933,7 +933,7 @@ class MCMC:
             self.__latest_r_dn_carts,
         )
         if self.__comput_position_deriv:
-            _, _, _ = vmap(grad(compute_local_energy_auto, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0))(
+            _, _, _ = vmap(grad(_compute_local_energy_auto, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0))(
                 hamiltonian_for_param_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
@@ -1069,7 +1069,7 @@ class MCMC:
 
             # evaluate observables
             start = time.perf_counter()
-            e_L = vmap(compute_local_energy_auto, in_axes=(None, 0, 0, 0))(
+            e_L = vmap(_compute_local_energy_auto, in_axes=(None, 0, 0, 0))(
                 self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs
             )
             e_L.block_until_ready()
@@ -1126,7 +1126,7 @@ class MCMC:
                 # """
                 start = time.perf_counter()
                 grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = vmap(
-                    grad(compute_local_energy_auto, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0)
+                    grad(_compute_local_energy_auto, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0)
                 )(
                     hamiltonian_for_param_grads,
                     self.__latest_r_up_carts,
@@ -3140,7 +3140,7 @@ class MCMC_debug:
             RTs = jnp.array(RTs)
 
             # evaluate observables
-            e_L = vmap(compute_local_energy_auto, in_axes=(None, 0, 0, 0))(
+            e_L = vmap(_compute_local_energy_auto, in_axes=(None, 0, 0, 0))(
                 self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs
             )
             self.__stored_e_L.append(e_L)
@@ -3159,7 +3159,7 @@ class MCMC_debug:
 
             if self.__comput_position_deriv:
                 grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = vmap(
-                    grad(compute_local_energy_auto, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0)
+                    grad(_compute_local_energy_auto, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0)
                 )(hamiltonian_for_param_grads, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs)
 
                 self.__stored_grad_e_L_r_up.append(grad_e_L_r_up)

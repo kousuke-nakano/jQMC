@@ -55,7 +55,7 @@ from .determinant import (
 from .diff_mask import DiffMask, apply_diff_mask
 from .jastrow_factor import (
     Jastrow_data,
-    _compute_grads_and_laplacian_Jastrow_part_auto,
+    compute_grads_and_laplacian_Jastrow_part,
     compute_Jastrow_part,
     compute_ratio_Jastrow_part,
 )
@@ -536,22 +536,24 @@ def evaluate_determinant(
 @jit
 def compute_kinetic_energy(
     wavefunction_data: Wavefunction_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    r_up_carts: jnpt.ArrayLike,
+    r_dn_carts: jnpt.ArrayLike,
 ) -> float | complex:
     """The method is for computing kinetic energy of the given WF at (r_up_carts, r_dn_carts).
 
+    Fully exploit the JAX library for the kinetic energy calculation.
+
     Args:
         wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
-        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
+        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
     Returns:
         The kinetic energy with the given wavefunction (float | complex)
     """
     # grad_J_up, grad_J_dn, sum_laplacian_J = 0.0, 0.0, 0.0
     # """
-    grad_J_up, grad_J_dn, sum_laplacian_J = _compute_grads_and_laplacian_Jastrow_part_auto(
+    grad_J_up, grad_J_dn, sum_laplacian_J = compute_grads_and_laplacian_Jastrow_part(
         jastrow_data=wavefunction_data.jastrow_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -1107,7 +1109,7 @@ def compute_quantum_force(
     return 2.0 * grad_ln_WF_up, 2.0 * grad_ln_WF_dn
 
 
-'''
+"""
 if __name__ == "__main__":
     log = getLogger("jqmc")
     log.setLevel("DEBUG")
@@ -1116,69 +1118,4 @@ if __name__ == "__main__":
     handler_format = Formatter("%(name)s - %(levelname)s - %(lineno)d - %(message)s")
     stream_handler.setFormatter(handler_format)
     log.addHandler(stream_handler)
-
-    """
-    # test jax grad
-    grad_ln_Psi_h = grad(evaluate_ln_wavefunction_api, argnums=(0))(
-        hamiltonian_data.wavefunction_data,
-        r_up_carts,
-        r_dn_carts,
-    )
-
-    grad_ln_Psi_jastrow2b_param_jax = grad_ln_Psi_h.jastrow_data.jastrow_two_body_data.jastrow_2b_param
-
-    d_jastrow2b_param = 1.0e-5
-
-    # WF data
-    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0 + d_jastrow2b_param)
-
-    # define data
-    jastrow_data = Jastrow_data(
-        jastrow_two_body_data=jastrow_twobody_data,
-        jastrow_two_body_pade_flag=True,
-        jastrow_three_body_data=None,
-        jastrow_three_body_flag=False,
-    )
-
-    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
-
-    hamiltonian_data = Hamiltonian_data(
-        structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
-    )
-
-    ln_Psi_h_p = evaluate_ln_wavefunction_api(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
-
-    # WF data
-    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0 - d_jastrow2b_param)
-
-    # define data
-    jastrow_data = Jastrow_data(
-        jastrow_two_body_data=jastrow_twobody_data,
-        jastrow_two_body_pade_flag=True,
-        jastrow_three_body_data=None,
-        jastrow_three_body_flag=False,
-    )
-
-    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
-
-    hamiltonian_data = Hamiltonian_data(
-        structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
-    )
-
-    ln_Psi_h_m = evaluate_ln_wavefunction_api(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
-
-    grad_ln_Psi_jastrow2b_param_fdm = (ln_Psi_h_p - ln_Psi_h_m) / (2.0 * d_jastrow2b_param)
-
-    np.testing.assert_almost_equal(grad_ln_Psi_jastrow2b_param_fdm, grad_ln_Psi_jastrow2b_param_jax, decimal=6)
-
-    hamiltonian_data = Hamiltonian_data(
-        structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
-    )
-
-    ln_Psi_h_m = evaluate_ln_wavefunction_api(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
-
-    grad_ln_Psi_jastrow2b_param_fdm = (ln_Psi_h_p - ln_Psi_h_m) / (2.0 * d_jastrow2b_param)
-
-    np.testing.assert_almost_equal(grad_ln_Psi_jastrow2b_param_fdm, grad_ln_Psi_jastrow2b_param_jax, decimal=6)
-    """
-'''
+"""

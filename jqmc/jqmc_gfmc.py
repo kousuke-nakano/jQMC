@@ -60,9 +60,7 @@ from .coulomb_potential import (
 from .diff_mask import DiffMask, apply_diff_mask
 from .hamiltonians import (
     Hamiltonian_data,
-    # Hamiltonian_data_deriv_R,
-    # compute_kinetic_energy_jax,
-    compute_local_energy_auto,
+    compute_local_energy,
 )
 from .jastrow_factor import (
     compute_Jastrow_part,
@@ -5158,7 +5156,7 @@ class GFMC_fixed_num_projection_debug:
             e_L_list = V_diag_list + V_nondiag_list
 
             if self.__non_local_move == "tmove":
-                e_list_debug = vmap(compute_local_energy_auto, in_axes=(None, 0, 0, 0))(
+                e_list_debug = vmap(compute_local_energy, in_axes=(None, 0, 0, 0))(
                     self.__hamiltonian_data,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,

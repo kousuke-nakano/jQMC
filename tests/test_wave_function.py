@@ -56,6 +56,7 @@ from jqmc.wavefunction import (  # noqa: E402
     compute_discretized_kinetic_energy_fast_update,
     compute_kinetic_energy,
     compute_kinetic_energy_all_elements_auto,
+    compute_kinetic_energy_auto,
 )
 
 # JAX float64
@@ -98,6 +99,44 @@ def test_debug_and_jax_kinetic_energy():
     K_jax = compute_kinetic_energy(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
 
     np.testing.assert_almost_equal(K_debug, K_jax, decimal=3)
+
+
+def test_kinetic_energy_analytic_and_auto_consistency():
+    """Compare analytic and autodiff kinetic energy implementations."""
+    (
+        _,
+        _,
+        _,
+        _,
+        geminal_mo_data,
+        _,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+    )
+
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=None,
+        jastrow_two_body_data=jastrow_twobody_data,
+        jastrow_three_body_data=None,
+    )
+
+    wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
+
+    num_ele_up = geminal_mo_data.num_electron_up
+    num_ele_dn = geminal_mo_data.num_electron_dn
+    r_cart_min, r_cart_max = -5.0, +5.0
+    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
+    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
+
+    K_analytic = compute_kinetic_energy(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+    K_auto = compute_kinetic_energy_auto(
+        wavefunction_data=wavefunction_data,
+        r_up_carts=jnp.asarray(r_up_carts),
+        r_dn_carts=jnp.asarray(r_dn_carts),
+    )
+
+    np.testing.assert_almost_equal(K_analytic, K_auto, decimal=5)
 
 
 def test_debug_and_jax_kinetic_energy_all_elements():
