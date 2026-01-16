@@ -46,17 +46,17 @@ if project_root not in sys.path:
 
 from jqmc.determinant import (  # noqa: E402
     Geminal_data,
-    _compute_geminal_all_elements_jax,
-    compute_AS_regularization_factor_debug,
-    compute_AS_regularization_factor_jax,
-    compute_det_geminal_all_elements_debug,
-    compute_det_geminal_all_elements_jax,
-    compute_geminal_all_elements_debug,
-    compute_geminal_all_elements_jax,
-    compute_geminal_dn_one_column_elements_jax,
-    compute_geminal_up_one_row_elements_jax,
+    _compute_AS_regularization_factor_debug,
+    _compute_det_geminal_all_elements_debug,
+    _compute_geminal_all_elements,
+    _compute_geminal_all_elements_debug,
+    _compute_grads_and_laplacian_ln_Det_debug,
+    compute_AS_regularization_factor,
+    compute_det_geminal_all_elements,
+    compute_geminal_all_elements,
+    compute_geminal_dn_one_column_elements,
+    compute_geminal_up_one_row_elements,
     compute_grads_and_laplacian_ln_Det,
-    compute_grads_and_laplacian_ln_Det_debug,
 )
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 
@@ -141,13 +141,13 @@ def test_comparing_AO_and_MO_geminals():
     r_up_carts = np.array(r_up_carts)
     r_dn_carts = np.array(r_dn_carts)
 
-    geminal_mo_debug = compute_geminal_all_elements_debug(
+    geminal_mo_debug = _compute_geminal_all_elements_debug(
         geminal_data=geminal_mo_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
 
-    geminal_mo_jax = _compute_geminal_all_elements_jax(
+    geminal_mo_jax = _compute_geminal_all_elements(
         geminal_data=geminal_mo_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -180,13 +180,13 @@ def test_comparing_AO_and_MO_geminals():
     geminal_ao_data = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_data)
     geminal_ao_data.sanity_check()
 
-    geminal_ao_debug = compute_geminal_all_elements_debug(
+    geminal_ao_debug = _compute_geminal_all_elements_debug(
         geminal_data=geminal_ao_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
 
-    geminal_ao_jax = compute_geminal_all_elements_debug(
+    geminal_ao_jax = _compute_geminal_all_elements_debug(
         geminal_data=geminal_ao_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -199,13 +199,13 @@ def test_comparing_AO_and_MO_geminals():
     # check if geminals with AO and MO representations are consistent
     np.testing.assert_array_almost_equal(geminal_ao, geminal_mo, decimal=15)
 
-    det_geminal_mo_debug = compute_det_geminal_all_elements_debug(
+    det_geminal_mo_debug = _compute_det_geminal_all_elements_debug(
         geminal_data=geminal_mo_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
 
-    det_geminal_mo_jax = compute_det_geminal_all_elements_jax(
+    det_geminal_mo_jax = compute_det_geminal_all_elements(
         geminal_data=geminal_mo_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -214,13 +214,13 @@ def test_comparing_AO_and_MO_geminals():
     np.testing.assert_array_almost_equal(det_geminal_mo_debug, det_geminal_mo_jax, decimal=15)
     det_geminal_mo = det_geminal_mo_jax
 
-    det_geminal_ao_debug = compute_det_geminal_all_elements_debug(
+    det_geminal_ao_debug = _compute_det_geminal_all_elements_debug(
         geminal_data=geminal_ao_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
 
-    det_geminal_ao_jax = compute_det_geminal_all_elements_jax(
+    det_geminal_ao_jax = compute_det_geminal_all_elements(
         geminal_data=geminal_ao_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -310,11 +310,11 @@ def test_comparing_AS_regularization():
     r_up_carts = np.array(r_up_carts)
     r_dn_carts = np.array(r_dn_carts)
 
-    R_AS_debug = compute_AS_regularization_factor_debug(
+    R_AS_debug = _compute_AS_regularization_factor_debug(
         geminal_data=geminal_mo_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
-    R_AS_jax = compute_AS_regularization_factor_jax(geminal_data=geminal_mo_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+    R_AS_jax = compute_AS_regularization_factor(geminal_data=geminal_mo_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
 
     np.testing.assert_almost_equal(R_AS_debug, R_AS_jax, decimal=8)
 
@@ -398,7 +398,7 @@ def test_one_row_or_one_column_update():
     r_up_carts = np.array(r_up_carts)
     r_dn_carts = np.array(r_dn_carts)
 
-    geminal_mo = compute_geminal_all_elements_jax(
+    geminal_mo = compute_geminal_all_elements(
         geminal_data=geminal_mo_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -409,14 +409,14 @@ def test_one_row_or_one_column_update():
     j_dn = 0
 
     # Compute the single "up row" against all dn electrons
-    geminal_mo_up_one_row = compute_geminal_up_one_row_elements_jax(
+    geminal_mo_up_one_row = compute_geminal_up_one_row_elements(
         geminal_data=geminal_mo_data,
         r_up_cart=np.reshape(r_up_carts[i_up], (1, 3)),  # enforce (1,3) for single point
         r_dn_carts=r_dn_carts,
     )
 
     # Compute the single "dn column" against all up electrons
-    geminal_mo_dn_one_column = compute_geminal_dn_one_column_elements_jax(
+    geminal_mo_dn_one_column = compute_geminal_dn_one_column_elements(
         geminal_data=geminal_mo_data,
         r_up_carts=r_up_carts,
         r_dn_cart=np.reshape(r_dn_carts[j_dn], (1, 3)),  # enforce (1,3) for single point
@@ -532,7 +532,7 @@ def test_numerial_and_auto_grads_ln_Det():
     geminal_ao_data = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_data)
     geminal_ao_data.sanity_check()
 
-    grad_ln_D_up_numerical, grad_ln_D_dn_numerical, sum_laplacian_ln_D_numerical = compute_grads_and_laplacian_ln_Det_debug(
+    grad_ln_D_up_numerical, grad_ln_D_dn_numerical, sum_laplacian_ln_D_numerical = _compute_grads_and_laplacian_ln_Det_debug(
         geminal_data=geminal_ao_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,

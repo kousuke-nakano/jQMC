@@ -46,18 +46,18 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from jqmc.coulomb_potential import (  # noqa: E402
-    compute_bare_coulomb_potential_debug,
-    compute_bare_coulomb_potential_el_ion_element_wise_debug,
-    compute_bare_coulomb_potential_el_ion_element_wise_jax,
-    compute_bare_coulomb_potential_jax,
-    compute_discretized_bare_coulomb_potential_el_ion_element_wise_debug,
-    compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax,
-    compute_ecp_local_parts_all_pairs_debug,
-    compute_ecp_local_parts_all_pairs_jax,
-    compute_ecp_non_local_parts_all_pairs_debug,
-    compute_ecp_non_local_parts_all_pairs_jax,
-    compute_ecp_non_local_parts_nearest_neighbors_debug,
-    compute_ecp_non_local_parts_nearest_neighbors_jax,
+    _compute_bare_coulomb_potential_debug,
+    _compute_bare_coulomb_potential_el_ion_element_wise_debug,
+    _compute_discretized_bare_coulomb_potential_el_ion_element_wise_debug,
+    _compute_ecp_local_parts_all_pairs_debug,
+    _compute_ecp_non_local_parts_all_pairs_debug,
+    _compute_ecp_non_local_parts_nearest_neighbors_debug,
+    compute_bare_coulomb_potential,
+    compute_bare_coulomb_potential_el_ion_element_wise,
+    compute_discretized_bare_coulomb_potential_el_ion_element_wise,
+    compute_ecp_local_parts_all_pairs,
+    compute_ecp_non_local_parts_all_pairs,
+    compute_ecp_non_local_parts_nearest_neighbors,
 )
 from jqmc.jastrow_factor import Jastrow_data  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
@@ -127,13 +127,13 @@ def test_debug_and_jax_bare_coulomb():
     r_dn_carts_jnp = jnp.array(r_dn_carts_np)
 
     # bare coulomb
-    vpot_bare_jax = compute_bare_coulomb_potential_jax(
+    vpot_bare_jax = compute_bare_coulomb_potential(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=r_up_carts_jnp,
         r_dn_carts=r_dn_carts_jnp,
     )
 
-    vpot_bare_debug = compute_bare_coulomb_potential_debug(
+    vpot_bare_debug = _compute_bare_coulomb_potential_debug(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=r_up_carts_np,
         r_dn_carts=r_dn_carts_np,
@@ -181,13 +181,13 @@ def test_debug_and_jax_ecp_local():
     r_dn_carts_jnp = jnp.array(r_dn_carts_np)
 
     # ecp local
-    vpot_ecp_local_full_NN_jax = compute_ecp_local_parts_all_pairs_jax(
+    vpot_ecp_local_full_NN_jax = compute_ecp_local_parts_all_pairs(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=r_up_carts_jnp,
         r_dn_carts=r_dn_carts_jnp,
     )
 
-    vpot_ecp_local_full_NN_debug = compute_ecp_local_parts_all_pairs_debug(
+    vpot_ecp_local_full_NN_debug = _compute_ecp_local_parts_all_pairs_debug(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=r_up_carts_np,
         r_dn_carts=r_dn_carts_np,
@@ -265,7 +265,7 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
         mesh_non_local_ecp_part_r_dn_carts_full_NN_jax,
         V_nonlocal_full_NN_jax,
         sum_V_nonlocal_full_NN_jax,
-    ) = compute_ecp_non_local_parts_all_pairs_jax(
+    ) = compute_ecp_non_local_parts_all_pairs(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         r_up_carts=r_up_carts_jnp,
@@ -279,7 +279,7 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
         mesh_non_local_ecp_part_r_dn_carts_full_NN_debug,
         V_nonlocal_full_NN_debug,
         sum_V_nonlocal_full_NN_debug,
-    ) = compute_ecp_non_local_parts_all_pairs_debug(
+    ) = _compute_ecp_non_local_parts_all_pairs_debug(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         r_up_carts=r_up_carts_np,
@@ -319,7 +319,7 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
         mesh_non_local_ecp_part_r_dn_carts_NN_check_jax,
         V_nonlocal_NN_check_jax,
         sum_V_nonlocal_NN_check_jax,
-    ) = compute_ecp_non_local_parts_nearest_neighbors_jax(
+    ) = compute_ecp_non_local_parts_nearest_neighbors(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         NN=n_atom,
@@ -334,7 +334,7 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
         mesh_non_local_ecp_part_r_dn_carts_NN_check_debug,
         V_nonlocal_NN_check_debug,
         sum_V_nonlocal_NN_check_debug,
-    ) = compute_ecp_non_local_parts_nearest_neighbors_debug(
+    ) = _compute_ecp_non_local_parts_nearest_neighbors_debug(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         NN=n_atom,
@@ -454,7 +454,7 @@ def test_debug_and_jax_ecp_non_local_partial_NN(Nv, alpha, beta, gamma):
             mesh_non_local_ecp_part_r_dn_carts_NN_jax,
             V_nonlocal_NN_jax,
             sum_V_nonlocal_NN_jax,
-        ) = compute_ecp_non_local_parts_nearest_neighbors_jax(
+        ) = compute_ecp_non_local_parts_nearest_neighbors(
             coulomb_potential_data=coulomb_potential_data,
             wavefunction_data=wavefunction_data,
             r_up_carts=r_up_carts_jnp,
@@ -469,7 +469,7 @@ def test_debug_and_jax_ecp_non_local_partial_NN(Nv, alpha, beta, gamma):
             mesh_non_local_ecp_part_r_dn_carts_NN_debug,
             V_nonlocal_NN_debug,
             sum_V_nonlocal_NN_debug,
-        ) = compute_ecp_non_local_parts_nearest_neighbors_debug(
+        ) = _compute_ecp_non_local_parts_nearest_neighbors_debug(
             coulomb_potential_data=coulomb_potential_data,
             wavefunction_data=wavefunction_data,
             r_up_carts=r_up_carts_np,
@@ -533,13 +533,13 @@ def test_debug_and_jax_bare_el_ion_elements():
     r_up_carts_jnp = jnp.array(r_up_carts_np)
     r_dn_carts_jnp = jnp.array(r_dn_carts_np)
 
-    interactions_R_r_up_debug, interactions_R_r_dn_debug = compute_bare_coulomb_potential_el_ion_element_wise_debug(
+    interactions_R_r_up_debug, interactions_R_r_dn_debug = _compute_bare_coulomb_potential_el_ion_element_wise_debug(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=r_up_carts_np,
         r_dn_carts=r_dn_carts_np,
     )
 
-    interactions_R_r_up_jax, interactions_R_r_dn_jax = compute_bare_coulomb_potential_el_ion_element_wise_jax(
+    interactions_R_r_up_jax, interactions_R_r_dn_jax = compute_bare_coulomb_potential_el_ion_element_wise(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=r_up_carts_jnp,
         r_dn_carts=r_dn_carts_jnp,
@@ -587,14 +587,16 @@ def test_debug_and_jax_discretized_bare_el_ion_elements():
 
     alat = 0.5
 
-    interactions_R_r_up_debug, interactions_R_r_dn_debug = compute_discretized_bare_coulomb_potential_el_ion_element_wise_debug(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=r_up_carts_np,
-        r_dn_carts=r_dn_carts_np,
-        alat=alat,
+    interactions_R_r_up_debug, interactions_R_r_dn_debug = (
+        _compute_discretized_bare_coulomb_potential_el_ion_element_wise_debug(
+            coulomb_potential_data=coulomb_potential_data,
+            r_up_carts=r_up_carts_np,
+            r_dn_carts=r_dn_carts_np,
+            alat=alat,
+        )
     )
 
-    interactions_R_r_up_jax, interactions_R_r_dn_jax = compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax(
+    interactions_R_r_up_jax, interactions_R_r_dn_jax = compute_discretized_bare_coulomb_potential_el_ion_element_wise(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=r_up_carts_jnp,
         r_dn_carts=r_dn_carts_jnp,

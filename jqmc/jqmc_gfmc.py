@@ -49,20 +49,20 @@ from jax import typing as jnpt
 from mpi4py import MPI
 
 from .coulomb_potential import (
-    compute_bare_coulomb_potential_el_el_jax,
-    compute_bare_coulomb_potential_el_ion_element_wise_jax,
-    compute_bare_coulomb_potential_ion_ion_jax,
+    compute_bare_coulomb_potential_el_el,
+    compute_bare_coulomb_potential_el_ion_element_wise,
+    compute_bare_coulomb_potential_ion_ion,
     # compute_bare_coulomb_potential_jax,
-    compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax,
-    compute_ecp_local_parts_all_pairs_jax,
-    compute_ecp_non_local_parts_nearest_neighbors_jax,
+    compute_discretized_bare_coulomb_potential_el_ion_element_wise,
+    compute_ecp_local_parts_all_pairs,
+    compute_ecp_non_local_parts_nearest_neighbors,
 )
 from .diff_mask import DiffMask, apply_diff_mask
 from .hamiltonians import (
     Hamiltonian_data,
     # Hamiltonian_data_deriv_R,
     # compute_kinetic_energy_jax,
-    compute_local_energy_jax,
+    compute_local_energy_auto,
 )
 from .jastrow_factor import (
     compute_Jastrow_part,
@@ -78,9 +78,9 @@ from .setting import (
 )
 from .swct import SWCT_data, evaluate_swct_domega_jax, evaluate_swct_omega_jax
 from .wavefunction import (
-    compute_discretized_kinetic_energy_jax,
-    compute_kinetic_energy_all_elements_jax,
-    evaluate_ln_wavefunction_jax,
+    compute_discretized_kinetic_energy,
+    compute_kinetic_energy_all_elements_auto,
+    evaluate_ln_wavefunction,
 )
 
 # create new logger level for development
@@ -464,7 +464,7 @@ class GFMC_fixed_projection_time:
 
             # compute continuum kinetic energy
             diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
-                compute_kinetic_energy_all_elements_jax(
+                compute_kinetic_energy_all_elements_auto(
                     wavefunction_data=hamiltonian_data.wavefunction_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -483,7 +483,7 @@ class GFMC_fixed_projection_time:
 
             # compute discretized kinetic energy and mesh (with a random rotation)
             mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
-                compute_discretized_kinetic_energy_jax(
+                compute_discretized_kinetic_energy(
                     alat=alat,
                     wavefunction_data=hamiltonian_data.wavefunction_data,
                     r_up_carts=r_up_carts,
@@ -505,18 +505,18 @@ class GFMC_fixed_projection_time:
             )
 
             # compute diagonal elements, el-el
-            diagonal_bare_coulomb_part_el_el = compute_bare_coulomb_potential_el_el_jax(
+            diagonal_bare_coulomb_part_el_el = compute_bare_coulomb_potential_el_el(
                 r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
             )
 
             # compute diagonal elements, ion-ion
-            diagonal_bare_coulomb_part_ion_ion = compute_bare_coulomb_potential_ion_ion_jax(
+            diagonal_bare_coulomb_part_ion_ion = compute_bare_coulomb_potential_ion_ion(
                 coulomb_potential_data=hamiltonian_data.coulomb_potential_data
             )
 
             # compute diagonal elements, el-ion
             diagonal_bare_coulomb_part_el_ion_elements_up, diagonal_bare_coulomb_part_el_ion_elements_dn = (
-                compute_bare_coulomb_potential_el_ion_element_wise_jax(
+                compute_bare_coulomb_potential_el_ion_element_wise(
                     coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -527,7 +527,7 @@ class GFMC_fixed_projection_time:
             (
                 diagonal_bare_coulomb_part_el_ion_discretized_elements_up,
                 diagonal_bare_coulomb_part_el_ion_discretized_elements_dn,
-            ) = compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax(
+            ) = compute_discretized_bare_coulomb_potential_el_ion_element_wise(
                 coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
@@ -594,7 +594,7 @@ class GFMC_fixed_projection_time:
             if hamiltonian_data.coulomb_potential_data.ecp_flag:
                 # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
                 # ecp local
-                diagonal_ecp_local_part = compute_ecp_local_parts_all_pairs_jax(
+                diagonal_ecp_local_part = compute_ecp_local_parts_all_pairs(
                     coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -603,7 +603,7 @@ class GFMC_fixed_projection_time:
                 if non_local_move == "tmove":
                     # ecp non-local (t-move)
                     mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                        compute_ecp_non_local_parts_nearest_neighbors_jax(
+                        compute_ecp_non_local_parts_nearest_neighbors(
                             coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                             wavefunction_data=hamiltonian_data.wavefunction_data,
                             r_up_carts=r_up_carts,
@@ -620,7 +620,7 @@ class GFMC_fixed_projection_time:
 
                 elif non_local_move == "dltmove":
                     mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                        compute_ecp_non_local_parts_nearest_neighbors_jax(
+                        compute_ecp_non_local_parts_nearest_neighbors(
                             coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                             wavefunction_data=hamiltonian_data.wavefunction_data,
                             r_up_carts=r_up_carts,
@@ -1652,7 +1652,7 @@ class GFMC_fixed_projection_time_debug:
 
                     # compute continuum kinetic energy
                     diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
-                        compute_kinetic_energy_all_elements_jax(
+                        compute_kinetic_energy_all_elements_auto(
                             wavefunction_data=hamiltonian_data.wavefunction_data,
                             r_up_carts=r_up_carts,
                             r_dn_carts=r_dn_carts,
@@ -1665,7 +1665,7 @@ class GFMC_fixed_projection_time_debug:
 
                     # compute discretized kinetic energy and mesh (with a random rotation)
                     mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
-                        compute_discretized_kinetic_energy_jax(
+                        compute_discretized_kinetic_energy(
                             alat=alat,
                             wavefunction_data=hamiltonian_data.wavefunction_data,
                             r_up_carts=r_up_carts,
@@ -1691,18 +1691,18 @@ class GFMC_fixed_projection_time_debug:
                     )
 
                     # compute diagonal elements, el-el
-                    diagonal_bare_coulomb_part_el_el = compute_bare_coulomb_potential_el_el_jax(
+                    diagonal_bare_coulomb_part_el_el = compute_bare_coulomb_potential_el_el(
                         r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
                     )
 
                     # compute diagonal elements, ion-ion
-                    diagonal_bare_coulomb_part_ion_ion = compute_bare_coulomb_potential_ion_ion_jax(
+                    diagonal_bare_coulomb_part_ion_ion = compute_bare_coulomb_potential_ion_ion(
                         coulomb_potential_data=hamiltonian_data.coulomb_potential_data
                     )
 
                     # compute diagonal elements, el-ion
                     diagonal_bare_coulomb_part_el_ion_elements_up, diagonal_bare_coulomb_part_el_ion_elements_dn = (
-                        compute_bare_coulomb_potential_el_ion_element_wise_jax(
+                        compute_bare_coulomb_potential_el_ion_element_wise(
                             coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                             r_up_carts=r_up_carts,
                             r_dn_carts=r_dn_carts,
@@ -1713,7 +1713,7 @@ class GFMC_fixed_projection_time_debug:
                     (
                         diagonal_bare_coulomb_part_el_ion_discretized_elements_up,
                         diagonal_bare_coulomb_part_el_ion_discretized_elements_dn,
-                    ) = compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax(
+                    ) = compute_discretized_bare_coulomb_potential_el_ion_element_wise(
                         coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
@@ -1776,7 +1776,7 @@ class GFMC_fixed_projection_time_debug:
                     if hamiltonian_data.coulomb_potential_data.ecp_flag:
                         # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
                         # ecp local
-                        diagonal_ecp_local_part = compute_ecp_local_parts_all_pairs_jax(
+                        diagonal_ecp_local_part = compute_ecp_local_parts_all_pairs(
                             coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                             r_up_carts=r_up_carts,
                             r_dn_carts=r_dn_carts,
@@ -1785,7 +1785,7 @@ class GFMC_fixed_projection_time_debug:
                         if non_local_move == "tmove":
                             # ecp non-local (t-move)
                             mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                                compute_ecp_non_local_parts_nearest_neighbors_jax(
+                                compute_ecp_non_local_parts_nearest_neighbors(
                                     coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                                     wavefunction_data=hamiltonian_data.wavefunction_data,
                                     r_up_carts=r_up_carts,
@@ -1804,7 +1804,7 @@ class GFMC_fixed_projection_time_debug:
 
                         elif non_local_move == "dltmove":
                             mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                                compute_ecp_non_local_parts_nearest_neighbors_jax(
+                                compute_ecp_non_local_parts_nearest_neighbors(
                                     coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                                     wavefunction_data=hamiltonian_data.wavefunction_data,
                                     r_up_carts=r_up_carts,
@@ -2530,7 +2530,7 @@ class GFMC_fixed_num_projection:
 
                 # compute continuum kinetic energy
                 diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
-                    compute_kinetic_energy_all_elements_jax(
+                    compute_kinetic_energy_all_elements_auto(
                         wavefunction_data=hamiltonian_data.wavefunction_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
@@ -2549,7 +2549,7 @@ class GFMC_fixed_num_projection:
 
                 # compute discretized kinetic energy and mesh (with a random rotation)
                 mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
-                    compute_discretized_kinetic_energy_jax(
+                    compute_discretized_kinetic_energy(
                         alat=alat,
                         wavefunction_data=hamiltonian_data.wavefunction_data,
                         r_up_carts=r_up_carts,
@@ -2575,18 +2575,18 @@ class GFMC_fixed_num_projection:
                 )
 
                 # compute diagonal elements, el-el
-                diagonal_bare_coulomb_part_el_el = compute_bare_coulomb_potential_el_el_jax(
+                diagonal_bare_coulomb_part_el_el = compute_bare_coulomb_potential_el_el(
                     r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
                 )
 
                 # compute diagonal elements, ion-ion
-                diagonal_bare_coulomb_part_ion_ion = compute_bare_coulomb_potential_ion_ion_jax(
+                diagonal_bare_coulomb_part_ion_ion = compute_bare_coulomb_potential_ion_ion(
                     coulomb_potential_data=hamiltonian_data.coulomb_potential_data
                 )
 
                 # compute diagonal elements, el-ion
                 diagonal_bare_coulomb_part_el_ion_elements_up, diagonal_bare_coulomb_part_el_ion_elements_dn = (
-                    compute_bare_coulomb_potential_el_ion_element_wise_jax(
+                    compute_bare_coulomb_potential_el_ion_element_wise(
                         coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
@@ -2597,7 +2597,7 @@ class GFMC_fixed_num_projection:
                 (
                     diagonal_bare_coulomb_part_el_ion_discretized_elements_up,
                     diagonal_bare_coulomb_part_el_ion_discretized_elements_dn,
-                ) = compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax(
+                ) = compute_discretized_bare_coulomb_potential_el_ion_element_wise(
                     coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -2671,7 +2671,7 @@ class GFMC_fixed_num_projection:
                 if hamiltonian_data.coulomb_potential_data.ecp_flag:
                     # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
                     # ecp local
-                    diagonal_ecp_local_part = compute_ecp_local_parts_all_pairs_jax(
+                    diagonal_ecp_local_part = compute_ecp_local_parts_all_pairs(
                         coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
@@ -2680,7 +2680,7 @@ class GFMC_fixed_num_projection:
                     if non_local_move == "tmove":
                         # ecp non-local (t-move)
                         mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                            compute_ecp_non_local_parts_nearest_neighbors_jax(
+                            compute_ecp_non_local_parts_nearest_neighbors(
                                 coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                                 wavefunction_data=hamiltonian_data.wavefunction_data,
                                 r_up_carts=r_up_carts,
@@ -2705,7 +2705,7 @@ class GFMC_fixed_num_projection:
 
                     elif non_local_move == "dltmove":
                         mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                            compute_ecp_non_local_parts_nearest_neighbors_jax(
+                            compute_ecp_non_local_parts_nearest_neighbors(
                                 coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                                 wavefunction_data=hamiltonian_data.wavefunction_data,
                                 r_up_carts=r_up_carts,
@@ -2816,7 +2816,7 @@ class GFMC_fixed_num_projection:
 
             # compute continuum kinetic energy
             diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
-                compute_kinetic_energy_all_elements_jax(
+                compute_kinetic_energy_all_elements_auto(
                     wavefunction_data=hamiltonian_data.wavefunction_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -2824,7 +2824,7 @@ class GFMC_fixed_num_projection:
             )
 
             # compute discretized kinetic energy and mesh (with a random rotation)
-            _, _, elements_non_diagonal_kinetic_part = compute_discretized_kinetic_energy_jax(
+            _, _, elements_non_diagonal_kinetic_part = compute_discretized_kinetic_energy(
                 alat=alat,
                 wavefunction_data=hamiltonian_data.wavefunction_data,
                 r_up_carts=r_up_carts,
@@ -2845,18 +2845,18 @@ class GFMC_fixed_num_projection:
             )
 
             # compute diagonal elements, el-el
-            diagonal_bare_coulomb_part_el_el = compute_bare_coulomb_potential_el_el_jax(
+            diagonal_bare_coulomb_part_el_el = compute_bare_coulomb_potential_el_el(
                 r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
             )
 
             # compute diagonal elements, ion-ion
-            diagonal_bare_coulomb_part_ion_ion = compute_bare_coulomb_potential_ion_ion_jax(
+            diagonal_bare_coulomb_part_ion_ion = compute_bare_coulomb_potential_ion_ion(
                 coulomb_potential_data=hamiltonian_data.coulomb_potential_data
             )
 
             # compute diagonal elements, el-ion
             diagonal_bare_coulomb_part_el_ion_elements_up, diagonal_bare_coulomb_part_el_ion_elements_dn = (
-                compute_bare_coulomb_potential_el_ion_element_wise_jax(
+                compute_bare_coulomb_potential_el_ion_element_wise(
                     coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -2867,7 +2867,7 @@ class GFMC_fixed_num_projection:
             (
                 diagonal_bare_coulomb_part_el_ion_discretized_elements_up,
                 diagonal_bare_coulomb_part_el_ion_discretized_elements_dn,
-            ) = compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax(
+            ) = compute_discretized_bare_coulomb_potential_el_ion_element_wise(
                 coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
@@ -2932,7 +2932,7 @@ class GFMC_fixed_num_projection:
             # with ECP
             if hamiltonian_data.coulomb_potential_data.ecp_flag:
                 # ecp local
-                diagonal_ecp_local_part = compute_ecp_local_parts_all_pairs_jax(
+                diagonal_ecp_local_part = compute_ecp_local_parts_all_pairs(
                     coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -2941,7 +2941,7 @@ class GFMC_fixed_num_projection:
                 if non_local_move == "tmove":
                     # ecp non-local (t-move)
                     mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                        compute_ecp_non_local_parts_nearest_neighbors_jax(
+                        compute_ecp_non_local_parts_nearest_neighbors(
                             coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                             wavefunction_data=hamiltonian_data.wavefunction_data,
                             r_up_carts=r_up_carts,
@@ -2958,7 +2958,7 @@ class GFMC_fixed_num_projection:
 
                 elif non_local_move == "dltmove":
                     mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                        compute_ecp_non_local_parts_nearest_neighbors_jax(
+                        compute_ecp_non_local_parts_nearest_neighbors(
                             coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                             wavefunction_data=hamiltonian_data.wavefunction_data,
                             r_up_carts=r_up_carts,
@@ -3193,7 +3193,7 @@ class GFMC_fixed_num_projection:
 
                 start = time.perf_counter()
                 grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = vmap(
-                    grad(evaluate_ln_wavefunction_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
+                    grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
                 )(
                     self.__hamiltonian_data.wavefunction_data,
                     self.__latest_r_up_carts,
@@ -4618,7 +4618,7 @@ class GFMC_fixed_num_projection_debug:
 
                 # compute continuum kinetic energy
                 diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
-                    compute_kinetic_energy_all_elements_jax(
+                    compute_kinetic_energy_all_elements_auto(
                         wavefunction_data=hamiltonian_data.wavefunction_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
@@ -4637,7 +4637,7 @@ class GFMC_fixed_num_projection_debug:
 
                 # compute discretized kinetic energy and mesh (with a random rotation)
                 mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
-                    compute_discretized_kinetic_energy_jax(
+                    compute_discretized_kinetic_energy(
                         alat=alat,
                         wavefunction_data=hamiltonian_data.wavefunction_data,
                         r_up_carts=r_up_carts,
@@ -4663,18 +4663,18 @@ class GFMC_fixed_num_projection_debug:
                 )
 
                 # compute diagonal elements, el-el
-                diagonal_bare_coulomb_part_el_el = compute_bare_coulomb_potential_el_el_jax(
+                diagonal_bare_coulomb_part_el_el = compute_bare_coulomb_potential_el_el(
                     r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
                 )
 
                 # compute diagonal elements, ion-ion
-                diagonal_bare_coulomb_part_ion_ion = compute_bare_coulomb_potential_ion_ion_jax(
+                diagonal_bare_coulomb_part_ion_ion = compute_bare_coulomb_potential_ion_ion(
                     coulomb_potential_data=hamiltonian_data.coulomb_potential_data
                 )
 
                 # compute diagonal elements, el-ion
                 diagonal_bare_coulomb_part_el_ion_elements_up, diagonal_bare_coulomb_part_el_ion_elements_dn = (
-                    compute_bare_coulomb_potential_el_ion_element_wise_jax(
+                    compute_bare_coulomb_potential_el_ion_element_wise(
                         coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
@@ -4685,7 +4685,7 @@ class GFMC_fixed_num_projection_debug:
                 (
                     diagonal_bare_coulomb_part_el_ion_discretized_elements_up,
                     diagonal_bare_coulomb_part_el_ion_discretized_elements_dn,
-                ) = compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax(
+                ) = compute_discretized_bare_coulomb_potential_el_ion_element_wise(
                     coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -4759,7 +4759,7 @@ class GFMC_fixed_num_projection_debug:
                 if hamiltonian_data.coulomb_potential_data.ecp_flag:
                     # compute local energy, i.e., sum of all the hamiltonian (with importance sampling)
                     # ecp local
-                    diagonal_ecp_local_part = compute_ecp_local_parts_all_pairs_jax(
+                    diagonal_ecp_local_part = compute_ecp_local_parts_all_pairs(
                         coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
@@ -4768,7 +4768,7 @@ class GFMC_fixed_num_projection_debug:
                     if non_local_move == "tmove":
                         # ecp non-local (t-move)
                         mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                            compute_ecp_non_local_parts_nearest_neighbors_jax(
+                            compute_ecp_non_local_parts_nearest_neighbors(
                                 coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                                 wavefunction_data=hamiltonian_data.wavefunction_data,
                                 r_up_carts=r_up_carts,
@@ -4793,7 +4793,7 @@ class GFMC_fixed_num_projection_debug:
 
                     elif non_local_move == "dltmove":
                         mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                            compute_ecp_non_local_parts_nearest_neighbors_jax(
+                            compute_ecp_non_local_parts_nearest_neighbors(
                                 coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                                 wavefunction_data=hamiltonian_data.wavefunction_data,
                                 r_up_carts=r_up_carts,
@@ -4901,7 +4901,7 @@ class GFMC_fixed_num_projection_debug:
 
             # compute continuum kinetic energy
             diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
-                compute_kinetic_energy_all_elements_jax(
+                compute_kinetic_energy_all_elements_auto(
                     wavefunction_data=hamiltonian_data.wavefunction_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -4909,7 +4909,7 @@ class GFMC_fixed_num_projection_debug:
             )
 
             # compute discretized kinetic energy and mesh (with a random rotation)
-            _, _, elements_non_diagonal_kinetic_part = compute_discretized_kinetic_energy_jax(
+            _, _, elements_non_diagonal_kinetic_part = compute_discretized_kinetic_energy(
                 alat=alat,
                 wavefunction_data=hamiltonian_data.wavefunction_data,
                 r_up_carts=r_up_carts,
@@ -4930,18 +4930,18 @@ class GFMC_fixed_num_projection_debug:
             )
 
             # compute diagonal elements, el-el
-            diagonal_bare_coulomb_part_el_el = compute_bare_coulomb_potential_el_el_jax(
+            diagonal_bare_coulomb_part_el_el = compute_bare_coulomb_potential_el_el(
                 r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
             )
 
             # compute diagonal elements, ion-ion
-            diagonal_bare_coulomb_part_ion_ion = compute_bare_coulomb_potential_ion_ion_jax(
+            diagonal_bare_coulomb_part_ion_ion = compute_bare_coulomb_potential_ion_ion(
                 coulomb_potential_data=hamiltonian_data.coulomb_potential_data
             )
 
             # compute diagonal elements, el-ion
             diagonal_bare_coulomb_part_el_ion_elements_up, diagonal_bare_coulomb_part_el_ion_elements_dn = (
-                compute_bare_coulomb_potential_el_ion_element_wise_jax(
+                compute_bare_coulomb_potential_el_ion_element_wise(
                     coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -4952,7 +4952,7 @@ class GFMC_fixed_num_projection_debug:
             (
                 diagonal_bare_coulomb_part_el_ion_discretized_elements_up,
                 diagonal_bare_coulomb_part_el_ion_discretized_elements_dn,
-            ) = compute_discretized_bare_coulomb_potential_el_ion_element_wise_jax(
+            ) = compute_discretized_bare_coulomb_potential_el_ion_element_wise(
                 coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
@@ -5017,7 +5017,7 @@ class GFMC_fixed_num_projection_debug:
             # with ECP
             if hamiltonian_data.coulomb_potential_data.ecp_flag:
                 # ecp local
-                diagonal_ecp_local_part = compute_ecp_local_parts_all_pairs_jax(
+                diagonal_ecp_local_part = compute_ecp_local_parts_all_pairs(
                     coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -5026,7 +5026,7 @@ class GFMC_fixed_num_projection_debug:
                 if non_local_move == "tmove":
                     # ecp non-local (t-move)
                     mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                        compute_ecp_non_local_parts_nearest_neighbors_jax(
+                        compute_ecp_non_local_parts_nearest_neighbors(
                             coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                             wavefunction_data=hamiltonian_data.wavefunction_data,
                             r_up_carts=r_up_carts,
@@ -5043,7 +5043,7 @@ class GFMC_fixed_num_projection_debug:
 
                 elif non_local_move == "dltmove":
                     mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                        compute_ecp_non_local_parts_nearest_neighbors_jax(
+                        compute_ecp_non_local_parts_nearest_neighbors(
                             coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                             wavefunction_data=hamiltonian_data.wavefunction_data,
                             r_up_carts=r_up_carts,
@@ -5158,7 +5158,7 @@ class GFMC_fixed_num_projection_debug:
             e_L_list = V_diag_list + V_nondiag_list
 
             if self.__non_local_move == "tmove":
-                e_list_debug = vmap(compute_local_energy_jax, in_axes=(None, 0, 0, 0))(
+                e_list_debug = vmap(compute_local_energy_auto, in_axes=(None, 0, 0, 0))(
                     self.__hamiltonian_data,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
@@ -5199,7 +5199,7 @@ class GFMC_fixed_num_projection_debug:
                     )
 
                 grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = vmap(
-                    grad(evaluate_ln_wavefunction_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
+                    grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
                 )(
                     self.__hamiltonian_data.wavefunction_data,
                     self.__latest_r_up_carts,

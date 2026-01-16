@@ -47,11 +47,11 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc.coulomb_potential import compute_bare_coulomb_potential_debug, compute_bare_coulomb_potential_jax  # noqa: E402
+from jqmc.coulomb_potential import _compute_bare_coulomb_potential_debug, compute_bare_coulomb_potential  # noqa: E402
 from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
 from jqmc.jastrow_factor import Jastrow_data  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
-from jqmc.wavefunction import Wavefunction_data, compute_kinetic_energy_jax, evaluate_wavefunction_jax  # noqa: E402
+from jqmc.wavefunction import Wavefunction_data, compute_kinetic_energy, evaluate_wavefunction  # noqa: E402
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -103,31 +103,31 @@ def test_comparison_with_TurboRVB_wo_Jastrow_AE():
     # print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
 
     WF_ratio = (
-        evaluate_wavefunction_jax(
+        evaluate_wavefunction(
             wavefunction_data=hamiltonian_data.wavefunction_data,
             r_up_carts=new_r_up_carts,
             r_dn_carts=new_r_dn_carts,
         )
-        / evaluate_wavefunction_jax(
+        / evaluate_wavefunction(
             wavefunction_data=hamiltonian_data.wavefunction_data,
             r_up_carts=old_r_up_carts,
             r_dn_carts=old_r_dn_carts,
         )
     ) ** 2.0
 
-    kinc = compute_kinetic_energy_jax(
+    kinc = compute_kinetic_energy(
         wavefunction_data=hamiltonian_data.wavefunction_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
     )
 
-    vpot_bare_debug = compute_bare_coulomb_potential_debug(
+    vpot_bare_debug = _compute_bare_coulomb_potential_debug(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
     )
 
-    vpot_bare_jax = compute_bare_coulomb_potential_jax(
+    vpot_bare_jax = compute_bare_coulomb_potential(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
@@ -192,31 +192,31 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_AE():
     # print(f"vpot_ref={vpot_ref_turborvb + vpotoff_ref_turborvb} Ha")
 
     WF_ratio = (
-        evaluate_wavefunction_jax(
+        evaluate_wavefunction(
             wavefunction_data=hamiltonian_data.wavefunction_data,
             r_up_carts=new_r_up_carts,
             r_dn_carts=new_r_dn_carts,
         )
-        / evaluate_wavefunction_jax(
+        / evaluate_wavefunction(
             wavefunction_data=hamiltonian_data.wavefunction_data,
             r_up_carts=old_r_up_carts,
             r_dn_carts=old_r_dn_carts,
         )
     ) ** 2.0
 
-    kinc = compute_kinetic_energy_jax(
+    kinc = compute_kinetic_energy(
         wavefunction_data=hamiltonian_data.wavefunction_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
     )
 
-    vpot_bare_debug = compute_bare_coulomb_potential_debug(
+    vpot_bare_debug = _compute_bare_coulomb_potential_debug(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
     )
 
-    vpot_bare_jax = compute_bare_coulomb_potential_jax(
+    vpot_bare_jax = compute_bare_coulomb_potential(
         coulomb_potential_data=coulomb_potential_data,
         r_up_carts=new_r_up_carts,
         r_dn_carts=new_r_dn_carts,
