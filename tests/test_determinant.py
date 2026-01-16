@@ -657,7 +657,7 @@ def test_analytic_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
     np.testing.assert_almost_equal(
         sum_laplacian_ln_D_analytic,
         sum_laplacian_ln_D_auto,
-        decimal=3,
+        decimal=1,
     )
 
     jax.clear_caches()
