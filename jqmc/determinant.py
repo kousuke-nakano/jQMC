@@ -50,8 +50,14 @@ from flax import struct
 from jax import jit, vmap
 from jax import typing as jnpt
 
-from .atomic_orbital import AOs_cart_data, AOs_sphe_data, compute_AOs_grad_jax, compute_AOs_jax, compute_AOs_laplacian_jax
-from .molecular_orbital import MOs_data, compute_MOs_grad_jax, compute_MOs_jax, compute_MOs_laplacian_jax
+from .atomic_orbital import (
+    AOs_cart_data,
+    AOs_sphe_data,
+    compute_AOs,
+    compute_AOs_grad,
+    compute_AOs_laplacian,
+)
+from .molecular_orbital import MOs_data, compute_MOs, compute_MOs_grad, compute_MOs_laplacian
 
 if TYPE_CHECKING:  # pragma: no cover - typing-only import to avoid circular dependency
     from .wavefunction import VariationalParameterBlock
@@ -279,11 +285,11 @@ class Geminal_data:
                 neither AOs_data/AOs_data nor MOs_data/MOs_data.
         """
         if isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data):
-            return compute_AOs_jax
+            return compute_AOs
         elif isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data):
-            return compute_AOs_jax
+            return compute_AOs
         elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
-            return compute_MOs_jax
+            return compute_MOs
         else:
             raise NotImplementedError
 
@@ -304,11 +310,11 @@ class Geminal_data:
                 neither AOs_data/AOs_data nor MOs_data/MOs_data.
         """
         if isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data):
-            return compute_AOs_grad_jax
+            return compute_AOs_grad
         elif isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data):
-            return compute_AOs_grad_jax
+            return compute_AOs_grad
         elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
-            return compute_MOs_grad_jax
+            return compute_MOs_grad
         else:
             raise NotImplementedError
 
@@ -329,11 +335,11 @@ class Geminal_data:
                 neither AOs_data/AOs_data nor MOs_data/MOs_data.
         """
         if isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data):
-            return compute_AOs_laplacian_jax
+            return compute_AOs_laplacian
         elif isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data):
-            return compute_AOs_laplacian_jax
+            return compute_AOs_laplacian
         elif isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data):
-            return compute_MOs_laplacian_jax
+            return compute_MOs_laplacian
         else:
             raise NotImplementedError
 
@@ -398,7 +404,7 @@ class Geminal_data:
 
 @jax.custom_vjp
 @jit
-def compute_ln_det_geminal_all_elements_jax(
+def compute_ln_det_geminal_all_elements(
     geminal_data: Geminal_data,
     r_up_carts: jnpt.ArrayLike,
     r_dn_carts: jnpt.ArrayLike,
@@ -423,7 +429,7 @@ def compute_ln_det_geminal_all_elements_jax(
     return jnp.log(
         jnp.abs(
             jnp.linalg.det(
-                compute_geminal_all_elements_jax(geminal_data=geminal_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+                compute_geminal_all_elements(geminal_data=geminal_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
             )
         )
     )
@@ -442,7 +448,7 @@ def _ln_det_fwd(geminal_data, r_up_carts, r_dn_carts):
         - primal output: ln|det(G)|
         - residuals: (inputs and LU factors) for use in backward pass
     """
-    G = compute_geminal_all_elements_jax(geminal_data, r_up_carts, r_dn_carts)
+    G = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
     ln_det = jnp.log(jnp.abs(jnp.linalg.det(G)))
     # Compute LU decomposition: G = P @ L @ U
     P, L, U = jsp_linalg.lu(G)
@@ -481,17 +487,17 @@ def _ln_det_bwd(res, g):
     grad_G = g * X.T
 
     # Now backpropagate through compute_geminal_all_elements_jax
-    _, vjp_fun = jax.vjp(compute_geminal_all_elements_jax, geminal_data, r_up_carts, r_dn_carts)
+    _, vjp_fun = jax.vjp(compute_geminal_all_elements, geminal_data, r_up_carts, r_dn_carts)
     # Apply VJP to produce gradients for each input
     return vjp_fun(grad_G)
 
 
 # Register the custom VJP rule !!
-compute_ln_det_geminal_all_elements_jax.defvjp(_ln_det_fwd, _ln_det_bwd)
+compute_ln_det_geminal_all_elements.defvjp(_ln_det_fwd, _ln_det_bwd)
 
 
 @jit
-def compute_det_geminal_all_elements_jax(
+def compute_det_geminal_all_elements(
     geminal_data: Geminal_data,
     r_up_carts: jnpt.ArrayLike,
     r_dn_carts: jnpt.ArrayLike,
@@ -513,19 +519,17 @@ def compute_det_geminal_all_elements_jax(
     Return:
         float: The determinant of the given geminal functions.
     """
-    return jnp.linalg.det(
-        compute_geminal_all_elements_jax(geminal_data=geminal_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
-    )
+    return jnp.linalg.det(compute_geminal_all_elements(geminal_data=geminal_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts))
 
 
-def compute_det_geminal_all_elements_debug(
+def _compute_det_geminal_all_elements_debug(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
 ) -> np.float64:
     """See compute_det_geminal_all_elements_api."""
     return np.linalg.det(
-        compute_geminal_all_elements_debug(
+        _compute_geminal_all_elements_debug(
             geminal_data=geminal_data,
             r_up_carts=r_up_carts,
             r_dn_carts=r_dn_carts,
@@ -533,7 +537,7 @@ def compute_det_geminal_all_elements_debug(
     )
 
 
-def compute_AS_regularization_factor_fast_update_jax(
+def compute_AS_regularization_factor_fast_update(
     geminal: npt.NDArray[np.float64], geminal_inv: npt.NDArray[np.float64]
 ) -> jax.Array:
     """Compute the Attaccalite and Sorella regularization factor with the fast update.
@@ -562,11 +566,11 @@ def compute_AS_regularization_factor_fast_update_jax(
     return R_AS
 
 
-def compute_AS_regularization_factor_debug(
+def _compute_AS_regularization_factor_debug(
     geminal_data: Geminal_data, r_up_carts: npt.NDArray[np.float64], r_dn_carts: npt.NDArray[np.float64]
 ) -> npt.NDArray[np.float64]:
     """See compute_AS_regularization_factor_jax."""
-    geminal = compute_geminal_all_elements_jax(geminal_data, r_up_carts, r_dn_carts)
+    geminal = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
 
     # compute the AS factor
     theta = 3.0 / 8.0
@@ -585,7 +589,7 @@ def compute_AS_regularization_factor_debug(
 
 
 @jit
-def compute_AS_regularization_factor_jax(
+def compute_AS_regularization_factor(
     geminal_data: Geminal_data, r_up_carts: jnpt.ArrayLike, r_dn_carts: jnpt.ArrayLike
 ) -> jax.Array:
     """Compute the Attaccalite and Sorella regularization factor.
@@ -601,7 +605,7 @@ def compute_AS_regularization_factor_jax(
     Returns:
         float: The Attaccalite and Sorella regularization factor
     """
-    geminal = compute_geminal_all_elements_jax(geminal_data, r_up_carts, r_dn_carts)
+    geminal = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
 
     # compute the AS factor
     theta = 3.0 / 8.0
@@ -619,7 +623,7 @@ def compute_AS_regularization_factor_jax(
     return R_AS
 
 
-def compute_geminal_all_elements_jax(
+def compute_geminal_all_elements(
     geminal_data: Geminal_data, r_up_carts: jnpt.ArrayLike, r_dn_carts: jnpt.ArrayLike
 ) -> jax.Array:
     """Compute Geminal matrix elements.
@@ -649,7 +653,7 @@ def compute_geminal_all_elements_jax(
             )
             raise ValueError
 
-    geminal = _compute_geminal_all_elements_jax(geminal_data, r_up_carts, r_dn_carts)
+    geminal = _compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
 
     if geminal.shape != (len(r_up_carts), len(r_up_carts)):
         logger.error(
@@ -661,7 +665,7 @@ def compute_geminal_all_elements_jax(
 
 
 @jit
-def _compute_geminal_all_elements_jax(
+def _compute_geminal_all_elements(
     geminal_data: Geminal_data,
     r_up_carts: jnpt.ArrayLike,
     r_dn_carts: jnpt.ArrayLike,
@@ -680,7 +684,7 @@ def _compute_geminal_all_elements_jax(
     return geminal
 
 
-def compute_geminal_all_elements_debug(
+def _compute_geminal_all_elements_debug(
     geminal_data: Geminal_data,
     r_up_carts: npt.NDArray[np.float64],
     r_dn_carts: npt.NDArray[np.float64],
@@ -700,7 +704,7 @@ def compute_geminal_all_elements_debug(
 
 
 @jax.jit
-def compute_geminal_up_one_row_elements_jax(
+def compute_geminal_up_one_row_elements(
     geminal_data,
     r_up_cart: jnpt.ArrayLike,  # shape: (3,) or (1,3)
     r_dn_carts: jnpt.ArrayLike,  # shape: (N_dn, 3)
@@ -739,7 +743,7 @@ def compute_geminal_up_one_row_elements_jax(
 
 
 @jax.jit
-def compute_geminal_dn_one_column_elements_jax(
+def compute_geminal_dn_one_column_elements(
     geminal_data,
     r_up_carts: jnpt.ArrayLike,  # shape: (N_up, 3)
     r_dn_cart: jnpt.ArrayLike,  # shape: (3,) or (1,3)
@@ -778,7 +782,7 @@ def compute_geminal_dn_one_column_elements_jax(
 
 # no longer used in the main code
 @jit
-def compute_ratio_determinant_part_jax(
+def compute_ratio_determinant_part(
     geminal_data: Geminal_data,
     A_old_inv: jnpt.ArrayLike,
     old_r_up_carts: jnpt.ArrayLike,
@@ -868,7 +872,7 @@ def compute_ratio_determinant_part_jax(
 
 
 # no longer used in the main code
-def compute_ratio_determinant_part_debug(
+def _compute_ratio_determinant_part_debug(
     geminal_data: Geminal_data,
     old_r_up_carts: npt.NDArray[np.float64],
     old_r_dn_carts: npt.NDArray[np.float64],
@@ -878,91 +882,31 @@ def compute_ratio_determinant_part_debug(
     """See _api method."""
     return np.array(
         [
-            compute_det_geminal_all_elements_jax(geminal_data, new_r_up_carts, new_r_dn_carts)
-            / compute_det_geminal_all_elements_jax(geminal_data, old_r_up_carts, old_r_dn_carts)
+            compute_det_geminal_all_elements(geminal_data, new_r_up_carts, new_r_dn_carts)
+            / compute_det_geminal_all_elements(geminal_data, old_r_up_carts, old_r_dn_carts)
             for new_r_up_carts, new_r_dn_carts in zip(new_r_up_carts_arr, new_r_dn_carts_arr, strict=True)
         ]
     )
 
 
-# no longer used in the main code
-def compute_grads_and_laplacian_ln_Det_jax(
-    geminal_data: Geminal_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
-) -> tuple[
-    npt.NDArray[np.float64],
-    npt.NDArray[np.float64],
-    float,
-]:
-    """Compute grads and laplacians of ln Det.
-
-    The method is for computing the gradients(x,y,z) of ln Det and the sum of laplacians of ln Det at
-    the given electronic positions (r_up_carts, r_dn_carts).
-
-    Args:
-        geminal_data (Geminal_data): an instance of Geminal_data class
-        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
-        debug (bool): if True, this is computed via _debug function for debuging purpose
-
-    Returns:
-        tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], float]: containing
-        the gradients(x,y,z) of ln Det for up and dn electron positions and
-        the sum of laplacians of ln Det at (r_up_carts, r_dn_carts).
-    """
-    if len(r_up_carts) != geminal_data.num_electron_up or len(r_dn_carts) != geminal_data.num_electron_dn:
-        logger.info(
-            f"Number of up and dn electrons (N_up, N_dn) = ({len(r_up_carts)}, {len(r_dn_carts)}) are not consistent "
-            + f"with the expected values. (N_up, N_dn) = {geminal_data.num_electron_up}, {geminal_data.num_electron_dn})"
-        )
-        raise ValueError
-
-    if len(r_up_carts) != len(r_dn_carts):
-        if len(r_up_carts) - len(r_dn_carts) > 0:
-            logger.info(f"Number of up and dn electrons are different. (N_el - N_dn = {len(r_up_carts) - len(r_dn_carts)})")
-        else:
-            logger.error(
-                f"Number of up electron is smaller than dn electrons. (N_el - N_dn = {len(r_up_carts) - len(r_dn_carts)})"
-            )
-            raise ValueError
-    else:
-        logger.debug("There is no unpaired electrons.")
-
-    grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D = _compute_grads_and_laplacian_ln_Det_jax(
-        geminal_data, r_up_carts, r_dn_carts
-    )
-
-    if grad_ln_D_up.shape != (geminal_data.num_electron_up, 3):
-        logger.error(
-            f"grad_ln_D_up.shape = {grad_ln_D_up.shape} is inconsistent with the expected one = {(geminal_data.num_electron_up, 3)}"
-        )
-        raise ValueError
-
-    if grad_ln_D_dn.shape != (geminal_data.num_electron_dn, 3):
-        logger.error(
-            f"grad_ln_D_up.shape = {grad_ln_D_up.shape} is inconsistent with the expected one = {(geminal_data.num_electron_dn, 3)}"
-        )
-        raise ValueError
-
-    return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D
-
-
-# no longer used in the main code
 @jit
-def _compute_grads_and_laplacian_ln_Det_jax(
+def compute_grads_and_laplacian_ln_Det(
     geminal_data: Geminal_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> tuple[
-    npt.NDArray[np.float64],
-    npt.NDArray[np.float64],
-    float,
+    jax.Array,
+    jax.Array,
+    jax.Array,
+    jax.Array,
 ]:
-    """See compute_grads_and_laplacian_ln_Det_api."""
+    """Per-electron gradients and Laplacians of ln Det.
+
+    Returns gradients (N_up,3)/(N_dn,3) and per-electron Laplacians
+    (N_up,)/(N_dn,).
+    """
     lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
 
-    # AOs/MOs
     ao_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
     ao_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts)
 
@@ -975,12 +919,10 @@ def _compute_grads_and_laplacian_ln_Det_jax(
     ao_matrix_laplacian_up = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_up_spin, r_up_carts)
     ao_matrix_laplacian_dn = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_dn_spin, r_dn_carts)
 
-    # compute Laplacians of Geminal
     geminal_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
     geminal_unpaired = jnp.dot(ao_matrix_up.T, lambda_matrix_unpaired)
     geminal = jnp.hstack([geminal_paired, geminal_unpaired])
 
-    # up electron
     geminal_grad_up_x_paired = jnp.dot(ao_matrix_up_grad_x.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
     geminal_grad_up_x_unpaired = jnp.dot(ao_matrix_up_grad_x.T, lambda_matrix_unpaired)
     geminal_grad_up_x = jnp.hstack([geminal_grad_up_x_paired, geminal_grad_up_x_unpaired])
@@ -997,7 +939,6 @@ def _compute_grads_and_laplacian_ln_Det_jax(
     geminal_laplacian_up_unpaired = jnp.dot(ao_matrix_laplacian_up.T, lambda_matrix_unpaired)
     geminal_laplacian_up = jnp.hstack([geminal_laplacian_up_paired, geminal_laplacian_up_unpaired])
 
-    # dn electron
     geminal_grad_dn_x_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn_grad_x))
     geminal_grad_dn_x_unpaired = jnp.zeros(
         [
@@ -1034,7 +975,11 @@ def _compute_grads_and_laplacian_ln_Det_jax(
     )
     geminal_laplacian_dn = jnp.hstack([geminal_laplacian_dn_paired, geminal_laplacian_dn_unpaired])
 
-    geminal_inverse = jnp.linalg.inv(geminal)
+    P, L, U = jsp_linalg.lu(geminal)
+    n = geminal.shape[0]
+    I = jnp.eye(n, dtype=geminal.dtype)
+    Y = jsp_linalg.solve_triangular(L, jnp.dot(P.T, I), lower=True)
+    geminal_inverse = jsp_linalg.solve_triangular(U, Y, lower=False)
 
     grad_ln_D_up_x = jnp.diag(jnp.dot(geminal_grad_up_x, geminal_inverse))
     grad_ln_D_up_y = jnp.diag(jnp.dot(geminal_grad_up_y, geminal_inverse))
@@ -1046,35 +991,67 @@ def _compute_grads_and_laplacian_ln_Det_jax(
     grad_ln_D_up = jnp.array([grad_ln_D_up_x, grad_ln_D_up_y, grad_ln_D_up_z]).T
     grad_ln_D_dn = jnp.array([grad_ln_D_dn_x, grad_ln_D_dn_y, grad_ln_D_dn_z]).T
 
-    sum_laplacian_ln_D = (
-        -1
-        * (
-            (jnp.trace(jnp.dot(geminal_grad_up_x, geminal_inverse) ** 2.0))
-            + (jnp.trace(jnp.dot(geminal_grad_up_y, geminal_inverse) ** 2.0))
-            + (jnp.trace(jnp.dot(geminal_grad_up_z, geminal_inverse) ** 2.0))
-            + (jnp.trace(jnp.dot(geminal_inverse, geminal_grad_dn_x) ** 2.0))
-            + (jnp.trace(jnp.dot(geminal_inverse, geminal_grad_dn_y) ** 2.0))
-            + (jnp.trace(jnp.dot(geminal_inverse, geminal_grad_dn_z) ** 2.0))
-        )
-        + (jnp.trace(jnp.dot(geminal_laplacian_up, geminal_inverse)))
-        + (jnp.trace(jnp.dot(geminal_inverse, geminal_laplacian_dn)))
-    )
+    lap_ln_D_up = -(
+        grad_ln_D_up_x * grad_ln_D_up_x + grad_ln_D_up_y * grad_ln_D_up_y + grad_ln_D_up_z * grad_ln_D_up_z
+    ) + jnp.diag(jnp.dot(geminal_laplacian_up, geminal_inverse))
 
-    return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D
+    lap_ln_D_dn = -(
+        grad_ln_D_dn_x * grad_ln_D_dn_x + grad_ln_D_dn_y * grad_ln_D_dn_y + grad_ln_D_dn_z * grad_ln_D_dn_z
+    ) + jnp.diag(jnp.dot(geminal_inverse, geminal_laplacian_dn))
+
+    return grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn
 
 
-# no longer used in the main code
-def compute_grads_and_laplacian_ln_Det_debug(
+@jit
+def _compute_grads_and_laplacian_ln_Det_auto(
     geminal_data: Geminal_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> tuple[
-    npt.NDArray[np.float64],
-    npt.NDArray[np.float64],
-    float,
+    jax.Array,
+    jax.Array,
+    jax.Array,
+    jax.Array,
+]:
+    """Auto-diff version of grads and laplacian of ln Det.
+
+    Uses autodiff on ln|det(G)| to compute gradients w.r.t. electron positions
+    and per-electron Laplacians.
+    """
+
+    def ln_det_fn(r_up, r_dn):
+        return compute_ln_det_geminal_all_elements(geminal_data, r_up, r_dn)
+
+    grad_ln_D_up = jax.grad(ln_det_fn, argnums=0)(r_up_carts, r_dn_carts)
+    grad_ln_D_dn = jax.grad(ln_det_fn, argnums=1)(r_up_carts, r_dn_carts)
+
+    def grad_up_fn(r_up):
+        return jax.grad(ln_det_fn, argnums=0)(r_up, r_dn_carts)
+
+    def grad_dn_fn(r_dn):
+        return jax.grad(ln_det_fn, argnums=1)(r_up_carts, r_dn)
+
+    jac_up = jax.jacfwd(grad_up_fn)(r_up_carts)
+    jac_dn = jax.jacfwd(grad_dn_fn)(r_dn_carts)
+
+    laplacian_ln_D_up = jnp.einsum("ijij->i", jac_up)
+    laplacian_ln_D_dn = jnp.einsum("ijij->i", jac_dn)
+
+    return grad_ln_D_up, grad_ln_D_dn, laplacian_ln_D_up, laplacian_ln_D_dn
+
+
+def _compute_grads_and_laplacian_ln_Det_debug(
+    geminal_data: Geminal_data,
+    r_up_carts: np.ndarray,
+    r_dn_carts: np.ndarray,
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
 ]:
     """See compute_grads_and_laplacian_ln_Det_api."""
-    det_geminal = compute_det_geminal_all_elements_jax(
+    det_geminal = compute_det_geminal_all_elements(
         geminal_data=geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
@@ -1099,17 +1076,17 @@ def compute_grads_and_laplacian_ln_Det_debug(
         diff_p_y_r_up2_carts[r_i][1] += diff_h
         diff_p_z_r_up2_carts[r_i][2] += diff_h
 
-        det_geminal_p_x_up2 = compute_det_geminal_all_elements_jax(
+        det_geminal_p_x_up2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=diff_p_x_r_up2_carts,
             r_dn_carts=r_dn_carts,
         )
-        det_geminal_p_y_up2 = compute_det_geminal_all_elements_jax(
+        det_geminal_p_y_up2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=diff_p_y_r_up2_carts,
             r_dn_carts=r_dn_carts,
         )
-        det_geminal_p_z_up2 = compute_det_geminal_all_elements_jax(
+        det_geminal_p_z_up2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=diff_p_z_r_up2_carts,
             r_dn_carts=r_dn_carts,
@@ -1122,17 +1099,17 @@ def compute_grads_and_laplacian_ln_Det_debug(
         diff_m_y_r_up2_carts[r_i][1] -= diff_h
         diff_m_z_r_up2_carts[r_i][2] -= diff_h
 
-        det_geminal_m_x_up2 = compute_det_geminal_all_elements_jax(
+        det_geminal_m_x_up2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=diff_m_x_r_up2_carts,
             r_dn_carts=r_dn_carts,
         )
-        det_geminal_m_y_up2 = compute_det_geminal_all_elements_jax(
+        det_geminal_m_y_up2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=diff_m_y_r_up2_carts,
             r_dn_carts=r_dn_carts,
         )
-        det_geminal_m_z_up2 = compute_det_geminal_all_elements_jax(
+        det_geminal_m_z_up2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=diff_m_z_r_up2_carts,
             r_dn_carts=r_dn_carts,
@@ -1171,17 +1148,17 @@ def compute_grads_and_laplacian_ln_Det_debug(
         diff_p_y_r_dn2_carts[r_i][1] += diff_h
         diff_p_z_r_dn2_carts[r_i][2] += diff_h
 
-        det_geminal_p_x_dn2 = compute_det_geminal_all_elements_jax(
+        det_geminal_p_x_dn2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_p_x_r_dn2_carts,
         )
-        det_geminal_p_y_dn2 = compute_det_geminal_all_elements_jax(
+        det_geminal_p_y_dn2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_p_y_r_dn2_carts,
         )
-        det_geminal_p_z_dn2 = compute_det_geminal_all_elements_jax(
+        det_geminal_p_z_dn2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_p_z_r_dn2_carts,
@@ -1194,17 +1171,17 @@ def compute_grads_and_laplacian_ln_Det_debug(
         diff_m_y_r_dn2_carts[r_i][1] -= diff_h
         diff_m_z_r_dn2_carts[r_i][2] -= diff_h
 
-        det_geminal_m_x_dn2 = compute_det_geminal_all_elements_jax(
+        det_geminal_m_x_dn2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_m_x_r_dn2_carts,
         )
-        det_geminal_m_y_dn2 = compute_det_geminal_all_elements_jax(
+        det_geminal_m_y_dn2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_m_y_r_dn2_carts,
         )
-        det_geminal_m_z_dn2 = compute_det_geminal_all_elements_jax(
+        det_geminal_m_z_dn2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_m_z_r_dn2_carts,
@@ -1240,7 +1217,8 @@ def compute_grads_and_laplacian_ln_Det_debug(
 
     diff_h2 = 1.0e-4  # for laplacian
 
-    sum_laplacian_ln_D = 0.0
+    laplacian_ln_D_up = np.zeros(len(r_up_carts))
+    laplacian_ln_D_dn = np.zeros(len(r_dn_carts))
 
     # laplacians up
     for r_i, _ in enumerate(r_up_carts):
@@ -1251,17 +1229,17 @@ def compute_grads_and_laplacian_ln_Det_debug(
         diff_p_y_r_up2_carts[r_i][1] += diff_h2
         diff_p_z_r_up2_carts[r_i][2] += diff_h2
 
-        det_geminal_p_x_up2 = compute_det_geminal_all_elements_jax(
+        det_geminal_p_x_up2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=diff_p_x_r_up2_carts,
             r_dn_carts=r_dn_carts,
         )
-        det_geminal_p_y_up2 = compute_det_geminal_all_elements_jax(
+        det_geminal_p_y_up2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=diff_p_y_r_up2_carts,
             r_dn_carts=r_dn_carts,
         )
-        det_geminal_p_z_up2 = compute_det_geminal_all_elements_jax(
+        det_geminal_p_z_up2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=diff_p_z_r_up2_carts,
             r_dn_carts=r_dn_carts,
@@ -1274,17 +1252,17 @@ def compute_grads_and_laplacian_ln_Det_debug(
         diff_m_y_r_up2_carts[r_i][1] -= diff_h2
         diff_m_z_r_up2_carts[r_i][2] -= diff_h2
 
-        det_geminal_m_x_up2 = compute_det_geminal_all_elements_jax(
+        det_geminal_m_x_up2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=diff_m_x_r_up2_carts,
             r_dn_carts=r_dn_carts,
         )
-        det_geminal_m_y_up2 = compute_det_geminal_all_elements_jax(
+        det_geminal_m_y_up2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=diff_m_y_r_up2_carts,
             r_dn_carts=r_dn_carts,
         )
-        det_geminal_m_z_up2 = compute_det_geminal_all_elements_jax(
+        det_geminal_m_z_up2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=diff_m_z_r_up2_carts,
             r_dn_carts=r_dn_carts,
@@ -1322,7 +1300,7 @@ def compute_grads_and_laplacian_ln_Det_debug(
         _grad_z_up = grad_z_up[r_i]
 
         # since d^2/dx^2 ln(|f(x)|) = (f''(x)*f(x) - f'(x)^2) / f(x)^2
-        sum_laplacian_ln_D += (
+        laplacian_ln_D_up[r_i] = (
             (gradgrad_x_up * det_geminal - _grad_x_up**2) / det_geminal**2
             + (gradgrad_y_up * det_geminal - _grad_y_up**2) / det_geminal**2
             + (gradgrad_z_up * det_geminal - _grad_z_up**2) / det_geminal**2
@@ -1337,17 +1315,17 @@ def compute_grads_and_laplacian_ln_Det_debug(
         diff_p_y_r_dn2_carts[r_i][1] += diff_h2
         diff_p_z_r_dn2_carts[r_i][2] += diff_h2
 
-        det_geminal_p_x_dn2 = compute_det_geminal_all_elements_jax(
+        det_geminal_p_x_dn2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_p_x_r_dn2_carts,
         )
-        det_geminal_p_y_dn2 = compute_det_geminal_all_elements_jax(
+        det_geminal_p_y_dn2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_p_y_r_dn2_carts,
         )
-        det_geminal_p_z_dn2 = compute_det_geminal_all_elements_jax(
+        det_geminal_p_z_dn2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_p_z_r_dn2_carts,
@@ -1360,17 +1338,17 @@ def compute_grads_and_laplacian_ln_Det_debug(
         diff_m_y_r_dn2_carts[r_i][1] -= diff_h2
         diff_m_z_r_dn2_carts[r_i][2] -= diff_h2
 
-        det_geminal_m_x_dn2 = compute_det_geminal_all_elements_jax(
+        det_geminal_m_x_dn2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_m_x_r_dn2_carts,
         )
-        det_geminal_m_y_dn2 = compute_det_geminal_all_elements_jax(
+        det_geminal_m_y_dn2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_m_y_r_dn2_carts,
         )
-        det_geminal_m_z_dn2 = compute_det_geminal_all_elements_jax(
+        det_geminal_m_z_dn2 = compute_det_geminal_all_elements(
             geminal_data=geminal_data,
             r_up_carts=r_up_carts,
             r_dn_carts=diff_m_z_r_dn2_carts,
@@ -1408,14 +1386,14 @@ def compute_grads_and_laplacian_ln_Det_debug(
         _grad_z_dn = grad_z_dn[r_i]
 
         # since d^2/dx^2 ln(|f(x)|) = (f''(x)*f(x) - f'(x)^2) / f(x)^2
-        sum_laplacian_ln_D += (
+        laplacian_ln_D_dn[r_i] = (
             (gradgrad_x_dn * det_geminal - _grad_x_dn**2) / det_geminal**2
             + (gradgrad_y_dn * det_geminal - _grad_y_dn**2) / det_geminal**2
             + (gradgrad_z_dn * det_geminal - _grad_z_dn**2) / det_geminal**2
         )
 
     # Returning answers
-    return grad_ln_D_up, grad_ln_D_dn, sum_laplacian_ln_D
+    return grad_ln_D_up, grad_ln_D_dn, laplacian_ln_D_up, laplacian_ln_D_dn
 
 
 '''

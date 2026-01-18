@@ -1,5 +1,5 @@
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 
 plt.rcParams["font.family"] = "sans-serif"
 plt.rcParams["xtick.direction"] = "in"

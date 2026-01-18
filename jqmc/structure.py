@@ -438,7 +438,7 @@ class Structure_data:
     '''
 
 
-def find_nearest_index(structure: Structure_data, r_cart: list[float]) -> int:
+def find_nearest_index_np(structure: Structure_data, r_cart: list[float]) -> int:
     """Find the nearest atom index for the give position.
 
     Args:
@@ -457,7 +457,7 @@ def find_nearest_index(structure: Structure_data, r_cart: list[float]) -> int:
         return find_nearest_nucleus_indices_np(structure, r_cart, 1)[0]
 
 
-def find_nearest_index_jax(structure: Structure_data, r_cart: list[float]) -> int:
+def find_nearest_index_jnp(structure: Structure_data, r_cart: list[float]) -> int:
     """Find the nearest atom index for the give position.
 
     Args:

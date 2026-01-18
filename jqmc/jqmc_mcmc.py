@@ -53,27 +53,27 @@ from jax.scipy.linalg import lu_factor, lu_solve
 from mpi4py import MPI
 
 from .determinant import (
-    compute_AS_regularization_factor_fast_update_jax,
-    compute_AS_regularization_factor_jax,
-    compute_det_geminal_all_elements_jax,
-    compute_geminal_all_elements_jax,
-    compute_geminal_dn_one_column_elements_jax,
-    compute_geminal_up_one_row_elements_jax,
+    compute_AS_regularization_factor,
+    compute_AS_regularization_factor_fast_update,
+    compute_det_geminal_all_elements,
+    compute_geminal_all_elements,
+    compute_geminal_dn_one_column_elements,
+    compute_geminal_up_one_row_elements,
 )
 from .diff_mask import DiffMask, apply_diff_mask
 from .hamiltonians import (
     Hamiltonian_data,
-    compute_local_energy_jax,
+    compute_local_energy,
 )
-from .jastrow_factor import compute_Jastrow_part_jax
+from .jastrow_factor import compute_Jastrow_part
 from .jqmc_utility import generate_init_electron_configurations
 from .setting import (
     MCMC_MIN_BIN_BLOCKS,
     MCMC_MIN_WARMUP_STEPS,
 )
-from .structure import find_nearest_index_jax
+from .structure import find_nearest_index_jnp
 from .swct import SWCT_data, evaluate_swct_domega_jax, evaluate_swct_omega_jax
-from .wavefunction import evaluate_ln_wavefunction_jax
+from .wavefunction import evaluate_ln_wavefunction
 
 # create new logger level for development
 DEVEL_LEVEL = 5
@@ -421,7 +421,7 @@ class MCMC:
         @jit
         def _geminal_inv_single(geminal_data, I, r_up_carts, r_dn_carts):
             # One sample: build G, LU-factorize, and invert via solve
-            G = compute_geminal_all_elements_jax(
+            G = compute_geminal_all_elements(
                 geminal_data=geminal_data,
                 r_up_carts=r_up_carts,  # (N_up, 3)
                 r_dn_carts=r_dn_carts,  # (N_dn, 3)
@@ -511,7 +511,7 @@ class MCMC:
                 old_r_cart = jnp.where(is_up, r_up_carts[selected_electron_index], r_dn_carts[selected_electron_index])
 
                 # choose the nearest atom index
-                nearest_atom_index = find_nearest_index_jax(hamiltonian_data.structure_data, old_r_cart)
+                nearest_atom_index = find_nearest_index_jnp(hamiltonian_data.structure_data, old_r_cart)
 
                 # charges
                 if hamiltonian_data.coulomb_potential_data.ecp_flag:
@@ -559,7 +559,7 @@ class MCMC:
                 )
 
                 # choose the nearest atom index
-                nearest_atom_index = find_nearest_index_jax(hamiltonian_data.structure_data, new_r_cart)
+                nearest_atom_index = find_nearest_index_jnp(hamiltonian_data.structure_data, new_r_cart)
 
                 R_cart = coords[nearest_atom_index]
                 Z = charges[nearest_atom_index]
@@ -572,13 +572,13 @@ class MCMC:
                 )
 
                 # original trial WFs
-                Jastrow_T_p = compute_Jastrow_part_jax(
+                Jastrow_T_p = compute_Jastrow_part(
                     jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                     r_up_carts=proposed_r_up_carts,
                     r_dn_carts=proposed_r_dn_carts,
                 )
 
-                Jastrow_T_o = compute_Jastrow_part_jax(
+                Jastrow_T_o = compute_Jastrow_part(
                     jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -588,13 +588,13 @@ class MCMC:
                 v = lax.cond(
                     is_up,
                     lambda _: (
-                        compute_geminal_up_one_row_elements_jax(
+                        compute_geminal_up_one_row_elements(
                             geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                             # inline "as_row3": force (1,3) even if source is (3,)
                             r_up_cart=jnp.reshape(proposed_r_up_carts[selected_electron_index], (1, 3)),
                             r_dn_carts=r_dn_carts,
                         )
-                        - compute_geminal_up_one_row_elements_jax(
+                        - compute_geminal_up_one_row_elements(
                             geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                             r_up_cart=jnp.reshape(r_up_carts[selected_electron_index], (1, 3)),
                             r_dn_carts=r_dn_carts,
@@ -608,12 +608,12 @@ class MCMC:
                     is_up,
                     lambda _: jax.nn.one_hot(selected_electron_index, num_up_electrons)[:, None],  # (N_up, 1)
                     lambda _: (
-                        compute_geminal_dn_one_column_elements_jax(
+                        compute_geminal_dn_one_column_elements(
                             geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                             r_up_carts=r_up_carts,
                             r_dn_cart=jnp.reshape(proposed_r_dn_carts[selected_electron_index], (1, 3)),  # inline "as_row3"
                         )
-                        - compute_geminal_dn_one_column_elements_jax(
+                        - compute_geminal_dn_one_column_elements(
                             geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                             r_up_carts=r_up_carts,
                             r_dn_cart=jnp.reshape(r_dn_carts[selected_electron_index], (1, 3)),
@@ -640,10 +640,10 @@ class MCMC:
                     operand=None,
                 )
                 # compute AS regularization factors, R_AS and R_AS_eps
-                R_AS_p = compute_AS_regularization_factor_fast_update_jax(geminal_new, geminal_inv_new)
+                R_AS_p = compute_AS_regularization_factor_fast_update(geminal_new, geminal_inv_new)
                 R_AS_p_eps = jnp.maximum(R_AS_p, epsilon_AS)
 
-                R_AS_o = compute_AS_regularization_factor_fast_update_jax(geminal, geminal_inv)
+                R_AS_o = compute_AS_regularization_factor_fast_update(geminal, geminal_inv)
                 R_AS_o_eps = jnp.maximum(R_AS_o, epsilon_AS)
 
                 # modified trial WFs
@@ -730,7 +730,7 @@ class MCMC:
                 old_r_cart = r_up_carts[selected_electron_index]
 
                 # choose the nearest atom index
-                nearest_atom_index = find_nearest_index_jax(hamiltonian_data.structure_data, old_r_cart)
+                nearest_atom_index = find_nearest_index_jnp(hamiltonian_data.structure_data, old_r_cart)
 
                 # charges
                 if hamiltonian_data.coulomb_potential_data.ecp_flag:
@@ -767,7 +767,7 @@ class MCMC:
                 proposed_r_dn_carts = r_dn_carts
 
                 # choose the nearest atom index
-                nearest_atom_index = find_nearest_index_jax(hamiltonian_data.structure_data, new_r_cart)
+                nearest_atom_index = find_nearest_index_jnp(hamiltonian_data.structure_data, new_r_cart)
 
                 R_cart = coords[nearest_atom_index]
                 Z = charges[nearest_atom_index]
@@ -780,13 +780,13 @@ class MCMC:
                 )
 
                 # original trial WFs
-                Jastrow_T_p = compute_Jastrow_part_jax(
+                Jastrow_T_p = compute_Jastrow_part(
                     jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                     r_up_carts=proposed_r_up_carts,
                     r_dn_carts=proposed_r_dn_carts,
                 )
 
-                Jastrow_T_o = compute_Jastrow_part_jax(
+                Jastrow_T_o = compute_Jastrow_part(
                     jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
@@ -794,13 +794,13 @@ class MCMC:
 
                 # Determinant part, fast update using the matrix determinant lemma
                 v = (
-                    compute_geminal_up_one_row_elements_jax(
+                    compute_geminal_up_one_row_elements(
                         geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                         # inline "as_row3": force (1,3) even if source is (3,)
                         r_up_cart=jnp.reshape(proposed_r_up_carts[selected_electron_index], (1, 3)),
                         r_dn_carts=r_dn_carts,
                     )
-                    - compute_geminal_up_one_row_elements_jax(
+                    - compute_geminal_up_one_row_elements(
                         geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                         r_up_cart=jnp.reshape(r_up_carts[selected_electron_index], (1, 3)),
                         r_dn_carts=r_dn_carts,
@@ -821,10 +821,10 @@ class MCMC:
                 geminal_new = geminal.at[selected_electron_index, :].add(v.squeeze(-1))
 
                 # compute AS regularization factors, R_AS and R_AS_eps
-                R_AS_p = compute_AS_regularization_factor_fast_update_jax(geminal_new, geminal_inv_new)
+                R_AS_p = compute_AS_regularization_factor_fast_update(geminal_new, geminal_inv_new)
                 R_AS_p_eps = jnp.maximum(R_AS_p, epsilon_AS)
 
-                R_AS_o = compute_AS_regularization_factor_fast_update_jax(geminal, geminal_inv)
+                R_AS_o = compute_AS_regularization_factor_fast_update(geminal, geminal_inv)
                 R_AS_o_eps = jnp.maximum(R_AS_o, epsilon_AS)
 
                 # modified trial WFs
@@ -924,23 +924,23 @@ class MCMC:
                 geminal_inv,
                 geminal,
             )
-        _ = vmap(compute_local_energy_jax, in_axes=(None, 0, 0, 0))(
+        _ = vmap(compute_local_energy, in_axes=(None, 0, 0, 0))(
             self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs
         )
-        _ = vmap(compute_AS_regularization_factor_jax, in_axes=(None, 0, 0))(
+        _ = vmap(compute_AS_regularization_factor, in_axes=(None, 0, 0))(
             self.__hamiltonian_data.wavefunction_data.geminal_data,
             self.__latest_r_up_carts,
             self.__latest_r_dn_carts,
         )
         if self.__comput_position_deriv:
-            _, _, _ = vmap(grad(compute_local_energy_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0))(
+            _, _, _ = vmap(grad(compute_local_energy, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0))(
                 hamiltonian_for_param_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
                 RTs,
             )
 
-            _, _, _ = vmap(grad(evaluate_ln_wavefunction_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0))(
+            _, _, _ = vmap(grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0))(
                 wavefunction_for_param_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
@@ -965,14 +965,14 @@ class MCMC:
                 self.__swct_data,
                 self.__latest_r_dn_carts,
             )
-            _ = vmap(grad(evaluate_ln_wavefunction_jax, argnums=0), in_axes=(None, 0, 0))(
+            _ = vmap(grad(evaluate_ln_wavefunction, argnums=0), in_axes=(None, 0, 0))(
                 wavefunction_for_param_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
 
         if self.__comput_param_deriv:
-            _ = vmap(grad(evaluate_ln_wavefunction_jax, argnums=0), in_axes=(None, 0, 0))(
+            _ = vmap(grad(evaluate_ln_wavefunction, argnums=0), in_axes=(None, 0, 0))(
                 wavefunction_for_param_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
@@ -1069,7 +1069,7 @@ class MCMC:
 
             # evaluate observables
             start = time.perf_counter()
-            e_L = vmap(compute_local_energy_jax, in_axes=(None, 0, 0, 0))(
+            e_L = vmap(compute_local_energy, in_axes=(None, 0, 0, 0))(
                 self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs
             )
             e_L.block_until_ready()
@@ -1080,7 +1080,7 @@ class MCMC:
             self.__stored_e_L2.append(e_L**2)
 
             # compute AS regularization factors, R_AS and R_AS_eps
-            R_AS = vmap(compute_AS_regularization_factor_fast_update_jax, in_axes=(0, 0))(geminal, geminal_inv)
+            R_AS = vmap(compute_AS_regularization_factor_fast_update, in_axes=(0, 0))(geminal, geminal_inv)
             R_AS_eps = jnp.maximum(R_AS, self.__epsilon_AS)
 
             w_L = (R_AS / R_AS_eps) ** 2
@@ -1126,7 +1126,7 @@ class MCMC:
                 # """
                 start = time.perf_counter()
                 grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = vmap(
-                    grad(compute_local_energy_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0)
+                    grad(compute_local_energy, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0)
                 )(
                     hamiltonian_for_param_grads,
                     self.__latest_r_up_carts,
@@ -1148,7 +1148,7 @@ class MCMC:
                 # """
                 start = time.perf_counter()
                 grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = vmap(
-                    grad(evaluate_ln_wavefunction_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
+                    grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
                 )(
                     wavefunction_for_param_grads,
                     self.__latest_r_up_carts,
@@ -1194,7 +1194,7 @@ class MCMC:
 
             if self.__comput_param_deriv:
                 start = time.perf_counter()
-                grad_ln_Psi_h = vmap(grad(evaluate_ln_wavefunction_jax, argnums=0), in_axes=(None, 0, 0))(
+                grad_ln_Psi_h = vmap(grad(evaluate_ln_wavefunction, argnums=0), in_axes=(None, 0, 0))(
                     wavefunction_for_param_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
@@ -2985,7 +2985,7 @@ class MCMC_debug:
                         old_r_cart = r_dn_carts[selected_electron_index]
 
                     # choose the nearest atom index
-                    nearest_atom_index = find_nearest_index_jax(hamiltonian_data.structure_data, old_r_cart)
+                    nearest_atom_index = find_nearest_index_jnp(hamiltonian_data.structure_data, old_r_cart)
 
                     # charges
                     if hamiltonian_data.coulomb_potential_data.ecp_flag:
@@ -3028,7 +3028,7 @@ class MCMC_debug:
                         proposed_r_dn_carts[selected_electron_index] = new_r_cart
 
                     # choose the nearest atom index
-                    nearest_atom_index = find_nearest_index_jax(hamiltonian_data.structure_data, new_r_cart)
+                    nearest_atom_index = find_nearest_index_jnp(hamiltonian_data.structure_data, new_r_cart)
 
                     R_cart = coords[nearest_atom_index]
                     Z = charges[nearest_atom_index]
@@ -3041,39 +3041,39 @@ class MCMC_debug:
                     )
 
                     # original trial WFs
-                    Jastrow_T_p = compute_Jastrow_part_jax(
+                    Jastrow_T_p = compute_Jastrow_part(
                         jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                         r_up_carts=proposed_r_up_carts,
                         r_dn_carts=proposed_r_dn_carts,
                     )
 
-                    Jastrow_T_o = compute_Jastrow_part_jax(
+                    Jastrow_T_o = compute_Jastrow_part(
                         jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
                     )
 
-                    Det_T_p = compute_det_geminal_all_elements_jax(
+                    Det_T_p = compute_det_geminal_all_elements(
                         geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                         r_up_carts=proposed_r_up_carts,
                         r_dn_carts=proposed_r_dn_carts,
                     )
 
-                    Det_T_o = compute_det_geminal_all_elements_jax(
+                    Det_T_o = compute_det_geminal_all_elements(
                         geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
                     )
 
                     # compute AS regularization factors, R_AS and R_AS_eps
-                    R_AS_p = compute_AS_regularization_factor_jax(
+                    R_AS_p = compute_AS_regularization_factor(
                         geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                         r_up_carts=proposed_r_up_carts,
                         r_dn_carts=proposed_r_dn_carts,
                     )
                     R_AS_p_eps = jnp.maximum(R_AS_p, epsilon_AS)
 
-                    R_AS_o = compute_AS_regularization_factor_jax(
+                    R_AS_o = compute_AS_regularization_factor(
                         geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
@@ -3140,14 +3140,14 @@ class MCMC_debug:
             RTs = jnp.array(RTs)
 
             # evaluate observables
-            e_L = vmap(compute_local_energy_jax, in_axes=(None, 0, 0, 0))(
+            e_L = vmap(compute_local_energy, in_axes=(None, 0, 0, 0))(
                 self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs
             )
             self.__stored_e_L.append(e_L)
             self.__stored_e_L2.append(e_L**2)
 
             # compute AS regularization factors, R_AS and R_AS_eps
-            R_AS = vmap(compute_AS_regularization_factor_jax, in_axes=(None, 0, 0))(
+            R_AS = vmap(compute_AS_regularization_factor, in_axes=(None, 0, 0))(
                 self.__hamiltonian_data.wavefunction_data.geminal_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
@@ -3159,7 +3159,7 @@ class MCMC_debug:
 
             if self.__comput_position_deriv:
                 grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = vmap(
-                    grad(compute_local_energy_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0)
+                    grad(compute_local_energy, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0)
                 )(hamiltonian_for_param_grads, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs)
 
                 self.__stored_grad_e_L_r_up.append(grad_e_L_r_up)
@@ -3169,7 +3169,7 @@ class MCMC_debug:
                 self.__stored_grad_e_L_dR.append(grad_e_L_R)
 
                 grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = vmap(
-                    grad(evaluate_ln_wavefunction_jax, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
+                    grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
                 )(
                     wavefunction_for_param_grads,
                     self.__latest_r_up_carts,
@@ -3209,7 +3209,7 @@ class MCMC_debug:
                 self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn)
 
             if self.__comput_param_deriv:
-                grad_ln_Psi_h = vmap(grad(evaluate_ln_wavefunction_jax, argnums=0), in_axes=(None, 0, 0))(
+                grad_ln_Psi_h = vmap(grad(evaluate_ln_wavefunction, argnums=0), in_axes=(None, 0, 0))(
                     wavefunction_for_param_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
