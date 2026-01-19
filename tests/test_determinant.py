@@ -96,7 +96,7 @@ def test_comparing_AO_and_MO_geminals():
     else:
         charges = np.array(structure_data.atomic_numbers)
 
-    coords = structure_data.positions_cart_np
+    coords = structure_data._positions_cart_np
 
     # Place electrons around each nucleus
     for i in range(len(coords)):
@@ -265,7 +265,7 @@ def test_comparing_AS_regularization():
     else:
         charges = np.array(structure_data.atomic_numbers)
 
-    coords = structure_data.positions_cart_np
+    coords = structure_data._positions_cart_np
 
     # Place electrons around each nucleus
     for i in range(len(coords)):
@@ -353,7 +353,7 @@ def test_one_row_or_one_column_update():
     else:
         charges = np.array(structure_data.atomic_numbers)
 
-    coords = structure_data.positions_cart_np
+    coords = structure_data._positions_cart_np
 
     # Place electrons around each nucleus
     for i in range(len(coords)):
@@ -465,7 +465,7 @@ def test_numerial_and_auto_grads_and_laplacians_ln_Det():
     else:
         charges = np.array(structure_data.atomic_numbers)
 
-    coords = structure_data.positions_cart_np
+    coords = structure_data._positions_cart_np
 
     # Place electrons around each nucleus
     for i in range(len(coords)):
@@ -590,7 +590,7 @@ def test_analytic_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
     else:
         charges = np.array(structure_data.atomic_numbers)
 
-    coords = structure_data.positions_cart_np
+    coords = structure_data._positions_cart_np
 
     # Place electrons around each nucleus
     for i in range(len(coords)):

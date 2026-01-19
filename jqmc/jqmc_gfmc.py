@@ -65,7 +65,7 @@ from .hamiltonians import (
 from .jastrow_factor import (
     compute_Jastrow_part,
 )
-from .jqmc_utility import generate_init_electron_configurations
+from .jqmc_utility import _generate_init_electron_configurations
 from .setting import (
     GFMC_MIN_BIN_BLOCKS,
     GFMC_MIN_COLLECT_STEPS,
@@ -74,7 +74,7 @@ from .setting import (
     GFMC_ON_THE_FLY_COLLECT_STEPS,
     GFMC_ON_THE_FLY_WARMUP_STEPS,
 )
-from .swct import SWCT_data, evaluate_swct_domega_jax, evaluate_swct_omega_jax
+from .swct import SWCT_data, evaluate_swct_domega, evaluate_swct_omega
 from .wavefunction import (
     compute_discretized_kinetic_energy,
     compute_kinetic_energy_all_elements,
@@ -228,10 +228,10 @@ class GFMC_fixed_projection_time:
         else:
             charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
 
-        coords = hamiltonian_data.structure_data.positions_cart_jnp
+        coords = hamiltonian_data.structure_data._positions_cart_jnp
 
         ## generate initial electron configurations
-        r_carts_up, r_carts_dn, up_owner, dn_owner = generate_init_electron_configurations(
+        r_carts_up, r_carts_dn, up_owner, dn_owner = _generate_init_electron_configurations(
             tot_num_electron_up, tot_num_electron_dn, self.__num_walkers, charges, coords
         )
 
@@ -262,7 +262,7 @@ class GFMC_fixed_projection_time:
 
         # print out hamiltonian info
         logger.info("Printing out information in hamitonian_data instance.")
-        self.__hamiltonian_data.logger_info()
+        self.__hamiltonian_data._logger_info()
         logger.info("")
 
         # init attributes
@@ -1507,10 +1507,10 @@ class GFMC_fixed_projection_time_debug:
         else:
             charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
 
-        coords = hamiltonian_data.structure_data.positions_cart_jnp
+        coords = hamiltonian_data.structure_data._positions_cart_jnp
 
         ## generate initial electron configurations
-        r_carts_up, r_carts_dn, up_owner, dn_owner = generate_init_electron_configurations(
+        r_carts_up, r_carts_dn, up_owner, dn_owner = _generate_init_electron_configurations(
             tot_num_electron_up, tot_num_electron_dn, self.__num_walkers, charges, coords
         )
 
@@ -2201,10 +2201,10 @@ class GFMC_fixed_num_projection:
         else:
             charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
 
-        coords = hamiltonian_data.structure_data.positions_cart_jnp
+        coords = hamiltonian_data.structure_data._positions_cart_jnp
 
         ## generate initial electron configurations
-        r_carts_up, r_carts_dn, up_owner, dn_owner = generate_init_electron_configurations(
+        r_carts_up, r_carts_dn, up_owner, dn_owner = _generate_init_electron_configurations(
             tot_num_electron_up, tot_num_electron_dn, self.__num_walkers, charges, coords
         )
 
@@ -2238,7 +2238,7 @@ class GFMC_fixed_num_projection:
 
         # print out hamiltonian info
         logger.info("Printing out information in hamitonian_data instance.")
-        self.__hamiltonian_data.logger_info()
+        self.__hamiltonian_data._logger_info()
         logger.info("")
 
         # init attributes
@@ -2306,8 +2306,8 @@ class GFMC_fixed_num_projection:
     def hamiltonian_data(self, hamiltonian_data):
         """Set hamiltonian_data."""
         if self.__comput_position_deriv:
-            # self.__hamiltonian_data = Hamiltonian_data_deriv_R.from_base(hamiltonian_data)  # it doesn't work...
-            self.__hamiltonian_data = Hamiltonian_data.from_base(hamiltonian_data)
+            # Keep gradients for both params and coords when position derivatives are needed.
+            self.__hamiltonian_data = apply_diff_mask(hamiltonian_data, DiffMask(params=True, coords=True))
         else:
             self.__hamiltonian_data = apply_diff_mask(hamiltonian_data, DiffMask(params=False, coords=False))
         self.__init_attributes()
@@ -3216,22 +3216,22 @@ class GFMC_fixed_num_projection:
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_nn_data is not None:
                     grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_nn_data.structure_data.positions
 
-                omega_up = vmap(evaluate_swct_omega_jax, in_axes=(None, 0))(
+                omega_up = vmap(evaluate_swct_omega, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_up_carts,
                 )
 
-                omega_dn = vmap(evaluate_swct_omega_jax, in_axes=(None, 0))(
+                omega_dn = vmap(evaluate_swct_omega, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_dn_carts,
                 )
 
-                grad_omega_dr_up = vmap(evaluate_swct_domega_jax, in_axes=(None, 0))(
+                grad_omega_dr_up = vmap(evaluate_swct_domega, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_up_carts,
                 )
 
-                grad_omega_dr_dn = vmap(evaluate_swct_domega_jax, in_axes=(None, 0))(
+                grad_omega_dr_dn = vmap(evaluate_swct_domega, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_dn_carts,
                 )
@@ -4377,10 +4377,10 @@ class GFMC_fixed_num_projection_debug:
         else:
             charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
 
-        coords = hamiltonian_data.structure_data.positions_cart_jnp
+        coords = hamiltonian_data.structure_data._positions_cart_jnp
 
         ## generate initial electron configurations
-        r_carts_up, r_carts_dn, up_owner, dn_owner = generate_init_electron_configurations(
+        r_carts_up, r_carts_dn, up_owner, dn_owner = _generate_init_electron_configurations(
             tot_num_electron_up, tot_num_electron_dn, self.__num_walkers, charges, coords
         )
 
@@ -5215,22 +5215,22 @@ class GFMC_fixed_num_projection_debug:
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
                     grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
 
-                omega_up = vmap(evaluate_swct_omega_jax, in_axes=(None, 0))(
+                omega_up = vmap(evaluate_swct_omega, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_up_carts,
                 )
 
-                omega_dn = vmap(evaluate_swct_omega_jax, in_axes=(None, 0))(
+                omega_dn = vmap(evaluate_swct_omega, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_dn_carts,
                 )
 
-                grad_omega_dr_up = vmap(evaluate_swct_domega_jax, in_axes=(None, 0))(
+                grad_omega_dr_up = vmap(evaluate_swct_domega, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_up_carts,
                 )
 
-                grad_omega_dr_dn = vmap(evaluate_swct_domega_jax, in_axes=(None, 0))(
+                grad_omega_dr_dn = vmap(evaluate_swct_domega, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_dn_carts,
                 )

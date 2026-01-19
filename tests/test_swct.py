@@ -45,10 +45,10 @@ if project_root not in sys.path:
 
 from jqmc.swct import (  # noqa: E402
     SWCT_data,
-    evaluate_swct_domega_debug,
-    evaluate_swct_domega_jax,
-    evaluate_swct_omega_debug,
-    evaluate_swct_omega_jax,
+    _evaluate_swct_domega_debug,
+    _evaluate_swct_omega_debug,
+    evaluate_swct_domega,
+    evaluate_swct_omega,
 )
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 
@@ -79,18 +79,18 @@ def test_debug_and_jax_SWCT_omega():
     r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
 
-    omega_up_debug = evaluate_swct_omega_debug(swct_data=swct_data, r_carts=r_up_carts)
-    omega_dn_debug = evaluate_swct_omega_debug(swct_data=swct_data, r_carts=r_dn_carts)
-    omega_up_jax = evaluate_swct_omega_jax(swct_data=swct_data, r_carts=r_up_carts)
-    omega_dn_jax = evaluate_swct_omega_jax(swct_data=swct_data, r_carts=r_dn_carts)
+    omega_up_debug = _evaluate_swct_omega_debug(swct_data=swct_data, r_carts=r_up_carts)
+    omega_dn_debug = _evaluate_swct_omega_debug(swct_data=swct_data, r_carts=r_dn_carts)
+    omega_up_jax = evaluate_swct_omega(swct_data=swct_data, r_carts=r_up_carts)
+    omega_dn_jax = evaluate_swct_omega(swct_data=swct_data, r_carts=r_dn_carts)
 
     np.testing.assert_almost_equal(omega_up_debug, omega_up_jax, decimal=6)
     np.testing.assert_almost_equal(omega_dn_debug, omega_dn_jax, decimal=6)
 
-    domega_up_debug = evaluate_swct_domega_debug(swct_data=swct_data, r_carts=r_up_carts)
-    domega_dn_debug = evaluate_swct_domega_debug(swct_data=swct_data, r_carts=r_dn_carts)
-    domega_up_jax = evaluate_swct_domega_jax(swct_data=swct_data, r_carts=r_up_carts)
-    domega_dn_jax = evaluate_swct_domega_jax(swct_data=swct_data, r_carts=r_dn_carts)
+    domega_up_debug = _evaluate_swct_domega_debug(swct_data=swct_data, r_carts=r_up_carts)
+    domega_dn_debug = _evaluate_swct_domega_debug(swct_data=swct_data, r_carts=r_dn_carts)
+    domega_up_jax = evaluate_swct_domega(swct_data=swct_data, r_carts=r_up_carts)
+    domega_dn_jax = evaluate_swct_domega(swct_data=swct_data, r_carts=r_dn_carts)
 
     np.testing.assert_almost_equal(domega_up_debug, domega_up_jax, decimal=6)
     np.testing.assert_almost_equal(domega_dn_debug, domega_dn_jax, decimal=6)

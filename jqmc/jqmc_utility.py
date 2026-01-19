@@ -44,7 +44,7 @@ logger = getLogger("jqmc").getChild(__name__)
 num_sep_line = 66
 
 
-def generate_init_electron_configurations(
+def _generate_init_electron_configurations(
     tot_num_electron_up: int,
     tot_num_electron_dn: int,
     num_walkers: int,

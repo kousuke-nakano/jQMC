@@ -100,17 +100,17 @@ def trexio_show_info(
     """Show information stored in the TREXIO file."""
     (structure_data, aos_data, mos_data_up, mos_data_dn, geminal_data, coulomb_potential_data) = read_trexio_file(filename)
 
-    for line in structure_data.get_info():
+    for line in structure_data._get_info():
         typer.echo(line)
-    for line in aos_data.get_info():
+    for line in aos_data._get_info():
         typer.echo(line)
-    for line in mos_data_up.get_info():
+    for line in mos_data_up._get_info():
         typer.echo(line)
-    for line in mos_data_dn.get_info():
+    for line in mos_data_dn._get_info():
         typer.echo(line)
-    for line in geminal_data.get_info():
+    for line in geminal_data._get_info():
         typer.echo(line)
-    for line in coulomb_potential_data.get_info():
+    for line in coulomb_potential_data._get_info():
         typer.echo(line)
 
 
@@ -416,7 +416,7 @@ def hamiltonian_show_info(
     """Show information stored in the Hamiltonian data."""
     hamiltonian = Hamiltonian_data.load_from_hdf5(hamiltonian_data)
     hamiltonian.sanity_check()
-    for line in hamiltonian.get_info():
+    for line in hamiltonian._get_info():
         typer.echo(line)
 
 

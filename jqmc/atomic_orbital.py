@@ -64,55 +64,190 @@ atol = 1e-8
 
 @struct.dataclass
 class AOs_cart_data:
-    """Atomic Orbitals dataclass.
+    """Atomic orbital definitions in Cartesian form.
 
-    The class contains data for computing atomic orbitals simltaneously. The angular part is the polynominal.
+    Stores contracted Gaussian basis data used to evaluate atomic orbitals (AOs) on a grid.
+    The angular part is represented by Cartesian polynomials (:math:`x^{n_x} y^{n_y} z^{n_z}`) with
+    :math:`n_x + n_y + n_z = l` for each AO.
 
-    Args:
-        structure_data(Structure_data):
-            an instance of Structure_data
-        nucleus_index (list[int] | tuple[int]):
-            One-to-one correspondence between AO items and the atom index (dim:num_ao)
-        num_ao (int):
-            the number of atomic orbitals.
-        num_ao_prim (int):
-            the number of primitive atomic orbitals.
-        orbital_indices (tuple[int]):
-            index for what exponents and coefficients are associated to each atomic orbital.
-            dim: num_ao_prim
-        exponents (list[float] | tuple[float]):
-            List of exponents of the AOs. dim: num_ao_prim.
-        coefficients (list[float] | tuple[float]):
-            List of coefficients of the AOs. dim: num_ao_prim
-        angular_momentums (list[int] | tuple[int]):
-            Angular momentum of the AOs, i.e., l. dim: num_ao
-        polynominal_order_x (list[int] | tuple[int]):
-            polynominal order x of the angular part. dim: num_ao
-        polynominal_order_y (list[int] | tuple[int]):
-            polynominal order y of the angular part. dim: num_ao
-        polynominal_order_z (list[int] | tuple[int]):
-            polynominal order z of the angular part. dim: num_ao
+    Attributes:
+        structure_data (Structure_data): Molecular structure and atomic positions used to place AOs.
+        nucleus_index (list[int] | tuple[int]): AO -> atom index mapping (``len == num_ao``).
+        num_ao (int): Number of contracted AOs.
+        num_ao_prim (int): Number of primitive Gaussians.
+        orbital_indices (list[int] | tuple[int]): For each primitive, the parent AO index (``len == num_ao_prim``).
+        exponents (list[float] | tuple[float]): Gaussian exponents for primitives (``len == num_ao_prim``).
+        coefficients (list[float] | tuple[float]): Contraction coefficients per primitive (``len == num_ao_prim``).
+        angular_momentums (list[int] | tuple[int]): Angular momentum quantum numbers ``l`` per AO (``len == num_ao``).
+        polynominal_order_x (list[int] | tuple[int]): Cartesian power ``n_x`` for each AO (``len == num_ao``).
+        polynominal_order_y (list[int] | tuple[int]): Cartesian power ``n_y`` for each AO (``len == num_ao``).
+        polynominal_order_z (list[int] | tuple[int]): Cartesian power ``n_z`` for each AO (``len == num_ao``).
+
+    Examples:
+        Minimal hydrogen dimer (bohr) with all-electron cc-pVTZ (Gaussian format) in Cartesian form::
+
+            from jqmc.structure import Structure_data
+            from jqmc.atomic_orbital import AOs_cart_data
+
+            structure = Structure_data(
+                positions=[[0.0, 0.0, -0.70], [0.0, 0.0, 0.70]],
+                pbc_flag=False,
+                atomic_numbers=[1, 1],
+                element_symbols=["H", "H"],
+                atomic_labels=["H1", "H2"],
+            )
+
+            # cc-pVTZ primitives duplicated per Cartesian component; counts:
+            # per atom -> 15 AOs, 19 primitives; for two atoms
+            num_ao=30; num_ao_prim=38
+
+            exponents = [
+                0.3258,
+                33.87, 5.095, 1.159, 0.3258, 0.1027,
+                0.1027,
+                1.407, 1.407, 1.407,
+                0.388, 0.388, 0.388,
+                1.057, 1.057, 1.057, 1.057, 1.057, 1.057,
+                0.3258,
+                33.87, 5.095, 1.159, 0.3258, 0.1027,
+                0.1027,
+                1.407, 1.407, 1.407,
+                0.388, 0.388, 0.388,
+                1.057, 1.057, 1.057, 1.057, 1.057, 1.057,
+            ]
+
+            coefficients = [
+                1.0,
+                0.006068, 0.045308, 0.202822, 0.503903, 0.383421,
+                1.0,
+                1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+                1.0,
+                0.006068, 0.045308, 0.202822, 0.503903, 0.383421,
+                1.0,
+                1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+            ]
+
+            orbital_indices = [
+                0,                      # S shell (uncontracted)
+                1, 1, 1, 1, 1,          # S shell (contracted)
+                2,                      # S shell (uncontracted)
+                3, 4, 5,                # P shell (uncontracted)
+                6, 7, 8,                # P shell (uncontracted)
+                9, 10, 11, 12, 13, 14,  # D shell (uncontracted)
+                15,                     # S shell (uncontracted)
+                16, 16, 16, 16, 16,     # S shell (contracted)
+                17,                     # S shell (uncontracted)
+                18, 19, 20,             # P shell (uncontracted)
+                21, 22, 23,             # P shell (uncontracted)
+                24, 25, 26, 27, 28, 29, # D shell (uncontracted)
+            ]
+
+            nucleus_index = [
+                *([0] * 15),
+                *([1] * 15),
+            ]
+
+            angular_momentums = [
+                0, 0, 0,                # S shells (1 orbital each)
+                1, 1, 1, 1, 1, 1,       # two P shells (3 orbitals each)
+                2, 2, 2, 2, 2, 2,       # one D shell (6 orbitals each)
+                0, 0, 0,                # S shells (1 orbital each)
+                1, 1, 1, 1, 1, 1,       # two P shells (3 orbitals each)
+                2, 2, 2, 2, 2, 2,       # one D shell (6 orbitals each)
+            ]
+
+            polynominal_order_x = [
+                0, 0, 0,
+                1, 0, 0,
+                1, 0, 0,
+                2, 1, 1, 0, 0, 0,
+                0, 0, 0,
+                1, 0, 0,
+                1, 0, 0,
+                2, 1, 1, 0, 0, 0,
+            ]
+
+            polynominal_order_y = [
+                0, 0, 0,
+                0, 1, 0,
+                0, 1, 0,
+                0, 1, 0, 2, 1, 0,
+                0, 0, 0,
+                0, 1, 0,
+                0, 1, 0,
+                0, 1, 0, 2, 1, 0,
+            ]
+
+            polynominal_order_z = [
+                0, 0, 0,
+                0, 0, 1,
+                0, 0, 1,
+                0, 0, 1, 0, 1, 2,
+                0, 0, 0,
+                0, 0, 1,
+                0, 0, 1,
+                0, 0, 1, 0, 1, 2,
+            ]
+
+            aos = AOs_cart_data(
+                structure_data=structure,
+                nucleus_index=nucleus_index,
+                num_ao=num_ao,
+                num_ao_prim=num_ao_prim,
+                orbital_indices=orbital_indices,
+                exponents=exponents,
+                coefficients=coefficients,
+                angular_momentums=angular_momentums,
+                polynominal_order_x=polynominal_order_x,
+                polynominal_order_y=polynominal_order_y,
+                polynominal_order_z=polynominal_order_z,
+            )
+
+            aos.sanity_check()
     """
 
+    #: Molecular structure and atomic positions used to place AOs.
     structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
+    #: AO -> atom index mapping (``len == num_ao``).
     nucleus_index: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    #: Number of contracted AOs.
     num_ao: int = struct.field(pytree_node=False, default=0)
+    #: Number of primitive Gaussians.
     num_ao_prim: int = struct.field(pytree_node=False, default=0)
+    #: For each primitive, the parent AO index (``len == num_ao_prim``).
     orbital_indices: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    #: Gaussian exponents for primitives (``len == num_ao_prim``).
     exponents: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    #: Contraction coefficients per primitive (``len == num_ao_prim``).
     coefficients: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    #: Angular momentum quantum numbers ``l`` per AO (``len == num_ao``).
     angular_momentums: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    #: Cartesian power ``n_x`` for each AO (``len == num_ao``).
     polynominal_order_x: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    #: Cartesian power ``n_y`` for each AO (``len == num_ao``).
     polynominal_order_y: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    #: Cartesian power ``n_z`` for each AO (``len == num_ao``).
     polynominal_order_z: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
 
     def sanity_check(self) -> None:
-        """Check attributes of the class.
+        """Validate AO array shapes and basic types.
 
-        This function checks the consistencies among the arguments.
+        Ensures that array lengths match declared counts (``num_ao``, ``num_ao_prim``) and
+        that inputs are provided as lists/tuples (ints for counts). Call this after constructing
+        ``AOs_cart_data`` and before AO evaluation routines.
 
         Raises:
-            ValueError: If there is an inconsistency in a dimension of a given argument.
+            ValueError: When any of the following holds:
+                - ``len(nucleus_index) != num_ao``
+                - ``len(unique(orbital_indices)) != num_ao``
+                - ``len(exponents) != num_ao_prim`` or ``len(coefficients) != num_ao_prim``
+                - ``len(angular_momentums) != num_ao``
+                - ``len(polynominal_order_{x,y,z}) != num_ao``
+                - any attribute has an unexpected Python type (e.g., non-list/tuple arrays, non-int counts)
         """
         if len(self.nucleus_index) != self.num_ao:
             raise ValueError("dim. of self.nucleus_index is wrong")
@@ -252,7 +387,7 @@ class AOs_cart_data:
         """
         self.structure_data.sanity_check()
 
-    def get_info(self) -> list[str]:
+    def _get_info(self) -> list[str]:
         """Return a list of strings containing information about the class attributes."""
         info_lines = []
         info_lines.append(f"**{self.__class__.__name__}**")
@@ -329,43 +464,43 @@ class AOs_cart_data:
 
         return info_lines
 
-    def logger_info(self) -> None:
+    def _logger_info(self) -> None:
         """Output the information from get_info using logger.info."""
-        for line in self.get_info():
+        for line in self._get_info():
             logger.info(line)
 
     @property
-    def nucleus_index_np(self) -> npt.NDArray[np.int32]:
+    def _nucleus_index_np(self) -> npt.NDArray[np.int32]:
         """nucleus_index."""
         return np.array(self.nucleus_index, dtype=np.int32)
 
     @property
-    def nucleus_index_jnp(self) -> jax.Array:
+    def _nucleus_index_jnp(self) -> jax.Array:
         """nucleus_index."""
         return jnp.array(self.nucleus_index, dtype=jnp.int32)
 
     @property
-    def nucleus_index_prim_np(self) -> npt.NDArray[np.int32]:
+    def _nucleus_index_prim_np(self) -> npt.NDArray[np.int32]:
         """nucleus_index."""
-        return np.array(self.nucleus_index)[self.orbital_indices_np]
+        return np.array(self.nucleus_index)[self._orbital_indices_np]
 
     @property
-    def nucleus_index_prim_jnp(self) -> jax.Array:
+    def _nucleus_index_prim_jnp(self) -> jax.Array:
         """nucleus_index."""
-        return jnp.array(self.nucleus_index_prim_np, dtype=jnp.int32)
+        return jnp.array(self._nucleus_index_prim_np, dtype=jnp.int32)
 
     @property
-    def orbital_indices_np(self) -> npt.NDArray[np.int32]:
+    def _orbital_indices_np(self) -> npt.NDArray[np.int32]:
         """orbital_index."""
         return np.array(self.orbital_indices, dtype=np.int32)
 
     @property
-    def orbital_indices_jnp(self) -> jax.Array:
+    def _orbital_indices_jnp(self) -> jax.Array:
         """orbital_index."""
         return jnp.array(self.orbital_indices, dtype=jnp.int32)
 
     @property
-    def atomic_center_carts_np(self) -> npt.NDArray[np.float64]:
+    def _atomic_center_carts_np(self) -> npt.NDArray[np.float64]:
         """Atomic positions in cartesian.
 
         Returns atomic positions in cartesian
@@ -373,10 +508,10 @@ class AOs_cart_data:
         Returns:
             npt.NDArray[np.float64]: atomic positions in cartesian
         """
-        return self.structure_data.positions_cart_np[self.nucleus_index_np]
+        return self.structure_data._positions_cart_np[self._nucleus_index_np]
 
     @property
-    def atomic_center_carts_jnp(self) -> jax.Array:
+    def _atomic_center_carts_jnp(self) -> jax.Array:
         """Atomic positions in cartesian.
 
         Returns atomic positions in cartesian
@@ -386,10 +521,10 @@ class AOs_cart_data:
         """
         # this is super slow!!! Do not use list comprehension.
         # return jnp.array([self.structure_data.positions_cart[i] for i in self.nucleus_index])
-        return self.structure_data.positions_cart_jnp[self.nucleus_index_jnp]
+        return self.structure_data._positions_cart_jnp[self._nucleus_index_jnp]
 
     @property
-    def atomic_center_carts_unique_jnp(self) -> jax.Array:
+    def _atomic_center_carts_unique_jnp(self) -> jax.Array:
         """Unique atomic positions in cartesian.
 
         Returns unique atomic positions in cartesian
@@ -397,7 +532,7 @@ class AOs_cart_data:
         Returns:
             jax.Array: atomic positions in cartesian
         """
-        return self.structure_data.positions_cart_jnp
+        return self.structure_data._positions_cart_jnp
         """ the same as above.
         _, first_indices = np.unique(self.nucleus_index_np, return_index=True)
         sorted_order = jnp.argsort(first_indices)
@@ -405,7 +540,7 @@ class AOs_cart_data:
         """
 
     @property
-    def atomic_center_carts_prim_np(self) -> npt.NDArray[np.float64]:
+    def _atomic_center_carts_prim_np(self) -> npt.NDArray[np.float64]:
         """Atomic positions in cartesian for primitve orbitals.
 
         Returns atomic positions in cartesian for primitive orbitals
@@ -413,10 +548,10 @@ class AOs_cart_data:
         Returns:
             npt.NDArray[np.float]: atomic positions in cartesian for primitive orbitals
         """
-        return self.atomic_center_carts_np[self.orbital_indices]
+        return self._atomic_center_carts_np[self.orbital_indices]
 
     @property
-    def atomic_center_carts_prim_jnp(self) -> jax.Array:
+    def _atomic_center_carts_prim_jnp(self) -> jax.Array:
         """Atomic positions in cartesian for primitve orbitals.
 
         Returns atomic positions in cartesian for primitive orbitals
@@ -426,10 +561,10 @@ class AOs_cart_data:
         """
         # this is super slow!!! Do not use list comprehension.
         # return jnp.array([self.atomic_center_carts_jnp[i] for i in self.orbital_indices])
-        return self.atomic_center_carts_jnp[self.orbital_indices_jnp]
+        return self._atomic_center_carts_jnp[self._orbital_indices_jnp]
 
     @property
-    def angular_momentums_prim_np(self) -> npt.NDArray[np.int32]:
+    def _angular_momentums_prim_np(self) -> npt.NDArray[np.int32]:
         """Angular momentums for primitive orbitals.
 
         Returns angular momentums for primitive orbitals
@@ -437,10 +572,10 @@ class AOs_cart_data:
         Returns:
             npt.NDArray[np.float64]: angular momentums for primitive orbitals
         """
-        return np.array(self.angular_momentums, dtype=np.int32)[self.orbital_indices_np]
+        return np.array(self.angular_momentums, dtype=np.int32)[self._orbital_indices_np]
 
     @property
-    def angular_momentums_prim_jnp(self) -> jax.Array:
+    def _angular_momentums_prim_jnp(self) -> jax.Array:
         """Angular momentums for primitive orbitals.
 
         Returns angular momentums for primitive orbitals
@@ -448,10 +583,10 @@ class AOs_cart_data:
         Returns:
             jax.Array: angular momentums for primitive orbitals
         """
-        return jnp.array(self.angular_momentums_prim_np, dtype=jnp.int32)
+        return jnp.array(self._angular_momentums_prim_np, dtype=jnp.int32)
 
     @property
-    def polynominal_order_x_prim_np(self) -> npt.NDArray[np.int32]:
+    def _polynominal_order_x_prim_np(self) -> npt.NDArray[np.int32]:
         """Polynominal order of x for primitive orbitals.
 
         Returns Polynominal order of x for primitive orbitals
@@ -459,10 +594,10 @@ class AOs_cart_data:
         Returns:
             jax.Array: Polynominal order of x for primitive orbitals
         """
-        return np.array(self.polynominal_order_x, dtype=np.int32)[self.orbital_indices_np]
+        return np.array(self.polynominal_order_x, dtype=np.int32)[self._orbital_indices_np]
 
     @property
-    def polynominal_order_x_prim_jnp(self) -> jax.Array:
+    def _polynominal_order_x_prim_jnp(self) -> jax.Array:
         """Polynominal order of x for primitive orbitals.
 
         Returns Polynominal order of x for primitive orbitals
@@ -470,10 +605,10 @@ class AOs_cart_data:
         Returns:
             jax.Array: Polynominal order of x for primitive orbitals
         """
-        return jnp.array(self.polynominal_order_x_prim_np, dtype=np.int32)
+        return jnp.array(self._polynominal_order_x_prim_np, dtype=np.int32)
 
     @property
-    def polynominal_order_y_prim_np(self) -> npt.NDArray[np.int32]:
+    def _polynominal_order_y_prim_np(self) -> npt.NDArray[np.int32]:
         """Polynominal order of y for primitive orbitals.
 
         Returns Polynominal order of y for primitive orbitals
@@ -481,10 +616,10 @@ class AOs_cart_data:
         Returns:
             jax.Array: Polynominal order of y for primitive orbitals
         """
-        return np.array(self.polynominal_order_y, dtype=np.int32)[self.orbital_indices_np]
+        return np.array(self.polynominal_order_y, dtype=np.int32)[self._orbital_indices_np]
 
     @property
-    def polynominal_order_y_prim_jnp(self) -> jax.Array:
+    def _polynominal_order_y_prim_jnp(self) -> jax.Array:
         """Polynominal order of y for primitive orbitals.
 
         Returns Polynominal order of y for primitive orbitals
@@ -492,10 +627,10 @@ class AOs_cart_data:
         Returns:
             jax.Array: Polynominal order of y for primitive orbitals
         """
-        return jnp.array(self.polynominal_order_y_prim_np, dtype=np.int32)
+        return jnp.array(self._polynominal_order_y_prim_np, dtype=np.int32)
 
     @property
-    def polynominal_order_z_prim_np(self) -> npt.NDArray[np.int32]:
+    def _polynominal_order_z_prim_np(self) -> npt.NDArray[np.int32]:
         """Polynominal order of z for primitive orbitals.
 
         Returns Polynominal order of z for primitive orbitals
@@ -503,10 +638,10 @@ class AOs_cart_data:
         Returns:
             jax.Array: Polynominal order of z for primitive orbitals
         """
-        return np.array(self.polynominal_order_z, dtype=np.int32)[self.orbital_indices_np]
+        return np.array(self.polynominal_order_z, dtype=np.int32)[self._orbital_indices_np]
 
     @property
-    def polynominal_order_z_prim_jnp(self) -> jax.Array:
+    def _polynominal_order_z_prim_jnp(self) -> jax.Array:
         """Polynominal order of z for primitive orbitals.
 
         Returns Polynominal order of z for primitive orbitals
@@ -514,98 +649,188 @@ class AOs_cart_data:
         Returns:
             jax.Array: Polynominal order of z for primitive orbitals
         """
-        return jnp.array(self.polynominal_order_z_prim_np, dtype=np.int32)
+        return jnp.array(self._polynominal_order_z_prim_np, dtype=np.int32)
 
     @property
-    def exponents_jnp(self) -> jax.Array:
+    def _exponents_jnp(self) -> jax.Array:
         """Return exponents."""
         return jnp.array(self.exponents, dtype=jnp.float64)
 
     @property
-    def coefficients_jnp(self) -> jax.Array:
+    def _coefficients_jnp(self) -> jax.Array:
         """Return coefficients."""
         return jnp.array(self.coefficients, dtype=jnp.float64)
 
     @property
-    def num_orb(self) -> int:
+    def _num_orb(self) -> int:
         """Return the number of orbitals."""
         return self.num_ao
-
-    @classmethod
-    def from_base(cls, aos_data: "AOs_cart_data"):
-        """Switch pytree_node."""
-        structure_data = aos_data.structure_data
-        nucleus_index = aos_data.nucleus_index
-        num_ao = aos_data.num_ao
-        num_ao_prim = aos_data.num_ao_prim
-        orbital_indices = aos_data.orbital_indices
-        exponents = aos_data.exponents
-        coefficients = aos_data.coefficients
-        angular_momentums = aos_data.angular_momentums
-        polynominal_order_x = aos_data.polynominal_order_x
-        polynominal_order_y = aos_data.polynominal_order_y
-        polynominal_order_z = aos_data.polynominal_order_z
-
-        return cls(
-            structure_data,
-            nucleus_index,
-            num_ao,
-            num_ao_prim,
-            orbital_indices,
-            exponents,
-            coefficients,
-            angular_momentums,
-            polynominal_order_x,
-            polynominal_order_y,
-            polynominal_order_z,
-        )
 
 
 @struct.dataclass
 class AOs_sphe_data:
-    """Atomic Orbitals dataclass.
+    """Atomic orbital definitions in real spherical-harmonic form.
 
-    The class contains data for computing atomic orbitals simltaneously
+    Stores contracted Gaussian basis data for atomic orbitals (AOs) whose angular part is
+    a real spherical harmonic :math:`Y_{l}^{m}` with :math:`m \in \{-l,\dots,+l\}`.
 
-    Args:
-        structure_data(Structure_data):
-            an instance of Structure_data
-        nucleus_index (list[int]] | tuple[int]):
-            One-to-one correspondence between AO items and the atom index (dim:num_ao)
-        num_ao (int):
-            the number of atomic orbitals.
-        num_ao_prim (int):
-            the number of primitive atomic orbitals.
-        orbital_indices (list[int] | tuple[int]):
-            index for what exponents and coefficients are associated to each atomic orbital.
-            dim: num_ao_prim
-        exponents (list[float] | tuple[float]):
-            List of exponents of the AOs. dim: num_ao_prim.
-        coefficients (list[float] | tuple[float]):
-            List of coefficients of the AOs. dim: num_ao_prim
-        angular_momentums (list[int] | tuple[int]):
-            Angular momentum of the AOs, i.e., l. dim: num_ao
-        magnetic_quantum_numbers (list[int] | tuple[int]):
-            Magnetic quantum number of the AOs, i.e m = -l .... +l. dim: num_ao
+    Attributes:
+        structure_data (Structure_data): Molecular structure and atomic positions used to place AOs.
+        nucleus_index (list[int] | tuple[int]): AO -> atom index mapping (``len == num_ao``).
+        num_ao (int): Number of contracted AOs.
+        num_ao_prim (int): Number of primitive Gaussians.
+        orbital_indices (list[int] | tuple[int]): For each primitive, the parent AO index (``len == num_ao_prim``).
+        exponents (list[float] | tuple[float]): Gaussian exponents for primitives (``len == num_ao_prim``).
+        coefficients (list[float] | tuple[float]): Contraction coefficients per primitive (``len == num_ao_prim``).
+        angular_momentums (list[int] | tuple[int]): Angular momentum quantum numbers ``l`` per AO (``len == num_ao``).
+        magnetic_quantum_numbers (list[int] | tuple[int]): Magnetic quantum numbers ``m`` per AO (``len == num_ao``),
+            satisfying ``-l <= m <= l``.
+
+    Examples:
+        Hydrogen dimer (bohr) with all-electron cc-pVTZ (Gaussian format), real spherical harmonics::
+
+            from jqmc.structure import Structure_data
+            from jqmc.atomic_orbital import AOs_sphe_data
+
+            structure = Structure_data(
+                positions=[[0.0, 0.0, -0.70], [0.0, 0.0, 0.70]],
+                pbc_flag=False,
+                atomic_numbers=[1, 1],
+                element_symbols=["H", "H"],
+                atomic_labels=["H1", "H2"],
+            )
+
+            # Per atom: 14 AOs (3 S, 2×P shells -> 6, 1×D shell -> 5); 18 primitives.
+            # Two atoms -> num_ao=28, num_ao_prim=36.
+            exponents = [
+                # atom 1
+                0.3258,
+                33.87, 5.095, 1.159, 0.3258, 0.1027,
+                0.1027,
+                1.407, 1.407, 1.407,
+                0.388, 0.388, 0.388,
+                1.057, 1.057, 1.057, 1.057, 1.057,
+                # atom 2 (same order)
+                0.3258,
+                33.87, 5.095, 1.159, 0.3258, 0.1027,
+                0.1027,
+                1.407, 1.407, 1.407,
+                0.388, 0.388, 0.388,
+                1.057, 1.057, 1.057, 1.057, 1.057,
+            ]
+
+            coefficients = [
+                # atom 1
+                1.0,
+                0.006068, 0.045308, 0.202822, 0.503903, 0.383421,
+                1.0,
+                1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0, 1.0, 1.0,
+                # atom 2 (same order)
+                1.0,
+                0.006068, 0.045308, 0.202822, 0.503903, 0.383421,
+                1.0,
+                1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0, 1.0, 1.0,
+            ]
+
+            orbital_indices = [
+                # atom 1 AOs 0-13
+                0,
+                1, 1, 1, 1, 1,
+                2,
+                3, 4, 5,
+                6, 7, 8,
+                9, 10, 11, 12, 13,
+                # atom 2 AOs 14-27
+                14,
+                15, 15, 15, 15, 15,
+                16,
+                17, 18, 19,
+                20, 21, 22,
+                23, 24, 25, 26, 27,
+            ]
+
+            nucleus_index = [
+                *([0] * 14),
+                *([1] * 14),
+            ]
+
+            angular_momentums = [
+                # atom 1
+                0, 0, 0,                # S shells
+                1, 1, 1, 1, 1, 1,       # two P shells (3 each)
+                2, 2, 2, 2, 2,          # one D shell (5)
+                # atom 2
+                0, 0, 0,
+                1, 1, 1, 1, 1, 1,
+                2, 2, 2, 2, 2,
+            ]
+
+            magnetic_quantum_numbers = [
+                # atom 1 (S: m=0; P: -1,0,1; D: -2..2)
+                0, 0, 0,
+                -1, 0, 1,
+                -1, 0, 1,
+                -2, -1, 0, 1, 2,
+                # atom 2
+                0, 0, 0,
+                -1, 0, 1,
+                -1, 0, 1,
+                -2, -1, 0, 1, 2,
+            ]
+
+            aos = AOs_sphe_data(
+                structure_data=structure,
+                nucleus_index=nucleus_index,
+                num_ao=len(angular_momentums),
+                num_ao_prim=len(exponents),
+                orbital_indices=orbital_indices,
+                exponents=exponents,
+                coefficients=coefficients,
+                angular_momentums=angular_momentums,
+                magnetic_quantum_numbers=magnetic_quantum_numbers,
+            )
+
+            aos.sanity_check()
     """
 
+    #: Molecular structure and atomic positions used to place AOs.
     structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
+    #: AO -> atom index mapping (``len == num_ao``).
     nucleus_index: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    #: Number of contracted AOs.
     num_ao: int = struct.field(pytree_node=False, default=0)
+    #: Number of primitive Gaussians.
     num_ao_prim: int = struct.field(pytree_node=False, default=0)
+    #: For each primitive, the parent AO index (``len == num_ao_prim``).
     orbital_indices: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    #: Gaussian exponents for primitives (``len == num_ao_prim``).
     exponents: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    #: Contraction coefficients per primitive (``len == num_ao_prim``).
     coefficients: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    #: Angular momentum quantum numbers ``l`` per AO (``len == num_ao``).
     angular_momentums: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    #: Magnetic quantum numbers ``m`` per AO (``len == num_ao``; ``-l <= m <= l``).
     magnetic_quantum_numbers: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
 
     def sanity_check(self) -> None:
-        """Check attributes of the class.
+        """Validate AO array shapes and basic types.
 
-        This function checks the consistencies among the arguments.
+        Ensures that array lengths match declared counts (``num_ao``, ``num_ao_prim``) and that
+        inputs are provided as lists/tuples (ints for counts). Call this after constructing
+        ``AOs_sphe_data`` and before AO evaluation routines.
 
         Raises:
-            ValueError: If there is an inconsistency in a dimension of a given argument.
+            ValueError: When any of the following holds:
+                - ``len(nucleus_index) != num_ao``
+                - ``len(unique(orbital_indices)) != num_ao``
+                - ``len(exponents) != num_ao_prim`` or ``len(coefficients) != num_ao_prim``
+                - ``len(angular_momentums) != num_ao``
+                - ``len(magnetic_quantum_numbers) != num_ao``
+                - any attribute has an unexpected Python type (e.g., non-list/tuple arrays, non-int counts)
         """
         if len(self.nucleus_index) != self.num_ao:
             raise ValueError("dim. of self.nucleus_index is wrong")
@@ -720,7 +945,7 @@ class AOs_sphe_data:
 
         self.structure_data.sanity_check()
 
-    def get_info(self) -> list[str]:
+    def _get_info(self) -> list[str]:
         """Return a list of strings containing information about the class attributes."""
         info_lines = []
         info_lines.extend(["**" + self.__class__.__name__])
@@ -795,43 +1020,43 @@ class AOs_sphe_data:
 
         return info_lines
 
-    def logger_info(self) -> None:
+    def _logger_info(self) -> None:
         """Output the information from get_info using logger.info."""
-        for line in self.get_info():
+        for line in self._get_info():
             logger.info(line)
 
     @property
-    def nucleus_index_np(self) -> npt.NDArray[np.int32]:
+    def _nucleus_index_np(self) -> npt.NDArray[np.int32]:
         """nucleus_index."""
         return np.array(self.nucleus_index, dtype=np.int32)
 
     @property
-    def nucleus_index_jnp(self) -> jax.Array:
+    def _nucleus_index_jnp(self) -> jax.Array:
         """nucleus_index."""
         return jnp.array(self.nucleus_index, dtype=jnp.int32)
 
     @property
-    def nucleus_index_prim_np(self) -> npt.NDArray[np.int32]:
+    def _nucleus_index_prim_np(self) -> npt.NDArray[np.int32]:
         """nucleus_index."""
-        return np.array(self.nucleus_index)[self.orbital_indices_np]
+        return np.array(self.nucleus_index)[self._orbital_indices_np]
 
     @property
-    def nucleus_index_prim_jnp(self) -> jax.Array:
+    def _nucleus_index_prim_jnp(self) -> jax.Array:
         """nucleus_index."""
-        return jnp.array(self.nucleus_index_prim_np, dtype=jnp.int32)
+        return jnp.array(self._nucleus_index_prim_np, dtype=jnp.int32)
 
     @property
-    def orbital_indices_np(self) -> npt.NDArray[np.int32]:
+    def _orbital_indices_np(self) -> npt.NDArray[np.int32]:
         """orbital_index."""
         return np.array(self.orbital_indices, dtype=np.int32)
 
     @property
-    def orbital_indices_jnp(self) -> jax.Array:
+    def _orbital_indices_jnp(self) -> jax.Array:
         """orbital_index."""
         return jnp.array(self.orbital_indices, dtype=jnp.int32)
 
     @property
-    def atomic_center_carts_np(self) -> npt.NDArray[np.float64]:
+    def _atomic_center_carts_np(self) -> npt.NDArray[np.float64]:
         """Atomic positions in cartesian.
 
         Returns atomic positions in cartesian
@@ -839,10 +1064,10 @@ class AOs_sphe_data:
         Returns:
             npt.NDArray[np.float64]: atomic positions in cartesian
         """
-        return self.structure_data.positions_cart_np[self.nucleus_index_np]
+        return self.structure_data._positions_cart_np[self._nucleus_index_np]
 
     @property
-    def atomic_center_carts_jnp(self) -> jax.Array:
+    def _atomic_center_carts_jnp(self) -> jax.Array:
         """Atomic positions in cartesian.
 
         Returns atomic positions in cartesian
@@ -852,10 +1077,10 @@ class AOs_sphe_data:
         """
         # this is super slow!!! Do not use list comprehension.
         # return jnp.array([self.structure_data.positions_cart[i] for i in self.nucleus_index])
-        return self.structure_data.positions_cart_jnp[self.nucleus_index_jnp]
+        return self.structure_data._positions_cart_jnp[self._nucleus_index_jnp]
 
     @property
-    def atomic_center_carts_unique_jnp(self) -> jax.Array:
+    def _atomic_center_carts_unique_jnp(self) -> jax.Array:
         """Unique atomic positions in cartesian.
 
         Returns unique atomic positions in cartesian
@@ -863,7 +1088,7 @@ class AOs_sphe_data:
         Returns:
             jax.Array: atomic positions in cartesian
         """
-        return self.structure_data.positions_cart_jnp
+        return self.structure_data._positions_cart_jnp
         """ the same as above.
         _, first_indices = np.unique(self.nucleus_index_np, return_index=True)
         sorted_order = jnp.argsort(first_indices)
@@ -871,7 +1096,7 @@ class AOs_sphe_data:
         """
 
     @property
-    def atomic_center_carts_prim_np(self) -> npt.NDArray[np.float64]:
+    def _atomic_center_carts_prim_np(self) -> npt.NDArray[np.float64]:
         """Atomic positions in cartesian for primitve orbitals.
 
         Returns atomic positions in cartesian for primitive orbitals
@@ -879,10 +1104,10 @@ class AOs_sphe_data:
         Returns:
             npt.NDArray[np.float]: atomic positions in cartesian for primitive orbitals
         """
-        return self.atomic_center_carts_np[self.orbital_indices]
+        return self._atomic_center_carts_np[self.orbital_indices]
 
     @property
-    def atomic_center_carts_prim_jnp(self) -> jax.Array:
+    def _atomic_center_carts_prim_jnp(self) -> jax.Array:
         """Atomic positions in cartesian for primitve orbitals.
 
         Returns atomic positions in cartesian for primitive orbitals
@@ -892,10 +1117,10 @@ class AOs_sphe_data:
         """
         # this is super slow!!! Do not use list comprehension.
         # return jnp.array([self.atomic_center_carts_jnp[i] for i in self.orbital_indices])
-        return self.atomic_center_carts_jnp[self.orbital_indices_jnp]
+        return self._atomic_center_carts_jnp[self._orbital_indices_jnp]
 
     @property
-    def angular_momentums_prim_np(self) -> npt.NDArray[np.int32]:
+    def _angular_momentums_prim_np(self) -> npt.NDArray[np.int32]:
         """Angular momentums for primitive orbitals.
 
         Returns angular momentums for primitive orbitals
@@ -903,10 +1128,10 @@ class AOs_sphe_data:
         Returns:
             npt.NDArray[np.float64]: angular momentums for primitive orbitals
         """
-        return np.array(self.angular_momentums, dtype=np.int32)[self.orbital_indices_np]
+        return np.array(self.angular_momentums, dtype=np.int32)[self._orbital_indices_np]
 
     @property
-    def angular_momentums_prim_jnp(self) -> jax.Array:
+    def _angular_momentums_prim_jnp(self) -> jax.Array:
         """Angular momentums for primitive orbitals.
 
         Returns angular momentums for primitive orbitals
@@ -914,10 +1139,10 @@ class AOs_sphe_data:
         Returns:
             jax.Array: angular momentums for primitive orbitals
         """
-        return jnp.array(self.angular_momentums_prim_np, dtype=jnp.int32)
+        return jnp.array(self._angular_momentums_prim_np, dtype=jnp.int32)
 
     @property
-    def magnetic_quantum_numbers_prim_np(self) -> npt.NDArray[np.int32]:
+    def _magnetic_quantum_numbers_prim_np(self) -> npt.NDArray[np.int32]:
         """Magnetic quantum numbers for primitive orbitals.
 
         Returns magnetic quantum numbers for primitive orbitals
@@ -925,10 +1150,10 @@ class AOs_sphe_data:
         Returns:
             jax.Array: magnetic quantum numbers for primitive orbitals
         """
-        return np.array(self.magnetic_quantum_numbers, dtype=np.int32)[self.orbital_indices_np]
+        return np.array(self.magnetic_quantum_numbers, dtype=np.int32)[self._orbital_indices_np]
 
     @property
-    def magnetic_quantum_numbers_prim_jnp(self) -> jax.Array:
+    def _magnetic_quantum_numbers_prim_jnp(self) -> jax.Array:
         """Magnetic quantum numbers for primitive orbitals.
 
         Returns magnetic quantum numbers for primitive orbitals
@@ -936,66 +1161,44 @@ class AOs_sphe_data:
         Returns:
             npt.NDArray[np.int64]: magnetic quantum numbers for primitive orbitals
         """
-        return jnp.array(self.magnetic_quantum_numbers_prim_np, dtype=jnp.int32)
+        return jnp.array(self._magnetic_quantum_numbers_prim_np, dtype=jnp.int32)
 
     @property
-    def exponents_jnp(self) -> jax.Array:
+    def _exponents_jnp(self) -> jax.Array:
         """Return exponents."""
         return jnp.array(self.exponents, dtype=jnp.float64)
 
     @property
-    def coefficients_jnp(self) -> jax.Array:
+    def _coefficients_jnp(self) -> jax.Array:
         """Return coefficients."""
         return jnp.array(self.coefficients, dtype=jnp.float64)
 
     @property
-    def num_orb(self) -> int:
+    def _num_orb(self) -> int:
         """Return the number of orbitals."""
         return self.num_ao
 
-    @classmethod
-    def from_base(cls, aos_data: "AOs_sphe_data"):
-        """Switch pytree_node."""
-        structure_data = aos_data.structure_data
-        nucleus_index = aos_data.nucleus_index
-        num_ao = aos_data.num_ao
-        num_ao_prim = aos_data.num_ao_prim
-        orbital_indices = aos_data.orbital_indices
-        exponents = aos_data.exponents
-        coefficients = aos_data.coefficients
-        angular_momentums = aos_data.angular_momentums
-        magnetic_quantum_numbers = aos_data.magnetic_quantum_numbers
 
-        return cls(
-            structure_data,
-            nucleus_index,
-            num_ao,
-            num_ao_prim,
-            orbital_indices,
-            exponents,
-            coefficients,
-            angular_momentums,
-            magnetic_quantum_numbers,
-        )
+def compute_AOs(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jax.Array) -> jax.Array:
+    """Evaluate contracted atomic orbitals (AOs) at electron coordinates.
 
-
-def compute_AOs(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.Array:
-    """Public API: evaluate contracted atomic orbitals at electron positions using analytic formulas.
-
-    This dispatches to spherical or Cartesian AO backends, operates in float64 (enable `jax_enable_x64`), and
-    returns a JAX array so downstream JAX code can compose without host transfers.
+    Dispatches to Cartesian or real-spherical backends and returns float64 JAX arrays
+    (ensure ``jax_enable_x64=True``). Call ``aos_data.sanity_check()`` before use.
 
     Args:
-        aos_data: `AOs_cart_data` or `AOs_sphe_data` describing contracted AOs (centers, primitive parameters,
-            angular data, contraction mapping). Should be validated via `sanity_check()` prior to calling.
-        r_carts: Electron Cartesian coordinates with shape ``(N_e, 3)`` (Bohr). Any JAX array-like is accepted.
+        aos_data: ``AOs_cart_data`` or ``AOs_sphe_data`` describing centers, primitive parameters,
+            angular data, and contraction mapping.
+        r_carts (jax.Array): Electron Cartesian coordinates, shape ``(N_e, 3)`` in Bohr. Casts to
+            ``float64`` internally via ``jnp.asarray``.
 
     Returns:
-        jax.Array: AO values with shape ``(num_ao, N_e)``.
+        jax.Array: AO values, shape ``(num_ao, N_e)``.
 
     Raises:
         NotImplementedError: If ``aos_data`` is neither Cartesian nor spherical.
     """
+    r_carts = jnp.asarray(r_carts, dtype=jnp.float64)
+
     if isinstance(aos_data, AOs_sphe_data):
         AOs = _compute_AOs_sphe(aos_data, r_carts)
 
@@ -1027,7 +1230,7 @@ def _compute_AOs_sphe_debug(aos_data: AOs_sphe_data, r_carts: npt.NDArray[np.flo
     aos_values = []
 
     for ao_index in range(aos_data.num_ao):
-        atomic_center_cart = aos_data.atomic_center_carts_np[ao_index]
+        atomic_center_cart = aos_data._atomic_center_carts_np[ao_index]
         shell_indices = [i for i, v in enumerate(aos_data.orbital_indices) if v == ao_index]
         exponents = [aos_data.exponents[i] for i in shell_indices]
         coefficients = [aos_data.coefficients[i] for i in shell_indices]
@@ -1080,7 +1283,7 @@ def _compute_AOs_cart_debug(aos_data: AOs_cart_data, r_carts: npt.NDArray[np.flo
     aos_values = []
 
     for ao_index in range(aos_data.num_ao):
-        R_cart = aos_data.atomic_center_carts_np[ao_index]
+        R_cart = aos_data._atomic_center_carts_np[ao_index]
         l = aos_data.angular_momentums[ao_index]
         shell_indices = [i for i, v in enumerate(aos_data.orbital_indices) if v == ao_index]
         exponents = [aos_data.exponents[i] for i in shell_indices]
@@ -1131,13 +1334,13 @@ def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.A
 
     """
     # Indices with respect to the contracted AOs
-    R_carts_jnp = aos_data.atomic_center_carts_prim_jnp
-    c_jnp = aos_data.coefficients_jnp
-    Z_jnp = aos_data.exponents_jnp
-    l_jnp = aos_data.angular_momentums_prim_jnp
-    nx_jnp = aos_data.polynominal_order_x_prim_jnp
-    ny_jnp = aos_data.polynominal_order_y_prim_jnp
-    nz_jnp = aos_data.polynominal_order_z_prim_jnp
+    R_carts_jnp = aos_data._atomic_center_carts_prim_jnp
+    c_jnp = aos_data._coefficients_jnp
+    Z_jnp = aos_data._exponents_jnp
+    l_jnp = aos_data._angular_momentums_prim_jnp
+    nx_jnp = aos_data._polynominal_order_x_prim_jnp
+    ny_jnp = aos_data._polynominal_order_y_prim_jnp
+    nz_jnp = aos_data._polynominal_order_z_prim_jnp
 
     N_n_dup_fuctorial_part = (
         jscipy.special.factorial(nx_jnp) * jscipy.special.factorial(ny_jnp) * jscipy.special.factorial(nz_jnp)
@@ -1166,7 +1369,7 @@ def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.A
 
     AOs_dup = N_n_dup[:, None] * R_n_dup * P_l_nx_ny_nz_dup
 
-    orbital_indices = aos_data.orbital_indices_jnp
+    orbital_indices = aos_data._orbital_indices_jnp
     num_segments = aos_data.num_ao
     AOs = jax.ops.segment_sum(AOs_dup, orbital_indices, num_segments=num_segments)
     return AOs
@@ -1181,13 +1384,13 @@ def _compute_AOs_sphe(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> jax.A
     """
     # Indices with respect to the contracted AOs
     # compute R_n inc. the whole normalization factor
-    nucleus_index_prim_jnp = aos_data.nucleus_index_prim_jnp
-    R_carts_jnp = aos_data.atomic_center_carts_prim_jnp
-    R_carts_unique_jnp = aos_data.atomic_center_carts_unique_jnp
-    c_jnp = aos_data.coefficients_jnp
-    Z_jnp = aos_data.exponents_jnp
-    l_jnp = aos_data.angular_momentums_prim_jnp
-    m_jnp = aos_data.magnetic_quantum_numbers_prim_jnp
+    nucleus_index_prim_jnp = aos_data._nucleus_index_prim_jnp
+    R_carts_jnp = aos_data._atomic_center_carts_prim_jnp
+    R_carts_unique_jnp = aos_data._atomic_center_carts_unique_jnp
+    c_jnp = aos_data._coefficients_jnp
+    Z_jnp = aos_data._exponents_jnp
+    l_jnp = aos_data._angular_momentums_prim_jnp
+    m_jnp = aos_data._magnetic_quantum_numbers_prim_jnp
 
     # use float64 gamma-based factorials to avoid float32 drift vs debug implementation
     l_f64 = l_jnp.astype(jnp.float64)
@@ -1214,7 +1417,7 @@ def _compute_AOs_sphe(aos_data: AOs_sphe_data, r_carts: jnpt.ArrayLike) -> jax.A
 
     AOs_dup = N_n_dup[:, None] * R_n_dup * N_l_m_dup[:, None] * S_l_m_dup
 
-    orbital_indices = aos_data.orbital_indices_jnp
+    orbital_indices = aos_data._orbital_indices_jnp
     num_segments = aos_data.num_ao
     AOs = jax.ops.segment_sum(AOs_dup, orbital_indices, num_segments=num_segments)
     return AOs
@@ -1514,13 +1717,13 @@ def _compute_S_l_m_val_grad_lap(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, j
 def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarray) -> jax.Array:
     """Analytic Laplacian for Cartesian AOs (contracted)."""
     r_carts = jnp.asarray(r_carts)
-    R_carts = aos_data.atomic_center_carts_prim_jnp
-    c = aos_data.coefficients_jnp
-    Z = aos_data.exponents_jnp
-    l = aos_data.angular_momentums_prim_jnp
-    nx = aos_data.polynominal_order_x_prim_jnp
-    ny = aos_data.polynominal_order_y_prim_jnp
-    nz = aos_data.polynominal_order_z_prim_jnp
+    R_carts = aos_data._atomic_center_carts_prim_jnp
+    c = aos_data._coefficients_jnp
+    Z = aos_data._exponents_jnp
+    l = aos_data._angular_momentums_prim_jnp
+    nx = aos_data._polynominal_order_x_prim_jnp
+    ny = aos_data._polynominal_order_y_prim_jnp
+    nz = aos_data._polynominal_order_z_prim_jnp
 
     N_fact = (jscipy.special.factorial(nx) * jscipy.special.factorial(ny) * jscipy.special.factorial(nz)) / (
         jscipy.special.factorial(2 * nx) * jscipy.special.factorial(2 * ny) * jscipy.special.factorial(2 * nz)
@@ -1547,7 +1750,7 @@ def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.n
 
     lap_dup = _second_component(x, nx) + _second_component(y, ny) + _second_component(z, nz)
 
-    orbital_indices = aos_data.orbital_indices_jnp
+    orbital_indices = aos_data._orbital_indices_jnp
     num_segments = aos_data.num_ao
     lap = jax.ops.segment_sum(lap_dup, orbital_indices, num_segments=num_segments)
     return lap
@@ -1557,13 +1760,13 @@ def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.n
 def _compute_AOs_laplacian_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.ndarray) -> jax.Array:
     """Analytic Laplacian for spherical AOs (contracted)."""
     r_carts = jnp.asarray(r_carts)
-    nucleus_index_prim_jnp = aos_data.nucleus_index_prim_jnp
-    R_carts_jnp = aos_data.atomic_center_carts_prim_jnp
-    R_carts_unique_jnp = aos_data.atomic_center_carts_unique_jnp
-    c_jnp = aos_data.coefficients_jnp
-    Z_jnp = aos_data.exponents_jnp
-    l_jnp = aos_data.angular_momentums_prim_jnp
-    m_jnp = aos_data.magnetic_quantum_numbers_prim_jnp
+    nucleus_index_prim_jnp = aos_data._nucleus_index_prim_jnp
+    R_carts_jnp = aos_data._atomic_center_carts_prim_jnp
+    R_carts_unique_jnp = aos_data._atomic_center_carts_unique_jnp
+    c_jnp = aos_data._coefficients_jnp
+    Z_jnp = aos_data._exponents_jnp
+    l_jnp = aos_data._angular_momentums_prim_jnp
+    m_jnp = aos_data._magnetic_quantum_numbers_prim_jnp
 
     l_f64 = l_jnp.astype(jnp.float64)
     Z_f64 = Z_jnp.astype(jnp.float64)
@@ -1603,35 +1806,37 @@ def _compute_AOs_laplacian_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.n
         - 4.0 * Z_jnp[:, None] * pref * grad_S_dot_r
     )
 
-    orbital_indices = aos_data.orbital_indices_jnp
+    orbital_indices = aos_data._orbital_indices_jnp
     num_segments = aos_data.num_ao
     lap = jax.ops.segment_sum(lap_dup, orbital_indices, num_segments=num_segments)
     return lap
 
 
-def compute_AOs_laplacian(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.Array:
-    """Return the analytic Laplacian of contracted atomic orbitals at given electron coordinates.
+def compute_AOs_laplacian(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jax.Array) -> jax.Array:
+    """Return analytic Laplacians of contracted atomic orbitals.
 
-    Public API for Laplacians used by sampling and local-energy evaluation. Dispatches to Cartesian or spherical
-    implementations and returns a JAX array so downstream JAX code can fuse computations. Uses float64; ensure
-    `jax_enable_x64` is set.
+    Dispatches to Cartesian or real-spherical implementations; returns float64 JAX arrays
+    (ensure ``jax_enable_x64=True``).
 
     Args:
-        aos_data: `AOs_cart_data` or `AOs_sphe_data` describing the contracted AOs (centers, primitive exponents/
-            coefficients, angular data, and contraction mapping). Should be validated via `sanity_check()`.
-        r_carts: Electron Cartesian coordinates with shape ``(N_e, 3)`` (Bohr). Can be any JAX array-like.
+        aos_data: ``AOs_cart_data`` or ``AOs_sphe_data`` describing centers, primitive exponents/coefficients,
+            angular data, and contraction mapping (run ``sanity_check()`` beforehand).
+        r_carts (jax.Array): Electron Cartesian coordinates, shape ``(N_e, 3)`` (Bohr). Casts to ``float64``
+            internally via ``jnp.asarray``.
 
     Returns:
-        jax.Array: Laplacians of all contracted AOs at the provided electron positions with shape ``(num_ao, N_e)``.
+        jax.Array: Laplacians of all contracted AOs, shape ``(num_ao, N_e)``.
 
     Raises:
         NotImplementedError: If ``aos_data`` is not Cartesian or spherical.
     """
+    r_carts = jnp.asarray(r_carts, dtype=jnp.float64)
+
     if isinstance(aos_data, AOs_cart_data):
-        return _compute_AOs_laplacian_analytic_cart(aos_data, jnp.asarray(r_carts))
+        return _compute_AOs_laplacian_analytic_cart(aos_data, r_carts)
 
     if isinstance(aos_data, AOs_sphe_data):
-        return _compute_AOs_laplacian_analytic_sphe(aos_data, jnp.asarray(r_carts))
+        return _compute_AOs_laplacian_analytic_sphe(aos_data, r_carts)
 
     raise NotImplementedError("Analytic Laplacian implemented for Cartesian and spherical AOs only.")
 
@@ -1809,13 +2014,13 @@ def _compute_AOs_laplacian_debug(
 def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarray) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Analytic gradients for Cartesian AOs (contracted)."""
     r_carts = jnp.asarray(r_carts)
-    R_carts = aos_data.atomic_center_carts_prim_jnp
-    c = aos_data.coefficients_jnp
-    Z = aos_data.exponents_jnp
-    l = aos_data.angular_momentums_prim_jnp
-    nx = aos_data.polynominal_order_x_prim_jnp
-    ny = aos_data.polynominal_order_y_prim_jnp
-    nz = aos_data.polynominal_order_z_prim_jnp
+    R_carts = aos_data._atomic_center_carts_prim_jnp
+    c = aos_data._coefficients_jnp
+    Z = aos_data._exponents_jnp
+    l = aos_data._angular_momentums_prim_jnp
+    nx = aos_data._polynominal_order_x_prim_jnp
+    ny = aos_data._polynominal_order_y_prim_jnp
+    nz = aos_data._polynominal_order_z_prim_jnp
 
     N_fact = (jscipy.special.factorial(nx) * jscipy.special.factorial(ny) * jscipy.special.factorial(nz)) / (
         jscipy.special.factorial(2 * nx) * jscipy.special.factorial(2 * ny) * jscipy.special.factorial(2 * nz)
@@ -1842,7 +2047,7 @@ def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarra
     gy_dup = _grad_component(y, ny)
     gz_dup = _grad_component(z, nz)
 
-    orbital_indices = aos_data.orbital_indices_jnp
+    orbital_indices = aos_data._orbital_indices_jnp
     num_segments = aos_data.num_ao
     gx = jax.ops.segment_sum(gx_dup, orbital_indices, num_segments=num_segments)
     gy = jax.ops.segment_sum(gy_dup, orbital_indices, num_segments=num_segments)
@@ -1855,13 +2060,13 @@ def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarra
 def _compute_AOs_grad_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.ndarray) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Analytic gradients for spherical AOs (contracted)."""
     r_carts = jnp.asarray(r_carts)
-    nucleus_index_prim_jnp = aos_data.nucleus_index_prim_jnp
-    R_carts_jnp = aos_data.atomic_center_carts_prim_jnp
-    R_carts_unique_jnp = aos_data.atomic_center_carts_unique_jnp
-    c_jnp = aos_data.coefficients_jnp
-    Z_jnp = aos_data.exponents_jnp
-    l_jnp = aos_data.angular_momentums_prim_jnp
-    m_jnp = aos_data.magnetic_quantum_numbers_prim_jnp
+    nucleus_index_prim_jnp = aos_data._nucleus_index_prim_jnp
+    R_carts_jnp = aos_data._atomic_center_carts_prim_jnp
+    R_carts_unique_jnp = aos_data._atomic_center_carts_unique_jnp
+    c_jnp = aos_data._coefficients_jnp
+    Z_jnp = aos_data._exponents_jnp
+    l_jnp = aos_data._angular_momentums_prim_jnp
+    m_jnp = aos_data._magnetic_quantum_numbers_prim_jnp
 
     N_n_dup = jnp.sqrt(
         (2.0 ** (2 * l_jnp + 3) * jscipy.special.factorial(l_jnp + 1) * (2 * Z_jnp) ** (l_jnp + 1.5))
@@ -1901,7 +2106,7 @@ def _compute_AOs_grad_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.ndarra
     grad_from_S = pref[..., None] * S_l_m_grad_dup
     grad_dup = grad_from_R + grad_from_S
 
-    orbital_indices = aos_data.orbital_indices_jnp
+    orbital_indices = aos_data._orbital_indices_jnp
     num_segments = aos_data.num_ao
     gx = jax.ops.segment_sum(grad_dup[..., 0], orbital_indices, num_segments=num_segments)
     gy = jax.ops.segment_sum(grad_dup[..., 1], orbital_indices, num_segments=num_segments)
@@ -1910,31 +2115,32 @@ def _compute_AOs_grad_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.ndarra
     return gx, gy, gz
 
 
-def compute_AOs_grad(
-    aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jnpt.ArrayLike
-) -> tuple[jax.Array, jax.Array, jax.Array]:
-    """Return analytic Cartesian gradients of contracted atomic orbitals at given electron coordinates.
+def compute_AOs_grad(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jax.Array) -> tuple[jax.Array, jax.Array, jax.Array]:
+    """Return analytic Cartesian gradients of contracted atomic orbitals.
 
-    Public gradient API used for drift vectors and kinetic terms. Dispatches to Cartesian or spherical
-    implementations and returns JAX arrays (float64; requires `jax_enable_x64`).
+    Public gradient API used for drift vectors and kinetic terms. Dispatches to Cartesian or real-spherical
+    backends; returns float64 JAX arrays (ensure ``jax_enable_x64=True``).
 
     Args:
-        aos_data: `AOs_cart_data` or `AOs_sphe_data` describing contracted AOs (primitive parameters, angular
-            info, contraction mapping, and centers). Should be validated via `sanity_check()` before use.
-        r_carts: Electron Cartesian coordinates with shape ``(N_e, 3)`` (Bohr). Accepts any JAX array-like.
+        aos_data: ``AOs_cart_data`` or ``AOs_sphe_data`` describing primitive parameters, angular info,
+            contraction mapping, and centers (run ``sanity_check()`` beforehand).
+        r_carts (jax.Array): Electron Cartesian coordinates, shape ``(N_e, 3)`` (Bohr). Casts to ``float64``
+            internally via ``jnp.asarray``.
 
     Returns:
-        tuple[jax.Array, jax.Array, jax.Array]: Gradients of all contracted AOs w.r.t. x, y, z with shape
-        ``(num_ao, N_e)`` each, ordered as ``(gx, gy, gz)``.
+        tuple[jax.Array, jax.Array, jax.Array]: Gradients w.r.t. x, y, z, each of shape ``(num_ao, N_e)``.
+        Order is ``(gx, gy, gz)``.
 
     Raises:
         NotImplementedError: If ``aos_data`` is neither Cartesian nor spherical.
     """
+    r_carts = jnp.asarray(r_carts, dtype=jnp.float64)
+
     if isinstance(aos_data, AOs_cart_data):
-        return _compute_AOs_grad_analytic_cart(aos_data, jnp.asarray(r_carts))
+        return _compute_AOs_grad_analytic_cart(aos_data, r_carts)
 
     if isinstance(aos_data, AOs_sphe_data):
-        return _compute_AOs_grad_analytic_sphe(aos_data, jnp.asarray(r_carts))
+        return _compute_AOs_grad_analytic_sphe(aos_data, r_carts)
 
     raise NotImplementedError("Analytic gradients implemented for Cartesian and spherical AOs only.")
 

@@ -57,18 +57,37 @@ logger = getLogger("jqmc").getChild(__name__)
 def read_trexio_file(
     trexio_file: str, store_tuple: bool = False
 ) -> tuple[Structure_data, AOs_sphe_data, MOs_data, MOs_data, Geminal_data, Coulomb_potential_data]:
-    """Reading a TREXIO file.
-
-    The method reads a TREXIO file and return AOs_data, MOs_data,
-    Structure_data, and Coulomb_potential_data instances.
+    """Load a TREXIO HDF5 file into jqmc data containers.
 
     Args:
-        trexio_file (str): the path to a TREXIO file
-        store_tuple (bool): store a list varibale as tuple. This is needed for pytest because of jax implmentation,
-        but slow in production runs. Choose false for production runs.
+        trexio_file (str): Path to the TREXIO file to read (HDF5 backend expected).
+        store_tuple (bool, optional): Store list-like fields as tuples for immutability
+            (useful in tests with JAX/Flax), at the cost of slower production runs.
+            Defaults to ``False``.
 
     Returns:
-        instances of AOs_data, MOs_data, Structure_data, and Coulomb_potential_data.
+        tuple: ``(structure_data, aos_data, mos_data_up, mos_data_dn, geminal_data, coulomb_potential_data)``
+        where:
+
+        - ``structure_data`` is a `Structure_data` describing atoms and geometry.
+        - ``aos_data`` is either `AOs_cart_data` or `AOs_sphe_data` depending on the basis.
+        - ``mos_data_up`` and ``mos_data_dn`` are `MOs_data` for spin-up/down orbitals.
+        - ``geminal_data`` is a `Geminal_data` assembled from the MO block.
+        - ``coulomb_potential_data`` is a `Coulomb_potential_data` describing (E)CPs.
+
+    Raises:
+        NotImplementedError: If periodic cells (PBC) or complex molecular orbitals are encountered.
+        ValueError: If atomic labels are unsupported or AO counts are inconsistent.
+
+    Notes:
+        - Periodic boundary conditions are parsed but not supported yet.
+        - Molecular orbitals are assumed real-valued; complex coefficients are rejected.
+
+    Examples:
+        >>> from jqmc.trexio_wrapper import read_trexio_file
+        >>> structure_data, aos_data, mos_up, mos_dn, geminal_data, coulomb_data = read_trexio_file("molecule.h5")
+        >>> structure_data.atomic_labels[:3]
+        ['O', 'H', 'H']
     """
     # prefix and file names
     # logger.info(f"TREXIO file = {trexio_file}")
@@ -186,7 +205,7 @@ def read_trexio_file(
             vec_a=(),
             vec_b=(),
             vec_c=(),
-            atomic_numbers=tuple(convert_from_atomic_labels_to_atomic_numbers(labels_r)),
+            atomic_numbers=tuple(_convert_from_atomic_labels_to_atomic_numbers(labels_r)),
             element_symbols=tuple(labels_r),
             atomic_labels=tuple(labels_r),
             positions=np.array(coords_r),
@@ -197,7 +216,7 @@ def read_trexio_file(
             vec_a=[],
             vec_b=[],
             vec_c=[],
-            atomic_numbers=list(convert_from_atomic_labels_to_atomic_numbers(labels_r)),
+            atomic_numbers=list(_convert_from_atomic_labels_to_atomic_numbers(labels_r)),
             element_symbols=list(labels_r),
             atomic_labels=list(labels_r),
             positions=np.array(coords_r),
@@ -649,7 +668,7 @@ def _convert_from_atomic_numbers_to_atomic_labels(charges_r: list[int]) -> list[
 """
 
 
-def convert_from_atomic_labels_to_atomic_numbers(labels_r: list[str]) -> list[int]:
+def _convert_from_atomic_labels_to_atomic_numbers(labels_r: list[str]) -> list[int]:
     """Mapping of element symbols to their atomic numbers up to 86."""
     element_to_number = {
         "H": 1,

@@ -57,10 +57,10 @@ jax.config.update("jax_enable_x64", True)
 
 @struct.dataclass
 class SWCT_data:
-    """The class contains data for SWCT.
+    """Space-warp coordinate transformation metadata.
 
     Args:
-        structure_data (Structure_data)
+        structure (Structure_data): Nuclear geometry used to build SWCT weights.
     """
 
     structure: Structure_data = struct.field(pytree_node=True)
@@ -77,20 +77,20 @@ class SWCT_data:
 
 
 @jit
-def evaluate_swct_omega_jax(
+def evaluate_swct_omega(
     swct_data: SWCT_data,
-    r_carts: jnpt.ArrayLike,
+    r_carts: jax.Array,
 ) -> jax.Array:
-    """The method is for evaluate the omega(R_alpha, r_up_carts or r_dn_carts) for SWCT.
+    r"""Compute SWCT weights :math:`\omega_{\alpha i}` for each atom/electron pair.
 
     Args:
-        swct_data (SWCT_data): an instance of SWCT_data
-        r_carts (jnpt.ArrayLike): Cartesian coordinates of up- or dn-spin electrons (dim: N_e, 3)
+        swct_data (SWCT_data): Structure and cached geometry information.
+        r_carts (jax.Array): Electron Cartesian coordinates with shape ``(N_e, 3)`` and ``float64`` dtype.
 
     Returns:
-        [jax.Array] The omega (dim: N_a, N_e) with the given structure
+        jax.Array: Normalized weights with shape ``(N_a, N_e)``, summing to 1 over atoms for each electron.
     """
-    R_carts = swct_data.structure.positions_cart_jnp
+    R_carts = swct_data.structure._positions_cart_jnp
 
     def compute_omega(R_cart, r_cart):
         kappa = 1.0 / jnp.linalg.norm(r_cart - R_cart) ** 4
@@ -110,12 +110,12 @@ def evaluate_swct_omega_jax(
     return omega
 
 
-def evaluate_swct_omega_debug(
+def _evaluate_swct_omega_debug(
     swct_data: SWCT_data,
     r_carts: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
-    """See _api method."""
-    R_carts = swct_data.structure.positions_cart_np
+    """NumPy fallback for ``evaluate_swct_omega`` used in debug paths."""
+    R_carts = swct_data.structure._positions_cart_np
     omega = np.zeros((len(R_carts), len(r_carts)))
 
     for alpha in range(len(R_carts)):
@@ -128,30 +128,30 @@ def evaluate_swct_omega_debug(
 
 
 @jit
-def evaluate_swct_domega_jax(
+def evaluate_swct_domega(
     swct_data: SWCT_data,
-    r_carts: jnpt.ArrayLike,
+    r_carts: jax.Array,
 ) -> npt.NDArray[np.float64]:
-    """The method is for evaluate the sum_i domega(R_alpha, r_i_up_carts or r_i_dn_carts)/d_r_i_up_carts or d_r_i_dn_carts for SWCT.
+    r"""Evaluate :math:`\sum_i \nabla_{r_i} \omega_{\alpha i}` for each atom.
 
     Args:
-        swct_data (SWCT_data): an instance of SWCT_data
-        r_carts (jnpt.ArrayLike): Cartesian coordinates of up- or dn-spin electrons (dim: N_e, 3)
+        swct_data (SWCT_data): Structure and cached geometry information.
+        r_carts (jax.Array): Electron Cartesian coordinates with shape ``(N_e, 3)`` and ``float64`` dtype.
 
     Returns:
-        [jax.Array] The derivative of omega (dim: N_a, N_e) with the given structure
+        jax.Array: Sum of gradients per atom with shape ``(N_a, 3)``.
     """
-    domega = jnp.sum(jacrev(evaluate_swct_omega_jax, argnums=1)(swct_data, r_carts), axis=(1, 2))
+    domega = jnp.sum(jacrev(evaluate_swct_omega, argnums=1)(swct_data, r_carts), axis=(1, 2))
 
     return domega
 
 
-def evaluate_swct_domega_debug(
+def _evaluate_swct_domega_debug(
     swct_data: SWCT_data,
     r_carts: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
-    """See _api method."""
-    R_carts = swct_data.structure.positions_cart_np
+    """NumPy fallback for ``evaluate_swct_domega`` used in debug paths."""
+    R_carts = swct_data.structure._positions_cart_np
     domega = np.zeros((len(R_carts), 3))
 
     def compute_omega(R_cart, r_cart, R_carts):

@@ -42,7 +42,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc.jqmc_cli import cli  # noqa: E402
+from jqmc.jqmc_cli import _cli  # noqa: E402
 from jqmc.jqmc_tool import (  # noqa: E402
     lrdmc_compute_energy,
     lrdmc_extrapolate_energy,
@@ -97,7 +97,7 @@ def test_jqmc_cli_run_mcmc(tmp_path, monkeypatch):
     # run MCMC
     os.chdir(tmp_path)
     monkeypatch.setattr(sys, "argv", ["jqmc", "mcmc_input.toml"])
-    cli()
+    _cli()
     os.chdir(root_dir)
 
     # post MCMC
@@ -121,7 +121,7 @@ def test_jqmc_cli_run_mcmc(tmp_path, monkeypatch):
         toml.dump(dict_toml, f)
     os.chdir(tmp_path)
     monkeypatch.setattr(sys, "argv", ["jqmc", "mcmc_input.toml"])
-    cli()
+    _cli()
     os.chdir(root_dir)
 
 
@@ -158,7 +158,7 @@ def test_jqmc_cli_run_vmc(tmp_path, monkeypatch):
     # run VMC
     os.chdir(tmp_path)
     monkeypatch.setattr(sys, "argv", ["jqmc", "vmc_input.toml"])
-    cli()
+    _cli()
     os.chdir(root_dir)
 
     # run VMCopt(restart)
@@ -172,7 +172,7 @@ def test_jqmc_cli_run_vmc(tmp_path, monkeypatch):
         toml.dump(dict_toml, f)
     os.chdir(tmp_path)
     monkeypatch.setattr(sys, "argv", ["jqmc", "vmc_input.toml"])
-    cli()
+    _cli()
     os.chdir(root_dir)
 
 
@@ -217,7 +217,7 @@ def test_jqmc_cli_run_lrdmc(tmp_path, monkeypatch):
         # run LRDMC
         os.chdir(tmp_alat_path)
         monkeypatch.setattr(sys, "argv", ["jqmc", "lrdmc_input.toml"])
-        cli()
+        _cli()
         os.chdir(root_dir)
 
     # post LRDMC (each alat)
@@ -264,7 +264,7 @@ def test_jqmc_cli_run_lrdmc(tmp_path, monkeypatch):
             toml.dump(dict_toml, f)
         os.chdir(tmp_alat_path)
         monkeypatch.setattr(sys, "argv", ["jqmc", "lrdmc_input.toml"])
-        cli()
+        _cli()
     os.chdir(root_dir)
 
 
