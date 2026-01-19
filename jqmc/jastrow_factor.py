@@ -1066,7 +1066,7 @@ class Jastrow_three_body_data:
     """
 
     orb_data: AOs_sphe_data | AOs_cart_data | MOs_data = struct.field(
-        pytree_node=True, default_factory=lambda: AOs_sphe_data()
+        pytree_node=True, default_factory=AOs_sphe_data
     )  #: Orbital basis (AOs or MOs) shared across spins.
     j_matrix: npt.NDArray | jax.Array = struct.field(
         pytree_node=True, default_factory=lambda: np.array([])
