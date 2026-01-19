@@ -138,10 +138,10 @@ class Wavefunction_data:
     """
 
     jastrow_data: Jastrow_data = struct.field(
-        pytree_node=True, default_factory=lambda: Jastrow_data()
+        pytree_node=True, default_factory=Jastrow_data
     )  #: Variational Jastrow parameters.
     geminal_data: Geminal_data = struct.field(
-        pytree_node=True, default_factory=lambda: Geminal_data()
+        pytree_node=True, default_factory=Geminal_data
     )  #: Variational Geminal/determinant parameters.
 
     def sanity_check(self) -> None:
