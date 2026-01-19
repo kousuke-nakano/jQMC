@@ -192,7 +192,7 @@ class Coulomb_potential_data:
     """
 
     structure_data: Structure_data = struct.field(
-        pytree_node=True, default_factory=lambda: Structure_data()
+        pytree_node=True, default_factory=Structure_data
     )  #: Nuclear geometry and atom metadata.
     ecp_flag: bool = struct.field(pytree_node=False, default=False)  #: Whether ECP parameters are active.
     z_cores: list[float] | tuple[float] = struct.field(
