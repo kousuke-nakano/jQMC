@@ -494,7 +494,7 @@ class Jastrow_one_body_data:
 
     jastrow_1b_param: float = struct.field(pytree_node=True, default=1.0)  #: One-body Jastrow exponent parameter.
     structure_data: Structure_data = struct.field(
-        pytree_node=True, default_factory=lambda: Structure_data()
+        pytree_node=True, default_factory=Structure_data
     )  #: Nuclear structure data providing positions and atomic numbers.
     core_electrons: list[float] | tuple[float] = struct.field(
         pytree_node=False, default_factory=tuple
