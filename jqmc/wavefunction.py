@@ -428,7 +428,7 @@ def evaluate_ln_wavefunction(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> float:
-    """Evaluate the logarithm of ``|wavefunction|`` (:math:`\ln |\Psi|`).
+    r"""Evaluate the logarithm of ``|wavefunction|`` (:math:`\ln |\Psi|`).
 
     This follows the original behavior: compute the Jastrow part, multiply the
     determinant part, and then take ``log(abs(det))`` while keeping the full
@@ -504,7 +504,7 @@ def evaluate_jastrow(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> float:
-    """Evaluate the Jastrow factor :math:`\exp(J)` at the given coordinates.
+    r"""Evaluate the Jastrow factor :math:`\exp(J)` at the given coordinates.
 
     The method is for evaluate the Jastrow part of the wavefunction (Psi) at
     ``(r_up_carts, r_dn_carts)``. The returned value already includes the

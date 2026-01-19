@@ -669,7 +669,7 @@ class AOs_cart_data:
 
 @struct.dataclass
 class AOs_sphe_data:
-    """Atomic orbital definitions in real spherical-harmonic form.
+    r"""Atomic orbital definitions in real spherical-harmonic form.
 
     Stores contracted Gaussian basis data for atomic orbitals (AOs) whose angular part is
     a real spherical harmonic :math:`Y_{l}^{m}` with :math:`m \in \{-l,\dots,+l\}`.

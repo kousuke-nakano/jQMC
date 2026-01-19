@@ -1734,7 +1734,7 @@ def compute_ratio_Jastrow_part(
     new_r_up_carts_arr: jax.Array,
     new_r_dn_carts_arr: jax.Array,
 ) -> jax.Array:
-    """Compute $\exp(J(\mathbf r'))/\exp(J(\mathbf r))$ for batched moves.
+    r"""Compute $\exp(J(\mathbf r'))/\exp(J(\mathbf r))$ for batched moves.
 
     This follows the original ratio logic (including exp) while updating types
     to use ``jax.Array`` inputs. The return is one ratio per proposed grid

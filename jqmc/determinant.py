@@ -385,7 +385,7 @@ def compute_ln_det_geminal_all_elements(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> float:
-    """Compute $\ln|\det G|$ for the geminal matrix.
+    r"""Compute $\ln|\det G|$ for the geminal matrix.
 
     Args:
         geminal_data: Geminal parameters and orbital references.
@@ -471,7 +471,7 @@ def compute_det_geminal_all_elements(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> float:
-    """Compute $\det G$ for the geminal matrix.
+    r"""Compute $\det G$ for the geminal matrix.
 
     Args:
         geminal_data: Geminal parameters and orbital references.
@@ -744,7 +744,7 @@ def compute_ratio_determinant_part(
     new_r_up_carts_arr: jax.Array,
     new_r_dn_carts_arr: jax.Array,
 ) -> jax.Array:
-    """Determinant ratio $\det G(\mathbf r')/\det G(\mathbf r)$ for batched moves.
+    r"""Determinant ratio $\det G(\mathbf r')/\det G(\mathbf r)$ for batched moves.
 
     Args:
         geminal_data: Geminal parameters and orbital references.
@@ -850,7 +850,7 @@ def compute_grads_and_laplacian_ln_Det(
     jax.Array,
     jax.Array,
 ]:
-    """Gradients and Laplacians of $\ln\det G$ for each electron.
+    r"""Gradients and Laplacians of $\ln\det G$ for each electron.
 
     Args:
         geminal_data: Geminal parameters and orbital references.
