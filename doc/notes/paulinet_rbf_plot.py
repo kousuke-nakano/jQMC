@@ -44,7 +44,7 @@ for k in range(num_rbf):
 
     y = prefactor * term_exp_r * term_gaussian
 
-    plt.plot(r, y, label=f"k={k + 1}, $\mu$={mu_k:.2f}")
+    plt.plot(r, y, label=rf"k={k + 1}, $\mu$={mu_k:.2f}")
 
 plt.title(f"PauliNet RBF features vector (K={num_rbf}, $r_c$={cutoff})")
 plt.xlabel("r (a.u.)")
