@@ -57,7 +57,7 @@ from jqmc.coulomb_potential import (  # noqa: E402
 from jqmc.determinant import compute_geminal_all_elements  # noqa: E402
 from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
 from jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data  # noqa: E402
-from jqmc.structure import find_nearest_index_jnp  # noqa: E402
+from jqmc.structure import _find_nearest_index_jnp  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import Wavefunction_data, compute_kinetic_energy, evaluate_wavefunction  # noqa: E402
 
@@ -708,11 +708,11 @@ def test_full_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp():
         hamiltonian_data.coulomb_potential_data.z_cores
     )
     # coords
-    coords = hamiltonian_data.structure_data.positions_cart_jnp
+    coords = hamiltonian_data.structure_data._positions_cart_jnp
 
     # comput f_a
     old_r_cart = old_r_up_carts[2]
-    nearest_atom_index = find_nearest_index_jnp(hamiltonian_data.structure_data, old_r_cart)
+    nearest_atom_index = _find_nearest_index_jnp(hamiltonian_data.structure_data, old_r_cart)
     R_cart = coords[nearest_atom_index]
     Z = charges[nearest_atom_index]
     norm_r_R = jnp.linalg.norm(old_r_cart - R_cart)
@@ -720,7 +720,7 @@ def test_full_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp():
 
     # comput f_b
     new_r_cart = new_r_up_carts[2]
-    nearest_atom_index = find_nearest_index_jnp(hamiltonian_data.structure_data, new_r_cart)
+    nearest_atom_index = _find_nearest_index_jnp(hamiltonian_data.structure_data, new_r_cart)
     R_cart = coords[nearest_atom_index]
     Z = charges[nearest_atom_index]
     norm_r_R = jnp.linalg.norm(new_r_cart - R_cart)

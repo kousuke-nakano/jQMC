@@ -62,10 +62,10 @@ from .jastrow_factor import compute_Jastrow_part
 from .setting import NN_default, Nv_default
 from .structure import (
     Structure_data,
-    find_nearest_nucleus_indices_jnp,
-    find_nearest_nucleus_indices_np,
-    get_min_dist_rel_R_cart_jnp,
-    get_min_dist_rel_R_cart_np,
+    _find_nearest_nucleus_indices_jnp,
+    _find_nearest_nucleus_indices_np,
+    _get_min_dist_rel_R_cart_jnp,
+    _get_min_dist_rel_R_cart_np,
 )
 from .wavefunction import Wavefunction_data
 
@@ -172,45 +172,51 @@ octahedron_sym_mesh_Nv18 = _Mesh(
 
 @struct.dataclass
 class Coulomb_potential_data:
-    """Coulomb_potential dataclass.
-
-    The class contains data for computing effective core potentials (ECPs).
+    """Container for bare Coulomb and effective core potential (ECP) parameters.
 
     Args:
-        ecp_flag (bool):
-            If True, ECPs are used. The following values should be defined.
-        z_cores (list[float] | tuple[float]]):
-            Number of core electrons to remove per atom (dim: num_atoms).
-        max_ang_mom_plus_1 (list[int] | tuple[int]):
-            l_{max}+1, one higher than the max angular momentum in the
-            removed core orbitals (dim: num_atoms)
-        num_ecps (int):
-            Total number of ECP functions for all atoms and all values of l
-        ang_moms (list[int] | tuple[int]):
-            One-to-one correspondence between ECP items and the angular momentum l (dim:num_ecps)
-        nucleus_index (list[int] | tuple[int]):
-            One-to-one correspondence between ECP items and the atom index (dim:num_ecps)
-        exponents (list[float] | tuple[float]):
-            all ECP exponents (dim:num_ecps)
-        coefficients (list[float] | tuple[float]):
-            all ECP coefficients (dim:num_ecps)
-        powers (list[int] | tuple[int]):
-            all ECP powers (dim:num_ecps)
-        structure_data (Structure_data):
-            Instance of a structure_data
+        structure_data (Structure_data): Underlying nuclear geometry and metadata.
+        ecp_flag (bool): Whether ECPs are present. When ``True``, all ECP arrays must be populated.
+        z_cores (list[float] | tuple[float]): Core electrons removed per atom; length ``natom``.
+        max_ang_mom_plus_1 (list[int] | tuple[int]): ``l_max + 1`` for each atom; length ``natom``.
+        num_ecps (int): Total number of ECP projector terms across all atoms and angular momenta.
+        ang_moms (list[int] | tuple[int]): Angular momentum ``l`` per ECP term; length ``num_ecps``.
+        nucleus_index (list[int] | tuple[int]): Atom index per ECP term; length ``num_ecps``.
+        exponents (list[float] | tuple[float]): Gaussian exponents per ECP term; length ``num_ecps``.
+        coefficients (list[float] | tuple[float]): Prefactors per ECP term; length ``num_ecps``.
+        powers (list[int] | tuple[int]): Polynomial powers per ECP term; length ``num_ecps``.
 
+    Notes:
+        - When ``ecp_flag`` is ``False``, all ECP-related sequences must be empty and ``num_ecps`` should be 0.
+        - Arrays are stored as Python lists/tuples for pytrees; conversion to ``jax.Array`` happens in the compute kernels.
     """
 
-    structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
-    ecp_flag: bool = struct.field(pytree_node=False, default=False)
-    z_cores: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
-    max_ang_mom_plus_1: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
-    num_ecps: int = struct.field(pytree_node=False, default=0)
-    ang_moms: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
-    nucleus_index: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
-    exponents: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
-    coefficients: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
-    powers: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
+    structure_data: Structure_data = struct.field(
+        pytree_node=True, default_factory=Structure_data
+    )  #: Nuclear geometry and atom metadata.
+    ecp_flag: bool = struct.field(pytree_node=False, default=False)  #: Whether ECP parameters are active.
+    z_cores: list[float] | tuple[float] = struct.field(
+        pytree_node=False, default_factory=tuple
+    )  #: Core electrons removed per atom (len = natom).
+    max_ang_mom_plus_1: list[int] | tuple[int] = struct.field(
+        pytree_node=False, default_factory=tuple
+    )  #: ``l_max + 1`` per atom (len = natom).
+    num_ecps: int = struct.field(pytree_node=False, default=0)  #: Total ECP projector terms across all atoms.
+    ang_moms: list[int] | tuple[int] = struct.field(
+        pytree_node=False, default_factory=tuple
+    )  #: Angular momentum ``l`` per ECP term (len = num_ecps).
+    nucleus_index: list[int] | tuple[int] = struct.field(
+        pytree_node=False, default_factory=tuple
+    )  #: Atom index per ECP term (len = num_ecps).
+    exponents: list[float] | tuple[float] = struct.field(
+        pytree_node=False, default_factory=tuple
+    )  #: Gaussian exponents per ECP term (len = num_ecps).
+    coefficients: list[float] | tuple[float] = struct.field(
+        pytree_node=False, default_factory=tuple
+    )  #: Prefactors per ECP term (len = num_ecps).
+    powers: list[int] | tuple[int] = struct.field(
+        pytree_node=False, default_factory=tuple
+    )  #: Polynomial powers per ECP term (len = num_ecps).
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -278,19 +284,19 @@ class Coulomb_potential_data:
 
         self.structure_data.sanity_check()
 
-    def get_info(self) -> list[str]:
+    def _get_info(self) -> list[str]:
         """Return a list of strings containing the attribute information."""
         info_lines = ["**" + self.__class__.__name__]
         info_lines.append(f"  ecp_flag = {self.ecp_flag}")
         return info_lines
 
-    def logger_info(self) -> None:
+    def _logger_info(self) -> None:
         """Log the information from get_info() using logger.info."""
-        for line in self.get_info():
+        for line in self._get_info():
             logger.info(line)
 
     @property
-    def effective_charges(self) -> npt.NDArray:
+    def _effective_charges(self) -> npt.NDArray:
         """effective_charges.
 
         Return nucleus charge (all-electron) or effective charge (with ECP)
@@ -304,12 +310,12 @@ class Coulomb_potential_data:
             return np.array(self.structure_data.atomic_numbers)
 
     @property
-    def global_max_ang_mom_plus_1(self) -> int:
+    def _global_max_ang_mom_plus_1(self) -> int:
         """The maximum number of ang_mom_plus_1 among all atoms."""
         return np.max(self.max_ang_mom_plus_1)
 
     @property
-    def ang_mom_local_part(self) -> npt.NDArray:
+    def _ang_mom_local_part(self) -> npt.NDArray:
         """ang_mom_local_part.
 
         Return angular momentum of the local part (i.e., = max_ang_mom_plus1)
@@ -320,7 +326,7 @@ class Coulomb_potential_data:
         return np.array(self.max_ang_mom_plus_1)
 
     @property
-    def ang_mom_non_local_part(self) -> npt.NDArray:
+    def _ang_mom_non_local_part(self) -> npt.NDArray:
         """ang_mom_non_local_part.
 
         Return angular momentum of the non_local part (i.e., = max_ang_mom_plus1)
@@ -328,10 +334,10 @@ class Coulomb_potential_data:
         Return:
             npt.NDAarray: momentum of the non_local part (effective charge)
         """
-        return np.array(self.ang_moms)[self.non_local_part_index]
+        return np.array(self.ang_moms)[self._non_local_part_index]
 
     @property
-    def local_part_index(self) -> npt.NDArray:
+    def _local_part_index(self) -> npt.NDArray:
         """local_part_index.
 
         Return a list containing index of the local part
@@ -349,7 +355,7 @@ class Coulomb_potential_data:
         return local_part_index
 
     @property
-    def non_local_part_index(self) -> npt.NDArray:
+    def _non_local_part_index(self) -> npt.NDArray:
         """non_local_part_index.
 
         Return a list containing index of the non-local part
@@ -367,7 +373,7 @@ class Coulomb_potential_data:
         return non_local_part_index
 
     @property
-    def nucleus_index_local_part(self) -> npt.NDArray:
+    def _nucleus_index_local_part(self) -> npt.NDArray:
         """nucleus_index local_part.
 
         Return a list containing nucleus_index of the local part
@@ -375,10 +381,10 @@ class Coulomb_potential_data:
         Return:
             npt.NDAarray: a list containing nucleus_index of the local part
         """
-        return np.array(self.nucleus_index)[self.local_part_index]
+        return np.array(self.nucleus_index)[self._local_part_index]
 
     @property
-    def nucleus_index_non_local_part(self) -> npt.NDArray:
+    def _nucleus_index_non_local_part(self) -> npt.NDArray:
         """nucleus_index non_local_part.
 
         Return a list containing nucleus_index of the non-local part
@@ -386,10 +392,10 @@ class Coulomb_potential_data:
         Return:
             npt.NDAarray: a list containing nucleus_index of the non-local part
         """
-        return np.array(self.nucleus_index)[self.non_local_part_index]
+        return np.array(self.nucleus_index)[self._non_local_part_index]
 
     @property
-    def exponents_local_part(self) -> npt.NDArray:
+    def _exponents_local_part(self) -> npt.NDArray:
         """Exponents local_part.
 
         Return a list containing exponents of the local part
@@ -397,10 +403,10 @@ class Coulomb_potential_data:
         Return:
             npt.NDAarray: a list containing exponents of the local part
         """
-        return np.array(self.exponents)[self.local_part_index]
+        return np.array(self.exponents)[self._local_part_index]
 
     @property
-    def exponents_non_local_part(self) -> npt.NDArray:
+    def _exponents_non_local_part(self) -> npt.NDArray:
         """Exponents non_local_part.
 
         Return a list containing exponents of the non-local part
@@ -408,10 +414,10 @@ class Coulomb_potential_data:
         Return:
             npt.NDAarray: a list containing exponents of the non-local part
         """
-        return np.array(self.exponents)[self.non_local_part_index]
+        return np.array(self.exponents)[self._non_local_part_index]
 
     @property
-    def coefficients_local_part(self) -> npt.NDArray:
+    def _coefficients_local_part(self) -> npt.NDArray:
         """Coefficients local_part.
 
         Return a list containing coefficients of the local part
@@ -419,10 +425,10 @@ class Coulomb_potential_data:
         Return:
             npt.NDAarray: a list containing coefficients of the local part
         """
-        return np.array(self.coefficients)[self.local_part_index]
+        return np.array(self.coefficients)[self._local_part_index]
 
     @property
-    def coefficients_non_local_part(self) -> npt.NDArray:
+    def _coefficients_non_local_part(self) -> npt.NDArray:
         """Coefficients non_local_part.
 
         Return a list containing coefficients of the non-local part
@@ -430,10 +436,10 @@ class Coulomb_potential_data:
         Return:
             npt.NDAarray: a list containing coefficients of the non-local part
         """
-        return np.array(self.coefficients)[self.non_local_part_index]
+        return np.array(self.coefficients)[self._non_local_part_index]
 
     @property
-    def powers_local_part(self) -> npt.NDArray:
+    def _powers_local_part(self) -> npt.NDArray:
         """Powers local_part.
 
         Return a list containing powers of the local part
@@ -441,10 +447,10 @@ class Coulomb_potential_data:
         Return:
             npt.NDAarray: a list containing powers of the local part
         """
-        return np.array(self.powers)[self.local_part_index]
+        return np.array(self.powers)[self._local_part_index]
 
     @property
-    def powers_non_local_part(self) -> npt.NDArray:
+    def _powers_non_local_part(self) -> npt.NDArray:
         """Powers non_local_part.
 
         Return a list containing powers of the non-local part
@@ -452,16 +458,15 @@ class Coulomb_potential_data:
         Return:
             npt.NDAarray: a list containing powers of the non-local part
         """
-        return np.array(self.powers)[self.non_local_part_index]
+        return np.array(self.powers)[self._non_local_part_index]
 
-    # padding
     @property
-    def n_atom(self) -> int:
+    def _n_atom(self) -> int:
         """Number of atoms inculded in the system."""
-        return np.max(self.nucleus_index_local_part) + 1
+        return np.max(self._nucleus_index_local_part) + 1
 
     @property
-    def padded_parameters_tuple(self):
+    def _padded_parameters_tuple(self):
         """Padding parameters for jit(vmap).
 
         Ensure that each atom has the global max ang_mom and the same number of
@@ -480,17 +485,17 @@ class Coulomb_potential_data:
         and the same dim. for i_atom (nucleus index).
         """
         # 1) Infer the number of atoms (n_atom) from the maximum index
-        n_atom = max(self.nucleus_index_non_local_part) + 1
+        n_atom = max(self._nucleus_index_non_local_part) + 1
 
         # 2) Prepare a temporary data structure to group items by atom
         #    grouped[i_atom] = [(ang_mom, exponent), (ang_mom, exponent), ...]
         grouped = [[] for _ in range(n_atom)]
-        for i in range(len(self.nucleus_index_non_local_part)):
-            i_atom = self.nucleus_index_non_local_part[i]
-            l_val = self.ang_mom_non_local_part[i]
-            expo = self.exponents_non_local_part[i]
-            coeff = self.coefficients_non_local_part[i]
-            power = self.powers_non_local_part[i]
+        for i in range(len(self._nucleus_index_non_local_part)):
+            i_atom = self._nucleus_index_non_local_part[i]
+            l_val = self._ang_mom_non_local_part[i]
+            expo = self._exponents_non_local_part[i]
+            coeff = self._coefficients_non_local_part[i]
+            power = self._powers_non_local_part[i]
             grouped[i_atom].append((l_val, expo, coeff, power))
 
         # 3) For each atom, if the local max ang_mom is less than the global, append one dummy element
@@ -500,9 +505,9 @@ class Coulomb_potential_data:
                 continue
 
             local_max = max(pair[0] for pair in grouped[i_atom])
-            if local_max < self.global_max_ang_mom_plus_1:
+            if local_max < self._global_max_ang_mom_plus_1:
                 # Append one element with ang_mom = global and expo, coeff, power = 0.0
-                grouped[i_atom].append((self.global_max_ang_mom_plus_1, 0.0, 0.0, 0.0))
+                grouped[i_atom].append((self._global_max_ang_mom_plus_1, 0.0, 0.0, 0.0))
 
         # 4) Flatten the data structure back into lists
         nucleus_index_with_global_lmax_plus1 = []
@@ -529,8 +534,8 @@ class Coulomb_potential_data:
         max_param_num = counts.max()
 
         # 6) padding ang_mom_non_local_part_padded_np
-        ang_mom_non_local_part_padded_np = np.zeros((self.n_atom, max_param_num), dtype=ang_mom_with_global_lmax_plus1.dtype)
-        row_counts = np.zeros((self.n_atom,), dtype=np.int32)
+        ang_mom_non_local_part_padded_np = np.zeros((self._n_atom, max_param_num), dtype=ang_mom_with_global_lmax_plus1.dtype)
+        row_counts = np.zeros((self._n_atom,), dtype=np.int32)
         for i in range(ang_mom_with_global_lmax_plus1.shape[0]):
             i_atom = nucleus_index_with_global_lmax_plus1[i]
             j = row_counts[i_atom]
@@ -538,8 +543,8 @@ class Coulomb_potential_data:
             row_counts[i_atom] += 1
 
         # 7) padding exponents_non_local_part_padded_np
-        exponents_non_local_part_padded_np = np.zeros((self.n_atom, max_param_num), dtype=exponents_global_lmax_plus1.dtype)
-        row_counts = np.zeros((self.n_atom,), dtype=np.int32)
+        exponents_non_local_part_padded_np = np.zeros((self._n_atom, max_param_num), dtype=exponents_global_lmax_plus1.dtype)
+        row_counts = np.zeros((self._n_atom,), dtype=np.int32)
         for i in range(exponents_global_lmax_plus1.shape[0]):
             i_atom = nucleus_index_with_global_lmax_plus1[i]
             j = row_counts[i_atom]
@@ -548,9 +553,9 @@ class Coulomb_potential_data:
 
         # 8) padding coefficients_non_local_part_padded_np
         coefficients_non_local_part_padded_np = np.zeros(
-            (self.n_atom, max_param_num), dtype=coefficients_global_lmax_plus1.dtype
+            (self._n_atom, max_param_num), dtype=coefficients_global_lmax_plus1.dtype
         )
-        row_counts = np.zeros((self.n_atom,), dtype=np.int32)
+        row_counts = np.zeros((self._n_atom,), dtype=np.int32)
         for i in range(coefficients_global_lmax_plus1.shape[0]):
             i_atom = nucleus_index_with_global_lmax_plus1[i]
             j = row_counts[i_atom]
@@ -558,8 +563,8 @@ class Coulomb_potential_data:
             row_counts[i_atom] += 1
 
         # 9) padding coefficients_non_local_part_padded_np
-        powers_non_local_part_padded_np = np.zeros((self.n_atom, max_param_num), dtype=powers_global_lmax_plus1.dtype)
-        row_counts = np.zeros((self.n_atom,), dtype=np.int32)
+        powers_non_local_part_padded_np = np.zeros((self._n_atom, max_param_num), dtype=powers_global_lmax_plus1.dtype)
+        row_counts = np.zeros((self._n_atom,), dtype=np.int32)
         for i in range(powers_global_lmax_plus1.shape[0]):
             i_atom = nucleus_index_with_global_lmax_plus1[i]
             j = row_counts[i_atom]
@@ -576,32 +581,6 @@ class Coulomb_potential_data:
             exponents_non_local_part_padded_jnp,
             coefficients_non_local_part_padded_jnp,
             powers_non_local_part_padded_jnp,
-        )
-
-    @classmethod
-    def from_base(cls, coulomb_potential_data: "Coulomb_potential_data"):
-        """Switch pytree_node."""
-        structure_data = coulomb_potential_data.structure_data
-        ecp_flag = coulomb_potential_data.ecp_flag
-        z_cores = coulomb_potential_data.z_cores
-        max_ang_mom_plus_1 = coulomb_potential_data.max_ang_mom_plus_1
-        num_ecps = coulomb_potential_data.num_ecps
-        ang_moms = coulomb_potential_data.ang_moms
-        nucleus_index = coulomb_potential_data.nucleus_index
-        exponents = coulomb_potential_data.exponents
-        coefficients = coulomb_potential_data.coefficients
-        powers = coulomb_potential_data.powers
-        return cls(
-            structure_data,
-            ecp_flag,
-            z_cores,
-            max_ang_mom_plus_1,
-            num_ecps,
-            ang_moms,
-            nucleus_index,
-            exponents,
-            coefficients,
-            powers,
         )
 
 
@@ -637,7 +616,7 @@ def _compute_ecp_local_parts_all_pairs_debug(
         powers = [powers[i] for i in ang_mom_indices]
 
         for r_up_cart in r_up_carts:
-            rel_R_cart_min_dist = get_min_dist_rel_R_cart_np(
+            rel_R_cart_min_dist = _get_min_dist_rel_R_cart_np(
                 structure_data=coulomb_potential_data.structure_data,
                 r_cart=r_up_cart,
                 i_atom=i_atom,
@@ -649,7 +628,7 @@ def _compute_ecp_local_parts_all_pairs_debug(
                 ]
             )
         for r_dn_cart in r_dn_carts:
-            rel_R_cart_min_dist = get_min_dist_rel_R_cart_np(
+            rel_R_cart_min_dist = _get_min_dist_rel_R_cart_np(
                 structure_data=coulomb_potential_data.structure_data,
                 r_cart=r_dn_cart,
                 i_atom=i_atom,
@@ -745,7 +724,7 @@ def _compute_ecp_non_local_parts_all_pairs_debug(
 
             # up electrons
             for r_up_i, r_up_cart in enumerate(r_up_carts):
-                rel_R_cart_min_dist = get_min_dist_rel_R_cart_np(
+                rel_R_cart_min_dist = _get_min_dist_rel_R_cart_np(
                     structure_data=coulomb_potential_data.structure_data,
                     r_cart=r_up_cart,
                     i_atom=i_atom,
@@ -793,7 +772,7 @@ def _compute_ecp_non_local_parts_all_pairs_debug(
 
             # dn electrons
             for r_dn_i, r_dn_cart in enumerate(r_dn_carts):
-                rel_R_cart_min_dist = get_min_dist_rel_R_cart_np(
+                rel_R_cart_min_dist = _get_min_dist_rel_R_cart_np(
                     structure_data=coulomb_potential_data.structure_data,
                     r_cart=r_dn_cart,
                     i_atom=i_atom,
@@ -910,25 +889,25 @@ def _compute_ecp_non_local_parts_nearest_neighbors_debug(
         r_dn_carts=r_dn_carts,
     )
 
-    i_atom_np = np.array(coulomb_potential_data.nucleus_index_non_local_part)
-    ang_mom_np = np.array(coulomb_potential_data.ang_mom_non_local_part)
-    exponent_np = np.array(coulomb_potential_data.exponents_non_local_part)
-    coefficient_np = np.array(coulomb_potential_data.coefficients_non_local_part)
-    power_np = np.array(coulomb_potential_data.powers_non_local_part)
+    i_atom_np = np.array(coulomb_potential_data._nucleus_index_non_local_part)
+    ang_mom_np = np.array(coulomb_potential_data._ang_mom_non_local_part)
+    exponent_np = np.array(coulomb_potential_data._exponents_non_local_part)
+    coefficient_np = np.array(coulomb_potential_data._coefficients_non_local_part)
+    power_np = np.array(coulomb_potential_data._powers_non_local_part)
 
     # up electrons
     up_mesh_non_local_ecp_part_up = []
     up_mesh_non_local_ecp_part_dn = []
 
     for r_up_i, r_up_cart in enumerate(r_up_carts):
-        i_atom_list = find_nearest_nucleus_indices_np(
+        i_atom_list = _find_nearest_nucleus_indices_np(
             structure_data=coulomb_potential_data.structure_data,
             r_cart=r_up_cart,
             N=NN,
         )
 
         for i_atom in i_atom_list:
-            rel_R_cart_min_dist = get_min_dist_rel_R_cart_np(
+            rel_R_cart_min_dist = _get_min_dist_rel_R_cart_np(
                 structure_data=coulomb_potential_data.structure_data,
                 r_cart=r_up_cart,
                 i_atom=i_atom,
@@ -1002,14 +981,14 @@ def _compute_ecp_non_local_parts_nearest_neighbors_debug(
     dn_mesh_non_local_ecp_part_dn = []
 
     for r_dn_i, r_dn_cart in enumerate(r_dn_carts):
-        i_atom_list = find_nearest_nucleus_indices_np(
+        i_atom_list = _find_nearest_nucleus_indices_np(
             structure_data=coulomb_potential_data.structure_data,
             r_cart=r_dn_cart,
             N=NN,
         )
 
         for i_atom in i_atom_list:
-            rel_R_cart_min_dist = get_min_dist_rel_R_cart_np(
+            rel_R_cart_min_dist = _get_min_dist_rel_R_cart_np(
                 structure_data=coulomb_potential_data.structure_data,
                 r_cart=r_dn_cart,
                 i_atom=i_atom,
@@ -1134,27 +1113,24 @@ def _compute_ecp_coulomb_potential_debug(
 @jit
 def compute_ecp_local_parts_all_pairs(
     coulomb_potential_data: Coulomb_potential_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> float:
-    """Compute ecp local parts, considering all nucleus-electron pairs.
-
-    The method is for computing the local part of the given ECPs at (r_up_carts, r_dn_carts).
-    A much faster implementation using JAX.
+    """Compute local ECP contribution over all nucleus–electron pairs.
 
     Args:
-        coulomb_potential_data (Coulomb_potential_data): an instance of Coulomb_potential_data
-        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        coulomb_potential_data (Coulomb_potential_data): ECP parameters and structure data.
+        r_up_carts (jax.Array): Up-spin electron Cartesian coordinates with shape ``(N_up, 3)`` and ``float64`` dtype.
+        r_dn_carts (jax.Array): Down-spin electron Cartesian coordinates with shape ``(N_dn, 3)`` and ``float64`` dtype.
 
     Returns:
-        float: The sum of local part of the given ECPs with r_up_carts and r_dn_carts.
+        float: Total local ECP energy for the provided electron coordinates.
     """
 
     # Compute the local part. To understand the flow, please refer to the debug version.
     # @jit
     def compute_V_l(r_cart, i_atom, exponent, coefficient, power):
-        rel_R_cart_min_dist = get_min_dist_rel_R_cart_jnp(
+        rel_R_cart_min_dist = _get_min_dist_rel_R_cart_jnp(
             structure_data=coulomb_potential_data.structure_data,
             r_cart=r_cart,
             i_atom=i_atom,
@@ -1203,10 +1179,10 @@ def compute_ecp_local_parts_all_pairs(
     r_up_carts_jnp = jnp.array(r_up_carts)
     r_dn_carts_jnp = jnp.array(r_dn_carts)
 
-    i_atom_np = np.array(coulomb_potential_data.nucleus_index_local_part)
-    exponent_np = np.array(coulomb_potential_data.exponents_local_part)
-    coefficient_np = np.array(coulomb_potential_data.coefficients_local_part)
-    power_np = np.array(coulomb_potential_data.powers_local_part)
+    i_atom_np = np.array(coulomb_potential_data._nucleus_index_local_part)
+    exponent_np = np.array(coulomb_potential_data._exponents_local_part)
+    coefficient_np = np.array(coulomb_potential_data._coefficients_local_part)
+    power_np = np.array(coulomb_potential_data._powers_local_part)
 
     V_ecp_up = jnp.sum(
         vmap_vmap_compute_ecp_up(
@@ -1237,33 +1213,31 @@ def compute_ecp_local_parts_all_pairs(
 def compute_ecp_non_local_parts_nearest_neighbors(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
-    RT: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+    RT: jax.Array,
     NN: int = NN_default,
     Nv: int = Nv_default,
     flag_determinant_only: bool = False,
 ) -> tuple[list, list, list, float]:
-    """Compute ecp non-local parts.
-
-    The method is for computing the non-local part of the given ECPs at (r_up_carts, r_dn_carts)
-    with a cutoff considering only up to NN-th nearest neighbors.
+    """Compute non-local ECP contribution with a nearest-neighbor cutoff.
 
     Args:
-        coulomb_potential_data (Coulomb_potential_data): an instance of Coulomb_potential_data
-        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
-        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
-        RT (jnpt.ArrayLike): Rotation matrix. equiv R.T
-        NN (int): Consider only up to N-th nearest neighbors.
-        Nv (int): The number of quadrature points for the spherical part.
-        flag_determinant_only (bool): If True, only the determinant part is considered for the non-local ECP part.
+        coulomb_potential_data (Coulomb_potential_data): ECP parameters and structure data.
+        wavefunction_data (Wavefunction_data): Wavefunction (geminal + Jastrow) used for ratios.
+        r_up_carts (jax.Array): Up-spin electron Cartesian coordinates with shape ``(N_up, 3)`` and ``float64`` dtype.
+        r_dn_carts (jax.Array): Down-spin electron Cartesian coordinates with shape ``(N_dn, 3)`` and ``float64`` dtype.
+        RT (jax.Array): Rotation matrix applied to quadrature grid points (shape ``(3, 3)``).
+        NN (int): Number of nearest nuclei to include for each electron.
+        Nv (int): Number of quadrature points on the sphere.
+        flag_determinant_only (bool): If True, ignore Jastrow in the wavefunction ratio.
 
     Returns:
-        list[jax.Array]: The list of grids for up electrons on which the non-local part is computed.
-        list[jax.Array]: The list of grids for dn electrons on which the non-local part is computed.
-        list[float]: The list of non-local part of the given ECPs with r_up_carts and r_dn_carts.
-        float: sum of the V_nonlocal
+        tuple[list[jax.Array], list[jax.Array], jax.Array, float]:
+            - Mesh-displaced ``r_up_carts`` per configuration.
+            - Mesh-displaced ``r_dn_carts`` per configuration.
+            - Non-local ECP contributions per configuration (flattened).
+            - Scalar sum of all non-local contributions.
     """
     if Nv == 4:
         weights = jnp.array(tetrahedron_sym_mesh_Nv4.weights)
@@ -1283,8 +1257,8 @@ def compute_ecp_non_local_parts_nearest_neighbors(
     grid_points = grid_points @ RT  # rotate the grid points. dim. (N,3) @ (3,3) = (N,3)
 
     # jnp variables
-    ang_mom_all, exponent_all, coefficient_all, power_all = coulomb_potential_data.padded_parameters_tuple
-    global_max_ang_mom_plus_1 = coulomb_potential_data.global_max_ang_mom_plus_1
+    ang_mom_all, exponent_all, coefficient_all, power_all = coulomb_potential_data._padded_parameters_tuple
+    global_max_ang_mom_plus_1 = coulomb_potential_data._global_max_ang_mom_plus_1
 
     # stored
     non_local_ecp_part_r_carts_up = jnp.zeros((0, len(r_up_carts), 3))
@@ -1311,21 +1285,21 @@ def compute_ecp_non_local_parts_nearest_neighbors(
 
     # up electrons
     for r_up_i, r_up_cart in enumerate(r_up_carts):
-        i_atom_list = find_nearest_nucleus_indices_jnp(
+        i_atom_list = _find_nearest_nucleus_indices_jnp(
             structure_data=coulomb_potential_data.structure_data,
             r_cart=r_up_cart,
             N=NN,
         )
 
         for i_atom in i_atom_list:
-            rel_R_cart_min_dist = get_min_dist_rel_R_cart_jnp(
+            rel_R_cart_min_dist = _get_min_dist_rel_R_cart_jnp(
                 structure_data=coulomb_potential_data.structure_data,
                 r_cart=r_up_cart,
                 i_atom=i_atom,
             )
             rel_R_cart_norm = jnp.linalg.norm(rel_R_cart_min_dist)
 
-            max_ang_mom_plus_1 = coulomb_potential_data.global_max_ang_mom_plus_1
+            max_ang_mom_plus_1 = coulomb_potential_data._global_max_ang_mom_plus_1
             ang_moms = ang_mom_all[i_atom]
             exponents = exponent_all[i_atom]
             coefficients = coefficient_all[i_atom]
@@ -1364,20 +1338,20 @@ def compute_ecp_non_local_parts_nearest_neighbors(
 
     # dn electrons
     for r_dn_i, r_dn_cart in enumerate(r_dn_carts):
-        i_atom_list = find_nearest_nucleus_indices_jnp(
+        i_atom_list = _find_nearest_nucleus_indices_jnp(
             structure_data=coulomb_potential_data.structure_data,
             r_cart=r_dn_cart,
             N=NN,
         )
         for i_atom in i_atom_list:
-            rel_R_cart_min_dist = get_min_dist_rel_R_cart_jnp(
+            rel_R_cart_min_dist = _get_min_dist_rel_R_cart_jnp(
                 structure_data=coulomb_potential_data.structure_data,
                 r_cart=r_dn_cart,
                 i_atom=i_atom,
             )
             rel_R_cart_norm = jnp.linalg.norm(rel_R_cart_min_dist)
 
-            max_ang_mom_plus_1 = coulomb_potential_data.global_max_ang_mom_plus_1
+            max_ang_mom_plus_1 = coulomb_potential_data._global_max_ang_mom_plus_1
             ang_moms = ang_mom_all[i_atom]
             exponents = exponent_all[i_atom]
             coefficients = coefficient_all[i_atom]
@@ -1454,30 +1428,29 @@ def compute_ecp_non_local_parts_nearest_neighbors(
 def compute_ecp_non_local_parts_all_pairs(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
-    RT: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+    RT: jax.Array,
     Nv: int = Nv_default,
     flag_determinant_only: bool = False,
 ) -> tuple[list, list, list, float]:
-    """Compute ecp non-local parts using JAX, considering all nucleus-electron pairs.
-
-    The method is for computing the non-local part of the given ECPs at (r_up_carts, r_dn_carts).
+    """Compute non-local ECP contribution considering all nucleus–electron pairs.
 
     Args:
-        coulomb_potential_data (Coulomb_potential_data): an instance of Coulomb_potential_data
-        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
-        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
-        RT (jnpt.ArrayLike): Rotation matrix. equiv R.T
-        Nv (int): The number of quadrature points for the spherical part.
-        flag_determinant_only (bool): If True, only the determinant part is considered for the non-local ECP part.
+        coulomb_potential_data (Coulomb_potential_data): ECP parameters and structure data.
+        wavefunction_data (Wavefunction_data): Wavefunction (geminal + Jastrow) used for ratios.
+        r_up_carts (jax.Array): Up-spin electron Cartesian coordinates with shape ``(N_up, 3)`` and ``float64`` dtype.
+        r_dn_carts (jax.Array): Down-spin electron Cartesian coordinates with shape ``(N_dn, 3)`` and ``float64`` dtype.
+        RT (jax.Array): Rotation matrix applied to quadrature grid points (shape ``(3, 3)``).
+        Nv (int): Number of quadrature points on the sphere.
+        flag_determinant_only (bool): If True, ignore Jastrow in the wavefunction ratio.
 
     Returns:
-        list[jax.Array]: The list of grids for up electrons on which the non-local part is computed.
-        list[jax.Array]: The list of grids for dn electrons on which the non-local part is computed.
-        list[float]: The list of non-local part of the given ECPs with r_up_carts and r_dn_carts.
-        float: The sum of non-local part of the given ECPs with r_up_carts and r_dn_carts.
+        tuple[list[jax.Array], list[jax.Array], jax.Array, float]:
+            - Mesh-displaced ``r_up_carts`` per configuration.
+            - Mesh-displaced ``r_dn_carts`` per configuration.
+            - Non-local ECP contributions per configuration (flattened).
+            - Scalar sum of all non-local contributions.
     """
     if Nv == 4:
         weights = tetrahedron_sym_mesh_Nv4.weights
@@ -1517,15 +1490,15 @@ def compute_ecp_non_local_parts_all_pairs(
     # print(f"V_ecp_dn.shape={V_ecp_dn.shape}")
 
     # start = time.perf_counter()
-    _, uq_indices = np.unique(coulomb_potential_data.nucleus_index_non_local_part, return_index=True)
+    _, uq_indices = np.unique(coulomb_potential_data._nucleus_index_non_local_part, return_index=True)
     r_up_carts_on_mesh = r_up_carts_on_mesh[uq_indices]
     r_dn_carts_on_mesh = r_dn_carts_on_mesh[uq_indices]
     # end = time.perf_counter()
     # logger.info(f"Extract unique indices elapsed Time = {(end-start)*1e3:.3f} msec.")
 
     # start = time.perf_counter()
-    nucleus_index_non_local_part = np.array(coulomb_potential_data.nucleus_index_non_local_part, dtype=np.int32)
-    num_segments = len(set(coulomb_potential_data.nucleus_index_non_local_part))
+    nucleus_index_non_local_part = np.array(coulomb_potential_data._nucleus_index_non_local_part, dtype=np.int32)
+    num_segments = len(set(coulomb_potential_data._nucleus_index_non_local_part))
     V_ecp_up = jax.ops.segment_sum(V_ecp_up, nucleus_index_non_local_part, num_segments=num_segments)
     V_ecp_dn = jax.ops.segment_sum(V_ecp_dn, nucleus_index_non_local_part, num_segments=num_segments)
     # end = time.perf_counter()
@@ -1583,51 +1556,30 @@ def compute_ecp_non_local_parts_all_pairs(
 def compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
     weights: list,
     grid_points: npt.NDArray[np.float64],
     flag_determinant_only: int = 0,
 ) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array, float]:
-    """Compute ecp non-local parts using JAX.
-
-    The method is for computing the non-local parts of the given ECPs at (r_up_carts, r_dn_carts).
-    To avoid for the nested loops, jax-vmap function (i.e. efficient vectrization for compilation) is fully
-    exploitted in the method.
+    """Vectorized non-local ECP projection over all pairs with provided quadrature.
 
     Args:
-        coulomb_potential_data (Coulomb_potential_data):
-            an instance of Bare_coulomb_potential_data
-        wavefunction_data (Wavefunction_data):
-            an instance of Wavefunction_data
-        r_up_carts (jnpt.ArrayLike):
-            Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (jnpt.ArrayLike):
-            Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
-        weights (list[np.float]):
-            weights for numerical integration
-        grid_points (npt.NDArray[np.float64]):
-            grid_points for numerical integration
-        flag_determinant_only (int):
-            If True (i.e., 1), only the determinant part is considered for the non-local ECP part.
-            If False (i.e., 0), both the Jastrow and determinant part is considered for the non-local ECP part.
+        coulomb_potential_data (Coulomb_potential_data): ECP parameters and structure data.
+        wavefunction_data (Wavefunction_data): Wavefunction (geminal + Jastrow) used for ratios.
+        r_up_carts (jax.Array): Up-spin electron Cartesian coordinates with shape ``(N_up, 3)`` and ``float64`` dtype.
+        r_dn_carts (jax.Array): Down-spin electron Cartesian coordinates with shape ``(N_dn, 3)`` and ``float64`` dtype.
+        weights (list[float]): Quadrature weights for angular integration.
+        grid_points (npt.NDArray[np.float64]): Quadrature grid points with shape ``(Nv, 3)``.
+        flag_determinant_only (int): If 1, skip Jastrow in the wavefunction ratio; if 0, include it.
 
     Returns:
-        jnpt.ArrayLike:
-            grid points used for the up electron
-        jnpt.ArrayLike:
-            grid points used for the dn electron
-        jnpt.ArrayLike:
-            V_ecp_up for the grid points for up electron
-        jnpt.ArrayLike:
-            V_ecp_dn for the grid points for up electron
-        float:
-            The sum of non-local part of the given ECPs with r_up_carts and r_dn_carts.
-
-    Notes:
-        This part of @jit drastically accelarates the computation!
-        The procesure is so complicated that one should refer to the debug version.
-        to understand the flow
+        tuple[jax.Array, jax.Array, jax.Array, jax.Array, float]:
+            - Mesh-displaced up-spin coordinates per configuration.
+            - Mesh-displaced down-spin coordinates per configuration.
+            - Non-local contributions for up-spin mesh points.
+            - Non-local contributions for down-spin mesh points.
+            - Scalar sum of all non-local contributions.
     """
     # V_l_cutoff = 1e-5
 
@@ -1645,7 +1597,7 @@ def compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
     # Compute the local part. To understand the flow, please refer to the debug version.
     @jit
     def compute_V_l(r_cart, i_atom, exponent, coefficient, power):
-        rel_R_cart_min_dist = get_min_dist_rel_R_cart_jnp(
+        rel_R_cart_min_dist = _get_min_dist_rel_R_cart_jnp(
             structure_data=coulomb_potential_data.structure_data,
             r_cart=r_cart,
             i_atom=i_atom,
@@ -1663,7 +1615,7 @@ def compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
     # To understand the flow, please refer to the debug version.
     @jit
     def compute_P_l_up(ang_mom, r_up_i, r_up_cart, i_atom, weight, vec_delta):
-        rel_R_cart_min_dist = get_min_dist_rel_R_cart_jnp(
+        rel_R_cart_min_dist = _get_min_dist_rel_R_cart_jnp(
             structure_data=coulomb_potential_data.structure_data,
             r_cart=r_up_cart,
             i_atom=i_atom,
@@ -1696,7 +1648,7 @@ def compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
     # To understand the flow, please refer to the debug version.
     @jit
     def compute_P_l_dn(ang_mom, r_dn_i, r_dn_cart, i_atom, weight, vec_delta):
-        rel_R_cart_min_dist = get_min_dist_rel_R_cart_jnp(
+        rel_R_cart_min_dist = _get_min_dist_rel_R_cart_jnp(
             structure_data=coulomb_potential_data.structure_data,
             r_cart=r_dn_cart,
             i_atom=i_atom,
@@ -1793,11 +1745,11 @@ def compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
     r_dn_i_jnp = jnp.arange(len(r_dn_carts))
     r_dn_carts_jnp = jnp.array(r_dn_carts)
 
-    i_atom_np = jnp.array(coulomb_potential_data.nucleus_index_non_local_part)
-    ang_mom_np = jnp.array(coulomb_potential_data.ang_mom_non_local_part)
-    exponent_np = jnp.array(coulomb_potential_data.exponents_non_local_part)
-    coefficient_np = jnp.array(coulomb_potential_data.coefficients_non_local_part)
-    power_np = jnp.array(coulomb_potential_data.powers_non_local_part)
+    i_atom_np = jnp.array(coulomb_potential_data._nucleus_index_non_local_part)
+    ang_mom_np = jnp.array(coulomb_potential_data._ang_mom_non_local_part)
+    exponent_np = jnp.array(coulomb_potential_data._exponents_non_local_part)
+    coefficient_np = jnp.array(coulomb_potential_data._coefficients_non_local_part)
+    power_np = jnp.array(coulomb_potential_data._powers_non_local_part)
 
     r_up_carts_on_mesh, V_ecp_up = vmap_vmap_compute_ecp_up(
         r_up_i_jnp,
@@ -1827,28 +1779,25 @@ def compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
 def compute_ecp_coulomb_potential(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
-    RT: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+    RT: jax.Array,
     NN: int = NN_default,
     Nv: int = Nv_default,
 ) -> float:
-    """Compute effective core potential term.
-
-    The method is for computing the local and non-local parts of the given ECPs at
-    a given electronic configuration (r_up_carts, r_dn_carts).
+    """Compute total ECP energy (local + non-local) for a configuration.
 
     Args:
-        coulomb_potential_data (Coulomb_potential_data): an instance of Coulomb_potential_data
-        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
-        RT (jnpt.ArrayLike): Rotation matrix. equiv R.T used for the non-local part.
-        NN (int): Consider only up to NN-th nearest neighbors.
-        Nv (int): The number of quadrature points for the spherical part.
-
+        coulomb_potential_data (Coulomb_potential_data): ECP parameters and structure data.
+        wavefunction_data (Wavefunction_data): Wavefunction (geminal + Jastrow) used for ratios.
+        r_up_carts (jax.Array): Up-spin electron Cartesian coordinates with shape ``(N_up, 3)`` and ``float64`` dtype.
+        r_dn_carts (jax.Array): Down-spin electron Cartesian coordinates with shape ``(N_dn, 3)`` and ``float64`` dtype.
+        RT (jax.Array): Rotation matrix applied to quadrature grid points (shape ``(3, 3)``).
+        NN (int): Number of nearest nuclei to include for each electron in the non-local term.
+        Nv (int): Number of quadrature points on the sphere.
 
     Returns:
-        float: The sum of local and non-local parts of the given ECPs with r_up_carts and r_dn_carts. (float)
+        float: Sum of local and non-local ECP contributions for the given geometry.
     """
     ecp_local_parts = compute_ecp_local_parts_all_pairs(
         coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
@@ -1890,8 +1839,8 @@ def _compute_bare_coulomb_potential_debug(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
     """See compute_bare_coulomb_potential_api."""
-    R_carts = coulomb_potential_data.structure_data.positions_cart_np
-    R_charges = coulomb_potential_data.effective_charges
+    R_carts = coulomb_potential_data.structure_data._positions_cart_np
+    R_charges = coulomb_potential_data._effective_charges
     r_up_charges = [-1 for _ in range(len(r_up_carts))]
     r_dn_charges = [-1 for _ in range(len(r_dn_carts))]
 
@@ -1911,22 +1860,18 @@ def _compute_bare_coulomb_potential_debug(
 @jit
 def compute_bare_coulomb_potential(
     coulomb_potential_data: Coulomb_potential_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> float:
-    """Compute bare Coulomb potential.
-
-    The method is for computing the bare coulomb potentials including both electron-electron,
-    electron-ion (except. ECPs), and ion-ion interactions at (r_up_carts, r_dn_carts).
+    """Compute bare Coulomb interaction (ion–ion, electron–ion, electron–electron).
 
     Args:
-        coulomb_potential_data (Coulomb_potential_data): an instance of Bare_coulomb_potential_data
-        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
-        debug (bool): if True, the value is computed via _debug function for debuging purpose
+        coulomb_potential_data (Coulomb_potential_data): Structure and charges (effective if ECPs present).
+        r_up_carts (jax.Array): Up-spin electron Cartesian coordinates with shape ``(N_up, 3)`` and ``float64`` dtype.
+        r_dn_carts (jax.Array): Down-spin electron Cartesian coordinates with shape ``(N_dn, 3)`` and ``float64`` dtype.
 
     Returns:
-        The bare Coulomb potential with r_up_carts and r_dn_carts. (float)
+        float: Total bare Coulomb energy.
     """
     interactions_ion_ion = compute_bare_coulomb_potential_ion_ion(coulomb_potential_data)
     interactions_el_ion_elements_up, interactions_el_ion_elements_dn = compute_bare_coulomb_potential_el_ion_element_wise(
@@ -1945,12 +1890,21 @@ def compute_bare_coulomb_potential(
 @jit
 def compute_bare_coulomb_potential_el_ion_element_wise(
     coulomb_potential_data: Coulomb_potential_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> tuple[jax.Array, jax.Array]:
-    """See compute_bare_coulomb_potential_api."""
-    R_carts = jnp.array(coulomb_potential_data.structure_data.positions_cart_jnp)
-    R_charges = np.array(coulomb_potential_data.effective_charges)
+    """Element-wise electron–ion Coulomb interactions.
+
+    Args:
+        coulomb_potential_data (Coulomb_potential_data): Structure and charges (effective if ECPs present).
+        r_up_carts (jax.Array): Up-spin electron Cartesian coordinates with shape ``(N_up, 3)`` and ``float64`` dtype.
+        r_dn_carts (jax.Array): Down-spin electron Cartesian coordinates with shape ``(N_dn, 3)`` and ``float64`` dtype.
+
+    Returns:
+        tuple[jax.Array, jax.Array]: Element-wise ion–electron interactions for up spins and down spins (shape ``(N_up,)`` and ``(N_dn,)``).
+    """
+    R_carts = jnp.array(coulomb_potential_data.structure_data._positions_cart_jnp)
+    R_charges = np.array(coulomb_potential_data._effective_charges)
     r_up_charges = np.full(len(r_up_carts), -1.0, dtype=np.float64)
     r_dn_charges = np.full(len(r_dn_carts), -1.0, dtype=np.float64)
 
@@ -1977,13 +1931,23 @@ def compute_bare_coulomb_potential_el_ion_element_wise(
 @jit
 def compute_discretized_bare_coulomb_potential_el_ion_element_wise(
     coulomb_potential_data: Coulomb_potential_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
     alat: float,
 ) -> tuple[jax.Array, jax.Array]:
-    """See compute_bare_coulomb_potential_api."""
-    R_carts = jnp.array(coulomb_potential_data.structure_data.positions_cart_jnp)
-    R_charges = np.array(coulomb_potential_data.effective_charges)
+    """Element-wise electron–ion Coulomb interactions with distance floor ``alat``.
+
+    Args:
+        coulomb_potential_data (Coulomb_potential_data): Structure and charges (effective if ECPs present).
+        r_up_carts (jax.Array): Up-spin electron Cartesian coordinates with shape ``(N_up, 3)`` and ``float64`` dtype.
+        r_dn_carts (jax.Array): Down-spin electron Cartesian coordinates with shape ``(N_dn, 3)`` and ``float64`` dtype.
+        alat (float): Minimum allowed distance to avoid divergence.
+
+    Returns:
+        tuple[jax.Array, jax.Array]: Element-wise ion–electron interactions for up spins and down spins (shape ``(N_up,)`` and ``(N_dn,)``).
+    """
+    R_carts = jnp.array(coulomb_potential_data.structure_data._positions_cart_jnp)
+    R_charges = np.array(coulomb_potential_data._effective_charges)
     r_up_charges = np.full(len(r_up_carts), -1.0, dtype=np.float64)
     r_dn_charges = np.full(len(r_dn_carts), -1.0, dtype=np.float64)
 
@@ -2015,8 +1979,8 @@ def _compute_bare_coulomb_potential_el_ion_element_wise_debug(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     """See compute_bare_coulomb_potential_api."""
-    R_carts = coulomb_potential_data.structure_data.positions_cart_np
-    R_charges = coulomb_potential_data.effective_charges
+    R_carts = coulomb_potential_data.structure_data._positions_cart_np
+    R_charges = coulomb_potential_data._effective_charges
     r_up_charges = [-1 for _ in range(len(r_up_carts))]
     r_dn_charges = [-1 for _ in range(len(r_dn_carts))]
 
@@ -2049,8 +2013,8 @@ def _compute_discretized_bare_coulomb_potential_el_ion_element_wise_debug(
     alat: float,
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     """See compute_bare_coulomb_potential_api."""
-    R_carts = coulomb_potential_data.structure_data.positions_cart_np
-    R_charges = coulomb_potential_data.effective_charges
+    R_carts = coulomb_potential_data.structure_data._positions_cart_np
+    R_charges = coulomb_potential_data._effective_charges
     r_up_charges = [-1 for _ in range(len(r_up_carts))]
     r_dn_charges = [-1 for _ in range(len(r_dn_carts))]
 
@@ -2078,10 +2042,18 @@ def _compute_discretized_bare_coulomb_potential_el_ion_element_wise_debug(
 
 @jit
 def compute_bare_coulomb_potential_el_el(
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> float:
-    """See compute_bare_coulomb_potential_api."""
+    """Electron–electron Coulomb interaction energy.
+
+    Args:
+        r_up_carts (jax.Array): Up-spin electron Cartesian coordinates with shape ``(N_up, 3)`` and ``float64`` dtype.
+        r_dn_carts (jax.Array): Down-spin electron Cartesian coordinates with shape ``(N_dn, 3)`` and ``float64`` dtype.
+
+    Returns:
+        float: Electron–electron Coulomb energy.
+    """
     r_up_charges = np.full(len(r_up_carts), -1.0, dtype=np.float64)
     r_dn_charges = np.full(len(r_dn_carts), -1.0, dtype=np.float64)
 
@@ -2124,9 +2096,16 @@ def compute_bare_coulomb_potential_el_el(
 def compute_bare_coulomb_potential_ion_ion(
     coulomb_potential_data: Coulomb_potential_data,
 ) -> float:
-    """See compute_bare_coulomb_potential_api."""
-    R_carts = jnp.array(coulomb_potential_data.structure_data.positions_cart_jnp)
-    R_charges = np.array(coulomb_potential_data.effective_charges)
+    """Ion–ion Coulomb interaction energy.
+
+    Args:
+        coulomb_potential_data (Coulomb_potential_data): Structure and charges (effective if ECPs present).
+
+    Returns:
+        float: Ion–ion Coulomb energy.
+    """
+    R_carts = jnp.array(coulomb_potential_data.structure_data._positions_cart_jnp)
+    R_charges = np.array(coulomb_potential_data._effective_charges)
 
     all_charges = R_charges
     all_carts = R_carts
@@ -2163,10 +2142,19 @@ def compute_bare_coulomb_potential_ion_ion(
 @jit
 def compute_bare_coulomb_potential_el_ion(
     coulomb_potential_data: Coulomb_potential_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> float:
-    """See compute_bare_coulomb_potential_api."""
+    """Total electron–ion Coulomb interaction energy.
+
+    Args:
+        coulomb_potential_data (Coulomb_potential_data): Structure and charges (effective if ECPs present).
+        r_up_carts (jax.Array): Up-spin electron Cartesian coordinates with shape ``(N_up, 3)`` and ``float64`` dtype.
+        r_dn_carts (jax.Array): Down-spin electron Cartesian coordinates with shape ``(N_dn, 3)`` and ``float64`` dtype.
+
+    Returns:
+        float: Electron–ion Coulomb energy.
+    """
     interactions_el_ion_elements_up, interactions_el_ion_elements_dn = compute_bare_coulomb_potential_el_ion_element_wise(
         coulomb_potential_data, r_up_carts, r_dn_carts
     )
@@ -2216,37 +2204,26 @@ def _compute_coulomb_potential_debug(
 
 def compute_coulomb_potential(
     coulomb_potential_data: Coulomb_potential_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
-    RT: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+    RT: jax.Array,
     NN: int = NN_default,
     Nv: int = Nv_default,
     wavefunction_data: Wavefunction_data = None,
 ) -> float:
-    """Compute coulomb potential including bare electron-ion, electron-electron, ecp local and non-local parts.
-
-    The method is for computing coulomb potential including bare electron-ion, electron-electron,
-    ecp local and non-local parts, of the given ECPs at (r_up_carts, r_dn_carts).
+    """Compute total Coulomb energy including bare and ECP terms.
 
     Args:
-        coulomb_potential_data (Coulomb_potential_data):
-            an instance of Coulomb_potential_data
-        r_up_carts (jnpt.ArrayLike):
-            Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (jnpt.ArrayLike):
-            Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
-        RT (jnpt.ArrayLike):
-            Rotation matrix. equiv R.T used for non-local part
-        NN (int):
-            Consider only up to NN-th nearest neighbors.
-        Nv (int):
-            The number of quadrature points for the spherical part.
-        wavefunction_data (Wavefunction_data):
-            an instance of Wavefunction_data
+        coulomb_potential_data (Coulomb_potential_data): Structure, charges, and ECP parameters.
+        r_up_carts (jax.Array): Up-spin electron Cartesian coordinates with shape ``(N_up, 3)`` and ``float64`` dtype.
+        r_dn_carts (jax.Array): Down-spin electron Cartesian coordinates with shape ``(N_dn, 3)`` and ``float64`` dtype.
+        RT (jax.Array): Rotation matrix applied to quadrature grid points (shape ``(3, 3)``) for non-local ECP.
+        NN (int): Number of nearest nuclei to include for each electron in the non-local term.
+        Nv (int): Number of quadrature points on the sphere.
+        wavefunction_data (Wavefunction_data): Wavefunction (geminal + Jastrow) used for ECP ratios; required when ``ecp_flag`` is True.
 
     Returns:
-        float:  The sum of bare electron-ion, electron-electron, local and non-local parts of the given
-                ECPs with r_up_carts and r_dn_carts. (float)
+        float: Sum of bare Coulomb (ion–ion, electron–ion, electron–electron) and ECP (local + non-local) energies.
     """
     # all-electron
     if not coulomb_potential_data.ecp_flag:

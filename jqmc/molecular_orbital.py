@@ -66,25 +66,67 @@ jax.config.update("jax_enable_x64", True)
 
 @struct.dataclass
 class MOs_data:
-    """The class contains data for computing a molecular orbitals.
+    """Molecular orbital (MO) coefficients and metadata.
 
-    Args:
-        num_mo: The number of MOs.
-        aos_data (AOs_data): aos_data instances
-        mo_coefficients (npt.NDArray | jnpt.ArrayLike): array of MO coefficients. dim. num_mo, num_ao
+    Holds the contraction matrix that maps atomic orbitals (AOs) to molecular orbitals (MOs).
+    MO values are obtained as ``mo_coefficients @ AO_values`` in float64 (``jax_enable_x64=True``).
+
+    Attributes:
+        num_mo (int): Number of molecular orbitals.
+        aos_data (AOs_sphe_data | AOs_cart_data): AO definition supplying centers, exponents/coefficients,
+            angular data, and contraction mapping.
+        mo_coefficients (npt.NDArray | jax.Array): Coefficient matrix of shape ``(num_mo, num_ao)``. Rows
+            correspond to MOs; columns correspond to contracted AOs.
+
+    Examples:
+        Minimal runnable setup (2 AOs -> 1 MO)::
+
+            import numpy as np
+            from jqmc.structure import Structure_data
+            from jqmc.atomic_orbital import AOs_sphe_data
+            from jqmc.molecular_orbital import MOs_data
+
+            structure = Structure_data(
+                positions=[[0.0, 0.0, -0.70], [0.0, 0.0, 0.70]],
+                pbc_flag=False,
+                atomic_numbers=[1, 1],
+                element_symbols=["H", "H"],
+                atomic_labels=["H1", "H2"],
+            )
+
+            aos = AOs_sphe_data(
+                structure_data=structure,
+                nucleus_index=[0, 1],
+                num_ao=2,
+                num_ao_prim=2,
+                orbital_indices=[0, 1],
+                exponents=[1.0, 1.2],
+                coefficients=[1.0, 0.8],
+                angular_momentums=[0, 0],
+                magnetic_quantum_numbers=[0, 0],
+            )
+            aos.sanity_check()
+
+            mo_coeffs = np.array([[0.7, 0.7]], dtype=float)  # shape (1, 2)
+            mos = MOs_data(num_mo=1, aos_data=aos, mo_coefficients=mo_coeffs)
+            mos.sanity_check()
     """
 
+    #: Number of molecular orbitals.
     num_mo: int = struct.field(pytree_node=False, default=0)
+    #: AO definition supplying centers, exponents/coefficients, angular data, and contraction mapping.
     aos_data: AOs_sphe_data | AOs_cart_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
+    #: MO coefficient matrix, shape ``(num_mo, num_ao)``.
     mo_coefficients: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
 
     def sanity_check(self) -> None:
-        """Check attributes of the class.
+        """Validate internal consistency.
 
-        This function checks the consistencies among the arguments.
+        Ensures ``mo_coefficients`` matches ``(num_mo, aos_data.num_ao)``, verifies ``num_mo`` is an int,
+        and delegates AO validation to ``aos_data.sanity_check()``.
 
         Raises:
-            ValueError: If there is an inconsistency in a dimension of a given argument.
+            ValueError: If coefficient shape or ``num_mo`` type is invalid, or if ``aos_data`` fails its check.
         """
         if self.mo_coefficients.shape != (self.num_mo, self.aos_data.num_ao):
             raise ValueError(
@@ -94,19 +136,19 @@ class MOs_data:
             raise ValueError(f"num_mo = {type(self.num_mo)} must be an int.")
         self.aos_data.sanity_check()
 
-    def get_info(self) -> list[str]:
+    def _get_info(self) -> list[str]:
         """Return a list of strings representing the logged information."""
         info_lines = []
         info_lines.append("**" + self.__class__.__name__)
         info_lines.append(f"  Number of MOs = {self.num_mo}")
         info_lines.append(f"  dim. of MOs coeff = {self.mo_coefficients.shape}")
         # Replace aos_data.logger_info() with aos_data.get_info() output.
-        info_lines.extend(self.aos_data.get_info())
+        info_lines.extend(self.aos_data._get_info())
         return info_lines
 
-    def logger_info(self) -> None:
+    def _logger_info(self) -> None:
         """Log the information obtained from get_info() using logger.info."""
-        for line in self.get_info():
+        for line in self._get_info():
             logger.info(line)
 
     @property
@@ -115,32 +157,22 @@ class MOs_data:
         return self.aos_data.structure_data
 
     @property
-    def num_orb(self) -> int:
+    def _num_orb(self) -> int:
         """Return the number of orbitals."""
         return self.num_mo
 
-    @classmethod
-    def from_base(cls, mos_data: "MOs_data"):
-        """Switch pytree_node."""
-        num_mo = mos_data.num_mo
-        if isinstance(mos_data.aos_data, AOs_sphe_data):
-            aos_data = AOs_sphe_data.from_base(aos_data=mos_data.aos_data)
-        elif isinstance(mos_data.aos_data, AOs_cart_data):
-            aos_data = AOs_cart_data.from_base(aos_data=mos_data.aos_data)
-        mo_coefficients = mos_data.mo_coefficients
-        return cls(num_mo, aos_data, mo_coefficients)
-
 
 @jit
-def compute_MOs(mos_data: MOs_data, r_carts: jnpt.ArrayLike) -> jax.Array:
-    """The class contains information for computing molecular orbitals at r_carts simlunateously.
+def compute_MOs(mos_data: MOs_data, r_carts: jax.Array) -> jax.Array:
+    """Evaluate molecular orbitals at electron coordinates.
 
     Args:
-        mos_data (MOs_data): an instance of MOs_data
-        r_carts (jnpt.ArrayLike): Cartesian coordinates of electrons (dim: N_e, 3)
+        mos_data (MOs_data): MO/AO definition and coefficient matrix.
+        r_carts (jax.Array): Electron Cartesian coordinates, shape ``(N_e, 3)`` in float64 (same convention as
+            AO evaluators).
 
     Returns:
-        Arrays containing values of the MOs at r_carts. (dim: num_mo, N_e)
+        jax.Array: MO values with shape ``(num_mo, N_e)``.
     """
     answer = jnp.dot(
         mos_data.mo_coefficients,
@@ -171,17 +203,15 @@ def _compute_MOs_laplacian_autodiff(mos_data: MOs_data, r_carts: npt.NDArray[np.
 
 
 @jit
-def compute_MOs_laplacian(mos_data: MOs_data, r_carts: npt.NDArray[np.float64]) -> jax.Array:
-    """Function for computing laplacians with a given MOs_data.
-
-    The method is for computing the laplacians of the given molecular orbital (MOs_data) at r_carts.
+def compute_MOs_laplacian(mos_data: MOs_data, r_carts: jax.Array) -> jax.Array:
+    """Compute MO laplacians at electron coordinates.
 
     Args:
-        mo_datas (MOs_data): an instance of MOs_data
-        r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
+        mos_data (MOs_data): MO/AO definition and coefficient matrix.
+        r_carts (jax.Array): Electron Cartesian coordinates, shape ``(N_e, 3)`` in float64.
 
     Returns:
-        An array containing laplacians of the MOs at r_carts. The dim. is (num_mo, N_e)
+        jax.Array: Laplacians of each MO, shape ``(num_mo, N_e)``.
     """
     ao_lap = compute_AOs_laplacian(mos_data.aos_data, r_carts)
     return jnp.dot(mos_data.mo_coefficients, ao_lap)
@@ -229,21 +259,21 @@ def _compute_MOs_laplacian_debug(mos_data: MOs_data, r_carts: npt.NDArray[np.flo
 
 @jit
 def compute_MOs_grad(
-    mos_data: MOs_data, r_carts: npt.NDArray[np.float64]
+    mos_data: MOs_data, r_carts: jax.Array
 ) -> tuple[
     npt.NDArray[np.float64],
     npt.NDArray[np.float64],
     npt.NDArray[np.float64],
 ]:
-    """This method is for computing the gradients (x,y,z) of the given molecular orbital at r_carts.
+    """Compute MO gradients (x, y, z components) at electron coordinates.
 
     Args:
-        mo_datas (MOs_data): an instance of MOs_data
-        r_carts: Cartesian coordinates of electrons (dim: N_e, 3)
-        debug (bool): if True, this is computed via _debug function for debuging purpose
+        mos_data (MOs_data): MO/AO definition and coefficient matrix.
+        r_carts (jax.Array): Electron Cartesian coordinates, shape ``(N_e, 3)`` in float64.
 
     Returns:
-        tuple containing gradients of the MOs at r_carts. (grad_x, grad_y, grad_z). The dim. of each matrix is (num_mo, N_e)
+        tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]: Gradients per component
+        ``(grad_x, grad_y, grad_z)``, each of shape ``(num_mo, N_e)``.
     """
     mo_matrix_grad_x, mo_matrix_grad_y, mo_matrix_grad_z = compute_AOs_grad(mos_data.aos_data, r_carts)
     mo_matrix_grad_x = jnp.dot(mos_data.mo_coefficients, mo_matrix_grad_x)

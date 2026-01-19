@@ -66,13 +66,13 @@ from .hamiltonians import (
     compute_local_energy,
 )
 from .jastrow_factor import compute_Jastrow_part
-from .jqmc_utility import generate_init_electron_configurations
+from .jqmc_utility import _generate_init_electron_configurations
 from .setting import (
     MCMC_MIN_BIN_BLOCKS,
     MCMC_MIN_WARMUP_STEPS,
 )
-from .structure import find_nearest_index_jnp
-from .swct import SWCT_data, evaluate_swct_domega_jax, evaluate_swct_omega_jax
+from .structure import _find_nearest_index_jnp
+from .swct import SWCT_data, evaluate_swct_domega, evaluate_swct_omega
 from .wavefunction import evaluate_ln_wavefunction
 
 # create new logger level for development
@@ -179,7 +179,7 @@ class MCMC:
         else:
             charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
 
-        coords = hamiltonian_data.structure_data.positions_cart_jnp
+        coords = hamiltonian_data.structure_data._positions_cart_jnp
 
         # check if only up electrons are updated
         if tot_num_electron_dn == 0:
@@ -189,7 +189,7 @@ class MCMC:
             self.only_up_electron = False
 
         ## generate initial electron configurations
-        r_carts_up, r_carts_dn, up_owner, dn_owner = generate_init_electron_configurations(
+        r_carts_up, r_carts_dn, up_owner, dn_owner = _generate_init_electron_configurations(
             tot_num_electron_up, tot_num_electron_dn, self.__num_walkers, charges, coords
         )
 
@@ -220,7 +220,7 @@ class MCMC:
 
         # print out hamiltonian info
         logger.info("Printing out information in hamitonian_data instance.")
-        self.__hamiltonian_data.logger_info()
+        self.__hamiltonian_data._logger_info()
         logger.info("")
 
         # SWCT data
@@ -511,7 +511,7 @@ class MCMC:
                 old_r_cart = jnp.where(is_up, r_up_carts[selected_electron_index], r_dn_carts[selected_electron_index])
 
                 # choose the nearest atom index
-                nearest_atom_index = find_nearest_index_jnp(hamiltonian_data.structure_data, old_r_cart)
+                nearest_atom_index = _find_nearest_index_jnp(hamiltonian_data.structure_data, old_r_cart)
 
                 # charges
                 if hamiltonian_data.coulomb_potential_data.ecp_flag:
@@ -522,7 +522,7 @@ class MCMC:
                     charges = jnp.array(hamiltonian_data.structure_data.atomic_numbers)
 
                 # coords
-                coords = hamiltonian_data.structure_data.positions_cart_jnp
+                coords = hamiltonian_data.structure_data._positions_cart_jnp
 
                 R_cart = coords[nearest_atom_index]
                 Z = charges[nearest_atom_index]
@@ -559,7 +559,7 @@ class MCMC:
                 )
 
                 # choose the nearest atom index
-                nearest_atom_index = find_nearest_index_jnp(hamiltonian_data.structure_data, new_r_cart)
+                nearest_atom_index = _find_nearest_index_jnp(hamiltonian_data.structure_data, new_r_cart)
 
                 R_cart = coords[nearest_atom_index]
                 Z = charges[nearest_atom_index]
@@ -730,7 +730,7 @@ class MCMC:
                 old_r_cart = r_up_carts[selected_electron_index]
 
                 # choose the nearest atom index
-                nearest_atom_index = find_nearest_index_jnp(hamiltonian_data.structure_data, old_r_cart)
+                nearest_atom_index = _find_nearest_index_jnp(hamiltonian_data.structure_data, old_r_cart)
 
                 # charges
                 if hamiltonian_data.coulomb_potential_data.ecp_flag:
@@ -741,7 +741,7 @@ class MCMC:
                     charges = jnp.array(hamiltonian_data.structure_data.atomic_numbers)
 
                 # coords
-                coords = hamiltonian_data.structure_data.positions_cart_jnp
+                coords = hamiltonian_data.structure_data._positions_cart_jnp
 
                 R_cart = coords[nearest_atom_index]
                 Z = charges[nearest_atom_index]
@@ -767,7 +767,7 @@ class MCMC:
                 proposed_r_dn_carts = r_dn_carts
 
                 # choose the nearest atom index
-                nearest_atom_index = find_nearest_index_jnp(hamiltonian_data.structure_data, new_r_cart)
+                nearest_atom_index = _find_nearest_index_jnp(hamiltonian_data.structure_data, new_r_cart)
 
                 R_cart = coords[nearest_atom_index]
                 Z = charges[nearest_atom_index]
@@ -946,22 +946,22 @@ class MCMC:
                 self.__latest_r_dn_carts,
             )
 
-            _ = vmap(evaluate_swct_omega_jax, in_axes=(None, 0))(
+            _ = vmap(evaluate_swct_omega, in_axes=(None, 0))(
                 self.__swct_data,
                 self.__latest_r_up_carts,
             )
 
-            _ = vmap(evaluate_swct_omega_jax, in_axes=(None, 0))(
+            _ = vmap(evaluate_swct_omega, in_axes=(None, 0))(
                 self.__swct_data,
                 self.__latest_r_dn_carts,
             )
 
-            _ = vmap(evaluate_swct_domega_jax, in_axes=(None, 0))(
+            _ = vmap(evaluate_swct_domega, in_axes=(None, 0))(
                 self.__swct_data,
                 self.__latest_r_up_carts,
             )
 
-            _ = vmap(evaluate_swct_domega_jax, in_axes=(None, 0))(
+            _ = vmap(evaluate_swct_domega, in_axes=(None, 0))(
                 self.__swct_data,
                 self.__latest_r_dn_carts,
             )
@@ -1166,12 +1166,12 @@ class MCMC:
                 self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
                 # """
 
-                omega_up = vmap(evaluate_swct_omega_jax, in_axes=(None, 0))(
+                omega_up = vmap(evaluate_swct_omega, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_up_carts,
                 )
 
-                omega_dn = vmap(evaluate_swct_omega_jax, in_axes=(None, 0))(
+                omega_dn = vmap(evaluate_swct_omega, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_dn_carts,
                 )
@@ -1179,12 +1179,12 @@ class MCMC:
                 self.__stored_omega_up.append(omega_up)
                 self.__stored_omega_dn.append(omega_dn)
 
-                grad_omega_dr_up = vmap(evaluate_swct_domega_jax, in_axes=(None, 0))(
+                grad_omega_dr_up = vmap(evaluate_swct_domega, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_up_carts,
                 )
 
-                grad_omega_dr_dn = vmap(evaluate_swct_domega_jax, in_axes=(None, 0))(
+                grad_omega_dr_dn = vmap(evaluate_swct_domega, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_dn_carts,
                 )
@@ -2775,10 +2775,10 @@ class MCMC_debug:
         else:
             self.only_up_electron = False
 
-        coords = hamiltonian_data.structure_data.positions_cart_jnp
+        coords = hamiltonian_data.structure_data._positions_cart_jnp
 
         ## generate initial electron configurations
-        r_carts_up, r_carts_dn, up_owner, dn_owner = generate_init_electron_configurations(
+        r_carts_up, r_carts_dn, up_owner, dn_owner = _generate_init_electron_configurations(
             tot_num_electron_up, tot_num_electron_dn, self.__num_walkers, charges, coords
         )
 
@@ -2985,7 +2985,7 @@ class MCMC_debug:
                         old_r_cart = r_dn_carts[selected_electron_index]
 
                     # choose the nearest atom index
-                    nearest_atom_index = find_nearest_index_jnp(hamiltonian_data.structure_data, old_r_cart)
+                    nearest_atom_index = _find_nearest_index_jnp(hamiltonian_data.structure_data, old_r_cart)
 
                     # charges
                     if hamiltonian_data.coulomb_potential_data.ecp_flag:
@@ -2996,7 +2996,7 @@ class MCMC_debug:
                         charges = np.array(hamiltonian_data.structure_data.atomic_numbers)
 
                     # coords
-                    coords = hamiltonian_data.structure_data.positions_cart_np
+                    coords = hamiltonian_data.structure_data._positions_cart_np
 
                     R_cart = coords[nearest_atom_index]
                     Z = charges[nearest_atom_index]
@@ -3028,7 +3028,7 @@ class MCMC_debug:
                         proposed_r_dn_carts[selected_electron_index] = new_r_cart
 
                     # choose the nearest atom index
-                    nearest_atom_index = find_nearest_index_jnp(hamiltonian_data.structure_data, new_r_cart)
+                    nearest_atom_index = _find_nearest_index_jnp(hamiltonian_data.structure_data, new_r_cart)
 
                     R_cart = coords[nearest_atom_index]
                     Z = charges[nearest_atom_index]
@@ -3182,12 +3182,12 @@ class MCMC_debug:
                 grad_ln_Psi_dR = self.__hamiltonian_data.wavefunction_data.accumulate_position_grad(grad_ln_Psi_h)
                 self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
 
-                omega_up = vmap(evaluate_swct_omega_jax, in_axes=(None, 0))(
+                omega_up = vmap(evaluate_swct_omega, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_up_carts,
                 )
 
-                omega_dn = vmap(evaluate_swct_omega_jax, in_axes=(None, 0))(
+                omega_dn = vmap(evaluate_swct_omega, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_dn_carts,
                 )
@@ -3195,12 +3195,12 @@ class MCMC_debug:
                 self.__stored_omega_up.append(omega_up)
                 self.__stored_omega_dn.append(omega_dn)
 
-                grad_omega_dr_up = vmap(evaluate_swct_domega_jax, in_axes=(None, 0))(
+                grad_omega_dr_up = vmap(evaluate_swct_domega, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_up_carts,
                 )
 
-                grad_omega_dr_dn = vmap(evaluate_swct_domega_jax, in_axes=(None, 0))(
+                grad_omega_dr_dn = vmap(evaluate_swct_domega, in_axes=(None, 0))(
                     self.__swct_data,
                     self.__latest_r_dn_carts,
                 )

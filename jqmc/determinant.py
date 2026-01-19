@@ -73,34 +73,32 @@ jax.config.update("jax_traceback_filtering", "off")
 # @dataclass
 @struct.dataclass
 class Geminal_data:
-    """Geminal data class.
-
-    The class contains data for evaluating a geminal function (Determinant part).
+    """Geminal (AGP) parameters and orbital references.
 
     Args:
-        num_electron_up (int):
-            number of up electrons.
-        num_electron_dn (int):
-            number of dn electrons.
-        orb_data_up_spin (AOs_data | MOs_data):
-            AOs data or MOs data for up-spin.
-        orb_data_dn_spin (AOs_data | MOs_data):
-            AOs data or MOs data for dn-spin.
-        lambda_matrix (npt.NDArray | jnpt.ArrayLike):
-            geminal matrix. for the employed orb_data, MOs or AOs.
-            The dim. is [orb_data_up_spin.num_ao/mo, orb_data_dn_spin.num_ao/mo +
-            (num_electron_up - num_electron_dn)].
+        num_electron_up (int): Number of spin-up electrons.
+        num_electron_dn (int): Number of spin-down electrons.
+        orb_data_up_spin (AOs_data | MOs_data): Basis/orbitals for spin-up electrons.
+        orb_data_dn_spin (AOs_data | MOs_data): Basis/orbitals for spin-down electrons.
+        lambda_matrix (npt.NDArray | jax.Array): Geminal pairing matrix with shape
+            ``(orb_num_up, orb_num_dn + num_electron_up - num_electron_dn)``.
+
+    Notes:
+        - For closed shells, ``orb_num_up == orb_num_dn`` and ``lambda_matrix`` is square.
+        - For open shells, the right block encodes unpaired spin-up orbitals.
     """
 
-    num_electron_up: int = struct.field(pytree_node=False, default=0)
-    num_electron_dn: int = struct.field(pytree_node=False, default=0)
+    num_electron_up: int = struct.field(pytree_node=False, default=0)  #: Number of spin-up electrons.
+    num_electron_dn: int = struct.field(pytree_node=False, default=0)  #: Number of spin-down electrons.
     orb_data_up_spin: AOs_sphe_data | AOs_cart_data | MOs_data = struct.field(
         pytree_node=True, default_factory=lambda: AOs_sphe_data()
-    )
+    )  #: Orbital data (AOs or MOs) for spin-up electrons.
     orb_data_dn_spin: AOs_sphe_data | AOs_cart_data | MOs_data = struct.field(
         pytree_node=True, default_factory=lambda: AOs_sphe_data()
-    )
-    lambda_matrix: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
+    )  #: Orbital data (AOs or MOs) for spin-down electrons.
+    lambda_matrix: npt.NDArray | jax.Array = struct.field(
+        pytree_node=True, default_factory=lambda: np.array([])
+    )  #: Geminal pairing matrix; see class notes for expected shape.
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -130,7 +128,7 @@ class Geminal_data:
         self.orb_data_up_spin.sanity_check()
         self.orb_data_dn_spin.sanity_check()
 
-    def get_info(self) -> list[str]:
+    def _get_info(self) -> list[str]:
         """Return a list of strings containing the information stored in the attributes."""
         info_lines = []
         info_lines.append("**" + self.__class__.__name__)
@@ -143,14 +141,14 @@ class Geminal_data:
         info_lines.append(f"  lambda_matrix_unpaired.shape = {lambda_matrix_unpaired.shape}")
         info_lines.append(f"  num_electron_up = {self.num_electron_up}")
         info_lines.append(f"  num_electron_dn = {self.num_electron_dn}")
-        info_lines.extend(self.orb_data_up_spin.get_info())
-        info_lines.extend(self.orb_data_dn_spin.get_info())
+        info_lines.extend(self.orb_data_up_spin._get_info())
+        info_lines.extend(self.orb_data_dn_spin._get_info())
 
         return info_lines
 
-    def logger_info(self) -> None:
+    def _logger_info(self) -> None:
         """Log the information obtained from get_info() using logger.info."""
-        for line in self.get_info():
+        for line in self._get_info():
             logger.info(line)
 
     def apply_block_update(self, block: "VariationalParameterBlock") -> "Geminal_data":
@@ -293,7 +291,6 @@ class Geminal_data:
         else:
             raise NotImplementedError
 
-    # no longer used in the main code
     @property
     def compute_orb_grad_api(self) -> Callable[..., npt.NDArray[np.float64]]:
         """Function for computing AOs or MOs grads.
@@ -318,7 +315,6 @@ class Geminal_data:
         else:
             raise NotImplementedError
 
-    # no longer used in the main code
     @property
     def compute_orb_laplacian_api(self) -> Callable[..., npt.NDArray[np.float64]]:
         """Function for computing AOs or MOs laplacians.
@@ -381,50 +377,23 @@ class Geminal_data:
         else:
             raise NotImplementedError
 
-    @classmethod
-    def from_base(cls, geminal_data: "Geminal_data"):
-        """Switch pytree_node."""
-        num_electron_up = geminal_data.num_electron_up
-        num_electron_dn = geminal_data.num_electron_dn
-        if isinstance(geminal_data.orb_data_up_spin, AOs_sphe_data):
-            orb_data_up_spin = AOs_sphe_data.from_base(geminal_data.orb_data_up_spin)
-        elif isinstance(geminal_data.orb_data_up_spin, AOs_cart_data):
-            orb_data_up_spin = AOs_cart_data.from_base(geminal_data.orb_data_up_spin)
-        else:
-            orb_data_up_spin = MOs_data.from_base(geminal_data.orb_data_up_spin)
-        if isinstance(geminal_data.orb_data_dn_spin, AOs_sphe_data):
-            orb_data_dn_spin = AOs_sphe_data.from_base(geminal_data.orb_data_dn_spin)
-        elif isinstance(geminal_data.orb_data_dn_spin, AOs_cart_data):
-            orb_data_dn_spin = AOs_cart_data.from_base(geminal_data.orb_data_dn_spin)
-        else:
-            orb_data_dn_spin = MOs_data.from_base(geminal_data.orb_data_dn_spin)
-        lambda_matrix = geminal_data.lambda_matrix
-        return cls(num_electron_up, num_electron_dn, orb_data_up_spin, orb_data_dn_spin, lambda_matrix)
-
 
 @jax.custom_vjp
 @jit
 def compute_ln_det_geminal_all_elements(
     geminal_data: Geminal_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> float:
-    """Function for computing determinant of the given geminal.
-
-    The api method to compute logarithm of determinant of the given geminal functions.
+    """Compute $\ln|\det G|$ for the geminal matrix.
 
     Args:
-        geminal_data (Geminal_data): an instance of Geminal_data
-        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^up, 3)
-        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^dn, 3)
-        debug (bool): if True, this is computed via _debug function for debuging purpose
+        geminal_data: Geminal parameters and orbital references.
+        r_up_carts: Cartesian coordinates of spin-up electrons with shape ``(N_up, 3)``.
+        r_dn_carts: Cartesian coordinates of spin-down electrons with shape ``(N_dn, 3)``.
 
     Returns:
-        jax.Array:
-            Array containing laplacians of the AOs at r_carts. The dim. is (num_ao, N_e)
-
-    Return:
-        float: The log of determinant of the given geminal functions.
+        float: Scalar log-determinant of the geminal matrix.
     """
     return jnp.log(
         jnp.abs(
@@ -499,25 +468,18 @@ compute_ln_det_geminal_all_elements.defvjp(_ln_det_fwd, _ln_det_bwd)
 @jit
 def compute_det_geminal_all_elements(
     geminal_data: Geminal_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> float:
-    """Function for computing determinant of the given geminal.
-
-    The api method to compute determinant of the given geminal functions.
+    """Compute $\det G$ for the geminal matrix.
 
     Args:
-        geminal_data (Geminal_data): an instance of Geminal_data
-        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^up, 3)
-        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^dn, 3)
-        debug (bool): if True, this is computed via _debug function for debuging purpose
+        geminal_data: Geminal parameters and orbital references.
+        r_up_carts: Cartesian coordinates of spin-up electrons with shape ``(N_up, 3)``.
+        r_dn_carts: Cartesian coordinates of spin-down electrons with shape ``(N_dn, 3)``.
 
     Returns:
-        jax.Array:
-            Array containing laplacians of the AOs at r_carts. The dim. is (num_ao, N_e)
-
-    Return:
-        float: The determinant of the given geminal functions.
+        float: Scalar determinant of the geminal matrix.
     """
     return jnp.linalg.det(compute_geminal_all_elements(geminal_data=geminal_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts))
 
@@ -540,16 +502,14 @@ def _compute_det_geminal_all_elements_debug(
 def compute_AS_regularization_factor_fast_update(
     geminal: npt.NDArray[np.float64], geminal_inv: npt.NDArray[np.float64]
 ) -> jax.Array:
-    """Compute the Attaccalite and Sorella regularization factor with the fast update.
-
-    The method is for computing the Attaccalite and Sorella regularization factor with a given geminal data at (r_up_carts, r_dn_carts).
+    """Compute Attaccalite–Sorella regularization via fast update.
 
     Args:
-        geminal (npt.NDArray[np.float64]): Geminal matrix. The dim. is [N_e^{up}, N_e^{up}].
-        geminal_inv (npt.NDArray[np.float64]): Inverse of the geminal matrix. The dim. is [N_e^{up}, N_e^{up}].
+        geminal: Geminal matrix with shape ``(N_up, N_up)``.
+        geminal_inv: Inverse geminal matrix with shape ``(N_up, N_up)``.
 
     Returns:
-        float: The Attaccalite and Sorella regularization factor
+        jax.Array: Scalar AS regularization factor.
     """
     # compute the AS factor
     theta = 3.0 / 8.0
@@ -589,21 +549,16 @@ def _compute_AS_regularization_factor_debug(
 
 
 @jit
-def compute_AS_regularization_factor(
-    geminal_data: Geminal_data, r_up_carts: jnpt.ArrayLike, r_dn_carts: jnpt.ArrayLike
-) -> jax.Array:
-    """Compute the Attaccalite and Sorella regularization factor.
-
-    The method is for computing the Attaccalite and Sorella regularization factor with a given geminal data at (r_up_carts, r_dn_carts).
+def compute_AS_regularization_factor(geminal_data: Geminal_data, r_up_carts: jax.Array, r_dn_carts: jax.Array) -> jax.Array:
+    """Compute Attaccalite–Sorella regularization from electron coordinates.
 
     Args:
-        geminal_data (Geminal_data): an instance of Geminal_data class
-        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
-        debug (bool): if True, this is computed via _debug function for debuging purpose
+        geminal_data: Geminal parameters and orbital references.
+        r_up_carts: Cartesian coordinates of spin-up electrons with shape ``(N_up, 3)``.
+        r_dn_carts: Cartesian coordinates of spin-down electrons with shape ``(N_dn, 3)``.
 
     Returns:
-        float: The Attaccalite and Sorella regularization factor
+        jax.Array: Scalar AS regularization factor.
     """
     geminal = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
 
@@ -623,21 +578,16 @@ def compute_AS_regularization_factor(
     return R_AS
 
 
-def compute_geminal_all_elements(
-    geminal_data: Geminal_data, r_up_carts: jnpt.ArrayLike, r_dn_carts: jnpt.ArrayLike
-) -> jax.Array:
-    """Compute Geminal matrix elements.
-
-    The method is for computing geminal matrix elements with the given atomic/molecular orbitals at (r_up_carts, r_dn_carts).
+def compute_geminal_all_elements(geminal_data: Geminal_data, r_up_carts: jax.Array, r_dn_carts: jax.Array) -> jax.Array:
+    """Compute geminal matrix $G$ for all electron pairs.
 
     Args:
-        geminal_data (Geminal_data): an instance of Geminal_data class
-        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        geminal_data: Geminal parameters and orbital references.
+        r_up_carts: Cartesian coordinates of spin-up electrons with shape ``(N_up, 3)``.
+        r_dn_carts: Cartesian coordinates of spin-down electrons with shape ``(N_dn, 3)``.
 
     Returns:
-        jax.Array: Arrays containing values of the given geminal functions f(i,j),
-        where r_up_carts[i] and r_dn_carts[j]. (dim: N_e^{up}, N_e^{up})
+        jax.Array: Geminal matrix with shape ``(N_up, N_up)`` combining paired and unpaired blocks.
     """
     if len(r_up_carts) != geminal_data.num_electron_up or len(r_dn_carts) != geminal_data.num_electron_dn:
         logger.info(
@@ -667,8 +617,8 @@ def compute_geminal_all_elements(
 @jit
 def _compute_geminal_all_elements(
     geminal_data: Geminal_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> jax.Array:
     """See compute_geminal_all_elements_api."""
     lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
@@ -706,15 +656,18 @@ def _compute_geminal_all_elements_debug(
 @jax.jit
 def compute_geminal_up_one_row_elements(
     geminal_data,
-    r_up_cart: jnpt.ArrayLike,  # shape: (3,) or (1,3)
-    r_dn_carts: jnpt.ArrayLike,  # shape: (N_dn, 3)
+    r_up_cart: jax.Array,  # shape: (3,) or (1,3)
+    r_dn_carts: jax.Array,  # shape: (N_dn, 3)
 ) -> jax.Array:
-    """Return a single geminal row for one up-electron and all dn-electrons.
+    """Single row of the geminal matrix for one spin-up electron.
 
-    Output shape: (N_dn + num_unpaired,)
-    This is the i-th row of::
+    Args:
+        geminal_data: Geminal parameters and orbital references.
+        r_up_cart: Cartesian coordinate for one spin-up electron with shape ``(3,)`` or ``(1, 3)``.
+        r_dn_carts: Cartesian coordinates for all spin-down electrons with shape ``(N_dn, 3)``.
 
-        geminal = [ orb_up(T) @ (lambda_paired @ orb_dn) , orb_up(T) @ lambda_unpaired ]
+    Returns:
+        jax.Array: Row vector with shape ``(N_dn + N_unpaired,)``.
     """
     # Split lambda into paired/unpaired blocks along columns
     lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(
@@ -745,17 +698,18 @@ def compute_geminal_up_one_row_elements(
 @jax.jit
 def compute_geminal_dn_one_column_elements(
     geminal_data,
-    r_up_carts: jnpt.ArrayLike,  # shape: (N_up, 3)
-    r_dn_cart: jnpt.ArrayLike,  # shape: (3,) or (1,3)
+    r_up_carts: jax.Array,  # shape: (N_up, 3)
+    r_dn_cart: jax.Array,  # shape: (3,) or (1,3)
 ) -> jax.Array:
-    """Return a single geminal column for all up-electrons and one dn-electron.
+    """Single column of the geminal matrix for one spin-down electron.
 
-    Output shape: (N_up,)
-    This corresponds to the j-th column of the *paired* block::
+    Args:
+        geminal_data: Geminal parameters and orbital references.
+        r_up_carts: Cartesian coordinates of spin-up electrons with shape ``(N_up, 3)``.
+        r_dn_cart: Cartesian coordinate for one spin-down electron with shape ``(3,)`` or ``(1, 3)``.
 
-        col = orb_up(T) @ (lambda_paired @ orb_dn_vec)
-
-    Note: unpaired columns do not depend on dn positions, so they are not part of this column.
+    Returns:
+        jax.Array: Column vector for the paired block with shape ``(N_up,)``.
     """
     # Split lambda into paired/unpaired blocks along columns
     lambda_matrix_paired, _lambda_matrix_unpaired = jnp.hsplit(
@@ -784,28 +738,24 @@ def compute_geminal_dn_one_column_elements(
 @jit
 def compute_ratio_determinant_part(
     geminal_data: Geminal_data,
-    A_old_inv: jnpt.ArrayLike,
-    old_r_up_carts: jnpt.ArrayLike,
-    old_r_dn_carts: jnpt.ArrayLike,
-    new_r_up_carts_arr: jnpt.ArrayLike,
-    new_r_dn_carts_arr: jnpt.ArrayLike,
+    A_old_inv: jax.Array,
+    old_r_up_carts: jax.Array,
+    old_r_dn_carts: jax.Array,
+    new_r_up_carts_arr: jax.Array,
+    new_r_dn_carts_arr: jax.Array,
 ) -> jax.Array:
-    """Function for computing the ratio of the Determinant part with the given geminal_data between new_r_up_carts and old_r_up_carts.
-
-    The api method to compute the ratio of the Determinant factor with the given geminal_data between new_r_up_carts and old_r_up_carts.
-    i.e., Det(new_r_carts_arr) / Det(old_r_carts)
+    """Determinant ratio $\det G(\mathbf r')/\det G(\mathbf r)$ for batched moves.
 
     Args:
-        geminal_data (Geminal_data): an instance of Geminal_data
-        A_old_inv (jnpt.ArrayLike): Inverse of the geminal matrix with the old carterian coordniates (dim: N_e_up, N_e_up).
-        old_r_up_carts (jnpt.ArrayLike): Old Cartesian coordinates of up electrons (dim: N_e^up, 3)
-        old_r_dn_carts (jnpt.ArrayLike): Old Cartesian coordinates of down electrons (dim: N_e^dn, 3)
-        new_r_up_carts_arr (jnpt.ArrayLike): New Cartesian coordinate grids of up electrons (dim: N_grid, N_e^up, 3)
-        new_r_dn_carts_arr (jnpt.ArrayLike): New Cartesian coordinate grids of down electrons (dim: N_grid, N_e^dn, 3)
-        debug (bool): if True, this is computed via _debug function for debuging purpose
+        geminal_data: Geminal parameters and orbital references.
+        A_old_inv: Inverse geminal matrix for the reference configuration with shape ``(N_up, N_up)``.
+        old_r_up_carts: Original spin-up electron coordinates with shape ``(N_up, 3)``.
+        old_r_dn_carts: Original spin-down electron coordinates with shape ``(N_dn, 3)``.
+        new_r_up_carts_arr: Proposed spin-up coordinates per grid with shape ``(N_grid, N_up, 3)``.
+        new_r_dn_carts_arr: Proposed spin-down coordinates per grid with shape ``(N_grid, N_dn, 3)``.
 
-    Return:
-        jax.Array: The value of Determinant ratios. (dim: N_grid)
+    Returns:
+        jax.Array: Determinant ratios per grid with shape ``(N_grid,)``.
     """
     # split, geminal_data.lambda_matrix
     lambda_matrix_paired, lambda_matrix_unpaired = jnp.split(
@@ -900,10 +850,19 @@ def compute_grads_and_laplacian_ln_Det(
     jax.Array,
     jax.Array,
 ]:
-    """Per-electron gradients and Laplacians of ln Det.
+    """Gradients and Laplacians of $\ln\det G$ for each electron.
 
-    Returns gradients (N_up,3)/(N_dn,3) and per-electron Laplacians
-    (N_up,)/(N_dn,).
+    Args:
+        geminal_data: Geminal parameters and orbital references.
+        r_up_carts: Cartesian coordinates of spin-up electrons with shape ``(N_up, 3)``.
+        r_dn_carts: Cartesian coordinates of spin-down electrons with shape ``(N_dn, 3)``.
+
+    Returns:
+        tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
+            - Gradients for spin-up electrons with shape ``(N_up, 3)``.
+            - Gradients for spin-down electrons with shape ``(N_dn, 3)``.
+            - Laplacians for spin-up electrons with shape ``(N_up,)``.
+            - Laplacians for spin-down electrons with shape ``(N_dn,)``.
     """
     lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
 

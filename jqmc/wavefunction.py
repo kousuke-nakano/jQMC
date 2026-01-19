@@ -91,10 +91,10 @@ class VariationalParameterBlock:
     purely on a list of blocks.
     """
 
-    name: str
-    values: jnpt.ArrayLike = struct.field(pytree_node=True)
-    shape: tuple[int, ...] = struct.field(pytree_node=False)
-    size: int = struct.field(pytree_node=False)
+    name: str  #: Identifier for this block (for example ``"j1_param"`` or ``"lambda_matrix"``).
+    values: jnpt.ArrayLike = struct.field(pytree_node=True)  #: Parameter payload (keeps PyTree structure if present).
+    shape: tuple[int, ...] = struct.field(pytree_node=False)  #: Original shape of ``values`` for unflattening updates.
+    size: int = struct.field(pytree_node=False)  #: Flattened size of ``values`` used when slicing the global vector.
 
     def apply_update(self, delta_flat: npt.NDArray, learning_rate: float) -> "VariationalParameterBlock":
         r"""Return a new block with values updated by a generic additive rule.
@@ -126,15 +126,23 @@ class VariationalParameterBlock:
 
 @struct.dataclass
 class Wavefunction_data:
-    """The class contains data for computing wavefunction.
+    """Container for Jastrow and Geminal parts used to evaluate a wavefunction.
+
+    The class owns only the data needed to construct the wavefunction. All
+    computations are delegated to the functions in this module and the
+    underlying Jastrow/Geminal helpers.
 
     Args:
-        jastrow_data (Jastrow_data)
-        geminal_data (Geminal_data)
+        jastrow_data: Optional Jastrow parameters. If ``None``, the Jastrow part is omitted.
+        geminal_data: Optional Geminal parameters. If ``None``, the determinant part is omitted.
     """
 
-    jastrow_data: Jastrow_data = struct.field(pytree_node=True, default_factory=lambda: Jastrow_data())
-    geminal_data: Geminal_data = struct.field(pytree_node=True, default_factory=lambda: Geminal_data())
+    jastrow_data: Jastrow_data = struct.field(
+        pytree_node=True, default_factory=Jastrow_data
+    )  #: Variational Jastrow parameters.
+    geminal_data: Geminal_data = struct.field(
+        pytree_node=True, default_factory=Geminal_data
+    )  #: Variational Geminal/determinant parameters.
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -147,18 +155,18 @@ class Wavefunction_data:
         self.jastrow_data.sanity_check()
         self.geminal_data.sanity_check()
 
-    def get_info(self) -> list[str]:
+    def _get_info(self) -> list[str]:
         """Return a list of strings representing the logged information."""
         info_lines = []
         # Replace geminal_data.logger_info() with geminal_data.get_info() output.
-        info_lines.extend(self.geminal_data.get_info())
+        info_lines.extend(self.geminal_data._get_info())
         # Replace jastrow_data.logger_info() with jastrow_data.get_info() output.
-        info_lines.extend(self.jastrow_data.get_info())
+        info_lines.extend(self.jastrow_data._get_info())
         return info_lines
 
-    def logger_info(self) -> None:
+    def _logger_info(self) -> None:
         """Log the information obtained from get_info() using logger.info."""
-        for line in self.get_info():
+        for line in self._get_info():
             logger.info(line)
 
     def apply_block_updates(
@@ -413,42 +421,41 @@ class Wavefunction_data:
 
         return blocks
 
-    @classmethod
-    def from_base(cls, wavefunction_data: "Wavefunction_data"):
-        """Switch pytree_node."""
-        jastrow_data = Jastrow_data.from_base(wavefunction_data.jastrow_data)
-        geminal_data = Geminal_data.from_base(wavefunction_data.geminal_data)
-        return cls(jastrow_data=jastrow_data, geminal_data=geminal_data)
-
 
 @jit
 def evaluate_ln_wavefunction(
     wavefunction_data: Wavefunction_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> float:
-    """Evaluate the value of Wavefunction.
+    """Evaluate the logarithm of ``|wavefunction|`` (:math:`\ln |\Psi|`).
 
-    The method is for evaluate the logarithm of ``|wavefunction|`` (:math:`ln|Psi|`) at (r_up_carts, r_dn_carts).
+    This follows the original behavior: compute the Jastrow part, multiply the
+    determinant part, and then take ``log(abs(det))`` while keeping the full
+    Jastrow contribution. The inputs are converted to float64 ``jax.Array`` for
+    downstream consistency.
 
     Args:
-        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
-        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        wavefunction_data: Wavefunction parameters (Jastrow + Geminal).
+        r_up_carts: Cartesian coordinates of up-spin electrons with shape ``(n_up, 3)``.
+        r_dn_carts: Cartesian coordinates of down-spin electrons with shape ``(n_dn, 3)``.
 
     Returns:
-        The log value of the given wavefunction (float)
+        Scalar log-value of the wavefunction magnitude.
     """
+    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
+    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
+
     Jastrow_part = compute_Jastrow_part(
         jastrow_data=wavefunction_data.jastrow_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
     )
 
     Determinant_part = compute_det_geminal_all_elements(
         geminal_data=wavefunction_data.geminal_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
     )
 
     return Jastrow_part + jnp.log(jnp.abs(Determinant_part))
@@ -457,29 +464,36 @@ def evaluate_ln_wavefunction(
 @jit
 def evaluate_wavefunction(
     wavefunction_data: Wavefunction_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> float | complex:
-    """The method is for evaluate wavefunction (Psi) at (r_up_carts, r_dn_carts).
+    """Evaluate the wavefunction ``Psi`` at given electron coordinates.
+
+    The method is for evaluate wavefunction (Psi) at ``(r_up_carts, r_dn_carts)`` and
+    returns ``exp(Jastrow) * Determinant``. Inputs are coerced to float64
+    ``jax.Array`` to match other compute utilities.
 
     Args:
-        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
-        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        wavefunction_data: Wavefunction parameters (Jastrow + Geminal).
+        r_up_carts: Cartesian coordinates of up-spin electrons with shape ``(n_up, 3)``.
+        r_dn_carts: Cartesian coordinates of down-spin electrons with shape ``(n_dn, 3)``.
 
     Returns:
-        The value of the given wavefunction (float).
+        Complex or real wavefunction value.
     """
+    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
+    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
+
     Jastrow_part = compute_Jastrow_part(
         jastrow_data=wavefunction_data.jastrow_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
     )
 
     Determinant_part = compute_det_geminal_all_elements(
         geminal_data=wavefunction_data.geminal_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
     )
 
     return jnp.exp(Jastrow_part) * Determinant_part
@@ -487,23 +501,30 @@ def evaluate_wavefunction(
 
 def evaluate_jastrow(
     wavefunction_data: Wavefunction_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> float:
-    """The method is for evaluate the Jastrow part of the wavefunction (Psi) at (r_up_carts, r_dn_carts).
+    """Evaluate the Jastrow factor :math:`\exp(J)` at the given coordinates.
+
+    The method is for evaluate the Jastrow part of the wavefunction (Psi) at
+    ``(r_up_carts, r_dn_carts)``. The returned value already includes the
+    exponential, i.e., ``exp(J)``.
 
     Args:
-        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
-        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        wavefunction_data: Wavefunction parameters (Jastrow + Geminal).
+        r_up_carts: Cartesian coordinates of up-spin electrons with shape ``(n_up, 3)``.
+        r_dn_carts: Cartesian coordinates of down-spin electrons with shape ``(n_dn, 3)``.
 
     Returns:
-        The value of the given exp(Jastrow (float))  Notice that the Jastrow factor here includes the exp factor, i.e., exp(J).
+        Real Jastrow factor ``exp(J)``.
     """
+    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
+    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
+
     Jastrow_part = compute_Jastrow_part(
         jastrow_data=wavefunction_data.jastrow_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
     )
 
     return jnp.exp(Jastrow_part)
@@ -511,23 +532,26 @@ def evaluate_jastrow(
 
 def evaluate_determinant(
     wavefunction_data: Wavefunction_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> float:
-    """The method is for evaluate the determinant part of the wavefunction (Psi) at (r_up_carts, r_dn_carts).
+    """Evaluate the determinant (Geminal) part of the wavefunction.
 
     Args:
-        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
-        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        wavefunction_data: Wavefunction parameters (Jastrow + Geminal).
+        r_up_carts: Cartesian coordinates of up-spin electrons with shape ``(n_up, 3)``.
+        r_dn_carts: Cartesian coordinates of down-spin electrons with shape ``(n_dn, 3)``.
 
     Returns:
-        The value of the given determinant (float)
+        Determinant value evaluated at the supplied coordinates.
     """
+    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
+    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
+
     Determinant_part = compute_det_geminal_all_elements(
         geminal_data=wavefunction_data.geminal_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
     )
 
     return Determinant_part
@@ -536,27 +560,33 @@ def evaluate_determinant(
 @jit
 def compute_kinetic_energy(
     wavefunction_data: Wavefunction_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> float | complex:
-    """The method is for computing kinetic energy of the given WF at (r_up_carts, r_dn_carts).
+    """Compute kinetic energy using analytic gradients and Laplacians.
 
-    Fully exploit the JAX library for the kinetic energy calculation.
+    The method is for computing kinetic energy of the given WF at
+    ``(r_up_carts, r_dn_carts)`` and fully exploits the JAX library for the
+    kinetic energy calculation. Inputs are converted to float64 ``jax.Array``
+    for consistency with other compute utilities.
 
     Args:
-        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
-        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        wavefunction_data: Wavefunction parameters (Jastrow + Geminal).
+        r_up_carts: Cartesian coordinates of up-spin electrons with shape ``(n_up, 3)``.
+        r_dn_carts: Cartesian coordinates of down-spin electrons with shape ``(n_dn, 3)``.
 
     Returns:
-        The kinetic energy with the given wavefunction (float | complex)
+        Kinetic energy evaluated for the supplied configuration.
     """
+    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
+    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
+
     # grad_J_up, grad_J_dn, sum_laplacian_J = 0.0, 0.0, 0.0
     # """
     grad_J_up, grad_J_dn, lap_J_up, lap_J_dn = compute_grads_and_laplacian_Jastrow_part(
         jastrow_data=wavefunction_data.jastrow_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
     )
     # """
 
@@ -564,8 +594,8 @@ def compute_kinetic_energy(
     # """
     grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn = compute_grads_and_laplacian_ln_Det(
         geminal_data=wavefunction_data.geminal_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
     )
     # """
 
@@ -588,8 +618,8 @@ def compute_kinetic_energy(
 @jit
 def _compute_kinetic_energy_auto(
     wavefunction_data: Wavefunction_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> float | complex:
     """The method is for computing kinetic energy of the given WF at (r_up_carts, r_dn_carts).
 
@@ -597,14 +627,17 @@ def _compute_kinetic_energy_auto(
 
     Args:
         wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
-        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        r_up_carts (jax.Array): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
+        r_dn_carts (jax.Array): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
 
     Returns:
         The kinetic energy with the given wavefunction (float | complex)
     """
+    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
+    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
+
     kinetic_energy_all_elements_up, kinetic_energy_all_elements_dn = _compute_kinetic_energy_all_elements_auto(
-        wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+        wavefunction_data=wavefunction_data, r_up_carts=r_up, r_dn_carts=r_dn
     )
 
     K = jnp.sum(kinetic_energy_all_elements_up) + jnp.sum(kinetic_energy_all_elements_dn)
@@ -673,36 +706,31 @@ def _compute_kinetic_energy_all_elements_debug(
 @jit
 def _compute_kinetic_energy_all_elements_auto(
     wavefunction_data: Wavefunction_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> jax.Array:
     """See compute_kinetic_energy_api."""
+    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
+    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
+
     # compute gradients
-    grad_J_up = grad(compute_Jastrow_part, argnums=1)(wavefunction_data.jastrow_data, r_up_carts, r_dn_carts)
-    grad_J_dn = grad(compute_Jastrow_part, argnums=2)(wavefunction_data.jastrow_data, r_up_carts, r_dn_carts)
-    grad_ln_Det_up = grad(compute_ln_det_geminal_all_elements, argnums=1)(
-        wavefunction_data.geminal_data, r_up_carts, r_dn_carts
-    )
-    grad_ln_Det_dn = grad(compute_ln_det_geminal_all_elements, argnums=2)(
-        wavefunction_data.geminal_data, r_up_carts, r_dn_carts
-    )
+    grad_J_up = grad(compute_Jastrow_part, argnums=1)(wavefunction_data.jastrow_data, r_up, r_dn)
+    grad_J_dn = grad(compute_Jastrow_part, argnums=2)(wavefunction_data.jastrow_data, r_up, r_dn)
+    grad_ln_Det_up = grad(compute_ln_det_geminal_all_elements, argnums=1)(wavefunction_data.geminal_data, r_up, r_dn)
+    grad_ln_Det_dn = grad(compute_ln_det_geminal_all_elements, argnums=2)(wavefunction_data.geminal_data, r_up, r_dn)
 
     grad_ln_Psi_up = grad_J_up + grad_ln_Det_up
     grad_ln_Psi_dn = grad_J_dn + grad_ln_Det_dn
 
     # compute laplacians
-    hessian_J_up = hessian(compute_Jastrow_part, argnums=1)(wavefunction_data.jastrow_data, r_up_carts, r_dn_carts)
+    hessian_J_up = hessian(compute_Jastrow_part, argnums=1)(wavefunction_data.jastrow_data, r_up, r_dn)
     laplacian_J_up = jnp.einsum("ijij->i", hessian_J_up)
-    hessian_J_dn = hessian(compute_Jastrow_part, argnums=2)(wavefunction_data.jastrow_data, r_up_carts, r_dn_carts)
+    hessian_J_dn = hessian(compute_Jastrow_part, argnums=2)(wavefunction_data.jastrow_data, r_up, r_dn)
     laplacian_J_dn = jnp.einsum("ijij->i", hessian_J_dn)
 
-    hessian_ln_Det_up = hessian(compute_ln_det_geminal_all_elements, argnums=1)(
-        wavefunction_data.geminal_data, r_up_carts, r_dn_carts
-    )
+    hessian_ln_Det_up = hessian(compute_ln_det_geminal_all_elements, argnums=1)(wavefunction_data.geminal_data, r_up, r_dn)
     laplacian_ln_Det_up = jnp.einsum("ijij->i", hessian_ln_Det_up)
-    hessian_ln_Det_dn = hessian(compute_ln_det_geminal_all_elements, argnums=2)(
-        wavefunction_data.geminal_data, r_up_carts, r_dn_carts
-    )
+    hessian_ln_Det_dn = hessian(compute_ln_det_geminal_all_elements, argnums=2)(wavefunction_data.geminal_data, r_up, r_dn)
     laplacian_ln_Det_dn = jnp.einsum("ijij->i", hessian_ln_Det_dn)
 
     laplacian_Psi_up = laplacian_J_up + laplacian_ln_Det_up
@@ -717,12 +745,26 @@ def _compute_kinetic_energy_all_elements_auto(
 @jit
 def compute_kinetic_energy_all_elements(
     wavefunction_data: Wavefunction_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> jax.Array:
-    """Analytic-derivative kinetic energy per electron (matches auto output shape)."""
-    r_up = jnp.asarray(r_up_carts)
-    r_dn = jnp.asarray(r_dn_carts)
+    """Analytic-derivative kinetic energy per electron (matches auto output shape).
+
+    Returns the per-electron kinetic energy using analytic gradients/Laplacians of
+    both Jastrow and determinant parts. Shapes align with
+    ``_compute_kinetic_energy_all_elements_auto``.
+
+    Args:
+        wavefunction_data: Wavefunction parameters (Jastrow + Geminal).
+        r_up_carts: Cartesian coordinates of up-spin electrons with shape ``(n_up, 3)``.
+        r_dn_carts: Cartesian coordinates of down-spin electrons with shape ``(n_dn, 3)``.
+
+    Returns:
+        Tuple of two ``jax.Array`` objects containing per-electron kinetic energies
+        for spin-up and spin-down electrons, respectively.
+    """
+    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
+    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
 
     # --- Jastrow contributions (per-electron Laplacians) ---
     grad_J_up, grad_J_dn, lap_J_up, lap_J_dn = compute_grads_and_laplacian_Jastrow_part(
@@ -901,23 +943,30 @@ def _compute_discretized_kinetic_energy_debug(
 
 @jit
 def compute_discretized_kinetic_energy(
-    alat: float, wavefunction_data, r_up_carts: jnp.ndarray, r_dn_carts: jnp.ndarray, RT: jnp.ndarray
+    alat: float, wavefunction_data, r_up_carts: jax.Array, r_dn_carts: jax.Array, RT: jax.Array
 ) -> tuple[list[tuple[npt.NDArray, npt.NDArray]], list[npt.NDArray], jax.Array]:
-    r"""Function for computing discretized kinetic grid points and thier energies with a given lattice space (alat).
+    r"""Compute discretized kinetic mesh points and energies for a given lattice spacing ``alat``.
+
+    Function for computing discretized kinetic grid points and their energies with a
+    given lattice space (alat). This keeps the original semantics used by the LRDMC
+    path: ratios are computed as ``exp(J_xp - J_x) * det_xp / det_x``. Inputs are
+    coerced to float64 ``jax.Array`` before evaluation.
 
     Args:
-        alat (float): Hamiltonian discretization (bohr), which will be replaced with LRDMC_data.
-        wavefunction_data (Wavefunction_data): an instance of Qavefunction_data, which will be replaced with LRDMC_data.
-        r_carts_up (npt.NDArray): up electron position (N_e,3).
-        r_carts_dn (npt.NDArray): down electron position (N_e,3).
-        RT (npt.NDArray): Rotation matrix. \equiv R.T
+        alat: Hamiltonian discretization (bohr), which will be replaced with ``LRDMC_data``.
+        wavefunction_data: Wavefunction parameters (Jastrow + Geminal).
+        r_up_carts: Up-electron positions with shape ``(n_up, 3)``.
+        r_dn_carts: Down-electron positions with shape ``(n_dn, 3)``.
+        RT: Rotation matrix (:math:`R^T`) with shape ``(3, 3)``.
 
     Returns:
-        list[tuple[npt.NDArray, npt.NDArray]], list[npt.NDArray], jax.Array:
-            return mesh for the LRDMC kinetic part, a list containing tuples containing (r_carts_up, r_carts_dn),
-            a list containing values of the \Psi(x')/\Psi(x) corresponding to the grid, and the new jax_PRNG_key
-            that should be used in the next call of this @jitted function.
+        A tuple ``(r_up_carts_combined, r_dn_carts_combined, elements_kinetic_part)`` where the
+        combined coordinate arrays have shapes ``(n_grid, n_up, 3)`` and ``(n_grid, n_dn, 3)``
+        and ``elements_kinetic_part`` contains the kinetic prefactor-scaled ratios.
     """
+    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
+    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
+    rt = jnp.asarray(RT, dtype=jnp.float64)
     # Define the shifts to apply (+/- alat in each coordinate direction)
     shifts = alat * jnp.array(
         [
@@ -930,17 +979,17 @@ def compute_discretized_kinetic_energy(
         ]
     )  # Shape: (6, 3)
 
-    shifts = shifts @ RT  # Shape: (6, 3)
+    shifts = shifts @ rt  # Shape: (6, 3)
 
     # num shift
     num_shifts = shifts.shape[0]
 
     # Process up-spin electrons
-    num_up_electrons = r_up_carts.shape[0]
+    num_up_electrons = r_up.shape[0]
     num_up_configs = num_up_electrons * num_shifts
 
     # Create base positions repeated for each configuration
-    base_positions_up = jnp.repeat(r_up_carts[None, :, :], num_up_configs, axis=0)  # Shape: (num_up_configs, N_up, 3)
+    base_positions_up = jnp.repeat(r_up[None, :, :], num_up_configs, axis=0)  # Shape: (num_up_configs, N_up, 3)
 
     # Initialize shifts_to_apply_up
     shifts_to_apply_up = jnp.zeros_like(base_positions_up)
@@ -957,13 +1006,13 @@ def compute_discretized_kinetic_energy(
     r_up_carts_shifted = base_positions_up + shifts_to_apply_up  # Shape: (num_up_configs, N_up, 3)
 
     # Repeat down-spin electrons for up-spin configurations
-    r_dn_carts_repeated_up = jnp.repeat(r_dn_carts[None, :, :], num_up_configs, axis=0)  # Shape: (num_up_configs, N_dn, 3)
+    r_dn_carts_repeated_up = jnp.repeat(r_dn[None, :, :], num_up_configs, axis=0)  # Shape: (num_up_configs, N_dn, 3)
 
     # Process down-spin electrons
-    num_dn_electrons = r_dn_carts.shape[0]
+    num_dn_electrons = r_dn.shape[0]
     num_dn_configs = num_dn_electrons * num_shifts
 
-    base_positions_dn = jnp.repeat(r_dn_carts[None, :, :], num_dn_configs, axis=0)  # Shape: (num_dn_configs, N_dn, 3)
+    base_positions_dn = jnp.repeat(r_dn[None, :, :], num_dn_configs, axis=0)  # Shape: (num_dn_configs, N_dn, 3)
     shifts_to_apply_dn = jnp.zeros_like(base_positions_dn)
 
     config_indices_dn = jnp.arange(num_dn_configs)
@@ -976,20 +1025,20 @@ def compute_discretized_kinetic_energy(
     r_dn_carts_shifted = base_positions_dn + shifts_to_apply_dn  # Shape: (num_dn_configs, N_dn, 3)
 
     # Repeat up-spin electrons for down-spin configurations
-    r_up_carts_repeated_dn = jnp.repeat(r_up_carts[None, :, :], num_dn_configs, axis=0)  # Shape: (num_dn_configs, N_up, 3)
+    r_up_carts_repeated_dn = jnp.repeat(r_up[None, :, :], num_dn_configs, axis=0)  # Shape: (num_dn_configs, N_up, 3)
 
     # Combine configurations
     r_up_carts_combined = jnp.concatenate([r_up_carts_shifted, r_up_carts_repeated_dn], axis=0)  # Shape: (N_configs, N_up, 3)
     r_dn_carts_combined = jnp.concatenate([r_dn_carts_repeated_up, r_dn_carts_shifted], axis=0)  # Shape: (N_configs, N_dn, 3)
 
     # Evaluate the wavefunction at the original positions
-    jastrow_x = compute_Jastrow_part(wavefunction_data.jastrow_data, r_up_carts, r_dn_carts)
+    jastrow_x = compute_Jastrow_part(wavefunction_data.jastrow_data, r_up, r_dn)
     # Evaluate the wavefunction at the shifted positions using vectorization
     jastrow_xp = vmap(compute_Jastrow_part, in_axes=(None, 0, 0))(
         wavefunction_data.jastrow_data, r_up_carts_combined, r_dn_carts_combined
     )
     # Evaluate the wavefunction at the original positions
-    det_x = compute_det_geminal_all_elements(wavefunction_data.geminal_data, r_up_carts, r_dn_carts)
+    det_x = compute_det_geminal_all_elements(wavefunction_data.geminal_data, r_up, r_dn)
     # Evaluate the wavefunction at the shifted positions using vectorization
     det_xp = vmap(compute_det_geminal_all_elements, in_axes=(None, 0, 0))(
         wavefunction_data.geminal_data, r_up_carts_combined, r_dn_carts_combined
@@ -1009,26 +1058,33 @@ def compute_discretized_kinetic_energy_fast_update(
     alat: float,
     wavefunction_data: Wavefunction_data,
     A_old_inv: jnp.ndarray,
-    r_up_carts: jnp.ndarray,
-    r_dn_carts: jnp.ndarray,
-    RT: jnp.ndarray,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+    RT: jax.Array,
 ) -> tuple[jax.Array, jax.Array, jax.Array]:
-    r"""Function for computing discretized kinetic grid points and thier energies with a given lattice space (alat).
+    r"""Fast-update version of discretized kinetic mesh and ratios.
+
+    Function for computing discretized kinetic grid points and their energies with
+    a given lattice space (alat). Uses precomputed ``A_old_inv`` to evaluate
+    determinant ratios efficiently. Inputs are converted to float64 ``jax.Array``
+    before use.
 
     Args:
-        alat (float): Hamiltonian discretization (bohr), which will be replaced with LRDMC_data.
-        wavefunction_data (Wavefunction_data): an instance of Qavefunction_data, which will be replaced with LRDMC_data.
-        A_old_inv (npt.NDArray): the inverse of geminal matrix with (r_up_carts, r_dn_carts)
-        r_up_carts (npt.NDArray): up electron position (N_e,3).
-        r_dn_carts (npt.NDArray): down electron position (N_e,3).
-        RT (npt.NDArray): Rotation matrix. \equiv R.T
+        alat: Hamiltonian discretization (bohr), which will be replaced with ``LRDMC_data``.
+        wavefunction_data: Wavefunction parameters (Jastrow + Geminal).
+        A_old_inv: Inverse of the geminal matrix evaluated at ``(r_up_carts, r_dn_carts)``.
+        r_up_carts: Up-electron positions with shape ``(n_up, 3)``.
+        r_dn_carts: Down-electron positions with shape ``(n_dn, 3)``.
+        RT: Rotation matrix (:math:`R^T`) with shape ``(3, 3)``.
 
     Returns:
-        tuple[jax.Array, jax.Array, jax.Array]:
-            return mesh for the LRDMC kinetic part, npt.NDArrays, r_carts_up_arr and r_carts_dn_arr, whose dimensions
-            are (N_grid, N_up, 3) and (N_grid, N_dn, 3), respectively. A (N_grid, 1) npt.NDArray \Psi(x')/\Psi(x)
-            corresponding to the grid.
+        Tuple ``(r_up_carts_combined, r_dn_carts_combined, elements_kinetic_part)`` with combined
+        coordinate arrays of shapes ``(n_grid, n_up, 3)`` and ``(n_grid, n_dn, 3)``, and kinetic
+        prefactor-scaled ratios ``elements_kinetic_part``.
     """
+    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
+    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
+    rt = jnp.asarray(RT, dtype=jnp.float64)
     # Define the shifts to apply (+/- alat in each coordinate direction)
     shifts = alat * jnp.array(
         [
@@ -1041,17 +1097,17 @@ def compute_discretized_kinetic_energy_fast_update(
         ]
     )  # Shape: (6, 3)
 
-    shifts = shifts @ RT  # Shape: (6, 3)
+    shifts = shifts @ rt  # Shape: (6, 3)
 
     # num shift
     num_shifts = shifts.shape[0]
 
     # Process up-spin electrons
-    num_up_electrons = r_up_carts.shape[0]
+    num_up_electrons = r_up.shape[0]
     num_up_configs = num_up_electrons * num_shifts
 
     # Create base positions repeated for each configuration
-    base_positions_up = jnp.repeat(r_up_carts[None, :, :], num_up_configs, axis=0)  # Shape: (num_up_configs, N_up, 3)
+    base_positions_up = jnp.repeat(r_up[None, :, :], num_up_configs, axis=0)  # Shape: (num_up_configs, N_up, 3)
 
     # Initialize shifts_to_apply_up
     shifts_to_apply_up = jnp.zeros_like(base_positions_up)
@@ -1068,13 +1124,13 @@ def compute_discretized_kinetic_energy_fast_update(
     r_up_carts_shifted = base_positions_up + shifts_to_apply_up  # Shape: (num_up_configs, N_up, 3)
 
     # Repeat down-spin electrons for up-spin configurations
-    r_dn_carts_repeated_up = jnp.repeat(r_dn_carts[None, :, :], num_up_configs, axis=0)  # Shape: (num_up_configs, N_dn, 3)
+    r_dn_carts_repeated_up = jnp.repeat(r_dn[None, :, :], num_up_configs, axis=0)  # Shape: (num_up_configs, N_dn, 3)
 
     # Process down-spin electrons
-    num_dn_electrons = r_dn_carts.shape[0]
+    num_dn_electrons = r_dn.shape[0]
     num_dn_configs = num_dn_electrons * num_shifts
 
-    base_positions_dn = jnp.repeat(r_dn_carts[None, :, :], num_dn_configs, axis=0)  # Shape: (num_dn_configs, N_dn, 3)
+    base_positions_dn = jnp.repeat(r_dn[None, :, :], num_dn_configs, axis=0)  # Shape: (num_dn_configs, N_dn, 3)
     shifts_to_apply_dn = jnp.zeros_like(base_positions_dn)
 
     config_indices_dn = jnp.arange(num_dn_configs)
@@ -1087,7 +1143,7 @@ def compute_discretized_kinetic_energy_fast_update(
     r_dn_carts_shifted = base_positions_dn + shifts_to_apply_dn  # Shape: (num_dn_configs, N_dn, 3)
 
     # Repeat up-spin electrons for down-spin configurations
-    r_up_carts_repeated_dn = jnp.repeat(r_up_carts[None, :, :], num_dn_configs, axis=0)  # Shape: (num_dn_configs, N_up, 3)
+    r_up_carts_repeated_dn = jnp.repeat(r_up[None, :, :], num_dn_configs, axis=0)  # Shape: (num_dn_configs, N_up, 3)
 
     # Combine configurations
     r_up_carts_combined = jnp.concatenate([r_up_carts_shifted, r_up_carts_repeated_dn], axis=0)  # Shape: (N_configs, N_up, 3)
@@ -1097,14 +1153,14 @@ def compute_discretized_kinetic_energy_fast_update(
     wf_ratio = compute_ratio_determinant_part(
         geminal_data=wavefunction_data.geminal_data,
         A_old_inv=A_old_inv,
-        old_r_up_carts=r_up_carts,
-        old_r_dn_carts=r_dn_carts,
+        old_r_up_carts=r_up,
+        old_r_dn_carts=r_dn,
         new_r_up_carts_arr=r_up_carts_combined,
         new_r_dn_carts_arr=r_dn_carts_combined,
     ) * compute_ratio_Jastrow_part(
         jastrow_data=wavefunction_data.jastrow_data,
-        old_r_up_carts=r_up_carts,
-        old_r_dn_carts=r_dn_carts,
+        old_r_up_carts=r_up,
+        old_r_dn_carts=r_dn,
         new_r_up_carts_arr=r_up_carts_combined,
         new_r_dn_carts_arr=r_dn_carts_combined,
     )
@@ -1119,25 +1175,34 @@ def compute_discretized_kinetic_energy_fast_update(
 # no longer used in the main code
 def compute_quantum_force(
     wavefunction_data: Wavefunction_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
-) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
-    """The method is for computing quantum forces at (r_up_carts, r_dn_carts).
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+) -> tuple[jax.Array, jax.Array]:
+    """Compute quantum forces ``2 * grad ln |Psi|`` at the given coordinates.
+
+    The method is for computing quantum forces at ``(r_up_carts, r_dn_carts)``.
+    Gradients from the Jastrow part are currently set to zero (as in the original
+    implementation); determinant gradients are included via
+    ``compute_grads_and_laplacian_ln_Det``. Inputs are coerced to float64
+    ``jax.Array`` for consistency.
 
     Args:
-        wavefunction_data (Wavefunction_data): an instance of Wavefunction_data
-        r_up_carts (npt.NDArray[np.float64]): Cartesian coordinates of up-spin electrons (dim: N_e^{up}, 3)
-        r_dn_carts (npt.NDArray[np.float64]): Cartesian coordinates of dn-spin electrons (dim: N_e^{dn}, 3)
+        wavefunction_data: Wavefunction parameters (Jastrow + Geminal).
+        r_up_carts: Cartesian coordinates of up-spin electrons with shape ``(n_up, 3)``.
+        r_dn_carts: Cartesian coordinates of down-spin electrons with shape ``(n_dn, 3)``.
 
     Returns:
-        The value of quantum forces of the given wavefunction -> return tuple[(N_e^{up}, 3), (N_e^{dn}, 3)]
+        Tuple ``(force_up, force_dn)`` with shapes matching the input coordinate arrays.
     """
+    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
+    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
+
     grad_J_up, grad_J_dn, _ = 0, 0, 0  # tentative
 
     grad_ln_D_up, grad_ln_D_dn, _ = compute_grads_and_laplacian_ln_Det(
         geminal_data=wavefunction_data.geminal_data,
-        r_up_carts=r_up_carts,
-        r_dn_carts=r_dn_carts,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
     )
 
     grad_ln_WF_up = grad_J_up + grad_ln_D_up

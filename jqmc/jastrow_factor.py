@@ -479,19 +479,26 @@ class NNJastrow(nn.Module):
 
 @struct.dataclass
 class Jastrow_one_body_data:
-    """Jastrow one-body dataclass.
+    """One-body Jastrow parameters and structure metadata.
 
-    The class contains data for evaluating the one-body Jastrow function.
+    The one-body term models electron–nucleus correlations using the
+    exponential form described in the original docstring. The numerical value
+    is returned without the ``exp`` wrapper; callers attach ``exp(J)`` to the
+    wavefunction.
 
     Args:
-        jastrow_1b_param (float): the parameter for 1b Jastrow part
-        structure_data (Structure_data): an instance of Struructure_data
-        core_electrons (tuple[float]): a tuple containing the number of removed core electrons (for ECPs)
+        jastrow_1b_param (float): Parameter controlling the one-body decay.
+        structure_data (Structure_data): Nuclear positions and charges.
+        core_electrons (tuple[float]): Removed core electrons per nucleus (for ECPs).
     """
 
-    jastrow_1b_param: float = struct.field(pytree_node=True, default=1.0)
-    structure_data: Structure_data = struct.field(pytree_node=True, default_factory=lambda: Structure_data())
-    core_electrons: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    jastrow_1b_param: float = struct.field(pytree_node=True, default=1.0)  #: One-body Jastrow exponent parameter.
+    structure_data: Structure_data = struct.field(
+        pytree_node=True, default_factory=Structure_data
+    )  #: Nuclear structure data providing positions and atomic numbers.
+    core_electrons: list[float] | tuple[float] = struct.field(
+        pytree_node=False, default_factory=tuple
+    )  #: Effective core-electron counts aligned with ``structure_data``.
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -511,7 +518,7 @@ class Jastrow_one_body_data:
             raise ValueError(f"core_electrons = {type(self.core_electrons)} must be a list or tuple.")
         self.structure_data.sanity_check()
 
-    def get_info(self) -> list[str]:
+    def _get_info(self) -> list[str]:
         """Return a list of strings representing the logged information."""
         info_lines = []
         info_lines.append("**" + self.__class__.__name__)
@@ -519,9 +526,9 @@ class Jastrow_one_body_data:
         info_lines.append("  1b Jastrow functional form is the exp type.")
         return info_lines
 
-    def logger_info(self) -> None:
+    def _logger_info(self) -> None:
         """Log the information obtained from get_info() using logger.info."""
-        for line in self.get_info():
+        for line in self._get_info():
             logger.info(line)
 
     @classmethod
@@ -536,24 +543,21 @@ class Jastrow_one_body_data:
 @jit
 def compute_Jastrow_one_body(
     jastrow_one_body_data: Jastrow_one_body_data,
-    r_up_carts: npt.NDArray[np.float64],
-    r_dn_carts: npt.NDArray[np.float64],
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> float:
-    """Function for computing Jastrow factor with the given jastrow_one_body_data.
+    """Evaluate the one-body Jastrow $J_1$ (without ``exp``) for given coordinates.
 
-    The api method to compute Jastrow factor with the given jastrow_one_body_data.
-    Notice that the Jastrow factor does not contain exp factor. Attach this
-    J to a WF with the modification, exp(J).
+    The original exponential form and usage remain unchanged: this routine
+    returns the scalar ``J`` value; callers attach ``exp(J)`` to the wavefunction.
 
     Args:
-        jastrow_one_body_data (Jastrow_one_body_data): an instance of Jastrow_one_body_data
-        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^up, 3)
-        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^dn, 3)
-        debug (bool): if True, this is computed via _debug function for debuging purpose
+        jastrow_one_body_data: One-body Jastrow parameters and structure data.
+        r_up_carts: Spin-up electron coordinates with shape ``(N_up, 3)``.
+        r_dn_carts: Spin-down electron coordinates with shape ``(N_dn, 3)``.
 
-    Return:
-        float: The value of Jastrow factor. Notice that the Jastrow factor does not
-        contain exp factor. Attach this J to a WF with the modification, exp(J).
+    Returns:
+        float: One-body Jastrow value (before exponentiation).
     """
     # Retrieve structure data and convert to JAX arrays
     R_carts = jnp.array(jastrow_one_body_data.structure_data.positions)
@@ -813,7 +817,18 @@ def compute_grads_and_laplacian_Jastrow_one_body(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
-    """Analytic gradients and per-electron Laplacians for one-body Jastrow."""
+    """Analytic gradients and per-electron Laplacians for the one-body Jastrow.
+
+    Args:
+        jastrow_one_body_data: One-body Jastrow parameters and structure data.
+        r_up_carts: Spin-up electron coordinates with shape ``(N_up, 3)``.
+        r_dn_carts: Spin-down electron coordinates with shape ``(N_dn, 3)``.
+
+    Returns:
+        tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
+            Gradients for up/down electrons with shapes ``(N_up, 3)`` and ``(N_dn, 3)``,
+            Laplacians for up/down electrons with shapes ``(N_up,)`` and ``(N_dn,)``.
+    """
     positions = jnp.asarray(jastrow_one_body_data.structure_data.positions)
     atomic_numbers = jnp.asarray(jastrow_one_body_data.structure_data.atomic_numbers)
     core_electrons = jnp.asarray(jastrow_one_body_data.core_electrons)
@@ -847,15 +862,17 @@ def compute_grads_and_laplacian_Jastrow_one_body(
 
 @struct.dataclass
 class Jastrow_two_body_data:
-    """Jastrow two-body dataclass.
+    """Two-body Jastrow parameter container.
 
-    The class contains data for evaluating the two-body Jastrow function.
+    The two-body term uses the Pade functional form described in the existing
+    docstrings. Values are returned without exponentiation; callers use
+    ``exp(J)`` when constructing the wavefunction.
 
     Args:
-        jastrow_2b_param (float): the parameter for 2b Jastrow part
+        jastrow_2b_param (float): Parameter for the two-body Jastrow part.
     """
 
-    jastrow_2b_param: float = struct.field(pytree_node=True, default=1.0)
+    jastrow_2b_param: float = struct.field(pytree_node=True, default=1.0)  #: Pade ``a`` parameter for J2.
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -868,7 +885,7 @@ class Jastrow_two_body_data:
         if self.jastrow_2b_param < 0.0:
             raise ValueError(f"jastrow_2b_param = {self.jastrow_2b_param} must be non-negative.")
 
-    def get_info(self) -> list[str]:
+    def _get_info(self) -> list[str]:
         """Return a list of strings representing the logged information."""
         info_lines = []
         info_lines.append("**" + self.__class__.__name__)
@@ -876,9 +893,9 @@ class Jastrow_two_body_data:
         info_lines.append("  2b Jastrow functional form is the pade type.")
         return info_lines
 
-    def logger_info(self) -> None:
+    def _logger_info(self) -> None:
         """Log the information obtained from get_info() using logger.info."""
-        for line in self.get_info():
+        for line in self._get_info():
             logger.info(line)
 
     @classmethod
@@ -891,24 +908,21 @@ class Jastrow_two_body_data:
 @jit
 def compute_Jastrow_two_body(
     jastrow_two_body_data: Jastrow_two_body_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> float:
-    """Function for computing Jastrow factor with the given jastrow_two_body_data.
+    """Evaluate the two-body Jastrow $J_2$ (Pade form) without exponentiation.
 
-    The api method to compute Jastrow factor with the given jastrow_two_body_data.
-    Notice that the Jastrow factor does not contain exp factor. Attach this
-    J to a WF with the modification, exp(J).
+    The functional form and usage remain identical to the original docstring;
+    this returns ``J`` and callers attach ``exp(J)`` to the wavefunction.
 
     Args:
-        jastrow_two_body_data (Jastrow_two_body_data): an instance of Jastrow_two_body_data
-        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^up, 3)
-        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^dn, 3)
-        debug (bool): if True, this is computed via _debug function for debuging purpose
+        jastrow_two_body_data: Two-body Jastrow parameter container.
+        r_up_carts: Spin-up electron coordinates with shape ``(N_up, 3)``.
+        r_dn_carts: Spin-down electron coordinates with shape ``(N_dn, 3)``.
 
-    Return:
-        float: The value of Jastrow factor. Notice that the Jastrow factor does not
-        contain exp factor. Attach this J to a WF with the modification, exp(J).
+    Returns:
+        float: Two-body Jastrow value (before exponentiation).
     """
 
     def two_body_jastrow_anti_parallel_spins_exp(param: float, r_cart_i: jnpt.ArrayLike, r_cart_j: jnpt.ArrayLike) -> float:
@@ -1039,17 +1053,24 @@ def _compute_Jastrow_two_body_debug(
 # @dataclass
 @struct.dataclass
 class Jastrow_three_body_data:
-    """Jastrow_three_body dataclass.
+    """Three-body Jastrow parameters and orbital references.
 
-    The class contains data for evaluating the three-body Jastrow function.
+    The three-body term uses the original matrix layout (square J3 block plus
+    last-column J1-like vector). Values are returned without exponentiation;
+    callers attach ``exp(J)`` to the wavefunction. All existing functional
+    details from the prior docstring are preserved.
 
     Args:
-        orb_data (AOs_sphe_data | AOs_cart_data | MOs_data): AOs data for up-spin and dn-spin.
-        j_matrix (npt.NDArray | jnpt.ArrayLike): J matrix dim. (orb_data.num_ao, orb_data.num_ao+1))
+        orb_data (AOs_sphe_data | AOs_cart_data | MOs_data): Basis/orbital data used for both spins.
+        j_matrix (npt.NDArray | jax.Array): J matrix with shape ``(orb_num, orb_num + 1)``.
     """
 
-    orb_data: AOs_sphe_data | AOs_cart_data | MOs_data = struct.field(pytree_node=True, default_factory=lambda: AOs_sphe_data())
-    j_matrix: npt.NDArray | jnpt.ArrayLike = struct.field(pytree_node=True, default_factory=lambda: np.array([]))
+    orb_data: AOs_sphe_data | AOs_cart_data | MOs_data = struct.field(
+        pytree_node=True, default_factory=AOs_sphe_data
+    )  #: Orbital basis (AOs or MOs) shared across spins.
+    j_matrix: npt.NDArray | jax.Array = struct.field(
+        pytree_node=True, default_factory=lambda: np.array([])
+    )  #: J3/J1 matrix; square block plus final column.
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -1068,7 +1089,7 @@ class Jastrow_three_body_data:
                 + f"= ({self.orb_num}, {self.orb_num + 1}).",
             )
 
-    def get_info(self) -> list[str]:
+    def _get_info(self) -> list[str]:
         """Return a list of strings containing the information stored in the attributes."""
         info_lines = []
         info_lines.append("**" + self.__class__.__name__)
@@ -1077,12 +1098,12 @@ class Jastrow_three_body_data:
             f"  j3 part of the jastrow_3b_matrix is symmetric? = {np.allclose(self.j_matrix[:, :-1], self.j_matrix[:, :-1].T)}"
         )
         # Replace orb_data.logger_info() with orb_data.get_info() output.
-        info_lines.extend(self.orb_data.get_info())
+        info_lines.extend(self.orb_data._get_info())
         return info_lines
 
-    def logger_info(self) -> None:
+    def _logger_info(self) -> None:
         """Log the information obtained from get_info() using logger.info."""
-        for line in self.get_info():
+        for line in self._get_info():
             logger.info(line)
 
     @property
@@ -1092,7 +1113,7 @@ class Jastrow_three_body_data:
         Returns:
             int: get number of atomic orbitals.
         """
-        return self.orb_data.num_orb
+        return self.orb_data._num_orb
 
     @property
     def compute_orb_api(self) -> Callable[..., npt.NDArray[np.float64]]:
@@ -1120,18 +1141,13 @@ class Jastrow_three_body_data:
     @classmethod
     def init_jastrow_three_body_data(cls, orb_data: AOs_sphe_data | AOs_cart_data | MOs_data):
         """Initialization."""
-        j_matrix = np.zeros((orb_data.num_orb, orb_data.num_orb + 1))
+        j_matrix = np.zeros((orb_data._num_orb, orb_data._num_orb + 1))
         # j_matrix = np.random.uniform(0.01, 0.10, size=(orb_data.num_orb, orb_data.num_orb + 1))
         jastrow_three_body_data = cls(
             orb_data=orb_data,
             j_matrix=j_matrix,
         )
         return jastrow_three_body_data
-
-    @classmethod
-    def from_base(cls, jastrow_three_body_data: "Jastrow_three_body_data"):
-        """Switch pytree_node."""
-        return cls(orb_data=jastrow_three_body_data.orb_data, j_matrix=jastrow_three_body_data.j_matrix)
 
 
 @struct.dataclass
@@ -1155,38 +1171,42 @@ class Jastrow_NN_data:
     """
 
     # Flax module definition (e.g. NNJastrow); not a pytree node.
-    nn_def: Any = struct.field(pytree_node=False, default=None)
+    nn_def: Any = struct.field(pytree_node=False, default=None)  #: Flax module definition (e.g., NNJastrow).
 
     # Flax parameters PyTree (typically a FrozenDict); this is the actual
     # variational parameter set.
-    params: Any = struct.field(pytree_node=True, default=None)
+    params: Any = struct.field(pytree_node=True, default=None)  #: Parameter PyTree for ``nn_def``.
 
     # Utilities to flatten/unflatten params for VariationalParameterBlock.
     # NOTE: We do *not* store these function objects directly as dataclass
     # fields because they are not reliably picklable. Instead we store only
     # simple metadata (treedef, shapes) and reconstruct the functions on the
     # fly via properties below.
-    flat_shape: tuple[int, ...] = struct.field(pytree_node=False, default=())
-    num_params: int = struct.field(pytree_node=False, default=0)
+    flat_shape: tuple[int, ...] = struct.field(pytree_node=False, default=())  #: Shape of flattened params.
+    num_params: int = struct.field(pytree_node=False, default=0)  #: Total number of parameters.
 
     # Metadata needed to reconstruct flatten_fn/unflatten_fn.
-    treedef: Any = struct.field(pytree_node=False, default=None)
-    shapes: list[tuple[int, ...]] = struct.field(pytree_node=False, default_factory=list)
+    treedef: Any = struct.field(pytree_node=False, default=None)  #: PyTree treedef for params.
+    shapes: list[tuple[int, ...]] = struct.field(pytree_node=False, default_factory=list)  #: Per-leaf shapes.
 
     # Optional architecture/hyperparameters for logging and reproducibility.
-    hidden_dim: int = struct.field(pytree_node=False, default=64)
-    num_layers: int = struct.field(pytree_node=False, default=3)
-    num_rbf: int = struct.field(pytree_node=False, default=16)
-    cutoff: float = struct.field(pytree_node=False, default=5.0)
-    num_species: int = struct.field(pytree_node=False, default=0)
-    species_lookup: tuple[int, ...] = struct.field(pytree_node=False, default=(0,))
-    species_values: tuple[int, ...] = struct.field(pytree_node=False, default_factory=tuple)
+    hidden_dim: int = struct.field(pytree_node=False, default=64)  #: Hidden width used in NNJastrow.
+    num_layers: int = struct.field(pytree_node=False, default=3)  #: Number of PauliNet blocks.
+    num_rbf: int = struct.field(pytree_node=False, default=16)  #: PhysNet radial basis size.
+    cutoff: float = struct.field(pytree_node=False, default=5.0)  #: Radial cutoff for features.
+    num_species: int = struct.field(pytree_node=False, default=0)  #: Count of unique nuclear species.
+    species_lookup: tuple[int, ...] = struct.field(pytree_node=False, default=(0,))  #: Lookup table mapping Z to species ids.
+    species_values: tuple[int, ...] = struct.field(
+        pytree_node=False, default_factory=tuple
+    )  #: Sorted unique atomic numbers used.
 
     # Structure information required to evaluate the NN J3 term.
     # This is a pytree node so that gradients with respect to nuclear positions
     # (atomic forces) can propagate into structure_data.positions, consistent
     # with the rest of the codebase.
-    structure_data: Structure_data | None = struct.field(pytree_node=True, default=None)
+    structure_data: Structure_data | None = struct.field(
+        pytree_node=True, default=None
+    )  #: Structure info required for NN evaluation.
 
     def __post_init__(self):
         """Populate flat_shape/num_params/treedef/shapes from params if needed.
@@ -1318,7 +1338,7 @@ class Jastrow_NN_data:
             shapes=list(shapes),
         )
 
-    def get_info(self) -> list[str]:
+    def _get_info(self) -> list[str]:
         """Return a list of human-readable strings describing this NN Jastrow."""
         info = []
         info.append("**Jastrow_NN_data")
@@ -1337,23 +1357,22 @@ class Jastrow_NN_data:
 
 def compute_Jastrow_three_body(
     jastrow_three_body_data: Jastrow_three_body_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
 ) -> float:
-    """Function for computing Jastrow factor with the given jastrow_three_body_data.
+    """Evaluate the three-body Jastrow $J_3$ (analytic) without exponentiation.
 
-    The api method to compute Jastrow factor with the given jastrow_three_body_data.
-    Notice that the Jastrow factor does not contain exp factor. Attach this
-    J to a WF with the modification, exp(J).
+    This preserves the original functional form: the square J3 block couples
+    electron pairs and the last column acts as a J1-like vector. Returned value
+    is ``J``; attach ``exp(J)`` externally.
 
     Args:
-        jastrow_three_body_data (Jastrow_three_body_data): an instance of Jastrow_three_body_data
-        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^up, 3)
-        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^dn, 3)
+        jastrow_three_body_data: Three-body Jastrow parameters and orbitals.
+        r_up_carts: Spin-up electron coordinates with shape ``(N_up, 3)``.
+        r_dn_carts: Spin-down electron coordinates with shape ``(N_dn, 3)``.
 
-    Return:
-        float: The value of Jastrow factor. Notice that the Jastrow factor does not
-        contain exp factor. Attach this J to a WF with the modification, exp(J).
+    Returns:
+        float: Three-body Jastrow value (before exponentiation).
     """
     num_electron_up = len(r_up_carts)
     num_electron_dn = len(r_dn_carts)
@@ -1470,10 +1489,18 @@ class Jastrow_data:
             the Jastrow NN contribution is turned off.
     """
 
-    jastrow_one_body_data: Jastrow_one_body_data | None = struct.field(pytree_node=True, default=None)
-    jastrow_two_body_data: Jastrow_two_body_data | None = struct.field(pytree_node=True, default=None)
-    jastrow_three_body_data: Jastrow_three_body_data | None = struct.field(pytree_node=True, default=None)
-    jastrow_nn_data: Jastrow_NN_data | None = struct.field(pytree_node=True, default=None)
+    jastrow_one_body_data: Jastrow_one_body_data | None = struct.field(
+        pytree_node=True, default=None
+    )  #: Optional one-body Jastrow component.
+    jastrow_two_body_data: Jastrow_two_body_data | None = struct.field(
+        pytree_node=True, default=None
+    )  #: Optional two-body Jastrow component.
+    jastrow_three_body_data: Jastrow_three_body_data | None = struct.field(
+        pytree_node=True, default=None
+    )  #: Optional analytic three-body Jastrow component.
+    jastrow_nn_data: Jastrow_NN_data | None = struct.field(
+        pytree_node=True, default=None
+    )  #: Optional NN-based three-body Jastrow component.
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -1490,47 +1517,26 @@ class Jastrow_data:
         if self.jastrow_three_body_data is not None:
             self.jastrow_three_body_data.sanity_check()
 
-    def get_info(self) -> list[str]:
+    def _get_info(self) -> list[str]:
         """Return a list of strings representing the logged information from Jastrow data attributes."""
         info_lines = []
         # Replace jastrow_one_body_data.logger_info() with its get_info() output if available.
         if self.jastrow_one_body_data is not None:
-            info_lines.extend(self.jastrow_one_body_data.get_info())
+            info_lines.extend(self.jastrow_one_body_data._get_info())
         # Replace jastrow_two_body_data.logger_info() with its get_info() output if available.
         if self.jastrow_two_body_data is not None:
-            info_lines.extend(self.jastrow_two_body_data.get_info())
+            info_lines.extend(self.jastrow_two_body_data._get_info())
         # Replace jastrow_three_body_data.logger_info() with its get_info() output if available.
         if self.jastrow_three_body_data is not None:
-            info_lines.extend(self.jastrow_three_body_data.get_info())
+            info_lines.extend(self.jastrow_three_body_data._get_info())
         if self.jastrow_nn_data is not None:
-            info_lines.extend(self.jastrow_nn_data.get_info())
+            info_lines.extend(self.jastrow_nn_data._get_info())
         return info_lines
 
-    def logger_info(self) -> None:
+    def _logger_info(self) -> None:
         """Log the information obtained from get_info() using logger.info."""
-        for line in self.get_info():
+        for line in self._get_info():
             logger.info(line)
-
-    @classmethod
-    def from_base(cls, jastrow_data: "Jastrow_data"):
-        """Switch pytree_node."""
-        jastrow_one_body_data = jastrow_data.jastrow_one_body_data
-        jastrow_two_body_data = jastrow_data.jastrow_two_body_data
-        if jastrow_data.jastrow_three_body_data is not None:
-            jastrow_three_body_data = Jastrow_three_body_data.from_base(jastrow_data.jastrow_three_body_data)
-        else:
-            jastrow_three_body_data = jastrow_data.jastrow_three_body_data
-        # NN J3 is a pure data container and should be copied as-is so that
-        # derived wavefunction/jastrow objects keep access to the NN
-        # variational parameters and their flatten/unflatten utilities.
-        jastrow_nn_data = jastrow_data.jastrow_nn_data
-
-        return cls(
-            jastrow_one_body_data=jastrow_one_body_data,
-            jastrow_two_body_data=jastrow_two_body_data,
-            jastrow_three_body_data=jastrow_three_body_data,
-            jastrow_nn_data=jastrow_nn_data,
-        )
 
     def apply_block_update(self, block: "VariationalParameterBlock") -> "Jastrow_data":
         """Apply a single variational-parameter block update to this Jastrow object.
@@ -1631,22 +1637,24 @@ class Jastrow_data:
         return grads
 
 
-def compute_Jastrow_part(jastrow_data: Jastrow_data, r_up_carts: jnpt.ArrayLike, r_dn_carts: jnpt.ArrayLike) -> float:
-    """Function for computing Jastrow factor with the given jastrow_data.
+def compute_Jastrow_part(jastrow_data: Jastrow_data, r_up_carts: jax.Array, r_dn_carts: jax.Array) -> float:
+    """Evaluate the total Jastrow ``J = J1 + J2 + J3`` (without exponentiation).
 
-    The api method to compute Jastrow factor with the given jastrow_data.
-    Notice that the Jastrow factor does not contain exp factor. Attach this
-    J to a WF with the modification, exp(J).
+    This preserves the original behavior: the returned scalar ``J`` excludes
+    the ``exp`` factor; callers apply ``exp(J)`` to the wavefunction. Both the
+    analytic three-body and optional NN three-body contributions are included.
 
     Args:
-        jastrow_data (Jastrow_data): an instance of Jastrow_data
-        r_up_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^up, 3)
-        r_dn_carts (jnpt.ArrayLike): Cartesian coordinates of up electrons (dim: N_e^dn, 3)
+        jastrow_data: Collection of active Jastrow components (J1/J2/J3/NN).
+        r_up_carts: Spin-up electron coordinates with shape ``(N_up, 3)``.
+        r_dn_carts: Spin-down electron coordinates with shape ``(N_dn, 3)``.
 
-    Return:
-        float: The value of Jastrow factor. Notice that the Jastrow factor does not
-        contain exp factor. Attach this J to a WF with the modification, exp(J).
+    Returns:
+        float: Total Jastrow value before exponentiation.
     """
+    r_up_carts = jnp.asarray(r_up_carts)
+    r_dn_carts = jnp.asarray(r_dn_carts)
+
     J1 = 0.0
     J2 = 0.0
     J3 = 0.0
@@ -1721,29 +1729,32 @@ def _compute_Jastrow_part_debug(
 
 def compute_ratio_Jastrow_part(
     jastrow_data: Jastrow_data,
-    old_r_up_carts: npt.NDArray[np.float64],
-    old_r_dn_carts: npt.NDArray[np.float64],
-    new_r_up_carts_arr: npt.NDArray[np.float64],
-    new_r_dn_carts_arr: npt.NDArray[np.float64],
-) -> npt.NDArray:
-    """Function for computing the ratio of the Jastrow factor with the given jastrow_data between new_r_up_carts and old_r_up_carts.
+    old_r_up_carts: jax.Array,
+    old_r_dn_carts: jax.Array,
+    new_r_up_carts_arr: jax.Array,
+    new_r_dn_carts_arr: jax.Array,
+) -> jax.Array:
+    """Compute $\exp(J(\mathbf r'))/\exp(J(\mathbf r))$ for batched moves.
 
-    The api method to compute the ratio of the Jastrow factor with the given jastrow_data between new_r_up_carts and old_r_up_carts.
-    i.e., J(new_r_carts_arr) / J(old_r_carts)
-
-    Notice that the Jastrow factor does contain exp factor!
+    This follows the original ratio logic (including exp) while updating types
+    to use ``jax.Array`` inputs. The return is one ratio per proposed grid
+    configuration.
 
     Args:
-        jastrow_data (Jastrow_data): an instance of Jastrow_data
-        old_r_up_carts (jnpt.ArrayLike): Old Cartesian coordinates of up electrons (dim: N_e^up, 3)
-        old_r_dn_carts (jnpt.ArrayLike): Old Cartesian coordinates of down electrons (dim: N_e^dn, 3)
-        new_r_up_carts_arr (jnpt.ArrayLike): New Cartesian coordinate grids of up electrons (dim: N_grid, N_e^up, 3)
-        new_r_dn_carts_arr (jnpt.ArrayLike): New Cartesian coordinate grids of down electrons (dim: N_grid, N_e^dn, 3)
-        debug (bool): if True, this is computed via _debug function for debuging purpose
+        jastrow_data: Active Jastrow components.
+        old_r_up_carts: Reference spin-up coordinates with shape ``(N_up, 3)``.
+        old_r_dn_carts: Reference spin-down coordinates with shape ``(N_dn, 3)``.
+        new_r_up_carts_arr: Proposed spin-up coordinates with shape ``(N_grid, N_up, 3)``.
+        new_r_dn_carts_arr: Proposed spin-down coordinates with shape ``(N_grid, N_dn, 3)``.
 
-    Return:
-        npt.NDArray: The value of Jastrow factor ratios. Notice that the Jastrow factor does contain exp factor. (dim: N_grid)
+    Returns:
+        jax.Array: Jastrow ratios per grid with shape ``(N_grid,)`` (includes ``exp``).
     """
+    old_r_up_carts = jnp.asarray(old_r_up_carts)
+    old_r_dn_carts = jnp.asarray(old_r_dn_carts)
+    new_r_up_carts_arr = jnp.asarray(new_r_up_carts_arr)
+    new_r_dn_carts_arr = jnp.asarray(new_r_dn_carts_arr)
+
     J_ratio = 1.0
 
     # J1 part
@@ -2027,10 +2038,21 @@ def compute_grads_and_laplacian_Jastrow_part(
     jax.Array,
     jax.Array,
 ]:
-    """Analytic-based gradients and Laplacian for the full Jastrow factor.
+    """Per-electron gradients and Laplacians of the full Jastrow $J$.
 
-    Uses analytic expressions for J1/J2/J3 when available. If NN-Jastrow
-    is present, its contribution is computed via autodiff.
+    Analytic paths are used for J1/J2/J3 when available; the NN three-body
+    term (if present) is handled via autodiff. Values are returned per electron
+    (not summed) to match downstream kinetic-energy estimators.
+
+    Args:
+        jastrow_data: Active Jastrow components.
+        r_up_carts: Spin-up electron coordinates with shape ``(N_up, 3)``.
+        r_dn_carts: Spin-down electron coordinates with shape ``(N_dn, 3)``.
+
+    Returns:
+        tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
+            Gradients for up/down electrons with shapes ``(N_up, 3)`` and ``(N_dn, 3)``
+            and Laplacians for up/down electrons with shapes ``(N_up,)`` and ``(N_dn,)``.
     """
     r_up = jnp.asarray(r_up_carts)
     r_dn = jnp.asarray(r_dn_carts)
@@ -2423,10 +2445,20 @@ def compute_grads_and_laplacian_Jastrow_two_body(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
-    """Analytic gradients and Laplacian for the Pade two-body Jastrow.
+    """Analytic gradients and Laplacians for the Pade two-body Jastrow.
 
-    Uses the functional form J2(r) = r / (2 * (1 + a r)) with a=jastrow_2b_param.
-    For a radial function f(r) the per-electron Laplacian is f''(r) + 2 f'(r)/r.
+    Uses the unchanged functional form ``J2(r) = r / (2 * (1 + a r))`` with
+    ``a = jastrow_2b_param``. Returns per-electron quantities (not summed).
+
+    Args:
+        jastrow_two_body_data: Two-body Jastrow parameter container.
+        r_up_carts: Spin-up electron coordinates with shape ``(N_up, 3)``.
+        r_dn_carts: Spin-down electron coordinates with shape ``(N_dn, 3)``.
+
+    Returns:
+        tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
+            Gradients for up/down electrons with shapes ``(N_up, 3)`` and ``(N_dn, 3)``,
+            Laplacians for up/down electrons with shapes ``(N_up,)`` and ``(N_dn,)``.
     """
     a = jastrow_two_body_data.jastrow_2b_param
     eps = 1.0e-12
@@ -2780,12 +2812,21 @@ def compute_grads_and_laplacian_Jastrow_three_body(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
-    """Analytic gradients and Laplacian for the three-body Jastrow.
+    """Analytic gradients and Laplacians for the three-body Jastrow.
 
-    Uses analytic AO/MO gradients and Laplacians and exploits the fact that
-    the derivative of each column only depends on other-electron orbitals
-    (not on its own column), so second derivatives reduce to a weighted sum
-    of orbital Laplacians.
+    The functional form is unchanged; this routine leverages analytic AO/MO
+    gradients and Laplacians. Per-electron derivatives are returned (not
+    summed), matching kinetic-energy estimator expectations.
+
+    Args:
+        jastrow_three_body_data: Three-body Jastrow parameters and orbitals.
+        r_up_carts: Spin-up electron coordinates with shape ``(N_up, 3)``.
+        r_dn_carts: Spin-down electron coordinates with shape ``(N_dn, 3)``.
+
+    Returns:
+        tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
+            Gradients for up/down electrons with shapes ``(N_up, 3)`` and ``(N_dn, 3)``,
+            Laplacians for up/down electrons with shapes ``(N_up,)`` and ``(N_dn,)``.
     """
     orb_data = jastrow_three_body_data.orb_data
 

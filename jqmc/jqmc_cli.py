@@ -63,7 +63,7 @@ jax.config.update("jax_traceback_filtering", "off")
 logger = getLogger("jqmc").getChild(__name__)
 
 
-def cli():
+def _cli():
     """Main function."""
     if len(sys.argv) == 1:
         raise ValueError("Please specify input toml file.")
@@ -682,4 +682,4 @@ def cli():
 
 
 if __name__ == "__main__":
-    cli()
+    _cli()

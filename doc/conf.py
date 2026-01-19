@@ -34,8 +34,22 @@ extensions = [
     "IPython.sphinxext.ipython_console_highlighting",
     "IPython.sphinxext.ipython_directive",
     "sphinx.ext.autodoc",
+    "sphinx.ext.napoleon",
 ]
 myst_enable_extensions = ["linkify", "dollarmath", "amsmath"]
+
+# Napoleon: parse Google/NumPy style docstrings (used in this project) and
+# render attribute/parameter tables in autodoc pages.
+napoleon_google_docstring = True
+napoleon_numpy_docstring = True
+napoleon_use_param = True
+napoleon_use_ivar = True
+napoleon_attr_annotations = True
+napoleon_preprocess_types = True
+
+# Move type hints from signatures into the description so Attributes/Parameters
+# tables remain readable and avoid duplicated type-only attribute listings.
+autodoc_typehints = "description"
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]

@@ -118,22 +118,22 @@ class Hamiltonian_data:
         self.coulomb_potential_data.sanity_check()
         self.wavefunction_data.sanity_check()
 
-    def get_info(self) -> list[str]:
+    def _get_info(self) -> list[str]:
         """Return a list of strings representing the logged information."""
         info_lines = []
         # Add the top separator line.
         info_lines.append("=" * num_sep_line)
         # Replace attribute logger_info() calls with their get_info() outputs.
-        info_lines.extend(self.structure_data.get_info())
-        info_lines.extend(self.coulomb_potential_data.get_info())
-        info_lines.extend(self.wavefunction_data.get_info())
+        info_lines.extend(self.structure_data._get_info())
+        info_lines.extend(self.coulomb_potential_data._get_info())
+        info_lines.extend(self.wavefunction_data._get_info())
         # Add the bottom separator line.
         info_lines.append("=" * num_sep_line)
         return info_lines
 
-    def logger_info(self) -> None:
+    def _logger_info(self) -> None:
         """Log the information from get_info() using logger.info."""
-        for line in self.get_info():
+        for line in self._get_info():
             logger.info(line)
 
     def accumulate_position_grad(self, grad_hamiltonian: "Hamiltonian_data"):
@@ -151,7 +151,7 @@ class Hamiltonian_data:
             filepath (str, optional): file path
         """
         with h5py.File(filepath, "w") as f:
-            save_dataclass_to_hdf5(f, self)
+            _save_dataclass_to_hdf5(f, self)
 
     @staticmethod
     def load_from_hdf5(filepath="jqmc.h5") -> "Hamiltonian_data":
@@ -164,18 +164,7 @@ class Hamiltonian_data:
             Hamiltonian_data: An instance of Hamiltonian_data.
         """
         with h5py.File(filepath, "r") as f:
-            return load_dataclass_from_hdf5(Hamiltonian_data, f)
-
-    @classmethod
-    def from_base(cls, hamiltonian_data: "Hamiltonian_data"):
-        """Switch pytree_node."""
-        structure_data = hamiltonian_data.structure_data
-        coulomb_potential_data = Coulomb_potential_data.from_base(hamiltonian_data.coulomb_potential_data)
-        wavefunction_data = Wavefunction_data.from_base(hamiltonian_data.wavefunction_data)
-
-        return cls(
-            structure_data=structure_data, coulomb_potential_data=coulomb_potential_data, wavefunction_data=wavefunction_data
-        )
+            return _load_dataclass_from_hdf5(Hamiltonian_data, f)
 
 
 def compute_local_energy(
@@ -259,7 +248,7 @@ def _compute_local_energy_auto(
     return T + V
 
 
-def reconstruct_dataclass(cls, obj):
+def _reconstruct_dataclass(cls, obj):
     """Restore a dataclass instance from an object.
 
     Reconstructs an instance of `cls` from `obj`, handling missing/extra fields.
@@ -281,7 +270,7 @@ def reconstruct_dataclass(cls, obj):
             # We check if field.type is a class and is a dataclass.
             # Note: This assumes field.type is the actual class, not a string.
             if isinstance(field.type, type) and dataclasses.is_dataclass(field.type):
-                val = reconstruct_dataclass(field.type, val)
+                val = _reconstruct_dataclass(field.type, val)
 
             kwargs[field_name] = val
         # If field is missing in obj, we skip it so cls() uses its default value/factory.
@@ -301,7 +290,7 @@ def _save_item(group: h5py.Group, name: str, value: Any) -> None:
         group.create_dataset(name, data=value)
     elif dataclasses.is_dataclass(value):
         subgroup = group.create_group(name)
-        save_dataclass_to_hdf5(subgroup, value)
+        _save_dataclass_to_hdf5(subgroup, value)
     elif isinstance(value, (dict, collections.abc.Mapping)):
         subgroup = group.create_group(name)
         subgroup.attrs["_is_dict"] = True
@@ -333,7 +322,7 @@ def _save_item(group: h5py.Group, name: str, value: Any) -> None:
             pass
 
 
-def save_dataclass_to_hdf5(group: h5py.Group, obj: Any) -> None:
+def _save_dataclass_to_hdf5(group: h5py.Group, obj: Any) -> None:
     """Recursively save a dataclass to an HDF5 group.
 
     Args:
@@ -392,7 +381,7 @@ def _load_item(item: Union[h5py.Group, h5py.Dataset, Any]) -> Any:
             if class_name and module_name:
                 module = importlib.import_module(module_name)
                 sub_cls = getattr(module, class_name)
-                return load_dataclass_from_hdf5(sub_cls, item)
+                return _load_dataclass_from_hdf5(sub_cls, item)
             else:
                 # Fallback for dicts saved without _is_dict or unknown structures
                 d = {}
@@ -402,7 +391,7 @@ def _load_item(item: Union[h5py.Group, h5py.Dataset, Any]) -> Any:
     return item
 
 
-def load_dataclass_from_hdf5(cls: Type[T], group: h5py.Group) -> T:
+def _load_dataclass_from_hdf5(cls: Type[T], group: h5py.Group) -> T:
     """Recursively load a dataclass from an HDF5 group.
 
     Args:
