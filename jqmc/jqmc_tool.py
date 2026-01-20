@@ -84,7 +84,7 @@ log.addHandler(stream_handler)
 
 
 @click.group()
-def cli():
+def _cli():
     """The jQMC tools."""
     pass
 
@@ -402,7 +402,7 @@ def trexio_convert_to(
 
 typer_click_trexio = typer.main.get_command(trexio_app)
 
-cli.add_command(typer_click_trexio, "trexio")
+_cli.add_command(typer_click_trexio, "trexio")
 
 
 # hamiltonian_app
@@ -483,7 +483,7 @@ def hamiltonian_convert_wavefunction(
 
 typer_click_hamiltonian = typer.main.get_command(hamiltonian_app)
 
-cli.add_command(typer_click_hamiltonian, "hamiltonian")
+_cli.add_command(typer_click_hamiltonian, "hamiltonian")
 
 # VMC app
 vmc_app = typer.Typer(help="Pre- and Post-Processing for VMC calculations.")
@@ -683,7 +683,7 @@ def vmc_analyze_output(
 
 typer_click_vmc = typer.main.get_command(vmc_app)
 
-cli.add_command(typer_click_vmc, "vmc")
+_cli.add_command(typer_click_vmc, "vmc")
 
 
 # mcmc app
@@ -843,7 +843,7 @@ def mcmc_generate_input(
 
 typer_click_mcmc = typer.main.get_command(mcmc_app)
 
-cli.add_command(typer_click_mcmc, "mcmc")
+_cli.add_command(typer_click_mcmc, "mcmc")
 
 
 # LRDMC_app
@@ -1189,4 +1189,4 @@ def lrdmc_generate_input(
 
 typer_click_lrdmc = typer.main.get_command(lrdmc_app)
 
-cli.add_command(typer_click_lrdmc, "lrdmc")
+_cli.add_command(typer_click_lrdmc, "lrdmc")

@@ -57,7 +57,7 @@ from jax import typing as jnpt
 from scipy.special import eval_legendre
 
 from .determinant import compute_det_geminal_all_elements
-from .function_collections import legendre_tablated as jnp_legendre_tablated
+from .function_collections import _legendre_tablated as jnp_legendre_tablated
 from .jastrow_factor import compute_Jastrow_part
 from .setting import NN_default, Nv_default
 from .structure import (

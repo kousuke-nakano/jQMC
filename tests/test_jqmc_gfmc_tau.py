@@ -46,8 +46,14 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
-from jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data  # noqa: E402
-from jqmc.jqmc_gfmc import GFMC_fixed_projection_time, GFMC_fixed_projection_time_debug  # noqa: E402
+from jqmc.jastrow_factor import (  # noqa: E402
+    Jastrow_data,
+    Jastrow_NN_data,
+    Jastrow_one_body_data,
+    Jastrow_three_body_data,
+    Jastrow_two_body_data,
+)
+from jqmc.jqmc_gfmc import GFMC_fixed_projection_time, _GFMC_fixed_projection_time_debug  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import Wavefunction_data  # noqa: E402
 
@@ -60,16 +66,20 @@ mpi_size = mpi_comm.Get_size()
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
-test_trexio_files = ["H2_ecp_ccpvtz_cart.h5"]
+test_trexio_files = ["H2_ecp_ccpvdz_cart.h5", "H_ecp_ccpvdz_cart.h5"]
+nn_param_grid = [False]
+jastrow_3b_param_grid = [False]
 
 
 @pytest.mark.parametrize("trexio_file", test_trexio_files)
-def test_jqmc_gfmc_fixed_projection_time_tmove(trexio_file):
+@pytest.mark.parametrize("with_3b_jastrow", jastrow_3b_param_grid)
+@pytest.mark.parametrize("with_nn_jastrow", nn_param_grid)
+def test_jqmc_gfmc_fixed_projection_time_tmove(trexio_file, with_nn_jastrow, with_3b_jastrow):
     """LRDMC with tmove non-local move."""
     (
         structure_data,
         _,
-        _,
+        mos_data,
         _,
         geminal_mo_data,
         coulomb_potential_data,
@@ -77,12 +87,29 @@ def test_jqmc_gfmc_fixed_projection_time_tmove(trexio_file):
         trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
     )
 
+    jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
+        jastrow_1b_param=1.0,
+        structure_data=structure_data,
+        core_electrons=tuple([0] * len(structure_data.atomic_numbers)),
+    )
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+    jastrow_threebody_data = None
+    if with_3b_jastrow:
+        jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
+            orb_data=mos_data, random_init=True, random_scale=1.0e-3, seed=123
+        )
+
+    jastrow_nn_data = None
+    if with_nn_jastrow:
+        jastrow_nn_data = Jastrow_NN_data.init_from_structure(
+            structure_data=structure_data, hidden_dim=2, num_layers=1, cutoff=5.0, key=jax.random.PRNGKey(0)
+        )
 
     jastrow_data = Jastrow_data(
-        jastrow_one_body_data=None,
+        jastrow_one_body_data=jastrow_onebody_data,
         jastrow_two_body_data=jastrow_twobody_data,
-        jastrow_three_body_data=None,
+        jastrow_three_body_data=jastrow_threebody_data,
+        jastrow_nn_data=jastrow_nn_data,
     )
 
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
@@ -105,7 +132,7 @@ def test_jqmc_gfmc_fixed_projection_time_tmove(trexio_file):
     non_local_move = "tmove"
 
     # run LRDMC single-shots
-    gfmc_debug = GFMC_fixed_projection_time_debug(
+    gfmc_debug = _GFMC_fixed_projection_time_debug(
         hamiltonian_data=hamiltonian_data,
         num_walkers=num_walkers,
         num_gfmc_collect_steps=num_gfmc_collect_steps,

@@ -50,7 +50,7 @@ from uncertainties import ufloat
 from .hamiltonians import Hamiltonian_data
 
 # jQMC
-from .header_footer import print_footer, print_header
+from .header_footer import _print_footer, _print_header
 from .jqmc_gfmc import GFMC_fixed_num_projection, GFMC_fixed_projection_time
 from .jqmc_mcmc import MCMC
 from .jqmc_miscs import cli_parameters
@@ -190,7 +190,7 @@ def _cli():
             stream_handler.setFormatter(handler_format)
             log.addHandler(stream_handler)
     # print header
-    print_header()
+    _print_header()
 
     # jax-MPI related
     try:
@@ -280,6 +280,7 @@ def _cli():
         epsilon_AS = parameters[section]["epsilon_AS"]
         atomic_force = parameters[section]["atomic_force"]
         parameter_derivatives = parameters[section]["parameter_derivatives"]
+        observable_batch_size = parameters[section]["observable_batch_size"]
 
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
         if not restart:
@@ -309,7 +310,7 @@ def _cli():
                 comput_position_deriv=atomic_force,
                 comput_param_deriv=parameter_derivatives,
             )
-        mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
+        mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time, observable_batch_size=observable_batch_size)
         E_mean, E_std, Var_mean, Var_std = mcmc.get_E(
             num_mcmc_warmup_steps=num_mcmc_warmup_steps,
             num_mcmc_bin_blocks=num_mcmc_bin_blocks,
@@ -413,6 +414,7 @@ def _cli():
         optimizer_kwargs.setdefault("method", "sr")
         if not isinstance(optimizer_kwargs["method"], str):
             raise TypeError("optimizer_kwargs['method'] must be a string when provided in the VMC section.")
+        observable_batch_size = parameters[section]["observable_batch_size"]
 
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
         if num_mcmc_steps < num_mcmc_warmup_steps:
@@ -449,6 +451,7 @@ def _cli():
             num_mcmc_bin_blocks=num_mcmc_bin_blocks,
             opt_J1_param=opt_J1_param,
             opt_J2_param=opt_J2_param,
+            observable_batch_size=observable_batch_size,
             opt_J3_param=opt_J3_param,
             opt_JNN_param=opt_JNN_param,
             opt_lambda_param=opt_lambda_param,
@@ -678,7 +681,7 @@ def _cli():
 
         mpi_comm.Barrier()
 
-    print_footer()
+    _print_footer()
 
 
 if __name__ == "__main__":

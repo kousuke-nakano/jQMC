@@ -62,6 +62,7 @@ cli_parameters = {
         "epsilon_AS": 0.0,
         "atomic_force": False,
         "parameter_derivatives": False,
+        "observable_batch_size": 100,
     },
     "mcmc_comments": {
         "num_mcmc_steps": "Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.",
@@ -72,6 +73,7 @@ cli_parameters = {
         "epsilon_AS": "the epsilon parameter used in the Attacalite-Sandro regulatization method.",
         "atomic_force": "If true, compute atomic forces.",
         "parameter_derivatives": "If true, compute parameter derivatives.",
+        "observable_batch_size": "Batch size for post-update observable evaluation (please reduce if you hit OOM).",
     },
     "vmc": {
         "num_mcmc_steps": None,
@@ -96,6 +98,7 @@ cli_parameters = {
             "cg_max_iter": 10000,
             "cg_tol": 1e-4,
         },
+        "observable_batch_size": 100,
     },
     "vmc_comments": {
         "num_mcmc_steps": "Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.",
@@ -119,6 +122,7 @@ cli_parameters = {
             "entries controlling the conjugate-gradient solver. For optax optimizers, the remaining keys are passed "
             "directly to optax (e.g., {method = 'adam', learning_rate = 1e-3})."
         ),
+        "observable_batch_size": "Batch size for post-update observable evaluation (please reduce if you hit OOM).",
     },
     "lrdmc": {
         "num_mcmc_steps": None,

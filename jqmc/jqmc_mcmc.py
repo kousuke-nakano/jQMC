@@ -65,7 +65,7 @@ from .hamiltonians import (
     Hamiltonian_data,
     compute_local_energy,
 )
-from .jastrow_factor import compute_Jastrow_part
+from .jastrow_factor import compute_Jastrow_part, compute_ratio_Jastrow_part
 from .jqmc_utility import _generate_init_electron_configurations
 from .setting import (
     MCMC_MIN_BIN_BLOCKS,
@@ -105,21 +105,12 @@ mpi_size = mpi_comm.Get_size()
 
 
 class MCMC:
-    """MCMC with multiple walker class.
+    """Production VMC/MCMC driver with multiple walkers.
 
-    MCMC class. Runing MCMC with multiple walkers. The independent 'num_walkers' MCMCs are
-    vectrized via the jax-vmap function.
-
-    Args:
-        hamiltonian_data (Hamiltonian_data): an instance of Hamiltonian_data.
-        mcmc_seed (int): seed for the MCMC chain.
-        num_walkers (int): the number of walkers.
-        num_mcmc_per_measurement (int): the number of MCMC steps between a value (e.g., local energy) measurement.
-        Dt (float): electron move step (bohr)
-        epsilon_AS (float): the exponent of the AS regularization
-        comput_param_deriv (bool): if True, compute the derivatives of E wrt. variational parameters.
-        comput_position_deriv (bool): if True, compute the derivatives of E wrt. atomic positions.
-        random_discretized_mesh (bool): Flag for the random quadrature mesh in the non-local part of ECPs. Valid only for ECP calculations.
+    This class drives Metropolis–Hastings sampling for many independent walkers in parallel
+    (vectorized with ``jax.vmap``) and stores all observables needed by downstream analysis
+    and optimization. All public methods are part of the supported API; private helpers are
+    internal and subject to change.
     """
 
     def __init__(
@@ -135,7 +126,24 @@ class MCMC:
         comput_position_deriv: bool = False,
         random_discretized_mesh: bool = True,
     ) -> None:
-        """Initialize a MCMC class, creating list holding results."""
+        """Build an MCMC driver and initialize walker state.
+
+        Args:
+            hamiltonian_data (Hamiltonian_data): Problem definition; ``sanity_check`` is called before sampling.
+            mcmc_seed (int, optional): Base RNG seed; folded with MPI rank/walker. Defaults to 34467.
+            num_walkers (int, optional): Number of walkers on this rank. Defaults to 40.
+            num_mcmc_per_measurement (int, optional): Proposals between observable evaluations. Defaults to 16.
+            Dt (float, optional): Electron displacement scale (bohr). Defaults to 2.0.
+            epsilon_AS (float, optional): Regularization exponent for antisymmetric stabilization. Defaults to 1e-1.
+            comput_param_deriv (bool, optional): Keep variational parameter derivatives. Defaults to False.
+            comput_position_deriv (bool, optional): Keep nuclear position derivatives. Defaults to False.
+            random_discretized_mesh (bool, optional): Randomize quadrature mesh for non-local ECP terms. Defaults to True.
+
+        Notes:
+            - Seeds are folded with MPI rank and walker index to avoid correlation.
+            - Initial electron configurations are placed near nuclei with balanced spins.
+            - Logger prints walker and Hamiltonian diagnostics during initialization.
+        """
         self.__mcmc_seed = mcmc_seed
         self.__num_walkers = num_walkers
         self.__num_mcmc_per_measurement = num_mcmc_per_measurement
@@ -290,11 +298,11 @@ class MCMC:
             "lambda_matrix": True,
         }
 
-    def param_gradient_flags(self) -> dict[str, bool]:
+    def __param_gradient_flags(self) -> dict[str, bool]:
         """Return a copy of the current per-block gradient flags."""
         return dict(self.__param_grad_flags)
 
-    def set_param_gradient_flags(self, **flags: bool | None) -> None:
+    def __set_param_gradient_flags(self, **flags: bool | None) -> None:
         """Update per-block gradient flags (True enables, False disables)."""
         allowed = set(self.__param_grad_flags)
         for name, value in flags.items():
@@ -358,12 +366,18 @@ class MCMC:
             "optax_param_size": optax_param_size,
         }
 
-    def run(self, num_mcmc_steps: int = 0, max_time=86400) -> None:
-        """Launch MCMCs with the set multiple walkers.
+    def run(self, num_mcmc_steps: int = 0, max_time=86400, observable_batch_size: int = 100) -> None:
+        """Execute Metropolis–Hastings sampling for all walkers.
 
         Args:
-            num_mcmc_steps (int): The number of total mcmc steps per walker.
-            max_time(int): Max elapsed time (sec.). If the elapsed time exceeds max_time, the methods exits the mcmc loop.
+            num_mcmc_steps (int, optional): Metropolis updates per walker; values <= 0 are no-ops. Defaults to 0.
+            max_time (int, optional): Wall-clock budget in seconds. Defaults to 86400.
+            observable_batch_size (int, optional): Batch size for observable accumulation. Defaults to 100.
+
+        Notes:
+            - Creates ``external_control_mcmc.toml`` to allow external stop requests.
+            - Accumulates energies, weights, forces, and wavefunction gradients into public buffers (``w_L``, ``e_L``, ``dln_Psi_*`` etc.).
+            - Logs timing statistics and acceptance ratios at the end of the run.
         """
         # timer_counter
         timer_mcmc_total = 0.0
@@ -377,6 +391,9 @@ class MCMC:
 
         # mcmc timer starts
         mcmc_total_start = time.perf_counter()
+
+        # observable batch size
+        observable_batch_size = int(observable_batch_size)
 
         # toml(control) filename
         toml_filename = "external_control_mcmc.toml"
@@ -571,18 +588,14 @@ class MCMC:
                     * (1.0 / (2.0 * f_prime_l**2 * Dt**2) - 1.0 / (2.0 * f_l**2 * Dt**2))
                 )
 
-                # original trial WFs
-                Jastrow_T_p = compute_Jastrow_part(
+                # Jastrow ratio via dedicated fast-update API (includes exp)
+                J_ratio = compute_ratio_Jastrow_part(
                     jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
-                    r_up_carts=proposed_r_up_carts,
-                    r_dn_carts=proposed_r_dn_carts,
-                )
-
-                Jastrow_T_o = compute_Jastrow_part(
-                    jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
-                    r_up_carts=r_up_carts,
-                    r_dn_carts=r_dn_carts,
-                )
+                    old_r_up_carts=r_up_carts,
+                    old_r_dn_carts=r_dn_carts,
+                    new_r_up_carts_arr=jnp.expand_dims(proposed_r_up_carts, axis=0),
+                    new_r_dn_carts_arr=jnp.expand_dims(proposed_r_dn_carts, axis=0),
+                )[0]
 
                 # Determinant part, fast update using the matrix determinant lemma
                 v = lax.cond(
@@ -648,7 +661,7 @@ class MCMC:
 
                 # modified trial WFs
                 R_AS_ratio = (R_AS_p_eps / R_AS_p) / (R_AS_o_eps / R_AS_o)
-                WF_ratio = jnp.exp(Jastrow_T_p - Jastrow_T_o) * (Det_T_ratio)
+                WF_ratio = J_ratio * Det_T_ratio
 
                 # compute R_ratio
                 R_ratio = (R_AS_ratio * WF_ratio) ** 2.0
@@ -1002,6 +1015,13 @@ class MCMC:
             self.__latest_r_dn_carts,
         )
 
+        # Histories to batch-evaluate observables after all position updates
+        r_up_history: list[jax.Array] = []
+        r_dn_history: list[jax.Array] = []
+        RT_history: list[jax.Array] = []
+        geminal_history: list[jax.Array] = []
+        geminal_inv_history: list[jax.Array] = []
+
         for i_mcmc_step in range(num_mcmc_steps):
             if (i_mcmc_step + 1) % mcmc_interval == 0:
                 progress = (i_mcmc_step + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
@@ -1058,8 +1078,8 @@ class MCMC:
             timer_mcmc_update += end - start
 
             # store vmapped outcomes
-            self.__accepted_moves += jnp.sum(accepted_moves_nw)
-            self.__rejected_moves += jnp.sum(rejected_moves_nw)
+            self.__accepted_moves = self.__accepted_moves + int(np.sum(np.asarray(accepted_moves_nw)))
+            self.__rejected_moves = self.__rejected_moves + int(np.sum(np.asarray(rejected_moves_nw)))
 
             # generate rotation matrices (for non-local ECPs)
             if self.__random_discretized_mesh:
@@ -1067,152 +1087,12 @@ class MCMC:
             else:
                 RTs = jnp.broadcast_to(jnp.eye(3), (len(self.__jax_PRNG_key_list), 3, 3))
 
-            # evaluate observables
-            start = time.perf_counter()
-            e_L = vmap(compute_local_energy, in_axes=(None, 0, 0, 0))(
-                self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs
-            )
-            e_L.block_until_ready()
-            end = time.perf_counter()
-            timer_e_L += end - start
-
-            self.__stored_e_L.append(e_L)
-            self.__stored_e_L2.append(e_L**2)
-
-            # compute AS regularization factors, R_AS and R_AS_eps
-            R_AS = vmap(compute_AS_regularization_factor_fast_update, in_axes=(0, 0))(geminal, geminal_inv)
-            R_AS_eps = jnp.maximum(R_AS, self.__epsilon_AS)
-
-            w_L = (R_AS / R_AS_eps) ** 2
-            if (i_mcmc_step + 1) % mcmc_interval == 0:
-                logger.devel(f"      min, mean, max of weights are {np.min(w_L):.2f}, {np.mean(w_L):.2f}, {np.max(w_L):.2f}.")
-            self.__stored_w_L.append(w_L)
-
-            """ deactivated for the time being
-            adjust_epsilon_AS = True
-            if adjust_epsilon_AS:
-                # Update adjust_epsilon_AS so that the average of weights approaches target_weight. Proportional control.
-                epsilon_AS_max = 1.0e-0
-                epsilon_AS_min = 0.0
-                gain_weight = 1.0e-2
-                target_weight = 0.8
-                torrelance_of_weight = 0.05
-
-                ## Calculate the average of weights
-                average_weight = np.mean(w_L)
-                average_weight = mpi_comm.allreduce(average_weight, op=MPI.SUM)
-                average_weight = average_weight / mpi_size
-                logger.debug(f"      The current epsilon_AS = {self.__epsilon_AS:.5f}")
-                logger.debug(f"      The current averaged weights = {average_weight:.2f}")
-
-                ## Calculate the error as the difference between the current average and the target
-                diff_weight = average_weight - target_weight
-
-                ## switch off self.__adjust_epsilon_AS:
-                if np.abs(diff_weight) < torrelance_of_weight:
-                    # logger.info(f"      The averaged weights is converged within the torrelance of {torrelance_of_weight:.5f}.")
-                    adjust_epsilon_AS = False
-                else:
-                    ## Update epsilon proportionally to the error
-                    self.__epsilon_AS = self.__epsilon_AS + gain_weight * diff_weight
-
-                    ## Clip new_epsilon to ensure it remains within defined bounds for stability
-                    self.__epsilon_AS = max(min(self.__epsilon_AS, epsilon_AS_max), epsilon_AS_min)
-
-                    logger.info(f"      epsilon_AS is updated to {self.__epsilon_AS:.5f}")
-            """
-
-            if self.__comput_position_deriv:
-                # """
-                start = time.perf_counter()
-                grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = vmap(
-                    grad(compute_local_energy, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0)
-                )(
-                    hamiltonian_for_param_grads,
-                    self.__latest_r_up_carts,
-                    self.__latest_r_dn_carts,
-                    RTs,
-                )
-                grad_e_L_r_up.block_until_ready()
-                grad_e_L_r_dn.block_until_ready()
-                end = time.perf_counter()
-                timer_de_L_dR_dr += end - start
-
-                self.__stored_grad_e_L_r_up.append(grad_e_L_r_up)
-                self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn)
-
-                grad_e_L_R = self.__hamiltonian_data.accumulate_position_grad(grad_e_L_h)
-                self.__stored_grad_e_L_dR.append(grad_e_L_R)
-                # """
-
-                # """
-                start = time.perf_counter()
-                grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = vmap(
-                    grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
-                )(
-                    wavefunction_for_param_grads,
-                    self.__latest_r_up_carts,
-                    self.__latest_r_dn_carts,
-                )
-                grad_ln_Psi_r_up.block_until_ready()
-                grad_ln_Psi_r_dn.block_until_ready()
-                end = time.perf_counter()
-                timer_dln_Psi_dR_dr += end - start
-
-                self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up)
-                self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn)
-
-                grad_ln_Psi_dR = self.__hamiltonian_data.wavefunction_data.accumulate_position_grad(grad_ln_Psi_h)
-                self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
-                # """
-
-                omega_up = vmap(evaluate_swct_omega, in_axes=(None, 0))(
-                    self.__swct_data,
-                    self.__latest_r_up_carts,
-                )
-
-                omega_dn = vmap(evaluate_swct_omega, in_axes=(None, 0))(
-                    self.__swct_data,
-                    self.__latest_r_dn_carts,
-                )
-
-                self.__stored_omega_up.append(omega_up)
-                self.__stored_omega_dn.append(omega_dn)
-
-                grad_omega_dr_up = vmap(evaluate_swct_domega, in_axes=(None, 0))(
-                    self.__swct_data,
-                    self.__latest_r_up_carts,
-                )
-
-                grad_omega_dr_dn = vmap(evaluate_swct_domega, in_axes=(None, 0))(
-                    self.__swct_data,
-                    self.__latest_r_dn_carts,
-                )
-
-                self.__stored_grad_omega_r_up.append(grad_omega_dr_up)
-                self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn)
-
-            if self.__comput_param_deriv:
-                start = time.perf_counter()
-                grad_ln_Psi_h = vmap(grad(evaluate_ln_wavefunction, argnums=0), in_axes=(None, 0, 0))(
-                    wavefunction_for_param_grads,
-                    self.__latest_r_up_carts,
-                    self.__latest_r_dn_carts,
-                )
-                param_grads = self.__hamiltonian_data.wavefunction_data.collect_param_grads(grad_ln_Psi_h)
-                flat_param_grads = self.__hamiltonian_data.wavefunction_data.flatten_param_grads(
-                    param_grads, self.__num_walkers
-                )
-
-                for name, grad_val in flat_param_grads.items():
-                    if not self.__param_grad_flags.get(name, True):
-                        continue
-                    self.__stored_param_grads[name].append(grad_val)
-                    if hasattr(grad_val, "block_until_ready"):
-                        grad_val.block_until_ready()
-
-                end = time.perf_counter()
-                timer_dln_Psi_dc += end - start
+            # Record states for later batched observable evaluations
+            r_up_history.append(self.__latest_r_up_carts)
+            r_dn_history.append(self.__latest_r_dn_carts)
+            RT_history.append(RTs)
+            geminal_history.append(geminal)
+            geminal_inv_history.append(geminal_inv)
 
             num_mcmc_done += 1
 
@@ -1234,6 +1114,141 @@ class MCMC:
                     logger.info(f"  Stopping... stop_flag in {toml_filename} is true.")
                     logger.info("  Break the mcmc loop.")
                     break
+
+        # Batch-evaluate observables after all position updates are finished
+        logger.info(
+            f"  Evaluating observables after all position updates for {num_mcmc_done} configs * {self.__num_walkers} walkers per MPI"
+        )
+        if num_mcmc_done > 0:
+            chunk_size = observable_batch_size
+            logger.info(f"  If you encounter an OOM here, try reducing observable_batch_size (current: {chunk_size}).")
+
+            for i_chunk, chunk_start in enumerate(range(0, num_mcmc_done, chunk_size)):
+                chunk_end = min(num_mcmc_done, chunk_start + chunk_size)
+                logger.info(f"  Processing chunk {i_chunk + 1}:")
+
+                r_up_chunk = jnp.stack(r_up_history[chunk_start:chunk_end])
+                r_dn_chunk = jnp.stack(r_dn_history[chunk_start:chunk_end])
+                RT_chunk = jnp.stack(RT_history[chunk_start:chunk_end])
+                geminal_chunk = jnp.stack(geminal_history[chunk_start:chunk_end])
+                geminal_inv_chunk = jnp.stack(geminal_inv_history[chunk_start:chunk_end])
+
+                # local energies
+                start = time.perf_counter()
+                logger.info("    Evaluating e_L ...")
+                e_L_chunk = vmap(
+                    lambda r_up_step, r_dn_step, RT_step: vmap(compute_local_energy, in_axes=(None, 0, 0, 0))(
+                        self.__hamiltonian_data, r_up_step, r_dn_step, RT_step
+                    ),
+                    in_axes=(0, 0, 0),
+                )(r_up_chunk, r_dn_chunk, RT_chunk)
+                e_L_chunk.block_until_ready()
+                end = time.perf_counter()
+                timer_e_L += end - start
+
+                for e_L in e_L_chunk:
+                    self.__stored_e_L.append(e_L)
+                    self.__stored_e_L2.append(e_L**2)
+
+                # AS weights
+                R_AS_chunk = vmap(lambda g, ginv: vmap(compute_AS_regularization_factor_fast_update, in_axes=(0, 0))(g, ginv))(
+                    geminal_chunk, geminal_inv_chunk
+                )
+                R_AS_eps_chunk = jnp.maximum(R_AS_chunk, self.__epsilon_AS)
+                w_L_chunk = (R_AS_chunk / R_AS_eps_chunk) ** 2
+
+                for w_L in w_L_chunk:
+                    self.__stored_w_L.append(w_L)
+
+                if self.__comput_position_deriv:
+                    start = time.perf_counter()
+                    logger.info("    Evaluating de_L/dR and de_L/dr ...")
+                    grad_e_L_h_chunk, grad_e_L_r_up_chunk, grad_e_L_r_dn_chunk = vmap(
+                        lambda r_up_step, r_dn_step, RT_step: vmap(
+                            grad(compute_local_energy, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0)
+                        )(hamiltonian_for_param_grads, r_up_step, r_dn_step, RT_step),
+                        in_axes=(0, 0, 0),
+                    )(r_up_chunk, r_dn_chunk, RT_chunk)
+                    grad_e_L_r_up_chunk.block_until_ready()
+                    grad_e_L_r_dn_chunk.block_until_ready()
+                    end = time.perf_counter()
+                    timer_de_L_dR_dr += end - start
+
+                    for local_idx in range(e_L_chunk.shape[0]):
+                        grad_e_L_h_step = jax.tree_util.tree_map(lambda x: x[local_idx], grad_e_L_h_chunk)
+                        grad_e_L_r_up_step = grad_e_L_r_up_chunk[local_idx]
+                        grad_e_L_r_dn_step = grad_e_L_r_dn_chunk[local_idx]
+                        self.__stored_grad_e_L_r_up.append(grad_e_L_r_up_step)
+                        self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn_step)
+                        grad_e_L_R = self.__hamiltonian_data.accumulate_position_grad(grad_e_L_h_step)
+                        self.__stored_grad_e_L_dR.append(grad_e_L_R)
+
+                    start = time.perf_counter()
+                    logger.info("    Evaluating dln_Psi/dR and dln_Psi/dr ...")
+                    grad_ln_Psi_h_chunk, grad_ln_Psi_r_up_chunk, grad_ln_Psi_r_dn_chunk = vmap(
+                        lambda r_up_step, r_dn_step: vmap(
+                            grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
+                        )(wavefunction_for_param_grads, r_up_step, r_dn_step),
+                        in_axes=(0, 0),
+                    )(r_up_chunk, r_dn_chunk)
+                    grad_ln_Psi_r_up_chunk.block_until_ready()
+                    grad_ln_Psi_r_dn_chunk.block_until_ready()
+                    end = time.perf_counter()
+                    timer_dln_Psi_dR_dr += end - start
+
+                    for local_idx in range(e_L_chunk.shape[0]):
+                        grad_ln_Psi_h_step = jax.tree_util.tree_map(lambda x: x[local_idx], grad_ln_Psi_h_chunk)
+                        grad_ln_Psi_r_up_step = grad_ln_Psi_r_up_chunk[local_idx]
+                        grad_ln_Psi_r_dn_step = grad_ln_Psi_r_dn_chunk[local_idx]
+                        self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up_step)
+                        self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn_step)
+                        grad_ln_Psi_dR = self.__hamiltonian_data.wavefunction_data.accumulate_position_grad(grad_ln_Psi_h_step)
+                        self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
+
+                    omega_up_chunk = vmap(lambda r_up: vmap(evaluate_swct_omega, in_axes=(None, 0))(self.__swct_data, r_up))(
+                        r_up_chunk
+                    )
+                    omega_dn_chunk = vmap(lambda r_dn: vmap(evaluate_swct_omega, in_axes=(None, 0))(self.__swct_data, r_dn))(
+                        r_dn_chunk
+                    )
+                    grad_omega_dr_up_chunk = vmap(
+                        lambda r_up: vmap(evaluate_swct_domega, in_axes=(None, 0))(self.__swct_data, r_up)
+                    )(r_up_chunk)
+                    grad_omega_dr_dn_chunk = vmap(
+                        lambda r_dn: vmap(evaluate_swct_domega, in_axes=(None, 0))(self.__swct_data, r_dn)
+                    )(r_dn_chunk)
+
+                    for omega_up, omega_dn, grad_omega_dr_up, grad_omega_dr_dn in zip(
+                        omega_up_chunk, omega_dn_chunk, grad_omega_dr_up_chunk, grad_omega_dr_dn_chunk, strict=True
+                    ):
+                        self.__stored_omega_up.append(omega_up)
+                        self.__stored_omega_dn.append(omega_dn)
+                        self.__stored_grad_omega_r_up.append(grad_omega_dr_up)
+                        self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn)
+
+                if self.__comput_param_deriv:
+                    start = time.perf_counter()
+                    logger.info("    Evaluating dln_Psi/dc ...")
+                    for r_up_step, r_dn_step in zip(r_up_chunk, r_dn_chunk, strict=True):
+                        grad_ln_Psi_h = vmap(grad(evaluate_ln_wavefunction, argnums=0), in_axes=(None, 0, 0))(
+                            wavefunction_for_param_grads,
+                            r_up_step,
+                            r_dn_step,
+                        )
+                        param_grads = self.__hamiltonian_data.wavefunction_data.collect_param_grads(grad_ln_Psi_h)
+                        flat_param_grads = self.__hamiltonian_data.wavefunction_data.flatten_param_grads(
+                            param_grads, self.__num_walkers
+                        )
+
+                        for name, grad_val in flat_param_grads.items():
+                            if not self.__param_grad_flags.get(name, True):
+                                continue
+                            self.__stored_param_grads[name].append(grad_val)
+                            if hasattr(grad_val, "block_until_ready"):
+                                grad_val.block_until_ready()
+
+                    end = time.perf_counter()
+                    timer_dln_Psi_dc += end - start
 
         # Barrier after MCMC operation
         start = time.perf_counter()
@@ -1282,8 +1297,8 @@ class MCMC:
         ave_timer_MPI_barrier = mpi_comm.allreduce(timer_MPI_barrier, op=MPI.SUM) / mpi_size / num_mcmc_done
         ave_timer_misc = mpi_comm.allreduce(timer_misc, op=MPI.SUM) / mpi_size / num_mcmc_done
         ave_stored_w_L = mpi_comm.allreduce(np.mean(self.__stored_w_L), op=MPI.SUM) / mpi_size
-        sum_accepted_moves = mpi_comm.allreduce(self.__accepted_moves, op=MPI.SUM)
-        sum_rejected_moves = mpi_comm.allreduce(self.__rejected_moves, op=MPI.SUM)
+        sum_accepted_moves = mpi_comm.allreduce(int(self.__accepted_moves), op=MPI.SUM)
+        sum_rejected_moves = mpi_comm.allreduce(int(self.__rejected_moves), op=MPI.SUM)
 
         logger.info(f"Total elapsed time for MCMC {num_mcmc_done} steps. = {ave_timer_mcmc_total:.2f} sec.")
         logger.info(f"Pre-compilation time for MCMC = {ave_timer_mcmc_update_init:.2f} sec.")
@@ -1307,16 +1322,20 @@ class MCMC:
         num_mcmc_warmup_steps: int = 50,
         num_mcmc_bin_blocks: int = 10,
     ) -> tuple[float, float]:
-        """Return the mean and std of the computed local energy.
+        """Estimate total energy and variance with jackknife error bars.
 
         Args:
-            num_mcmc_warmup_steps (int): the number of warmup steps.
-            num_mcmc_bin_blocks (int): the number of binning blocks
+            num_mcmc_warmup_steps (int, optional): Samples to discard as warmup. Defaults to 50.
+            num_mcmc_bin_blocks (int, optional): Number of jackknife blocks. Defaults to 10.
 
-        Return:
-            tuple[float, float, float, float]:
-                The mean and std values of the totat energy and those of the variance
-                estimated by the Jackknife method with the Args. (E_mean, E_std, Var_mean, Var_std).
+        Returns:
+            tuple[float, float, float, float]: ``(E_mean, E_std, Var_mean, Var_std)`` aggregated across MPI ranks.
+
+        Raises:
+            ValueError: If there are insufficient post-warmup samples to form the requested blocks.
+
+        Notes:
+            Warns when warmup or block counts fall below ``MCMC_MIN_WARMUP_STEPS`` / ``MCMC_MIN_BIN_BLOCKS``. All reductions are MPI-aware.
         """
         # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
         if num_mcmc_warmup_steps < MCMC_MIN_WARMUP_STEPS:
@@ -1423,17 +1442,17 @@ class MCMC:
         num_mcmc_warmup_steps: int = 50,
         num_mcmc_bin_blocks: int = 10,
     ):
-        """Return the mean and std of the computed atomic forces.
+        """Compute Hellmann–Feynman + Pulay forces with jackknife statistics.
 
         Args:
-            num_mcmc_warmup_steps (int): the number of warmup steps.
-            num_mcmc_bin_blocks (int): the number of binning blocks
+            num_mcmc_warmup_steps (int, optional): Samples to drop for warmup. Defaults to 50.
+            num_mcmc_bin_blocks (int, optional): Number of jackknife blocks. Defaults to 10.
 
-        Return:
-            tuple[npt.NDArray, npt.NDArray]:
-                The mean and std values of the computed atomic forces
-                estimated by the Jackknife method with the Args.
-                The dimention of the arrays is (N, 3).
+        Returns:
+            tuple[npt.NDArray, npt.NDArray]: ``(force_mean, force_std)`` shaped ``(num_atoms, 3)`` in Hartree/bohr.
+
+        Notes:
+            Uses stored per-walker weights, energies, wavefunction gradients, and SWCT terms accumulated during :meth:`run`; reductions are MPI-aware.
         """
         w_L = self.w_L[num_mcmc_warmup_steps:]
         e_L = self.e_L[num_mcmc_warmup_steps:]
@@ -1593,21 +1612,18 @@ class MCMC:
         num_mcmc_warmup_steps: int = 50,
         chosen_param_index: list | None = None,
     ):
-        """Return the derivativs of ln_WF wrt variational parameters.
+        """Assemble per-sample derivatives of ln Psi w.r.t. variational parameters.
 
         Args:
-            num_mcmc_warmup_steps (int):
-                The number of warmup steps.
-            chosen_param_index (list):
-                The chosen parameter index to compute the generalized forces.
-                if None, all parameters are used.
+            blocks (list[VariationalParameterBlock]): Ordered variational blocks used for concatenation.
+            num_mcmc_warmup_steps (int, optional): Samples to discard as warmup. Defaults to 50.
+            chosen_param_index (list | None, optional): Optional subset of flattened indices; ``None`` keeps all. Defaults to None.
 
-        Return:
-            O_matrix(npt.NDArray):
-                The matrix containing O_k = d ln Psi / dc_k,
-                where k is the flattened variational parameter index.
-                The dimenstion of O_matrix is (M, nw, k),
-                where M is the MCMC step and nw is the walker index.
+        Returns:
+            npt.NDArray: ``O_matrix`` with shape ``(M, num_walkers, K)`` after warmup, where ``K`` follows the provided blocks (or subset).
+
+        Notes:
+            Validates the concatenated gradient size against block metadata and uses gradients stored during :meth:`run`.
         """
         grad_map = self.dln_Psi_dc
 
@@ -1651,21 +1667,19 @@ class MCMC:
         chosen_param_index: list | None = None,
         blocks: list | None = None,
     ) -> tuple[npt.NDArray, npt.NDArray]:
-        """Compute the derivatives of E wrt variational parameters, a.k.a. generalized forces.
+        """Evaluate generalized forces (dE/dc_k) with jackknife error bars.
 
         Args:
-            num_mcmc_warmup_steps (int):
-                The number of warmup steps.
-            num_mcmc_bin_blocks (int):
-                the number of binning blocks
-            chosen_param_index (npt.NDArray):
-                The chosen parameter index to compute the generalized forces.
-                If None, all parameters are used.
+            num_mcmc_warmup_steps (int, optional): Samples to discard as warmup. Defaults to 50.
+            num_mcmc_bin_blocks (int, optional): Number of jackknife blocks. Defaults to 10.
+            chosen_param_index (list | None, optional): Optional subset of flattened indices. Defaults to None.
+            blocks (list | None, optional): Variational blocks for parameter ordering; defaults to current wavefunction blocks.
 
-        Return:
-            tuple[npt.NDArray, npt.NDArray]: mean and std of generalized forces.
-            Dim. is 1D vector with L elements, where L is the number of flattened
-            variational parameters.
+        Returns:
+            tuple[npt.NDArray, npt.NDArray]: ``(generalized_force_mean, generalized_force_std)`` as 1D vectors of length ``L`` after any filtering.
+
+        Notes:
+            Reuses :meth:`get_dln_WF` after warmup and applies jackknife statistics across MPI ranks.
         """
         w_L = self.w_L[num_mcmc_warmup_steps:]
         w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
@@ -1850,6 +1864,7 @@ class MCMC:
         max_time: int = 86400,
         num_mcmc_warmup_steps: int = 0,
         num_mcmc_bin_blocks: int = 100,
+        observable_batch_size: int | None = None,
         opt_J1_param: bool = True,
         opt_J2_param: bool = True,
         opt_J3_param: bool = True,
@@ -1858,45 +1873,28 @@ class MCMC:
         num_param_opt: int = 0,
         optimizer_kwargs: dict | None = None,
     ):
-        """Optimizing wavefunction.
-
-        Optimizing Wavefunction using the Stochastic Reconfiguration Method.
+        """Optimize wavefunction parameters using SR or optax.
 
         Args:
-            num_mcmc_steps(int):
-                The number of MCMC samples per walker.
-            num_opt_steps(int):
-                The number of WF optimization step.
-            wf_dump_freq(int):
-                The frequency of WF data (i.e., hamiltonian_data.chk)
-            max_time(int):
-                The maximum time (sec.) If maximum time exceeds,
-                the method exits the MCMC loop.
-            num_mcmc_warmup_steps (int):
-                number of equilibration steps.
-            num_mcmc_bin_blocks (int):
-                number of blocks for reblocking.
-            opt_J1_param (bool):
-                optimize one-body Jastrow # to be implemented.
-            opt_J2_param (bool):
-                optimize two-body Jastrow
-            opt_J3_param (bool):
-                optimize analytic three-body Jastrow parameters
-            opt_JNN_param (bool):
-                optimize neural-network Jastrow parameters
-            opt_lambda_param (bool):
-                optimize lambda_matrix in the determinant part.
-            num_param_opt (int):
-                the number of parameters to optimize in the descending order of ``|f|/|std f|``.
-                If zero, all parameters are optimized.
-            optimizer_kwargs (dict | None):
-                Dictionary that configures the optimizer. The ``method`` entry selects the backend: ``"sr"``
-                (default) keeps the stochastic reconfiguration workflow; any other value should be the name of an
-                optax optimizer (e.g., ``"adam"``, ``"sgd"``). When ``method == "sr"``, the recognized keys are
-                ``delta`` (prefactor in ``c_i <- c_i + delta * S^{-1} f``), ``epsilon`` (regularization strength added
-                to ``S``), ``cg_flag``, ``cg_max_iter``, and ``cg_tol``. When another optimizer is selected, the
-                remaining dictionary entries are forwarded directly to the optax constructor (for example,
-                ``{"learning_rate": 1.0e-3}``).
+            num_mcmc_steps (int, optional): MCMC samples per walker per iteration. Defaults to 100.
+            num_opt_steps (int, optional): Number of optimization iterations. Defaults to 1.
+            wf_dump_freq (int, optional): Dump frequency for ``hamiltonian_data.chk``. Defaults to 10.
+            max_time (int, optional): Per-iteration MCMC wall-clock budget (sec). Defaults to 86400.
+            num_mcmc_warmup_steps (int, optional): Warmup samples discarded each iteration. Defaults to 0.
+            num_mcmc_bin_blocks (int, optional): Jackknife bins for statistics. Defaults to 100.
+            observable_batch_size (int | None, optional): Optional override for :meth:`run` batch size. Defaults to None.
+            opt_J1_param (bool, optional): Optimize one-body Jastrow. Defaults to True.
+            opt_J2_param (bool, optional): Optimize two-body Jastrow. Defaults to True.
+            opt_J3_param (bool, optional): Optimize three-body Jastrow. Defaults to True.
+            opt_JNN_param (bool, optional): Optimize NN Jastrow. Defaults to True.
+            opt_lambda_param (bool, optional): Optimize determinant lambda matrix. Defaults to False.
+            num_param_opt (int, optional): Limit parameters updated (ranked by ``|f|/|std f|``); ``0`` means all. Defaults to 0.
+            optimizer_kwargs (dict | None, optional): Optimizer configuration. ``method='sr'`` uses SR keys (``delta``, ``epsilon``, ``cg_flag``, ``cg_max_iter``, ``cg_tol``); other ``method`` names are optax constructors (e.g., ``"adam"``) and receive remaining keys.
+
+        Notes:
+            - Persists optax optimizer state across calls when method and hyperparameters match.
+            - Writes ``external_control_opt.toml`` to allow external stop requests.
+            - Updates :class:`Hamiltonian_data` in-place and increments the optimization counter.
         """
         optax_supported = {
             "sgd": optax.sgd,
@@ -1996,7 +1994,7 @@ class MCMC:
             logger.info("  Hyperparameters: %s", ", ".join(f"{k}={v}" for k, v in sorted(optimizer_hparams.items())))
             logger.info("")
 
-        self.set_param_gradient_flags(
+        self.__set_param_gradient_flags(
             j1_param=opt_J1_param,
             j2_param=opt_J2_param,
             j3_matrix=opt_J3_param,
@@ -2035,7 +2033,7 @@ class MCMC:
             logger.info("")
 
             # run MCMC
-            self.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
+            self.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time, observable_batch_size=observable_batch_size)
 
             # get E
             E, E_std, _, _ = self.get_E(num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks)
@@ -2594,12 +2592,17 @@ class MCMC:
     # hamiltonian
     @property
     def hamiltonian_data(self):
-        """Return hamiltonian_data."""
+        """Access the mutable :class:`Hamiltonian_data` backing this sampler."""
         return self.__hamiltonian_data
 
     @hamiltonian_data.setter
     def hamiltonian_data(self, hamiltonian_data):
-        """Set hamiltonian_data."""
+        """Set :class:`Hamiltonian_data`, applying masks for gradient tracking.
+
+        When only parameter or position derivatives are requested, the incoming Hamiltonian
+        is wrapped with ``DiffMask`` to avoid tracing disabled parts. Setting this property
+        reinitializes internal storage buffers.
+        """
         if self.__comput_param_deriv and not self.__comput_position_deriv:
             self.__hamiltonian_data = apply_diff_mask(hamiltonian_data, DiffMask(params=True, coords=False))
         elif not self.__comput_param_deriv and self.__comput_position_deriv:
@@ -2614,7 +2617,7 @@ class MCMC:
     # dimensions of observables
     @property
     def mcmc_counter(self) -> int:
-        """Return current MCMC counter."""
+        """Number of Metropolis steps accumulated (rows in stored observables)."""
         return self.__mcmc_counter
 
     @property
@@ -2707,7 +2710,7 @@ class MCMC:
         return self.__comput_param_deriv
 
 
-class MCMC_debug:
+class _MCMC_debug:
     """MCMC with multiple walker class.
 
     MCMC class. Runing MCMC with multiple walkers. The independent 'num_walkers' MCMCs are
@@ -2817,9 +2820,9 @@ class MCMC_debug:
         # mcmc counter
         self.__mcmc_counter = 0
 
-        # mcmc accepted/rejected moves
-        self.__accepted_moves = 0
-        self.__rejected_moves = 0
+        # mcmc accepted/rejected moves (kept on device; convert to host only when logging)
+        self.__accepted_moves = jnp.array(0, dtype=jnp.int64)
+        self.__rejected_moves = jnp.array(0, dtype=jnp.int64)
 
         # stored weight (w_L)
         self.__stored_w_L = []
@@ -3108,8 +3111,8 @@ class MCMC_debug:
                     jax_PRNG_key_list[i_walker] = jax_PRNG_key
 
             # store vmapped outcomes
-            self.__accepted_moves += jnp.sum(accepted_moves_nw)
-            self.__rejected_moves += jnp.sum(rejected_moves_nw)
+            self.__accepted_moves = self.__accepted_moves + np.sum(accepted_moves_nw)
+            self.__rejected_moves = self.__rejected_moves + np.sum(rejected_moves_nw)
             self.__latest_r_up_carts = jnp.array(latest_r_up_carts)
             self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts)
             self.__jax_PRNG_key_list = jnp.array(jax_PRNG_key_list)

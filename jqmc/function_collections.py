@@ -45,7 +45,7 @@ jax.config.update("jax_traceback_filtering", "off")
 
 
 @jit
-def legendre_tablated(n: int, x: float) -> float:
+def _legendre_tablated(n: int, x: float) -> float:
     """Tabulated Legendre polynomials.
 
     # see https://en.wikipedia.org/wiki/Legendre_polynomials

@@ -130,7 +130,7 @@ def compute_G_L(w_L, num_gfmc_collect_steps):
     return G_L
 
 
-def compute_G_L_debug(w_L, num_gfmc_collect_steps):
+def _compute_G_L_debug(w_L, num_gfmc_collect_steps):
     """Return accumulate weights for multi-dimensional w_L.
 
     Note: The dimension of w_L is (num_mcmc, num_walkers)
@@ -1435,7 +1435,7 @@ class GFMC_fixed_projection_time:
         return (E_mean, E_std, Var_mean, Var_std)
 
 
-class GFMC_fixed_projection_time_debug:
+class _GFMC_fixed_projection_time_debug:
     """GFMC class.
 
     GFMC class. Runing GFMC.
@@ -1572,7 +1572,7 @@ class GFMC_fixed_projection_time_debug:
     def w_L(self) -> npt.NDArray:
         """Return the stored weight array. dim: (mcmc_counter, 1)."""
         # logger.info(f"np.array(self.__stored_w_L).shape = {np.array(self.__stored_w_L).shape}.")
-        return compute_G_L_debug(np.array(self.__stored_w_L), self.__num_gfmc_collect_steps)
+        return _compute_G_L_debug(np.array(self.__stored_w_L), self.__num_gfmc_collect_steps)
 
     # observables
     @property
@@ -4299,7 +4299,7 @@ class GFMC_fixed_num_projection:
         return (force_mean, force_std)
 
 
-class GFMC_fixed_num_projection_debug:
+class _GFMC_fixed_num_projection_debug:
     """GFMC class. Runing GFMC with multiple walkers.
 
     Args:
@@ -4480,7 +4480,7 @@ class GFMC_fixed_num_projection_debug:
     def w_L(self) -> npt.NDArray:
         """Return the stored weight array. dim: (mcmc_counter, 1)."""
         # logger.info(f"np.array(self.__stored_w_L).shape = {np.array(self.__stored_w_L).shape}.")
-        return compute_G_L_debug(np.array(self.__stored_w_L), self.__num_gfmc_collect_steps)
+        return _compute_G_L_debug(np.array(self.__stored_w_L), self.__num_gfmc_collect_steps)
 
     # observables
     @property
@@ -5489,7 +5489,7 @@ class GFMC_fixed_num_projection_debug:
 
             w_L_eq = jnp.array(w_L_eq)
             e_L_eq = jnp.array(e_L_eq)
-            G_eq = compute_G_L_debug(w_L_eq, num_gfmc_collect_steps)
+            G_eq = _compute_G_L_debug(w_L_eq, num_gfmc_collect_steps)
             G_e_L_eq = e_L_eq * G_eq
             G_eq = np.array(G_eq)
             G_e_L_eq = np.array(G_e_L_eq)

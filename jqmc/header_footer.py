@@ -46,7 +46,7 @@ except (ModuleNotFoundError, ImportError):
     jqmc_version = "unknown"
 
 
-def print_header() -> None:
+def _print_header() -> None:
     """Print Header."""
     logger.info(f"Program starts {datetime.today().strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info("")
@@ -76,6 +76,6 @@ def print_header() -> None:
     logger.info("")
 
 
-def print_footer() -> None:
+def _print_footer() -> None:
     """Print Footer."""
     logger.info(f"Program ends {datetime.today().strftime('%Y-%m-%d %H:%M:%S')}")

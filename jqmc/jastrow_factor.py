@@ -1139,10 +1139,28 @@ class Jastrow_three_body_data:
             raise NotImplementedError
 
     @classmethod
-    def init_jastrow_three_body_data(cls, orb_data: AOs_sphe_data | AOs_cart_data | MOs_data):
-        """Initialization."""
-        j_matrix = np.zeros((orb_data._num_orb, orb_data._num_orb + 1))
-        # j_matrix = np.random.uniform(0.01, 0.10, size=(orb_data.num_orb, orb_data.num_orb + 1))
+    def init_jastrow_three_body_data(
+        cls,
+        orb_data: AOs_sphe_data | AOs_cart_data | MOs_data,
+        random_init: bool = False,
+        random_scale: float = 0.01,
+        seed: int | None = None,
+    ):
+        """Initialization.
+
+        Args:
+            orb_data: Orbital container (AOs or MOs) used to size the J-matrix.
+            random_init: If True, initialize with small random values instead of zeros (for tests).
+            random_scale: Upper bound of uniform sampler when random_init is True (default 0.01).
+            seed: Optional seed for deterministic initialization when random_init is True.
+        """
+
+        if random_init:
+            rng = np.random.default_rng(seed)
+            j_matrix = rng.uniform(0.0, random_scale, size=(orb_data._num_orb, orb_data._num_orb + 1))
+        else:
+            j_matrix = np.zeros((orb_data._num_orb, orb_data._num_orb + 1))
+
         jastrow_three_body_data = cls(
             orb_data=orb_data,
             j_matrix=j_matrix,
