@@ -46,6 +46,7 @@ import toml
 from jax import grad, jit, lax, vmap
 from jax import numpy as jnp
 from jax import typing as jnpt
+from jax.scipy import linalg as jsp_linalg
 from mpi4py import MPI
 
 from .coulomb_potential import (
@@ -2555,7 +2556,8 @@ class GFMC_fixed_num_projection:
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                 )
-                A_old_inv = jnp.linalg.inv(geminal)
+                lu, piv = jsp_linalg.lu_factor(geminal)
+                A_old_inv = jsp_linalg.lu_solve((lu, piv), jnp.eye(geminal.shape[0], dtype=geminal.dtype))
 
                 # compute discretized kinetic energy and mesh (with a random rotation)
                 mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
@@ -2840,7 +2842,8 @@ class GFMC_fixed_num_projection:
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                 )
-                A_old_inv = jnp.linalg.inv(geminal)
+                lu, piv = jsp_linalg.lu_factor(geminal)
+                A_old_inv = jsp_linalg.lu_solve((lu, piv), jnp.eye(geminal.shape[0], dtype=geminal.dtype))
 
                 # compute discretized kinetic energy and mesh (with a random rotation)
                 _, _, elements_non_diagonal_kinetic_part = compute_discretized_kinetic_energy_fast_update(
