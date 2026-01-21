@@ -2476,6 +2476,20 @@ class GFMC_n:
 
         gfmc_total_start = time.perf_counter()
 
+        # precompute geminal inverses per walker for fast updates across projections
+        def _compute_initial_A_inv_n(r_up_carts, r_dn_carts):
+            geminal = compute_geminal_all_elements(
+                geminal_data=self.__hamiltonian_data.wavefunction_data.geminal_data,
+                r_up_carts=r_up_carts,
+                r_dn_carts=r_dn_carts,
+            )
+            lu, piv = jsp_linalg.lu_factor(geminal)
+            return jsp_linalg.lu_solve((lu, piv), jnp.eye(geminal.shape[0], dtype=geminal.dtype))
+
+        self.__latest_A_old_inv = vmap(_compute_initial_A_inv_n, in_axes=(0, 0))(
+            self.__latest_r_up_carts, self.__latest_r_dn_carts
+        )
+
         # projection function.
         @jit
         def _generate_rotation_matrix_n(alpha, beta, gamma):
@@ -2494,11 +2508,12 @@ class GFMC_n:
             )
             return R
 
-        @partial(jit, static_argnums=(5, 6, 7))
+        @partial(jit, static_argnums=(6, 7, 8))
         def _projection_n(
             init_w_L: float,
             init_r_up_carts: jnpt.ArrayLike,
             init_r_dn_carts: jnpt.ArrayLike,
+            init_A_old_inv: jnpt.ArrayLike,
             init_jax_PRNG_key: jnpt.ArrayLike,
             E_scf: float,
             num_mcmc_per_measurement: int,
@@ -2527,6 +2542,7 @@ class GFMC_n:
                 latest_w_L (float): weight after the final projection
                 latest_r_up_carts (N_e^up, 3) after the final projection
                 latest_r_dn_carts (N_e^dn, 3) after the final projection
+                latest_A_old_inv: cached inverse geminal matrix after the final projection
                 latest_RT (3, 3) rotation matrix used in the last projection
                 latest_V_diag (float): diagonal part of H (importance sampled) at the last projection
                 latest_V_nondiag (float): non-diagonal part of H (importance sampled) at the last projection
@@ -2896,15 +2912,6 @@ class GFMC_n:
                 )
                 return carry
 
-            # precompute geminal inverse for fast updates (single-electron moves)
-            geminal = compute_geminal_all_elements(
-                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                r_up_carts=init_r_up_carts,
-                r_dn_carts=init_r_dn_carts,
-            )
-            lu, piv = jsp_linalg.lu_factor(geminal)
-            A_old_inv_init = jsp_linalg.lu_solve((lu, piv), jnp.eye(geminal.shape[0], dtype=geminal.dtype))
-
             def _split_step_keys(key, num_steps):
                 def _split_body(current_key, _):
                     current_key, rot_key = jax.random.split(current_key)
@@ -2920,7 +2927,7 @@ class GFMC_n:
                 latest_r_up_carts,
                 latest_r_dn_carts,
                 latest_RT,
-                _,
+                latest_A_old_inv,
                 latest_diagonal_sum_hamiltonian,
                 latest_non_diagonal_sum_hamiltonian,
             ) = jax.lax.fori_loop(
@@ -2932,7 +2939,7 @@ class GFMC_n:
                     init_r_up_carts,
                     init_r_dn_carts,
                     jnp.eye(3),
-                    A_old_inv_init,
+                    init_A_old_inv,
                     jnp.asarray(0.0),
                     jnp.asarray(0.0),
                 ),
@@ -2942,6 +2949,7 @@ class GFMC_n:
                 latest_w_L,
                 latest_r_up_carts,
                 latest_r_dn_carts,
+                latest_A_old_inv,
                 latest_jax_PRNG_key,
                 latest_RT,
                 latest_diagonal_sum_hamiltonian,
@@ -3246,13 +3254,15 @@ class GFMC_n:
             _,
             _,
             _,
+            _,
             RTs,
             _,
             _,
-        ) = vmap(_projection_n, in_axes=(0, 0, 0, 0, None, None, None, None, None, None))(
+        ) = vmap(_projection_n, in_axes=(0, 0, 0, 0, 0, None, None, None, None, None, None))(
             w_L_list,
             self.__latest_r_up_carts,
             self.__latest_r_dn_carts,
+            self.__latest_A_old_inv,
             self.__jax_PRNG_key_list,
             self.__E_scf,
             self.__num_mcmc_per_measurement,
@@ -3317,14 +3327,16 @@ class GFMC_n:
                 w_L_list,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
+                self.__latest_A_old_inv,
                 self.__jax_PRNG_key_list,
                 latest_RTs,
                 V_diag_list,
                 V_nondiag_list,
-            ) = vmap(_projection_n, in_axes=(0, 0, 0, 0, None, None, None, None, None, None))(
+            ) = vmap(_projection_n, in_axes=(0, 0, 0, 0, 0, None, None, None, None, None, None))(
                 w_L_list,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
+                self.__latest_A_old_inv,
                 self.__jax_PRNG_key_list,
                 self.__E_scf,
                 self.__num_mcmc_per_measurement,
@@ -3338,6 +3350,7 @@ class GFMC_n:
             w_L_list.block_until_ready()
             self.__latest_r_up_carts.block_until_ready()
             self.__latest_r_dn_carts.block_until_ready()
+            self.__latest_A_old_inv.block_until_ready()
             self.__jax_PRNG_key_list.block_until_ready()
 
             end_projection = time.perf_counter()
@@ -3850,6 +3863,9 @@ class GFMC_n:
             self.__num_killed_walkers += num_killed_walkers
             self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
             self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
+            self.__latest_A_old_inv = vmap(_compute_initial_A_inv_n, in_axes=(0, 0))(
+                self.__latest_r_up_carts, self.__latest_r_dn_carts
+            )
 
             mpi_comm.Barrier()
 

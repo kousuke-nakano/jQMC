@@ -11,7 +11,7 @@ from jqmc.jastrow_factor import (
     Jastrow_one_body_data,
     Jastrow_two_body_data,
 )
-from jqmc.jqmc_gfmc import GFMC_fixed_num_projection
+from jqmc.jqmc_gfmc import GFMC_n
 from jqmc.jqmc_mcmc import MCMC
 from jqmc.trexio_wrapper import read_trexio_file
 from jqmc.wavefunction import Wavefunction_data
@@ -150,7 +150,7 @@ lrdmc_results = []
 for alat in alats:
     logger.info(f"Starting LRDMC with alat={alat}...")
 
-    lrdmc = GFMC_fixed_num_projection(
+    lrdmc = GFMC_n(
         hamiltonian_data=optimized_hamiltonian,
         num_walkers=2000,
         num_mcmc_per_measurement=1,
