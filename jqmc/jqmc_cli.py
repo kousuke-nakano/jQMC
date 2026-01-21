@@ -193,6 +193,9 @@ def _cli():
     _print_header()
 
     # jax-MPI related
+    # Avoid JAX distributed init warnings/hangs due to proxy env vars.
+    for _proxy_var in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
+        os.environ.pop(_proxy_var, None)
     try:
         jax.distributed.initialize(cluster_detection_method="mpi4py")
         logger.info("JAX distributed initialization is successful.")

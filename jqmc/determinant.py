@@ -48,7 +48,6 @@ import numpy as np
 import numpy.typing as npt
 from flax import struct
 from jax import jit, vmap
-from jax import typing as jnpt
 
 from .atomic_orbital import (
     AOs_cart_data,
@@ -734,7 +733,6 @@ def compute_geminal_dn_one_column_elements(
     return col
 
 
-# no longer used in the main code
 @jit
 def compute_ratio_determinant_part(
     geminal_data: Geminal_data,
@@ -762,14 +760,31 @@ def compute_ratio_determinant_part(
         geminal_data.lambda_matrix, indices_or_sections=[geminal_data.orb_num_dn], axis=1
     )
 
+    num_up = old_r_up_carts.shape[0]
+    num_dn = old_r_dn_carts.shape[0]
+    if num_up == 0 or num_dn == 0:
+        det_x = compute_det_geminal_all_elements(geminal_data, old_r_up_carts, old_r_dn_carts)
+        det_xp = vmap(compute_det_geminal_all_elements, in_axes=(None, 0, 0))(
+            geminal_data, new_r_up_carts_arr, new_r_dn_carts_arr
+        )
+        return det_xp / det_x
+
     def compute_one_grid(
         A_old_inv, lambda_matrix_paired, lambda_matrix_unpaired, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts
     ):
         delta_up = new_r_up_carts - old_r_up_carts
         delta_dn = new_r_dn_carts - old_r_dn_carts
-        up_all_zero = jnp.all(delta_up == 0.0)
-
-        diff = jax.lax.cond(up_all_zero, lambda _: delta_dn, lambda _: delta_up, operand=None)
+        num_up = old_r_up_carts.shape[0]
+        num_dn = old_r_dn_carts.shape[0]
+        if num_up == 0:
+            up_all_zero = True
+            diff = delta_dn
+        elif num_dn == 0:
+            up_all_zero = False
+            diff = delta_up
+        else:
+            up_all_zero = jnp.all(delta_up == 0.0)
+            diff = jax.lax.cond(up_all_zero, lambda _: delta_dn, lambda _: delta_up, operand=None)
         nonzero_in_rows = jnp.any(diff != 0.0, axis=1)
         idx = jnp.argmax(nonzero_in_rows)
 
@@ -821,7 +836,6 @@ def compute_ratio_determinant_part(
     return determinant_ratios
 
 
-# no longer used in the main code
 def _compute_ratio_determinant_part_debug(
     geminal_data: Geminal_data,
     old_r_up_carts: npt.NDArray[np.float64],
