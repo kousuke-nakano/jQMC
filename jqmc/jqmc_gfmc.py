@@ -2494,7 +2494,7 @@ class GFMC_n:
             )
             return R
 
-        @partial(jit, static_argnums=(6, 7))
+        @partial(jit, static_argnums=(5, 6, 7))
         def _projection_n(
             init_w_L: float,
             init_r_up_carts: jnpt.ArrayLike,
@@ -2533,12 +2533,11 @@ class GFMC_n:
             """
 
             @jit
-            def _body_fun_n(_, carry):
+            def _body_fun_n(i, carry):
                 (
                     w_L,
                     r_up_carts,
                     r_dn_carts,
-                    jax_PRNG_key,
                     RT,
                     A_old_inv,
                     _,
@@ -2558,10 +2557,10 @@ class GFMC_n:
                 )
 
                 # generate a random rotation matrix
-                jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
+                rot_key = rotation_keys[i]
                 if random_discretized_mesh:
                     alpha, beta, gamma = jax.random.uniform(
-                        subkey, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi
+                        rot_key, shape=(3,), minval=-2 * jnp.pi, maxval=2 * jnp.pi
                     )  # Rotation angle around the x,y,z-axis (in radians)
                 else:
                     alpha, beta, gamma = (0.0, 0.0, 0.0)
@@ -2800,9 +2799,9 @@ class GFMC_n:
 
                 # electron position update
                 # random choice
-                jax_PRNG_key, subkey = jax.random.split(jax_PRNG_key)
+                move_key = move_keys[i]
                 cdf = jnp.cumsum(non_diagonal_move_probabilities)
-                random_value = jax.random.uniform(subkey, minval=0.0, maxval=1.0)
+                random_value = jax.random.uniform(move_key, minval=0.0, maxval=1.0)
                 k = jnp.searchsorted(cdf, random_value)
                 proposed_r_up_carts = non_diagonal_move_mesh_r_up_carts[k]
                 proposed_r_dn_carts = non_diagonal_move_mesh_r_dn_carts[k]
@@ -2890,7 +2889,6 @@ class GFMC_n:
                     w_L,
                     r_up_carts,
                     r_dn_carts,
-                    jax_PRNG_key,
                     R.T,
                     A_new_inv,
                     diagonal_sum_hamiltonian,
@@ -2907,11 +2905,20 @@ class GFMC_n:
             lu, piv = jsp_linalg.lu_factor(geminal)
             A_old_inv_init = jsp_linalg.lu_solve((lu, piv), jnp.eye(geminal.shape[0], dtype=geminal.dtype))
 
+            def _split_step_keys(key, num_steps):
+                def _split_body(current_key, _):
+                    current_key, rot_key = jax.random.split(current_key)
+                    current_key, move_key = jax.random.split(current_key)
+                    return current_key, (rot_key, move_key)
+
+                return lax.scan(_split_body, key, xs=None, length=num_steps)
+
+            latest_jax_PRNG_key, (rotation_keys, move_keys) = _split_step_keys(init_jax_PRNG_key, num_mcmc_per_measurement)
+
             (
                 latest_w_L,
                 latest_r_up_carts,
                 latest_r_dn_carts,
-                latest_jax_PRNG_key,
                 latest_RT,
                 _,
                 latest_diagonal_sum_hamiltonian,
@@ -2924,7 +2931,6 @@ class GFMC_n:
                     init_w_L,
                     init_r_up_carts,
                     init_r_dn_carts,
-                    init_jax_PRNG_key,
                     jnp.eye(3),
                     A_old_inv_init,
                     jnp.asarray(0.0),
