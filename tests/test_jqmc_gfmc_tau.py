@@ -53,7 +53,7 @@ from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_three_body_data,
     Jastrow_two_body_data,
 )
-from jqmc.jqmc_gfmc import GFMC_fixed_projection_time, _GFMC_fixed_projection_time_debug  # noqa: E402
+from jqmc.jqmc_gfmc import GFMC_t, _GFMC_t_debug  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import Wavefunction_data  # noqa: E402
 
@@ -132,7 +132,7 @@ def test_jqmc_gfmc_fixed_projection_time_tmove(trexio_file, with_nn_jastrow, wit
     non_local_move = "tmove"
 
     # run LRDMC single-shots
-    gfmc_debug = _GFMC_fixed_projection_time_debug(
+    gfmc_debug = _GFMC_t_debug(
         hamiltonian_data=hamiltonian_data,
         num_walkers=num_walkers,
         num_gfmc_collect_steps=num_gfmc_collect_steps,
@@ -144,7 +144,7 @@ def test_jqmc_gfmc_fixed_projection_time_tmove(trexio_file, with_nn_jastrow, wit
     gfmc_debug.run(num_mcmc_steps=num_mcmc_steps)
 
     # run LRDMC single-shots
-    gfmc_jax = GFMC_fixed_projection_time(
+    gfmc_jax = GFMC_t(
         hamiltonian_data=hamiltonian_data,
         num_walkers=num_walkers,
         num_gfmc_collect_steps=num_gfmc_collect_steps,

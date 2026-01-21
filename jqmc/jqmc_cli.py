@@ -51,7 +51,7 @@ from .hamiltonians import Hamiltonian_data
 
 # jQMC
 from .header_footer import _print_footer, _print_header
-from .jqmc_gfmc import GFMC_fixed_num_projection, GFMC_fixed_projection_time
+from .jqmc_gfmc import GFMC_n, GFMC_t
 from .jqmc_mcmc import MCMC
 from .jqmc_miscs import cli_parameters
 
@@ -536,7 +536,7 @@ def _cli():
         else:
             hamiltonian_data = Hamiltonian_data.load_from_hdf5(hamiltonian_h5)
 
-            lrdmc = GFMC_fixed_num_projection(
+            lrdmc = GFMC_n(
                 hamiltonian_data=hamiltonian_data,
                 num_walkers=number_of_walkers,
                 num_mcmc_per_measurement=num_mcmc_per_measurement,
@@ -642,7 +642,7 @@ def _cli():
         else:
             hamiltonian_data = Hamiltonian_data.load_from_hdf5(hamiltonian_h5)
 
-            lrdmc = GFMC_fixed_projection_time(
+            lrdmc = GFMC_t(
                 hamiltonian_data=hamiltonian_data,
                 num_walkers=number_of_walkers,
                 tau=tau,

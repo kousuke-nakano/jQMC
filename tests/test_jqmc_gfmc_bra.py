@@ -53,7 +53,7 @@ from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_three_body_data,
     Jastrow_two_body_data,
 )
-from jqmc.jqmc_gfmc import GFMC_fixed_num_projection, _GFMC_fixed_num_projection_debug  # noqa: E402
+from jqmc.jqmc_gfmc import GFMC_n, _GFMC_n_debug  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import Wavefunction_data  # noqa: E402
 
@@ -133,7 +133,7 @@ def test_jqmc_gfmc_fixed_number_of_branching_tmove(trexio_file, with_nn_jastrow,
     non_local_move = "tmove"
 
     # run LRDMC single-shots
-    gfmc_debug = _GFMC_fixed_num_projection_debug(
+    gfmc_debug = _GFMC_n_debug(
         hamiltonian_data=hamiltonian_data,
         num_walkers=num_walkers,
         num_mcmc_per_measurement=num_mcmc_per_measurement,
@@ -148,7 +148,7 @@ def test_jqmc_gfmc_fixed_number_of_branching_tmove(trexio_file, with_nn_jastrow,
     gfmc_debug.run(num_mcmc_steps=num_mcmc_steps)
 
     # run LRDMC single-shots
-    gfmc_jax = GFMC_fixed_num_projection(
+    gfmc_jax = GFMC_n(
         hamiltonian_data=hamiltonian_data,
         num_walkers=num_walkers,
         num_mcmc_per_measurement=num_mcmc_per_measurement,
@@ -159,6 +159,7 @@ def test_jqmc_gfmc_fixed_number_of_branching_tmove(trexio_file, with_nn_jastrow,
         random_discretized_mesh=True,
         comput_position_deriv=True,
         non_local_move=non_local_move,
+        debug_mode=True,
     )
     gfmc_jax.run(num_mcmc_steps=num_mcmc_steps)
 

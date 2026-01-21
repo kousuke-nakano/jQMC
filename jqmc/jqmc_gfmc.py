@@ -121,7 +121,7 @@ mpi_size = mpi_comm.Get_size()
 
 # accumurate weights
 @partial(jit, static_argnums=1)
-def compute_G_L(w_L, num_gfmc_collect_steps):
+def _compute_G_L(w_L, num_gfmc_collect_steps):
     """Return accumulate weights for multi-dimensional w_L.
 
     Note: The dimension of w_L is (num_mcmc, 1)
@@ -157,7 +157,7 @@ def _compute_G_L_debug(w_L, num_gfmc_collect_steps):
     return G_L
 
 
-class GFMC_fixed_projection_time:
+class GFMC_t:
     """GFMC class.
 
     GFMC class. Runing GFMC.
@@ -342,7 +342,7 @@ class GFMC_fixed_projection_time:
     def w_L(self) -> npt.NDArray:
         """Return the stored weight array. dim: (mcmc_counter, 1)."""
         # logger.info(f"np.array(self.__stored_w_L).shape = {np.array(self.__stored_w_L).shape}.")
-        return compute_G_L(np.array(self.__stored_w_L), self.__num_gfmc_collect_steps)
+        return _compute_G_L(np.array(self.__stored_w_L), self.__num_gfmc_collect_steps)
 
     # weights
     @property
@@ -402,7 +402,7 @@ class GFMC_fixed_projection_time:
 
         # projection function.
         @jit
-        def generate_rotation_matrix(alpha, beta, gamma):
+        def _generate_rotation_matrix_t(alpha, beta, gamma):
             # Precompute all necessary cosines and sines
             cos_a, sin_a = jnp.cos(alpha), jnp.sin(alpha)
             cos_b, sin_b = jnp.cos(beta), jnp.sin(beta)
@@ -420,7 +420,7 @@ class GFMC_fixed_projection_time:
 
         # Note: This jit drastically accelarates the computation!!
         @partial(jit, static_argnums=(6, 7))
-        def _projection(
+        def _projection_t(
             projection_counter: int,
             tau_left: float,
             w_L: float,
@@ -486,7 +486,7 @@ class GFMC_fixed_projection_time:
                 )  # Rotation angle around the x,y,z-axis (in radians)
             else:
                 alpha, beta, gamma = 0.0, 0.0, 0.0
-            R = generate_rotation_matrix(alpha, beta, gamma)  # Rotate in the order x -> y -> z
+            R = _generate_rotation_matrix_t(alpha, beta, gamma)  # Rotate in the order x -> y -> z
 
             # compute discretized kinetic energy and mesh (with a random rotation)
             mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
@@ -729,7 +729,7 @@ class GFMC_fixed_projection_time:
         projection_counter_list = jnp.array([0 for _ in range(self.__num_walkers)])
         tau_left_list = jnp.array([self.__tau for _ in range(self.__num_walkers)])
         w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
-        (_, _, _, _, _, _, _, _) = vmap(_projection, in_axes=(0, 0, 0, 0, 0, 0, None, None, None, None))(
+        (_, _, _, _, _, _, _, _) = vmap(_projection_t, in_axes=(0, 0, 0, 0, 0, 0, None, None, None, None))(
             projection_counter_list,
             tau_left_list,
             w_L_list,
@@ -783,7 +783,7 @@ class GFMC_fixed_projection_time:
                     self.__latest_r_dn_carts,
                     self.__jax_PRNG_key_list,
                     _,
-                ) = vmap(_projection, in_axes=(0, 0, 0, 0, 0, 0, None, None, None, None))(
+                ) = vmap(_projection_t, in_axes=(0, 0, 0, 0, 0, 0, None, None, None, None))(
                     projection_counter_list,
                     tau_left_list,
                     w_L_list,
@@ -1444,7 +1444,7 @@ class GFMC_fixed_projection_time:
         return (E_mean, E_std, Var_mean, Var_std)
 
 
-class _GFMC_fixed_projection_time_debug:
+class _GFMC_t_debug:
     """GFMC class.
 
     GFMC class. Runing GFMC.
@@ -2129,7 +2129,7 @@ class _GFMC_fixed_projection_time_debug:
         return (E_mean, E_std, Var_mean, Var_std)
 
 
-class GFMC_fixed_num_projection:
+class GFMC_n:
     """GFMC class. Runing GFMC with multiple walkers.
 
     Args:
@@ -2165,6 +2165,7 @@ class GFMC_fixed_num_projection:
         random_discretized_mesh: bool = True,
         non_local_move: str = "tmove",
         comput_position_deriv: bool = False,
+        debug_mode: bool = False,
     ) -> None:
         """Init.
 
@@ -2184,6 +2185,7 @@ class GFMC_fixed_num_projection:
         self.__alat = alat
         self.__random_discretized_mesh = random_discretized_mesh
         self.__non_local_move = non_local_move
+        self.__debug_mode = debug_mode
 
         # derivative flags
         self.__comput_position_deriv = comput_position_deriv
@@ -2355,7 +2357,7 @@ class GFMC_fixed_num_projection:
     def w_L(self) -> npt.NDArray:
         """Return the stored weight array. dim: (mcmc_counter, 1)."""
         # logger.info(f"np.array(self.__stored_w_L).shape = {np.array(self.__stored_w_L).shape}.")
-        return compute_G_L(np.array(self.__stored_w_L), self.__num_gfmc_collect_steps)
+        return _compute_G_L(np.array(self.__stored_w_L), self.__num_gfmc_collect_steps)
 
     # weights
     @property
@@ -2476,7 +2478,7 @@ class GFMC_fixed_num_projection:
 
         # projection function.
         @jit
-        def generate_rotation_matrix(alpha, beta, gamma):
+        def _generate_rotation_matrix_n(alpha, beta, gamma):
             # Precompute all necessary cosines and sines
             cos_a, sin_a = jnp.cos(alpha), jnp.sin(alpha)
             cos_b, sin_b = jnp.cos(beta), jnp.sin(beta)
@@ -2493,7 +2495,7 @@ class GFMC_fixed_num_projection:
             return R
 
         @partial(jit, static_argnums=(6, 7))
-        def _projection(
+        def _projection_n(
             init_w_L: float,
             init_r_up_carts: jnpt.ArrayLike,
             init_r_dn_carts: jnpt.ArrayLike,
@@ -2526,11 +2528,22 @@ class GFMC_fixed_num_projection:
                 latest_r_up_carts (N_e^up, 3) after the final projection
                 latest_r_dn_carts (N_e^dn, 3) after the final projection
                 latest_RT (3, 3) rotation matrix used in the last projection
+                latest_V_diag (float): diagonal part of H (importance sampled) at the last projection
+                latest_V_nondiag (float): non-diagonal part of H (importance sampled) at the last projection
             """
 
             @jit
-            def body_fun(_, carry):
-                w_L, r_up_carts, r_dn_carts, jax_PRNG_key, _, A_old_inv = carry
+            def _body_fun_n(_, carry):
+                (
+                    w_L,
+                    r_up_carts,
+                    r_dn_carts,
+                    jax_PRNG_key,
+                    RT,
+                    A_old_inv,
+                    _,
+                    _,
+                ) = carry
 
                 # compute diagonal elements, kinetic part
                 diagonal_kinetic_part = 3.0 / (2.0 * alat**2) * (len(r_up_carts) + len(r_dn_carts))
@@ -2552,7 +2565,7 @@ class GFMC_fixed_num_projection:
                     )  # Rotation angle around the x,y,z-axis (in radians)
                 else:
                     alpha, beta, gamma = (0.0, 0.0, 0.0)
-                R = generate_rotation_matrix(alpha, beta, gamma)  # Rotate in the order x -> y -> z
+                R = _generate_rotation_matrix_n(alpha, beta, gamma)  # Rotate in the order x -> y -> z
 
                 # compute discretized kinetic energy and mesh (with a random rotation)
                 mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
@@ -2815,7 +2828,7 @@ class GFMC_fixed_num_projection:
                     has_dn_move = jnp.any(dn_diff)
                     dn_index = jnp.argmax(dn_diff)
 
-                def _update_inv_up(_):
+                def _update_inv_up_n(_):
                     v = (
                         compute_geminal_up_one_row_elements(
                             geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
@@ -2834,14 +2847,14 @@ class GFMC_fixed_num_projection:
                     det_ratio = 1.0 + (v.T @ Ainv_u)[0, 0]
                     return A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio
 
-                def _no_update(_):
+                def _no_update_n(_):
                     return A_old_inv
 
                 if num_dn_electrons == 0:
-                    _update_inv_dn = _no_update
+                    _update_inv_dn_n = _no_update_n
                 else:
 
-                    def _update_inv_dn(_):
+                    def _update_inv_dn_n(_):
                         u = (
                             compute_geminal_dn_one_column_elements(
                                 geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
@@ -2865,15 +2878,24 @@ class GFMC_fixed_num_projection:
                 else:
                     A_new_inv = lax.cond(
                         has_up_move,
-                        _update_inv_up,
-                        lambda __: lax.cond(has_dn_move, _update_inv_dn, _no_update, operand=None),
+                        _update_inv_up_n,
+                        lambda __: lax.cond(has_dn_move, _update_inv_dn_n, _no_update_n, operand=None),
                         operand=None,
                     )
 
                 r_up_carts = proposed_r_up_carts
                 r_dn_carts = proposed_r_dn_carts
 
-                carry = (w_L, r_up_carts, r_dn_carts, jax_PRNG_key, R.T, A_new_inv)
+                carry = (
+                    w_L,
+                    r_up_carts,
+                    r_dn_carts,
+                    jax_PRNG_key,
+                    R.T,
+                    A_new_inv,
+                    diagonal_sum_hamiltonian,
+                    non_diagonal_sum_hamiltonian,
+                )
                 return carry
 
             # precompute geminal inverse for fast updates (single-electron moves)
@@ -2885,17 +2907,43 @@ class GFMC_fixed_num_projection:
             lu, piv = jsp_linalg.lu_factor(geminal)
             A_old_inv_init = jsp_linalg.lu_solve((lu, piv), jnp.eye(geminal.shape[0], dtype=geminal.dtype))
 
-            latest_w_L, latest_r_up_carts, latest_r_dn_carts, latest_jax_PRNG_key, latest_RT, _ = jax.lax.fori_loop(
+            (
+                latest_w_L,
+                latest_r_up_carts,
+                latest_r_dn_carts,
+                latest_jax_PRNG_key,
+                latest_RT,
+                _,
+                latest_diagonal_sum_hamiltonian,
+                latest_non_diagonal_sum_hamiltonian,
+            ) = jax.lax.fori_loop(
                 0,
                 num_mcmc_per_measurement,
-                body_fun,
-                (init_w_L, init_r_up_carts, init_r_dn_carts, init_jax_PRNG_key, jnp.eye(3), A_old_inv_init),
+                _body_fun_n,
+                (
+                    init_w_L,
+                    init_r_up_carts,
+                    init_r_dn_carts,
+                    init_jax_PRNG_key,
+                    jnp.eye(3),
+                    A_old_inv_init,
+                    jnp.asarray(0.0),
+                    jnp.asarray(0.0),
+                ),
             )
 
-            return (latest_w_L, latest_r_up_carts, latest_r_dn_carts, latest_jax_PRNG_key, latest_RT)
+            return (
+                latest_w_L,
+                latest_r_up_carts,
+                latest_r_dn_carts,
+                latest_jax_PRNG_key,
+                latest_RT,
+                latest_diagonal_sum_hamiltonian,
+                latest_non_diagonal_sum_hamiltonian,
+            )
 
         @partial(jit, static_argnums=(4, 6))
-        def _compute_V_elements(
+        def _compute_V_elements_n(
             hamiltonian_data: Hamiltonian_data,
             r_up_carts: jnpt.ArrayLike,
             r_dn_carts: jnpt.ArrayLike,
@@ -3162,7 +3210,7 @@ class GFMC_fixed_num_projection:
             return (V_diag, V_nondiag)
 
         @partial(jit, static_argnums=(4, 6))
-        def _compute_local_energy(
+        def _compute_local_energy_n(
             hamiltonian_data: Hamiltonian_data,
             r_up_carts: jnpt.ArrayLike,
             r_dn_carts: jnpt.ArrayLike,
@@ -3171,7 +3219,7 @@ class GFMC_fixed_num_projection:
             alat: float,
             use_fast_update: bool = True,
         ):
-            V_diag, V_nondiag = _compute_V_elements(
+            V_diag, V_nondiag = _compute_V_elements_n(
                 hamiltonian_data=hamiltonian_data,
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
@@ -3187,7 +3235,15 @@ class GFMC_fixed_num_projection:
         logger.info("Start compilation of the GFMC projection funciton.")
         logger.info("  Compilation is in progress...")
         w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
-        (_, _, _, _, RTs) = vmap(_projection, in_axes=(0, 0, 0, 0, None, None, None, None, None, None))(
+        (
+            _,
+            _,
+            _,
+            _,
+            RTs,
+            _,
+            _,
+        ) = vmap(_projection_n, in_axes=(0, 0, 0, 0, None, None, None, None, None, None))(
             w_L_list,
             self.__latest_r_up_carts,
             self.__latest_r_dn_carts,
@@ -3200,7 +3256,8 @@ class GFMC_fixed_num_projection:
             self.__hamiltonian_data,
         )
 
-        _, _ = vmap(_compute_V_elements, in_axes=(None, 0, 0, 0, None, None, None))(
+        # compile the e_L recomputation path for debug parity
+        _, _ = vmap(_compute_V_elements_n, in_axes=(None, 0, 0, 0, None, None, None))(
             self.__hamiltonian_data,
             self.__latest_r_up_carts,
             self.__latest_r_dn_carts,
@@ -3211,7 +3268,7 @@ class GFMC_fixed_num_projection:
         )
 
         if self.__comput_position_deriv:
-            _, _, _ = vmap(grad(_compute_local_energy, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0, None, None, None))(
+            _, _, _ = vmap(grad(_compute_local_energy_n, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0, None, None, None))(
                 self.__hamiltonian_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
@@ -3250,9 +3307,15 @@ class GFMC_fixed_num_projection:
             start_projection = time.perf_counter()
 
             # projection loop
-            (w_L_list, self.__latest_r_up_carts, self.__latest_r_dn_carts, self.__jax_PRNG_key_list, latest_RTs) = vmap(
-                _projection, in_axes=(0, 0, 0, 0, None, None, None, None, None, None)
-            )(
+            (
+                w_L_list,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+                self.__jax_PRNG_key_list,
+                latest_RTs,
+                V_diag_list,
+                V_nondiag_list,
+            ) = vmap(_projection_n, in_axes=(0, 0, 0, 0, None, None, None, None, None, None))(
                 w_L_list,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
@@ -3277,16 +3340,16 @@ class GFMC_fixed_num_projection:
 
             # evaluate observables
             start_e_L = time.perf_counter()
-            # V_diag and e_L
-            V_diag_list, V_nondiag_list = vmap(_compute_V_elements, in_axes=(None, 0, 0, 0, None, None, None))(
-                self.__hamiltonian_data,
-                self.__latest_r_up_carts,
-                self.__latest_r_dn_carts,
-                latest_RTs,
-                self.__non_local_move,
-                self.__alat,
-                True,
-            )
+            if self.__debug_mode:
+                V_diag_list, V_nondiag_list = vmap(_compute_V_elements_n, in_axes=(None, 0, 0, 0, None, None, None))(
+                    self.__hamiltonian_data,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                    latest_RTs,
+                    self.__non_local_move,
+                    self.__alat,
+                    True,
+                )
             e_L_list = V_diag_list + V_nondiag_list
             e_L_list.block_until_ready()
 
@@ -3313,7 +3376,7 @@ class GFMC_fixed_num_projection:
             if self.__comput_position_deriv:
                 start = time.perf_counter()
                 grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = vmap(
-                    grad(_compute_local_energy, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0, None, None, None)
+                    grad(_compute_local_energy_n, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0, None, None, None)
                 )(
                     self.__hamiltonian_data,
                     self.__latest_r_up_carts,
@@ -4457,7 +4520,7 @@ class GFMC_fixed_num_projection:
         return (force_mean, force_std)
 
 
-class _GFMC_fixed_num_projection_debug:
+class _GFMC_n_debug:
     """GFMC class. Runing GFMC with multiple walkers.
 
     Args:
@@ -4719,7 +4782,7 @@ class _GFMC_fixed_num_projection_debug:
         # initialize numpy random seed
         np.random.seed(self.__mpi_seed)
 
-        def _generate_rotation_matrix_debug(alpha, beta, gamma):
+        def _generate_rotation_matrix_n_debug(alpha, beta, gamma):
             # Precompute all necessary cosines and sines
             cos_a, sin_a = jnp.cos(alpha), jnp.sin(alpha)
             cos_b, sin_b = jnp.cos(beta), jnp.sin(beta)
@@ -4735,7 +4798,7 @@ class _GFMC_fixed_num_projection_debug:
             )
             return R
 
-        def _projection_debug(
+        def _projection_n_debug(
             init_w_L: float,
             init_r_up_carts: jnpt.ArrayLike,
             init_r_dn_carts: jnpt.ArrayLike,
@@ -4789,7 +4852,7 @@ class _GFMC_fixed_num_projection_debug:
                     )  # Rotation angle around the x,y,z-axis (in radians)
                 else:
                     alpha, beta, gamma = (0.0, 0.0, 0.0)
-                R = _generate_rotation_matrix_debug(alpha, beta, gamma)
+                R = _generate_rotation_matrix_n_debug(alpha, beta, gamma)
 
                 # compute discretized kinetic energy and mesh (with a random rotation)
                 mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
@@ -5042,7 +5105,7 @@ class _GFMC_fixed_num_projection_debug:
 
             return (latest_w_L, latest_r_up_carts, latest_r_dn_carts, latest_jax_PRNG_key, latest_RT)
 
-        def _compute_V_elements_debug(
+        def _compute_V_elements_n_debug(
             hamiltonian_data: Hamiltonian_data,
             r_up_carts: jnpt.ArrayLike,
             r_dn_carts: jnpt.ArrayLike,
@@ -5252,7 +5315,7 @@ class _GFMC_fixed_num_projection_debug:
 
             return (V_diag, V_nondiag)
 
-        def _compute_local_energy_debug(
+        def _compute_local_energy_n_debug(
             hamiltonian_data: Hamiltonian_data,
             r_up_carts: jnpt.ArrayLike,
             r_dn_carts: jnpt.ArrayLike,
@@ -5260,7 +5323,7 @@ class _GFMC_fixed_num_projection_debug:
             non_local_move: bool,
             alat: float,
         ):
-            V_diag, V_nondiag = _compute_V_elements_debug(hamiltonian_data, r_up_carts, r_dn_carts, RT, non_local_move, alat)
+            V_diag, V_nondiag = _compute_V_elements_n_debug(hamiltonian_data, r_up_carts, r_dn_carts, RT, non_local_move, alat)
             return V_diag + V_nondiag
 
         # MAIN MCMC loop from here !!!
@@ -5285,7 +5348,7 @@ class _GFMC_fixed_num_projection_debug:
 
             # projection loop
             (w_L_list, self.__latest_r_up_carts, self.__latest_r_dn_carts, self.__jax_PRNG_key_list, latest_RT) = vmap(
-                _projection_debug, in_axes=(0, 0, 0, 0, None, None, None, None, None)
+                _projection_n_debug, in_axes=(0, 0, 0, 0, None, None, None, None, None)
             )(
                 w_L_list,
                 self.__latest_r_up_carts,
@@ -5303,7 +5366,7 @@ class _GFMC_fixed_num_projection_debug:
 
             # evaluate observables
             # V_diag and e_L
-            V_diag_list, V_nondiag_list = vmap(_compute_V_elements_debug, in_axes=(None, 0, 0, 0, None, None))(
+            V_diag_list, V_nondiag_list = vmap(_compute_V_elements_n_debug, in_axes=(None, 0, 0, 0, None, None))(
                 self.__hamiltonian_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
@@ -5330,7 +5393,7 @@ class _GFMC_fixed_num_projection_debug:
             # atomic force related
             if self.__comput_position_deriv:
                 grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = vmap(
-                    grad(_compute_local_energy_debug, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0, None, None)
+                    grad(_compute_local_energy_n_debug, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0, None, None)
                 )(
                     self.__hamiltonian_data,
                     self.__latest_r_up_carts,
