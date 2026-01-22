@@ -38,7 +38,6 @@ from pathlib import Path
 
 import jax
 import numpy as np
-import pytest
 
 project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
@@ -53,6 +52,7 @@ from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_two_body_data,
 )
 from jqmc.jqmc_mcmc import MCMC  # noqa: E402
+from jqmc.setting import decimal_debug_vs_production  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import Wavefunction_data  # noqa: E402
 
@@ -76,9 +76,13 @@ def test_vmc_force_with_SWCT_ecp():
     )
     # """
 
-    jastrow_onebody_data = None
+    jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
+        jastrow_1b_param=0.5, structure_data=structure_data, core_electrons=tuple([0, 0])
+    )
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5)
-    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
+    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
+        orb_data=aos_data, random_init=True, random_scale=1.0e-3
+    )
     jastrow_nn_data = Jastrow_NN_data.init_from_structure(structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0)
 
     # define data
@@ -122,8 +126,16 @@ def test_vmc_force_with_SWCT_ecp():
     )
 
     # See [J. Chem. Phys. 156, 034101 (2022)]
-    np.testing.assert_almost_equal(np.array(force_mean[0]), -1.0 * np.array(force_mean[1]), decimal=6)
-    np.testing.assert_almost_equal(np.array(force_std[0]), np.array(force_std[1]), decimal=6)
+    np.testing.assert_almost_equal(
+        np.array(force_mean[0]),
+        -1.0 * np.array(force_mean[1]),
+        decimal=decimal_debug_vs_production,
+    )
+    np.testing.assert_almost_equal(
+        np.array(force_std[0]),
+        np.array(force_std[1]),
+        decimal=decimal_debug_vs_production,
+    )
 
 
 def test_vmc_force_with_SWCT_ae():
@@ -189,8 +201,16 @@ def test_vmc_force_with_SWCT_ae():
     )
 
     # See [J. Chem. Phys. 156, 034101 (2022)]
-    np.testing.assert_almost_equal(np.array(force_mean[0]), -1.0 * np.array(force_mean[1]), decimal=6)
-    np.testing.assert_almost_equal(np.array(force_std[0]), np.array(force_std[1]), decimal=6)
+    np.testing.assert_almost_equal(
+        np.array(force_mean[0]),
+        -1.0 * np.array(force_mean[1]),
+        decimal=decimal_debug_vs_production,
+    )
+    np.testing.assert_almost_equal(
+        np.array(force_std[0]),
+        np.array(force_std[1]),
+        decimal=decimal_debug_vs_production,
+    )
 
 
 if __name__ == "__main__":

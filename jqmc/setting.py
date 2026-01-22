@@ -53,3 +53,14 @@ GFMC_MIN_COLLECT_STEPS = 5
 GFMC_ON_THE_FLY_WARMUP_STEPS = 20
 GFMC_ON_THE_FLY_COLLECT_STEPS = 10
 GFMC_ON_THE_FLY_BIN_BLOCKS = 10
+
+# Test tolerance settings (derivatives)
+decimal_auto_vs_numerical_deriv = 4
+decimal_auto_vs_analytic_deriv = 8
+decimal_numerical_vs_analytic_deriv = 4
+
+# Test tolerance settings (others)
+decimal_debug_vs_production = 8
+
+# Numerical stability settings
+EPS_stabilizing_jax_AO_cart_deriv = 1.0e-16
