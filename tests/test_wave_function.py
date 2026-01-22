@@ -63,12 +63,14 @@ from jqmc.wavefunction import (  # noqa: E402
     _compute_discretized_kinetic_energy_debug,
     _compute_kinetic_energy_all_elements_auto,
     _compute_kinetic_energy_all_elements_debug,
+    _compute_kinetic_energy_all_elements_fast_update_debug,
     _compute_kinetic_energy_auto,
     _compute_kinetic_energy_debug,
     compute_discretized_kinetic_energy,
     compute_discretized_kinetic_energy_fast_update,
     compute_kinetic_energy,
     compute_kinetic_energy_all_elements,
+    compute_kinetic_energy_all_elements_fast_update,
 )
 
 # JAX float64
@@ -272,6 +274,68 @@ def test_auto_and_analytic_kinetic_energy_all_elements():
 
     np.testing.assert_array_almost_equal(K_elements_up_auto, K_elements_up_analytic, decimal=decimal_auto_vs_analytic_deriv)
     np.testing.assert_array_almost_equal(K_elements_dn_auto, K_elements_dn_analytic, decimal=decimal_auto_vs_analytic_deriv)
+
+
+def test_fast_update_kinetic_energy_all_elements():
+    """Fast-update per-electron kinetic energy should match the standard analytic path."""
+    (
+        _,
+        aos_data,
+        _,
+        _,
+        geminal_mo_data,
+        _,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"),
+        store_tuple=True,
+    )
+
+    jastrow_onebody_data = None
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
+        orb_data=aos_data, random_init=True, random_scale=1.0e-3
+    )
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=jastrow_onebody_data,
+        jastrow_two_body_data=jastrow_twobody_data,
+        jastrow_three_body_data=jastrow_threebody_data,
+    )
+
+    wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
+
+    num_ele_up = geminal_mo_data.num_electron_up
+    num_ele_dn = geminal_mo_data.num_electron_dn
+    r_cart_min, r_cart_max = -3.0, +3.0
+    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
+    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
+
+    r_up_carts_jnp = jnp.asarray(r_up_carts)
+    r_dn_carts_jnp = jnp.asarray(r_dn_carts)
+
+    # Standard analytic per-electron kinetic energy
+    ke_up_debug, ke_dn_debug = compute_kinetic_energy_all_elements(
+        wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts_jnp,
+        r_dn_carts=r_dn_carts_jnp,
+    )
+
+    # Build geminal inverse explicitly for the fast path
+    A = compute_geminal_all_elements(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up_carts_jnp,
+        r_dn_carts=r_dn_carts_jnp,
+    )
+    A_inv = jnp.asarray(np.linalg.inv(np.array(A)))
+
+    ke_up_fast, ke_dn_fast = compute_kinetic_energy_all_elements_fast_update(
+        wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts_jnp,
+        r_dn_carts=r_dn_carts_jnp,
+        geminal_inverse=A_inv,
+    )
+
+    np.testing.assert_array_almost_equal(ke_up_fast, ke_up_debug, decimal=decimal_debug_vs_production)
+    np.testing.assert_array_almost_equal(ke_dn_fast, ke_dn_debug, decimal=decimal_debug_vs_production)
 
 
 def test_debug_and_jax_discretized_kinetic_energy():
