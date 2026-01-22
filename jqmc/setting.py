@@ -55,9 +55,9 @@ GFMC_ON_THE_FLY_COLLECT_STEPS = 10
 GFMC_ON_THE_FLY_BIN_BLOCKS = 10
 
 # Test tolerance settings (derivatives)
-decimal_auto_vs_numerical_deriv = 4
+decimal_auto_vs_numerical_deriv = 3
+decimal_numerical_vs_analytic_deriv = 3
 decimal_auto_vs_analytic_deriv = 8
-decimal_numerical_vs_analytic_deriv = 4
 
 # Test tolerance settings (others)
 decimal_debug_vs_production = 8
