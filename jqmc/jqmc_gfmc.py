@@ -401,6 +401,20 @@ class GFMC_t:
         # initialize numpy random seed
         np.random.seed(self.__mpi_seed)
 
+        # precompute geminal inverses per walker for fast kinetic updates
+        def _compute_initial_A_inv_t(r_up_carts, r_dn_carts):
+            geminal = compute_geminal_all_elements(
+                geminal_data=self.__hamiltonian_data.wavefunction_data.geminal_data,
+                r_up_carts=r_up_carts,
+                r_dn_carts=r_dn_carts,
+            )
+            lu, piv = jsp_linalg.lu_factor(geminal)
+            return jsp_linalg.lu_solve((lu, piv), jnp.eye(geminal.shape[0], dtype=geminal.dtype))
+
+        self.__latest_A_old_inv = vmap(_compute_initial_A_inv_t, in_axes=(0, 0))(
+            self.__latest_r_up_carts, self.__latest_r_dn_carts
+        )
+
         # projection function.
         @jit
         def _generate_rotation_matrix_t(alpha, beta, gamma):
@@ -420,13 +434,14 @@ class GFMC_t:
             return R
 
         # Note: This jit drastically accelarates the computation!!
-        @partial(jit, static_argnums=(6, 7))
+        @partial(jit, static_argnums=(7, 8, 9))
         def _projection_t(
             projection_counter: int,
             tau_left: float,
             w_L: float,
             r_up_carts: jnpt.ArrayLike,
             r_dn_carts: jnpt.ArrayLike,
+            A_old_inv: jnpt.ArrayLike,
             jax_PRNG_key: jnpt.ArrayLike,
             random_discretized_mesh: bool,
             non_local_move: bool,
@@ -456,7 +471,9 @@ class GFMC_t:
                 w_L (float): weight after the final projection
                 r_up_carts (N_e^up, 3) after the final projection
                 r_dn_carts (N_e^dn, 3) after the final projection
+                A_old_inv: cached inverse geminal matrix after the final projection
                 jax_PRNG_key (jnpt.ArrayLike): jax PRNG key
+                R.T: rotation matrix used for the discretized mesh
             """
             # projection counter
             projection_counter = lax.cond(
@@ -721,7 +738,26 @@ class GFMC_t:
             new_r_up_carts = jnp.where(tau_left <= 0.0, r_up_carts, proposed_r_up_carts)  # '=' is very important!!!
             new_r_dn_carts = jnp.where(tau_left <= 0.0, r_dn_carts, proposed_r_dn_carts)  # '=' is very important!!!
 
-            return (e_L, projection_counter, tau_left, w_L, new_r_up_carts, new_r_dn_carts, jax_PRNG_key, R.T)
+            # recompute inverse for the updated configuration
+            G_new = compute_geminal_all_elements(
+                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                r_up_carts=new_r_up_carts,
+                r_dn_carts=new_r_dn_carts,
+            )
+            lu, piv = jsp_linalg.lu_factor(G_new)
+            A_new_inv = jsp_linalg.lu_solve((lu, piv), jnp.eye(G_new.shape[0], dtype=G_new.dtype))
+
+            return (
+                e_L,
+                projection_counter,
+                tau_left,
+                w_L,
+                new_r_up_carts,
+                new_r_dn_carts,
+                A_new_inv,
+                jax_PRNG_key,
+                R.T,
+            )
 
         # projection compilation.
         start_init = time.perf_counter()
@@ -730,12 +766,13 @@ class GFMC_t:
         projection_counter_list = jnp.array([0 for _ in range(self.__num_walkers)])
         tau_left_list = jnp.array([self.__tau for _ in range(self.__num_walkers)])
         w_L_list = jnp.array([1.0 for _ in range(self.__num_walkers)])
-        (_, _, _, _, _, _, _, _) = vmap(_projection_t, in_axes=(0, 0, 0, 0, 0, 0, None, None, None, None))(
+        (_, _, _, _, _, _, _, _, _) = vmap(_projection_t, in_axes=(0, 0, 0, 0, 0, 0, 0, None, None, None, None))(
             projection_counter_list,
             tau_left_list,
             w_L_list,
             self.__latest_r_up_carts,
             self.__latest_r_dn_carts,
+            self.__latest_A_old_inv,
             self.__jax_PRNG_key_list,
             self.__random_discretized_mesh,
             self.__non_local_move,
@@ -782,14 +819,16 @@ class GFMC_t:
                     w_L_list,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
+                    self.__latest_A_old_inv,
                     self.__jax_PRNG_key_list,
                     _,
-                ) = vmap(_projection_t, in_axes=(0, 0, 0, 0, 0, 0, None, None, None, None))(
+                ) = vmap(_projection_t, in_axes=(0, 0, 0, 0, 0, 0, 0, None, None, None, None))(
                     projection_counter_list,
                     tau_left_list,
                     w_L_list,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
+                    self.__latest_A_old_inv,
                     self.__jax_PRNG_key_list,
                     self.__random_discretized_mesh,
                     self.__non_local_move,
@@ -806,6 +845,7 @@ class GFMC_t:
             w_L_list.block_until_ready()
             self.__latest_r_up_carts.block_until_ready()
             self.__latest_r_dn_carts.block_until_ready()
+            self.__latest_A_old_inv.block_until_ready()
             self.__jax_PRNG_key_list.block_until_ready()
 
             end_projection = time.perf_counter()
@@ -1156,6 +1196,9 @@ class GFMC_t:
             self.__stored_average_projection_counter.append(stored_average_projection_counter)
             self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
             self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
+            self.__latest_A_old_inv = vmap(_compute_initial_A_inv_t, in_axes=(0, 0))(
+                self.__latest_r_up_carts, self.__latest_r_dn_carts
+            )
 
             # Barrier after MPI operation
             mpi_comm.Barrier()
