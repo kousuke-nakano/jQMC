@@ -124,6 +124,29 @@ def _make_unflatten_fn(treedef: Any, shapes: Sequence[tuple[int, ...]]) -> Calla
     return unflatten_fn
 
 
+def _ensure_flax_trace_level_compat() -> None:
+    """Patch Flax trace-level helper for newer JAX EvalTrace objects.
+
+    Some JAX versions return EvalTrace objects without a ``level`` attribute,
+    which older Flax releases assume exists. This patch makes the lookup safe.
+    """
+    try:
+        from flax.core import tracers as flax_tracers
+    except Exception:
+        return
+
+    if getattr(flax_tracers.trace_level, "_jqmc_patched", False):
+        return
+
+    def _trace_level_safe(main):
+        if main is None:
+            return float("-inf")
+        return getattr(main, "level", float("-inf"))
+
+    _trace_level_safe._jqmc_patched = True
+    flax_tracers.trace_level = _trace_level_safe
+
+
 class NNJastrow(nn.Module):
     r"""PauliNet-inspired NN that outputs a three-body Jastrow correction.
 
@@ -1296,6 +1319,8 @@ class Jastrow_NN_data:
         if key is None:
             key = jax.random.PRNGKey(0)
 
+        _ensure_flax_trace_level_compat()
+
         atomic_numbers = np.asarray(structure_data.atomic_numbers, dtype=np.int32)
         species_values = np.unique(np.concatenate([atomic_numbers, np.array([0], dtype=np.int32)]))
         num_species = int(species_values.shape[0])
@@ -1323,7 +1348,8 @@ class Jastrow_NN_data:
         R_n = jnp.asarray(structure_data.positions)  # (n_nuc, 3)
         Z_n = jnp.asarray(structure_data.atomic_numbers)  # (n_nuc,)
 
-        variables = nn_def.init(key, r_up_init, r_dn_init, R_n, Z_n)
+        rngs = {"params": key}
+        variables = nn_def.init(rngs, r_up_init, r_dn_init, R_n, Z_n)
         params = variables["params"]
         # Initialize the NN parameters with small random values so that the
         # NN J3 contribution starts near zero but still has gradient signal.

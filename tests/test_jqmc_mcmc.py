@@ -56,6 +56,7 @@ from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_two_body_data,
 )
 from jqmc.jqmc_mcmc import MCMC, _MCMC_debug  # noqa: E402
+from jqmc.setting import decimal_debug_vs_production  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import VariationalParameterBlock, Wavefunction_data  # noqa: E402
 
@@ -156,17 +157,17 @@ def test_jqmc_mcmc(trexio_file, with_nn_jastrow, with_3b_jastrow):
     # w_L
     w_L_debug = mcmc_debug.w_L
     w_L_jax = mcmc_jax.w_L
-    np.testing.assert_array_almost_equal(w_L_debug, w_L_jax, decimal=6)
+    np.testing.assert_array_almost_equal(w_L_debug, w_L_jax, decimal=decimal_debug_vs_production)
 
     # e_L
     e_L_debug = mcmc_debug.e_L
     e_L_jax = mcmc_jax.e_L
-    np.testing.assert_array_almost_equal(e_L_debug, e_L_jax, decimal=6)
+    np.testing.assert_array_almost_equal(e_L_debug, e_L_jax, decimal=decimal_debug_vs_production)
 
     # e_L2
     e_L2_debug = mcmc_debug.e_L2
     e_L2_jax = mcmc_jax.e_L2
-    np.testing.assert_array_almost_equal(e_L2_debug, e_L2_jax, decimal=6)
+    np.testing.assert_array_almost_equal(e_L2_debug, e_L2_jax, decimal=decimal_debug_vs_production)
 
     # E
     E_debug, E_err_debug, Var_debug, Var_err_debug = mcmc_debug.get_E(
@@ -177,10 +178,10 @@ def test_jqmc_mcmc(trexio_file, with_nn_jastrow, with_3b_jastrow):
         num_mcmc_warmup_steps=25,
         num_mcmc_bin_blocks=5,
     )
-    np.testing.assert_array_almost_equal(E_debug, E_jax, decimal=6)
-    np.testing.assert_array_almost_equal(E_err_debug, E_err_jax, decimal=6)
-    np.testing.assert_array_almost_equal(Var_debug, Var_jax, decimal=6)
-    np.testing.assert_array_almost_equal(Var_err_debug, Var_err_jax, decimal=6)
+    np.testing.assert_array_almost_equal(E_debug, E_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_array_almost_equal(E_err_debug, E_err_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_array_almost_equal(Var_debug, Var_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_array_almost_equal(Var_err_debug, Var_err_jax, decimal=decimal_debug_vs_production)
 
     # aF
     force_mean_debug, force_std_debug = mcmc_debug.get_aF(
@@ -191,8 +192,8 @@ def test_jqmc_mcmc(trexio_file, with_nn_jastrow, with_3b_jastrow):
         num_mcmc_warmup_steps=25,
         num_mcmc_bin_blocks=5,
     )
-    np.testing.assert_array_almost_equal(force_mean_debug, force_mean_jax, decimal=6)
-    np.testing.assert_array_almost_equal(force_std_debug, force_std_jax, decimal=6)
+    np.testing.assert_array_almost_equal(force_mean_debug, force_mean_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_array_almost_equal(force_std_debug, force_std_jax, decimal=decimal_debug_vs_production)
 
     jax.clear_caches()
 
