@@ -314,7 +314,7 @@ def test_jqmc_vmc(monkeypatch):
             params[block.name] = params[block.name] + learning_rate * delta
         return self
 
-    def fake_run(self, num_mcmc_steps: int = 0, max_time=None, observable_batch_size=None):
+    def fake_run(self, num_mcmc_steps: int = 0, max_time=None):
         """No-op MCMC run to skip sampling in the unit test."""
         return None
 
