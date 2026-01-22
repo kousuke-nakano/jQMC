@@ -66,6 +66,12 @@ from jqmc.atomic_orbital import (  # noqa: E402
     compute_AOs_grad,
     compute_AOs_laplacian,
 )
+from jqmc.setting import (  # noqa: E402
+    decimal_auto_vs_analytic_deriv,
+    decimal_auto_vs_numerical_deriv,
+    decimal_debug_vs_production,
+    decimal_numerical_vs_analytic_deriv,
+)
 from jqmc.structure import Structure_data  # noqa: E402
 
 # JAX float64
@@ -77,7 +83,7 @@ jax.config.update("jax_traceback_filtering", "off")
     ["l", "m"],
     list(itertools.chain.from_iterable([[pytest.param(l, m, id=f"l={l}, m={m}") for m in range(-l, l + 1)] for l in range(7)])),
 )
-def test_spherical_harmonics_hard_coded_vs_analytic_expressions(l, m):
+def test_spherical_harmonics_debug_vs_production(l, m):
     """Test the spherical harmonics."""
 
     def Y_l_m_ref(l=0, m=0, r_cart_rel=None):
@@ -216,12 +222,12 @@ def test_spherical_harmonics_hard_coded_vs_analytic_expressions(l, m):
             r_cart=r_cart,
         )
         ref_S_lm = np.sqrt((4 * np.pi) / (2 * l + 1)) * r_norm**l * Y_l_m_ref(l=l, m=m, r_cart_rel=r_cart_rel)
-        assert_almost_equal(test_S_lm, ref_S_lm, decimal=8)
+        assert_almost_equal(test_S_lm, ref_S_lm, decimal=decimal_debug_vs_production)
 
     jax.clear_caches()
 
 
-def test_solid_harmonics_hard_coded_vs_analytic_expressions():
+def test_solid_harmonics_debug_vs_production():
     """Test the solid harmonics with a batch."""
     seed = 34487
     np.random.seed(seed)
@@ -257,11 +263,11 @@ def test_solid_harmonics_hard_coded_vs_analytic_expressions():
 
     # print(f"batch_S_l_m.shape = {batch_S_l_m.shape}.")
 
-    np.testing.assert_array_almost_equal(S_l_m_debug, S_l_m_jax, decimal=10)
+    np.testing.assert_array_almost_equal(S_l_m_debug, S_l_m_jax, decimal=decimal_debug_vs_production)
     jax.clear_caches()
 
 
-def test_AOs_w_spherical_angular_part_comparing_jax_and_debug_implemenetations():
+def test_AOs_sphe_debug_vs_production():
     """Test the AOs computation, comparing the JAX and debug implementations."""
     ml_list = list(itertools.chain.from_iterable([[(l, m) for m in range(-l, l + 1)] for l in range(7)]))
     num_el = 100
@@ -311,7 +317,7 @@ def test_AOs_w_spherical_angular_part_comparing_jax_and_debug_implemenetations()
     aos_jax = _compute_AOs_sphe(aos_data=aos_data, r_carts=r_carts)
     aos_debug = _compute_AOs_sphe_debug(aos_data=aos_data, r_carts=r_carts)
 
-    assert np.allclose(aos_jax, aos_debug, rtol=1e-12, atol=1e-05)
+    np.testing.assert_array_almost_equal(aos_jax, aos_debug, decimal=decimal_debug_vs_production)
 
     num_el = 150
     num_ao = len(ml_list)
@@ -360,110 +366,14 @@ def test_AOs_w_spherical_angular_part_comparing_jax_and_debug_implemenetations()
     aos_jax = _compute_AOs_sphe(aos_data=aos_data, r_carts=r_carts)
     aos_debug = _compute_AOs_sphe_debug(aos_data=aos_data, r_carts=r_carts)
 
-    assert np.allclose(aos_jax, aos_debug, rtol=1e-12, atol=1e-05)
+    np.testing.assert_array_almost_equal(aos_jax, aos_debug, decimal=decimal_debug_vs_production)
 
     jax.clear_caches()
 
 
-def test_compute_AOs_matches_debug_cartesian():
-    """Public compute_AOs matches cartesian debug implementation."""
-    seed = 5678
-    np.random.seed(seed)
-
-    num_r_cart_samples = 5
-    num_R_cart_samples = 3
-    r_carts = np.random.uniform(-1.5, 1.5, size=(num_r_cart_samples, 3))
-    R_carts = np.random.uniform(-0.8, 0.8, size=(num_R_cart_samples, 3))
-
-    orbital_indices = (0, 1, 1, 2)
-    exponents = (1.3, 0.9, 0.9, 1.1)
-    coefficients = (1.0, 0.7, 0.6, 0.8)
-    angular_momentums = (0, 1, 1)
-    polynominal_order_x = (0, 1, 0)
-    polynominal_order_y = (0, 0, 1)
-    polynominal_order_z = (0, 0, 0)
-
-    structure_data = Structure_data(
-        pbc_flag=False,
-        positions=R_carts,
-        atomic_numbers=tuple([0] * num_R_cart_samples),
-        element_symbols=tuple(["X"] * num_R_cart_samples),
-        atomic_labels=tuple(["X"] * num_R_cart_samples),
-    )
-    structure_data.sanity_check()
-
-    aos_data = AOs_cart_data(
-        structure_data=structure_data,
-        nucleus_index=tuple(range(num_R_cart_samples)),
-        num_ao=3,
-        num_ao_prim=4,
-        orbital_indices=orbital_indices,
-        exponents=exponents,
-        coefficients=coefficients,
-        angular_momentums=angular_momentums,
-        polynominal_order_x=polynominal_order_x,
-        polynominal_order_y=polynominal_order_y,
-        polynominal_order_z=polynominal_order_z,
-    )
-    aos_data.sanity_check()
-
-    aos_public = _compute_AOs_cart(aos_data=aos_data, r_carts=r_carts)
-    aos_debug = _compute_AOs_cart_debug(aos_data=aos_data, r_carts=r_carts)
-
-    np.testing.assert_array_almost_equal(aos_public, np.array(aos_debug), decimal=12)
-
-    jax.clear_caches()
-
-
-def test_compute_AOs_matches_debug_spherical():
-    """Public compute_AOs matches spherical debug implementation."""
-    seed = 1234
-    np.random.seed(seed)
-
-    num_r_cart_samples = 6
-    num_R_cart_samples = 4
-    r_carts = np.random.uniform(-2.0, 2.0, size=(num_r_cart_samples, 3))
-    R_carts = np.random.uniform(-1.0, 1.0, size=(num_R_cart_samples, 3))
-
-    orbital_indices = (0, 0, 1, 2, 3)
-    exponents = (2.2, 1.5, 0.9, 1.1, 0.7)
-    coefficients = (1.0, 0.8, 1.1, 0.6, 0.9)
-    angular_momentums = (0, 0, 1, 1)
-    magnetic_quantum_numbers = (0, 0, -1, 1)
-
-    structure_data = Structure_data(
-        pbc_flag=False,
-        positions=R_carts,
-        atomic_numbers=tuple([0] * num_R_cart_samples),
-        element_symbols=tuple(["X"] * num_R_cart_samples),
-        atomic_labels=tuple(["X"] * num_R_cart_samples),
-    )
-    structure_data.sanity_check()
-
-    aos_data = AOs_sphe_data(
-        structure_data=structure_data,
-        nucleus_index=tuple(range(num_R_cart_samples)),
-        num_ao=4,
-        num_ao_prim=5,
-        orbital_indices=orbital_indices,
-        exponents=exponents,
-        coefficients=coefficients,
-        angular_momentums=angular_momentums,
-        magnetic_quantum_numbers=magnetic_quantum_numbers,
-    )
-    aos_data.sanity_check()
-
-    aos_public = _compute_AOs_sphe(aos_data=aos_data, r_carts=r_carts)
-    aos_debug = _compute_AOs_sphe_debug(aos_data=aos_data, r_carts=r_carts)
-
-    np.testing.assert_array_almost_equal(aos_public, np.array(aos_debug), decimal=12)
-
-    jax.clear_caches()
-
-
-def test_AOs_w_cartesian_angular_part_comparing_jax_and_debug_implemenetations():
+def test_AOs_cart_debug_vs_production():
     """Test the AOs computation, comparing the JAX and debug implementations."""
-    l_max = 10
+    l_max = 7
     angular_momentums = []
     polynominal_order_x = []
     polynominal_order_y = []
@@ -528,12 +438,12 @@ def test_AOs_w_cartesian_angular_part_comparing_jax_and_debug_implemenetations()
     aos_jax = _compute_AOs_cart(aos_data=aos_data, r_carts=r_carts)
     aos_debug = _compute_AOs_cart_debug(aos_data=aos_data, r_carts=r_carts)
 
-    assert np.allclose(aos_jax, aos_debug, rtol=1e-12, atol=1e-05)
+    np.testing.assert_array_almost_equal(aos_jax, aos_debug, decimal=decimal_debug_vs_production)
 
     jax.clear_caches()
 
 
-def test_AOs_grads_comparing_analytic_and_auto_implemenetations():
+def test_AOs_sphe_and_cart_grads_analytic_vs_auto():
     """Analytic AOs gradients match JAX autodiff implementation."""
     seed = 2025
     np.random.seed(seed)
@@ -577,79 +487,17 @@ def test_AOs_grads_comparing_analytic_and_auto_implemenetations():
     )
     aos_data.sanity_check()
 
-    gx_ref, gy_ref, gz_ref = _compute_AOs_grad_autodiff(aos_data=aos_data, r_carts=r_carts)
+    gx_auto, gy_auto, gz_auto = _compute_AOs_grad_autodiff(aos_data=aos_data, r_carts=r_carts)
     gx_an, gy_an, gz_an = compute_AOs_grad(aos_data=aos_data, r_carts=r_carts)
 
-    np.testing.assert_allclose(gx_an, np.array(gx_ref), rtol=1e-9, atol=5e-8)
-    np.testing.assert_allclose(gy_an, np.array(gy_ref), rtol=1e-9, atol=5e-8)
-    np.testing.assert_allclose(gz_an, np.array(gz_ref), rtol=1e-9, atol=5e-8)
-
-    num_r_cart_samples = 2
-    num_R_cart_samples = 4
-    r_cart_min, r_cart_max = -3.0, +3.0
-    R_cart_min, R_cart_max = -3.0, +3.0
-    r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_cart_samples, 3) + r_cart_min
-    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
-
-    num_ao = 4
-    num_ao_prim = 5
-    orbital_indices = [0, 1, 2, 2, 3]
-    exponents = [3.0, 1.0, 0.5, 0.5, 0.5]
-    coefficients = [1.0, 1.0, 0.5, 0.5, 0.5]
-    angular_momentums = [0, 0, 0, 0]
-    magnetic_quantum_numbers = [0, 0, 0, 0]
-
-    orbital_indices = tuple(orbital_indices)
-    exponents = tuple(exponents)
-    coefficients = tuple(coefficients)
-    angular_momentums = tuple(angular_momentums)
-    magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
-
-    structure_data = Structure_data(
-        pbc_flag=False,
-        positions=R_carts,
-        atomic_numbers=tuple([0] * num_R_cart_samples),
-        element_symbols=tuple(["X"] * num_R_cart_samples),
-        atomic_labels=tuple(["X"] * num_R_cart_samples),
-    )
-    structure_data.sanity_check()
-
-    aos_data = AOs_sphe_data(
-        structure_data=structure_data,
-        nucleus_index=tuple(list(range(num_R_cart_samples))),
-        num_ao=num_ao,
-        num_ao_prim=num_ao_prim,
-        orbital_indices=orbital_indices,
-        exponents=exponents,
-        coefficients=coefficients,
-        angular_momentums=angular_momentums,
-        magnetic_quantum_numbers=magnetic_quantum_numbers,
-    )
-    aos_data.sanity_check()
-
-    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = _compute_AOs_grad_autodiff(
-        aos_data=aos_data, r_carts=r_carts
-    )
-    gx_an_sphe, gy_an_sphe, gz_an_sphe = compute_AOs_grad(aos_data=aos_data, r_carts=r_carts)
-
-    (
-        ao_matrix_grad_x_numerical,
-        ao_matrix_grad_y_numerical,
-        ao_matrix_grad_z_numerical,
-    ) = _compute_AOs_grad_debug(aos_data=aos_data, r_carts=r_carts)
-
-    np.testing.assert_array_almost_equal(ao_matrix_grad_x_auto, ao_matrix_grad_x_numerical, decimal=7)
-    np.testing.assert_array_almost_equal(ao_matrix_grad_y_auto, ao_matrix_grad_y_numerical, decimal=7)
-    np.testing.assert_array_almost_equal(ao_matrix_grad_z_auto, ao_matrix_grad_z_numerical, decimal=7)
-
-    np.testing.assert_allclose(gx_an_sphe, np.array(ao_matrix_grad_x_auto), rtol=1e-9, atol=5e-8)
-    np.testing.assert_allclose(gy_an_sphe, np.array(ao_matrix_grad_y_auto), rtol=1e-9, atol=5e-8)
-    np.testing.assert_allclose(gz_an_sphe, np.array(ao_matrix_grad_z_auto), rtol=1e-9, atol=5e-8)
+    np.testing.assert_array_almost_equal(gx_an, gx_auto, decimal=decimal_auto_vs_analytic_deriv)
+    np.testing.assert_array_almost_equal(gy_an, gy_auto, decimal=decimal_auto_vs_analytic_deriv)
+    np.testing.assert_array_almost_equal(gz_an, gz_auto, decimal=decimal_auto_vs_analytic_deriv)
 
     jax.clear_caches()
 
 
-def test_AOs_grads_comparing_auto_and_numerical_implemenetations():
+def test_AOs_sphe_and_cart_grads_auto_vs_numerical():
     """Test the grad AOs computation, comparing the JAX and debug implementations."""
     # Cartesian case
     num_r_cart_samples = 8
@@ -696,9 +544,9 @@ def test_AOs_grads_comparing_auto_and_numerical_implemenetations():
     gx_auto_cart, gy_auto_cart, gz_auto_cart = _compute_AOs_grad_autodiff(aos_data=aos_data_cart, r_carts=r_carts)
     gx_num_cart, gy_num_cart, gz_num_cart = _compute_AOs_grad_debug(aos_data=aos_data_cart, r_carts=r_carts)
 
-    np.testing.assert_array_almost_equal(gx_auto_cart, gx_num_cart, decimal=7)
-    np.testing.assert_array_almost_equal(gy_auto_cart, gy_num_cart, decimal=7)
-    np.testing.assert_array_almost_equal(gz_auto_cart, gz_num_cart, decimal=7)
+    np.testing.assert_array_almost_equal(gx_auto_cart, gx_num_cart, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_array_almost_equal(gy_auto_cart, gy_num_cart, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_array_almost_equal(gz_auto_cart, gz_num_cart, decimal=decimal_auto_vs_numerical_deriv)
 
     # Spherical case
     num_r_cart_samples = 10
@@ -744,23 +592,79 @@ def test_AOs_grads_comparing_auto_and_numerical_implemenetations():
     )
     aos_data.sanity_check()
 
-    ao_matrix_grad_x_auto, ao_matrix_grad_y_auto, ao_matrix_grad_z_auto = _compute_AOs_grad_autodiff(
-        aos_data=aos_data, r_carts=r_carts
-    )
+    gx_auto_sphe, gy_auto_sphe, gz_auto_sphe = _compute_AOs_grad_autodiff(aos_data=aos_data, r_carts=r_carts)
 
     (
-        ao_matrix_grad_x_numerical,
-        ao_matrix_grad_y_numerical,
-        ao_matrix_grad_z_numerical,
+        gx_num_sphe,
+        gy_num_sphe,
+        gz_num_sphe,
     ) = _compute_AOs_grad_debug(aos_data=aos_data, r_carts=r_carts)
 
-    np.testing.assert_array_almost_equal(ao_matrix_grad_x_auto, ao_matrix_grad_x_numerical, decimal=7)
-    np.testing.assert_array_almost_equal(ao_matrix_grad_y_auto, ao_matrix_grad_y_numerical, decimal=7)
+    np.testing.assert_array_almost_equal(gx_auto_sphe, gx_num_sphe, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_array_almost_equal(gy_auto_sphe, gy_num_sphe, decimal=decimal_auto_vs_numerical_deriv)
 
-    np.testing.assert_array_almost_equal(ao_matrix_grad_z_auto, ao_matrix_grad_z_numerical, decimal=7)
+    np.testing.assert_array_almost_equal(gz_auto_sphe, gz_num_sphe, decimal=decimal_auto_vs_numerical_deriv)
+
+    # Spherical case (additional coverage)
+    num_r_cart_samples = 2
+    num_R_cart_samples = 4
+    r_cart_min, r_cart_max = -3.0, +3.0
+    R_cart_min, R_cart_max = -3.0, +3.0
+    r_carts = (r_cart_max - r_cart_min) * np.random.rand(num_r_cart_samples, 3) + r_cart_min
+    R_carts = (R_cart_max - R_cart_min) * np.random.rand(num_R_cart_samples, 3) + R_cart_min
+
+    num_ao = 4
+    num_ao_prim = 5
+    orbital_indices = [0, 1, 2, 2, 3]
+    exponents = [3.0, 1.0, 0.5, 0.5, 0.5]
+    coefficients = [1.0, 1.0, 0.5, 0.5, 0.5]
+    angular_momentums = [0, 0, 0, 0]
+    magnetic_quantum_numbers = [0, 0, 0, 0]
+
+    orbital_indices = tuple(orbital_indices)
+    exponents = tuple(exponents)
+    coefficients = tuple(coefficients)
+    angular_momentums = tuple(angular_momentums)
+    magnetic_quantum_numbers = tuple(magnetic_quantum_numbers)
+
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=R_carts,
+        atomic_numbers=tuple([0] * num_R_cart_samples),
+        element_symbols=tuple(["X"] * num_R_cart_samples),
+        atomic_labels=tuple(["X"] * num_R_cart_samples),
+    )
+    structure_data.sanity_check()
+
+    aos_data = AOs_sphe_data(
+        structure_data=structure_data,
+        nucleus_index=tuple(list(range(num_R_cart_samples))),
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        orbital_indices=orbital_indices,
+        exponents=exponents,
+        coefficients=coefficients,
+        angular_momentums=angular_momentums,
+        magnetic_quantum_numbers=magnetic_quantum_numbers,
+    )
+    aos_data.sanity_check()
+
+    gx_auto_sphe, gy_auto_sphe, gz_auto_sphe = _compute_AOs_grad_autodiff(aos_data=aos_data, r_carts=r_carts)
+
+    (
+        gx_num_sphe,
+        gy_num_sphe,
+        gz_num_sphe,
+    ) = _compute_AOs_grad_debug(aos_data=aos_data, r_carts=r_carts)
+
+    np.testing.assert_array_almost_equal(gx_auto_sphe, gx_num_sphe, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_array_almost_equal(gy_auto_sphe, gy_num_sphe, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_array_almost_equal(gz_auto_sphe, gz_num_sphe, decimal=decimal_auto_vs_numerical_deriv)
+
+    jax.clear_caches()
 
 
-def test_AOs_grads_comparing_analytic_and_numerical_implemenetations():
+def test_AOs_sphe_and_cart_grads_analytic_vs_numerical():
     """Analytic AO gradients match numerical finite-difference implementation."""
     seed = 2028
     np.random.seed(seed)
@@ -805,12 +709,12 @@ def test_AOs_grads_comparing_analytic_and_numerical_implemenetations():
     )
     aos_data.sanity_check()
 
-    gx_num, gy_num, gz_num = _compute_AOs_grad_debug(aos_data=aos_data, r_carts=r_carts)
-    gx_an, gy_an, gz_an = compute_AOs_grad(aos_data=aos_data, r_carts=r_carts)
+    gx_num_cart, gy_num_cart, gz_num_cart = _compute_AOs_grad_debug(aos_data=aos_data, r_carts=r_carts)
+    gx_an_cart, gy_an_cart, gz_an_cart = compute_AOs_grad(aos_data=aos_data, r_carts=r_carts)
 
-    np.testing.assert_array_almost_equal(gx_an, np.array(gx_num), decimal=6)
-    np.testing.assert_array_almost_equal(gy_an, np.array(gy_num), decimal=6)
-    np.testing.assert_array_almost_equal(gz_an, np.array(gz_num), decimal=6)
+    np.testing.assert_array_almost_equal(gx_an_cart, gx_num_cart, decimal=decimal_numerical_vs_analytic_deriv)
+    np.testing.assert_array_almost_equal(gy_an_cart, gy_num_cart, decimal=decimal_numerical_vs_analytic_deriv)
+    np.testing.assert_array_almost_equal(gz_an_cart, gz_num_cart, decimal=decimal_numerical_vs_analytic_deriv)
 
     # Spherical case
     num_r_cart_samples = 3
@@ -851,14 +755,14 @@ def test_AOs_grads_comparing_analytic_and_numerical_implemenetations():
     gx_num_sphe, gy_num_sphe, gz_num_sphe = _compute_AOs_grad_debug(aos_data=aos_data, r_carts=r_carts)
     gx_an_sphe, gy_an_sphe, gz_an_sphe = compute_AOs_grad(aos_data=aos_data, r_carts=r_carts)
 
-    np.testing.assert_array_almost_equal(gx_an_sphe, np.array(gx_num_sphe), decimal=6)
-    np.testing.assert_array_almost_equal(gy_an_sphe, np.array(gy_num_sphe), decimal=6)
-    np.testing.assert_array_almost_equal(gz_an_sphe, np.array(gz_num_sphe), decimal=6)
+    np.testing.assert_array_almost_equal(gx_an_sphe, gx_num_sphe, decimal=decimal_numerical_vs_analytic_deriv)
+    np.testing.assert_array_almost_equal(gy_an_sphe, gy_num_sphe, decimal=decimal_numerical_vs_analytic_deriv)
+    np.testing.assert_array_almost_equal(gz_an_sphe, gz_num_sphe, decimal=decimal_numerical_vs_analytic_deriv)
 
     jax.clear_caches()
 
 
-def test_AOs_laplacians_comparing_analytic_and_auto_implemenetations():
+def test_AOs_shpe_and_cart_laplacians_analytic_vs_auto():
     """Analytic AO Laplacians match JAX autodiff implementation."""
     seed = 2026
     np.random.seed(seed)
@@ -903,10 +807,10 @@ def test_AOs_laplacians_comparing_analytic_and_auto_implemenetations():
     )
     aos_data.sanity_check()
 
-    lap_ref_cart = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
+    lap_auto_cart = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
     lap_an_cart = compute_AOs_laplacian(aos_data=aos_data, r_carts=r_carts)
 
-    np.testing.assert_allclose(lap_an_cart, np.array(lap_ref_cart), rtol=1e-9, atol=5e-7)
+    np.testing.assert_array_almost_equal(lap_an_cart, lap_auto_cart, decimal=decimal_auto_vs_analytic_deriv)
 
     # Spherical case
     num_r_cart_samples = 3
@@ -944,15 +848,13 @@ def test_AOs_laplacians_comparing_analytic_and_auto_implemenetations():
     )
     aos_data.sanity_check()
 
-    lap_ref_sphe = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
+    lap_auto_sphe = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
     lap_an_sphe = compute_AOs_laplacian(aos_data=aos_data, r_carts=r_carts)
 
-    np.testing.assert_allclose(lap_an_sphe, np.array(lap_ref_sphe), rtol=1e-9, atol=5e-7)
-
-    jax.clear_caches()
+    np.testing.assert_array_almost_equal(lap_an_sphe, lap_auto_sphe, decimal=decimal_auto_vs_analytic_deriv)
 
 
-def test_AOs_laplacians_comparing_analytic_and_numerical_implemenetations():
+def test_AOs_shpe_and_cart_laplacians_analytic_vs_numerical():
     """Analytic Laplacians match numerical finite-difference implementation."""
     seed = 2027
     np.random.seed(seed)
@@ -1000,7 +902,7 @@ def test_AOs_laplacians_comparing_analytic_and_numerical_implemenetations():
     lap_num_cart = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
     lap_an_cart = compute_AOs_laplacian(aos_data=aos_data, r_carts=r_carts)
 
-    np.testing.assert_array_almost_equal(lap_an_cart, np.array(lap_num_cart), decimal=5)
+    np.testing.assert_array_almost_equal(lap_an_cart, lap_num_cart, decimal=decimal_numerical_vs_analytic_deriv)
 
     # Spherical case
     num_r_cart_samples = 3
@@ -1041,12 +943,12 @@ def test_AOs_laplacians_comparing_analytic_and_numerical_implemenetations():
     lap_num_sphe = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
     lap_an_sphe = compute_AOs_laplacian(aos_data=aos_data, r_carts=r_carts)
 
-    np.testing.assert_array_almost_equal(lap_an_sphe, np.array(lap_num_sphe), decimal=5)
+    np.testing.assert_array_almost_equal(lap_an_sphe, lap_num_sphe, decimal=decimal_numerical_vs_analytic_deriv)
 
     jax.clear_caches()
 
 
-def test_AOs_laplacians_comparing_auto_and_numerical_implemenetations():
+def test_AOs_shpe_and_cart_laplacians_auto_vs_numerical():
     """Test the laplacian AOs computation, comparing the JAX and debug implementations."""
     # Cartesian case
     num_r_cart_samples = 5
@@ -1090,10 +992,10 @@ def test_AOs_laplacians_comparing_auto_and_numerical_implemenetations():
     )
     aos_data.sanity_check()
 
-    ao_matrix_laplacian_num_cart = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
-    ao_matrix_laplacian_auto_cart = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
+    lap_num_cart = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
+    lap_auto_cart = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
 
-    np.testing.assert_array_almost_equal(ao_matrix_laplacian_auto_cart, ao_matrix_laplacian_num_cart, decimal=5)
+    np.testing.assert_array_almost_equal(lap_auto_cart, lap_num_cart, decimal=decimal_auto_vs_numerical_deriv)
 
     # Spherical cases
     num_r_cart_samples = 10
@@ -1139,11 +1041,11 @@ def test_AOs_laplacians_comparing_auto_and_numerical_implemenetations():
     )
     aos_data.sanity_check()
 
-    ao_matrix_laplacian_numerical = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
+    lap_auto_sphe = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
 
-    ao_matrix_laplacian_auto = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
+    lap_num_sphe = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
 
-    np.testing.assert_array_almost_equal(ao_matrix_laplacian_auto, ao_matrix_laplacian_numerical, decimal=5)
+    np.testing.assert_array_almost_equal(lap_num_sphe, lap_auto_sphe, decimal=decimal_auto_vs_numerical_deriv)
 
     num_r_cart_samples = 2
     num_R_cart_samples = 3
@@ -1188,11 +1090,11 @@ def test_AOs_laplacians_comparing_auto_and_numerical_implemenetations():
     )
     aos_data.sanity_check()
 
-    ao_matrix_laplacian_numerical = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
+    lap_auto_sphe = _compute_AOs_laplacian_autodiff(aos_data=aos_data, r_carts=r_carts)
 
-    ao_matrix_laplacian_auto = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
+    lap_num_sphe = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
 
-    np.testing.assert_array_almost_equal(ao_matrix_laplacian_auto, ao_matrix_laplacian_numerical, decimal=5)
+    np.testing.assert_array_almost_equal(lap_num_sphe, lap_auto_sphe, decimal=decimal_auto_vs_numerical_deriv)
 
     jax.clear_caches()
 

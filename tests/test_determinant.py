@@ -59,6 +59,11 @@ from jqmc.determinant import (  # noqa: E402
     compute_geminal_up_one_row_elements,
     compute_grads_and_laplacian_ln_Det,
 )
+from jqmc.setting import (  # noqa: E402
+    decimal_auto_vs_analytic_deriv,
+    decimal_auto_vs_numerical_deriv,
+    decimal_debug_vs_production,
+)
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 
 # JAX float64
@@ -154,7 +159,7 @@ def test_comparing_AO_and_MO_geminals():
         r_dn_carts=r_dn_carts,
     )
 
-    np.testing.assert_almost_equal(geminal_mo_debug, geminal_mo_jax, decimal=15)
+    np.testing.assert_almost_equal(geminal_mo_debug, geminal_mo_jax, decimal=decimal_debug_vs_production)
 
     geminal_mo = geminal_mo_jax
 
@@ -193,12 +198,12 @@ def test_comparing_AO_and_MO_geminals():
         r_dn_carts=r_dn_carts,
     )
 
-    np.testing.assert_almost_equal(geminal_ao_debug, geminal_ao_jax, decimal=15)
+    np.testing.assert_almost_equal(geminal_ao_debug, geminal_ao_jax, decimal=decimal_debug_vs_production)
 
     geminal_ao = geminal_ao_jax
 
     # check if geminals with AO and MO representations are consistent
-    np.testing.assert_array_almost_equal(geminal_ao, geminal_mo, decimal=15)
+    np.testing.assert_array_almost_equal(geminal_ao, geminal_mo, decimal=decimal_debug_vs_production)
 
     det_geminal_mo_debug = _compute_det_geminal_all_elements_debug(
         geminal_data=geminal_mo_data,
@@ -212,7 +217,7 @@ def test_comparing_AO_and_MO_geminals():
         r_dn_carts=r_dn_carts,
     )
 
-    np.testing.assert_array_almost_equal(det_geminal_mo_debug, det_geminal_mo_jax, decimal=15)
+    np.testing.assert_array_almost_equal(det_geminal_mo_debug, det_geminal_mo_jax, decimal=decimal_debug_vs_production)
     det_geminal_mo = det_geminal_mo_jax
 
     det_geminal_ao_debug = _compute_det_geminal_all_elements_debug(
@@ -227,10 +232,10 @@ def test_comparing_AO_and_MO_geminals():
         r_dn_carts=r_dn_carts,
     )
 
-    np.testing.assert_array_almost_equal(det_geminal_ao_debug, det_geminal_ao_jax, decimal=15)
+    np.testing.assert_array_almost_equal(det_geminal_ao_debug, det_geminal_ao_jax, decimal=decimal_debug_vs_production)
     det_geminal_ao = det_geminal_ao_jax
 
-    np.testing.assert_almost_equal(det_geminal_ao, det_geminal_mo, decimal=15)
+    np.testing.assert_almost_equal(det_geminal_ao, det_geminal_mo, decimal=decimal_debug_vs_production)
 
     jax.clear_caches()
 
@@ -317,7 +322,7 @@ def test_comparing_AS_regularization():
 
     R_AS_jax = compute_AS_regularization_factor(geminal_data=geminal_mo_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
 
-    np.testing.assert_almost_equal(R_AS_debug, R_AS_jax, decimal=8)
+    np.testing.assert_almost_equal(R_AS_debug, R_AS_jax, decimal=decimal_debug_vs_production)
 
     jax.clear_caches()
 
@@ -425,13 +430,17 @@ def test_one_row_or_one_column_update():
 
     # --- Numerical consistency asserts (no shape checks) ---
     # up-one-row must equal the i-th row of the full geminal
-    assert bool(np.allclose(geminal_mo_up_one_row, geminal_mo[i_up, :], rtol=1e-8, atol=1e-12)), (
-        "up-one-row does not match the corresponding row of the full geminal"
+    np.testing.assert_array_almost_equal(
+        np.asarray(geminal_mo_up_one_row).ravel(),
+        np.asarray(geminal_mo[i_up, :]),
+        decimal=decimal_debug_vs_production,
     )
 
     # dn-one-column must equal the j-th *paired* column of the full geminal
-    assert bool(np.allclose(geminal_mo_dn_one_column, geminal_mo[:, j_dn], rtol=1e-8, atol=1e-12)), (
-        "dn-one-column does not match the corresponding paired column of the full geminal"
+    np.testing.assert_array_almost_equal(
+        np.asarray(geminal_mo_dn_one_column).ravel(),
+        np.asarray(geminal_mo[:, j_dn]),
+        decimal=decimal_debug_vs_production,
     )
 
 
@@ -548,10 +557,26 @@ def test_numerial_and_auto_grads_and_laplacians_ln_Det():
         r_dn_carts=r_dn_carts,
     )
 
-    np.testing.assert_almost_equal(np.array(grad_ln_D_up_numerical), np.array(grad_ln_D_up_auto), decimal=5)
-    np.testing.assert_almost_equal(np.array(grad_ln_D_dn_numerical), np.array(grad_ln_D_dn_auto), decimal=5)
-    np.testing.assert_almost_equal(np.array(lap_ln_D_up_numerical), np.array(lap_ln_D_up_auto), decimal=2)
-    np.testing.assert_almost_equal(np.array(lap_ln_D_dn_numerical), np.array(lap_ln_D_dn_auto), decimal=2)
+    np.testing.assert_array_almost_equal(
+        np.asarray(grad_ln_D_up_numerical),
+        np.asarray(grad_ln_D_up_auto),
+        decimal=decimal_auto_vs_numerical_deriv,
+    )
+    np.testing.assert_array_almost_equal(
+        np.asarray(grad_ln_D_dn_numerical),
+        np.asarray(grad_ln_D_dn_auto),
+        decimal=decimal_auto_vs_numerical_deriv,
+    )
+    np.testing.assert_array_almost_equal(
+        np.asarray(lap_ln_D_up_numerical),
+        np.asarray(lap_ln_D_up_auto),
+        decimal=decimal_auto_vs_numerical_deriv,
+    )
+    np.testing.assert_array_almost_equal(
+        np.asarray(lap_ln_D_dn_numerical),
+        np.asarray(lap_ln_D_dn_auto),
+        decimal=decimal_auto_vs_numerical_deriv,
+    )
 
     jax.clear_caches()
 
@@ -653,10 +678,26 @@ def test_analytic_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
         r_dn_carts=r_dn_carts,
     )
 
-    np.testing.assert_almost_equal(np.array(grad_ln_D_up_analytic), np.array(grad_ln_D_up_auto), decimal=4)
-    np.testing.assert_almost_equal(np.array(grad_ln_D_dn_analytic), np.array(grad_ln_D_dn_auto), decimal=4)
-    np.testing.assert_almost_equal(np.array(lap_ln_D_up_analytic), np.array(lap_ln_D_up_auto), decimal=1)
-    np.testing.assert_almost_equal(np.array(lap_ln_D_dn_analytic), np.array(lap_ln_D_dn_auto), decimal=1)
+    np.testing.assert_array_almost_equal(
+        np.asarray(grad_ln_D_up_analytic),
+        np.asarray(grad_ln_D_up_auto),
+        decimal=decimal_auto_vs_analytic_deriv,
+    )
+    np.testing.assert_array_almost_equal(
+        np.asarray(grad_ln_D_dn_analytic),
+        np.asarray(grad_ln_D_dn_auto),
+        decimal=decimal_auto_vs_analytic_deriv,
+    )
+    np.testing.assert_array_almost_equal(
+        np.asarray(lap_ln_D_up_analytic),
+        np.asarray(lap_ln_D_up_auto),
+        decimal=decimal_auto_vs_analytic_deriv,
+    )
+    np.testing.assert_array_almost_equal(
+        np.asarray(lap_ln_D_dn_analytic),
+        np.asarray(lap_ln_D_dn_auto),
+        decimal=decimal_auto_vs_analytic_deriv,
+    )
 
     jax.clear_caches()
 

@@ -49,6 +49,7 @@ from jax import hessian, jacrev, jit, vmap
 from jax import typing as jnpt
 from numpy import linalg as LA
 
+from .setting import EPS_stabilizing_jax_AO_cart_deriv
 from .structure import Structure_data
 
 # set logger
@@ -650,6 +651,25 @@ class AOs_cart_data:
             jax.Array: Polynominal order of z for primitive orbitals
         """
         return jnp.array(self._polynominal_order_z_prim_np, dtype=np.int32)
+
+    @property
+    def _normalization_factorial_ratio_prim_jnp(self) -> jax.Array:
+        """Return factorial ratio used in AO normalization (primitive-wise)."""
+        nx = self._polynominal_order_x_prim_np
+        ny = self._polynominal_order_y_prim_np
+        nz = self._polynominal_order_z_prim_np
+        num = (
+            scipy.special.factorial(nx, exact=True)
+            * scipy.special.factorial(ny, exact=True)
+            * scipy.special.factorial(nz, exact=True)
+        )
+        den = (
+            scipy.special.factorial(2 * nx, exact=True)
+            * scipy.special.factorial(2 * ny, exact=True)
+            * scipy.special.factorial(2 * nz, exact=True)
+        )
+        ratio = np.asarray(num / den, dtype=np.float64)
+        return jnp.array(ratio, dtype=jnp.float64)
 
     @property
     def _exponents_jnp(self) -> jax.Array:
@@ -1342,9 +1362,7 @@ def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.A
     ny_jnp = aos_data._polynominal_order_y_prim_jnp
     nz_jnp = aos_data._polynominal_order_z_prim_jnp
 
-    N_n_dup_fuctorial_part = (
-        jscipy.special.factorial(nx_jnp) * jscipy.special.factorial(ny_jnp) * jscipy.special.factorial(nz_jnp)
-    ) / (jscipy.special.factorial(2 * nx_jnp) * jscipy.special.factorial(2 * ny_jnp) * jscipy.special.factorial(2 * nz_jnp))
+    N_n_dup_fuctorial_part = aos_data._normalization_factorial_ratio_prim_jnp
     N_n_dup_Z_part = (2.0 * Z_jnp / jnp.pi) ** (3.0 / 2.0) * (8.0 * Z_jnp) ** l_jnp
     N_n_dup = jnp.sqrt(N_n_dup_Z_part * N_n_dup_fuctorial_part)
     r_R_diffs = r_carts[None, :, :] - R_carts_jnp[:, None, :]
@@ -1725,14 +1743,15 @@ def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.n
     ny = aos_data._polynominal_order_y_prim_jnp
     nz = aos_data._polynominal_order_z_prim_jnp
 
-    N_fact = (jscipy.special.factorial(nx) * jscipy.special.factorial(ny) * jscipy.special.factorial(nz)) / (
-        jscipy.special.factorial(2 * nx) * jscipy.special.factorial(2 * ny) * jscipy.special.factorial(2 * nz)
-    )
+    N_fact = aos_data._normalization_factorial_ratio_prim_jnp
     N_Z = (2.0 * Z / jnp.pi) ** (3.0 / 2.0) * (8.0 * Z) ** l
     N = jnp.sqrt(N_Z * N_fact)
 
     diff = r_carts[None, :, :] - R_carts[:, None, :]
     x, y, z = diff[..., 0], diff[..., 1], diff[..., 2]
+    x = x + EPS_stabilizing_jax_AO_cart_deriv
+    y = y + EPS_stabilizing_jax_AO_cart_deriv
+    z = z + EPS_stabilizing_jax_AO_cart_deriv
     r2 = jnp.sum(diff**2, axis=-1)
     pref = c[:, None] * jnp.exp(-Z[:, None] * r2)
 
@@ -2022,14 +2041,15 @@ def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarra
     ny = aos_data._polynominal_order_y_prim_jnp
     nz = aos_data._polynominal_order_z_prim_jnp
 
-    N_fact = (jscipy.special.factorial(nx) * jscipy.special.factorial(ny) * jscipy.special.factorial(nz)) / (
-        jscipy.special.factorial(2 * nx) * jscipy.special.factorial(2 * ny) * jscipy.special.factorial(2 * nz)
-    )
+    N_fact = aos_data._normalization_factorial_ratio_prim_jnp
     N_Z = (2.0 * Z / jnp.pi) ** (3.0 / 2.0) * (8.0 * Z) ** l
     N = jnp.sqrt(N_Z * N_fact)
 
     diff = r_carts[None, :, :] - R_carts[:, None, :]
     x, y, z = diff[..., 0], diff[..., 1], diff[..., 2]
+    x = x + EPS_stabilizing_jax_AO_cart_deriv
+    y = y + EPS_stabilizing_jax_AO_cart_deriv
+    z = z + EPS_stabilizing_jax_AO_cart_deriv
     r2 = jnp.sum(diff**2, axis=-1)
     pref = c[:, None] * jnp.exp(-Z[:, None] * r2)
 
@@ -2068,11 +2088,15 @@ def _compute_AOs_grad_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.ndarra
     l_jnp = aos_data._angular_momentums_prim_jnp
     m_jnp = aos_data._magnetic_quantum_numbers_prim_jnp
 
+    l_f64 = l_jnp.astype(jnp.float64)
+    Z_f64 = Z_jnp.astype(jnp.float64)
+    factorial_l_plus_1 = jnp.exp(jscipy.special.gammaln(l_f64 + 2.0))
+    factorial_2l_plus_2 = jnp.exp(jscipy.special.gammaln(2.0 * l_f64 + 3.0))
+
     N_n_dup = jnp.sqrt(
-        (2.0 ** (2 * l_jnp + 3) * jscipy.special.factorial(l_jnp + 1) * (2 * Z_jnp) ** (l_jnp + 1.5))
-        / (jscipy.special.factorial(2 * l_jnp + 2) * jnp.sqrt(jnp.pi))
+        (2.0 ** (2 * l_f64 + 3) * factorial_l_plus_1 * (2 * Z_f64) ** (l_f64 + 1.5)) / (factorial_2l_plus_2 * jnp.sqrt(jnp.pi))
     )
-    N_l_m_dup = jnp.sqrt((2 * l_jnp + 1) / (4 * jnp.pi))
+    N_l_m_dup = jnp.sqrt((2 * l_f64 + 1) / (4 * jnp.pi))
 
     r_R_diffs = r_carts[None, :, :] - R_carts_jnp[:, None, :]
     r_squared = jnp.sum(r_R_diffs**2, axis=-1)
