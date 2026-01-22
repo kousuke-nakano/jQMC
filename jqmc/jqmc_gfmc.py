@@ -2165,7 +2165,6 @@ class GFMC_n:
         random_discretized_mesh: bool = True,
         non_local_move: str = "tmove",
         comput_position_deriv: bool = False,
-        debug_mode: bool = False,
     ) -> None:
         """Init.
 
@@ -2185,7 +2184,6 @@ class GFMC_n:
         self.__alat = alat
         self.__random_discretized_mesh = random_discretized_mesh
         self.__non_local_move = non_local_move
-        self.__debug_mode = debug_mode
 
         # derivative flags
         self.__comput_position_deriv = comput_position_deriv
@@ -3359,34 +3357,17 @@ class GFMC_n:
 
             # evaluate observables
             start_e_L = time.perf_counter()
-            if self.__debug_mode:
-                V_diag_list, V_nondiag_list = vmap(_compute_V_elements_n, in_axes=(None, 0, 0, 0, None, None, None))(
-                    self.__hamiltonian_data,
-                    self.__latest_r_up_carts,
-                    self.__latest_r_dn_carts,
-                    latest_RTs,
-                    self.__non_local_move,
-                    self.__alat,
-                    True,
-                )
+            V_diag_list, V_nondiag_list = vmap(_compute_V_elements_n, in_axes=(None, 0, 0, 0, None, None, None))(
+                self.__hamiltonian_data,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+                latest_RTs,
+                self.__non_local_move,
+                self.__alat,
+                True,
+            )
             e_L_list = V_diag_list + V_nondiag_list
             e_L_list.block_until_ready()
-
-            """
-            if self.__non_local_move == "tmove":
-                e_list_debug = vmap(compute_local_energy_api, in_axes=(None, 0, 0))(
-                    self.__hamiltonian_data,
-                    self.__latest_r_up_carts,
-                    self.__latest_r_dn_carts,
-                )
-                if np.max(np.abs(e_L_list - e_list_debug)) > 1.0e-6:
-                    logger.info(f"max(e_list - e_list_debug) = {np.max(np.abs(e_L_list - e_list_debug))}.")
-                    logger.info(f"w_L_list = {w_L_list}.")
-                    logger.info(f"e_L_list = {e_L_list}.")
-                    logger.info(f"V_diag_list - E_scf = {V_diag_list - E_scf}.")
-                    logger.info(f"e_list_debug = {e_list_debug}.")
-                # np.testing.assert_almost_equal(np.array(e_L_list), np.array(e_list_debug), decimal=6)
-            """
 
             end_e_L = time.perf_counter()
             timer_e_L += end_e_L - start_e_L

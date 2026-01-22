@@ -159,7 +159,6 @@ def test_jqmc_gfmc_fixed_number_of_branching_tmove(trexio_file, with_nn_jastrow,
         random_discretized_mesh=True,
         comput_position_deriv=True,
         non_local_move=non_local_move,
-        debug_mode=True,
     )
     gfmc_jax.run(num_mcmc_steps=num_mcmc_steps)
 
