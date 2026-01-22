@@ -68,6 +68,28 @@ jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
 
+def _ensure_flax_trace_level_compat() -> None:
+    """Safely handle missing ``flax.core.tracers.trace_level`` attribute.
+
+    Some Flax versions expose ``trace_level``, others do not. When absent, we
+    simply no-op to avoid AttributeError during NN Jastrow initialization.
+    """
+    try:
+        from flax.core import tracers as flax_tracers  # type: ignore
+    except Exception:
+        return
+
+    trace_level = getattr(flax_tracers, "trace_level", None)
+    if trace_level is None:
+        return
+    if getattr(trace_level, "_jqmc_patched", False):
+        return
+
+    # Mark as patched to prevent repeated checks; do not mutate further when the
+    # attribute exists but already works.
+    setattr(trace_level, "_jqmc_patched", True)
+
+
 def _flatten_params_with_treedef(params: Any) -> tuple[jnp.ndarray, Any, list[tuple[int, ...]]]:
     """Flatten a PyTree of params into a 1D vector, returning treedef and shapes.
 
@@ -1154,7 +1176,6 @@ class Jastrow_three_body_data:
             random_scale: Upper bound of uniform sampler when random_init is True (default 0.01).
             seed: Optional seed for deterministic initialization when random_init is True.
         """
-
         if random_init:
             rng = np.random.default_rng(seed)
             j_matrix = rng.uniform(0.0, random_scale, size=(orb_data._num_orb, orb_data._num_orb + 1))
@@ -1293,6 +1314,7 @@ class Jastrow_NN_data:
         parameters with a dummy electron configuration, and prepares
         flatten/unflatten utilities for SR/MCMC.
         """
+        _ensure_flax_trace_level_compat()
         if key is None:
             key = jax.random.PRNGKey(0)
 
