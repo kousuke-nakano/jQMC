@@ -157,7 +157,10 @@ def _ensure_flax_trace_level_compat() -> None:
     except Exception:
         return
 
-    if getattr(flax_tracers.trace_level, "_jqmc_patched", False):
+    trace_level = getattr(flax_tracers, "trace_level", None)
+    if trace_level is None:
+        return
+    if getattr(trace_level, "_jqmc_patched", False):
         return
 
     def _trace_level_safe(main):
