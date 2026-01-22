@@ -87,6 +87,7 @@ from .wavefunction import (
     compute_discretized_kinetic_energy,
     compute_discretized_kinetic_energy_fast_update,
     compute_kinetic_energy_all_elements,
+    compute_kinetic_energy_all_elements_fast_update,
     evaluate_ln_wavefunction,
 )
 
@@ -2563,10 +2564,11 @@ class GFMC_n:
 
                 # compute continuum kinetic energy
                 diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
-                    compute_kinetic_energy_all_elements(
+                    compute_kinetic_energy_all_elements_fast_update(
                         wavefunction_data=hamiltonian_data.wavefunction_data,
                         r_up_carts=r_up_carts,
                         r_dn_carts=r_dn_carts,
+                        geminal_inverse=A_old_inv,
                     )
                 )
 

@@ -39,6 +39,7 @@ from logging import getLogger
 # import jax
 import jax
 import jax.numpy as jnp
+import jax.scipy.linalg as jsp_linalg
 import numpy as np
 import numpy.typing as npt
 from flax import struct
@@ -49,6 +50,7 @@ from .determinant import (
     Geminal_data,
     compute_det_geminal_all_elements,
     compute_grads_and_laplacian_ln_Det,
+    compute_grads_and_laplacian_ln_Det_fast,
     compute_ln_det_geminal_all_elements,
     compute_ratio_determinant_part,
 )
@@ -793,64 +795,56 @@ def compute_kinetic_energy_all_elements(
     return (kinetic_energy_all_elements_up, kinetic_energy_all_elements_dn)
 
 
-'''
 @jit
-def compute_kinetic_energy_all_elements_jax_tricky(
+def compute_kinetic_energy_all_elements_fast_update(
     wavefunction_data: Wavefunction_data,
-    r_up_carts: jnpt.ArrayLike,
-    r_dn_carts: jnpt.ArrayLike,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+    geminal_inverse: jax.Array,
 ) -> jax.Array:
-    """See compute_kinetic_energy_api."""
-    # compute gradients
-    grad_ln_Psi_up = grad(evaluate_ln_wavefunction_jax, argnums=1)(wavefunction_data, r_up_carts, r_dn_carts)
-    grad_ln_Psi_dn = grad(evaluate_ln_wavefunction_jax, argnums=2)(wavefunction_data, r_up_carts, r_dn_carts)
+    """Kinetic energy per electron using a precomputed geminal inverse."""
+    if geminal_inverse is None:
+        raise ValueError("geminal_inverse must be provided for fast update")
 
-    # compute laplacians. The above Hessian implemenation is redundant since the nondiagonal parts are not needed for Laplacian calculations.
-    # The following implementation is more efficient, while it's a little bit tricky.
-    def laplacian_wrt_arg(func, arg):
-        ## Flatten the argument to a 1D array for computation
-        arg_flat = arg.reshape(-1)
+    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
+    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
 
-        ## Helper function that reshapes the flattened argument back to its original shape
-        def func_flat(x):
-            return func(x.reshape(arg.shape))
+    grad_J_up, grad_J_dn, lap_J_up, lap_J_dn = compute_grads_and_laplacian_Jastrow_part(
+        jastrow_data=wavefunction_data.jastrow_data,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
+    )
 
-        ## Obtain the gradient function with respect to the flattened argument
-        grad_func = grad(func_flat)
+    grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn = compute_grads_and_laplacian_ln_Det_fast(
+        geminal_data=wavefunction_data.geminal_data,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
+        geminal_inverse=geminal_inverse,
+    )
 
-        ## Define a function that computes the directional derivative (i.e., the Hessian-vector product) using jax.jvp
-        def hvp(e):
-            # jax.jvp returns a tuple (function value, tangent value); here we use the tangent value
-            _, hvp_val = jvp(grad_func, (arg_flat,), (e,))
-            return hvp_val
+    grad_ln_Psi_up = grad_J_up + grad_ln_D_up
+    grad_ln_Psi_dn = grad_J_dn + grad_ln_D_dn
 
-        ## Create the standard basis (unit vectors for each dimension)
-        n = arg_flat.shape[0]
-        basis = jnp.eye(n)
+    lap_ln_Psi_up = lap_J_up + lap_ln_D_up
+    lap_ln_Psi_dn = lap_J_dn + lap_ln_D_dn
 
-        ## Compute the Hessian-vector product for each standard basis vector.
-        ## The dot product of the basis vector with its Hessian-vector product gives the corresponding diagonal element.
-        diag = vmap(lambda e: jnp.dot(e, hvp(e)))(basis)
-        # The Laplacian is the sum of the diagonal elements
-        return diag
-
-    ## For r_up, compute the Laplacian while keeping r_dn fixed
-    def f_r_up(r_up):
-        return evaluate_ln_wavefunction_jax(wavefunction_data, r_up, r_dn_carts)
-
-    laplacian_r_up = laplacian_wrt_arg(f_r_up, r_up_carts).reshape(r_up_carts.shape[0], -1).sum(axis=1)
-
-    ## Similarly, for r_dn, compute the Laplacian while keeping r_up fixed
-    def f_r_dn(r_dn):
-        return evaluate_ln_wavefunction_jax(wavefunction_data, r_up_carts, r_dn)
-
-    laplacian_r_dn = laplacian_wrt_arg(f_r_dn, r_dn_carts).reshape(r_dn_carts.shape[0], -1).sum(axis=1)
-
-    kinetic_energy_all_elements_up = -1.0 / 2.0 * (laplacian_r_up + jnp.sum(grad_ln_Psi_up**2, axis=1))
-    kinetic_energy_all_elements_dn = -1.0 / 2.0 * (laplacian_r_dn + jnp.sum(grad_ln_Psi_dn**2, axis=1))
+    kinetic_energy_all_elements_up = -0.5 * (lap_ln_Psi_up + jnp.sum(grad_ln_Psi_up**2, axis=1))
+    kinetic_energy_all_elements_dn = -0.5 * (lap_ln_Psi_dn + jnp.sum(grad_ln_Psi_dn**2, axis=1))
 
     return (kinetic_energy_all_elements_up, kinetic_energy_all_elements_dn)
-'''
+
+
+def _compute_kinetic_energy_all_elements_fast_update_debug(
+    wavefunction_data: Wavefunction_data,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+) -> jax.Array:
+    """Debug helper that builds geminal inverse then calls the fast update path."""
+    return compute_kinetic_energy_all_elements(
+        wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
 
 
 def _compute_discretized_kinetic_energy_debug(
@@ -1052,7 +1046,6 @@ def compute_discretized_kinetic_energy(
     return r_up_carts_combined, r_dn_carts_combined, elements_kinetic_part
 
 
-# no longer used in the main code
 @jit
 def compute_discretized_kinetic_energy_fast_update(
     alat: float,
