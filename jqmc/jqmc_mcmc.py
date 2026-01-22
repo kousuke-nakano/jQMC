@@ -192,9 +192,9 @@ class MCMC:
         # check if only up electrons are updated
         if tot_num_electron_dn == 0:
             logger.info("  Only up electrons are updated in the MCMC.")
-            self.only_up_electron = True
+            self.__only_up_electron = True
         else:
-            self.only_up_electron = False
+            self.__only_up_electron = False
 
         ## generate initial electron configurations
         r_carts_up, r_carts_dn, up_owner, dn_owner = _generate_init_electron_configurations(
@@ -366,13 +366,12 @@ class MCMC:
             "optax_param_size": optax_param_size,
         }
 
-    def run(self, num_mcmc_steps: int = 0, max_time=86400, observable_batch_size: int = 100) -> None:
+    def run(self, num_mcmc_steps: int = 0, max_time=86400) -> None:
         """Execute Metropolis–Hastings sampling for all walkers.
 
         Args:
             num_mcmc_steps (int, optional): Metropolis updates per walker; values <= 0 are no-ops. Defaults to 0.
             max_time (int, optional): Wall-clock budget in seconds. Defaults to 86400.
-            observable_batch_size (int, optional): Batch size for observable accumulation. Defaults to 100.
 
         Notes:
             - Creates ``external_control_mcmc.toml`` to allow external stop requests.
@@ -391,9 +390,6 @@ class MCMC:
 
         # mcmc timer starts
         mcmc_total_start = time.perf_counter()
-
-        # observable batch size
-        observable_batch_size = int(observable_batch_size)
 
         # toml(control) filename
         toml_filename = "external_control_mcmc.toml"
@@ -897,7 +893,7 @@ class MCMC:
         )
 
         RTs = jnp.broadcast_to(jnp.eye(3), (len(self.__jax_PRNG_key_list), 3, 3))
-        if self.only_up_electron:
+        if self.__only_up_electron:
             (
                 _,
                 _,
@@ -1015,12 +1011,9 @@ class MCMC:
             self.__latest_r_dn_carts,
         )
 
-        # Histories to batch-evaluate observables after all position updates
-        r_up_history: list[jax.Array] = []
-        r_dn_history: list[jax.Array] = []
-        RT_history: list[jax.Array] = []
-        geminal_history: list[jax.Array] = []
-        geminal_inv_history: list[jax.Array] = []
+        # Electron position histories (retained for downstream analysis)
+        self.r_up_history: list[jax.Array] = []
+        self.r_dn_history: list[jax.Array] = []
 
         for i_mcmc_step in range(num_mcmc_steps):
             if (i_mcmc_step + 1) % mcmc_interval == 0:
@@ -1032,7 +1025,7 @@ class MCMC:
 
             # electron positions are goint to be updated!
             start = time.perf_counter()
-            if self.only_up_electron:
+            if self.__only_up_electron:
                 (
                     accepted_moves_nw,
                     rejected_moves_nw,
@@ -1087,12 +1080,114 @@ class MCMC:
             else:
                 RTs = jnp.broadcast_to(jnp.eye(3), (len(self.__jax_PRNG_key_list), 3, 3))
 
-            # Record states for later batched observable evaluations
-            r_up_history.append(self.__latest_r_up_carts)
-            r_dn_history.append(self.__latest_r_dn_carts)
-            RT_history.append(RTs)
-            geminal_history.append(geminal)
-            geminal_inv_history.append(geminal_inv)
+            # Record electron positions for optional downstream use
+            self.r_up_history.append(self.__latest_r_up_carts)
+            self.r_dn_history.append(self.__latest_r_dn_carts)
+
+            # Evaluate observables each MCMC cycle
+            start = time.perf_counter()
+            logger.debug("    Evaluating e_L ...")
+            e_L_step = vmap(compute_local_energy, in_axes=(None, 0, 0, 0))(
+                self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs
+            )
+            e_L_step.block_until_ready()
+            end = time.perf_counter()
+            timer_e_L += end - start
+
+            self.__stored_e_L.append(e_L_step)
+            self.__stored_e_L2.append(e_L_step**2)
+
+            # AS weights
+            R_AS_step = vmap(compute_AS_regularization_factor_fast_update, in_axes=(0, 0))(geminal, geminal_inv)
+            R_AS_eps_step = jnp.maximum(R_AS_step, self.__epsilon_AS)
+            w_L_step = (R_AS_step / R_AS_eps_step) ** 2
+
+            self.__stored_w_L.append(w_L_step)
+
+            if self.__comput_position_deriv:
+                start = time.perf_counter()
+                logger.debug("    Evaluating de_L/dR and de_L/dr ...")
+                grad_e_L_h_step, grad_e_L_r_up_step, grad_e_L_r_dn_step = vmap(
+                    grad(compute_local_energy, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0)
+                )(
+                    hamiltonian_for_param_grads,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                    RTs,
+                )
+                grad_e_L_r_up_step.block_until_ready()
+                grad_e_L_r_dn_step.block_until_ready()
+                end = time.perf_counter()
+                timer_de_L_dR_dr += end - start
+
+                self.__stored_grad_e_L_r_up.append(grad_e_L_r_up_step)
+                self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn_step)
+                grad_e_L_R = self.__hamiltonian_data.accumulate_position_grad(grad_e_L_h_step)
+                self.__stored_grad_e_L_dR.append(grad_e_L_R)
+
+                start = time.perf_counter()
+                logger.debug("    Evaluating dln_Psi/dR and dln_Psi/dr ...")
+                grad_ln_Psi_h_step, grad_ln_Psi_r_up_step, grad_ln_Psi_r_dn_step = vmap(
+                    grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
+                )(
+                    wavefunction_for_param_grads,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                )
+                grad_ln_Psi_r_up_step.block_until_ready()
+                grad_ln_Psi_r_dn_step.block_until_ready()
+                end = time.perf_counter()
+                timer_dln_Psi_dR_dr += end - start
+
+                self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up_step)
+                self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn_step)
+                grad_ln_Psi_dR = self.__hamiltonian_data.wavefunction_data.accumulate_position_grad(grad_ln_Psi_h_step)
+                self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
+
+                omega_up_step = vmap(evaluate_swct_omega, in_axes=(None, 0))(
+                    self.__swct_data,
+                    self.__latest_r_up_carts,
+                )
+                omega_dn_step = vmap(evaluate_swct_omega, in_axes=(None, 0))(
+                    self.__swct_data,
+                    self.__latest_r_dn_carts,
+                )
+                grad_omega_dr_up_step = vmap(evaluate_swct_domega, in_axes=(None, 0))(
+                    self.__swct_data,
+                    self.__latest_r_up_carts,
+                )
+                grad_omega_dr_dn_step = vmap(evaluate_swct_domega, in_axes=(None, 0))(
+                    self.__swct_data,
+                    self.__latest_r_dn_carts,
+                )
+
+                self.__stored_omega_up.append(omega_up_step)
+                self.__stored_omega_dn.append(omega_dn_step)
+                self.__stored_grad_omega_r_up.append(grad_omega_dr_up_step)
+                self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn_step)
+
+            if self.__comput_param_deriv:
+                start = time.perf_counter()
+                logger.debug("    Evaluating dln_Psi/dc ...")
+                grad_ln_Psi_h = vmap(grad(evaluate_ln_wavefunction, argnums=0), in_axes=(None, 0, 0))(
+                    wavefunction_for_param_grads,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                )
+                param_grads = self.__hamiltonian_data.wavefunction_data.collect_param_grads(grad_ln_Psi_h)
+                flat_param_grads = self.__hamiltonian_data.wavefunction_data.flatten_param_grads(
+                    param_grads, self.__num_walkers
+                )
+
+                for name, grad_val in flat_param_grads.items():
+                    if not self.__param_grad_flags.get(name, True):
+                        continue
+                    self.__stored_param_grads[name].append(grad_val)
+                    if hasattr(grad_val, "block_until_ready"):
+                        grad_val.block_until_ready()
+
+                end = time.perf_counter()
+                timer_dln_Psi_dc += end - start
 
             num_mcmc_done += 1
 
@@ -1114,141 +1209,6 @@ class MCMC:
                     logger.info(f"  Stopping... stop_flag in {toml_filename} is true.")
                     logger.info("  Break the mcmc loop.")
                     break
-
-        # Batch-evaluate observables after all position updates are finished
-        logger.info(
-            f"  Evaluating observables after all position updates for {num_mcmc_done} configs * {self.__num_walkers} walkers per MPI"
-        )
-        if num_mcmc_done > 0:
-            chunk_size = observable_batch_size
-            logger.info(f"  If you encounter an OOM here, try reducing observable_batch_size (current: {chunk_size}).")
-
-            for i_chunk, chunk_start in enumerate(range(0, num_mcmc_done, chunk_size)):
-                chunk_end = min(num_mcmc_done, chunk_start + chunk_size)
-                logger.info(f"  Processing chunk {i_chunk + 1}:")
-
-                r_up_chunk = jnp.stack(r_up_history[chunk_start:chunk_end])
-                r_dn_chunk = jnp.stack(r_dn_history[chunk_start:chunk_end])
-                RT_chunk = jnp.stack(RT_history[chunk_start:chunk_end])
-                geminal_chunk = jnp.stack(geminal_history[chunk_start:chunk_end])
-                geminal_inv_chunk = jnp.stack(geminal_inv_history[chunk_start:chunk_end])
-
-                # local energies
-                start = time.perf_counter()
-                logger.info("    Evaluating e_L ...")
-                e_L_chunk = vmap(
-                    lambda r_up_step, r_dn_step, RT_step: vmap(compute_local_energy, in_axes=(None, 0, 0, 0))(
-                        self.__hamiltonian_data, r_up_step, r_dn_step, RT_step
-                    ),
-                    in_axes=(0, 0, 0),
-                )(r_up_chunk, r_dn_chunk, RT_chunk)
-                e_L_chunk.block_until_ready()
-                end = time.perf_counter()
-                timer_e_L += end - start
-
-                for e_L in e_L_chunk:
-                    self.__stored_e_L.append(e_L)
-                    self.__stored_e_L2.append(e_L**2)
-
-                # AS weights
-                R_AS_chunk = vmap(lambda g, ginv: vmap(compute_AS_regularization_factor_fast_update, in_axes=(0, 0))(g, ginv))(
-                    geminal_chunk, geminal_inv_chunk
-                )
-                R_AS_eps_chunk = jnp.maximum(R_AS_chunk, self.__epsilon_AS)
-                w_L_chunk = (R_AS_chunk / R_AS_eps_chunk) ** 2
-
-                for w_L in w_L_chunk:
-                    self.__stored_w_L.append(w_L)
-
-                if self.__comput_position_deriv:
-                    start = time.perf_counter()
-                    logger.info("    Evaluating de_L/dR and de_L/dr ...")
-                    grad_e_L_h_chunk, grad_e_L_r_up_chunk, grad_e_L_r_dn_chunk = vmap(
-                        lambda r_up_step, r_dn_step, RT_step: vmap(
-                            grad(compute_local_energy, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0)
-                        )(hamiltonian_for_param_grads, r_up_step, r_dn_step, RT_step),
-                        in_axes=(0, 0, 0),
-                    )(r_up_chunk, r_dn_chunk, RT_chunk)
-                    grad_e_L_r_up_chunk.block_until_ready()
-                    grad_e_L_r_dn_chunk.block_until_ready()
-                    end = time.perf_counter()
-                    timer_de_L_dR_dr += end - start
-
-                    for local_idx in range(e_L_chunk.shape[0]):
-                        grad_e_L_h_step = jax.tree_util.tree_map(lambda x: x[local_idx], grad_e_L_h_chunk)
-                        grad_e_L_r_up_step = grad_e_L_r_up_chunk[local_idx]
-                        grad_e_L_r_dn_step = grad_e_L_r_dn_chunk[local_idx]
-                        self.__stored_grad_e_L_r_up.append(grad_e_L_r_up_step)
-                        self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn_step)
-                        grad_e_L_R = self.__hamiltonian_data.accumulate_position_grad(grad_e_L_h_step)
-                        self.__stored_grad_e_L_dR.append(grad_e_L_R)
-
-                    start = time.perf_counter()
-                    logger.info("    Evaluating dln_Psi/dR and dln_Psi/dr ...")
-                    grad_ln_Psi_h_chunk, grad_ln_Psi_r_up_chunk, grad_ln_Psi_r_dn_chunk = vmap(
-                        lambda r_up_step, r_dn_step: vmap(
-                            grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
-                        )(wavefunction_for_param_grads, r_up_step, r_dn_step),
-                        in_axes=(0, 0),
-                    )(r_up_chunk, r_dn_chunk)
-                    grad_ln_Psi_r_up_chunk.block_until_ready()
-                    grad_ln_Psi_r_dn_chunk.block_until_ready()
-                    end = time.perf_counter()
-                    timer_dln_Psi_dR_dr += end - start
-
-                    for local_idx in range(e_L_chunk.shape[0]):
-                        grad_ln_Psi_h_step = jax.tree_util.tree_map(lambda x: x[local_idx], grad_ln_Psi_h_chunk)
-                        grad_ln_Psi_r_up_step = grad_ln_Psi_r_up_chunk[local_idx]
-                        grad_ln_Psi_r_dn_step = grad_ln_Psi_r_dn_chunk[local_idx]
-                        self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up_step)
-                        self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn_step)
-                        grad_ln_Psi_dR = self.__hamiltonian_data.wavefunction_data.accumulate_position_grad(grad_ln_Psi_h_step)
-                        self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
-
-                    omega_up_chunk = vmap(lambda r_up: vmap(evaluate_swct_omega, in_axes=(None, 0))(self.__swct_data, r_up))(
-                        r_up_chunk
-                    )
-                    omega_dn_chunk = vmap(lambda r_dn: vmap(evaluate_swct_omega, in_axes=(None, 0))(self.__swct_data, r_dn))(
-                        r_dn_chunk
-                    )
-                    grad_omega_dr_up_chunk = vmap(
-                        lambda r_up: vmap(evaluate_swct_domega, in_axes=(None, 0))(self.__swct_data, r_up)
-                    )(r_up_chunk)
-                    grad_omega_dr_dn_chunk = vmap(
-                        lambda r_dn: vmap(evaluate_swct_domega, in_axes=(None, 0))(self.__swct_data, r_dn)
-                    )(r_dn_chunk)
-
-                    for omega_up, omega_dn, grad_omega_dr_up, grad_omega_dr_dn in zip(
-                        omega_up_chunk, omega_dn_chunk, grad_omega_dr_up_chunk, grad_omega_dr_dn_chunk, strict=True
-                    ):
-                        self.__stored_omega_up.append(omega_up)
-                        self.__stored_omega_dn.append(omega_dn)
-                        self.__stored_grad_omega_r_up.append(grad_omega_dr_up)
-                        self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn)
-
-                if self.__comput_param_deriv:
-                    start = time.perf_counter()
-                    logger.info("    Evaluating dln_Psi/dc ...")
-                    for r_up_step, r_dn_step in zip(r_up_chunk, r_dn_chunk, strict=True):
-                        grad_ln_Psi_h = vmap(grad(evaluate_ln_wavefunction, argnums=0), in_axes=(None, 0, 0))(
-                            wavefunction_for_param_grads,
-                            r_up_step,
-                            r_dn_step,
-                        )
-                        param_grads = self.__hamiltonian_data.wavefunction_data.collect_param_grads(grad_ln_Psi_h)
-                        flat_param_grads = self.__hamiltonian_data.wavefunction_data.flatten_param_grads(
-                            param_grads, self.__num_walkers
-                        )
-
-                        for name, grad_val in flat_param_grads.items():
-                            if not self.__param_grad_flags.get(name, True):
-                                continue
-                            self.__stored_param_grads[name].append(grad_val)
-                            if hasattr(grad_val, "block_until_ready"):
-                                grad_val.block_until_ready()
-
-                    end = time.perf_counter()
-                    timer_dln_Psi_dc += end - start
 
         # Barrier after MCMC operation
         start = time.perf_counter()
@@ -1864,7 +1824,6 @@ class MCMC:
         max_time: int = 86400,
         num_mcmc_warmup_steps: int = 0,
         num_mcmc_bin_blocks: int = 100,
-        observable_batch_size: int | None = None,
         opt_J1_param: bool = True,
         opt_J2_param: bool = True,
         opt_J3_param: bool = True,
@@ -1882,7 +1841,6 @@ class MCMC:
             max_time (int, optional): Per-iteration MCMC wall-clock budget (sec). Defaults to 86400.
             num_mcmc_warmup_steps (int, optional): Warmup samples discarded each iteration. Defaults to 0.
             num_mcmc_bin_blocks (int, optional): Jackknife bins for statistics. Defaults to 100.
-            observable_batch_size (int | None, optional): Optional override for :meth:`run` batch size. Defaults to None.
             opt_J1_param (bool, optional): Optimize one-body Jastrow. Defaults to True.
             opt_J2_param (bool, optional): Optimize two-body Jastrow. Defaults to True.
             opt_J3_param (bool, optional): Optimize three-body Jastrow. Defaults to True.
@@ -2033,7 +1991,7 @@ class MCMC:
             logger.info("")
 
             # run MCMC
-            self.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time, observable_batch_size=observable_batch_size)
+            self.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
 
             # get E
             E, E_std, _, _ = self.get_E(num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks)
@@ -2774,9 +2732,9 @@ class _MCMC_debug:
 
         # check if only up electrons are updated
         if tot_num_electron_dn == 0:
-            self.only_up_electron = True
+            self.__only_up_electron = True
         else:
-            self.only_up_electron = False
+            self.__only_up_electron = False
 
         coords = hamiltonian_data.structure_data._positions_cart_jnp
 

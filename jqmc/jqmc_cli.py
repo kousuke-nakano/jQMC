@@ -280,7 +280,6 @@ def _cli():
         epsilon_AS = parameters[section]["epsilon_AS"]
         atomic_force = parameters[section]["atomic_force"]
         parameter_derivatives = parameters[section]["parameter_derivatives"]
-        observable_batch_size = parameters[section]["observable_batch_size"]
 
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
         if not restart:
@@ -310,7 +309,7 @@ def _cli():
                 comput_position_deriv=atomic_force,
                 comput_param_deriv=parameter_derivatives,
             )
-        mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time, observable_batch_size=observable_batch_size)
+        mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = mcmc.get_E(
             num_mcmc_warmup_steps=num_mcmc_warmup_steps,
             num_mcmc_bin_blocks=num_mcmc_bin_blocks,
@@ -414,7 +413,6 @@ def _cli():
         optimizer_kwargs.setdefault("method", "sr")
         if not isinstance(optimizer_kwargs["method"], str):
             raise TypeError("optimizer_kwargs['method'] must be a string when provided in the VMC section.")
-        observable_batch_size = parameters[section]["observable_batch_size"]
 
         # check num_mcmc_steps, num_mcmc_warmup_steps, num_mcmc_bin_blocks
         if num_mcmc_steps < num_mcmc_warmup_steps:
@@ -451,7 +449,6 @@ def _cli():
             num_mcmc_bin_blocks=num_mcmc_bin_blocks,
             opt_J1_param=opt_J1_param,
             opt_J2_param=opt_J2_param,
-            observable_batch_size=observable_batch_size,
             opt_J3_param=opt_J3_param,
             opt_JNN_param=opt_JNN_param,
             opt_lambda_param=opt_lambda_param,
