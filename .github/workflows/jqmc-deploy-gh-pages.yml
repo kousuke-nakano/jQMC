@@ -45,8 +45,7 @@ jobs:
     - name: Build
       shell: bash -l {0}
       run: |
-        sphinx-apidoc -o doc/ jqmc/
-        sphinx-build doc docs_build
+        make -C doc html
 
     - name: Deploy docs at develop branch
       if: ${{ github.ref == 'refs/heads/rc-gh-pages' }}
