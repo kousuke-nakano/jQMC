@@ -50,8 +50,8 @@ from uncertainties import ufloat
 from .hamiltonians import Hamiltonian_data
 
 # jQMC
-from .header_footer import print_footer, print_header
-from .jqmc_gfmc import GFMC_fixed_num_projection, GFMC_fixed_projection_time
+from .header_footer import _print_footer, _print_header
+from .jqmc_gfmc import GFMC_n, GFMC_t
 from .jqmc_mcmc import MCMC
 from .jqmc_miscs import cli_parameters
 
@@ -190,9 +190,12 @@ def _cli():
             stream_handler.setFormatter(handler_format)
             log.addHandler(stream_handler)
     # print header
-    print_header()
+    _print_header()
 
     # jax-MPI related
+    # Avoid JAX distributed init warnings/hangs due to proxy env vars.
+    for _proxy_var in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
+        os.environ.pop(_proxy_var, None)
     try:
         jax.distributed.initialize(cluster_detection_method="mpi4py")
         logger.info("JAX distributed initialization is successful.")
@@ -530,7 +533,7 @@ def _cli():
         else:
             hamiltonian_data = Hamiltonian_data.load_from_hdf5(hamiltonian_h5)
 
-            lrdmc = GFMC_fixed_num_projection(
+            lrdmc = GFMC_n(
                 hamiltonian_data=hamiltonian_data,
                 num_walkers=number_of_walkers,
                 num_mcmc_per_measurement=num_mcmc_per_measurement,
@@ -636,7 +639,7 @@ def _cli():
         else:
             hamiltonian_data = Hamiltonian_data.load_from_hdf5(hamiltonian_h5)
 
-            lrdmc = GFMC_fixed_projection_time(
+            lrdmc = GFMC_t(
                 hamiltonian_data=hamiltonian_data,
                 num_walkers=number_of_walkers,
                 tau=tau,
@@ -678,7 +681,7 @@ def _cli():
 
         mpi_comm.Barrier()
 
-    print_footer()
+    _print_footer()
 
 
 if __name__ == "__main__":

@@ -59,6 +59,11 @@ from jqmc.molecular_orbital import (  # noqa: E402
     compute_MOs_grad,
     compute_MOs_laplacian,
 )
+from jqmc.setting import (  # noqa: E402
+    decimal_auto_vs_analytic_deriv,
+    decimal_auto_vs_numerical_deriv,
+    decimal_debug_vs_production,
+)
 from jqmc.structure import Structure_data  # noqa: E402
 
 # JAX float64
@@ -121,7 +126,7 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
 
     mo_ans_all_debug = _compute_MOs_debug(mos_data=mos_data, r_carts=r_carts)
 
-    np.testing.assert_almost_equal(mo_ans_all_debug, mo_ans_all_jax, decimal=12)
+    np.testing.assert_almost_equal(mo_ans_all_debug, mo_ans_all_jax, decimal=decimal_debug_vs_production)
 
     num_el = 10
     num_mo = 5
@@ -175,7 +180,7 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
 
     mo_ans_all_debug = _compute_MOs_debug(mos_data=mos_data, r_carts=r_carts)
 
-    np.testing.assert_almost_equal(mo_ans_all_debug, mo_ans_all_jax, decimal=12)
+    np.testing.assert_almost_equal(mo_ans_all_debug, mo_ans_all_jax, decimal=decimal_debug_vs_production)
 
     jax.clear_caches()
 
@@ -238,10 +243,16 @@ def test_MOs_comparing_auto_and_numerical_grads():
         mo_matrix_grad_z_numerical,
     ) = _compute_MOs_grad_autodiff(mos_data=mos_data, r_carts=r_carts)
 
-    np.testing.assert_array_almost_equal(mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, decimal=6)
-    np.testing.assert_array_almost_equal(mo_matrix_grad_y_auto, mo_matrix_grad_y_numerical, decimal=6)
+    np.testing.assert_array_almost_equal(
+        mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, decimal=decimal_auto_vs_numerical_deriv
+    )
+    np.testing.assert_array_almost_equal(
+        mo_matrix_grad_y_auto, mo_matrix_grad_y_numerical, decimal=decimal_auto_vs_numerical_deriv
+    )
 
-    np.testing.assert_array_almost_equal(mo_matrix_grad_z_auto, mo_matrix_grad_z_numerical, decimal=6)
+    np.testing.assert_array_almost_equal(
+        mo_matrix_grad_z_auto, mo_matrix_grad_z_numerical, decimal=decimal_auto_vs_numerical_deriv
+    )
 
     num_el = 10
     num_mo = 5
@@ -299,9 +310,15 @@ def test_MOs_comparing_auto_and_numerical_grads():
         mo_matrix_grad_z_numerical,
     ) = _compute_MOs_grad_debug(mos_data=mos_data, r_carts=r_carts)
 
-    np.testing.assert_array_almost_equal(mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, decimal=5)
-    np.testing.assert_array_almost_equal(mo_matrix_grad_y_auto, mo_matrix_grad_y_numerical, decimal=5)
-    np.testing.assert_array_almost_equal(mo_matrix_grad_z_auto, mo_matrix_grad_z_numerical, decimal=5)
+    np.testing.assert_array_almost_equal(
+        mo_matrix_grad_x_auto, mo_matrix_grad_x_numerical, decimal=decimal_auto_vs_numerical_deriv
+    )
+    np.testing.assert_array_almost_equal(
+        mo_matrix_grad_y_auto, mo_matrix_grad_y_numerical, decimal=decimal_auto_vs_numerical_deriv
+    )
+    np.testing.assert_array_almost_equal(
+        mo_matrix_grad_z_auto, mo_matrix_grad_z_numerical, decimal=decimal_auto_vs_numerical_deriv
+    )
 
     jax.clear_caches()
 
@@ -360,7 +377,9 @@ def test_MOs_comparing_auto_and_numerical_laplacians():
 
     mo_matrix_laplacian_auto = _compute_MOs_laplacian_autodiff(mos_data=mos_data, r_carts=r_carts)
 
-    np.testing.assert_array_almost_equal(mo_matrix_laplacian_auto, mo_matrix_laplacian_numerical, decimal=6)
+    np.testing.assert_array_almost_equal(
+        mo_matrix_laplacian_auto, mo_matrix_laplacian_numerical, decimal=decimal_auto_vs_numerical_deriv
+    )
 
     jax.clear_caches()
 
@@ -417,9 +436,9 @@ def test_MOs_comparing_analytic_and_auto_grads():
 
     grad_x_auto, grad_y_auto, grad_z_auto = _compute_MOs_grad_autodiff(mos_data=mos_data, r_carts=r_carts)
 
-    np.testing.assert_array_almost_equal(grad_x_an, grad_x_auto, decimal=5)
-    np.testing.assert_array_almost_equal(grad_y_an, grad_y_auto, decimal=5)
-    np.testing.assert_array_almost_equal(grad_z_an, grad_z_auto, decimal=5)
+    np.testing.assert_array_almost_equal(grad_x_an, grad_x_auto, decimal=decimal_auto_vs_analytic_deriv)
+    np.testing.assert_array_almost_equal(grad_y_an, grad_y_auto, decimal=decimal_auto_vs_analytic_deriv)
+    np.testing.assert_array_almost_equal(grad_z_an, grad_z_auto, decimal=decimal_auto_vs_analytic_deriv)
 
     jax.clear_caches()
 
@@ -476,7 +495,7 @@ def test_MOs_comparing_analytic_and_auto_laplacians():
 
     mo_lap_auto = _compute_MOs_laplacian_autodiff(mos_data=mos_data, r_carts=r_carts)
 
-    np.testing.assert_array_almost_equal(mo_lap_an, mo_lap_auto, decimal=5)
+    np.testing.assert_array_almost_equal(mo_lap_an, mo_lap_auto, decimal=decimal_auto_vs_analytic_deriv)
 
     jax.clear_caches()
 

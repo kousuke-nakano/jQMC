@@ -68,6 +68,28 @@ jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
 
+def _ensure_flax_trace_level_compat() -> None:
+    """Safely handle missing ``flax.core.tracers.trace_level`` attribute.
+
+    Some Flax versions expose ``trace_level``, others do not. When absent, we
+    simply no-op to avoid AttributeError during NN Jastrow initialization.
+    """
+    try:
+        from flax.core import tracers as flax_tracers  # type: ignore
+    except Exception:
+        return
+
+    trace_level = getattr(flax_tracers, "trace_level", None)
+    if trace_level is None:
+        return
+    if getattr(trace_level, "_jqmc_patched", False):
+        return
+
+    # Mark as patched to prevent repeated checks; do not mutate further when the
+    # attribute exists but already works.
+    setattr(trace_level, "_jqmc_patched", True)
+
+
 def _flatten_params_with_treedef(params: Any) -> tuple[jnp.ndarray, Any, list[tuple[int, ...]]]:
     """Flatten a PyTree of params into a 1D vector, returning treedef and shapes.
 
@@ -122,6 +144,32 @@ def _make_unflatten_fn(treedef: Any, shapes: Sequence[tuple[int, ...]]) -> Calla
     unflatten_fn.__qualname__ = "_make_unflatten_fn_unflatten_fn"
 
     return unflatten_fn
+
+
+def _ensure_flax_trace_level_compat() -> None:
+    """Patch Flax trace-level helper for newer JAX EvalTrace objects.
+
+    Some JAX versions return EvalTrace objects without a ``level`` attribute,
+    which older Flax releases assume exists. This patch makes the lookup safe.
+    """
+    try:
+        from flax.core import tracers as flax_tracers
+    except Exception:
+        return
+
+    trace_level = getattr(flax_tracers, "trace_level", None)
+    if trace_level is None:
+        return
+    if getattr(trace_level, "_jqmc_patched", False):
+        return
+
+    def _trace_level_safe(main):
+        if main is None:
+            return float("-inf")
+        return getattr(main, "level", float("-inf"))
+
+    _trace_level_safe._jqmc_patched = True
+    flax_tracers.trace_level = _trace_level_safe
 
 
 class NNJastrow(nn.Module):
@@ -1139,10 +1187,27 @@ class Jastrow_three_body_data:
             raise NotImplementedError
 
     @classmethod
-    def init_jastrow_three_body_data(cls, orb_data: AOs_sphe_data | AOs_cart_data | MOs_data):
-        """Initialization."""
-        j_matrix = np.zeros((orb_data._num_orb, orb_data._num_orb + 1))
-        # j_matrix = np.random.uniform(0.01, 0.10, size=(orb_data.num_orb, orb_data.num_orb + 1))
+    def init_jastrow_three_body_data(
+        cls,
+        orb_data: AOs_sphe_data | AOs_cart_data | MOs_data,
+        random_init: bool = False,
+        random_scale: float = 0.01,
+        seed: int | None = None,
+    ):
+        """Initialization.
+
+        Args:
+            orb_data: Orbital container (AOs or MOs) used to size the J-matrix.
+            random_init: If True, initialize with small random values instead of zeros (for tests).
+            random_scale: Upper bound of uniform sampler when random_init is True (default 0.01).
+            seed: Optional seed for deterministic initialization when random_init is True.
+        """
+        if random_init:
+            rng = np.random.default_rng(seed)
+            j_matrix = rng.uniform(0.0, random_scale, size=(orb_data._num_orb, orb_data._num_orb + 1))
+        else:
+            j_matrix = np.zeros((orb_data._num_orb, orb_data._num_orb + 1))
+
         jastrow_three_body_data = cls(
             orb_data=orb_data,
             j_matrix=j_matrix,
@@ -1275,8 +1340,11 @@ class Jastrow_NN_data:
         parameters with a dummy electron configuration, and prepares
         flatten/unflatten utilities for SR/MCMC.
         """
+        _ensure_flax_trace_level_compat()
         if key is None:
             key = jax.random.PRNGKey(0)
+
+        _ensure_flax_trace_level_compat()
 
         atomic_numbers = np.asarray(structure_data.atomic_numbers, dtype=np.int32)
         species_values = np.unique(np.concatenate([atomic_numbers, np.array([0], dtype=np.int32)]))
@@ -1305,7 +1373,8 @@ class Jastrow_NN_data:
         R_n = jnp.asarray(structure_data.positions)  # (n_nuc, 3)
         Z_n = jnp.asarray(structure_data.atomic_numbers)  # (n_nuc,)
 
-        variables = nn_def.init(key, r_up_init, r_dn_init, R_n, Z_n)
+        rngs = {"params": key}
+        variables = nn_def.init(rngs, r_up_init, r_dn_init, R_n, Z_n)
         params = variables["params"]
         # Initialize the NN parameters with small random values so that the
         # NN J3 contribution starts near zero but still has gradient signal.
@@ -1734,7 +1803,7 @@ def compute_ratio_Jastrow_part(
     new_r_up_carts_arr: jax.Array,
     new_r_dn_carts_arr: jax.Array,
 ) -> jax.Array:
-    """Compute $\exp(J(\mathbf r'))/\exp(J(\mathbf r))$ for batched moves.
+    r"""Compute $\exp(J(\mathbf r'))/\exp(J(\mathbf r))$ for batched moves.
 
     This follows the original ratio logic (including exp) while updating types
     to use ``jax.Array`` inputs. The return is one ratio per proposed grid
@@ -1755,44 +1824,77 @@ def compute_ratio_Jastrow_part(
     new_r_up_carts_arr = jnp.asarray(new_r_up_carts_arr)
     new_r_dn_carts_arr = jnp.asarray(new_r_dn_carts_arr)
 
+    num_up = old_r_up_carts.shape[0]
+    num_dn = old_r_dn_carts.shape[0]
+    if num_up == 0 or num_dn == 0:
+        jastrow_x = compute_Jastrow_part(jastrow_data, old_r_up_carts, old_r_dn_carts)
+        jastrow_xp = vmap(compute_Jastrow_part, in_axes=(None, 0, 0))(jastrow_data, new_r_up_carts_arr, new_r_dn_carts_arr)
+        return jnp.exp(jastrow_xp - jastrow_x)
+
     J_ratio = 1.0
 
     # J1 part
     if jastrow_data.jastrow_one_body_data is not None:
         j1_data = jastrow_data.jastrow_one_body_data
 
-        def compute_one_grid_J1(j1_data, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts):
-            delta_up = new_r_up_carts - old_r_up_carts
-            delta_dn = new_r_dn_carts - old_r_dn_carts
-            up_moved = jnp.any(delta_up != 0)
+        if num_up == 0:
 
-            nonzero_up = jnp.any(delta_up != 0, axis=1)
-            nonzero_dn = jnp.any(delta_dn != 0, axis=1)
-            idx_up = jnp.argmax(nonzero_up)
-            idx_dn = jnp.argmax(nonzero_dn)
-
-            def up_case(args):
-                j1_data, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts = args
-                r_up_new = new_r_up_carts[idx_up]
-                r_up_old = old_r_up_carts[idx_up]
-                j1_new = compute_Jastrow_one_body(j1_data, jnp.expand_dims(r_up_new, axis=0), jnp.zeros((0, 3)))
-                j1_old = compute_Jastrow_one_body(j1_data, jnp.expand_dims(r_up_old, axis=0), jnp.zeros((0, 3)))
-                return jnp.exp(j1_new - j1_old)
-
-            def dn_case(args):
-                j1_data, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts = args
+            def compute_one_grid_J1(j1_data, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts):
+                delta_dn = new_r_dn_carts - old_r_dn_carts
+                nonzero_dn = jnp.any(delta_dn != 0, axis=1)
+                idx_dn = jnp.argmax(nonzero_dn)
                 r_dn_new = new_r_dn_carts[idx_dn]
                 r_dn_old = old_r_dn_carts[idx_dn]
                 j1_new = compute_Jastrow_one_body(j1_data, jnp.zeros((0, 3)), jnp.expand_dims(r_dn_new, axis=0))
                 j1_old = compute_Jastrow_one_body(j1_data, jnp.zeros((0, 3)), jnp.expand_dims(r_dn_old, axis=0))
                 return jnp.exp(j1_new - j1_old)
 
-            return jax.lax.cond(
-                up_moved,
-                up_case,
-                dn_case,
-                (j1_data, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts),
-            )
+        elif num_dn == 0:
+
+            def compute_one_grid_J1(j1_data, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts):
+                delta_up = new_r_up_carts - old_r_up_carts
+                nonzero_up = jnp.any(delta_up != 0, axis=1)
+                idx_up = jnp.argmax(nonzero_up)
+                r_up_new = new_r_up_carts[idx_up]
+                r_up_old = old_r_up_carts[idx_up]
+                j1_new = compute_Jastrow_one_body(j1_data, jnp.expand_dims(r_up_new, axis=0), jnp.zeros((0, 3)))
+                j1_old = compute_Jastrow_one_body(j1_data, jnp.expand_dims(r_up_old, axis=0), jnp.zeros((0, 3)))
+                return jnp.exp(j1_new - j1_old)
+
+        else:
+
+            def compute_one_grid_J1(j1_data, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts):
+                delta_up = new_r_up_carts - old_r_up_carts
+                delta_dn = new_r_dn_carts - old_r_dn_carts
+                up_moved = jnp.any(delta_up != 0)
+
+                nonzero_up = jnp.any(delta_up != 0, axis=1)
+                nonzero_dn = jnp.any(delta_dn != 0, axis=1)
+                idx_up = jnp.argmax(nonzero_up)
+                idx_dn = jnp.argmax(nonzero_dn)
+
+                def up_case(args):
+                    j1_data, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts = args
+                    r_up_new = new_r_up_carts[idx_up]
+                    r_up_old = old_r_up_carts[idx_up]
+                    j1_new = compute_Jastrow_one_body(j1_data, jnp.expand_dims(r_up_new, axis=0), jnp.zeros((0, 3)))
+                    j1_old = compute_Jastrow_one_body(j1_data, jnp.expand_dims(r_up_old, axis=0), jnp.zeros((0, 3)))
+                    return jnp.exp(j1_new - j1_old)
+
+                def dn_case(args):
+                    j1_data, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts = args
+                    r_dn_new = new_r_dn_carts[idx_dn]
+                    r_dn_old = old_r_dn_carts[idx_dn]
+                    j1_new = compute_Jastrow_one_body(j1_data, jnp.zeros((0, 3)), jnp.expand_dims(r_dn_new, axis=0))
+                    j1_old = compute_Jastrow_one_body(j1_data, jnp.zeros((0, 3)), jnp.expand_dims(r_dn_old, axis=0))
+                    return jnp.exp(j1_new - j1_old)
+
+                return jax.lax.cond(
+                    up_moved,
+                    up_case,
+                    dn_case,
+                    (j1_data, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts),
+                )
 
         J1_ratio = vmap(compute_one_grid_J1, in_axes=(None, 0, 0, None, None))(
             j1_data,
@@ -1831,11 +1933,20 @@ def compute_ratio_Jastrow_part(
         delta_up = new_r_up_carts - old_r_up_carts
         delta_dn = new_r_dn_carts - old_r_dn_carts
         up_moved = jnp.any(delta_up != 0)
-        nonzero_up = jnp.any(delta_up != 0, axis=1)
-        nonzero_dn = jnp.any(delta_dn != 0, axis=1)
-        idx_up = jnp.argmax(nonzero_up)
-        idx_dn = jnp.argmax(nonzero_dn)
-        idx = jax.lax.cond(up_moved, lambda _: idx_up, lambda _: idx_dn, operand=None)
+        if num_up == 0:
+            nonzero_dn = jnp.any(delta_dn != 0, axis=1)
+            idx = jnp.argmax(nonzero_dn)
+            up_moved = False
+        elif num_dn == 0:
+            nonzero_up = jnp.any(delta_up != 0, axis=1)
+            idx = jnp.argmax(nonzero_up)
+            up_moved = True
+        else:
+            nonzero_up = jnp.any(delta_up != 0, axis=1)
+            nonzero_dn = jnp.any(delta_dn != 0, axis=1)
+            idx_up = jnp.argmax(nonzero_up)
+            idx_dn = jnp.argmax(nonzero_dn)
+            idx = jax.lax.cond(up_moved, lambda _: idx_up, lambda _: idx_dn, operand=None)
 
         def up_case(jastrow_2b_param, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts):
             new_r_up_carts_extracted = jnp.expand_dims(new_r_up_carts[idx], axis=0)  # shape=(1,3)
@@ -1888,6 +1999,11 @@ def compute_ratio_Jastrow_part(
 
             return jnp.exp(J2_up_dn_new - J2_up_dn_old + J2_dn_dn_new - J2_dn_dn_old)
 
+        if num_up == 0:
+            return dn_case(jastrow_2b_param, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts)
+        if num_dn == 0:
+            return up_case(jastrow_2b_param, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts)
+
         return jax.lax.cond(
             up_moved,
             up_case,
@@ -1895,20 +2011,29 @@ def compute_ratio_Jastrow_part(
             *(jastrow_2b_param, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts),
         )
 
-    def compute_one_grid_J3(jastrow_three_body_data, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts):
+    def compute_one_grid_J3(
+        jastrow_three_body_data, aos_up, aos_dn, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts
+    ):
         delta_up = new_r_up_carts - old_r_up_carts
         delta_dn = new_r_dn_carts - old_r_dn_carts
         up_moved = jnp.any(delta_up != 0)
-        nonzero_up = jnp.any(delta_up != 0, axis=1)
-        nonzero_dn = jnp.any(delta_dn != 0, axis=1)
-        idx_up = jnp.argmax(nonzero_up)
-        idx_dn = jnp.argmax(nonzero_dn)
-        idx = jax.lax.cond(up_moved, lambda _: idx_up, lambda _: idx_dn, operand=None)
+        if num_up == 0:
+            nonzero_dn = jnp.any(delta_dn != 0, axis=1)
+            idx = jnp.argmax(nonzero_dn)
+            up_moved = False
+        elif num_dn == 0:
+            nonzero_up = jnp.any(delta_up != 0, axis=1)
+            idx = jnp.argmax(nonzero_up)
+            up_moved = True
+        else:
+            nonzero_up = jnp.any(delta_up != 0, axis=1)
+            nonzero_dn = jnp.any(delta_dn != 0, axis=1)
+            idx_up = jnp.argmax(nonzero_up)
+            idx_dn = jnp.argmax(nonzero_dn)
+            idx = jax.lax.cond(up_moved, lambda _: idx_up, lambda _: idx_dn, operand=None)
 
         num_electron_up = len(old_r_up_carts)
         num_electron_dn = len(old_r_dn_carts)
-        aos_up = jnp.array(jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, old_r_up_carts))
-        aos_dn = jnp.array(jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, old_r_dn_carts))
         j1_matrix_up = jastrow_three_body_data.j_matrix[:, -1]
         j1_matrix_dn = jastrow_three_body_data.j_matrix[:, -1]
         j3_matrix_up_up = jastrow_three_body_data.j_matrix[:, :-1]
@@ -1957,6 +2082,11 @@ def compute_ratio_Jastrow_part(
 
             return J3_ratio
 
+        if num_up == 0:
+            return dn_case(new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts)
+        if num_dn == 0:
+            return up_case(new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts)
+
         return jax.lax.cond(
             up_moved,
             up_case,
@@ -1966,9 +2096,103 @@ def compute_ratio_Jastrow_part(
 
     # J2 part
     if jastrow_data.jastrow_two_body_data is not None:
+        j2_param = jastrow_data.jastrow_two_body_data.jastrow_2b_param
+
+        def compute_pairwise_sums(pos1, pos2):
+            if pos1.shape[0] == 0 or pos2.shape[0] == 0:
+                return jnp.zeros(pos1.shape[0])
+            dists = jnp.linalg.norm(pos1[:, None, :] - pos2[None, :, :], axis=-1)
+            vals = dists / 2.0 * (1.0 + j2_param * dists) ** (-1.0)
+            return jnp.sum(vals, axis=1)
+
+        J2_sum_up_up = compute_pairwise_sums(old_r_up_carts, old_r_up_carts)
+        J2_sum_up_dn = compute_pairwise_sums(old_r_up_carts, old_r_dn_carts)
+        J2_sum_dn_dn = compute_pairwise_sums(old_r_dn_carts, old_r_dn_carts)
+        J2_sum_dn_up = compute_pairwise_sums(old_r_dn_carts, old_r_up_carts)
+
+        def compute_one_grid_J2(
+            jastrow_2b_param,
+            J2_sum_up_up,
+            J2_sum_up_dn,
+            J2_sum_dn_dn,
+            J2_sum_dn_up,
+            new_r_up_carts,
+            new_r_dn_carts,
+            old_r_up_carts,
+            old_r_dn_carts,
+        ):
+            delta_up = new_r_up_carts - old_r_up_carts
+            delta_dn = new_r_dn_carts - old_r_dn_carts
+            up_moved = jnp.any(delta_up != 0)
+            if num_up == 0:
+                nonzero_dn = jnp.any(delta_dn != 0, axis=1)
+                idx = jnp.argmax(nonzero_dn)
+                up_moved = False
+            elif num_dn == 0:
+                nonzero_up = jnp.any(delta_up != 0, axis=1)
+                idx = jnp.argmax(nonzero_up)
+                up_moved = True
+            else:
+                nonzero_up = jnp.any(delta_up != 0, axis=1)
+                nonzero_dn = jnp.any(delta_dn != 0, axis=1)
+                idx_up = jnp.argmax(nonzero_up)
+                idx_dn = jnp.argmax(nonzero_dn)
+                idx = jax.lax.cond(up_moved, lambda _: idx_up, lambda _: idx_dn, operand=None)
+
+            def up_case(jastrow_2b_param, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts):
+                new_r_up_carts_extracted = jnp.expand_dims(new_r_up_carts[idx], axis=0)  # shape=(1,3)
+                J2_up_up_new = jnp.sum(
+                    vmap(two_body_jastrow_parallel_spins_pade, in_axes=(None, None, 0))(
+                        jastrow_2b_param, new_r_up_carts_extracted, new_r_up_carts
+                    )
+                )
+                J2_up_up_old = J2_sum_up_up[idx]
+
+                J2_up_dn_new = jnp.sum(
+                    vmap(two_body_jastrow_anti_parallel_spins_pade, in_axes=(None, None, 0))(
+                        jastrow_2b_param, new_r_up_carts_extracted, old_r_dn_carts
+                    )
+                )
+                J2_up_dn_old = J2_sum_up_dn[idx]
+                return jnp.exp(J2_up_dn_new - J2_up_dn_old + J2_up_up_new - J2_up_up_old)
+
+            def dn_case(jastrow_2b_param, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts):
+                new_r_dn_carts_extracted = jnp.expand_dims(new_r_dn_carts[idx], axis=0)  # shape=(1,3)
+                J2_dn_dn_new = jnp.sum(
+                    vmap(two_body_jastrow_parallel_spins_pade, in_axes=(None, None, 0))(
+                        jastrow_2b_param, new_r_dn_carts_extracted, new_r_dn_carts
+                    )
+                )
+                J2_dn_dn_old = J2_sum_dn_dn[idx]
+
+                J2_up_dn_new = jnp.sum(
+                    vmap(two_body_jastrow_anti_parallel_spins_pade, in_axes=(None, 0, None))(
+                        jastrow_2b_param, old_r_up_carts, new_r_dn_carts_extracted
+                    )
+                )
+                J2_up_dn_old = J2_sum_dn_up[idx]
+
+                return jnp.exp(J2_up_dn_new - J2_up_dn_old + J2_dn_dn_new - J2_dn_dn_old)
+
+            if num_up == 0:
+                return dn_case(jastrow_2b_param, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts)
+            if num_dn == 0:
+                return up_case(jastrow_2b_param, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts)
+
+            return jax.lax.cond(
+                up_moved,
+                up_case,
+                dn_case,
+                *(jastrow_2b_param, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts),
+            )
+
         # vectorization along grid
-        J2_ratio = vmap(compute_one_grid_J2, in_axes=(None, 0, 0, None, None))(
+        J2_ratio = vmap(compute_one_grid_J2, in_axes=(None, None, None, None, None, 0, 0, None, None))(
             jastrow_data.jastrow_two_body_data.jastrow_2b_param,
+            J2_sum_up_up,
+            J2_sum_up_dn,
+            J2_sum_dn_dn,
+            J2_sum_dn_up,
             new_r_up_carts_arr,
             new_r_dn_carts_arr,
             old_r_up_carts,
@@ -1979,9 +2203,14 @@ def compute_ratio_Jastrow_part(
 
     # J3 part
     if jastrow_data.jastrow_three_body_data is not None:
+        jastrow_three_body_data = jastrow_data.jastrow_three_body_data
+        aos_up_old = jnp.array(jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, old_r_up_carts))
+        aos_dn_old = jnp.array(jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, old_r_dn_carts))
         # vectorization along grid
-        J3_ratio = vmap(compute_one_grid_J3, in_axes=(None, 0, 0, None, None))(
+        J3_ratio = vmap(compute_one_grid_J3, in_axes=(None, None, None, 0, 0, None, None))(
             jastrow_data.jastrow_three_body_data,
+            aos_up_old,
+            aos_dn_old,
             new_r_up_carts_arr,
             new_r_dn_carts_arr,
             old_r_up_carts,

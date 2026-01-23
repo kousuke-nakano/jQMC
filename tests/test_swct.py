@@ -43,6 +43,9 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+from jqmc.setting import (  # noqa: E402
+    decimal_debug_vs_production,
+)
 from jqmc.swct import (  # noqa: E402
     SWCT_data,
     _evaluate_swct_domega_debug,
@@ -84,16 +87,16 @@ def test_debug_and_jax_SWCT_omega():
     omega_up_jax = evaluate_swct_omega(swct_data=swct_data, r_carts=r_up_carts)
     omega_dn_jax = evaluate_swct_omega(swct_data=swct_data, r_carts=r_dn_carts)
 
-    np.testing.assert_almost_equal(omega_up_debug, omega_up_jax, decimal=6)
-    np.testing.assert_almost_equal(omega_dn_debug, omega_dn_jax, decimal=6)
+    np.testing.assert_almost_equal(omega_up_debug, omega_up_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_almost_equal(omega_dn_debug, omega_dn_jax, decimal=decimal_debug_vs_production)
 
     domega_up_debug = _evaluate_swct_domega_debug(swct_data=swct_data, r_carts=r_up_carts)
     domega_dn_debug = _evaluate_swct_domega_debug(swct_data=swct_data, r_carts=r_dn_carts)
     domega_up_jax = evaluate_swct_domega(swct_data=swct_data, r_carts=r_up_carts)
     domega_dn_jax = evaluate_swct_domega(swct_data=swct_data, r_carts=r_dn_carts)
 
-    np.testing.assert_almost_equal(domega_up_debug, domega_up_jax, decimal=6)
-    np.testing.assert_almost_equal(domega_dn_debug, domega_dn_jax, decimal=6)
+    np.testing.assert_almost_equal(domega_up_debug, domega_up_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_almost_equal(domega_dn_debug, domega_dn_jax, decimal=decimal_debug_vs_production)
 
     jax.clear_caches()
 

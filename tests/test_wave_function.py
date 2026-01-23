@@ -45,19 +45,32 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from jqmc.determinant import compute_geminal_all_elements  # noqa: E402
-from jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data  # noqa: E402
+from jqmc.jastrow_factor import (  # noqa: E402
+    Jastrow_data,
+    Jastrow_NN_data,
+    Jastrow_three_body_data,
+    Jastrow_two_body_data,
+)
+from jqmc.setting import (  # noqa: E402
+    decimal_auto_vs_analytic_deriv,
+    decimal_auto_vs_numerical_deriv,
+    decimal_debug_vs_production,
+    decimal_numerical_vs_analytic_deriv,
+)
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import (  # noqa: E402
     Wavefunction_data,
     _compute_discretized_kinetic_energy_debug,
     _compute_kinetic_energy_all_elements_auto,
     _compute_kinetic_energy_all_elements_debug,
+    _compute_kinetic_energy_all_elements_fast_update_debug,
     _compute_kinetic_energy_auto,
     _compute_kinetic_energy_debug,
     compute_discretized_kinetic_energy,
     compute_discretized_kinetic_energy_fast_update,
     compute_kinetic_energy,
     compute_kinetic_energy_all_elements,
+    compute_kinetic_energy_all_elements_fast_update,
 )
 
 # JAX float64
@@ -65,11 +78,11 @@ jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
 
-def test_debug_and_jax_kinetic_energy():
+def test_kinetic_energy_analytic_and_numerical():
     """Test the kinetic energy computation."""
     (
-        _,
-        _,
+        structure_data,
+        aos_data,
         _,
         _,
         geminal_mo_data,
@@ -78,12 +91,18 @@ def test_debug_and_jax_kinetic_energy():
         trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
     )
 
-    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+    jastrow_onebody_data = None
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5)
+    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
+        orb_data=aos_data, random_init=True, random_scale=1.0e-3
+    )
+    jastrow_nn_data = Jastrow_NN_data.init_from_structure(structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0)
 
     jastrow_data = Jastrow_data(
-        jastrow_one_body_data=None,
+        jastrow_one_body_data=jastrow_onebody_data,
         jastrow_two_body_data=jastrow_twobody_data,
-        jastrow_three_body_data=None,
+        jastrow_three_body_data=jastrow_threebody_data,
+        jastrow_nn_data=jastrow_nn_data,
     )
     jastrow_data.sanity_check()
 
@@ -99,14 +118,14 @@ def test_debug_and_jax_kinetic_energy():
     K_debug = _compute_kinetic_energy_debug(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
     K_jax = compute_kinetic_energy(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
 
-    np.testing.assert_almost_equal(K_debug, K_jax, decimal=3)
+    np.testing.assert_almost_equal(K_debug, K_jax, decimal=decimal_numerical_vs_analytic_deriv)
 
 
-def test_kinetic_energy_analytic_and_auto_consistency():
+def test_kinetic_energy_analytic_and_auto():
     """Compare analytic and autodiff kinetic energy implementations."""
     (
         _,
-        _,
+        aos_data,
         _,
         _,
         geminal_mo_data,
@@ -115,11 +134,15 @@ def test_kinetic_energy_analytic_and_auto_consistency():
         trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
     )
 
+    jastrow_onebody_data = None
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
+        orb_data=aos_data, random_init=True, random_scale=1.0e-3
+    )
     jastrow_data = Jastrow_data(
-        jastrow_one_body_data=None,
+        jastrow_one_body_data=jastrow_onebody_data,
         jastrow_two_body_data=jastrow_twobody_data,
-        jastrow_three_body_data=None,
+        jastrow_three_body_data=jastrow_threebody_data,
     )
 
     wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
@@ -137,68 +160,14 @@ def test_kinetic_energy_analytic_and_auto_consistency():
         r_dn_carts=jnp.asarray(r_dn_carts),
     )
 
-    np.testing.assert_almost_equal(K_analytic, K_auto, decimal=5)
-
-
-def test_debug_and_jax_kinetic_energy_all_elements():
-    """Test the kinetic energy computation."""
-    (
-        _,
-        _,
-        _,
-        _,
-        geminal_mo_data,
-        _,
-    ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
-    )
-
-    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
-
-    jastrow_data = Jastrow_data(
-        jastrow_one_body_data=None,
-        jastrow_two_body_data=jastrow_twobody_data,
-        jastrow_three_body_data=None,
-    )
-
-    wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
-
-    r_up_carts_np = np.array(
-        [
-            [0.64878536, -0.83275288, 0.33532629],
-            [0.55271273, 0.72310605, 0.93443775],
-            [0.66767275, 0.1206456, -0.36521208],
-            [-0.93165236, -0.0120386, 0.33003036],
-        ]
-    )
-    r_dn_carts_np = np.array(
-        [
-            [1.0347816, 1.26162081, 0.42301735],
-            [-0.57843435, 1.03651987, -0.55091542],
-            [-1.56091964, -0.58952149, -0.99268141],
-            [0.61863233, -0.14903326, 0.51962683],
-        ]
-    )
-
-    r_up_carts_jnp = jnp.array(r_up_carts_np)
-    r_dn_carts_jnp = jnp.array(r_dn_carts_np)
-
-    K_elements_up_debug, K_elements_dn_debug = _compute_kinetic_energy_all_elements_debug(
-        wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_np, r_dn_carts=r_dn_carts_np
-    )
-    K_elements_up_jax, K_elements_dn_jax = _compute_kinetic_energy_all_elements_auto(
-        wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp
-    )
-
-    np.testing.assert_array_almost_equal(K_elements_up_debug, K_elements_up_jax, decimal=3)
-    np.testing.assert_array_almost_equal(K_elements_dn_debug, K_elements_dn_jax, decimal=3)
+    np.testing.assert_almost_equal(K_analytic, K_auto, decimal=decimal_auto_vs_analytic_deriv)
 
 
 def test_debug_and_auto_kinetic_energy_all_elements():
     """Debug vs autodiff kinetic energy per-electron arrays."""
     (
         _,
-        _,
+        aos_data,
         _,
         _,
         geminal_mo_data,
@@ -206,12 +175,15 @@ def test_debug_and_auto_kinetic_energy_all_elements():
     ) = read_trexio_file(
         trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
     )
-
+    jastrow_onebody_data = None
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
+        orb_data=aos_data, random_init=True, random_scale=1.0e-3
+    )
     jastrow_data = Jastrow_data(
-        jastrow_one_body_data=None,
+        jastrow_one_body_data=jastrow_onebody_data,
         jastrow_two_body_data=jastrow_twobody_data,
-        jastrow_three_body_data=None,
+        jastrow_three_body_data=jastrow_threebody_data,
     )
 
     wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
@@ -243,15 +215,15 @@ def test_debug_and_auto_kinetic_energy_all_elements():
         wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp
     )
 
-    np.testing.assert_array_almost_equal(K_elements_up_debug, K_elements_up_auto, decimal=4)
-    np.testing.assert_array_almost_equal(K_elements_dn_debug, K_elements_dn_auto, decimal=4)
+    np.testing.assert_array_almost_equal(K_elements_up_debug, K_elements_up_auto, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_array_almost_equal(K_elements_dn_debug, K_elements_dn_auto, decimal=decimal_auto_vs_numerical_deriv)
 
 
 def test_auto_and_analytic_kinetic_energy_all_elements():
     """Autodiff vs analytic kinetic energy per-electron arrays."""
     (
         _,
-        _,
+        aos_data,
         _,
         _,
         geminal_mo_data,
@@ -260,11 +232,15 @@ def test_auto_and_analytic_kinetic_energy_all_elements():
         trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
     )
 
+    jastrow_onebody_data = None
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
+        orb_data=aos_data, random_init=True, random_scale=1.0e-3
+    )
     jastrow_data = Jastrow_data(
-        jastrow_one_body_data=None,
+        jastrow_one_body_data=jastrow_onebody_data,
         jastrow_two_body_data=jastrow_twobody_data,
-        jastrow_three_body_data=None,
+        jastrow_three_body_data=jastrow_threebody_data,
     )
 
     wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
@@ -296,15 +272,77 @@ def test_auto_and_analytic_kinetic_energy_all_elements():
         wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp
     )
 
-    np.testing.assert_array_almost_equal(K_elements_up_auto, K_elements_up_analytic, decimal=6)
-    np.testing.assert_array_almost_equal(K_elements_dn_auto, K_elements_dn_analytic, decimal=6)
+    np.testing.assert_array_almost_equal(K_elements_up_auto, K_elements_up_analytic, decimal=decimal_auto_vs_analytic_deriv)
+    np.testing.assert_array_almost_equal(K_elements_dn_auto, K_elements_dn_analytic, decimal=decimal_auto_vs_analytic_deriv)
+
+
+def test_fast_update_kinetic_energy_all_elements():
+    """Fast-update per-electron kinetic energy should match the standard analytic path."""
+    (
+        _,
+        aos_data,
+        _,
+        _,
+        geminal_mo_data,
+        _,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"),
+        store_tuple=True,
+    )
+
+    jastrow_onebody_data = None
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
+        orb_data=aos_data, random_init=True, random_scale=1.0e-3
+    )
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=jastrow_onebody_data,
+        jastrow_two_body_data=jastrow_twobody_data,
+        jastrow_three_body_data=jastrow_threebody_data,
+    )
+
+    wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
+
+    num_ele_up = geminal_mo_data.num_electron_up
+    num_ele_dn = geminal_mo_data.num_electron_dn
+    r_cart_min, r_cart_max = -3.0, +3.0
+    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
+    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
+
+    r_up_carts_jnp = jnp.asarray(r_up_carts)
+    r_dn_carts_jnp = jnp.asarray(r_dn_carts)
+
+    # Standard analytic per-electron kinetic energy
+    ke_up_debug, ke_dn_debug = compute_kinetic_energy_all_elements(
+        wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts_jnp,
+        r_dn_carts=r_dn_carts_jnp,
+    )
+
+    # Build geminal inverse explicitly for the fast path
+    A = compute_geminal_all_elements(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up_carts_jnp,
+        r_dn_carts=r_dn_carts_jnp,
+    )
+    A_inv = jnp.asarray(np.linalg.inv(np.array(A)))
+
+    ke_up_fast, ke_dn_fast = compute_kinetic_energy_all_elements_fast_update(
+        wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts_jnp,
+        r_dn_carts=r_dn_carts_jnp,
+        geminal_inverse=A_inv,
+    )
+
+    np.testing.assert_array_almost_equal(ke_up_fast, ke_up_debug, decimal=decimal_debug_vs_production)
+    np.testing.assert_array_almost_equal(ke_dn_fast, ke_dn_debug, decimal=decimal_debug_vs_production)
 
 
 def test_debug_and_jax_discretized_kinetic_energy():
     """Test the discretized kinetic energy computation."""
     (
         _,
-        _,
+        aos_data,
         _,
         _,
         geminal_mo_data,
@@ -313,12 +351,16 @@ def test_debug_and_jax_discretized_kinetic_energy():
         trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
     )
 
+    jastrow_onebody_data = None
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
+        orb_data=aos_data, random_init=True, random_scale=1.0e-3
+    )
 
     jastrow_data = Jastrow_data(
-        jastrow_one_body_data=None,
+        jastrow_one_body_data=jastrow_onebody_data,
         jastrow_two_body_data=jastrow_twobody_data,
-        jastrow_three_body_data=None,
+        jastrow_three_body_data=jastrow_threebody_data,
     )
     jastrow_data.sanity_check()
 
@@ -379,69 +421,35 @@ def test_debug_and_jax_discretized_kinetic_energy():
         RT=RT,
     )
 
-    np.testing.assert_array_almost_equal(mesh_kinetic_part_r_up_carts_jax, mesh_kinetic_part_r_up_carts_debug, decimal=8)
-    np.testing.assert_array_almost_equal(mesh_kinetic_part_r_dn_carts_jax, mesh_kinetic_part_r_dn_carts_debug, decimal=8)
     np.testing.assert_array_almost_equal(
-        mesh_kinetic_part_r_up_carts_jax_fast_update, mesh_kinetic_part_r_up_carts_debug, decimal=8
+        mesh_kinetic_part_r_up_carts_jax,
+        mesh_kinetic_part_r_up_carts_debug,
+        decimal=decimal_debug_vs_production,
     )
     np.testing.assert_array_almost_equal(
-        mesh_kinetic_part_r_dn_carts_jax_fast_update, mesh_kinetic_part_r_dn_carts_debug, decimal=8
+        mesh_kinetic_part_r_dn_carts_jax,
+        mesh_kinetic_part_r_dn_carts_debug,
+        decimal=decimal_debug_vs_production,
     )
-    np.testing.assert_array_almost_equal(elements_kinetic_part_jax, elements_kinetic_part_debug, decimal=8)
-    np.testing.assert_array_almost_equal(elements_kinetic_part_jax_fast_update, elements_kinetic_part_debug, decimal=8)
-
-
-'''
-def test_hessian_free_kinetic_energy_all_elements_matches_hessian():
-    """Hessian-free kinetic energy matches the Hessian-based reference for fixed configs."""
-    (
-        _,
-        _,
-        _,
-        _,
-        geminal_mo_data,
-        _,
-    ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+    np.testing.assert_array_almost_equal(
+        mesh_kinetic_part_r_up_carts_jax_fast_update,
+        mesh_kinetic_part_r_up_carts_debug,
+        decimal=decimal_debug_vs_production,
     )
-
-    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
-
-    jastrow_data = Jastrow_data(
-        jastrow_one_body_data=None,
-        jastrow_two_body_data=jastrow_twobody_data,
-        jastrow_three_body_data=None,
+    np.testing.assert_array_almost_equal(
+        mesh_kinetic_part_r_dn_carts_jax_fast_update,
+        mesh_kinetic_part_r_dn_carts_debug,
+        decimal=decimal_debug_vs_production,
+    )
+    np.testing.assert_array_almost_equal(
+        elements_kinetic_part_jax, elements_kinetic_part_debug, decimal=decimal_debug_vs_production
+    )
+    np.testing.assert_array_almost_equal(
+        elements_kinetic_part_jax_fast_update,
+        elements_kinetic_part_debug,
+        decimal=decimal_debug_vs_production,
     )
 
-    wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
-
-    r_up_carts = jnp.array(
-        [
-            [0.64878536, -0.83275288, 0.33532629],
-            [0.55271273, 0.72310605, 0.93443775],
-            [0.66767275, 0.1206456, -0.36521208],
-            [-0.93165236, -0.0120386, 0.33003036],
-        ]
-    )
-    r_dn_carts = jnp.array(
-        [
-            [1.0347816, 1.26162081, 0.42301735],
-            [-0.57843435, 1.03651987, -0.55091542],
-            [-1.56091964, -0.58952149, -0.99268141],
-            [0.61863233, -0.14903326, 0.51962683],
-        ]
-    )
-
-    K_elements_up_ref, K_elements_dn_ref = compute_kinetic_energy_all_elements_jax(
-        wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
-    )
-    K_elements_up_hvp, K_elements_dn_hvp = compute_kinetic_energy_all_elements_debug(
-        wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
-    )
-
-    np.testing.assert_array_almost_equal(np.array(K_elements_up_hvp), np.array(K_elements_up_ref), decimal=5)
-    np.testing.assert_array_almost_equal(np.array(K_elements_dn_hvp), np.array(K_elements_dn_ref), decimal=5)
-'''
 
 if __name__ == "__main__":
     from logging import Formatter, StreamHandler, getLogger

@@ -53,12 +53,11 @@ import numpy as np
 import numpy.typing as npt
 from flax import struct
 from jax import jit, lax, vmap
-from jax import typing as jnpt
 from scipy.special import eval_legendre
 
-from .determinant import compute_det_geminal_all_elements
-from .function_collections import legendre_tablated as jnp_legendre_tablated
-from .jastrow_factor import compute_Jastrow_part
+from .determinant import compute_det_geminal_all_elements, compute_ratio_determinant_part
+from .function_collections import _legendre_tablated as jnp_legendre_tablated
+from .jastrow_factor import compute_Jastrow_part, compute_ratio_Jastrow_part
 from .setting import NN_default, Nv_default
 from .structure import (
     Structure_data,
@@ -1255,6 +1254,7 @@ def compute_ecp_non_local_parts_nearest_neighbors(
         raise NotImplementedError
 
     grid_points = grid_points @ RT  # rotate the grid points. dim. (N,3) @ (3,3) = (N,3)
+    grid_norm = jnp.linalg.norm(grid_points, axis=1, keepdims=True)
 
     # jnp variables
     ang_mom_all, exponent_all, coefficient_all, power_all = coulomb_potential_data._padded_parameters_tuple
@@ -1283,110 +1283,83 @@ def compute_ecp_non_local_parts_nearest_neighbors(
         P_l = (2 * ang_mom + 1) * jnp_legendre_tablated(ang_mom, cos_theta) * weight * wf_ratio
         return P_l
 
-    # up electrons
-    for r_up_i, r_up_cart in enumerate(r_up_carts):
-        i_atom_list = _find_nearest_nucleus_indices_jnp(
-            structure_data=coulomb_potential_data.structure_data,
-            r_cart=r_up_cart,
-            N=NN,
-        )
+    def _build_mesh_for_spin(r_carts, other_carts):
+        n_spin = r_carts.shape[0]
+        n_other = other_carts.shape[0]
+        if n_spin == 0:
+            return (
+                jnp.zeros((0, n_spin, 3)),
+                jnp.zeros((0, n_other, 3)),
+                jnp.zeros((global_max_ang_mom_plus_1, 0)),
+                jnp.zeros((0,)),
+                jnp.zeros((0,)),
+            )
 
-        for i_atom in i_atom_list:
-            rel_R_cart_min_dist = _get_min_dist_rel_R_cart_jnp(
+        i_atom_lists = vmap(
+            lambda r_cart: _find_nearest_nucleus_indices_jnp(
                 structure_data=coulomb_potential_data.structure_data,
-                r_cart=r_up_cart,
-                i_atom=i_atom,
+                r_cart=r_cart,
+                N=NN,
             )
-            rel_R_cart_norm = jnp.linalg.norm(rel_R_cart_min_dist)
+        )(r_carts)
 
-            max_ang_mom_plus_1 = coulomb_potential_data._global_max_ang_mom_plus_1
-            ang_moms = ang_mom_all[i_atom]
-            exponents = exponent_all[i_atom]
-            coefficients = coefficient_all[i_atom]
-            powers = power_all[i_atom]
+        def _rels_for_electron(r_cart, i_atom_list):
+            return vmap(
+                lambda i_atom: _get_min_dist_rel_R_cart_jnp(
+                    structure_data=coulomb_potential_data.structure_data,
+                    r_cart=r_cart,
+                    i_atom=i_atom,
+                )
+            )(i_atom_list)
 
-            V_l_vmapped = compute_V_l(rel_R_cart_min_dist, exponents, coefficients, powers)
-            V_l_mapped = jax.ops.segment_sum(V_l_vmapped, ang_moms, num_segments=max_ang_mom_plus_1)
-            pad_width = (0, global_max_ang_mom_plus_1 - V_l_mapped.shape[0])
-            V_l_padded = jnp.pad(
-                V_l_mapped,
-                pad_width=pad_width,
-                mode="constant",
-            )
-            V_l_dup = V_l_padded[:, None].repeat(len(weights), axis=1)
-            V_l_mapped_all = jnp.concatenate([V_l_mapped_all, V_l_dup], axis=1)
+        rels = vmap(_rels_for_electron)(r_carts, i_atom_lists)  # (n_spin, NN, 3)
+        rel_norm = jnp.linalg.norm(rels, axis=-1, keepdims=True)
+        offsets = rels[..., None, :] + rel_norm[..., None, :] * grid_points[None, None, :, :]
+        updated_carts = r_carts[:, None, None, :] + offsets  # (n_spin, NN, Nv, 3)
 
-            offsets = rel_R_cart_min_dist + rel_R_cart_norm * grid_points
-            updated_carts = r_up_cart + offsets
-            r_up_carts_on_mesh = jnp.repeat(r_up_carts[jnp.newaxis, ...], grid_points.shape[0], axis=0)
-            up_non_local_ecp_part_r_carts_up = r_up_carts_on_mesh.at[:, r_up_i, :].set(updated_carts)
-            up_non_local_ecp_part_r_carts_dn = jnp.repeat(r_dn_carts[jnp.newaxis, ...], len(weights), axis=0)
-            non_local_ecp_part_r_carts_up = jnp.concatenate(
-                [non_local_ecp_part_r_carts_up, up_non_local_ecp_part_r_carts_up], axis=0
-            )
-            non_local_ecp_part_r_carts_dn = jnp.concatenate(
-                [non_local_ecp_part_r_carts_dn, up_non_local_ecp_part_r_carts_dn], axis=0
-            )
+        delta = updated_carts - r_carts[:, None, None, :]
+        one_hot = jax.nn.one_hot(jnp.arange(n_spin), n_spin)
+        delta_full = delta[..., None, :] * one_hot[:, None, None, :, None]
+        base = r_carts[None, None, None, :, :]
+        r_carts_on_mesh = base + delta_full  # (n_spin, NN, Nv, n_spin, 3)
+        if n_other == 0:
+            other_carts_on_mesh = jnp.zeros((n_spin, NN, grid_points.shape[0], 0, 3))
+        else:
+            other_carts_on_mesh = jnp.broadcast_to(other_carts, (n_spin, NN, grid_points.shape[0], n_other, 3))
 
-            cos_thetas = jnp.einsum(
-                "ij,ij->i",
-                -rel_R_cart_min_dist[None, :] / rel_R_cart_norm,
-                grid_points / jnp.linalg.norm(grid_points, axis=1, keepdims=True),
-            )
-            cos_theta_all = jnp.concatenate([cos_theta_all, cos_thetas], axis=0)
-            weight_all = jnp.concatenate([weight_all, weights], axis=0)
+        ang_moms = ang_mom_all[i_atom_lists]
+        exponents = exponent_all[i_atom_lists]
+        coefficients = coefficient_all[i_atom_lists]
+        powers = power_all[i_atom_lists]
 
-    # dn electrons
-    for r_dn_i, r_dn_cart in enumerate(r_dn_carts):
-        i_atom_list = _find_nearest_nucleus_indices_jnp(
-            structure_data=coulomb_potential_data.structure_data,
-            r_cart=r_dn_cart,
-            N=NN,
-        )
-        for i_atom in i_atom_list:
-            rel_R_cart_min_dist = _get_min_dist_rel_R_cart_jnp(
-                structure_data=coulomb_potential_data.structure_data,
-                r_cart=r_dn_cart,
-                i_atom=i_atom,
-            )
-            rel_R_cart_norm = jnp.linalg.norm(rel_R_cart_min_dist)
+        def _V_l_mapped(rel, ang_mom, exponent, coefficient, power):
+            V_l_vmapped = compute_V_l(rel, exponent, coefficient, power)
+            return jax.ops.segment_sum(V_l_vmapped, ang_mom, num_segments=global_max_ang_mom_plus_1)
 
-            max_ang_mom_plus_1 = coulomb_potential_data._global_max_ang_mom_plus_1
-            ang_moms = ang_mom_all[i_atom]
-            exponents = exponent_all[i_atom]
-            coefficients = coefficient_all[i_atom]
-            powers = power_all[i_atom]
+        V_l_mapped = vmap(vmap(_V_l_mapped, in_axes=(0, 0, 0, 0, 0)))(rels, ang_moms, exponents, coefficients, powers)
+        V_l_dup = jnp.repeat(V_l_mapped[:, :, :, None], grid_points.shape[0], axis=3)
+        V_l_all = jnp.moveaxis(V_l_dup, 2, 0).reshape(global_max_ang_mom_plus_1, -1)
 
-            V_l_vmapped = compute_V_l(rel_R_cart_min_dist, exponents, coefficients, powers)
-            V_l_mapped = jax.ops.segment_sum(V_l_vmapped, ang_moms, num_segments=max_ang_mom_plus_1)
-            pad_width = (0, global_max_ang_mom_plus_1 - V_l_mapped.shape[0])
-            V_l_padded = jnp.pad(
-                V_l_mapped,
-                pad_width=pad_width,
-                mode="constant",
-            )
-            V_l_dup = V_l_padded[:, None].repeat(len(weights), axis=1)
-            V_l_mapped_all = jnp.concatenate([V_l_mapped_all, V_l_dup], axis=1)
+        rel_unit = -rels / rel_norm
+        grid_unit = grid_points / grid_norm
+        cos_theta = jnp.einsum("ijn,kn->ijk", rel_unit, grid_unit)
+        weight = jnp.broadcast_to(weights, cos_theta.shape)
 
-            offsets = rel_R_cart_min_dist + rel_R_cart_norm * grid_points
-            updated_carts = r_dn_cart + offsets
-            r_dn_carts_on_mesh = jnp.repeat(r_dn_carts[jnp.newaxis, ...], grid_points.shape[0], axis=0)
-            dn_non_local_ecp_part_r_carts_dn = r_dn_carts_on_mesh.at[:, r_dn_i, :].set(updated_carts)
-            dn_non_local_ecp_part_r_carts_up = jnp.repeat(r_up_carts[jnp.newaxis, ...], len(weights), axis=0)
-            non_local_ecp_part_r_carts_up = jnp.concatenate(
-                [non_local_ecp_part_r_carts_up, dn_non_local_ecp_part_r_carts_up], axis=0
-            )
-            non_local_ecp_part_r_carts_dn = jnp.concatenate(
-                [non_local_ecp_part_r_carts_dn, dn_non_local_ecp_part_r_carts_dn], axis=0
-            )
-            # Compute cos_theta for all grid points
-            cos_thetas = jnp.einsum(
-                "ij,ij->i",
-                -rel_R_cart_min_dist[None, :] / rel_R_cart_norm,
-                grid_points / jnp.linalg.norm(grid_points, axis=1, keepdims=True),
-            )
-            cos_theta_all = jnp.concatenate([cos_theta_all, cos_thetas], axis=0)
-            weight_all = jnp.concatenate([weight_all, weights], axis=0)
+        r_mesh = r_carts_on_mesh.reshape(-1, n_spin, 3)
+        if n_other == 0:
+            other_mesh = jnp.zeros((r_mesh.shape[0], 0, 3))
+        else:
+            other_mesh = other_carts_on_mesh.reshape(-1, n_other, 3)
+        return r_mesh, other_mesh, V_l_all, cos_theta.reshape(-1), weight.reshape(-1)
+
+    up_mesh_r_up, up_mesh_r_dn, V_l_up, cos_up, weight_up = _build_mesh_for_spin(r_up_carts, r_dn_carts)
+    dn_mesh_r_dn, dn_mesh_r_up, V_l_dn, cos_dn, weight_dn = _build_mesh_for_spin(r_dn_carts, r_up_carts)
+
+    non_local_ecp_part_r_carts_up = jnp.concatenate([up_mesh_r_up, dn_mesh_r_up], axis=0)
+    non_local_ecp_part_r_carts_dn = jnp.concatenate([up_mesh_r_dn, dn_mesh_r_dn], axis=0)
+    V_l_mapped_all = jnp.concatenate([V_l_up, V_l_dn], axis=1)
+    cos_theta_all = jnp.concatenate([cos_up, cos_dn], axis=0)
+    weight_all = jnp.concatenate([weight_up, weight_dn], axis=0)
 
     non_local_ecp_part_r_carts_up = jnp.array(non_local_ecp_part_r_carts_up)
     non_local_ecp_part_r_carts_dn = jnp.array(non_local_ecp_part_r_carts_dn)
@@ -1408,6 +1381,203 @@ def compute_ecp_non_local_parts_nearest_neighbors(
     )
 
     wf_ratio_all = jnp.exp(jastrow_xp - jastrow_x) * det_xp / det_x
+
+    cos_theta_all = jnp.array(cos_theta_all)
+    weight_all = jnp.array(weight_all)
+    wf_ratio_all = jnp.array(wf_ratio_all)
+
+    P_l_mapped_all = vmap(vmap(compute_P_l, in_axes=(None, 0, 0, 0)), in_axes=(0, None, None, None))(
+        jnp.arange(global_max_ang_mom_plus_1), cos_theta_all, weight_all, wf_ratio_all
+    )
+
+    V_nl = V_l_mapped_all * P_l_mapped_all
+    V_nonlocal = jnp.sum(V_nl, axis=0)
+    sum_V_nonlocal = jnp.sum(V_nl)
+
+    return non_local_ecp_part_r_carts_up, non_local_ecp_part_r_carts_dn, V_nonlocal, sum_V_nonlocal
+
+
+@partial(jit, static_argnums=(6, 7, 8))
+def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
+    coulomb_potential_data: Coulomb_potential_data,
+    wavefunction_data: Wavefunction_data,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+    RT: jax.Array,
+    A_old_inv: jax.Array,
+    NN: int = NN_default,
+    Nv: int = Nv_default,
+    flag_determinant_only: bool = False,
+) -> tuple[list, list, list, float]:
+    """Fast-update variant of non-local ECP contributions (nearest neighbors).
+
+    This variant reuses the inverse geminal matrix to compute determinant ratios
+    and uses Jastrow ratios, avoiding full recomputation for each mesh point.
+
+    Args:
+        coulomb_potential_data (Coulomb_potential_data): ECP parameters and structure data.
+        wavefunction_data (Wavefunction_data): Wavefunction (geminal + Jastrow) used for ratios.
+        r_up_carts (jax.Array): Up-spin electron Cartesian coordinates with shape ``(N_up, 3)`` and ``float64`` dtype.
+        r_dn_carts (jax.Array): Down-spin electron Cartesian coordinates with shape ``(N_dn, 3)`` and ``float64`` dtype.
+        RT (jax.Array): Rotation matrix applied to quadrature grid points (shape ``(3, 3)``).
+        A_old_inv (jax.Array): Inverse geminal matrix evaluated at ``(r_up_carts, r_dn_carts)``.
+        NN (int): Number of nearest nuclei to include for each electron.
+        Nv (int): Number of quadrature points on the sphere.
+        flag_determinant_only (bool): If True, ignore Jastrow in the wavefunction ratio.
+
+    Returns:
+        tuple[list[jax.Array], list[jax.Array], jax.Array, float]:
+            - Mesh-displaced ``r_up_carts`` per configuration.
+            - Mesh-displaced ``r_dn_carts`` per configuration.
+            - Non-local ECP contributions per configuration (flattened).
+            - Scalar sum of all non-local contributions.
+    """
+    if Nv == 4:
+        weights = jnp.array(tetrahedron_sym_mesh_Nv4.weights)
+        grid_points = jnp.array(tetrahedron_sym_mesh_Nv4.grid_points)
+    elif Nv == 6:
+        weights = jnp.array(octahedron_sym_mesh_Nv6.weights)
+        grid_points = jnp.array(octahedron_sym_mesh_Nv6.grid_points)
+    elif Nv == 12:
+        weights = jnp.array(icosahedron_sym_mesh_Nv12.weights)
+        grid_points = jnp.array(icosahedron_sym_mesh_Nv12.grid_points)
+    elif Nv == 18:
+        weights = jnp.array(octahedron_sym_mesh_Nv18.weights)
+        grid_points = jnp.array(octahedron_sym_mesh_Nv18.grid_points)
+    else:
+        raise NotImplementedError
+
+    grid_points = grid_points @ RT  # rotate the grid points. dim. (N,3) @ (3,3) = (N,3)
+    grid_norm = jnp.linalg.norm(grid_points, axis=1, keepdims=True)
+
+    # jnp variables
+    ang_mom_all, exponent_all, coefficient_all, power_all = coulomb_potential_data._padded_parameters_tuple
+    global_max_ang_mom_plus_1 = coulomb_potential_data._global_max_ang_mom_plus_1
+
+    # stored
+    non_local_ecp_part_r_carts_up = jnp.zeros((0, len(r_up_carts), 3))
+    non_local_ecp_part_r_carts_dn = jnp.zeros((0, len(r_dn_carts), 3))
+    cos_theta_all = jnp.zeros((0,))
+    weight_all = jnp.zeros((0,))
+    V_l_mapped_all = jnp.zeros((global_max_ang_mom_plus_1, 0))
+
+    @jit
+    def compute_V_l(rel_R_cart_min_dist, exponents, coefficients, powers):
+        V_l = (
+            jnp.linalg.norm(rel_R_cart_min_dist) ** -2.0
+            * coefficients
+            * jnp.linalg.norm(rel_R_cart_min_dist) ** powers
+            * jnp.exp(-exponents * (jnp.linalg.norm(rel_R_cart_min_dist) ** 2))
+        )
+
+        return V_l
+
+    @jit
+    def compute_P_l(ang_mom, cos_theta, weight, wf_ratio):
+        P_l = (2 * ang_mom + 1) * jnp_legendre_tablated(ang_mom, cos_theta) * weight * wf_ratio
+        return P_l
+
+    def _build_mesh_for_spin(r_carts, other_carts):
+        n_spin = r_carts.shape[0]
+        n_other = other_carts.shape[0]
+        if n_spin == 0:
+            return (
+                jnp.zeros((0, n_spin, 3)),
+                jnp.zeros((0, n_other, 3)),
+                jnp.zeros((global_max_ang_mom_plus_1, 0)),
+                jnp.zeros((0,)),
+                jnp.zeros((0,)),
+            )
+
+        i_atom_lists = vmap(
+            lambda r_cart: _find_nearest_nucleus_indices_jnp(
+                structure_data=coulomb_potential_data.structure_data,
+                r_cart=r_cart,
+                N=NN,
+            )
+        )(r_carts)
+
+        def _rels_for_electron(r_cart, i_atom_list):
+            return vmap(
+                lambda i_atom: _get_min_dist_rel_R_cart_jnp(
+                    structure_data=coulomb_potential_data.structure_data,
+                    r_cart=r_cart,
+                    i_atom=i_atom,
+                )
+            )(i_atom_list)
+
+        rels = vmap(_rels_for_electron)(r_carts, i_atom_lists)  # (n_spin, NN, 3)
+        rel_norm = jnp.linalg.norm(rels, axis=-1, keepdims=True)
+        offsets = rels[..., None, :] + rel_norm[..., None, :] * grid_points[None, None, :, :]
+        updated_carts = r_carts[:, None, None, :] + offsets  # (n_spin, NN, Nv, 3)
+
+        delta = updated_carts - r_carts[:, None, None, :]
+        one_hot = jax.nn.one_hot(jnp.arange(n_spin), n_spin)
+        delta_full = delta[..., None, :] * one_hot[:, None, None, :, None]
+        base = r_carts[None, None, None, :, :]
+        r_carts_on_mesh = base + delta_full  # (n_spin, NN, Nv, n_spin, 3)
+        if n_other == 0:
+            other_carts_on_mesh = jnp.zeros((n_spin, NN, grid_points.shape[0], 0, 3))
+        else:
+            other_carts_on_mesh = jnp.broadcast_to(other_carts, (n_spin, NN, grid_points.shape[0], n_other, 3))
+
+        ang_moms = ang_mom_all[i_atom_lists]
+        exponents = exponent_all[i_atom_lists]
+        coefficients = coefficient_all[i_atom_lists]
+        powers = power_all[i_atom_lists]
+
+        def _V_l_mapped(rel, ang_mom, exponent, coefficient, power):
+            V_l_vmapped = compute_V_l(rel, exponent, coefficient, power)
+            return jax.ops.segment_sum(V_l_vmapped, ang_mom, num_segments=global_max_ang_mom_plus_1)
+
+        V_l_mapped = vmap(vmap(_V_l_mapped, in_axes=(0, 0, 0, 0, 0)))(rels, ang_moms, exponents, coefficients, powers)
+        V_l_dup = jnp.repeat(V_l_mapped[:, :, :, None], grid_points.shape[0], axis=3)
+        V_l_all = jnp.moveaxis(V_l_dup, 2, 0).reshape(global_max_ang_mom_plus_1, -1)
+
+        rel_unit = -rels / rel_norm
+        grid_unit = grid_points / grid_norm
+        cos_theta = jnp.einsum("ijn,kn->ijk", rel_unit, grid_unit)
+        weight = jnp.broadcast_to(weights, cos_theta.shape)
+
+        r_mesh = r_carts_on_mesh.reshape(-1, n_spin, 3)
+        if n_other == 0:
+            other_mesh = jnp.zeros((r_mesh.shape[0], 0, 3))
+        else:
+            other_mesh = other_carts_on_mesh.reshape(-1, n_other, 3)
+        return r_mesh, other_mesh, V_l_all, cos_theta.reshape(-1), weight.reshape(-1)
+
+    up_mesh_r_up, up_mesh_r_dn, V_l_up, cos_up, weight_up = _build_mesh_for_spin(r_up_carts, r_dn_carts)
+    dn_mesh_r_dn, dn_mesh_r_up, V_l_dn, cos_dn, weight_dn = _build_mesh_for_spin(r_dn_carts, r_up_carts)
+
+    non_local_ecp_part_r_carts_up = jnp.concatenate([up_mesh_r_up, dn_mesh_r_up], axis=0)
+    non_local_ecp_part_r_carts_dn = jnp.concatenate([up_mesh_r_dn, dn_mesh_r_dn], axis=0)
+    V_l_mapped_all = jnp.concatenate([V_l_up, V_l_dn], axis=1)
+    cos_theta_all = jnp.concatenate([cos_up, cos_dn], axis=0)
+    weight_all = jnp.concatenate([weight_up, weight_dn], axis=0)
+
+    non_local_ecp_part_r_carts_up = jnp.array(non_local_ecp_part_r_carts_up)
+    non_local_ecp_part_r_carts_dn = jnp.array(non_local_ecp_part_r_carts_dn)
+
+    # wavefunction ratio
+    det_ratio = compute_ratio_determinant_part(
+        geminal_data=wavefunction_data.geminal_data,
+        A_old_inv=A_old_inv,
+        old_r_up_carts=r_up_carts,
+        old_r_dn_carts=r_dn_carts,
+        new_r_up_carts_arr=non_local_ecp_part_r_carts_up,
+        new_r_dn_carts_arr=non_local_ecp_part_r_carts_dn,
+    )
+    if flag_determinant_only:
+        wf_ratio_all = det_ratio
+    else:
+        jastrow_ratio = compute_ratio_Jastrow_part(
+            jastrow_data=wavefunction_data.jastrow_data,
+            old_r_up_carts=r_up_carts,
+            old_r_dn_carts=r_dn_carts,
+            new_r_up_carts_arr=non_local_ecp_part_r_carts_up,
+            new_r_dn_carts_arr=non_local_ecp_part_r_carts_dn,
+        )
+        wf_ratio_all = det_ratio * jastrow_ratio
 
     cos_theta_all = jnp.array(cos_theta_all)
     weight_all = jnp.array(weight_all)

@@ -51,7 +51,8 @@ from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_three_body_data,
     Jastrow_two_body_data,
 )
-from jqmc.jqmc_gfmc import GFMC_fixed_num_projection  # noqa: E402
+from jqmc.jqmc_gfmc import GFMC_n  # noqa: E402
+from jqmc.setting import decimal_debug_vs_production  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import Wavefunction_data  # noqa: E402
 
@@ -100,7 +101,7 @@ def test_lrdmc_force_with_SWCT_ecp():
     mcmc_seed = 34356
 
     # run GFMC
-    gfmc = GFMC_fixed_num_projection(
+    gfmc = GFMC_n(
         hamiltonian_data=hamiltonian_data,
         num_walkers=2,
         num_mcmc_per_measurement=30,
@@ -124,8 +125,16 @@ def test_lrdmc_force_with_SWCT_ecp():
     # print(force_mean, force_std)
 
     # See [J. Chem. Phys. 156, 034101 (2022)]
-    np.testing.assert_almost_equal(np.array(force_mean[0]), -1.0 * np.array(force_mean[1]), decimal=6)
-    np.testing.assert_almost_equal(np.array(force_std[0]), np.array(force_std[1]), decimal=6)
+    np.testing.assert_almost_equal(
+        np.array(force_mean[0]),
+        -1.0 * np.array(force_mean[1]),
+        decimal=decimal_debug_vs_production,
+    )
+    np.testing.assert_almost_equal(
+        np.array(force_std[0]),
+        np.array(force_std[1]),
+        decimal=decimal_debug_vs_production,
+    )
 
 
 def test_lrdmc_force_with_SWCT_ae():
@@ -172,7 +181,7 @@ def test_lrdmc_force_with_SWCT_ae():
     mcmc_seed = 34356
 
     # run GFMC
-    gfmc = GFMC_fixed_num_projection(
+    gfmc = GFMC_n(
         hamiltonian_data=hamiltonian_data,
         num_walkers=2,
         num_mcmc_per_measurement=30,
@@ -195,8 +204,16 @@ def test_lrdmc_force_with_SWCT_ae():
     )
 
     # See [J. Chem. Phys. 156, 034101 (2022)]
-    np.testing.assert_almost_equal(np.array(force_mean[0]), -1.0 * np.array(force_mean[1]), decimal=6)
-    np.testing.assert_almost_equal(np.array(force_std[0]), np.array(force_std[1]), decimal=6)
+    np.testing.assert_almost_equal(
+        np.array(force_mean[0]),
+        -1.0 * np.array(force_mean[1]),
+        decimal=decimal_debug_vs_production,
+    )
+    np.testing.assert_almost_equal(
+        np.array(force_std[0]),
+        np.array(force_std[1]),
+        decimal=decimal_debug_vs_production,
+    )
 
 
 if __name__ == "__main__":

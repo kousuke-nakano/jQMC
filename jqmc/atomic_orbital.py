@@ -4,6 +4,8 @@ Module containing classes and methods related to Atomic Orbitals
 
 """
 
+from __future__ import annotations
+
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
 #
@@ -35,7 +37,6 @@ Module containing classes and methods related to Atomic Orbitals
 # LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
-
 from logging import getLogger
 
 import jax
@@ -49,6 +50,7 @@ from jax import hessian, jacrev, jit, vmap
 from jax import typing as jnpt
 from numpy import linalg as LA
 
+from .setting import EPS_stabilizing_jax_AO_cart_deriv
 from .structure import Structure_data
 
 # set logger
@@ -652,6 +654,25 @@ class AOs_cart_data:
         return jnp.array(self._polynominal_order_z_prim_np, dtype=np.int32)
 
     @property
+    def _normalization_factorial_ratio_prim_jnp(self) -> jax.Array:
+        """Return factorial ratio used in AO normalization (primitive-wise)."""
+        nx = self._polynominal_order_x_prim_np
+        ny = self._polynominal_order_y_prim_np
+        nz = self._polynominal_order_z_prim_np
+        num = (
+            scipy.special.factorial(nx, exact=True)
+            * scipy.special.factorial(ny, exact=True)
+            * scipy.special.factorial(nz, exact=True)
+        )
+        den = (
+            scipy.special.factorial(2 * nx, exact=True)
+            * scipy.special.factorial(2 * ny, exact=True)
+            * scipy.special.factorial(2 * nz, exact=True)
+        )
+        ratio = np.asarray(num / den, dtype=np.float64)
+        return jnp.array(ratio, dtype=jnp.float64)
+
+    @property
     def _exponents_jnp(self) -> jax.Array:
         """Return exponents."""
         return jnp.array(self.exponents, dtype=jnp.float64)
@@ -669,7 +690,7 @@ class AOs_cart_data:
 
 @struct.dataclass
 class AOs_sphe_data:
-    """Atomic orbital definitions in real spherical-harmonic form.
+    r"""Atomic orbital definitions in real spherical-harmonic form.
 
     Stores contracted Gaussian basis data for atomic orbitals (AOs) whose angular part is
     a real spherical harmonic :math:`Y_{l}^{m}` with :math:`m \in \{-l,\dots,+l\}`.
@@ -1342,9 +1363,7 @@ def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.A
     ny_jnp = aos_data._polynominal_order_y_prim_jnp
     nz_jnp = aos_data._polynominal_order_z_prim_jnp
 
-    N_n_dup_fuctorial_part = (
-        jscipy.special.factorial(nx_jnp) * jscipy.special.factorial(ny_jnp) * jscipy.special.factorial(nz_jnp)
-    ) / (jscipy.special.factorial(2 * nx_jnp) * jscipy.special.factorial(2 * ny_jnp) * jscipy.special.factorial(2 * nz_jnp))
+    N_n_dup_fuctorial_part = aos_data._normalization_factorial_ratio_prim_jnp
     N_n_dup_Z_part = (2.0 * Z_jnp / jnp.pi) ** (3.0 / 2.0) * (8.0 * Z_jnp) ** l_jnp
     N_n_dup = jnp.sqrt(N_n_dup_Z_part * N_n_dup_fuctorial_part)
     r_R_diffs = r_carts[None, :, :] - R_carts_jnp[:, None, :]
@@ -1658,54 +1677,250 @@ def _compute_S_l_m(
     return max_ml, S_l_m_values
 
 
-def _compute_S_l_m_single(diff: jnp.ndarray) -> jax.Array:
-    """Solid harmonics for a single displacement vector (49,)."""
-    _, vals = _compute_S_l_m(diff[None, None, :])
-    return vals[:, 0, 0]
-
-
-_compute_S_l_m_single_grad = jax.jacrev(_compute_S_l_m_single)
-
-
 @jit
-def _compute_S_l_m_single_val_grad_lap(diff: jnp.ndarray) -> tuple[jax.Array, jax.Array, jax.Array]:
-    """Solid harmonics value, gradient, and Laplacian for a single displacement vector."""
-    vals = _compute_S_l_m_single(diff)  # (49,)
-    grads = _compute_S_l_m_single_grad(diff)  # (49, 3)
-    hess = jax.jacfwd(_compute_S_l_m_single_grad)(diff)  # (49, 3, 3)
-    lap = jnp.trace(hess, axis1=1, axis2=2)  # (49,)
-    return vals, grads, lap
-
-
-@jit
-def _compute_S_l_m_and_grad(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, jax.Array]:
-    """Vectorized solid harmonics values and gradients.
-
-    Returns:
-        tuple: (values, grads) where values has shape (49, num_R, num_r) and grads has shape (49, num_R, num_r, 3).
-    """
-    num_R, num_r, _ = r_R_diffs_uq.shape
-    diffs_flat = r_R_diffs_uq.reshape((num_R * num_r, 3), order="C")
-
-    vals_flat, grads_flat, _ = vmap(_compute_S_l_m_single_val_grad_lap)(diffs_flat)  # (N,49), (N,49,3)
-
-    vals = vals_flat.T.reshape((vals_flat.shape[1], num_R, num_r), order="C")
-    grads = grads_flat.transpose(1, 0, 2).reshape((grads_flat.shape[1], num_R, num_r, 3), order="C")
-    return vals, grads
-
-
-@jit
-def _compute_S_l_m_val_grad_lap(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, jax.Array, jax.Array]:
+def _compute_S_l_m_and_grad_lap(r_R_diffs_uq: jnp.ndarray) -> tuple[jax.Array, jax.Array, jax.Array]:
     """Vectorized solid harmonics values, gradients, and Laplacians.
 
     Returns:
         tuple: (values, grads, laps) where values has shape (49, num_R, num_r), grads has shape (49, num_R, num_r, 3),
         and laps has shape (49, num_R, num_r).
     """
+    S_L_M_COEFFS = (
+        jnp.array([1.0], dtype=jnp.float64),
+        jnp.array([1.0], dtype=jnp.float64),
+        jnp.array([1.0], dtype=jnp.float64),
+        jnp.array([1.0], dtype=jnp.float64),
+        jnp.array([1.7320508075688774], dtype=jnp.float64),
+        jnp.array([1.7320508075688774], dtype=jnp.float64),
+        jnp.array([1.0, -0.5, -0.5], dtype=jnp.float64),
+        jnp.array([1.7320508075688774], dtype=jnp.float64),
+        jnp.array([-0.8660254037844387, 0.8660254037844387], dtype=jnp.float64),
+        jnp.array([-0.7905694150420949, 2.3717082451262845], dtype=jnp.float64),
+        jnp.array([3.8729833462074166], dtype=jnp.float64),
+        jnp.array([2.4494897427831783, -0.6123724356957946, -0.6123724356957946], dtype=jnp.float64),
+        jnp.array([1.0, -1.5, -1.5], dtype=jnp.float64),
+        jnp.array([2.4494897427831783, -0.6123724356957946, -0.6123724356957946], dtype=jnp.float64),
+        jnp.array([-1.9364916731037083, 1.9364916731037083], dtype=jnp.float64),
+        jnp.array([-2.3717082451262845, 0.7905694150420949], dtype=jnp.float64),
+        jnp.array([-2.958039891549808, 2.958039891549808], dtype=jnp.float64),
+        jnp.array([-2.091650066335189, 6.274950199005566], dtype=jnp.float64),
+        jnp.array([6.708203932499371, -1.1180339887498951, -1.1180339887498951], dtype=jnp.float64),
+        jnp.array([3.1622776601683795, -2.3717082451262845, -2.3717082451262845], dtype=jnp.float64),
+        jnp.array([1.0, -3.0, 0.375, -3.0, 0.75, 0.375], dtype=jnp.float64),
+        jnp.array([3.1622776601683795, -2.3717082451262845, -2.3717082451262845], dtype=jnp.float64),
+        jnp.array([-3.3541019662496856, 0.5590169943749476, 3.3541019662496856, -0.5590169943749476], dtype=jnp.float64),
+        jnp.array([-6.274950199005566, 2.091650066335189], dtype=jnp.float64),
+        jnp.array([0.739509972887452, -4.437059837324712, 0.739509972887452], dtype=jnp.float64),
+        jnp.array([0.7015607600201141, -7.015607600201141, 3.5078038001005707], dtype=jnp.float64),
+        jnp.array([-8.874119674649426, 8.874119674649426], dtype=jnp.float64),
+        jnp.array(
+            [-4.183300132670378, 0.5229125165837972, 12.549900398011133, -1.0458250331675945, -1.5687375497513916],
+            dtype=jnp.float64,
+        ),
+        jnp.array([10.2469507659596, -5.1234753829798, -5.1234753829798], dtype=jnp.float64),
+        jnp.array(
+            [
+                3.872983346207417,
+                -5.809475019311126,
+                0.4841229182759271,
+                -5.809475019311126,
+                0.9682458365518543,
+                0.4841229182759271,
+            ],
+            dtype=jnp.float64,
+        ),
+        jnp.array([1.0, -5.0, 1.875, -5.0, 3.75, 1.875], dtype=jnp.float64),
+        jnp.array(
+            [
+                3.872983346207417,
+                -5.809475019311126,
+                0.4841229182759271,
+                -5.809475019311126,
+                0.9682458365518543,
+                0.4841229182759271,
+            ],
+            dtype=jnp.float64,
+        ),
+        jnp.array([-5.1234753829798, 2.5617376914899, 5.1234753829798, -2.5617376914899], dtype=jnp.float64),
+        jnp.array(
+            [-12.549900398011133, 1.5687375497513916, 4.183300132670378, 1.0458250331675945, -0.5229125165837972],
+            dtype=jnp.float64,
+        ),
+        jnp.array([2.2185299186623566, -13.311179511974139, 2.2185299186623566], dtype=jnp.float64),
+        jnp.array([3.5078038001005707, -7.015607600201141, 0.7015607600201141], dtype=jnp.float64),
+        jnp.array([4.030159736288377, -13.433865787627923, 4.030159736288377], dtype=jnp.float64),
+        jnp.array([2.3268138086232857, -23.268138086232856, 11.634069043116428], dtype=jnp.float64),
+        jnp.array([-19.843134832984433, 1.9843134832984433, 19.843134832984433, -1.9843134832984433], dtype=jnp.float64),
+        jnp.array(
+            [-7.245688373094719, 2.7171331399105196, 21.737065119284157, -5.434266279821039, -8.15139941973156],
+            dtype=jnp.float64,
+        ),
+        jnp.array(
+            [
+                14.491376746189438,
+                -14.491376746189438,
+                0.9057110466368399,
+                -14.491376746189438,
+                1.8114220932736798,
+                0.9057110466368399,
+            ],
+            dtype=jnp.float64,
+        ),
+        jnp.array(
+            [4.58257569495584, -11.4564392373896, 2.8641098093474, -11.4564392373896, 5.7282196186948, 2.8641098093474],
+            dtype=jnp.float64,
+        ),
+        jnp.array([1.0, -7.5, 5.625, -0.3125, -7.5, 11.25, -0.9375, 5.625, -0.9375, -0.3125], dtype=jnp.float64),
+        jnp.array(
+            [4.58257569495584, -11.4564392373896, 2.8641098093474, -11.4564392373896, 5.7282196186948, 2.8641098093474],
+            dtype=jnp.float64,
+        ),
+        jnp.array(
+            [
+                -7.245688373094719,
+                7.245688373094719,
+                -0.45285552331841994,
+                7.245688373094719,
+                -0.45285552331841994,
+                -7.245688373094719,
+                0.45285552331841994,
+                0.45285552331841994,
+            ],
+            dtype=jnp.float64,
+        ),
+        jnp.array(
+            [-21.737065119284157, 8.15139941973156, 7.245688373094719, 5.434266279821039, -2.7171331399105196],
+            dtype=jnp.float64,
+        ),
+        jnp.array(
+            [
+                4.960783708246108,
+                -0.4960783708246108,
+                -29.76470224947665,
+                2.480391854123054,
+                4.960783708246108,
+                2.480391854123054,
+                -0.4960783708246108,
+            ],
+            dtype=jnp.float64,
+        ),
+        jnp.array([11.634069043116428, -23.268138086232856, 2.3268138086232857], dtype=jnp.float64),
+        jnp.array([-0.6716932893813962, 10.075399340720942, -10.075399340720942, 0.6716932893813962], dtype=jnp.float64),
+    )
+
+    S_L_M_EXPS = (
+        jnp.array([[0, 0, 0]], dtype=jnp.int32),
+        jnp.array([[0, 1, 0]], dtype=jnp.int32),
+        jnp.array([[0, 0, 1]], dtype=jnp.int32),
+        jnp.array([[1, 0, 0]], dtype=jnp.int32),
+        jnp.array([[1, 1, 0]], dtype=jnp.int32),
+        jnp.array([[0, 1, 1]], dtype=jnp.int32),
+        jnp.array([[0, 0, 2], [0, 2, 0], [2, 0, 0]], dtype=jnp.int32),
+        jnp.array([[1, 0, 1]], dtype=jnp.int32),
+        jnp.array([[0, 2, 0], [2, 0, 0]], dtype=jnp.int32),
+        jnp.array([[0, 3, 0], [2, 1, 0]], dtype=jnp.int32),
+        jnp.array([[1, 1, 1]], dtype=jnp.int32),
+        jnp.array([[0, 1, 2], [0, 3, 0], [2, 1, 0]], dtype=jnp.int32),
+        jnp.array([[0, 0, 3], [0, 2, 1], [2, 0, 1]], dtype=jnp.int32),
+        jnp.array([[1, 0, 2], [1, 2, 0], [3, 0, 0]], dtype=jnp.int32),
+        jnp.array([[0, 2, 1], [2, 0, 1]], dtype=jnp.int32),
+        jnp.array([[1, 2, 0], [3, 0, 0]], dtype=jnp.int32),
+        jnp.array([[1, 3, 0], [3, 1, 0]], dtype=jnp.int32),
+        jnp.array([[0, 3, 1], [2, 1, 1]], dtype=jnp.int32),
+        jnp.array([[1, 1, 2], [1, 3, 0], [3, 1, 0]], dtype=jnp.int32),
+        jnp.array([[0, 1, 3], [0, 3, 1], [2, 1, 1]], dtype=jnp.int32),
+        jnp.array([[0, 0, 4], [0, 2, 2], [0, 4, 0], [2, 0, 2], [2, 2, 0], [4, 0, 0]], dtype=jnp.int32),
+        jnp.array([[1, 0, 3], [1, 2, 1], [3, 0, 1]], dtype=jnp.int32),
+        jnp.array([[0, 2, 2], [0, 4, 0], [2, 0, 2], [4, 0, 0]], dtype=jnp.int32),
+        jnp.array([[1, 2, 1], [3, 0, 1]], dtype=jnp.int32),
+        jnp.array([[0, 4, 0], [2, 2, 0], [4, 0, 0]], dtype=jnp.int32),
+        jnp.array([[0, 5, 0], [2, 3, 0], [4, 1, 0]], dtype=jnp.int32),
+        jnp.array([[1, 3, 1], [3, 1, 1]], dtype=jnp.int32),
+        jnp.array([[0, 3, 2], [0, 5, 0], [2, 1, 2], [2, 3, 0], [4, 1, 0]], dtype=jnp.int32),
+        jnp.array([[1, 1, 3], [1, 3, 1], [3, 1, 1]], dtype=jnp.int32),
+        jnp.array([[0, 1, 4], [0, 3, 2], [0, 5, 0], [2, 1, 2], [2, 3, 0], [4, 1, 0]], dtype=jnp.int32),
+        jnp.array([[0, 0, 5], [0, 2, 3], [0, 4, 1], [2, 0, 3], [2, 2, 1], [4, 0, 1]], dtype=jnp.int32),
+        jnp.array([[1, 0, 4], [1, 2, 2], [1, 4, 0], [3, 0, 2], [3, 2, 0], [5, 0, 0]], dtype=jnp.int32),
+        jnp.array([[0, 2, 3], [0, 4, 1], [2, 0, 3], [4, 0, 1]], dtype=jnp.int32),
+        jnp.array([[1, 2, 2], [1, 4, 0], [3, 0, 2], [3, 2, 0], [5, 0, 0]], dtype=jnp.int32),
+        jnp.array([[0, 4, 1], [2, 2, 1], [4, 0, 1]], dtype=jnp.int32),
+        jnp.array([[1, 4, 0], [3, 2, 0], [5, 0, 0]], dtype=jnp.int32),
+        jnp.array([[1, 5, 0], [3, 3, 0], [5, 1, 0]], dtype=jnp.int32),
+        jnp.array([[0, 5, 1], [2, 3, 1], [4, 1, 1]], dtype=jnp.int32),
+        jnp.array([[1, 3, 2], [1, 5, 0], [3, 1, 2], [5, 1, 0]], dtype=jnp.int32),
+        jnp.array([[0, 3, 3], [0, 5, 1], [2, 1, 3], [2, 3, 1], [4, 1, 1]], dtype=jnp.int32),
+        jnp.array([[1, 1, 4], [1, 3, 2], [1, 5, 0], [3, 1, 2], [3, 3, 0], [5, 1, 0]], dtype=jnp.int32),
+        jnp.array([[0, 1, 5], [0, 3, 3], [0, 5, 1], [2, 1, 3], [2, 3, 1], [4, 1, 1]], dtype=jnp.int32),
+        jnp.array(
+            [[0, 0, 6], [0, 2, 4], [0, 4, 2], [0, 6, 0], [2, 0, 4], [2, 2, 2], [2, 4, 0], [4, 0, 2], [4, 2, 0], [6, 0, 0]],
+            dtype=jnp.int32,
+        ),
+        jnp.array([[1, 0, 5], [1, 2, 3], [1, 4, 1], [3, 0, 3], [3, 2, 1], [5, 0, 1]], dtype=jnp.int32),
+        jnp.array([[0, 2, 4], [0, 4, 2], [0, 6, 0], [2, 0, 4], [2, 4, 0], [4, 0, 2], [4, 2, 0], [6, 0, 0]], dtype=jnp.int32),
+        jnp.array([[1, 2, 3], [1, 4, 1], [3, 0, 3], [3, 2, 1], [5, 0, 1]], dtype=jnp.int32),
+        jnp.array([[0, 4, 2], [0, 6, 0], [2, 2, 2], [2, 4, 0], [4, 0, 2], [4, 2, 0], [6, 0, 0]], dtype=jnp.int32),
+        jnp.array([[1, 4, 1], [3, 2, 1], [5, 0, 1]], dtype=jnp.int32),
+        jnp.array([[0, 6, 0], [2, 4, 0], [4, 2, 0], [6, 0, 0]], dtype=jnp.int32),
+    )
+
+    def _eval_poly_value_grad_lap(
+        coeffs: jax.Array,
+        exps: jax.Array,
+        x_pows: jax.Array,
+        y_pows: jax.Array,
+        z_pows: jax.Array,
+    ) -> tuple[jax.Array, jax.Array, jax.Array]:
+        ex = exps[:, 0]
+        ey = exps[:, 1]
+        ez = exps[:, 2]
+
+        val_terms = coeffs * x_pows[ex] * y_pows[ey] * z_pows[ez]
+        val = jnp.sum(val_terms)
+
+        ex_m1 = jnp.where(ex > 0, ex - 1, 0)
+        ey_m1 = jnp.where(ey > 0, ey - 1, 0)
+        ez_m1 = jnp.where(ez > 0, ez - 1, 0)
+
+        gx_terms = coeffs * ex * x_pows[ex_m1] * y_pows[ey] * z_pows[ez]
+        gy_terms = coeffs * ey * x_pows[ex] * y_pows[ey_m1] * z_pows[ez]
+        gz_terms = coeffs * ez * x_pows[ex] * y_pows[ey] * z_pows[ez_m1]
+        grad = jnp.stack([jnp.sum(gx_terms), jnp.sum(gy_terms), jnp.sum(gz_terms)], axis=0)
+
+        ex_m2 = jnp.where(ex > 1, ex - 2, 0)
+        ey_m2 = jnp.where(ey > 1, ey - 2, 0)
+        ez_m2 = jnp.where(ez > 1, ez - 2, 0)
+
+        lap_x = coeffs * ex * (ex - 1) * x_pows[ex_m2] * y_pows[ey] * z_pows[ez]
+        lap_y = coeffs * ey * (ey - 1) * x_pows[ex] * y_pows[ey_m2] * z_pows[ez]
+        lap_z = coeffs * ez * (ez - 1) * x_pows[ex] * y_pows[ey] * z_pows[ez_m2]
+        lap = jnp.sum(lap_x + lap_y + lap_z)
+
+        return val, grad, lap
+
+    def _single_val_grad_lap(diff: jnp.ndarray) -> tuple[jax.Array, jax.Array, jax.Array]:
+        x, y, z = diff[0], diff[1], diff[2]
+        x_pows = jnp.stack([x**0, x, x**2, x**3, x**4, x**5, x**6], axis=0)
+        y_pows = jnp.stack([y**0, y, y**2, y**3, y**4, y**5, y**6], axis=0)
+        z_pows = jnp.stack([z**0, z, z**2, z**3, z**4, z**5, z**6], axis=0)
+
+        vals_list = []
+        grads_list = []
+        laps_list = []
+        for coeffs, exps in zip(S_L_M_COEFFS, S_L_M_EXPS, strict=True):
+            val, grad, lap = _eval_poly_value_grad_lap(coeffs, exps, x_pows, y_pows, z_pows)
+            vals_list.append(val)
+            grads_list.append(grad)
+            laps_list.append(lap)
+
+        vals = jnp.stack(vals_list, axis=0)
+        grads = jnp.stack(grads_list, axis=0)
+        laps = jnp.stack(laps_list, axis=0)
+        return vals, grads, laps
+
     num_R, num_r, _ = r_R_diffs_uq.shape
     diffs_flat = r_R_diffs_uq.reshape((num_R * num_r, 3), order="C")
 
-    vals_flat, grads_flat, lap_flat = vmap(_compute_S_l_m_single_val_grad_lap)(diffs_flat)
+    vals_flat, grads_flat, lap_flat = vmap(_single_val_grad_lap)(diffs_flat)
 
     vals = vals_flat.T.reshape((vals_flat.shape[1], num_R, num_r), order="C")
     grads = grads_flat.transpose(1, 0, 2).reshape((grads_flat.shape[1], num_R, num_r, 3), order="C")
@@ -1725,14 +1940,15 @@ def _compute_AOs_laplacian_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.n
     ny = aos_data._polynominal_order_y_prim_jnp
     nz = aos_data._polynominal_order_z_prim_jnp
 
-    N_fact = (jscipy.special.factorial(nx) * jscipy.special.factorial(ny) * jscipy.special.factorial(nz)) / (
-        jscipy.special.factorial(2 * nx) * jscipy.special.factorial(2 * ny) * jscipy.special.factorial(2 * nz)
-    )
+    N_fact = aos_data._normalization_factorial_ratio_prim_jnp
     N_Z = (2.0 * Z / jnp.pi) ** (3.0 / 2.0) * (8.0 * Z) ** l
     N = jnp.sqrt(N_Z * N_fact)
 
     diff = r_carts[None, :, :] - R_carts[:, None, :]
     x, y, z = diff[..., 0], diff[..., 1], diff[..., 2]
+    x = x + EPS_stabilizing_jax_AO_cart_deriv
+    y = y + EPS_stabilizing_jax_AO_cart_deriv
+    z = z + EPS_stabilizing_jax_AO_cart_deriv
     r2 = jnp.sum(diff**2, axis=-1)
     pref = c[:, None] * jnp.exp(-Z[:, None] * r2)
 
@@ -1783,7 +1999,7 @@ def _compute_AOs_laplacian_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.n
     R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
 
     r_R_diffs_uq = r_carts[None, :, :] - R_carts_unique_jnp[:, None, :]
-    S_l_m_vals_all, S_l_m_grads_all, S_l_m_laps_all = _compute_S_l_m_val_grad_lap(r_R_diffs_uq)
+    S_l_m_vals_all, S_l_m_grads_all, S_l_m_laps_all = _compute_S_l_m_and_grad_lap(r_R_diffs_uq)
     max_ml = S_l_m_vals_all.shape[0]
 
     S_l_m_vals_flat = S_l_m_vals_all.reshape((max_ml * S_l_m_vals_all.shape[1], S_l_m_vals_all.shape[2]), order="F")
@@ -2022,14 +2238,15 @@ def _compute_AOs_grad_analytic_cart(aos_data: AOs_cart_data, r_carts: jnp.ndarra
     ny = aos_data._polynominal_order_y_prim_jnp
     nz = aos_data._polynominal_order_z_prim_jnp
 
-    N_fact = (jscipy.special.factorial(nx) * jscipy.special.factorial(ny) * jscipy.special.factorial(nz)) / (
-        jscipy.special.factorial(2 * nx) * jscipy.special.factorial(2 * ny) * jscipy.special.factorial(2 * nz)
-    )
+    N_fact = aos_data._normalization_factorial_ratio_prim_jnp
     N_Z = (2.0 * Z / jnp.pi) ** (3.0 / 2.0) * (8.0 * Z) ** l
     N = jnp.sqrt(N_Z * N_fact)
 
     diff = r_carts[None, :, :] - R_carts[:, None, :]
     x, y, z = diff[..., 0], diff[..., 1], diff[..., 2]
+    x = x + EPS_stabilizing_jax_AO_cart_deriv
+    y = y + EPS_stabilizing_jax_AO_cart_deriv
+    z = z + EPS_stabilizing_jax_AO_cart_deriv
     r2 = jnp.sum(diff**2, axis=-1)
     pref = c[:, None] * jnp.exp(-Z[:, None] * r2)
 
@@ -2068,11 +2285,15 @@ def _compute_AOs_grad_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.ndarra
     l_jnp = aos_data._angular_momentums_prim_jnp
     m_jnp = aos_data._magnetic_quantum_numbers_prim_jnp
 
+    l_f64 = l_jnp.astype(jnp.float64)
+    Z_f64 = Z_jnp.astype(jnp.float64)
+    factorial_l_plus_1 = jnp.exp(jscipy.special.gammaln(l_f64 + 2.0))
+    factorial_2l_plus_2 = jnp.exp(jscipy.special.gammaln(2.0 * l_f64 + 3.0))
+
     N_n_dup = jnp.sqrt(
-        (2.0 ** (2 * l_jnp + 3) * jscipy.special.factorial(l_jnp + 1) * (2 * Z_jnp) ** (l_jnp + 1.5))
-        / (jscipy.special.factorial(2 * l_jnp + 2) * jnp.sqrt(jnp.pi))
+        (2.0 ** (2 * l_f64 + 3) * factorial_l_plus_1 * (2 * Z_f64) ** (l_f64 + 1.5)) / (factorial_2l_plus_2 * jnp.sqrt(jnp.pi))
     )
-    N_l_m_dup = jnp.sqrt((2 * l_jnp + 1) / (4 * jnp.pi))
+    N_l_m_dup = jnp.sqrt((2 * l_f64 + 1) / (4 * jnp.pi))
 
     r_R_diffs = r_carts[None, :, :] - R_carts_jnp[:, None, :]
     r_squared = jnp.sum(r_R_diffs**2, axis=-1)
@@ -2080,7 +2301,7 @@ def _compute_AOs_grad_analytic_sphe(aos_data: AOs_sphe_data, r_carts: jnp.ndarra
 
     r_R_diffs_uq = r_carts[None, :, :] - R_carts_unique_jnp[:, None, :]
     max_ml, S_l_m_dup_all_l_m = _compute_S_l_m(r_R_diffs_uq)
-    _, S_l_m_grad_all_l_m = _compute_S_l_m_and_grad(r_R_diffs_uq)
+    _, S_l_m_grad_all_l_m, _ = _compute_S_l_m_and_grad_lap(r_R_diffs_uq)
 
     S_l_m_dup_all_l_m_reshaped = S_l_m_dup_all_l_m.reshape(
         (S_l_m_dup_all_l_m.shape[0] * S_l_m_dup_all_l_m.shape[1], S_l_m_dup_all_l_m.shape[2]), order="F"

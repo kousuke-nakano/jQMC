@@ -37,6 +37,8 @@ import sys
 from pathlib import Path
 
 import jax
+import jax.numpy as jnp
+import jax.scipy.linalg as jsp_linalg
 import numpy as np
 import pytest
 
@@ -52,12 +54,21 @@ from jqmc.determinant import (  # noqa: E402
     _compute_geminal_all_elements_debug,
     _compute_grads_and_laplacian_ln_Det_auto,
     _compute_grads_and_laplacian_ln_Det_debug,
+    _compute_grads_and_laplacian_ln_Det_fast_debug,
     compute_AS_regularization_factor,
     compute_det_geminal_all_elements,
     compute_geminal_all_elements,
     compute_geminal_dn_one_column_elements,
     compute_geminal_up_one_row_elements,
     compute_grads_and_laplacian_ln_Det,
+    compute_grads_and_laplacian_ln_Det_fast,
+)
+from jqmc.setting import (  # noqa: E402
+    atol_auto_vs_numerical_deriv,
+    decimal_auto_vs_analytic_deriv,
+    decimal_auto_vs_numerical_deriv,
+    decimal_debug_vs_production,
+    rtol_auto_vs_numerical_deriv,
 )
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 
@@ -154,7 +165,7 @@ def test_comparing_AO_and_MO_geminals():
         r_dn_carts=r_dn_carts,
     )
 
-    np.testing.assert_almost_equal(geminal_mo_debug, geminal_mo_jax, decimal=15)
+    np.testing.assert_almost_equal(geminal_mo_debug, geminal_mo_jax, decimal=decimal_debug_vs_production)
 
     geminal_mo = geminal_mo_jax
 
@@ -193,12 +204,12 @@ def test_comparing_AO_and_MO_geminals():
         r_dn_carts=r_dn_carts,
     )
 
-    np.testing.assert_almost_equal(geminal_ao_debug, geminal_ao_jax, decimal=15)
+    np.testing.assert_almost_equal(geminal_ao_debug, geminal_ao_jax, decimal=decimal_debug_vs_production)
 
     geminal_ao = geminal_ao_jax
 
     # check if geminals with AO and MO representations are consistent
-    np.testing.assert_array_almost_equal(geminal_ao, geminal_mo, decimal=15)
+    np.testing.assert_array_almost_equal(geminal_ao, geminal_mo, decimal=decimal_debug_vs_production)
 
     det_geminal_mo_debug = _compute_det_geminal_all_elements_debug(
         geminal_data=geminal_mo_data,
@@ -212,7 +223,8 @@ def test_comparing_AO_and_MO_geminals():
         r_dn_carts=r_dn_carts,
     )
 
-    np.testing.assert_array_almost_equal(det_geminal_mo_debug, det_geminal_mo_jax, decimal=15)
+    np.testing.assert_array_almost_equal(det_geminal_mo_debug, det_geminal_mo_jax, decimal=decimal_debug_vs_production)
+
     det_geminal_mo = det_geminal_mo_jax
 
     det_geminal_ao_debug = _compute_det_geminal_all_elements_debug(
@@ -227,12 +239,72 @@ def test_comparing_AO_and_MO_geminals():
         r_dn_carts=r_dn_carts,
     )
 
-    np.testing.assert_array_almost_equal(det_geminal_ao_debug, det_geminal_ao_jax, decimal=15)
+    np.testing.assert_array_almost_equal(det_geminal_ao_debug, det_geminal_ao_jax, decimal=decimal_debug_vs_production)
     det_geminal_ao = det_geminal_ao_jax
 
-    np.testing.assert_almost_equal(det_geminal_ao, det_geminal_mo, decimal=15)
+    np.testing.assert_almost_equal(det_geminal_ao, det_geminal_mo, decimal=decimal_debug_vs_production)
 
     jax.clear_caches()
+
+
+def test_grads_and_laplacian_fast_update():
+    """compute_grads_and_laplacian_ln_Det_fast matches _fast_debug output."""
+    (
+        _,
+        aos_data,
+        _,
+        _,
+        geminal_mo_data,
+        _,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"),
+        store_tuple=True,
+    )
+
+    geminal_mo_data.sanity_check()
+
+    num_electron_up = geminal_mo_data.num_electron_up
+    num_electron_dn = geminal_mo_data.num_electron_dn
+
+    r_cart_min, r_cart_max = -2.0, 2.0
+    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_electron_up, 3) + r_cart_min
+    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_electron_dn, 3) + r_cart_min
+
+    # Build geminal and its inverse (mirrors determinant.py logic)
+    lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_mo_data.lambda_matrix, [geminal_mo_data.orb_num_dn])
+
+    ao_matrix_up = geminal_mo_data.compute_orb_api(geminal_mo_data.orb_data_up_spin, r_up_carts)
+    ao_matrix_dn = geminal_mo_data.compute_orb_api(geminal_mo_data.orb_data_dn_spin, r_dn_carts)
+
+    geminal_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
+    geminal_unpaired = jnp.dot(ao_matrix_up.T, lambda_matrix_unpaired)
+    geminal = jnp.hstack([geminal_paired, geminal_unpaired])
+
+    P, L, U = jsp_linalg.lu(geminal)
+    n = geminal.shape[0]
+    I = jnp.eye(n, dtype=geminal.dtype)
+    Y = jsp_linalg.solve_triangular(L, jnp.dot(P.T, I), lower=True)
+    geminal_inverse = jsp_linalg.solve_triangular(U, Y, lower=False)
+
+    # Fast path (requires inverse)
+    grad_up_fast, grad_dn_fast, lap_up_fast, lap_dn_fast = compute_grads_and_laplacian_ln_Det_fast(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        geminal_inverse=geminal_inverse,
+    )
+
+    # Debug helper
+    grad_up_debug, grad_dn_debug, lap_up_debug, lap_dn_debug = _compute_grads_and_laplacian_ln_Det_fast_debug(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    np.testing.assert_array_almost_equal(grad_up_fast, grad_up_debug, decimal=decimal_debug_vs_production)
+    np.testing.assert_array_almost_equal(grad_dn_fast, grad_dn_debug, decimal=decimal_debug_vs_production)
+    np.testing.assert_array_almost_equal(lap_up_fast, lap_up_debug, decimal=decimal_debug_vs_production)
+    np.testing.assert_array_almost_equal(lap_dn_fast, lap_dn_debug, decimal=decimal_debug_vs_production)
 
 
 def test_comparing_AS_regularization():
@@ -317,7 +389,7 @@ def test_comparing_AS_regularization():
 
     R_AS_jax = compute_AS_regularization_factor(geminal_data=geminal_mo_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
 
-    np.testing.assert_almost_equal(R_AS_debug, R_AS_jax, decimal=8)
+    np.testing.assert_almost_equal(R_AS_debug, R_AS_jax, decimal=decimal_debug_vs_production)
 
     jax.clear_caches()
 
@@ -425,13 +497,17 @@ def test_one_row_or_one_column_update():
 
     # --- Numerical consistency asserts (no shape checks) ---
     # up-one-row must equal the i-th row of the full geminal
-    assert bool(np.allclose(geminal_mo_up_one_row, geminal_mo[i_up, :], rtol=1e-8, atol=1e-12)), (
-        "up-one-row does not match the corresponding row of the full geminal"
+    np.testing.assert_array_almost_equal(
+        np.asarray(geminal_mo_up_one_row).ravel(),
+        np.asarray(geminal_mo[i_up, :]),
+        decimal=decimal_debug_vs_production,
     )
 
     # dn-one-column must equal the j-th *paired* column of the full geminal
-    assert bool(np.allclose(geminal_mo_dn_one_column, geminal_mo[:, j_dn], rtol=1e-8, atol=1e-12)), (
-        "dn-one-column does not match the corresponding paired column of the full geminal"
+    np.testing.assert_array_almost_equal(
+        np.asarray(geminal_mo_dn_one_column).ravel(),
+        np.asarray(geminal_mo[:, j_dn]),
+        decimal=decimal_debug_vs_production,
     )
 
 
@@ -548,10 +624,28 @@ def test_numerial_and_auto_grads_and_laplacians_ln_Det():
         r_dn_carts=r_dn_carts,
     )
 
-    np.testing.assert_almost_equal(np.array(grad_ln_D_up_numerical), np.array(grad_ln_D_up_auto), decimal=5)
-    np.testing.assert_almost_equal(np.array(grad_ln_D_dn_numerical), np.array(grad_ln_D_dn_auto), decimal=5)
-    np.testing.assert_almost_equal(np.array(lap_ln_D_up_numerical), np.array(lap_ln_D_up_auto), decimal=2)
-    np.testing.assert_almost_equal(np.array(lap_ln_D_dn_numerical), np.array(lap_ln_D_dn_auto), decimal=2)
+    np.testing.assert_array_almost_equal(
+        np.asarray(grad_ln_D_up_numerical),
+        np.asarray(grad_ln_D_up_auto),
+        decimal=decimal_auto_vs_numerical_deriv,
+    )
+    np.testing.assert_array_almost_equal(
+        np.asarray(grad_ln_D_dn_numerical),
+        np.asarray(grad_ln_D_dn_auto),
+        decimal=decimal_auto_vs_numerical_deriv,
+    )
+    np.testing.assert_allclose(
+        np.asarray(lap_ln_D_up_numerical),
+        np.asarray(lap_ln_D_up_auto),
+        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol_auto_vs_numerical_deriv,
+    )
+    np.testing.assert_allclose(
+        np.asarray(lap_ln_D_dn_numerical),
+        np.asarray(lap_ln_D_dn_auto),
+        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol_auto_vs_numerical_deriv,
+    )
 
     jax.clear_caches()
 
@@ -653,10 +747,26 @@ def test_analytic_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
         r_dn_carts=r_dn_carts,
     )
 
-    np.testing.assert_almost_equal(np.array(grad_ln_D_up_analytic), np.array(grad_ln_D_up_auto), decimal=4)
-    np.testing.assert_almost_equal(np.array(grad_ln_D_dn_analytic), np.array(grad_ln_D_dn_auto), decimal=4)
-    np.testing.assert_almost_equal(np.array(lap_ln_D_up_analytic), np.array(lap_ln_D_up_auto), decimal=1)
-    np.testing.assert_almost_equal(np.array(lap_ln_D_dn_analytic), np.array(lap_ln_D_dn_auto), decimal=1)
+    np.testing.assert_array_almost_equal(
+        np.asarray(grad_ln_D_up_analytic),
+        np.asarray(grad_ln_D_up_auto),
+        decimal=decimal_auto_vs_analytic_deriv,
+    )
+    np.testing.assert_array_almost_equal(
+        np.asarray(grad_ln_D_dn_analytic),
+        np.asarray(grad_ln_D_dn_auto),
+        decimal=decimal_auto_vs_analytic_deriv,
+    )
+    np.testing.assert_array_almost_equal(
+        np.asarray(lap_ln_D_up_analytic),
+        np.asarray(lap_ln_D_up_auto),
+        decimal=decimal_auto_vs_analytic_deriv,
+    )
+    np.testing.assert_array_almost_equal(
+        np.asarray(lap_ln_D_dn_analytic),
+        np.asarray(lap_ln_D_dn_auto),
+        decimal=decimal_auto_vs_analytic_deriv,
+    )
 
     jax.clear_caches()
 

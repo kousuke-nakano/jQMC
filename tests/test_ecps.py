@@ -60,6 +60,9 @@ from jqmc.coulomb_potential import (  # noqa: E402
     compute_ecp_non_local_parts_nearest_neighbors,
 )
 from jqmc.jastrow_factor import Jastrow_data  # noqa: E402
+from jqmc.setting import (  # noqa: E402
+    decimal_debug_vs_production,
+)
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import Wavefunction_data  # noqa: E402
 
@@ -141,7 +144,7 @@ def test_debug_and_jax_bare_coulomb():
 
     # print(f"vpot_bare_jax = {vpot_bare_jax}")
     # print(f"vpot_bare_debug = {vpot_bare_debug}")
-    np.testing.assert_almost_equal(vpot_bare_jax, vpot_bare_debug, decimal=10)
+    np.testing.assert_almost_equal(vpot_bare_jax, vpot_bare_debug, decimal=decimal_debug_vs_production)
 
 
 def test_debug_and_jax_ecp_local():
@@ -193,7 +196,9 @@ def test_debug_and_jax_ecp_local():
         r_dn_carts=r_dn_carts_np,
     )
 
-    np.testing.assert_almost_equal(vpot_ecp_local_full_NN_jax, vpot_ecp_local_full_NN_debug, decimal=10)
+    np.testing.assert_almost_equal(
+        vpot_ecp_local_full_NN_jax, vpot_ecp_local_full_NN_debug, decimal=decimal_debug_vs_production
+    )
 
 
 @pytest.mark.parametrize("Nv", Nv_params)
@@ -288,7 +293,9 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
         RT=R_np.T,
     )
 
-    np.testing.assert_almost_equal(sum_V_nonlocal_full_NN_debug, sum_V_nonlocal_full_NN_jax, decimal=6)
+    np.testing.assert_almost_equal(
+        sum_V_nonlocal_full_NN_debug, sum_V_nonlocal_full_NN_jax, decimal=decimal_debug_vs_production
+    )
 
     mesh_non_local_r_up_carts_max_full_NN_jax = mesh_non_local_ecp_part_r_up_carts_full_NN_jax[
         np.argmax(V_nonlocal_full_NN_jax)
@@ -305,12 +312,18 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
     V_ecp_non_local_max_full_NN_jax = V_nonlocal_full_NN_jax[np.argmax(V_nonlocal_full_NN_jax)]
     V_ecp_non_local_max_full_NN_debug = V_nonlocal_full_NN_debug[np.argmax(V_nonlocal_full_NN_debug)]
 
-    np.testing.assert_almost_equal(V_ecp_non_local_max_full_NN_jax, V_ecp_non_local_max_full_NN_debug, decimal=6)
-    np.testing.assert_array_almost_equal(
-        mesh_non_local_r_up_carts_max_full_NN_jax, mesh_non_local_r_up_carts_max_full_NN_debug, decimal=6
+    np.testing.assert_almost_equal(
+        V_ecp_non_local_max_full_NN_jax, V_ecp_non_local_max_full_NN_debug, decimal=decimal_debug_vs_production
     )
     np.testing.assert_array_almost_equal(
-        mesh_non_local_r_dn_carts_max_full_NN_jax, mesh_non_local_r_dn_carts_max_full_NN_debug, decimal=6
+        mesh_non_local_r_up_carts_max_full_NN_jax,
+        mesh_non_local_r_up_carts_max_full_NN_debug,
+        decimal=decimal_debug_vs_production,
+    )
+    np.testing.assert_array_almost_equal(
+        mesh_non_local_r_dn_carts_max_full_NN_jax,
+        mesh_non_local_r_dn_carts_max_full_NN_debug,
+        decimal=decimal_debug_vs_production,
     )
 
     # ecp non-local (NN, N=max)
@@ -345,10 +358,12 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
     )
 
     # debug, full-NN vs check-NN
-    np.testing.assert_almost_equal(sum_V_nonlocal_full_NN_debug, sum_V_nonlocal_NN_check_debug, decimal=6)
+    np.testing.assert_almost_equal(
+        sum_V_nonlocal_full_NN_debug, sum_V_nonlocal_NN_check_debug, decimal=decimal_debug_vs_production
+    )
 
     # jax, full-NN vs check-NN
-    np.testing.assert_almost_equal(sum_V_nonlocal_full_NN_jax, sum_V_nonlocal_NN_check_jax, decimal=6)
+    np.testing.assert_almost_equal(sum_V_nonlocal_full_NN_jax, sum_V_nonlocal_NN_check_jax, decimal=decimal_debug_vs_production)
 
     mesh_non_local_r_up_carts_max_NN_check_jax = mesh_non_local_ecp_part_r_up_carts_NN_check_jax[
         np.argmax(V_nonlocal_NN_check_jax)
@@ -366,21 +381,37 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
     V_ecp_non_local_max_NN_check_debug = V_nonlocal_NN_check_debug[np.argmax(V_nonlocal_NN_check_debug)]
 
     # debug, full-NN vs check-NN
-    np.testing.assert_almost_equal(V_ecp_non_local_max_full_NN_debug, V_ecp_non_local_max_NN_check_debug, decimal=6)
-    np.testing.assert_array_almost_equal(
-        mesh_non_local_r_up_carts_max_full_NN_debug, mesh_non_local_r_up_carts_max_NN_check_debug, decimal=6
+    np.testing.assert_almost_equal(
+        V_ecp_non_local_max_full_NN_debug,
+        V_ecp_non_local_max_NN_check_debug,
+        decimal=decimal_debug_vs_production,
     )
     np.testing.assert_array_almost_equal(
-        mesh_non_local_r_dn_carts_max_full_NN_debug, mesh_non_local_r_dn_carts_max_NN_check_debug, decimal=6
+        mesh_non_local_r_up_carts_max_full_NN_debug,
+        mesh_non_local_r_up_carts_max_NN_check_debug,
+        decimal=decimal_debug_vs_production,
+    )
+    np.testing.assert_array_almost_equal(
+        mesh_non_local_r_dn_carts_max_full_NN_debug,
+        mesh_non_local_r_dn_carts_max_NN_check_debug,
+        decimal=decimal_debug_vs_production,
     )
 
     # jax, full-NN vs check-NN
-    np.testing.assert_almost_equal(V_ecp_non_local_max_full_NN_jax, V_ecp_non_local_max_NN_check_jax, decimal=6)
-    np.testing.assert_array_almost_equal(
-        mesh_non_local_r_up_carts_max_full_NN_jax, mesh_non_local_r_up_carts_max_NN_check_jax, decimal=6
+    np.testing.assert_almost_equal(
+        V_ecp_non_local_max_full_NN_jax,
+        V_ecp_non_local_max_NN_check_jax,
+        decimal=decimal_debug_vs_production,
     )
     np.testing.assert_array_almost_equal(
-        mesh_non_local_r_dn_carts_max_full_NN_jax, mesh_non_local_r_dn_carts_max_NN_check_jax, decimal=6
+        mesh_non_local_r_up_carts_max_full_NN_jax,
+        mesh_non_local_r_up_carts_max_NN_check_jax,
+        decimal=decimal_debug_vs_production,
+    )
+    np.testing.assert_array_almost_equal(
+        mesh_non_local_r_dn_carts_max_full_NN_jax,
+        mesh_non_local_r_dn_carts_max_NN_check_jax,
+        decimal=decimal_debug_vs_production,
     )
 
 
@@ -479,7 +510,7 @@ def test_debug_and_jax_ecp_non_local_partial_NN(Nv, alpha, beta, gamma):
             RT=R_np.T,
         )
 
-        np.testing.assert_almost_equal(sum_V_nonlocal_NN_debug, sum_V_nonlocal_NN_jax, decimal=6)
+        np.testing.assert_almost_equal(sum_V_nonlocal_NN_debug, sum_V_nonlocal_NN_jax, decimal=decimal_debug_vs_production)
 
         mesh_non_local_r_up_carts_max_NN_jax = mesh_non_local_ecp_part_r_up_carts_NN_jax[np.argmax(V_nonlocal_NN_jax)]
         mesh_non_local_r_up_carts_max_NN_debug = mesh_non_local_ecp_part_r_up_carts_NN_debug[np.argmax(V_nonlocal_NN_debug)]
@@ -488,12 +519,18 @@ def test_debug_and_jax_ecp_non_local_partial_NN(Nv, alpha, beta, gamma):
         V_ecp_non_local_max_NN_jax = V_nonlocal_NN_jax[np.argmax(V_nonlocal_NN_jax)]
         V_ecp_non_local_max_NN_debug = V_nonlocal_NN_debug[np.argmax(V_nonlocal_NN_debug)]
 
-        np.testing.assert_almost_equal(V_ecp_non_local_max_NN_jax, V_ecp_non_local_max_NN_debug, decimal=6)
-        np.testing.assert_array_almost_equal(
-            mesh_non_local_r_up_carts_max_NN_jax, mesh_non_local_r_up_carts_max_NN_debug, decimal=6
+        np.testing.assert_almost_equal(
+            V_ecp_non_local_max_NN_jax, V_ecp_non_local_max_NN_debug, decimal=decimal_debug_vs_production
         )
         np.testing.assert_array_almost_equal(
-            mesh_non_local_r_dn_carts_max_NN_jax, mesh_non_local_r_dn_carts_max_NN_debug, decimal=6
+            mesh_non_local_r_up_carts_max_NN_jax,
+            mesh_non_local_r_up_carts_max_NN_debug,
+            decimal=decimal_debug_vs_production,
+        )
+        np.testing.assert_array_almost_equal(
+            mesh_non_local_r_dn_carts_max_NN_jax,
+            mesh_non_local_r_dn_carts_max_NN_debug,
+            decimal=decimal_debug_vs_production,
         )
 
 
@@ -545,8 +582,8 @@ def test_debug_and_jax_bare_el_ion_elements():
         r_dn_carts=r_dn_carts_jnp,
     )
 
-    np.testing.assert_almost_equal(interactions_R_r_up_debug, interactions_R_r_up_jax, decimal=6)
-    np.testing.assert_almost_equal(interactions_R_r_dn_debug, interactions_R_r_dn_jax, decimal=6)
+    np.testing.assert_almost_equal(interactions_R_r_up_debug, interactions_R_r_up_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_almost_equal(interactions_R_r_dn_debug, interactions_R_r_dn_jax, decimal=decimal_debug_vs_production)
 
 
 def test_debug_and_jax_discretized_bare_el_ion_elements():
@@ -603,8 +640,8 @@ def test_debug_and_jax_discretized_bare_el_ion_elements():
         alat=alat,
     )
 
-    np.testing.assert_almost_equal(interactions_R_r_up_debug, interactions_R_r_up_jax, decimal=6)
-    np.testing.assert_almost_equal(interactions_R_r_dn_debug, interactions_R_r_dn_jax, decimal=6)
+    np.testing.assert_almost_equal(interactions_R_r_up_debug, interactions_R_r_up_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_almost_equal(interactions_R_r_dn_debug, interactions_R_r_dn_jax, decimal=decimal_debug_vs_production)
 
 
 """
