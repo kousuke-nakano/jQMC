@@ -10,7 +10,6 @@ import time
 from dataclasses import dataclass
 from typing import Sequence
 
-import jax
 import jax.numpy as jnp
 import numpy as np
 

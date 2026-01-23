@@ -63,7 +63,6 @@ from jqmc.setting import (  # noqa: E402
     decimal_auto_vs_analytic_deriv,
     decimal_auto_vs_numerical_deriv,
     decimal_debug_vs_production,
-    decimal_numerical_vs_analytic_deriv,
 )
 from jqmc.structure import Structure_data  # noqa: E402
 

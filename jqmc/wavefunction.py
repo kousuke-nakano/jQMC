@@ -39,7 +39,6 @@ from logging import getLogger
 # import jax
 import jax
 import jax.numpy as jnp
-import jax.scipy.linalg as jsp_linalg
 import numpy as np
 import numpy.typing as npt
 from flax import struct

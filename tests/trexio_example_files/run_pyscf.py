@@ -2,7 +2,7 @@ from pyscf import gto, scf
 from pyscf.tools import trexio
 
 #'''
-# H2_ecp_ccpvdz_sphe
+# H2_ecp_ccpvdz_cart
 filename = "H2_ecp_ccpvdz_cart.h5"
 atoms = """
 H    0.00000000   0.00000000  -0.35000000
@@ -15,7 +15,7 @@ charge = 0
 spin = 0
 #'''
 
-#'''
+'''
 # H_ecp_ccpvdz_cart
 filename = "H_ecp_ccpvdz_cart.h5"
 atoms = """
@@ -26,9 +26,9 @@ ecp = "ccecp"
 cart = True
 charge = 0
 spin = 1
-#'''
+'''
 
-#'''
+'''
 # H2_ae_ccpvdz_cart
 filename = "H2_ae_ccpvdz_cart.h5"
 atoms = """
@@ -40,7 +40,7 @@ ecp = None
 cart = True
 charge = 0
 spin = 0
-#'''
+'''
 
 # pyscf script below
 mol = gto.Mole()

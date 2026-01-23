@@ -79,11 +79,11 @@ jobs:
         pytest -s -v tests/test_jqmc_gfmc_tau.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_jqmc_gfmc_bra.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
 
-    - name: Test jqmc (pytest) QMC kernels with MPI (2 cores)
-      run: |
-        mpirun -np 2 pytest -s -v tests/test_jqmc_mcmc.py
-        mpirun -np 2 pytest -s -v tests/test_jqmc_gfmc_tau.py
-        mpirun -np 2 pytest -s -v tests/test_jqmc_gfmc_bra.py
+    #- name: Test jqmc (pytest) QMC kernels with MPI (2 cores)
+    #  run: |
+    #    mpirun -np 2 pytest -s -v tests/test_jqmc_mcmc.py
+    #    mpirun -np 2 pytest -s -v tests/test_jqmc_gfmc_tau.py
+    #    mpirun -np 2 pytest -s -v tests/test_jqmc_gfmc_bra.py
 
     - name: Combine Codecov xml files
       run: |

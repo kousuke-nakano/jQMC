@@ -2869,7 +2869,6 @@ class GFMC_n:
                 num_dn_electrons = r_dn_carts.shape[0]
 
                 if num_up_electrons == 0:
-                    up_diff = jnp.zeros((0,), dtype=bool)
                     has_up_move = False
                     up_index = 0
                 else:
@@ -2878,7 +2877,6 @@ class GFMC_n:
                     up_index = jnp.argmax(up_diff)
 
                 if num_dn_electrons == 0:
-                    dn_diff = jnp.zeros((0,), dtype=bool)
                     has_dn_move = False
                     dn_index = 0
                 else:
