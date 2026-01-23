@@ -37,8 +37,8 @@
   <script src="_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
     <script src="_static/documentation_options.js?v=4efe6a6c"></script>
-    <script src="_static/doctools.js?v=9bcbadda"></script>
-    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
     <script>DOCUMENTATION_OPTIONS.pagename = 'changelog';</script>
     <link rel="index" title="Index" href="genindex.html" />
@@ -328,13 +328,17 @@ document.write(`
             </div>
             <nav aria-label="Page">
                 <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jan-14-2026-v0-1-0a1">Jan-14-2026: v0.1.0a1</a><ul class="nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jan-23-2026-v0-1-0a2">Jan-23-2026: v0.1.0a2</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#key-features">Key Features</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jan-14-2026-v0-1-0a1">Jan-14-2026: v0.1.0a1</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id1">Key Features</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#enhancements-fixes">Enhancements &amp; Fixes</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aug-20-2025-v0-1-0a0">Aug-20-2025: v0.1.0a0</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id1">Key Features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id2">Key Features</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#known-limitations-alpha">Known Limitations (Alpha)</a></li>
 </ul>
 </li>
@@ -351,13 +355,41 @@ document.write(`
                   
   <section class="tex2jax_ignore mathjax_ignore" id="change-log">
 <span id="changelog"></span><h1>Change Log<a class="headerlink" href="#change-log" title="Link to this heading">#</a></h1>
+<section id="jan-23-2026-v0-1-0a2">
+<h2>Jan-23-2026: v0.1.0a2<a class="headerlink" href="#jan-23-2026-v0-1-0a2" title="Link to this heading">#</a></h2>
+<ul class="simple">
+<li><p>Release of the third alpha version of <strong>jQMC</strong>.</p></li>
+</ul>
+<section id="key-features">
+<h3>Key Features<a class="headerlink" href="#key-features" title="Link to this heading">#</a></h3>
+<ul class="simple">
+<li><p><strong>Analytical derivatives</strong>:</p>
+<ul>
+<li><p>Implemented analytical gradients and Laplacians for atomic and molecular orbitals in both spherical and Cartesian GTO bases.</p></li>
+<li><p>JAX autograd is now used primarily for validating the analytical gradients.</p></li>
+<li><p>Logarithmic derivatives of the wavefunction and derivatives of atomic force calculations still use JAX autograd.</p></li>
+</ul>
+</li>
+<li><p><strong>Testing precision</strong>:</p>
+<ul>
+<li><p>Tightened and systematized decimal controls in tests, improving overall reliability.</p></li>
+</ul>
+</li>
+<li><p><strong>Fast updates</strong>:</p>
+<ul>
+<li><p>Expanded fast-update implementations to more functions, yielding significant speedups in both MCMC and GFMC modules.</p></li>
+</ul>
+</li>
+</ul>
+</section>
+</section>
 <section id="jan-14-2026-v0-1-0a1">
 <h2>Jan-14-2026: v0.1.0a1<a class="headerlink" href="#jan-14-2026-v0-1-0a1" title="Link to this heading">#</a></h2>
 <ul class="simple">
 <li><p>Release of the second alpha version of <strong>jQMC</strong>.</p></li>
 </ul>
-<section id="key-features">
-<h3>Key Features<a class="headerlink" href="#key-features" title="Link to this heading">#</a></h3>
+<section id="id1">
+<h3>Key Features<a class="headerlink" href="#id1" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p><strong>Neural Network Jastrow</strong>:</p>
 <ul>
@@ -387,8 +419,8 @@ document.write(`
 <li><p>Release of the first alpha version of <strong>jQMC</strong>.</p></li>
 </ul>
 <p>We are pleased to announce the first alpha release of <strong>jQMC</strong>, a Python-based Quantum Monte Carlo package built on <strong>JAX</strong>.</p>
-<section id="id1">
-<h3>Key Features<a class="headerlink" href="#id1" title="Link to this heading">#</a></h3>
+<section id="id2">
+<h3>Key Features<a class="headerlink" href="#id2" title="Link to this heading">#</a></h3>
 <ul class="simple">
 <li><p><strong>JAX-based Core</strong>: Fully utilizes JAX’s Just-In-Time (JIT) compilation and automatic vectorization (<code class="docutils literal notranslate"><span class="pre">vmap</span></code>) for high-performance simulations on GPUs and TPUs.</p></li>
 <li><p><strong>Algorithms</strong>:</p>
@@ -469,13 +501,17 @@ document.write(`
   </div>
   <nav class="bd-toc-nav page-toc">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jan-14-2026-v0-1-0a1">Jan-14-2026: v0.1.0a1</a><ul class="nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jan-23-2026-v0-1-0a2">Jan-23-2026: v0.1.0a2</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#key-features">Key Features</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jan-14-2026-v0-1-0a1">Jan-14-2026: v0.1.0a1</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id1">Key Features</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#enhancements-fixes">Enhancements &amp; Fixes</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#aug-20-2025-v0-1-0a0">Aug-20-2025: v0.1.0a0</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id1">Key Features</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id2">Key Features</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#known-limitations-alpha">Known Limitations (Alpha)</a></li>
 </ul>
 </li>

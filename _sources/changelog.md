@@ -2,6 +2,21 @@
 
 # Change Log
 
+## Jan-23-2026: v0.1.0a2
+
+- Release of the third alpha version of **jQMC**.
+
+### Key Features
+
+*   **Analytical derivatives**:
+    *   Implemented analytical gradients and Laplacians for atomic and molecular orbitals in both spherical and Cartesian GTO bases.
+    *   JAX autograd is now used primarily for validating the analytical gradients.
+    *   Logarithmic derivatives of the wavefunction and derivatives of atomic force calculations still use JAX autograd.
+*   **Testing precision**:
+    *   Tightened and systematized decimal controls in tests, improving overall reliability.
+*   **Fast updates**:
+    *   Expanded fast-update implementations to more functions, yielding significant speedups in both MCMC and GFMC modules.
+
 ## Jan-14-2026: v0.1.0a1
 
 - Release of the second alpha version of **jQMC**.
