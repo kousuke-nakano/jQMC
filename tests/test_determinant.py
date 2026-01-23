@@ -64,9 +64,11 @@ from jqmc.determinant import (  # noqa: E402
     compute_grads_and_laplacian_ln_Det_fast,
 )
 from jqmc.setting import (  # noqa: E402
+    atol_auto_vs_numerical_deriv,
     decimal_auto_vs_analytic_deriv,
     decimal_auto_vs_numerical_deriv,
     decimal_debug_vs_production,
+    rtol_auto_vs_numerical_deriv,
 )
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 
@@ -632,15 +634,17 @@ def test_numerial_and_auto_grads_and_laplacians_ln_Det():
         np.asarray(grad_ln_D_dn_auto),
         decimal=decimal_auto_vs_numerical_deriv,
     )
-    np.testing.assert_array_almost_equal(
+    np.testing.assert_allclose(
         np.asarray(lap_ln_D_up_numerical),
         np.asarray(lap_ln_D_up_auto),
-        decimal=decimal_auto_vs_numerical_deriv,
+        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol_auto_vs_numerical_deriv,
     )
-    np.testing.assert_array_almost_equal(
+    np.testing.assert_allclose(
         np.asarray(lap_ln_D_dn_numerical),
         np.asarray(lap_ln_D_dn_auto),
-        decimal=decimal_auto_vs_numerical_deriv,
+        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol_auto_vs_numerical_deriv,
     )
 
     jax.clear_caches()

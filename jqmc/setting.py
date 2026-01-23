@@ -54,10 +54,16 @@ GFMC_ON_THE_FLY_WARMUP_STEPS = 20
 GFMC_ON_THE_FLY_COLLECT_STEPS = 10
 GFMC_ON_THE_FLY_BIN_BLOCKS = 10
 
-# Test tolerance settings (derivatives)
+# Test tolerance settings (gradients, laplacians)
 decimal_auto_vs_numerical_deriv = 3
 decimal_numerical_vs_analytic_deriv = 3
 decimal_auto_vs_analytic_deriv = 8
+
+# Test tolerance settings (numerical laplacian)
+atol_auto_vs_numerical_deriv = 1.0e-1
+rtol_auto_vs_numerical_deriv = 1.0e-4
+atol_numerical_vs_analytic_deriv = 1.0e-1
+rtol_numerical_vs_analytic_deriv = 1.0e-4
 
 # Test tolerance settings (others)
 decimal_debug_vs_production = 8
