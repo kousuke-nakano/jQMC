@@ -24,7 +24,7 @@ from jqmc.determinant import (
     compute_geminal_up_one_row_elements,
 )
 from jqmc.hamiltonians import Hamiltonian_data
-from jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data, compute_ratio_Jastrow_part
+from jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data, _compute_ratio_Jastrow_part_rank1_update
 from jqmc.trexio_wrapper import read_trexio_file
 from jqmc.wavefunction import Wavefunction_data, compute_discretized_kinetic_energy_fast_update
 
@@ -167,7 +167,7 @@ def bench_ecp_non_local_fast_update():
 
 
 def bench_jastrow_ratio():
-    return _time_call(compute_ratio_Jastrow_part, **jastrow_ratio_args)
+    return _time_call(_compute_ratio_Jastrow_part_rank1_update, **jastrow_ratio_args)
 
 
 def bench_geminal_rank1_updates():

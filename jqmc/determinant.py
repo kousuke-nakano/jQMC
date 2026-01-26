@@ -734,7 +734,7 @@ def compute_geminal_dn_one_column_elements(
 
 
 @jit
-def compute_ratio_determinant_part(
+def _compute_ratio_determinant_part_rank1_update(
     geminal_data: Geminal_data,
     A_old_inv: jax.Array,
     old_r_up_carts: jax.Array,

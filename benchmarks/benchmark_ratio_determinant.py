@@ -17,8 +17,8 @@ from jqmc.atomic_orbital import AOs_sphe_data
 from jqmc.determinant import (
     Geminal_data,
     _compute_ratio_determinant_part_debug,
+    _compute_ratio_determinant_part_rank1_update,
     compute_geminal_all_elements,
-    compute_ratio_determinant_part,
 )
 from jqmc.structure import Structure_data
 
@@ -141,7 +141,7 @@ def time_fast_update(
     A_old_inv = np.linalg.inv(np.asarray(geminal_mat))
 
     # Warm-up compile
-    res = compute_ratio_determinant_part(
+    res = _compute_ratio_determinant_part_rank1_update(
         geminal_data=geminal,
         A_old_inv=jnp.asarray(A_old_inv),
         old_r_up_carts=jnp.asarray(r_up),
@@ -152,7 +152,7 @@ def time_fast_update(
     res.block_until_ready()
 
     start = time.perf_counter()
-    res = compute_ratio_determinant_part(
+    res = _compute_ratio_determinant_part_rank1_update(
         geminal_data=geminal,
         A_old_inv=jnp.asarray(A_old_inv),
         old_r_up_carts=jnp.asarray(r_up),

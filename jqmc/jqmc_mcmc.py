@@ -65,7 +65,7 @@ from .hamiltonians import (
     Hamiltonian_data,
     compute_local_energy,
 )
-from .jastrow_factor import compute_Jastrow_part, compute_ratio_Jastrow_part
+from .jastrow_factor import _compute_ratio_Jastrow_part_rank1_update, compute_Jastrow_part
 from .jqmc_utility import _generate_init_electron_configurations
 from .setting import (
     MCMC_MIN_BIN_BLOCKS,
@@ -585,7 +585,7 @@ class MCMC:
                 )
 
                 # Jastrow ratio via dedicated fast-update API (includes exp)
-                J_ratio = compute_ratio_Jastrow_part(
+                J_ratio = _compute_ratio_Jastrow_part_rank1_update(
                     jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                     old_r_up_carts=r_up_carts,
                     old_r_dn_carts=r_dn_carts,

@@ -55,9 +55,12 @@ from flax import struct
 from jax import jit, lax, vmap
 from scipy.special import eval_legendre
 
-from .determinant import compute_det_geminal_all_elements, compute_ratio_determinant_part
+from .determinant import (
+    _compute_ratio_determinant_part_rank1_update,
+    compute_det_geminal_all_elements,
+)
 from .function_collections import _legendre_tablated as jnp_legendre_tablated
-from .jastrow_factor import compute_Jastrow_part, compute_ratio_Jastrow_part
+from .jastrow_factor import _compute_ratio_Jastrow_part_rank1_update, compute_Jastrow_part
 from .setting import NN_default, Nv_default
 from .structure import (
     Structure_data,
@@ -1575,7 +1578,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
     non_local_ecp_part_r_carts_dn = jnp.array(non_local_ecp_part_r_carts_dn)
 
     # wavefunction ratio
-    det_ratio = compute_ratio_determinant_part(
+    det_ratio = _compute_ratio_determinant_part_rank1_update(
         geminal_data=wavefunction_data.geminal_data,
         A_old_inv=A_old_inv,
         old_r_up_carts=r_up_carts,
@@ -1586,7 +1589,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
     if flag_determinant_only:
         wf_ratio_all = det_ratio
     else:
-        jastrow_ratio = compute_ratio_Jastrow_part(
+        jastrow_ratio = _compute_ratio_Jastrow_part_rank1_update(
             jastrow_data=wavefunction_data.jastrow_data,
             old_r_up_carts=r_up_carts,
             old_r_dn_carts=r_dn_carts,
