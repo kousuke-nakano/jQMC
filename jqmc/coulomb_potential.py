@@ -1263,9 +1263,9 @@ def compute_ecp_non_local_parts_nearest_neighbors(
     # stored
     non_local_ecp_part_r_carts_up = jnp.zeros((0, len(r_up_carts), 3))
     non_local_ecp_part_r_carts_dn = jnp.zeros((0, len(r_dn_carts), 3))
-    cos_theta_all = jnp.zeros((0,))
-    weight_all = jnp.zeros((0,))
-    V_l_mapped_all = jnp.zeros((global_max_ang_mom_plus_1, 0))
+    # cos_theta_all = jnp.zeros((0,))
+    # weight_all = jnp.zeros((0,))
+    # V_l_mapped_all = jnp.zeros((global_max_ang_mom_plus_1, 0))
 
     @jit
     def compute_V_l(rel_R_cart_min_dist, exponents, coefficients, powers):
@@ -1290,7 +1290,7 @@ def compute_ecp_non_local_parts_nearest_neighbors(
             return (
                 jnp.zeros((0, n_spin, 3)),
                 jnp.zeros((0, n_other, 3)),
-                jnp.zeros((global_max_ang_mom_plus_1, 0)),
+                jnp.zeros((n_spin, 0, global_max_ang_mom_plus_1)),
                 jnp.zeros((0,)),
                 jnp.zeros((0,)),
             )
@@ -1337,8 +1337,6 @@ def compute_ecp_non_local_parts_nearest_neighbors(
             return jax.ops.segment_sum(V_l_vmapped, ang_mom, num_segments=global_max_ang_mom_plus_1)
 
         V_l_mapped = vmap(vmap(_V_l_mapped, in_axes=(0, 0, 0, 0, 0)))(rels, ang_moms, exponents, coefficients, powers)
-        V_l_dup = jnp.repeat(V_l_mapped[:, :, :, None], grid_points.shape[0], axis=3)
-        V_l_all = jnp.moveaxis(V_l_dup, 2, 0).reshape(global_max_ang_mom_plus_1, -1)
 
         rel_unit = -rels / rel_norm
         grid_unit = grid_points / grid_norm
@@ -1350,17 +1348,13 @@ def compute_ecp_non_local_parts_nearest_neighbors(
             other_mesh = jnp.zeros((r_mesh.shape[0], 0, 3))
         else:
             other_mesh = other_carts_on_mesh.reshape(-1, n_other, 3)
-        return r_mesh, other_mesh, V_l_all, cos_theta.reshape(-1), weight.reshape(-1)
+        return r_mesh, other_mesh, V_l_mapped, cos_theta.reshape(-1), weight.reshape(-1)
 
-    up_mesh_r_up, up_mesh_r_dn, V_l_up, cos_up, weight_up = _build_mesh_for_spin(r_up_carts, r_dn_carts)
-    dn_mesh_r_dn, dn_mesh_r_up, V_l_dn, cos_dn, weight_dn = _build_mesh_for_spin(r_dn_carts, r_up_carts)
+    up_mesh_r_up, up_mesh_r_dn, V_l_up_base, cos_up, weight_up = _build_mesh_for_spin(r_up_carts, r_dn_carts)
+    dn_mesh_r_dn, dn_mesh_r_up, V_l_dn_base, cos_dn, weight_dn = _build_mesh_for_spin(r_dn_carts, r_up_carts)
 
     non_local_ecp_part_r_carts_up = jnp.concatenate([up_mesh_r_up, dn_mesh_r_up], axis=0)
     non_local_ecp_part_r_carts_dn = jnp.concatenate([up_mesh_r_dn, dn_mesh_r_dn], axis=0)
-    V_l_mapped_all = jnp.concatenate([V_l_up, V_l_dn], axis=1)
-    cos_theta_all = jnp.concatenate([cos_up, cos_dn], axis=0)
-    weight_all = jnp.concatenate([weight_up, weight_dn], axis=0)
-
     non_local_ecp_part_r_carts_up = jnp.array(non_local_ecp_part_r_carts_up)
     non_local_ecp_part_r_carts_dn = jnp.array(non_local_ecp_part_r_carts_dn)
 
@@ -1382,17 +1376,43 @@ def compute_ecp_non_local_parts_nearest_neighbors(
 
     wf_ratio_all = jnp.exp(jastrow_xp - jastrow_x) * det_xp / det_x
 
-    cos_theta_all = jnp.array(cos_theta_all)
-    weight_all = jnp.array(weight_all)
-    wf_ratio_all = jnp.array(wf_ratio_all)
+    # Split ratios for up/dn blocks to avoid big concat of V_l / cos / weight.
+    g_up = cos_up.shape[0]
+    wf_ratio_up = wf_ratio_all[:g_up]
+    wf_ratio_dn = wf_ratio_all[g_up:]
 
-    P_l_mapped_all = vmap(vmap(compute_P_l, in_axes=(None, 0, 0, 0)), in_axes=(0, None, None, None))(
-        jnp.arange(global_max_ang_mom_plus_1), cos_theta_all, weight_all, wf_ratio_all
-    )
+    def _contract_chunk(V_l_base, cos_flat, weight_flat, wf_ratio_flat):
+        cos_flat = jnp.array(cos_flat)
+        weight_flat = jnp.array(weight_flat)
+        wf_ratio_flat = jnp.array(wf_ratio_flat)
 
-    V_nl = V_l_mapped_all * P_l_mapped_all
-    V_nonlocal = jnp.sum(V_nl, axis=0)
-    sum_V_nonlocal = jnp.sum(V_nl)
+        # map from grid index -> rel index to reuse V_l_base without duplication
+        num_rel = V_l_base.shape[0] * V_l_base.shape[1]
+        rel_indices = jnp.repeat(jnp.arange(num_rel), grid_points.shape[0])
+        V_l_flat = V_l_base.reshape(num_rel, global_max_ang_mom_plus_1)
+        V_l_per_grid = V_l_flat[rel_indices]
+
+        P_l_chunk = vmap(vmap(compute_P_l, in_axes=(None, 0, 0, 0)), in_axes=(0, None, None, None))(
+            jnp.arange(global_max_ang_mom_plus_1), cos_flat, weight_flat, wf_ratio_flat
+        )
+        V_nonlocal_chunk = jnp.einsum("gl,lg->g", V_l_per_grid, P_l_chunk)
+
+        def _scan_sum(carry, elems):
+            v_l_row, p_l_row = elems
+            return carry + jnp.dot(v_l_row, p_l_row), None
+
+        sum_chunk, _ = jax.lax.scan(
+            _scan_sum,
+            0.0,
+            (V_l_per_grid, jnp.moveaxis(P_l_chunk, 0, 1)),
+        )
+        return V_nonlocal_chunk, sum_chunk
+
+    V_nonlocal_up, sum_up = _contract_chunk(V_l_up_base, cos_up, weight_up, wf_ratio_up)
+    V_nonlocal_dn, sum_dn = _contract_chunk(V_l_dn_base, cos_dn, weight_dn, wf_ratio_dn)
+
+    V_nonlocal = jnp.concatenate([V_nonlocal_up, V_nonlocal_dn], axis=0)
+    sum_V_nonlocal = sum_up + sum_dn
 
     return non_local_ecp_part_r_carts_up, non_local_ecp_part_r_carts_dn, V_nonlocal, sum_V_nonlocal
 
@@ -1457,9 +1477,9 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
     # stored
     non_local_ecp_part_r_carts_up = jnp.zeros((0, len(r_up_carts), 3))
     non_local_ecp_part_r_carts_dn = jnp.zeros((0, len(r_dn_carts), 3))
-    cos_theta_all = jnp.zeros((0,))
-    weight_all = jnp.zeros((0,))
-    V_l_mapped_all = jnp.zeros((global_max_ang_mom_plus_1, 0))
+    # cos_theta_all = jnp.zeros((0,))
+    # weight_all = jnp.zeros((0,))
+    # V_l_mapped_all = jnp.zeros((global_max_ang_mom_plus_1, 0))
 
     @jit
     def compute_V_l(rel_R_cart_min_dist, exponents, coefficients, powers):
@@ -1551,10 +1571,6 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
 
     non_local_ecp_part_r_carts_up = jnp.concatenate([up_mesh_r_up, dn_mesh_r_up], axis=0)
     non_local_ecp_part_r_carts_dn = jnp.concatenate([up_mesh_r_dn, dn_mesh_r_dn], axis=0)
-    V_l_mapped_all = jnp.concatenate([V_l_up, V_l_dn], axis=1)
-    cos_theta_all = jnp.concatenate([cos_up, cos_dn], axis=0)
-    weight_all = jnp.concatenate([weight_up, weight_dn], axis=0)
-
     non_local_ecp_part_r_carts_up = jnp.array(non_local_ecp_part_r_carts_up)
     non_local_ecp_part_r_carts_dn = jnp.array(non_local_ecp_part_r_carts_dn)
 
@@ -1579,17 +1595,36 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
         )
         wf_ratio_all = det_ratio * jastrow_ratio
 
-    cos_theta_all = jnp.array(cos_theta_all)
-    weight_all = jnp.array(weight_all)
-    wf_ratio_all = jnp.array(wf_ratio_all)
+    # Split ratios for up/dn blocks to avoid big concat of V_l / cos / weight.
+    g_up = V_l_up.shape[1]
+    wf_ratio_up = wf_ratio_all[:g_up]
+    wf_ratio_dn = wf_ratio_all[g_up:]
 
-    P_l_mapped_all = vmap(vmap(compute_P_l, in_axes=(None, 0, 0, 0)), in_axes=(0, None, None, None))(
-        jnp.arange(global_max_ang_mom_plus_1), cos_theta_all, weight_all, wf_ratio_all
-    )
+    def _contract_chunk(V_l_chunk, cos_chunk, weight_chunk, wf_ratio_chunk):
+        cos_chunk = jnp.array(cos_chunk)
+        weight_chunk = jnp.array(weight_chunk)
+        wf_ratio_chunk = jnp.array(wf_ratio_chunk)
+        P_l_chunk = vmap(vmap(compute_P_l, in_axes=(None, 0, 0, 0)), in_axes=(0, None, None, None))(
+            jnp.arange(global_max_ang_mom_plus_1), cos_chunk, weight_chunk, wf_ratio_chunk
+        )
+        V_nonlocal_chunk = jnp.einsum("lg,lg->g", V_l_chunk, P_l_chunk)
 
-    V_nl = V_l_mapped_all * P_l_mapped_all
-    V_nonlocal = jnp.sum(V_nl, axis=0)
-    sum_V_nonlocal = jnp.sum(V_nl)
+        def _scan_sum(carry, elems):
+            v_l_col, p_l_col = elems
+            return carry + jnp.dot(v_l_col, p_l_col), None
+
+        sum_chunk, _ = jax.lax.scan(
+            _scan_sum,
+            0.0,
+            (jnp.moveaxis(V_l_chunk, 1, 0), jnp.moveaxis(P_l_chunk, 1, 0)),
+        )
+        return V_nonlocal_chunk, sum_chunk
+
+    V_nonlocal_up, sum_up = _contract_chunk(V_l_up, cos_up, weight_up, wf_ratio_up)
+    V_nonlocal_dn, sum_dn = _contract_chunk(V_l_dn, cos_dn, weight_dn, wf_ratio_dn)
+
+    V_nonlocal = jnp.concatenate([V_nonlocal_up, V_nonlocal_dn], axis=0)
+    sum_V_nonlocal = sum_up + sum_dn
 
     return non_local_ecp_part_r_carts_up, non_local_ecp_part_r_carts_dn, V_nonlocal, sum_V_nonlocal
 
