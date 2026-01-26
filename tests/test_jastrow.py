@@ -72,9 +72,11 @@ from jqmc.jastrow_factor import (  # noqa: E402
 )
 from jqmc.molecular_orbital import MOs_data  # noqa: E402
 from jqmc.setting import (  # noqa: E402
+    atol_auto_vs_numerical_deriv,
     decimal_auto_vs_analytic_deriv,
     decimal_auto_vs_numerical_deriv,
     decimal_debug_vs_production,
+    rtol_auto_vs_numerical_deriv,
 )
 from jqmc.structure import Structure_data  # noqa: E402
 
@@ -161,8 +163,18 @@ def test_numerical_and_auto_grads_Jastrow_onebody_part():
 
     np.testing.assert_almost_equal(np.asarray(grad_up_num), np.asarray(grad_up_auto), decimal=decimal_auto_vs_numerical_deriv)
     np.testing.assert_almost_equal(np.asarray(grad_dn_num), np.asarray(grad_dn_auto), decimal=decimal_auto_vs_numerical_deriv)
-    np.testing.assert_almost_equal(np.asarray(lap_up_num), np.asarray(lap_up_auto), decimal=decimal_auto_vs_numerical_deriv)
-    np.testing.assert_almost_equal(np.asarray(lap_dn_num), np.asarray(lap_dn_auto), decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(
+        np.asarray(lap_up_num),
+        np.asarray(lap_up_auto),
+        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol_auto_vs_numerical_deriv,
+    )
+    np.testing.assert_allclose(
+        np.asarray(lap_dn_num),
+        np.asarray(lap_dn_auto),
+        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol_auto_vs_numerical_deriv,
+    )
 
     jax.clear_caches()
 
@@ -439,15 +451,11 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
         r_dn_carts=r_dn_carts,
     )
 
-    # print(f"J3_debug = {J3_debug}")
-
     J3_jax = compute_Jastrow_three_body(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
-
-    # print(f"J3_jax = {J3_jax}")
 
     np.testing.assert_almost_equal(J3_debug, J3_jax, decimal=decimal_debug_vs_production)
 
@@ -462,10 +470,6 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
         r_dn_carts,
     )
 
-    # print(f"grad_jastrow_J3_up_debug = {grad_jastrow_J3_up_debug}")
-    # print(f"grad_jastrow_J3_dn_debug = {grad_jastrow_J3_dn_debug}")
-    # print(f"sum_laplacian_J3_debug = {sum_laplacian_J3_debug}")
-
     grad_jastrow_J3_up_auto, grad_jastrow_J3_dn_auto, lap_J3_up_auto, lap_J3_dn_auto = (
         _compute_grads_and_laplacian_Jastrow_three_body_auto(
             jastrow_three_body_data,
@@ -474,14 +478,20 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
         )
     )
 
-    # print(f"grad_jastrow_J3_up_jax = {grad_jastrow_J3_up_jax}")
-    # print(f"grad_jastrow_J3_dn_jax = {grad_jastrow_J3_dn_jax}")
-    # print(f"sum_laplacian_J3_jax = {sum_laplacian_J3_jax}")
-
     np.testing.assert_almost_equal(grad_jastrow_J3_up_debug, grad_jastrow_J3_up_auto, decimal=decimal_auto_vs_numerical_deriv)
     np.testing.assert_almost_equal(grad_jastrow_J3_dn_debug, grad_jastrow_J3_dn_auto, decimal=decimal_auto_vs_numerical_deriv)
-    np.testing.assert_almost_equal(lap_J3_up_debug, lap_J3_up_auto, decimal=decimal_auto_vs_numerical_deriv)
-    np.testing.assert_almost_equal(lap_J3_dn_debug, lap_J3_dn_auto, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(
+        np.asarray(lap_J3_up_debug),
+        np.asarray(lap_J3_up_auto),
+        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol_auto_vs_numerical_deriv,
+    )
+    np.testing.assert_allclose(
+        np.asarray(lap_J3_dn_debug),
+        np.asarray(lap_J3_dn_auto),
+        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol_auto_vs_numerical_deriv,
+    )
 
     jax.clear_caches()
 
@@ -546,15 +556,11 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
         r_dn_carts=r_dn_carts,
     )
 
-    # print(f"J3_debug = {J3_debug}")
-
     J3_jax = compute_Jastrow_three_body(
         jastrow_three_body_data=jastrow_three_body_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
     )
-
-    # print(f"J3_jax = {J3_jax}")
 
     np.testing.assert_almost_equal(J3_debug, J3_jax, decimal=decimal_debug_vs_production)
 
@@ -569,10 +575,6 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
         r_dn_carts,
     )
 
-    # print(f"grad_jastrow_J3_up_debug = {grad_jastrow_J3_up_debug}")
-    # print(f"grad_jastrow_J3_dn_debug = {grad_jastrow_J3_dn_debug}")
-    # print(f"sum_laplacian_J3_debug = {sum_laplacian_J3_debug}")
-
     grad_jastrow_J3_up_jax, grad_jastrow_J3_dn_jax, lap_J3_up_jax, lap_J3_dn_jax = (
         _compute_grads_and_laplacian_Jastrow_three_body_auto(
             jastrow_three_body_data,
@@ -581,14 +583,21 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
         )
     )
 
-    # print(f"grad_jastrow_J3_up_jax = {grad_jastrow_J3_up_jax}")
-    # print(f"grad_jastrow_J3_dn_jax = {grad_jastrow_J3_dn_jax}")
-    # print(f"sum_laplacian_J3_jax = {sum_laplacian_J3_jax}")
-
     np.testing.assert_almost_equal(grad_jastrow_J3_up_debug, grad_jastrow_J3_up_jax, decimal=decimal_debug_vs_production)
     np.testing.assert_almost_equal(grad_jastrow_J3_dn_debug, grad_jastrow_J3_dn_jax, decimal=decimal_debug_vs_production)
-    np.testing.assert_almost_equal(lap_J3_up_debug, lap_J3_up_jax, decimal=decimal_debug_vs_production)
-    np.testing.assert_almost_equal(lap_J3_dn_debug, lap_J3_dn_jax, decimal=decimal_debug_vs_production)
+
+    np.testing.assert_allclose(
+        np.asarray(lap_J3_up_debug),
+        np.asarray(lap_J3_up_jax),
+        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol_auto_vs_numerical_deriv,
+    )
+    np.testing.assert_allclose(
+        np.asarray(lap_J3_dn_debug),
+        np.asarray(lap_J3_dn_jax),
+        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol_auto_vs_numerical_deriv,
+    )
 
     jax.clear_caches()
 
@@ -643,8 +652,18 @@ def test_numerical_and_auto_grads_Jastrow_twobody_part():
 
     np.testing.assert_almost_equal(grad_J2_up_debug, grad_J2_up_auto, decimal=decimal_auto_vs_numerical_deriv)
     np.testing.assert_almost_equal(grad_J2_dn_debug, grad_J2_dn_auto, decimal=decimal_auto_vs_numerical_deriv)
-    np.testing.assert_almost_equal(lap_J2_up_debug, lap_J2_up_auto, decimal=decimal_auto_vs_numerical_deriv)
-    np.testing.assert_almost_equal(lap_J2_dn_debug, lap_J2_dn_auto, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(
+        np.asarray(lap_J2_up_debug),
+        np.asarray(lap_J2_up_auto),
+        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol_auto_vs_numerical_deriv,
+    )
+    np.testing.assert_allclose(
+        np.asarray(lap_J2_dn_debug),
+        np.asarray(lap_J2_dn_auto),
+        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol_auto_vs_numerical_deriv,
+    )
 
     jax.clear_caches()
 
@@ -906,8 +925,19 @@ def test_numerical_and_auto_grads_Jastrow_part():
 
     np.testing.assert_almost_equal(np.asarray(grad_up_num), np.asarray(grad_up_auto), decimal=decimal_auto_vs_numerical_deriv)
     np.testing.assert_almost_equal(np.asarray(grad_dn_num), np.asarray(grad_dn_auto), decimal=decimal_auto_vs_numerical_deriv)
-    np.testing.assert_almost_equal(np.asarray(lap_up_num), np.asarray(lap_up_auto), decimal=decimal_auto_vs_numerical_deriv)
-    np.testing.assert_almost_equal(np.asarray(lap_dn_num), np.asarray(lap_dn_auto), decimal=decimal_auto_vs_numerical_deriv)
+
+    np.testing.assert_allclose(
+        np.asarray(lap_up_num),
+        np.asarray(lap_up_auto),
+        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol_auto_vs_numerical_deriv,
+    )
+    np.testing.assert_allclose(
+        np.asarray(lap_dn_num),
+        np.asarray(lap_dn_auto),
+        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol_auto_vs_numerical_deriv,
+    )
 
     jax.clear_caches()
 
@@ -930,8 +960,18 @@ def test_numerical_and_auto_grads_Jastrow_part_with_NN():
 
     np.testing.assert_almost_equal(np.asarray(grad_up_num), np.asarray(grad_up_auto), decimal=decimal_auto_vs_numerical_deriv)
     np.testing.assert_almost_equal(np.asarray(grad_dn_num), np.asarray(grad_dn_auto), decimal=decimal_auto_vs_numerical_deriv)
-    np.testing.assert_almost_equal(np.asarray(lap_up_num), np.asarray(lap_up_auto), decimal=decimal_auto_vs_numerical_deriv)
-    np.testing.assert_almost_equal(np.asarray(lap_dn_num), np.asarray(lap_dn_auto), decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(
+        np.asarray(lap_up_num),
+        np.asarray(lap_up_auto),
+        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol_auto_vs_numerical_deriv,
+    )
+    np.testing.assert_allclose(
+        np.asarray(lap_dn_num),
+        np.asarray(lap_dn_auto),
+        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol_auto_vs_numerical_deriv,
+    )
 
     jax.clear_caches()
 

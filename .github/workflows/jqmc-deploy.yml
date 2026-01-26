@@ -82,6 +82,7 @@ jobs:
   # deploy
   deploy-pypi:
     # Run only if this repository is rc
+    needs: validate_tag
     if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'kousuke-nakano/jQMC'
     runs-on: ubuntu-latest
     steps:

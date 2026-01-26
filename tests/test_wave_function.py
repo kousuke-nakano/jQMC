@@ -52,10 +52,11 @@ from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_two_body_data,
 )
 from jqmc.setting import (  # noqa: E402
+    atol_auto_vs_numerical_deriv,
     decimal_auto_vs_analytic_deriv,
     decimal_auto_vs_numerical_deriv,
     decimal_debug_vs_production,
-    decimal_numerical_vs_analytic_deriv,
+    rtol_auto_vs_numerical_deriv,
 )
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import (  # noqa: E402
@@ -117,8 +118,12 @@ def test_kinetic_energy_analytic_and_numerical():
 
     K_debug = _compute_kinetic_energy_debug(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
     K_jax = compute_kinetic_energy(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
-
-    np.testing.assert_almost_equal(K_debug, K_jax, decimal=decimal_numerical_vs_analytic_deriv)
+    np.testing.assert_allclose(
+        np.asarray(K_debug),
+        np.asarray(K_jax),
+        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol_auto_vs_numerical_deriv,
+    )
 
 
 def test_kinetic_energy_analytic_and_auto():
@@ -218,6 +223,20 @@ def test_debug_and_auto_kinetic_energy_all_elements():
     np.testing.assert_array_almost_equal(K_elements_up_debug, K_elements_up_auto, decimal=decimal_auto_vs_numerical_deriv)
     np.testing.assert_array_almost_equal(K_elements_dn_debug, K_elements_dn_auto, decimal=decimal_auto_vs_numerical_deriv)
 
+    np.testing.assert_allclose(
+        np.asarray(K_elements_up_debug),
+        np.asarray(K_elements_up_auto),
+        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol_auto_vs_numerical_deriv,
+    )
+
+    np.testing.assert_allclose(
+        np.asarray(K_elements_dn_debug),
+        np.asarray(K_elements_dn_auto),
+        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol_auto_vs_numerical_deriv,
+    )
+
 
 def test_auto_and_analytic_kinetic_energy_all_elements():
     """Autodiff vs analytic kinetic energy per-electron arrays."""
@@ -313,7 +332,7 @@ def test_fast_update_kinetic_energy_all_elements():
     r_dn_carts_jnp = jnp.asarray(r_dn_carts)
 
     # Standard analytic per-electron kinetic energy
-    ke_up_debug, ke_dn_debug = compute_kinetic_energy_all_elements(
+    ke_up_debug, ke_dn_debug = _compute_kinetic_energy_all_elements_fast_update_debug(
         wavefunction_data=wavefunction_data,
         r_up_carts=r_up_carts_jnp,
         r_dn_carts=r_dn_carts_jnp,

@@ -24,6 +24,8 @@ apidoc:
 	sphinx-apidoc -o ./$(APIDOC_DIR)/ ../jqmc/
 	@python3 -c 'import sys; NL=chr(10); modules_rst=sys.argv[1]; title=sys.argv[2]; lines=open(modules_rst,"r",encoding="utf-8").read().splitlines(True); allowed="=~-^#*+"; i=next(i for i in range(len(lines)-1) if (t:=lines[i].strip()) and (u:=lines[i+1].strip()) and len(set(u))==1 and all(c in allowed for c in u)); ch=u[0]; lines[i]=title+NL; lines[i+1]=ch*max(len(title),80)+NL; open(modules_rst,"w",encoding="utf-8").writelines(lines)' "$(MODULES_RST)" "$(APIDOC_TITLE)"
 
+html: apidoc
+	$(SPHINXBUILD) -b html . ../docs_build
 
 %: Makefile apidoc
 	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)

@@ -57,6 +57,7 @@ jobs:
     - name: Test jqmc (pytest) with @jit decorator (intra-software comparisons)
       run: |
         pytest -s -v tests/test_trexio.py --cov=jqmc --cov-branch --no-cov-on-fail
+        pytest -s -v tests/test_structure.py --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_AOs.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_MOs.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_determinant.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
