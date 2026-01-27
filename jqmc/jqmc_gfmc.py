@@ -70,8 +70,8 @@ from .hamiltonians import (
     compute_local_energy,
 )
 from .jastrow_factor import (
+    _compute_ratio_Jastrow_part_rank1_update,
     compute_Jastrow_part,
-    compute_ratio_Jastrow_part,
 )
 from .jqmc_utility import _generate_init_electron_configurations
 from .setting import (
@@ -2799,7 +2799,7 @@ class GFMC_n:
                         V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
                         diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
 
-                        Jastrow_ratio = compute_ratio_Jastrow_part(
+                        Jastrow_ratio = _compute_ratio_Jastrow_part_rank1_update(
                             jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                             old_r_up_carts=r_up_carts,
                             old_r_dn_carts=r_dn_carts,
@@ -3217,7 +3217,7 @@ class GFMC_n:
                     diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
 
                     if use_fast_update:
-                        Jastrow_ratio = compute_ratio_Jastrow_part(
+                        Jastrow_ratio = _compute_ratio_Jastrow_part_rank1_update(
                             jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
                             old_r_up_carts=r_up_carts,
                             old_r_dn_carts=r_dn_carts,

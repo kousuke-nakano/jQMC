@@ -1796,7 +1796,7 @@ def _compute_Jastrow_part_debug(
     return J
 
 
-def compute_ratio_Jastrow_part(
+def _compute_ratio_Jastrow_part_rank1_update(
     jastrow_data: Jastrow_data,
     old_r_up_carts: jax.Array,
     old_r_dn_carts: jax.Array,

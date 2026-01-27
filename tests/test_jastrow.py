@@ -37,6 +37,7 @@ from pathlib import Path
 
 import jax
 import numpy as np
+import pytest
 
 project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
@@ -61,6 +62,7 @@ from jqmc.jastrow_factor import (  # noqa: E402
     _compute_Jastrow_three_body_debug,
     _compute_Jastrow_two_body_debug,
     _compute_ratio_Jastrow_part_debug,
+    _compute_ratio_Jastrow_part_rank1_update,
     compute_grads_and_laplacian_Jastrow_one_body,
     compute_grads_and_laplacian_Jastrow_part,
     compute_grads_and_laplacian_Jastrow_three_body,
@@ -68,7 +70,6 @@ from jqmc.jastrow_factor import (  # noqa: E402
     compute_Jastrow_one_body,
     compute_Jastrow_three_body,
     compute_Jastrow_two_body,
-    compute_ratio_Jastrow_part,
 )
 from jqmc.molecular_orbital import MOs_data  # noqa: E402
 from jqmc.setting import (  # noqa: E402
@@ -1024,46 +1025,40 @@ def test_analytical_and_auto_grads_Jastrow_part_with_NN():
     jax.clear_caches()
 
 
-def _build_ratio_grids(r_up_carts: np.ndarray, r_dn_carts: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    new_r_up_carts_arr = []
-    new_r_dn_carts_arr = []
-    for i in range(len(r_up_carts)):
-        for axis in range(3):
-            new_r_up = r_up_carts.copy()
-            new_r_dn = r_dn_carts.copy()
-            new_r_up[i, axis] += 0.05 * new_r_up[i, axis]
-            new_r_up_carts_arr.append(new_r_up)
-            new_r_dn_carts_arr.append(new_r_dn)
-            new_r_up = r_up_carts.copy()
-            new_r_dn = r_dn_carts.copy()
-            new_r_up[i, axis] -= 0.05 * new_r_up[i, axis]
-            new_r_up_carts_arr.append(new_r_up)
-            new_r_dn_carts_arr.append(new_r_dn)
+def _build_three_grid_moves_for_jastrow(old_r_up_carts: np.ndarray, old_r_dn_carts: np.ndarray, pattern: str):
+    new_r_up_carts_arr = np.repeat(old_r_up_carts[None, ...], 3, axis=0)
+    new_r_dn_carts_arr = np.repeat(old_r_dn_carts[None, ...], 3, axis=0)
 
-    for i in range(len(r_dn_carts)):
-        for axis in range(3):
-            new_r_up = r_up_carts.copy()
-            new_r_dn = r_dn_carts.copy()
-            new_r_dn[i, axis] += 0.05 * new_r_dn[i, axis]
-            new_r_up_carts_arr.append(new_r_up)
-            new_r_dn_carts_arr.append(new_r_dn)
-            new_r_up = r_up_carts.copy()
-            new_r_dn = r_dn_carts.copy()
-            new_r_dn[i, axis] -= 0.05 * new_r_dn[i, axis]
-            new_r_up_carts_arr.append(new_r_up)
-            new_r_dn_carts_arr.append(new_r_dn)
+    up_alt_idx = min(1, old_r_up_carts.shape[0] - 1)
+    dn_alt_idx = min(1, old_r_dn_carts.shape[0] - 1)
 
-    return np.array(new_r_up_carts_arr), np.array(new_r_dn_carts_arr)
+    if pattern == "all_moved":
+        new_r_up_carts_arr[0, 0, 0] += 0.05
+        new_r_dn_carts_arr[1, 0, 1] -= 0.07
+        new_r_up_carts_arr[2, up_alt_idx, 2] += 0.09
+    elif pattern == "none_moved":
+        pass
+    elif pattern == "mixed":
+        new_r_up_carts_arr[0, 0, 0] += 0.05
+        new_r_dn_carts_arr[2, dn_alt_idx, 1] += 0.04
+    else:
+        raise ValueError(f"Unknown pattern for ratio grid construction: {pattern}")
+
+    return new_r_up_carts_arr, new_r_dn_carts_arr
 
 
-def test_ratio_Jastrow_part_debug():
+@pytest.mark.parametrize("pattern", ["all_moved", "none_moved", "mixed"])
+def test_ratio_Jastrow_part_rank1_update(pattern: str):
     """Compare ratio Jastrow part: debug vs auto implementation (no NN)."""
-    jastrow_data, r_up_carts, r_dn_carts = _build_jastrow_data_for_part_tests(include_nn=False)
 
-    old_r_up_carts = r_up_carts
-    old_r_dn_carts = r_dn_carts
+    np.random.seed(0)
+    jastrow_data, old_r_up_carts, old_r_dn_carts = _build_jastrow_data_for_part_tests(include_nn=False)
 
-    new_r_up_carts_arr, new_r_dn_carts_arr = _build_ratio_grids(old_r_up_carts, old_r_dn_carts)
+    new_r_up_carts_arr, new_r_dn_carts_arr = _build_three_grid_moves_for_jastrow(
+        old_r_up_carts,
+        old_r_dn_carts,
+        pattern,
+    )
 
     ratio_debug = _compute_ratio_Jastrow_part_debug(
         jastrow_data,
@@ -1073,7 +1068,7 @@ def test_ratio_Jastrow_part_debug():
         new_r_dn_carts_arr=new_r_dn_carts_arr,
     )
 
-    ratio_auto = compute_ratio_Jastrow_part(
+    ratio_auto = _compute_ratio_Jastrow_part_rank1_update(
         jastrow_data,
         old_r_up_carts=old_r_up_carts,
         old_r_dn_carts=old_r_dn_carts,
@@ -1082,18 +1077,25 @@ def test_ratio_Jastrow_part_debug():
     )
 
     np.testing.assert_almost_equal(np.asarray(ratio_debug), np.asarray(ratio_auto), decimal=decimal_debug_vs_production)
+
+    if pattern == "none_moved":
+        np.testing.assert_allclose(np.asarray(ratio_debug), np.ones_like(np.asarray(ratio_debug)), rtol=1e-12, atol=1e-12)
 
     jax.clear_caches()
 
 
-def test_ratio_Jastrow_part_debug_with_NN():
+@pytest.mark.parametrize("pattern", ["all_moved", "none_moved", "mixed"])
+def test_ratio_Jastrow_part_rank1_update_with_NN(pattern: str):
     """Compare ratio Jastrow part: debug vs auto implementation (with NN)."""
-    jastrow_data, r_up_carts, r_dn_carts = _build_jastrow_data_for_part_tests(include_nn=True)
 
-    old_r_up_carts = r_up_carts
-    old_r_dn_carts = r_dn_carts
+    np.random.seed(0)
+    jastrow_data, old_r_up_carts, old_r_dn_carts = _build_jastrow_data_for_part_tests(include_nn=True)
 
-    new_r_up_carts_arr, new_r_dn_carts_arr = _build_ratio_grids(old_r_up_carts, old_r_dn_carts)
+    new_r_up_carts_arr, new_r_dn_carts_arr = _build_three_grid_moves_for_jastrow(
+        old_r_up_carts,
+        old_r_dn_carts,
+        pattern,
+    )
 
     ratio_debug = _compute_ratio_Jastrow_part_debug(
         jastrow_data,
@@ -1103,7 +1105,7 @@ def test_ratio_Jastrow_part_debug_with_NN():
         new_r_dn_carts_arr=new_r_dn_carts_arr,
     )
 
-    ratio_auto = compute_ratio_Jastrow_part(
+    ratio_auto = _compute_ratio_Jastrow_part_rank1_update(
         jastrow_data,
         old_r_up_carts=old_r_up_carts,
         old_r_dn_carts=old_r_dn_carts,
@@ -1112,6 +1114,9 @@ def test_ratio_Jastrow_part_debug_with_NN():
     )
 
     np.testing.assert_almost_equal(np.asarray(ratio_debug), np.asarray(ratio_auto), decimal=decimal_debug_vs_production)
+
+    if pattern == "none_moved":
+        np.testing.assert_allclose(np.asarray(ratio_debug), np.ones_like(np.asarray(ratio_debug)), rtol=1e-12, atol=1e-12)
 
     jax.clear_caches()
 

@@ -734,7 +734,7 @@ def compute_geminal_dn_one_column_elements(
 
 
 @jit
-def compute_ratio_determinant_part(
+def _compute_ratio_determinant_part_rank1_update(
     geminal_data: Geminal_data,
     A_old_inv: jax.Array,
     old_r_up_carts: jax.Array,
@@ -743,6 +743,11 @@ def compute_ratio_determinant_part(
     new_r_dn_carts_arr: jax.Array,
 ) -> jax.Array:
     r"""Determinant ratio $\det G(\mathbf r')/\det G(\mathbf r)$ for batched moves.
+
+    Optimized for the non-local ECP mesh where *exactly one* electron moves per grid.
+    We identify the moved electron once, batch-evaluate the new AO/MO row or column,
+    and apply a rank-1 update formula ``row @ A_old_inv[:, idx]`` or
+    ``A_old_inv[idx, :] @ col`` with ``vmap``.
 
     Args:
         geminal_data: Geminal parameters and orbital references.
@@ -755,13 +760,10 @@ def compute_ratio_determinant_part(
     Returns:
         jax.Array: Determinant ratios per grid with shape ``(N_grid,)``.
     """
-    # split, geminal_data.lambda_matrix
-    lambda_matrix_paired, lambda_matrix_unpaired = jnp.split(
-        geminal_data.lambda_matrix, indices_or_sections=[geminal_data.orb_num_dn], axis=1
-    )
-
     num_up = old_r_up_carts.shape[0]
     num_dn = old_r_dn_carts.shape[0]
+
+    # Degenerate cases (no up or no down) fall back to full determinant evaluation.
     if num_up == 0 or num_dn == 0:
         det_x = compute_det_geminal_all_elements(geminal_data, old_r_up_carts, old_r_dn_carts)
         det_xp = vmap(compute_det_geminal_all_elements, in_axes=(None, 0, 0))(
@@ -769,83 +771,57 @@ def compute_ratio_determinant_part(
         )
         return det_xp / det_x
 
+    # Which electron moved on each grid? Only one electron moves per grid by construction.
+    delta_up = new_r_up_carts_arr - old_r_up_carts
+    delta_dn = new_r_dn_carts_arr - old_r_dn_carts
+    moved_up_mask = jnp.any(delta_up != 0.0, axis=2)  # (N_grid, N_up)
+    moved_dn_mask = jnp.any(delta_dn != 0.0, axis=2)  # (N_grid, N_dn)
+    moved_up_exists = jnp.any(moved_up_mask, axis=1)
+
+    # Indices of the moved electron per grid (argmax is fine because only one is non-zero).
+    idx_up = jnp.argmax(moved_up_mask.astype(jnp.int32), axis=1)  # (N_grid,)
+    idx_dn = jnp.argmax(moved_dn_mask.astype(jnp.int32), axis=1)  # (N_grid,)
+
+    # Gather the moved coordinates for batch AO/MO evaluation.
+    r_up_new = jnp.take_along_axis(new_r_up_carts_arr, idx_up[:, None, None], axis=1)  # (N_grid, 1, 3)
+    r_dn_new = jnp.take_along_axis(new_r_dn_carts_arr, idx_dn[:, None, None], axis=1)  # (N_grid, 1, 3)
+
+    # Flatten grid axis for a single batched AO/MO evaluation (reduces JAX HLO count).
+    r_up_new_flat = r_up_new.reshape(-1, 3)  # (N_grid, 3)
+    r_dn_new_flat = r_dn_new.reshape(-1, 3)  # (N_grid, 3)
+
+    # lambda split
+    lambda_matrix_paired, lambda_matrix_unpaired = jnp.split(
+        geminal_data.lambda_matrix, indices_or_sections=[geminal_data.orb_num_dn], axis=1
+    )
+
+    # Precompute old AO matrices once.
     orb_matrix_up_old = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, old_r_up_carts)
     orb_matrix_dn_old = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, old_r_dn_carts)
 
-    def compute_one_grid(
-        orb_matrix_up_old,
-        orb_matrix_dn_old,
-        A_old_inv,
-        lambda_matrix_paired,
-        lambda_matrix_unpaired,
-        new_r_up_carts,
-        new_r_dn_carts,
-        old_r_up_carts,
-        old_r_dn_carts,
-    ):
-        delta_up = new_r_up_carts - old_r_up_carts
-        delta_dn = new_r_dn_carts - old_r_dn_carts
-        num_up = old_r_up_carts.shape[0]
-        num_dn = old_r_dn_carts.shape[0]
-        if num_up == 0:
-            up_all_zero = True
-            diff = delta_dn
-        elif num_dn == 0:
-            up_all_zero = False
-            diff = delta_up
-        else:
-            up_all_zero = jnp.all(delta_up == 0.0)
-            diff = jax.lax.cond(up_all_zero, lambda _: delta_dn, lambda _: delta_up, operand=None)
-        nonzero_in_rows = jnp.any(diff != 0.0, axis=1)
-        idx = jnp.argmax(nonzero_in_rows)
+    # Batched AO for moved electrons (up) -> rows
+    orb_up_new_batch = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_new_flat)  # (n_orb_up, G)
+    tmp_up = jnp.dot(orb_up_new_batch.T, lambda_matrix_paired)  # (G, n_orb_dn)
+    row_paired = jnp.dot(tmp_up, orb_matrix_dn_old)  # (G, N_dn)
+    row_unpaired = jnp.dot(orb_up_new_batch.T, lambda_matrix_unpaired)  # (G, num_unpaired)
+    new_rows_up = jnp.hstack([row_paired, row_unpaired])  # (G, N_up)
 
-        def up_case(A_old_inv, idx, lambda_matrix_paired, lambda_matrix_unpaired, new_r_up_carts, new_r_dn_carts):
-            new_r_up_carts_extracted = jnp.expand_dims(new_r_up_carts[idx], axis=0)  # shape=(1,3)
-            A_old_inv_vec = jnp.expand_dims(A_old_inv[:, idx], axis=1)
+    # Batched AO for moved electrons (dn) -> columns
+    orb_dn_new_batch = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_new_flat)  # (n_orb_dn, G)
+    w_batch = jnp.dot(lambda_matrix_paired, orb_dn_new_batch)  # (n_orb_up, G)
+    cols = jnp.dot(orb_matrix_up_old.T, w_batch)  # (N_up, G)
+    new_cols_dn = cols.T  # (G, N_up)
 
-            # orb
-            orb_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, new_r_up_carts_extracted)
-            orb_matrix_dn = orb_matrix_dn_old
-            # geminal
-            geminal_paired = jnp.dot(orb_matrix_up.T, jnp.dot(lambda_matrix_paired, orb_matrix_dn))
-            geminal_unpaired = jnp.dot(orb_matrix_up.T, lambda_matrix_unpaired)
-            geminal = jnp.hstack([geminal_paired, geminal_unpaired])
+    # Precompute A_old_inv slices matching each grid's moved index.
+    A_col_for_up = jnp.take(A_old_inv, idx_up, axis=1).T  # (N_grid, N_up)
+    A_row_for_dn = jnp.take(A_old_inv, idx_dn, axis=0)  # (N_grid, N_up)
 
-            return jnp.dot(geminal, A_old_inv_vec)[0][0]
+    # rank-1 determinant ratios for up-move grids and dn-move grids.
+    det_ratio_up = jnp.sum(new_rows_up * A_col_for_up, axis=1)
+    det_ratio_dn = jnp.sum(A_row_for_dn * new_cols_dn, axis=1)
 
-        def dn_case(A_old_inv, idx, lambda_matrix_paired, lambda_matrix_unpaired, new_r_up_carts, new_r_dn_carts):
-            new_r_dn_carts_extracted = jnp.expand_dims(new_r_dn_carts[idx], axis=0)  # shape=(1,3)
-            A_old_inv_vec = jnp.expand_dims(A_old_inv[idx, :], axis=0)
-
-            # orb
-            orb_matrix_up = orb_matrix_up_old
-            orb_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, new_r_dn_carts_extracted)
-            # geminal
-            geminal_paired = jnp.dot(orb_matrix_up.T, jnp.dot(lambda_matrix_paired, orb_matrix_dn))
-            geminal_unpaired = jnp.dot(orb_matrix_up.T, lambda_matrix_unpaired)
-            geminal = jnp.hstack([geminal_paired, geminal_unpaired])
-
-            return jnp.dot(A_old_inv_vec, geminal)[0][0]
-
-        return jax.lax.cond(
-            up_all_zero,
-            dn_case,
-            up_case,
-            *(A_old_inv, idx, lambda_matrix_paired, lambda_matrix_unpaired, new_r_up_carts, new_r_dn_carts),
-        )
-
-    # vectorization along grid
-    determinant_ratios = vmap(compute_one_grid, in_axes=(None, None, None, None, None, 0, 0, None, None))(
-        orb_matrix_up_old,
-        orb_matrix_dn_old,
-        A_old_inv,
-        lambda_matrix_paired,
-        lambda_matrix_unpaired,
-        new_r_up_carts_arr,
-        new_r_dn_carts_arr,
-        old_r_up_carts,
-        old_r_dn_carts,
-    )
+    # Select per grid based on which spin moved.
+    determinant_ratios = jnp.where(moved_up_exists, det_ratio_up, det_ratio_dn)
     return determinant_ratios
 
 

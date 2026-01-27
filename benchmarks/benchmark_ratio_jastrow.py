@@ -20,7 +20,7 @@ from jqmc.jastrow_factor import (
     Jastrow_three_body_data,
     Jastrow_two_body_data,
     _compute_ratio_Jastrow_part_debug,
-    compute_ratio_Jastrow_part,
+    _compute_ratio_Jastrow_part_rank1_update,
 )
 from jqmc.structure import Structure_data
 
@@ -137,7 +137,7 @@ def time_bruteforce(
 
 def time_fast(jastrow_data: Jastrow_data, r_up: np.ndarray, r_dn: np.ndarray, new_up: np.ndarray, new_dn: np.ndarray) -> float:
     # Warm-up compile
-    res = compute_ratio_Jastrow_part(
+    res = _compute_ratio_Jastrow_part_rank1_update(
         jastrow_data=jastrow_data,
         old_r_up_carts=jnp.asarray(r_up),
         old_r_dn_carts=jnp.asarray(r_dn),
@@ -147,7 +147,7 @@ def time_fast(jastrow_data: Jastrow_data, r_up: np.ndarray, r_dn: np.ndarray, ne
     res.block_until_ready()
 
     start = time.perf_counter()
-    res = compute_ratio_Jastrow_part(
+    res = _compute_ratio_Jastrow_part_rank1_update(
         jastrow_data=jastrow_data,
         old_r_up_carts=jnp.asarray(r_up),
         old_r_dn_carts=jnp.asarray(r_dn),
