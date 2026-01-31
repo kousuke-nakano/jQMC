@@ -58,8 +58,15 @@ from jqmc.coulomb_potential import (  # noqa: E402
     compute_ecp_local_parts_all_pairs,
     compute_ecp_non_local_parts_all_pairs,
     compute_ecp_non_local_parts_nearest_neighbors,
+    compute_ecp_non_local_parts_nearest_neighbors_fast_update,
 )
-from jqmc.jastrow_factor import Jastrow_data  # noqa: E402
+from jqmc.determinant import compute_geminal_all_elements  # noqa: E402
+from jqmc.jastrow_factor import (  # noqa: E402
+    Jastrow_data,
+    Jastrow_one_body_data,
+    Jastrow_three_body_data,
+    Jastrow_two_body_data,
+)
 from jqmc.setting import (  # noqa: E402
     decimal_debug_vs_production,
 )
@@ -531,6 +538,106 @@ def test_debug_and_jax_ecp_non_local_partial_NN(Nv, alpha, beta, gamma):
             mesh_non_local_r_dn_carts_max_NN_jax,
             mesh_non_local_r_dn_carts_max_NN_debug,
             decimal=decimal_debug_vs_production,
+        )
+
+
+def _build_full_jastrow_data(structure_data, geminal_mo_data, coulomb_potential_data, rng: np.random.Generator) -> Jastrow_data:
+    core_electrons = tuple(coulomb_potential_data.z_cores)
+
+    jastrow_one_body_data = Jastrow_one_body_data(
+        jastrow_1b_param=1.0,
+        structure_data=structure_data,
+        core_electrons=core_electrons,
+    )
+
+    jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=1.0)
+
+    num_orb = geminal_mo_data.orb_data_up_spin._num_orb
+    j_matrix = rng.random((num_orb, num_orb + 1))
+    jastrow_three_body_data = Jastrow_three_body_data(
+        orb_data=geminal_mo_data.orb_data_up_spin,
+        j_matrix=j_matrix,
+    )
+
+    return Jastrow_data(
+        jastrow_one_body_data=jastrow_one_body_data,
+        jastrow_two_body_data=jastrow_two_body_data,
+        jastrow_three_body_data=jastrow_three_body_data,
+    )
+
+
+def test_fastupdate_ecp_non_local_partial_NN():
+    """Fast-update nearest-neighbor ECP matches reference with all Jastrow terms enabled."""
+    (
+        structure_data,
+        _aos_data,
+        _mos_data_up,
+        _mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"),
+        store_tuple=True,
+    )
+
+    rng = np.random.default_rng(0)
+    jastrow_data = _build_full_jastrow_data(structure_data, geminal_mo_data, coulomb_potential_data, rng)
+    wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
+
+    r_up_carts = rng.uniform(-1.0, 1.0, size=(geminal_mo_data.num_electron_up, 3))
+    r_dn_carts = rng.uniform(-1.0, 1.0, size=(geminal_mo_data.num_electron_dn, 3))
+
+    geminal_old = compute_geminal_all_elements(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+    A_old_inv = np.linalg.inv(np.array(geminal_old))
+
+    for NN in range(1, structure_data.natom):
+        # ecp non-local (NN, NN=NN)
+        Nv = 6
+        RT = np.eye(3)
+
+        (
+            mesh_up_ref,
+            mesh_dn_ref,
+            V_ref,
+            sum_V_ref,
+        ) = compute_ecp_non_local_parts_nearest_neighbors(
+            coulomb_potential_data=coulomb_potential_data,
+            wavefunction_data=wavefunction_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+            NN=NN,
+            Nv=Nv,
+            RT=RT,
+        )
+
+        (
+            mesh_up_fast,
+            mesh_dn_fast,
+            V_fast,
+            sum_V_fast,
+        ) = compute_ecp_non_local_parts_nearest_neighbors_fast_update(
+            coulomb_potential_data=coulomb_potential_data,
+            wavefunction_data=wavefunction_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+            RT=RT,
+            A_old_inv=A_old_inv,
+            NN=NN,
+            Nv=Nv,
+            flag_determinant_only=False,
+        )
+
+        np.testing.assert_almost_equal(np.asarray(sum_V_fast), np.asarray(sum_V_ref), decimal=decimal_debug_vs_production)
+        np.testing.assert_almost_equal(np.asarray(V_fast), np.asarray(V_ref), decimal=decimal_debug_vs_production)
+        np.testing.assert_array_almost_equal(
+            np.asarray(mesh_up_fast), np.asarray(mesh_up_ref), decimal=decimal_debug_vs_production
+        )
+        np.testing.assert_array_almost_equal(
+            np.asarray(mesh_dn_fast), np.asarray(mesh_dn_ref), decimal=decimal_debug_vs_production
         )
 
 

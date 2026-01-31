@@ -47,18 +47,18 @@ from jax import typing as jnpt
 
 from .determinant import (
     Geminal_data,
+    _compute_ratio_determinant_part_rank1_update,
     compute_det_geminal_all_elements,
     compute_grads_and_laplacian_ln_Det,
     compute_grads_and_laplacian_ln_Det_fast,
     compute_ln_det_geminal_all_elements,
-    compute_ratio_determinant_part,
 )
 from .diff_mask import DiffMask, apply_diff_mask
 from .jastrow_factor import (
     Jastrow_data,
+    _compute_ratio_Jastrow_part_rank1_update,
     compute_grads_and_laplacian_Jastrow_part,
     compute_Jastrow_part,
-    compute_ratio_Jastrow_part,
 )
 
 # set logger
@@ -1142,14 +1142,14 @@ def compute_discretized_kinetic_energy_fast_update(
     r_dn_carts_combined = jnp.concatenate([r_dn_carts_repeated_up, r_dn_carts_shifted], axis=0)  # Shape: (N_configs, N_dn, 3)
 
     # Evaluate the ratios of wavefunctions between the shifted positions and the original position
-    wf_ratio = compute_ratio_determinant_part(
+    wf_ratio = _compute_ratio_determinant_part_rank1_update(
         geminal_data=wavefunction_data.geminal_data,
         A_old_inv=A_old_inv,
         old_r_up_carts=r_up,
         old_r_dn_carts=r_dn,
         new_r_up_carts_arr=r_up_carts_combined,
         new_r_dn_carts_arr=r_dn_carts_combined,
-    ) * compute_ratio_Jastrow_part(
+    ) * _compute_ratio_Jastrow_part_rank1_update(
         jastrow_data=wavefunction_data.jastrow_data,
         old_r_up_carts=r_up,
         old_r_dn_carts=r_dn,

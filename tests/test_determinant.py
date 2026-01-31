@@ -55,6 +55,8 @@ from jqmc.determinant import (  # noqa: E402
     _compute_grads_and_laplacian_ln_Det_auto,
     _compute_grads_and_laplacian_ln_Det_debug,
     _compute_grads_and_laplacian_ln_Det_fast_debug,
+    _compute_ratio_determinant_part_debug,
+    _compute_ratio_determinant_part_rank1_update,
     compute_AS_regularization_factor,
     compute_det_geminal_all_elements,
     compute_geminal_all_elements,
@@ -767,6 +769,98 @@ def test_analytic_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
         np.asarray(lap_ln_D_dn_auto),
         decimal=decimal_auto_vs_analytic_deriv,
     )
+
+    jax.clear_caches()
+
+
+def _prepare_ratio_determinant_inputs():
+    (
+        _structure_data,
+        _aos_data,
+        _mos_data_up,
+        _mos_data_dn,
+        geminal_mo_data,
+        _coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"),
+        store_tuple=True,
+    )
+
+    geminal_mo_data.sanity_check()
+
+    rng = np.random.default_rng(0)
+    r_up_carts = rng.uniform(-1.0, 1.0, size=(geminal_mo_data.num_electron_up, 3))
+    r_dn_carts = rng.uniform(-1.0, 1.0, size=(geminal_mo_data.num_electron_dn, 3))
+
+    geminal_old = compute_geminal_all_elements(
+        geminal_data=geminal_mo_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+    )
+
+    P, L, U = jsp_linalg.lu(geminal_old)
+    n = geminal_old.shape[0]
+    I = jnp.eye(n, dtype=geminal_old.dtype)
+    Y = jsp_linalg.solve_triangular(L, jnp.dot(P.T, I), lower=True)
+    A_old_inv = jsp_linalg.solve_triangular(U, Y, lower=False)
+
+    return geminal_mo_data, r_up_carts, r_dn_carts, A_old_inv
+
+
+def _build_three_grid_moves_for_determinant(old_r_up_carts: np.ndarray, old_r_dn_carts: np.ndarray, pattern: str):
+    new_r_up_carts_arr = np.repeat(old_r_up_carts[None, ...], 3, axis=0)
+    new_r_dn_carts_arr = np.repeat(old_r_dn_carts[None, ...], 3, axis=0)
+
+    up_alt_idx = min(1, old_r_up_carts.shape[0] - 1)
+    dn_alt_idx = min(1, old_r_dn_carts.shape[0] - 1)
+
+    if pattern == "all_moved":
+        new_r_up_carts_arr[0, 0, 0] += 0.05
+        new_r_dn_carts_arr[1, 0, 1] -= 0.07
+        new_r_up_carts_arr[2, up_alt_idx, 2] += 0.09
+    elif pattern == "none_moved":
+        pass
+    elif pattern == "mixed":
+        new_r_up_carts_arr[0, 0, 0] += 0.05
+        new_r_dn_carts_arr[2, dn_alt_idx, 1] += 0.04
+    else:
+        raise ValueError(f"Unknown pattern for ratio grid construction: {pattern}")
+
+    return new_r_up_carts_arr, new_r_dn_carts_arr
+
+
+@pytest.mark.parametrize("pattern", ["all_moved", "none_moved", "mixed"])
+def test_ratio_determinant_rank1_update(pattern: str):
+    """Rank-1 determinant ratio matches debug across three-grid scenarios."""
+    geminal_data, old_r_up_carts, old_r_dn_carts, A_old_inv = _prepare_ratio_determinant_inputs()
+
+    new_r_up_carts_arr, new_r_dn_carts_arr = _build_three_grid_moves_for_determinant(
+        old_r_up_carts,
+        old_r_dn_carts,
+        pattern,
+    )
+
+    ratio_debug = _compute_ratio_determinant_part_debug(
+        geminal_data=geminal_data,
+        old_r_up_carts=old_r_up_carts,
+        old_r_dn_carts=old_r_dn_carts,
+        new_r_up_carts_arr=new_r_up_carts_arr,
+        new_r_dn_carts_arr=new_r_dn_carts_arr,
+    )
+
+    ratio_rank1 = _compute_ratio_determinant_part_rank1_update(
+        geminal_data=geminal_data,
+        A_old_inv=A_old_inv,
+        old_r_up_carts=old_r_up_carts,
+        old_r_dn_carts=old_r_dn_carts,
+        new_r_up_carts_arr=new_r_up_carts_arr,
+        new_r_dn_carts_arr=new_r_dn_carts_arr,
+    )
+
+    np.testing.assert_almost_equal(np.asarray(ratio_debug), np.asarray(ratio_rank1), decimal=decimal_debug_vs_production)
+
+    if pattern == "none_moved":
+        np.testing.assert_allclose(np.asarray(ratio_debug), np.ones_like(np.asarray(ratio_debug)), rtol=1e-12, atol=1e-12)
 
     jax.clear_caches()
 
