@@ -389,6 +389,48 @@ class AOs_cart_data:
         """
         self.structure_data.sanity_check()
 
+    def _build_uncontracted_aos(self) -> "AOs_cart_data":
+        """Return an uncontracted AO dataset by unique exponents per AO."""
+        seen = set()
+        new_nucleus_index = []
+        new_angular_momentums = []
+        new_orbital_indices = []
+        new_exponents = []
+        new_coefficients = []
+        new_polynominal_order_x = []
+        new_polynominal_order_y = []
+        new_polynominal_order_z = []
+
+        for orb, exp in zip(self.orbital_indices, self.exponents, strict=True):
+            key = (orb, exp)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            new_idx = len(new_nucleus_index)
+            new_nucleus_index.append(self.nucleus_index[orb])
+            new_angular_momentums.append(self.angular_momentums[orb])
+            new_orbital_indices.append(new_idx)
+            new_exponents.append(exp)
+            new_coefficients.append(1.0)
+            new_polynominal_order_x.append(self.polynominal_order_x[orb])
+            new_polynominal_order_y.append(self.polynominal_order_y[orb])
+            new_polynominal_order_z.append(self.polynominal_order_z[orb])
+
+        return type(self)(
+            structure_data=self.structure_data,
+            nucleus_index=new_nucleus_index,
+            num_ao=len(new_nucleus_index),
+            num_ao_prim=len(new_orbital_indices),
+            orbital_indices=new_orbital_indices,
+            exponents=new_exponents,
+            coefficients=new_coefficients,
+            angular_momentums=new_angular_momentums,
+            polynominal_order_x=new_polynominal_order_x,
+            polynominal_order_y=new_polynominal_order_y,
+            polynominal_order_z=new_polynominal_order_z,
+        )
+
     def _get_info(self) -> list[str]:
         """Return a list of strings containing information about the class attributes."""
         info_lines = []
@@ -439,6 +481,7 @@ class AOs_cart_data:
                     z_term = (2.0 * Z / np.pi) ** (3.0 / 2.0) * (8.0 * Z) ** l
                     Norm = np.sqrt(fact_term * z_term)  # which is better for its output?? Todo.
                     Norm = np.sqrt(fact_term)  # which is better for its output?? Todo.
+                    Norm = 1.0  # skip normalization factor for output consistency with common quantum chemistry packages.
                     orig_coef = stored_coef * Norm
                     ec_pairs.append((Z, orig_coef))
 
@@ -965,6 +1008,42 @@ class AOs_sphe_data:
         """
 
         self.structure_data.sanity_check()
+
+    def _build_uncontracted_aos(self) -> "AOs_sphe_data":
+        """Return an uncontracted AO dataset by unique exponents per AO."""
+        seen = set()
+        new_nucleus_index = []
+        new_angular_momentums = []
+        new_orbital_indices = []
+        new_exponents = []
+        new_coefficients = []
+        new_magnetic_quantum_numbers = []
+
+        for orb, exp in zip(self.orbital_indices, self.exponents, strict=True):
+            key = (orb, exp)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            new_idx = len(new_nucleus_index)
+            new_nucleus_index.append(self.nucleus_index[orb])
+            new_angular_momentums.append(self.angular_momentums[orb])
+            new_orbital_indices.append(new_idx)
+            new_exponents.append(exp)
+            new_coefficients.append(1.0)
+            new_magnetic_quantum_numbers.append(self.magnetic_quantum_numbers[orb])
+
+        return type(self)(
+            structure_data=self.structure_data,
+            nucleus_index=new_nucleus_index,
+            num_ao=len(new_nucleus_index),
+            num_ao_prim=len(new_orbital_indices),
+            orbital_indices=new_orbital_indices,
+            exponents=new_exponents,
+            coefficients=new_coefficients,
+            angular_momentums=new_angular_momentums,
+            magnetic_quantum_numbers=new_magnetic_quantum_numbers,
+        )
 
     def _get_info(self) -> list[str]:
         """Return a list of strings containing information about the class attributes."""
