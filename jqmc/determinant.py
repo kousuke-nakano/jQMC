@@ -52,6 +52,8 @@ from jax import jit, vmap
 from .atomic_orbital import (
     AOs_cart_data,
     AOs_sphe_data,
+    _aos_cart_to_sphe,
+    _aos_sphe_to_cart,
     compute_AOs,
     compute_AOs_grad,
     compute_AOs_laplacian,
@@ -337,6 +339,88 @@ class Geminal_data:
             return compute_MOs_laplacian
         else:
             raise NotImplementedError
+
+    def to_cartesian(self) -> "Geminal_data":
+        """Convert spherical orbitals to Cartesian and transform the lambda matrix.
+
+        If the underlying orbitals are MOs, defer to ``MOs_data.to_cartesian``
+        (the lambda matrix is unchanged). For Cartesian inputs, return self.
+        """
+        if isinstance(self.orb_data_up_spin, MOs_data) or isinstance(self.orb_data_dn_spin, MOs_data):
+            if not (isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data)):
+                raise ValueError("Cartesian conversion requires both spin channels to use MOs or both to use AOs.")
+            return Geminal_data(
+                num_electron_up=self.num_electron_up,
+                num_electron_dn=self.num_electron_dn,
+                orb_data_up_spin=self.orb_data_up_spin.to_cartesian(),
+                orb_data_dn_spin=self.orb_data_dn_spin.to_cartesian(),
+                lambda_matrix=self.lambda_matrix,
+            )
+
+        if isinstance(self.orb_data_up_spin, AOs_cart_data) and isinstance(self.orb_data_dn_spin, AOs_cart_data):
+            return self
+        if not isinstance(self.orb_data_up_spin, (AOs_sphe_data, AOs_cart_data)) or not isinstance(
+            self.orb_data_dn_spin, (AOs_sphe_data, AOs_cart_data)
+        ):
+            raise ValueError("Cartesian conversion is only available from spherical/cartesian AOs or MOs.")
+        aos_up_cart, transform_up = _aos_sphe_to_cart(self.orb_data_up_spin)
+        aos_dn_cart, transform_dn = _aos_sphe_to_cart(self.orb_data_dn_spin)
+
+        lambda_matrix = np.asarray(self.lambda_matrix, dtype=np.float64)
+        lambda_matrix_paired, lambda_matrix_unpaired = np.hsplit(lambda_matrix, [self.orb_num_dn])
+        lambda_paired_cart = transform_up.T @ lambda_matrix_paired @ transform_dn
+        lambda_unpaired_cart = transform_up.T @ lambda_matrix_unpaired
+        lambda_cart = np.hstack([lambda_paired_cart, lambda_unpaired_cart])
+        lambda_cart = lambda_cart.astype(np.asarray(self.lambda_matrix).dtype, copy=False)
+
+        return Geminal_data(
+            num_electron_up=self.num_electron_up,
+            num_electron_dn=self.num_electron_dn,
+            orb_data_up_spin=aos_up_cart,
+            orb_data_dn_spin=aos_dn_cart,
+            lambda_matrix=lambda_cart,
+        )
+
+    def to_spherical(self) -> "Geminal_data":
+        """Convert Cartesian orbitals to spherical and transform the lambda matrix.
+
+        If the underlying orbitals are MOs, defer to ``MOs_data.to_spherical``
+        (the lambda matrix is unchanged). For spherical inputs, return self.
+        """
+        if isinstance(self.orb_data_up_spin, MOs_data) or isinstance(self.orb_data_dn_spin, MOs_data):
+            if not (isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data)):
+                raise ValueError("Spherical conversion requires both spin channels to use MOs or both to use AOs.")
+            return Geminal_data(
+                num_electron_up=self.num_electron_up,
+                num_electron_dn=self.num_electron_dn,
+                orb_data_up_spin=self.orb_data_up_spin.to_spherical(),
+                orb_data_dn_spin=self.orb_data_dn_spin.to_spherical(),
+                lambda_matrix=self.lambda_matrix,
+            )
+
+        if isinstance(self.orb_data_up_spin, AOs_sphe_data) and isinstance(self.orb_data_dn_spin, AOs_sphe_data):
+            return self
+        if not isinstance(self.orb_data_up_spin, (AOs_sphe_data, AOs_cart_data)) or not isinstance(
+            self.orb_data_dn_spin, (AOs_sphe_data, AOs_cart_data)
+        ):
+            raise ValueError("Spherical conversion is only available from cartesian/spherical AOs or MOs.")
+        aos_up_sphe, transform_up = _aos_cart_to_sphe(self.orb_data_up_spin)
+        aos_dn_sphe, transform_dn = _aos_cart_to_sphe(self.orb_data_dn_spin)
+
+        lambda_matrix = np.asarray(self.lambda_matrix, dtype=np.float64)
+        lambda_matrix_paired, lambda_matrix_unpaired = np.hsplit(lambda_matrix, [self.orb_num_dn])
+        lambda_paired_sph = transform_up.T @ lambda_matrix_paired @ transform_dn
+        lambda_unpaired_sph = transform_up.T @ lambda_matrix_unpaired
+        lambda_sph = np.hstack([lambda_paired_sph, lambda_unpaired_sph])
+        lambda_sph = lambda_sph.astype(np.asarray(self.lambda_matrix).dtype, copy=False)
+
+        return Geminal_data(
+            num_electron_up=self.num_electron_up,
+            num_electron_dn=self.num_electron_dn,
+            orb_data_up_spin=aos_up_sphe,
+            orb_data_dn_spin=aos_dn_sphe,
+            lambda_matrix=lambda_sph,
+        )
 
     @classmethod
     def convert_from_MOs_to_AOs(cls, geminal_data: "Geminal_data") -> "Geminal_data":

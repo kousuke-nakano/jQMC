@@ -53,8 +53,15 @@ from jax import grad, hessian, jit, vmap
 from jax import typing as jnpt
 from jax.tree_util import tree_flatten, tree_unflatten
 
-from .atomic_orbital import AOs_cart_data, AOs_sphe_data, compute_AOs, compute_AOs_grad, compute_AOs_laplacian
-from .jqmc_utility import _cart_to_spherical_matrix, _spherical_to_cart_matrix
+from .atomic_orbital import (
+    AOs_cart_data,
+    AOs_sphe_data,
+    _aos_cart_to_sphe,
+    _aos_sphe_to_cart,
+    compute_AOs,
+    compute_AOs_grad,
+    compute_AOs_laplacian,
+)
 from .molecular_orbital import MOs_data, compute_MOs, compute_MOs_grad, compute_MOs_laplacian
 from .structure import Structure_data
 
@@ -1228,97 +1235,16 @@ class Jastrow_three_body_data:
         if not isinstance(self.orb_data, AOs_sphe_data):
             raise ValueError("Cartesian conversion is only available from spherical AOs or MOs.")
 
-        aos_sphe = self.orb_data
-        rtol, atol = 1.0e-6, 1.0e-8
-
-        shells: list[dict] = []
-
-        def _match_shell(existing: dict, nucleus: int, l: int, exps: np.ndarray, coefs: np.ndarray) -> bool:
-            return (
-                existing["nucleus"] == nucleus
-                and existing["l"] == l
-                and len(existing["exps"]) == len(exps)
-                and np.allclose(existing["exps"], exps, rtol=rtol, atol=atol)
-                and np.allclose(existing["coefs"], coefs, rtol=rtol, atol=atol)
-            )
-
-        for ao_idx in range(aos_sphe.num_ao):
-            prim_indices = [i for i, v in enumerate(aos_sphe.orbital_indices) if v == ao_idx]
-            exps = np.asarray([aos_sphe.exponents[i] for i in prim_indices], dtype=np.float64)
-            coefs = np.asarray([aos_sphe.coefficients[i] for i in prim_indices], dtype=np.float64)
-            nucleus = aos_sphe.nucleus_index[ao_idx]
-            l = aos_sphe.angular_momentums[ao_idx]
-
-            for shell in shells:
-                if _match_shell(shell, nucleus, l, exps, coefs):
-                    shell["ao_indices"].append(ao_idx)
-                    break
-            else:
-                shells.append({"nucleus": nucleus, "l": l, "exps": exps, "coefs": coefs, "ao_indices": [ao_idx]})
-
-        total_cart = sum((shell["l"] + 1) * (shell["l"] + 2) // 2 for shell in shells)
-        total_sph = aos_sphe.num_ao
-        transform_matrix = np.zeros((total_sph, total_cart), dtype=np.float64)
-
-        new_nucleus_index: list[int] = []
-        new_angular_momentums: list[int] = []
-        new_polynominal_order_x: list[int] = []
-        new_polynominal_order_y: list[int] = []
-        new_polynominal_order_z: list[int] = []
-        new_orbital_indices: list[int] = []
-        new_exponents: list[float] = []
-        new_coefficients: list[float] = []
-
-        cart_col_start = 0
-        for shell in shells:
-            l = shell["l"]
-            ao_indices = shell["ao_indices"]
-            if len(ao_indices) != 2 * l + 1:
-                raise ValueError(f"Shell with l={l} at nucleus {shell['nucleus']} is incomplete: {len(ao_indices)} AOs found.")
-
-            orders = [(nx, ny, l - nx - ny) for nx in range(l, -1, -1) for ny in range(l - nx, -1, -1)]
-            n_cart = len(orders)
-            cart_indices = list(range(cart_col_start, cart_col_start + n_cart))
-            cart_col_start += n_cart
-
-            shell_sph_indices = sorted(ao_indices, key=lambda idx: aos_sphe.magnetic_quantum_numbers[idx])
-            transform_matrix[np.ix_(shell_sph_indices, cart_indices)] = _spherical_to_cart_matrix(l)
-
-            for nx, ny, nz in orders:
-                ao_new_idx = len(new_nucleus_index)
-                new_nucleus_index.append(shell["nucleus"])
-                new_angular_momentums.append(l)
-                new_polynominal_order_x.append(nx)
-                new_polynominal_order_y.append(ny)
-                new_polynominal_order_z.append(nz)
-
-                for exp, coef in zip(shell["exps"], shell["coefs"], strict=True):
-                    new_orbital_indices.append(ao_new_idx)
-                    new_exponents.append(float(exp))
-                    new_coefficients.append(float(coef))
+        aos_cart, transform_matrix = _aos_sphe_to_cart(self.orb_data)
 
         square_sph = np.asarray(self.j_matrix[:, :-1], dtype=np.float64)
         j1_sph = np.asarray(self.j_matrix[:, -1], dtype=np.float64)
         square_cart = transform_matrix.T @ square_sph @ transform_matrix
         j1_cart = transform_matrix.T @ j1_sph
 
-        j_matrix_cart = np.zeros((total_cart, total_cart + 1), dtype=np.asarray(self.j_matrix).dtype)
+        j_matrix_cart = np.zeros((aos_cart.num_ao, aos_cart.num_ao + 1), dtype=np.asarray(self.j_matrix).dtype)
         j_matrix_cart[:, :-1] = square_cart
         j_matrix_cart[:, -1] = j1_cart
-
-        aos_cart = AOs_cart_data(
-            structure_data=aos_sphe.structure_data,
-            nucleus_index=new_nucleus_index,
-            num_ao=total_cart,
-            num_ao_prim=len(new_exponents),
-            orbital_indices=new_orbital_indices,
-            exponents=new_exponents,
-            coefficients=new_coefficients,
-            angular_momentums=new_angular_momentums,
-            polynominal_order_x=new_polynominal_order_x,
-            polynominal_order_y=new_polynominal_order_y,
-            polynominal_order_z=new_polynominal_order_z,
-        )
 
         return Jastrow_three_body_data(orb_data=aos_cart, j_matrix=j_matrix_cart)
 
@@ -1335,111 +1261,16 @@ class Jastrow_three_body_data:
         if not isinstance(self.orb_data, AOs_cart_data):
             raise ValueError("Spherical conversion is only available from Cartesian AOs or MOs.")
 
-        aos_cart = self.orb_data
-        rtol, atol = 1.0e-6, 1.0e-8
-
-        shells: list[dict] = []
-
-        def _match_shell(existing: dict, nucleus: int, l: int, exps: np.ndarray, coefs: np.ndarray) -> bool:
-            return (
-                existing["nucleus"] == nucleus
-                and existing["l"] == l
-                and len(existing["exps"]) == len(exps)
-                and np.allclose(existing["exps"], exps, rtol=rtol, atol=atol)
-                and np.allclose(existing["coefs"], coefs, rtol=rtol, atol=atol)
-            )
-
-        for ao_idx in range(aos_cart.num_ao):
-            prim_indices = [i for i, v in enumerate(aos_cart.orbital_indices) if v == ao_idx]
-            exps = np.asarray([aos_cart.exponents[i] for i in prim_indices], dtype=np.float64)
-            coefs = np.asarray([aos_cart.coefficients[i] for i in prim_indices], dtype=np.float64)
-            nucleus = aos_cart.nucleus_index[ao_idx]
-            l = aos_cart.angular_momentums[ao_idx]
-            order = (
-                aos_cart.polynominal_order_x[ao_idx],
-                aos_cart.polynominal_order_y[ao_idx],
-                aos_cart.polynominal_order_z[ao_idx],
-            )
-
-            for shell in shells:
-                if _match_shell(shell, nucleus, l, exps, coefs):
-                    shell["orders_to_idx"][order] = ao_idx
-                    break
-            else:
-                shells.append(
-                    {
-                        "nucleus": nucleus,
-                        "l": l,
-                        "exps": exps,
-                        "coefs": coefs,
-                        "orders_to_idx": {order: ao_idx},
-                    }
-                )
-
-        total_sph = sum(2 * shell["l"] + 1 for shell in shells)
-        total_cart = aos_cart.num_ao
-        transform_matrix = np.zeros((total_sph, total_cart), dtype=np.float64)
-
-        new_nucleus_index: list[int] = []
-        new_angular_momentums: list[int] = []
-        new_magnetic_quantum_numbers: list[int] = []
-        new_orbital_indices: list[int] = []
-        new_exponents: list[float] = []
-        new_coefficients: list[float] = []
-
-        sph_row_start = 0
-        for shell in shells:
-            l = shell["l"]
-            orders = [(nx, ny, l - nx - ny) for nx in range(l, -1, -1) for ny in range(l - nx, -1, -1)]
-            if len(shell["orders_to_idx"]) != len(orders):
-                raise ValueError(
-                    f"Shell with l={l} at nucleus {shell['nucleus']} is incomplete: {len(shell['orders_to_idx'])} Cartesian AOs found."
-                )
-
-            cart_indices = []
-            for order in orders:
-                if order not in shell["orders_to_idx"]:
-                    raise ValueError(f"Missing Cartesian order {order} for shell l={l} at nucleus {shell['nucleus']}.")
-                cart_indices.append(shell["orders_to_idx"][order])
-
-            n_sph = 2 * l + 1
-            sph_indices = list(range(sph_row_start, sph_row_start + n_sph))
-            sph_row_start += n_sph
-            transform_matrix[np.ix_(sph_indices, cart_indices)] = _spherical_to_cart_matrix(l)
-
-            for m in range(-l, l + 1):
-                ao_new_idx = len(new_nucleus_index)
-                new_nucleus_index.append(shell["nucleus"])
-                new_angular_momentums.append(l)
-                new_magnetic_quantum_numbers.append(m)
-
-                for exp, coef in zip(shell["exps"], shell["coefs"], strict=True):
-                    new_orbital_indices.append(ao_new_idx)
-                    new_exponents.append(float(exp))
-                    new_coefficients.append(float(coef))
-
-        transform_pinv = np.linalg.pinv(transform_matrix)
+        aos_sphe, transform_pinv = _aos_cart_to_sphe(self.orb_data)
 
         square_cart = np.asarray(self.j_matrix[:, :-1], dtype=np.float64)
         j1_cart = np.asarray(self.j_matrix[:, -1], dtype=np.float64)
         square_sph = transform_pinv.T @ square_cart @ transform_pinv
         j1_sph = transform_pinv.T @ j1_cart
 
-        j_matrix_sph = np.zeros((total_sph, total_sph + 1), dtype=np.asarray(self.j_matrix).dtype)
+        j_matrix_sph = np.zeros((aos_sphe.num_ao, aos_sphe.num_ao + 1), dtype=np.asarray(self.j_matrix).dtype)
         j_matrix_sph[:, :-1] = square_sph
         j_matrix_sph[:, -1] = j1_sph
-
-        aos_sphe = AOs_sphe_data(
-            structure_data=aos_cart.structure_data,
-            nucleus_index=new_nucleus_index,
-            num_ao=total_sph,
-            num_ao_prim=len(new_exponents),
-            orbital_indices=new_orbital_indices,
-            exponents=new_exponents,
-            coefficients=new_coefficients,
-            angular_momentums=new_angular_momentums,
-            magnetic_quantum_numbers=new_magnetic_quantum_numbers,
-        )
 
         return Jastrow_three_body_data(orb_data=aos_sphe, j_matrix=j_matrix_sph)
 
