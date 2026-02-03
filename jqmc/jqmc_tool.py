@@ -163,6 +163,56 @@ def _get_nn_jastrow_help_msg() -> str:
         return "Parameters for NN Jastrow. Specify as 'key=value'. Can be used multiple times."
 
 
+_J3_AO_SELECTION_TABLE = {
+    "period1": {
+        "ao-small": "3s",
+        "ao-medium": "3s1p",
+        "ao-large": "4s2p1d",
+    },
+    "period2": {
+        "ao-small": "3s1p",
+        "ao-medium": "4s2p1d",
+        "ao-large": "5s3p2d1f",
+    },
+    "period3": {
+        "ao-small": "4s2p",
+        "ao-medium": "5s3p1d",
+        "ao-large": "6s4p3d1f",
+    },
+    "period4plus_main": {
+        "ao-small": "4s2p1d",
+        "ao-medium": "5s3p2d1f",
+        "ao-large": "6s4p3d2f",
+    },
+    "period4plus_transition": {
+        "ao-small": "4s2p2d1f",
+        "ao-medium": "5s3p3d2f1g",
+        "ao-large": "6s4p4d3f2g1h",
+    },
+}
+
+_J3_TRANSITION_Z_RANGES = (
+    (21, 30),  # 3d transition
+    (39, 48),  # 4d transition
+    (57, 71),  # lanthanides
+    (72, 80),  # 5d transition (excluding La)
+    (89, 103),  # actinides
+    (104, 112),  # 6d transition
+)
+
+_J3_PERIOD_RANGES = (
+    (1, 2),
+    (3, 10),
+    (11, 18),
+    (19, 36),
+    (37, 54),
+    (55, 86),
+    (87, 118),
+)
+
+_J3_SHELL_L_MAP = {"s": 0, "p": 1, "d": 2, "f": 3, "g": 4, "h": 5}
+
+
 @trexio_app.command("convert-to")
 def trexio_convert_to(
     trexio_file: str = typer.Argument(..., help="TREXIO filename."),
@@ -189,6 +239,38 @@ def trexio_convert_to(
     ),
 ):
     """Convert a TREXIO file to hamiltonian_data."""
+
+    def _get_period_from_z(z: int) -> int:
+        for idx, (zmin, zmax) in enumerate(_J3_PERIOD_RANGES, start=1):
+            if zmin <= z <= zmax:
+                return idx
+        return 7
+
+    def _is_transition_or_lanthanide(z: int) -> bool:
+        return any(zmin <= z <= zmax for zmin, zmax in _J3_TRANSITION_Z_RANGES)
+
+    def _parse_shell_spec(spec: str) -> dict[int, int]:
+        counts: dict[int, int] = {}
+        for count_str, shell in re.findall(r"(\d+)([spdfgh])", spec):
+            l = _J3_SHELL_L_MAP[shell]
+            counts[l] = int(count_str)
+        return counts
+
+    def _get_j3_shell_counts(z: int, j3_choice: str) -> dict[int, int] | None:
+        if j3_choice in ("ao", "ao-full"):
+            return None
+        period = _get_period_from_z(z)
+        if period == 1:
+            key = "period1"
+        elif period == 2:
+            key = "period2"
+        elif period == 3:
+            key = "period3"
+        else:
+            key = "period4plus_transition" if _is_transition_or_lanthanide(z) else "period4plus_main"
+        spec = _J3_AO_SELECTION_TABLE[key][j3_choice]
+        return _parse_shell_spec(spec)
+
     # Allow direct string inputs when trexio_convert_to is called programmatically (e.g., in tests)
     if isinstance(j3_basis_type, str):
         try:
@@ -228,12 +310,26 @@ def trexio_convert_to(
 
     if j3_choice is not None:
         if j3_choice in {"ao", "ao-full", "ao-small", "ao-medium", "ao-large"}:
+            aos_data = aos_data._build_uncontracted_aos()
+            ao_exps = [None] * aos_data.num_ao
+            for p, orb in enumerate(aos_data.orbital_indices):
+                if ao_exps[orb] is None:
+                    ao_exps[orb] = aos_data.exponents[p]
+
             selected_ao_indices_total = []
 
             # 1) Loop over each nucleus in the AO dataset
             for nucleus in set(aos_data.nucleus_index):
                 # collect AO indices that belong to this nucleus
                 ao_idxs = [i for i, nuc in enumerate(aos_data.nucleus_index) if nuc == nucleus]
+                if not ao_idxs:
+                    continue
+
+                z = aos_data.structure_data.atomic_numbers[nucleus]
+                shell_counts = _get_j3_shell_counts(z, j3_choice)
+                if shell_counts is None:
+                    selected_ao_indices_total.extend(ao_idxs)
+                    continue
 
                 # 2) Within this nucleus, group AOs by their angular momentum quantum number l
                 for l in set(aos_data.angular_momentums):
@@ -241,47 +337,21 @@ def trexio_convert_to(
                     if not ao_idxs_l:
                         continue
 
-                    # 3) For each AO index, determine its “key exponent”
-                    #    as the exponent of the primitive with the largest absolute coefficient
-                    key_exps = []
-                    for i in ao_idxs_l:
-                        prims = [p for p, orb in enumerate(aos_data.orbital_indices) if orb == i]
-                        max_p = max(prims, key=lambda p: abs(aos_data.coefficients[p]))
-                        key_exps.append((i, aos_data.exponents[max_p]))
+                    n_shells = shell_counts.get(l, 0)
+                    if n_shells <= 0:
+                        continue
 
-                    # 4) Extract the unique basis exponents (Z values) and sort them
-                    basis_exps = sorted({exp for _, exp in key_exps})
-                    B = len(basis_exps)
-
-                    # 5) Exception-aware partitioning of the basis exponents
-                    if j3_choice in ("ao-small", "ao-medium", "ao-large"):
-                        # define desired number of equal splits depending on mode
-                        desired = {"ao-small": 3, "ao-medium": 4, "ao-large": 5}[j3_choice]
-                        # if the number of distinct basis exponents is too small,
-                        # pick the single central exponent
-                        if B <= desired - 1:
-                            sel_basis = [basis_exps[B // 2]]
-                        else:
-                            # otherwise, split into `desired` parts
-                            parts = np.array_split(basis_exps, desired)
-                            if j3_choice == "ao-small":
-                                # keep only the central part
-                                idx = desired // 2
-                                sel_basis = parts[idx]
-                            elif j3_choice == "ao-medium":
-                                # keep the two central parts
-                                start = (desired - 2) // 2
-                                sel_basis = np.concatenate(parts[start : start + 2])
-                            else:  # ao-large
-                                # keep the three central parts
-                                start = (desired - 3) // 2
-                                sel_basis = np.concatenate(parts[start : start + 3])
-                    else:
-                        # 'ao' or 'ao-full' → include all basis exponents
+                    # 3) Extract the unique basis exponents (uncontracted) and sort them
+                    basis_exps = sorted({ao_exps[i] for i in ao_idxs_l})
+                    if n_shells >= len(basis_exps):
                         sel_basis = basis_exps
+                    else:
+                        # select N shells centered around the median exponent
+                        start = max(0, (len(basis_exps) - n_shells) // 2)
+                        sel_basis = basis_exps[start : start + n_shells]
 
-                    # 6) Select AO indices whose key exponent is in the chosen basis group
-                    sel_ao = [i for (i, exp) in key_exps if exp in sel_basis]
+                    # 4) Select AO indices whose exponent is in the chosen basis group
+                    sel_ao = [i for i in ao_idxs_l if ao_exps[i] in sel_basis]
                     selected_ao_indices_total.extend(sel_ao)
 
             # 7) Remove duplicates and sort the selected AO indices globally
@@ -690,46 +760,6 @@ _cli.add_command(typer_click_vmc, "vmc")
 mcmc_app = typer.Typer(help="Pre- and Post-Processing for MCMC calculations.")
 
 
-# This should be removed in future release since it will be no longer useful.
-@mcmc_app.command("fix")
-def mcmc_chk_fix(
-    restart_chk: str = typer.Argument(..., help="old chk file, e.g. mcmc.chk"),
-):
-    """VMC chk file fix."""
-    typer.echo(f"Fix checkpoint file(s) from {restart_chk}.")
-    typer.echo(f"Backup to checkpoint file(s) bak_{restart_chk}.")
-    shutil.copy(restart_chk, f"bak_{restart_chk}")
-
-    basename_restart_chk = os.path.basename(restart_chk)
-    pattern = re.compile(rf"(\d+)_{basename_restart_chk}")
-
-    mpi_ranks = []
-    with zipfile.ZipFile(restart_chk, "r") as z:
-        for file_name in z.namelist():
-            match = pattern.match(os.path.basename(file_name))
-            if match:
-                mpi_ranks.append(int(match.group(1)))
-
-    typer.echo(f"Found {len(mpi_ranks)} MPI ranks.")
-
-    filenames = [f"{mpi_rank}_{basename_restart_chk}.pkl.gz" for mpi_rank in mpi_ranks]
-
-    for filename, mpi_rank in zip(filenames, mpi_ranks, strict=True):
-        with zipfile.ZipFile(restart_chk, "r") as zipf:
-            data = zipf.read(filename)
-            mcmc = pickle.loads(data)
-            tmp_gz_filename = f".{mpi_rank}.pkl.gz"
-            with gzip.open(tmp_gz_filename, "wb") as gz:
-                pickle.dump(mcmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
-
-    with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
-        for mpi_rank in mpi_ranks:
-            gz_name = f".{mpi_rank}.pkl.gz"
-            arcname = gz_name.lstrip(".")
-            zipf.write(gz_name, arcname=arcname)
-            os.remove(gz_name)
-
-
 @mcmc_app.command("compute-energy")
 def mcmc_compute_energy(
     restart_chk: str = typer.Argument(..., help="Restart checkpoint file, e.g. mcmc.rchk"),
@@ -848,46 +878,6 @@ _cli.add_command(typer_click_mcmc, "mcmc")
 
 # LRDMC_app
 lrdmc_app = typer.Typer(help="Pre- and Post-Processing for LRDMC calculations.")
-
-
-# This should be removed in future release since it will be no longer useful.
-@lrdmc_app.command("fix")
-def lrdmc_chk_fix(
-    restart_chk: str = typer.Argument(..., help="old chk file, e.g. lrdmc.chk"),
-):
-    """LRDMC chk file fix."""
-    typer.echo(f"Fix checkpoint file(s) from {restart_chk}.")
-    typer.echo(f"Backup to checkpoint file(s) bak_{restart_chk}.")
-    shutil.copy(restart_chk, f"bak_{restart_chk}")
-
-    basename_restart_chk = os.path.basename(restart_chk)
-    pattern = re.compile(rf"(\d+)_{basename_restart_chk}")
-
-    mpi_ranks = []
-    with zipfile.ZipFile(restart_chk, "r") as z:
-        for file_name in z.namelist():
-            match = pattern.match(os.path.basename(file_name))
-            if match:
-                mpi_ranks.append(int(match.group(1)))
-
-    typer.echo(f"Found {len(mpi_ranks)} MPI ranks.")
-
-    filenames = [f"{mpi_rank}_{basename_restart_chk}.pkl.gz" for mpi_rank in mpi_ranks]
-
-    for filename, mpi_rank in zip(filenames, mpi_ranks, strict=True):
-        with zipfile.ZipFile(restart_chk, "r") as zipf:
-            data = zipf.read(filename)
-            lrdmc = pickle.loads(data)
-            tmp_gz_filename = f".{mpi_rank}.pkl.gz"
-            with gzip.open(tmp_gz_filename, "wb") as gz:
-                pickle.dump(lrdmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
-
-    with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
-        for mpi_rank in mpi_ranks:
-            gz_name = f".{mpi_rank}.pkl.gz"
-            arcname = gz_name.lstrip(".")
-            zipf.write(gz_name, arcname=arcname)
-            os.remove(gz_name)
 
 
 @lrdmc_app.command("compute-energy")
