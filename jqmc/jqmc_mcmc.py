@@ -2507,18 +2507,17 @@ class MCMC:
             logger.info("")
             self.hamiltonian_data = hamiltonian_data
 
-            # dump WF
-            if mpi_rank == 0:
-                if (i_opt + 1) % wf_dump_freq == 0 or (i_opt + 1) == num_opt_steps:
-                    hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.h5"
-                    logger.info(f"Hamiltonian data is dumped as an HDF5 file: {hamiltonian_data_filename}.")
-                    self.hamiltonian_data.save_to_hdf5(hamiltonian_data_filename)
-
             # check max time
             vmcopt_current = time.perf_counter()
 
+            # if max_time exceeded, break the loop
             if max_time < vmcopt_current - vmcopt_total_start:
                 logger.info(f"Stopping... max_time = {max_time} sec. exceeds.")
+                # dump WF
+                if mpi_rank == 0:
+                    hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.h5"
+                    logger.info(f"Hamiltonian data is dumped as an HDF5 file: {hamiltonian_data_filename}.")
+                    self.hamiltonian_data.save_to_hdf5(hamiltonian_data_filename)
                 logger.info("Break the vmcopt loop.")
                 break
 
@@ -2534,8 +2533,20 @@ class MCMC:
                     stop_flag = False
                 if stop_flag:
                     logger.info(f"Stopping... stop_flag in {toml_filename} is true.")
+                    # dump WF
+                    if mpi_rank == 0:
+                        hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.h5"
+                        logger.info(f"Hamiltonian data is dumped as an HDF5 file: {hamiltonian_data_filename}.")
+                        self.hamiltonian_data.save_to_hdf5(hamiltonian_data_filename)
                     logger.info("Break the optimization loop.")
                     break
+
+            # dump WF
+            if mpi_rank == 0:
+                if (i_opt + 1) % wf_dump_freq == 0 or (i_opt + 1) == num_opt_steps:
+                    hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.h5"
+                    logger.info(f"Hamiltonian data is dumped as an HDF5 file: {hamiltonian_data_filename}.")
+                    self.hamiltonian_data.save_to_hdf5(hamiltonian_data_filename)
 
         # update WF opt counter
         self.__i_opt += i_opt + 1
