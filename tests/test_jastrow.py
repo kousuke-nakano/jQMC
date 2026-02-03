@@ -396,6 +396,276 @@ def test_Jastrow_threebody_part_with_MOs_data():
     jax.clear_caches()
 
 
+def test_Jastrow_threebody_part_sphe_to_cart_AOs_data():
+    """Round-trip AOs l<=6: spherical→Cartesian keeps J3 values/grads."""
+    rng = np.random.default_rng(321)
+
+    nucleus_index: list[int] = []
+    orbital_indices: list[int] = []
+    exponents: list[float] = []
+    coefficients: list[float] = []
+    angular_momentums: list[int] = []
+    magnetic_quantum_numbers: list[int] = []
+
+    ao_idx = 0
+    for l in range(7):
+        exp_l = rng.uniform(0.5, 2.0)
+        coef_l = rng.uniform(0.7, 1.3)
+        for m in range(-l, l + 1):
+            nucleus_index.append(0)
+            orbital_indices.append(ao_idx)
+            exponents.append(exp_l)
+            coefficients.append(coef_l)
+            angular_momentums.append(l)
+            magnetic_quantum_numbers.append(m)
+            ao_idx += 1
+
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=np.zeros((1, 3), dtype=np.float64),
+        atomic_numbers=(1,),
+        element_symbols=("X",),
+        atomic_labels=("X",),
+    )
+
+    aos_sphe = AOs_sphe_data(
+        structure_data=structure_data,
+        nucleus_index=tuple(nucleus_index),
+        num_ao=len(angular_momentums),
+        num_ao_prim=len(exponents),
+        orbital_indices=tuple(orbital_indices),
+        exponents=tuple(exponents),
+        coefficients=tuple(coefficients),
+        angular_momentums=tuple(angular_momentums),
+        magnetic_quantum_numbers=tuple(magnetic_quantum_numbers),
+    )
+
+    j_matrix = rng.uniform(-0.3, 0.3, size=(aos_sphe.num_ao, aos_sphe.num_ao + 1))
+    j3_sph = Jastrow_three_body_data(orb_data=aos_sphe, j_matrix=j_matrix)
+    j3_cart = j3_sph.to_cartesian()
+
+    r_up_carts = rng.uniform(-1.0, 1.0, size=(4, 3))
+    r_dn_carts = rng.uniform(-1.0, 1.0, size=(3, 3))
+
+    J_sph = compute_Jastrow_three_body(j3_sph, r_up_carts, r_dn_carts)
+    J_cart = compute_Jastrow_three_body(j3_cart, r_up_carts, r_dn_carts)
+
+    grads_sph = compute_grads_and_laplacian_Jastrow_three_body(j3_sph, r_up_carts, r_dn_carts)
+    grads_cart = compute_grads_and_laplacian_Jastrow_three_body(j3_cart, r_up_carts, r_dn_carts)
+
+    np.testing.assert_allclose(np.asarray(J_sph), np.asarray(J_cart), rtol=1e-9, atol=1e-10)
+    for sph, cart in zip(grads_sph, grads_cart, strict=True):
+        np.testing.assert_allclose(np.asarray(sph), np.asarray(cart), rtol=1e-9, atol=1e-10)
+
+    jax.clear_caches()
+
+
+def test_Jastrow_threebody_part_cart_to_sphe_AOs_data():
+    """Round-trip AOs l<=6: Cartesian→spherical keeps J3 values/grads."""
+    rng = np.random.default_rng(654)
+
+    nucleus_index: list[int] = []
+    orbital_indices: list[int] = []
+    exponents: list[float] = []
+    coefficients: list[float] = []
+    angular_momentums: list[int] = []
+    magnetic_quantum_numbers: list[int] = []
+
+    ao_idx = 0
+    for l in range(7):
+        exp_l = rng.uniform(0.5, 2.0)
+        coef_l = rng.uniform(0.7, 1.3)
+        for m in range(-l, l + 1):
+            nucleus_index.append(0)
+            orbital_indices.append(ao_idx)
+            exponents.append(exp_l)
+            coefficients.append(coef_l)
+            angular_momentums.append(l)
+            magnetic_quantum_numbers.append(m)
+            ao_idx += 1
+
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=np.zeros((1, 3), dtype=np.float64),
+        atomic_numbers=(1,),
+        element_symbols=("X",),
+        atomic_labels=("X",),
+    )
+
+    aos_sphe = AOs_sphe_data(
+        structure_data=structure_data,
+        nucleus_index=tuple(nucleus_index),
+        num_ao=len(angular_momentums),
+        num_ao_prim=len(exponents),
+        orbital_indices=tuple(orbital_indices),
+        exponents=tuple(exponents),
+        coefficients=tuple(coefficients),
+        angular_momentums=tuple(angular_momentums),
+        magnetic_quantum_numbers=tuple(magnetic_quantum_numbers),
+    )
+
+    j_matrix = rng.uniform(-0.3, 0.3, size=(aos_sphe.num_ao, aos_sphe.num_ao + 1))
+    j3_cart = Jastrow_three_body_data(orb_data=aos_sphe, j_matrix=j_matrix).to_cartesian()
+    j3_cart_to_sph = j3_cart.to_spherical()
+
+    r_up_carts = rng.uniform(-1.0, 1.0, size=(5, 3))
+    r_dn_carts = rng.uniform(-1.0, 1.0, size=(4, 3))
+
+    J_cart = compute_Jastrow_three_body(j3_cart, r_up_carts, r_dn_carts)
+    J_sph = compute_Jastrow_three_body(j3_cart_to_sph, r_up_carts, r_dn_carts)
+
+    grads_cart = compute_grads_and_laplacian_Jastrow_three_body(j3_cart, r_up_carts, r_dn_carts)
+    grads_sph = compute_grads_and_laplacian_Jastrow_three_body(j3_cart_to_sph, r_up_carts, r_dn_carts)
+
+    np.testing.assert_allclose(np.asarray(J_cart), np.asarray(J_sph), rtol=1e-9, atol=1e-10)
+    for cart, sph in zip(grads_cart, grads_sph, strict=True):
+        np.testing.assert_allclose(np.asarray(cart), np.asarray(sph), rtol=1e-9, atol=1e-10)
+
+    jax.clear_caches()
+
+
+def test_Jastrow_threebody_part_sphe_to_cart_MOs_data():
+    """Round-trip MOs built on l<=6 AOs: spherical→Cartesian keeps J3 values/grads."""
+    rng = np.random.default_rng(777)
+
+    nucleus_index: list[int] = []
+    orbital_indices: list[int] = []
+    exponents: list[float] = []
+    coefficients: list[float] = []
+    angular_momentums: list[int] = []
+    magnetic_quantum_numbers: list[int] = []
+
+    ao_idx = 0
+    for l in range(7):
+        exp_l = rng.uniform(0.5, 2.0)
+        coef_l = rng.uniform(0.7, 1.3)
+        for m in range(-l, l + 1):
+            nucleus_index.append(0)
+            orbital_indices.append(ao_idx)
+            exponents.append(exp_l)
+            coefficients.append(coef_l)
+            angular_momentums.append(l)
+            magnetic_quantum_numbers.append(m)
+            ao_idx += 1
+
+    num_ao = len(angular_momentums)
+    num_mo = max(8, num_ao // 2)
+
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=np.zeros((1, 3), dtype=np.float64),
+        atomic_numbers=(1,),
+        element_symbols=("X",),
+        atomic_labels=("X",),
+    )
+
+    aos_sphe = AOs_sphe_data(
+        structure_data=structure_data,
+        nucleus_index=tuple(nucleus_index),
+        num_ao=num_ao,
+        num_ao_prim=len(exponents),
+        orbital_indices=tuple(orbital_indices),
+        exponents=tuple(exponents),
+        coefficients=tuple(coefficients),
+        angular_momentums=tuple(angular_momentums),
+        magnetic_quantum_numbers=tuple(magnetic_quantum_numbers),
+    )
+
+    mo_coefficients = rng.uniform(-0.5, 0.5, size=(num_mo, num_ao))
+    mos_sphe = MOs_data(num_mo=num_mo, aos_data=aos_sphe, mo_coefficients=mo_coefficients)
+    mos_sphe.sanity_check()
+
+    j_matrix = rng.uniform(-0.2, 0.2, size=(mos_sphe.num_mo, mos_sphe.num_mo + 1))
+    j3_sph = Jastrow_three_body_data(orb_data=mos_sphe, j_matrix=j_matrix)
+    j3_cart = j3_sph.to_cartesian()
+
+    r_up_carts = rng.uniform(-1.0, 1.0, size=(5, 3))
+    r_dn_carts = rng.uniform(-1.0, 1.0, size=(4, 3))
+
+    J_sph = compute_Jastrow_three_body(j3_sph, r_up_carts, r_dn_carts)
+    J_cart = compute_Jastrow_three_body(j3_cart, r_up_carts, r_dn_carts)
+
+    grads_sph = compute_grads_and_laplacian_Jastrow_three_body(j3_sph, r_up_carts, r_dn_carts)
+    grads_cart = compute_grads_and_laplacian_Jastrow_three_body(j3_cart, r_up_carts, r_dn_carts)
+
+    np.testing.assert_allclose(np.asarray(J_sph), np.asarray(J_cart), rtol=1e-9, atol=1e-10)
+    for sph, cart in zip(grads_sph, grads_cart, strict=True):
+        np.testing.assert_allclose(np.asarray(sph), np.asarray(cart), rtol=1e-9, atol=1e-10)
+
+    jax.clear_caches()
+
+
+def test_Jastrow_threebody_part_cart_to_sphe_MOs_data():
+    """Round-trip MOs l<=6: Cartesian→spherical keeps J3 values/grads."""
+    rng = np.random.default_rng(888)
+
+    nucleus_index: list[int] = []
+    orbital_indices: list[int] = []
+    exponents: list[float] = []
+    coefficients: list[float] = []
+    angular_momentums: list[int] = []
+    magnetic_quantum_numbers: list[int] = []
+
+    ao_idx = 0
+    for l in range(7):
+        exp_l = rng.uniform(0.5, 2.0)
+        coef_l = rng.uniform(0.7, 1.3)
+        for m in range(-l, l + 1):
+            nucleus_index.append(0)
+            orbital_indices.append(ao_idx)
+            exponents.append(exp_l)
+            coefficients.append(coef_l)
+            angular_momentums.append(l)
+            magnetic_quantum_numbers.append(m)
+            ao_idx += 1
+
+    num_ao = len(angular_momentums)
+    num_mo = max(8, num_ao // 2)
+
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=np.zeros((1, 3), dtype=np.float64),
+        atomic_numbers=(1,),
+        element_symbols=("X",),
+        atomic_labels=("X",),
+    )
+
+    aos_sphe = AOs_sphe_data(
+        structure_data=structure_data,
+        nucleus_index=tuple(nucleus_index),
+        num_ao=num_ao,
+        num_ao_prim=len(exponents),
+        orbital_indices=tuple(orbital_indices),
+        exponents=tuple(exponents),
+        coefficients=tuple(coefficients),
+        angular_momentums=tuple(angular_momentums),
+        magnetic_quantum_numbers=tuple(magnetic_quantum_numbers),
+    )
+
+    mo_coefficients = rng.uniform(-0.5, 0.5, size=(num_mo, num_ao))
+    mos_sphe = MOs_data(num_mo=num_mo, aos_data=aos_sphe, mo_coefficients=mo_coefficients)
+    mos_sphe.sanity_check()
+
+    j_matrix = rng.uniform(-0.2, 0.2, size=(mos_sphe.num_mo, mos_sphe.num_mo + 1))
+    j3_cart = Jastrow_three_body_data(orb_data=mos_sphe, j_matrix=j_matrix).to_cartesian()
+    j3_cart_to_sph = j3_cart.to_spherical()
+
+    r_up_carts = rng.uniform(-1.0, 1.0, size=(6, 3))
+    r_dn_carts = rng.uniform(-1.0, 1.0, size=(5, 3))
+
+    J_cart = compute_Jastrow_three_body(j3_cart, r_up_carts, r_dn_carts)
+    J_sph = compute_Jastrow_three_body(j3_cart_to_sph, r_up_carts, r_dn_carts)
+
+    grads_cart = compute_grads_and_laplacian_Jastrow_three_body(j3_cart, r_up_carts, r_dn_carts)
+    grads_sph = compute_grads_and_laplacian_Jastrow_three_body(j3_cart_to_sph, r_up_carts, r_dn_carts)
+
+    np.testing.assert_allclose(np.asarray(J_cart), np.asarray(J_sph), rtol=1e-9, atol=1e-10)
+    for cart, sph in zip(grads_cart, grads_sph, strict=True):
+        np.testing.assert_allclose(np.asarray(cart), np.asarray(sph), rtol=1e-9, atol=1e-10)
+
+    jax.clear_caches()
+
+
 def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
     """Test numerical and JAX grads of the three-body Jastrow factor, comparing the debug and JAX implementations, using AOs data."""
     num_r_up_cart_samples = 4
@@ -1087,7 +1357,6 @@ def test_ratio_Jastrow_part_rank1_update(pattern: str):
 @pytest.mark.parametrize("pattern", ["all_moved", "none_moved", "mixed"])
 def test_ratio_Jastrow_part_rank1_update_with_NN(pattern: str):
     """Compare ratio Jastrow part: debug vs auto implementation (with NN)."""
-
     np.random.seed(0)
     jastrow_data, old_r_up_carts, old_r_dn_carts = _build_jastrow_data_for_part_tests(include_nn=True)
 

@@ -46,10 +46,12 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from jqmc.atomic_orbital import (  # noqa: E402
+    AOs_cart_data,
     AOs_sphe_data,
 )
 from jqmc.molecular_orbital import (  # noqa: E402
     MOs_data,
+    _cart_to_spherical_matrix,
     _compute_MOs_debug,
     _compute_MOs_grad_autodiff,
     _compute_MOs_grad_debug,
@@ -496,6 +498,180 @@ def test_MOs_comparing_analytic_and_auto_laplacians():
     mo_lap_auto = _compute_MOs_laplacian_autodiff(mos_data=mos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(mo_lap_an, mo_lap_auto, decimal=decimal_auto_vs_analytic_deriv)
+
+    jax.clear_caches()
+
+
+def test_MOs_sphe_to_cart():
+    """Ensure spherical -> Cartesian conversion preserves MO values up to l=6."""
+
+    rng = np.random.default_rng(0)
+
+    nucleus_index = []
+    orbital_indices = []
+    exponents = []
+    coefficients = []
+    angular_momentums = []
+    magnetic_quantum_numbers = []
+
+    ao_idx = 0
+    for l in range(7):  # l = 0..6
+        for m in range(-l, l + 1):
+            nucleus_index.append(0)
+            orbital_indices.append(ao_idx)
+            exponents.append(float(l + 1))
+            coefficients.append(1.0)
+            angular_momentums.append(l)
+            magnetic_quantum_numbers.append(m)
+            ao_idx += 1
+
+    num_ao = ao_idx
+    num_ao_prim = len(orbital_indices)
+    num_mo = 6
+    num_el = 12
+
+    r_carts = rng.standard_normal((num_el, 3))
+    R_carts = np.array([[0.1, -0.2, 0.3]])
+
+    mo_coefficients = rng.standard_normal((num_mo, num_ao))
+
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=R_carts,
+        atomic_numbers=(1,),
+        element_symbols=("X",),
+        atomic_labels=("X",),
+    )
+
+    aos_data = AOs_sphe_data(
+        structure_data=structure_data,
+        nucleus_index=tuple(nucleus_index),
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        orbital_indices=tuple(orbital_indices),
+        exponents=tuple(exponents),
+        coefficients=tuple(coefficients),
+        angular_momentums=tuple(angular_momentums),
+        magnetic_quantum_numbers=tuple(magnetic_quantum_numbers),
+    )
+
+    mos_sphe = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
+    mos_sphe.sanity_check()
+
+    mos_cart = mos_sphe.to_cartesian()
+
+    assert isinstance(mos_cart.aos_data, AOs_cart_data)
+
+    mo_sphe = compute_MOs(mos_data=mos_sphe, r_carts=r_carts)
+    mo_cart = compute_MOs(mos_data=mos_cart, r_carts=r_carts)
+
+    np.testing.assert_array_almost_equal(mo_cart, mo_sphe, decimal=decimal_debug_vs_production)
+
+    grad_sphe = compute_MOs_grad(mos_data=mos_sphe, r_carts=r_carts)
+    grad_cart = compute_MOs_grad(mos_data=mos_cart, r_carts=r_carts)
+
+    for g_cart, g_sphe in zip(grad_cart, grad_sphe, strict=True):
+        np.testing.assert_array_almost_equal(g_cart, g_sphe, decimal=decimal_debug_vs_production)
+
+    lap_sphe = compute_MOs_laplacian(mos_data=mos_sphe, r_carts=r_carts)
+    lap_cart = compute_MOs_laplacian(mos_data=mos_cart, r_carts=r_carts)
+
+    np.testing.assert_array_almost_equal(lap_cart, lap_sphe, decimal=decimal_debug_vs_production)
+
+    jax.clear_caches()
+
+
+def test_MOs_cart_to_sphe():
+    """Ensure Cartesian -> spherical conversion preserves MO values up to l=6."""
+
+    rng = np.random.default_rng(1)
+
+    nucleus_index = []
+    orbital_indices = []
+    exponents = []
+    coefficients = []
+    angular_momentums = []
+    polynominal_order_x = []
+    polynominal_order_y = []
+    polynominal_order_z = []
+
+    shell_cart_indices: list[list[int]] = []
+    ao_idx = 0
+    for l in range(7):  # l = 0..6
+        shell_indices: list[int] = []
+        for nx, ny, nz in [(nx, ny, l - nx - ny) for nx in range(l, -1, -1) for ny in range(l - nx, -1, -1)]:
+            nucleus_index.append(0)
+            orbital_indices.append(ao_idx)
+            exponents.append(float(l + 1))
+            coefficients.append(1.0)
+            angular_momentums.append(l)
+            polynominal_order_x.append(nx)
+            polynominal_order_y.append(ny)
+            polynominal_order_z.append(nz)
+            shell_indices.append(ao_idx)
+            ao_idx += 1
+        shell_cart_indices.append(shell_indices)
+
+    num_ao = ao_idx
+    num_ao_prim = len(orbital_indices)
+    num_mo = 6
+    num_el = 12
+
+    r_carts = rng.standard_normal((num_el, 3))
+    R_carts = np.array([[0.1, -0.2, 0.3]])
+
+    # Seed Cartesian coefficients from random spherical blocks to ensure pure-l content
+    mo_coefficients = np.zeros((num_mo, num_ao))
+    for l, cart_indices in enumerate(shell_cart_indices):
+        transform = _cart_to_spherical_matrix(l)
+        sph_block = rng.standard_normal((num_mo, 2 * l + 1))
+        cart_block = sph_block @ transform.T
+        mo_coefficients[:, cart_indices] = cart_block
+
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=R_carts,
+        atomic_numbers=(1,),
+        element_symbols=("X",),
+        atomic_labels=("X",),
+    )
+
+    aos_data = AOs_cart_data(
+        structure_data=structure_data,
+        nucleus_index=tuple(nucleus_index),
+        num_ao=num_ao,
+        num_ao_prim=num_ao_prim,
+        orbital_indices=tuple(orbital_indices),
+        exponents=tuple(exponents),
+        coefficients=tuple(coefficients),
+        angular_momentums=tuple(angular_momentums),
+        polynominal_order_x=tuple(polynominal_order_x),
+        polynominal_order_y=tuple(polynominal_order_y),
+        polynominal_order_z=tuple(polynominal_order_z),
+    )
+
+    mos_cart = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
+    mos_cart.sanity_check()
+
+    mos_sphe = mos_cart.to_spherical()
+
+    assert isinstance(mos_sphe.aos_data, AOs_sphe_data)
+
+    mo_cart = compute_MOs(mos_data=mos_cart, r_carts=r_carts)
+    mo_sphe = compute_MOs(mos_data=mos_sphe, r_carts=r_carts)
+
+    np.testing.assert_array_almost_equal(mo_sphe, mo_cart, decimal=decimal_debug_vs_production)
+
+    grad_cart = compute_MOs_grad(mos_data=mos_cart, r_carts=r_carts)
+    grad_sphe = compute_MOs_grad(mos_data=mos_sphe, r_carts=r_carts)
+
+    for g_cart, g_sphe in zip(grad_cart, grad_sphe, strict=True):
+        np.testing.assert_array_almost_equal(g_sphe, g_cart, decimal=decimal_debug_vs_production)
+
+    lap_cart = compute_MOs_laplacian(mos_data=mos_cart, r_carts=r_carts)
+    lap_sphe = compute_MOs_laplacian(mos_data=mos_sphe, r_carts=r_carts)
+
+    np.testing.assert_array_almost_equal(lap_sphe, lap_cart, decimal=decimal_debug_vs_production)
 
     jax.clear_caches()
 
