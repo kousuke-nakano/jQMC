@@ -46,6 +46,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+from jqmc.atomic_orbital import AOs_sphe_data  # noqa: E402
 from jqmc.determinant import (  # noqa: E402
     Geminal_data,
     _compute_AS_regularization_factor_debug,
@@ -65,6 +66,7 @@ from jqmc.determinant import (  # noqa: E402
     compute_grads_and_laplacian_ln_Det,
     compute_grads_and_laplacian_ln_Det_fast,
 )
+from jqmc.molecular_orbital import MOs_data  # noqa: E402
 from jqmc.setting import (  # noqa: E402
     atol_auto_vs_numerical_deriv,
     decimal_auto_vs_analytic_deriv,
@@ -72,6 +74,7 @@ from jqmc.setting import (  # noqa: E402
     decimal_debug_vs_production,
     rtol_auto_vs_numerical_deriv,
 )
+from jqmc.structure import Structure_data  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 
 # JAX float64
@@ -245,6 +248,192 @@ def test_comparing_AO_and_MO_geminals():
     det_geminal_ao = det_geminal_ao_jax
 
     np.testing.assert_almost_equal(det_geminal_ao, det_geminal_mo, decimal=decimal_debug_vs_production)
+
+    jax.clear_caches()
+
+
+def _build_sphe_aos_l_le6(rng: np.random.Generator) -> AOs_sphe_data:
+    nucleus_index: list[int] = []
+    orbital_indices: list[int] = []
+    exponents: list[float] = []
+    coefficients: list[float] = []
+    angular_momentums: list[int] = []
+    magnetic_quantum_numbers: list[int] = []
+
+    ao_idx = 0
+    for l in range(7):
+        exp_l = rng.uniform(0.5, 2.0)
+        coef_l = rng.uniform(0.7, 1.3)
+        for m in range(-l, l + 1):
+            nucleus_index.append(0)
+            orbital_indices.append(ao_idx)
+            exponents.append(exp_l)
+            coefficients.append(coef_l)
+            angular_momentums.append(l)
+            magnetic_quantum_numbers.append(m)
+            ao_idx += 1
+
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=np.zeros((1, 3), dtype=np.float64),
+        atomic_numbers=(1,),
+        element_symbols=("X",),
+        atomic_labels=("X",),
+    )
+
+    return AOs_sphe_data(
+        structure_data=structure_data,
+        nucleus_index=tuple(nucleus_index),
+        num_ao=len(angular_momentums),
+        num_ao_prim=len(exponents),
+        orbital_indices=tuple(orbital_indices),
+        exponents=tuple(exponents),
+        coefficients=tuple(coefficients),
+        angular_momentums=tuple(angular_momentums),
+        magnetic_quantum_numbers=tuple(magnetic_quantum_numbers),
+    )
+
+
+def test_geminal_sphe_to_cart_AOs_data():
+    """Round-trip AOs l<=6: spherical→Cartesian keeps geminal values/grads."""
+    rng = np.random.default_rng(321)
+
+    aos_sphe = _build_sphe_aos_l_le6(rng)
+    num_electron_up = 4
+    num_electron_dn = 4
+
+    lambda_matrix = rng.uniform(-0.2, 0.2, size=(aos_sphe.num_ao, aos_sphe.num_ao))
+    geminal_sph = Geminal_data(
+        num_electron_up=num_electron_up,
+        num_electron_dn=num_electron_dn,
+        orb_data_up_spin=aos_sphe,
+        orb_data_dn_spin=aos_sphe,
+        lambda_matrix=lambda_matrix,
+    )
+    geminal_cart = geminal_sph.to_cartesian()
+
+    r_up_carts = rng.uniform(-1.0, 1.0, size=(num_electron_up, 3))
+    r_dn_carts = rng.uniform(-1.0, 1.0, size=(num_electron_dn, 3))
+
+    G_sph = compute_geminal_all_elements(geminal_sph, r_up_carts, r_dn_carts)
+    G_cart = compute_geminal_all_elements(geminal_cart, r_up_carts, r_dn_carts)
+    np.testing.assert_allclose(np.asarray(G_sph), np.asarray(G_cart), rtol=1e-9, atol=1e-10)
+
+    grads_sph = compute_grads_and_laplacian_ln_Det(geminal_sph, r_up_carts, r_dn_carts)
+    grads_cart = compute_grads_and_laplacian_ln_Det(geminal_cart, r_up_carts, r_dn_carts)
+    for sph, cart in zip(grads_sph, grads_cart, strict=True):
+        np.testing.assert_allclose(np.asarray(sph), np.asarray(cart), rtol=1e-9, atol=1e-10)
+
+    jax.clear_caches()
+
+
+def test_geminal_cart_to_sphe_AOs_data():
+    """Round-trip AOs l<=6: Cartesian→spherical keeps geminal values/grads."""
+    rng = np.random.default_rng(654)
+
+    aos_sphe = _build_sphe_aos_l_le6(rng)
+    num_electron_up = 5
+    num_electron_dn = 5
+
+    lambda_matrix = rng.uniform(-0.2, 0.2, size=(aos_sphe.num_ao, aos_sphe.num_ao))
+    geminal_sph = Geminal_data(
+        num_electron_up=num_electron_up,
+        num_electron_dn=num_electron_dn,
+        orb_data_up_spin=aos_sphe,
+        orb_data_dn_spin=aos_sphe,
+        lambda_matrix=lambda_matrix,
+    )
+
+    geminal_cart = geminal_sph.to_cartesian()
+    geminal_cart_to_sph = geminal_cart.to_spherical()
+
+    r_up_carts = rng.uniform(-1.0, 1.0, size=(num_electron_up, 3))
+    r_dn_carts = rng.uniform(-1.0, 1.0, size=(num_electron_dn, 3))
+
+    G_cart = compute_geminal_all_elements(geminal_cart, r_up_carts, r_dn_carts)
+    G_sph = compute_geminal_all_elements(geminal_cart_to_sph, r_up_carts, r_dn_carts)
+    np.testing.assert_allclose(np.asarray(G_cart), np.asarray(G_sph), rtol=1e-9, atol=1e-10)
+
+    grads_cart = compute_grads_and_laplacian_ln_Det(geminal_cart, r_up_carts, r_dn_carts)
+    grads_sph = compute_grads_and_laplacian_ln_Det(geminal_cart_to_sph, r_up_carts, r_dn_carts)
+    for cart, sph in zip(grads_cart, grads_sph, strict=True):
+        np.testing.assert_allclose(np.asarray(cart), np.asarray(sph), rtol=1e-9, atol=1e-10)
+
+    jax.clear_caches()
+
+
+def test_geminal_sphe_to_cart_MOs_data():
+    """Round-trip MOs built on l<=6 AOs: spherical→Cartesian keeps geminal values/grads."""
+    rng = np.random.default_rng(777)
+
+    aos_sphe = _build_sphe_aos_l_le6(rng)
+    num_mo = aos_sphe.num_ao
+    mo_coefficients = rng.uniform(-0.5, 0.5, size=(num_mo, aos_sphe.num_ao))
+    mos_sphe = MOs_data(num_mo=num_mo, aos_data=aos_sphe, mo_coefficients=mo_coefficients)
+    mos_sphe.sanity_check()
+
+    num_electron_up = 5
+    num_electron_dn = 5
+    lambda_matrix = rng.uniform(-0.2, 0.2, size=(mos_sphe.num_mo, mos_sphe.num_mo))
+    geminal_sph = Geminal_data(
+        num_electron_up=num_electron_up,
+        num_electron_dn=num_electron_dn,
+        orb_data_up_spin=mos_sphe,
+        orb_data_dn_spin=mos_sphe,
+        lambda_matrix=lambda_matrix,
+    )
+    geminal_cart = geminal_sph.to_cartesian()
+
+    r_up_carts = rng.uniform(-1.0, 1.0, size=(num_electron_up, 3))
+    r_dn_carts = rng.uniform(-1.0, 1.0, size=(num_electron_dn, 3))
+
+    G_sph = compute_geminal_all_elements(geminal_sph, r_up_carts, r_dn_carts)
+    G_cart = compute_geminal_all_elements(geminal_cart, r_up_carts, r_dn_carts)
+    np.testing.assert_allclose(np.asarray(G_sph), np.asarray(G_cart), rtol=1e-9, atol=1e-10)
+
+    grads_sph = compute_grads_and_laplacian_ln_Det(geminal_sph, r_up_carts, r_dn_carts)
+    grads_cart = compute_grads_and_laplacian_ln_Det(geminal_cart, r_up_carts, r_dn_carts)
+    for sph, cart in zip(grads_sph, grads_cart, strict=True):
+        np.testing.assert_allclose(np.asarray(sph), np.asarray(cart), rtol=1e-9, atol=1e-10)
+
+    jax.clear_caches()
+
+
+def test_geminal_cart_to_sphe_MOs_data():
+    """Round-trip MOs l<=6: Cartesian→spherical keeps geminal values/grads."""
+    rng = np.random.default_rng(888)
+
+    aos_sphe = _build_sphe_aos_l_le6(rng)
+    num_mo = aos_sphe.num_ao
+    mo_coefficients = rng.uniform(-0.5, 0.5, size=(num_mo, aos_sphe.num_ao))
+    mos_sphe = MOs_data(num_mo=num_mo, aos_data=aos_sphe, mo_coefficients=mo_coefficients)
+    mos_sphe.sanity_check()
+
+    num_electron_up = 6
+    num_electron_dn = 6
+    lambda_matrix = rng.uniform(-0.2, 0.2, size=(mos_sphe.num_mo, mos_sphe.num_mo))
+    geminal_sph = Geminal_data(
+        num_electron_up=num_electron_up,
+        num_electron_dn=num_electron_dn,
+        orb_data_up_spin=mos_sphe,
+        orb_data_dn_spin=mos_sphe,
+        lambda_matrix=lambda_matrix,
+    )
+
+    geminal_cart = geminal_sph.to_cartesian()
+    geminal_cart_to_sph = geminal_cart.to_spherical()
+
+    r_up_carts = rng.uniform(-1.0, 1.0, size=(num_electron_up, 3))
+    r_dn_carts = rng.uniform(-1.0, 1.0, size=(num_electron_dn, 3))
+
+    G_cart = compute_geminal_all_elements(geminal_cart, r_up_carts, r_dn_carts)
+    G_sph = compute_geminal_all_elements(geminal_cart_to_sph, r_up_carts, r_dn_carts)
+    np.testing.assert_allclose(np.asarray(G_cart), np.asarray(G_sph), rtol=1e-9, atol=1e-10)
+
+    grads_cart = compute_grads_and_laplacian_ln_Det(geminal_cart, r_up_carts, r_dn_carts)
+    grads_sph = compute_grads_and_laplacian_ln_Det(geminal_cart_to_sph, r_up_carts, r_dn_carts)
+    for cart, sph in zip(grads_cart, grads_sph, strict=True):
+        np.testing.assert_allclose(np.asarray(cart), np.asarray(sph), rtol=1e-9, atol=1e-10)
 
     jax.clear_caches()
 
