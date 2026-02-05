@@ -7,7 +7,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Index &#8212; jQMC v0.1.0a1</title>
+    <title>Index &#8212; jQMC v0.1.0</title>
   
   
   
@@ -35,7 +35,7 @@
 <link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="_static/documentation_options.js?v=4efe6a6c"></script>
+    <script src="_static/documentation_options.js?v=a1637f0b"></script>
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
@@ -131,7 +131,7 @@
   
   
   
-    <p class="title logo__title">jQMC v0.1.0a1</p>
+    <p class="title logo__title">jQMC v0.1.0</p>
   
 </a></div>
         <div class="sidebar-primary-item"><ul class="navbar-icon-links"
@@ -163,6 +163,7 @@
         <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
     <div class="bd-toc-item navbar-nav active">
         <ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="overview.html">Overview</a></li>
 <li class="toctree-l1"><a class="reference internal" href="install.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="notes/technical_notes.html">Technical notes</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -170,7 +171,6 @@
 <li class="toctree-l2"><a class="reference internal" href="notes/wavefunction.html">Wave functions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/vmc.html">Variational Monte Carlo (VMC)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/lrdmc.html">Lattice Regularized Diffusion Monte Carlo (LRDMC)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="notes/atomic-forces.html">Atomic forces calculations by VMC and LRDMC</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/jax.html">JAX compatible modules</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/trexio.html">Interfaces with TREX-IO</a></li>
 </ul>
@@ -465,10 +465,10 @@ document.write(`
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.compute_geminal_all_elements">compute_geminal_all_elements() (in module jqmc.determinant)</a>
 </li>
-      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.compute_geminal_dn_one_column_elements">compute_geminal_dn_one_column_elements() (in module jqmc.determinant)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.compute_geminal_dn_one_column_elements">compute_geminal_dn_one_column_elements() (in module jqmc.determinant)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.compute_geminal_up_one_row_elements">compute_geminal_up_one_row_elements() (in module jqmc.determinant)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.compute_grads_and_laplacian_Jastrow_one_body">compute_grads_and_laplacian_Jastrow_one_body() (in module jqmc.jastrow_factor)</a>
@@ -516,10 +516,6 @@ document.write(`
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.compute_orb_laplacian_api">compute_orb_laplacian_api (jqmc.determinant.Geminal_data property)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.compute_quantum_force">compute_quantum_force() (in module jqmc.wavefunction)</a>
-</li>
-      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.compute_ratio_determinant_part">compute_ratio_determinant_part() (in module jqmc.determinant)</a>
-</li>
-      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.compute_ratio_Jastrow_part">compute_ratio_Jastrow_part() (in module jqmc.jastrow_factor)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.convert_from_MOs_to_AOs">convert_from_MOs_to_AOs() (jqmc.determinant.Geminal_data class method)</a>
 </li>
@@ -948,8 +944,6 @@ document.write(`
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc.html#jqmc.hamiltonians.Hamiltonian_data.load_from_hdf5">load_from_hdf5() (jqmc.hamiltonians.Hamiltonian_data static method)</a>
 </li>
-      <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.lrdmc_chk_fix">lrdmc_chk_fix() (in module jqmc.jqmc_tool)</a>
-</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.lrdmc_compute_energy">lrdmc_compute_energy() (in module jqmc.jqmc_tool)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.lrdmc_extrapolate_energy">lrdmc_extrapolate_energy() (in module jqmc.jqmc_tool)</a>
@@ -967,8 +961,6 @@ document.write(`
       <li><a href="api_reference_mod/jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.max_ang_mom_plus_1">max_ang_mom_plus_1 (jqmc.coulomb_potential.Coulomb_potential_data attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC">MCMC (class in jqmc.jqmc_mcmc)</a>
-</li>
-      <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.mcmc_chk_fix">mcmc_chk_fix() (in module jqmc.jqmc_tool)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.mcmc_compute_energy">mcmc_compute_energy() (in module jqmc.jqmc_tool)</a>
 </li>
@@ -1377,12 +1369,32 @@ document.write(`
 <h2 id="T">T</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.to_cartesian">to_cartesian() (jqmc.determinant.Geminal_data method)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_data.to_cartesian">(jqmc.jastrow_factor.Jastrow_data method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data.to_cartesian">(jqmc.jastrow_factor.Jastrow_three_body_data method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.molecular_orbital.MOs_data.to_cartesian">(jqmc.molecular_orbital.MOs_data method)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.to_spherical">to_spherical() (jqmc.determinant.Geminal_data method)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_data.to_spherical">(jqmc.jastrow_factor.Jastrow_data method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data.to_spherical">(jqmc.jastrow_factor.Jastrow_three_body_data method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.molecular_orbital.MOs_data.to_spherical">(jqmc.molecular_orbital.MOs_data method)</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.treedef">treedef (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.trexio_convert_to">trexio_convert_to() (in module jqmc.jqmc_tool)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.trexio_show_detail">trexio_show_detail() (in module jqmc.jqmc_tool)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.trexio_show_info">trexio_show_info() (in module jqmc.jqmc_tool)</a>

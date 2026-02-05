@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>How to cite jQMC &#8212; jQMC v0.1.0a1</title>
+    <title>How to cite jQMC &#8212; jQMC v0.1.0</title>
   
   
   
@@ -36,7 +36,7 @@
 <link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="_static/documentation_options.js?v=4efe6a6c"></script>
+    <script src="_static/documentation_options.js?v=a1637f0b"></script>
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
@@ -132,7 +132,7 @@
   
   
   
-    <p class="title logo__title">jQMC v0.1.0a1</p>
+    <p class="title logo__title">jQMC v0.1.0</p>
   
 </a></div>
         <div class="sidebar-primary-item"><ul class="navbar-icon-links"
@@ -164,6 +164,7 @@
         <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
     <div class="bd-toc-item navbar-nav active">
         <ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="overview.html">Overview</a></li>
 <li class="toctree-l1"><a class="reference internal" href="install.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="notes/technical_notes.html">Technical notes</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -171,7 +172,6 @@
 <li class="toctree-l2"><a class="reference internal" href="notes/wavefunction.html">Wave functions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/vmc.html">Variational Monte Carlo (VMC)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/lrdmc.html">Lattice Regularized Diffusion Monte Carlo (LRDMC)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="notes/atomic-forces.html">Atomic forces calculations by VMC and LRDMC</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/jax.html">JAX compatible modules</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/trexio.html">Interfaces with TREX-IO</a></li>
 </ul>
@@ -352,8 +352,25 @@ document.write(`
 <p>If you used jQMC in your reseach project, please cite the following articles.
 This indeed helps the jQMC project to continue:</p>
 <ul>
+<li><p>“Load-Balanced Diffusion Monte Carlo Method with Lattice Regularization”,</p>
+<p><a class="reference external" href="https://doi.org/10.1063/5.0296986">K. Nakano, S. Sorella, and M. Casula, J. Chem. Phys. 163, 194117 (2025)</a></p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="nd">@article</span><span class="p">{</span><span class="mf">10.1063</span><span class="o">/</span><span class="mf">5.0296986</span><span class="p">,</span>
+    <span class="n">author</span> <span class="o">=</span> <span class="p">{</span><span class="n">Nakano</span><span class="p">,</span> <span class="n">Kousuke</span> <span class="ow">and</span> <span class="n">Sorella</span><span class="p">,</span> <span class="n">Sandro</span> <span class="ow">and</span> <span class="n">Casula</span><span class="p">,</span> <span class="n">Michele</span><span class="p">},</span>
+    <span class="n">title</span> <span class="o">=</span> <span class="p">{</span><span class="n">Load</span><span class="o">-</span><span class="n">balanced</span> <span class="n">diffusion</span> <span class="n">Monte</span> <span class="n">Carlo</span> <span class="n">method</span> <span class="k">with</span> <span class="n">lattice</span> <span class="n">regularization</span><span class="p">},</span>
+    <span class="n">journal</span> <span class="o">=</span> <span class="p">{</span><span class="n">J</span><span class="o">.</span> <span class="n">Chem</span><span class="o">.</span> <span class="n">Phys</span><span class="o">.</span><span class="p">},</span>
+    <span class="n">volume</span> <span class="o">=</span> <span class="p">{</span><span class="mi">163</span><span class="p">},</span>
+    <span class="n">number</span> <span class="o">=</span> <span class="p">{</span><span class="mi">19</span><span class="p">},</span>
+    <span class="n">pages</span> <span class="o">=</span> <span class="p">{</span><span class="mi">194117</span><span class="p">},</span>
+    <span class="n">year</span> <span class="o">=</span> <span class="p">{</span><span class="mi">2025</span><span class="p">},</span>
+    <span class="n">month</span> <span class="o">=</span> <span class="p">{</span><span class="mi">11</span><span class="p">},</span>
+    <span class="n">doi</span> <span class="o">=</span> <span class="p">{</span><span class="mf">10.1063</span><span class="o">/</span><span class="mf">5.0296986</span><span class="p">}</span>
+<span class="p">}</span>
+
+</pre></div>
+</div>
+</li>
 <li><p>“jQMC: JAX-based ab initio Quantum Monte Carlo package”,</p>
-<p>Kosuke Nakano, and Michele Casula, in preparation (2025)</p>
+<p>Kosuke Nakano, and Michele Casula, in preparation (2026)</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="nd">@article</span><span class="p">{</span><span class="n">nakano</span><span class="o">-</span><span class="n">jqmc</span><span class="p">,</span>
   <span class="n">author</span>  <span class="o">=</span> <span class="p">{</span><span class="n">Nakano</span><span class="p">,</span> <span class="n">Kosuke</span> <span class="ow">and</span> <span class="n">Casula</span><span class="p">,</span> <span class="n">Michele</span><span class="p">},</span>
   <span class="n">title</span>   <span class="o">=</span> <span class="p">{</span><span class="n">jQMC</span><span class="p">:</span> <span class="n">JAX</span><span class="o">-</span><span class="n">based</span> <span class="n">ab</span> <span class="n">initio</span> <span class="n">Quantum</span> <span class="n">Monte</span> <span class="n">Carlo</span> <span class="n">package</span><span class="p">},</span>
@@ -361,7 +378,7 @@ This indeed helps the jQMC project to continue:</p>
   <span class="o">%</span><span class="n">volume</span>  <span class="o">=</span> <span class="p">{},</span>
   <span class="o">%</span><span class="n">number</span>  <span class="o">=</span> <span class="p">{},</span>
   <span class="o">%</span><span class="n">pages</span>   <span class="o">=</span> <span class="p">{},</span>
-  <span class="n">year</span>    <span class="o">=</span> <span class="p">{</span><span class="mi">2025</span><span class="p">},</span>
+  <span class="n">year</span>    <span class="o">=</span> <span class="p">{</span><span class="mi">2026</span><span class="p">},</span>
   <span class="o">%</span><span class="n">doi</span>     <span class="o">=</span> <span class="p">{}</span>
 <span class="p">}</span>
 </pre></div>

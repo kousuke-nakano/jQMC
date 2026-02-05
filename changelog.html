@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Change Log &#8212; jQMC v0.1.0a1</title>
+    <title>Change Log &#8212; jQMC v0.1.0</title>
   
   
   
@@ -36,7 +36,7 @@
 <link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="_static/documentation_options.js?v=4efe6a6c"></script>
+    <script src="_static/documentation_options.js?v=a1637f0b"></script>
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
@@ -131,7 +131,7 @@
   
   
   
-    <p class="title logo__title">jQMC v0.1.0a1</p>
+    <p class="title logo__title">jQMC v0.1.0</p>
   
 </a></div>
         <div class="sidebar-primary-item"><ul class="navbar-icon-links"
@@ -163,6 +163,7 @@
         <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
     <div class="bd-toc-item navbar-nav active">
         <ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="overview.html">Overview</a></li>
 <li class="toctree-l1"><a class="reference internal" href="install.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="notes/technical_notes.html">Technical notes</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -170,7 +171,6 @@
 <li class="toctree-l2"><a class="reference internal" href="notes/wavefunction.html">Wave functions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/vmc.html">Variational Monte Carlo (VMC)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/lrdmc.html">Lattice Regularized Diffusion Monte Carlo (LRDMC)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="notes/atomic-forces.html">Atomic forces calculations by VMC and LRDMC</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/jax.html">JAX compatible modules</a></li>
 <li class="toctree-l2"><a class="reference internal" href="notes/trexio.html">Interfaces with TREX-IO</a></li>
 </ul>
@@ -332,7 +332,11 @@ document.write(`
             </div>
             <nav aria-label="Page">
                 <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jan-23-2026-v0-1-0a2">Jan-23-2026: v0.1.0a2</a><ul class="nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#feb-5-2026-v0-1-0">Feb-5-2026: v0.1.0</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#known-limitations">Known Limitations</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jan-23-2026-v0-1-0a3">Jan-23-2026: v0.1.0a3</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#key-features">Key Features</a></li>
 </ul>
 </li>
@@ -359,8 +363,20 @@ document.write(`
                   
   <section class="tex2jax_ignore mathjax_ignore" id="change-log">
 <span id="changelog"></span><h1>Change Log<a class="headerlink" href="#change-log" title="Link to this heading">#</a></h1>
-<section id="jan-23-2026-v0-1-0a2">
-<h2>Jan-23-2026: v0.1.0a2<a class="headerlink" href="#jan-23-2026-v0-1-0a2" title="Link to this heading">#</a></h2>
+<section id="feb-5-2026-v0-1-0">
+<h2>Feb-5-2026: v0.1.0<a class="headerlink" href="#feb-5-2026-v0-1-0" title="Link to this heading">#</a></h2>
+<ul class="simple">
+<li><p>Release of the first stable version of <strong>jQMC</strong>.</p></li>
+</ul>
+<section id="known-limitations">
+<h3>Known Limitations<a class="headerlink" href="#known-limitations" title="Link to this heading">#</a></h3>
+<ul class="simple">
+<li><p>Periodic Boundary Condition (PBC) calculations are being implemented for the next major release.</p></li>
+</ul>
+</section>
+</section>
+<section id="jan-23-2026-v0-1-0a3">
+<h2>Jan-23-2026: v0.1.0a3<a class="headerlink" href="#jan-23-2026-v0-1-0a3" title="Link to this heading">#</a></h2>
 <ul class="simple">
 <li><p>Release of the third alpha version of <strong>jQMC</strong>.</p></li>
 </ul>
@@ -505,7 +521,11 @@ document.write(`
   </div>
   <nav class="bd-toc-nav page-toc">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jan-23-2026-v0-1-0a2">Jan-23-2026: v0.1.0a2</a><ul class="nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#feb-5-2026-v0-1-0">Feb-5-2026: v0.1.0</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#known-limitations">Known Limitations</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jan-23-2026-v0-1-0a3">Jan-23-2026: v0.1.0a3</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#key-features">Key Features</a></li>
 </ul>
 </li>

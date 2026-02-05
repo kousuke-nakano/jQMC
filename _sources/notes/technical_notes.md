@@ -8,7 +8,6 @@ ao
 wavefunction
 vmc
 lrdmc
-atomic-forces
 jax
 trexio
 ```

@@ -2,7 +2,15 @@
 
 # Change Log
 
-## Jan-23-2026: v0.1.0a2
+## Feb-5-2026: v0.1.0
+
+- Release of the first stable version of **jQMC**.
+
+### Known Limitations
+
+*   Periodic Boundary Condition (PBC) calculations are being implemented for the next major release.
+
+## Jan-23-2026: v0.1.0a3
 
 - Release of the third alpha version of **jQMC**.
 

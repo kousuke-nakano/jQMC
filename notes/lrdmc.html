@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Lattice Regularized Diffusion Monte Carlo (LRDMC) &#8212; jQMC v0.1.0a1</title>
+    <title>Lattice Regularized Diffusion Monte Carlo (LRDMC) &#8212; jQMC v0.1.0</title>
   
   
   
@@ -36,14 +36,16 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../_static/documentation_options.js?v=4efe6a6c"></script>
+    <script src="../_static/documentation_options.js?v=a1637f0b"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
+    <script>window.MathJax = {"options": {"processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
     <script>DOCUMENTATION_OPTIONS.pagename = 'notes/lrdmc';</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Atomic forces calculations by VMC and LRDMC" href="atomic-forces.html" />
+    <link rel="next" title="JAX compatible modules" href="jax.html" />
     <link rel="prev" title="Variational Monte Carlo (VMC)" href="vmc.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -132,7 +134,7 @@
   
   
   
-    <p class="title logo__title">jQMC v0.1.0a1</p>
+    <p class="title logo__title">jQMC v0.1.0</p>
   
 </a></div>
         <div class="sidebar-primary-item"><ul class="navbar-icon-links"
@@ -164,6 +166,7 @@
         <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
     <div class="bd-toc-item navbar-nav active">
         <ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../overview.html">Overview</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../install.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="technical_notes.html">Technical notes</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
@@ -171,7 +174,6 @@
 <li class="toctree-l2"><a class="reference internal" href="wavefunction.html">Wave functions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="vmc.html">Variational Monte Carlo (VMC)</a></li>
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">Lattice Regularized Diffusion Monte Carlo (LRDMC)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="atomic-forces.html">Atomic forces calculations by VMC and LRDMC</a></li>
 <li class="toctree-l2"><a class="reference internal" href="jax.html">JAX compatible modules</a></li>
 <li class="toctree-l2"><a class="reference internal" href="trexio.html">Interfaces with TREX-IO</a></li>
 </ul>
@@ -333,7 +335,8 @@ document.write(`
             </div>
             <nav aria-label="Page">
                 <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#green-s-function-monte-carlo-gfmc">Green’s Function Monte Carlo (GFMC)</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#overview">Overview</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#practical-points">Practical points</a></li>
 </ul>
             </nav>
         </div>
@@ -347,11 +350,66 @@ document.write(`
                   
   <section class="tex2jax_ignore mathjax_ignore" id="lattice-regularized-diffusion-monte-carlo-lrdmc">
 <h1>Lattice Regularized Diffusion Monte Carlo (LRDMC)<a class="headerlink" href="#lattice-regularized-diffusion-monte-carlo-lrdmc" title="Link to this heading">#</a></h1>
-<section id="green-s-function-monte-carlo-gfmc">
-<span id="lrdmc-tags"></span><h2>Green’s Function Monte Carlo (GFMC)<a class="headerlink" href="#green-s-function-monte-carlo-gfmc" title="Link to this heading">#</a></h2>
-<p>Work in progress.</p>
+<section id="overview">
+<span id="lrdmc-tags"></span><h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">#</a></h2>
+<p>Lattice regularized diffusion Monte Carlo (LRDMC), initially proposed by Casula<a class="footnote-reference brackets" href="#id14" id="id1" role="doc-noteref"><span class="fn-bracket">[</span>1<span class="fn-bracket">]</span></a>, is a projection technique that systematically improves a variational Ansatz. It is based on Green’s function Monte Carlo (GFMC)<a class="footnote-reference brackets" href="#id15" id="id2" role="doc-noteref"><span class="fn-bracket">[</span>2<span class="fn-bracket">]</span></a><a class="footnote-reference brackets" href="#id16" id="id3" role="doc-noteref"><span class="fn-bracket">[</span>3<span class="fn-bracket">]</span></a><a class="footnote-reference brackets" href="#id17" id="id4" role="doc-noteref"><span class="fn-bracket">[</span>4<span class="fn-bracket">]</span></a>, filtering the ground-state wavefunction from a given trial wavefunction.</p>
+</section>
+<section id="practical-points">
+<h2>Practical points<a class="headerlink" href="#practical-points" title="Link to this heading">#</a></h2>
+<ol class="arabic simple">
+<li><p>No time-step error: unlike standard DMC, LRDMC does not rely on a Suzuki–Trotter decomposition. Instead, a systematic bias comes from the finite lattice spacing <span class="math notranslate nohighlight">\(a\)</span><a class="footnote-reference brackets" href="#id14" id="id5" role="doc-noteref"><span class="fn-bracket">[</span>1<span class="fn-bracket">]</span></a>. To obtain an unbiased fixed-node (FN) energy, extrapolate results to <span class="math notranslate nohighlight">\(a \to 0\)</span> using several lattice spacings; the <span class="math notranslate nohighlight">\(a \to 0\)</span> extrapolation is typically smooth and well captured by low-order polynomial fits.</p></li>
+<li><p>Consistency with DMC: after removing the controllable <span class="math notranslate nohighlight">\(a \to 0\)</span> extrapolation, FN energies from LRDMC agree with standard DMC calculations<a class="footnote-reference brackets" href="#id18" id="id6" role="doc-noteref"><span class="fn-bracket">[</span>5<span class="fn-bracket">]</span></a>.</p></li>
+<li><p>Multiple mesh sizes: LRDMC can introduce two mesh sizes (<span class="math notranslate nohighlight">\(a\)</span> and <span class="math notranslate nohighlight">\(a'\)</span>) so that regions near nuclei and valence regions are diffused appropriately<a class="footnote-reference brackets" href="#id14" id="id7" role="doc-noteref"><span class="fn-bracket">[</span>1<span class="fn-bracket">]</span></a><a class="footnote-reference brackets" href="#id19" id="id8" role="doc-noteref"><span class="fn-bracket">[</span>6<span class="fn-bracket">]</span></a>. This will be introduced into <code class="docutils literal notranslate"><span class="pre">jQMC</span></code> in future.</p></li>
+<li><p>Variational principle with ECPs: LRDMC retains the variational principle even in the presence of effective core potentials, analogous to the T-move treatment in standard DMC<a class="footnote-reference brackets" href="#id14" id="id9" role="doc-noteref"><span class="fn-bracket">[</span>1<span class="fn-bracket">]</span></a><a class="footnote-reference brackets" href="#id20" id="id10" role="doc-noteref"><span class="fn-bracket">[</span>7<span class="fn-bracket">]</span></a><a class="footnote-reference brackets" href="#id21" id="id11" role="doc-noteref"><span class="fn-bracket">[</span>8<span class="fn-bracket">]</span></a>.</p></li>
+</ol>
+<p><code class="docutils literal notranslate"><span class="pre">jQMC</span></code> implements an LRDMC algorithm that maintains parallel efficiency for many walkers and many nodes via load-balancing across walkers<a class="footnote-reference brackets" href="#id22" id="id12" role="doc-noteref"><span class="fn-bracket">[</span>9<span class="fn-bracket">]</span></a>.</p>
+<p>For further algorithmic details, please see the textbook “Quantum Monte Carlo Approaches for Correlated Systems”<a class="footnote-reference brackets" href="#id23" id="id13" role="doc-noteref"><span class="fn-bracket">[</span>10<span class="fn-bracket">]</span></a>.</p>
 </section>
 </section>
+<hr class="footnotes docutils" />
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="id14" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span>1<span class="fn-bracket">]</span></span>
+<span class="backrefs">(<a role="doc-backlink" href="#id1">1</a>,<a role="doc-backlink" href="#id5">2</a>,<a role="doc-backlink" href="#id7">3</a>,<a role="doc-backlink" href="#id9">4</a>)</span>
+<p>M. Casula, C. Filippi, and S. Sorella, Phys. Rev. Lett. 95, 100201 (2005). DOI: <a class="reference external" href="https://doi.org/10.1103/PhysRevLett.95.100201">10.1103/PhysRevLett.95.100201</a></p>
+</aside>
+<aside class="footnote brackets" id="id15" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id2">2</a><span class="fn-bracket">]</span></span>
+<p>D. F. Ten Haaf, H. J. Van Bemmel, J. M. Van Leeuwen, W. Van Saarloos, and D. M. Ceperley, Phys. Rev. B 51, 13039 (1995). DOI: <a class="reference external" href="https://doi.org/10.1103/PhysRevB.51.13039">10.1103/PhysRevB.51.13039</a></p>
+</aside>
+<aside class="footnote brackets" id="id16" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id3">3</a><span class="fn-bracket">]</span></span>
+<p>M. Calandra Buonaura and S. Sorella, Phys. Rev. B 57, 11446 (1998). DOI: <a class="reference external" href="https://doi.org/10.1103/PhysRevB.57.11446">10.1103/PhysRevB.57.11446</a></p>
+</aside>
+<aside class="footnote brackets" id="id17" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id4">4</a><span class="fn-bracket">]</span></span>
+<p>S. Sorella and L. Capriotti, Phys. Rev. B 61, 2599 (2000). DOI: <a class="reference external" href="https://doi.org/10.1103/PhysRevB.61.2599">10.1103/PhysRevB.61.2599</a></p>
+</aside>
+<aside class="footnote brackets" id="id18" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id6">5</a><span class="fn-bracket">]</span></span>
+<p>F. Della Pia, et al., J. Chem. Phys. 163, 104110 (2025). DOI: <a class="reference external" href="https://doi.org/10.1063/5.0272974">10.1063/5.0272974</a></p>
+</aside>
+<aside class="footnote brackets" id="id19" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id8">6</a><span class="fn-bracket">]</span></span>
+<p>K. Nakano, R. Maezono, and S. Sorella, Phys. Rev. B 101, 155106 (2020). DOI: <a class="reference external" href="https://doi.org/10.1103/PhysRevB.101.155106">10.1103/PhysRevB.101.155106</a></p>
+</aside>
+<aside class="footnote brackets" id="id20" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id10">7</a><span class="fn-bracket">]</span></span>
+<p>K. Nakano, S. Sorella, D. Alfè, A. Zen, J. Chem. Theory Comput. 20, 4591-4604 (2024). DOI: <a class="reference external" href="https://doi.org/10.1021/acs.jctc.4c00139">10.1021/acs.jctc.4c00139</a></p>
+</aside>
+<aside class="footnote brackets" id="id21" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id11">8</a><span class="fn-bracket">]</span></span>
+<p>M. Casula, Phys. Rev. B 74, 161102 (2006). DOI: <a class="reference external" href="https://doi.org/10.1103/PhysRevB.74.161102">10.1103/PhysRevB.74.161102</a></p>
+</aside>
+<aside class="footnote brackets" id="id22" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id12">9</a><span class="fn-bracket">]</span></span>
+<p>K. Nakano, S. Sorella, M. Casula, J. Chem. Phys. 163, 194117 (2025). DOI: <a class="reference external" href="https://doi.org/10.1063/5.0296986">10.1063/5.0296986</a></p>
+</aside>
+<aside class="footnote brackets" id="id23" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id13">10</a><span class="fn-bracket">]</span></span>
+<p>“Quantum Monte Carlo Approaches for Correlated Systems”, Cambridge University Press (2017). DOI: <a class="reference external" href="https://doi.org/10.1017/9781316417041">10.1017/9781316417041</a></p>
+</aside>
+</aside>
 
 
                 </article>
@@ -374,11 +432,11 @@ document.write(`
       </div>
     </a>
     <a class="right-next"
-       href="atomic-forces.html"
+       href="jax.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Atomic forces calculations by VMC and LRDMC</p>
+        <p class="prev-next-title">JAX compatible modules</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -398,7 +456,8 @@ document.write(`
   </div>
   <nav class="bd-toc-nav page-toc">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#green-s-function-monte-carlo-gfmc">Green’s Function Monte Carlo (GFMC)</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#overview">Overview</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#practical-points">Practical points</a></li>
 </ul>
   </nav></div>
 

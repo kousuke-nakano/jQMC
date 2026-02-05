@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>JAX compatible modules &#8212; jQMC v0.1.0a1</title>
+    <title>JAX compatible modules &#8212; jQMC v0.1.0</title>
   
   
   
@@ -36,7 +36,7 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../_static/documentation_options.js?v=4efe6a6c"></script>
+    <script src="../_static/documentation_options.js?v=a1637f0b"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
@@ -44,7 +44,7 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Interfaces with TREX-IO" href="trexio.html" />
-    <link rel="prev" title="Atomic forces calculations by VMC and LRDMC" href="atomic-forces.html" />
+    <link rel="prev" title="Lattice Regularized Diffusion Monte Carlo (LRDMC)" href="lrdmc.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   </head>
@@ -132,7 +132,7 @@
   
   
   
-    <p class="title logo__title">jQMC v0.1.0a1</p>
+    <p class="title logo__title">jQMC v0.1.0</p>
   
 </a></div>
         <div class="sidebar-primary-item"><ul class="navbar-icon-links"
@@ -164,6 +164,7 @@
         <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
     <div class="bd-toc-item navbar-nav active">
         <ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../overview.html">Overview</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../install.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="technical_notes.html">Technical notes</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
@@ -171,7 +172,6 @@
 <li class="toctree-l2"><a class="reference internal" href="wavefunction.html">Wave functions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="vmc.html">Variational Monte Carlo (VMC)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="lrdmc.html">Lattice Regularized Diffusion Monte Carlo (LRDMC)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="atomic-forces.html">Atomic forces calculations by VMC and LRDMC</a></li>
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">JAX compatible modules</a></li>
 <li class="toctree-l2"><a class="reference internal" href="trexio.html">Interfaces with TREX-IO</a></li>
 </ul>
@@ -349,7 +349,9 @@ document.write(`
 <h1>JAX compatible modules<a class="headerlink" href="#jax-compatible-modules" title="Link to this heading">#</a></h1>
 <section id="automatic-differentiations">
 <span id="jax-compatible-modules-tags"></span><h2>Automatic Differentiations<a class="headerlink" href="#automatic-differentiations" title="Link to this heading">#</a></h2>
-<p>Work in progress.</p>
+<p>All functions implemented in <code class="docutils literal notranslate"><span class="pre">jqmc</span></code> are written to be JAX compatible: they operate on <code class="docutils literal notranslate"><span class="pre">jax.numpy</span></code> arrays, avoid hidden side effects, and therefore work with <code class="docutils literal notranslate"><span class="pre">jax.grad</span></code>, <code class="docutils literal notranslate"><span class="pre">jax.hessian</span></code>, <code class="docutils literal notranslate"><span class="pre">jax.jit</span></code>, <code class="docutils literal notranslate"><span class="pre">jax.vmap</span></code>, and <code class="docutils literal notranslate"><span class="pre">jax.pmap</span></code>. This means you can take first- and second-order derivatives of any observable or loss you build from <code class="docutils literal notranslate"><span class="pre">jqmc</span></code> modules with respect to parameters (e.g., Jastrow coefficients), atomic coordinates, or other continuous inputs.</p>
+<p>Functions that accept dataclass inputs (for example, <code class="docutils literal notranslate"><span class="pre">compute_local_energy(Hamiltonian_data,</span> <span class="pre">...)</span></code>) are also differentiable. <code class="docutils literal notranslate"><span class="pre">jQMC</span></code> dataclasses use <code class="docutils literal notranslate"><span class="pre">flax.struct.dataclass</span></code>, and differentiable fields are registered as <code class="docutils literal notranslate"><span class="pre">pytree_node</span></code>, so JAX sees them as PyTrees and can propagate derivatives through them.</p>
+<p>With the JAX automatic differentiation, <code class="docutils literal notranslate"><span class="pre">jQMC</span></code> can compute derivative quantities used in wavefunction optimization and force evaluation, such as log-derivatives of the wavefunction and derivatives of the local energy with respect to atomic positions (forces), by applying <code class="docutils literal notranslate"><span class="pre">jax.grad</span></code> to the corresponding scalar-valued functions in <code class="docutils literal notranslate"><span class="pre">jQMC</span></code>.</p>
 </section>
 </section>
 
@@ -365,12 +367,12 @@ document.write(`
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="atomic-forces.html"
+       href="lrdmc.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Atomic forces calculations by VMC and LRDMC</p>
+        <p class="prev-next-title">Lattice Regularized Diffusion Monte Carlo (LRDMC)</p>
       </div>
     </a>
     <a class="right-next"

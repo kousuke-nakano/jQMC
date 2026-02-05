@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>jqmc package &#8212; jQMC v0.1.0a1</title>
+    <title>jqmc package &#8212; jQMC v0.1.0</title>
   
   
   
@@ -36,7 +36,7 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../_static/documentation_options.js?v=4efe6a6c"></script>
+    <script src="../_static/documentation_options.js?v=a1637f0b"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
@@ -134,7 +134,7 @@
   
   
   
-    <p class="title logo__title">jQMC v0.1.0a1</p>
+    <p class="title logo__title">jQMC v0.1.0</p>
   
 </a></div>
         <div class="sidebar-primary-item"><ul class="navbar-icon-links"
@@ -166,6 +166,7 @@
         <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
     <div class="bd-toc-item navbar-nav active">
         <ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../overview.html">Overview</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../install.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../notes/technical_notes.html">Technical notes</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -173,7 +174,6 @@
 <li class="toctree-l2"><a class="reference internal" href="../notes/wavefunction.html">Wave functions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../notes/vmc.html">Variational Monte Carlo (VMC)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../notes/lrdmc.html">Lattice Regularized Diffusion Monte Carlo (LRDMC)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../notes/atomic-forces.html">Atomic forces calculations by VMC and LRDMC</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../notes/jax.html">JAX compatible modules</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../notes/trexio.html">Interfaces with TREX-IO</a></li>
 </ul>
@@ -421,6 +421,8 @@ document.write(`
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.determinant.Geminal_data.orb_num_up"><code class="docutils literal notranslate"><span class="pre">Geminal_data.orb_num_up</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.determinant.Geminal_data.replace"><code class="docutils literal notranslate"><span class="pre">Geminal_data.replace()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.determinant.Geminal_data.sanity_check"><code class="docutils literal notranslate"><span class="pre">Geminal_data.sanity_check()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.determinant.Geminal_data.to_cartesian"><code class="docutils literal notranslate"><span class="pre">Geminal_data.to_cartesian()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.determinant.Geminal_data.to_spherical"><code class="docutils literal notranslate"><span class="pre">Geminal_data.to_spherical()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.determinant.compute_AS_regularization_factor"><code class="docutils literal notranslate"><span class="pre">compute_AS_regularization_factor()</span></code></a></li>
@@ -431,7 +433,6 @@ document.write(`
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.determinant.compute_geminal_up_one_row_elements"><code class="docutils literal notranslate"><span class="pre">compute_geminal_up_one_row_elements()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.determinant.compute_grads_and_laplacian_ln_Det"><code class="docutils literal notranslate"><span class="pre">compute_grads_and_laplacian_ln_Det()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.determinant.compute_grads_and_laplacian_ln_Det_fast"><code class="docutils literal notranslate"><span class="pre">compute_grads_and_laplacian_ln_Det_fast()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.determinant.compute_ratio_determinant_part"><code class="docutils literal notranslate"><span class="pre">compute_ratio_determinant_part()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-jqmc.diff_mask">jqmc.diff_mask module</a><ul class="nav section-nav flex-column">
@@ -493,6 +494,8 @@ document.write(`
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_data.jastrow_two_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_data.jastrow_two_body_data</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_data.replace"><code class="docutils literal notranslate"><span class="pre">Jastrow_data.replace()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_data.sanity_check"><code class="docutils literal notranslate"><span class="pre">Jastrow_data.sanity_check()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_data.to_cartesian"><code class="docutils literal notranslate"><span class="pre">Jastrow_data.to_cartesian()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_data.to_spherical"><code class="docutils literal notranslate"><span class="pre">Jastrow_data.to_spherical()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_one_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_one_body_data</span></code></a><ul class="nav section-nav flex-column">
@@ -512,6 +515,8 @@ document.write(`
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_three_body_data.orb_num"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data.orb_num</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_three_body_data.replace"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data.replace()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_three_body_data.sanity_check"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data.sanity_check()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_three_body_data.to_cartesian"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data.to_cartesian()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_three_body_data.to_spherical"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data.to_spherical()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_two_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_data</span></code></a><ul class="nav section-nav flex-column">
@@ -566,7 +571,6 @@ document.write(`
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.compute_grads_and_laplacian_Jastrow_part"><code class="docutils literal notranslate"><span class="pre">compute_grads_and_laplacian_Jastrow_part()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.compute_grads_and_laplacian_Jastrow_three_body"><code class="docutils literal notranslate"><span class="pre">compute_grads_and_laplacian_Jastrow_three_body()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.compute_grads_and_laplacian_Jastrow_two_body"><code class="docutils literal notranslate"><span class="pre">compute_grads_and_laplacian_Jastrow_two_body()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.compute_ratio_Jastrow_part"><code class="docutils literal notranslate"><span class="pre">compute_ratio_Jastrow_part()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-jqmc.jqmc_cli">jqmc.jqmc_cli module</a></li>
@@ -654,11 +658,9 @@ document.write(`
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.hamiltonian_convert_wavefunction"><code class="docutils literal notranslate"><span class="pre">hamiltonian_convert_wavefunction()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.hamiltonian_show_info"><code class="docutils literal notranslate"><span class="pre">hamiltonian_show_info()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.hamiltonian_to_xyz"><code class="docutils literal notranslate"><span class="pre">hamiltonian_to_xyz()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.lrdmc_chk_fix"><code class="docutils literal notranslate"><span class="pre">lrdmc_chk_fix()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.lrdmc_compute_energy"><code class="docutils literal notranslate"><span class="pre">lrdmc_compute_energy()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.lrdmc_extrapolate_energy"><code class="docutils literal notranslate"><span class="pre">lrdmc_extrapolate_energy()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.lrdmc_generate_input"><code class="docutils literal notranslate"><span class="pre">lrdmc_generate_input()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.mcmc_chk_fix"><code class="docutils literal notranslate"><span class="pre">mcmc_chk_fix()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.mcmc_compute_energy"><code class="docutils literal notranslate"><span class="pre">mcmc_compute_energy()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.mcmc_generate_input"><code class="docutils literal notranslate"><span class="pre">mcmc_generate_input()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.orbital_type"><code class="docutils literal notranslate"><span class="pre">orbital_type</span></code></a><ul class="nav section-nav flex-column">
@@ -688,6 +690,8 @@ document.write(`
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.molecular_orbital.MOs_data.replace"><code class="docutils literal notranslate"><span class="pre">MOs_data.replace()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.molecular_orbital.MOs_data.sanity_check"><code class="docutils literal notranslate"><span class="pre">MOs_data.sanity_check()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.molecular_orbital.MOs_data.structure_data"><code class="docutils literal notranslate"><span class="pre">MOs_data.structure_data</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.molecular_orbital.MOs_data.to_cartesian"><code class="docutils literal notranslate"><span class="pre">MOs_data.to_cartesian()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.molecular_orbital.MOs_data.to_spherical"><code class="docutils literal notranslate"><span class="pre">MOs_data.to_spherical()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.molecular_orbital.compute_MOs"><code class="docutils literal notranslate"><span class="pre">compute_MOs()</span></code></a></li>
@@ -2061,6 +2065,32 @@ depending on the instance stored in the attribute orb_data_up.</p>
 </dl>
 </dd></dl>
 
+<dl class="py method">
+<dt class="sig sig-object py" id="jqmc.determinant.Geminal_data.to_cartesian">
+<span class="sig-name descname"><span class="pre">to_cartesian</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.determinant.Geminal_data.to_cartesian" title="Link to this definition">#</a></dt>
+<dd><p>Convert spherical orbitals to Cartesian and transform the lambda matrix.</p>
+<p>If the underlying orbitals are MOs, defer to <code class="docutils literal notranslate"><span class="pre">MOs_data.to_cartesian</span></code>
+(the lambda matrix is unchanged). For Cartesian inputs, return self.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#jqmc.determinant.Geminal_data" title="jqmc.determinant.Geminal_data"><em>Geminal_data</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jqmc.determinant.Geminal_data.to_spherical">
+<span class="sig-name descname"><span class="pre">to_spherical</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.determinant.Geminal_data.to_spherical" title="Link to this definition">#</a></dt>
+<dd><p>Convert Cartesian orbitals to spherical and transform the lambda matrix.</p>
+<p>If the underlying orbitals are MOs, defer to <code class="docutils literal notranslate"><span class="pre">MOs_data.to_spherical</span></code>
+(the lambda matrix is unchanged). For spherical inputs, return self.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#jqmc.determinant.Geminal_data" title="jqmc.determinant.Geminal_data"><em>Geminal_data</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="py function">
@@ -2233,30 +2263,6 @@ depending on the instance stored in the attribute orb_data_up.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>tuple[<em>Array</em>, <em>Array</em>, <em>Array</em>, <em>Array</em>]</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="jqmc.determinant.compute_ratio_determinant_part">
-<span class="sig-prename descclassname"><span class="pre">jqmc.determinant.</span></span><span class="sig-name descname"><span class="pre">compute_ratio_determinant_part</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">geminal_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">A_old_inv</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">old_r_up_carts</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">old_r_dn_carts</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">new_r_up_carts_arr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">new_r_dn_carts_arr</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.determinant.compute_ratio_determinant_part" title="Link to this definition">#</a></dt>
-<dd><p>Determinant ratio $det G(mathbf r’)/det G(mathbf r)$ for batched moves.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>geminal_data</strong> (<a class="reference internal" href="#jqmc.determinant.Geminal_data" title="jqmc.determinant.Geminal_data"><em>Geminal_data</em></a>) – Geminal parameters and orbital references.</p></li>
-<li><p><strong>A_old_inv</strong> (<em>Array</em>) – Inverse geminal matrix for the reference configuration with shape <code class="docutils literal notranslate"><span class="pre">(N_up,</span> <span class="pre">N_up)</span></code>.</p></li>
-<li><p><strong>old_r_up_carts</strong> (<em>Array</em>) – Original spin-up electron coordinates with shape <code class="docutils literal notranslate"><span class="pre">(N_up,</span> <span class="pre">3)</span></code>.</p></li>
-<li><p><strong>old_r_dn_carts</strong> (<em>Array</em>) – Original spin-down electron coordinates with shape <code class="docutils literal notranslate"><span class="pre">(N_dn,</span> <span class="pre">3)</span></code>.</p></li>
-<li><p><strong>new_r_up_carts_arr</strong> (<em>Array</em>) – Proposed spin-up coordinates per grid with shape <code class="docutils literal notranslate"><span class="pre">(N_grid,</span> <span class="pre">N_up,</span> <span class="pre">3)</span></code>.</p></li>
-<li><p><strong>new_r_dn_carts_arr</strong> (<em>Array</em>) – Proposed spin-down coordinates per grid with shape <code class="docutils literal notranslate"><span class="pre">(N_grid,</span> <span class="pre">N_dn,</span> <span class="pre">3)</span></code>.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Determinant ratios per grid with shape <code class="docutils literal notranslate"><span class="pre">(N_grid,)</span></code>.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>jax.Array</p>
 </dd>
 </dl>
 </dd></dl>
@@ -2793,6 +2799,34 @@ corresponding handling here, without touching the SR/MCMC driver.</p>
 </dl>
 </dd></dl>
 
+<dl class="py method">
+<dt class="sig sig-object py" id="jqmc.jastrow_factor.Jastrow_data.to_cartesian">
+<span class="sig-name descname"><span class="pre">to_cartesian</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.jastrow_factor.Jastrow_data.to_cartesian" title="Link to this definition">#</a></dt>
+<dd><p>Return a copy with the three-body term converted to Cartesian AOs/MOs.</p>
+<p>Only the analytic J3 block is transformed; one- and two-body parts are
+unchanged. If no three-body data is present, the current instance is
+returned.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#jqmc.jastrow_factor.Jastrow_data" title="jqmc.jastrow_factor.Jastrow_data"><em>Jastrow_data</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jqmc.jastrow_factor.Jastrow_data.to_spherical">
+<span class="sig-name descname"><span class="pre">to_spherical</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.jastrow_factor.Jastrow_data.to_spherical" title="Link to this definition">#</a></dt>
+<dd><p>Return a copy with the three-body term converted to spherical AOs/MOs.</p>
+<p>Only the analytic J3 block is transformed; one- and two-body parts are
+unchanged. If no three-body data is present, the current instance is
+returned.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#jqmc.jastrow_factor.Jastrow_data" title="jqmc.jastrow_factor.Jastrow_data"><em>Jastrow_data</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="py class">
@@ -2955,6 +2989,32 @@ stored in self.orb_data</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jqmc.jastrow_factor.Jastrow_three_body_data.to_cartesian">
+<span class="sig-name descname"><span class="pre">to_cartesian</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.jastrow_factor.Jastrow_three_body_data.to_cartesian" title="Link to this definition">#</a></dt>
+<dd><p>Convert spherical orbitals to Cartesian and transform the J-matrix.</p>
+<p>If the underlying orbitals are MOs, defer to <code class="docutils literal notranslate"><span class="pre">MOs_data.to_cartesian</span></code>
+(the J-matrix size is unchanged). For Cartesian inputs, return self.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#jqmc.jastrow_factor.Jastrow_three_body_data" title="jqmc.jastrow_factor.Jastrow_three_body_data"><em>Jastrow_three_body_data</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jqmc.jastrow_factor.Jastrow_three_body_data.to_spherical">
+<span class="sig-name descname"><span class="pre">to_spherical</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.jastrow_factor.Jastrow_three_body_data.to_spherical" title="Link to this definition">#</a></dt>
+<dd><p>Convert Cartesian orbitals to spherical and transform the J-matrix.</p>
+<p>If the underlying orbitals are MOs, defer to <code class="docutils literal notranslate"><span class="pre">MOs_data.to_spherical</span></code>
+(the J-matrix size is unchanged). For spherical inputs, return self.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#jqmc.jastrow_factor.Jastrow_three_body_data" title="jqmc.jastrow_factor.Jastrow_three_body_data"><em>Jastrow_three_body_data</em></a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -3423,32 +3483,6 @@ Laplacians for up/down electrons with shapes <code class="docutils literal notra
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>tuple[jax.Array, jax.Array, jax.Array, jax.Array]</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="jqmc.jastrow_factor.compute_ratio_Jastrow_part">
-<span class="sig-prename descclassname"><span class="pre">jqmc.jastrow_factor.</span></span><span class="sig-name descname"><span class="pre">compute_ratio_Jastrow_part</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">jastrow_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">old_r_up_carts</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">old_r_dn_carts</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">new_r_up_carts_arr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">new_r_dn_carts_arr</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.jastrow_factor.compute_ratio_Jastrow_part" title="Link to this definition">#</a></dt>
-<dd><p>Compute $exp(J(mathbf r’))/exp(J(mathbf r))$ for batched moves.</p>
-<p>This follows the original ratio logic (including exp) while updating types
-to use <code class="docutils literal notranslate"><span class="pre">jax.Array</span></code> inputs. The return is one ratio per proposed grid
-configuration.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>jastrow_data</strong> (<a class="reference internal" href="#jqmc.jastrow_factor.Jastrow_data" title="jqmc.jastrow_factor.Jastrow_data"><em>Jastrow_data</em></a>) – Active Jastrow components.</p></li>
-<li><p><strong>old_r_up_carts</strong> (<em>Array</em>) – Reference spin-up coordinates with shape <code class="docutils literal notranslate"><span class="pre">(N_up,</span> <span class="pre">3)</span></code>.</p></li>
-<li><p><strong>old_r_dn_carts</strong> (<em>Array</em>) – Reference spin-down coordinates with shape <code class="docutils literal notranslate"><span class="pre">(N_dn,</span> <span class="pre">3)</span></code>.</p></li>
-<li><p><strong>new_r_up_carts_arr</strong> (<em>Array</em>) – Proposed spin-up coordinates with shape <code class="docutils literal notranslate"><span class="pre">(N_grid,</span> <span class="pre">N_up,</span> <span class="pre">3)</span></code>.</p></li>
-<li><p><strong>new_r_dn_carts_arr</strong> (<em>Array</em>) – Proposed spin-down coordinates with shape <code class="docutils literal notranslate"><span class="pre">(N_grid,</span> <span class="pre">N_dn,</span> <span class="pre">3)</span></code>.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Jastrow ratios per grid with shape <code class="docutils literal notranslate"><span class="pre">(N_grid,)</span></code> (includes <code class="docutils literal notranslate"><span class="pre">exp</span></code>).</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>jax.Array</p>
 </dd>
 </dl>
 </dd></dl>
@@ -4297,17 +4331,6 @@ internal and subject to change.</p>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="jqmc.jqmc_tool.lrdmc_chk_fix">
-<span class="sig-prename descclassname"><span class="pre">jqmc.jqmc_tool.</span></span><span class="sig-name descname"><span class="pre">lrdmc_chk_fix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">restart_chk</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;typer.models.ArgumentInfo</span> <span class="pre">object&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.jqmc_tool.lrdmc_chk_fix" title="Link to this definition">#</a></dt>
-<dd><p>LRDMC chk file fix.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>restart_chk</strong> (<em>str</em>)</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="jqmc.jqmc_tool.lrdmc_compute_energy">
 <span class="sig-prename descclassname"><span class="pre">jqmc.jqmc_tool.</span></span><span class="sig-name descname"><span class="pre">lrdmc_compute_energy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">restart_chk</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;typer.models.ArgumentInfo</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_gfmc_bin_block</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;typer.models.OptionInfo</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_gfmc_warmup_steps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;typer.models.OptionInfo</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_gfmc_collect_steps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;typer.models.OptionInfo</span> <span class="pre">object&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.jqmc_tool.lrdmc_compute_energy" title="Link to this definition">#</a></dt>
 <dd><p>LRDMC energy calculation.</p>
@@ -4353,17 +4376,6 @@ internal and subject to change.</p>
 <li><p><strong>filename</strong> (<em>str</em>)</p></li>
 <li><p><strong>exclude_comment</strong> (<em>bool</em>)</p></li>
 </ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="jqmc.jqmc_tool.mcmc_chk_fix">
-<span class="sig-prename descclassname"><span class="pre">jqmc.jqmc_tool.</span></span><span class="sig-name descname"><span class="pre">mcmc_chk_fix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">restart_chk</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">&lt;typer.models.ArgumentInfo</span> <span class="pre">object&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.jqmc_tool.mcmc_chk_fix" title="Link to this definition">#</a></dt>
-<dd><p>VMC chk file fix.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>restart_chk</strong> (<em>str</em>)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -4632,6 +4644,45 @@ and delegates AO validation to <code class="docutils literal notranslate"><span 
 <dt class="sig sig-object py" id="jqmc.molecular_orbital.MOs_data.structure_data">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">structure_data</span></span><a class="headerlink" href="#jqmc.molecular_orbital.MOs_data.structure_data" title="Link to this definition">#</a></dt>
 <dd><p>Return structure_data of the aos_data instance.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jqmc.molecular_orbital.MOs_data.to_cartesian">
+<span class="sig-name descname"><span class="pre">to_cartesian</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.molecular_orbital.MOs_data.to_cartesian" title="Link to this definition">#</a></dt>
+<dd><p>Convert spherical AOs to Cartesian AOs and transform MO coefficients.</p>
+<p>Returns a new <code class="docutils literal notranslate"><span class="pre">MOs_data</span></code> whose <code class="docutils literal notranslate"><span class="pre">aos_data</span></code> is <code class="docutils literal notranslate"><span class="pre">AOs_cart_data</span></code>. The molecular
+orbital functions are preserved by applying an analytic (radial-independent)
+transformation per angular momentum shell. Only <code class="docutils literal notranslate"><span class="pre">AOs_sphe_data</span></code> inputs are supported;
+for Cartesian inputs the instance is returned unchanged.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ValueError</strong> – If the underlying AOs are not spherical or the shell completeness
+    check (<code class="docutils literal notranslate"><span class="pre">2l+1</span></code> functions per shell) fails.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#jqmc.molecular_orbital.MOs_data" title="jqmc.molecular_orbital.MOs_data"><em>MOs_data</em></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jqmc.molecular_orbital.MOs_data.to_spherical">
+<span class="sig-name descname"><span class="pre">to_spherical</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#jqmc.molecular_orbital.MOs_data.to_spherical" title="Link to this definition">#</a></dt>
+<dd><p>Convert Cartesian AOs to spherical AOs and transform MO coefficients.</p>
+<p>Returns a new <code class="docutils literal notranslate"><span class="pre">MOs_data</span></code> whose <code class="docutils literal notranslate"><span class="pre">aos_data</span></code> is <code class="docutils literal notranslate"><span class="pre">AOs_sphe_data</span></code>. The molecular
+orbital functions are preserved by applying the analytic Cartesian→spherical
+transformation per angular momentum shell. Only <code class="docutils literal notranslate"><span class="pre">AOs_cart_data</span></code> inputs are supported;
+for spherical inputs the instance is returned unchanged.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ValueError</strong> – If the underlying AOs are not Cartesian or the shell completeness
+    check (<code class="docutils literal notranslate"><span class="pre">(l+1)(l+2)/2</span></code> functions per shell with matching exps/coefs/orders)
+    fails.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#jqmc.molecular_orbital.MOs_data" title="jqmc.molecular_orbital.MOs_data"><em>MOs_data</em></a></p>
+</dd>
+</dl>
 </dd></dl>
 
 </dd></dl>
@@ -5838,6 +5889,8 @@ returns <code class="docutils literal notranslate"><span class="pre">exp(Jastrow
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.determinant.Geminal_data.orb_num_up"><code class="docutils literal notranslate"><span class="pre">Geminal_data.orb_num_up</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.determinant.Geminal_data.replace"><code class="docutils literal notranslate"><span class="pre">Geminal_data.replace()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.determinant.Geminal_data.sanity_check"><code class="docutils literal notranslate"><span class="pre">Geminal_data.sanity_check()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.determinant.Geminal_data.to_cartesian"><code class="docutils literal notranslate"><span class="pre">Geminal_data.to_cartesian()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.determinant.Geminal_data.to_spherical"><code class="docutils literal notranslate"><span class="pre">Geminal_data.to_spherical()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.determinant.compute_AS_regularization_factor"><code class="docutils literal notranslate"><span class="pre">compute_AS_regularization_factor()</span></code></a></li>
@@ -5848,7 +5901,6 @@ returns <code class="docutils literal notranslate"><span class="pre">exp(Jastrow
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.determinant.compute_geminal_up_one_row_elements"><code class="docutils literal notranslate"><span class="pre">compute_geminal_up_one_row_elements()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.determinant.compute_grads_and_laplacian_ln_Det"><code class="docutils literal notranslate"><span class="pre">compute_grads_and_laplacian_ln_Det()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.determinant.compute_grads_and_laplacian_ln_Det_fast"><code class="docutils literal notranslate"><span class="pre">compute_grads_and_laplacian_ln_Det_fast()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.determinant.compute_ratio_determinant_part"><code class="docutils literal notranslate"><span class="pre">compute_ratio_determinant_part()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-jqmc.diff_mask">jqmc.diff_mask module</a><ul class="nav section-nav flex-column">
@@ -5910,6 +5962,8 @@ returns <code class="docutils literal notranslate"><span class="pre">exp(Jastrow
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_data.jastrow_two_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_data.jastrow_two_body_data</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_data.replace"><code class="docutils literal notranslate"><span class="pre">Jastrow_data.replace()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_data.sanity_check"><code class="docutils literal notranslate"><span class="pre">Jastrow_data.sanity_check()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_data.to_cartesian"><code class="docutils literal notranslate"><span class="pre">Jastrow_data.to_cartesian()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_data.to_spherical"><code class="docutils literal notranslate"><span class="pre">Jastrow_data.to_spherical()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_one_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_one_body_data</span></code></a><ul class="nav section-nav flex-column">
@@ -5929,6 +5983,8 @@ returns <code class="docutils literal notranslate"><span class="pre">exp(Jastrow
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_three_body_data.orb_num"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data.orb_num</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_three_body_data.replace"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data.replace()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_three_body_data.sanity_check"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data.sanity_check()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_three_body_data.to_cartesian"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data.to_cartesian()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_three_body_data.to_spherical"><code class="docutils literal notranslate"><span class="pre">Jastrow_three_body_data.to_spherical()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.Jastrow_two_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_data</span></code></a><ul class="nav section-nav flex-column">
@@ -5983,7 +6039,6 @@ returns <code class="docutils literal notranslate"><span class="pre">exp(Jastrow
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.compute_grads_and_laplacian_Jastrow_part"><code class="docutils literal notranslate"><span class="pre">compute_grads_and_laplacian_Jastrow_part()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.compute_grads_and_laplacian_Jastrow_three_body"><code class="docutils literal notranslate"><span class="pre">compute_grads_and_laplacian_Jastrow_three_body()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.compute_grads_and_laplacian_Jastrow_two_body"><code class="docutils literal notranslate"><span class="pre">compute_grads_and_laplacian_Jastrow_two_body()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jastrow_factor.compute_ratio_Jastrow_part"><code class="docutils literal notranslate"><span class="pre">compute_ratio_Jastrow_part()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#module-jqmc.jqmc_cli">jqmc.jqmc_cli module</a></li>
@@ -6071,11 +6126,9 @@ returns <code class="docutils literal notranslate"><span class="pre">exp(Jastrow
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.hamiltonian_convert_wavefunction"><code class="docutils literal notranslate"><span class="pre">hamiltonian_convert_wavefunction()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.hamiltonian_show_info"><code class="docutils literal notranslate"><span class="pre">hamiltonian_show_info()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.hamiltonian_to_xyz"><code class="docutils literal notranslate"><span class="pre">hamiltonian_to_xyz()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.lrdmc_chk_fix"><code class="docutils literal notranslate"><span class="pre">lrdmc_chk_fix()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.lrdmc_compute_energy"><code class="docutils literal notranslate"><span class="pre">lrdmc_compute_energy()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.lrdmc_extrapolate_energy"><code class="docutils literal notranslate"><span class="pre">lrdmc_extrapolate_energy()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.lrdmc_generate_input"><code class="docutils literal notranslate"><span class="pre">lrdmc_generate_input()</span></code></a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.mcmc_chk_fix"><code class="docutils literal notranslate"><span class="pre">mcmc_chk_fix()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.mcmc_compute_energy"><code class="docutils literal notranslate"><span class="pre">mcmc_compute_energy()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.mcmc_generate_input"><code class="docutils literal notranslate"><span class="pre">mcmc_generate_input()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.jqmc_tool.orbital_type"><code class="docutils literal notranslate"><span class="pre">orbital_type</span></code></a><ul class="nav section-nav flex-column">
@@ -6105,6 +6158,8 @@ returns <code class="docutils literal notranslate"><span class="pre">exp(Jastrow
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.molecular_orbital.MOs_data.replace"><code class="docutils literal notranslate"><span class="pre">MOs_data.replace()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.molecular_orbital.MOs_data.sanity_check"><code class="docutils literal notranslate"><span class="pre">MOs_data.sanity_check()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.molecular_orbital.MOs_data.structure_data"><code class="docutils literal notranslate"><span class="pre">MOs_data.structure_data</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.molecular_orbital.MOs_data.to_cartesian"><code class="docutils literal notranslate"><span class="pre">MOs_data.to_cartesian()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.molecular_orbital.MOs_data.to_spherical"><code class="docutils literal notranslate"><span class="pre">MOs_data.to_spherical()</span></code></a></li>
 </ul>
 </li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#jqmc.molecular_orbital.compute_MOs"><code class="docutils literal notranslate"><span class="pre">compute_MOs()</span></code></a></li>
