@@ -2,7 +2,7 @@
 
 ![jqmc_logo](logo/logo_yoko2.jpg)
 
-**jQMC** is an ab initio quantum Monte Carlo (QMC) simulation package developed entirely from scratch using `Python` and `JAX`. Originally designed for molecular systems --with future extensions planned for periodic systems-- **jQMC** implements two well-established QMC algorithms: Variational Monte Carlo (VMC) and a robust and efficient variant of Diffusion Monte Carlo algorithm known as Lattice Regularized Diffusion Monte Carlo (LRDMC). By leveraging `JAX` just-in-time (`jit`) compilation and vectorized mapping (`vmap`) functionalities, `jQMC` achieves high-performance computations **especially on GPUs** while remaining portable across CPUs, GPUs, and TPUs. See [here](http://jax.readthedocs.io/) for the details of `JAX`. The **jQMC** users and developers manual is available from [GitHub Pages](https://kousuke-nakano.github.io/jQMC/).
+**jQMC** is an ab initio quantum Monte Carlo (QMC) simulation package developed entirely from scratch using `Python` and `JAX`. Originally designed for molecular systems --with future extensions planned for periodic systems-- **jQMC** implements two well-established QMC algorithms: Variational Monte Carlo (VMC) and a robust and efficient variant of Diffusion Monte Carlo algorithm known as Lattice Regularized Diffusion Monte Carlo (LRDMC). By leveraging `JAX` just-in-time (`jit`) compilation and vectorized mapping (`vmap`) functionalities, `jQMC` achieves high-performance computations **especially on GPUs** while remaining portable across CPUs and GPUs. See [here](http://jax.readthedocs.io/) for the details of `JAX`. The **jQMC** users and developers manual is available from [GitHub Pages](https://kousuke-nakano.github.io/jQMC/).
 
 ![license](https://img.shields.io/github/license/kousuke-nakano/jQMC)
 ![tag](https://img.shields.io/github/v/tag/kousuke-nakano/jQMC)
@@ -16,7 +16,7 @@
 
 What sets **jQMC** apart:
 
-- It employs a resonating valence bond (RVB)-type wave function, such as the Jastrow Antisymmetrized Geminal (JAGP) wavefunction, which captures correlation effects beyond the conventional Jastrow-Slater wave function used in many other QMC codes.
+- It employs not only the standard Jatrow Slater determinant (JSD) wavefunction, but also the resonating valence bond (RVB)-type wave function, as known as Jastrow Antisymmetrized Geminal (JAGP) wavefunction, which captures correlation effects beyond the conventional JSD wave function used in many other QMC codes.
 - It features a state-of-the-art optimization algorithm, stochastic reconfiguration, that enables stable optimization of both the amplitudes and nodal surfaces of many-body wave functions at the variational level.
 - It implements the LRDMC method, providing a numerically stable approach to diffusion Monte Carlo calculations.
 - The use of adjoint algorithmic differentiation in `JAX` allows for efficient differentiation of many-body wave functions, facilitating the computation of atomic forces analytically.
@@ -29,13 +29,12 @@ This combination of features makes **jQMC** a versatile and powerful tool for bo
 
 
 ## Known issues
-- On CPUs, **`jQMC` is significantly slower than other QMC packages written in compiled languages (e.g., C++ or Fortran) although all the implemented functions are `jit`-compiled and `vmap`-vectorized by `JAX`. Further improvements are needed on both the algorithmic and implementation fronts. As this is an initial release, there remain many bottlenecks and hot spots to address.** Please use GPUs with a large number of walkers to achieve comparable speed.
+- On CPUs, **`jQMC` is significantly slower than other QMC packages written in compiled languages (e.g., C++ or Fortran) although all the implemented functions are `jit`-compiled and `vmap`-vectorized by `JAX`. Please use GPUs with a large number of walkers to achieve comparable speed.
 - Atomic force calculations with **solid (sperical) harmonics GTOs** are much slower than energy and energy-optimization calculations due to the very slow compilations of dlnPsi/dR and de_L/dR. This is because `grad`, `jvp`, and `vjp` are slow for these terms for some reason. A more detailed analysis will be needed. Please use **cartesian GTOs** to do those calculations
 - Periodic boundary condition calculations are not supoorted yet. It will be implemented in the future as `JAX` supports `complex128`. Work in progress.
 
 
 ## Ongoing works
-- Improving the computational performance of VMC and LRDMC. The current implementation remains slow due to several reasons (especially for LRDMC); however, substantial speedups should be possible with code optimization.
 - Implementing periodic boundary conditions (PBC), at least at the Gamma point (i.e., using a real-space wave function).
 
 

@@ -276,7 +276,7 @@ Next step is to convert the `TREXIO` file to the `jqmc` format using `jqmc-tool`
 > Hamiltonian data is saved in hamiltonian_data.h5.
 ```
 
-The generated `hamiltonian_data.chk` is a wavefunction file with the `jqmc` format. `-j2` specifies the initial value of the two-body Jastrow parameter and `-j3` specifies the basis set (`ao`:atomic orbital or `mo`:molecular orbital) for the three-body Jastrow part.
+The generated `hamiltonian_data.chk` is a wavefunction file with the `jqmc` format. `-j2` specifies the initial value of the two-body Jastrow parameter and `-j3` specifies the basis set (`ao`:atomic orbital or `mo`:molecular orbital) for the three-body Jastrow part; `ao` has several choices, so please refer to the command-line reference for the available options.
 
 You can see the content of `hamiltonian_data.h5` by `jqmc-tool`
 
@@ -298,7 +298,7 @@ Coulomb_potential_data
 
 ```
 
-You can also see all the variables stored in `hamiltonian_data.h5` by `h5dump` if it is installed on your machine.
+You can also see all the variables stored in `hamiltonian_data.h5` by `h5dump` (or the interactive viewer `h5tui`) if it is installed on your machine.
 
 ```bash
 % h5dump hamiltonian_data.h5
