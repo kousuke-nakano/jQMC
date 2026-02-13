@@ -896,13 +896,14 @@ def _compute_ratio_determinant_part_rank1_update(
     cols = jnp.dot(orb_matrix_up_old.T, w_batch)  # (N_up, G)
     new_cols_dn = cols.T  # (G, N_up)
 
-    # Precompute A_old_inv slices matching each grid's moved index.
-    A_col_for_up = jnp.take(A_old_inv, idx_up, axis=1).T  # (N_grid, N_up)
-    A_row_for_dn = jnp.take(A_old_inv, idx_dn, axis=0)  # (N_grid, N_up)
-
     # rank-1 determinant ratios for up-move grids and dn-move grids.
-    det_ratio_up = jnp.sum(new_rows_up * A_col_for_up, axis=1)
-    det_ratio_dn = jnp.sum(A_row_for_dn * new_cols_dn, axis=1)
+    # Use matrix-matrix contractions first to maximize BLAS/TensorCore utilization,
+    # then extract the moved-electron component per grid.
+    up_all_cols = jnp.dot(new_rows_up, A_old_inv)  # (N_grid, N_up)
+    det_ratio_up = jnp.take_along_axis(up_all_cols, idx_up[:, None], axis=1).reshape(-1)
+
+    dn_all_rows = jnp.dot(A_old_inv, new_cols_dn.T).T  # (N_grid, N_up)
+    det_ratio_dn = jnp.take_along_axis(dn_all_rows, idx_dn[:, None], axis=1).reshape(-1)
 
     # Select per grid based on which spin moved.
     determinant_ratios = jnp.where(moved_up_exists, det_ratio_up, det_ratio_dn)
@@ -1088,55 +1089,42 @@ def compute_grads_and_laplacian_ln_Det_fast(
     ao_matrix_laplacian_up = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_up_spin, r_up_carts)
     ao_matrix_laplacian_dn = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_dn_spin, r_dn_carts)
 
-    geminal_grad_up_x_paired = jnp.dot(ao_matrix_up_grad_x.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
-    geminal_grad_up_x_unpaired = jnp.dot(ao_matrix_up_grad_x.T, lambda_matrix_unpaired)
-    geminal_grad_up_x = jnp.hstack([geminal_grad_up_x_paired, geminal_grad_up_x_unpaired])
+    ao_up_grads = jnp.stack([ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z], axis=0)
+    ao_dn_grads = jnp.stack([ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z], axis=0)
 
-    geminal_grad_up_y_paired = jnp.dot(ao_matrix_up_grad_y.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
-    geminal_grad_up_y_unpaired = jnp.dot(ao_matrix_up_grad_y.T, lambda_matrix_unpaired)
-    geminal_grad_up_y = jnp.hstack([geminal_grad_up_y_paired, geminal_grad_up_y_unpaired])
+    paired_dn = jnp.dot(lambda_matrix_paired, ao_matrix_dn)
+    paired_dn_grads = jnp.einsum("ab,gbn->gan", lambda_matrix_paired, ao_dn_grads)
 
-    geminal_grad_up_z_paired = jnp.dot(ao_matrix_up_grad_z.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
-    geminal_grad_up_z_unpaired = jnp.dot(ao_matrix_up_grad_z.T, lambda_matrix_unpaired)
-    geminal_grad_up_z = jnp.hstack([geminal_grad_up_z_paired, geminal_grad_up_z_unpaired])
+    geminal_grad_up_paired = jnp.einsum("gia,aj->gij", jnp.swapaxes(ao_up_grads, 1, 2), paired_dn)
+    geminal_grad_up_unpaired = jnp.einsum("gia,ak->gik", jnp.swapaxes(ao_up_grads, 1, 2), lambda_matrix_unpaired)
+    geminal_grad_up = jnp.concatenate([geminal_grad_up_paired, geminal_grad_up_unpaired], axis=2)
 
-    geminal_grad_dn_x_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn_grad_x))
-    geminal_grad_dn_x_unpaired = jnp.zeros(
-        [geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn]
+    geminal_grad_dn_paired = jnp.einsum("ia,gaj->gij", ao_matrix_up.T, paired_dn_grads)
+    geminal_grad_dn_unpaired = jnp.zeros(
+        (3, geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn),
+        dtype=geminal_grad_dn_paired.dtype,
     )
-    geminal_grad_dn_x = jnp.hstack([geminal_grad_dn_x_paired, geminal_grad_dn_x_unpaired])
+    geminal_grad_dn = jnp.concatenate([geminal_grad_dn_paired, geminal_grad_dn_unpaired], axis=2)
 
-    geminal_grad_dn_y_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn_grad_y))
-    geminal_grad_dn_y_unpaired = jnp.zeros(
-        [geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn]
-    )
-    geminal_grad_dn_y = jnp.hstack([geminal_grad_dn_y_paired, geminal_grad_dn_y_unpaired])
-
-    geminal_grad_dn_z_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn_grad_z))
-    geminal_grad_dn_z_unpaired = jnp.zeros(
-        [geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn]
-    )
-    geminal_grad_dn_z = jnp.hstack([geminal_grad_dn_z_paired, geminal_grad_dn_z_unpaired])
-
-    geminal_laplacian_up_paired = jnp.dot(ao_matrix_laplacian_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
+    geminal_laplacian_up_paired = jnp.dot(ao_matrix_laplacian_up.T, paired_dn)
     geminal_laplacian_up_unpaired = jnp.dot(ao_matrix_laplacian_up.T, lambda_matrix_unpaired)
     geminal_laplacian_up = jnp.hstack([geminal_laplacian_up_paired, geminal_laplacian_up_unpaired])
 
     geminal_laplacian_dn_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_laplacian_dn))
     geminal_laplacian_dn_unpaired = jnp.zeros(
-        [geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn]
+        [geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn],
+        dtype=geminal_laplacian_dn_paired.dtype,
     )
     geminal_laplacian_dn = jnp.hstack([geminal_laplacian_dn_paired, geminal_laplacian_dn_unpaired])
 
-    grad_ln_D_up_x = jnp.einsum("ij,ji->i", geminal_grad_up_x, geminal_inverse)
-    grad_ln_D_up_y = jnp.einsum("ij,ji->i", geminal_grad_up_y, geminal_inverse)
-    grad_ln_D_up_z = jnp.einsum("ij,ji->i", geminal_grad_up_z, geminal_inverse)
-    grad_ln_D_dn_x = jnp.einsum("ij,ji->i", geminal_inverse, geminal_grad_dn_x)
-    grad_ln_D_dn_y = jnp.einsum("ij,ji->i", geminal_inverse, geminal_grad_dn_y)
-    grad_ln_D_dn_z = jnp.einsum("ij,ji->i", geminal_inverse, geminal_grad_dn_z)
+    grad_ln_D_up_stack = jnp.einsum("gij,ji->gi", geminal_grad_up, geminal_inverse)
+    grad_ln_D_dn_stack = jnp.einsum("ij,gji->gi", geminal_inverse, geminal_grad_dn)
 
-    grad_ln_D_up = jnp.array([grad_ln_D_up_x, grad_ln_D_up_y, grad_ln_D_up_z]).T
-    grad_ln_D_dn = jnp.array([grad_ln_D_dn_x, grad_ln_D_dn_y, grad_ln_D_dn_z]).T
+    grad_ln_D_up = grad_ln_D_up_stack.T
+    grad_ln_D_dn = grad_ln_D_dn_stack.T
+
+    grad_ln_D_up_x, grad_ln_D_up_y, grad_ln_D_up_z = grad_ln_D_up_stack
+    grad_ln_D_dn_x, grad_ln_D_dn_y, grad_ln_D_dn_z = grad_ln_D_dn_stack
 
     lap_ln_D_up = -(
         grad_ln_D_up_x * grad_ln_D_up_x + grad_ln_D_up_y * grad_ln_D_up_y + grad_ln_D_up_z * grad_ln_D_up_z
