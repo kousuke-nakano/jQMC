@@ -38,6 +38,7 @@ from __future__ import annotations
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 from logging import getLogger
+from math import comb
 
 import jax
 import jax.numpy as jnp
@@ -50,8 +51,8 @@ from jax import hessian, jacrev, jit, vmap
 from jax import typing as jnpt
 from numpy import linalg as LA
 
-from .setting import EPS_stabilizing_jax_AO_cart_deriv
 from .jqmc_utility import _spherical_to_cart_matrix
+from .setting import EPS_stabilizing_jax_AO_cart_deriv
 from .structure import Structure_data
 
 # set logger
@@ -1486,6 +1487,199 @@ def _aos_cart_to_sphe(aos_data: AOs_cart_data | AOs_sphe_data) -> tuple[AOs_sphe
     )
 
     return aos_sphe, transform_pinv
+
+
+def _gaussian_moment_even(order: int, exponent_sum: float) -> float:
+    r"""Return :math:`\int t^{order} e^{-p t^2} dt` over :math:`(-\infty,\infty)` for even order."""
+    if order % 2 != 0:
+        return 0.0
+
+    k = order // 2
+    if k == 0:
+        double_factorial = 1.0
+    else:
+        double_factorial = float(scipy.special.factorial2(2 * k - 1, exact=False))
+
+    return double_factorial * np.sqrt(np.pi) / (2.0**k * (exponent_sum ** (k + 0.5)))
+
+
+def _compute_overlap_1d_cart(
+    alpha: float,
+    beta: float,
+    center_a: float,
+    center_b: float,
+    order_a: int,
+    order_b: int,
+) -> float:
+    """Closed-form 1D overlap integral for Cartesian polynomial Gaussian factors."""
+    exponent_sum = alpha + beta
+    product_center = (alpha * center_a + beta * center_b) / exponent_sum
+    shift_a = product_center - center_a
+    shift_b = product_center - center_b
+
+    value = 0.0
+    for i in range(order_a + 1):
+        coeff_i = comb(order_a, i) * (shift_a ** (order_a - i))
+        for j in range(order_b + 1):
+            total_order = i + j
+            if total_order % 2 != 0:
+                continue
+            coeff_j = comb(order_b, j) * (shift_b ** (order_b - j))
+            value += coeff_i * coeff_j * _gaussian_moment_even(total_order, exponent_sum)
+
+    return float(value)
+
+
+def _compute_overlap_matrix_cart_analytic(aos_cart_data: AOs_cart_data) -> npt.NDArray[np.float64]:
+    """Compute AO overlap matrix analytically for Cartesian contracted GTOs."""
+    num_ao = aos_cart_data.num_ao
+    overlap_matrix = np.zeros((num_ao, num_ao), dtype=np.float64)
+
+    centers = np.asarray(aos_cart_data._atomic_center_carts_np, dtype=np.float64)
+    orbital_indices = list(aos_cart_data.orbital_indices)
+
+    primitive_indices_by_ao: list[list[int]] = [[] for _ in range(num_ao)]
+    for primitive_index, ao_index in enumerate(orbital_indices):
+        primitive_indices_by_ao[ao_index].append(primitive_index)
+
+    exponents = np.asarray(aos_cart_data.exponents, dtype=np.float64)
+    coefficients = np.asarray(aos_cart_data.coefficients, dtype=np.float64)
+
+    nx = np.asarray(aos_cart_data.polynominal_order_x, dtype=np.int32)
+    ny = np.asarray(aos_cart_data.polynominal_order_y, dtype=np.int32)
+    nz = np.asarray(aos_cart_data.polynominal_order_z, dtype=np.int32)
+
+    normalization = np.sqrt(
+        (2.0 * exponents / np.pi) ** (3.0 / 2.0)
+        * (8.0 * exponents) ** np.asarray(aos_cart_data._angular_momentums_prim_np, dtype=np.int32)
+        * np.asarray(aos_cart_data._normalization_factorial_ratio_prim_jnp, dtype=np.float64)
+    )
+
+    for mu in range(num_ao):
+        center_mu = centers[mu]
+        nx_mu = int(nx[mu])
+        ny_mu = int(ny[mu])
+        nz_mu = int(nz[mu])
+
+        for nu in range(mu, num_ao):
+            center_nu = centers[nu]
+            nx_nu = int(nx[nu])
+            ny_nu = int(ny[nu])
+            nz_nu = int(nz[nu])
+
+            value_mu_nu = 0.0
+            rab2 = float(np.sum((center_mu - center_nu) ** 2))
+
+            for primitive_mu in primitive_indices_by_ao[mu]:
+                alpha = float(exponents[primitive_mu])
+                coeff_mu = float(coefficients[primitive_mu])
+                norm_mu = float(normalization[primitive_mu])
+
+                for primitive_nu in primitive_indices_by_ao[nu]:
+                    beta = float(exponents[primitive_nu])
+                    coeff_nu = float(coefficients[primitive_nu])
+                    norm_nu = float(normalization[primitive_nu])
+
+                    exponent_sum = alpha + beta
+                    gaussian_prefactor = np.exp(-alpha * beta / exponent_sum * rab2)
+
+                    overlap_x = _compute_overlap_1d_cart(alpha, beta, center_mu[0], center_nu[0], nx_mu, nx_nu)
+                    overlap_y = _compute_overlap_1d_cart(alpha, beta, center_mu[1], center_nu[1], ny_mu, ny_nu)
+                    overlap_z = _compute_overlap_1d_cart(alpha, beta, center_mu[2], center_nu[2], nz_mu, nz_nu)
+
+                    value_mu_nu += (
+                        coeff_mu * coeff_nu * norm_mu * norm_nu * gaussian_prefactor * overlap_x * overlap_y * overlap_z
+                    )
+
+            overlap_matrix[mu, nu] = value_mu_nu
+            overlap_matrix[nu, mu] = value_mu_nu
+
+    return overlap_matrix
+
+
+def _estimate_overlap_integration_box(
+    aos_data: AOs_sphe_data | AOs_cart_data,
+    tail_tolerance: float = 1.0e-11,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Estimate finite integration bounds for numerical overlap integration."""
+    if tail_tolerance <= 0.0 or tail_tolerance >= 1.0:
+        raise ValueError(f"tail_tolerance must satisfy 0 < tail_tolerance < 1. Got {tail_tolerance}.")
+
+    centers = np.asarray(aos_data.structure_data.positions, dtype=np.float64)
+    exponents = np.asarray(aos_data.exponents, dtype=np.float64)
+    positive_exponents = exponents[exponents > 0.0]
+    if positive_exponents.size == 0:
+        raise ValueError("All AO exponents are non-positive. Cannot estimate integration bounds.")
+
+    exponent_min = float(np.min(positive_exponents))
+    margin = np.sqrt(max(-np.log(tail_tolerance), 1.0) / exponent_min)
+    margin = float(np.clip(margin, 6.0, 20.0))
+
+    lower = np.min(centers, axis=0) - margin
+    upper = np.max(centers, axis=0) + margin
+    return lower, upper
+
+
+def _build_overlap_integration_grid(
+    aos_data: AOs_sphe_data | AOs_cart_data,
+    num_grid_points: int,
+    tail_tolerance: float,
+) -> tuple[np.ndarray, float]:
+    """Build a uniform midpoint grid and volume element for numerical overlap integration."""
+    if num_grid_points < 3:
+        raise ValueError(f"num_grid_points must be >= 3. Got {num_grid_points}.")
+
+    lower, upper = _estimate_overlap_integration_box(aos_data=aos_data, tail_tolerance=tail_tolerance)
+    lengths = upper - lower
+    dx, dy, dz = lengths / float(num_grid_points)
+
+    x = lower[0] + (np.arange(num_grid_points, dtype=np.float64) + 0.5) * dx
+    y = lower[1] + (np.arange(num_grid_points, dtype=np.float64) + 0.5) * dy
+    z = lower[2] + (np.arange(num_grid_points, dtype=np.float64) + 0.5) * dz
+
+    xx, yy, zz = np.meshgrid(x, y, z, indexing="ij")
+    r_carts = np.stack([xx, yy, zz], axis=-1).reshape((-1, 3))
+    volume_element = float(dx * dy * dz)
+
+    return r_carts, volume_element
+
+
+def _compute_overlap_matrix_debug(
+    aos_data: AOs_sphe_data | AOs_cart_data,
+    num_grid_points: int = 35,
+    tail_tolerance: float = 1.0e-11,
+) -> npt.NDArray[np.float64]:
+    """Numerically compute AO overlap matrix by 3D midpoint integration (debug)."""
+    r_carts, volume_element = _build_overlap_integration_grid(
+        aos_data=aos_data,
+        num_grid_points=num_grid_points,
+        tail_tolerance=tail_tolerance,
+    )
+
+    ao_values = np.asarray(_compute_AOs_debug(aos_data=aos_data, r_carts=r_carts), dtype=np.float64)
+    overlap_matrix = np.dot(ao_values, ao_values.T) * volume_element
+    overlap_matrix = 0.5 * (overlap_matrix + overlap_matrix.T)
+    return overlap_matrix
+
+
+def compute_overlap_matrix(aos_data: AOs_sphe_data | AOs_cart_data) -> jax.Array:
+    """Compute AO overlap matrix analytically using contracted GTO formulas.
+
+    For spherical AOs, the overlap is evaluated by conversion to Cartesian AOs and
+    transformed back with the spherical-to-Cartesian matrix.
+    """
+    aos_cart_data, transform_matrix = _aos_sphe_to_cart(aos_data)
+    cart_overlap_matrix = _compute_overlap_matrix_cart_analytic(aos_cart_data)
+
+    if isinstance(aos_data, AOs_sphe_data):
+        overlap_matrix = transform_matrix @ cart_overlap_matrix @ transform_matrix.T
+    elif isinstance(aos_data, AOs_cart_data):
+        overlap_matrix = cart_overlap_matrix
+    else:
+        raise NotImplementedError
+
+    overlap_matrix = 0.5 * (overlap_matrix + overlap_matrix.T)
+    return jnp.asarray(overlap_matrix, dtype=jnp.float64)
 
 
 def compute_AOs(aos_data: AOs_sphe_data | AOs_cart_data, r_carts: jax.Array) -> jax.Array:
