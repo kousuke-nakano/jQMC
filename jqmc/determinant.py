@@ -57,6 +57,7 @@ from .atomic_orbital import (
     compute_AOs,
     compute_AOs_grad,
     compute_AOs_laplacian,
+    compute_overlap_matrix,
 )
 from .molecular_orbital import MOs_data, compute_MOs, compute_MOs_grad, compute_MOs_laplacian
 
@@ -459,6 +460,124 @@ class Geminal_data:
             )
         else:
             raise NotImplementedError
+
+    @classmethod
+    def convert_from_AOs_to_MOs(
+        cls,
+        geminal_data: "Geminal_data",
+        num_eigenvectors: int | str = "all",
+    ) -> "Geminal_data":
+        """Convert AOs to MOs via generalized eigenvectors of :math:`fSP=PL`.
+
+        Args:
+            geminal_data: Input geminal representation.
+            num_eigenvectors: ``"all"`` for full AO-space projection. If an integer ``N`` is
+                supplied, keep only the ``N`` largest-magnitude eigenvalue vectors. In this
+                truncated mode, paired MO eigenvalues are scaled so their maximum absolute value
+                becomes one.
+
+        Returns:
+            Geminal_data in MO representation.
+        """
+        if isinstance(geminal_data.orb_data_up_spin, MOs_data) and isinstance(geminal_data.orb_data_dn_spin, MOs_data):
+            return geminal_data
+
+        if not (
+            isinstance(geminal_data.orb_data_up_spin, (AOs_sphe_data, AOs_cart_data))
+            and isinstance(geminal_data.orb_data_dn_spin, (AOs_sphe_data, AOs_cart_data))
+        ):
+            raise NotImplementedError
+
+        aos_data_up_spin = geminal_data.orb_data_up_spin
+        aos_data_dn_spin = geminal_data.orb_data_dn_spin
+
+        if aos_data_up_spin.num_ao != aos_data_dn_spin.num_ao:
+            raise ValueError("AO->MO conversion currently requires identical up/down AO dimensions.")
+
+        if type(aos_data_up_spin) is not type(aos_data_dn_spin):
+            raise ValueError("AO->MO conversion requires matching AO basis types for up/down channels.")
+
+        ao_dim = aos_data_up_spin.num_ao
+        if isinstance(num_eigenvectors, str):
+            if num_eigenvectors != "all":
+                raise ValueError(f"num_eigenvectors must be 'all' or int, got {num_eigenvectors}.")
+            num_mo = ao_dim
+            use_truncated_mode = False
+        elif isinstance(num_eigenvectors, (int, np.integer)):
+            requested_num_mo = int(num_eigenvectors)
+            if requested_num_mo <= 0:
+                raise ValueError(f"num_eigenvectors={requested_num_mo} must be positive.")
+            num_mo = min(requested_num_mo, ao_dim)
+            use_truncated_mode = True
+            num_truncated = ao_dim - num_mo
+            logger.info(
+                "AO->MO truncated mode: kept %d eigenvalues out of %d (truncated %d).",
+                num_mo,
+                ao_dim,
+                num_truncated,
+            )
+        else:
+            raise ValueError(f"num_eigenvectors must be 'all' or int, got {type(num_eigenvectors)}.")
+
+        ao_lambda_matrix_paired, ao_lambda_matrix_unpaired = np.hsplit(
+            np.asarray(geminal_data.lambda_matrix), [geminal_data.orb_num_dn]
+        )
+        ao_lambda_matrix_paired = np.asarray(ao_lambda_matrix_paired, dtype=np.float64)
+        ao_lambda_matrix_unpaired = np.asarray(ao_lambda_matrix_unpaired, dtype=np.float64)
+
+        overlap_up = np.asarray(compute_overlap_matrix(aos_data_up_spin), dtype=np.float64)
+        overlap_dn = np.asarray(compute_overlap_matrix(aos_data_dn_spin), dtype=np.float64)
+
+        overlap_up = 0.5 * (overlap_up + overlap_up.T)
+        overlap_dn = 0.5 * (overlap_dn + overlap_dn.T)
+
+        eigvals_s, eigvecs_s = np.linalg.eigh(overlap_up)
+        min_eig = float(np.min(eigvals_s))
+        if min_eig <= 0.0:
+            raise ValueError(f"AO overlap matrix is not positive definite (min eigenvalue={min_eig}).")
+
+        sqrt_overlap = eigvecs_s @ np.diag(np.sqrt(eigvals_s)) @ eigvecs_s.T
+        inv_sqrt_overlap = eigvecs_s @ np.diag(1.0 / np.sqrt(eigvals_s)) @ eigvecs_s.T
+
+        f_symmetric_repr = sqrt_overlap @ ao_lambda_matrix_paired @ sqrt_overlap
+        evals, evecs_sym = np.linalg.eigh(0.5 * (f_symmetric_repr + f_symmetric_repr.T))
+
+        order = np.argsort(np.abs(evals))[::-1]
+        order = order[:num_mo]
+
+        selected_evals = np.real_if_close(evals[order], tol=1000).astype(np.float64)
+        selected_vectors = np.real_if_close(evecs_sym[:, order], tol=1000).astype(np.float64)
+
+        p_matrix_cols = inv_sqrt_overlap @ selected_vectors
+        mo_coefficients_up = p_matrix_cols.T
+        mo_coefficients_dn = p_matrix_cols.T
+
+        if use_truncated_mode:
+            max_abs_eval = np.max(np.abs(selected_evals))
+            if max_abs_eval <= 0.0:
+                mo_lambda_matrix_paired = np.diag(selected_evals)
+            else:
+                mo_lambda_matrix_paired = np.diag(selected_evals / max_abs_eval)
+            mo_lambda_matrix_unpaired = mo_coefficients_up @ overlap_up @ ao_lambda_matrix_unpaired
+        else:
+            mo_lambda_matrix_paired = np.diag(selected_evals)
+            mo_lambda_matrix_unpaired = mo_coefficients_up @ overlap_up @ ao_lambda_matrix_unpaired
+
+        mo_lambda_matrix = np.hstack([mo_lambda_matrix_paired, mo_lambda_matrix_unpaired])
+
+        mo_dtype = np.asarray(geminal_data.lambda_matrix).dtype
+        mo_lambda_matrix = mo_lambda_matrix.astype(mo_dtype, copy=False)
+
+        mos_data_up_spin = MOs_data(num_mo=num_mo, aos_data=aos_data_up_spin, mo_coefficients=mo_coefficients_up)
+        mos_data_dn_spin = MOs_data(num_mo=num_mo, aos_data=aos_data_dn_spin, mo_coefficients=mo_coefficients_dn)
+
+        return cls(
+            num_electron_up=geminal_data.num_electron_up,
+            num_electron_dn=geminal_data.num_electron_dn,
+            orb_data_up_spin=mos_data_up_spin,
+            orb_data_dn_spin=mos_data_dn_spin,
+            lambda_matrix=mo_lambda_matrix,
+        )
 
 
 @jax.custom_vjp

@@ -71,6 +71,7 @@ from jqmc.setting import (  # noqa: E402
     atol_auto_vs_numerical_deriv,
     decimal_auto_vs_analytic_deriv,
     decimal_auto_vs_numerical_deriv,
+    decimal_consistency,
     decimal_debug_vs_production,
     rtol_auto_vs_numerical_deriv,
 )
@@ -82,7 +83,7 @@ jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
 
-def test_comparing_AO_and_MO_geminals():
+def test_convert_from_MOs_to_AOs_closed_shell():
     """Test the consistency between AO and MO geminals."""
     (
         structure_data,
@@ -436,6 +437,172 @@ def test_geminal_cart_to_sphe_MOs_data():
         np.testing.assert_allclose(np.asarray(cart), np.asarray(sph), rtol=1e-9, atol=1e-10)
 
     jax.clear_caches()
+
+
+def _build_small_sphe_aos_for_conversion() -> AOs_sphe_data:
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=np.array([[0.0, 0.0, 0.0]], dtype=np.float64),
+        atomic_numbers=(1,),
+        element_symbols=("X",),
+        atomic_labels=("X",),
+    )
+    return AOs_sphe_data(
+        structure_data=structure_data,
+        nucleus_index=(0, 0, 0, 0),
+        num_ao=4,
+        num_ao_prim=4,
+        orbital_indices=(0, 1, 2, 3),
+        exponents=(1.20, 1.00, 1.00, 1.00),
+        coefficients=(1.0, 1.0, 1.0, 1.0),
+        angular_momentums=(0, 1, 1, 1),
+        magnetic_quantum_numbers=(0, -1, 0, 1),
+    )
+
+
+def test_convert_from_AOs_to_MOs_full_projection_closed_shell():
+    """AO->MO (all eigenvectors) followed by MO->AO recovers the AO lambda matrix."""
+    rng = np.random.default_rng(1234)
+    aos_data = _build_small_sphe_aos_for_conversion()
+    aos_data.sanity_check()
+
+    num_electron_up = 2
+    num_electron_dn = 2
+
+    lambda_matrix_paired = rng.uniform(-0.25, 0.25, size=(aos_data.num_ao, aos_data.num_ao))
+    lambda_matrix_paired = 0.5 * (lambda_matrix_paired + lambda_matrix_paired.T)
+    lambda_matrix = np.hstack([lambda_matrix_paired, np.zeros((aos_data.num_ao, 0), dtype=np.float64)])
+
+    geminal_ao = Geminal_data(
+        num_electron_up=num_electron_up,
+        num_electron_dn=num_electron_dn,
+        orb_data_up_spin=aos_data,
+        orb_data_dn_spin=aos_data,
+        lambda_matrix=lambda_matrix,
+    )
+    geminal_mo = Geminal_data.convert_from_AOs_to_MOs(geminal_ao, num_eigenvectors="all")
+    geminal_ao_back = Geminal_data.convert_from_MOs_to_AOs(geminal_mo)
+
+    np.testing.assert_array_almost_equal(
+        np.asarray(geminal_ao_back.lambda_matrix),
+        np.asarray(geminal_ao.lambda_matrix),
+        decimal=decimal_consistency,
+    )
+
+
+def test_convert_from_AOs_to_MOs_full_projection_open_shell():
+    """AO->MO (all eigenvectors) round-trip recovers AO lambda matrix for open-shell case."""
+    rng = np.random.default_rng(1334)
+    aos_data = _build_small_sphe_aos_for_conversion()
+    aos_data.sanity_check()
+
+    num_electron_up = 3
+    num_electron_dn = 2
+    num_unpaired = num_electron_up - num_electron_dn
+
+    lambda_matrix_paired = rng.uniform(-0.25, 0.25, size=(aos_data.num_ao, aos_data.num_ao))
+    lambda_matrix_paired = 0.5 * (lambda_matrix_paired + lambda_matrix_paired.T)
+    lambda_matrix_unpaired = rng.uniform(-0.25, 0.25, size=(aos_data.num_ao, num_unpaired))
+    lambda_matrix = np.hstack([lambda_matrix_paired, lambda_matrix_unpaired])
+
+    geminal_ao = Geminal_data(
+        num_electron_up=num_electron_up,
+        num_electron_dn=num_electron_dn,
+        orb_data_up_spin=aos_data,
+        orb_data_dn_spin=aos_data,
+        lambda_matrix=lambda_matrix,
+    )
+    geminal_mo = Geminal_data.convert_from_AOs_to_MOs(geminal_ao, num_eigenvectors="all")
+    geminal_ao_back = Geminal_data.convert_from_MOs_to_AOs(geminal_mo)
+
+    np.testing.assert_array_almost_equal(
+        np.asarray(geminal_ao_back.lambda_matrix),
+        np.asarray(geminal_ao.lambda_matrix),
+        decimal=decimal_consistency,
+    )
+
+
+def test_convert_from_AOs_to_MOs_truncated_mode_closed_shell():
+    """AO->MO integer mode accepts boundary values and scales paired eigenvalues."""
+    rng = np.random.default_rng(4321)
+    aos_data = _build_small_sphe_aos_for_conversion()
+    aos_data.sanity_check()
+
+    num_electron_up = 2
+    num_electron_dn = 2
+
+    lambda_matrix_paired = rng.uniform(-0.20, 0.20, size=(aos_data.num_ao, aos_data.num_ao))
+    lambda_matrix_paired = 0.5 * (lambda_matrix_paired + lambda_matrix_paired.T)
+    lambda_matrix = np.hstack([lambda_matrix_paired, np.zeros((aos_data.num_ao, 0), dtype=np.float64)])
+
+    geminal_ao = Geminal_data(
+        num_electron_up=num_electron_up,
+        num_electron_dn=num_electron_dn,
+        orb_data_up_spin=aos_data,
+        orb_data_dn_spin=aos_data,
+        lambda_matrix=lambda_matrix,
+    )
+
+    geminal_mo = Geminal_data.convert_from_AOs_to_MOs(geminal_ao, num_eigenvectors=3)
+    paired_block, _ = np.hsplit(np.asarray(geminal_mo.lambda_matrix), [geminal_mo.orb_num_dn])
+    paired_diag = np.diag(paired_block)
+
+    print("\n[debug] closed-shell truncated lambda_matrix (L):")
+    print(np.asarray(geminal_mo.lambda_matrix))
+    print("[debug] closed-shell truncated paired diag(L):")
+    print(paired_diag)
+
+    np.testing.assert_array_almost_equal(
+        np.max(np.abs(paired_diag)),
+        1.0,
+        decimal=decimal_consistency,
+    )
+
+    geminal_mo_small = Geminal_data.convert_from_AOs_to_MOs(geminal_ao, num_eigenvectors=2)
+    assert geminal_mo_small.orb_num_up == 2
+    assert geminal_mo_small.orb_num_dn == 2
+
+    geminal_mo_full = Geminal_data.convert_from_AOs_to_MOs(geminal_ao, num_eigenvectors=4)
+    assert geminal_mo_full.orb_num_up == aos_data.num_ao
+    assert geminal_mo_full.orb_num_dn == aos_data.num_ao
+
+    geminal_mo_clipped = Geminal_data.convert_from_AOs_to_MOs(geminal_ao, num_eigenvectors=5)
+    assert geminal_mo_clipped.orb_num_up == aos_data.num_ao
+    assert geminal_mo_clipped.orb_num_dn == aos_data.num_ao
+
+
+def test_convert_from_AOs_to_MOs_truncated_mode_open_shell():
+    """Open-shell truncation scales paired eigenvalues and keeps projected unpaired block."""
+    rng = np.random.default_rng(2468)
+    aos_data = _build_sphe_aos_l_le6(rng)
+    aos_data.sanity_check()
+
+    num_electron_up = 3
+    num_electron_dn = 2
+    num_unpaired = num_electron_up - num_electron_dn
+
+    lambda_matrix_paired = rng.uniform(-0.2, 0.2, size=(aos_data.num_ao, aos_data.num_ao))
+    lambda_matrix_unpaired = rng.uniform(-0.2, 0.2, size=(aos_data.num_ao, num_unpaired))
+    lambda_matrix = np.hstack([lambda_matrix_paired, lambda_matrix_unpaired])
+
+    geminal_ao = Geminal_data(
+        num_electron_up=num_electron_up,
+        num_electron_dn=num_electron_dn,
+        orb_data_up_spin=aos_data,
+        orb_data_dn_spin=aos_data,
+        lambda_matrix=lambda_matrix,
+    )
+
+    geminal_mo = Geminal_data.convert_from_AOs_to_MOs(geminal_ao, num_eigenvectors=5)
+    paired_block, unpaired_block = np.hsplit(np.asarray(geminal_mo.lambda_matrix), [geminal_mo.orb_num_dn])
+
+    paired_diag = np.diag(paired_block)
+    np.testing.assert_array_almost_equal(
+        np.max(np.abs(paired_diag)),
+        1.0,
+        decimal=decimal_consistency,
+    )
+    assert unpaired_block.shape == (5, 1)
 
 
 def test_grads_and_laplacian_fast_update():
