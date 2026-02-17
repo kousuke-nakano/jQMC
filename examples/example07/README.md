@@ -41,7 +41,7 @@ Here is the Hardware configurations used in these benchmark tests.
 
 ## Results
 
-Although JAX provides native support for multi-processing via its distributed runtime, jQMC currently enables multi-GPU execution through explicit MPI parallelization using `mpi4py` and `mpi4jax`.
+Although JAX provides native support for multi-processing via its distributed runtime, jQMC currently enables multi-GPU execution through explicit MPI parallelization using `mpi4py`.
 
 A key factor in evaluating the efficiency of multi-GPU computations is scalability—specifically, weak-scaling behavior. This metric quantifies how effectively additional GPUs contribute to performance gains under different workload scenarios.
 

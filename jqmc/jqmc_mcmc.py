@@ -41,7 +41,6 @@ from logging import getLogger
 from typing import Any
 
 import jax
-import mpi4jax
 import numpy as np
 import numpy.typing as npt
 import optax
@@ -1866,7 +1865,9 @@ class MCMC:
         sr_cg_max_iter = int(optimizer_kwargs.get("cg_max_iter", int(1e6)))
         sr_cg_tol = float(optimizer_kwargs.get("cg_tol", 1.0e-8))
         optax_kwargs = {
-            k: v for k, v in optimizer_kwargs.items() if k not in {"delta", "epsilon", "cg_flag", "cg_max_iter", "cg_tol"}
+            k: v
+            for k, v in optimizer_kwargs.items()
+            if k not in {"delta", "epsilon", "cg_flag", "cg_max_iter", "cg_tol", "cg_x0_strategy"}
         }
 
         optax_tx = None
@@ -2039,6 +2040,55 @@ class MCMC:
             left_projector = right_projector.T
             return left_projector, right_projector, int(geminal_data.orb_num_dn)
 
+        def _conjugate_gradient_numpy(
+            b: npt.NDArray[np.float64],
+            apply_A,
+            x0: npt.NDArray[np.float64],
+            max_iter: int,
+            tol: float,
+        ) -> tuple[npt.NDArray[np.float64], float, int]:
+            x = np.array(x0, dtype=np.float64, copy=True)
+            r = np.array(b, dtype=np.float64, copy=False) - apply_A(x)
+            p = np.array(r, dtype=np.float64, copy=True)
+            rs_old = float(np.dot(r, r))
+
+            if not np.isfinite(rs_old):
+                raise FloatingPointError("Non-finite initial residual encountered in SR-CG.")
+
+            if np.sqrt(rs_old) <= tol:
+                return x, np.sqrt(rs_old), 0
+
+            tiny = np.finfo(np.float64).tiny
+            num_iter = 0
+            for i in range(int(max_iter)):
+                Ap = apply_A(p)
+                denom = float(np.dot(p, Ap))
+                if not np.isfinite(denom) or abs(denom) <= tiny:
+                    logger.warning(
+                        "[CG] Breakdown detected (non-finite/near-zero denominator) at iteration %d; terminating early.",
+                        i,
+                    )
+                    break
+
+                alpha = rs_old / denom
+                x = x + alpha * p
+                r = r - alpha * Ap
+                rs_new = float(np.dot(r, r))
+                num_iter = i + 1
+
+                if not np.isfinite(rs_new):
+                    raise FloatingPointError("Non-finite residual encountered in SR-CG.")
+
+                if np.sqrt(rs_new) <= tol:
+                    rs_old = rs_new
+                    break
+
+                beta = rs_new / rs_old
+                p = r + beta * p
+                rs_old = rs_new
+
+            return x, np.sqrt(rs_old), num_iter
+
         self.__set_param_gradient_flags(
             j1_param=opt_J1_param,
             j2_param=opt_J2_param,
@@ -2094,6 +2144,9 @@ class MCMC:
 
         # timer
         vmcopt_total_start = time.perf_counter()
+
+        sr_cg_warm_start_primal = None
+        sr_cg_warm_start_dual = None
 
         # main vmcopt loop
         for i_opt in range(num_opt_steps):
@@ -2290,37 +2343,6 @@ class MCMC:
                 logger.info(f"The number of total samples is {num_samples_total}.")
                 logger.info(f"The total number of variational parameters is {num_params}.")
 
-                # ---- Conjugate Gradient Solver ----
-                @partial(jax.jit, static_argnums=(1, 3))
-                def conjugate_gradient_jax(b, apply_A, X_local, epsilon, x0, max_iter=1e6, tol=1e-8):
-                    def body_fun(state):
-                        x, r, p, rs_old, i = state
-                        Ap = apply_A(p, X_local, epsilon)
-                        alpha = rs_old / jnp.dot(p, Ap)
-                        x_new = x + alpha * p
-                        r_new = r - alpha * Ap
-                        rs_new = jnp.dot(r_new, r_new)
-                        beta = rs_new / rs_old
-                        p_new = r_new + beta * p
-                        return (x_new, r_new, p_new, rs_new, i + 1)
-
-                    def cond_fun(state):
-                        _, _, _, rs_old, i = state
-                        return jnp.logical_and(jnp.sqrt(rs_old) > tol, i < max_iter)
-
-                    # Initialize variables
-                    # x0 = jnp.zeros_like(b)
-                    r0 = b - apply_A(x0, X_local, epsilon)
-                    p0 = r0
-                    rs0 = jnp.dot(r0, r0)
-
-                    init_state = (x0, r0, p0, rs0, 0)
-                    final_state = jax.lax.while_loop(cond_fun, body_fun, init_state)
-
-                    x_final, _, _, rs_final, num_iter = final_state
-
-                    return x_final, jnp.sqrt(rs_final), num_iter
-
                 if num_params < num_samples_total:
                     # if True:
                     logger.debug("X is a wide matrix. Proceed w/o the push-through identity.")
@@ -2375,32 +2397,26 @@ class MCMC:
                         X_F = np.zeros_like(X_F_local)
                         mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
 
-                        # ---- Matrix-free matvec: apply_S_jax ----
-                        @partial(jax.jit, static_argnums=(2,))  # epsilon
-                        def apply_S_primal_jax(v, X_local, epsilon):
-                            # Local computation of X^T v
-                            XTv_local = X_local.T @ v  # shape (M_local,)
-
-                            # Local computation of X (X^T v)
-                            XXTv_local = X_local @ XTv_local  # shape (N,)
-
-                            # Global sum over all processes
-                            try:
-                                XXTv_global, _ = mpi4jax.allreduce(XXTv_local, op=MPI.SUM, comm=MPI.COMM_WORLD)
-                            except ValueError:  # mpi4jax.allreduce does not return token since mpi4jax v0.8.0（2025-07-07)
-                                XXTv_global = mpi4jax.allreduce(XXTv_local, op=MPI.SUM, comm=MPI.COMM_WORLD)
+                        def apply_S_primal_numpy(v):
+                            XTv_local = X_local.T @ v
+                            XXTv_local = X_local @ XTv_local
+                            XXTv_global = np.empty_like(XXTv_local)
+                            mpi_comm.Allreduce(XXTv_local, XXTv_global, op=MPI.SUM)
                             return XXTv_global + epsilon * v
 
-                        x0 = X_F
-                        theta_all, final_residual, num_steps = conjugate_gradient_jax(
-                            jnp.array(X_F),
-                            apply_S_primal_jax,
-                            X_local,
-                            epsilon,
-                            x0,
+                        if sr_cg_warm_start_primal is not None and sr_cg_warm_start_primal.shape == X_F.shape:
+                            x0 = sr_cg_warm_start_primal
+                        else:
+                            x0 = np.zeros_like(X_F)
+
+                        theta_all, final_residual, num_steps = _conjugate_gradient_numpy(
+                            np.asarray(X_F, dtype=np.float64),
+                            apply_S_primal_numpy,
+                            np.asarray(x0, dtype=np.float64),
                             sr_cg_max_iter,
                             sr_cg_tol,
                         )
+                        sr_cg_warm_start_primal = np.array(theta_all, copy=True)
                         logger.debug(f"  [CG] Final residual: {final_residual:.3e}")
                         logger.info(f"  [CG] Converged in {num_steps} steps")
                         if num_steps == sr_cg_max_iter:
@@ -2507,34 +2523,29 @@ class MCMC:
                         logger.info(f"  [CG] threshold {sr_cg_tol}.")
                         logger.info(f"  [CG] max iteration: {sr_cg_max_iter}.")
 
-                        @partial(jax.jit, static_argnums=(2,))
-                        def apply_dual_S_jax(v, X_local, epsilon):
-                            # X_local_T: shape (M_local, N/P)
-                            Xv_local = X_local @ v  # (M_local,)
-                            XTXv_local = X_local.T @ Xv_local  # (N_local,)
-                            try:
-                                XTXv_global, _ = mpi4jax.allreduce(XTXv_local, op=MPI.SUM, comm=mpi_comm)
-                            except ValueError:  # mpi4jax.allreduce does not return token since mpi4jax v0.8.0（2025-07-07)
-                                XTXv_global = mpi4jax.allreduce(XTXv_local, op=MPI.SUM, comm=mpi_comm)
+                        def apply_dual_S_numpy(v):
+                            Xv_local = X_re_local @ v
+                            XTXv_local = X_re_local.T @ Xv_local
+                            XTXv_global = np.empty_like(XTXv_local)
+                            mpi_comm.Allreduce(XTXv_local, XTXv_global, op=MPI.SUM)
                             return XTXv_global + epsilon * v
-
-                        # X_re_local: shape (N_local, M_total)
-                        X_re_local = jnp.array(X_re_local)  # shape (M_total, N_local)
 
                         # Solve (X^T X + εI)^(-1) @ F
                         F_local_list = list(F_local)
                         F_list = mpi_comm.allreduce(F_local_list, op=MPI.SUM)
-                        F_total = np.array(F_list)
-                        x0 = F_total
-                        x_sol, final_residual, num_steps = conjugate_gradient_jax(
-                            jnp.array(F_total),
-                            apply_dual_S_jax,
-                            X_re_local,
-                            epsilon,
-                            x0,
+                        F_total = np.asarray(F_list, dtype=np.float64)
+                        if sr_cg_warm_start_dual is not None and sr_cg_warm_start_dual.shape == F_total.shape:
+                            x0 = sr_cg_warm_start_dual
+                        else:
+                            x0 = np.zeros_like(F_total)
+                        x_sol, final_residual, num_steps = _conjugate_gradient_numpy(
+                            F_total,
+                            apply_dual_S_numpy,
+                            np.asarray(x0, dtype=np.float64),
                             sr_cg_max_iter,
                             sr_cg_tol,
                         )
+                        sr_cg_warm_start_dual = np.array(x_sol, copy=True)
 
                         # theta = X @ x_sol, evaluated locally over X_re_local (N_local rows)
                         theta_local = X_re_local @ x_sol  # shape (N_local,)
