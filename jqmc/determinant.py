@@ -541,22 +541,27 @@ class Geminal_data:
         overlap_up = 0.5 * (overlap_up + overlap_up.T)
         overlap_dn = 0.5 * (overlap_dn + overlap_dn.T)
 
-        eigvals_s, eigvecs_s = np.linalg.eigh(overlap_up)
-        min_eig = float(np.min(eigvals_s))
-        if min_eig <= 0.0:
-            raise ValueError(f"AO overlap matrix is not positive definite (min eigenvalue={min_eig}).")
+        eigvals_up, eigvecs_up = np.linalg.eigh(overlap_up)
+        eigvals_dn, eigvecs_dn = np.linalg.eigh(overlap_dn)
 
-        sqrt_overlap = eigvecs_s @ np.diag(np.sqrt(eigvals_s)) @ eigvecs_s.T
-        inv_sqrt_overlap = eigvecs_s @ np.diag(1.0 / np.sqrt(eigvals_s)) @ eigvecs_s.T
+        min_eig_up = float(np.min(eigvals_up))
+        min_eig_dn = float(np.min(eigvals_dn))
+        if min_eig_up <= 0.0:
+            raise ValueError(f"AO overlap matrix (up) is not positive definite (min eigenvalue={min_eig_up}).")
+        if min_eig_dn <= 0.0:
+            raise ValueError(f"AO overlap matrix (dn) is not positive definite (min eigenvalue={min_eig_dn}).")
 
-        f_symmetric_repr = sqrt_overlap @ ao_lambda_matrix_paired @ sqrt_overlap
-        evals, evecs_sym = np.linalg.eigh(0.5 * (f_symmetric_repr + f_symmetric_repr.T))
+        sqrt_overlap_up = eigvecs_up @ np.diag(np.sqrt(eigvals_up)) @ eigvecs_up.T
+        inv_sqrt_overlap_up = eigvecs_up @ np.diag(1.0 / np.sqrt(eigvals_up)) @ eigvecs_up.T
+        sqrt_overlap_dn = eigvecs_dn @ np.diag(np.sqrt(eigvals_dn)) @ eigvecs_dn.T
+        inv_sqrt_overlap_dn = eigvecs_dn @ np.diag(1.0 / np.sqrt(eigvals_dn)) @ eigvecs_dn.T
 
-        order = np.argsort(np.abs(evals))[::-1]
-        order = order[:num_mo]
+        f_biorth_repr = sqrt_overlap_up @ ao_lambda_matrix_paired @ sqrt_overlap_dn
+        u_mat, singular_vals, v_h = np.linalg.svd(f_biorth_repr, full_matrices=False)
 
-        selected_evals = np.real_if_close(evals[order], tol=1000).astype(np.float64)
-        selected_vectors = np.real_if_close(evecs_sym[:, order], tol=1000).astype(np.float64)
+        selected_evals = np.real_if_close(singular_vals[:num_mo], tol=1000).astype(np.float64)
+        selected_vectors_up = np.real_if_close(u_mat[:, :num_mo], tol=1000).astype(np.float64)
+        selected_vectors_dn = np.real_if_close(v_h.T[:, :num_mo], tol=1000).astype(np.float64)
 
         if use_truncated_mode:
             logger.info(
@@ -564,9 +569,20 @@ class Geminal_data:
                 np.array2string(selected_evals, precision=10, separator=", "),
             )
 
-        p_matrix_cols = inv_sqrt_overlap @ selected_vectors
-        mo_coefficients_up = p_matrix_cols.T
-        mo_coefficients_dn = p_matrix_cols.T
+        if use_truncated_mode:
+            num_scale = min(int(geminal_data.num_electron_dn), selected_evals.size)
+            if num_scale > 0:
+                selected_evals[:num_scale] = 1.0
+
+            logger.info(
+                "[MOOPT-TRACE] AO->MO selected eigenvalues after scaling: %s",
+                np.array2string(selected_evals, precision=10, separator=", "),
+            )
+
+        p_matrix_cols_up = inv_sqrt_overlap_up @ selected_vectors_up
+        p_matrix_cols_dn = inv_sqrt_overlap_dn @ selected_vectors_dn
+        mo_coefficients_up = p_matrix_cols_up.T
+        mo_coefficients_dn = p_matrix_cols_dn.T
 
         mo_lambda_matrix_paired = np.diag(selected_evals)
         mo_lambda_matrix_unpaired = mo_coefficients_up @ overlap_up @ ao_lambda_matrix_unpaired
@@ -576,23 +592,35 @@ class Geminal_data:
         mo_dtype = np.asarray(geminal_data.lambda_matrix).dtype
         mo_lambda_matrix = mo_lambda_matrix.astype(mo_dtype, copy=False)
 
-        # Orthogonality check for projected MOs: P^T S P = I
-        psp = mo_coefficients_up @ overlap_up @ mo_coefficients_up.T
-        identity = np.eye(num_mo, dtype=np.float64)
-        psp_diff = psp - identity
-        frob_norm = float(np.linalg.norm(psp_diff))
-        max_abs_diff = float(np.max(np.abs(psp_diff))) if psp_diff.size else 0.0
-        is_orthonormal = bool(np.allclose(psp, identity, atol=1.0e-8, rtol=1.0e-6))
-
-        logger.info(
-            "[MOOPT-TRACE] AO->MO orthogonality check: allclose(P^TSP, I)=%s, ||P^TSP-I||_F=%.3e, max|P^TSP-I|=%.3e",
-            is_orthonormal,
-            frob_norm,
-            max_abs_diff,
-        )
-
         mos_data_up_spin = MOs_data(num_mo=num_mo, aos_data=aos_data_up_spin, mo_coefficients=mo_coefficients_up)
         mos_data_dn_spin = MOs_data(num_mo=num_mo, aos_data=aos_data_dn_spin, mo_coefficients=mo_coefficients_dn)
+
+        psp_up = mo_coefficients_up @ overlap_up @ mo_coefficients_up.T
+        psp_dn = mo_coefficients_dn @ overlap_dn @ mo_coefficients_dn.T
+        identity = np.eye(num_mo, dtype=np.float64)
+        psp_up_diff = psp_up - identity
+        psp_dn_diff = psp_dn - identity
+
+        up_frob_norm = float(np.linalg.norm(psp_up_diff))
+        up_max_abs_diff = float(np.max(np.abs(psp_up_diff))) if psp_up_diff.size else 0.0
+        up_is_orthonormal = bool(np.allclose(psp_up, identity, atol=1.0e-8, rtol=1.0e-6))
+
+        dn_frob_norm = float(np.linalg.norm(psp_dn_diff))
+        dn_max_abs_diff = float(np.max(np.abs(psp_dn_diff))) if psp_dn_diff.size else 0.0
+        dn_is_orthonormal = bool(np.allclose(psp_dn, identity, atol=1.0e-8, rtol=1.0e-6))
+
+        logger.info(
+            "[MOOPT-TRACE] AO->MO orthogonality check (up): allclose(P^TSP, I)=%s, ||P^TSP-I||_F=%.3e, max|P^TSP-I|=%.3e",
+            up_is_orthonormal,
+            up_frob_norm,
+            up_max_abs_diff,
+        )
+        logger.info(
+            "[MOOPT-TRACE] AO->MO orthogonality check (dn): allclose(P^TSP, I)=%s, ||P^TSP-I||_F=%.3e, max|P^TSP-I|=%.3e",
+            dn_is_orthonormal,
+            dn_frob_norm,
+            dn_max_abs_diff,
+        )
 
         return cls(
             num_electron_up=geminal_data.num_electron_up,

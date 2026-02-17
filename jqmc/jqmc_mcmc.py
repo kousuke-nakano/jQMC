@@ -1622,7 +1622,8 @@ class MCMC:
         # SR matrices are consistently projected.
         if lambda_projectors is not None and num_orb_projection is not None:
             left_projector, right_projector = lambda_projectors
-            identity = np.eye(right_projector.shape[0], dtype=np.float64)
+            identity_left = np.eye(left_projector.shape[0], dtype=np.float64)
+            identity_right = np.eye(right_projector.shape[0], dtype=np.float64)
 
             start = 0
             for block in blocks:
@@ -1634,9 +1635,9 @@ class MCMC:
 
                     correction = np.einsum(
                         "ab,mwbc,cd->mwad",
-                        (identity - left_projector.T),
+                        (identity_left - left_projector.T),
                         paired_block,
-                        (identity - right_projector.T),
+                        (identity_right - right_projector.T),
                     )
                     corrected_paired_block = paired_block - correction
                     corrected_block = np.concatenate((corrected_paired_block, unpaired_block), axis=3)
@@ -1832,9 +1833,9 @@ class MCMC:
             opt_JNN_param (bool, optional): Optimize NN Jastrow. Defaults to True.
             opt_lambda_param (bool, optional): Optimize determinant lambda matrix. Defaults to False.
             opt_with_projected_MOs (bool, optional): If True, enable AO-space lambda optimization flow.
-                - MO input: convert MO->AO first, optimize in AO space, then project AO->MO
-                    with fixed ``num_eigenvectors=num_electron_dn`` at dump/finalization.
-                - AO input: optimize directly in AO space and keep AO representation (no final projection).
+                - At every optimization step, build projection operators from the current MO state,
+                    convert MO->AO for MCMC/gradient evaluation, update AO parameters, then project AO->MO
+                    with fixed ``num_eigenvectors=num_electron_dn`` to finish the step.
             num_param_opt (int, optional): Limit parameters updated (ranked by ``|f|/|std f|``); ``0`` means all. Defaults to 0.
             optimizer_kwargs (dict | None, optional): Optimizer configuration. ``method='sr'`` uses SR keys (``delta``, ``epsilon``, ``cg_flag``, ``cg_max_iter``, ``cg_tol``); other ``method`` names are optax constructors (e.g., ``"adam"``) and receive remaining keys.
 
@@ -1943,103 +1944,6 @@ class MCMC:
             logger.info("  Hyperparameters: %s", ", ".join(f"{k}={v}" for k, v in sorted(optimizer_hparams.items())))
             logger.info("")
 
-        def _debug_log_pre_scaling_eigenvalues(tag: str, geminal_data: Geminal_data) -> None:
-            if mpi_rank != 0 or not geminal_data.is_ao_representation:
-                return
-
-            try:
-                ao_lambda_paired, _ = np.hsplit(np.asarray(geminal_data.lambda_matrix), [geminal_data.orb_num_dn])
-                ao_lambda_paired = np.asarray(ao_lambda_paired, dtype=np.float64)
-
-                overlap_up = np.asarray(compute_overlap_matrix(geminal_data.orb_data_up_spin), dtype=np.float64)
-                overlap_up = 0.5 * (overlap_up + overlap_up.T)
-
-                eigvals_s, eigvecs_s = np.linalg.eigh(overlap_up)
-                min_eig = float(np.min(eigvals_s))
-                if min_eig <= 0.0:
-                    logger.info(
-                        "[MOOPT-TRACE] %s: pre-scaling eigenvalue logging skipped (min overlap eigenvalue=%.10e <= 0).",
-                        tag,
-                        min_eig,
-                    )
-                    return
-
-                sqrt_overlap = eigvecs_s @ np.diag(np.sqrt(eigvals_s)) @ eigvecs_s.T
-                f_symmetric_repr = sqrt_overlap @ ao_lambda_paired @ sqrt_overlap
-                evals, evecs_sym = np.linalg.eigh(0.5 * (f_symmetric_repr + f_symmetric_repr.T))
-
-                n_keep = min(int(geminal_data.num_electron_dn), evals.size)
-                order = np.argsort(np.abs(evals))[::-1][:n_keep]
-                selected_evals = np.real_if_close(evals[order], tol=1000).astype(np.float64)
-                selected_vectors = np.real_if_close(evecs_sym[:, order], tol=1000).astype(np.float64)
-
-                inv_sqrt_overlap = eigvecs_s @ np.diag(1.0 / np.sqrt(eigvals_s)) @ eigvecs_s.T
-                p_matrix_cols = inv_sqrt_overlap @ selected_vectors
-                mo_coefficients_up = p_matrix_cols.T
-
-                psp = mo_coefficients_up @ overlap_up @ mo_coefficients_up.T
-                identity = np.eye(n_keep, dtype=np.float64)
-                psp_diff = psp - identity
-                psp_frob_norm = float(np.linalg.norm(psp_diff))
-                psp_max_abs_diff = float(np.max(np.abs(psp_diff))) if psp_diff.size else 0.0
-                psp_allclose = bool(np.allclose(psp, identity, atol=1.0e-8, rtol=1.0e-6))
-
-                logger.info(
-                    "[MOOPT-TRACE] %s: AO->MO selected eigenvalues (n=%d, no scaling): %s",
-                    tag,
-                    n_keep,
-                    np.array2string(selected_evals, precision=10, separator=", "),
-                )
-                logger.info(
-                    "[MOOPT-TRACE] %s: AO->MO orthogonality check from current AO state: allclose(P^TSP,I)=%s, ||P^TSP-I||_F=%.3e, max|P^TSP-I|=%.3e",
-                    tag,
-                    psp_allclose,
-                    psp_frob_norm,
-                    psp_max_abs_diff,
-                )
-            except Exception as exc:
-                logger.info("[MOOPT-TRACE] %s: pre-scaling eigenvalue logging failed (%s)", tag, exc)
-
-        def _build_projectors_from_current_ao_state(
-            geminal_data: Geminal_data,
-        ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], int] | None:
-            if not geminal_data.is_ao_representation:
-                return None
-
-            ao_lambda_paired, _ = np.hsplit(np.asarray(geminal_data.lambda_matrix), [geminal_data.orb_num_dn])
-            ao_lambda_paired = np.asarray(ao_lambda_paired, dtype=np.float64)
-
-            overlap_up = np.asarray(compute_overlap_matrix(geminal_data.orb_data_up_spin), dtype=np.float64)
-            overlap_up = 0.5 * (overlap_up + overlap_up.T)
-
-            eigvals_s, eigvecs_s = np.linalg.eigh(overlap_up)
-            min_eig = float(np.min(eigvals_s))
-            if min_eig <= 0.0:
-                logger.info(
-                    "Projection skipped: min overlap eigenvalue is non-positive (%.10e).",
-                    min_eig,
-                )
-                return None
-
-            sqrt_overlap = eigvecs_s @ np.diag(np.sqrt(eigvals_s)) @ eigvecs_s.T
-            f_symmetric_repr = sqrt_overlap @ ao_lambda_paired @ sqrt_overlap
-            evals, evecs_sym = np.linalg.eigh(0.5 * (f_symmetric_repr + f_symmetric_repr.T))
-
-            n_keep = min(int(geminal_data.num_electron_dn), evals.size)
-            if n_keep <= 0:
-                logger.info("Projection skipped: no eigenvectors selected.")
-                return None
-
-            order = np.argsort(np.abs(evals))[::-1][:n_keep]
-            selected_vectors = np.real_if_close(evecs_sym[:, order], tol=1000).astype(np.float64)
-
-            inv_sqrt_overlap = eigvecs_s @ np.diag(1.0 / np.sqrt(eigvals_s)) @ eigvecs_s.T
-            p_matrix_cols = inv_sqrt_overlap @ selected_vectors
-
-            right_projector = (overlap_up @ p_matrix_cols) @ p_matrix_cols.T
-            left_projector = right_projector.T
-            return left_projector, right_projector, int(geminal_data.orb_num_dn)
-
         def _conjugate_gradient_numpy(
             b: npt.NDArray[np.float64],
             apply_A,
@@ -2101,29 +2005,17 @@ class MCMC:
             if not opt_lambda_param:
                 raise ValueError("opt_with_projected_MOs=True requires opt_lambda_param=True.")
 
-            wavefunction_data_init = self.hamiltonian_data.wavefunction_data
-            geminal_init = wavefunction_data_init.geminal_data
+            geminal_init = self.hamiltonian_data.wavefunction_data.geminal_data
             if not (geminal_init.is_mo_representation or geminal_init.is_ao_representation):
                 raise ValueError(
                     "opt_with_projected_MOs=True requires geminal orbital representation to be either MO/MO or AO/AO."
                 )
 
             if geminal_init.is_mo_representation:
-                geminal_ao = Geminal_data.convert_from_MOs_to_AOs(geminal_init)
-                wavefunction_data_ao = type(wavefunction_data_init)(
-                    jastrow_data=wavefunction_data_init.jastrow_data,
-                    geminal_data=geminal_ao,
-                )
-
-                self.hamiltonian_data = Hamiltonian_data(
-                    structure_data=self.hamiltonian_data.structure_data,
-                    wavefunction_data=wavefunction_data_ao,
-                    coulomb_potential_data=self.hamiltonian_data.coulomb_potential_data,
-                )
-                logger.info("opt_with_projected_MOs=True: converted initial geminal MO->AO for optimization.")
+                logger.info("opt_with_projected_MOs=True: initial geminal is MO representation.")
             else:
                 logger.info(
-                    "opt_with_projected_MOs=True: AO input detected; optimize in AO with per-step MO-subspace projection."
+                    "opt_with_projected_MOs=True: initial geminal is AO representation (step-wise AO->MO projection is enabled)."
                 )
 
         # toml(control) filename
@@ -2158,6 +2050,39 @@ class MCMC:
             logger.info(f"Warmup steps = {num_mcmc_warmup_steps}.")
             logger.info(f"Bin blocks = {num_mcmc_bin_blocks}.")
             logger.info("")
+
+            lambda_projectors = None
+            num_orb_projection = None
+            if opt_with_projected_MOs:
+                wavefunction_data_step = self.hamiltonian_data.wavefunction_data
+                geminal_mo_current = wavefunction_data_step.geminal_data
+                num_orb_projection = int(geminal_mo_current.num_electron_dn)
+
+                mo_coefficients_up = np.asarray(geminal_mo_current.orb_data_up_spin.mo_coefficients, dtype=np.float64)
+                mo_coefficients_dn = np.asarray(geminal_mo_current.orb_data_dn_spin.mo_coefficients, dtype=np.float64)
+                overlap_up = np.asarray(compute_overlap_matrix(geminal_mo_current.orb_data_up_spin.aos_data), dtype=np.float64)
+                overlap_dn = np.asarray(compute_overlap_matrix(geminal_mo_current.orb_data_dn_spin.aos_data), dtype=np.float64)
+                overlap_up = 0.5 * (overlap_up + overlap_up.T)
+                overlap_dn = 0.5 * (overlap_dn + overlap_dn.T)
+
+                p_matrix_cols_up = mo_coefficients_up[:num_orb_projection, :].T
+                p_matrix_rows_dn = mo_coefficients_dn[:num_orb_projection, :]
+                left_projector = (overlap_up @ p_matrix_cols_up) @ p_matrix_cols_up.T
+                right_projector = (p_matrix_rows_dn @ overlap_dn) @ p_matrix_rows_dn.T
+                lambda_projectors = (left_projector, right_projector)
+
+                geminal_ao = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_current)
+                wavefunction_data_ao = type(wavefunction_data_step)(
+                    jastrow_data=wavefunction_data_step.jastrow_data,
+                    geminal_data=geminal_ao,
+                )
+
+                self.hamiltonian_data = Hamiltonian_data(
+                    structure_data=self.hamiltonian_data.structure_data,
+                    wavefunction_data=wavefunction_data_ao,
+                    coulomb_potential_data=self.hamiltonian_data.coulomb_potential_data,
+                )
+                logger.info("opt_with_projected_MOs=True: converted current MO geminal to AO for this optimization step.")
 
             # run MCMC
             self.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
@@ -2201,18 +2126,6 @@ class MCMC:
                     optax_state = optax_tx.init(jnp.array(flat_param_vector))
                 elif flat_param_vector.size != optax_param_size:
                     raise ValueError("The number of variational parameters changed after initializing the optax optimizer.")
-
-            # Rebuild Step 2 projection context from the current AO state at every step.
-            step_projectors = None
-            if opt_with_projected_MOs:
-                current_geminal = self.hamiltonian_data.wavefunction_data.geminal_data
-                step_projectors = _build_projectors_from_current_ao_state(current_geminal)
-
-            lambda_projectors = None
-            num_orb_projection = None
-            if step_projectors is not None:
-                left_projector, right_projector, num_orb_projection = step_projectors
-                lambda_projectors = (left_projector, right_projector)
 
             # get f and f_std (generalized forces)
             f, f_std = self.get_gF(
@@ -2641,6 +2554,50 @@ class MCMC:
                 thetas=theta,
                 learning_rate=block_learning_rate,
             )
+
+            if opt_with_projected_MOs:
+                geminal_ao_current = wavefunction_data.geminal_data
+                if lambda_projectors is not None and num_orb_projection is not None:
+                    left_projector, right_projector = lambda_projectors
+                    lambda_matrix = np.asarray(geminal_ao_current.lambda_matrix, dtype=np.float64)
+                    lambda_paired, lambda_unpaired = np.hsplit(lambda_matrix, [num_orb_projection])
+                    identity_left = np.eye(left_projector.shape[0], dtype=np.float64)
+                    identity_right = np.eye(right_projector.shape[0], dtype=np.float64)
+                    correction = np.einsum(
+                        "ab,bc,cd->ad",
+                        (identity_left - left_projector.T),
+                        lambda_paired,
+                        (identity_right - right_projector.T),
+                    )
+                    corrected_lambda_paired = lambda_paired - correction
+                    corrected_lambda_matrix = np.hstack((corrected_lambda_paired, lambda_unpaired))
+                    corrected_lambda_matrix = corrected_lambda_matrix.astype(
+                        np.asarray(geminal_ao_current.lambda_matrix).dtype,
+                        copy=False,
+                    )
+                    geminal_ao_current = Geminal_data(
+                        num_electron_up=geminal_ao_current.num_electron_up,
+                        num_electron_dn=geminal_ao_current.num_electron_dn,
+                        orb_data_up_spin=geminal_ao_current.orb_data_up_spin,
+                        orb_data_dn_spin=geminal_ao_current.orb_data_dn_spin,
+                        lambda_matrix=corrected_lambda_matrix,
+                    )
+                    wavefunction_data = type(wavefunction_data)(
+                        jastrow_data=wavefunction_data.jastrow_data,
+                        geminal_data=geminal_ao_current,
+                    )
+                    logger.info("opt_with_projected_MOs=True: applied stored L/R projection to AO lambda matrix.")
+
+                geminal_mo_rescaled = Geminal_data.convert_from_AOs_to_MOs(
+                    geminal_data=geminal_ao_current,
+                    num_eigenvectors=geminal_ao_current.num_electron_dn,
+                )
+                wavefunction_data = type(wavefunction_data)(
+                    jastrow_data=wavefunction_data.jastrow_data,
+                    geminal_data=geminal_mo_rescaled,
+                )
+                logger.info("opt_with_projected_MOs=True: projected updated AO geminal to MO (truncated, scaled).")
+
             hamiltonian_data = Hamiltonian_data(
                 structure_data=structure_data,
                 wavefunction_data=wavefunction_data,
@@ -2649,12 +2606,6 @@ class MCMC:
             logger.info("Wavefunction has been updated. Optimization loop is done.")
             logger.info("")
             self.hamiltonian_data = hamiltonian_data
-
-            if opt_with_projected_MOs and geminal_init.is_mo_representation:
-                _debug_log_pre_scaling_eigenvalues(
-                    f"Optimization step {i_opt + 1 + self.__i_opt} internal state after update",
-                    self.hamiltonian_data.wavefunction_data.geminal_data,
-                )
 
             # check max time
             vmcopt_current = time.perf_counter()
@@ -2667,7 +2618,7 @@ class MCMC:
                     hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.h5"
                     logger.info(f"Hamiltonian data is dumped as an HDF5 file: {hamiltonian_data_filename}.")
                     hamiltonian_data_to_dump = self.hamiltonian_data
-                    if opt_with_projected_MOs and geminal_init.is_mo_representation:
+                    if opt_with_projected_MOs and hamiltonian_data_to_dump.wavefunction_data.geminal_data.is_ao_representation:
                         wf_data = hamiltonian_data_to_dump.wavefunction_data
                         geminal = wf_data.geminal_data
                         geminal_mo = Geminal_data.convert_from_AOs_to_MOs(
@@ -2704,7 +2655,10 @@ class MCMC:
                         hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.h5"
                         logger.info(f"Hamiltonian data is dumped as an HDF5 file: {hamiltonian_data_filename}.")
                         hamiltonian_data_to_dump = self.hamiltonian_data
-                        if opt_with_projected_MOs and geminal_init.is_mo_representation:
+                        if (
+                            opt_with_projected_MOs
+                            and hamiltonian_data_to_dump.wavefunction_data.geminal_data.is_ao_representation
+                        ):
                             wf_data = hamiltonian_data_to_dump.wavefunction_data
                             geminal = wf_data.geminal_data
                             geminal_mo = Geminal_data.convert_from_AOs_to_MOs(
@@ -2730,7 +2684,7 @@ class MCMC:
                     hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.h5"
                     logger.info(f"Hamiltonian data is dumped as an HDF5 file: {hamiltonian_data_filename}.")
                     hamiltonian_data_to_dump = self.hamiltonian_data
-                    if opt_with_projected_MOs and geminal_init.is_mo_representation:
+                    if opt_with_projected_MOs and hamiltonian_data_to_dump.wavefunction_data.geminal_data.is_ao_representation:
                         wf_data = hamiltonian_data_to_dump.wavefunction_data
                         geminal = wf_data.geminal_data
                         geminal_mo = Geminal_data.convert_from_AOs_to_MOs(
@@ -2748,7 +2702,7 @@ class MCMC:
                         )
                     hamiltonian_data_to_dump.save_to_hdf5(hamiltonian_data_filename)
 
-        if opt_with_projected_MOs and geminal_init.is_mo_representation:
+        if opt_with_projected_MOs and self.hamiltonian_data.wavefunction_data.geminal_data.is_ao_representation:
             wf_data = self.hamiltonian_data.wavefunction_data
             geminal = wf_data.geminal_data
             geminal_mo = Geminal_data.convert_from_AOs_to_MOs(
