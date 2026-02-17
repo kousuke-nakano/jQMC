@@ -46,7 +46,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc.atomic_orbital import AOs_sphe_data  # noqa: E402
+from jqmc.atomic_orbital import AOs_sphe_data, compute_overlap_matrix  # noqa: E402
 from jqmc.determinant import (  # noqa: E402
     Geminal_data,
     _compute_AS_regularization_factor_debug,
@@ -523,7 +523,7 @@ def test_convert_from_AOs_to_MOs_full_projection_open_shell():
 
 
 def test_convert_from_AOs_to_MOs_truncated_mode_closed_shell():
-    """AO->MO integer mode accepts boundary values and scales paired eigenvalues."""
+    """AO->MO integer mode accepts boundary values without enforcing eigenvalue scaling."""
     rng = np.random.default_rng(4321)
     aos_data = _build_small_sphe_aos_for_conversion()
     aos_data.sanity_check()
@@ -552,12 +552,6 @@ def test_convert_from_AOs_to_MOs_truncated_mode_closed_shell():
     print("[debug] closed-shell truncated paired diag(L):")
     print(paired_diag)
 
-    np.testing.assert_array_almost_equal(
-        np.max(np.abs(paired_diag)),
-        1.0,
-        decimal=decimal_consistency,
-    )
-
     geminal_mo_small = Geminal_data.convert_from_AOs_to_MOs(geminal_ao, num_eigenvectors=2)
     assert geminal_mo_small.orb_num_up == 2
     assert geminal_mo_small.orb_num_dn == 2
@@ -572,7 +566,7 @@ def test_convert_from_AOs_to_MOs_truncated_mode_closed_shell():
 
 
 def test_convert_from_AOs_to_MOs_truncated_mode_open_shell():
-    """Open-shell truncation scales paired eigenvalues and keeps projected unpaired block."""
+    """Open-shell truncation keeps projected unpaired block without paired-eigenvalue scaling."""
     rng = np.random.default_rng(2468)
     aos_data = _build_sphe_aos_l_le6(rng)
     aos_data.sanity_check()
@@ -596,13 +590,123 @@ def test_convert_from_AOs_to_MOs_truncated_mode_open_shell():
     geminal_mo = Geminal_data.convert_from_AOs_to_MOs(geminal_ao, num_eigenvectors=5)
     paired_block, unpaired_block = np.hsplit(np.asarray(geminal_mo.lambda_matrix), [geminal_mo.orb_num_dn])
 
-    paired_diag = np.diag(paired_block)
+    assert unpaired_block.shape == (5, 1)
+
+
+def test_apply_ao_projected_paired_update_and_reproject_fixed_num_dn():
+    """AO-corrected paired update is applied then reprojected with fixed N=num_electron_dn."""
+    rng = np.random.default_rng(97531)
+    aos_data = _build_small_sphe_aos_for_conversion()
+    aos_data.sanity_check()
+
+    num_electron_up = 2
+    num_electron_dn = 2
+    num_mo = aos_data.num_ao
+
+    mo_coefficients = rng.uniform(-0.4, 0.4, size=(num_mo, aos_data.num_ao))
+    mo_coefficients += np.eye(num_mo)
+    mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
+    mos_data.sanity_check()
+
+    lambda_mo_paired = rng.uniform(-0.2, 0.2, size=(num_mo, num_mo))
+    lambda_mo_paired = 0.5 * (lambda_mo_paired + lambda_mo_paired.T)
+    lambda_mo = np.hstack([lambda_mo_paired, np.zeros((num_mo, 0), dtype=np.float64)])
+
+    geminal_mo = Geminal_data(
+        num_electron_up=num_electron_up,
+        num_electron_dn=num_electron_dn,
+        orb_data_up_spin=mos_data,
+        orb_data_dn_spin=mos_data,
+        lambda_matrix=lambda_mo,
+    )
+
+    ao_paired_direction = rng.uniform(-0.1, 0.1, size=(aos_data.num_ao, aos_data.num_ao))
+    step_size = 0.3
+
+    overlap = np.asarray(compute_overlap_matrix(aos_data), dtype=np.float64)
+    overlap = 0.5 * (overlap + overlap.T)
+
+    p_matrix_cols = np.asarray(mos_data.mo_coefficients, dtype=np.float64).T
+    right_projector = (overlap @ p_matrix_cols) @ p_matrix_cols.T
+    left_projector = right_projector.T
+    identity = np.eye(aos_data.num_ao, dtype=np.float64)
+
+    corrected_direction = ao_paired_direction - (
+        (identity - left_projector.T) @ ao_paired_direction @ (identity - right_projector.T)
+    )
+
+    geminal_ao = Geminal_data.convert_from_MOs_to_AOs(geminal_mo)
+    ao_lambda_paired, ao_lambda_unpaired = np.hsplit(np.asarray(geminal_ao.lambda_matrix), [geminal_ao.orb_num_dn])
+    ao_lambda_updated = np.hstack([ao_lambda_paired + step_size * corrected_direction, ao_lambda_unpaired])
+
+    expected = Geminal_data.convert_from_AOs_to_MOs(
+        Geminal_data(
+            num_electron_up=geminal_ao.num_electron_up,
+            num_electron_dn=geminal_ao.num_electron_dn,
+            orb_data_up_spin=geminal_ao.orb_data_up_spin,
+            orb_data_dn_spin=geminal_ao.orb_data_dn_spin,
+            lambda_matrix=ao_lambda_updated,
+        ),
+        num_eigenvectors=num_electron_dn,
+    )
+
+    actual = geminal_mo.apply_ao_projected_paired_update_and_reproject(
+        ao_paired_direction=ao_paired_direction,
+        step_size=step_size,
+    )
+
+    assert actual.orb_num_up == num_electron_dn
+    assert actual.orb_num_dn == num_electron_dn
     np.testing.assert_array_almost_equal(
-        np.max(np.abs(paired_diag)),
-        1.0,
+        np.asarray(actual.lambda_matrix),
+        np.asarray(expected.lambda_matrix),
         decimal=decimal_consistency,
     )
-    assert unpaired_block.shape == (5, 1)
+
+
+def test_apply_ao_projected_paired_update_and_reproject_input_validation():
+    """AO-projected paired update rejects AO representation and wrong direction shape."""
+    rng = np.random.default_rng(24680)
+    aos_data = _build_small_sphe_aos_for_conversion()
+
+    num_electron_up = 2
+    num_electron_dn = 2
+
+    lambda_matrix_paired = rng.uniform(-0.2, 0.2, size=(aos_data.num_ao, aos_data.num_ao))
+    lambda_matrix_paired = 0.5 * (lambda_matrix_paired + lambda_matrix_paired.T)
+    lambda_matrix = np.hstack([lambda_matrix_paired, np.zeros((aos_data.num_ao, 0), dtype=np.float64)])
+
+    geminal_ao = Geminal_data(
+        num_electron_up=num_electron_up,
+        num_electron_dn=num_electron_dn,
+        orb_data_up_spin=aos_data,
+        orb_data_dn_spin=aos_data,
+        lambda_matrix=lambda_matrix,
+    )
+
+    with pytest.raises(ValueError):
+        geminal_ao.apply_ao_projected_paired_update_and_reproject(
+            ao_paired_direction=np.zeros((aos_data.num_ao, aos_data.num_ao), dtype=np.float64),
+            step_size=1.0,
+        )
+
+    num_mo = aos_data.num_ao
+    mo_coefficients = rng.uniform(-0.4, 0.4, size=(num_mo, aos_data.num_ao)) + np.eye(num_mo)
+    mos_data = MOs_data(num_mo=num_mo, aos_data=aos_data, mo_coefficients=mo_coefficients)
+
+    geminal_mo = Geminal_data(
+        num_electron_up=num_electron_up,
+        num_electron_dn=num_electron_dn,
+        orb_data_up_spin=mos_data,
+        orb_data_dn_spin=mos_data,
+        lambda_matrix=lambda_matrix,
+    )
+
+    with pytest.raises(ValueError):
+        geminal_mo.apply_ao_projected_paired_update_and_reproject(
+            ao_paired_direction=np.zeros((aos_data.num_ao - 1, aos_data.num_ao), dtype=np.float64),
+            step_size=1.0,
+        )
 
 
 def test_grads_and_laplacian_fast_update():

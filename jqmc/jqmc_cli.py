@@ -396,6 +396,7 @@ def _cli():
         opt_J3_param = parameters[section]["opt_J3_param"]
         opt_JNN_param = parameters[section]["opt_JNN_param"]
         opt_lambda_param = parameters[section]["opt_lambda_param"]
+        opt_with_projected_MOs = parameters[section]["opt_with_projected_MOs"]
         num_param_opt = parameters[section]["num_param_opt"]
         optimizer_kwargs = parameters[section]["optimizer_kwargs"]
         if optimizer_kwargs is None:
@@ -455,6 +456,7 @@ def _cli():
             opt_J3_param=opt_J3_param,
             opt_JNN_param=opt_JNN_param,
             opt_lambda_param=opt_lambda_param,
+            opt_with_projected_MOs=opt_with_projected_MOs,
             num_param_opt=num_param_opt,
             max_time=max_time,
             optimizer_kwargs=optimizer_kwargs,
