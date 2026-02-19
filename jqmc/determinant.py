@@ -564,7 +564,7 @@ class Geminal_data:
         selected_vectors_dn = np.real_if_close(v_h.T[:, :num_mo], tol=1000).astype(np.float64)
 
         if use_truncated_mode:
-            logger.info(
+            logger.debug(
                 "[MOOPT-TRACE] AO->MO selected eigenvalues before scaling: %s",
                 np.array2string(selected_evals, precision=10, separator=", "),
             )
@@ -574,7 +574,7 @@ class Geminal_data:
             if num_scale > 0:
                 selected_evals[:num_scale] = 1.0
 
-            logger.info(
+            logger.debug(
                 "[MOOPT-TRACE] AO->MO selected eigenvalues after scaling: %s",
                 np.array2string(selected_evals, precision=10, separator=", "),
             )
@@ -609,13 +609,13 @@ class Geminal_data:
         dn_max_abs_diff = float(np.max(np.abs(psp_dn_diff))) if psp_dn_diff.size else 0.0
         dn_is_orthonormal = bool(np.allclose(psp_dn, identity, atol=1.0e-8, rtol=1.0e-6))
 
-        logger.info(
+        logger.debug(
             "[MOOPT-TRACE] AO->MO orthogonality check (up): allclose(P^TSP, I)=%s, ||P^TSP-I||_F=%.3e, max|P^TSP-I|=%.3e",
             up_is_orthonormal,
             up_frob_norm,
             up_max_abs_diff,
         )
-        logger.info(
+        logger.debug(
             "[MOOPT-TRACE] AO->MO orthogonality check (dn): allclose(P^TSP, I)=%s, ||P^TSP-I||_F=%.3e, max|P^TSP-I|=%.3e",
             dn_is_orthonormal,
             dn_frob_norm,

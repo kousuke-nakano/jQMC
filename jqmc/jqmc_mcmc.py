@@ -2012,11 +2012,26 @@ class MCMC:
                 )
 
             if geminal_init.is_mo_representation:
+                initial_geminal_is_ao_representation = False
                 logger.info("opt_with_projected_MOs=True: initial geminal is MO representation.")
             else:
-                logger.info(
-                    "opt_with_projected_MOs=True: initial geminal is AO representation (step-wise AO->MO projection is enabled)."
+                initial_geminal_is_ao_representation = True
+                logger.info("opt_with_projected_MOs=True: initial geminal is AO representation.")
+
+                geminal_init_mo = Geminal_data.convert_from_AOs_to_MOs(
+                    geminal_init,
+                    num_eigenvectors="all",
                 )
+                wavefunction_data_mo = type(self.hamiltonian_data.wavefunction_data)(
+                    jastrow_data=self.hamiltonian_data.wavefunction_data.jastrow_data,
+                    geminal_data=geminal_init_mo,
+                )
+                self.hamiltonian_data = Hamiltonian_data(
+                    structure_data=self.hamiltonian_data.structure_data,
+                    wavefunction_data=wavefunction_data_mo,
+                    coulomb_potential_data=self.hamiltonian_data.coulomb_potential_data,
+                )
+                logger.info("opt_with_projected_MOs=True: converted initial AO geminal to MO before optimization loop.")
 
         # toml(control) filename
         toml_filename = "external_control_opt.toml"
@@ -2618,20 +2633,17 @@ class MCMC:
                     hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.h5"
                     logger.info(f"Hamiltonian data is dumped as an HDF5 file: {hamiltonian_data_filename}.")
                     hamiltonian_data_to_dump = self.hamiltonian_data
-                    if opt_with_projected_MOs and hamiltonian_data_to_dump.wavefunction_data.geminal_data.is_ao_representation:
+                    if opt_with_projected_MOs and initial_geminal_is_ao_representation:
                         wf_data = hamiltonian_data_to_dump.wavefunction_data
                         geminal = wf_data.geminal_data
-                        geminal_mo = Geminal_data.convert_from_AOs_to_MOs(
-                            geminal_data=geminal,
-                            num_eigenvectors=geminal.num_electron_dn,
-                        )
-                        wf_data_mo = type(wf_data)(
+                        geminal_ao = Geminal_data.convert_from_MOs_to_AOs(geminal)
+                        wf_data_ao = type(wf_data)(
                             jastrow_data=wf_data.jastrow_data,
-                            geminal_data=geminal_mo,
+                            geminal_data=geminal_ao,
                         )
                         hamiltonian_data_to_dump = Hamiltonian_data(
                             structure_data=hamiltonian_data_to_dump.structure_data,
-                            wavefunction_data=wf_data_mo,
+                            wavefunction_data=wf_data_ao,
                             coulomb_potential_data=hamiltonian_data_to_dump.coulomb_potential_data,
                         )
                     hamiltonian_data_to_dump.save_to_hdf5(hamiltonian_data_filename)
@@ -2655,23 +2667,17 @@ class MCMC:
                         hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.h5"
                         logger.info(f"Hamiltonian data is dumped as an HDF5 file: {hamiltonian_data_filename}.")
                         hamiltonian_data_to_dump = self.hamiltonian_data
-                        if (
-                            opt_with_projected_MOs
-                            and hamiltonian_data_to_dump.wavefunction_data.geminal_data.is_ao_representation
-                        ):
+                        if opt_with_projected_MOs and initial_geminal_is_ao_representation:
                             wf_data = hamiltonian_data_to_dump.wavefunction_data
                             geminal = wf_data.geminal_data
-                            geminal_mo = Geminal_data.convert_from_AOs_to_MOs(
-                                geminal_data=geminal,
-                                num_eigenvectors=geminal.num_electron_dn,
-                            )
-                            wf_data_mo = type(wf_data)(
+                            geminal_ao = Geminal_data.convert_from_MOs_to_AOs(geminal)
+                            wf_data_ao = type(wf_data)(
                                 jastrow_data=wf_data.jastrow_data,
-                                geminal_data=geminal_mo,
+                                geminal_data=geminal_ao,
                             )
                             hamiltonian_data_to_dump = Hamiltonian_data(
                                 structure_data=hamiltonian_data_to_dump.structure_data,
-                                wavefunction_data=wf_data_mo,
+                                wavefunction_data=wf_data_ao,
                                 coulomb_potential_data=hamiltonian_data_to_dump.coulomb_potential_data,
                             )
                         hamiltonian_data_to_dump.save_to_hdf5(hamiltonian_data_filename)
@@ -2684,20 +2690,17 @@ class MCMC:
                     hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.h5"
                     logger.info(f"Hamiltonian data is dumped as an HDF5 file: {hamiltonian_data_filename}.")
                     hamiltonian_data_to_dump = self.hamiltonian_data
-                    if opt_with_projected_MOs and hamiltonian_data_to_dump.wavefunction_data.geminal_data.is_ao_representation:
+                    if opt_with_projected_MOs and initial_geminal_is_ao_representation:
                         wf_data = hamiltonian_data_to_dump.wavefunction_data
                         geminal = wf_data.geminal_data
-                        geminal_mo = Geminal_data.convert_from_AOs_to_MOs(
-                            geminal_data=geminal,
-                            num_eigenvectors=geminal.num_electron_dn,
-                        )
-                        wf_data_mo = type(wf_data)(
+                        geminal_ao = Geminal_data.convert_from_MOs_to_AOs(geminal)
+                        wf_data_ao = type(wf_data)(
                             jastrow_data=wf_data.jastrow_data,
-                            geminal_data=geminal_mo,
+                            geminal_data=geminal_ao,
                         )
                         hamiltonian_data_to_dump = Hamiltonian_data(
                             structure_data=hamiltonian_data_to_dump.structure_data,
-                            wavefunction_data=wf_data_mo,
+                            wavefunction_data=wf_data_ao,
                             coulomb_potential_data=hamiltonian_data_to_dump.coulomb_potential_data,
                         )
                     hamiltonian_data_to_dump.save_to_hdf5(hamiltonian_data_filename)
