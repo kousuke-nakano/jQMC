@@ -2105,89 +2105,6 @@ def _compute_ratio_Jastrow_part_rank1_update(
             *(jastrow_2b_param, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts),
         )
 
-    def compute_one_grid_J3(
-        jastrow_three_body_data, aos_up, aos_dn, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts
-    ):
-        delta_up = new_r_up_carts - old_r_up_carts
-        delta_dn = new_r_dn_carts - old_r_dn_carts
-        up_moved = jnp.any(delta_up != 0)
-        if num_up == 0:
-            nonzero_dn = jnp.any(delta_dn != 0, axis=1)
-            idx = jnp.argmax(nonzero_dn)
-            up_moved = False
-        elif num_dn == 0:
-            nonzero_up = jnp.any(delta_up != 0, axis=1)
-            idx = jnp.argmax(nonzero_up)
-            up_moved = True
-        else:
-            nonzero_up = jnp.any(delta_up != 0, axis=1)
-            nonzero_dn = jnp.any(delta_dn != 0, axis=1)
-            idx_up = jnp.argmax(nonzero_up)
-            idx_dn = jnp.argmax(nonzero_dn)
-            idx = jax.lax.cond(up_moved, lambda _: idx_up, lambda _: idx_dn, operand=None)
-
-        num_electron_up = len(old_r_up_carts)
-        num_electron_dn = len(old_r_dn_carts)
-        j1_matrix_up = jastrow_three_body_data.j_matrix[:, -1]
-        j1_matrix_dn = jastrow_three_body_data.j_matrix[:, -1]
-        j3_matrix_up_up = jastrow_three_body_data.j_matrix[:, :-1]
-        j3_matrix_dn_dn = jastrow_three_body_data.j_matrix[:, :-1]
-        j3_matrix_up_dn = jastrow_three_body_data.j_matrix[:, :-1]
-        e_up = jnp.ones(num_electron_up).T
-        e_dn = jnp.ones(num_electron_dn).T
-
-        def up_case(new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts):
-            new_r_up_carts_extracted = jnp.expand_dims(new_r_up_carts[idx], axis=0)  # shape=(1,3)
-            old_r_up_carts_extracted = jnp.expand_dims(old_r_up_carts[idx], axis=0)  # shape=(1,3)
-
-            aos_up_p = jnp.array(
-                jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, new_r_up_carts_extracted)
-            ) - jnp.array(jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, old_r_up_carts_extracted))
-
-            indices = jnp.arange(num_electron_up)
-            Q_up_c = (idx < indices).astype(jnp.float64).reshape(-1, 1)
-            Q_up_r = (idx > indices).astype(jnp.float64).reshape(1, -1)
-            J3_ratio = jnp.exp(
-                j1_matrix_up @ aos_up_p
-                + jnp.trace(aos_up_p.T @ j3_matrix_up_up @ aos_up @ Q_up_c)
-                + jnp.trace(aos_up.T @ j3_matrix_up_up @ aos_up_p @ Q_up_r)
-                + aos_up_p.T @ j3_matrix_up_dn @ aos_dn @ e_dn
-            )
-
-            return J3_ratio
-
-        def dn_case(new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts):
-            new_r_dn_carts_extracted = jnp.expand_dims(new_r_dn_carts[idx], axis=0)  # shape=(1,3)
-            old_r_dn_carts_extracted = jnp.expand_dims(old_r_dn_carts[idx], axis=0)  # shape=(1,3)
-
-            aos_dn_p = jnp.array(
-                jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, new_r_dn_carts_extracted)
-            ) - jnp.array(jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, old_r_dn_carts_extracted))
-
-            indices = jnp.arange(num_electron_dn)
-            Q_dn_c = (idx < indices).astype(jnp.float64).reshape(-1, 1)
-            Q_dn_r = (idx > indices).astype(jnp.float64).reshape(1, -1)
-            J3_ratio = jnp.exp(
-                j1_matrix_dn @ aos_dn_p
-                + jnp.trace(aos_dn_p.T @ j3_matrix_dn_dn @ aos_dn @ Q_dn_c)
-                + jnp.trace(aos_dn.T @ j3_matrix_dn_dn @ aos_dn_p @ Q_dn_r)
-                + e_up.T @ aos_up.T @ j3_matrix_up_dn @ aos_dn_p
-            )
-
-            return J3_ratio
-
-        if num_up == 0:
-            return dn_case(new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts)
-        if num_dn == 0:
-            return up_case(new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts)
-
-        return jax.lax.cond(
-            up_moved,
-            up_case,
-            dn_case,
-            *(new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts),
-        )
-
     # J2 part
     if jastrow_data.jastrow_two_body_data is not None:
         j2_param = jastrow_data.jastrow_two_body_data.jastrow_2b_param
@@ -2295,23 +2212,81 @@ def _compute_ratio_Jastrow_part_rank1_update(
 
         J_ratio *= jnp.ravel(J2_ratio)
 
-    # J3 part
+    # J3 part  (batched AO evaluation — avoids per-config compute_orb_api inside vmap)
     if jastrow_data.jastrow_three_body_data is not None:
-        jastrow_three_body_data = jastrow_data.jastrow_three_body_data
-        aos_up_old = jnp.array(jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, old_r_up_carts))
-        aos_dn_old = jnp.array(jastrow_three_body_data.compute_orb_api(jastrow_three_body_data.orb_data, old_r_dn_carts))
-        # vectorization along grid
-        J3_ratio = vmap(compute_one_grid_J3, in_axes=(None, None, None, 0, 0, None, None))(
-            jastrow_data.jastrow_three_body_data,
-            aos_up_old,
-            aos_dn_old,
-            new_r_up_carts_arr,
-            new_r_dn_carts_arr,
-            old_r_up_carts,
-            old_r_dn_carts,
-        )
+        j3d = jastrow_data.jastrow_three_body_data
+        j3_mat = j3d.j_matrix[:, :-1]  # (n_ao, n_ao)  shared for up-up / dn-dn / up-dn
+        j1_vec = j3d.j_matrix[:, -1]  # (n_ao,)
 
-        J_ratio *= jnp.ravel(J3_ratio)
+        # Old AOs evaluated once
+        aos_up_old = jnp.array(j3d.compute_orb_api(j3d.orb_data, old_r_up_carts))  # (n_ao, N_up)
+        aos_dn_old = jnp.array(j3d.compute_orb_api(j3d.orb_data, old_r_dn_carts))  # (n_ao, N_dn)
+
+        N_batch = new_r_up_carts_arr.shape[0]
+
+        # Detect which spin moved and which electron index per config
+        delta_up_batch = new_r_up_carts_arr - old_r_up_carts[None]  # (N, N_up, 3)
+        delta_dn_batch = new_r_dn_carts_arr - old_r_dn_carts[None]  # (N, N_dn, 3)
+        up_moved_batch = jnp.any(delta_up_batch != 0.0, axis=(1, 2))  # (N,) bool
+        idx_up = jnp.argmax(jnp.any(delta_up_batch != 0.0, axis=2).astype(jnp.int32), axis=1)  # (N,)
+        idx_dn = jnp.argmax(jnp.any(delta_dn_batch != 0.0, axis=2).astype(jnp.int32), axis=1)  # (N,)
+
+        # New position of the moved electron per config (select spin block)
+        r_new_up_moved = jnp.take_along_axis(new_r_up_carts_arr, idx_up[:, None, None], axis=1).reshape(N_batch, 3)
+        r_new_dn_moved = jnp.take_along_axis(new_r_dn_carts_arr, idx_dn[:, None, None], axis=1).reshape(N_batch, 3)
+        r_old_up_moved = old_r_up_carts[idx_up]  # (N, 3)
+        r_old_dn_moved = old_r_dn_carts[idx_dn]  # (N, 3)
+        r_new_moved = jnp.where(up_moved_batch[:, None], r_new_up_moved, r_new_dn_moved)  # (N, 3)
+        r_old_moved = jnp.where(up_moved_batch[:, None], r_old_up_moved, r_old_dn_moved)  # (N, 3)
+
+        # Single batched AO evaluation for all N configs (replaces N per-config calls inside vmap)
+        aos_new_batch = jnp.array(j3d.compute_orb_api(j3d.orb_data, r_new_moved))  # (n_ao, N)
+        aos_old_batch = jnp.array(j3d.compute_orb_api(j3d.orb_data, r_old_moved))  # (n_ao, N)
+        aos_p_batch = aos_new_batch - aos_old_batch  # (n_ao, N)
+
+        # Precompute constant products (independent of config)
+        W_up = jnp.dot(j3_mat, aos_up_old)  # (n_ao, N_up)  = j3_mat @ A_up
+        U_up = jnp.dot(aos_up_old.T, j3_mat)  # (N_up, n_ao)  = A_up.T @ j3_mat
+        W_dn = jnp.dot(j3_mat, aos_dn_old)  # (n_ao, N_dn)
+        U_dn = jnp.dot(aos_dn_old.T, j3_mat)  # (N_dn, n_ao)
+        dn_cross_vec = j3_mat @ jnp.sum(aos_dn_old, axis=1)  # (n_ao,): UP cross term constant
+        up_cross_vec = jnp.sum(aos_up_old, axis=1) @ j3_mat  # (n_ao,): DN cross term constant
+
+        # Q index: idx_up for UP configs, idx_dn for DN configs
+        idx_for_Q = jnp.where(up_moved_batch, idx_up, idx_dn)  # (N,)
+
+        # term1: J1-like contribution (identical formula for UP and DN)
+        term1 = j1_vec @ aos_p_batch  # (N,)
+
+        # UP formula  -----------------------------------------------------------
+        V_up = jnp.dot(aos_p_batch.T, W_up)  # (N, N_up)
+        P_up = jnp.dot(U_up, aos_p_batch)  # (N_up, N)
+        Q_up_c = (idx_for_Q[:, None] < jnp.arange(num_up)[None, :]).astype(jnp.float64)  # (N, N_up)
+        Q_up_r = (idx_for_Q[:, None] > jnp.arange(num_up)[None, :]).astype(jnp.float64)  # (N, N_up)
+        term2_up = jnp.sum(V_up * Q_up_c, axis=1)  # (N,)
+        term3_up = jnp.sum(P_up.T * Q_up_r, axis=1)  # (N,)
+        term4_up = dn_cross_vec @ aos_p_batch  # (N,)
+        J3_log_up = term1 + term2_up + term3_up + term4_up
+
+        # DN formula  -----------------------------------------------------------
+        V_dn = jnp.dot(aos_p_batch.T, W_dn)  # (N, N_dn)
+        P_dn = jnp.dot(U_dn, aos_p_batch)  # (N_dn, N)
+        Q_dn_c = (idx_for_Q[:, None] < jnp.arange(num_dn)[None, :]).astype(jnp.float64)  # (N, N_dn)
+        Q_dn_r = (idx_for_Q[:, None] > jnp.arange(num_dn)[None, :]).astype(jnp.float64)  # (N, N_dn)
+        term2_dn = jnp.sum(V_dn * Q_dn_c, axis=1)  # (N,)
+        term3_dn = jnp.sum(P_dn.T * Q_dn_r, axis=1)  # (N,)
+        term4_dn = up_cross_vec @ aos_p_batch  # (N,)
+        J3_log_dn = term1 + term2_dn + term3_dn + term4_dn
+
+        # Select UP or DN formula per config
+        if num_up == 0:
+            J3_ratio = jnp.exp(J3_log_dn)
+        elif num_dn == 0:
+            J3_ratio = jnp.exp(J3_log_up)
+        else:
+            J3_ratio = jnp.exp(jnp.where(up_moved_batch, J3_log_up, J3_log_dn))
+
+        J_ratio *= J3_ratio
 
     # JNN part
     if jastrow_data.jastrow_nn_data is not None:
