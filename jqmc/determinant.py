@@ -909,6 +909,93 @@ def _compute_ratio_determinant_part_rank1_update(
     return determinant_ratios
 
 
+def _compute_ratio_determinant_part_split_spin(
+    geminal_data: Geminal_data,
+    A_old_inv: jax.Array,
+    old_r_up_carts: jax.Array,
+    old_r_dn_carts: jax.Array,
+    new_r_up_shifted: jax.Array,
+    new_r_dn_shifted: jax.Array,
+) -> jax.Array:
+    r"""Determinant ratio for a block-structured mesh where up and dn electrons move separately.
+
+    Avoids computing MOs for the unchanged spin block.  Compared with
+    ``_compute_ratio_determinant_part_rank1_update`` called on the concatenated
+    (G_up + G_dn) array, this evaluates only ``G_up`` up-spin AOs and ``G_dn``
+    dn-spin AOs instead of evaluating both spins for all ``G_up + G_dn`` configs.
+
+    Args:
+        geminal_data: Geminal parameters and orbital references.
+        A_old_inv: Inverse geminal matrix with shape ``(N_up, N_up)``.
+        old_r_up_carts: Reference up-spin coordinates ``(N_up, 3)``.
+        old_r_dn_carts: Reference dn-spin coordinates ``(N_dn, 3)``.
+        new_r_up_shifted: Up-block proposed coords ``(G_up, N_up, 3)``.  Exactly one
+            up electron differs from ``old_r_up_carts`` per config.
+        new_r_dn_shifted: Dn-block proposed coords ``(G_dn, N_dn, 3)``.  Exactly one
+            dn electron differs from ``old_r_dn_carts`` per config.
+
+    Returns:
+        jax.Array: Concatenated determinant ratios ``(G_up + G_dn,)``.
+    """
+    num_up = old_r_up_carts.shape[0]
+    num_dn = old_r_dn_carts.shape[0]
+
+    # Degenerate cases fall back to the general function on empty slices.
+    if num_up == 0 or num_dn == 0:
+        combined_up = jnp.concatenate(
+            [new_r_up_shifted, jnp.broadcast_to(old_r_up_carts[None], (new_r_dn_shifted.shape[0], num_up, 3))],
+            axis=0,
+        )
+        combined_dn = jnp.concatenate(
+            [jnp.broadcast_to(old_r_dn_carts[None], (new_r_up_shifted.shape[0], num_dn, 3)), new_r_dn_shifted],
+            axis=0,
+        )
+        return _compute_ratio_determinant_part_rank1_update(
+            geminal_data, A_old_inv, old_r_up_carts, old_r_dn_carts, combined_up, combined_dn
+        )
+
+    lambda_matrix_paired, lambda_matrix_unpaired = jnp.split(
+        geminal_data.lambda_matrix, indices_or_sections=[geminal_data.orb_num_dn], axis=1
+    )
+
+    # Precompute old AO matrices once.
+    orb_matrix_up_old = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, old_r_up_carts)
+    orb_matrix_dn_old = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, old_r_dn_carts)
+
+    # ── UP BLOCK: up electron moved, dn unchanged ──────────────────────────────
+    g_up = new_r_up_shifted.shape[0]
+    delta_up = new_r_up_shifted - old_r_up_carts  # (G_up, N_up, 3)
+    moved_up_mask = jnp.any(delta_up != 0.0, axis=2)  # (G_up, N_up)
+    idx_up = jnp.argmax(moved_up_mask.astype(jnp.int32), axis=1)  # (G_up,)
+    r_up_new_flat = jnp.take_along_axis(new_r_up_shifted, idx_up[:, None, None], axis=1).reshape(-1, 3)
+
+    # Only evaluate up-spin MOs for the moved electron positions.
+    orb_up_new_batch = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_new_flat)  # (n_orb_up, G_up)
+    tmp_up = jnp.dot(orb_up_new_batch.T, lambda_matrix_paired)  # (G_up, n_orb_dn)
+    row_paired = jnp.dot(tmp_up, orb_matrix_dn_old)  # (G_up, N_dn)
+    row_unpaired = jnp.dot(orb_up_new_batch.T, lambda_matrix_unpaired)  # (G_up, num_unpaired)
+    new_rows_up = jnp.hstack([row_paired, row_unpaired])  # (G_up, N_up)
+
+    A_col_for_up = jnp.take(A_old_inv, idx_up, axis=1).T  # (G_up, N_up)
+    det_ratio_up_block = jnp.sum(new_rows_up * A_col_for_up, axis=1)  # (G_up,)
+
+    # ── DN BLOCK: dn electron moved, up unchanged ──────────────────────────────
+    delta_dn = new_r_dn_shifted - old_r_dn_carts  # (G_dn, N_dn, 3)
+    moved_dn_mask = jnp.any(delta_dn != 0.0, axis=2)  # (G_dn, N_dn)
+    idx_dn = jnp.argmax(moved_dn_mask.astype(jnp.int32), axis=1)  # (G_dn,)
+    r_dn_new_flat = jnp.take_along_axis(new_r_dn_shifted, idx_dn[:, None, None], axis=1).reshape(-1, 3)
+
+    # Only evaluate dn-spin MOs for the moved electron positions.
+    orb_dn_new_batch = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_new_flat)  # (n_orb_dn, G_dn)
+    w_batch = jnp.dot(lambda_matrix_paired, orb_dn_new_batch)  # (n_orb_up, G_dn)
+    new_cols_dn = jnp.dot(orb_matrix_up_old.T, w_batch).T  # (G_dn, N_up)
+
+    A_row_for_dn = jnp.take(A_old_inv, idx_dn, axis=0)  # (G_dn, N_up)
+    det_ratio_dn_block = jnp.sum(A_row_for_dn * new_cols_dn, axis=1)  # (G_dn,)
+
+    return jnp.concatenate([det_ratio_up_block, det_ratio_dn_block])
+
+
 def _compute_ratio_determinant_part_debug(
     geminal_data: Geminal_data,
     old_r_up_carts: npt.NDArray[np.float64],

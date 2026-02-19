@@ -58,6 +58,7 @@ from scipy.special import eval_legendre
 
 from .determinant import (
     _compute_ratio_determinant_part_rank1_update,
+    _compute_ratio_determinant_part_split_spin,
     compute_det_geminal_all_elements,
     compute_geminal_all_elements,
 )
@@ -1580,13 +1581,13 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
     non_local_ecp_part_r_carts_dn = jnp.array(non_local_ecp_part_r_carts_dn)
 
     # wavefunction ratio
-    det_ratio = _compute_ratio_determinant_part_rank1_update(
+    det_ratio = _compute_ratio_determinant_part_split_spin(
         geminal_data=wavefunction_data.geminal_data,
         A_old_inv=A_old_inv,
         old_r_up_carts=r_up_carts,
         old_r_dn_carts=r_dn_carts,
-        new_r_up_carts_arr=non_local_ecp_part_r_carts_up,
-        new_r_dn_carts_arr=non_local_ecp_part_r_carts_dn,
+        new_r_up_shifted=up_mesh_r_up,
+        new_r_dn_shifted=dn_mesh_r_dn,
     )
     if flag_determinant_only:
         wf_ratio_all = det_ratio
@@ -1614,15 +1615,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
         )
         V_nonlocal_chunk = jnp.einsum("lg,lg->g", V_l_chunk, P_l_chunk)
 
-        def _scan_sum(carry, elems):
-            v_l_col, p_l_col = elems
-            return carry + jnp.dot(v_l_col, p_l_col), None
-
-        sum_chunk, _ = jax.lax.scan(
-            _scan_sum,
-            0.0,
-            (jnp.moveaxis(V_l_chunk, 1, 0), jnp.moveaxis(P_l_chunk, 1, 0)),
-        )
+        sum_chunk = jnp.sum(V_nonlocal_chunk)
         return V_nonlocal_chunk, sum_chunk
 
     V_nonlocal_up, sum_up = _contract_chunk(V_l_up, cos_up, weight_up, wf_ratio_up)
