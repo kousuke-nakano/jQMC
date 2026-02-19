@@ -53,11 +53,13 @@ import numpy as np
 import numpy.typing as npt
 from flax import struct
 from jax import jit, lax, vmap
+from jax.scipy import linalg as jsp_linalg
 from scipy.special import eval_legendre
 
 from .determinant import (
     _compute_ratio_determinant_part_rank1_update,
     compute_det_geminal_all_elements,
+    compute_geminal_all_elements,
 )
 from .function_collections import _legendre_tablated as jnp_legendre_tablated
 from .jastrow_factor import _compute_ratio_Jastrow_part_rank1_update, compute_Jastrow_part
@@ -1984,6 +1986,7 @@ def compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
     return r_up_carts_on_mesh, r_dn_carts_on_mesh, V_ecp_up, V_ecp_dn, sum_V_nonlocal
 
 
+@partial(jit, static_argnums=(5, 6))
 def compute_ecp_coulomb_potential(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
@@ -2011,30 +2014,27 @@ def compute_ecp_coulomb_potential(
         coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
-    """ full NNs
-    _, _, _, ecp_nonlocal_parts = _compute_ecp_non_local_parts_full_NN_jax(
-        coulomb_potential_data=coulomb_potential_data,
-        wavefunction_data=wavefunction_data,
+    # Compute inverse geminal matrix once and reuse it for rank-1 det-ratio updates
+    # (avoids full LU per mesh point in the slow path, ~10x speedup for ECP non-local)
+    G = compute_geminal_all_elements(
+        geminal_data=wavefunction_data.geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
-        Nv=Nv,
-        RT=RT,
-        flag_determinant_only=False,
     )
-    """
+    lu, piv = jsp_linalg.lu_factor(G)
+    A_old_inv = jsp_linalg.lu_solve((lu, piv), jnp.eye(G.shape[0], dtype=G.dtype))
 
-    #''' NNs
-    _, _, _, ecp_nonlocal_parts = compute_ecp_non_local_parts_nearest_neighbors(
+    _, _, _, ecp_nonlocal_parts = compute_ecp_non_local_parts_nearest_neighbors_fast_update(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
         RT=RT,
-        Nv=Nv,
+        A_old_inv=A_old_inv,
         NN=NN,
+        Nv=Nv,
         flag_determinant_only=False,
     )
-    #'''
 
     V_ecp = ecp_local_parts + ecp_nonlocal_parts
 
