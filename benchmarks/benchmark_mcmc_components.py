@@ -28,7 +28,12 @@ from jqmc.determinant import (
     compute_geminal_all_elements,
 )
 from jqmc.hamiltonians import Hamiltonian_data, compute_local_energy
-from jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data
+from jqmc.jastrow_factor import (
+    Jastrow_data,
+    Jastrow_one_body_data,
+    Jastrow_three_body_data,
+    Jastrow_two_body_data,
+)
 from jqmc.trexio_wrapper import read_trexio_file
 from jqmc.wavefunction import Wavefunction_data, evaluate_ln_wavefunction
 
@@ -45,7 +50,7 @@ TREXIO_FILE = os.path.join(
 # ── load system ───────────────────────────────────────────────────────────────
 (
     structure_data,
-    _,
+    aos_data,
     _,
     _,
     geminal_mo_data,
@@ -63,6 +68,38 @@ hamiltonian_data = Hamiltonian_data(
     structure_data=structure_data,
     coulomb_potential_data=coulomb_potential_data,
     wavefunction_data=wavefunction_data,
+)
+
+# ── Jastrow 1b+2b+3b variant ──────────────────────────────────────────────────
+jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
+    jastrow_1b_param=1.0,
+    structure_data=structure_data,
+    core_electrons=coulomb_potential_data.z_cores,
+)
+jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data, random_init=True, seed=SEED)
+jastrow_data_full = Jastrow_data(
+    jastrow_one_body_data=jastrow_onebody_data,
+    jastrow_two_body_data=jastrow_twobody_data,
+    jastrow_three_body_data=jastrow_threebody_data,
+)
+wavefunction_data_full = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data_full)
+hamiltonian_data_full = Hamiltonian_data(
+    structure_data=structure_data,
+    coulomb_potential_data=coulomb_potential_data,
+    wavefunction_data=wavefunction_data_full,
+)
+
+# ── Jastrow 1b+2b variant ──────────────────────────────────────────────────────
+jastrow_data_1b2b = Jastrow_data(
+    jastrow_one_body_data=jastrow_onebody_data,
+    jastrow_two_body_data=jastrow_twobody_data,
+    jastrow_three_body_data=None,
+)
+wavefunction_data_1b2b = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data_1b2b)
+hamiltonian_data_1b2b = Hamiltonian_data(
+    structure_data=structure_data,
+    coulomb_potential_data=coulomb_potential_data,
+    wavefunction_data=wavefunction_data_1b2b,
 )
 
 num_ele_up = geminal_mo_data.num_electron_up
@@ -116,8 +153,25 @@ block_until_ready(_grad_ln_psi_params(wavefunction_data, r_up_carts, r_dn_carts)
 block_until_ready(_grad_ln_psi_full(wavefunction_data, r_up_carts, r_dn_carts))
 block_until_ready(_grad_e_L_pos(hamiltonian_data, r_up_carts, r_dn_carts, RT))
 block_until_ready(_grad_e_L_full(hamiltonian_data, r_up_carts, r_dn_carts, RT))
+# warmup for 1b+2b+3b variant
+block_until_ready(evaluate_ln_wavefunction(wavefunction_data_full, r_up_carts, r_dn_carts))
+block_until_ready(compute_local_energy(hamiltonian_data_full, r_up_carts, r_dn_carts, RT))
+block_until_ready(_grad_ln_psi_pos(wavefunction_data_full, r_up_carts, r_dn_carts))
+block_until_ready(_grad_ln_psi_params(wavefunction_data_full, r_up_carts, r_dn_carts))
+block_until_ready(_grad_ln_psi_full(wavefunction_data_full, r_up_carts, r_dn_carts))
+block_until_ready(_grad_e_L_pos(hamiltonian_data_full, r_up_carts, r_dn_carts, RT))
+block_until_ready(_grad_e_L_full(hamiltonian_data_full, r_up_carts, r_dn_carts, RT))
+# warmup for 1b+2b variant
+block_until_ready(evaluate_ln_wavefunction(wavefunction_data_1b2b, r_up_carts, r_dn_carts))
+block_until_ready(compute_local_energy(hamiltonian_data_1b2b, r_up_carts, r_dn_carts, RT))
+block_until_ready(_grad_ln_psi_pos(wavefunction_data_1b2b, r_up_carts, r_dn_carts))
+block_until_ready(_grad_ln_psi_params(wavefunction_data_1b2b, r_up_carts, r_dn_carts))
+block_until_ready(_grad_ln_psi_full(wavefunction_data_1b2b, r_up_carts, r_dn_carts))
+block_until_ready(_grad_e_L_pos(hamiltonian_data_1b2b, r_up_carts, r_dn_carts, RT))
+block_until_ready(_grad_e_L_full(hamiltonian_data_1b2b, r_up_carts, r_dn_carts, RT))
 
-print(f"\nMCMC component benchmarks — C6H6 ECP  (single walker, mean over {REPEATS} repeats)\n")
+print(f"\nMCMC component benchmarks — C6H6 ECP  (single walker, mean over {REPEATS} repeats)")
+print(f"\n  Jastrow: 2b only\n")
 print(f"  {'operation':<58s}  {'time':>8s}")
 print(f"  {'-' * 58}  {'-' * 8}")
 
@@ -152,6 +206,72 @@ time_fn(
 time_fn(
     "grad(E_L)     w.r.t. (h,r_up,r_dn)   [E_L full grad]",
     lambda: _grad_e_L_full(hamiltonian_data, r_up_carts, r_dn_carts, RT),
+)
+
+# ── Jastrow 1b+2b comparison ──────────────────────────────────────────────────
+print(f"\n  Jastrow: 1b+2b\n")
+print(f"  {'operation':<58s}  {'time':>8s}")
+print(f"  {'-' * 58}  {'-' * 8}")
+time_fn(
+    "evaluate_ln_wavefunction  [+1b]",
+    lambda: evaluate_ln_wavefunction(wavefunction_data_1b2b, r_up_carts, r_dn_carts),
+)
+time_fn(
+    "compute_local_energy  [+1b]",
+    lambda: compute_local_energy(hamiltonian_data_1b2b, r_up_carts, r_dn_carts, RT),
+)
+time_fn(
+    "grad(ln|Psi|) w.r.t. positions  [+1b]",
+    lambda: _grad_ln_psi_pos(wavefunction_data_1b2b, r_up_carts, r_dn_carts),
+)
+time_fn(
+    "grad(ln|Psi|) w.r.t. params  [+1b]",
+    lambda: _grad_ln_psi_params(wavefunction_data_1b2b, r_up_carts, r_dn_carts),
+)
+time_fn(
+    "grad(ln|Psi|) w.r.t. (params,r_up,r_dn)  [+1b]",
+    lambda: _grad_ln_psi_full(wavefunction_data_1b2b, r_up_carts, r_dn_carts),
+)
+time_fn(
+    "grad(E_L)     w.r.t. positions  [+1b]",
+    lambda: _grad_e_L_pos(hamiltonian_data_1b2b, r_up_carts, r_dn_carts, RT),
+)
+time_fn(
+    "grad(E_L)     w.r.t. (h,r_up,r_dn)  [+1b]",
+    lambda: _grad_e_L_full(hamiltonian_data_1b2b, r_up_carts, r_dn_carts, RT),
+)
+
+# ── Jastrow 1b+2b+3b comparison ────────────────────────────────────────────────
+print(f"\n  Jastrow: 1b+2b+3b  (n_AO={aos_data._num_orb})\n")
+print(f"  {'operation':<58s}  {'time':>8s}")
+print(f"  {'-' * 58}  {'-' * 8}")
+time_fn(
+    "evaluate_ln_wavefunction  [+1b +3b]",
+    lambda: evaluate_ln_wavefunction(wavefunction_data_full, r_up_carts, r_dn_carts),
+)
+time_fn(
+    "compute_local_energy  [+1b +3b]",
+    lambda: compute_local_energy(hamiltonian_data_full, r_up_carts, r_dn_carts, RT),
+)
+time_fn(
+    "grad(ln|Psi|) w.r.t. positions  [+1b +3b]",
+    lambda: _grad_ln_psi_pos(wavefunction_data_full, r_up_carts, r_dn_carts),
+)
+time_fn(
+    "grad(ln|Psi|) w.r.t. params  [+1b +3b]",
+    lambda: _grad_ln_psi_params(wavefunction_data_full, r_up_carts, r_dn_carts),
+)
+time_fn(
+    "grad(ln|Psi|) w.r.t. (params,r_up,r_dn)  [+1b +3b]",
+    lambda: _grad_ln_psi_full(wavefunction_data_full, r_up_carts, r_dn_carts),
+)
+time_fn(
+    "grad(E_L)     w.r.t. positions  [+1b +3b]",
+    lambda: _grad_e_L_pos(hamiltonian_data_full, r_up_carts, r_dn_carts, RT),
+)
+time_fn(
+    "grad(E_L)     w.r.t. (h,r_up,r_dn)  [+1b +3b]",
+    lambda: _grad_e_L_full(hamiltonian_data_full, r_up_carts, r_dn_carts, RT),
 )
 
 print()

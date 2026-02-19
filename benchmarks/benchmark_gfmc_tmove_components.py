@@ -34,7 +34,12 @@ from jqmc.coulomb_potential import (
     compute_ecp_non_local_parts_nearest_neighbors_fast_update,
 )
 from jqmc.determinant import compute_geminal_all_elements
-from jqmc.jastrow_factor import Jastrow_data, Jastrow_two_body_data
+from jqmc.jastrow_factor import (
+    Jastrow_data,
+    Jastrow_one_body_data,
+    Jastrow_three_body_data,
+    Jastrow_two_body_data,
+)
 from jqmc.trexio_wrapper import read_trexio_file
 from jqmc.wavefunction import (
     Wavefunction_data,
@@ -56,7 +61,7 @@ TREXIO_FILE = os.path.join(
 # ── load system ───────────────────────────────────────────────────────────────
 (
     structure_data,
-    _,
+    aos_data,
     _,
     _,
     geminal_mo_data,
@@ -70,6 +75,28 @@ jastrow_data = Jastrow_data(
     jastrow_three_body_data=None,
 )
 wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
+
+# ── Jastrow 1b+2b+3b variant ──────────────────────────────────────────────────
+jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
+    jastrow_1b_param=1.0,
+    structure_data=structure_data,
+    core_electrons=coulomb_potential_data.z_cores,
+)
+jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data, random_init=True, seed=SEED)
+jastrow_data_full = Jastrow_data(
+    jastrow_one_body_data=jastrow_onebody_data,
+    jastrow_two_body_data=jastrow_twobody_data,
+    jastrow_three_body_data=jastrow_threebody_data,
+)
+wavefunction_data_full = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data_full)
+
+# ── Jastrow 1b+2b variant ──────────────────────────────────────────────────────
+jastrow_data_1b2b = Jastrow_data(
+    jastrow_one_body_data=jastrow_onebody_data,
+    jastrow_two_body_data=jastrow_twobody_data,
+    jastrow_three_body_data=None,
+)
+wavefunction_data_1b2b = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data_1b2b)
 
 num_ele_up = geminal_mo_data.num_electron_up
 num_ele_dn = geminal_mo_data.num_electron_dn
@@ -177,8 +204,69 @@ block_until_ready(
         RT=RT,
     )
 )
+# warmup for 1b+2b+3b variant (Jastrow-affected ops)
+block_until_ready(
+    compute_kinetic_energy_all_elements_fast_update(
+        wavefunction_data=wavefunction_data_full,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        geminal_inverse=A_old_inv,
+    )
+)
+block_until_ready(
+    compute_discretized_kinetic_energy_fast_update(
+        alat=ALAT,
+        wavefunction_data=wavefunction_data_full,
+        A_old_inv=A_old_inv,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        RT=RT,
+    )
+)
+block_until_ready(
+    compute_ecp_non_local_parts_nearest_neighbors_fast_update(
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data_full,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        flag_determinant_only=False,
+        A_old_inv=A_old_inv,
+        RT=RT,
+    )
+)
+# warmup for 1b+2b variant
+block_until_ready(
+    compute_kinetic_energy_all_elements_fast_update(
+        wavefunction_data=wavefunction_data_1b2b,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        geminal_inverse=A_old_inv,
+    )
+)
+block_until_ready(
+    compute_discretized_kinetic_energy_fast_update(
+        alat=ALAT,
+        wavefunction_data=wavefunction_data_1b2b,
+        A_old_inv=A_old_inv,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        RT=RT,
+    )
+)
+block_until_ready(
+    compute_ecp_non_local_parts_nearest_neighbors_fast_update(
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data_1b2b,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        flag_determinant_only=False,
+        A_old_inv=A_old_inv,
+        RT=RT,
+    )
+)
 
-print(f"\nGFMC_n component benchmarks — C6H6 ECP  (single walker, mean over {REPEATS} repeats)\n")
+print(f"\nGFMC_n component benchmarks — C6H6 ECP  (single walker, mean over {REPEATS} repeats)")
+print(f"\n  Jastrow: 2b only\n")
 print(f"  {'operation':<58s}  {'time':>8s}")
 print(f"  {'-' * 58}  {'-' * 8}")
 
@@ -244,6 +332,80 @@ time_fn(
     lambda: compute_ecp_non_local_parts_nearest_neighbors_fast_update(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        flag_determinant_only=False,
+        A_old_inv=A_old_inv,
+        RT=RT,
+    ),
+)
+
+# ── Jastrow 1b+2b comparison (only Jastrow-dependent ops) ───────────────────────
+print(f"\n  Jastrow: 1b+2b  (Jastrow-affected ops)\n")
+print(f"  {'operation':<58s}  {'time':>8s}")
+print(f"  {'-' * 58}  {'-' * 8}")
+time_fn(
+    "kinetic_continuum_fast_update  [+1b]",
+    lambda: compute_kinetic_energy_all_elements_fast_update(
+        wavefunction_data=wavefunction_data_1b2b,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        geminal_inverse=A_old_inv,
+    ),
+)
+time_fn(
+    "kinetic_discretized_fast_update  [+1b]",
+    lambda: compute_discretized_kinetic_energy_fast_update(
+        alat=ALAT,
+        wavefunction_data=wavefunction_data_1b2b,
+        A_old_inv=A_old_inv,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        RT=RT,
+    ),
+)
+time_fn(
+    "ecp_non_local_tmove_fast_update  [+1b]",
+    lambda: compute_ecp_non_local_parts_nearest_neighbors_fast_update(
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data_1b2b,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        flag_determinant_only=False,
+        A_old_inv=A_old_inv,
+        RT=RT,
+    ),
+)
+
+# ── Jastrow 1b+2b+3b comparison (only Jastrow-dependent ops) ─────────────────
+print(f"\n  Jastrow: 1b+2b+3b  (Jastrow-affected ops; n_AO={aos_data._num_orb})\n")
+print(f"  {'operation':<58s}  {'time':>8s}")
+print(f"  {'-' * 58}  {'-' * 8}")
+time_fn(
+    "kinetic_continuum_fast_update  [+1b +3b]",
+    lambda: compute_kinetic_energy_all_elements_fast_update(
+        wavefunction_data=wavefunction_data_full,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        geminal_inverse=A_old_inv,
+    ),
+)
+time_fn(
+    "kinetic_discretized_fast_update  [+1b +3b]",
+    lambda: compute_discretized_kinetic_energy_fast_update(
+        alat=ALAT,
+        wavefunction_data=wavefunction_data_full,
+        A_old_inv=A_old_inv,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        RT=RT,
+    ),
+)
+time_fn(
+    "ecp_non_local_tmove_fast_update  [+1b +3b]",
+    lambda: compute_ecp_non_local_parts_nearest_neighbors_fast_update(
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data_full,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
         flag_determinant_only=False,
