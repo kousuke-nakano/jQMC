@@ -2308,6 +2308,214 @@ def _compute_ratio_Jastrow_part_rank1_update(
     return J_ratio
 
 
+def _compute_ratio_Jastrow_part_split_spin(
+    jastrow_data: Jastrow_data,
+    old_r_up_carts: jax.Array,
+    old_r_dn_carts: jax.Array,
+    new_r_up_shifted: jax.Array,
+    new_r_dn_shifted: jax.Array,
+) -> jax.Array:
+    r"""Jastrow ratio for a block-structured mesh where up and dn electrons move separately.
+
+    Avoids computing spin-block contributions for the unchanged spin.  Compared
+    with ``_compute_ratio_Jastrow_part_rank1_update`` called on the concatenated
+    (G_up + G_dn) array, this evaluates only the up-spin J3 formula for the
+    ``G_up`` configs and only the dn-spin J3 formula for the ``G_dn`` configs,
+    replacing the ``jnp.where`` merge with separate block computations.  For
+    J3 the old AOs of the moved electron are obtained by column-slicing the
+    already-computed ``aos_up_old`` / ``aos_dn_old`` matrices, avoiding two
+    extra ``compute_orb_api`` calls.
+
+    Args:
+        jastrow_data: Active Jastrow components.
+        old_r_up_carts: Reference up-spin coordinates ``(N_up, 3)``.
+        old_r_dn_carts: Reference dn-spin coordinates ``(N_dn, 3)``.
+        new_r_up_shifted: Up-block proposed coords ``(G_up, N_up, 3)``.  Exactly one
+            up electron differs from ``old_r_up_carts`` per config.
+        new_r_dn_shifted: Dn-block proposed coords ``(G_dn, N_dn, 3)``.  Exactly one
+            dn electron differs from ``old_r_dn_carts`` per config.
+
+    Returns:
+        jax.Array: Concatenated Jastrow ratios ``(G_up + G_dn,)`` (includes ``exp``).
+    """
+    old_r_up_carts = jnp.asarray(old_r_up_carts)
+    old_r_dn_carts = jnp.asarray(old_r_dn_carts)
+    new_r_up_shifted = jnp.asarray(new_r_up_shifted)
+    new_r_dn_shifted = jnp.asarray(new_r_dn_shifted)
+
+    num_up = old_r_up_carts.shape[0]
+    num_dn = old_r_dn_carts.shape[0]
+
+    # Degenerate cases fall back to the general function on empty slices.
+    if num_up == 0 or num_dn == 0:
+        g_up = new_r_up_shifted.shape[0]
+        g_dn = new_r_dn_shifted.shape[0]
+        combined_up = jnp.concatenate(
+            [new_r_up_shifted, jnp.broadcast_to(old_r_up_carts[None], (g_dn, num_up, 3))],
+            axis=0,
+        )
+        combined_dn = jnp.concatenate(
+            [jnp.broadcast_to(old_r_dn_carts[None], (g_up, num_dn, 3)), new_r_dn_shifted],
+            axis=0,
+        )
+        return _compute_ratio_Jastrow_part_rank1_update(jastrow_data, old_r_up_carts, old_r_dn_carts, combined_up, combined_dn)
+
+    g_up = new_r_up_shifted.shape[0]
+    g_dn = new_r_dn_shifted.shape[0]
+
+    # Precompute moved-electron indices for both blocks.
+    delta_up_block = new_r_up_shifted - old_r_up_carts[None]  # (G_up, N_up, 3)
+    delta_dn_block = new_r_dn_shifted - old_r_dn_carts[None]  # (G_dn, N_dn, 3)
+    idx_up_block = jnp.argmax(jnp.any(delta_up_block != 0.0, axis=2).astype(jnp.int32), axis=1)  # (G_up,)
+    idx_dn_block = jnp.argmax(jnp.any(delta_dn_block != 0.0, axis=2).astype(jnp.int32), axis=1)  # (G_dn,)
+
+    # New position of the moved electron in each block.
+    r_up_moved = jnp.take_along_axis(new_r_up_shifted, idx_up_block[:, None, None], axis=1).reshape(g_up, 3)  # (G_up, 3)
+    r_dn_moved = jnp.take_along_axis(new_r_dn_shifted, idx_dn_block[:, None, None], axis=1).reshape(g_dn, 3)  # (G_dn, 3)
+
+    # Old position of the moved electron in each block.
+    r_up_old_moved = old_r_up_carts[idx_up_block]  # (G_up, 3)
+    r_dn_old_moved = old_r_dn_carts[idx_dn_block]  # (G_dn, 3)
+
+    J_up = jnp.ones(g_up)
+    J_dn = jnp.ones(g_dn)
+
+    # ── J1 part ──────────────────────────────────────────────────────────────
+    if jastrow_data.jastrow_one_body_data is not None:
+        j1_data = jastrow_data.jastrow_one_body_data
+
+        # UP block: only the moved up electron contributes to the J1 change.
+        def compute_J1_up_one(r_up_new: jax.Array, r_up_old: jax.Array) -> jax.Array:
+            j1_new = compute_Jastrow_one_body(j1_data, jnp.expand_dims(r_up_new, axis=0), jnp.zeros((0, 3)))
+            j1_old = compute_Jastrow_one_body(j1_data, jnp.expand_dims(r_up_old, axis=0), jnp.zeros((0, 3)))
+            return jnp.exp(j1_new - j1_old)
+
+        J1_up_block = vmap(compute_J1_up_one)(r_up_moved, r_up_old_moved)  # (G_up,)
+        J_up = J_up * jnp.ravel(J1_up_block)
+
+        # DN block: only the moved dn electron contributes.
+        def compute_J1_dn_one(r_dn_new: jax.Array, r_dn_old: jax.Array) -> jax.Array:
+            j1_new = compute_Jastrow_one_body(j1_data, jnp.zeros((0, 3)), jnp.expand_dims(r_dn_new, axis=0))
+            j1_old = compute_Jastrow_one_body(j1_data, jnp.zeros((0, 3)), jnp.expand_dims(r_dn_old, axis=0))
+            return jnp.exp(j1_new - j1_old)
+
+        J1_dn_block = vmap(compute_J1_dn_one)(r_dn_moved, r_dn_old_moved)  # (G_dn,)
+        J_dn = J_dn * jnp.ravel(J1_dn_block)
+
+    # ── J2 part ──────────────────────────────────────────────────────────────
+    if jastrow_data.jastrow_two_body_data is not None:
+        j2_param = jastrow_data.jastrow_two_body_data.jastrow_2b_param
+
+        def _pairwise_pade_sums(pos1: jax.Array, pos2: jax.Array) -> jax.Array:
+            """Row-wise sum of Pade two-body terms: pos1 -> all of pos2."""
+            dists = jnp.linalg.norm(pos1[:, None, :] - pos2[None, :, :], axis=-1)
+            return jnp.sum(dists / 2.0 * (1.0 + j2_param * dists) ** (-1.0), axis=1)
+
+        J2_sum_up_up = _pairwise_pade_sums(old_r_up_carts, old_r_up_carts)  # (N_up,)
+        J2_sum_up_dn = _pairwise_pade_sums(old_r_up_carts, old_r_dn_carts)  # (N_up,)
+        J2_sum_dn_dn = _pairwise_pade_sums(old_r_dn_carts, old_r_dn_carts)  # (N_dn,)
+        J2_sum_dn_up = _pairwise_pade_sums(old_r_dn_carts, old_r_up_carts)  # (N_dn,)
+
+        # UP block: moved up electron interacts with all old up and dn electrons.
+        dists_up_up_new = jnp.linalg.norm(r_up_moved[:, None, :] - old_r_up_carts[None, :, :], axis=-1)  # (G_up, N_up)
+        J2_up_up_new = jnp.sum(dists_up_up_new / 2.0 * (1.0 + j2_param * dists_up_up_new) ** (-1.0), axis=1)  # (G_up,)
+        # The sum above includes the self-term Pade(r_new, r_old[idx]) but the correct self-term is
+        # Pade(r_new, r_new) = 0.  Subtract the spurious contribution.
+        dists_self_up = jnp.linalg.norm(r_up_moved - r_up_old_moved, axis=-1)  # (G_up,)
+        J2_up_up_new = J2_up_up_new - dists_self_up / 2.0 * (1.0 + j2_param * dists_self_up) ** (-1.0)
+        J2_up_up_old = J2_sum_up_up[idx_up_block]  # (G_up,)  self-term is Pade(r_old,r_old)=0 already
+        dists_up_dn_new = jnp.linalg.norm(r_up_moved[:, None, :] - old_r_dn_carts[None, :, :], axis=-1)  # (G_up, N_dn)
+        J2_up_dn_new = jnp.sum(dists_up_dn_new / 2.0 * (1.0 + j2_param * dists_up_dn_new) ** (-1.0), axis=1)  # (G_up,)
+        J2_up_dn_old = J2_sum_up_dn[idx_up_block]  # (G_up,)
+        J_up = J_up * jnp.exp(J2_up_dn_new - J2_up_dn_old + J2_up_up_new - J2_up_up_old)
+
+        # DN block: moved dn electron interacts with all old dn and up electrons.
+        dists_dn_dn_new = jnp.linalg.norm(r_dn_moved[:, None, :] - old_r_dn_carts[None, :, :], axis=-1)  # (G_dn, N_dn)
+        J2_dn_dn_new = jnp.sum(dists_dn_dn_new / 2.0 * (1.0 + j2_param * dists_dn_dn_new) ** (-1.0), axis=1)  # (G_dn,)
+        # Same self-term correction for down block.
+        dists_self_dn = jnp.linalg.norm(r_dn_moved - r_dn_old_moved, axis=-1)  # (G_dn,)
+        J2_dn_dn_new = J2_dn_dn_new - dists_self_dn / 2.0 * (1.0 + j2_param * dists_self_dn) ** (-1.0)
+        J2_dn_dn_old = J2_sum_dn_dn[idx_dn_block]  # (G_dn,)
+        dists_dn_up_new = jnp.linalg.norm(r_dn_moved[:, None, :] - old_r_up_carts[None, :, :], axis=-1)  # (G_dn, N_up)
+        J2_dn_up_new = jnp.sum(dists_dn_up_new / 2.0 * (1.0 + j2_param * dists_dn_up_new) ** (-1.0), axis=1)  # (G_dn,)
+        J2_dn_up_old = J2_sum_dn_up[idx_dn_block]  # (G_dn,)
+        J_dn = J_dn * jnp.exp(J2_dn_up_new - J2_dn_up_old + J2_dn_dn_new - J2_dn_dn_old)
+
+    # ── J3 part ──────────────────────────────────────────────────────────────
+    if jastrow_data.jastrow_three_body_data is not None:
+        j3d = jastrow_data.jastrow_three_body_data
+        j3_mat = j3d.j_matrix[:, :-1]  # (n_ao, n_ao)
+        j1_vec = j3d.j_matrix[:, -1]  # (n_ao,)
+
+        # Old AOs evaluated once; column slices give old AO at each moved position.
+        aos_up_old = jnp.array(j3d.compute_orb_api(j3d.orb_data, old_r_up_carts))  # (n_ao, N_up)
+        aos_dn_old = jnp.array(j3d.compute_orb_api(j3d.orb_data, old_r_dn_carts))  # (n_ao, N_dn)
+
+        # Precompute constant products (shared between blocks).
+        W_up = jnp.dot(j3_mat, aos_up_old)  # (n_ao, N_up)
+        U_up = jnp.dot(aos_up_old.T, j3_mat)  # (N_up, n_ao)
+        W_dn = jnp.dot(j3_mat, aos_dn_old)  # (n_ao, N_dn)
+        U_dn = jnp.dot(aos_dn_old.T, j3_mat)  # (N_dn, n_ao)
+        dn_cross_vec = j3_mat @ jnp.sum(aos_dn_old, axis=1)  # (n_ao,): UP cross term constant
+        up_cross_vec = jnp.sum(aos_up_old, axis=1) @ j3_mat  # (n_ao,): DN cross term constant
+
+        # ── UP BLOCK ─────────────────────────────────────────────────────────
+        # New AOs at the moved up-electron positions; old AOs by column-slice.
+        aos_up_new_moved = jnp.array(j3d.compute_orb_api(j3d.orb_data, r_up_moved))  # (n_ao, G_up)
+        aos_up_old_moved = aos_up_old[:, idx_up_block]  # (n_ao, G_up)
+        aos_p_up = aos_up_new_moved - aos_up_old_moved  # (n_ao, G_up)
+
+        term1_up = j1_vec @ aos_p_up  # (G_up,)
+        V_up_block = jnp.dot(aos_p_up.T, W_up)  # (G_up, N_up)
+        P_up_block = jnp.dot(U_up, aos_p_up)  # (N_up, G_up)
+        Q_up_c = (idx_up_block[:, None] < jnp.arange(num_up)[None, :]).astype(jnp.float64)  # (G_up, N_up)
+        Q_up_r = (idx_up_block[:, None] > jnp.arange(num_up)[None, :]).astype(jnp.float64)  # (G_up, N_up)
+        term2_up = jnp.sum(V_up_block * Q_up_c, axis=1)  # (G_up,)
+        term3_up = jnp.sum(P_up_block.T * Q_up_r, axis=1)  # (G_up,)
+        term4_up = dn_cross_vec @ aos_p_up  # (G_up,)
+        J_up = J_up * jnp.exp(term1_up + term2_up + term3_up + term4_up)
+
+        # ── DN BLOCK ─────────────────────────────────────────────────────────
+        # New AOs at the moved dn-electron positions; old AOs by column-slice.
+        aos_dn_new_moved = jnp.array(j3d.compute_orb_api(j3d.orb_data, r_dn_moved))  # (n_ao, G_dn)
+        aos_dn_old_moved = aos_dn_old[:, idx_dn_block]  # (n_ao, G_dn)
+        aos_p_dn = aos_dn_new_moved - aos_dn_old_moved  # (n_ao, G_dn)
+
+        term1_dn = j1_vec @ aos_p_dn  # (G_dn,)
+        V_dn_block = jnp.dot(aos_p_dn.T, W_dn)  # (G_dn, N_dn)
+        P_dn_block = jnp.dot(U_dn, aos_p_dn)  # (N_dn, G_dn)
+        Q_dn_c = (idx_dn_block[:, None] < jnp.arange(num_dn)[None, :]).astype(jnp.float64)  # (G_dn, N_dn)
+        Q_dn_r = (idx_dn_block[:, None] > jnp.arange(num_dn)[None, :]).astype(jnp.float64)  # (G_dn, N_dn)
+        term2_dn = jnp.sum(V_dn_block * Q_dn_c, axis=1)  # (G_dn,)
+        term3_dn = jnp.sum(P_dn_block.T * Q_dn_r, axis=1)  # (G_dn,)
+        term4_dn = up_cross_vec @ aos_p_dn  # (G_dn,)
+        J_dn = J_dn * jnp.exp(term1_dn + term2_dn + term3_dn + term4_dn)
+
+    # ── JNN part ─────────────────────────────────────────────────────────────
+    if jastrow_data.jastrow_nn_data is not None:
+        nn = jastrow_data.jastrow_nn_data
+        if nn.structure_data is None:
+            raise ValueError("NN_Jastrow_data.structure_data must be set to evaluate NN J3.")
+
+        R_n = jnp.asarray(nn.structure_data.positions)
+        Z_n = jnp.asarray(nn.structure_data.atomic_numbers)
+
+        def compute_one_grid_JNN_split(r_up: jax.Array, r_dn: jax.Array) -> jax.Array:
+            return nn.nn_def.apply({"params": nn.params}, r_up, r_dn, R_n, Z_n)
+
+        JNN_old = compute_one_grid_JNN_split(old_r_up_carts, old_r_dn_carts)
+
+        # UP block: only r_up changes; dn stays at old positions.
+        JNN_new_up = vmap(compute_one_grid_JNN_split, in_axes=(0, None))(new_r_up_shifted, old_r_dn_carts)
+        J_up = J_up * jnp.exp(JNN_new_up - JNN_old)
+
+        # DN block: only r_dn changes; up stays at old positions.
+        JNN_new_dn = vmap(compute_one_grid_JNN_split, in_axes=(None, 0))(old_r_up_carts, new_r_dn_shifted)
+        J_dn = J_dn * jnp.exp(JNN_new_dn - JNN_old)
+
+    return jnp.concatenate([J_up, J_dn])
+
+
 def _compute_ratio_Jastrow_part_debug(
     jastrow_data: Jastrow_data,
     old_r_up_carts: npt.NDArray[np.float64],

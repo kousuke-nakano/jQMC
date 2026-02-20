@@ -57,13 +57,12 @@ from jax.scipy import linalg as jsp_linalg
 from scipy.special import eval_legendre
 
 from .determinant import (
-    _compute_ratio_determinant_part_rank1_update,
     _compute_ratio_determinant_part_split_spin,
     compute_det_geminal_all_elements,
     compute_geminal_all_elements,
 )
 from .function_collections import _legendre_tablated as jnp_legendre_tablated
-from .jastrow_factor import _compute_ratio_Jastrow_part_rank1_update, compute_Jastrow_part
+from .jastrow_factor import _compute_ratio_Jastrow_part_split_spin, compute_Jastrow_part
 from .setting import NN_default, Nv_default
 from .structure import (
     Structure_data,
@@ -1592,12 +1591,12 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
     if flag_determinant_only:
         wf_ratio_all = det_ratio
     else:
-        jastrow_ratio = _compute_ratio_Jastrow_part_rank1_update(
+        jastrow_ratio = _compute_ratio_Jastrow_part_split_spin(
             jastrow_data=wavefunction_data.jastrow_data,
             old_r_up_carts=r_up_carts,
             old_r_dn_carts=r_dn_carts,
-            new_r_up_carts_arr=non_local_ecp_part_r_carts_up,
-            new_r_dn_carts_arr=non_local_ecp_part_r_carts_dn,
+            new_r_up_shifted=up_mesh_r_up,
+            new_r_dn_shifted=dn_mesh_r_dn,
         )
         wf_ratio_all = det_ratio * jastrow_ratio
 
