@@ -20,7 +20,7 @@ import time
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax import grad, jit
+from jax import grad, jit, vmap
 from jax.scipy import linalg as jsp_linalg
 
 from jqmc.determinant import (
@@ -41,6 +41,7 @@ from jqmc.wavefunction import Wavefunction_data, evaluate_ln_wavefunction
 REPEATS = 5
 SEED = 0
 R_CART_MIN, R_CART_MAX = -5.0, +5.0
+N_WALKERS = 4  # number of walkers for multi-walker benchmark (in addition to single-walker)
 
 TREXIO_FILE = os.path.join(
     os.path.dirname(__file__),
@@ -272,6 +273,152 @@ time_fn(
 time_fn(
     "grad(E_L)     w.r.t. (h,r_up,r_dn)  [+1b +3b]",
     lambda: _grad_e_L_full(hamiltonian_data_full, r_up_carts, r_dn_carts, RT),
+)
+
+print()
+
+# ════════════════════════════════════════════════════════════════════════════
+# Multi-walker benchmark  (N_WALKERS walkers, vmapped)
+# ════════════════════════════════════════════════════════════════════════════
+rng_multi = np.random.default_rng(SEED + 99)
+r_up_batch = jnp.asarray(rng_multi.uniform(R_CART_MIN, R_CART_MAX, size=(N_WALKERS, num_ele_up, 3)))
+r_dn_batch = jnp.asarray(rng_multi.uniform(R_CART_MIN, R_CART_MAX, size=(N_WALKERS, num_ele_dn, 3)))
+
+# vmapped single-walker callables (wavefunction_data is static -> in_axes=None)
+_eval_ln_psi_vmap = jit(vmap(evaluate_ln_wavefunction, in_axes=(None, 0, 0)))
+_local_energy_vmap = jit(vmap(compute_local_energy, in_axes=(None, 0, 0, None)))
+_as_reg_vmap = jit(vmap(compute_AS_regularization_factor, in_axes=(None, 0, 0)))
+_grad_ln_psi_pos_vmap = jit(vmap(_grad_ln_psi_pos, in_axes=(None, 0, 0)))
+_grad_ln_psi_params_vmap = jit(vmap(_grad_ln_psi_params, in_axes=(None, 0, 0)))
+_grad_ln_psi_full_vmap = jit(vmap(_grad_ln_psi_full, in_axes=(None, 0, 0)))
+_grad_e_L_pos_vmap = jit(vmap(_grad_e_L_pos, in_axes=(None, 0, 0, None)))
+_grad_e_L_full_vmap = jit(vmap(_grad_e_L_full, in_axes=(None, 0, 0, None)))
+
+# warmup for multi-walker
+print(f"Warming up multi-walker (JIT compilation, W={N_WALKERS})...")
+block_until_ready(_eval_ln_psi_vmap(wavefunction_data, r_up_batch, r_dn_batch))
+block_until_ready(_local_energy_vmap(hamiltonian_data, r_up_batch, r_dn_batch, RT))
+block_until_ready(_as_reg_vmap(geminal_mo_data, r_up_batch, r_dn_batch))
+block_until_ready(_grad_ln_psi_pos_vmap(wavefunction_data, r_up_batch, r_dn_batch))
+block_until_ready(_grad_ln_psi_params_vmap(wavefunction_data, r_up_batch, r_dn_batch))
+block_until_ready(_grad_ln_psi_full_vmap(wavefunction_data, r_up_batch, r_dn_batch))
+block_until_ready(_grad_e_L_pos_vmap(hamiltonian_data, r_up_batch, r_dn_batch, RT))
+block_until_ready(_grad_e_L_full_vmap(hamiltonian_data, r_up_batch, r_dn_batch, RT))
+block_until_ready(_eval_ln_psi_vmap(wavefunction_data_full, r_up_batch, r_dn_batch))
+block_until_ready(_local_energy_vmap(hamiltonian_data_full, r_up_batch, r_dn_batch, RT))
+block_until_ready(_grad_ln_psi_pos_vmap(wavefunction_data_full, r_up_batch, r_dn_batch))
+block_until_ready(_grad_ln_psi_params_vmap(wavefunction_data_full, r_up_batch, r_dn_batch))
+block_until_ready(_grad_ln_psi_full_vmap(wavefunction_data_full, r_up_batch, r_dn_batch))
+block_until_ready(_grad_e_L_pos_vmap(hamiltonian_data_full, r_up_batch, r_dn_batch, RT))
+block_until_ready(_grad_e_L_full_vmap(hamiltonian_data_full, r_up_batch, r_dn_batch, RT))
+block_until_ready(_eval_ln_psi_vmap(wavefunction_data_1b2b, r_up_batch, r_dn_batch))
+block_until_ready(_local_energy_vmap(hamiltonian_data_1b2b, r_up_batch, r_dn_batch, RT))
+block_until_ready(_grad_ln_psi_pos_vmap(wavefunction_data_1b2b, r_up_batch, r_dn_batch))
+block_until_ready(_grad_ln_psi_params_vmap(wavefunction_data_1b2b, r_up_batch, r_dn_batch))
+block_until_ready(_grad_ln_psi_full_vmap(wavefunction_data_1b2b, r_up_batch, r_dn_batch))
+block_until_ready(_grad_e_L_pos_vmap(hamiltonian_data_1b2b, r_up_batch, r_dn_batch, RT))
+block_until_ready(_grad_e_L_full_vmap(hamiltonian_data_1b2b, r_up_batch, r_dn_batch, RT))
+
+print(f"\nMCMC component benchmarks — C6H6 ECP  ({N_WALKERS} walkers vmapped, mean over {REPEATS} repeats)")
+print(f"\n  Jastrow: 2b only\n")
+print(f"  {'operation':<58s}  {'time':>8s}")
+print(f"  {'-' * 58}  {'-' * 8}")
+
+time_fn(
+    "evaluate_ln_wavefunction",
+    lambda: _eval_ln_psi_vmap(wavefunction_data, r_up_batch, r_dn_batch),
+)
+time_fn(
+    "compute_local_energy",
+    lambda: _local_energy_vmap(hamiltonian_data, r_up_batch, r_dn_batch, RT),
+)
+time_fn(
+    "compute_AS_regularization_factor",
+    lambda: _as_reg_vmap(geminal_mo_data, r_up_batch, r_dn_batch),
+)
+time_fn(
+    "grad(ln|Psi|) w.r.t. positions        [quantum force]",
+    lambda: _grad_ln_psi_pos_vmap(wavefunction_data, r_up_batch, r_dn_batch),
+)
+time_fn(
+    "grad(ln|Psi|) w.r.t. params           [param grad]",
+    lambda: _grad_ln_psi_params_vmap(wavefunction_data, r_up_batch, r_dn_batch),
+)
+time_fn(
+    "grad(ln|Psi|) w.r.t. (params,r_up,r_dn) [full grad]",
+    lambda: _grad_ln_psi_full_vmap(wavefunction_data, r_up_batch, r_dn_batch),
+)
+time_fn(
+    "grad(E_L)     w.r.t. positions        [E_L pos grad]",
+    lambda: _grad_e_L_pos_vmap(hamiltonian_data, r_up_batch, r_dn_batch, RT),
+)
+time_fn(
+    "grad(E_L)     w.r.t. (h,r_up,r_dn)   [E_L full grad]",
+    lambda: _grad_e_L_full_vmap(hamiltonian_data, r_up_batch, r_dn_batch, RT),
+)
+
+print(f"\n  Jastrow: 1b+2b\n")
+print(f"  {'operation':<58s}  {'time':>8s}")
+print(f"  {'-' * 58}  {'-' * 8}")
+time_fn(
+    "evaluate_ln_wavefunction  [+1b]",
+    lambda: _eval_ln_psi_vmap(wavefunction_data_1b2b, r_up_batch, r_dn_batch),
+)
+time_fn(
+    "compute_local_energy  [+1b]",
+    lambda: _local_energy_vmap(hamiltonian_data_1b2b, r_up_batch, r_dn_batch, RT),
+)
+time_fn(
+    "grad(ln|Psi|) w.r.t. positions  [+1b]",
+    lambda: _grad_ln_psi_pos_vmap(wavefunction_data_1b2b, r_up_batch, r_dn_batch),
+)
+time_fn(
+    "grad(ln|Psi|) w.r.t. params  [+1b]",
+    lambda: _grad_ln_psi_params_vmap(wavefunction_data_1b2b, r_up_batch, r_dn_batch),
+)
+time_fn(
+    "grad(ln|Psi|) w.r.t. (params,r_up,r_dn)  [+1b]",
+    lambda: _grad_ln_psi_full_vmap(wavefunction_data_1b2b, r_up_batch, r_dn_batch),
+)
+time_fn(
+    "grad(E_L)     w.r.t. positions  [+1b]",
+    lambda: _grad_e_L_pos_vmap(hamiltonian_data_1b2b, r_up_batch, r_dn_batch, RT),
+)
+time_fn(
+    "grad(E_L)     w.r.t. (h,r_up,r_dn)  [+1b]",
+    lambda: _grad_e_L_full_vmap(hamiltonian_data_1b2b, r_up_batch, r_dn_batch, RT),
+)
+
+print(f"\n  Jastrow: 1b+2b+3b  (n_AO={aos_data._num_orb})\n")
+print(f"  {'operation':<58s}  {'time':>8s}")
+print(f"  {'-' * 58}  {'-' * 8}")
+time_fn(
+    "evaluate_ln_wavefunction  [+1b +3b]",
+    lambda: _eval_ln_psi_vmap(wavefunction_data_full, r_up_batch, r_dn_batch),
+)
+time_fn(
+    "compute_local_energy  [+1b +3b]",
+    lambda: _local_energy_vmap(hamiltonian_data_full, r_up_batch, r_dn_batch, RT),
+)
+time_fn(
+    "grad(ln|Psi|) w.r.t. positions  [+1b +3b]",
+    lambda: _grad_ln_psi_pos_vmap(wavefunction_data_full, r_up_batch, r_dn_batch),
+)
+time_fn(
+    "grad(ln|Psi|) w.r.t. params  [+1b +3b]",
+    lambda: _grad_ln_psi_params_vmap(wavefunction_data_full, r_up_batch, r_dn_batch),
+)
+time_fn(
+    "grad(ln|Psi|) w.r.t. (params,r_up,r_dn)  [+1b +3b]",
+    lambda: _grad_ln_psi_full_vmap(wavefunction_data_full, r_up_batch, r_dn_batch),
+)
+time_fn(
+    "grad(E_L)     w.r.t. positions  [+1b +3b]",
+    lambda: _grad_e_L_pos_vmap(hamiltonian_data_full, r_up_batch, r_dn_batch, RT),
+)
+time_fn(
+    "grad(E_L)     w.r.t. (h,r_up,r_dn)  [+1b +3b]",
+    lambda: _grad_e_L_full_vmap(hamiltonian_data_full, r_up_batch, r_dn_batch, RT),
 )
 
 print()

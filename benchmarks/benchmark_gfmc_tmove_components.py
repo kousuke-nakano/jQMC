@@ -22,7 +22,7 @@ import time
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax import jit
+from jax import jit, vmap
 from jax.scipy import linalg as jsp_linalg
 
 from jqmc.coulomb_potential import (
@@ -52,6 +52,7 @@ REPEATS = 5
 SEED = 0
 ALAT = 0.30
 R_CART_MIN, R_CART_MAX = -5.0, +5.0
+N_WALKERS = 4  # number of walkers for multi-walker benchmark (in addition to single-walker)
 
 TREXIO_FILE = os.path.join(
     os.path.dirname(__file__),
@@ -412,6 +413,172 @@ time_fn(
         A_old_inv=A_old_inv,
         RT=RT,
     ),
+)
+
+print()
+
+# ════════════════════════════════════════════════════════════════════════════
+# Multi-walker benchmark  (N_WALKERS walkers, vmapped)
+# ════════════════════════════════════════════════════════════════════════════
+rng_multi = np.random.default_rng(SEED + 99)
+r_up_batch = jnp.asarray(rng_multi.uniform(R_CART_MIN, R_CART_MAX, size=(N_WALKERS, num_ele_up, 3)))
+r_dn_batch = jnp.asarray(rng_multi.uniform(R_CART_MIN, R_CART_MAX, size=(N_WALKERS, num_ele_dn, 3)))
+
+# A_old_inv per walker via vmap
+_compute_geminal_and_inv_vmap = jit(vmap(_compute_geminal_and_inv))
+A_old_inv_batch = _compute_geminal_and_inv_vmap(r_up_batch, r_dn_batch)
+
+# vmapped callables
+_kinetic_cont_vmap = jit(
+    vmap(
+        lambda wf, r_up, r_dn, inv: compute_kinetic_energy_all_elements_fast_update(
+            wavefunction_data=wf, r_up_carts=r_up, r_dn_carts=r_dn, geminal_inverse=inv
+        ),
+        in_axes=(None, 0, 0, 0),
+    )
+)
+_kinetic_disc_vmap = jit(
+    vmap(
+        lambda wf, inv, r_up, r_dn: compute_discretized_kinetic_energy_fast_update(
+            alat=ALAT, wavefunction_data=wf, A_old_inv=inv, r_up_carts=r_up, r_dn_carts=r_dn, RT=RT
+        ),
+        in_axes=(None, 0, 0, 0),
+    )
+)
+_el_el_vmap = jit(
+    vmap(
+        lambda r_up, r_dn: compute_bare_coulomb_potential_el_el(r_up_carts=r_up, r_dn_carts=r_dn),
+        in_axes=(0, 0),
+    )
+)
+_el_ion_vmap = jit(
+    vmap(
+        lambda r_up, r_dn: compute_bare_coulomb_potential_el_ion_element_wise(
+            coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up, r_dn_carts=r_dn
+        ),
+        in_axes=(0, 0),
+    )
+)
+_el_ion_disc_vmap = jit(
+    vmap(
+        lambda r_up, r_dn: compute_discretized_bare_coulomb_potential_el_ion_element_wise(
+            coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up, r_dn_carts=r_dn, alat=ALAT
+        ),
+        in_axes=(0, 0),
+    )
+)
+_ecp_local_vmap = jit(
+    vmap(
+        lambda r_up, r_dn: compute_ecp_local_parts_all_pairs(
+            coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up, r_dn_carts=r_dn
+        ),
+        in_axes=(0, 0),
+    )
+)
+_ecp_nonlocal_vmap = jit(
+    vmap(
+        lambda wf, r_up, r_dn, inv: compute_ecp_non_local_parts_nearest_neighbors_fast_update(
+            coulomb_potential_data=coulomb_potential_data,
+            wavefunction_data=wf,
+            r_up_carts=r_up,
+            r_dn_carts=r_dn,
+            flag_determinant_only=False,
+            A_old_inv=inv,
+            RT=RT,
+        ),
+        in_axes=(None, 0, 0, 0),
+    )
+)
+
+# warmup for multi-walker
+print(f"Warming up multi-walker (JIT compilation, W={N_WALKERS})...")
+block_until_ready(_compute_geminal_and_inv_vmap(r_up_batch, r_dn_batch))
+block_until_ready(_kinetic_cont_vmap(wavefunction_data, r_up_batch, r_dn_batch, A_old_inv_batch))
+block_until_ready(_kinetic_disc_vmap(wavefunction_data, A_old_inv_batch, r_up_batch, r_dn_batch))
+block_until_ready(_el_el_vmap(r_up_batch, r_dn_batch))
+block_until_ready(_el_ion_vmap(r_up_batch, r_dn_batch))
+block_until_ready(_el_ion_disc_vmap(r_up_batch, r_dn_batch))
+block_until_ready(_ecp_local_vmap(r_up_batch, r_dn_batch))
+block_until_ready(_ecp_nonlocal_vmap(wavefunction_data, r_up_batch, r_dn_batch, A_old_inv_batch))
+block_until_ready(_kinetic_cont_vmap(wavefunction_data_full, r_up_batch, r_dn_batch, A_old_inv_batch))
+block_until_ready(_kinetic_disc_vmap(wavefunction_data_full, A_old_inv_batch, r_up_batch, r_dn_batch))
+block_until_ready(_ecp_nonlocal_vmap(wavefunction_data_full, r_up_batch, r_dn_batch, A_old_inv_batch))
+block_until_ready(_kinetic_cont_vmap(wavefunction_data_1b2b, r_up_batch, r_dn_batch, A_old_inv_batch))
+block_until_ready(_kinetic_disc_vmap(wavefunction_data_1b2b, A_old_inv_batch, r_up_batch, r_dn_batch))
+block_until_ready(_ecp_nonlocal_vmap(wavefunction_data_1b2b, r_up_batch, r_dn_batch, A_old_inv_batch))
+
+print(f"\nGFMC_n component benchmarks — C6H6 ECP  ({N_WALKERS} walkers vmapped, mean over {REPEATS} repeats)")
+print(f"\n  Jastrow: 2b only\n")
+print(f"  {'operation':<58s}  {'time':>8s}")
+print(f"  {'-' * 58}  {'-' * 8}")
+
+time_fn(
+    "geminal + inverse  [A_old_inv setup per step]",
+    lambda: _compute_geminal_and_inv_vmap(r_up_batch, r_dn_batch),
+)
+time_fn(
+    "kinetic_continuum_fast_update",
+    lambda: _kinetic_cont_vmap(wavefunction_data, r_up_batch, r_dn_batch, A_old_inv_batch),
+)
+time_fn(
+    "kinetic_discretized_fast_update",
+    lambda: _kinetic_disc_vmap(wavefunction_data, A_old_inv_batch, r_up_batch, r_dn_batch),
+)
+time_fn(
+    "bare_coulomb_el_el",
+    lambda: _el_el_vmap(r_up_batch, r_dn_batch),
+)
+time_fn(
+    "bare_coulomb_ion_ion",
+    lambda: compute_bare_coulomb_potential_ion_ion(coulomb_potential_data=coulomb_potential_data),
+)
+time_fn(
+    "bare_coulomb_el_ion",
+    lambda: _el_ion_vmap(r_up_batch, r_dn_batch),
+)
+time_fn(
+    "bare_coulomb_el_ion_discretized",
+    lambda: _el_ion_disc_vmap(r_up_batch, r_dn_batch),
+)
+time_fn(
+    "ecp_local",
+    lambda: _ecp_local_vmap(r_up_batch, r_dn_batch),
+)
+time_fn(
+    "ecp_non_local_tmove_fast_update",
+    lambda: _ecp_nonlocal_vmap(wavefunction_data, r_up_batch, r_dn_batch, A_old_inv_batch),
+)
+
+print(f"\n  Jastrow: 1b+2b  (Jastrow-affected ops)\n")
+print(f"  {'operation':<58s}  {'time':>8s}")
+print(f"  {'-' * 58}  {'-' * 8}")
+time_fn(
+    "kinetic_continuum_fast_update  [+1b]",
+    lambda: _kinetic_cont_vmap(wavefunction_data_1b2b, r_up_batch, r_dn_batch, A_old_inv_batch),
+)
+time_fn(
+    "kinetic_discretized_fast_update  [+1b]",
+    lambda: _kinetic_disc_vmap(wavefunction_data_1b2b, A_old_inv_batch, r_up_batch, r_dn_batch),
+)
+time_fn(
+    "ecp_non_local_tmove_fast_update  [+1b]",
+    lambda: _ecp_nonlocal_vmap(wavefunction_data_1b2b, r_up_batch, r_dn_batch, A_old_inv_batch),
+)
+
+print(f"\n  Jastrow: 1b+2b+3b  (Jastrow-affected ops; n_AO={aos_data._num_orb})\n")
+print(f"  {'operation':<58s}  {'time':>8s}")
+print(f"  {'-' * 58}  {'-' * 8}")
+time_fn(
+    "kinetic_continuum_fast_update  [+1b +3b]",
+    lambda: _kinetic_cont_vmap(wavefunction_data_full, r_up_batch, r_dn_batch, A_old_inv_batch),
+)
+time_fn(
+    "kinetic_discretized_fast_update  [+1b +3b]",
+    lambda: _kinetic_disc_vmap(wavefunction_data_full, A_old_inv_batch, r_up_batch, r_dn_batch),
+)
+time_fn(
+    "ecp_non_local_tmove_fast_update  [+1b +3b]",
+    lambda: _ecp_nonlocal_vmap(wavefunction_data_full, r_up_batch, r_dn_batch, A_old_inv_batch),
 )
 
 print()
