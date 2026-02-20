@@ -310,7 +310,7 @@ def _cli():
                 num_mcmc_per_measurement=num_mcmc_per_measurement,
                 epsilon_AS=epsilon_AS,
                 comput_position_deriv=atomic_force,
-                comput_param_deriv=parameter_derivatives,
+                compute_log_WF_param_deriv=parameter_derivatives,
             )
         mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = mcmc.get_E(
@@ -337,7 +337,7 @@ def _cli():
                 row_str = "  " + atomic_label.ljust(8) + " ".join(val.ljust(12) for val in row_values)
                 logger.info(row_str)
             logger.info("  " + "-" * sep)
-        if mcmc.comput_param_deriv:
+        if mcmc.compute_log_WF_param_deriv:
             logger.info("  Parameter Derivatives are computed.")
         logger.info("")
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
@@ -424,6 +424,10 @@ def _cli():
         if num_mcmc_steps - num_mcmc_warmup_steps < num_mcmc_bin_blocks:
             raise ValueError("(num_mcmc_steps - num_mcmc_warmup_steps) should be larger than num_mcmc_bin_blocks.")
 
+        _use_asr = optimizer_kwargs.get("method", "sr").lower() == "sr" and bool(
+            optimizer_kwargs.get("adaptive_learning_rate", False)
+        )
+
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
             """Unzip the checkpoint file for each process and load them."""
@@ -443,7 +447,8 @@ def _cli():
                 num_mcmc_per_measurement=num_mcmc_per_measurement,
                 epsilon_AS=epsilon_AS,
                 comput_position_deriv=False,
-                comput_param_deriv=True,
+                compute_log_WF_param_deriv=True,
+                comput_e_L_param_deriv=_use_asr,
             )
         mcmc.run_optimize(
             num_mcmc_steps=num_mcmc_steps,

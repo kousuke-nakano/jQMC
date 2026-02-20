@@ -109,7 +109,7 @@ mcmc_opt = MCMC(
     num_mcmc_per_measurement=1,
     epsilon_AS=0.0,
     comput_position_deriv=False,
-    comput_param_deriv=True,
+    compute_log_WF_param_deriv=True,
 )
 
 mcmc_opt.run_optimize(
@@ -145,7 +145,7 @@ mcmc_prod = MCMC(
     num_mcmc_per_measurement=1,
     epsilon_AS=0.0,
     comput_position_deriv=False,
-    comput_param_deriv=False,
+    compute_log_WF_param_deriv=False,
 )
 
 num_vmc_steps = 500

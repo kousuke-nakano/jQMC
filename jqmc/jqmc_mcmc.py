@@ -123,7 +123,8 @@ class MCMC:
         Dt: float = 2.0,
         epsilon_AS: float = 1e-1,
         # adjust_epsilon_AS: bool = False,
-        comput_param_deriv: bool = False,
+        compute_log_WF_param_deriv: bool = False,
+        comput_e_L_param_deriv: bool = False,
         comput_position_deriv: bool = False,
         random_discretized_mesh: bool = True,
     ) -> None:
@@ -136,7 +137,8 @@ class MCMC:
             num_mcmc_per_measurement (int, optional): Proposals between observable evaluations. Defaults to 16.
             Dt (float, optional): Electron displacement scale (bohr). Defaults to 2.0.
             epsilon_AS (float, optional): Regularization exponent for antisymmetric stabilization. Defaults to 1e-1.
-            comput_param_deriv (bool, optional): Keep variational parameter derivatives. Defaults to False.
+            compute_log_WF_param_deriv (bool, optional): Keep variational parameter derivatives (d ln Psi / dc). Defaults to False.
+            comput_e_L_param_deriv (bool, optional): Keep local energy variational parameter derivatives (de_L / dc). Nuclear position gradients are disabled via stop_gradient. Defaults to False.
             comput_position_deriv (bool, optional): Keep nuclear position derivatives. Defaults to False.
             random_discretized_mesh (bool, optional): Randomize quadrature mesh for non-local ECP terms. Defaults to True.
 
@@ -151,7 +153,8 @@ class MCMC:
         self.__Dt = Dt
         self.__epsilon_AS = epsilon_AS
         # self.__adjust_epsilon_AS = adjust_epsilon_AS
-        self.__comput_param_deriv = comput_param_deriv
+        self.__compute_log_WF_param_deriv = compute_log_WF_param_deriv
+        self.__comput_e_L_param_deriv = comput_e_L_param_deriv
         self.__comput_position_deriv = comput_position_deriv
         self.__random_discretized_mesh = random_discretized_mesh
 
@@ -287,7 +290,10 @@ class MCMC:
         self.__stored_grad_omega_r_dn = []
 
         # stored parameter gradients keyed by block name
-        self.__stored_param_grads: dict[str, list] = defaultdict(list)
+        self.__stored_log_WF_param_grads: dict[str, list] = defaultdict(list)
+
+        # stored local energy parameter gradients keyed by block name (de_L / dc)
+        self.__stored_e_L_param_grads: dict[str, list] = defaultdict(list)
 
     @staticmethod
     def __default_param_grad_flags() -> dict[str, bool]:
@@ -328,7 +334,7 @@ class MCMC:
 
     def __prepare_param_grad_objects(self):
         wavefunction_data = self.__hamiltonian_data.wavefunction_data
-        if not (self.__comput_param_deriv or self.__comput_position_deriv):
+        if not (self.__compute_log_WF_param_deriv or self.__comput_e_L_param_deriv or self.__comput_position_deriv):
             return wavefunction_data, self.__hamiltonian_data
 
         if not self.__needs_param_grad_mask():
@@ -387,6 +393,7 @@ class MCMC:
         timer_de_L_dR_dr = 0.0
         timer_dln_Psi_dR_dr = 0.0
         timer_dln_Psi_dc = 0.0
+        timer_de_L_dc = 0.0
         timer_MPI_barrier = 0.0
 
         # mcmc timer starts
@@ -887,6 +894,12 @@ class MCMC:
 
         wavefunction_for_param_grads, hamiltonian_for_param_grads = self.__prepare_param_grad_objects()
 
+        # Helper for de_L/dc: nuclear positions are stop-gradiented so only wavefunction
+        # parameters receive gradients when argnums=0 is used.
+        def _e_L_wf_only(wf_data, r_up, r_dn, RTs):
+            h = jax.lax.stop_gradient(hamiltonian_for_param_grads).replace(wavefunction_data=wf_data)
+            return compute_local_energy(h, r_up, r_dn, RTs)
+
         geminal, geminal_inv, _, _ = _geminal_inv_batched(
             self.__hamiltonian_data.wavefunction_data.geminal_data,
             self.__latest_r_up_carts,
@@ -981,11 +994,19 @@ class MCMC:
                 self.__latest_r_dn_carts,
             )
 
-        if self.__comput_param_deriv:
+        if self.__compute_log_WF_param_deriv:
             _ = vmap(grad(evaluate_ln_wavefunction, argnums=0), in_axes=(None, 0, 0))(
                 wavefunction_for_param_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
+            )
+
+        if self.__comput_e_L_param_deriv:
+            _ = vmap(grad(_e_L_wf_only, argnums=0), in_axes=(None, 0, 0, 0))(
+                wavefunction_for_param_grads,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+                RTs,
             )
 
         mcmc_update_init_end = time.perf_counter()
@@ -1167,7 +1188,7 @@ class MCMC:
                 self.__stored_grad_omega_r_up.append(grad_omega_dr_up_step)
                 self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn_step)
 
-            if self.__comput_param_deriv:
+            if self.__compute_log_WF_param_deriv:
                 start = time.perf_counter()
                 logger.debug("    Evaluating dln_Psi/dc ...")
                 grad_ln_Psi_h = vmap(grad(evaluate_ln_wavefunction, argnums=0), in_axes=(None, 0, 0))(
@@ -1183,12 +1204,36 @@ class MCMC:
                 for name, grad_val in flat_param_grads.items():
                     if not self.__param_grad_flags.get(name, True):
                         continue
-                    self.__stored_param_grads[name].append(grad_val)
+                    self.__stored_log_WF_param_grads[name].append(grad_val)
                     if hasattr(grad_val, "block_until_ready"):
                         grad_val.block_until_ready()
 
                 end = time.perf_counter()
                 timer_dln_Psi_dc += end - start
+
+            if self.__comput_e_L_param_deriv:
+                start = time.perf_counter()
+                logger.debug("    Evaluating de_L/dc ...")
+                grad_e_L_wf_step = vmap(grad(_e_L_wf_only, argnums=0), in_axes=(None, 0, 0, 0))(
+                    wavefunction_for_param_grads,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                    RTs,
+                )
+                param2_grads = self.__hamiltonian_data.wavefunction_data.collect_param_grads(grad_e_L_wf_step)
+                flat_param2_grads = self.__hamiltonian_data.wavefunction_data.flatten_param_grads(
+                    param2_grads, self.__num_walkers
+                )
+
+                for name, grad_val in flat_param2_grads.items():
+                    if not self.__param_grad_flags.get(name, True):
+                        continue
+                    self.__stored_e_L_param_grads[name].append(grad_val)
+                    if hasattr(grad_val, "block_until_ready"):
+                        grad_val.block_until_ready()
+
+                end = time.perf_counter()
+                timer_de_L_dc += end - start
 
             num_mcmc_done += 1
 
@@ -1233,6 +1278,7 @@ class MCMC:
             + timer_de_L_dR_dr
             + timer_dln_Psi_dR_dr
             + timer_dln_Psi_dc
+            + timer_de_L_dc
             + timer_MPI_barrier
         )
 
@@ -1255,6 +1301,7 @@ class MCMC:
         ave_timer_de_L_dR_dr = mpi_comm.allreduce(timer_de_L_dR_dr, op=MPI.SUM) / mpi_size / num_mcmc_done
         ave_timer_dln_Psi_dR_dr = mpi_comm.allreduce(timer_dln_Psi_dR_dr, op=MPI.SUM) / mpi_size / num_mcmc_done
         ave_timer_dln_Psi_dc = mpi_comm.allreduce(timer_dln_Psi_dc, op=MPI.SUM) / mpi_size / num_mcmc_done
+        ave_timer_de_L_dc = mpi_comm.allreduce(timer_de_L_dc, op=MPI.SUM) / mpi_size / num_mcmc_done
         ave_timer_MPI_barrier = mpi_comm.allreduce(timer_MPI_barrier, op=MPI.SUM) / mpi_size / num_mcmc_done
         ave_timer_misc = mpi_comm.allreduce(timer_misc, op=MPI.SUM) / mpi_size / num_mcmc_done
         ave_stored_w_L = mpi_comm.allreduce(np.mean(self.__stored_w_L), op=MPI.SUM) / mpi_size
@@ -1270,6 +1317,7 @@ class MCMC:
         logger.info(f"  Time for computing de_L/dR and de_L/dr = {ave_timer_de_L_dR_dr * 10**3:.2f} msec.")
         logger.info(f"  Time for computing dln_Psi/dR and dln_Psi/dr = {ave_timer_dln_Psi_dR_dr * 10**3:.2f} msec.")
         logger.info(f"  Time for computing dln_Psi/dc = {ave_timer_dln_Psi_dc * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing de_L/dc = {ave_timer_de_L_dc * 10**3:.2f} msec.")
         logger.info(f"  Time for MPI barrier after MCMC update = {ave_timer_MPI_barrier * 10**3:.2f} msec.")
         logger.info(f"  Time for misc. (others) = {ave_timer_misc * 10**3:.2f} msec.")
         logger.info(f"Average of walker weights is {ave_stored_w_L:.3f}. Ideal is ~ 0.800. Adjust epsilon_AS.")
@@ -1801,6 +1849,211 @@ class MCMC:
             generalized_force_std,
         )  # (L vector, L vector)
 
+    def get_aH(
+        self,
+        g: npt.NDArray,
+        blocks: list,
+        num_mcmc_warmup_steps: int = 50,
+        chosen_param_index: list | None = None,
+        lambda_projectors: tuple[npt.NDArray, npt.NDArray] | None = None,
+        num_orb_projection: int | None = None,
+    ) -> tuple[float, float, float, float]:
+        r"""Compute H_0, H_1, H_2, S_2 for accelerated SR (aSR) gamma optimization.
+
+        Using the decomposition
+
+        .. math::
+
+            E_{\\alpha+\\delta\\alpha}
+            = \\frac{H_0 + 2\\gamma H_1 + \\gamma^2 H_2}{1 + \\gamma^2 S_2},
+
+        where :math:`\\delta\\alpha = \\gamma g` and :math:`g = S^{-1}f`.
+
+        Each term is:
+
+        - :math:`H_0 = E_{\\alpha}` (current energy),
+        - :math:`H_1 = -\\tfrac{1}{2}\\,g^T f`,
+        - :math:`H_2 = g^T (B + K)\\,g`, with
+          :math:`K_{k,k'} = \\langle e_L (O_k - \\bar O_k)(O_{k'} - \\bar O_{k'})\\rangle`
+          and
+          :math:`B_{k,k'} = \\langle (O_{k'} - \\bar O_{k'})(\\partial_k e_L - \\overline{\\partial_k e_L})\\rangle`,
+        - :math:`S_2 = g^T S g = g^T f = -2 H_1`.
+
+        Args:
+            g (npt.NDArray): Natural gradient vector :math:`g = S^{-1}f`, shape ``(K,)`` or ``(L,)`` if ``chosen_param_index`` is used.
+            blocks (list): Ordered variational blocks (same ordering as used for ``g``).
+            num_mcmc_warmup_steps (int, optional): Samples to discard as warmup. Defaults to 50.
+            chosen_param_index (list | None, optional): Optional subset of flattened parameter indices. Defaults to None.
+            lambda_projectors (tuple | None, optional): Passed to :meth:`get_dln_WF`.
+            num_orb_projection (int | None, optional): Passed to :meth:`get_dln_WF`.
+
+        Returns:
+            tuple[float, float, float, float]: ``(H_0, H_1, H_2, S_2)``.
+
+        Raises:
+            RuntimeError: If ``compute_log_WF_param_deriv`` or ``comput_e_L_param_deriv`` is False.
+
+        Notes:
+            Use :meth:`compute_asr_gamma` to obtain :math:`\\gamma` from the returned values.
+        """
+        if not self.__compute_log_WF_param_deriv:
+            raise RuntimeError("get_aH requires compute_log_WF_param_deriv=True.")
+        if not self.__comput_e_L_param_deriv:
+            raise RuntimeError("get_aH requires comput_e_L_param_deriv=True (for B matrix / de_L/dc).")
+
+        # ---- raw samples after warmup ----
+        w_L = self.w_L[num_mcmc_warmup_steps:]  # (M, nw)
+        e_L = self.e_L[num_mcmc_warmup_steps:]  # (M, nw)
+
+        # ---- O_matrix: d ln Psi / dc  shape (M, nw, K) ----
+        O_matrix = self.get_dln_WF(
+            blocks=blocks,
+            num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+            chosen_param_index=chosen_param_index,
+            lambda_projectors=lambda_projectors,
+            num_orb_projection=num_orb_projection,
+        )  # (M, nw, K)
+
+        # ---- dE_matrix: de_L / dc  shape (M, nw, K) ----
+        de_L_dc_map = self.de_L_dc
+        de_L_dc_list = []
+        for block in blocks:
+            if block.name in de_L_dc_map:
+                arr = de_L_dc_map[block.name]
+                if arr.ndim == 2:
+                    arr = arr.reshape(arr.shape[0], arr.shape[1], 1)
+                else:
+                    arr = arr.reshape(arr.shape[0], arr.shape[1], int(np.prod(arr.shape[2:])))
+                de_L_dc_list.append(arr)
+        dE_matrix = np.concatenate(de_L_dc_list, axis=2)[num_mcmc_warmup_steps:]  # (M, nw, K)
+        if chosen_param_index is not None:
+            dE_matrix = dE_matrix[:, :, chosen_param_index]
+
+        # ---- flatten (M, nw) -> (N,) ----
+        w_flat = np.ravel(w_L)  # (N,)
+        e_flat = np.ravel(e_L)  # (N,)
+        N = w_flat.shape[0]
+        K = O_matrix.shape[2]
+        O_flat = O_matrix.reshape(N, K)  # (N, K)
+        dE_flat = dE_matrix.reshape(N, K)  # (N, K)
+
+        # ---- MPI-aware weighted averages ----
+        total_w_local = np.sum(w_flat)
+        we_local = np.dot(w_flat, e_flat)
+        wO_local = np.einsum("i,ik->k", w_flat, O_flat)  # (K,)
+        wdE_local = np.einsum("i,ik->k", w_flat, dE_flat)  # (K,)
+
+        total_w = mpi_comm.allreduce(total_w_local, op=MPI.SUM)
+
+        we_global = np.empty(1)
+        wO_global = np.empty(K)
+        wdE_global = np.empty(K)
+        mpi_comm.Allreduce([np.array([we_local]), MPI.DOUBLE], [we_global, MPI.DOUBLE], op=MPI.SUM)
+        mpi_comm.Allreduce([wO_local, MPI.DOUBLE], [wO_global, MPI.DOUBLE], op=MPI.SUM)
+        mpi_comm.Allreduce([wdE_local, MPI.DOUBLE], [wdE_global, MPI.DOUBLE], op=MPI.SUM)
+
+        e_bar = float(we_global[0]) / total_w  # scalar
+        O_bar = wO_global / total_w  # (K,)
+        dE_bar = wdE_global / total_w  # (K,)
+
+        # ---- H_0 ----
+        H_0 = e_bar
+
+        # ---- f_k = -2 <w (e_L - E)(O_k - O_bar_k)>  (generalized force) ----
+        dO_flat = O_flat - O_bar[np.newaxis, :]  # (N, K)
+        f_local = -2.0 * np.einsum("i,i,ik->k", w_flat, (e_flat - e_bar), dO_flat)
+        f_global = np.empty(K)
+        mpi_comm.Allreduce([f_local, MPI.DOUBLE], [f_global, MPI.DOUBLE], op=MPI.SUM)
+        f_vec = f_global / total_w  # (K,)
+
+        # ---- H_1 = -1/2 * g^T f ----
+        H_1 = -0.5 * float(np.dot(g, f_vec))
+
+        # ---- S_2 = g^T f = -2 H_1 ----
+        S_2 = -2.0 * H_1
+
+        # ---- K matrix contribution: g^T K g = <w * e_L * (g^T dO)^2> ----
+        gdO_flat = dO_flat @ g  # (N,)
+        gKg_local = np.einsum("i,i,i->", w_flat, e_flat, gdO_flat**2)
+        gKg_arr = np.empty(1)
+        mpi_comm.Allreduce([np.array([gKg_local]), MPI.DOUBLE], [gKg_arr, MPI.DOUBLE], op=MPI.SUM)
+        gKg = float(gKg_arr[0]) / total_w
+
+        # ---- B matrix contribution: g^T B g = <w * (g^T dO) * (g^T (dE - dE_bar))> ----
+        ddE_flat = dE_flat - dE_bar[np.newaxis, :]  # (N, K)
+        gdE_flat = ddE_flat @ g  # (N,)
+        gBg_local = np.einsum("i,i,i->", w_flat, gdO_flat, gdE_flat)
+        gBg_arr = np.empty(1)
+        mpi_comm.Allreduce([np.array([gBg_local]), MPI.DOUBLE], [gBg_arr, MPI.DOUBLE], op=MPI.SUM)
+        gBg = float(gBg_arr[0]) / total_w
+
+        # ---- H_2 = g^T (B + K) g ----
+        H_2 = gBg + gKg
+
+        logger.info(f"aSR: H_0 = {H_0:.6f}, H_1 = {H_1:.6f}, H_2 = {H_2:.6f}, S_2 = {S_2:.6f}")
+        return H_0, H_1, H_2, S_2
+
+    @staticmethod
+    def compute_asr_gamma(H_0: float, H_1: float, H_2: float) -> float:
+        r"""Solve for the optimal gamma in the accelerated SR energy minimization.
+
+        Finds :math:`\\gamma` satisfying
+
+        .. math::
+
+            \\frac{\\partial E_{\\alpha+\\gamma g}}{\\partial \\gamma} = 0,
+
+        whose solution is
+
+        .. math::
+
+            \\gamma = \\frac{H_2 + 2 H_0 H_1 \\pm \\sqrt{(H_2 + 2 H_0 H_1)^2 - 8 H_1^3}}{-4 H_1^2}.
+
+        The positive root is returned; if neither root is positive a warning is
+        logged and the root with larger absolute value is returned.
+
+        Args:
+            H_0 (float): Current energy :math:`E_{\\alpha}`.
+            H_1 (float): :math:`H_1 = -\\tfrac{1}{2} g^T f`.
+            H_2 (float): :math:`H_2 = g^T (B+K) g`.
+
+        Returns:
+            float: Optimal :math:`\\gamma`.
+        """
+        A = H_2 + 2.0 * H_0 * H_1
+        discriminant = A**2 - 8.0 * H_1**3
+        if discriminant < 0.0:
+            logger.warning(f"aSR: discriminant is negative ({discriminant:.3e}); setting to 0.")
+            discriminant = 0.0
+        denom = -4.0 * H_1**2
+        sqrt_d = np.sqrt(discriminant)
+        gamma_plus = (A + sqrt_d) / denom
+        gamma_minus = (A - sqrt_d) / denom
+
+        logger.info(f"aSR: gamma+ = {gamma_plus:.6f}, gamma- = {gamma_minus:.6f}")
+
+        # Choose the positive root.
+        if gamma_plus > 0.0 and gamma_minus <= 0.0:
+            gamma = gamma_plus
+        elif gamma_minus > 0.0 and gamma_plus <= 0.0:
+            gamma = gamma_minus
+        elif gamma_plus > 0.0 and gamma_minus > 0.0:
+            # Both positive: prefer the smaller one (conservative step).
+            gamma = min(gamma_plus, gamma_minus)
+            logger.warning(
+                f"aSR: both roots positive (gamma+={gamma_plus:.6f}, gamma-={gamma_minus:.6f}); "
+                f"using smaller root gamma={gamma:.6f}."
+            )
+        else:
+            # Neither positive: fall back to the root with larger absolute value.
+            gamma = gamma_plus if abs(gamma_plus) >= abs(gamma_minus) else gamma_minus
+            logger.warning(
+                f"aSR: no positive root (gamma+={gamma_plus:.6f}, gamma-={gamma_minus:.6f}); using gamma={gamma:.6f}."
+            )
+
+        logger.info(f"aSR: selected gamma = {gamma:.6f}")
+        return gamma
+
     def run_optimize(
         self,
         num_mcmc_steps: int = 100,
@@ -1837,7 +2090,7 @@ class MCMC:
                     convert MO->AO for MCMC/gradient evaluation, update AO parameters, then project AO->MO
                     with fixed ``num_eigenvectors=num_electron_dn`` to finish the step.
             num_param_opt (int, optional): Limit parameters updated (ranked by ``|f|/|std f|``); ``0`` means all. Defaults to 0.
-            optimizer_kwargs (dict | None, optional): Optimizer configuration. ``method='sr'`` uses SR keys (``delta``, ``epsilon``, ``cg_flag``, ``cg_max_iter``, ``cg_tol``); other ``method`` names are optax constructors (e.g., ``"adam"``) and receive remaining keys.
+            optimizer_kwargs (dict | None, optional): Optimizer configuration. ``method='sr'`` uses SR keys (``delta``, ``epsilon``, ``cg_flag``, ``cg_max_iter``, ``cg_tol``, ``adaptive_learning_rate``); ``adaptive_learning_rate=True`` enables accelerated SR (aSR) gamma scaling and requires ``compute_log_WF_param_deriv=True`` and ``comput_e_L_param_deriv=True``; other ``method`` names are optax constructors (e.g., ``"adam"``) and receive remaining keys.
 
         Notes:
             - Persists optax optimizer state across calls when method and hyperparameters match.
@@ -1859,6 +2112,8 @@ class MCMC:
             raise TypeError("optimizer_kwargs['method'] must be a string if provided.")
         optimizer_mode = optimizer_mode.lower()
         use_sr = optimizer_mode == "sr"
+        sr_adaptive_lr = bool(optimizer_kwargs.get("adaptive_learning_rate", False))
+        use_sr_adaptive_lr = use_sr and sr_adaptive_lr  # aSR gamma scaling
         optax_name = optimizer_mode if not use_sr else None
         sr_delta = float(optimizer_kwargs.get("delta", 1.0e-3))
         sr_epsilon = float(optimizer_kwargs.get("epsilon", 1.0e-3))
@@ -1868,7 +2123,7 @@ class MCMC:
         optax_kwargs = {
             k: v
             for k, v in optimizer_kwargs.items()
-            if k not in {"delta", "epsilon", "cg_flag", "cg_max_iter", "cg_tol", "cg_x0_strategy"}
+            if k not in {"delta", "epsilon", "cg_flag", "cg_max_iter", "cg_tol", "cg_x0_strategy", "adaptive_learning_rate"}
         }
 
         optax_tx = None
@@ -1901,6 +2156,7 @@ class MCMC:
                 "cg_flag": sr_cg_flag,
                 "cg_max_iter": sr_cg_max_iter,
                 "cg_tol": sr_cg_tol,
+                "adaptive_learning_rate": sr_adaptive_lr,
             }
 
         if use_sr:
@@ -1937,6 +2193,11 @@ class MCMC:
         logger.info(f"The chosen optimizer is '{optimizer_mode}'.")
         if use_sr:
             logger.info("  The homemade 'SR (aka natural gradient)' optimizer is used for wavefunction optimization.")
+            if use_sr_adaptive_lr:
+                logger.info(
+                    "  adaptive_learning_rate=True: optimal gamma is computed via accelerated SR (aSR) and applied to theta."
+                )
+                logger.info("  Requires compute_log_WF_param_deriv=True and comput_e_L_param_deriv=True.")
             logger.info("  Hyperparameters: %s", ", ".join(f"{k}={v}" for k, v in sorted(optimizer_hparams.items())))
             logger.info("")
         else:
@@ -2556,6 +2817,20 @@ class MCMC:
             # Apply updates via Wavefunction_data, which in turn delegates
             # to Jastrow_data and Geminal_data. MCMC does not need to know
             # internal parameter names such as j1_param or lambda_matrix.
+
+            # aSR gamma scaling: when method='lr', compute the optimal gamma that
+            # minimises E(alpha + gamma * g) and rescale theta accordingly.
+            if use_sr_adaptive_lr:
+                logger.info("aSR: computing optimal gamma via accelerated SR.")
+                H_0, H_1, H_2, S_2 = self.get_aH(
+                    g=theta,
+                    blocks=blocks,
+                    num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+                )
+                gamma = self.compute_asr_gamma(H_0, H_1, H_2)
+                logger.info(f"aSR: scaling theta by gamma = {gamma:.6f}.")
+                theta = theta * gamma
+
             logger.info(f"Updating parameters with optimizer '{optimizer_mode}'.")
             logger.devel(f"dX.shape for MPI-rank={mpi_rank} is {theta.shape}")
 
@@ -2563,7 +2838,7 @@ class MCMC:
             coulomb_potential_data = self.hamiltonian_data.coulomb_potential_data
 
             wavefunction_data_old = self.hamiltonian_data.wavefunction_data
-            block_learning_rate = sr_delta if use_sr else 1.0
+            block_learning_rate = sr_delta if (use_sr and not use_sr_adaptive_lr) else 1.0
             wavefunction_data = wavefunction_data_old.apply_block_updates(
                 blocks=blocks,
                 thetas=theta,
@@ -2747,12 +3022,12 @@ class MCMC:
         is wrapped with ``DiffMask`` to avoid tracing disabled parts. Setting this property
         reinitializes internal storage buffers.
         """
-        if self.__comput_param_deriv and not self.__comput_position_deriv:
+        if self.__compute_log_WF_param_deriv and not self.__comput_position_deriv:
             self.__hamiltonian_data = apply_diff_mask(hamiltonian_data, DiffMask(params=True, coords=False))
-        elif not self.__comput_param_deriv and self.__comput_position_deriv:
+        elif not self.__compute_log_WF_param_deriv and self.__comput_position_deriv:
             # self.__hamiltonian_data = Hamiltonian_data.from_base(hamiltonian_data)
             self.__hamiltonian_data = apply_diff_mask(hamiltonian_data, DiffMask(params=False, coords=True))
-        elif not self.__comput_param_deriv and not self.__comput_position_deriv:
+        elif not self.__compute_log_WF_param_deriv and not self.__comput_position_deriv:
             self.__hamiltonian_data = apply_diff_mask(hamiltonian_data, DiffMask(params=False, coords=False))
         else:
             self.__hamiltonian_data = hamiltonian_data
@@ -2840,8 +3115,13 @@ class MCMC:
 
     @property
     def dln_Psi_dc(self) -> dict[str, npt.NDArray]:
-        """Return stored parameter gradients keyed by block name."""
-        return {name: np.array(values) for name, values in self.__stored_param_grads.items()}
+        """Return stored parameter gradients (d ln Psi / dc) keyed by block name."""
+        return {name: np.array(values) for name, values in self.__stored_log_WF_param_grads.items()}
+
+    @property
+    def de_L_dc(self) -> dict[str, npt.NDArray]:
+        """Return stored local energy parameter gradients (de_L / dc) keyed by block name."""
+        return {name: np.array(values) for name, values in self.__stored_e_L_param_grads.items()}
 
     @property
     def comput_position_deriv(self) -> bool:
@@ -2849,9 +3129,14 @@ class MCMC:
         return self.__comput_position_deriv
 
     @property
-    def comput_param_deriv(self) -> bool:
+    def compute_log_WF_param_deriv(self) -> bool:
         """Return the flag for computing the derivatives of E wrt. variational parameters."""
-        return self.__comput_param_deriv
+        return self.__compute_log_WF_param_deriv
+
+    @property
+    def comput_e_L_param_deriv(self) -> bool:
+        """Return the flag for computing the local energy derivatives (de_L/dc) wrt. variational parameters."""
+        return self.__comput_e_L_param_deriv
 
 
 class _MCMC_debug:
@@ -2867,7 +3152,7 @@ class _MCMC_debug:
         num_mcmc_per_measurement (int): the number of MCMC steps between a value (e.g., local energy) measurement.
         Dt (float): electron move step (bohr)
         epsilon_AS (float): the exponent of the AS regularization
-        comput_param_deriv (bool): if True, compute the derivatives of E wrt. variational parameters.
+        compute_log_WF_param_deriv (bool): if True, compute the derivatives of E wrt. variational parameters.
         comput_position_deriv (bool): if True, compute the derivatives of E wrt. atomic positions.
     """
 
@@ -2879,7 +3164,7 @@ class _MCMC_debug:
         num_mcmc_per_measurement: int = 16,
         Dt: float = 2.0,
         epsilon_AS: float = 1e-1,
-        comput_param_deriv: bool = False,
+        compute_log_WF_param_deriv: bool = False,
         comput_position_deriv: bool = False,
         random_discretized_mesh: bool = True,
     ) -> None:
@@ -2889,7 +3174,7 @@ class _MCMC_debug:
         self.__num_mcmc_per_measurement = num_mcmc_per_measurement
         self.__Dt = Dt
         self.__epsilon_AS = epsilon_AS
-        self.__comput_param_deriv = comput_param_deriv
+        self.__compute_log_WF_param_deriv = compute_log_WF_param_deriv
         self.__comput_position_deriv = comput_position_deriv
         self.__random_discretized_mesh = random_discretized_mesh
 
@@ -3049,7 +3334,7 @@ class _MCMC_debug:
 
     def __prepare_param_grad_objects(self):
         wavefunction_data = self.__hamiltonian_data.wavefunction_data
-        if not (self.__comput_param_deriv or self.__comput_position_deriv):
+        if not (self.__compute_log_WF_param_deriv or self.__comput_position_deriv):
             return wavefunction_data, self.__hamiltonian_data
 
         if not self.__needs_param_grad_mask():
@@ -3355,7 +3640,7 @@ class _MCMC_debug:
                 self.__stored_grad_omega_r_up.append(grad_omega_dr_up)
                 self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn)
 
-            if self.__comput_param_deriv:
+            if self.__compute_log_WF_param_deriv:
                 grad_ln_Psi_h = vmap(grad(evaluate_ln_wavefunction, argnums=0), in_axes=(None, 0, 0))(
                     wavefunction_for_param_grads,
                     self.__latest_r_up_carts,
