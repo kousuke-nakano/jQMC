@@ -113,7 +113,8 @@ def test_vmc_force_with_SWCT_ecp():
         mcmc_seed=mcmc_seed,
         num_walkers=2,
         comput_position_deriv=True,
-        comput_param_deriv=False,
+        comput_log_WF_param_deriv=False,
+        comput_e_L_param_deriv=False,
     )
     mcmc.run(num_mcmc_steps=20)
     mcmc.get_E(
@@ -188,7 +189,8 @@ def test_vmc_force_with_SWCT_ae():
         mcmc_seed=mcmc_seed,
         num_walkers=2,
         comput_position_deriv=True,
-        comput_param_deriv=False,
+        comput_log_WF_param_deriv=False,
+        comput_e_L_param_deriv=False,
     )
     mcmc.run(num_mcmc_steps=20)
     mcmc.get_E(

@@ -72,6 +72,7 @@ from jqmc.wavefunction import (  # noqa: E402
     compute_kinetic_energy,
     compute_kinetic_energy_all_elements,
     compute_kinetic_energy_all_elements_fast_update,
+    evaluate_ln_wavefunction,
 )
 
 # JAX float64

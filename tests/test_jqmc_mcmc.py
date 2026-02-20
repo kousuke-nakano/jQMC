@@ -47,6 +47,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+from jqmc.determinant import Geminal_data  # noqa: E402
 from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
 from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_data,
@@ -58,7 +59,7 @@ from jqmc.jastrow_factor import (  # noqa: E402
 from jqmc.jqmc_mcmc import MCMC, _MCMC_debug  # noqa: E402
 from jqmc.setting import decimal_debug_vs_production  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
-from jqmc.wavefunction import VariationalParameterBlock, Wavefunction_data  # noqa: E402
+from jqmc.wavefunction import VariationalParameterBlock, Wavefunction_data, evaluate_ln_wavefunction  # noqa: E402
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -137,7 +138,8 @@ def test_jqmc_mcmc(trexio_file, with_nn_jastrow, with_3b_jastrow):
         epsilon_AS=epsilon_AS,
         num_walkers=num_walkers,
         comput_position_deriv=True,
-        comput_param_deriv=False,
+        comput_log_WF_param_deriv=False,
+        comput_e_L_param_deriv=False,
         random_discretized_mesh=True,
     )
     mcmc_debug.run(num_mcmc_steps=num_mcmc_steps)
@@ -149,7 +151,8 @@ def test_jqmc_mcmc(trexio_file, with_nn_jastrow, with_3b_jastrow):
         epsilon_AS=epsilon_AS,
         num_walkers=num_walkers,
         comput_position_deriv=True,
-        comput_param_deriv=False,
+        comput_log_WF_param_deriv=False,
+        comput_e_L_param_deriv=False,
         random_discretized_mesh=True,
     )
     mcmc_jax.run(num_mcmc_steps=num_mcmc_steps)
@@ -318,6 +321,18 @@ def test_jqmc_vmc(monkeypatch):
         """No-op MCMC run to skip sampling in the unit test."""
         return None
 
+    def fake_get_dln_WF(
+        self,
+        blocks,
+        num_mcmc_warmup_steps=0,
+        chosen_param_index=None,
+        lambda_projectors=None,
+        num_orb_projection=None,
+    ):
+        """Return a dummy zero O_matrix of shape (1, num_walkers, total_param_size)."""
+        total = sum(block.size for block in blocks)
+        return np.zeros((1, self.num_walkers, total), dtype=float)
+
     def fake_get_E(self, num_mcmc_warmup_steps: int = 0, num_mcmc_bin_blocks: int = 1):
         """Return dummy energy tuple so optimization can proceed without real computation."""
         return (0.0, 0.0, 0.0, 0.0)
@@ -343,6 +358,10 @@ def test_jqmc_vmc(monkeypatch):
     monkeypatch.setattr(MCMC, "run", fake_run, raising=False)
     monkeypatch.setattr(MCMC, "get_E", fake_get_E, raising=False)
     monkeypatch.setattr(MCMC, "get_gF", fake_get_gF, raising=False)
+    monkeypatch.setattr(MCMC, "get_dln_WF", fake_get_dln_WF, raising=False)
+    # Provide dummy w_L / e_L so the SR path has consistent sample data when fake_run records nothing.
+    monkeypatch.setattr(MCMC, "w_L", property(lambda self: np.ones((1, self.num_walkers))), raising=False)
+    monkeypatch.setattr(MCMC, "e_L", property(lambda self: np.zeros((1, self.num_walkers))), raising=False)
 
     def make_mcmc_with_patches(mcmc_instance: MCMC):
         """Clone base_params for a given MCMC instance and register them for the monkeypatched helpers."""
@@ -398,7 +417,8 @@ def test_jqmc_vmc(monkeypatch):
             epsilon_AS=epsilon_AS,
             num_walkers=num_walkers,
             comput_position_deriv=False,
-            comput_param_deriv=True,
+            comput_log_WF_param_deriv=True,
+            comput_e_L_param_deriv=False,
             random_discretized_mesh=True,
         )
 
@@ -424,6 +444,176 @@ def test_jqmc_vmc(monkeypatch):
                 )
 
         jax.clear_caches()
+
+    # ── adaptive_learning_rate (aSR) smoke test ──────────────────────────────
+    # A separate MCMC instance with comput_e_L_param_deriv=True.
+    # get_aH is patched at instance level so that no real sampled data are
+    # needed; the dummy return values have H_1 < 0 so compute_asr_gamma
+    # produces a positive learning-rate scalar.
+    mcmc_asr = MCMC(
+        hamiltonian_data=hamiltonian_data,
+        Dt=Dt,
+        mcmc_seed=mcmc_seed,
+        num_walkers=num_walkers,
+        epsilon_AS=epsilon_AS,
+        comput_position_deriv=False,
+        comput_log_WF_param_deriv=True,
+        comput_e_L_param_deriv=True,
+    )
+
+    import types as _types
+
+    def _fake_get_aH(
+        self_inner,
+        g,
+        blocks,
+        num_mcmc_warmup_steps=0,
+        chosen_param_index=None,
+        lambda_projectors=None,
+        num_orb_projection=None,
+    ):
+        H_0 = -1.0
+        H_1 = -0.1
+        H_2 = 0.5
+        S_2 = -2.0 * H_1
+        return H_0, H_1, H_2, S_2
+
+    mcmc_asr.get_aH = _types.MethodType(_fake_get_aH, mcmc_asr)
+
+    make_mcmc_with_patches(mcmc_asr)
+
+    mcmc_asr.run_optimize(
+        num_mcmc_steps=num_mcmc_steps,
+        num_opt_steps=1,
+        num_mcmc_warmup_steps=0,
+        num_mcmc_bin_blocks=1,
+        opt_J1_param=False,
+        opt_J2_param=False,
+        opt_J3_param=False,
+        opt_JNN_param=False,
+        opt_lambda_param=True,
+        optimizer_kwargs={
+            "method": "sr",
+            "delta": 1e-3,
+            "epsilon": 1e-3,
+            "adaptive_learning_rate": True,
+        },
+    )
+
+    jax.clear_caches()
+
+
+def test_opt_with_projected_MOs_ln_psi_consistency(monkeypatch):
+    """After run_optimize with opt_with_projected_MOs=True the final wavefunction
+    (in MO representation) must give the same ln|Psi| as its AO-converted counterpart.
+
+    This validates that the MO->AO->MO round-trip inside each optimisation step
+    preserves the wavefunction exactly, even after the lambda matrix has been
+    updated in AO space.
+    """
+    trexio_file = "H2_ae_ccpvtz_cart.h5"
+    (
+        structure_data,
+        _,
+        _,
+        _,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+
+    # Minimal 2-body Jastrow — no 3-body/NN to keep the test fast.
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=None,
+        jastrow_two_body_data=Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5),
+        jastrow_three_body_data=None,
+        jastrow_nn_data=None,
+    )
+
+    wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+
+    mcmc = MCMC(
+        hamiltonian_data=hamiltonian_data,
+        Dt=2.0,
+        mcmc_seed=42,
+        num_walkers=2,
+        comput_position_deriv=False,
+        comput_log_WF_param_deriv=True,
+        comput_e_L_param_deriv=False,
+    )
+
+    # --- monkeypatches: skip sampling, return dummy energy/forces ---------
+    def fake_run(self, num_mcmc_steps=0, max_time=None):
+        return None
+
+    def fake_get_E(self, num_mcmc_warmup_steps=0, num_mcmc_bin_blocks=1):
+        return (0.0, 0.0, 0.0, 0.0)
+
+    def fake_get_gF(
+        self,
+        num_mcmc_warmup_steps,
+        num_mcmc_bin_blocks,
+        chosen_param_index,
+        blocks,
+        lambda_projectors=None,
+        num_orb_projection=None,
+    ):
+        # Return non-zero unit forces so the lambda actually changes.
+        total = sum(block.size for block in blocks)
+        f = np.ones(total, dtype=float)
+        f_std = np.ones(total, dtype=float)
+        return f, f_std
+
+    monkeypatch.setattr(MCMC, "run", fake_run, raising=False)
+    monkeypatch.setattr(MCMC, "get_E", fake_get_E, raising=False)
+    monkeypatch.setattr(MCMC, "get_gF", fake_get_gF, raising=False)
+    # get_variational_blocks and apply_block_updates are NOT patched so that
+    # the real AO lambda update and MO/AO conversion logic is exercised.
+    # ----------------------------------------------------------------------
+
+    mcmc.run_optimize(
+        num_mcmc_steps=1,
+        num_opt_steps=2,
+        num_mcmc_warmup_steps=0,
+        num_mcmc_bin_blocks=1,
+        opt_J1_param=False,
+        opt_J2_param=False,
+        opt_J3_param=False,
+        opt_JNN_param=False,
+        opt_lambda_param=True,
+        opt_with_projected_MOs=True,
+        optimizer_kwargs={"method": "sgd", "learning_rate": 0.01},
+    )
+
+    final_wf = mcmc.hamiltonian_data.wavefunction_data
+    final_geminal = final_wf.geminal_data
+
+    # opt_with_projected_MOs must return the geminal in MO representation.
+    assert final_geminal.is_mo_representation, (
+        "opt_with_projected_MOs=True should leave the geminal in MO representation after run_optimize"
+    )
+
+    # The MO representation must be consistent with its AO counterpart.
+    geminal_ao = Geminal_data.convert_from_MOs_to_AOs(final_geminal)
+    wf_ao = type(final_wf)(geminal_data=geminal_ao, jastrow_data=final_wf.jastrow_data)
+
+    rng = np.random.default_rng(123)
+    r_up = rng.uniform(-3.0, 3.0, (final_geminal.num_electron_up, 3))
+    r_dn = rng.uniform(-3.0, 3.0, (final_geminal.num_electron_dn, 3))
+
+    ln_psi_mo = float(evaluate_ln_wavefunction(final_wf, r_up, r_dn))
+    ln_psi_ao = float(evaluate_ln_wavefunction(wf_ao, r_up, r_dn))
+
+    np.testing.assert_almost_equal(ln_psi_mo, ln_psi_ao, decimal=decimal_debug_vs_production)
+
+    jax.clear_caches()
 
 
 if __name__ == "__main__":

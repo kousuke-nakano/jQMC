@@ -310,7 +310,7 @@ def _cli():
                 num_mcmc_per_measurement=num_mcmc_per_measurement,
                 epsilon_AS=epsilon_AS,
                 comput_position_deriv=atomic_force,
-                compute_log_WF_param_deriv=parameter_derivatives,
+                comput_log_WF_param_deriv=parameter_derivatives,
             )
         mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = mcmc.get_E(
@@ -447,7 +447,7 @@ def _cli():
                 num_mcmc_per_measurement=num_mcmc_per_measurement,
                 epsilon_AS=epsilon_AS,
                 comput_position_deriv=False,
-                compute_log_WF_param_deriv=True,
+                comput_log_WF_param_deriv=True,
                 comput_e_L_param_deriv=_use_asr,
             )
         mcmc.run_optimize(
