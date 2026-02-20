@@ -15,7 +15,6 @@ The workflow consists of two main scripts:
 *   `trexio`
 *   `jqmc` (installed in your environment)
 *   `mpi4py`
-*   `mpi4jax`
 *   MPI implementation (e.g., OpenMPI, MPICH)
 
 ## How to Run

@@ -41,7 +41,6 @@ from logging import getLogger
 from typing import Any
 
 import jax
-import mpi4jax
 import numpy as np
 import numpy.typing as npt
 import optax
@@ -52,7 +51,9 @@ from jax import numpy as jnp
 from jax.scipy.linalg import lu_factor, lu_solve
 from mpi4py import MPI
 
+from .atomic_orbital import compute_overlap_matrix
 from .determinant import (
+    Geminal_data,
     compute_AS_regularization_factor,
     compute_AS_regularization_factor_fast_update,
     compute_det_geminal_all_elements,
@@ -1571,6 +1572,8 @@ class MCMC:
         blocks: list,
         num_mcmc_warmup_steps: int = 50,
         chosen_param_index: list | None = None,
+        lambda_projectors: tuple[npt.NDArray, npt.NDArray] | None = None,
+        num_orb_projection: int | None = None,
     ):
         """Assemble per-sample derivatives of ln Psi w.r.t. variational parameters.
 
@@ -1578,6 +1581,8 @@ class MCMC:
             blocks (list[VariationalParameterBlock]): Ordered variational blocks used for concatenation.
             num_mcmc_warmup_steps (int, optional): Samples to discard as warmup. Defaults to 50.
             chosen_param_index (list | None, optional): Optional subset of flattened indices; ``None`` keeps all. Defaults to None.
+            lambda_projectors (tuple[npt.NDArray, npt.NDArray] | None, optional): ``(left_projector, right_projector)`` for lambda-subspace projection.
+            num_orb_projection (int | None, optional): Number of paired/down-spin orbitals used to split the lambda block.
 
         Returns:
             npt.NDArray: ``O_matrix`` with shape ``(M, num_walkers, K)`` after warmup, where ``K`` follows the provided blocks (or subset).
@@ -1612,6 +1617,34 @@ class MCMC:
             "Mismatch between total block size and O_matrix parameter dimension."
         )
 
+        # Step 2 projection (Becca and Sorella, 2017, Eq. 12.39): apply projection
+        # directly to derivative observables so downstream generalized forces and
+        # SR matrices are consistently projected.
+        if lambda_projectors is not None and num_orb_projection is not None:
+            left_projector, right_projector = lambda_projectors
+            identity_left = np.eye(left_projector.shape[0], dtype=np.float64)
+            identity_right = np.eye(right_projector.shape[0], dtype=np.float64)
+
+            start = 0
+            for block in blocks:
+                end = start + block.size
+                if block.name == "lambda_matrix":
+                    block_matrix = O_matrix[:, :, start:end].reshape(O_matrix.shape[0], O_matrix.shape[1], *block.shape)
+                    paired_block = block_matrix[:, :, :, :num_orb_projection]
+                    unpaired_block = block_matrix[:, :, :, num_orb_projection:]
+
+                    correction = np.einsum(
+                        "ab,mwbc,cd->mwad",
+                        (identity_left - left_projector.T),
+                        paired_block,
+                        (identity_right - right_projector.T),
+                    )
+                    corrected_paired_block = paired_block - correction
+                    corrected_block = np.concatenate((corrected_paired_block, unpaired_block), axis=3)
+                    O_matrix[:, :, start:end] = corrected_block.reshape(O_matrix.shape[0], O_matrix.shape[1], -1)
+                    break
+                start = end
+
         logger.devel(f"O_matrix.shape = {O_matrix.shape}")
         if chosen_param_index is None:
             O_matrix_chosen = O_matrix[num_mcmc_warmup_steps:]
@@ -1626,6 +1659,8 @@ class MCMC:
         num_mcmc_bin_blocks: int = 10,
         chosen_param_index: list | None = None,
         blocks: list | None = None,
+        lambda_projectors: tuple[npt.NDArray, npt.NDArray] | None = None,
+        num_orb_projection: int | None = None,
     ) -> tuple[npt.NDArray, npt.NDArray]:
         """Evaluate generalized forces (dE/dc_k) with jackknife error bars.
 
@@ -1634,9 +1669,13 @@ class MCMC:
             num_mcmc_bin_blocks (int, optional): Number of jackknife blocks. Defaults to 10.
             chosen_param_index (list | None, optional): Optional subset of flattened indices. Defaults to None.
             blocks (list | None, optional): Variational blocks for parameter ordering; defaults to current wavefunction blocks.
+            lambda_projectors (tuple[npt.NDArray, npt.NDArray] | None, optional): Optional projectors forwarded to :meth:`get_dln_WF`.
+            num_orb_projection (int | None, optional): Number of paired/down-spin orbitals for lambda projection.
 
         Returns:
-            tuple[npt.NDArray, npt.NDArray]: ``(generalized_force_mean, generalized_force_std)`` as 1D vectors of length ``L`` after any filtering.
+            tuple[npt.NDArray, npt.NDArray]:
+                ``(generalized_force_mean, generalized_force_std)`` as arrays over
+                the filtered parameter space.
 
         Notes:
             Reuses :meth:`get_dln_WF` after warmup and applies jackknife statistics across MPI ranks.
@@ -1653,6 +1692,8 @@ class MCMC:
             num_mcmc_warmup_steps=num_mcmc_warmup_steps,
             chosen_param_index=chosen_param_index,
             blocks=blocks,
+            lambda_projectors=lambda_projectors,
+            num_orb_projection=num_orb_projection,
         )
         w_L_O_matrix_split = np.array_split(np.einsum("iw,iwj->iwj", w_L, O_matrix), num_mcmc_bin_blocks, axis=0)
         w_L_O_matrix_sum = np.array([np.sum(arr, axis=0) for arr in w_L_O_matrix_split])
@@ -1682,62 +1723,6 @@ class MCMC:
         w_L_O_matrix_binned_local = np.array(w_L_O_matrix_binned_local)
         w_L_e_L_O_matrix_binned_local = np.array(w_L_e_L_O_matrix_binned_local)
 
-        # old implementation (keep this just for debug, for the time being. To be deleted.)
-        """
-        w_L_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_binned_local, axis=0), op=MPI.SUM)
-        w_L_e_L_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_e_L_binned_local, axis=0), op=MPI.SUM)
-        w_L_O_matrix_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_O_matrix_binned_local, axis=0), op=MPI.SUM)
-        w_L_e_L_O_matrix_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_e_L_O_matrix_binned_local, axis=0), op=MPI.SUM)
-
-        M_local = w_L_binned_local.size
-        logger.debug(f"The number of local binned samples = {M_local}")
-
-        eL_O_jn_local = [
-            (w_L_e_L_O_matrix_binned_global_sum - w_L_e_L_O_matrix_binned_local[j])
-            / (w_L_binned_global_sum - w_L_binned_local[j])
-            for j in range(M_local)
-        ]
-        logger.devel(f"eL_O_jn_local = {eL_O_jn_local}")
-        # logger.devel(f"eL_O_jn_local.shape = {eL_O_jn_local.shape}")
-
-        eL_jn_local = [
-            (w_L_e_L_binned_global_sum - w_L_e_L_binned_local[j]) / (w_L_binned_global_sum - w_L_binned_local[j])
-            for j in range(M_local)
-        ]
-        logger.devel(f"eL_jn_local = {eL_jn_local}")
-        # logger.devel(f"eL_jn_local.shape = {eL_jn_local.shape}")
-
-        O_jn_local = [
-            (w_L_O_matrix_binned_global_sum - w_L_O_matrix_binned_local[j]) / (w_L_binned_global_sum - w_L_binned_local[j])
-            for j in range(M_local)
-        ]
-
-        logger.devel(f"O_jn = {O_jn_local}")
-        # logger.devel(f"O_jn.shape = {O_jn_local.shape}")
-
-        bar_eL_bar_O_jn_local = list(np.einsum("i,ij->ij", eL_jn_local, O_jn_local))
-
-        logger.devel(f"bar_eL_bar_O_jn = {bar_eL_bar_O_jn_local}")
-        # logger.devel(f"bar_eL_bar_O_jn.shape = {bar_eL_bar_O_jn_local.shape}")
-
-        # MPI allreduce
-        eL_O_jn = mpi_comm.allreduce(eL_O_jn_local, op=MPI.SUM)
-        bar_eL_bar_O_jn = mpi_comm.allreduce(bar_eL_bar_O_jn_local, op=MPI.SUM)
-        eL_O_jn = np.array(eL_O_jn)
-        bar_eL_bar_O_jn = np.array(bar_eL_bar_O_jn)
-        M_total = len(eL_O_jn)
-        logger.debug(f"The number of total binned samples = {M_total}")
-
-        generalized_force_mean = np.average(-2.0 * (eL_O_jn - bar_eL_bar_O_jn), axis=0)
-        generalized_force_std = np.sqrt(M_total - 1) * np.std(-2.0 * (eL_O_jn - bar_eL_bar_O_jn), axis=0)
-
-        logger.info(f"generalized_force_mean = {generalized_force_mean}")
-        logger.info(f"generalized_force_std = {generalized_force_std}")
-        logger.info(f"generalized_force_mean.shape = {generalized_force_mean.shape}")
-        logger.info(f"generalized_force_std.shape = {generalized_force_std.shape}")
-        """
-
-        # New implementation
         ## local sum
         w_L_binned_local_sum = np.sum(w_L_binned_local, axis=0)
         w_L_e_L_binned_local_sum = np.sum(w_L_e_L_binned_local, axis=0)
@@ -1829,6 +1814,7 @@ class MCMC:
         opt_J3_param: bool = True,
         opt_JNN_param: bool = True,
         opt_lambda_param: bool = False,
+        opt_with_projected_MOs: bool = False,
         num_param_opt: int = 0,
         optimizer_kwargs: dict | None = None,
     ):
@@ -1846,6 +1832,10 @@ class MCMC:
             opt_J3_param (bool, optional): Optimize three-body Jastrow. Defaults to True.
             opt_JNN_param (bool, optional): Optimize NN Jastrow. Defaults to True.
             opt_lambda_param (bool, optional): Optimize determinant lambda matrix. Defaults to False.
+            opt_with_projected_MOs (bool, optional): If True, enable AO-space lambda optimization flow.
+                - At every optimization step, build projection operators from the current MO state,
+                    convert MO->AO for MCMC/gradient evaluation, update AO parameters, then project AO->MO
+                    with fixed ``num_eigenvectors=num_electron_dn`` to finish the step.
             num_param_opt (int, optional): Limit parameters updated (ranked by ``|f|/|std f|``); ``0`` means all. Defaults to 0.
             optimizer_kwargs (dict | None, optional): Optimizer configuration. ``method='sr'`` uses SR keys (``delta``, ``epsilon``, ``cg_flag``, ``cg_max_iter``, ``cg_tol``); other ``method`` names are optax constructors (e.g., ``"adam"``) and receive remaining keys.
 
@@ -1876,7 +1866,9 @@ class MCMC:
         sr_cg_max_iter = int(optimizer_kwargs.get("cg_max_iter", int(1e6)))
         sr_cg_tol = float(optimizer_kwargs.get("cg_tol", 1.0e-8))
         optax_kwargs = {
-            k: v for k, v in optimizer_kwargs.items() if k not in {"delta", "epsilon", "cg_flag", "cg_max_iter", "cg_tol"}
+            k: v
+            for k, v in optimizer_kwargs.items()
+            if k not in {"delta", "epsilon", "cg_flag", "cg_max_iter", "cg_tol", "cg_x0_strategy"}
         }
 
         optax_tx = None
@@ -1952,6 +1944,55 @@ class MCMC:
             logger.info("  Hyperparameters: %s", ", ".join(f"{k}={v}" for k, v in sorted(optimizer_hparams.items())))
             logger.info("")
 
+        def _conjugate_gradient_numpy(
+            b: npt.NDArray[np.float64],
+            apply_A,
+            x0: npt.NDArray[np.float64],
+            max_iter: int,
+            tol: float,
+        ) -> tuple[npt.NDArray[np.float64], float, int]:
+            x = np.array(x0, dtype=np.float64, copy=True)
+            r = np.array(b, dtype=np.float64, copy=False) - apply_A(x)
+            p = np.array(r, dtype=np.float64, copy=True)
+            rs_old = float(np.dot(r, r))
+
+            if not np.isfinite(rs_old):
+                raise FloatingPointError("Non-finite initial residual encountered in SR-CG.")
+
+            if np.sqrt(rs_old) <= tol:
+                return x, np.sqrt(rs_old), 0
+
+            tiny = np.finfo(np.float64).tiny
+            num_iter = 0
+            for i in range(int(max_iter)):
+                Ap = apply_A(p)
+                denom = float(np.dot(p, Ap))
+                if not np.isfinite(denom) or abs(denom) <= tiny:
+                    logger.warning(
+                        "[CG] Breakdown detected (non-finite/near-zero denominator) at iteration %d; terminating early.",
+                        i,
+                    )
+                    break
+
+                alpha = rs_old / denom
+                x = x + alpha * p
+                r = r - alpha * Ap
+                rs_new = float(np.dot(r, r))
+                num_iter = i + 1
+
+                if not np.isfinite(rs_new):
+                    raise FloatingPointError("Non-finite residual encountered in SR-CG.")
+
+                if np.sqrt(rs_new) <= tol:
+                    rs_old = rs_new
+                    break
+
+                beta = rs_new / rs_old
+                p = r + beta * p
+                rs_old = rs_new
+
+            return x, np.sqrt(rs_old), num_iter
+
         self.__set_param_gradient_flags(
             j1_param=opt_J1_param,
             j2_param=opt_J2_param,
@@ -1959,6 +2000,38 @@ class MCMC:
             jastrow_nn_params=opt_JNN_param,
             lambda_matrix=opt_lambda_param,
         )
+
+        if opt_with_projected_MOs:
+            if not opt_lambda_param:
+                raise ValueError("opt_with_projected_MOs=True requires opt_lambda_param=True.")
+
+            geminal_init = self.hamiltonian_data.wavefunction_data.geminal_data
+            if not (geminal_init.is_mo_representation or geminal_init.is_ao_representation):
+                raise ValueError(
+                    "opt_with_projected_MOs=True requires geminal orbital representation to be either MO/MO or AO/AO."
+                )
+
+            if geminal_init.is_mo_representation:
+                initial_geminal_is_ao_representation = False
+                logger.info("opt_with_projected_MOs=True: initial geminal is MO representation.")
+            else:
+                initial_geminal_is_ao_representation = True
+                logger.info("opt_with_projected_MOs=True: initial geminal is AO representation.")
+
+                geminal_init_mo = Geminal_data.convert_from_AOs_to_MOs(
+                    geminal_init,
+                    num_eigenvectors="all",
+                )
+                wavefunction_data_mo = type(self.hamiltonian_data.wavefunction_data)(
+                    jastrow_data=self.hamiltonian_data.wavefunction_data.jastrow_data,
+                    geminal_data=geminal_init_mo,
+                )
+                self.hamiltonian_data = Hamiltonian_data(
+                    structure_data=self.hamiltonian_data.structure_data,
+                    wavefunction_data=wavefunction_data_mo,
+                    coulomb_potential_data=self.hamiltonian_data.coulomb_potential_data,
+                )
+                logger.info("opt_with_projected_MOs=True: converted initial AO geminal to MO before optimization loop.")
 
         # toml(control) filename
         toml_filename = "external_control_opt.toml"
@@ -1979,6 +2052,9 @@ class MCMC:
         # timer
         vmcopt_total_start = time.perf_counter()
 
+        sr_cg_warm_start_primal = None
+        sr_cg_warm_start_dual = None
+
         # main vmcopt loop
         for i_opt in range(num_opt_steps):
             logger.info("=" * num_sep_line)
@@ -1989,6 +2065,39 @@ class MCMC:
             logger.info(f"Warmup steps = {num_mcmc_warmup_steps}.")
             logger.info(f"Bin blocks = {num_mcmc_bin_blocks}.")
             logger.info("")
+
+            lambda_projectors = None
+            num_orb_projection = None
+            if opt_with_projected_MOs:
+                wavefunction_data_step = self.hamiltonian_data.wavefunction_data
+                geminal_mo_current = wavefunction_data_step.geminal_data
+                num_orb_projection = int(geminal_mo_current.num_electron_dn)
+
+                mo_coefficients_up = np.asarray(geminal_mo_current.orb_data_up_spin.mo_coefficients, dtype=np.float64)
+                mo_coefficients_dn = np.asarray(geminal_mo_current.orb_data_dn_spin.mo_coefficients, dtype=np.float64)
+                overlap_up = np.asarray(compute_overlap_matrix(geminal_mo_current.orb_data_up_spin.aos_data), dtype=np.float64)
+                overlap_dn = np.asarray(compute_overlap_matrix(geminal_mo_current.orb_data_dn_spin.aos_data), dtype=np.float64)
+                overlap_up = 0.5 * (overlap_up + overlap_up.T)
+                overlap_dn = 0.5 * (overlap_dn + overlap_dn.T)
+
+                p_matrix_cols_up = mo_coefficients_up[:num_orb_projection, :].T
+                p_matrix_rows_dn = mo_coefficients_dn[:num_orb_projection, :]
+                left_projector = (overlap_up @ p_matrix_cols_up) @ p_matrix_cols_up.T
+                right_projector = (p_matrix_rows_dn @ overlap_dn) @ p_matrix_rows_dn.T
+                lambda_projectors = (left_projector, right_projector)
+
+                geminal_ao = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_current)
+                wavefunction_data_ao = type(wavefunction_data_step)(
+                    jastrow_data=wavefunction_data_step.jastrow_data,
+                    geminal_data=geminal_ao,
+                )
+
+                self.hamiltonian_data = Hamiltonian_data(
+                    structure_data=self.hamiltonian_data.structure_data,
+                    wavefunction_data=wavefunction_data_ao,
+                    coulomb_potential_data=self.hamiltonian_data.coulomb_potential_data,
+                )
+                logger.info("opt_with_projected_MOs=True: converted current MO geminal to AO for this optimization step.")
 
             # run MCMC
             self.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
@@ -2039,6 +2148,8 @@ class MCMC:
                 num_mcmc_bin_blocks=num_mcmc_bin_blocks,
                 chosen_param_index=chosen_param_index,
                 blocks=blocks,
+                lambda_projectors=lambda_projectors,
+                num_orb_projection=num_orb_projection,
             )
 
             if mpi_rank == 0:
@@ -2083,6 +2194,8 @@ class MCMC:
                     num_mcmc_warmup_steps=num_mcmc_warmup_steps,
                     chosen_param_index=chosen_param_index,
                     blocks=blocks,
+                    lambda_projectors=lambda_projectors,
+                    num_orb_projection=num_orb_projection,
                 )  # shape: (num_mcmc, num_walker, num_param)
                 O_matrix_local_shape = (
                     O_matrix_local.shape[0] * O_matrix_local.shape[1],
@@ -2158,37 +2271,6 @@ class MCMC:
                 logger.info(f"The number of total samples is {num_samples_total}.")
                 logger.info(f"The total number of variational parameters is {num_params}.")
 
-                # ---- Conjugate Gradient Solver ----
-                @partial(jax.jit, static_argnums=(1, 3))
-                def conjugate_gradient_jax(b, apply_A, X_local, epsilon, x0, max_iter=1e6, tol=1e-8):
-                    def body_fun(state):
-                        x, r, p, rs_old, i = state
-                        Ap = apply_A(p, X_local, epsilon)
-                        alpha = rs_old / jnp.dot(p, Ap)
-                        x_new = x + alpha * p
-                        r_new = r - alpha * Ap
-                        rs_new = jnp.dot(r_new, r_new)
-                        beta = rs_new / rs_old
-                        p_new = r_new + beta * p
-                        return (x_new, r_new, p_new, rs_new, i + 1)
-
-                    def cond_fun(state):
-                        _, _, _, rs_old, i = state
-                        return jnp.logical_and(jnp.sqrt(rs_old) > tol, i < max_iter)
-
-                    # Initialize variables
-                    # x0 = jnp.zeros_like(b)
-                    r0 = b - apply_A(x0, X_local, epsilon)
-                    p0 = r0
-                    rs0 = jnp.dot(r0, r0)
-
-                    init_state = (x0, r0, p0, rs0, 0)
-                    final_state = jax.lax.while_loop(cond_fun, body_fun, init_state)
-
-                    x_final, _, _, rs_final, num_iter = final_state
-
-                    return x_final, jnp.sqrt(rs_final), num_iter
-
                 if num_params < num_samples_total:
                     # if True:
                     logger.debug("X is a wide matrix. Proceed w/o the push-through identity.")
@@ -2243,32 +2325,26 @@ class MCMC:
                         X_F = np.zeros_like(X_F_local)
                         mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
 
-                        # ---- Matrix-free matvec: apply_S_jax ----
-                        @partial(jax.jit, static_argnums=(2,))  # epsilon
-                        def apply_S_primal_jax(v, X_local, epsilon):
-                            # Local computation of X^T v
-                            XTv_local = X_local.T @ v  # shape (M_local,)
-
-                            # Local computation of X (X^T v)
-                            XXTv_local = X_local @ XTv_local  # shape (N,)
-
-                            # Global sum over all processes
-                            try:
-                                XXTv_global, _ = mpi4jax.allreduce(XXTv_local, op=MPI.SUM, comm=MPI.COMM_WORLD)
-                            except ValueError:  # mpi4jax.allreduce does not return token since mpi4jax v0.8.0（2025-07-07)
-                                XXTv_global = mpi4jax.allreduce(XXTv_local, op=MPI.SUM, comm=MPI.COMM_WORLD)
+                        def apply_S_primal_numpy(v):
+                            XTv_local = X_local.T @ v
+                            XXTv_local = X_local @ XTv_local
+                            XXTv_global = np.empty_like(XXTv_local)
+                            mpi_comm.Allreduce(XXTv_local, XXTv_global, op=MPI.SUM)
                             return XXTv_global + epsilon * v
 
-                        x0 = X_F
-                        theta_all, final_residual, num_steps = conjugate_gradient_jax(
-                            jnp.array(X_F),
-                            apply_S_primal_jax,
-                            X_local,
-                            epsilon,
-                            x0,
+                        if sr_cg_warm_start_primal is not None and sr_cg_warm_start_primal.shape == X_F.shape:
+                            x0 = sr_cg_warm_start_primal
+                        else:
+                            x0 = np.zeros_like(X_F)
+
+                        theta_all, final_residual, num_steps = _conjugate_gradient_numpy(
+                            np.asarray(X_F, dtype=np.float64),
+                            apply_S_primal_numpy,
+                            np.asarray(x0, dtype=np.float64),
                             sr_cg_max_iter,
                             sr_cg_tol,
                         )
+                        sr_cg_warm_start_primal = np.array(theta_all, copy=True)
                         logger.debug(f"  [CG] Final residual: {final_residual:.3e}")
                         logger.info(f"  [CG] Converged in {num_steps} steps")
                         if num_steps == sr_cg_max_iter:
@@ -2375,34 +2451,29 @@ class MCMC:
                         logger.info(f"  [CG] threshold {sr_cg_tol}.")
                         logger.info(f"  [CG] max iteration: {sr_cg_max_iter}.")
 
-                        @partial(jax.jit, static_argnums=(2,))
-                        def apply_dual_S_jax(v, X_local, epsilon):
-                            # X_local_T: shape (M_local, N/P)
-                            Xv_local = X_local @ v  # (M_local,)
-                            XTXv_local = X_local.T @ Xv_local  # (N_local,)
-                            try:
-                                XTXv_global, _ = mpi4jax.allreduce(XTXv_local, op=MPI.SUM, comm=mpi_comm)
-                            except ValueError:  # mpi4jax.allreduce does not return token since mpi4jax v0.8.0（2025-07-07)
-                                XTXv_global = mpi4jax.allreduce(XTXv_local, op=MPI.SUM, comm=mpi_comm)
+                        def apply_dual_S_numpy(v):
+                            Xv_local = X_re_local @ v
+                            XTXv_local = X_re_local.T @ Xv_local
+                            XTXv_global = np.empty_like(XTXv_local)
+                            mpi_comm.Allreduce(XTXv_local, XTXv_global, op=MPI.SUM)
                             return XTXv_global + epsilon * v
-
-                        # X_re_local: shape (N_local, M_total)
-                        X_re_local = jnp.array(X_re_local)  # shape (M_total, N_local)
 
                         # Solve (X^T X + εI)^(-1) @ F
                         F_local_list = list(F_local)
                         F_list = mpi_comm.allreduce(F_local_list, op=MPI.SUM)
-                        F_total = np.array(F_list)
-                        x0 = F_total
-                        x_sol, final_residual, num_steps = conjugate_gradient_jax(
-                            jnp.array(F_total),
-                            apply_dual_S_jax,
-                            X_re_local,
-                            epsilon,
-                            x0,
+                        F_total = np.asarray(F_list, dtype=np.float64)
+                        if sr_cg_warm_start_dual is not None and sr_cg_warm_start_dual.shape == F_total.shape:
+                            x0 = sr_cg_warm_start_dual
+                        else:
+                            x0 = np.zeros_like(F_total)
+                        x_sol, final_residual, num_steps = _conjugate_gradient_numpy(
+                            F_total,
+                            apply_dual_S_numpy,
+                            np.asarray(x0, dtype=np.float64),
                             sr_cg_max_iter,
                             sr_cg_tol,
                         )
+                        sr_cg_warm_start_dual = np.array(x_sol, copy=True)
 
                         # theta = X @ x_sol, evaluated locally over X_re_local (N_local rows)
                         theta_local = X_re_local @ x_sol  # shape (N_local,)
@@ -2498,6 +2569,50 @@ class MCMC:
                 thetas=theta,
                 learning_rate=block_learning_rate,
             )
+
+            if opt_with_projected_MOs:
+                geminal_ao_current = wavefunction_data.geminal_data
+                if lambda_projectors is not None and num_orb_projection is not None:
+                    left_projector, right_projector = lambda_projectors
+                    lambda_matrix = np.asarray(geminal_ao_current.lambda_matrix, dtype=np.float64)
+                    lambda_paired, lambda_unpaired = np.hsplit(lambda_matrix, [num_orb_projection])
+                    identity_left = np.eye(left_projector.shape[0], dtype=np.float64)
+                    identity_right = np.eye(right_projector.shape[0], dtype=np.float64)
+                    correction = np.einsum(
+                        "ab,bc,cd->ad",
+                        (identity_left - left_projector.T),
+                        lambda_paired,
+                        (identity_right - right_projector.T),
+                    )
+                    corrected_lambda_paired = lambda_paired - correction
+                    corrected_lambda_matrix = np.hstack((corrected_lambda_paired, lambda_unpaired))
+                    corrected_lambda_matrix = corrected_lambda_matrix.astype(
+                        np.asarray(geminal_ao_current.lambda_matrix).dtype,
+                        copy=False,
+                    )
+                    geminal_ao_current = Geminal_data(
+                        num_electron_up=geminal_ao_current.num_electron_up,
+                        num_electron_dn=geminal_ao_current.num_electron_dn,
+                        orb_data_up_spin=geminal_ao_current.orb_data_up_spin,
+                        orb_data_dn_spin=geminal_ao_current.orb_data_dn_spin,
+                        lambda_matrix=corrected_lambda_matrix,
+                    )
+                    wavefunction_data = type(wavefunction_data)(
+                        jastrow_data=wavefunction_data.jastrow_data,
+                        geminal_data=geminal_ao_current,
+                    )
+                    logger.info("opt_with_projected_MOs=True: applied stored L/R projection to AO lambda matrix.")
+
+                geminal_mo_rescaled = Geminal_data.convert_from_AOs_to_MOs(
+                    geminal_data=geminal_ao_current,
+                    num_eigenvectors=geminal_ao_current.num_electron_dn,
+                )
+                wavefunction_data = type(wavefunction_data)(
+                    jastrow_data=wavefunction_data.jastrow_data,
+                    geminal_data=geminal_mo_rescaled,
+                )
+                logger.info("opt_with_projected_MOs=True: projected updated AO geminal to MO (truncated, scaled).")
+
             hamiltonian_data = Hamiltonian_data(
                 structure_data=structure_data,
                 wavefunction_data=wavefunction_data,
@@ -2517,7 +2632,21 @@ class MCMC:
                 if mpi_rank == 0:
                     hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.h5"
                     logger.info(f"Hamiltonian data is dumped as an HDF5 file: {hamiltonian_data_filename}.")
-                    self.hamiltonian_data.save_to_hdf5(hamiltonian_data_filename)
+                    hamiltonian_data_to_dump = self.hamiltonian_data
+                    if opt_with_projected_MOs and initial_geminal_is_ao_representation:
+                        wf_data = hamiltonian_data_to_dump.wavefunction_data
+                        geminal = wf_data.geminal_data
+                        geminal_ao = Geminal_data.convert_from_MOs_to_AOs(geminal)
+                        wf_data_ao = type(wf_data)(
+                            jastrow_data=wf_data.jastrow_data,
+                            geminal_data=geminal_ao,
+                        )
+                        hamiltonian_data_to_dump = Hamiltonian_data(
+                            structure_data=hamiltonian_data_to_dump.structure_data,
+                            wavefunction_data=wf_data_ao,
+                            coulomb_potential_data=hamiltonian_data_to_dump.coulomb_potential_data,
+                        )
+                    hamiltonian_data_to_dump.save_to_hdf5(hamiltonian_data_filename)
                 logger.info("Break the vmcopt loop.")
                 break
 
@@ -2537,7 +2666,21 @@ class MCMC:
                     if mpi_rank == 0:
                         hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.h5"
                         logger.info(f"Hamiltonian data is dumped as an HDF5 file: {hamiltonian_data_filename}.")
-                        self.hamiltonian_data.save_to_hdf5(hamiltonian_data_filename)
+                        hamiltonian_data_to_dump = self.hamiltonian_data
+                        if opt_with_projected_MOs and initial_geminal_is_ao_representation:
+                            wf_data = hamiltonian_data_to_dump.wavefunction_data
+                            geminal = wf_data.geminal_data
+                            geminal_ao = Geminal_data.convert_from_MOs_to_AOs(geminal)
+                            wf_data_ao = type(wf_data)(
+                                jastrow_data=wf_data.jastrow_data,
+                                geminal_data=geminal_ao,
+                            )
+                            hamiltonian_data_to_dump = Hamiltonian_data(
+                                structure_data=hamiltonian_data_to_dump.structure_data,
+                                wavefunction_data=wf_data_ao,
+                                coulomb_potential_data=hamiltonian_data_to_dump.coulomb_potential_data,
+                            )
+                        hamiltonian_data_to_dump.save_to_hdf5(hamiltonian_data_filename)
                     logger.info("Break the optimization loop.")
                     break
 
@@ -2546,7 +2689,39 @@ class MCMC:
                 if (i_opt + 1) % wf_dump_freq == 0 or (i_opt + 1) == num_opt_steps:
                     hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.h5"
                     logger.info(f"Hamiltonian data is dumped as an HDF5 file: {hamiltonian_data_filename}.")
-                    self.hamiltonian_data.save_to_hdf5(hamiltonian_data_filename)
+                    hamiltonian_data_to_dump = self.hamiltonian_data
+                    if opt_with_projected_MOs and initial_geminal_is_ao_representation:
+                        wf_data = hamiltonian_data_to_dump.wavefunction_data
+                        geminal = wf_data.geminal_data
+                        geminal_ao = Geminal_data.convert_from_MOs_to_AOs(geminal)
+                        wf_data_ao = type(wf_data)(
+                            jastrow_data=wf_data.jastrow_data,
+                            geminal_data=geminal_ao,
+                        )
+                        hamiltonian_data_to_dump = Hamiltonian_data(
+                            structure_data=hamiltonian_data_to_dump.structure_data,
+                            wavefunction_data=wf_data_ao,
+                            coulomb_potential_data=hamiltonian_data_to_dump.coulomb_potential_data,
+                        )
+                    hamiltonian_data_to_dump.save_to_hdf5(hamiltonian_data_filename)
+
+        if opt_with_projected_MOs and self.hamiltonian_data.wavefunction_data.geminal_data.is_ao_representation:
+            wf_data = self.hamiltonian_data.wavefunction_data
+            geminal = wf_data.geminal_data
+            geminal_mo = Geminal_data.convert_from_AOs_to_MOs(
+                geminal_data=geminal,
+                num_eigenvectors=geminal.num_electron_dn,
+            )
+            wf_data_mo = type(wf_data)(
+                jastrow_data=wf_data.jastrow_data,
+                geminal_data=geminal_mo,
+            )
+            self.hamiltonian_data = Hamiltonian_data(
+                structure_data=self.hamiltonian_data.structure_data,
+                wavefunction_data=wf_data_mo,
+                coulomb_potential_data=self.hamiltonian_data.coulomb_potential_data,
+            )
+            logger.info("opt_with_projected_MOs=True: projected final AO geminal back to MO representation.")
 
         # update WF opt counter
         self.__i_opt += i_opt + 1

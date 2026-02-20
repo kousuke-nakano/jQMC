@@ -60,15 +60,18 @@ from jqmc.atomic_orbital import (  # noqa: E402
     _compute_AOs_laplacian_debug,
     _compute_AOs_sphe,
     _compute_AOs_sphe_debug,
+    _compute_overlap_matrix_debug,
     _compute_S_l_m,
     _compute_S_l_m_debug,
     # compute_AOs,
     compute_AOs_grad,
     compute_AOs_laplacian,
+    compute_overlap_matrix,
 )
 from jqmc.setting import (  # noqa: E402
     decimal_auto_vs_analytic_deriv,
     decimal_auto_vs_numerical_deriv,
+    decimal_consistency,
     decimal_debug_vs_production,
     decimal_numerical_vs_analytic_deriv,
 )
@@ -1095,6 +1098,80 @@ def test_AOs_shpe_and_cart_laplacians_auto_vs_numerical():
     lap_num_sphe = _compute_AOs_laplacian_debug(aos_data=aos_data, r_carts=r_carts)
 
     np.testing.assert_array_almost_equal(lap_num_sphe, lap_auto_sphe, decimal=decimal_auto_vs_numerical_deriv)
+
+    jax.clear_caches()
+
+
+def test_overlap_matrix_cart_analytic_vs_numerical_debug():
+    """Cartesian AO overlap matrix from analytic formula matches numerical integration."""
+    centers = np.array([[-0.45, 0.0, 0.0], [0.45, 0.0, 0.0]], dtype=np.float64)
+
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=centers,
+        atomic_numbers=(0, 0),
+        element_symbols=("X", "X"),
+        atomic_labels=("X1", "X2"),
+    )
+    structure_data.sanity_check()
+
+    aos_data = AOs_cart_data(
+        structure_data=structure_data,
+        nucleus_index=(0, 1),
+        num_ao=2,
+        num_ao_prim=2,
+        orbital_indices=(0, 1),
+        exponents=(1.20, 1.20),
+        coefficients=(1.0, 1.0),
+        angular_momentums=(0, 0),
+        polynominal_order_x=(0, 0),
+        polynominal_order_y=(0, 0),
+        polynominal_order_z=(0, 0),
+    )
+    aos_data.sanity_check()
+
+    overlap_analytic = np.asarray(compute_overlap_matrix(aos_data=aos_data), dtype=np.float64)
+    overlap_numerical = _compute_overlap_matrix_debug(aos_data=aos_data, num_grid_points=41, tail_tolerance=1.0e-12)
+
+    np.testing.assert_array_almost_equal(overlap_analytic, overlap_numerical, decimal=decimal_debug_vs_production)
+    np.testing.assert_array_almost_equal(overlap_analytic, overlap_analytic.T, decimal=decimal_consistency)
+    assert np.all(np.diag(overlap_analytic) > 0.0)
+
+    jax.clear_caches()
+
+
+def test_overlap_matrix_sphe_analytic_vs_numerical_debug():
+    """Spherical AO overlap matrix from analytic formula matches numerical integration."""
+    centers = np.array([[-0.35, 0.0, 0.0], [0.35, 0.0, 0.0]], dtype=np.float64)
+
+    structure_data = Structure_data(
+        pbc_flag=False,
+        positions=centers,
+        atomic_numbers=(0, 0),
+        element_symbols=("X", "X"),
+        atomic_labels=("X1", "X2"),
+    )
+    structure_data.sanity_check()
+
+    aos_data = AOs_sphe_data(
+        structure_data=structure_data,
+        nucleus_index=(0, 1),
+        num_ao=2,
+        num_ao_prim=2,
+        orbital_indices=(0, 1),
+        exponents=(1.10, 1.10),
+        coefficients=(1.0, 1.0),
+        angular_momentums=(0, 0),
+        magnetic_quantum_numbers=(0, 0),
+    )
+    aos_data.sanity_check()
+
+    overlap_analytic = np.asarray(compute_overlap_matrix(aos_data=aos_data), dtype=np.float64)
+    overlap_numerical = _compute_overlap_matrix_debug(aos_data=aos_data, num_grid_points=41, tail_tolerance=1.0e-12)
+
+    np.testing.assert_allclose(overlap_analytic, overlap_numerical, rtol=3.0e-3, atol=3.0e-4)
+    np.testing.assert_allclose(overlap_analytic, overlap_analytic.T, rtol=0.0, atol=1.0e-12)
+    assert np.all(np.diag(overlap_analytic) > 0.0)
 
     jax.clear_caches()
 

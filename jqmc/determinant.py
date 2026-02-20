@@ -57,6 +57,7 @@ from .atomic_orbital import (
     compute_AOs,
     compute_AOs_grad,
     compute_AOs_laplacian,
+    compute_overlap_matrix,
 )
 from .molecular_orbital import MOs_data, compute_MOs, compute_MOs_grad, compute_MOs_laplacian
 
@@ -269,6 +270,18 @@ class Geminal_data:
             raise NotImplementedError
 
     @property
+    def is_mo_representation(self) -> bool:
+        """Whether both spin channels are represented by molecular orbitals."""
+        return isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data)
+
+    @property
+    def is_ao_representation(self) -> bool:
+        """Whether both spin channels are represented by atomic orbitals."""
+        return isinstance(self.orb_data_up_spin, (AOs_sphe_data, AOs_cart_data)) and isinstance(
+            self.orb_data_dn_spin, (AOs_sphe_data, AOs_cart_data)
+        )
+
+    @property
     def compute_orb_api(self) -> Callable[..., npt.NDArray[np.float64]]:
         """Function for computing AOs or MOs.
 
@@ -459,6 +472,255 @@ class Geminal_data:
             )
         else:
             raise NotImplementedError
+
+    @classmethod
+    def convert_from_AOs_to_MOs(
+        cls,
+        geminal_data: "Geminal_data",
+        num_eigenvectors: int | str = "all",
+    ) -> "Geminal_data":
+        """Convert AOs to MOs via generalized eigenvectors of :math:`fSP=PL`.
+
+        Args:
+            geminal_data: Input geminal representation.
+            num_eigenvectors: ``"all"`` for full AO-space projection. If an integer ``N`` is
+                supplied, keep only the ``N`` largest-magnitude eigenvalue vectors.
+
+        Returns:
+            Geminal_data in MO representation.
+        """
+        if isinstance(geminal_data.orb_data_up_spin, MOs_data) and isinstance(geminal_data.orb_data_dn_spin, MOs_data):
+            return geminal_data
+
+        if not (
+            isinstance(geminal_data.orb_data_up_spin, (AOs_sphe_data, AOs_cart_data))
+            and isinstance(geminal_data.orb_data_dn_spin, (AOs_sphe_data, AOs_cart_data))
+        ):
+            raise NotImplementedError
+
+        aos_data_up_spin = geminal_data.orb_data_up_spin
+        aos_data_dn_spin = geminal_data.orb_data_dn_spin
+
+        if aos_data_up_spin.num_ao != aos_data_dn_spin.num_ao:
+            raise ValueError("AO->MO conversion currently requires identical up/down AO dimensions.")
+
+        if type(aos_data_up_spin) is not type(aos_data_dn_spin):
+            raise ValueError("AO->MO conversion requires matching AO basis types for up/down channels.")
+
+        ao_dim = aos_data_up_spin.num_ao
+        if isinstance(num_eigenvectors, str):
+            if num_eigenvectors != "all":
+                raise ValueError(f"num_eigenvectors must be 'all' or int, got {num_eigenvectors}.")
+            num_mo = ao_dim
+            use_truncated_mode = False
+        elif isinstance(num_eigenvectors, (int, np.integer)):
+            requested_num_mo = int(num_eigenvectors)
+            if requested_num_mo <= 0:
+                raise ValueError(f"num_eigenvectors={requested_num_mo} must be positive.")
+            num_mo = min(requested_num_mo, ao_dim)
+            use_truncated_mode = True
+            num_truncated = ao_dim - num_mo
+            logger.info(
+                "AO->MO truncated mode: kept %d eigenvalues out of %d (truncated %d).",
+                num_mo,
+                ao_dim,
+                num_truncated,
+            )
+        else:
+            raise ValueError(f"num_eigenvectors must be 'all' or int, got {type(num_eigenvectors)}.")
+
+        ao_lambda_matrix_paired, ao_lambda_matrix_unpaired = np.hsplit(
+            np.asarray(geminal_data.lambda_matrix), [geminal_data.orb_num_dn]
+        )
+        ao_lambda_matrix_paired = np.asarray(ao_lambda_matrix_paired, dtype=np.float64)
+        ao_lambda_matrix_unpaired = np.asarray(ao_lambda_matrix_unpaired, dtype=np.float64)
+
+        overlap_up = np.asarray(compute_overlap_matrix(aos_data_up_spin), dtype=np.float64)
+        overlap_dn = np.asarray(compute_overlap_matrix(aos_data_dn_spin), dtype=np.float64)
+
+        overlap_up = 0.5 * (overlap_up + overlap_up.T)
+        overlap_dn = 0.5 * (overlap_dn + overlap_dn.T)
+
+        eigvals_up, eigvecs_up = np.linalg.eigh(overlap_up)
+        eigvals_dn, eigvecs_dn = np.linalg.eigh(overlap_dn)
+
+        min_eig_up = float(np.min(eigvals_up))
+        min_eig_dn = float(np.min(eigvals_dn))
+        if min_eig_up <= 0.0:
+            raise ValueError(f"AO overlap matrix (up) is not positive definite (min eigenvalue={min_eig_up}).")
+        if min_eig_dn <= 0.0:
+            raise ValueError(f"AO overlap matrix (dn) is not positive definite (min eigenvalue={min_eig_dn}).")
+
+        sqrt_overlap_up = eigvecs_up @ np.diag(np.sqrt(eigvals_up)) @ eigvecs_up.T
+        inv_sqrt_overlap_up = eigvecs_up @ np.diag(1.0 / np.sqrt(eigvals_up)) @ eigvecs_up.T
+        sqrt_overlap_dn = eigvecs_dn @ np.diag(np.sqrt(eigvals_dn)) @ eigvecs_dn.T
+        inv_sqrt_overlap_dn = eigvecs_dn @ np.diag(1.0 / np.sqrt(eigvals_dn)) @ eigvecs_dn.T
+
+        f_biorth_repr = sqrt_overlap_up @ ao_lambda_matrix_paired @ sqrt_overlap_dn
+        u_mat, singular_vals, v_h = np.linalg.svd(f_biorth_repr, full_matrices=False)
+
+        selected_evals = np.real_if_close(singular_vals[:num_mo], tol=1000).astype(np.float64)
+        selected_vectors_up = np.real_if_close(u_mat[:, :num_mo], tol=1000).astype(np.float64)
+        selected_vectors_dn = np.real_if_close(v_h.T[:, :num_mo], tol=1000).astype(np.float64)
+
+        if use_truncated_mode:
+            logger.debug(
+                "[MOOPT-TRACE] AO->MO selected eigenvalues before scaling: %s",
+                np.array2string(selected_evals, precision=10, separator=", "),
+            )
+
+        if use_truncated_mode:
+            num_scale = min(int(geminal_data.num_electron_dn), selected_evals.size)
+            if num_scale > 0:
+                selected_evals[:num_scale] = 1.0
+
+            logger.debug(
+                "[MOOPT-TRACE] AO->MO selected eigenvalues after scaling: %s",
+                np.array2string(selected_evals, precision=10, separator=", "),
+            )
+
+        p_matrix_cols_up = inv_sqrt_overlap_up @ selected_vectors_up
+        p_matrix_cols_dn = inv_sqrt_overlap_dn @ selected_vectors_dn
+        mo_coefficients_up = p_matrix_cols_up.T
+        mo_coefficients_dn = p_matrix_cols_dn.T
+
+        mo_lambda_matrix_paired = np.diag(selected_evals)
+        mo_lambda_matrix_unpaired = mo_coefficients_up @ overlap_up @ ao_lambda_matrix_unpaired
+
+        mo_lambda_matrix = np.hstack([mo_lambda_matrix_paired, mo_lambda_matrix_unpaired])
+
+        mo_dtype = np.asarray(geminal_data.lambda_matrix).dtype
+        mo_lambda_matrix = mo_lambda_matrix.astype(mo_dtype, copy=False)
+
+        mos_data_up_spin = MOs_data(num_mo=num_mo, aos_data=aos_data_up_spin, mo_coefficients=mo_coefficients_up)
+        mos_data_dn_spin = MOs_data(num_mo=num_mo, aos_data=aos_data_dn_spin, mo_coefficients=mo_coefficients_dn)
+
+        psp_up = mo_coefficients_up @ overlap_up @ mo_coefficients_up.T
+        psp_dn = mo_coefficients_dn @ overlap_dn @ mo_coefficients_dn.T
+        identity = np.eye(num_mo, dtype=np.float64)
+        psp_up_diff = psp_up - identity
+        psp_dn_diff = psp_dn - identity
+
+        up_frob_norm = float(np.linalg.norm(psp_up_diff))
+        up_max_abs_diff = float(np.max(np.abs(psp_up_diff))) if psp_up_diff.size else 0.0
+        up_is_orthonormal = bool(np.allclose(psp_up, identity, atol=1.0e-8, rtol=1.0e-6))
+
+        dn_frob_norm = float(np.linalg.norm(psp_dn_diff))
+        dn_max_abs_diff = float(np.max(np.abs(psp_dn_diff))) if psp_dn_diff.size else 0.0
+        dn_is_orthonormal = bool(np.allclose(psp_dn, identity, atol=1.0e-8, rtol=1.0e-6))
+
+        logger.debug(
+            "[MOOPT-TRACE] AO->MO orthogonality check (up): allclose(P^TSP, I)=%s, ||P^TSP-I||_F=%.3e, max|P^TSP-I|=%.3e",
+            up_is_orthonormal,
+            up_frob_norm,
+            up_max_abs_diff,
+        )
+        logger.debug(
+            "[MOOPT-TRACE] AO->MO orthogonality check (dn): allclose(P^TSP, I)=%s, ||P^TSP-I||_F=%.3e, max|P^TSP-I|=%.3e",
+            dn_is_orthonormal,
+            dn_frob_norm,
+            dn_max_abs_diff,
+        )
+
+        return cls(
+            num_electron_up=geminal_data.num_electron_up,
+            num_electron_dn=geminal_data.num_electron_dn,
+            orb_data_up_spin=mos_data_up_spin,
+            orb_data_dn_spin=mos_data_dn_spin,
+            lambda_matrix=mo_lambda_matrix,
+        )
+
+    def apply_ao_projected_paired_update_and_reproject(
+        self,
+        ao_paired_direction: npt.NDArray | jax.Array,
+        step_size: float = 1.0,
+    ) -> "Geminal_data":
+        r"""Apply AO-space corrected paired update and reproject back to MOs.
+
+        This method is intended for MO-coefficient optimization workflows where
+        the paired AO-space direction :math:`D` is corrected by the projector
+        formula
+
+        .. math::
+            D^c = D - (I-L^T)D(I-R^T),
+
+        with
+
+        .. math::
+            R=(SP)P^T, \quad L=R^T,
+
+        where ``S`` is the AO overlap matrix and ``P`` contains the current MO
+        coefficients as AO-column vectors.
+
+        After applying the AO paired update, the geminal is projected back to an
+        MO representation using a fixed rank
+        ``num_eigenvectors=self.num_electron_dn``.
+
+        Args:
+            ao_paired_direction: AO-space direction matrix :math:`D` for the paired
+                block, shape ``(num_ao, num_ao)``.
+            step_size: Scalar factor multiplied to :math:`D^c` before applying the
+                update.
+
+        Returns:
+            Updated geminal in MO representation with fixed
+            ``num_mo=self.num_electron_dn`` (subject to AO-dimension clipping in
+            ``convert_from_AOs_to_MOs``).
+
+        Raises:
+            ValueError: If this geminal is not in MO representation for both spins,
+                or if shapes/types are inconsistent.
+        """
+        if not (isinstance(self.orb_data_up_spin, MOs_data) and isinstance(self.orb_data_dn_spin, MOs_data)):
+            raise ValueError("AO-projected paired update requires MO representation on both spin channels.")
+
+        if not isinstance(step_size, (int, float, np.integer, np.floating)):
+            raise ValueError(f"step_size must be numeric, got {type(step_size)}.")
+
+        aos_data_up_spin = self.orb_data_up_spin.aos_data
+        aos_data_dn_spin = self.orb_data_dn_spin.aos_data
+        if aos_data_up_spin.num_ao != aos_data_dn_spin.num_ao:
+            raise ValueError("AO-projected paired update requires identical up/down AO dimensions.")
+        if type(aos_data_up_spin) is not type(aos_data_dn_spin):
+            raise ValueError("AO-projected paired update requires matching AO basis types for up/down channels.")
+
+        ao_dim = aos_data_up_spin.num_ao
+        direction = np.asarray(ao_paired_direction, dtype=np.float64)
+        if direction.shape != (ao_dim, ao_dim):
+            raise ValueError(f"ao_paired_direction shape {direction.shape} is incompatible with expected ({ao_dim}, {ao_dim}).")
+
+        overlap_up = np.asarray(compute_overlap_matrix(aos_data_up_spin), dtype=np.float64)
+        overlap_up = 0.5 * (overlap_up + overlap_up.T)
+
+        p_matrix_cols = np.asarray(self.orb_data_up_spin.mo_coefficients, dtype=np.float64).T
+        if p_matrix_cols.shape[0] != ao_dim:
+            raise ValueError("MO coefficients are inconsistent with AO dimension " + f"({p_matrix_cols.shape[0]} != {ao_dim}).")
+
+        right_projector = (overlap_up @ p_matrix_cols) @ p_matrix_cols.T
+        left_projector = right_projector.T
+
+        identity = np.eye(ao_dim, dtype=np.float64)
+        corrected_direction = direction - ((identity - left_projector.T) @ direction @ (identity - right_projector.T))
+
+        geminal_ao = Geminal_data.convert_from_MOs_to_AOs(self)
+        ao_lambda_paired, ao_lambda_unpaired = np.hsplit(np.asarray(geminal_ao.lambda_matrix), [geminal_ao.orb_num_dn])
+
+        ao_lambda_paired_updated = ao_lambda_paired + float(step_size) * corrected_direction
+        ao_lambda_updated = np.hstack([ao_lambda_paired_updated, ao_lambda_unpaired])
+        ao_lambda_updated = ao_lambda_updated.astype(np.asarray(geminal_ao.lambda_matrix).dtype, copy=False)
+
+        geminal_ao_updated = Geminal_data(
+            num_electron_up=geminal_ao.num_electron_up,
+            num_electron_dn=geminal_ao.num_electron_dn,
+            orb_data_up_spin=geminal_ao.orb_data_up_spin,
+            orb_data_dn_spin=geminal_ao.orb_data_dn_spin,
+            lambda_matrix=ao_lambda_updated,
+        )
+
+        return Geminal_data.convert_from_AOs_to_MOs(
+            geminal_data=geminal_ao_updated,
+            num_eigenvectors=self.num_electron_dn,
+        )
 
 
 @jax.custom_vjp

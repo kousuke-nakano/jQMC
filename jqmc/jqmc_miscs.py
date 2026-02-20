@@ -87,6 +87,7 @@ cli_parameters = {
         "opt_J3_param": True,
         "opt_JNN_param": True,
         "opt_lambda_param": False,
+        "opt_with_projected_MOs": False,
         "num_param_opt": 0,
         "optimizer_kwargs": {
             "method": "sr",
@@ -111,6 +112,10 @@ cli_parameters = {
         "opt_J3_param": "Optimize the J3 parameters.",
         "opt_JNN_param": "Optimize the neural-network Jastrow parameters.",
         "opt_lambda_param": "Optimize the lambda parameters in the geminal part.",
+        "opt_with_projected_MOs": (
+            "If true, optimize lambda parameters (for AOs) or molecular orbital coefficients (for MOs) in a restricted MO space."
+            "num_eigenvectors=num_electron_dn in the present implementation."
+        ),
         "num_param_opt": "the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.",
         "optimizer_kwargs": (
             "Optimizer configuration. Set 'method' to 'sr' (default) for stochastic reconfiguration or to any "
