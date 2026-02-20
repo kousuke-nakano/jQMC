@@ -48,6 +48,7 @@ from jax import typing as jnpt
 from .determinant import (
     Geminal_data,
     _compute_ratio_determinant_part_rank1_update,
+    _compute_ratio_determinant_part_split_spin,
     compute_det_geminal_all_elements,
     compute_grads_and_laplacian_ln_Det,
     compute_grads_and_laplacian_ln_Det_fast,
@@ -1098,57 +1099,42 @@ def compute_discretized_kinetic_energy_fast_update(
     num_up_electrons = r_up.shape[0]
     num_up_configs = num_up_electrons * num_shifts
 
-    # Create base positions repeated for each configuration
-    base_positions_up = jnp.repeat(r_up[None, :, :], num_up_configs, axis=0)  # Shape: (num_up_configs, N_up, 3)
+    # Build shifted configurations via outer-product broadcast (no scatter, GEMM-compatible).
+    # delta_up[i, s, j, :] = shifts[s] if j==i else 0
+    eye_up = jnp.eye(num_up_electrons)  # (N_up, N_up)
+    delta_up = eye_up[:, None, :, None] * shifts[None, :, None, :]  # (N_up, 6, N_up, 3)
+    r_up_carts_shifted = (r_up[None, None, :, :] + delta_up).reshape(
+        num_up_configs, num_up_electrons, 3
+    )  # (num_up_configs, N_up, 3)
 
-    # Initialize shifts_to_apply_up
-    shifts_to_apply_up = jnp.zeros_like(base_positions_up)
-
-    # Create indices for configurations
-    config_indices_up = jnp.arange(num_up_configs)
-    electron_indices_up = jnp.repeat(jnp.arange(num_up_electrons), num_shifts)
-    shift_indices_up = jnp.tile(jnp.arange(num_shifts), num_up_electrons)
-
-    # Apply shifts to the appropriate electron in each configuration
-    shifts_to_apply_up = shifts_to_apply_up.at[config_indices_up, electron_indices_up, :].set(shifts[shift_indices_up])
-
-    # Apply shifts to base positions
-    r_up_carts_shifted = base_positions_up + shifts_to_apply_up  # Shape: (num_up_configs, N_up, 3)
-
-    # Repeat down-spin electrons for up-spin configurations
-    r_dn_carts_repeated_up = jnp.repeat(r_dn[None, :, :], num_up_configs, axis=0)  # Shape: (num_up_configs, N_dn, 3)
+    # Broadcast unchanged spin block (avoids repeat allocation)
+    r_dn_carts_repeated_up = jnp.broadcast_to(r_dn[None, :, :], (num_up_configs, r_dn.shape[0], 3))  # (num_up_configs, N_dn, 3)
 
     # Process down-spin electrons
     num_dn_electrons = r_dn.shape[0]
     num_dn_configs = num_dn_electrons * num_shifts
 
-    base_positions_dn = jnp.repeat(r_dn[None, :, :], num_dn_configs, axis=0)  # Shape: (num_dn_configs, N_dn, 3)
-    shifts_to_apply_dn = jnp.zeros_like(base_positions_dn)
+    eye_dn = jnp.eye(num_dn_electrons)  # (N_dn, N_dn)
+    delta_dn = eye_dn[:, None, :, None] * shifts[None, :, None, :]  # (N_dn, 6, N_dn, 3)
+    r_dn_carts_shifted = (r_dn[None, None, :, :] + delta_dn).reshape(
+        num_dn_configs, num_dn_electrons, 3
+    )  # (num_dn_configs, N_dn, 3)
 
-    config_indices_dn = jnp.arange(num_dn_configs)
-    electron_indices_dn = jnp.repeat(jnp.arange(num_dn_electrons), num_shifts)
-    shift_indices_dn = jnp.tile(jnp.arange(num_shifts), num_dn_electrons)
-
-    # Apply shifts to the appropriate electron in each configuration
-    shifts_to_apply_dn = shifts_to_apply_dn.at[config_indices_dn, electron_indices_dn, :].set(shifts[shift_indices_dn])
-
-    r_dn_carts_shifted = base_positions_dn + shifts_to_apply_dn  # Shape: (num_dn_configs, N_dn, 3)
-
-    # Repeat up-spin electrons for down-spin configurations
-    r_up_carts_repeated_dn = jnp.repeat(r_up[None, :, :], num_dn_configs, axis=0)  # Shape: (num_dn_configs, N_up, 3)
+    # Broadcast unchanged spin block (avoids repeat allocation)
+    r_up_carts_repeated_dn = jnp.broadcast_to(r_up[None, :, :], (num_dn_configs, r_up.shape[0], 3))  # (num_dn_configs, N_up, 3)
 
     # Combine configurations
     r_up_carts_combined = jnp.concatenate([r_up_carts_shifted, r_up_carts_repeated_dn], axis=0)  # Shape: (N_configs, N_up, 3)
     r_dn_carts_combined = jnp.concatenate([r_dn_carts_repeated_up, r_dn_carts_shifted], axis=0)  # Shape: (N_configs, N_dn, 3)
 
     # Evaluate the ratios of wavefunctions between the shifted positions and the original position
-    wf_ratio = _compute_ratio_determinant_part_rank1_update(
+    wf_ratio = _compute_ratio_determinant_part_split_spin(
         geminal_data=wavefunction_data.geminal_data,
         A_old_inv=A_old_inv,
         old_r_up_carts=r_up,
         old_r_dn_carts=r_dn,
-        new_r_up_carts_arr=r_up_carts_combined,
-        new_r_dn_carts_arr=r_dn_carts_combined,
+        new_r_up_shifted=r_up_carts_shifted,
+        new_r_dn_shifted=r_dn_carts_shifted,
     ) * _compute_ratio_Jastrow_part_rank1_update(
         jastrow_data=wavefunction_data.jastrow_data,
         old_r_up_carts=r_up,

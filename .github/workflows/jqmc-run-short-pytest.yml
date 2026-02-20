@@ -10,6 +10,7 @@ on:
       - '.github/**'
       - 'doc/**'
       - 'examples/**'
+      - 'benchmarks/**'
       - 'README.md'
       - '.pre-commit-config.yaml'
 

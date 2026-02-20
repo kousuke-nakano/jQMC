@@ -53,14 +53,16 @@ import numpy as np
 import numpy.typing as npt
 from flax import struct
 from jax import jit, lax, vmap
+from jax.scipy import linalg as jsp_linalg
 from scipy.special import eval_legendre
 
 from .determinant import (
-    _compute_ratio_determinant_part_rank1_update,
+    _compute_ratio_determinant_part_split_spin,
     compute_det_geminal_all_elements,
+    compute_geminal_all_elements,
 )
 from .function_collections import _legendre_tablated as jnp_legendre_tablated
-from .jastrow_factor import _compute_ratio_Jastrow_part_rank1_update, compute_Jastrow_part
+from .jastrow_factor import _compute_ratio_Jastrow_part_split_spin, compute_Jastrow_part
 from .setting import NN_default, Nv_default
 from .structure import (
     Structure_data,
@@ -1578,23 +1580,23 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
     non_local_ecp_part_r_carts_dn = jnp.array(non_local_ecp_part_r_carts_dn)
 
     # wavefunction ratio
-    det_ratio = _compute_ratio_determinant_part_rank1_update(
+    det_ratio = _compute_ratio_determinant_part_split_spin(
         geminal_data=wavefunction_data.geminal_data,
         A_old_inv=A_old_inv,
         old_r_up_carts=r_up_carts,
         old_r_dn_carts=r_dn_carts,
-        new_r_up_carts_arr=non_local_ecp_part_r_carts_up,
-        new_r_dn_carts_arr=non_local_ecp_part_r_carts_dn,
+        new_r_up_shifted=up_mesh_r_up,
+        new_r_dn_shifted=dn_mesh_r_dn,
     )
     if flag_determinant_only:
         wf_ratio_all = det_ratio
     else:
-        jastrow_ratio = _compute_ratio_Jastrow_part_rank1_update(
+        jastrow_ratio = _compute_ratio_Jastrow_part_split_spin(
             jastrow_data=wavefunction_data.jastrow_data,
             old_r_up_carts=r_up_carts,
             old_r_dn_carts=r_dn_carts,
-            new_r_up_carts_arr=non_local_ecp_part_r_carts_up,
-            new_r_dn_carts_arr=non_local_ecp_part_r_carts_dn,
+            new_r_up_shifted=up_mesh_r_up,
+            new_r_dn_shifted=dn_mesh_r_dn,
         )
         wf_ratio_all = det_ratio * jastrow_ratio
 
@@ -1603,25 +1605,20 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
     wf_ratio_up = wf_ratio_all[:g_up]
     wf_ratio_dn = wf_ratio_all[g_up:]
 
-    ang_moms = jnp.arange(global_max_ang_mom_plus_1)
-    cos_all = jnp.concatenate([jnp.asarray(cos_up), jnp.asarray(cos_dn)], axis=0)
-    legendre_all = vmap(lambda ang_mom: vmap(lambda x: jnp_legendre_tablated(ang_mom, x))(cos_all))(ang_moms)
-    pref_l = (2 * ang_moms + 1).astype(legendre_all.dtype)[:, None]
+    def _contract_chunk(V_l_chunk, cos_chunk, weight_chunk, wf_ratio_chunk):
+        cos_chunk = jnp.array(cos_chunk)
+        weight_chunk = jnp.array(weight_chunk)
+        wf_ratio_chunk = jnp.array(wf_ratio_chunk)
+        P_l_chunk = vmap(vmap(compute_P_l, in_axes=(None, 0, 0, 0)), in_axes=(0, None, None, None))(
+            jnp.arange(global_max_ang_mom_plus_1), cos_chunk, weight_chunk, wf_ratio_chunk
+        )
+        V_nonlocal_chunk = jnp.einsum("lg,lg->g", V_l_chunk, P_l_chunk)
 
-    legendre_up = legendre_all[:, :g_up]
-    legendre_dn = legendre_all[:, g_up:]
+        sum_chunk = jnp.sum(V_nonlocal_chunk)
+        return V_nonlocal_chunk, sum_chunk
 
-    grid_weight_ratio_up = (jnp.asarray(weight_up) * jnp.asarray(wf_ratio_up))[None, :]
-    grid_weight_ratio_dn = (jnp.asarray(weight_dn) * jnp.asarray(wf_ratio_dn))[None, :]
-
-    P_l_up = pref_l * legendre_up * grid_weight_ratio_up
-    P_l_dn = pref_l * legendre_dn * grid_weight_ratio_dn
-
-    V_nonlocal_up = jnp.sum(V_l_up * P_l_up, axis=0)
-    V_nonlocal_dn = jnp.sum(V_l_dn * P_l_dn, axis=0)
-
-    sum_up = jnp.sum(V_nonlocal_up)
-    sum_dn = jnp.sum(V_nonlocal_dn)
+    V_nonlocal_up, sum_up = _contract_chunk(V_l_up, cos_up, weight_up, wf_ratio_up)
+    V_nonlocal_dn, sum_dn = _contract_chunk(V_l_dn, cos_dn, weight_dn, wf_ratio_dn)
 
     V_nonlocal = jnp.concatenate([V_nonlocal_up, V_nonlocal_dn], axis=0)
     sum_V_nonlocal = sum_up + sum_dn
@@ -1981,6 +1978,7 @@ def compute_ecp_non_local_part_all_pairs_jax_weights_grid_points(
     return r_up_carts_on_mesh, r_dn_carts_on_mesh, V_ecp_up, V_ecp_dn, sum_V_nonlocal
 
 
+@partial(jit, static_argnums=(5, 6))
 def compute_ecp_coulomb_potential(
     coulomb_potential_data: Coulomb_potential_data,
     wavefunction_data: Wavefunction_data,
@@ -2008,30 +2006,27 @@ def compute_ecp_coulomb_potential(
         coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
     )
 
-    """ full NNs
-    _, _, _, ecp_nonlocal_parts = _compute_ecp_non_local_parts_full_NN_jax(
-        coulomb_potential_data=coulomb_potential_data,
-        wavefunction_data=wavefunction_data,
+    # Compute inverse geminal matrix once and reuse it for rank-1 det-ratio updates
+    # (avoids full LU per mesh point in the slow path, ~10x speedup for ECP non-local)
+    G = compute_geminal_all_elements(
+        geminal_data=wavefunction_data.geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
-        Nv=Nv,
-        RT=RT,
-        flag_determinant_only=False,
     )
-    """
+    lu, piv = jsp_linalg.lu_factor(G)
+    A_old_inv = jsp_linalg.lu_solve((lu, piv), jnp.eye(G.shape[0], dtype=G.dtype))
 
-    #''' NNs
-    _, _, _, ecp_nonlocal_parts = compute_ecp_non_local_parts_nearest_neighbors(
+    _, _, _, ecp_nonlocal_parts = compute_ecp_non_local_parts_nearest_neighbors_fast_update(
         coulomb_potential_data=coulomb_potential_data,
         wavefunction_data=wavefunction_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
         RT=RT,
-        Nv=Nv,
+        A_old_inv=A_old_inv,
         NN=NN,
+        Nv=Nv,
         flag_determinant_only=False,
     )
-    #'''
 
     V_ecp = ecp_local_parts + ecp_nonlocal_parts
 
