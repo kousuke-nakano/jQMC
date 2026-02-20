@@ -1603,28 +1603,25 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
     wf_ratio_up = wf_ratio_all[:g_up]
     wf_ratio_dn = wf_ratio_all[g_up:]
 
-    def _contract_chunk(V_l_chunk, cos_chunk, weight_chunk, wf_ratio_chunk):
-        cos_chunk = jnp.array(cos_chunk)
-        weight_chunk = jnp.array(weight_chunk)
-        wf_ratio_chunk = jnp.array(wf_ratio_chunk)
-        P_l_chunk = vmap(vmap(compute_P_l, in_axes=(None, 0, 0, 0)), in_axes=(0, None, None, None))(
-            jnp.arange(global_max_ang_mom_plus_1), cos_chunk, weight_chunk, wf_ratio_chunk
-        )
-        V_nonlocal_chunk = jnp.einsum("lg,lg->g", V_l_chunk, P_l_chunk)
+    ang_moms = jnp.arange(global_max_ang_mom_plus_1)
+    cos_all = jnp.concatenate([jnp.asarray(cos_up), jnp.asarray(cos_dn)], axis=0)
+    legendre_all = vmap(lambda ang_mom: vmap(lambda x: jnp_legendre_tablated(ang_mom, x))(cos_all))(ang_moms)
+    pref_l = (2 * ang_moms + 1).astype(legendre_all.dtype)[:, None]
 
-        def _scan_sum(carry, elems):
-            v_l_col, p_l_col = elems
-            return carry + jnp.dot(v_l_col, p_l_col), None
+    legendre_up = legendre_all[:, :g_up]
+    legendre_dn = legendre_all[:, g_up:]
 
-        sum_chunk, _ = jax.lax.scan(
-            _scan_sum,
-            0.0,
-            (jnp.moveaxis(V_l_chunk, 1, 0), jnp.moveaxis(P_l_chunk, 1, 0)),
-        )
-        return V_nonlocal_chunk, sum_chunk
+    grid_weight_ratio_up = (jnp.asarray(weight_up) * jnp.asarray(wf_ratio_up))[None, :]
+    grid_weight_ratio_dn = (jnp.asarray(weight_dn) * jnp.asarray(wf_ratio_dn))[None, :]
 
-    V_nonlocal_up, sum_up = _contract_chunk(V_l_up, cos_up, weight_up, wf_ratio_up)
-    V_nonlocal_dn, sum_dn = _contract_chunk(V_l_dn, cos_dn, weight_dn, wf_ratio_dn)
+    P_l_up = pref_l * legendre_up * grid_weight_ratio_up
+    P_l_dn = pref_l * legendre_dn * grid_weight_ratio_dn
+
+    V_nonlocal_up = jnp.sum(V_l_up * P_l_up, axis=0)
+    V_nonlocal_dn = jnp.sum(V_l_dn * P_l_dn, axis=0)
+
+    sum_up = jnp.sum(V_nonlocal_up)
+    sum_dn = jnp.sum(V_nonlocal_dn)
 
     V_nonlocal = jnp.concatenate([V_nonlocal_up, V_nonlocal_dn], axis=0)
     sum_V_nonlocal = sum_up + sum_dn
