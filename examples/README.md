@@ -46,4 +46,8 @@ End-to-end Python API workflow (no CLI): generate a TREXIO file with PySCF, buil
 
 ## example11
 
-MPI-enabled Python API workflow: similar to example10 but using `mpirun` on `run_jqmc_mpi.py` with `mpi4py`/`mpi4jax`, including VMC optimization, VMC sampling, and LRDMC lattice scans with extrapolation.
+MPI-enabled Python API workflow: similar to example10 but using `mpirun` on `run_jqmc_mpi.py` with `mpi4py` including VMC optimization, VMC sampling, and LRDMC lattice scans with extrapolation.
+
+## example12
+
+Projected-MO optimization workflow for the water molecule, using the same `PySCF` water setup as `example01` and running VMC with `opt_with_projected_MOs = true` and `opt_lambda_param = true`.

@@ -2121,94 +2121,52 @@ def _compute_ratio_Jastrow_part_rank1_update(
         J2_sum_dn_dn = compute_pairwise_sums(old_r_dn_carts, old_r_dn_carts)
         J2_sum_dn_up = compute_pairwise_sums(old_r_dn_carts, old_r_up_carts)
 
-        def compute_one_grid_J2(
-            jastrow_2b_param,
-            J2_sum_up_up,
-            J2_sum_up_dn,
-            J2_sum_dn_dn,
-            J2_sum_dn_up,
-            new_r_up_carts,
-            new_r_dn_carts,
-            old_r_up_carts,
-            old_r_dn_carts,
-        ):
-            delta_up = new_r_up_carts - old_r_up_carts
-            delta_dn = new_r_dn_carts - old_r_dn_carts
-            up_moved = jnp.any(delta_up != 0)
-            if num_up == 0:
-                nonzero_dn = jnp.any(delta_dn != 0, axis=1)
-                idx = jnp.argmax(nonzero_dn)
-                up_moved = False
-            elif num_dn == 0:
-                nonzero_up = jnp.any(delta_up != 0, axis=1)
-                idx = jnp.argmax(nonzero_up)
-                up_moved = True
-            else:
-                nonzero_up = jnp.any(delta_up != 0, axis=1)
-                nonzero_dn = jnp.any(delta_dn != 0, axis=1)
-                idx_up = jnp.argmax(nonzero_up)
-                idx_dn = jnp.argmax(nonzero_dn)
-                idx = jax.lax.cond(up_moved, lambda _: idx_up, lambda _: idx_dn, operand=None)
+        delta_up_all = new_r_up_carts_arr - old_r_up_carts
+        delta_dn_all = new_r_dn_carts_arr - old_r_dn_carts
+        moved_up_mask = jnp.any(delta_up_all != 0.0, axis=2)
+        moved_dn_mask = jnp.any(delta_dn_all != 0.0, axis=2)
+        moved_up_exists = jnp.any(moved_up_mask, axis=1)
+        idx_up = jnp.argmax(moved_up_mask.astype(jnp.int32), axis=1)
+        idx_dn = jnp.argmax(moved_dn_mask.astype(jnp.int32), axis=1)
 
-            def up_case(jastrow_2b_param, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts):
-                new_r_up_carts_extracted = jnp.expand_dims(new_r_up_carts[idx], axis=0)  # shape=(1,3)
-                J2_up_up_new = jnp.sum(
-                    vmap(two_body_jastrow_parallel_spins_pade, in_axes=(None, None, 0))(
-                        jastrow_2b_param, new_r_up_carts_extracted, new_r_up_carts
-                    )
-                )
-                J2_up_up_old = J2_sum_up_up[idx]
+        r_up_new = jnp.take_along_axis(new_r_up_carts_arr, idx_up[:, None, None], axis=1).reshape(-1, 3)
+        r_dn_new = jnp.take_along_axis(new_r_dn_carts_arr, idx_dn[:, None, None], axis=1).reshape(-1, 3)
+        r_up_old = jnp.take(old_r_up_carts, idx_up, axis=0)
+        r_dn_old = jnp.take(old_r_dn_carts, idx_dn, axis=0)
 
-                J2_up_dn_new = jnp.sum(
-                    vmap(two_body_jastrow_anti_parallel_spins_pade, in_axes=(None, None, 0))(
-                        jastrow_2b_param, new_r_up_carts_extracted, old_r_dn_carts
-                    )
-                )
-                J2_up_dn_old = J2_sum_up_dn[idx]
-                return jnp.exp(J2_up_dn_new - J2_up_dn_old + J2_up_up_new - J2_up_up_old)
+        def _batch_pairwise_sum_pade(points_a, points_b, param):
+            norm_a2 = jnp.sum(points_a * points_a, axis=1, keepdims=True)
+            norm_b2 = jnp.sum(points_b * points_b, axis=1, keepdims=True).T
+            dots = jnp.dot(points_a, points_b.T)
+            d2 = jnp.maximum(norm_a2 + norm_b2 - 2.0 * dots, 0.0)
+            d = jnp.sqrt(d2)
+            vals = d / 2.0 * (1.0 + param * d) ** (-1.0)
+            return jnp.sum(vals, axis=1)
 
-            def dn_case(jastrow_2b_param, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts):
-                new_r_dn_carts_extracted = jnp.expand_dims(new_r_dn_carts[idx], axis=0)  # shape=(1,3)
-                J2_dn_dn_new = jnp.sum(
-                    vmap(two_body_jastrow_parallel_spins_pade, in_axes=(None, None, 0))(
-                        jastrow_2b_param, new_r_dn_carts_extracted, new_r_dn_carts
-                    )
-                )
-                J2_dn_dn_old = J2_sum_dn_dn[idx]
+        def _pade_from_dist(dist, param):
+            return dist / 2.0 * (1.0 + param * dist) ** (-1.0)
 
-                J2_up_dn_new = jnp.sum(
-                    vmap(two_body_jastrow_anti_parallel_spins_pade, in_axes=(None, 0, None))(
-                        jastrow_2b_param, old_r_up_carts, new_r_dn_carts_extracted
-                    )
-                )
-                J2_up_dn_old = J2_sum_dn_up[idx]
+        # Up-move branch contributions (all grids in batch)
+        up_up_new_raw = _batch_pairwise_sum_pade(r_up_new, old_r_up_carts, j2_param)
+        up_up_self = _pade_from_dist(jnp.linalg.norm(r_up_new - r_up_old, axis=1), j2_param)
+        up_up_new = up_up_new_raw - up_up_self
+        up_up_old = jnp.take(J2_sum_up_up, idx_up, axis=0)
 
-                return jnp.exp(J2_up_dn_new - J2_up_dn_old + J2_dn_dn_new - J2_dn_dn_old)
+        up_dn_new = _batch_pairwise_sum_pade(r_up_new, old_r_dn_carts, j2_param)
+        up_dn_old = jnp.take(J2_sum_up_dn, idx_up, axis=0)
+        J2_ratio_up = jnp.exp((up_up_new - up_up_old) + (up_dn_new - up_dn_old))
 
-            if num_up == 0:
-                return dn_case(jastrow_2b_param, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts)
-            if num_dn == 0:
-                return up_case(jastrow_2b_param, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts)
+        # Down-move branch contributions (all grids in batch)
+        dn_dn_new_raw = _batch_pairwise_sum_pade(r_dn_new, old_r_dn_carts, j2_param)
+        dn_dn_self = _pade_from_dist(jnp.linalg.norm(r_dn_new - r_dn_old, axis=1), j2_param)
+        dn_dn_new = dn_dn_new_raw - dn_dn_self
+        dn_dn_old = jnp.take(J2_sum_dn_dn, idx_dn, axis=0)
 
-            return jax.lax.cond(
-                up_moved,
-                up_case,
-                dn_case,
-                *(jastrow_2b_param, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts),
-            )
+        dn_up_new = _batch_pairwise_sum_pade(r_dn_new, old_r_up_carts, j2_param)
+        dn_up_old = jnp.take(J2_sum_dn_up, idx_dn, axis=0)
+        J2_ratio_dn = jnp.exp((dn_dn_new - dn_dn_old) + (dn_up_new - dn_up_old))
 
-        # vectorization along grid
-        J2_ratio = vmap(compute_one_grid_J2, in_axes=(None, None, None, None, None, 0, 0, None, None))(
-            jastrow_data.jastrow_two_body_data.jastrow_2b_param,
-            J2_sum_up_up,
-            J2_sum_up_dn,
-            J2_sum_dn_dn,
-            J2_sum_dn_up,
-            new_r_up_carts_arr,
-            new_r_dn_carts_arr,
-            old_r_up_carts,
-            old_r_dn_carts,
-        )
+        J2_ratio = jnp.where(moved_up_exists, J2_ratio_up, J2_ratio_dn)
 
         J_ratio *= jnp.ravel(J2_ratio)
 

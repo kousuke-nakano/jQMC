@@ -322,8 +322,16 @@ def test_jqmc_vmc(monkeypatch):
         """Return dummy energy tuple so optimization can proceed without real computation."""
         return (0.0, 0.0, 0.0, 0.0)
 
-    def fake_get_gF(self, num_mcmc_warmup_steps, num_mcmc_bin_blocks, chosen_param_index, blocks):
-        """Return unit generalized forces (and std) sized to the flattened blocks to drive a deterministic update."""
+    def fake_get_gF(
+        self,
+        num_mcmc_warmup_steps,
+        num_mcmc_bin_blocks,
+        chosen_param_index,
+        blocks,
+        lambda_projectors=None,
+        num_orb_projection=None,
+    ):
+        """Return unit generalized forces with std sized to flattened blocks for deterministic updates."""
         total = sum(block.size for block in blocks)
         f = np.ones(total, dtype=float)
         f_std = np.ones(total, dtype=float)

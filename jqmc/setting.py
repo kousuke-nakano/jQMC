@@ -67,6 +67,7 @@ rtol_numerical_vs_analytic_deriv = 1.0e-4
 
 # Test tolerance settings (others)
 decimal_debug_vs_production = 8
+decimal_consistency = 8
 
 # Numerical stability settings
 EPS_stabilizing_jax_AO_cart_deriv = 1.0e-16
