@@ -64,7 +64,8 @@ jobs:
         pytest -s -v tests/test_wave_function.py
         pytest -s -v tests/test_ecps.py
         pytest -s -v tests/test_swct.py
-        pytest -s -v tests/test_vmc_force.py
+        pytest -s -v tests/test_mcmc_force.py
+        pytest -s -v tests/test_lrdmc_force.py
 
     - name: Test jqmc (pytest) with @jit decorator (inter-software comparisons)
       run: |

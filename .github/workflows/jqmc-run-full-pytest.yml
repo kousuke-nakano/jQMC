@@ -66,7 +66,7 @@ jobs:
         pytest -s -v tests/test_wave_function.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_ecps.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_swct.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
-        pytest -s -v tests/test_vmc_force.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        pytest -s -v tests/test_mcmc_force.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_lrdmc_force.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
 
     - name: Test jqmc (pytest) with @jit decorator (inter-software comparisons)
