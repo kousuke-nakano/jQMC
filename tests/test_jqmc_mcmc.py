@@ -532,6 +532,50 @@ def test_jqmc_vmc(monkeypatch):
 
     jax.clear_caches()
 
+    # ── num_param_opt: exactly N scalar parameter entries are updated ─────────
+    # Strategy: use the sgd optimizer with learning_rate=1.0 so that
+    # theta_all = f = ones (every entry non-zero and equal).  The
+    # signal-to-noise ratio is therefore the same for all parameters
+    # (|f|/std(f) = 1), so np.argsort is deterministic (stable).
+    # After the num_param_opt mask exactly num_param_opt entries of theta
+    # are non-zero, and fake_apply_block_updates propagates those changes to
+    # the parameter registry.  Comparing before/after lets us count how many
+    # scalar entries actually changed.
+    for num_opt in (1, 3):
+        mcmc_npo = MCMC(
+            hamiltonian_data=hamiltonian_data,
+            Dt=Dt,
+            mcmc_seed=mcmc_seed,
+            num_walkers=num_walkers,
+            epsilon_AS=epsilon_AS,
+            comput_position_deriv=False,
+            comput_log_WF_param_deriv=True,
+            comput_e_L_param_deriv=False,
+        )
+        _, params_npo = make_mcmc_with_patches(mcmc_npo)
+        before_npo = {k: v.copy() for k, v in params_npo.items()}
+
+        mcmc_npo.run_optimize(
+            num_mcmc_steps=num_mcmc_steps,
+            num_opt_steps=1,
+            num_mcmc_warmup_steps=0,
+            num_mcmc_bin_blocks=1,
+            opt_J1_param=True,
+            opt_J2_param=True,
+            opt_J3_param=True,
+            opt_JNN_param=True,
+            opt_lambda_param=True,
+            num_param_opt=num_opt,
+            optimizer_kwargs={"method": "sgd", "learning_rate": 1.0},
+        )
+
+        num_changed = sum(int(np.count_nonzero(params_npo[k] != before_npo[k])) for k in before_npo)
+        assert num_changed == num_opt, (
+            f"num_param_opt={num_opt}: expected exactly {num_opt} scalar parameter entries to change, but {num_changed} changed"
+        )
+
+        jax.clear_caches()
+
 
 def test_opt_with_projected_MOs_ln_psi_consistency(monkeypatch):
     """After run_optimize with opt_with_projected_MOs=True the final wavefunction

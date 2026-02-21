@@ -2503,6 +2503,9 @@ class MCMC:
             signal_to_noise_f = mpi_comm.bcast(signal_to_noise_f, root=0)
             signal_to_noise_f_max_indices = mpi_comm.bcast(signal_to_noise_f_max_indices, root=0)
 
+            #############################
+            # in-house SR optimizer
+            #############################
             if use_sr:
                 logger.info("Computing the natural gradient, i.e., {S+epsilon*I}^{-1}*f")
                 epsilon = sr_epsilon
@@ -2819,6 +2822,30 @@ class MCMC:
 
                 # theta, back to the original scale
                 theta_all = theta_all / np.sqrt(diag_S)
+
+                # aSR gamma scaling: compute the optimal gamma using the FULL natural
+                # gradient theta_all BEFORE the num_param_opt mask is applied.
+                # The aSR formula (S_2 = g^T S g = g^T f = -2 H_1) is only valid when
+                # g = S^{-1} f (the full natural gradient).  Passing a sparse masked
+                # theta violates that identity and produces a wrong gamma, so we must
+                # scale theta_all here and let the masking step below reduce it.
+                if use_sr_adaptive_lr:
+                    logger.info("aSR: computing optimal gamma via accelerated SR.")
+                    H_0, H_1, H_2, S_2 = self.get_aH(
+                        g=theta_all,
+                        blocks=blocks,
+                        num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+                        chosen_param_index=chosen_param_index,
+                        lambda_projectors=lambda_projectors,
+                        num_orb_projection=num_orb_projection,
+                    )
+                    gamma = self.compute_asr_gamma(H_0, H_1, H_2)
+                    logger.info(f"aSR: scaling theta_all by gamma = {gamma:.6f}.")
+                    theta_all = theta_all * gamma
+
+            #############################
+            # optax optimizer
+            #############################
             else:
                 params = jnp.array(flat_param_vector)
                 grads = -jnp.array(f)
@@ -2833,7 +2860,7 @@ class MCMC:
                     optax_param_size=optax_param_size,
                 )
 
-            # Extract only the signal-to-noise ratio maximized parameters
+            # Extract only the signal-to-noise ratio maximized parameters.
             theta = np.zeros_like(theta_all)
             theta[signal_to_noise_f_max_indices] = theta_all[signal_to_noise_f_max_indices]
 
@@ -2874,23 +2901,6 @@ class MCMC:
                     block_norm,
                     block_max,
                 )
-
-            # Apply updates via Wavefunction_data, which in turn delegates
-            # to Jastrow_data and Geminal_data. MCMC does not need to know
-            # internal parameter names such as j1_param or lambda_matrix.
-
-            # aSR gamma scaling: when method='lr', compute the optimal gamma that
-            # minimises E(alpha + gamma * g) and rescale theta accordingly.
-            if use_sr_adaptive_lr:
-                logger.info("aSR: computing optimal gamma via accelerated SR.")
-                H_0, H_1, H_2, S_2 = self.get_aH(
-                    g=theta,
-                    blocks=blocks,
-                    num_mcmc_warmup_steps=num_mcmc_warmup_steps,
-                )
-                gamma = self.compute_asr_gamma(H_0, H_1, H_2)
-                logger.info(f"aSR: scaling theta by gamma = {gamma:.6f}.")
-                theta = theta * gamma
 
             logger.info(f"Updating parameters with optimizer '{optimizer_mode}'.")
             logger.devel(f"dX.shape for MPI-rank={mpi_rank} is {theta.shape}")
