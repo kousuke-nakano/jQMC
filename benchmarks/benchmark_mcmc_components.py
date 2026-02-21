@@ -9,7 +9,7 @@ Measured operations mirror those called inside the MCMC hot loop in jqmc_mcmc.py
   - compute_AS_regularization_factor
   - grad(ln|Psi|) w.r.t. positions               [quantum force / drift]
   - grad(ln|Psi|) w.r.t. params                  [param grad]
-  - grad(ln|Psi|) w.r.t. (params, r_up, r_dn)   [full grad]
+  - grad(ln|Psi|) w.r.t. (r_up, r_dn)           [pos grad]
   - grad(E_L)     w.r.t. positions               [E_L pos grad]
   - grad(E_L)     w.r.t. (hamiltonian, r_up, r_dn) [E_L full grad]
 """
@@ -23,7 +23,6 @@ import numpy as np
 from jax import grad, jit, vmap
 from jax.scipy import linalg as jsp_linalg
 
-from jqmc.coulomb_potential import compute_coulomb_potential
 from jqmc.determinant import (
     compute_AS_regularization_factor,
     compute_geminal_all_elements,
@@ -36,7 +35,7 @@ from jqmc.jastrow_factor import (
     Jastrow_two_body_data,
 )
 from jqmc.trexio_wrapper import read_trexio_file
-from jqmc.wavefunction import Wavefunction_data, compute_kinetic_energy, evaluate_ln_wavefunction
+from jqmc.wavefunction import Wavefunction_data, evaluate_ln_wavefunction
 
 # ── configuration ─────────────────────────────────────────────────────────────
 REPEATS = 5
@@ -107,6 +106,27 @@ hamiltonian_data_1b2b = Hamiltonian_data(
 num_ele_up = geminal_mo_data.num_electron_up
 num_ele_dn = geminal_mo_data.num_electron_dn
 
+# ── masked hamiltonian variants for split param / position grad benchmarks ────
+_wf_mask_kw = dict(opt_J1_param=False, opt_J2_param=False, opt_J3_param=False, opt_JNN_param=False, opt_lambda_param=False)
+# param grads only: stop_gradient on R (atomic positions), wf params remain active
+hamiltonian_for_param_grads = jax.lax.stop_gradient(hamiltonian_data).replace(wavefunction_data=wavefunction_data)
+hamiltonian_for_param_grads_1b2b = jax.lax.stop_gradient(hamiltonian_data_1b2b).replace(
+    wavefunction_data=wavefunction_data_1b2b
+)
+hamiltonian_for_param_grads_full = jax.lax.stop_gradient(hamiltonian_data_full).replace(
+    wavefunction_data=wavefunction_data_full
+)
+# position grads only: wf params masked with stop_gradient, R remains active
+hamiltonian_for_position_grads = hamiltonian_data.replace(
+    wavefunction_data=wavefunction_data.with_param_grad_mask(**_wf_mask_kw)
+)
+hamiltonian_for_position_grads_1b2b = hamiltonian_data_1b2b.replace(
+    wavefunction_data=wavefunction_data_1b2b.with_param_grad_mask(**_wf_mask_kw)
+)
+hamiltonian_for_position_grads_full = hamiltonian_data_full.replace(
+    wavefunction_data=wavefunction_data_full.with_param_grad_mask(**_wf_mask_kw)
+)
+
 # ── random electron positions (single walker) ─────────────────────────────────
 rng = np.random.default_rng(SEED)
 r_up_carts = jnp.asarray(rng.uniform(R_CART_MIN, R_CART_MAX, size=(num_ele_up, 3)))
@@ -119,29 +139,10 @@ RT = jnp.eye(3)
 _grad_ln_psi_pos = jit(grad(evaluate_ln_wavefunction, argnums=(1, 2)))
 # grad(ln|Psi|) w.r.t. wavefunction parameters
 _grad_ln_psi_params = jit(grad(evaluate_ln_wavefunction, argnums=0))
-# grad(ln|Psi|) w.r.t. (params, r_up, r_dn)
-_grad_ln_psi_full = jit(grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)))
-# grad(E_L) w.r.t. electron positions
-_grad_e_L_pos = jit(grad(compute_local_energy, argnums=(1, 2)))
-# grad(E_L) w.r.t. wf params only (argnums=0) — mirrors actual MCMC: r_up/r_dn grads are NOT computed
-_grad_e_L_params = jit(grad(compute_local_energy, argnums=0))
-
-
-# grad(E_L) w.r.t. wf params  [Strategy-A: stop_gradient on ECP wf ratios]
-# d(V_ECP_NL)/dc ≈ 0  (same approximation used in Fortran QMC codes, e.g. TurboRVB)
-def _e_L_wf_sg(wf_data, r_up, r_dn, RT):
-    T = compute_kinetic_energy(wavefunction_data=wf_data, r_up_carts=r_up, r_dn_carts=r_dn)
-    V = compute_coulomb_potential(
-        coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=r_up,
-        r_dn_carts=r_dn,
-        RT=RT,
-        wavefunction_data=jax.lax.stop_gradient(wf_data),
-    )
-    return T + V
-
-
-_grad_e_L_wf_sg = jit(grad(_e_L_wf_sg, argnums=0))
+# grad(E_L) w.r.t. electron positions r (argnums=(1,2))
+_grad_e_L_r = jit(grad(compute_local_energy, argnums=(1, 2)))
+# grad(E_L) w.r.t. hamiltonian_data (argnums=0) — includes nuclear positions R and wf params
+_grad_e_L_R = jit(grad(compute_local_energy, argnums=0))
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -169,28 +170,25 @@ block_until_ready(compute_local_energy(hamiltonian_data, r_up_carts, r_dn_carts,
 block_until_ready(compute_AS_regularization_factor(geminal_mo_data, r_up_carts, r_dn_carts))
 block_until_ready(_grad_ln_psi_pos(wavefunction_data, r_up_carts, r_dn_carts))
 block_until_ready(_grad_ln_psi_params(wavefunction_data, r_up_carts, r_dn_carts))
-block_until_ready(_grad_ln_psi_full(wavefunction_data, r_up_carts, r_dn_carts))
-block_until_ready(_grad_e_L_pos(hamiltonian_data, r_up_carts, r_dn_carts, RT))
-block_until_ready(_grad_e_L_params(hamiltonian_data, r_up_carts, r_dn_carts, RT))
-block_until_ready(_grad_e_L_wf_sg(wavefunction_data, r_up_carts, r_dn_carts, RT))
+block_until_ready(_grad_e_L_r(hamiltonian_data, r_up_carts, r_dn_carts, RT))
+block_until_ready(_grad_e_L_R(hamiltonian_for_param_grads, r_up_carts, r_dn_carts, RT))
+block_until_ready(_grad_e_L_R(hamiltonian_for_position_grads, r_up_carts, r_dn_carts, RT))
 # warmup for 1b+2b+3b variant
 block_until_ready(evaluate_ln_wavefunction(wavefunction_data_full, r_up_carts, r_dn_carts))
 block_until_ready(compute_local_energy(hamiltonian_data_full, r_up_carts, r_dn_carts, RT))
 block_until_ready(_grad_ln_psi_pos(wavefunction_data_full, r_up_carts, r_dn_carts))
 block_until_ready(_grad_ln_psi_params(wavefunction_data_full, r_up_carts, r_dn_carts))
-block_until_ready(_grad_ln_psi_full(wavefunction_data_full, r_up_carts, r_dn_carts))
-block_until_ready(_grad_e_L_pos(hamiltonian_data_full, r_up_carts, r_dn_carts, RT))
-block_until_ready(_grad_e_L_params(hamiltonian_data_full, r_up_carts, r_dn_carts, RT))
-block_until_ready(_grad_e_L_wf_sg(wavefunction_data_full, r_up_carts, r_dn_carts, RT))
+block_until_ready(_grad_e_L_r(hamiltonian_data_full, r_up_carts, r_dn_carts, RT))
+block_until_ready(_grad_e_L_R(hamiltonian_for_param_grads_full, r_up_carts, r_dn_carts, RT))
+block_until_ready(_grad_e_L_R(hamiltonian_for_position_grads_full, r_up_carts, r_dn_carts, RT))
 # warmup for 1b+2b variant
 block_until_ready(evaluate_ln_wavefunction(wavefunction_data_1b2b, r_up_carts, r_dn_carts))
 block_until_ready(compute_local_energy(hamiltonian_data_1b2b, r_up_carts, r_dn_carts, RT))
 block_until_ready(_grad_ln_psi_pos(wavefunction_data_1b2b, r_up_carts, r_dn_carts))
 block_until_ready(_grad_ln_psi_params(wavefunction_data_1b2b, r_up_carts, r_dn_carts))
-block_until_ready(_grad_ln_psi_full(wavefunction_data_1b2b, r_up_carts, r_dn_carts))
-block_until_ready(_grad_e_L_pos(hamiltonian_data_1b2b, r_up_carts, r_dn_carts, RT))
-block_until_ready(_grad_e_L_params(hamiltonian_data_1b2b, r_up_carts, r_dn_carts, RT))
-block_until_ready(_grad_e_L_wf_sg(wavefunction_data_1b2b, r_up_carts, r_dn_carts, RT))
+block_until_ready(_grad_e_L_r(hamiltonian_data_1b2b, r_up_carts, r_dn_carts, RT))
+block_until_ready(_grad_e_L_R(hamiltonian_for_param_grads_1b2b, r_up_carts, r_dn_carts, RT))
+block_until_ready(_grad_e_L_R(hamiltonian_for_position_grads_1b2b, r_up_carts, r_dn_carts, RT))
 
 print(f"\nMCMC component benchmarks — C6H6 ECP  (single walker, mean over {REPEATS} repeats)")
 print(f"\n  Jastrow: 2b only\n")
@@ -218,20 +216,20 @@ time_fn(
     lambda: _grad_ln_psi_params(wavefunction_data, r_up_carts, r_dn_carts),
 )
 time_fn(
-    "grad(ln|Psi|) w.r.t. (params,r_up,r_dn) [full grad]",
-    lambda: _grad_ln_psi_full(wavefunction_data, r_up_carts, r_dn_carts),
+    "grad(ln|Psi|) w.r.t. (r_up,r_dn)        [pos grad]",
+    lambda: _grad_ln_psi_pos(wavefunction_data, r_up_carts, r_dn_carts),
 )
 time_fn(
-    "grad(E_L)     w.r.t. positions        [E_L pos grad]",
-    lambda: _grad_e_L_pos(hamiltonian_data, r_up_carts, r_dn_carts, RT),
+    "grad(E_L)     w.r.t. r             [de_L/dr]",
+    lambda: _grad_e_L_r(hamiltonian_data, r_up_carts, r_dn_carts, RT),
 )
 time_fn(
-    "grad(E_L)     w.r.t. params           [E_L param grad]",
-    lambda: _grad_e_L_params(hamiltonian_data, r_up_carts, r_dn_carts, RT),
+    "grad(E_L)     w.r.t. hamiltonian   [de_L/dc, param grads]",
+    lambda: _grad_e_L_R(hamiltonian_for_param_grads, r_up_carts, r_dn_carts, RT),
 )
 time_fn(
-    "grad(E_L)     w.r.t. params [stop_grad ECP]",
-    lambda: _grad_e_L_wf_sg(wavefunction_data, r_up_carts, r_dn_carts, RT),
+    "grad(E_L)     w.r.t. hamiltonian   [de_L/dR, position grads]",
+    lambda: _grad_e_L_R(hamiltonian_for_position_grads, r_up_carts, r_dn_carts, RT),
 )
 
 # ── Jastrow 1b+2b comparison ──────────────────────────────────────────────────
@@ -255,20 +253,20 @@ time_fn(
     lambda: _grad_ln_psi_params(wavefunction_data_1b2b, r_up_carts, r_dn_carts),
 )
 time_fn(
-    "grad(ln|Psi|) w.r.t. (params,r_up,r_dn)  [+1b]",
-    lambda: _grad_ln_psi_full(wavefunction_data_1b2b, r_up_carts, r_dn_carts),
+    "grad(ln|Psi|) w.r.t. (r_up,r_dn)        [pos grad, +1b]",
+    lambda: _grad_ln_psi_pos(wavefunction_data_1b2b, r_up_carts, r_dn_carts),
 )
 time_fn(
-    "grad(E_L)     w.r.t. positions  [+1b]",
-    lambda: _grad_e_L_pos(hamiltonian_data_1b2b, r_up_carts, r_dn_carts, RT),
+    "grad(E_L)     w.r.t. r             [de_L/dr, +1b]",
+    lambda: _grad_e_L_r(hamiltonian_data_1b2b, r_up_carts, r_dn_carts, RT),
 )
 time_fn(
-    "grad(E_L)     w.r.t. params  [+1b]",
-    lambda: _grad_e_L_params(hamiltonian_data_1b2b, r_up_carts, r_dn_carts, RT),
+    "grad(E_L)     w.r.t. hamiltonian   [de_L/dc, param grads, +1b]",
+    lambda: _grad_e_L_R(hamiltonian_for_param_grads_1b2b, r_up_carts, r_dn_carts, RT),
 )
 time_fn(
-    "grad(E_L)     w.r.t. params [stop_grad ECP]  [+1b]",
-    lambda: _grad_e_L_wf_sg(wavefunction_data_1b2b, r_up_carts, r_dn_carts, RT),
+    "grad(E_L)     w.r.t. hamiltonian   [de_L/dR, position grads, +1b]",
+    lambda: _grad_e_L_R(hamiltonian_for_position_grads_1b2b, r_up_carts, r_dn_carts, RT),
 )
 
 # ── Jastrow 1b+2b+3b comparison ────────────────────────────────────────────────
@@ -292,20 +290,20 @@ time_fn(
     lambda: _grad_ln_psi_params(wavefunction_data_full, r_up_carts, r_dn_carts),
 )
 time_fn(
-    "grad(ln|Psi|) w.r.t. (params,r_up,r_dn)  [+1b +3b]",
-    lambda: _grad_ln_psi_full(wavefunction_data_full, r_up_carts, r_dn_carts),
+    "grad(ln|Psi|) w.r.t. (r_up,r_dn)        [pos grad, +1b +3b]",
+    lambda: _grad_ln_psi_pos(wavefunction_data_full, r_up_carts, r_dn_carts),
 )
 time_fn(
-    "grad(E_L)     w.r.t. positions  [+1b +3b]",
-    lambda: _grad_e_L_pos(hamiltonian_data_full, r_up_carts, r_dn_carts, RT),
+    "grad(E_L)     w.r.t. r             [de_L/dr, +1b +3b]",
+    lambda: _grad_e_L_r(hamiltonian_data_full, r_up_carts, r_dn_carts, RT),
 )
 time_fn(
-    "grad(E_L)     w.r.t. params  [+1b +3b]",
-    lambda: _grad_e_L_params(hamiltonian_data_full, r_up_carts, r_dn_carts, RT),
+    "grad(E_L)     w.r.t. hamiltonian   [de_L/dc, param grads, +1b +3b]",
+    lambda: _grad_e_L_R(hamiltonian_for_param_grads_full, r_up_carts, r_dn_carts, RT),
 )
 time_fn(
-    "grad(E_L)     w.r.t. params [stop_grad ECP]  [+1b +3b]",
-    lambda: _grad_e_L_wf_sg(wavefunction_data_full, r_up_carts, r_dn_carts, RT),
+    "grad(E_L)     w.r.t. hamiltonian   [de_L/dR, position grads, +1b +3b]",
+    lambda: _grad_e_L_R(hamiltonian_for_position_grads_full, r_up_carts, r_dn_carts, RT),
 )
 
 print()
@@ -323,10 +321,8 @@ _local_energy_vmap = jit(vmap(compute_local_energy, in_axes=(None, 0, 0, None)))
 _as_reg_vmap = jit(vmap(compute_AS_regularization_factor, in_axes=(None, 0, 0)))
 _grad_ln_psi_pos_vmap = jit(vmap(_grad_ln_psi_pos, in_axes=(None, 0, 0)))
 _grad_ln_psi_params_vmap = jit(vmap(_grad_ln_psi_params, in_axes=(None, 0, 0)))
-_grad_ln_psi_full_vmap = jit(vmap(_grad_ln_psi_full, in_axes=(None, 0, 0)))
-_grad_e_L_pos_vmap = jit(vmap(_grad_e_L_pos, in_axes=(None, 0, 0, None)))
-_grad_e_L_params_vmap = jit(vmap(_grad_e_L_params, in_axes=(None, 0, 0, None)))
-_grad_e_L_wf_sg_vmap = jit(vmap(_grad_e_L_wf_sg, in_axes=(None, 0, 0, None)))
+_grad_e_L_r_vmap = jit(vmap(_grad_e_L_r, in_axes=(None, 0, 0, None)))
+_grad_e_L_R_vmap = jit(vmap(_grad_e_L_R, in_axes=(None, 0, 0, None)))
 
 # warmup for multi-walker
 print(f"Warming up multi-walker (JIT compilation, W={N_WALKERS})...")
@@ -335,26 +331,23 @@ block_until_ready(_local_energy_vmap(hamiltonian_data, r_up_batch, r_dn_batch, R
 block_until_ready(_as_reg_vmap(geminal_mo_data, r_up_batch, r_dn_batch))
 block_until_ready(_grad_ln_psi_pos_vmap(wavefunction_data, r_up_batch, r_dn_batch))
 block_until_ready(_grad_ln_psi_params_vmap(wavefunction_data, r_up_batch, r_dn_batch))
-block_until_ready(_grad_ln_psi_full_vmap(wavefunction_data, r_up_batch, r_dn_batch))
-block_until_ready(_grad_e_L_pos_vmap(hamiltonian_data, r_up_batch, r_dn_batch, RT))
-block_until_ready(_grad_e_L_params_vmap(hamiltonian_data, r_up_batch, r_dn_batch, RT))
-block_until_ready(_grad_e_L_wf_sg_vmap(wavefunction_data, r_up_batch, r_dn_batch, RT))
+block_until_ready(_grad_e_L_r_vmap(hamiltonian_data, r_up_batch, r_dn_batch, RT))
+block_until_ready(_grad_e_L_R_vmap(hamiltonian_for_param_grads, r_up_batch, r_dn_batch, RT))
+block_until_ready(_grad_e_L_R_vmap(hamiltonian_for_position_grads, r_up_batch, r_dn_batch, RT))
 block_until_ready(_eval_ln_psi_vmap(wavefunction_data_full, r_up_batch, r_dn_batch))
 block_until_ready(_local_energy_vmap(hamiltonian_data_full, r_up_batch, r_dn_batch, RT))
 block_until_ready(_grad_ln_psi_pos_vmap(wavefunction_data_full, r_up_batch, r_dn_batch))
 block_until_ready(_grad_ln_psi_params_vmap(wavefunction_data_full, r_up_batch, r_dn_batch))
-block_until_ready(_grad_ln_psi_full_vmap(wavefunction_data_full, r_up_batch, r_dn_batch))
-block_until_ready(_grad_e_L_pos_vmap(hamiltonian_data_full, r_up_batch, r_dn_batch, RT))
-block_until_ready(_grad_e_L_params_vmap(hamiltonian_data_full, r_up_batch, r_dn_batch, RT))
-block_until_ready(_grad_e_L_wf_sg_vmap(wavefunction_data_full, r_up_batch, r_dn_batch, RT))
+block_until_ready(_grad_e_L_r_vmap(hamiltonian_data_full, r_up_batch, r_dn_batch, RT))
+block_until_ready(_grad_e_L_R_vmap(hamiltonian_for_param_grads_full, r_up_batch, r_dn_batch, RT))
+block_until_ready(_grad_e_L_R_vmap(hamiltonian_for_position_grads_full, r_up_batch, r_dn_batch, RT))
 block_until_ready(_eval_ln_psi_vmap(wavefunction_data_1b2b, r_up_batch, r_dn_batch))
 block_until_ready(_local_energy_vmap(hamiltonian_data_1b2b, r_up_batch, r_dn_batch, RT))
 block_until_ready(_grad_ln_psi_pos_vmap(wavefunction_data_1b2b, r_up_batch, r_dn_batch))
 block_until_ready(_grad_ln_psi_params_vmap(wavefunction_data_1b2b, r_up_batch, r_dn_batch))
-block_until_ready(_grad_ln_psi_full_vmap(wavefunction_data_1b2b, r_up_batch, r_dn_batch))
-block_until_ready(_grad_e_L_pos_vmap(hamiltonian_data_1b2b, r_up_batch, r_dn_batch, RT))
-block_until_ready(_grad_e_L_params_vmap(hamiltonian_data_1b2b, r_up_batch, r_dn_batch, RT))
-block_until_ready(_grad_e_L_wf_sg_vmap(wavefunction_data_1b2b, r_up_batch, r_dn_batch, RT))
+block_until_ready(_grad_e_L_r_vmap(hamiltonian_data_1b2b, r_up_batch, r_dn_batch, RT))
+block_until_ready(_grad_e_L_R_vmap(hamiltonian_for_param_grads_1b2b, r_up_batch, r_dn_batch, RT))
+block_until_ready(_grad_e_L_R_vmap(hamiltonian_for_position_grads_1b2b, r_up_batch, r_dn_batch, RT))
 
 print(f"\nMCMC component benchmarks — C6H6 ECP  ({N_WALKERS} walkers vmapped, mean over {REPEATS} repeats)")
 print(f"\n  Jastrow: 2b only\n")
@@ -382,20 +375,20 @@ time_fn(
     lambda: _grad_ln_psi_params_vmap(wavefunction_data, r_up_batch, r_dn_batch),
 )
 time_fn(
-    "grad(ln|Psi|) w.r.t. (params,r_up,r_dn) [full grad]",
-    lambda: _grad_ln_psi_full_vmap(wavefunction_data, r_up_batch, r_dn_batch),
+    "grad(ln|Psi|) w.r.t. (r_up,r_dn)        [pos grad]",
+    lambda: _grad_ln_psi_pos_vmap(wavefunction_data, r_up_batch, r_dn_batch),
 )
 time_fn(
-    "grad(E_L)     w.r.t. positions        [E_L pos grad]",
-    lambda: _grad_e_L_pos_vmap(hamiltonian_data, r_up_batch, r_dn_batch, RT),
+    "grad(E_L)     w.r.t. r             [de_L/dr]",
+    lambda: _grad_e_L_r_vmap(hamiltonian_data, r_up_batch, r_dn_batch, RT),
 )
 time_fn(
-    "grad(E_L)     w.r.t. params           [E_L param grad]",
-    lambda: _grad_e_L_params_vmap(hamiltonian_data, r_up_batch, r_dn_batch, RT),
+    "grad(E_L)     w.r.t. hamiltonian   [de_L/dc, param grads]",
+    lambda: _grad_e_L_R_vmap(hamiltonian_for_param_grads, r_up_batch, r_dn_batch, RT),
 )
 time_fn(
-    "grad(E_L)     w.r.t. params [stop_grad ECP]",
-    lambda: _grad_e_L_wf_sg_vmap(wavefunction_data, r_up_batch, r_dn_batch, RT),
+    "grad(E_L)     w.r.t. hamiltonian   [de_L/dR, position grads]",
+    lambda: _grad_e_L_R_vmap(hamiltonian_for_position_grads, r_up_batch, r_dn_batch, RT),
 )
 
 print(f"\n  Jastrow: 1b+2b\n")
@@ -418,20 +411,20 @@ time_fn(
     lambda: _grad_ln_psi_params_vmap(wavefunction_data_1b2b, r_up_batch, r_dn_batch),
 )
 time_fn(
-    "grad(ln|Psi|) w.r.t. (params,r_up,r_dn)  [+1b]",
-    lambda: _grad_ln_psi_full_vmap(wavefunction_data_1b2b, r_up_batch, r_dn_batch),
+    "grad(ln|Psi|) w.r.t. (r_up,r_dn)        [pos grad, +1b]",
+    lambda: _grad_ln_psi_pos_vmap(wavefunction_data_1b2b, r_up_batch, r_dn_batch),
 )
 time_fn(
-    "grad(E_L)     w.r.t. positions  [+1b]",
-    lambda: _grad_e_L_pos_vmap(hamiltonian_data_1b2b, r_up_batch, r_dn_batch, RT),
+    "grad(E_L)     w.r.t. r             [de_L/dr, +1b]",
+    lambda: _grad_e_L_r_vmap(hamiltonian_data_1b2b, r_up_batch, r_dn_batch, RT),
 )
 time_fn(
-    "grad(E_L)     w.r.t. params  [+1b]",
-    lambda: _grad_e_L_params_vmap(hamiltonian_data_1b2b, r_up_batch, r_dn_batch, RT),
+    "grad(E_L)     w.r.t. hamiltonian   [de_L/dc, param grads, +1b]",
+    lambda: _grad_e_L_R_vmap(hamiltonian_for_param_grads_1b2b, r_up_batch, r_dn_batch, RT),
 )
 time_fn(
-    "grad(E_L)     w.r.t. params [stop_grad ECP]  [+1b]",
-    lambda: _grad_e_L_wf_sg_vmap(wavefunction_data_1b2b, r_up_batch, r_dn_batch, RT),
+    "grad(E_L)     w.r.t. hamiltonian   [de_L/dR, position grads, +1b]",
+    lambda: _grad_e_L_R_vmap(hamiltonian_for_position_grads_1b2b, r_up_batch, r_dn_batch, RT),
 )
 
 print(f"\n  Jastrow: 1b+2b+3b  (n_AO={aos_data._num_orb})\n")
@@ -454,20 +447,20 @@ time_fn(
     lambda: _grad_ln_psi_params_vmap(wavefunction_data_full, r_up_batch, r_dn_batch),
 )
 time_fn(
-    "grad(ln|Psi|) w.r.t. (params,r_up,r_dn)  [+1b +3b]",
-    lambda: _grad_ln_psi_full_vmap(wavefunction_data_full, r_up_batch, r_dn_batch),
+    "grad(ln|Psi|) w.r.t. (r_up,r_dn)        [pos grad, +1b +3b]",
+    lambda: _grad_ln_psi_pos_vmap(wavefunction_data_full, r_up_batch, r_dn_batch),
 )
 time_fn(
-    "grad(E_L)     w.r.t. positions  [+1b +3b]",
-    lambda: _grad_e_L_pos_vmap(hamiltonian_data_full, r_up_batch, r_dn_batch, RT),
+    "grad(E_L)     w.r.t. r             [de_L/dr, +1b +3b]",
+    lambda: _grad_e_L_r_vmap(hamiltonian_data_full, r_up_batch, r_dn_batch, RT),
 )
 time_fn(
-    "grad(E_L)     w.r.t. params  [+1b +3b]",
-    lambda: _grad_e_L_params_vmap(hamiltonian_data_full, r_up_batch, r_dn_batch, RT),
+    "grad(E_L)     w.r.t. hamiltonian   [de_L/dc, param grads, +1b +3b]",
+    lambda: _grad_e_L_R_vmap(hamiltonian_for_param_grads_full, r_up_batch, r_dn_batch, RT),
 )
 time_fn(
-    "grad(E_L)     w.r.t. params [stop_grad ECP]  [+1b +3b]",
-    lambda: _grad_e_L_wf_sg_vmap(wavefunction_data_full, r_up_batch, r_dn_batch, RT),
+    "grad(E_L)     w.r.t. hamiltonian   [de_L/dR, position grads, +1b +3b]",
+    lambda: _grad_e_L_R_vmap(hamiltonian_data_full, r_up_batch, r_dn_batch, RT),
 )
 
 print()

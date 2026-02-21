@@ -52,7 +52,6 @@ from jax.scipy.linalg import lu_factor, lu_solve
 from mpi4py import MPI
 
 from .atomic_orbital import compute_overlap_matrix
-from .coulomb_potential import compute_coulomb_potential
 from .determinant import (
     Geminal_data,
     compute_AS_regularization_factor,
@@ -75,7 +74,7 @@ from .setting import (
 )
 from .structure import _find_nearest_index_jnp
 from .swct import SWCT_data, evaluate_swct_domega, evaluate_swct_omega
-from .wavefunction import compute_kinetic_energy, evaluate_ln_wavefunction
+from .wavefunction import evaluate_ln_wavefunction
 
 # create new logger level for development
 DEVEL_LEVEL = 5
@@ -139,7 +138,7 @@ class MCMC:
             Dt (float, optional): Electron displacement scale (bohr). Defaults to 2.0.
             epsilon_AS (float, optional): Regularization exponent for antisymmetric stabilization. Defaults to 1e-1.
             comput_log_WF_param_deriv (bool, optional): Keep variational parameter derivatives (d ln Psi / dc). Defaults to False.
-            comput_e_L_param_deriv (bool, optional): Keep local energy variational parameter derivatives (de_L / dc). Nuclear position gradients are disabled via stop_gradient. Defaults to False.
+            comput_e_L_param_deriv (bool, optional): Keep local energy variational parameter derivatives (de_L / dc). Defaults to False.
             comput_position_deriv (bool, optional): Keep nuclear position derivatives. Defaults to False.
             random_discretized_mesh (bool, optional): Randomize quadrature mesh for non-local ECP terms. Defaults to True.
 
@@ -338,40 +337,19 @@ class MCMC:
 
         wavefunction_data: per-block masking applied; used for dln_Psi/dc via
             grad(evaluate_ln_wavefunction, argnums=0).
-        hamiltonian_data: nuclear positions (R) fully stop-gradiented, with active
-            variational parameters injected; used for de_L/dc via
-            grad(compute_local_energy, argnums=0).
+        hamiltonian_data: R stop-gradiented with active variational parameters injected;
+            used for de_L/dc via grad(compute_local_energy, argnums=0).
 
-        Two approaches exist for de_L/dc (see also the de_L/dc block in run()):
-
-        [Exact] (current implementation)
-          hamiltonian_data returned here has R stop-gradiented and wf params active.
-          In run():
-            grad_e_L_h_step = vmap(grad(compute_local_energy, argnums=0), ...)(
-                hamiltonian_for_param_grads, r_up, r_dn, RTs)
-            param_grads = wf_data.collect_param_grads(grad_e_L_h_step.wavefunction_data)
-          Gradient flows through the full compute_local_energy including the ECP
-          non-local wf-ratio Psi(r')/Psi(r), so d(V_ECP_NL)/dc is included.
-
-        [Approx, faster] Zero out d(V_ECP_NL)/dc by splitting T and V.
-          To switch to this approach:
-            1. In THIS method, comment out the h_sg_R line below and change the
-               return to: return masked_wavefunction, self.__hamiltonian_data
-               (hamiltonian_for_param_grads is not used as a grad argument in [Approx])
-            2. In run(), replace the de_L/dc call with:
-                 def _e_L_approx(wf_data, r_up, r_dn, RTs):
-                     h_sg = jax.lax.stop_gradient(hamiltonian_for_param_grads)
-                     T = compute_kinetic_energy(wavefunction_data=wf_data, r_up_carts=r_up, r_dn_carts=r_dn)
-                     V = compute_coulomb_potential(
-                         coulomb_potential_data=h_sg.coulomb_potential_data,
-                         r_up_carts=r_up, r_dn_carts=r_dn, RT=RTs,
-                         wavefunction_data=jax.lax.stop_gradient(wf_data),
-                     )
-                     return T + V
-                 grad_e_L_h_step = vmap(grad(_e_L_approx, argnums=0), ...)(
-                     wavefunction_for_param_grads, r_up, r_dn, RTs)
-                 param_grads = wf_data.collect_param_grads(grad_e_L_h_step)
-          Kinetic energy T still contributes de_L/dc, which is the dominant term.
+        [Approx, faster] alternative (not implemented):
+            Zeroes out d(V_ECP_NL)/dc; T dominates anyway.
+            Build a local _e_L_approx(wf_data, r_up, r_dn, RT) that calls
+            compute_kinetic_energy (with wf_data) and compute_coulomb_potential
+            (with stop_gradient on wf_data), pre-compile it as
+            jit(vmap(grad(_e_L_approx, argnums=0), in_axes=(None, 0, 0, 0))),
+            and return it as a third element of the tuple alongside
+            (masked_wavefunction, self.__hamiltonian_data).
+            In run(), unpack as a 3-tuple and call the compiled approx grad
+            instead of _jit_vmap_grad_e_L_h.
         """
         wavefunction_data = self.__hamiltonian_data.wavefunction_data
         if not (self.__comput_log_WF_param_deriv or self.__comput_e_L_param_deriv):
@@ -380,9 +358,9 @@ class MCMC:
         masked_wavefunction = (
             self.__wavefunction_data_for_param_grads() if self.__needs_param_grad_mask() else wavefunction_data
         )
-        # [Exact] stop_gradient on R so that grad(compute_local_energy, argnums=0)
-        # yields de_L/dc only, not de_L/dR.
-        # Comment out this line (and update the return) when switching to [Approx].
+        # stop_gradient on R so that grad(compute_local_energy, argnums=0)
+        # yields de_L/dc only, not de_L/dR.  ECP wf-ratio Psi(r')/Psi(r) contributes
+        # to de_L/dc because wavefunction_data still carries gradients.
         h_sg_R = jax.lax.stop_gradient(self.__hamiltonian_data).replace(wavefunction_data=masked_wavefunction)
         return masked_wavefunction, h_sg_R
 
@@ -957,6 +935,30 @@ class MCMC:
         wavefunction_for_param_grads, hamiltonian_for_param_grads = self.__prepare_param_grad_objects()
         wavefunction_for_position_grads, hamiltonian_for_position_grads = self.__prepare_position_grad_objects()
 
+        # Pre-compile all grad callables as jit(vmap(grad(...))).
+        # Without jit, every call in the hot loop re-enters Python-level tracing,
+        # which dominates runtime (x100 acceleration)!
+        _jit_vmap_grad_e_L_r = jit(vmap(grad(compute_local_energy, argnums=(1, 2)), in_axes=(None, 0, 0, 0)))
+        _jit_vmap_grad_e_L_h = jit(vmap(grad(compute_local_energy, argnums=0), in_axes=(None, 0, 0, 0)))
+        _jit_vmap_grad_ln_psi = jit(vmap(grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0)))
+        _jit_vmap_grad_ln_psi_params = jit(vmap(grad(evaluate_ln_wavefunction, argnums=0), in_axes=(None, 0, 0)))
+        # static_argnums=3 propagates the num_mcmc_per_measurement static hint to
+        # the outer jit so fori_loop sees a compile-time constant (same as inner @partial(jit,static_argnums=3)).
+        _jit_vmap_update = jit(
+            vmap(_update_electron_positions, in_axes=(0, 0, 0, None, None, None, None, 0, 0)),
+            static_argnums=3,
+        )
+        _jit_vmap_update_up = jit(
+            vmap(_update_electron_positions_only_up_electron, in_axes=(0, 0, 0, None, None, None, None, 0, 0)),
+            static_argnums=3,
+        )
+        _jit_vmap_e_L = jit(vmap(compute_local_energy, in_axes=(None, 0, 0, 0)))
+        _jit_vmap_as_reg = jit(vmap(compute_AS_regularization_factor, in_axes=(None, 0, 0)))
+        _jit_vmap_generate_RTs = jit(vmap(generate_RTs, in_axes=0))
+        _jit_vmap_as_reg_fast = jit(vmap(compute_AS_regularization_factor_fast_update, in_axes=(0, 0)))
+        _jit_vmap_swct_omega = jit(vmap(evaluate_swct_omega, in_axes=(None, 0)))
+        _jit_vmap_swct_domega = jit(vmap(evaluate_swct_domega, in_axes=(None, 0)))
+
         geminal, geminal_inv, _, _ = _geminal_inv_batched(
             self.__hamiltonian_data.wavefunction_data.geminal_data,
             self.__latest_r_up_carts,
@@ -965,15 +967,7 @@ class MCMC:
 
         RTs = jnp.broadcast_to(jnp.eye(3), (len(self.__jax_PRNG_key_list), 3, 3))
         if self.__only_up_electron:
-            (
-                _,
-                _,
-                _,
-                _,
-                _,
-                _,
-                _,
-            ) = vmap(_update_electron_positions_only_up_electron, in_axes=(0, 0, 0, None, None, None, None, 0, 0))(
+            _ = _jit_vmap_update_up(
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
                 self.__jax_PRNG_key_list,
@@ -985,15 +979,7 @@ class MCMC:
                 geminal,
             )
         else:
-            (
-                _,
-                _,
-                _,
-                _,
-                _,
-                _,
-                _,
-            ) = vmap(_update_electron_positions, in_axes=(0, 0, 0, None, None, None, None, 0, 0))(
+            _ = _jit_vmap_update(
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
                 self.__jax_PRNG_key_list,
@@ -1004,68 +990,66 @@ class MCMC:
                 geminal_inv,
                 geminal,
             )
-        _ = vmap(compute_local_energy, in_axes=(None, 0, 0, 0))(
-            self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs
-        )
-        _ = vmap(compute_AS_regularization_factor, in_axes=(None, 0, 0))(
+        _ = _jit_vmap_e_L(self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs)
+        _ = _jit_vmap_as_reg(
             self.__hamiltonian_data.wavefunction_data.geminal_data,
             self.__latest_r_up_carts,
             self.__latest_r_dn_carts,
         )
         if self.__comput_position_deriv:
-            _, _ = vmap(grad(compute_local_energy, argnums=(1, 2)), in_axes=(None, 0, 0, 0))(
+            _, _ = _jit_vmap_grad_e_L_r(
                 hamiltonian_for_position_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
                 RTs,
             )
-            _ = vmap(grad(compute_local_energy, argnums=0), in_axes=(None, 0, 0, 0))(
+            _ = _jit_vmap_grad_e_L_h(
                 hamiltonian_for_position_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
                 RTs,
             )
 
-            _, _, _ = vmap(grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0))(
+            _, _, _ = _jit_vmap_grad_ln_psi(
                 wavefunction_for_position_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
 
-            _ = vmap(evaluate_swct_omega, in_axes=(None, 0))(
+            _ = _jit_vmap_swct_omega(
                 self.__swct_data,
                 self.__latest_r_up_carts,
             )
 
-            _ = vmap(evaluate_swct_omega, in_axes=(None, 0))(
+            _ = _jit_vmap_swct_omega(
                 self.__swct_data,
                 self.__latest_r_dn_carts,
             )
 
-            _ = vmap(evaluate_swct_domega, in_axes=(None, 0))(
+            _ = _jit_vmap_swct_domega(
                 self.__swct_data,
                 self.__latest_r_up_carts,
             )
 
-            _ = vmap(evaluate_swct_domega, in_axes=(None, 0))(
+            _ = _jit_vmap_swct_domega(
                 self.__swct_data,
                 self.__latest_r_dn_carts,
             )
-            _ = vmap(grad(evaluate_ln_wavefunction, argnums=0), in_axes=(None, 0, 0))(
+            _ = _jit_vmap_grad_ln_psi_params(
                 wavefunction_for_param_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
 
         if self.__comput_log_WF_param_deriv:
-            _ = vmap(grad(evaluate_ln_wavefunction, argnums=0), in_axes=(None, 0, 0))(
+            _ = _jit_vmap_grad_ln_psi_params(
                 wavefunction_for_param_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
 
         if self.__comput_e_L_param_deriv:
-            _ = vmap(grad(compute_local_energy, argnums=0), in_axes=(None, 0, 0, 0))(
+            _ = _jit_vmap_grad_e_L_h(
                 hamiltonian_for_param_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
@@ -1119,7 +1103,7 @@ class MCMC:
                     self.__jax_PRNG_key_list,
                     geminal_inv,
                     geminal,
-                ) = vmap(_update_electron_positions_only_up_electron, in_axes=(0, 0, 0, None, None, None, None, 0, 0))(
+                ) = _jit_vmap_update_up(
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                     self.__jax_PRNG_key_list,
@@ -1139,7 +1123,7 @@ class MCMC:
                     self.__jax_PRNG_key_list,
                     geminal_inv,
                     geminal,
-                ) = vmap(_update_electron_positions, in_axes=(0, 0, 0, None, None, None, None, 0, 0))(
+                ) = _jit_vmap_update(
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                     self.__jax_PRNG_key_list,
@@ -1161,7 +1145,7 @@ class MCMC:
 
             # generate rotation matrices (for non-local ECPs)
             if self.__random_discretized_mesh:
-                RTs = vmap(generate_RTs, in_axes=0)(self.__jax_PRNG_key_list)
+                RTs = _jit_vmap_generate_RTs(self.__jax_PRNG_key_list)
             else:
                 RTs = jnp.broadcast_to(jnp.eye(3), (len(self.__jax_PRNG_key_list), 3, 3))
 
@@ -1172,9 +1156,7 @@ class MCMC:
             # Evaluate observables each MCMC cycle
             start = time.perf_counter()
             logger.debug("    Evaluating e_L ...")
-            e_L_step = vmap(compute_local_energy, in_axes=(None, 0, 0, 0))(
-                self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs
-            )
+            e_L_step = _jit_vmap_e_L(self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs)
             e_L_step.block_until_ready()
             end = time.perf_counter()
             timer_e_L += end - start
@@ -1183,7 +1165,7 @@ class MCMC:
             self.__stored_e_L2.append(e_L_step**2)
 
             # AS weights
-            R_AS_step = vmap(compute_AS_regularization_factor_fast_update, in_axes=(0, 0))(geminal, geminal_inv)
+            R_AS_step = _jit_vmap_as_reg_fast(geminal, geminal_inv)
             R_AS_eps_step = jnp.maximum(R_AS_step, self.__epsilon_AS)
             w_L_step = (R_AS_step / R_AS_eps_step) ** 2
 
@@ -1197,9 +1179,7 @@ class MCMC:
                 # Using argnums=(1,2) avoids backpropagating through wavefunction
                 # parameters inside the ECP non-local wf-ratio, which is the dominant
                 # cost when hamiltonian (argnums=0) is included.
-                grad_e_L_r_up_step, grad_e_L_r_dn_step = vmap(
-                    grad(compute_local_energy, argnums=(1, 2)), in_axes=(None, 0, 0, 0)
-                )(
+                grad_e_L_r_up_step, grad_e_L_r_dn_step = _jit_vmap_grad_e_L_r(
                     hamiltonian_for_position_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
@@ -1212,7 +1192,7 @@ class MCMC:
                 # hamiltonian_for_position_grads already has all variational params masked
                 # (stop_gradient), while AO position leaves still carry gradients so
                 # dT/dR and dV_ECP/dR are computed correctly.
-                grad_e_L_h_step = vmap(grad(compute_local_energy, argnums=0), in_axes=(None, 0, 0, 0))(
+                grad_e_L_h_step = _jit_vmap_grad_e_L_h(
                     hamiltonian_for_position_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
@@ -1228,9 +1208,7 @@ class MCMC:
 
                 start = time.perf_counter()
                 logger.debug("    Evaluating dln_Psi/dR and dln_Psi/dr ...")
-                grad_ln_Psi_h_step, grad_ln_Psi_r_up_step, grad_ln_Psi_r_dn_step = vmap(
-                    grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
-                )(
+                grad_ln_Psi_h_step, grad_ln_Psi_r_up_step, grad_ln_Psi_r_dn_step = _jit_vmap_grad_ln_psi(
                     wavefunction_for_position_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
@@ -1245,19 +1223,19 @@ class MCMC:
                 grad_ln_Psi_dR = self.__hamiltonian_data.wavefunction_data.accumulate_position_grad(grad_ln_Psi_h_step)
                 self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
 
-                omega_up_step = vmap(evaluate_swct_omega, in_axes=(None, 0))(
+                omega_up_step = _jit_vmap_swct_omega(
                     self.__swct_data,
                     self.__latest_r_up_carts,
                 )
-                omega_dn_step = vmap(evaluate_swct_omega, in_axes=(None, 0))(
+                omega_dn_step = _jit_vmap_swct_omega(
                     self.__swct_data,
                     self.__latest_r_dn_carts,
                 )
-                grad_omega_dr_up_step = vmap(evaluate_swct_domega, in_axes=(None, 0))(
+                grad_omega_dr_up_step = _jit_vmap_swct_domega(
                     self.__swct_data,
                     self.__latest_r_up_carts,
                 )
-                grad_omega_dr_dn_step = vmap(evaluate_swct_domega, in_axes=(None, 0))(
+                grad_omega_dr_dn_step = _jit_vmap_swct_domega(
                     self.__swct_data,
                     self.__latest_r_dn_carts,
                 )
@@ -1270,7 +1248,7 @@ class MCMC:
             if self.__comput_log_WF_param_deriv:
                 start = time.perf_counter()
                 logger.debug("    Evaluating dln_Psi/dc ...")
-                grad_ln_Psi_h = vmap(grad(evaluate_ln_wavefunction, argnums=0), in_axes=(None, 0, 0))(
+                grad_ln_Psi_h = _jit_vmap_grad_ln_psi_params(
                     wavefunction_for_param_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
@@ -1293,9 +1271,11 @@ class MCMC:
             if self.__comput_e_L_param_deriv:
                 start = time.perf_counter()
                 logger.debug("    Evaluating de_L/dc ...")
-                # [Exact] approach — see __prepare_param_grad_objects() for details and
-                # [Approx, faster] alternative that zeroes out d(V_ECP_NL)/dc.
-                grad_e_L_h_step = vmap(grad(compute_local_energy, argnums=0), in_axes=(None, 0, 0, 0))(
+                # Gradient flows through full compute_local_energy including
+                # ECP wf-ratio Psi(r')/Psi(r), so d(V_ECP_NL)/dc is included.
+                # hamiltonian_for_param_grads has R stop-gradiented; wf params are
+                # active (set up in __prepare_param_grad_objects).
+                grad_e_L_h_step = _jit_vmap_grad_e_L_h(
                     hamiltonian_for_param_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
@@ -3392,6 +3372,10 @@ class _MCMC_debug:
             max_time(int):
                 Max elapsed time (sec.). If the elapsed time exceeds max_time, the methods exits the mcmc loop.
         """
+        logger.info("")
+        logger.info("This is a debugging class! It supposed to be very slow.")
+        logger.info("")
+
         # MAIN MCMC loop from here !!!
         logger.info("Start MCMC")
         num_mcmc_done = 0
@@ -3606,17 +3590,27 @@ class _MCMC_debug:
             RTs = jnp.array(RTs)
 
             # evaluate observables
-            e_L = vmap(compute_local_energy, in_axes=(None, 0, 0, 0))(
-                self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs
+            e_L = jnp.stack(
+                [
+                    compute_local_energy(
+                        self.__hamiltonian_data, self.__latest_r_up_carts[i], self.__latest_r_dn_carts[i], RTs[i]
+                    )
+                    for i in range(self.__num_walkers)
+                ]
             )
             self.__stored_e_L.append(e_L)
             self.__stored_e_L2.append(e_L**2)
 
             # compute AS regularization factors, R_AS and R_AS_eps
-            R_AS = vmap(compute_AS_regularization_factor, in_axes=(None, 0, 0))(
-                self.__hamiltonian_data.wavefunction_data.geminal_data,
-                self.__latest_r_up_carts,
-                self.__latest_r_dn_carts,
+            R_AS = jnp.stack(
+                [
+                    compute_AS_regularization_factor(
+                        self.__hamiltonian_data.wavefunction_data.geminal_data,
+                        self.__latest_r_up_carts[i],
+                        self.__latest_r_dn_carts[i],
+                    )
+                    for i in range(self.__num_walkers)
+                ]
             )
             R_AS_eps = jnp.maximum(R_AS, self.__epsilon_AS)
 
@@ -3624,9 +3618,14 @@ class _MCMC_debug:
             self.__stored_w_L.append(w_L)
 
             if self.__comput_position_deriv:
-                grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = vmap(
-                    grad(compute_local_energy, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0)
-                )(self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs)
+                _grad_e_L_fn = grad(compute_local_energy, argnums=(0, 1, 2))
+                _grad_e_L_results = [
+                    _grad_e_L_fn(self.__hamiltonian_data, self.__latest_r_up_carts[i], self.__latest_r_dn_carts[i], RTs[i])
+                    for i in range(self.__num_walkers)
+                ]
+                grad_e_L_h = jax.tree_util.tree_map(lambda *arrs: jnp.stack(arrs), *[r[0] for r in _grad_e_L_results])
+                grad_e_L_r_up = jnp.stack([r[1] for r in _grad_e_L_results])
+                grad_e_L_r_dn = jnp.stack([r[2] for r in _grad_e_L_results])
 
                 self.__stored_grad_e_L_r_up.append(grad_e_L_r_up)
                 self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn)
@@ -3634,13 +3633,18 @@ class _MCMC_debug:
                 grad_e_L_R = self.__hamiltonian_data.accumulate_position_grad(grad_e_L_h)
                 self.__stored_grad_e_L_dR.append(grad_e_L_R)
 
-                grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = vmap(
-                    grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
-                )(
-                    self.__hamiltonian_data.wavefunction_data,
-                    self.__latest_r_up_carts,
-                    self.__latest_r_dn_carts,
-                )
+                _grad_ln_psi_fn = grad(evaluate_ln_wavefunction, argnums=(0, 1, 2))
+                _grad_ln_psi_results = [
+                    _grad_ln_psi_fn(
+                        self.__hamiltonian_data.wavefunction_data,
+                        self.__latest_r_up_carts[i],
+                        self.__latest_r_dn_carts[i],
+                    )
+                    for i in range(self.__num_walkers)
+                ]
+                grad_ln_Psi_h = jax.tree_util.tree_map(lambda *arrs: jnp.stack(arrs), *[r[0] for r in _grad_ln_psi_results])
+                grad_ln_Psi_r_up = jnp.stack([r[1] for r in _grad_ln_psi_results])
+                grad_ln_Psi_r_dn = jnp.stack([r[2] for r in _grad_ln_psi_results])
 
                 self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up)
                 self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn)
@@ -3648,38 +3652,39 @@ class _MCMC_debug:
                 grad_ln_Psi_dR = self.__hamiltonian_data.wavefunction_data.accumulate_position_grad(grad_ln_Psi_h)
                 self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
 
-                omega_up = vmap(evaluate_swct_omega, in_axes=(None, 0))(
-                    self.__swct_data,
-                    self.__latest_r_up_carts,
+                omega_up = jnp.stack(
+                    [evaluate_swct_omega(self.__swct_data, self.__latest_r_up_carts[i]) for i in range(self.__num_walkers)]
                 )
 
-                omega_dn = vmap(evaluate_swct_omega, in_axes=(None, 0))(
-                    self.__swct_data,
-                    self.__latest_r_dn_carts,
+                omega_dn = jnp.stack(
+                    [evaluate_swct_omega(self.__swct_data, self.__latest_r_dn_carts[i]) for i in range(self.__num_walkers)]
                 )
 
                 self.__stored_omega_up.append(omega_up)
                 self.__stored_omega_dn.append(omega_dn)
 
-                grad_omega_dr_up = vmap(evaluate_swct_domega, in_axes=(None, 0))(
-                    self.__swct_data,
-                    self.__latest_r_up_carts,
+                grad_omega_dr_up = jnp.stack(
+                    [evaluate_swct_domega(self.__swct_data, self.__latest_r_up_carts[i]) for i in range(self.__num_walkers)]
                 )
 
-                grad_omega_dr_dn = vmap(evaluate_swct_domega, in_axes=(None, 0))(
-                    self.__swct_data,
-                    self.__latest_r_dn_carts,
+                grad_omega_dr_dn = jnp.stack(
+                    [evaluate_swct_domega(self.__swct_data, self.__latest_r_dn_carts[i]) for i in range(self.__num_walkers)]
                 )
 
                 self.__stored_grad_omega_r_up.append(grad_omega_dr_up)
                 self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn)
 
             if self.__comput_log_WF_param_deriv:
-                grad_ln_Psi_h = vmap(grad(evaluate_ln_wavefunction, argnums=0), in_axes=(None, 0, 0))(
-                    self.__hamiltonian_data.wavefunction_data,
-                    self.__latest_r_up_carts,
-                    self.__latest_r_dn_carts,
-                )
+                _grad_ln_psi_p_fn = grad(evaluate_ln_wavefunction, argnums=0)
+                _grad_ln_psi_p_results = [
+                    _grad_ln_psi_p_fn(
+                        self.__hamiltonian_data.wavefunction_data,
+                        self.__latest_r_up_carts[i],
+                        self.__latest_r_dn_carts[i],
+                    )
+                    for i in range(self.__num_walkers)
+                ]
+                grad_ln_Psi_h = jax.tree_util.tree_map(lambda *arrs: jnp.stack(arrs), *_grad_ln_psi_p_results)
 
                 param_grads = self.__hamiltonian_data.wavefunction_data.collect_param_grads(grad_ln_Psi_h)
                 flat_param_grads = self.__hamiltonian_data.wavefunction_data.flatten_param_grads(
@@ -3692,19 +3697,21 @@ class _MCMC_debug:
                         grad_val.block_until_ready()
 
             if self.__comput_e_L_param_deriv:
-                grad_e_L_wf = vmap(
-                    grad(
-                        lambda wf, r_up, r_dn, RT: compute_local_energy(
-                            self.__hamiltonian_data.replace(wavefunction_data=wf), r_up, r_dn, RT
-                        )
-                    ),
-                    in_axes=(None, 0, 0, 0),
-                )(
-                    self.__hamiltonian_data.wavefunction_data,
-                    self.__latest_r_up_carts,
-                    self.__latest_r_dn_carts,
-                    RTs,
+                _e_L_wf_grad_fn = grad(
+                    lambda wf, r_up, r_dn, RT: compute_local_energy(
+                        self.__hamiltonian_data.replace(wavefunction_data=wf), r_up, r_dn, RT
+                    )
                 )
+                _e_L_wf_results = [
+                    _e_L_wf_grad_fn(
+                        self.__hamiltonian_data.wavefunction_data,
+                        self.__latest_r_up_carts[i],
+                        self.__latest_r_dn_carts[i],
+                        RTs[i],
+                    )
+                    for i in range(self.__num_walkers)
+                ]
+                grad_e_L_wf = jax.tree_util.tree_map(lambda *arrs: jnp.stack(arrs), *_e_L_wf_results)
                 flat_grads = self.__hamiltonian_data.wavefunction_data.flatten_param_grads(
                     self.__hamiltonian_data.wavefunction_data.collect_param_grads(grad_e_L_wf),
                     self.__num_walkers,

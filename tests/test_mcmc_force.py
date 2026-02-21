@@ -61,8 +61,8 @@ jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
 
-def test_vmc_force_with_SWCT_ecp():
-    """Test VMC force with SWCT."""
+def test_mcmc_force_with_SWCT_ecp():
+    """Test MCMC force with SWCT."""
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,
@@ -143,8 +143,8 @@ def test_vmc_force_with_SWCT_ecp():
     )
 
 
-def test_vmc_force_with_SWCT_ae():
-    """Test VMC force with SWCT."""
+def test_mcmc_force_with_SWCT_ae():
+    """Test MCMC force with SWCT."""
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,
