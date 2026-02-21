@@ -334,17 +334,78 @@ class MCMC:
         )
 
     def __prepare_param_grad_objects(self):
+        """Return (Wavefunction_data, Hamiltonian_data) for variational parameter gradient computations.
+
+        wavefunction_data: per-block masking applied; used for dln_Psi/dc via
+            grad(evaluate_ln_wavefunction, argnums=0).
+        hamiltonian_data: nuclear positions (R) fully stop-gradiented, with active
+            variational parameters injected; used for de_L/dc via
+            grad(compute_local_energy, argnums=0).
+
+        Two approaches exist for de_L/dc (see also the de_L/dc block in run()):
+
+        [Exact] (current implementation)
+          hamiltonian_data returned here has R stop-gradiented and wf params active.
+          In run():
+            grad_e_L_h_step = vmap(grad(compute_local_energy, argnums=0), ...)(
+                hamiltonian_for_param_grads, r_up, r_dn, RTs)
+            param_grads = wf_data.collect_param_grads(grad_e_L_h_step.wavefunction_data)
+          Gradient flows through the full compute_local_energy including the ECP
+          non-local wf-ratio Psi(r')/Psi(r), so d(V_ECP_NL)/dc is included.
+
+        [Approx, faster] Zero out d(V_ECP_NL)/dc by splitting T and V.
+          To switch to this approach:
+            1. In THIS method, comment out the h_sg_R line below and change the
+               return to: return masked_wavefunction, self.__hamiltonian_data
+               (hamiltonian_for_param_grads is not used as a grad argument in [Approx])
+            2. In run(), replace the de_L/dc call with:
+                 def _e_L_approx(wf_data, r_up, r_dn, RTs):
+                     h_sg = jax.lax.stop_gradient(hamiltonian_for_param_grads)
+                     T = compute_kinetic_energy(wavefunction_data=wf_data, r_up_carts=r_up, r_dn_carts=r_dn)
+                     V = compute_coulomb_potential(
+                         coulomb_potential_data=h_sg.coulomb_potential_data,
+                         r_up_carts=r_up, r_dn_carts=r_dn, RT=RTs,
+                         wavefunction_data=jax.lax.stop_gradient(wf_data),
+                     )
+                     return T + V
+                 grad_e_L_h_step = vmap(grad(_e_L_approx, argnums=0), ...)(
+                     wavefunction_for_param_grads, r_up, r_dn, RTs)
+                 param_grads = wf_data.collect_param_grads(grad_e_L_h_step)
+          Kinetic energy T still contributes de_L/dc, which is the dominant term.
+        """
         wavefunction_data = self.__hamiltonian_data.wavefunction_data
-        if not (self.__comput_log_WF_param_deriv or self.__comput_e_L_param_deriv or self.__comput_position_deriv):
+        if not (self.__comput_log_WF_param_deriv or self.__comput_e_L_param_deriv):
             return wavefunction_data, self.__hamiltonian_data
 
-        if not self.__needs_param_grad_mask():
+        masked_wavefunction = (
+            self.__wavefunction_data_for_param_grads() if self.__needs_param_grad_mask() else wavefunction_data
+        )
+        # [Exact] stop_gradient on R so that grad(compute_local_energy, argnums=0)
+        # yields de_L/dc only, not de_L/dR.
+        # Comment out this line (and update the return) when switching to [Approx].
+        h_sg_R = jax.lax.stop_gradient(self.__hamiltonian_data).replace(wavefunction_data=masked_wavefunction)
+        return masked_wavefunction, h_sg_R
+
+    def __prepare_position_grad_objects(self):
+        """Return (Wavefunction_data, Hamiltonian_data) suitable for de_L/dR and dln_Psi/dR computations.
+
+        All variational parameters are masked with stop_gradient so that JAX
+        does not backpropagate through them (e.g. ECP wf-ratio tables).
+        AO position leaves (orb_data.structure_data.positions) still carry
+        gradients (DiffMask coords=True), so dT/dR and dV_ECP/dR are correct.
+        """
+        wavefunction_data = self.__hamiltonian_data.wavefunction_data
+        if wavefunction_data is None or not self.__comput_position_deriv:
             return wavefunction_data, self.__hamiltonian_data
 
-        masked_wavefunction = self.__wavefunction_data_for_param_grads()
-        if masked_wavefunction is wavefunction_data:
-            return wavefunction_data, self.__hamiltonian_data
-
+        # Always mask ALL variational parameters for position gradient computation.
+        masked_wavefunction = wavefunction_data.with_param_grad_mask(
+            opt_J1_param=False,
+            opt_J2_param=False,
+            opt_J3_param=False,
+            opt_JNN_param=False,
+            opt_lambda_param=False,
+        )
         masked_hamiltonian = self.__hamiltonian_data.replace(wavefunction_data=masked_wavefunction)
         return masked_wavefunction, masked_hamiltonian
 
@@ -894,28 +955,7 @@ class MCMC:
         logger.info("  Compilation is in progress...")
 
         wavefunction_for_param_grads, hamiltonian_for_param_grads = self.__prepare_param_grad_objects()
-
-        # Helper for de_L/dc: nuclear positions are stop-gradiented so only wavefunction
-        # parameters receive gradients when argnums=0 is used.
-        #
-        # [Exact but slow] Gradient flows through full compute_local_energy (including ECP wf ratios Ψ(r')/Ψ(r)):
-        # def _e_L_wf_only(wf_data, r_up, r_dn, RTs):
-        #     h = jax.lax.stop_gradient(hamiltonian_for_param_grads).replace(wavefunction_data=wf_data)
-        #     return compute_local_energy(h, r_up, r_dn, RTs)
-        #
-        # [Approx.] stop_gradient on wf_data inside ECP ratio evaluation: d(V_ECP_NL)/dc ~ 0
-        # Gradient still flows through kinetic energy T, which is the dominant contribution.
-        def _e_L_wf_only(wf_data, r_up, r_dn, RTs):
-            h_sg = jax.lax.stop_gradient(hamiltonian_for_param_grads)
-            T = compute_kinetic_energy(wavefunction_data=wf_data, r_up_carts=r_up, r_dn_carts=r_dn)
-            V = compute_coulomb_potential(
-                coulomb_potential_data=h_sg.coulomb_potential_data,
-                r_up_carts=r_up,
-                r_dn_carts=r_dn,
-                RT=RTs,
-                wavefunction_data=jax.lax.stop_gradient(wf_data),
-            )
-            return T + V
+        wavefunction_for_position_grads, hamiltonian_for_position_grads = self.__prepare_position_grad_objects()
 
         geminal, geminal_inv, _, _ = _geminal_inv_batched(
             self.__hamiltonian_data.wavefunction_data.geminal_data,
@@ -973,15 +1013,21 @@ class MCMC:
             self.__latest_r_dn_carts,
         )
         if self.__comput_position_deriv:
-            _, _, _ = vmap(grad(compute_local_energy, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0))(
-                hamiltonian_for_param_grads,
+            _, _ = vmap(grad(compute_local_energy, argnums=(1, 2)), in_axes=(None, 0, 0, 0))(
+                hamiltonian_for_position_grads,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+                RTs,
+            )
+            _ = vmap(grad(compute_local_energy, argnums=0), in_axes=(None, 0, 0, 0))(
+                hamiltonian_for_position_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
                 RTs,
             )
 
             _, _, _ = vmap(grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0))(
-                wavefunction_for_param_grads,
+                wavefunction_for_position_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
@@ -1019,8 +1065,8 @@ class MCMC:
             )
 
         if self.__comput_e_L_param_deriv:
-            _ = vmap(grad(_e_L_wf_only, argnums=0), in_axes=(None, 0, 0, 0))(
-                wavefunction_for_param_grads,
+            _ = vmap(grad(compute_local_energy, argnums=0), in_axes=(None, 0, 0, 0))(
+                hamiltonian_for_param_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
                 RTs,
@@ -1146,16 +1192,32 @@ class MCMC:
             if self.__comput_position_deriv:
                 start = time.perf_counter()
                 logger.debug("    Evaluating de_L/dR and de_L/dr ...")
-                grad_e_L_h_step, grad_e_L_r_up_step, grad_e_L_r_dn_step = vmap(
-                    grad(compute_local_energy, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0)
+
+                # de_L/dr_up, de_L/dr_dn: differentiate w.r.t. r_up and r_dn only.
+                # Using argnums=(1,2) avoids backpropagating through wavefunction
+                # parameters inside the ECP non-local wf-ratio, which is the dominant
+                # cost when hamiltonian (argnums=0) is included.
+                grad_e_L_r_up_step, grad_e_L_r_dn_step = vmap(
+                    grad(compute_local_energy, argnums=(1, 2)), in_axes=(None, 0, 0, 0)
                 )(
-                    hamiltonian_for_param_grads,
+                    hamiltonian_for_position_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                     RTs,
                 )
                 grad_e_L_r_up_step.block_until_ready()
                 grad_e_L_r_dn_step.block_until_ready()
+
+                # de_L/dR: differentiate w.r.t. hamiltonian (argnums=0) only.
+                # hamiltonian_for_position_grads already has all variational params masked
+                # (stop_gradient), while AO position leaves still carry gradients so
+                # dT/dR and dV_ECP/dR are computed correctly.
+                grad_e_L_h_step = vmap(grad(compute_local_energy, argnums=0), in_axes=(None, 0, 0, 0))(
+                    hamiltonian_for_position_grads,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                    RTs,
+                )
                 end = time.perf_counter()
                 timer_de_L_dR_dr += end - start
 
@@ -1169,7 +1231,7 @@ class MCMC:
                 grad_ln_Psi_h_step, grad_ln_Psi_r_up_step, grad_ln_Psi_r_dn_step = vmap(
                     grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
                 )(
-                    wavefunction_for_param_grads,
+                    wavefunction_for_position_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
@@ -1231,13 +1293,15 @@ class MCMC:
             if self.__comput_e_L_param_deriv:
                 start = time.perf_counter()
                 logger.debug("    Evaluating de_L/dc ...")
-                grad_e_L_wf_step = vmap(grad(_e_L_wf_only, argnums=0), in_axes=(None, 0, 0, 0))(
-                    wavefunction_for_param_grads,
+                # [Exact] approach — see __prepare_param_grad_objects() for details and
+                # [Approx, faster] alternative that zeroes out d(V_ECP_NL)/dc.
+                grad_e_L_h_step = vmap(grad(compute_local_energy, argnums=0), in_axes=(None, 0, 0, 0))(
+                    hamiltonian_for_param_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                     RTs,
                 )
-                param2_grads = self.__hamiltonian_data.wavefunction_data.collect_param_grads(grad_e_L_wf_step)
+                param2_grads = self.__hamiltonian_data.wavefunction_data.collect_param_grads(grad_e_L_h_step.wavefunction_data)
                 flat_param2_grads = self.__hamiltonian_data.wavefunction_data.flatten_param_grads(
                     param2_grads, self.__num_walkers
                 )
