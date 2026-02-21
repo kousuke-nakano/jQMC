@@ -18,7 +18,7 @@
 What sets **jQMC** apart:
 
 - It employs not only the standard Jatrow Slater determinant (JSD) wavefunction, but also the resonating valence bond (RVB)-type wave function, as known as Jastrow Antisymmetrized Geminal (JAGP) wavefunction, which captures correlation effects beyond the conventional JSD wave function used in many other QMC codes.
-- Neural network Quantum States (NQSs) are implmented via *flax* module (*JAX* ecosystem). Curretnly, Jastrow Neural Network (JNN) is implemented.
+- Neural network Quantum States (NQSs) are implmented via `flax` module (a neural network library in the `JAX` ecosystem). Curretnly, Jastrow Neural Network (JNN) is implemented.
 - It features a state-of-the-art optimization algorithm, stochastic reconfiguration, that enables stable optimization of both the amplitudes and nodal surfaces of many-body wave functions at the variational level.
 - It implements the LRDMC method, providing a numerically stable approach to diffusion Monte Carlo calculations.
 - The use of adjoint algorithmic differentiation in `JAX` allows for efficient differentiation of many-body wave functions, facilitating the computation of atomic forces analytically.
