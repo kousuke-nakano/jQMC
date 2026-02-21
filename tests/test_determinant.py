@@ -171,6 +171,8 @@ def test_convert_from_MOs_to_AOs_closed_shell():
         r_dn_carts=r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(geminal_mo_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(geminal_mo_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(geminal_mo_debug, geminal_mo_jax, decimal=decimal_debug_vs_production)
 
     geminal_mo = geminal_mo_jax
@@ -210,11 +212,15 @@ def test_convert_from_MOs_to_AOs_closed_shell():
         r_dn_carts=r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(geminal_ao_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(geminal_ao_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(geminal_ao_debug, geminal_ao_jax, decimal=decimal_debug_vs_production)
 
     geminal_ao = geminal_ao_jax
 
     # check if geminals with AO and MO representations are consistent
+    assert not np.any(np.isnan(np.asarray(geminal_ao))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(geminal_mo))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(geminal_ao, geminal_mo, decimal=decimal_debug_vs_production)
 
     det_geminal_mo_debug = _compute_det_geminal_all_elements_debug(
@@ -229,6 +235,8 @@ def test_convert_from_MOs_to_AOs_closed_shell():
         r_dn_carts=r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(det_geminal_mo_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(det_geminal_mo_jax))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(det_geminal_mo_debug, det_geminal_mo_jax, decimal=decimal_debug_vs_production)
 
     det_geminal_mo = det_geminal_mo_jax
@@ -245,9 +253,13 @@ def test_convert_from_MOs_to_AOs_closed_shell():
         r_dn_carts=r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(det_geminal_ao_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(det_geminal_ao_jax))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(det_geminal_ao_debug, det_geminal_ao_jax, decimal=decimal_debug_vs_production)
     det_geminal_ao = det_geminal_ao_jax
 
+    assert not np.any(np.isnan(np.asarray(det_geminal_ao))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(det_geminal_mo))), "NaN detected in second argument"
     np.testing.assert_almost_equal(det_geminal_ao, det_geminal_mo, decimal=decimal_debug_vs_production)
 
     jax.clear_caches()
@@ -318,11 +330,15 @@ def test_geminal_sphe_to_cart_AOs_data():
 
     G_sph = compute_geminal_all_elements(geminal_sph, r_up_carts, r_dn_carts)
     G_cart = compute_geminal_all_elements(geminal_cart, r_up_carts, r_dn_carts)
+    assert not np.any(np.isnan(np.asarray(np.asarray(G_sph)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(G_cart)))), "NaN detected in second argument"
     np.testing.assert_allclose(np.asarray(G_sph), np.asarray(G_cart), rtol=1e-9, atol=1e-10)
 
     grads_sph = compute_grads_and_laplacian_ln_Det(geminal_sph, r_up_carts, r_dn_carts)
     grads_cart = compute_grads_and_laplacian_ln_Det(geminal_cart, r_up_carts, r_dn_carts)
     for sph, cart in zip(grads_sph, grads_cart, strict=True):
+        assert not np.any(np.isnan(np.asarray(np.asarray(sph)))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(np.asarray(cart)))), "NaN detected in second argument"
         np.testing.assert_allclose(np.asarray(sph), np.asarray(cart), rtol=1e-9, atol=1e-10)
 
     jax.clear_caches()
@@ -353,11 +369,15 @@ def test_geminal_cart_to_sphe_AOs_data():
 
     G_cart = compute_geminal_all_elements(geminal_cart, r_up_carts, r_dn_carts)
     G_sph = compute_geminal_all_elements(geminal_cart_to_sph, r_up_carts, r_dn_carts)
+    assert not np.any(np.isnan(np.asarray(np.asarray(G_cart)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(G_sph)))), "NaN detected in second argument"
     np.testing.assert_allclose(np.asarray(G_cart), np.asarray(G_sph), rtol=1e-9, atol=1e-10)
 
     grads_cart = compute_grads_and_laplacian_ln_Det(geminal_cart, r_up_carts, r_dn_carts)
     grads_sph = compute_grads_and_laplacian_ln_Det(geminal_cart_to_sph, r_up_carts, r_dn_carts)
     for cart, sph in zip(grads_cart, grads_sph, strict=True):
+        assert not np.any(np.isnan(np.asarray(np.asarray(cart)))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(np.asarray(sph)))), "NaN detected in second argument"
         np.testing.assert_allclose(np.asarray(cart), np.asarray(sph), rtol=1e-9, atol=1e-10)
 
     jax.clear_caches()
@@ -390,11 +410,15 @@ def test_geminal_sphe_to_cart_MOs_data():
 
     G_sph = compute_geminal_all_elements(geminal_sph, r_up_carts, r_dn_carts)
     G_cart = compute_geminal_all_elements(geminal_cart, r_up_carts, r_dn_carts)
+    assert not np.any(np.isnan(np.asarray(np.asarray(G_sph)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(G_cart)))), "NaN detected in second argument"
     np.testing.assert_allclose(np.asarray(G_sph), np.asarray(G_cart), rtol=1e-9, atol=1e-10)
 
     grads_sph = compute_grads_and_laplacian_ln_Det(geminal_sph, r_up_carts, r_dn_carts)
     grads_cart = compute_grads_and_laplacian_ln_Det(geminal_cart, r_up_carts, r_dn_carts)
     for sph, cart in zip(grads_sph, grads_cart, strict=True):
+        assert not np.any(np.isnan(np.asarray(np.asarray(sph)))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(np.asarray(cart)))), "NaN detected in second argument"
         np.testing.assert_allclose(np.asarray(sph), np.asarray(cart), rtol=1e-9, atol=1e-10)
 
     jax.clear_caches()
@@ -429,11 +453,15 @@ def test_geminal_cart_to_sphe_MOs_data():
 
     G_cart = compute_geminal_all_elements(geminal_cart, r_up_carts, r_dn_carts)
     G_sph = compute_geminal_all_elements(geminal_cart_to_sph, r_up_carts, r_dn_carts)
+    assert not np.any(np.isnan(np.asarray(np.asarray(G_cart)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(G_sph)))), "NaN detected in second argument"
     np.testing.assert_allclose(np.asarray(G_cart), np.asarray(G_sph), rtol=1e-9, atol=1e-10)
 
     grads_cart = compute_grads_and_laplacian_ln_Det(geminal_cart, r_up_carts, r_dn_carts)
     grads_sph = compute_grads_and_laplacian_ln_Det(geminal_cart_to_sph, r_up_carts, r_dn_carts)
     for cart, sph in zip(grads_cart, grads_sph, strict=True):
+        assert not np.any(np.isnan(np.asarray(np.asarray(cart)))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(np.asarray(sph)))), "NaN detected in second argument"
         np.testing.assert_allclose(np.asarray(cart), np.asarray(sph), rtol=1e-9, atol=1e-10)
 
     jax.clear_caches()
@@ -483,6 +511,8 @@ def test_convert_from_AOs_to_MOs_full_projection_closed_shell():
     geminal_mo = Geminal_data.convert_from_AOs_to_MOs(geminal_ao, num_eigenvectors="all")
     geminal_ao_back = Geminal_data.convert_from_MOs_to_AOs(geminal_mo)
 
+    assert not np.any(np.isnan(np.asarray(np.asarray(geminal_ao_back.lambda_matrix)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(geminal_ao.lambda_matrix)))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         np.asarray(geminal_ao_back.lambda_matrix),
         np.asarray(geminal_ao.lambda_matrix),
@@ -515,6 +545,8 @@ def test_convert_from_AOs_to_MOs_full_projection_open_shell():
     geminal_mo = Geminal_data.convert_from_AOs_to_MOs(geminal_ao, num_eigenvectors="all")
     geminal_ao_back = Geminal_data.convert_from_MOs_to_AOs(geminal_mo)
 
+    assert not np.any(np.isnan(np.asarray(np.asarray(geminal_ao_back.lambda_matrix)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(geminal_ao.lambda_matrix)))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         np.asarray(geminal_ao_back.lambda_matrix),
         np.asarray(geminal_ao.lambda_matrix),
@@ -545,12 +577,6 @@ def test_convert_from_AOs_to_MOs_truncated_mode_closed_shell():
 
     geminal_mo = Geminal_data.convert_from_AOs_to_MOs(geminal_ao, num_eigenvectors=3)
     paired_block, _ = np.hsplit(np.asarray(geminal_mo.lambda_matrix), [geminal_mo.orb_num_dn])
-    paired_diag = np.diag(paired_block)
-
-    print("\n[debug] closed-shell truncated lambda_matrix (L):")
-    print(np.asarray(geminal_mo.lambda_matrix))
-    print("[debug] closed-shell truncated paired diag(L):")
-    print(paired_diag)
 
     geminal_mo_small = Geminal_data.convert_from_AOs_to_MOs(geminal_ao, num_eigenvectors=2)
     assert geminal_mo_small.orb_num_up == 2
@@ -657,6 +683,8 @@ def test_apply_ao_projected_paired_update_and_reproject_fixed_num_dn():
 
     assert actual.orb_num_up == num_electron_dn
     assert actual.orb_num_dn == num_electron_dn
+    assert not np.any(np.isnan(np.asarray(np.asarray(actual.lambda_matrix)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(expected.lambda_matrix)))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         np.asarray(actual.lambda_matrix),
         np.asarray(expected.lambda_matrix),
@@ -763,9 +791,17 @@ def test_grads_and_laplacian_fast_update():
         r_dn_carts=r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(grad_up_fast))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(grad_up_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(grad_up_fast, grad_up_debug, decimal=decimal_debug_vs_production)
+    assert not np.any(np.isnan(np.asarray(grad_dn_fast))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(grad_dn_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(grad_dn_fast, grad_dn_debug, decimal=decimal_debug_vs_production)
+    assert not np.any(np.isnan(np.asarray(lap_up_fast))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(lap_up_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(lap_up_fast, lap_up_debug, decimal=decimal_debug_vs_production)
+    assert not np.any(np.isnan(np.asarray(lap_dn_fast))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(lap_dn_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(lap_dn_fast, lap_dn_debug, decimal=decimal_debug_vs_production)
 
 
@@ -851,6 +887,8 @@ def test_comparing_AS_regularization():
 
     R_AS_jax = compute_AS_regularization_factor(geminal_data=geminal_mo_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
 
+    assert not np.any(np.isnan(np.asarray(R_AS_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(R_AS_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(R_AS_debug, R_AS_jax, decimal=decimal_debug_vs_production)
 
     jax.clear_caches()
@@ -959,6 +997,8 @@ def test_one_row_or_one_column_update():
 
     # --- Numerical consistency asserts (no shape checks) ---
     # up-one-row must equal the i-th row of the full geminal
+    assert not np.any(np.isnan(np.asarray(np.asarray(geminal_mo_up_one_row).ravel()))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(geminal_mo[i_up, :])))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         np.asarray(geminal_mo_up_one_row).ravel(),
         np.asarray(geminal_mo[i_up, :]),
@@ -966,6 +1006,8 @@ def test_one_row_or_one_column_update():
     )
 
     # dn-one-column must equal the j-th *paired* column of the full geminal
+    assert not np.any(np.isnan(np.asarray(np.asarray(geminal_mo_dn_one_column).ravel()))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(geminal_mo[:, j_dn])))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         np.asarray(geminal_mo_dn_one_column).ravel(),
         np.asarray(geminal_mo[:, j_dn]),
@@ -1086,22 +1128,30 @@ def test_numerial_and_auto_grads_and_laplacians_ln_Det():
         r_dn_carts=r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_numerical)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_auto)))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         np.asarray(grad_ln_D_up_numerical),
         np.asarray(grad_ln_D_up_auto),
         decimal=decimal_auto_vs_numerical_deriv,
     )
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_dn_numerical)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         np.asarray(grad_ln_D_dn_numerical),
         np.asarray(grad_ln_D_dn_auto),
         decimal=decimal_auto_vs_numerical_deriv,
     )
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_up_numerical)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_ln_D_up_numerical),
         np.asarray(lap_ln_D_up_auto),
         rtol=rtol_auto_vs_numerical_deriv,
         atol=atol_auto_vs_numerical_deriv,
     )
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_dn_numerical)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_ln_D_dn_numerical),
         np.asarray(lap_ln_D_dn_auto),
@@ -1209,21 +1259,29 @@ def test_analytic_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
         r_dn_carts=r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_analytic)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_auto)))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         np.asarray(grad_ln_D_up_analytic),
         np.asarray(grad_ln_D_up_auto),
         decimal=decimal_auto_vs_analytic_deriv,
     )
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_dn_analytic)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         np.asarray(grad_ln_D_dn_analytic),
         np.asarray(grad_ln_D_dn_auto),
         decimal=decimal_auto_vs_analytic_deriv,
     )
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_up_analytic)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_up_auto)))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         np.asarray(lap_ln_D_up_analytic),
         np.asarray(lap_ln_D_up_auto),
         decimal=decimal_auto_vs_analytic_deriv,
     )
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_dn_analytic)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         np.asarray(lap_ln_D_dn_analytic),
         np.asarray(lap_ln_D_dn_auto),
@@ -1317,9 +1375,13 @@ def test_ratio_determinant_rank1_update(pattern: str):
         new_r_dn_carts_arr=new_r_dn_carts_arr,
     )
 
+    assert not np.any(np.isnan(np.asarray(np.asarray(ratio_debug)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(ratio_rank1)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(ratio_debug), np.asarray(ratio_rank1), decimal=decimal_debug_vs_production)
 
     if pattern == "none_moved":
+        assert not np.any(np.isnan(np.asarray(np.asarray(ratio_debug)))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(np.ones_like(np.asarray(ratio_debug))))), "NaN detected in second argument"
         np.testing.assert_allclose(np.asarray(ratio_debug), np.ones_like(np.asarray(ratio_debug)), rtol=1e-12, atol=1e-12)
 
     jax.clear_caches()

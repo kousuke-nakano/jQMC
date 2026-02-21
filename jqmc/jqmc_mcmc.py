@@ -52,6 +52,7 @@ from jax.scipy.linalg import lu_factor, lu_solve
 from mpi4py import MPI
 
 from .atomic_orbital import compute_overlap_matrix
+from .coulomb_potential import compute_coulomb_potential
 from .determinant import (
     Geminal_data,
     compute_AS_regularization_factor,
@@ -74,7 +75,7 @@ from .setting import (
 )
 from .structure import _find_nearest_index_jnp
 from .swct import SWCT_data, evaluate_swct_domega, evaluate_swct_omega
-from .wavefunction import evaluate_ln_wavefunction
+from .wavefunction import compute_kinetic_energy, evaluate_ln_wavefunction
 
 # create new logger level for development
 DEVEL_LEVEL = 5
@@ -896,9 +897,25 @@ class MCMC:
 
         # Helper for de_L/dc: nuclear positions are stop-gradiented so only wavefunction
         # parameters receive gradients when argnums=0 is used.
+        #
+        # [Exact but slow] Gradient flows through full compute_local_energy (including ECP wf ratios Ψ(r')/Ψ(r)):
+        # def _e_L_wf_only(wf_data, r_up, r_dn, RTs):
+        #     h = jax.lax.stop_gradient(hamiltonian_for_param_grads).replace(wavefunction_data=wf_data)
+        #     return compute_local_energy(h, r_up, r_dn, RTs)
+        #
+        # [Approx.] stop_gradient on wf_data inside ECP ratio evaluation: d(V_ECP_NL)/dc ~ 0
+        # Gradient still flows through kinetic energy T, which is the dominant contribution.
         def _e_L_wf_only(wf_data, r_up, r_dn, RTs):
-            h = jax.lax.stop_gradient(hamiltonian_for_param_grads).replace(wavefunction_data=wf_data)
-            return compute_local_energy(h, r_up, r_dn, RTs)
+            h_sg = jax.lax.stop_gradient(hamiltonian_for_param_grads)
+            T = compute_kinetic_energy(wavefunction_data=wf_data, r_up_carts=r_up, r_dn_carts=r_dn)
+            V = compute_coulomb_potential(
+                coulomb_potential_data=h_sg.coulomb_potential_data,
+                r_up_carts=r_up,
+                r_dn_carts=r_dn,
+                RT=RTs,
+                wavefunction_data=jax.lax.stop_gradient(wf_data),
+            )
+            return T + V
 
         geminal, geminal_inv, _, _ = _geminal_inv_batched(
             self.__hamiltonian_data.wavefunction_data.geminal_data,
@@ -3142,6 +3159,8 @@ class MCMC:
 class _MCMC_debug:
     """MCMC with multiple walker class.
 
+    This is for debugging purpose, to check the correctness of the MCMC implementation and the derivatives.
+
     MCMC class. Runing MCMC with multiple walkers. The independent 'num_walkers' MCMCs are
     vectrized via the jax-vmap function.
 
@@ -3982,8 +4001,8 @@ class _MCMC_debug:
         The energy along the aSR step  alpha -> alpha + gamma * g  is
         approximated as
 
-            E(alpha + gamma*g)  =  (H0 + 2*gamma*H1 + gamma^2*H2)
-                                   --------------------------------
+            E(alpha + gamma*g)  =    (H0 + 2*gamma*H1 + gamma^2*H2)
+                                    --------------------------------
                                           1 + gamma^2 * S2
 
         where g = S^{-1} f is the natural gradient and:
@@ -4009,7 +4028,7 @@ class _MCMC_debug:
 
         Args:
             g: Natural gradient vector S^{-1}f, shape (K,) or (L,) if
-               chosen_param_index is used.
+                chosen_param_index is used.
             blocks: Ordered variational blocks (same ordering as g).
             num_mcmc_warmup_steps: Samples to discard as warmup.
             chosen_param_index: Optional subset of flattened indices.
@@ -4069,8 +4088,6 @@ class _MCMC_debug:
             O_matrix = O_matrix[:, chosen_param_index]
             dE_matrix = dE_matrix[:, chosen_param_index]
             g = g[chosen_param_index]
-
-        K = O_matrix.shape[1]  # total number of variational parameters
 
         # ── Step 4: Weighted averages ─────────────────────────────────────────
         W = float(np.sum(w))  # total weight

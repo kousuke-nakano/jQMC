@@ -61,6 +61,8 @@ def test_reciprocal_lattice_dot_2pi():
         for j in range(3):
             dot = np.dot(cell[i], recip[j])
             expected = 2.0 * np.pi if i == j else 0.0
+            assert not np.any(np.isnan(np.asarray(dot))), "NaN detected in first argument"
+            assert not np.any(np.isnan(np.asarray(expected))), "NaN detected in second argument"
             np.testing.assert_allclose(dot, expected, rtol=0.0, atol=10 ** (-decimal_debug_vs_production))
 
 
@@ -69,6 +71,8 @@ def test_np_jnp_consistency_non_pbc():
     structure = _make_non_pbc_structure()
     r_cart = np.array([0.2, 0.0, 0.0])
 
+    assert not np.any(np.isnan(np.asarray(structure._positions_cart_np))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(structure._positions_cart_jnp)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         structure._positions_cart_np,
         np.asarray(structure._positions_cart_jnp),
@@ -87,6 +91,8 @@ def test_np_jnp_consistency_non_pbc():
     for i_atom in range(structure.natom):
         rel_np = _get_min_dist_rel_R_cart_np(structure, r_cart, i_atom)
         rel_jnp = np.asarray(_get_min_dist_rel_R_cart_jnp(structure, r_cart, i_atom))
+        assert not np.any(np.isnan(np.asarray(rel_np))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(rel_jnp))), "NaN detected in second argument"
         np.testing.assert_allclose(rel_np, rel_jnp, rtol=0.0, atol=10 ** (-decimal_debug_vs_production))
 
 
@@ -106,12 +112,16 @@ def test_pbc_minimum_image_and_nearest():
     rel_atom0 = _get_min_dist_rel_R_cart_np(structure, r_cart, 0)
     rel_atom1 = _get_min_dist_rel_R_cart_np(structure, r_cart, 1)
 
+    assert not np.any(np.isnan(np.asarray(rel_atom0))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.array([0.9, 0.0, 0.0])))), "NaN detected in second argument"
     np.testing.assert_allclose(
         rel_atom0,
         np.array([0.9, 0.0, 0.0]),
         rtol=0.0,
         atol=10 ** (-decimal_debug_vs_production),
     )
+    assert not np.any(np.isnan(np.asarray(rel_atom1))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.array([-0.1, 0.0, 0.0])))), "NaN detected in second argument"
     np.testing.assert_allclose(
         rel_atom1,
         np.array([-0.1, 0.0, 0.0]),
@@ -121,7 +131,11 @@ def test_pbc_minimum_image_and_nearest():
 
     rel_atom0_jnp = np.asarray(_get_min_dist_rel_R_cart_jnp(structure, r_cart, 0))
     rel_atom1_jnp = np.asarray(_get_min_dist_rel_R_cart_jnp(structure, r_cart, 1))
+    assert not np.any(np.isnan(np.asarray(rel_atom0_jnp))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(rel_atom0))), "NaN detected in second argument"
     np.testing.assert_allclose(rel_atom0_jnp, rel_atom0, rtol=0.0, atol=10 ** (-decimal_debug_vs_production))
+    assert not np.any(np.isnan(np.asarray(rel_atom1_jnp))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(rel_atom1))), "NaN detected in second argument"
     np.testing.assert_allclose(rel_atom1_jnp, rel_atom1, rtol=0.0, atol=10 ** (-decimal_debug_vs_production))
 
 
@@ -144,4 +158,6 @@ def test_find_nearest_index_matches_min_dist_jnp(use_pbc):
         diffs = diffs_frac @ cell
     dist_all = np.linalg.norm(diffs, axis=1)
 
+    assert not np.any(np.isnan(np.asarray(dist_idx))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.min(dist_all)))), "NaN detected in second argument"
     np.testing.assert_allclose(dist_idx, np.min(dist_all), rtol=0.0, atol=10 ** (-decimal_debug_vs_production))

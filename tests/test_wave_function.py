@@ -119,6 +119,8 @@ def test_kinetic_energy_analytic_and_numerical():
 
     K_debug = _compute_kinetic_energy_debug(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
     K_jax = compute_kinetic_energy(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+    assert not np.any(np.isnan(np.asarray(np.asarray(K_debug)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(K_jax)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(K_debug),
         np.asarray(K_jax),
@@ -166,6 +168,8 @@ def test_kinetic_energy_analytic_and_auto():
         r_dn_carts=jnp.asarray(r_dn_carts),
     )
 
+    assert not np.any(np.isnan(np.asarray(K_analytic))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(K_auto))), "NaN detected in second argument"
     np.testing.assert_almost_equal(K_analytic, K_auto, decimal=decimal_auto_vs_analytic_deriv)
 
 
@@ -221,9 +225,15 @@ def test_debug_and_auto_kinetic_energy_all_elements():
         wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp
     )
 
+    assert not np.any(np.isnan(np.asarray(K_elements_up_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(K_elements_up_auto))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(K_elements_up_debug, K_elements_up_auto, decimal=decimal_auto_vs_numerical_deriv)
+    assert not np.any(np.isnan(np.asarray(K_elements_dn_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(K_elements_dn_auto))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(K_elements_dn_debug, K_elements_dn_auto, decimal=decimal_auto_vs_numerical_deriv)
 
+    assert not np.any(np.isnan(np.asarray(np.asarray(K_elements_up_debug)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(K_elements_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(K_elements_up_debug),
         np.asarray(K_elements_up_auto),
@@ -231,6 +241,8 @@ def test_debug_and_auto_kinetic_energy_all_elements():
         atol=atol_auto_vs_numerical_deriv,
     )
 
+    assert not np.any(np.isnan(np.asarray(np.asarray(K_elements_dn_debug)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(K_elements_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(K_elements_dn_debug),
         np.asarray(K_elements_dn_auto),
@@ -292,7 +304,11 @@ def test_auto_and_analytic_kinetic_energy_all_elements():
         wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp
     )
 
+    assert not np.any(np.isnan(np.asarray(K_elements_up_auto))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(K_elements_up_analytic))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(K_elements_up_auto, K_elements_up_analytic, decimal=decimal_auto_vs_analytic_deriv)
+    assert not np.any(np.isnan(np.asarray(K_elements_dn_auto))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(K_elements_dn_analytic))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(K_elements_dn_auto, K_elements_dn_analytic, decimal=decimal_auto_vs_analytic_deriv)
 
 
@@ -354,7 +370,11 @@ def test_fast_update_kinetic_energy_all_elements():
         geminal_inverse=A_inv,
     )
 
+    assert not np.any(np.isnan(np.asarray(ke_up_fast))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(ke_up_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(ke_up_fast, ke_up_debug, decimal=decimal_debug_vs_production)
+    assert not np.any(np.isnan(np.asarray(ke_dn_fast))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(ke_dn_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(ke_dn_fast, ke_dn_debug, decimal=decimal_debug_vs_production)
 
 
@@ -441,29 +461,41 @@ def test_debug_and_jax_discretized_kinetic_energy():
         RT=RT,
     )
 
+    assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_up_carts_jax))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_up_carts_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         mesh_kinetic_part_r_up_carts_jax,
         mesh_kinetic_part_r_up_carts_debug,
         decimal=decimal_debug_vs_production,
     )
+    assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_dn_carts_jax))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_dn_carts_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         mesh_kinetic_part_r_dn_carts_jax,
         mesh_kinetic_part_r_dn_carts_debug,
         decimal=decimal_debug_vs_production,
     )
+    assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_up_carts_jax_fast_update))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_up_carts_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         mesh_kinetic_part_r_up_carts_jax_fast_update,
         mesh_kinetic_part_r_up_carts_debug,
         decimal=decimal_debug_vs_production,
     )
+    assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_dn_carts_jax_fast_update))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_dn_carts_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         mesh_kinetic_part_r_dn_carts_jax_fast_update,
         mesh_kinetic_part_r_dn_carts_debug,
         decimal=decimal_debug_vs_production,
     )
+    assert not np.any(np.isnan(np.asarray(elements_kinetic_part_jax))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(elements_kinetic_part_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         elements_kinetic_part_jax, elements_kinetic_part_debug, decimal=decimal_debug_vs_production
     )
+    assert not np.any(np.isnan(np.asarray(elements_kinetic_part_jax_fast_update))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(elements_kinetic_part_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         elements_kinetic_part_jax_fast_update,
         elements_kinetic_part_debug,

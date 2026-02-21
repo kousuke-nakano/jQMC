@@ -163,16 +163,22 @@ def test_jqmc_gfmc_t_with_ecp(trexio_file, with_nn_jastrow, with_3b_jastrow, non
         # w_L
         w_L_debug = gfmc_debug.w_L
         w_L_jax = gfmc_jax.w_L
+        assert not np.any(np.isnan(np.asarray(w_L_debug))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(w_L_jax))), "NaN detected in second argument"
         np.testing.assert_array_almost_equal(w_L_debug, w_L_jax, decimal=decimal_debug_vs_production)
 
         # e_L
         e_L_debug = gfmc_debug.e_L
         e_L_jax = gfmc_jax.e_L
+        assert not np.any(np.isnan(np.asarray(e_L_debug))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(e_L_jax))), "NaN detected in second argument"
         np.testing.assert_array_almost_equal(e_L_debug, e_L_jax, decimal=decimal_debug_vs_production)
 
         # e_L2
         e_L2_debug = gfmc_debug.e_L2
         e_L2_jax = gfmc_jax.e_L2
+        assert not np.any(np.isnan(np.asarray(e_L2_debug))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(e_L2_jax))), "NaN detected in second argument"
         np.testing.assert_array_almost_equal(e_L2_debug, e_L2_jax, decimal=decimal_debug_vs_production)
 
     # E
@@ -184,9 +190,17 @@ def test_jqmc_gfmc_t_with_ecp(trexio_file, with_nn_jastrow, with_3b_jastrow, non
         num_mcmc_warmup_steps=30,
         num_mcmc_bin_blocks=10,
     )
+    assert not np.any(np.isnan(np.asarray(E_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(E_jax))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(E_debug, E_jax, decimal=decimal_debug_vs_production)
+    assert not np.any(np.isnan(np.asarray(E_err_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(E_err_jax))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(E_err_debug, E_err_jax, decimal=decimal_debug_vs_production)
+    assert not np.any(np.isnan(np.asarray(Var_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(Var_jax))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(Var_debug, Var_jax, decimal=decimal_debug_vs_production)
+    assert not np.any(np.isnan(np.asarray(Var_err_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(Var_err_jax))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(Var_err_debug, Var_err_jax, decimal=decimal_debug_vs_production)
 
     jax.clear_caches()
@@ -274,14 +288,20 @@ def test_jqmc_gfmc_t_with_ae(trexio_file, with_nn_jastrow, with_3b_jastrow):
     if mpi_rank == 0:
         w_L_debug = gfmc_debug.w_L
         w_L_jax = gfmc_jax.w_L
+        assert not np.any(np.isnan(np.asarray(w_L_debug))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(w_L_jax))), "NaN detected in second argument"
         np.testing.assert_array_almost_equal(w_L_debug, w_L_jax, decimal=decimal_debug_vs_production)
 
         e_L_debug = gfmc_debug.e_L
         e_L_jax = gfmc_jax.e_L
+        assert not np.any(np.isnan(np.asarray(e_L_debug))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(e_L_jax))), "NaN detected in second argument"
         np.testing.assert_array_almost_equal(e_L_debug, e_L_jax, decimal=decimal_debug_vs_production)
 
         e_L2_debug = gfmc_debug.e_L2
         e_L2_jax = gfmc_jax.e_L2
+        assert not np.any(np.isnan(np.asarray(e_L2_debug))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(e_L2_jax))), "NaN detected in second argument"
         np.testing.assert_array_almost_equal(e_L2_debug, e_L2_jax, decimal=decimal_debug_vs_production)
 
     E_debug, E_err_debug, Var_debug, Var_err_debug = gfmc_debug.get_E(
@@ -292,9 +312,17 @@ def test_jqmc_gfmc_t_with_ae(trexio_file, with_nn_jastrow, with_3b_jastrow):
         num_mcmc_warmup_steps=30,
         num_mcmc_bin_blocks=10,
     )
+    assert not np.any(np.isnan(np.asarray(E_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(E_jax))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(E_debug, E_jax, decimal=decimal_debug_vs_production)
+    assert not np.any(np.isnan(np.asarray(E_err_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(E_err_jax))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(E_err_debug, E_err_jax, decimal=decimal_debug_vs_production)
+    assert not np.any(np.isnan(np.asarray(Var_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(Var_jax))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(Var_debug, Var_jax, decimal=decimal_debug_vs_production)
+    assert not np.any(np.isnan(np.asarray(Var_err_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(Var_err_jax))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(Var_err_debug, Var_err_jax, decimal=decimal_debug_vs_production)
 
     jax.clear_caches()

@@ -127,11 +127,15 @@ def test_vmc_force_with_SWCT_ecp():
     )
 
     # See [J. Chem. Phys. 156, 034101 (2022)]
+    assert not np.any(np.isnan(np.asarray(np.array(force_mean[0])))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(-1.0 * np.array(force_mean[1])))), "NaN detected in second argument"
     np.testing.assert_almost_equal(
         np.array(force_mean[0]),
         -1.0 * np.array(force_mean[1]),
         decimal=decimal_debug_vs_production,
     )
+    assert not np.any(np.isnan(np.asarray(np.array(force_std[0])))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.array(force_std[1])))), "NaN detected in second argument"
     np.testing.assert_almost_equal(
         np.array(force_std[0]),
         np.array(force_std[1]),
@@ -203,11 +207,15 @@ def test_vmc_force_with_SWCT_ae():
     )
 
     # See [J. Chem. Phys. 156, 034101 (2022)]
+    assert not np.any(np.isnan(np.asarray(np.array(force_mean[0])))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(-1.0 * np.array(force_mean[1])))), "NaN detected in second argument"
     np.testing.assert_almost_equal(
         np.array(force_mean[0]),
         -1.0 * np.array(force_mean[1]),
         decimal=decimal_debug_vs_production,
     )
+    assert not np.any(np.isnan(np.asarray(np.array(force_std[0])))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.array(force_std[1])))), "NaN detected in second argument"
     np.testing.assert_almost_equal(
         np.array(force_std[0]),
         np.array(force_std[1]),

@@ -160,6 +160,8 @@ def test_comparison_with_TurboRVB_wo_Jastrow_w_ecp():
         r_dn_carts=new_r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(vpot_bare_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_bare_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=6)
 
     vpot_ecp_debug = _compute_ecp_coulomb_potential_debug(
@@ -182,16 +184,28 @@ def test_comparison_with_TurboRVB_wo_Jastrow_w_ecp():
         RT=jnp.eye(3),
     )
 
+    assert not np.any(np.isnan(np.asarray(vpot_bare_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_bare_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=10)
+    assert not np.any(np.isnan(np.asarray(vpot_ecp_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_ecp_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_ecp_debug, vpot_ecp_jax, decimal=10)
 
     # print(f"wf_ratio={WF_ratio} Ha")
     # print(f"kinc={kinc} Ha")
     # print(f"vpot={vpot_bare_jax + vpot_ecp_jax} Ha")
 
+    assert not np.any(np.isnan(np.asarray(WF_ratio))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(WF_ratio_ref_turborvb))), "NaN detected in second argument"
     np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=6)
+    assert not np.any(np.isnan(np.asarray(kinc))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(kinc_ref_turborvb))), "NaN detected in second argument"
     np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
+    assert not np.any(np.isnan(np.asarray(vpot_bare_debug + vpot_ecp_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_ref_turborvb + vpotoff_ref_turborvb))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
+    assert not np.any(np.isnan(np.asarray(vpot_bare_jax + vpot_ecp_jax))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_ref_turborvb + vpotoff_ref_turborvb))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
 
     jax.clear_caches()
@@ -291,6 +305,8 @@ def test_comparison_with_TurboRVB_w_2b_Jastrow_w_ecp():
         r_dn_carts=new_r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(vpot_bare_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_bare_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=6)
 
     vpot_ecp_debug = _compute_ecp_coulomb_potential_debug(
@@ -313,16 +329,28 @@ def test_comparison_with_TurboRVB_w_2b_Jastrow_w_ecp():
         RT=jnp.eye(3),
     )
 
+    assert not np.any(np.isnan(np.asarray(vpot_bare_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_bare_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=10)
+    assert not np.any(np.isnan(np.asarray(vpot_ecp_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_ecp_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_ecp_debug, vpot_ecp_jax, decimal=10)
 
     # print(f"wf_ratio={WF_ratio} Ha")
     # print(f"kinc={kinc} Ha")
     # print(f"vpot={vpot_bare_jax + vpot_ecp_jax} Ha")
 
+    assert not np.any(np.isnan(np.asarray(WF_ratio))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(WF_ratio_ref_turborvb))), "NaN detected in second argument"
     np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=6)
+    assert not np.any(np.isnan(np.asarray(kinc))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(kinc_ref_turborvb))), "NaN detected in second argument"
     np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
+    assert not np.any(np.isnan(np.asarray(vpot_bare_debug + vpot_ecp_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_ref_turborvb + vpotoff_ref_turborvb))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
+    assert not np.any(np.isnan(np.asarray(vpot_bare_jax + vpot_ecp_jax))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_ref_turborvb + vpotoff_ref_turborvb))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
 
     jax.clear_caches()
@@ -419,6 +447,8 @@ def test_comparison_with_TurboRVB_w_2b_3b_Jastrow_w_ecp():
         r_dn_carts=new_r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(vpot_bare_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_bare_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=6)
 
     vpot_ecp_debug = _compute_ecp_coulomb_potential_debug(
@@ -441,16 +471,28 @@ def test_comparison_with_TurboRVB_w_2b_3b_Jastrow_w_ecp():
         RT=jnp.eye(3),
     )
 
+    assert not np.any(np.isnan(np.asarray(vpot_bare_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_bare_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=10)
+    assert not np.any(np.isnan(np.asarray(vpot_ecp_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_ecp_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_ecp_debug, vpot_ecp_jax, decimal=10)
 
     # print(f"wf_ratio={WF_ratio} Ha")
     # print(f"kinc={kinc} Ha")
     # print(f"vpot={vpot_bare_jax + vpot_ecp_jax} Ha")
 
+    assert not np.any(np.isnan(np.asarray(WF_ratio))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(WF_ratio_ref_turborvb))), "NaN detected in second argument"
     np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=6)
+    assert not np.any(np.isnan(np.asarray(kinc))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(kinc_ref_turborvb))), "NaN detected in second argument"
     np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
+    assert not np.any(np.isnan(np.asarray(vpot_bare_debug + vpot_ecp_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_ref_turborvb + vpotoff_ref_turborvb))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
+    assert not np.any(np.isnan(np.asarray(vpot_bare_jax + vpot_ecp_jax))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_ref_turborvb + vpotoff_ref_turborvb))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
 
     jax.clear_caches()
@@ -547,6 +589,8 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp():
         r_dn_carts=new_r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(vpot_bare_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_bare_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=6)
 
     vpot_ecp_debug = _compute_ecp_coulomb_potential_debug(
@@ -569,16 +613,28 @@ def test_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp():
         RT=jnp.eye(3),
     )
 
+    assert not np.any(np.isnan(np.asarray(vpot_bare_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_bare_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=10)
+    assert not np.any(np.isnan(np.asarray(vpot_ecp_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_ecp_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_ecp_debug, vpot_ecp_jax, decimal=10)
 
     # print(f"wf_ratio={WF_ratio} Ha")
     # print(f"kinc={kinc} Ha")
     # print(f"vpot={vpot_bare_jax + vpot_ecp_jax} Ha")
 
+    assert not np.any(np.isnan(np.asarray(WF_ratio))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(WF_ratio_ref_turborvb))), "NaN detected in second argument"
     np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=6)
+    assert not np.any(np.isnan(np.asarray(kinc))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(kinc_ref_turborvb))), "NaN detected in second argument"
     np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
+    assert not np.any(np.isnan(np.asarray(vpot_bare_debug + vpot_ecp_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_ref_turborvb + vpotoff_ref_turborvb))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
+    assert not np.any(np.isnan(np.asarray(vpot_bare_jax + vpot_ecp_jax))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_ref_turborvb + vpotoff_ref_turborvb))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
 
     jax.clear_caches()
@@ -761,6 +817,8 @@ def test_full_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp():
         r_dn_carts=new_r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(vpot_bare_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_bare_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=6)
 
     vpot_ecp_debug = _compute_ecp_coulomb_potential_debug(
@@ -820,7 +878,11 @@ def test_full_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp():
 
     final_ratio = WF_ratio * T_ratio
 
+    assert not np.any(np.isnan(np.asarray(vpot_bare_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_bare_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_bare_debug, vpot_bare_jax, decimal=10)
+    assert not np.any(np.isnan(np.asarray(vpot_ecp_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_ecp_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_ecp_debug, vpot_ecp_jax, decimal=10)
 
     # print(f"fa={fa}")
@@ -839,18 +901,42 @@ def test_full_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp():
     # print(f"F_old={F_old}")
     # print(f"F_new={F_new}")
 
+    assert not np.any(np.isnan(np.asarray(fa_turbo))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(fa))), "NaN detected in second argument"
     np.testing.assert_almost_equal(fa_turbo, fa, decimal=6)
+    assert not np.any(np.isnan(np.asarray(fb_turbo))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(fb))), "NaN detected in second argument"
     np.testing.assert_almost_equal(fb_turbo, fb, decimal=6)
+    assert not np.any(np.isnan(np.asarray(T_ratio_turbo))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(T_ratio))), "NaN detected in second argument"
     np.testing.assert_almost_equal(T_ratio_turbo, T_ratio, decimal=6)
+    assert not np.any(np.isnan(np.asarray(WF_ratio))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(WF_ratio_ref_turborvb))), "NaN detected in second argument"
     np.testing.assert_almost_equal(WF_ratio, WF_ratio_ref_turborvb, decimal=6)
+    assert not np.any(np.isnan(np.asarray(final_ratio_turbo))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(final_ratio))), "NaN detected in second argument"
     np.testing.assert_almost_equal(final_ratio_turbo, final_ratio, decimal=6)
+    assert not np.any(np.isnan(np.asarray(kinc))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(kinc_ref_turborvb))), "NaN detected in second argument"
     np.testing.assert_almost_equal(kinc, kinc_ref_turborvb, decimal=6)
+    assert not np.any(np.isnan(np.asarray(vpot_bare_debug + vpot_ecp_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_ref_turborvb + vpotoff_ref_turborvb))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_bare_debug + vpot_ecp_debug, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
+    assert not np.any(np.isnan(np.asarray(vpot_bare_jax + vpot_ecp_jax))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_ref_turborvb + vpotoff_ref_turborvb))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_bare_jax + vpot_ecp_jax, vpot_ref_turborvb + vpotoff_ref_turborvb, decimal=5)
 
+    assert not np.any(np.isnan(np.asarray(geminal_old_turborvb))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(geminal_old))), "NaN detected in second argument"
     np.testing.assert_almost_equal(geminal_old_turborvb, geminal_old, decimal=6)
+    assert not np.any(np.isnan(np.asarray(geminal_new_turborvb))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(geminal_new))), "NaN detected in second argument"
     np.testing.assert_almost_equal(geminal_new_turborvb, geminal_new, decimal=6)
+    assert not np.any(np.isnan(np.asarray(S_old_turborvb))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(S_old))), "NaN detected in second argument"
     np.testing.assert_almost_equal(S_old_turborvb, S_old, decimal=6)
+    assert not np.any(np.isnan(np.asarray(S_new_turborvb))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(S_new))), "NaN detected in second argument"
     np.testing.assert_almost_equal(S_new_turborvb, S_new, decimal=6)
 
     # np.testing.assert_almost_equal(geminal_old_inv_turborvb, geminal_old_inv, decimal=4)
@@ -858,8 +944,14 @@ def test_full_comparison_with_TurboRVB_w_2b_1b3b_Jastrow_w_ecp():
     # np.testing.assert_almost_equal(F_old_turborvb, F_old, decimal=4)
     # np.testing.assert_almost_equal(F_new_turborvb, F_new, decimal=4)
 
+    assert not np.any(np.isnan(np.asarray(R_AS_turborvb_old))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(R_AS_old))), "NaN detected in second argument"
     np.testing.assert_almost_equal(R_AS_turborvb_old, R_AS_old, decimal=6)
+    assert not np.any(np.isnan(np.asarray(R_AS_turborvb_new))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(R_AS_new))), "NaN detected in second argument"
     np.testing.assert_almost_equal(R_AS_turborvb_new, R_AS_new, decimal=6)
+    assert not np.any(np.isnan(np.asarray(reweight_turborvb))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(reweight))), "NaN detected in second argument"
     np.testing.assert_almost_equal(reweight_turborvb, reweight, decimal=6)
 
     jax.clear_caches()

@@ -151,6 +151,8 @@ def test_debug_and_jax_bare_coulomb():
 
     # print(f"vpot_bare_jax = {vpot_bare_jax}")
     # print(f"vpot_bare_debug = {vpot_bare_debug}")
+    assert not np.any(np.isnan(np.asarray(vpot_bare_jax))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_bare_debug))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_bare_jax, vpot_bare_debug, decimal=decimal_debug_vs_production)
 
 
@@ -203,6 +205,8 @@ def test_debug_and_jax_ecp_local():
         r_dn_carts=r_dn_carts_np,
     )
 
+    assert not np.any(np.isnan(np.asarray(vpot_ecp_local_full_NN_jax))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_ecp_local_full_NN_debug))), "NaN detected in second argument"
     np.testing.assert_almost_equal(
         vpot_ecp_local_full_NN_jax, vpot_ecp_local_full_NN_debug, decimal=decimal_debug_vs_production
     )
@@ -300,6 +304,8 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
         RT=R_np.T,
     )
 
+    assert not np.any(np.isnan(np.asarray(sum_V_nonlocal_full_NN_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(sum_V_nonlocal_full_NN_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(
         sum_V_nonlocal_full_NN_debug, sum_V_nonlocal_full_NN_jax, decimal=decimal_debug_vs_production
     )
@@ -319,14 +325,20 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
     V_ecp_non_local_max_full_NN_jax = V_nonlocal_full_NN_jax[np.argmax(V_nonlocal_full_NN_jax)]
     V_ecp_non_local_max_full_NN_debug = V_nonlocal_full_NN_debug[np.argmax(V_nonlocal_full_NN_debug)]
 
+    assert not np.any(np.isnan(np.asarray(V_ecp_non_local_max_full_NN_jax))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(V_ecp_non_local_max_full_NN_debug))), "NaN detected in second argument"
     np.testing.assert_almost_equal(
         V_ecp_non_local_max_full_NN_jax, V_ecp_non_local_max_full_NN_debug, decimal=decimal_debug_vs_production
     )
+    assert not np.any(np.isnan(np.asarray(mesh_non_local_r_up_carts_max_full_NN_jax))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(mesh_non_local_r_up_carts_max_full_NN_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         mesh_non_local_r_up_carts_max_full_NN_jax,
         mesh_non_local_r_up_carts_max_full_NN_debug,
         decimal=decimal_debug_vs_production,
     )
+    assert not np.any(np.isnan(np.asarray(mesh_non_local_r_dn_carts_max_full_NN_jax))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(mesh_non_local_r_dn_carts_max_full_NN_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         mesh_non_local_r_dn_carts_max_full_NN_jax,
         mesh_non_local_r_dn_carts_max_full_NN_debug,
@@ -365,11 +377,15 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
     )
 
     # debug, full-NN vs check-NN
+    assert not np.any(np.isnan(np.asarray(sum_V_nonlocal_full_NN_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(sum_V_nonlocal_NN_check_debug))), "NaN detected in second argument"
     np.testing.assert_almost_equal(
         sum_V_nonlocal_full_NN_debug, sum_V_nonlocal_NN_check_debug, decimal=decimal_debug_vs_production
     )
 
     # jax, full-NN vs check-NN
+    assert not np.any(np.isnan(np.asarray(sum_V_nonlocal_full_NN_jax))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(sum_V_nonlocal_NN_check_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(sum_V_nonlocal_full_NN_jax, sum_V_nonlocal_NN_check_jax, decimal=decimal_debug_vs_production)
 
     mesh_non_local_r_up_carts_max_NN_check_jax = mesh_non_local_ecp_part_r_up_carts_NN_check_jax[
@@ -388,16 +404,22 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
     V_ecp_non_local_max_NN_check_debug = V_nonlocal_NN_check_debug[np.argmax(V_nonlocal_NN_check_debug)]
 
     # debug, full-NN vs check-NN
+    assert not np.any(np.isnan(np.asarray(V_ecp_non_local_max_full_NN_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(V_ecp_non_local_max_NN_check_debug))), "NaN detected in second argument"
     np.testing.assert_almost_equal(
         V_ecp_non_local_max_full_NN_debug,
         V_ecp_non_local_max_NN_check_debug,
         decimal=decimal_debug_vs_production,
     )
+    assert not np.any(np.isnan(np.asarray(mesh_non_local_r_up_carts_max_full_NN_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(mesh_non_local_r_up_carts_max_NN_check_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         mesh_non_local_r_up_carts_max_full_NN_debug,
         mesh_non_local_r_up_carts_max_NN_check_debug,
         decimal=decimal_debug_vs_production,
     )
+    assert not np.any(np.isnan(np.asarray(mesh_non_local_r_dn_carts_max_full_NN_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(mesh_non_local_r_dn_carts_max_NN_check_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         mesh_non_local_r_dn_carts_max_full_NN_debug,
         mesh_non_local_r_dn_carts_max_NN_check_debug,
@@ -405,16 +427,22 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
     )
 
     # jax, full-NN vs check-NN
+    assert not np.any(np.isnan(np.asarray(V_ecp_non_local_max_full_NN_jax))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(V_ecp_non_local_max_NN_check_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(
         V_ecp_non_local_max_full_NN_jax,
         V_ecp_non_local_max_NN_check_jax,
         decimal=decimal_debug_vs_production,
     )
+    assert not np.any(np.isnan(np.asarray(mesh_non_local_r_up_carts_max_full_NN_jax))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(mesh_non_local_r_up_carts_max_NN_check_jax))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         mesh_non_local_r_up_carts_max_full_NN_jax,
         mesh_non_local_r_up_carts_max_NN_check_jax,
         decimal=decimal_debug_vs_production,
     )
+    assert not np.any(np.isnan(np.asarray(mesh_non_local_r_dn_carts_max_full_NN_jax))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(mesh_non_local_r_dn_carts_max_NN_check_jax))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         mesh_non_local_r_dn_carts_max_full_NN_jax,
         mesh_non_local_r_dn_carts_max_NN_check_jax,
@@ -517,6 +545,8 @@ def test_debug_and_jax_ecp_non_local_partial_NN(Nv, alpha, beta, gamma):
             RT=R_np.T,
         )
 
+        assert not np.any(np.isnan(np.asarray(sum_V_nonlocal_NN_debug))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(sum_V_nonlocal_NN_jax))), "NaN detected in second argument"
         np.testing.assert_almost_equal(sum_V_nonlocal_NN_debug, sum_V_nonlocal_NN_jax, decimal=decimal_debug_vs_production)
 
         mesh_non_local_r_up_carts_max_NN_jax = mesh_non_local_ecp_part_r_up_carts_NN_jax[np.argmax(V_nonlocal_NN_jax)]
@@ -526,14 +556,20 @@ def test_debug_and_jax_ecp_non_local_partial_NN(Nv, alpha, beta, gamma):
         V_ecp_non_local_max_NN_jax = V_nonlocal_NN_jax[np.argmax(V_nonlocal_NN_jax)]
         V_ecp_non_local_max_NN_debug = V_nonlocal_NN_debug[np.argmax(V_nonlocal_NN_debug)]
 
+        assert not np.any(np.isnan(np.asarray(V_ecp_non_local_max_NN_jax))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(V_ecp_non_local_max_NN_debug))), "NaN detected in second argument"
         np.testing.assert_almost_equal(
             V_ecp_non_local_max_NN_jax, V_ecp_non_local_max_NN_debug, decimal=decimal_debug_vs_production
         )
+        assert not np.any(np.isnan(np.asarray(mesh_non_local_r_up_carts_max_NN_jax))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(mesh_non_local_r_up_carts_max_NN_debug))), "NaN detected in second argument"
         np.testing.assert_array_almost_equal(
             mesh_non_local_r_up_carts_max_NN_jax,
             mesh_non_local_r_up_carts_max_NN_debug,
             decimal=decimal_debug_vs_production,
         )
+        assert not np.any(np.isnan(np.asarray(mesh_non_local_r_dn_carts_max_NN_jax))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(mesh_non_local_r_dn_carts_max_NN_debug))), "NaN detected in second argument"
         np.testing.assert_array_almost_equal(
             mesh_non_local_r_dn_carts_max_NN_jax,
             mesh_non_local_r_dn_carts_max_NN_debug,
@@ -631,11 +667,19 @@ def test_fastupdate_ecp_non_local_partial_NN():
             flag_determinant_only=False,
         )
 
+        assert not np.any(np.isnan(np.asarray(np.asarray(sum_V_fast)))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(np.asarray(sum_V_ref)))), "NaN detected in second argument"
         np.testing.assert_almost_equal(np.asarray(sum_V_fast), np.asarray(sum_V_ref), decimal=decimal_debug_vs_production)
+        assert not np.any(np.isnan(np.asarray(np.asarray(V_fast)))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(np.asarray(V_ref)))), "NaN detected in second argument"
         np.testing.assert_almost_equal(np.asarray(V_fast), np.asarray(V_ref), decimal=decimal_debug_vs_production)
+        assert not np.any(np.isnan(np.asarray(np.asarray(mesh_up_fast)))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(np.asarray(mesh_up_ref)))), "NaN detected in second argument"
         np.testing.assert_array_almost_equal(
             np.asarray(mesh_up_fast), np.asarray(mesh_up_ref), decimal=decimal_debug_vs_production
         )
+        assert not np.any(np.isnan(np.asarray(np.asarray(mesh_dn_fast)))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(np.asarray(mesh_dn_ref)))), "NaN detected in second argument"
         np.testing.assert_array_almost_equal(
             np.asarray(mesh_dn_fast), np.asarray(mesh_dn_ref), decimal=decimal_debug_vs_production
         )
@@ -689,7 +733,11 @@ def test_debug_and_jax_bare_el_ion_elements():
         r_dn_carts=r_dn_carts_jnp,
     )
 
+    assert not np.any(np.isnan(np.asarray(interactions_R_r_up_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(interactions_R_r_up_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(interactions_R_r_up_debug, interactions_R_r_up_jax, decimal=decimal_debug_vs_production)
+    assert not np.any(np.isnan(np.asarray(interactions_R_r_dn_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(interactions_R_r_dn_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(interactions_R_r_dn_debug, interactions_R_r_dn_jax, decimal=decimal_debug_vs_production)
 
 
@@ -747,7 +795,11 @@ def test_debug_and_jax_discretized_bare_el_ion_elements():
         alat=alat,
     )
 
+    assert not np.any(np.isnan(np.asarray(interactions_R_r_up_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(interactions_R_r_up_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(interactions_R_r_up_debug, interactions_R_r_up_jax, decimal=decimal_debug_vs_production)
+    assert not np.any(np.isnan(np.asarray(interactions_R_r_dn_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(interactions_R_r_dn_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(interactions_R_r_dn_debug, interactions_R_r_dn_jax, decimal=decimal_debug_vs_production)
 
 
@@ -809,6 +861,8 @@ def test_debug_and_jax_ecp_total():
 
     # print(f"vpot_ecp_jax = {vpot_ecp_jax}")
     # print(f"vpot_ecp_debug = {vpot_ecp_debug}")
+    assert not np.any(np.isnan(np.asarray(vpot_ecp_jax))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(vpot_ecp_debug))), "NaN detected in second argument"
     np.testing.assert_almost_equal(vpot_ecp_jax, vpot_ecp_debug, decimal=10)
 """
 
