@@ -8,6 +8,7 @@
 ![tag](https://img.shields.io/github/v/tag/kousuke-nakano/jQMC)
 ![fork](https://img.shields.io/github/forks/kousuke-nakano/jQMC?style=social)
 ![stars](https://img.shields.io/github/stars/kousuke-nakano/jQMC?style=social)
+![short-pytest](https://github.com/kousuke-nakano/jQMC/actions/workflows/jqmc-run-short-pytest.yml/badge.svg)
 ![full-pytest](https://github.com/kousuke-nakano/jQMC/actions/workflows/jqmc-run-full-pytest.yml/badge.svg)
 ![codecov](https://codecov.io/github/kousuke-nakano/jQMC/graph/badge.svg?token=H0Z7M86C1E)
 ![DL](https://img.shields.io/pypi/dm/jqmc)
@@ -17,11 +18,12 @@
 What sets **jQMC** apart:
 
 - It employs not only the standard Jatrow Slater determinant (JSD) wavefunction, but also the resonating valence bond (RVB)-type wave function, as known as Jastrow Antisymmetrized Geminal (JAGP) wavefunction, which captures correlation effects beyond the conventional JSD wave function used in many other QMC codes.
+- Neural network Quantum States (NQSs) are implmented via *flax* module (*JAX* ecosystem). Curretnly, Jastrow Neural Network (JNN) is implemented.
 - It features a state-of-the-art optimization algorithm, stochastic reconfiguration, that enables stable optimization of both the amplitudes and nodal surfaces of many-body wave functions at the variational level.
 - It implements the LRDMC method, providing a numerically stable approach to diffusion Monte Carlo calculations.
 - The use of adjoint algorithmic differentiation in `JAX` allows for efficient differentiation of many-body wave functions, facilitating the computation of atomic forces analytically.
 - Written in `Python`, **jQMC** is designed to be user-friendly for executing simulations and easily extensible for developers implementing and testing new QMC methods.
-- By leveraging `JAX` just-in-time (`jit`) compilation and vectorized mapping (`vmap`) functionalities, the code achieves high-performance computations **especially on GPUs and TPUs** while remaining portable across CPUs, GPUs, and TPUs.
+- By leveraging `JAX` just-in-time (`jit`) compilation and vectorized mapping (`vmap`) functionalities, the code achieves high-performance computations **especially on GPUs** while remaining portable across CPUs, GPUs, and TPUs.
 - MPI support enables the execution of large-scale computations on HPC facilities.
 - To minimize bugs, the code is written in a loosely coupled manner and includes comprehensive unit tests and regression tests (managed by `pytest`).
 
@@ -29,8 +31,7 @@ This combination of features makes **jQMC** a versatile and powerful tool for bo
 
 
 ## Known issues
-- On CPUs, **`jQMC` is significantly slower than other QMC packages written in compiled languages (e.g., C++ or Fortran) although all the implemented functions are `jit`-compiled and `vmap`-vectorized by `JAX`. Please use GPUs with a large number of walkers to achieve comparable speed.
-- Atomic force calculations with **solid (sperical) harmonics GTOs** are much slower than energy and energy-optimization calculations due to the very slow compilations of dlnPsi/dR and de_L/dR. This is because `grad`, `jvp`, and `vjp` are slow for these terms for some reason. A more detailed analysis will be needed. Please use **cartesian GTOs** to do those calculations
+- On CPUs, **`jQMC` is slower than other QMC packages written in compiled languages (e.g., C++ or Fortran). Please use **GPUs** with a large number of walkers to achieve comparable speed.
 - Periodic boundary condition calculations are not supoorted yet. It will be implemented in the future as `JAX` supports `complex128`. Work in progress.
 
 
