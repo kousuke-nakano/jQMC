@@ -65,6 +65,8 @@ from jqmc.determinant import (  # noqa: E402
     compute_geminal_up_one_row_elements,
     compute_grads_and_laplacian_ln_Det,
     compute_grads_and_laplacian_ln_Det_fast,
+    compute_ln_det_geminal_all_elements,
+    compute_ln_det_geminal_all_elements_fast,
 )
 from jqmc.molecular_orbital import MOs_data  # noqa: E402
 from jqmc.setting import (  # noqa: E402
@@ -1383,6 +1385,75 @@ def test_ratio_determinant_rank1_update(pattern: str):
         assert not np.any(np.isnan(np.asarray(np.asarray(ratio_debug)))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(np.ones_like(np.asarray(ratio_debug))))), "NaN detected in second argument"
         np.testing.assert_allclose(np.asarray(ratio_debug), np.ones_like(np.asarray(ratio_debug)), rtol=1e-12, atol=1e-12)
+
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5"])
+def test_compute_ln_det_geminal_all_elements_fast_forward(trexio_file):
+    """Forward value of compute_ln_det_geminal_all_elements_fast must match the standard variant."""
+    _, _, _, _, geminal_data, _ = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+    rng = np.random.default_rng(0)
+    n_up = geminal_data.num_electron_up
+    n_dn = geminal_data.num_electron_dn
+
+    for _ in range(10):
+        r_up = jnp.array(rng.standard_normal((n_up, 3)) * 1.2, dtype=jnp.float64)
+        r_dn = jnp.array(rng.standard_normal((n_dn, 3)) * 1.2, dtype=jnp.float64)
+        G = compute_geminal_all_elements(geminal_data, r_up, r_dn)
+        G_inv = jnp.linalg.inv(G)
+
+        val_ref = float(compute_ln_det_geminal_all_elements(geminal_data, r_up, r_dn))
+        val_fast = float(compute_ln_det_geminal_all_elements_fast(geminal_data, r_up, r_dn, G_inv))
+
+        assert np.isfinite(val_ref), f"Reference value is not finite: {val_ref}"
+        assert np.isfinite(val_fast), f"Fast value is not finite: {val_fast}"
+        np.testing.assert_allclose(
+            val_fast,
+            val_ref,
+            atol=1e-12,
+            err_msg=f"Forward mismatch: fast={val_fast:.15f}, ref={val_ref:.15f}",
+        )
+
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5"])
+def test_compute_ln_det_geminal_all_elements_fast_backward(trexio_file):
+    """Gradient of compute_ln_det_geminal_all_elements_fast w.r.t. geminal_data must match the standard variant."""
+    _, _, _, _, geminal_data, _ = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+    rng = np.random.default_rng(1)
+    n_up = geminal_data.num_electron_up
+    n_dn = geminal_data.num_electron_dn
+
+    grad_ref_fn = jax.grad(compute_ln_det_geminal_all_elements, argnums=0)
+    grad_fast_fn = jax.grad(compute_ln_det_geminal_all_elements_fast, argnums=0)
+
+    for _ in range(10):
+        r_up = jnp.array(rng.standard_normal((n_up, 3)) * 1.2, dtype=jnp.float64)
+        r_dn = jnp.array(rng.standard_normal((n_dn, 3)) * 1.2, dtype=jnp.float64)
+        G = compute_geminal_all_elements(geminal_data, r_up, r_dn)
+        G_inv = jnp.linalg.inv(G)
+
+        grad_ref = grad_ref_fn(geminal_data, r_up, r_dn)
+        grad_fast = grad_fast_fn(geminal_data, r_up, r_dn, G_inv)
+
+        jax.tree_util.tree_map(
+            lambda a, b: np.testing.assert_allclose(
+                np.asarray(a),
+                np.asarray(b),
+                atol=1e-10,
+                err_msg="Backward mismatch in compute_ln_det_geminal_all_elements_fast",
+            ),
+            grad_ref,
+            grad_fast,
+        )
 
     jax.clear_caches()
 

@@ -65,6 +65,7 @@ from .diff_mask import DiffMask, apply_diff_mask
 from .hamiltonians import (
     Hamiltonian_data,
     compute_local_energy,
+    compute_local_energy_fast,
 )
 from .jastrow_factor import _compute_ratio_Jastrow_part_rank1_update, compute_Jastrow_part
 from .jqmc_utility import _generate_init_electron_configurations
@@ -74,7 +75,7 @@ from .setting import (
 )
 from .structure import _find_nearest_index_jnp
 from .swct import SWCT_data, evaluate_swct_domega, evaluate_swct_omega
-from .wavefunction import evaluate_ln_wavefunction
+from .wavefunction import evaluate_ln_wavefunction, evaluate_ln_wavefunction_fast
 
 # create new logger level for development
 DEVEL_LEVEL = 5
@@ -942,6 +943,7 @@ class MCMC:
         _jit_vmap_grad_e_L_h = jit(vmap(grad(compute_local_energy, argnums=0), in_axes=(None, 0, 0, 0)))
         _jit_vmap_grad_ln_psi = jit(vmap(grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0)))
         _jit_vmap_grad_ln_psi_params = jit(vmap(grad(evaluate_ln_wavefunction, argnums=0), in_axes=(None, 0, 0)))
+        _jit_vmap_grad_ln_psi_params_fast = jit(vmap(grad(evaluate_ln_wavefunction_fast, argnums=0), in_axes=(None, 0, 0, 0)))
         # static_argnums=3 propagates the num_mcmc_per_measurement static hint to
         # the outer jit so fori_loop sees a compile-time constant (same as inner @partial(jit,static_argnums=3)).
         _jit_vmap_update = jit(
@@ -952,7 +954,7 @@ class MCMC:
             vmap(_update_electron_positions_only_up_electron, in_axes=(0, 0, 0, None, None, None, None, 0, 0)),
             static_argnums=3,
         )
-        _jit_vmap_e_L = jit(vmap(compute_local_energy, in_axes=(None, 0, 0, 0)))
+        _jit_vmap_e_L_fast = jit(vmap(compute_local_energy_fast, in_axes=(None, 0, 0, 0, 0)))
         _jit_vmap_as_reg = jit(vmap(compute_AS_regularization_factor, in_axes=(None, 0, 0)))
         _jit_vmap_generate_RTs = jit(vmap(generate_RTs, in_axes=0))
         _jit_vmap_as_reg_fast = jit(vmap(compute_AS_regularization_factor_fast_update, in_axes=(0, 0)))
@@ -990,7 +992,7 @@ class MCMC:
                 geminal_inv,
                 geminal,
             )
-        _ = _jit_vmap_e_L(self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs)
+        _ = _jit_vmap_e_L_fast(self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs, geminal_inv)
         _ = _jit_vmap_as_reg(
             self.__hamiltonian_data.wavefunction_data.geminal_data,
             self.__latest_r_up_carts,
@@ -1156,7 +1158,9 @@ class MCMC:
             # Evaluate observables each MCMC cycle
             start = time.perf_counter()
             # logger.debug("    Evaluating e_L ...")
-            e_L_step = _jit_vmap_e_L(self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs)
+            e_L_step = _jit_vmap_e_L_fast(
+                self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs, geminal_inv
+            )
             e_L_step.block_until_ready()
             end = time.perf_counter()
             timer_e_L += end - start
@@ -1248,10 +1252,11 @@ class MCMC:
             if self.__comput_log_WF_param_deriv:
                 start = time.perf_counter()
                 # logger.debug("    Evaluating dln_Psi/dc ...")
-                grad_ln_Psi_h = _jit_vmap_grad_ln_psi_params(
+                grad_ln_Psi_h = _jit_vmap_grad_ln_psi_params_fast(
                     wavefunction_for_param_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
+                    geminal_inv,
                 )
                 param_grads = self.__hamiltonian_data.wavefunction_data.collect_param_grads(grad_ln_Psi_h)
                 flat_param_grads = self.__hamiltonian_data.wavefunction_data.flatten_param_grads(
@@ -1270,7 +1275,7 @@ class MCMC:
 
             if self.__comput_e_L_param_deriv:
                 start = time.perf_counter()
-                logger.debug("    Evaluating de_L/dc ...")
+                # logger.debug("    Evaluating de_L/dc ...")
                 # Gradient flows through full compute_local_energy including
                 # ECP wf-ratio Psi(r')/Psi(r), so d(V_ECP_NL)/dc is included.
                 # hamiltonian_for_param_grads has R stop-gradiented; wf params are

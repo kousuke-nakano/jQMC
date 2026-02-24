@@ -45,8 +45,11 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc.determinant import Geminal_data  # noqa: E402
-from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
+from jqmc.determinant import (
+    Geminal_data,  # noqa: E402
+    compute_geminal_all_elements,  # noqa: E402
+)
+from jqmc.hamiltonians import Hamiltonian_data, compute_local_energy, compute_local_energy_fast  # noqa: E402
 from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_data,
     Jastrow_NN_data,
@@ -185,6 +188,45 @@ def test_hamiltonian_hdf5(trexio_file, use_1b, use_2b, use_3b, use_nn, geminal_t
     # Note: Direct equality (==) on dataclasses with numpy arrays is ambiguous in boolean context.
     # We use a helper to compare leaves.
     assert_dataclasses_equal(hamiltonian_data, loaded_hamiltonian_data)
+
+
+@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5"])
+def test_compute_local_energy_fast(trexio_file):
+    """compute_local_energy_fast must equal compute_local_energy for well-conditioned G."""
+    structure_data, _, _, _, geminal_data, coulomb_potential_data = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=Wavefunction_data(geminal_data=geminal_data),
+    )
+    geminal_data = hamiltonian_data.wavefunction_data.geminal_data
+    RT = jnp.eye(3, dtype=jnp.float64)
+    rng = np.random.default_rng(42)
+    first_nucleus = np.array(hamiltonian_data.structure_data.positions[0])
+    n_up = geminal_data.num_electron_up
+    n_dn = geminal_data.num_electron_dn
+
+    for _ in range(10):
+        r_up = jnp.array(first_nucleus + rng.standard_normal((n_up, 3)) * 1.2, dtype=jnp.float64)
+        r_dn = jnp.array(first_nucleus + rng.standard_normal((n_dn, 3)) * 1.2, dtype=jnp.float64)
+
+        G = compute_geminal_all_elements(geminal_data, r_up, r_dn)
+        G_inv = jnp.linalg.inv(G)
+
+        e_ref = float(compute_local_energy(hamiltonian_data, r_up, r_dn, RT))
+        e_fast = float(compute_local_energy_fast(hamiltonian_data, r_up, r_dn, RT, G_inv))
+
+        assert np.isfinite(e_ref), f"Reference e_L is not finite: {e_ref}"
+        assert np.isfinite(e_fast), f"Fast e_L is not finite: {e_fast}"
+        np.testing.assert_allclose(
+            e_fast,
+            e_ref,
+            atol=1e-10,
+            err_msg=f"compute_local_energy_fast={e_fast:.10f} != compute_local_energy={e_ref:.10f}",
+        )
 
 
 if __name__ == "__main__":

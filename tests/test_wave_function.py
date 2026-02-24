@@ -38,6 +38,7 @@ from pathlib import Path
 
 import jax
 import numpy as np
+import pytest
 from jax import numpy as jnp
 
 project_root = str(Path(__file__).parent.parent)
@@ -73,6 +74,7 @@ from jqmc.wavefunction import (  # noqa: E402
     compute_kinetic_energy_all_elements,
     compute_kinetic_energy_all_elements_fast_update,
     evaluate_ln_wavefunction,
+    evaluate_ln_wavefunction_fast,
 )
 
 # JAX float64
@@ -501,6 +503,73 @@ def test_debug_and_jax_discretized_kinetic_energy():
         elements_kinetic_part_debug,
         decimal=decimal_debug_vs_production,
     )
+
+
+@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5"])
+def test_evaluate_ln_wavefunction_fast_forward(trexio_file):
+    """Forward value of evaluate_ln_wavefunction_fast must match evaluate_ln_wavefunction."""
+    _, _, _, _, geminal_data, _ = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+    wavefunction_data = Wavefunction_data(geminal_data=geminal_data)
+    rng = np.random.default_rng(2)
+    n_up = geminal_data.num_electron_up
+    n_dn = geminal_data.num_electron_dn
+
+    for _ in range(10):
+        r_up = jnp.array(rng.standard_normal((n_up, 3)) * 1.2, dtype=jnp.float64)
+        r_dn = jnp.array(rng.standard_normal((n_dn, 3)) * 1.2, dtype=jnp.float64)
+        G = compute_geminal_all_elements(geminal_data, r_up, r_dn)
+        G_inv = jnp.linalg.inv(G)
+
+        val_ref = float(evaluate_ln_wavefunction(wavefunction_data, r_up, r_dn))
+        val_fast = float(evaluate_ln_wavefunction_fast(wavefunction_data, r_up, r_dn, G_inv))
+
+        assert np.isfinite(val_ref), f"Reference value is not finite: {val_ref}"
+        assert np.isfinite(val_fast), f"Fast value is not finite: {val_fast}"
+        np.testing.assert_allclose(
+            val_fast,
+            val_ref,
+            atol=1e-12,
+            err_msg=f"Forward mismatch: fast={val_fast:.15f}, ref={val_ref:.15f}",
+        )
+
+
+@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5"])
+def test_evaluate_ln_wavefunction_fast_backward(trexio_file):
+    """Gradient of evaluate_ln_wavefunction_fast w.r.t. wavefunction_data must match evaluate_ln_wavefunction."""
+    _, _, _, _, geminal_data, _ = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+    wavefunction_data = Wavefunction_data(geminal_data=geminal_data)
+    rng = np.random.default_rng(3)
+    n_up = geminal_data.num_electron_up
+    n_dn = geminal_data.num_electron_dn
+
+    grad_ref_fn = jax.grad(evaluate_ln_wavefunction, argnums=0)
+    grad_fast_fn = jax.grad(evaluate_ln_wavefunction_fast, argnums=0)
+
+    for _ in range(10):
+        r_up = jnp.array(rng.standard_normal((n_up, 3)) * 1.2, dtype=jnp.float64)
+        r_dn = jnp.array(rng.standard_normal((n_dn, 3)) * 1.2, dtype=jnp.float64)
+        G = compute_geminal_all_elements(geminal_data, r_up, r_dn)
+        G_inv = jnp.linalg.inv(G)
+
+        grad_ref = grad_ref_fn(wavefunction_data, r_up, r_dn)
+        grad_fast = grad_fast_fn(wavefunction_data, r_up, r_dn, G_inv)
+
+        jax.tree_util.tree_map(
+            lambda a, b: np.testing.assert_allclose(
+                np.asarray(a),
+                np.asarray(b),
+                atol=1e-10,
+                err_msg="Backward mismatch in evaluate_ln_wavefunction_fast",
+            ),
+            grad_ref,
+            grad_fast,
+        )
 
 
 if __name__ == "__main__":

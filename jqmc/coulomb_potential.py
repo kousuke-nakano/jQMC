@@ -1456,6 +1456,14 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
             - Mesh-displaced ``r_dn_carts`` per configuration.
             - Non-local ECP contributions per configuration (flattened).
             - Scalar sum of all non-local contributions.
+
+    Warning:
+        ``A_old_inv`` **must** equal ``G(r_up_carts, r_dn_carts)^{-1}`` exactly
+        at the supplied electron positions.  Correctness is only guaranteed when
+        the inverse is maintained via **single-electron (rank-1) Sherman-Morrison
+        updates** starting from a freshly initialised LU inverse — the pattern
+        used in the MCMC loop.  Passing an inverse from a different configuration
+        silently produces incorrect non-local ECP contributions.
     """
     if Nv == 4:
         weights = jnp.array(tetrahedron_sym_mesh_Nv4.weights)
