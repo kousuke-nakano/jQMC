@@ -2041,6 +2041,67 @@ def compute_ecp_coulomb_potential(
     return V_ecp
 
 
+def compute_ecp_coulomb_potential_fast(
+    coulomb_potential_data: Coulomb_potential_data,
+    wavefunction_data: Wavefunction_data,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+    RT: jax.Array,
+    A_old_inv: jax.Array,
+    NN: int = NN_default,
+    Nv: int = Nv_default,
+) -> float:
+    """Compute total ECP energy (local + non-local) using a pre-computed geminal inverse.
+
+    This is the fast variant of :func:`compute_ecp_coulomb_potential`.  Instead of
+    performing a fresh LU factorisation of the current-configuration geminal matrix,
+    it accepts ``A_old_inv`` directly.  This avoids NaN when the current configuration
+    is near-singular—provided ``A_old_inv`` is the inverse of a nearby, well-conditioned
+    reference configuration (e.g., the previous MCMC step).
+
+    Args:
+        coulomb_potential_data (Coulomb_potential_data): ECP parameters and structure data.
+        wavefunction_data (Wavefunction_data): Wavefunction (geminal + Jastrow) used for ratios.
+        r_up_carts (jax.Array): Up-spin electron Cartesian coordinates with shape ``(N_up, 3)`` and ``float64`` dtype.
+        r_dn_carts (jax.Array): Down-spin electron Cartesian coordinates with shape ``(N_dn, 3)`` and ``float64`` dtype.
+        RT (jax.Array): Rotation matrix applied to quadrature grid points (shape ``(3, 3)``).
+        A_old_inv (jax.Array): Pre-computed inverse of the reference geminal matrix.
+        NN (int): Number of nearest nuclei to include for each electron in the non-local term.
+        Nv (int): Number of quadrature points on the sphere.
+
+    Returns:
+        float: Sum of local and non-local ECP contributions for the given geometry.
+
+    Warning:
+        ``A_old_inv`` **must** equal ``G(r_up_carts, r_dn_carts)^{-1}`` exactly at the
+        supplied electron positions.  Correctness is only guaranteed when the inverse is
+        maintained via **single-electron (rank-1) Sherman-Morrison updates** starting from
+        a freshly initialised LU inverse — the pattern used in the MCMC loop.  If multiple
+        electrons have moved simultaneously, the Sherman–Morrison rank-1 update used inside
+        :func:`compute_ecp_non_local_parts_nearest_neighbors_fast_update` becomes incorrect
+        and the non-local ratios will be silently wrong.
+    """
+    ecp_local_parts = compute_ecp_local_parts_all_pairs(
+        coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+    )
+
+    _, _, _, ecp_nonlocal_parts = compute_ecp_non_local_parts_nearest_neighbors_fast_update(
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        RT=RT,
+        A_old_inv=A_old_inv,
+        NN=NN,
+        Nv=Nv,
+        flag_determinant_only=False,
+    )
+
+    V_ecp = ecp_local_parts + ecp_nonlocal_parts
+
+    return V_ecp
+
+
 def _compute_bare_coulomb_potential_debug(
     coulomb_potential_data: Coulomb_potential_data,
     r_up_carts: npt.NDArray[np.float64],
@@ -2452,6 +2513,72 @@ def compute_coulomb_potential(
             r_dn_carts=r_dn_carts,
             wavefunction_data=wavefunction_data,
             RT=RT,
+            NN=NN,
+            Nv=Nv,
+        )
+
+    return bare_coulomb_potential + ecp_coulomb_potential
+
+
+def compute_coulomb_potential_fast(
+    coulomb_potential_data: Coulomb_potential_data,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+    RT: jax.Array,
+    A_old_inv: jax.Array,
+    NN: int = NN_default,
+    Nv: int = Nv_default,
+    wavefunction_data: Wavefunction_data = None,
+) -> float:
+    """Compute total Coulomb energy using a pre-computed geminal inverse for ECP non-local terms.
+
+    This is the fast variant of :func:`compute_coulomb_potential`.  For ECP systems the
+    non-local Ψ(r')/Ψ(r) ratios are evaluated via
+    :func:`compute_ecp_coulomb_potential_fast`, which accepts ``A_old_inv`` directly
+    and therefore avoids the fresh LU factorisation performed by the standard path.
+    This prevents NaN when the current-configuration geminal matrix is nearly singular.
+
+    Args:
+        coulomb_potential_data (Coulomb_potential_data): Structure, charges, and ECP parameters.
+        r_up_carts (jax.Array): Up-spin electron Cartesian coordinates with shape ``(N_up, 3)`` and ``float64`` dtype.
+        r_dn_carts (jax.Array): Down-spin electron Cartesian coordinates with shape ``(N_dn, 3)`` and ``float64`` dtype.
+        RT (jax.Array): Rotation matrix applied to quadrature grid points (shape ``(3, 3)``) for non-local ECP.
+        A_old_inv (jax.Array): Pre-computed inverse of the reference geminal matrix.
+        NN (int): Number of nearest nuclei to include for each electron in the non-local term.
+        Nv (int): Number of quadrature points on the sphere.
+        wavefunction_data (Wavefunction_data): Wavefunction (geminal + Jastrow) used for ECP ratios; required when ``ecp_flag`` is True.
+
+    Returns:
+        float: Sum of bare Coulomb (ion–ion, electron–ion, electron–electron) and ECP (local + non-local) energies.
+
+    Warning:
+        ``A_old_inv`` **must** equal ``G(r_up_carts, r_dn_carts)^{-1}`` exactly at the
+        supplied electron positions.  Correctness is only guaranteed when the inverse is
+        maintained via **single-electron (rank-1) Sherman-Morrison updates** starting from
+        a freshly initialised LU inverse — the pattern used in the MCMC loop.  If multiple
+        electrons have moved simultaneously the underlying Sherman–Morrison rank-1 update is
+        incorrect and non-local ratios will be silently wrong.
+    """
+    # all-electron — no ECP, no need for A_old_inv
+    if not coulomb_potential_data.ecp_flag:
+        bare_coulomb_potential = compute_bare_coulomb_potential(
+            coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+        )
+        ecp_coulomb_potential = 0
+
+    # pseudo-potential — use pre-computed inverse to avoid fresh LU
+    else:
+        bare_coulomb_potential = compute_bare_coulomb_potential(
+            coulomb_potential_data=coulomb_potential_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+        )
+
+        ecp_coulomb_potential = compute_ecp_coulomb_potential_fast(
+            coulomb_potential_data=coulomb_potential_data,
+            r_up_carts=r_up_carts,
+            r_dn_carts=r_dn_carts,
+            wavefunction_data=wavefunction_data,
+            RT=RT,
+            A_old_inv=A_old_inv,
             NN=NN,
             Nv=Nv,
         )

@@ -54,7 +54,11 @@ from jqmc.coulomb_potential import (  # noqa: E402
     _compute_ecp_non_local_parts_nearest_neighbors_debug,
     compute_bare_coulomb_potential,
     compute_bare_coulomb_potential_el_ion_element_wise,
+    compute_coulomb_potential,
+    compute_coulomb_potential_fast,
     compute_discretized_bare_coulomb_potential_el_ion_element_wise,
+    compute_ecp_coulomb_potential,
+    compute_ecp_coulomb_potential_fast,
     compute_ecp_local_parts_all_pairs,
     compute_ecp_non_local_parts_all_pairs,
     compute_ecp_non_local_parts_nearest_neighbors,
@@ -803,68 +807,140 @@ def test_debug_and_jax_discretized_bare_el_ion_elements():
     np.testing.assert_almost_equal(interactions_R_r_dn_debug, interactions_R_r_dn_jax, decimal=decimal_debug_vs_production)
 
 
-"""
-def test_debug_and_jax_ecp_total():
+@pytest.mark.parametrize("Nv", Nv_params)
+@pytest.mark.parametrize("alpha, beta, gamma", angle_params)
+def test_compute_ecp_coulomb_potential_fast(Nv, alpha, beta, gamma):
+    """compute_ecp_coulomb_potential_fast matches compute_ecp_coulomb_potential when A_old_inv is exact.
+
+    With a freshly computed LU inverse both functions must agree to full double
+    precision because the only difference is which code path owns the LU solve.
+    """
     (
-        structure_data,
-        aos_data,
-        mos_data_up,
-        mos_data_dn,
+        _structure_data,
+        _aos_data,
+        _mos_data_up,
+        _mos_data_dn,
         geminal_mo_data,
         coulomb_potential_data,
-    ) = read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True)
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"),
+        store_tuple=True,
+    )
+    rng = np.random.default_rng(0)
+    wavefunction_data = Wavefunction_data(
+        geminal_data=geminal_mo_data,
+        jastrow_data=Jastrow_data(jastrow_one_body_data=None, jastrow_two_body_data=None, jastrow_three_body_data=None),
+    )
+    r_up_carts = jnp.array(rng.uniform(-1.0, 1.0, size=(geminal_mo_data.num_electron_up, 3)))
+    r_dn_carts = jnp.array(rng.uniform(-1.0, 1.0, size=(geminal_mo_data.num_electron_dn, 3)))
+    G = compute_geminal_all_elements(geminal_data=geminal_mo_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+    A_old_inv = jnp.linalg.inv(G)
 
-    # define data
-    jastrow_data = Jastrow_data(
-        jastrow_two_body_data=None,
-        jastrow_two_body_pade_flag=False,
-        jastrow_three_body_data=None,
-        jastrow_three_body_flag=False,
-    )  # no jastrow for the time-being.
-
-    wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
-
-    old_r_up_carts = np.array(
+    cos_a, sin_a = jnp.cos(alpha), jnp.sin(alpha)
+    cos_b, sin_b = jnp.cos(beta), jnp.sin(beta)
+    cos_g, sin_g = jnp.cos(gamma), jnp.sin(gamma)
+    R = jnp.array(
         [
-            [0.64878536, -0.83275288, 0.33532629],
-            [0.55271273, 0.72310605, 0.93443775],
-            [0.66767275, 0.1206456, -0.36521208],
-            [-0.93165236, -0.0120386, 0.33003036],
+            [cos_b * cos_g, cos_g * sin_a * sin_b - cos_a * sin_g, sin_a * sin_g + cos_a * cos_g * sin_b],
+            [cos_b * sin_g, cos_a * cos_g + sin_a * sin_b * sin_g, cos_a * sin_b * sin_g - cos_g * sin_a],
+            [-sin_b, cos_b * sin_a, cos_a * cos_b],
         ]
     )
-    old_r_dn_carts = np.array(
+    RT = R.T
+
+    # Reference: compute_ecp_coulomb_potential performs its own LU internally
+    V_ref = compute_ecp_coulomb_potential(
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        RT=RT,
+        Nv=Nv,
+    )
+
+    # Fast path: accepts pre-computed A_old_inv, skips LU
+    V_fast = compute_ecp_coulomb_potential_fast(
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        RT=RT,
+        A_old_inv=A_old_inv,
+        Nv=Nv,
+    )
+
+    assert not np.any(np.isnan(np.asarray(V_ref))), "NaN detected in V_ref"
+    assert not np.any(np.isnan(np.asarray(V_fast))), "NaN detected in V_fast"
+    np.testing.assert_almost_equal(np.asarray(V_fast), np.asarray(V_ref), decimal=decimal_debug_vs_production)
+
+
+@pytest.mark.parametrize("Nv", Nv_params)
+@pytest.mark.parametrize("alpha, beta, gamma", angle_params)
+def test_compute_coulomb_potential_fast(Nv, alpha, beta, gamma):
+    """compute_coulomb_potential_fast matches compute_coulomb_potential when A_old_inv is exact.
+
+    Covers both bare-Coulomb and ECP branches.  For ECP systems the non-local
+    Psi(r')/Psi(r) ratios must be identical between the two paths because the
+    same A_old_inv (exact LU inverse) is used.
+    """
+    (
+        _structure_data,
+        _aos_data,
+        _mos_data_up,
+        _mos_data_dn,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"),
+        store_tuple=True,
+    )
+    rng = np.random.default_rng(0)
+    wavefunction_data = Wavefunction_data(
+        geminal_data=geminal_mo_data,
+        jastrow_data=Jastrow_data(jastrow_one_body_data=None, jastrow_two_body_data=None, jastrow_three_body_data=None),
+    )
+    r_up_carts = jnp.array(rng.uniform(-1.0, 1.0, size=(geminal_mo_data.num_electron_up, 3)))
+    r_dn_carts = jnp.array(rng.uniform(-1.0, 1.0, size=(geminal_mo_data.num_electron_dn, 3)))
+    G = compute_geminal_all_elements(geminal_data=geminal_mo_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+    A_old_inv = jnp.linalg.inv(G)
+
+    cos_a, sin_a = jnp.cos(alpha), jnp.sin(alpha)
+    cos_b, sin_b = jnp.cos(beta), jnp.sin(beta)
+    cos_g, sin_g = jnp.cos(gamma), jnp.sin(gamma)
+    R = jnp.array(
         [
-            [1.0347816, 1.26162081, 0.42301735],
-            [-0.57843435, 1.03651987, -0.55091542],
-            [-1.56091964, -0.58952149, -0.99268141],
-            [0.61863233, -0.14903326, 0.51962683],
+            [cos_b * cos_g, cos_g * sin_a * sin_b - cos_a * sin_g, sin_a * sin_g + cos_a * cos_g * sin_b],
+            [cos_b * sin_g, cos_a * cos_g + sin_a * sin_b * sin_g, cos_a * sin_b * sin_g - cos_g * sin_a],
+            [-sin_b, cos_b * sin_a, cos_a * cos_b],
         ]
     )
-    new_r_up_carts = old_r_up_carts.copy()
-    new_r_dn_carts = old_r_dn_carts.copy()
-    new_r_dn_carts[3] = [0.618632327645002, -0.149033260668010, 0.131889254514777]
+    RT = R.T
 
-    # ecp total
-    vpot_ecp_jax = _compute_ecp_coulomb_potential_jax(
+    # Reference: standard path, computes LU internally for ECP non-local part
+    V_ref = compute_coulomb_potential(
         coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        RT=RT,
         wavefunction_data=wavefunction_data,
+        Nv=Nv,
     )
 
-    vpot_ecp_debug = _compute_ecp_coulomb_potential_debug(
+    # Fast path: accepts caller-supplied inverse
+    V_fast = compute_coulomb_potential_fast(
         coulomb_potential_data=coulomb_potential_data,
-        r_up_carts=new_r_up_carts,
-        r_dn_carts=new_r_dn_carts,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        RT=RT,
+        A_old_inv=A_old_inv,
         wavefunction_data=wavefunction_data,
+        Nv=Nv,
     )
 
-    # print(f"vpot_ecp_jax = {vpot_ecp_jax}")
-    # print(f"vpot_ecp_debug = {vpot_ecp_debug}")
-    assert not np.any(np.isnan(np.asarray(vpot_ecp_jax))), "NaN detected in first argument"
-    assert not np.any(np.isnan(np.asarray(vpot_ecp_debug))), "NaN detected in second argument"
-    np.testing.assert_almost_equal(vpot_ecp_jax, vpot_ecp_debug, decimal=10)
-"""
+    assert not np.any(np.isnan(np.asarray(V_ref))), "NaN detected in V_ref"
+    assert not np.any(np.isnan(np.asarray(V_fast))), "NaN detected in V_fast"
+    np.testing.assert_almost_equal(np.asarray(V_fast), np.asarray(V_ref), decimal=decimal_debug_vs_production)
+
 
 if __name__ == "__main__":
     from logging import Formatter, StreamHandler, getLogger

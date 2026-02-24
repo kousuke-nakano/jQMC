@@ -49,7 +49,7 @@ from flax import struct
 from jax import jit
 from jax import typing as jnpt
 
-from .coulomb_potential import Coulomb_potential_data, compute_coulomb_potential
+from .coulomb_potential import Coulomb_potential_data, compute_coulomb_potential, compute_coulomb_potential_fast
 from .structure import Structure_data
 from .wavefunction import (
     Wavefunction_data,
@@ -259,11 +259,12 @@ def compute_local_energy_fast(
     )
     T = jnp.sum(T_up_elements) + jnp.sum(T_dn_elements)
 
-    V = compute_coulomb_potential(
+    V = compute_coulomb_potential_fast(
         coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
         RT=RT,
+        A_old_inv=geminal_inverse,
         wavefunction_data=hamiltonian_data.wavefunction_data,
     )
 
