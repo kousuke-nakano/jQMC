@@ -1938,7 +1938,9 @@ class MCMC:
           :math:`K_{k,k'} = \\langle e_L (O_k - \\bar O_k)(O_{k'} - \\bar O_{k'})\\rangle`
           and
           :math:`B_{k,k'} = \\langle (O_{k'} - \\bar O_{k'})(\\partial_k e_L - \\overline{\\partial_k e_L})\\rangle`,
-        - :math:`S_2 = g^T S g = g^T f = -2 H_1`.
+        - :math:`S_2 = g^T S g = \langle w\,(g^T\delta O)^2 \rangle_w`
+          (computed directly from samples; **not** :math:`g^T f` which overestimates by
+          :math:`\epsilon_\text{SR}\,\|g_\text{scaled}\|^2` due to SR regularisation).
 
         Args:
             g (npt.NDArray): Natural gradient vector :math:`g = S^{-1}f`, shape ``(K,)`` or ``(L,)`` if ``chosen_param_index`` is used.
@@ -2030,17 +2032,25 @@ class MCMC:
         # ---- H_1 = -1/2 * g^T f ----
         H_1 = -0.5 * float(np.dot(g, f_vec))
 
-        # ---- S_2 = g^T f = -2 H_1 ----
-        S_2 = -2.0 * H_1
-
-        # ---- K matrix contribution: g^T K g = <w * e_L * (g^T dO)^2> ----
+        # ---- S_2 = g^T S g = <w * (g^T dO)^2>_w  (exact, computed from samples) ----
+        # Do NOT use S_2 = g^T f = -2*H_1.  The SR solved (S_scaled + sr_epsilon*I) g_scaled = b,
+        # so  g^T f = g^T S g + sr_epsilon * ||g_scaled||^2.
+        # The sr_epsilon correction term overestimates S_2, making the denominator of
+        # E(gamma) = (H0 + 2*gamma*H1 + gamma^2*H2) / (1 + gamma^2*S2) grow too fast,
+        # which in turn makes the optimal gamma unrealistically small.
         gdO_flat = dO_flat @ g  # (N,)
+        gSg_local = np.dot(w_flat, gdO_flat**2)
+        gSg_arr = np.empty(1)
+        mpi_comm.Allreduce([np.array([gSg_local]), MPI.DOUBLE], [gSg_arr, MPI.DOUBLE], op=MPI.SUM)
+        S_2 = float(gSg_arr[0]) / total_w
+
+        # ---- K matrix contribution: g^T K g = <w * e_L * (g^T dO)^2>_w ----
         gKg_local = np.einsum("i,i,i->", w_flat, e_flat, gdO_flat**2)
         gKg_arr = np.empty(1)
         mpi_comm.Allreduce([np.array([gKg_local]), MPI.DOUBLE], [gKg_arr, MPI.DOUBLE], op=MPI.SUM)
         gKg = float(gKg_arr[0]) / total_w
 
-        # ---- B matrix contribution: g^T B g = <w * (g^T dO) * (g^T (dE - dE_bar))> ----
+        # ---- B matrix contribution: g^T B g = <w * (g^T dO) * (g^T (dE - dE_bar))>_w ----
         ddE_flat = dE_flat - dE_bar[np.newaxis, :]  # (N, K)
         gdE_flat = ddE_flat @ g  # (N,)
         gBg_local = np.einsum("i,i,i->", w_flat, gdO_flat, gdE_flat)
@@ -2055,7 +2065,7 @@ class MCMC:
         return H_0, H_1, H_2, S_2
 
     @staticmethod
-    def compute_asr_gamma(H_0: float, H_1: float, H_2: float) -> float:
+    def compute_asr_gamma(H_0: float, H_1: float, H_2: float, S_2: float) -> float:
         r"""Solve for the optimal gamma in the accelerated SR energy minimization.
 
         Finds :math:`\\gamma` satisfying
@@ -2064,11 +2074,21 @@ class MCMC:
 
             \\frac{\\partial E_{\\alpha+\\gamma g}}{\\partial \\gamma} = 0,
 
+        where :math:`E(\\gamma) = (H_0 + 2\\gamma H_1 + \\gamma^2 H_2) / (1 + \\gamma^2 S_2)`.
+
+        Setting the derivative to zero yields the quadratic
+
+        .. math::
+
+            -H_1 S_2 \\gamma^2 + (H_2 - H_0 S_2)\\gamma + H_1 = 0,
+
         whose solution is
 
         .. math::
 
-            \\gamma = \\frac{H_2 + 2 H_0 H_1 \\pm \\sqrt{(H_2 + 2 H_0 H_1)^2 - 8 H_1^3}}{-4 H_1^2}.
+            \\gamma = \\frac{H_0 S_2 - H_2 \\pm
+                     \\sqrt{(H_2 - H_0 S_2)^2 + 4 H_1^2 S_2}}
+                    {-2 H_1 S_2}.
 
         The positive root is returned; if neither root is positive a warning is
         logged and the root with larger absolute value is returned.
@@ -2077,19 +2097,20 @@ class MCMC:
             H_0 (float): Current energy :math:`E_{\\alpha}`.
             H_1 (float): :math:`H_1 = -\\tfrac{1}{2} g^T f`.
             H_2 (float): :math:`H_2 = g^T (B+K) g`.
+            S_2 (float): :math:`S_2 = g^T S g = \\langle w (g^T \\delta O)^2 \\rangle_w`.
 
         Returns:
             float: Optimal :math:`\\gamma`.
         """
-        A = H_2 + 2.0 * H_0 * H_1
-        discriminant = A**2 - 8.0 * H_1**3
+        B = H_2 - H_0 * S_2  # coefficient of gamma in the quadratic
+        discriminant = B**2 + 4.0 * H_1**2 * S_2
         if discriminant < 0.0:
             logger.warning(f"aSR: discriminant is negative ({discriminant:.3e}); setting to 0.")
             discriminant = 0.0
-        denom = -4.0 * H_1**2
+        denom = -2.0 * H_1 * S_2
         sqrt_d = np.sqrt(discriminant)
-        gamma_plus = (A + sqrt_d) / denom
-        gamma_minus = (A - sqrt_d) / denom
+        gamma_plus = (-B + sqrt_d) / denom
+        gamma_minus = (-B - sqrt_d) / denom
 
         logger.info(f"aSR: gamma+ = {gamma_plus:.6f}, gamma- = {gamma_minus:.6f}")
 
@@ -2839,7 +2860,7 @@ class MCMC:
                         lambda_projectors=lambda_projectors,
                         num_orb_projection=num_orb_projection,
                     )
-                    gamma = self.compute_asr_gamma(H_0, H_1, H_2)
+                    gamma = self.compute_asr_gamma(H_0, H_1, H_2, S_2)
                     logger.info(f"aSR: scaling theta_all by gamma = {gamma:.6f}.")
                     theta_all = theta_all * gamma
 
@@ -4190,15 +4211,20 @@ class _MCMC_debug:
         # ── Step 8: H_1 = -1/2 * g^T f ──────────────────────────────────────
         H_1 = -0.5 * float(np.dot(g, f_vec))
 
-        # ── Step 9: S_2 = g^T S g = g^T f = -2 H_1 ─────────────────────────
-        S_2 = float(np.dot(g, f_vec))  # equals  -2 * H_1
+        # ── Step 9: S_2 = g^T S g = <w (g^T dO)^2>_w  (exact, computed from samples) ──
+        # Do NOT use S_2 = g^T f (= -2*H_1).  The SR solved
+        # (S_scaled + sr_epsilon*I) g_scaled = b, so
+        #   g^T f = g^T S g + sr_epsilon * ||g_scaled||^2.
+        # Using g^T f overestimates S_2, makes the denominator of
+        # E(gamma) grow too fast, and drives the optimal gamma to be unrealistically small.
+        gdO = dO @ g  # (N,)  g-projected centred observable
+        S_2 = float(np.dot(w, gdO**2) / W)
 
         # ── Step 10: K matrix contribution  g^T K g ─────────────────────────
         #
         #   K_{k,k'} = 1/W sum_i  w_i * e_L_i * dO_{i,k} * dO_{i,k'}
         #
         #   g^T K g  = 1/W sum_i  w_i * e_L_i * (sum_k g_k dO_{i,k})^2
-        gdO = dO @ g  # (N,)  g-projected centred observable
         gKg = float(np.dot(w * e_L * gdO, gdO) / W)
 
         # ── Step 11: B matrix contribution  g^T B g ─────────────────────────
@@ -4216,21 +4242,21 @@ class _MCMC_debug:
         return H_0, H_1, H_2, S_2
 
     @staticmethod
-    def compute_asr_gamma(H_0: float, H_1: float, H_2: float) -> float:
+    def compute_asr_gamma(H_0: float, H_1: float, H_2: float, S_2: float) -> float:
         r"""Solve for the optimal gamma in the accelerated SR energy minimisation.
 
         Finds gamma that minimises  E(alpha + gamma*g)  by solving
 
             d/d(gamma)  (H0 + 2*gamma*H1 + gamma^2*H2) / (1 + gamma^2*S2)  =  0
 
-        with  S2 = -2*H1.  The equation rearranges to a quadratic in gamma:
+        Setting the derivative to zero gives the quadratic:
 
-            -4 H1^2 * gamma^2  -  2*(H2 + 2*H0*H1) * gamma  +  ... = 0
+            -H1*S2 * gamma^2  +  (H2 - H0*S2) * gamma  +  H1  =  0
 
-        whose roots are
+        whose roots are:
 
-            gamma = ( (H2 + 2*H0*H1)  +/-  sqrt((H2 + 2*H0*H1)^2 - 8*H1^3) )
-                    / (-4 * H1^2)
+            gamma = ( (H0*S2 - H2) +/- sqrt((H2 - H0*S2)^2 + 4*H1^2*S2) )
+                    / (-2 * H1 * S2)
 
         The positive root is returned; if neither is positive a warning is
         logged and the root with the larger absolute value is returned.
@@ -4239,21 +4265,22 @@ class _MCMC_debug:
             H_0: Current energy E_alpha.
             H_1: H1 = -1/2 g^T f.
             H_2: H2 = g^T (B + K) g.
+            S_2: S2 = g^T S g = <w (g^T dO)^2>_w.
 
         Returns:
             Optimal gamma (float).
         """
-        A = H_2 + 2.0 * H_0 * H_1  # coefficient in the numerator
-        discriminant = A**2 - 8.0 * H_1**3
+        B = H_2 - H_0 * S_2
+        discriminant = B**2 + 4.0 * H_1**2 * S_2
 
         if discriminant < 0.0:
             logger.warning(f"aSR: discriminant is negative ({discriminant:.3e}); setting to 0.")
             discriminant = 0.0
 
-        denom = -4.0 * H_1**2
+        denom = -2.0 * H_1 * S_2
         sqrt_d = np.sqrt(discriminant)
-        gamma_plus = (A + sqrt_d) / denom
-        gamma_minus = (A - sqrt_d) / denom
+        gamma_plus = (-B + sqrt_d) / denom
+        gamma_minus = (-B - sqrt_d) / denom
 
         logger.info(f"aSR: gamma+ = {gamma_plus:.6f}, gamma- = {gamma_minus:.6f}")
 
