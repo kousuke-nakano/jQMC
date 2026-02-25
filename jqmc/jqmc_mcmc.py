@@ -1217,7 +1217,7 @@ class MCMC:
                 self.__stored_grad_e_L_dR.append(grad_e_L_R)
 
                 start = time.perf_counter()
-                logger.debug("    Evaluating dln_Psi/dR and dln_Psi/dr ...")
+                logger.devel("    Evaluating dln_Psi/dR and dln_Psi/dr ...")
                 grad_ln_Psi_h_step, grad_ln_Psi_r_up_step, grad_ln_Psi_r_dn_step = _jit_vmap_grad_ln_psi(
                     wavefunction_for_position_grads,
                     self.__latest_r_up_carts,
@@ -1286,6 +1286,24 @@ class MCMC:
                 # ECP wf-ratio Psi(r')/Psi(r), so d(V_ECP_NL)/dc is included.
                 # hamiltonian_for_param_grads has R stop-gradiented; wf params are
                 # active (set up in __prepare_param_grad_objects).
+
+                # Diagnostics: check walker positions and RTs before grad call
+                _r_up = np.asarray(self.__latest_r_up_carts)
+                _r_dn = np.asarray(self.__latest_r_dn_carts)
+                _RTs = np.asarray(RTs)
+                _nan_r_up = int(np.sum(~np.isfinite(_r_up)))
+                _nan_r_dn = int(np.sum(~np.isfinite(_r_dn)))
+                _nan_RTs = int(np.sum(~np.isfinite(_RTs)))
+                logger.devel(
+                    f"[de_L/dc] r_up_carts: shape={_r_up.shape} non-finite={_nan_r_up}/{_r_up.size} "
+                    f"min={np.nanmin(_r_up):.3e} max={np.nanmax(_r_up):.3e}"
+                )
+                logger.devel(
+                    f"[de_L/dc] r_dn_carts: shape={_r_dn.shape} non-finite={_nan_r_dn}/{_r_dn.size} "
+                    f"min={np.nanmin(_r_dn):.3e} max={np.nanmax(_r_dn):.3e}"
+                )
+                logger.devel(f"[de_L/dc] RTs: shape={_RTs.shape} non-finite={_nan_RTs}/{_RTs.size}")
+
                 grad_e_L_h_step = _jit_vmap_grad_e_L_h(
                     hamiltonian_for_param_grads,
                     self.__latest_r_up_carts,
@@ -1296,6 +1314,15 @@ class MCMC:
                 flat_param2_grads = self.__hamiltonian_data.wavefunction_data.flatten_param_grads(
                     param2_grads, self.__num_walkers
                 )
+
+                # Diagnostics: check flat_param2_grads after grad call
+                for _pname, _pval in flat_param2_grads.items():
+                    _parr = np.asarray(_pval)
+                    _pnan = int(np.sum(~np.isfinite(_parr)))
+                    logger.devel(
+                        f"[de_L/dc] flat_param2_grads['{_pname}']: shape={_parr.shape} "
+                        f"non-finite={_pnan}/{_parr.size} ({_pnan / _parr.size:.1%})"
+                    )
 
                 for name, grad_val in flat_param2_grads.items():
                     if not self.__param_grad_flags.get(name, True):
@@ -1779,7 +1806,7 @@ class MCMC:
         _om = np.asarray(O_matrix_chosen)
         _om_nan = int(np.sum(~np.isfinite(_om)))
         _om_fin = _om[np.isfinite(_om)]
-        logger.debug(
+        logger.devel(
             "[dln_Psi/dc] shape=%s  NaN or Inf=%d/%d  min=%.3e  max=%.3e  mean=%.3e  std=%.3e",
             _om.shape,
             _om_nan,
@@ -1791,7 +1818,7 @@ class MCMC:
         )
         if _om_nan > 0:
             nan_param_cols = np.where(np.any(~np.isfinite(_om.reshape(-1, _om.shape[-1])), axis=0))[0]
-            logger.debug(
+            logger.devel(
                 "[dln_Psi/dc] param indices with NaN or Inf (first 30): %s",
                 nan_param_cols[:30].tolist(),
             )
@@ -2033,9 +2060,9 @@ class MCMC:
             raise RuntimeError("get_aH requires comput_e_L_param_deriv=True (for B matrix / de_L/dc).")
 
         # Diagnostic output at entry
-        logger.debug("[get_aH] ENTRY")
+        logger.devel("[get_aH] ENTRY")
         g_stats = self._safe_stats(g, "g")
-        logger.debug(
+        logger.devel(
             f"[get_aH] INPUT g: shape={g_stats['shape']} "
             f"NaN={g_stats['nan_count']}/{g.size} min={g_stats['min']:.3e} "
             f"max={g_stats['max']:.3e} mean={g_stats['mean']:.3e}"
@@ -2058,7 +2085,7 @@ class MCMC:
         for block in blocks:
             vals = np.asarray(block.values)
             val_stats = self._safe_stats(vals, f"{block.name}.values")
-            logger.debug(
+            logger.devel(
                 f"[get_aH] block.values['{block.name}']: shape={val_stats['shape']} "
                 f"NaN={val_stats['nan_count']}/{vals.size} ({val_stats['nan_frac']:.2%}) "
                 f"min={val_stats['min']:.3e} max={val_stats['max']:.3e} "
@@ -2069,10 +2096,10 @@ class MCMC:
         de_L_dc_map = self.de_L_dc
 
         # Diagnostics: check de_L_dc_map
-        logger.debug(f"[get_aH] de_L_dc_map keys: {list(de_L_dc_map.keys())}")
+        logger.devel(f"[get_aH] de_L_dc_map keys: {list(de_L_dc_map.keys())}")
         for block_name, arr in de_L_dc_map.items():
             arr_stats = self._safe_stats(arr, f"de_L_dc[{block_name}]")
-            logger.debug(
+            logger.devel(
                 f"[get_aH] de_L_dc['{block_name}']: shape={arr_stats['shape']} "
                 f"NaN={arr_stats['nan_count']}/{arr.size} ({arr_stats['nan_frac']:.2%}) "
                 f"min={arr_stats['min']:.3e} max={arr_stats['max']:.3e} "
@@ -2094,7 +2121,7 @@ class MCMC:
 
         # Diagnostics: dE_matrix
         dE_matrix_stats = self._safe_stats(dE_matrix, "dE_matrix")
-        logger.debug(
+        logger.devel(
             f"[get_aH] dE_matrix: shape={dE_matrix_stats['shape']} "
             f"NaN={dE_matrix_stats['nan_count']}/{dE_matrix.size} ({dE_matrix_stats['nan_frac']:.2%}) "
             f"min={dE_matrix_stats['min']:.3e} max={dE_matrix_stats['max']:.3e} "
@@ -2111,7 +2138,7 @@ class MCMC:
 
         # Diagnostics: dE_flat
         dE_flat_stats = self._safe_stats(dE_flat, "dE_flat")
-        logger.debug(
+        logger.devel(
             f"[get_aH] dE_flat: shape={dE_flat_stats['shape']} "
             f"NaN={dE_flat_stats['nan_count']}/{dE_flat.size} ({dE_flat_stats['nan_frac']:.2%}) "
             f"min={dE_flat_stats['min']:.3e} max={dE_flat_stats['max']:.3e} "
@@ -2126,7 +2153,7 @@ class MCMC:
 
         # Diagnostics: wdE_local (BEFORE MPI Allreduce)
         wdE_local_stats = self._safe_stats(wdE_local, "wdE_local")
-        logger.debug(
+        logger.devel(
             f"[get_aH] wdE_local (BEFORE Allreduce): shape={wdE_local_stats['shape']} "
             f"NaN={wdE_local_stats['nan_count']}/{wdE_local.size} ({wdE_local_stats['nan_frac']:.2%}) "
             f"min={wdE_local_stats['min']:.3e} max={wdE_local_stats['max']:.3e} "
@@ -2144,7 +2171,7 @@ class MCMC:
 
         # Diagnostics: wdE_global (AFTER Allreduce)
         wdE_global_stats = self._safe_stats(wdE_global, "wdE_global")
-        logger.debug(
+        logger.devel(
             f"[get_aH] wdE_global (AFTER Allreduce): shape={wdE_global_stats['shape']} "
             f"NaN={wdE_global_stats['nan_count']}/{wdE_global.size} ({wdE_global_stats['nan_frac']:.2%}) "
             f"min={wdE_global_stats['min']:.3e} max={wdE_global_stats['max']:.3e} "
@@ -2157,7 +2184,7 @@ class MCMC:
 
         # Diagnostics: dE_bar
         dE_bar_stats = self._safe_stats(dE_bar, "dE_bar")
-        logger.debug(
+        logger.devel(
             f"[get_aH] dE_bar: shape={dE_bar_stats['shape']} "
             f"NaN={dE_bar_stats['nan_count']}/{dE_bar.size} ({dE_bar_stats['nan_frac']:.2%}) "
             f"min={dE_bar_stats['min']:.3e} max={dE_bar_stats['max']:.3e} "
@@ -2641,7 +2668,7 @@ class MCMC:
             )
 
             if mpi_rank == 0:
-                logger.debug(f"shape of f = {f.shape}.")
+                logger.devel(f"shape of f = {f.shape}.")
                 logger.devel(f"f_std.shape = {f_std.shape}.")
                 tol = np.finfo(f_std.dtype).eps if np.issubdtype(f_std.dtype, np.floating) else 0.0
                 finite_mask = np.isfinite(f_std) & (np.abs(f_std) > tol)
@@ -2707,108 +2734,6 @@ class MCMC:
                 local_Ew = np.array(local_Ew)
                 local_weight_sum = np.array(local_weight_sum)
 
-                # ------------------------------------------------------------------
-                # DEBUG: SR input sanity — aggregate across ranks, print from rank 0
-                # ------------------------------------------------------------------
-                _om = np.asarray(O_matrix_local)  # (N_samples, N_params)
-                _n_params = int(_om.shape[1]) if _om.ndim == 2 else -1
-                _w_fin = w_L_local[np.isfinite(w_L_local)]
-                _e_fin = e_L_local[np.isfinite(e_L_local)]
-                _om_fin = _om[np.isfinite(_om)]
-                # Pack summable stats into one array for a single Allreduce
-                _dbg_sum_local = np.array(
-                    [
-                        float(w_L_local.size),  # 0: n_samples
-                        float(np.sum(~np.isfinite(w_L_local))),  # 1: w NaN count
-                        float(np.sum(~np.isfinite(e_L_local))),  # 2: e NaN count
-                        float(np.sum(~np.isfinite(_om))),  # 3: O_matrix NaN count
-                        float(_om.size),  # 4: O_matrix total elements
-                        float(np.sum(_w_fin)),  # 5: w finite sum
-                        float(_w_fin.size),  # 6: w finite count
-                        float(np.sum(_e_fin)),  # 7: e finite sum
-                        float(_e_fin.size),  # 8: e finite count
-                        float(np.sum(_om_fin)),  # 9: O finite sum
-                        float(_om_fin.size),  # 10: O finite count
-                        float(np.sum(w_L_local < 1e-10)),  # 11: near-zero w count
-                    ],
-                    dtype=np.float64,
-                )
-                _dbg_min_local = np.array(
-                    [
-                        float(np.min(_w_fin)) if _w_fin.size else np.inf,  # 0: w min
-                        float(np.min(_e_fin)) if _e_fin.size else np.inf,  # 1: e min
-                        float(np.min(_om_fin)) if _om_fin.size else np.inf,  # 2: O min
-                    ],
-                    dtype=np.float64,
-                )
-                _dbg_max_local = np.array(
-                    [
-                        float(np.max(_w_fin)) if _w_fin.size else -np.inf,  # 0: w max
-                        float(np.max(_e_fin)) if _e_fin.size else -np.inf,  # 1: e max
-                        float(np.max(_om_fin)) if _om_fin.size else -np.inf,  # 2: O max
-                    ],
-                    dtype=np.float64,
-                )
-                _dbg_sum_g = np.empty_like(_dbg_sum_local)
-                _dbg_min_g = np.empty_like(_dbg_min_local)
-                _dbg_max_g = np.empty_like(_dbg_max_local)
-                mpi_comm.Allreduce(_dbg_sum_local, _dbg_sum_g, op=MPI.SUM)
-                mpi_comm.Allreduce(_dbg_min_local, _dbg_min_g, op=MPI.MIN)
-                mpi_comm.Allreduce(_dbg_max_local, _dbg_max_g, op=MPI.MAX)
-                # NaN param columns: OR a boolean mask across all ranks
-                if _n_params > 0:
-                    _nan_col_mask_local = np.zeros(_n_params, dtype=np.int32)
-                    if _om.ndim == 2:
-                        _nan_col_mask_local[np.any(~np.isfinite(_om), axis=0)] = 1
-                    _nan_col_mask_g = np.zeros(_n_params, dtype=np.int32)
-                    mpi_comm.Allreduce(_nan_col_mask_local, _nan_col_mask_g, op=MPI.MAX)
-                else:
-                    _nan_col_mask_g = np.array([], dtype=np.int32)
-                if mpi_rank == 0:
-                    _g_n_samples = int(_dbg_sum_g[0])
-                    _g_w_nan = int(_dbg_sum_g[1])
-                    _g_e_nan = int(_dbg_sum_g[2])
-                    _g_om_nan = int(_dbg_sum_g[3])
-                    _g_om_size = int(_dbg_sum_g[4])
-                    _g_w_mean = _dbg_sum_g[5] / _dbg_sum_g[6] if _dbg_sum_g[6] > 0 else float("nan")
-                    _g_e_mean = _dbg_sum_g[7] / _dbg_sum_g[8] if _dbg_sum_g[8] > 0 else float("nan")
-                    _g_om_mean = _dbg_sum_g[9] / _dbg_sum_g[10] if _dbg_sum_g[10] > 0 else float("nan")
-                    _g_near_zero = int(_dbg_sum_g[11])
-                    logger.debug(
-                        "[SR inputs | global] n_samples=%d  n_params=%d",
-                        _g_n_samples,
-                        _n_params,
-                    )
-                    logger.debug(
-                        "[SR inputs | global] w_L: NaN or Inf=%d  min=%.3e  max=%.3e  mean=%.3e  near-zero(w<1e-10)=%d",
-                        _g_w_nan,
-                        _dbg_min_g[0],
-                        _dbg_max_g[0],
-                        _g_w_mean,
-                        _g_near_zero,
-                    )
-                    logger.debug(
-                        "[SR inputs | global] e_L: NaN or Inf=%d  min=%.3e  max=%.3e  mean=%.3e",
-                        _g_e_nan,
-                        _dbg_min_g[1],
-                        _dbg_max_g[1],
-                        _g_e_mean,
-                    )
-                    logger.debug(
-                        "[SR inputs | global] O_matrix: NaN or Inf=%d/%d  min=%.3e  max=%.3e  mean=%.3e",
-                        _g_om_nan,
-                        _g_om_size,
-                        _dbg_min_g[2],
-                        _dbg_max_g[2],
-                        _g_om_mean,
-                    )
-                    if _g_om_nan > 0 and _nan_col_mask_g.size > 0:
-                        _nan_param_cols = np.where(_nan_col_mask_g)[0]
-                        logger.debug(
-                            "[SR inputs | global] O_matrix NaN param-cols (first 30): %s",
-                            _nan_param_cols[:30].tolist(),
-                        )
-
                 # Aggregate across all ranks
                 total_weight = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)  # total sum of weights, shape: scalar
                 total_Ow = mpi_comm.allreduce(local_Ow, op=MPI.SUM)  # aggregated observable sums, shape: (num_param,)
@@ -2823,7 +2748,7 @@ class MCMC:
                 # ------------------------------------------------------------------
                 _ob_nan = int(np.sum(~np.isfinite(O_bar)))
                 _ob_fin = O_bar[np.isfinite(O_bar)]
-                logger.debug(
+                logger.devel(
                     "[SR averages] total_weight=%.6e  e_L_bar=%.6f  O_bar: NaN or Inf=%d/%d  min=%.3e  max=%.3e",
                     float(total_weight),
                     float(e_L_bar),
@@ -2845,13 +2770,13 @@ class MCMC:
                 )  # shape (num_mcmc * num_walker, )
 
                 # ------------------------------------------------------------------
-                # DEBUG: X_local and F_local health check
+                # DEVEL: X_local and F_local health check
                 # ------------------------------------------------------------------
                 _x_nan = int(np.sum(~np.isfinite(X_local)))
                 _f_nan = int(np.sum(~np.isfinite(F_local)))
                 _x_fin = X_local[np.isfinite(X_local)]
                 _f_fin = F_local[np.isfinite(F_local)]
-                logger.debug(
+                logger.devel(
                     "[SR X/F | rank=%d] X_local: shape=%s  NaN or Inf=%d/%d  min=%.3e  max=%.3e  std=%.3e",
                     mpi_rank,
                     X_local.shape,
@@ -2861,7 +2786,7 @@ class MCMC:
                     float(np.max(_x_fin)) if _x_fin.size else float("nan"),
                     float(np.std(_x_fin)) if _x_fin.size else float("nan"),
                 )
-                logger.debug(
+                logger.devel(
                     "[SR X/F | rank=%d] F_local: shape=%s  NaN or Inf=%d/%d  min=%.3e  max=%.3e  std=%.3e",
                     mpi_rank,
                     F_local.shape,
@@ -2872,8 +2797,8 @@ class MCMC:
                     float(np.std(_f_fin)) if _f_fin.size else float("nan"),
                 )
 
-                logger.debug(f"X_local.shape = {X_local.shape}.")
-                logger.debug(f"F_local.shape = {F_local.shape}.")
+                logger.devel(f"X_local.shape = {X_local.shape}.")
+                logger.devel(f"F_local.shape = {F_local.shape}.")
 
                 # compute X_w@F
                 X_F_local = X_local @ F_local  # shape (num_param, )
@@ -2882,7 +2807,7 @@ class MCMC:
 
                 # compute f_argmax
                 f_argmax = np.argmax(np.abs(X_F))
-                logger.debug(
+                logger.devel(
                     f"Max dot(X, F) = {X_F[f_argmax]:.3f} Ha/a.u. should be equal to Max f = {f[f_argmax]:.3f} Ha/a.u."
                 )
 
@@ -2893,12 +2818,12 @@ class MCMC:
                 mpi_comm.Allreduce(diag_S_local, diag_S, op=MPI.SUM)
                 logger.info(f"max. and min. diag_S = {np.max(diag_S)}, {np.min(diag_S)}.")
                 # ------------------------------------------------------------------
-                # DEBUG: diag_S detail before clamping
+                # DEVEL: diag_S detail before clamping
                 # ------------------------------------------------------------------
                 _ds_nan = int(np.sum(~np.isfinite(diag_S)))
                 _ds_neg = int(np.sum(diag_S <= 0))
                 _ds_tiny = int(np.sum((diag_S > 0) & (diag_S < 1e-30)))
-                logger.debug(
+                logger.devel(
                     "[SR diag_S] NaN or Inf=%d  non-positive=%d  tiny(<1e-30)=%d  min=%.3e  max=%.3e  median=%.3e",
                     _ds_nan,
                     _ds_neg,
@@ -2924,16 +2849,16 @@ class MCMC:
 
                 if num_params < num_samples_total:
                     # if True:
-                    logger.debug("X is a wide matrix. Proceed w/o the push-through identity.")
-                    logger.debug("theta = (S+epsilon*I)^{-1}*f = (X * X^T + epsilon*I)^{-1} * X F...")
+                    logger.devel("X is a wide matrix. Proceed w/o the push-through identity.")
+                    logger.devel("theta = (S+epsilon*I)^{-1}*f = (X * X^T + epsilon*I)^{-1} * X F...")
                     if not sr_cg_flag:
                         logger.info("Using the direct solver for the inverse of S.")
-                        logger.debug(
+                        logger.devel(
                             f"Estimated X_local @ X_local.T.bytes per MPI = {X_local.shape[0] ** 2 * X_local.dtype.itemsize / (2**30)} gib."
                         )
                         # compute local sum of X * X^T
                         X_X_T_local = X_local @ X_local.T
-                        logger.debug(f"X_X_T_local.shape = {X_X_T_local.shape}.")
+                        logger.devel(f"X_X_T_local.shape = {X_X_T_local.shape}.")
                         # compute global sum of X * X^T
                         if mpi_rank == 0:
                             X_X_T = np.empty(X_X_T_local.shape, dtype=np.float64)
@@ -2942,7 +2867,7 @@ class MCMC:
                         mpi_comm.Reduce(X_X_T_local, X_X_T, op=MPI.SUM, root=0)
                         # compute local sum of X @ F
                         X_F_local = X_local @ F_local  # shape (num_param, )
-                        logger.debug(f"X_F_local.shape = {X_F_local.shape}.")
+                        logger.devel(f"X_F_local.shape = {X_F_local.shape}.")
                         # compute global sum of X @ F
                         if mpi_rank == 0:
                             X_F = np.empty(X_F_local.shape, dtype=np.float64)
@@ -2951,8 +2876,8 @@ class MCMC:
                         mpi_comm.Reduce(X_F_local, X_F, op=MPI.SUM, root=0)
                         # compute theta
                         if mpi_rank == 0:
-                            logger.debug(f"X @ X.T.shape = {X_X_T.shape}.")
-                            logger.debug(f"X @ F.shape = {X_F.shape}.")
+                            logger.devel(f"X @ X.T.shape = {X_X_T.shape}.")
+                            logger.devel(f"X @ F.shape = {X_F.shape}.")
                             # (X X^T + eps*I) x = X F ->solve-> x = (X  X^T + eps*I)^{-1} X F
                             X_X_T[np.diag_indices_from(X_X_T)] += epsilon
                             X_X_T_inv_X_F = scipy.linalg.solve(X_X_T, X_F, assume_a="sym")
@@ -2963,7 +2888,7 @@ class MCMC:
                         # Broadcast theta_all to all ranks
                         theta_all = mpi_comm.bcast(theta_all, root=0)
                         logger.devel(f"[new] theta_all (w/o the push through identity) = {theta_all}.")
-                        logger.debug(
+                        logger.devel(
                             f"[new] theta_all (w/o the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
                         )
                     else:
@@ -2996,19 +2921,19 @@ class MCMC:
                             sr_cg_tol,
                         )
                         sr_cg_warm_start_primal = np.array(theta_all, copy=True)
-                        logger.debug(f"  [CG] Final residual: {final_residual:.3e}")
+                        logger.devel(f"  [CG] Final residual: {final_residual:.3e}")
                         logger.info(f"  [CG] Converged in {num_steps} steps")
                         if num_steps == sr_cg_max_iter:
                             logger.info("  [CG] Conjugate gradient did not converge!!")
                         logger.devel(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
-                        logger.debug(
+                        logger.devel(
                             f"[new/cg] theta_all (w/o the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
                         )
 
                 else:  # num_params >= num_samples:
                     # if True:
-                    logger.debug("X is a tall matrix. Proceed w/ the push-through identity.")
-                    logger.debug("theta = (S+epsilon*I)^{-1}*f = X(X^T * X + epsilon*I)^{-1} * F...")
+                    logger.devel("X is a tall matrix. Proceed w/ the push-through identity.")
+                    logger.devel("theta = (S+epsilon*I)^{-1}*f = X(X^T * X + epsilon*I)^{-1} * F...")
 
                     # Get local shapes
                     N, M = X_local.shape
@@ -3049,16 +2974,16 @@ class MCMC:
                     # Rearrange into final 2D arrays of shape (N_local, M * P)
                     #    by stacking each source’s M columns side by side
                     X_re_local = np.hstack([buf_X[i] for i in range(P)])  # shape (num_param/P, num_mcmc * num_walker * P)
-                    logger.debug(f"X_re_local.shape = {X_re_local.shape}.")
+                    logger.devel(f"X_re_local.shape = {X_re_local.shape}.")
 
                     if not sr_cg_flag:
                         logger.info("Using the direct solver for the inverse of S.")
-                        logger.debug(
+                        logger.devel(
                             f"Estimated X_local.T @ X_local.bytes per MPI = {X_re_local.shape[1] ** 2 * X_re_local.dtype.itemsize / (2**30)} gib."
                         )
                         # compute local sum of X^T * X
                         X_T_X_local = X_re_local.T @ X_re_local
-                        logger.debug(f"X_T_X_local.shape = {X_T_X_local.shape}.")
+                        logger.devel(f"X_T_X_local.shape = {X_T_X_local.shape}.")
                         # compute global sum of X^T * X
                         if mpi_rank == 0:
                             X_T_X = np.empty(X_T_X_local.shape, dtype=np.float64)
@@ -3070,8 +2995,8 @@ class MCMC:
                         F_list = mpi_comm.reduce(F_local_list, op=MPI.SUM, root=0)
                         if mpi_rank == 0:
                             F = np.array(F_list)
-                            logger.debug(f"X_T_X.shape = {X_T_X.shape}.")
-                            logger.debug(f"F.shape = {F.shape}.")
+                            logger.devel(f"X_T_X.shape = {X_T_X.shape}.")
+                            logger.devel(f"F.shape = {F.shape}.")
                             X_T_X[np.diag_indices_from(X_T_X)] += epsilon
                             # (X^T X_w + eps*I) x = F ->solve-> x = (X^T X_w + eps*I)^{-1} F
                             X_T_X_inv_F = scipy.linalg.solve(X_T_X, F, assume_a="sym")
@@ -3094,7 +3019,7 @@ class MCMC:
                         theta_all = np.empty(theta_all_local.shape, dtype=np.float64)
                         mpi_comm.Allreduce(theta_all_local, theta_all, op=MPI.SUM)
                         logger.devel(f"[new] theta_all (w/ the push through identity) = {theta_all}.")
-                        logger.debug(
+                        logger.devel(
                             f"[new] theta_all (w/ the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
                         )
                     else:
@@ -3137,12 +3062,12 @@ class MCMC:
                         theta_all = np.empty(sum(recvcounts), dtype=theta_local.dtype)
                         mpi_comm.Allgatherv([theta_local, MPI.DOUBLE], [theta_all, (recvcounts, displs), MPI.DOUBLE])
 
-                        logger.debug(f"  [CG] Final residual: {final_residual:.3e}")
+                        logger.devel(f"  [CG] Final residual: {final_residual:.3e}")
                         logger.info(f"  [CG] Converged in {num_steps} steps")
                         if num_steps == sr_cg_max_iter:
                             logger.logger("  [CG] Conjugate gradient did not converge!")
                         logger.devel(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
-                        logger.debug(
+                        logger.devel(
                             f"[new/cg] theta_all (w/ the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
                         )
 
@@ -3150,14 +3075,14 @@ class MCMC:
                 theta_all = theta_all / np.sqrt(diag_S)
 
                 # ------------------------------------------------------------------
-                # DEBUG: theta_all after scale-back — key NaN diagnosis point
+                # DEVEL: theta_all after scale-back — key NaN diagnosis point
                 # ------------------------------------------------------------------
                 _t_nan = int(np.sum(~np.isfinite(theta_all)))
                 _t_fin = theta_all[np.isfinite(theta_all)]
                 _sqrt_ds = np.sqrt(diag_S)
                 _sds_nan = int(np.sum(~np.isfinite(_sqrt_ds)))
                 _sds_zero = int(np.sum(_sqrt_ds == 0.0))
-                logger.debug(
+                logger.devel(
                     "[SR theta_all] After /sqrt(diag_S): NaN or Inf=%d/%d  min=%.3e  max=%.3e  norm=%.3e",
                     _t_nan,
                     theta_all.size,
@@ -3165,7 +3090,7 @@ class MCMC:
                     float(np.max(_t_fin)) if _t_fin.size else float("nan"),
                     float(np.linalg.norm(_t_fin)) if _t_fin.size else float("nan"),
                 )
-                logger.debug(
+                logger.devel(
                     "[SR theta_all] sqrt(diag_S): NaN or Inf=%d  exact-zero=%d  min=%.3e  max=%.3e",
                     _sds_nan,
                     _sds_zero,
@@ -3216,9 +3141,9 @@ class MCMC:
 
             # logger.devel(f"XX for MPI-rank={mpi_rank} is {theta}")
             # logger.devel(f"XX.shape for MPI-rank={mpi_rank} is {theta.shape}")
-            logger.debug(f"theta.size = {theta.size}.")
-            logger.debug(f"np.count_nonzero(theta) = {np.count_nonzero(theta)}.")
-            logger.debug(f"max. and min. of theta are {np.max(theta)} and {np.min(theta)}.")
+            logger.devel(f"theta.size = {theta.size}.")
+            logger.devel(f"np.count_nonzero(theta) = {np.count_nonzero(theta)}.")
+            logger.devel(f"max. and min. of theta are {np.max(theta)} and {np.min(theta)}.")
 
             # Guard against NaN/Inf components before applying the update and
             # report which blocks contain problematic entries.
@@ -3244,7 +3169,7 @@ class MCMC:
                     continue
                 block_norm = float(np.linalg.norm(block_theta))
                 block_max = float(np.max(np.abs(block_theta)))
-                logger.debug(
+                logger.devel(
                     "SR update summary – block=%s size=%d ||theta||_2=%.3e max|theta|=%.3e",
                     block.name,
                     block.size,
