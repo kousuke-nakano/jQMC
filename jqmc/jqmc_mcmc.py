@@ -2073,6 +2073,19 @@ class MCMC:
         wO_local = np.einsum("i,ik->k", w_flat, O_flat)  # (K,)
         wdE_local = np.einsum("i,ik->k", w_flat, dE_flat)  # (K,)
 
+        # ---- Diagnostic: check wdE_local before MPI reduction ----
+        _wdE_local_nonfinite = int(np.sum(~np.isfinite(wdE_local)))
+        if _wdE_local_nonfinite > 0:
+            logger.error(
+                f"[get_aH] wdE_local has {_wdE_local_nonfinite}/{wdE_local.size} NaN/Inf entries "
+                f"BEFORE MPI Allreduce! This will cause dE_bar to be NaN."
+            )
+        logger.debug(
+            f"[get_aH] wdE_local (before MPI): NaN or Inf={_wdE_local_nonfinite}/{wdE_local.size}  "
+            f"min={np.nanmin(wdE_local):.3e}  max={np.nanmax(wdE_local):.3e}  "
+            f"mean={np.nanmean(wdE_local):.3e}"
+        )
+
         total_w = mpi_comm.allreduce(total_w_local, op=MPI.SUM)
 
         we_global = np.empty(1)
@@ -2082,9 +2095,33 @@ class MCMC:
         mpi_comm.Allreduce([wO_local, MPI.DOUBLE], [wO_global, MPI.DOUBLE], op=MPI.SUM)
         mpi_comm.Allreduce([wdE_local, MPI.DOUBLE], [wdE_global, MPI.DOUBLE], op=MPI.SUM)
 
+        # ---- Diagnostic: check wdE_global and total_w after MPI reduction ----
+        _wdE_global_nonfinite = int(np.sum(~np.isfinite(wdE_global)))
+        if _wdE_global_nonfinite > 0:
+            logger.error(
+                f"[get_aH] wdE_global has {_wdE_global_nonfinite}/{wdE_global.size} NaN/Inf entries "
+                f"AFTER MPI Allreduce! total_w={total_w:.6e}"
+            )
+        logger.debug(
+            f"[get_aH] wdE_global (after MPI): NaN or Inf={_wdE_global_nonfinite}/{wdE_global.size}  "
+            f"total_w={total_w:.6e}  min={np.nanmin(wdE_global):.3e}  max={np.nanmax(wdE_global):.3e}"
+        )
+
         e_bar = float(we_global[0]) / total_w  # scalar
         O_bar = wO_global / total_w  # (K,)
         dE_bar = wdE_global / total_w  # (K,)
+
+        # ---- Diagnostic: check dE_bar immediately after computation ----
+        _dE_bar_nonfinite_immediate = int(np.sum(~np.isfinite(dE_bar)))
+        if _dE_bar_nonfinite_immediate > 0:
+            logger.error(
+                f"[get_aH] dE_bar has {_dE_bar_nonfinite_immediate}/{dE_bar.size} NaN/Inf entries "
+                f"immediately after dE_bar = wdE_global / total_w!"
+            )
+        logger.debug(
+            f"[get_aH] dE_bar (immediately after /total_w): NaN or Inf={_dE_bar_nonfinite_immediate}/{dE_bar.size}  "
+            f"min={np.nanmin(dE_bar):.3e}  max={np.nanmax(dE_bar):.3e}  mean={np.nanmean(dE_bar):.3e}"
+        )
 
         # ---- H_0 ----
         H_0 = e_bar
