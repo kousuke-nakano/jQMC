@@ -2054,6 +2054,16 @@ class MCMC:
             num_orb_projection=num_orb_projection,
         )  # (M, nw, K)
 
+        # Diagnostics: block.coef values (to detect parameter divergence)
+        for block in blocks:
+            coef_stats = self._safe_stats(np.asarray(block.coef), f"{block.name}.coef")
+            logger.debug(
+                f"[get_aH] block.coef['{block.name}']: shape={coef_stats['shape']} "
+                f"NaN={coef_stats['nan_count']}/{np.asarray(block.coef).size} ({coef_stats['nan_frac']:.2%}) "
+                f"min={coef_stats['min']:.3e} max={coef_stats['max']:.3e} "
+                f"mean={coef_stats['mean']:.3e} std={coef_stats['std']:.3e}"
+            )
+
         # ---- dE_matrix: de_L / dc  shape (M, nw, K) ----
         de_L_dc_map = self.de_L_dc
 
