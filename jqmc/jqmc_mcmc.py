@@ -2002,6 +2002,20 @@ class MCMC:
             raise RuntimeError("get_aH requires comput_e_L_param_deriv=True (for B matrix / de_L/dc).")
         logger.debug(f"[get_aH] g.shape={g.shape}, len(blocks)={len(blocks)}, num_mcmc_warmup_steps={num_mcmc_warmup_steps}")
 
+        # ---- Diagnostic: check input g vector ----
+        _g_nonfinite = ~np.isfinite(g)
+        _g_nonfinite_count = int(np.sum(_g_nonfinite))
+        if _g_nonfinite_count > 0:
+            logger.error(
+                f"[get_aH] INPUT g has {_g_nonfinite_count}/{g.size} NaN/Inf entries! "
+                f"This will cause all gdE_flat to become NaN/Inf."
+            )
+        logger.debug(
+            f"[get_aH] INPUT g: NaN or Inf={_g_nonfinite_count}/{g.size}  "
+            f"min={np.nanmin(g):.3e}  max={np.nanmax(g):.3e}  "
+            f"mean={np.nanmean(g):.3e}  std={np.nanstd(g):.3e}  norm={np.linalg.norm(g):.3e}"
+        )
+
         # ---- raw samples after warmup ----
         w_L = self.w_L[num_mcmc_warmup_steps:]  # (M, nw)
         e_L = self.e_L[num_mcmc_warmup_steps:]  # (M, nw)
@@ -2094,6 +2108,11 @@ class MCMC:
         # E(gamma) = (H0 + 2*gamma*H1 + gamma^2*H2) / (1 + gamma^2*S2) grow too fast,
         # which in turn makes the optimal gamma unrealistically small.
         gdO_flat = dO_flat @ g  # (N,)
+        logger.debug(
+            f"[get_aH] gdO_flat = dO_flat @ g computed: "
+            f"NaN or Inf={int(np.sum(~np.isfinite(gdO_flat)))}/{gdO_flat.size}  "
+            f"min={np.nanmin(gdO_flat):.3e}  max={np.nanmax(gdO_flat):.3e}"
+        )
         gSg_local = np.dot(w_flat, gdO_flat**2)
         gSg_arr = np.empty(1)
         mpi_comm.Allreduce([np.array([gSg_local]), MPI.DOUBLE], [gSg_arr, MPI.DOUBLE], op=MPI.SUM)
@@ -2109,6 +2128,25 @@ class MCMC:
 
         # ---- B matrix contribution: g^T B g = <w * (g^T dO) * (g^T (dE - dE_bar))>_w ----
         ddE_flat = dE_flat - dE_bar[np.newaxis, :]  # (N, K)
+
+        # ---- Diagnostic: check dE_bar and ddE_flat before computing gdE_flat ----
+        _dE_bar_nonfinite = int(np.sum(~np.isfinite(dE_bar)))
+        if _dE_bar_nonfinite > 0:
+            logger.error(f"[get_aH] dE_bar has {_dE_bar_nonfinite}/{dE_bar.size} NaN/Inf entries!")
+        logger.debug(
+            f"[get_aH] dE_bar: NaN or Inf={_dE_bar_nonfinite}/{dE_bar.size}  "
+            f"min={np.nanmin(dE_bar):.3e}  max={np.nanmax(dE_bar):.3e}  "
+            f"mean={np.nanmean(dE_bar):.3e}"
+        )
+        _ddE_nonfinite = int(np.sum(~np.isfinite(ddE_flat)))
+        if _ddE_nonfinite > 0:
+            logger.warning(f"[get_aH] ddE_flat has {_ddE_nonfinite}/{ddE_flat.size} NaN/Inf entries before @ g")
+        logger.debug(
+            f"[get_aH] ddE_flat: NaN or Inf={_ddE_nonfinite}/{ddE_flat.size}  "
+            f"min={np.nanmin(ddE_flat):.3e}  max={np.nanmax(ddE_flat):.3e}  "
+            f"mean={np.nanmean(ddE_flat):.3e}  std={np.nanstd(ddE_flat):.3e}"
+        )
+
         gdE_flat = ddE_flat @ g  # (N,)
         _gdE_nonfinite = int(np.sum(~np.isfinite(gdE_flat)))
         if _gdE_nonfinite > 0:
