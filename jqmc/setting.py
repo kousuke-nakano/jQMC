@@ -73,4 +73,4 @@ decimal_consistency = 8
 EPS_stabilizing_jax_AO_cart_deriv = 1.0e-16
 
 # Numerical differentiation settings for SVD
-EPS_rcond_SVD = 1.0e-15
+EPS_rcond_SVD = 1.0e-12

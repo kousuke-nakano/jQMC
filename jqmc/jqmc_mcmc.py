@@ -1995,10 +1995,12 @@ class MCMC:
         Notes:
             Use :meth:`compute_asr_gamma` to obtain :math:`\\gamma` from the returned values.
         """
+        logger.debug("[get_aH] ENTRY: starting get_aH computation")
         if not self.__comput_log_WF_param_deriv:
             raise RuntimeError("get_aH requires compute_log_WF_param_deriv=True.")
         if not self.__comput_e_L_param_deriv:
             raise RuntimeError("get_aH requires comput_e_L_param_deriv=True (for B matrix / de_L/dc).")
+        logger.debug(f"[get_aH] g.shape={g.shape}, len(blocks)={len(blocks)}, num_mcmc_warmup_steps={num_mcmc_warmup_steps}")
 
         # ---- raw samples after warmup ----
         w_L = self.w_L[num_mcmc_warmup_steps:]  # (M, nw)
@@ -2036,6 +2038,21 @@ class MCMC:
         O_flat = O_matrix.reshape(N, K)  # (N, K)
         dE_flat = dE_matrix.reshape(N, K)  # (N, K)
 
+        # ---- Report de_L/dc statistics (diagnostic for near-singular G) ----
+        _dE_nonfinite = ~np.isfinite(dE_flat)
+        _dE_nonfinite_count = int(np.sum(_dE_nonfinite))
+        if _dE_nonfinite_count > 0:
+            _nrows_dE = int(np.sum(np.any(_dE_nonfinite, axis=1)))
+            logger.warning(
+                f"[de_L/dc in get_aH] NaN or Inf = {_dE_nonfinite_count}/{dE_flat.size} "
+                f"(in {_nrows_dE} samples). These will contribute to gBg via weighted average."
+            )
+        logger.debug(
+            f"[de_L/dc in get_aH] shape={dE_flat.shape}  NaN or Inf={_dE_nonfinite_count}/{dE_flat.size}  "
+            f"min={np.nanmin(dE_flat):.3e}  max={np.nanmax(dE_flat):.3e}  "
+            f"mean={np.nanmean(dE_flat):.3e}  std={np.nanstd(dE_flat):.3e}"
+        )
+
         # ---- MPI-aware weighted averages ----
         total_w_local = np.sum(w_flat)
         we_local = np.dot(w_flat, e_flat)
@@ -2057,6 +2074,7 @@ class MCMC:
 
         # ---- H_0 ----
         H_0 = e_bar
+        logger.debug(f"[get_aH] H_0 computed: H_0={H_0:.6e}")
 
         # ---- f_k = -2 <w (e_L - E)(O_k - O_bar_k)>  (generalized force) ----
         dO_flat = O_flat - O_bar[np.newaxis, :]  # (N, K)
@@ -2067,6 +2085,7 @@ class MCMC:
 
         # ---- H_1 = -1/2 * g^T f ----
         H_1 = -0.5 * float(np.dot(g, f_vec))
+        logger.debug(f"[get_aH] H_1 computed: H_1={H_1:.6e}")
 
         # ---- S_2 = g^T S g = <w * (g^T dO)^2>_w  (exact, computed from samples) ----
         # Do NOT use S_2 = g^T f = -2*H_1.  The SR solved (S_scaled + sr_epsilon*I) g_scaled = b,
@@ -2079,25 +2098,40 @@ class MCMC:
         gSg_arr = np.empty(1)
         mpi_comm.Allreduce([np.array([gSg_local]), MPI.DOUBLE], [gSg_arr, MPI.DOUBLE], op=MPI.SUM)
         S_2 = float(gSg_arr[0]) / total_w
+        logger.debug(f"[get_aH] S_2 computed: S_2={S_2:.6e}")
 
         # ---- K matrix contribution: g^T K g = <w * e_L * (g^T dO)^2>_w ----
         gKg_local = np.einsum("i,i,i->", w_flat, e_flat, gdO_flat**2)
         gKg_arr = np.empty(1)
         mpi_comm.Allreduce([np.array([gKg_local]), MPI.DOUBLE], [gKg_arr, MPI.DOUBLE], op=MPI.SUM)
         gKg = float(gKg_arr[0]) / total_w
+        logger.debug(f"[get_aH] gKg = {gKg:.6e}")
 
         # ---- B matrix contribution: g^T B g = <w * (g^T dO) * (g^T (dE - dE_bar))>_w ----
         ddE_flat = dE_flat - dE_bar[np.newaxis, :]  # (N, K)
         gdE_flat = ddE_flat @ g  # (N,)
+        _gdE_nonfinite = int(np.sum(~np.isfinite(gdE_flat)))
+        if _gdE_nonfinite > 0:
+            logger.warning(f"[get_aH] gdE_flat has {_gdE_nonfinite}/{len(gdE_flat)} NaN/Inf entries before gBg computation")
         gBg_local = np.einsum("i,i,i->", w_flat, gdO_flat, gdE_flat)
         gBg_arr = np.empty(1)
         mpi_comm.Allreduce([np.array([gBg_local]), MPI.DOUBLE], [gBg_arr, MPI.DOUBLE], op=MPI.SUM)
         gBg = float(gBg_arr[0]) / total_w
+        logger.debug(f"[get_aH] gBg = {gBg:.6e}")
 
         # ---- H_2 = g^T (B + K) g ----
         H_2 = gBg + gKg
+        logger.debug(f"[get_aH] H_2 computed: H_2={H_2:.6e} (gBg={gBg:.6e}, gKg={gKg:.6e})")
+
+        # ---- Diagnostic: report intermediate quantities if H_2 is non-finite ----
+        if not np.isfinite(H_2):
+            logger.error(
+                f"aSR: H_2 = {H_2} is non-finite. gBg = {gBg:.6e}, gKg = {gKg:.6e}. "
+                f"gdE_flat has {int(np.sum(~np.isfinite(gdE_flat)))}/{len(gdE_flat)} NaN/Inf entries."
+            )
 
         logger.info(f"aSR: H_0 = {H_0:.6f}, H_1 = {H_1:.6f}, H_2 = {H_2:.6f}, S_2 = {S_2:.6f}")
+        logger.debug("[get_aH] EXIT: returning H_0, H_1, H_2, S_2")
         return H_0, H_1, H_2, S_2
 
     @staticmethod
