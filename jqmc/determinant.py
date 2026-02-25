@@ -925,7 +925,13 @@ def compute_AS_regularization_factor_fast_update(
     F = jnp.sum(geminal_inv**2)
 
     # compute the scaling factor
-    S = jnp.min(jnp.sum(geminal**2, axis=0))
+    # S vanishes when any electron (up or dn) goes to infinity:
+    #   row norm -> 0 when an up-electron flies away (all G_{i,j} -> 0 for that row)
+    #   col norm -> 0 when a dn-electron flies away (all G_{i,j} -> 0 for that col)
+    S = jnp.minimum(
+        jnp.min(jnp.sum(geminal**2, axis=1)),  # min row norm  (up electrons)
+        jnp.min(jnp.sum(geminal**2, axis=0)),  # min col norm  (dn electrons)
+    )
 
     # compute R_AS
     # Guard: when S*F == 0 (e.g. SVD-truncated geminal_inv with a near-zero
@@ -951,7 +957,10 @@ def _compute_AS_regularization_factor_debug(
     F = np.sum(geminal_inv**2)
 
     # compute the scaling factor
-    S = np.min(np.sum(geminal**2, axis=0))
+    S = min(
+        np.min(np.sum(geminal**2, axis=1)),  # min row norm  (up electrons)
+        np.min(np.sum(geminal**2, axis=0)),  # min col norm  (dn electrons)
+    )
 
     # compute R_AS
     R_AS = (S * F) ** (-theta)
@@ -983,7 +992,13 @@ def compute_AS_regularization_factor(geminal_data: Geminal_data, r_up_carts: jax
     F = jnp.sum(sigma_sq_inv)
 
     # compute the scaling factor
-    S = jnp.min(jnp.sum(geminal**2, axis=0))
+    # S vanishes when any electron (up or dn) goes to infinity:
+    #   row norm -> 0 when an up-electron flies away (all G_{i,j} -> 0 for that row)
+    #   col norm -> 0 when a dn-electron flies away (all G_{i,j} -> 0 for that col)
+    S = jnp.minimum(
+        jnp.min(jnp.sum(geminal**2, axis=1)),  # min row norm  (up electrons)
+        jnp.min(jnp.sum(geminal**2, axis=0)),  # min col norm  (dn electrons)
+    )
 
     # compute R_AS
     # Guard: S*F can be 0*∞ = NaN when G is near-singular (S→0, F→∞).
