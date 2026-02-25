@@ -60,6 +60,7 @@ from .atomic_orbital import (
     compute_overlap_matrix,
 )
 from .molecular_orbital import MOs_data, compute_MOs, compute_MOs_grad, compute_MOs_laplacian
+from .setting import EPS_rcond_SVD
 
 if TYPE_CHECKING:  # pragma: no cover - typing-only import to avoid circular dependency
     from .wavefunction import VariationalParameterBlock
@@ -976,8 +977,10 @@ def compute_AS_regularization_factor(geminal_data: Geminal_data, r_up_carts: jax
     theta = 3.0 / 8.0
 
     # compute F \equiv the square of Frobenius norm of geminal_inv
+    # Use SVD with conservative threshold to avoid Inf from 1/sigma^2 for tiny sigma
     sigma = jnp.linalg.svd(geminal, compute_uv=False)
-    F = jnp.sum(1.0 / (sigma**2))
+    sigma_sq_inv = jnp.where(sigma > EPS_rcond_SVD * sigma[0], 1.0 / (sigma**2), 0.0)
+    F = jnp.sum(sigma_sq_inv)
 
     # compute the scaling factor
     S = jnp.min(jnp.sum(geminal**2, axis=0))
@@ -1398,8 +1401,12 @@ def compute_grads_and_laplacian_ln_Det(
     # Compute G_inv via SVD pseudoinverse (numerically stable, avoids LU NaN).
     G = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
     _U, _s, _Vt = jnp.linalg.svd(G, full_matrices=False)
-    _rcond = jnp.finfo(jnp.float64).eps * float(_s.shape[0])
-    _s_inv = jnp.where(_s > _rcond * _s[0], 1.0 / _s, 0.0)
+    # Use conservative threshold to prevent G^{-2} and G^{-3} terms in the
+    # backward pass from diverging. Standard numpy.linalg.pinv uses max(M,N)*eps,
+    # but for de_L/dc (which involves G_inv^2 in the chain rule) we need a larger
+    # safety margin to avoid Inf/NaN in the gradient. EPS_rcond_SVD is set in setting.py
+    # to handle near-singular G while preserving well-conditioned singular values.
+    _s_inv = jnp.where(_s > EPS_rcond_SVD * _s[0], 1.0 / _s, 0.0)
     geminal_inverse = (_Vt.T * _s_inv[jnp.newaxis, :]) @ _U.T
 
     lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
@@ -1547,8 +1554,8 @@ def _grads_lap_fwd(
     """Forward pass: compute stable G_inv and primal outputs."""
     G = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
     _U, _s, _Vt = jnp.linalg.svd(G, full_matrices=False)
-    _rcond = jnp.finfo(jnp.float64).eps * float(_s.shape[0])
-    _s_inv = jnp.where(_s > _rcond * _s[0], 1.0 / _s, 0.0)
+    # Use same conservative threshold as in compute_grads_and_laplacian_ln_Det
+    _s_inv = jnp.where(_s > EPS_rcond_SVD * _s[0], 1.0 / _s, 0.0)
     G_inv_stable = (_Vt.T * _s_inv[jnp.newaxis, :]) @ _U.T
     primals = _grads_lap_body(geminal_data, r_up_carts, r_dn_carts, G_inv_stable)
     return primals, (geminal_data, r_up_carts, r_dn_carts, G_inv_stable)

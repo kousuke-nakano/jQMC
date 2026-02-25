@@ -75,6 +75,7 @@ from .jastrow_factor import (
 )
 from .jqmc_utility import _generate_init_electron_configurations
 from .setting import (
+    EPS_rcond_SVD,
     GFMC_MIN_BIN_BLOCKS,
     GFMC_MIN_COLLECT_STEPS,
     GFMC_MIN_WARMUP_STEPS,
@@ -3062,8 +3063,7 @@ class GFMC_n:
                     r_dn_carts=r_dn_carts,
                 )
                 _U, _s, _Vt = jnp.linalg.svd(geminal, full_matrices=False)
-                _rcond = jnp.finfo(jnp.float64).eps * float(geminal.shape[0])
-                _s_inv = jnp.where(_s > _rcond * _s[0], 1.0 / _s, 0.0)
+                _s_inv = jnp.where(_s > EPS_rcond_SVD * _s[0], 1.0 / _s, 0.0)
                 A_old_inv = (_Vt.T * _s_inv[jnp.newaxis, :]) @ _U.T
 
                 # compute discretized kinetic energy and mesh (with a random rotation)
