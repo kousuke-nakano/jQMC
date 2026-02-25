@@ -46,7 +46,7 @@ import toml
 from jax import grad, jit, lax, vmap
 from jax import numpy as jnp
 from jax import typing as jnpt
-from jax.scipy import linalg as jsp_linalg
+from jax.scipy import linalg as jsp_linalg  # noqa: F401  (kept for external callers)
 from mpi4py import MPI
 
 from .coulomb_potential import (
@@ -408,8 +408,10 @@ class GFMC_t:
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
             )
-            lu, piv = jsp_linalg.lu_factor(geminal)
-            return jsp_linalg.lu_solve((lu, piv), jnp.eye(geminal.shape[0], dtype=geminal.dtype))
+            U, s, Vt = jnp.linalg.svd(geminal, full_matrices=False)
+            rcond = jnp.finfo(jnp.float64).eps * float(geminal.shape[0])
+            s_inv = jnp.where(s > rcond * s[0], 1.0 / s, 0.0)
+            return (Vt.T * s_inv[jnp.newaxis, :]) @ U.T
 
         self.__latest_A_old_inv = vmap(_compute_initial_A_inv_t, in_axes=(0, 0))(
             self.__latest_r_up_carts, self.__latest_r_dn_carts
@@ -738,14 +740,17 @@ class GFMC_t:
             new_r_up_carts = jnp.where(tau_left <= 0.0, r_up_carts, proposed_r_up_carts)  # '=' is very important!!!
             new_r_dn_carts = jnp.where(tau_left <= 0.0, r_dn_carts, proposed_r_dn_carts)  # '=' is very important!!!
 
-            # recompute inverse for the updated configuration
+            # recompute inverse for the updated configuration via SVD
+            # (more robust than LU for near-singular G)
             G_new = compute_geminal_all_elements(
                 geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                 r_up_carts=new_r_up_carts,
                 r_dn_carts=new_r_dn_carts,
             )
-            lu, piv = jsp_linalg.lu_factor(G_new)
-            A_new_inv = jsp_linalg.lu_solve((lu, piv), jnp.eye(G_new.shape[0], dtype=G_new.dtype))
+            U_new, s_new, Vt_new = jnp.linalg.svd(G_new, full_matrices=False)
+            rcond_new = jnp.finfo(jnp.float64).eps * float(G_new.shape[0])
+            s_inv_new = jnp.where(s_new > rcond_new * s_new[0], 1.0 / s_new, 0.0)
+            A_new_inv = (Vt_new.T * s_inv_new[jnp.newaxis, :]) @ U_new.T
 
             return (
                 e_L,
@@ -2552,8 +2557,10 @@ class GFMC_n:
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
             )
-            lu, piv = jsp_linalg.lu_factor(geminal)
-            return jsp_linalg.lu_solve((lu, piv), jnp.eye(geminal.shape[0], dtype=geminal.dtype))
+            U, s, Vt = jnp.linalg.svd(geminal, full_matrices=False)
+            rcond = jnp.finfo(jnp.float64).eps * float(geminal.shape[0])
+            s_inv = jnp.where(s > rcond * s[0], 1.0 / s, 0.0)
+            return (Vt.T * s_inv[jnp.newaxis, :]) @ U.T
 
         _jit_vmap_A_inv_n = jit(vmap(_compute_initial_A_inv_n, in_axes=(0, 0)))
         self.__latest_A_old_inv = _jit_vmap_A_inv_n(self.__latest_r_up_carts, self.__latest_r_dn_carts)
@@ -3048,14 +3055,16 @@ class GFMC_n:
             )
 
             if use_fast_update:
-                # precompute geminal inverse for fast updates (single-electron moves)
+                # precompute geminal inverse for fast updates (SVD-based, robust for near-singular G)
                 geminal = compute_geminal_all_elements(
                     geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                 )
-                lu, piv = jsp_linalg.lu_factor(geminal)
-                A_old_inv = jsp_linalg.lu_solve((lu, piv), jnp.eye(geminal.shape[0], dtype=geminal.dtype))
+                _U, _s, _Vt = jnp.linalg.svd(geminal, full_matrices=False)
+                _rcond = jnp.finfo(jnp.float64).eps * float(geminal.shape[0])
+                _s_inv = jnp.where(_s > _rcond * _s[0], 1.0 / _s, 0.0)
+                A_old_inv = (_Vt.T * _s_inv[jnp.newaxis, :]) @ _U.T
 
                 # compute discretized kinetic energy and mesh (with a random rotation)
                 _, _, elements_non_diagonal_kinetic_part = compute_discretized_kinetic_energy_fast_update(
