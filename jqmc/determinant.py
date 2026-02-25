@@ -754,20 +754,19 @@ def _ln_det_fwd(geminal_data, r_up_carts, r_dn_carts):
     """Forward pass for custom VJP.
 
     The custom derivative is needed for ln |Det(G)| because the jax native grad
-    and hessian introduce numerical instability. The custom derivative exploits
-    the LU decomposition of G instead of the direct inverse of G, achieving
-    numerically stable calculations.
+    and hessian introduce numerical instability. The custom derivative uses SVD
+    to compute G^{-1} in the backward pass, avoiding NaN when G is near-singular
+    (small singular values are zeroed rather than producing 1/~0 from LU).
 
     Returns:
         - primal output: ln|det(G)|
-        - residuals: (inputs and LU factors) for use in backward pass
+        - residuals: (inputs and SVD factors) for use in backward pass
     """
     G = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
     ln_det = jnp.log(jnp.abs(jnp.linalg.det(G)))
-    # Compute LU decomposition: G = P @ L @ U
-    P, L, U = jsp_linalg.lu(G)
-    # We stash the original inputs plus the LU factors for the backward pass
-    return ln_det, (geminal_data, r_up_carts, r_dn_carts, P, L, U)
+    # Compute SVD: G = U_svd @ diag(s) @ Vt
+    U_svd, s, Vt = jnp.linalg.svd(G, full_matrices=False)
+    return ln_det, (geminal_data, r_up_carts, r_dn_carts, U_svd, s, Vt)
 
 
 # Backward pass for custom VJP.
@@ -775,9 +774,9 @@ def _ln_det_bwd(res, g):
     """Backward pass for custom VJP.
 
     The custom derivative is needed for ln |Det(G)| because the jax native grad
-    and hessian introduce numerical instability. The custom derivative exploits
-    the LU decomposition of G instead of the direct inverse of G, achieving
-    numerically stable calculations.
+    and hessian introduce numerical instability. The custom derivative uses SVD
+    to compute G^{-1} in the backward pass, avoiding NaN when G is near-singular
+    (small singular values are zeroed rather than producing 1/~0 from LU).
 
     Args:
         res: residuals from forward pass
@@ -786,16 +785,13 @@ def _ln_det_bwd(res, g):
     Returns:
         Gradients with respect to (geminal_data, r_up_carts, r_dn_carts)
     """
-    geminal_data, r_up_carts, r_dn_carts, P, L, U = res
+    geminal_data, r_up_carts, r_dn_carts, U_svd, s, Vt = res
 
-    # Build identity matrix of appropriate shape
-    n = U.shape[0]
-    I = jnp.eye(n, dtype=U.dtype)
-
-    # Solve L @ Y = P^T @ I  for Y
-    Y = jsp_linalg.solve_triangular(L, jnp.dot(P.T, I), lower=True)
-    # Solve U @ X = Y for X, so that X = G^{-1}
-    X = jsp_linalg.solve_triangular(U, Y, lower=False)
+    # Compute G^{-1} via SVD pseudoinverse with thresholding.
+    # Singular values below rcond * s_max are zeroed to avoid NaN from 1/~0.
+    rcond = jnp.finfo(jnp.float64).eps * float(s.shape[0])
+    s_inv = jnp.where(s > rcond * s[0], 1.0 / s, 0.0)
+    X = (Vt.T * s_inv[jnp.newaxis, :]) @ U_svd.T  # G^{-1}, shape (n, n)
 
     # d ln|det G| / dG = (G^{-1})^T, scaled by incoming cotangent g
     grad_G = g * X.T
@@ -808,12 +804,6 @@ def _ln_det_bwd(res, g):
 
 # Register the custom VJP rule !!
 compute_ln_det_geminal_all_elements.defvjp(_ln_det_fwd, _ln_det_bwd)
-
-
-# ---------------------------------------------------------------------------
-# Fast variant of ln|det G|: uses pre-computed geminal_inverse in the backward
-# pass, avoiding a fresh LU decomposition for near-singular configurations
-# ---------------------------------------------------------------------------
 
 
 @jax.custom_vjp
