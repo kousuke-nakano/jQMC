@@ -48,7 +48,7 @@ import scipy
 import toml
 from jax import grad, jit, lax, vmap
 from jax import numpy as jnp
-from jax.scipy.linalg import lu_factor, lu_solve
+from jax.scipy.linalg import lu_factor, lu_solve  # noqa: F401  (kept for external callers / _MCMC_debug)
 from mpi4py import MPI
 
 from .atomic_orbital import compute_overlap_matrix
@@ -482,15 +482,21 @@ class MCMC:
 
         @jit
         def _geminal_inv_single(geminal_data, I, r_up_carts, r_dn_carts):
-            # One sample: build G, LU-factorize, and invert via solve
+            # One sample: build G and invert via SVD-based pseudoinverse.
+            # More robust than LU for near-singular G (small singular values are
+            # zeroed rather than producing 1/~0 → NaN).
             G = compute_geminal_all_elements(
                 geminal_data=geminal_data,
                 r_up_carts=r_up_carts,  # (N_up, 3)
                 r_dn_carts=r_dn_carts,  # (N_dn, 3)
             )
-            lu, piv = lu_factor(G)  # lu: (N_up,N_up), piv: (N_up,)
-            Ginv = lu_solve((lu, piv), I)  # (N_up,N_up)
-            return G, Ginv, lu, piv
+            U, s, Vt = jnp.linalg.svd(G, full_matrices=False)
+            # Threshold: zero 1/s when s < rcond * s_max to avoid NaN
+            rcond = jnp.finfo(jnp.float64).eps * float(G.shape[0])
+            s_inv = jnp.where(s > rcond * s[0], 1.0 / s, 0.0)
+            Ginv = (Vt.T * s_inv[jnp.newaxis, :]) @ U.T
+            # Callers discard lu/piv; return zero dummies for API compatibility.
+            return G, Ginv, jnp.zeros_like(G), jnp.zeros(G.shape[0], dtype=jnp.int32)
 
         @jit
         def _geminal_inv_batched(geminal_data, r_up_batch, r_dn_batch):
