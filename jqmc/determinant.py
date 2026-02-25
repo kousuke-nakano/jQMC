@@ -1459,11 +1459,14 @@ def compute_grads_and_laplacian_ln_Det(
     )
     geminal_laplacian_dn = jnp.hstack([geminal_laplacian_dn_paired, geminal_laplacian_dn_unpaired])
 
-    P, L, U = jsp_linalg.lu(geminal)
-    n = geminal.shape[0]
-    I = jnp.eye(n, dtype=geminal.dtype)
-    Y = jsp_linalg.solve_triangular(L, jnp.dot(P.T, I), lower=True)
-    geminal_inverse = jsp_linalg.solve_triangular(U, Y, lower=False)
+    # Compute G^{-1} via SVD pseudoinverse with thresholding.
+    # LU-based solve_triangular produces NaN in its own backward (d/dlambda)
+    # when U has near-zero diagonal entries for near-singular G.
+    # SVD zeros out 1/s for tiny singular values instead.
+    _U, _s, _Vt = jnp.linalg.svd(geminal, full_matrices=False)
+    _rcond = jnp.finfo(jnp.float64).eps * float(_s.shape[0])
+    _s_inv = jnp.where(_s > _rcond * _s[0], 1.0 / _s, 0.0)
+    geminal_inverse = (_Vt.T * _s_inv[jnp.newaxis, :]) @ _U.T
 
     grad_ln_D_up_x = jnp.einsum("ij,ji->i", geminal_grad_up_x, geminal_inverse)
     grad_ln_D_up_y = jnp.einsum("ij,ji->i", geminal_grad_up_y, geminal_inverse)
