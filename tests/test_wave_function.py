@@ -528,10 +528,10 @@ def test_evaluate_ln_wavefunction_fast_forward(trexio_file):
 
         assert np.isfinite(val_ref), f"Reference value is not finite: {val_ref}"
         assert np.isfinite(val_fast), f"Fast value is not finite: {val_fast}"
-        np.testing.assert_allclose(
+        np.testing.assert_almost_equal(
             val_fast,
             val_ref,
-            atol=1e-12,
+            decimal=decimal_debug_vs_production,
             err_msg=f"Forward mismatch: fast={val_fast:.15f}, ref={val_ref:.15f}",
         )
 
@@ -561,10 +561,10 @@ def test_evaluate_ln_wavefunction_fast_backward(trexio_file):
         grad_fast = grad_fast_fn(wavefunction_data, r_up, r_dn, G_inv)
 
         jax.tree_util.tree_map(
-            lambda a, b: np.testing.assert_allclose(
+            lambda a, b: np.testing.assert_array_almost_equal(
                 np.asarray(a),
                 np.asarray(b),
-                atol=1e-10,
+                decimal=decimal_debug_vs_production,
                 err_msg="Backward mismatch in evaluate_ln_wavefunction_fast",
             ),
             grad_ref,

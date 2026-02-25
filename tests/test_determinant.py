@@ -334,14 +334,14 @@ def test_geminal_sphe_to_cart_AOs_data():
     G_cart = compute_geminal_all_elements(geminal_cart, r_up_carts, r_dn_carts)
     assert not np.any(np.isnan(np.asarray(np.asarray(G_sph)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(G_cart)))), "NaN detected in second argument"
-    np.testing.assert_allclose(np.asarray(G_sph), np.asarray(G_cart), rtol=1e-9, atol=1e-10)
+    np.testing.assert_array_almost_equal(np.asarray(G_sph), np.asarray(G_cart), decimal=decimal_consistency)
 
     grads_sph = compute_grads_and_laplacian_ln_Det(geminal_sph, r_up_carts, r_dn_carts)
     grads_cart = compute_grads_and_laplacian_ln_Det(geminal_cart, r_up_carts, r_dn_carts)
     for sph, cart in zip(grads_sph, grads_cart, strict=True):
         assert not np.any(np.isnan(np.asarray(np.asarray(sph)))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(np.asarray(cart)))), "NaN detected in second argument"
-        np.testing.assert_allclose(np.asarray(sph), np.asarray(cart), rtol=1e-9, atol=1e-10)
+        np.testing.assert_array_almost_equal(np.asarray(sph), np.asarray(cart), decimal=decimal_consistency)
 
     jax.clear_caches()
 
@@ -373,14 +373,14 @@ def test_geminal_cart_to_sphe_AOs_data():
     G_sph = compute_geminal_all_elements(geminal_cart_to_sph, r_up_carts, r_dn_carts)
     assert not np.any(np.isnan(np.asarray(np.asarray(G_cart)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(G_sph)))), "NaN detected in second argument"
-    np.testing.assert_allclose(np.asarray(G_cart), np.asarray(G_sph), rtol=1e-9, atol=1e-10)
+    np.testing.assert_array_almost_equal(np.asarray(G_cart), np.asarray(G_sph), decimal=decimal_consistency)
 
     grads_cart = compute_grads_and_laplacian_ln_Det(geminal_cart, r_up_carts, r_dn_carts)
     grads_sph = compute_grads_and_laplacian_ln_Det(geminal_cart_to_sph, r_up_carts, r_dn_carts)
     for cart, sph in zip(grads_cart, grads_sph, strict=True):
         assert not np.any(np.isnan(np.asarray(np.asarray(cart)))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(np.asarray(sph)))), "NaN detected in second argument"
-        np.testing.assert_allclose(np.asarray(cart), np.asarray(sph), rtol=1e-9, atol=1e-10)
+        np.testing.assert_array_almost_equal(np.asarray(cart), np.asarray(sph), decimal=decimal_consistency)
 
     jax.clear_caches()
 
@@ -414,14 +414,14 @@ def test_geminal_sphe_to_cart_MOs_data():
     G_cart = compute_geminal_all_elements(geminal_cart, r_up_carts, r_dn_carts)
     assert not np.any(np.isnan(np.asarray(np.asarray(G_sph)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(G_cart)))), "NaN detected in second argument"
-    np.testing.assert_allclose(np.asarray(G_sph), np.asarray(G_cart), rtol=1e-9, atol=1e-10)
+    np.testing.assert_array_almost_equal(np.asarray(G_sph), np.asarray(G_cart), decimal=decimal_consistency)
 
     grads_sph = compute_grads_and_laplacian_ln_Det(geminal_sph, r_up_carts, r_dn_carts)
     grads_cart = compute_grads_and_laplacian_ln_Det(geminal_cart, r_up_carts, r_dn_carts)
     for sph, cart in zip(grads_sph, grads_cart, strict=True):
         assert not np.any(np.isnan(np.asarray(np.asarray(sph)))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(np.asarray(cart)))), "NaN detected in second argument"
-        np.testing.assert_allclose(np.asarray(sph), np.asarray(cart), rtol=1e-9, atol=1e-10)
+        np.testing.assert_array_almost_equal(np.asarray(sph), np.asarray(cart), decimal=decimal_consistency)
 
     jax.clear_caches()
 
@@ -457,14 +457,14 @@ def test_geminal_cart_to_sphe_MOs_data():
     G_sph = compute_geminal_all_elements(geminal_cart_to_sph, r_up_carts, r_dn_carts)
     assert not np.any(np.isnan(np.asarray(np.asarray(G_cart)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(G_sph)))), "NaN detected in second argument"
-    np.testing.assert_allclose(np.asarray(G_cart), np.asarray(G_sph), rtol=1e-9, atol=1e-10)
+    np.testing.assert_array_almost_equal(np.asarray(G_cart), np.asarray(G_sph), decimal=decimal_consistency)
 
     grads_cart = compute_grads_and_laplacian_ln_Det(geminal_cart, r_up_carts, r_dn_carts)
     grads_sph = compute_grads_and_laplacian_ln_Det(geminal_cart_to_sph, r_up_carts, r_dn_carts)
     for cart, sph in zip(grads_cart, grads_sph, strict=True):
         assert not np.any(np.isnan(np.asarray(np.asarray(cart)))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(np.asarray(sph)))), "NaN detected in second argument"
-        np.testing.assert_allclose(np.asarray(cart), np.asarray(sph), rtol=1e-9, atol=1e-10)
+        np.testing.assert_array_almost_equal(np.asarray(cart), np.asarray(sph), decimal=decimal_consistency)
 
     jax.clear_caches()
 
@@ -1384,7 +1384,9 @@ def test_ratio_determinant_rank1_update(pattern: str):
     if pattern == "none_moved":
         assert not np.any(np.isnan(np.asarray(np.asarray(ratio_debug)))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(np.ones_like(np.asarray(ratio_debug))))), "NaN detected in second argument"
-        np.testing.assert_allclose(np.asarray(ratio_debug), np.ones_like(np.asarray(ratio_debug)), rtol=1e-12, atol=1e-12)
+        np.testing.assert_array_almost_equal(
+            np.asarray(ratio_debug), np.ones_like(np.asarray(ratio_debug)), decimal=decimal_consistency
+        )
 
     jax.clear_caches()
 
@@ -1411,10 +1413,10 @@ def test_compute_ln_det_geminal_all_elements_fast_forward(trexio_file):
 
         assert np.isfinite(val_ref), f"Reference value is not finite: {val_ref}"
         assert np.isfinite(val_fast), f"Fast value is not finite: {val_fast}"
-        np.testing.assert_allclose(
+        np.testing.assert_almost_equal(
             val_fast,
             val_ref,
-            atol=1e-12,
+            decimal=decimal_debug_vs_production,
             err_msg=f"Forward mismatch: fast={val_fast:.15f}, ref={val_ref:.15f}",
         )
 
@@ -1445,10 +1447,10 @@ def test_compute_ln_det_geminal_all_elements_fast_backward(trexio_file):
         grad_fast = grad_fast_fn(geminal_data, r_up, r_dn, G_inv)
 
         jax.tree_util.tree_map(
-            lambda a, b: np.testing.assert_allclose(
+            lambda a, b: np.testing.assert_array_almost_equal(
                 np.asarray(a),
                 np.asarray(b),
-                atol=1e-10,
+                decimal=decimal_debug_vs_production,
                 err_msg="Backward mismatch in compute_ln_det_geminal_all_elements_fast",
             ),
             grad_ref,

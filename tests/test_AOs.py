@@ -1235,10 +1235,10 @@ def test_overlap_matrix_sphe_analytic_vs_numerical_debug():
 
     assert not np.any(np.isnan(np.asarray(overlap_analytic))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(overlap_numerical))), "NaN detected in second argument"
-    np.testing.assert_allclose(overlap_analytic, overlap_numerical, rtol=3.0e-3, atol=3.0e-4)
+    np.testing.assert_array_almost_equal(overlap_analytic, overlap_numerical, decimal=decimal_auto_vs_numerical_deriv)
     assert not np.any(np.isnan(np.asarray(overlap_analytic))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(overlap_analytic.T))), "NaN detected in second argument"
-    np.testing.assert_allclose(overlap_analytic, overlap_analytic.T, rtol=0.0, atol=1.0e-12)
+    np.testing.assert_array_almost_equal(overlap_analytic, overlap_analytic.T, decimal=decimal_consistency)
     assert np.all(np.diag(overlap_analytic) > 0.0)
 
     jax.clear_caches()

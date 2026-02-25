@@ -1364,7 +1364,7 @@ def _compute_ratio_determinant_part_debug(
     )
 
 
-@jit
+@jax.custom_vjp
 def compute_grads_and_laplacian_ln_Det(
     geminal_data: Geminal_data,
     r_up_carts: jax.Array,
@@ -1377,6 +1377,12 @@ def compute_grads_and_laplacian_ln_Det(
 ]:
     r"""Gradients and Laplacians of $\ln\det G$ for each electron.
 
+    The function uses a custom VJP to avoid NaN in the backward pass when G is
+    near-singular. The standard JAX SVD backward computes ``1/(s_i^2 - s_j^2)``
+    terms that blow up for degenerate singular values. The custom VJP instead uses
+    the matrix identity ``d(G^{-1}) = -G^{-1} dG G^{-1}`` with a thresholded SVD
+    pseudoinverse, which is both exact and numerically stable.
+
     Args:
         geminal_data: Geminal parameters and orbital references.
         r_up_carts: Cartesian coordinates of spin-up electrons with shape ``(N_up, 3)``.
@@ -1388,6 +1394,88 @@ def compute_grads_and_laplacian_ln_Det(
             - Gradients for spin-down electrons with shape ``(N_dn, 3)``.
             - Laplacians for spin-up electrons with shape ``(N_up,)``.
             - Laplacians for spin-down electrons with shape ``(N_dn,)``.
+    """
+    # Compute G_inv via SVD pseudoinverse (numerically stable, avoids LU NaN).
+    G = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
+    _U, _s, _Vt = jnp.linalg.svd(G, full_matrices=False)
+    _rcond = jnp.finfo(jnp.float64).eps * float(_s.shape[0])
+    _s_inv = jnp.where(_s > _rcond * _s[0], 1.0 / _s, 0.0)
+    geminal_inverse = (_Vt.T * _s_inv[jnp.newaxis, :]) @ _U.T
+
+    lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
+
+    ao_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
+    ao_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts)
+
+    ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z = geminal_data.compute_orb_grad_api(
+        geminal_data.orb_data_up_spin, r_up_carts
+    )
+    ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z = geminal_data.compute_orb_grad_api(
+        geminal_data.orb_data_dn_spin, r_dn_carts
+    )
+    ao_matrix_laplacian_up = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_up_spin, r_up_carts)
+    ao_matrix_laplacian_dn = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_dn_spin, r_dn_carts)
+
+    ao_up_grads = jnp.stack([ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z], axis=0)
+    ao_dn_grads = jnp.stack([ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z], axis=0)
+
+    paired_dn = jnp.dot(lambda_matrix_paired, ao_matrix_dn)
+    paired_dn_grads = jnp.einsum("ab,gbn->gan", lambda_matrix_paired, ao_dn_grads)
+
+    geminal_grad_up_paired = jnp.einsum("gia,aj->gij", jnp.swapaxes(ao_up_grads, 1, 2), paired_dn)
+    geminal_grad_up_unpaired = jnp.einsum("gia,ak->gik", jnp.swapaxes(ao_up_grads, 1, 2), lambda_matrix_unpaired)
+    geminal_grad_up = jnp.concatenate([geminal_grad_up_paired, geminal_grad_up_unpaired], axis=2)
+
+    geminal_grad_dn_paired = jnp.einsum("ia,gaj->gij", ao_matrix_up.T, paired_dn_grads)
+    geminal_grad_dn_unpaired = jnp.zeros(
+        (3, geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn),
+        dtype=geminal_grad_dn_paired.dtype,
+    )
+    geminal_grad_dn = jnp.concatenate([geminal_grad_dn_paired, geminal_grad_dn_unpaired], axis=2)
+
+    geminal_laplacian_up_paired = jnp.dot(ao_matrix_laplacian_up.T, paired_dn)
+    geminal_laplacian_up_unpaired = jnp.dot(ao_matrix_laplacian_up.T, lambda_matrix_unpaired)
+    geminal_laplacian_up = jnp.hstack([geminal_laplacian_up_paired, geminal_laplacian_up_unpaired])
+
+    geminal_laplacian_dn_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_laplacian_dn))
+    geminal_laplacian_dn_unpaired = jnp.zeros(
+        [geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn],
+        dtype=geminal_laplacian_dn_paired.dtype,
+    )
+    geminal_laplacian_dn = jnp.hstack([geminal_laplacian_dn_paired, geminal_laplacian_dn_unpaired])
+
+    grad_ln_D_up_stack = jnp.einsum("gij,ji->gi", geminal_grad_up, geminal_inverse)
+    grad_ln_D_dn_stack = jnp.einsum("ij,gji->gi", geminal_inverse, geminal_grad_dn)
+
+    grad_ln_D_up = grad_ln_D_up_stack.T
+    grad_ln_D_dn = grad_ln_D_dn_stack.T
+
+    grad_ln_D_up_x, grad_ln_D_up_y, grad_ln_D_up_z = grad_ln_D_up_stack
+    grad_ln_D_dn_x, grad_ln_D_dn_y, grad_ln_D_dn_z = grad_ln_D_dn_stack
+
+    lap_ln_D_up = -(
+        grad_ln_D_up_x * grad_ln_D_up_x + grad_ln_D_up_y * grad_ln_D_up_y + grad_ln_D_up_z * grad_ln_D_up_z
+    ) + jnp.einsum("ij,ji->i", geminal_laplacian_up, geminal_inverse)
+
+    lap_ln_D_dn = -(
+        grad_ln_D_dn_x * grad_ln_D_dn_x + grad_ln_D_dn_y * grad_ln_D_dn_y + grad_ln_D_dn_z * grad_ln_D_dn_z
+    ) + jnp.einsum("ij,ji->i", geminal_inverse, geminal_laplacian_dn)
+
+    return grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn
+
+
+def _grads_lap_body(
+    geminal_data: Geminal_data,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+    geminal_inverse: jax.Array,
+) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
+    """Pure functional core of grad/laplacian computation.
+
+    Contains the same computation as ``compute_grads_and_laplacian_ln_Det_fast``
+    but without the ``@jit`` decorator or ``None``-check, so it can be safely
+    passed to ``jax.vjp`` inside the custom VJP backward pass without creating
+    a dependency on the public fast function.
     """
     lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
 
@@ -1403,80 +1491,42 @@ def compute_grads_and_laplacian_ln_Det(
     ao_matrix_laplacian_up = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_up_spin, r_up_carts)
     ao_matrix_laplacian_dn = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_dn_spin, r_dn_carts)
 
-    geminal_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
-    geminal_unpaired = jnp.dot(ao_matrix_up.T, lambda_matrix_unpaired)
-    geminal = jnp.hstack([geminal_paired, geminal_unpaired])
+    ao_up_grads = jnp.stack([ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z], axis=0)
+    ao_dn_grads = jnp.stack([ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z], axis=0)
 
-    geminal_grad_up_x_paired = jnp.dot(ao_matrix_up_grad_x.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
-    geminal_grad_up_x_unpaired = jnp.dot(ao_matrix_up_grad_x.T, lambda_matrix_unpaired)
-    geminal_grad_up_x = jnp.hstack([geminal_grad_up_x_paired, geminal_grad_up_x_unpaired])
+    paired_dn = jnp.dot(lambda_matrix_paired, ao_matrix_dn)
+    paired_dn_grads = jnp.einsum("ab,gbn->gan", lambda_matrix_paired, ao_dn_grads)
 
-    geminal_grad_up_y_paired = jnp.dot(ao_matrix_up_grad_y.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
-    geminal_grad_up_y_unpaired = jnp.dot(ao_matrix_up_grad_y.T, lambda_matrix_unpaired)
-    geminal_grad_up_y = jnp.hstack([geminal_grad_up_y_paired, geminal_grad_up_y_unpaired])
+    geminal_grad_up_paired = jnp.einsum("gia,aj->gij", jnp.swapaxes(ao_up_grads, 1, 2), paired_dn)
+    geminal_grad_up_unpaired = jnp.einsum("gia,ak->gik", jnp.swapaxes(ao_up_grads, 1, 2), lambda_matrix_unpaired)
+    geminal_grad_up = jnp.concatenate([geminal_grad_up_paired, geminal_grad_up_unpaired], axis=2)
 
-    geminal_grad_up_z_paired = jnp.dot(ao_matrix_up_grad_z.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
-    geminal_grad_up_z_unpaired = jnp.dot(ao_matrix_up_grad_z.T, lambda_matrix_unpaired)
-    geminal_grad_up_z = jnp.hstack([geminal_grad_up_z_paired, geminal_grad_up_z_unpaired])
+    geminal_grad_dn_paired = jnp.einsum("ia,gaj->gij", ao_matrix_up.T, paired_dn_grads)
+    geminal_grad_dn_unpaired = jnp.zeros(
+        (3, geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn),
+        dtype=geminal_grad_dn_paired.dtype,
+    )
+    geminal_grad_dn = jnp.concatenate([geminal_grad_dn_paired, geminal_grad_dn_unpaired], axis=2)
 
-    geminal_laplacian_up_paired = jnp.dot(ao_matrix_laplacian_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
+    geminal_laplacian_up_paired = jnp.dot(ao_matrix_laplacian_up.T, paired_dn)
     geminal_laplacian_up_unpaired = jnp.dot(ao_matrix_laplacian_up.T, lambda_matrix_unpaired)
     geminal_laplacian_up = jnp.hstack([geminal_laplacian_up_paired, geminal_laplacian_up_unpaired])
 
-    geminal_grad_dn_x_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn_grad_x))
-    geminal_grad_dn_x_unpaired = jnp.zeros(
-        [
-            geminal_data.num_electron_up,
-            geminal_data.num_electron_up - geminal_data.num_electron_dn,
-        ]
-    )
-    geminal_grad_dn_x = jnp.hstack([geminal_grad_dn_x_paired, geminal_grad_dn_x_unpaired])
-
-    geminal_grad_dn_y_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn_grad_y))
-    geminal_grad_dn_y_unpaired = jnp.zeros(
-        [
-            geminal_data.num_electron_up,
-            geminal_data.num_electron_up - geminal_data.num_electron_dn,
-        ]
-    )
-    geminal_grad_dn_y = jnp.hstack([geminal_grad_dn_y_paired, geminal_grad_dn_y_unpaired])
-
-    geminal_grad_dn_z_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn_grad_z))
-    geminal_grad_dn_z_unpaired = jnp.zeros(
-        [
-            geminal_data.num_electron_up,
-            geminal_data.num_electron_up - geminal_data.num_electron_dn,
-        ]
-    )
-    geminal_grad_dn_z = jnp.hstack([geminal_grad_dn_z_paired, geminal_grad_dn_z_unpaired])
-
     geminal_laplacian_dn_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_laplacian_dn))
     geminal_laplacian_dn_unpaired = jnp.zeros(
-        [
-            geminal_data.num_electron_up,
-            geminal_data.num_electron_up - geminal_data.num_electron_dn,
-        ]
+        [geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn],
+        dtype=geminal_laplacian_dn_paired.dtype,
     )
     geminal_laplacian_dn = jnp.hstack([geminal_laplacian_dn_paired, geminal_laplacian_dn_unpaired])
 
-    # Compute G^{-1} via SVD pseudoinverse with thresholding.
-    # LU-based solve_triangular produces NaN in its own backward (d/dlambda)
-    # when U has near-zero diagonal entries for near-singular G.
-    # SVD zeros out 1/s for tiny singular values instead.
-    _U, _s, _Vt = jnp.linalg.svd(geminal, full_matrices=False)
-    _rcond = jnp.finfo(jnp.float64).eps * float(_s.shape[0])
-    _s_inv = jnp.where(_s > _rcond * _s[0], 1.0 / _s, 0.0)
-    geminal_inverse = (_Vt.T * _s_inv[jnp.newaxis, :]) @ _U.T
+    grad_ln_D_up_stack = jnp.einsum("gij,ji->gi", geminal_grad_up, geminal_inverse)
+    grad_ln_D_dn_stack = jnp.einsum("ij,gji->gi", geminal_inverse, geminal_grad_dn)
 
-    grad_ln_D_up_x = jnp.einsum("ij,ji->i", geminal_grad_up_x, geminal_inverse)
-    grad_ln_D_up_y = jnp.einsum("ij,ji->i", geminal_grad_up_y, geminal_inverse)
-    grad_ln_D_up_z = jnp.einsum("ij,ji->i", geminal_grad_up_z, geminal_inverse)
-    grad_ln_D_dn_x = jnp.einsum("ij,ji->i", geminal_inverse, geminal_grad_dn_x)
-    grad_ln_D_dn_y = jnp.einsum("ij,ji->i", geminal_inverse, geminal_grad_dn_y)
-    grad_ln_D_dn_z = jnp.einsum("ij,ji->i", geminal_inverse, geminal_grad_dn_z)
+    grad_ln_D_up = grad_ln_D_up_stack.T
+    grad_ln_D_dn = grad_ln_D_dn_stack.T
 
-    grad_ln_D_up = jnp.array([grad_ln_D_up_x, grad_ln_D_up_y, grad_ln_D_up_z]).T
-    grad_ln_D_dn = jnp.array([grad_ln_D_dn_x, grad_ln_D_dn_y, grad_ln_D_dn_z]).T
+    grad_ln_D_up_x, grad_ln_D_up_y, grad_ln_D_up_z = grad_ln_D_up_stack
+    grad_ln_D_dn_x, grad_ln_D_dn_y, grad_ln_D_dn_z = grad_ln_D_dn_stack
 
     lap_ln_D_up = -(
         grad_ln_D_up_x * grad_ln_D_up_x + grad_ln_D_up_y * grad_ln_D_up_y + grad_ln_D_up_z * grad_ln_D_up_z
@@ -1487,6 +1537,64 @@ def compute_grads_and_laplacian_ln_Det(
     ) + jnp.einsum("ij,ji->i", geminal_inverse, geminal_laplacian_dn)
 
     return grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn
+
+
+def _grads_lap_fwd(
+    geminal_data: Geminal_data,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+):
+    """Forward pass: compute stable G_inv and primal outputs."""
+    G = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
+    _U, _s, _Vt = jnp.linalg.svd(G, full_matrices=False)
+    _rcond = jnp.finfo(jnp.float64).eps * float(_s.shape[0])
+    _s_inv = jnp.where(_s > _rcond * _s[0], 1.0 / _s, 0.0)
+    G_inv_stable = (_Vt.T * _s_inv[jnp.newaxis, :]) @ _U.T
+    primals = _grads_lap_body(geminal_data, r_up_carts, r_dn_carts, G_inv_stable)
+    return primals, (geminal_data, r_up_carts, r_dn_carts, G_inv_stable)
+
+
+def _grads_lap_bwd(res, g):
+    """Backward pass using the matrix identity d(G^{-1}) = -G^{-1} dG G^{-1}.
+
+    The gradient has two contributions:
+    1. Direct: d/d(lambda) via lambda -> AO matrices -> G_grad/G_lap -> output.
+       Obtained by differentiating _grads_lap_body w.r.t.
+       all inputs (including G_inv_stable as an explicit argument).
+    2. Inverse: d/d(lambda) via lambda -> G -> G^{-1} -> output.
+       Obtained by converting G_inv_bar -> G_bar via -G_inv.T @ G_inv_bar @ G_inv.T,
+       then propagating G_bar back through compute_geminal_all_elements.
+
+    Neither path requires differentiating through jnp.linalg.svd, so degenerate
+    singular values cannot produce NaN.
+    """
+    geminal_data, r_up_carts, r_dn_carts, G_inv_stable = res
+
+    # Step 1: differentiate _grads_lap_body w.r.t. all args.
+    # This gives direct gradients (AO path) and G_inv_bar (cotangent for G_inv).
+    _, vjp_fn = jax.vjp(
+        _grads_lap_body,
+        geminal_data,
+        r_up_carts,
+        r_dn_carts,
+        G_inv_stable,
+    )
+    d_geminal_direct, d_r_up_direct, d_r_dn_direct, G_inv_bar = vjp_fn(g)
+
+    # Step 2: convert G_inv_bar -> G_bar using d(G^{-1}) = -G^{-1} dG G^{-1}:
+    #   <G_inv_bar, dG^{-1}> = -<G_inv.T @ G_inv_bar @ G_inv.T, dG>
+    G_bar_from_inv = -(G_inv_stable.T @ G_inv_bar @ G_inv_stable.T)
+
+    # Step 3: propagate G_bar back through G = compute_geminal_all_elements(...).
+    _, vjp_fn2 = jax.vjp(compute_geminal_all_elements, geminal_data, r_up_carts, r_dn_carts)
+    d_geminal_inv, d_r_up_inv, d_r_dn_inv = vjp_fn2(G_bar_from_inv)
+
+    # Total: sum both contributions.
+    d_geminal = jax.tree_util.tree_map(lambda a, b: a + b, d_geminal_direct, d_geminal_inv)
+    return d_geminal, d_r_up_direct + d_r_up_inv, d_r_dn_direct + d_r_dn_inv
+
+
+compute_grads_and_laplacian_ln_Det.defvjp(_grads_lap_fwd, _grads_lap_bwd)
 
 
 @jit
