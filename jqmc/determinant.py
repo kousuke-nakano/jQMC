@@ -937,7 +937,11 @@ def compute_AS_regularization_factor_fast_update(
     S = jnp.min(jnp.sum(geminal**2, axis=0))
 
     # compute R_AS
-    R_AS = (S * F) ** (-theta)
+    # Guard: when S*F == 0 (e.g. SVD-truncated geminal_inv with a near-zero
+    # column norm), return 0 so the walker is fully down-weighted rather than
+    # producing +inf -> w_L = (inf/inf)^2 = NaN.
+    SF = S * F
+    R_AS = jnp.where(SF > 0.0, SF ** (-theta), 0.0)
 
     return R_AS
 
@@ -989,7 +993,10 @@ def compute_AS_regularization_factor(geminal_data: Geminal_data, r_up_carts: jax
     S = jnp.min(jnp.sum(geminal**2, axis=0))
 
     # compute R_AS
-    R_AS = (S * F) ** (-theta)
+    # Guard: S*F can be 0*∞ = NaN when G is near-singular (S→0, F→∞).
+    # Return 0 in that case to fully down-weight the walker instead of NaN.
+    SF = S * F
+    R_AS = jnp.where(jnp.isfinite(SF) & (SF > 0.0), SF ** (-theta), 0.0)
 
     return R_AS
 
