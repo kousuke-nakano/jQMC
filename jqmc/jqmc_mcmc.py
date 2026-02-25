@@ -1946,6 +1946,38 @@ class MCMC:
             generalized_force_std,
         )  # (L vector, L vector)
 
+    @staticmethod
+    def _safe_stats(arr: npt.NDArray, name: str = "array") -> dict:
+        """Calculate statistics safely, handling all-NaN arrays without warnings.
+
+        Args:
+            arr: Input array
+            name: Name for logging
+
+        Returns:
+            dict with keys: shape, nan_count, nan_frac, min, max, mean, std
+        """
+        stats = {
+            "shape": arr.shape,
+            "nan_count": int(np.sum(np.isnan(arr))),
+            "nan_frac": float(np.sum(np.isnan(arr)) / arr.size) if arr.size > 0 else 1.0,
+        }
+
+        # Only compute statistics if there are non-NaN values
+        if stats["nan_frac"] < 1.0:
+            with np.errstate(all="ignore"):  # Suppress warnings
+                stats["min"] = float(np.nanmin(arr))
+                stats["max"] = float(np.nanmax(arr))
+                stats["mean"] = float(np.nanmean(arr))
+                stats["std"] = float(np.nanstd(arr))
+        else:
+            stats["min"] = float("nan")
+            stats["max"] = float("nan")
+            stats["mean"] = float("nan")
+            stats["std"] = float("nan")
+
+        return stats
+
     def get_aH(
         self,
         g: npt.NDArray,
@@ -1995,25 +2027,18 @@ class MCMC:
         Notes:
             Use :meth:`compute_asr_gamma` to obtain :math:`\\gamma` from the returned values.
         """
-        logger.debug("[get_aH] ENTRY: starting get_aH computation")
         if not self.__comput_log_WF_param_deriv:
             raise RuntimeError("get_aH requires compute_log_WF_param_deriv=True.")
         if not self.__comput_e_L_param_deriv:
             raise RuntimeError("get_aH requires comput_e_L_param_deriv=True (for B matrix / de_L/dc).")
-        logger.debug(f"[get_aH] g.shape={g.shape}, len(blocks)={len(blocks)}, num_mcmc_warmup_steps={num_mcmc_warmup_steps}")
 
-        # ---- Diagnostic: check input g vector ----
-        _g_nonfinite = ~np.isfinite(g)
-        _g_nonfinite_count = int(np.sum(_g_nonfinite))
-        if _g_nonfinite_count > 0:
-            logger.error(
-                f"[get_aH] INPUT g has {_g_nonfinite_count}/{g.size} NaN/Inf entries! "
-                f"This will cause all gdE_flat to become NaN/Inf."
-            )
+        # Diagnostic output at entry
+        logger.debug("[get_aH] ENTRY")
+        g_stats = self._safe_stats(g, "g")
         logger.debug(
-            f"[get_aH] INPUT g: NaN or Inf={_g_nonfinite_count}/{g.size}  "
-            f"min={np.nanmin(g):.3e}  max={np.nanmax(g):.3e}  "
-            f"mean={np.nanmean(g):.3e}  std={np.nanstd(g):.3e}  norm={np.linalg.norm(g):.3e}"
+            f"[get_aH] INPUT g: shape={g_stats['shape']} "
+            f"NaN={g_stats['nan_count']}/{g.size} min={g_stats['min']:.3e} "
+            f"max={g_stats['max']:.3e} mean={g_stats['mean']:.3e}"
         )
 
         # ---- raw samples after warmup ----
@@ -2031,6 +2056,18 @@ class MCMC:
 
         # ---- dE_matrix: de_L / dc  shape (M, nw, K) ----
         de_L_dc_map = self.de_L_dc
+
+        # Diagnostics: check de_L_dc_map
+        logger.debug(f"[get_aH] de_L_dc_map keys: {list(de_L_dc_map.keys())}")
+        for block_name, arr in de_L_dc_map.items():
+            arr_stats = self._safe_stats(arr, f"de_L_dc[{block_name}]")
+            logger.debug(
+                f"[get_aH] de_L_dc['{block_name}']: shape={arr_stats['shape']} "
+                f"NaN={arr_stats['nan_count']}/{arr.size} ({arr_stats['nan_frac']:.2%}) "
+                f"min={arr_stats['min']:.3e} max={arr_stats['max']:.3e} "
+                f"mean={arr_stats['mean']:.3e}"
+            )
+
         de_L_dc_list = []
         for block in blocks:
             if block.name in de_L_dc_map:
@@ -2044,6 +2081,15 @@ class MCMC:
         if chosen_param_index is not None:
             dE_matrix = dE_matrix[:, :, chosen_param_index]
 
+        # Diagnostics: dE_matrix
+        dE_matrix_stats = self._safe_stats(dE_matrix, "dE_matrix")
+        logger.debug(
+            f"[get_aH] dE_matrix: shape={dE_matrix_stats['shape']} "
+            f"NaN={dE_matrix_stats['nan_count']}/{dE_matrix.size} ({dE_matrix_stats['nan_frac']:.2%}) "
+            f"min={dE_matrix_stats['min']:.3e} max={dE_matrix_stats['max']:.3e} "
+            f"mean={dE_matrix_stats['mean']:.3e}"
+        )
+
         # ---- flatten (M, nw) -> (N,) ----
         w_flat = np.ravel(w_L)  # (N,)
         e_flat = np.ravel(e_L)  # (N,)
@@ -2052,19 +2098,13 @@ class MCMC:
         O_flat = O_matrix.reshape(N, K)  # (N, K)
         dE_flat = dE_matrix.reshape(N, K)  # (N, K)
 
-        # ---- Report de_L/dc statistics (diagnostic for near-singular G) ----
-        _dE_nonfinite = ~np.isfinite(dE_flat)
-        _dE_nonfinite_count = int(np.sum(_dE_nonfinite))
-        if _dE_nonfinite_count > 0:
-            _nrows_dE = int(np.sum(np.any(_dE_nonfinite, axis=1)))
-            logger.warning(
-                f"[de_L/dc in get_aH] NaN or Inf = {_dE_nonfinite_count}/{dE_flat.size} "
-                f"(in {_nrows_dE} samples). These will contribute to gBg via weighted average."
-            )
+        # Diagnostics: dE_flat
+        dE_flat_stats = self._safe_stats(dE_flat, "dE_flat")
         logger.debug(
-            f"[de_L/dc in get_aH] shape={dE_flat.shape}  NaN or Inf={_dE_nonfinite_count}/{dE_flat.size}  "
-            f"min={np.nanmin(dE_flat):.3e}  max={np.nanmax(dE_flat):.3e}  "
-            f"mean={np.nanmean(dE_flat):.3e}  std={np.nanstd(dE_flat):.3e}"
+            f"[get_aH] dE_flat: shape={dE_flat_stats['shape']} "
+            f"NaN={dE_flat_stats['nan_count']}/{dE_flat.size} ({dE_flat_stats['nan_frac']:.2%}) "
+            f"min={dE_flat_stats['min']:.3e} max={dE_flat_stats['max']:.3e} "
+            f"mean={dE_flat_stats['mean']:.3e} std={dE_flat_stats['std']:.3e}"
         )
 
         # ---- MPI-aware weighted averages ----
@@ -2073,17 +2113,13 @@ class MCMC:
         wO_local = np.einsum("i,ik->k", w_flat, O_flat)  # (K,)
         wdE_local = np.einsum("i,ik->k", w_flat, dE_flat)  # (K,)
 
-        # ---- Diagnostic: check wdE_local before MPI reduction ----
-        _wdE_local_nonfinite = int(np.sum(~np.isfinite(wdE_local)))
-        if _wdE_local_nonfinite > 0:
-            logger.error(
-                f"[get_aH] wdE_local has {_wdE_local_nonfinite}/{wdE_local.size} NaN/Inf entries "
-                f"BEFORE MPI Allreduce! This will cause dE_bar to be NaN."
-            )
+        # Diagnostics: wdE_local (BEFORE MPI Allreduce)
+        wdE_local_stats = self._safe_stats(wdE_local, "wdE_local")
         logger.debug(
-            f"[get_aH] wdE_local (before MPI): NaN or Inf={_wdE_local_nonfinite}/{wdE_local.size}  "
-            f"min={np.nanmin(wdE_local):.3e}  max={np.nanmax(wdE_local):.3e}  "
-            f"mean={np.nanmean(wdE_local):.3e}"
+            f"[get_aH] wdE_local (BEFORE Allreduce): shape={wdE_local_stats['shape']} "
+            f"NaN={wdE_local_stats['nan_count']}/{wdE_local.size} ({wdE_local_stats['nan_frac']:.2%}) "
+            f"min={wdE_local_stats['min']:.3e} max={wdE_local_stats['max']:.3e} "
+            f"mean={wdE_local_stats['mean']:.3e} std={wdE_local_stats['std']:.3e}"
         )
 
         total_w = mpi_comm.allreduce(total_w_local, op=MPI.SUM)
@@ -2095,37 +2131,30 @@ class MCMC:
         mpi_comm.Allreduce([wO_local, MPI.DOUBLE], [wO_global, MPI.DOUBLE], op=MPI.SUM)
         mpi_comm.Allreduce([wdE_local, MPI.DOUBLE], [wdE_global, MPI.DOUBLE], op=MPI.SUM)
 
-        # ---- Diagnostic: check wdE_global and total_w after MPI reduction ----
-        _wdE_global_nonfinite = int(np.sum(~np.isfinite(wdE_global)))
-        if _wdE_global_nonfinite > 0:
-            logger.error(
-                f"[get_aH] wdE_global has {_wdE_global_nonfinite}/{wdE_global.size} NaN/Inf entries "
-                f"AFTER MPI Allreduce! total_w={total_w:.6e}"
-            )
+        # Diagnostics: wdE_global (AFTER Allreduce)
+        wdE_global_stats = self._safe_stats(wdE_global, "wdE_global")
         logger.debug(
-            f"[get_aH] wdE_global (after MPI): NaN or Inf={_wdE_global_nonfinite}/{wdE_global.size}  "
-            f"total_w={total_w:.6e}  min={np.nanmin(wdE_global):.3e}  max={np.nanmax(wdE_global):.3e}"
+            f"[get_aH] wdE_global (AFTER Allreduce): shape={wdE_global_stats['shape']} "
+            f"NaN={wdE_global_stats['nan_count']}/{wdE_global.size} ({wdE_global_stats['nan_frac']:.2%}) "
+            f"min={wdE_global_stats['min']:.3e} max={wdE_global_stats['max']:.3e} "
+            f"mean={wdE_global_stats['mean']:.3e} std={wdE_global_stats['std']:.3e}"
         )
 
         e_bar = float(we_global[0]) / total_w  # scalar
         O_bar = wO_global / total_w  # (K,)
         dE_bar = wdE_global / total_w  # (K,)
 
-        # ---- Diagnostic: check dE_bar immediately after computation ----
-        _dE_bar_nonfinite_immediate = int(np.sum(~np.isfinite(dE_bar)))
-        if _dE_bar_nonfinite_immediate > 0:
-            logger.error(
-                f"[get_aH] dE_bar has {_dE_bar_nonfinite_immediate}/{dE_bar.size} NaN/Inf entries "
-                f"immediately after dE_bar = wdE_global / total_w!"
-            )
+        # Diagnostics: dE_bar
+        dE_bar_stats = self._safe_stats(dE_bar, "dE_bar")
         logger.debug(
-            f"[get_aH] dE_bar (immediately after /total_w): NaN or Inf={_dE_bar_nonfinite_immediate}/{dE_bar.size}  "
-            f"min={np.nanmin(dE_bar):.3e}  max={np.nanmax(dE_bar):.3e}  mean={np.nanmean(dE_bar):.3e}"
+            f"[get_aH] dE_bar: shape={dE_bar_stats['shape']} "
+            f"NaN={dE_bar_stats['nan_count']}/{dE_bar.size} ({dE_bar_stats['nan_frac']:.2%}) "
+            f"min={dE_bar_stats['min']:.3e} max={dE_bar_stats['max']:.3e} "
+            f"mean={dE_bar_stats['mean']:.3e} std={dE_bar_stats['std']:.3e}"
         )
 
         # ---- H_0 ----
         H_0 = e_bar
-        logger.debug(f"[get_aH] H_0 computed: H_0={H_0:.6e}")
 
         # ---- f_k = -2 <w (e_L - E)(O_k - O_bar_k)>  (generalized force) ----
         dO_flat = O_flat - O_bar[np.newaxis, :]  # (N, K)
@@ -2136,7 +2165,6 @@ class MCMC:
 
         # ---- H_1 = -1/2 * g^T f ----
         H_1 = -0.5 * float(np.dot(g, f_vec))
-        logger.debug(f"[get_aH] H_1 computed: H_1={H_1:.6e}")
 
         # ---- S_2 = g^T S g = <w * (g^T dO)^2>_w  (exact, computed from samples) ----
         # Do NOT use S_2 = g^T f = -2*H_1.  The SR solved (S_scaled + sr_epsilon*I) g_scaled = b,
@@ -2145,68 +2173,29 @@ class MCMC:
         # E(gamma) = (H0 + 2*gamma*H1 + gamma^2*H2) / (1 + gamma^2*S2) grow too fast,
         # which in turn makes the optimal gamma unrealistically small.
         gdO_flat = dO_flat @ g  # (N,)
-        logger.debug(
-            f"[get_aH] gdO_flat = dO_flat @ g computed: "
-            f"NaN or Inf={int(np.sum(~np.isfinite(gdO_flat)))}/{gdO_flat.size}  "
-            f"min={np.nanmin(gdO_flat):.3e}  max={np.nanmax(gdO_flat):.3e}"
-        )
         gSg_local = np.dot(w_flat, gdO_flat**2)
         gSg_arr = np.empty(1)
         mpi_comm.Allreduce([np.array([gSg_local]), MPI.DOUBLE], [gSg_arr, MPI.DOUBLE], op=MPI.SUM)
         S_2 = float(gSg_arr[0]) / total_w
-        logger.debug(f"[get_aH] S_2 computed: S_2={S_2:.6e}")
 
         # ---- K matrix contribution: g^T K g = <w * e_L * (g^T dO)^2>_w ----
         gKg_local = np.einsum("i,i,i->", w_flat, e_flat, gdO_flat**2)
         gKg_arr = np.empty(1)
         mpi_comm.Allreduce([np.array([gKg_local]), MPI.DOUBLE], [gKg_arr, MPI.DOUBLE], op=MPI.SUM)
         gKg = float(gKg_arr[0]) / total_w
-        logger.debug(f"[get_aH] gKg = {gKg:.6e}")
 
         # ---- B matrix contribution: g^T B g = <w * (g^T dO) * (g^T (dE - dE_bar))>_w ----
         ddE_flat = dE_flat - dE_bar[np.newaxis, :]  # (N, K)
-
-        # ---- Diagnostic: check dE_bar and ddE_flat before computing gdE_flat ----
-        _dE_bar_nonfinite = int(np.sum(~np.isfinite(dE_bar)))
-        if _dE_bar_nonfinite > 0:
-            logger.error(f"[get_aH] dE_bar has {_dE_bar_nonfinite}/{dE_bar.size} NaN/Inf entries!")
-        logger.debug(
-            f"[get_aH] dE_bar: NaN or Inf={_dE_bar_nonfinite}/{dE_bar.size}  "
-            f"min={np.nanmin(dE_bar):.3e}  max={np.nanmax(dE_bar):.3e}  "
-            f"mean={np.nanmean(dE_bar):.3e}"
-        )
-        _ddE_nonfinite = int(np.sum(~np.isfinite(ddE_flat)))
-        if _ddE_nonfinite > 0:
-            logger.warning(f"[get_aH] ddE_flat has {_ddE_nonfinite}/{ddE_flat.size} NaN/Inf entries before @ g")
-        logger.debug(
-            f"[get_aH] ddE_flat: NaN or Inf={_ddE_nonfinite}/{ddE_flat.size}  "
-            f"min={np.nanmin(ddE_flat):.3e}  max={np.nanmax(ddE_flat):.3e}  "
-            f"mean={np.nanmean(ddE_flat):.3e}  std={np.nanstd(ddE_flat):.3e}"
-        )
-
         gdE_flat = ddE_flat @ g  # (N,)
-        _gdE_nonfinite = int(np.sum(~np.isfinite(gdE_flat)))
-        if _gdE_nonfinite > 0:
-            logger.warning(f"[get_aH] gdE_flat has {_gdE_nonfinite}/{len(gdE_flat)} NaN/Inf entries before gBg computation")
         gBg_local = np.einsum("i,i,i->", w_flat, gdO_flat, gdE_flat)
         gBg_arr = np.empty(1)
         mpi_comm.Allreduce([np.array([gBg_local]), MPI.DOUBLE], [gBg_arr, MPI.DOUBLE], op=MPI.SUM)
         gBg = float(gBg_arr[0]) / total_w
-        logger.debug(f"[get_aH] gBg = {gBg:.6e}")
 
         # ---- H_2 = g^T (B + K) g ----
         H_2 = gBg + gKg
-        logger.debug(f"[get_aH] H_2 computed: H_2={H_2:.6e} (gBg={gBg:.6e}, gKg={gKg:.6e})")
-
-        # ---- Diagnostic: report intermediate quantities if H_2 is non-finite ----
-        if not np.isfinite(H_2):
-            logger.error(
-                f"aSR: H_2 = {H_2} is non-finite. gBg = {gBg:.6e}, gKg = {gKg:.6e}. "
-                f"gdE_flat has {int(np.sum(~np.isfinite(gdE_flat)))}/{len(gdE_flat)} NaN/Inf entries."
-            )
 
         logger.info(f"aSR: H_0 = {H_0:.6f}, H_1 = {H_1:.6f}, H_2 = {H_2:.6f}, S_2 = {S_2:.6f}")
-        logger.debug("[get_aH] EXIT: returning H_0, H_1, H_2, S_2")
         return H_0, H_1, H_2, S_2
 
     @staticmethod
