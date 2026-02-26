@@ -1777,8 +1777,9 @@ class MCMC:
                 end = start + block.size
                 if block.name == "lambda_matrix":
                     block_matrix = O_matrix[:, :, start:end].reshape(O_matrix.shape[0], O_matrix.shape[1], *block.shape)
-                    paired_block = block_matrix[:, :, :, :num_orb_projection]
-                    unpaired_block = block_matrix[:, :, :, num_orb_projection:]
+                    n_paired_cols = right_projector.shape[0]  # n_AO (projector dimension)
+                    paired_block = block_matrix[:, :, :, :n_paired_cols]
+                    unpaired_block = block_matrix[:, :, :, n_paired_cols:]
 
                     correction = np.einsum(
                         "ab,mwbc,cd->mwad",
@@ -2595,11 +2596,18 @@ class MCMC:
                 overlap_up = 0.5 * (overlap_up + overlap_up.T)
                 overlap_dn = 0.5 * (overlap_dn + overlap_dn.T)
 
-                p_matrix_cols_up = mo_coefficients_up[:num_orb_projection, :].T
-                p_matrix_rows_dn = mo_coefficients_dn[:num_orb_projection, :]
-                left_projector = (overlap_up @ p_matrix_cols_up) @ p_matrix_cols_up.T
-                right_projector = (p_matrix_rows_dn @ overlap_dn) @ p_matrix_rows_dn.T
+                p_matrix_cols_up = mo_coefficients_up[:num_orb_projection, :].T  # (n_AO, n_dn)
+                p_matrix_cols_dn = mo_coefficients_dn[:num_orb_projection, :].T  # (n_AO, n_dn)
+                left_projector = (overlap_up @ p_matrix_cols_up) @ p_matrix_cols_up.T  # S C_up C_up^T, (n_AO, n_AO)
+                right_projector = (p_matrix_cols_dn @ p_matrix_cols_dn.T) @ overlap_dn  # C_dn C_dn^T S, (n_AO, n_AO)
                 lambda_projectors = (left_projector, right_projector)
+                logger.devel(
+                    "opt_with_projected_MOs: P_up.shape=%s, P_dn.shape=%s, S_up.shape=%s, S_dn.shape=%s",
+                    p_matrix_cols_up.shape,
+                    p_matrix_cols_dn.shape,
+                    overlap_up.shape,
+                    overlap_dn.shape,
+                )
 
                 geminal_ao = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_current)
                 wavefunction_data_ao = type(wavefunction_data_step)(
@@ -2686,6 +2694,23 @@ class MCMC:
                         f"Optimizing only {num_param_opt} variational parameters with the largest signal to noise ratios of f."
                     )
                     signal_to_noise_f_max_indices = np.argsort(signal_to_noise_f)[::-1][:num_param_opt]
+                    # Identify which block each selected parameter belongs to
+                    _sel_info = []
+                    for _idx in signal_to_noise_f_max_indices:
+                        _block_name = "unknown"
+                        _local_idx = int(_idx)
+                        for _blk, _s, _e in offsets:
+                            if _s <= _idx < _e:
+                                _block_name = _blk.name
+                                _local_idx = int(_idx - _s)
+                                break
+                        _sel_info.append(
+                            f"  flat={_idx} block={_block_name} local={_local_idx} "
+                            f"|f|/std={signal_to_noise_f[_idx]:.3f} f={f[_idx]:.6f}"
+                        )
+                    logger.debug("Selected %d parameters for optimization (by |f|/|std f|):", num_param_opt)
+                    for _line in _sel_info:
+                        logger.debug(_line)
                 else:
                     logger.info("Optimizing all variational parameters.")
                     signal_to_noise_f_max_indices = np.arange(signal_to_noise_f.size)
@@ -3196,7 +3221,8 @@ class MCMC:
                 if lambda_projectors is not None and num_orb_projection is not None:
                     left_projector, right_projector = lambda_projectors
                     lambda_matrix = np.asarray(geminal_ao_current.lambda_matrix, dtype=np.float64)
-                    lambda_paired, lambda_unpaired = np.hsplit(lambda_matrix, [num_orb_projection])
+                    n_paired_cols = right_projector.shape[0]  # n_AO (projector dimension)
+                    lambda_paired, lambda_unpaired = np.hsplit(lambda_matrix, [n_paired_cols])
                     identity_left = np.eye(left_projector.shape[0], dtype=np.float64)
                     identity_right = np.eye(right_projector.shape[0], dtype=np.float64)
                     correction = np.einsum(
