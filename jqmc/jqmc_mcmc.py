@@ -1295,14 +1295,14 @@ class MCMC:
                 _nan_r_dn = int(np.sum(~np.isfinite(_r_dn)))
                 _nan_RTs = int(np.sum(~np.isfinite(_RTs)))
                 logger.devel(
-                    f"[de_L/dc] r_up_carts: shape={_r_up.shape} non-finite={_nan_r_up}/{_r_up.size} "
-                    f"min={np.nanmin(_r_up):.3e} max={np.nanmax(_r_up):.3e}"
+                    f"    [de_L/dc] r_up_carts: shape={_r_up.shape} non-finite={_nan_r_up}/{_r_up.size} "
+                    f"    min={np.nanmin(_r_up):.3e} max={np.nanmax(_r_up):.3e}"
                 )
                 logger.devel(
-                    f"[de_L/dc] r_dn_carts: shape={_r_dn.shape} non-finite={_nan_r_dn}/{_r_dn.size} "
-                    f"min={np.nanmin(_r_dn):.3e} max={np.nanmax(_r_dn):.3e}"
+                    f"    [de_L/dc] r_dn_carts: shape={_r_dn.shape} non-finite={_nan_r_dn}/{_r_dn.size} "
+                    f"    min={np.nanmin(_r_dn):.3e} max={np.nanmax(_r_dn):.3e}"
                 )
-                logger.devel(f"[de_L/dc] RTs: shape={_RTs.shape} non-finite={_nan_RTs}/{_RTs.size}")
+                logger.devel(f"    [de_L/dc] RTs: shape={_RTs.shape} non-finite={_nan_RTs}/{_RTs.size}")
 
                 grad_e_L_h_step = _jit_vmap_grad_e_L_h(
                     hamiltonian_for_param_grads,
@@ -1320,8 +1320,8 @@ class MCMC:
                     _parr = np.asarray(_pval)
                     _pnan = int(np.sum(~np.isfinite(_parr)))
                     logger.devel(
-                        f"[de_L/dc] flat_param2_grads['{_pname}']: shape={_parr.shape} "
-                        f"non-finite={_pnan}/{_parr.size} ({_pnan / _parr.size:.1%})"
+                        f"    [de_L/dc] flat_param2_grads['{_pname}']: shape={_parr.shape} "
+                        f"    non-finite={_pnan}/{_parr.size} ({_pnan / _parr.size:.1%})"
                     )
 
                 for name, grad_val in flat_param2_grads.items():
@@ -1719,7 +1719,7 @@ class MCMC:
         blocks: list,
         num_mcmc_warmup_steps: int = 50,
         chosen_param_index: list | None = None,
-        lambda_projectors: tuple[npt.NDArray, npt.NDArray] | None = None,
+        lambda_projectors: tuple | None = None,
         num_orb_projection: int | None = None,
     ):
         """Assemble per-sample derivatives of ln Psi w.r.t. variational parameters.
@@ -1764,13 +1764,18 @@ class MCMC:
             "Mismatch between total block size and O_matrix parameter dimension."
         )
 
-        # Step 2 projection (Becca and Sorella, 2017, Eq. 12.39): apply projection
-        # directly to derivative observables so downstream generalized forces and
-        # SR matrices are consistently projected.
+        # Step 2 projection (Nakano et al., JCP 152, 204121 (2020), Sec. D;
+        # Becca and Sorella, 2017, Eq. 12.39):
+        # Remove vir-vir component from derivative observables.
+        #
+        # Uses orthogonal-basis projectors to avoid oblique-projection amplification:
+        #   1. Transform O_k to S^{-1/2}-orthogonalized basis
+        #   2. Apply orthogonal projection:  Õ' = O' - (I-L') O' (I-R')
+        #      where L' = S^{1/2} C_up C_up^T S^{1/2},  R' = S^{1/2} C_dn C_dn^T S^{1/2}
+        #   3. Keep O' in orthogonal basis (theta will be back-transformed later)
         if lambda_projectors is not None and num_orb_projection is not None:
-            left_projector, right_projector = lambda_projectors
-            identity_left = np.eye(left_projector.shape[0], dtype=np.float64)
-            identity_right = np.eye(right_projector.shape[0], dtype=np.float64)
+            left_projector, right_projector, inv_sqrt_overlap_up, inv_sqrt_overlap_dn = lambda_projectors
+            identity = np.eye(left_projector.shape[0], dtype=np.float64)
 
             start = 0
             for block in blocks:
@@ -1781,14 +1786,30 @@ class MCMC:
                     paired_block = block_matrix[:, :, :, :n_paired_cols]
                     unpaired_block = block_matrix[:, :, :, n_paired_cols:]
 
+                    # Transform paired O_k to orthogonal basis: O' = S^{-1/2}_up @ O @ S^{-1/2}_dn
+                    paired_orth = np.einsum(
+                        "ab,mwbc,cd->mwad",
+                        inv_sqrt_overlap_up,
+                        paired_block,
+                        inv_sqrt_overlap_dn,
+                    )
+                    # Apply orthogonal projection: Õ' = O' - (I-L') O' (I-R')
                     correction = np.einsum(
                         "ab,mwbc,cd->mwad",
-                        (identity_left - left_projector.T),
-                        paired_block,
-                        (identity_right - right_projector.T),
+                        (identity - left_projector),
+                        paired_orth,
+                        (identity - right_projector),
                     )
-                    corrected_paired_block = paired_block - correction
-                    corrected_block = np.concatenate((corrected_paired_block, unpaired_block), axis=3)
+                    projected_paired = paired_orth - correction
+
+                    # Transform unpaired to orthogonal basis: O'_unpaired = S^{-1/2}_up @ O
+                    unpaired_orth = np.einsum(
+                        "ab,mwbc->mwac",
+                        inv_sqrt_overlap_up,
+                        unpaired_block,
+                    )
+
+                    corrected_block = np.concatenate((projected_paired, unpaired_orth), axis=3)
                     O_matrix[:, :, start:end] = corrected_block.reshape(O_matrix.shape[0], O_matrix.shape[1], -1)
                     break
                 start = end
@@ -1832,7 +1853,7 @@ class MCMC:
         num_mcmc_bin_blocks: int = 10,
         chosen_param_index: list | None = None,
         blocks: list | None = None,
-        lambda_projectors: tuple[npt.NDArray, npt.NDArray] | None = None,
+        lambda_projectors: tuple | None = None,
         num_orb_projection: int | None = None,
     ) -> tuple[npt.NDArray, npt.NDArray]:
         """Evaluate generalized forces (dE/dc_k) with jackknife error bars.
@@ -2012,7 +2033,7 @@ class MCMC:
         blocks: list,
         num_mcmc_warmup_steps: int = 50,
         chosen_param_index: list | None = None,
-        lambda_projectors: tuple[npt.NDArray, npt.NDArray] | None = None,
+        lambda_projectors: tuple | None = None,
         num_orb_projection: int | None = None,
     ) -> tuple[float, float, float, float]:
         r"""Compute H_0, H_1, H_2, S_2 for accelerated SR (aSR) gamma optimization.
@@ -2598,9 +2619,25 @@ class MCMC:
 
                 p_matrix_cols_up = mo_coefficients_up[:num_orb_projection, :].T  # (n_AO, n_dn)
                 p_matrix_cols_dn = mo_coefficients_dn[:num_orb_projection, :].T  # (n_AO, n_dn)
-                left_projector = (overlap_up @ p_matrix_cols_up) @ p_matrix_cols_up.T  # S C_up C_up^T, (n_AO, n_AO)
-                right_projector = (p_matrix_cols_dn @ p_matrix_cols_dn.T) @ overlap_dn  # C_dn C_dn^T S, (n_AO, n_AO)
-                lambda_projectors = (left_projector, right_projector)
+
+                # Build S^{1/2} and S^{-1/2} via eigendecomposition
+                eigvals_up, eigvecs_up = np.linalg.eigh(overlap_up)
+                eigvals_dn, eigvecs_dn = np.linalg.eigh(overlap_dn)
+                sqrt_overlap_up = eigvecs_up @ np.diag(np.sqrt(eigvals_up)) @ eigvecs_up.T
+                sqrt_overlap_dn = eigvecs_dn @ np.diag(np.sqrt(eigvals_dn)) @ eigvecs_dn.T
+                inv_sqrt_overlap_up = eigvecs_up @ np.diag(1.0 / np.sqrt(eigvals_up)) @ eigvecs_up.T
+                inv_sqrt_overlap_dn = eigvecs_dn @ np.diag(1.0 / np.sqrt(eigvals_dn)) @ eigvecs_dn.T
+
+                # Orthogonal-basis MO coefficients: C' = S^{1/2} C
+                orth_mo_up = sqrt_overlap_up @ p_matrix_cols_up  # (n_AO, n_dn)
+                orth_mo_dn = sqrt_overlap_dn @ p_matrix_cols_dn  # (n_AO, n_dn)
+
+                # Orthogonal projectors (symmetric, idempotent in Euclidean metric)
+                # L' = S^{1/2} C_up C_up^T S^{1/2},  R' = S^{1/2} C_dn C_dn^T S^{1/2}
+                left_projector = orth_mo_up @ orth_mo_up.T  # (n_AO, n_AO)
+                right_projector = orth_mo_dn @ orth_mo_dn.T  # (n_AO, n_AO)
+
+                lambda_projectors = (left_projector, right_projector, inv_sqrt_overlap_up, inv_sqrt_overlap_dn)
                 logger.devel(
                     "opt_with_projected_MOs: P_up.shape=%s, P_dn.shape=%s, S_up.shape=%s, S_dn.shape=%s",
                     p_matrix_cols_up.shape,
@@ -2610,30 +2647,37 @@ class MCMC:
                 )
 
                 # ------------------------------------------------------------------
-                # DEVEL: complement-projector diagnostics  (I - L^T) and (I - R^T)
+                # DEVEL: orthogonal complement-projector diagnostics  (I - L') and (I - R')
                 # ------------------------------------------------------------------
-                _I_L = np.eye(left_projector.shape[0], dtype=np.float64)
-                _I_R = np.eye(right_projector.shape[0], dtype=np.float64)
-                _comp_L = _I_L - left_projector.T  # (I - L^T)
-                _comp_R = _I_R - right_projector.T  # (I - R^T)
+                _I = np.eye(left_projector.shape[0], dtype=np.float64)
+                _comp_L = _I - left_projector  # (I - L')  — symmetric
+                _comp_R = _I - right_projector  # (I - R')  — symmetric
 
                 # basic statistics
                 logger.devel(
-                    "[projector] (I - L^T): shape=%s  min=%.6e  max=%.6e  Frobenius=%.6e",
+                    "[projector] (I - L'): shape=%s  min=%.6e  max=%.6e  Frobenius=%.6e",
                     _comp_L.shape,
                     float(np.min(_comp_L)),
                     float(np.max(_comp_L)),
                     float(np.linalg.norm(_comp_L, "fro")),
                 )
                 logger.devel(
-                    "[projector] (I - R^T): shape=%s  min=%.6e  max=%.6e  Frobenius=%.6e",
+                    "[projector] (I - R'): shape=%s  min=%.6e  max=%.6e  Frobenius=%.6e",
                     _comp_R.shape,
                     float(np.min(_comp_R)),
                     float(np.max(_comp_R)),
                     float(np.linalg.norm(_comp_R, "fro")),
                 )
+                # symmetry check
+                _sym_err_L = float(np.linalg.norm(left_projector - left_projector.T, "fro"))
+                _sym_err_R = float(np.linalg.norm(right_projector - right_projector.T, "fro"))
+                logger.devel(
+                    "[projector] symmetry ||L' - L'^T||_F = %.6e,  ||R' - R'^T||_F = %.6e",
+                    _sym_err_L,
+                    _sym_err_R,
+                )
 
-                # idempotency check: (I - L^T)^2 == (I - L^T)  and  (I - R^T)^2 == (I - R^T)
+                # idempotency check: (I - L')^2 == (I - L')  and  (I - R')^2 == (I - R')
                 _comp_L_sq = _comp_L @ _comp_L
                 _comp_R_sq = _comp_R @ _comp_R
                 _idem_err_L = float(np.linalg.norm(_comp_L_sq - _comp_L, "fro"))
@@ -2641,17 +2685,25 @@ class MCMC:
                 _idem_ok_L = "OK" if _idem_err_L < 1.0e-10 else "FAIL"
                 _idem_ok_R = "OK" if _idem_err_R < 1.0e-10 else "FAIL"
                 logger.devel(
-                    "[projector] idempotency ||(I-L^T)^2 - (I-L^T)||_F = %.6e  [%s]",
+                    "[projector] idempotency ||(I-L')^2 - (I-L')||_F = %.6e  [%s]",
                     _idem_err_L,
                     _idem_ok_L,
                 )
                 logger.devel(
-                    "[projector] idempotency ||(I-R^T)^2 - (I-R^T)||_F = %.6e  [%s]",
+                    "[projector] idempotency ||(I-R')^2 - (I-R')||_F = %.6e  [%s]",
                     _idem_err_R,
                     _idem_ok_R,
                 )
+                # spectral norm of complement projector (should be exactly 1 for orthogonal projector)
+                _specnorm_L = float(np.linalg.norm(_comp_L, 2))
+                _specnorm_R = float(np.linalg.norm(_comp_R, 2))
+                logger.devel(
+                    "[projector] spectral norm ||(I-L')||_2 = %.6e,  ||(I-R')||_2 = %.6e  (should be 1.0)",
+                    _specnorm_L,
+                    _specnorm_R,
+                )
                 # clean up temporaries
-                del _I_L, _I_R, _comp_L, _comp_R, _comp_L_sq, _comp_R_sq
+                del _I, _comp_L, _comp_R, _comp_L_sq, _comp_R_sq
 
                 geminal_ao = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_current)
                 wavefunction_data_ao = type(wavefunction_data_step)(
@@ -3167,6 +3219,59 @@ class MCMC:
                     float(np.max(_sqrt_ds)),
                 )
 
+                # ------------------------------------------------------------------
+                # DEVEL: per-block f and theta comparison
+                #   This enables side-by-side comparison of projected vs unprojected runs.
+                # ------------------------------------------------------------------
+                for _blk, _s, _e in offsets:
+                    _f_blk = f[_s:_e]
+                    _t_blk = theta_all[_s:_e]
+                    _f_fin = _f_blk[np.isfinite(_f_blk)]
+                    _t_fin = _t_blk[np.isfinite(_t_blk)]
+                    logger.devel(
+                        "[SR per-block] block=%-16s size=%5d  "
+                        "f: min=%+.3e max=%+.3e norm=%.3e  "
+                        "theta: min=%+.3e max=%+.3e norm=%.3e",
+                        _blk.name,
+                        _blk.size,
+                        float(np.min(_f_fin)) if _f_fin.size else float("nan"),
+                        float(np.max(_f_fin)) if _f_fin.size else float("nan"),
+                        float(np.linalg.norm(_f_fin)) if _f_fin.size else float("nan"),
+                        float(np.min(_t_fin)) if _t_fin.size else float("nan"),
+                        float(np.max(_t_fin)) if _t_fin.size else float("nan"),
+                        float(np.linalg.norm(_t_fin)) if _t_fin.size else float("nan"),
+                    )
+
+                # ------------------------------------------------------------------
+                # Back-transform theta from orthogonal basis to AO basis
+                # for the lambda_matrix block.
+                #   paired:   θ_AO = S^{-1/2}_up @ θ'_orth @ S^{-1/2}_dn
+                #   unpaired: θ_AO = S^{-1/2}_up @ θ'_orth
+                # ------------------------------------------------------------------
+                if lambda_projectors is not None and len(lambda_projectors) == 4:
+                    _, _, _inv_sqrt_up, _inv_sqrt_dn = lambda_projectors
+                    for _blk, _s, _e in offsets:
+                        if _blk.name == "lambda_matrix":
+                            _theta_mat = theta_all[_s:_e].reshape(_blk.shape)
+                            _n_paired = _inv_sqrt_dn.shape[0]
+                            _theta_paired = _theta_mat[:, :_n_paired]
+                            _theta_unpaired = _theta_mat[:, _n_paired:]
+                            # paired: two-sided back-transform
+                            _theta_paired_ao = _inv_sqrt_up @ _theta_paired @ _inv_sqrt_dn
+                            # unpaired: left-only back-transform
+                            _theta_unpaired_ao = _inv_sqrt_up @ _theta_unpaired
+                            _theta_ao = np.hstack((_theta_paired_ao, _theta_unpaired_ao))
+                            theta_all[_s:_e] = _theta_ao.ravel()
+                            logger.devel(
+                                "[SR theta] Back-transformed lambda block from orthogonal to AO basis. "
+                                "paired: min=%.3e max=%.3e  unpaired: min=%.3e max=%.3e",
+                                float(np.min(_theta_paired_ao)),
+                                float(np.max(_theta_paired_ao)),
+                                float(np.min(_theta_unpaired_ao)) if _theta_unpaired_ao.size else 0.0,
+                                float(np.max(_theta_unpaired_ao)) if _theta_unpaired_ao.size else 0.0,
+                            )
+                            break
+
                 # aSR gamma scaling: compute the optimal gamma using the FULL natural
                 # gradient theta_all BEFORE the num_param_opt mask is applied.
                 # The aSR formula (S_2 = g^T S g = g^T f = -2 H_1) is only valid when
@@ -3262,37 +3367,6 @@ class MCMC:
 
             if opt_with_projected_MOs:
                 geminal_ao_current = wavefunction_data.geminal_data
-                if lambda_projectors is not None and num_orb_projection is not None:
-                    left_projector, right_projector = lambda_projectors
-                    lambda_matrix = np.asarray(geminal_ao_current.lambda_matrix, dtype=np.float64)
-                    n_paired_cols = right_projector.shape[0]  # n_AO (projector dimension)
-                    lambda_paired, lambda_unpaired = np.hsplit(lambda_matrix, [n_paired_cols])
-                    identity_left = np.eye(left_projector.shape[0], dtype=np.float64)
-                    identity_right = np.eye(right_projector.shape[0], dtype=np.float64)
-                    correction = np.einsum(
-                        "ab,bc,cd->ad",
-                        (identity_left - left_projector.T),
-                        lambda_paired,
-                        (identity_right - right_projector.T),
-                    )
-                    corrected_lambda_paired = lambda_paired - correction
-                    corrected_lambda_matrix = np.hstack((corrected_lambda_paired, lambda_unpaired))
-                    corrected_lambda_matrix = corrected_lambda_matrix.astype(
-                        np.asarray(geminal_ao_current.lambda_matrix).dtype,
-                        copy=False,
-                    )
-                    geminal_ao_current = Geminal_data(
-                        num_electron_up=geminal_ao_current.num_electron_up,
-                        num_electron_dn=geminal_ao_current.num_electron_dn,
-                        orb_data_up_spin=geminal_ao_current.orb_data_up_spin,
-                        orb_data_dn_spin=geminal_ao_current.orb_data_dn_spin,
-                        lambda_matrix=corrected_lambda_matrix,
-                    )
-                    wavefunction_data = type(wavefunction_data)(
-                        jastrow_data=wavefunction_data.jastrow_data,
-                        geminal_data=geminal_ao_current,
-                    )
-                    logger.info("opt_with_projected_MOs=True: applied stored L/R projection to AO lambda matrix.")
 
                 geminal_mo_rescaled = Geminal_data.convert_from_AOs_to_MOs(
                     geminal_data=geminal_ao_current,
