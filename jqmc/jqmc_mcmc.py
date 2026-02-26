@@ -2609,6 +2609,50 @@ class MCMC:
                     overlap_dn.shape,
                 )
 
+                # ------------------------------------------------------------------
+                # DEVEL: complement-projector diagnostics  (I - L^T) and (I - R^T)
+                # ------------------------------------------------------------------
+                _I_L = np.eye(left_projector.shape[0], dtype=np.float64)
+                _I_R = np.eye(right_projector.shape[0], dtype=np.float64)
+                _comp_L = _I_L - left_projector.T  # (I - L^T)
+                _comp_R = _I_R - right_projector.T  # (I - R^T)
+
+                # basic statistics
+                logger.devel(
+                    "[projector] (I - L^T): shape=%s  min=%.6e  max=%.6e  Frobenius=%.6e",
+                    _comp_L.shape,
+                    float(np.min(_comp_L)),
+                    float(np.max(_comp_L)),
+                    float(np.linalg.norm(_comp_L, "fro")),
+                )
+                logger.devel(
+                    "[projector] (I - R^T): shape=%s  min=%.6e  max=%.6e  Frobenius=%.6e",
+                    _comp_R.shape,
+                    float(np.min(_comp_R)),
+                    float(np.max(_comp_R)),
+                    float(np.linalg.norm(_comp_R, "fro")),
+                )
+
+                # idempotency check: (I - L^T)^2 == (I - L^T)  and  (I - R^T)^2 == (I - R^T)
+                _comp_L_sq = _comp_L @ _comp_L
+                _comp_R_sq = _comp_R @ _comp_R
+                _idem_err_L = float(np.linalg.norm(_comp_L_sq - _comp_L, "fro"))
+                _idem_err_R = float(np.linalg.norm(_comp_R_sq - _comp_R, "fro"))
+                _idem_ok_L = "OK" if _idem_err_L < 1.0e-10 else "FAIL"
+                _idem_ok_R = "OK" if _idem_err_R < 1.0e-10 else "FAIL"
+                logger.devel(
+                    "[projector] idempotency ||(I-L^T)^2 - (I-L^T)||_F = %.6e  [%s]",
+                    _idem_err_L,
+                    _idem_ok_L,
+                )
+                logger.devel(
+                    "[projector] idempotency ||(I-R^T)^2 - (I-R^T)||_F = %.6e  [%s]",
+                    _idem_err_R,
+                    _idem_ok_R,
+                )
+                # clean up temporaries
+                del _I_L, _I_R, _comp_L, _comp_R, _comp_L_sq, _comp_R_sq
+
                 geminal_ao = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_current)
                 wavefunction_data_ao = type(wavefunction_data_step)(
                     jastrow_data=wavefunction_data_step.jastrow_data,
