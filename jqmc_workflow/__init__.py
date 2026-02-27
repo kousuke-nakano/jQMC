@@ -1,0 +1,82 @@
+"""jqmc_workflow — Automated workflow manager for jQMC calculations.
+
+Public API
+----------
+Workflow classes:
+    :class:`WF_Workflow`        TREXIO → hamiltonian_data.h5 conversion.
+    :class:`VMC_Workflow`       Jastrow / orbital optimisation (job_type=vmc).
+    :class:`MCMC_Workflow`      VMC production sampling (job_type=mcmc).
+    :class:`LRDMC_Workflow`     Lattice-Regularized DMC (job_type=lrdmc).
+    :class:`LRDMC_Ext_Workflow` Multi-alat LRDMC a²→0 extrapolation.
+
+Composition helpers:
+    :class:`Workflow`              Abstract base for custom workflows.
+    :class:`Container`  Wraps a workflow in a project directory.
+    :class:`FileFrom`              Declare a file dependency on another workflow.
+    :class:`ValueFrom`             Declare a value dependency on another workflow.
+    :class:`Launcher`              DAG-based parallel workflow executor.
+"""
+# Copyright (C) 2024- Kosuke Nakano
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+#
+# * Redistributions of source code must retain the above copyright
+#   notice, this list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright
+#   notice, this list of conditions and the following disclaimer in
+#   the documentation and/or other materials provided with the
+#   distribution.
+#
+# * Neither the name of the jqmc project nor the names of its
+#   contributors may be used to endorse or promote products derived
+#   from this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+# FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+# COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+# LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+# ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+from importlib.metadata import version as _pkg_version
+
+try:
+    __version__ = _pkg_version("jqmc")
+except Exception:
+    __version__ = "unknown"
+
+from .launcher import Launcher
+from .lrdmc_ext_workflow import LRDMC_Ext_Workflow
+from .lrdmc_workflow import LRDMC_Workflow
+from .mcmc_workflow import MCMC_Workflow
+from .vmc_workflow import VMC_Workflow
+from .wf_workflow import WF_Workflow
+from .workflow import (
+    Container,
+    FileFrom,
+    ValueFrom,
+    Workflow,
+)
+
+__all__ = [
+    "Workflow",
+    "Container",
+    "FileFrom",
+    "ValueFrom",
+    "Launcher",
+    "WF_Workflow",
+    "VMC_Workflow",
+    "MCMC_Workflow",
+    "LRDMC_Workflow",
+    "LRDMC_Ext_Workflow",
+]

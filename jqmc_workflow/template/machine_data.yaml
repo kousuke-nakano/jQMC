@@ -1,0 +1,32 @@
+# Machine definitions for jqmc-workflow
+# Edit this file to match your environment.
+# Each machine needs at least: machine_type (local or remote), queuing (true or false), workspace_root (path).
+
+localhost:
+  machine_type: local
+  queuing: true
+  workspace_root: /home/username/jqmc_work
+  jobsubmit: /opt/pbs/bin/qsub
+  jobcheck: /opt/pbs/bin/qstat
+  jobdel: /opt/pbs/bin/qdel
+  jobnum_index: 0
+
+# Example remote machine (PBS):
+# pbs-cluster:
+#   machine_type: remote
+#   queuing: true
+#   workspace_root: /home/username/jqmc_work
+#   jobsubmit: /opt/pbs/bin/qsub
+#   jobcheck: /opt/pbs/bin/qstat
+#   jobdel: /opt/pbs/bin/qdel
+#   jobnum_index: 0
+
+# Example remote machine (SLURM):
+# slurm-cluster:
+#   machine_type: remote
+#   queuing: true
+#   workspace_root: /home/username/jqmc_work
+#   jobsubmit: sbatch
+#   jobcheck: squeue --noheader
+#   jobdel: scancel
+#   jobnum_index: 3

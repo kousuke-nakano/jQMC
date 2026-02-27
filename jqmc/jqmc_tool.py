@@ -900,11 +900,25 @@ def lrdmc_compute_energy(
     typer.echo(f"Read restart checkpoint file(s) from {restart_chk}.")
 
     if num_gfmc_warmup_steps < GFMC_MIN_WARMUP_STEPS:
-        typer.echo(f"num_gfmc_warmup_steps should be larger than {GFMC_MIN_WARMUP_STEPS}.")
+        typer.echo(
+            f"Error: num_gfmc_warmup_steps ({num_gfmc_warmup_steps}) must be "
+            f">= {GFMC_MIN_WARMUP_STEPS}. E_scf is unreliable before "
+            f"step {GFMC_MIN_WARMUP_STEPS}.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
     if num_gfmc_bin_block < GFMC_MIN_BIN_BLOCKS:
-        typer.echo(f"num_mcmc_bin_blocks should be larger than {GFMC_MIN_BIN_BLOCKS}.")
+        typer.echo(
+            f"Error: num_gfmc_bin_blocks ({num_gfmc_bin_block}) must be >= {GFMC_MIN_BIN_BLOCKS}.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
     if num_gfmc_collect_steps < GFMC_MIN_COLLECT_STEPS:
-        typer.echo(f"num_gfmc_collect_steps should be larger than {GFMC_MIN_COLLECT_STEPS}.")
+        typer.echo(
+            f"Error: num_gfmc_collect_steps ({num_gfmc_collect_steps}) must be >= {GFMC_MIN_COLLECT_STEPS}.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
 
     pattern = re.compile(r"(\d+).pkl.gz")
 

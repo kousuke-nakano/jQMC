@@ -151,6 +151,7 @@ def test_jqmc_cli_run_vmc(tmp_path, monkeypatch):
         dict_toml["vmc"]["num_mcmc_steps"] = 50
         dict_toml["vmc"]["num_mcmc_bin_blocks"] = 10
         dict_toml["vmc"]["num_mcmc_warmup_steps"] = 0
+        dict_toml["vmc"]["optimizer_kwargs"] = {"method": "sgd"}
     with open(os.path.join(tmp_path, "vmc_input.toml"), "w") as f:
         toml.dump(dict_toml, f)
     os.chdir(root_dir)
@@ -207,7 +208,7 @@ def test_jqmc_cli_run_lrdmc(tmp_path, monkeypatch):
             dict_toml["control"]["restart_chk"] = "restart.chk"
             dict_toml["lrdmc"]["num_mcmc_steps"] = 50
             dict_toml["lrdmc"]["alat"] = alat
-            dict_toml["lrdmc"]["num_gfmc_bin_blocks"] = 5
+            dict_toml["lrdmc"]["num_gfmc_bin_blocks"] = 10
             dict_toml["lrdmc"]["num_gfmc_warmup_steps"] = 30
             dict_toml["lrdmc"]["num_gfmc_collect_steps"] = 5
         with open(os.path.join(tmp_alat_path, "lrdmc_input.toml"), "w") as f:
@@ -226,13 +227,13 @@ def test_jqmc_cli_run_lrdmc(tmp_path, monkeypatch):
         os.chdir(root_dir)
         lrdmc_compute_energy(
             restart_chk=os.path.join(tmp_alat_path, "restart.chk"),
-            num_gfmc_bin_block=5,
+            num_gfmc_bin_block=10,
             num_gfmc_warmup_steps=30,
             num_gfmc_collect_steps=5,
         )
         os.chdir(tmp_alat_path)
         lrdmc_compute_energy(
-            restart_chk="restart.chk", num_gfmc_bin_block=5, num_gfmc_warmup_steps=30, num_gfmc_collect_steps=5
+            restart_chk="restart.chk", num_gfmc_bin_block=10, num_gfmc_warmup_steps=30, num_gfmc_collect_steps=5
         )
         os.chdir(root_dir)
 
@@ -244,7 +245,7 @@ def test_jqmc_cli_run_lrdmc(tmp_path, monkeypatch):
         polynomial_order=1,
         plot_graph=False,
         save_graph=None,
-        num_gfmc_bin_block=5,
+        num_gfmc_bin_block=10,
         num_gfmc_warmup_steps=30,
         num_gfmc_collect_steps=5,
     )

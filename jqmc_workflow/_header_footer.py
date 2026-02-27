@@ -1,9 +1,7 @@
-"""header and footer modules."""
+"""Header and footer for jqmc-workflow logging output."""
 
 # Copyright (C) 2024- Kosuke Nakano
 # All rights reserved.
-#
-# This file is part of jqmc.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -37,18 +35,17 @@
 from datetime import datetime
 from logging import getLogger
 
-# set logger
-logger = getLogger("jqmc").getChild(__name__)
+logger = getLogger("jqmc-workflow").getChild(__name__)
 
 try:
     from importlib.metadata import version as _pkg_version
 
-    jqmc_version = _pkg_version("jqmc")
+    jqmc_workflows_version = _pkg_version("jqmc")
 except Exception:
     try:
-        from jqmc._version import version as jqmc_version
+        from jqmc._version import version as jqmc_workflows_version
     except (ModuleNotFoundError, ImportError):
-        jqmc_version = "unknown"
+        jqmc_workflows_version = "unknown"
 
 
 def _print_header() -> None:
@@ -69,8 +66,8 @@ def _print_header() -> None:
     logger.info("   888P                           Made on earth ")
     logger.info("-" * 48)
     logger.info("")
-    logger.info("jQMC: Python-based real-space ab-initio Quantum Monte Carlo package.")
-    logger.info(f"version = {jqmc_version}.")
+    logger.info("jQMC-workflows: Python-based workflow package for jQMC")
+    logger.info(f"version = {jqmc_workflows_version}.")
     logger.info("")
     logger.info("Authors: Kosuke Nakano [kousuke_1123@icloud.com]")
     logger.info("")

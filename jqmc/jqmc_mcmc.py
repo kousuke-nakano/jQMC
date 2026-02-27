@@ -2364,9 +2364,9 @@ class MCMC:
             opt_JNN_param (bool, optional): Optimize NN Jastrow. Defaults to True.
             opt_lambda_param (bool, optional): Optimize determinant lambda matrix. Defaults to False.
             opt_with_projected_MOs (bool, optional): If True, enable AO-space lambda optimization flow.
-                - At every optimization step, build projection operators from the current MO state,
-                    convert MO->AO for MCMC/gradient evaluation, update AO parameters, then project AO->MO
-                    with fixed ``num_eigenvectors=num_electron_dn`` to finish the step.
+                At every optimization step, build projection operators from the current MO state,
+                convert MO->AO for MCMC/gradient evaluation, update AO parameters, then project AO->MO
+                with fixed ``num_eigenvectors=num_electron_dn`` to finish the step.
             num_param_opt (int, optional): Limit parameters updated (ranked by ``|f|/|std f|``); ``0`` means all. Defaults to 0.
             optimizer_kwargs (dict | None, optional): Optimizer configuration. ``method='sr'`` uses SR keys (``delta``, ``epsilon``, ``cg_flag``, ``cg_max_iter``, ``cg_tol``, ``adaptive_learning_rate``); ``adaptive_learning_rate=True`` enables accelerated SR (aSR) gamma scaling and requires ``compute_log_WF_param_deriv=True`` and ``comput_e_L_param_deriv=True``; other ``method`` names are optax constructors (e.g., ``"adam"``) and receive remaining keys.
 

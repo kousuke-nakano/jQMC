@@ -54,6 +54,11 @@ from .header_footer import _print_footer, _print_header
 from .jqmc_gfmc import GFMC_n, GFMC_t
 from .jqmc_mcmc import MCMC
 from .jqmc_miscs import cli_parameters
+from .setting import (
+    GFMC_MIN_BIN_BLOCKS,
+    GFMC_MIN_COLLECT_STEPS,
+    GFMC_MIN_WARMUP_STEPS,
+)
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -521,6 +526,18 @@ def _cli():
         num_gfmc_collect_steps = parameters[section]["num_gfmc_collect_steps"]
         E_scf = parameters[section]["E_scf"]
         atomic_force = parameters[section]["atomic_force"]
+
+        # Enforce GFMC minimum thresholds (E_scf unreliable before step 25)
+        if num_gfmc_warmup_steps < GFMC_MIN_WARMUP_STEPS:
+            raise ValueError(
+                f"num_gfmc_warmup_steps ({num_gfmc_warmup_steps}) must be "
+                f">= {GFMC_MIN_WARMUP_STEPS}. E_scf is unreliable before "
+                f"step {GFMC_MIN_WARMUP_STEPS}."
+            )
+        if num_gfmc_bin_blocks < GFMC_MIN_BIN_BLOCKS:
+            raise ValueError(f"num_gfmc_bin_blocks ({num_gfmc_bin_blocks}) must be >= {GFMC_MIN_BIN_BLOCKS}.")
+        if num_gfmc_collect_steps < GFMC_MIN_COLLECT_STEPS:
+            raise ValueError(f"num_gfmc_collect_steps ({num_gfmc_collect_steps}) must be >= {GFMC_MIN_COLLECT_STEPS}.")
 
         # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
         if not restart:

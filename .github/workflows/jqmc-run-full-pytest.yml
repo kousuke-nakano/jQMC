@@ -13,6 +13,7 @@ on:
       - 'benchmarks/**'
       - 'README.md'
       - '.pre-commit-config.yaml'
+      - 'jqmc_workflow/**'
   pull_request:
     branches: [ "main", "rc" ]
 
