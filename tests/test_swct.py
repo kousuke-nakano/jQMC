@@ -87,7 +87,11 @@ def test_debug_and_jax_SWCT_omega():
     omega_up_jax = evaluate_swct_omega(swct_data=swct_data, r_carts=r_up_carts)
     omega_dn_jax = evaluate_swct_omega(swct_data=swct_data, r_carts=r_dn_carts)
 
+    assert not np.any(np.isnan(np.asarray(omega_up_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(omega_up_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(omega_up_debug, omega_up_jax, decimal=decimal_debug_vs_production)
+    assert not np.any(np.isnan(np.asarray(omega_dn_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(omega_dn_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(omega_dn_debug, omega_dn_jax, decimal=decimal_debug_vs_production)
 
     domega_up_debug = _evaluate_swct_domega_debug(swct_data=swct_data, r_carts=r_up_carts)
@@ -95,7 +99,11 @@ def test_debug_and_jax_SWCT_omega():
     domega_up_jax = evaluate_swct_domega(swct_data=swct_data, r_carts=r_up_carts)
     domega_dn_jax = evaluate_swct_domega(swct_data=swct_data, r_carts=r_dn_carts)
 
+    assert not np.any(np.isnan(np.asarray(domega_up_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(domega_up_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(domega_up_debug, domega_up_jax, decimal=decimal_debug_vs_production)
+    assert not np.any(np.isnan(np.asarray(domega_dn_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(domega_dn_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(domega_dn_debug, domega_dn_jax, decimal=decimal_debug_vs_production)
 
     jax.clear_caches()

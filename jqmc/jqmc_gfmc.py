@@ -46,7 +46,7 @@ import toml
 from jax import grad, jit, lax, vmap
 from jax import numpy as jnp
 from jax import typing as jnpt
-from jax.scipy import linalg as jsp_linalg
+from jax.scipy import linalg as jsp_linalg  # noqa: F401  (kept for external callers)
 from mpi4py import MPI
 
 from .coulomb_potential import (
@@ -75,6 +75,7 @@ from .jastrow_factor import (
 )
 from .jqmc_utility import _generate_init_electron_configurations
 from .setting import (
+    EPS_rcond_SVD,
     GFMC_MIN_BIN_BLOCKS,
     GFMC_MIN_COLLECT_STEPS,
     GFMC_MIN_WARMUP_STEPS,
@@ -408,8 +409,10 @@ class GFMC_t:
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
             )
-            lu, piv = jsp_linalg.lu_factor(geminal)
-            return jsp_linalg.lu_solve((lu, piv), jnp.eye(geminal.shape[0], dtype=geminal.dtype))
+            U, s, Vt = jnp.linalg.svd(geminal, full_matrices=False)
+            rcond = jnp.finfo(jnp.float64).eps * float(geminal.shape[0])
+            s_inv = jnp.where(s > rcond * s[0], 1.0 / s, 0.0)
+            return (Vt.T * s_inv[jnp.newaxis, :]) @ U.T
 
         self.__latest_A_old_inv = vmap(_compute_initial_A_inv_t, in_axes=(0, 0))(
             self.__latest_r_up_carts, self.__latest_r_dn_carts
@@ -738,14 +741,17 @@ class GFMC_t:
             new_r_up_carts = jnp.where(tau_left <= 0.0, r_up_carts, proposed_r_up_carts)  # '=' is very important!!!
             new_r_dn_carts = jnp.where(tau_left <= 0.0, r_dn_carts, proposed_r_dn_carts)  # '=' is very important!!!
 
-            # recompute inverse for the updated configuration
+            # recompute inverse for the updated configuration via SVD
+            # (more robust than LU for near-singular G)
             G_new = compute_geminal_all_elements(
                 geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                 r_up_carts=new_r_up_carts,
                 r_dn_carts=new_r_dn_carts,
             )
-            lu, piv = jsp_linalg.lu_factor(G_new)
-            A_new_inv = jsp_linalg.lu_solve((lu, piv), jnp.eye(G_new.shape[0], dtype=G_new.dtype))
+            U_new, s_new, Vt_new = jnp.linalg.svd(G_new, full_matrices=False)
+            rcond_new = jnp.finfo(jnp.float64).eps * float(G_new.shape[0])
+            s_inv_new = jnp.where(s_new > rcond_new * s_new[0], 1.0 / s_new, 0.0)
+            A_new_inv = (Vt_new.T * s_inv_new[jnp.newaxis, :]) @ U_new.T
 
             return (
                 e_L,
@@ -1648,6 +1654,10 @@ class _GFMC_t_debug:
             num_branching (int): number of branching (reconfiguration of walkers).
             max_time (int): maximum time in sec.
         """
+        logger.info("")
+        logger.info("This is a debugging class! It supposed to be very slow.")
+        logger.info("")
+
         # initialize numpy random seed
         np.random.seed(self.__mpi_seed)
 
@@ -2477,6 +2487,29 @@ class GFMC_n:
         """Return the flag for computing the derivatives of E wrt. atomic positions."""
         return self.__comput_position_deriv
 
+    def __prepare_position_grad_objects(self):
+        """Return (Wavefunction_data, Hamiltonian_data) suitable for de_L/dR and dln_Psi/dR computations.
+
+        All variational parameters are masked with stop_gradient so that JAX
+        does not backpropagate through them (e.g. ECP wf-ratio tables).
+        AO position leaves (orb_data.structure_data.positions) still carry
+        gradients (DiffMask coords=True), so dT/dR and dV_ECP/dR are correct.
+        """
+        wavefunction_data = self.__hamiltonian_data.wavefunction_data
+        if wavefunction_data is None or not self.__comput_position_deriv:
+            return wavefunction_data, self.__hamiltonian_data
+
+        # Always mask ALL variational parameters for position gradient computation.
+        masked_wavefunction = wavefunction_data.with_param_grad_mask(
+            opt_J1_param=False,
+            opt_J2_param=False,
+            opt_J3_param=False,
+            opt_JNN_param=False,
+            opt_lambda_param=False,
+        )
+        masked_hamiltonian = self.__hamiltonian_data.replace(wavefunction_data=masked_wavefunction)
+        return masked_wavefunction, masked_hamiltonian
+
     def run(self, num_mcmc_steps: int = 50, max_time: int = 86400) -> None:
         """Run LRDMC with multiple walkers.
 
@@ -2525,12 +2558,13 @@ class GFMC_n:
                 r_up_carts=r_up_carts,
                 r_dn_carts=r_dn_carts,
             )
-            lu, piv = jsp_linalg.lu_factor(geminal)
-            return jsp_linalg.lu_solve((lu, piv), jnp.eye(geminal.shape[0], dtype=geminal.dtype))
+            U, s, Vt = jnp.linalg.svd(geminal, full_matrices=False)
+            rcond = jnp.finfo(jnp.float64).eps * float(geminal.shape[0])
+            s_inv = jnp.where(s > rcond * s[0], 1.0 / s, 0.0)
+            return (Vt.T * s_inv[jnp.newaxis, :]) @ U.T
 
-        self.__latest_A_old_inv = vmap(_compute_initial_A_inv_n, in_axes=(0, 0))(
-            self.__latest_r_up_carts, self.__latest_r_dn_carts
-        )
+        _jit_vmap_A_inv_n = jit(vmap(_compute_initial_A_inv_n, in_axes=(0, 0)))
+        self.__latest_A_old_inv = _jit_vmap_A_inv_n(self.__latest_r_up_carts, self.__latest_r_dn_carts)
 
         # projection function.
         @jit
@@ -3022,14 +3056,15 @@ class GFMC_n:
             )
 
             if use_fast_update:
-                # precompute geminal inverse for fast updates (single-electron moves)
+                # precompute geminal inverse for fast updates (SVD-based, robust for near-singular G)
                 geminal = compute_geminal_all_elements(
                     geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                 )
-                lu, piv = jsp_linalg.lu_factor(geminal)
-                A_old_inv = jsp_linalg.lu_solve((lu, piv), jnp.eye(geminal.shape[0], dtype=geminal.dtype))
+                _U, _s, _Vt = jnp.linalg.svd(geminal, full_matrices=False)
+                _s_inv = jnp.where(_s > EPS_rcond_SVD * _s[0], 1.0 / _s, 0.0)
+                A_old_inv = (_Vt.T * _s_inv[jnp.newaxis, :]) @ _U.T
 
                 # compute discretized kinetic energy and mesh (with a random rotation)
                 _, _, elements_non_diagonal_kinetic_part = compute_discretized_kinetic_energy_fast_update(
@@ -3285,6 +3320,28 @@ class GFMC_n:
             )
             return V_diag + V_nondiag
 
+        wavefunction_for_position_grads, hamiltonian_for_position_grads = self.__prepare_position_grad_objects()
+
+        # Pre-compile all vmap callables once so the JAX jit cache is always hit
+        # on subsequent calls (avoids per-step re-trace / re-compile overhead).
+        # static_argnums mirrors the @partial(jit, static_argnums=...) on the inner
+        # functions so that Python-level conditionals are resolved at compile time.
+        _jit_vmap_projection_n = jit(
+            vmap(_projection_n, in_axes=(0, 0, 0, 0, 0, None, None, None, None, None, None)),
+            static_argnums=(6, 7, 8),  # num_mcmc_per_measurement, random_discretized_mesh, non_local_move
+        )
+        _jit_vmap_V_elements_n = jit(
+            vmap(_compute_V_elements_n, in_axes=(None, 0, 0, 0, None, None, None)),
+            static_argnums=(4, 6),  # non_local_move, use_fast_update
+        )
+        _jit_vmap_grad_e_L_n = jit(
+            vmap(grad(_compute_local_energy_n, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0, None, None, None)),
+            static_argnums=(4, 6),  # non_local_move, use_fast_update
+        )
+        _jit_vmap_grad_ln_psi_n = jit(vmap(grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0)))
+        _jit_vmap_swct_omega_n = jit(vmap(evaluate_swct_omega, in_axes=(None, 0)))
+        _jit_vmap_swct_domega_n = jit(vmap(evaluate_swct_domega, in_axes=(None, 0)))
+
         # projection compilation.
         start_init = time.perf_counter()
         logger.info("Start compilation of the GFMC projection funciton.")
@@ -3299,7 +3356,7 @@ class GFMC_n:
             RTs,
             _,
             _,
-        ) = vmap(_projection_n, in_axes=(0, 0, 0, 0, 0, None, None, None, None, None, None))(
+        ) = _jit_vmap_projection_n(
             w_L_list,
             self.__latest_r_up_carts,
             self.__latest_r_dn_carts,
@@ -3314,7 +3371,7 @@ class GFMC_n:
         )
 
         # compile the e_L recomputation path for debug parity
-        _, _ = vmap(_compute_V_elements_n, in_axes=(None, 0, 0, 0, None, None, None))(
+        _, _ = _jit_vmap_V_elements_n(
             self.__hamiltonian_data,
             self.__latest_r_up_carts,
             self.__latest_r_dn_carts,
@@ -3325,14 +3382,19 @@ class GFMC_n:
         )
 
         if self.__comput_position_deriv:
-            _, _, _ = vmap(grad(_compute_local_energy_n, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0, None, None, None))(
-                self.__hamiltonian_data,
+            _, _, _ = _jit_vmap_grad_e_L_n(
+                hamiltonian_for_position_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
                 RTs,
                 self.__non_local_move,
                 self.__alat,
                 False,
+            )
+            _, _, _ = _jit_vmap_grad_ln_psi_n(
+                wavefunction_for_position_grads,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
             )
         end_init = time.perf_counter()
         timer_projection_init += end_init - start_init
@@ -3373,7 +3435,7 @@ class GFMC_n:
                 latest_RTs,
                 V_diag_list,
                 V_nondiag_list,
-            ) = vmap(_projection_n, in_axes=(0, 0, 0, 0, 0, None, None, None, None, None, None))(
+            ) = _jit_vmap_projection_n(
                 w_L_list,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
@@ -3400,7 +3462,7 @@ class GFMC_n:
 
             # evaluate observables
             start_e_L = time.perf_counter()
-            V_diag_list, V_nondiag_list = vmap(_compute_V_elements_n, in_axes=(None, 0, 0, 0, None, None, None))(
+            V_diag_list, V_nondiag_list = _jit_vmap_V_elements_n(
                 self.__hamiltonian_data,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
@@ -3418,10 +3480,8 @@ class GFMC_n:
             # atomic force related
             if self.__comput_position_deriv:
                 start = time.perf_counter()
-                grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = vmap(
-                    grad(_compute_local_energy_n, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0, None, None, None)
-                )(
-                    self.__hamiltonian_data,
+                grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = _jit_vmap_grad_e_L_n(
+                    hamiltonian_for_position_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                     latest_RTs,
@@ -3454,10 +3514,8 @@ class GFMC_n:
                     grad_e_L_R += grad_e_L_h.wavefunction_data.jastrow_data.jastrow_nn_data.structure_data.positions
 
                 start = time.perf_counter()
-                grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = vmap(
-                    grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
-                )(
-                    self.__hamiltonian_data.wavefunction_data,
+                grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = _jit_vmap_grad_ln_psi_n(
+                    wavefunction_for_position_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
@@ -3480,22 +3538,22 @@ class GFMC_n:
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_nn_data is not None:
                     grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_nn_data.structure_data.positions
 
-                omega_up = vmap(evaluate_swct_omega, in_axes=(None, 0))(
+                omega_up = _jit_vmap_swct_omega_n(
                     self.__swct_data,
                     self.__latest_r_up_carts,
                 )
 
-                omega_dn = vmap(evaluate_swct_omega, in_axes=(None, 0))(
+                omega_dn = _jit_vmap_swct_omega_n(
                     self.__swct_data,
                     self.__latest_r_dn_carts,
                 )
 
-                grad_omega_dr_up = vmap(evaluate_swct_domega, in_axes=(None, 0))(
+                grad_omega_dr_up = _jit_vmap_swct_domega_n(
                     self.__swct_data,
                     self.__latest_r_up_carts,
                 )
 
-                grad_omega_dr_dn = vmap(evaluate_swct_domega, in_axes=(None, 0))(
+                grad_omega_dr_dn = _jit_vmap_swct_domega_n(
                     self.__swct_data,
                     self.__latest_r_dn_carts,
                 )
@@ -3887,9 +3945,7 @@ class GFMC_n:
             self.__num_killed_walkers += num_killed_walkers
             self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
             self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
-            self.__latest_A_old_inv = vmap(_compute_initial_A_inv_n, in_axes=(0, 0))(
-                self.__latest_r_up_carts, self.__latest_r_dn_carts
-            )
+            self.__latest_A_old_inv = _jit_vmap_A_inv_n(self.__latest_r_up_carts, self.__latest_r_dn_carts)
 
             mpi_comm.Barrier()
 
@@ -4825,6 +4881,10 @@ class _GFMC_n_debug:
             num_branching (int): number of branching (reconfiguration of walkers).
             max_time (int): maximum time in sec.
         """
+        logger.info("")
+        logger.info("This is a debugging class! It supposed to be very slow.")
+        logger.info("")
+
         # initialize numpy random seed
         np.random.seed(self.__mpi_seed)
 
@@ -5076,10 +5136,15 @@ class _GFMC_n_debug:
                             r_up_carts=r_up_carts,
                             r_dn_carts=r_dn_carts,
                         )
-                        Jastrow_on_mesh = vmap(compute_Jastrow_part, in_axes=(None, 0, 0))(
-                            hamiltonian_data.wavefunction_data.jastrow_data,
-                            mesh_non_local_ecp_part_r_up_carts,
-                            mesh_non_local_ecp_part_r_dn_carts,
+                        Jastrow_on_mesh = jnp.stack(
+                            [
+                                compute_Jastrow_part(
+                                    hamiltonian_data.wavefunction_data.jastrow_data,
+                                    mesh_non_local_ecp_part_r_up_carts[_i],
+                                    mesh_non_local_ecp_part_r_dn_carts[_i],
+                                )
+                                for _i in range(len(mesh_non_local_ecp_part_r_up_carts))
+                            ]
                         )
                         Jastrow_ratio = jnp.exp(Jastrow_on_mesh - Jastrow_ref)
 
@@ -5327,10 +5392,15 @@ class _GFMC_n_debug:
                         r_dn_carts=r_dn_carts,
                     )
 
-                    Jastrow_on_mesh = vmap(compute_Jastrow_part, in_axes=(None, 0, 0))(
-                        hamiltonian_data.wavefunction_data.jastrow_data,
-                        mesh_non_local_ecp_part_r_up_carts,
-                        mesh_non_local_ecp_part_r_dn_carts,
+                    Jastrow_on_mesh = jnp.stack(
+                        [
+                            compute_Jastrow_part(
+                                hamiltonian_data.wavefunction_data.jastrow_data,
+                                mesh_non_local_ecp_part_r_up_carts[_i],
+                                mesh_non_local_ecp_part_r_dn_carts[_i],
+                            )
+                            for _i in range(len(mesh_non_local_ecp_part_r_up_carts))
+                        ]
                     )
                     Jastrow_ratio = jnp.exp(Jastrow_on_mesh - Jastrow_ref)
                     V_nonlocal_FN = V_nonlocal_FN * Jastrow_ratio
@@ -5393,41 +5463,57 @@ class _GFMC_n_debug:
             logger.devel("  Projection is on going....")
 
             # projection loop
-            (w_L_list, self.__latest_r_up_carts, self.__latest_r_dn_carts, self.__jax_PRNG_key_list, latest_RT) = vmap(
-                _projection_n_debug, in_axes=(0, 0, 0, 0, None, None, None, None, None)
-            )(
-                w_L_list,
-                self.__latest_r_up_carts,
-                self.__latest_r_dn_carts,
-                self.__jax_PRNG_key_list,
-                self.__E_scf,
-                self.__num_mcmc_per_measurement,
-                self.__non_local_move,
-                self.__alat,
-                self.__hamiltonian_data,
-            )
+            _proj_results = [
+                _projection_n_debug(
+                    w_L_list[i],
+                    self.__latest_r_up_carts[i],
+                    self.__latest_r_dn_carts[i],
+                    self.__jax_PRNG_key_list[i],
+                    self.__E_scf,
+                    self.__num_mcmc_per_measurement,
+                    self.__non_local_move,
+                    self.__alat,
+                    self.__hamiltonian_data,
+                )
+                for i in range(self.__num_walkers)
+            ]
+            w_L_list = jnp.stack([r[0] for r in _proj_results])
+            self.__latest_r_up_carts = jnp.stack([r[1] for r in _proj_results])
+            self.__latest_r_dn_carts = jnp.stack([r[2] for r in _proj_results])
+            self.__jax_PRNG_key_list = jnp.stack([r[3] for r in _proj_results])
+            latest_RT = jnp.stack([r[4] for r in _proj_results])
 
             # projection ends
             logger.devel("  Projection ends.")
 
             # evaluate observables
             # V_diag and e_L
-            V_diag_list, V_nondiag_list = vmap(_compute_V_elements_n_debug, in_axes=(None, 0, 0, 0, None, None))(
-                self.__hamiltonian_data,
-                self.__latest_r_up_carts,
-                self.__latest_r_dn_carts,
-                latest_RT,
-                self.__non_local_move,
-                self.__alat,
-            )
+            _V_results = [
+                _compute_V_elements_n_debug(
+                    self.__hamiltonian_data,
+                    self.__latest_r_up_carts[i],
+                    self.__latest_r_dn_carts[i],
+                    latest_RT[i],
+                    self.__non_local_move,
+                    self.__alat,
+                )
+                for i in range(self.__num_walkers)
+            ]
+            V_diag_list = jnp.stack([r[0] for r in _V_results])
+            V_nondiag_list = jnp.stack([r[1] for r in _V_results])
             e_L_list = V_diag_list + V_nondiag_list
 
             if self.__non_local_move == "tmove":
-                e_list_debug = vmap(compute_local_energy, in_axes=(None, 0, 0, 0))(
-                    self.__hamiltonian_data,
-                    self.__latest_r_up_carts,
-                    self.__latest_r_dn_carts,
-                    latest_RT,
+                e_list_debug = jnp.stack(
+                    [
+                        compute_local_energy(
+                            self.__hamiltonian_data,
+                            self.__latest_r_up_carts[i],
+                            self.__latest_r_dn_carts[i],
+                            latest_RT[i],
+                        )
+                        for i in range(self.__num_walkers)
+                    ]
                 )
                 if np.max(np.abs(e_L_list - e_list_debug)) > 1.0e-6:
                     logger.info(f"max(e_list - e_list_debug) = {np.max(np.abs(e_L_list - e_list_debug))}.")
@@ -5438,16 +5524,21 @@ class _GFMC_n_debug:
 
             # atomic force related
             if self.__comput_position_deriv:
-                grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = vmap(
-                    grad(_compute_local_energy_n_debug, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0, None, None)
-                )(
-                    self.__hamiltonian_data,
-                    self.__latest_r_up_carts,
-                    self.__latest_r_dn_carts,
-                    latest_RT,
-                    self.__non_local_move,
-                    self.__alat,
-                )
+                _grad_e_L_fn = grad(_compute_local_energy_n_debug, argnums=(0, 1, 2))
+                _grad_e_L_results = [
+                    _grad_e_L_fn(
+                        self.__hamiltonian_data,
+                        self.__latest_r_up_carts[i],
+                        self.__latest_r_dn_carts[i],
+                        latest_RT[i],
+                        self.__non_local_move,
+                        self.__alat,
+                    )
+                    for i in range(self.__num_walkers)
+                ]
+                grad_e_L_h = jax.tree_util.tree_map(lambda *arrs: jnp.stack(arrs), *[r[0] for r in _grad_e_L_results])
+                grad_e_L_r_up = jnp.stack([r[1] for r in _grad_e_L_results])
+                grad_e_L_r_dn = jnp.stack([r[2] for r in _grad_e_L_results])
 
                 grad_e_L_R = (
                     grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.structure_data.positions
@@ -5463,13 +5554,18 @@ class _GFMC_n_debug:
                         grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
                     )
 
-                grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = vmap(
-                    grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
-                )(
-                    self.__hamiltonian_data.wavefunction_data,
-                    self.__latest_r_up_carts,
-                    self.__latest_r_dn_carts,
-                )
+                _grad_ln_psi_fn = grad(evaluate_ln_wavefunction, argnums=(0, 1, 2))
+                _grad_ln_psi_results = [
+                    _grad_ln_psi_fn(
+                        self.__hamiltonian_data.wavefunction_data,
+                        self.__latest_r_up_carts[i],
+                        self.__latest_r_dn_carts[i],
+                    )
+                    for i in range(self.__num_walkers)
+                ]
+                grad_ln_Psi_h = jax.tree_util.tree_map(lambda *arrs: jnp.stack(arrs), *[r[0] for r in _grad_ln_psi_results])
+                grad_ln_Psi_r_up = jnp.stack([r[1] for r in _grad_ln_psi_results])
+                grad_ln_Psi_r_dn = jnp.stack([r[2] for r in _grad_ln_psi_results])
 
                 grad_ln_Psi_dR = (
                     grad_ln_Psi_h.geminal_data.orb_data_up_spin.structure_data.positions
@@ -5482,24 +5578,17 @@ class _GFMC_n_debug:
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
                     grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
 
-                omega_up = vmap(evaluate_swct_omega, in_axes=(None, 0))(
-                    self.__swct_data,
-                    self.__latest_r_up_carts,
+                omega_up = jnp.stack(
+                    [evaluate_swct_omega(self.__swct_data, self.__latest_r_up_carts[i]) for i in range(self.__num_walkers)]
                 )
-
-                omega_dn = vmap(evaluate_swct_omega, in_axes=(None, 0))(
-                    self.__swct_data,
-                    self.__latest_r_dn_carts,
+                omega_dn = jnp.stack(
+                    [evaluate_swct_omega(self.__swct_data, self.__latest_r_dn_carts[i]) for i in range(self.__num_walkers)]
                 )
-
-                grad_omega_dr_up = vmap(evaluate_swct_domega, in_axes=(None, 0))(
-                    self.__swct_data,
-                    self.__latest_r_up_carts,
+                grad_omega_dr_up = jnp.stack(
+                    [evaluate_swct_domega(self.__swct_data, self.__latest_r_up_carts[i]) for i in range(self.__num_walkers)]
                 )
-
-                grad_omega_dr_dn = vmap(evaluate_swct_domega, in_axes=(None, 0))(
-                    self.__swct_data,
-                    self.__latest_r_dn_carts,
+                grad_omega_dr_dn = jnp.stack(
+                    [evaluate_swct_domega(self.__swct_data, self.__latest_r_dn_carts[i]) for i in range(self.__num_walkers)]
                 )
 
             # jnp.array -> np.array

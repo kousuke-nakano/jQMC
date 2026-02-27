@@ -45,14 +45,27 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc.determinant import Geminal_data  # noqa: E402
-from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
+from jqmc.determinant import (
+    Geminal_data,  # noqa: E402
+    compute_geminal_all_elements,  # noqa: E402
+)
+from jqmc.hamiltonians import (  # noqa: E402
+    Hamiltonian_data,
+    _compute_local_energy_auto,
+    compute_local_energy,
+    compute_local_energy_fast,
+)
 from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_data,
     Jastrow_NN_data,
     Jastrow_one_body_data,
     Jastrow_three_body_data,
     Jastrow_two_body_data,
+)
+from jqmc.setting import (  # noqa: E402
+    decimal_auto_vs_analytic_deriv,
+    decimal_consistency,
+    decimal_debug_vs_production,
 )
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import (  # noqa: E402
@@ -185,6 +198,118 @@ def test_hamiltonian_hdf5(trexio_file, use_1b, use_2b, use_3b, use_nn, geminal_t
     # Note: Direct equality (==) on dataclasses with numpy arrays is ambiguous in boolean context.
     # We use a helper to compare leaves.
     assert_dataclasses_equal(hamiltonian_data, loaded_hamiltonian_data)
+
+
+@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5"])
+def test_compute_local_energy_fast(trexio_file):
+    """compute_local_energy_fast must equal compute_local_energy for well-conditioned G."""
+    structure_data, _, _, _, geminal_data, coulomb_potential_data = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=Wavefunction_data(geminal_data=geminal_data),
+    )
+    geminal_data = hamiltonian_data.wavefunction_data.geminal_data
+    RT = jnp.eye(3, dtype=jnp.float64)
+    rng = np.random.default_rng(42)
+    first_nucleus = np.array(hamiltonian_data.structure_data.positions[0])
+    n_up = geminal_data.num_electron_up
+    n_dn = geminal_data.num_electron_dn
+
+    for _ in range(10):
+        r_up = jnp.array(first_nucleus + rng.standard_normal((n_up, 3)) * 1.2, dtype=jnp.float64)
+        r_dn = jnp.array(first_nucleus + rng.standard_normal((n_dn, 3)) * 1.2, dtype=jnp.float64)
+
+        G = compute_geminal_all_elements(geminal_data, r_up, r_dn)
+        G_inv = jnp.linalg.inv(G)
+
+        e_ref = float(compute_local_energy(hamiltonian_data, r_up, r_dn, RT))
+        e_fast = float(compute_local_energy_fast(hamiltonian_data, r_up, r_dn, RT, G_inv))
+
+        assert np.isfinite(e_ref), f"Reference e_L is not finite: {e_ref}"
+        assert np.isfinite(e_fast), f"Fast e_L is not finite: {e_fast}"
+        np.testing.assert_almost_equal(
+            e_fast,
+            e_ref,
+            decimal=decimal_debug_vs_production,
+            err_msg=f"compute_local_energy_fast={e_fast:.10f} != compute_local_energy={e_ref:.10f}",
+        )
+
+
+def _compare_grad_leaves(
+    grad_ref,
+    grad_test,
+    label,
+    decimal=decimal_auto_vs_analytic_deriv,
+):
+    """Flatten two pytrees and compare every leaf."""
+    leaves_ref = jax.tree_util.tree_leaves(grad_ref)
+    leaves_tst = jax.tree_util.tree_leaves(grad_test)
+    assert len(leaves_ref) == len(leaves_tst), f"{label}: number of leaves differ ({len(leaves_ref)} vs {len(leaves_tst)})"
+    for i, (lr, lt) in enumerate(zip(leaves_ref, leaves_tst)):
+        lr = np.asarray(lr)
+        lt = np.asarray(lt)
+        assert lr.shape == lt.shape, f"{label} leaf {i}: shape {lr.shape} vs {lt.shape}"
+        np.testing.assert_array_almost_equal(
+            lt,
+            lr,
+            decimal=decimal,
+            err_msg=f"{label}: gradient mismatch at leaf {i}  (max |diff|={np.max(np.abs(lt - lr)):.3e})",
+        )
+
+
+@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5"])
+def test_grad_compute_local_energy(trexio_file):
+    """grad(compute_local_energy, argnums=0) must match grad(_compute_local_energy_auto, argnums=0).
+
+    Both functions compute e_L = T + V.  compute_local_energy uses the custom VJP in
+    compute_grads_and_laplacian_ln_Det (and _ln_det_bwd), while _compute_local_energy_auto
+    uses a fully-automatic Laplacian via JAX second-order AD.  The gradients w.r.t.
+    all Hamiltonian pytree leaves (lambda_matrix, Jastrow params, positions, …) must
+    be numerically identical for a well-conditioned geminal matrix.
+    """
+    seed = 123
+    structure_data, _, _, _, geminal_data, coulomb_potential_data = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=Wavefunction_data(geminal_data=geminal_data),
+    )
+    RT = jnp.eye(3, dtype=jnp.float64)
+    rng = np.random.default_rng(seed)
+    first_nucleus = np.array(hamiltonian_data.structure_data.positions[0])
+    n_up = geminal_data.num_electron_up
+    n_dn = geminal_data.num_electron_dn
+
+    r_up = jnp.array(first_nucleus + rng.standard_normal((n_up, 3)) * 0.5, dtype=jnp.float64)
+    r_dn = jnp.array(first_nucleus + rng.standard_normal((n_dn, 3)) * 0.5, dtype=jnp.float64)
+
+    # Sanity: both forward values must agree.
+    e_auto = float(_compute_local_energy_auto(hamiltonian_data, r_up, r_dn, RT))
+    e_custom = float(compute_local_energy(hamiltonian_data, r_up, r_dn, RT))
+    np.testing.assert_almost_equal(
+        e_custom,
+        e_auto,
+        decimal=decimal_consistency,
+        err_msg="forward e_L mismatch",
+    )
+
+    # Gradient comparison (w.r.t. full Hamiltonian pytree, argnums=0).
+    grad_auto = jax.grad(_compute_local_energy_auto, argnums=0)(hamiltonian_data, r_up, r_dn, RT)
+    grad_custom = jax.grad(compute_local_energy, argnums=0)(hamiltonian_data, r_up, r_dn, RT)
+
+    _compare_grad_leaves(
+        grad_auto,
+        grad_custom,
+        label=f"grad(compute_local_energy) vs _auto [{trexio_file}, seed={seed}]",
+        decimal=decimal_auto_vs_analytic_deriv,
+    )
 
 
 if __name__ == "__main__":

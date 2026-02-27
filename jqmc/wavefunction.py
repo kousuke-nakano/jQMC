@@ -53,6 +53,7 @@ from .determinant import (
     compute_grads_and_laplacian_ln_Det,
     compute_grads_and_laplacian_ln_Det_fast,
     compute_ln_det_geminal_all_elements,
+    compute_ln_det_geminal_all_elements_fast,
 )
 from .diff_mask import DiffMask, apply_diff_mask
 from .jastrow_factor import (
@@ -463,6 +464,60 @@ def evaluate_ln_wavefunction(
     return Jastrow_part + jnp.log(jnp.abs(Determinant_part))
 
 
+def evaluate_ln_wavefunction_fast(
+    wavefunction_data: Wavefunction_data,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+    geminal_inv: jax.Array,
+) -> float:
+    r"""Evaluate :math:`\ln|\Psi|` using pre-computed ``geminal_inv`` in gradients.
+
+    Identical to :func:`evaluate_ln_wavefunction` in the forward direction.
+    The backward pass (used when computing :math:`\partial\ln\Psi/\partial c`
+    via JAX autodiff) replaces the fresh LU decomposition of the geminal matrix
+    with ``geminal_inv`` — the Sherman-Morrison running inverse — so that
+    near-singular configurations (``epsilon_AS > 0``) do not produce NaN
+    gradients.
+
+    Args:
+        wavefunction_data: Wavefunction parameters (Jastrow + Geminal).
+        r_up_carts: Cartesian coordinates of up-spin electrons ``(n_up, 3)``.
+        r_dn_carts: Cartesian coordinates of down-spin electrons ``(n_dn, 3)``.
+        geminal_inv: Pre-computed inverse geminal matrix ``(N_up, N_up)`` from
+            the Sherman-Morrison running update, valid at the supplied
+            ``(r_up_carts, r_dn_carts)``.
+
+    Returns:
+        Scalar log-value of the wavefunction magnitude.
+
+    Warning:
+        ``geminal_inv`` **must** equal ``G(r_up_carts, r_dn_carts)^{-1}``
+        exactly at the supplied electron positions.  Correctness is only
+        guaranteed when the inverse is maintained via **single-electron
+        (rank-1) Sherman-Morrison updates** starting from a freshly
+        initialised LU inverse — the pattern used in the MCMC loop.
+        Passing an inverse from a different configuration silently produces
+        incorrect parameter gradients (``O_matrix`` / SR).
+    """
+    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
+    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
+
+    Jastrow_part = compute_Jastrow_part(
+        jastrow_data=wavefunction_data.jastrow_data,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
+    )
+
+    ln_det = compute_ln_det_geminal_all_elements_fast(
+        wavefunction_data.geminal_data,
+        r_up,
+        r_dn,
+        geminal_inv,
+    )
+
+    return Jastrow_part + ln_det
+
+
 @jit
 def evaluate_wavefunction(
     wavefunction_data: Wavefunction_data,
@@ -802,7 +857,27 @@ def compute_kinetic_energy_all_elements_fast_update(
     r_dn_carts: jax.Array,
     geminal_inverse: jax.Array,
 ) -> jax.Array:
-    """Kinetic energy per electron using a precomputed geminal inverse."""
+    """Kinetic energy per electron using a precomputed geminal inverse.
+
+    Args:
+        wavefunction_data: Wavefunction parameters (Jastrow + Geminal).
+        r_up_carts: Cartesian coordinates of up-spin electrons ``(n_up, 3)``.
+        r_dn_carts: Cartesian coordinates of down-spin electrons ``(n_dn, 3)``.
+        geminal_inverse: Pre-computed inverse geminal matrix ``(N_up, N_up)``
+            valid at the supplied ``(r_up_carts, r_dn_carts)``.
+
+    Returns:
+        Tuple of per-electron kinetic energies (up, down).
+
+    Warning:
+        ``geminal_inverse`` **must** equal ``G(r_up_carts, r_dn_carts)^{-1}``
+        exactly at the supplied electron positions.  Correctness is only
+        guaranteed when the inverse is maintained via **single-electron
+        (rank-1) Sherman-Morrison updates** starting from a freshly
+        initialised LU inverse — the pattern used in the MCMC loop.
+        Passing an inverse from a different configuration silently produces
+        incorrect kinetic energy.
+    """
     if geminal_inverse is None:
         raise ValueError("geminal_inverse must be provided for fast update")
 

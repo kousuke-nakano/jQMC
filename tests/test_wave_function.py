@@ -38,6 +38,7 @@ from pathlib import Path
 
 import jax
 import numpy as np
+import pytest
 from jax import numpy as jnp
 
 project_root = str(Path(__file__).parent.parent)
@@ -72,6 +73,8 @@ from jqmc.wavefunction import (  # noqa: E402
     compute_kinetic_energy,
     compute_kinetic_energy_all_elements,
     compute_kinetic_energy_all_elements_fast_update,
+    evaluate_ln_wavefunction,
+    evaluate_ln_wavefunction_fast,
 )
 
 # JAX float64
@@ -118,6 +121,8 @@ def test_kinetic_energy_analytic_and_numerical():
 
     K_debug = _compute_kinetic_energy_debug(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
     K_jax = compute_kinetic_energy(wavefunction_data=wavefunction_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts)
+    assert not np.any(np.isnan(np.asarray(np.asarray(K_debug)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(K_jax)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(K_debug),
         np.asarray(K_jax),
@@ -165,6 +170,8 @@ def test_kinetic_energy_analytic_and_auto():
         r_dn_carts=jnp.asarray(r_dn_carts),
     )
 
+    assert not np.any(np.isnan(np.asarray(K_analytic))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(K_auto))), "NaN detected in second argument"
     np.testing.assert_almost_equal(K_analytic, K_auto, decimal=decimal_auto_vs_analytic_deriv)
 
 
@@ -220,9 +227,15 @@ def test_debug_and_auto_kinetic_energy_all_elements():
         wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp
     )
 
+    assert not np.any(np.isnan(np.asarray(K_elements_up_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(K_elements_up_auto))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(K_elements_up_debug, K_elements_up_auto, decimal=decimal_auto_vs_numerical_deriv)
+    assert not np.any(np.isnan(np.asarray(K_elements_dn_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(K_elements_dn_auto))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(K_elements_dn_debug, K_elements_dn_auto, decimal=decimal_auto_vs_numerical_deriv)
 
+    assert not np.any(np.isnan(np.asarray(np.asarray(K_elements_up_debug)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(K_elements_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(K_elements_up_debug),
         np.asarray(K_elements_up_auto),
@@ -230,6 +243,8 @@ def test_debug_and_auto_kinetic_energy_all_elements():
         atol=atol_auto_vs_numerical_deriv,
     )
 
+    assert not np.any(np.isnan(np.asarray(np.asarray(K_elements_dn_debug)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(K_elements_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(K_elements_dn_debug),
         np.asarray(K_elements_dn_auto),
@@ -291,7 +306,11 @@ def test_auto_and_analytic_kinetic_energy_all_elements():
         wavefunction_data=wavefunction_data, r_up_carts=r_up_carts_jnp, r_dn_carts=r_dn_carts_jnp
     )
 
+    assert not np.any(np.isnan(np.asarray(K_elements_up_auto))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(K_elements_up_analytic))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(K_elements_up_auto, K_elements_up_analytic, decimal=decimal_auto_vs_analytic_deriv)
+    assert not np.any(np.isnan(np.asarray(K_elements_dn_auto))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(K_elements_dn_analytic))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(K_elements_dn_auto, K_elements_dn_analytic, decimal=decimal_auto_vs_analytic_deriv)
 
 
@@ -353,7 +372,11 @@ def test_fast_update_kinetic_energy_all_elements():
         geminal_inverse=A_inv,
     )
 
+    assert not np.any(np.isnan(np.asarray(ke_up_fast))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(ke_up_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(ke_up_fast, ke_up_debug, decimal=decimal_debug_vs_production)
+    assert not np.any(np.isnan(np.asarray(ke_dn_fast))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(ke_dn_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(ke_dn_fast, ke_dn_debug, decimal=decimal_debug_vs_production)
 
 
@@ -440,34 +463,113 @@ def test_debug_and_jax_discretized_kinetic_energy():
         RT=RT,
     )
 
+    assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_up_carts_jax))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_up_carts_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         mesh_kinetic_part_r_up_carts_jax,
         mesh_kinetic_part_r_up_carts_debug,
         decimal=decimal_debug_vs_production,
     )
+    assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_dn_carts_jax))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_dn_carts_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         mesh_kinetic_part_r_dn_carts_jax,
         mesh_kinetic_part_r_dn_carts_debug,
         decimal=decimal_debug_vs_production,
     )
+    assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_up_carts_jax_fast_update))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_up_carts_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         mesh_kinetic_part_r_up_carts_jax_fast_update,
         mesh_kinetic_part_r_up_carts_debug,
         decimal=decimal_debug_vs_production,
     )
+    assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_dn_carts_jax_fast_update))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_dn_carts_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         mesh_kinetic_part_r_dn_carts_jax_fast_update,
         mesh_kinetic_part_r_dn_carts_debug,
         decimal=decimal_debug_vs_production,
     )
+    assert not np.any(np.isnan(np.asarray(elements_kinetic_part_jax))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(elements_kinetic_part_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         elements_kinetic_part_jax, elements_kinetic_part_debug, decimal=decimal_debug_vs_production
     )
+    assert not np.any(np.isnan(np.asarray(elements_kinetic_part_jax_fast_update))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(elements_kinetic_part_debug))), "NaN detected in second argument"
     np.testing.assert_array_almost_equal(
         elements_kinetic_part_jax_fast_update,
         elements_kinetic_part_debug,
         decimal=decimal_debug_vs_production,
     )
+
+
+@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5"])
+def test_evaluate_ln_wavefunction_fast_forward(trexio_file):
+    """Forward value of evaluate_ln_wavefunction_fast must match evaluate_ln_wavefunction."""
+    _, _, _, _, geminal_data, _ = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+    wavefunction_data = Wavefunction_data(geminal_data=geminal_data)
+    rng = np.random.default_rng(2)
+    n_up = geminal_data.num_electron_up
+    n_dn = geminal_data.num_electron_dn
+
+    for _ in range(10):
+        r_up = jnp.array(rng.standard_normal((n_up, 3)) * 1.2, dtype=jnp.float64)
+        r_dn = jnp.array(rng.standard_normal((n_dn, 3)) * 1.2, dtype=jnp.float64)
+        G = compute_geminal_all_elements(geminal_data, r_up, r_dn)
+        G_inv = jnp.linalg.inv(G)
+
+        val_ref = float(evaluate_ln_wavefunction(wavefunction_data, r_up, r_dn))
+        val_fast = float(evaluate_ln_wavefunction_fast(wavefunction_data, r_up, r_dn, G_inv))
+
+        assert np.isfinite(val_ref), f"Reference value is not finite: {val_ref}"
+        assert np.isfinite(val_fast), f"Fast value is not finite: {val_fast}"
+        np.testing.assert_almost_equal(
+            val_fast,
+            val_ref,
+            decimal=decimal_debug_vs_production,
+            err_msg=f"Forward mismatch: fast={val_fast:.15f}, ref={val_ref:.15f}",
+        )
+
+
+@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5"])
+def test_evaluate_ln_wavefunction_fast_backward(trexio_file):
+    """Gradient of evaluate_ln_wavefunction_fast w.r.t. wavefunction_data must match evaluate_ln_wavefunction."""
+    _, _, _, _, geminal_data, _ = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
+        store_tuple=True,
+    )
+    wavefunction_data = Wavefunction_data(geminal_data=geminal_data)
+    rng = np.random.default_rng(3)
+    n_up = geminal_data.num_electron_up
+    n_dn = geminal_data.num_electron_dn
+
+    grad_ref_fn = jax.grad(evaluate_ln_wavefunction, argnums=0)
+    grad_fast_fn = jax.grad(evaluate_ln_wavefunction_fast, argnums=0)
+
+    for _ in range(10):
+        r_up = jnp.array(rng.standard_normal((n_up, 3)) * 1.2, dtype=jnp.float64)
+        r_dn = jnp.array(rng.standard_normal((n_dn, 3)) * 1.2, dtype=jnp.float64)
+        G = compute_geminal_all_elements(geminal_data, r_up, r_dn)
+        G_inv = jnp.linalg.inv(G)
+
+        grad_ref = grad_ref_fn(wavefunction_data, r_up, r_dn)
+        grad_fast = grad_fast_fn(wavefunction_data, r_up, r_dn, G_inv)
+
+        jax.tree_util.tree_map(
+            lambda a, b: np.testing.assert_array_almost_equal(
+                np.asarray(a),
+                np.asarray(b),
+                decimal=decimal_debug_vs_production,
+                err_msg="Backward mismatch in evaluate_ln_wavefunction_fast",
+            ),
+            grad_ref,
+            grad_fast,
+        )
 
 
 if __name__ == "__main__":
