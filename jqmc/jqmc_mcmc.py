@@ -1800,27 +1800,16 @@ class MCMC:
                     unpaired_block = block_matrix[:, :, :, n_paired_cols:]
 
                     # Transform paired O_k to orthogonal basis: O' = S^{-1/2}_up @ O @ S^{-1/2}_dn
-                    paired_orth = np.einsum(
-                        "ab,mwbc,cd->mwad",
-                        inv_sqrt_overlap_up,
-                        paired_block,
-                        inv_sqrt_overlap_dn,
-                    )
+                    # Use @ with broadcasting over (m, w) batch dims instead of einsum for BLAS speed.
+                    paired_orth = inv_sqrt_overlap_up @ paired_block @ inv_sqrt_overlap_dn
                     # Apply orthogonal projection: Õ' = O' - (I-L') O' (I-R')
-                    correction = np.einsum(
-                        "ab,mwbc,cd->mwad",
-                        (identity - left_projector),
-                        paired_orth,
-                        (identity - right_projector),
-                    )
+                    comp_L = identity - left_projector
+                    comp_R = identity - right_projector
+                    correction = comp_L @ paired_orth @ comp_R
                     projected_paired = paired_orth - correction
 
                     # Transform unpaired to orthogonal basis: O'_unpaired = S^{-1/2}_up @ O
-                    unpaired_orth = np.einsum(
-                        "ab,mwbc->mwac",
-                        inv_sqrt_overlap_up,
-                        unpaired_block,
-                    )
+                    unpaired_orth = inv_sqrt_overlap_up @ unpaired_block
 
                     corrected_block = np.concatenate((projected_paired, unpaired_orth), axis=3)
                     O_matrix[:, :, start:end] = corrected_block.reshape(O_matrix.shape[0], O_matrix.shape[1], -1)
