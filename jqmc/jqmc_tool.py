@@ -559,46 +559,6 @@ _cli.add_command(typer_click_hamiltonian, "hamiltonian")
 vmc_app = typer.Typer(help="Pre- and Post-Processing for VMC calculations.")
 
 
-# This should be removed in future release since it will be no longer useful.
-@vmc_app.command("fix")
-def vmc_chk_fix(
-    restart_chk: str = typer.Argument(..., help="old chk file, e.g. vmc.chk"),
-):
-    """VMCopt chk file fix."""
-    typer.echo(f"Fix checkpoint file(s) from {restart_chk}.")
-    typer.echo(f"Backup to checkpoint file(s) bak_{restart_chk}.")
-    shutil.copy(restart_chk, f"bak_{restart_chk}")
-
-    basename_restart_chk = os.path.basename(restart_chk)
-    pattern = re.compile(rf"(\d+)_{basename_restart_chk}")
-
-    mpi_ranks = []
-    with zipfile.ZipFile(restart_chk, "r") as z:
-        for file_name in z.namelist():
-            match = pattern.match(os.path.basename(file_name))
-            if match:
-                mpi_ranks.append(int(match.group(1)))
-
-    typer.echo(f"Found {len(mpi_ranks)} MPI ranks.")
-
-    filenames = [f"{mpi_rank}_{basename_restart_chk}.pkl.gz" for mpi_rank in mpi_ranks]
-
-    for filename, mpi_rank in zip(filenames, mpi_ranks, strict=True):
-        with zipfile.ZipFile(restart_chk, "r") as zipf:
-            data = zipf.read(filename)
-            vmc = pickle.loads(data)
-            tmp_gz_filename = f".{mpi_rank}.pkl.gz"
-            with gzip.open(tmp_gz_filename, "wb") as gz:
-                pickle.dump(vmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
-
-    with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
-        for mpi_rank in mpi_ranks:
-            gz_name = f".{mpi_rank}.pkl.gz"
-            arcname = gz_name.lstrip(".")
-            zipf.write(gz_name, arcname=arcname)
-            os.remove(gz_name)
-
-
 @vmc_app.command("generate-input")
 def vmc_generate_input(
     flag: bool = typer.Option(False, "-g", "--generate", help="Generate input file for VMCopt calculations."),

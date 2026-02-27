@@ -111,6 +111,7 @@ def test_lrdmc_force_with_SWCT_ecp():
         alat=0.30,
         non_local_move="tmove",
         comput_position_deriv=True,
+        epsilon_PW=1.0e-2,
     )
 
     gfmc.run(num_mcmc_steps=50)
@@ -191,6 +192,7 @@ def test_lrdmc_force_with_SWCT_ae():
         alat=0.30,
         non_local_move="tmove",
         comput_position_deriv=True,
+        epsilon_PW=1.0e-2,
     )
 
     gfmc.run(num_mcmc_steps=50)
