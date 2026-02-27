@@ -577,7 +577,7 @@ def test_jqmc_vmc(monkeypatch):
         jax.clear_caches()
 
 
-def test_opt_with_projected_MOs_ln_psi_consistency(monkeypatch):
+def test_opt_with_projected_MOs(monkeypatch):
     """After run_optimize with opt_with_projected_MOs=True the final wavefunction
     (in MO representation) must give the same ln|Psi| as its AO-converted counterpart.
 

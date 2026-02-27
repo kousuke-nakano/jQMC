@@ -216,6 +216,7 @@ def test_debug_and_jax_ecp_local():
     )
 
 
+@pytest.mark.activate_if_skip_heavy
 @pytest.mark.parametrize("Nv", Nv_params)
 @pytest.mark.parametrize("alpha, beta, gamma", angle_params)
 def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
@@ -454,6 +455,7 @@ def test_debug_and_jax_ecp_non_local_full_NN(Nv, alpha, beta, gamma):
     )
 
 
+@pytest.mark.activate_if_skip_heavy
 @pytest.mark.parametrize("Nv", Nv_params)
 @pytest.mark.parametrize("alpha, beta, gamma", angle_params)
 def test_debug_and_jax_ecp_non_local_partial_NN(Nv, alpha, beta, gamma):
@@ -606,7 +608,7 @@ def _build_full_jastrow_data(structure_data, geminal_mo_data, coulomb_potential_
     )
 
 
-def test_fastupdate_ecp_non_local_partial_NN():
+def test_fast_update_ecp_non_local_partial_NN():
     """Fast-update nearest-neighbor ECP matches reference with all Jastrow terms enabled."""
     (
         structure_data,

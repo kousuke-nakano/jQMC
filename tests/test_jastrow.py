@@ -707,6 +707,7 @@ def test_Jastrow_threebody_part_cart_to_sphe_MOs_data():
     jax.clear_caches()
 
 
+@pytest.mark.activate_if_skip_heavy
 def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
     """Test numerical and JAX grads of the three-body Jastrow factor, comparing the debug and JAX implementations, using AOs data."""
     num_r_up_cart_samples = 4
@@ -818,6 +819,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
     jax.clear_caches()
 
 
+@pytest.mark.activate_if_skip_heavy
 def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
     """Test numerical and JAX grads of the three-body Jastrow factor, comparing the debug and JAX implementations, using MOs data."""
     num_el = 10
@@ -934,6 +936,7 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
     jax.clear_caches()
 
 
+@pytest.mark.activate_if_skip_heavy
 def test_numerical_and_auto_grads_Jastrow_twobody_part():
     """Test numerical and JAX grads of the two-body Jastrow factor, comparing the debug and JAX implementations."""
     num_r_up_cart_samples = 5
@@ -1010,6 +1013,7 @@ def test_numerical_and_auto_grads_Jastrow_twobody_part():
     jax.clear_caches()
 
 
+@pytest.mark.activate_if_skip_heavy
 def test_analytic_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
     """Analytic vs auto-diff gradients/laplacian for three-body Jastrow (AOs)."""
     num_r_up_cart_samples = 4
@@ -1080,6 +1084,7 @@ def test_analytic_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
     jax.clear_caches()
 
 
+@pytest.mark.activate_if_skip_heavy
 def test_analytic_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
     """Analytic vs auto-diff gradients/laplacian for three-body Jastrow (MOs)."""
     num_el = 8
@@ -1153,6 +1158,7 @@ def test_analytic_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
     jax.clear_caches()
 
 
+@pytest.mark.activate_if_skip_heavy
 def test_analytic_and_auto_grads_Jastrow_twobody_part():
     """Analytic vs auto-diff gradients/laplacian for two-body Jastrow (Pade)."""
     num_r_up_cart_samples = 5
@@ -1273,6 +1279,7 @@ def _build_jastrow_data_for_part_tests(include_nn: bool):
     return jastrow_data, r_up_carts, r_dn_carts
 
 
+@pytest.mark.activate_if_skip_heavy
 def test_numerical_and_auto_grads_Jastrow_part():
     """Numerical vs auto-diff gradients/laplacian for J1+J2+J3."""
     jastrow_data, r_up_carts, r_dn_carts = _build_jastrow_data_for_part_tests(include_nn=False)
@@ -1316,6 +1323,7 @@ def test_numerical_and_auto_grads_Jastrow_part():
     jax.clear_caches()
 
 
+@pytest.mark.activate_if_skip_heavy
 def test_numerical_and_auto_grads_Jastrow_part_with_NN():
     """Numerical vs auto-diff gradients/laplacian for J1+J2+J3+JNN."""
     jastrow_data, r_up_carts, r_dn_carts = _build_jastrow_data_for_part_tests(include_nn=True)
