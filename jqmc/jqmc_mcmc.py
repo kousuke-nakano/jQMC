@@ -1395,14 +1395,24 @@ class MCMC:
         ave_timer_mcmc_total = mpi_comm.allreduce(timer_mcmc_total, op=MPI.SUM) / mpi_size
         ave_timer_mcmc_update_init = mpi_comm.allreduce(timer_mcmc_update_init, op=MPI.SUM) / mpi_size
         ave_timer_net_mcmc_total = mpi_comm.allreduce(timer_net_mcmc_total, op=MPI.SUM) / mpi_size
-        ave_timer_mcmc_update = mpi_comm.allreduce(timer_mcmc_update, op=MPI.SUM) / mpi_size / num_mcmc_done
-        ave_timer_e_L = mpi_comm.allreduce(timer_e_L, op=MPI.SUM) / mpi_size / num_mcmc_done
-        ave_timer_de_L_dR_dr = mpi_comm.allreduce(timer_de_L_dR_dr, op=MPI.SUM) / mpi_size / num_mcmc_done
-        ave_timer_dln_Psi_dR_dr = mpi_comm.allreduce(timer_dln_Psi_dR_dr, op=MPI.SUM) / mpi_size / num_mcmc_done
-        ave_timer_dln_Psi_dc = mpi_comm.allreduce(timer_dln_Psi_dc, op=MPI.SUM) / mpi_size / num_mcmc_done
-        ave_timer_de_L_dc = mpi_comm.allreduce(timer_de_L_dc, op=MPI.SUM) / mpi_size / num_mcmc_done
-        ave_timer_MPI_barrier = mpi_comm.allreduce(timer_MPI_barrier, op=MPI.SUM) / mpi_size / num_mcmc_done
-        ave_timer_misc = mpi_comm.allreduce(timer_misc, op=MPI.SUM) / mpi_size / num_mcmc_done
+        if num_mcmc_done > 0:
+            ave_timer_mcmc_update = mpi_comm.allreduce(timer_mcmc_update, op=MPI.SUM) / mpi_size / num_mcmc_done
+            ave_timer_e_L = mpi_comm.allreduce(timer_e_L, op=MPI.SUM) / mpi_size / num_mcmc_done
+            ave_timer_de_L_dR_dr = mpi_comm.allreduce(timer_de_L_dR_dr, op=MPI.SUM) / mpi_size / num_mcmc_done
+            ave_timer_dln_Psi_dR_dr = mpi_comm.allreduce(timer_dln_Psi_dR_dr, op=MPI.SUM) / mpi_size / num_mcmc_done
+            ave_timer_dln_Psi_dc = mpi_comm.allreduce(timer_dln_Psi_dc, op=MPI.SUM) / mpi_size / num_mcmc_done
+            ave_timer_de_L_dc = mpi_comm.allreduce(timer_de_L_dc, op=MPI.SUM) / mpi_size / num_mcmc_done
+            ave_timer_MPI_barrier = mpi_comm.allreduce(timer_MPI_barrier, op=MPI.SUM) / mpi_size / num_mcmc_done
+            ave_timer_misc = mpi_comm.allreduce(timer_misc, op=MPI.SUM) / mpi_size / num_mcmc_done
+        else:
+            ave_timer_mcmc_update = 0.0
+            ave_timer_e_L = 0.0
+            ave_timer_de_L_dR_dr = 0.0
+            ave_timer_dln_Psi_dR_dr = 0.0
+            ave_timer_dln_Psi_dc = 0.0
+            ave_timer_de_L_dc = 0.0
+            ave_timer_MPI_barrier = 0.0
+            ave_timer_misc = 0.0
         ave_stored_w_L = mpi_comm.allreduce(np.mean(self.__stored_w_L), op=MPI.SUM) / mpi_size
         sum_accepted_moves = mpi_comm.allreduce(int(self.__accepted_moves), op=MPI.SUM)
         sum_rejected_moves = mpi_comm.allreduce(int(self.__rejected_moves), op=MPI.SUM)
@@ -1420,9 +1430,12 @@ class MCMC:
         logger.info(f"  Time for MPI barrier after MCMC update = {ave_timer_MPI_barrier * 10**3:.2f} msec.")
         logger.info(f"  Time for misc. (others) = {ave_timer_misc * 10**3:.2f} msec.")
         logger.info(f"Average of walker weights is {ave_stored_w_L:.3f}. Ideal is ~ 0.800. Adjust epsilon_AS.")
-        logger.info(
-            f"Acceptance ratio is {sum_accepted_moves / (sum_accepted_moves + sum_rejected_moves) * 100:.2f} %.  Ideal is ~ 50.00%. Adjust Dt."
-        )
+        if sum_accepted_moves + sum_rejected_moves > 0:
+            logger.info(
+                f"Acceptance ratio is {sum_accepted_moves / (sum_accepted_moves + sum_rejected_moves) * 100:.2f} %.  Ideal is ~ 50.00%. Adjust Dt."
+            )
+        else:
+            logger.info("Acceptance ratio is N/A (no moves performed).")
         logger.info("")
 
     def get_E(
@@ -2589,6 +2602,16 @@ class MCMC:
         # timer
         vmcopt_total_start = time.perf_counter()
 
+        # timer_counter
+        timer_opt_total = 0.0
+        timer_mcmc_run = 0.0
+        timer_get_E = 0.0
+        timer_get_gF = 0.0
+        timer_optimizer = 0.0
+        timer_param_update = 0.0
+        timer_MPI_barrier = 0.0
+        num_opt_done = 0
+
         sr_cg_warm_start_primal = None
         sr_cg_warm_start_dual = None
 
@@ -2719,10 +2742,16 @@ class MCMC:
                 logger.info("opt_with_projected_MOs=True: converted current MO geminal to AO for this optimization step.")
 
             # run MCMC
+            start = time.perf_counter()
             self.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
+            end = time.perf_counter()
+            timer_mcmc_run += end - start
 
             # get E
+            start = time.perf_counter()
             E, E_std, _, _ = self.get_E(num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks)
+            end = time.perf_counter()
+            timer_get_E += end - start
             logger.info("Total Energy before update of wavefunction.")
             logger.info("-" * num_sep_line)
             logger.info(f"E = {E:.5f} +- {E_std:.5f} Ha")
@@ -2762,6 +2791,7 @@ class MCMC:
                     raise ValueError("The number of variational parameters changed after initializing the optax optimizer.")
 
             # get f and f_std (generalized forces)
+            start = time.perf_counter()
             f, f_std = self.get_gF(
                 num_mcmc_warmup_steps=num_mcmc_warmup_steps,
                 num_mcmc_bin_blocks=num_mcmc_bin_blocks,
@@ -2770,6 +2800,8 @@ class MCMC:
                 lambda_projectors=lambda_projectors,
                 num_orb_projection=num_orb_projection,
             )
+            end = time.perf_counter()
+            timer_get_gF += end - start
 
             if mpi_rank == 0:
                 logger.devel(f"shape of f = {f.shape}.")
@@ -2820,6 +2852,7 @@ class MCMC:
             #############################
             # in-house SR optimizer
             #############################
+            start = time.perf_counter()
             if use_sr:
                 logger.info("Computing the natural gradient, i.e., {S+epsilon*I}^{-1}*f")
                 epsilon = sr_epsilon
@@ -3309,6 +3342,9 @@ class MCMC:
                     optax_param_size=optax_param_size,
                 )
 
+            end = time.perf_counter()
+            timer_optimizer += end - start
+
             # Extract only the signal-to-noise ratio maximized parameters.
             theta = np.zeros_like(theta_all)
             theta[signal_to_noise_f_max_indices] = theta_all[signal_to_noise_f_max_indices]
@@ -3351,6 +3387,7 @@ class MCMC:
                     block_max,
                 )
 
+            start = time.perf_counter()
             logger.info(f"Updating parameters with optimizer '{optimizer_mode}'.")
             logger.devel(f"dX.shape for MPI-rank={mpi_rank} is {theta.shape}")
 
@@ -3386,6 +3423,16 @@ class MCMC:
             logger.info("Wavefunction has been updated. Optimization loop is done.")
             logger.info("")
             self.hamiltonian_data = hamiltonian_data
+            end = time.perf_counter()
+            timer_param_update += end - start
+
+            # MPI barrier after all optimization operation (timed)
+            start = time.perf_counter()
+            mpi_comm.Barrier()
+            end = time.perf_counter()
+            timer_MPI_barrier += end - start
+
+            num_opt_done += 1
 
             # check max time
             vmcopt_current = time.perf_counter()
@@ -3415,7 +3462,7 @@ class MCMC:
                 logger.info("Break the vmcopt loop.")
                 break
 
-            # MPI barrier after all optimization operation
+            # MPI barrier before checking toml file
             mpi_comm.Barrier()
 
             # check toml file (stop flag)
@@ -3447,6 +3494,7 @@ class MCMC:
                             )
                         hamiltonian_data_to_dump.save_to_hdf5(hamiltonian_data_filename)
                     logger.info("Break the optimization loop.")
+                    logger.info("")
                     break
 
             # dump WF
@@ -3454,6 +3502,7 @@ class MCMC:
                 if (i_opt + 1) % wf_dump_freq == 0 or (i_opt + 1) == num_opt_steps:
                     hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.h5"
                     logger.info(f"Hamiltonian data is dumped as an HDF5 file: {hamiltonian_data_filename}.")
+                    logger.info("")
                     hamiltonian_data_to_dump = self.hamiltonian_data
                     if opt_with_projected_MOs and initial_geminal_is_ao_representation:
                         wf_data = hamiltonian_data_to_dump.wavefunction_data
@@ -3487,9 +3536,46 @@ class MCMC:
                 coulomb_potential_data=self.hamiltonian_data.coulomb_potential_data,
             )
             logger.info("opt_with_projected_MOs=True: projected final AO geminal back to MO representation.")
+            logger.info("")
 
         # update WF opt counter
         self.__i_opt += i_opt + 1
+
+        vmcopt_total_end = time.perf_counter()
+        timer_opt_total += vmcopt_total_end - vmcopt_total_start
+        timer_misc = timer_opt_total - (
+            timer_mcmc_run + timer_get_E + timer_get_gF + timer_optimizer + timer_param_update + timer_MPI_barrier
+        )
+
+        # average among MPI processes
+        ave_timer_opt_total = mpi_comm.allreduce(timer_opt_total, op=MPI.SUM) / mpi_size
+        if num_opt_done > 0:
+            ave_timer_mcmc_run = mpi_comm.allreduce(timer_mcmc_run, op=MPI.SUM) / mpi_size / num_opt_done
+            ave_timer_get_E = mpi_comm.allreduce(timer_get_E, op=MPI.SUM) / mpi_size / num_opt_done
+            ave_timer_get_gF = mpi_comm.allreduce(timer_get_gF, op=MPI.SUM) / mpi_size / num_opt_done
+            ave_timer_optimizer = mpi_comm.allreduce(timer_optimizer, op=MPI.SUM) / mpi_size / num_opt_done
+            ave_timer_param_update = mpi_comm.allreduce(timer_param_update, op=MPI.SUM) / mpi_size / num_opt_done
+            ave_timer_MPI_barrier = mpi_comm.allreduce(timer_MPI_barrier, op=MPI.SUM) / mpi_size / num_opt_done
+            ave_timer_misc = mpi_comm.allreduce(timer_misc, op=MPI.SUM) / mpi_size / num_opt_done
+        else:
+            ave_timer_mcmc_run = 0.0
+            ave_timer_get_E = 0.0
+            ave_timer_get_gF = 0.0
+            ave_timer_optimizer = 0.0
+            ave_timer_param_update = 0.0
+            ave_timer_MPI_barrier = 0.0
+            ave_timer_misc = 0.0
+
+        logger.info(f"Total elapsed time for optimization {num_opt_done} steps. = {ave_timer_opt_total:.2f} sec.")
+        logger.info(f"Elapsed times per optimization step, averaged over {num_opt_done} steps.")
+        logger.info(f"  Time for MCMC run = {ave_timer_mcmc_run:.2f} sec.")
+        logger.info(f"  Time for computing E = {ave_timer_get_E:.2f} sec.")
+        logger.info(f"  Time for computing generalized forces (gF) = {ave_timer_get_gF:.2f} sec.")
+        logger.info(f"  Time for optimizer (SR/optax) = {ave_timer_optimizer:.2f} sec.")
+        logger.info(f"  Time for parameter update = {ave_timer_param_update:.2f} sec.")
+        logger.info(f"  Time for MPI barrier = {ave_timer_MPI_barrier:.2f} sec.")
+        logger.info(f"  Time for misc. (others) = {ave_timer_misc:.2f} sec.")
+        logger.info("")
 
         # remove the toml file
         mpi_comm.Barrier()
