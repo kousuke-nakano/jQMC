@@ -2195,6 +2195,10 @@ class GFMC_n:
             Valid only for ECP calculations. Do not specify this value for all-electron calculations.
         comput_position_deriv (bool):
             if True, compute the derivatives of E wrt. atomic positions.
+        epsilon_PW (float):
+            Pathak-Wagner regularization parameter (bohr). When > 0, the force estimator is
+            regularized near the nodal surface using f_epsilon from Pathak & Wagner (2020),
+            DOI: 10.1063/5.0004008. Default is 0.0 (no regularization).
     """
 
     def __init__(
@@ -4612,6 +4616,10 @@ class _GFMC_n_debug:
             Valid only for ECP calculations. Do not specify this value for all-electron calculations.
         comput_position_deriv (bool):
             if True, compute the derivatives of E wrt. atomic positions.
+        epsilon_PW (float):
+            Pathak-Wagner regularization parameter (bohr). When > 0, the force estimator is
+            regularized near the nodal surface using f_epsilon from Pathak & Wagner (2020),
+            DOI: 10.1063/5.0004008. Default is 0.0 (no regularization).
     """
 
     def __init__(

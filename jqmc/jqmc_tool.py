@@ -502,8 +502,8 @@ def hamiltonian_to_xyz(
     with open(xyz_file, "w") as f:
         f.write(f"{structure_data.natom}\n")
         f.write("\n")
-    for atom, coord in zip(structure_data.atomic_labels, structure_data.positions, strict=True):
-        f.write(f"{atom} {coord[0] * Bohr_to_Angstrom} {coord[1] * Bohr_to_Angstrom} {coord[2] * Bohr_to_Angstrom}\n")
+        for atom, coord in zip(structure_data.atomic_labels, structure_data.positions, strict=True):
+            f.write(f"{atom} {coord[0] * Bohr_to_Angstrom} {coord[1] * Bohr_to_Angstrom} {coord[2] * Bohr_to_Angstrom}\n")
 
 
 class ansatz_type(str, Enum):
@@ -792,6 +792,185 @@ def mcmc_compute_energy(
     typer.echo(f"E = {E_mean} +- {E_std} Ha.")
 
 
+@mcmc_app.command("compute-force")
+def mcmc_compute_force(
+    restart_chk: str = typer.Argument(..., help="Restart checkpoint file, e.g. mcmc.rchk"),
+    num_mcmc_bin_blocks: int = typer.Option(
+        1,
+        "-b",
+        "--num_mcmc_bin_blocks",
+        help="Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_mcmc_bin_blocks * mpi_size * number_of_walkers.",
+    ),
+    num_mcmc_warmup_steps: int = typer.Option(
+        0, "-w", "--num_mcmc_warmup_steps", help="Number of observable measurement steps for warmup (i.e., discarged)."
+    ),
+):
+    """VMC atomic force calculation."""
+    typer.echo(f"Read restart checkpoint file(s) from {restart_chk}.")
+
+    if num_mcmc_warmup_steps < MCMC_MIN_WARMUP_STEPS:
+        typer.echo(f"num_mcmc_warmup_steps should be larger than {MCMC_MIN_WARMUP_STEPS}.")
+    if num_mcmc_bin_blocks < MCMC_MIN_BIN_BLOCKS:
+        typer.echo(f"num_mcmc_bin_blocks should be larger than {MCMC_MIN_BIN_BLOCKS}.")
+
+    """Unzip the checkpoint file for each process and load them."""
+    pattern = re.compile(r"(\d+).pkl.gz")
+
+    mpi_ranks = []
+    with zipfile.ZipFile(restart_chk, "r") as z:
+        for file_name in z.namelist():
+            match = pattern.match(os.path.basename(file_name))
+            if match:
+                mpi_ranks.append(int(match.group(1)))
+
+    typer.echo(f"Found {len(mpi_ranks)} MPI ranks.")
+
+    filenames = [f"{mpi_rank}.pkl.gz" for mpi_rank in mpi_ranks]
+
+    w_L_binned_list = []
+    w_L_e_L_binned_list = []
+    w_L_force_HF_binned_list = []
+    w_L_force_PP_binned_list = []
+    w_L_E_L_force_PP_binned_list = []
+    atomic_labels = None
+
+    for filename in filenames:
+        with zipfile.ZipFile(restart_chk, "r") as zipf:
+            with zipf.open(filename) as zipped_gz_fobj:
+                with gzip.open(zipped_gz_fobj, "rb") as gz:
+                    mcmc = pickle.load(gz)
+
+                    if not mcmc.comput_position_deriv:
+                        typer.echo("Error: atomic_force was not enabled during the MCMC run. Cannot compute forces.")
+                        raise typer.Exit(code=1)
+
+                    if atomic_labels is None:
+                        atomic_labels = mcmc.hamiltonian_data.structure_data.atomic_labels
+
+                    e_L = mcmc.e_L[num_mcmc_warmup_steps:]
+                    w_L = mcmc.w_L[num_mcmc_warmup_steps:]
+                    de_L_dR = mcmc.de_L_dR[num_mcmc_warmup_steps:]
+                    de_L_dr_up = mcmc.de_L_dr_up[num_mcmc_warmup_steps:]
+                    de_L_dr_dn = mcmc.de_L_dr_dn[num_mcmc_warmup_steps:]
+                    dln_Psi_dr_up = mcmc.dln_Psi_dr_up[num_mcmc_warmup_steps:]
+                    dln_Psi_dr_dn = mcmc.dln_Psi_dr_dn[num_mcmc_warmup_steps:]
+                    dln_Psi_dR = mcmc.dln_Psi_dR[num_mcmc_warmup_steps:]
+                    omega_up = mcmc.omega_up[num_mcmc_warmup_steps:]
+                    omega_dn = mcmc.omega_dn[num_mcmc_warmup_steps:]
+                    domega_dr_up = mcmc.domega_dr_up[num_mcmc_warmup_steps:]
+                    domega_dr_dn = mcmc.domega_dr_dn[num_mcmc_warmup_steps:]
+
+                    force_HF = (
+                        de_L_dR
+                        + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up)
+                        + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
+                    )
+
+                    force_PP = (
+                        dln_Psi_dR
+                        + np.einsum("iwjk,iwkl->iwjl", omega_up, dln_Psi_dr_up)
+                        + np.einsum("iwjk,iwkl->iwjl", omega_dn, dln_Psi_dr_dn)
+                        + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
+                    )
+
+                    E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
+
+                    # split and binning with multiple walkers
+                    w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
+                    w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
+                    w_L_force_HF_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_HF), num_mcmc_bin_blocks, axis=0)
+                    w_L_force_PP_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_PP), num_mcmc_bin_blocks, axis=0)
+                    w_L_E_L_force_PP_split = np.array_split(
+                        np.einsum("iw,iwjk->iwjk", w_L, E_L_force_PP), num_mcmc_bin_blocks, axis=0
+                    )
+
+                    # binned sum
+                    w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
+                    w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
+
+                    w_L_force_HF_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_HF_split])
+                    w_L_force_HF_binned_shape = (
+                        w_L_force_HF_sum.shape[0] * w_L_force_HF_sum.shape[1],
+                        w_L_force_HF_sum.shape[2],
+                        w_L_force_HF_sum.shape[3],
+                    )
+                    w_L_force_HF_binned = list(w_L_force_HF_sum.reshape(w_L_force_HF_binned_shape))
+
+                    w_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_PP_split])
+                    w_L_force_PP_binned_shape = (
+                        w_L_force_PP_sum.shape[0] * w_L_force_PP_sum.shape[1],
+                        w_L_force_PP_sum.shape[2],
+                        w_L_force_PP_sum.shape[3],
+                    )
+                    w_L_force_PP_binned = list(w_L_force_PP_sum.reshape(w_L_force_PP_binned_shape))
+
+                    w_L_E_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_E_L_force_PP_split])
+                    w_L_E_L_force_PP_binned_shape = (
+                        w_L_E_L_force_PP_sum.shape[0] * w_L_E_L_force_PP_sum.shape[1],
+                        w_L_E_L_force_PP_sum.shape[2],
+                        w_L_E_L_force_PP_sum.shape[3],
+                    )
+                    w_L_E_L_force_PP_binned = list(w_L_E_L_force_PP_sum.reshape(w_L_E_L_force_PP_binned_shape))
+
+                    w_L_binned_list += w_L_binned
+                    w_L_e_L_binned_list += w_L_e_L_binned
+                    w_L_force_HF_binned_list += w_L_force_HF_binned
+                    w_L_force_PP_binned_list += w_L_force_PP_binned
+                    w_L_E_L_force_PP_binned_list += w_L_E_L_force_PP_binned
+
+    w_L_binned = np.array(w_L_binned_list)
+    w_L_e_L_binned = np.array(w_L_e_L_binned_list)
+    w_L_force_HF_binned = np.array(w_L_force_HF_binned_list)
+    w_L_force_PP_binned = np.array(w_L_force_PP_binned_list)
+    w_L_E_L_force_PP_binned = np.array(w_L_E_L_force_PP_binned_list)
+
+    # jackknife implementation
+    w_L_binned_sum = np.sum(w_L_binned, axis=0)
+    w_L_e_L_binned_sum = np.sum(w_L_e_L_binned, axis=0)
+    w_L_force_HF_binned_sum = np.sum(w_L_force_HF_binned, axis=0)
+    w_L_force_PP_binned_sum = np.sum(w_L_force_PP_binned, axis=0)
+    w_L_E_L_force_PP_binned_sum = np.sum(w_L_E_L_force_PP_binned, axis=0)
+
+    M = w_L_binned.size
+    typer.echo(f"Total number of binned samples = {M}")
+
+    force_HF_jn = -1.0 * np.array(
+        [(w_L_force_HF_binned_sum - w_L_force_HF_binned[m]) / (w_L_binned_sum - w_L_binned[m]) for m in range(M)]
+    )
+
+    force_Pulay_jn = -2.0 * np.array(
+        [
+            (
+                (w_L_E_L_force_PP_binned_sum - w_L_E_L_force_PP_binned[m]) / (w_L_binned_sum - w_L_binned[m])
+                - (
+                    (w_L_e_L_binned_sum - w_L_e_L_binned[m])
+                    / (w_L_binned_sum - w_L_binned[m])
+                    * (w_L_force_PP_binned_sum - w_L_force_PP_binned[m])
+                    / (w_L_binned_sum - w_L_binned[m])
+                )
+            )
+            for m in range(M)
+        ]
+    )
+
+    force_jn = force_HF_jn + force_Pulay_jn
+
+    force_mean = np.average(force_jn, axis=0)
+    force_std = np.sqrt(M - 1) * np.std(force_jn, axis=0)
+
+    typer.echo("Atomic Forces:")
+    sep = 16 * 3
+    typer.echo("-" * sep)
+    typer.echo("Label   Fx(Ha/bohr) Fy(Ha/bohr) Fz(Ha/bohr)")
+    typer.echo("-" * sep)
+    for i in range(len(atomic_labels)):
+        atomic_label = str(atomic_labels[i])
+        row_values = [f"{ufloat(force_mean[i, j], force_std[i, j]):+2uS}" for j in range(3)]
+        row_str = atomic_label.ljust(8) + " ".join(val.ljust(12) for val in row_values)
+        typer.echo(row_str)
+    typer.echo("-" * sep)
+
+
 @mcmc_app.command("generate-input")
 def mcmc_generate_input(
     flag: bool = typer.Option(False, "-g", "--generate", help="Generate input file for VMC calculations."),
@@ -920,6 +1099,194 @@ def lrdmc_compute_energy(
     E_std = np.sqrt(M - 1) * np.std(E_jackknife_binned)
 
     typer.echo(f"E = {E_mean} +- {E_std} Ha.")
+
+
+@lrdmc_app.command("compute-force")
+def lrdmc_compute_force(
+    restart_chk: str = typer.Argument(..., help="Restart checkpoint file, e.g. lrdmc.rchk"),
+    num_gfmc_bin_block: int = typer.Option(
+        5,
+        "-b",
+        "--num_gfmc_bin_blocks",
+        help="Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_gfmc_bin_blocks, not num_gfmc_bin_blocks * mpi_size * number_of_walkers.",
+    ),
+    num_gfmc_warmup_steps: int = typer.Option(
+        0, "-w", "--num_gfmc_warmup_steps", help="Number of observable measurement steps for warmup (i.e., discarged)."
+    ),
+    num_gfmc_collect_steps: int = typer.Option(
+        5, "-c", "--num_gfmc_collect_steps", help="Number of measurement (before binning) for collecting the weights."
+    ),
+):
+    """LRDMC atomic force calculation."""
+    typer.echo(f"Read restart checkpoint file(s) from {restart_chk}.")
+
+    if num_gfmc_warmup_steps < GFMC_MIN_WARMUP_STEPS:
+        typer.echo(f"num_gfmc_warmup_steps should be larger than {GFMC_MIN_WARMUP_STEPS}.")
+    if num_gfmc_bin_block < GFMC_MIN_BIN_BLOCKS:
+        typer.echo(f"num_gfmc_bin_blocks should be larger than {GFMC_MIN_BIN_BLOCKS}.")
+    if num_gfmc_collect_steps < GFMC_MIN_COLLECT_STEPS:
+        typer.echo(f"num_gfmc_collect_steps should be larger than {GFMC_MIN_COLLECT_STEPS}.")
+
+    pattern = re.compile(r"(\d+).pkl.gz")
+
+    mpi_ranks = []
+    with zipfile.ZipFile(restart_chk, "r") as z:
+        for file_name in z.namelist():
+            match = pattern.match(os.path.basename(file_name))
+            if match:
+                mpi_ranks.append(int(match.group(1)))
+
+    typer.echo(f"Found {len(mpi_ranks)} MPI ranks.")
+
+    filenames = [f"{mpi_rank}.pkl.gz" for mpi_rank in mpi_ranks]
+
+    w_L_binned_list = []
+    w_L_e_L_binned_list = []
+    w_L_force_HF_binned_list = []
+    w_L_force_PP_binned_list = []
+    w_L_E_L_force_PP_binned_list = []
+    atomic_labels = None
+
+    num_mcmc_warmup_steps = num_gfmc_warmup_steps
+    num_mcmc_bin_blocks = num_gfmc_bin_block
+
+    for filename in filenames:
+        with zipfile.ZipFile(restart_chk, "r") as zipf:
+            with zipf.open(filename) as zipped_gz_fobj:
+                with gzip.open(zipped_gz_fobj, "rb") as gz:
+                    lrdmc = pickle.load(gz)
+            lrdmc.num_gfmc_collect_steps = num_gfmc_collect_steps
+
+            if not lrdmc.comput_position_deriv:
+                typer.echo("Error: atomic_force was not enabled during the LRDMC run. Cannot compute forces.")
+                raise typer.Exit(code=1)
+
+            if atomic_labels is None:
+                atomic_labels = lrdmc.hamiltonian_data.structure_data.atomic_labels
+
+            if lrdmc.e_L.size != 0:
+                e_L = lrdmc.e_L[num_mcmc_warmup_steps:]
+                w_L = lrdmc.w_L[num_mcmc_warmup_steps:]
+                de_L_dR = lrdmc.de_L_dR[num_mcmc_warmup_steps:]
+                de_L_dr_up = lrdmc.de_L_dr_up[num_mcmc_warmup_steps:]
+                de_L_dr_dn = lrdmc.de_L_dr_dn[num_mcmc_warmup_steps:]
+                dln_Psi_dr_up = lrdmc.dln_Psi_dr_up[num_mcmc_warmup_steps:]
+                dln_Psi_dr_dn = lrdmc.dln_Psi_dr_dn[num_mcmc_warmup_steps:]
+                dln_Psi_dR = lrdmc.dln_Psi_dR[num_mcmc_warmup_steps:]
+                omega_up = lrdmc.omega_up[num_mcmc_warmup_steps:]
+                omega_dn = lrdmc.omega_dn[num_mcmc_warmup_steps:]
+                domega_dr_up = lrdmc.domega_dr_up[num_mcmc_warmup_steps:]
+                domega_dr_dn = lrdmc.domega_dr_dn[num_mcmc_warmup_steps:]
+
+                force_HF = (
+                    de_L_dR
+                    + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up)
+                    + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
+                )
+
+                force_PP = (
+                    dln_Psi_dR
+                    + np.einsum("iwjk,iwkl->iwjl", omega_up, dln_Psi_dr_up)
+                    + np.einsum("iwjk,iwkl->iwjl", omega_dn, dln_Psi_dr_dn)
+                    + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
+                )
+
+                E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
+
+                # split and binning with multiple walkers
+                w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
+                w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
+                w_L_force_HF_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_HF), num_mcmc_bin_blocks, axis=0)
+                w_L_force_PP_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_PP), num_mcmc_bin_blocks, axis=0)
+                w_L_E_L_force_PP_split = np.array_split(
+                    np.einsum("iw,iwjk->iwjk", w_L, E_L_force_PP), num_mcmc_bin_blocks, axis=0
+                )
+
+                # binned sum
+                w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
+                w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
+
+                w_L_force_HF_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_HF_split])
+                w_L_force_HF_binned_shape = (
+                    w_L_force_HF_sum.shape[0] * w_L_force_HF_sum.shape[1],
+                    w_L_force_HF_sum.shape[2],
+                    w_L_force_HF_sum.shape[3],
+                )
+                w_L_force_HF_binned = list(w_L_force_HF_sum.reshape(w_L_force_HF_binned_shape))
+
+                w_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_PP_split])
+                w_L_force_PP_binned_shape = (
+                    w_L_force_PP_sum.shape[0] * w_L_force_PP_sum.shape[1],
+                    w_L_force_PP_sum.shape[2],
+                    w_L_force_PP_sum.shape[3],
+                )
+                w_L_force_PP_binned = list(w_L_force_PP_sum.reshape(w_L_force_PP_binned_shape))
+
+                w_L_E_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_E_L_force_PP_split])
+                w_L_E_L_force_PP_binned_shape = (
+                    w_L_E_L_force_PP_sum.shape[0] * w_L_E_L_force_PP_sum.shape[1],
+                    w_L_E_L_force_PP_sum.shape[2],
+                    w_L_E_L_force_PP_sum.shape[3],
+                )
+                w_L_E_L_force_PP_binned = list(w_L_E_L_force_PP_sum.reshape(w_L_E_L_force_PP_binned_shape))
+
+                w_L_binned_list += w_L_binned
+                w_L_e_L_binned_list += w_L_e_L_binned
+                w_L_force_HF_binned_list += w_L_force_HF_binned
+                w_L_force_PP_binned_list += w_L_force_PP_binned
+                w_L_E_L_force_PP_binned_list += w_L_E_L_force_PP_binned
+
+    w_L_binned = np.array(w_L_binned_list)
+    w_L_e_L_binned = np.array(w_L_e_L_binned_list)
+    w_L_force_HF_binned = np.array(w_L_force_HF_binned_list)
+    w_L_force_PP_binned = np.array(w_L_force_PP_binned_list)
+    w_L_E_L_force_PP_binned = np.array(w_L_E_L_force_PP_binned_list)
+
+    # jackknife implementation
+    w_L_binned_sum = np.sum(w_L_binned, axis=0)
+    w_L_e_L_binned_sum = np.sum(w_L_e_L_binned, axis=0)
+    w_L_force_HF_binned_sum = np.sum(w_L_force_HF_binned, axis=0)
+    w_L_force_PP_binned_sum = np.sum(w_L_force_PP_binned, axis=0)
+    w_L_E_L_force_PP_binned_sum = np.sum(w_L_E_L_force_PP_binned, axis=0)
+
+    M = w_L_binned.size
+    typer.echo(f"Total number of binned samples = {M}")
+
+    force_HF_jn = -1.0 * np.array(
+        [(w_L_force_HF_binned_sum - w_L_force_HF_binned[m]) / (w_L_binned_sum - w_L_binned[m]) for m in range(M)]
+    )
+
+    force_Pulay_jn = -2.0 * np.array(
+        [
+            (
+                (w_L_E_L_force_PP_binned_sum - w_L_E_L_force_PP_binned[m]) / (w_L_binned_sum - w_L_binned[m])
+                - (
+                    (w_L_e_L_binned_sum - w_L_e_L_binned[m])
+                    / (w_L_binned_sum - w_L_binned[m])
+                    * (w_L_force_PP_binned_sum - w_L_force_PP_binned[m])
+                    / (w_L_binned_sum - w_L_binned[m])
+                )
+            )
+            for m in range(M)
+        ]
+    )
+
+    force_jn = force_HF_jn + force_Pulay_jn
+
+    force_mean = np.average(force_jn, axis=0)
+    force_std = np.sqrt(M - 1) * np.std(force_jn, axis=0)
+
+    typer.echo("Atomic Forces:")
+    sep = 16 * 3
+    typer.echo("-" * sep)
+    typer.echo("Label   Fx(Ha/bohr) Fy(Ha/bohr) Fz(Ha/bohr)")
+    typer.echo("-" * sep)
+    for i in range(len(atomic_labels)):
+        atomic_label = str(atomic_labels[i])
+        row_values = [f"{ufloat(force_mean[i, j], force_std[i, j]):+2uS}" for j in range(3)]
+        row_str = atomic_label.ljust(8) + " ".join(val.ljust(12) for val in row_values)
+        typer.echo(row_str)
+    typer.echo("-" * sep)
 
 
 @lrdmc_app.command("extrapolate-energy")
