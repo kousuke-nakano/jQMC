@@ -69,5 +69,8 @@ rtol_numerical_vs_analytic_deriv = 1.0e-4
 decimal_debug_vs_production = 8
 decimal_consistency = 8
 
-# Numerical stability settings
+# Numerical stability settings for AO
 EPS_stabilizing_jax_AO_cart_deriv = 1.0e-16
+
+# Numerical differentiation settings for SVD
+EPS_rcond_SVD = 1.0e-12

@@ -49,12 +49,13 @@ from flax import struct
 from jax import jit
 from jax import typing as jnpt
 
-from .coulomb_potential import Coulomb_potential_data, compute_coulomb_potential
+from .coulomb_potential import Coulomb_potential_data, compute_coulomb_potential, compute_coulomb_potential_fast
 from .structure import Structure_data
 from .wavefunction import (
     Wavefunction_data,
     _compute_kinetic_energy_auto,
     compute_kinetic_energy,
+    compute_kinetic_energy_all_elements_fast_update,
 )
 
 T = TypeVar("T")
@@ -201,6 +202,69 @@ def compute_local_energy(
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
         RT=RT,
+        wavefunction_data=hamiltonian_data.wavefunction_data,
+    )
+
+    return T + V
+
+
+def compute_local_energy_fast(
+    hamiltonian_data: Hamiltonian_data,
+    r_up_carts: jnpt.ArrayLike,
+    r_dn_carts: jnpt.ArrayLike,
+    RT: jnpt.ArrayLike,
+    geminal_inverse: jnpt.ArrayLike,
+) -> float:
+    """Compute local energy using a precomputed geminal inverse.
+
+    Identical to :func:`compute_local_energy` but avoids re-computing the
+    LU decomposition of the geminal matrix by reusing ``geminal_inverse``
+    supplied by the caller (e.g. the Sherman–Morrison inverse maintained
+    inside the MCMC loop).  When the geminal matrix is near-singular the
+    fresh LU decomposition inside :func:`compute_local_energy` produces
+    NaN, whereas the Sherman–Morrison inverse has already been regularised
+    by the AS acceptance/rejection, making this variant numerically safer.
+
+    Args:
+        hamiltonian_data (Hamiltonian_data):
+            An instance of Hamiltonian_data.
+        r_up_carts (jnpt.ArrayLike):
+            Cartesian coordinates of up-spin electrons with shape ``(N_up, 3)``.
+        r_dn_carts (jnpt.ArrayLike):
+            Cartesian coordinates of down-spin electrons with shape ``(N_dn, 3)``.
+        RT (jnpt.ArrayLike):
+            Rotation matrix (R.T) used for the non-local ECP part.
+        geminal_inverse (jnpt.ArrayLike):
+            Precomputed inverse of the geminal matrix ``G(r_up_carts, r_dn_carts)``
+            with shape ``(N_up, N_up)``.  Typically the Sherman–Morrison running
+            inverse from the MCMC loop.
+
+    Returns:
+        float: Local energy :math:`e_L` at the supplied configuration.
+
+    Warning:
+        ``geminal_inverse`` **must** equal ``G(r_up_carts, r_dn_carts)^{-1}``
+        exactly at the supplied electron positions.  Correctness is only
+        guaranteed when the inverse is maintained via **single-electron
+        (rank-1) Sherman-Morrison updates** starting from a freshly
+        initialised LU inverse — the pattern used in the MCMC loop.
+        Passing an inverse from a different configuration silently produces
+        incorrect kinetic energy.
+    """
+    T_up_elements, T_dn_elements = compute_kinetic_energy_all_elements_fast_update(
+        wavefunction_data=hamiltonian_data.wavefunction_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        geminal_inverse=geminal_inverse,
+    )
+    T = jnp.sum(T_up_elements) + jnp.sum(T_dn_elements)
+
+    V = compute_coulomb_potential_fast(
+        coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
+        r_up_carts=r_up_carts,
+        r_dn_carts=r_dn_carts,
+        RT=RT,
+        A_old_inv=geminal_inverse,
         wavefunction_data=hamiltonian_data.wavefunction_data,
     )
 

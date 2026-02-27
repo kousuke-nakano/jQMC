@@ -13,10 +13,10 @@ def pytest_addoption(parser):
 def enable_jit(request):
     """Fixture to enable/disable jax.jit for pytests."""
     if request.config.getoption("--disable-jit"):
-        # Enable jax.jit
+        # Disable jax.jit (jax_disable_jit=True means JIT is disabled)
         jax.config.update("jax_disable_jit", True)
     else:
-        # Disable jax.jit by default
+        # Enable jax.jit (default)
         jax.config.update("jax_disable_jit", False)
     yield
     # Reset to default after tests

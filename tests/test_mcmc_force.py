@@ -61,8 +61,8 @@ jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
 
-def test_vmc_force_with_SWCT_ecp():
-    """Test VMC force with SWCT."""
+def test_mcmc_force_with_SWCT_ecp():
+    """Test MCMC force with SWCT."""
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,
@@ -113,7 +113,8 @@ def test_vmc_force_with_SWCT_ecp():
         mcmc_seed=mcmc_seed,
         num_walkers=2,
         comput_position_deriv=True,
-        comput_param_deriv=False,
+        comput_log_WF_param_deriv=False,
+        comput_e_L_param_deriv=False,
         epsilon_AS=1.0e-2,
     )
     mcmc.run(num_mcmc_steps=20)
@@ -127,11 +128,15 @@ def test_vmc_force_with_SWCT_ecp():
     )
 
     # See [J. Chem. Phys. 156, 034101 (2022)]
+    assert not np.any(np.isnan(np.asarray(np.array(force_mean[0])))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(-1.0 * np.array(force_mean[1])))), "NaN detected in second argument"
     np.testing.assert_almost_equal(
         np.array(force_mean[0]),
         -1.0 * np.array(force_mean[1]),
         decimal=decimal_debug_vs_production,
     )
+    assert not np.any(np.isnan(np.asarray(np.array(force_std[0])))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.array(force_std[1])))), "NaN detected in second argument"
     np.testing.assert_almost_equal(
         np.array(force_std[0]),
         np.array(force_std[1]),
@@ -139,8 +144,8 @@ def test_vmc_force_with_SWCT_ecp():
     )
 
 
-def test_vmc_force_with_SWCT_ae():
-    """Test VMC force with SWCT."""
+def test_mcmc_force_with_SWCT_ae():
+    """Test MCMC force with SWCT."""
     # H2 dimer cc-pV5Z with Mitas ccECP (2 electrons, feasible).
     (
         structure_data,
@@ -189,7 +194,8 @@ def test_vmc_force_with_SWCT_ae():
         mcmc_seed=mcmc_seed,
         num_walkers=2,
         comput_position_deriv=True,
-        comput_param_deriv=False,
+        comput_log_WF_param_deriv=False,
+        comput_e_L_param_deriv=False,
         epsilon_AS=1.0e-2,
     )
     mcmc.run(num_mcmc_steps=20)
@@ -203,11 +209,15 @@ def test_vmc_force_with_SWCT_ae():
     )
 
     # See [J. Chem. Phys. 156, 034101 (2022)]
+    assert not np.any(np.isnan(np.asarray(np.array(force_mean[0])))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(-1.0 * np.array(force_mean[1])))), "NaN detected in second argument"
     np.testing.assert_almost_equal(
         np.array(force_mean[0]),
         -1.0 * np.array(force_mean[1]),
         decimal=decimal_debug_vs_production,
     )
+    assert not np.any(np.isnan(np.asarray(np.array(force_std[0])))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.array(force_std[1])))), "NaN detected in second argument"
     np.testing.assert_almost_equal(
         np.array(force_std[0]),
         np.array(force_std[1]),

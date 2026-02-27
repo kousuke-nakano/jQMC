@@ -60,6 +60,7 @@ from .atomic_orbital import (
     compute_overlap_matrix,
 )
 from .molecular_orbital import MOs_data, compute_MOs, compute_MOs_grad, compute_MOs_laplacian
+from .setting import EPS_rcond_SVD
 
 if TYPE_CHECKING:  # pragma: no cover - typing-only import to avoid circular dependency
     from .wavefunction import VariationalParameterBlock
@@ -754,20 +755,19 @@ def _ln_det_fwd(geminal_data, r_up_carts, r_dn_carts):
     """Forward pass for custom VJP.
 
     The custom derivative is needed for ln |Det(G)| because the jax native grad
-    and hessian introduce numerical instability. The custom derivative exploits
-    the LU decomposition of G instead of the direct inverse of G, achieving
-    numerically stable calculations.
+    and hessian introduce numerical instability. The custom derivative uses SVD
+    to compute G^{-1} in the backward pass, avoiding NaN when G is near-singular
+    (small singular values are zeroed rather than producing 1/~0 from LU).
 
     Returns:
         - primal output: ln|det(G)|
-        - residuals: (inputs and LU factors) for use in backward pass
+        - residuals: (inputs and SVD factors) for use in backward pass
     """
     G = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
     ln_det = jnp.log(jnp.abs(jnp.linalg.det(G)))
-    # Compute LU decomposition: G = P @ L @ U
-    P, L, U = jsp_linalg.lu(G)
-    # We stash the original inputs plus the LU factors for the backward pass
-    return ln_det, (geminal_data, r_up_carts, r_dn_carts, P, L, U)
+    # Compute SVD: G = U_svd @ diag(s) @ Vt
+    U_svd, s, Vt = jnp.linalg.svd(G, full_matrices=False)
+    return ln_det, (geminal_data, r_up_carts, r_dn_carts, U_svd, s, Vt)
 
 
 # Backward pass for custom VJP.
@@ -775,9 +775,9 @@ def _ln_det_bwd(res, g):
     """Backward pass for custom VJP.
 
     The custom derivative is needed for ln |Det(G)| because the jax native grad
-    and hessian introduce numerical instability. The custom derivative exploits
-    the LU decomposition of G instead of the direct inverse of G, achieving
-    numerically stable calculations.
+    and hessian introduce numerical instability. The custom derivative uses SVD
+    to compute G^{-1} in the backward pass, avoiding NaN when G is near-singular
+    (small singular values are zeroed rather than producing 1/~0 from LU).
 
     Args:
         res: residuals from forward pass
@@ -786,16 +786,13 @@ def _ln_det_bwd(res, g):
     Returns:
         Gradients with respect to (geminal_data, r_up_carts, r_dn_carts)
     """
-    geminal_data, r_up_carts, r_dn_carts, P, L, U = res
+    geminal_data, r_up_carts, r_dn_carts, U_svd, s, Vt = res
 
-    # Build identity matrix of appropriate shape
-    n = U.shape[0]
-    I = jnp.eye(n, dtype=U.dtype)
-
-    # Solve L @ Y = P^T @ I  for Y
-    Y = jsp_linalg.solve_triangular(L, jnp.dot(P.T, I), lower=True)
-    # Solve U @ X = Y for X, so that X = G^{-1}
-    X = jsp_linalg.solve_triangular(U, Y, lower=False)
+    # Compute G^{-1} via SVD pseudoinverse with thresholding.
+    # Singular values below rcond * s_max are zeroed to avoid NaN from 1/~0.
+    rcond = jnp.finfo(jnp.float64).eps * float(s.shape[0])
+    s_inv = jnp.where(s > rcond * s[0], 1.0 / s, 0.0)
+    X = (Vt.T * s_inv[jnp.newaxis, :]) @ U_svd.T  # G^{-1}, shape (n, n)
 
     # d ln|det G| / dG = (G^{-1})^T, scaled by incoming cotangent g
     grad_G = g * X.T
@@ -808,6 +805,71 @@ def _ln_det_bwd(res, g):
 
 # Register the custom VJP rule !!
 compute_ln_det_geminal_all_elements.defvjp(_ln_det_fwd, _ln_det_bwd)
+
+
+@jax.custom_vjp
+def compute_ln_det_geminal_all_elements_fast(
+    geminal_data: Geminal_data,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+    geminal_inv: jax.Array,
+) -> jax.Array:
+    r"""Compute :math:`\ln|\det G|` using pre-computed ``geminal_inv`` in gradients.
+
+    Mirrors :func:`compute_ln_det_geminal_all_elements` in the forward direction.
+    The **backward pass** replaces the implicit ``G^{-1}`` computation that JAX
+    would normally perform (via a fresh LU decomposition) with the pre-computed
+    ``geminal_inv`` — the Sherman-Morrison running inverse.  This avoids
+    catastrophic NaN for near-singular geminal matrices sampled when
+    ``epsilon_AS > 0``.
+
+    Args:
+        geminal_data: Geminal parameters (lambda matrix etc.).
+        r_up_carts: Cartesian coordinates of up-spin electrons ``(N_up, 3)``.
+        r_dn_carts: Cartesian coordinates of down-spin electrons ``(N_dn, 3)``.
+        geminal_inv: Pre-computed inverse geminal matrix ``(N_up, N_up)``.
+
+    Returns:
+        Scalar :math:`\ln|\det G|`.
+
+    Warning:
+        ``geminal_inv`` **must** equal ``G(r_up_carts, r_dn_carts)^{-1}`` exactly
+        at the supplied electron positions.  This is only guaranteed when the
+        inverse is maintained via **single-electron (rank-1) Sherman-Morrison
+        updates** starting from a freshly initialised LU inverse — the pattern
+        used in the MCMC loop.  Passing an inverse that corresponds to different
+        electron positions silently produces incorrect gradients.
+    """
+    G = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
+    return jnp.log(jnp.abs(jnp.linalg.det(G)))
+
+
+def _ln_det_fast_fwd(
+    geminal_data: Geminal_data,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+    geminal_inv: jax.Array,
+):
+    G = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
+    val = jnp.log(jnp.abs(jnp.linalg.det(G)))
+    # Save inputs for backward (geminal_inv replaces G^{-1} in bwd)
+    return val, (geminal_data, r_up_carts, r_dn_carts, geminal_inv)
+
+
+def _ln_det_fast_bwd(res, g):
+    geminal_data, r_up_carts, r_dn_carts, geminal_inv = res
+    # d(ln|det G|)/d(G_{ij}) = (G^{-T})_{ij}
+    # Use the pre-computed inverse instead of re-solving.
+    G_bar = g * geminal_inv.T  # cotangent w.r.t. G, shape (N_up, N_up)
+    # Propagate cotangent back through G = compute_geminal_all_elements(...)
+    _, vjp_fn = jax.vjp(compute_geminal_all_elements, geminal_data, r_up_carts, r_dn_carts)
+    grad_geminal_data, grad_r_up, grad_r_dn = vjp_fn(G_bar)
+    # geminal_inv is a non-differentiable constant; return zeros.
+    return grad_geminal_data, grad_r_up, grad_r_dn, jnp.zeros_like(geminal_inv)
+
+
+# Register the custom VJP rule !!
+compute_ln_det_geminal_all_elements_fast.defvjp(_ln_det_fast_fwd, _ln_det_fast_bwd)
 
 
 @jit
@@ -863,10 +925,20 @@ def compute_AS_regularization_factor_fast_update(
     F = jnp.sum(geminal_inv**2)
 
     # compute the scaling factor
-    S = jnp.min(jnp.sum(geminal**2, axis=0))
+    # S vanishes when any electron (up or dn) goes to infinity:
+    #   row norm -> 0 when an up-electron flies away (all G_{i,j} -> 0 for that row)
+    #   col norm -> 0 when a dn-electron flies away (all G_{i,j} -> 0 for that col)
+    S = jnp.minimum(
+        jnp.min(jnp.sum(geminal**2, axis=1)),  # min row norm  (up electrons)
+        jnp.min(jnp.sum(geminal**2, axis=0)),  # min col norm  (dn electrons)
+    )
 
     # compute R_AS
-    R_AS = (S * F) ** (-theta)
+    # Guard: when S*F == 0 (e.g. SVD-truncated geminal_inv with a near-zero
+    # column norm), return 0 so the walker is fully down-weighted rather than
+    # producing +inf -> w_L = (inf/inf)^2 = NaN.
+    SF = S * F
+    R_AS = jnp.where(SF > 0.0, SF ** (-theta), 0.0)
 
     return R_AS
 
@@ -885,7 +957,10 @@ def _compute_AS_regularization_factor_debug(
     F = np.sum(geminal_inv**2)
 
     # compute the scaling factor
-    S = np.min(np.sum(geminal**2, axis=0))
+    S = min(
+        np.min(np.sum(geminal**2, axis=1)),  # min row norm  (up electrons)
+        np.min(np.sum(geminal**2, axis=0)),  # min col norm  (dn electrons)
+    )
 
     # compute R_AS
     R_AS = (S * F) ** (-theta)
@@ -911,14 +986,25 @@ def compute_AS_regularization_factor(geminal_data: Geminal_data, r_up_carts: jax
     theta = 3.0 / 8.0
 
     # compute F \equiv the square of Frobenius norm of geminal_inv
+    # Use SVD with conservative threshold to avoid Inf from 1/sigma^2 for tiny sigma
     sigma = jnp.linalg.svd(geminal, compute_uv=False)
-    F = jnp.sum(1.0 / (sigma**2))
+    sigma_sq_inv = jnp.where(sigma > EPS_rcond_SVD * sigma[0], 1.0 / (sigma**2), 0.0)
+    F = jnp.sum(sigma_sq_inv)
 
     # compute the scaling factor
-    S = jnp.min(jnp.sum(geminal**2, axis=0))
+    # S vanishes when any electron (up or dn) goes to infinity:
+    #   row norm -> 0 when an up-electron flies away (all G_{i,j} -> 0 for that row)
+    #   col norm -> 0 when a dn-electron flies away (all G_{i,j} -> 0 for that col)
+    S = jnp.minimum(
+        jnp.min(jnp.sum(geminal**2, axis=1)),  # min row norm  (up electrons)
+        jnp.min(jnp.sum(geminal**2, axis=0)),  # min col norm  (dn electrons)
+    )
 
     # compute R_AS
-    R_AS = (S * F) ** (-theta)
+    # Guard: S*F can be 0*∞ = NaN when G is near-singular (S→0, F→∞).
+    # Return 0 in that case to fully down-weight the walker instead of NaN.
+    SF = S * F
+    R_AS = jnp.where(jnp.isfinite(SF) & (SF > 0.0), SF ** (-theta), 0.0)
 
     return R_AS
 
@@ -1105,6 +1191,16 @@ def _compute_ratio_determinant_part_rank1_update(
 
     Returns:
         jax.Array: Determinant ratios per grid with shape ``(N_grid,)``.
+
+    Warning:
+        Each proposed configuration in ``new_r_up_carts_arr`` / ``new_r_dn_carts_arr``
+        must differ from ``old_r_up_carts`` / ``old_r_dn_carts`` in **exactly one
+        electron**.  The moved electron is identified via ``jnp.argmax`` on the
+        change mask; if two or more electrons differ in the same config, only the
+        first changed electron is detected and the ratio is silently incorrect.
+        This function is intended exclusively for the non-local ECP integration
+        grid generated by the MCMC loop, where exactly one electron is displaced
+        per grid point by construction.
     """
     num_up = old_r_up_carts.shape[0]
     num_dn = old_r_dn_carts.shape[0]
@@ -1199,6 +1295,16 @@ def _compute_ratio_determinant_part_split_spin(
 
     Returns:
         jax.Array: Concatenated determinant ratios ``(G_up + G_dn,)``.
+
+    Warning:
+        Each config in ``new_r_up_shifted`` must differ from ``old_r_up_carts``
+        in **exactly one up electron**, and each config in ``new_r_dn_shifted``
+        must differ from ``old_r_dn_carts`` in **exactly one dn electron**.
+        The moved electron is located via ``jnp.argmax`` on the change mask;
+        if two or more electrons differ in the same config, only the first is
+        detected and the ratio is silently incorrect.  This function is intended
+        exclusively for the block-structured non-local ECP grids produced by
+        the MCMC loop.
     """
     num_up = old_r_up_carts.shape[0]
     num_dn = old_r_dn_carts.shape[0]
@@ -1276,7 +1382,7 @@ def _compute_ratio_determinant_part_debug(
     )
 
 
-@jit
+@jax.custom_vjp
 def compute_grads_and_laplacian_ln_Det(
     geminal_data: Geminal_data,
     r_up_carts: jax.Array,
@@ -1289,6 +1395,12 @@ def compute_grads_and_laplacian_ln_Det(
 ]:
     r"""Gradients and Laplacians of $\ln\det G$ for each electron.
 
+    The function uses a custom VJP to avoid NaN in the backward pass when G is
+    near-singular. The standard JAX SVD backward computes ``1/(s_i^2 - s_j^2)``
+    terms that blow up for degenerate singular values. The custom VJP instead uses
+    the matrix identity ``d(G^{-1}) = -G^{-1} dG G^{-1}`` with a thresholded SVD
+    pseudoinverse, which is both exact and numerically stable.
+
     Args:
         geminal_data: Geminal parameters and orbital references.
         r_up_carts: Cartesian coordinates of spin-up electrons with shape ``(N_up, 3)``.
@@ -1300,6 +1412,92 @@ def compute_grads_and_laplacian_ln_Det(
             - Gradients for spin-down electrons with shape ``(N_dn, 3)``.
             - Laplacians for spin-up electrons with shape ``(N_up,)``.
             - Laplacians for spin-down electrons with shape ``(N_dn,)``.
+    """
+    # Compute G_inv via SVD pseudoinverse (numerically stable, avoids LU NaN).
+    G = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
+    _U, _s, _Vt = jnp.linalg.svd(G, full_matrices=False)
+    # Use conservative threshold to prevent G^{-2} and G^{-3} terms in the
+    # backward pass from diverging. Standard numpy.linalg.pinv uses max(M,N)*eps,
+    # but for de_L/dc (which involves G_inv^2 in the chain rule) we need a larger
+    # safety margin to avoid Inf/NaN in the gradient. EPS_rcond_SVD is set in setting.py
+    # to handle near-singular G while preserving well-conditioned singular values.
+    _s_inv = jnp.where(_s > EPS_rcond_SVD * _s[0], 1.0 / _s, 0.0)
+    geminal_inverse = (_Vt.T * _s_inv[jnp.newaxis, :]) @ _U.T
+
+    lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
+
+    ao_matrix_up = geminal_data.compute_orb_api(geminal_data.orb_data_up_spin, r_up_carts)
+    ao_matrix_dn = geminal_data.compute_orb_api(geminal_data.orb_data_dn_spin, r_dn_carts)
+
+    ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z = geminal_data.compute_orb_grad_api(
+        geminal_data.orb_data_up_spin, r_up_carts
+    )
+    ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z = geminal_data.compute_orb_grad_api(
+        geminal_data.orb_data_dn_spin, r_dn_carts
+    )
+    ao_matrix_laplacian_up = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_up_spin, r_up_carts)
+    ao_matrix_laplacian_dn = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_dn_spin, r_dn_carts)
+
+    ao_up_grads = jnp.stack([ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z], axis=0)
+    ao_dn_grads = jnp.stack([ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z], axis=0)
+
+    paired_dn = jnp.dot(lambda_matrix_paired, ao_matrix_dn)
+    paired_dn_grads = jnp.einsum("ab,gbn->gan", lambda_matrix_paired, ao_dn_grads)
+
+    geminal_grad_up_paired = jnp.einsum("gia,aj->gij", jnp.swapaxes(ao_up_grads, 1, 2), paired_dn)
+    geminal_grad_up_unpaired = jnp.einsum("gia,ak->gik", jnp.swapaxes(ao_up_grads, 1, 2), lambda_matrix_unpaired)
+    geminal_grad_up = jnp.concatenate([geminal_grad_up_paired, geminal_grad_up_unpaired], axis=2)
+
+    geminal_grad_dn_paired = jnp.einsum("ia,gaj->gij", ao_matrix_up.T, paired_dn_grads)
+    geminal_grad_dn_unpaired = jnp.zeros(
+        (3, geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn),
+        dtype=geminal_grad_dn_paired.dtype,
+    )
+    geminal_grad_dn = jnp.concatenate([geminal_grad_dn_paired, geminal_grad_dn_unpaired], axis=2)
+
+    geminal_laplacian_up_paired = jnp.dot(ao_matrix_laplacian_up.T, paired_dn)
+    geminal_laplacian_up_unpaired = jnp.dot(ao_matrix_laplacian_up.T, lambda_matrix_unpaired)
+    geminal_laplacian_up = jnp.hstack([geminal_laplacian_up_paired, geminal_laplacian_up_unpaired])
+
+    geminal_laplacian_dn_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_laplacian_dn))
+    geminal_laplacian_dn_unpaired = jnp.zeros(
+        [geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn],
+        dtype=geminal_laplacian_dn_paired.dtype,
+    )
+    geminal_laplacian_dn = jnp.hstack([geminal_laplacian_dn_paired, geminal_laplacian_dn_unpaired])
+
+    grad_ln_D_up_stack = jnp.einsum("gij,ji->gi", geminal_grad_up, geminal_inverse)
+    grad_ln_D_dn_stack = jnp.einsum("ij,gji->gi", geminal_inverse, geminal_grad_dn)
+
+    grad_ln_D_up = grad_ln_D_up_stack.T
+    grad_ln_D_dn = grad_ln_D_dn_stack.T
+
+    grad_ln_D_up_x, grad_ln_D_up_y, grad_ln_D_up_z = grad_ln_D_up_stack
+    grad_ln_D_dn_x, grad_ln_D_dn_y, grad_ln_D_dn_z = grad_ln_D_dn_stack
+
+    lap_ln_D_up = -(
+        grad_ln_D_up_x * grad_ln_D_up_x + grad_ln_D_up_y * grad_ln_D_up_y + grad_ln_D_up_z * grad_ln_D_up_z
+    ) + jnp.einsum("ij,ji->i", geminal_laplacian_up, geminal_inverse)
+
+    lap_ln_D_dn = -(
+        grad_ln_D_dn_x * grad_ln_D_dn_x + grad_ln_D_dn_y * grad_ln_D_dn_y + grad_ln_D_dn_z * grad_ln_D_dn_z
+    ) + jnp.einsum("ij,ji->i", geminal_inverse, geminal_laplacian_dn)
+
+    return grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn
+
+
+def _grads_lap_body(
+    geminal_data: Geminal_data,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+    geminal_inverse: jax.Array,
+) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
+    """Pure functional core of grad/laplacian computation.
+
+    Contains the same computation as ``compute_grads_and_laplacian_ln_Det_fast``
+    but without the ``@jit`` decorator or ``None``-check, so it can be safely
+    passed to ``jax.vjp`` inside the custom VJP backward pass without creating
+    a dependency on the public fast function.
     """
     lambda_matrix_paired, lambda_matrix_unpaired = jnp.hsplit(geminal_data.lambda_matrix, [geminal_data.orb_num_dn])
 
@@ -1315,77 +1513,42 @@ def compute_grads_and_laplacian_ln_Det(
     ao_matrix_laplacian_up = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_up_spin, r_up_carts)
     ao_matrix_laplacian_dn = geminal_data.compute_orb_laplacian_api(geminal_data.orb_data_dn_spin, r_dn_carts)
 
-    geminal_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
-    geminal_unpaired = jnp.dot(ao_matrix_up.T, lambda_matrix_unpaired)
-    geminal = jnp.hstack([geminal_paired, geminal_unpaired])
+    ao_up_grads = jnp.stack([ao_matrix_up_grad_x, ao_matrix_up_grad_y, ao_matrix_up_grad_z], axis=0)
+    ao_dn_grads = jnp.stack([ao_matrix_dn_grad_x, ao_matrix_dn_grad_y, ao_matrix_dn_grad_z], axis=0)
 
-    geminal_grad_up_x_paired = jnp.dot(ao_matrix_up_grad_x.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
-    geminal_grad_up_x_unpaired = jnp.dot(ao_matrix_up_grad_x.T, lambda_matrix_unpaired)
-    geminal_grad_up_x = jnp.hstack([geminal_grad_up_x_paired, geminal_grad_up_x_unpaired])
+    paired_dn = jnp.dot(lambda_matrix_paired, ao_matrix_dn)
+    paired_dn_grads = jnp.einsum("ab,gbn->gan", lambda_matrix_paired, ao_dn_grads)
 
-    geminal_grad_up_y_paired = jnp.dot(ao_matrix_up_grad_y.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
-    geminal_grad_up_y_unpaired = jnp.dot(ao_matrix_up_grad_y.T, lambda_matrix_unpaired)
-    geminal_grad_up_y = jnp.hstack([geminal_grad_up_y_paired, geminal_grad_up_y_unpaired])
+    geminal_grad_up_paired = jnp.einsum("gia,aj->gij", jnp.swapaxes(ao_up_grads, 1, 2), paired_dn)
+    geminal_grad_up_unpaired = jnp.einsum("gia,ak->gik", jnp.swapaxes(ao_up_grads, 1, 2), lambda_matrix_unpaired)
+    geminal_grad_up = jnp.concatenate([geminal_grad_up_paired, geminal_grad_up_unpaired], axis=2)
 
-    geminal_grad_up_z_paired = jnp.dot(ao_matrix_up_grad_z.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
-    geminal_grad_up_z_unpaired = jnp.dot(ao_matrix_up_grad_z.T, lambda_matrix_unpaired)
-    geminal_grad_up_z = jnp.hstack([geminal_grad_up_z_paired, geminal_grad_up_z_unpaired])
+    geminal_grad_dn_paired = jnp.einsum("ia,gaj->gij", ao_matrix_up.T, paired_dn_grads)
+    geminal_grad_dn_unpaired = jnp.zeros(
+        (3, geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn),
+        dtype=geminal_grad_dn_paired.dtype,
+    )
+    geminal_grad_dn = jnp.concatenate([geminal_grad_dn_paired, geminal_grad_dn_unpaired], axis=2)
 
-    geminal_laplacian_up_paired = jnp.dot(ao_matrix_laplacian_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn))
+    geminal_laplacian_up_paired = jnp.dot(ao_matrix_laplacian_up.T, paired_dn)
     geminal_laplacian_up_unpaired = jnp.dot(ao_matrix_laplacian_up.T, lambda_matrix_unpaired)
     geminal_laplacian_up = jnp.hstack([geminal_laplacian_up_paired, geminal_laplacian_up_unpaired])
 
-    geminal_grad_dn_x_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn_grad_x))
-    geminal_grad_dn_x_unpaired = jnp.zeros(
-        [
-            geminal_data.num_electron_up,
-            geminal_data.num_electron_up - geminal_data.num_electron_dn,
-        ]
-    )
-    geminal_grad_dn_x = jnp.hstack([geminal_grad_dn_x_paired, geminal_grad_dn_x_unpaired])
-
-    geminal_grad_dn_y_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn_grad_y))
-    geminal_grad_dn_y_unpaired = jnp.zeros(
-        [
-            geminal_data.num_electron_up,
-            geminal_data.num_electron_up - geminal_data.num_electron_dn,
-        ]
-    )
-    geminal_grad_dn_y = jnp.hstack([geminal_grad_dn_y_paired, geminal_grad_dn_y_unpaired])
-
-    geminal_grad_dn_z_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_dn_grad_z))
-    geminal_grad_dn_z_unpaired = jnp.zeros(
-        [
-            geminal_data.num_electron_up,
-            geminal_data.num_electron_up - geminal_data.num_electron_dn,
-        ]
-    )
-    geminal_grad_dn_z = jnp.hstack([geminal_grad_dn_z_paired, geminal_grad_dn_z_unpaired])
-
     geminal_laplacian_dn_paired = jnp.dot(ao_matrix_up.T, jnp.dot(lambda_matrix_paired, ao_matrix_laplacian_dn))
     geminal_laplacian_dn_unpaired = jnp.zeros(
-        [
-            geminal_data.num_electron_up,
-            geminal_data.num_electron_up - geminal_data.num_electron_dn,
-        ]
+        [geminal_data.num_electron_up, geminal_data.num_electron_up - geminal_data.num_electron_dn],
+        dtype=geminal_laplacian_dn_paired.dtype,
     )
     geminal_laplacian_dn = jnp.hstack([geminal_laplacian_dn_paired, geminal_laplacian_dn_unpaired])
 
-    P, L, U = jsp_linalg.lu(geminal)
-    n = geminal.shape[0]
-    I = jnp.eye(n, dtype=geminal.dtype)
-    Y = jsp_linalg.solve_triangular(L, jnp.dot(P.T, I), lower=True)
-    geminal_inverse = jsp_linalg.solve_triangular(U, Y, lower=False)
+    grad_ln_D_up_stack = jnp.einsum("gij,ji->gi", geminal_grad_up, geminal_inverse)
+    grad_ln_D_dn_stack = jnp.einsum("ij,gji->gi", geminal_inverse, geminal_grad_dn)
 
-    grad_ln_D_up_x = jnp.einsum("ij,ji->i", geminal_grad_up_x, geminal_inverse)
-    grad_ln_D_up_y = jnp.einsum("ij,ji->i", geminal_grad_up_y, geminal_inverse)
-    grad_ln_D_up_z = jnp.einsum("ij,ji->i", geminal_grad_up_z, geminal_inverse)
-    grad_ln_D_dn_x = jnp.einsum("ij,ji->i", geminal_inverse, geminal_grad_dn_x)
-    grad_ln_D_dn_y = jnp.einsum("ij,ji->i", geminal_inverse, geminal_grad_dn_y)
-    grad_ln_D_dn_z = jnp.einsum("ij,ji->i", geminal_inverse, geminal_grad_dn_z)
+    grad_ln_D_up = grad_ln_D_up_stack.T
+    grad_ln_D_dn = grad_ln_D_dn_stack.T
 
-    grad_ln_D_up = jnp.array([grad_ln_D_up_x, grad_ln_D_up_y, grad_ln_D_up_z]).T
-    grad_ln_D_dn = jnp.array([grad_ln_D_dn_x, grad_ln_D_dn_y, grad_ln_D_dn_z]).T
+    grad_ln_D_up_x, grad_ln_D_up_y, grad_ln_D_up_z = grad_ln_D_up_stack
+    grad_ln_D_dn_x, grad_ln_D_dn_y, grad_ln_D_dn_z = grad_ln_D_dn_stack
 
     lap_ln_D_up = -(
         grad_ln_D_up_x * grad_ln_D_up_x + grad_ln_D_up_y * grad_ln_D_up_y + grad_ln_D_up_z * grad_ln_D_up_z
@@ -1396,6 +1559,64 @@ def compute_grads_and_laplacian_ln_Det(
     ) + jnp.einsum("ij,ji->i", geminal_inverse, geminal_laplacian_dn)
 
     return grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn
+
+
+def _grads_lap_fwd(
+    geminal_data: Geminal_data,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+):
+    """Forward pass: compute stable G_inv and primal outputs."""
+    G = compute_geminal_all_elements(geminal_data, r_up_carts, r_dn_carts)
+    _U, _s, _Vt = jnp.linalg.svd(G, full_matrices=False)
+    # Use same conservative threshold as in compute_grads_and_laplacian_ln_Det
+    _s_inv = jnp.where(_s > EPS_rcond_SVD * _s[0], 1.0 / _s, 0.0)
+    G_inv_stable = (_Vt.T * _s_inv[jnp.newaxis, :]) @ _U.T
+    primals = _grads_lap_body(geminal_data, r_up_carts, r_dn_carts, G_inv_stable)
+    return primals, (geminal_data, r_up_carts, r_dn_carts, G_inv_stable)
+
+
+def _grads_lap_bwd(res, g):
+    """Backward pass using the matrix identity d(G^{-1}) = -G^{-1} dG G^{-1}.
+
+    The gradient has two contributions:
+    1. Direct: d/d(lambda) via lambda -> AO matrices -> G_grad/G_lap -> output.
+       Obtained by differentiating _grads_lap_body w.r.t.
+       all inputs (including G_inv_stable as an explicit argument).
+    2. Inverse: d/d(lambda) via lambda -> G -> G^{-1} -> output.
+       Obtained by converting G_inv_bar -> G_bar via -G_inv.T @ G_inv_bar @ G_inv.T,
+       then propagating G_bar back through compute_geminal_all_elements.
+
+    Neither path requires differentiating through jnp.linalg.svd, so degenerate
+    singular values cannot produce NaN.
+    """
+    geminal_data, r_up_carts, r_dn_carts, G_inv_stable = res
+
+    # Step 1: differentiate _grads_lap_body w.r.t. all args.
+    # This gives direct gradients (AO path) and G_inv_bar (cotangent for G_inv).
+    _, vjp_fn = jax.vjp(
+        _grads_lap_body,
+        geminal_data,
+        r_up_carts,
+        r_dn_carts,
+        G_inv_stable,
+    )
+    d_geminal_direct, d_r_up_direct, d_r_dn_direct, G_inv_bar = vjp_fn(g)
+
+    # Step 2: convert G_inv_bar -> G_bar using d(G^{-1}) = -G^{-1} dG G^{-1}:
+    #   <G_inv_bar, dG^{-1}> = -<G_inv.T @ G_inv_bar @ G_inv.T, dG>
+    G_bar_from_inv = -(G_inv_stable.T @ G_inv_bar @ G_inv_stable.T)
+
+    # Step 3: propagate G_bar back through G = compute_geminal_all_elements(...).
+    _, vjp_fn2 = jax.vjp(compute_geminal_all_elements, geminal_data, r_up_carts, r_dn_carts)
+    d_geminal_inv, d_r_up_inv, d_r_dn_inv = vjp_fn2(G_bar_from_inv)
+
+    # Total: sum both contributions.
+    d_geminal = jax.tree_util.tree_map(lambda a, b: a + b, d_geminal_direct, d_geminal_inv)
+    return d_geminal, d_r_up_direct + d_r_up_inv, d_r_dn_direct + d_r_dn_inv
+
+
+compute_grads_and_laplacian_ln_Det.defvjp(_grads_lap_fwd, _grads_lap_bwd)
 
 
 @jit
@@ -1416,10 +1637,19 @@ def compute_grads_and_laplacian_ln_Det_fast(
         geminal_data: Geminal parameters and orbital references.
         r_up_carts: Cartesian coordinates of spin-up electrons with shape ``(N_up, 3)``.
         r_dn_carts: Cartesian coordinates of spin-down electrons with shape ``(N_dn, 3)``.
-        geminal_inverse: Precomputed inverse of the geminal matrix ``G``.
+        geminal_inverse: Precomputed inverse of the geminal matrix ``G`` at the
+            supplied ``(r_up_carts, r_dn_carts)``.
 
     Returns:
         Gradients (up/down) and Laplacians (up/down) of ln det G per electron.
+
+    Warning:
+        ``geminal_inverse`` **must** equal ``G(r_up_carts, r_dn_carts)^{-1}``
+        exactly at the supplied electron positions.  This is only guaranteed when
+        the inverse is maintained via **single-electron (rank-1) Sherman-Morrison
+        updates** starting from a freshly initialised LU inverse — the pattern
+        used in the MCMC loop.  Passing an inverse that corresponds to different
+        electron positions silently produces incorrect kinetic energy.
     """
     if geminal_inverse is None:
         raise ValueError("geminal_inverse must be provided for fast evaluation")

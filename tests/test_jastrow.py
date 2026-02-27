@@ -76,6 +76,7 @@ from jqmc.setting import (  # noqa: E402
     atol_auto_vs_numerical_deriv,
     decimal_auto_vs_analytic_deriv,
     decimal_auto_vs_numerical_deriv,
+    decimal_consistency,
     decimal_debug_vs_production,
     rtol_auto_vs_numerical_deriv,
 )
@@ -121,6 +122,8 @@ def test_Jastrow_onebody_part():
         r_dn_carts=r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(J1_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(J1_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(J1_debug, J1_jax, decimal=decimal_debug_vs_production)
 
     jax.clear_caches()
@@ -162,14 +165,22 @@ def test_numerical_and_auto_grads_Jastrow_onebody_part():
         r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_up_num)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_up_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(grad_up_num), np.asarray(grad_up_auto), decimal=decimal_auto_vs_numerical_deriv)
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_dn_num)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(grad_dn_num), np.asarray(grad_dn_auto), decimal=decimal_auto_vs_numerical_deriv)
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_up_num)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_up_num),
         np.asarray(lap_up_auto),
         rtol=rtol_auto_vs_numerical_deriv,
         atol=atol_auto_vs_numerical_deriv,
     )
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_dn_num)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_dn_num),
         np.asarray(lap_dn_auto),
@@ -216,9 +227,17 @@ def test_analytical_and_auto_grads_Jastrow_onebody_part():
         r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_up_an)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_up_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(grad_up_an), np.asarray(grad_up_auto), decimal=decimal_auto_vs_analytic_deriv)
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_dn_an)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(grad_dn_an), np.asarray(grad_dn_auto), decimal=decimal_auto_vs_analytic_deriv)
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_up_an)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_up_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(lap_up_an), np.asarray(lap_up_auto), decimal=decimal_auto_vs_analytic_deriv)
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_dn_an)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(lap_dn_an), np.asarray(lap_dn_auto), decimal=decimal_auto_vs_analytic_deriv)
 
     jax.clear_caches()
@@ -245,6 +264,8 @@ def test_Jastrow_twobody_part():
 
     # print(f"jastrow_two_body_jax = {jastrow_two_body_jax}")
 
+    assert not np.any(np.isnan(np.asarray(J2_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(J2_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(J2_debug, J2_jax, decimal=decimal_debug_vs_production)
 
     jax.clear_caches()
@@ -316,6 +337,8 @@ def test_Jastrow_threebody_part_with_AOs_data():
 
     # print(f"J3_jax = {J3_jax}")
 
+    assert not np.any(np.isnan(np.asarray(J3_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(J3_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(J3_debug, J3_jax, decimal=decimal_debug_vs_production)
 
     jax.clear_caches()
@@ -391,6 +414,8 @@ def test_Jastrow_threebody_part_with_MOs_data():
 
     # print(f"J3_jax = {J3_jax}")
 
+    assert not np.any(np.isnan(np.asarray(J3_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(J3_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(J3_debug, J3_jax, decimal=decimal_debug_vs_production)
 
     jax.clear_caches()
@@ -453,9 +478,13 @@ def test_Jastrow_threebody_part_sphe_to_cart_AOs_data():
     grads_sph = compute_grads_and_laplacian_Jastrow_three_body(j3_sph, r_up_carts, r_dn_carts)
     grads_cart = compute_grads_and_laplacian_Jastrow_three_body(j3_cart, r_up_carts, r_dn_carts)
 
-    np.testing.assert_allclose(np.asarray(J_sph), np.asarray(J_cart), rtol=1e-9, atol=1e-10)
+    assert not np.any(np.isnan(np.asarray(np.asarray(J_sph)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(J_cart)))), "NaN detected in second argument"
+    np.testing.assert_array_almost_equal(np.asarray(J_sph), np.asarray(J_cart), decimal=decimal_consistency)
     for sph, cart in zip(grads_sph, grads_cart, strict=True):
-        np.testing.assert_allclose(np.asarray(sph), np.asarray(cart), rtol=1e-9, atol=1e-10)
+        assert not np.any(np.isnan(np.asarray(np.asarray(sph)))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(np.asarray(cart)))), "NaN detected in second argument"
+        np.testing.assert_array_almost_equal(np.asarray(sph), np.asarray(cart), decimal=decimal_consistency)
 
     jax.clear_caches()
 
@@ -517,9 +546,13 @@ def test_Jastrow_threebody_part_cart_to_sphe_AOs_data():
     grads_cart = compute_grads_and_laplacian_Jastrow_three_body(j3_cart, r_up_carts, r_dn_carts)
     grads_sph = compute_grads_and_laplacian_Jastrow_three_body(j3_cart_to_sph, r_up_carts, r_dn_carts)
 
-    np.testing.assert_allclose(np.asarray(J_cart), np.asarray(J_sph), rtol=1e-9, atol=1e-10)
+    assert not np.any(np.isnan(np.asarray(np.asarray(J_cart)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(J_sph)))), "NaN detected in second argument"
+    np.testing.assert_array_almost_equal(np.asarray(J_cart), np.asarray(J_sph), decimal=decimal_consistency)
     for cart, sph in zip(grads_cart, grads_sph, strict=True):
-        np.testing.assert_allclose(np.asarray(cart), np.asarray(sph), rtol=1e-9, atol=1e-10)
+        assert not np.any(np.isnan(np.asarray(np.asarray(cart)))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(np.asarray(sph)))), "NaN detected in second argument"
+        np.testing.assert_array_almost_equal(np.asarray(cart), np.asarray(sph), decimal=decimal_consistency)
 
     jax.clear_caches()
 
@@ -588,9 +621,13 @@ def test_Jastrow_threebody_part_sphe_to_cart_MOs_data():
     grads_sph = compute_grads_and_laplacian_Jastrow_three_body(j3_sph, r_up_carts, r_dn_carts)
     grads_cart = compute_grads_and_laplacian_Jastrow_three_body(j3_cart, r_up_carts, r_dn_carts)
 
-    np.testing.assert_allclose(np.asarray(J_sph), np.asarray(J_cart), rtol=1e-9, atol=1e-10)
+    assert not np.any(np.isnan(np.asarray(np.asarray(J_sph)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(J_cart)))), "NaN detected in second argument"
+    np.testing.assert_array_almost_equal(np.asarray(J_sph), np.asarray(J_cart), decimal=decimal_consistency)
     for sph, cart in zip(grads_sph, grads_cart, strict=True):
-        np.testing.assert_allclose(np.asarray(sph), np.asarray(cart), rtol=1e-9, atol=1e-10)
+        assert not np.any(np.isnan(np.asarray(np.asarray(sph)))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(np.asarray(cart)))), "NaN detected in second argument"
+        np.testing.assert_array_almost_equal(np.asarray(sph), np.asarray(cart), decimal=decimal_consistency)
 
     jax.clear_caches()
 
@@ -659,9 +696,13 @@ def test_Jastrow_threebody_part_cart_to_sphe_MOs_data():
     grads_cart = compute_grads_and_laplacian_Jastrow_three_body(j3_cart, r_up_carts, r_dn_carts)
     grads_sph = compute_grads_and_laplacian_Jastrow_three_body(j3_cart_to_sph, r_up_carts, r_dn_carts)
 
-    np.testing.assert_allclose(np.asarray(J_cart), np.asarray(J_sph), rtol=1e-9, atol=1e-10)
+    assert not np.any(np.isnan(np.asarray(np.asarray(J_cart)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(J_sph)))), "NaN detected in second argument"
+    np.testing.assert_array_almost_equal(np.asarray(J_cart), np.asarray(J_sph), decimal=decimal_consistency)
     for cart, sph in zip(grads_cart, grads_sph, strict=True):
-        np.testing.assert_allclose(np.asarray(cart), np.asarray(sph), rtol=1e-9, atol=1e-10)
+        assert not np.any(np.isnan(np.asarray(np.asarray(cart)))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(np.asarray(sph)))), "NaN detected in second argument"
+        np.testing.assert_array_almost_equal(np.asarray(cart), np.asarray(sph), decimal=decimal_consistency)
 
     jax.clear_caches()
 
@@ -728,6 +769,8 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
         r_dn_carts=r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(J3_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(J3_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(J3_debug, J3_jax, decimal=decimal_debug_vs_production)
 
     (
@@ -749,14 +792,22 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
         )
     )
 
+    assert not np.any(np.isnan(np.asarray(grad_jastrow_J3_up_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(grad_jastrow_J3_up_auto))), "NaN detected in second argument"
     np.testing.assert_almost_equal(grad_jastrow_J3_up_debug, grad_jastrow_J3_up_auto, decimal=decimal_auto_vs_numerical_deriv)
+    assert not np.any(np.isnan(np.asarray(grad_jastrow_J3_dn_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(grad_jastrow_J3_dn_auto))), "NaN detected in second argument"
     np.testing.assert_almost_equal(grad_jastrow_J3_dn_debug, grad_jastrow_J3_dn_auto, decimal=decimal_auto_vs_numerical_deriv)
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_J3_up_debug)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_J3_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_J3_up_debug),
         np.asarray(lap_J3_up_auto),
         rtol=rtol_auto_vs_numerical_deriv,
         atol=atol_auto_vs_numerical_deriv,
     )
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_J3_dn_debug)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_J3_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_J3_dn_debug),
         np.asarray(lap_J3_dn_auto),
@@ -833,6 +884,8 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
         r_dn_carts=r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(J3_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(J3_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(J3_debug, J3_jax, decimal=decimal_debug_vs_production)
 
     (
@@ -854,15 +907,23 @@ def test_numerical_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
         )
     )
 
+    assert not np.any(np.isnan(np.asarray(grad_jastrow_J3_up_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(grad_jastrow_J3_up_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(grad_jastrow_J3_up_debug, grad_jastrow_J3_up_jax, decimal=decimal_debug_vs_production)
+    assert not np.any(np.isnan(np.asarray(grad_jastrow_J3_dn_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(grad_jastrow_J3_dn_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(grad_jastrow_J3_dn_debug, grad_jastrow_J3_dn_jax, decimal=decimal_debug_vs_production)
 
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_J3_up_debug)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_J3_up_jax)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_J3_up_debug),
         np.asarray(lap_J3_up_jax),
         rtol=rtol_auto_vs_numerical_deriv,
         atol=atol_auto_vs_numerical_deriv,
     )
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_J3_dn_debug)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_J3_dn_jax)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_J3_dn_debug),
         np.asarray(lap_J3_dn_jax),
@@ -894,6 +955,8 @@ def test_numerical_and_auto_grads_Jastrow_twobody_part():
 
     # print(f"jastrow_two_body_jax = {jastrow_two_body_jax}")
 
+    assert not np.any(np.isnan(np.asarray(J2_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(J2_jax))), "NaN detected in second argument"
     np.testing.assert_almost_equal(J2_debug, J2_jax, decimal=decimal_debug_vs_production)
 
     (
@@ -921,14 +984,22 @@ def test_numerical_and_auto_grads_Jastrow_twobody_part():
     # print(f"grad_J2_dn_jax = {grad_J2_dn_jax}")
     # print(f"sum_laplacian_J2_jax = {sum_laplacian_J2_jax}")
 
+    assert not np.any(np.isnan(np.asarray(grad_J2_up_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(grad_J2_up_auto))), "NaN detected in second argument"
     np.testing.assert_almost_equal(grad_J2_up_debug, grad_J2_up_auto, decimal=decimal_auto_vs_numerical_deriv)
+    assert not np.any(np.isnan(np.asarray(grad_J2_dn_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(grad_J2_dn_auto))), "NaN detected in second argument"
     np.testing.assert_almost_equal(grad_J2_dn_debug, grad_J2_dn_auto, decimal=decimal_auto_vs_numerical_deriv)
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_J2_up_debug)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_J2_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_J2_up_debug),
         np.asarray(lap_J2_up_auto),
         rtol=rtol_auto_vs_numerical_deriv,
         atol=atol_auto_vs_numerical_deriv,
     )
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_J2_dn_debug)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_J2_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_J2_dn_debug),
         np.asarray(lap_J2_dn_auto),
@@ -993,9 +1064,17 @@ def test_analytic_and_auto_grads_Jastrow_threebody_part_with_AOs_data():
         r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_up_an)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_up_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(grad_up_an), np.asarray(grad_up_auto), decimal=decimal_auto_vs_analytic_deriv)
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_dn_an)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(grad_dn_an), np.asarray(grad_dn_auto), decimal=decimal_auto_vs_analytic_deriv)
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_up_an)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_up_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(lap_up_an), np.asarray(lap_up_auto), decimal=decimal_auto_vs_analytic_deriv)
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_dn_an)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(lap_dn_an), np.asarray(lap_dn_auto), decimal=decimal_auto_vs_analytic_deriv)
 
     jax.clear_caches()
@@ -1058,9 +1137,17 @@ def test_analytic_and_auto_grads_Jastrow_threebody_part_with_MOs_data():
         r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_up_an)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_up_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(grad_up_an), np.asarray(grad_up_auto), decimal=decimal_auto_vs_analytic_deriv)
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_dn_an)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(grad_dn_an), np.asarray(grad_dn_auto), decimal=decimal_auto_vs_analytic_deriv)
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_up_an)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_up_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(lap_up_an), np.asarray(lap_up_auto), decimal=decimal_auto_vs_analytic_deriv)
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_dn_an)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(lap_dn_an), np.asarray(lap_dn_auto), decimal=decimal_auto_vs_analytic_deriv)
 
     jax.clear_caches()
@@ -1092,15 +1179,23 @@ def test_analytic_and_auto_grads_Jastrow_twobody_part():
         r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_J2_up_analytic)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_J2_up_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(
         np.asarray(grad_J2_up_analytic), np.asarray(grad_J2_up_auto), decimal=decimal_auto_vs_analytic_deriv
     )
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_J2_dn_analytic)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_J2_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(
         np.asarray(grad_J2_dn_analytic), np.asarray(grad_J2_dn_auto), decimal=decimal_auto_vs_analytic_deriv
     )
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_J2_up_analytic)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_J2_up_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(
         np.asarray(lap_J2_up_analytic), np.asarray(lap_J2_up_auto), decimal=decimal_auto_vs_analytic_deriv
     )
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_J2_dn_analytic)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_J2_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(
         np.asarray(lap_J2_dn_analytic), np.asarray(lap_J2_dn_auto), decimal=decimal_auto_vs_analytic_deriv
     )
@@ -1194,15 +1289,23 @@ def test_numerical_and_auto_grads_Jastrow_part():
         r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_up_num)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_up_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(grad_up_num), np.asarray(grad_up_auto), decimal=decimal_auto_vs_numerical_deriv)
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_dn_num)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(grad_dn_num), np.asarray(grad_dn_auto), decimal=decimal_auto_vs_numerical_deriv)
 
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_up_num)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_up_num),
         np.asarray(lap_up_auto),
         rtol=rtol_auto_vs_numerical_deriv,
         atol=atol_auto_vs_numerical_deriv,
     )
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_dn_num)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_dn_num),
         np.asarray(lap_dn_auto),
@@ -1229,14 +1332,22 @@ def test_numerical_and_auto_grads_Jastrow_part_with_NN():
         r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_up_num)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_up_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(grad_up_num), np.asarray(grad_up_auto), decimal=decimal_auto_vs_numerical_deriv)
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_dn_num)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(grad_dn_num), np.asarray(grad_dn_auto), decimal=decimal_auto_vs_numerical_deriv)
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_up_num)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_up_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_up_num),
         np.asarray(lap_up_auto),
         rtol=rtol_auto_vs_numerical_deriv,
         atol=atol_auto_vs_numerical_deriv,
     )
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_dn_num)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_allclose(
         np.asarray(lap_dn_num),
         np.asarray(lap_dn_auto),
@@ -1263,9 +1374,17 @@ def test_analytical_and_auto_grads_Jastrow_part():
         r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_up_an)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_up_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(grad_up_an), np.asarray(grad_up_auto), decimal=decimal_auto_vs_analytic_deriv)
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_dn_an)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(grad_dn_an), np.asarray(grad_dn_auto), decimal=decimal_auto_vs_analytic_deriv)
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_up_an)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_up_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(lap_up_an), np.asarray(lap_up_auto), decimal=decimal_auto_vs_analytic_deriv)
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_dn_an)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(lap_dn_an), np.asarray(lap_dn_auto), decimal=decimal_auto_vs_analytic_deriv)
 
     jax.clear_caches()
@@ -1287,9 +1406,17 @@ def test_analytical_and_auto_grads_Jastrow_part_with_NN():
         r_dn_carts,
     )
 
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_up_an)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_up_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(grad_up_an), np.asarray(grad_up_auto), decimal=decimal_auto_vs_analytic_deriv)
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_dn_an)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(grad_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(grad_dn_an), np.asarray(grad_dn_auto), decimal=decimal_auto_vs_analytic_deriv)
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_up_an)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_up_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(lap_up_an), np.asarray(lap_up_auto), decimal=decimal_auto_vs_analytic_deriv)
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_dn_an)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(lap_dn_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(lap_dn_an), np.asarray(lap_dn_auto), decimal=decimal_auto_vs_analytic_deriv)
 
     jax.clear_caches()
@@ -1346,10 +1473,16 @@ def test_ratio_Jastrow_part_rank1_update(pattern: str):
         new_r_dn_carts_arr=new_r_dn_carts_arr,
     )
 
+    assert not np.any(np.isnan(np.asarray(np.asarray(ratio_debug)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(ratio_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(ratio_debug), np.asarray(ratio_auto), decimal=decimal_debug_vs_production)
 
     if pattern == "none_moved":
-        np.testing.assert_allclose(np.asarray(ratio_debug), np.ones_like(np.asarray(ratio_debug)), rtol=1e-12, atol=1e-12)
+        assert not np.any(np.isnan(np.asarray(np.asarray(ratio_debug)))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(np.ones_like(np.asarray(ratio_debug))))), "NaN detected in second argument"
+        np.testing.assert_array_almost_equal(
+            np.asarray(ratio_debug), np.ones_like(np.asarray(ratio_debug)), decimal=decimal_consistency
+        )
 
     jax.clear_caches()
 
@@ -1382,10 +1515,16 @@ def test_ratio_Jastrow_part_rank1_update_with_NN(pattern: str):
         new_r_dn_carts_arr=new_r_dn_carts_arr,
     )
 
+    assert not np.any(np.isnan(np.asarray(np.asarray(ratio_debug)))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.asarray(ratio_auto)))), "NaN detected in second argument"
     np.testing.assert_almost_equal(np.asarray(ratio_debug), np.asarray(ratio_auto), decimal=decimal_debug_vs_production)
 
     if pattern == "none_moved":
-        np.testing.assert_allclose(np.asarray(ratio_debug), np.ones_like(np.asarray(ratio_debug)), rtol=1e-12, atol=1e-12)
+        assert not np.any(np.isnan(np.asarray(np.asarray(ratio_debug)))), "NaN detected in first argument"
+        assert not np.any(np.isnan(np.asarray(np.ones_like(np.asarray(ratio_debug))))), "NaN detected in second argument"
+        np.testing.assert_array_almost_equal(
+            np.asarray(ratio_debug), np.ones_like(np.asarray(ratio_debug)), decimal=decimal_consistency
+        )
 
     jax.clear_caches()
 

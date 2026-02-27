@@ -48,7 +48,7 @@ import scipy
 import toml
 from jax import grad, jit, lax, vmap
 from jax import numpy as jnp
-from jax.scipy.linalg import lu_factor, lu_solve
+from jax.scipy.linalg import lu_factor, lu_solve  # noqa: F401  (kept for external callers / _MCMC_debug)
 from mpi4py import MPI
 
 from .atomic_orbital import compute_overlap_matrix
@@ -65,6 +65,7 @@ from .diff_mask import DiffMask, apply_diff_mask
 from .hamiltonians import (
     Hamiltonian_data,
     compute_local_energy,
+    compute_local_energy_fast,
 )
 from .jastrow_factor import _compute_ratio_Jastrow_part_rank1_update, compute_Jastrow_part
 from .jqmc_utility import _generate_init_electron_configurations
@@ -74,7 +75,7 @@ from .setting import (
 )
 from .structure import _find_nearest_index_jnp
 from .swct import SWCT_data, evaluate_swct_domega, evaluate_swct_omega
-from .wavefunction import evaluate_ln_wavefunction
+from .wavefunction import evaluate_ln_wavefunction, evaluate_ln_wavefunction_fast
 
 # create new logger level for development
 DEVEL_LEVEL = 5
@@ -123,7 +124,8 @@ class MCMC:
         Dt: float = 2.0,
         epsilon_AS: float = 1e-1,
         # adjust_epsilon_AS: bool = False,
-        comput_param_deriv: bool = False,
+        comput_log_WF_param_deriv: bool = False,
+        comput_e_L_param_deriv: bool = False,
         comput_position_deriv: bool = False,
         random_discretized_mesh: bool = True,
     ) -> None:
@@ -136,7 +138,8 @@ class MCMC:
             num_mcmc_per_measurement (int, optional): Proposals between observable evaluations. Defaults to 16.
             Dt (float, optional): Electron displacement scale (bohr). Defaults to 2.0.
             epsilon_AS (float, optional): Regularization exponent for antisymmetric stabilization. Defaults to 1e-1.
-            comput_param_deriv (bool, optional): Keep variational parameter derivatives. Defaults to False.
+            comput_log_WF_param_deriv (bool, optional): Keep variational parameter derivatives (d ln Psi / dc). Defaults to False.
+            comput_e_L_param_deriv (bool, optional): Keep local energy variational parameter derivatives (de_L / dc). Defaults to False.
             comput_position_deriv (bool, optional): Keep nuclear position derivatives. Defaults to False.
             random_discretized_mesh (bool, optional): Randomize quadrature mesh for non-local ECP terms. Defaults to True.
 
@@ -151,7 +154,8 @@ class MCMC:
         self.__Dt = Dt
         self.__epsilon_AS = epsilon_AS
         # self.__adjust_epsilon_AS = adjust_epsilon_AS
-        self.__comput_param_deriv = comput_param_deriv
+        self.__comput_log_WF_param_deriv = comput_log_WF_param_deriv
+        self.__comput_e_L_param_deriv = comput_e_L_param_deriv
         self.__comput_position_deriv = comput_position_deriv
         self.__random_discretized_mesh = random_discretized_mesh
 
@@ -287,7 +291,10 @@ class MCMC:
         self.__stored_grad_omega_r_dn = []
 
         # stored parameter gradients keyed by block name
-        self.__stored_param_grads: dict[str, list] = defaultdict(list)
+        self.__stored_log_WF_param_grads: dict[str, list] = defaultdict(list)
+
+        # stored local energy parameter gradients keyed by block name (de_L / dc)
+        self.__stored_e_L_param_grads: dict[str, list] = defaultdict(list)
 
     @staticmethod
     def __default_param_grad_flags() -> dict[str, bool]:
@@ -327,17 +334,57 @@ class MCMC:
         )
 
     def __prepare_param_grad_objects(self):
+        """Return (Wavefunction_data, Hamiltonian_data) for variational parameter gradient computations.
+
+        wavefunction_data: per-block masking applied; used for dln_Psi/dc via
+            grad(evaluate_ln_wavefunction, argnums=0).
+        hamiltonian_data: R stop-gradiented with active variational parameters injected;
+            used for de_L/dc via grad(compute_local_energy, argnums=0).
+
+        [Approx, faster] alternative (not implemented):
+            Zeroes out d(V_ECP_NL)/dc; T dominates anyway.
+            Build a local _e_L_approx(wf_data, r_up, r_dn, RT) that calls
+            compute_kinetic_energy (with wf_data) and compute_coulomb_potential
+            (with stop_gradient on wf_data), pre-compile it as
+            jit(vmap(grad(_e_L_approx, argnums=0), in_axes=(None, 0, 0, 0))),
+            and return it as a third element of the tuple alongside
+            (masked_wavefunction, self.__hamiltonian_data).
+            In run(), unpack as a 3-tuple and call the compiled approx grad
+            instead of _jit_vmap_grad_e_L_h.
+        """
         wavefunction_data = self.__hamiltonian_data.wavefunction_data
-        if not (self.__comput_param_deriv or self.__comput_position_deriv):
+        if not (self.__comput_log_WF_param_deriv or self.__comput_e_L_param_deriv):
             return wavefunction_data, self.__hamiltonian_data
 
-        if not self.__needs_param_grad_mask():
+        masked_wavefunction = (
+            self.__wavefunction_data_for_param_grads() if self.__needs_param_grad_mask() else wavefunction_data
+        )
+        # stop_gradient on R so that grad(compute_local_energy, argnums=0)
+        # yields de_L/dc only, not de_L/dR.  ECP wf-ratio Psi(r')/Psi(r) contributes
+        # to de_L/dc because wavefunction_data still carries gradients.
+        h_sg_R = jax.lax.stop_gradient(self.__hamiltonian_data).replace(wavefunction_data=masked_wavefunction)
+        return masked_wavefunction, h_sg_R
+
+    def __prepare_position_grad_objects(self):
+        """Return (Wavefunction_data, Hamiltonian_data) suitable for de_L/dR and dln_Psi/dR computations.
+
+        All variational parameters are masked with stop_gradient so that JAX
+        does not backpropagate through them (e.g. ECP wf-ratio tables).
+        AO position leaves (orb_data.structure_data.positions) still carry
+        gradients (DiffMask coords=True), so dT/dR and dV_ECP/dR are correct.
+        """
+        wavefunction_data = self.__hamiltonian_data.wavefunction_data
+        if wavefunction_data is None or not self.__comput_position_deriv:
             return wavefunction_data, self.__hamiltonian_data
 
-        masked_wavefunction = self.__wavefunction_data_for_param_grads()
-        if masked_wavefunction is wavefunction_data:
-            return wavefunction_data, self.__hamiltonian_data
-
+        # Always mask ALL variational parameters for position gradient computation.
+        masked_wavefunction = wavefunction_data.with_param_grad_mask(
+            opt_J1_param=False,
+            opt_J2_param=False,
+            opt_J3_param=False,
+            opt_JNN_param=False,
+            opt_lambda_param=False,
+        )
         masked_hamiltonian = self.__hamiltonian_data.replace(wavefunction_data=masked_wavefunction)
         return masked_wavefunction, masked_hamiltonian
 
@@ -387,6 +434,7 @@ class MCMC:
         timer_de_L_dR_dr = 0.0
         timer_dln_Psi_dR_dr = 0.0
         timer_dln_Psi_dc = 0.0
+        timer_de_L_dc = 0.0
         timer_MPI_barrier = 0.0
 
         # mcmc timer starts
@@ -434,15 +482,21 @@ class MCMC:
 
         @jit
         def _geminal_inv_single(geminal_data, I, r_up_carts, r_dn_carts):
-            # One sample: build G, LU-factorize, and invert via solve
+            # One sample: build G and invert via SVD-based pseudoinverse.
+            # More robust than LU for near-singular G (small singular values are
+            # zeroed rather than producing 1/~0 → NaN).
             G = compute_geminal_all_elements(
                 geminal_data=geminal_data,
                 r_up_carts=r_up_carts,  # (N_up, 3)
                 r_dn_carts=r_dn_carts,  # (N_dn, 3)
             )
-            lu, piv = lu_factor(G)  # lu: (N_up,N_up), piv: (N_up,)
-            Ginv = lu_solve((lu, piv), I)  # (N_up,N_up)
-            return G, Ginv, lu, piv
+            U, s, Vt = jnp.linalg.svd(G, full_matrices=False)
+            # Threshold: zero 1/s when s < rcond * s_max to avoid NaN
+            rcond = jnp.finfo(jnp.float64).eps * float(G.shape[0])
+            s_inv = jnp.where(s > rcond * s[0], 1.0 / s, 0.0)
+            Ginv = (Vt.T * s_inv[jnp.newaxis, :]) @ U.T
+            # Callers discard lu/piv; return zero dummies for API compatibility.
+            return G, Ginv, jnp.zeros_like(G), jnp.zeros(G.shape[0], dtype=jnp.int32)
 
         @jit
         def _geminal_inv_batched(geminal_data, r_up_batch, r_dn_batch):
@@ -886,6 +940,32 @@ class MCMC:
         logger.info("  Compilation is in progress...")
 
         wavefunction_for_param_grads, hamiltonian_for_param_grads = self.__prepare_param_grad_objects()
+        wavefunction_for_position_grads, hamiltonian_for_position_grads = self.__prepare_position_grad_objects()
+
+        # Pre-compile all grad callables as jit(vmap(grad(...))).
+        # Without jit, every call in the hot loop re-enters Python-level tracing,
+        # which dominates runtime (x100 acceleration)!
+        _jit_vmap_grad_e_L_r = jit(vmap(grad(compute_local_energy, argnums=(1, 2)), in_axes=(None, 0, 0, 0)))
+        _jit_vmap_grad_e_L_h = jit(vmap(grad(compute_local_energy, argnums=0), in_axes=(None, 0, 0, 0)))
+        _jit_vmap_grad_ln_psi = jit(vmap(grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0)))
+        _jit_vmap_grad_ln_psi_params = jit(vmap(grad(evaluate_ln_wavefunction, argnums=0), in_axes=(None, 0, 0)))
+        _jit_vmap_grad_ln_psi_params_fast = jit(vmap(grad(evaluate_ln_wavefunction_fast, argnums=0), in_axes=(None, 0, 0, 0)))
+        # static_argnums=3 propagates the num_mcmc_per_measurement static hint to
+        # the outer jit so fori_loop sees a compile-time constant (same as inner @partial(jit,static_argnums=3)).
+        _jit_vmap_update = jit(
+            vmap(_update_electron_positions, in_axes=(0, 0, 0, None, None, None, None, 0, 0)),
+            static_argnums=3,
+        )
+        _jit_vmap_update_up = jit(
+            vmap(_update_electron_positions_only_up_electron, in_axes=(0, 0, 0, None, None, None, None, 0, 0)),
+            static_argnums=3,
+        )
+        _jit_vmap_e_L_fast = jit(vmap(compute_local_energy_fast, in_axes=(None, 0, 0, 0, 0)))
+        _jit_vmap_as_reg = jit(vmap(compute_AS_regularization_factor, in_axes=(None, 0, 0)))
+        _jit_vmap_generate_RTs = jit(vmap(generate_RTs, in_axes=0))
+        _jit_vmap_as_reg_fast = jit(vmap(compute_AS_regularization_factor_fast_update, in_axes=(0, 0)))
+        _jit_vmap_swct_omega = jit(vmap(evaluate_swct_omega, in_axes=(None, 0)))
+        _jit_vmap_swct_domega = jit(vmap(evaluate_swct_domega, in_axes=(None, 0)))
 
         geminal, geminal_inv, _, _ = _geminal_inv_batched(
             self.__hamiltonian_data.wavefunction_data.geminal_data,
@@ -895,15 +975,7 @@ class MCMC:
 
         RTs = jnp.broadcast_to(jnp.eye(3), (len(self.__jax_PRNG_key_list), 3, 3))
         if self.__only_up_electron:
-            (
-                _,
-                _,
-                _,
-                _,
-                _,
-                _,
-                _,
-            ) = vmap(_update_electron_positions_only_up_electron, in_axes=(0, 0, 0, None, None, None, None, 0, 0))(
+            _ = _jit_vmap_update_up(
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
                 self.__jax_PRNG_key_list,
@@ -915,15 +987,7 @@ class MCMC:
                 geminal,
             )
         else:
-            (
-                _,
-                _,
-                _,
-                _,
-                _,
-                _,
-                _,
-            ) = vmap(_update_electron_positions, in_axes=(0, 0, 0, None, None, None, None, 0, 0))(
+            _ = _jit_vmap_update(
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
                 self.__jax_PRNG_key_list,
@@ -934,58 +998,70 @@ class MCMC:
                 geminal_inv,
                 geminal,
             )
-        _ = vmap(compute_local_energy, in_axes=(None, 0, 0, 0))(
-            self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs
-        )
-        _ = vmap(compute_AS_regularization_factor, in_axes=(None, 0, 0))(
+        _ = _jit_vmap_e_L_fast(self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs, geminal_inv)
+        _ = _jit_vmap_as_reg(
             self.__hamiltonian_data.wavefunction_data.geminal_data,
             self.__latest_r_up_carts,
             self.__latest_r_dn_carts,
         )
         if self.__comput_position_deriv:
-            _, _, _ = vmap(grad(compute_local_energy, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0))(
-                hamiltonian_for_param_grads,
+            _, _ = _jit_vmap_grad_e_L_r(
+                hamiltonian_for_position_grads,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+                RTs,
+            )
+            _ = _jit_vmap_grad_e_L_h(
+                hamiltonian_for_position_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
                 RTs,
             )
 
-            _, _, _ = vmap(grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0))(
+            _, _, _ = _jit_vmap_grad_ln_psi(
+                wavefunction_for_position_grads,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+            )
+
+            _ = _jit_vmap_swct_omega(
+                self.__swct_data,
+                self.__latest_r_up_carts,
+            )
+
+            _ = _jit_vmap_swct_omega(
+                self.__swct_data,
+                self.__latest_r_dn_carts,
+            )
+
+            _ = _jit_vmap_swct_domega(
+                self.__swct_data,
+                self.__latest_r_up_carts,
+            )
+
+            _ = _jit_vmap_swct_domega(
+                self.__swct_data,
+                self.__latest_r_dn_carts,
+            )
+            _ = _jit_vmap_grad_ln_psi_params(
                 wavefunction_for_param_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
 
-            _ = vmap(evaluate_swct_omega, in_axes=(None, 0))(
-                self.__swct_data,
-                self.__latest_r_up_carts,
-            )
-
-            _ = vmap(evaluate_swct_omega, in_axes=(None, 0))(
-                self.__swct_data,
-                self.__latest_r_dn_carts,
-            )
-
-            _ = vmap(evaluate_swct_domega, in_axes=(None, 0))(
-                self.__swct_data,
-                self.__latest_r_up_carts,
-            )
-
-            _ = vmap(evaluate_swct_domega, in_axes=(None, 0))(
-                self.__swct_data,
-                self.__latest_r_dn_carts,
-            )
-            _ = vmap(grad(evaluate_ln_wavefunction, argnums=0), in_axes=(None, 0, 0))(
+        if self.__comput_log_WF_param_deriv:
+            _ = _jit_vmap_grad_ln_psi_params(
                 wavefunction_for_param_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
 
-        if self.__comput_param_deriv:
-            _ = vmap(grad(evaluate_ln_wavefunction, argnums=0), in_axes=(None, 0, 0))(
-                wavefunction_for_param_grads,
+        if self.__comput_e_L_param_deriv:
+            _ = _jit_vmap_grad_e_L_h(
+                hamiltonian_for_param_grads,
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
+                RTs,
             )
 
         mcmc_update_init_end = time.perf_counter()
@@ -1035,7 +1111,7 @@ class MCMC:
                     self.__jax_PRNG_key_list,
                     geminal_inv,
                     geminal,
-                ) = vmap(_update_electron_positions_only_up_electron, in_axes=(0, 0, 0, None, None, None, None, 0, 0))(
+                ) = _jit_vmap_update_up(
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                     self.__jax_PRNG_key_list,
@@ -1055,7 +1131,7 @@ class MCMC:
                     self.__jax_PRNG_key_list,
                     geminal_inv,
                     geminal,
-                ) = vmap(_update_electron_positions, in_axes=(0, 0, 0, None, None, None, None, 0, 0))(
+                ) = _jit_vmap_update(
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                     self.__jax_PRNG_key_list,
@@ -1077,7 +1153,7 @@ class MCMC:
 
             # generate rotation matrices (for non-local ECPs)
             if self.__random_discretized_mesh:
-                RTs = vmap(generate_RTs, in_axes=0)(self.__jax_PRNG_key_list)
+                RTs = _jit_vmap_generate_RTs(self.__jax_PRNG_key_list)
             else:
                 RTs = jnp.broadcast_to(jnp.eye(3), (len(self.__jax_PRNG_key_list), 3, 3))
 
@@ -1087,9 +1163,9 @@ class MCMC:
 
             # Evaluate observables each MCMC cycle
             start = time.perf_counter()
-            logger.debug("    Evaluating e_L ...")
-            e_L_step = vmap(compute_local_energy, in_axes=(None, 0, 0, 0))(
-                self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs
+            # logger.debug("    Evaluating e_L ...")
+            e_L_step = _jit_vmap_e_L_fast(
+                self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs, geminal_inv
             )
             e_L_step.block_until_ready()
             end = time.perf_counter()
@@ -1099,7 +1175,7 @@ class MCMC:
             self.__stored_e_L2.append(e_L_step**2)
 
             # AS weights
-            R_AS_step = vmap(compute_AS_regularization_factor_fast_update, in_axes=(0, 0))(geminal, geminal_inv)
+            R_AS_step = _jit_vmap_as_reg_fast(geminal, geminal_inv)
             R_AS_eps_step = jnp.maximum(R_AS_step, self.__epsilon_AS)
             w_L_step = (R_AS_step / R_AS_eps_step) ** 2
 
@@ -1107,17 +1183,31 @@ class MCMC:
 
             if self.__comput_position_deriv:
                 start = time.perf_counter()
-                logger.debug("    Evaluating de_L/dR and de_L/dr ...")
-                grad_e_L_h_step, grad_e_L_r_up_step, grad_e_L_r_dn_step = vmap(
-                    grad(compute_local_energy, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0)
-                )(
-                    hamiltonian_for_param_grads,
+                # logger.debug("    Evaluating de_L/dR and de_L/dr ...")
+
+                # de_L/dr_up, de_L/dr_dn: differentiate w.r.t. r_up and r_dn only.
+                # Using argnums=(1,2) avoids backpropagating through wavefunction
+                # parameters inside the ECP non-local wf-ratio, which is the dominant
+                # cost when hamiltonian (argnums=0) is included.
+                grad_e_L_r_up_step, grad_e_L_r_dn_step = _jit_vmap_grad_e_L_r(
+                    hamiltonian_for_position_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                     RTs,
                 )
                 grad_e_L_r_up_step.block_until_ready()
                 grad_e_L_r_dn_step.block_until_ready()
+
+                # de_L/dR: differentiate w.r.t. hamiltonian (argnums=0) only.
+                # hamiltonian_for_position_grads already has all variational params masked
+                # (stop_gradient), while AO position leaves still carry gradients so
+                # dT/dR and dV_ECP/dR are computed correctly.
+                grad_e_L_h_step = _jit_vmap_grad_e_L_h(
+                    hamiltonian_for_position_grads,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                    RTs,
+                )
                 end = time.perf_counter()
                 timer_de_L_dR_dr += end - start
 
@@ -1127,11 +1217,9 @@ class MCMC:
                 self.__stored_grad_e_L_dR.append(grad_e_L_R)
 
                 start = time.perf_counter()
-                logger.debug("    Evaluating dln_Psi/dR and dln_Psi/dr ...")
-                grad_ln_Psi_h_step, grad_ln_Psi_r_up_step, grad_ln_Psi_r_dn_step = vmap(
-                    grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
-                )(
-                    wavefunction_for_param_grads,
+                logger.devel("    Evaluating dln_Psi/dR and dln_Psi/dr ...")
+                grad_ln_Psi_h_step, grad_ln_Psi_r_up_step, grad_ln_Psi_r_dn_step = _jit_vmap_grad_ln_psi(
+                    wavefunction_for_position_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
                 )
@@ -1145,19 +1233,19 @@ class MCMC:
                 grad_ln_Psi_dR = self.__hamiltonian_data.wavefunction_data.accumulate_position_grad(grad_ln_Psi_h_step)
                 self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
 
-                omega_up_step = vmap(evaluate_swct_omega, in_axes=(None, 0))(
+                omega_up_step = _jit_vmap_swct_omega(
                     self.__swct_data,
                     self.__latest_r_up_carts,
                 )
-                omega_dn_step = vmap(evaluate_swct_omega, in_axes=(None, 0))(
+                omega_dn_step = _jit_vmap_swct_omega(
                     self.__swct_data,
                     self.__latest_r_dn_carts,
                 )
-                grad_omega_dr_up_step = vmap(evaluate_swct_domega, in_axes=(None, 0))(
+                grad_omega_dr_up_step = _jit_vmap_swct_domega(
                     self.__swct_data,
                     self.__latest_r_up_carts,
                 )
-                grad_omega_dr_dn_step = vmap(evaluate_swct_domega, in_axes=(None, 0))(
+                grad_omega_dr_dn_step = _jit_vmap_swct_domega(
                     self.__swct_data,
                     self.__latest_r_dn_carts,
                 )
@@ -1167,13 +1255,14 @@ class MCMC:
                 self.__stored_grad_omega_r_up.append(grad_omega_dr_up_step)
                 self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn_step)
 
-            if self.__comput_param_deriv:
+            if self.__comput_log_WF_param_deriv:
                 start = time.perf_counter()
-                logger.debug("    Evaluating dln_Psi/dc ...")
-                grad_ln_Psi_h = vmap(grad(evaluate_ln_wavefunction, argnums=0), in_axes=(None, 0, 0))(
+                # logger.debug("    Evaluating dln_Psi/dc ...")
+                grad_ln_Psi_h = _jit_vmap_grad_ln_psi_params_fast(
                     wavefunction_for_param_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
+                    geminal_inv,
                 )
                 param_grads = self.__hamiltonian_data.wavefunction_data.collect_param_grads(grad_ln_Psi_h)
                 flat_param_grads = self.__hamiltonian_data.wavefunction_data.flatten_param_grads(
@@ -1183,12 +1272,67 @@ class MCMC:
                 for name, grad_val in flat_param_grads.items():
                     if not self.__param_grad_flags.get(name, True):
                         continue
-                    self.__stored_param_grads[name].append(grad_val)
+                    self.__stored_log_WF_param_grads[name].append(grad_val)
                     if hasattr(grad_val, "block_until_ready"):
                         grad_val.block_until_ready()
 
                 end = time.perf_counter()
                 timer_dln_Psi_dc += end - start
+
+            if self.__comput_e_L_param_deriv:
+                start = time.perf_counter()
+                # logger.debug("    Evaluating de_L/dc ...")
+                # Gradient flows through full compute_local_energy including
+                # ECP wf-ratio Psi(r')/Psi(r), so d(V_ECP_NL)/dc is included.
+                # hamiltonian_for_param_grads has R stop-gradiented; wf params are
+                # active (set up in __prepare_param_grad_objects).
+
+                # Diagnostics: check walker positions and RTs before grad call
+                _r_up = np.asarray(self.__latest_r_up_carts)
+                _r_dn = np.asarray(self.__latest_r_dn_carts)
+                _RTs = np.asarray(RTs)
+                _nan_r_up = int(np.sum(~np.isfinite(_r_up)))
+                _nan_r_dn = int(np.sum(~np.isfinite(_r_dn)))
+                _nan_RTs = int(np.sum(~np.isfinite(_RTs)))
+                logger.devel(
+                    f"    [de_L/dc] r_up_carts: shape={_r_up.shape} non-finite={_nan_r_up}/{_r_up.size} "
+                    f"    min={np.nanmin(_r_up):.3e} max={np.nanmax(_r_up):.3e}"
+                )
+                logger.devel(
+                    f"    [de_L/dc] r_dn_carts: shape={_r_dn.shape} non-finite={_nan_r_dn}/{_r_dn.size} "
+                    f"    min={np.nanmin(_r_dn):.3e} max={np.nanmax(_r_dn):.3e}"
+                )
+                logger.devel(f"    [de_L/dc] RTs: shape={_RTs.shape} non-finite={_nan_RTs}/{_RTs.size}")
+
+                grad_e_L_h_step = _jit_vmap_grad_e_L_h(
+                    hamiltonian_for_param_grads,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                    RTs,
+                )
+                param2_grads = self.__hamiltonian_data.wavefunction_data.collect_param_grads(grad_e_L_h_step.wavefunction_data)
+                flat_param2_grads = self.__hamiltonian_data.wavefunction_data.flatten_param_grads(
+                    param2_grads, self.__num_walkers
+                )
+
+                # Diagnostics: check flat_param2_grads after grad call
+                for _pname, _pval in flat_param2_grads.items():
+                    _parr = np.asarray(_pval)
+                    _pnan = int(np.sum(~np.isfinite(_parr)))
+                    logger.devel(
+                        f"    [de_L/dc] flat_param2_grads['{_pname}']: shape={_parr.shape} "
+                        f"    non-finite={_pnan}/{_parr.size} ({_pnan / _parr.size:.1%})"
+                    )
+
+                for name, grad_val in flat_param2_grads.items():
+                    if not self.__param_grad_flags.get(name, True):
+                        continue
+                    self.__stored_e_L_param_grads[name].append(grad_val)
+                    if hasattr(grad_val, "block_until_ready"):
+                        grad_val.block_until_ready()
+
+                end = time.perf_counter()
+                timer_de_L_dc += end - start
 
             num_mcmc_done += 1
 
@@ -1233,6 +1377,7 @@ class MCMC:
             + timer_de_L_dR_dr
             + timer_dln_Psi_dR_dr
             + timer_dln_Psi_dc
+            + timer_de_L_dc
             + timer_MPI_barrier
         )
 
@@ -1250,13 +1395,24 @@ class MCMC:
         ave_timer_mcmc_total = mpi_comm.allreduce(timer_mcmc_total, op=MPI.SUM) / mpi_size
         ave_timer_mcmc_update_init = mpi_comm.allreduce(timer_mcmc_update_init, op=MPI.SUM) / mpi_size
         ave_timer_net_mcmc_total = mpi_comm.allreduce(timer_net_mcmc_total, op=MPI.SUM) / mpi_size
-        ave_timer_mcmc_update = mpi_comm.allreduce(timer_mcmc_update, op=MPI.SUM) / mpi_size / num_mcmc_done
-        ave_timer_e_L = mpi_comm.allreduce(timer_e_L, op=MPI.SUM) / mpi_size / num_mcmc_done
-        ave_timer_de_L_dR_dr = mpi_comm.allreduce(timer_de_L_dR_dr, op=MPI.SUM) / mpi_size / num_mcmc_done
-        ave_timer_dln_Psi_dR_dr = mpi_comm.allreduce(timer_dln_Psi_dR_dr, op=MPI.SUM) / mpi_size / num_mcmc_done
-        ave_timer_dln_Psi_dc = mpi_comm.allreduce(timer_dln_Psi_dc, op=MPI.SUM) / mpi_size / num_mcmc_done
-        ave_timer_MPI_barrier = mpi_comm.allreduce(timer_MPI_barrier, op=MPI.SUM) / mpi_size / num_mcmc_done
-        ave_timer_misc = mpi_comm.allreduce(timer_misc, op=MPI.SUM) / mpi_size / num_mcmc_done
+        if num_mcmc_done > 0:
+            ave_timer_mcmc_update = mpi_comm.allreduce(timer_mcmc_update, op=MPI.SUM) / mpi_size / num_mcmc_done
+            ave_timer_e_L = mpi_comm.allreduce(timer_e_L, op=MPI.SUM) / mpi_size / num_mcmc_done
+            ave_timer_de_L_dR_dr = mpi_comm.allreduce(timer_de_L_dR_dr, op=MPI.SUM) / mpi_size / num_mcmc_done
+            ave_timer_dln_Psi_dR_dr = mpi_comm.allreduce(timer_dln_Psi_dR_dr, op=MPI.SUM) / mpi_size / num_mcmc_done
+            ave_timer_dln_Psi_dc = mpi_comm.allreduce(timer_dln_Psi_dc, op=MPI.SUM) / mpi_size / num_mcmc_done
+            ave_timer_de_L_dc = mpi_comm.allreduce(timer_de_L_dc, op=MPI.SUM) / mpi_size / num_mcmc_done
+            ave_timer_MPI_barrier = mpi_comm.allreduce(timer_MPI_barrier, op=MPI.SUM) / mpi_size / num_mcmc_done
+            ave_timer_misc = mpi_comm.allreduce(timer_misc, op=MPI.SUM) / mpi_size / num_mcmc_done
+        else:
+            ave_timer_mcmc_update = 0.0
+            ave_timer_e_L = 0.0
+            ave_timer_de_L_dR_dr = 0.0
+            ave_timer_dln_Psi_dR_dr = 0.0
+            ave_timer_dln_Psi_dc = 0.0
+            ave_timer_de_L_dc = 0.0
+            ave_timer_MPI_barrier = 0.0
+            ave_timer_misc = 0.0
         ave_stored_w_L = mpi_comm.allreduce(np.mean(self.__stored_w_L), op=MPI.SUM) / mpi_size
         sum_accepted_moves = mpi_comm.allreduce(int(self.__accepted_moves), op=MPI.SUM)
         sum_rejected_moves = mpi_comm.allreduce(int(self.__rejected_moves), op=MPI.SUM)
@@ -1270,12 +1426,16 @@ class MCMC:
         logger.info(f"  Time for computing de_L/dR and de_L/dr = {ave_timer_de_L_dR_dr * 10**3:.2f} msec.")
         logger.info(f"  Time for computing dln_Psi/dR and dln_Psi/dr = {ave_timer_dln_Psi_dR_dr * 10**3:.2f} msec.")
         logger.info(f"  Time for computing dln_Psi/dc = {ave_timer_dln_Psi_dc * 10**3:.2f} msec.")
+        logger.info(f"  Time for computing de_L/dc = {ave_timer_de_L_dc * 10**3:.2f} msec.")
         logger.info(f"  Time for MPI barrier after MCMC update = {ave_timer_MPI_barrier * 10**3:.2f} msec.")
         logger.info(f"  Time for misc. (others) = {ave_timer_misc * 10**3:.2f} msec.")
         logger.info(f"Average of walker weights is {ave_stored_w_L:.3f}. Ideal is ~ 0.800. Adjust epsilon_AS.")
-        logger.info(
-            f"Acceptance ratio is {sum_accepted_moves / (sum_accepted_moves + sum_rejected_moves) * 100:.2f} %.  Ideal is ~ 50.00%. Adjust Dt."
-        )
+        if sum_accepted_moves + sum_rejected_moves > 0:
+            logger.info(
+                f"Acceptance ratio is {sum_accepted_moves / (sum_accepted_moves + sum_rejected_moves) * 100:.2f} %.  Ideal is ~ 50.00%. Adjust Dt."
+            )
+        else:
+            logger.info("Acceptance ratio is N/A (no moves performed).")
         logger.info("")
 
     def get_E(
@@ -1572,7 +1732,7 @@ class MCMC:
         blocks: list,
         num_mcmc_warmup_steps: int = 50,
         chosen_param_index: list | None = None,
-        lambda_projectors: tuple[npt.NDArray, npt.NDArray] | None = None,
+        lambda_projectors: tuple | None = None,
         num_orb_projection: int | None = None,
     ):
         """Assemble per-sample derivatives of ln Psi w.r.t. variational parameters.
@@ -1617,30 +1777,41 @@ class MCMC:
             "Mismatch between total block size and O_matrix parameter dimension."
         )
 
-        # Step 2 projection (Becca and Sorella, 2017, Eq. 12.39): apply projection
-        # directly to derivative observables so downstream generalized forces and
-        # SR matrices are consistently projected.
+        # Step 2 projection (Nakano et al., JCP 152, 204121 (2020), Sec. D;
+        # Becca and Sorella, 2017, Eq. 12.39):
+        # Remove vir-vir component from derivative observables.
+        #
+        # Uses orthogonal-basis projectors to avoid oblique-projection amplification:
+        #   1. Transform O_k to S^{-1/2}-orthogonalized basis
+        #   2. Apply orthogonal projection:  Õ' = O' - (I-L') O' (I-R')
+        #      where L' = S^{1/2} C_up C_up^T S^{1/2},  R' = S^{1/2} C_dn C_dn^T S^{1/2}
+        #   3. Keep O' in orthogonal basis (theta will be back-transformed later)
         if lambda_projectors is not None and num_orb_projection is not None:
-            left_projector, right_projector = lambda_projectors
-            identity_left = np.eye(left_projector.shape[0], dtype=np.float64)
-            identity_right = np.eye(right_projector.shape[0], dtype=np.float64)
+            left_projector, right_projector, inv_sqrt_overlap_up, inv_sqrt_overlap_dn = lambda_projectors
+            identity = np.eye(left_projector.shape[0], dtype=np.float64)
 
             start = 0
             for block in blocks:
                 end = start + block.size
                 if block.name == "lambda_matrix":
                     block_matrix = O_matrix[:, :, start:end].reshape(O_matrix.shape[0], O_matrix.shape[1], *block.shape)
-                    paired_block = block_matrix[:, :, :, :num_orb_projection]
-                    unpaired_block = block_matrix[:, :, :, num_orb_projection:]
+                    n_paired_cols = right_projector.shape[0]  # n_AO (projector dimension)
+                    paired_block = block_matrix[:, :, :, :n_paired_cols]
+                    unpaired_block = block_matrix[:, :, :, n_paired_cols:]
 
-                    correction = np.einsum(
-                        "ab,mwbc,cd->mwad",
-                        (identity_left - left_projector.T),
-                        paired_block,
-                        (identity_right - right_projector.T),
-                    )
-                    corrected_paired_block = paired_block - correction
-                    corrected_block = np.concatenate((corrected_paired_block, unpaired_block), axis=3)
+                    # Transform paired O_k to orthogonal basis: O' = S^{-1/2}_up @ O @ S^{-1/2}_dn
+                    # Use @ with broadcasting over (m, w) batch dims instead of einsum for BLAS speed.
+                    paired_orth = inv_sqrt_overlap_up @ paired_block @ inv_sqrt_overlap_dn
+                    # Apply orthogonal projection: Õ' = O' - (I-L') O' (I-R')
+                    comp_L = identity - left_projector
+                    comp_R = identity - right_projector
+                    correction = comp_L @ paired_orth @ comp_R
+                    projected_paired = paired_orth - correction
+
+                    # Transform unpaired to orthogonal basis: O'_unpaired = S^{-1/2}_up @ O
+                    unpaired_orth = inv_sqrt_overlap_up @ unpaired_block
+
+                    corrected_block = np.concatenate((projected_paired, unpaired_orth), axis=3)
                     O_matrix[:, :, start:end] = corrected_block.reshape(O_matrix.shape[0], O_matrix.shape[1], -1)
                     break
                 start = end
@@ -1651,6 +1822,31 @@ class MCMC:
         else:
             O_matrix_chosen = O_matrix[num_mcmc_warmup_steps:, :, chosen_param_index]  # O.... (x....) (M, nw, L) matrix
         logger.devel(f"O_matrix_chosen.shape = {O_matrix_chosen.shape}")
+
+        # ------------------------------------------------------------------
+        # DEBUG: per-sample derivative statistics
+        # Useful for diagnosing NaN propagation when epsilon_AS > 0.
+        # ------------------------------------------------------------------
+        _om = np.asarray(O_matrix_chosen)
+        _om_nan = int(np.sum(~np.isfinite(_om)))
+        _om_fin = _om[np.isfinite(_om)]
+        logger.devel(
+            "[dln_Psi/dc] shape=%s  NaN or Inf=%d/%d  min=%.3e  max=%.3e  mean=%.3e  std=%.3e",
+            _om.shape,
+            _om_nan,
+            _om.size,
+            float(np.min(_om_fin)) if _om_fin.size else float("nan"),
+            float(np.max(_om_fin)) if _om_fin.size else float("nan"),
+            float(np.mean(_om_fin)) if _om_fin.size else float("nan"),
+            float(np.std(_om_fin)) if _om_fin.size else float("nan"),
+        )
+        if _om_nan > 0:
+            nan_param_cols = np.where(np.any(~np.isfinite(_om.reshape(-1, _om.shape[-1])), axis=0))[0]
+            logger.devel(
+                "[dln_Psi/dc] param indices with NaN or Inf (first 30): %s",
+                nan_param_cols[:30].tolist(),
+            )
+
         return O_matrix_chosen
 
     def get_gF(
@@ -1659,7 +1855,7 @@ class MCMC:
         num_mcmc_bin_blocks: int = 10,
         chosen_param_index: list | None = None,
         blocks: list | None = None,
-        lambda_projectors: tuple[npt.NDArray, npt.NDArray] | None = None,
+        lambda_projectors: tuple | None = None,
         num_orb_projection: int | None = None,
     ) -> tuple[npt.NDArray, npt.NDArray]:
         """Evaluate generalized forces (dE/dc_k) with jackknife error bars.
@@ -1801,6 +1997,341 @@ class MCMC:
             generalized_force_std,
         )  # (L vector, L vector)
 
+    @staticmethod
+    def _safe_stats(arr: npt.NDArray, name: str = "array") -> dict:
+        """Calculate statistics safely, handling all-NaN arrays without warnings.
+
+        Args:
+            arr: Input array
+            name: Name for logging
+
+        Returns:
+            dict with keys: shape, nan_count, nan_frac, min, max, mean, std
+        """
+        stats = {
+            "shape": arr.shape,
+            "nan_count": int(np.sum(np.isnan(arr))),
+            "nan_frac": float(np.sum(np.isnan(arr)) / arr.size) if arr.size > 0 else 1.0,
+        }
+
+        # Only compute statistics if there are non-NaN values
+        if stats["nan_frac"] < 1.0:
+            with np.errstate(all="ignore"):  # Suppress warnings
+                stats["min"] = float(np.nanmin(arr))
+                stats["max"] = float(np.nanmax(arr))
+                stats["mean"] = float(np.nanmean(arr))
+                stats["std"] = float(np.nanstd(arr))
+        else:
+            stats["min"] = float("nan")
+            stats["max"] = float("nan")
+            stats["mean"] = float("nan")
+            stats["std"] = float("nan")
+
+        return stats
+
+    def get_aH(
+        self,
+        g: npt.NDArray,
+        blocks: list,
+        num_mcmc_warmup_steps: int = 50,
+        chosen_param_index: list | None = None,
+        lambda_projectors: tuple | None = None,
+        num_orb_projection: int | None = None,
+    ) -> tuple[float, float, float, float]:
+        r"""Compute H_0, H_1, H_2, S_2 for accelerated SR (aSR) gamma optimization.
+
+        Using the decomposition
+
+        .. math::
+
+            E_{\\alpha+\\delta\\alpha}
+            = \\frac{H_0 + 2\\gamma H_1 + \\gamma^2 H_2}{1 + \\gamma^2 S_2},
+
+        where :math:`\\delta\\alpha = \\gamma g` and :math:`g = S^{-1}f`.
+
+        Each term is:
+
+        - :math:`H_0 = E_{\\alpha}` (current energy),
+        - :math:`H_1 = -\\tfrac{1}{2}\\,g^T f`,
+        - :math:`H_2 = g^T (B + K)\\,g`, with
+          :math:`K_{k,k'} = \\langle e_L (O_k - \\bar O_k)(O_{k'} - \\bar O_{k'})\\rangle`
+          and
+          :math:`B_{k,k'} = \\langle (O_{k'} - \\bar O_{k'})(\\partial_k e_L - \\overline{\\partial_k e_L})\\rangle`,
+        - :math:`S_2 = g^T S g = \langle w\,(g^T\delta O)^2 \rangle_w`
+          (computed directly from samples; **not** :math:`g^T f` which overestimates by
+          :math:`\epsilon_\text{SR}\,\|g_\text{scaled}\|^2` due to SR regularisation).
+
+        Args:
+            g (npt.NDArray): Natural gradient vector :math:`g = S^{-1}f`, shape ``(K,)`` or ``(L,)`` if ``chosen_param_index`` is used.
+            blocks (list): Ordered variational blocks (same ordering as used for ``g``).
+            num_mcmc_warmup_steps (int, optional): Samples to discard as warmup. Defaults to 50.
+            chosen_param_index (list | None, optional): Optional subset of flattened parameter indices. Defaults to None.
+            lambda_projectors (tuple | None, optional): Passed to :meth:`get_dln_WF`.
+            num_orb_projection (int | None, optional): Passed to :meth:`get_dln_WF`.
+
+        Returns:
+            tuple[float, float, float, float]: ``(H_0, H_1, H_2, S_2)``.
+
+        Raises:
+            RuntimeError: If ``compute_log_WF_param_deriv`` or ``comput_e_L_param_deriv`` is False.
+
+        Notes:
+            Use :meth:`compute_asr_gamma` to obtain :math:`\\gamma` from the returned values.
+        """
+        if not self.__comput_log_WF_param_deriv:
+            raise RuntimeError("get_aH requires compute_log_WF_param_deriv=True.")
+        if not self.__comput_e_L_param_deriv:
+            raise RuntimeError("get_aH requires comput_e_L_param_deriv=True (for B matrix / de_L/dc).")
+
+        # Diagnostic output at entry
+        logger.devel("[get_aH] ENTRY")
+        g_stats = self._safe_stats(g, "g")
+        logger.devel(
+            f"[get_aH] INPUT g: shape={g_stats['shape']} "
+            f"NaN={g_stats['nan_count']}/{g.size} min={g_stats['min']:.3e} "
+            f"max={g_stats['max']:.3e} mean={g_stats['mean']:.3e}"
+        )
+
+        # ---- raw samples after warmup ----
+        w_L = self.w_L[num_mcmc_warmup_steps:]  # (M, nw)
+        e_L = self.e_L[num_mcmc_warmup_steps:]  # (M, nw)
+
+        # ---- O_matrix: d ln Psi / dc  shape (M, nw, K) ----
+        O_matrix = self.get_dln_WF(
+            blocks=blocks,
+            num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+            chosen_param_index=chosen_param_index,
+            lambda_projectors=lambda_projectors,
+            num_orb_projection=num_orb_projection,
+        )  # (M, nw, K)
+
+        # Diagnostics: block.values (to detect parameter divergence)
+        for block in blocks:
+            vals = np.asarray(block.values)
+            val_stats = self._safe_stats(vals, f"{block.name}.values")
+            logger.devel(
+                f"[get_aH] block.values['{block.name}']: shape={val_stats['shape']} "
+                f"NaN={val_stats['nan_count']}/{vals.size} ({val_stats['nan_frac']:.2%}) "
+                f"min={val_stats['min']:.3e} max={val_stats['max']:.3e} "
+                f"mean={val_stats['mean']:.3e} std={val_stats['std']:.3e}"
+            )
+
+        # ---- dE_matrix: de_L / dc  shape (M, nw, K) ----
+        de_L_dc_map = self.de_L_dc
+
+        # Diagnostics: check de_L_dc_map
+        logger.devel(f"[get_aH] de_L_dc_map keys: {list(de_L_dc_map.keys())}")
+        for block_name, arr in de_L_dc_map.items():
+            arr_stats = self._safe_stats(arr, f"de_L_dc[{block_name}]")
+            logger.devel(
+                f"[get_aH] de_L_dc['{block_name}']: shape={arr_stats['shape']} "
+                f"NaN={arr_stats['nan_count']}/{arr.size} ({arr_stats['nan_frac']:.2%}) "
+                f"min={arr_stats['min']:.3e} max={arr_stats['max']:.3e} "
+                f"mean={arr_stats['mean']:.3e}"
+            )
+
+        de_L_dc_list = []
+        for block in blocks:
+            if block.name in de_L_dc_map:
+                arr = de_L_dc_map[block.name]
+                if arr.ndim == 2:
+                    arr = arr.reshape(arr.shape[0], arr.shape[1], 1)
+                else:
+                    arr = arr.reshape(arr.shape[0], arr.shape[1], int(np.prod(arr.shape[2:])))
+                de_L_dc_list.append(arr)
+        dE_matrix = np.concatenate(de_L_dc_list, axis=2)[num_mcmc_warmup_steps:]  # (M, nw, K)
+        if chosen_param_index is not None:
+            dE_matrix = dE_matrix[:, :, chosen_param_index]
+
+        # Diagnostics: dE_matrix
+        dE_matrix_stats = self._safe_stats(dE_matrix, "dE_matrix")
+        logger.devel(
+            f"[get_aH] dE_matrix: shape={dE_matrix_stats['shape']} "
+            f"NaN={dE_matrix_stats['nan_count']}/{dE_matrix.size} ({dE_matrix_stats['nan_frac']:.2%}) "
+            f"min={dE_matrix_stats['min']:.3e} max={dE_matrix_stats['max']:.3e} "
+            f"mean={dE_matrix_stats['mean']:.3e}"
+        )
+
+        # ---- flatten (M, nw) -> (N,) ----
+        w_flat = np.ravel(w_L)  # (N,)
+        e_flat = np.ravel(e_L)  # (N,)
+        N = w_flat.shape[0]
+        K = O_matrix.shape[2]
+        O_flat = O_matrix.reshape(N, K)  # (N, K)
+        dE_flat = dE_matrix.reshape(N, K)  # (N, K)
+
+        # Diagnostics: dE_flat
+        dE_flat_stats = self._safe_stats(dE_flat, "dE_flat")
+        logger.devel(
+            f"[get_aH] dE_flat: shape={dE_flat_stats['shape']} "
+            f"NaN={dE_flat_stats['nan_count']}/{dE_flat.size} ({dE_flat_stats['nan_frac']:.2%}) "
+            f"min={dE_flat_stats['min']:.3e} max={dE_flat_stats['max']:.3e} "
+            f"mean={dE_flat_stats['mean']:.3e} std={dE_flat_stats['std']:.3e}"
+        )
+
+        # ---- MPI-aware weighted averages ----
+        total_w_local = np.sum(w_flat)
+        we_local = np.dot(w_flat, e_flat)
+        wO_local = np.einsum("i,ik->k", w_flat, O_flat)  # (K,)
+        wdE_local = np.einsum("i,ik->k", w_flat, dE_flat)  # (K,)
+
+        # Diagnostics: wdE_local (BEFORE MPI Allreduce)
+        wdE_local_stats = self._safe_stats(wdE_local, "wdE_local")
+        logger.devel(
+            f"[get_aH] wdE_local (BEFORE Allreduce): shape={wdE_local_stats['shape']} "
+            f"NaN={wdE_local_stats['nan_count']}/{wdE_local.size} ({wdE_local_stats['nan_frac']:.2%}) "
+            f"min={wdE_local_stats['min']:.3e} max={wdE_local_stats['max']:.3e} "
+            f"mean={wdE_local_stats['mean']:.3e} std={wdE_local_stats['std']:.3e}"
+        )
+
+        total_w = mpi_comm.allreduce(total_w_local, op=MPI.SUM)
+
+        we_global = np.empty(1)
+        wO_global = np.empty(K)
+        wdE_global = np.empty(K)
+        mpi_comm.Allreduce([np.array([we_local]), MPI.DOUBLE], [we_global, MPI.DOUBLE], op=MPI.SUM)
+        mpi_comm.Allreduce([wO_local, MPI.DOUBLE], [wO_global, MPI.DOUBLE], op=MPI.SUM)
+        mpi_comm.Allreduce([wdE_local, MPI.DOUBLE], [wdE_global, MPI.DOUBLE], op=MPI.SUM)
+
+        # Diagnostics: wdE_global (AFTER Allreduce)
+        wdE_global_stats = self._safe_stats(wdE_global, "wdE_global")
+        logger.devel(
+            f"[get_aH] wdE_global (AFTER Allreduce): shape={wdE_global_stats['shape']} "
+            f"NaN={wdE_global_stats['nan_count']}/{wdE_global.size} ({wdE_global_stats['nan_frac']:.2%}) "
+            f"min={wdE_global_stats['min']:.3e} max={wdE_global_stats['max']:.3e} "
+            f"mean={wdE_global_stats['mean']:.3e} std={wdE_global_stats['std']:.3e}"
+        )
+
+        e_bar = float(we_global[0]) / total_w  # scalar
+        O_bar = wO_global / total_w  # (K,)
+        dE_bar = wdE_global / total_w  # (K,)
+
+        # Diagnostics: dE_bar
+        dE_bar_stats = self._safe_stats(dE_bar, "dE_bar")
+        logger.devel(
+            f"[get_aH] dE_bar: shape={dE_bar_stats['shape']} "
+            f"NaN={dE_bar_stats['nan_count']}/{dE_bar.size} ({dE_bar_stats['nan_frac']:.2%}) "
+            f"min={dE_bar_stats['min']:.3e} max={dE_bar_stats['max']:.3e} "
+            f"mean={dE_bar_stats['mean']:.3e} std={dE_bar_stats['std']:.3e}"
+        )
+
+        # ---- H_0 ----
+        H_0 = e_bar
+
+        # ---- f_k = -2 <w (e_L - E)(O_k - O_bar_k)>  (generalized force) ----
+        dO_flat = O_flat - O_bar[np.newaxis, :]  # (N, K)
+        f_local = -2.0 * np.einsum("i,i,ik->k", w_flat, (e_flat - e_bar), dO_flat)
+        f_global = np.empty(K)
+        mpi_comm.Allreduce([f_local, MPI.DOUBLE], [f_global, MPI.DOUBLE], op=MPI.SUM)
+        f_vec = f_global / total_w  # (K,)
+
+        # ---- H_1 = -1/2 * g^T f ----
+        H_1 = -0.5 * float(np.dot(g, f_vec))
+
+        # ---- S_2 = g^T S g = <w * (g^T dO)^2>_w  (exact, computed from samples) ----
+        # Do NOT use S_2 = g^T f = -2*H_1.  The SR solved (S_scaled + sr_epsilon*I) g_scaled = b,
+        # so  g^T f = g^T S g + sr_epsilon * ||g_scaled||^2.
+        # The sr_epsilon correction term overestimates S_2, making the denominator of
+        # E(gamma) = (H0 + 2*gamma*H1 + gamma^2*H2) / (1 + gamma^2*S2) grow too fast,
+        # which in turn makes the optimal gamma unrealistically small.
+        gdO_flat = dO_flat @ g  # (N,)
+        gSg_local = np.dot(w_flat, gdO_flat**2)
+        gSg_arr = np.empty(1)
+        mpi_comm.Allreduce([np.array([gSg_local]), MPI.DOUBLE], [gSg_arr, MPI.DOUBLE], op=MPI.SUM)
+        S_2 = float(gSg_arr[0]) / total_w
+
+        # ---- K matrix contribution: g^T K g = <w * e_L * (g^T dO)^2>_w ----
+        gKg_local = np.einsum("i,i,i->", w_flat, e_flat, gdO_flat**2)
+        gKg_arr = np.empty(1)
+        mpi_comm.Allreduce([np.array([gKg_local]), MPI.DOUBLE], [gKg_arr, MPI.DOUBLE], op=MPI.SUM)
+        gKg = float(gKg_arr[0]) / total_w
+
+        # ---- B matrix contribution: g^T B g = <w * (g^T dO) * (g^T (dE - dE_bar))>_w ----
+        ddE_flat = dE_flat - dE_bar[np.newaxis, :]  # (N, K)
+        gdE_flat = ddE_flat @ g  # (N,)
+        gBg_local = np.einsum("i,i,i->", w_flat, gdO_flat, gdE_flat)
+        gBg_arr = np.empty(1)
+        mpi_comm.Allreduce([np.array([gBg_local]), MPI.DOUBLE], [gBg_arr, MPI.DOUBLE], op=MPI.SUM)
+        gBg = float(gBg_arr[0]) / total_w
+
+        # ---- H_2 = g^T (B + K) g ----
+        H_2 = gBg + gKg
+
+        logger.info(f"aSR: H_0 = {H_0:.6f}, H_1 = {H_1:.6f}, H_2 = {H_2:.6f}, S_2 = {S_2:.6f}")
+        return H_0, H_1, H_2, S_2
+
+    @staticmethod
+    def compute_asr_gamma(H_0: float, H_1: float, H_2: float, S_2: float) -> float:
+        r"""Solve for the optimal gamma in the accelerated SR energy minimization.
+
+        Finds :math:`\\gamma` satisfying
+
+        .. math::
+
+            \\frac{\\partial E_{\\alpha+\\gamma g}}{\\partial \\gamma} = 0,
+
+        where :math:`E(\\gamma) = (H_0 + 2\\gamma H_1 + \\gamma^2 H_2) / (1 + \\gamma^2 S_2)`.
+
+        Setting the derivative to zero yields the quadratic
+
+        .. math::
+
+            -H_1 S_2 \\gamma^2 + (H_2 - H_0 S_2)\\gamma + H_1 = 0,
+
+        whose solution is
+
+        .. math::
+
+            \\gamma = \\frac{H_0 S_2 - H_2 \\pm
+                     \\sqrt{(H_2 - H_0 S_2)^2 + 4 H_1^2 S_2}}
+                    {-2 H_1 S_2}.
+
+        The positive root is returned; if neither root is positive a warning is
+        logged and the root with larger absolute value is returned.
+
+        Args:
+            H_0 (float): Current energy :math:`E_{\\alpha}`.
+            H_1 (float): :math:`H_1 = -\\tfrac{1}{2} g^T f`.
+            H_2 (float): :math:`H_2 = g^T (B+K) g`.
+            S_2 (float): :math:`S_2 = g^T S g = \\langle w (g^T \\delta O)^2 \\rangle_w`.
+
+        Returns:
+            float: Optimal :math:`\\gamma`.
+        """
+        B = H_2 - H_0 * S_2  # coefficient of gamma in the quadratic
+        discriminant = B**2 + 4.0 * H_1**2 * S_2
+        if discriminant < 0.0:
+            logger.warning(f"aSR: discriminant is negative ({discriminant:.3e}); setting to 0.")
+            discriminant = 0.0
+        denom = -2.0 * H_1 * S_2
+        sqrt_d = np.sqrt(discriminant)
+        gamma_plus = (-B + sqrt_d) / denom
+        gamma_minus = (-B - sqrt_d) / denom
+
+        logger.info(f"aSR: gamma+ = {gamma_plus:.6f}, gamma- = {gamma_minus:.6f}")
+
+        # Choose the positive root.
+        if gamma_plus > 0.0 and gamma_minus <= 0.0:
+            gamma = gamma_plus
+        elif gamma_minus > 0.0 and gamma_plus <= 0.0:
+            gamma = gamma_minus
+        elif gamma_plus > 0.0 and gamma_minus > 0.0:
+            # Both positive: prefer the smaller one (conservative step).
+            gamma = min(gamma_plus, gamma_minus)
+            logger.warning(
+                f"aSR: both roots positive (gamma+={gamma_plus:.6f}, gamma-={gamma_minus:.6f}); "
+                f"using smaller root gamma={gamma:.6f}."
+            )
+        else:
+            # Neither positive: fall back to the root with larger absolute value.
+            gamma = gamma_plus if abs(gamma_plus) >= abs(gamma_minus) else gamma_minus
+            logger.warning(
+                f"aSR: no positive root (gamma+={gamma_plus:.6f}, gamma-={gamma_minus:.6f}); using gamma={gamma:.6f}."
+            )
+
+        logger.info(f"aSR: selected gamma = {gamma:.6f}")
+        return gamma
+
     def run_optimize(
         self,
         num_mcmc_steps: int = 100,
@@ -1837,7 +2368,7 @@ class MCMC:
                     convert MO->AO for MCMC/gradient evaluation, update AO parameters, then project AO->MO
                     with fixed ``num_eigenvectors=num_electron_dn`` to finish the step.
             num_param_opt (int, optional): Limit parameters updated (ranked by ``|f|/|std f|``); ``0`` means all. Defaults to 0.
-            optimizer_kwargs (dict | None, optional): Optimizer configuration. ``method='sr'`` uses SR keys (``delta``, ``epsilon``, ``cg_flag``, ``cg_max_iter``, ``cg_tol``); other ``method`` names are optax constructors (e.g., ``"adam"``) and receive remaining keys.
+            optimizer_kwargs (dict | None, optional): Optimizer configuration. ``method='sr'`` uses SR keys (``delta``, ``epsilon``, ``cg_flag``, ``cg_max_iter``, ``cg_tol``, ``adaptive_learning_rate``); ``adaptive_learning_rate=True`` enables accelerated SR (aSR) gamma scaling and requires ``compute_log_WF_param_deriv=True`` and ``comput_e_L_param_deriv=True``; other ``method`` names are optax constructors (e.g., ``"adam"``) and receive remaining keys.
 
         Notes:
             - Persists optax optimizer state across calls when method and hyperparameters match.
@@ -1859,6 +2390,8 @@ class MCMC:
             raise TypeError("optimizer_kwargs['method'] must be a string if provided.")
         optimizer_mode = optimizer_mode.lower()
         use_sr = optimizer_mode == "sr"
+        sr_adaptive_lr = bool(optimizer_kwargs.get("adaptive_learning_rate", False))
+        use_sr_adaptive_lr = use_sr and sr_adaptive_lr  # aSR gamma scaling
         optax_name = optimizer_mode if not use_sr else None
         sr_delta = float(optimizer_kwargs.get("delta", 1.0e-3))
         sr_epsilon = float(optimizer_kwargs.get("epsilon", 1.0e-3))
@@ -1868,7 +2401,7 @@ class MCMC:
         optax_kwargs = {
             k: v
             for k, v in optimizer_kwargs.items()
-            if k not in {"delta", "epsilon", "cg_flag", "cg_max_iter", "cg_tol", "cg_x0_strategy"}
+            if k not in {"delta", "epsilon", "cg_flag", "cg_max_iter", "cg_tol", "cg_x0_strategy", "adaptive_learning_rate"}
         }
 
         optax_tx = None
@@ -1901,6 +2434,7 @@ class MCMC:
                 "cg_flag": sr_cg_flag,
                 "cg_max_iter": sr_cg_max_iter,
                 "cg_tol": sr_cg_tol,
+                "adaptive_learning_rate": sr_adaptive_lr,
             }
 
         if use_sr:
@@ -1937,6 +2471,11 @@ class MCMC:
         logger.info(f"The chosen optimizer is '{optimizer_mode}'.")
         if use_sr:
             logger.info("  The homemade 'SR (aka natural gradient)' optimizer is used for wavefunction optimization.")
+            if use_sr_adaptive_lr:
+                logger.info(
+                    "  adaptive_learning_rate=True: optimal gamma is computed via accelerated SR (aSR) and applied to theta."
+                )
+                logger.info("  Requires compute_log_WF_param_deriv=True and comput_e_L_param_deriv=True.")
             logger.info("  Hyperparameters: %s", ", ".join(f"{k}={v}" for k, v in sorted(optimizer_hparams.items())))
             logger.info("")
         else:
@@ -2052,6 +2591,16 @@ class MCMC:
         # timer
         vmcopt_total_start = time.perf_counter()
 
+        # timer_counter
+        timer_opt_total = 0.0
+        timer_mcmc_run = 0.0
+        timer_get_E = 0.0
+        timer_get_gF = 0.0
+        timer_optimizer = 0.0
+        timer_param_update = 0.0
+        timer_MPI_barrier = 0.0
+        num_opt_done = 0
+
         sr_cg_warm_start_primal = None
         sr_cg_warm_start_dual = None
 
@@ -2080,11 +2629,93 @@ class MCMC:
                 overlap_up = 0.5 * (overlap_up + overlap_up.T)
                 overlap_dn = 0.5 * (overlap_dn + overlap_dn.T)
 
-                p_matrix_cols_up = mo_coefficients_up[:num_orb_projection, :].T
-                p_matrix_rows_dn = mo_coefficients_dn[:num_orb_projection, :]
-                left_projector = (overlap_up @ p_matrix_cols_up) @ p_matrix_cols_up.T
-                right_projector = (p_matrix_rows_dn @ overlap_dn) @ p_matrix_rows_dn.T
-                lambda_projectors = (left_projector, right_projector)
+                p_matrix_cols_up = mo_coefficients_up[:num_orb_projection, :].T  # (n_AO, n_dn)
+                p_matrix_cols_dn = mo_coefficients_dn[:num_orb_projection, :].T  # (n_AO, n_dn)
+
+                # Build S^{1/2} and S^{-1/2} via eigendecomposition
+                eigvals_up, eigvecs_up = np.linalg.eigh(overlap_up)
+                eigvals_dn, eigvecs_dn = np.linalg.eigh(overlap_dn)
+                sqrt_overlap_up = eigvecs_up @ np.diag(np.sqrt(eigvals_up)) @ eigvecs_up.T
+                sqrt_overlap_dn = eigvecs_dn @ np.diag(np.sqrt(eigvals_dn)) @ eigvecs_dn.T
+                inv_sqrt_overlap_up = eigvecs_up @ np.diag(1.0 / np.sqrt(eigvals_up)) @ eigvecs_up.T
+                inv_sqrt_overlap_dn = eigvecs_dn @ np.diag(1.0 / np.sqrt(eigvals_dn)) @ eigvecs_dn.T
+
+                # Orthogonal-basis MO coefficients: C' = S^{1/2} C
+                orth_mo_up = sqrt_overlap_up @ p_matrix_cols_up  # (n_AO, n_dn)
+                orth_mo_dn = sqrt_overlap_dn @ p_matrix_cols_dn  # (n_AO, n_dn)
+
+                # Orthogonal projectors (symmetric, idempotent in Euclidean metric)
+                # L' = S^{1/2} C_up C_up^T S^{1/2},  R' = S^{1/2} C_dn C_dn^T S^{1/2}
+                left_projector = orth_mo_up @ orth_mo_up.T  # (n_AO, n_AO)
+                right_projector = orth_mo_dn @ orth_mo_dn.T  # (n_AO, n_AO)
+
+                lambda_projectors = (left_projector, right_projector, inv_sqrt_overlap_up, inv_sqrt_overlap_dn)
+                logger.devel(
+                    "opt_with_projected_MOs: P_up.shape=%s, P_dn.shape=%s, S_up.shape=%s, S_dn.shape=%s",
+                    p_matrix_cols_up.shape,
+                    p_matrix_cols_dn.shape,
+                    overlap_up.shape,
+                    overlap_dn.shape,
+                )
+
+                # ------------------------------------------------------------------
+                # DEVEL: orthogonal complement-projector diagnostics  (I - L') and (I - R')
+                # ------------------------------------------------------------------
+                _I = np.eye(left_projector.shape[0], dtype=np.float64)
+                _comp_L = _I - left_projector  # (I - L')  — symmetric
+                _comp_R = _I - right_projector  # (I - R')  — symmetric
+
+                # basic statistics
+                logger.devel(
+                    "[projector] (I - L'): shape=%s  min=%.6e  max=%.6e  Frobenius=%.6e",
+                    _comp_L.shape,
+                    float(np.min(_comp_L)),
+                    float(np.max(_comp_L)),
+                    float(np.linalg.norm(_comp_L, "fro")),
+                )
+                logger.devel(
+                    "[projector] (I - R'): shape=%s  min=%.6e  max=%.6e  Frobenius=%.6e",
+                    _comp_R.shape,
+                    float(np.min(_comp_R)),
+                    float(np.max(_comp_R)),
+                    float(np.linalg.norm(_comp_R, "fro")),
+                )
+                # symmetry check
+                _sym_err_L = float(np.linalg.norm(left_projector - left_projector.T, "fro"))
+                _sym_err_R = float(np.linalg.norm(right_projector - right_projector.T, "fro"))
+                logger.devel(
+                    "[projector] symmetry ||L' - L'^T||_F = %.6e,  ||R' - R'^T||_F = %.6e",
+                    _sym_err_L,
+                    _sym_err_R,
+                )
+
+                # idempotency check: (I - L')^2 == (I - L')  and  (I - R')^2 == (I - R')
+                _comp_L_sq = _comp_L @ _comp_L
+                _comp_R_sq = _comp_R @ _comp_R
+                _idem_err_L = float(np.linalg.norm(_comp_L_sq - _comp_L, "fro"))
+                _idem_err_R = float(np.linalg.norm(_comp_R_sq - _comp_R, "fro"))
+                _idem_ok_L = "OK" if _idem_err_L < 1.0e-10 else "FAIL"
+                _idem_ok_R = "OK" if _idem_err_R < 1.0e-10 else "FAIL"
+                logger.devel(
+                    "[projector] idempotency ||(I-L')^2 - (I-L')||_F = %.6e  [%s]",
+                    _idem_err_L,
+                    _idem_ok_L,
+                )
+                logger.devel(
+                    "[projector] idempotency ||(I-R')^2 - (I-R')||_F = %.6e  [%s]",
+                    _idem_err_R,
+                    _idem_ok_R,
+                )
+                # spectral norm of complement projector (should be exactly 1 for orthogonal projector)
+                _specnorm_L = float(np.linalg.norm(_comp_L, 2))
+                _specnorm_R = float(np.linalg.norm(_comp_R, 2))
+                logger.devel(
+                    "[projector] spectral norm ||(I-L')||_2 = %.6e,  ||(I-R')||_2 = %.6e  (should be 1.0)",
+                    _specnorm_L,
+                    _specnorm_R,
+                )
+                # clean up temporaries
+                del _I, _comp_L, _comp_R, _comp_L_sq, _comp_R_sq
 
                 geminal_ao = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_current)
                 wavefunction_data_ao = type(wavefunction_data_step)(
@@ -2100,10 +2731,16 @@ class MCMC:
                 logger.info("opt_with_projected_MOs=True: converted current MO geminal to AO for this optimization step.")
 
             # run MCMC
+            start = time.perf_counter()
             self.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
+            end = time.perf_counter()
+            timer_mcmc_run += end - start
 
             # get E
+            start = time.perf_counter()
             E, E_std, _, _ = self.get_E(num_mcmc_warmup_steps=num_mcmc_warmup_steps, num_mcmc_bin_blocks=num_mcmc_bin_blocks)
+            end = time.perf_counter()
+            timer_get_E += end - start
             logger.info("Total Energy before update of wavefunction.")
             logger.info("-" * num_sep_line)
             logger.info(f"E = {E:.5f} +- {E_std:.5f} Ha")
@@ -2143,6 +2780,7 @@ class MCMC:
                     raise ValueError("The number of variational parameters changed after initializing the optax optimizer.")
 
             # get f and f_std (generalized forces)
+            start = time.perf_counter()
             f, f_std = self.get_gF(
                 num_mcmc_warmup_steps=num_mcmc_warmup_steps,
                 num_mcmc_bin_blocks=num_mcmc_bin_blocks,
@@ -2151,9 +2789,11 @@ class MCMC:
                 lambda_projectors=lambda_projectors,
                 num_orb_projection=num_orb_projection,
             )
+            end = time.perf_counter()
+            timer_get_gF += end - start
 
             if mpi_rank == 0:
-                logger.debug(f"shape of f = {f.shape}.")
+                logger.devel(f"shape of f = {f.shape}.")
                 logger.devel(f"f_std.shape = {f_std.shape}.")
                 tol = np.finfo(f_std.dtype).eps if np.issubdtype(f_std.dtype, np.floating) else 0.0
                 finite_mask = np.isfinite(f_std) & (np.abs(f_std) > tol)
@@ -2171,6 +2811,23 @@ class MCMC:
                         f"Optimizing only {num_param_opt} variational parameters with the largest signal to noise ratios of f."
                     )
                     signal_to_noise_f_max_indices = np.argsort(signal_to_noise_f)[::-1][:num_param_opt]
+                    # Identify which block each selected parameter belongs to
+                    _sel_info = []
+                    for _idx in signal_to_noise_f_max_indices:
+                        _block_name = "unknown"
+                        _local_idx = int(_idx)
+                        for _blk, _s, _e in offsets:
+                            if _s <= _idx < _e:
+                                _block_name = _blk.name
+                                _local_idx = int(_idx - _s)
+                                break
+                        _sel_info.append(
+                            f"  flat={_idx} block={_block_name} local={_local_idx} "
+                            f"|f|/std={signal_to_noise_f[_idx]:.3f} f={f[_idx]:.6f}"
+                        )
+                    logger.debug("Selected %d parameters for optimization (by |f|/|std f|):", num_param_opt)
+                    for _line in _sel_info:
+                        logger.debug(_line)
                 else:
                     logger.info("Optimizing all variational parameters.")
                     signal_to_noise_f_max_indices = np.arange(signal_to_noise_f.size)
@@ -2181,6 +2838,10 @@ class MCMC:
             signal_to_noise_f = mpi_comm.bcast(signal_to_noise_f, root=0)
             signal_to_noise_f_max_indices = mpi_comm.bcast(signal_to_noise_f_max_indices, root=0)
 
+            #############################
+            # in-house SR optimizer
+            #############################
+            start = time.perf_counter()
             if use_sr:
                 logger.info("Computing the natural gradient, i.e., {S+epsilon*I}^{-1}*f")
                 epsilon = sr_epsilon
@@ -2225,6 +2886,21 @@ class MCMC:
                 O_bar = total_Ow / total_weight  # average observables, shape: (num_param,)
                 e_L_bar = total_Ew / total_weight  # average energy, shape: scalar
 
+                # ------------------------------------------------------------------
+                # DEBUG: global averages sanity
+                # ------------------------------------------------------------------
+                _ob_nan = int(np.sum(~np.isfinite(O_bar)))
+                _ob_fin = O_bar[np.isfinite(O_bar)]
+                logger.devel(
+                    "[SR averages] total_weight=%.6e  e_L_bar=%.6f  O_bar: NaN or Inf=%d/%d  min=%.3e  max=%.3e",
+                    float(total_weight),
+                    float(e_L_bar),
+                    _ob_nan,
+                    O_bar.size,
+                    float(np.min(_ob_fin)) if _ob_fin.size else float("nan"),
+                    float(np.max(_ob_fin)) if _ob_fin.size else float("nan"),
+                )
+
                 # compute the following variables
                 #     X_{i,k} \equiv np.sqrt(w_i) O_{i, k} / np.sqrt({\sum_{i} w_i})
                 #     F_i \equiv -2.0 * np.sqrt(w_i) (e_L_{i} - E) / np.sqrt({\sum_{i} w_i})
@@ -2236,8 +2912,36 @@ class MCMC:
                     -2.0 * np.sqrt(w_L_local) * (e_L_local - e_L_bar) / np.sqrt(total_weight)
                 )  # shape (num_mcmc * num_walker, )
 
-                logger.debug(f"X_local.shape = {X_local.shape}.")
-                logger.debug(f"F_local.shape = {F_local.shape}.")
+                # ------------------------------------------------------------------
+                # DEVEL: X_local and F_local health check
+                # ------------------------------------------------------------------
+                _x_nan = int(np.sum(~np.isfinite(X_local)))
+                _f_nan = int(np.sum(~np.isfinite(F_local)))
+                _x_fin = X_local[np.isfinite(X_local)]
+                _f_fin = F_local[np.isfinite(F_local)]
+                logger.devel(
+                    "[SR X/F | rank=%d] X_local: shape=%s  NaN or Inf=%d/%d  min=%.3e  max=%.3e  std=%.3e",
+                    mpi_rank,
+                    X_local.shape,
+                    _x_nan,
+                    X_local.size,
+                    float(np.min(_x_fin)) if _x_fin.size else float("nan"),
+                    float(np.max(_x_fin)) if _x_fin.size else float("nan"),
+                    float(np.std(_x_fin)) if _x_fin.size else float("nan"),
+                )
+                logger.devel(
+                    "[SR X/F | rank=%d] F_local: shape=%s  NaN or Inf=%d/%d  min=%.3e  max=%.3e  std=%.3e",
+                    mpi_rank,
+                    F_local.shape,
+                    _f_nan,
+                    F_local.size,
+                    float(np.min(_f_fin)) if _f_fin.size else float("nan"),
+                    float(np.max(_f_fin)) if _f_fin.size else float("nan"),
+                    float(np.std(_f_fin)) if _f_fin.size else float("nan"),
+                )
+
+                logger.devel(f"X_local.shape = {X_local.shape}.")
+                logger.devel(f"F_local.shape = {F_local.shape}.")
 
                 # compute X_w@F
                 X_F_local = X_local @ F_local  # shape (num_param, )
@@ -2246,7 +2950,7 @@ class MCMC:
 
                 # compute f_argmax
                 f_argmax = np.argmax(np.abs(X_F))
-                logger.debug(
+                logger.devel(
                     f"Max dot(X, F) = {X_F[f_argmax]:.3f} Ha/a.u. should be equal to Max f = {f[f_argmax]:.3f} Ha/a.u."
                 )
 
@@ -2256,6 +2960,21 @@ class MCMC:
                 diag_S = np.empty(diag_S_local.shape, dtype=np.float64)
                 mpi_comm.Allreduce(diag_S_local, diag_S, op=MPI.SUM)
                 logger.info(f"max. and min. diag_S = {np.max(diag_S)}, {np.min(diag_S)}.")
+                # ------------------------------------------------------------------
+                # DEVEL: diag_S detail before clamping
+                # ------------------------------------------------------------------
+                _ds_nan = int(np.sum(~np.isfinite(diag_S)))
+                _ds_neg = int(np.sum(diag_S <= 0))
+                _ds_tiny = int(np.sum((diag_S > 0) & (diag_S < 1e-30)))
+                logger.devel(
+                    "[SR diag_S] NaN or Inf=%d  non-positive=%d  tiny(<1e-30)=%d  min=%.3e  max=%.3e  median=%.3e",
+                    _ds_nan,
+                    _ds_neg,
+                    _ds_tiny,
+                    float(np.min(diag_S)),
+                    float(np.max(diag_S)),
+                    float(np.median(diag_S)),
+                )
                 diag_eps = np.finfo(diag_S.dtype).tiny
                 diag_S = np.where(np.isfinite(diag_S) & (diag_S > diag_eps), diag_S, diag_eps)
                 X_local = X_local / np.sqrt(diag_S)[:, np.newaxis]  # shape (num_param, num_mcmc * num_walker)
@@ -2273,16 +2992,16 @@ class MCMC:
 
                 if num_params < num_samples_total:
                     # if True:
-                    logger.debug("X is a wide matrix. Proceed w/o the push-through identity.")
-                    logger.debug("theta = (S+epsilon*I)^{-1}*f = (X * X^T + epsilon*I)^{-1} * X F...")
+                    logger.devel("X is a wide matrix. Proceed w/o the push-through identity.")
+                    logger.devel("theta = (S+epsilon*I)^{-1}*f = (X * X^T + epsilon*I)^{-1} * X F...")
                     if not sr_cg_flag:
                         logger.info("Using the direct solver for the inverse of S.")
-                        logger.debug(
+                        logger.devel(
                             f"Estimated X_local @ X_local.T.bytes per MPI = {X_local.shape[0] ** 2 * X_local.dtype.itemsize / (2**30)} gib."
                         )
                         # compute local sum of X * X^T
                         X_X_T_local = X_local @ X_local.T
-                        logger.debug(f"X_X_T_local.shape = {X_X_T_local.shape}.")
+                        logger.devel(f"X_X_T_local.shape = {X_X_T_local.shape}.")
                         # compute global sum of X * X^T
                         if mpi_rank == 0:
                             X_X_T = np.empty(X_X_T_local.shape, dtype=np.float64)
@@ -2291,7 +3010,7 @@ class MCMC:
                         mpi_comm.Reduce(X_X_T_local, X_X_T, op=MPI.SUM, root=0)
                         # compute local sum of X @ F
                         X_F_local = X_local @ F_local  # shape (num_param, )
-                        logger.debug(f"X_F_local.shape = {X_F_local.shape}.")
+                        logger.devel(f"X_F_local.shape = {X_F_local.shape}.")
                         # compute global sum of X @ F
                         if mpi_rank == 0:
                             X_F = np.empty(X_F_local.shape, dtype=np.float64)
@@ -2300,8 +3019,8 @@ class MCMC:
                         mpi_comm.Reduce(X_F_local, X_F, op=MPI.SUM, root=0)
                         # compute theta
                         if mpi_rank == 0:
-                            logger.debug(f"X @ X.T.shape = {X_X_T.shape}.")
-                            logger.debug(f"X @ F.shape = {X_F.shape}.")
+                            logger.devel(f"X @ X.T.shape = {X_X_T.shape}.")
+                            logger.devel(f"X @ F.shape = {X_F.shape}.")
                             # (X X^T + eps*I) x = X F ->solve-> x = (X  X^T + eps*I)^{-1} X F
                             X_X_T[np.diag_indices_from(X_X_T)] += epsilon
                             X_X_T_inv_X_F = scipy.linalg.solve(X_X_T, X_F, assume_a="sym")
@@ -2312,7 +3031,7 @@ class MCMC:
                         # Broadcast theta_all to all ranks
                         theta_all = mpi_comm.bcast(theta_all, root=0)
                         logger.devel(f"[new] theta_all (w/o the push through identity) = {theta_all}.")
-                        logger.debug(
+                        logger.devel(
                             f"[new] theta_all (w/o the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
                         )
                     else:
@@ -2345,19 +3064,19 @@ class MCMC:
                             sr_cg_tol,
                         )
                         sr_cg_warm_start_primal = np.array(theta_all, copy=True)
-                        logger.debug(f"  [CG] Final residual: {final_residual:.3e}")
+                        logger.devel(f"  [CG] Final residual: {final_residual:.3e}")
                         logger.info(f"  [CG] Converged in {num_steps} steps")
                         if num_steps == sr_cg_max_iter:
                             logger.info("  [CG] Conjugate gradient did not converge!!")
                         logger.devel(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
-                        logger.debug(
+                        logger.devel(
                             f"[new/cg] theta_all (w/o the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
                         )
 
                 else:  # num_params >= num_samples:
                     # if True:
-                    logger.debug("X is a tall matrix. Proceed w/ the push-through identity.")
-                    logger.debug("theta = (S+epsilon*I)^{-1}*f = X(X^T * X + epsilon*I)^{-1} * F...")
+                    logger.devel("X is a tall matrix. Proceed w/ the push-through identity.")
+                    logger.devel("theta = (S+epsilon*I)^{-1}*f = X(X^T * X + epsilon*I)^{-1} * F...")
 
                     # Get local shapes
                     N, M = X_local.shape
@@ -2398,16 +3117,16 @@ class MCMC:
                     # Rearrange into final 2D arrays of shape (N_local, M * P)
                     #    by stacking each source’s M columns side by side
                     X_re_local = np.hstack([buf_X[i] for i in range(P)])  # shape (num_param/P, num_mcmc * num_walker * P)
-                    logger.debug(f"X_re_local.shape = {X_re_local.shape}.")
+                    logger.devel(f"X_re_local.shape = {X_re_local.shape}.")
 
                     if not sr_cg_flag:
                         logger.info("Using the direct solver for the inverse of S.")
-                        logger.debug(
+                        logger.devel(
                             f"Estimated X_local.T @ X_local.bytes per MPI = {X_re_local.shape[1] ** 2 * X_re_local.dtype.itemsize / (2**30)} gib."
                         )
                         # compute local sum of X^T * X
                         X_T_X_local = X_re_local.T @ X_re_local
-                        logger.debug(f"X_T_X_local.shape = {X_T_X_local.shape}.")
+                        logger.devel(f"X_T_X_local.shape = {X_T_X_local.shape}.")
                         # compute global sum of X^T * X
                         if mpi_rank == 0:
                             X_T_X = np.empty(X_T_X_local.shape, dtype=np.float64)
@@ -2419,8 +3138,8 @@ class MCMC:
                         F_list = mpi_comm.reduce(F_local_list, op=MPI.SUM, root=0)
                         if mpi_rank == 0:
                             F = np.array(F_list)
-                            logger.debug(f"X_T_X.shape = {X_T_X.shape}.")
-                            logger.debug(f"F.shape = {F.shape}.")
+                            logger.devel(f"X_T_X.shape = {X_T_X.shape}.")
+                            logger.devel(f"F.shape = {F.shape}.")
                             X_T_X[np.diag_indices_from(X_T_X)] += epsilon
                             # (X^T X_w + eps*I) x = F ->solve-> x = (X^T X_w + eps*I)^{-1} F
                             X_T_X_inv_F = scipy.linalg.solve(X_T_X, F, assume_a="sym")
@@ -2443,7 +3162,7 @@ class MCMC:
                         theta_all = np.empty(theta_all_local.shape, dtype=np.float64)
                         mpi_comm.Allreduce(theta_all_local, theta_all, op=MPI.SUM)
                         logger.devel(f"[new] theta_all (w/ the push through identity) = {theta_all}.")
-                        logger.debug(
+                        logger.devel(
                             f"[new] theta_all (w/ the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
                         )
                     else:
@@ -2486,17 +3205,118 @@ class MCMC:
                         theta_all = np.empty(sum(recvcounts), dtype=theta_local.dtype)
                         mpi_comm.Allgatherv([theta_local, MPI.DOUBLE], [theta_all, (recvcounts, displs), MPI.DOUBLE])
 
-                        logger.debug(f"  [CG] Final residual: {final_residual:.3e}")
+                        logger.devel(f"  [CG] Final residual: {final_residual:.3e}")
                         logger.info(f"  [CG] Converged in {num_steps} steps")
                         if num_steps == sr_cg_max_iter:
                             logger.logger("  [CG] Conjugate gradient did not converge!")
                         logger.devel(f"[new/cg] theta_all (w/o the push through identity) = {theta_all}.")
-                        logger.debug(
+                        logger.devel(
                             f"[new/cg] theta_all (w/ the push through identity): min, max = {np.min(theta_all)}, {np.max(theta_all)}."
                         )
 
                 # theta, back to the original scale
                 theta_all = theta_all / np.sqrt(diag_S)
+
+                # ------------------------------------------------------------------
+                # DEVEL: theta_all after scale-back — key NaN diagnosis point
+                # ------------------------------------------------------------------
+                _t_nan = int(np.sum(~np.isfinite(theta_all)))
+                _t_fin = theta_all[np.isfinite(theta_all)]
+                _sqrt_ds = np.sqrt(diag_S)
+                _sds_nan = int(np.sum(~np.isfinite(_sqrt_ds)))
+                _sds_zero = int(np.sum(_sqrt_ds == 0.0))
+                logger.devel(
+                    "[SR theta_all] After /sqrt(diag_S): NaN or Inf=%d/%d  min=%.3e  max=%.3e  norm=%.3e",
+                    _t_nan,
+                    theta_all.size,
+                    float(np.min(_t_fin)) if _t_fin.size else float("nan"),
+                    float(np.max(_t_fin)) if _t_fin.size else float("nan"),
+                    float(np.linalg.norm(_t_fin)) if _t_fin.size else float("nan"),
+                )
+                logger.devel(
+                    "[SR theta_all] sqrt(diag_S): NaN or Inf=%d  exact-zero=%d  min=%.3e  max=%.3e",
+                    _sds_nan,
+                    _sds_zero,
+                    float(np.min(_sqrt_ds)),
+                    float(np.max(_sqrt_ds)),
+                )
+
+                # ------------------------------------------------------------------
+                # DEVEL: per-block f and theta comparison
+                #   This enables side-by-side comparison of projected vs unprojected runs.
+                # ------------------------------------------------------------------
+                for _blk, _s, _e in offsets:
+                    _f_blk = f[_s:_e]
+                    _t_blk = theta_all[_s:_e]
+                    _f_fin = _f_blk[np.isfinite(_f_blk)]
+                    _t_fin = _t_blk[np.isfinite(_t_blk)]
+                    logger.devel(
+                        "[SR per-block] block=%-16s size=%5d  "
+                        "f: min=%+.3e max=%+.3e norm=%.3e  "
+                        "theta: min=%+.3e max=%+.3e norm=%.3e",
+                        _blk.name,
+                        _blk.size,
+                        float(np.min(_f_fin)) if _f_fin.size else float("nan"),
+                        float(np.max(_f_fin)) if _f_fin.size else float("nan"),
+                        float(np.linalg.norm(_f_fin)) if _f_fin.size else float("nan"),
+                        float(np.min(_t_fin)) if _t_fin.size else float("nan"),
+                        float(np.max(_t_fin)) if _t_fin.size else float("nan"),
+                        float(np.linalg.norm(_t_fin)) if _t_fin.size else float("nan"),
+                    )
+
+                # ------------------------------------------------------------------
+                # Back-transform theta from orthogonal basis to AO basis
+                # for the lambda_matrix block.
+                #   paired:   θ_AO = S^{-1/2}_up @ θ'_orth @ S^{-1/2}_dn
+                #   unpaired: θ_AO = S^{-1/2}_up @ θ'_orth
+                # ------------------------------------------------------------------
+                if lambda_projectors is not None and len(lambda_projectors) == 4:
+                    _, _, _inv_sqrt_up, _inv_sqrt_dn = lambda_projectors
+                    for _blk, _s, _e in offsets:
+                        if _blk.name == "lambda_matrix":
+                            _theta_mat = theta_all[_s:_e].reshape(_blk.shape)
+                            _n_paired = _inv_sqrt_dn.shape[0]
+                            _theta_paired = _theta_mat[:, :_n_paired]
+                            _theta_unpaired = _theta_mat[:, _n_paired:]
+                            # paired: two-sided back-transform
+                            _theta_paired_ao = _inv_sqrt_up @ _theta_paired @ _inv_sqrt_dn
+                            # unpaired: left-only back-transform
+                            _theta_unpaired_ao = _inv_sqrt_up @ _theta_unpaired
+                            _theta_ao = np.hstack((_theta_paired_ao, _theta_unpaired_ao))
+                            theta_all[_s:_e] = _theta_ao.ravel()
+                            logger.devel(
+                                "[SR theta] Back-transformed lambda block from orthogonal to AO basis. "
+                                "paired: min=%.3e max=%.3e  unpaired: min=%.3e max=%.3e",
+                                float(np.min(_theta_paired_ao)),
+                                float(np.max(_theta_paired_ao)),
+                                float(np.min(_theta_unpaired_ao)) if _theta_unpaired_ao.size else 0.0,
+                                float(np.max(_theta_unpaired_ao)) if _theta_unpaired_ao.size else 0.0,
+                            )
+                            break
+
+                # aSR gamma scaling: compute the optimal gamma using the FULL natural
+                # gradient theta_all BEFORE the num_param_opt mask is applied.
+                # The aSR formula (S_2 = g^T S g = g^T f = -2 H_1) is only valid when
+                # g = S^{-1} f (the full natural gradient).  Passing a sparse masked
+                # theta violates that identity and produces a wrong gamma, so we must
+                # scale theta_all here and let the masking step below reduce it.
+                if use_sr_adaptive_lr:
+                    logger.info("aSR: computing optimal gamma via accelerated SR.")
+                    H_0, H_1, H_2, S_2 = self.get_aH(
+                        g=theta_all,
+                        blocks=blocks,
+                        num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+                        chosen_param_index=chosen_param_index,
+                        lambda_projectors=lambda_projectors,
+                        num_orb_projection=num_orb_projection,
+                    )
+                    gamma = self.compute_asr_gamma(H_0, H_1, H_2, S_2)
+                    logger.info(f"aSR: scaling theta_all by gamma = {gamma:.6f}.")
+                    theta_all = theta_all * gamma
+
+            #############################
+            # optax optimizer
+            #############################
             else:
                 params = jnp.array(flat_param_vector)
                 grads = -jnp.array(f)
@@ -2511,15 +3331,18 @@ class MCMC:
                     optax_param_size=optax_param_size,
                 )
 
-            # Extract only the signal-to-noise ratio maximized parameters
+            end = time.perf_counter()
+            timer_optimizer += end - start
+
+            # Extract only the signal-to-noise ratio maximized parameters.
             theta = np.zeros_like(theta_all)
             theta[signal_to_noise_f_max_indices] = theta_all[signal_to_noise_f_max_indices]
 
             # logger.devel(f"XX for MPI-rank={mpi_rank} is {theta}")
             # logger.devel(f"XX.shape for MPI-rank={mpi_rank} is {theta.shape}")
-            logger.debug(f"theta.size = {theta.size}.")
-            logger.debug(f"np.count_nonzero(theta) = {np.count_nonzero(theta)}.")
-            logger.debug(f"max. and min. of theta are {np.max(theta)} and {np.min(theta)}.")
+            logger.devel(f"theta.size = {theta.size}.")
+            logger.devel(f"np.count_nonzero(theta) = {np.count_nonzero(theta)}.")
+            logger.devel(f"max. and min. of theta are {np.max(theta)} and {np.min(theta)}.")
 
             # Guard against NaN/Inf components before applying the update and
             # report which blocks contain problematic entries.
@@ -2545,7 +3368,7 @@ class MCMC:
                     continue
                 block_norm = float(np.linalg.norm(block_theta))
                 block_max = float(np.max(np.abs(block_theta)))
-                logger.debug(
+                logger.devel(
                     "SR update summary – block=%s size=%d ||theta||_2=%.3e max|theta|=%.3e",
                     block.name,
                     block.size,
@@ -2553,9 +3376,7 @@ class MCMC:
                     block_max,
                 )
 
-            # Apply updates via Wavefunction_data, which in turn delegates
-            # to Jastrow_data and Geminal_data. MCMC does not need to know
-            # internal parameter names such as j1_param or lambda_matrix.
+            start = time.perf_counter()
             logger.info(f"Updating parameters with optimizer '{optimizer_mode}'.")
             logger.devel(f"dX.shape for MPI-rank={mpi_rank} is {theta.shape}")
 
@@ -2563,7 +3384,7 @@ class MCMC:
             coulomb_potential_data = self.hamiltonian_data.coulomb_potential_data
 
             wavefunction_data_old = self.hamiltonian_data.wavefunction_data
-            block_learning_rate = sr_delta if use_sr else 1.0
+            block_learning_rate = sr_delta if (use_sr and not use_sr_adaptive_lr) else 1.0
             wavefunction_data = wavefunction_data_old.apply_block_updates(
                 blocks=blocks,
                 thetas=theta,
@@ -2572,36 +3393,6 @@ class MCMC:
 
             if opt_with_projected_MOs:
                 geminal_ao_current = wavefunction_data.geminal_data
-                if lambda_projectors is not None and num_orb_projection is not None:
-                    left_projector, right_projector = lambda_projectors
-                    lambda_matrix = np.asarray(geminal_ao_current.lambda_matrix, dtype=np.float64)
-                    lambda_paired, lambda_unpaired = np.hsplit(lambda_matrix, [num_orb_projection])
-                    identity_left = np.eye(left_projector.shape[0], dtype=np.float64)
-                    identity_right = np.eye(right_projector.shape[0], dtype=np.float64)
-                    correction = np.einsum(
-                        "ab,bc,cd->ad",
-                        (identity_left - left_projector.T),
-                        lambda_paired,
-                        (identity_right - right_projector.T),
-                    )
-                    corrected_lambda_paired = lambda_paired - correction
-                    corrected_lambda_matrix = np.hstack((corrected_lambda_paired, lambda_unpaired))
-                    corrected_lambda_matrix = corrected_lambda_matrix.astype(
-                        np.asarray(geminal_ao_current.lambda_matrix).dtype,
-                        copy=False,
-                    )
-                    geminal_ao_current = Geminal_data(
-                        num_electron_up=geminal_ao_current.num_electron_up,
-                        num_electron_dn=geminal_ao_current.num_electron_dn,
-                        orb_data_up_spin=geminal_ao_current.orb_data_up_spin,
-                        orb_data_dn_spin=geminal_ao_current.orb_data_dn_spin,
-                        lambda_matrix=corrected_lambda_matrix,
-                    )
-                    wavefunction_data = type(wavefunction_data)(
-                        jastrow_data=wavefunction_data.jastrow_data,
-                        geminal_data=geminal_ao_current,
-                    )
-                    logger.info("opt_with_projected_MOs=True: applied stored L/R projection to AO lambda matrix.")
 
                 geminal_mo_rescaled = Geminal_data.convert_from_AOs_to_MOs(
                     geminal_data=geminal_ao_current,
@@ -2621,6 +3412,16 @@ class MCMC:
             logger.info("Wavefunction has been updated. Optimization loop is done.")
             logger.info("")
             self.hamiltonian_data = hamiltonian_data
+            end = time.perf_counter()
+            timer_param_update += end - start
+
+            # MPI barrier after all optimization operation (timed)
+            start = time.perf_counter()
+            mpi_comm.Barrier()
+            end = time.perf_counter()
+            timer_MPI_barrier += end - start
+
+            num_opt_done += 1
 
             # check max time
             vmcopt_current = time.perf_counter()
@@ -2650,7 +3451,7 @@ class MCMC:
                 logger.info("Break the vmcopt loop.")
                 break
 
-            # MPI barrier after all optimization operation
+            # MPI barrier before checking toml file
             mpi_comm.Barrier()
 
             # check toml file (stop flag)
@@ -2682,6 +3483,7 @@ class MCMC:
                             )
                         hamiltonian_data_to_dump.save_to_hdf5(hamiltonian_data_filename)
                     logger.info("Break the optimization loop.")
+                    logger.info("")
                     break
 
             # dump WF
@@ -2689,6 +3491,7 @@ class MCMC:
                 if (i_opt + 1) % wf_dump_freq == 0 or (i_opt + 1) == num_opt_steps:
                     hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.h5"
                     logger.info(f"Hamiltonian data is dumped as an HDF5 file: {hamiltonian_data_filename}.")
+                    logger.info("")
                     hamiltonian_data_to_dump = self.hamiltonian_data
                     if opt_with_projected_MOs and initial_geminal_is_ao_representation:
                         wf_data = hamiltonian_data_to_dump.wavefunction_data
@@ -2722,9 +3525,46 @@ class MCMC:
                 coulomb_potential_data=self.hamiltonian_data.coulomb_potential_data,
             )
             logger.info("opt_with_projected_MOs=True: projected final AO geminal back to MO representation.")
+            logger.info("")
 
         # update WF opt counter
         self.__i_opt += i_opt + 1
+
+        vmcopt_total_end = time.perf_counter()
+        timer_opt_total += vmcopt_total_end - vmcopt_total_start
+        timer_misc = timer_opt_total - (
+            timer_mcmc_run + timer_get_E + timer_get_gF + timer_optimizer + timer_param_update + timer_MPI_barrier
+        )
+
+        # average among MPI processes
+        ave_timer_opt_total = mpi_comm.allreduce(timer_opt_total, op=MPI.SUM) / mpi_size
+        if num_opt_done > 0:
+            ave_timer_mcmc_run = mpi_comm.allreduce(timer_mcmc_run, op=MPI.SUM) / mpi_size / num_opt_done
+            ave_timer_get_E = mpi_comm.allreduce(timer_get_E, op=MPI.SUM) / mpi_size / num_opt_done
+            ave_timer_get_gF = mpi_comm.allreduce(timer_get_gF, op=MPI.SUM) / mpi_size / num_opt_done
+            ave_timer_optimizer = mpi_comm.allreduce(timer_optimizer, op=MPI.SUM) / mpi_size / num_opt_done
+            ave_timer_param_update = mpi_comm.allreduce(timer_param_update, op=MPI.SUM) / mpi_size / num_opt_done
+            ave_timer_MPI_barrier = mpi_comm.allreduce(timer_MPI_barrier, op=MPI.SUM) / mpi_size / num_opt_done
+            ave_timer_misc = mpi_comm.allreduce(timer_misc, op=MPI.SUM) / mpi_size / num_opt_done
+        else:
+            ave_timer_mcmc_run = 0.0
+            ave_timer_get_E = 0.0
+            ave_timer_get_gF = 0.0
+            ave_timer_optimizer = 0.0
+            ave_timer_param_update = 0.0
+            ave_timer_MPI_barrier = 0.0
+            ave_timer_misc = 0.0
+
+        logger.info(f"Total elapsed time for optimization {num_opt_done} steps. = {ave_timer_opt_total:.2f} sec.")
+        logger.info(f"Elapsed times per optimization step, averaged over {num_opt_done} steps.")
+        logger.info(f"  Time for MCMC run = {ave_timer_mcmc_run:.2f} sec.")
+        logger.info(f"  Time for computing E = {ave_timer_get_E:.2f} sec.")
+        logger.info(f"  Time for computing generalized forces (gF) = {ave_timer_get_gF:.2f} sec.")
+        logger.info(f"  Time for optimizer (SR/optax) = {ave_timer_optimizer:.2f} sec.")
+        logger.info(f"  Time for parameter update = {ave_timer_param_update:.2f} sec.")
+        logger.info(f"  Time for MPI barrier = {ave_timer_MPI_barrier:.2f} sec.")
+        logger.info(f"  Time for misc. (others) = {ave_timer_misc:.2f} sec.")
+        logger.info("")
 
         # remove the toml file
         mpi_comm.Barrier()
@@ -2747,12 +3587,12 @@ class MCMC:
         is wrapped with ``DiffMask`` to avoid tracing disabled parts. Setting this property
         reinitializes internal storage buffers.
         """
-        if self.__comput_param_deriv and not self.__comput_position_deriv:
+        if self.__comput_log_WF_param_deriv and not self.__comput_position_deriv:
             self.__hamiltonian_data = apply_diff_mask(hamiltonian_data, DiffMask(params=True, coords=False))
-        elif not self.__comput_param_deriv and self.__comput_position_deriv:
+        elif not self.__comput_log_WF_param_deriv and self.__comput_position_deriv:
             # self.__hamiltonian_data = Hamiltonian_data.from_base(hamiltonian_data)
             self.__hamiltonian_data = apply_diff_mask(hamiltonian_data, DiffMask(params=False, coords=True))
-        elif not self.__comput_param_deriv and not self.__comput_position_deriv:
+        elif not self.__comput_log_WF_param_deriv and not self.__comput_position_deriv:
             self.__hamiltonian_data = apply_diff_mask(hamiltonian_data, DiffMask(params=False, coords=False))
         else:
             self.__hamiltonian_data = hamiltonian_data
@@ -2840,8 +3680,13 @@ class MCMC:
 
     @property
     def dln_Psi_dc(self) -> dict[str, npt.NDArray]:
-        """Return stored parameter gradients keyed by block name."""
-        return {name: np.array(values) for name, values in self.__stored_param_grads.items()}
+        """Return stored parameter gradients (d ln Psi / dc) keyed by block name."""
+        return {name: np.array(values) for name, values in self.__stored_log_WF_param_grads.items()}
+
+    @property
+    def de_L_dc(self) -> dict[str, npt.NDArray]:
+        """Return stored local energy parameter gradients (de_L / dc) keyed by block name."""
+        return {name: np.array(values) for name, values in self.__stored_e_L_param_grads.items()}
 
     @property
     def comput_position_deriv(self) -> bool:
@@ -2849,13 +3694,20 @@ class MCMC:
         return self.__comput_position_deriv
 
     @property
-    def comput_param_deriv(self) -> bool:
+    def compute_log_WF_param_deriv(self) -> bool:
         """Return the flag for computing the derivatives of E wrt. variational parameters."""
-        return self.__comput_param_deriv
+        return self.__comput_log_WF_param_deriv
+
+    @property
+    def comput_e_L_param_deriv(self) -> bool:
+        """Return the flag for computing the local energy derivatives (de_L/dc) wrt. variational parameters."""
+        return self.__comput_e_L_param_deriv
 
 
 class _MCMC_debug:
     """MCMC with multiple walker class.
+
+    This is for debugging purpose, to check the correctness of the MCMC implementation and the derivatives.
 
     MCMC class. Runing MCMC with multiple walkers. The independent 'num_walkers' MCMCs are
     vectrized via the jax-vmap function.
@@ -2867,7 +3719,8 @@ class _MCMC_debug:
         num_mcmc_per_measurement (int): the number of MCMC steps between a value (e.g., local energy) measurement.
         Dt (float): electron move step (bohr)
         epsilon_AS (float): the exponent of the AS regularization
-        comput_param_deriv (bool): if True, compute the derivatives of E wrt. variational parameters.
+        comput_log_WF_param_deriv (bool): if True, compute the derivatives of E wrt. variational parameters.
+        comput_e_L_param_deriv (bool, optional): Keep local energy variational parameter derivatives (de_L / dc).
         comput_position_deriv (bool): if True, compute the derivatives of E wrt. atomic positions.
     """
 
@@ -2879,7 +3732,8 @@ class _MCMC_debug:
         num_mcmc_per_measurement: int = 16,
         Dt: float = 2.0,
         epsilon_AS: float = 1e-1,
-        comput_param_deriv: bool = False,
+        comput_log_WF_param_deriv: bool = False,
+        comput_e_L_param_deriv: bool = False,
         comput_position_deriv: bool = False,
         random_discretized_mesh: bool = True,
     ) -> None:
@@ -2889,13 +3743,13 @@ class _MCMC_debug:
         self.__num_mcmc_per_measurement = num_mcmc_per_measurement
         self.__Dt = Dt
         self.__epsilon_AS = epsilon_AS
-        self.__comput_param_deriv = comput_param_deriv
+        self.__comput_log_WF_param_deriv = comput_log_WF_param_deriv
+        self.__comput_e_L_param_deriv = comput_e_L_param_deriv
         self.__comput_position_deriv = comput_position_deriv
         self.__random_discretized_mesh = random_discretized_mesh
 
         # set hamiltonian_data
         self.__hamiltonian_data = hamiltonian_data
-        self.__param_grad_flags = self.__default_param_grad_flags()
 
         # seeds
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
@@ -3008,59 +3862,10 @@ class _MCMC_debug:
         self.__stored_grad_omega_r_dn = []
 
         # stored parameter gradients keyed by block name
-        self.__stored_param_grads: dict[str, list] = defaultdict(list)
+        self.__stored_log_WF_param_grads: dict[str, list] = defaultdict(list)
 
-    @staticmethod
-    def __default_param_grad_flags() -> dict[str, bool]:
-        return {
-            "j1_param": True,
-            "j2_param": True,
-            "j3_matrix": True,
-            "jastrow_nn_params": True,
-            "lambda_matrix": True,
-        }
-
-    def param_gradient_flags(self) -> dict[str, bool]:
-        """Return a copy of the current per-block gradient flags."""
-        return dict(self.__param_grad_flags)
-
-    def set_param_gradient_flags(self, **flags: bool | None) -> None:
-        """Update per-block gradient flags (True enables, False disables)."""
-        allowed = set(self.__param_grad_flags)
-        for name, value in flags.items():
-            if name not in allowed:
-                raise ValueError(f"Unknown variational block '{name}'.")
-            if value is None:
-                continue
-            self.__param_grad_flags[name] = bool(value)
-
-    def __needs_param_grad_mask(self) -> bool:
-        return any(not enabled for enabled in self.__param_grad_flags.values())
-
-    def __wavefunction_data_for_param_grads(self):
-        flags = self.__param_grad_flags
-        return self.__hamiltonian_data.wavefunction_data.with_param_grad_mask(
-            opt_J1_param=flags.get("j1_param", True),
-            opt_J2_param=flags.get("j2_param", True),
-            opt_J3_param=flags.get("j3_matrix", True),
-            opt_JNN_param=flags.get("jastrow_nn_params", True),
-            opt_lambda_param=flags.get("lambda_matrix", True),
-        )
-
-    def __prepare_param_grad_objects(self):
-        wavefunction_data = self.__hamiltonian_data.wavefunction_data
-        if not (self.__comput_param_deriv or self.__comput_position_deriv):
-            return wavefunction_data, self.__hamiltonian_data
-
-        if not self.__needs_param_grad_mask():
-            return wavefunction_data, self.__hamiltonian_data
-
-        masked_wavefunction = self.__wavefunction_data_for_param_grads()
-        if masked_wavefunction is wavefunction_data:
-            return wavefunction_data, self.__hamiltonian_data
-
-        masked_hamiltonian = self.__hamiltonian_data.replace(wavefunction_data=masked_wavefunction)
-        return masked_wavefunction, masked_hamiltonian
+        # stored de_L/dc parameter gradients keyed by block name
+        self.__stored_e_L_param_grads: dict[str, list] = defaultdict(list)
 
     def run(self, num_mcmc_steps: int = 0) -> None:
         """Launch MCMCs with the set multiple walkers.
@@ -3071,14 +3876,16 @@ class _MCMC_debug:
             max_time(int):
                 Max elapsed time (sec.). If the elapsed time exceeds max_time, the methods exits the mcmc loop.
         """
+        logger.info("")
+        logger.info("This is a debugging class! It supposed to be very slow.")
+        logger.info("")
+
         # MAIN MCMC loop from here !!!
         logger.info("Start MCMC")
         num_mcmc_done = 0
         progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
         logger.info(f"  Progress: MCMC step= {self.__mcmc_counter}/{num_mcmc_steps + self.__mcmc_counter}: {progress:.0f} %.")
         mcmc_interval = max(1, int(num_mcmc_steps / 10))  # %
-
-        wavefunction_for_param_grads, hamiltonian_for_param_grads = self.__prepare_param_grad_objects()
 
         for i_mcmc_step in range(num_mcmc_steps):
             if (i_mcmc_step + 1) % mcmc_interval == 0:
@@ -3248,11 +4055,11 @@ class _MCMC_debug:
                     else:
                         rejected_moves += 1
 
-                    accepted_moves_nw[i_walker] = accepted_moves
-                    rejected_moves_nw[i_walker] = rejected_moves
-                    latest_r_up_carts[i_walker] = r_up_carts
-                    latest_r_dn_carts[i_walker] = r_dn_carts
-                    jax_PRNG_key_list[i_walker] = jax_PRNG_key
+                accepted_moves_nw[i_walker] = accepted_moves
+                rejected_moves_nw[i_walker] = rejected_moves
+                latest_r_up_carts[i_walker] = r_up_carts
+                latest_r_dn_carts[i_walker] = r_dn_carts
+                jax_PRNG_key_list[i_walker] = jax_PRNG_key
 
             # store vmapped outcomes
             self.__accepted_moves = self.__accepted_moves + np.sum(accepted_moves_nw)
@@ -3287,17 +4094,27 @@ class _MCMC_debug:
             RTs = jnp.array(RTs)
 
             # evaluate observables
-            e_L = vmap(compute_local_energy, in_axes=(None, 0, 0, 0))(
-                self.__hamiltonian_data, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs
+            e_L = jnp.stack(
+                [
+                    compute_local_energy(
+                        self.__hamiltonian_data, self.__latest_r_up_carts[i], self.__latest_r_dn_carts[i], RTs[i]
+                    )
+                    for i in range(self.__num_walkers)
+                ]
             )
             self.__stored_e_L.append(e_L)
             self.__stored_e_L2.append(e_L**2)
 
             # compute AS regularization factors, R_AS and R_AS_eps
-            R_AS = vmap(compute_AS_regularization_factor, in_axes=(None, 0, 0))(
-                self.__hamiltonian_data.wavefunction_data.geminal_data,
-                self.__latest_r_up_carts,
-                self.__latest_r_dn_carts,
+            R_AS = jnp.stack(
+                [
+                    compute_AS_regularization_factor(
+                        self.__hamiltonian_data.wavefunction_data.geminal_data,
+                        self.__latest_r_up_carts[i],
+                        self.__latest_r_dn_carts[i],
+                    )
+                    for i in range(self.__num_walkers)
+                ]
             )
             R_AS_eps = jnp.maximum(R_AS, self.__epsilon_AS)
 
@@ -3305,9 +4122,14 @@ class _MCMC_debug:
             self.__stored_w_L.append(w_L)
 
             if self.__comput_position_deriv:
-                grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = vmap(
-                    grad(compute_local_energy, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0)
-                )(hamiltonian_for_param_grads, self.__latest_r_up_carts, self.__latest_r_dn_carts, RTs)
+                _grad_e_L_fn = grad(compute_local_energy, argnums=(0, 1, 2))
+                _grad_e_L_results = [
+                    _grad_e_L_fn(self.__hamiltonian_data, self.__latest_r_up_carts[i], self.__latest_r_dn_carts[i], RTs[i])
+                    for i in range(self.__num_walkers)
+                ]
+                grad_e_L_h = jax.tree_util.tree_map(lambda *arrs: jnp.stack(arrs), *[r[0] for r in _grad_e_L_results])
+                grad_e_L_r_up = jnp.stack([r[1] for r in _grad_e_L_results])
+                grad_e_L_r_dn = jnp.stack([r[2] for r in _grad_e_L_results])
 
                 self.__stored_grad_e_L_r_up.append(grad_e_L_r_up)
                 self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn)
@@ -3315,13 +4137,18 @@ class _MCMC_debug:
                 grad_e_L_R = self.__hamiltonian_data.accumulate_position_grad(grad_e_L_h)
                 self.__stored_grad_e_L_dR.append(grad_e_L_R)
 
-                grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = vmap(
-                    grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0)
-                )(
-                    wavefunction_for_param_grads,
-                    self.__latest_r_up_carts,
-                    self.__latest_r_dn_carts,
-                )
+                _grad_ln_psi_fn = grad(evaluate_ln_wavefunction, argnums=(0, 1, 2))
+                _grad_ln_psi_results = [
+                    _grad_ln_psi_fn(
+                        self.__hamiltonian_data.wavefunction_data,
+                        self.__latest_r_up_carts[i],
+                        self.__latest_r_dn_carts[i],
+                    )
+                    for i in range(self.__num_walkers)
+                ]
+                grad_ln_Psi_h = jax.tree_util.tree_map(lambda *arrs: jnp.stack(arrs), *[r[0] for r in _grad_ln_psi_results])
+                grad_ln_Psi_r_up = jnp.stack([r[1] for r in _grad_ln_psi_results])
+                grad_ln_Psi_r_dn = jnp.stack([r[2] for r in _grad_ln_psi_results])
 
                 self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up)
                 self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn)
@@ -3329,38 +4156,39 @@ class _MCMC_debug:
                 grad_ln_Psi_dR = self.__hamiltonian_data.wavefunction_data.accumulate_position_grad(grad_ln_Psi_h)
                 self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
 
-                omega_up = vmap(evaluate_swct_omega, in_axes=(None, 0))(
-                    self.__swct_data,
-                    self.__latest_r_up_carts,
+                omega_up = jnp.stack(
+                    [evaluate_swct_omega(self.__swct_data, self.__latest_r_up_carts[i]) for i in range(self.__num_walkers)]
                 )
 
-                omega_dn = vmap(evaluate_swct_omega, in_axes=(None, 0))(
-                    self.__swct_data,
-                    self.__latest_r_dn_carts,
+                omega_dn = jnp.stack(
+                    [evaluate_swct_omega(self.__swct_data, self.__latest_r_dn_carts[i]) for i in range(self.__num_walkers)]
                 )
 
                 self.__stored_omega_up.append(omega_up)
                 self.__stored_omega_dn.append(omega_dn)
 
-                grad_omega_dr_up = vmap(evaluate_swct_domega, in_axes=(None, 0))(
-                    self.__swct_data,
-                    self.__latest_r_up_carts,
+                grad_omega_dr_up = jnp.stack(
+                    [evaluate_swct_domega(self.__swct_data, self.__latest_r_up_carts[i]) for i in range(self.__num_walkers)]
                 )
 
-                grad_omega_dr_dn = vmap(evaluate_swct_domega, in_axes=(None, 0))(
-                    self.__swct_data,
-                    self.__latest_r_dn_carts,
+                grad_omega_dr_dn = jnp.stack(
+                    [evaluate_swct_domega(self.__swct_data, self.__latest_r_dn_carts[i]) for i in range(self.__num_walkers)]
                 )
 
                 self.__stored_grad_omega_r_up.append(grad_omega_dr_up)
                 self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn)
 
-            if self.__comput_param_deriv:
-                grad_ln_Psi_h = vmap(grad(evaluate_ln_wavefunction, argnums=0), in_axes=(None, 0, 0))(
-                    wavefunction_for_param_grads,
-                    self.__latest_r_up_carts,
-                    self.__latest_r_dn_carts,
-                )
+            if self.__comput_log_WF_param_deriv:
+                _grad_ln_psi_p_fn = grad(evaluate_ln_wavefunction, argnums=0)
+                _grad_ln_psi_p_results = [
+                    _grad_ln_psi_p_fn(
+                        self.__hamiltonian_data.wavefunction_data,
+                        self.__latest_r_up_carts[i],
+                        self.__latest_r_dn_carts[i],
+                    )
+                    for i in range(self.__num_walkers)
+                ]
+                grad_ln_Psi_h = jax.tree_util.tree_map(lambda *arrs: jnp.stack(arrs), *_grad_ln_psi_p_results)
 
                 param_grads = self.__hamiltonian_data.wavefunction_data.collect_param_grads(grad_ln_Psi_h)
                 flat_param_grads = self.__hamiltonian_data.wavefunction_data.flatten_param_grads(
@@ -3368,11 +4196,32 @@ class _MCMC_debug:
                 )
 
                 for name, grad_val in flat_param_grads.items():
-                    if not self.__param_grad_flags.get(name, True):
-                        continue
-                    self.__stored_param_grads[name].append(grad_val)
+                    self.__stored_log_WF_param_grads[name].append(grad_val)
                     if hasattr(grad_val, "block_until_ready"):
                         grad_val.block_until_ready()
+
+            if self.__comput_e_L_param_deriv:
+                _e_L_wf_grad_fn = grad(
+                    lambda wf, r_up, r_dn, RT: compute_local_energy(
+                        self.__hamiltonian_data.replace(wavefunction_data=wf), r_up, r_dn, RT
+                    )
+                )
+                _e_L_wf_results = [
+                    _e_L_wf_grad_fn(
+                        self.__hamiltonian_data.wavefunction_data,
+                        self.__latest_r_up_carts[i],
+                        self.__latest_r_dn_carts[i],
+                        RTs[i],
+                    )
+                    for i in range(self.__num_walkers)
+                ]
+                grad_e_L_wf = jax.tree_util.tree_map(lambda *arrs: jnp.stack(arrs), *_e_L_wf_results)
+                flat_grads = self.__hamiltonian_data.wavefunction_data.flatten_param_grads(
+                    self.__hamiltonian_data.wavefunction_data.collect_param_grads(grad_e_L_wf),
+                    self.__num_walkers,
+                )
+                for name, grad_val in flat_grads.items():
+                    self.__stored_e_L_param_grads[name].append(grad_val)
 
             num_mcmc_done += 1
 
@@ -3693,8 +4542,240 @@ class _MCMC_debug:
 
     @property
     def dln_Psi_dc(self) -> dict[str, npt.NDArray]:
-        """Return stored parameter gradients keyed by block name."""
-        return {name: np.array(values) for name, values in self.__stored_param_grads.items()}
+        """Return stored d ln Psi / dc parameter gradients keyed by block name."""
+        return {name: np.array(values) for name, values in self.__stored_log_WF_param_grads.items()}
+
+    @property
+    def de_L_dc(self) -> dict[str, npt.NDArray]:
+        """Return stored de_L / dc parameter gradients keyed by block name."""
+        return {name: np.array(values) for name, values in self.__stored_e_L_param_grads.items()}
+
+    @property
+    def comput_e_L_param_deriv(self) -> bool:
+        """Return whether de_L/dc computation is enabled."""
+        return self.__comput_e_L_param_deriv
+
+    def get_aH(
+        self,
+        g: npt.NDArray,
+        blocks: list,
+        num_mcmc_warmup_steps: int = 50,
+        chosen_param_index: list | None = None,
+        lambda_projectors=None,
+        num_orb_projection=None,
+    ) -> tuple[float, float, float, float]:
+        r"""Compute H_0, H_1, H_2, S_2 for accelerated SR (aSR) gamma optimisation.
+
+        This is the debug (single-rank, no vmap, explicit-step) counterpart of
+        ``MCMC.get_aH``.  Every intermediate quantity is computed in a named
+        numpy step that maps directly to the mathematical formula so that the
+        logic can be followed line by line.
+
+        Mathematical background
+        -----------------------
+        The energy along the aSR step  alpha -> alpha + gamma * g  is
+        approximated as
+
+            E(alpha + gamma*g)  =    (H0 + 2*gamma*H1 + gamma^2*H2)
+                                    --------------------------------
+                                          1 + gamma^2 * S2
+
+        where g = S^{-1} f is the natural gradient and:
+
+            H0  = E_alpha                              (current energy)
+            H1  = -1/2 * g^T f                         (f = generalized force)
+            H2  = g^T (B + K) g                        (curvature along g)
+            S2  = g^T S g = g^T f = -2*H1             (overlap along g)
+
+        Intermediate quantities (N = total samples, K = # params):
+
+            w(i)        sample weight                   shape (N,)
+            e_L(i)      local energy                    shape (N,)
+            W           sum_i w(i)                      scalar
+            E_bar       sum_i w(i) e_L(i) / W           scalar
+            O_{i,k}     d ln Psi(i) / d c_k             shape (N, K)
+            O_bar_k     sum_i w(i) O_{i,k} / W          shape (K,)
+            dO_{i,k}    O_{i,k} - O_bar_k               shape (N, K)  centred
+            dE_{i,k}    d e_L(i) / d c_k                shape (N, K)
+            dE_bar_k    sum_i w(i) dE_{i,k} / W         shape (K,)
+            ddE_{i,k}   dE_{i,k} - dE_bar_k             shape (N, K)  centred
+            f_k         -2/W * sum_i w(i)(e_L-E_bar) dO_{i,k}   shape (K,)
+
+        Args:
+            g: Natural gradient vector S^{-1}f, shape (K,) or (L,) if
+                chosen_param_index is used.
+            blocks: Ordered variational blocks (same ordering as g).
+            num_mcmc_warmup_steps: Samples to discard as warmup.
+            chosen_param_index: Optional subset of flattened indices.
+            lambda_projectors: Not used in this debug implementation (accepted
+                for API compatibility with MCMC.get_aH).
+            num_orb_projection: Not used in this debug implementation.
+
+        Returns:
+            (H_0, H_1, H_2, S_2)
+        """
+        if not self.__comput_log_WF_param_deriv:
+            raise RuntimeError("get_aH requires compute_log_WF_param_deriv=True.")
+        if not self.__comput_e_L_param_deriv:
+            raise RuntimeError("get_aH requires comput_e_L_param_deriv=True.")
+
+        # ── Step 1: Raw samples after warmup ──────────────────────────────────
+        # e_L_2d, w_L_2d have shape (M_steps, num_walkers).
+        e_L_2d = self.e_L[num_mcmc_warmup_steps:]  # (M, nw)
+        w_L_2d = self.w_L[num_mcmc_warmup_steps:]  # (M, nw)
+
+        # Flatten (M, nw) -> (N,) so each sample is one entry.
+        M, nw = e_L_2d.shape
+        N = M * nw
+        e_L = e_L_2d.ravel()  # (N,)
+        w = w_L_2d.ravel()  # (N,)
+
+        # ── Step 2: Build O_matrix  (d ln Psi / dc)  shape (N, K) ────────────
+        # dln_Psi_dc is a dict  block_name -> array (M, nw, ...).
+        # We gather blocks in the same order as `blocks` and flatten the
+        # parameter dimensions to get a single (N, K) matrix.
+        dln_Psi_dc_map = self.dln_Psi_dc
+        O_cols = []
+        for block in blocks:
+            if block.name not in dln_Psi_dc_map:
+                # grad flag was off for this block; treat as zero
+                O_cols.append(np.zeros((N, block.size)))
+                continue
+            arr = dln_Psi_dc_map[block.name][num_mcmc_warmup_steps:]  # (M, nw, ...)
+            arr = arr.reshape(N, -1)  # (N, block.size)
+            O_cols.append(arr)
+        O_matrix = np.concatenate(O_cols, axis=1)  # (N, K)
+
+        # ── Step 3: Build dE_matrix  (de_L / dc)  shape (N, K) ───────────────
+        de_L_dc_map = self.de_L_dc
+        dE_cols = []
+        for block in blocks:
+            if block.name not in de_L_dc_map:
+                dE_cols.append(np.zeros((N, block.size)))
+                continue
+            arr = de_L_dc_map[block.name][num_mcmc_warmup_steps:]  # (M, nw, ...)
+            arr = arr.reshape(N, -1)  # (N, block.size)
+            dE_cols.append(arr)
+        dE_matrix = np.concatenate(dE_cols, axis=1)  # (N, K)
+
+        # Apply optional parameter-index subset.
+        if chosen_param_index is not None:
+            O_matrix = O_matrix[:, chosen_param_index]
+            dE_matrix = dE_matrix[:, chosen_param_index]
+            g = g[chosen_param_index]
+
+        # ── Step 4: Weighted averages ─────────────────────────────────────────
+        W = float(np.sum(w))  # total weight
+        E_bar = float(np.dot(w, e_L) / W)  # <e_L>_w
+        O_bar = (w @ O_matrix) / W  # (K,)   <O_k>_w
+        dE_bar = (w @ dE_matrix) / W  # (K,)   <dE_k>_w
+
+        # ── Step 5: H_0  (current energy estimate) ──────────────────────────
+        H_0 = E_bar
+
+        # ── Step 6: Centred observables ──────────────────────────────────────
+        dO = O_matrix - O_bar[np.newaxis, :]  # (N, K)  O_k(i) - <O_k>
+        ddE = dE_matrix - dE_bar[np.newaxis, :]  # (N, K)  dE_k(i) - <dE_k>
+
+        # ── Step 7: Generalized force  f_k = -2/W sum_i w_i (e_L_i - E_bar) dO_{i,k}
+        de = e_L - E_bar  # (N,)  local energy fluctuation
+        f_vec = -2.0 * (w * de) @ dO / W  # (K,)
+
+        # ── Step 8: H_1 = -1/2 * g^T f ──────────────────────────────────────
+        H_1 = -0.5 * float(np.dot(g, f_vec))
+
+        # ── Step 9: S_2 = g^T S g = <w (g^T dO)^2>_w  (exact, computed from samples) ──
+        # Do NOT use S_2 = g^T f (= -2*H_1).  The SR solved
+        # (S_scaled + sr_epsilon*I) g_scaled = b, so
+        #   g^T f = g^T S g + sr_epsilon * ||g_scaled||^2.
+        # Using g^T f overestimates S_2, makes the denominator of
+        # E(gamma) grow too fast, and drives the optimal gamma to be unrealistically small.
+        gdO = dO @ g  # (N,)  g-projected centred observable
+        S_2 = float(np.dot(w, gdO**2) / W)
+
+        # ── Step 10: K matrix contribution  g^T K g ─────────────────────────
+        #
+        #   K_{k,k'} = 1/W sum_i  w_i * e_L_i * dO_{i,k} * dO_{i,k'}
+        #
+        #   g^T K g  = 1/W sum_i  w_i * e_L_i * (sum_k g_k dO_{i,k})^2
+        gKg = float(np.dot(w * e_L * gdO, gdO) / W)
+
+        # ── Step 11: B matrix contribution  g^T B g ─────────────────────────
+        #
+        #   B_{k,k'} = 1/W sum_i  w_i * dO_{i,k} * ddE_{i,k'}
+        #   (B is generally not symmetric)
+        #
+        #   g^T B g  = 1/W sum_i  w_i * (sum_k g_k dO_{i,k}) * (sum_k' g_k' ddE_{i,k'})
+        gdE = ddE @ g  # (N,)  g-projected centred de_L
+        gBg = float(np.dot(w * gdO, gdE) / W)
+
+        # ── Step 12: H_2 = g^T (B + K) g ────────────────────────────────────
+        H_2 = gBg + gKg
+
+        return H_0, H_1, H_2, S_2
+
+    @staticmethod
+    def compute_asr_gamma(H_0: float, H_1: float, H_2: float, S_2: float) -> float:
+        r"""Solve for the optimal gamma in the accelerated SR energy minimisation.
+
+        Finds gamma that minimises  E(alpha + gamma*g)  by solving
+
+            d/d(gamma)  (H0 + 2*gamma*H1 + gamma^2*H2) / (1 + gamma^2*S2)  =  0
+
+        Setting the derivative to zero gives the quadratic:
+
+            -H1*S2 * gamma^2  +  (H2 - H0*S2) * gamma  +  H1  =  0
+
+        whose roots are:
+
+            gamma = ( (H0*S2 - H2) +/- sqrt((H2 - H0*S2)^2 + 4*H1^2*S2) )
+                    / (-2 * H1 * S2)
+
+        The positive root is returned; if neither is positive a warning is
+        logged and the root with the larger absolute value is returned.
+
+        Args:
+            H_0: Current energy E_alpha.
+            H_1: H1 = -1/2 g^T f.
+            H_2: H2 = g^T (B + K) g.
+            S_2: S2 = g^T S g = <w (g^T dO)^2>_w.
+
+        Returns:
+            Optimal gamma (float).
+        """
+        B = H_2 - H_0 * S_2
+        discriminant = B**2 + 4.0 * H_1**2 * S_2
+
+        if discriminant < 0.0:
+            logger.warning(f"aSR: discriminant is negative ({discriminant:.3e}); setting to 0.")
+            discriminant = 0.0
+
+        denom = -2.0 * H_1 * S_2
+        sqrt_d = np.sqrt(discriminant)
+        gamma_plus = (-B + sqrt_d) / denom
+        gamma_minus = (-B - sqrt_d) / denom
+
+        logger.info(f"aSR: gamma+ = {gamma_plus:.6f}, gamma- = {gamma_minus:.6f}")
+
+        # Return the positive root; prefer the smaller one when both are positive.
+        if gamma_plus > 0.0 and gamma_minus <= 0.0:
+            gamma = gamma_plus
+        elif gamma_minus > 0.0 and gamma_plus <= 0.0:
+            gamma = gamma_minus
+        elif gamma_plus > 0.0 and gamma_minus > 0.0:
+            gamma = min(gamma_plus, gamma_minus)
+            logger.warning(
+                f"aSR: both roots positive (gamma+={gamma_plus:.6f}, gamma-={gamma_minus:.6f}); "
+                f"using smaller root gamma={gamma:.6f}."
+            )
+        else:
+            gamma = gamma_plus if abs(gamma_plus) >= abs(gamma_minus) else gamma_minus
+            logger.warning(
+                f"aSR: neither root is positive (gamma+={gamma_plus:.6f}, gamma-={gamma_minus:.6f}); "
+                f"using root with larger absolute value gamma={gamma:.6f}."
+            )
+
+        return float(gamma)
 
 
 """
