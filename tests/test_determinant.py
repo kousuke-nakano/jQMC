@@ -739,6 +739,7 @@ def test_apply_ao_projected_paired_update_and_reproject_input_validation():
         )
 
 
+@pytest.mark.activate_if_skip_heavy
 def test_grads_and_laplacian_fast_update():
     """compute_grads_and_laplacian_ln_Det_fast matches _fast_debug output."""
     (
@@ -1164,6 +1165,7 @@ def test_numerial_and_auto_grads_and_laplacians_ln_Det():
     jax.clear_caches()
 
 
+@pytest.mark.activate_if_skip_heavy
 @pytest.mark.parametrize(
     "trexio_file",
     ["H2_ae_ccpvqz.h5", "H2_ae_ccpvtz_cart.h5", "H2_ecp_ccpvtz.h5", "H2_ecp_ccpvtz_cart.h5", "water_ccecp_ccpvqz.h5"],

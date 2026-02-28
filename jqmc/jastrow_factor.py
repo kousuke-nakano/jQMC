@@ -1930,12 +1930,13 @@ def _compute_ratio_Jastrow_part_rank1_update(
 
     num_up = old_r_up_carts.shape[0]
     num_dn = old_r_dn_carts.shape[0]
+    n_grid = new_r_up_carts_arr.shape[0]
     if num_up == 0 or num_dn == 0:
         jastrow_x = compute_Jastrow_part(jastrow_data, old_r_up_carts, old_r_dn_carts)
         jastrow_xp = vmap(compute_Jastrow_part, in_axes=(None, 0, 0))(jastrow_data, new_r_up_carts_arr, new_r_dn_carts_arr)
         return jnp.exp(jastrow_xp - jastrow_x)
 
-    J_ratio = 1.0
+    J_ratio = jnp.ones(n_grid)
 
     # J1 part
     if jastrow_data.jastrow_one_body_data is not None:

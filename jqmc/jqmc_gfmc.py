@@ -75,13 +75,13 @@ from .jastrow_factor import (
 )
 from .jqmc_utility import _generate_init_electron_configurations
 from .setting import (
-    EPS_rcond_SVD,
     GFMC_MIN_BIN_BLOCKS,
     GFMC_MIN_COLLECT_STEPS,
     GFMC_MIN_WARMUP_STEPS,
     GFMC_ON_THE_FLY_BIN_BLOCKS,
     GFMC_ON_THE_FLY_COLLECT_STEPS,
     GFMC_ON_THE_FLY_WARMUP_STEPS,
+    EPS_rcond_SVD,
 )
 from .swct import SWCT_data, evaluate_swct_domega, evaluate_swct_omega
 from .wavefunction import (
@@ -2205,6 +2205,10 @@ class GFMC_n:
             Valid only for ECP calculations. Do not specify this value for all-electron calculations.
         comput_position_deriv (bool):
             if True, compute the derivatives of E wrt. atomic positions.
+        epsilon_PW (float):
+            Pathak-Wagner regularization parameter (bohr). When > 0, the force estimator is
+            regularized near the nodal surface using f_epsilon from Pathak & Wagner (2020),
+            DOI: 10.1063/5.0004008. Default is 0.0 (no regularization).
     """
 
     def __init__(
@@ -2219,6 +2223,7 @@ class GFMC_n:
         random_discretized_mesh: bool = True,
         non_local_move: str = "tmove",
         comput_position_deriv: bool = False,
+        epsilon_PW: float = 0.0,
     ) -> None:
         """Init.
 
@@ -2241,6 +2246,9 @@ class GFMC_n:
 
         # derivative flags
         self.__comput_position_deriv = comput_position_deriv
+
+        # Pathak-Wagner regularization (DOI: 10.1063/5.0004008)
+        self.__epsilon_PW = epsilon_PW
 
         # Initialization
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
@@ -3607,16 +3615,39 @@ class GFMC_n:
             e_L_weighted_sum = np.sum(w_L_latest / V_diag_E_latest * e_L_latest)
             e_L2_weighted_sum = np.sum(w_L_latest / V_diag_E_latest * e_L_latest**2)
             if self.__comput_position_deriv:
-                grad_e_L_r_up_weighted_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_e_L_r_up_latest)
-                grad_e_L_r_dn_weighted_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_e_L_r_dn_latest)
-                grad_e_L_R_weighted_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_e_L_R_latest)
-                grad_ln_Psi_r_up_weighted_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_ln_Psi_r_up_latest)
-                grad_ln_Psi_r_dn_weighted_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_ln_Psi_r_dn_latest)
-                grad_ln_Psi_dR_weighted_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_ln_Psi_dR_latest)
-                omega_up_weighted_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, omega_up_latest)
-                omega_dn_weighted_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, omega_dn_latest)
-                grad_omega_dr_up_weighted_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_omega_dr_up_latest)
-                grad_omega_dr_dn_weighted_sum = np.einsum("i,ijk->jk", w_L_latest / V_diag_E_latest, grad_omega_dr_dn_latest)
+                # Pathak-Wagner regularization factor f_eps per walker
+                if self.__epsilon_PW > 0.0:
+                    grad_norm_sq = np.sum(grad_ln_Psi_r_up_latest**2, axis=(1, 2)) + np.sum(
+                        grad_ln_Psi_r_dn_latest**2, axis=(1, 2)
+                    )
+                    nodal_dist = 1.0 / np.sqrt(grad_norm_sq)
+                    t = nodal_dist / self.__epsilon_PW
+                    t2 = t * t
+                    t4 = t2 * t2
+                    t6 = t4 * t2
+                    f_eps = np.where(t < 1.0, 7.0 * t6 - 15.0 * t4 + 9.0 * t2, 1.0)
+                    mod_w_L_latest = w_L_latest * f_eps
+                else:
+                    mod_w_L_latest = w_L_latest
+
+                grad_e_L_r_up_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest / V_diag_E_latest, grad_e_L_r_up_latest)
+                grad_e_L_r_dn_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest / V_diag_E_latest, grad_e_L_r_dn_latest)
+                grad_e_L_R_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest / V_diag_E_latest, grad_e_L_R_latest)
+                grad_ln_Psi_r_up_weighted_sum = np.einsum(
+                    "i,ijk->jk", mod_w_L_latest / V_diag_E_latest, grad_ln_Psi_r_up_latest
+                )
+                grad_ln_Psi_r_dn_weighted_sum = np.einsum(
+                    "i,ijk->jk", mod_w_L_latest / V_diag_E_latest, grad_ln_Psi_r_dn_latest
+                )
+                grad_ln_Psi_dR_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest / V_diag_E_latest, grad_ln_Psi_dR_latest)
+                omega_up_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest / V_diag_E_latest, omega_up_latest)
+                omega_dn_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest / V_diag_E_latest, omega_dn_latest)
+                grad_omega_dr_up_weighted_sum = np.einsum(
+                    "i,ijk->jk", mod_w_L_latest / V_diag_E_latest, grad_omega_dr_up_latest
+                )
+                grad_omega_dr_dn_weighted_sum = np.einsum(
+                    "i,ijk->jk", mod_w_L_latest / V_diag_E_latest, grad_omega_dr_dn_latest
+                )
             # reduce
             nw_sum = mpi_comm.reduce(nw_sum, op=MPI.SUM, root=0)
             w_L_sum = mpi_comm.reduce(w_L_sum, op=MPI.SUM, root=0)
@@ -4641,6 +4672,10 @@ class _GFMC_n_debug:
             Valid only for ECP calculations. Do not specify this value for all-electron calculations.
         comput_position_deriv (bool):
             if True, compute the derivatives of E wrt. atomic positions.
+        epsilon_PW (float):
+            Pathak-Wagner regularization parameter (bohr). When > 0, the force estimator is
+            regularized near the nodal surface using f_epsilon from Pathak & Wagner (2020),
+            DOI: 10.1063/5.0004008. Default is 0.0 (no regularization).
     """
 
     def __init__(
@@ -4655,6 +4690,7 @@ class _GFMC_n_debug:
         non_local_move: str = "tmove",
         comput_position_deriv: bool = False,
         random_discretized_mesh=False,
+        epsilon_PW: float = 0.0,
     ) -> None:
         """Init.
 
@@ -4677,6 +4713,9 @@ class _GFMC_n_debug:
 
         # derivative flags
         self.__comput_position_deriv = comput_position_deriv
+
+        # Pathak-Wagner regularization (DOI: 10.1063/5.0004008)
+        self.__epsilon_PW = epsilon_PW
 
         # Initialization
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
@@ -5554,6 +5593,9 @@ class _GFMC_n_debug:
                         grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
                     )
 
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_nn_data is not None:
+                    grad_e_L_R += grad_e_L_h.wavefunction_data.jastrow_data.jastrow_nn_data.structure_data.positions
+
                 _grad_ln_psi_fn = grad(evaluate_ln_wavefunction, argnums=(0, 1, 2))
                 _grad_ln_psi_results = [
                     _grad_ln_psi_fn(
@@ -5577,6 +5619,9 @@ class _GFMC_n_debug:
 
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
                     grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
+
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_nn_data is not None:
+                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_nn_data.structure_data.positions
 
                 omega_up = jnp.stack(
                     [evaluate_swct_omega(self.__swct_data, self.__latest_r_up_carts[i]) for i in range(self.__num_walkers)]
@@ -5692,29 +5737,44 @@ class _GFMC_n_debug:
                 e_L_weighted_sum = np.sum(w_L_gathered / V_diag_E_gathered * e_L_gathered)
                 e_L2_weighted_sum = np.sum(w_L_gathered / V_diag_E_gathered * e_L_gathered**2)
                 if self.__comput_position_deriv:
+                    # Pathak-Wagner regularization factor f_eps per walker
+                    if self.__epsilon_PW > 0.0:
+                        grad_norm_sq = np.sum(grad_ln_Psi_r_up_gathered**2, axis=(1, 2)) + np.sum(
+                            grad_ln_Psi_r_dn_gathered**2, axis=(1, 2)
+                        )
+                        nodal_dist = 1.0 / np.sqrt(grad_norm_sq)
+                        t = nodal_dist / self.__epsilon_PW
+                        t2 = t * t
+                        t4 = t2 * t2
+                        t6 = t4 * t2
+                        f_eps = np.where(t < 1.0, 7.0 * t6 - 15.0 * t4 + 9.0 * t2, 1.0)
+                        mod_w_L_gathered = w_L_gathered * f_eps
+                    else:
+                        mod_w_L_gathered = w_L_gathered
+
                     grad_e_L_r_up_weighted_sum = np.einsum(
-                        "i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_e_L_r_up_gathered
+                        "i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, grad_e_L_r_up_gathered
                     )
                     grad_e_L_r_dn_weighted_sum = np.einsum(
-                        "i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_e_L_r_dn_gathered
+                        "i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, grad_e_L_r_dn_gathered
                     )
-                    grad_e_L_R_weighted_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_e_L_R_gathered)
+                    grad_e_L_R_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, grad_e_L_R_gathered)
                     grad_ln_Psi_r_up_weighted_sum = np.einsum(
-                        "i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_ln_Psi_r_up_gathered
+                        "i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, grad_ln_Psi_r_up_gathered
                     )
                     grad_ln_Psi_r_dn_weighted_sum = np.einsum(
-                        "i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_ln_Psi_r_dn_gathered
+                        "i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, grad_ln_Psi_r_dn_gathered
                     )
                     grad_ln_Psi_dR_weighted_sum = np.einsum(
-                        "i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_ln_Psi_dR_gathered
+                        "i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, grad_ln_Psi_dR_gathered
                     )
-                    omega_up_weighted_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, omega_up_gathered)
-                    omega_dn_weighted_sum = np.einsum("i,ijk->jk", w_L_gathered / V_diag_E_gathered, omega_dn_gathered)
+                    omega_up_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, omega_up_gathered)
+                    omega_dn_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, omega_dn_gathered)
                     grad_omega_dr_up_weighted_sum = np.einsum(
-                        "i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_omega_dr_up_gathered
+                        "i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, grad_omega_dr_up_gathered
                     )
                     grad_omega_dr_dn_weighted_sum = np.einsum(
-                        "i,ijk->jk", w_L_gathered / V_diag_E_gathered, grad_omega_dr_dn_gathered
+                        "i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, grad_omega_dr_dn_gathered
                     )
                 # averaged
                 w_L_averaged = np.average(w_L_gathered)

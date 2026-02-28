@@ -55,7 +55,7 @@ jobs:
     #    # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
     #    flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
-    - name: Test jqmc (pytest) with @jit decorator (intra-software comparisons)
+    - name: Test jqmc (intra-software comparisons)
       run: |
         pytest -s -v tests/test_trexio.py --cov=jqmc --cov-branch --no-cov-on-fail
         pytest -s -v tests/test_structure.py --cov-branch --no-cov-on-fail --cov-append
@@ -69,23 +69,27 @@ jobs:
         pytest -s -v tests/test_mcmc_force.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_lrdmc_force.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
 
-    - name: Test jqmc (pytest) with @jit decorator (inter-software comparisons)
+    - name: Test jqmc (inter-software comparisons)
       run: |
         pytest -s -v tests/test_comparison_with_turborvb_ECP.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_comparison_with_turborvb_AE.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
 
-    - name: Test jqmc (pytest) QMC kernels without MPI
+    - name: Test jqmc (QMC kernels without MPI)
       run: |
         pytest -s -v tests/test_jqmc_command_lines.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_jqmc_mcmc.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_jqmc_gfmc_tau.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_jqmc_gfmc_bra.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
 
-    #- name: Test jqmc (pytest) QMC kernels with MPI (2 cores)
+    #- name: Test jqmc (QMC kernels with 2MPIs)
     #  run: |
     #    mpirun -np 2 pytest -s -v tests/test_jqmc_mcmc.py
     #    mpirun -np 2 pytest -s -v tests/test_jqmc_gfmc_tau.py
     #    mpirun -np 2 pytest -s -v tests/test_jqmc_gfmc_bra.py
+
+    - name: Test jqmc-tool (toolset for jqmc)
+      run: |
+        pytest -s -v tests/test_jqmc_tool.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
 
     - name: Combine Codecov xml files
       run: |

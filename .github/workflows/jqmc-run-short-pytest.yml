@@ -55,17 +55,19 @@ jobs:
 
     - name: Test jqmc (pytest) with @jit decorator (intra-software comparisons)
       run: |
-        pytest -s -v tests/test_trexio.py
-        pytest -s -v tests/test_structure.py
-        pytest -s -v tests/test_AOs.py
-        pytest -s -v tests/test_MOs.py
-        pytest -s -v tests/test_determinant.py
-        pytest -s -v tests/test_jastrow.py
-        pytest -s -v tests/test_wave_function.py
-        pytest -s -v tests/test_ecps.py
-        pytest -s -v tests/test_swct.py
+        pytest -s -v tests/test_trexio.py --skip-heavy
+        pytest -s -v tests/test_structure.py --skip-heavy
+        pytest -s -v tests/test_AOs.py --skip-heavy
+        pytest -s -v tests/test_MOs.py --skip-heavy
+        pytest -s -v tests/test_determinant.py --skip-heavy
+        pytest -s -v tests/test_jastrow.py --skip-heavy
+        pytest -s -v tests/test_wave_function.py --skip-heavy
+        pytest -s -v tests/test_ecps.py --skip-heavy
+        pytest -s -v tests/test_swct.py --skip-heavy
+        pytest -s -v tests/test_mcmc_force.py --skip-heavy
+        pytest -s -v tests/test_lrdmc_force.py --skip-heavy
 
     - name: Test jqmc (pytest) with @jit decorator (inter-software comparisons)
       run: |
-        pytest -s -v tests/test_comparison_with_turborvb_ECP.py
-        pytest -s -v tests/test_comparison_with_turborvb_AE.py
+        pytest -s -v tests/test_comparison_with_turborvb_ECP.py --skip-heavy
+        pytest -s -v tests/test_comparison_with_turborvb_AE.py --skip-heavy

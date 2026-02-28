@@ -65,16 +65,22 @@ from jqmc.wavefunction import VariationalParameterBlock, Wavefunction_data, eval
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
-test_trexio_files = ["H2_ecp_ccpvdz_cart.h5", "H2_ae_ccpvdz_cart.h5", "H_ecp_ccpvdz_cart.h5"]
+test_trexio_files = ["H2_ae_ccpvdz_cart.h5", "H_ecp_ccpvdz_cart.h5"]
 
-nn_param_grid = [False, True]
-jastrow_3b_param_grid = [True]
+# (with_1b_jastrow, with_2b_jastrow, with_3b_jastrow, with_nn_jastrow)
+jastrow_param_grid = [
+    (False, False, False, False),
+    (True, False, False, False),
+    (False, True, False, False),
+    (True, True, True, False),
+    (True, True, True, True),
+    (False, False, False, True),
+]
 
 
 @pytest.mark.parametrize("trexio_file", test_trexio_files)
-@pytest.mark.parametrize("with_3b_jastrow", jastrow_3b_param_grid)
-@pytest.mark.parametrize("with_nn_jastrow", nn_param_grid)
-def test_jqmc_mcmc(trexio_file, with_nn_jastrow, with_3b_jastrow):
+@pytest.mark.parametrize("with_1b_jastrow,with_2b_jastrow,with_3b_jastrow,with_nn_jastrow", jastrow_param_grid)
+def test_jqmc_mcmc(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jastrow, with_nn_jastrow):
     """Test comparison with MCMC debug and MCMC production implementations."""
     (
         structure_data,
@@ -87,12 +93,18 @@ def test_jqmc_mcmc(trexio_file, with_nn_jastrow, with_3b_jastrow):
         trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
     )
 
-    jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
-        jastrow_1b_param=1.0,
-        structure_data=structure_data,
-        core_electrons=tuple([0] * len(structure_data.atomic_numbers)),
-    )
-    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+    jastrow_onebody_data = None
+    if with_1b_jastrow:
+        jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
+            jastrow_1b_param=1.0,
+            structure_data=structure_data,
+            core_electrons=tuple([0] * len(structure_data.atomic_numbers)),
+        )
+
+    jastrow_twobody_data = None
+    if with_2b_jastrow:
+        jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+
     jastrow_threebody_data = None
     if with_3b_jastrow:
         jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
@@ -577,7 +589,7 @@ def test_jqmc_vmc(monkeypatch):
         jax.clear_caches()
 
 
-def test_opt_with_projected_MOs_ln_psi_consistency(monkeypatch):
+def test_opt_with_projected_MOs(monkeypatch):
     """After run_optimize with opt_with_projected_MOs=True the final wavefunction
     (in MO representation) must give the same ln|Psi| as its AO-converted counterpart.
 
