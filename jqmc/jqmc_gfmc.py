@@ -75,13 +75,13 @@ from .jastrow_factor import (
 )
 from .jqmc_utility import _generate_init_electron_configurations
 from .setting import (
-    EPS_rcond_SVD,
     GFMC_MIN_BIN_BLOCKS,
     GFMC_MIN_COLLECT_STEPS,
     GFMC_MIN_WARMUP_STEPS,
     GFMC_ON_THE_FLY_BIN_BLOCKS,
     GFMC_ON_THE_FLY_COLLECT_STEPS,
     GFMC_ON_THE_FLY_WARMUP_STEPS,
+    EPS_rcond_SVD,
 )
 from .swct import SWCT_data, evaluate_swct_domega, evaluate_swct_omega
 from .wavefunction import (
@@ -5593,6 +5593,9 @@ class _GFMC_n_debug:
                         grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
                     )
 
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_nn_data is not None:
+                    grad_e_L_R += grad_e_L_h.wavefunction_data.jastrow_data.jastrow_nn_data.structure_data.positions
+
                 _grad_ln_psi_fn = grad(evaluate_ln_wavefunction, argnums=(0, 1, 2))
                 _grad_ln_psi_results = [
                     _grad_ln_psi_fn(
@@ -5616,6 +5619,9 @@ class _GFMC_n_debug:
 
                 if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
                     grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
+
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_nn_data is not None:
+                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_nn_data.structure_data.positions
 
                 omega_up = jnp.stack(
                     [evaluate_swct_omega(self.__swct_data, self.__latest_r_up_carts[i]) for i in range(self.__num_walkers)]
