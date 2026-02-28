@@ -68,13 +68,16 @@ from jqmc.wavefunction import (  # noqa: E402
     _compute_kinetic_energy_all_elements_fast_update_debug,
     _compute_kinetic_energy_auto,
     _compute_kinetic_energy_debug,
+    _compute_nodal_distance_debug,
     compute_discretized_kinetic_energy,
     compute_discretized_kinetic_energy_fast_update,
     compute_kinetic_energy,
     compute_kinetic_energy_all_elements,
     compute_kinetic_energy_all_elements_fast_update,
+    compute_nodal_distance,
     evaluate_ln_wavefunction,
     evaluate_ln_wavefunction_fast,
+    f_epsilon_PW,
 )
 
 # JAX float64
@@ -82,6 +85,7 @@ jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
 
+@pytest.mark.activate_if_skip_heavy
 def test_kinetic_energy_analytic_and_numerical():
     """Test the kinetic energy computation."""
     (
@@ -175,6 +179,7 @@ def test_kinetic_energy_analytic_and_auto():
     np.testing.assert_almost_equal(K_analytic, K_auto, decimal=decimal_auto_vs_analytic_deriv)
 
 
+@pytest.mark.activate_if_skip_heavy
 def test_debug_and_auto_kinetic_energy_all_elements():
     """Debug vs autodiff kinetic energy per-electron arrays."""
     (
@@ -505,6 +510,100 @@ def test_debug_and_jax_discretized_kinetic_energy():
     )
 
 
+def test_nodal_distance_analytic_vs_debug():
+    """Analytic compute_nodal_distance should match _compute_nodal_distance_debug."""
+    (
+        structure_data,
+        aos_data,
+        _,
+        _,
+        geminal_mo_data,
+        _,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+    )
+
+    jastrow_onebody_data = None
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5)
+    jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
+        orb_data=aos_data, random_init=True, random_scale=1.0e-3
+    )
+    jastrow_nn_data = Jastrow_NN_data.init_from_structure(structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0)
+
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=jastrow_onebody_data,
+        jastrow_two_body_data=jastrow_twobody_data,
+        jastrow_three_body_data=jastrow_threebody_data,
+        jastrow_nn_data=jastrow_nn_data,
+    )
+
+    wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
+
+    num_ele_up = geminal_mo_data.num_electron_up
+    num_ele_dn = geminal_mo_data.num_electron_dn
+    r_cart_min, r_cart_max = -3.0, +3.0
+    np.random.seed(42)
+    r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
+    r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
+
+    r_up_carts_jnp = jnp.asarray(r_up_carts)
+    r_dn_carts_jnp = jnp.asarray(r_dn_carts)
+
+    # Analytic path
+    nd_analytic = compute_nodal_distance(
+        wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts_jnp,
+        r_dn_carts=r_dn_carts_jnp,
+    )
+
+    # Debug path (paper formula)
+    nd_debug = _compute_nodal_distance_debug(
+        wavefunction_data=wavefunction_data,
+        r_up_carts=r_up_carts_jnp,
+        r_dn_carts=r_dn_carts_jnp,
+    )
+
+    # They should be identical up to numerical noise
+    np.testing.assert_allclose(
+        np.asarray(nd_analytic),
+        np.asarray(nd_debug),
+        rtol=rtol_auto_vs_numerical_deriv,
+        atol=atol_auto_vs_numerical_deriv,
+    )
+
+    # Sanity: nodal distance should be positive
+    assert float(nd_analytic) > 0.0
+    assert float(nd_debug) > 0.0
+
+
+def test_f_epsilon_PW_boundary_values():
+    """Test f_epsilon_PW boundary conditions and properties."""
+    epsilon_PW = 0.5
+
+    # f(0) = 0
+    np.testing.assert_allclose(float(f_epsilon_PW(jnp.array(0.0), epsilon_PW)), 0.0, atol=1e-14)
+
+    # f(epsilon) = 1 (i.e., |t|=1)
+    np.testing.assert_allclose(float(f_epsilon_PW(jnp.array(epsilon_PW), epsilon_PW)), 1.0, atol=1e-14)
+
+    # f(x) = 1 for |x| >= epsilon
+    np.testing.assert_allclose(float(f_epsilon_PW(jnp.array(2.0 * epsilon_PW), epsilon_PW)), 1.0, atol=1e-14)
+    np.testing.assert_allclose(float(f_epsilon_PW(jnp.array(10.0 * epsilon_PW), epsilon_PW)), 1.0, atol=1e-14)
+
+    # f'(0) = 0 and f'(1) = 0 (smooth at boundaries)
+    # Check numerically: f(small) ~ 0 (derivative at origin is zero)
+    delta = 1.0e-8
+    f_at_delta = float(f_epsilon_PW(jnp.array(delta), epsilon_PW))
+    # Should scale as t^2, so f(delta/eps) ~ 9*(delta/eps)^2
+    assert f_at_delta < 1.0e-10  # very close to 0
+
+    # f(x) >= 0 for interior
+    t_vals = jnp.linspace(0.0, epsilon_PW, 100)
+    f_vals = f_epsilon_PW(t_vals, epsilon_PW)
+    assert jnp.all(f_vals >= -1e-14)
+
+
+@pytest.mark.activate_if_skip_heavy
 @pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5"])
 def test_evaluate_ln_wavefunction_fast_forward(trexio_file):
     """Forward value of evaluate_ln_wavefunction_fast must match evaluate_ln_wavefunction."""
@@ -536,6 +635,7 @@ def test_evaluate_ln_wavefunction_fast_forward(trexio_file):
         )
 
 
+@pytest.mark.activate_if_skip_heavy
 @pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5"])
 def test_evaluate_ln_wavefunction_fast_backward(trexio_file):
     """Gradient of evaluate_ln_wavefunction_fast w.r.t. wavefunction_data must match evaluate_ln_wavefunction."""

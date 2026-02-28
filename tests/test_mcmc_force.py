@@ -115,6 +115,7 @@ def test_mcmc_force_with_SWCT_ecp():
         comput_position_deriv=True,
         comput_log_WF_param_deriv=False,
         comput_e_L_param_deriv=False,
+        epsilon_AS=1.0e-2,
     )
     mcmc.run(num_mcmc_steps=20)
     mcmc.get_E(
@@ -195,6 +196,7 @@ def test_mcmc_force_with_SWCT_ae():
         comput_position_deriv=True,
         comput_log_WF_param_deriv=False,
         comput_e_L_param_deriv=False,
+        epsilon_AS=1.0e-2,
     )
     mcmc.run(num_mcmc_steps=20)
     mcmc.get_E(

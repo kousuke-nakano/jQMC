@@ -6,7 +6,7 @@ import pytest
 def pytest_addoption(parser):
     """Add options for pytests."""
     parser.addoption("--disable-jit", action="store_true", default=False, help="Disable jax.jit for pytests")
-    parser.addoption("--enable-heavy", action="store_true", default=False, help="Enable heavy calculations for pytests")
+    parser.addoption("--skip-heavy", action="store_true", default=False, help="Skip heavy calculations for pytests")
 
 
 @pytest.fixture(autouse=True)
@@ -35,5 +35,15 @@ def pytest_itemcollected(item):
 def pytest_configure(config):
     """Pytest configuration."""
     config.addinivalue_line("markers", "activate_if_disable_jit: activate test if --disable-jit is set")
-    config.addinivalue_line("markers", "activate_if_enable_heavy: activate test if --enable-heavy is set")
+    config.addinivalue_line("markers", "activate_if_skip_heavy: skip test if --skip-heavy is set")
     config.addinivalue_line("markers", "obsolete: tests that are obsolete and should be removed in the future")
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip tests marked with activate_if_skip_heavy when --skip-heavy is set."""
+    if not config.getoption("--skip-heavy"):
+        return
+    skip_marker = pytest.mark.skip(reason="skipped by --skip-heavy")
+    for item in items:
+        if item.get_closest_marker("activate_if_skip_heavy"):
+            item.add_marker(skip_marker)

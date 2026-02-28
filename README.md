@@ -151,6 +151,15 @@ The tests can be run by
 ```bash
 % pytest -s -v  # with jax-jit
 % pytest -s -v --disable-jit  # without jax jit
+% pytest -s -v --skip-heavy  # skip heavy (slow) tests
+```
+
+To mark a test as heavy (skipped when `--skip-heavy` is passed), use the `activate_if_skip_heavy` marker:
+
+```python
+@pytest.mark.activate_if_skip_heavy
+def test_something_heavy():
+    ...
 ```
 
 

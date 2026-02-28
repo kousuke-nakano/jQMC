@@ -456,6 +456,7 @@ def test_AOs_cart_debug_vs_production():
     jax.clear_caches()
 
 
+@pytest.mark.activate_if_skip_heavy
 def test_AOs_sphe_and_cart_grads_analytic_vs_auto():
     """Analytic AOs gradients match JAX autodiff implementation."""
     seed = 2025
@@ -516,6 +517,7 @@ def test_AOs_sphe_and_cart_grads_analytic_vs_auto():
     jax.clear_caches()
 
 
+@pytest.mark.activate_if_skip_heavy
 def test_AOs_sphe_and_cart_grads_auto_vs_numerical():
     """Test the grad AOs computation, comparing the JAX and debug implementations."""
     # Cartesian case
@@ -811,6 +813,7 @@ def test_AOs_sphe_and_cart_grads_analytic_vs_numerical():
     jax.clear_caches()
 
 
+@pytest.mark.activate_if_skip_heavy
 def test_AOs_shpe_and_cart_laplacians_analytic_vs_auto():
     """Analytic AO Laplacians match JAX autodiff implementation."""
     seed = 2026
@@ -1005,6 +1008,7 @@ def test_AOs_shpe_and_cart_laplacians_analytic_vs_numerical():
     jax.clear_caches()
 
 
+@pytest.mark.activate_if_skip_heavy
 def test_AOs_shpe_and_cart_laplacians_auto_vs_numerical():
     """Test the laplacian AOs computation, comparing the JAX and debug implementations."""
     # Cartesian case

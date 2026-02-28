@@ -37,6 +37,7 @@ from pathlib import Path
 
 import jax
 import numpy as np
+import pytest
 
 # Add the project root directory to sys.path to allow executing this script directly
 # This is necessary because relative imports (e.g. 'from ..jqmc') are not allowed
@@ -191,6 +192,7 @@ def test_MOs_comparing_jax_and_debug_implemenetations():
     jax.clear_caches()
 
 
+@pytest.mark.activate_if_skip_heavy
 def test_MOs_comparing_auto_and_numerical_grads():
     """Test the MO gradient computation, comparing JAX and debug implementations."""
     num_el = 10
@@ -341,6 +343,7 @@ def test_MOs_comparing_auto_and_numerical_grads():
     jax.clear_caches()
 
 
+@pytest.mark.activate_if_skip_heavy
 def test_MOs_comparing_auto_and_numerical_laplacians():
     """Test the MO Laplacian computation, comparing JAX and debug implementations."""
     num_el = 10
@@ -404,6 +407,7 @@ def test_MOs_comparing_auto_and_numerical_laplacians():
     jax.clear_caches()
 
 
+@pytest.mark.activate_if_skip_heavy
 def test_MOs_comparing_analytic_and_auto_grads():
     """Test analytic MO gradients vs autodiff grads."""
     num_el = 8
@@ -469,6 +473,7 @@ def test_MOs_comparing_analytic_and_auto_grads():
     jax.clear_caches()
 
 
+@pytest.mark.activate_if_skip_heavy
 def test_MOs_comparing_analytic_and_auto_laplacians():
     """Test analytic MO Laplacian vs autodiff Laplacian."""
     num_el = 8

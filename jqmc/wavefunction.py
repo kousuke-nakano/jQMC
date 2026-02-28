@@ -1225,19 +1225,61 @@ def compute_discretized_kinetic_energy_fast_update(
     return r_up_carts_combined, r_dn_carts_combined, elements_kinetic_part
 
 
-# no longer used in the main code
-def compute_quantum_force(
+# ---------------------------------------------------------------------------
+# Nodal distance and f_epsilon regularization
+# ---------------------------------------------------------------------------
+# References:
+#   Pathak & Wagner, AIP Advances 10, 085213 (2020).
+#   DOI: 10.1063/5.0004008
+# ---------------------------------------------------------------------------
+
+
+def f_epsilon_PW(nodal_distance: jnpt.ArrayLike, epsilon_PW: float) -> jnpt.ArrayLike:
+    r"""Evaluate the Pathak--Wagner regularization function :math:`f_\varepsilon`.
+
+    .. math::
+
+        f_\varepsilon(t) =
+        \begin{cases}
+            7|t|^6 - 15|t|^4 + 9|t|^2 & (|t| < 1) \\
+            1                           & (|t| \geq 1)
+        \end{cases}
+
+    where :math:`t = |x| / \varepsilon` and :math:`|x|` is the nodal distance.
+
+    The coefficients :math:`(7, -15, 9)` satisfy :math:`f(0) = 0`, :math:`f(1) = 1`,
+    and continuity of the first two derivatives at :math:`|t| = 1`.
+
+    Args:
+        nodal_distance: Nodal distance(s), shape arbitrary (scalar or array).
+        epsilon_PW: Regularization cutoff length :math:`\varepsilon`.
+
+    Returns:
+        Regularization factor with the same shape as *nodal_distance*.
+    """
+    t = jnp.abs(nodal_distance) / epsilon_PW
+    t2 = t * t
+    t4 = t2 * t2
+    t6 = t4 * t2
+    f_inner = 7.0 * t6 - 15.0 * t4 + 9.0 * t2
+    return jnp.where(t < 1.0, f_inner, 1.0)
+
+
+def compute_nodal_distance(
     wavefunction_data: Wavefunction_data,
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
-) -> tuple[jax.Array, jax.Array]:
-    """Compute quantum forces ``2 * grad ln |Psi|`` at the given coordinates.
+) -> jax.Array:
+    r"""Compute the nodal distance using analytic derivatives.
 
-    The method is for computing quantum forces at ``(r_up_carts, r_dn_carts)``.
-    Gradients from the Jastrow part are currently set to zero (as in the original
-    implementation); determinant gradients are included via
-    ``compute_grads_and_laplacian_ln_Det``. Inputs are coerced to float64
-    ``jax.Array`` for consistency.
+    The nodal distance is defined as
+
+    .. math::
+
+        |x| = \frac{1}{|\nabla \ln |\Psi||},
+
+    where :math:`\nabla` is the many-body gradient over all electron coordinates,
+    computed analytically from the Jastrow and determinant parts.
 
     Args:
         wavefunction_data: Wavefunction parameters (Jastrow + Geminal).
@@ -1245,23 +1287,68 @@ def compute_quantum_force(
         r_dn_carts: Cartesian coordinates of down-spin electrons with shape ``(n_dn, 3)``.
 
     Returns:
-        Tuple ``(force_up, force_dn)`` with shapes matching the input coordinate arrays.
+        Scalar nodal distance value.
     """
     r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
     r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
 
-    grad_J_up, grad_J_dn, _ = 0, 0, 0  # tentative
+    grad_J_up, grad_J_dn, _, _ = compute_grads_and_laplacian_Jastrow_part(
+        jastrow_data=wavefunction_data.jastrow_data,
+        r_up_carts=r_up,
+        r_dn_carts=r_dn,
+    )
 
-    grad_ln_D_up, grad_ln_D_dn, _ = compute_grads_and_laplacian_ln_Det(
+    grad_ln_D_up, grad_ln_D_dn, _, _ = compute_grads_and_laplacian_ln_Det(
         geminal_data=wavefunction_data.geminal_data,
         r_up_carts=r_up,
         r_dn_carts=r_dn,
     )
 
-    grad_ln_WF_up = grad_J_up + grad_ln_D_up
-    grad_ln_WF_dn = grad_J_dn + grad_ln_D_dn
+    grad_ln_Psi_up = grad_J_up + grad_ln_D_up  # (n_up, 3)
+    grad_ln_Psi_dn = grad_J_dn + grad_ln_D_dn  # (n_dn, 3)
 
-    return 2.0 * grad_ln_WF_up, 2.0 * grad_ln_WF_dn
+    grad_norm_sq = jnp.sum(grad_ln_Psi_up**2) + jnp.sum(grad_ln_Psi_dn**2)
+    return 1.0 / jnp.sqrt(grad_norm_sq)
+
+
+def _compute_nodal_distance_debug(
+    wavefunction_data: Wavefunction_data,
+    r_up_carts: jax.Array,
+    r_dn_carts: jax.Array,
+) -> jax.Array:
+    r"""Compute the nodal distance using the paper's original formula (debug).
+
+    Uses the definition from Eq. (2) of Pathak & Wagner (2020):
+
+    .. math::
+
+        \vec{x} = \frac{\Psi \, \nabla \Psi}{|\nabla \Psi|^2},
+
+    and returns :math:`|x|`.  This is mathematically identical to
+    :func:`compute_nodal_distance` (:math:`1/|\nabla \ln|\Psi||`), but uses
+    :func:`evaluate_wavefunction` and automatic differentiation of :math:`\Psi`
+    instead of analytic :math:`\nabla \ln|\Psi|` derivatives.
+
+    Args:
+        wavefunction_data: Wavefunction parameters (Jastrow + Geminal).
+        r_up_carts: Cartesian coordinates of up-spin electrons with shape ``(n_up, 3)``.
+        r_dn_carts: Cartesian coordinates of down-spin electrons with shape ``(n_dn, 3)``.
+
+    Returns:
+        Scalar nodal distance value.
+    """
+    r_up = jnp.asarray(r_up_carts, dtype=jnp.float64)
+    r_dn = jnp.asarray(r_dn_carts, dtype=jnp.float64)
+
+    Psi = evaluate_wavefunction(wavefunction_data, r_up, r_dn)
+
+    grad_Psi_r_up = grad(evaluate_wavefunction, argnums=1)(wavefunction_data, r_up, r_dn)  # (n_up, 3)
+    grad_Psi_r_dn = grad(evaluate_wavefunction, argnums=2)(wavefunction_data, r_up, r_dn)  # (n_dn, 3)
+
+    grad_Psi_norm_sq = jnp.sum(grad_Psi_r_up**2) + jnp.sum(grad_Psi_r_dn**2)
+
+    # x_vec = Psi * grad_Psi / |grad_Psi|^2, so |x| = |Psi| / |grad_Psi|
+    return jnp.abs(Psi) / jnp.sqrt(grad_Psi_norm_sq)
 
 
 """
