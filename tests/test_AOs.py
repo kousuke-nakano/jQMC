@@ -40,7 +40,7 @@ import jax
 import numpy as np
 import pytest
 from numpy import linalg as LA
-from numpy.testing import assert_almost_equal
+from numpy.testing import assert_allclose
 
 # Add the project root directory to sys.path to allow executing this script directly
 # This is necessary because relative imports (e.g. 'from ..jqmc') are not allowed
@@ -69,11 +69,16 @@ from jqmc.atomic_orbital import (  # noqa: E402
     compute_overlap_matrix,
 )
 from jqmc.setting import (  # noqa: E402
-    decimal_auto_vs_analytic_deriv,
-    decimal_auto_vs_numerical_deriv,
-    decimal_consistency,
-    decimal_debug_vs_production,
-    decimal_numerical_vs_analytic_deriv,
+    atol_auto_vs_analytic_deriv,
+    rtol_auto_vs_analytic_deriv,
+    atol_auto_vs_numerical_deriv,
+    rtol_auto_vs_numerical_deriv,
+    atol_consistency,
+    rtol_consistency,
+    atol_debug_vs_production,
+    rtol_debug_vs_production,
+    atol_numerical_vs_analytic_deriv,
+    rtol_numerical_vs_analytic_deriv,
 )
 from jqmc.structure import Structure_data  # noqa: E402
 
@@ -227,7 +232,7 @@ def test_spherical_harmonics_debug_vs_production(l, m):
         ref_S_lm = np.sqrt((4 * np.pi) / (2 * l + 1)) * r_norm**l * Y_l_m_ref(l=l, m=m, r_cart_rel=r_cart_rel)
         assert not np.any(np.isnan(np.asarray(test_S_lm))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(ref_S_lm))), "NaN detected in second argument"
-        assert_almost_equal(test_S_lm, ref_S_lm, decimal=decimal_debug_vs_production)
+        assert_allclose(test_S_lm, ref_S_lm, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
 
     jax.clear_caches()
 
@@ -270,7 +275,7 @@ def test_solid_harmonics_debug_vs_production():
 
     assert not np.any(np.isnan(np.asarray(S_l_m_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(S_l_m_jax))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(S_l_m_debug, S_l_m_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(S_l_m_debug, S_l_m_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
     jax.clear_caches()
 
 
@@ -326,7 +331,7 @@ def test_AOs_sphe_debug_vs_production():
 
     assert not np.any(np.isnan(np.asarray(aos_jax))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(aos_debug))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(aos_jax, aos_debug, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(aos_jax, aos_debug, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
 
     num_el = 150
     num_ao = len(ml_list)
@@ -377,7 +382,7 @@ def test_AOs_sphe_debug_vs_production():
 
     assert not np.any(np.isnan(np.asarray(aos_jax))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(aos_debug))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(aos_jax, aos_debug, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(aos_jax, aos_debug, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
 
     jax.clear_caches()
 
@@ -451,7 +456,7 @@ def test_AOs_cart_debug_vs_production():
 
     assert not np.any(np.isnan(np.asarray(aos_jax))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(aos_debug))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(aos_jax, aos_debug, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(aos_jax, aos_debug, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
 
     jax.clear_caches()
 
@@ -506,13 +511,13 @@ def test_AOs_sphe_and_cart_grads_analytic_vs_auto():
 
     assert not np.any(np.isnan(np.asarray(gx_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_auto))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(gx_an, gx_auto, decimal=decimal_auto_vs_analytic_deriv)
+    np.testing.assert_allclose(gx_an, gx_auto, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv)
     assert not np.any(np.isnan(np.asarray(gy_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gy_auto))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(gy_an, gy_auto, decimal=decimal_auto_vs_analytic_deriv)
+    np.testing.assert_allclose(gy_an, gy_auto, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv)
     assert not np.any(np.isnan(np.asarray(gz_an))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gz_auto))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(gz_an, gz_auto, decimal=decimal_auto_vs_analytic_deriv)
+    np.testing.assert_allclose(gz_an, gz_auto, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv)
 
     jax.clear_caches()
 
@@ -567,13 +572,13 @@ def test_AOs_sphe_and_cart_grads_auto_vs_numerical():
 
     assert not np.any(np.isnan(np.asarray(gx_auto_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_num_cart))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(gx_auto_cart, gx_num_cart, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(gx_auto_cart, gx_num_cart, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv)
     assert not np.any(np.isnan(np.asarray(gy_auto_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gy_num_cart))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(gy_auto_cart, gy_num_cart, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(gy_auto_cart, gy_num_cart, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv)
     assert not np.any(np.isnan(np.asarray(gz_auto_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gz_num_cart))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(gz_auto_cart, gz_num_cart, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(gz_auto_cart, gz_num_cart, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv)
 
     # Spherical case
     num_r_cart_samples = 10
@@ -629,14 +634,14 @@ def test_AOs_sphe_and_cart_grads_auto_vs_numerical():
 
     assert not np.any(np.isnan(np.asarray(gx_auto_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_num_sphe))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(gx_auto_sphe, gx_num_sphe, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(gx_auto_sphe, gx_num_sphe, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv)
     assert not np.any(np.isnan(np.asarray(gy_auto_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gy_num_sphe))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(gy_auto_sphe, gy_num_sphe, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(gy_auto_sphe, gy_num_sphe, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv)
 
     assert not np.any(np.isnan(np.asarray(gz_auto_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gz_num_sphe))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(gz_auto_sphe, gz_num_sphe, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(gz_auto_sphe, gz_num_sphe, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv)
 
     # Spherical case (additional coverage)
     num_r_cart_samples = 2
@@ -692,13 +697,13 @@ def test_AOs_sphe_and_cart_grads_auto_vs_numerical():
 
     assert not np.any(np.isnan(np.asarray(gx_auto_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_num_sphe))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(gx_auto_sphe, gx_num_sphe, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(gx_auto_sphe, gx_num_sphe, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv)
     assert not np.any(np.isnan(np.asarray(gy_auto_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gy_num_sphe))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(gy_auto_sphe, gy_num_sphe, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(gy_auto_sphe, gy_num_sphe, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv)
     assert not np.any(np.isnan(np.asarray(gz_auto_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gz_num_sphe))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(gz_auto_sphe, gz_num_sphe, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(gz_auto_sphe, gz_num_sphe, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv)
 
     jax.clear_caches()
 
@@ -753,13 +758,19 @@ def test_AOs_sphe_and_cart_grads_analytic_vs_numerical():
 
     assert not np.any(np.isnan(np.asarray(gx_an_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_num_cart))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(gx_an_cart, gx_num_cart, decimal=decimal_numerical_vs_analytic_deriv)
+    np.testing.assert_allclose(
+        gx_an_cart, gx_num_cart, atol=atol_numerical_vs_analytic_deriv, rtol=rtol_numerical_vs_analytic_deriv
+    )
     assert not np.any(np.isnan(np.asarray(gy_an_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gy_num_cart))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(gy_an_cart, gy_num_cart, decimal=decimal_numerical_vs_analytic_deriv)
+    np.testing.assert_allclose(
+        gy_an_cart, gy_num_cart, atol=atol_numerical_vs_analytic_deriv, rtol=rtol_numerical_vs_analytic_deriv
+    )
     assert not np.any(np.isnan(np.asarray(gz_an_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gz_num_cart))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(gz_an_cart, gz_num_cart, decimal=decimal_numerical_vs_analytic_deriv)
+    np.testing.assert_allclose(
+        gz_an_cart, gz_num_cart, atol=atol_numerical_vs_analytic_deriv, rtol=rtol_numerical_vs_analytic_deriv
+    )
 
     # Spherical case
     num_r_cart_samples = 3
@@ -802,13 +813,19 @@ def test_AOs_sphe_and_cart_grads_analytic_vs_numerical():
 
     assert not np.any(np.isnan(np.asarray(gx_an_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gx_num_sphe))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(gx_an_sphe, gx_num_sphe, decimal=decimal_numerical_vs_analytic_deriv)
+    np.testing.assert_allclose(
+        gx_an_sphe, gx_num_sphe, atol=atol_numerical_vs_analytic_deriv, rtol=rtol_numerical_vs_analytic_deriv
+    )
     assert not np.any(np.isnan(np.asarray(gy_an_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gy_num_sphe))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(gy_an_sphe, gy_num_sphe, decimal=decimal_numerical_vs_analytic_deriv)
+    np.testing.assert_allclose(
+        gy_an_sphe, gy_num_sphe, atol=atol_numerical_vs_analytic_deriv, rtol=rtol_numerical_vs_analytic_deriv
+    )
     assert not np.any(np.isnan(np.asarray(gz_an_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(gz_num_sphe))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(gz_an_sphe, gz_num_sphe, decimal=decimal_numerical_vs_analytic_deriv)
+    np.testing.assert_allclose(
+        gz_an_sphe, gz_num_sphe, atol=atol_numerical_vs_analytic_deriv, rtol=rtol_numerical_vs_analytic_deriv
+    )
 
     jax.clear_caches()
 
@@ -864,7 +881,7 @@ def test_AOs_shpe_and_cart_laplacians_analytic_vs_auto():
 
     assert not np.any(np.isnan(np.asarray(lap_an_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_auto_cart))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(lap_an_cart, lap_auto_cart, decimal=decimal_auto_vs_analytic_deriv)
+    np.testing.assert_allclose(lap_an_cart, lap_auto_cart, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv)
 
     # Spherical case
     num_r_cart_samples = 3
@@ -907,7 +924,7 @@ def test_AOs_shpe_and_cart_laplacians_analytic_vs_auto():
 
     assert not np.any(np.isnan(np.asarray(lap_an_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_auto_sphe))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(lap_an_sphe, lap_auto_sphe, decimal=decimal_auto_vs_analytic_deriv)
+    np.testing.assert_allclose(lap_an_sphe, lap_auto_sphe, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv)
 
 
 def test_AOs_shpe_and_cart_laplacians_analytic_vs_numerical():
@@ -960,7 +977,9 @@ def test_AOs_shpe_and_cart_laplacians_analytic_vs_numerical():
 
     assert not np.any(np.isnan(np.asarray(lap_an_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_num_cart))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(lap_an_cart, lap_num_cart, decimal=decimal_numerical_vs_analytic_deriv)
+    np.testing.assert_allclose(
+        lap_an_cart, lap_num_cart, atol=atol_numerical_vs_analytic_deriv, rtol=rtol_numerical_vs_analytic_deriv
+    )
 
     # Spherical case
     num_r_cart_samples = 3
@@ -1003,7 +1022,9 @@ def test_AOs_shpe_and_cart_laplacians_analytic_vs_numerical():
 
     assert not np.any(np.isnan(np.asarray(lap_an_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_num_sphe))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(lap_an_sphe, lap_num_sphe, decimal=decimal_numerical_vs_analytic_deriv)
+    np.testing.assert_allclose(
+        lap_an_sphe, lap_num_sphe, atol=atol_numerical_vs_analytic_deriv, rtol=rtol_numerical_vs_analytic_deriv
+    )
 
     jax.clear_caches()
 
@@ -1058,7 +1079,9 @@ def test_AOs_shpe_and_cart_laplacians_auto_vs_numerical():
 
     assert not np.any(np.isnan(np.asarray(lap_auto_cart))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_num_cart))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(lap_auto_cart, lap_num_cart, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(
+        lap_auto_cart, lap_num_cart, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
+    )
 
     # Spherical cases
     num_r_cart_samples = 10
@@ -1110,7 +1133,9 @@ def test_AOs_shpe_and_cart_laplacians_auto_vs_numerical():
 
     assert not np.any(np.isnan(np.asarray(lap_num_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_auto_sphe))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(lap_num_sphe, lap_auto_sphe, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(
+        lap_num_sphe, lap_auto_sphe, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
+    )
 
     num_r_cart_samples = 2
     num_R_cart_samples = 3
@@ -1161,7 +1186,9 @@ def test_AOs_shpe_and_cart_laplacians_auto_vs_numerical():
 
     assert not np.any(np.isnan(np.asarray(lap_num_sphe))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_auto_sphe))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(lap_num_sphe, lap_auto_sphe, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(
+        lap_num_sphe, lap_auto_sphe, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
+    )
 
     jax.clear_caches()
 
@@ -1199,10 +1226,12 @@ def test_overlap_matrix_cart_analytic_vs_numerical_debug():
 
     assert not np.any(np.isnan(np.asarray(overlap_analytic))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(overlap_numerical))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(overlap_analytic, overlap_numerical, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(
+        overlap_analytic, overlap_numerical, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
+    )
     assert not np.any(np.isnan(np.asarray(overlap_analytic))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(overlap_analytic.T))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(overlap_analytic, overlap_analytic.T, decimal=decimal_consistency)
+    np.testing.assert_allclose(overlap_analytic, overlap_analytic.T, atol=atol_consistency, rtol=rtol_consistency)
     assert np.all(np.diag(overlap_analytic) > 0.0)
 
     jax.clear_caches()
@@ -1239,10 +1268,12 @@ def test_overlap_matrix_sphe_analytic_vs_numerical_debug():
 
     assert not np.any(np.isnan(np.asarray(overlap_analytic))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(overlap_numerical))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(overlap_analytic, overlap_numerical, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(
+        overlap_analytic, overlap_numerical, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
+    )
     assert not np.any(np.isnan(np.asarray(overlap_analytic))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(overlap_analytic.T))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(overlap_analytic, overlap_analytic.T, decimal=decimal_consistency)
+    np.testing.assert_allclose(overlap_analytic, overlap_analytic.T, atol=atol_consistency, rtol=rtol_consistency)
     assert np.all(np.diag(overlap_analytic) > 0.0)
 
     jax.clear_caches()

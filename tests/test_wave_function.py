@@ -54,9 +54,12 @@ from jqmc.jastrow_factor import (  # noqa: E402
 )
 from jqmc.setting import (  # noqa: E402
     atol_auto_vs_numerical_deriv,
-    decimal_auto_vs_analytic_deriv,
-    decimal_auto_vs_numerical_deriv,
-    decimal_debug_vs_production,
+    atol_auto_vs_analytic_deriv,
+    rtol_auto_vs_analytic_deriv,
+    atol_auto_vs_numerical_deriv,
+    rtol_auto_vs_numerical_deriv,
+    atol_debug_vs_production,
+    rtol_debug_vs_production,
     rtol_auto_vs_numerical_deriv,
 )
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
@@ -86,7 +89,8 @@ jax.config.update("jax_traceback_filtering", "off")
 
 
 @pytest.mark.activate_if_skip_heavy
-def test_kinetic_energy_analytic_and_numerical():
+@pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
+def test_kinetic_energy_analytic_and_numerical(trexio_file: str):
     """Test the kinetic energy computation."""
     (
         structure_data,
@@ -96,7 +100,7 @@ def test_kinetic_energy_analytic_and_numerical():
         geminal_mo_data,
         _,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
     )
 
     jastrow_onebody_data = None
@@ -135,7 +139,8 @@ def test_kinetic_energy_analytic_and_numerical():
     )
 
 
-def test_kinetic_energy_analytic_and_auto():
+@pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
+def test_kinetic_energy_analytic_and_auto(trexio_file: str):
     """Compare analytic and autodiff kinetic energy implementations."""
     (
         _,
@@ -145,7 +150,7 @@ def test_kinetic_energy_analytic_and_auto():
         geminal_mo_data,
         _,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
     )
 
     jastrow_onebody_data = None
@@ -176,11 +181,12 @@ def test_kinetic_energy_analytic_and_auto():
 
     assert not np.any(np.isnan(np.asarray(K_analytic))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(K_auto))), "NaN detected in second argument"
-    np.testing.assert_almost_equal(K_analytic, K_auto, decimal=decimal_auto_vs_analytic_deriv)
+    np.testing.assert_allclose(K_analytic, K_auto, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv)
 
 
 @pytest.mark.activate_if_skip_heavy
-def test_debug_and_auto_kinetic_energy_all_elements():
+@pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
+def test_debug_and_auto_kinetic_energy_all_elements(trexio_file: str):
     """Debug vs autodiff kinetic energy per-electron arrays."""
     (
         _,
@@ -190,7 +196,7 @@ def test_debug_and_auto_kinetic_energy_all_elements():
         geminal_mo_data,
         _,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
     )
     jastrow_onebody_data = None
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
@@ -205,22 +211,11 @@ def test_debug_and_auto_kinetic_energy_all_elements():
 
     wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
 
-    r_up_carts_np = np.array(
-        [
-            [0.64878536, -0.83275288, 0.33532629],
-            [0.55271273, 0.72310605, 0.93443775],
-            [0.66767275, 0.1206456, -0.36521208],
-            [-0.93165236, -0.0120386, 0.33003036],
-        ]
-    )
-    r_dn_carts_np = np.array(
-        [
-            [1.0347816, 1.26162081, 0.42301735],
-            [-0.57843435, 1.03651987, -0.55091542],
-            [-1.56091964, -0.58952149, -0.99268141],
-            [0.61863233, -0.14903326, 0.51962683],
-        ]
-    )
+    num_ele_up = geminal_mo_data.num_electron_up
+    num_ele_dn = geminal_mo_data.num_electron_dn
+    rng = np.random.default_rng(42)
+    r_up_carts_np = rng.uniform(-2.0, 2.0, size=(num_ele_up, 3))
+    r_dn_carts_np = rng.uniform(-2.0, 2.0, size=(num_ele_dn, 3))
 
     r_up_carts_jnp = jnp.array(r_up_carts_np)
     r_dn_carts_jnp = jnp.array(r_dn_carts_np)
@@ -234,10 +229,14 @@ def test_debug_and_auto_kinetic_energy_all_elements():
 
     assert not np.any(np.isnan(np.asarray(K_elements_up_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(K_elements_up_auto))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(K_elements_up_debug, K_elements_up_auto, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(
+        K_elements_up_debug, K_elements_up_auto, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
+    )
     assert not np.any(np.isnan(np.asarray(K_elements_dn_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(K_elements_dn_auto))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(K_elements_dn_debug, K_elements_dn_auto, decimal=decimal_auto_vs_numerical_deriv)
+    np.testing.assert_allclose(
+        K_elements_dn_debug, K_elements_dn_auto, atol=atol_auto_vs_numerical_deriv, rtol=rtol_auto_vs_numerical_deriv
+    )
 
     assert not np.any(np.isnan(np.asarray(np.asarray(K_elements_up_debug)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(K_elements_up_auto)))), "NaN detected in second argument"
@@ -258,7 +257,8 @@ def test_debug_and_auto_kinetic_energy_all_elements():
     )
 
 
-def test_auto_and_analytic_kinetic_energy_all_elements():
+@pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
+def test_auto_and_analytic_kinetic_energy_all_elements(trexio_file: str):
     """Autodiff vs analytic kinetic energy per-electron arrays."""
     (
         _,
@@ -268,7 +268,7 @@ def test_auto_and_analytic_kinetic_energy_all_elements():
         geminal_mo_data,
         _,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
     )
 
     jastrow_onebody_data = None
@@ -284,22 +284,11 @@ def test_auto_and_analytic_kinetic_energy_all_elements():
 
     wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
 
-    r_up_carts_np = np.array(
-        [
-            [0.64878536, -0.83275288, 0.33532629],
-            [0.55271273, 0.72310605, 0.93443775],
-            [0.66767275, 0.1206456, -0.36521208],
-            [-0.93165236, -0.0120386, 0.33003036],
-        ]
-    )
-    r_dn_carts_np = np.array(
-        [
-            [1.0347816, 1.26162081, 0.42301735],
-            [-0.57843435, 1.03651987, -0.55091542],
-            [-1.56091964, -0.58952149, -0.99268141],
-            [0.61863233, -0.14903326, 0.51962683],
-        ]
-    )
+    num_ele_up = geminal_mo_data.num_electron_up
+    num_ele_dn = geminal_mo_data.num_electron_dn
+    rng = np.random.default_rng(43)
+    r_up_carts_np = rng.uniform(-2.0, 2.0, size=(num_ele_up, 3))
+    r_dn_carts_np = rng.uniform(-2.0, 2.0, size=(num_ele_dn, 3))
 
     r_up_carts_jnp = jnp.array(r_up_carts_np)
     r_dn_carts_jnp = jnp.array(r_dn_carts_np)
@@ -313,13 +302,18 @@ def test_auto_and_analytic_kinetic_energy_all_elements():
 
     assert not np.any(np.isnan(np.asarray(K_elements_up_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(K_elements_up_analytic))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(K_elements_up_auto, K_elements_up_analytic, decimal=decimal_auto_vs_analytic_deriv)
+    np.testing.assert_allclose(
+        K_elements_up_auto, K_elements_up_analytic, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv
+    )
     assert not np.any(np.isnan(np.asarray(K_elements_dn_auto))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(K_elements_dn_analytic))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(K_elements_dn_auto, K_elements_dn_analytic, decimal=decimal_auto_vs_analytic_deriv)
+    np.testing.assert_allclose(
+        K_elements_dn_auto, K_elements_dn_analytic, atol=atol_auto_vs_analytic_deriv, rtol=rtol_auto_vs_analytic_deriv
+    )
 
 
-def test_fast_update_kinetic_energy_all_elements():
+@pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
+def test_fast_update_kinetic_energy_all_elements(trexio_file: str):
     """Fast-update per-electron kinetic energy should match the standard analytic path."""
     (
         _,
@@ -329,7 +323,7 @@ def test_fast_update_kinetic_energy_all_elements():
         geminal_mo_data,
         _,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"),
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
         store_tuple=True,
     )
 
@@ -379,13 +373,14 @@ def test_fast_update_kinetic_energy_all_elements():
 
     assert not np.any(np.isnan(np.asarray(ke_up_fast))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(ke_up_debug))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(ke_up_fast, ke_up_debug, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(ke_up_fast, ke_up_debug, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
     assert not np.any(np.isnan(np.asarray(ke_dn_fast))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(ke_dn_debug))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(ke_dn_fast, ke_dn_debug, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(ke_dn_fast, ke_dn_debug, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
 
 
-def test_debug_and_jax_discretized_kinetic_energy():
+@pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
+def test_debug_and_jax_discretized_kinetic_energy(trexio_file: str):
     """Test the discretized kinetic energy computation."""
     (
         _,
@@ -395,7 +390,7 @@ def test_debug_and_jax_discretized_kinetic_energy():
         geminal_mo_data,
         _,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
     )
 
     jastrow_onebody_data = None
@@ -414,22 +409,11 @@ def test_debug_and_jax_discretized_kinetic_energy():
     wavefunction_data = Wavefunction_data(geminal_data=geminal_mo_data, jastrow_data=jastrow_data)
     wavefunction_data.sanity_check()
 
-    r_up_carts_np = np.array(
-        [
-            [0.64878536, -0.83275288, 0.33532629],
-            [0.55271273, 0.72310605, 0.93443775],
-            [0.66767275, 0.1206456, -0.36521208],
-            [-0.93165236, -0.0120386, 0.33003036],
-        ]
-    )
-    r_dn_carts_np = np.array(
-        [
-            [1.0347816, 1.26162081, 0.42301735],
-            [-0.57843435, 1.03651987, -0.55091542],
-            [-1.56091964, -0.58952149, -0.99268141],
-            [0.61863233, -0.14903326, 0.51962683],
-        ]
-    )
+    num_ele_up = geminal_mo_data.num_electron_up
+    num_ele_dn = geminal_mo_data.num_electron_dn
+    rng = np.random.default_rng(44)
+    r_up_carts_np = rng.uniform(-2.0, 2.0, size=(num_ele_up, 3))
+    r_dn_carts_np = rng.uniform(-2.0, 2.0, size=(num_ele_dn, 3))
 
     r_up_carts_jnp = jnp.array(r_up_carts_np)
     r_dn_carts_jnp = jnp.array(r_dn_carts_np)
@@ -470,47 +454,53 @@ def test_debug_and_jax_discretized_kinetic_energy():
 
     assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_up_carts_jax))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_up_carts_debug))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(
+    np.testing.assert_allclose(
         mesh_kinetic_part_r_up_carts_jax,
         mesh_kinetic_part_r_up_carts_debug,
-        decimal=decimal_debug_vs_production,
+        atol=atol_debug_vs_production,
+        rtol=rtol_debug_vs_production,
     )
     assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_dn_carts_jax))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_dn_carts_debug))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(
+    np.testing.assert_allclose(
         mesh_kinetic_part_r_dn_carts_jax,
         mesh_kinetic_part_r_dn_carts_debug,
-        decimal=decimal_debug_vs_production,
+        atol=atol_debug_vs_production,
+        rtol=rtol_debug_vs_production,
     )
     assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_up_carts_jax_fast_update))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_up_carts_debug))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(
+    np.testing.assert_allclose(
         mesh_kinetic_part_r_up_carts_jax_fast_update,
         mesh_kinetic_part_r_up_carts_debug,
-        decimal=decimal_debug_vs_production,
+        atol=atol_debug_vs_production,
+        rtol=rtol_debug_vs_production,
     )
     assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_dn_carts_jax_fast_update))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(mesh_kinetic_part_r_dn_carts_debug))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(
+    np.testing.assert_allclose(
         mesh_kinetic_part_r_dn_carts_jax_fast_update,
         mesh_kinetic_part_r_dn_carts_debug,
-        decimal=decimal_debug_vs_production,
+        atol=atol_debug_vs_production,
+        rtol=rtol_debug_vs_production,
     )
     assert not np.any(np.isnan(np.asarray(elements_kinetic_part_jax))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(elements_kinetic_part_debug))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(
-        elements_kinetic_part_jax, elements_kinetic_part_debug, decimal=decimal_debug_vs_production
+    np.testing.assert_allclose(
+        elements_kinetic_part_jax, elements_kinetic_part_debug, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
     )
     assert not np.any(np.isnan(np.asarray(elements_kinetic_part_jax_fast_update))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(elements_kinetic_part_debug))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(
+    np.testing.assert_allclose(
         elements_kinetic_part_jax_fast_update,
         elements_kinetic_part_debug,
-        decimal=decimal_debug_vs_production,
+        atol=atol_debug_vs_production,
+        rtol=rtol_debug_vs_production,
     )
 
 
-def test_nodal_distance_analytic_vs_debug():
+@pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
+def test_nodal_distance_analytic_vs_debug(trexio_file: str):
     """Analytic compute_nodal_distance should match _compute_nodal_distance_debug."""
     (
         structure_data,
@@ -520,7 +510,7 @@ def test_nodal_distance_analytic_vs_debug():
         geminal_mo_data,
         _,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
     )
 
     jastrow_onebody_data = None
@@ -604,7 +594,7 @@ def test_f_epsilon_PW_boundary_values():
 
 
 @pytest.mark.activate_if_skip_heavy
-@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5"])
+@pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
 def test_evaluate_ln_wavefunction_fast_forward(trexio_file):
     """Forward value of evaluate_ln_wavefunction_fast must match evaluate_ln_wavefunction."""
     _, _, _, _, geminal_data, _ = read_trexio_file(
@@ -627,16 +617,17 @@ def test_evaluate_ln_wavefunction_fast_forward(trexio_file):
 
         assert np.isfinite(val_ref), f"Reference value is not finite: {val_ref}"
         assert np.isfinite(val_fast), f"Fast value is not finite: {val_fast}"
-        np.testing.assert_almost_equal(
+        np.testing.assert_allclose(
             val_fast,
             val_ref,
-            decimal=decimal_debug_vs_production,
+            atol=atol_debug_vs_production,
+            rtol=rtol_debug_vs_production,
             err_msg=f"Forward mismatch: fast={val_fast:.15f}, ref={val_ref:.15f}",
         )
 
 
 @pytest.mark.activate_if_skip_heavy
-@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5"])
+@pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
 def test_evaluate_ln_wavefunction_fast_backward(trexio_file):
     """Gradient of evaluate_ln_wavefunction_fast w.r.t. wavefunction_data must match evaluate_ln_wavefunction."""
     _, _, _, _, geminal_data, _ = read_trexio_file(
@@ -661,10 +652,11 @@ def test_evaluate_ln_wavefunction_fast_backward(trexio_file):
         grad_fast = grad_fast_fn(wavefunction_data, r_up, r_dn, G_inv)
 
         jax.tree_util.tree_map(
-            lambda a, b: np.testing.assert_array_almost_equal(
+            lambda a, b: np.testing.assert_allclose(
                 np.asarray(a),
                 np.asarray(b),
-                decimal=decimal_debug_vs_production,
+                atol=atol_debug_vs_production,
+                rtol=rtol_debug_vs_production,
                 err_msg="Backward mismatch in evaluate_ln_wavefunction_fast",
             ),
             grad_ref,

@@ -698,10 +698,10 @@ class TestComputeForce:
 class TestHamiltonianCommands:
     """Tests for hamiltonian show-info and to-xyz commands."""
 
-    @pytest.fixture()
-    def h5_file(self, tmp_path):
+    @pytest.fixture(params=trexio_files, ids=trexio_files)
+    def h5_file(self, tmp_path, request):
         """Create a hamiltonian_data.h5 from a TREXIO example file."""
-        trexio_file = os.path.join(_TREXIO_DIR, "H2_ecp_ccpvtz_cart.h5")
+        trexio_file = os.path.join(_TREXIO_DIR, request.param)
         h5_path = str(tmp_path / "hamiltonian_data.h5")
         trexio_convert_to(
             trexio_file=trexio_file,
@@ -733,17 +733,17 @@ class TestHamiltonianCommands:
 class TestTrexioShowCommands:
     """Tests for trexio show-info and show-detail commands."""
 
-    _trexio_file = os.path.join(_TREXIO_DIR, "H2_ecp_ccpvtz_cart.h5")
-
-    def test_trexio_show_info(self, capsys):
+    @pytest.mark.parametrize("trexio_filename", trexio_files, ids=trexio_files)
+    def test_trexio_show_info(self, trexio_filename, capsys):
         """show-info should produce output without error."""
-        trexio_show_info(filename=self._trexio_file)
+        trexio_show_info(filename=os.path.join(_TREXIO_DIR, trexio_filename))
         captured = capsys.readouterr()
         assert len(captured.out) > 0
 
-    def test_trexio_show_detail(self, capsys):
+    @pytest.mark.parametrize("trexio_filename", trexio_files, ids=trexio_files)
+    def test_trexio_show_detail(self, trexio_filename, capsys):
         """show-detail should produce output without error."""
-        trexio_show_detail(filename=self._trexio_file)
+        trexio_show_detail(filename=os.path.join(_TREXIO_DIR, trexio_filename))
         captured = capsys.readouterr()
         assert len(captured.out) > 0
 

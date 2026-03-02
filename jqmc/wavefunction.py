@@ -495,7 +495,7 @@ def evaluate_ln_wavefunction_fast(
         exactly at the supplied electron positions.  Correctness is only
         guaranteed when the inverse is maintained via **single-electron
         (rank-1) Sherman-Morrison updates** starting from a freshly
-        initialised LU inverse — the pattern used in the MCMC loop.
+        initialized LU inverse — the pattern used in the MCMC loop.
         Passing an inverse from a different configuration silently produces
         incorrect parameter gradients (``O_matrix`` / SR).
     """
@@ -874,7 +874,7 @@ def compute_kinetic_energy_all_elements_fast_update(
         exactly at the supplied electron positions.  Correctness is only
         guaranteed when the inverse is maintained via **single-electron
         (rank-1) Sherman-Morrison updates** starting from a freshly
-        initialised LU inverse — the pattern used in the MCMC loop.
+        initialized LU inverse — the pattern used in the MCMC loop.
         Passing an inverse from a different configuration silently produces
         incorrect kinetic energy.
     """

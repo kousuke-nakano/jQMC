@@ -480,6 +480,33 @@ class MCMC_Workflow(Workflow):
 
         os.chdir(_wd)
 
+        # ── Re-compute energy if post-processing parameters changed ──
+        _postproc_changed = (
+            estimation.get("last_num_mcmc_bin_blocks") != self.num_mcmc_bin_blocks
+            or estimation.get("last_num_mcmc_warmup_steps") != self.num_mcmc_warmup_steps
+        )
+        if _postproc_changed and estimation.get("last_energy") is not None:
+            logger.info(
+                "  Post-processing parameters changed "
+                f"(bin_blocks: {estimation.get('last_num_mcmc_bin_blocks')}"
+                f" -> {self.num_mcmc_bin_blocks}, "
+                f"warmup: {estimation.get('last_num_mcmc_warmup_steps')}"
+                f" -> {self.num_mcmc_warmup_steps}); "
+                "re-computing energy."
+            )
+            restart_chk = self._find_restart_chk()
+            if restart_chk:
+                energy, error = self._compute_energy(restart_chk)
+                if energy is not None:
+                    set_estimation(
+                        _wd,
+                        last_energy=energy,
+                        last_energy_error=error,
+                        last_num_mcmc_bin_blocks=self.num_mcmc_bin_blocks,
+                        last_num_mcmc_warmup_steps=self.num_mcmc_warmup_steps,
+                    )
+                    estimation = get_estimation(_wd)
+
         # ── Early exit if target already met ──────────────────────
         cached_energy = estimation.get("last_energy")
         cached_error = estimation.get("last_energy_error")
@@ -561,6 +588,8 @@ class MCMC_Workflow(Workflow):
                         _wd,
                         last_energy=energy,
                         last_energy_error=error,
+                        last_num_mcmc_bin_blocks=self.num_mcmc_bin_blocks,
+                        last_num_mcmc_warmup_steps=self.num_mcmc_warmup_steps,
                     )
 
                     if error <= self.target_error * 1.05:
@@ -586,6 +615,27 @@ class MCMC_Workflow(Workflow):
                             f"{self.target_error:.6g} Ha -- "
                             f"max_continuation ({self.max_continuation}) reached"
                         )
+
+        # ── Final energy computation if skipped ───────────────────
+        # When all production runs are already fetched, the loop body
+        # never calls _compute_energy.  Compute it now so the caller
+        # always receives an up-to-date energy with the current
+        # post-processing parameters.
+        if "energy" not in self.output_values:
+            restart_chk = self._find_restart_chk()
+            if restart_chk:
+                energy, error = self._compute_energy(restart_chk)
+                if energy is not None:
+                    self.output_values["energy"] = energy
+                    self.output_values["energy_error"] = error
+                    self.output_values["restart_chk"] = restart_chk
+                    set_estimation(
+                        _wd,
+                        last_energy=energy,
+                        last_energy_error=error,
+                        last_num_mcmc_bin_blocks=self.num_mcmc_bin_blocks,
+                        last_num_mcmc_warmup_steps=self.num_mcmc_warmup_steps,
+                    )
 
         # ── Collect outputs ───────────────────────────────────────
         chk_files = sorted(glob.glob("*.rchk")) + sorted(glob.glob("*.chk"))

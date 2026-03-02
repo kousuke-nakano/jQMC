@@ -63,9 +63,12 @@ from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_two_body_data,
 )
 from jqmc.setting import (  # noqa: E402
-    decimal_auto_vs_analytic_deriv,
-    decimal_consistency,
-    decimal_debug_vs_production,
+    atol_auto_vs_analytic_deriv,
+    rtol_auto_vs_analytic_deriv,
+    atol_consistency,
+    rtol_consistency,
+    atol_debug_vs_production,
+    rtol_debug_vs_production,
 )
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import (  # noqa: E402
@@ -231,10 +234,11 @@ def test_compute_local_energy_fast(trexio_file):
 
         assert np.isfinite(e_ref), f"Reference e_L is not finite: {e_ref}"
         assert np.isfinite(e_fast), f"Fast e_L is not finite: {e_fast}"
-        np.testing.assert_almost_equal(
+        np.testing.assert_allclose(
             e_fast,
             e_ref,
-            decimal=decimal_debug_vs_production,
+            atol=atol_debug_vs_production,
+            rtol=rtol_debug_vs_production,
             err_msg=f"compute_local_energy_fast={e_fast:.10f} != compute_local_energy={e_ref:.10f}",
         )
 
@@ -243,7 +247,8 @@ def _compare_grad_leaves(
     grad_ref,
     grad_test,
     label,
-    decimal=decimal_auto_vs_analytic_deriv,
+    atol=atol_auto_vs_analytic_deriv,
+    rtol=rtol_auto_vs_analytic_deriv,
 ):
     """Flatten two pytrees and compare every leaf."""
     leaves_ref = jax.tree_util.tree_leaves(grad_ref)
@@ -253,10 +258,11 @@ def _compare_grad_leaves(
         lr = np.asarray(lr)
         lt = np.asarray(lt)
         assert lr.shape == lt.shape, f"{label} leaf {i}: shape {lr.shape} vs {lt.shape}"
-        np.testing.assert_array_almost_equal(
+        np.testing.assert_allclose(
             lt,
             lr,
-            decimal=decimal,
+            atol=atol,
+            rtol=rtol,
             err_msg=f"{label}: gradient mismatch at leaf {i}  (max |diff|={np.max(np.abs(lt - lr)):.3e})",
         )
 
@@ -293,10 +299,11 @@ def test_grad_compute_local_energy(trexio_file):
     # Sanity: both forward values must agree.
     e_auto = float(_compute_local_energy_auto(hamiltonian_data, r_up, r_dn, RT))
     e_custom = float(compute_local_energy(hamiltonian_data, r_up, r_dn, RT))
-    np.testing.assert_almost_equal(
+    np.testing.assert_allclose(
         e_custom,
         e_auto,
-        decimal=decimal_consistency,
+        atol=atol_consistency,
+        rtol=rtol_consistency,
         err_msg="forward e_L mismatch",
     )
 
@@ -308,7 +315,8 @@ def test_grad_compute_local_energy(trexio_file):
         grad_auto,
         grad_custom,
         label=f"grad(compute_local_energy) vs _auto [{trexio_file}, seed={seed}]",
-        decimal=decimal_auto_vs_analytic_deriv,
+        atol=atol_auto_vs_analytic_deriv,
+        rtol=rtol_auto_vs_analytic_deriv,
     )
 
 

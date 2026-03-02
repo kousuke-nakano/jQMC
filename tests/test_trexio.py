@@ -50,25 +50,19 @@ jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
 
-@pytest.mark.parametrize(
-    "filename",
-    ["water_ccecp_ccpvqz.h5"],
-    ids=["water_ccecp_ccpvqz.h5"],
-)
-def test_read_trexio_files_with_tuple(filename: str):
+@pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5"])
+def test_read_trexio_files_with_tuple(trexio_file: str):
     """Test read_trexio files."""
-    read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", filename), store_tuple=True)
+    read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True)
     jax.clear_caches()
 
 
-@pytest.mark.parametrize(
-    "filename",
-    ["water_ccecp_ccpvqz.h5"],
-    ids=["water_ccecp_ccpvqz.h5"],
-)
-def test_read_trexio_files_with_list(filename: str):
+@pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5"])
+def test_read_trexio_files_with_list(trexio_file: str):
     """Test read_trexio files."""
-    read_trexio_file(trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", filename), store_tuple=False)
+    read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=False
+    )
     jax.clear_caches()
 
 

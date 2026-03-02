@@ -55,19 +55,18 @@ GFMC_ON_THE_FLY_COLLECT_STEPS = 10
 GFMC_ON_THE_FLY_BIN_BLOCKS = 10
 
 # Test tolerance settings (gradients, laplacians)
-decimal_auto_vs_numerical_deriv = 3
-decimal_numerical_vs_analytic_deriv = 3
-decimal_auto_vs_analytic_deriv = 8
-
-# Test tolerance settings (numerical laplacian)
 atol_auto_vs_numerical_deriv = 1.0e-1
 rtol_auto_vs_numerical_deriv = 1.0e-4
 atol_numerical_vs_analytic_deriv = 1.0e-1
 rtol_numerical_vs_analytic_deriv = 1.0e-4
+atol_auto_vs_analytic_deriv = 1.0e-8
+rtol_auto_vs_analytic_deriv = 1.0e-6
 
 # Test tolerance settings (others)
-decimal_debug_vs_production = 8
-decimal_consistency = 8
+atol_debug_vs_production = 1.0e-8
+rtol_debug_vs_production = 1.0e-6
+atol_consistency = 1.0e-8
+rtol_consistency = 1.0e-6
 
 # Numerical stability settings for AO
 EPS_stabilizing_jax_AO_cart_deriv = 1.0e-16

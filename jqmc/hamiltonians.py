@@ -222,7 +222,7 @@ def compute_local_energy_fast(
     supplied by the caller (e.g. the Sherman–Morrison inverse maintained
     inside the MCMC loop).  When the geminal matrix is near-singular the
     fresh LU decomposition inside :func:`compute_local_energy` produces
-    NaN, whereas the Sherman–Morrison inverse has already been regularised
+    NaN, whereas the Sherman–Morrison inverse has already been regularized
     by the AS acceptance/rejection, making this variant numerically safer.
 
     Args:
@@ -247,7 +247,7 @@ def compute_local_energy_fast(
         exactly at the supplied electron positions.  Correctness is only
         guaranteed when the inverse is maintained via **single-electron
         (rank-1) Sherman-Morrison updates** starting from a freshly
-        initialised LU inverse — the pattern used in the MCMC loop.
+        initialized LU inverse — the pattern used in the MCMC loop.
         Passing an inverse from a different configuration silently produces
         incorrect kinetic energy.
     """

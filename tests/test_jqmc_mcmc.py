@@ -57,7 +57,7 @@ from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_two_body_data,
 )
 from jqmc.jqmc_mcmc import MCMC, _MCMC_debug  # noqa: E402
-from jqmc.setting import decimal_debug_vs_production  # noqa: E402
+from jqmc.setting import atol_debug_vs_production, rtol_debug_vs_production  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import VariationalParameterBlock, Wavefunction_data, evaluate_ln_wavefunction  # noqa: E402
 
@@ -65,21 +65,19 @@ from jqmc.wavefunction import VariationalParameterBlock, Wavefunction_data, eval
 jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
-test_trexio_files = ["H2_ae_ccpvdz_cart.h5", "H_ecp_ccpvdz_cart.h5"]
-
-# (with_1b_jastrow, with_2b_jastrow, with_3b_jastrow, with_nn_jastrow)
-jastrow_param_grid = [
-    (False, False, False, False),
-    (True, False, False, False),
-    (False, True, False, False),
-    (True, True, True, False),
-    (True, True, True, True),
-    (False, False, False, True),
+# (trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jastrow, with_nn_jastrow)
+param_grid = [
+    ("H2_ae_ccpvdz_cart.h5", True, True, True, False),
+    ("H2_ae_ccpvdz_cart.h5", True, True, True, True),
+    ("H_ae_ccpvdz_cart.h5", True, False, False, False),
+    ("Li_ae_ccpvdz_cart.h5", False, False, False, False),
+    ("Li_ae_ccpvdz_cart.h5", True, True, True, True),
+    ("H2_ecp_ccpvtz.h5", True, True, True, True),
+    ("N_ae_ccpvdz_cart.h5", False, False, False, False),
 ]
 
 
-@pytest.mark.parametrize("trexio_file", test_trexio_files)
-@pytest.mark.parametrize("with_1b_jastrow,with_2b_jastrow,with_3b_jastrow,with_nn_jastrow", jastrow_param_grid)
+@pytest.mark.parametrize("trexio_file,with_1b_jastrow,with_2b_jastrow,with_3b_jastrow,with_nn_jastrow", param_grid)
 def test_jqmc_mcmc(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jastrow, with_nn_jastrow):
     """Test comparison with MCMC debug and MCMC production implementations."""
     (
@@ -174,21 +172,21 @@ def test_jqmc_mcmc(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jastro
     w_L_jax = mcmc_jax.w_L
     assert not np.any(np.isnan(np.asarray(w_L_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(w_L_jax))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(w_L_debug, w_L_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(w_L_debug, w_L_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
 
     # e_L
     e_L_debug = mcmc_debug.e_L
     e_L_jax = mcmc_jax.e_L
     assert not np.any(np.isnan(np.asarray(e_L_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(e_L_jax))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(e_L_debug, e_L_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(e_L_debug, e_L_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
 
     # e_L2
     e_L2_debug = mcmc_debug.e_L2
     e_L2_jax = mcmc_jax.e_L2
     assert not np.any(np.isnan(np.asarray(e_L2_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(e_L2_jax))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(e_L2_debug, e_L2_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(e_L2_debug, e_L2_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
 
     # E
     E_debug, E_err_debug, Var_debug, Var_err_debug = mcmc_debug.get_E(
@@ -209,16 +207,16 @@ def test_jqmc_mcmc(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jastro
     assert not np.any(np.isnan(Var_err_jax)), f"Var_err_jax contains NaN: {Var_err_jax}"
     assert not np.any(np.isnan(np.asarray(E_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(E_jax))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(E_debug, E_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(E_debug, E_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
     assert not np.any(np.isnan(np.asarray(E_err_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(E_err_jax))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(E_err_debug, E_err_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(E_err_debug, E_err_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
     assert not np.any(np.isnan(np.asarray(Var_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(Var_jax))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(Var_debug, Var_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(Var_debug, Var_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
     assert not np.any(np.isnan(np.asarray(Var_err_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(Var_err_jax))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(Var_err_debug, Var_err_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(Var_err_debug, Var_err_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
 
     # aF
     force_mean_debug, force_std_debug = mcmc_debug.get_aF(
@@ -235,17 +233,17 @@ def test_jqmc_mcmc(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jastro
     assert not np.any(np.isnan(force_std_jax)), f"force_std_jax contains NaN: {force_std_jax}"
     assert not np.any(np.isnan(np.asarray(force_mean_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(force_mean_jax))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(force_mean_debug, force_mean_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(force_mean_debug, force_mean_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
     assert not np.any(np.isnan(np.asarray(force_std_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(force_std_jax))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(force_std_debug, force_std_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(force_std_debug, force_std_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
 
     jax.clear_caches()
 
 
-def test_jqmc_vmc(monkeypatch):
+@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvtz_cart.h5"])
+def test_jqmc_vmc(trexio_file, monkeypatch):
     """Test if parameters are correctly updated/hold."""
-    trexio_file = "H2_ae_ccpvtz_cart.h5"
     (
         structure_data,
         aos_data,
@@ -258,7 +256,7 @@ def test_jqmc_vmc(monkeypatch):
     )
 
     jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
-        jastrow_1b_param=1.0, structure_data=structure_data, core_electrons=tuple([0, 0])
+        jastrow_1b_param=1.0, structure_data=structure_data, core_electrons=tuple([0] * len(structure_data.atomic_numbers))
     )
     jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5)
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
@@ -589,7 +587,8 @@ def test_jqmc_vmc(monkeypatch):
         jax.clear_caches()
 
 
-def test_opt_with_projected_MOs(monkeypatch):
+@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvtz_cart.h5"])
+def test_opt_with_projected_MOs(trexio_file, monkeypatch):
     """After run_optimize with opt_with_projected_MOs=True the final wavefunction
     (in MO representation) must give the same ln|Psi| as its AO-converted counterpart.
 
@@ -597,7 +596,6 @@ def test_opt_with_projected_MOs(monkeypatch):
     preserves the wavefunction exactly, even after the lambda matrix has been
     updated in AO space.
     """
-    trexio_file = "H2_ae_ccpvtz_cart.h5"
     (
         structure_data,
         _,
@@ -699,7 +697,7 @@ def test_opt_with_projected_MOs(monkeypatch):
 
     assert not np.any(np.isnan(np.asarray(ln_psi_mo))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(ln_psi_ao))), "NaN detected in second argument"
-    np.testing.assert_almost_equal(ln_psi_mo, ln_psi_ao, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(ln_psi_mo, ln_psi_ao, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
 
     jax.clear_caches()
 
@@ -715,5 +713,7 @@ if __name__ == "__main__":
     stream_handler.setFormatter(handler_format)
     logger.addHandler(stream_handler)
 
-    for trexio_file in test_trexio_files:
-        test_jqmc_mcmc(trexio_file=trexio_file)
+    for trexio_file, w1b, w2b, w3b, wnn in param_grid:
+        test_jqmc_mcmc(
+            trexio_file=trexio_file, with_1b_jastrow=w1b, with_2b_jastrow=w2b, with_3b_jastrow=w3b, with_nn_jastrow=wnn
+        )

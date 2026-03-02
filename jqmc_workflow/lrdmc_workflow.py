@@ -53,11 +53,6 @@ from ._error_estimator import (
     parse_net_time,
     suffixed_name,
 )
-from .setting import (
-    GFMC_MIN_BIN_BLOCKS,
-    GFMC_MIN_COLLECT_STEPS,
-    GFMC_MIN_WARMUP_STEPS,
-)
 from ._input_generator import generate_input_toml, resolve_with_defaults
 from ._job import JobSubmission, get_num_mpi, load_queue_data
 from ._lrdmc_calibration import (
@@ -66,6 +61,11 @@ from ._lrdmc_calibration import (
     parse_survived_walkers_ratio,
 )
 from ._state import _now_iso, add_job, get_estimation, get_job, set_estimation, update_job
+from .setting import (
+    GFMC_MIN_BIN_BLOCKS,
+    GFMC_MIN_COLLECT_STEPS,
+    GFMC_MIN_WARMUP_STEPS,
+)
 from .workflow import Workflow
 
 logger = getLogger("jqmc-workflow").getChild(__name__)
@@ -657,6 +657,37 @@ class LRDMC_Workflow(Workflow):
 
         os.chdir(_wd)
 
+        # ── Re-compute energy if post-processing parameters changed ──
+        _postproc_changed = (
+            estimation.get("last_num_gfmc_bin_blocks") != self.num_gfmc_bin_blocks
+            or estimation.get("last_num_gfmc_warmup_steps") != self.num_gfmc_warmup_steps
+            or estimation.get("last_num_gfmc_collect_steps") != self.num_gfmc_collect_steps
+        )
+        if _postproc_changed and estimation.get("last_energy") is not None:
+            logger.info(
+                "  Post-processing parameters changed "
+                f"(bin_blocks: {estimation.get('last_num_gfmc_bin_blocks')}"
+                f" -> {self.num_gfmc_bin_blocks}, "
+                f"warmup: {estimation.get('last_num_gfmc_warmup_steps')}"
+                f" -> {self.num_gfmc_warmup_steps}, "
+                f"collect: {estimation.get('last_num_gfmc_collect_steps')}"
+                f" -> {self.num_gfmc_collect_steps}); "
+                "re-computing energy."
+            )
+            restart_chk = self._find_restart_chk()
+            if restart_chk:
+                energy, error = self._compute_energy(restart_chk)
+                if energy is not None:
+                    set_estimation(
+                        _wd,
+                        last_energy=energy,
+                        last_energy_error=error,
+                        last_num_gfmc_bin_blocks=self.num_gfmc_bin_blocks,
+                        last_num_gfmc_warmup_steps=self.num_gfmc_warmup_steps,
+                        last_num_gfmc_collect_steps=self.num_gfmc_collect_steps,
+                    )
+                    estimation = get_estimation(_wd)
+
         # ── Early exit if target already met ──────────────────────
         # Use cached energy/error from previous runs (saved in
         # workflow_state.toml) to avoid re-running compute-energy.
@@ -744,6 +775,9 @@ class LRDMC_Workflow(Workflow):
                         _wd,
                         last_energy=energy,
                         last_energy_error=error,
+                        last_num_gfmc_bin_blocks=self.num_gfmc_bin_blocks,
+                        last_num_gfmc_warmup_steps=self.num_gfmc_warmup_steps,
+                        last_num_gfmc_collect_steps=self.num_gfmc_collect_steps,
                     )
 
                     if error <= self.target_error * 1.20:
@@ -773,6 +807,29 @@ class LRDMC_Workflow(Workflow):
                             f"{self.target_error:.6g} Ha -- "
                             f"max_continuation ({self.max_continuation}) reached"
                         )
+
+        # ── Final energy computation if skipped ───────────────────
+        # When all production runs are already fetched, the loop body
+        # never calls _compute_energy.  Compute it now so the caller
+        # always receives an up-to-date energy with the current
+        # post-processing parameters.
+        if "energy" not in self.output_values:
+            restart_chk = self._find_restart_chk()
+            if restart_chk:
+                energy, error = self._compute_energy(restart_chk)
+                if energy is not None:
+                    self.output_values["energy"] = energy
+                    self.output_values["energy_error"] = error
+                    self.output_values["alat"] = self.alat
+                    self.output_values["restart_chk"] = restart_chk
+                    set_estimation(
+                        _wd,
+                        last_energy=energy,
+                        last_energy_error=error,
+                        last_num_gfmc_bin_blocks=self.num_gfmc_bin_blocks,
+                        last_num_gfmc_warmup_steps=self.num_gfmc_warmup_steps,
+                        last_num_gfmc_collect_steps=self.num_gfmc_collect_steps,
+                    )
 
         # ── Collect outputs ───────────────────────────────────────
         chk_files = sorted(glob.glob("*.rchk")) + sorted(glob.glob("*.chk"))

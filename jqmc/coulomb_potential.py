@@ -1461,7 +1461,7 @@ def compute_ecp_non_local_parts_nearest_neighbors_fast_update(
         ``A_old_inv`` **must** equal ``G(r_up_carts, r_dn_carts)^{-1}`` exactly
         at the supplied electron positions.  Correctness is only guaranteed when
         the inverse is maintained via **single-electron (rank-1) Sherman-Morrison
-        updates** starting from a freshly initialised LU inverse — the pattern
+        updates** starting from a freshly initialized LU inverse — the pattern
         used in the MCMC loop.  Passing an inverse from a different configuration
         silently produces incorrect non-local ECP contributions.
     """
@@ -2076,7 +2076,7 @@ def compute_ecp_coulomb_potential_fast(
         ``A_old_inv`` **must** equal ``G(r_up_carts, r_dn_carts)^{-1}`` exactly at the
         supplied electron positions.  Correctness is only guaranteed when the inverse is
         maintained via **single-electron (rank-1) Sherman-Morrison updates** starting from
-        a freshly initialised LU inverse — the pattern used in the MCMC loop.  If multiple
+        a freshly initialized LU inverse — the pattern used in the MCMC loop.  If multiple
         electrons have moved simultaneously, the Sherman–Morrison rank-1 update used inside
         :func:`compute_ecp_non_local_parts_nearest_neighbors_fast_update` becomes incorrect
         and the non-local ratios will be silently wrong.
@@ -2555,7 +2555,7 @@ def compute_coulomb_potential_fast(
         ``A_old_inv`` **must** equal ``G(r_up_carts, r_dn_carts)^{-1}`` exactly at the
         supplied electron positions.  Correctness is only guaranteed when the inverse is
         maintained via **single-electron (rank-1) Sherman-Morrison updates** starting from
-        a freshly initialised LU inverse — the pattern used in the MCMC loop.  If multiple
+        a freshly initialized LU inverse — the pattern used in the MCMC loop.  If multiple
         electrons have moved simultaneously the underlying Sherman–Morrison rank-1 update is
         incorrect and non-local ratios will be silently wrong.
     """

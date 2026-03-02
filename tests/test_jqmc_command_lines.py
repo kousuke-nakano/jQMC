@@ -36,6 +36,7 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
 import toml
 
 project_root = str(Path(__file__).parent.parent)
@@ -53,11 +54,14 @@ from jqmc.jqmc_tool import (  # noqa: E402
     vmc_generate_input,
 )
 
+trexio_files = ["H2_ecp_ccpvtz_cart.h5", "water_ccecp_ccpvqz.h5"]
 
-def test_jqmc_tool_trexio_conversion(tmp_path):
+
+@pytest.mark.parametrize("trexio_file", trexio_files)
+def test_jqmc_tool_trexio_conversion(tmp_path, trexio_file: str):
     """Test the conversion of TREXIO files to Hamiltonian data."""
     trexio_convert_to(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"),
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
         hamiltonian_file=os.path.join(tmp_path, "hamiltonian_data.h5"),
         j1_parmeter=1.0,
         j2_parmeter=1.0,
@@ -65,13 +69,14 @@ def test_jqmc_tool_trexio_conversion(tmp_path):
     )
 
 
-def test_jqmc_cli_run_mcmc(tmp_path, monkeypatch):
+@pytest.mark.parametrize("trexio_file", trexio_files)
+def test_jqmc_cli_run_mcmc(tmp_path, monkeypatch, trexio_file: str):
     """Test the MCMC run command."""
     root_dir = os.getcwd()
     # trexio conversion
     os.chdir(root_dir)
     trexio_convert_to(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ecp_ccpvtz_cart.h5"),
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
         hamiltonian_file=os.path.join(tmp_path, "hamiltonian_data.h5"),
         j1_parmeter=None,
         j2_parmeter=1.0,
@@ -125,13 +130,14 @@ def test_jqmc_cli_run_mcmc(tmp_path, monkeypatch):
     os.chdir(root_dir)
 
 
-def test_jqmc_cli_run_vmc(tmp_path, monkeypatch):
+@pytest.mark.parametrize("trexio_file", trexio_files)
+def test_jqmc_cli_run_vmc(tmp_path, monkeypatch, trexio_file: str):
     """Test the VMC run command."""
     root_dir = os.getcwd()
     # trexio conversion
     os.chdir(root_dir)
     trexio_convert_to(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ecp_ccpvtz_cart.h5"),
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
         hamiltonian_file=os.path.join(tmp_path, "hamiltonian_data.h5"),
         j1_parmeter=None,
         j2_parmeter=1.0,
@@ -177,7 +183,8 @@ def test_jqmc_cli_run_vmc(tmp_path, monkeypatch):
     os.chdir(root_dir)
 
 
-def test_jqmc_cli_run_lrdmc(tmp_path, monkeypatch):
+@pytest.mark.parametrize("trexio_file", trexio_files)
+def test_jqmc_cli_run_lrdmc(tmp_path, monkeypatch, trexio_file: str):
     """Test the LRDMC run command."""
     root_dir = os.getcwd()
 
@@ -193,7 +200,7 @@ def test_jqmc_cli_run_lrdmc(tmp_path, monkeypatch):
         # trexio conversion
         os.chdir(root_dir)
         trexio_convert_to(
-            trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ecp_ccpvtz_cart.h5"),
+            trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
             hamiltonian_file=os.path.join(tmp_alat_path, "hamiltonian_data.h5"),
             j1_parmeter=None,
             j2_parmeter=1.0,
