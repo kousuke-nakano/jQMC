@@ -3265,6 +3265,48 @@ class MCMC:
                     )
 
                 # ------------------------------------------------------------------
+                # Re-project theta in orthogonal basis to remove vir-vir noise.
+                #
+                # The scale-invariant SR normalizes X by 1/sqrt(diag_S) before the
+                # solve and de-normalizes theta by 1/sqrt(diag_S) afterwards.  For
+                # the "projected-out" (vir-vir) parameter directions, the
+                # derivative observable is nominally zero but retains floating-point
+                # residuals of order eps_mach * ||O'||.  The normalization amplifies
+                # these residuals to O(1) in the SR matrix, and the de-normalization
+                # then blows up the corresponding theta components to very large
+                # values (~1/eps_proj), corrupting the AO lambda update.
+                #
+                # The cure is to apply the same orbital-space projection that was
+                # used on the derivatives *also* on the natural-gradient vector
+                # theta, while we are still in the orthogonal basis.  This zeroes
+                # out the vir-vir components before the AO back-transform.
+                # ------------------------------------------------------------------
+                if lambda_projectors is not None and len(lambda_projectors) == 4:
+                    _left_proj, _right_proj, _, _ = lambda_projectors
+                    _identity_proj = np.eye(_left_proj.shape[0], dtype=np.float64)
+                    _comp_L = _identity_proj - _left_proj
+                    _comp_R = _identity_proj - _right_proj
+                    for _blk, _s, _e in offsets:
+                        if _blk.name == "lambda_matrix":
+                            _theta_mat = theta_all[_s:_e].reshape(_blk.shape)
+                            _n_paired = _right_proj.shape[0]
+                            _theta_paired = _theta_mat[:, :_n_paired]
+                            # Remove vir-vir: θ_clean = θ - (I-L')θ(I-R')
+                            _vv_correction = _comp_L @ _theta_paired @ _comp_R
+                            _vv_norm_before = float(np.linalg.norm(_theta_paired))
+                            _theta_mat[:, :_n_paired] = _theta_paired - _vv_correction
+                            _vv_norm_removed = float(np.linalg.norm(_vv_correction))
+                            theta_all[_s:_e] = _theta_mat.ravel()
+                            logger.devel(
+                                "[SR theta] Re-projected theta in orth basis: "
+                                "||theta_paired||=%.3e  ||vv_removed||=%.3e  ratio=%.3e",
+                                _vv_norm_before,
+                                _vv_norm_removed,
+                                _vv_norm_removed / max(_vv_norm_before, 1e-300),
+                            )
+                            break
+
+                # ------------------------------------------------------------------
                 # Back-transform theta from orthogonal basis to AO basis
                 # for the lambda_matrix block.
                 #   paired:   θ_AO = S^{-1/2}_up @ θ'_orth @ S^{-1/2}_dn
@@ -4564,7 +4606,7 @@ class _MCMC_debug:
         lambda_projectors=None,
         num_orb_projection=None,
     ) -> tuple[float, float, float, float]:
-        r"""Compute H_0, H_1, H_2, S_2 for accelerated SR (aSR) gamma optimisation.
+        r"""Compute H_0, H_1, H_2, S_2 for accelerated SR (aSR) gamma optimization.
 
         This is the debug (single-rank, no vmap, explicit-step) counterpart of
         ``MCMC.get_aH``.  Every intermediate quantity is computed in a named
@@ -4595,10 +4637,10 @@ class _MCMC_debug:
             E_bar       sum_i w(i) e_L(i) / W           scalar
             O_{i,k}     d ln Psi(i) / d c_k             shape (N, K)
             O_bar_k     sum_i w(i) O_{i,k} / W          shape (K,)
-            dO_{i,k}    O_{i,k} - O_bar_k               shape (N, K)  centred
+            dO_{i,k}    O_{i,k} - O_bar_k               shape (N, K)  centered
             dE_{i,k}    d e_L(i) / d c_k                shape (N, K)
             dE_bar_k    sum_i w(i) dE_{i,k} / W         shape (K,)
-            ddE_{i,k}   dE_{i,k} - dE_bar_k             shape (N, K)  centred
+            ddE_{i,k}   dE_{i,k} - dE_bar_k             shape (N, K)  centered
             f_k         -2/W * sum_i w(i)(e_L-E_bar) dO_{i,k}   shape (K,)
 
         Args:
@@ -4673,7 +4715,7 @@ class _MCMC_debug:
         # ── Step 5: H_0  (current energy estimate) ──────────────────────────
         H_0 = E_bar
 
-        # ── Step 6: Centred observables ──────────────────────────────────────
+        # ── Step 6: Centered observables ──────────────────────────────────────
         dO = O_matrix - O_bar[np.newaxis, :]  # (N, K)  O_k(i) - <O_k>
         ddE = dE_matrix - dE_bar[np.newaxis, :]  # (N, K)  dE_k(i) - <dE_k>
 
@@ -4690,7 +4732,7 @@ class _MCMC_debug:
         #   g^T f = g^T S g + sr_epsilon * ||g_scaled||^2.
         # Using g^T f overestimates S_2, makes the denominator of
         # E(gamma) grow too fast, and drives the optimal gamma to be unrealistically small.
-        gdO = dO @ g  # (N,)  g-projected centred observable
+        gdO = dO @ g  # (N,)  g-projected centered observable
         S_2 = float(np.dot(w, gdO**2) / W)
 
         # ── Step 10: K matrix contribution  g^T K g ─────────────────────────
@@ -4706,7 +4748,7 @@ class _MCMC_debug:
         #   (B is generally not symmetric)
         #
         #   g^T B g  = 1/W sum_i  w_i * (sum_k g_k dO_{i,k}) * (sum_k' g_k' ddE_{i,k'})
-        gdE = ddE @ g  # (N,)  g-projected centred de_L
+        gdE = ddE @ g  # (N,)  g-projected centered de_L
         gBg = float(np.dot(w * gdO, gdE) / W)
 
         # ── Step 12: H_2 = g^T (B + K) g ────────────────────────────────────
@@ -4718,7 +4760,7 @@ class _MCMC_debug:
     def compute_asr_gamma(H_0: float, H_1: float, H_2: float, S_2: float) -> float:
         r"""Solve for the optimal gamma in the accelerated SR energy minimisation.
 
-        Finds gamma that minimises  E(alpha + gamma*g)  by solving
+        Finds gamma that minimizes  E(alpha + gamma*g)  by solving
 
             d/d(gamma)  (H0 + 2*gamma*H1 + gamma^2*H2) / (1 + gamma^2*S2)  =  0
 
