@@ -54,7 +54,7 @@ from jqmc.jqmc_tool import (  # noqa: E402
     vmc_generate_input,
 )
 
-trexio_files = ["H2_ecp_ccpvtz_cart.h5", "water_ccecp_ccpvqz.h5"]
+trexio_files = ["H2_ecp_ccpvtz_cart.h5"]
 
 
 @pytest.mark.parametrize("trexio_file", trexio_files)

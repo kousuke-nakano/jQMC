@@ -64,10 +64,10 @@ from jqmc.jastrow_factor import (  # noqa: E402
 )
 from jqmc.setting import (  # noqa: E402
     atol_auto_vs_analytic_deriv,
-    rtol_auto_vs_analytic_deriv,
     atol_consistency,
-    rtol_consistency,
     atol_debug_vs_production,
+    rtol_auto_vs_analytic_deriv,
+    rtol_consistency,
     rtol_debug_vs_production,
 )
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
@@ -203,7 +203,7 @@ def test_hamiltonian_hdf5(trexio_file, use_1b, use_2b, use_3b, use_nn, geminal_t
     assert_dataclasses_equal(hamiltonian_data, loaded_hamiltonian_data)
 
 
-@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5"])
+@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5", "N_ae_ccpvdz_cart.h5"])
 def test_compute_local_energy_fast(trexio_file):
     """compute_local_energy_fast must equal compute_local_energy for well-conditioned G."""
     structure_data, _, _, _, geminal_data, coulomb_potential_data = read_trexio_file(
@@ -267,7 +267,7 @@ def _compare_grad_leaves(
         )
 
 
-@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5"])
+@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5", "N_ae_ccpvdz_cart.h5"])
 def test_grad_compute_local_energy(trexio_file):
     """grad(compute_local_energy, argnums=0) must match grad(_compute_local_energy_auto, argnums=0).
 
