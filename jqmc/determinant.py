@@ -836,7 +836,7 @@ def compute_ln_det_geminal_all_elements_fast(
         ``geminal_inv`` **must** equal ``G(r_up_carts, r_dn_carts)^{-1}`` exactly
         at the supplied electron positions.  This is only guaranteed when the
         inverse is maintained via **single-electron (rank-1) Sherman-Morrison
-        updates** starting from a freshly initialised LU inverse — the pattern
+        updates** starting from a freshly initialized LU inverse — the pattern
         used in the MCMC loop.  Passing an inverse that corresponds to different
         electron positions silently produces incorrect gradients.
     """
@@ -1483,6 +1483,11 @@ def compute_grads_and_laplacian_ln_Det(
         grad_ln_D_dn_x * grad_ln_D_dn_x + grad_ln_D_dn_y * grad_ln_D_dn_y + grad_ln_D_dn_z * grad_ln_D_dn_z
     ) + jnp.einsum("ij,ji->i", geminal_inverse, geminal_laplacian_dn)
 
+    # Trim to n_dn for open-shell (N_up > N_dn) systems
+    n_dn = geminal_data.num_electron_dn
+    grad_ln_D_dn = grad_ln_D_dn[:n_dn]
+    lap_ln_D_dn = lap_ln_D_dn[:n_dn]
+
     return grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn
 
 
@@ -1557,6 +1562,11 @@ def _grads_lap_body(
     lap_ln_D_dn = -(
         grad_ln_D_dn_x * grad_ln_D_dn_x + grad_ln_D_dn_y * grad_ln_D_dn_y + grad_ln_D_dn_z * grad_ln_D_dn_z
     ) + jnp.einsum("ij,ji->i", geminal_inverse, geminal_laplacian_dn)
+
+    # Trim to n_dn for open-shell (N_up > N_dn) systems
+    n_dn = geminal_data.num_electron_dn
+    grad_ln_D_dn = grad_ln_D_dn[:n_dn]
+    lap_ln_D_dn = lap_ln_D_dn[:n_dn]
 
     return grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn
 
@@ -1647,7 +1657,7 @@ def compute_grads_and_laplacian_ln_Det_fast(
         ``geminal_inverse`` **must** equal ``G(r_up_carts, r_dn_carts)^{-1}``
         exactly at the supplied electron positions.  This is only guaranteed when
         the inverse is maintained via **single-electron (rank-1) Sherman-Morrison
-        updates** starting from a freshly initialised LU inverse — the pattern
+        updates** starting from a freshly initialized LU inverse — the pattern
         used in the MCMC loop.  Passing an inverse that corresponds to different
         electron positions silently produces incorrect kinetic energy.
     """
@@ -1713,6 +1723,11 @@ def compute_grads_and_laplacian_ln_Det_fast(
         grad_ln_D_dn_x * grad_ln_D_dn_x + grad_ln_D_dn_y * grad_ln_D_dn_y + grad_ln_D_dn_z * grad_ln_D_dn_z
     ) + jnp.einsum("ij,ji->i", geminal_inverse, geminal_laplacian_dn)
 
+    # Trim to n_dn for open-shell (N_up > N_dn) systems
+    n_dn = geminal_data.num_electron_dn
+    grad_ln_D_dn = grad_ln_D_dn[:n_dn]
+    lap_ln_D_dn = lap_ln_D_dn[:n_dn]
+
     return grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn
 
 
@@ -1721,9 +1736,9 @@ def _compute_grads_and_laplacian_ln_Det_fast_debug(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
-    """Debug helper that builds geminal inverse then calls the fast path."""
-    # Reuse the fast path for gradients/Laplacians
-    grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn = compute_grads_and_laplacian_ln_Det(
+    """Debug helper that uses auto-diff to validate the fast path."""
+    # Use auto-diff as the reference (independent implementation).
+    grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn = _compute_grads_and_laplacian_ln_Det_auto(
         geminal_data=geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,
