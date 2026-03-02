@@ -504,7 +504,7 @@ class TestComputeEnergy:
         from jqmc.jqmc_tool import lrdmc_app
 
         runner = CliRunner()
-        result = runner.invoke(lrdmc_app, ["compute-energy", chk_path, "-b", "2", "-w", "0", "-c", "5"])
+        result = runner.invoke(lrdmc_app, ["compute-energy", chk_path, "-b", "10", "-w", "30", "-c", "5"])
         assert result.exit_code == 0
         assert f"E = {E_const}" in result.output
 
@@ -523,7 +523,7 @@ class TestComputeEnergy:
         from jqmc.jqmc_tool import lrdmc_app
 
         runner = CliRunner()
-        result = runner.invoke(lrdmc_app, ["compute-energy", chk_path, "-b", "2", "-w", "0", "-c", "5"])
+        result = runner.invoke(lrdmc_app, ["compute-energy", chk_path, "-b", "10", "-w", "30", "-c", "5"])
         assert result.exit_code == 0
         assert "Found 2 MPI ranks" in result.output
 
