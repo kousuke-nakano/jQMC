@@ -410,8 +410,7 @@ class GFMC_t:
                 r_dn_carts=r_dn_carts,
             )
             U, s, Vt = jnp.linalg.svd(geminal, full_matrices=False)
-            rcond = jnp.finfo(jnp.float64).eps * float(geminal.shape[0])
-            s_inv = jnp.where(s > rcond * s[0], 1.0 / s, 0.0)
+            s_inv = jnp.where(s > EPS_rcond_SVD * s[0], 1.0 / s, 0.0)
             return (Vt.T * s_inv[jnp.newaxis, :]) @ U.T
 
         self.__latest_A_old_inv = vmap(_compute_initial_A_inv_t, in_axes=(0, 0))(
@@ -749,8 +748,7 @@ class GFMC_t:
                 r_dn_carts=new_r_dn_carts,
             )
             U_new, s_new, Vt_new = jnp.linalg.svd(G_new, full_matrices=False)
-            rcond_new = jnp.finfo(jnp.float64).eps * float(G_new.shape[0])
-            s_inv_new = jnp.where(s_new > rcond_new * s_new[0], 1.0 / s_new, 0.0)
+            s_inv_new = jnp.where(s_new > EPS_rcond_SVD * s_new[0], 1.0 / s_new, 0.0)
             A_new_inv = (Vt_new.T * s_inv_new[jnp.newaxis, :]) @ U_new.T
 
             return (
@@ -2567,8 +2565,7 @@ class GFMC_n:
                 r_dn_carts=r_dn_carts,
             )
             U, s, Vt = jnp.linalg.svd(geminal, full_matrices=False)
-            rcond = jnp.finfo(jnp.float64).eps * float(geminal.shape[0])
-            s_inv = jnp.where(s > rcond * s[0], 1.0 / s, 0.0)
+            s_inv = jnp.where(s > EPS_rcond_SVD * s[0], 1.0 / s, 0.0)
             return (Vt.T * s_inv[jnp.newaxis, :]) @ U.T
 
         _jit_vmap_A_inv_n = jit(vmap(_compute_initial_A_inv_n, in_axes=(0, 0)))

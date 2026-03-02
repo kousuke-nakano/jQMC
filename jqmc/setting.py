@@ -71,5 +71,8 @@ rtol_consistency = 1.0e-6
 # Numerical stability settings for AO
 EPS_stabilizing_jax_AO_cart_deriv = 1.0e-16
 
-# Numerical differentiation settings for SVD
-EPS_rcond_SVD = 1.0e-12
+# Threshold for SVD pseudoinverse of the geminal matrix G.
+# Singular values below EPS_rcond_SVD * s_max are zeroed to avoid 1/~0 NaN.
+# Must be very small (e.g. 1e-20); see compute_grads_and_laplacian_ln_Det
+# docstring in determinant.py for why a larger value breaks the analytic path.
+EPS_rcond_SVD = 1.0e-20

@@ -602,7 +602,7 @@ def compute_Jastrow_one_body(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> float:
-    """Evaluate the one-body Jastrow $J_1$ (without ``exp``) for given coordinates.
+    r"""Evaluate the one-body Jastrow :math:`J_1` (without ``exp``) for given coordinates.
 
     The original exponential form and usage remain unchanged: this routine
     returns the scalar ``J`` value; callers attach ``exp(J)`` to the wavefunction.
@@ -967,7 +967,7 @@ def compute_Jastrow_two_body(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> float:
-    """Evaluate the two-body Jastrow $J_2$ (Pade form) without exponentiation.
+    r"""Evaluate the two-body Jastrow :math:`J_2` (Pade form) without exponentiation.
 
     The functional form and usage remain identical to the original docstring;
     this returns ``J`` and callers attach ``exp(J)`` to the wavefunction.
@@ -1489,7 +1489,7 @@ def compute_Jastrow_three_body(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> float:
-    """Evaluate the three-body Jastrow $J_3$ (analytic) without exponentiation.
+    r"""Evaluate the three-body Jastrow :math:`J_3` (analytic) without exponentiation.
 
     This preserves the original functional form: the square J3 block couples
     electron pairs and the last column acts as a J1-like vector. Returned value
@@ -1897,7 +1897,7 @@ def _compute_ratio_Jastrow_part_rank1_update(
     new_r_up_carts_arr: jax.Array,
     new_r_dn_carts_arr: jax.Array,
 ) -> jax.Array:
-    r"""Compute $\exp(J(\mathbf r'))/\exp(J(\mathbf r))$ for batched moves.
+    r"""Compute :math:`\exp(J(\mathbf r'))/\exp(J(\mathbf r))` for batched moves.
 
     This follows the original ratio logic (including exp) while updating types
     to use ``jax.Array`` inputs. The return is one ratio per proposed grid
@@ -2532,7 +2532,7 @@ def compute_grads_and_laplacian_Jastrow_part(
     jax.Array,
     jax.Array,
 ]:
-    """Per-electron gradients and Laplacians of the full Jastrow $J$.
+    r"""Per-electron gradients and Laplacians of the full Jastrow :math:`J`.
 
     Analytic paths are used for J1/J2/J3 when available; the NN three-body
     term (if present) is handled via autodiff. Values are returned per electron

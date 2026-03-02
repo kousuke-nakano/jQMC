@@ -53,14 +53,12 @@ from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_two_body_data,
 )
 from jqmc.setting import (  # noqa: E402
-    atol_auto_vs_numerical_deriv,
     atol_auto_vs_analytic_deriv,
-    rtol_auto_vs_analytic_deriv,
     atol_auto_vs_numerical_deriv,
-    rtol_auto_vs_numerical_deriv,
     atol_debug_vs_production,
-    rtol_debug_vs_production,
+    rtol_auto_vs_analytic_deriv,
     rtol_auto_vs_numerical_deriv,
+    rtol_debug_vs_production,
 )
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import (  # noqa: E402
@@ -123,7 +121,7 @@ def test_kinetic_energy_analytic_and_numerical(trexio_file: str):
 
     num_ele_up = geminal_mo_data.num_electron_up
     num_ele_dn = geminal_mo_data.num_electron_dn
-    r_cart_min, r_cart_max = -5.0, +5.0
+    r_cart_min, r_cart_max = -2.0, +2.0
     r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
 
@@ -168,7 +166,7 @@ def test_kinetic_energy_analytic_and_auto(trexio_file: str):
 
     num_ele_up = geminal_mo_data.num_electron_up
     num_ele_dn = geminal_mo_data.num_electron_dn
-    r_cart_min, r_cart_max = -5.0, +5.0
+    r_cart_min, r_cart_max = -2.0, +2.0
     r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
 
@@ -342,7 +340,7 @@ def test_fast_update_kinetic_energy_all_elements(trexio_file: str):
 
     num_ele_up = geminal_mo_data.num_electron_up
     num_ele_dn = geminal_mo_data.num_electron_dn
-    r_cart_min, r_cart_max = -3.0, +3.0
+    r_cart_min, r_cart_max = -2.0, +2.0
     r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
 

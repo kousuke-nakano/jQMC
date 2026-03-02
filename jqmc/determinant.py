@@ -731,7 +731,7 @@ def compute_ln_det_geminal_all_elements(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> float:
-    r"""Compute $\ln|\det G|$ for the geminal matrix.
+    r"""Compute :math:`\ln|\det G|` for the geminal matrix.
 
     Args:
         geminal_data: Geminal parameters and orbital references.
@@ -772,12 +772,17 @@ def _ln_det_fwd(geminal_data, r_up_carts, r_dn_carts):
 
 # Backward pass for custom VJP.
 def _ln_det_bwd(res, g):
-    """Backward pass for custom VJP.
+    r"""Backward pass for custom VJP of :func:`compute_ln_det_geminal_all_elements`.
 
-    The custom derivative is needed for ln |Det(G)| because the jax native grad
-    and hessian introduce numerical instability. The custom derivative uses SVD
-    to compute G^{-1} in the backward pass, avoiding NaN when G is near-singular
-    (small singular values are zeroed rather than producing 1/~0 from LU).
+    Computes ``d ln|det G| / dG = (G^{-1})^T`` using a thresholded SVD
+    pseudoinverse, avoiding NaN that would arise from LU with near-zero pivots.
+    When the autodiff path takes the Hessian of ``ln|det G|``, JAX
+    differentiates *through* this backward pass, so the second derivative
+    implicitly accounts for the pseudoinverse structure (including projection
+    terms when singular values are zeroed).  This is why the autodiff kinetic
+    energy remains accurate even for ill-conditioned ``G``, whereas the analytic
+    Laplacian in :func:`compute_grads_and_laplacian_ln_Det` — which assumes
+    the simpler ``d(G^{-1}) = -G^{-1} dG G^{-1}`` — becomes approximate.
 
     Args:
         res: residuals from forward pass
@@ -789,9 +794,8 @@ def _ln_det_bwd(res, g):
     geminal_data, r_up_carts, r_dn_carts, U_svd, s, Vt = res
 
     # Compute G^{-1} via SVD pseudoinverse with thresholding.
-    # Singular values below rcond * s_max are zeroed to avoid NaN from 1/~0.
-    rcond = jnp.finfo(jnp.float64).eps * float(s.shape[0])
-    s_inv = jnp.where(s > rcond * s[0], 1.0 / s, 0.0)
+    # Singular values below EPS_rcond_SVD * s_max are zeroed to avoid NaN from 1/~0.
+    s_inv = jnp.where(s > EPS_rcond_SVD * s[0], 1.0 / s, 0.0)
     X = (Vt.T * s_inv[jnp.newaxis, :]) @ U_svd.T  # G^{-1}, shape (n, n)
 
     # d ln|det G| / dG = (G^{-1})^T, scaled by incoming cotangent g
@@ -878,7 +882,7 @@ def compute_det_geminal_all_elements(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> float:
-    r"""Compute $\det G$ for the geminal matrix.
+    r"""Compute :math:`\det G` for the geminal matrix.
 
     Args:
         geminal_data: Geminal parameters and orbital references.
@@ -1010,7 +1014,7 @@ def compute_AS_regularization_factor(geminal_data: Geminal_data, r_up_carts: jax
 
 
 def compute_geminal_all_elements(geminal_data: Geminal_data, r_up_carts: jax.Array, r_dn_carts: jax.Array) -> jax.Array:
-    """Compute geminal matrix $G$ for all electron pairs.
+    r"""Compute geminal matrix :math:`G` for all electron pairs.
 
     Args:
         geminal_data: Geminal parameters and orbital references.
@@ -1174,7 +1178,7 @@ def _compute_ratio_determinant_part_rank1_update(
     new_r_up_carts_arr: jax.Array,
     new_r_dn_carts_arr: jax.Array,
 ) -> jax.Array:
-    r"""Determinant ratio $\det G(\mathbf r')/\det G(\mathbf r)$ for batched moves.
+    r"""Determinant ratio :math:`\det G(\mathbf r')/\det G(\mathbf r)` for batched moves.
 
     Optimized for the non-local ECP mesh where *exactly one* electron moves per grid.
     We identify the moved electron once, batch-evaluate the new AO/MO row or column,
@@ -1393,13 +1397,49 @@ def compute_grads_and_laplacian_ln_Det(
     jax.Array,
     jax.Array,
 ]:
-    r"""Gradients and Laplacians of $\ln\det G$ for each electron.
+    r"""Gradients and Laplacians of :math:`\ln|\det G|` for each electron.
+
+    Computes :math:`\nabla_i \ln|\det G|` and :math:`\nabla_i^2 \ln|\det G|`
+    using the analytic formulas:
+
+    .. math::
+
+        \nabla_i \ln|\det G| &= \mathrm{tr}(G^{-1} \nabla_i G) \\
+        \nabla_i^2 \ln|\det G| &= \mathrm{tr}(G^{-1} \nabla_i^2 G)
+            - |\nabla_i \ln|\det G||^2
+
+    These formulas rely on the matrix identity
+    :math:`d(G^{-1}) = -G^{-1}\, dG\, G^{-1}`, which holds **only for the
+    true inverse**.  When ``G`` is near-singular, :math:`G^{-1}` is computed
+    via a thresholded SVD pseudoinverse :math:`G^{\dagger}`, which coincides
+    with :math:`G^{-1}` only when no singular values are zeroed by
+    ``EPS_rcond_SVD``.  If the threshold zeroes non-negligible singular
+    values, :math:`G^{\dagger} \neq G^{-1}`, and the analytic Laplacian
+    becomes inaccurate because the true pseudoinverse derivative contains
+    additional projection terms:
+
+    .. math::
+
+        d(G^{\dagger}) = -G^{\dagger}\,dG\,G^{\dagger}
+            + G^{\dagger} G^{\dagger T} dG^T (I - G G^{\dagger})
+            + (I - G^{\dagger} G)\, dG^T\, G^{\dagger T} G^{\dagger}
+
+    The autodiff path (``_compute_kinetic_energy_auto``) differentiates
+    through the SVD pseudoinverse in ``_ln_det_bwd`` and implicitly includes
+    these projection terms, so it remains correct regardless of the
+    threshold.  The analytic path here does **not** include them.
+    Consequently, ``EPS_rcond_SVD`` must be kept very small (e.g. ``1e-20``)
+    so that only truly zero singular values are zeroed and
+    :math:`G^{\dagger} = G^{-1}` in practice.
+
+    In production MCMC, the ``_fast`` variant receives a Sherman-Morrison
+    running true inverse, so this limitation does not apply there.
 
     The function uses a custom VJP to avoid NaN in the backward pass when G is
     near-singular. The standard JAX SVD backward computes ``1/(s_i^2 - s_j^2)``
     terms that blow up for degenerate singular values. The custom VJP instead uses
     the matrix identity ``d(G^{-1}) = -G^{-1} dG G^{-1}`` with a thresholded SVD
-    pseudoinverse, which is both exact and numerically stable.
+    pseudoinverse, bypassing differentiation through SVD entirely.
 
     Args:
         geminal_data: Geminal parameters and orbital references.
@@ -1587,18 +1627,30 @@ def _grads_lap_fwd(
 
 
 def _grads_lap_bwd(res, g):
-    """Backward pass using the matrix identity d(G^{-1}) = -G^{-1} dG G^{-1}.
+    r"""Backward pass using the matrix identity ``d(G^{-1}) = -G^{-1} dG G^{-1}``.
 
     The gradient has two contributions:
-    1. Direct: d/d(lambda) via lambda -> AO matrices -> G_grad/G_lap -> output.
-       Obtained by differentiating _grads_lap_body w.r.t.
-       all inputs (including G_inv_stable as an explicit argument).
-    2. Inverse: d/d(lambda) via lambda -> G -> G^{-1} -> output.
-       Obtained by converting G_inv_bar -> G_bar via -G_inv.T @ G_inv_bar @ G_inv.T,
-       then propagating G_bar back through compute_geminal_all_elements.
 
-    Neither path requires differentiating through jnp.linalg.svd, so degenerate
-    singular values cannot produce NaN.
+    1. **Direct**: ``d/d(\lambda)`` via ``\lambda -> AO matrices -> G_grad/G_lap -> output``.
+       Obtained by differentiating :func:`_grads_lap_body` w.r.t.
+       all inputs (including ``G_inv_stable`` as an explicit argument).
+    2. **Inverse**: ``d/d(\lambda)`` via ``\lambda -> G -> G^{-1} -> output``.
+       Obtained by converting ``G_inv_bar -> G_bar`` via
+       ``-G_inv.T @ G_inv_bar @ G_inv.T``, then propagating ``G_bar`` back
+       through :func:`compute_geminal_all_elements`.
+
+    Neither path requires differentiating through ``jnp.linalg.svd``, so
+    degenerate singular values cannot produce NaN.
+
+    .. note::
+
+        Step 2 uses ``d(G^{-1}) = -G^{-1} dG G^{-1}``, which is exact only
+        when ``G_inv_stable`` is the true inverse.  If ``EPS_rcond_SVD`` is
+        large enough to zero out non-negligible singular values, this identity
+        becomes approximate — the full pseudoinverse derivative has additional
+        projection terms (see the docstring of
+        :func:`compute_grads_and_laplacian_ln_Det` for details).  Keep
+        ``EPS_rcond_SVD`` very small (e.g. ``1e-20``) to avoid this.
     """
     geminal_data, r_up_carts, r_dn_carts, G_inv_stable = res
 

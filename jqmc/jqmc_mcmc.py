@@ -70,6 +70,7 @@ from .hamiltonians import (
 from .jastrow_factor import _compute_ratio_Jastrow_part_rank1_update, compute_Jastrow_part
 from .jqmc_utility import _generate_init_electron_configurations
 from .setting import (
+    EPS_rcond_SVD,
     MCMC_MIN_BIN_BLOCKS,
     MCMC_MIN_WARMUP_STEPS,
 )
@@ -491,9 +492,8 @@ class MCMC:
                 r_dn_carts=r_dn_carts,  # (N_dn, 3)
             )
             U, s, Vt = jnp.linalg.svd(G, full_matrices=False)
-            # Threshold: zero 1/s when s < rcond * s_max to avoid NaN
-            rcond = jnp.finfo(jnp.float64).eps * float(G.shape[0])
-            s_inv = jnp.where(s > rcond * s[0], 1.0 / s, 0.0)
+            # Threshold: zero 1/s when s < EPS_rcond_SVD * s_max to avoid NaN
+            s_inv = jnp.where(s > EPS_rcond_SVD * s[0], 1.0 / s, 0.0)
             Ginv = (Vt.T * s_inv[jnp.newaxis, :]) @ U.T
             # Callers discard lu/piv; return zero dummies for API compatibility.
             return G, Ginv, jnp.zeros_like(G), jnp.zeros(G.shape[0], dtype=jnp.int32)
