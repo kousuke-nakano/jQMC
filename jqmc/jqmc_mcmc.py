@@ -73,6 +73,7 @@ from .setting import (
     EPS_rcond_SVD,
     MCMC_MIN_BIN_BLOCKS,
     MCMC_MIN_WARMUP_STEPS,
+    atol_consistency,
     min_S_diag_eps,
 )
 from .structure import _find_nearest_index_jnp
@@ -2720,8 +2721,8 @@ class MCMC:
                 _comp_R_sq = _comp_R @ _comp_R
                 _idem_err_L = float(np.linalg.norm(_comp_L_sq - _comp_L, "fro"))
                 _idem_err_R = float(np.linalg.norm(_comp_R_sq - _comp_R, "fro"))
-                _idem_ok_L = "OK" if _idem_err_L < 1.0e-10 else "FAIL"
-                _idem_ok_R = "OK" if _idem_err_R < 1.0e-10 else "FAIL"
+                _idem_ok_L = "OK" if _idem_err_L < atol_consistency else "FAIL"
+                _idem_ok_R = "OK" if _idem_err_R < atol_consistency else "FAIL"
                 logger.devel(
                     "[projector] idempotency ||(I-L')^2 - (I-L')||_F = %.6e  [%s]",
                     _idem_err_L,
@@ -3483,7 +3484,7 @@ class MCMC:
 
                 geminal_mo_rescaled = Geminal_data.convert_from_AOs_to_MOs(
                     geminal_data=geminal_ao_current,
-                    num_eigenvectors=geminal_ao_current.num_electron_dn,
+                    num_eigenvectors=geminal_ao_current.num_electron_up,
                 )
                 wavefunction_data = type(wavefunction_data)(
                     jastrow_data=wavefunction_data.jastrow_data,
@@ -3600,7 +3601,7 @@ class MCMC:
             geminal = wf_data.geminal_data
             geminal_mo = Geminal_data.convert_from_AOs_to_MOs(
                 geminal_data=geminal,
-                num_eigenvectors=geminal.num_electron_dn,
+                num_eigenvectors=geminal.num_electron_up,
             )
             wf_data_mo = type(wf_data)(
                 jastrow_data=wf_data.jastrow_data,

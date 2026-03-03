@@ -63,6 +63,7 @@ from .atomic_orbital import (
     compute_AOs_laplacian,
 )
 from .molecular_orbital import MOs_data, compute_MOs, compute_MOs_grad, compute_MOs_laplacian
+from .setting import atol_consistency
 from .structure import Structure_data
 
 if TYPE_CHECKING:  # typing-only import to avoid circular dependency
@@ -1757,7 +1758,7 @@ class Jastrow_data:
             square_new = j3_new[:, :-1]
 
             # If the original square block is symmetric, enforce symmetry on the update
-            if np.allclose(square_old, square_old.T, atol=1e-8):
+            if np.allclose(square_old, square_old.T, atol=atol_consistency):
                 square_new = 0.5 * (square_new + square_new.T)
                 j3_new[:, :-1] = square_new
 

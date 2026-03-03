@@ -114,8 +114,8 @@ cli_parameters = {
         "opt_JNN_param": "Optimize the neural-network Jastrow parameters.",
         "opt_lambda_param": "Optimize the lambda parameters in the geminal part.",
         "opt_with_projected_MOs": (
-            "If true, optimize lambda parameters (for AOs) or molecular orbital coefficients (for MOs) in a restricted MO space."
-            "num_eigenvectors=num_electron_dn in the present implementation."
+            "If true, optimize lambda parameters (for AOs) or molecular orbital coefficients (for MOs) in a restricted MO space. "
+            "num_eigenvectors=num_electron_up in the present implementation."
         ),
         "num_param_opt": "the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.",
         "optimizer_kwargs": (

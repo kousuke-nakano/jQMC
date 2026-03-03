@@ -684,7 +684,7 @@ def test_apply_ao_projected_paired_update_and_reproject_fixed_num_dn():
             orb_data_dn_spin=geminal_ao.orb_data_dn_spin,
             lambda_matrix=ao_lambda_updated,
         ),
-        num_eigenvectors=num_electron_dn,
+        num_eigenvectors=num_electron_up,
     )
 
     actual = geminal_mo.apply_ao_projected_paired_update_and_reproject(
@@ -692,8 +692,8 @@ def test_apply_ao_projected_paired_update_and_reproject_fixed_num_dn():
         step_size=step_size,
     )
 
-    assert actual.orb_num_up == num_electron_dn
-    assert actual.orb_num_dn == num_electron_dn
+    assert actual.orb_num_up == num_electron_up
+    assert actual.orb_num_dn == num_electron_up
     assert not np.any(np.isnan(np.asarray(np.asarray(actual.lambda_matrix)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(expected.lambda_matrix)))), "NaN detected in second argument"
     np.testing.assert_allclose(

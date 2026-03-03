@@ -82,6 +82,7 @@ from .setting import (
     GFMC_ON_THE_FLY_COLLECT_STEPS,
     GFMC_ON_THE_FLY_WARMUP_STEPS,
     EPS_rcond_SVD,
+    rtol_debug_vs_production,
 )
 from .swct import SWCT_data, evaluate_swct_domega, evaluate_swct_omega
 from .wavefunction import (
@@ -7091,7 +7092,7 @@ class _GFMC_n_debug:
                         for i in range(self.__num_walkers)
                     ]
                 )
-                if np.max(np.abs(e_L_list - e_list_debug)) > 1.0e-6:
+                if np.max(np.abs(e_L_list - e_list_debug)) > rtol_debug_vs_production:
                     logger.info(f"max(e_list - e_list_debug) = {np.max(np.abs(e_L_list - e_list_debug))}.")
                     logger.info(f"w_L_list = {w_L_list}.")
                     logger.info(f"e_L_list = {e_L_list}.")
