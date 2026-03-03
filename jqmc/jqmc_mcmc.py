@@ -73,6 +73,7 @@ from .setting import (
     EPS_rcond_SVD,
     MCMC_MIN_BIN_BLOCKS,
     MCMC_MIN_WARMUP_STEPS,
+    min_S_diag_eps,
 )
 from .structure import _find_nearest_index_jnp
 from .swct import SWCT_data, evaluate_swct_domega, evaluate_swct_omega
@@ -1088,10 +1089,6 @@ class MCMC:
             self.__latest_r_dn_carts,
         )
 
-        # Electron position histories (retained for downstream analysis)
-        self.r_up_history: list[jax.Array] = []
-        self.r_dn_history: list[jax.Array] = []
-
         for i_mcmc_step in range(num_mcmc_steps):
             if (i_mcmc_step + 1) % mcmc_interval == 0:
                 progress = (i_mcmc_step + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
@@ -1156,10 +1153,6 @@ class MCMC:
                 RTs = _jit_vmap_generate_RTs(self.__jax_PRNG_key_list)
             else:
                 RTs = jnp.broadcast_to(jnp.eye(3), (len(self.__jax_PRNG_key_list), 3, 3))
-
-            # Record electron positions for optional downstream use
-            self.r_up_history.append(self.__latest_r_up_carts)
-            self.r_dn_history.append(self.__latest_r_dn_carts)
 
             # Evaluate observables each MCMC cycle
             start = time.perf_counter()
@@ -2140,6 +2133,39 @@ class MCMC:
                     arr = arr.reshape(arr.shape[0], arr.shape[1], int(np.prod(arr.shape[2:])))
                 de_L_dc_list.append(arr)
         dE_matrix = np.concatenate(de_L_dc_list, axis=2)[num_mcmc_warmup_steps:]  # (M, nw, K)
+
+        # ------------------------------------------------------------------
+        # Transform dE_matrix to orthogonal basis when lambda_projectors is
+        # active.  O_matrix was already transformed in get_dln_WF; dE_matrix
+        # must be in the same basis for the B-matrix contribution
+        #   g^T B g = <w * (g^T dO) * (g^T ddE)>_w
+        # to be consistent (g is in orthogonal basis).
+        # Same transform as get_dln_WF:
+        #   paired:   dE' = S^{-1/2}_up @ dE @ S^{-1/2}_dn
+        #   unpaired: dE' = S^{-1/2}_up @ dE
+        # Projection (vir-vir removal) is NOT applied to dE because
+        # g already has zero vir-vir components.
+        # ------------------------------------------------------------------
+        if lambda_projectors is not None and num_orb_projection is not None:
+            _, _, inv_sqrt_overlap_up, inv_sqrt_overlap_dn = lambda_projectors
+            _start = 0
+            for block in blocks:
+                _end = _start + block.size
+                if block.name == "lambda_matrix":
+                    dE_block = dE_matrix[:, :, _start:_end].reshape(dE_matrix.shape[0], dE_matrix.shape[1], *block.shape)
+                    n_paired_cols = inv_sqrt_overlap_dn.shape[0]
+                    dE_paired = dE_block[:, :, :, :n_paired_cols]
+                    dE_unpaired = dE_block[:, :, :, n_paired_cols:]
+                    # Two-sided transform for paired
+                    dE_paired_orth = inv_sqrt_overlap_up @ dE_paired @ inv_sqrt_overlap_dn
+                    # Left-only transform for unpaired
+                    dE_unpaired_orth = inv_sqrt_overlap_up @ dE_unpaired
+                    dE_corrected = np.concatenate((dE_paired_orth, dE_unpaired_orth), axis=3)
+                    dE_matrix[:, :, _start:_end] = dE_corrected.reshape(dE_matrix.shape[0], dE_matrix.shape[1], -1)
+                    logger.devel("[get_aH] Transformed dE_matrix lambda block to orthogonal basis.")
+                    break
+                _start = _end
+
         if chosen_param_index is not None:
             dE_matrix = dE_matrix[:, :, chosen_param_index]
 
@@ -2975,8 +3001,21 @@ class MCMC:
                     float(np.max(diag_S)),
                     float(np.median(diag_S)),
                 )
+                # Use a relative floor for diag_S to prevent 1/sqrt(diag_S)
+                # from amplifying near-zero components to catastrophic levels.
+                # Parameters with diag_S << max(diag_S) have negligible variance
+                # and should be effectively frozen rather than amplified.
                 diag_eps = np.finfo(diag_S.dtype).tiny
-                diag_S = np.where(np.isfinite(diag_S) & (diag_S > diag_eps), diag_S, diag_eps)
+                _ds_finite = diag_S[np.isfinite(diag_S) & (diag_S > 0)]
+                _ds_max = float(np.max(_ds_finite)) if _ds_finite.size else 1.0
+                diag_S_floor = max(diag_eps, _ds_max * min_S_diag_eps)
+                logger.devel(
+                    "[SR diag_S] relative floor = %.3e (max(diag_S)=%.3e * min_S_diag_eps=%.3e)",
+                    diag_S_floor,
+                    _ds_max,
+                    min_S_diag_eps,
+                )
+                diag_S = np.where(np.isfinite(diag_S) & (diag_S > diag_S_floor), diag_S, diag_S_floor)
                 X_local = X_local / np.sqrt(diag_S)[:, np.newaxis]  # shape (num_param, num_mcmc * num_walker)
 
                 # matrix shape info
@@ -3306,6 +3345,32 @@ class MCMC:
                             )
                             break
 
+                # aSR gamma scaling: compute the optimal gamma using the FULL natural
+                # gradient theta_all BEFORE the num_param_opt mask is applied.
+                # The aSR formula (S_2 = g^T S g = g^T f = -2 H_1) is only valid when
+                # g = S^{-1} f (the full natural gradient).  Passing a sparse masked
+                # theta violates that identity and produces a wrong gamma, so we must
+                # scale theta_all here and let the masking step below reduce it.
+                #
+                # IMPORTANT: This must happen BEFORE the back-transform to AO basis.
+                # get_aH calls get_dln_WF(lambda_projectors=...) which returns
+                # O_matrix in the orthogonal basis.  theta_all (= g) must also be
+                # in the orthogonal basis for the dot products g^T f, g^T S g, etc.
+                # to be consistent.  After gamma scaling, we then back-transform.
+                if use_sr_adaptive_lr:
+                    logger.info("aSR: computing optimal gamma via accelerated SR.")
+                    H_0, H_1, H_2, S_2 = self.get_aH(
+                        g=theta_all,
+                        blocks=blocks,
+                        num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+                        chosen_param_index=chosen_param_index,
+                        lambda_projectors=lambda_projectors,
+                        num_orb_projection=num_orb_projection,
+                    )
+                    gamma = self.compute_asr_gamma(H_0, H_1, H_2, S_2)
+                    logger.info(f"aSR: scaling theta_all by gamma = {gamma:.6f}.")
+                    theta_all = theta_all * gamma
+
                 # ------------------------------------------------------------------
                 # Back-transform theta from orthogonal basis to AO basis
                 # for the lambda_matrix block.
@@ -3335,26 +3400,6 @@ class MCMC:
                                 float(np.max(_theta_unpaired_ao)) if _theta_unpaired_ao.size else 0.0,
                             )
                             break
-
-                # aSR gamma scaling: compute the optimal gamma using the FULL natural
-                # gradient theta_all BEFORE the num_param_opt mask is applied.
-                # The aSR formula (S_2 = g^T S g = g^T f = -2 H_1) is only valid when
-                # g = S^{-1} f (the full natural gradient).  Passing a sparse masked
-                # theta violates that identity and produces a wrong gamma, so we must
-                # scale theta_all here and let the masking step below reduce it.
-                if use_sr_adaptive_lr:
-                    logger.info("aSR: computing optimal gamma via accelerated SR.")
-                    H_0, H_1, H_2, S_2 = self.get_aH(
-                        g=theta_all,
-                        blocks=blocks,
-                        num_mcmc_warmup_steps=num_mcmc_warmup_steps,
-                        chosen_param_index=chosen_param_index,
-                        lambda_projectors=lambda_projectors,
-                        num_orb_projection=num_orb_projection,
-                    )
-                    gamma = self.compute_asr_gamma(H_0, H_1, H_2, S_2)
-                    logger.info(f"aSR: scaling theta_all by gamma = {gamma:.6f}.")
-                    theta_all = theta_all * gamma
 
             #############################
             # optax optimizer
