@@ -328,8 +328,8 @@ def _cli():
                 num_mcmc_bin_blocks=num_mcmc_bin_blocks,
             )
         logger.info("Final output(s):")
-        logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:5f} Ha.")
-        logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:5f} Ha^2.")
+        logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:.5f} Ha.")
+        logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:.5f} Ha^2.")
         if mcmc.comput_position_deriv:
             logger.info("  Atomic Forces:")
             sep = 16 * 3
@@ -581,8 +581,8 @@ def _cli():
                 num_mcmc_bin_blocks=num_gfmc_bin_blocks,
             )
         logger.info("Final output(s):")
-        logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:5f} Ha.")
-        logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:5f} Ha^2.")
+        logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:.5f} Ha.")
+        logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:.5f} Ha^2.")
         if lrdmc.comput_position_deriv:
             logger.info("  Atomic Forces:")
             sep = 16 * 3
@@ -689,8 +689,8 @@ def _cli():
                 num_mcmc_bin_blocks=num_gfmc_bin_blocks,
             )
         logger.info("Final output(s):")
-        logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:5f} Ha.")
-        logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:5f} Ha^2.")
+        logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:.5f} Ha.")
+        logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:.5f} Ha^2.")
         if lrdmc.comput_position_deriv:
             logger.info("  Atomic Forces:")
             sep = 16 * 3
