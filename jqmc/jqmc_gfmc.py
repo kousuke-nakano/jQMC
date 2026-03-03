@@ -491,10 +491,11 @@ class GFMC_t:
 
             # compute continuum kinetic energy
             diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
-                compute_kinetic_energy_all_elements(
+                compute_kinetic_energy_all_elements_fast_update(
                     wavefunction_data=hamiltonian_data.wavefunction_data,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
+                    geminal_inverse=A_old_inv,
                 )
             )
 
@@ -510,9 +511,10 @@ class GFMC_t:
 
             # compute discretized kinetic energy and mesh (with a random rotation)
             mesh_kinetic_part_r_up_carts, mesh_kinetic_part_r_dn_carts, elements_non_diagonal_kinetic_part = (
-                compute_discretized_kinetic_energy(
+                compute_discretized_kinetic_energy_fast_update(
                     alat=alat,
                     wavefunction_data=hamiltonian_data.wavefunction_data,
+                    A_old_inv=A_old_inv,
                     r_up_carts=r_up_carts,
                     r_dn_carts=r_dn_carts,
                     RT=R.T,
@@ -630,12 +632,13 @@ class GFMC_t:
                 if non_local_move == "tmove":
                     # ecp non-local (t-move)
                     mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                        compute_ecp_non_local_parts_nearest_neighbors(
+                        compute_ecp_non_local_parts_nearest_neighbors_fast_update(
                             coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                             wavefunction_data=hamiltonian_data.wavefunction_data,
                             r_up_carts=r_up_carts,
                             r_dn_carts=r_dn_carts,
                             flag_determinant_only=False,
+                            A_old_inv=A_old_inv,
                             RT=R.T,
                         )
                     )
@@ -647,30 +650,27 @@ class GFMC_t:
 
                 elif non_local_move == "dltmove":
                     mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
-                        compute_ecp_non_local_parts_nearest_neighbors(
+                        compute_ecp_non_local_parts_nearest_neighbors_fast_update(
                             coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
                             wavefunction_data=hamiltonian_data.wavefunction_data,
                             r_up_carts=r_up_carts,
                             r_dn_carts=r_dn_carts,
                             flag_determinant_only=True,
+                            A_old_inv=A_old_inv,
                             RT=R.T,
                         )
                     )
 
                     V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
                     diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
-                    Jastrow_ref = compute_Jastrow_part(
-                        jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
-                        r_up_carts=r_up_carts,
-                        r_dn_carts=r_dn_carts,
-                    )
 
-                    Jastrow_on_mesh = vmap(compute_Jastrow_part, in_axes=(None, 0, 0))(
-                        hamiltonian_data.wavefunction_data.jastrow_data,
-                        mesh_non_local_ecp_part_r_up_carts,
-                        mesh_non_local_ecp_part_r_dn_carts,
+                    Jastrow_ratio = _compute_ratio_Jastrow_part_rank1_update(
+                        jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
+                        old_r_up_carts=r_up_carts,
+                        old_r_dn_carts=r_dn_carts,
+                        new_r_up_carts_arr=mesh_non_local_ecp_part_r_up_carts,
+                        new_r_dn_carts_arr=mesh_non_local_ecp_part_r_dn_carts,
                     )
-                    Jastrow_ratio = jnp.exp(Jastrow_on_mesh - Jastrow_ref)
                     V_nonlocal_FN = V_nonlocal_FN * Jastrow_ratio
 
                     non_diagonal_sum_hamiltonian_ecp = jnp.sum(V_nonlocal_FN)
@@ -740,16 +740,80 @@ class GFMC_t:
             new_r_up_carts = jnp.where(tau_left <= 0.0, r_up_carts, proposed_r_up_carts)  # '=' is very important!!!
             new_r_dn_carts = jnp.where(tau_left <= 0.0, r_dn_carts, proposed_r_dn_carts)  # '=' is very important!!!
 
-            # recompute inverse for the updated configuration via SVD
-            # (more robust than LU for near-singular G)
-            G_new = compute_geminal_all_elements(
-                geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
-                r_up_carts=new_r_up_carts,
-                r_dn_carts=new_r_dn_carts,
-            )
-            U_new, s_new, Vt_new = jnp.linalg.svd(G_new, full_matrices=False)
-            s_inv_new = jnp.where(s_new > EPS_rcond_SVD * s_new[0], 1.0 / s_new, 0.0)
-            A_new_inv = (Vt_new.T * s_inv_new[jnp.newaxis, :]) @ U_new.T
+            # update inverse via Sherman-Morrison rank-1 update
+            num_up_electrons = r_up_carts.shape[0]
+            num_dn_electrons = r_dn_carts.shape[0]
+
+            if num_up_electrons == 0:
+                has_up_move = False
+                up_index = 0
+            else:
+                up_diff = jnp.any(r_up_carts != new_r_up_carts, axis=1)
+                has_up_move = jnp.any(up_diff)
+                up_index = jnp.argmax(up_diff)
+
+            if num_dn_electrons == 0:
+                has_dn_move = False
+                dn_index = 0
+            else:
+                dn_diff = jnp.any(r_dn_carts != new_r_dn_carts, axis=1)
+                has_dn_move = jnp.any(dn_diff)
+                dn_index = jnp.argmax(dn_diff)
+
+            def _update_inv_up_t(_):
+                v = (
+                    compute_geminal_up_one_row_elements(
+                        geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                        r_up_cart=jnp.reshape(new_r_up_carts[up_index], (1, 3)),
+                        r_dn_carts=r_dn_carts,
+                    )
+                    - compute_geminal_up_one_row_elements(
+                        geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                        r_up_cart=jnp.reshape(r_up_carts[up_index], (1, 3)),
+                        r_dn_carts=r_dn_carts,
+                    )
+                )[:, None]
+                u = jax.nn.one_hot(up_index, num_up_electrons)[:, None]
+                Ainv_u = A_old_inv @ u
+                vT_Ainv = v.T @ A_old_inv
+                det_ratio = 1.0 + (v.T @ Ainv_u)[0, 0]
+                return A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio
+
+            def _no_update_t(_):
+                return A_old_inv
+
+            if num_dn_electrons == 0:
+                _update_inv_dn_t = _no_update_t
+            else:
+
+                def _update_inv_dn_t(_):
+                    u = (
+                        compute_geminal_dn_one_column_elements(
+                            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                            r_up_carts=r_up_carts,
+                            r_dn_cart=jnp.reshape(new_r_dn_carts[dn_index], (1, 3)),
+                        )
+                        - compute_geminal_dn_one_column_elements(
+                            geminal_data=hamiltonian_data.wavefunction_data.geminal_data,
+                            r_up_carts=r_up_carts,
+                            r_dn_cart=jnp.reshape(r_dn_carts[dn_index], (1, 3)),
+                        )
+                    )[:, None]
+                    v = jax.nn.one_hot(dn_index, num_up_electrons)[:, None]
+                    Ainv_u = A_old_inv @ u
+                    vT_Ainv = v.T @ A_old_inv
+                    det_ratio = 1.0 + (v.T @ Ainv_u)[0, 0]
+                    return A_old_inv - (Ainv_u @ vT_Ainv) / det_ratio
+
+            if num_up_electrons == 0:
+                A_new_inv = A_old_inv
+            else:
+                A_new_inv = lax.cond(
+                    has_up_move,
+                    _update_inv_up_t,
+                    lambda __: lax.cond(has_dn_move, _update_inv_dn_t, _no_update_t, operand=None),
+                    operand=None,
+                )
 
             return (
                 e_L,
