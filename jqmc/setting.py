@@ -76,3 +76,8 @@ EPS_stabilizing_jax_AO_cart_deriv = 1.0e-16
 # Must be very small (e.g. 1e-20); see compute_grads_and_laplacian_ln_Det
 # docstring in determinant.py for why a larger value breaks the analytic path.
 EPS_rcond_SVD = 1.0e-20
+
+# Relative floor for diag(S) in scale-invariant SR.
+# diag_S values below max(diag_S) * min_S_diag_eps are clamped to prevent
+# 1/sqrt(diag_S) from amplifying near-zero components to catastrophic levels.
+min_S_diag_eps = 1.0e-16
