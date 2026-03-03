@@ -68,9 +68,21 @@ test_mcmc_force_params = [
             "jastrow_1b_param": True,
             "jastrow_2b_param": True,
             "jastrow_3b_param": True,
+            "jastrow_nn_param": False,
             "core_electrons": (0, 0),
         },
         id="ecp",
+    ),
+    pytest.param(
+        "H2_ecp_ccpvtz_cart.h5",
+        {
+            "jastrow_1b_param": True,
+            "jastrow_2b_param": True,
+            "jastrow_3b_param": True,
+            "jastrow_nn_param": True,
+            "core_electrons": (0, 0),
+        },
+        id="ecp-nn",
     ),
     pytest.param(
         "H2_ae_ccpvtz_cart.h5",
@@ -78,9 +90,21 @@ test_mcmc_force_params = [
             "jastrow_1b_param": True,
             "jastrow_2b_param": True,
             "jastrow_3b_param": False,
+            "jastrow_nn_param": False,
             "core_electrons": (0, 0),
         },
         id="ae",
+    ),
+    pytest.param(
+        "H2_ae_ccpvtz_cart.h5",
+        {
+            "jastrow_1b_param": True,
+            "jastrow_2b_param": True,
+            "jastrow_3b_param": False,
+            "jastrow_nn_param": True,
+            "core_electrons": (0, 0),
+        },
+        id="ae-nn",
     ),
 ]
 
@@ -124,7 +148,13 @@ def test_mcmc_force_with_SWCT(trexio_file: str, jastrow_parameters: dict):
     else:
         jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
 
-    jastrow_nn_data = Jastrow_NN_data.init_from_structure(structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0)
+    jastrow_nn_param = jastrow_parameters.get("jastrow_nn_param", False)
+    if jastrow_nn_param:
+        jastrow_nn_data = Jastrow_NN_data.init_from_structure(
+            structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0
+        )
+    else:
+        jastrow_nn_data = None
 
     # define data
     jastrow_data = Jastrow_data(

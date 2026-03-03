@@ -2,6 +2,11 @@
 
 # Change Log
 
+## Mar-3-2026
+
+- Added `atomic_force` option to the `lrdmc-tau` job type, enabling atomic force computation for GFMC_t (tau-based LRDMC).
+- Updated CLI (`jqmc_cli`) and parameter definitions (`jqmc_miscs`) to support force output in `lrdmc-tau` runs.
+
 ## Feb-5-2026: v0.1.0
 
 - Release of the first stable version of **jQMC**.

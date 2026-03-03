@@ -526,6 +526,7 @@ def _cli():
         num_gfmc_collect_steps = parameters[section]["num_gfmc_collect_steps"]
         E_scf = parameters[section]["E_scf"]
         atomic_force = parameters[section]["atomic_force"]
+        epsilon_PW = parameters[section]["epsilon_PW"]
 
         # Enforce GFMC minimum thresholds (E_scf unreliable before step 25)
         if num_gfmc_warmup_steps < GFMC_MIN_WARMUP_STEPS:
@@ -567,6 +568,7 @@ def _cli():
                 alat=alat,
                 non_local_move=non_local_move,
                 comput_position_deriv=atomic_force,
+                epsilon_PW=epsilon_PW,
             )
         lrdmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = lrdmc.get_E(
@@ -644,6 +646,8 @@ def _cli():
         num_gfmc_warmup_steps = parameters[section]["num_gfmc_warmup_steps"]
         num_gfmc_bin_blocks = parameters[section]["num_gfmc_bin_blocks"]
         num_gfmc_collect_steps = parameters[section]["num_gfmc_collect_steps"]
+        atomic_force = parameters[section]["atomic_force"]
+        epsilon_PW = parameters[section]["epsilon_PW"]
 
         # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
         if not restart:
@@ -671,15 +675,34 @@ def _cli():
                 mcmc_seed=mcmc_seed,
                 alat=alat,
                 non_local_move=non_local_move,
+                comput_position_deriv=atomic_force,
+                epsilon_PW=epsilon_PW,
             )
         lrdmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = lrdmc.get_E(
             num_mcmc_warmup_steps=num_gfmc_warmup_steps,
             num_mcmc_bin_blocks=num_gfmc_bin_blocks,
         )
+        if lrdmc.comput_position_deriv:
+            f_mean, f_std = lrdmc.get_aF(
+                num_mcmc_warmup_steps=num_gfmc_warmup_steps,
+                num_mcmc_bin_blocks=num_gfmc_bin_blocks,
+            )
         logger.info("Final output(s):")
         logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:5f} Ha.")
         logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:5f} Ha^2.")
+        if lrdmc.comput_position_deriv:
+            logger.info("  Atomic Forces:")
+            sep = 16 * 3
+            logger.info("  " + "-" * sep)
+            logger.info("  Label   Fx(Ha/bohr) Fy(Ha/bohr) Fz(Ha/bohr)")
+            logger.info("  " + "-" * sep)
+            for i in range(len(lrdmc.hamiltonian_data.structure_data.atomic_labels)):
+                atomic_label = str(lrdmc.hamiltonian_data.structure_data.atomic_labels[i])
+                row_values = [f"{ufloat(f_mean[i, j], f_std[i, j]):+2uS}" for j in range(3)]
+                row_str = "  " + atomic_label.ljust(8) + "".join(val.ljust(12) for val in row_values)
+                logger.info(row_str)
+            logger.info("  " + "-" * sep)
         logger.info("")
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
         logger.info("")

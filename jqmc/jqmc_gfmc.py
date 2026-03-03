@@ -195,6 +195,8 @@ class GFMC_t:
         alat: float = 0.1,
         random_discretized_mesh: bool = True,
         non_local_move: str = "tmove",
+        comput_position_deriv: bool = False,
+        epsilon_PW: float = 0.0,
     ) -> None:
         """Init.
 
@@ -213,6 +215,12 @@ class GFMC_t:
         self.__alat = alat
         self.__random_discretized_mesh = random_discretized_mesh
         self.__non_local_move = non_local_move
+
+        # derivative flags
+        self.__comput_position_deriv = comput_position_deriv
+
+        # Pathak-Wagner regularization (DOI: 10.1063/5.0004008)
+        self.__epsilon_PW = epsilon_PW
 
         # gfmc branching counter
         self.__mcmc_counter = 0
@@ -271,6 +279,9 @@ class GFMC_t:
         logger.info(f"The number of walkers assigned for each MPI process = {self.__num_walkers}.")
         logger.info("")
 
+        # SWCT data
+        self.__swct_data = SWCT_data(structure=self.__hamiltonian_data.structure_data)
+
         # print out hamiltonian info
         logger.info("Printing out information in hamitonian_data instance.")
         self.__hamiltonian_data._logger_info()
@@ -300,6 +311,36 @@ class GFMC_t:
         # average projection counter
         self.__stored_average_projection_counter = []
 
+        # stored de_L / dR
+        self.__stored_grad_e_L_dR = []
+
+        # stored de_L / dr_up
+        self.__stored_grad_e_L_r_up = []
+
+        # stored de_L / dr_dn
+        self.__stored_grad_e_L_r_dn = []
+
+        # stored dln_Psi / dr_up
+        self.__stored_grad_ln_Psi_r_up = []
+
+        # stored dln_Psi / dr_dn
+        self.__stored_grad_ln_Psi_r_dn = []
+
+        # stored dln_Psi / dR
+        self.__stored_grad_ln_Psi_dR = []
+
+        # stored Omega_up (SWCT)
+        self.__stored_omega_up = []
+
+        # stored Omega_dn (SWCT)
+        self.__stored_omega_dn = []
+
+        # stored sum_i d omega/d r_i for up spins (SWCT)
+        self.__stored_grad_omega_r_up = []
+
+        # stored sum_i d omega/d r_i for dn spins (SWCT)
+        self.__stored_grad_omega_r_dn = []
+
     # hamiltonian
     @property
     def hamiltonian_data(self):
@@ -309,7 +350,10 @@ class GFMC_t:
     @hamiltonian_data.setter
     def hamiltonian_data(self, hamiltonian_data):
         """Set hamiltonian_data."""
-        self.__hamiltonian_data = apply_diff_mask(hamiltonian_data, DiffMask(params=False, coords=False))
+        if self.__comput_position_deriv:
+            self.__hamiltonian_data = apply_diff_mask(hamiltonian_data, DiffMask(params=True, coords=True))
+        else:
+            self.__hamiltonian_data = apply_diff_mask(hamiltonian_data, DiffMask(params=False, coords=False))
         self.__init_attributes()
 
     # collecting factor
@@ -366,6 +410,84 @@ class GFMC_t:
         """Return the stored e_L2 array. dim: (mcmc_counter, 1)."""
         # logger.info(f"np.array(self.__stored_e_L2).shape = {np.array(self.__stored_e_L).shape}.")
         return np.array(self.__stored_e_L2)[self.__num_gfmc_collect_steps :]
+
+    @property
+    def de_L_dR(self) -> npt.NDArray:
+        """Return the stored de_L/dR array. dim: (mcmc_counter, 1)."""
+        return np.array(self.__stored_grad_e_L_dR)[self.__num_gfmc_collect_steps :]
+
+    @property
+    def de_L_dr_up(self) -> npt.NDArray:
+        """Return the stored de_L/dr_up array. dim: (mcmc_counter, 1, num_electrons_up, 3)."""
+        return np.array(self.__stored_grad_e_L_r_up)[self.__num_gfmc_collect_steps :]
+
+    @property
+    def de_L_dr_dn(self) -> npt.NDArray:
+        """Return the stored de_L/dr_dn array. dim: (mcmc_counter, 1, num_electrons_dn, 3)."""
+        return np.array(self.__stored_grad_e_L_r_dn)[self.__num_gfmc_collect_steps :]
+
+    @property
+    def dln_Psi_dr_up(self) -> npt.NDArray:
+        """Return the stored dln_Psi/dr_up array. dim: (mcmc_counter, 1, num_electrons_up, 3)."""
+        return np.array(self.__stored_grad_ln_Psi_r_up)[self.__num_gfmc_collect_steps :]
+
+    @property
+    def dln_Psi_dr_dn(self) -> npt.NDArray:
+        """Return the stored dln_Psi/dr_down array. dim: (mcmc_counter, 1, num_electrons_dn, 3)."""
+        return np.array(self.__stored_grad_ln_Psi_r_dn)[self.__num_gfmc_collect_steps :]
+
+    @property
+    def dln_Psi_dR(self) -> npt.NDArray:
+        """Return the stored dln_Psi/dR array. dim: (mcmc_counter, 1, num_atoms, 3)."""
+        return np.array(self.__stored_grad_ln_Psi_dR)[self.__num_gfmc_collect_steps :]
+
+    @property
+    def omega_up(self) -> npt.NDArray:
+        """Return the stored Omega (for up electrons) array. dim: (mcmc_counter, 1, num_atoms, num_electrons_up)."""
+        return np.array(self.__stored_omega_up)[self.__num_gfmc_collect_steps :]
+
+    @property
+    def omega_dn(self) -> npt.NDArray:
+        """Return the stored Omega (for down electrons) array. dim: (mcmc_counter,1, num_atoms, num_electons_dn)."""
+        return np.array(self.__stored_omega_dn)[self.__num_gfmc_collect_steps :]
+
+    @property
+    def domega_dr_up(self) -> npt.NDArray:
+        """Return the stored dOmega/dr_up array. dim: (mcmc_counter, 1, num_electons_dn, 3)."""
+        return np.array(self.__stored_grad_omega_r_up)[self.__num_gfmc_collect_steps :]
+
+    @property
+    def domega_dr_dn(self) -> npt.NDArray:
+        """Return the stored dOmega/dr_dn array. dim: (mcmc_counter, 1, num_electons_dn, 3)."""
+        return np.array(self.__stored_grad_omega_r_dn)[self.__num_gfmc_collect_steps :]
+
+    @property
+    def comput_position_deriv(self) -> bool:
+        """Return the flag for computing the derivatives of E wrt. atomic positions."""
+        return self.__comput_position_deriv
+
+    def __prepare_position_grad_objects(self):
+        """Return (Wavefunction_data, Hamiltonian_data) suitable for de_L/dR and dln_Psi/dR computations.
+
+        All variational parameters are masked with stop_gradient so that JAX
+        does not backpropagate through them (e.g. ECP wf-ratio tables).
+        AO position leaves (orb_data.structure_data.positions) still carry
+        gradients (DiffMask coords=True), so dT/dR and dV_ECP/dR are correct.
+        """
+        wavefunction_data = self.__hamiltonian_data.wavefunction_data
+        if wavefunction_data is None or not self.__comput_position_deriv:
+            return wavefunction_data, self.__hamiltonian_data
+
+        # Always mask ALL variational parameters for position gradient computation.
+        masked_wavefunction = wavefunction_data.with_param_grad_mask(
+            opt_J1_param=False,
+            opt_J2_param=False,
+            opt_J3_param=False,
+            opt_JNN_param=False,
+            opt_lambda_param=False,
+        )
+        masked_hamiltonian = self.__hamiltonian_data.replace(wavefunction_data=masked_wavefunction)
+        return masked_wavefunction, masked_hamiltonian
 
     def run(self, num_mcmc_steps: int = 50, max_time: int = 86400) -> None:
         """Run LRDMC with multiple walkers.
@@ -853,6 +975,249 @@ class GFMC_t:
         logger.info(f"Elapsed Time = {timer_projection_init:.2f} sec.")
         logger.info("")
 
+        # --- Force gradient infrastructure ---
+        @partial(jit, static_argnums=(4,))
+        def _compute_V_elements_t(
+            hamiltonian_data: Hamiltonian_data,
+            r_up_carts: jnpt.ArrayLike,
+            r_dn_carts: jnpt.ArrayLike,
+            RT: jnpt.ArrayLike,
+            non_local_move: bool,
+            alat: float,
+        ):
+            """Compute V elements (non-fast-update path for gradient computation)."""
+            # compute diagonal elements, kinetic part
+            diagonal_kinetic_part = 3.0 / (2.0 * alat**2) * (len(r_up_carts) + len(r_dn_carts))
+
+            # compute continuum kinetic energy
+            diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
+                compute_kinetic_energy_all_elements(
+                    wavefunction_data=hamiltonian_data.wavefunction_data,
+                    r_up_carts=r_up_carts,
+                    r_dn_carts=r_dn_carts,
+                )
+            )
+
+            # compute discretized kinetic energy and mesh (with a random rotation)
+            _, _, elements_non_diagonal_kinetic_part = compute_discretized_kinetic_energy(
+                alat=alat,
+                wavefunction_data=hamiltonian_data.wavefunction_data,
+                r_up_carts=r_up_carts,
+                r_dn_carts=r_dn_carts,
+                RT=RT,
+            )
+
+            # spin-flip
+            elements_non_diagonal_kinetic_part_FN = jnp.minimum(elements_non_diagonal_kinetic_part, 0.0)
+            non_diagonal_sum_hamiltonian_kinetic = jnp.sum(elements_non_diagonal_kinetic_part_FN)
+            diagonal_kinetic_part_SP = jnp.sum(jnp.maximum(elements_non_diagonal_kinetic_part, 0.0))
+            # regularizations
+            elements_non_diagonal_kinetic_part_all = elements_non_diagonal_kinetic_part.reshape(-1, 6)
+            sign_flip_flags_elements = jnp.any(elements_non_diagonal_kinetic_part_all >= 0, axis=1)
+            non_diagonal_kinetic_part_elements = jnp.sum(elements_non_diagonal_kinetic_part_all + 1.0 / (4.0 * alat**2), axis=1)
+            sign_flip_flags_elements_up, sign_flip_flags_elements_dn = jnp.split(sign_flip_flags_elements, [len(r_up_carts)])
+            non_diagonal_kinetic_part_elements_up, non_diagonal_kinetic_part_elements_dn = jnp.split(
+                non_diagonal_kinetic_part_elements, [len(r_up_carts)]
+            )
+
+            # compute diagonal elements, el-el
+            diagonal_bare_coulomb_part_el_el = compute_bare_coulomb_potential_el_el(
+                r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+            )
+
+            # compute diagonal elements, ion-ion
+            diagonal_bare_coulomb_part_ion_ion = compute_bare_coulomb_potential_ion_ion(
+                coulomb_potential_data=hamiltonian_data.coulomb_potential_data
+            )
+
+            # compute diagonal elements, el-ion
+            diagonal_bare_coulomb_part_el_ion_elements_up, diagonal_bare_coulomb_part_el_ion_elements_dn = (
+                compute_bare_coulomb_potential_el_ion_element_wise(
+                    coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
+                    r_up_carts=r_up_carts,
+                    r_dn_carts=r_dn_carts,
+                )
+            )
+
+            # compute diagonal elements, el-ion, discretized
+            (
+                diagonal_bare_coulomb_part_el_ion_discretized_elements_up,
+                diagonal_bare_coulomb_part_el_ion_discretized_elements_dn,
+            ) = compute_discretized_bare_coulomb_potential_el_ion_element_wise(
+                coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
+                r_up_carts=r_up_carts,
+                r_dn_carts=r_dn_carts,
+                alat=alat,
+            )
+
+            # compose discretized el-ion potentials
+            diagonal_bare_coulomb_part_el_ion_zv_up = (
+                diagonal_bare_coulomb_part_el_ion_elements_up
+                + diagonal_kinetic_continuum_elements_up
+                - non_diagonal_kinetic_part_elements_up
+            )
+            if hamiltonian_data.coulomb_potential_data.ecp_flag:
+                diagonal_bare_coulomb_part_el_ion_ei_up = diagonal_bare_coulomb_part_el_ion_elements_up
+            else:
+                diagonal_bare_coulomb_part_el_ion_ei_up = diagonal_bare_coulomb_part_el_ion_discretized_elements_up
+            diagonal_bare_coulomb_part_el_ion_max_up = jnp.maximum(
+                diagonal_bare_coulomb_part_el_ion_zv_up, diagonal_bare_coulomb_part_el_ion_ei_up
+            )
+            diagonal_bare_coulomb_part_el_ion_opt_up = jnp.where(
+                sign_flip_flags_elements_up, diagonal_bare_coulomb_part_el_ion_max_up, diagonal_bare_coulomb_part_el_ion_zv_up
+            )
+
+            # compose discretized el-ion potentials
+            diagonal_bare_coulomb_part_el_ion_zv_dn = (
+                diagonal_bare_coulomb_part_el_ion_elements_dn
+                + diagonal_kinetic_continuum_elements_dn
+                - non_diagonal_kinetic_part_elements_dn
+            )
+            if hamiltonian_data.coulomb_potential_data.ecp_flag:
+                diagonal_bare_coulomb_part_el_ion_ei_dn = diagonal_bare_coulomb_part_el_ion_elements_dn
+            else:
+                diagonal_bare_coulomb_part_el_ion_ei_dn = diagonal_bare_coulomb_part_el_ion_discretized_elements_dn
+            diagonal_bare_coulomb_part_el_ion_max_dn = jnp.maximum(
+                diagonal_bare_coulomb_part_el_ion_zv_dn, diagonal_bare_coulomb_part_el_ion_ei_dn
+            )
+            diagonal_bare_coulomb_part_el_ion_opt_dn = jnp.where(
+                sign_flip_flags_elements_dn, diagonal_bare_coulomb_part_el_ion_max_dn, diagonal_bare_coulomb_part_el_ion_zv_dn
+            )
+
+            # final bare coulomb part
+            discretized_diagonal_bare_coulomb_part = (
+                diagonal_bare_coulomb_part_el_el
+                + diagonal_bare_coulomb_part_ion_ion
+                + jnp.sum(diagonal_bare_coulomb_part_el_ion_opt_up)
+                + jnp.sum(diagonal_bare_coulomb_part_el_ion_opt_dn)
+            )
+
+            # with ECP
+            if hamiltonian_data.coulomb_potential_data.ecp_flag:
+                diagonal_ecp_local_part = compute_ecp_local_parts_all_pairs(
+                    coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
+                    r_up_carts=r_up_carts,
+                    r_dn_carts=r_dn_carts,
+                )
+
+                if non_local_move == "tmove":
+                    mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
+                        compute_ecp_non_local_parts_nearest_neighbors(
+                            coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
+                            wavefunction_data=hamiltonian_data.wavefunction_data,
+                            r_up_carts=r_up_carts,
+                            r_dn_carts=r_dn_carts,
+                            flag_determinant_only=False,
+                            RT=RT,
+                        )
+                    )
+                    V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
+                    diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
+                    non_diagonal_sum_hamiltonian_ecp = jnp.sum(V_nonlocal_FN)
+                    non_diagonal_sum_hamiltonian = non_diagonal_sum_hamiltonian_kinetic + non_diagonal_sum_hamiltonian_ecp
+
+                elif non_local_move == "dltmove":
+                    mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
+                        compute_ecp_non_local_parts_nearest_neighbors(
+                            coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
+                            wavefunction_data=hamiltonian_data.wavefunction_data,
+                            r_up_carts=r_up_carts,
+                            r_dn_carts=r_dn_carts,
+                            flag_determinant_only=True,
+                            RT=RT,
+                        )
+                    )
+                    V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
+                    diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
+
+                    Jastrow_ref = compute_Jastrow_part(
+                        jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
+                        r_up_carts=r_up_carts,
+                        r_dn_carts=r_dn_carts,
+                    )
+                    Jastrow_on_mesh = vmap(compute_Jastrow_part, in_axes=(None, 0, 0))(
+                        hamiltonian_data.wavefunction_data.jastrow_data,
+                        mesh_non_local_ecp_part_r_up_carts,
+                        mesh_non_local_ecp_part_r_dn_carts,
+                    )
+                    Jastrow_ratio = jnp.exp(Jastrow_on_mesh - Jastrow_ref)
+                    V_nonlocal_FN = V_nonlocal_FN * Jastrow_ratio
+
+                    non_diagonal_sum_hamiltonian_ecp = jnp.sum(V_nonlocal_FN)
+                    non_diagonal_sum_hamiltonian = non_diagonal_sum_hamiltonian_kinetic + non_diagonal_sum_hamiltonian_ecp
+
+                else:
+                    raise NotImplementedError
+
+                V_diag = (
+                    diagonal_kinetic_part
+                    + discretized_diagonal_bare_coulomb_part
+                    + diagonal_ecp_local_part
+                    + diagonal_kinetic_part_SP
+                    + diagonal_ecp_part_SP
+                )
+                V_nondiag = non_diagonal_sum_hamiltonian
+
+            # with all electrons
+            else:
+                non_diagonal_sum_hamiltonian = non_diagonal_sum_hamiltonian_kinetic
+                V_diag = diagonal_kinetic_part + discretized_diagonal_bare_coulomb_part + diagonal_kinetic_part_SP
+                V_nondiag = non_diagonal_sum_hamiltonian
+
+            return (V_diag, V_nondiag)
+
+        @partial(jit, static_argnums=(4,))
+        def _compute_local_energy_t(
+            hamiltonian_data: Hamiltonian_data,
+            r_up_carts: jnpt.ArrayLike,
+            r_dn_carts: jnpt.ArrayLike,
+            RT: jnpt.ArrayLike,
+            non_local_move: bool,
+            alat: float,
+        ):
+            V_diag, V_nondiag = _compute_V_elements_t(
+                hamiltonian_data=hamiltonian_data,
+                r_up_carts=r_up_carts,
+                r_dn_carts=r_dn_carts,
+                RT=RT,
+                non_local_move=non_local_move,
+                alat=alat,
+            )
+            return V_diag + V_nondiag
+
+        wavefunction_for_position_grads, hamiltonian_for_position_grads = self.__prepare_position_grad_objects()
+
+        _jit_vmap_grad_e_L_t = jit(
+            vmap(grad(_compute_local_energy_t, argnums=(0, 1, 2)), in_axes=(None, 0, 0, 0, None, None)),
+            static_argnums=(4,),  # non_local_move
+        )
+        _jit_vmap_grad_ln_psi_t = jit(vmap(grad(evaluate_ln_wavefunction, argnums=(0, 1, 2)), in_axes=(None, 0, 0)))
+        _jit_vmap_swct_omega_t = jit(vmap(evaluate_swct_omega, in_axes=(None, 0)))
+        _jit_vmap_swct_domega_t = jit(vmap(evaluate_swct_domega, in_axes=(None, 0)))
+
+        if self.__comput_position_deriv:
+            start_init_force = time.perf_counter()
+            logger.info("Start compilation of force gradient functions.")
+            logger.info("  Compilation is in progress...")
+            _dummy_RTs = jnp.stack([jnp.eye(3)] * self.__num_walkers)
+            _, _, _ = _jit_vmap_grad_e_L_t(
+                hamiltonian_for_position_grads,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+                _dummy_RTs,
+                self.__non_local_move,
+                self.__alat,
+            )
+            _, _, _ = _jit_vmap_grad_ln_psi_t(
+                wavefunction_for_position_grads,
+                self.__latest_r_up_carts,
+                self.__latest_r_dn_carts,
+            )
+            end_init_force = time.perf_counter()
+            logger.info("End compilation of force gradient functions.")
+            logger.info(f"Elapsed Time = {end_init_force - start_init_force:.2f} sec.")
+            logger.info("")
+
         # Main branching loop.
         gfmc_interval = int(np.maximum(num_mcmc_steps / 100, 1))  # gfmc_projection set print-interval
 
@@ -889,7 +1254,7 @@ class GFMC_t:
                     self.__latest_r_dn_carts,
                     self.__latest_A_old_inv,
                     self.__jax_PRNG_key_list,
-                    _,
+                    latest_RTs,
                 ) = vmap(_projection_t, in_axes=(0, 0, 0, 0, 0, 0, 0, None, None, None, None))(
                     projection_counter_list,
                     tau_left_list,
@@ -935,7 +1300,68 @@ class GFMC_t:
                 logger.info(f"e_list_debug[argmax_i] = {e_list_debug[argmax_i]}.")
                 # np.testing.assert_almost_equal(np.array(e_L_list), np.array(e_list_debug), decimal=6)
             """
-            # to be implemented other observables, such as derivatives.
+
+            # atomic force related
+            if self.__comput_position_deriv:
+                grad_e_L_h, grad_e_L_r_up, grad_e_L_r_dn = _jit_vmap_grad_e_L_t(
+                    hamiltonian_for_position_grads,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                    latest_RTs,
+                    self.__non_local_move,
+                    self.__alat,
+                )
+                grad_e_L_r_up.block_until_ready()
+                grad_e_L_r_dn.block_until_ready()
+
+                grad_e_L_R = (
+                    grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.structure_data.positions
+                    + grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.structure_data.positions
+                    + grad_e_L_h.coulomb_potential_data.structure_data.positions
+                )
+
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
+                    grad_e_L_R += grad_e_L_h.wavefunction_data.jastrow_data.jastrow_one_body_data.structure_data.positions
+
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
+                    grad_e_L_R += (
+                        grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
+                    )
+
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_nn_data is not None:
+                    grad_e_L_R += grad_e_L_h.wavefunction_data.jastrow_data.jastrow_nn_data.structure_data.positions
+
+                grad_ln_Psi_h, grad_ln_Psi_r_up, grad_ln_Psi_r_dn = _jit_vmap_grad_ln_psi_t(
+                    wavefunction_for_position_grads,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                )
+                grad_ln_Psi_r_up.block_until_ready()
+                grad_ln_Psi_r_dn.block_until_ready()
+
+                grad_ln_Psi_dR = (
+                    grad_ln_Psi_h.geminal_data.orb_data_up_spin.structure_data.positions
+                    + grad_ln_Psi_h.geminal_data.orb_data_dn_spin.structure_data.positions
+                )
+
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
+                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_one_body_data.structure_data.positions
+
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
+                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
+
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_nn_data is not None:
+                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_nn_data.structure_data.positions
+
+                omega_up = _jit_vmap_swct_omega_t(self.__swct_data, self.__latest_r_up_carts)
+                omega_dn = _jit_vmap_swct_omega_t(self.__swct_data, self.__latest_r_dn_carts)
+                grad_omega_dr_up = _jit_vmap_swct_domega_t(self.__swct_data, self.__latest_r_up_carts)
+                grad_omega_dr_dn = _jit_vmap_swct_domega_t(self.__swct_data, self.__latest_r_dn_carts)
+                omega_up.block_until_ready()
+                omega_dn.block_until_ready()
+                grad_omega_dr_up.block_until_ready()
+                grad_omega_dr_dn.block_until_ready()
+
             end_observable = time.perf_counter()
             timer_observable += end_observable - start_observable
 
@@ -963,33 +1389,116 @@ class GFMC_t:
             w_L_latest = np.array(w_L_list)
             e_L_latest = np.array(e_L_list)
 
+            if self.__comput_position_deriv:
+                grad_e_L_r_up_latest = np.array(grad_e_L_r_up)
+                grad_e_L_r_dn_latest = np.array(grad_e_L_r_dn)
+                grad_e_L_R_latest = np.array(grad_e_L_R)
+                grad_ln_Psi_r_up_latest = np.array(grad_ln_Psi_r_up)
+                grad_ln_Psi_r_dn_latest = np.array(grad_ln_Psi_r_dn)
+                grad_ln_Psi_dR_latest = np.array(grad_ln_Psi_dR)
+                omega_up_latest = np.array(omega_up)
+                omega_dn_latest = np.array(omega_dn)
+                grad_omega_dr_up_latest = np.array(grad_omega_dr_up)
+                grad_omega_dr_dn_latest = np.array(grad_omega_dr_dn)
+
             # sum
             nw_sum = len(w_L_latest)
             w_L_sum = np.sum(w_L_latest)
             e_L_sum = np.sum(w_L_latest * e_L_latest)
             e_L2_sum = np.sum(w_L_latest * e_L_latest**2)
+            if self.__comput_position_deriv:
+                # Pathak-Wagner regularization factor f_eps per walker
+                if self.__epsilon_PW > 0.0:
+                    grad_norm_sq = np.sum(grad_ln_Psi_r_up_latest**2, axis=(1, 2)) + np.sum(
+                        grad_ln_Psi_r_dn_latest**2, axis=(1, 2)
+                    )
+                    nodal_dist = 1.0 / np.sqrt(grad_norm_sq)
+                    t = nodal_dist / self.__epsilon_PW
+                    t2 = t * t
+                    t4 = t2 * t2
+                    t6 = t4 * t2
+                    f_eps = np.where(t < 1.0, 7.0 * t6 - 15.0 * t4 + 9.0 * t2, 1.0)
+                    mod_w_L_latest = w_L_latest * f_eps
+                else:
+                    mod_w_L_latest = w_L_latest
+
+                # Note: GFMC_t uses w_L directly (no V_diag_E division unlike GFMC_n)
+                grad_e_L_r_up_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, grad_e_L_r_up_latest)
+                grad_e_L_r_dn_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, grad_e_L_r_dn_latest)
+                grad_e_L_R_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, grad_e_L_R_latest)
+                grad_ln_Psi_r_up_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, grad_ln_Psi_r_up_latest)
+                grad_ln_Psi_r_dn_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, grad_ln_Psi_r_dn_latest)
+                grad_ln_Psi_dR_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, grad_ln_Psi_dR_latest)
+                omega_up_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, omega_up_latest)
+                omega_dn_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, omega_dn_latest)
+                grad_omega_dr_up_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, grad_omega_dr_up_latest)
+                grad_omega_dr_dn_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, grad_omega_dr_dn_latest)
 
             # reduce
             nw_sum = mpi_comm.reduce(nw_sum, op=MPI.SUM, root=0)
             w_L_sum = mpi_comm.reduce(w_L_sum, op=MPI.SUM, root=0)
             e_L_sum = mpi_comm.reduce(e_L_sum, op=MPI.SUM, root=0)
             e_L2_sum = mpi_comm.reduce(e_L2_sum, op=MPI.SUM, root=0)
+            if self.__comput_position_deriv:
+                grad_e_L_r_up_weighted_sum = mpi_comm.reduce(grad_e_L_r_up_weighted_sum, op=MPI.SUM, root=0)
+                grad_e_L_r_dn_weighted_sum = mpi_comm.reduce(grad_e_L_r_dn_weighted_sum, op=MPI.SUM, root=0)
+                grad_e_L_R_weighted_sum = mpi_comm.reduce(grad_e_L_R_weighted_sum, op=MPI.SUM, root=0)
+                grad_ln_Psi_r_up_weighted_sum = mpi_comm.reduce(grad_ln_Psi_r_up_weighted_sum, op=MPI.SUM, root=0)
+                grad_ln_Psi_r_dn_weighted_sum = mpi_comm.reduce(grad_ln_Psi_r_dn_weighted_sum, op=MPI.SUM, root=0)
+                grad_ln_Psi_dR_weighted_sum = mpi_comm.reduce(grad_ln_Psi_dR_weighted_sum, op=MPI.SUM, root=0)
+                omega_up_weighted_sum = mpi_comm.reduce(omega_up_weighted_sum, op=MPI.SUM, root=0)
+                omega_dn_weighted_sum = mpi_comm.reduce(omega_dn_weighted_sum, op=MPI.SUM, root=0)
+                grad_omega_dr_up_weighted_sum = mpi_comm.reduce(grad_omega_dr_up_weighted_sum, op=MPI.SUM, root=0)
+                grad_omega_dr_dn_weighted_sum = mpi_comm.reduce(grad_omega_dr_dn_weighted_sum, op=MPI.SUM, root=0)
 
             if mpi_rank == 0:
                 # averaged
                 w_L_averaged = w_L_sum / nw_sum
                 e_L_averaged = e_L_sum / w_L_sum
                 e_L2_averaged = e_L2_sum / w_L_sum
+                if self.__comput_position_deriv:
+                    grad_e_L_r_up_averaged = grad_e_L_r_up_weighted_sum / w_L_sum
+                    grad_e_L_r_dn_averaged = grad_e_L_r_dn_weighted_sum / w_L_sum
+                    grad_e_L_R_averaged = grad_e_L_R_weighted_sum / w_L_sum
+                    grad_ln_Psi_r_up_averaged = grad_ln_Psi_r_up_weighted_sum / w_L_sum
+                    grad_ln_Psi_r_dn_averaged = grad_ln_Psi_r_dn_weighted_sum / w_L_sum
+                    grad_ln_Psi_dR_averaged = grad_ln_Psi_dR_weighted_sum / w_L_sum
+                    omega_up_averaged = omega_up_weighted_sum / w_L_sum
+                    omega_dn_averaged = omega_dn_weighted_sum / w_L_sum
+                    grad_omega_dr_up_averaged = grad_omega_dr_up_weighted_sum / w_L_sum
+                    grad_omega_dr_dn_averaged = grad_omega_dr_dn_weighted_sum / w_L_sum
 
                 # add a dummy dim
                 e_L2_averaged = np.expand_dims(e_L2_averaged, axis=0)
                 e_L_averaged = np.expand_dims(e_L_averaged, axis=0)
                 w_L_averaged = np.expand_dims(w_L_averaged, axis=0)
+                if self.__comput_position_deriv:
+                    grad_e_L_r_up_averaged = np.expand_dims(grad_e_L_r_up_averaged, axis=0)
+                    grad_e_L_r_dn_averaged = np.expand_dims(grad_e_L_r_dn_averaged, axis=0)
+                    grad_e_L_R_averaged = np.expand_dims(grad_e_L_R_averaged, axis=0)
+                    grad_ln_Psi_r_up_averaged = np.expand_dims(grad_ln_Psi_r_up_averaged, axis=0)
+                    grad_ln_Psi_r_dn_averaged = np.expand_dims(grad_ln_Psi_r_dn_averaged, axis=0)
+                    grad_ln_Psi_dR_averaged = np.expand_dims(grad_ln_Psi_dR_averaged, axis=0)
+                    omega_up_averaged = np.expand_dims(omega_up_averaged, axis=0)
+                    omega_dn_averaged = np.expand_dims(omega_dn_averaged, axis=0)
+                    grad_omega_dr_up_averaged = np.expand_dims(grad_omega_dr_up_averaged, axis=0)
+                    grad_omega_dr_dn_averaged = np.expand_dims(grad_omega_dr_dn_averaged, axis=0)
 
                 # store  # This should stored only for MPI-rank = 0 !!!
                 self.__stored_e_L2.append(e_L2_averaged)
                 self.__stored_e_L.append(e_L_averaged)
                 self.__stored_w_L.append(w_L_averaged)
+                if self.__comput_position_deriv:
+                    self.__stored_grad_e_L_r_up.append(grad_e_L_r_up_averaged)
+                    self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn_averaged)
+                    self.__stored_grad_e_L_dR.append(grad_e_L_R_averaged)
+                    self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up_averaged)
+                    self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn_averaged)
+                    self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR_averaged)
+                    self.__stored_omega_up.append(omega_up_averaged)
+                    self.__stored_omega_dn.append(omega_dn_averaged)
+                    self.__stored_grad_omega_r_up.append(grad_omega_dr_up_averaged)
+                    self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn_averaged)
 
             mpi_comm.Barrier()
 
@@ -1555,6 +2064,328 @@ class GFMC_t:
         # return
         return (E_mean, E_std, Var_mean, Var_std)
 
+    def get_aF(
+        self,
+        num_mcmc_warmup_steps: int = 50,
+        num_mcmc_bin_blocks: int = 10,
+    ):
+        """Return the mean and std of the computed atomic forces.
+
+        Args:
+            num_mcmc_warmup_steps (int): the number of warmup steps.
+            num_mcmc_bin_blocks (int): the number of binning blocks
+
+        Return:
+            tuple[npt.NDArray, npt.NDArray]:
+                The mean and std values of the computed atomic forces
+                estimated by the Jackknife method with the Args.
+                The dimention of the arrays is (N, 3).
+        """
+        if num_mcmc_bin_blocks < mpi_size or mpi_size == 1:
+            if mpi_rank == 0:
+                w_L = self.w_L[num_mcmc_warmup_steps:]
+                e_L = self.e_L[num_mcmc_warmup_steps:]
+                de_L_dR = self.de_L_dR[num_mcmc_warmup_steps:]
+                de_L_dr_up = self.de_L_dr_up[num_mcmc_warmup_steps:]
+                de_L_dr_dn = self.de_L_dr_dn[num_mcmc_warmup_steps:]
+                dln_Psi_dr_up = self.dln_Psi_dr_up[num_mcmc_warmup_steps:]
+                dln_Psi_dr_dn = self.dln_Psi_dr_dn[num_mcmc_warmup_steps:]
+                dln_Psi_dR = self.dln_Psi_dR[num_mcmc_warmup_steps:]
+                omega_up = self.omega_up[num_mcmc_warmup_steps:]
+                omega_dn = self.omega_dn[num_mcmc_warmup_steps:]
+                domega_dr_up = self.domega_dr_up[num_mcmc_warmup_steps:]
+                domega_dr_dn = self.domega_dr_dn[num_mcmc_warmup_steps:]
+
+                force_HF = (
+                    de_L_dR
+                    + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up)
+                    + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
+                )
+
+                force_PP = (
+                    dln_Psi_dR
+                    + np.einsum("iwjk,iwkl->iwjl", omega_up, dln_Psi_dr_up)
+                    + np.einsum("iwjk,iwkl->iwjl", omega_dn, dln_Psi_dr_dn)
+                    + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
+                )
+
+                E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
+
+                # split and binning with multiple walkers
+                w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
+                w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
+                w_L_force_HF_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_HF), num_mcmc_bin_blocks, axis=0)
+                w_L_force_PP_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_PP), num_mcmc_bin_blocks, axis=0)
+                w_L_E_L_force_PP_split = np.array_split(
+                    np.einsum("iw,iwjk->iwjk", w_L, E_L_force_PP), num_mcmc_bin_blocks, axis=0
+                )
+
+                # binned sum
+                w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
+                w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
+
+                w_L_force_HF_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_HF_split])
+                w_L_force_HF_binned_shape = (
+                    w_L_force_HF_sum.shape[0] * w_L_force_HF_sum.shape[1],
+                    w_L_force_HF_sum.shape[2],
+                    w_L_force_HF_sum.shape[3],
+                )
+                w_L_force_HF_binned = list(w_L_force_HF_sum.reshape(w_L_force_HF_binned_shape))
+
+                w_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_PP_split])
+                w_L_force_PP_binned_shape = (
+                    w_L_force_PP_sum.shape[0] * w_L_force_PP_sum.shape[1],
+                    w_L_force_PP_sum.shape[2],
+                    w_L_force_PP_sum.shape[3],
+                )
+                w_L_force_PP_binned = list(w_L_force_PP_sum.reshape(w_L_force_PP_binned_shape))
+
+                w_L_E_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_E_L_force_PP_split])
+                w_L_E_L_force_PP_binned_shape = (
+                    w_L_E_L_force_PP_sum.shape[0] * w_L_E_L_force_PP_sum.shape[1],
+                    w_L_E_L_force_PP_sum.shape[2],
+                    w_L_E_L_force_PP_sum.shape[3],
+                )
+                w_L_E_L_force_PP_binned = list(w_L_E_L_force_PP_sum.reshape(w_L_E_L_force_PP_binned_shape))
+
+                w_L_binned_local = np.array(w_L_binned)
+                w_L_e_L_binned_local = np.array(w_L_e_L_binned)
+                w_L_force_HF_binned_local = np.array(w_L_force_HF_binned)
+                w_L_force_PP_binned_local = np.array(w_L_force_PP_binned)
+                w_L_E_L_force_PP_binned_local = np.array(w_L_E_L_force_PP_binned)
+
+                ## local sum
+                w_L_binned_local_sum = np.sum(w_L_binned_local, axis=0)
+                w_L_e_L_binned_local_sum = np.sum(w_L_e_L_binned_local, axis=0)
+                w_L_force_HF_binned_local_sum = np.sum(w_L_force_HF_binned_local, axis=0)
+                w_L_force_PP_binned_local_sum = np.sum(w_L_force_PP_binned_local, axis=0)
+                w_L_E_L_force_PP_binned_local_sum = np.sum(w_L_E_L_force_PP_binned_local, axis=0)
+
+                ## jackknie binned samples
+                M_local = w_L_binned_local.size
+
+                force_HF_jn_local = -1.0 * np.array(
+                    [
+                        (w_L_force_HF_binned_local_sum - w_L_force_HF_binned_local[j])
+                        / (w_L_binned_local_sum - w_L_binned_local[j])
+                        for j in range(M_local)
+                    ]
+                )
+
+                force_Pulay_jn_local = -2.0 * np.array(
+                    [
+                        (
+                            (w_L_E_L_force_PP_binned_local_sum - w_L_E_L_force_PP_binned_local[j])
+                            / (w_L_binned_local_sum - w_L_binned_local[j])
+                            - (
+                                (w_L_e_L_binned_local_sum - w_L_e_L_binned_local[j])
+                                / (w_L_binned_local_sum - w_L_binned_local[j])
+                                * (w_L_force_PP_binned_local_sum - w_L_force_PP_binned_local[j])
+                                / (w_L_binned_local_sum - w_L_binned_local[j])
+                            )
+                        )
+                        for j in range(M_local)
+                    ]
+                )
+
+                force_jn_local = force_HF_jn_local + force_Pulay_jn_local
+
+                sum_force_local = np.sum(force_jn_local, axis=0)
+                sumsq_force_local = np.sum(force_jn_local**2, axis=0)
+
+                ## mean and var = E[x^2] - (E[x])^2
+                mean_force_global = sum_force_local / M_local
+                var_force_global = (sumsq_force_local / M_local) - (sum_force_local / M_local) ** 2
+
+                ## mean and std
+                force_mean = mean_force_global
+                force_std = np.sqrt((M_local - 1) * var_force_global)
+
+            else:
+                force_mean = None
+                force_std = None
+
+            # broadcast the results
+            force_mean = mpi_comm.bcast(force_mean, root=0)
+            force_std = mpi_comm.bcast(force_std, root=0)
+
+        else:
+            if mpi_rank == 0:
+                w_L = self.w_L[num_mcmc_warmup_steps:]
+                e_L = self.e_L[num_mcmc_warmup_steps:]
+                de_L_dR = self.de_L_dR[num_mcmc_warmup_steps:]
+                de_L_dr_up = self.de_L_dr_up[num_mcmc_warmup_steps:]
+                de_L_dr_dn = self.de_L_dr_dn[num_mcmc_warmup_steps:]
+                dln_Psi_dr_up = self.dln_Psi_dr_up[num_mcmc_warmup_steps:]
+                dln_Psi_dr_dn = self.dln_Psi_dr_dn[num_mcmc_warmup_steps:]
+                dln_Psi_dR = self.dln_Psi_dR[num_mcmc_warmup_steps:]
+                omega_up = self.omega_up[num_mcmc_warmup_steps:]
+                omega_dn = self.omega_dn[num_mcmc_warmup_steps:]
+                domega_dr_up = self.domega_dr_up[num_mcmc_warmup_steps:]
+                domega_dr_dn = self.domega_dr_dn[num_mcmc_warmup_steps:]
+
+                force_HF = (
+                    de_L_dR
+                    + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up)
+                    + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
+                )
+
+                force_PP = (
+                    dln_Psi_dR
+                    + np.einsum("iwjk,iwkl->iwjl", omega_up, dln_Psi_dr_up)
+                    + np.einsum("iwjk,iwkl->iwjl", omega_dn, dln_Psi_dr_dn)
+                    + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
+                )
+
+                E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
+
+                # split and binning with multiple walkers
+                w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
+                w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
+                w_L_force_HF_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_HF), num_mcmc_bin_blocks, axis=0)
+                w_L_force_PP_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_PP), num_mcmc_bin_blocks, axis=0)
+                w_L_E_L_force_PP_split = np.array_split(
+                    np.einsum("iw,iwjk->iwjk", w_L, E_L_force_PP), num_mcmc_bin_blocks, axis=0
+                )
+
+                # binned sum
+                w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
+                w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
+
+                w_L_force_HF_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_HF_split])
+                w_L_force_HF_binned_shape = (
+                    w_L_force_HF_sum.shape[0] * w_L_force_HF_sum.shape[1],
+                    w_L_force_HF_sum.shape[2],
+                    w_L_force_HF_sum.shape[3],
+                )
+                w_L_force_HF_binned = list(w_L_force_HF_sum.reshape(w_L_force_HF_binned_shape))
+
+                w_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_PP_split])
+                w_L_force_PP_binned_shape = (
+                    w_L_force_PP_sum.shape[0] * w_L_force_PP_sum.shape[1],
+                    w_L_force_PP_sum.shape[2],
+                    w_L_force_PP_sum.shape[3],
+                )
+                w_L_force_PP_binned = list(w_L_force_PP_sum.reshape(w_L_force_PP_binned_shape))
+
+                w_L_E_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_E_L_force_PP_split])
+                w_L_E_L_force_PP_binned_shape = (
+                    w_L_E_L_force_PP_sum.shape[0] * w_L_E_L_force_PP_sum.shape[1],
+                    w_L_E_L_force_PP_sum.shape[2],
+                    w_L_E_L_force_PP_sum.shape[3],
+                )
+                w_L_E_L_force_PP_binned = list(w_L_E_L_force_PP_sum.reshape(w_L_E_L_force_PP_binned_shape))
+
+            else:
+                w_L_binned = []
+                w_L_e_L_binned = []
+                w_L_force_HF_binned = []
+                w_L_force_PP_binned = []
+                w_L_E_L_force_PP_binned = []
+
+            if mpi_rank == 0:
+                w_L_binned_split = np.array_split(w_L_binned, mpi_size)
+                w_L_e_L_binned_split = np.array_split(w_L_e_L_binned, mpi_size)
+                w_L_force_HF_binned_split = np.array_split(w_L_force_HF_binned, mpi_size)
+                w_L_force_PP_binned_split = np.array_split(w_L_force_PP_binned, mpi_size)
+                w_L_E_L_force_PP_binned_split = np.array_split(w_L_E_L_force_PP_binned, mpi_size)
+            else:
+                w_L_binned_split = None
+                w_L_e_L_binned_split = None
+                w_L_force_HF_binned_split = None
+                w_L_force_PP_binned_split = None
+                w_L_E_L_force_PP_binned_split = None
+
+            # scatter
+            w_L_binned_local = mpi_comm.scatter(w_L_binned_split, root=0)
+            w_L_e_L_binned_local = mpi_comm.scatter(w_L_e_L_binned_split, root=0)
+            w_L_force_HF_binned_local = mpi_comm.scatter(w_L_force_HF_binned_split, root=0)
+            w_L_force_PP_binned_local = mpi_comm.scatter(w_L_force_PP_binned_split, root=0)
+            w_L_E_L_force_PP_binned_local = mpi_comm.scatter(w_L_E_L_force_PP_binned_split, root=0)
+
+            # convert to numpy arrays
+            w_L_binned_local = np.array(w_L_binned_local)
+            w_L_e_L_binned_local = np.array(w_L_e_L_binned_local)
+            w_L_force_HF_binned_local = np.array(w_L_force_HF_binned_local)
+            w_L_force_PP_binned_local = np.array(w_L_force_PP_binned_local)
+            w_L_E_L_force_PP_binned_local = np.array(w_L_E_L_force_PP_binned_local)
+
+            ## local sum
+            w_L_binned_local_sum = np.sum(w_L_binned_local, axis=0)
+            w_L_e_L_binned_local_sum = np.sum(w_L_e_L_binned_local, axis=0)
+            w_L_force_HF_binned_local_sum = np.sum(w_L_force_HF_binned_local, axis=0)
+            w_L_force_PP_binned_local_sum = np.sum(w_L_force_PP_binned_local, axis=0)
+            w_L_E_L_force_PP_binned_local_sum = np.sum(w_L_E_L_force_PP_binned_local, axis=0)
+
+            ## glolbal sum
+            w_L_binned_global_sum = np.empty_like(w_L_binned_local_sum)
+            w_L_e_L_binned_global_sum = np.empty_like(w_L_e_L_binned_local_sum)
+            w_L_force_HF_binned_global_sum = np.empty_like(w_L_force_HF_binned_local_sum)
+            w_L_force_PP_binned_global_sum = np.empty_like(w_L_force_PP_binned_local_sum)
+            w_L_E_L_force_PP_binned_global_sum = np.empty_like(w_L_E_L_force_PP_binned_local_sum)
+
+            ## mpi Allreduce
+            mpi_comm.Allreduce([w_L_binned_local_sum, MPI.DOUBLE], [w_L_binned_global_sum, MPI.DOUBLE], op=MPI.SUM)
+            mpi_comm.Allreduce([w_L_e_L_binned_local_sum, MPI.DOUBLE], [w_L_e_L_binned_global_sum, MPI.DOUBLE], op=MPI.SUM)
+            mpi_comm.Allreduce(
+                [w_L_force_HF_binned_local_sum, MPI.DOUBLE], [w_L_force_HF_binned_global_sum, MPI.DOUBLE], op=MPI.SUM
+            )
+            mpi_comm.Allreduce(
+                [w_L_force_PP_binned_local_sum, MPI.DOUBLE], [w_L_force_PP_binned_global_sum, MPI.DOUBLE], op=MPI.SUM
+            )
+            mpi_comm.Allreduce(
+                [w_L_E_L_force_PP_binned_local_sum, MPI.DOUBLE], [w_L_E_L_force_PP_binned_global_sum, MPI.DOUBLE], op=MPI.SUM
+            )
+
+            ## jackknie binned samples
+            M_local = w_L_binned_local.size
+            M_total = mpi_comm.allreduce(M_local, op=MPI.SUM)
+
+            force_HF_jn_local = -1.0 * np.array(
+                [
+                    (w_L_force_HF_binned_global_sum - w_L_force_HF_binned_local[j])
+                    / (w_L_binned_global_sum - w_L_binned_local[j])
+                    for j in range(M_local)
+                ]
+            )
+
+            force_Pulay_jn_local = -2.0 * np.array(
+                [
+                    (
+                        (w_L_E_L_force_PP_binned_global_sum - w_L_E_L_force_PP_binned_local[j])
+                        / (w_L_binned_global_sum - w_L_binned_local[j])
+                        - (
+                            (w_L_e_L_binned_global_sum - w_L_e_L_binned_local[j])
+                            / (w_L_binned_global_sum - w_L_binned_local[j])
+                            * (w_L_force_PP_binned_global_sum - w_L_force_PP_binned_local[j])
+                            / (w_L_binned_global_sum - w_L_binned_local[j])
+                        )
+                    )
+                    for j in range(M_local)
+                ]
+            )
+
+            force_jn_local = force_HF_jn_local + force_Pulay_jn_local
+
+            sum_force_local = np.sum(force_jn_local, axis=0)
+            sumsq_force_local = np.sum(force_jn_local**2, axis=0)
+
+            sum_force_global = np.empty_like(sum_force_local)
+            sumsq_force_global = np.empty_like(sumsq_force_local)
+
+            mpi_comm.Allreduce([sum_force_local, MPI.DOUBLE], [sum_force_global, MPI.DOUBLE], op=MPI.SUM)
+            mpi_comm.Allreduce([sumsq_force_local, MPI.DOUBLE], [sumsq_force_global, MPI.DOUBLE], op=MPI.SUM)
+
+            ## mean and var = E[x^2] - (E[x])^2
+            mean_force_global = sum_force_global / M_total
+            var_force_global = (sumsq_force_global / M_total) - (sum_force_global / M_total) ** 2
+
+            ## mean and std
+            force_mean = mean_force_global
+            force_std = np.sqrt((M_total - 1) * var_force_global)
+
+        return (force_mean, force_std)
+
 
 class _GFMC_t_debug:
     """GFMC class.
@@ -1588,6 +2419,8 @@ class _GFMC_t_debug:
         tau: float = 0.1,
         alat: float = 0.1,
         non_local_move: str = "tmove",
+        comput_position_deriv: bool = False,
+        epsilon_PW: float = 0.0,
     ) -> None:
         """Init.
 
@@ -1605,6 +2438,12 @@ class _GFMC_t_debug:
         self.__tau = tau
         self.__alat = alat
         self.__non_local_move = non_local_move
+
+        # derivative flags
+        self.__comput_position_deriv = comput_position_deriv
+
+        # Pathak-Wagner regularization (DOI: 10.1063/5.0004008)
+        self.__epsilon_PW = epsilon_PW
 
         # Initialization
         self.__mpi_seed = self.__mcmc_seed * (mpi_rank + 1)
@@ -1660,6 +2499,9 @@ class _GFMC_t_debug:
         logger.info(f"The number of walkers assigned for each MPI process = {self.__num_walkers}.")
         logger.info("")
 
+        # SWCT data
+        self.__swct_data = SWCT_data(structure=self.__hamiltonian_data.structure_data)
+
         self.__init_attributes()
 
     def __init_attributes(self):
@@ -1681,6 +2523,36 @@ class _GFMC_t_debug:
 
         # average projection counter
         self.__stored_average_projection_counter = []
+
+        # stored de_L / dR
+        self.__stored_grad_e_L_dR = []
+
+        # stored de_L / dr_up
+        self.__stored_grad_e_L_r_up = []
+
+        # stored de_L / dr_dn
+        self.__stored_grad_e_L_r_dn = []
+
+        # stored dln_Psi / dr_up
+        self.__stored_grad_ln_Psi_r_up = []
+
+        # stored dln_Psi / dr_dn
+        self.__stored_grad_ln_Psi_r_dn = []
+
+        # stored dln_Psi / dR
+        self.__stored_grad_ln_Psi_dR = []
+
+        # stored Omega_up (SWCT)
+        self.__stored_omega_up = []
+
+        # stored Omega_dn (SWCT)
+        self.__stored_omega_dn = []
+
+        # stored sum_i d omega/d r_i for up spins (SWCT)
+        self.__stored_grad_omega_r_up = []
+
+        # stored sum_i d omega/d r_i for dn spins (SWCT)
+        self.__stored_grad_omega_r_dn = []
 
     # collecting factor
     @property
@@ -1709,6 +2581,61 @@ class _GFMC_t_debug:
         # logger.info(f"np.array(self.__stored_e_L2).shape = {np.array(self.__stored_e_L).shape}.")
         return np.array(self.__stored_e_L2)[self.__num_gfmc_collect_steps :]
 
+    @property
+    def de_L_dR(self) -> npt.NDArray:
+        """Return the stored de_L/dR array. dim: (mcmc_counter, 1)."""
+        return np.array(self.__stored_grad_e_L_dR)[self.__num_gfmc_collect_steps :]
+
+    @property
+    def de_L_dr_up(self) -> npt.NDArray:
+        """Return the stored de_L/dr_up array. dim: (mcmc_counter, 1, num_electrons_up, 3)."""
+        return np.array(self.__stored_grad_e_L_r_up)[self.__num_gfmc_collect_steps :]
+
+    @property
+    def de_L_dr_dn(self) -> npt.NDArray:
+        """Return the stored de_L/dr_dn array. dim: (mcmc_counter, 1, num_electrons_dn, 3)."""
+        return np.array(self.__stored_grad_e_L_r_dn)[self.__num_gfmc_collect_steps :]
+
+    @property
+    def dln_Psi_dr_up(self) -> npt.NDArray:
+        """Return the stored dln_Psi/dr_up array. dim: (mcmc_counter, 1, num_electrons_up, 3)."""
+        return np.array(self.__stored_grad_ln_Psi_r_up)[self.__num_gfmc_collect_steps :]
+
+    @property
+    def dln_Psi_dr_dn(self) -> npt.NDArray:
+        """Return the stored dln_Psi/dr_down array. dim: (mcmc_counter, 1, num_electrons_dn, 3)."""
+        return np.array(self.__stored_grad_ln_Psi_r_dn)[self.__num_gfmc_collect_steps :]
+
+    @property
+    def dln_Psi_dR(self) -> npt.NDArray:
+        """Return the stored dln_Psi/dR array. dim: (mcmc_counter, 1, num_atoms, 3)."""
+        return np.array(self.__stored_grad_ln_Psi_dR)[self.__num_gfmc_collect_steps :]
+
+    @property
+    def omega_up(self) -> npt.NDArray:
+        """Return the stored Omega (for up electrons) array. dim: (mcmc_counter, 1, num_atoms, num_electrons_up)."""
+        return np.array(self.__stored_omega_up)[self.__num_gfmc_collect_steps :]
+
+    @property
+    def omega_dn(self) -> npt.NDArray:
+        """Return the stored Omega (for down electrons) array. dim: (mcmc_counter, 1, num_atoms, num_electons_dn)."""
+        return np.array(self.__stored_omega_dn)[self.__num_gfmc_collect_steps :]
+
+    @property
+    def domega_dr_up(self) -> npt.NDArray:
+        """Return the stored dOmega/dr_up array. dim: (mcmc_counter, 1, num_electons_dn, 3)."""
+        return np.array(self.__stored_grad_omega_r_up)[self.__num_gfmc_collect_steps :]
+
+    @property
+    def domega_dr_dn(self) -> npt.NDArray:
+        """Return the stored dOmega/dr_dn array. dim: (mcmc_counter, 1, num_electons_dn, 3)."""
+        return np.array(self.__stored_grad_omega_r_dn)[self.__num_gfmc_collect_steps :]
+
+    @property
+    def comput_position_deriv(self) -> bool:
+        """Return the flag for computing the derivatives of E wrt. atomic positions."""
+        return self.__comput_position_deriv
+
     def run(self, num_mcmc_steps: int = 50) -> None:
         """Run LRDMC with multiple walkers.
 
@@ -1722,6 +2649,215 @@ class _GFMC_t_debug:
 
         # initialize numpy random seed
         np.random.seed(self.__mpi_seed)
+
+        def _compute_V_elements_t_debug(
+            hamiltonian_data: Hamiltonian_data,
+            r_up_carts: jnpt.ArrayLike,
+            r_dn_carts: jnpt.ArrayLike,
+            RT: jnpt.ArrayLike,
+            non_local_move: bool,
+            alat: float,
+        ):
+            """Compute V elements."""
+            # compute diagonal elements, kinetic part
+            diagonal_kinetic_part = 3.0 / (2.0 * alat**2) * (len(r_up_carts) + len(r_dn_carts))
+
+            # compute continuum kinetic energy
+            diagonal_kinetic_continuum_elements_up, diagonal_kinetic_continuum_elements_dn = (
+                compute_kinetic_energy_all_elements(
+                    wavefunction_data=hamiltonian_data.wavefunction_data,
+                    r_up_carts=r_up_carts,
+                    r_dn_carts=r_dn_carts,
+                )
+            )
+
+            # compute discretized kinetic energy and mesh (with a random rotation)
+            _, _, elements_non_diagonal_kinetic_part = compute_discretized_kinetic_energy(
+                alat=alat,
+                wavefunction_data=hamiltonian_data.wavefunction_data,
+                r_up_carts=r_up_carts,
+                r_dn_carts=r_dn_carts,
+                RT=RT,
+            )
+            # spin-filp
+            elements_non_diagonal_kinetic_part_FN = jnp.minimum(elements_non_diagonal_kinetic_part, 0.0)
+            non_diagonal_sum_hamiltonian_kinetic = jnp.sum(elements_non_diagonal_kinetic_part_FN)
+            diagonal_kinetic_part_SP = jnp.sum(jnp.maximum(elements_non_diagonal_kinetic_part, 0.0))
+            # regularizations
+            elements_non_diagonal_kinetic_part_all = elements_non_diagonal_kinetic_part.reshape(-1, 6)
+            sign_flip_flags_elements = jnp.any(elements_non_diagonal_kinetic_part_all >= 0, axis=1)
+            non_diagonal_kinetic_part_elements = jnp.sum(elements_non_diagonal_kinetic_part_all + 1.0 / (4.0 * alat**2), axis=1)
+            sign_flip_flags_elements_up, sign_flip_flags_elements_dn = jnp.split(sign_flip_flags_elements, [len(r_up_carts)])
+            non_diagonal_kinetic_part_elements_up, non_diagonal_kinetic_part_elements_dn = jnp.split(
+                non_diagonal_kinetic_part_elements, [len(r_up_carts)]
+            )
+
+            # compute diagonal elements, el-el
+            diagonal_bare_coulomb_part_el_el = compute_bare_coulomb_potential_el_el(
+                r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
+            )
+
+            # compute diagonal elements, ion-ion
+            diagonal_bare_coulomb_part_ion_ion = compute_bare_coulomb_potential_ion_ion(
+                coulomb_potential_data=hamiltonian_data.coulomb_potential_data
+            )
+
+            # compute diagonal elements, el-ion
+            diagonal_bare_coulomb_part_el_ion_elements_up, diagonal_bare_coulomb_part_el_ion_elements_dn = (
+                compute_bare_coulomb_potential_el_ion_element_wise(
+                    coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
+                    r_up_carts=r_up_carts,
+                    r_dn_carts=r_dn_carts,
+                )
+            )
+
+            # compute diagonal elements, el-ion, discretized
+            (
+                diagonal_bare_coulomb_part_el_ion_discretized_elements_up,
+                diagonal_bare_coulomb_part_el_ion_discretized_elements_dn,
+            ) = compute_discretized_bare_coulomb_potential_el_ion_element_wise(
+                coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
+                r_up_carts=r_up_carts,
+                r_dn_carts=r_dn_carts,
+                alat=alat,
+            )
+
+            # compose discretized el-ion potentials
+            diagonal_bare_coulomb_part_el_ion_zv_up = (
+                diagonal_bare_coulomb_part_el_ion_elements_up
+                + diagonal_kinetic_continuum_elements_up
+                - non_diagonal_kinetic_part_elements_up
+            )
+            if hamiltonian_data.coulomb_potential_data.ecp_flag:
+                diagonal_bare_coulomb_part_el_ion_ei_up = diagonal_bare_coulomb_part_el_ion_elements_up
+            else:
+                diagonal_bare_coulomb_part_el_ion_ei_up = diagonal_bare_coulomb_part_el_ion_discretized_elements_up
+            diagonal_bare_coulomb_part_el_ion_max_up = jnp.maximum(
+                diagonal_bare_coulomb_part_el_ion_zv_up, diagonal_bare_coulomb_part_el_ion_ei_up
+            )
+            diagonal_bare_coulomb_part_el_ion_opt_up = jnp.where(
+                sign_flip_flags_elements_up, diagonal_bare_coulomb_part_el_ion_max_up, diagonal_bare_coulomb_part_el_ion_zv_up
+            )
+
+            # compose discretized el-ion potentials
+            diagonal_bare_coulomb_part_el_ion_zv_dn = (
+                diagonal_bare_coulomb_part_el_ion_elements_dn
+                + diagonal_kinetic_continuum_elements_dn
+                - non_diagonal_kinetic_part_elements_dn
+            )
+            if hamiltonian_data.coulomb_potential_data.ecp_flag:
+                diagonal_bare_coulomb_part_el_ion_ei_dn = diagonal_bare_coulomb_part_el_ion_elements_dn
+            else:
+                diagonal_bare_coulomb_part_el_ion_ei_dn = diagonal_bare_coulomb_part_el_ion_discretized_elements_dn
+            diagonal_bare_coulomb_part_el_ion_max_dn = jnp.maximum(
+                diagonal_bare_coulomb_part_el_ion_zv_dn, diagonal_bare_coulomb_part_el_ion_ei_dn
+            )
+            diagonal_bare_coulomb_part_el_ion_opt_dn = jnp.where(
+                sign_flip_flags_elements_dn, diagonal_bare_coulomb_part_el_ion_max_dn, diagonal_bare_coulomb_part_el_ion_zv_dn
+            )
+
+            # final bare coulomb part
+            discretized_diagonal_bare_coulomb_part = (
+                diagonal_bare_coulomb_part_el_el
+                + diagonal_bare_coulomb_part_ion_ion
+                + jnp.sum(diagonal_bare_coulomb_part_el_ion_opt_up)
+                + jnp.sum(diagonal_bare_coulomb_part_el_ion_opt_dn)
+            )
+
+            # with ECP
+            if hamiltonian_data.coulomb_potential_data.ecp_flag:
+                # ecp local
+                diagonal_ecp_local_part = compute_ecp_local_parts_all_pairs(
+                    coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
+                    r_up_carts=r_up_carts,
+                    r_dn_carts=r_dn_carts,
+                )
+
+                if non_local_move == "tmove":
+                    _, _, V_nonlocal, _ = compute_ecp_non_local_parts_nearest_neighbors(
+                        coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
+                        wavefunction_data=hamiltonian_data.wavefunction_data,
+                        r_up_carts=r_up_carts,
+                        r_dn_carts=r_dn_carts,
+                        flag_determinant_only=False,
+                        RT=RT,
+                    )
+
+                    V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
+                    diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
+                    non_diagonal_sum_hamiltonian_ecp = jnp.sum(V_nonlocal_FN)
+                    non_diagonal_sum_hamiltonian = non_diagonal_sum_hamiltonian_kinetic + non_diagonal_sum_hamiltonian_ecp
+
+                elif non_local_move == "dltmove":
+                    mesh_non_local_ecp_part_r_up_carts, mesh_non_local_ecp_part_r_dn_carts, V_nonlocal, _ = (
+                        compute_ecp_non_local_parts_nearest_neighbors(
+                            coulomb_potential_data=hamiltonian_data.coulomb_potential_data,
+                            wavefunction_data=hamiltonian_data.wavefunction_data,
+                            r_up_carts=r_up_carts,
+                            r_dn_carts=r_dn_carts,
+                            flag_determinant_only=True,
+                            RT=RT,
+                        )
+                    )
+
+                    V_nonlocal_FN = jnp.minimum(V_nonlocal, 0.0)
+                    diagonal_ecp_part_SP = jnp.sum(jnp.maximum(V_nonlocal, 0.0))
+
+                    Jastrow_ref = compute_Jastrow_part(
+                        jastrow_data=hamiltonian_data.wavefunction_data.jastrow_data,
+                        r_up_carts=r_up_carts,
+                        r_dn_carts=r_dn_carts,
+                    )
+
+                    Jastrow_on_mesh = jnp.stack(
+                        [
+                            compute_Jastrow_part(
+                                hamiltonian_data.wavefunction_data.jastrow_data,
+                                mesh_non_local_ecp_part_r_up_carts[_i],
+                                mesh_non_local_ecp_part_r_dn_carts[_i],
+                            )
+                            for _i in range(len(mesh_non_local_ecp_part_r_up_carts))
+                        ]
+                    )
+                    Jastrow_ratio = jnp.exp(Jastrow_on_mesh - Jastrow_ref)
+                    V_nonlocal_FN = V_nonlocal_FN * Jastrow_ratio
+
+                    non_diagonal_sum_hamiltonian_ecp = jnp.sum(V_nonlocal_FN)
+                    non_diagonal_sum_hamiltonian = non_diagonal_sum_hamiltonian_kinetic + non_diagonal_sum_hamiltonian_ecp
+
+                else:
+                    raise NotImplementedError
+
+                e_L = (
+                    diagonal_kinetic_part
+                    + discretized_diagonal_bare_coulomb_part
+                    + diagonal_ecp_local_part
+                    + diagonal_kinetic_part_SP
+                    + diagonal_ecp_part_SP
+                    + non_diagonal_sum_hamiltonian
+                )
+
+            # with all electrons
+            else:
+                non_diagonal_sum_hamiltonian = non_diagonal_sum_hamiltonian_kinetic
+                e_L = (
+                    diagonal_kinetic_part
+                    + discretized_diagonal_bare_coulomb_part
+                    + diagonal_kinetic_part_SP
+                    + non_diagonal_sum_hamiltonian
+                )
+
+            return e_L
+
+        def _compute_local_energy_t_debug(
+            hamiltonian_data: Hamiltonian_data,
+            r_up_carts: jnpt.ArrayLike,
+            r_dn_carts: jnpt.ArrayLike,
+            RT: jnpt.ArrayLike,
+            non_local_move: bool,
+            alat: float,
+        ):
+            return _compute_V_elements_t_debug(hamiltonian_data, r_up_carts, r_dn_carts, RT, non_local_move, alat)
 
         # Main branching loop.
         gfmc_interval = int(np.maximum(num_mcmc_steps / 100, 1))  # gfmc_projection set print-interval
@@ -2056,9 +3192,99 @@ class _GFMC_t_debug:
 
             logger.debug("  Projection ends.")
 
+            # atomic force related
+            if self.__comput_position_deriv:
+                # RT is always eye(3) in _GFMC_t_debug (no random_discretized_mesh)
+                RT_eye = jnp.eye(3)
+
+                _grad_e_L_fn = grad(_compute_local_energy_t_debug, argnums=(0, 1, 2))
+                _grad_e_L_results = [
+                    _grad_e_L_fn(
+                        self.__hamiltonian_data,
+                        self.__latest_r_up_carts[i],
+                        self.__latest_r_dn_carts[i],
+                        RT_eye,
+                        self.__non_local_move,
+                        self.__alat,
+                    )
+                    for i in range(self.__num_walkers)
+                ]
+                grad_e_L_h = jax.tree_util.tree_map(lambda *arrs: jnp.stack(arrs), *[r[0] for r in _grad_e_L_results])
+                grad_e_L_r_up = jnp.stack([r[1] for r in _grad_e_L_results])
+                grad_e_L_r_dn = jnp.stack([r[2] for r in _grad_e_L_results])
+
+                grad_e_L_R = (
+                    grad_e_L_h.wavefunction_data.geminal_data.orb_data_up_spin.structure_data.positions
+                    + grad_e_L_h.wavefunction_data.geminal_data.orb_data_dn_spin.structure_data.positions
+                    + grad_e_L_h.coulomb_potential_data.structure_data.positions
+                )
+
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
+                    grad_e_L_R += grad_e_L_h.wavefunction_data.jastrow_data.jastrow_one_body_data.structure_data.positions
+
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
+                    grad_e_L_R += (
+                        grad_e_L_h.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
+                    )
+
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_nn_data is not None:
+                    grad_e_L_R += grad_e_L_h.wavefunction_data.jastrow_data.jastrow_nn_data.structure_data.positions
+
+                _grad_ln_psi_fn = grad(evaluate_ln_wavefunction, argnums=(0, 1, 2))
+                _grad_ln_psi_results = [
+                    _grad_ln_psi_fn(
+                        self.__hamiltonian_data.wavefunction_data,
+                        self.__latest_r_up_carts[i],
+                        self.__latest_r_dn_carts[i],
+                    )
+                    for i in range(self.__num_walkers)
+                ]
+                grad_ln_Psi_h = jax.tree_util.tree_map(lambda *arrs: jnp.stack(arrs), *[r[0] for r in _grad_ln_psi_results])
+                grad_ln_Psi_r_up = jnp.stack([r[1] for r in _grad_ln_psi_results])
+                grad_ln_Psi_r_dn = jnp.stack([r[2] for r in _grad_ln_psi_results])
+
+                grad_ln_Psi_dR = (
+                    grad_ln_Psi_h.geminal_data.orb_data_up_spin.structure_data.positions
+                    + grad_ln_Psi_h.geminal_data.orb_data_dn_spin.structure_data.positions
+                )
+
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
+                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_one_body_data.structure_data.positions
+
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data is not None:
+                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_three_body_data.orb_data.structure_data.positions
+
+                if self.__hamiltonian_data.wavefunction_data.jastrow_data.jastrow_nn_data is not None:
+                    grad_ln_Psi_dR += grad_ln_Psi_h.jastrow_data.jastrow_nn_data.structure_data.positions
+
+                omega_up = jnp.stack(
+                    [evaluate_swct_omega(self.__swct_data, self.__latest_r_up_carts[i]) for i in range(self.__num_walkers)]
+                )
+                omega_dn = jnp.stack(
+                    [evaluate_swct_omega(self.__swct_data, self.__latest_r_dn_carts[i]) for i in range(self.__num_walkers)]
+                )
+                grad_omega_dr_up = jnp.stack(
+                    [evaluate_swct_domega(self.__swct_data, self.__latest_r_up_carts[i]) for i in range(self.__num_walkers)]
+                )
+                grad_omega_dr_dn = jnp.stack(
+                    [evaluate_swct_domega(self.__swct_data, self.__latest_r_dn_carts[i]) for i in range(self.__num_walkers)]
+                )
+
             # jnp.array -> np.array
             w_L_latest = np.array(w_L_list)
             e_L_latest = np.array(e_L_list)
+
+            if self.__comput_position_deriv:
+                grad_e_L_r_up_latest = np.array(grad_e_L_r_up)
+                grad_e_L_r_dn_latest = np.array(grad_e_L_r_dn)
+                grad_e_L_R_latest = np.array(grad_e_L_R)
+                grad_ln_Psi_r_up_latest = np.array(grad_ln_Psi_r_up)
+                grad_ln_Psi_r_dn_latest = np.array(grad_ln_Psi_r_dn)
+                grad_ln_Psi_dR_latest = np.array(grad_ln_Psi_dR)
+                omega_up_latest = np.array(omega_up)
+                omega_dn_latest = np.array(omega_dn)
+                grad_omega_dr_up_latest = np.array(grad_omega_dr_up)
+                grad_omega_dr_dn_latest = np.array(grad_omega_dr_dn)
 
             # jnp.array -> np.array
             latest_r_up_carts_before_branching = np.array(self.__latest_r_up_carts)
@@ -2077,6 +3303,29 @@ class _GFMC_t_debug:
             e_L_gathered_dyad = mpi_comm.gather(e_L_gathered_dyad, root=0)
             w_L_gathered_dyad = (mpi_rank, w_L_latest)
             w_L_gathered_dyad = mpi_comm.gather(w_L_gathered_dyad, root=0)
+
+            if self.__comput_position_deriv:
+                grad_e_L_r_up_dyad = (mpi_rank, grad_e_L_r_up_latest)
+                grad_e_L_r_dn_dyad = (mpi_rank, grad_e_L_r_dn_latest)
+                grad_e_L_R_dyad = (mpi_rank, grad_e_L_R_latest)
+                grad_ln_Psi_r_up_dyad = (mpi_rank, grad_ln_Psi_r_up_latest)
+                grad_ln_Psi_r_dn_dyad = (mpi_rank, grad_ln_Psi_r_dn_latest)
+                grad_ln_Psi_dR_dyad = (mpi_rank, grad_ln_Psi_dR_latest)
+                omega_up_dyad = (mpi_rank, omega_up_latest)
+                omega_dn_dyad = (mpi_rank, omega_dn_latest)
+                grad_omega_dr_up_dyad = (mpi_rank, grad_omega_dr_up_latest)
+                grad_omega_dr_dn_dyad = (mpi_rank, grad_omega_dr_dn_latest)
+
+                grad_e_L_r_up_dyad = mpi_comm.gather(grad_e_L_r_up_dyad, root=0)
+                grad_e_L_r_dn_dyad = mpi_comm.gather(grad_e_L_r_dn_dyad, root=0)
+                grad_e_L_R_dyad = mpi_comm.gather(grad_e_L_R_dyad, root=0)
+                grad_ln_Psi_r_up_dyad = mpi_comm.gather(grad_ln_Psi_r_up_dyad, root=0)
+                grad_ln_Psi_r_dn_dyad = mpi_comm.gather(grad_ln_Psi_r_dn_dyad, root=0)
+                grad_ln_Psi_dR_dyad = mpi_comm.gather(grad_ln_Psi_dR_dyad, root=0)
+                omega_up_dyad = mpi_comm.gather(omega_up_dyad, root=0)
+                omega_dn_dyad = mpi_comm.gather(omega_dn_dyad, root=0)
+                grad_omega_dr_up_dyad = mpi_comm.gather(grad_omega_dr_up_dyad, root=0)
+                grad_omega_dr_dn_dyad = mpi_comm.gather(grad_omega_dr_dn_dyad, root=0)
 
             # num projection counter
             ave_projection_counter = np.mean(projection_counter_list)
@@ -2103,6 +3352,89 @@ class _GFMC_t_debug:
                 self.__stored_e_L2.append(e_L2_averaged)
                 self.__stored_e_L.append(e_L_averaged)
                 self.__stored_w_L.append(w_L_averaged)
+
+                if self.__comput_position_deriv:
+                    # dict
+                    grad_e_L_r_up_gathered_dict = dict(grad_e_L_r_up_dyad)
+                    grad_e_L_r_dn_gathered_dict = dict(grad_e_L_r_dn_dyad)
+                    grad_e_L_R_gathered_dict = dict(grad_e_L_R_dyad)
+                    grad_ln_Psi_r_up_gathered_dict = dict(grad_ln_Psi_r_up_dyad)
+                    grad_ln_Psi_r_dn_gathered_dict = dict(grad_ln_Psi_r_dn_dyad)
+                    grad_ln_Psi_dR_gathered_dict = dict(grad_ln_Psi_dR_dyad)
+                    omega_up_gathered_dict = dict(omega_up_dyad)
+                    omega_dn_gathered_dict = dict(omega_dn_dyad)
+                    grad_omega_dr_up_gathered_dict = dict(grad_omega_dr_up_dyad)
+                    grad_omega_dr_dn_gathered_dict = dict(grad_omega_dr_dn_dyad)
+                    # gathered
+                    grad_e_L_r_up_gathered = np.concatenate([grad_e_L_r_up_gathered_dict[i] for i in range(mpi_size)])
+                    grad_e_L_r_dn_gathered = np.concatenate([grad_e_L_r_dn_gathered_dict[i] for i in range(mpi_size)])
+                    grad_e_L_R_gathered = np.concatenate([grad_e_L_R_gathered_dict[i] for i in range(mpi_size)])
+                    grad_ln_Psi_r_up_gathered = np.concatenate([grad_ln_Psi_r_up_gathered_dict[i] for i in range(mpi_size)])
+                    grad_ln_Psi_r_dn_gathered = np.concatenate([grad_ln_Psi_r_dn_gathered_dict[i] for i in range(mpi_size)])
+                    grad_ln_Psi_dR_gathered = np.concatenate([grad_ln_Psi_dR_gathered_dict[i] for i in range(mpi_size)])
+                    omega_up_gathered = np.concatenate([omega_up_gathered_dict[i] for i in range(mpi_size)])
+                    omega_dn_gathered = np.concatenate([omega_dn_gathered_dict[i] for i in range(mpi_size)])
+                    grad_omega_dr_up_gathered = np.concatenate([grad_omega_dr_up_gathered_dict[i] for i in range(mpi_size)])
+                    grad_omega_dr_dn_gathered = np.concatenate([grad_omega_dr_dn_gathered_dict[i] for i in range(mpi_size)])
+                    # Pathak-Wagner regularization factor f_eps per walker
+                    if self.__epsilon_PW > 0.0:
+                        grad_norm_sq = np.sum(grad_ln_Psi_r_up_gathered**2, axis=(1, 2)) + np.sum(
+                            grad_ln_Psi_r_dn_gathered**2, axis=(1, 2)
+                        )
+                        nodal_dist = 1.0 / np.sqrt(grad_norm_sq)
+                        t = nodal_dist / self.__epsilon_PW
+                        t2 = t * t
+                        t4 = t2 * t2
+                        t6 = t4 * t2
+                        f_eps = np.where(t < 1.0, 7.0 * t6 - 15.0 * t4 + 9.0 * t2, 1.0)
+                        mod_w_L_gathered = w_L_gathered * f_eps
+                    else:
+                        mod_w_L_gathered = w_L_gathered
+                    # weighted sum (using w_L directly, no V_diag_E in GFMC_t)
+                    grad_e_L_r_up_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, grad_e_L_r_up_gathered)
+                    grad_e_L_r_dn_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, grad_e_L_r_dn_gathered)
+                    grad_e_L_R_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, grad_e_L_R_gathered)
+                    grad_ln_Psi_r_up_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, grad_ln_Psi_r_up_gathered)
+                    grad_ln_Psi_r_dn_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, grad_ln_Psi_r_dn_gathered)
+                    grad_ln_Psi_dR_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, grad_ln_Psi_dR_gathered)
+                    omega_up_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, omega_up_gathered)
+                    omega_dn_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, omega_dn_gathered)
+                    grad_omega_dr_up_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, grad_omega_dr_up_gathered)
+                    grad_omega_dr_dn_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, grad_omega_dr_dn_gathered)
+                    # averaged (using sum of w_L)
+                    w_L_sum = np.sum(w_L_gathered)
+                    grad_e_L_r_up_averaged = grad_e_L_r_up_weighted_sum / w_L_sum
+                    grad_e_L_r_dn_averaged = grad_e_L_r_dn_weighted_sum / w_L_sum
+                    grad_e_L_R_averaged = grad_e_L_R_weighted_sum / w_L_sum
+                    grad_ln_Psi_r_up_averaged = grad_ln_Psi_r_up_weighted_sum / w_L_sum
+                    grad_ln_Psi_r_dn_averaged = grad_ln_Psi_r_dn_weighted_sum / w_L_sum
+                    grad_ln_Psi_dR_averaged = grad_ln_Psi_dR_weighted_sum / w_L_sum
+                    omega_up_averaged = omega_up_weighted_sum / w_L_sum
+                    omega_dn_averaged = omega_dn_weighted_sum / w_L_sum
+                    grad_omega_dr_up_averaged = grad_omega_dr_up_weighted_sum / w_L_sum
+                    grad_omega_dr_dn_averaged = grad_omega_dr_dn_weighted_sum / w_L_sum
+                    # add a dummy dim
+                    grad_e_L_r_up_averaged = np.expand_dims(grad_e_L_r_up_averaged, axis=0)
+                    grad_e_L_r_dn_averaged = np.expand_dims(grad_e_L_r_dn_averaged, axis=0)
+                    grad_e_L_R_averaged = np.expand_dims(grad_e_L_R_averaged, axis=0)
+                    grad_ln_Psi_r_up_averaged = np.expand_dims(grad_ln_Psi_r_up_averaged, axis=0)
+                    grad_ln_Psi_r_dn_averaged = np.expand_dims(grad_ln_Psi_r_dn_averaged, axis=0)
+                    grad_ln_Psi_dR_averaged = np.expand_dims(grad_ln_Psi_dR_averaged, axis=0)
+                    omega_up_averaged = np.expand_dims(omega_up_averaged, axis=0)
+                    omega_dn_averaged = np.expand_dims(omega_dn_averaged, axis=0)
+                    grad_omega_dr_up_averaged = np.expand_dims(grad_omega_dr_up_averaged, axis=0)
+                    grad_omega_dr_dn_averaged = np.expand_dims(grad_omega_dr_dn_averaged, axis=0)
+                    # store
+                    self.__stored_grad_e_L_r_up.append(grad_e_L_r_up_averaged)
+                    self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn_averaged)
+                    self.__stored_grad_e_L_dR.append(grad_e_L_R_averaged)
+                    self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up_averaged)
+                    self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn_averaged)
+                    self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR_averaged)
+                    self.__stored_omega_up.append(omega_up_averaged)
+                    self.__stored_omega_dn.append(omega_dn_averaged)
+                    self.__stored_grad_omega_r_up.append(grad_omega_dr_up_averaged)
+                    self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn_averaged)
 
                 # branching
                 probabilities = w_L_gathered / w_L_gathered.sum()
@@ -2243,6 +3575,150 @@ class _GFMC_t_debug:
 
         # return
         return (E_mean, E_std, Var_mean, Var_std)
+
+    def get_aF(
+        self,
+        num_mcmc_warmup_steps: int = 50,
+        num_mcmc_bin_blocks: int = 10,
+    ):
+        """Return the mean and std of the computed atomic forces.
+
+        Args:
+            num_mcmc_warmup_steps (int): the number of warmup steps.
+            num_mcmc_bin_blocks (int): the number of binning blocks
+
+        Return:
+            tuple[npt.NDArray, npt.NDArray]:
+                The mean and std values of the computed atomic forces
+                estimated by the Jackknife method with the Args.
+                The dimention of the arrays is (N, 3).
+        """
+        if mpi_rank == 0:
+            w_L = self.w_L[num_mcmc_warmup_steps:]
+            e_L = self.e_L[num_mcmc_warmup_steps:]
+            de_L_dR = self.de_L_dR[num_mcmc_warmup_steps:]
+            de_L_dr_up = self.de_L_dr_up[num_mcmc_warmup_steps:]
+            de_L_dr_dn = self.de_L_dr_dn[num_mcmc_warmup_steps:]
+            dln_Psi_dr_up = self.dln_Psi_dr_up[num_mcmc_warmup_steps:]
+            dln_Psi_dr_dn = self.dln_Psi_dr_dn[num_mcmc_warmup_steps:]
+            dln_Psi_dR = self.dln_Psi_dR[num_mcmc_warmup_steps:]
+            omega_up = self.omega_up[num_mcmc_warmup_steps:]
+            omega_dn = self.omega_dn[num_mcmc_warmup_steps:]
+            domega_dr_up = self.domega_dr_up[num_mcmc_warmup_steps:]
+            domega_dr_dn = self.domega_dr_dn[num_mcmc_warmup_steps:]
+
+            force_HF = (
+                de_L_dR
+                + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up)
+                + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
+            )
+
+            force_PP = (
+                dln_Psi_dR
+                + np.einsum("iwjk,iwkl->iwjl", omega_up, dln_Psi_dr_up)
+                + np.einsum("iwjk,iwkl->iwjl", omega_dn, dln_Psi_dr_dn)
+                + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
+            )
+
+            E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
+
+            # split and binning with multiple walkers
+            w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
+            w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
+            w_L_force_HF_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_HF), num_mcmc_bin_blocks, axis=0)
+            w_L_force_PP_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_PP), num_mcmc_bin_blocks, axis=0)
+            w_L_E_L_force_PP_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, E_L_force_PP), num_mcmc_bin_blocks, axis=0)
+
+            # binned sum
+            w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
+            w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
+
+            w_L_force_HF_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_HF_split])
+            w_L_force_HF_binned_shape = (
+                w_L_force_HF_sum.shape[0] * w_L_force_HF_sum.shape[1],
+                w_L_force_HF_sum.shape[2],
+                w_L_force_HF_sum.shape[3],
+            )
+            w_L_force_HF_binned = list(w_L_force_HF_sum.reshape(w_L_force_HF_binned_shape))
+
+            w_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_PP_split])
+            w_L_force_PP_binned_shape = (
+                w_L_force_PP_sum.shape[0] * w_L_force_PP_sum.shape[1],
+                w_L_force_PP_sum.shape[2],
+                w_L_force_PP_sum.shape[3],
+            )
+            w_L_force_PP_binned = list(w_L_force_PP_sum.reshape(w_L_force_PP_binned_shape))
+
+            w_L_E_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_E_L_force_PP_split])
+            w_L_E_L_force_PP_binned_shape = (
+                w_L_E_L_force_PP_sum.shape[0] * w_L_E_L_force_PP_sum.shape[1],
+                w_L_E_L_force_PP_sum.shape[2],
+                w_L_E_L_force_PP_sum.shape[3],
+            )
+            w_L_E_L_force_PP_binned = list(w_L_E_L_force_PP_sum.reshape(w_L_E_L_force_PP_binned_shape))
+
+            w_L_binned_local = np.array(w_L_binned)
+            w_L_e_L_binned_local = np.array(w_L_e_L_binned)
+            w_L_force_HF_binned_local = np.array(w_L_force_HF_binned)
+            w_L_force_PP_binned_local = np.array(w_L_force_PP_binned)
+            w_L_E_L_force_PP_binned_local = np.array(w_L_E_L_force_PP_binned)
+
+            # old implementation (keep this just for debug, for the time being. To be deleted.)
+            w_L_binned_global_sum = np.sum(w_L_binned_local, axis=0)
+            w_L_e_L_binned_global_sum = np.sum(w_L_e_L_binned_local, axis=0)
+            w_L_force_HF_binned_global_sum = np.sum(w_L_force_HF_binned_local, axis=0)
+            w_L_force_PP_binned_global_sum = np.sum(w_L_force_PP_binned_local, axis=0)
+            w_L_E_L_force_PP_binned_global_sum = np.sum(w_L_E_L_force_PP_binned_local, axis=0)
+
+            M_local = w_L_binned_local.size
+            logger.debug(f"The number of local binned samples = {M_local}")
+
+            force_HF_jn_local = -1.0 * np.array(
+                [
+                    (w_L_force_HF_binned_global_sum - w_L_force_HF_binned_local[j])
+                    / (w_L_binned_global_sum - w_L_binned_local[j])
+                    for j in range(M_local)
+                ]
+            )
+
+            force_Pulay_jn_local = -2.0 * np.array(
+                [
+                    (
+                        (w_L_E_L_force_PP_binned_global_sum - w_L_E_L_force_PP_binned_local[j])
+                        / (w_L_binned_global_sum - w_L_binned_local[j])
+                        - (
+                            (w_L_e_L_binned_global_sum - w_L_e_L_binned_local[j])
+                            / (w_L_binned_global_sum - w_L_binned_local[j])
+                            * (w_L_force_PP_binned_global_sum - w_L_force_PP_binned_local[j])
+                            / (w_L_binned_global_sum - w_L_binned_local[j])
+                        )
+                    )
+                    for j in range(M_local)
+                ]
+            )
+
+            force_jn_local = list(force_HF_jn_local + force_Pulay_jn_local)
+
+            force_jn = force_jn_local
+            M_total = len(force_jn)
+            logger.debug(f"The number of total binned samples = {M_total}")
+
+            force_mean = np.average(force_jn, axis=0)
+            force_std = np.sqrt(M_total - 1) * np.std(force_jn, axis=0)
+
+            logger.devel(f"force_mean.shape  = {force_mean.shape}.")
+            logger.devel(f"force_std.shape  = {force_std.shape}.")
+            logger.info(f"force = {force_mean} +- {force_std} Ha.")
+
+        else:
+            force_mean = None
+            force_std = None
+
+        # broadcast the results
+        force_mean = mpi_comm.bcast(force_mean, root=0)
+        force_std = mpi_comm.bcast(force_std, root=0)
+
+        return (force_mean, force_std)
 
 
 class GFMC_n:

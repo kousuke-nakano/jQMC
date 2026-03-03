@@ -156,6 +156,7 @@ def test_jqmc_gfmc_t(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jast
         mcmc_seed=mcmc_seed,
         tau=tau,
         alat=alat,
+        comput_position_deriv=True,
         **nlm_kwargs,
     )
     gfmc_debug.run(num_mcmc_steps=num_mcmc_steps)
@@ -169,6 +170,7 @@ def test_jqmc_gfmc_t(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jast
         tau=tau,
         alat=alat,
         random_discretized_mesh=False,
+        comput_position_deriv=True,
         **nlm_kwargs,
     )
     gfmc_jax.run(num_mcmc_steps=num_mcmc_steps)
@@ -216,6 +218,22 @@ def test_jqmc_gfmc_t(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jast
     assert not np.any(np.isnan(np.asarray(Var_err_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(Var_err_jax))), "NaN detected in second argument"
     np.testing.assert_allclose(Var_err_debug, Var_err_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+
+    # aF
+    force_mean_debug, force_std_debug = gfmc_debug.get_aF(
+        num_mcmc_warmup_steps=30,
+        num_mcmc_bin_blocks=10,
+    )
+    force_mean_jax, force_std_jax = gfmc_jax.get_aF(
+        num_mcmc_warmup_steps=30,
+        num_mcmc_bin_blocks=10,
+    )
+    assert not np.any(np.isnan(np.asarray(force_mean_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(force_mean_jax))), "NaN detected in second argument"
+    np.testing.assert_allclose(force_mean_debug, force_mean_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    assert not np.any(np.isnan(np.asarray(force_std_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(force_std_jax))), "NaN detected in second argument"
+    np.testing.assert_allclose(force_std_debug, force_std_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
 
     jax.clear_caches()
 

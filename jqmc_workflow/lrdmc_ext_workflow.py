@@ -119,6 +119,10 @@ class LRDMC_Ext_Workflow(Workflow):
         Initial energy guess for the GFMC shift.  Default from ``jqmc_miscs``.
     atomic_force : bool, optional
         Compute atomic forces.  Default from ``jqmc_miscs``.
+    epsilon_PW : float, optional
+        Pathak–Wagner regularization parameter (Bohr). When > 0,
+        the force estimator is regularized near the nodal surface.
+        Default from ``jqmc_miscs``.
     mcmc_seed : int, optional
         Random seed for MCMC.  Default from ``jqmc_miscs``.
     verbosity : str, optional
@@ -192,6 +196,7 @@ class LRDMC_Ext_Workflow(Workflow):
         non_local_move: Optional[str] = None,
         E_scf: Optional[float] = None,
         atomic_force: Optional[bool] = None,
+        epsilon_PW: Optional[float] = None,
         # -- [control] section parameters --
         mcmc_seed: Optional[int] = None,
         verbosity: Optional[str] = None,
@@ -231,6 +236,7 @@ class LRDMC_Ext_Workflow(Workflow):
         self.non_local_move = non_local_move
         self.E_scf = E_scf
         self.atomic_force = atomic_force
+        self.epsilon_PW = epsilon_PW
         # [control] section
         self.mcmc_seed = mcmc_seed
         self.verbosity = verbosity
@@ -272,6 +278,7 @@ class LRDMC_Ext_Workflow(Workflow):
             non_local_move=self.non_local_move,
             E_scf=self.E_scf,
             atomic_force=self.atomic_force,
+            epsilon_PW=self.epsilon_PW,
             mcmc_seed=self.mcmc_seed,
             verbosity=self.verbosity,
             poll_interval=self.poll_interval,

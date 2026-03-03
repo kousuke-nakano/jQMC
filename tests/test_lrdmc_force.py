@@ -52,7 +52,10 @@ from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_three_body_data,
     Jastrow_two_body_data,
 )
-from jqmc.jqmc_gfmc import GFMC_n  # noqa: E402
+from jqmc.jqmc_gfmc import (
+    GFMC_n,  # noqa: E402
+    GFMC_t,  # noqa: E402
+)
 from jqmc.setting import atol_debug_vs_production, rtol_debug_vs_production  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import Wavefunction_data  # noqa: E402
@@ -64,25 +67,43 @@ jax.config.update("jax_traceback_filtering", "off")
 test_lrdmc_force_params = [
     pytest.param(
         "H2_ecp_ccpvtz_cart.h5",
-        {"jastrow_1b_param": False, "jastrow_2b_param": True, "jastrow_3b_param": False},
+        {"jastrow_1b_param": False, "jastrow_2b_param": True, "jastrow_3b_param": False, "jastrow_nn_param": False},
         "tmove",
         id="ecp-tmove",
     ),
     pytest.param(
         "H2_ecp_ccpvtz_cart.h5",
-        {"jastrow_1b_param": False, "jastrow_2b_param": True, "jastrow_3b_param": False},
+        {"jastrow_1b_param": False, "jastrow_2b_param": True, "jastrow_3b_param": False, "jastrow_nn_param": False},
         "dltmove",
         id="ecp-dltmove",
     ),
     pytest.param(
+        "H2_ecp_ccpvtz_cart.h5",
+        {"jastrow_1b_param": False, "jastrow_2b_param": True, "jastrow_3b_param": False, "jastrow_nn_param": True},
+        "dltmove",
+        id="ecp-dltmove-nn",
+    ),
+    pytest.param(
         "H2_ae_ccpvtz_cart.h5",
-        {"jastrow_1b_param": True, "jastrow_2b_param": True, "jastrow_3b_param": False, "core_electrons": (0, 0)},
+        {
+            "jastrow_1b_param": True,
+            "jastrow_2b_param": True,
+            "jastrow_3b_param": False,
+            "jastrow_nn_param": False,
+            "core_electrons": (0, 0),
+        },
         "tmove",
         id="ae-tmove",
     ),
     pytest.param(
         "H2_ae_ccpvtz_cart.h5",
-        {"jastrow_1b_param": True, "jastrow_2b_param": True, "jastrow_3b_param": False, "core_electrons": (0, 0)},
+        {
+            "jastrow_1b_param": True,
+            "jastrow_2b_param": True,
+            "jastrow_3b_param": False,
+            "jastrow_nn_param": False,
+            "core_electrons": (0, 0),
+        },
         "dltmove",
         id="ae-dltmove",
     ),
@@ -90,7 +111,7 @@ test_lrdmc_force_params = [
 
 
 @pytest.mark.parametrize("trexio_file, jastrow_parameters, locality", test_lrdmc_force_params)
-def test_lrdmc_force_with_SWCT(trexio_file: str, jastrow_parameters: dict, locality: str):
+def test_lrdmc_force_with_SWCT_n(trexio_file: str, jastrow_parameters: dict, locality: str):
     """Test LRDMC force with SWCT."""
     (
         structure_data,
@@ -127,7 +148,14 @@ def test_lrdmc_force_with_SWCT(trexio_file: str, jastrow_parameters: dict, local
         )
     else:
         jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
-    jastrow_nn_data = Jastrow_NN_data.init_from_structure(structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0)
+
+    jastrow_nn_param = jastrow_parameters.get("jastrow_nn_param", False)
+    if jastrow_nn_param:
+        jastrow_nn_data = Jastrow_NN_data.init_from_structure(
+            structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0
+        )
+    else:
+        jastrow_nn_data = None
 
     # define data
     jastrow_data = Jastrow_data(
@@ -158,6 +186,116 @@ def test_lrdmc_force_with_SWCT(trexio_file: str, jastrow_parameters: dict, local
         num_gfmc_collect_steps=5,
         mcmc_seed=mcmc_seed,
         E_scf=-1.00,
+        alat=0.30,
+        non_local_move=locality,
+        comput_position_deriv=True,
+        epsilon_PW=1.0e-2,
+    )
+
+    gfmc.run(num_mcmc_steps=50)
+    gfmc.get_E(
+        num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+        num_mcmc_bin_blocks=num_mcmc_bin_blocks,
+    )
+    force_mean, force_std = gfmc.get_aF(
+        num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+        num_mcmc_bin_blocks=num_mcmc_bin_blocks,
+    )
+
+    # See [J. Chem. Phys. 156, 034101 (2022)]
+    assert not np.any(np.isnan(np.asarray(np.array(force_mean[0])))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(-1.0 * np.array(force_mean[1])))), "NaN detected in second argument"
+    np.testing.assert_allclose(
+        np.array(force_mean[0]),
+        -1.0 * np.array(force_mean[1]),
+        atol=atol_debug_vs_production,
+        rtol=rtol_debug_vs_production,
+    )
+    assert not np.any(np.isnan(np.asarray(np.array(force_std[0])))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(np.array(force_std[1])))), "NaN detected in second argument"
+    np.testing.assert_allclose(
+        np.array(force_std[0]),
+        np.array(force_std[1]),
+        atol=atol_debug_vs_production,
+        rtol=rtol_debug_vs_production,
+    )
+
+
+@pytest.mark.parametrize("trexio_file, jastrow_parameters, locality", test_lrdmc_force_params)
+def test_lrdmc_force_with_SWCT_t(trexio_file: str, jastrow_parameters: dict, locality: str):
+    """Test LRDMC force with SWCT for GFMC_t (tau-based)."""
+    (
+        structure_data,
+        aos_data,
+        _,
+        _,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
+    )
+
+    # Jastrow setup from parameters
+    jastrow_1b_param = jastrow_parameters.get("jastrow_1b_param", False)
+    jastrow_2b_param = jastrow_parameters.get("jastrow_2b_param", False)
+    jastrow_3b_param = jastrow_parameters.get("jastrow_3b_param", False)
+
+    if jastrow_1b_param:
+        core_electrons = jastrow_parameters.get("core_electrons", (0, 0))
+        jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
+            jastrow_1b_param=1.0, structure_data=structure_data, core_electrons=tuple(core_electrons)
+        )
+    else:
+        jastrow_onebody_data = None
+
+    if jastrow_2b_param:
+        jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5)
+    else:
+        jastrow_twobody_data = None
+
+    if jastrow_3b_param:
+        jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
+            orb_data=aos_data, random_init=True, random_scale=1.0e-3
+        )
+    else:
+        jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
+
+    jastrow_nn_param = jastrow_parameters.get("jastrow_nn_param", False)
+    if jastrow_nn_param:
+        jastrow_nn_data = Jastrow_NN_data.init_from_structure(
+            structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0
+        )
+    else:
+        jastrow_nn_data = None
+
+    # define data
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=jastrow_onebody_data,
+        jastrow_two_body_data=jastrow_twobody_data,
+        jastrow_three_body_data=jastrow_threebody_data,
+        jastrow_nn_data=jastrow_nn_data,
+    )
+
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+
+    # VMC parameters
+    num_mcmc_warmup_steps = 5
+    num_mcmc_bin_blocks = 5
+    mcmc_seed = 34356
+
+    # run GFMC_t
+    gfmc = GFMC_t(
+        hamiltonian_data=hamiltonian_data,
+        num_walkers=2,
+        num_gfmc_collect_steps=5,
+        mcmc_seed=mcmc_seed,
+        tau=0.10,
         alat=0.30,
         non_local_move=locality,
         comput_position_deriv=True,
