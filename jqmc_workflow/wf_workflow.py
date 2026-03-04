@@ -63,8 +63,14 @@ class WF_Workflow(Workflow):
         Output filename (default: ``"hamiltonian_data.h5"``).
     j1_parameter : float, optional
         Jastrow one-body parameter (``-j1``).
+    j1_type : str, optional
+        Jastrow one-body functional form (``--jastrow-1b-type``).
+        ``"exp"`` (default) or ``"pade"``.
     j2_parameter : float, optional
         Jastrow two-body parameter (``-j2``).
+    j2_type : str, optional
+        Jastrow two-body functional form (``--jastrow-2b-type``).
+        ``"pade"`` (default) or ``"exp"``.
     j3_basis_type : str, optional
         Jastrow three-body basis-set type (``-j3``).
         One of ``"ao"``, ``"ao-full"``, ``"ao-small"``, ``"ao-medium"``,
@@ -84,7 +90,9 @@ class WF_Workflow(Workflow):
     >>> wf = WF_Workflow(
     ...     trexio_file="molecular.h5",
     ...     j1_parameter=1.0,
+    ...     j1_type="pade",
     ...     j2_parameter=0.5,
+    ...     j2_type="exp",
     ...     j3_basis_type="ao-small",
     ... )
     >>> status, out_files, out_values = wf.launch()
@@ -105,7 +113,9 @@ class WF_Workflow(Workflow):
         trexio_file: str = "trexio.h5",
         hamiltonian_file: str = "hamiltonian_data.h5",
         j1_parameter: Optional[float] = None,
+        j1_type: Optional[str] = None,
         j2_parameter: Optional[float] = None,
+        j2_type: Optional[str] = None,
         j3_basis_type: Optional[str] = None,
         j_nn_type: Optional[str] = None,
         j_nn_params: Optional[List[str]] = None,
@@ -115,7 +125,9 @@ class WF_Workflow(Workflow):
         self.trexio_file = trexio_file
         self.hamiltonian_file = hamiltonian_file
         self.j1_parameter = j1_parameter
+        self.j1_type = j1_type
         self.j2_parameter = j2_parameter
+        self.j2_type = j2_type
         self.j3_basis_type = j3_basis_type
         self.j_nn_type = j_nn_type
         self.j_nn_params = j_nn_params or []
@@ -131,8 +143,12 @@ class WF_Workflow(Workflow):
 
         if self.j1_parameter is not None:
             cmd += ["-j1", str(self.j1_parameter)]
+        if self.j1_type is not None:
+            cmd += ["--jastrow-1b-type", str(self.j1_type)]
         if self.j2_parameter is not None:
             cmd += ["-j2", str(self.j2_parameter)]
+        if self.j2_type is not None:
+            cmd += ["--jastrow-2b-type", str(self.j2_type)]
         if self.j3_basis_type is not None:
             cmd += ["-j3", str(self.j3_basis_type)]
         if self.j_nn_type is not None:

@@ -45,6 +45,14 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+from jqmc._setting import (  # noqa: E402
+    atol_auto_vs_analytic_deriv,
+    atol_consistency,
+    atol_debug_vs_production,
+    rtol_auto_vs_analytic_deriv,
+    rtol_consistency,
+    rtol_debug_vs_production,
+)
 from jqmc.determinant import (
     Geminal_data,  # noqa: E402
     compute_geminal_all_elements,  # noqa: E402
@@ -61,14 +69,6 @@ from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_one_body_data,
     Jastrow_three_body_data,
     Jastrow_two_body_data,
-)
-from jqmc._setting import (  # noqa: E402
-    atol_auto_vs_analytic_deriv,
-    atol_consistency,
-    atol_debug_vs_production,
-    rtol_auto_vs_analytic_deriv,
-    rtol_consistency,
-    rtol_debug_vs_production,
 )
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import (  # noqa: E402
@@ -148,12 +148,12 @@ def test_hamiltonian_hdf5(trexio_file, use_1b, use_2b, use_3b, use_nn, geminal_t
         # Or just use dummy values for testing serialization.
         core_electrons = tuple([0.0] * len(structure_data.positions))
         jastrow_one_body_data = Jastrow_one_body_data.init_jastrow_one_body_data(
-            jastrow_1b_param=1.0, structure_data=structure_data, core_electrons=core_electrons
+            jastrow_1b_param=1.0, structure_data=structure_data, core_electrons=core_electrons, jastrow_1b_type="pade"
         )
 
     jastrow_two_body_data = None
     if use_2b:
-        jastrow_two_body_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+        jastrow_two_body_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0, jastrow_2b_type="exp")
 
     jastrow_three_body_data = None
     if use_3b:

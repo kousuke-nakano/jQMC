@@ -401,8 +401,8 @@ class TestGenerateInput:
         lrdmc_generate_input(flag=True, filename=outfile, exclude_comment=False)
         doc = tomlkit.loads(Path(outfile).read_text())
         assert "control" in doc
-        assert "lrdmc" in doc
-        assert doc["control"]["job_type"] == "lrdmc"
+        assert "lrdmc-bra" in doc
+        assert doc["control"]["job_type"] == "lrdmc-bra"
 
     def test_vmc_generate_input_creates_file(self, tmp_path):
         outfile = str(tmp_path / "vmc.toml")

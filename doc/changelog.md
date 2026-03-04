@@ -2,6 +2,16 @@
 
 # Change Log
 
+## Mar-4-2026
+
+- **Jastrow functional form dispatch**: Added `jastrow_1b_type` (`'exp'`/`'pade'`) and `jastrow_2b_type` (`'pade'`/`'exp'`) fields to `Jastrow_one_body_data` and `Jastrow_two_body_data`, enabling runtime selection of the one-body and two-body Jastrow functional forms.
+  - Exponential form: $u(r) = \frac{1}{2b}(1 - e^{-br})$
+  - Padé form: $u(r) = \frac{r}{2(1 + br)}$
+- Added `--jastrow-1b-type` and `--jastrow-2b-type` CLI options to `jqmc-tool trexio convert-to`.
+- Added `j1_type` and `j2_type` parameters to `WF_Workflow` in `jqmc_workflow`.
+- Refactored `test_jastrow.py` to parametrize tests over Jastrow type combinations.
+- All other test files now explicitly specify Jastrow types for coverage.
+
 ## Mar-3-2026
 
 - Added `atomic_force` option to the `lrdmc-tau` job type, enabling atomic force computation for GFMC_t (tau-based LRDMC).

@@ -52,6 +52,14 @@ import tomlkit
 import typer
 from uncertainties import ufloat
 
+from ._setting import (
+    GFMC_MIN_BIN_BLOCKS,
+    GFMC_MIN_COLLECT_STEPS,
+    GFMC_MIN_WARMUP_STEPS,
+    MCMC_MIN_BIN_BLOCKS,
+    MCMC_MIN_WARMUP_STEPS,
+    Bohr_to_Angstrom,
+)
 from .atomic_orbital import AOs_cart_data, AOs_sphe_data
 from .determinant import Geminal_data
 from .hamiltonians import Hamiltonian_data
@@ -63,14 +71,6 @@ from .jastrow_factor import (
     Jastrow_two_body_data,
 )
 from .jqmc_miscs import cli_parameters
-from ._setting import (
-    GFMC_MIN_BIN_BLOCKS,
-    GFMC_MIN_COLLECT_STEPS,
-    GFMC_MIN_WARMUP_STEPS,
-    MCMC_MIN_BIN_BLOCKS,
-    MCMC_MIN_WARMUP_STEPS,
-    Bohr_to_Angstrom,
-)
 from .trexio_wrapper import read_trexio_file
 from .wavefunction import Wavefunction_data
 
@@ -218,7 +218,9 @@ def trexio_convert_to(
     trexio_file: str = typer.Argument(..., help="TREXIO filename."),
     hamiltonian_file: str = typer.Option("hamiltonian_data.h5", "-o", "--output", help="Output file name."),
     j1_parmeter: float = typer.Option(None, "-j1", "--jastrow-1b-parameter", help="Jastrow one-body parameter."),
+    j1_type: str = typer.Option("exp", "--jastrow-1b-type", help="Jastrow one-body functional form: 'exp' or 'pade'."),
     j2_parmeter: float = typer.Option(None, "-j2", "--jastrow-2b-parameter", help="Jastrow two-body parameter."),
+    j2_type: str = typer.Option("pade", "--jastrow-2b-type", help="Jastrow two-body functional form: 'pade' or 'exp'."),
     j3_basis_type: orbital_type = typer.Option(
         orbital_type.none,
         "-j3",
@@ -286,6 +288,10 @@ def trexio_convert_to(
 
     if isinstance(j_nn_type, typer.models.OptionInfo):
         j_nn_type = j_nn_type.default
+    if isinstance(j1_type, typer.models.OptionInfo):
+        j1_type = j1_type.default
+    if isinstance(j2_type, typer.models.OptionInfo):
+        j2_type = j2_type.default
 
     (structure_data, aos_data, mos_data, _, geminal_data, coulomb_potential_data) = read_trexio_file(
         trexio_file, store_tuple=True
@@ -297,12 +303,18 @@ def trexio_convert_to(
         else:
             core_electrons = [0] * structure_data.natom
         jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
-            jastrow_1b_param=j1_parmeter, structure_data=structure_data, core_electrons=core_electrons
+            jastrow_1b_param=j1_parmeter,
+            structure_data=structure_data,
+            core_electrons=core_electrons,
+            jastrow_1b_type=j1_type,
         )
     else:
         jastrow_onebody_data = None
     if j2_parmeter is not None:
-        jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=j2_parmeter)
+        jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(
+            jastrow_2b_param=j2_parmeter,
+            jastrow_2b_type=j2_type,
+        )
     else:
         jastrow_twobody_data = None
     if j3_basis_type is None:
@@ -462,6 +474,8 @@ def trexio_convert_to(
     )
 
     # Optional AO conversion (cart / sphe)
+    if isinstance(ao_conv_to, typer.models.OptionInfo):
+        ao_conv_to = ao_conv_to.default
     if ao_conv_to is not None:
         ao_conv_to = ao_conv_to.lower()
         if ao_conv_to == "cart":

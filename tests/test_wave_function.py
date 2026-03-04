@@ -45,13 +45,6 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc.determinant import compute_geminal_all_elements  # noqa: E402
-from jqmc.jastrow_factor import (  # noqa: E402
-    Jastrow_data,
-    Jastrow_NN_data,
-    Jastrow_three_body_data,
-    Jastrow_two_body_data,
-)
 from jqmc._setting import (  # noqa: E402
     atol_auto_vs_analytic_deriv,
     atol_auto_vs_numerical_deriv,
@@ -59,6 +52,13 @@ from jqmc._setting import (  # noqa: E402
     rtol_auto_vs_analytic_deriv,
     rtol_auto_vs_numerical_deriv,
     rtol_debug_vs_production,
+)
+from jqmc.determinant import compute_geminal_all_elements  # noqa: E402
+from jqmc.jastrow_factor import (  # noqa: E402
+    Jastrow_data,
+    Jastrow_NN_data,
+    Jastrow_three_body_data,
+    Jastrow_two_body_data,
 )
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import (  # noqa: E402
@@ -102,7 +102,7 @@ def test_kinetic_energy_analytic_and_numerical(trexio_file: str):
     )
 
     jastrow_onebody_data = None
-    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5)
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5, jastrow_2b_type="exp")
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
         orb_data=aos_data, random_init=True, random_scale=1.0e-3
     )
@@ -152,7 +152,7 @@ def test_kinetic_energy_analytic_and_auto(trexio_file: str):
     )
 
     jastrow_onebody_data = None
-    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0, jastrow_2b_type="pade")
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
         orb_data=aos_data, random_init=True, random_scale=1.0e-3
     )
@@ -197,7 +197,7 @@ def test_debug_and_auto_kinetic_energy_all_elements(trexio_file: str):
         trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
     )
     jastrow_onebody_data = None
-    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0, jastrow_2b_type="exp")
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
         orb_data=aos_data, random_init=True, random_scale=1.0e-3
     )
@@ -270,7 +270,7 @@ def test_auto_and_analytic_kinetic_energy_all_elements(trexio_file: str):
     )
 
     jastrow_onebody_data = None
-    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0, jastrow_2b_type="pade")
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
         orb_data=aos_data, random_init=True, random_scale=1.0e-3
     )
@@ -326,7 +326,7 @@ def test_fast_update_kinetic_energy_all_elements(trexio_file: str):
     )
 
     jastrow_onebody_data = None
-    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0, jastrow_2b_type="exp")
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
         orb_data=aos_data, random_init=True, random_scale=1.0e-3
     )
@@ -392,7 +392,7 @@ def test_debug_and_jax_discretized_kinetic_energy(trexio_file: str):
     )
 
     jastrow_onebody_data = None
-    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0, jastrow_2b_type="pade")
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
         orb_data=aos_data, random_init=True, random_scale=1.0e-3
     )
@@ -512,7 +512,7 @@ def test_nodal_distance_analytic_vs_debug(trexio_file: str):
     )
 
     jastrow_onebody_data = None
-    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5)
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5, jastrow_2b_type="exp")
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
         orb_data=aos_data, random_init=True, random_scale=1.0e-3
     )

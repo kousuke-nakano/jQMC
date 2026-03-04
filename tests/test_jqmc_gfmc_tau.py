@@ -45,6 +45,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+from jqmc._setting import atol_debug_vs_production, rtol_debug_vs_production  # noqa: E402
 from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
 from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_data,
@@ -54,7 +55,6 @@ from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_two_body_data,
 )
 from jqmc.jqmc_gfmc import GFMC_t, _GFMC_t_debug  # noqa: E402
-from jqmc._setting import atol_debug_vs_production, rtol_debug_vs_production  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import Wavefunction_data  # noqa: E402
 
@@ -103,11 +103,12 @@ def test_jqmc_gfmc_t(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jast
             jastrow_1b_param=1.0,
             structure_data=structure_data,
             core_electrons=tuple([0] * len(structure_data.atomic_numbers)),
+            jastrow_1b_type="pade",
         )
 
     jastrow_twobody_data = None
     if with_2b_jastrow:
-        jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+        jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0, jastrow_2b_type="pade")
 
     jastrow_threebody_data = None
     if with_3b_jastrow:
