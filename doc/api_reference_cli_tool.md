@@ -44,6 +44,7 @@ jqmc-tool trexio convert-to <trexio_file> [options]
 - `-j3, --jastrow-3b-basis-set-type` (`ao|ao-full|ao-small|ao-medium|ao-large|mo|none`, default `none`): Choose J3 basis; `ao-*` trims AOs by key exponent grouping, `mo` uses MOs, `none` disables J3.
 - `-j-nn-type, --jastrow-nn-type` (str|None): Add NN Jastrow (e.g., `schnet`).
 - `-jp, --jastrow-nn-param` (repeatable `key=value`): Hyperparameters forwarded to `Jastrow_NN_data.init_from_structure`; supported keys (type, default): `hidden_dim (int, 64)`, `num_layers (int, 3)`, `num_rbf (int, 16)`, `cutoff (float, 5.0)`.
+- `--ao-conv-to` (`cart|sphe|None`, default `None`): Convert AOs after building the Hamiltonian. `cart` converts all AO representations (Geminal and Jastrow three-body) to Cartesian GTOs; `sphe` converts them to real spherical-harmonic GTOs. When omitted (`None`), the original representation from the TREXIO file is kept.
 
 Outputs an HDF5 `Hamiltonian_data` with Jastrow/Geminal embedded.
 
@@ -158,7 +159,7 @@ jqmc-tool lrdmc extrapolate-energy <restart_chk...> [-p order] [-b N] [-w W] [-c
 - Other options as in `compute-energy`.
 
 ### `generate-input`
-Emit an LRDMC `toml` template (sets `control.job_type = "lrdmc"`).
+Emit an LRDMC `toml` template (sets `control.job_type = "lrdmc-bra"`).
 
 ```
 jqmc-tool lrdmc generate-input -g [-f lrdmc.toml] [--without-comment]

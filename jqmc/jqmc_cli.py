@@ -50,11 +50,11 @@ from uncertainties import ufloat
 from .hamiltonians import Hamiltonian_data
 
 # jQMC
-from .header_footer import _print_footer, _print_header
+from ._header_footer import _print_footer, _print_header
 from .jqmc_gfmc import GFMC_n, GFMC_t
 from .jqmc_mcmc import MCMC
 from .jqmc_miscs import cli_parameters
-from .setting import (
+from ._setting import (
     GFMC_MIN_BIN_BLOCKS,
     GFMC_MIN_COLLECT_STEPS,
     GFMC_MIN_WARMUP_STEPS,
@@ -499,11 +499,11 @@ def _cli():
         mpi_comm.Barrier()
 
     # LRDMC!
-    if job_type == "lrdmc":
+    if job_type == "lrdmc-bra":
         logger.info("***Lattice Regularized diffusion Monte Carlo***")
 
-        # lrdmc section
-        section = "lrdmc"
+        # lrdmc-bra section
+        section = "lrdmc-bra"
         for key in parameters[section].keys():
             try:
                 parameters[section][key] = dict_toml[section][key]
@@ -592,7 +592,7 @@ def _cli():
             for i in range(len(lrdmc.hamiltonian_data.structure_data.atomic_labels)):
                 atomic_label = str(lrdmc.hamiltonian_data.structure_data.atomic_labels[i])
                 row_values = [f"{ufloat(f_mean[i, j], f_std[i, j]):+2uS}" for j in range(3)]
-                row_str = "  " + atomic_label.ljust(8) + "".join(val.ljust(12) for val in row_values)
+                row_str = "  " + atomic_label.ljust(8) + " ".join(val.ljust(12) for val in row_values)
                 logger.info(row_str)
             logger.info("  " + "-" * sep)
         logger.info("")
@@ -700,7 +700,7 @@ def _cli():
             for i in range(len(lrdmc.hamiltonian_data.structure_data.atomic_labels)):
                 atomic_label = str(lrdmc.hamiltonian_data.structure_data.atomic_labels[i])
                 row_values = [f"{ufloat(f_mean[i, j], f_std[i, j]):+2uS}" for j in range(3)]
-                row_str = "  " + atomic_label.ljust(8) + "".join(val.ljust(12) for val in row_values)
+                row_str = "  " + atomic_label.ljust(8) + " ".join(val.ljust(12) for val in row_values)
                 logger.info(row_str)
             logger.info("  " + "-" * sep)
         logger.info("")

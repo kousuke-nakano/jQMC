@@ -55,7 +55,7 @@ from .determinant import (
     compute_ln_det_geminal_all_elements,
     compute_ln_det_geminal_all_elements_fast,
 )
-from .diff_mask import DiffMask, apply_diff_mask
+from ._diff_mask import DiffMask, apply_diff_mask
 from .jastrow_factor import (
     Jastrow_data,
     _compute_ratio_Jastrow_part_rank1_update,

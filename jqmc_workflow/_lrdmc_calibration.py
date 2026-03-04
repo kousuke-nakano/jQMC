@@ -5,13 +5,13 @@ Provides helper functions for determining the optimal
 
 The calibration procedure is:
 
-1. Run three short LRDMC calculations with
-   ``num_mcmc_per_measurement = Ne*2, Ne*4, Ne*6``
-   (where *Ne* is the total number of electrons).
+1. Run short LRDMC calculations with varying
+   ``num_mcmc_per_measurement`` values (e.g. ``Ne*2, Ne*4, Ne*6``
+   where *Ne* is the total number of electrons).
 2. Parse the ``Survived walkers ratio`` from each output file.
-3. Fit a quadratic ``f(x) = a*x² + b*x + c`` to the three points
-   and solve for the ``num_mcmc_per_measurement`` that gives the
-   target survived-walkers ratio (default 97 %).
+3. Fit a linear ``f(x) = a*x + b`` via least squares and solve for
+   the ``num_mcmc_per_measurement`` that gives the target
+   survived-walkers ratio (default 97 %).
 """
 
 # Copyright (C) 2024- Kosuke Nakano
@@ -49,7 +49,7 @@ The calibration procedure is:
 import math
 import re
 from logging import getLogger
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 import h5py
 
@@ -121,7 +121,7 @@ def parse_survived_walkers_ratio(output_file: str) -> Optional[float]:
     return last_value
 
 
-# ── Quadratic fitting ────────────────────────────────────────────
+# ── Linear fitting ───────────────────────────────────────────────
 
 
 def fit_num_mcmc_per_measurement(
@@ -129,12 +129,12 @@ def fit_num_mcmc_per_measurement(
     y_values: List[float],
     target_ratio: float,
 ) -> int:
-    r"""Determine the optimal ``num_mcmc_per_measurement`` by quadratic fit.
+    r"""Determine the optimal ``num_mcmc_per_measurement`` by linear fit.
 
-    Given three (or more) data points
+    Given two or more data points
     ``(num_mcmc_per_measurement, survived_walkers_ratio)`` the function
-    fits a quadratic :math:`f(x) = a x^2 + b x + c` and solves for the
-    *x* at which :math:`f(x) = \text{target\_ratio}`.
+    fits a linear model :math:`f(x) = a x + b` via least squares and
+    solves for the *x* at which :math:`f(x) = \text{target\_ratio}`.
 
     Parameters
     ----------
@@ -154,62 +154,41 @@ def fit_num_mcmc_per_measurement(
     Raises
     ------
     RuntimeError
-        If the quadratic has no real root above 0 for the target.
+        If the linear fit cannot determine a positive root.
     """
-    if len(x_values) < 3 or len(y_values) < 3:
-        raise ValueError(f"Need at least 3 data points, got {len(x_values)}")
+    if len(x_values) < 2 or len(y_values) < 2:
+        raise ValueError(f"Need at least 2 data points, got {len(x_values)}")
 
-    # -- Fit quadratic via least-squares (no numpy dependency) ----
-    # Using the normal equations for y = a*x^2 + b*x + c
+    # -- Fit linear y = a*x + b via least-squares (no numpy) -----
     n = len(x_values)
     sx = sum(x_values)
     sx2 = sum(xi**2 for xi in x_values)
-    sx3 = sum(xi**3 for xi in x_values)
-    sx4 = sum(xi**4 for xi in x_values)
     sy = sum(y_values)
     sxy = sum(xi * yi for xi, yi in zip(x_values, y_values))
-    sx2y = sum(xi**2 * yi for xi, yi in zip(x_values, y_values))
 
-    # Solve 3×3 system:
-    #   [ sx4  sx3  sx2 ] [a]   [sx2y]
-    #   [ sx3  sx2  sx  ] [b] = [sxy ]
-    #   [ sx2  sx   n   ] [c]   [sy  ]
-    a, b, c = _solve_3x3(
-        [[sx4, sx3, sx2], [sx3, sx2, sx], [sx2, sx, n]],
-        [sx2y, sxy, sy],
-    )
+    denom = n * sx2 - sx * sx
+    if abs(denom) < 1e-30:
+        raise RuntimeError("Degenerate fit: all x values are identical.")
 
-    logger.info(f"Quadratic fit: f(x) = {a:.6g}*x^2 + {b:.6g}*x + {c:.6g}")
+    a = (n * sxy - sx * sy) / denom
+    b = (sy * sx2 - sx * sxy) / denom
+
+    logger.info(f"Linear fit: f(x) = {a:.6g}*x + {b:.6g}")
     for xi, yi in zip(x_values, y_values):
-        fitted = a * xi**2 + b * xi + c
+        fitted = a * xi + b
         logger.info(f"  nmpm={xi:>6d}: measured={yi:.4f}, fitted={fitted:.4f}")
 
-    # Solve a*x^2 + b*x + (c - target_ratio) = 0
-    c_shifted = c - target_ratio
-    discriminant = b**2 - 4.0 * a * c_shifted
-
-    if discriminant < 0:
-        raise RuntimeError(
-            f"Quadratic fit has no real root for target_ratio={target_ratio:.4f}. "
-            f"Coefficients: a={a:.6g}, b={b:.6g}, c={c:.6g}, "
-            f"discriminant={discriminant:.6g}"
-        )
-
-    sqrt_d = math.sqrt(discriminant)
+    # Solve a*x + b = target_ratio  =>  x = (target_ratio - b) / a
     if abs(a) < 1e-15:
-        # Degenerate to linear: b*x + c_shifted = 0
-        if abs(b) < 1e-15:
-            raise RuntimeError("Degenerate fit: both a and b are ~0.")
-        x_opt = -c_shifted / b
-    else:
-        # Two roots — pick the positive one (or larger positive one)
-        x1 = (-b + sqrt_d) / (2.0 * a)
-        x2 = (-b - sqrt_d) / (2.0 * a)
-        candidates = [x for x in (x1, x2) if x > 0]
-        if not candidates:
-            raise RuntimeError(f"No positive root found. Roots: {x1:.2f}, {x2:.2f}")
-        # Pick the smaller positive root (physically meaningful)
-        x_opt = min(candidates)
+        raise RuntimeError(f"Linear fit slope is ~0 (a={a:.6g}). Cannot solve for target_ratio={target_ratio:.4f}.")
+
+    x_opt = (target_ratio - b) / a
+    if x_opt <= 0:
+        raise RuntimeError(
+            f"Linear fit gives non-positive root x={x_opt:.2f} "
+            f"for target_ratio={target_ratio:.4f}. "
+            f"Coefficients: a={a:.6g}, b={b:.6g}"
+        )
 
     # Round up to nearest even integer, minimum 2
     result = max(2, int(math.ceil(x_opt)))
@@ -256,49 +235,3 @@ def scale_num_mcmc_per_measurement(
     if result % 2 != 0:
         result += 1
     return result
-
-
-# ── Internal: simple 3×3 linear solver (no numpy required) ──────
-
-
-def _solve_3x3(
-    A: List[List[float]],
-    b: List[float],
-) -> Tuple[float, float, float]:
-    """Solve a 3×3 linear system Ax = b via Cramer's rule.
-
-    Parameters
-    ----------
-    A : list[list[float]]
-        3×3 coefficient matrix.
-    b : list[float]
-        3-element right-hand side.
-
-    Returns
-    -------
-    tuple[float, float, float]
-        Solution vector.
-    """
-
-    def det3(m):
-        return (
-            m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
-            - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
-            + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
-        )
-
-    det_A = det3(A)
-    if abs(det_A) < 1e-30:
-        raise RuntimeError("Singular matrix in 3×3 solver.")
-
-    def replace_col(col_idx):
-        M = [row[:] for row in A]
-        for i in range(3):
-            M[i][col_idx] = b[i]
-        return det3(M)
-
-    return (
-        replace_col(0) / det_A,
-        replace_col(1) / det_A,
-        replace_col(2) / det_A,
-    )

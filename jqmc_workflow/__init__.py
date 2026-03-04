@@ -6,7 +6,7 @@ Workflow classes:
     :class:`WF_Workflow`        TREXIO → hamiltonian_data.h5 conversion.
     :class:`VMC_Workflow`       Jastrow / orbital optimisation (job_type=vmc).
     :class:`MCMC_Workflow`      VMC production sampling (job_type=mcmc).
-    :class:`LRDMC_Workflow`     Lattice-Regularized DMC (job_type=lrdmc).
+    :class:`LRDMC_Workflow`     Lattice-Regularized DMC (job_type=lrdmc-bra / lrdmc-tau).
     :class:`LRDMC_Ext_Workflow` Multi-alat LRDMC a²→0 extrapolation.
 
 Composition helpers:

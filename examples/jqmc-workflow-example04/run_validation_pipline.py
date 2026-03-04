@@ -180,10 +180,11 @@ def build_pipeline() -> tuple[list[Container], dict[str, Container]]:
                 queue_label=QUEUE_LABEL,
                 pilot_queue_label=PILOT_QUEUE_LABEL,
                 jobname=f"mcmc-{dirname}",
-                target_error=0.001,
+                target_error=5e-5,
                 pilot_steps=200,
                 num_mcmc_warmup_steps=50,
                 num_mcmc_bin_blocks=100,
+                poll_interval=1800,
             ),
         )
 

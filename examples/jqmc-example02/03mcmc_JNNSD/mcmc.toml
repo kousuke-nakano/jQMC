@@ -1,5 +1,5 @@
 [control]
-job_type = "mcmc" # Specify the job type. "mcmc", "vmc", or "lrdmc"
+job_type = "mcmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 300 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.

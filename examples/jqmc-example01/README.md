@@ -344,7 +344,7 @@ The generated `hamiltonian_data.h5` is a wavefunction file with the `jqmc` forma
 <!-- include: 02vmc_JSD/vmc.toml -->
 ```toml
 [control]
-job_type = "vmc" # Specify the job type. "mcmc", "vmc", "lrdmc", or "lrdmc-tau".
+job_type = "vmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
@@ -458,7 +458,7 @@ The next step is MCMC calculation. Create a directory for the MCMC calculation a
 <!-- include: 03mcmc_JSD/mcmc.toml -->
 ```toml
 [control]
-job_type = "mcmc" # Specify the job type. "mcmc", "vmc", or "lrdmc"
+job_type = "mcmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau"
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 300 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
@@ -501,7 +501,7 @@ The final step is LRDMC calculation. Create a directory for the LRDMC calculatio
 <!-- include: 04lrdmc_JSD/lrdmc.toml -->
 ```toml
 [control]
-  job_type = 'lrdmc'
+  job_type = 'lrdmc-bra'
   mcmc_seed = 34467
   number_of_walkers = 300
   max_time = 10400
@@ -510,7 +510,7 @@ The final step is LRDMC calculation. Create a directory for the LRDMC calculatio
   hamiltonian_h5 = '../hamiltonian_data.h5'
   verbosity = 'low'
 
-[lrdmc]
+[lrdmc-bra]
   num_mcmc_steps  = 40000
   num_mcmc_per_measurement = 30
   alat = 0.30

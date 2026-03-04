@@ -94,7 +94,7 @@ The hyperparameters specified via `-jp` (e.g., `-jp hidden_dim=16`) control the 
 <!-- include: 02vmc_JNNSD/vmc.toml -->
 ```toml
 [control]
-job_type = "vmc" # Specify the job type. "mcmc", "vmc", "lrdmc", or "lrdmc-tau".
+job_type = "vmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 42000 # Maximum time in sec.
@@ -193,7 +193,7 @@ The next step is MCMC calculation. Create a directory for the MCMC calculation a
 <!-- include: 03mcmc_JNNSD/mcmc.toml -->
 ```toml
 [control]
-job_type = "mcmc" # Specify the job type. "mcmc", "vmc", or "lrdmc"
+job_type = "mcmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau"
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 300 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.

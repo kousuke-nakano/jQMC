@@ -60,7 +60,7 @@ from .atomic_orbital import (
     compute_overlap_matrix,
 )
 from .molecular_orbital import MOs_data, compute_MOs, compute_MOs_grad, compute_MOs_laplacian
-from .setting import EPS_rcond_SVD, atol_consistency, rtol_consistency
+from ._setting import EPS_rcond_SVD, atol_consistency, rtol_consistency
 
 if TYPE_CHECKING:  # pragma: no cover - typing-only import to avoid circular dependency
     from .wavefunction import VariationalParameterBlock

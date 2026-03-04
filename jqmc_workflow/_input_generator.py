@@ -52,7 +52,7 @@ def resolve_with_defaults(section_name: str, explicit_params: dict) -> dict:
     Parameters
     ----------
     section_name : str
-        TOML section name (``"vmc"``, ``"mcmc"``, ``"lrdmc"``, ``"control"``).
+        TOML section name (``"vmc"``, ``"mcmc"``, ``"lrdmc-bra"``, ``"control"``).
     explicit_params : dict
         ``{param_name: value_or_None}``.  *None* entries are replaced
         by the corresponding default from ``cli_parameters``.
@@ -80,12 +80,12 @@ def get_default_parameters(job_type: str) -> dict:
     """Return a deep-copied default parameter dict for *job_type*.
 
     The returned dict has two sections: ``"control"`` and the job-type
-    section (e.g. ``"mcmc"``, ``"vmc"``, ``"lrdmc"``, ``"lrdmc-tau"``).
+    section (e.g. ``"mcmc"``, ``"vmc"``, ``"lrdmc-bra"``, ``"lrdmc-tau"``).
 
     Parameters
     ----------
     job_type : str
-        One of ``"mcmc"``, ``"vmc"``, ``"lrdmc"``, ``"lrdmc-tau"``.
+        One of ``"mcmc"``, ``"vmc"``, ``"lrdmc-bra"``, ``"lrdmc-tau"``.
 
     Returns
     -------
@@ -115,7 +115,7 @@ def generate_input_toml(
     Parameters
     ----------
     job_type : str
-        One of ``"mcmc"``, ``"vmc"``, ``"lrdmc"``, ``"lrdmc-tau"``.
+        One of ``"mcmc"``, ``"vmc"``, ``"lrdmc-bra"``, ``"lrdmc-tau"``.
     overrides : dict, optional
         Nested dict of values to override, e.g.
         ``{"control": {"number_of_walkers": 8}, "mcmc": {"num_mcmc_steps": 1000}}``.

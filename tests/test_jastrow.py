@@ -72,7 +72,7 @@ from jqmc.jastrow_factor import (  # noqa: E402
     compute_Jastrow_two_body,
 )
 from jqmc.molecular_orbital import MOs_data  # noqa: E402
-from jqmc.setting import (  # noqa: E402
+from jqmc._setting import (  # noqa: E402
     atol_auto_vs_numerical_deriv,
     atol_auto_vs_analytic_deriv,
     rtol_auto_vs_analytic_deriv,

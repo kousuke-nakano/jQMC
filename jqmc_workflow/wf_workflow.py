@@ -73,6 +73,11 @@ class WF_Workflow(Workflow):
         Neural-network Jastrow type (``-j-nn-type``), e.g. ``"schnet"``.
     j_nn_params : list[str], optional
         Extra NN Jastrow parameters (``-jp key=value``).
+    ao_conv_to : str, optional
+        Convert AOs after building the Hamiltonian (``--ao-conv-to``).
+        ``"cart"``  → convert to Cartesian AOs,
+        ``"sphe"`` → convert to spherical-harmonic AOs,
+        ``None``    → keep the original representation.
 
     Example
     -------
@@ -104,6 +109,7 @@ class WF_Workflow(Workflow):
         j3_basis_type: Optional[str] = None,
         j_nn_type: Optional[str] = None,
         j_nn_params: Optional[List[str]] = None,
+        ao_conv_to: Optional[str] = None,
     ):
         super().__init__()
         self.trexio_file = trexio_file
@@ -113,6 +119,10 @@ class WF_Workflow(Workflow):
         self.j3_basis_type = j3_basis_type
         self.j_nn_type = j_nn_type
         self.j_nn_params = j_nn_params or []
+
+        if ao_conv_to is not None and ao_conv_to not in ("cart", "sphe"):
+            raise ValueError(f"ao_conv_to must be None, 'cart', or 'sphe', got {ao_conv_to!r}")
+        self.ao_conv_to = ao_conv_to
 
     def _build_command(self) -> str:
         """Build the ``jqmc-tool trexio convert-to`` CLI command."""
@@ -129,6 +139,8 @@ class WF_Workflow(Workflow):
             cmd += ["-j-nn-type", str(self.j_nn_type)]
         for param in self.j_nn_params:
             cmd += ["-jp", str(param)]
+        if self.ao_conv_to is not None:
+            cmd += ["--ao-conv-to", str(self.ao_conv_to)]
 
         return shlex.join(cmd)
 

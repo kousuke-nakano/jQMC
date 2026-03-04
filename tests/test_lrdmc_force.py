@@ -56,7 +56,7 @@ from jqmc.jqmc_gfmc import (
     GFMC_n,  # noqa: E402
     GFMC_t,  # noqa: E402
 )
-from jqmc.setting import atol_debug_vs_production, rtol_debug_vs_production  # noqa: E402
+from jqmc._setting import atol_debug_vs_production, rtol_debug_vs_production  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import Wavefunction_data  # noqa: E402
 

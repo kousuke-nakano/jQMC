@@ -61,15 +61,15 @@ from .determinant import (
     compute_geminal_dn_one_column_elements,
     compute_geminal_up_one_row_elements,
 )
-from .diff_mask import DiffMask, apply_diff_mask
+from ._diff_mask import DiffMask, apply_diff_mask
 from .hamiltonians import (
     Hamiltonian_data,
     compute_local_energy,
     compute_local_energy_fast,
 )
 from .jastrow_factor import _compute_ratio_Jastrow_part_rank1_update, compute_Jastrow_part
-from .jqmc_utility import _generate_init_electron_configurations
-from .setting import (
+from ._jqmc_utility import _generate_init_electron_configurations
+from ._setting import (
     EPS_rcond_SVD,
     MCMC_MIN_BIN_BLOCKS,
     MCMC_MIN_WARMUP_STEPS,
@@ -77,7 +77,7 @@ from .setting import (
     min_S_diag_eps,
 )
 from .structure import _find_nearest_index_jnp
-from .swct import SWCT_data, evaluate_swct_domega, evaluate_swct_omega
+from .swct import evaluate_swct_domega, evaluate_swct_omega
 from .wavefunction import evaluate_ln_wavefunction, evaluate_ln_wavefunction_fast
 
 # create new logger level for development
@@ -238,9 +238,6 @@ class MCMC:
         logger.info("Printing out information in hamitonian_data instance.")
         self.__hamiltonian_data._logger_info()
         logger.info("")
-
-        # SWCT data
-        self.__swct_data = SWCT_data(structure=self.__hamiltonian_data.structure_data)
 
         # init_attributes
         self.hamiltonian_data = self.__hamiltonian_data
@@ -1027,22 +1024,22 @@ class MCMC:
             )
 
             _ = _jit_vmap_swct_omega(
-                self.__swct_data,
+                self.__hamiltonian_data.structure_data,
                 self.__latest_r_up_carts,
             )
 
             _ = _jit_vmap_swct_omega(
-                self.__swct_data,
+                self.__hamiltonian_data.structure_data,
                 self.__latest_r_dn_carts,
             )
 
             _ = _jit_vmap_swct_domega(
-                self.__swct_data,
+                self.__hamiltonian_data.structure_data,
                 self.__latest_r_up_carts,
             )
 
             _ = _jit_vmap_swct_domega(
-                self.__swct_data,
+                self.__hamiltonian_data.structure_data,
                 self.__latest_r_dn_carts,
             )
             _ = _jit_vmap_grad_ln_psi_params(
@@ -1228,19 +1225,19 @@ class MCMC:
                 self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
 
                 omega_up_step = _jit_vmap_swct_omega(
-                    self.__swct_data,
+                    self.__hamiltonian_data.structure_data,
                     self.__latest_r_up_carts,
                 )
                 omega_dn_step = _jit_vmap_swct_omega(
-                    self.__swct_data,
+                    self.__hamiltonian_data.structure_data,
                     self.__latest_r_dn_carts,
                 )
                 grad_omega_dr_up_step = _jit_vmap_swct_domega(
-                    self.__swct_data,
+                    self.__hamiltonian_data.structure_data,
                     self.__latest_r_up_carts,
                 )
                 grad_omega_dr_dn_step = _jit_vmap_swct_domega(
-                    self.__swct_data,
+                    self.__hamiltonian_data.structure_data,
                     self.__latest_r_dn_carts,
                 )
 
@@ -3897,7 +3894,7 @@ class _MCMC_debug:
         logger.info("")
 
         # SWCT data
-        self.__swct_data = SWCT_data(structure=self.__hamiltonian_data.structure_data)
+        # (SWCT functions now take structure_data directly; no wrapper needed.)
 
         # init_attributes
         self.__init_attributes()
@@ -4245,22 +4242,34 @@ class _MCMC_debug:
                 self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
 
                 omega_up = jnp.stack(
-                    [evaluate_swct_omega(self.__swct_data, self.__latest_r_up_carts[i]) for i in range(self.__num_walkers)]
+                    [
+                        evaluate_swct_omega(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts[i])
+                        for i in range(self.__num_walkers)
+                    ]
                 )
 
                 omega_dn = jnp.stack(
-                    [evaluate_swct_omega(self.__swct_data, self.__latest_r_dn_carts[i]) for i in range(self.__num_walkers)]
+                    [
+                        evaluate_swct_omega(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts[i])
+                        for i in range(self.__num_walkers)
+                    ]
                 )
 
                 self.__stored_omega_up.append(omega_up)
                 self.__stored_omega_dn.append(omega_dn)
 
                 grad_omega_dr_up = jnp.stack(
-                    [evaluate_swct_domega(self.__swct_data, self.__latest_r_up_carts[i]) for i in range(self.__num_walkers)]
+                    [
+                        evaluate_swct_domega(self.__hamiltonian_data.structure_data, self.__latest_r_up_carts[i])
+                        for i in range(self.__num_walkers)
+                    ]
                 )
 
                 grad_omega_dr_dn = jnp.stack(
-                    [evaluate_swct_domega(self.__swct_data, self.__latest_r_dn_carts[i]) for i in range(self.__num_walkers)]
+                    [
+                        evaluate_swct_domega(self.__hamiltonian_data.structure_data, self.__latest_r_dn_carts[i])
+                        for i in range(self.__num_walkers)
+                    ]
                 )
 
                 self.__stored_grad_omega_r_up.append(grad_omega_dr_up)

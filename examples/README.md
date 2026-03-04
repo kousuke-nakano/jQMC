@@ -57,14 +57,9 @@ Benchmarking of MPI/Vectorization on GPU machines, i.e., how to choose the most 
 
 ### jqmc-workflow-example03
 
-Weak scalings of LRDMC using the water molecule.
+Binding energy of water-methane dimer, one of the validation tests for ab initio DMC implementation.
 
 
 ### jqmc-workflow-example04
 
 MCMC and HF energies of several molecules, for validation of the MCMC implementation of jQMC, with spherical or cartesian GTOs.
-
-
-### jqmc-workflow-example05
-
-Binding energy of water-methane dimer, one of the validation tests for ab initio DMC implementation.

@@ -69,7 +69,7 @@ from jqmc.determinant import (  # noqa: E402
     compute_ln_det_geminal_all_elements_fast,
 )
 from jqmc.molecular_orbital import MOs_data  # noqa: E402
-from jqmc.setting import (  # noqa: E402
+from jqmc._setting import (  # noqa: E402
     atol_auto_vs_analytic_deriv,
     atol_auto_vs_numerical_deriv,
     atol_consistency,

@@ -51,8 +51,8 @@ from jax import hessian, jacrev, jit, vmap
 from jax import typing as jnpt
 from numpy import linalg as LA
 
-from .jqmc_utility import _spherical_to_cart_matrix
-from .setting import EPS_stabilizing_jax_AO_cart_deriv, atol_consistency, rtol_consistency
+from ._jqmc_utility import _spherical_to_cart_matrix
+from ._setting import EPS_stabilizing_jax_AO_cart_deriv, atol_consistency, rtol_consistency
 from .structure import Structure_data
 
 # set logger

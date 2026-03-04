@@ -44,7 +44,7 @@ cli_parameters = {
         "verbosity": "low",
     },
     "control_comments": {
-        "job_type": 'Specify the job type. "mcmc", "vmc", "lrdmc", or "lrdmc-tau".',
+        "job_type": 'Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".',
         "mcmc_seed": "Random seed for MCMC",
         "number_of_walkers": "Number of walkers per MPI process",
         "max_time": "Maximum time in sec.",
@@ -126,7 +126,7 @@ cli_parameters = {
             "directly to optax (e.g., {method = 'adam', learning_rate = 1e-3})."
         ),
     },
-    "lrdmc": {
+    "lrdmc-bra": {
         "num_mcmc_steps": None,
         "num_mcmc_per_measurement": 40,
         "alat": 0.30,
@@ -138,7 +138,7 @@ cli_parameters = {
         "atomic_force": False,
         "epsilon_PW": 0.0,
     },
-    "lrdmc_comments": {
+    "lrdmc-bra_comments": {
         "num_mcmc_steps": "Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.",
         "num_mcmc_per_measurement": "Number of GFMC projections per measurement. Every local energy and other observeables are measured every this projection.",
         "alat": "The lattice discretization parameter (i.e. grid size) used for discretized the Hamiltonian and potential. The lattice spacing is alat * a0, where a0 is the Bohr radius.",

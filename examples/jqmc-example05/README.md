@@ -72,7 +72,7 @@ You can generate a template file for a VMC optimization using `jqmc-tool`. Pleas
 
 ```toml:vmc.toml
 [control]
-job_type = "vmc" # Specify the job type. "mcmc", "vmc", "lrdmc", or "lrdmc-tau".
+job_type = "vmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
@@ -158,7 +158,7 @@ Using the optimized wavefunction, compute the energy and atomic forces via MCMC.
 
 ```toml:mcmc.toml
 [control]
-job_type = "mcmc" # Specify the job type. "mcmc", "vmc", "lrdmc", or "lrdmc-tau".
+job_type = "mcmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
@@ -216,7 +216,7 @@ Using the same optimized wavefunction, compute the energy and atomic forces via 
 
 ```toml:lrdmc.toml
 [control]
-job_type = "lrdmc" # Specify the job type. "mcmc", "vmc", "lrdmc", or "lrdmc-tau".
+job_type = "lrdmc-bra" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
@@ -225,7 +225,7 @@ restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this 
 hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 
-[lrdmc]
+[lrdmc-bra]
 num_mcmc_steps = 10000 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
 num_mcmc_per_measurement = 30 # Number of GFMC projections per measurement. Every local energy and other observeables are measured every this projection.
 alat = 0.10 # The lattice discretization parameter (i.e. grid size) used for discretized the Hamiltonian and potential. The lattice spacing is alat * a0, where a0 is the Bohr radius.
@@ -285,7 +285,7 @@ Generate a template file for VMC optimization. Please directly edit `vmc.toml` i
 
 ```toml:vmc.toml
 [control]
-job_type = "vmc" # Specify the job type. "mcmc", "vmc", "lrdmc", or "lrdmc-tau".
+job_type = "vmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
@@ -366,7 +366,7 @@ Using the optimized JAGP wavefunction, compute the energy and atomic forces via 
 
 ```toml:mcmc.toml
 [control]
-job_type = "mcmc" # Specify the job type. "mcmc", "vmc", "lrdmc", or "lrdmc-tau".
+job_type = "mcmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
@@ -421,7 +421,7 @@ Using the same optimized JAGP wavefunction, compute the energy and atomic forces
 
 ```toml:lrdmc.toml
 [control]
-job_type = "lrdmc" # Specify the job type. "mcmc", "vmc", "lrdmc", or "lrdmc-tau".
+job_type = "lrdmc-bra" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
@@ -430,7 +430,7 @@ restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this 
 hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 
-[lrdmc]
+[lrdmc-bra]
 num_mcmc_steps = 10000 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
 num_mcmc_per_measurement = 30 # Number of GFMC projections per measurement. Every local energy and other observeables are measured every this projection.
 alat = 0.10 # The lattice discretization parameter (i.e. grid size) used for discretized the Hamiltonian and potential. The lattice spacing is alat * a0, where a0 is the Bohr radius.

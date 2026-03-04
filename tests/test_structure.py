@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from jqmc.setting import atol_debug_vs_production, rtol_debug_vs_production
+from jqmc._setting import atol_debug_vs_production, rtol_debug_vs_production
 from jqmc.structure import (
     Structure_data,
     _find_nearest_index_jnp,

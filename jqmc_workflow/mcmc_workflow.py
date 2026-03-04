@@ -165,7 +165,7 @@ class MCMC_Workflow(Workflow):
     See Also
     --------
     VMC_Workflow : Wavefunction optimisation (job_type=vmc).
-    LRDMC_Workflow : Diffusion Monte Carlo (job_type=lrdmc).
+    LRDMC_Workflow : Diffusion Monte Carlo (job_type=lrdmc-bra / lrdmc-tau).
     """
 
     def __init__(
@@ -194,7 +194,7 @@ class MCMC_Workflow(Workflow):
         target_error: float = 0.001,
         pilot_steps: int = 100,
         pilot_queue_label: Optional[str] = None,
-        max_continuation: int = 5,
+        max_continuation: int = 1,
     ):
         super().__init__()
         self.server_machine_name = server_machine_name
@@ -551,6 +551,11 @@ class MCMC_Workflow(Workflow):
                     self._generate_input(estimated_steps, input_i)
                 else:
                     restart_chk = self._find_restart_chk()
+                    if restart_chk is None:
+                        raise RuntimeError(
+                            f"No restart checkpoint found for continuation run {i}. "
+                            f"Expected .rchk or .chk file in {os.getcwd()}"
+                        )
                     self._generate_input(
                         estimated_steps,
                         input_i,
@@ -562,6 +567,10 @@ class MCMC_Workflow(Workflow):
                 logger.info(f"  {input_i}: {estimated_steps} steps")
 
             restart_chk = self._find_restart_chk() if i > 1 else None
+            if i > 1 and restart_chk is None:
+                raise RuntimeError(
+                    f"No restart checkpoint found for continuation run {i}. Expected .rchk or .chk file in {os.getcwd()}"
+                )
             extra_from = [restart_chk] if restart_chk else []
 
             await self._submit_and_wait(

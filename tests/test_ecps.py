@@ -71,7 +71,7 @@ from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_three_body_data,
     Jastrow_two_body_data,
 )
-from jqmc.setting import (  # noqa: E402
+from jqmc._setting import (  # noqa: E402
     atol_debug_vs_production,
     rtol_debug_vs_production,
 )

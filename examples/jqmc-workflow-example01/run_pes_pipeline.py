@@ -30,14 +30,16 @@ from jqmc_workflow import (
 
 # ── Configuration ─────────────────────────────────────────────────
 SERVER = "genkai"
-QUEUE_LABEL = "cores-120-mpi-120-omp-1-15m"
+QUEUE_LABEL = "cores-120-mpi-120-omp-1-1h"
 
-NUM_OPT_STEPS = 30  # VMC optimization steps
+NUM_OPT_STEPS = 50  # VMC optimization steps
+Dt = 1.2  # MCMC hopping distance
 ALAT = 0.2  # LRDMC lattice spacing
-TARGET_ERROR = 1e-5  # Target statistical error (Ha)
+TARGET_VMC_ERROR = 5e-4  # Target statistical error (Ha)
+TARGET_MCMC_ERROR = 5e-5  # Target statistical error (Ha)
+TARGET_LRDMC_ERROR = 5e-5  # Target statistical error (Ha)
 
 R_VALUES = [
-    0.35,
     0.40,
     0.45,
     0.50,
@@ -58,7 +60,6 @@ R_VALUES = [
     1.30,
     1.40,
 ]
-
 
 # ── pySCF script template ────────────────────────────────────────
 PYSCF_TEMPLATE = '''\
@@ -210,7 +211,7 @@ def build_pipeline() -> tuple[list[Container], dict[float, Container], dict[floa
             input_files=[os.path.join(r_dir(R), "00_pyscf", trexio_file)],
             workflow=WF_Workflow(
                 trexio_file=trexio_file,
-                j1_parameter=1.0,
+                j1_parameter=1.5,
                 j2_parameter=1.0,
                 j3_basis_type="ao-small",
             ),
@@ -225,13 +226,19 @@ def build_pipeline() -> tuple[list[Container], dict[float, Container], dict[floa
                 server_machine_name=SERVER,
                 queue_label=QUEUE_LABEL,
                 jobname=f"vmc-H2-{R:.2f}",
+                Dt=Dt,
                 num_opt_steps=NUM_OPT_STEPS,
+                pilot_mcmc_steps=50,
+                pilot_vmc_steps=20,
                 opt_J1_param=True,
                 opt_J2_param=True,
                 opt_J3_param=True,
                 opt_lambda_param=True,
                 opt_with_projected_MOs=True,
-                target_error=TARGET_ERROR,
+                target_error=TARGET_VMC_ERROR,
+                optimizer_kwargs={"method": "sr", "delta": 0.150, "epsilon": 0.100, "adaptive_learning_rate": True},
+                max_time=3000,
+                poll_interval=120,
             ),
         )
 
@@ -247,11 +254,14 @@ def build_pipeline() -> tuple[list[Container], dict[float, Container], dict[floa
                 server_machine_name=SERVER,
                 queue_label=QUEUE_LABEL,
                 jobname=f"mcmc-H2-{R:.2f}",
-                target_error=TARGET_ERROR,
+                Dt=Dt,
+                target_error=TARGET_MCMC_ERROR,
                 atomic_force=True,
                 num_mcmc_warmup_steps=50,
                 num_mcmc_bin_blocks=50,
                 pilot_steps=200,
+                max_time=3000,
+                poll_interval=120,
             ),
         )
 
@@ -268,12 +278,14 @@ def build_pipeline() -> tuple[list[Container], dict[float, Container], dict[floa
                 queue_label=QUEUE_LABEL,
                 jobname=f"lrdmc-H2-{R:.2f}",
                 alat=ALAT,
-                target_error=TARGET_ERROR,
+                target_error=TARGET_LRDMC_ERROR,
                 atomic_force=True,
                 num_gfmc_warmup_steps=50,
                 num_gfmc_bin_blocks=50,
                 num_gfmc_collect_steps=20,
                 pilot_steps=200,
+                max_time=3000,
+                poll_interval=120,
             ),
         )
 

@@ -1,5 +1,5 @@
 [control]
-  job_type = 'lrdmc'
+  job_type = 'lrdmc-bra'
   mcmc_seed = 34467
   number_of_walkers = 300
   max_time = 10400
@@ -8,7 +8,7 @@
   hamiltonian_h5 = '../hamiltonian_data.h5'
   verbosity = 'low'
 
-[lrdmc]
+[lrdmc-bra]
   num_mcmc_steps  = 40000
   num_mcmc_per_measurement = 30
   alat = 0.30

@@ -63,7 +63,7 @@ from .atomic_orbital import (
     compute_AOs_laplacian,
 )
 from .molecular_orbital import MOs_data, compute_MOs, compute_MOs_grad, compute_MOs_laplacian
-from .setting import atol_consistency
+from ._setting import atol_consistency
 from .structure import Structure_data
 
 if TYPE_CHECKING:  # typing-only import to avoid circular dependency

@@ -4,7 +4,7 @@
 
 ## Command-line `jqmc` usage
 
-You can run `jqmc` tasks (`mcmc`, `vmc`, `lrdmc`, and `lrdmc-tau`) from the command line:
+You can run `jqmc` tasks (`mcmc`, `vmc`, `lrdmc-bra`, and `lrdmc-tau`) from the command line:
 
 ```bash
 # Serial run
@@ -27,7 +27,7 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 
 | Key                 |                  Default | Description                                                                                                                |
 | ------------------- | -----------------------: | -------------------------------------------------------------------------------------------------------------------------- |
-| `job_type`          |             **required** | Select the job: `"mcmc"`, `"vmc"`, `"lrdmc"`, or `"lrdmc-tau"`.                                                            |
+| `job_type`          |             **required** | Select the job: `"mcmc"`, `"vmc"`, `"lrdmc-bra"`, or `"lrdmc-tau"`.                                                            |
 | `mcmc_seed`         |                  `34456` | Random seed for MCMC/GFMC chain.                                                                                           |
 | `number_of_walkers` |                      `4` | Number of walkers **per MPI process**.                                                                                     |
 | `max_time`          |                  `86400` | Wall time limit in seconds.                                                                                                |
@@ -73,7 +73,7 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 
 ---
 
-### `lrdmc`
+### `lrdmc-bra`
 
 | Key                        |      Default | Description                                                                                                                            |
 | -------------------------- | -----------: | -------------------------------------------------------------------------------------------------------------------------------------- |

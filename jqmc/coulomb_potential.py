@@ -61,9 +61,9 @@ from .determinant import (
     compute_det_geminal_all_elements,
     compute_geminal_all_elements,
 )
-from .function_collections import _legendre_tablated as jnp_legendre_tablated
+from ._function_collections import _legendre_tablated as jnp_legendre_tablated
 from .jastrow_factor import _compute_ratio_Jastrow_part_split_spin, compute_Jastrow_part
-from .setting import NN_default, Nv_default
+from ._setting import NN_default, Nv_default
 from .structure import (
     Structure_data,
     _find_nearest_nucleus_indices_jnp,

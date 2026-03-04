@@ -54,7 +54,7 @@ from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_two_body_data,
 )
 from jqmc.jqmc_gfmc import GFMC_t, _GFMC_t_debug  # noqa: E402
-from jqmc.setting import atol_debug_vs_production, rtol_debug_vs_production  # noqa: E402
+from jqmc._setting import atol_debug_vs_production, rtol_debug_vs_production  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import Wavefunction_data  # noqa: E402
 

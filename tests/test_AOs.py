@@ -68,7 +68,7 @@ from jqmc.atomic_orbital import (  # noqa: E402
     compute_AOs_laplacian,
     compute_overlap_matrix,
 )
-from jqmc.setting import (  # noqa: E402
+from jqmc._setting import (  # noqa: E402
     atol_auto_vs_analytic_deriv,
     rtol_auto_vs_analytic_deriv,
     atol_auto_vs_numerical_deriv,

@@ -49,12 +49,12 @@ import subprocess
 from logging import getLogger
 from typing import List, Optional
 
-from .lrdmc_workflow import LRDMC_Workflow
-from .setting import (
+from ._setting import (
     GFMC_MIN_BIN_BLOCKS,
     GFMC_MIN_COLLECT_STEPS,
     GFMC_MIN_WARMUP_STEPS,
 )
+from .lrdmc_workflow import LRDMC_Workflow
 from .workflow import Container, Workflow
 
 logger = getLogger("jqmc-workflow").getChild(__name__)
@@ -71,8 +71,15 @@ class LRDMC_Ext_Workflow(Workflow):
     Each ``alat`` run is wrapped in its own :class:`Container`
     and all alat values are executed in parallel.  Every ``alat``
     independently calibrates its own ``num_mcmc_per_measurement``
-    (when ``target_survived_walkers_ratio`` is set), runs an
-    error-bar pilot, and then runs production.
+    (when ``target_survived_walkers_ratio`` is set in GFMC_n mode),
+    runs an error-bar pilot, and then runs production.
+
+    **Mode selection** follows the same rules as
+    :class:`LRDMC_Workflow`:
+
+    * **GFMC_t** (default) — set *time_projection_tau* (default 0.10).
+    * **GFMC_n** — set *target_survived_walkers_ratio* or
+      *num_mcmc_per_measurement*.
 
     Parameters
     ----------
@@ -103,20 +110,25 @@ class LRDMC_Ext_Workflow(Workflow):
         Warmup steps to discard.
     num_gfmc_collect_steps : int
         Weight-collection steps.
+    time_projection_tau : float, optional
+        Imaginary time step for GFMC_t mode (default 0.10).  Ignored
+        when *target_survived_walkers_ratio* or
+        *num_mcmc_per_measurement* is set.
     target_survived_walkers_ratio : float, optional
-        Target survived-walkers ratio (default 0.97).  Each ``alat``
+        Target survived-walkers ratio (default *None*).  Each ``alat``
         independently runs a calibration pilot (``_pilot_a``) to
         find its own optimal ``num_mcmc_per_measurement``.
         Set to *None* to disable auto-calibration (requires explicit
-        *num_mcmc_per_measurement*).
+        *num_mcmc_per_measurement*).  Activates GFMC_n mode.
     num_mcmc_per_measurement : int, optional
         GFMC projections per measurement.  When given explicitly,
         automatic calibration is disabled and this value is used
-        for every ``alat``.
+        for every ``alat``.  Activates GFMC_n mode.
     non_local_move : str, optional
         Non-local move treatment.  Default from ``jqmc_miscs``.
     E_scf : float, optional
-        Initial energy guess for the GFMC shift.  Default from ``jqmc_miscs``.
+        Initial energy guess for the GFMC shift (GFMC_n only).
+        Default from ``jqmc_miscs``.
     atomic_force : bool, optional
         Compute atomic forces.  Default from ``jqmc_miscs``.
     epsilon_PW : float, optional
@@ -139,7 +151,7 @@ class LRDMC_Ext_Workflow(Workflow):
 
     Examples
     --------
-    Standalone launch with three lattice spacings::
+    GFMC_t mode (default)::
 
         wf = LRDMC_Ext_Workflow(
             server_machine_name="cluster",
@@ -150,6 +162,16 @@ class LRDMC_Ext_Workflow(Workflow):
         status, files, values = wf.launch()
         print(values["extrapolated_energy"],
               values["extrapolated_energy_error"])
+
+    GFMC_n mode with calibration::
+
+        wf = LRDMC_Ext_Workflow(
+            server_machine_name="cluster",
+            alat_list=[0.5, 0.4, 0.3],
+            target_survived_walkers_ratio=0.97,
+            target_error=0.001,
+            number_of_walkers=8,
+        )
 
     As part of a :class:`Launcher` pipeline::
 
@@ -190,8 +212,9 @@ class LRDMC_Ext_Workflow(Workflow):
         num_gfmc_bin_blocks: int = 5,
         num_gfmc_warmup_steps: int = 0,
         num_gfmc_collect_steps: int = 5,
-        # -- [lrdmc] section parameters --
-        target_survived_walkers_ratio: Optional[float] = 0.97,
+        # -- [lrdmc-bra / lrdmc-tau] section parameters --
+        time_projection_tau: Optional[float] = 0.10,
+        target_survived_walkers_ratio: Optional[float] = None,
         num_mcmc_per_measurement: Optional[int] = None,
         non_local_move: Optional[str] = None,
         E_scf: Optional[float] = None,
@@ -230,7 +253,8 @@ class LRDMC_Ext_Workflow(Workflow):
         self.num_gfmc_bin_blocks = num_gfmc_bin_blocks
         self.num_gfmc_warmup_steps = num_gfmc_warmup_steps
         self.num_gfmc_collect_steps = num_gfmc_collect_steps
-        # [lrdmc] section
+        # [lrdmc-bra / lrdmc-tau] section
+        self.time_projection_tau = time_projection_tau
         self.target_survived_walkers_ratio = target_survived_walkers_ratio
         self.num_mcmc_per_measurement = num_mcmc_per_measurement
         self.non_local_move = non_local_move
@@ -273,6 +297,7 @@ class LRDMC_Ext_Workflow(Workflow):
             num_gfmc_bin_blocks=self.num_gfmc_bin_blocks,
             num_gfmc_warmup_steps=self.num_gfmc_warmup_steps,
             num_gfmc_collect_steps=self.num_gfmc_collect_steps,
+            time_projection_tau=self.time_projection_tau,
             target_survived_walkers_ratio=self.target_survived_walkers_ratio,
             num_mcmc_per_measurement=self.num_mcmc_per_measurement,
             non_local_move=self.non_local_move,

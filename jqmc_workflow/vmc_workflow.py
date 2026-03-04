@@ -146,6 +146,10 @@ class VMC_Workflow(Workflow):
         Use a shorter/smaller queue for the pilot to save resources.
     max_continuation : int
         Maximum number of production runs after the pilot.
+    target_snr : float
+        Target signal-to-noise ratio ``max(|f|/|std f|)`` for force
+        convergence.  The workflow continues until the last
+        optimization step's S/N drops to or below this threshold.
 
     Examples
     --------
@@ -186,7 +190,7 @@ class VMC_Workflow(Workflow):
     See Also
     --------
     MCMC_Workflow : VMC production sampling (job_type=mcmc).
-    LRDMC_Workflow : Diffusion Monte Carlo (job_type=lrdmc).
+    LRDMC_Workflow : Diffusion Monte Carlo (job_type=lrdmc-bra / lrdmc-tau).
     WF_Workflow : TREXIO → hamiltonian_data conversion.
     """
 
@@ -225,7 +229,8 @@ class VMC_Workflow(Workflow):
         pilot_mcmc_steps: int = 50,
         pilot_vmc_steps: int = 5,
         pilot_queue_label: Optional[str] = None,
-        max_continuation: int = 5,
+        max_continuation: int = 1,
+        target_snr: float = 4.5,
     ):
         super().__init__()
         self.server_machine_name = server_machine_name
@@ -262,6 +267,7 @@ class VMC_Workflow(Workflow):
         self.pilot_vmc_steps = pilot_vmc_steps
         self.pilot_queue_label = pilot_queue_label or queue_label
         self.max_continuation = max_continuation
+        self.target_snr = target_snr
 
     # ── Input generation ──────────────────────────────────────────
 
@@ -338,6 +344,7 @@ class VMC_Workflow(Workflow):
         self,
         input_file,
         output_file,
+        extra_from_objects=None,
         fetch_from_objects=None,
         queue_label=None,
     ):
@@ -356,12 +363,14 @@ class VMC_Workflow(Workflow):
             Path to the input TOML file.
         output_file : str
             Name of stdout capture file.
+        extra_from_objects : list, optional
+            Additional files to upload with the job (e.g. checkpoint).
         fetch_from_objects : list, optional
             Glob patterns for files to fetch.  Defaults to
-            ``["*.h5", "*.chk", output_file]``.
+            ``["*.h5", "*.chk", "*.rchk", output_file]``.
         """
         if fetch_from_objects is None:
-            fetch_from_objects = ["*.h5", "*.chk", output_file]
+            fetch_from_objects = ["*.h5", "*.chk", "*.rchk", output_file]
         cwd = os.path.abspath(os.getcwd())
 
         # ── Restart detection via job history ─────────────────────
@@ -400,6 +409,8 @@ class VMC_Workflow(Workflow):
         job.generate_script()
 
         from_objects = [input_file, self.hamiltonian_file, "submit.sh"]
+        if extra_from_objects:
+            from_objects.extend(extra_from_objects)
         submitted, job_number = job.job_submit(from_objects=from_objects)
         if not submitted:
             raise RuntimeError("Job submission failed (queue limit or error).")
@@ -578,14 +589,6 @@ class VMC_Workflow(Workflow):
             input_i = suffixed_name(self.input_file, i)
             output_i = suffixed_name(self.output_file, i)
 
-            # Check if optimization already completed before running
-            opt_files = sorted(glob.glob("hamiltonian_data_opt_step_*.h5"))
-            if len(opt_files) >= self.num_opt_steps:
-                logger.info(
-                    f"Optimization already completed ({len(opt_files)} opt step files found). Skipping production run {i}."
-                )
-                break
-
             # Skip input generation if this step already has a job record
             recorded = get_job(_wd, input_i)
             if recorded.get("status") in ("submitted", "completed", "fetched"):
@@ -604,6 +607,11 @@ class VMC_Workflow(Workflow):
                     )
                 else:
                     restart_chk = self._find_restart_chk()
+                    if restart_chk is None:
+                        raise RuntimeError(
+                            f"No restart checkpoint found for continuation run {i}. "
+                            f"Expected .rchk or .chk file in {os.getcwd()}"
+                        )
                     self._generate_input(
                         estimated_mcmc_steps,
                         self.num_opt_steps,
@@ -615,27 +623,18 @@ class VMC_Workflow(Workflow):
                 logger.info(f"-- VMC Phase 1: Production run {i}/{self.max_continuation} " + "-" * 10)
                 logger.info(f"  {input_i}: {self.num_opt_steps} opt steps x {estimated_mcmc_steps} MCMC steps/step")
 
-            await self._submit_and_wait(input_i, output_i)
+            restart_chk = self._find_restart_chk() if i > 1 else None
+            if i > 1 and restart_chk is None:
+                raise RuntimeError(
+                    f"No restart checkpoint found for continuation run {i}. Expected .rchk or .chk file in {os.getcwd()}"
+                )
+            extra_from = [restart_chk] if restart_chk else []
+
+            await self._submit_and_wait(input_i, output_i, extra_from_objects=extra_from)
             os.chdir(_wd)
             last_run = i
 
-            # Check if optimization completed
-            opt_files = sorted(glob.glob("hamiltonian_data_opt_step_*.h5"))
-            if len(opt_files) >= self.num_opt_steps:
-                logger.info(f"  VMC optimization completed (run {i}/{self.max_continuation})")
-                break
-            elif i < self.max_continuation:
-                logger.info(
-                    f"  VMC optimization incomplete "
-                    f"({len(opt_files)}/{self.num_opt_steps} steps) -- "
-                    f"continuing ({i}/{self.max_continuation})"
-                )
-            else:
-                logger.warning(
-                    f"  VMC optimization incomplete "
-                    f"({len(opt_files)}/{self.num_opt_steps} steps) -- "
-                    f"max_continuation ({self.max_continuation}) reached"
-                )
+            logger.info(f"  VMC production run {i}/{self.max_continuation} completed.")
 
         # ── Collect outputs ───────────────────────────────────────
         opt_files = sorted(glob.glob("hamiltonian_data_opt_step_*.h5"))
@@ -657,6 +656,34 @@ class VMC_Workflow(Workflow):
         last_output = suffixed_name(self.output_file, last_run)
         self._parse_output(last_output)
 
+        # ── Final convergence check (signal-to-noise) ─────────────
+        # Find S/N from the latest available output
+        final_snr = None
+        for j in range(last_run, 0, -1):
+            out_j = suffixed_name(self.output_file, j)
+            final_snr = self._parse_last_snr(out_j)
+            if final_snr is not None:
+                break
+
+        if final_snr is not None:
+            self.output_values["signal_to_noise"] = final_snr
+            if final_snr <= self.target_snr:
+                logger.info(f"  VMC converged: signal-to-noise ({final_snr:.3f}) <= target ({self.target_snr:.3f})")
+            else:
+                logger.error(
+                    f"  VMC NOT converged: signal-to-noise ({final_snr:.3f}) "
+                    f"> target ({self.target_snr:.3f}) after "
+                    f"{self.max_continuation} continuation run(s)"
+                )
+                self.status = "failed"
+                raise RuntimeError(
+                    f"VMC optimization did not converge: "
+                    f"signal-to-noise ({final_snr:.3f}) > target ({self.target_snr:.3f}) "
+                    f"after {self.max_continuation} continuation run(s)."
+                )
+        else:
+            logger.warning("  Could not parse signal-to-noise from any production output. Assuming success.")
+
         self.status = "success"
         return self.status, self.output_files, self.output_values
 
@@ -664,7 +691,7 @@ class VMC_Workflow(Workflow):
 
     def _find_restart_chk(self) -> Optional[str]:
         """Locate a VMC restart checkpoint file."""
-        for pattern in ["vmc.chk", "*.chk"]:
+        for pattern in ["vmc.rchk", "*.rchk", "vmc.chk", "*.chk"]:
             matches = sorted(glob.glob(pattern))
             if matches:
                 return matches[-1]
@@ -694,6 +721,34 @@ class VMC_Workflow(Workflow):
             self.output_values["energy"] = float(last_match.group(1))
             self.output_values["energy_error"] = float(last_match.group(2))
             logger.info(f"  VMC energy: {self.output_values['energy']} +- {self.output_values['energy_error']} Ha")
+
+    @staticmethod
+    def _parse_last_snr(output_file):
+        """Parse the last signal-to-noise ratio from a VMC output file.
+
+        Returns
+        -------
+        float or None
+            The max signal-to-noise ratio ``max(|f|/|std f|)``,
+            or ``None`` if not found.
+        """
+        if not os.path.isfile(output_file):
+            return None
+
+        snr_pattern = re.compile(r"Max of signal-to-noise of f = max\(\|f\|/\|std f\|\) = ([-+]?\d+(?:\.\d+)?)")
+        last_match = None
+        try:
+            with open(output_file, "r") as f:
+                for line in f:
+                    m = snr_pattern.search(line)
+                    if m:
+                        last_match = m
+        except Exception:
+            return None
+
+        if last_match:
+            return float(last_match.group(1))
+        return None
 
     @staticmethod
     def _parse_last_opt_energy(output_file):

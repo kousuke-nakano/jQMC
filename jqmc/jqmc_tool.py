@@ -63,7 +63,7 @@ from .jastrow_factor import (
     Jastrow_two_body_data,
 )
 from .jqmc_miscs import cli_parameters
-from .setting import (
+from ._setting import (
     GFMC_MIN_BIN_BLOCKS,
     GFMC_MIN_COLLECT_STEPS,
     GFMC_MIN_WARMUP_STEPS,
@@ -236,6 +236,11 @@ def trexio_convert_to(
         "-jp",
         "--jastrow-nn-param",
         help=_get_nn_jastrow_help_msg(),
+    ),
+    ao_conv_to: str = typer.Option(
+        None,
+        "--ao-conv-to",
+        help="Convert AOs after building the Hamiltonian: 'cart' (Cartesian) or 'sphe' (spherical). Default: keep original.",
     ),
 ):
     """Convert a TREXIO file to hamiltonian_data."""
@@ -456,7 +461,18 @@ def trexio_convert_to(
         jastrow_nn_data=nn_jastrow_data,
     )
 
-    # geminal_data = geminal_mo_data
+    # Optional AO conversion (cart / sphe)
+    if ao_conv_to is not None:
+        ao_conv_to = ao_conv_to.lower()
+        if ao_conv_to == "cart":
+            jastrow_data = jastrow_data.to_cartesian()
+            geminal_data = geminal_data.to_cartesian()
+        elif ao_conv_to == "sphe":
+            jastrow_data = jastrow_data.to_spherical()
+            geminal_data = geminal_data.to_spherical()
+        else:
+            raise ValueError(f"Invalid ao_conv_to = {ao_conv_to!r}. Must be 'cart', 'sphe', or None.")
+
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_data)
 
     hamiltonian_data = Hamiltonian_data(
@@ -1504,18 +1520,18 @@ def lrdmc_generate_input(
                 control_table[key] = value
             if not exclude_comment and not isinstance(value, bool):
                 control_table[key].comment(cli_parameters["control_comments"][key])
-        control_table["job_type"] = "lrdmc"
+        control_table["job_type"] = "lrdmc-bra"
         doc.add("control", control_table)
 
         lrdmc_table = tomlkit.table()
-        for key, value in cli_parameters["lrdmc"].items():
+        for key, value in cli_parameters["lrdmc-bra"].items():
             if value is None:
                 lrdmc_table[key] = str(value)
             else:
                 lrdmc_table[key] = value
             if not exclude_comment and not isinstance(value, bool):
-                lrdmc_table[key].comment(cli_parameters["lrdmc_comments"][key])
-        doc.add("lrdmc", lrdmc_table)
+                lrdmc_table[key].comment(cli_parameters["lrdmc-bra_comments"][key])
+        doc.add("lrdmc-bra", lrdmc_table)
 
         with open(filename, "w") as f:
             f.write(tomlkit.dumps(doc))
