@@ -133,8 +133,49 @@ def read_state(directory: str) -> dict:
     return state
 
 
+def _check_normal_termination(directory: str, jobs: list) -> list[str]:
+    """Check fetched output files for the ``Program ends`` marker.
+
+    Returns a list of output-file names that exist on disk but do **not**
+    contain the ``Program ends`` line — a strong signal that the
+    computation was killed (e.g. wall-time expiration) before normal
+    termination.
+
+    Files that are absent, unreadable, or binary are silently skipped.
+    """
+    abnormal: list[str] = []
+    for job in jobs:
+        output_file = job.get("output_file", "")
+        if not output_file:
+            continue
+        filepath = os.path.join(directory, output_file)
+        if not os.path.isfile(filepath):
+            continue  # not fetched yet — nothing to check
+        try:
+            with open(filepath, "r", errors="replace") as f:
+                # Read only the tail (last 8 KiB) for efficiency;
+                # "Program ends ..." is always the last log line.
+                f.seek(0, 2)
+                size = f.tell()
+                f.seek(max(0, size - 8192))
+                tail = f.read()
+            if "Program ends" not in tail:
+                abnormal.append(output_file)
+        except OSError:
+            continue  # unreadable — skip
+    return abnormal
+
+
 def update_status(directory: str, status: str, **extra_fields):
-    """Update the status field (and optional extra fields) in workflow_state.toml."""
+    """Update the status field (and optional extra fields) in workflow_state.toml.
+
+    When *status* is ``"completed"``, every fetched output file listed in
+    the ``[[jobs]]`` table is checked for the ``Program ends`` footer.  If
+    any output file exists on disk but lacks this marker the status is
+    automatically downgraded to ``"failed"`` and an ``error`` field is
+    recorded, because the absence almost certainly indicates abnormal
+    termination (e.g. wall-time expiration on a supercomputer).
+    """
     if status not in VALID_STATUSES:
         raise ValueError(f"Invalid status '{status}'. Must be one of {VALID_STATUSES}")
 
@@ -142,6 +183,16 @@ def update_status(directory: str, status: str, **extra_fields):
     if not state:
         logger.warning(f"No workflow_state.toml in {directory}; creating minimal one.")
         state = {"workflow": {}, "jobs": [], "result": {}}
+
+    # ── Abnormal-termination guard ────────────────────────────────
+    if status == "completed":
+        abnormal = _check_normal_termination(directory, state.get("jobs", []))
+        if abnormal:
+            files_str = ", ".join(abnormal)
+            error_msg = f"Abnormal termination detected: 'Program ends' marker missing in output file(s): {files_str}"
+            logger.error(error_msg)
+            status = "failed"
+            extra_fields.setdefault("error", error_msg)
 
     state.setdefault("workflow", {})
     state["workflow"]["status"] = status
@@ -272,6 +323,67 @@ def get_estimation(directory: str) -> dict:
     """
     state = read_state(directory)
     return state.get("estimation", {})
+
+
+def get_all_workflow_statuses(base_dir: str) -> list:
+    """Recursively find all ``workflow_state.toml`` files under *base_dir*.
+
+    Returns a list of dicts, each containing:
+
+    - ``directory`` – absolute path to the workflow directory
+    - ``label``     – workflow label (from ``[workflow]``)
+    - ``type``      – workflow type (e.g. ``"vmc"``)
+    - ``status``    – current workflow status
+
+    Directories without a ``workflow_state.toml`` are silently skipped.
+    """
+    results = []
+    base_dir = os.path.abspath(base_dir)
+    for dirpath, dirnames, filenames in os.walk(base_dir):
+        # Skip pilot-run subdirectories — they have workflow_state.toml
+        # but are internal bookkeeping, not user-facing workflows.
+        dirnames[:] = [d for d in dirnames if not d.startswith("_pilot")]
+        if STATE_FILENAME in filenames:
+            state = read_state(dirpath)
+            wf = state.get("workflow", {})
+            results.append(
+                {
+                    "directory": dirpath,
+                    "label": wf.get("label", ""),
+                    "type": wf.get("type", ""),
+                    "status": wf.get("status", "unknown"),
+                }
+            )
+    # Sort by directory for deterministic output
+    results.sort(key=lambda r: r["directory"])
+    return results
+
+
+def get_workflow_summary(directory: str) -> dict:
+    """Return a comprehensive summary of the workflow in *directory*.
+
+    The returned dict contains:
+
+    - ``workflow`` – label, type, status, timestamps
+    - ``result``  – any stored results (energy, etc.)
+    - ``estimation`` – step-estimation data (if present)
+    - ``jobs``    – list of job records with their statuses
+    - ``num_jobs`` – total number of job records
+
+    Returns an empty dict if no ``workflow_state.toml`` is found.
+    """
+    state = read_state(directory)
+    if not state:
+        return {}
+
+    jobs = state.get("jobs", [])
+    return {
+        "workflow": state.get("workflow", {}),
+        "result": state.get("result", {}),
+        "estimation": state.get("estimation", {}),
+        "jobs": jobs,
+        "num_jobs": len(jobs),
+    }
 
 
 def _write(directory: str, state: dict):
