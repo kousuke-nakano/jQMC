@@ -4,7 +4,7 @@
   number_of_walkers = 300
   max_time = 10400
   restart = false
-  restart_chk = 'lrdmc.rchk'
+  restart_chk = 'restart.h5'
   hamiltonian_h5 = '../hamiltonian_data.h5'
   verbosity = 'low'
 

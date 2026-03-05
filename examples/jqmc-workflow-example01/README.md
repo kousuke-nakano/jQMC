@@ -1,4 +1,4 @@
-# jqmc-workflow-example01
+# jqmc-workflow-example01: Hydrogen PES calculations
 
 Potential energy surface (PES) of the hydrogen molecule (H₂) computed using **jqmc-workflows**. All-electron calculations with Cartesian GTOs (cc-pVTZ basis). Atomic forces at each bond length are obtained via algorithmic differentiation (AD) in **JAX**.
 

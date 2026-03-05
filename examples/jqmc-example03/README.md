@@ -1,4 +1,4 @@
-# example03
+# jqmc-example03:
 
 Projected-MO optimization workflow for the water molecule. One can learn how to optimize variational parameters (Jastrow factors + lambda matrix) using `opt_with_projected_MOs = true`, starting from the same `PySCF` water setup as `example01`.
 
@@ -90,7 +90,7 @@ mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
-restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
 hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 
@@ -151,7 +151,7 @@ If the optimization is not converged. You can restart the optimization.
 [control]
 ...
 restart = true
-restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
 ...
 ```
 
@@ -179,12 +179,12 @@ The next step is MCMC calculation. Create a directory for the MCMC calculation a
 <!-- include: 03mcmc/mcmc.toml -->
 ```toml
 [control]
-job_type = "mcmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau"
+job_type = "mcmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 300 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
-restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
 hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 [mcmc]

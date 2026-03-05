@@ -67,6 +67,38 @@ WALKER_COUNTS = [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
 TREXIO_FILE = "water_trexio.hdf5"
 PYSCF_OUTPUT = "water.out"
 
+# pySCF script (embedded from local_pyscf.py)
+PYSCF_SCRIPT = '''\
+from pyscf import gto, scf
+from pyscf.tools import trexio
+
+filename = "{trexio_file}"
+
+mol = gto.Mole()
+mol.verbose = 5
+mol.atom = """
+O 5.000000 7.147077 7.650971
+H 4.068066 6.942975 7.563761
+H 5.380237 6.896963 6.807984
+"""
+mol.basis = "ccecp-ccpvtz"
+mol.unit = "A"
+mol.ecp = "ccecp"
+mol.charge = 0
+mol.spin = 0
+mol.symmetry = False
+mol.cart = True
+mol.output = "{pyscf_output}"
+mol.build()
+
+mf = scf.KS(mol).density_fit()
+mf.max_cycle = 200
+mf.xc = "LDA_X,LDA_C_PZ"
+mf_scf = mf.kernel()
+
+trexio.to_trexio(mf, filename)
+'''
+
 
 # ── Helpers ───────────────────────────────────────────────────────
 def extract_hf_energy(pyscf_output: str) -> float | None:
@@ -126,8 +158,16 @@ def run_pyscf(base_dir: str) -> float | None:
         print(f"  [skip] {TREXIO_FILE} already exists.")
     else:
         print(f"  [run]  pySCF for water ...")
+        script_path = os.path.join(base_dir, "_local_pyscf.py")
+        with open(script_path, "w") as f:
+            f.write(
+                PYSCF_SCRIPT.format(
+                    trexio_file=TREXIO_FILE,
+                    pyscf_output=PYSCF_OUTPUT,
+                )
+            )
         result = subprocess.run(
-            [sys.executable, "run_pyscf.py"],
+            [sys.executable, "_local_pyscf.py"],
             cwd=base_dir,
             capture_output=True,
             text=True,

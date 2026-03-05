@@ -1,6 +1,6 @@
-# Example 11: Using jQMC Python API with MPI
+# jqmc-example08:
 
-This example demonstrates how to use jQMC as a Python library with MPI parallelization. It is similar to Example 10 but designed to run on multiple cores/nodes.
+This example demonstrates how to use jQMC as a Python library with MPI parallelization. It is similar to Example 07 but designed to run on multiple cores/nodes.
 
 ## Overview
 

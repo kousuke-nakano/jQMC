@@ -4,7 +4,7 @@ mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 42000 # Maximum time in sec.
 restart = false
-restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
 hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low", "high", "devel", "mpi-low", "mpi-high", "mpi-devel"
 

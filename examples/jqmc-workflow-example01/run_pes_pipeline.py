@@ -154,7 +154,7 @@ def run_pyscf_calculations(base_dir: str) -> dict[float, float | None]:
         os.makedirs(pyscf_dir, exist_ok=True)
 
         trexio_path = os.path.join(pyscf_dir, trexio_filename(R))
-        script_path = os.path.join(pyscf_dir, "run_pyscf.py")
+        script_path = os.path.join(pyscf_dir, "local_pyscf.py")
 
         # Write the pySCF script
         with open(script_path, "w") as f:
@@ -165,7 +165,7 @@ def run_pyscf_calculations(base_dir: str) -> dict[float, float | None]:
         else:
             print(f"  [run]  pySCF for R={R:.2f} ...")
             result = subprocess.run(
-                [sys.executable, "run_pyscf.py"],
+                [sys.executable, "local_pyscf.py"],
                 cwd=pyscf_dir,
                 capture_output=True,
                 text=True,

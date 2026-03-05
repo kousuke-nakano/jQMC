@@ -1,4 +1,4 @@
-# jQMC Vectorization Benchmark Results on GPUs
+# jqmc-workflow-example02: jQMC Vectorization Benchmark Results on GPUs
 
 This directory contains vectroziationi benchmark results. The benchmarks compare the throughputs of Markov-Chain Monte Carlo (MCMC) and Lattice Regularized Diffusion Monte Carlo (LRDMC) calculations on GPU with respect to the number of walkers assigned to one GPU. The attached graphs are summaries of the throughputs of both VMC and LRDMC calculations with respect to the number of walkers per GPU.
 

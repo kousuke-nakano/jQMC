@@ -1,4 +1,4 @@
-# Example 10: Using jQMC Python API
+# jqmc-example07:
 
 This example demonstrates how to use jQMC as a Python library, bypassing the command-line interface (CLI). This allows for greater flexibility in constructing workflows, such as integrating with other tools or performing custom analysis loops.
 

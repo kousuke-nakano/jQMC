@@ -1,4 +1,4 @@
-# example02
+# jqmc-example02:
 
 Total energy of water molecule with a neural-network Jastrow factor. One can learn how to obtain the VMC energy of the water molecule, starting from scratch (i.e., DFT calculation), with cartesian GTOs and a SchNet-type NN Jastrow.
 
@@ -99,7 +99,7 @@ mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 42000 # Maximum time in sec.
 restart = false
-restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
 hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low", "high", "devel", "mpi-low", "mpi-high", "mpi-devel"
 
@@ -119,7 +119,7 @@ opt_JNN_param = true
 opt_lambda_param = false
 opt_with_projected_MOs = false
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
-optimizer_kwargs = { method = "adam" } # Optimizer backend used for parameter updates. "sr" keeps the stochastic reconfiguration scheme; any other value should be the name of an optax optimizer (e.g., "adam").
+optimizer_kwargs = { method = "adam" }
 ```
 
 Please lunch the job.
@@ -165,7 +165,7 @@ If the optimization is not converged. You can restart the optimization.
 [control]
 ...
 restart = true
-restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
 ...
 ```
 
@@ -193,12 +193,12 @@ The next step is MCMC calculation. Create a directory for the MCMC calculation a
 <!-- include: 03mcmc_JNNSD/mcmc.toml -->
 ```toml
 [control]
-job_type = "mcmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau"
+job_type = "mcmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 300 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
-restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
 hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 [mcmc]

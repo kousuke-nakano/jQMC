@@ -1,4 +1,4 @@
-# example04
+# jqmc-example04:
 
 Binding energy of the water-water dimer with the JSD and JAGP ansatz. One can learn how to obtain the VMC and LRDMC energies of the water dimer, starting from scratch (i.e., DFT calculation by `pySCF`), with cartesian GTOs, and one can see how the binding energy is improved by optimizing the nodal surface (i.e., JAGP). The water-water dimer geometry is taken from the S22 dataset[^2006JURpccp].
 
@@ -208,7 +208,7 @@ mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 1 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
-restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
 hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 
@@ -292,7 +292,7 @@ If the optimization is not converged. You can restart the optimization.
 [control]
 ...
 restart = true
-restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
 ...
 ```
 
@@ -325,7 +325,7 @@ mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 300 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
-restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
 hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 [mcmc]
@@ -370,7 +370,7 @@ The next step is LRDMC calculation. Create a directory for the LRDMC calculation
   number_of_walkers = 300
   max_time = 10400
   restart = false
-  restart_chk = 'lrdmc.rchk'
+  restart_chk = 'restart.h5'
   hamiltonian_h5 = '../hamiltonian_data.h5'
   verbosity = 'low'
 
@@ -440,7 +440,7 @@ mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 1 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
-restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
 hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 
@@ -531,7 +531,7 @@ If the optimization is not converged. You can restart the optimization.
 [control]
 ...
 restart = true
-restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
 ...
 ```
 
@@ -564,7 +564,7 @@ mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 300 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
-restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
 hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 [mcmc]
@@ -608,7 +608,7 @@ The final step is LRDMC calculation. Create a directory for the LRDMC calculatio
   number_of_walkers = 300
   max_time = 10400
   restart = false
-  restart_chk = 'lrdmc.rchk'
+  restart_chk = 'restart.h5'
   hamiltonian_h5 = '../hamiltonian_data.h5'
   verbosity = 'low'
 

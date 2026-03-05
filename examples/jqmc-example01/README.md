@@ -1,4 +1,4 @@
-# example01
+# jqmc-example01:
 
 Total energy of water molecule. One can learn how to obtain the VMC and DMC (in the extrapolated limit) energies of the Water dimer, starting from scratch (i.e., DFT calculation), with cartesian GTOs.
 
@@ -349,7 +349,7 @@ mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
-restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
 hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 
@@ -430,7 +430,7 @@ If the optimization is not converged. You can restart the optimization.
 [control]
 ...
 restart = true
-restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
 ...
 ```
 
@@ -458,12 +458,12 @@ The next step is MCMC calculation. Create a directory for the MCMC calculation a
 <!-- include: 03mcmc_JSD/mcmc.toml -->
 ```toml
 [control]
-job_type = "mcmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau"
+job_type = "mcmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 300 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
-restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
 hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 [mcmc]
@@ -506,7 +506,7 @@ The final step is LRDMC calculation. Create a directory for the LRDMC calculatio
   number_of_walkers = 300
   max_time = 10400
   restart = false
-  restart_chk = 'lrdmc.rchk'
+  restart_chk = 'restart.h5'
   hamiltonian_h5 = '../hamiltonian_data.h5'
   verbosity = 'low'
 
@@ -543,9 +543,9 @@ You may get:
 You can extrapolate them into $a \rightarrow 0$ by `jqmc-tool`
 
 ```bash
-% jqmc-tool lrdmc extrapolate-energy alat_0.10/lrdmc.rchk alat_0.15/lrdmc.rchk alat_0.20/lrdmc.rchk alat_0.25/lrdmc.rchk alat_0.30/lrdmc.rchk -s lrdmc_ext.jpg
+% jqmc-tool lrdmc extrapolate-energy alat_0.10/restart.h5 alat_0.15/restart.h5 alat_0.20/restart.h5 alat_0.25/restart.h5 alat_0.30/restart.h5 -s lrdmc_ext.jpg
 > ------------------------------------------------------------------------
-> Read restart checkpoint files from ['alat_0.10/lrdmc.rchk', 'alat_0.15/lrdmc.rchk', 'alat_0.20/lrdmc.rchk', 'alat_0.25/lrdmc.rchk', 'alat_0.30/lrdmc.rchk'].
+> Read restart checkpoint files from ['alat_0.10/restart.h5', 'alat_0.15/restart.h5', 'alat_0.20/restart.h5', 'alat_0.25/restart.h5', 'alat_0.30/restart.h5'].
 >   Total number of binned samples = 5
 >   For a = 0.1 bohr: E = -17.236661112856858 +- 0.00032635704517869677 Ha.
 >   Total number of binned samples = 5
