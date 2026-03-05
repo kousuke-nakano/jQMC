@@ -47,7 +47,7 @@ MPI-enabled Python API workflow: similar to example10 but using `mpirun` on `run
 
 ### jqmc-workflow-example01
 
-Potential energy surface of hydrogen molecule with cartesian GTOs. All electron calculations. Comparison atomic forces with the derivative of the PES. In this example, users will learn how to compute atomic forces using a hydrogen molecule as a test system. Note, however, that atomic force calculations in QMC are still under active methodological development and should be considered advanced. We recommend consulting with experts before using such results in research studies.
+Potential energy surface of hydrogen molecule with cartesian GTOs. All electron calculations. Comparison atomic forces with the derivative of the PES.
 
 
 ### jqmc-workflow-example02
@@ -57,9 +57,4 @@ Benchmarking of MPI/Vectorization on GPU machines, i.e., how to choose the most 
 
 ### jqmc-workflow-example03
 
-Binding energy of water-methane dimer, one of the validation tests for ab initio DMC implementation.
-
-
-### jqmc-workflow-example04
-
-MCMC and HF energies of several molecules, for validation of the MCMC implementation of jQMC, with spherical or cartesian GTOs.
+Energy and Force calculations of the water molecule.
