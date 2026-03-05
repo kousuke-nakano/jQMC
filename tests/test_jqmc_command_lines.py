@@ -213,11 +213,11 @@ def test_jqmc_cli_run_lrdmc(tmp_path, monkeypatch, trexio_file: str):
             dict_toml["control"]["restart"] = False
             dict_toml["control"]["hamiltonian_h5"] = "hamiltonian_data.h5"
             dict_toml["control"]["restart_chk"] = "restart.chk"
-            dict_toml["lrdmc"]["num_mcmc_steps"] = 50
-            dict_toml["lrdmc"]["alat"] = alat
-            dict_toml["lrdmc"]["num_gfmc_bin_blocks"] = 10
-            dict_toml["lrdmc"]["num_gfmc_warmup_steps"] = 30
-            dict_toml["lrdmc"]["num_gfmc_collect_steps"] = 5
+            dict_toml["lrdmc-bra"]["num_mcmc_steps"] = 50
+            dict_toml["lrdmc-bra"]["alat"] = alat
+            dict_toml["lrdmc-bra"]["num_gfmc_bin_blocks"] = 10
+            dict_toml["lrdmc-bra"]["num_gfmc_warmup_steps"] = 30
+            dict_toml["lrdmc-bra"]["num_gfmc_collect_steps"] = 5
         with open(os.path.join(tmp_alat_path, "lrdmc_input.toml"), "w") as f:
             toml.dump(dict_toml, f)
         os.chdir(root_dir)
@@ -267,7 +267,7 @@ def test_jqmc_cli_run_lrdmc(tmp_path, monkeypatch, trexio_file: str):
             dict_toml["control"]["restart"] = True
             dict_toml["control"]["hamiltonian_h5"] = None
             dict_toml["control"]["restart_chk"] = "restart.chk"
-            dict_toml["lrdmc"]["num_mcmc_steps"] = 10
+            dict_toml["lrdmc-bra"]["num_mcmc_steps"] = 10
         with open(os.path.join(tmp_alat_path, "lrdmc_input.toml"), "w") as f:
             toml.dump(dict_toml, f)
         os.chdir(tmp_alat_path)

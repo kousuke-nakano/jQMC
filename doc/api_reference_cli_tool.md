@@ -40,7 +40,9 @@ jqmc-tool trexio convert-to <trexio_file> [options]
 ```
 - `-o, --output` (str, default `hamiltonian_data.h5`): Output filename.
 - `-j1, --jastrow-1b-parameter` (float|None): J1 parameter. If set and ECP is present, core electrons are taken from ECP; otherwise zeroed.
+- `--jastrow-1b-type` (`exp|pade`, default `exp`): Functional form of the one-body Jastrow. `exp` uses $u(r) = \frac{1}{2b}(1 - e^{-br})$; `pade` uses $u(r) = \frac{r}{2(1 + br)}$.
 - `-j2, --jastrow-2b-parameter` (float|None): J2 parameter.
+- `--jastrow-2b-type` (`pade|exp`, default `pade`): Functional form of the two-body Jastrow. `pade` uses $v(r) = \frac{r}{2(1+br)}$; `exp` uses $v(r) = \frac{1}{2b}(1-e^{-br})$.
 - `-j3, --jastrow-3b-basis-set-type` (`ao|ao-full|ao-small|ao-medium|ao-large|mo|none`, default `none`): Choose J3 basis; `ao-*` trims AOs by key exponent grouping, `mo` uses MOs, `none` disables J3.
 - `-j-nn-type, --jastrow-nn-type` (str|None): Add NN Jastrow (e.g., `schnet`).
 - `-jp, --jastrow-nn-param` (repeatable `key=value`): Hyperparameters forwarded to `Jastrow_NN_data.init_from_structure`; supported keys (type, default): `hidden_dim (int, 64)`, `num_layers (int, 3)`, `num_rbf (int, 16)`, `cutoff (float, 5.0)`.

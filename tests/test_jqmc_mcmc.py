@@ -47,6 +47,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+from jqmc._setting import atol_debug_vs_production, rtol_debug_vs_production  # noqa: E402
 from jqmc.determinant import Geminal_data  # noqa: E402
 from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
 from jqmc.jastrow_factor import (  # noqa: E402
@@ -57,7 +58,6 @@ from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_two_body_data,
 )
 from jqmc.jqmc_mcmc import MCMC, _MCMC_debug  # noqa: E402
-from jqmc._setting import atol_debug_vs_production, rtol_debug_vs_production  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import VariationalParameterBlock, Wavefunction_data, evaluate_ln_wavefunction  # noqa: E402
 
@@ -97,11 +97,12 @@ def test_jqmc_mcmc(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jastro
             jastrow_1b_param=1.0,
             structure_data=structure_data,
             core_electrons=tuple([0] * len(structure_data.atomic_numbers)),
+            jastrow_1b_type="exp",
         )
 
     jastrow_twobody_data = None
     if with_2b_jastrow:
-        jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+        jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0, jastrow_2b_type="exp")
 
     jastrow_threebody_data = None
     if with_3b_jastrow:
@@ -256,9 +257,12 @@ def test_jqmc_vmc(trexio_file, monkeypatch):
     )
 
     jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
-        jastrow_1b_param=1.0, structure_data=structure_data, core_electrons=tuple([0] * len(structure_data.atomic_numbers))
+        jastrow_1b_param=1.0,
+        structure_data=structure_data,
+        core_electrons=tuple([0] * len(structure_data.atomic_numbers)),
+        jastrow_1b_type="pade",
     )
-    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5)
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5, jastrow_2b_type="pade")
     jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data)
     jastrow_nn_data = Jastrow_NN_data.init_from_structure(structure_data=structure_data, hidden_dim=5, num_layers=2, cutoff=5.0)
 
@@ -611,7 +615,7 @@ def test_opt_with_projected_MOs(trexio_file, monkeypatch):
     # Minimal 2-body Jastrow — no 3-body/NN to keep the test fast.
     jastrow_data = Jastrow_data(
         jastrow_one_body_data=None,
-        jastrow_two_body_data=Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5),
+        jastrow_two_body_data=Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5, jastrow_2b_type="exp"),
         jastrow_three_body_data=None,
         jastrow_nn_data=None,
     )

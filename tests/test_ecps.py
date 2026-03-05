@@ -45,6 +45,10 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+from jqmc._setting import (  # noqa: E402
+    atol_debug_vs_production,
+    rtol_debug_vs_production,
+)
 from jqmc.coulomb_potential import (  # noqa: E402
     _compute_bare_coulomb_potential_debug,
     _compute_bare_coulomb_potential_el_ion_element_wise_debug,
@@ -70,10 +74,6 @@ from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_one_body_data,
     Jastrow_three_body_data,
     Jastrow_two_body_data,
-)
-from jqmc._setting import (  # noqa: E402
-    atol_debug_vs_production,
-    rtol_debug_vs_production,
 )
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import Wavefunction_data  # noqa: E402
@@ -614,11 +614,12 @@ def _build_full_jastrow_data(structure_data, geminal_mo_data, coulomb_potential_
 
     jastrow_one_body_data = Jastrow_one_body_data(
         jastrow_1b_param=1.0,
+        jastrow_1b_type="exp",
         structure_data=structure_data,
         core_electrons=core_electrons,
     )
 
-    jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=1.0)
+    jastrow_two_body_data = Jastrow_two_body_data(jastrow_2b_param=1.0, jastrow_2b_type="exp")
 
     num_orb = geminal_mo_data.orb_data_up_spin._num_orb
     j_matrix = rng.random((num_orb, num_orb + 1))
