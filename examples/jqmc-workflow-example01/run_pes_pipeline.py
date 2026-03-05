@@ -239,6 +239,7 @@ def build_pipeline() -> tuple[list[Container], dict[float, Container], dict[floa
                 optimizer_kwargs={"method": "sr", "delta": 0.150, "epsilon": 0.100, "adaptive_learning_rate": True},
                 max_time=3000,
                 poll_interval=120,
+                max_continuation=3,
             ),
         )
 
@@ -262,6 +263,7 @@ def build_pipeline() -> tuple[list[Container], dict[float, Container], dict[floa
                 pilot_steps=200,
                 max_time=3000,
                 poll_interval=120,
+                max_continuation=1,
             ),
         )
 
@@ -286,6 +288,7 @@ def build_pipeline() -> tuple[list[Container], dict[float, Container], dict[floa
                 pilot_steps=200,
                 max_time=3000,
                 poll_interval=120,
+                max_continuation=1,
             ),
         )
 
