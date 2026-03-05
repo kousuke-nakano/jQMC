@@ -505,8 +505,8 @@ def _load_dataclass_from_hdf5(cls: Type[T], group: h5py.Group) -> T:
 
     obj = cls(**init_args)
 
-    # Special handling for NN_Jastrow_data to reconstruct nn_def
-    if cls.__name__ == "NN_Jastrow_data":
+    # Special handling for Jastrow_NN_data to reconstruct nn_def
+    if cls.__name__ == "Jastrow_NN_data":
         # Reconstruct nn_def
         from .jastrow_factor import NNJastrow
 

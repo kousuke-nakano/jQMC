@@ -49,6 +49,18 @@ from jax import typing as jnpt
 from jax.scipy import linalg as jsp_linalg  # noqa: F401  (kept for external callers)
 from mpi4py import MPI
 
+from ._diff_mask import DiffMask, apply_diff_mask
+from ._jqmc_utility import _generate_init_electron_configurations
+from ._setting import (
+    GFMC_MIN_BIN_BLOCKS,
+    GFMC_MIN_COLLECT_STEPS,
+    GFMC_MIN_WARMUP_STEPS,
+    GFMC_ON_THE_FLY_BIN_BLOCKS,
+    GFMC_ON_THE_FLY_COLLECT_STEPS,
+    GFMC_ON_THE_FLY_WARMUP_STEPS,
+    EPS_rcond_SVD,
+    rtol_debug_vs_production,
+)
 from .coulomb_potential import (
     compute_bare_coulomb_potential_el_el,
     compute_bare_coulomb_potential_el_ion_element_wise,
@@ -64,7 +76,6 @@ from .determinant import (
     compute_geminal_dn_one_column_elements,
     compute_geminal_up_one_row_elements,
 )
-from ._diff_mask import DiffMask, apply_diff_mask
 from .hamiltonians import (
     Hamiltonian_data,
     compute_local_energy,
@@ -72,17 +83,6 @@ from .hamiltonians import (
 from .jastrow_factor import (
     _compute_ratio_Jastrow_part_rank1_update,
     compute_Jastrow_part,
-)
-from ._jqmc_utility import _generate_init_electron_configurations
-from ._setting import (
-    GFMC_MIN_BIN_BLOCKS,
-    GFMC_MIN_COLLECT_STEPS,
-    GFMC_MIN_WARMUP_STEPS,
-    GFMC_ON_THE_FLY_BIN_BLOCKS,
-    GFMC_ON_THE_FLY_COLLECT_STEPS,
-    GFMC_ON_THE_FLY_WARMUP_STEPS,
-    EPS_rcond_SVD,
-    rtol_debug_vs_production,
 )
 from .swct import evaluate_swct_domega, evaluate_swct_omega
 from .wavefunction import (
@@ -340,6 +340,170 @@ class GFMC_t:
 
         # stored sum_i d omega/d r_i for dn spins (SWCT)
         self.__stored_grad_omega_r_dn = []
+
+    # ------------------------------------------------------------------
+    # HDF5 checkpoint save / load
+    # ------------------------------------------------------------------
+
+    def save_to_hdf5(self, filepath: str) -> None:
+        """Write this rank's GFMC_t state to a temporary per-rank HDF5 file.
+
+        The file is later merged by :func:`jqmc._checkpoint.merge_rank_checkpoints`.
+
+        Args:
+            filepath: Output path (e.g. ``._restart_rank0.h5``).
+        """
+        from ._checkpoint import save_rank_checkpoint
+
+        # -- driver_config (scalar execution parameters) --
+        driver_config: dict = {
+            "mcmc_seed": self.__mcmc_seed,
+            "num_walkers": self.__num_walkers,
+            "num_gfmc_collect_steps": self.__num_gfmc_collect_steps,
+            "tau": self.__tau,
+            "alat": self.__alat,
+            "random_discretized_mesh": self.__random_discretized_mesh,
+            "non_local_move": self.__non_local_move,
+            "comput_position_deriv": self.__comput_position_deriv,
+            "epsilon_PW": self.__epsilon_PW,
+            "mcmc_counter": self.__mcmc_counter,
+            "num_survived_walkers": self.__num_survived_walkers,
+            "num_killed_walkers": self.__num_killed_walkers,
+        }
+
+        # -- rng_state --
+        rng_state: dict = {
+            "jax_PRNG_key_list": np.asarray(self.__jax_PRNG_key_list),
+            "jax_PRNG_key_list_init": np.asarray(self.__jax_PRNG_key_list_init),
+            "mpi_seed": self.__mpi_seed,
+        }
+
+        # -- walker_state --
+        walker_state: dict = {
+            "latest_r_up_carts": np.asarray(self.__latest_r_up_carts),
+            "latest_r_dn_carts": np.asarray(self.__latest_r_dn_carts),
+        }
+
+        # -- observables --
+        observables: dict = {}
+        _obs_map = {
+            "e_L": self.__stored_e_L,
+            "e_L2": self.__stored_e_L2,
+            "w_L": self.__stored_w_L,
+            "average_projection_counter": self.__stored_average_projection_counter,
+            "grad_e_L_dR": self.__stored_grad_e_L_dR,
+            "grad_e_L_r_up": self.__stored_grad_e_L_r_up,
+            "grad_e_L_r_dn": self.__stored_grad_e_L_r_dn,
+            "grad_ln_Psi_r_up": self.__stored_grad_ln_Psi_r_up,
+            "grad_ln_Psi_r_dn": self.__stored_grad_ln_Psi_r_dn,
+            "grad_ln_Psi_dR": self.__stored_grad_ln_Psi_dR,
+            "omega_up": self.__stored_omega_up,
+            "omega_dn": self.__stored_omega_dn,
+            "grad_omega_r_up": self.__stored_grad_omega_r_up,
+            "grad_omega_r_dn": self.__stored_grad_omega_r_dn,
+        }
+        for key, val in _obs_map.items():
+            arr = np.asarray(val) if len(val) > 0 else np.empty(0)
+            observables[key] = arr
+
+        save_rank_checkpoint(
+            filepath,
+            driver_type="GFMC_t",
+            driver_config=driver_config,
+            rng_state=rng_state,
+            walker_state=walker_state,
+            observables=observables,
+        )
+
+    @classmethod
+    def load_from_hdf5(cls, filepath: str, rank: int | None = None) -> "GFMC_t":
+        """Restore a GFMC_t instance from a merged HDF5 checkpoint.
+
+        This bypasses ``__init__`` entirely and reconstructs all internal
+        attributes from the stored data and the embedded ``hamiltonian_data``.
+
+        Args:
+            filepath: Path to the merged checkpoint (e.g. ``restart.h5``).
+            rank: MPI rank to load.  Defaults to the current MPI rank.
+
+        Returns:
+            A fully restored :class:`GFMC_t` instance.
+        """
+        from ._checkpoint import load_hamiltonian_from_checkpoint, load_rank_checkpoint
+
+        if rank is None:
+            rank = mpi_rank
+
+        data = load_rank_checkpoint(filepath, rank=rank)
+        cfg = data["driver_config"]
+        rng = data["rng_state"]
+        ws = data["walker_state"]
+        obs = data["observables"]
+
+        # Load Hamiltonian_data from the checkpoint root
+        hamiltonian_data = load_hamiltonian_from_checkpoint(filepath)
+
+        # Create an empty instance without calling __init__
+        obj = cls.__new__(cls)
+
+        # -- Scalar config --
+        obj._GFMC_t__mcmc_seed = cfg["mcmc_seed"]
+        obj._GFMC_t__num_walkers = cfg["num_walkers"]
+        obj._GFMC_t__num_gfmc_collect_steps = cfg["num_gfmc_collect_steps"]
+        obj._GFMC_t__tau = cfg["tau"]
+        obj._GFMC_t__alat = cfg["alat"]
+        obj._GFMC_t__random_discretized_mesh = bool(cfg.get("random_discretized_mesh", True))
+        obj._GFMC_t__non_local_move = cfg.get("non_local_move", "tmove")
+        obj._GFMC_t__comput_position_deriv = bool(cfg.get("comput_position_deriv", False))
+        obj._GFMC_t__epsilon_PW = cfg.get("epsilon_PW", 0.0)
+
+        # Counters
+        obj._GFMC_t__mcmc_counter = cfg.get("mcmc_counter", 0)
+        obj._GFMC_t__num_survived_walkers = cfg.get("num_survived_walkers", 0)
+        obj._GFMC_t__num_killed_walkers = cfg.get("num_killed_walkers", 0)
+
+        # -- Hamiltonian data (apply DiffMask as the normal setter does) --
+        obj._GFMC_t__hamiltonian_data = hamiltonian_data
+        obj.hamiltonian_data = hamiltonian_data  # triggers setter → DiffMask + __init_attributes
+
+        # -- Overwrite __init_attributes results with loaded state --
+        obj._GFMC_t__mcmc_counter = cfg.get("mcmc_counter", 0)
+        obj._GFMC_t__num_survived_walkers = cfg.get("num_survived_walkers", 0)
+        obj._GFMC_t__num_killed_walkers = cfg.get("num_killed_walkers", 0)
+
+        # -- RNG state --
+        obj._GFMC_t__mpi_seed = rng["mpi_seed"]
+        obj._GFMC_t__jax_PRNG_key = jax.random.PRNGKey(rng["mpi_seed"])
+        obj._GFMC_t__jax_PRNG_key_list = jnp.array(rng["jax_PRNG_key_list"])
+        obj._GFMC_t__jax_PRNG_key_list_init = jnp.array(rng["jax_PRNG_key_list_init"])
+
+        # -- Walker state --
+        obj._GFMC_t__latest_r_up_carts = jnp.array(ws["latest_r_up_carts"])
+        obj._GFMC_t__latest_r_dn_carts = jnp.array(ws["latest_r_dn_carts"])
+
+        # -- Observables --
+        def _to_list(arr):
+            """Convert ndarray back to list-of-arrays (one per step)."""
+            if arr is None or (isinstance(arr, np.ndarray) and arr.size == 0):
+                return []
+            return [arr[i] for i in range(arr.shape[0])]
+
+        obj._GFMC_t__stored_e_L = _to_list(obs.get("e_L"))
+        obj._GFMC_t__stored_e_L2 = _to_list(obs.get("e_L2"))
+        obj._GFMC_t__stored_w_L = _to_list(obs.get("w_L"))
+        obj._GFMC_t__stored_average_projection_counter = _to_list(obs.get("average_projection_counter"))
+        obj._GFMC_t__stored_grad_e_L_dR = _to_list(obs.get("grad_e_L_dR"))
+        obj._GFMC_t__stored_grad_e_L_r_up = _to_list(obs.get("grad_e_L_r_up"))
+        obj._GFMC_t__stored_grad_e_L_r_dn = _to_list(obs.get("grad_e_L_r_dn"))
+        obj._GFMC_t__stored_grad_ln_Psi_r_up = _to_list(obs.get("grad_ln_Psi_r_up"))
+        obj._GFMC_t__stored_grad_ln_Psi_r_dn = _to_list(obs.get("grad_ln_Psi_r_dn"))
+        obj._GFMC_t__stored_grad_ln_Psi_dR = _to_list(obs.get("grad_ln_Psi_dR"))
+        obj._GFMC_t__stored_omega_up = _to_list(obs.get("omega_up"))
+        obj._GFMC_t__stored_omega_dn = _to_list(obs.get("omega_dn"))
+        obj._GFMC_t__stored_grad_omega_r_up = _to_list(obs.get("grad_omega_r_up"))
+        obj._GFMC_t__stored_grad_omega_r_dn = _to_list(obs.get("grad_omega_r_dn"))
+
+        return obj
 
     # hamiltonian
     @property
@@ -3915,6 +4079,174 @@ class GFMC_n:
         # stored G_L and G_e_L for updating the E_scf
         self.__G_L = []
         self.__G_e_L = []
+
+    # ------------------------------------------------------------------
+    # HDF5 checkpoint save / load
+    # ------------------------------------------------------------------
+
+    def save_to_hdf5(self, filepath: str) -> None:
+        """Write this rank's GFMC_n state to a temporary per-rank HDF5 file.
+
+        The file is later merged by :func:`jqmc._checkpoint.merge_rank_checkpoints`.
+
+        Args:
+            filepath: Output path (e.g. ``._restart_rank0.h5``).
+        """
+        from ._checkpoint import save_rank_checkpoint
+
+        # -- driver_config (scalar execution parameters) --
+        driver_config: dict = {
+            "mcmc_seed": self.__mcmc_seed,
+            "num_walkers": self.__num_walkers,
+            "num_mcmc_per_measurement": self.__num_mcmc_per_measurement,
+            "num_gfmc_collect_steps": self.__num_gfmc_collect_steps,
+            "E_scf": self.__E_scf,
+            "alat": self.__alat,
+            "random_discretized_mesh": self.__random_discretized_mesh,
+            "non_local_move": self.__non_local_move,
+            "comput_position_deriv": self.__comput_position_deriv,
+            "epsilon_PW": self.__epsilon_PW,
+            "mcmc_counter": self.__mcmc_counter,
+            "num_survived_walkers": self.__num_survived_walkers,
+            "num_killed_walkers": self.__num_killed_walkers,
+        }
+
+        # -- rng_state --
+        rng_state: dict = {
+            "jax_PRNG_key_list": np.asarray(self.__jax_PRNG_key_list),
+            "jax_PRNG_key_list_init": np.asarray(self.__jax_PRNG_key_list_init),
+            "mpi_seed": self.__mpi_seed,
+        }
+
+        # -- walker_state --
+        walker_state: dict = {
+            "latest_r_up_carts": np.asarray(self.__latest_r_up_carts),
+            "latest_r_dn_carts": np.asarray(self.__latest_r_dn_carts),
+        }
+
+        # -- observables --
+        observables: dict = {}
+        _obs_map = {
+            "e_L": self.__stored_e_L,
+            "e_L2": self.__stored_e_L2,
+            "w_L": self.__stored_w_L,
+            "grad_e_L_dR": self.__stored_grad_e_L_dR,
+            "grad_e_L_r_up": self.__stored_grad_e_L_r_up,
+            "grad_e_L_r_dn": self.__stored_grad_e_L_r_dn,
+            "grad_ln_Psi_r_up": self.__stored_grad_ln_Psi_r_up,
+            "grad_ln_Psi_r_dn": self.__stored_grad_ln_Psi_r_dn,
+            "grad_ln_Psi_dR": self.__stored_grad_ln_Psi_dR,
+            "omega_up": self.__stored_omega_up,
+            "omega_dn": self.__stored_omega_dn,
+            "grad_omega_r_up": self.__stored_grad_omega_r_up,
+            "grad_omega_r_dn": self.__stored_grad_omega_r_dn,
+            "G_L": self.__G_L,
+            "G_e_L": self.__G_e_L,
+        }
+        for key, val in _obs_map.items():
+            arr = np.asarray(val) if len(val) > 0 else np.empty(0)
+            observables[key] = arr
+
+        save_rank_checkpoint(
+            filepath,
+            driver_type="GFMC_n",
+            driver_config=driver_config,
+            rng_state=rng_state,
+            walker_state=walker_state,
+            observables=observables,
+        )
+
+    @classmethod
+    def load_from_hdf5(cls, filepath: str, rank: int | None = None) -> "GFMC_n":
+        """Restore a GFMC_n instance from a merged HDF5 checkpoint.
+
+        This bypasses ``__init__`` entirely and reconstructs all internal
+        attributes from the stored data and the embedded ``hamiltonian_data``.
+
+        Args:
+            filepath: Path to the merged checkpoint (e.g. ``restart.h5``).
+            rank: MPI rank to load.  Defaults to the current MPI rank.
+
+        Returns:
+            A fully restored :class:`GFMC_n` instance.
+        """
+        from ._checkpoint import load_hamiltonian_from_checkpoint, load_rank_checkpoint
+
+        if rank is None:
+            rank = mpi_rank
+
+        data = load_rank_checkpoint(filepath, rank=rank)
+        cfg = data["driver_config"]
+        rng = data["rng_state"]
+        ws = data["walker_state"]
+        obs = data["observables"]
+
+        # Load Hamiltonian_data from the checkpoint root
+        hamiltonian_data = load_hamiltonian_from_checkpoint(filepath)
+
+        # Create an empty instance without calling __init__
+        obj = cls.__new__(cls)
+
+        # -- Scalar config --
+        obj._GFMC_n__mcmc_seed = cfg["mcmc_seed"]
+        obj._GFMC_n__num_walkers = cfg["num_walkers"]
+        obj._GFMC_n__num_mcmc_per_measurement = cfg["num_mcmc_per_measurement"]
+        obj._GFMC_n__num_gfmc_collect_steps = cfg["num_gfmc_collect_steps"]
+        obj._GFMC_n__E_scf = cfg["E_scf"]
+        obj._GFMC_n__alat = cfg["alat"]
+        obj._GFMC_n__random_discretized_mesh = bool(cfg.get("random_discretized_mesh", True))
+        obj._GFMC_n__non_local_move = cfg.get("non_local_move", "tmove")
+        obj._GFMC_n__comput_position_deriv = bool(cfg.get("comput_position_deriv", False))
+        obj._GFMC_n__epsilon_PW = cfg.get("epsilon_PW", 0.0)
+
+        # Counters
+        obj._GFMC_n__mcmc_counter = cfg.get("mcmc_counter", 0)
+        obj._GFMC_n__num_survived_walkers = cfg.get("num_survived_walkers", 0)
+        obj._GFMC_n__num_killed_walkers = cfg.get("num_killed_walkers", 0)
+
+        # -- Hamiltonian data (apply DiffMask as the normal setter does) --
+        obj._GFMC_n__hamiltonian_data = hamiltonian_data
+        obj.hamiltonian_data = hamiltonian_data  # triggers setter → DiffMask + __init_attributes
+
+        # -- Overwrite __init_attributes results with loaded state --
+        obj._GFMC_n__mcmc_counter = cfg.get("mcmc_counter", 0)
+        obj._GFMC_n__num_survived_walkers = cfg.get("num_survived_walkers", 0)
+        obj._GFMC_n__num_killed_walkers = cfg.get("num_killed_walkers", 0)
+
+        # -- RNG state --
+        obj._GFMC_n__mpi_seed = rng["mpi_seed"]
+        obj._GFMC_n__jax_PRNG_key = jax.random.PRNGKey(rng["mpi_seed"])
+        obj._GFMC_n__jax_PRNG_key_list = jnp.array(rng["jax_PRNG_key_list"])
+        obj._GFMC_n__jax_PRNG_key_list_init = jnp.array(rng["jax_PRNG_key_list_init"])
+
+        # -- Walker state --
+        obj._GFMC_n__latest_r_up_carts = jnp.array(ws["latest_r_up_carts"])
+        obj._GFMC_n__latest_r_dn_carts = jnp.array(ws["latest_r_dn_carts"])
+
+        # -- Observables --
+        def _to_list(arr):
+            """Convert ndarray back to list-of-arrays (one per step)."""
+            if arr is None or (isinstance(arr, np.ndarray) and arr.size == 0):
+                return []
+            return [arr[i] for i in range(arr.shape[0])]
+
+        obj._GFMC_n__stored_e_L = _to_list(obs.get("e_L"))
+        obj._GFMC_n__stored_e_L2 = _to_list(obs.get("e_L2"))
+        obj._GFMC_n__stored_w_L = _to_list(obs.get("w_L"))
+        obj._GFMC_n__stored_grad_e_L_dR = _to_list(obs.get("grad_e_L_dR"))
+        obj._GFMC_n__stored_grad_e_L_r_up = _to_list(obs.get("grad_e_L_r_up"))
+        obj._GFMC_n__stored_grad_e_L_r_dn = _to_list(obs.get("grad_e_L_r_dn"))
+        obj._GFMC_n__stored_grad_ln_Psi_r_up = _to_list(obs.get("grad_ln_Psi_r_up"))
+        obj._GFMC_n__stored_grad_ln_Psi_r_dn = _to_list(obs.get("grad_ln_Psi_r_dn"))
+        obj._GFMC_n__stored_grad_ln_Psi_dR = _to_list(obs.get("grad_ln_Psi_dR"))
+        obj._GFMC_n__stored_omega_up = _to_list(obs.get("omega_up"))
+        obj._GFMC_n__stored_omega_dn = _to_list(obs.get("omega_dn"))
+        obj._GFMC_n__stored_grad_omega_r_up = _to_list(obs.get("grad_omega_r_up"))
+        obj._GFMC_n__stored_grad_omega_r_dn = _to_list(obs.get("grad_omega_r_dn"))
+        obj._GFMC_n__G_L = _to_list(obs.get("G_L"))
+        obj._GFMC_n__G_e_L = _to_list(obs.get("G_e_L"))
+
+        return obj
 
     # hamiltonian
     @property

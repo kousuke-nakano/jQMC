@@ -159,8 +159,8 @@ class MCMC_Workflow(Workflow):
     -----
     * The pilot run is skipped on re-entrance if an estimation already
       exists in ``workflow_state.toml``.
-    * Continuation runs restart from the most recent ``.rchk`` or
-      ``.chk`` checkpoint file.
+    * Continuation runs restart from the most recent ``.h5``
+      checkpoint file.
 
     See Also
     --------
@@ -289,7 +289,7 @@ class MCMC_Workflow(Workflow):
         * no record     -- submit a new job
         """
         if fetch_from_objects is None:
-            fetch_from_objects = ["*.chk", "*.rchk", output_file]
+            fetch_from_objects = ["*.h5", output_file]
         cwd = os.path.abspath(os.getcwd())
 
         # -- Restart detection via job history ---------------------
@@ -522,7 +522,7 @@ class MCMC_Workflow(Workflow):
                     restart_chk=restart_chk or "",
                     estimated_steps=estimated_steps,
                 )
-                self.output_files = sorted(glob.glob("*.rchk")) + sorted(glob.glob("*.chk"))
+                self.output_files = sorted(glob.glob("*.h5"))
                 self.status = "success"
                 return self.status, self.output_files, self.output_values
 
@@ -553,8 +553,7 @@ class MCMC_Workflow(Workflow):
                     restart_chk = self._find_restart_chk()
                     if restart_chk is None:
                         raise RuntimeError(
-                            f"No restart checkpoint found for continuation run {i}. "
-                            f"Expected .rchk or .chk file in {os.getcwd()}"
+                            f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {os.getcwd()}"
                         )
                     self._generate_input(
                         estimated_steps,
@@ -568,9 +567,7 @@ class MCMC_Workflow(Workflow):
 
             restart_chk = self._find_restart_chk() if i > 1 else None
             if i > 1 and restart_chk is None:
-                raise RuntimeError(
-                    f"No restart checkpoint found for continuation run {i}. Expected .rchk or .chk file in {os.getcwd()}"
-                )
+                raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {os.getcwd()}")
             extra_from = [restart_chk] if restart_chk else []
 
             await self._submit_and_wait(
@@ -647,7 +644,7 @@ class MCMC_Workflow(Workflow):
                     )
 
         # ── Collect outputs ───────────────────────────────────────
-        chk_files = sorted(glob.glob("*.rchk")) + sorted(glob.glob("*.chk"))
+        chk_files = sorted(glob.glob("*.h5"))
         output_logs = [
             suffixed_name(self.output_file, j)
             for j in range(last_run + 1)
@@ -663,8 +660,7 @@ class MCMC_Workflow(Workflow):
 
     def _find_restart_chk(self) -> Optional[str]:
         """Locate the MCMC restart checkpoint file."""
-        # The default checkpoint name is mcmc.rchk or restart.chk
-        for pattern in ["mcmc.rchk", "*.rchk", "restart.chk", "*.chk"]:
+        for pattern in ["restart.h5", "mcmc.h5", "*.h5"]:
             matches = sorted(glob.glob(pattern))
             if matches:
                 return matches[-1]

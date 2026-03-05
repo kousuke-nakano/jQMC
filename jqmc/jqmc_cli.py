@@ -33,11 +33,8 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 # python modules
-import gzip
 import os
-import pickle
 import sys
-import zipfile
 from logging import FileHandler, Formatter, StreamHandler, getLogger
 
 import jax
@@ -47,18 +44,19 @@ import toml
 from mpi4py import MPI
 from uncertainties import ufloat
 
-from .hamiltonians import Hamiltonian_data
+from ._checkpoint import merge_rank_checkpoints
 
 # jQMC
 from ._header_footer import _print_footer, _print_header
-from .jqmc_gfmc import GFMC_n, GFMC_t
-from .jqmc_mcmc import MCMC
-from .jqmc_miscs import cli_parameters
 from ._setting import (
     GFMC_MIN_BIN_BLOCKS,
     GFMC_MIN_COLLECT_STEPS,
     GFMC_MIN_WARMUP_STEPS,
 )
+from .hamiltonians import Hamiltonian_data
+from .jqmc_gfmc import GFMC_n, GFMC_t
+from .jqmc_mcmc import MCMC
+from .jqmc_miscs import cli_parameters
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
@@ -298,12 +296,7 @@ def _cli():
 
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
-            """Unzip the checkpoint file for each process and load them."""
-            with zipfile.ZipFile(restart_chk, "r") as zf:
-                arcname = f"{mpi_rank}.pkl.gz"
-                with zf.open(arcname) as zipped_gz_fobj:
-                    with gzip.open(zipped_gz_fobj, "rb") as gz:
-                        mcmc = pickle.load(gz)
+            mcmc = MCMC.load_from_hdf5(restart_chk, rank=mpi_rank)
         else:
             hamiltonian_data = Hamiltonian_data.load_from_hdf5(hamiltonian_h5)
 
@@ -348,24 +341,19 @@ def _cli():
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
         logger.info("")
 
-        # Save the checkpoint file for each process and zip them."""
-        tmp_gz_filename = f".{mpi_rank}.pkl.gz"
-
-        with gzip.open(tmp_gz_filename, "wb") as gz:
-            pickle.dump(mcmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
+        # Save per-rank HDF5 and merge into a single checkpoint.
+        tmp_h5 = f"._restart_rank{mpi_rank}.h5"
+        mcmc.save_to_hdf5(tmp_h5)
 
         mpi_comm.Barrier()
 
         if mpi_rank == 0:
-            if os.path.exists(restart_chk):
-                os.remove(restart_chk)
-
-            with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
-                for mpi_rank in range(mpi_size):
-                    gz_name = f".{mpi_rank}.pkl.gz"
-                    arcname = gz_name.lstrip(".")
-                    zipf.write(gz_name, arcname=arcname)
-                    os.remove(gz_name)
+            merge_rank_checkpoints(
+                output_path=restart_chk,
+                mpi_size=mpi_size,
+                driver_type="MCMC",
+                hamiltonian_data=mcmc.hamiltonian_data,
+            )
 
         mpi_comm.Barrier()
 
@@ -435,12 +423,7 @@ def _cli():
 
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
-            """Unzip the checkpoint file for each process and load them."""
-            with zipfile.ZipFile(restart_chk, "r") as zf:
-                arcname = f"{mpi_rank}.pkl.gz"
-                with zf.open(arcname) as zipped_gz_fobj:
-                    with gzip.open(zipped_gz_fobj, "rb") as gz:
-                        mcmc = pickle.load(gz)
+            mcmc = MCMC.load_from_hdf5(restart_chk, rank=mpi_rank)
         else:
             hamiltonian_data = Hamiltonian_data.load_from_hdf5(hamiltonian_h5)
 
@@ -474,27 +457,21 @@ def _cli():
         logger.info("")
 
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
-
         logger.info("")
 
-        # Save the checkpoint file for each process and zip them."""
-        tmp_gz_filename = f".{mpi_rank}.pkl.gz"
-
-        with gzip.open(tmp_gz_filename, "wb") as gz:
-            pickle.dump(mcmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
+        # Save per-rank HDF5 and merge into a single checkpoint.
+        tmp_h5 = f"._restart_rank{mpi_rank}.h5"
+        mcmc.save_to_hdf5(tmp_h5)
 
         mpi_comm.Barrier()
 
         if mpi_rank == 0:
-            if os.path.exists(restart_chk):
-                os.remove(restart_chk)
-
-            with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
-                for mpi_rank in range(mpi_size):
-                    gz_name = f".{mpi_rank}.pkl.gz"
-                    arcname = gz_name.lstrip(".")
-                    zipf.write(gz_name, arcname=arcname)
-                    os.remove(gz_name)
+            merge_rank_checkpoints(
+                output_path=restart_chk,
+                mpi_size=mpi_size,
+                driver_type="MCMC",
+                hamiltonian_data=mcmc.hamiltonian_data,
+            )
 
         mpi_comm.Barrier()
 
@@ -549,12 +526,7 @@ def _cli():
 
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
-            """Unzip the checkpoint file for each process and load them."""
-            with zipfile.ZipFile(restart_chk, "r") as zf:
-                arcname = f"{mpi_rank}.pkl.gz"
-                with zf.open(arcname) as zipped_gz_fobj:
-                    with gzip.open(zipped_gz_fobj, "rb") as gz:
-                        lrdmc = pickle.load(gz)
+            lrdmc = GFMC_n.load_from_hdf5(restart_chk, rank=mpi_rank)
         else:
             hamiltonian_data = Hamiltonian_data.load_from_hdf5(hamiltonian_h5)
 
@@ -599,24 +571,19 @@ def _cli():
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
         logger.info("")
 
-        # Save the checkpoint file for each process and zip them."""
-        tmp_gz_filename = f".{mpi_rank}.pkl.gz"
-
-        with gzip.open(tmp_gz_filename, "wb") as gz:
-            pickle.dump(lrdmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
+        # Save per-rank HDF5 and merge into a single checkpoint.
+        tmp_h5 = f"._restart_rank{mpi_rank}.h5"
+        lrdmc.save_to_hdf5(tmp_h5)
 
         mpi_comm.Barrier()
 
         if mpi_rank == 0:
-            if os.path.exists(restart_chk):
-                os.remove(restart_chk)
-
-            with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
-                for mpi_rank in range(mpi_size):
-                    gz_name = f".{mpi_rank}.pkl.gz"
-                    arcname = gz_name.lstrip(".")
-                    zipf.write(gz_name, arcname=arcname)
-                    os.remove(gz_name)
+            merge_rank_checkpoints(
+                output_path=restart_chk,
+                mpi_size=mpi_size,
+                driver_type="GFMC_n",
+                hamiltonian_data=lrdmc.hamiltonian_data,
+            )
 
         mpi_comm.Barrier()
 
@@ -658,12 +625,7 @@ def _cli():
 
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
-            """Unzip the checkpoint file for each process and load them."""
-            with zipfile.ZipFile(restart_chk, "r") as zf:
-                arcname = f"{mpi_rank}.pkl.gz"
-                with zf.open(arcname) as zipped_gz_fobj:
-                    with gzip.open(zipped_gz_fobj, "rb") as gz:
-                        lrdmc = pickle.load(gz)
+            lrdmc = GFMC_t.load_from_hdf5(restart_chk, rank=mpi_rank)
         else:
             hamiltonian_data = Hamiltonian_data.load_from_hdf5(hamiltonian_h5)
 
@@ -707,24 +669,19 @@ def _cli():
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
         logger.info("")
 
-        # Save the checkpoint file for each process and zip them."""
-        tmp_gz_filename = f".{mpi_rank}.pkl.gz"
-
-        with gzip.open(tmp_gz_filename, "wb") as gz:
-            pickle.dump(lrdmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
+        # Save per-rank HDF5 and merge into a single checkpoint.
+        tmp_h5 = f"._restart_rank{mpi_rank}.h5"
+        lrdmc.save_to_hdf5(tmp_h5)
 
         mpi_comm.Barrier()
 
         if mpi_rank == 0:
-            if os.path.exists(restart_chk):
-                os.remove(restart_chk)
-
-            with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
-                for mpi_rank in range(mpi_size):
-                    gz_name = f".{mpi_rank}.pkl.gz"
-                    arcname = gz_name.lstrip(".")
-                    zipf.write(gz_name, arcname=arcname)
-                    os.remove(gz_name)
+            merge_rank_checkpoints(
+                output_path=restart_chk,
+                mpi_size=mpi_size,
+                driver_type="GFMC_t",
+                hamiltonian_data=lrdmc.hamiltonian_data,
+            )
 
         mpi_comm.Barrier()
 

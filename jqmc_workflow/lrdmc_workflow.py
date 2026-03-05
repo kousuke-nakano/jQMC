@@ -419,7 +419,7 @@ class LRDMC_Workflow(Workflow):
         * no record     -- submit a new job
         """
         if fetch_from_objects is None:
-            fetch_from_objects = ["*.chk", "*.rchk", output_file]
+            fetch_from_objects = ["*.h5", output_file]
         cwd = os.path.abspath(os.getcwd())
 
         # -- Restart detection via job history ---------------------
@@ -794,7 +794,7 @@ class LRDMC_Workflow(Workflow):
                     estimated_steps=estimated_steps,
                     num_mcmc_per_measurement=self.num_mcmc_per_measurement,
                 )
-                self.output_files = sorted(glob.glob("*.rchk")) + sorted(glob.glob("*.chk"))
+                self.output_files = sorted(glob.glob("*.h5"))
                 self.status = "success"
                 return self.status, self.output_files, self.output_values
 
@@ -826,8 +826,7 @@ class LRDMC_Workflow(Workflow):
                     restart_chk = self._find_restart_chk()
                     if restart_chk is None:
                         raise RuntimeError(
-                            f"No restart checkpoint found for continuation run {i}. "
-                            f"Expected .rchk or .chk file in {os.getcwd()}"
+                            f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {os.getcwd()}"
                         )
                     self._generate_input(
                         estimated_steps,
@@ -841,9 +840,7 @@ class LRDMC_Workflow(Workflow):
 
             restart_chk = self._find_restart_chk() if i > 1 else None
             if i > 1 and restart_chk is None:
-                raise RuntimeError(
-                    f"No restart checkpoint found for continuation run {i}. Expected .rchk or .chk file in {os.getcwd()}"
-                )
+                raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {os.getcwd()}")
             extra_from = [restart_chk] if restart_chk else []
 
             await self._submit_and_wait(
@@ -928,7 +925,7 @@ class LRDMC_Workflow(Workflow):
                     )
 
         # ── Collect outputs ───────────────────────────────────────
-        chk_files = sorted(glob.glob("*.rchk")) + sorted(glob.glob("*.chk"))
+        chk_files = sorted(glob.glob("*.h5"))
         output_logs = [
             suffixed_name(self.output_file, j)
             for j in range(last_run + 1)
@@ -948,7 +945,7 @@ class LRDMC_Workflow(Workflow):
 
     def _find_restart_chk(self) -> Optional[str]:
         """Locate the LRDMC restart checkpoint file."""
-        for pattern in ["lrdmc.rchk", "*.rchk", "restart.chk", "*.chk"]:
+        for pattern in ["restart.h5", "lrdmc.h5", "*.h5"]:
             matches = sorted(glob.glob(pattern))
             if matches:
                 return matches[-1]

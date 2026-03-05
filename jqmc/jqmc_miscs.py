@@ -39,7 +39,7 @@ cli_parameters = {
         "number_of_walkers": 4,
         "max_time": 86400,
         "restart": False,
-        "restart_chk": "restart.chk",
+        "restart_chk": "restart.h5",
         "hamiltonian_h5": "hamiltonian_data.h5",
         "verbosity": "low",
     },

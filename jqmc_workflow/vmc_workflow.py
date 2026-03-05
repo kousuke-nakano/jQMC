@@ -367,10 +367,10 @@ class VMC_Workflow(Workflow):
             Additional files to upload with the job (e.g. checkpoint).
         fetch_from_objects : list, optional
             Glob patterns for files to fetch.  Defaults to
-            ``["*.h5", "*.chk", "*.rchk", output_file]``.
+            ``["*.h5", output_file]``.
         """
         if fetch_from_objects is None:
-            fetch_from_objects = ["*.h5", "*.chk", "*.rchk", output_file]
+            fetch_from_objects = ["*.h5", output_file]
         cwd = os.path.abspath(os.getcwd())
 
         # ── Restart detection via job history ─────────────────────
@@ -609,8 +609,7 @@ class VMC_Workflow(Workflow):
                     restart_chk = self._find_restart_chk()
                     if restart_chk is None:
                         raise RuntimeError(
-                            f"No restart checkpoint found for continuation run {i}. "
-                            f"Expected .rchk or .chk file in {os.getcwd()}"
+                            f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {os.getcwd()}"
                         )
                     self._generate_input(
                         estimated_mcmc_steps,
@@ -625,9 +624,7 @@ class VMC_Workflow(Workflow):
 
             restart_chk = self._find_restart_chk() if i > 1 else None
             if i > 1 and restart_chk is None:
-                raise RuntimeError(
-                    f"No restart checkpoint found for continuation run {i}. Expected .rchk or .chk file in {os.getcwd()}"
-                )
+                raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {os.getcwd()}")
             extra_from = [restart_chk] if restart_chk else []
 
             await self._submit_and_wait(input_i, output_i, extra_from_objects=extra_from)
@@ -637,19 +634,20 @@ class VMC_Workflow(Workflow):
             logger.info(f"  VMC production run {i}/{self.max_continuation} completed.")
 
         # ── Collect outputs ───────────────────────────────────────
-        opt_files = sorted(glob.glob("hamiltonian_data_opt_step_*.h5"))
-        chk_files = sorted(glob.glob("*.chk"))
+        h5_files = sorted(glob.glob("*.h5"))
         output_logs = [
             suffixed_name(self.output_file, j)
             for j in range(last_run + 1)
             if os.path.isfile(suffixed_name(self.output_file, j))
         ]
-        self.output_files = opt_files + chk_files + output_logs
+        self.output_files = h5_files + output_logs
 
+        opt_files = sorted(glob.glob("hamiltonian_data_opt_step_*.h5"))
         if opt_files:
             self.output_values["optimized_hamiltonian"] = opt_files[-1]
-        if chk_files:
-            self.output_values["checkpoint"] = chk_files[-1]
+        restart_chk = self._find_restart_chk()
+        if restart_chk:
+            self.output_values["checkpoint"] = restart_chk
         self.output_values["estimated_mcmc_steps"] = estimated_mcmc_steps
 
         # Parse last production output for energy
@@ -691,7 +689,7 @@ class VMC_Workflow(Workflow):
 
     def _find_restart_chk(self) -> Optional[str]:
         """Locate a VMC restart checkpoint file."""
-        for pattern in ["vmc.rchk", "*.rchk", "vmc.chk", "*.chk"]:
+        for pattern in ["restart.h5", "vmc.h5", "*.h5"]:
             matches = sorted(glob.glob(pattern))
             if matches:
                 return matches[-1]
