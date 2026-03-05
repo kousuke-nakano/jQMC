@@ -1089,8 +1089,8 @@ def lrdmc_compute_energy(
     k = num_gfmc_collect_steps
 
     for obs in rank_data:
-        raw_e_L = obs["e_L"]
-        raw_w_L = obs["w_L"]
+        raw_e_L = obs.get("e_L", np.empty(0))
+        raw_w_L = obs.get("w_L", np.empty(0))
 
         if raw_e_L.size != 0:
             e_L = raw_e_L[k:][num_mcmc_warmup_steps:]
@@ -1187,7 +1187,7 @@ def lrdmc_compute_force(
     k = num_gfmc_collect_steps
 
     for obs in rank_data:
-        raw_e_L = obs["e_L"]
+        raw_e_L = obs.get("e_L", np.empty(0))
 
         if raw_e_L.size != 0:
             e_L = raw_e_L[k:][num_mcmc_warmup_steps:]
@@ -1362,7 +1362,7 @@ def lrdmc_extrapolate_energy(
         k = num_gfmc_collect_steps
 
         for obs in rank_data:
-            raw_e_L = obs["e_L"]
+            raw_e_L = obs.get("e_L", np.empty(0))
 
             if raw_e_L.size != 0:
                 e_L = raw_e_L[k:][num_mcmc_warmup_steps:]

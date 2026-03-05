@@ -37,7 +37,6 @@ machine, monitors until completion, and fetches the results.  The optimized
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-import asyncio
 import glob
 import os
 import re
@@ -52,8 +51,8 @@ from ._error_estimator import (
     suffixed_name,
 )
 from ._input_generator import generate_input_toml, resolve_with_defaults
-from ._job import JobSubmission, get_num_mpi, load_queue_data
-from ._state import _now_iso, add_job, get_estimation, get_job, set_estimation, update_job
+from ._job import get_num_mpi, load_queue_data
+from ._state import get_estimation, get_job, set_estimation
 from .workflow import Workflow
 
 logger = getLogger("jqmc-workflow").getChild(__name__)
@@ -339,111 +338,7 @@ class VMC_Workflow(Workflow):
         )
 
     # ── Submit / poll / fetch ─────────────────────────────────────
-
-    async def _submit_and_wait(
-        self,
-        input_file,
-        output_file,
-        extra_from_objects=None,
-        fetch_from_objects=None,
-        queue_label=None,
-    ):
-        """Create job, submit, poll until done, fetch results.
-
-        All decisions are driven by ``workflow_state.toml``:
-
-        * ``fetched``   -- skip entirely (already done)
-        * ``completed`` -- fetch results only
-        * ``submitted`` -- resume waiting, then fetch
-        * no record     -- submit a new job
-
-        Parameters
-        ----------
-        input_file : str
-            Path to the input TOML file.
-        output_file : str
-            Name of stdout capture file.
-        extra_from_objects : list, optional
-            Additional files to upload with the job (e.g. checkpoint).
-        fetch_from_objects : list, optional
-            Glob patterns for files to fetch.  Defaults to
-            ``["*.h5", output_file]``.
-        """
-        if fetch_from_objects is None:
-            fetch_from_objects = ["*.h5", output_file]
-        cwd = os.path.abspath(os.getcwd())
-
-        # ── Restart detection via job history ─────────────────────
-        recorded = get_job(cwd, input_file)
-
-        if recorded.get("status") == "fetched":
-            logger.info(f"  {input_file}: already fetched. Skipping.")
-            return
-
-        if recorded.get("status") == "completed":
-            logger.info(f"  {input_file}: completed but not fetched. Fetching...")
-            os.chdir(cwd)
-            job = self._make_job(input_file, output_file, queue_label=queue_label)
-            job.fetch_job(from_objects=fetch_from_objects, exclude_patterns=[])
-            update_job(cwd, input_file, status="fetched", fetched_at=_now_iso())
-            return
-
-        if recorded.get("status") == "submitted":
-            stored_job_id = recorded.get("job_id")
-            logger.info(f"  Resuming previously submitted job {stored_job_id}")
-            job = self._make_job(input_file, output_file, queue_label=queue_label)
-            job.job_number = stored_job_id
-            while job.jobcheck():
-                logger.info(f"  Job {stored_job_id} still running, waiting {self.poll_interval}s...")
-                await asyncio.sleep(self.poll_interval)
-                os.chdir(cwd)
-            logger.info("  Job completed.")
-            update_job(cwd, input_file, status="completed", completed_at=_now_iso())
-            os.chdir(cwd)
-            job.fetch_job(from_objects=fetch_from_objects, exclude_patterns=[])
-            update_job(cwd, input_file, status="fetched", fetched_at=_now_iso())
-            return
-
-        # ── New submission ────────────────────────────────────────
-        job = self._make_job(input_file, output_file, queue_label=queue_label)
-        job.generate_script()
-
-        from_objects = [input_file, self.hamiltonian_file, "submit.sh"]
-        if extra_from_objects:
-            from_objects.extend(extra_from_objects)
-        submitted, job_number = job.job_submit(from_objects=from_objects)
-        if not submitted:
-            raise RuntimeError("Job submission failed (queue limit or error).")
-
-        logger.info(f"  Job submitted: {job_number}")
-        add_job(
-            cwd,
-            input_file=input_file,
-            output_file=output_file,
-            job_id=str(job_number) if job_number else "local",
-            server_machine=self.server_machine_name,
-        )
-
-        while job.jobcheck():
-            logger.info(f"  Job {job_number} still running, waiting {self.poll_interval}s...")
-            await asyncio.sleep(self.poll_interval)
-            os.chdir(cwd)
-
-        logger.info("  Job completed.")
-        update_job(cwd, input_file, status="completed", completed_at=_now_iso())
-        os.chdir(cwd)
-        job.fetch_job(from_objects=fetch_from_objects, exclude_patterns=[])
-        update_job(cwd, input_file, status="fetched", fetched_at=_now_iso())
-
-    def _make_job(self, input_file, output_file, queue_label=None):
-        """Create a JobSubmission with current workflow settings."""
-        return JobSubmission(
-            server_machine_name=self.server_machine_name,
-            input_file=input_file,
-            output_file=output_file,
-            queue_label=queue_label or self.queue_label,
-            jobname=self.jobname,
-        )
+    # _submit_and_wait() and _make_job() are inherited from Workflow.
 
     # ── Launch ────────────────────────────────────────────────────
 
@@ -459,8 +354,8 @@ class VMC_Workflow(Workflow):
            all optimization steps complete or ``max_continuation`` is
            reached.
         """
-        # Save absolute CWD — other async tasks may chdir while we await.
-        _wd = os.path.abspath(os.getcwd())
+        self._ensure_project_dir()
+        _wd = self.project_dir
 
         # ── Phase 0: pilot estimation (skip on continuation) ──────
         estimation = get_estimation(_wd)
@@ -482,8 +377,6 @@ class VMC_Workflow(Workflow):
             if os.path.isfile(h5_src) and not os.path.exists(h5_dst):
                 os.symlink(h5_src, h5_dst)
 
-            os.chdir(pilot_dir)
-
             input_0 = suffixed_name(self.input_file, 0)
             output_0 = suffixed_name(self.output_file, 0)
 
@@ -492,7 +385,7 @@ class VMC_Workflow(Workflow):
                 self._generate_input(
                     self.pilot_mcmc_steps,
                     self.pilot_vmc_steps,
-                    input_0,
+                    os.path.join(pilot_dir, input_0),
                 )
             else:
                 logger.info(f"  {input_0}: already {recorded_0['status']}. Resuming...")
@@ -503,12 +396,12 @@ class VMC_Workflow(Workflow):
             )
 
             pilot_t0 = time.monotonic()
-            await self._submit_and_wait(input_0, output_0, queue_label=self.pilot_queue_label)
-            os.chdir(pilot_dir)
+            await self._submit_and_wait(input_0, output_0, work_dir=pilot_dir, queue_label=self.pilot_queue_label)
             pilot_wall_sec = time.monotonic() - pilot_t0
 
             # Parse the last optimization step's error from pilot output
-            pilot_energy, pilot_error = self._parse_last_opt_energy(output_0)
+            pilot_output_path = os.path.join(pilot_dir, output_0)
+            pilot_energy, pilot_error = self._parse_last_opt_energy(pilot_output_path)
             if pilot_error is None:
                 raise RuntimeError(
                     f"Could not parse energy error from the last optimization step of the pilot VMC output ({output_0})."
@@ -540,7 +433,7 @@ class VMC_Workflow(Workflow):
             cost_ratio = total_prod_cost / total_pilot_cost if total_pilot_cost > 0 else 0
 
             # Time estimate: only Net time scales with step count
-            net_pilot_sec = parse_net_time(output_0)
+            net_pilot_sec = parse_net_time(pilot_output_path)
             if net_pilot_sec is not None and net_pilot_sec > 0:
                 overhead_sec = pilot_wall_sec - net_pilot_sec
                 est_prod_sec = overhead_sec + net_pilot_sec * cost_ratio
@@ -569,7 +462,6 @@ class VMC_Workflow(Workflow):
             logger.info("-" * 50)
 
             # Save estimation to main working directory
-            os.chdir(_wd)
             set_estimation(
                 _wd,
                 pilot_mcmc_steps=self.pilot_mcmc_steps,
@@ -580,8 +472,6 @@ class VMC_Workflow(Workflow):
                 pilot_queue_label=self.pilot_queue_label,
                 walker_ratio=walker_ratio,
             )
-
-        os.chdir(_wd)
 
         # ── Production runs (phase 1..N) ──────────────────────────
         last_run = 0
@@ -603,18 +493,16 @@ class VMC_Workflow(Workflow):
                     self._generate_input(
                         estimated_mcmc_steps,
                         self.num_opt_steps,
-                        input_i,
+                        os.path.join(_wd, input_i),
                     )
                 else:
-                    restart_chk = self._find_restart_chk()
+                    restart_chk = self._find_restart_chk(_wd)
                     if restart_chk is None:
-                        raise RuntimeError(
-                            f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {os.getcwd()}"
-                        )
+                        raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {_wd}")
                     self._generate_input(
                         estimated_mcmc_steps,
                         self.num_opt_steps,
-                        input_i,
+                        os.path.join(_wd, input_i),
                         restart=bool(restart_chk),
                         restart_chk=restart_chk,
                     )
@@ -622,43 +510,42 @@ class VMC_Workflow(Workflow):
                 logger.info(f"-- VMC Phase 1: Production run {i}/{self.max_continuation} " + "-" * 10)
                 logger.info(f"  {input_i}: {self.num_opt_steps} opt steps x {estimated_mcmc_steps} MCMC steps/step")
 
-            restart_chk = self._find_restart_chk() if i > 1 else None
+            restart_chk = self._find_restart_chk(_wd) if i > 1 else None
             if i > 1 and restart_chk is None:
-                raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {os.getcwd()}")
+                raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {_wd}")
             extra_from = [restart_chk] if restart_chk else []
 
-            await self._submit_and_wait(input_i, output_i, extra_from_objects=extra_from)
-            os.chdir(_wd)
+            await self._submit_and_wait(input_i, output_i, work_dir=_wd, extra_from_objects=extra_from)
             last_run = i
 
             logger.info(f"  VMC production run {i}/{self.max_continuation} completed.")
 
         # ── Collect outputs ───────────────────────────────────────
-        h5_files = sorted(glob.glob("*.h5"))
+        h5_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
         output_logs = [
             suffixed_name(self.output_file, j)
             for j in range(last_run + 1)
-            if os.path.isfile(suffixed_name(self.output_file, j))
+            if os.path.isfile(os.path.join(_wd, suffixed_name(self.output_file, j)))
         ]
         self.output_files = h5_files + output_logs
 
-        opt_files = sorted(glob.glob("hamiltonian_data_opt_step_*.h5"))
+        opt_files = sorted(glob.glob(os.path.join(_wd, "hamiltonian_data_opt_step_*.h5")))
         if opt_files:
-            self.output_values["optimized_hamiltonian"] = opt_files[-1]
-        restart_chk = self._find_restart_chk()
+            self.output_values["optimized_hamiltonian"] = os.path.basename(opt_files[-1])
+        restart_chk = self._find_restart_chk(_wd)
         if restart_chk:
             self.output_values["checkpoint"] = restart_chk
         self.output_values["estimated_mcmc_steps"] = estimated_mcmc_steps
 
         # Parse last production output for energy
-        last_output = suffixed_name(self.output_file, last_run)
+        last_output = os.path.join(_wd, suffixed_name(self.output_file, last_run))
         self._parse_output(last_output)
 
         # ── Final convergence check (signal-to-noise) ─────────────
         # Find S/N from the latest available output
         final_snr = None
         for j in range(last_run, 0, -1):
-            out_j = suffixed_name(self.output_file, j)
+            out_j = os.path.join(_wd, suffixed_name(self.output_file, j))
             final_snr = self._parse_last_snr(out_j)
             if final_snr is not None:
                 break
@@ -687,12 +574,12 @@ class VMC_Workflow(Workflow):
 
     # ── Utility methods ───────────────────────────────────────────
 
-    def _find_restart_chk(self) -> Optional[str]:
-        """Locate a VMC restart checkpoint file."""
+    def _find_restart_chk(self, work_dir: str) -> Optional[str]:
+        """Locate a VMC restart checkpoint file in *work_dir*."""
         for pattern in ["restart.h5", "vmc.h5", "*.h5"]:
-            matches = sorted(glob.glob(pattern))
+            matches = sorted(glob.glob(os.path.join(work_dir, pattern)))
             if matches:
-                return matches[-1]
+                return os.path.basename(matches[-1])
         return None
 
     # ── Output parsing ────────────────────────────────────────────

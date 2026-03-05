@@ -168,6 +168,9 @@ class WF_Workflow(Workflow):
         tuple
             ``(status, output_files, output_values)``
         """
+        self._ensure_project_dir()
+        _wd = self.project_dir
+
         command = self._build_command()
         logger.info(f"  Running: {command}")
 
@@ -178,6 +181,7 @@ class WF_Workflow(Workflow):
                 capture_output=True,
                 text=True,
                 check=True,
+                cwd=_wd,
             )
             logger.info(result.stdout)
             if result.stderr:
@@ -187,7 +191,7 @@ class WF_Workflow(Workflow):
             self.status = "failed"
             return self.status, [], {}
 
-        if not os.path.isfile(self.hamiltonian_file):
+        if not os.path.isfile(os.path.join(_wd, self.hamiltonian_file)):
             logger.error(f"Output file not found: {self.hamiltonian_file}")
             self.status = "failed"
             return self.status, [], {}

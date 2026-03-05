@@ -129,6 +129,18 @@ class VMC_Diagnostic_Data:
     restart_checkpoint : str or None
         Restart file name from ``Dump restart checkpoint file(s) to X.``.
         ``None`` if the line was not found (indicates abnormal termination).
+    num_mpi_processes : int or None
+        ``The number of MPI process = N.`` → N.
+    num_walkers_per_process : int or None
+        ``The number of walkers assigned for each MPI process = N.`` → N.
+    jax_backend : str or None
+        ``JAX backend = X.`` → X (e.g. ``"gpu"``, ``"cpu"``).
+        Set to ``"cpu"`` when the log says
+        ``Running on CPUs or single GPU``.
+    jax_devices : list or None
+        Parsed list of global XLA device strings from
+        ``*** XLA Global devices recognized by JAX***`` line.
+        e.g. ``["CudaDevice(id=0)", "CudaDevice(id=1)"]``.
     stderr_tail : str
         Last portion of stderr (up to 200 lines).
     """
@@ -139,6 +151,10 @@ class VMC_Diagnostic_Data:
     opt_timing_breakdown: dict = field(default_factory=dict)
     optimized_hamiltonian: Optional[str] = None
     restart_checkpoint: Optional[str] = None
+    num_mpi_processes: Optional[int] = None
+    num_walkers_per_process: Optional[int] = None
+    jax_backend: Optional[str] = None
+    jax_devices: Optional[list] = None
     stderr_tail: str = ""
 
 
@@ -174,6 +190,14 @@ class MCMC_Diagnostic_Data:
     restart_checkpoint : str or None
         Restart file name from ``Dump restart checkpoint file(s) to X.``.
         ``None`` if the line was not found.
+    num_mpi_processes : int or None
+        ``The number of MPI process = N.`` → N.
+    num_walkers_per_process : int or None
+        ``The number of walkers assigned for each MPI process = N.`` → N.
+    jax_backend : str or None
+        ``JAX backend = X.`` → X (e.g. ``"gpu"``, ``"cpu"``).
+    jax_devices : list or None
+        Parsed list of global XLA device strings.
     stderr_tail : str
         Last portion of stderr (up to 200 lines).
     """
@@ -188,6 +212,10 @@ class MCMC_Diagnostic_Data:
     energy_error: Optional[float] = None
     hamiltonian_data_file: Optional[str] = None
     restart_checkpoint: Optional[str] = None
+    num_mpi_processes: Optional[int] = None
+    num_walkers_per_process: Optional[int] = None
+    jax_backend: Optional[str] = None
+    jax_devices: Optional[list] = None
     stderr_tail: str = ""
 
 
@@ -224,6 +252,14 @@ class LRDMC_Diagnostic_Data:
     restart_checkpoint : str or None
         Restart file name from ``Dump restart checkpoint file(s) to X.``.
         ``None`` if the line was not found.
+    num_mpi_processes : int or None
+        ``The number of MPI process = N.`` → N.
+    num_walkers_per_process : int or None
+        ``The number of walkers assigned for each MPI process = N.`` → N.
+    jax_backend : str or None
+        ``JAX backend = X.`` → X (e.g. ``"gpu"``, ``"cpu"``).
+    jax_devices : list or None
+        Parsed list of global XLA device strings.
     stderr_tail : str
         Last portion of stderr (up to 200 lines).
     """
@@ -238,6 +274,10 @@ class LRDMC_Diagnostic_Data:
     energy_error: Optional[float] = None
     hamiltonian_data_file: Optional[str] = None
     restart_checkpoint: Optional[str] = None
+    num_mpi_processes: Optional[int] = None
+    num_walkers_per_process: Optional[int] = None
+    jax_backend: Optional[str] = None
+    jax_devices: Optional[list] = None
     stderr_tail: str = ""
 
 

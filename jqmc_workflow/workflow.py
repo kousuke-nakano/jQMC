@@ -42,9 +42,14 @@ import shutil
 from logging import getLogger
 from typing import Any, List, Optional
 
+from ._job import JobSubmission
 from ._state import (
+    _now_iso,
+    add_job,
     create_state,
+    get_job,
     read_state,
+    update_job,
     update_status,
 )
 
@@ -150,6 +155,15 @@ class Workflow:
     Every concrete workflow (VMC, MCMC, LRDMC, WF, …) inherits from
     this class and overrides :meth:`async_launch`.
 
+    Parameters
+    ----------
+    project_dir : str, optional
+        Absolute path to the working directory for this workflow.
+        When *None* (the default), ``project_dir`` is set to the
+        process CWD at the time :meth:`async_launch` is first called.
+        :class:`Container` sets this explicitly before launching the
+        inner workflow.
+
     Attributes
     ----------
     status : str
@@ -158,6 +172,8 @@ class Workflow:
         Filenames produced by the workflow (populated after launch).
     output_values : dict
         Scalar results (energy, error, …) produced by the workflow.
+    project_dir : str or None
+        Working directory for file I/O.  Resolved to an absolute path.
 
     Notes
     -----
@@ -178,17 +194,183 @@ class Workflow:
                 return self.status, ["result.h5"], {"energy": -1.23}
     """
 
-    def __init__(self):
+    def __init__(self, project_dir: Optional[str] = None):
         self.status = "init"
         self.output_files: List[str] = []
         self.output_values: dict = {}
+        self.project_dir: Optional[str] = os.path.abspath(project_dir) if project_dir else None
+
+    def _ensure_project_dir(self):
+        """Lazily resolve *project_dir* to CWD when not set explicitly."""
+        if self.project_dir is None:
+            self.project_dir = os.path.abspath(os.getcwd())
+
+    # ── Full lifecycle (backward-compatible) ──────────────────────
 
     async def async_launch(self):
         """Override in subclass. Must return (status, output_files, output_values)."""
+        self._ensure_project_dir()
         return self.status, self.output_files, self.output_values
 
     def launch(self):
         return asyncio.run(self.async_launch())
+
+    # ── Phased execution (new API for MCP / external orchestration) ──
+
+    async def async_submit(self) -> dict:
+        """Submit initial job(s) and return tracking information.
+
+        Override in subclass.  The default raises ``NotImplementedError``.
+
+        Returns
+        -------
+        dict
+            At minimum ``{"status": "submitted"}``.
+        """
+        raise NotImplementedError
+
+    async def async_poll(self) -> str:
+        """Check whether submitted jobs have completed.
+
+        Override in subclass.  The default raises ``NotImplementedError``.
+
+        Returns
+        -------
+        str
+            One of ``"running"``, ``"completed"``, ``"failed"``.
+        """
+        raise NotImplementedError
+
+    async def async_collect(self) -> dict:
+        """Collect and return results from completed jobs.
+
+        Override in subclass.  The default raises ``NotImplementedError``.
+
+        Returns
+        -------
+        dict
+            Workflow-specific result mapping.
+        """
+        raise NotImplementedError
+
+    # ── Common job helpers (used by VMC / MCMC / LRDMC) ───────────
+    #
+    # These methods require the following attributes on *self*:
+    #   server_machine_name, hamiltonian_file, queue_label,
+    #   jobname, poll_interval
+    # They are therefore only callable from concrete subclasses that
+    # set those attributes.
+
+    async def _submit_and_wait(
+        self,
+        input_file,
+        output_file,
+        work_dir,
+        extra_from_objects=None,
+        fetch_from_objects=None,
+        queue_label=None,
+    ):
+        """Submit a job, poll until done, fetch results.
+
+        This method is CWD-safe — it never calls ``os.chdir()``.
+        All path context is passed explicitly via *work_dir*.
+
+        Restart behaviour is driven by ``workflow_state.toml``:
+
+        * ``fetched``   — skip entirely (already done)
+        * ``completed`` — fetch results only
+        * ``submitted`` — resume waiting, then fetch
+        * no record     — submit a new job
+
+        Parameters
+        ----------
+        input_file : str
+            Basename of the input TOML file (relative to *work_dir*).
+        output_file : str
+            Basename of the stdout capture file.
+        work_dir : str
+            Absolute path to the directory where the job runs.
+        extra_from_objects : list, optional
+            Additional files to upload with the job (e.g. checkpoint).
+        fetch_from_objects : list, optional
+            Glob patterns for files to fetch.  Defaults to
+            ``["*.h5", output_file]``.
+        queue_label : str, optional
+            Override for the queue label.
+        """
+        if fetch_from_objects is None:
+            fetch_from_objects = ["*.h5", output_file]
+
+        # ── Restart detection via job history ─────────────────────
+        recorded = get_job(work_dir, input_file)
+
+        if recorded.get("status") == "fetched":
+            logger.info(f"  {input_file}: already fetched. Skipping.")
+            return
+
+        if recorded.get("status") == "completed":
+            logger.info(f"  {input_file}: completed but not fetched. Fetching...")
+            job = self._make_job(input_file, output_file, queue_label=queue_label)
+            job.fetch_job(from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir)
+            update_job(work_dir, input_file, status="fetched", fetched_at=_now_iso())
+            return
+
+        if recorded.get("status") == "submitted":
+            stored_job_id = recorded.get("job_id")
+            logger.info(f"  Resuming previously submitted job {stored_job_id}")
+            job = self._make_job(input_file, output_file, queue_label=queue_label)
+            job.job_number = stored_job_id
+            while job.jobcheck():
+                logger.info(f"  Job {stored_job_id} still running, waiting {self.poll_interval}s...")
+                await asyncio.sleep(self.poll_interval)
+            logger.info("  Job completed.")
+            update_job(work_dir, input_file, status="completed", completed_at=_now_iso())
+            job.fetch_job(from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir)
+            update_job(work_dir, input_file, status="fetched", fetched_at=_now_iso())
+            return
+
+        # ── New submission ────────────────────────────────────────
+        job = self._make_job(input_file, output_file, queue_label=queue_label)
+        job.generate_script(work_dir=work_dir)
+
+        from_objects = [input_file, self.hamiltonian_file, "submit.sh"]
+        if extra_from_objects:
+            from_objects.extend(extra_from_objects)
+        submitted, job_number = job.job_submit(from_objects=from_objects, work_dir=work_dir)
+        if not submitted:
+            raise RuntimeError("Job submission failed (queue limit or error).")
+
+        logger.info(f"  Job submitted: {job_number}")
+        add_job(
+            work_dir,
+            input_file=input_file,
+            output_file=output_file,
+            job_id=str(job_number) if job_number else "local",
+            server_machine=self.server_machine_name,
+        )
+
+        while job.jobcheck():
+            logger.info(f"  Job {job_number} still running, waiting {self.poll_interval}s...")
+            await asyncio.sleep(self.poll_interval)
+
+        logger.info("  Job completed.")
+        update_job(work_dir, input_file, status="completed", completed_at=_now_iso())
+        job.fetch_job(from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir)
+        update_job(work_dir, input_file, status="fetched", fetched_at=_now_iso())
+
+    def _make_job(self, input_file, output_file, queue_label=None):
+        """Create a :class:`JobSubmission` with current workflow settings.
+
+        Requires *self.server_machine_name*, *self.queue_label*, and
+        *self.jobname* to be set by the concrete subclass.
+        """
+        return JobSubmission(
+            server_machine_name=self.server_machine_name,
+            input_file=input_file,
+            output_file=output_file,
+            queue_label=queue_label or self.queue_label,
+            jobname=self.jobname,
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -317,6 +499,9 @@ class Container:
 
         for i, src in enumerate(self.input_files):
             src = str(src)  # resolve pathlib objects
+            # Resolve relative paths against root_dir
+            if not os.path.isabs(src):
+                src = os.path.join(self.root_dir, src)
             if rename:
                 dst_name = os.path.basename(str(self.rename_input_files[i]))
             else:
@@ -336,12 +521,8 @@ class Container:
     # ── Launch ────────────────────────────────────────────────────
 
     async def async_launch(self):
-        # Save absolute paths upfront — os.chdir is process-global and
-        # other async tasks may change it while we await.
-        root = os.path.abspath(self.root_dir)
         proj = os.path.abspath(self.project_dir)
 
-        os.chdir(root)
         self._prepare()
 
         # Check if already completed
@@ -350,23 +531,18 @@ class Container:
             logger.info(f"[{self.label}] Already completed, no re-run.")
             self.status = "success"
             self._collect_outputs()
-            os.chdir(root)
             return self.status, self.output_files, self.output_values
 
-        # Run the workflow
+        # Run the workflow — pass project_dir explicitly instead of
+        # relying on os.chdir().
         update_status(proj, "running")
-        os.chdir(proj)
+        self.workflow.project_dir = proj
 
         try:
             self.status, self.output_files, self.output_values = await self.workflow.async_launch()
         except Exception as e:
             update_status(proj, "failed", error=str(e))
-            os.chdir(root)
             raise
-
-        # Restore CWD after inner workflow (which may have been
-        # changed by other concurrent tasks during awaits).
-        os.chdir(proj)
 
         # Write completion
         result_fields = {}
@@ -374,7 +550,6 @@ class Container:
             result_fields[f"result_{k}"] = v
         update_status(proj, "completed", **result_fields)
 
-        os.chdir(root)
         return self.status, self.output_files, self.output_values
 
     def _collect_outputs(self):

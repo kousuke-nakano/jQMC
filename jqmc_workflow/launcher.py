@@ -303,7 +303,7 @@ class Launcher:
         if isinstance(dep_obj, FileFrom):
             filepath = os.path.join(cw.dirname, dep_obj.filename)
             p = pathlib.Path(filepath)
-            return p.resolve().relative_to(pathlib.Path.cwd())
+            return p.resolve().relative_to(pathlib.Path(self.root_dir).resolve())
 
         elif isinstance(dep_obj, ValueFrom):
             return cw.output_values.get(dep_obj.key)
@@ -340,7 +340,6 @@ class Launcher:
     # ── Execution: true DAG parallelism ───────────────────────────
 
     def launch(self):
-        os.chdir(self.root_dir)
         asyncio.run(self.async_launch())
 
     async def async_launch(self):
@@ -349,8 +348,6 @@ class Launcher:
         As soon as ALL predecessors of a node complete, that node
         starts immediately — no layer-based grouping.
         """
-        os.chdir(self.root_dir)
-
         completed = set()
         failed = set()
         pending = set(self.workflows_by_label.keys())
@@ -364,8 +361,6 @@ class Launcher:
         running = {}  # label -> asyncio.Task
 
         while pending or running:
-            os.chdir(self.root_dir)
-
             # Find workflows whose dependencies are ALL completed
             ready = []
             for label in list(pending):
@@ -388,7 +383,6 @@ class Launcher:
                 logger.info("-" * 50)
                 logger.info(f"  [{label}] Launching...")
                 logger.info("-" * 50)
-                os.chdir(self.root_dir)
                 task = asyncio.create_task(self._run_workflow(label, cw))
                 running[label] = task
 
@@ -421,8 +415,6 @@ class Launcher:
                 else:
                     logger.info(f"[{label}] Completed.")
                     completed.add(label)
-
-        os.chdir(self.root_dir)
 
         # Summary
         logger.info("")

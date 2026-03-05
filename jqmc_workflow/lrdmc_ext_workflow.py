@@ -332,18 +332,16 @@ class LRDMC_Ext_Workflow(Workflow):
         tuple
             ``(status, output_files, output_values)``
         """
-        # Save absolute CWD -- other async tasks may chdir while we await.
-        _wd = os.path.abspath(os.getcwd())
+        self._ensure_project_dir()
+        _wd = self.project_dir
         sorted_alats = sorted(self.alat_list, reverse=True)
 
         # -- helper: run a single alat, return a uniform result tuple ------
         async def _run_one(enc):
             try:
                 status, out_files, out_values = await enc.async_launch()
-                os.chdir(_wd)
                 return enc, status, out_files, out_values, None
             except Exception as exc:
-                os.chdir(_wd)
                 return enc, "failed", [], {}, exc
 
         # Create and launch all alat runs in parallel
@@ -354,7 +352,6 @@ class LRDMC_Ext_Workflow(Workflow):
 
         tasks = [asyncio.create_task(_run_one(enc)) for enc in enc_workflows]
         all_results = list(await asyncio.gather(*tasks))
-        os.chdir(_wd)
 
         # -- collect results -----------------------------------------------
         restart_chks = []
@@ -434,6 +431,7 @@ class LRDMC_Ext_Workflow(Workflow):
                 capture_output=True,
                 text=True,
                 check=True,
+                cwd=self.project_dir,
             )
             return self._parse_extrapolation_output(result.stdout)
         except subprocess.CalledProcessError as e:

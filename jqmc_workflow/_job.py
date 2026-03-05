@@ -160,8 +160,17 @@ class JobSubmission:
         """True when the job should be launched directly (no submit script)."""
         return self.server_machine.machine_type == "local" and not self.server_machine.queuing
 
-    def generate_script(self, submission_script: str = "submit.sh"):
-        """Generate job submission script from template + queue_data.toml vars."""
+    def generate_script(self, submission_script: str = "submit.sh", *, work_dir=None):
+        """Generate job submission script from template + queue_data.toml vars.
+
+        Parameters
+        ----------
+        submission_script : str
+            Filename of the generated script (basename).
+        work_dir : str, optional
+            Directory where the script is written.  When *None*,
+            falls back to the current working directory.
+        """
         cfg = get_config_dir()
         template_path = os.path.join(
             cfg,
@@ -190,12 +199,25 @@ class JobSubmission:
             if key not in _SKIP_KEYS:
                 lines = replace_kw(lines, f"_{key.upper()}_", value)
 
-        with open(submission_script, "w") as f:
+        script_path = os.path.join(work_dir, submission_script) if work_dir else submission_script
+        with open(script_path, "w") as f:
             f.writelines(lines)
 
     # ── Job submission ────────────────────────────────────────────
 
-    def job_submit(self, submission_script: str = "submit.sh", from_objects=None):
+    def job_submit(self, submission_script: str = "submit.sh", from_objects=None, *, work_dir=None):
+        """Submit the job.
+
+        Parameters
+        ----------
+        submission_script : str
+            Basename of the submit script in *work_dir*.
+        from_objects : list[str], optional
+            Basenames of extra files to upload.
+        work_dir : str, optional
+            Absolute path to the local job directory.  When *None*,
+            falls back to ``os.getcwd()`` for backward compatibility.
+        """
         from_objects = from_objects or []
 
         if not self.jobnum_check():
@@ -206,7 +228,7 @@ class JobSubmission:
             return False, self.job_number
 
         try:
-            local_cwd = os.path.abspath(os.getcwd())
+            local_cwd = os.path.abspath(work_dir) if work_dir else os.path.abspath(os.getcwd())
 
             # ── Local direct mode (run generated submit script) ──
             if self.is_local_direct:
@@ -229,9 +251,9 @@ class JobSubmission:
                 local_root = self.data_transfer._local_root
                 server_root = self.server_machine.workspace_root
                 if local_root and local_root not in local_cwd:
-                    raise ValueError("CWD not under local workspace_root.")
+                    raise ValueError(f"work_dir ({local_cwd}) not under local workspace_root ({local_root}).")
                 server_dir = local_cwd.replace(local_root, server_root)
-                self.data_transfer.put_objects(from_objects=from_objects)
+                self.data_transfer.put_objects(from_objects=from_objects, work_dir=local_cwd)
 
             if self.server_machine.queuing:
                 stdout, stderr = self.server_machine.run_command(command=command, execute_dir=server_dir)
@@ -342,7 +364,19 @@ class JobSubmission:
 
     # ── Fetch results ─────────────────────────────────────────────
 
-    def fetch_job(self, from_objects=None, exclude_patterns=None):
+    def fetch_job(self, from_objects=None, exclude_patterns=None, *, work_dir=None):
+        """Fetch job results from the remote machine.
+
+        Parameters
+        ----------
+        from_objects : list[str], optional
+            Basenames or glob patterns of files to download.
+        exclude_patterns : list[str], optional
+            Glob patterns to exclude.
+        work_dir : str, optional
+            Absolute path to the local job directory.  When *None*,
+            falls back to ``os.getcwd()`` for backward compatibility.
+        """
         from_objects = from_objects or []
         exclude_patterns = exclude_patterns or []
 
@@ -350,6 +384,7 @@ class JobSubmission:
             self.data_transfer.get_objects(
                 from_objects=from_objects,
                 exclude_patterns=exclude_patterns,
+                work_dir=work_dir,
             )
 
         self.job_fetch_date = datetime.today()

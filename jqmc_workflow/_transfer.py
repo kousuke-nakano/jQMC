@@ -80,7 +80,22 @@ class Data_transfer:
 
     # ── put (local → remote) ──────────────────────────────────────
 
-    def put_objects(self, from_objects=None, exclude_patterns=None):
+    def put_objects(self, from_objects=None, exclude_patterns=None, *, work_dir=None):
+        """Upload files from *work_dir* to the corresponding remote directory.
+
+        Parameters
+        ----------
+        from_objects : list[str], optional
+            Basenames or glob patterns of files to upload.  When empty,
+            the entire *work_dir* is synced.
+        exclude_patterns : list[str], optional
+            Glob patterns to exclude from the transfer.
+        work_dir : str, optional
+            Local directory that maps to the remote workspace.  When
+            *None*, falls back to ``os.getcwd()`` for backward
+            compatibility, but callers should always pass this
+            explicitly.
+        """
         from_objects = from_objects or []
         exclude_patterns = exclude_patterns or []
 
@@ -91,7 +106,7 @@ class Data_transfer:
             if server_root and not self.server_machine.is_dir(server_root):
                 raise FileNotFoundError(f"Server root {server_root} not found.")
 
-        local_cwd = os.path.abspath(os.getcwd())
+        local_cwd = os.path.abspath(work_dir) if work_dir else os.path.abspath(os.getcwd())
 
         if self.server_machine.machine_type == "local":
             logger.debug("Server is localhost; skipping put_objects.")
@@ -101,10 +116,10 @@ class Data_transfer:
             raise ValueError("server workspace_root is not configured.")
 
         if local_root and local_root not in local_cwd:
-            raise ValueError(f"CWD ({local_cwd}) is not under local root ({local_root}). Cannot map paths to remote.")
+            raise ValueError(f"work_dir ({local_cwd}) is not under local root ({local_root}). Cannot map paths to remote.")
 
         if not from_objects:
-            # Sync entire CWD
+            # Sync entire work_dir
             client_dir = local_cwd
             server_dir = local_cwd.replace(local_root, server_root)
             self.machine_handler.put_dir(
@@ -117,12 +132,11 @@ class Data_transfer:
             expanded = []
             for obj in from_objects:
                 if any(c in obj for c in ("*", "?", "[")):
-                    expanded.extend(glob.glob(obj))
+                    expanded.extend(glob.glob(os.path.join(local_cwd, obj)))
                 else:
-                    expanded.append(obj)
+                    expanded.append(os.path.join(local_cwd, obj))
 
-            for obj in expanded:
-                obj_abs = os.path.abspath(obj)
+            for obj_abs in expanded:
                 from_path = obj_abs
                 to_path = obj_abs.replace(local_root, server_root)
                 if os.path.isfile(from_path):
@@ -140,7 +154,22 @@ class Data_transfer:
 
     # ── get (remote → local) ──────────────────────────────────────
 
-    def get_objects(self, from_objects=None, exclude_patterns=None):
+    def get_objects(self, from_objects=None, exclude_patterns=None, *, work_dir=None):
+        """Download files from the remote directory to *work_dir*.
+
+        Parameters
+        ----------
+        from_objects : list[str], optional
+            Basenames or glob patterns of files to download.  When
+            empty, the entire remote directory is synced.
+        exclude_patterns : list[str], optional
+            Glob patterns to exclude from the transfer.
+        work_dir : str, optional
+            Local directory that maps to the remote workspace.  When
+            *None*, falls back to ``os.getcwd()`` for backward
+            compatibility, but callers should always pass this
+            explicitly.
+        """
         from_objects = from_objects or []
         exclude_patterns = exclude_patterns or []
 
@@ -154,9 +183,9 @@ class Data_transfer:
         if server_root is None:
             raise ValueError("server workspace_root is not configured.")
 
-        local_cwd = os.path.abspath(os.getcwd())
+        local_cwd = os.path.abspath(work_dir) if work_dir else os.path.abspath(os.getcwd())
         if local_root and local_root not in local_cwd:
-            raise ValueError(f"CWD ({local_cwd}) is not under local root ({local_root}).")
+            raise ValueError(f"work_dir ({local_cwd}) is not under local root ({local_root}).")
 
         client_dir = local_cwd
         server_dir = local_cwd.replace(local_root, server_root)

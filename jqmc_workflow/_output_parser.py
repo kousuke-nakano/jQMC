@@ -191,6 +191,25 @@ _STDERR_TAIL_LINES = 200
 # "Dump restart checkpoint file(s) to restart.h5."
 _RE_RESTART_CHECKPOINT = re.compile(r"Dump restart checkpoint file\(s\) to\s+(\S+)\.\s*$", re.MULTILINE)
 
+# ── Run-level metadata (header section, appears once per output file) ──
+
+# "The number of MPI process = 4."
+_RE_MPI_PROCESSES = re.compile(r"The number of MPI process\s*=\s*(\d+)")
+
+# "The number of walkers assigned for each MPI process = 4."
+_RE_WALKERS_PER_PROCESS = re.compile(r"The number of walkers assigned for each MPI process\s*=\s*(\d+)")
+
+# "JAX backend = gpu."
+_RE_JAX_BACKEND = re.compile(r"JAX backend\s*=\s*(\w+)")
+
+# Fallback: "Running on CPUs or single GPU. JAX distributed initialization is skipped."
+_RE_JAX_CPU_FALLBACK = re.compile(r"Running on CPUs or single GPU")
+
+# "*** XLA Global devices recognized by JAX***"
+# followed by e.g. "[CudaDevice(id=0), CudaDevice(id=1), CudaDevice(id=2), CudaDevice(id=3)]"
+_RE_XLA_GLOBAL_HEADER = re.compile(r"\*{3}\s*XLA Global devices recognized by JAX\s*\*{3}")
+_RE_XLA_DEVICE_LIST = re.compile(r"\[([^\]]+)\]")
+
 
 # ── Internal helpers ──────────────────────────────────────────────
 
@@ -234,7 +253,78 @@ def _find_hamiltonian_h5(work_dir: str) -> Optional[str]:
         except Exception:
             continue
     return None
-    return "".join(lines[-max_lines:])
+
+
+def _parse_run_metadata(text: str) -> dict:
+    """Extract run-level metadata from a jQMC output file header.
+
+    Parses the header section that appears once per output file before
+    any computation output.  Returns a dict with keys::
+
+        {
+            "num_mpi_processes": int | None,
+            "num_walkers_per_process": int | None,
+            "jax_backend": str | None,      # "gpu", "cpu", etc.
+            "jax_devices": list | None,      # ["CudaDevice(id=0)", ...]
+        }
+    """
+    meta: dict = {
+        "num_mpi_processes": None,
+        "num_walkers_per_process": None,
+        "jax_backend": None,
+        "jax_devices": None,
+    }
+
+    for line in text.splitlines():
+        # MPI processes
+        m = _RE_MPI_PROCESSES.search(line)
+        if m:
+            meta["num_mpi_processes"] = int(m.group(1))
+            continue
+
+        # Walkers per process
+        m = _RE_WALKERS_PER_PROCESS.search(line)
+        if m:
+            meta["num_walkers_per_process"] = int(m.group(1))
+            continue
+
+        # JAX backend (explicit)
+        m = _RE_JAX_BACKEND.search(line)
+        if m:
+            meta["jax_backend"] = m.group(1).lower()
+            continue
+
+        # JAX backend (fallback: CPU/single GPU)
+        if _RE_JAX_CPU_FALLBACK.search(line):
+            if meta["jax_backend"] is None:
+                meta["jax_backend"] = "cpu"
+            continue
+
+    # XLA Global devices — parse from the full text (may span lines)
+    m_header = _RE_XLA_GLOBAL_HEADER.search(text)
+    if m_header:
+        # The device list is on the next non-empty line after the header
+        rest = text[m_header.end() :]
+        for next_line in rest.splitlines():
+            stripped = next_line.strip()
+            if not stripped:
+                continue
+            m_devs = _RE_XLA_DEVICE_LIST.search(stripped)
+            if m_devs:
+                # Split "CudaDevice(id=0), CudaDevice(id=1), ..."
+                raw_devices = m_devs.group(1)
+                meta["jax_devices"] = [d.strip() for d in raw_devices.split(",") if d.strip()]
+            break
+
+    return meta
+
+
+def _apply_run_metadata(result, meta: dict) -> None:
+    """Apply run metadata dict to a diagnostic data object."""
+    result.num_mpi_processes = meta["num_mpi_processes"]
+    result.num_walkers_per_process = meta["num_walkers_per_process"]
+    result.jax_backend = meta["jax_backend"]
+    result.jax_devices = meta["jax_devices"]
 
 
 def _find_output_files(work_dir: str, prefix: str = "out_") -> list:
@@ -433,6 +523,12 @@ def parse_vmc_output(work_dir: str) -> VMC_Diagnostic_Data:
 
     result.steps = all_steps
 
+    # ── Run-level metadata (MPI, walkers, JAX) from first output file ──
+    if output_files:
+        first_text = _read_text(output_files[0])
+        if first_text:
+            _apply_run_metadata(result, _parse_run_metadata(first_text))
+
     # Extract total_opt_steps from the last output file (the M in N/M)
     if output_files:
         last_text = _read_text(output_files[-1])
@@ -532,6 +628,12 @@ def parse_mcmc_output(work_dir: str) -> MCMC_Diagnostic_Data:
         return result
 
     output_files = _find_output_files(work_dir, prefix="out_")
+
+    # ── Run-level metadata (MPI, walkers, JAX) from first output file ──
+    if output_files:
+        first_text = _read_text(output_files[0])
+        if first_text:
+            _apply_run_metadata(result, _parse_run_metadata(first_text))
 
     # Parse the last output file (most recent run)
     last_text = None
@@ -634,6 +736,12 @@ def parse_lrdmc_output(work_dir: str) -> LRDMC_Diagnostic_Data:
         return result
 
     output_files = _find_output_files(work_dir, prefix="out_")
+
+    # ── Run-level metadata (MPI, walkers, JAX) from first output file ──
+    if output_files:
+        first_text = _read_text(output_files[0])
+        if first_text:
+            _apply_run_metadata(result, _parse_run_metadata(first_text))
 
     # Parse the last output file
     last_text = None
