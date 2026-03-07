@@ -21,7 +21,7 @@ The following is a script to run a HF calculation for the water molecule using `
 > [!NOTE]
 > This `TREX-IO` converter is being develped in the `pySCF-forge` [repository](https://github.com/pyscf/pyscf-forge) and not yet merged to the main repository of `pySCF`. Please use `pySCF-forge`.
 
-<!-- include: 01DFT/01pyscf-forge/run_pyscf.py -->
+<!-- include: 01DFT/run_pyscf.py -->
 ```python
 from pyscf import gto, scf
 from pyscf.tools import trexio
@@ -55,9 +55,9 @@ trexio.to_trexio(mf, filename)
 Launch it on a terminal. You may get `E = -16.9450309201805 Ha` [Hartree-Forck].
 
 ```bash
-% mkdir -p 01DFT/01pyscf-forge && cd 01DFT/01pyscf-forge
+% cd 01DFT
 % python run_pyscf.py
-% cd ../..
+% cd ..
 ```
 
 > [!NOTE]
@@ -67,13 +67,13 @@ Launch it on a terminal. You may get `E = -16.9450309201805 Ha` [Hartree-Forck].
 
 In this example, we optimize the two-body Jastrow parameter, the three-body Jastrow parameter, **and** the lambda matrix (determinantal part) using projected MO optimization (`opt_with_projected_MOs = true`).
 
-The projected-MO approach restricts the lambda-matrix update to a subspace spanned by the occupied molecular orbitals, preventing the optimization from exploring unphysical (virtual–virtual) directions. This leads to a more stable and efficient optimization of the determinantal coefficients together with the Jastrow factors.
+The projected-MO approach restricts the lambda-matrix update to a subspace spanned by the occupied molecular orbitals, preventing the optimization from exploring unphysical (virtual-virtual) directions. This leads to a more stable and efficient optimization of the determinantal coefficients together with the Jastrow factors.
 
 Create a directory for the VMC optimization and move into it. Then generate a template file using `jqmc-tool`. Please directly edit `vmc.toml` if you want to change a parameter.
 
 ```bash
 % mkdir 02vmc && cd 02vmc
-% cp ../01DFT/01pyscf-forge/water_ccecp_ccpvtz.h5 .
+% cp ../01DFT/water_ccecp_ccpvtz.h5 .
 % jqmc-tool trexio convert-to water_ccecp_ccpvtz.h5 -j2 1.0 -j3 ao-small
 > Hamiltonian data is saved in hamiltonian_data.h5.
 % jqmc-tool vmc generate-input -g
@@ -114,9 +114,9 @@ num_param_opt = 0 # the number of parameters to optimize in the descending order
 ```
 
 The key differences from `example01` are:
-- `opt_lambda_param = true` — enables optimization of the lambda matrix (determinantal coefficients).
-- `opt_with_projected_MOs = true` — restricts the lambda-matrix update to the occupied MO subspace, preventing virtual–virtual mixing and improving stability.
-- `-j3 ao-small` — uses a compact AO-based three-body Jastrow instead of `mo`.
+- `opt_lambda_param = true` -- enables optimization of the lambda matrix (determinantal coefficients).
+- `opt_with_projected_MOs = true` -- restricts the lambda-matrix update to the occupied MO subspace, preventing virtual-virtual mixing and improving stability.
+- `-j3 ao-small` -- uses a compact AO-based three-body Jastrow instead of `mo`.
 
 Please lunch the job.
 

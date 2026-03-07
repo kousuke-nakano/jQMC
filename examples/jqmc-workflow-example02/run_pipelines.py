@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """Walker-scaling benchmark: pySCF → WF → VMC → MCMC + LRDMC.
 
 For a water molecule (ccECP, cc-pVTZ), this script benchmarks
@@ -45,7 +44,7 @@ from jqmc_workflow import (
 )
 
 # ── Configuration ─────────────────────────────────────────────────
-SERVER = "genkai"
+SERVER = "cluster"
 QUEUE_LABEL_s = "cores-4-mpi-4-gpu-4-omp-1-30m"
 QUEUE_LABEL_l = "cores-4-mpi-4-gpu-4-omp-1-3h"
 

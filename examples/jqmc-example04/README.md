@@ -6,7 +6,7 @@ Binding energy of the water-water dimer with the JSD and JAGP ansatz. One can le
 
 ## Setup
 
-This example involves three separate calculations: two water monomers and the dimer. Each follows the same workflow (DFT → VMC → MCMC → LRDMC). We demonstrate the full workflow for the **dimer** below; repeat the same steps for each monomer by changing the geometry.
+This example involves three separate calculations: two water monomers and the dimer. Each follows the same workflow (DFT --> VMC --> MCMC --> LRDMC). We demonstrate the full workflow for the **dimer** below; repeat the same steps for each monomer by changing the geometry.
 
 Create a working directory and move into it.
 
@@ -19,23 +19,17 @@ The directory structure will look like:
 ```
 water_dimer_qmc/
 ├── 01_S22_water_monomer_1/   # monomer 1
-│   ├── 01DFT/
-│   ├── 02vmc_JSD/
-│   ├── 03mcmc_JSD/
-│   ├── ...
+│   └── 01DFT/
 ├── 02_S22_water_monomer_2/   # monomer 2
-│   ├── 01DFT/
-│   ├── 02vmc_JSD/
-│   ├── ...
+│   └── 01DFT/
 └── 03_S22_water_dimer/       # dimer
     ├── 01DFT/
     ├── 02vmc_JSD/
     ├── 03mcmc_JSD/
     ├── 04lrdmc_JSD/
-    ├── 05convert_JSD_to_JAGP/
-    ├── 06vmc_JAGP/
-    ├── 07mcmc_JAGP/
-    └── 08lrdmc_JAGP/
+    ├── 05vmc_JAGP/
+    ├── 06mcmc_JAGP/
+    └── 07lrdmc_JAGP/
 ```
 
 ## Generate trial WFs (DFT)
@@ -52,31 +46,31 @@ The first step of ab-initio QMC is to generate a trial WF by a mean-field theory
 from pyscf import gto, scf
 from pyscf.tools import trexio
 
-filename = f'water_dimer.h5'
+filename = f"water_dimer.h5"
 
 mol = gto.Mole()
-mol.verbose  = 5
-mol.atom     = f'''
+mol.verbose = 5
+mol.atom = f"""
 	    O  -1.551007  -0.114520   0.000000
 	    H  -1.934259   0.762503   0.000000
 	    H  -0.599677   0.040712   0.000000
 	    O   1.350625   0.111469   0.000000
 	    H   1.680398  -0.373741  -0.758561
 	    H   1.680398  -0.373741   0.758561
-'''
-mol.basis    = 'ccecp-aug-ccpvtz'
-mol.unit     = 'A'
-mol.ecp      = 'ccecp'
-mol.charge   = 0
-mol.spin     = 0
+"""
+mol.basis = "ccecp-aug-ccpvtz"
+mol.unit = "A"
+mol.ecp = "ccecp"
+mol.charge = 0
+mol.spin = 0
 mol.symmetry = False
 mol.cart = True
-mol.output   = f'water_dimer.out'
+mol.output = f"water_dimer.out"
 mol.build()
 
 mf = scf.KS(mol).density_fit()
-mf.max_cycle=200
-mf.xc = 'LDA_X,LDA_C_PZ'
+mf.max_cycle = 200
+mf.xc = "LDA_X,LDA_C_PZ"
 mf_scf = mf.kernel()
 
 trexio.to_trexio(mf, filename)
@@ -92,7 +86,7 @@ Launch it on a terminal. You may get `E = -34.3124355699676 Ha` [LDA].
 
 ### Water monomer 1
 
-<!-- include: 01_S22_water_monomer_1/01DFT/run_pyscf.py -->
+<!-- 01_S22_water_monomer_1/01DFT/run_pyscf.py -->
 ```python
 from pyscf import gto, scf
 from pyscf.tools import trexio
@@ -132,7 +126,7 @@ trexio.to_trexio(mf, filename)
 
 ### Water monomer 2
 
-<!-- include: 02_S22_water_monomer_2/01DFT/run_pyscf.py -->
+<!-- 02_S22_water_monomer_2/01DFT/run_pyscf.py -->
 ```python
 from pyscf import gto, scf
 from pyscf.tools import trexio
@@ -175,13 +169,13 @@ trexio.to_trexio(mf, filename)
 
 ---
 
-In the following sections, we demonstrate the full workflow for the **water dimer** (`03_S22_water_dimer`). The same steps apply to both monomers — simply adjust the TREXIO filename and working directory accordingly.
+In the following sections, we demonstrate the full workflow for the **water dimer** (`03_S22_water_dimer`). The same steps apply to both monomers -- simply adjust the TREXIO filename and working directory accordingly.
 
 ```bash
 % cd 03_S22_water_dimer
 ```
 
-## Optimize a trial WF (VMC) — JSD
+## Optimize a trial WF (VMC) -- JSD
 The next step is to optimize variational parameters included in the generated wavefunction. Here, we optimize the two-body Jastrow parameter and the matrix elements of the three-body Jastrow parameter.
 
 Create a directory for the VMC optimization and move into it. Then generate a template file using `jqmc-tool`. Please directly edit `vmc.toml` if you want to change a parameter.
@@ -284,7 +278,7 @@ You can also plot them and make a figure.
 % jqmc-tool vmc analyze-output out_vmc -p -s vmc_JSD.jpg
 ```
 
-![VMC JSD optimization](03_S22_water_dimer/03vmc_JSD/vmc_JSD.jpg)
+![VMC JSD optimization](03_S22_water_dimer/02vmc_JSD/vmc_JSD.jpg)
 
 If the optimization is not converged. You can restart the optimization.
 
@@ -306,7 +300,7 @@ You can see and plot the outcome using `jqmc-tool`.
 % jqmc-tool vmc analyze-output out_vmc out_vmc_cont
 ```
 
-## Compute Energy (MCMC) — JSD
+## Compute Energy (MCMC) -- JSD
 The next step is MCMC calculation. Create a directory for the MCMC calculation and move into it. Then generate a template file using `jqmc-tool`. Please directly edit `mcmc.toml` if you want to change a parameter.
 
 ```bash
@@ -350,7 +344,7 @@ You may get `E = -34.45005 +- 0.000506 Ha` [MCMC]
 > [!NOTE]
 > We are going to discuss the sub kcal/mol accuracy in the binding energy. So, we need to decrease the error bars of the monomer and dimer calculations down to $\sim$ 0.10 mHa and $\sim$ 0.15 mHa, respectively.
 
-## Compute Energy (LRDMC) — JSD
+## Compute Energy (LRDMC) -- JSD
 The next step is LRDMC calculation. Create a directory for the LRDMC calculation and move into it. Then generate a template file using `jqmc-tool`. Please directly edit `lrdmc.toml` if you want to change a parameter.
 
 ```bash
@@ -404,35 +398,24 @@ Your total energies of the water-water dimer (JSD) are:
 | JSD        | LRDMC ($a = 0.2$)       | -34.49139 +- 0.000651   | this work |
 
 
-## Conversion of WF: from JSD to JAGP
+## Optimize a trial WF (VMC) -- JAGP
+The next step is to convert the optimized JSD ansatz to JAGP and optimize it. The JAGP (Jastrow Antisymmetrized Geminal Power) ansatz goes beyond JSD by allowing the determinantal part to be variationally optimized, which can improve the nodal surface.
 
-The next step is to convert the optimized JSD ansatz to JAGP. The JAGP (Jastrow Antisymmetrized Geminal Power) ansatz goes beyond JSD by allowing the determinantal part to be variationally optimized, which can improve the nodal surface.
+Create a directory for the VMC optimization, convert the JSD wavefunction to JAGP, and generate a template file.
 
 ```bash
-% cd ../..
-% mkdir 05convert_JSD_to_JAGP && cd 05convert_JSD_to_JAGP
+% cd ..
+% mkdir 05vmc_JAGP && cd 05vmc_JAGP
 % cp ../03mcmc_JSD/hamiltonian_data.h5 ./hamiltonian_data_JSD.h5
 % jqmc-tool hamiltonian conv-wf --convert-to jagp hamiltonian_data_JSD.h5
 > Convert SD to AGP.
 > Hamiltonian data is saved in hamiltonian_data_conv.h5.
-% mv hamiltonian_data_conv.h5 hamiltonian_data_JAGP.h5
-```
-
-
-## Optimize a trial WF (VMC) — JAGP
-The next step is to optimize variational parameters included in the JAGP wavefunction. Here, we optimize the two-body Jastrow parameter, the three-body Jastrow parameter, **and** the AGP matrix elements (`opt_lambda_param = true`).
-
-Create a directory for the VMC optimization and move into it.
-
-```bash
-% cd ..
-% mkdir 06vmc_JAGP && cd 06vmc_JAGP
-% cp ../05convert_JSD_to_JAGP/hamiltonian_data_JAGP.h5 ./hamiltonian_data.h5
+% mv hamiltonian_data_conv.h5 hamiltonian_data.h5
 % jqmc-tool vmc generate-input -g
 > Input file is generated: vmc.toml
 ```
 
-<!-- include: 03_S22_water_dimer/06vmc_JAGP/vmc.toml -->
+<!-- include: 03_S22_water_dimer/05vmc_JAGP/vmc.toml -->
 ```toml
 [control]
 job_type = "vmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".
@@ -465,8 +448,8 @@ num_param_opt = 0 # the number of parameters to optimize in the descending order
 
 > [!IMPORTANT]
 > Note the key differences from the JSD optimization:
-> - `opt_lambda_param = true` — enables optimization of the AGP matrix elements (determinantal part).
-> - `epsilon_AS = 0.05` — enables the Attaccalite–Sorella regularization, which is important for stable optimization of the determinantal part.
+> - `opt_lambda_param = true` -- enables optimization of the AGP matrix elements (determinantal part).
+> - `epsilon_AS = 0.05` -- enables the Attaccalite-Sorella regularization, which is important for stable optimization of the determinantal part.
 
 Please lunch the job.
 
@@ -523,7 +506,7 @@ You can also plot them and make a figure.
 % jqmc-tool vmc analyze-output out_vmc -p -s vmc_JAGP.jpg
 ```
 
-![VMC JAGP optimization](03_S22_water_dimer/07vmc_JAGP/vmc_JAGP.jpg)
+![VMC JAGP optimization](03_S22_water_dimer/05vmc_JAGP/vmc_JAGP.jpg)
 
 If the optimization is not converged. You can restart the optimization.
 
@@ -545,18 +528,18 @@ You can see and plot the outcome using `jqmc-tool`.
 % jqmc-tool vmc analyze-output out_vmc out_vmc_cont
 ```
 
-## Compute Energy (MCMC) — JAGP
+## Compute Energy (MCMC) -- JAGP
 The next step is MCMC calculation. Create a directory for the MCMC calculation and move into it.
 
 ```bash
 % cd ..
-% mkdir 07mcmc_JAGP && cd 07mcmc_JAGP
-% cp ../06vmc_JAGP/hamiltonian_data_opt_step_200.h5 ./hamiltonian_data.h5  # use the optimized WF
+% mkdir 06mcmc_JAGP && cd 06mcmc_JAGP
+% cp ../05vmc_JAGP/hamiltonian_data_opt_step_200.h5 ./hamiltonian_data.h5  # use the optimized WF
 % jqmc-tool mcmc generate-input -g
 > Input file is generated: mcmc.toml
 ```
 
-<!-- include: 03_S22_water_dimer/07mcmc_JAGP/mcmc.toml -->
+<!-- include: 03_S22_water_dimer/06mcmc_JAGP/mcmc.toml -->
 ```toml
 [control]
 job_type = "mcmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau"
@@ -588,19 +571,19 @@ You may get `E = -34.46554 +- 0.000476 Ha` [MCMC]
 
 You should gain the energy with respect the JSD value; otherwise, the optimization went wrong.
 
-## Compute Energy (LRDMC) — JAGP
+## Compute Energy (LRDMC) -- JAGP
 The final step is LRDMC calculation. Create a directory for the LRDMC calculation and move into it.
 
 ```bash
 % cd ..
-% mkdir -p 08lrdmc_JAGP/alat_0.20 && cd 08lrdmc_JAGP
-% cp ../07mcmc_JAGP/hamiltonian_data.h5 .
+% mkdir -p 07lrdmc_JAGP/alat_0.20 && cd 07lrdmc_JAGP
+% cp ../06mcmc_JAGP/hamiltonian_data.h5 .
 % cd alat_0.20
 % jqmc-tool lrdmc generate-input -g
 > Input file is generated: lrdmc.toml
 ```
 
-<!-- include: 03_S22_water_dimer/08lrdmc_JAGP/lrdmc.toml -->
+<!-- include: 03_S22_water_dimer/07lrdmc_JAGP/lrdmc.toml -->
 ```toml
 [control]
   job_type = 'lrdmc-bra'

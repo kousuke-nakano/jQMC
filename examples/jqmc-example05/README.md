@@ -1,15 +1,15 @@
 # jqmc-example05:
 
-Energy and atomic force of hydrogen molecule ($R = 0.74$ Å) with cartesian GTOs. All electron calculations. Comparison of JSD and JAGP ansatz. The atomic forces are computed by fully exploiting algorithmic differentiation (AD) as implemented in **JAX**. The pioneering application of AD in ab initio QMC was first introduced by S. Sorella and L. Capriotti in 2010 [^2010SORjcp].
+Energy and atomic force of hydrogen molecule ($R = 0.74\;\text{\AA}$) with cartesian GTOs. All electron calculations. Comparison of JSD and JAGP ansatz. The atomic forces are computed by fully exploiting algorithmic differentiation (AD) as implemented in **JAX**. The pioneering application of AD in ab initio QMC was first introduced by S. Sorella and L. Capriotti in 2010 [^2010SORjcp].
 
 ## Generate a trial WF
 
 The first step of ab-initio QMC is to generate a trial WF by a mean-field theory such as DFT/HF. `jQMC` interfaces with other DFT/HF software packages via `TREXIO`.
 
-One of the easiest ways to produce it is using `pySCF` as a converter to the `TREXIO` format is implemented. The following is a script to run a DFT-LDA calculation of the hydrogen molecule at $R = 0.74$ Å and dump it as a `TREXIO` file.
+One of the easiest ways to produce it is using `pySCF` as a converter to the `TREXIO` format is implemented. The following is a script to run a DFT-LDA calculation of the hydrogen molecule at $R = 0.74\;\text{\AA}$ and dump it as a `TREXIO` file.
 
 ```bash
-% cd 01trialWF_DFT
+% cd 01DFT
 ```
 
 ```python:run_pyscf.py
@@ -55,8 +55,8 @@ Launch it on a terminal. You may get `E = -1.13700890749411 Ha` [DFT-LDA-PZ].
 Next, convert the `TREXIO` file to the `jqmc` format using `jqmc-tool`, and then optimize the variational parameters in the Jastrow factor (J1, J2, and J3).
 
 ```bash
-% cd 03vmc_JSD
-% cp ../01trialWF_DFT/H2_R_0.74.h5 .
+% cd 02vmc_JSD
+% cp ../01DFT/H2_R_0.74.h5 .
 % jqmc-tool trexio convert-to H2_R_0.74.h5 -j1 1.0 -j2 1.0 -j3 mo
 > Hamiltonian data is saved in hamiltonian_data.h5.
 ```
@@ -70,33 +70,32 @@ You can generate a template file for a VMC optimization using `jqmc-tool`. Pleas
 > Input file is generated: vmc.toml
 ```
 
-```toml:vmc.toml
+<!-- include: 02vmc_JSD/vmc.toml -->
+```toml
 [control]
-job_type = "vmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".
+job_type = "vmcopt" # Specify the job type. "vmc", "vmcopt", "lrdmc-bra", or "lrdmc-tau".
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
-restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
-hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
+restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 
-[vmc]
+[vmcopt]
 num_mcmc_steps = 300 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
 num_mcmc_per_measurement = 40 # Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.
 num_mcmc_warmup_steps = 0 # Number of observable measurement steps for warmup (i.e., discarged).
 num_mcmc_bin_blocks = 1 # Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_mcmc_bin_blocks * mpi_size * number_of_walkers.
 Dt = 1.0 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
-num_opt_steps = 200 # Number of optimization steps.
-wf_dump_freq = 20 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
-optimizer_kwargs = { method = "sr", delta = 0.050, epsilon = 0.001 } # SR optimizer configuration (method plus step/regularization).
+num_opt_steps = 300 # Number of optimization steps.
+wf_dump_freq = 10 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
 opt_J1_param = true
 opt_J2_param = true
 opt_J3_param = true
 opt_lambda_param = false
-opt_with_projected_MOs = true
-num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
+num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If None, all parameters are optimized.
 ```
 
 Please launch the job.
@@ -150,24 +149,25 @@ The important criteria are `Max f` and `Max signal to noise of f`. `Max f` shoul
 Using the optimized wavefunction, compute the energy and atomic forces via MCMC. Copy the optimized `hamiltonian_data` from the previous step and generate a template file using `jqmc-tool`. Please directly edit `mcmc.toml` if you want to change a parameter.
 
 ```bash
-% cd 04mcmc_JSD
-% cp ../03vmc_JSD/hamiltonian_data_opt_step_200.h5 ./hamiltonian_data.h5
+% cd 03mcmc_JSD
+% cp ../02vmc_JSD/hamiltonian_data_opt_step_200.h5 ./hamiltonian_data.h5
 % jqmc-tool mcmc generate-input -g
 > Input file is generated: mcmc.toml
 ```
 
-```toml:mcmc.toml
+<!-- include: 03mcmc_JSD/mcmc.toml -->
+```toml
 [control]
-job_type = "mcmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".
+job_type = "vmc" # Specify the job type. "vmc", "vmcopt", "lrdmc-bra", or "lrdmc-tau".
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
-restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
-hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
+restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 
-[mcmc]
+[vmc]
 num_mcmc_steps = 10000 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
 num_mcmc_per_measurement = 40 # Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.
 num_mcmc_warmup_steps = 10 # Number of observable measurement steps for warmup (i.e., discarged).
@@ -208,21 +208,22 @@ You may get `E = -1.16986 +- 0.000079 Ha` and `Var(E) = 0.03025 +- 0.000071 Ha^2
 Using the same optimized wavefunction, compute the energy and atomic forces via LRDMC. Please directly edit `lrdmc.toml` if you want to change a parameter.
 
 ```bash
-% cd 05lrdmc_JSD
-% cp ../03vmc_JSD/hamiltonian_data_opt_step_200.h5 ./hamiltonian_data.h5
+% cd 04lrdmc_JSD
+% cp ../02vmc_JSD/hamiltonian_data_opt_step_200.h5 ./hamiltonian_data.h5
 % jqmc-tool lrdmc generate-input -g
 > Input file is generated: lrdmc.toml
 ```
 
-```toml:lrdmc.toml
+<!-- include: 04lrdmc_JSD/lrdmc.toml -->
+```toml
 [control]
-job_type = "lrdmc-bra" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".
+job_type = "lrdmc-bra" # Specify the job type. "vmc", "vmcopt", "lrdmc-bra", or "lrdmc-tau".
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
-restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
-hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
+restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 
 [lrdmc-bra]
@@ -268,8 +269,8 @@ You may get `E = -1.17485 +- 0.000248 Ha` and `Var(E) = 0.02985 +- 0.000165 Ha^2
 Convert the optimized JSD ansatz to the JAGP ansatz using `jqmc-tool`, and then optimize all variational parameters including the geminal (lambda) parameters.
 
 ```bash
-% cd 07vmc_JAGP
-% cp ../03vmc_JSD/hamiltonian_data_opt_step_200.h5 ./hamiltonian_data_JSD.h5
+% cd 05vmc_JAGP
+% cp ../02vmc_JSD/hamiltonian_data_opt_step_200.h5 ./hamiltonian_data_JSD.h5
 % jqmc-tool hamiltonian conv-wf --convert-to jagp hamiltonian_data_JSD.h5
 > Convert SD to AGP.
 > Hamiltonian data is saved in hamiltonian_data_conv.h5.
@@ -283,32 +284,32 @@ Generate a template file for VMC optimization. Please directly edit `vmc.toml` i
 > Input file is generated: vmc.toml
 ```
 
-```toml:vmc.toml
+<!-- include: 05vmc_JAGP/vmc.toml -->
+```toml
 [control]
-job_type = "vmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".
+job_type = "vmcopt" # Specify the job type. "vmc", "vmcopt", "lrdmc-bra", or "lrdmc-tau".
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
-restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
-hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
+restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 
-[vmc]
-num_mcmc_steps = 300 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
+[vmcopt]
+num_mcmc_steps = 500 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
 num_mcmc_per_measurement = 40 # Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.
 num_mcmc_warmup_steps = 0 # Number of observable measurement steps for warmup (i.e., discarged).
 num_mcmc_bin_blocks = 1 # Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_mcmc_bin_blocks * mpi_size * number_of_walkers.
 Dt = 1.0 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
-num_opt_steps = 200 # Number of optimization steps.
+num_opt_steps = 400 # Number of optimization steps.
 wf_dump_freq = 10 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
-optimizer_kwargs = { method = "sr", delta = 0.05, epsilon = 0.001 } # SR optimizer configuration (method plus step/regularization).
 opt_J1_param = true
 opt_J2_param = true
 opt_J3_param = true
 opt_lambda_param = true
-num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
+num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If None, all parameters are optimized.
 ```
 
 Please launch the job.
@@ -358,24 +359,25 @@ One should gain energy with respect to the JSD ansatz. Note that `opt_lambda_par
 Using the optimized JAGP wavefunction, compute the energy and atomic forces via MCMC.
 
 ```bash
-% cd 08mcmc_JAGP
-% cp ../07vmc_JAGP/hamiltonian_data_opt_step_200.h5 ./hamiltonian_data.h5
+% cd 06mcmc_JAGP
+% cp ../05vmc_JAGP/hamiltonian_data_opt_step_200.h5 ./hamiltonian_data.h5
 % jqmc-tool mcmc generate-input -g
 > Input file is generated: mcmc.toml
 ```
 
-```toml:mcmc.toml
+<!-- include: 06mcmc_JAGP/mcmc.toml -->
+```toml
 [control]
-job_type = "mcmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".
+job_type = "vmc" # Specify the job type. "vmc", "vmcopt", "lrdmc-bra", or "lrdmc-tau".
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
-restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
-hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
+restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 
-[mcmc]
+[vmc]
 num_mcmc_steps = 10000 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
 num_mcmc_per_measurement = 40 # Number of MCMC updates per measurement. Every local energy and other observeables are measured every this steps.
 num_mcmc_warmup_steps = 10 # Number of observable measurement steps for warmup (i.e., discarged).
@@ -413,21 +415,22 @@ You may get `E = -1.17543 +- 0.001343 Ha` and `Var(E) = 0.00327 +- 0.000475 Ha^2
 Using the same optimized JAGP wavefunction, compute the energy and atomic forces via LRDMC. Please directly edit `lrdmc.toml` if you want to change a parameter.
 
 ```bash
-% cd 09lrdmc_JAGP
-% cp ../07vmc_JAGP/hamiltonian_data_opt_step_200.h5 ./hamiltonian_data.h5
+% cd 07lrdmc_JAGP
+% cp ../05vmc_JAGP/hamiltonian_data_opt_step_200.h5 ./hamiltonian_data.h5
 % jqmc-tool lrdmc generate-input -g
 > Input file is generated: lrdmc.toml
 ```
 
-```toml:lrdmc.toml
+<!-- include: 07lrdmc_JAGP/lrdmc.toml -->
+```toml
 [control]
-job_type = "lrdmc-bra" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".
+job_type = "lrdmc-bra" # Specify the job type. "vmc", "vmcopt", "lrdmc-bra", or "lrdmc-tau".
 mcmc_seed = 34456 # Random seed for MCMC
 number_of_walkers = 4 # Number of walkers per MPI process
 max_time = 86400 # Maximum time in sec.
 restart = false
-restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
-hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
+restart_chk = "restart.chk" # Restart checkpoint file. If restart is True, this file is used.
+hamiltonian_chk = "hamiltonian_data.chk" # Hamiltonian checkpoint file. If restart is False, this file is used.
 verbosity = "low" # Verbosity level. "low" or "high"
 
 [lrdmc-bra]
@@ -470,7 +473,7 @@ You may get `E = -1.17442 +- 0.000069 Ha` and `Var(E) = 0.00287 +- 0.000010 Ha^2
 
 ## Summary
 
-Results for H$_2$ at $R = 0.74$ Å with cc-pVTZ basis set (all electron):
+Results for H$_2$ at $R = 0.74\;\text{\AA}$ with cc-pVTZ basis set (all electron):
 
 | Ansatz | Method | E (Ha) | Fz (Ha/bohr) |
 |--------|--------|--------|---------------|
@@ -479,7 +482,7 @@ Results for H$_2$ at $R = 0.74$ Å with cc-pVTZ basis set (all electron):
 | JAGP   | MCMC   | -1.17543(134)| -0.00042(20) |
 | JAGP   | LRDMC  | -1.17442(7)  | -0.0058(10)  |
 
-In both the JSD and JAGP calculations, the MO coefficients are optimized (`opt_with_projected_MOs = true` for JSD, `opt_lambda_param = true` for JAGP), so the self-consistency bias[^2021NAKjcp][^2022TIHjcp] is eliminated. At the equilibrium geometry ($R = 0.74$ Å), the force should be nearly zero, and indeed both the JSD and JAGP MCMC results show $F_z$ consistent with zero within the error bar.
+In both the JSD and JAGP calculations, the MO coefficients are optimized (`opt_with_projected_MOs = true` for JSD, `opt_lambda_param = true` for JAGP), so the self-consistency bias[^2021NAKjcp][^2022TIHjcp] is eliminated. At the equilibrium geometry ($R = 0.74\;\text{\AA}$), the force should be nearly zero, and indeed both the JSD and JAGP MCMC results show $F_z$ consistent with zero within the error bar.
 
 If one were to keep the determinant part fixed to the DFT solution (i.e., `opt_with_projected_MOs = false`), the DFT orbitals would not be stationary with respect to the MCMC energy, and a finite self-consistency bias would appear in the atomic forces[^2024SLOjctc]. An alternative way to correct for this bias without full orbital optimization is described in Ref. [^2024NAKprb]. If one is interested in the latter approach, please contact a `jQMC` developer.
 

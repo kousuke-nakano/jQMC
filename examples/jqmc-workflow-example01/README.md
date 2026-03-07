@@ -1,20 +1,20 @@
 # jqmc-workflow-example01: Hydrogen PES calculations
 
-Potential energy surface (PES) of the hydrogen molecule (H₂) computed using **jqmc-workflows**. All-electron calculations with Cartesian GTOs (cc-pVTZ basis). Atomic forces at each bond length are obtained via algorithmic differentiation (AD) in **JAX**.
+Potential energy surface (PES) of the hydrogen molecule (H$_2$) computed using **jqmc-workflows**. All-electron calculations with Cartesian GTOs (cc-pVTZ basis). Atomic forces at each bond length are obtained via algorithmic differentiation (AD) in **JAX**.
 
 ## Overview
 
 This example automates the full QMC pipeline for 20 bond lengths using `jqmc_workflow`:
 
 ```
-pySCF (DFT) → WF conversion (JSD) → VMC optimization → MCMC + LRDMC (a = 0.2)
+pySCF (DFT) --> WF conversion (JSD) --> VMC optimization --> MCMC + LRDMC (a = 0.2)
 ```
 
 The workflow DAG is constructed programmatically in `run_pes_pipeline.py` and executed via `Launcher`, which resolves dependencies and runs independent R values in parallel.
 
 ### Ansatz and optimization
 
-- **JSD** (Jastrow–Slater Determinant): J1 (one-body) + J2 (two-body) + J3 (three-body, MO basis)
+- **JSD** (Jastrow-Slater Determinant): J1 (one-body) + J2 (two-body) + J3 (three-body, MO basis)
 - **VMC optimization**: 20 steps with `opt_with_projected_MOs = true` (MOs are optimized alongside Jastrow parameters)
 - **MCMC**: production sampling with atomic forces
 - **LRDMC**: lattice-regularized diffusion Monte Carlo at `a = 0.2` with atomic forces
@@ -22,7 +22,7 @@ The workflow DAG is constructed programmatically in `run_pes_pipeline.py` and ex
 ### Bond lengths
 
 ```
-R (Å) = 0.35  0.40  0.45  0.50  0.55  0.60  0.65  0.70
+R ($\text{\AA}$) = 0.35  0.40  0.45  0.50  0.55  0.60  0.65  0.70
          0.74  0.80  0.85  0.90  0.95  1.00  1.05  1.10
          1.15  1.20  1.30  1.40
 ```
@@ -42,7 +42,7 @@ python run_pes_pipeline.py
 
 The script performs the following steps automatically:
 
-### Step 1 — DFT trial wavefunctions (pySCF)
+### Step 1 -- DFT trial wavefunctions (pySCF)
 
 For each bond length R, a DFT (LDA) calculation is run locally with `pySCF` to produce a TREXIO file. The pySCF script is generated and executed in `R_{R}/00_pyscf/`.
 
@@ -71,7 +71,7 @@ mf.kernel()
 trexio.to_trexio(mf, filename)
 ```
 
-### Step 2 — WF conversion (JSD)
+### Step 2 -- WF conversion (JSD)
 
 The TREXIO file is converted to `hamiltonian_data.h5` with a JSD Jastrow factor:
 
@@ -84,7 +84,7 @@ WF_Workflow(
 )
 ```
 
-### Step 3 — VMC optimization
+### Step 3 -- VMC optimization
 
 Jastrow parameters (J1, J2, J3) and molecular orbitals are optimized simultaneously:
 
@@ -101,7 +101,7 @@ VMC_Workflow(
 )
 ```
 
-### Step 4 — MCMC and LRDMC production
+### Step 4 -- MCMC and LRDMC production
 
 MCMC and LRDMC production runs are launched **in parallel** (they both depend only on the VMC-optimized wavefunction):
 
@@ -132,7 +132,7 @@ R_0.74/
 │   ├── run_pyscf.py
 │   ├── H2_R_0.74.h5   # TREXIO file
 │   └── H2_R_0.74.out  # pySCF output
-├── 01_wf/             # WF_Workflow: TREXIO → hamiltonian_data.h5
+├── 01_wf/             # WF_Workflow: TREXIO --> hamiltonian_data.h5
 ├── 02_vmc/            # VMC_Workflow: Jastrow + MO optimization
 │   ├── hamiltonian_data_opt_step_1.h5
 │   ├── ...
@@ -146,8 +146,8 @@ R_0.74/
 For each R, the dependency graph is:
 
 ```
-pySCF → WF → VMC ─┬─→ MCMC
-                   └─→ LRDMC (a=0.2)
+pySCF --> WF --> VMC ─┬─--> MCMC
+                   └─--> LRDMC (a=0.2)
 ```
 
 All 20 R values are independent and execute in parallel via `Launcher`.
@@ -178,7 +178,7 @@ To run on a remote cluster, change `SERVER` and `QUEUE_LABEL` in `run_pes_pipeli
 The script prints a summary table after all calculations complete:
 
 ```
-| R (Å)  |  E_HF (Ha)    |  E_MCMC (Ha)    |  F_MCMC (Ha/Å) |  E_LRDMC (Ha)   | F_LRDMC (Ha/Å)  |
+| R ($\text{\AA}$)  |  E_HF (Ha)    |  E_MCMC (Ha)    |  F_MCMC (Ha/$\text{\AA}$) |  E_LRDMC (Ha)   | F_LRDMC (Ha/$\text{\AA}$)  |
 |--------|---------------|-----------------|-----------------|-----------------|------------------|
 |   0.35 |     -0.XXXXXX |    -X.XXXXX(XX) |    -X.XXXXX(XX) |    -X.XXXXX(XX) |     -X.XXXXX(XX) |
 |   ...  |      ...      |       ...       |       ...       |       ...       |        ...       |

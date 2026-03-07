@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """H2 PES pipeline: pySCF → WF → VMC (JSD, MO opt) → MCMC + LRDMC (a=0.2).
 
 For each bond length R, this script:
@@ -29,7 +28,7 @@ from jqmc_workflow import (
 )
 
 # ── Configuration ─────────────────────────────────────────────────
-SERVER = "genkai"
+SERVER = "cluster"
 QUEUE_LABEL = "cores-120-mpi-120-omp-1-1h"
 
 NUM_OPT_STEPS = 50  # VMC optimization steps

@@ -5,13 +5,13 @@ Assumes `~/.jqmc_setting/` (= `jqmc_setting_local`) is already configured with a
 
 ## What this tests
 
-1. **Full pipeline**: pySCF → WF → VMC (5 opt steps) → MCMC for H₂ at 2 bond lengths (R = 0.74, 1.00 Å)
+1. **Full pipeline**: pySCF --> WF --> VMC (5 opt steps) --> MCMC for H$_2$ at 2 bond lengths (R = 0.74, 1.00 $\text{\AA}$)
 2. **Phase-1 diagnostic APIs** (newly implemented):
-   - `get_all_workflow_statuses()` — recursive `workflow_state.toml` collection
-   - `get_workflow_summary()` — per-directory status + result + jobs summary
-   - `parse_vmc_output()` — per-step VMC data (energy, S/N, walker weight, acceptance ratio, net time)
-   - `parse_mcmc_output()` — MCMC diagnostic data
-   - `parse_input_params()` — TOML parameter extraction
+   - `get_all_workflow_statuses()` -- recursive `workflow_state.toml` collection
+   - `get_workflow_summary()` -- per-directory status + result + jobs summary
+   - `parse_vmc_output()` -- per-step VMC data (energy, S/N, walker weight, acceptance ratio, net time)
+   - `parse_mcmc_output()` -- MCMC diagnostic data
+   - `parse_input_params()` -- TOML parameter extraction
 
 ## Prerequisites
 
@@ -34,8 +34,8 @@ Everything is intentionally minimal for fast local execution:
 |-------------------|--------|---------------------------|
 | `num_opt_steps`   | 5      | VMC optimization steps    |
 | `num_walkers`     | 16     | Minimal walker count      |
-| `target_error`    | 0.1 Ha | Very loose — just finish  |
-| `R_VALUES`        | 2      | 0.74, 1.00 Å              |
+| `target_error`    | 0.1 Ha | Very loose -- just finish  |
+| `R_VALUES`        | 2      | 0.74, 1.00 $\text{\AA}$              |
 | `server`          | localhost | No remote needed       |
 
 ## Output

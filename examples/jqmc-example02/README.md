@@ -68,7 +68,7 @@ The next step is to optimize variational parameters included in the generated wa
 Create a directory for the VMC optimization and move into it. Then generate a template file using `jqmc-tool`. Please directly edit `vmc.toml` if you want to change a parameter.
 
 ```bash
-% mkdir 02vmc_JNNSD && cd 02vmc_JNNSD
+% mkdir 02vmc && cd 02vmc
 % cp ../01DFT/water_ccecp_ccpvtz.h5 .
 % jqmc-tool trexio convert-to water_ccecp_ccpvtz.h5 -j2 1.0 -j3 none -j-nn-type schnet -jp hidden_dim=16 -jp num_layers=3 -jp num_rbf=8
 > Hamiltonian data is saved in hamiltonian_data.h5.
@@ -80,7 +80,7 @@ The generated `hamiltonian_data.h5` is a wavefunction file with the `jqmc` forma
 
 ### Neural Network Jastrow (SchNet-type)
 
-The `schnet` option for `-j-nn-type` enables a neural-network-based many-body Jastrow factor. This implementation is heavily inspired by the PauliNet architecture (specifically the Jastrow factor part described in [Hermann et al., Nature Chemistry 12, 891–897 (2020)](https://www.nature.com/articles/s41557-020-0544-y)). It uses a graph neural network to capture complex electron-electron and electron-nucleus correlations. For more implementation details, please refer to the `NNJastrow` class and `Jastrow_NN_data` dataclass in `jqmc/jastrow_factor.py`.
+The `schnet` option for `-j-nn-type` enables a neural-network-based many-body Jastrow factor. This implementation is heavily inspired by the PauliNet architecture (specifically the Jastrow factor part described in [Hermann et al., Nature Chemistry 12, 891-897 (2020)](https://www.nature.com/articles/s41557-020-0544-y)). It uses a graph neural network to capture complex electron-electron and electron-nucleus correlations. For more implementation details, please refer to the `NNJastrow` class and `Jastrow_NN_data` dataclass in `jqmc/jastrow_factor.py`.
 
 ### Hyperparameters
 
@@ -91,7 +91,7 @@ The hyperparameters specified via `-jp` (e.g., `-jp hidden_dim=16`) control the 
 *   `num_rbf` (default: 32): The number of radial basis functions used to expand inter-particle distances. A larger number provides higher resolution for spatial features.
 *   `cutoff` (default: 5.0): The cutoff distance (in Bohr) for the radial basis functions. Interactions beyond this distance are smoothly decayed to zero.
 
-<!-- include: 02vmc_JNNSD/vmc.toml -->
+<!-- include: 02vmc/vmc.toml -->
 ```toml
 [control]
 job_type = "vmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".
@@ -157,7 +157,7 @@ You can also plot them and make a figure.
 % jqmc-tool vmc analyze-output out_vmc -p -s vmc.jpg
 ```
 
-![VMC optimization](02vmc_JNNSD/vmc.jpg)
+![VMC optimization](02vmc/vmc.jpg)
 
 If the optimization is not converged. You can restart the optimization.
 
@@ -184,13 +184,13 @@ The next step is MCMC calculation. Create a directory for the MCMC calculation a
 
 ```bash
 % cd ..
-% mkdir 03mcmc_JNNSD && cd 03mcmc_JNNSD
-% cp ../02vmc_JNNSD/hamiltonian_data.h5 .  # use the optimized hamiltonian_data.h5
+% mkdir 03mcmc && cd 03mcmc
+% cp ../02vmc/hamiltonian_data.h5 .  # use the optimized hamiltonian_data.h5
 % jqmc-tool mcmc generate-input -g
 > Input file is generated: mcmc.toml
 ```
 
-<!-- include: 03mcmc_JNNSD/mcmc.toml -->
+<!-- include: 03mcmc/mcmc.toml -->
 ```toml
 [control]
 job_type = "mcmc" # Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".

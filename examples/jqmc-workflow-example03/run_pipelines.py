@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """Water Energy & Force: J3 + MCMC / LRDMC (2 patterns).
 
 For a water molecule (ccECP, cc-pVTZ, Cartesian), this script:
@@ -31,7 +30,7 @@ from jqmc_workflow import (
 )
 
 # ── Configuration ─────────────────────────────────────────────────
-SERVER = "genkai"
+SERVER = "cluster"
 QUEUE_LABEL = "cores-4-mpi-4-gpu-4-omp-1-3h"
 PILOT_QUEUE_LABEL = "cores-4-mpi-4-gpu-4-omp-1-30m"
 

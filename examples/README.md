@@ -43,7 +43,7 @@ End-to-end Python API workflow (no CLI): generate a TREXIO file with PySCF, buil
 MPI-enabled Python API workflow: similar to example10 but using `mpirun` on `run_jqmc_mpi.py` with `mpi4py` including VMC optimization, VMC sampling, and LRDMC lattice scans with extrapolation.
 
 
-## jqmc-workflow examples
+## jQMC-workflow examples
 
 ### jqmc-workflow-example01
 
