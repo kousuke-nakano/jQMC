@@ -51,8 +51,8 @@ from jax import hessian, jacrev, jit, vmap
 from jax import typing as jnpt
 from numpy import linalg as LA
 
-from .jqmc_utility import _spherical_to_cart_matrix
-from .setting import EPS_stabilizing_jax_AO_cart_deriv
+from ._jqmc_utility import _spherical_to_cart_matrix
+from ._setting import EPS_stabilizing_jax_AO_cart_deriv, atol_consistency, rtol_consistency
 from .structure import Structure_data
 
 # set logger
@@ -62,8 +62,8 @@ logger = getLogger("jqmc").getChild(__name__)
 jax.config.update("jax_enable_x64", True)
 
 # Tolerances for comparing float values
-rtol = 1e-6
-atol = 1e-8
+rtol = rtol_consistency
+atol = atol_consistency
 
 
 @struct.dataclass
@@ -1853,7 +1853,7 @@ def _compute_AOs_cart(aos_data: AOs_cart_data, r_carts: jnpt.ArrayLike) -> jax.A
     R_n_dup = c_jnp[:, None] * jnp.exp(-Z_jnp[:, None] * r_squared)
 
     x, y, z = r_R_diffs[..., 0], r_R_diffs[..., 1], r_R_diffs[..., 2]
-    eps = 1.0e-16  # This is quite important to avoid some numerical instability in JAX!!
+    eps = EPS_stabilizing_jax_AO_cart_deriv  # This is quite important to avoid some numerical instability in JAX!!
     P_l_nx_ny_nz_dup = (x + eps) ** (nx_jnp[:, None]) * (y + eps) ** (ny_jnp[:, None]) * (z + eps) ** (nz_jnp[:, None])
 
     """

@@ -60,7 +60,7 @@ from .atomic_orbital import (
     compute_overlap_matrix,
 )
 from .molecular_orbital import MOs_data, compute_MOs, compute_MOs_grad, compute_MOs_laplacian
-from .setting import EPS_rcond_SVD
+from ._setting import EPS_rcond_SVD, atol_consistency, rtol_consistency
 
 if TYPE_CHECKING:  # pragma: no cover - typing-only import to avoid circular dependency
     from .wavefunction import VariationalParameterBlock
@@ -189,16 +189,18 @@ class Geminal_data:
 
         # If the paired part of lambda_matrix is symmetric, keep it symmetric
         # after the update. The unpaired block (if any) is left as-is.
-        if self.orb_num_up == self.orb_num_dn:
+        # Use the actual matrix shape to decide: square means no unpaired columns.
+        if lambda_old.shape[0] == lambda_old.shape[1]:
             # Full square matrix: check and enforce symmetry on the whole block.
-            if np.allclose(lambda_old, lambda_old.T, atol=1e-8):
+            if np.allclose(lambda_old, lambda_old.T, atol=atol_consistency, rtol=rtol_consistency):
                 lambda_new = 0.5 * (lambda_new + lambda_new.T)
         else:
             # Rectangular: split into paired (square) and unpaired parts.
-            paired_old, unpaired_old = np.hsplit(lambda_old, [self.orb_num_dn])
-            paired_new, unpaired_new = np.hsplit(lambda_new, [self.orb_num_dn])
+            n_paired_cols = lambda_old.shape[0]  # paired block is (n_row, n_row)
+            paired_old, unpaired_old = np.hsplit(lambda_old, [n_paired_cols])
+            paired_new, unpaired_new = np.hsplit(lambda_new, [n_paired_cols])
 
-            if np.allclose(paired_old, paired_old.T, atol=1e-8):
+            if np.allclose(paired_old, paired_old.T, atol=atol_consistency, rtol=rtol_consistency):
                 paired_new = 0.5 * (paired_new + paired_new.T)
 
             lambda_new = np.hstack([paired_new, unpaired_new])
@@ -436,6 +438,64 @@ class Geminal_data:
             lambda_matrix=lambda_sph,
         )
 
+    def projection_operators(self) -> tuple:
+        """Build orthogonal-basis projection operators for MO-constrained optimization.
+
+        Constructs the occupied-subspace projectors ``L'`` (up) and ``R'`` (down)
+        in the :math:`S^{1/2}`-orthogonalized AO basis, along with the metric
+        transforms :math:`S^{-1/2}` needed to move between AO and orthogonal
+        representations.
+
+        The projectors use **only the first** ``num_electron_dn`` MO coefficients
+        (the "paired" occupied orbitals) for both spin channels.
+
+        Returns:
+            tuple: ``(left_projector, right_projector, inv_sqrt_overlap_up, inv_sqrt_overlap_dn)``.
+
+        Raises:
+            ValueError: If this geminal is not in MO representation.
+        """
+        if not self.is_mo_representation:
+            raise ValueError("projection_operators() requires MO representation on both spin channels.")
+
+        num_occ = int(self.num_electron_dn)
+
+        mo_coefficients_up = np.asarray(self.orb_data_up_spin.mo_coefficients, dtype=np.float64)
+        mo_coefficients_dn = np.asarray(self.orb_data_dn_spin.mo_coefficients, dtype=np.float64)
+
+        overlap_up = np.asarray(compute_overlap_matrix(self.orb_data_up_spin.aos_data), dtype=np.float64)
+        overlap_dn = np.asarray(compute_overlap_matrix(self.orb_data_dn_spin.aos_data), dtype=np.float64)
+        overlap_up = 0.5 * (overlap_up + overlap_up.T)
+        overlap_dn = 0.5 * (overlap_dn + overlap_dn.T)
+
+        # P columns: first num_occ MO coefficient rows, transposed to (n_AO, num_occ)
+        p_matrix_cols_up = mo_coefficients_up[:num_occ, :].T
+        p_matrix_cols_dn = mo_coefficients_dn[:num_occ, :].T
+
+        # S^{1/2} and S^{-1/2} via eigendecomposition
+        eigvals_up, eigvecs_up = np.linalg.eigh(overlap_up)
+        eigvals_dn, eigvecs_dn = np.linalg.eigh(overlap_dn)
+        sqrt_overlap_up = eigvecs_up @ np.diag(np.sqrt(eigvals_up)) @ eigvecs_up.T
+        sqrt_overlap_dn = eigvecs_dn @ np.diag(np.sqrt(eigvals_dn)) @ eigvecs_dn.T
+        inv_sqrt_overlap_up = eigvecs_up @ np.diag(1.0 / np.sqrt(eigvals_up)) @ eigvecs_up.T
+        inv_sqrt_overlap_dn = eigvecs_dn @ np.diag(1.0 / np.sqrt(eigvals_dn)) @ eigvecs_dn.T
+
+        # Orthogonal-basis MO coefficients: C' = S^{1/2} C
+        orth_mo_up = sqrt_overlap_up @ p_matrix_cols_up
+        orth_mo_dn = sqrt_overlap_dn @ p_matrix_cols_dn
+
+        # Orthogonal projectors (symmetric, idempotent in Euclidean metric)
+        # L' = S^{1/2} C_up C_up^T S^{1/2},  R' = S^{1/2} C_dn C_dn^T S^{1/2}
+        left_projector = orth_mo_up @ orth_mo_up.T
+        right_projector = orth_mo_dn @ orth_mo_dn.T
+
+        return (
+            left_projector,
+            right_projector,
+            inv_sqrt_overlap_up,
+            inv_sqrt_overlap_dn,
+        )
+
     @classmethod
     def convert_from_MOs_to_AOs(cls, geminal_data: "Geminal_data") -> "Geminal_data":
         """Convert MOs to AOs."""
@@ -509,6 +569,10 @@ class Geminal_data:
             raise ValueError("AO->MO conversion requires matching AO basis types for up/down channels.")
 
         ao_dim = aos_data_up_spin.num_ao
+        ne_up = int(geminal_data.num_electron_up)
+        ne_dn = int(geminal_data.num_electron_dn)
+        num_unpaired = ne_up - ne_dn  # >= 0
+
         if isinstance(num_eigenvectors, str):
             if num_eigenvectors != "all":
                 raise ValueError(f"num_eigenvectors must be 'all' or int, got {num_eigenvectors}.")
@@ -565,8 +629,17 @@ class Geminal_data:
         selected_vectors_dn = np.real_if_close(v_h.T[:, :num_mo], tol=1000).astype(np.float64)
 
         if use_truncated_mode:
+            discarded_evals = singular_vals[num_mo:]
+            discarded_norm = float(np.linalg.norm(discarded_evals))
             logger.debug(
-                "[MOOPT-TRACE] AO->MO selected eigenvalues before scaling: %s",
+                "AO->MO SVD truncation: discarded %d singular values of "
+                "f_biorth = S_up^{1/2} lambda S_dn^{1/2}; "
+                "||A - A_truncated||_F = %.6e (truncation error in Frobenius norm).",
+                discarded_evals.size,
+                discarded_norm,
+            )
+            logger.debug(
+                "[MOOPT-TRACE] AO->MO SVD singular values before scaling: %s",
                 np.array2string(selected_evals, precision=10, separator=", "),
             )
 
@@ -574,10 +647,49 @@ class Geminal_data:
             num_scale = min(int(geminal_data.num_electron_dn), selected_evals.size)
             if num_scale > 0:
                 selected_evals[:num_scale] = 1.0
+            # Zero all virtual eigenvalues beyond the paired occupied block.
+            # These MOs either serve the unpaired block or are null-space
+            # directions; they must not contribute to the paired lambda.
+            selected_evals[num_scale:] = 0.0
 
             logger.debug(
-                "[MOOPT-TRACE] AO->MO selected eigenvalues after scaling: %s",
+                "[MOOPT-TRACE] AO->MO SVD singular values after scaling: %s",
                 np.array2string(selected_evals, precision=10, separator=", "),
+            )
+
+        # ------------------------------------------------------------------
+        # Augment up-spin MO basis with unpaired directions  (Ne_up > Ne_dn)
+        #
+        # The paired-block SVD produces only Ne_dn meaningful left singular
+        # vectors.  The remaining (num_mo − Ne_dn) vectors belong to the
+        # null space and have *arbitrary* orientation, so the unpaired AO
+        # columns may lose rank when projected onto this MO basis (making
+        # det(Slater) ≈ 0).  We fix this by replacing the null-space vectors
+        # with orthonormal directions derived from the unpaired AO block,
+        # projected into the orthogonal complement of the paired subspace.
+        # ------------------------------------------------------------------
+        if num_unpaired > 0 and use_truncated_mode and num_mo > ne_dn:
+            n_replace = min(num_unpaired, num_mo - ne_dn)
+            # Transform unpaired AO columns to orthogonal basis
+            orth_unpaired = sqrt_overlap_up @ ao_lambda_matrix_unpaired  # (n_AO, num_unpaired)
+            # Project out the paired subspace (first ne_dn left singular vectors)
+            U_paired = selected_vectors_up[:, :ne_dn]
+            if ne_dn > 0:
+                orth_unpaired = orth_unpaired - U_paired @ (U_paired.T @ orth_unpaired)
+            # QR for orthonormal basis of the projected unpaired directions
+            Q_unp, _ = np.linalg.qr(orth_unpaired, mode="reduced")
+            # Replace null-space SVD vectors with unpaired-derived vectors
+            selected_vectors_up = selected_vectors_up.copy()
+            selected_vectors_up[:, ne_dn : ne_dn + n_replace] = Q_unp[:, :n_replace]
+            # Zero out paired eigenvalues for the replaced positions — these MOs
+            # serve the unpaired block only and must not contribute to the paired part.
+            selected_evals[ne_dn : ne_dn + n_replace] = 0.0
+            logger.info(
+                "AO->MO: augmented up-spin MO basis with %d unpaired-derived vectors "
+                "(replaced SVD null-space vectors at positions %d..%d).",
+                n_replace,
+                ne_dn,
+                ne_dn + n_replace - 1,
             )
 
         p_matrix_cols_up = inv_sqrt_overlap_up @ selected_vectors_up
@@ -604,11 +716,11 @@ class Geminal_data:
 
         up_frob_norm = float(np.linalg.norm(psp_up_diff))
         up_max_abs_diff = float(np.max(np.abs(psp_up_diff))) if psp_up_diff.size else 0.0
-        up_is_orthonormal = bool(np.allclose(psp_up, identity, atol=1.0e-8, rtol=1.0e-6))
+        up_is_orthonormal = bool(np.allclose(psp_up, identity, atol=atol_consistency, rtol=rtol_consistency))
 
         dn_frob_norm = float(np.linalg.norm(psp_dn_diff))
         dn_max_abs_diff = float(np.max(np.abs(psp_dn_diff))) if psp_dn_diff.size else 0.0
-        dn_is_orthonormal = bool(np.allclose(psp_dn, identity, atol=1.0e-8, rtol=1.0e-6))
+        dn_is_orthonormal = bool(np.allclose(psp_dn, identity, atol=atol_consistency, rtol=rtol_consistency))
 
         logger.debug(
             "[MOOPT-TRACE] AO->MO orthogonality check (up): allclose(P^TSP, I)=%s, ||P^TSP-I||_F=%.3e, max|P^TSP-I|=%.3e",
@@ -655,7 +767,7 @@ class Geminal_data:
 
         After applying the AO paired update, the geminal is projected back to an
         MO representation using a fixed rank
-        ``num_eigenvectors=self.num_electron_dn``.
+        ``num_eigenvectors=self.num_electron_up``.
 
         Args:
             ao_paired_direction: AO-space direction matrix :math:`D` for the paired
@@ -665,7 +777,7 @@ class Geminal_data:
 
         Returns:
             Updated geminal in MO representation with fixed
-            ``num_mo=self.num_electron_dn`` (subject to AO-dimension clipping in
+            ``num_mo=self.num_electron_up`` (subject to AO-dimension clipping in
             ``convert_from_AOs_to_MOs``).
 
         Raises:
@@ -720,7 +832,7 @@ class Geminal_data:
 
         return Geminal_data.convert_from_AOs_to_MOs(
             geminal_data=geminal_ao_updated,
-            num_eigenvectors=self.num_electron_dn,
+            num_eigenvectors=self.num_electron_up,
         )
 
 
@@ -731,7 +843,7 @@ def compute_ln_det_geminal_all_elements(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> float:
-    r"""Compute $\ln|\det G|$ for the geminal matrix.
+    r"""Compute :math:`\ln|\det G|` for the geminal matrix.
 
     Args:
         geminal_data: Geminal parameters and orbital references.
@@ -772,12 +884,17 @@ def _ln_det_fwd(geminal_data, r_up_carts, r_dn_carts):
 
 # Backward pass for custom VJP.
 def _ln_det_bwd(res, g):
-    """Backward pass for custom VJP.
+    r"""Backward pass for custom VJP of :func:`compute_ln_det_geminal_all_elements`.
 
-    The custom derivative is needed for ln |Det(G)| because the jax native grad
-    and hessian introduce numerical instability. The custom derivative uses SVD
-    to compute G^{-1} in the backward pass, avoiding NaN when G is near-singular
-    (small singular values are zeroed rather than producing 1/~0 from LU).
+    Computes ``d ln|det G| / dG = (G^{-1})^T`` using a thresholded SVD
+    pseudoinverse, avoiding NaN that would arise from LU with near-zero pivots.
+    When the autodiff path takes the Hessian of ``ln|det G|``, JAX
+    differentiates *through* this backward pass, so the second derivative
+    implicitly accounts for the pseudoinverse structure (including projection
+    terms when singular values are zeroed).  This is why the autodiff kinetic
+    energy remains accurate even for ill-conditioned ``G``, whereas the analytic
+    Laplacian in :func:`compute_grads_and_laplacian_ln_Det` — which assumes
+    the simpler ``d(G^{-1}) = -G^{-1} dG G^{-1}`` — becomes approximate.
 
     Args:
         res: residuals from forward pass
@@ -789,9 +906,8 @@ def _ln_det_bwd(res, g):
     geminal_data, r_up_carts, r_dn_carts, U_svd, s, Vt = res
 
     # Compute G^{-1} via SVD pseudoinverse with thresholding.
-    # Singular values below rcond * s_max are zeroed to avoid NaN from 1/~0.
-    rcond = jnp.finfo(jnp.float64).eps * float(s.shape[0])
-    s_inv = jnp.where(s > rcond * s[0], 1.0 / s, 0.0)
+    # Singular values below EPS_rcond_SVD * s_max are zeroed to avoid NaN from 1/~0.
+    s_inv = jnp.where(s > EPS_rcond_SVD * s[0], 1.0 / s, 0.0)
     X = (Vt.T * s_inv[jnp.newaxis, :]) @ U_svd.T  # G^{-1}, shape (n, n)
 
     # d ln|det G| / dG = (G^{-1})^T, scaled by incoming cotangent g
@@ -836,7 +952,7 @@ def compute_ln_det_geminal_all_elements_fast(
         ``geminal_inv`` **must** equal ``G(r_up_carts, r_dn_carts)^{-1}`` exactly
         at the supplied electron positions.  This is only guaranteed when the
         inverse is maintained via **single-electron (rank-1) Sherman-Morrison
-        updates** starting from a freshly initialised LU inverse — the pattern
+        updates** starting from a freshly initialized LU inverse — the pattern
         used in the MCMC loop.  Passing an inverse that corresponds to different
         electron positions silently produces incorrect gradients.
     """
@@ -878,7 +994,7 @@ def compute_det_geminal_all_elements(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> float:
-    r"""Compute $\det G$ for the geminal matrix.
+    r"""Compute :math:`\det G` for the geminal matrix.
 
     Args:
         geminal_data: Geminal parameters and orbital references.
@@ -1010,7 +1126,7 @@ def compute_AS_regularization_factor(geminal_data: Geminal_data, r_up_carts: jax
 
 
 def compute_geminal_all_elements(geminal_data: Geminal_data, r_up_carts: jax.Array, r_dn_carts: jax.Array) -> jax.Array:
-    """Compute geminal matrix $G$ for all electron pairs.
+    r"""Compute geminal matrix :math:`G` for all electron pairs.
 
     Args:
         geminal_data: Geminal parameters and orbital references.
@@ -1174,7 +1290,7 @@ def _compute_ratio_determinant_part_rank1_update(
     new_r_up_carts_arr: jax.Array,
     new_r_dn_carts_arr: jax.Array,
 ) -> jax.Array:
-    r"""Determinant ratio $\det G(\mathbf r')/\det G(\mathbf r)$ for batched moves.
+    r"""Determinant ratio :math:`\det G(\mathbf r')/\det G(\mathbf r)` for batched moves.
 
     Optimized for the non-local ECP mesh where *exactly one* electron moves per grid.
     We identify the moved electron once, batch-evaluate the new AO/MO row or column,
@@ -1393,13 +1509,49 @@ def compute_grads_and_laplacian_ln_Det(
     jax.Array,
     jax.Array,
 ]:
-    r"""Gradients and Laplacians of $\ln\det G$ for each electron.
+    r"""Gradients and Laplacians of :math:`\ln|\det G|` for each electron.
+
+    Computes :math:`\nabla_i \ln|\det G|` and :math:`\nabla_i^2 \ln|\det G|`
+    using the analytic formulas:
+
+    .. math::
+
+        \nabla_i \ln|\det G| &= \mathrm{tr}(G^{-1} \nabla_i G) \\
+        \nabla_i^2 \ln|\det G| &= \mathrm{tr}(G^{-1} \nabla_i^2 G)
+            - |\nabla_i \ln|\det G||^2
+
+    These formulas rely on the matrix identity
+    :math:`d(G^{-1}) = -G^{-1}\, dG\, G^{-1}`, which holds **only for the
+    true inverse**.  When ``G`` is near-singular, :math:`G^{-1}` is computed
+    via a thresholded SVD pseudoinverse :math:`G^{\dagger}`, which coincides
+    with :math:`G^{-1}` only when no singular values are zeroed by
+    ``EPS_rcond_SVD``.  If the threshold zeroes non-negligible singular
+    values, :math:`G^{\dagger} \neq G^{-1}`, and the analytic Laplacian
+    becomes inaccurate because the true pseudoinverse derivative contains
+    additional projection terms:
+
+    .. math::
+
+        d(G^{\dagger}) = -G^{\dagger}\,dG\,G^{\dagger}
+            + G^{\dagger} G^{\dagger T} dG^T (I - G G^{\dagger})
+            + (I - G^{\dagger} G)\, dG^T\, G^{\dagger T} G^{\dagger}
+
+    The autodiff path (``_compute_kinetic_energy_auto``) differentiates
+    through the SVD pseudoinverse in ``_ln_det_bwd`` and implicitly includes
+    these projection terms, so it remains correct regardless of the
+    threshold.  The analytic path here does **not** include them.
+    Consequently, ``EPS_rcond_SVD`` must be kept very small (e.g. ``1e-20``)
+    so that only truly zero singular values are zeroed and
+    :math:`G^{\dagger} = G^{-1}` in practice.
+
+    In production MCMC, the ``_fast`` variant receives a Sherman-Morrison
+    running true inverse, so this limitation does not apply there.
 
     The function uses a custom VJP to avoid NaN in the backward pass when G is
     near-singular. The standard JAX SVD backward computes ``1/(s_i^2 - s_j^2)``
     terms that blow up for degenerate singular values. The custom VJP instead uses
     the matrix identity ``d(G^{-1}) = -G^{-1} dG G^{-1}`` with a thresholded SVD
-    pseudoinverse, which is both exact and numerically stable.
+    pseudoinverse, bypassing differentiation through SVD entirely.
 
     Args:
         geminal_data: Geminal parameters and orbital references.
@@ -1483,6 +1635,11 @@ def compute_grads_and_laplacian_ln_Det(
         grad_ln_D_dn_x * grad_ln_D_dn_x + grad_ln_D_dn_y * grad_ln_D_dn_y + grad_ln_D_dn_z * grad_ln_D_dn_z
     ) + jnp.einsum("ij,ji->i", geminal_inverse, geminal_laplacian_dn)
 
+    # Trim to n_dn for open-shell (N_up > N_dn) systems
+    n_dn = geminal_data.num_electron_dn
+    grad_ln_D_dn = grad_ln_D_dn[:n_dn]
+    lap_ln_D_dn = lap_ln_D_dn[:n_dn]
+
     return grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn
 
 
@@ -1558,6 +1715,11 @@ def _grads_lap_body(
         grad_ln_D_dn_x * grad_ln_D_dn_x + grad_ln_D_dn_y * grad_ln_D_dn_y + grad_ln_D_dn_z * grad_ln_D_dn_z
     ) + jnp.einsum("ij,ji->i", geminal_inverse, geminal_laplacian_dn)
 
+    # Trim to n_dn for open-shell (N_up > N_dn) systems
+    n_dn = geminal_data.num_electron_dn
+    grad_ln_D_dn = grad_ln_D_dn[:n_dn]
+    lap_ln_D_dn = lap_ln_D_dn[:n_dn]
+
     return grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn
 
 
@@ -1577,18 +1739,30 @@ def _grads_lap_fwd(
 
 
 def _grads_lap_bwd(res, g):
-    """Backward pass using the matrix identity d(G^{-1}) = -G^{-1} dG G^{-1}.
+    r"""Backward pass using the matrix identity ``d(G^{-1}) = -G^{-1} dG G^{-1}``.
 
     The gradient has two contributions:
-    1. Direct: d/d(lambda) via lambda -> AO matrices -> G_grad/G_lap -> output.
-       Obtained by differentiating _grads_lap_body w.r.t.
-       all inputs (including G_inv_stable as an explicit argument).
-    2. Inverse: d/d(lambda) via lambda -> G -> G^{-1} -> output.
-       Obtained by converting G_inv_bar -> G_bar via -G_inv.T @ G_inv_bar @ G_inv.T,
-       then propagating G_bar back through compute_geminal_all_elements.
 
-    Neither path requires differentiating through jnp.linalg.svd, so degenerate
-    singular values cannot produce NaN.
+    1. **Direct**: ``d/d(\lambda)`` via ``\lambda -> AO matrices -> G_grad/G_lap -> output``.
+       Obtained by differentiating :func:`_grads_lap_body` w.r.t.
+       all inputs (including ``G_inv_stable`` as an explicit argument).
+    2. **Inverse**: ``d/d(\lambda)`` via ``\lambda -> G -> G^{-1} -> output``.
+       Obtained by converting ``G_inv_bar -> G_bar`` via
+       ``-G_inv.T @ G_inv_bar @ G_inv.T``, then propagating ``G_bar`` back
+       through :func:`compute_geminal_all_elements`.
+
+    Neither path requires differentiating through ``jnp.linalg.svd``, so
+    degenerate singular values cannot produce NaN.
+
+    .. note::
+
+        Step 2 uses ``d(G^{-1}) = -G^{-1} dG G^{-1}``, which is exact only
+        when ``G_inv_stable`` is the true inverse.  If ``EPS_rcond_SVD`` is
+        large enough to zero out non-negligible singular values, this identity
+        becomes approximate — the full pseudoinverse derivative has additional
+        projection terms (see the docstring of
+        :func:`compute_grads_and_laplacian_ln_Det` for details).  Keep
+        ``EPS_rcond_SVD`` very small (e.g. ``1e-20``) to avoid this.
     """
     geminal_data, r_up_carts, r_dn_carts, G_inv_stable = res
 
@@ -1647,7 +1821,7 @@ def compute_grads_and_laplacian_ln_Det_fast(
         ``geminal_inverse`` **must** equal ``G(r_up_carts, r_dn_carts)^{-1}``
         exactly at the supplied electron positions.  This is only guaranteed when
         the inverse is maintained via **single-electron (rank-1) Sherman-Morrison
-        updates** starting from a freshly initialised LU inverse — the pattern
+        updates** starting from a freshly initialized LU inverse — the pattern
         used in the MCMC loop.  Passing an inverse that corresponds to different
         electron positions silently produces incorrect kinetic energy.
     """
@@ -1713,6 +1887,11 @@ def compute_grads_and_laplacian_ln_Det_fast(
         grad_ln_D_dn_x * grad_ln_D_dn_x + grad_ln_D_dn_y * grad_ln_D_dn_y + grad_ln_D_dn_z * grad_ln_D_dn_z
     ) + jnp.einsum("ij,ji->i", geminal_inverse, geminal_laplacian_dn)
 
+    # Trim to n_dn for open-shell (N_up > N_dn) systems
+    n_dn = geminal_data.num_electron_dn
+    grad_ln_D_dn = grad_ln_D_dn[:n_dn]
+    lap_ln_D_dn = lap_ln_D_dn[:n_dn]
+
     return grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn
 
 
@@ -1721,9 +1900,9 @@ def _compute_grads_and_laplacian_ln_Det_fast_debug(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
-    """Debug helper that builds geminal inverse then calls the fast path."""
-    # Reuse the fast path for gradients/Laplacians
-    grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn = compute_grads_and_laplacian_ln_Det(
+    """Debug helper that uses auto-diff to validate the fast path."""
+    # Use auto-diff as the reference (independent implementation).
+    grad_ln_D_up, grad_ln_D_dn, lap_ln_D_up, lap_ln_D_dn = _compute_grads_and_laplacian_ln_Det_auto(
         geminal_data=geminal_data,
         r_up_carts=r_up_carts,
         r_dn_carts=r_dn_carts,

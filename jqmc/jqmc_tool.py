@@ -33,14 +33,11 @@
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-import gzip
 import inspect
 import os
-import pickle
 import re
 import shutil
 import sys
-import zipfile
 from enum import Enum
 from logging import Formatter, StreamHandler, getLogger
 from typing import List
@@ -52,6 +49,20 @@ import tomlkit
 import typer
 from uncertainties import ufloat
 
+from ._checkpoint import (
+    compute_accumulated_weights,
+    load_driver_config_from_checkpoint,
+    load_hamiltonian_from_checkpoint,
+    load_observables_from_checkpoint,
+)
+from ._setting import (
+    GFMC_MIN_BIN_BLOCKS,
+    GFMC_MIN_COLLECT_STEPS,
+    GFMC_MIN_WARMUP_STEPS,
+    MCMC_MIN_BIN_BLOCKS,
+    MCMC_MIN_WARMUP_STEPS,
+    Bohr_to_Angstrom,
+)
 from .atomic_orbital import AOs_cart_data, AOs_sphe_data
 from .determinant import Geminal_data
 from .hamiltonians import Hamiltonian_data
@@ -63,14 +74,6 @@ from .jastrow_factor import (
     Jastrow_two_body_data,
 )
 from .jqmc_miscs import cli_parameters
-from .setting import (
-    GFMC_MIN_BIN_BLOCKS,
-    GFMC_MIN_COLLECT_STEPS,
-    GFMC_MIN_WARMUP_STEPS,
-    MCMC_MIN_BIN_BLOCKS,
-    MCMC_MIN_WARMUP_STEPS,
-    Bohr_to_Angstrom,
-)
 from .trexio_wrapper import read_trexio_file
 from .wavefunction import Wavefunction_data
 
@@ -218,7 +221,9 @@ def trexio_convert_to(
     trexio_file: str = typer.Argument(..., help="TREXIO filename."),
     hamiltonian_file: str = typer.Option("hamiltonian_data.h5", "-o", "--output", help="Output file name."),
     j1_parmeter: float = typer.Option(None, "-j1", "--jastrow-1b-parameter", help="Jastrow one-body parameter."),
+    j1_type: str = typer.Option("exp", "--jastrow-1b-type", help="Jastrow one-body functional form: 'exp' or 'pade'."),
     j2_parmeter: float = typer.Option(None, "-j2", "--jastrow-2b-parameter", help="Jastrow two-body parameter."),
+    j2_type: str = typer.Option("pade", "--jastrow-2b-type", help="Jastrow two-body functional form: 'pade' or 'exp'."),
     j3_basis_type: orbital_type = typer.Option(
         orbital_type.none,
         "-j3",
@@ -236,6 +241,11 @@ def trexio_convert_to(
         "-jp",
         "--jastrow-nn-param",
         help=_get_nn_jastrow_help_msg(),
+    ),
+    ao_conv_to: str = typer.Option(
+        None,
+        "--ao-conv-to",
+        help="Convert AOs after building the Hamiltonian: 'cart' (Cartesian) or 'sphe' (spherical). Default: keep original.",
     ),
 ):
     """Convert a TREXIO file to hamiltonian_data."""
@@ -281,6 +291,10 @@ def trexio_convert_to(
 
     if isinstance(j_nn_type, typer.models.OptionInfo):
         j_nn_type = j_nn_type.default
+    if isinstance(j1_type, typer.models.OptionInfo):
+        j1_type = j1_type.default
+    if isinstance(j2_type, typer.models.OptionInfo):
+        j2_type = j2_type.default
 
     (structure_data, aos_data, mos_data, _, geminal_data, coulomb_potential_data) = read_trexio_file(
         trexio_file, store_tuple=True
@@ -292,12 +306,18 @@ def trexio_convert_to(
         else:
             core_electrons = [0] * structure_data.natom
         jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
-            jastrow_1b_param=j1_parmeter, structure_data=structure_data, core_electrons=core_electrons
+            jastrow_1b_param=j1_parmeter,
+            structure_data=structure_data,
+            core_electrons=core_electrons,
+            jastrow_1b_type=j1_type,
         )
     else:
         jastrow_onebody_data = None
     if j2_parmeter is not None:
-        jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=j2_parmeter)
+        jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(
+            jastrow_2b_param=j2_parmeter,
+            jastrow_2b_type=j2_type,
+        )
     else:
         jastrow_twobody_data = None
     if j3_basis_type is None:
@@ -456,7 +476,20 @@ def trexio_convert_to(
         jastrow_nn_data=nn_jastrow_data,
     )
 
-    # geminal_data = geminal_mo_data
+    # Optional AO conversion (cart / sphe)
+    if isinstance(ao_conv_to, typer.models.OptionInfo):
+        ao_conv_to = ao_conv_to.default
+    if ao_conv_to is not None:
+        ao_conv_to = ao_conv_to.lower()
+        if ao_conv_to == "cart":
+            jastrow_data = jastrow_data.to_cartesian()
+            geminal_data = geminal_data.to_cartesian()
+        elif ao_conv_to == "sphe":
+            jastrow_data = jastrow_data.to_spherical()
+            geminal_data = geminal_data.to_spherical()
+        else:
+            raise ValueError(f"Invalid ao_conv_to = {ao_conv_to!r}. Must be 'cart', 'sphe', or None.")
+
     wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_data)
 
     hamiltonian_data = Hamiltonian_data(
@@ -660,7 +693,7 @@ def vmc_analyze_output(
         max_f_means = []
         max_f_errs = []
 
-        for iter, E, max_f, _ in zip(iter_list, E_list, max_f_list, signal_to_noise_list, strict=True):
+        for iter, E, max_f, _ in zip(iter_list, E_list, max_f_list, signal_to_noise_list, strict=False):
             iters.append(iter)
             E_means.append(E.n)
             E_errs.append(E.s)
@@ -741,36 +774,23 @@ def mcmc_compute_energy(
     if num_mcmc_bin_blocks < MCMC_MIN_BIN_BLOCKS:
         typer.echo(f"num_mcmc_bin_blocks should be larger than {MCMC_MIN_BIN_BLOCKS}.")
 
-    """Unzip the checkpoint file for each process and load them."""
-    pattern = re.compile(r"(\d+).pkl.gz")
-
-    mpi_ranks = []
-    with zipfile.ZipFile(restart_chk, "r") as z:
-        for file_name in z.namelist():
-            match = pattern.match(os.path.basename(file_name))
-            if match:
-                mpi_ranks.append(int(match.group(1)))
-
-    typer.echo(f"Found {len(mpi_ranks)} MPI ranks.")
-
-    filenames = [f"{mpi_rank}.pkl.gz" for mpi_rank in mpi_ranks]
+    """Load observables from the HDF5 checkpoint."""
+    rank_data = load_observables_from_checkpoint(restart_chk, ["e_L", "w_L"])
+    num_ranks = len(rank_data)
+    typer.echo(f"Found {num_ranks} MPI ranks.")
 
     w_L_binned_list = []
     w_L_e_L_binned_list = []
 
-    for filename in filenames:
-        with zipfile.ZipFile(restart_chk, "r") as zipf:
-            with zipf.open(filename) as zipped_gz_fobj:
-                with gzip.open(zipped_gz_fobj, "rb") as gz:
-                    mcmc = pickle.load(gz)
-                    e_L = mcmc.e_L[num_mcmc_warmup_steps:]
-                    w_L = mcmc.w_L[num_mcmc_warmup_steps:]
-                    w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-                    w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
-                    w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
-                    w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
-                    w_L_binned_list += w_L_binned
-                    w_L_e_L_binned_list += w_L_e_L_binned
+    for obs in rank_data:
+        e_L = obs["e_L"][num_mcmc_warmup_steps:]
+        w_L = obs["w_L"][num_mcmc_warmup_steps:]
+        w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
+        w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
+        w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
+        w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
+        w_L_binned_list += w_L_binned
+        w_L_e_L_binned_list += w_L_e_L_binned
 
     w_L_binned = np.array(w_L_binned_list)
     w_L_e_L_binned = np.array(w_L_e_L_binned_list)
@@ -813,110 +833,107 @@ def mcmc_compute_force(
     if num_mcmc_bin_blocks < MCMC_MIN_BIN_BLOCKS:
         typer.echo(f"num_mcmc_bin_blocks should be larger than {MCMC_MIN_BIN_BLOCKS}.")
 
-    """Unzip the checkpoint file for each process and load them."""
-    pattern = re.compile(r"(\d+).pkl.gz")
+    """Load observables from the HDF5 checkpoint."""
+    _force_keys = [
+        "e_L",
+        "w_L",
+        "grad_e_L_dR",
+        "grad_e_L_r_up",
+        "grad_e_L_r_dn",
+        "grad_ln_Psi_r_up",
+        "grad_ln_Psi_r_dn",
+        "grad_ln_Psi_dR",
+        "omega_up",
+        "omega_dn",
+        "grad_omega_r_up",
+        "grad_omega_r_dn",
+    ]
+    rank_data = load_observables_from_checkpoint(restart_chk, _force_keys)
+    num_ranks = len(rank_data)
+    typer.echo(f"Found {num_ranks} MPI ranks.")
 
-    mpi_ranks = []
-    with zipfile.ZipFile(restart_chk, "r") as z:
-        for file_name in z.namelist():
-            match = pattern.match(os.path.basename(file_name))
-            if match:
-                mpi_ranks.append(int(match.group(1)))
+    # Check that force computation was enabled
+    cfg = load_driver_config_from_checkpoint(restart_chk, rank=0)
+    if not cfg.get("comput_position_deriv", False):
+        typer.echo("Error: atomic_force was not enabled during the MCMC run. Cannot compute forces.")
+        raise typer.Exit(code=1)
 
-    typer.echo(f"Found {len(mpi_ranks)} MPI ranks.")
-
-    filenames = [f"{mpi_rank}.pkl.gz" for mpi_rank in mpi_ranks]
+    hamiltonian_data = load_hamiltonian_from_checkpoint(restart_chk)
+    atomic_labels = hamiltonian_data.structure_data.atomic_labels
 
     w_L_binned_list = []
     w_L_e_L_binned_list = []
     w_L_force_HF_binned_list = []
     w_L_force_PP_binned_list = []
     w_L_E_L_force_PP_binned_list = []
-    atomic_labels = None
 
-    for filename in filenames:
-        with zipfile.ZipFile(restart_chk, "r") as zipf:
-            with zipf.open(filename) as zipped_gz_fobj:
-                with gzip.open(zipped_gz_fobj, "rb") as gz:
-                    mcmc = pickle.load(gz)
+    for obs in rank_data:
+        e_L = obs["e_L"][num_mcmc_warmup_steps:]
+        w_L = obs["w_L"][num_mcmc_warmup_steps:]
+        de_L_dR = obs["grad_e_L_dR"][num_mcmc_warmup_steps:]
+        de_L_dr_up = obs["grad_e_L_r_up"][num_mcmc_warmup_steps:]
+        de_L_dr_dn = obs["grad_e_L_r_dn"][num_mcmc_warmup_steps:]
+        dln_Psi_dr_up = obs["grad_ln_Psi_r_up"][num_mcmc_warmup_steps:]
+        dln_Psi_dr_dn = obs["grad_ln_Psi_r_dn"][num_mcmc_warmup_steps:]
+        dln_Psi_dR = obs["grad_ln_Psi_dR"][num_mcmc_warmup_steps:]
+        omega_up = obs["omega_up"][num_mcmc_warmup_steps:]
+        omega_dn = obs["omega_dn"][num_mcmc_warmup_steps:]
+        domega_dr_up = obs["grad_omega_r_up"][num_mcmc_warmup_steps:]
+        domega_dr_dn = obs["grad_omega_r_dn"][num_mcmc_warmup_steps:]
 
-                    if not mcmc.comput_position_deriv:
-                        typer.echo("Error: atomic_force was not enabled during the MCMC run. Cannot compute forces.")
-                        raise typer.Exit(code=1)
+        force_HF = (
+            de_L_dR + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up) + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
+        )
 
-                    if atomic_labels is None:
-                        atomic_labels = mcmc.hamiltonian_data.structure_data.atomic_labels
+        force_PP = (
+            dln_Psi_dR
+            + np.einsum("iwjk,iwkl->iwjl", omega_up, dln_Psi_dr_up)
+            + np.einsum("iwjk,iwkl->iwjl", omega_dn, dln_Psi_dr_dn)
+            + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
+        )
 
-                    e_L = mcmc.e_L[num_mcmc_warmup_steps:]
-                    w_L = mcmc.w_L[num_mcmc_warmup_steps:]
-                    de_L_dR = mcmc.de_L_dR[num_mcmc_warmup_steps:]
-                    de_L_dr_up = mcmc.de_L_dr_up[num_mcmc_warmup_steps:]
-                    de_L_dr_dn = mcmc.de_L_dr_dn[num_mcmc_warmup_steps:]
-                    dln_Psi_dr_up = mcmc.dln_Psi_dr_up[num_mcmc_warmup_steps:]
-                    dln_Psi_dr_dn = mcmc.dln_Psi_dr_dn[num_mcmc_warmup_steps:]
-                    dln_Psi_dR = mcmc.dln_Psi_dR[num_mcmc_warmup_steps:]
-                    omega_up = mcmc.omega_up[num_mcmc_warmup_steps:]
-                    omega_dn = mcmc.omega_dn[num_mcmc_warmup_steps:]
-                    domega_dr_up = mcmc.domega_dr_up[num_mcmc_warmup_steps:]
-                    domega_dr_dn = mcmc.domega_dr_dn[num_mcmc_warmup_steps:]
+        E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
 
-                    force_HF = (
-                        de_L_dR
-                        + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up)
-                        + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
-                    )
+        # split and binning with multiple walkers
+        w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
+        w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
+        w_L_force_HF_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_HF), num_mcmc_bin_blocks, axis=0)
+        w_L_force_PP_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_PP), num_mcmc_bin_blocks, axis=0)
+        w_L_E_L_force_PP_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, E_L_force_PP), num_mcmc_bin_blocks, axis=0)
 
-                    force_PP = (
-                        dln_Psi_dR
-                        + np.einsum("iwjk,iwkl->iwjl", omega_up, dln_Psi_dr_up)
-                        + np.einsum("iwjk,iwkl->iwjl", omega_dn, dln_Psi_dr_dn)
-                        + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
-                    )
+        # binned sum
+        w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
+        w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
 
-                    E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
+        w_L_force_HF_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_HF_split])
+        w_L_force_HF_binned_shape = (
+            w_L_force_HF_sum.shape[0] * w_L_force_HF_sum.shape[1],
+            w_L_force_HF_sum.shape[2],
+            w_L_force_HF_sum.shape[3],
+        )
+        w_L_force_HF_binned = list(w_L_force_HF_sum.reshape(w_L_force_HF_binned_shape))
 
-                    # split and binning with multiple walkers
-                    w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-                    w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
-                    w_L_force_HF_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_HF), num_mcmc_bin_blocks, axis=0)
-                    w_L_force_PP_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_PP), num_mcmc_bin_blocks, axis=0)
-                    w_L_E_L_force_PP_split = np.array_split(
-                        np.einsum("iw,iwjk->iwjk", w_L, E_L_force_PP), num_mcmc_bin_blocks, axis=0
-                    )
+        w_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_PP_split])
+        w_L_force_PP_binned_shape = (
+            w_L_force_PP_sum.shape[0] * w_L_force_PP_sum.shape[1],
+            w_L_force_PP_sum.shape[2],
+            w_L_force_PP_sum.shape[3],
+        )
+        w_L_force_PP_binned = list(w_L_force_PP_sum.reshape(w_L_force_PP_binned_shape))
 
-                    # binned sum
-                    w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
-                    w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
+        w_L_E_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_E_L_force_PP_split])
+        w_L_E_L_force_PP_binned_shape = (
+            w_L_E_L_force_PP_sum.shape[0] * w_L_E_L_force_PP_sum.shape[1],
+            w_L_E_L_force_PP_sum.shape[2],
+            w_L_E_L_force_PP_sum.shape[3],
+        )
+        w_L_E_L_force_PP_binned = list(w_L_E_L_force_PP_sum.reshape(w_L_E_L_force_PP_binned_shape))
 
-                    w_L_force_HF_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_HF_split])
-                    w_L_force_HF_binned_shape = (
-                        w_L_force_HF_sum.shape[0] * w_L_force_HF_sum.shape[1],
-                        w_L_force_HF_sum.shape[2],
-                        w_L_force_HF_sum.shape[3],
-                    )
-                    w_L_force_HF_binned = list(w_L_force_HF_sum.reshape(w_L_force_HF_binned_shape))
-
-                    w_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_PP_split])
-                    w_L_force_PP_binned_shape = (
-                        w_L_force_PP_sum.shape[0] * w_L_force_PP_sum.shape[1],
-                        w_L_force_PP_sum.shape[2],
-                        w_L_force_PP_sum.shape[3],
-                    )
-                    w_L_force_PP_binned = list(w_L_force_PP_sum.reshape(w_L_force_PP_binned_shape))
-
-                    w_L_E_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_E_L_force_PP_split])
-                    w_L_E_L_force_PP_binned_shape = (
-                        w_L_E_L_force_PP_sum.shape[0] * w_L_E_L_force_PP_sum.shape[1],
-                        w_L_E_L_force_PP_sum.shape[2],
-                        w_L_E_L_force_PP_sum.shape[3],
-                    )
-                    w_L_E_L_force_PP_binned = list(w_L_E_L_force_PP_sum.reshape(w_L_E_L_force_PP_binned_shape))
-
-                    w_L_binned_list += w_L_binned
-                    w_L_e_L_binned_list += w_L_e_L_binned
-                    w_L_force_HF_binned_list += w_L_force_HF_binned
-                    w_L_force_PP_binned_list += w_L_force_PP_binned
-                    w_L_E_L_force_PP_binned_list += w_L_E_L_force_PP_binned
+        w_L_binned_list += w_L_binned
+        w_L_e_L_binned_list += w_L_e_L_binned
+        w_L_force_HF_binned_list += w_L_force_HF_binned
+        w_L_force_PP_binned_list += w_L_force_PP_binned
+        w_L_E_L_force_PP_binned_list += w_L_E_L_force_PP_binned
 
     w_L_binned = np.array(w_L_binned_list)
     w_L_e_L_binned = np.array(w_L_e_L_binned_list)
@@ -1039,47 +1056,51 @@ def lrdmc_compute_energy(
     typer.echo(f"Read restart checkpoint file(s) from {restart_chk}.")
 
     if num_gfmc_warmup_steps < GFMC_MIN_WARMUP_STEPS:
-        typer.echo(f"num_gfmc_warmup_steps should be larger than {GFMC_MIN_WARMUP_STEPS}.")
+        typer.echo(
+            f"Error: num_gfmc_warmup_steps ({num_gfmc_warmup_steps}) must be "
+            f">= {GFMC_MIN_WARMUP_STEPS}. E_scf is unreliable before "
+            f"step {GFMC_MIN_WARMUP_STEPS}.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
     if num_gfmc_bin_block < GFMC_MIN_BIN_BLOCKS:
-        typer.echo(f"num_mcmc_bin_blocks should be larger than {GFMC_MIN_BIN_BLOCKS}.")
+        typer.echo(
+            f"Error: num_gfmc_bin_blocks ({num_gfmc_bin_block}) must be >= {GFMC_MIN_BIN_BLOCKS}.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
     if num_gfmc_collect_steps < GFMC_MIN_COLLECT_STEPS:
-        typer.echo(f"num_gfmc_collect_steps should be larger than {GFMC_MIN_COLLECT_STEPS}.")
+        typer.echo(
+            f"Error: num_gfmc_collect_steps ({num_gfmc_collect_steps}) must be >= {GFMC_MIN_COLLECT_STEPS}.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
 
-    pattern = re.compile(r"(\d+).pkl.gz")
-
-    mpi_ranks = []
-    with zipfile.ZipFile(restart_chk, "r") as z:
-        for file_name in z.namelist():
-            match = pattern.match(os.path.basename(file_name))
-            if match:
-                mpi_ranks.append(int(match.group(1)))
-
-    typer.echo(f"Found {len(mpi_ranks)} MPI ranks.")
-
-    filenames = [f"{mpi_rank}.pkl.gz" for mpi_rank in mpi_ranks]
+    """Load observables from the HDF5 checkpoint."""
+    rank_data = load_observables_from_checkpoint(restart_chk, ["e_L", "w_L"])
+    num_ranks = len(rank_data)
+    typer.echo(f"Found {num_ranks} MPI ranks.")
 
     w_L_binned_list = []
     w_L_e_L_binned_list = []
 
     num_mcmc_warmup_steps = num_gfmc_warmup_steps
     num_mcmc_bin_blocks = num_gfmc_bin_block
+    k = num_gfmc_collect_steps
 
-    for filename in filenames:
-        with zipfile.ZipFile(restart_chk, "r") as zipf:
-            with zipf.open(filename) as zipped_gz_fobj:
-                with gzip.open(zipped_gz_fobj, "rb") as gz:
-                    lrdmc = pickle.load(gz)
-            lrdmc.num_gfmc_collect_steps = num_gfmc_collect_steps
+    for obs in rank_data:
+        raw_e_L = obs.get("e_L", np.empty(0))
+        raw_w_L = obs.get("w_L", np.empty(0))
 
-            if lrdmc.e_L.size != 0:
-                e_L = lrdmc.e_L[num_mcmc_warmup_steps:]
-                w_L = lrdmc.w_L[num_mcmc_warmup_steps:]
-                w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-                w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
-                w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
-                w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
-                w_L_binned_list += w_L_binned
-                w_L_e_L_binned_list += w_L_e_L_binned
+        if raw_e_L.size != 0:
+            e_L = raw_e_L[k:][num_mcmc_warmup_steps:]
+            w_L = compute_accumulated_weights(raw_w_L, k)[num_mcmc_warmup_steps:]
+            w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
+            w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
+            w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
+            w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
+            w_L_binned_list += w_L_binned
+            w_L_e_L_binned_list += w_L_e_L_binned
 
     w_L_binned = np.array(w_L_binned_list)
     w_L_e_L_binned = np.array(w_L_e_L_binned_list)
@@ -1127,114 +1148,116 @@ def lrdmc_compute_force(
     if num_gfmc_collect_steps < GFMC_MIN_COLLECT_STEPS:
         typer.echo(f"num_gfmc_collect_steps should be larger than {GFMC_MIN_COLLECT_STEPS}.")
 
-    pattern = re.compile(r"(\d+).pkl.gz")
+    """Load observables from the HDF5 checkpoint."""
+    _force_keys = [
+        "e_L",
+        "w_L",
+        "grad_e_L_dR",
+        "grad_e_L_r_up",
+        "grad_e_L_r_dn",
+        "grad_ln_Psi_r_up",
+        "grad_ln_Psi_r_dn",
+        "grad_ln_Psi_dR",
+        "omega_up",
+        "omega_dn",
+        "grad_omega_r_up",
+        "grad_omega_r_dn",
+    ]
+    rank_data = load_observables_from_checkpoint(restart_chk, _force_keys)
+    num_ranks = len(rank_data)
+    typer.echo(f"Found {num_ranks} MPI ranks.")
 
-    mpi_ranks = []
-    with zipfile.ZipFile(restart_chk, "r") as z:
-        for file_name in z.namelist():
-            match = pattern.match(os.path.basename(file_name))
-            if match:
-                mpi_ranks.append(int(match.group(1)))
+    # Check that force computation was enabled
+    cfg = load_driver_config_from_checkpoint(restart_chk, rank=0)
+    if not cfg.get("comput_position_deriv", False):
+        typer.echo("Error: atomic_force was not enabled during the LRDMC run. Cannot compute forces.")
+        raise typer.Exit(code=1)
 
-    typer.echo(f"Found {len(mpi_ranks)} MPI ranks.")
-
-    filenames = [f"{mpi_rank}.pkl.gz" for mpi_rank in mpi_ranks]
+    hamiltonian_data = load_hamiltonian_from_checkpoint(restart_chk)
+    atomic_labels = hamiltonian_data.structure_data.atomic_labels
 
     w_L_binned_list = []
     w_L_e_L_binned_list = []
     w_L_force_HF_binned_list = []
     w_L_force_PP_binned_list = []
     w_L_E_L_force_PP_binned_list = []
-    atomic_labels = None
 
     num_mcmc_warmup_steps = num_gfmc_warmup_steps
     num_mcmc_bin_blocks = num_gfmc_bin_block
+    k = num_gfmc_collect_steps
 
-    for filename in filenames:
-        with zipfile.ZipFile(restart_chk, "r") as zipf:
-            with zipf.open(filename) as zipped_gz_fobj:
-                with gzip.open(zipped_gz_fobj, "rb") as gz:
-                    lrdmc = pickle.load(gz)
-            lrdmc.num_gfmc_collect_steps = num_gfmc_collect_steps
+    for obs in rank_data:
+        raw_e_L = obs.get("e_L", np.empty(0))
 
-            if not lrdmc.comput_position_deriv:
-                typer.echo("Error: atomic_force was not enabled during the LRDMC run. Cannot compute forces.")
-                raise typer.Exit(code=1)
+        if raw_e_L.size != 0:
+            e_L = raw_e_L[k:][num_mcmc_warmup_steps:]
+            w_L = compute_accumulated_weights(obs["w_L"], k)[num_mcmc_warmup_steps:]
+            de_L_dR = obs["grad_e_L_dR"][k:][num_mcmc_warmup_steps:]
+            de_L_dr_up = obs["grad_e_L_r_up"][k:][num_mcmc_warmup_steps:]
+            de_L_dr_dn = obs["grad_e_L_r_dn"][k:][num_mcmc_warmup_steps:]
+            dln_Psi_dr_up = obs["grad_ln_Psi_r_up"][k:][num_mcmc_warmup_steps:]
+            dln_Psi_dr_dn = obs["grad_ln_Psi_r_dn"][k:][num_mcmc_warmup_steps:]
+            dln_Psi_dR = obs["grad_ln_Psi_dR"][k:][num_mcmc_warmup_steps:]
+            omega_up = obs["omega_up"][k:][num_mcmc_warmup_steps:]
+            omega_dn = obs["omega_dn"][k:][num_mcmc_warmup_steps:]
+            domega_dr_up = obs["grad_omega_r_up"][k:][num_mcmc_warmup_steps:]
+            domega_dr_dn = obs["grad_omega_r_dn"][k:][num_mcmc_warmup_steps:]
 
-            if atomic_labels is None:
-                atomic_labels = lrdmc.hamiltonian_data.structure_data.atomic_labels
+            force_HF = (
+                de_L_dR
+                + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up)
+                + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
+            )
 
-            if lrdmc.e_L.size != 0:
-                e_L = lrdmc.e_L[num_mcmc_warmup_steps:]
-                w_L = lrdmc.w_L[num_mcmc_warmup_steps:]
-                de_L_dR = lrdmc.de_L_dR[num_mcmc_warmup_steps:]
-                de_L_dr_up = lrdmc.de_L_dr_up[num_mcmc_warmup_steps:]
-                de_L_dr_dn = lrdmc.de_L_dr_dn[num_mcmc_warmup_steps:]
-                dln_Psi_dr_up = lrdmc.dln_Psi_dr_up[num_mcmc_warmup_steps:]
-                dln_Psi_dr_dn = lrdmc.dln_Psi_dr_dn[num_mcmc_warmup_steps:]
-                dln_Psi_dR = lrdmc.dln_Psi_dR[num_mcmc_warmup_steps:]
-                omega_up = lrdmc.omega_up[num_mcmc_warmup_steps:]
-                omega_dn = lrdmc.omega_dn[num_mcmc_warmup_steps:]
-                domega_dr_up = lrdmc.domega_dr_up[num_mcmc_warmup_steps:]
-                domega_dr_dn = lrdmc.domega_dr_dn[num_mcmc_warmup_steps:]
+            force_PP = (
+                dln_Psi_dR
+                + np.einsum("iwjk,iwkl->iwjl", omega_up, dln_Psi_dr_up)
+                + np.einsum("iwjk,iwkl->iwjl", omega_dn, dln_Psi_dr_dn)
+                + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
+            )
 
-                force_HF = (
-                    de_L_dR
-                    + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up)
-                    + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
-                )
+            E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
 
-                force_PP = (
-                    dln_Psi_dR
-                    + np.einsum("iwjk,iwkl->iwjl", omega_up, dln_Psi_dr_up)
-                    + np.einsum("iwjk,iwkl->iwjl", omega_dn, dln_Psi_dr_dn)
-                    + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
-                )
+            # split and binning with multiple walkers
+            w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
+            w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
+            w_L_force_HF_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_HF), num_mcmc_bin_blocks, axis=0)
+            w_L_force_PP_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_PP), num_mcmc_bin_blocks, axis=0)
+            w_L_E_L_force_PP_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, E_L_force_PP), num_mcmc_bin_blocks, axis=0)
 
-                E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
+            # binned sum
+            w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
+            w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
 
-                # split and binning with multiple walkers
-                w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-                w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
-                w_L_force_HF_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_HF), num_mcmc_bin_blocks, axis=0)
-                w_L_force_PP_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_PP), num_mcmc_bin_blocks, axis=0)
-                w_L_E_L_force_PP_split = np.array_split(
-                    np.einsum("iw,iwjk->iwjk", w_L, E_L_force_PP), num_mcmc_bin_blocks, axis=0
-                )
+            w_L_force_HF_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_HF_split])
+            w_L_force_HF_binned_shape = (
+                w_L_force_HF_sum.shape[0] * w_L_force_HF_sum.shape[1],
+                w_L_force_HF_sum.shape[2],
+                w_L_force_HF_sum.shape[3],
+            )
+            w_L_force_HF_binned = list(w_L_force_HF_sum.reshape(w_L_force_HF_binned_shape))
 
-                # binned sum
-                w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
-                w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
+            w_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_PP_split])
+            w_L_force_PP_binned_shape = (
+                w_L_force_PP_sum.shape[0] * w_L_force_PP_sum.shape[1],
+                w_L_force_PP_sum.shape[2],
+                w_L_force_PP_sum.shape[3],
+            )
+            w_L_force_PP_binned = list(w_L_force_PP_sum.reshape(w_L_force_PP_binned_shape))
 
-                w_L_force_HF_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_HF_split])
-                w_L_force_HF_binned_shape = (
-                    w_L_force_HF_sum.shape[0] * w_L_force_HF_sum.shape[1],
-                    w_L_force_HF_sum.shape[2],
-                    w_L_force_HF_sum.shape[3],
-                )
-                w_L_force_HF_binned = list(w_L_force_HF_sum.reshape(w_L_force_HF_binned_shape))
+            w_L_E_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_E_L_force_PP_split])
+            w_L_E_L_force_PP_binned_shape = (
+                w_L_E_L_force_PP_sum.shape[0] * w_L_E_L_force_PP_sum.shape[1],
+                w_L_E_L_force_PP_sum.shape[2],
+                w_L_E_L_force_PP_sum.shape[3],
+            )
+            w_L_E_L_force_PP_binned = list(w_L_E_L_force_PP_sum.reshape(w_L_E_L_force_PP_binned_shape))
 
-                w_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_force_PP_split])
-                w_L_force_PP_binned_shape = (
-                    w_L_force_PP_sum.shape[0] * w_L_force_PP_sum.shape[1],
-                    w_L_force_PP_sum.shape[2],
-                    w_L_force_PP_sum.shape[3],
-                )
-                w_L_force_PP_binned = list(w_L_force_PP_sum.reshape(w_L_force_PP_binned_shape))
-
-                w_L_E_L_force_PP_sum = np.array([np.sum(arr, axis=0) for arr in w_L_E_L_force_PP_split])
-                w_L_E_L_force_PP_binned_shape = (
-                    w_L_E_L_force_PP_sum.shape[0] * w_L_E_L_force_PP_sum.shape[1],
-                    w_L_E_L_force_PP_sum.shape[2],
-                    w_L_E_L_force_PP_sum.shape[3],
-                )
-                w_L_E_L_force_PP_binned = list(w_L_E_L_force_PP_sum.reshape(w_L_E_L_force_PP_binned_shape))
-
-                w_L_binned_list += w_L_binned
-                w_L_e_L_binned_list += w_L_e_L_binned
-                w_L_force_HF_binned_list += w_L_force_HF_binned
-                w_L_force_PP_binned_list += w_L_force_PP_binned
-                w_L_E_L_force_PP_binned_list += w_L_E_L_force_PP_binned
+            w_L_binned_list += w_L_binned
+            w_L_e_L_binned_list += w_L_e_L_binned
+            w_L_force_HF_binned_list += w_L_force_HF_binned
+            w_L_force_PP_binned_list += w_L_force_PP_binned
+            w_L_E_L_force_PP_binned_list += w_L_E_L_force_PP_binned
 
     w_L_binned = np.array(w_L_binned_list)
     w_L_e_L_binned = np.array(w_L_e_L_binned_list)
@@ -1323,42 +1346,33 @@ def lrdmc_extrapolate_energy(
     energy_error_list = []
 
     for restart_chk in restart_chks:
-        pattern = re.compile(r"(\d+).pkl.gz")
+        """Load observables from the HDF5 checkpoint."""
+        rank_data = load_observables_from_checkpoint(restart_chk, ["e_L", "w_L"])
+        num_ranks = len(rank_data)
+        typer.echo(f"Found {num_ranks} MPI ranks.")
 
-        mpi_ranks = []
-        with zipfile.ZipFile(restart_chk, "r") as z:
-            for file_name in z.namelist():
-                match = pattern.match(os.path.basename(file_name))
-                if match:
-                    mpi_ranks.append(int(match.group(1)))
-
-        typer.echo(f"Found {len(mpi_ranks)} MPI ranks.")
-
-        filenames = [f"{mpi_rank}.pkl.gz" for mpi_rank in mpi_ranks]
+        cfg = load_driver_config_from_checkpoint(restart_chk, rank=0)
+        alat = cfg["alat"]
 
         w_L_binned_list = []
         w_L_e_L_binned_list = []
 
         num_mcmc_warmup_steps = num_gfmc_warmup_steps
         num_mcmc_bin_blocks = num_gfmc_bin_block
+        k = num_gfmc_collect_steps
 
-        for filename in filenames:
-            with zipfile.ZipFile(restart_chk, "r") as zipf:
-                with zipf.open(filename) as zipped_gz_fobj:
-                    with gzip.open(zipped_gz_fobj, "rb") as gz:
-                        lrdmc = pickle.load(gz)
-                lrdmc.num_gfmc_collect_steps = num_gfmc_collect_steps
+        for obs in rank_data:
+            raw_e_L = obs.get("e_L", np.empty(0))
 
-                if lrdmc.e_L.size != 0:
-                    e_L = lrdmc.e_L[num_mcmc_warmup_steps:]
-                    w_L = lrdmc.w_L[num_mcmc_warmup_steps:]
-                    w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-                    w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
-                    w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
-                    w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
-                    w_L_binned_list += w_L_binned
-                    w_L_e_L_binned_list += w_L_e_L_binned
-                    alat = lrdmc.alat
+            if raw_e_L.size != 0:
+                e_L = raw_e_L[k:][num_mcmc_warmup_steps:]
+                w_L = compute_accumulated_weights(obs["w_L"], k)[num_mcmc_warmup_steps:]
+                w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
+                w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
+                w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
+                w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
+                w_L_binned_list += w_L_binned
+                w_L_e_L_binned_list += w_L_e_L_binned
 
         w_L_binned = np.array(w_L_binned_list)
         w_L_e_L_binned = np.array(w_L_e_L_binned_list)
@@ -1483,18 +1497,18 @@ def lrdmc_generate_input(
                 control_table[key] = value
             if not exclude_comment and not isinstance(value, bool):
                 control_table[key].comment(cli_parameters["control_comments"][key])
-        control_table["job_type"] = "lrdmc"
+        control_table["job_type"] = "lrdmc-bra"
         doc.add("control", control_table)
 
         lrdmc_table = tomlkit.table()
-        for key, value in cli_parameters["lrdmc"].items():
+        for key, value in cli_parameters["lrdmc-bra"].items():
             if value is None:
                 lrdmc_table[key] = str(value)
             else:
                 lrdmc_table[key] = value
             if not exclude_comment and not isinstance(value, bool):
-                lrdmc_table[key].comment(cli_parameters["lrdmc_comments"][key])
-        doc.add("lrdmc", lrdmc_table)
+                lrdmc_table[key].comment(cli_parameters["lrdmc-bra_comments"][key])
+        doc.add("lrdmc-bra", lrdmc_table)
 
         with open(filename, "w") as f:
             f.write(tomlkit.dumps(doc))

@@ -69,13 +69,15 @@ from jqmc.determinant import (  # noqa: E402
     compute_ln_det_geminal_all_elements_fast,
 )
 from jqmc.molecular_orbital import MOs_data  # noqa: E402
-from jqmc.setting import (  # noqa: E402
+from jqmc._setting import (  # noqa: E402
+    atol_auto_vs_analytic_deriv,
     atol_auto_vs_numerical_deriv,
-    decimal_auto_vs_analytic_deriv,
-    decimal_auto_vs_numerical_deriv,
-    decimal_consistency,
-    decimal_debug_vs_production,
+    atol_consistency,
+    atol_debug_vs_production,
+    rtol_auto_vs_analytic_deriv,
     rtol_auto_vs_numerical_deriv,
+    rtol_consistency,
+    rtol_debug_vs_production,
 )
 from jqmc.structure import Structure_data  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
@@ -85,7 +87,8 @@ jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
 
-def test_convert_from_MOs_to_AOs_closed_shell():
+@pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
+def test_convert_from_MOs_to_AOs_closed_shell(trexio_file: str):
     """Test the consistency between AO and MO geminals."""
     (
         structure_data,
@@ -95,7 +98,7 @@ def test_convert_from_MOs_to_AOs_closed_shell():
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
     )
 
     # check geminal_data
@@ -158,8 +161,8 @@ def test_convert_from_MOs_to_AOs_closed_shell():
     for _ in range(remaining_dn):
         r_dn_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
 
-    r_up_carts = np.array(r_up_carts)
-    r_dn_carts = np.array(r_dn_carts)
+    r_up_carts = np.array(r_up_carts).reshape(-1, 3)
+    r_dn_carts = np.array(r_dn_carts).reshape(-1, 3)
 
     geminal_mo_debug = _compute_geminal_all_elements_debug(
         geminal_data=geminal_mo_data,
@@ -175,7 +178,7 @@ def test_convert_from_MOs_to_AOs_closed_shell():
 
     assert not np.any(np.isnan(np.asarray(geminal_mo_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(geminal_mo_jax))), "NaN detected in second argument"
-    np.testing.assert_almost_equal(geminal_mo_debug, geminal_mo_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(geminal_mo_debug, geminal_mo_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
 
     geminal_mo = geminal_mo_jax
 
@@ -216,14 +219,14 @@ def test_convert_from_MOs_to_AOs_closed_shell():
 
     assert not np.any(np.isnan(np.asarray(geminal_ao_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(geminal_ao_jax))), "NaN detected in second argument"
-    np.testing.assert_almost_equal(geminal_ao_debug, geminal_ao_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(geminal_ao_debug, geminal_ao_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
 
     geminal_ao = geminal_ao_jax
 
     # check if geminals with AO and MO representations are consistent
     assert not np.any(np.isnan(np.asarray(geminal_ao))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(geminal_mo))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(geminal_ao, geminal_mo, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(geminal_ao, geminal_mo, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
 
     det_geminal_mo_debug = _compute_det_geminal_all_elements_debug(
         geminal_data=geminal_mo_data,
@@ -239,7 +242,9 @@ def test_convert_from_MOs_to_AOs_closed_shell():
 
     assert not np.any(np.isnan(np.asarray(det_geminal_mo_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(det_geminal_mo_jax))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(det_geminal_mo_debug, det_geminal_mo_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(
+        det_geminal_mo_debug, det_geminal_mo_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
+    )
 
     det_geminal_mo = det_geminal_mo_jax
 
@@ -257,12 +262,14 @@ def test_convert_from_MOs_to_AOs_closed_shell():
 
     assert not np.any(np.isnan(np.asarray(det_geminal_ao_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(det_geminal_ao_jax))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(det_geminal_ao_debug, det_geminal_ao_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(
+        det_geminal_ao_debug, det_geminal_ao_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
+    )
     det_geminal_ao = det_geminal_ao_jax
 
     assert not np.any(np.isnan(np.asarray(det_geminal_ao))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(det_geminal_mo))), "NaN detected in second argument"
-    np.testing.assert_almost_equal(det_geminal_ao, det_geminal_mo, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(det_geminal_ao, det_geminal_mo, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
 
     jax.clear_caches()
 
@@ -334,14 +341,14 @@ def test_geminal_sphe_to_cart_AOs_data():
     G_cart = compute_geminal_all_elements(geminal_cart, r_up_carts, r_dn_carts)
     assert not np.any(np.isnan(np.asarray(np.asarray(G_sph)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(G_cart)))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(np.asarray(G_sph), np.asarray(G_cart), decimal=decimal_consistency)
+    np.testing.assert_allclose(np.asarray(G_sph), np.asarray(G_cart), atol=atol_consistency, rtol=rtol_consistency)
 
     grads_sph = compute_grads_and_laplacian_ln_Det(geminal_sph, r_up_carts, r_dn_carts)
     grads_cart = compute_grads_and_laplacian_ln_Det(geminal_cart, r_up_carts, r_dn_carts)
     for sph, cart in zip(grads_sph, grads_cart, strict=True):
         assert not np.any(np.isnan(np.asarray(np.asarray(sph)))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(np.asarray(cart)))), "NaN detected in second argument"
-        np.testing.assert_array_almost_equal(np.asarray(sph), np.asarray(cart), decimal=decimal_consistency)
+        np.testing.assert_allclose(np.asarray(sph), np.asarray(cart), atol=atol_consistency, rtol=rtol_consistency)
 
     jax.clear_caches()
 
@@ -373,14 +380,14 @@ def test_geminal_cart_to_sphe_AOs_data():
     G_sph = compute_geminal_all_elements(geminal_cart_to_sph, r_up_carts, r_dn_carts)
     assert not np.any(np.isnan(np.asarray(np.asarray(G_cart)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(G_sph)))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(np.asarray(G_cart), np.asarray(G_sph), decimal=decimal_consistency)
+    np.testing.assert_allclose(np.asarray(G_cart), np.asarray(G_sph), atol=atol_consistency, rtol=rtol_consistency)
 
     grads_cart = compute_grads_and_laplacian_ln_Det(geminal_cart, r_up_carts, r_dn_carts)
     grads_sph = compute_grads_and_laplacian_ln_Det(geminal_cart_to_sph, r_up_carts, r_dn_carts)
     for cart, sph in zip(grads_cart, grads_sph, strict=True):
         assert not np.any(np.isnan(np.asarray(np.asarray(cart)))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(np.asarray(sph)))), "NaN detected in second argument"
-        np.testing.assert_array_almost_equal(np.asarray(cart), np.asarray(sph), decimal=decimal_consistency)
+        np.testing.assert_allclose(np.asarray(cart), np.asarray(sph), atol=atol_consistency, rtol=rtol_consistency)
 
     jax.clear_caches()
 
@@ -414,14 +421,14 @@ def test_geminal_sphe_to_cart_MOs_data():
     G_cart = compute_geminal_all_elements(geminal_cart, r_up_carts, r_dn_carts)
     assert not np.any(np.isnan(np.asarray(np.asarray(G_sph)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(G_cart)))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(np.asarray(G_sph), np.asarray(G_cart), decimal=decimal_consistency)
+    np.testing.assert_allclose(np.asarray(G_sph), np.asarray(G_cart), atol=atol_consistency, rtol=rtol_consistency)
 
     grads_sph = compute_grads_and_laplacian_ln_Det(geminal_sph, r_up_carts, r_dn_carts)
     grads_cart = compute_grads_and_laplacian_ln_Det(geminal_cart, r_up_carts, r_dn_carts)
     for sph, cart in zip(grads_sph, grads_cart, strict=True):
         assert not np.any(np.isnan(np.asarray(np.asarray(sph)))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(np.asarray(cart)))), "NaN detected in second argument"
-        np.testing.assert_array_almost_equal(np.asarray(sph), np.asarray(cart), decimal=decimal_consistency)
+        np.testing.assert_allclose(np.asarray(sph), np.asarray(cart), atol=atol_consistency, rtol=rtol_consistency)
 
     jax.clear_caches()
 
@@ -457,14 +464,14 @@ def test_geminal_cart_to_sphe_MOs_data():
     G_sph = compute_geminal_all_elements(geminal_cart_to_sph, r_up_carts, r_dn_carts)
     assert not np.any(np.isnan(np.asarray(np.asarray(G_cart)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(G_sph)))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(np.asarray(G_cart), np.asarray(G_sph), decimal=decimal_consistency)
+    np.testing.assert_allclose(np.asarray(G_cart), np.asarray(G_sph), atol=atol_consistency, rtol=rtol_consistency)
 
     grads_cart = compute_grads_and_laplacian_ln_Det(geminal_cart, r_up_carts, r_dn_carts)
     grads_sph = compute_grads_and_laplacian_ln_Det(geminal_cart_to_sph, r_up_carts, r_dn_carts)
     for cart, sph in zip(grads_cart, grads_sph, strict=True):
         assert not np.any(np.isnan(np.asarray(np.asarray(cart)))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(np.asarray(sph)))), "NaN detected in second argument"
-        np.testing.assert_array_almost_equal(np.asarray(cart), np.asarray(sph), decimal=decimal_consistency)
+        np.testing.assert_allclose(np.asarray(cart), np.asarray(sph), atol=atol_consistency, rtol=rtol_consistency)
 
     jax.clear_caches()
 
@@ -515,10 +522,11 @@ def test_convert_from_AOs_to_MOs_full_projection_closed_shell():
 
     assert not np.any(np.isnan(np.asarray(np.asarray(geminal_ao_back.lambda_matrix)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(geminal_ao.lambda_matrix)))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(
+    np.testing.assert_allclose(
         np.asarray(geminal_ao_back.lambda_matrix),
         np.asarray(geminal_ao.lambda_matrix),
-        decimal=decimal_consistency,
+        atol=atol_consistency,
+        rtol=rtol_consistency,
     )
 
 
@@ -549,10 +557,11 @@ def test_convert_from_AOs_to_MOs_full_projection_open_shell():
 
     assert not np.any(np.isnan(np.asarray(np.asarray(geminal_ao_back.lambda_matrix)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(geminal_ao.lambda_matrix)))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(
+    np.testing.assert_allclose(
         np.asarray(geminal_ao_back.lambda_matrix),
         np.asarray(geminal_ao.lambda_matrix),
-        decimal=decimal_consistency,
+        atol=atol_consistency,
+        rtol=rtol_consistency,
     )
 
 
@@ -675,7 +684,7 @@ def test_apply_ao_projected_paired_update_and_reproject_fixed_num_dn():
             orb_data_dn_spin=geminal_ao.orb_data_dn_spin,
             lambda_matrix=ao_lambda_updated,
         ),
-        num_eigenvectors=num_electron_dn,
+        num_eigenvectors=num_electron_up,
     )
 
     actual = geminal_mo.apply_ao_projected_paired_update_and_reproject(
@@ -683,14 +692,15 @@ def test_apply_ao_projected_paired_update_and_reproject_fixed_num_dn():
         step_size=step_size,
     )
 
-    assert actual.orb_num_up == num_electron_dn
-    assert actual.orb_num_dn == num_electron_dn
+    assert actual.orb_num_up == num_electron_up
+    assert actual.orb_num_dn == num_electron_up
     assert not np.any(np.isnan(np.asarray(np.asarray(actual.lambda_matrix)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(expected.lambda_matrix)))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(
+    np.testing.assert_allclose(
         np.asarray(actual.lambda_matrix),
         np.asarray(expected.lambda_matrix),
-        decimal=decimal_consistency,
+        atol=atol_consistency,
+        rtol=rtol_consistency,
     )
 
 
@@ -740,7 +750,11 @@ def test_apply_ao_projected_paired_update_and_reproject_input_validation():
 
 
 @pytest.mark.activate_if_skip_heavy
-def test_grads_and_laplacian_fast_update():
+@pytest.mark.parametrize(
+    "trexio_file",
+    ["H_ae_ccpvdz_cart.h5", "Li_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz.h5"],
+)
+def test_grads_and_laplacian_fast_update(trexio_file: str):
     """compute_grads_and_laplacian_ln_Det_fast matches _fast_debug output."""
     (
         _,
@@ -750,7 +764,7 @@ def test_grads_and_laplacian_fast_update():
         geminal_mo_data,
         _,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"),
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
         store_tuple=True,
     )
 
@@ -796,19 +810,20 @@ def test_grads_and_laplacian_fast_update():
 
     assert not np.any(np.isnan(np.asarray(grad_up_fast))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(grad_up_debug))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(grad_up_fast, grad_up_debug, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(grad_up_fast, grad_up_debug, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
     assert not np.any(np.isnan(np.asarray(grad_dn_fast))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(grad_dn_debug))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(grad_dn_fast, grad_dn_debug, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(grad_dn_fast, grad_dn_debug, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
     assert not np.any(np.isnan(np.asarray(lap_up_fast))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_up_debug))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(lap_up_fast, lap_up_debug, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(lap_up_fast, lap_up_debug, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
     assert not np.any(np.isnan(np.asarray(lap_dn_fast))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(lap_dn_debug))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(lap_dn_fast, lap_dn_debug, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(lap_dn_fast, lap_dn_debug, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
 
 
-def test_comparing_AS_regularization():
+@pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
+def test_comparing_AS_regularization(trexio_file: str):
     """Test the consistency between AS_regularization_debug and AS_regularization_jax."""
     (
         structure_data,
@@ -818,7 +833,7 @@ def test_comparing_AS_regularization():
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
     )
 
     # check geminal_data
@@ -881,8 +896,8 @@ def test_comparing_AS_regularization():
     for _ in range(remaining_dn):
         r_dn_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
 
-    r_up_carts = np.array(r_up_carts)
-    r_dn_carts = np.array(r_dn_carts)
+    r_up_carts = np.array(r_up_carts).reshape(-1, 3)
+    r_dn_carts = np.array(r_dn_carts).reshape(-1, 3)
 
     R_AS_debug = _compute_AS_regularization_factor_debug(
         geminal_data=geminal_mo_data, r_up_carts=r_up_carts, r_dn_carts=r_dn_carts
@@ -892,12 +907,13 @@ def test_comparing_AS_regularization():
 
     assert not np.any(np.isnan(np.asarray(R_AS_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(R_AS_jax))), "NaN detected in second argument"
-    np.testing.assert_almost_equal(R_AS_debug, R_AS_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(R_AS_debug, R_AS_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
 
     jax.clear_caches()
 
 
-def test_one_row_or_one_column_update():
+@pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
+def test_one_row_or_one_column_update(trexio_file: str):
     """Test the update of one row or one column in the geminal wave function."""
     """Test the consistency between AS_regularization_debug and AS_regularization_jax."""
     (
@@ -908,7 +924,7 @@ def test_one_row_or_one_column_update():
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
     )
 
     # check geminal_data
@@ -971,8 +987,8 @@ def test_one_row_or_one_column_update():
     for _ in range(remaining_dn):
         r_dn_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
 
-    r_up_carts = np.array(r_up_carts)
-    r_dn_carts = np.array(r_dn_carts)
+    r_up_carts = np.array(r_up_carts).reshape(-1, 3)
+    r_dn_carts = np.array(r_dn_carts).reshape(-1, 3)
 
     geminal_mo = compute_geminal_all_elements(
         geminal_data=geminal_mo_data,
@@ -1002,23 +1018,26 @@ def test_one_row_or_one_column_update():
     # up-one-row must equal the i-th row of the full geminal
     assert not np.any(np.isnan(np.asarray(np.asarray(geminal_mo_up_one_row).ravel()))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(geminal_mo[i_up, :])))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(
+    np.testing.assert_allclose(
         np.asarray(geminal_mo_up_one_row).ravel(),
         np.asarray(geminal_mo[i_up, :]),
-        decimal=decimal_debug_vs_production,
+        atol=atol_debug_vs_production,
+        rtol=rtol_debug_vs_production,
     )
 
     # dn-one-column must equal the j-th *paired* column of the full geminal
     assert not np.any(np.isnan(np.asarray(np.asarray(geminal_mo_dn_one_column).ravel()))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(geminal_mo[:, j_dn])))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(
+    np.testing.assert_allclose(
         np.asarray(geminal_mo_dn_one_column).ravel(),
         np.asarray(geminal_mo[:, j_dn]),
-        decimal=decimal_debug_vs_production,
+        atol=atol_debug_vs_production,
+        rtol=rtol_debug_vs_production,
     )
 
 
-def test_numerial_and_auto_grads_and_laplacians_ln_Det():
+@pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5", "H2_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
+def test_numerial_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
     """Test the numerical and automatic gradients of the logarithm of the determinant of the geminal wave function."""
     (
         structure_data,
@@ -1028,7 +1047,7 @@ def test_numerial_and_auto_grads_and_laplacians_ln_Det():
         geminal_mo_data,
         coulomb_potential_data,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"),
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file),
         store_tuple=True,
     )
 
@@ -1091,8 +1110,8 @@ def test_numerial_and_auto_grads_and_laplacians_ln_Det():
     for _ in range(remaining_dn):
         r_dn_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
 
-    r_up_carts = np.array(r_up_carts)
-    r_dn_carts = np.array(r_dn_carts)
+    r_up_carts = np.array(r_up_carts).reshape(-1, 3)
+    r_dn_carts = np.array(r_dn_carts).reshape(-1, 3)
 
     """
     mo_lambda_matrix_paired, mo_lambda_matrix_unpaired = np.hsplit(geminal_mo_data.lambda_matrix, [geminal_mo_data.orb_num_dn])
@@ -1133,17 +1152,19 @@ def test_numerial_and_auto_grads_and_laplacians_ln_Det():
 
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_numerical)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_auto)))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(
+    np.testing.assert_allclose(
         np.asarray(grad_ln_D_up_numerical),
         np.asarray(grad_ln_D_up_auto),
-        decimal=decimal_auto_vs_numerical_deriv,
+        atol=atol_auto_vs_numerical_deriv,
+        rtol=rtol_auto_vs_numerical_deriv,
     )
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_dn_numerical)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_dn_auto)))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(
+    np.testing.assert_allclose(
         np.asarray(grad_ln_D_dn_numerical),
         np.asarray(grad_ln_D_dn_auto),
-        decimal=decimal_auto_vs_numerical_deriv,
+        atol=atol_auto_vs_numerical_deriv,
+        rtol=rtol_auto_vs_numerical_deriv,
     )
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_up_numerical)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_up_auto)))), "NaN detected in second argument"
@@ -1166,10 +1187,7 @@ def test_numerial_and_auto_grads_and_laplacians_ln_Det():
 
 
 @pytest.mark.activate_if_skip_heavy
-@pytest.mark.parametrize(
-    "trexio_file",
-    ["H2_ae_ccpvqz.h5", "H2_ae_ccpvtz_cart.h5", "H2_ecp_ccpvtz.h5", "H2_ecp_ccpvtz_cart.h5", "water_ccecp_ccpvqz.h5"],
-)
+@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
 def test_analytic_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
     """Test the analytic and automatic gradients of the logarithm of the determinant of the geminal wave function."""
     (
@@ -1243,8 +1261,8 @@ def test_analytic_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
     for _ in range(remaining_dn):
         r_dn_carts.append(np.random.choice(coords) + np.random.normal(scale=0.1, size=3))
 
-    r_up_carts = np.array(r_up_carts)
-    r_dn_carts = np.array(r_dn_carts)
+    r_up_carts = np.array(r_up_carts).reshape(-1, 3)
+    r_dn_carts = np.array(r_dn_carts).reshape(-1, 3)
 
     geminal_ao_data = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_data)
     geminal_ao_data.sanity_check()
@@ -1265,31 +1283,35 @@ def test_analytic_and_auto_grads_and_laplacians_ln_Det(trexio_file: str):
 
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_analytic)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_up_auto)))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(
+    np.testing.assert_allclose(
         np.asarray(grad_ln_D_up_analytic),
         np.asarray(grad_ln_D_up_auto),
-        decimal=decimal_auto_vs_analytic_deriv,
+        atol=atol_auto_vs_analytic_deriv,
+        rtol=rtol_auto_vs_analytic_deriv,
     )
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_dn_analytic)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(grad_ln_D_dn_auto)))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(
+    np.testing.assert_allclose(
         np.asarray(grad_ln_D_dn_analytic),
         np.asarray(grad_ln_D_dn_auto),
-        decimal=decimal_auto_vs_analytic_deriv,
+        atol=atol_auto_vs_analytic_deriv,
+        rtol=rtol_auto_vs_analytic_deriv,
     )
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_up_analytic)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_up_auto)))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(
+    np.testing.assert_allclose(
         np.asarray(lap_ln_D_up_analytic),
         np.asarray(lap_ln_D_up_auto),
-        decimal=decimal_auto_vs_analytic_deriv,
+        atol=atol_auto_vs_analytic_deriv,
+        rtol=rtol_auto_vs_analytic_deriv,
     )
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_dn_analytic)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(lap_ln_D_dn_auto)))), "NaN detected in second argument"
-    np.testing.assert_array_almost_equal(
+    np.testing.assert_allclose(
         np.asarray(lap_ln_D_dn_analytic),
         np.asarray(lap_ln_D_dn_auto),
-        decimal=decimal_auto_vs_analytic_deriv,
+        atol=atol_auto_vs_analytic_deriv,
+        rtol=rtol_auto_vs_analytic_deriv,
     )
 
     jax.clear_caches()
@@ -1381,19 +1403,21 @@ def test_ratio_determinant_rank1_update(pattern: str):
 
     assert not np.any(np.isnan(np.asarray(np.asarray(ratio_debug)))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(np.asarray(ratio_rank1)))), "NaN detected in second argument"
-    np.testing.assert_almost_equal(np.asarray(ratio_debug), np.asarray(ratio_rank1), decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(
+        np.asarray(ratio_debug), np.asarray(ratio_rank1), atol=atol_debug_vs_production, rtol=rtol_debug_vs_production
+    )
 
     if pattern == "none_moved":
         assert not np.any(np.isnan(np.asarray(np.asarray(ratio_debug)))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(np.ones_like(np.asarray(ratio_debug))))), "NaN detected in second argument"
-        np.testing.assert_array_almost_equal(
-            np.asarray(ratio_debug), np.ones_like(np.asarray(ratio_debug)), decimal=decimal_consistency
+        np.testing.assert_allclose(
+            np.asarray(ratio_debug), np.ones_like(np.asarray(ratio_debug)), atol=atol_consistency, rtol=rtol_consistency
         )
 
     jax.clear_caches()
 
 
-@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5"])
+@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
 def test_compute_ln_det_geminal_all_elements_fast_forward(trexio_file):
     """Forward value of compute_ln_det_geminal_all_elements_fast must match the standard variant."""
     _, _, _, _, geminal_data, _ = read_trexio_file(
@@ -1415,17 +1439,18 @@ def test_compute_ln_det_geminal_all_elements_fast_forward(trexio_file):
 
         assert np.isfinite(val_ref), f"Reference value is not finite: {val_ref}"
         assert np.isfinite(val_fast), f"Fast value is not finite: {val_fast}"
-        np.testing.assert_almost_equal(
+        np.testing.assert_allclose(
             val_fast,
             val_ref,
-            decimal=decimal_debug_vs_production,
+            atol=atol_debug_vs_production,
+            rtol=rtol_debug_vs_production,
             err_msg=f"Forward mismatch: fast={val_fast:.15f}, ref={val_ref:.15f}",
         )
 
     jax.clear_caches()
 
 
-@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5"])
+@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H_ae_ccpvdz_cart.h5", "N_ae_ccpvdz_cart.h5"])
 def test_compute_ln_det_geminal_all_elements_fast_backward(trexio_file):
     """Gradient of compute_ln_det_geminal_all_elements_fast w.r.t. geminal_data must match the standard variant."""
     _, _, _, _, geminal_data, _ = read_trexio_file(
@@ -1449,10 +1474,11 @@ def test_compute_ln_det_geminal_all_elements_fast_backward(trexio_file):
         grad_fast = grad_fast_fn(geminal_data, r_up, r_dn, G_inv)
 
         jax.tree_util.tree_map(
-            lambda a, b: np.testing.assert_array_almost_equal(
+            lambda a, b: np.testing.assert_allclose(
                 np.asarray(a),
                 np.asarray(b),
-                decimal=decimal_debug_vs_production,
+                rtol=rtol_debug_vs_production,
+                atol=atol_debug_vs_production,
                 err_msg="Backward mismatch in compute_ln_det_geminal_all_elements_fast",
             ),
             grad_ref,

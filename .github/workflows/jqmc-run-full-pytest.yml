@@ -13,6 +13,7 @@ on:
       - 'benchmarks/**'
       - 'README.md'
       - '.pre-commit-config.yaml'
+      - 'jqmc_workflow/**'
   pull_request:
     branches: [ "main", "rc" ]
 
@@ -68,6 +69,9 @@ jobs:
         pytest -s -v tests/test_swct.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_mcmc_force.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_lrdmc_force.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        pytest -s -v tests/test_checkpoint_components.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        pytest -s -v tests/test_checkpoint_mcmc.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        pytest -s -v tests/test_checkpoint_gfmc.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
 
     - name: Test jqmc (inter-software comparisons)
       run: |

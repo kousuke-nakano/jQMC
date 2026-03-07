@@ -35,6 +35,7 @@ extensions = [
     "IPython.sphinxext.ipython_directive",
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
+    "sphinx.ext.todo",
 ]
 myst_enable_extensions = ["linkify", "dollarmath", "amsmath"]
 

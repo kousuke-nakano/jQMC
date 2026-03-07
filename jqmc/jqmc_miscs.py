@@ -39,12 +39,12 @@ cli_parameters = {
         "number_of_walkers": 4,
         "max_time": 86400,
         "restart": False,
-        "restart_chk": "restart.chk",
+        "restart_chk": "restart.h5",
         "hamiltonian_h5": "hamiltonian_data.h5",
         "verbosity": "low",
     },
     "control_comments": {
-        "job_type": 'Specify the job type. "mcmc", "vmc", "lrdmc", or "lrdmc-tau".',
+        "job_type": 'Specify the job type. "mcmc", "vmc", "lrdmc-bra", or "lrdmc-tau".',
         "mcmc_seed": "Random seed for MCMC",
         "number_of_walkers": "Number of walkers per MPI process",
         "max_time": "Maximum time in sec.",
@@ -82,20 +82,21 @@ cli_parameters = {
         "epsilon_AS": 0.0,
         "num_opt_steps": None,
         "wf_dump_freq": 1,
-        "opt_J1_param": False,
+        "opt_J1_param": True,
         "opt_J2_param": True,
         "opt_J3_param": True,
-        "opt_JNN_param": True,
+        "opt_JNN_param": False,
         "opt_lambda_param": False,
         "opt_with_projected_MOs": False,
         "num_param_opt": 0,
         "optimizer_kwargs": {
             "method": "sr",
-            "delta": 0.01,
+            "delta": 0.15,
             "epsilon": 0.001,
             "cg_flag": True,
             "cg_max_iter": 10000,
-            "cg_tol": 1e-4,
+            "cg_tol": 1e-6,
+            "adaptive_learning_rate": True,
         },
     },
     "vmc_comments": {
@@ -113,8 +114,8 @@ cli_parameters = {
         "opt_JNN_param": "Optimize the neural-network Jastrow parameters.",
         "opt_lambda_param": "Optimize the lambda parameters in the geminal part.",
         "opt_with_projected_MOs": (
-            "If true, optimize lambda parameters (for AOs) or molecular orbital coefficients (for MOs) in a restricted MO space."
-            "num_eigenvectors=num_electron_dn in the present implementation."
+            "If true, optimize lambda parameters (for AOs) or molecular orbital coefficients (for MOs) in a restricted MO space. "
+            "num_eigenvectors=num_electron_up in the present implementation."
         ),
         "num_param_opt": "the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.",
         "optimizer_kwargs": (
@@ -125,7 +126,7 @@ cli_parameters = {
             "directly to optax (e.g., {method = 'adam', learning_rate = 1e-3})."
         ),
     },
-    "lrdmc": {
+    "lrdmc-bra": {
         "num_mcmc_steps": None,
         "num_mcmc_per_measurement": 40,
         "alat": 0.30,
@@ -135,8 +136,9 @@ cli_parameters = {
         "num_gfmc_collect_steps": 0,
         "E_scf": 0.0,
         "atomic_force": False,
+        "epsilon_PW": 0.0,
     },
-    "lrdmc_comments": {
+    "lrdmc-bra_comments": {
         "num_mcmc_steps": "Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.",
         "num_mcmc_per_measurement": "Number of GFMC projections per measurement. Every local energy and other observeables are measured every this projection.",
         "alat": "The lattice discretization parameter (i.e. grid size) used for discretized the Hamiltonian and potential. The lattice spacing is alat * a0, where a0 is the Bohr radius.",
@@ -146,6 +148,7 @@ cli_parameters = {
         "num_gfmc_collect_steps": "Number of measurement (before binning) for collecting the weights.",
         "E_scf": "The initial guess of the total energy. This is used to compute the initial energy shift in the GFMC.",
         "atomic_force": "If true, compute atomic forces.",
+        "epsilon_PW": "Pathak-Wagner regularization parameter (bohr). When > 0, the force estimator is regularized near the nodal surface. Default is 0.0 (no regularization).",
     },
     "lrdmc-tau": {
         "num_mcmc_steps": None,
@@ -155,6 +158,8 @@ cli_parameters = {
         "num_gfmc_warmup_steps": 0,
         "num_gfmc_bin_blocks": 1,
         "num_gfmc_collect_steps": 0,
+        "atomic_force": False,
+        "epsilon_PW": 0.0,
     },
     "lrdmc-tau_comments": {
         "num_mcmc_steps": "Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.",
@@ -164,5 +169,7 @@ cli_parameters = {
         "num_gfmc_warmup_steps": "Number of observable measurement steps for warmup (i.e., discarged).",
         "num_gfmc_bin_blocks": "Number of blocks for binning per MPI and Walker. i.e., the total number of binned blocks is num_gfmc_bin_blocks, not num_gfmc_bin_blocks * mpi_size * number_of_walkers.",
         "num_gfmc_collect_steps": "Number of measurement (before binning) for collecting the weights.",
+        "atomic_force": "If true, compute atomic forces.",
+        "epsilon_PW": "Pathak-Wagner regularization parameter (bohr). When > 0, the force estimator is regularized near the nodal surface. Default is 0.0 (no regularization).",
     },
 }

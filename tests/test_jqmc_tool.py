@@ -401,8 +401,8 @@ class TestGenerateInput:
         lrdmc_generate_input(flag=True, filename=outfile, exclude_comment=False)
         doc = tomlkit.loads(Path(outfile).read_text())
         assert "control" in doc
-        assert "lrdmc" in doc
-        assert doc["control"]["job_type"] == "lrdmc"
+        assert "lrdmc-bra" in doc
+        assert doc["control"]["job_type"] == "lrdmc-bra"
 
     def test_vmc_generate_input_creates_file(self, tmp_path):
         outfile = str(tmp_path / "vmc.toml")
@@ -504,7 +504,7 @@ class TestComputeEnergy:
         from jqmc.jqmc_tool import lrdmc_app
 
         runner = CliRunner()
-        result = runner.invoke(lrdmc_app, ["compute-energy", chk_path, "-b", "2", "-w", "0", "-c", "5"])
+        result = runner.invoke(lrdmc_app, ["compute-energy", chk_path, "-b", "10", "-w", "30", "-c", "5"])
         assert result.exit_code == 0
         assert f"E = {E_const}" in result.output
 
@@ -523,7 +523,7 @@ class TestComputeEnergy:
         from jqmc.jqmc_tool import lrdmc_app
 
         runner = CliRunner()
-        result = runner.invoke(lrdmc_app, ["compute-energy", chk_path, "-b", "2", "-w", "0", "-c", "5"])
+        result = runner.invoke(lrdmc_app, ["compute-energy", chk_path, "-b", "10", "-w", "30", "-c", "5"])
         assert result.exit_code == 0
         assert "Found 2 MPI ranks" in result.output
 
@@ -698,10 +698,10 @@ class TestComputeForce:
 class TestHamiltonianCommands:
     """Tests for hamiltonian show-info and to-xyz commands."""
 
-    @pytest.fixture()
-    def h5_file(self, tmp_path):
+    @pytest.fixture(params=trexio_files, ids=trexio_files)
+    def h5_file(self, tmp_path, request):
         """Create a hamiltonian_data.h5 from a TREXIO example file."""
-        trexio_file = os.path.join(_TREXIO_DIR, "H2_ecp_ccpvtz_cart.h5")
+        trexio_file = os.path.join(_TREXIO_DIR, request.param)
         h5_path = str(tmp_path / "hamiltonian_data.h5")
         trexio_convert_to(
             trexio_file=trexio_file,
@@ -733,17 +733,17 @@ class TestHamiltonianCommands:
 class TestTrexioShowCommands:
     """Tests for trexio show-info and show-detail commands."""
 
-    _trexio_file = os.path.join(_TREXIO_DIR, "H2_ecp_ccpvtz_cart.h5")
-
-    def test_trexio_show_info(self, capsys):
+    @pytest.mark.parametrize("trexio_filename", trexio_files, ids=trexio_files)
+    def test_trexio_show_info(self, trexio_filename, capsys):
         """show-info should produce output without error."""
-        trexio_show_info(filename=self._trexio_file)
+        trexio_show_info(filename=os.path.join(_TREXIO_DIR, trexio_filename))
         captured = capsys.readouterr()
         assert len(captured.out) > 0
 
-    def test_trexio_show_detail(self, capsys):
+    @pytest.mark.parametrize("trexio_filename", trexio_files, ids=trexio_files)
+    def test_trexio_show_detail(self, trexio_filename, capsys):
         """show-detail should produce output without error."""
-        trexio_show_detail(filename=self._trexio_file)
+        trexio_show_detail(filename=os.path.join(_TREXIO_DIR, trexio_filename))
         captured = capsys.readouterr()
         assert len(captured.out) > 0
 

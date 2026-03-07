@@ -40,10 +40,13 @@ jqmc-tool trexio convert-to <trexio_file> [options]
 ```
 - `-o, --output` (str, default `hamiltonian_data.h5`): Output filename.
 - `-j1, --jastrow-1b-parameter` (float|None): J1 parameter. If set and ECP is present, core electrons are taken from ECP; otherwise zeroed.
+- `--jastrow-1b-type` (`exp|pade`, default `exp`): Functional form of the one-body Jastrow. `exp` uses $u(r) = \frac{1}{2b}(1 - e^{-br})$; `pade` uses $u(r) = \frac{r}{2(1 + br)}$.
 - `-j2, --jastrow-2b-parameter` (float|None): J2 parameter.
+- `--jastrow-2b-type` (`pade|exp`, default `pade`): Functional form of the two-body Jastrow. `pade` uses $v(r) = \frac{r}{2(1+br)}$; `exp` uses $v(r) = \frac{1}{2b}(1-e^{-br})$.
 - `-j3, --jastrow-3b-basis-set-type` (`ao|ao-full|ao-small|ao-medium|ao-large|mo|none`, default `none`): Choose J3 basis; `ao-*` trims AOs by key exponent grouping, `mo` uses MOs, `none` disables J3.
 - `-j-nn-type, --jastrow-nn-type` (str|None): Add NN Jastrow (e.g., `schnet`).
 - `-jp, --jastrow-nn-param` (repeatable `key=value`): Hyperparameters forwarded to `Jastrow_NN_data.init_from_structure`; supported keys (type, default): `hidden_dim (int, 64)`, `num_layers (int, 3)`, `num_rbf (int, 16)`, `cutoff (float, 5.0)`.
+- `--ao-conv-to` (`cart|sphe|None`, default `None`): Convert AOs after building the Hamiltonian. `cart` converts all AO representations (Geminal and Jastrow three-body) to Cartesian GTOs; `sphe` converts them to real spherical-harmonic GTOs. When omitted (`None`), the original representation from the TREXIO file is kept.
 
 Outputs an HDF5 `Hamiltonian_data` with Jastrow/Geminal embedded.
 
@@ -77,13 +80,6 @@ jqmc-tool hamiltonian conv-wf <hamiltonian_data> -c {jsd|jagp} [-o output.h5]
 
 ## `vmc` group (pre/post utilities)
 
-### `fix` (legacy)
-Rewrite `vmc.chk` archives to per-rank gzip members; creates `bak_<chk>` backup.
-
-```
-jqmc-tool vmc fix <restart_chk>
-```
-
 ### `generate-input`
 Emit a VMC `toml` template (sets `control.job_type = "vmc"`).
 
@@ -102,13 +98,6 @@ jqmc-tool vmc analyze-output <log...> [-p] [--save-graph file]
 
 ## `mcmc` group (pre/post utilities)
 
-### `fix` (legacy)
-Rewrite `mcmc.chk` archives to per-rank gzip members; creates `bak_<chk>` backup.
-
-```
-jqmc-tool mcmc fix <restart_chk>
-```
-
 ### `compute-energy`
 Jackknife estimator of VMC energy from an MCMC restart archive.
 
@@ -117,6 +106,17 @@ jqmc-tool mcmc compute-energy <restart_chk> [-b N] [-w W]
 ```
 - `-b, --num_mcmc_bin_blocks` (int, default 1): Binning blocks per MPI × walker; total blocks = `b * mpi_size * walkers`. Must be ≥ `MCMC_MIN_BIN_BLOCKS`.
 - `-w, --num_mcmc_warmup_steps` (int, default 0): Discarded warmup measurements; must be ≥ `MCMC_MIN_WARMUP_STEPS`.
+
+### `compute-force`
+Jackknife estimator of VMC atomic forces (Hellmann–Feynman + Pulay) from an MCMC restart archive.  Requires that the MCMC run was performed with `atomic_force = true`.
+
+```
+jqmc-tool mcmc compute-force <restart_chk> [-b N] [-w W]
+```
+- `-b, --num_mcmc_bin_blocks` (int, default 1): Binning blocks per MPI × walker; total blocks = `b * mpi_size * walkers`. Must be ≥ `MCMC_MIN_BIN_BLOCKS`.
+- `-w, --num_mcmc_warmup_steps` (int, default 0): Discarded warmup measurements; must be ≥ `MCMC_MIN_WARMUP_STEPS`.
+
+Outputs a per-atom force table in Ha/bohr with jackknife error bars.
 
 ### `generate-input`
 Emit an MCMC `toml` template (sets `control.job_type = "mcmc"`).
@@ -129,13 +129,6 @@ jqmc-tool mcmc generate-input -g [-f mcmc.toml] [--without-comment]
 
 ## `lrdmc` group (pre/post utilities)
 
-### `fix` (legacy)
-Rewrite `lrdmc.chk` archives to per-rank gzip members; creates `bak_<chk>` backup.
-
-```
-jqmc-tool lrdmc fix <restart_chk>
-```
-
 ### `compute-energy`
 Jackknife estimator of LRDMC energy from an LRDMC restart archive.
 
@@ -145,6 +138,18 @@ jqmc-tool lrdmc compute-energy <restart_chk> [-b N] [-w W] [-c C]
 - `-b, --num_gfmc_bin_blocks` (int, default 5): Binning blocks per MPI × walker (note: total blocks = `b`, not multiplied by ranks × walkers). Must be ≥ `GFMC_MIN_BIN_BLOCKS`.
 - `-w, --num_gfmc_warmup_steps` (int, default 0): Discarded warmup steps; must be ≥ `GFMC_MIN_WARMUP_STEPS`.
 - `-c, --num_gfmc_collect_steps` (int, default 5): Pre-binning measurements used to collect weights; must be ≥ `GFMC_MIN_COLLECT_STEPS`.
+
+### `compute-force`
+Jackknife estimator of LRDMC atomic forces (Hellmann–Feynman + Pulay) from an LRDMC restart archive.  Requires that the LRDMC run was performed with `atomic_force = true`.
+
+```
+jqmc-tool lrdmc compute-force <restart_chk> [-b N] [-w W] [-c C]
+```
+- `-b, --num_gfmc_bin_blocks` (int, default 5): Binning blocks per MPI × walker. Must be ≥ `GFMC_MIN_BIN_BLOCKS`.
+- `-w, --num_gfmc_warmup_steps` (int, default 0): Discarded warmup steps; must be ≥ `GFMC_MIN_WARMUP_STEPS`.
+- `-c, --num_gfmc_collect_steps` (int, default 5): Pre-binning measurements used to collect weights; must be ≥ `GFMC_MIN_COLLECT_STEPS`.
+
+Outputs a per-atom force table in Ha/bohr with jackknife error bars.
 
 ### `extrapolate-energy`
 Fit energy vs $a^2$ from multiple LRDMC restart archives and extrapolate $a\to 0$.
@@ -156,7 +161,7 @@ jqmc-tool lrdmc extrapolate-energy <restart_chk...> [-p order] [-b N] [-w W] [-c
 - Other options as in `compute-energy`.
 
 ### `generate-input`
-Emit an LRDMC `toml` template (sets `control.job_type = "lrdmc"`).
+Emit an LRDMC `toml` template (sets `control.job_type = "lrdmc-bra"`).
 
 ```
 jqmc-tool lrdmc generate-input -g [-f lrdmc.toml] [--without-comment]

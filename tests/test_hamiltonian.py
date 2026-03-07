@@ -45,6 +45,14 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+from jqmc._setting import (  # noqa: E402
+    atol_auto_vs_analytic_deriv,
+    atol_consistency,
+    atol_debug_vs_production,
+    rtol_auto_vs_analytic_deriv,
+    rtol_consistency,
+    rtol_debug_vs_production,
+)
 from jqmc.determinant import (
     Geminal_data,  # noqa: E402
     compute_geminal_all_elements,  # noqa: E402
@@ -61,11 +69,6 @@ from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_one_body_data,
     Jastrow_three_body_data,
     Jastrow_two_body_data,
-)
-from jqmc.setting import (  # noqa: E402
-    decimal_auto_vs_analytic_deriv,
-    decimal_consistency,
-    decimal_debug_vs_production,
 )
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 from jqmc.wavefunction import (  # noqa: E402
@@ -145,12 +148,12 @@ def test_hamiltonian_hdf5(trexio_file, use_1b, use_2b, use_3b, use_nn, geminal_t
         # Or just use dummy values for testing serialization.
         core_electrons = tuple([0.0] * len(structure_data.positions))
         jastrow_one_body_data = Jastrow_one_body_data.init_jastrow_one_body_data(
-            jastrow_1b_param=1.0, structure_data=structure_data, core_electrons=core_electrons
+            jastrow_1b_param=1.0, structure_data=structure_data, core_electrons=core_electrons, jastrow_1b_type="pade"
         )
 
     jastrow_two_body_data = None
     if use_2b:
-        jastrow_two_body_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0)
+        jastrow_two_body_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0, jastrow_2b_type="exp")
 
     jastrow_three_body_data = None
     if use_3b:
@@ -200,7 +203,7 @@ def test_hamiltonian_hdf5(trexio_file, use_1b, use_2b, use_3b, use_nn, geminal_t
     assert_dataclasses_equal(hamiltonian_data, loaded_hamiltonian_data)
 
 
-@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5"])
+@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5", "N_ae_ccpvdz_cart.h5"])
 def test_compute_local_energy_fast(trexio_file):
     """compute_local_energy_fast must equal compute_local_energy for well-conditioned G."""
     structure_data, _, _, _, geminal_data, coulomb_potential_data = read_trexio_file(
@@ -231,10 +234,11 @@ def test_compute_local_energy_fast(trexio_file):
 
         assert np.isfinite(e_ref), f"Reference e_L is not finite: {e_ref}"
         assert np.isfinite(e_fast), f"Fast e_L is not finite: {e_fast}"
-        np.testing.assert_almost_equal(
+        np.testing.assert_allclose(
             e_fast,
             e_ref,
-            decimal=decimal_debug_vs_production,
+            atol=atol_debug_vs_production,
+            rtol=rtol_debug_vs_production,
             err_msg=f"compute_local_energy_fast={e_fast:.10f} != compute_local_energy={e_ref:.10f}",
         )
 
@@ -243,7 +247,8 @@ def _compare_grad_leaves(
     grad_ref,
     grad_test,
     label,
-    decimal=decimal_auto_vs_analytic_deriv,
+    atol=atol_auto_vs_analytic_deriv,
+    rtol=rtol_auto_vs_analytic_deriv,
 ):
     """Flatten two pytrees and compare every leaf."""
     leaves_ref = jax.tree_util.tree_leaves(grad_ref)
@@ -253,15 +258,16 @@ def _compare_grad_leaves(
         lr = np.asarray(lr)
         lt = np.asarray(lt)
         assert lr.shape == lt.shape, f"{label} leaf {i}: shape {lr.shape} vs {lt.shape}"
-        np.testing.assert_array_almost_equal(
+        np.testing.assert_allclose(
             lt,
             lr,
-            decimal=decimal,
+            atol=atol,
+            rtol=rtol,
             err_msg=f"{label}: gradient mismatch at leaf {i}  (max |diff|={np.max(np.abs(lt - lr)):.3e})",
         )
 
 
-@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5"])
+@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvdz_cart.h5", "H2_ecp_ccpvtz_cart.h5", "N_ae_ccpvdz_cart.h5"])
 def test_grad_compute_local_energy(trexio_file):
     """grad(compute_local_energy, argnums=0) must match grad(_compute_local_energy_auto, argnums=0).
 
@@ -293,10 +299,11 @@ def test_grad_compute_local_energy(trexio_file):
     # Sanity: both forward values must agree.
     e_auto = float(_compute_local_energy_auto(hamiltonian_data, r_up, r_dn, RT))
     e_custom = float(compute_local_energy(hamiltonian_data, r_up, r_dn, RT))
-    np.testing.assert_almost_equal(
+    np.testing.assert_allclose(
         e_custom,
         e_auto,
-        decimal=decimal_consistency,
+        atol=atol_consistency,
+        rtol=rtol_consistency,
         err_msg="forward e_L mismatch",
     )
 
@@ -308,7 +315,8 @@ def test_grad_compute_local_energy(trexio_file):
         grad_auto,
         grad_custom,
         label=f"grad(compute_local_energy) vs _auto [{trexio_file}, seed={seed}]",
-        decimal=decimal_auto_vs_analytic_deriv,
+        atol=atol_auto_vs_analytic_deriv,
+        rtol=rtol_auto_vs_analytic_deriv,
     )
 
 
