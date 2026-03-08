@@ -302,7 +302,7 @@ def print_summary_table(
     ]
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    header = f"| {'Pattern':>12} | {'Energy (Ha)':>17} | {'Force (Ha/bohr)':>17} | {'t_net (s)':>10} |"
+    header = f"| {'Pattern':>12} | {'Energy (Ha)':>17} | {'Max|F| (Ha/bohr)':>17} | {'t_net (s)':>10} |"
     separator = f"|{'-' * 14}|{'-' * 19}|{'-' * 19}|{'-' * 12}|"
     print(header)
     print(separator)
@@ -315,12 +315,28 @@ def print_summary_table(
         if ctr is not None and ctr.output_values:
             e = ctr.output_values.get("energy")
             e_err = ctr.output_values.get("energy_error")
-            f_val = ctr.output_values.get("force")
-            f_err = ctr.output_values.get("force_error")
+            forces = ctr.output_values.get("forces")
         else:
-            e, e_err, f_val, f_err = None, None, None, None
+            e, e_err, forces = None, None, None
 
         e_str = format_val(e, e_err)
+
+        # Max |F| = max over atoms of sqrt(Fx² + Fy² + Fz²)
+        f_val, f_err = None, None
+        if forces:
+            max_norm = -1.0
+            for f in forces:
+                fx, fy, fz = f["Fx"], f["Fy"], f["Fz"]
+                norm = math.sqrt(fx**2 + fy**2 + fz**2)
+                if norm > max_norm:
+                    max_norm = norm
+                    if norm > 0:
+                        fx_e, fy_e, fz_e = f["Fx_err"], f["Fy_err"], f["Fz_err"]
+                        f_err = math.sqrt((fx * fx_e) ** 2 + (fy * fy_e) ** 2 + (fz * fz_e) ** 2) / norm
+                    else:
+                        f_err = 0.0
+            f_val = max_norm
+
         f_str = format_val(f_val, f_err)
 
         work_dir = os.path.join(base_dir, dir_map[key])

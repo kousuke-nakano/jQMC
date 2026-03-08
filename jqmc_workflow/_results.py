@@ -185,6 +185,9 @@ class MCMC_Diagnostic_Data:
         Energy from jqmc-tool post-processing.
     energy_error : float or None
         Energy error from jqmc-tool post-processing.
+    atomic_forces : list of dict or None
+        Per-atom forces from ``jqmc-tool mcmc compute-force``.
+        Each dict: ``{label, Fx, Fx_err, Fy, Fy_err, Fz, Fz_err}``.
     hamiltonian_data_file : str or None
         ``[control] hamiltonian_h5`` value from the input TOML.
     restart_checkpoint : str or None
@@ -210,6 +213,7 @@ class MCMC_Diagnostic_Data:
     timing_breakdown: dict = field(default_factory=dict)
     energy: Optional[float] = None
     energy_error: Optional[float] = None
+    atomic_forces: Optional[list] = None
     hamiltonian_data_file: Optional[str] = None
     restart_checkpoint: Optional[str] = None
     num_mpi_processes: Optional[int] = None
@@ -247,6 +251,9 @@ class LRDMC_Diagnostic_Data:
         Energy from jqmc-tool post-processing.
     energy_error : float or None
         Energy error from jqmc-tool post-processing.
+    atomic_forces : list of dict or None
+        Per-atom forces from ``jqmc-tool lrdmc compute-force``.
+        Each dict: ``{label, Fx, Fx_err, Fy, Fy_err, Fz, Fz_err}``.
     hamiltonian_data_file : str or None
         ``[control] hamiltonian_h5`` value from the input TOML.
     restart_checkpoint : str or None
@@ -272,6 +279,7 @@ class LRDMC_Diagnostic_Data:
     timing_breakdown: dict = field(default_factory=dict)
     energy: Optional[float] = None
     energy_error: Optional[float] = None
+    atomic_forces: Optional[list] = None
     hamiltonian_data_file: Optional[str] = None
     restart_checkpoint: Optional[str] = None
     num_mpi_processes: Optional[int] = None

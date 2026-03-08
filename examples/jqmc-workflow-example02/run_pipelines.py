@@ -68,8 +68,7 @@ NUM_MCMC_STEPS_MCMC = 1000  # MCMC measurement steps per production
 NUM_MCMC_STEPS_LRDMC = 1000  # LRDMC measurement steps per production
 
 # Walker counts for vectorization benchmark
-# WALKER_COUNTS = [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
-WALKER_COUNTS = [8, 16, 32, 64]
+WALKER_COUNTS = [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
 
 # pySCF file names
 TREXIO_FILE = "water_trexio.hdf5"

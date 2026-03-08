@@ -76,6 +76,100 @@ from ._results import (
 
 logger = getLogger("jqmc-workflow").getChild(__name__)
 
+
+# ── Atomic-force table parser ─────────────────────────────────────
+
+
+def parse_ufloat_short(text: str):
+    """Parse uncertainties short format, e.g. ``+0.123(45)`` → (0.123, 0.045).
+
+    Parameters
+    ----------
+    text : str
+        A single token like ``"+0.0114(14)"`` or ``"-1.23(4)"``.
+
+    Returns
+    -------
+    tuple
+        ``(value, uncertainty)`` or ``(None, None)`` on failure.
+    """
+    m = re.match(r"([+-]?\d+\.?\d*)\((\d+)\)", text.strip())
+    if not m:
+        return None, None
+    val_str = m.group(1)
+    unc_digits = m.group(2)
+    val = float(val_str)
+    if "." in val_str:
+        n_decimals = len(val_str.split(".")[1])
+    else:
+        n_decimals = 0
+    unc = int(unc_digits) * 10 ** (-n_decimals)
+    return val, unc
+
+
+def parse_force_table(text: str):
+    """Parse an ``Atomic Forces:`` table from jqmc-tool output.
+
+    Expected format::
+
+        Atomic Forces:
+        ------------------------------------------------
+        Label   Fx(Ha/bohr) Fy(Ha/bohr) Fz(Ha/bohr)
+        ------------------------------------------------
+        O       -0.0114(14)  -0.0082(11)  -0.0173(13)
+        H       +0.0112(11)  +0.0050(7)   +0.0054(9)
+        ------------------------------------------------
+
+    Parameters
+    ----------
+    text : str
+        Full stdout from ``jqmc-tool {mcmc,lrdmc} compute-force``.
+
+    Returns
+    -------
+    list of dict or None
+        Each dict: ``{label, Fx, Fx_err, Fy, Fy_err, Fz, Fz_err}``.
+        Returns *None* when no force data is found.
+    """
+    lines = text.splitlines()
+    forces = []
+    in_data = False
+    for line in lines:
+        if "Atomic Forces:" in line:
+            in_data = False
+            continue
+        stripped = line.strip()
+        if "Fx" in stripped:
+            in_data = True
+            continue
+        if stripped.startswith("---"):
+            if in_data and forces:
+                break
+            continue
+        if not in_data:
+            continue
+        tokens = stripped.split()
+        if len(tokens) < 4:
+            continue
+        label = tokens[0]
+        fx, fx_err = parse_ufloat_short(tokens[1])
+        fy, fy_err = parse_ufloat_short(tokens[2])
+        fz, fz_err = parse_ufloat_short(tokens[3])
+        if fx is not None:
+            forces.append(
+                {
+                    "label": label,
+                    "Fx": fx,
+                    "Fx_err": fx_err,
+                    "Fy": fy,
+                    "Fy_err": fy_err,
+                    "Fz": fz,
+                    "Fz_err": fz_err,
+                }
+            )
+    return forces or None
+
+
 # ── Compiled regex patterns ───────────────────────────────────────
 #
 # All patterns are compiled once at module level for efficiency.
@@ -686,7 +780,7 @@ def parse_mcmc_output(work_dir: str) -> MCMC_Diagnostic_Data:
     # ── hamiltonian_data_file from input TOML ──
     result.hamiltonian_data_file = _find_hamiltonian_h5(work_dir)
 
-    # ── Energy from workflow_state.toml result section ──
+    # ── Energy & forces from workflow_state.toml result section ──
     state_path = os.path.join(work_dir, "workflow_state.toml")
     if os.path.isfile(state_path):
         try:
@@ -696,6 +790,8 @@ def parse_mcmc_output(work_dir: str) -> MCMC_Diagnostic_Data:
                 result.energy = float(res["energy"])
             if "energy_error" in res:
                 result.energy_error = float(res["energy_error"])
+            if "forces" in res and isinstance(res["forces"], list):
+                result.atomic_forces = res["forces"]
         except Exception:
             pass
 
@@ -798,7 +894,7 @@ def parse_lrdmc_output(work_dir: str) -> LRDMC_Diagnostic_Data:
     # ── hamiltonian_data_file from input TOML ──
     result.hamiltonian_data_file = _find_hamiltonian_h5(work_dir)
 
-    # ── Energy from workflow_state.toml result section ──
+    # ── Energy & forces from workflow_state.toml result section ──
     state_path = os.path.join(work_dir, "workflow_state.toml")
     if os.path.isfile(state_path):
         try:
@@ -808,6 +904,8 @@ def parse_lrdmc_output(work_dir: str) -> LRDMC_Diagnostic_Data:
                 result.energy = float(res["energy"])
             if "energy_error" in res:
                 result.energy_error = float(res["energy_error"])
+            if "forces" in res and isinstance(res["forces"], list):
+                result.atomic_forces = res["forces"]
         except Exception:
             pass
 

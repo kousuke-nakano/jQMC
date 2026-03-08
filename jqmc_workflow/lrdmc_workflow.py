@@ -70,6 +70,7 @@ from ._lrdmc_calibration import (
     get_num_electrons,
     parse_survived_walkers_ratio,
 )
+from ._output_parser import parse_force_table
 from ._setting import (
     GFMC_MIN_BIN_BLOCKS,
     GFMC_MIN_COLLECT_STEPS,
@@ -540,6 +541,10 @@ class LRDMC_Workflow(Workflow):
                     self.output_values["alat"] = self.alat
                     self.output_values["restart_chk"] = restart_chk
                     logger.info(f"  LRDMC energy (a={self.alat}): {energy} +- {error} Ha")
+                    if self.atomic_force:
+                        forces = self._compute_force(restart_chk, work_dir=_wd)
+                        if forces is not None:
+                            self.output_values["forces"] = forces
                     set_estimation(
                         _wd,
                         last_energy=energy,
@@ -549,24 +554,27 @@ class LRDMC_Workflow(Workflow):
                         last_num_gfmc_collect_steps=self.num_gfmc_collect_steps,
                     )
 
-        # ── Final energy computation if skipped ───────────────────
-        if "energy" not in self.output_values:
-            restart_chk = self._find_restart_chk(_wd)
-            if restart_chk:
-                energy, error = self._compute_energy(restart_chk, work_dir=_wd)
-                if energy is not None:
-                    self.output_values["energy"] = energy
-                    self.output_values["energy_error"] = error
-                    self.output_values["alat"] = self.alat
-                    self.output_values["restart_chk"] = restart_chk
-                    set_estimation(
-                        _wd,
-                        last_energy=energy,
-                        last_energy_error=error,
-                        last_num_gfmc_bin_blocks=self.num_gfmc_bin_blocks,
-                        last_num_gfmc_warmup_steps=self.num_gfmc_warmup_steps,
-                        last_num_gfmc_collect_steps=self.num_gfmc_collect_steps,
-                    )
+        # ── Final energy computation ─────────────────────────────
+        restart_chk = self._find_restart_chk(_wd)
+        if restart_chk:
+            energy, error = self._compute_energy(restart_chk, work_dir=_wd)
+            if energy is not None:
+                self.output_values["energy"] = energy
+                self.output_values["energy_error"] = error
+                self.output_values["alat"] = self.alat
+                self.output_values["restart_chk"] = restart_chk
+                if self.atomic_force:
+                    forces = self._compute_force(restart_chk, work_dir=_wd)
+                    if forces is not None:
+                        self.output_values["forces"] = forces
+                set_estimation(
+                    _wd,
+                    last_energy=energy,
+                    last_energy_error=error,
+                    last_num_gfmc_bin_blocks=self.num_gfmc_bin_blocks,
+                    last_num_gfmc_warmup_steps=self.num_gfmc_warmup_steps,
+                    last_num_gfmc_collect_steps=self.num_gfmc_collect_steps,
+                )
 
         # ── Collect outputs ───────────────────────────────────────
         chk_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
@@ -842,6 +850,10 @@ class LRDMC_Workflow(Workflow):
                     estimated_steps=estimated_steps,
                     num_mcmc_per_measurement=self.num_mcmc_per_measurement,
                 )
+                if self.atomic_force and restart_chk:
+                    forces = self._compute_force(restart_chk, work_dir=_wd)
+                    if forces is not None:
+                        self.output_values["forces"] = forces
                 self.output_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
                 self.status = "success"
                 return self.status, self.output_files, self.output_values
@@ -903,6 +915,10 @@ class LRDMC_Workflow(Workflow):
                     self.output_values["alat"] = self.alat
                     self.output_values["restart_chk"] = restart_chk
                     logger.info(f"  LRDMC energy (a={self.alat}): {energy} +- {error} Ha")
+                    if self.atomic_force:
+                        forces = self._compute_force(restart_chk, work_dir=_wd)
+                        if forces is not None:
+                            self.output_values["forces"] = forces
 
                     # Cache for restart
                     set_estimation(
@@ -939,24 +955,27 @@ class LRDMC_Workflow(Workflow):
                             f"max_continuation ({self.max_continuation}) reached"
                         )
 
-        # ── Final energy computation if skipped ───────────────────
-        if "energy" not in self.output_values:
-            restart_chk = self._find_restart_chk(_wd)
-            if restart_chk:
-                energy, error = self._compute_energy(restart_chk, work_dir=_wd)
-                if energy is not None:
-                    self.output_values["energy"] = energy
-                    self.output_values["energy_error"] = error
-                    self.output_values["alat"] = self.alat
-                    self.output_values["restart_chk"] = restart_chk
-                    set_estimation(
-                        _wd,
-                        last_energy=energy,
-                        last_energy_error=error,
-                        last_num_gfmc_bin_blocks=self.num_gfmc_bin_blocks,
-                        last_num_gfmc_warmup_steps=self.num_gfmc_warmup_steps,
-                        last_num_gfmc_collect_steps=self.num_gfmc_collect_steps,
-                    )
+        # ── Final energy computation ─────────────────────────────
+        restart_chk = self._find_restart_chk(_wd)
+        if restart_chk:
+            energy, error = self._compute_energy(restart_chk, work_dir=_wd)
+            if energy is not None:
+                self.output_values["energy"] = energy
+                self.output_values["energy_error"] = error
+                self.output_values["alat"] = self.alat
+                self.output_values["restart_chk"] = restart_chk
+                if self.atomic_force:
+                    forces = self._compute_force(restart_chk, work_dir=_wd)
+                    if forces is not None:
+                        self.output_values["forces"] = forces
+                set_estimation(
+                    _wd,
+                    last_energy=energy,
+                    last_energy_error=error,
+                    last_num_gfmc_bin_blocks=self.num_gfmc_bin_blocks,
+                    last_num_gfmc_warmup_steps=self.num_gfmc_warmup_steps,
+                    last_num_gfmc_collect_steps=self.num_gfmc_collect_steps,
+                )
 
         # ── Collect outputs ───────────────────────────────────────
         chk_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
@@ -1029,3 +1048,51 @@ class LRDMC_Workflow(Workflow):
         if match:
             return float(match.group(1)), float(match.group(2))
         return None, None
+
+    def _compute_force(self, restart_chk: str, work_dir: str):
+        """Run ``jqmc-tool lrdmc compute-force`` and parse output.
+
+        Parameters
+        ----------
+        restart_chk : str
+            Checkpoint filename (basename).
+        work_dir : str
+            Directory in which to run the command.
+
+        Returns
+        -------
+        list of dict or None
+            Each dict has keys ``label``, ``Fx``, ``Fx_err``,
+            ``Fy``, ``Fy_err``, ``Fz``, ``Fz_err``.
+            Returns *None* on failure.
+        """
+        cmd = (
+            f"jqmc-tool lrdmc compute-force {restart_chk} "
+            f"-b {self.num_gfmc_bin_blocks} "
+            f"-w {self.num_gfmc_warmup_steps} "
+            f"-c {self.num_gfmc_collect_steps}"
+        )
+        logger.info(f"  Running: {cmd}")
+        try:
+            result = subprocess.run(
+                cmd,
+                shell=True,
+                capture_output=True,
+                text=True,
+                check=True,
+                cwd=work_dir,
+            )
+            forces = parse_force_table(result.stdout)
+            if forces:
+                for f in forces:
+                    logger.info(
+                        f"  {f['label']:8s}"
+                        f" Fx={f['Fx']:+.6f}+-{f['Fx_err']:.6f}"
+                        f" Fy={f['Fy']:+.6f}+-{f['Fy_err']:.6f}"
+                        f" Fz={f['Fz']:+.6f}+-{f['Fz_err']:.6f}"
+                        f" Ha/bohr"
+                    )
+            return forces
+        except subprocess.CalledProcessError as e:
+            logger.error(f"compute-force failed: {e.stderr}")
+            return None

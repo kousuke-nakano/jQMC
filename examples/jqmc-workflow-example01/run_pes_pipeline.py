@@ -37,6 +37,7 @@ NUM_OPT_STEPS = 50  # VMC optimization steps
 WF_DUMP_FREQ = 10  # WF dumping freq.
 Dt = 1.2  # MCMC hopping distance
 ALAT = 0.2  # LRDMC lattice spacing
+TARGET_SNR = 6.0  # target signal_to_noise for convergence.
 TARGET_VMC_ERROR = 5e-4  # Target statistical error (Ha)
 TARGET_MCMC_ERROR = 5e-5  # Target statistical error (Ha)
 TARGET_LRDMC_ERROR = 5e-5  # Target statistical error (Ha)
@@ -63,6 +64,8 @@ R_VALUES = [
     1.40,
 ]
 
+R_VALUES = [0.40, 0.50]
+
 # ── pySCF script template ────────────────────────────────────────
 PYSCF_TEMPLATE = '''\
 from pyscf import gto, scf
@@ -87,9 +90,8 @@ mol.cart = True
 mol.output = f"H2_R_{{R:.2f}}.out"
 mol.build()
 
-mf = scf.KS(mol).density_fit()
+mf = scf.RHF(mol)
 mf.max_cycle = 200
-mf.xc = "LDA_X,LDA_C_PZ"
 mf_scf = mf.kernel()
 
 trexio.to_trexio(mf, filename)
@@ -239,10 +241,11 @@ def build_pipeline() -> tuple[list[Container], dict[float, Container], dict[floa
                 opt_lambda_param=True,
                 opt_with_projected_MOs=True,
                 target_error=TARGET_VMC_ERROR,
-                optimizer_kwargs={"method": "sr", "delta": 0.150, "epsilon": 0.100, "adaptive_learning_rate": True},
+                target_snr=TARGET_SNR,
+                optimizer_kwargs={"method": "sr", "delta": 0.200, "epsilon": 0.050, "adaptive_learning_rate": True},
                 max_time=3000,
                 poll_interval=120,
-                max_continuation=3,
+                max_continuation=1,
             ),
         )
 

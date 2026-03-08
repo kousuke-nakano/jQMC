@@ -54,6 +54,7 @@ from ._error_estimator import (
 )
 from ._input_generator import generate_input_toml, resolve_with_defaults
 from ._job import get_num_mpi, load_queue_data
+from ._output_parser import parse_force_table
 from ._state import get_estimation, get_job, set_estimation
 from .workflow import Workflow
 
@@ -385,6 +386,10 @@ class MCMC_Workflow(Workflow):
                     self.output_values["energy_error"] = error
                     self.output_values["restart_chk"] = restart_chk
                     logger.info(f"  MCMC energy: {energy} +- {error} Ha")
+                    if self.atomic_force:
+                        forces = self._compute_force(restart_chk, work_dir=_wd)
+                        if forces is not None:
+                            self.output_values["forces"] = forces
                     set_estimation(
                         _wd,
                         last_energy=energy,
@@ -393,22 +398,25 @@ class MCMC_Workflow(Workflow):
                         last_num_mcmc_warmup_steps=self.num_mcmc_warmup_steps,
                     )
 
-        # ── Final energy computation if skipped ───────────────────
-        if "energy" not in self.output_values:
-            restart_chk = self._find_restart_chk(_wd)
-            if restart_chk:
-                energy, error = self._compute_energy(restart_chk, work_dir=_wd)
-                if energy is not None:
-                    self.output_values["energy"] = energy
-                    self.output_values["energy_error"] = error
-                    self.output_values["restart_chk"] = restart_chk
-                    set_estimation(
-                        _wd,
-                        last_energy=energy,
-                        last_energy_error=error,
-                        last_num_mcmc_bin_blocks=self.num_mcmc_bin_blocks,
-                        last_num_mcmc_warmup_steps=self.num_mcmc_warmup_steps,
-                    )
+        # ── Final energy computation ─────────────────────────────
+        restart_chk = self._find_restart_chk(_wd)
+        if restart_chk:
+            energy, error = self._compute_energy(restart_chk, work_dir=_wd)
+            if energy is not None:
+                self.output_values["energy"] = energy
+                self.output_values["energy_error"] = error
+                self.output_values["restart_chk"] = restart_chk
+                if self.atomic_force:
+                    forces = self._compute_force(restart_chk, work_dir=_wd)
+                    if forces is not None:
+                        self.output_values["forces"] = forces
+                set_estimation(
+                    _wd,
+                    last_energy=energy,
+                    last_energy_error=error,
+                    last_num_mcmc_bin_blocks=self.num_mcmc_bin_blocks,
+                    last_num_mcmc_warmup_steps=self.num_mcmc_warmup_steps,
+                )
 
         # ── Collect outputs ───────────────────────────────────────
         chk_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
@@ -562,6 +570,10 @@ class MCMC_Workflow(Workflow):
                     restart_chk=restart_chk or "",
                     estimated_steps=estimated_steps,
                 )
+                if self.atomic_force and restart_chk:
+                    forces = self._compute_force(restart_chk, work_dir=_wd)
+                    if forces is not None:
+                        self.output_values["forces"] = forces
                 self.output_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
                 self.status = "success"
                 return self.status, self.output_files, self.output_values
@@ -626,6 +638,10 @@ class MCMC_Workflow(Workflow):
                     self.output_values["energy_error"] = error
                     self.output_values["restart_chk"] = restart_chk
                     logger.info(f"  MCMC energy: {energy} +- {error} Ha")
+                    if self.atomic_force:
+                        forces = self._compute_force(restart_chk, work_dir=_wd)
+                        if forces is not None:
+                            self.output_values["forces"] = forces
 
                     # Cache for restart
                     set_estimation(
@@ -660,22 +676,25 @@ class MCMC_Workflow(Workflow):
                             f"max_continuation ({self.max_continuation}) reached"
                         )
 
-        # ── Final energy computation if skipped ───────────────────
-        if "energy" not in self.output_values:
-            restart_chk = self._find_restart_chk(_wd)
-            if restart_chk:
-                energy, error = self._compute_energy(restart_chk, work_dir=_wd)
-                if energy is not None:
-                    self.output_values["energy"] = energy
-                    self.output_values["energy_error"] = error
-                    self.output_values["restart_chk"] = restart_chk
-                    set_estimation(
-                        _wd,
-                        last_energy=energy,
-                        last_energy_error=error,
-                        last_num_mcmc_bin_blocks=self.num_mcmc_bin_blocks,
-                        last_num_mcmc_warmup_steps=self.num_mcmc_warmup_steps,
-                    )
+        # ── Final energy computation ─────────────────────────────
+        restart_chk = self._find_restart_chk(_wd)
+        if restart_chk:
+            energy, error = self._compute_energy(restart_chk, work_dir=_wd)
+            if energy is not None:
+                self.output_values["energy"] = energy
+                self.output_values["energy_error"] = error
+                self.output_values["restart_chk"] = restart_chk
+                if self.atomic_force:
+                    forces = self._compute_force(restart_chk, work_dir=_wd)
+                    if forces is not None:
+                        self.output_values["forces"] = forces
+                set_estimation(
+                    _wd,
+                    last_energy=energy,
+                    last_energy_error=error,
+                    last_num_mcmc_bin_blocks=self.num_mcmc_bin_blocks,
+                    last_num_mcmc_warmup_steps=self.num_mcmc_warmup_steps,
+                )
 
         # ── Collect outputs ───────────────────────────────────────
         chk_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
@@ -739,3 +758,46 @@ class MCMC_Workflow(Workflow):
         if match:
             return float(match.group(1)), float(match.group(2))
         return None, None
+
+    def _compute_force(self, restart_chk: str, work_dir: str):
+        """Run ``jqmc-tool mcmc compute-force`` and parse output.
+
+        Parameters
+        ----------
+        restart_chk : str
+            Checkpoint filename (basename).
+        work_dir : str
+            Directory in which to run the command.
+
+        Returns
+        -------
+        list of dict or None
+            Each dict has keys ``label``, ``Fx``, ``Fx_err``,
+            ``Fy``, ``Fy_err``, ``Fz``, ``Fz_err``.
+            Returns *None* on failure.
+        """
+        cmd = f"jqmc-tool mcmc compute-force {restart_chk} -b {self.num_mcmc_bin_blocks} -w {self.num_mcmc_warmup_steps}"
+        logger.info(f"  Running: {cmd}")
+        try:
+            result = subprocess.run(
+                cmd,
+                shell=True,
+                capture_output=True,
+                text=True,
+                check=True,
+                cwd=work_dir,
+            )
+            forces = parse_force_table(result.stdout)
+            if forces:
+                for f in forces:
+                    logger.info(
+                        f"  {f['label']:8s}"
+                        f" Fx={f['Fx']:+.6f}+-{f['Fx_err']:.6f}"
+                        f" Fy={f['Fy']:+.6f}+-{f['Fy_err']:.6f}"
+                        f" Fz={f['Fz']:+.6f}+-{f['Fz_err']:.6f}"
+                        f" Ha/bohr"
+                    )
+            return forces
+        except subprocess.CalledProcessError as e:
+            logger.error(f"compute-force failed: {e.stderr}")
+            return None
