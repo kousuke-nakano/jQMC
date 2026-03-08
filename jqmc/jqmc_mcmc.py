@@ -3369,36 +3369,6 @@ class MCMC:
                     logger.info(f"aSR: scaling theta_all by gamma = {gamma:.6f}.")
                     theta_all = theta_all * gamma
 
-                # ------------------------------------------------------------------
-                # Back-transform theta from orthogonal basis to AO basis
-                # for the lambda_matrix block.
-                #   paired:   θ_AO = S^{-1/2}_up @ θ'_orth @ S^{-1/2}_dn
-                #   unpaired: θ_AO = S^{-1/2}_up @ θ'_orth
-                # ------------------------------------------------------------------
-                if lambda_projectors is not None and len(lambda_projectors) == 4:
-                    _, _, _inv_sqrt_up, _inv_sqrt_dn = lambda_projectors
-                    for _blk, _s, _e in offsets:
-                        if _blk.name == "lambda_matrix":
-                            _theta_mat = theta_all[_s:_e].reshape(_blk.shape)
-                            _n_paired = _inv_sqrt_dn.shape[0]
-                            _theta_paired = _theta_mat[:, :_n_paired]
-                            _theta_unpaired = _theta_mat[:, _n_paired:]
-                            # paired: two-sided back-transform
-                            _theta_paired_ao = _inv_sqrt_up @ _theta_paired @ _inv_sqrt_dn
-                            # unpaired: left-only back-transform
-                            _theta_unpaired_ao = _inv_sqrt_up @ _theta_unpaired
-                            _theta_ao = np.hstack((_theta_paired_ao, _theta_unpaired_ao))
-                            theta_all[_s:_e] = _theta_ao.ravel()
-                            logger.devel(
-                                "[SR theta] Back-transformed lambda block from orthogonal to AO basis. "
-                                "paired: min=%.3e max=%.3e  unpaired: min=%.3e max=%.3e",
-                                float(np.min(_theta_paired_ao)),
-                                float(np.max(_theta_paired_ao)),
-                                float(np.min(_theta_unpaired_ao)) if _theta_unpaired_ao.size else 0.0,
-                                float(np.max(_theta_unpaired_ao)) if _theta_unpaired_ao.size else 0.0,
-                            )
-                            break
-
             #############################
             # optax optimizer
             #############################
@@ -3419,9 +3389,45 @@ class MCMC:
             end = time.perf_counter()
             timer_optimizer += end - start
 
-            # Extract only the signal-to-noise ratio maximized parameters.
+            # ------------------------------------------------------------------
+            # 1) Apply num_param_opt mask.  Must happen BEFORE the
+            #    back-transform: the dense S^{-1/2} @ θ @ S^{-1/2} mixes
+            #    all lambda entries, so masking in AO space afterwards
+            #    would corrupt the update.  For non-lambda blocks (Jastrow
+            #    etc.) the back-transform is a no-op, so this is harmless.
+            # ------------------------------------------------------------------
             theta = np.zeros_like(theta_all)
             theta[signal_to_noise_f_max_indices] = theta_all[signal_to_noise_f_max_indices]
+
+            # ------------------------------------------------------------------
+            # 2) Back-transform theta from orthogonal basis to AO basis
+            #    for the lambda_matrix block.
+            #      paired:   θ_AO = S^{-1/2}_up @ θ'_orth @ S^{-1/2}_dn
+            #      unpaired: θ_AO = S^{-1/2}_up @ θ'_orth
+            # ------------------------------------------------------------------
+            if lambda_projectors is not None and len(lambda_projectors) == 4:
+                _, _, _inv_sqrt_up, _inv_sqrt_dn = lambda_projectors
+                for _blk, _s, _e in offsets:
+                    if _blk.name == "lambda_matrix":
+                        _theta_mat = theta[_s:_e].reshape(_blk.shape)
+                        _n_paired = _inv_sqrt_dn.shape[0]
+                        _theta_paired = _theta_mat[:, :_n_paired]
+                        _theta_unpaired = _theta_mat[:, _n_paired:]
+                        # paired: two-sided back-transform
+                        _theta_paired_ao = _inv_sqrt_up @ _theta_paired @ _inv_sqrt_dn
+                        # unpaired: left-only back-transform
+                        _theta_unpaired_ao = _inv_sqrt_up @ _theta_unpaired
+                        _theta_ao = np.hstack((_theta_paired_ao, _theta_unpaired_ao))
+                        theta[_s:_e] = _theta_ao.ravel()
+                        logger.devel(
+                            "Back-transformed lambda block from orthogonal to AO basis. "
+                            "paired: min=%.3e max=%.3e  unpaired: min=%.3e max=%.3e",
+                            float(np.min(_theta_paired_ao)),
+                            float(np.max(_theta_paired_ao)),
+                            float(np.min(_theta_unpaired_ao)) if _theta_unpaired_ao.size else 0.0,
+                            float(np.max(_theta_unpaired_ao)) if _theta_unpaired_ao.size else 0.0,
+                        )
+                        break
 
             # logger.devel(f"XX for MPI-rank={mpi_rank} is {theta}")
             # logger.devel(f"XX.shape for MPI-rank={mpi_rank} is {theta.shape}")
