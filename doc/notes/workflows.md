@@ -205,7 +205,7 @@ to edit it.
 ├── localhost/                   # Settings for localhost
 │   ├── queue_data.toml
 │   └── submit_mpi.sh           # (name is user-defined)
-├── pbs-cluster/                # Settings for a remote PBS cluster (example)
+├── my-cluster/                 # Settings for a remote cluster (nickname)
 │   ├── queue_data.toml
 │   └── submit_mpi.sh
 └── ...
@@ -213,8 +213,10 @@ to edit it.
 
 ### `machine_data.yaml`
 
-A YAML file that defines each compute machine. Server names are used as
-keys.
+A YAML file that defines each compute machine. The top-level keys are
+nicknames (arbitrary labels); they do **not** need to match the SSH host.
+Remote machines use the `ssh_host` field to specify the SSH connection
+target.
 
 #### Example
 
@@ -224,7 +226,8 @@ localhost:
   queuing: false
   workspace_root: /home/user/jqmc_work
 
-pbs-cluster:
+my-cluster:                          # nickname (freely chosen)
+  ssh_host: pbs-cluster              # Host alias in ~/.ssh/config
   machine_type: remote
   queuing: true
   workspace_root: /home/user/jqmc_work
@@ -238,6 +241,7 @@ pbs-cluster:
 
 | Key | Type | Required | Description |
 |---|---|---|---|
+| `ssh_host` | String | When `machine_type: remote` | SSH connection target. Typically a `Host` alias defined in `~/.ssh/config`. |
 | `machine_type` | `"local"` or `"remote"` | Yes | `local`: execute on the same host. `remote`: connect via SSH (Paramiko). |
 | `queuing` | Boolean | Yes | `true`: use a batch scheduler. `false`: direct execution. |
 | `workspace_root` | String (path) | Yes | Root directory for file management. Upload/download paths are resolved relative to this directory. Must be set on **both** localhost and the remote server. |
@@ -249,10 +253,11 @@ pbs-cluster:
 
 #### SSH connection
 
-For `machine_type: remote`, the SSH connection is established automatically
-via Paramiko.
-The engine reads `~/.ssh/config` to resolve `HostName`, `User`,
-`IdentityFile`, `Port`, and `ProxyJump` (multi-hop) settings.
+For `machine_type: remote`, the `ssh_host` field specifies the SSH
+connection target.  This is typically a `Host` alias defined in
+`~/.ssh/config`.  The engine reads `~/.ssh/config` via Paramiko to
+resolve `HostName`, `User`, `IdentityFile`, `Port`, and `ProxyJump`
+(multi-hop) settings.
 Your SSH key must be accessible without a passphrase prompt (use
 `ssh-agent` or a passphrase-less key).
 

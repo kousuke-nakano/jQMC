@@ -1,6 +1,6 @@
 # jqmc-workflow-example02: GPU Vectorization Benchmark (Walker Scaling)
 
-Vectorization benchmark of **jQMC** on GPUs. The throughput of MCMC and LRDMC calculations is measured as a function of the number of walkers assigned to a single GPU, sweeping from 8 to 8192 walkers.
+Vectorization benchmark of **jQMC** on GPUs. The throughput of MCMC and LRDMC calculations is measured as a function of the number of walkers assigned to a single GPU, sweeping from 8 to 8192 walkers. This benchmark was measured on Node Group B of [GENKAI supercomputer](https://www.cc.kyushu-u.ac.jp/scp/eng/system/Genkai/hardware/) in Kyushu University.
 
 ## Overview
 
@@ -165,7 +165,6 @@ jqmc-workflow-example02/
 │   ├── w00016/
 │   ├── ...
 │   └── w08192/
-└── plot_summary.ipynb       # Jupyter notebook for plotting results
 ```
 
 ## Workflow DAG
@@ -185,17 +184,16 @@ pySCF --> WF --> VMC ─┬─--> MCMC  (w8)    ─┐
 
 This example assumes a cluster where each node has 4 NVIDIA GPUs. The benchmark uses a single node with 4 MPI processes (one per GPU).
 
+| Component | Specification |
+|-----------|---------------|
+| CPU       | Intel Xeon Platinum 8490H (Sapphire Rapids, 60 cores, 1.90–3.50 GHz) × 2 sockets |
+| GPU       | NVIDIA H100 (Hopper) × 4 sockets |
+
 To run on a different cluster, change `SERVER`, `QUEUE_LABEL_s`, and `QUEUE_LABEL_l` in `run_pipelines.py` and provide the appropriate machine configuration in `jqmc_setting_local/`.
 
 ## Benchmark results
 
-### MCMC throughput
-
-![MCMC Benchmark](jqmc_MCMC_vectorization_benchmark.jpg)
-
-### LRDMC throughput
-
-![LRDMC Benchmark](jqmc_LRDMC_vectorization_benchmark.jpg)
+![Benchmark](jqmc_vectorization_benchmark.jpg )
 
 ## Output
 

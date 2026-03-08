@@ -88,6 +88,14 @@ class Machine:
         self.__name = machine
         self.ssh_status = False
 
+        # Validate ssh_host for remote machines
+        if self.machine_type == "remote" and "ssh_host" not in self.data:
+            raise KeyError(
+                f"machine='{machine}' has machine_type='remote' but no 'ssh_host' field "
+                f"in {self.machine_info_yaml}. "
+                f"Please add 'ssh_host' (e.g. the Host alias in ~/.ssh/config)."
+            )
+
     # ── SSH management ──────────────────────────────────────────────
 
     def ssh_open(self):
@@ -112,7 +120,7 @@ class Machine:
         # Workaround: paramiko raises KeyError('canonicaldomains') when
         # CanonicalizeHostname is set but CanonicalDomains is missing.
         try:
-            lkup = ssh_config.lookup(self.__name)
+            lkup = ssh_config.lookup(self.ssh_host)
         except KeyError:
             from io import StringIO
 
@@ -126,7 +134,7 @@ class Machine:
             )
             ssh_config = paramiko.SSHConfig()
             ssh_config.parse(StringIO(patched))
-            lkup = ssh_config.lookup(self.__name)
+            lkup = ssh_config.lookup(self.ssh_host)
 
         hostname = lkup["hostname"]
         username = lkup["user"]
@@ -201,6 +209,11 @@ class Machine:
     @property
     def name(self):
         return self.__name
+
+    @property
+    def ssh_host(self) -> str:
+        """SSH host identifier (Host alias in ~/.ssh/config or user@hostname)."""
+        return self._get("ssh_host")
 
     @property
     def machine_type(self) -> str:

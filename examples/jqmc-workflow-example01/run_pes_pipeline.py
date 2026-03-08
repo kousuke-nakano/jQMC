@@ -25,6 +25,8 @@ from jqmc_workflow import (
     MCMC_Workflow,
     VMC_Workflow,
     WF_Workflow,
+    parse_lrdmc_output,
+    parse_mcmc_output,
 )
 
 # ── Configuration ─────────────────────────────────────────────────
@@ -32,6 +34,7 @@ SERVER = "cluster"
 QUEUE_LABEL = "cores-120-mpi-120-omp-1-1h"
 
 NUM_OPT_STEPS = 50  # VMC optimization steps
+WF_DUMP_FREQ = 10  # WF dumping freq.
 Dt = 1.2  # MCMC hopping distance
 ALAT = 0.2  # LRDMC lattice spacing
 TARGET_VMC_ERROR = 5e-4  # Target statistical error (Ha)
@@ -225,6 +228,7 @@ def build_pipeline() -> tuple[list[Container], dict[float, Container], dict[floa
                 server_machine_name=SERVER,
                 queue_label=QUEUE_LABEL,
                 jobname=f"vmc-H2-{R:.2f}",
+                wf_dump_freq=WF_DUMP_FREQ,
                 Dt=Dt,
                 num_opt_steps=NUM_OPT_STEPS,
                 pilot_mcmc_steps=50,
@@ -306,9 +310,10 @@ def print_summary_table(
 ) -> None:
     """Print a summary table of energies and forces for all R values."""
     print()
-    print("=" * 110)
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    print("=" * 130)
     print("  H2 PES Summary  (JSD, MO opt, all-electron, cc-pVTZ)")
-    print("=" * 110)
+    print("=" * 130)
     print()
 
     header = (
@@ -316,10 +321,12 @@ def print_summary_table(
         f"| {'E_HF (Ha)':>13} "
         f"| {'E_MCMC (Ha)':>15} "
         f"| {'F_MCMC (Ha/Å)':>15} "
+        f"| {'MCMC t_net':>10} "
         f"| {'E_LRDMC (Ha)':>15} "
-        f"| {'F_LRDMC (Ha/Å)':>16} |"
+        f"| {'F_LRDMC (Ha/Å)':>16} "
+        f"| {'LRDMC t_net':>11} |"
     )
-    separator = f"|{'-' * 8}|{'-' * 15}|{'-' * 17}|{'-' * 17}|{'-' * 17}|{'-' * 18}|"
+    separator = f"|{'-' * 8}|{'-' * 15}|{'-' * 17}|{'-' * 17}|{'-' * 12}|{'-' * 17}|{'-' * 18}|{'-' * 13}|"
     print(header)
     print(separator)
 
@@ -328,7 +335,7 @@ def print_summary_table(
         hf_e = hf_energies.get(R)
         hf_str = f"{hf_e:.6f}" if hf_e is not None else "N/A"
 
-        # MCMC energy and force
+        # MCMC energy, force, and net time
         mcmc_ctr = mcmc_containers.get(R)
         if mcmc_ctr is not None and mcmc_ctr.output_values:
             mcmc_e = mcmc_ctr.output_values.get("energy")
@@ -340,7 +347,11 @@ def print_summary_table(
         mcmc_e_str = format_energy(mcmc_e, mcmc_err)
         mcmc_f_str = format_force(mcmc_f, mcmc_ferr)
 
-        # LRDMC energy and force
+        mcmc_dir = os.path.join(base_dir, r_dir(R), "03_mcmc")
+        mcmc_t = parse_mcmc_output(mcmc_dir).net_time_sec
+        mcmc_t_str = f"{mcmc_t:.1f}" if mcmc_t is not None else "N/A"
+
+        # LRDMC energy, force, and net time
         lrdmc_ctr = lrdmc_containers.get(R)
         if lrdmc_ctr is not None and lrdmc_ctr.output_values:
             lrdmc_e = lrdmc_ctr.output_values.get("energy")
@@ -352,7 +363,15 @@ def print_summary_table(
         lrdmc_e_str = format_energy(lrdmc_e, lrdmc_err)
         lrdmc_f_str = format_force(lrdmc_f, lrdmc_ferr)
 
-        row = f"| {R:6.2f} | {hf_str:>13} | {mcmc_e_str:>15} | {mcmc_f_str:>15} | {lrdmc_e_str:>15} | {lrdmc_f_str:>16} |"
+        lrdmc_dir = os.path.join(base_dir, r_dir(R), "04_lrdmc")
+        lrdmc_t = parse_lrdmc_output(lrdmc_dir).net_time_sec
+        lrdmc_t_str = f"{lrdmc_t:.1f}" if lrdmc_t is not None else "N/A"
+
+        row = (
+            f"| {R:6.2f} | {hf_str:>13} "
+            f"| {mcmc_e_str:>15} | {mcmc_f_str:>15} | {mcmc_t_str:>10} "
+            f"| {lrdmc_e_str:>15} | {lrdmc_f_str:>16} | {lrdmc_t_str:>11} |"
+        )
         print(row)
 
     print()

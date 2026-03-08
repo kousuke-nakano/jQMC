@@ -161,6 +161,13 @@ This example uses local execution (`jqmc_setting_local/`):
 localhost:
   machine_type: local
   queuing: false
+
+# Remote machines require ssh_host:
+# cluster:
+#   ssh_host: my-cluster    # Host alias in ~/.ssh/config
+#   machine_type: remote
+#   queuing: true
+#   ...
 ```
 
 ```toml

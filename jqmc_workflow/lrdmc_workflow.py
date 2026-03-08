@@ -101,16 +101,27 @@ class LRDMC_Workflow(Workflow):
       *num_mcmc_per_measurement* is *None*), an automatic calibration
       pilot determines the optimal *num_mcmc_per_measurement*.
 
-    The workflow operates in two phases:
+    The workflow supports two operating modes:
+
+    **Automatic mode** (default, ``num_gfmc_projections=None``):
 
     1. **Pilot run** (``_0``) — A short run with ``pilot_steps``
        measurement steps.  The resulting error estimates the steps
-       required for ``target_error`` via $\\sigma \\propto 1/\\sqrt{N}$.
+       required for ``target_error`` via $\sigma \propto 1/\sqrt{N}$.
        In GFMC_n mode with calibration, three additional short runs
        precede this to determine *num_mcmc_per_measurement*.
     2. **Production runs** (``_1``, ``_2``, …) — Continuation runs
        with the estimated step count.  The loop terminates when the
        error is ≤ ``target_error`` or ``max_continuation`` is reached.
+
+    **Fixed-step mode** (``num_gfmc_projections`` is set):
+
+    The error-bar pilot (``_pilot_b``) is skipped and ``target_error``
+    is ignored.  If calibration is needed (GFMC_n mode with
+    ``target_survived_walkers_ratio``), ``_pilot_a`` still runs.
+    Each production run uses exactly ``num_gfmc_projections``
+    measurement steps, and ``max_continuation`` runs are executed
+    unconditionally.
 
     Parameters
     ----------
@@ -174,6 +185,14 @@ class LRDMC_Workflow(Workflow):
         Target statistical error (Ha).
     pilot_steps : int
         Measurement steps for the pilot estimation run.
+    num_gfmc_projections : int, optional
+        Fixed number of measurement steps per production run.
+        When set, the error-bar pilot (``_pilot_b``) is skipped,
+        ``target_error`` is ignored, and all ``max_continuation``
+        production runs are executed unconditionally.  Calibration
+        (``_pilot_a``) still runs when needed (GFMC_n mode with
+        ``target_survived_walkers_ratio``).  Default *None*
+        (automatic mode).
     pilot_queue_label : str, optional
         Queue label for the pilot run.  Defaults to *queue_label*.
         Use a shorter/smaller queue for the pilot to save resources.
@@ -200,6 +219,16 @@ class LRDMC_Workflow(Workflow):
             alat=0.3,
             target_error=0.0005,
             target_survived_walkers_ratio=0.97,
+            number_of_walkers=8,
+        )
+
+    Fixed-step mode (skip error-bar pilot)::
+
+        wf = LRDMC_Workflow(
+            server_machine_name="cluster",
+            alat=0.3,
+            num_gfmc_projections=500,
+            max_continuation=3,
             number_of_walkers=8,
         )
 
@@ -259,6 +288,7 @@ class LRDMC_Workflow(Workflow):
         poll_interval: int = 60,
         target_error: float = 0.001,
         pilot_steps: int = 100,
+        num_gfmc_projections: Optional[int] = None,
         pilot_queue_label: Optional[str] = None,
         max_continuation: int = 1,
     ):
@@ -305,6 +335,7 @@ class LRDMC_Workflow(Workflow):
         self.poll_interval = poll_interval
         self.target_error = target_error
         self.pilot_steps = pilot_steps
+        self.num_gfmc_projections = num_gfmc_projections
         self.pilot_queue_label = pilot_queue_label or queue_label
         self.max_continuation = max_continuation
 
@@ -405,41 +436,244 @@ class LRDMC_Workflow(Workflow):
     # ── Launch ────────────────────────────────────────────────────
 
     async def async_launch(self):
-        """Run the LRDMC workflow with automatic step estimation.
+        """Run the LRDMC workflow.
 
-        **GFMC_n mode** (``target_survived_walkers_ratio`` or
-        ``num_mcmc_per_measurement`` is set):
+        **Fixed-step mode** (``num_gfmc_projections`` is set):
+        The error-bar pilot (``_pilot_b``) is skipped.  Calibration
+        (``_pilot_a``) still runs if needed.  Each production run
+        uses exactly ``num_gfmc_projections`` steps and all
+        ``max_continuation`` runs are executed unconditionally.
 
-        When ``target_survived_walkers_ratio`` is set and
-        ``num_mcmc_per_measurement`` is *None*, the pilot phase has
-        two stages:
+        **Automatic mode** (``num_gfmc_projections`` is *None*, default):
 
-        1. **Calibration** (``_pilot_a/_pilot1`` – ``_pilot_a/_pilot3``,
-           parallel) — Three short LRDMC runs at
-           ``Ne*k*(0.3/alat)²`` projections (k=2,4,6).  A linear fit
-           to the survived-walkers ratio determines the optimal
-           ``num_mcmc_per_measurement``.
-        2. **Error-bar pilot** (``_pilot_b``) — A run with the
-           calibrated ``num_mcmc_per_measurement``; its error bar
-           estimates the production step count.
-
-        When ``num_mcmc_per_measurement`` is given explicitly, only
-        ``_pilot_b`` (error-bar estimation) is executed.
-
-        **GFMC_t mode** (default, ``time_projection_tau``):
-
-        Only the error-bar pilot (``_pilot_b``) is executed — no
-        calibration is needed since ``tau`` directly controls the
-        imaginary time step.
-
-        Production runs (``_1``, ``_2``, …) start from scratch and
-        accumulate statistics until ``target_error`` is achieved or
-        ``max_continuation`` is reached.
+        1. Calibration pilot (``_pilot_a``, GFMC_n only) — Three short
+           LRDMC runs to determine ``num_mcmc_per_measurement``.
+        2. Error-bar pilot (``_pilot_b``) — estimates production steps.
+        3. Production runs (``_1``, ``_2``, …) — accumulate statistics
+           until ``target_error`` is achieved or ``max_continuation``
+           is reached.
         """
         self._ensure_project_dir()
         _wd = self.project_dir
 
-        # -- Phase 0: pilot estimation (skip on continuation) ------
+        # ── Fixed-step mode ───────────────────────────────────────
+        if self.num_gfmc_projections is not None:
+            return await self._launch_fixed_steps(_wd)
+
+        # ── Automatic mode (pilot + target_error) ─────────────────
+        return await self._launch_auto(_wd)
+
+    async def _launch_fixed_steps(self, _wd):
+        """Fixed-step production: skip error-bar pilot, ignore target_error.
+
+        Calibration (``_pilot_a``) still runs when needed (GFMC_n mode
+        with ``target_survived_walkers_ratio``).
+        """
+        estimated_steps = self.num_gfmc_projections
+
+        # ── Phase A: calibrate num_mcmc_per_measurement (GFMC_n only) ──
+        need_calibration = (
+            self._use_gfmc_n and self.num_mcmc_per_measurement is None and self.target_survived_walkers_ratio is not None
+        )
+        if need_calibration:
+            await self._run_calibration(_wd)
+
+        mode_info = f"nmpm={self.num_mcmc_per_measurement}" if self._use_gfmc_n else f"tau={self.time_projection_tau}"
+        logger.info("")
+        logger.info("-- LRDMC Fixed-step mode " + "-" * 26)
+        logger.info(
+            f"  num_gfmc_projections = {estimated_steps}\n"
+            f"  max_continuation     = {self.max_continuation}\n"
+            f"  mode                 = {'GFMC_n' if self._use_gfmc_n else 'GFMC_t'}\n"
+            f"  {mode_info}"
+        )
+
+        last_run = 0
+        for i in range(1, self.max_continuation + 1):
+            input_i = suffixed_name(self.input_file, i)
+            output_i = suffixed_name(self.output_file, i)
+
+            recorded = get_job(_wd, input_i)
+            if recorded.get("status") in ("submitted", "completed", "fetched"):
+                if recorded["status"] == "fetched":
+                    logger.info(f"  {input_i}: already fetched. Skipping.")
+                    last_run = i
+                    continue
+                logger.info(f"  {input_i}: already {recorded['status']}. Resuming...")
+            else:
+                if i == 1:
+                    self._generate_input(estimated_steps, os.path.join(_wd, input_i))
+                else:
+                    restart_chk = self._find_restart_chk(_wd)
+                    if restart_chk is None:
+                        raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {_wd}")
+                    self._generate_input(
+                        estimated_steps,
+                        os.path.join(_wd, input_i),
+                        restart=True,
+                        restart_chk=restart_chk,
+                    )
+                logger.info("")
+                logger.info(f"-- LRDMC Production run {i}/{self.max_continuation} (a={self.alat}) " + "-" * 10)
+                logger.info(f"  {input_i}: {estimated_steps} steps")
+
+            restart_chk = self._find_restart_chk(_wd) if i > 1 else None
+            if i > 1 and restart_chk is None:
+                raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {_wd}")
+            extra_from = [restart_chk] if restart_chk else []
+
+            await self._submit_and_wait(
+                input_i,
+                output_i,
+                work_dir=_wd,
+                extra_from_objects=extra_from,
+            )
+            last_run = i
+
+            # Post-process energy (informational only, no convergence check)
+            restart_chk = self._find_restart_chk(_wd)
+            if restart_chk:
+                energy, error = self._compute_energy(restart_chk, work_dir=_wd)
+                if energy is not None:
+                    self.output_values["energy"] = energy
+                    self.output_values["energy_error"] = error
+                    self.output_values["alat"] = self.alat
+                    self.output_values["restart_chk"] = restart_chk
+                    logger.info(f"  LRDMC energy (a={self.alat}): {energy} +- {error} Ha")
+                    set_estimation(
+                        _wd,
+                        last_energy=energy,
+                        last_energy_error=error,
+                        last_num_gfmc_bin_blocks=self.num_gfmc_bin_blocks,
+                        last_num_gfmc_warmup_steps=self.num_gfmc_warmup_steps,
+                        last_num_gfmc_collect_steps=self.num_gfmc_collect_steps,
+                    )
+
+        # ── Final energy computation if skipped ───────────────────
+        if "energy" not in self.output_values:
+            restart_chk = self._find_restart_chk(_wd)
+            if restart_chk:
+                energy, error = self._compute_energy(restart_chk, work_dir=_wd)
+                if energy is not None:
+                    self.output_values["energy"] = energy
+                    self.output_values["energy_error"] = error
+                    self.output_values["alat"] = self.alat
+                    self.output_values["restart_chk"] = restart_chk
+                    set_estimation(
+                        _wd,
+                        last_energy=energy,
+                        last_energy_error=error,
+                        last_num_gfmc_bin_blocks=self.num_gfmc_bin_blocks,
+                        last_num_gfmc_warmup_steps=self.num_gfmc_warmup_steps,
+                        last_num_gfmc_collect_steps=self.num_gfmc_collect_steps,
+                    )
+
+        # ── Collect outputs ───────────────────────────────────────
+        chk_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
+        output_logs = [
+            suffixed_name(self.output_file, j)
+            for j in range(last_run + 1)
+            if os.path.isfile(os.path.join(_wd, suffixed_name(self.output_file, j)))
+        ]
+        self.output_files = chk_files + output_logs
+        self.output_values["estimated_steps"] = estimated_steps
+        if self._use_gfmc_n:
+            self.output_values["num_mcmc_per_measurement"] = self.num_mcmc_per_measurement
+        else:
+            self.output_values["time_projection_tau"] = self.time_projection_tau
+
+        self.status = "success"
+        return self.status, self.output_files, self.output_values
+
+    async def _run_calibration(self, _wd):
+        """Phase A: calibrate num_mcmc_per_measurement (GFMC_n only)."""
+        h5_src = os.path.join(_wd, self.hamiltonian_file)
+        pilot_a_dir = os.path.join(_wd, "_pilot_a")
+        os.makedirs(pilot_a_dir, exist_ok=True)
+
+        n_electrons = get_num_electrons(os.path.join(_wd, self.hamiltonian_file))
+        alat_scale = (0.3 / self.alat) ** 2
+        trial_nmpm = [int(n_electrons * k * alat_scale) for k in (2, 4, 6)]
+
+        logger.info("")
+        logger.info(f"-- LRDMC Phase A: Calibrate num_mcmc_per_measurement (a={self.alat}) " + "-" * 8)
+        logger.info(
+            f"  Ne={n_electrons}, trial nmpm = {trial_nmpm}, target survived ratio = {self.target_survived_walkers_ratio:.2%}"
+        )
+
+        # Run 3 calibration jobs in parallel sub-directories
+        calib_tasks = []
+        for idx, nmpm_val in enumerate(trial_nmpm, start=1):
+            calib_sub = os.path.join(pilot_a_dir, f"_pilot{idx}")
+            os.makedirs(calib_sub, exist_ok=True)
+            h5_link = os.path.join(calib_sub, self.hamiltonian_file)
+            if os.path.isfile(h5_src) and not os.path.exists(h5_link):
+                os.symlink(h5_src, h5_link)
+
+            inp = suffixed_name(self.input_file, 0)
+            out = suffixed_name(self.output_file, 0)
+
+            async def _run_calib(sub_dir, inp_f, out_f, nmpm_v, _idx=idx):
+                rec = get_job(sub_dir, inp_f)
+                if rec.get("status") not in (
+                    "submitted",
+                    "completed",
+                    "fetched",
+                ):
+                    self._generate_input(
+                        self.pilot_steps,
+                        os.path.join(sub_dir, inp_f),
+                        num_mcmc_per_measurement=nmpm_v,
+                    )
+                else:
+                    logger.info(f"  {inp_f} (nmpm={nmpm_v}): already {rec['status']}. Resuming...")
+                logger.info(f"  _pilot{_idx}: nmpm={nmpm_v}, {self.pilot_steps} steps")
+                await self._submit_and_wait(
+                    inp_f,
+                    out_f,
+                    work_dir=sub_dir,
+                    queue_label=self.pilot_queue_label,
+                )
+                # Parse survived walkers ratio from output
+                out_path = os.path.join(sub_dir, out_f)
+                ratio = parse_survived_walkers_ratio(out_path)
+                logger.info(f"  _pilot{_idx} (nmpm={nmpm_v}): survived ratio = {ratio:.4f}" if ratio else "N/A")
+                return nmpm_v, ratio
+
+            calib_tasks.append(asyncio.create_task(_run_calib(calib_sub, inp, out, nmpm_val)))
+
+        calib_results = await asyncio.gather(*calib_tasks)
+
+        # Collect results and fit
+        x_vals = []
+        y_vals = []
+        for nmpm_v, ratio in calib_results:
+            if ratio is not None:
+                x_vals.append(nmpm_v)
+                y_vals.append(ratio)
+
+        if len(x_vals) < 2:
+            raise RuntimeError(
+                f"Only {len(x_vals)} calibration runs returned a survived walkers ratio. Need at least 2 for linear fit."
+            )
+
+        optimal_nmpm = fit_num_mcmc_per_measurement(
+            x_vals,
+            y_vals,
+            self.target_survived_walkers_ratio,
+        )
+        self.num_mcmc_per_measurement = optimal_nmpm
+
+        logger.info("")
+        logger.info(f"-- LRDMC Calibration Summary (a={self.alat}) " + "-" * 18)
+        for xv, yv in zip(x_vals, y_vals):
+            logger.info(f"  nmpm={xv:>6d}: survived ratio = {yv:.4f}")
+        logger.info(f"  target ratio  = {self.target_survived_walkers_ratio:.4f}")
+        logger.info(f"  optimal nmpm  = {optimal_nmpm}")
+        logger.info("-" * 50)
+
+    async def _launch_auto(self, _wd):
+        """Automatic mode: pilot + target_error convergence."""
         estimation = get_estimation(_wd)
 
         if estimation.get("estimated_steps") is not None:
@@ -460,92 +694,7 @@ class LRDMC_Workflow(Workflow):
             )
 
             if need_calibration:
-                pilot_a_dir = os.path.join(_wd, "_pilot_a")
-                os.makedirs(pilot_a_dir, exist_ok=True)
-
-                n_electrons = get_num_electrons(os.path.join(_wd, self.hamiltonian_file))
-                alat_scale = (0.3 / self.alat) ** 2
-                trial_nmpm = [int(n_electrons * k * alat_scale) for k in (2, 4, 6)]
-
-                logger.info("")
-                logger.info(f"-- LRDMC Phase A: Calibrate num_mcmc_per_measurement (a={self.alat}) " + "-" * 8)
-                logger.info(
-                    f"  Ne={n_electrons}, "
-                    f"trial nmpm = {trial_nmpm}, "
-                    f"target survived ratio = "
-                    f"{self.target_survived_walkers_ratio:.2%}"
-                )
-
-                # Run 3 calibration jobs in parallel sub-directories
-                calib_tasks = []
-                for idx, nmpm_val in enumerate(trial_nmpm, start=1):
-                    calib_sub = os.path.join(pilot_a_dir, f"_pilot{idx}")
-                    os.makedirs(calib_sub, exist_ok=True)
-                    h5_link = os.path.join(calib_sub, self.hamiltonian_file)
-                    if os.path.isfile(h5_src) and not os.path.exists(h5_link):
-                        os.symlink(h5_src, h5_link)
-
-                    inp = suffixed_name(self.input_file, 0)
-                    out = suffixed_name(self.output_file, 0)
-
-                    async def _run_calib(sub_dir, inp_f, out_f, nmpm_v, _idx=idx):
-                        rec = get_job(sub_dir, inp_f)
-                        if rec.get("status") not in (
-                            "submitted",
-                            "completed",
-                            "fetched",
-                        ):
-                            self._generate_input(
-                                self.pilot_steps,
-                                os.path.join(sub_dir, inp_f),
-                                num_mcmc_per_measurement=nmpm_v,
-                            )
-                        else:
-                            logger.info(f"  {inp_f} (nmpm={nmpm_v}): already {rec['status']}. Resuming...")
-                        logger.info(f"  _pilot{_idx}: nmpm={nmpm_v}, {self.pilot_steps} steps")
-                        await self._submit_and_wait(
-                            inp_f,
-                            out_f,
-                            work_dir=sub_dir,
-                            queue_label=self.pilot_queue_label,
-                        )
-                        # Parse survived walkers ratio from output
-                        out_path = os.path.join(sub_dir, out_f)
-                        ratio = parse_survived_walkers_ratio(out_path)
-                        logger.info(f"  _pilot{_idx} (nmpm={nmpm_v}): survived ratio = {ratio:.4f}" if ratio else "N/A")
-                        return nmpm_v, ratio
-
-                    calib_tasks.append(asyncio.create_task(_run_calib(calib_sub, inp, out, nmpm_val)))
-
-                calib_results = await asyncio.gather(*calib_tasks)
-
-                # Collect results and fit
-                x_vals = []
-                y_vals = []
-                for nmpm_v, ratio in calib_results:
-                    if ratio is not None:
-                        x_vals.append(nmpm_v)
-                        y_vals.append(ratio)
-
-                if len(x_vals) < 2:
-                    raise RuntimeError(
-                        f"Only {len(x_vals)} calibration runs returned a survived walkers ratio. Need at least 2 for linear fit."
-                    )
-
-                optimal_nmpm = fit_num_mcmc_per_measurement(
-                    x_vals,
-                    y_vals,
-                    self.target_survived_walkers_ratio,
-                )
-                self.num_mcmc_per_measurement = optimal_nmpm
-
-                logger.info("")
-                logger.info(f"-- LRDMC Calibration Summary (a={self.alat}) " + "-" * 18)
-                for xv, yv in zip(x_vals, y_vals):
-                    logger.info(f"  nmpm={xv:>6d}: survived ratio = {yv:.4f}")
-                logger.info(f"  target ratio  = {self.target_survived_walkers_ratio:.4f}")
-                logger.info(f"  optimal nmpm  = {optimal_nmpm}")
-                logger.info("-" * 50)
+                await self._run_calibration(_wd)
 
             # ── Phase B: error-bar pilot (_pilot_b) ───────────────
             pilot_b_dir = os.path.join(_wd, "_pilot_b")

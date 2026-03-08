@@ -27,15 +27,18 @@ from jqmc_workflow import (
     MCMC_Workflow,
     VMC_Workflow,
     WF_Workflow,
+    parse_lrdmc_output,
+    parse_mcmc_output,
 )
 
 # ── Configuration ─────────────────────────────────────────────────
 SERVER = "cluster"
-QUEUE_LABEL = "cores-4-mpi-4-gpu-4-omp-1-3h"
-PILOT_QUEUE_LABEL = "cores-4-mpi-4-gpu-4-omp-1-30m"
+QUEUE_LABEL = "cores-120-mpi-120-omp-1-24h"
+PILOT_QUEUE_LABEL = "cores-120-mpi-120-omp-1-3h"
 
 # VMC
 NUM_OPT_STEPS = 100
+WF_DUMP_FREQ = 20
 TARGET_VMC_ERROR = 3.0e-3
 
 # MCMC / LRDMC
@@ -46,7 +49,7 @@ TARGET_PROD_ERROR = 5.0e-4
 # Common
 MAX_TIME = 76000
 MAX_CONTINUATION = 2
-NUMBER_OF_WALKERS = 1024
+NUMBER_OF_WALKERS = 1
 POLL_INTERVAL = 300
 
 # pySCF output
@@ -194,6 +197,7 @@ def build_pipeline() -> tuple[
             queue_label=QUEUE_LABEL,
             pilot_queue_label=PILOT_QUEUE_LABEL,
             jobname="vmc-water",
+            wf_dump_freq=WF_DUMP_FREQ,
             Dt=Dt,
             number_of_walkers=NUMBER_OF_WALKERS,
             num_opt_steps=NUM_OPT_STEPS,
@@ -297,10 +301,14 @@ def print_summary_table(
         ("lrdmc", "LRDMC"),
     ]
 
-    header = f"| {'Pattern':>12} | {'Energy (Ha)':>17} | {'Force (Ha/bohr)':>17} |"
-    separator = f"|{'-' * 14}|{'-' * 19}|{'-' * 19}|"
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    header = f"| {'Pattern':>12} | {'Energy (Ha)':>17} | {'Force (Ha/bohr)':>17} | {'t_net (s)':>10} |"
+    separator = f"|{'-' * 14}|{'-' * 19}|{'-' * 19}|{'-' * 12}|"
     print(header)
     print(separator)
+
+    dir_map = {"mcmc": "03_mcmc", "lrdmc": "04_lrdmc"}
+    parser_map = {"mcmc": parse_mcmc_output, "lrdmc": parse_lrdmc_output}
 
     for key, label in PATTERNS:
         ctr = result_containers.get(key)
@@ -315,7 +323,11 @@ def print_summary_table(
         e_str = format_val(e, e_err)
         f_str = format_val(f_val, f_err)
 
-        row = f"| {label:>12} | {e_str:>17} | {f_str:>17} |"
+        work_dir = os.path.join(base_dir, dir_map[key])
+        t_net = parser_map[key](work_dir).net_time_sec
+        t_str = f"{t_net:.1f}" if t_net is not None else "N/A"
+
+        row = f"| {label:>12} | {e_str:>17} | {f_str:>17} | {t_str:>10} |"
         print(row)
 
     print()

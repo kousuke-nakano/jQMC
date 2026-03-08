@@ -146,6 +146,12 @@ class LRDMC_Ext_Workflow(Workflow):
         Passed through to each :class:`LRDMC_Workflow`.
     pilot_steps : int
         Pilot measurement steps for target-error estimation.
+    num_gfmc_projections : int, optional
+        Fixed number of measurement steps per production run.
+        When set, the error-bar pilot is skipped for each sub-LRDMC
+        and all ``max_continuation`` runs are executed unconditionally.
+        Passed through to each :class:`LRDMC_Workflow`.
+        Default *None* (automatic mode).
     max_continuation : int
         Maximum number of production runs per sub-LRDMC.
 
@@ -227,6 +233,7 @@ class LRDMC_Ext_Workflow(Workflow):
         poll_interval: int = 60,
         target_error: float = 0.001,
         pilot_steps: int = 100,
+        num_gfmc_projections: Optional[int] = None,
         max_continuation: int = 5,
     ):
         super().__init__()
@@ -268,6 +275,7 @@ class LRDMC_Ext_Workflow(Workflow):
         self.poll_interval = poll_interval
         self.target_error = target_error
         self.pilot_steps = pilot_steps
+        self.num_gfmc_projections = num_gfmc_projections
         self.max_continuation = max_continuation
 
     def _make_lrdmc_workflow(self, alat):
@@ -309,6 +317,7 @@ class LRDMC_Ext_Workflow(Workflow):
             poll_interval=self.poll_interval,
             target_error=self.target_error,
             pilot_steps=self.pilot_steps,
+            num_gfmc_projections=self.num_gfmc_projections,
             max_continuation=self.max_continuation,
         )
         enc = Container(

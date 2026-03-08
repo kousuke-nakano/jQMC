@@ -33,14 +33,21 @@ import re
 import subprocess
 import sys
 
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+import numpy as np
+
 from jqmc_workflow import (
     Container,
     FileFrom,
     Launcher,
     LRDMC_Workflow,
     MCMC_Workflow,
+    ValueFrom,
     VMC_Workflow,
     WF_Workflow,
+    parse_lrdmc_output,
+    parse_mcmc_output,
 )
 
 # ── Configuration ─────────────────────────────────────────────────
@@ -49,6 +56,7 @@ QUEUE_LABEL_s = "cores-4-mpi-4-gpu-4-omp-1-30m"
 QUEUE_LABEL_l = "cores-4-mpi-4-gpu-4-omp-1-3h"
 
 NUM_OPT_STEPS = 50  # VMC optimization steps
+WF_DUMP_FREQ = 10  # WF dumping freq
 Dt = 2.0  # MCMC hopping distance (bohr)
 TARGET_VMC_ERROR = 1.0e-3  # Target VMC optimization error (Ha)
 ALAT = 0.30  # LRDMC lattice spacing
@@ -60,7 +68,8 @@ NUM_MCMC_STEPS_MCMC = 1000  # MCMC measurement steps per production
 NUM_MCMC_STEPS_LRDMC = 1000  # LRDMC measurement steps per production
 
 # Walker counts for vectorization benchmark
-WALKER_COUNTS = [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
+# WALKER_COUNTS = [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
+WALKER_COUNTS = [8, 16, 32, 64]
 
 # pySCF file names
 TREXIO_FILE = "water_trexio.hdf5"
@@ -122,26 +131,6 @@ def format_energy(energy: float | None, error: float | None) -> str:
     n_dec = max(0, -math.floor(math.log10(error)) + 1)
     err_in_last = round(error * 10**n_dec)
     return f"{energy:.{n_dec}f}({err_in_last})"
-
-
-def parse_net_time_from_file(filepath: str) -> float | None:
-    """Parse net computation time (sec) from a jQMC output file."""
-    if not os.path.isfile(filepath):
-        return None
-    try:
-        with open(filepath, "r", errors="replace") as f:
-            text = f.read()
-    except OSError:
-        return None
-    # LRDMC pattern
-    m = re.search(r"Net GFMC time without pre-compilations\s*=\s*([0-9.]+)\s*sec", text)
-    if m:
-        return float(m.group(1))
-    # MCMC/VMC pattern
-    m = re.search(r"Net total time for MCMC\s*=\s*([0-9.]+)\s*sec", text)
-    if m:
-        return float(m.group(1))
-    return None
 
 
 # ── Step 1: Run pySCF locally ────────────────────────────────────
@@ -227,6 +216,7 @@ def build_pipeline() -> tuple[
             Dt=Dt,
             number_of_walkers=256,
             num_opt_steps=NUM_OPT_STEPS,
+            wf_dump_freq=WF_DUMP_FREQ,
             num_mcmc_bin_blocks=10,
             pilot_mcmc_steps=50,
             pilot_vmc_steps=20,
@@ -273,7 +263,7 @@ def build_pipeline() -> tuple[
                 num_mcmc_bin_blocks=10,
                 # Explicit step count: pilot_steps = desired steps,
                 # target_error = huge → production uses same count.
-                pilot_steps=NUM_MCMC_STEPS_MCMC,
+                num_mcmc_steps=NUM_MCMC_STEPS_MCMC,
                 max_time=3000,
                 poll_interval=300,
                 max_continuation=1,
@@ -281,6 +271,7 @@ def build_pipeline() -> tuple[
         )
 
         # LRDMC (GFMC_n: nmpm=40, a=0.30) with explicit step count
+        # E_scf is taken from the MCMC energy to reduce warmup transients.
         lrdmc = Container(
             label=label_lrdmc,
             dirname=f"04_lrdmc/w{nw:05d}",
@@ -295,10 +286,11 @@ def build_pipeline() -> tuple[
                 alat=ALAT,
                 number_of_walkers=nw,
                 num_mcmc_per_measurement=NUM_MCMC_PER_MEASUREMENT,
+                E_scf=ValueFrom(label_mcmc, "energy"),
                 num_gfmc_warmup_steps=25,
                 num_gfmc_bin_blocks=10,
                 num_gfmc_collect_steps=5,
-                pilot_steps=NUM_MCMC_STEPS_LRDMC,
+                num_gfmc_projections=NUM_MCMC_STEPS_LRDMC,
                 max_time=3000,
                 poll_interval=300,
                 max_continuation=1,
@@ -348,9 +340,9 @@ def print_summary_table(
             mcmc_e, mcmc_err = None, None
         mcmc_e_str = format_energy(mcmc_e, mcmc_err)
 
-        # MCMC wall time (from production output)
+        # MCMC net time (from output_parser)
         mcmc_dir = os.path.join(base_dir, f"03_mcmc/w{nw:05d}")
-        mcmc_time = parse_net_time_from_file(os.path.join(mcmc_dir, "out.o_1"))
+        mcmc_time = parse_mcmc_output(mcmc_dir).net_time_sec
         mcmc_t_str = f"{mcmc_time:.1f}" if mcmc_time is not None else "N/A"
 
         # LRDMC energy
@@ -362,15 +354,96 @@ def print_summary_table(
             lrdmc_e, lrdmc_err = None, None
         lrdmc_e_str = format_energy(lrdmc_e, lrdmc_err)
 
-        # LRDMC wall time (from production output)
+        # LRDMC net time (from output_parser)
         lrdmc_dir = os.path.join(base_dir, f"04_lrdmc/w{nw:05d}")
-        lrdmc_time = parse_net_time_from_file(os.path.join(lrdmc_dir, "out.o_1"))
+        lrdmc_time = parse_lrdmc_output(lrdmc_dir).net_time_sec
         lrdmc_t_str = f"{lrdmc_time:.1f}" if lrdmc_time is not None else "N/A"
 
         row = f"| {nw:>8} | {mcmc_e_str:>17} | {mcmc_t_str:>14} | {lrdmc_e_str:>17} | {lrdmc_t_str:>15} |"
         print(row)
 
     print()
+
+
+# ── Step 4: Plot throughput ───────────────────────────────────────
+def plot_throughput(base_dir: str) -> None:
+    """Plot normalized throughput vs number of walkers.
+
+    (a) MCMC (VMC sampling): throughput = nw * NUM_MCMC_STEPS_MCMC / net_time
+    (b) LRDMC: throughput = nw * NUM_MCMC_STEPS_LRDMC / net_time
+
+    Both panels are normalized to the throughput at the smallest walker count.
+    """
+    # -- Collect net times --
+    mcmc_nw, mcmc_tp = [], []
+    lrdmc_nw, lrdmc_tp = [], []
+
+    for nw in WALKER_COUNTS:
+        mcmc_dir = os.path.join(base_dir, f"03_mcmc/w{nw:05d}")
+        t_mcmc = parse_mcmc_output(mcmc_dir).net_time_sec
+        if t_mcmc is not None and t_mcmc > 0:
+            mcmc_nw.append(nw)
+            mcmc_tp.append(nw * NUM_MCMC_STEPS_MCMC / t_mcmc)
+
+        lrdmc_dir = os.path.join(base_dir, f"04_lrdmc/w{nw:05d}")
+        t_lrdmc = parse_lrdmc_output(lrdmc_dir).net_time_sec
+        if t_lrdmc is not None and t_lrdmc > 0:
+            lrdmc_nw.append(nw)
+            lrdmc_tp.append(nw * NUM_MCMC_STEPS_LRDMC / t_lrdmc)
+
+    if not mcmc_nw and not lrdmc_nw:
+        print("  [skip] No net-time data found; throughput plot not generated.")
+        return
+
+    mcmc_nw = np.array(mcmc_nw)
+    mcmc_tp = np.array(mcmc_tp)
+    lrdmc_nw = np.array(lrdmc_nw)
+    lrdmc_tp = np.array(lrdmc_tp)
+
+    # Normalize to first entry
+    if len(mcmc_tp) > 0:
+        mcmc_tp = mcmc_tp / mcmc_tp[0]
+    if len(lrdmc_tp) > 0:
+        lrdmc_tp = lrdmc_tp / lrdmc_tp[0]
+
+    # -- Plot --
+    plt.rcParams["font.family"] = "sans-serif"
+    plt.rcParams["xtick.direction"] = "in"
+    plt.rcParams["ytick.direction"] = "in"
+    plt.rcParams["xtick.major.width"] = 1.0
+    plt.rcParams["ytick.major.width"] = 1.0
+    plt.rcParams["font.size"] = 16
+    plt.rcParams["axes.linewidth"] = 1.5
+
+    fig, axes = plt.subplots(1, 2, figsize=(9, 5), facecolor="white", dpi=300)
+    fig.subplots_adjust(wspace=0.15)
+
+    panels = [
+        (axes[0], "(a) MCMC", mcmc_nw, mcmc_tp),
+        (axes[1], "(b) LRDMC", lrdmc_nw, lrdmc_tp),
+    ]
+
+    for idx, (ax, title, x, y) in enumerate(panels):
+        ax.set_title(title)
+        ax.set_xlabel("Number of walkers per GPU")
+        if idx == 0:
+            ax.set_ylabel("Normalized throughput")
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+
+        if len(x) > 0:
+            ax.plot(x, y, color="r", marker="s", markersize=4, ls="-", alpha=0.9)
+
+            ax.xaxis.set_major_locator(mticker.FixedLocator(x))
+            ax.xaxis.set_major_formatter(mticker.FixedFormatter([str(int(v)) for v in x]))
+            ax.xaxis.set_minor_locator(mticker.NullLocator())
+            ax.tick_params(axis="x", which="major", rotation=45, labelsize=10)
+            ax.set_ylim([0.9, np.max(y) * 2.0])
+
+    out_path = os.path.join(base_dir, "jqmc_vectorization_benchmark.jpg")
+    plt.savefig(out_path, bbox_inches="tight", pad_inches=0.15)
+    plt.close(fig)
+    print(f"  Throughput plot saved to {out_path}")
 
 
 # ── Main ──────────────────────────────────────────────────────────
@@ -393,3 +466,10 @@ if __name__ == "__main__":
 
     # 3) Summary table
     print_summary_table(base_dir, hf_energy, mcmc_containers, lrdmc_containers)
+
+    # 4) Throughput plot
+    print()
+    print("=" * 60)
+    print("  Step 3: Plot vectorization throughput")
+    print("=" * 60)
+    plot_throughput(base_dir)

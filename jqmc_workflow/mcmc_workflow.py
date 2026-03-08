@@ -68,7 +68,9 @@ class MCMC_Workflow(Workflow):
     and post-processes the checkpoint with
     ``jqmc-tool mcmc compute-energy`` to obtain the VMC energy ± error.
 
-    The workflow operates in two phases:
+    The workflow supports two modes:
+
+    **Automatic mode** (default, ``num_mcmc_steps=None``):
 
     1. **Pilot run** (``_0``) — A short MCMC run with ``pilot_steps``
        measurement steps.  The resulting statistical error is used to
@@ -79,6 +81,12 @@ class MCMC_Workflow(Workflow):
        is post-processed; if the error is at or below ``target_error``
        the loop terminates.  At most ``max_continuation`` production
        runs are attempted.
+
+    **Fixed-step mode** (``num_mcmc_steps`` is set):
+
+    The pilot run is skipped entirely and ``target_error`` is ignored.
+    Each production run uses exactly ``num_mcmc_steps`` measurement
+    steps, and ``max_continuation`` runs are executed unconditionally.
 
     Parameters
     ----------
@@ -119,9 +127,16 @@ class MCMC_Workflow(Workflow):
     poll_interval : int
         Seconds between job-status polls.
     target_error : float
-        Target statistical error (Ha).
+        Target statistical error (Ha).  Ignored when
+        *num_mcmc_steps* is set.
+    num_mcmc_steps : int, optional
+        Fixed number of measurement steps per production run.  When
+        set, the pilot run is skipped and ``target_error`` is ignored;
+        each of the ``max_continuation`` production runs uses exactly
+        this many steps.
     pilot_steps : int
-        Measurement steps for the pilot estimation run.
+        Measurement steps for the pilot estimation run.  Ignored when
+        *num_mcmc_steps* is set.
     pilot_queue_label : str, optional
         Queue label for the pilot run.  Defaults to *queue_label*.
         Use a shorter/smaller queue for the pilot to save resources.
@@ -130,7 +145,7 @@ class MCMC_Workflow(Workflow):
 
     Examples
     --------
-    Standalone launch::
+    Standalone launch (automatic mode)::
 
         wf = MCMC_Workflow(
             server_machine_name="cluster",
@@ -140,6 +155,16 @@ class MCMC_Workflow(Workflow):
         )
         status, files, values = wf.launch()
         print(values["energy"], values["energy_error"])
+
+    Fixed-step mode (no pilot, no target_error check)::
+
+        wf = MCMC_Workflow(
+            server_machine_name="cluster",
+            num_mcmc_steps=5000,
+            number_of_walkers=8,
+            max_continuation=3,
+        )
+        status, files, values = wf.launch()
 
     As part of a :class:`Launcher` pipeline::
 
@@ -191,6 +216,7 @@ class MCMC_Workflow(Workflow):
         # -- workflow parameters --
         poll_interval: int = 60,
         target_error: float = 0.001,
+        num_mcmc_steps: Optional[int] = None,
         pilot_steps: int = 100,
         pilot_queue_label: Optional[str] = None,
         max_continuation: int = 1,
@@ -218,6 +244,7 @@ class MCMC_Workflow(Workflow):
         # workflow
         self.poll_interval = poll_interval
         self.target_error = target_error
+        self.num_mcmc_steps = num_mcmc_steps
         self.pilot_steps = pilot_steps
         self.pilot_queue_label = pilot_queue_label or queue_label
         self.max_continuation = max_continuation
@@ -274,7 +301,14 @@ class MCMC_Workflow(Workflow):
     # ── Launch ────────────────────────────────────────────────────
 
     async def async_launch(self):
-        """Run the MCMC workflow with automatic step estimation.
+        """Run the MCMC workflow.
+
+        **Fixed-step mode** (``num_mcmc_steps`` is set):
+        The pilot run is skipped.  Each production run uses exactly
+        ``num_mcmc_steps`` steps and all ``max_continuation`` runs
+        are executed unconditionally.
+
+        **Automatic mode** (``num_mcmc_steps`` is *None*, default):
 
         1. Pilot run in ``_pilot/`` subdirectory estimates required steps
            (skipped on continuation).  May use a different queue from
@@ -286,6 +320,111 @@ class MCMC_Workflow(Workflow):
         self._ensure_project_dir()
         _wd = self.project_dir
 
+        # ── Fixed-step mode ───────────────────────────────────────
+        if self.num_mcmc_steps is not None:
+            return await self._launch_fixed_steps(_wd)
+
+        # ── Automatic mode (pilot + target_error) ─────────────────
+        return await self._launch_auto(_wd)
+
+    async def _launch_fixed_steps(self, _wd):
+        """Fixed-step production: skip pilot, ignore target_error."""
+        estimated_steps = self.num_mcmc_steps
+        logger.info("")
+        logger.info("-- MCMC Fixed-step mode " + "-" * 26)
+        logger.info(f"  num_mcmc_steps    = {estimated_steps}\n  max_continuation  = {self.max_continuation}")
+
+        last_run = 0
+        for i in range(1, self.max_continuation + 1):
+            input_i = suffixed_name(self.input_file, i)
+            output_i = suffixed_name(self.output_file, i)
+
+            recorded = get_job(_wd, input_i)
+            if recorded.get("status") in ("submitted", "completed", "fetched"):
+                if recorded["status"] == "fetched":
+                    logger.info(f"  {input_i}: already fetched. Skipping.")
+                    last_run = i
+                    continue
+                logger.info(f"  {input_i}: already {recorded['status']}. Resuming...")
+            else:
+                if i == 1:
+                    self._generate_input(estimated_steps, os.path.join(_wd, input_i))
+                else:
+                    restart_chk = self._find_restart_chk(_wd)
+                    if restart_chk is None:
+                        raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {_wd}")
+                    self._generate_input(
+                        estimated_steps,
+                        os.path.join(_wd, input_i),
+                        restart=True,
+                        restart_chk=restart_chk,
+                    )
+                logger.info("")
+                logger.info(f"-- MCMC Production run {i}/{self.max_continuation} " + "-" * 10)
+                logger.info(f"  {input_i}: {estimated_steps} steps")
+
+            restart_chk = self._find_restart_chk(_wd) if i > 1 else None
+            if i > 1 and restart_chk is None:
+                raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {_wd}")
+            extra_from = [restart_chk] if restart_chk else []
+
+            await self._submit_and_wait(
+                input_i,
+                output_i,
+                work_dir=_wd,
+                extra_from_objects=extra_from,
+            )
+            last_run = i
+
+            # Post-process energy (informational only, no convergence check)
+            restart_chk = self._find_restart_chk(_wd)
+            if restart_chk:
+                energy, error = self._compute_energy(restart_chk, work_dir=_wd)
+                if energy is not None:
+                    self.output_values["energy"] = energy
+                    self.output_values["energy_error"] = error
+                    self.output_values["restart_chk"] = restart_chk
+                    logger.info(f"  MCMC energy: {energy} +- {error} Ha")
+                    set_estimation(
+                        _wd,
+                        last_energy=energy,
+                        last_energy_error=error,
+                        last_num_mcmc_bin_blocks=self.num_mcmc_bin_blocks,
+                        last_num_mcmc_warmup_steps=self.num_mcmc_warmup_steps,
+                    )
+
+        # ── Final energy computation if skipped ───────────────────
+        if "energy" not in self.output_values:
+            restart_chk = self._find_restart_chk(_wd)
+            if restart_chk:
+                energy, error = self._compute_energy(restart_chk, work_dir=_wd)
+                if energy is not None:
+                    self.output_values["energy"] = energy
+                    self.output_values["energy_error"] = error
+                    self.output_values["restart_chk"] = restart_chk
+                    set_estimation(
+                        _wd,
+                        last_energy=energy,
+                        last_energy_error=error,
+                        last_num_mcmc_bin_blocks=self.num_mcmc_bin_blocks,
+                        last_num_mcmc_warmup_steps=self.num_mcmc_warmup_steps,
+                    )
+
+        # ── Collect outputs ───────────────────────────────────────
+        chk_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
+        output_logs = [
+            suffixed_name(self.output_file, j)
+            for j in range(last_run + 1)
+            if os.path.isfile(os.path.join(_wd, suffixed_name(self.output_file, j)))
+        ]
+        self.output_files = chk_files + output_logs
+        self.output_values["num_mcmc_steps"] = estimated_steps
+
+        self.status = "success"
+        return self.status, self.output_files, self.output_values
+
+    async def _launch_auto(self, _wd):
+        """Automatic mode: pilot + target_error convergence."""
         # -- Phase 0: pilot estimation (skip on continuation) ------
         estimation = get_estimation(_wd)
 
