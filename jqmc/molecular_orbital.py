@@ -58,7 +58,7 @@ from .atomic_orbital import (
     compute_AOs_grad,
     compute_AOs_laplacian,
 )
-from .jqmc_utility import _cart_to_spherical_matrix, _spherical_to_cart_matrix  # noqa: F401
+from ._jqmc_utility import _cart_to_spherical_matrix, _spherical_to_cart_matrix  # noqa: F401
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)

@@ -64,13 +64,21 @@ $$
 $$ (onebody_J_inhom)
 
 where ${{{\mathbf{r}}_i}}$ are the electron positions, ${{{\mathbf{R}}_{\alpha}}}$ are the atomic positions with corresponding atomic number $Z_{\alpha}$, $l$ runs over atomic orbitals $\chi _{\alpha,l}$ ({\it e.g.}, GTO) centered on the atom $a$, $\{ M_{\alpha,l} \}$ are variational parameters,
-and ${u_a\left( \mathbf{r} \right)}$ is a simple bounded function. In jQMC, the most common choice for $u$ is:
+and ${u_a\left( \mathbf{r} \right)}$ is a simple bounded function. jQMC supports two functional forms for $u$, selectable via the `jastrow_1b_type` parameter:
+
+**Exponential form** (`jastrow_1b_type='exp'`, default):
 
 $$
 u\left( r \right) = \frac{ 1 }{2 b_{\text{ei}}} \left( {1 - {e^{ - r b_{\text{ei}}}}} \right) \,,
 $$ (onebody_u)
 
-depending on a single variational parameter $ b_{\text{ei}}$.
+**Padé form** (`jastrow_1b_type='pade'`):
+
+$$
+u\left( r \right) = \frac{r}{2(1 + b_{\text{ei}} \cdot r)} \,,
+$$ (onebody_u_pade)
+
+Both forms depend on a single variational parameter $ b_{\text{ei}}$, and both satisfy the electron-ion cusp condition at $r \to 0$.
 
 The two-body Jastrow factor is defined as:
 
@@ -80,7 +88,9 @@ $$ (twobody_jastrow)
 
 where
 $v_{{\sigma _i},{\sigma _j}}$
-is another  simple bounded  function. There are several possible choices for $v_{{\sigma _i},{\sigma _j}}$ implemented in jQMC is the following spin-independent form:
+is another  simple bounded  function. jQMC supports two functional forms for $v_{{\sigma _i},{\sigma _j}}$, selectable via the `jastrow_2b_type` parameter:
+
+**Padé form** (`jastrow_2b_type='pade'`, default):
 
 $$
   {v_{{\sigma _i},{\sigma _j}}}\left( {{r_{i,j}}} \right) =
@@ -89,6 +99,16 @@ $$
     \cfrac{{{r_{i,j}}}}{2} \cdot {\left( {1 + b_{\rm{ee}} \cdot {{r_{i,j}}}} \right)^{ - 1}} & ({\sigma _i} \neq {\sigma _j})
   \end{cases}
 $$ (twobody_v)
+
+**Exponential form** (`jastrow_2b_type='exp'`):
+
+$$
+  {v_{{\sigma _i},{\sigma _j}}}\left( {{r_{i,j}}} \right) =
+  \begin{cases}
+    \cfrac{1}{2 b_{\rm{ee}}} \left( 1 - e^{-b_{\rm{ee}} \cdot r_{i,j}} \right) & ({\sigma _i} = {\sigma _j}) \\
+    \cfrac{1}{2 b_{\rm{ee}}} \left( 1 - e^{-b_{\rm{ee}} \cdot r_{i,j}} \right) & ({\sigma _i} \neq {\sigma _j})
+  \end{cases}
+$$ (twobody_v_exp)
 
 where  ${r_{i,j}} = \left| {{{\mathbf{r}}_i} - {{\mathbf{r}}_j}} \right|$,
 and $b_{\rm{ee}}$ is the common variational parameter.

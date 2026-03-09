@@ -34,15 +34,13 @@
 
 from __future__ import annotations
 
-import gzip
 import os
-import pickle
 import re
 import sys
-import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 
+import h5py
 import numpy as np
 import pytest
 import tomlkit
@@ -51,7 +49,6 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
 from jqmc.jqmc_tool import (  # noqa: E402
     _J3_PERIOD_RANGES,
     hamiltonian_show_info,
@@ -98,6 +95,8 @@ class TestTrexioConvertTo:
             j2_parmeter=1.0,
             j3_basis_type="ao-full",
         )
+
+        from jqmc.hamiltonians import Hamiltonian_data
 
         hamiltonian = Hamiltonian_data.load_from_hdf5(hamiltonian_file)
         orb_data = hamiltonian.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data
@@ -257,6 +256,8 @@ class TestTrexioConvertTo:
             j3_basis_type=choice,
         )
 
+        from jqmc.hamiltonians import Hamiltonian_data
+
         hamiltonian = Hamiltonian_data.load_from_hdf5(hamiltonian_file)
         orb_data = hamiltonian.wavefunction_data.jastrow_data.jastrow_three_body_data.orb_data
 
@@ -376,13 +377,79 @@ def _make_lrdmc_obj(
     return obj
 
 
+# Mapping from SimpleNamespace attribute names to HDF5 observable dataset names.
+_OBS_KEY_MAP = {
+    "e_L": "e_L",
+    "w_L": "w_L",
+    "de_L_dR": "grad_e_L_dR",
+    "de_L_dr_up": "grad_e_L_r_up",
+    "de_L_dr_dn": "grad_e_L_r_dn",
+    "dln_Psi_dR": "grad_ln_Psi_dR",
+    "dln_Psi_dr_up": "grad_ln_Psi_r_up",
+    "dln_Psi_dr_dn": "grad_ln_Psi_r_dn",
+    "omega_up": "omega_up",
+    "omega_dn": "omega_dn",
+    "domega_dr_up": "grad_omega_r_up",
+    "domega_dr_dn": "grad_omega_r_dn",
+}
+
+
 def _write_chk(path, objs):
-    """Write a list of objects as a .rchk zip (one per MPI rank)."""
-    with zipfile.ZipFile(path, "w") as zf:
+    """Write a list of objects as an HDF5 merged checkpoint (one rank per obj)."""
+    with h5py.File(path, "w") as f:
+        # _meta group
+        meta = f.create_group("_meta")
+        meta.attrs["format_version"] = "1.0"
+        meta.attrs["driver_type"] = "MCMC"
+        meta.attrs["mpi_size"] = len(objs)
+
+        # hamiltonian_data — minimal stub for force tests
+        first = objs[0]
+        if hasattr(first, "hamiltonian_data"):
+            _write_minimal_hamiltonian(f, first.hamiltonian_data)
+
         for rank, obj in enumerate(objs):
-            buf = pickle.dumps(obj)
-            compressed = gzip.compress(buf)
-            zf.writestr(f"{rank}.pkl.gz", compressed)
+            rgrp = f.create_group(f"rank_{rank}")
+
+            # driver_config
+            cfg = rgrp.create_group("driver_config")
+            cfg.attrs["comput_position_deriv"] = getattr(obj, "comput_position_deriv", False)
+            if hasattr(obj, "alat"):
+                cfg.attrs["alat"] = obj.alat
+            if hasattr(obj, "num_gfmc_collect_steps"):
+                cfg.attrs["num_gfmc_collect_steps"] = obj.num_gfmc_collect_steps
+
+            # observables
+            obs = rgrp.create_group("observables")
+            for attr_name, h5_name in _OBS_KEY_MAP.items():
+                arr = getattr(obj, attr_name, None)
+                if arr is not None and isinstance(arr, np.ndarray) and arr.size > 0:
+                    obs.create_dataset(h5_name, data=arr)
+
+
+def _write_minimal_hamiltonian(f, ham_ns):
+    """Write a minimal hamiltonian_data group that load_hamiltonian_from_checkpoint can read.
+
+    Mimics the structure produced by _save_dataclass_to_hdf5 for Hamiltonian_data,
+    but only fills the fields that compute-force actually uses (atomic_labels).
+    """
+    hg = f.create_group("hamiltonian_data")
+    hg.attrs["_class_name"] = "Hamiltonian_data"
+    hg.attrs["_module_name"] = "jqmc.hamiltonians"
+
+    sd = hg.create_group("structure_data")
+    sd.attrs["_class_name"] = "Structure_data"
+    sd.attrs["_module_name"] = "jqmc.structure"
+    labels = ham_ns.structure_data.atomic_labels
+    sd.create_dataset("atomic_labels", data=np.array(labels, dtype="S"))
+    n = len(labels)
+    sd.create_dataset("positions", data=np.zeros((n, 3)))
+    sd.attrs["pbc_flag"] = False
+    sd.create_dataset("atomic_numbers", data=np.ones(n, dtype=int))
+    sd.create_dataset("element_symbols", data=np.array(labels, dtype="S"))
+    sd.create_dataset("vec_a", data=np.empty(0))
+    sd.create_dataset("vec_b", data=np.empty(0))
+    sd.create_dataset("vec_c", data=np.empty(0))
 
 
 class TestGenerateInput:
@@ -401,8 +468,8 @@ class TestGenerateInput:
         lrdmc_generate_input(flag=True, filename=outfile, exclude_comment=False)
         doc = tomlkit.loads(Path(outfile).read_text())
         assert "control" in doc
-        assert "lrdmc" in doc
-        assert doc["control"]["job_type"] == "lrdmc"
+        assert "lrdmc-bra" in doc
+        assert doc["control"]["job_type"] == "lrdmc-bra"
 
     def test_vmc_generate_input_creates_file(self, tmp_path):
         outfile = str(tmp_path / "vmc.toml")
@@ -441,7 +508,7 @@ class TestComputeEnergy:
     def test_mcmc_constant_energy_jackknife(self, tmp_path):
         """With constant e_L and w_L=1 the jackknife mean must equal that constant."""
         E_const = -5.0
-        chk_path = str(tmp_path / "mcmc.rchk")
+        chk_path = str(tmp_path / "mcmc.h5")
         obj = _make_mcmc_obj(num_steps=100, num_walkers=4, e_L_value=E_const, with_force=False)
         _write_chk(chk_path, [obj])
 
@@ -457,7 +524,7 @@ class TestComputeEnergy:
     def test_mcmc_multi_rank(self, tmp_path):
         """Multiple MPI ranks with same constant energy should give same result."""
         E_const = -3.0
-        chk_path = str(tmp_path / "mcmc.rchk")
+        chk_path = str(tmp_path / "mcmc.h5")
         objs = [
             _make_mcmc_obj(num_steps=100, num_walkers=2, e_L_value=E_const, with_force=False, rng=np.random.default_rng(i))
             for i in range(3)
@@ -476,7 +543,7 @@ class TestComputeEnergy:
 
     def test_mcmc_warmup_discards_steps(self, tmp_path):
         """First num_mcmc_warmup_steps should be discarded."""
-        chk_path = str(tmp_path / "mcmc.rchk")
+        chk_path = str(tmp_path / "mcmc.h5")
         # First 10 steps have e_L=100 (bad), remaining 90 have e_L=-5 (good)
         obj = _make_mcmc_obj(num_steps=100, num_walkers=2, e_L_value=-5.0, with_force=False)
         obj.e_L[:10, :] = 100.0
@@ -495,7 +562,7 @@ class TestComputeEnergy:
     def test_lrdmc_constant_energy_jackknife(self, tmp_path):
         """LRDMC version of jackknife test with constant energy."""
         E_const = -7.0
-        chk_path = str(tmp_path / "lrdmc.rchk")
+        chk_path = str(tmp_path / "lrdmc.h5")
         obj = _make_lrdmc_obj(num_steps=100, num_walkers=4, e_L_value=E_const, with_force=False)
         _write_chk(chk_path, [obj])
 
@@ -504,14 +571,14 @@ class TestComputeEnergy:
         from jqmc.jqmc_tool import lrdmc_app
 
         runner = CliRunner()
-        result = runner.invoke(lrdmc_app, ["compute-energy", chk_path, "-b", "2", "-w", "0", "-c", "5"])
+        result = runner.invoke(lrdmc_app, ["compute-energy", chk_path, "-b", "10", "-w", "30", "-c", "5"])
         assert result.exit_code == 0
         assert f"E = {E_const}" in result.output
 
     def test_lrdmc_multi_rank(self, tmp_path):
         """Multiple MPI ranks for LRDMC."""
         E_const = -2.0
-        chk_path = str(tmp_path / "lrdmc.rchk")
+        chk_path = str(tmp_path / "lrdmc.h5")
         objs = [
             _make_lrdmc_obj(num_steps=80, num_walkers=2, e_L_value=E_const, with_force=False, rng=np.random.default_rng(i))
             for i in range(2)
@@ -523,14 +590,14 @@ class TestComputeEnergy:
         from jqmc.jqmc_tool import lrdmc_app
 
         runner = CliRunner()
-        result = runner.invoke(lrdmc_app, ["compute-energy", chk_path, "-b", "2", "-w", "0", "-c", "5"])
+        result = runner.invoke(lrdmc_app, ["compute-energy", chk_path, "-b", "10", "-w", "30", "-c", "5"])
         assert result.exit_code == 0
         assert "Found 2 MPI ranks" in result.output
 
     def test_lrdmc_extrapolate_energy(self, tmp_path):
         """extrapolate-energy with two LRDMC checkpoints should report a->0 result."""
-        chk1 = str(tmp_path / "lrdmc1.rchk")
-        chk2 = str(tmp_path / "lrdmc2.rchk")
+        chk1 = str(tmp_path / "lrdmc1.h5")
+        chk2 = str(tmp_path / "lrdmc2.h5")
 
         obj1 = _make_lrdmc_obj(num_steps=100, num_walkers=4, e_L_value=-5.0, alat=0.5, with_force=False)
         obj2 = _make_lrdmc_obj(num_steps=100, num_walkers=4, e_L_value=-5.2, alat=0.3, with_force=False)
@@ -553,7 +620,7 @@ class TestComputeForce:
 
     def test_mcmc_compute_force_basic(self, tmp_path):
         """Smoke test: compute-force should print atomic force table."""
-        chk_path = str(tmp_path / "mcmc.rchk")
+        chk_path = str(tmp_path / "mcmc.h5")
         obj = _make_mcmc_obj(
             num_steps=100,
             num_walkers=4,
@@ -578,7 +645,7 @@ class TestComputeForce:
 
     def test_mcmc_compute_force_multi_rank(self, tmp_path):
         """Force computation with multiple MPI ranks."""
-        chk_path = str(tmp_path / "mcmc.rchk")
+        chk_path = str(tmp_path / "mcmc.h5")
         objs = [
             _make_mcmc_obj(
                 num_steps=100,
@@ -606,7 +673,7 @@ class TestComputeForce:
 
     def test_mcmc_compute_force_without_deriv_raises(self, tmp_path):
         """If comput_position_deriv is False, compute-force should fail."""
-        chk_path = str(tmp_path / "mcmc.rchk")
+        chk_path = str(tmp_path / "mcmc.h5")
         obj = _make_mcmc_obj(num_steps=100, num_walkers=4, with_force=False)
         _write_chk(chk_path, [obj])
 
@@ -620,7 +687,7 @@ class TestComputeForce:
 
     def test_lrdmc_compute_force_basic(self, tmp_path):
         """Smoke test for LRDMC force computation."""
-        chk_path = str(tmp_path / "lrdmc.rchk")
+        chk_path = str(tmp_path / "lrdmc.h5")
         obj = _make_lrdmc_obj(
             num_steps=100,
             num_walkers=4,
@@ -644,7 +711,7 @@ class TestComputeForce:
 
     def test_lrdmc_compute_force_without_deriv_raises(self, tmp_path):
         """If comput_position_deriv is False, LRDMC compute-force should fail."""
-        chk_path = str(tmp_path / "lrdmc.rchk")
+        chk_path = str(tmp_path / "lrdmc.h5")
         obj = _make_lrdmc_obj(num_steps=100, num_walkers=4, with_force=False)
         _write_chk(chk_path, [obj])
 
@@ -658,7 +725,7 @@ class TestComputeForce:
 
     def test_mcmc_force_constant_values(self, tmp_path):
         """With zero random derivatives, all forces should be near zero."""
-        chk_path = str(tmp_path / "mcmc.rchk")
+        chk_path = str(tmp_path / "mcmc.h5")
         obj = _make_mcmc_obj(
             num_steps=100,
             num_walkers=4,
@@ -698,10 +765,10 @@ class TestComputeForce:
 class TestHamiltonianCommands:
     """Tests for hamiltonian show-info and to-xyz commands."""
 
-    @pytest.fixture()
-    def h5_file(self, tmp_path):
+    @pytest.fixture(params=trexio_files, ids=trexio_files)
+    def h5_file(self, tmp_path, request):
         """Create a hamiltonian_data.h5 from a TREXIO example file."""
-        trexio_file = os.path.join(_TREXIO_DIR, "H2_ecp_ccpvtz_cart.h5")
+        trexio_file = os.path.join(_TREXIO_DIR, request.param)
         h5_path = str(tmp_path / "hamiltonian_data.h5")
         trexio_convert_to(
             trexio_file=trexio_file,
@@ -733,17 +800,17 @@ class TestHamiltonianCommands:
 class TestTrexioShowCommands:
     """Tests for trexio show-info and show-detail commands."""
 
-    _trexio_file = os.path.join(_TREXIO_DIR, "H2_ecp_ccpvtz_cart.h5")
-
-    def test_trexio_show_info(self, capsys):
+    @pytest.mark.parametrize("trexio_filename", trexio_files, ids=trexio_files)
+    def test_trexio_show_info(self, trexio_filename, capsys):
         """show-info should produce output without error."""
-        trexio_show_info(filename=self._trexio_file)
+        trexio_show_info(filename=os.path.join(_TREXIO_DIR, trexio_filename))
         captured = capsys.readouterr()
         assert len(captured.out) > 0
 
-    def test_trexio_show_detail(self, capsys):
+    @pytest.mark.parametrize("trexio_filename", trexio_files, ids=trexio_files)
+    def test_trexio_show_detail(self, trexio_filename, capsys):
         """show-detail should produce output without error."""
-        trexio_show_detail(filename=self._trexio_file)
+        trexio_show_detail(filename=os.path.join(_TREXIO_DIR, trexio_filename))
         captured = capsys.readouterr()
         assert len(captured.out) > 0
 

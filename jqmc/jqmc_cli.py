@@ -33,11 +33,8 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 # python modules
-import gzip
 import os
-import pickle
 import sys
-import zipfile
 from logging import FileHandler, Formatter, StreamHandler, getLogger
 
 import jax
@@ -47,10 +44,16 @@ import toml
 from mpi4py import MPI
 from uncertainties import ufloat
 
-from .hamiltonians import Hamiltonian_data
+from ._checkpoint import merge_rank_checkpoints
 
 # jQMC
-from .header_footer import _print_footer, _print_header
+from ._header_footer import _print_footer, _print_header
+from ._setting import (
+    GFMC_MIN_BIN_BLOCKS,
+    GFMC_MIN_COLLECT_STEPS,
+    GFMC_MIN_WARMUP_STEPS,
+)
+from .hamiltonians import Hamiltonian_data
 from .jqmc_gfmc import GFMC_n, GFMC_t
 from .jqmc_mcmc import MCMC
 from .jqmc_miscs import cli_parameters
@@ -293,12 +296,7 @@ def _cli():
 
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
-            """Unzip the checkpoint file for each process and load them."""
-            with zipfile.ZipFile(restart_chk, "r") as zf:
-                arcname = f"{mpi_rank}.pkl.gz"
-                with zf.open(arcname) as zipped_gz_fobj:
-                    with gzip.open(zipped_gz_fobj, "rb") as gz:
-                        mcmc = pickle.load(gz)
+            mcmc = MCMC.load_from_hdf5(restart_chk, rank=mpi_rank)
         else:
             hamiltonian_data = Hamiltonian_data.load_from_hdf5(hamiltonian_h5)
 
@@ -323,8 +321,8 @@ def _cli():
                 num_mcmc_bin_blocks=num_mcmc_bin_blocks,
             )
         logger.info("Final output(s):")
-        logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:5f} Ha.")
-        logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:5f} Ha^2.")
+        logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:.5f} Ha.")
+        logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:.5f} Ha^2.")
         if mcmc.comput_position_deriv:
             logger.info("  Atomic Forces:")
             sep = 16 * 3
@@ -343,24 +341,19 @@ def _cli():
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
         logger.info("")
 
-        # Save the checkpoint file for each process and zip them."""
-        tmp_gz_filename = f".{mpi_rank}.pkl.gz"
-
-        with gzip.open(tmp_gz_filename, "wb") as gz:
-            pickle.dump(mcmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
+        # Save per-rank HDF5 and merge into a single checkpoint.
+        tmp_h5 = f"._restart_rank{mpi_rank}.h5"
+        mcmc.save_to_hdf5(tmp_h5)
 
         mpi_comm.Barrier()
 
         if mpi_rank == 0:
-            if os.path.exists(restart_chk):
-                os.remove(restart_chk)
-
-            with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
-                for mpi_rank in range(mpi_size):
-                    gz_name = f".{mpi_rank}.pkl.gz"
-                    arcname = gz_name.lstrip(".")
-                    zipf.write(gz_name, arcname=arcname)
-                    os.remove(gz_name)
+            merge_rank_checkpoints(
+                output_path=restart_chk,
+                mpi_size=mpi_size,
+                driver_type="MCMC",
+                hamiltonian_data=mcmc.hamiltonian_data,
+            )
 
         mpi_comm.Barrier()
 
@@ -430,12 +423,7 @@ def _cli():
 
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
-            """Unzip the checkpoint file for each process and load them."""
-            with zipfile.ZipFile(restart_chk, "r") as zf:
-                arcname = f"{mpi_rank}.pkl.gz"
-                with zf.open(arcname) as zipped_gz_fobj:
-                    with gzip.open(zipped_gz_fobj, "rb") as gz:
-                        mcmc = pickle.load(gz)
+            mcmc = MCMC.load_from_hdf5(restart_chk, rank=mpi_rank)
         else:
             hamiltonian_data = Hamiltonian_data.load_from_hdf5(hamiltonian_h5)
 
@@ -469,36 +457,30 @@ def _cli():
         logger.info("")
 
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
-
         logger.info("")
 
-        # Save the checkpoint file for each process and zip them."""
-        tmp_gz_filename = f".{mpi_rank}.pkl.gz"
-
-        with gzip.open(tmp_gz_filename, "wb") as gz:
-            pickle.dump(mcmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
+        # Save per-rank HDF5 and merge into a single checkpoint.
+        tmp_h5 = f"._restart_rank{mpi_rank}.h5"
+        mcmc.save_to_hdf5(tmp_h5)
 
         mpi_comm.Barrier()
 
         if mpi_rank == 0:
-            if os.path.exists(restart_chk):
-                os.remove(restart_chk)
-
-            with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
-                for mpi_rank in range(mpi_size):
-                    gz_name = f".{mpi_rank}.pkl.gz"
-                    arcname = gz_name.lstrip(".")
-                    zipf.write(gz_name, arcname=arcname)
-                    os.remove(gz_name)
+            merge_rank_checkpoints(
+                output_path=restart_chk,
+                mpi_size=mpi_size,
+                driver_type="MCMC",
+                hamiltonian_data=mcmc.hamiltonian_data,
+            )
 
         mpi_comm.Barrier()
 
     # LRDMC!
-    if job_type == "lrdmc":
+    if job_type == "lrdmc-bra":
         logger.info("***Lattice Regularized diffusion Monte Carlo***")
 
-        # lrdmc section
-        section = "lrdmc"
+        # lrdmc-bra section
+        section = "lrdmc-bra"
         for key in parameters[section].keys():
             try:
                 parameters[section][key] = dict_toml[section][key]
@@ -521,6 +503,19 @@ def _cli():
         num_gfmc_collect_steps = parameters[section]["num_gfmc_collect_steps"]
         E_scf = parameters[section]["E_scf"]
         atomic_force = parameters[section]["atomic_force"]
+        epsilon_PW = parameters[section]["epsilon_PW"]
+
+        # Enforce GFMC minimum thresholds (E_scf unreliable before step 25)
+        if num_gfmc_warmup_steps < GFMC_MIN_WARMUP_STEPS:
+            raise ValueError(
+                f"num_gfmc_warmup_steps ({num_gfmc_warmup_steps}) must be "
+                f">= {GFMC_MIN_WARMUP_STEPS}. E_scf is unreliable before "
+                f"step {GFMC_MIN_WARMUP_STEPS}."
+            )
+        if num_gfmc_bin_blocks < GFMC_MIN_BIN_BLOCKS:
+            raise ValueError(f"num_gfmc_bin_blocks ({num_gfmc_bin_blocks}) must be >= {GFMC_MIN_BIN_BLOCKS}.")
+        if num_gfmc_collect_steps < GFMC_MIN_COLLECT_STEPS:
+            raise ValueError(f"num_gfmc_collect_steps ({num_gfmc_collect_steps}) must be >= {GFMC_MIN_COLLECT_STEPS}.")
 
         # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
         if not restart:
@@ -531,12 +526,7 @@ def _cli():
 
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
-            """Unzip the checkpoint file for each process and load them."""
-            with zipfile.ZipFile(restart_chk, "r") as zf:
-                arcname = f"{mpi_rank}.pkl.gz"
-                with zf.open(arcname) as zipped_gz_fobj:
-                    with gzip.open(zipped_gz_fobj, "rb") as gz:
-                        lrdmc = pickle.load(gz)
+            lrdmc = GFMC_n.load_from_hdf5(restart_chk, rank=mpi_rank)
         else:
             hamiltonian_data = Hamiltonian_data.load_from_hdf5(hamiltonian_h5)
 
@@ -550,6 +540,7 @@ def _cli():
                 alat=alat,
                 non_local_move=non_local_move,
                 comput_position_deriv=atomic_force,
+                epsilon_PW=epsilon_PW,
             )
         lrdmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = lrdmc.get_E(
@@ -562,8 +553,8 @@ def _cli():
                 num_mcmc_bin_blocks=num_gfmc_bin_blocks,
             )
         logger.info("Final output(s):")
-        logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:5f} Ha.")
-        logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:5f} Ha^2.")
+        logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:.5f} Ha.")
+        logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:.5f} Ha^2.")
         if lrdmc.comput_position_deriv:
             logger.info("  Atomic Forces:")
             sep = 16 * 3
@@ -573,31 +564,26 @@ def _cli():
             for i in range(len(lrdmc.hamiltonian_data.structure_data.atomic_labels)):
                 atomic_label = str(lrdmc.hamiltonian_data.structure_data.atomic_labels[i])
                 row_values = [f"{ufloat(f_mean[i, j], f_std[i, j]):+2uS}" for j in range(3)]
-                row_str = "  " + atomic_label.ljust(8) + "".join(val.ljust(12) for val in row_values)
+                row_str = "  " + atomic_label.ljust(8) + " ".join(val.ljust(12) for val in row_values)
                 logger.info(row_str)
             logger.info("  " + "-" * sep)
         logger.info("")
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
         logger.info("")
 
-        # Save the checkpoint file for each process and zip them."""
-        tmp_gz_filename = f".{mpi_rank}.pkl.gz"
-
-        with gzip.open(tmp_gz_filename, "wb") as gz:
-            pickle.dump(lrdmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
+        # Save per-rank HDF5 and merge into a single checkpoint.
+        tmp_h5 = f"._restart_rank{mpi_rank}.h5"
+        lrdmc.save_to_hdf5(tmp_h5)
 
         mpi_comm.Barrier()
 
         if mpi_rank == 0:
-            if os.path.exists(restart_chk):
-                os.remove(restart_chk)
-
-            with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
-                for mpi_rank in range(mpi_size):
-                    gz_name = f".{mpi_rank}.pkl.gz"
-                    arcname = gz_name.lstrip(".")
-                    zipf.write(gz_name, arcname=arcname)
-                    os.remove(gz_name)
+            merge_rank_checkpoints(
+                output_path=restart_chk,
+                mpi_size=mpi_size,
+                driver_type="GFMC_n",
+                hamiltonian_data=lrdmc.hamiltonian_data,
+            )
 
         mpi_comm.Barrier()
 
@@ -627,6 +613,8 @@ def _cli():
         num_gfmc_warmup_steps = parameters[section]["num_gfmc_warmup_steps"]
         num_gfmc_bin_blocks = parameters[section]["num_gfmc_bin_blocks"]
         num_gfmc_collect_steps = parameters[section]["num_gfmc_collect_steps"]
+        atomic_force = parameters[section]["atomic_force"]
+        epsilon_PW = parameters[section]["epsilon_PW"]
 
         # num_branching, num_gmfc_warmup_steps, num_gmfc_bin_blocks, num_gfmc_bin_collect
         if not restart:
@@ -637,12 +625,7 @@ def _cli():
 
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
-            """Unzip the checkpoint file for each process and load them."""
-            with zipfile.ZipFile(restart_chk, "r") as zf:
-                arcname = f"{mpi_rank}.pkl.gz"
-                with zf.open(arcname) as zipped_gz_fobj:
-                    with gzip.open(zipped_gz_fobj, "rb") as gz:
-                        lrdmc = pickle.load(gz)
+            lrdmc = GFMC_t.load_from_hdf5(restart_chk, rank=mpi_rank)
         else:
             hamiltonian_data = Hamiltonian_data.load_from_hdf5(hamiltonian_h5)
 
@@ -654,37 +637,51 @@ def _cli():
                 mcmc_seed=mcmc_seed,
                 alat=alat,
                 non_local_move=non_local_move,
+                comput_position_deriv=atomic_force,
+                epsilon_PW=epsilon_PW,
             )
         lrdmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = lrdmc.get_E(
             num_mcmc_warmup_steps=num_gfmc_warmup_steps,
             num_mcmc_bin_blocks=num_gfmc_bin_blocks,
         )
+        if lrdmc.comput_position_deriv:
+            f_mean, f_std = lrdmc.get_aF(
+                num_mcmc_warmup_steps=num_gfmc_warmup_steps,
+                num_mcmc_bin_blocks=num_gfmc_bin_blocks,
+            )
         logger.info("Final output(s):")
-        logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:5f} Ha.")
-        logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:5f} Ha^2.")
+        logger.info(f"  Total Energy: E = {E_mean:.5f} +- {E_std:.5f} Ha.")
+        logger.info(f"  Variance: Var = {Var_mean:.5f} +- {Var_std:.5f} Ha^2.")
+        if lrdmc.comput_position_deriv:
+            logger.info("  Atomic Forces:")
+            sep = 16 * 3
+            logger.info("  " + "-" * sep)
+            logger.info("  Label   Fx(Ha/bohr) Fy(Ha/bohr) Fz(Ha/bohr)")
+            logger.info("  " + "-" * sep)
+            for i in range(len(lrdmc.hamiltonian_data.structure_data.atomic_labels)):
+                atomic_label = str(lrdmc.hamiltonian_data.structure_data.atomic_labels[i])
+                row_values = [f"{ufloat(f_mean[i, j], f_std[i, j]):+2uS}" for j in range(3)]
+                row_str = "  " + atomic_label.ljust(8) + " ".join(val.ljust(12) for val in row_values)
+                logger.info(row_str)
+            logger.info("  " + "-" * sep)
         logger.info("")
         logger.info(f"Dump restart checkpoint file(s) to {restart_chk}.")
         logger.info("")
 
-        # Save the checkpoint file for each process and zip them."""
-        tmp_gz_filename = f".{mpi_rank}.pkl.gz"
-
-        with gzip.open(tmp_gz_filename, "wb") as gz:
-            pickle.dump(lrdmc, gz, protocol=pickle.HIGHEST_PROTOCOL)
+        # Save per-rank HDF5 and merge into a single checkpoint.
+        tmp_h5 = f"._restart_rank{mpi_rank}.h5"
+        lrdmc.save_to_hdf5(tmp_h5)
 
         mpi_comm.Barrier()
 
         if mpi_rank == 0:
-            if os.path.exists(restart_chk):
-                os.remove(restart_chk)
-
-            with zipfile.ZipFile(restart_chk, "w", zipfile.ZIP_DEFLATED) as zipf:
-                for mpi_rank in range(mpi_size):
-                    gz_name = f".{mpi_rank}.pkl.gz"
-                    arcname = gz_name.lstrip(".")
-                    zipf.write(gz_name, arcname=arcname)
-                    os.remove(gz_name)
+            merge_rank_checkpoints(
+                output_path=restart_chk,
+                mpi_size=mpi_size,
+                driver_type="GFMC_t",
+                hamiltonian_data=lrdmc.hamiltonian_data,
+            )
 
         mpi_comm.Barrier()
 

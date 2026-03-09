@@ -93,12 +93,14 @@ class Wavefunction_data <<flax.struct.dataclass>> {
 
 class Jastrow_one_body_data <<flax.struct.dataclass>> {
     - jastrow_1b_param : float
+    - jastrow_1b_type : str = "exp"
     - structure_data : Structure_data
     - core_electrons : tuple[float]
 }
 
 class Jastrow_two_body_data <<flax.struct.dataclass>> {
     - jastrow_2b_param : float
+    - jastrow_2b_type : str = "pade"
 }
 
 class Jastrow_three_body_data <<flax.struct.dataclass>> {

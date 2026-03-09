@@ -53,6 +53,7 @@ from jax import grad, hessian, jit, vmap
 from jax import typing as jnpt
 from jax.tree_util import tree_flatten, tree_unflatten
 
+from ._setting import atol_consistency
 from .atomic_orbital import (
     AOs_cart_data,
     AOs_sphe_data,
@@ -535,20 +536,39 @@ class NNJastrow(nn.Module):
 
 @struct.dataclass
 class Jastrow_one_body_data:
-    """One-body Jastrow parameters and structure metadata.
+    r"""One-body Jastrow parameters and structure metadata.
 
-    The one-body term models electron–nucleus correlations using the
-    exponential form described in the original docstring. The numerical value
-    is returned without the ``exp`` wrapper; callers attach ``exp(J)`` to the
-    wavefunction.
+    The one-body term models electron–nucleus correlations.  Two functional
+    forms are available, selected by ``jastrow_1b_type``:
+
+    * ``'exp'`` (default) — exponential form:
+
+      .. math::
+
+         f(r_{eN}) = -A \, \frac{1}{2a} \bigl(1 - e^{-a\,c\,r_{eN}}\bigr)
+
+    * ``'pade'`` — Padé form:
+
+      .. math::
+
+         f(r_{eN}) = -A \, \frac{r_{eN}}{2\,(1 + a\,c\,r_{eN})}
+
+    where :math:`A = (2 Z_{\text{eff}})^{3/4}`, :math:`c = (2 Z_{\text{eff}})^{1/4}`,
+    and :math:`a` is ``jastrow_1b_param``.
+
+    The numerical value is returned without the ``exp`` wrapper; callers
+    attach ``exp(J)`` to the wavefunction.
 
     Args:
-        jastrow_1b_param (float): Parameter controlling the one-body decay.
+        jastrow_1b_param (float): Parameter *a* controlling the one-body decay.
+        jastrow_1b_type (str): Functional form — ``'exp'`` or ``'pade'``.
+            Stored as a compile-time constant (``pytree_node=False``).
         structure_data (Structure_data): Nuclear positions and charges.
         core_electrons (tuple[float]): Removed core electrons per nucleus (for ECPs).
     """
 
     jastrow_1b_param: float = struct.field(pytree_node=True, default=1.0)  #: One-body Jastrow exponent parameter.
+    jastrow_1b_type: str = struct.field(pytree_node=False, default="exp")  #: Functional form: ``'exp'`` or ``'pade'``.
     structure_data: Structure_data = struct.field(
         pytree_node=True, default_factory=Structure_data
     )  #: Nuclear structure data providing positions and atomic numbers.
@@ -566,6 +586,8 @@ class Jastrow_one_body_data:
         """
         if self.jastrow_1b_param < 0.0:
             raise ValueError(f"jastrow_1b_param = {self.jastrow_1b_param} must be non-negative.")
+        if self.jastrow_1b_type not in ("exp", "pade"):
+            raise ValueError(f"jastrow_1b_type = '{self.jastrow_1b_type}' must be 'exp' or 'pade'.")
         if len(self.core_electrons) != len(self.structure_data.positions):
             raise ValueError(
                 f"len(core_electrons) = {len(self.core_electrons)} must be the same as len(structure_data.positions) = {len(self.structure_data.positions)}."
@@ -579,7 +601,7 @@ class Jastrow_one_body_data:
         info_lines = []
         info_lines.append("**" + self.__class__.__name__)
         info_lines.append(f"  Jastrow 1b param = {self.jastrow_1b_param}")
-        info_lines.append("  1b Jastrow functional form is the exp type.")
+        info_lines.append(f"  1b Jastrow functional form is the {self.jastrow_1b_type} type.")
         return info_lines
 
     def _logger_info(self) -> None:
@@ -588,10 +610,13 @@ class Jastrow_one_body_data:
             logger.info(line)
 
     @classmethod
-    def init_jastrow_one_body_data(cls, jastrow_1b_param, structure_data, core_electrons):
+    def init_jastrow_one_body_data(cls, jastrow_1b_param, structure_data, core_electrons, jastrow_1b_type="exp"):
         """Initialization."""
         jastrow_one_body_data = cls(
-            jastrow_1b_param=jastrow_1b_param, structure_data=structure_data, core_electrons=core_electrons
+            jastrow_1b_param=jastrow_1b_param,
+            jastrow_1b_type=jastrow_1b_type,
+            structure_data=structure_data,
+            core_electrons=core_electrons,
         )
         return jastrow_one_body_data
 
@@ -602,7 +627,7 @@ def compute_Jastrow_one_body(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> float:
-    """Evaluate the one-body Jastrow $J_1$ (without ``exp``) for given coordinates.
+    r"""Evaluate the one-body Jastrow :math:`J_1` (without ``exp``) for given coordinates.
 
     The original exponential form and usage remain unchanged: this routine
     returns the scalar ``J`` value; callers attach ``exp(J)`` to the wavefunction.
@@ -621,21 +646,35 @@ def compute_Jastrow_one_body(
     core_electrons = jnp.array(jastrow_one_body_data.core_electrons)
     effective_charges = atomic_numbers - core_electrons
 
-    def one_body_jastrow_exp(
-        param: float,
-        coeff: float,
-        r_cart: jnpt.ArrayLike,
-        R_cart: jnpt.ArrayLike,
-    ) -> float:
-        """Exponential form of J1."""
-        one_body_jastrow = 1.0 / (2.0 * param) * (1.0 - jnp.exp(-param * coeff * jnp.linalg.norm(r_cart - R_cart)))
-        return one_body_jastrow
+    j1b_type = jastrow_one_body_data.jastrow_1b_type
 
-    # Function to compute the contribution from one atom
-    def atom_contrib(r_cart, R_cart, Z_eff):
-        j1b = jastrow_one_body_data.jastrow_1b_param
-        coeff = (2.0 * Z_eff) ** (1.0 / 4.0)
-        return -((2.0 * Z_eff) ** (3.0 / 4.0)) * one_body_jastrow_exp(j1b, coeff, r_cart, R_cart)
+    if j1b_type == "exp":
+
+        def one_body_jastrow_kernel(
+            param: float,
+            coeff: float,
+            r_cart: jnpt.ArrayLike,
+            R_cart: jnpt.ArrayLike,
+        ) -> float:
+            """Exponential form of J1."""
+            return 1.0 / (2.0 * param) * (1.0 - jnp.exp(-param * coeff * jnp.linalg.norm(r_cart - R_cart)))
+
+        def atom_contrib(r_cart, R_cart, Z_eff):
+            j1b = jastrow_one_body_data.jastrow_1b_param
+            coeff = (2.0 * Z_eff) ** (1.0 / 4.0)
+            return -((2.0 * Z_eff) ** (3.0 / 4.0)) * one_body_jastrow_kernel(j1b, coeff, r_cart, R_cart)
+
+    elif j1b_type == "pade":
+
+        def atom_contrib(r_cart, R_cart, Z_eff):
+            """Pade form of J1: -Z_eff^{3/4} * r_eN / (2*(1 + a * Z_eff^{1/4} * r_eN))."""
+            j1b = jastrow_one_body_data.jastrow_1b_param
+            r_eN = jnp.linalg.norm(r_cart - R_cart)
+            coeff = (2.0 * Z_eff) ** (1.0 / 4.0)
+            return -((2.0 * Z_eff) ** (3.0 / 4.0)) * r_eN / (2.0 * (1.0 + j1b * coeff * r_eN))
+
+    else:
+        raise ValueError(f"Unknown jastrow_1b_type: {j1b_type}")
 
     # Sum the contributions from all atoms for a single electron
     def electron_contrib(r_cart, R_carts, effective_charges):
@@ -661,28 +700,39 @@ def _compute_Jastrow_one_body_debug(
     core_electrons = jastrow_one_body_data.core_electrons
     effective_charges = np.array(atomic_numbers) - np.array(core_electrons)
 
+    j1b_type = jastrow_one_body_data.jastrow_1b_type
+
     def one_body_jastrow_exp(
         param: float, coeff: float, r_cart: npt.NDArray[np.float64], R_cart: npt.NDArray[np.float64]
     ) -> float:
         """Exponential form of J1."""
-        one_body_jastrow = 1.0 / (2.0 * param) * (1.0 - np.exp(-param * coeff * np.linalg.norm(r_cart - R_cart)))
-        return one_body_jastrow
+        return 1.0 / (2.0 * param) * (1.0 - np.exp(-param * coeff * np.linalg.norm(r_cart - R_cart)))
+
+    def one_body_jastrow_pade(
+        param: float, coeff: float, r_cart: npt.NDArray[np.float64], R_cart: npt.NDArray[np.float64]
+    ) -> float:
+        """Pade form of J1."""
+        r_eN = np.linalg.norm(r_cart - R_cart)
+        return r_eN / (2.0 * (1.0 + param * coeff * r_eN))
+
+    if j1b_type == "exp":
+        _j1_kernel = one_body_jastrow_exp
+    elif j1b_type == "pade":
+        _j1_kernel = one_body_jastrow_pade
+    else:
+        raise ValueError(f"Unknown jastrow_1b_type: {j1b_type}")
 
     J1_up = 0.0
     for r_up in r_up_carts:
         for R_cart, Z_eff in zip(positions, effective_charges, strict=True):
             coeff = (2.0 * Z_eff) ** (1.0 / 4.0)
-            J1_up += -((2.0 * Z_eff) ** (3.0 / 4.0)) * one_body_jastrow_exp(
-                jastrow_one_body_data.jastrow_1b_param, coeff, r_up, R_cart
-            )
+            J1_up += -((2.0 * Z_eff) ** (3.0 / 4.0)) * _j1_kernel(jastrow_one_body_data.jastrow_1b_param, coeff, r_up, R_cart)
 
     J1_dn = 0.0
     for r_up in r_dn_carts:
         for R_cart, Z_eff in zip(positions, effective_charges, strict=True):
             coeff = (2.0 * Z_eff) ** (1.0 / 4.0)
-            J1_dn += -((2.0 * Z_eff) ** (3.0 / 4.0)) * one_body_jastrow_exp(
-                jastrow_one_body_data.jastrow_1b_param, coeff, r_up, R_cart
-            )
+            J1_dn += -((2.0 * Z_eff) ** (3.0 / 4.0)) * _j1_kernel(jastrow_one_body_data.jastrow_1b_param, coeff, r_up, R_cart)
 
     J1 = J1_up + J1_dn
 
@@ -896,19 +946,46 @@ def compute_grads_and_laplacian_Jastrow_one_body(
 
     eps = 1.0e-12
 
-    def _grad_lap_one_spin(r_carts):
-        diff = r_carts[:, None, :] - positions[None, :, :]
-        r = jnp.linalg.norm(diff, axis=-1)
-        r_safe = jnp.maximum(r, eps)
-        exp_term = jnp.exp(-a * c[None, :] * r_safe)
+    j1b_type = jastrow_one_body_data.jastrow_1b_type
 
-        fprime = -A[None, :] * (c[None, :] / 2.0) * exp_term
-        grad = jnp.sum((fprime[..., None] * diff) / r_safe[..., None], axis=1)
+    if j1b_type == "exp":
 
-        fsecond = A[None, :] * (a * c[None, :] * c[None, :] / 2.0) * exp_term
-        lap = fsecond - A[None, :] * c[None, :] * exp_term / r_safe
-        lap_e = jnp.sum(lap, axis=1)
-        return grad, lap_e
+        def _grad_lap_one_spin(r_carts):
+            diff = r_carts[:, None, :] - positions[None, :, :]
+            r = jnp.linalg.norm(diff, axis=-1)
+            r_safe = jnp.maximum(r, eps)
+            exp_term = jnp.exp(-a * c[None, :] * r_safe)
+
+            fprime = -A[None, :] * (c[None, :] / 2.0) * exp_term
+            grad = jnp.sum((fprime[..., None] * diff) / r_safe[..., None], axis=1)
+
+            fsecond = A[None, :] * (a * c[None, :] * c[None, :] / 2.0) * exp_term
+            lap = fsecond - A[None, :] * c[None, :] * exp_term / r_safe
+            lap_e = jnp.sum(lap, axis=1)
+            return grad, lap_e
+
+    elif j1b_type == "pade":
+
+        def _grad_lap_one_spin(r_carts):
+            # f(r) = -A * r / (2*(1 + a*c*r))
+            # f'(r) = -A / (2*(1+a*c*r)^2)
+            # f''(r) = A*a*c / ((1+a*c*r)^3)
+            # lap contribution per atom: f''(r) + 2*f'(r)/r
+            diff = r_carts[:, None, :] - positions[None, :, :]  # (n_e, n_nuc, 3)
+            r = jnp.linalg.norm(diff, axis=-1)  # (n_e, n_nuc)
+            r_safe = jnp.maximum(r, eps)
+            denom = 1.0 + a * c[None, :] * r_safe  # (n_e, n_nuc)
+
+            fprime = -A[None, :] / (2.0 * denom * denom)  # f'(r)
+            grad = jnp.sum((fprime[..., None] * diff) / r_safe[..., None], axis=1)  # (n_e, 3)
+
+            fsecond = A[None, :] * a * c[None, :] / (denom * denom * denom)  # f''(r)
+            lap = fsecond + 2.0 * fprime / r_safe
+            lap_e = jnp.sum(lap, axis=1)
+            return grad, lap_e
+
+    else:
+        raise ValueError(f"Unknown jastrow_1b_type: {j1b_type}")
 
     grad_up, lap_up = _grad_lap_one_spin(jnp.asarray(r_up_carts))
     grad_dn, lap_dn = _grad_lap_one_spin(jnp.asarray(r_dn_carts))
@@ -918,17 +995,36 @@ def compute_grads_and_laplacian_Jastrow_one_body(
 
 @struct.dataclass
 class Jastrow_two_body_data:
-    """Two-body Jastrow parameter container.
+    r"""Two-body Jastrow parameter container.
 
-    The two-body term uses the Pade functional form described in the existing
-    docstrings. Values are returned without exponentiation; callers use
-    ``exp(J)`` when constructing the wavefunction.
+    The two-body term models electron–electron correlations.  Two functional
+    forms are available, selected by ``jastrow_2b_type``:
+
+    * ``'pade'`` (default) — Padé form:
+
+      .. math::
+
+         f(r_{ee}) = \frac{r_{ee}}{2\,(1 + a\,r_{ee})}
+
+    * ``'exp'`` — exponential form:
+
+      .. math::
+
+         f(r_{ee}) = \frac{1}{2a}\bigl(1 - e^{-a\,r_{ee}}\bigr)
+
+    where :math:`a` is ``jastrow_2b_param``.
+
+    Values are returned without exponentiation; callers use ``exp(J)``
+    when constructing the wavefunction.
 
     Args:
-        jastrow_2b_param (float): Parameter for the two-body Jastrow part.
+        jastrow_2b_param (float): Parameter *a* for the two-body Jastrow part.
+        jastrow_2b_type (str): Functional form — ``'pade'`` or ``'exp'``.
+            Stored as a compile-time constant (``pytree_node=False``).
     """
 
-    jastrow_2b_param: float = struct.field(pytree_node=True, default=1.0)  #: Pade ``a`` parameter for J2.
+    jastrow_2b_param: float = struct.field(pytree_node=True, default=1.0)  #: Two-body Jastrow parameter.
+    jastrow_2b_type: str = struct.field(pytree_node=False, default="pade")  #: Functional form: ``'pade'`` or ``'exp'``.
 
     def sanity_check(self) -> None:
         """Check attributes of the class.
@@ -940,13 +1036,15 @@ class Jastrow_two_body_data:
         """
         if self.jastrow_2b_param < 0.0:
             raise ValueError(f"jastrow_2b_param = {self.jastrow_2b_param} must be non-negative.")
+        if self.jastrow_2b_type not in ("exp", "pade"):
+            raise ValueError(f"jastrow_2b_type = '{self.jastrow_2b_type}' must be 'exp' or 'pade'.")
 
     def _get_info(self) -> list[str]:
         """Return a list of strings representing the logged information."""
         info_lines = []
         info_lines.append("**" + self.__class__.__name__)
         info_lines.append(f"  Jastrow 2b param = {self.jastrow_2b_param}")
-        info_lines.append("  2b Jastrow functional form is the pade type.")
+        info_lines.append(f"  2b Jastrow functional form is the {self.jastrow_2b_type} type.")
         return info_lines
 
     def _logger_info(self) -> None:
@@ -955,9 +1053,9 @@ class Jastrow_two_body_data:
             logger.info(line)
 
     @classmethod
-    def init_jastrow_two_body_data(cls, jastrow_2b_param=1.0):
+    def init_jastrow_two_body_data(cls, jastrow_2b_param=1.0, jastrow_2b_type="pade"):
         """Initialization."""
-        jastrow_two_body_data = cls(jastrow_2b_param=jastrow_2b_param)
+        jastrow_two_body_data = cls(jastrow_2b_param=jastrow_2b_param, jastrow_2b_type=jastrow_2b_type)
         return jastrow_two_body_data
 
 
@@ -967,7 +1065,7 @@ def compute_Jastrow_two_body(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> float:
-    """Evaluate the two-body Jastrow $J_2$ (Pade form) without exponentiation.
+    r"""Evaluate the two-body Jastrow :math:`J_2` (Pade form) without exponentiation.
 
     The functional form and usage remain identical to the original docstring;
     this returns ``J`` and callers attach ``exp(J)`` to the wavefunction.
@@ -980,36 +1078,30 @@ def compute_Jastrow_two_body(
     Returns:
         float: Two-body Jastrow value (before exponentiation).
     """
+    j2b_type = jastrow_two_body_data.jastrow_2b_type
 
-    def two_body_jastrow_anti_parallel_spins_exp(param: float, r_cart_i: jnpt.ArrayLike, r_cart_j: jnpt.ArrayLike) -> float:
-        """Exponential form of J2 for anti-parallel spins."""
-        two_body_jastrow = 1.0 / (2.0 * param) * (1.0 - jnp.exp(-param * jnp.linalg.norm(r_cart_i - r_cart_j)))
-        return two_body_jastrow
+    def two_body_jastrow_exp(param: float, r_cart_i: jnpt.ArrayLike, r_cart_j: jnpt.ArrayLike) -> float:
+        """Exponential form of J2."""
+        return 1.0 / (2.0 * param) * (1.0 - jnp.exp(-param * jnp.linalg.norm(r_cart_i - r_cart_j)))
 
-    def two_body_jastrow_parallel_spins_exp(param: float, r_cart_i: jnpt.ArrayLike, r_cart_j: jnpt.ArrayLike) -> float:
-        """Exponential form of J2 for parallel spins."""
-        two_body_jastrow = 1.0 / (2.0 * param) * (1.0 - jnp.exp(-param * jnp.linalg.norm(r_cart_i - r_cart_j)))
-        return two_body_jastrow
+    def two_body_jastrow_pade(param: float, r_cart_i: jnpt.ArrayLike, r_cart_j: jnpt.ArrayLike) -> float:
+        """Pade form of J2."""
+        return jnp.linalg.norm(r_cart_i - r_cart_j) / 2.0 * (1.0 + param * jnp.linalg.norm(r_cart_i - r_cart_j)) ** (-1.0)
 
-    def two_body_jastrow_anti_parallel_spins_pade(param: float, r_cart_i: jnpt.ArrayLike, r_cart_j: jnpt.ArrayLike) -> float:
-        """Pade form of J2 for anti-parallel spins."""
-        two_body_jastrow = (
-            jnp.linalg.norm(r_cart_i - r_cart_j) / 2.0 * (1.0 + param * jnp.linalg.norm(r_cart_i - r_cart_j)) ** (-1.0)
-        )
-        return two_body_jastrow
-
-    def two_body_jastrow_parallel_spins_pade(param: float, r_cart_i: jnpt.ArrayLike, r_cart_j: jnpt.ArrayLike) -> float:
-        """Pade form of J2 for parallel spins."""
-        two_body_jastrow = (
-            jnp.linalg.norm(r_cart_i - r_cart_j) / 2.0 * (1.0 + param * jnp.linalg.norm(r_cart_i - r_cart_j)) ** (-1.0)
-        )
-        return two_body_jastrow
+    if j2b_type == "pade":
+        two_body_jastrow_anti_parallel = two_body_jastrow_pade
+        two_body_jastrow_parallel = two_body_jastrow_pade
+    elif j2b_type == "exp":
+        two_body_jastrow_anti_parallel = two_body_jastrow_exp
+        two_body_jastrow_parallel = two_body_jastrow_exp
+    else:
+        raise ValueError(f"Unknown jastrow_2b_type: {j2b_type}")
 
     vmap_two_body_jastrow_anti_parallel_spins = vmap(
-        vmap(two_body_jastrow_anti_parallel_spins_pade, in_axes=(None, None, 0)), in_axes=(None, 0, None)
+        vmap(two_body_jastrow_anti_parallel, in_axes=(None, None, 0)), in_axes=(None, 0, None)
     )
 
-    two_body_jastrow_anti_parallel = jnp.sum(
+    two_body_jastrow_anti_parallel_val = jnp.sum(
         vmap_two_body_jastrow_anti_parallel_spins(jastrow_two_body_data.jastrow_2b_param, r_up_carts, r_dn_carts)
     )
 
@@ -1018,7 +1110,7 @@ def compute_Jastrow_two_body(
         idx_i, idx_j = jnp.triu_indices(num_particles, k=1)
         r_i = r_carts[idx_i]
         r_j = r_carts[idx_j]
-        vmap_two_body_jastrow_parallel_spins = vmap(two_body_jastrow_parallel_spins_pade, in_axes=(None, 0, 0))(
+        vmap_two_body_jastrow_parallel_spins = vmap(two_body_jastrow_parallel, in_axes=(None, 0, 0))(
             jastrow_two_body_data.jastrow_2b_param, r_i, r_j
         )
         return jnp.sum(vmap_two_body_jastrow_parallel_spins)
@@ -1026,7 +1118,7 @@ def compute_Jastrow_two_body(
     two_body_jastrow_parallel_up = compute_parallel_sum(r_up_carts)
     two_body_jastrow_parallel_dn = compute_parallel_sum(r_dn_carts)
 
-    two_body_jastrow = two_body_jastrow_anti_parallel + two_body_jastrow_parallel_up + two_body_jastrow_parallel_dn
+    two_body_jastrow = two_body_jastrow_anti_parallel_val + two_body_jastrow_parallel_up + two_body_jastrow_parallel_dn
 
     return two_body_jastrow
 
@@ -1037,43 +1129,29 @@ def _compute_Jastrow_two_body_debug(
     r_dn_carts: npt.NDArray[np.float64],
 ) -> float:
     """See _api method."""
+    j2b_type = jastrow_two_body_data.jastrow_2b_type
 
-    def two_body_jastrow_anti_parallel_spins_exp(
-        param: float, r_cart_i: npt.NDArray[np.float64], r_cart_j: npt.NDArray[np.float64]
-    ) -> float:
-        """Exponential form of J2 for anti-parallel spins."""
-        two_body_jastrow = 1.0 / (2.0 * param) * (1.0 - np.exp(-param * np.linalg.norm(r_cart_i - r_cart_j)))
-        return two_body_jastrow
+    def two_body_jastrow_exp(param: float, r_cart_i: npt.NDArray[np.float64], r_cart_j: npt.NDArray[np.float64]) -> float:
+        """Exponential form of J2."""
+        return 1.0 / (2.0 * param) * (1.0 - np.exp(-param * np.linalg.norm(r_cart_i - r_cart_j)))
 
-    def two_body_jastrow_parallel_spins_exp(
-        param: float, r_cart_i: npt.NDArray[np.float64], r_cart_j: npt.NDArray[np.float64]
-    ) -> float:
-        """Exponential form of J2 for parallel spins."""
-        two_body_jastrow = 1.0 / (2.0 * param) * (1.0 - np.exp(-param * np.linalg.norm(r_cart_i - r_cart_j)))
-        return two_body_jastrow
+    def two_body_jastrow_pade(param: float, r_cart_i: npt.NDArray[np.float64], r_cart_j: npt.NDArray[np.float64]) -> float:
+        """Pade form of J2."""
+        return np.linalg.norm(r_cart_i - r_cart_j) / 2.0 * (1.0 + param * np.linalg.norm(r_cart_i - r_cart_j)) ** (-1.0)
 
-    def two_body_jastrow_anti_parallel_spins_pade(
-        param: float, r_cart_i: npt.NDArray[np.float64], r_cart_j: npt.NDArray[np.float64]
-    ) -> float:
-        """Pade form of J2 for anti-parallel spins."""
-        two_body_jastrow = (
-            np.linalg.norm(r_cart_i - r_cart_j) / 2.0 * (1.0 + param * np.linalg.norm(r_cart_i - r_cart_j)) ** (-1.0)
-        )
-        return two_body_jastrow
-
-    def two_body_jastrow_parallel_spins_pade(
-        param: float, r_cart_i: npt.NDArray[np.float64], r_cart_j: npt.NDArray[np.float64]
-    ) -> float:
-        """Pade form of J2 for parallel spins."""
-        two_body_jastrow = (
-            np.linalg.norm(r_cart_i - r_cart_j) / 2.0 * (1.0 + param * np.linalg.norm(r_cart_i - r_cart_j)) ** (-1.0)
-        )
-        return two_body_jastrow
+    if j2b_type == "pade":
+        _j2_anti = two_body_jastrow_pade
+        _j2_para = two_body_jastrow_pade
+    elif j2b_type == "exp":
+        _j2_anti = two_body_jastrow_exp
+        _j2_para = two_body_jastrow_exp
+    else:
+        raise ValueError(f"Unknown jastrow_2b_type: {j2b_type}")
 
     two_body_jastrow = (
         np.sum(
             [
-                two_body_jastrow_anti_parallel_spins_pade(
+                _j2_anti(
                     param=jastrow_two_body_data.jastrow_2b_param,
                     r_cart_i=r_up_cart,
                     r_cart_j=r_dn_cart,
@@ -1083,7 +1161,7 @@ def _compute_Jastrow_two_body_debug(
         )
         + np.sum(
             [
-                two_body_jastrow_parallel_spins_pade(
+                _j2_para(
                     param=jastrow_two_body_data.jastrow_2b_param,
                     r_cart_i=r_up_cart_i,
                     r_cart_j=r_up_cart_j,
@@ -1093,7 +1171,7 @@ def _compute_Jastrow_two_body_debug(
         )
         + np.sum(
             [
-                two_body_jastrow_parallel_spins_pade(
+                _j2_para(
                     param=jastrow_two_body_data.jastrow_2b_param,
                     r_cart_i=r_dn_cart_i,
                     r_cart_j=r_dn_cart_j,
@@ -1489,7 +1567,7 @@ def compute_Jastrow_three_body(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> float:
-    """Evaluate the three-body Jastrow $J_3$ (analytic) without exponentiation.
+    r"""Evaluate the three-body Jastrow :math:`J_3` (analytic) without exponentiation.
 
     This preserves the original functional form: the square J3 block couples
     electron pairs and the last column acts as a J1-like vector. Returned value
@@ -1741,10 +1819,11 @@ class Jastrow_data:
                 jastrow_1b_param=new_param,
                 structure_data=j1.structure_data,
                 core_electrons=j1.core_electrons,
+                jastrow_1b_type=j1.jastrow_1b_type,
             )
         elif block.name == "j2_param" and j2 is not None:
             new_param = float(np.array(block.values).reshape(()))
-            j2 = Jastrow_two_body_data(jastrow_2b_param=new_param)
+            j2 = Jastrow_two_body_data(jastrow_2b_param=new_param, jastrow_2b_type=j2.jastrow_2b_type)
         elif block.name == "j3_matrix" and j3 is not None:
             # Enforce J3 structural constraints here. The last column corresponds
             # to the J1-like rectangular part, while the remaining square block
@@ -1757,7 +1836,7 @@ class Jastrow_data:
             square_new = j3_new[:, :-1]
 
             # If the original square block is symmetric, enforce symmetry on the update
-            if np.allclose(square_old, square_old.T, atol=1e-8):
+            if np.allclose(square_old, square_old.T, atol=atol_consistency):
                 square_new = 0.5 * (square_new + square_new.T)
                 j3_new[:, :-1] = square_new
 
@@ -1897,7 +1976,7 @@ def _compute_ratio_Jastrow_part_rank1_update(
     new_r_up_carts_arr: jax.Array,
     new_r_dn_carts_arr: jax.Array,
 ) -> jax.Array:
-    r"""Compute $\exp(J(\mathbf r'))/\exp(J(\mathbf r))$ for batched moves.
+    r"""Compute :math:`\exp(J(\mathbf r'))/\exp(J(\mathbf r))` for batched moves.
 
     This follows the original ratio logic (including exp) while updating types
     to use ``jax.Array`` inputs. The return is one ratio per proposed grid
@@ -2010,29 +2089,26 @@ def _compute_ratio_Jastrow_part_rank1_update(
         )
         J_ratio *= jnp.ravel(J1_ratio)
 
-    def two_body_jastrow_anti_parallel_spins_exp(param: float, r_cart_i: jnpt.ArrayLike, r_cart_j: jnpt.ArrayLike) -> float:
-        """Exponential form of J2 for anti-parallel spins."""
-        two_body_jastrow = 1.0 / (2.0 * param) * (1.0 - jnp.exp(-param * jnp.linalg.norm(r_cart_i - r_cart_j)))
-        return two_body_jastrow
+    def _two_body_jastrow_exp(param: float, r_cart_i: jnpt.ArrayLike, r_cart_j: jnpt.ArrayLike) -> float:
+        """Exponential form of J2."""
+        return 1.0 / (2.0 * param) * (1.0 - jnp.exp(-param * jnp.linalg.norm(r_cart_i - r_cart_j)))
 
-    def two_body_jastrow_parallel_spins_exp(param: float, r_cart_i: jnpt.ArrayLike, r_cart_j: jnpt.ArrayLike) -> float:
-        """Exponential form of J2 for parallel spins."""
-        two_body_jastrow = 1.0 / (2.0 * param) * (1.0 - jnp.exp(-param * jnp.linalg.norm(r_cart_i - r_cart_j)))
-        return two_body_jastrow
+    def _two_body_jastrow_pade(param: float, r_cart_i: jnpt.ArrayLike, r_cart_j: jnpt.ArrayLike) -> float:
+        """Pade form of J2."""
+        return jnp.linalg.norm(r_cart_i - r_cart_j) / 2.0 * (1.0 + param * jnp.linalg.norm(r_cart_i - r_cart_j)) ** (-1.0)
 
-    def two_body_jastrow_anti_parallel_spins_pade(param: float, r_cart_i: jnpt.ArrayLike, r_cart_j: jnpt.ArrayLike) -> float:
-        """Pade form of J2 for anti-parallel spins."""
-        two_body_jastrow = (
-            jnp.linalg.norm(r_cart_i - r_cart_j) / 2.0 * (1.0 + param * jnp.linalg.norm(r_cart_i - r_cart_j)) ** (-1.0)
-        )
-        return two_body_jastrow
+    # Select the functional form based on type
+    if jastrow_data.jastrow_two_body_data is not None:
+        _j2b_type = jastrow_data.jastrow_two_body_data.jastrow_2b_type
+    else:
+        _j2b_type = "pade"
 
-    def two_body_jastrow_parallel_spins_pade(param: float, r_cart_i: jnpt.ArrayLike, r_cart_j: jnpt.ArrayLike) -> float:
-        """Pade form of J2 for parallel spins."""
-        two_body_jastrow = (
-            jnp.linalg.norm(r_cart_i - r_cart_j) / 2.0 * (1.0 + param * jnp.linalg.norm(r_cart_i - r_cart_j)) ** (-1.0)
-        )
-        return two_body_jastrow
+    if _j2b_type == "pade":
+        two_body_jastrow_anti_parallel_spins = _two_body_jastrow_pade
+        two_body_jastrow_parallel_spins = _two_body_jastrow_pade
+    else:
+        two_body_jastrow_anti_parallel_spins = _two_body_jastrow_exp
+        two_body_jastrow_parallel_spins = _two_body_jastrow_exp
 
     def compute_one_grid_J2(jastrow_2b_param, new_r_up_carts, new_r_dn_carts, old_r_up_carts, old_r_dn_carts):
         delta_up = new_r_up_carts - old_r_up_carts
@@ -2057,22 +2133,22 @@ def _compute_ratio_Jastrow_part_rank1_update(
             new_r_up_carts_extracted = jnp.expand_dims(new_r_up_carts[idx], axis=0)  # shape=(1,3)
             old_r_up_carts_extracted = jnp.expand_dims(old_r_up_carts[idx], axis=0)  # shape=(1,3)
             J2_up_up_new = jnp.sum(
-                vmap(two_body_jastrow_parallel_spins_pade, in_axes=(None, None, 0))(
+                vmap(two_body_jastrow_parallel_spins, in_axes=(None, None, 0))(
                     jastrow_2b_param, new_r_up_carts_extracted, new_r_up_carts
                 )
             )
             J2_up_up_old = jnp.sum(
-                vmap(two_body_jastrow_parallel_spins_pade, in_axes=(None, None, 0))(
+                vmap(two_body_jastrow_parallel_spins, in_axes=(None, None, 0))(
                     jastrow_2b_param, old_r_up_carts_extracted, old_r_up_carts
                 )
             )
             J2_up_dn_new = jnp.sum(
-                vmap(two_body_jastrow_anti_parallel_spins_pade, in_axes=(None, None, 0))(
+                vmap(two_body_jastrow_anti_parallel_spins, in_axes=(None, None, 0))(
                     jastrow_2b_param, new_r_up_carts_extracted, old_r_dn_carts
                 )
             )
             J2_up_dn_old = jnp.sum(
-                vmap(two_body_jastrow_anti_parallel_spins_pade, in_axes=(None, None, 0))(
+                vmap(two_body_jastrow_anti_parallel_spins, in_axes=(None, None, 0))(
                     jastrow_2b_param, old_r_up_carts_extracted, old_r_dn_carts
                 )
             )
@@ -2082,22 +2158,22 @@ def _compute_ratio_Jastrow_part_rank1_update(
             new_r_dn_carts_extracted = jnp.expand_dims(new_r_dn_carts[idx], axis=0)  # shape=(1,3)
             old_r_dn_carts_extracted = jnp.expand_dims(old_r_dn_carts[idx], axis=0)  # shape=(1,3)
             J2_dn_dn_new = jnp.sum(
-                vmap(two_body_jastrow_parallel_spins_pade, in_axes=(None, None, 0))(
+                vmap(two_body_jastrow_parallel_spins, in_axes=(None, None, 0))(
                     jastrow_2b_param, new_r_dn_carts_extracted, new_r_dn_carts
                 )
             )
             J2_dn_dn_old = jnp.sum(
-                vmap(two_body_jastrow_parallel_spins_pade, in_axes=(None, None, 0))(
+                vmap(two_body_jastrow_parallel_spins, in_axes=(None, None, 0))(
                     jastrow_2b_param, old_r_dn_carts_extracted, old_r_dn_carts
                 )
             )
             J2_up_dn_new = jnp.sum(
-                vmap(two_body_jastrow_anti_parallel_spins_pade, in_axes=(None, 0, None))(
+                vmap(two_body_jastrow_anti_parallel_spins, in_axes=(None, 0, None))(
                     jastrow_2b_param, old_r_up_carts, new_r_dn_carts_extracted
                 )
             )
             J2_up_dn_old = jnp.sum(
-                vmap(two_body_jastrow_anti_parallel_spins_pade, in_axes=(None, 0, None))(
+                vmap(two_body_jastrow_anti_parallel_spins, in_axes=(None, 0, None))(
                     jastrow_2b_param, old_r_up_carts, old_r_dn_carts_extracted
                 )
             )
@@ -2119,16 +2195,26 @@ def _compute_ratio_Jastrow_part_rank1_update(
     # J2 part
     if jastrow_data.jastrow_two_body_data is not None:
         j2_param = jastrow_data.jastrow_two_body_data.jastrow_2b_param
+        _j2_type = jastrow_data.jastrow_two_body_data.jastrow_2b_type
 
         def _safe_norm(diff):
             sq = jnp.sum(diff**2, axis=-1)
             return jnp.where(sq > 0, jnp.sqrt(jnp.where(sq > 0, sq, jnp.ones_like(sq))), jnp.zeros_like(sq))
 
+        if _j2_type == "pade":
+
+            def _j2_from_dist(dist, param):
+                return dist / 2.0 * (1.0 + param * dist) ** (-1.0)
+        else:
+
+            def _j2_from_dist(dist, param):
+                return 1.0 / (2.0 * param) * (1.0 - jnp.exp(-param * dist))
+
         def compute_pairwise_sums(pos1, pos2):
             if pos1.shape[0] == 0 or pos2.shape[0] == 0:
                 return jnp.zeros(pos1.shape[0])
             dists = _safe_norm(pos1[:, None, :] - pos2[None, :, :])
-            vals = dists / 2.0 * (1.0 + j2_param * dists) ** (-1.0)
+            vals = _j2_from_dist(dists, j2_param)
             return jnp.sum(vals, axis=1)
 
         J2_sum_up_up = compute_pairwise_sums(old_r_up_carts, old_r_up_carts)
@@ -2149,36 +2235,33 @@ def _compute_ratio_Jastrow_part_rank1_update(
         r_up_old = jnp.take(old_r_up_carts, idx_up, axis=0)
         r_dn_old = jnp.take(old_r_dn_carts, idx_dn, axis=0)
 
-        def _batch_pairwise_sum_pade(points_a, points_b, param):
+        def _batch_pairwise_sum(points_a, points_b, param):
             norm_a2 = jnp.sum(points_a * points_a, axis=1, keepdims=True)
             norm_b2 = jnp.sum(points_b * points_b, axis=1, keepdims=True).T
             dots = jnp.dot(points_a, points_b.T)
             d2 = jnp.maximum(norm_a2 + norm_b2 - 2.0 * dots, 0.0)
             safe_d2 = jnp.where(d2 > 0, d2, jnp.ones_like(d2))
             d = jnp.where(d2 > 0, jnp.sqrt(safe_d2), jnp.zeros_like(d2))
-            vals = d / 2.0 * (1.0 + param * d) ** (-1.0)
+            vals = _j2_from_dist(d, param)
             return jnp.sum(vals, axis=1)
 
-        def _pade_from_dist(dist, param):
-            return dist / 2.0 * (1.0 + param * dist) ** (-1.0)
-
         # Up-move branch contributions (all grids in batch)
-        up_up_new_raw = _batch_pairwise_sum_pade(r_up_new, old_r_up_carts, j2_param)
-        up_up_self = _pade_from_dist(jnp.linalg.norm(r_up_new - r_up_old, axis=1), j2_param)
+        up_up_new_raw = _batch_pairwise_sum(r_up_new, old_r_up_carts, j2_param)
+        up_up_self = _j2_from_dist(jnp.linalg.norm(r_up_new - r_up_old, axis=1), j2_param)
         up_up_new = up_up_new_raw - up_up_self
         up_up_old = jnp.take(J2_sum_up_up, idx_up, axis=0)
 
-        up_dn_new = _batch_pairwise_sum_pade(r_up_new, old_r_dn_carts, j2_param)
+        up_dn_new = _batch_pairwise_sum(r_up_new, old_r_dn_carts, j2_param)
         up_dn_old = jnp.take(J2_sum_up_dn, idx_up, axis=0)
         J2_ratio_up = jnp.exp((up_up_new - up_up_old) + (up_dn_new - up_dn_old))
 
         # Down-move branch contributions (all grids in batch)
-        dn_dn_new_raw = _batch_pairwise_sum_pade(r_dn_new, old_r_dn_carts, j2_param)
-        dn_dn_self = _pade_from_dist(jnp.linalg.norm(r_dn_new - r_dn_old, axis=1), j2_param)
+        dn_dn_new_raw = _batch_pairwise_sum(r_dn_new, old_r_dn_carts, j2_param)
+        dn_dn_self = _j2_from_dist(jnp.linalg.norm(r_dn_new - r_dn_old, axis=1), j2_param)
         dn_dn_new = dn_dn_new_raw - dn_dn_self
         dn_dn_old = jnp.take(J2_sum_dn_dn, idx_dn, axis=0)
 
-        dn_up_new = _batch_pairwise_sum_pade(r_dn_new, old_r_up_carts, j2_param)
+        dn_up_new = _batch_pairwise_sum(r_dn_new, old_r_up_carts, j2_param)
         dn_up_old = jnp.take(J2_sum_dn_up, idx_dn, axis=0)
         J2_ratio_dn = jnp.exp((dn_dn_new - dn_dn_old) + (dn_up_new - dn_up_old))
 
@@ -2389,43 +2472,53 @@ def _compute_ratio_Jastrow_part_split_spin(
     # ── J2 part ──────────────────────────────────────────────────────────────
     if jastrow_data.jastrow_two_body_data is not None:
         j2_param = jastrow_data.jastrow_two_body_data.jastrow_2b_param
+        _j2_type_split = jastrow_data.jastrow_two_body_data.jastrow_2b_type
 
         def _safe_norm(diff):
             sq = jnp.sum(diff**2, axis=-1)
             return jnp.where(sq > 0, jnp.sqrt(jnp.where(sq > 0, sq, jnp.ones_like(sq))), jnp.zeros_like(sq))
 
-        def _pairwise_pade_sums(pos1: jax.Array, pos2: jax.Array) -> jax.Array:
-            """Row-wise sum of Pade two-body terms: pos1 -> all of pos2."""
-            dists = _safe_norm(pos1[:, None, :] - pos2[None, :, :])
-            return jnp.sum(dists / 2.0 * (1.0 + j2_param * dists) ** (-1.0), axis=1)
+        if _j2_type_split == "pade":
 
-        J2_sum_up_up = _pairwise_pade_sums(old_r_up_carts, old_r_up_carts)  # (N_up,)
-        J2_sum_up_dn = _pairwise_pade_sums(old_r_up_carts, old_r_dn_carts)  # (N_up,)
-        J2_sum_dn_dn = _pairwise_pade_sums(old_r_dn_carts, old_r_dn_carts)  # (N_dn,)
-        J2_sum_dn_up = _pairwise_pade_sums(old_r_dn_carts, old_r_up_carts)  # (N_dn,)
+            def _j2_from_dist_split(dist, param):
+                return dist / 2.0 * (1.0 + param * dist) ** (-1.0)
+        else:
+
+            def _j2_from_dist_split(dist, param):
+                return 1.0 / (2.0 * param) * (1.0 - jnp.exp(-param * dist))
+
+        def _pairwise_sums(pos1: jax.Array, pos2: jax.Array) -> jax.Array:
+            """Row-wise sum of two-body terms: pos1 -> all of pos2."""
+            dists = _safe_norm(pos1[:, None, :] - pos2[None, :, :])
+            return jnp.sum(_j2_from_dist_split(dists, j2_param), axis=1)
+
+        J2_sum_up_up = _pairwise_sums(old_r_up_carts, old_r_up_carts)  # (N_up,)
+        J2_sum_up_dn = _pairwise_sums(old_r_up_carts, old_r_dn_carts)  # (N_up,)
+        J2_sum_dn_dn = _pairwise_sums(old_r_dn_carts, old_r_dn_carts)  # (N_dn,)
+        J2_sum_dn_up = _pairwise_sums(old_r_dn_carts, old_r_up_carts)  # (N_dn,)
 
         # UP block: moved up electron interacts with all old up and dn electrons.
         dists_up_up_new = _safe_norm(r_up_moved[:, None, :] - old_r_up_carts[None, :, :])  # (G_up, N_up)
-        J2_up_up_new = jnp.sum(dists_up_up_new / 2.0 * (1.0 + j2_param * dists_up_up_new) ** (-1.0), axis=1)  # (G_up,)
-        # The sum above includes the self-term Pade(r_new, r_old[idx]) but the correct self-term is
-        # Pade(r_new, r_new) = 0.  Subtract the spurious contribution.
+        J2_up_up_new = jnp.sum(_j2_from_dist_split(dists_up_up_new, j2_param), axis=1)  # (G_up,)
+        # The sum above includes the self-term f(r_new, r_old[idx]) but the correct self-term is
+        # f(r_new, r_new) = 0.  Subtract the spurious contribution.
         dists_self_up = _safe_norm(r_up_moved - r_up_old_moved)  # (G_up,)
-        J2_up_up_new = J2_up_up_new - dists_self_up / 2.0 * (1.0 + j2_param * dists_self_up) ** (-1.0)
-        J2_up_up_old = J2_sum_up_up[idx_up_block]  # (G_up,)  self-term is Pade(r_old,r_old)=0 already
+        J2_up_up_new = J2_up_up_new - _j2_from_dist_split(dists_self_up, j2_param)
+        J2_up_up_old = J2_sum_up_up[idx_up_block]  # (G_up,)  self-term is f(r_old,r_old)=0 already
         dists_up_dn_new = _safe_norm(r_up_moved[:, None, :] - old_r_dn_carts[None, :, :])  # (G_up, N_dn)
-        J2_up_dn_new = jnp.sum(dists_up_dn_new / 2.0 * (1.0 + j2_param * dists_up_dn_new) ** (-1.0), axis=1)  # (G_up,)
+        J2_up_dn_new = jnp.sum(_j2_from_dist_split(dists_up_dn_new, j2_param), axis=1)  # (G_up,)
         J2_up_dn_old = J2_sum_up_dn[idx_up_block]  # (G_up,)
         J_up = J_up * jnp.exp(J2_up_dn_new - J2_up_dn_old + J2_up_up_new - J2_up_up_old)
 
         # DN block: moved dn electron interacts with all old dn and up electrons.
         dists_dn_dn_new = _safe_norm(r_dn_moved[:, None, :] - old_r_dn_carts[None, :, :])  # (G_dn, N_dn)
-        J2_dn_dn_new = jnp.sum(dists_dn_dn_new / 2.0 * (1.0 + j2_param * dists_dn_dn_new) ** (-1.0), axis=1)  # (G_dn,)
+        J2_dn_dn_new = jnp.sum(_j2_from_dist_split(dists_dn_dn_new, j2_param), axis=1)  # (G_dn,)
         # Same self-term correction for down block.
         dists_self_dn = _safe_norm(r_dn_moved - r_dn_old_moved)  # (G_dn,)
-        J2_dn_dn_new = J2_dn_dn_new - dists_self_dn / 2.0 * (1.0 + j2_param * dists_self_dn) ** (-1.0)
+        J2_dn_dn_new = J2_dn_dn_new - _j2_from_dist_split(dists_self_dn, j2_param)
         J2_dn_dn_old = J2_sum_dn_dn[idx_dn_block]  # (G_dn,)
         dists_dn_up_new = _safe_norm(r_dn_moved[:, None, :] - old_r_up_carts[None, :, :])  # (G_dn, N_up)
-        J2_dn_up_new = jnp.sum(dists_dn_up_new / 2.0 * (1.0 + j2_param * dists_dn_up_new) ** (-1.0), axis=1)  # (G_dn,)
+        J2_dn_up_new = jnp.sum(_j2_from_dist_split(dists_dn_up_new, j2_param), axis=1)  # (G_dn,)
         J2_dn_up_old = J2_sum_dn_up[idx_dn_block]  # (G_dn,)
         J_dn = J_dn * jnp.exp(J2_dn_up_new - J2_dn_up_old + J2_dn_dn_new - J2_dn_dn_old)
 
@@ -2532,7 +2625,7 @@ def compute_grads_and_laplacian_Jastrow_part(
     jax.Array,
     jax.Array,
 ]:
-    """Per-electron gradients and Laplacians of the full Jastrow $J$.
+    r"""Per-electron gradients and Laplacians of the full Jastrow :math:`J`.
 
     Analytic paths are used for J1/J2/J3 when available; the NN three-body
     term (if present) is handled via autodiff. Values are returned per electron
@@ -2939,10 +3032,10 @@ def compute_grads_and_laplacian_Jastrow_two_body(
     r_up_carts: jax.Array,
     r_dn_carts: jax.Array,
 ) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
-    """Analytic gradients and Laplacians for the Pade two-body Jastrow.
+    """Analytic gradients and Laplacians for the two-body Jastrow.
 
-    Uses the unchanged functional form ``J2(r) = r / (2 * (1 + a r))`` with
-    ``a = jastrow_2b_param``. Returns per-electron quantities (not summed).
+    Supports both ``'pade'`` and ``'exp'`` functional forms, selected via
+    ``jastrow_two_body_data.jastrow_2b_type``. Returns per-electron quantities (not summed).
 
     Args:
         jastrow_two_body_data: Two-body Jastrow parameter container.
@@ -2968,14 +3061,36 @@ def compute_grads_and_laplacian_Jastrow_two_body(
     lap_up = jnp.zeros((num_up,))
     lap_dn = jnp.zeros((num_dn,))
 
-    def pair_terms(diff):
-        r = jnp.sqrt(jnp.sum(diff * diff, axis=-1))
-        r = jnp.maximum(r, eps)
-        denom = 1.0 + a * r
-        f_prime = 0.5 / (denom * denom)
-        grad_coeff = f_prime / r  # scalar per pair
-        lap = -a / (denom * denom * denom) + (2.0 * f_prime) / r
-        return grad_coeff[..., None] * diff, lap
+    j2b_type = jastrow_two_body_data.jastrow_2b_type
+
+    if j2b_type == "pade":
+        # f(r) = r / (2*(1 + a*r))
+        # f'(r) = 1 / (2*(1+a*r)^2)
+        # f''(r) = - a / ((1+a*r)^3)
+        def pair_terms(diff):
+            r = jnp.sqrt(jnp.sum(diff * diff, axis=-1))
+            r = jnp.maximum(r, eps)
+            denom = 1.0 + a * r
+            f_prime = 0.5 / (denom * denom)
+            grad_coeff = f_prime / r
+            lap = -a / (denom * denom * denom) + (2.0 * f_prime) / r
+            return grad_coeff[..., None] * diff, lap
+
+    elif j2b_type == "exp":
+        # f(r) = 1/(2a) * (1 - exp(-a*r))
+        # f'(r) = (1/2) * exp(-a*r)
+        # f''(r) = -(a/2) * exp(-a*r)
+        def pair_terms(diff):
+            r = jnp.sqrt(jnp.sum(diff * diff, axis=-1))
+            r = jnp.maximum(r, eps)
+            exp_term = jnp.exp(-a * r)
+            f_prime = 0.5 * exp_term
+            grad_coeff = f_prime / r
+            lap = -(a / 2.0) * exp_term + (2.0 * f_prime) / r
+            return grad_coeff[..., None] * diff, lap
+
+    else:
+        raise ValueError(f"Unknown jastrow_2b_type: {j2b_type}")
 
     # up-up pairs (i<j)
     if num_up > 1:

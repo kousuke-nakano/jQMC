@@ -38,16 +38,17 @@ from pathlib import Path
 
 import jax
 import numpy as np
+import pytest
 
 project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc.setting import (  # noqa: E402
-    decimal_debug_vs_production,
+from jqmc._setting import (  # noqa: E402
+    atol_debug_vs_production,
+    rtol_debug_vs_production,
 )
 from jqmc.swct import (  # noqa: E402
-    SWCT_data,
     _evaluate_swct_domega_debug,
     _evaluate_swct_omega_debug,
     evaluate_swct_domega,
@@ -60,8 +61,8 @@ jax.config.update("jax_enable_x64", True)
 jax.config.update("jax_traceback_filtering", "off")
 
 
-# @pytest.mark.skip
-def test_debug_and_jax_SWCT_omega():
+@pytest.mark.parametrize("trexio_file", ["water_ccecp_ccpvqz.h5"])
+def test_debug_and_jax_SWCT_omega(trexio_file: str):
     """Test SWCT omega, compare debug and jax."""
     (
         structure_data,
@@ -71,10 +72,8 @@ def test_debug_and_jax_SWCT_omega():
         geminal_mo_data,
         _,
     ) = read_trexio_file(
-        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", "water_ccecp_ccpvqz.h5"), store_tuple=True
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
     )
-
-    swct_data = SWCT_data(structure=structure_data)
 
     num_ele_up = geminal_mo_data.num_electron_up
     num_ele_dn = geminal_mo_data.num_electron_dn
@@ -82,29 +81,29 @@ def test_debug_and_jax_SWCT_omega():
     r_up_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_up, 3) + r_cart_min
     r_dn_carts = (r_cart_max - r_cart_min) * np.random.rand(num_ele_dn, 3) + r_cart_min
 
-    omega_up_debug = _evaluate_swct_omega_debug(swct_data=swct_data, r_carts=r_up_carts)
-    omega_dn_debug = _evaluate_swct_omega_debug(swct_data=swct_data, r_carts=r_dn_carts)
-    omega_up_jax = evaluate_swct_omega(swct_data=swct_data, r_carts=r_up_carts)
-    omega_dn_jax = evaluate_swct_omega(swct_data=swct_data, r_carts=r_dn_carts)
+    omega_up_debug = _evaluate_swct_omega_debug(structure_data=structure_data, r_carts=r_up_carts)
+    omega_dn_debug = _evaluate_swct_omega_debug(structure_data=structure_data, r_carts=r_dn_carts)
+    omega_up_jax = evaluate_swct_omega(structure_data=structure_data, r_carts=r_up_carts)
+    omega_dn_jax = evaluate_swct_omega(structure_data=structure_data, r_carts=r_dn_carts)
 
     assert not np.any(np.isnan(np.asarray(omega_up_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(omega_up_jax))), "NaN detected in second argument"
-    np.testing.assert_almost_equal(omega_up_debug, omega_up_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(omega_up_debug, omega_up_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
     assert not np.any(np.isnan(np.asarray(omega_dn_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(omega_dn_jax))), "NaN detected in second argument"
-    np.testing.assert_almost_equal(omega_dn_debug, omega_dn_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(omega_dn_debug, omega_dn_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
 
-    domega_up_debug = _evaluate_swct_domega_debug(swct_data=swct_data, r_carts=r_up_carts)
-    domega_dn_debug = _evaluate_swct_domega_debug(swct_data=swct_data, r_carts=r_dn_carts)
-    domega_up_jax = evaluate_swct_domega(swct_data=swct_data, r_carts=r_up_carts)
-    domega_dn_jax = evaluate_swct_domega(swct_data=swct_data, r_carts=r_dn_carts)
+    domega_up_debug = _evaluate_swct_domega_debug(structure_data=structure_data, r_carts=r_up_carts)
+    domega_dn_debug = _evaluate_swct_domega_debug(structure_data=structure_data, r_carts=r_dn_carts)
+    domega_up_jax = evaluate_swct_domega(structure_data=structure_data, r_carts=r_up_carts)
+    domega_dn_jax = evaluate_swct_domega(structure_data=structure_data, r_carts=r_dn_carts)
 
     assert not np.any(np.isnan(np.asarray(domega_up_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(domega_up_jax))), "NaN detected in second argument"
-    np.testing.assert_almost_equal(domega_up_debug, domega_up_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(domega_up_debug, domega_up_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
     assert not np.any(np.isnan(np.asarray(domega_dn_debug))), "NaN detected in first argument"
     assert not np.any(np.isnan(np.asarray(domega_dn_jax))), "NaN detected in second argument"
-    np.testing.assert_almost_equal(domega_dn_debug, domega_dn_jax, decimal=decimal_debug_vs_production)
+    np.testing.assert_allclose(domega_dn_debug, domega_dn_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
 
     jax.clear_caches()
 

@@ -4,7 +4,7 @@
 
 ## Command-line `jqmc` usage
 
-You can run `jqmc` tasks (`mcmc`, `vmc`, `lrdmc`, and `lrdmc-tau`) from the command line:
+You can run `jqmc` tasks (`mcmc`, `vmc`, `lrdmc-bra`, and `lrdmc-tau`) from the command line:
 
 ```bash
 # Serial run
@@ -27,7 +27,7 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 
 | Key                 |                  Default | Description                                                                                                                |
 | ------------------- | -----------------------: | -------------------------------------------------------------------------------------------------------------------------- |
-| `job_type`          |             **required** | Select the job: `"mcmc"`, `"vmc"`, `"lrdmc"`, or `"lrdmc-tau"`.                                                            |
+| `job_type`          |             **required** | Select the job: `"mcmc"`, `"vmc"`, `"lrdmc-bra"`, or `"lrdmc-tau"`.                                                            |
 | `mcmc_seed`         |                  `34456` | Random seed for MCMC/GFMC chain.                                                                                           |
 | `number_of_walkers` |                      `4` | Number of walkers **per MPI process**.                                                                                     |
 | `max_time`          |                  `86400` | Wall time limit in seconds.                                                                                                |
@@ -73,7 +73,7 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 
 ---
 
-### `lrdmc`
+### `lrdmc-bra`
 
 | Key                        |      Default | Description                                                                                                                            |
 | -------------------------- | -----------: | -------------------------------------------------------------------------------------------------------------------------------------- |
@@ -86,6 +86,7 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 | `num_gfmc_collect_steps`   |          `0` | Number of pre-binning measurements used to collect/accumulate weights.                                                                 |
 | `E_scf`                    |        `0.0` | Initial total-energy guess used to set the initial GFMC energy shift.                                                                  |
 | `atomic_force`             |      `false` | If `true`, compute atomic forces.                                                                                                      |
+| `epsilon_PW`               |        `0.0` | Pathak–Wagner regularization parameter (Bohr). When > 0, the force estimator is regularized near the nodal surface (no regularization by default). |
 
 ---
 
@@ -100,6 +101,8 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 | `num_gfmc_warmup_steps`  |          `0` | Warm-up steps to discard.                                              |
 | `num_gfmc_bin_blocks`    |          `1` | Binning blocks for GFMC (total binned blocks = `num_gfmc_bin_blocks`). |
 | `num_gfmc_collect_steps` |          `0` | Pre-binning measurement count for weight collection.                   |
+| `atomic_force`           |      `false` | If `true`, compute atomic forces.                                      |
+| `epsilon_PW`             |        `0.0` | Pathak–Wagner regularization parameter (Bohr). When > 0, the force estimator is regularized near the nodal surface (no regularization by default). |
 
 ---
 

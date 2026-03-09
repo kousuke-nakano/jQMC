@@ -1,0 +1,12 @@
+# Queue configuration for localhost
+# Each [section] is a queue_label you can reference from your pipeline.
+
+[default]
+    submit_template = 'submit_mpi.sh'
+    max_job_submit = 10
+    queue = 'batch'
+    num_cores = 120
+    omp_num_threads = 1
+    nodes = 1
+    mpi_per_node = 120
+    max_time = '24:00:00'

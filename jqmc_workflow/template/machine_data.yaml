@@ -1,0 +1,36 @@
+# Machine definitions for jqmc-workflow
+# Edit this file to match your environment.
+# Each machine needs at least: machine_type (local or remote), queuing (true or false), workspace_root (path).
+# Remote machines also require: ssh_host (Host alias in ~/.ssh/config).
+# The top-level key (e.g., "my-cluster") is a nickname; it does NOT have to match the SSH host.
+
+localhost:
+  machine_type: local
+  queuing: true
+  workspace_root: /home/username/jqmc_work
+  jobsubmit: /opt/pbs/bin/qsub
+  jobcheck: /opt/pbs/bin/qstat
+  jobdel: /opt/pbs/bin/qdel
+  jobnum_index: 0
+
+# Example remote machine (PBS):
+# my-pbs-cluster:
+#   ssh_host: pbs-cluster          # Host alias in ~/.ssh/config
+#   machine_type: remote
+#   queuing: true
+#   workspace_root: /home/username/jqmc_work
+#   jobsubmit: /opt/pbs/bin/qsub
+#   jobcheck: /opt/pbs/bin/qstat
+#   jobdel: /opt/pbs/bin/qdel
+#   jobnum_index: 0
+
+# Example remote machine (SLURM):
+# my-slurm-cluster:
+#   ssh_host: slurm-cluster        # Host alias in ~/.ssh/config
+#   machine_type: remote
+#   queuing: true
+#   workspace_root: /home/username/jqmc_work
+#   jobsubmit: sbatch
+#   jobcheck: squeue --noheader
+#   jobdel: scancel
+#   jobnum_index: 3
