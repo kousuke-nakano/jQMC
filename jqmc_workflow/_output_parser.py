@@ -83,27 +83,44 @@ logger = getLogger("jqmc-workflow").getChild(__name__)
 def parse_ufloat_short(text: str):
     """Parse uncertainties short format, e.g. ``+0.123(45)`` → (0.123, 0.045).
 
+    Handles several notations produced by jqmc:
+
+    * ``+0.0114(14)``   — integer uncertainty digits in last decimal place
+    * ``+3(8)e-05``     — scientific notation with integer uncertainty
+    * ``+3.9(3.5)e-05`` — scientific notation with decimal uncertainty
+
     Parameters
     ----------
     text : str
-        A single token like ``"+0.0114(14)"`` or ``"-1.23(4)"``.
+        A single token like ``"+0.0114(14)"``, ``"-1.23(4)"``,
+        ``"+3(8)e-05"``, or ``"+3.9(3.5)e-05"``.
 
     Returns
     -------
     tuple
         ``(value, uncertainty)`` or ``(None, None)`` on failure.
     """
-    m = re.match(r"([+-]?\d+\.?\d*)\((\d+)\)", text.strip())
+    m = re.match(r"([+-]?\d+\.?\d*)\((\d+\.?\d*)\)([eE][+-]?\d+)?", text.strip())
     if not m:
         return None, None
     val_str = m.group(1)
-    unc_digits = m.group(2)
+    unc_str = m.group(2)
+    exp_str = m.group(3)  # e.g. "e-05" or None
     val = float(val_str)
-    if "." in val_str:
-        n_decimals = len(val_str.split(".")[1])
+    if "." in unc_str:
+        # Decimal uncertainty: use the value directly at the mantissa scale
+        unc = float(unc_str)
     else:
-        n_decimals = 0
-    unc = int(unc_digits) * 10 ** (-n_decimals)
+        # Integer uncertainty: digits in the last decimal place of the value
+        if "." in val_str:
+            n_decimals = len(val_str.split(".")[1])
+        else:
+            n_decimals = 0
+        unc = int(unc_str) * 10 ** (-n_decimals)
+    if exp_str is not None:
+        exp_factor = 10 ** int(exp_str[1:])  # skip 'e'/'E'
+        val *= exp_factor
+        unc *= exp_factor
     return val, unc
 
 
@@ -168,6 +185,46 @@ def parse_force_table(text: str):
                 }
             )
     return forces or None
+
+
+def repair_forces_from_output(work_dir: str) -> bool:
+    """Re-parse forces from ``out_*.o`` files and update ``workflow_state.toml``.
+
+    This repairs corrupted force data caused by the pre-fix
+    ``parse_ufloat_short`` that ignored scientific notation (e.g.
+    ``+3(8)e-05`` was parsed as ``3.0`` instead of ``3e-05``).
+
+    Returns *True* if the TOML was updated, *False* otherwise.
+    """
+    state_path = os.path.join(work_dir, "workflow_state.toml")
+    if not os.path.isfile(state_path):
+        return False
+
+    # Find the last out_*.o file
+    out_files = sorted(glob.glob(os.path.join(work_dir, "out_*.o")))
+    if not out_files:
+        return False
+    last_out = out_files[-1]
+
+    # Read and parse the force table from the output file
+    try:
+        with open(last_out, "r") as f:
+            text = f.read()
+    except Exception:
+        return False
+
+    forces = parse_force_table(text)
+    if forces is None:
+        return False
+
+    # Update the TOML
+    state = toml.load(state_path)
+    state.setdefault("result", {})["forces"] = forces
+    with open(state_path, "w") as f:
+        toml.dump(state, f)
+
+    logger.info(f"  Repaired forces in {work_dir} from {os.path.basename(last_out)}")
+    return True
 
 
 # ── Compiled regex patterns ───────────────────────────────────────

@@ -192,6 +192,10 @@ The script prints a summary table after all calculations complete:
 |   1.40 |     -0.XXXXXX |    -X.XXXXX(XX) |    -X.XXXXX(XX) |    -X.XXXXX(XX) |     -X.XXXXX(XX) |
 ```
 
+## Results
+
+![H2 PES — MCMC and LRDMC](H2_PES_mcmc_lrdmc.png)
+
 ## References
 
 [^2010SORjcp]: S. Sorella and L. Capriotti, *J. Chem. Phys.* **133**, 234111 (2010). Algorithmic differentiation in ab initio QMC.

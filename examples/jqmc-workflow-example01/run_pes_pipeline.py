@@ -17,6 +17,14 @@ import re
 import subprocess
 import sys
 
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+import toml
+from scipy.interpolate import CubicSpline
+
 from jqmc_workflow import (
     Container,
     FileFrom,
@@ -33,10 +41,10 @@ from jqmc_workflow import (
 SERVER = "cluster"
 QUEUE_LABEL = "cores-120-mpi-120-omp-1-1h"
 
-NUM_OPT_STEPS = 50  # VMC optimization steps
-WF_DUMP_FREQ = 10  # WF dumping freq.
+NUM_OPT_STEPS = 120  # VMC optimization steps
+WF_DUMP_FREQ = 20  # WF dumping freq.
 Dt = 1.2  # MCMC hopping distance
-ALAT = 0.2  # LRDMC lattice spacing
+ALAT = 0.3  # LRDMC lattice spacing
 TARGET_SNR = 6.0  # target signal_to_noise for convergence.
 TARGET_VMC_ERROR = 5e-4  # Target statistical error (Ha)
 TARGET_MCMC_ERROR = 5e-5  # Target statistical error (Ha)
@@ -63,8 +71,6 @@ R_VALUES = [
     1.30,
     1.40,
 ]
-
-R_VALUES = [0.40, 0.50]
 
 # ── pySCF script template ────────────────────────────────────────
 PYSCF_TEMPLATE = '''\
@@ -142,6 +148,33 @@ def format_force(force: float | None, error: float | None) -> str:
     n_dec = max(0, -math.floor(math.log10(error)) + 1)
     err_in_last = round(error * 10**n_dec)
     return f"{force:.{n_dec}f}({err_in_last})"
+
+
+def extract_max_force_norm(
+    forces: list[dict] | None,
+) -> tuple[float | None, float | None]:
+    """Return (|F|_max, err) — max force norm over atoms.
+
+    *forces* is ``[{"Fx": .., "Fx_err": .., "Fy": .., ...}, ...]``.
+    """
+    if not forces:
+        return None, None
+    best_norm, best_err = None, None
+    for atom in forces:
+        fx = atom.get("Fx", 0.0)
+        fy = atom.get("Fy", 0.0)
+        fz = atom.get("Fz", 0.0)
+        fxe = atom.get("Fx_err", 0.0)
+        fye = atom.get("Fy_err", 0.0)
+        fze = atom.get("Fz_err", 0.0)
+        norm = math.sqrt(fx**2 + fy**2 + fz**2)
+        if norm > 0:
+            err = math.sqrt((fx * fxe) ** 2 + (fy * fye) ** 2 + (fz * fze) ** 2) / norm
+        else:
+            err = math.sqrt(fxe**2 + fye**2 + fze**2)
+        if best_norm is None or norm > best_norm:
+            best_norm, best_err = norm, err
+    return best_norm, best_err
 
 
 # ── Step 1: Run pySCF locally ────────────────────────────────────
@@ -242,7 +275,7 @@ def build_pipeline() -> tuple[list[Container], dict[float, Container], dict[floa
                 opt_with_projected_MOs=True,
                 target_error=TARGET_VMC_ERROR,
                 target_snr=TARGET_SNR,
-                optimizer_kwargs={"method": "sr", "delta": 0.200, "epsilon": 0.050, "adaptive_learning_rate": True},
+                optimizer_kwargs={"method": "sr", "delta": 0.300, "epsilon": 0.010, "adaptive_learning_rate": True},
                 max_time=3000,
                 poll_interval=120,
                 max_continuation=1,
@@ -343,8 +376,7 @@ def print_summary_table(
         if mcmc_ctr is not None and mcmc_ctr.output_values:
             mcmc_e = mcmc_ctr.output_values.get("energy")
             mcmc_err = mcmc_ctr.output_values.get("energy_error")
-            mcmc_f = mcmc_ctr.output_values.get("force")
-            mcmc_ferr = mcmc_ctr.output_values.get("force_error")
+            mcmc_f, mcmc_ferr = extract_max_force_norm(mcmc_ctr.output_values.get("forces"))
         else:
             mcmc_e, mcmc_err, mcmc_f, mcmc_ferr = None, None, None, None
         mcmc_e_str = format_energy(mcmc_e, mcmc_err)
@@ -359,8 +391,7 @@ def print_summary_table(
         if lrdmc_ctr is not None and lrdmc_ctr.output_values:
             lrdmc_e = lrdmc_ctr.output_values.get("energy")
             lrdmc_err = lrdmc_ctr.output_values.get("energy_error")
-            lrdmc_f = lrdmc_ctr.output_values.get("force")
-            lrdmc_ferr = lrdmc_ctr.output_values.get("force_error")
+            lrdmc_f, lrdmc_ferr = extract_max_force_norm(lrdmc_ctr.output_values.get("forces"))
         else:
             lrdmc_e, lrdmc_err, lrdmc_f, lrdmc_ferr = None, None, None, None
         lrdmc_e_str = format_energy(lrdmc_e, lrdmc_err)
@@ -378,6 +409,139 @@ def print_summary_table(
         print(row)
 
     print()
+
+
+# ── Step 4: Plot PES ──────────────────────────────────────────────
+BOHR_PER_ANG = 1.8897259886  # 1 Å = 1.8897 bohr
+
+plt.rcParams["font.family"] = "sans-serif"
+plt.rcParams["xtick.direction"] = "in"
+plt.rcParams["ytick.direction"] = "in"
+plt.rcParams["xtick.major.width"] = 1.0
+plt.rcParams["ytick.major.width"] = 1.0
+plt.rcParams["font.size"] = 12
+plt.rcParams["axes.linewidth"] = 1.5
+
+
+def _load_pes_data(base_dir: str, method_dir: str):
+    """Load energy/error and Fz (atom 2) from workflow_state.toml."""
+    energies, energy_errs = [], []
+    forces_z, force_z_errs = [], []
+    valid_R = []
+
+    for R in R_VALUES:
+        state_path = os.path.join(base_dir, f"R_{R:.2f}", method_dir, "workflow_state.toml")
+        if not os.path.isfile(state_path):
+            continue
+        state = toml.load(state_path)
+        res = state.get("result", {})
+        e = res.get("energy")
+        ee = res.get("energy_error")
+        if e is None:
+            continue
+
+        valid_R.append(R)
+        energies.append(e)
+        energy_errs.append(ee if ee else 0.0)
+
+        flist = res.get("forces", [])
+        if len(flist) >= 2:
+            fz = flist[1].get("Fz", None)
+            fz_err = flist[1].get("Fz_err", None)
+            if fz is not None:
+                forces_z.append(fz * BOHR_PER_ANG)
+                force_z_errs.append((fz_err if fz_err else 0.0) * BOHR_PER_ANG)
+            else:
+                forces_z.append(None)
+                force_z_errs.append(None)
+        else:
+            forces_z.append(None)
+            force_z_errs.append(None)
+
+    return (
+        np.array(valid_R),
+        np.array(energies),
+        np.array(energy_errs),
+        forces_z,
+        force_z_errs,
+    )
+
+
+def _plot_panel(ax, R, E, E_err, Fz, Fz_err, label):
+    """Plot one panel (MCMC or LRDMC)."""
+    E_min = np.min(E)
+    E_rel = E - E_min
+
+    cs = CubicSpline(R, E)
+    R_fine = np.linspace(R.min(), R.max(), 300)
+    E_fine_rel = cs(R_fine) - E_min
+    dEdR_fine = cs(R_fine, 1)
+
+    ax.plot(R_fine, E_fine_rel, "-", color="green", linewidth=1.5, label=label)
+    ax.errorbar(R, E_rel, yerr=E_err, fmt="o", color="darkgreen", markersize=5, capsize=2, zorder=5)
+    ax.set_xlabel("Bond Length (Angstrom)")
+    ax.set_ylabel("Relative energy (Ha)")
+    ax.axhline(0, color="gray", linewidth=0.5, linestyle="--")
+
+    R_eq_idx = np.argmin(cs(R_fine))
+    R_eq = R_fine[R_eq_idx]
+    ax.axvline(R_eq, color="green", linewidth=0.8, linestyle="--", alpha=0.7)
+
+    ax2 = ax.twinx()
+    ax2.plot(R_fine, dEdR_fine, "--", color="green", linewidth=1.2, alpha=0.7, label="dE/dR")
+
+    R_f, neg_Fz, neg_Fz_err = [], [], []
+    for i, fz in enumerate(Fz):
+        if fz is not None:
+            R_f.append(R[i])
+            neg_Fz.append(-fz)
+            neg_Fz_err.append(Fz_err[i] if Fz_err[i] is not None else 0.0)
+
+    if R_f:
+        ax2.errorbar(
+            R_f,
+            neg_Fz,
+            yerr=neg_Fz_err,
+            fmt="s",
+            color="red",
+            markersize=5,
+            capsize=2,
+            markerfacecolor="red",
+            markeredgecolor="darkred",
+            linewidth=0,
+            elinewidth=1,
+            label="$-F$",
+            zorder=5,
+        )
+
+    ax2.set_ylabel("Force (Ha/Angstrom)")
+
+    lines1, labels1 = ax.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax.legend(lines1 + lines2, labels1 + labels2, loc="upper left", fontsize=10)
+
+    return ax2
+
+
+def plot_pes(base_dir: str) -> str:
+    """Generate H2 PES plot (MCMC + LRDMC) and return the PDF path."""
+    R_mcmc, E_mcmc, Ee_mcmc, Fz_mcmc, Fze_mcmc = _load_pes_data(base_dir, "03_mcmc")
+    R_lrdmc, E_lrdmc, Ee_lrdmc, Fz_lrdmc, Fze_lrdmc = _load_pes_data(base_dir, "04_lrdmc")
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5.5))
+
+    _plot_panel(ax1, R_mcmc, E_mcmc, Ee_mcmc, Fz_mcmc, Fze_mcmc, "MCMC-JSD")
+    _plot_panel(ax2, R_lrdmc, E_lrdmc, Ee_lrdmc, Fz_lrdmc, Fze_lrdmc, "LRDMC-JSD")
+
+    fig.suptitle("H2 PES  (JSD, MO opt, all-electron, cc-pVTZ)", fontsize=14)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+
+    out_pdf = os.path.join(base_dir, "H2_PES_mcmc_lrdmc.pdf")
+    out_png = os.path.join(base_dir, "H2_PES_mcmc_lrdmc.png")
+    fig.savefig(out_pdf, bbox_inches="tight")
+    fig.savefig(out_png, bbox_inches="tight", dpi=150)
+    plt.close(fig)
+    return out_pdf
 
 
 # ── Main ──────────────────────────────────────────────────────────
@@ -400,3 +564,7 @@ if __name__ == "__main__":
 
     # 3) Summary table
     print_summary_table(hf_energies, mcmc_containers, lrdmc_containers)
+
+    # 4) PES plot
+    pdf_path = plot_pes(base_dir)
+    print(f"PES plot saved: {pdf_path}")

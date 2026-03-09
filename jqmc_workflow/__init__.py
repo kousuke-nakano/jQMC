@@ -61,6 +61,7 @@ from ._output_parser import (
     parse_lrdmc_output,
     parse_mcmc_output,
     parse_vmc_output,
+    repair_forces_from_output,
 )
 from ._results import (
     Input_Parameters,
@@ -108,6 +109,7 @@ __all__ = [
     "parse_lrdmc_output",
     "parse_lrdmc_ext_output",
     "parse_input_params",
+    "repair_forces_from_output",
     # State queries
     "get_all_workflow_statuses",
     "get_workflow_summary",
