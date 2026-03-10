@@ -35,7 +35,7 @@ BSD-3-Clause license.
 
 ## Developer(s)
 
-- Kosuke Nakano, National Institute for Materials Science
+- Kosuke Nakano, National Institute for Materials Science (NIMS)
 
 ## Acknowledgements
 
