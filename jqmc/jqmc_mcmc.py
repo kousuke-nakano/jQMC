@@ -1162,15 +1162,15 @@ class MCMC:
             end = time.perf_counter()
             timer_e_L += end - start
 
-            self.__stored_e_L.append(e_L_step)
-            self.__stored_e_L2.append(e_L_step**2)
+            self.__stored_e_L.append(np.asarray(e_L_step))
+            self.__stored_e_L2.append(np.asarray(e_L_step**2))
 
             # AS weights
             R_AS_step = _jit_vmap_as_reg_fast(geminal, geminal_inv)
             R_AS_eps_step = jnp.maximum(R_AS_step, self.__epsilon_AS)
             w_L_step = (R_AS_step / R_AS_eps_step) ** 2
 
-            self.__stored_w_L.append(w_L_step)
+            self.__stored_w_L.append(np.asarray(w_L_step))
 
             if self.__comput_position_deriv:
                 start = time.perf_counter()
@@ -1202,10 +1202,10 @@ class MCMC:
                 end = time.perf_counter()
                 timer_de_L_dR_dr += end - start
 
-                self.__stored_grad_e_L_r_up.append(grad_e_L_r_up_step)
-                self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn_step)
+                self.__stored_grad_e_L_r_up.append(np.asarray(grad_e_L_r_up_step))
+                self.__stored_grad_e_L_r_dn.append(np.asarray(grad_e_L_r_dn_step))
                 grad_e_L_R = self.__hamiltonian_data.accumulate_position_grad(grad_e_L_h_step)
-                self.__stored_grad_e_L_dR.append(grad_e_L_R)
+                self.__stored_grad_e_L_dR.append(np.asarray(grad_e_L_R))
 
                 start = time.perf_counter()
                 logger.devel("    Evaluating dln_Psi/dR and dln_Psi/dr ...")
@@ -1219,10 +1219,10 @@ class MCMC:
                 end = time.perf_counter()
                 timer_dln_Psi_dR_dr += end - start
 
-                self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up_step)
-                self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn_step)
+                self.__stored_grad_ln_Psi_r_up.append(np.asarray(grad_ln_Psi_r_up_step))
+                self.__stored_grad_ln_Psi_r_dn.append(np.asarray(grad_ln_Psi_r_dn_step))
                 grad_ln_Psi_dR = self.__hamiltonian_data.wavefunction_data.accumulate_position_grad(grad_ln_Psi_h_step)
-                self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR)
+                self.__stored_grad_ln_Psi_dR.append(np.asarray(grad_ln_Psi_dR))
 
                 omega_up_step = _jit_vmap_swct_omega(
                     self.__hamiltonian_data.structure_data,
@@ -1241,10 +1241,10 @@ class MCMC:
                     self.__latest_r_dn_carts,
                 )
 
-                self.__stored_omega_up.append(omega_up_step)
-                self.__stored_omega_dn.append(omega_dn_step)
-                self.__stored_grad_omega_r_up.append(grad_omega_dr_up_step)
-                self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn_step)
+                self.__stored_omega_up.append(np.asarray(omega_up_step))
+                self.__stored_omega_dn.append(np.asarray(omega_dn_step))
+                self.__stored_grad_omega_r_up.append(np.asarray(grad_omega_dr_up_step))
+                self.__stored_grad_omega_r_dn.append(np.asarray(grad_omega_dr_dn_step))
 
             if self.__comput_log_WF_param_deriv:
                 start = time.perf_counter()
@@ -1263,9 +1263,9 @@ class MCMC:
                 for name, grad_val in flat_param_grads.items():
                     if not self.__param_grad_flags.get(name, True):
                         continue
-                    self.__stored_log_WF_param_grads[name].append(grad_val)
                     if hasattr(grad_val, "block_until_ready"):
                         grad_val.block_until_ready()
+                    self.__stored_log_WF_param_grads[name].append(np.asarray(grad_val))
 
                 end = time.perf_counter()
                 timer_dln_Psi_dc += end - start
@@ -1318,9 +1318,9 @@ class MCMC:
                 for name, grad_val in flat_param2_grads.items():
                     if not self.__param_grad_flags.get(name, True):
                         continue
-                    self.__stored_e_L_param_grads[name].append(grad_val)
                     if hasattr(grad_val, "block_until_ready"):
                         grad_val.block_until_ready()
+                    self.__stored_e_L_param_grads[name].append(np.asarray(grad_val))
 
                 end = time.perf_counter()
                 timer_de_L_dc += end - start
