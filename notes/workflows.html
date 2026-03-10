@@ -1,0 +1,1162 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Autonomous Pipelines (jqmc_workflow) &#8212; jQMC v0.2</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/sphinx-book-theme.css?v=3c74b3bc" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+    <script src="../_static/documentation_options.js?v=f6d3da1f"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/scripts/sphinx-book-theme.js?v=fab101a9"></script>
+    <script>window.MathJax = {"options": {"processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'notes/workflows';</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="API reference for the command-line interface (jqmc)" href="../api_reference_cli.html" />
+    <link rel="prev" title="Interfaces with TREX-IO" href="trexio.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="0.2" />
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search..."
+         aria-label="Search..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">jQMC v0.2</p>
+  
+</a></div>
+        <div class="sidebar-primary-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/kousuke-nakano/jQMC" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+</ul></div>
+        <div class="sidebar-primary-item">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button></div>
+        <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
+    <div class="bd-toc-item navbar-nav active">
+        <ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../overview.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples.html">Examples</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="technical_notes.html">Technical notes</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="ao.html">Atomic orbitals (AOs) and Basis sets</a></li>
+<li class="toctree-l2"><a class="reference internal" href="wavefunction.html">Wave functions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="vmc.html">Variational Monte Carlo (VMC)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="lrdmc.html">Lattice Regularized Diffusion Monte Carlo (LRDMC)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="jax.html">JAX compatible modules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="trexio.html">Interfaces with TREX-IO</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Autonomous Pipelines (jqmc_workflow)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api_reference_cli.html">API reference for the command-line interface (jqmc)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api_reference_cli_tool.html">API reference for the command-line tool (jqmc-tool)</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../api_reference_mod/modules.html">API reference for modules</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../api_reference_mod/jqmc.html">jqmc package</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../api_reference_mod/jqmc_workflow.html">jqmc_workflow package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api_reference_mod/jqmc_workflow.template.html">jqmc_workflow.template package</a></li>
+</ul>
+</details></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="../citation.html">How to cite jQMC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../reference.html">References</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">Change Log</a></li>
+</ul>
+
+    </div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+
+<div class="sbt-scroll-pixel-helper"></div>
+
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item"><button class="sidebar-toggle primary-toggle btn btn-sm" title="Toggle primary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <span class="fa-solid fa-bars"></span>
+</button></div>
+      
+    </div>
+  
+  
+    <div class="header-article-items__end">
+      
+        <div class="header-article-item">
+
+<div class="article-header-buttons">
+
+
+
+
+
+<div class="dropdown dropdown-download-buttons">
+  <button class="btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Download this page">
+    <i class="fas fa-download"></i>
+  </button>
+  <ul class="dropdown-menu">
+      
+      
+      
+      <li><a href="../_sources/notes/workflows.md" target="_blank"
+   class="btn btn-sm btn-download-source-button dropdown-item"
+   title="Download source file"
+   data-bs-placement="left" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-file"></i>
+  </span>
+<span class="btn__text-container">.md</span>
+</a>
+</li>
+      
+      
+      
+      
+      <li>
+<button onclick="window.print()"
+  class="btn btn-sm btn-download-pdf-button dropdown-item"
+  title="Print to PDF"
+  data-bs-placement="left" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-file-pdf"></i>
+  </span>
+<span class="btn__text-container">.pdf</span>
+</button>
+</li>
+      
+  </ul>
+</div>
+
+
+
+
+<button onclick="toggleFullScreen()"
+  class="btn btn-sm btn-fullscreen-button pst-navbar-icon"
+  title="Fullscreen mode"
+  data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-expand"></i>
+  </span>
+
+</button>
+
+
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button>
+
+
+<button class="btn btn-sm pst-navbar-icon search-button search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass fa-lg"></i>
+</button>
+<button class="sidebar-toggle secondary-toggle btn btn-sm pst-navbar-icon" title="Toggle secondary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="fa-solid fa-list"></span>
+</button>
+</div></div>
+      
+    </div>
+  
+</div>
+</div>
+              
+              
+
+<div id="jb-print-docs-body" class="onlyprint">
+    <h1>Autonomous Pipelines (jqmc_workflow)</h1>
+    <!-- Table of contents -->
+    <div id="print-main-content">
+        <div id="jb-print-toc">
+            
+            <div>
+                <h2> Contents </h2>
+            </div>
+            <nav aria-label="Page">
+                <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#overview">Overview</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#architecture">Architecture</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#key-components">Key components</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#target-error-bar-estimation">Target error-bar estimation</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#mcmc-vmc">MCMC / VMC</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#lrdmc">LRDMC</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#step-estimation-formula">Step estimation formula</a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#restart-behavior">Restart behavior</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#configuration">Configuration</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#directory-structure">Directory structure</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#machine-data-yaml"><code class="docutils literal notranslate"><span class="pre">machine_data.yaml</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#example">Example</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#parameters">Parameters</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#ssh-connection">SSH connection</a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#queue-data-toml"><code class="docutils literal notranslate"><span class="pre">queue_data.toml</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id1">Example</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id2">Parameters</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#toml-format-notes">TOML format notes</a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#job-script-templates">Job script templates</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#predefined-variables">Predefined variables</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#custom-variables">Custom variables</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#example-submit-mpi-sh-for-pbs">Example (<code class="docutils literal notranslate"><span class="pre">submit_mpi.sh</span></code> for PBS)</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#example-submit-serial-sh">Example (<code class="docutils literal notranslate"><span class="pre">submit_serial.sh</span></code>)</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#pipeline-example">Pipeline example</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#job-manager-cli-jqmc-jobmanager">Job Manager CLI (<code class="docutils literal notranslate"><span class="pre">jqmc-jobmanager</span></code>)</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#commands">Commands</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#common-options">Common options</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#usage-examples">Usage examples</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#example-output">Example output</a></li>
+</ul>
+</li>
+</ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section class="tex2jax_ignore mathjax_ignore" id="autonomous-pipelines-jqmc-workflow">
+<span id="workflows-tags"></span><h1>Autonomous Pipelines (jqmc_workflow)<a class="headerlink" href="#autonomous-pipelines-jqmc-workflow" title="Link to this heading">#</a></h1>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading">#</a></h2>
+<p>The <strong>jqmc_workflow</strong> package provides an autonomous pipeline engine for
+<strong>jQMC</strong> calculations.
+Users define a <em>pipeline</em> — a directed acyclic graph (DAG) of workflow steps —
+and the engine takes care of:</p>
+<ul class="simple">
+<li><p><strong>Input generation</strong> — TOML input files are created automatically from
+explicit parameter values (with sensible defaults).</p></li>
+<li><p><strong>Data transfer</strong> — Files are uploaded to (and downloaded from) remote
+supercomputers via SSH/SFTP using <a class="reference external" href="https://www.paramiko.org/">Paramiko</a>.</p></li>
+<li><p><strong>Job submission, monitoring, and collection</strong> — Jobs are submitted through
+the site’s scheduler (PBS / Slurm / local <code class="docutils literal notranslate"><span class="pre">bash</span></code>), polled until completion,
+and output files are fetched back.</p></li>
+<li><p><strong>Dependency resolution</strong> — The DAG-based <code class="docutils literal notranslate"><span class="pre">Launcher</span></code> identifies which
+workflow steps are <em>ready</em> (all dependencies satisfied) and executes them
+<strong>in parallel</strong> using Python <code class="docutils literal notranslate"><span class="pre">asyncio</span></code> tasks.</p></li>
+<li><p><strong>Target error-bar estimation</strong> — When a <code class="docutils literal notranslate"><span class="pre">target_error</span></code> (Ha) is specified,
+a small <em>pilot</em> run is executed first; the statistical error is used to
+estimate the number of production steps required, together with the
+estimated wall time.</p></li>
+</ul>
+<p>A single Python script can therefore express a full QMC pipeline — from
+wavefunction preparation (TREXIO → <code class="docutils literal notranslate"><span class="pre">hamiltonian_data.h5</span></code>) through VMC
+optimization, MCMC production sampling, and LRDMC extrapolation — and run it
+end-to-end with automatic restarts across interruptions.</p>
+</section>
+<section id="architecture">
+<h2>Architecture<a class="headerlink" href="#architecture" title="Link to this heading">#</a></h2>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>run_pipeline.py
+      │
+      ▼
+  ┌────────┐
+  │Launcher│   DAG executor (asyncio)
+  └──┬─────┘
+     │  creates asyncio.Task per ready node
+     │
+     ├──► Container(&quot;vmc&quot;)
+     │         └─► VMC_Workflow.async_launch()
+     │
+     ├──► Container(&quot;mcmc-prod&quot;)   ← runs in parallel
+     │         └─► MCMC_Workflow.async_launch()
+     │
+     └──► Container(&quot;lrdmc-ext&quot;)   ← runs in parallel
+               └─► LRDMC_Ext_Workflow.async_launch()
+                       ├─► LRDMC_Workflow (alat=0.50)  ┐
+                       ├─► LRDMC_Workflow (alat=0.40)  ├ parallel
+                       └─► LRDMC_Workflow (alat=0.25)  ┘
+</pre></div>
+</div>
+<section id="key-components">
+<h3>Key components<a class="headerlink" href="#key-components" title="Link to this heading">#</a></h3>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Class</p></th>
+<th class="head"><p>Role</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Launcher</span></code></p></td>
+<td><p>Executes a DAG of <code class="docutils literal notranslate"><span class="pre">Container</span></code> nodes in topological order, launching independent nodes in parallel.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Container</span></code></p></td>
+<td><p>Wraps any <code class="docutils literal notranslate"><span class="pre">Workflow</span></code> subclass in a dedicated project directory with state tracking (<code class="docutils literal notranslate"><span class="pre">workflow_state.toml</span></code>).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">FileFrom</span></code> / <code class="docutils literal notranslate"><span class="pre">ValueFrom</span></code></p></td>
+<td><p>Declare inter-workflow dependencies (files or computed values).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">WF_Workflow</span></code></p></td>
+<td><p>Converts a TREXIO file to <code class="docutils literal notranslate"><span class="pre">hamiltonian_data.h5</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">VMC_Workflow</span></code></p></td>
+<td><p>Jastrow / orbital optimization (<code class="docutils literal notranslate"><span class="pre">job_type=vmc</span></code>).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">MCMC_Workflow</span></code></p></td>
+<td><p>Production energy sampling (<code class="docutils literal notranslate"><span class="pre">job_type=mcmc</span></code>).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">LRDMC_Workflow</span></code></p></td>
+<td><p>Lattice-regularized diffusion Monte Carlo for a single <span class="math notranslate nohighlight">\(a\)</span> value.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">LRDMC_Ext_Workflow</span></code></p></td>
+<td><p>Runs multiple <code class="docutils literal notranslate"><span class="pre">LRDMC_Workflow</span></code> instances at different lattice spacings and performs <span class="math notranslate nohighlight">\(a^2 \to 0\)</span> extrapolation.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="target-error-bar-estimation">
+<h3>Target error-bar estimation<a class="headerlink" href="#target-error-bar-estimation" title="Link to this heading">#</a></h3>
+<p>When <code class="docutils literal notranslate"><span class="pre">target_error</span></code> is set, each workflow (MCMC and LRDMC) operates in
+a pilot + production cycle.  A separate queue may be used for the pilot
+via <code class="docutils literal notranslate"><span class="pre">pilot_queue_label</span></code> (defaults to <code class="docutils literal notranslate"><span class="pre">queue_label</span></code>).</p>
+<section id="mcmc-vmc">
+<h4>MCMC / VMC<a class="headerlink" href="#mcmc-vmc" title="Link to this heading">#</a></h4>
+<ol class="arabic simple">
+<li><p><strong>Pilot</strong> — A short run of <code class="docutils literal notranslate"><span class="pre">pilot_steps</span></code> steps.</p></li>
+<li><p><strong>Production</strong> — Step count estimated from the pilot error bar.</p></li>
+</ol>
+</section>
+<section id="lrdmc">
+<h4>LRDMC<a class="headerlink" href="#lrdmc" title="Link to this heading">#</a></h4>
+<p>LRDMC has an additional calibration stage to automatically determine
+<code class="docutils literal notranslate"><span class="pre">num_mcmc_per_measurement</span></code> (GFMC projections per measurement) from
+a <code class="docutils literal notranslate"><span class="pre">target_survived_walkers_ratio</span></code> (default 0.97):</p>
+<ol class="arabic simple">
+<li><p><strong>Calibration</strong> (<code class="docutils literal notranslate"><span class="pre">_pilot_a/_pilot1</span></code> – <code class="docutils literal notranslate"><span class="pre">_pilot_a/_pilot3</span></code>, parallel) —
+Three short LRDMC runs with
+<code class="docutils literal notranslate"><span class="pre">num_mcmc_per_measurement</span> <span class="pre">=</span> <span class="pre">Ne</span> <span class="pre">×</span> <span class="pre">k</span> <span class="pre">×</span> <span class="pre">(0.3/alat)²</span></code> (k=2,4,6;
+<span class="math notranslate nohighlight">\(N_e\)</span> is the total electron count).  A quadratic is fit to the
+observed survived-walkers ratio and the optimal
+<code class="docutils literal notranslate"><span class="pre">num_mcmc_per_measurement</span></code> is determined.</p></li>
+<li><p><strong>Error-bar pilot</strong> (<code class="docutils literal notranslate"><span class="pre">_pilot_b</span></code>) — A run with the calibrated
+<code class="docutils literal notranslate"><span class="pre">num_mcmc_per_measurement</span></code>; its error bar estimates the production
+step count.</p></li>
+<li><p><strong>Production</strong> (<code class="docutils literal notranslate"><span class="pre">_1</span></code>, <code class="docutils literal notranslate"><span class="pre">_2</span></code>, …) — Start from scratch, accumulate
+statistics until <code class="docutils literal notranslate"><span class="pre">target_error</span></code> is achieved.</p></li>
+</ol>
+<p>If <code class="docutils literal notranslate"><span class="pre">num_mcmc_per_measurement</span></code> is given explicitly, the calibration
+stage is skipped and only the error-bar pilot is executed.</p>
+<p>For <code class="docutils literal notranslate"><span class="pre">LRDMC_Ext_Workflow</span></code> (multi-alat extrapolation), every alat value
+independently runs its own calibration, error-bar pilot, and production
+in parallel.  There is no inter-alat interaction until the final
+extrapolation step.</p>
+</section>
+<section id="step-estimation-formula">
+<h4>Step estimation formula<a class="headerlink" href="#step-estimation-formula" title="Link to this heading">#</a></h4>
+<p>The required number of production steps is estimated via</p>
+<div class="math notranslate nohighlight">
+\[
+N_{\text{eff,prod}} = N_{\text{eff,pilot}}
+  \times \left(\frac{\sigma_{\text{pilot}}}{\sigma_{\text{target}}}\right)^2
+  \times \frac{W_{\text{pilot}}}{W_{\text{prod}}}
+\]</div>
+<p>where <span class="math notranslate nohighlight">\(N_{\text{eff}} = N_{\text{total}} - N_{\text{warmup}}\)</span> is the
+number of steps that actually contribute to statistics (warmup steps
+are discarded during post-processing via <code class="docutils literal notranslate"><span class="pre">-w</span></code>), and
+<span class="math notranslate nohighlight">\(W = \text{walkers\_per\_MPI} \times \text{num\_MPI}\)</span> is the
+total number of walkers.  The ratio
+<span class="math notranslate nohighlight">\(W_{\text{pilot}} / W_{\text{prod}}\)</span> (the <em>walker ratio</em>) accounts
+for the pilot queue using fewer (or more) MPI processes than the
+production queue.  The number of MPI processes is read from
+<code class="docutils literal notranslate"><span class="pre">queue_data.toml</span></code> (<code class="docutils literal notranslate"><span class="pre">num_cores</span></code>, or <code class="docutils literal notranslate"><span class="pre">mpi_per_node</span> <span class="pre">×</span> <span class="pre">nodes</span></code> as
+fallback).</p>
+<p>The total production steps are then
+<span class="math notranslate nohighlight">\(N_{\text{prod}} = N_{\text{eff,prod}} + N_{\text{warmup}}\)</span>.</p>
+<p>The estimated production wall time is based on the <strong>net</strong> computation
+time parsed from the pilot output (<code class="docutils literal notranslate"><span class="pre">Net</span> <span class="pre">GFMC</span> <span class="pre">time</span></code> for LRDMC,
+<code class="docutils literal notranslate"><span class="pre">Net</span> <span class="pre">total</span> <span class="pre">time</span> <span class="pre">for</span> <span class="pre">MCMC</span></code> for MCMC/VMC).  Only this net portion
+scales with the step count; overhead (JIT compilation, file I/O,
+queue wait) is treated as a constant:</p>
+<div class="math notranslate nohighlight">
+\[
+T_{\text{prod}} \approx (T_{\text{wall,pilot}} - T_{\text{net,pilot}})
+  + T_{\text{net,pilot}} \times \frac{N_{\text{prod}}}{N_{\text{pilot}}}
+\]</div>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>-- LRDMC Step Estimation Summary (a=0.25) --------
+  pilot steps       = 100
+  warmup steps      = 10
+  pilot error       = 0.00393172 Ha
+  target error      = 0.001 Ha
+  nmpm              = 32
+  pilot MPI procs   = 48
+  prod. MPI procs   = 480
+  walker ratio      = 0.1
+  estimated steps   = 155
+  pilot wall time   = 5m 12s
+  pilot net time    = 2m 42s
+  est. prod. time   = 6m 43s
+--------------------------------------------------
+</pre></div>
+</div>
+<p>The first production run starts from scratch (no restart from the
+pilot checkpoint, which lives in the <code class="docutils literal notranslate"><span class="pre">_pilot_b/</span></code> subdirectory).
+After each production run, the error bar is re-evaluated.
+If it exceeds the target, additional steps are estimated and a
+continuation run is launched automatically, up to <code class="docutils literal notranslate"><span class="pre">max_continuation</span></code>
+times.</p>
+</section>
+</section>
+<section id="restart-behavior">
+<h3>Restart behavior<a class="headerlink" href="#restart-behavior" title="Link to this heading">#</a></h3>
+<p>Every job is recorded in <code class="docutils literal notranslate"><span class="pre">workflow_state.toml</span></code> with a lifecycle:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>submitted  →  completed  →  fetched
+</pre></div>
+</div>
+<p>On restart, the engine checks each job’s status:</p>
+<ul class="simple">
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">fetched</span></code></strong> — Input generation <em>and</em> submission are both skipped.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">submitted</span></code></strong> / <strong><code class="docutils literal notranslate"><span class="pre">completed</span></code></strong> — Input is not regenerated; the job
+is resumed (polled or fetched).</p></li>
+<li><p><strong>No record</strong> — A fresh input file is generated and the job is submitted.</p></li>
+</ul>
+<p>This means a pipeline can be interrupted at any point (Ctrl-C, node
+failure, wall-time limit) and simply re-run; it will pick up exactly
+where it left off.</p>
+</section>
+</section>
+<section id="configuration">
+<h2>Configuration<a class="headerlink" href="#configuration" title="Link to this heading">#</a></h2>
+<p>Configuration files are managed in the following directory hierarchy.
+The engine looks for a project-local override first, then falls back to
+the user-global directory:</p>
+<ol class="arabic simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">./jqmc_setting_local/</span></code> — project-local override (if it exists in CWD)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">~/.jqmc_setting/</span></code> — user-global default</p></li>
+</ol>
+<p>On the very first run, if neither directory exists, the template shipped
+with the package is copied to <code class="docutils literal notranslate"><span class="pre">~/.jqmc_setting/</span></code> and the user is asked
+to edit it.</p>
+<section id="directory-structure">
+<h3>Directory structure<a class="headerlink" href="#directory-structure" title="Link to this heading">#</a></h3>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>~/.jqmc_setting/
+├── machine_data.yaml           # Server machine definitions
+├── localhost/                   # Settings for localhost
+│   ├── queue_data.toml
+│   └── submit_mpi.sh           # (name is user-defined)
+├── my-cluster/                 # Settings for a remote cluster (nickname)
+│   ├── queue_data.toml
+│   └── submit_mpi.sh
+└── ...
+</pre></div>
+</div>
+</section>
+<section id="machine-data-yaml">
+<h3><code class="docutils literal notranslate"><span class="pre">machine_data.yaml</span></code><a class="headerlink" href="#machine-data-yaml" title="Link to this heading">#</a></h3>
+<p>A YAML file that defines each compute machine. The top-level keys are
+nicknames (arbitrary labels); they do <strong>not</strong> need to match the SSH host.
+Remote machines use the <code class="docutils literal notranslate"><span class="pre">ssh_host</span></code> field to specify the SSH connection
+target.</p>
+<section id="example">
+<h4>Example<a class="headerlink" href="#example" title="Link to this heading">#</a></h4>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">localhost</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">machine_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">local</span>
+<span class="w">  </span><span class="nt">queuing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+<span class="w">  </span><span class="nt">workspace_root</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/home/user/jqmc_work</span>
+
+<span class="nt">my-cluster</span><span class="p">:</span><span class="w">                          </span><span class="c1"># nickname (freely chosen)</span>
+<span class="w">  </span><span class="nt">ssh_host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pbs-cluster</span><span class="w">              </span><span class="c1"># Host alias in ~/.ssh/config</span>
+<span class="w">  </span><span class="nt">machine_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">remote</span>
+<span class="w">  </span><span class="nt">queuing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">  </span><span class="nt">workspace_root</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/home/user/jqmc_work</span>
+<span class="w">  </span><span class="nt">jobsubmit</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/opt/pbs/bin/qsub</span>
+<span class="w">  </span><span class="nt">jobcheck</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/opt/pbs/bin/qstat</span>
+<span class="w">  </span><span class="nt">jobdel</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/opt/pbs/bin/qdel</span>
+<span class="w">  </span><span class="nt">jobnum_index</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+</pre></div>
+</div>
+</section>
+<section id="parameters">
+<h4>Parameters<a class="headerlink" href="#parameters" title="Link to this heading">#</a></h4>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Required</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ssh_host</span></code></p></td>
+<td><p>String</p></td>
+<td><p>When <code class="docutils literal notranslate"><span class="pre">machine_type:</span> <span class="pre">remote</span></code></p></td>
+<td><p>SSH connection target. Typically a <code class="docutils literal notranslate"><span class="pre">Host</span></code> alias defined in <code class="docutils literal notranslate"><span class="pre">~/.ssh/config</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">machine_type</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;local&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;remote&quot;</span></code></p></td>
+<td><p>Yes</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">local</span></code>: execute on the same host. <code class="docutils literal notranslate"><span class="pre">remote</span></code>: connect via SSH (Paramiko).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">queuing</span></code></p></td>
+<td><p>Boolean</p></td>
+<td><p>Yes</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">true</span></code>: use a batch scheduler. <code class="docutils literal notranslate"><span class="pre">false</span></code>: direct execution.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">workspace_root</span></code></p></td>
+<td><p>String (path)</p></td>
+<td><p>Yes</p></td>
+<td><p>Root directory for file management. Upload/download paths are resolved relative to this directory. Must be set on <strong>both</strong> localhost and the remote server.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">jobsubmit</span></code></p></td>
+<td><p>String (command)</p></td>
+<td><p>When <code class="docutils literal notranslate"><span class="pre">queuing:</span> <span class="pre">true</span></code></p></td>
+<td><p>Command to submit a job (e.g. <code class="docutils literal notranslate"><span class="pre">qsub</span></code>, <code class="docutils literal notranslate"><span class="pre">sbatch</span></code>, <code class="docutils literal notranslate"><span class="pre">pjsub</span></code>). Not needed for <code class="docutils literal notranslate"><span class="pre">queuing:</span> <span class="pre">false</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">jobcheck</span></code></p></td>
+<td><p>String (command)</p></td>
+<td><p>When <code class="docutils literal notranslate"><span class="pre">queuing:</span> <span class="pre">true</span></code></p></td>
+<td><p>Command to check job status (e.g. <code class="docutils literal notranslate"><span class="pre">qstat</span></code>, <code class="docutils literal notranslate"><span class="pre">squeue</span> <span class="pre">--noheader</span></code>, <code class="docutils literal notranslate"><span class="pre">pjstat</span></code>).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">jobdel</span></code></p></td>
+<td><p>String (command)</p></td>
+<td><p>When <code class="docutils literal notranslate"><span class="pre">queuing:</span> <span class="pre">true</span></code></p></td>
+<td><p>Command to cancel a job (e.g. <code class="docutils literal notranslate"><span class="pre">qdel</span></code>, <code class="docutils literal notranslate"><span class="pre">scancel</span></code>, <code class="docutils literal notranslate"><span class="pre">pjdel</span></code>).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">jobnum_index</span></code></p></td>
+<td><p>Integer</p></td>
+<td><p>When <code class="docutils literal notranslate"><span class="pre">queuing:</span> <span class="pre">true</span></code></p></td>
+<td><p>0-based column index of the job ID in the output of <code class="docutils literal notranslate"><span class="pre">jobsubmit</span></code>. For PBS (<code class="docutils literal notranslate"><span class="pre">42.server</span></code>), use <code class="docutils literal notranslate"><span class="pre">0</span></code>. For Slurm (<code class="docutils literal notranslate"><span class="pre">Submitted</span> <span class="pre">batch</span> <span class="pre">job</span> <span class="pre">42</span></code>), use <code class="docutils literal notranslate"><span class="pre">3</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ip</span></code></p></td>
+<td><p>String</p></td>
+<td><p>No</p></td>
+<td><p>IP address or hostname of the remote machine. Usually the SSH alias in <code class="docutils literal notranslate"><span class="pre">~/.ssh/config</span></code> is used instead.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="ssh-connection">
+<h4>SSH connection<a class="headerlink" href="#ssh-connection" title="Link to this heading">#</a></h4>
+<p>For <code class="docutils literal notranslate"><span class="pre">machine_type:</span> <span class="pre">remote</span></code>, the <code class="docutils literal notranslate"><span class="pre">ssh_host</span></code> field specifies the SSH
+connection target.  This is typically a <code class="docutils literal notranslate"><span class="pre">Host</span></code> alias defined in
+<code class="docutils literal notranslate"><span class="pre">~/.ssh/config</span></code>.  The engine reads <code class="docutils literal notranslate"><span class="pre">~/.ssh/config</span></code> via Paramiko to
+resolve <code class="docutils literal notranslate"><span class="pre">HostName</span></code>, <code class="docutils literal notranslate"><span class="pre">User</span></code>, <code class="docutils literal notranslate"><span class="pre">IdentityFile</span></code>, <code class="docutils literal notranslate"><span class="pre">Port</span></code>, and <code class="docutils literal notranslate"><span class="pre">ProxyJump</span></code>
+(multi-hop) settings.
+Your SSH key must be accessible without a passphrase prompt (use
+<code class="docutils literal notranslate"><span class="pre">ssh-agent</span></code> or a passphrase-less key).</p>
+<blockquote>
+<div><p><strong>Note:</strong> <code class="docutils literal notranslate"><span class="pre">CanonicalizeHostname</span></code> in <code class="docutils literal notranslate"><span class="pre">~/.ssh/config</span></code> may trigger a
+Paramiko bug.
+The engine automatically works around this by removing the directive
+in-memory before connecting.</p>
+</div></blockquote>
+</section>
+</section>
+<section id="queue-data-toml">
+<h3><code class="docutils literal notranslate"><span class="pre">queue_data.toml</span></code><a class="headerlink" href="#queue-data-toml" title="Link to this heading">#</a></h3>
+<p>Defines batch queue presets for each machine. Written in TOML format with
+queue labels as table keys.</p>
+<section id="id1">
+<h4>Example<a class="headerlink" href="#id1" title="Link to this heading">#</a></h4>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[default]</span>
+<span class="w">    </span><span class="n">submit_template</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;submit_mpi.sh&#39;</span>
+<span class="w">    </span><span class="n">max_job_submit</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">10</span>
+<span class="w">    </span><span class="n">queue</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;batch&#39;</span>
+<span class="w">    </span><span class="n">num_cores</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">120</span>
+<span class="w">    </span><span class="n">omp_num_threads</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">    </span><span class="n">nodes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">    </span><span class="n">mpi_per_node</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">120</span>
+<span class="w">    </span><span class="n">max_time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;24:00:00&#39;</span>
+
+<span class="k">[large]</span>
+<span class="w">    </span><span class="n">submit_template</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;submit_mpi.sh&#39;</span>
+<span class="w">    </span><span class="n">max_job_submit</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">10</span>
+<span class="w">    </span><span class="n">queue</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;batch&#39;</span>
+<span class="w">    </span><span class="n">num_cores</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">480</span>
+<span class="w">    </span><span class="n">omp_num_threads</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">    </span><span class="n">nodes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">4</span>
+<span class="w">    </span><span class="n">mpi_per_node</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">120</span>
+<span class="w">    </span><span class="n">max_time</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;24:00:00&#39;</span>
+</pre></div>
+</div>
+</section>
+<section id="id2">
+<h4>Parameters<a class="headerlink" href="#id2" title="Link to this heading">#</a></h4>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Required</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">submit_template</span></code></p></td>
+<td><p>String</p></td>
+<td><p>Yes</p></td>
+<td><p>Name of the job submission script template file placed in the same directory (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;submit_mpi.sh&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;submit_gpu.sh&quot;</span></code>).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_job_submit</span></code></p></td>
+<td><p>Integer</p></td>
+<td><p>Yes</p></td>
+<td><p>Maximum number of concurrently submitted jobs for this queue.</p></td>
+</tr>
+<tr class="row-even"><td><p><em>custom keys</em></p></td>
+<td><p>Any</p></td>
+<td><p>No</p></td>
+<td><p>Any additional key-value pairs. These are substituted into job script templates as <code class="docutils literal notranslate"><span class="pre">_KEY_</span></code> (upper-case). Common keys: <code class="docutils literal notranslate"><span class="pre">num_cores</span></code>, <code class="docutils literal notranslate"><span class="pre">omp_num_threads</span></code>, <code class="docutils literal notranslate"><span class="pre">nodes</span></code>, <code class="docutils literal notranslate"><span class="pre">mpi_per_node</span></code>, <code class="docutils literal notranslate"><span class="pre">max_time</span></code>, <code class="docutils literal notranslate"><span class="pre">queue</span></code>, <code class="docutils literal notranslate"><span class="pre">account</span></code>, <code class="docutils literal notranslate"><span class="pre">partition</span></code>.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="toml-format-notes">
+<h4>TOML format notes<a class="headerlink" href="#toml-format-notes" title="Link to this heading">#</a></h4>
+<ul class="simple">
+<li><p>Strings must be quoted: <code class="docutils literal notranslate"><span class="pre">queue</span> <span class="pre">=</span> <span class="pre">&quot;small&quot;</span></code>.</p></li>
+<li><p>Booleans: lowercase <code class="docutils literal notranslate"><span class="pre">true</span></code> / <code class="docutils literal notranslate"><span class="pre">false</span></code> only.</p></li>
+<li><p>Time values (e.g. <code class="docutils literal notranslate"><span class="pre">max_time</span></code>) <strong>must</strong> be quoted to avoid TOML
+local-time parsing: <code class="docutils literal notranslate"><span class="pre">max_time</span> <span class="pre">=</span> <span class="pre">&quot;24:00:00&quot;</span></code>.</p></li>
+</ul>
+</section>
+</section>
+<section id="job-script-templates">
+<h3>Job script templates<a class="headerlink" href="#job-script-templates" title="Link to this heading">#</a></h3>
+<p>Shell scripts placed in the per-machine directory, referenced by the
+<code class="docutils literal notranslate"><span class="pre">submit_template</span></code> key in <code class="docutils literal notranslate"><span class="pre">queue_data.toml</span></code>.  Template variables
+(written as <code class="docutils literal notranslate"><span class="pre">_KEY_</span></code> with underscores) are replaced at submission time.
+You can name the file anything you like (e.g. <code class="docutils literal notranslate"><span class="pre">submit_gpu.sh</span></code>).</p>
+<section id="predefined-variables">
+<h4>Predefined variables<a class="headerlink" href="#predefined-variables" title="Link to this heading">#</a></h4>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Variable</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">_INPUT_</span></code></p></td>
+<td><p>Path to the input file</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">_OUTPUT_</span></code></p></td>
+<td><p>Path to the output file</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">_JOBNAME_</span></code></p></td>
+<td><p>Job name</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="custom-variables">
+<h4>Custom variables<a class="headerlink" href="#custom-variables" title="Link to this heading">#</a></h4>
+<p>All keys from <code class="docutils literal notranslate"><span class="pre">queue_data.toml</span></code> are available in upper-case with
+surrounding underscores. For example, <code class="docutils literal notranslate"><span class="pre">num_cores</span> <span class="pre">=</span> <span class="pre">48</span></code> becomes
+<code class="docutils literal notranslate"><span class="pre">_NUM_CORES_</span></code> in the template.</p>
+</section>
+<section id="example-submit-mpi-sh-for-pbs">
+<h4>Example (<code class="docutils literal notranslate"><span class="pre">submit_mpi.sh</span></code> for PBS)<a class="headerlink" href="#example-submit-mpi-sh-for-pbs" title="Link to this heading">#</a></h4>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/bin/sh</span>
+<span class="c1">#PBS -N _JOBNAME_</span>
+<span class="c1">#PBS -q _QUEUE_</span>
+<span class="c1">#PBS -l nodes=_NODES_:ppn=_MPI_PER_NODE_</span>
+<span class="c1">#PBS -l walltime=_MAX_TIME_</span>
+
+<span class="nb">export</span><span class="w"> </span><span class="nv">OMP_NUM_THREADS</span><span class="o">=</span>_OMP_NUM_THREADS_
+<span class="nv">INPUT</span><span class="o">=</span>_INPUT_
+<span class="nv">OUTPUT</span><span class="o">=</span>_OUTPUT_
+
+mpirun<span class="w"> </span>-np<span class="w"> </span>_NUM_CORES_<span class="w"> </span>jqmc<span class="w"> </span><span class="si">${</span><span class="nv">INPUT</span><span class="si">}</span><span class="w"> </span>&gt;<span class="w"> </span><span class="si">${</span><span class="nv">OUTPUT</span><span class="si">}</span><span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span>
+</pre></div>
+</div>
+</section>
+<section id="example-submit-serial-sh">
+<h4>Example (<code class="docutils literal notranslate"><span class="pre">submit_serial.sh</span></code>)<a class="headerlink" href="#example-submit-serial-sh" title="Link to this heading">#</a></h4>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/bin/sh</span>
+<span class="c1">#PBS -N _JOBNAME_</span>
+<span class="c1">#PBS -q _QUEUE_</span>
+<span class="c1">#PBS -l nodes=_NODES_</span>
+<span class="c1">#PBS -l walltime=_MAX_TIME_</span>
+
+<span class="nb">export</span><span class="w"> </span><span class="nv">OMP_NUM_THREADS</span><span class="o">=</span>_OMP_NUM_THREADS_
+<span class="nv">INPUT</span><span class="o">=</span>_INPUT_
+<span class="nv">OUTPUT</span><span class="o">=</span>_OUTPUT_
+
+jqmc<span class="w"> </span><span class="si">${</span><span class="nv">INPUT</span><span class="si">}</span><span class="w"> </span>&gt;<span class="w"> </span><span class="si">${</span><span class="nv">OUTPUT</span><span class="si">}</span><span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span>
+</pre></div>
+</div>
+</section>
+</section>
+</section>
+<section id="pipeline-example">
+<h2>Pipeline example<a class="headerlink" href="#pipeline-example" title="Link to this heading">#</a></h2>
+<p>A minimal pipeline script that runs VMC → MCMC + LRDMC extrapolation:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">jqmc_workflow</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">Container</span><span class="p">,</span>
+    <span class="n">FileFrom</span><span class="p">,</span>
+    <span class="n">Launcher</span><span class="p">,</span>
+    <span class="n">LRDMC_Ext_Workflow</span><span class="p">,</span>
+    <span class="n">MCMC_Workflow</span><span class="p">,</span>
+    <span class="n">ValueFrom</span><span class="p">,</span>
+    <span class="n">VMC_Workflow</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">server</span> <span class="o">=</span> <span class="s2">&quot;pbs-cluster&quot;</span>
+<span class="n">h5</span> <span class="o">=</span> <span class="s2">&quot;hamiltonian_data.h5&quot;</span>
+
+<span class="n">vmc</span> <span class="o">=</span> <span class="n">Container</span><span class="p">(</span>
+    <span class="n">label</span><span class="o">=</span><span class="s2">&quot;vmc&quot;</span><span class="p">,</span>
+    <span class="n">dirname</span><span class="o">=</span><span class="s2">&quot;vmc&quot;</span><span class="p">,</span>
+    <span class="n">input_files</span><span class="o">=</span><span class="p">[</span><span class="n">h5</span><span class="p">],</span>
+    <span class="n">workflow</span><span class="o">=</span><span class="n">VMC_Workflow</span><span class="p">(</span>
+        <span class="n">server_machine_name</span><span class="o">=</span><span class="n">server</span><span class="p">,</span>
+        <span class="n">hamiltonian_file</span><span class="o">=</span><span class="n">h5</span><span class="p">,</span>
+        <span class="n">queue_label</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span>
+        <span class="n">pilot_queue_label</span><span class="o">=</span><span class="s2">&quot;small&quot;</span><span class="p">,</span>
+        <span class="n">jobname</span><span class="o">=</span><span class="s2">&quot;vmc&quot;</span><span class="p">,</span>
+        <span class="n">target_error</span><span class="o">=</span><span class="mf">0.001</span><span class="p">,</span>
+    <span class="p">),</span>
+<span class="p">)</span>
+
+<span class="n">mcmc</span> <span class="o">=</span> <span class="n">Container</span><span class="p">(</span>
+    <span class="n">label</span><span class="o">=</span><span class="s2">&quot;mcmc-prod&quot;</span><span class="p">,</span>
+    <span class="n">dirname</span><span class="o">=</span><span class="s2">&quot;mcmc_prod&quot;</span><span class="p">,</span>
+    <span class="n">input_files</span><span class="o">=</span><span class="p">[</span>
+        <span class="n">h5</span><span class="p">,</span>
+        <span class="n">FileFrom</span><span class="p">(</span><span class="s2">&quot;vmc&quot;</span><span class="p">,</span> <span class="s2">&quot;hamiltonian_data_opt_step_*.h5&quot;</span><span class="p">),</span>
+    <span class="p">],</span>
+    <span class="n">workflow</span><span class="o">=</span><span class="n">MCMC_Workflow</span><span class="p">(</span>
+        <span class="n">server_machine_name</span><span class="o">=</span><span class="n">server</span><span class="p">,</span>
+        <span class="n">hamiltonian_file</span><span class="o">=</span><span class="n">h5</span><span class="p">,</span>
+        <span class="n">queue_label</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span>
+        <span class="n">pilot_queue_label</span><span class="o">=</span><span class="s2">&quot;small&quot;</span><span class="p">,</span>
+        <span class="n">jobname</span><span class="o">=</span><span class="s2">&quot;mcmc&quot;</span><span class="p">,</span>
+        <span class="n">target_error</span><span class="o">=</span><span class="mf">0.001</span><span class="p">,</span>
+    <span class="p">),</span>
+<span class="p">)</span>
+
+<span class="n">lrdmc</span> <span class="o">=</span> <span class="n">Container</span><span class="p">(</span>
+    <span class="n">label</span><span class="o">=</span><span class="s2">&quot;lrdmc-ext&quot;</span><span class="p">,</span>
+    <span class="n">dirname</span><span class="o">=</span><span class="s2">&quot;lrdmc_ext&quot;</span><span class="p">,</span>
+    <span class="n">input_files</span><span class="o">=</span><span class="p">[</span>
+        <span class="n">h5</span><span class="p">,</span>
+        <span class="n">FileFrom</span><span class="p">(</span><span class="s2">&quot;vmc&quot;</span><span class="p">,</span> <span class="s2">&quot;hamiltonian_data_opt_step_*.h5&quot;</span><span class="p">),</span>
+    <span class="p">],</span>
+    <span class="n">workflow</span><span class="o">=</span><span class="n">LRDMC_Ext_Workflow</span><span class="p">(</span>
+        <span class="n">server_machine_name</span><span class="o">=</span><span class="n">server</span><span class="p">,</span>
+        <span class="n">alat_list</span><span class="o">=</span><span class="p">[</span><span class="mf">0.10</span><span class="p">,</span> <span class="mf">0.20</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.30</span><span class="p">],</span>
+        <span class="n">hamiltonian_file</span><span class="o">=</span><span class="n">h5</span><span class="p">,</span>
+        <span class="n">queue_label</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span>
+        <span class="n">pilot_queue_label</span><span class="o">=</span><span class="s2">&quot;small&quot;</span><span class="p">,</span>
+        <span class="n">jobname_prefix</span><span class="o">=</span><span class="s2">&quot;lrdmc&quot;</span><span class="p">,</span>
+        <span class="n">target_survived_walkers_ratio</span><span class="o">=</span><span class="mf">0.97</span><span class="p">,</span>
+        <span class="n">E_scf</span><span class="o">=</span><span class="n">ValueFrom</span><span class="p">(</span><span class="s2">&quot;mcmc-prod&quot;</span><span class="p">,</span> <span class="s2">&quot;energy&quot;</span><span class="p">),</span>
+        <span class="n">target_error</span><span class="o">=</span><span class="mf">0.001</span><span class="p">,</span>
+    <span class="p">),</span>
+<span class="p">)</span>
+
+<span class="n">pipeline</span> <span class="o">=</span> <span class="n">Launcher</span><span class="p">(</span><span class="n">workflows</span><span class="o">=</span><span class="p">[</span><span class="n">vmc</span><span class="p">,</span> <span class="n">mcmc</span><span class="p">,</span> <span class="n">lrdmc</span><span class="p">])</span>
+<span class="n">pipeline</span><span class="o">.</span><span class="n">launch</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>In this example, <code class="docutils literal notranslate"><span class="pre">mcmc-prod</span></code> and <code class="docutils literal notranslate"><span class="pre">lrdmc-ext</span></code> depend on <code class="docutils literal notranslate"><span class="pre">vmc</span></code> (via
+<code class="docutils literal notranslate"><span class="pre">FileFrom</span></code>).  Additionally, <code class="docutils literal notranslate"><span class="pre">lrdmc-ext</span></code> depends on <code class="docutils literal notranslate"><span class="pre">mcmc-prod</span></code> (via
+<code class="docutils literal notranslate"><span class="pre">ValueFrom</span></code> for <code class="docutils literal notranslate"><span class="pre">E_scf</span></code>), so the DAG becomes
+VMC → MCMC → LRDMC-ext.  The <code class="docutils literal notranslate"><span class="pre">target_survived_walkers_ratio</span></code>
+triggers automatic calibration of <code class="docutils literal notranslate"><span class="pre">num_mcmc_per_measurement</span></code>
+independently at each lattice spacing.  All alat values run their
+calibration, error-bar pilot, and production phases in parallel.</p>
+</section>
+<section id="job-manager-cli-jqmc-jobmanager">
+<h2>Job Manager CLI (<code class="docutils literal notranslate"><span class="pre">jqmc-jobmanager</span></code>)<a class="headerlink" href="#job-manager-cli-jqmc-jobmanager" title="Link to this heading">#</a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">jqmc-jobmanager</span></code> command-line tool monitors and manages running
+pipelines.  It recursively discovers <code class="docutils literal notranslate"><span class="pre">workflow_state.toml</span></code> files under
+the current directory and displays a summary tree.</p>
+<section id="commands">
+<h3>Commands<a class="headerlink" href="#commands" title="Link to this heading">#</a></h3>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Command</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">show</span></code></p></td>
+<td><p>Print the workflow tree.  Add <code class="docutils literal notranslate"><span class="pre">--id</span> <span class="pre">N</span></code> to display full detail for one job.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">check</span></code></p></td>
+<td><p>Print the tree <strong>and</strong> query the scheduler on the remote machine for live job status.  Use <code class="docutils literal notranslate"><span class="pre">--id</span> <span class="pre">N</span></code> to target a specific job.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">del</span></code></p></td>
+<td><p>Cancel a queued/running job and mark the workflow as <code class="docutils literal notranslate"><span class="pre">cancelled</span></code>.  Requires <code class="docutils literal notranslate"><span class="pre">--id</span> <span class="pre">N</span></code>.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="common-options">
+<h3>Common options<a class="headerlink" href="#common-options" title="Link to this heading">#</a></h3>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Option</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--id</span> <span class="pre">N</span></code></p></td>
+<td><p>Numeric job ID shown in the tree (0-based).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">-s</span></code> / <code class="docutils literal notranslate"><span class="pre">--server</span></code></p></td>
+<td><p>Server machine name (defaults to <code class="docutils literal notranslate"><span class="pre">localhost</span></code>). Used by <code class="docutils literal notranslate"><span class="pre">check</span></code> and <code class="docutils literal notranslate"><span class="pre">del</span></code> to connect to the remote scheduler.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--log-level</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">INFO</span></code> (default) or <code class="docutils literal notranslate"><span class="pre">DEBUG</span></code>.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="usage-examples">
+<h3>Usage examples<a class="headerlink" href="#usage-examples" title="Link to this heading">#</a></h3>
+<p>Show the full workflow tree:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>jqmc-jobmanager<span class="w"> </span>show
+</pre></div>
+</div>
+<p>Show tree and detailed info for job 2:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>jqmc-jobmanager<span class="w"> </span>show<span class="w"> </span>--id<span class="w"> </span><span class="m">2</span>
+</pre></div>
+</div>
+<p>Check live queue status for job 4 on <code class="docutils literal notranslate"><span class="pre">pbs-cluster</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>jqmc-jobmanager<span class="w"> </span>check<span class="w"> </span>--id<span class="w"> </span><span class="m">4</span><span class="w"> </span>-s<span class="w"> </span>pbs-cluster
+</pre></div>
+</div>
+<p>Cancel job 4 on <code class="docutils literal notranslate"><span class="pre">pbs-cluster</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>jqmc-jobmanager<span class="w"> </span>del<span class="w"> </span>--id<span class="w"> </span><span class="m">4</span><span class="w"> </span>-s<span class="w"> </span>pbs-cluster
+</pre></div>
+</div>
+</section>
+<section id="example-output">
+<h3>Example output<a class="headerlink" href="#example-output" title="Link to this heading">#</a></h3>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>==============================================================================
+  Workflow Job Tree
+  Root: /home/user/project
+==============================================================================
+   ID  Status       Label                Type                 Server       Job#
+  --------------------------------------------------------------------------
+    0  completed    wf                   WF_Workflow          ?            -
+       dir: 00_wf
+    1  completed    vmc                  VMC_Workflow         pbs-cluster  12345
+       dir: 01_vmc
+       energy: -17.17 +- 0.005 Ha
+    2  running      mcmc-prod            MCMC_Workflow        pbs-cluster  12367
+       dir: 02_mcmc
+    3  running      lrdmc-ext            LRDMC_Ext_Workflow   ?            -
+       dir: 03_lrdmc_ext
+</pre></div>
+</div>
+<p>For the full API reference, see
+<a class="reference internal" href="../api_reference_mod/modules.html#api-ref-workflow"><span class="std std-ref">API reference for the pipeline (jqmc_workflow)</span></a>.</p>
+</section>
+</section>
+</section>
+
+
+                </article>
+              
+
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="trexio.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Interfaces with TREX-IO</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="../api_reference_cli.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">API reference for the command-line interface (jqmc)</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item"><div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> Contents
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#overview">Overview</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#architecture">Architecture</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#key-components">Key components</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#target-error-bar-estimation">Target error-bar estimation</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#mcmc-vmc">MCMC / VMC</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#lrdmc">LRDMC</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#step-estimation-formula">Step estimation formula</a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#restart-behavior">Restart behavior</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#configuration">Configuration</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#directory-structure">Directory structure</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#machine-data-yaml"><code class="docutils literal notranslate"><span class="pre">machine_data.yaml</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#example">Example</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#parameters">Parameters</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#ssh-connection">SSH connection</a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#queue-data-toml"><code class="docutils literal notranslate"><span class="pre">queue_data.toml</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id1">Example</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id2">Parameters</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#toml-format-notes">TOML format notes</a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#job-script-templates">Job script templates</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#predefined-variables">Predefined variables</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#custom-variables">Custom variables</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#example-submit-mpi-sh-for-pbs">Example (<code class="docutils literal notranslate"><span class="pre">submit_mpi.sh</span></code> for PBS)</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#example-submit-serial-sh">Example (<code class="docutils literal notranslate"><span class="pre">submit_serial.sh</span></code>)</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#pipeline-example">Pipeline example</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#job-manager-cli-jqmc-jobmanager">Job Manager CLI (<code class="docutils literal notranslate"><span class="pre">jqmc-jobmanager</span></code>)</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#commands">Commands</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#common-options">Common options</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#usage-examples">Usage examples</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#example-output">Example output</a></li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+<div class="bd-footer-content__inner container">
+  
+  <div class="footer-item">
+    
+<p class="component-author">
+By Kosuke Nakano
+</p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+
+  <p class="copyright">
+    
+      © Copyright 2026, Kosuke Nakano.
+      <br/>
+    
+  </p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+</div>
+          </footer>
+        
+
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+  <footer class="bd-footer">
+  </footer>
+  </body>
+</html>

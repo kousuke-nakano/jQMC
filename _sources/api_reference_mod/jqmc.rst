@@ -28,34 +28,10 @@ jqmc.determinant module
    :show-inheritance:
    :undoc-members:
 
-jqmc.diff\_mask module
-----------------------
-
-.. automodule:: jqmc.diff_mask
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-jqmc.function\_collections module
----------------------------------
-
-.. automodule:: jqmc.function_collections
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
 jqmc.hamiltonians module
 ------------------------
 
 .. automodule:: jqmc.hamiltonians
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-jqmc.header\_footer module
---------------------------
-
-.. automodule:: jqmc.header_footer
    :members:
    :show-inheritance:
    :undoc-members:
@@ -108,26 +84,10 @@ jqmc.jqmc\_tool module
    :show-inheritance:
    :undoc-members:
 
-jqmc.jqmc\_utility module
--------------------------
-
-.. automodule:: jqmc.jqmc_utility
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
 jqmc.molecular\_orbital module
 ------------------------------
 
 .. automodule:: jqmc.molecular_orbital
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-jqmc.setting module
--------------------
-
-.. automodule:: jqmc.setting
    :members:
    :show-inheritance:
    :undoc-members:

@@ -11,6 +11,7 @@ The following features of **jQMC** are highlighted:
 - {ref}`Atomic forces calculations by VMC and LRDMC <jax_compatible_modules_tags>`
 - {ref}`JAX-compaible modules <jax_compatible_modules_tags>`
 - {ref}`Interfaces with the TREX-IO wavefunction format <trexio_tags>`
+- {ref}`Autonomous pipelines (jqmc_workflow) <workflows_tags>`
 
 
 ```{toctree}
@@ -19,6 +20,7 @@ overview
 install
 examples
 notes/technical_notes
+notes/workflows
 api_reference_cli
 api_reference_cli_tool
 api_reference_mod/modules
@@ -33,7 +35,7 @@ BSD-3-Clause license.
 
 ## Developer(s)
 
-- Kosuke Nakano, National Institute for Materials Science
+- Kosuke Nakano, National Institute for Materials Science (NIMS)
 
 ## Acknowledgements
 

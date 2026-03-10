@@ -1,3 +1,5 @@
+.. _api_ref_workflow:
+
 API reference for modules
 ================================================================================
 
@@ -5,3 +7,4 @@ API reference for modules
    :maxdepth: 4
 
    jqmc
+   jqmc_workflow

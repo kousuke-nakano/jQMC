@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>API reference for modules &#8212; jQMC v0.1.0</title>
+    <title>API reference for modules &#8212; jQMC v0.2</title>
   
   
   
@@ -16,30 +16,33 @@
     document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
     document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
   </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
   
   <!-- Loaded before other Sphinx assets -->
-  <link href="../_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
-<link href="../_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
-<link href="../_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
-
-  
-  <link href="../_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
-  <link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
-<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
-<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+  <link href="../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
 
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
-    <link rel="stylesheet" type="text/css" href="../_static/styles/sphinx-book-theme.css?v=eba8b062" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/sphinx-book-theme.css?v=3c74b3bc" />
   
+  <!-- So that users can add custom icons -->
+  <script src="../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
   <!-- Pre-loaded scripts that we'll load fully later -->
-  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
-<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
-  <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
 
-    <script src="../_static/documentation_options.js?v=a1637f0b"></script>
+    <script src="../_static/documentation_options.js?v=f6d3da1f"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
-    <script src="../_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
+    <script src="../_static/scripts/sphinx-book-theme.js?v=fab101a9"></script>
     <script>DOCUMENTATION_OPTIONS.pagename = 'api_reference_mod/modules';</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
@@ -47,6 +50,7 @@
     <link rel="prev" title="API reference for the command-line tool (jqmc-tool)" href="../api_reference_cli_tool.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="0.2" />
   </head>
   
   
@@ -62,19 +66,8 @@
     <i class="fa-solid fa-arrow-up"></i>Back to top</button>
 
   
-  <input type="checkbox"
-          class="sidebar-toggle"
-          id="pst-primary-sidebar-checkbox"/>
-  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
-  
-  <input type="checkbox"
-          class="sidebar-toggle"
-          id="pst-secondary-sidebar-checkbox"/>
-  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
-  
-  <div class="search-button__wrapper">
-    <div class="search-button__overlay"></div>
-    <div class="search-button__search-container">
+  <dialog id="pst-search-dialog">
+    
 <form class="bd-search d-flex align-items-center"
       action="../search.html"
       method="get">
@@ -82,7 +75,6 @@
   <input type="search"
          class="form-control"
          name="q"
-         id="search-input"
          placeholder="Search..."
          aria-label="Search..."
          autocomplete="off"
@@ -90,8 +82,8 @@
          autocapitalize="off"
          spellcheck="false"/>
   <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
-</form></div>
-  </div>
+</form>
+  </dialog>
 
   <div class="pst-async-banner-revealer d-none">
   <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
@@ -107,7 +99,8 @@
       
       
       
-      <div class="bd-sidebar-primary bd-sidebar">
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
         
 
   
@@ -132,7 +125,7 @@
   
   
   
-    <p class="title logo__title">jQMC v0.1.0</p>
+    <p class="title logo__title">jQMC v0.2</p>
   
 </a></div>
         <div class="sidebar-primary-item"><ul class="navbar-icon-links"
@@ -152,15 +145,11 @@
 </ul></div>
         <div class="sidebar-primary-item">
 
- <script>
- document.write(`
-   <button class="btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
-    <i class="fa-solid fa-magnifying-glass"></i>
-    <span class="search-button__default-text">Search</span>
-    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
-   </button>
- `);
- </script></div>
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button></div>
         <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
     <div class="bd-toc-item navbar-nav active">
         <ul class="current nav bd-sidenav">
@@ -176,10 +165,15 @@
 <li class="toctree-l2"><a class="reference internal" href="../notes/trexio.html">Interfaces with TREX-IO</a></li>
 </ul>
 </details></li>
+<li class="toctree-l1"><a class="reference internal" href="../notes/workflows.html">Autonomous Pipelines (jqmc_workflow)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../api_reference_cli.html">API reference for the command-line interface (jqmc)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../api_reference_cli_tool.html">API reference for the command-line tool (jqmc-tool)</a></li>
 <li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">API reference for modules</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="jqmc.html">jqmc package</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="jqmc_workflow.html">jqmc_workflow package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.template.html">jqmc_workflow.template package</a></li>
+</ul>
+</details></li>
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="../citation.html">How to cite jQMC</a></li>
@@ -193,9 +187,14 @@
   
   
   <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
   </div>
-  
-  <div id="rtd-footer-container"></div>
 
 
       </div>
@@ -278,7 +277,7 @@
 
 
 <button onclick="toggleFullScreen()"
-  class="btn btn-sm btn-fullscreen-button"
+  class="btn btn-sm btn-fullscreen-button pst-navbar-icon"
   title="Fullscreen mode"
   data-bs-placement="bottom" data-bs-toggle="tooltip"
 >
@@ -292,24 +291,16 @@
 
 
 
-<script>
-document.write(`
-  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
-    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
-    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
-    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
-  </button>
-`);
-</script>
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button>
 
 
-<script>
-document.write(`
-  <button class="btn btn-sm pst-navbar-icon search-button search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+<button class="btn btn-sm pst-navbar-icon search-button search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
     <i class="fa-solid fa-magnifying-glass fa-lg"></i>
-  </button>
-`);
-</script>
+</button>
 
 </div></div>
       
@@ -336,7 +327,7 @@ document.write(`
                 <article class="bd-article">
                   
   <section id="api-reference-for-modules">
-<h1>API reference for modules<a class="headerlink" href="#api-reference-for-modules" title="Link to this heading">#</a></h1>
+<span id="api-ref-workflow"></span><h1>API reference for modules<a class="headerlink" href="#api-reference-for-modules" title="Link to this heading">#</a></h1>
 <div class="toctree-wrapper compound">
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="jqmc.html">jqmc package</a><ul>
@@ -375,6 +366,7 @@ document.write(`
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.compute_AOs"><code class="docutils literal notranslate"><span class="pre">compute_AOs()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.compute_AOs_grad"><code class="docutils literal notranslate"><span class="pre">compute_AOs_grad()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.compute_AOs_laplacian"><code class="docutils literal notranslate"><span class="pre">compute_AOs_laplacian()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.atomic_orbital.compute_overlap_matrix"><code class="docutils literal notranslate"><span class="pre">compute_overlap_matrix()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.coulomb_potential">jqmc.coulomb_potential module</a><ul>
@@ -399,8 +391,10 @@ document.write(`
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.compute_bare_coulomb_potential_el_ion_element_wise"><code class="docutils literal notranslate"><span class="pre">compute_bare_coulomb_potential_el_ion_element_wise()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.compute_bare_coulomb_potential_ion_ion"><code class="docutils literal notranslate"><span class="pre">compute_bare_coulomb_potential_ion_ion()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.compute_coulomb_potential"><code class="docutils literal notranslate"><span class="pre">compute_coulomb_potential()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.compute_coulomb_potential_fast"><code class="docutils literal notranslate"><span class="pre">compute_coulomb_potential_fast()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.compute_discretized_bare_coulomb_potential_el_ion_element_wise"><code class="docutils literal notranslate"><span class="pre">compute_discretized_bare_coulomb_potential_el_ion_element_wise()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.compute_ecp_coulomb_potential"><code class="docutils literal notranslate"><span class="pre">compute_ecp_coulomb_potential()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.compute_ecp_coulomb_potential_fast"><code class="docutils literal notranslate"><span class="pre">compute_ecp_coulomb_potential_fast()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.compute_ecp_local_parts_all_pairs"><code class="docutils literal notranslate"><span class="pre">compute_ecp_local_parts_all_pairs()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.compute_ecp_non_local_part_all_pairs_jax_weights_grid_points"><code class="docutils literal notranslate"><span class="pre">compute_ecp_non_local_part_all_pairs_jax_weights_grid_points()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.coulomb_potential.compute_ecp_non_local_parts_all_pairs"><code class="docutils literal notranslate"><span class="pre">compute_ecp_non_local_parts_all_pairs()</span></code></a></li>
@@ -411,12 +405,16 @@ document.write(`
 <li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.determinant">jqmc.determinant module</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data"><code class="docutils literal notranslate"><span class="pre">Geminal_data</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.accumulate_position_grad"><code class="docutils literal notranslate"><span class="pre">Geminal_data.accumulate_position_grad()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.apply_ao_projected_paired_update_and_reproject"><code class="docutils literal notranslate"><span class="pre">Geminal_data.apply_ao_projected_paired_update_and_reproject()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.apply_block_update"><code class="docutils literal notranslate"><span class="pre">Geminal_data.apply_block_update()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.collect_param_grads"><code class="docutils literal notranslate"><span class="pre">Geminal_data.collect_param_grads()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.compute_orb_api"><code class="docutils literal notranslate"><span class="pre">Geminal_data.compute_orb_api</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.compute_orb_grad_api"><code class="docutils literal notranslate"><span class="pre">Geminal_data.compute_orb_grad_api</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.compute_orb_laplacian_api"><code class="docutils literal notranslate"><span class="pre">Geminal_data.compute_orb_laplacian_api</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.convert_from_AOs_to_MOs"><code class="docutils literal notranslate"><span class="pre">Geminal_data.convert_from_AOs_to_MOs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.convert_from_MOs_to_AOs"><code class="docutils literal notranslate"><span class="pre">Geminal_data.convert_from_MOs_to_AOs()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.is_ao_representation"><code class="docutils literal notranslate"><span class="pre">Geminal_data.is_ao_representation</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.is_mo_representation"><code class="docutils literal notranslate"><span class="pre">Geminal_data.is_mo_representation</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.lambda_matrix"><code class="docutils literal notranslate"><span class="pre">Geminal_data.lambda_matrix</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.num_electron_dn"><code class="docutils literal notranslate"><span class="pre">Geminal_data.num_electron_dn</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.num_electron_up"><code class="docutils literal notranslate"><span class="pre">Geminal_data.num_electron_up</span></code></a></li>
@@ -424,6 +422,7 @@ document.write(`
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.orb_data_up_spin"><code class="docutils literal notranslate"><span class="pre">Geminal_data.orb_data_up_spin</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.orb_num_dn"><code class="docutils literal notranslate"><span class="pre">Geminal_data.orb_num_dn</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.orb_num_up"><code class="docutils literal notranslate"><span class="pre">Geminal_data.orb_num_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.projection_operators"><code class="docutils literal notranslate"><span class="pre">Geminal_data.projection_operators()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.replace"><code class="docutils literal notranslate"><span class="pre">Geminal_data.replace()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.sanity_check"><code class="docutils literal notranslate"><span class="pre">Geminal_data.sanity_check()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.determinant.Geminal_data.to_cartesian"><code class="docutils literal notranslate"><span class="pre">Geminal_data.to_cartesian()</span></code></a></li>
@@ -436,21 +435,9 @@ document.write(`
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.compute_geminal_all_elements"><code class="docutils literal notranslate"><span class="pre">compute_geminal_all_elements()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.compute_geminal_dn_one_column_elements"><code class="docutils literal notranslate"><span class="pre">compute_geminal_dn_one_column_elements()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.compute_geminal_up_one_row_elements"><code class="docutils literal notranslate"><span class="pre">compute_geminal_up_one_row_elements()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.compute_grads_and_laplacian_ln_Det"><code class="docutils literal notranslate"><span class="pre">compute_grads_and_laplacian_ln_Det()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.determinant.compute_grads_and_laplacian_ln_Det_fast"><code class="docutils literal notranslate"><span class="pre">compute_grads_and_laplacian_ln_Det_fast()</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.diff_mask">jqmc.diff_mask module</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.diff_mask.DiffMask"><code class="docutils literal notranslate"><span class="pre">DiffMask</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.diff_mask.DiffMask.coords"><code class="docutils literal notranslate"><span class="pre">DiffMask.coords</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.diff_mask.DiffMask.params"><code class="docutils literal notranslate"><span class="pre">DiffMask.params</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.diff_mask.DiffMask.update"><code class="docutils literal notranslate"><span class="pre">DiffMask.update()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.diff_mask.apply_diff_mask"><code class="docutils literal notranslate"><span class="pre">apply_diff_mask()</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.function_collections">jqmc.function_collections module</a></li>
 <li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.hamiltonians">jqmc.hamiltonians module</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.Hamiltonian_data.accumulate_position_grad"><code class="docutils literal notranslate"><span class="pre">Hamiltonian_data.accumulate_position_grad()</span></code></a></li>
@@ -464,9 +451,9 @@ document.write(`
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.compute_local_energy"><code class="docutils literal notranslate"><span class="pre">compute_local_energy()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.hamiltonians.compute_local_energy_fast"><code class="docutils literal notranslate"><span class="pre">compute_local_energy_fast()</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.header_footer">jqmc.header_footer module</a></li>
 <li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.jastrow_factor">jqmc.jastrow_factor module</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.cutoff"><code class="docutils literal notranslate"><span class="pre">Jastrow_NN_data.cutoff</span></code></a></li>
@@ -507,6 +494,7 @@ document.write(`
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_data.core_electrons"><code class="docutils literal notranslate"><span class="pre">Jastrow_one_body_data.core_electrons</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_data.init_jastrow_one_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_one_body_data.init_jastrow_one_body_data()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_data.jastrow_1b_param"><code class="docutils literal notranslate"><span class="pre">Jastrow_one_body_data.jastrow_1b_param</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_data.jastrow_1b_type"><code class="docutils literal notranslate"><span class="pre">Jastrow_one_body_data.jastrow_1b_type</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_data.replace"><code class="docutils literal notranslate"><span class="pre">Jastrow_one_body_data.replace()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_data.sanity_check"><code class="docutils literal notranslate"><span class="pre">Jastrow_one_body_data.sanity_check()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_data.structure_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_one_body_data.structure_data</span></code></a></li>
@@ -527,6 +515,7 @@ document.write(`
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_data</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data.init_jastrow_two_body_data"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_data.init_jastrow_two_body_data()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data.jastrow_2b_param"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_data.jastrow_2b_param</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data.jastrow_2b_type"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_data.jastrow_2b_type</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data.replace"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_data.replace()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data.sanity_check"><code class="docutils literal notranslate"><span class="pre">Jastrow_two_body_data.sanity_check()</span></code></a></li>
 </ul>
@@ -576,26 +565,42 @@ document.write(`
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_n.get_E"><code class="docutils literal notranslate"><span class="pre">GFMC_n.get_E()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_n.get_aF"><code class="docutils literal notranslate"><span class="pre">GFMC_n.get_aF()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_n.hamiltonian_data"><code class="docutils literal notranslate"><span class="pre">GFMC_n.hamiltonian_data</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_n.load_from_hdf5"><code class="docutils literal notranslate"><span class="pre">GFMC_n.load_from_hdf5()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_n.mcmc_counter"><code class="docutils literal notranslate"><span class="pre">GFMC_n.mcmc_counter</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_n.num_gfmc_collect_steps"><code class="docutils literal notranslate"><span class="pre">GFMC_n.num_gfmc_collect_steps</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_n.num_walkers"><code class="docutils literal notranslate"><span class="pre">GFMC_n.num_walkers</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_n.omega_dn"><code class="docutils literal notranslate"><span class="pre">GFMC_n.omega_dn</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_n.omega_up"><code class="docutils literal notranslate"><span class="pre">GFMC_n.omega_up</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_n.run"><code class="docutils literal notranslate"><span class="pre">GFMC_n.run()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_n.save_to_hdf5"><code class="docutils literal notranslate"><span class="pre">GFMC_n.save_to_hdf5()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_n.w_L"><code class="docutils literal notranslate"><span class="pre">GFMC_n.w_L</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t"><code class="docutils literal notranslate"><span class="pre">GFMC_t</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.alat"><code class="docutils literal notranslate"><span class="pre">GFMC_t.alat</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.bare_w_L"><code class="docutils literal notranslate"><span class="pre">GFMC_t.bare_w_L</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.comput_position_deriv"><code class="docutils literal notranslate"><span class="pre">GFMC_t.comput_position_deriv</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.de_L_dR"><code class="docutils literal notranslate"><span class="pre">GFMC_t.de_L_dR</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.de_L_dr_dn"><code class="docutils literal notranslate"><span class="pre">GFMC_t.de_L_dr_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.de_L_dr_up"><code class="docutils literal notranslate"><span class="pre">GFMC_t.de_L_dr_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.dln_Psi_dR"><code class="docutils literal notranslate"><span class="pre">GFMC_t.dln_Psi_dR</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.dln_Psi_dr_dn"><code class="docutils literal notranslate"><span class="pre">GFMC_t.dln_Psi_dr_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.dln_Psi_dr_up"><code class="docutils literal notranslate"><span class="pre">GFMC_t.dln_Psi_dr_up</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.domega_dr_dn"><code class="docutils literal notranslate"><span class="pre">GFMC_t.domega_dr_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.domega_dr_up"><code class="docutils literal notranslate"><span class="pre">GFMC_t.domega_dr_up</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.e_L"><code class="docutils literal notranslate"><span class="pre">GFMC_t.e_L</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.e_L2"><code class="docutils literal notranslate"><span class="pre">GFMC_t.e_L2</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.get_E"><code class="docutils literal notranslate"><span class="pre">GFMC_t.get_E()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.get_aF"><code class="docutils literal notranslate"><span class="pre">GFMC_t.get_aF()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.hamiltonian_data"><code class="docutils literal notranslate"><span class="pre">GFMC_t.hamiltonian_data</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.load_from_hdf5"><code class="docutils literal notranslate"><span class="pre">GFMC_t.load_from_hdf5()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.mcmc_counter"><code class="docutils literal notranslate"><span class="pre">GFMC_t.mcmc_counter</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.num_gfmc_collect_steps"><code class="docutils literal notranslate"><span class="pre">GFMC_t.num_gfmc_collect_steps</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.num_walkers"><code class="docutils literal notranslate"><span class="pre">GFMC_t.num_walkers</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.omega_dn"><code class="docutils literal notranslate"><span class="pre">GFMC_t.omega_dn</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.omega_up"><code class="docutils literal notranslate"><span class="pre">GFMC_t.omega_up</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.run"><code class="docutils literal notranslate"><span class="pre">GFMC_t.run()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.save_to_hdf5"><code class="docutils literal notranslate"><span class="pre">GFMC_t.save_to_hdf5()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_gfmc.GFMC_t.w_L"><code class="docutils literal notranslate"><span class="pre">GFMC_t.w_L</span></code></a></li>
 </ul>
 </li>
@@ -603,9 +608,12 @@ document.write(`
 </li>
 <li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.jqmc_mcmc">jqmc.jqmc_mcmc module</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC"><code class="docutils literal notranslate"><span class="pre">MCMC</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.comput_param_deriv"><code class="docutils literal notranslate"><span class="pre">MCMC.comput_param_deriv</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.comput_e_L_param_deriv"><code class="docutils literal notranslate"><span class="pre">MCMC.comput_e_L_param_deriv</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.comput_position_deriv"><code class="docutils literal notranslate"><span class="pre">MCMC.comput_position_deriv</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.compute_asr_gamma"><code class="docutils literal notranslate"><span class="pre">MCMC.compute_asr_gamma()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.compute_log_WF_param_deriv"><code class="docutils literal notranslate"><span class="pre">MCMC.compute_log_WF_param_deriv</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.de_L_dR"><code class="docutils literal notranslate"><span class="pre">MCMC.de_L_dR</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.de_L_dc"><code class="docutils literal notranslate"><span class="pre">MCMC.de_L_dc</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.de_L_dr_dn"><code class="docutils literal notranslate"><span class="pre">MCMC.de_L_dr_dn</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.de_L_dr_up"><code class="docutils literal notranslate"><span class="pre">MCMC.de_L_dr_up</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.dln_Psi_dR"><code class="docutils literal notranslate"><span class="pre">MCMC.dln_Psi_dR</span></code></a></li>
@@ -618,15 +626,18 @@ document.write(`
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.e_L2"><code class="docutils literal notranslate"><span class="pre">MCMC.e_L2</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.get_E"><code class="docutils literal notranslate"><span class="pre">MCMC.get_E()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.get_aF"><code class="docutils literal notranslate"><span class="pre">MCMC.get_aF()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.get_aH"><code class="docutils literal notranslate"><span class="pre">MCMC.get_aH()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.get_dln_WF"><code class="docutils literal notranslate"><span class="pre">MCMC.get_dln_WF()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.get_gF"><code class="docutils literal notranslate"><span class="pre">MCMC.get_gF()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.hamiltonian_data"><code class="docutils literal notranslate"><span class="pre">MCMC.hamiltonian_data</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.load_from_hdf5"><code class="docutils literal notranslate"><span class="pre">MCMC.load_from_hdf5()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.mcmc_counter"><code class="docutils literal notranslate"><span class="pre">MCMC.mcmc_counter</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.num_walkers"><code class="docutils literal notranslate"><span class="pre">MCMC.num_walkers</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.omega_dn"><code class="docutils literal notranslate"><span class="pre">MCMC.omega_dn</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.omega_up"><code class="docutils literal notranslate"><span class="pre">MCMC.omega_up</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.run"><code class="docutils literal notranslate"><span class="pre">MCMC.run()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.run_optimize"><code class="docutils literal notranslate"><span class="pre">MCMC.run_optimize()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.save_to_hdf5"><code class="docutils literal notranslate"><span class="pre">MCMC.save_to_hdf5()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_mcmc.MCMC.w_L"><code class="docutils literal notranslate"><span class="pre">MCMC.w_L</span></code></a></li>
 </ul>
 </li>
@@ -643,9 +654,11 @@ document.write(`
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.hamiltonian_show_info"><code class="docutils literal notranslate"><span class="pre">hamiltonian_show_info()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.hamiltonian_to_xyz"><code class="docutils literal notranslate"><span class="pre">hamiltonian_to_xyz()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.lrdmc_compute_energy"><code class="docutils literal notranslate"><span class="pre">lrdmc_compute_energy()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.lrdmc_compute_force"><code class="docutils literal notranslate"><span class="pre">lrdmc_compute_force()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.lrdmc_extrapolate_energy"><code class="docutils literal notranslate"><span class="pre">lrdmc_extrapolate_energy()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.lrdmc_generate_input"><code class="docutils literal notranslate"><span class="pre">lrdmc_generate_input()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.mcmc_compute_energy"><code class="docutils literal notranslate"><span class="pre">mcmc_compute_energy()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.mcmc_compute_force"><code class="docutils literal notranslate"><span class="pre">mcmc_compute_force()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.mcmc_generate_input"><code class="docutils literal notranslate"><span class="pre">mcmc_generate_input()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.orbital_type"><code class="docutils literal notranslate"><span class="pre">orbital_type</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.orbital_type.ao"><code class="docutils literal notranslate"><span class="pre">orbital_type.ao</span></code></a></li>
@@ -661,11 +674,9 @@ document.write(`
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.trexio_show_detail"><code class="docutils literal notranslate"><span class="pre">trexio_show_detail()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.trexio_show_info"><code class="docutils literal notranslate"><span class="pre">trexio_show_info()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.vmc_analyze_output"><code class="docutils literal notranslate"><span class="pre">vmc_analyze_output()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.vmc_chk_fix"><code class="docutils literal notranslate"><span class="pre">vmc_chk_fix()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.jqmc_tool.vmc_generate_input"><code class="docutils literal notranslate"><span class="pre">vmc_generate_input()</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.jqmc_utility">jqmc.jqmc_utility module</a></li>
 <li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.molecular_orbital">jqmc.molecular_orbital module</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.MOs_data"><code class="docutils literal notranslate"><span class="pre">MOs_data</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.MOs_data.aos_data"><code class="docutils literal notranslate"><span class="pre">MOs_data.aos_data</span></code></a></li>
@@ -683,7 +694,6 @@ document.write(`
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.molecular_orbital.compute_MOs_laplacian"><code class="docutils literal notranslate"><span class="pre">compute_MOs_laplacian()</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.setting">jqmc.setting module</a></li>
 <li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.structure">jqmc.structure module</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.structure.Structure_data"><code class="docutils literal notranslate"><span class="pre">Structure_data</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.structure.Structure_data.atomic_labels"><code class="docutils literal notranslate"><span class="pre">Structure_data.atomic_labels</span></code></a></li>
@@ -714,12 +724,6 @@ document.write(`
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc.swct">jqmc.swct module</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.swct.SWCT_data"><code class="docutils literal notranslate"><span class="pre">SWCT_data</span></code></a><ul>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.swct.SWCT_data.replace"><code class="docutils literal notranslate"><span class="pre">SWCT_data.replace()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.swct.SWCT_data.sanity_check"><code class="docutils literal notranslate"><span class="pre">SWCT_data.sanity_check()</span></code></a></li>
-<li class="toctree-l4"><a class="reference internal" href="jqmc.html#jqmc.swct.SWCT_data.structure"><code class="docutils literal notranslate"><span class="pre">SWCT_data.structure</span></code></a></li>
-</ul>
-</li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.swct.evaluate_swct_domega"><code class="docutils literal notranslate"><span class="pre">evaluate_swct_domega()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.swct.evaluate_swct_omega"><code class="docutils literal notranslate"><span class="pre">evaluate_swct_omega()</span></code></a></li>
 </ul>
@@ -757,14 +761,221 @@ document.write(`
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.compute_kinetic_energy"><code class="docutils literal notranslate"><span class="pre">compute_kinetic_energy()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.compute_kinetic_energy_all_elements"><code class="docutils literal notranslate"><span class="pre">compute_kinetic_energy_all_elements()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.compute_kinetic_energy_all_elements_fast_update"><code class="docutils literal notranslate"><span class="pre">compute_kinetic_energy_all_elements_fast_update()</span></code></a></li>
-<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.compute_quantum_force"><code class="docutils literal notranslate"><span class="pre">compute_quantum_force()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.compute_nodal_distance"><code class="docutils literal notranslate"><span class="pre">compute_nodal_distance()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.evaluate_determinant"><code class="docutils literal notranslate"><span class="pre">evaluate_determinant()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.evaluate_jastrow"><code class="docutils literal notranslate"><span class="pre">evaluate_jastrow()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.evaluate_ln_wavefunction"><code class="docutils literal notranslate"><span class="pre">evaluate_ln_wavefunction()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.evaluate_ln_wavefunction_fast"><code class="docutils literal notranslate"><span class="pre">evaluate_ln_wavefunction_fast()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.evaluate_wavefunction"><code class="docutils literal notranslate"><span class="pre">evaluate_wavefunction()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc.html#jqmc.wavefunction.f_epsilon_PW"><code class="docutils literal notranslate"><span class="pre">f_epsilon_PW()</span></code></a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="jqmc.html#module-jqmc">Module contents</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="jqmc_workflow.html">jqmc_workflow package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="jqmc_workflow.html#subpackages">Subpackages</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.template.html">jqmc_workflow.template package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.template.html#module-jqmc_workflow.template">Module contents</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="jqmc_workflow.html#submodules">Submodules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="jqmc_workflow.html#module-jqmc_workflow.launcher">jqmc_workflow.launcher module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.launcher.Launcher"><code class="docutils literal notranslate"><span class="pre">Launcher</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.launcher.Launcher.async_launch"><code class="docutils literal notranslate"><span class="pre">Launcher.async_launch()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.launcher.Launcher.launch"><code class="docutils literal notranslate"><span class="pre">Launcher.launch()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="jqmc_workflow.html#module-jqmc_workflow.lrdmc_ext_workflow">jqmc_workflow.lrdmc_ext_workflow module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.lrdmc_ext_workflow.LRDMC_Ext_Workflow"><code class="docutils literal notranslate"><span class="pre">LRDMC_Ext_Workflow</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.lrdmc_ext_workflow.LRDMC_Ext_Workflow.async_launch"><code class="docutils literal notranslate"><span class="pre">LRDMC_Ext_Workflow.async_launch()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="jqmc_workflow.html#module-jqmc_workflow.lrdmc_workflow">jqmc_workflow.lrdmc_workflow module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.lrdmc_workflow.LRDMC_Workflow"><code class="docutils literal notranslate"><span class="pre">LRDMC_Workflow</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.lrdmc_workflow.LRDMC_Workflow.async_launch"><code class="docutils literal notranslate"><span class="pre">LRDMC_Workflow.async_launch()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.lrdmc_workflow.LRDMC_Workflow.job_type"><code class="docutils literal notranslate"><span class="pre">LRDMC_Workflow.job_type</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="jqmc_workflow.html#module-jqmc_workflow.mcmc_workflow">jqmc_workflow.mcmc_workflow module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.mcmc_workflow.MCMC_Workflow"><code class="docutils literal notranslate"><span class="pre">MCMC_Workflow</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.mcmc_workflow.MCMC_Workflow.async_launch"><code class="docutils literal notranslate"><span class="pre">MCMC_Workflow.async_launch()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="jqmc_workflow.html#module-jqmc_workflow.vmc_workflow">jqmc_workflow.vmc_workflow module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.vmc_workflow.VMC_Workflow"><code class="docutils literal notranslate"><span class="pre">VMC_Workflow</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.vmc_workflow.VMC_Workflow.async_launch"><code class="docutils literal notranslate"><span class="pre">VMC_Workflow.async_launch()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="jqmc_workflow.html#module-jqmc_workflow.wf_workflow">jqmc_workflow.wf_workflow module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.wf_workflow.WF_Workflow"><code class="docutils literal notranslate"><span class="pre">WF_Workflow</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.wf_workflow.WF_Workflow.async_launch"><code class="docutils literal notranslate"><span class="pre">WF_Workflow.async_launch()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="jqmc_workflow.html#module-jqmc_workflow.workflow">jqmc_workflow.workflow module</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.workflow.Container"><code class="docutils literal notranslate"><span class="pre">Container</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.workflow.Container.async_launch"><code class="docutils literal notranslate"><span class="pre">Container.async_launch()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.workflow.Container.launch"><code class="docutils literal notranslate"><span class="pre">Container.launch()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.workflow.FileFrom"><code class="docutils literal notranslate"><span class="pre">FileFrom</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.workflow.ValueFrom"><code class="docutils literal notranslate"><span class="pre">ValueFrom</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.workflow.Workflow"><code class="docutils literal notranslate"><span class="pre">Workflow</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.workflow.Workflow.async_collect"><code class="docutils literal notranslate"><span class="pre">Workflow.async_collect()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.workflow.Workflow.async_launch"><code class="docutils literal notranslate"><span class="pre">Workflow.async_launch()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.workflow.Workflow.async_poll"><code class="docutils literal notranslate"><span class="pre">Workflow.async_poll()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.workflow.Workflow.async_submit"><code class="docutils literal notranslate"><span class="pre">Workflow.async_submit()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.workflow.Workflow.launch"><code class="docutils literal notranslate"><span class="pre">Workflow.launch()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="jqmc_workflow.html#module-jqmc_workflow">Module contents</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#public-api">Public API</a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.Container"><code class="docutils literal notranslate"><span class="pre">Container</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.Container.async_launch"><code class="docutils literal notranslate"><span class="pre">Container.async_launch()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.Container.launch"><code class="docutils literal notranslate"><span class="pre">Container.launch()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.FileFrom"><code class="docutils literal notranslate"><span class="pre">FileFrom</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.Input_Parameters"><code class="docutils literal notranslate"><span class="pre">Input_Parameters</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.Input_Parameters.actual_opt_steps"><code class="docutils literal notranslate"><span class="pre">Input_Parameters.actual_opt_steps</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.Input_Parameters.per_input"><code class="docutils literal notranslate"><span class="pre">Input_Parameters.per_input</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data"><code class="docutils literal notranslate"><span class="pre">LRDMC_Diagnostic_Data</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.atomic_forces"><code class="docutils literal notranslate"><span class="pre">LRDMC_Diagnostic_Data.atomic_forces</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.avg_num_projections"><code class="docutils literal notranslate"><span class="pre">LRDMC_Diagnostic_Data.avg_num_projections</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.energy"><code class="docutils literal notranslate"><span class="pre">LRDMC_Diagnostic_Data.energy</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.energy_error"><code class="docutils literal notranslate"><span class="pre">LRDMC_Diagnostic_Data.energy_error</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.hamiltonian_data_file"><code class="docutils literal notranslate"><span class="pre">LRDMC_Diagnostic_Data.hamiltonian_data_file</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.jax_backend"><code class="docutils literal notranslate"><span class="pre">LRDMC_Diagnostic_Data.jax_backend</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.jax_devices"><code class="docutils literal notranslate"><span class="pre">LRDMC_Diagnostic_Data.jax_devices</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.net_time_sec"><code class="docutils literal notranslate"><span class="pre">LRDMC_Diagnostic_Data.net_time_sec</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.num_mpi_processes"><code class="docutils literal notranslate"><span class="pre">LRDMC_Diagnostic_Data.num_mpi_processes</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.num_walkers_per_process"><code class="docutils literal notranslate"><span class="pre">LRDMC_Diagnostic_Data.num_walkers_per_process</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.precompilation_time_sec"><code class="docutils literal notranslate"><span class="pre">LRDMC_Diagnostic_Data.precompilation_time_sec</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.restart_checkpoint"><code class="docutils literal notranslate"><span class="pre">LRDMC_Diagnostic_Data.restart_checkpoint</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.stderr_tail"><code class="docutils literal notranslate"><span class="pre">LRDMC_Diagnostic_Data.stderr_tail</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.survived_walkers_ratio"><code class="docutils literal notranslate"><span class="pre">LRDMC_Diagnostic_Data.survived_walkers_ratio</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.timing_breakdown"><code class="docutils literal notranslate"><span class="pre">LRDMC_Diagnostic_Data.timing_breakdown</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.total_time_sec"><code class="docutils literal notranslate"><span class="pre">LRDMC_Diagnostic_Data.total_time_sec</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Ext_Diagnostic_Data"><code class="docutils literal notranslate"><span class="pre">LRDMC_Ext_Diagnostic_Data</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Ext_Diagnostic_Data.extrapolated_energy"><code class="docutils literal notranslate"><span class="pre">LRDMC_Ext_Diagnostic_Data.extrapolated_energy</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Ext_Diagnostic_Data.extrapolated_energy_error"><code class="docutils literal notranslate"><span class="pre">LRDMC_Ext_Diagnostic_Data.extrapolated_energy_error</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Ext_Diagnostic_Data.per_alat_results"><code class="docutils literal notranslate"><span class="pre">LRDMC_Ext_Diagnostic_Data.per_alat_results</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Ext_Diagnostic_Data.stderr_tail"><code class="docutils literal notranslate"><span class="pre">LRDMC_Ext_Diagnostic_Data.stderr_tail</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Ext_Workflow"><code class="docutils literal notranslate"><span class="pre">LRDMC_Ext_Workflow</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Ext_Workflow.async_launch"><code class="docutils literal notranslate"><span class="pre">LRDMC_Ext_Workflow.async_launch()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Workflow"><code class="docutils literal notranslate"><span class="pre">LRDMC_Workflow</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Workflow.async_launch"><code class="docutils literal notranslate"><span class="pre">LRDMC_Workflow.async_launch()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.LRDMC_Workflow.job_type"><code class="docutils literal notranslate"><span class="pre">LRDMC_Workflow.job_type</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.Launcher"><code class="docutils literal notranslate"><span class="pre">Launcher</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.Launcher.async_launch"><code class="docutils literal notranslate"><span class="pre">Launcher.async_launch()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.Launcher.launch"><code class="docutils literal notranslate"><span class="pre">Launcher.launch()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data"><code class="docutils literal notranslate"><span class="pre">MCMC_Diagnostic_Data</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.acceptance_ratio"><code class="docutils literal notranslate"><span class="pre">MCMC_Diagnostic_Data.acceptance_ratio</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.atomic_forces"><code class="docutils literal notranslate"><span class="pre">MCMC_Diagnostic_Data.atomic_forces</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.avg_walker_weight"><code class="docutils literal notranslate"><span class="pre">MCMC_Diagnostic_Data.avg_walker_weight</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.energy"><code class="docutils literal notranslate"><span class="pre">MCMC_Diagnostic_Data.energy</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.energy_error"><code class="docutils literal notranslate"><span class="pre">MCMC_Diagnostic_Data.energy_error</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.hamiltonian_data_file"><code class="docutils literal notranslate"><span class="pre">MCMC_Diagnostic_Data.hamiltonian_data_file</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.jax_backend"><code class="docutils literal notranslate"><span class="pre">MCMC_Diagnostic_Data.jax_backend</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.jax_devices"><code class="docutils literal notranslate"><span class="pre">MCMC_Diagnostic_Data.jax_devices</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.net_time_sec"><code class="docutils literal notranslate"><span class="pre">MCMC_Diagnostic_Data.net_time_sec</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.num_mpi_processes"><code class="docutils literal notranslate"><span class="pre">MCMC_Diagnostic_Data.num_mpi_processes</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.num_walkers_per_process"><code class="docutils literal notranslate"><span class="pre">MCMC_Diagnostic_Data.num_walkers_per_process</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.precompilation_time_sec"><code class="docutils literal notranslate"><span class="pre">MCMC_Diagnostic_Data.precompilation_time_sec</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.restart_checkpoint"><code class="docutils literal notranslate"><span class="pre">MCMC_Diagnostic_Data.restart_checkpoint</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.stderr_tail"><code class="docutils literal notranslate"><span class="pre">MCMC_Diagnostic_Data.stderr_tail</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.timing_breakdown"><code class="docutils literal notranslate"><span class="pre">MCMC_Diagnostic_Data.timing_breakdown</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.total_time_sec"><code class="docutils literal notranslate"><span class="pre">MCMC_Diagnostic_Data.total_time_sec</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.MCMC_Workflow"><code class="docutils literal notranslate"><span class="pre">MCMC_Workflow</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.MCMC_Workflow.async_launch"><code class="docutils literal notranslate"><span class="pre">MCMC_Workflow.async_launch()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data"><code class="docutils literal notranslate"><span class="pre">VMC_Diagnostic_Data</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data.jax_backend"><code class="docutils literal notranslate"><span class="pre">VMC_Diagnostic_Data.jax_backend</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data.jax_devices"><code class="docutils literal notranslate"><span class="pre">VMC_Diagnostic_Data.jax_devices</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data.num_mpi_processes"><code class="docutils literal notranslate"><span class="pre">VMC_Diagnostic_Data.num_mpi_processes</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data.num_walkers_per_process"><code class="docutils literal notranslate"><span class="pre">VMC_Diagnostic_Data.num_walkers_per_process</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data.opt_timing_breakdown"><code class="docutils literal notranslate"><span class="pre">VMC_Diagnostic_Data.opt_timing_breakdown</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data.optimized_hamiltonian"><code class="docutils literal notranslate"><span class="pre">VMC_Diagnostic_Data.optimized_hamiltonian</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data.restart_checkpoint"><code class="docutils literal notranslate"><span class="pre">VMC_Diagnostic_Data.restart_checkpoint</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data.stderr_tail"><code class="docutils literal notranslate"><span class="pre">VMC_Diagnostic_Data.stderr_tail</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data.steps"><code class="docutils literal notranslate"><span class="pre">VMC_Diagnostic_Data.steps</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data.total_opt_steps"><code class="docutils literal notranslate"><span class="pre">VMC_Diagnostic_Data.total_opt_steps</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data.total_opt_time_sec"><code class="docutils literal notranslate"><span class="pre">VMC_Diagnostic_Data.total_opt_time_sec</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Step_Data"><code class="docutils literal notranslate"><span class="pre">VMC_Step_Data</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.acceptance_ratio"><code class="docutils literal notranslate"><span class="pre">VMC_Step_Data.acceptance_ratio</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.avg_walker_weight"><code class="docutils literal notranslate"><span class="pre">VMC_Step_Data.avg_walker_weight</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.energy"><code class="docutils literal notranslate"><span class="pre">VMC_Step_Data.energy</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.energy_error"><code class="docutils literal notranslate"><span class="pre">VMC_Step_Data.energy_error</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.max_force"><code class="docutils literal notranslate"><span class="pre">VMC_Step_Data.max_force</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.max_force_error"><code class="docutils literal notranslate"><span class="pre">VMC_Step_Data.max_force_error</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.net_time_sec"><code class="docutils literal notranslate"><span class="pre">VMC_Step_Data.net_time_sec</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.precompilation_time_sec"><code class="docutils literal notranslate"><span class="pre">VMC_Step_Data.precompilation_time_sec</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.signal_to_noise_ratio"><code class="docutils literal notranslate"><span class="pre">VMC_Step_Data.signal_to_noise_ratio</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.step"><code class="docutils literal notranslate"><span class="pre">VMC_Step_Data.step</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.timing_breakdown"><code class="docutils literal notranslate"><span class="pre">VMC_Step_Data.timing_breakdown</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.total_time_sec"><code class="docutils literal notranslate"><span class="pre">VMC_Step_Data.total_time_sec</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Workflow"><code class="docutils literal notranslate"><span class="pre">VMC_Workflow</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.VMC_Workflow.async_launch"><code class="docutils literal notranslate"><span class="pre">VMC_Workflow.async_launch()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.ValueFrom"><code class="docutils literal notranslate"><span class="pre">ValueFrom</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.WF_Workflow"><code class="docutils literal notranslate"><span class="pre">WF_Workflow</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.WF_Workflow.async_launch"><code class="docutils literal notranslate"><span class="pre">WF_Workflow.async_launch()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.Workflow"><code class="docutils literal notranslate"><span class="pre">Workflow</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.Workflow.async_collect"><code class="docutils literal notranslate"><span class="pre">Workflow.async_collect()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.Workflow.async_launch"><code class="docutils literal notranslate"><span class="pre">Workflow.async_launch()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.Workflow.async_poll"><code class="docutils literal notranslate"><span class="pre">Workflow.async_poll()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.Workflow.async_submit"><code class="docutils literal notranslate"><span class="pre">Workflow.async_submit()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.Workflow.launch"><code class="docutils literal notranslate"><span class="pre">Workflow.launch()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.get_all_workflow_statuses"><code class="docutils literal notranslate"><span class="pre">get_all_workflow_statuses()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.get_workflow_summary"><code class="docutils literal notranslate"><span class="pre">get_workflow_summary()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.parse_input_params"><code class="docutils literal notranslate"><span class="pre">parse_input_params()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.parse_lrdmc_ext_output"><code class="docutils literal notranslate"><span class="pre">parse_lrdmc_ext_output()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.parse_lrdmc_output"><code class="docutils literal notranslate"><span class="pre">parse_lrdmc_output()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.parse_mcmc_output"><code class="docutils literal notranslate"><span class="pre">parse_mcmc_output()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.parse_vmc_output"><code class="docutils literal notranslate"><span class="pre">parse_vmc_output()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="jqmc_workflow.html#jqmc_workflow.repair_forces_from_output"><code class="docutils literal notranslate"><span class="pre">repair_forces_from_output()</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -850,8 +1061,8 @@ By Kosuke Nakano
   </div>
   
   <!-- Scripts loaded after <body> so the DOM is not blocked -->
-  <script src="../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
-<script src="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
+  <script defer src="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
 
   <footer class="bd-footer">
   </footer>

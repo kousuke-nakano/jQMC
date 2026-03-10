@@ -7,7 +7,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Index &#8212; jQMC v0.1.0</title>
+    <title>Index &#8212; jQMC v0.2</title>
   
   
   
@@ -15,35 +15,39 @@
     document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
     document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
   </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
   
   <!-- Loaded before other Sphinx assets -->
-  <link href="_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
-<link href="_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
-<link href="_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
-
-  
-  <link href="_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
-  <link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
-<link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
-<link rel="preload" as="font" type="font/woff2" crossorigin href="_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+  <link href="_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
 
     <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
-    <link rel="stylesheet" type="text/css" href="_static/styles/sphinx-book-theme.css?v=eba8b062" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/sphinx-book-theme.css?v=3c74b3bc" />
   
+  <!-- So that users can add custom icons -->
+  <script src="_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
   <!-- Pre-loaded scripts that we'll load fully later -->
-  <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
-<link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
-  <script src="_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
+  <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
 
-    <script src="_static/documentation_options.js?v=a1637f0b"></script>
+    <script src="_static/documentation_options.js?v=f6d3da1f"></script>
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
-    <script src="_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
+    <script src="_static/scripts/sphinx-book-theme.js?v=fab101a9"></script>
     <script>DOCUMENTATION_OPTIONS.pagename = 'genindex';</script>
     <link rel="index" title="Index" href="#" />
     <link rel="search" title="Search" href="search.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="0.2" />
   </head>
   
   
@@ -59,19 +63,8 @@
     <i class="fa-solid fa-arrow-up"></i>Back to top</button>
 
   
-  <input type="checkbox"
-          class="sidebar-toggle"
-          id="pst-primary-sidebar-checkbox"/>
-  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
-  
-  <input type="checkbox"
-          class="sidebar-toggle"
-          id="pst-secondary-sidebar-checkbox"/>
-  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
-  
-  <div class="search-button__wrapper">
-    <div class="search-button__overlay"></div>
-    <div class="search-button__search-container">
+  <dialog id="pst-search-dialog">
+    
 <form class="bd-search d-flex align-items-center"
       action="search.html"
       method="get">
@@ -79,7 +72,6 @@
   <input type="search"
          class="form-control"
          name="q"
-         id="search-input"
          placeholder="Search..."
          aria-label="Search..."
          autocomplete="off"
@@ -87,8 +79,8 @@
          autocapitalize="off"
          spellcheck="false"/>
   <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
-</form></div>
-  </div>
+</form>
+  </dialog>
 
   <div class="pst-async-banner-revealer d-none">
   <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
@@ -106,7 +98,8 @@
       
         
       
-      <div class="bd-sidebar-primary bd-sidebar">
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
         
 
   
@@ -131,7 +124,7 @@
   
   
   
-    <p class="title logo__title">jQMC v0.1.0</p>
+    <p class="title logo__title">jQMC v0.2</p>
   
 </a></div>
         <div class="sidebar-primary-item"><ul class="navbar-icon-links"
@@ -151,15 +144,11 @@
 </ul></div>
         <div class="sidebar-primary-item">
 
- <script>
- document.write(`
-   <button class="btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
-    <i class="fa-solid fa-magnifying-glass"></i>
-    <span class="search-button__default-text">Search</span>
-    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
-   </button>
- `);
- </script></div>
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button></div>
         <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
     <div class="bd-toc-item navbar-nav active">
         <ul class="nav bd-sidenav">
@@ -175,10 +164,15 @@
 <li class="toctree-l2"><a class="reference internal" href="notes/trexio.html">Interfaces with TREX-IO</a></li>
 </ul>
 </details></li>
+<li class="toctree-l1"><a class="reference internal" href="notes/workflows.html">Autonomous Pipelines (jqmc_workflow)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api_reference_cli.html">API reference for the command-line interface (jqmc)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api_reference_cli_tool.html">API reference for the command-line tool (jqmc-tool)</a></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="api_reference_mod/modules.html">API reference for modules</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="api_reference_mod/jqmc.html">jqmc package</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="api_reference_mod/jqmc_workflow.html">jqmc_workflow package</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l3"><a class="reference internal" href="api_reference_mod/jqmc_workflow.template.html">jqmc_workflow.template package</a></li>
+</ul>
+</details></li>
 </ul>
 </details></li>
 <li class="toctree-l1"><a class="reference internal" href="citation.html">How to cite jQMC</a></li>
@@ -192,9 +186,14 @@
   
   
   <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
   </div>
-  
-  <div id="rtd-footer-container"></div>
 
 
       </div>
@@ -229,7 +228,7 @@
 
 
 <button onclick="toggleFullScreen()"
-  class="btn btn-sm btn-fullscreen-button"
+  class="btn btn-sm btn-fullscreen-button pst-navbar-icon"
   title="Fullscreen mode"
   data-bs-placement="bottom" data-bs-toggle="tooltip"
 >
@@ -243,24 +242,16 @@
 
 
 
-<script>
-document.write(`
-  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
-    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
-    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
-    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
-  </button>
-`);
-</script>
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button>
 
 
-<script>
-document.write(`
-  <button class="btn btn-sm pst-navbar-icon search-button search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+<button class="btn btn-sm pst-navbar-icon search-button search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
     <i class="fa-solid fa-magnifying-glass fa-lg"></i>
-  </button>
-`);
-</script>
+</button>
 
 </div></div>
       
@@ -317,6 +308,12 @@ document.write(`
 <h2 id="A">A</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.acceptance_ratio">acceptance_ratio (jqmc_workflow.MCMC_Diagnostic_Data attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.acceptance_ratio">(jqmc_workflow.VMC_Step_Data attribute)</a>
+</li>
+      </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.accumulate_position_grad">accumulate_position_grad() (jqmc.determinant.Geminal_data method)</a>
 
       <ul>
@@ -327,6 +324,8 @@ document.write(`
         <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.Wavefunction_data.accumulate_position_grad">(jqmc.wavefunction.Wavefunction_data method)</a>
 </li>
       </ul></li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.Input_Parameters.actual_opt_steps">actual_opt_steps (jqmc_workflow.Input_Parameters attribute)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_n.alat">alat (jqmc.jqmc_gfmc.GFMC_n property)</a>
 
       <ul>
@@ -347,8 +346,6 @@ document.write(`
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.orbital_type.ao_full">ao_full (jqmc.jqmc_tool.orbital_type attribute)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.orbital_type.ao_large">ao_large (jqmc.jqmc_tool.orbital_type attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.orbital_type.ao_medium">ao_medium (jqmc.jqmc_tool.orbital_type attribute)</a>
@@ -361,6 +358,8 @@ document.write(`
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.atomic_orbital.AOs_sphe_data">AOs_sphe_data (class in jqmc.atomic_orbital)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.apply_ao_projected_paired_update_and_reproject">apply_ao_projected_paired_update_and_reproject() (jqmc.determinant.Geminal_data method)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.apply_block_update">apply_block_update() (jqmc.determinant.Geminal_data method)</a>
 
       <ul>
@@ -369,14 +368,80 @@ document.write(`
       </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.Wavefunction_data.apply_block_updates">apply_block_updates() (jqmc.wavefunction.Wavefunction_data method)</a>
 </li>
-      <li><a href="api_reference_mod/jqmc.html#jqmc.diff_mask.apply_diff_mask">apply_diff_mask() (in module jqmc.diff_mask)</a>
-</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.VariationalParameterBlock.apply_update">apply_update() (jqmc.wavefunction.VariationalParameterBlock method)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.Workflow.async_collect">async_collect() (jqmc_workflow.Workflow method)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.workflow.Workflow.async_collect">(jqmc_workflow.workflow.Workflow method)</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.Container.async_launch">async_launch() (jqmc_workflow.Container method)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.Launcher.async_launch">(jqmc_workflow.Launcher method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.launcher.Launcher.async_launch">(jqmc_workflow.launcher.Launcher method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Ext_Workflow.async_launch">(jqmc_workflow.LRDMC_Ext_Workflow method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.lrdmc_ext_workflow.LRDMC_Ext_Workflow.async_launch">(jqmc_workflow.lrdmc_ext_workflow.LRDMC_Ext_Workflow method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Workflow.async_launch">(jqmc_workflow.LRDMC_Workflow method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.lrdmc_workflow.LRDMC_Workflow.async_launch">(jqmc_workflow.lrdmc_workflow.LRDMC_Workflow method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.MCMC_Workflow.async_launch">(jqmc_workflow.MCMC_Workflow method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.mcmc_workflow.MCMC_Workflow.async_launch">(jqmc_workflow.mcmc_workflow.MCMC_Workflow method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Workflow.async_launch">(jqmc_workflow.VMC_Workflow method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.vmc_workflow.VMC_Workflow.async_launch">(jqmc_workflow.vmc_workflow.VMC_Workflow method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.WF_Workflow.async_launch">(jqmc_workflow.WF_Workflow method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.wf_workflow.WF_Workflow.async_launch">(jqmc_workflow.wf_workflow.WF_Workflow method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.Workflow.async_launch">(jqmc_workflow.Workflow method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.workflow.Container.async_launch">(jqmc_workflow.workflow.Container method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.workflow.Workflow.async_launch">(jqmc_workflow.workflow.Workflow method)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.Workflow.async_poll">async_poll() (jqmc_workflow.Workflow method)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.workflow.Workflow.async_poll">(jqmc_workflow.workflow.Workflow method)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.Workflow.async_submit">async_submit() (jqmc_workflow.Workflow method)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.workflow.Workflow.async_submit">(jqmc_workflow.workflow.Workflow method)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.atomic_forces">atomic_forces (jqmc_workflow.LRDMC_Diagnostic_Data attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.atomic_forces">(jqmc_workflow.MCMC_Diagnostic_Data attribute)</a>
+</li>
+      </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.structure.Structure_data.atomic_labels">atomic_labels (jqmc.structure.Structure_data attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.structure.Structure_data.atomic_numbers">atomic_numbers (jqmc.structure.Structure_data attribute)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.avg_num_projections">avg_num_projections (jqmc_workflow.LRDMC_Diagnostic_Data attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.avg_walker_weight">avg_walker_weight (jqmc_workflow.MCMC_Diagnostic_Data attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.avg_walker_weight">(jqmc_workflow.VMC_Step_Data attribute)</a>
+</li>
+      </ul></li>
   </ul></td>
 </tr></table>
 
@@ -413,11 +478,13 @@ document.write(`
         <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.Wavefunction_data.collect_param_grads">(jqmc.wavefunction.Wavefunction_data method)</a>
 </li>
       </ul></li>
-      <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.comput_param_deriv">comput_param_deriv (jqmc.jqmc_mcmc.MCMC property)</a>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.comput_e_L_param_deriv">comput_e_L_param_deriv (jqmc.jqmc_mcmc.MCMC property)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_n.comput_position_deriv">comput_position_deriv (jqmc.jqmc_gfmc.GFMC_n property)</a>
 
       <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_t.comput_position_deriv">(jqmc.jqmc_gfmc.GFMC_t property)</a>
+</li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.comput_position_deriv">(jqmc.jqmc_mcmc.MCMC property)</a>
 </li>
       </ul></li>
@@ -431,6 +498,8 @@ document.write(`
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.compute_AS_regularization_factor_fast_update">compute_AS_regularization_factor_fast_update() (in module jqmc.determinant)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.compute_asr_gamma">compute_asr_gamma() (jqmc.jqmc_mcmc.MCMC static method)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.coulomb_potential.compute_bare_coulomb_potential">compute_bare_coulomb_potential() (in module jqmc.coulomb_potential)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.coulomb_potential.compute_bare_coulomb_potential_el_el">compute_bare_coulomb_potential_el_el() (in module jqmc.coulomb_potential)</a>
@@ -443,6 +512,8 @@ document.write(`
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.coulomb_potential.compute_coulomb_potential">compute_coulomb_potential() (in module jqmc.coulomb_potential)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.coulomb_potential.compute_coulomb_potential_fast">compute_coulomb_potential_fast() (in module jqmc.coulomb_potential)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.compute_det_geminal_all_elements">compute_det_geminal_all_elements() (in module jqmc.determinant)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.coulomb_potential.compute_discretized_bare_coulomb_potential_el_ion_element_wise">compute_discretized_bare_coulomb_potential_el_ion_element_wise() (in module jqmc.coulomb_potential)</a>
@@ -452,6 +523,8 @@ document.write(`
       <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.compute_discretized_kinetic_energy_fast_update">compute_discretized_kinetic_energy_fast_update() (in module jqmc.wavefunction)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.coulomb_potential.compute_ecp_coulomb_potential">compute_ecp_coulomb_potential() (in module jqmc.coulomb_potential)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.coulomb_potential.compute_ecp_coulomb_potential_fast">compute_ecp_coulomb_potential_fast() (in module jqmc.coulomb_potential)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.coulomb_potential.compute_ecp_local_parts_all_pairs">compute_ecp_local_parts_all_pairs() (in module jqmc.coulomb_potential)</a>
 </li>
@@ -479,8 +552,6 @@ document.write(`
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.compute_grads_and_laplacian_Jastrow_two_body">compute_grads_and_laplacian_Jastrow_two_body() (in module jqmc.jastrow_factor)</a>
 </li>
-      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.compute_grads_and_laplacian_ln_Det">compute_grads_and_laplacian_ln_Det() (in module jqmc.determinant)</a>
-</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.compute_grads_and_laplacian_ln_Det_fast">compute_grads_and_laplacian_ln_Det_fast() (in module jqmc.determinant)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.compute_Jastrow_one_body">compute_Jastrow_one_body() (in module jqmc.jastrow_factor)</a>
@@ -499,11 +570,17 @@ document.write(`
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.hamiltonians.compute_local_energy">compute_local_energy() (in module jqmc.hamiltonians)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.hamiltonians.compute_local_energy_fast">compute_local_energy_fast() (in module jqmc.hamiltonians)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.compute_log_WF_param_deriv">compute_log_WF_param_deriv (jqmc.jqmc_mcmc.MCMC property)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.molecular_orbital.compute_MOs">compute_MOs() (in module jqmc.molecular_orbital)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.molecular_orbital.compute_MOs_grad">compute_MOs_grad() (in module jqmc.molecular_orbital)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.molecular_orbital.compute_MOs_laplacian">compute_MOs_laplacian() (in module jqmc.molecular_orbital)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.compute_nodal_distance">compute_nodal_distance() (in module jqmc.wavefunction)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.compute_orb_api">compute_orb_api (jqmc.determinant.Geminal_data property)</a>
 
@@ -515,11 +592,17 @@ document.write(`
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.compute_orb_laplacian_api">compute_orb_laplacian_api (jqmc.determinant.Geminal_data property)</a>
 </li>
-      <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.compute_quantum_force">compute_quantum_force() (in module jqmc.wavefunction)</a>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.atomic_orbital.compute_overlap_matrix">compute_overlap_matrix() (in module jqmc.atomic_orbital)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.Container">Container (class in jqmc_workflow)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.workflow.Container">(class in jqmc_workflow.workflow)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.convert_from_AOs_to_MOs">convert_from_AOs_to_MOs() (jqmc.determinant.Geminal_data class method)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.convert_from_MOs_to_AOs">convert_from_MOs_to_AOs() (jqmc.determinant.Geminal_data class method)</a>
-</li>
-      <li><a href="api_reference_mod/jqmc.html#jqmc.diff_mask.DiffMask.coords">coords (jqmc.diff_mask.DiffMask attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_data.core_electrons">core_electrons (jqmc.jastrow_factor.Jastrow_one_body_data attribute)</a>
 </li>
@@ -541,31 +624,39 @@ document.write(`
 <h2 id="D">D</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.de_L_dc">de_L_dc (jqmc.jqmc_mcmc.MCMC property)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_n.de_L_dR">de_L_dR (jqmc.jqmc_gfmc.GFMC_n property)</a>
 
       <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_t.de_L_dR">(jqmc.jqmc_gfmc.GFMC_t property)</a>
+</li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.de_L_dR">(jqmc.jqmc_mcmc.MCMC property)</a>
 </li>
       </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_n.de_L_dr_dn">de_L_dr_dn (jqmc.jqmc_gfmc.GFMC_n property)</a>
 
       <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_t.de_L_dr_dn">(jqmc.jqmc_gfmc.GFMC_t property)</a>
+</li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.de_L_dr_dn">(jqmc.jqmc_mcmc.MCMC property)</a>
 </li>
       </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_n.de_L_dr_up">de_L_dr_up (jqmc.jqmc_gfmc.GFMC_n property)</a>
 
       <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_t.de_L_dr_up">(jqmc.jqmc_gfmc.GFMC_t property)</a>
+</li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.de_L_dr_up">(jqmc.jqmc_mcmc.MCMC property)</a>
 </li>
       </ul></li>
-      <li><a href="api_reference_mod/jqmc.html#jqmc.diff_mask.DiffMask">DiffMask (class in jqmc.diff_mask)</a>
-</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.dln_Psi_dc">dln_Psi_dc (jqmc.jqmc_mcmc.MCMC property)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_n.dln_Psi_dR">dln_Psi_dR (jqmc.jqmc_gfmc.GFMC_n property)</a>
 
       <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_t.dln_Psi_dR">(jqmc.jqmc_gfmc.GFMC_t property)</a>
+</li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.dln_Psi_dR">(jqmc.jqmc_mcmc.MCMC property)</a>
 </li>
       </ul></li>
@@ -574,24 +665,32 @@ document.write(`
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_n.dln_Psi_dr_dn">dln_Psi_dr_dn (jqmc.jqmc_gfmc.GFMC_n property)</a>
 
       <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_t.dln_Psi_dr_dn">(jqmc.jqmc_gfmc.GFMC_t property)</a>
+</li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.dln_Psi_dr_dn">(jqmc.jqmc_mcmc.MCMC property)</a>
 </li>
       </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_n.dln_Psi_dr_up">dln_Psi_dr_up (jqmc.jqmc_gfmc.GFMC_n property)</a>
 
       <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_t.dln_Psi_dr_up">(jqmc.jqmc_gfmc.GFMC_t property)</a>
+</li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.dln_Psi_dr_up">(jqmc.jqmc_mcmc.MCMC property)</a>
 </li>
       </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_n.domega_dr_dn">domega_dr_dn (jqmc.jqmc_gfmc.GFMC_n property)</a>
 
       <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_t.domega_dr_dn">(jqmc.jqmc_gfmc.GFMC_t property)</a>
+</li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.domega_dr_dn">(jqmc.jqmc_mcmc.MCMC property)</a>
 </li>
       </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_n.domega_dr_up">domega_dr_up (jqmc.jqmc_gfmc.GFMC_n property)</a>
 
       <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_t.domega_dr_up">(jqmc.jqmc_gfmc.GFMC_t property)</a>
+</li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.domega_dr_up">(jqmc.jqmc_mcmc.MCMC property)</a>
 </li>
       </ul></li>
@@ -621,6 +720,22 @@ document.write(`
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.structure.Structure_data.element_symbols">element_symbols (jqmc.structure.Structure_data attribute)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.energy">energy (jqmc_workflow.LRDMC_Diagnostic_Data attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.energy">(jqmc_workflow.MCMC_Diagnostic_Data attribute)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.energy">(jqmc_workflow.VMC_Step_Data attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.energy_error">energy_error (jqmc_workflow.LRDMC_Diagnostic_Data attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.energy_error">(jqmc_workflow.MCMC_Diagnostic_Data attribute)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.energy_error">(jqmc_workflow.VMC_Step_Data attribute)</a>
+</li>
+      </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.evaluate_determinant">evaluate_determinant() (in module jqmc.wavefunction)</a>
@@ -628,6 +743,8 @@ document.write(`
       <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.evaluate_jastrow">evaluate_jastrow() (in module jqmc.wavefunction)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.evaluate_ln_wavefunction">evaluate_ln_wavefunction() (in module jqmc.wavefunction)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.evaluate_ln_wavefunction_fast">evaluate_ln_wavefunction_fast() (in module jqmc.wavefunction)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.swct.evaluate_swct_domega">evaluate_swct_domega() (in module jqmc.swct)</a>
 </li>
@@ -643,16 +760,28 @@ document.write(`
         <li><a href="api_reference_mod/jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.exponents">(jqmc.coulomb_potential.Coulomb_potential_data attribute)</a>
 </li>
       </ul></li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Ext_Diagnostic_Data.extrapolated_energy">extrapolated_energy (jqmc_workflow.LRDMC_Ext_Diagnostic_Data attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Ext_Diagnostic_Data.extrapolated_energy_error">extrapolated_energy_error (jqmc_workflow.LRDMC_Ext_Diagnostic_Data attribute)</a>
+</li>
   </ul></td>
 </tr></table>
 
 <h2 id="F">F</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.flat_shape">flat_shape (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.f_epsilon_PW">f_epsilon_PW() (in module jqmc.wavefunction)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.FileFrom">FileFrom (class in jqmc_workflow)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.workflow.FileFrom">(class in jqmc_workflow.workflow)</a>
+</li>
+      </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.flat_shape">flat_shape (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.flatten_fn">flatten_fn (jqmc.jastrow_factor.Jastrow_NN_data property)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.Wavefunction_data.flatten_param_grads">flatten_param_grads() (jqmc.wavefunction.Wavefunction_data method)</a>
@@ -670,11 +799,19 @@ document.write(`
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_n.get_aF">get_aF() (jqmc.jqmc_gfmc.GFMC_n method)</a>
 
       <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_t.get_aF">(jqmc.jqmc_gfmc.GFMC_t method)</a>
+</li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.get_aF">(jqmc.jqmc_mcmc.MCMC method)</a>
 </li>
       </ul></li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.get_aH">get_aH() (jqmc.jqmc_mcmc.MCMC method)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.get_all_workflow_statuses">get_all_workflow_statuses() (in module jqmc_workflow)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.get_dln_WF">get_dln_WF() (jqmc.jqmc_mcmc.MCMC method)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_n.get_E">get_E() (jqmc.jqmc_gfmc.GFMC_n method)</a>
 
       <ul>
@@ -683,11 +820,11 @@ document.write(`
         <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.get_E">(jqmc.jqmc_mcmc.MCMC method)</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.get_gF">get_gF() (jqmc.jqmc_mcmc.MCMC method)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.Wavefunction_data.get_variational_blocks">get_variational_blocks() (jqmc.wavefunction.Wavefunction_data method)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.get_workflow_summary">get_workflow_summary() (in module jqmc_workflow)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_n">GFMC_n (class in jqmc.jqmc_gfmc)</a>
 </li>
@@ -709,6 +846,12 @@ document.write(`
         <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_t.hamiltonian_data">(jqmc.jqmc_gfmc.GFMC_t property)</a>
 </li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.hamiltonian_data">(jqmc.jqmc_mcmc.MCMC property)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.hamiltonian_data_file">hamiltonian_data_file (jqmc_workflow.LRDMC_Diagnostic_Data attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.hamiltonian_data_file">(jqmc_workflow.MCMC_Diagnostic_Data attribute)</a>
 </li>
       </ul></li>
   </ul></td>
@@ -735,11 +878,17 @@ document.write(`
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_data.init_jastrow_one_body_data">init_jastrow_one_body_data() (jqmc.jastrow_factor.Jastrow_one_body_data class method)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data.init_jastrow_three_body_data">init_jastrow_three_body_data() (jqmc.jastrow_factor.Jastrow_three_body_data class method)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data.init_jastrow_two_body_data">init_jastrow_two_body_data() (jqmc.jastrow_factor.Jastrow_two_body_data class method)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.Input_Parameters">Input_Parameters (class in jqmc_workflow)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.is_ao_representation">is_ao_representation (jqmc.determinant.Geminal_data property)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.is_mo_representation">is_mo_representation (jqmc.determinant.Geminal_data property)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -753,7 +902,11 @@ document.write(`
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_data.jastrow_1b_param">jastrow_1b_param (jqmc.jastrow_factor.Jastrow_one_body_data attribute)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_one_body_data.jastrow_1b_type">jastrow_1b_type (jqmc.jastrow_factor.Jastrow_one_body_data attribute)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data.jastrow_2b_param">jastrow_2b_param (jqmc.jastrow_factor.Jastrow_two_body_data attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_two_body_data.jastrow_2b_type">jastrow_2b_type (jqmc.jastrow_factor.Jastrow_two_body_data attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_data">Jastrow_data (class in jqmc.jastrow_factor)</a>
 </li>
@@ -775,6 +928,28 @@ document.write(`
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_data.jastrow_two_body_data">jastrow_two_body_data (jqmc.jastrow_factor.Jastrow_data attribute)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.jax_backend">jax_backend (jqmc_workflow.LRDMC_Diagnostic_Data attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.jax_backend">(jqmc_workflow.MCMC_Diagnostic_Data attribute)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data.jax_backend">(jqmc_workflow.VMC_Diagnostic_Data attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.jax_devices">jax_devices (jqmc_workflow.LRDMC_Diagnostic_Data attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.jax_devices">(jqmc_workflow.MCMC_Diagnostic_Data attribute)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data.jax_devices">(jqmc_workflow.VMC_Diagnostic_Data attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Workflow.job_type">job_type (jqmc_workflow.LRDMC_Workflow property)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.lrdmc_workflow.LRDMC_Workflow.job_type">(jqmc_workflow.lrdmc_workflow.LRDMC_Workflow property)</a>
+</li>
+      </ul></li>
       <li>
     jqmc
 
@@ -804,33 +979,10 @@ document.write(`
 </li>
       </ul></li>
       <li>
-    jqmc.diff_mask
-
-      <ul>
-        <li><a href="api_reference_mod/jqmc.html#module-jqmc.diff_mask">module</a>
-</li>
-      </ul></li>
-      <li>
-    jqmc.function_collections
-
-      <ul>
-        <li><a href="api_reference_mod/jqmc.html#module-jqmc.function_collections">module</a>
-</li>
-      </ul></li>
-      <li>
     jqmc.hamiltonians
 
       <ul>
         <li><a href="api_reference_mod/jqmc.html#module-jqmc.hamiltonians">module</a>
-</li>
-      </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
-      <li>
-    jqmc.header_footer
-
-      <ul>
-        <li><a href="api_reference_mod/jqmc.html#module-jqmc.header_footer">module</a>
 </li>
       </ul></li>
       <li>
@@ -847,6 +999,8 @@ document.write(`
         <li><a href="api_reference_mod/jqmc.html#module-jqmc.jqmc_cli">module</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     jqmc.jqmc_gfmc
 
@@ -876,24 +1030,10 @@ document.write(`
 </li>
       </ul></li>
       <li>
-    jqmc.jqmc_utility
-
-      <ul>
-        <li><a href="api_reference_mod/jqmc.html#module-jqmc.jqmc_utility">module</a>
-</li>
-      </ul></li>
-      <li>
     jqmc.molecular_orbital
 
       <ul>
         <li><a href="api_reference_mod/jqmc.html#module-jqmc.molecular_orbital">module</a>
-</li>
-      </ul></li>
-      <li>
-    jqmc.setting
-
-      <ul>
-        <li><a href="api_reference_mod/jqmc.html#module-jqmc.setting">module</a>
 </li>
       </ul></li>
       <li>
@@ -924,6 +1064,69 @@ document.write(`
         <li><a href="api_reference_mod/jqmc.html#module-jqmc.wavefunction">module</a>
 </li>
       </ul></li>
+      <li>
+    jqmc_workflow
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#module-jqmc_workflow">module</a>
+</li>
+      </ul></li>
+      <li>
+    jqmc_workflow.launcher
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#module-jqmc_workflow.launcher">module</a>
+</li>
+      </ul></li>
+      <li>
+    jqmc_workflow.lrdmc_ext_workflow
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#module-jqmc_workflow.lrdmc_ext_workflow">module</a>
+</li>
+      </ul></li>
+      <li>
+    jqmc_workflow.lrdmc_workflow
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#module-jqmc_workflow.lrdmc_workflow">module</a>
+</li>
+      </ul></li>
+      <li>
+    jqmc_workflow.mcmc_workflow
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#module-jqmc_workflow.mcmc_workflow">module</a>
+</li>
+      </ul></li>
+      <li>
+    jqmc_workflow.template
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.template.html#module-jqmc_workflow.template">module</a>
+</li>
+      </ul></li>
+      <li>
+    jqmc_workflow.vmc_workflow
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#module-jqmc_workflow.vmc_workflow">module</a>
+</li>
+      </ul></li>
+      <li>
+    jqmc_workflow.wf_workflow
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#module-jqmc_workflow.wf_workflow">module</a>
+</li>
+      </ul></li>
+      <li>
+    jqmc_workflow.workflow
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#module-jqmc_workflow.workflow">module</a>
+</li>
+      </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.ansatz_type.jsd">jsd (jqmc.jqmc_tool.ansatz_type attribute)</a>
 </li>
   </ul></td>
@@ -940,16 +1143,62 @@ document.write(`
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.structure.Structure_data.lattice_vec_c">lattice_vec_c (jqmc.structure.Structure_data property)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.Container.launch">launch() (jqmc_workflow.Container method)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.Launcher.launch">(jqmc_workflow.Launcher method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.launcher.Launcher.launch">(jqmc_workflow.launcher.Launcher method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.Workflow.launch">(jqmc_workflow.Workflow method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.workflow.Container.launch">(jqmc_workflow.workflow.Container method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.workflow.Workflow.launch">(jqmc_workflow.workflow.Workflow method)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.Launcher">Launcher (class in jqmc_workflow)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.launcher.Launcher">(class in jqmc_workflow.launcher)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.hamiltonians.Hamiltonian_data.load_from_hdf5">load_from_hdf5() (jqmc.hamiltonians.Hamiltonian_data static method)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_n.load_from_hdf5">(jqmc.jqmc_gfmc.GFMC_n class method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_t.load_from_hdf5">(jqmc.jqmc_gfmc.GFMC_t class method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.load_from_hdf5">(jqmc.jqmc_mcmc.MCMC class method)</a>
+</li>
+      </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_reference_mod/jqmc.html#jqmc.hamiltonians.Hamiltonian_data.load_from_hdf5">load_from_hdf5() (jqmc.hamiltonians.Hamiltonian_data static method)</a>
-</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.lrdmc_compute_energy">lrdmc_compute_energy() (in module jqmc.jqmc_tool)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.lrdmc_compute_force">lrdmc_compute_force() (in module jqmc.jqmc_tool)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data">LRDMC_Diagnostic_Data (class in jqmc_workflow)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Ext_Diagnostic_Data">LRDMC_Ext_Diagnostic_Data (class in jqmc_workflow)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Ext_Workflow">LRDMC_Ext_Workflow (class in jqmc_workflow)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.lrdmc_ext_workflow.LRDMC_Ext_Workflow">(class in jqmc_workflow.lrdmc_ext_workflow)</a>
+</li>
+      </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.lrdmc_extrapolate_energy">lrdmc_extrapolate_energy() (in module jqmc.jqmc_tool)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.lrdmc_generate_input">lrdmc_generate_input() (in module jqmc.jqmc_tool)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Workflow">LRDMC_Workflow (class in jqmc_workflow)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.lrdmc_workflow.LRDMC_Workflow">(class in jqmc_workflow.lrdmc_workflow)</a>
+</li>
+      </ul></li>
   </ul></td>
 </tr></table>
 
@@ -960,9 +1209,15 @@ document.write(`
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.max_ang_mom_plus_1">max_ang_mom_plus_1 (jqmc.coulomb_potential.Coulomb_potential_data attribute)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.max_force">max_force (jqmc_workflow.VMC_Step_Data attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.max_force_error">max_force_error (jqmc_workflow.VMC_Step_Data attribute)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC">MCMC (class in jqmc.jqmc_mcmc)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.mcmc_compute_energy">mcmc_compute_energy() (in module jqmc.jqmc_tool)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.mcmc_compute_force">mcmc_compute_force() (in module jqmc.jqmc_tool)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_n.mcmc_counter">mcmc_counter (jqmc.jqmc_gfmc.GFMC_n property)</a>
 
@@ -972,8 +1227,16 @@ document.write(`
         <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.mcmc_counter">(jqmc.jqmc_mcmc.MCMC property)</a>
 </li>
       </ul></li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data">MCMC_Diagnostic_Data (class in jqmc_workflow)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.mcmc_generate_input">mcmc_generate_input() (in module jqmc.jqmc_tool)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.MCMC_Workflow">MCMC_Workflow (class in jqmc_workflow)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.mcmc_workflow.MCMC_Workflow">(class in jqmc_workflow.mcmc_workflow)</a>
+</li>
+      </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.orbital_type.mo">mo (jqmc.jqmc_tool.orbital_type attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.molecular_orbital.MOs_data.mo_coefficients">mo_coefficients (jqmc.molecular_orbital.MOs_data attribute)</a>
@@ -990,13 +1253,7 @@ document.write(`
 </li>
         <li><a href="api_reference_mod/jqmc.html#module-jqmc.determinant">jqmc.determinant</a>
 </li>
-        <li><a href="api_reference_mod/jqmc.html#module-jqmc.diff_mask">jqmc.diff_mask</a>
-</li>
-        <li><a href="api_reference_mod/jqmc.html#module-jqmc.function_collections">jqmc.function_collections</a>
-</li>
         <li><a href="api_reference_mod/jqmc.html#module-jqmc.hamiltonians">jqmc.hamiltonians</a>
-</li>
-        <li><a href="api_reference_mod/jqmc.html#module-jqmc.header_footer">jqmc.header_footer</a>
 </li>
         <li><a href="api_reference_mod/jqmc.html#module-jqmc.jastrow_factor">jqmc.jastrow_factor</a>
 </li>
@@ -1010,11 +1267,7 @@ document.write(`
 </li>
         <li><a href="api_reference_mod/jqmc.html#module-jqmc.jqmc_tool">jqmc.jqmc_tool</a>
 </li>
-        <li><a href="api_reference_mod/jqmc.html#module-jqmc.jqmc_utility">jqmc.jqmc_utility</a>
-</li>
         <li><a href="api_reference_mod/jqmc.html#module-jqmc.molecular_orbital">jqmc.molecular_orbital</a>
-</li>
-        <li><a href="api_reference_mod/jqmc.html#module-jqmc.setting">jqmc.setting</a>
 </li>
         <li><a href="api_reference_mod/jqmc.html#module-jqmc.structure">jqmc.structure</a>
 </li>
@@ -1023,6 +1276,24 @@ document.write(`
         <li><a href="api_reference_mod/jqmc.html#module-jqmc.trexio_wrapper">jqmc.trexio_wrapper</a>
 </li>
         <li><a href="api_reference_mod/jqmc.html#module-jqmc.wavefunction">jqmc.wavefunction</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#module-jqmc_workflow">jqmc_workflow</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#module-jqmc_workflow.launcher">jqmc_workflow.launcher</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#module-jqmc_workflow.lrdmc_ext_workflow">jqmc_workflow.lrdmc_ext_workflow</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#module-jqmc_workflow.lrdmc_workflow">jqmc_workflow.lrdmc_workflow</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#module-jqmc_workflow.mcmc_workflow">jqmc_workflow.mcmc_workflow</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.template.html#module-jqmc_workflow.template">jqmc_workflow.template</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#module-jqmc_workflow.vmc_workflow">jqmc_workflow.vmc_workflow</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#module-jqmc_workflow.wf_workflow">jqmc_workflow.wf_workflow</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#module-jqmc_workflow.workflow">jqmc_workflow.workflow</a>
 </li>
       </ul></li>
   </ul></td>
@@ -1049,6 +1320,14 @@ document.write(`
       </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.structure.Structure_data.natom">natom (jqmc.structure.Structure_data property)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.net_time_sec">net_time_sec (jqmc_workflow.LRDMC_Diagnostic_Data attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.net_time_sec">(jqmc_workflow.MCMC_Diagnostic_Data attribute)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.net_time_sec">(jqmc_workflow.VMC_Step_Data attribute)</a>
+</li>
+      </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.nn_def">nn_def (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.NNJastrow">NNJastrow (class in jqmc.jastrow_factor)</a>
@@ -1111,6 +1390,14 @@ document.write(`
       </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.molecular_orbital.MOs_data.num_mo">num_mo (jqmc.molecular_orbital.MOs_data attribute)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.num_mpi_processes">num_mpi_processes (jqmc_workflow.LRDMC_Diagnostic_Data attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.num_mpi_processes">(jqmc_workflow.MCMC_Diagnostic_Data attribute)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data.num_mpi_processes">(jqmc_workflow.VMC_Diagnostic_Data attribute)</a>
+</li>
+      </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.num_params">num_params (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.num_rbf">num_rbf (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
@@ -1135,6 +1422,14 @@ document.write(`
         <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.num_walkers">(jqmc.jqmc_mcmc.MCMC property)</a>
 </li>
       </ul></li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.num_walkers_per_process">num_walkers_per_process (jqmc_workflow.LRDMC_Diagnostic_Data attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.num_walkers_per_process">(jqmc_workflow.MCMC_Diagnostic_Data attribute)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data.num_walkers_per_process">(jqmc_workflow.VMC_Diagnostic_Data attribute)</a>
+</li>
+      </ul></li>
   </ul></td>
 </tr></table>
 
@@ -1144,23 +1439,31 @@ document.write(`
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_n.omega_dn">omega_dn (jqmc.jqmc_gfmc.GFMC_n property)</a>
 
       <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_t.omega_dn">(jqmc.jqmc_gfmc.GFMC_t property)</a>
+</li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.omega_dn">(jqmc.jqmc_mcmc.MCMC property)</a>
 </li>
       </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_n.omega_up">omega_up (jqmc.jqmc_gfmc.GFMC_n property)</a>
 
       <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_t.omega_up">(jqmc.jqmc_gfmc.GFMC_t property)</a>
+</li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.omega_up">(jqmc.jqmc_mcmc.MCMC property)</a>
 </li>
       </ul></li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data.opt_timing_breakdown">opt_timing_breakdown (jqmc_workflow.VMC_Diagnostic_Data attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data.optimized_hamiltonian">optimized_hamiltonian (jqmc_workflow.VMC_Diagnostic_Data attribute)</a>
+</li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data.orb_data">orb_data (jqmc.jastrow_factor.Jastrow_three_body_data attribute)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.orb_data_dn_spin">orb_data_dn_spin (jqmc.determinant.Geminal_data attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.orb_data_up_spin">orb_data_up_spin (jqmc.determinant.Geminal_data attribute)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_three_body_data.orb_num">orb_num (jqmc.jastrow_factor.Jastrow_three_body_data property)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.orb_num_dn">orb_num_dn (jqmc.determinant.Geminal_data property)</a>
@@ -1183,12 +1486,8 @@ document.write(`
 <h2 id="P">P</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_reference_mod/jqmc.html#jqmc.diff_mask.DiffMask.params">params (jqmc.diff_mask.DiffMask attribute)</a>
-
-      <ul>
-        <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.params">(jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.params">params (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
 </li>
-      </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.NNJastrow.parent">parent (jqmc.jastrow_factor.NNJastrow attribute)</a>
 
       <ul>
@@ -1199,9 +1498,23 @@ document.write(`
         <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.NNJastrow.TwoLayerMLP.parent">(jqmc.jastrow_factor.NNJastrow.TwoLayerMLP attribute)</a>
 </li>
       </ul></li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.parse_input_params">parse_input_params() (in module jqmc_workflow)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.parse_lrdmc_ext_output">parse_lrdmc_ext_output() (in module jqmc_workflow)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.parse_lrdmc_output">parse_lrdmc_output() (in module jqmc_workflow)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.parse_mcmc_output">parse_mcmc_output() (in module jqmc_workflow)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.parse_vmc_output">parse_vmc_output() (in module jqmc_workflow)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.structure.Structure_data.pbc_flag">pbc_flag (jqmc.structure.Structure_data attribute)</a>
+</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_reference_mod/jqmc.html#jqmc.structure.Structure_data.pbc_flag">pbc_flag (jqmc.structure.Structure_data attribute)</a>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Ext_Diagnostic_Data.per_alat_results">per_alat_results (jqmc_workflow.LRDMC_Ext_Diagnostic_Data attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.Input_Parameters.per_input">per_input (jqmc_workflow.Input_Parameters attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.atomic_orbital.AOs_cart_data.polynominal_order_x">polynominal_order_x (jqmc.atomic_orbital.AOs_cart_data attribute)</a>
 </li>
@@ -1212,6 +1525,16 @@ document.write(`
       <li><a href="api_reference_mod/jqmc.html#jqmc.structure.Structure_data.positions">positions (jqmc.structure.Structure_data attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.coulomb_potential.Coulomb_potential_data.powers">powers (jqmc.coulomb_potential.Coulomb_potential_data attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.precompilation_time_sec">precompilation_time_sec (jqmc_workflow.LRDMC_Diagnostic_Data attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.precompilation_time_sec">(jqmc_workflow.MCMC_Diagnostic_Data attribute)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.precompilation_time_sec">(jqmc_workflow.VMC_Step_Data attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.projection_operators">projection_operators() (jqmc.determinant.Geminal_data method)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -1228,6 +1551,8 @@ document.write(`
       <li><a href="api_reference_mod/jqmc.html#jqmc.structure.Structure_data.recip_vec_b">recip_vec_b (jqmc.structure.Structure_data property)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.structure.Structure_data.recip_vec_c">recip_vec_c (jqmc.structure.Structure_data property)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.repair_forces_from_output">repair_forces_from_output() (in module jqmc_workflow)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.atomic_orbital.AOs_cart_data.replace">replace() (jqmc.atomic_orbital.AOs_cart_data method)</a>
 
@@ -1254,8 +1579,6 @@ document.write(`
 </li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.structure.Structure_data.replace">(jqmc.structure.Structure_data method)</a>
 </li>
-        <li><a href="api_reference_mod/jqmc.html#jqmc.swct.SWCT_data.replace">(jqmc.swct.SWCT_data method)</a>
-</li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.VariationalParameterBlock.replace">(jqmc.wavefunction.VariationalParameterBlock method)</a>
 </li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.Wavefunction_data.replace">(jqmc.wavefunction.Wavefunction_data method)</a>
@@ -1263,6 +1586,14 @@ document.write(`
       </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.restart_checkpoint">restart_checkpoint (jqmc_workflow.LRDMC_Diagnostic_Data attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.restart_checkpoint">(jqmc_workflow.MCMC_Diagnostic_Data attribute)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data.restart_checkpoint">(jqmc_workflow.VMC_Diagnostic_Data attribute)</a>
+</li>
+      </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_n.run">run() (jqmc.jqmc_gfmc.GFMC_n method)</a>
 
       <ul>
@@ -1302,13 +1633,19 @@ document.write(`
 </li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.structure.Structure_data.sanity_check">(jqmc.structure.Structure_data method)</a>
 </li>
-        <li><a href="api_reference_mod/jqmc.html#jqmc.swct.SWCT_data.sanity_check">(jqmc.swct.SWCT_data method)</a>
-</li>
         <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.Wavefunction_data.sanity_check">(jqmc.wavefunction.Wavefunction_data method)</a>
 </li>
       </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.hamiltonians.Hamiltonian_data.save_to_hdf5">save_to_hdf5() (jqmc.hamiltonians.Hamiltonian_data method)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_n.save_to_hdf5">(jqmc.jqmc_gfmc.GFMC_n method)</a>
 </li>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_gfmc.GFMC_t.save_to_hdf5">(jqmc.jqmc_gfmc.GFMC_t method)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_mcmc.MCMC.save_to_hdf5">(jqmc.jqmc_mcmc.MCMC method)</a>
+</li>
+      </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.NNJastrow.scope">scope (jqmc.jastrow_factor.NNJastrow attribute)</a>
 
       <ul>
@@ -1319,17 +1656,19 @@ document.write(`
         <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.NNJastrow.TwoLayerMLP.scope">(jqmc.jastrow_factor.NNJastrow.TwoLayerMLP attribute)</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.NNJastrow.setup">setup() (jqmc.jastrow_factor.NNJastrow method)</a>
 
       <ul>
         <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.NNJastrow.PauliNetBlock.setup">(jqmc.jastrow_factor.NNJastrow.PauliNetBlock method)</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.VariationalParameterBlock.shape">shape (jqmc.wavefunction.VariationalParameterBlock attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.shapes">shapes (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.signal_to_noise_ratio">signal_to_noise_ratio (jqmc_workflow.VMC_Step_Data attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.VariationalParameterBlock.size">size (jqmc.wavefunction.VariationalParameterBlock attribute)</a>
 </li>
@@ -1341,7 +1680,19 @@ document.write(`
       </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.species_values">species_values (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
 </li>
-      <li><a href="api_reference_mod/jqmc.html#jqmc.swct.SWCT_data.structure">structure (jqmc.swct.SWCT_data attribute)</a>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.stderr_tail">stderr_tail (jqmc_workflow.LRDMC_Diagnostic_Data attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Ext_Diagnostic_Data.stderr_tail">(jqmc_workflow.LRDMC_Ext_Diagnostic_Data attribute)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.stderr_tail">(jqmc_workflow.MCMC_Diagnostic_Data attribute)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data.stderr_tail">(jqmc_workflow.VMC_Diagnostic_Data attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.step">step (jqmc_workflow.VMC_Step_Data attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data.steps">steps (jqmc_workflow.VMC_Diagnostic_Data attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.structure.Structure_data">Structure_data (class in jqmc.structure)</a>
 </li>
@@ -1361,7 +1712,7 @@ document.write(`
         <li><a href="api_reference_mod/jqmc.html#jqmc.molecular_orbital.MOs_data.structure_data">(jqmc.molecular_orbital.MOs_data property)</a>
 </li>
       </ul></li>
-      <li><a href="api_reference_mod/jqmc.html#jqmc.swct.SWCT_data">SWCT_data (class in jqmc.swct)</a>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.survived_walkers_ratio">survived_walkers_ratio (jqmc_workflow.LRDMC_Diagnostic_Data attribute)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -1369,6 +1720,14 @@ document.write(`
 <h2 id="T">T</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.timing_breakdown">timing_breakdown (jqmc_workflow.LRDMC_Diagnostic_Data attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.timing_breakdown">(jqmc_workflow.MCMC_Diagnostic_Data attribute)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.timing_breakdown">(jqmc_workflow.VMC_Step_Data attribute)</a>
+</li>
+      </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.determinant.Geminal_data.to_cartesian">to_cartesian() (jqmc.determinant.Geminal_data method)</a>
 
       <ul>
@@ -1391,6 +1750,18 @@ document.write(`
       </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data.total_opt_steps">total_opt_steps (jqmc_workflow.VMC_Diagnostic_Data attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data.total_opt_time_sec">total_opt_time_sec (jqmc_workflow.VMC_Diagnostic_Data attribute)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.LRDMC_Diagnostic_Data.total_time_sec">total_time_sec (jqmc_workflow.LRDMC_Diagnostic_Data attribute)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.MCMC_Diagnostic_Data.total_time_sec">(jqmc_workflow.MCMC_Diagnostic_Data attribute)</a>
+</li>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Step_Data.total_time_sec">(jqmc_workflow.VMC_Step_Data attribute)</a>
+</li>
+      </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.treedef">treedef (jqmc.jastrow_factor.Jastrow_NN_data attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.trexio_convert_to">trexio_convert_to() (in module jqmc.jqmc_tool)</a>
@@ -1408,15 +1779,17 @@ document.write(`
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.Jastrow_NN_data.unflatten_fn">unflatten_fn (jqmc.jastrow_factor.Jastrow_NN_data property)</a>
 </li>
   </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_reference_mod/jqmc.html#jqmc.diff_mask.DiffMask.update">update() (jqmc.diff_mask.DiffMask method)</a>
-</li>
-  </ul></td>
 </tr></table>
 
 <h2 id="V">V</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.ValueFrom">ValueFrom (class in jqmc_workflow)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.workflow.ValueFrom">(class in jqmc_workflow.workflow)</a>
+</li>
+      </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.VariationalParameterBlock.values">values (jqmc.wavefunction.VariationalParameterBlock attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.VariationalParameterBlock">VariationalParameterBlock (class in jqmc.wavefunction)</a>
@@ -1431,10 +1804,18 @@ document.write(`
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.vmc_analyze_output">vmc_analyze_output() (in module jqmc.jqmc_tool)</a>
 </li>
-      <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.vmc_chk_fix">vmc_chk_fix() (in module jqmc.jqmc_tool)</a>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Diagnostic_Data">VMC_Diagnostic_Data (class in jqmc_workflow)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jqmc_tool.vmc_generate_input">vmc_generate_input() (in module jqmc.jqmc_tool)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Step_Data">VMC_Step_Data (class in jqmc_workflow)</a>
+</li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.VMC_Workflow">VMC_Workflow (class in jqmc_workflow)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.vmc_workflow.VMC_Workflow">(class in jqmc_workflow.vmc_workflow)</a>
+</li>
+      </ul></li>
   </ul></td>
 </tr></table>
 
@@ -1451,16 +1832,28 @@ document.write(`
       </ul></li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.Wavefunction_data">Wavefunction_data (class in jqmc.wavefunction)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc.html#jqmc.hamiltonians.Hamiltonian_data.wavefunction_data">wavefunction_data (jqmc.hamiltonians.Hamiltonian_data attribute)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.WF_Workflow">WF_Workflow (class in jqmc_workflow)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.wf_workflow.WF_Workflow">(class in jqmc_workflow.wf_workflow)</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_reference_mod/jqmc.html#jqmc.jastrow_factor.NNJastrow.TwoLayerMLP.width">width (jqmc.jastrow_factor.NNJastrow.TwoLayerMLP attribute)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.Wavefunction_data.with_diff_mask">with_diff_mask() (jqmc.wavefunction.Wavefunction_data method)</a>
 </li>
       <li><a href="api_reference_mod/jqmc.html#jqmc.wavefunction.Wavefunction_data.with_param_grad_mask">with_param_grad_mask() (jqmc.wavefunction.Wavefunction_data method)</a>
 </li>
+      <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.Workflow">Workflow (class in jqmc_workflow)</a>
+
+      <ul>
+        <li><a href="api_reference_mod/jqmc_workflow.html#jqmc_workflow.workflow.Workflow">(class in jqmc_workflow.workflow)</a>
+</li>
+      </ul></li>
   </ul></td>
 </tr></table>
 
@@ -1534,8 +1927,8 @@ By Kosuke Nakano
   </div>
   
   <!-- Scripts loaded after <body> so the DOM is not blocked -->
-  <script src="_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
-<script src="_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
+  <script defer src="_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
 
   <footer class="bd-footer">
   </footer>
