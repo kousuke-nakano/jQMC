@@ -327,7 +327,12 @@ class JobSubmission:
         else:
             raise RuntimeError("jobcheck failed after all retries.")
 
-        if any(re.match(f".*{self.job_number}.*", line) for line in job_list):
+        # PBS may return "1428989.opbs" from qsub but show only
+        # "1428989" in qstat (or vice-versa).  Compare both the full
+        # job_number and its numeric prefix (part before the first dot).
+        job_id_full = str(self.job_number)
+        job_id_short = job_id_full.split(".")[0]
+        if any(job_id_full in line or job_id_short in line for line in job_list):
             logger.info(f"  Job {self.job_number} is running.")
             self.job_running = True
             flag = True
