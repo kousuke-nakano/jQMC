@@ -354,7 +354,12 @@ class LRDMC_Ext_Workflow(Workflow):
                 return enc, "failed", [], {}, exc
 
         # Create and launch all alat runs in parallel
+        # Set each child Container's root_dir to this workflow's project_dir
+        # so that lrdmc_alat_XXX directories are created inside it, not in CWD.
         enc_workflows = [self._make_lrdmc_workflow(alat) for alat in sorted_alats]
+        for enc in enc_workflows:
+            enc.root_dir = _wd
+            enc.project_dir = os.path.join(_wd, enc.dirname)
         logger.info(f"Launching {len(enc_workflows)} LRDMC runs in parallel...")
         for enc in enc_workflows:
             logger.info(f"  {enc.label}")
@@ -407,9 +412,11 @@ class LRDMC_Ext_Workflow(Workflow):
                 self.output_values["extrapolated_energy_error"] = ext_error
                 logger.info(f"Extrapolated energy (a->0): {ext_energy} +- {ext_error} Ha")
         else:
-            logger.warning(
-                f"Only {len(restart_chks)} checkpoint(s) found; cannot extrapolate. Returning per-alat results only."
-            )
+            msg = f"Only {len(restart_chks)} checkpoint(s) found; cannot extrapolate."
+            logger.error(msg)
+            self.status = "failed"
+            self.output_values["error"] = msg
+            return self.status, [], {"error": msg}
 
         self.output_values["per_alat_results"] = per_alat_results
         self.output_files = restart_chks

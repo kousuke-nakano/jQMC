@@ -567,7 +567,10 @@ class VMC_Workflow(Workflow):
                     f"after {self.max_continuation} continuation run(s)."
                 )
         else:
-            logger.warning("  Could not parse signal-to-noise from any production output. Assuming success.")
+            msg = "Could not parse signal-to-noise from any production output."
+            logger.error(msg)
+            self.status = "failed"
+            raise RuntimeError(msg)
 
         self.status = "success"
         return self.status, self.output_files, self.output_values

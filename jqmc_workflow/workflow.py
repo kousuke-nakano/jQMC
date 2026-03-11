@@ -494,7 +494,13 @@ class Container:
         )
 
     def _copy_input_files(self):
-        """Copy input files into the project directory."""
+        """Copy input files into the project directory.
+
+        Raises
+        ------
+        FileNotFoundError
+            If a required input file or directory does not exist.
+        """
         rename = len(self.rename_input_files) > 0 and len(self.rename_input_files) == len(self.input_files)
 
         for i, src in enumerate(self.input_files):
@@ -516,7 +522,7 @@ class Container:
                     shutil.rmtree(dst)
                 shutil.copytree(src, dst)
             else:
-                logger.warning(f"[{self.label}] Input not found: {src}")
+                raise FileNotFoundError(f"[{self.label}] Required input not found: {src}")
 
     # ── Launch ────────────────────────────────────────────────────
 
@@ -544,11 +550,18 @@ class Container:
             update_status(proj, "failed", error=str(e))
             raise
 
-        # Write completion
-        result_fields = {}
-        for k, v in self.output_values.items():
-            result_fields[f"result_{k}"] = v
-        update_status(proj, "completed", **result_fields)
+        # Write completion — but only if the workflow actually succeeded.
+        # Workflows that return a non-success status (e.g. "failed") must
+        # NOT be marked "completed" in the state file.
+        if self.status in ("success", "completed"):
+            result_fields = {}
+            for k, v in self.output_values.items():
+                result_fields[f"result_{k}"] = v
+            update_status(proj, "completed", **result_fields)
+        else:
+            error_msg = self.output_values.get("error", f"workflow returned status={self.status}")
+            update_status(proj, "failed", error=error_msg)
+            raise RuntimeError(f"[{self.label}] {error_msg}")
 
         return self.status, self.output_files, self.output_values
 

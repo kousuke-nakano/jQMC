@@ -670,11 +670,14 @@ class MCMC_Workflow(Workflow):
                             f"  Re-estimated: {old_steps} -> {estimated_steps} additional steps (accumulated so far: {accumulated_steps})"
                         )
                     else:
-                        logger.warning(
+                        msg = (
                             f"Error {error:.6g} > target "
                             f"{self.target_error:.6g} Ha -- "
                             f"max_continuation ({self.max_continuation}) reached"
                         )
+                        logger.error(msg)
+                        self.status = "failed"
+                        raise RuntimeError(msg)
 
         # ── Final energy computation ─────────────────────────────
         restart_chk = self._find_restart_chk(_wd)
