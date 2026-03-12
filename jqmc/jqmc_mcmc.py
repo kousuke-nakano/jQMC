@@ -2310,8 +2310,10 @@ class MCMC:
                      \\sqrt{(H_2 - H_0 S_2)^2 + 4 H_1^2 S_2}}
                     {-2 H_1 S_2}.
 
-        The positive root is returned; if neither root is positive a warning is
-        logged and the root with larger absolute value is returned.
+        The root with the smaller absolute value is returned.  This avoids
+        spuriously large steps when the quadratic coefficient
+        :math:`a = -H_1 S_2` is small (e.g. sparse ``num_param_opt`` mask),
+        which causes one root to diverge while the other stays near zero.
 
         Args:
             H_0 (float): Current energy :math:`E_{\\alpha}`.
@@ -2334,24 +2336,16 @@ class MCMC:
 
         logger.info(f"aSR: gamma+ = {gamma_plus:.6f}, gamma- = {gamma_minus:.6f}")
 
-        # Choose the positive root.
-        if gamma_plus > 0.0 and gamma_minus <= 0.0:
+        # Choose the root with the smaller absolute value (conservative step).
+        if abs(gamma_plus) <= abs(gamma_minus):
             gamma = gamma_plus
-        elif gamma_minus > 0.0 and gamma_plus <= 0.0:
-            gamma = gamma_minus
-        elif gamma_plus > 0.0 and gamma_minus > 0.0:
-            # Both positive: prefer the smaller one (conservative step).
-            gamma = min(gamma_plus, gamma_minus)
-            logger.warning(
-                f"aSR: both roots positive (gamma+={gamma_plus:.6f}, gamma-={gamma_minus:.6f}); "
-                f"using smaller root gamma={gamma:.6f}."
-            )
         else:
-            # Neither positive: fall back to the root with larger absolute value.
-            gamma = gamma_plus if abs(gamma_plus) >= abs(gamma_minus) else gamma_minus
-            logger.warning(
-                f"aSR: no positive root (gamma+={gamma_plus:.6f}, gamma-={gamma_minus:.6f}); using gamma={gamma:.6f}."
-            )
+            gamma = gamma_minus
+
+        if gamma > 0.0:
+            logger.debug("aSR: steepest-descent direction (gamma > 0).")
+        else:
+            logger.debug("aSR: anti-steepest-descent direction (gamma < 0).")
 
         logger.info(f"aSR: selected gamma = {gamma:.6f}")
         return gamma
