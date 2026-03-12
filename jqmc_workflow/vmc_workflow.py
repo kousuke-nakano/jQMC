@@ -367,6 +367,20 @@ class VMC_Workflow(Workflow):
                 f"estimated_mcmc_steps={estimated_mcmc_steps} per opt step. "
                 "Skipping pilot."
             )
+            # Show time estimate from saved pilot timing data
+            _saved_wall = estimation.get("pilot_wall_sec")
+            _saved_net = estimation.get("net_pilot_sec")
+            if _saved_wall is not None:
+                _p_vmc = estimation.get("pilot_vmc_steps", self.pilot_vmc_steps)
+                _p_mcmc = estimation.get("pilot_mcmc_steps", self.pilot_mcmc_steps)
+                _pilot_cost = _p_vmc * _p_mcmc
+                _prod_cost = self.num_opt_steps * estimated_mcmc_steps
+                _cost_ratio = _prod_cost / _pilot_cost if _pilot_cost > 0 else 0
+                if _saved_net and _saved_net > 0:
+                    _est_sec = (_saved_wall - _saved_net) + _saved_net * _cost_ratio
+                else:
+                    _est_sec = _saved_wall * _cost_ratio
+                logger.info(f"  est. production time = {_format_duration(_est_sec)}")
         else:
             # ── Run pilot in a subdirectory ───────────────────────
             pilot_dir = os.path.join(_wd, "_pilot")
@@ -471,6 +485,8 @@ class VMC_Workflow(Workflow):
                 estimated_mcmc_steps=estimated_mcmc_steps,
                 pilot_queue_label=self.pilot_queue_label,
                 walker_ratio=walker_ratio,
+                pilot_wall_sec=pilot_wall_sec,
+                net_pilot_sec=net_pilot_sec or 0,
             )
 
         # ── Production runs (phase 1..N) ──────────────────────────

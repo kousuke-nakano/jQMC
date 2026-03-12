@@ -155,11 +155,6 @@ class JobSubmission:
 
     # ── Script generation ─────────────────────────────────────────
 
-    @property
-    def is_local_direct(self) -> bool:
-        """True when the job should be launched directly (no submit script)."""
-        return self.server_machine.machine_type == "local" and not self.server_machine.queuing
-
     def generate_script(self, submission_script: str = "submit.sh", *, work_dir=None):
         """Generate job submission script from template + queue_data.toml vars.
 
@@ -230,18 +225,6 @@ class JobSubmission:
         try:
             local_cwd = os.path.abspath(work_dir) if work_dir else os.path.abspath(os.getcwd())
 
-            # ── Local direct mode (run generated submit script) ──
-            if self.is_local_direct:
-                command = f"bash {submission_script}"
-                logger.info(f"  Running directly: {command}")
-                self._run_local_direct(command, local_cwd)
-                self.job_number = None
-                self.job_running = False
-                self.job_dir = local_cwd
-                self.job_submit_date = datetime.today()
-                logger.info("  Local direct job finished.")
-                return True, self.job_number
-
             # ── Submit via queuing system or remote submit script ──
             command = f"{self.server_machine.jobsubmit} {submission_script}"
 
@@ -280,33 +263,6 @@ class JobSubmission:
             logger.error(f"Job submission failed: {e}")
             raise
 
-    def _run_local_direct(self, command: str, work_dir: str):
-        """Execute the jqmc command directly as a subprocess.
-
-        Raises
-        ------
-        RuntimeError
-            If the command exits with a non-zero return code.
-        """
-        import subprocess
-
-        logger.debug(f"  workdir: {work_dir}")
-        proc = subprocess.run(
-            command,
-            shell=True,
-            cwd=work_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        if proc.returncode != 0:
-            # Log full output for diagnostics
-            if proc.stdout.strip():
-                logger.error(f"stdout: {proc.stdout.strip()[:2000]}")
-            if proc.stderr.strip():
-                logger.error(f"stderr: {proc.stderr.strip()[:2000]}")
-            raise RuntimeError(f"jqmc exited with rc={proc.returncode}. Check {self.output_file} for details.")
-
     # ── Job checking ──────────────────────────────────────────────
 
     def jobcheck(self) -> bool:
@@ -330,9 +286,12 @@ class JobSubmission:
         # PBS may return "1428989.opbs" from qsub but show only
         # "1428989" in qstat (or vice-versa).  Compare both the full
         # job_number and its numeric prefix (part before the first dot).
+        # For local bash/ps mode, job_number is a PID; use exact token
+        # match to avoid substring collisions (e.g. PID 12 vs 12345).
         job_id_full = str(self.job_number)
         job_id_short = job_id_full.split(".")[0]
-        if any(job_id_full in line or job_id_short in line for line in job_list):
+        tokens = {t for line in job_list for t in line.split()}
+        if job_id_full in tokens or job_id_short in tokens:
             logger.info(f"  Job {self.job_number} is running.")
             self.job_running = True
             flag = True
