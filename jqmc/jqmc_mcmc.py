@@ -291,10 +291,10 @@ class MCMC:
         self.__stored_omega_dn = np.zeros((0, nw, n_atoms, n_dn))
 
         # stored sum_i d omega/d r_i for up spins (SWCT)
-        self.__stored_grad_omega_r_up = np.zeros((0, nw, n_up, 3))
+        self.__stored_grad_omega_r_up = np.zeros((0, nw, n_atoms, 3))
 
         # stored sum_i d omega/d r_i for dn spins (SWCT)
-        self.__stored_grad_omega_r_dn = np.zeros((0, nw, n_dn, 3))
+        self.__stored_grad_omega_r_dn = np.zeros((0, nw, n_atoms, 3))
 
         # stored parameter gradients keyed by block name
         self.__stored_log_WF_param_grads: dict[str, list] = defaultdict(list)
@@ -326,8 +326,8 @@ class MCMC:
                     "grad_ln_Psi_dR": ((ns, nw, n_atoms, 3), self.__stored_grad_ln_Psi_dR),
                     "omega_up": ((ns, nw, n_atoms, n_up), self.__stored_omega_up),
                     "omega_dn": ((ns, nw, n_atoms, n_dn), self.__stored_omega_dn),
-                    "grad_omega_r_up": ((ns, nw, n_up, 3), self.__stored_grad_omega_r_up),
-                    "grad_omega_r_dn": ((ns, nw, n_dn, 3), self.__stored_grad_omega_r_dn),
+                    "grad_omega_r_up": ((ns, nw, n_atoms, 3), self.__stored_grad_omega_r_up),
+                    "grad_omega_r_dn": ((ns, nw, n_atoms, 3), self.__stored_grad_omega_r_dn),
                 }
             )
 
@@ -1144,10 +1144,10 @@ class MCMC:
             self.__stored_omega_up = np.concatenate([self.__stored_omega_up, np.zeros((num_mcmc_steps, nw, n_atoms, n_up))])
             self.__stored_omega_dn = np.concatenate([self.__stored_omega_dn, np.zeros((num_mcmc_steps, nw, n_atoms, n_dn))])
             self.__stored_grad_omega_r_up = np.concatenate(
-                [self.__stored_grad_omega_r_up, np.zeros((num_mcmc_steps, nw, n_up, 3))]
+                [self.__stored_grad_omega_r_up, np.zeros((num_mcmc_steps, nw, n_atoms, 3))]
             )
             self.__stored_grad_omega_r_dn = np.concatenate(
-                [self.__stored_grad_omega_r_dn, np.zeros((num_mcmc_steps, nw, n_dn, 3))]
+                [self.__stored_grad_omega_r_dn, np.zeros((num_mcmc_steps, nw, n_atoms, 3))]
             )
 
         geminal, geminal_inv, _, _ = _geminal_inv_batched(
