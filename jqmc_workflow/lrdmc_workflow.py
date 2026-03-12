@@ -693,17 +693,6 @@ class LRDMC_Workflow(Workflow):
             logger.info(
                 f"Estimation already done (continuation): estimated_steps={estimated_steps}, {mode_str}. Skipping pilot."
             )
-            # Show time estimate from saved pilot timing data
-            _saved_wall = estimation.get("pilot_wall_sec")
-            _saved_net = estimation.get("net_pilot_sec")
-            if _saved_wall is not None:
-                _p_steps = estimation.get("pilot_steps", self.pilot_steps)
-                _step_ratio = estimated_steps / _p_steps if _p_steps > 0 else 0
-                if _saved_net and _saved_net > 0:
-                    _est_sec = (_saved_wall - _saved_net) + _saved_net * _step_ratio
-                else:
-                    _est_sec = _saved_wall * _step_ratio
-                logger.info(f"  est. production time = {_format_duration(_est_sec)}")
         else:
             # ── Phase A: calibrate num_mcmc_per_measurement (GFMC_n only) ──
             h5_src = os.path.join(_wd, self.hamiltonian_file)
@@ -874,6 +863,7 @@ class LRDMC_Workflow(Workflow):
         # ── Production runs (phase 1..N) ──────────────────────────
         accumulated_steps = 0
         last_run = 0
+        _prev_run_steps = None  # tracks the step count of the last completed run
         for i in range(1, self.max_continuation + 1):
             input_i = suffixed_name(self.input_file, i)
             output_i = suffixed_name(self.output_file, i)
@@ -884,6 +874,7 @@ class LRDMC_Workflow(Workflow):
                 if recorded["status"] == "fetched":
                     logger.info(f"  {input_i}: already fetched. Skipping.")
                     accumulated_steps += estimated_steps
+                    _prev_run_steps = estimated_steps
                     last_run = i
                     continue
                 logger.info(f"  {input_i}: already {recorded['status']}. Resuming...")
@@ -909,6 +900,24 @@ class LRDMC_Workflow(Workflow):
                 raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {_wd}")
             extra_from = [restart_chk] if restart_chk else []
 
+            # Estimate run time from the latest available output
+            _ref_net = None
+            for _j in range(i - 1, 0, -1):
+                _ref_net = parse_net_time(os.path.join(_wd, suffixed_name(self.output_file, _j)))
+                if _ref_net and _ref_net > 0:
+                    _ref_steps = _prev_run_steps if _prev_run_steps else estimated_steps
+                    _est_sec = _ref_net * (estimated_steps / _ref_steps) if _ref_steps > 0 else _ref_net
+                    logger.info(f"  est. run time \u2248 {_format_duration(_est_sec)}")
+                    break
+            else:
+                # First production run: use pilot output
+                _pilot_out = os.path.join(_wd, "_pilot_b", suffixed_name(self.output_file, 0))
+                _ref_net = parse_net_time(_pilot_out)
+                if _ref_net and _ref_net > 0:
+                    _p_steps = estimation.get("pilot_steps") or self.pilot_steps
+                    if _p_steps > 0:
+                        logger.info(f"  est. run time \u2248 {_format_duration(_ref_net * estimated_steps / _p_steps)}")
+
             await self._submit_and_wait(
                 input_i,
                 output_i,
@@ -916,6 +925,7 @@ class LRDMC_Workflow(Workflow):
                 extra_from_objects=extra_from,
             )
             accumulated_steps += estimated_steps
+            _prev_run_steps = estimated_steps
             last_run = i
 
             # Check convergence
@@ -961,11 +971,6 @@ class LRDMC_Workflow(Workflow):
                             f"  Re-estimated: {old_steps} -> {estimated_steps} "
                             f"additional steps (accumulated so far: {accumulated_steps})"
                         )
-                        # Time estimate for additional steps
-                        _net_sec = parse_net_time(os.path.join(_wd, output_i))
-                        if _net_sec and _net_sec > 0 and old_steps > 0:
-                            _est_next_sec = _net_sec * (estimated_steps / old_steps)
-                            logger.info(f"  est. next run time \u2248 {_format_duration(_est_next_sec)}")
                     else:
                         msg = (
                             f"Error {error:.6g} > target "

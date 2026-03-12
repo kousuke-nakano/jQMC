@@ -367,20 +367,6 @@ class VMC_Workflow(Workflow):
                 f"estimated_mcmc_steps={estimated_mcmc_steps} per opt step. "
                 "Skipping pilot."
             )
-            # Show time estimate from saved pilot timing data
-            _saved_wall = estimation.get("pilot_wall_sec")
-            _saved_net = estimation.get("net_pilot_sec")
-            if _saved_wall is not None:
-                _p_vmc = estimation.get("pilot_vmc_steps", self.pilot_vmc_steps)
-                _p_mcmc = estimation.get("pilot_mcmc_steps", self.pilot_mcmc_steps)
-                _pilot_cost = _p_vmc * _p_mcmc
-                _prod_cost = self.num_opt_steps * estimated_mcmc_steps
-                _cost_ratio = _prod_cost / _pilot_cost if _pilot_cost > 0 else 0
-                if _saved_net and _saved_net > 0:
-                    _est_sec = (_saved_wall - _saved_net) + _saved_net * _cost_ratio
-                else:
-                    _est_sec = _saved_wall * _cost_ratio
-                logger.info(f"  est. production time = {_format_duration(_est_sec)}")
         else:
             # ── Run pilot in a subdirectory ───────────────────────
             pilot_dir = os.path.join(_wd, "_pilot")
@@ -530,6 +516,26 @@ class VMC_Workflow(Workflow):
             if i > 1 and restart_chk is None:
                 raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {_wd}")
             extra_from = [restart_chk] if restart_chk else []
+
+            # Estimate run time from the latest available output
+            _prod_cost = self.num_opt_steps * estimated_mcmc_steps
+            _ref_net = None
+            for _j in range(i - 1, 0, -1):
+                _ref_net = parse_net_time(os.path.join(_wd, suffixed_name(self.output_file, _j)))
+                if _ref_net and _ref_net > 0:
+                    # All production runs have the same step count
+                    logger.info(f"  est. run time \u2248 {_format_duration(_ref_net)}")
+                    break
+            else:
+                # First production run: use pilot output
+                _pilot_out = os.path.join(_wd, "_pilot", suffixed_name(self.output_file, 0))
+                _ref_net = parse_net_time(_pilot_out)
+                if _ref_net and _ref_net > 0:
+                    _p_vmc = estimation.get("pilot_vmc_steps") or self.pilot_vmc_steps
+                    _p_mcmc = estimation.get("pilot_mcmc_steps") or self.pilot_mcmc_steps
+                    _pilot_cost = _p_vmc * _p_mcmc
+                    if _pilot_cost > 0:
+                        logger.info(f"  est. run time \u2248 {_format_duration(_ref_net * _prod_cost / _pilot_cost)}")
 
             await self._submit_and_wait(input_i, output_i, work_dir=_wd, extra_from_objects=extra_from)
             last_run = i

@@ -439,17 +439,6 @@ class MCMC_Workflow(Workflow):
         if estimation.get("estimated_steps") is not None:
             estimated_steps = int(estimation["estimated_steps"])
             logger.info(f"Estimation already done (continuation): estimated_steps={estimated_steps}. Skipping pilot.")
-            # Show time estimate from saved pilot timing data
-            _saved_wall = estimation.get("pilot_wall_sec")
-            _saved_net = estimation.get("net_pilot_sec")
-            if _saved_wall is not None:
-                _p_steps = estimation.get("pilot_steps", self.pilot_steps)
-                _step_ratio = estimated_steps / _p_steps if _p_steps > 0 else 0
-                if _saved_net and _saved_net > 0:
-                    _est_sec = (_saved_wall - _saved_net) + _saved_net * _step_ratio
-                else:
-                    _est_sec = _saved_wall * _step_ratio
-                logger.info(f"  est. production time = {_format_duration(_est_sec)}")
         else:
             # ── Run pilot in a subdirectory ───────────────────────
             pilot_dir = os.path.join(_wd, "_pilot")
@@ -597,6 +586,7 @@ class MCMC_Workflow(Workflow):
         # production restarts.
         accumulated_steps = 0
         last_run = 0
+        _prev_run_steps = None  # tracks the step count of the last completed run
         for i in range(1, self.max_continuation + 1):
             input_i = suffixed_name(self.input_file, i)
             output_i = suffixed_name(self.output_file, i)
@@ -607,6 +597,7 @@ class MCMC_Workflow(Workflow):
                 if recorded["status"] == "fetched":
                     logger.info(f"  {input_i}: already fetched. Skipping.")
                     accumulated_steps += estimated_steps
+                    _prev_run_steps = estimated_steps
                     last_run = i
                     continue
                 logger.info(f"  {input_i}: already {recorded['status']}. Resuming...")
@@ -640,6 +631,7 @@ class MCMC_Workflow(Workflow):
                 extra_from_objects=extra_from,
             )
             accumulated_steps += estimated_steps
+            _prev_run_steps = estimated_steps
             last_run = i
 
             # Check convergence
@@ -682,11 +674,6 @@ class MCMC_Workflow(Workflow):
                         logger.info(
                             f"  Re-estimated: {old_steps} -> {estimated_steps} additional steps (accumulated so far: {accumulated_steps})"
                         )
-                        # Time estimate for additional steps
-                        _net_sec = parse_net_time(os.path.join(_wd, output_i))
-                        if _net_sec and _net_sec > 0 and old_steps > 0:
-                            _est_next_sec = _net_sec * (estimated_steps / old_steps)
-                            logger.info(f"  est. next run time \u2248 {_format_duration(_est_next_sec)}")
                     else:
                         msg = (
                             f"Error {error:.6g} > target "
