@@ -3343,32 +3343,6 @@ class MCMC:
                             )
                             break
 
-                # aSR gamma scaling: compute the optimal gamma using the FULL natural
-                # gradient theta_all BEFORE the num_param_opt mask is applied.
-                # The aSR formula (S_2 = g^T S g = g^T f = -2 H_1) is only valid when
-                # g = S^{-1} f (the full natural gradient).  Passing a sparse masked
-                # theta violates that identity and produces a wrong gamma, so we must
-                # scale theta_all here and let the masking step below reduce it.
-                #
-                # IMPORTANT: This must happen BEFORE the back-transform to AO basis.
-                # get_aH calls get_dln_WF(lambda_projectors=...) which returns
-                # O_matrix in the orthogonal basis.  theta_all (= g) must also be
-                # in the orthogonal basis for the dot products g^T f, g^T S g, etc.
-                # to be consistent.  After gamma scaling, we then back-transform.
-                if use_sr_adaptive_lr:
-                    logger.info("aSR: computing optimal gamma via accelerated SR.")
-                    H_0, H_1, H_2, S_2 = self.get_aH(
-                        g=theta_all,
-                        blocks=blocks,
-                        num_mcmc_warmup_steps=num_mcmc_warmup_steps,
-                        chosen_param_index=chosen_param_index,
-                        lambda_projectors=lambda_projectors,
-                        num_orb_projection=num_orb_projection,
-                    )
-                    gamma = self.compute_asr_gamma(H_0, H_1, H_2, S_2)
-                    logger.info(f"aSR: scaling theta_all by gamma = {gamma:.6f}.")
-                    theta_all = theta_all * gamma
-
             #############################
             # optax optimizer
             #############################
@@ -3398,6 +3372,34 @@ class MCMC:
             # ------------------------------------------------------------------
             theta = np.zeros_like(theta_all)
             theta[signal_to_noise_f_max_indices] = theta_all[signal_to_noise_f_max_indices]
+
+            # ------------------------------------------------------------------
+            # 1.5) aSR gamma scaling.  Must happen AFTER the num_param_opt
+            #    mask and BEFORE the back-transform to AO basis.
+            #
+            #    The energy model  E(γ) = (H0 + 2γH1 + γ²H2) / (1 + γ²S2)
+            #    is valid for any direction g; H1, H2, S2 are computed from
+            #    samples (S2 = <w (g^T δO)²>, not the g^T f shortcut).
+            #    gamma must be optimised for the *actual* step direction
+            #    that will be applied (the masked theta), not for the full
+            #    natural gradient.  Computing gamma with the full theta_all
+            #    and then applying only a subset of components produces a
+            #    step size that is too large for the masked direction,
+            #    causing energy increase when num_param_opt > 0.
+            # ------------------------------------------------------------------
+            if use_sr_adaptive_lr:
+                logger.info("aSR: computing optimal gamma via accelerated SR.")
+                H_0, H_1, H_2, S_2 = self.get_aH(
+                    g=theta,
+                    blocks=blocks,
+                    num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+                    chosen_param_index=chosen_param_index,
+                    lambda_projectors=lambda_projectors,
+                    num_orb_projection=num_orb_projection,
+                )
+                gamma = self.compute_asr_gamma(H_0, H_1, H_2, S_2)
+                logger.info(f"aSR: scaling theta by gamma = {gamma:.6f}.")
+                theta = theta * gamma
 
             # ------------------------------------------------------------------
             # 2) Back-transform theta from orthogonal basis to AO basis
