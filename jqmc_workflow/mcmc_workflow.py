@@ -624,6 +624,26 @@ class MCMC_Workflow(Workflow):
                 raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {_wd}")
             extra_from = [restart_chk] if restart_chk else []
 
+            # Estimate run time from the latest available output
+            _ref_net = None
+            for _j in range(i - 1, 0, -1):
+                _ref_net = parse_net_time(os.path.join(_wd, suffixed_name(self.output_file, _j)))
+                if _ref_net and _ref_net > 0:
+                    _ref_steps = _prev_run_steps if _prev_run_steps else estimated_steps
+                    _est_sec = _ref_net * (estimated_steps / _ref_steps) if _ref_steps > 0 else _ref_net
+                    logger.info(f"  est. Net run time (w/o JAX compilation) = {_format_duration(_est_sec)}")
+                    break
+            else:
+                # First production run: use pilot output
+                _pilot_out = os.path.join(_wd, "_pilot", suffixed_name(self.output_file, 0))
+                _ref_net = parse_net_time(_pilot_out)
+                if _ref_net and _ref_net > 0:
+                    _p_steps = estimation.get("pilot_steps") or self.pilot_steps
+                    if _p_steps > 0:
+                        logger.info(
+                            f"  est. Net run time (w/o JAX compilation) = {_format_duration(_ref_net * estimated_steps / _p_steps)}"
+                        )
+
             await self._submit_and_wait(
                 input_i,
                 output_i,

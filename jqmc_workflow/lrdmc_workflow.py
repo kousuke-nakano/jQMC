@@ -907,7 +907,7 @@ class LRDMC_Workflow(Workflow):
                 if _ref_net and _ref_net > 0:
                     _ref_steps = _prev_run_steps if _prev_run_steps else estimated_steps
                     _est_sec = _ref_net * (estimated_steps / _ref_steps) if _ref_steps > 0 else _ref_net
-                    logger.info(f"  est. run time \u2248 {_format_duration(_est_sec)}")
+                    logger.info(f"  est. Net run time (w/o JAX compilation) = {_format_duration(_est_sec)}")
                     break
             else:
                 # First production run: use pilot output
@@ -916,7 +916,9 @@ class LRDMC_Workflow(Workflow):
                 if _ref_net and _ref_net > 0:
                     _p_steps = estimation.get("pilot_steps") or self.pilot_steps
                     if _p_steps > 0:
-                        logger.info(f"  est. run time \u2248 {_format_duration(_ref_net * estimated_steps / _p_steps)}")
+                        logger.info(
+                            f"  est. Net run time (w/o JAX compilation) = {_format_duration(_ref_net * estimated_steps / _p_steps)}"
+                        )
 
             await self._submit_and_wait(
                 input_i,

@@ -524,7 +524,7 @@ class VMC_Workflow(Workflow):
                 _ref_net = parse_net_time(os.path.join(_wd, suffixed_name(self.output_file, _j)))
                 if _ref_net and _ref_net > 0:
                     # All production runs have the same step count
-                    logger.info(f"  est. run time \u2248 {_format_duration(_ref_net)}")
+                    logger.info(f"  est. Net run time (w/o JAX compilation) = {_format_duration(_ref_net)}")
                     break
             else:
                 # First production run: use pilot output
@@ -535,7 +535,9 @@ class VMC_Workflow(Workflow):
                     _p_mcmc = estimation.get("pilot_mcmc_steps") or self.pilot_mcmc_steps
                     _pilot_cost = _p_vmc * _p_mcmc
                     if _pilot_cost > 0:
-                        logger.info(f"  est. run time \u2248 {_format_duration(_ref_net * _prod_cost / _pilot_cost)}")
+                        logger.info(
+                            f"  est. Net run time (w/o JAX compilation) = {_format_duration(_ref_net * _prod_cost / _pilot_cost)}"
+                        )
 
             await self._submit_and_wait(input_i, output_i, work_dir=_wd, extra_from_objects=extra_from)
             last_run = i
