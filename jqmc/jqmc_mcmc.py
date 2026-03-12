@@ -255,7 +255,7 @@ class MCMC:
         nw = self.__num_walkers
         n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
         n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
-        n_atoms = self.__hamiltonian_data.structure_data.num_atoms
+        n_atoms = self.__hamiltonian_data.structure_data.natom
 
         # stored weight (w_L)
         self.__stored_w_L = np.zeros((0, nw))
@@ -308,7 +308,7 @@ class MCMC:
         nw = self.__num_walkers
         n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
         n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
-        n_atoms = self.__hamiltonian_data.structure_data.num_atoms
+        n_atoms = self.__hamiltonian_data.structure_data.natom
 
         expected = {
             "e_L": ((ns, nw), self.__stored_e_L),
@@ -1123,7 +1123,7 @@ class MCMC:
         nw = self.__num_walkers
         n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
         n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
-        n_atoms = self.__hamiltonian_data.structure_data.num_atoms
+        n_atoms = self.__hamiltonian_data.structure_data.natom
 
         self.__stored_e_L = np.concatenate([self.__stored_e_L, np.zeros((num_mcmc_steps, nw))])
         self.__stored_e_L2 = np.concatenate([self.__stored_e_L2, np.zeros((num_mcmc_steps, nw))])
