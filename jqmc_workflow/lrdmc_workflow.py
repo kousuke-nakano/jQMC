@@ -8,7 +8,7 @@ fetches the checkpoint, and post-processes with
 Two operating modes are available:
 
 * **GFMC_n mode** (``job_type=lrdmc-bra``) — activated when
-  *target_survived_walkers_ratio* or *num_mcmc_per_measurement* is set.
+  *target_survived_walkers_ratio* or *num_projection_per_measurement* is set.
   Uses discrete projections per measurement.
 * **GFMC_t mode** (``job_type=lrdmc-tau``) — activated when
   *time_projection_tau* is used (default).  Uses a continuous imaginary
@@ -66,7 +66,7 @@ from ._error_estimator import (
 from ._input_generator import generate_input_toml, resolve_with_defaults
 from ._job import get_num_mpi, load_queue_data
 from ._lrdmc_calibration import (
-    fit_num_mcmc_per_measurement,
+    fit_num_projection_per_measurement,
     get_num_electrons,
     parse_survived_walkers_ratio,
 )
@@ -97,10 +97,10 @@ class LRDMC_Workflow(Workflow):
       Uses continuous imaginary-time projection.  Only the error-bar
       pilot is run (no calibration phase).
     * **GFMC_n** — set *target_survived_walkers_ratio* or
-      *num_mcmc_per_measurement*.  Uses discrete GFMC projections.
+      *num_projection_per_measurement*.  Uses discrete GFMC projections.
       When *target_survived_walkers_ratio* is set (and
-      *num_mcmc_per_measurement* is *None*), an automatic calibration
-      pilot determines the optimal *num_mcmc_per_measurement*.
+      *num_projection_per_measurement* is *None*), an automatic calibration
+      pilot determines the optimal *num_projection_per_measurement*.
 
     The workflow supports two operating modes:
 
@@ -110,7 +110,7 @@ class LRDMC_Workflow(Workflow):
        measurement steps.  The resulting error estimates the steps
        required for ``target_error`` via $\sigma \propto 1/\sqrt{N}$.
        In GFMC_n mode with calibration, three additional short runs
-       precede this to determine *num_mcmc_per_measurement*.
+       precede this to determine *num_projection_per_measurement*.
     2. **Production runs** (``_1``, ``_2``, …) — Continuation runs
        with the estimated step count.  The loop terminates when the
        error is ≤ ``target_error`` or ``max_continuation`` is reached.
@@ -153,16 +153,16 @@ class LRDMC_Workflow(Workflow):
     time_projection_tau : float, optional
         Imaginary time step between projections (bohr) for GFMC_t
         mode.  Default ``0.10``.  Ignored when
-        *target_survived_walkers_ratio* or *num_mcmc_per_measurement*
+        *target_survived_walkers_ratio* or *num_projection_per_measurement*
         is set.
     target_survived_walkers_ratio : float, optional
         Target survived-walkers ratio for automatic
-        ``num_mcmc_per_measurement`` calibration.  Setting this
+        ``num_projection_per_measurement`` calibration.  Setting this
         activates GFMC_n mode.  The pilot phase runs three short
         calculations at ``Ne*k*(0.3/alat)²`` projections (k=2,4,6),
         fits a linear model to the observed survived-walkers ratio,
         and picks the value that achieves this target.
-    num_mcmc_per_measurement : int, optional
+    num_projection_per_measurement : int, optional
         GFMC projections per measurement (GFMC_n mode).  When given
         explicitly, the automatic calibration is skipped.
     non_local_move : str, optional
@@ -277,7 +277,7 @@ class LRDMC_Workflow(Workflow):
         # -- [lrdmc-bra / lrdmc-tau] section parameters --
         time_projection_tau: Optional[float] = 0.10,
         target_survived_walkers_ratio: Optional[float] = None,
-        num_mcmc_per_measurement: Optional[int] = None,
+        num_projection_per_measurement: Optional[int] = None,
         non_local_move: Optional[str] = None,
         E_scf: Optional[float] = None,
         atomic_force: Optional[bool] = None,
@@ -318,13 +318,13 @@ class LRDMC_Workflow(Workflow):
         self.num_gfmc_warmup_steps = num_gfmc_warmup_steps
         self.num_gfmc_collect_steps = num_gfmc_collect_steps
         # Mode selection: GFMC_n vs GFMC_t
-        #   GFMC_n: target_survived_walkers_ratio or num_mcmc_per_measurement is set
+        #   GFMC_n: target_survived_walkers_ratio or num_projection_per_measurement is set
         #   GFMC_t: otherwise (uses time_projection_tau)
-        self._use_gfmc_n = target_survived_walkers_ratio is not None or num_mcmc_per_measurement is not None
+        self._use_gfmc_n = target_survived_walkers_ratio is not None or num_projection_per_measurement is not None
         # [lrdmc-bra / lrdmc-tau] section
         self.time_projection_tau = time_projection_tau
         self.target_survived_walkers_ratio = target_survived_walkers_ratio
-        self.num_mcmc_per_measurement = num_mcmc_per_measurement
+        self.num_projection_per_measurement = num_projection_per_measurement
         self.non_local_move = non_local_move
         self.E_scf = E_scf
         self.atomic_force = atomic_force
@@ -353,7 +353,7 @@ class LRDMC_Workflow(Workflow):
         input_file,
         restart=False,
         restart_chk=None,
-        num_mcmc_per_measurement=None,
+        num_projection_per_measurement=None,
     ):
         """Generate LRDMC TOML input file.
 
@@ -367,9 +367,9 @@ class LRDMC_Workflow(Workflow):
             Whether this is a restart run.
         restart_chk : str or None
             Restart checkpoint filename.
-        num_mcmc_per_measurement : int or None
+        num_projection_per_measurement : int or None
             Override for GFMC projections per measurement (GFMC_n only).
-            Falls back to ``self.num_mcmc_per_measurement``.
+            Falls back to ``self.num_projection_per_measurement``.
         """
         jt = self.job_type
         control_ov = resolve_with_defaults(
@@ -388,7 +388,7 @@ class LRDMC_Workflow(Workflow):
 
         if self._use_gfmc_n:
             # GFMC_n mode: job_type="lrdmc-bra"
-            nmpm = num_mcmc_per_measurement or self.num_mcmc_per_measurement
+            nmpm = num_projection_per_measurement or self.num_projection_per_measurement
             section_ov = resolve_with_defaults(
                 "lrdmc-bra",
                 {
@@ -448,7 +448,7 @@ class LRDMC_Workflow(Workflow):
         **Automatic mode** (``num_gfmc_projections`` is *None*, default):
 
         1. Calibration pilot (``_pilot_a``, GFMC_n only) — Three short
-           LRDMC runs to determine ``num_mcmc_per_measurement``.
+           LRDMC runs to determine ``num_projection_per_measurement``.
         2. Error-bar pilot (``_pilot_b``) — estimates production steps.
         3. Production runs (``_1``, ``_2``, …) — accumulate statistics
            until ``target_error`` is achieved or ``max_continuation``
@@ -472,14 +472,14 @@ class LRDMC_Workflow(Workflow):
         """
         estimated_steps = self.num_gfmc_projections
 
-        # ── Phase A: calibrate num_mcmc_per_measurement (GFMC_n only) ──
+        # ── Phase A: calibrate num_projection_per_measurement (GFMC_n only) ──
         need_calibration = (
-            self._use_gfmc_n and self.num_mcmc_per_measurement is None and self.target_survived_walkers_ratio is not None
+            self._use_gfmc_n and self.num_projection_per_measurement is None and self.target_survived_walkers_ratio is not None
         )
         if need_calibration:
             await self._run_calibration(_wd)
 
-        mode_info = f"nmpm={self.num_mcmc_per_measurement}" if self._use_gfmc_n else f"tau={self.time_projection_tau}"
+        mode_info = f"nmpm={self.num_projection_per_measurement}" if self._use_gfmc_n else f"tau={self.time_projection_tau}"
         logger.info("")
         logger.info("-- LRDMC Fixed-step mode " + "-" * 26)
         logger.info(
@@ -586,7 +586,7 @@ class LRDMC_Workflow(Workflow):
         self.output_files = chk_files + output_logs
         self.output_values["estimated_steps"] = estimated_steps
         if self._use_gfmc_n:
-            self.output_values["num_mcmc_per_measurement"] = self.num_mcmc_per_measurement
+            self.output_values["num_projection_per_measurement"] = self.num_projection_per_measurement
         else:
             self.output_values["time_projection_tau"] = self.time_projection_tau
 
@@ -594,7 +594,7 @@ class LRDMC_Workflow(Workflow):
         return self.status, self.output_files, self.output_values
 
     async def _run_calibration(self, _wd):
-        """Phase A: calibrate num_mcmc_per_measurement (GFMC_n only)."""
+        """Phase A: calibrate num_projection_per_measurement (GFMC_n only)."""
         h5_src = os.path.join(_wd, self.hamiltonian_file)
         pilot_a_dir = os.path.join(_wd, "_pilot_a")
         os.makedirs(pilot_a_dir, exist_ok=True)
@@ -604,7 +604,7 @@ class LRDMC_Workflow(Workflow):
         trial_nmpm = [int(n_electrons * k * alat_scale) for k in (2, 4, 6)]
 
         logger.info("")
-        logger.info(f"-- LRDMC Phase A: Calibrate num_mcmc_per_measurement (a={self.alat}) " + "-" * 8)
+        logger.info(f"-- LRDMC Phase A: Calibrate num_projection_per_measurement (a={self.alat}) " + "-" * 8)
         logger.info(
             f"  Ne={n_electrons}, trial nmpm = {trial_nmpm}, target survived ratio = {self.target_survived_walkers_ratio:.2%}"
         )
@@ -631,7 +631,7 @@ class LRDMC_Workflow(Workflow):
                     self._generate_input(
                         self.pilot_steps,
                         os.path.join(sub_dir, inp_f),
-                        num_mcmc_per_measurement=nmpm_v,
+                        num_projection_per_measurement=nmpm_v,
                     )
                 else:
                     logger.info(f"  {inp_f} (nmpm={nmpm_v}): already {rec['status']}. Resuming...")
@@ -665,12 +665,12 @@ class LRDMC_Workflow(Workflow):
                 f"Only {len(x_vals)} calibration runs returned a survived walkers ratio. Need at least 2 for linear fit."
             )
 
-        optimal_nmpm = fit_num_mcmc_per_measurement(
+        optimal_nmpm = fit_num_projection_per_measurement(
             x_vals,
             y_vals,
             self.target_survived_walkers_ratio,
         )
-        self.num_mcmc_per_measurement = optimal_nmpm
+        self.num_projection_per_measurement = optimal_nmpm
 
         logger.info("")
         logger.info(f"-- LRDMC Calibration Summary (a={self.alat}) " + "-" * 18)
@@ -687,18 +687,20 @@ class LRDMC_Workflow(Workflow):
         if estimation.get("estimated_steps") is not None:
             estimated_steps = int(estimation["estimated_steps"])
             # Restore calibrated nmpm from saved state (GFMC_n only)
-            if self._use_gfmc_n and estimation.get("num_mcmc_per_measurement") is not None:
-                self.num_mcmc_per_measurement = int(estimation["num_mcmc_per_measurement"])
-            mode_str = f"nmpm={self.num_mcmc_per_measurement}" if self._use_gfmc_n else f"tau={self.time_projection_tau}"
+            if self._use_gfmc_n and estimation.get("num_projection_per_measurement") is not None:
+                self.num_projection_per_measurement = int(estimation["num_projection_per_measurement"])
+            mode_str = f"nmpm={self.num_projection_per_measurement}" if self._use_gfmc_n else f"tau={self.time_projection_tau}"
             logger.info(
                 f"Estimation already done (continuation): estimated_steps={estimated_steps}, {mode_str}. Skipping pilot."
             )
         else:
-            # ── Phase A: calibrate num_mcmc_per_measurement (GFMC_n only) ──
+            # ── Phase A: calibrate num_projection_per_measurement (GFMC_n only) ──
             h5_src = os.path.join(_wd, self.hamiltonian_file)
 
             need_calibration = (
-                self._use_gfmc_n and self.num_mcmc_per_measurement is None and self.target_survived_walkers_ratio is not None
+                self._use_gfmc_n
+                and self.num_projection_per_measurement is None
+                and self.target_survived_walkers_ratio is not None
             )
 
             if need_calibration:
@@ -723,7 +725,7 @@ class LRDMC_Workflow(Workflow):
                 self._generate_input(self.pilot_steps, os.path.join(pilot_b_dir, input_pb))
             else:
                 logger.info(f"  {input_pb}: already {recorded_pb['status']}. Resuming...")
-            mode_info = f"nmpm={self.num_mcmc_per_measurement}" if self._use_gfmc_n else f"tau={self.time_projection_tau}"
+            mode_info = f"nmpm={self.num_projection_per_measurement}" if self._use_gfmc_n else f"tau={self.time_projection_tau}"
             logger.info("")
             logger.info(f"-- LRDMC Phase B: Error-bar Pilot (a={self.alat}) " + "-" * 12)
             logger.info(f"  {input_pb}: {self.pilot_steps} steps, {mode_info} (queue: {self.pilot_queue_label})")
@@ -773,7 +775,7 @@ class LRDMC_Workflow(Workflow):
                 f"  pilot error       = {pilot_error:.6g} Ha\n"
                 f"  target error      = {self.target_error:.6g} Ha\n"
                 f"  mode              = {'GFMC_n' if self._use_gfmc_n else 'GFMC_t'}\n"
-                f"  {'nmpm' if self._use_gfmc_n else 'tau':17s} = {self.num_mcmc_per_measurement if self._use_gfmc_n else self.time_projection_tau}\n"
+                f"  {'nmpm' if self._use_gfmc_n else 'tau':17s} = {self.num_projection_per_measurement if self._use_gfmc_n else self.time_projection_tau}\n"
                 f"  pilot MPI procs   = {pilot_mpi}\n"
                 f"  prod. MPI procs   = {prod_mpi}\n"
                 f"  walker ratio      = {walker_ratio:.4g}\n"
@@ -799,7 +801,7 @@ class LRDMC_Workflow(Workflow):
                 net_pilot_sec=net_pilot_sec or 0,
             )
             if self._use_gfmc_n:
-                est_kwargs["num_mcmc_per_measurement"] = self.num_mcmc_per_measurement
+                est_kwargs["num_projection_per_measurement"] = self.num_projection_per_measurement
             else:
                 est_kwargs["time_projection_tau"] = self.time_projection_tau
             set_estimation(_wd, **est_kwargs)
@@ -850,7 +852,7 @@ class LRDMC_Workflow(Workflow):
                     alat=self.alat,
                     restart_chk=restart_chk or "",
                     estimated_steps=estimated_steps,
-                    num_mcmc_per_measurement=self.num_mcmc_per_measurement,
+                    num_projection_per_measurement=self.num_projection_per_measurement,
                 )
                 if self.atomic_force and restart_chk:
                     forces = self._compute_force(restart_chk, work_dir=_wd)
@@ -1015,7 +1017,7 @@ class LRDMC_Workflow(Workflow):
         self.output_files = chk_files + output_logs
         self.output_values["estimated_steps"] = estimated_steps
         if self._use_gfmc_n:
-            self.output_values["num_mcmc_per_measurement"] = self.num_mcmc_per_measurement
+            self.output_values["num_projection_per_measurement"] = self.num_projection_per_measurement
         else:
             self.output_values["time_projection_tau"] = self.time_projection_tau
 

@@ -2661,7 +2661,7 @@ LRDMC_Workflow(
     queue_label="cores-4-mpi-4-gpu-4-omp-1-30m",
     alat=0.30,
     number_of_walkers=nw,
-    num_mcmc_per_measurement=40,
+    num_projection_per_measurement=40,
     pilot_steps=1000,  # explicit step count
 )
 ```

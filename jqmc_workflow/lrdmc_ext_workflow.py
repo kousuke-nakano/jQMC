@@ -70,7 +70,7 @@ class LRDMC_Ext_Workflow(Workflow):
 
     Each ``alat`` run is wrapped in its own :class:`Container`
     and all alat values are executed in parallel.  Every ``alat``
-    independently calibrates its own ``num_mcmc_per_measurement``
+    independently calibrates its own ``num_projection_per_measurement``
     (when ``target_survived_walkers_ratio`` is set in GFMC_n mode),
     runs an error-bar pilot, and then runs production.
 
@@ -79,7 +79,7 @@ class LRDMC_Ext_Workflow(Workflow):
 
     * **GFMC_t** (default) — set *time_projection_tau* (default 0.10).
     * **GFMC_n** — set *target_survived_walkers_ratio* or
-      *num_mcmc_per_measurement*.
+      *num_projection_per_measurement*.
 
     Parameters
     ----------
@@ -113,14 +113,14 @@ class LRDMC_Ext_Workflow(Workflow):
     time_projection_tau : float, optional
         Imaginary time step for GFMC_t mode (default 0.10).  Ignored
         when *target_survived_walkers_ratio* or
-        *num_mcmc_per_measurement* is set.
+        *num_projection_per_measurement* is set.
     target_survived_walkers_ratio : float, optional
         Target survived-walkers ratio (default *None*).  Each ``alat``
         independently runs a calibration pilot (``_pilot_a``) to
-        find its own optimal ``num_mcmc_per_measurement``.
+        find its own optimal ``num_projection_per_measurement``.
         Set to *None* to disable auto-calibration (requires explicit
-        *num_mcmc_per_measurement*).  Activates GFMC_n mode.
-    num_mcmc_per_measurement : int, optional
+        *num_projection_per_measurement*).  Activates GFMC_n mode.
+    num_projection_per_measurement : int, optional
         GFMC projections per measurement.  When given explicitly,
         automatic calibration is disabled and this value is used
         for every ``alat``.  Activates GFMC_n mode.
@@ -221,7 +221,7 @@ class LRDMC_Ext_Workflow(Workflow):
         # -- [lrdmc-bra / lrdmc-tau] section parameters --
         time_projection_tau: Optional[float] = 0.10,
         target_survived_walkers_ratio: Optional[float] = None,
-        num_mcmc_per_measurement: Optional[int] = None,
+        num_projection_per_measurement: Optional[int] = None,
         non_local_move: Optional[str] = None,
         E_scf: Optional[float] = None,
         atomic_force: Optional[bool] = None,
@@ -263,7 +263,7 @@ class LRDMC_Ext_Workflow(Workflow):
         # [lrdmc-bra / lrdmc-tau] section
         self.time_projection_tau = time_projection_tau
         self.target_survived_walkers_ratio = target_survived_walkers_ratio
-        self.num_mcmc_per_measurement = num_mcmc_per_measurement
+        self.num_projection_per_measurement = num_projection_per_measurement
         self.non_local_move = non_local_move
         self.E_scf = E_scf
         self.atomic_force = atomic_force
@@ -307,7 +307,7 @@ class LRDMC_Ext_Workflow(Workflow):
             num_gfmc_collect_steps=self.num_gfmc_collect_steps,
             time_projection_tau=self.time_projection_tau,
             target_survived_walkers_ratio=self.target_survived_walkers_ratio,
-            num_mcmc_per_measurement=self.num_mcmc_per_measurement,
+            num_projection_per_measurement=self.num_projection_per_measurement,
             non_local_move=self.non_local_move,
             E_scf=self.E_scf,
             atomic_force=self.atomic_force,
