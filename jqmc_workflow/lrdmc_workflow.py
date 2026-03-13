@@ -534,7 +534,7 @@ class LRDMC_Workflow(Workflow):
             # Post-process energy (informational only, no convergence check)
             restart_chk = self._find_restart_chk(_wd)
             if restart_chk:
-                energy, error = self._compute_energy(restart_chk, work_dir=_wd)
+                energy, error = self._compute_energy(restart_chk, work_dir=_wd, output_file=output_i)
                 if energy is not None:
                     self.output_values["energy"] = energy
                     self.output_values["energy_error"] = error
@@ -542,7 +542,7 @@ class LRDMC_Workflow(Workflow):
                     self.output_values["restart_chk"] = restart_chk
                     logger.info(f"  LRDMC energy (a={self.alat}): {energy} +- {error} Ha")
                     if self.atomic_force:
-                        forces = self._compute_force(restart_chk, work_dir=_wd)
+                        forces = self._compute_force(restart_chk, work_dir=_wd, output_file=output_i)
                         if forces is not None:
                             self.output_values["forces"] = forces
                     set_estimation(
@@ -555,16 +555,17 @@ class LRDMC_Workflow(Workflow):
                     )
 
         # ── Final energy computation ─────────────────────────────
+        last_output = suffixed_name(self.output_file, last_run) if last_run > 0 else None
         restart_chk = self._find_restart_chk(_wd)
         if restart_chk:
-            energy, error = self._compute_energy(restart_chk, work_dir=_wd)
+            energy, error = self._compute_energy(restart_chk, work_dir=_wd, output_file=last_output)
             if energy is not None:
                 self.output_values["energy"] = energy
                 self.output_values["energy_error"] = error
                 self.output_values["alat"] = self.alat
                 self.output_values["restart_chk"] = restart_chk
                 if self.atomic_force:
-                    forces = self._compute_force(restart_chk, work_dir=_wd)
+                    forces = self._compute_force(restart_chk, work_dir=_wd, output_file=last_output)
                     if forces is not None:
                         self.output_values["forces"] = forces
                 set_estimation(
@@ -738,7 +739,7 @@ class LRDMC_Workflow(Workflow):
             if not restart_chk:
                 raise RuntimeError("No checkpoint found after pilot run. Cannot estimate required steps.")
 
-            _, pilot_error = self._compute_energy(restart_chk, work_dir=pilot_b_dir)
+            _, pilot_error = self._compute_energy(restart_chk, work_dir=pilot_b_dir, output_file=output_pb)
             if pilot_error is None:
                 raise RuntimeError("Could not parse energy error from pilot run.")
 
@@ -935,7 +936,7 @@ class LRDMC_Workflow(Workflow):
             # Check convergence
             restart_chk = self._find_restart_chk(_wd)
             if restart_chk:
-                energy, error = self._compute_energy(restart_chk, work_dir=_wd)
+                energy, error = self._compute_energy(restart_chk, work_dir=_wd, output_file=output_i)
                 if energy is not None:
                     self.output_values["energy"] = energy
                     self.output_values["energy_error"] = error
@@ -943,7 +944,7 @@ class LRDMC_Workflow(Workflow):
                     self.output_values["restart_chk"] = restart_chk
                     logger.info(f"  LRDMC energy (a={self.alat}): {energy} +- {error} Ha")
                     if self.atomic_force:
-                        forces = self._compute_force(restart_chk, work_dir=_wd)
+                        forces = self._compute_force(restart_chk, work_dir=_wd, output_file=output_i)
                         if forces is not None:
                             self.output_values["forces"] = forces
 
@@ -986,16 +987,17 @@ class LRDMC_Workflow(Workflow):
                         raise RuntimeError(msg)
 
         # ── Final energy computation ─────────────────────────────
+        last_output = suffixed_name(self.output_file, last_run) if last_run > 0 else None
         restart_chk = self._find_restart_chk(_wd)
         if restart_chk:
-            energy, error = self._compute_energy(restart_chk, work_dir=_wd)
+            energy, error = self._compute_energy(restart_chk, work_dir=_wd, output_file=last_output)
             if energy is not None:
                 self.output_values["energy"] = energy
                 self.output_values["energy_error"] = error
                 self.output_values["alat"] = self.alat
                 self.output_values["restart_chk"] = restart_chk
                 if self.atomic_force:
-                    forces = self._compute_force(restart_chk, work_dir=_wd)
+                    forces = self._compute_force(restart_chk, work_dir=_wd, output_file=last_output)
                     if forces is not None:
                         self.output_values["forces"] = forces
                 set_estimation(
@@ -1034,8 +1036,17 @@ class LRDMC_Workflow(Workflow):
                 return os.path.basename(matches[-1])
         return None
 
-    def _compute_energy(self, restart_chk: str, work_dir: str):
-        """Run ``jqmc-tool lrdmc compute-energy`` and parse output.
+    def _compute_energy(self, restart_chk: str, work_dir: str, output_file: Optional[str] = None):
+        """Parse energy from *output_file* or run ``jqmc-tool lrdmc compute-energy``.
+
+        When *output_file* is given the energy is read directly from
+        the ``jqmc`` stdout (``Total Energy: E = … +- … Ha.``).
+        This avoids the overhead of re-running ``jqmc-tool`` when
+        the post-processing parameters (-b, -w, -c) are the same as
+        in the input TOML — which is always the case for a fresh run.
+
+        Falls back to ``jqmc-tool`` when *output_file* is *None* or
+        when stdout parsing fails.
 
         Parameters
         ----------
@@ -1043,12 +1054,29 @@ class LRDMC_Workflow(Workflow):
             Checkpoint filename (basename).
         work_dir : str
             Directory in which to run the command.
+        output_file : str, optional
+            Stdout filename (basename) of the ``jqmc`` run.
 
         Returns
         -------
         tuple
             ``(energy, error)`` or ``(None, None)``.
         """
+        # Fast path: parse from jqmc stdout
+        if output_file is not None:
+            out_path = os.path.join(work_dir, output_file)
+            if os.path.isfile(out_path):
+                try:
+                    with open(out_path) as fh:
+                        text = fh.read()
+                    energy, error = self._parse_energy_output(text)
+                    if energy is not None:
+                        logger.info(f"  Energy from {output_file} (jqmc-tool skipped): E = {energy} +- {error} Ha")
+                        return energy, error
+                except OSError:
+                    pass
+
+        # Fallback: jqmc-tool
         cmd = (
             f"jqmc-tool lrdmc compute-energy {restart_chk} "
             f"-b {self.num_gfmc_bin_blocks} "
@@ -1079,8 +1107,12 @@ class LRDMC_Workflow(Workflow):
             return float(match.group(1)), float(match.group(2))
         return None, None
 
-    def _compute_force(self, restart_chk: str, work_dir: str):
-        """Run ``jqmc-tool lrdmc compute-force`` and parse output.
+    def _compute_force(self, restart_chk: str, work_dir: str, output_file: Optional[str] = None):
+        """Parse forces from *output_file* or run ``jqmc-tool lrdmc compute-force``.
+
+        When *output_file* is given, forces are read directly from
+        the ``jqmc`` stdout (``Atomic Forces:`` table).  Falls back
+        to ``jqmc-tool`` when *output_file* is *None* or parsing fails.
 
         Parameters
         ----------
@@ -1088,6 +1120,8 @@ class LRDMC_Workflow(Workflow):
             Checkpoint filename (basename).
         work_dir : str
             Directory in which to run the command.
+        output_file : str, optional
+            Stdout filename (basename) of the ``jqmc`` run.
 
         Returns
         -------
@@ -1096,6 +1130,29 @@ class LRDMC_Workflow(Workflow):
             ``Fy``, ``Fy_err``, ``Fz``, ``Fz_err``.
             Returns *None* on failure.
         """
+        # Fast path: parse from jqmc stdout
+        if output_file is not None:
+            out_path = os.path.join(work_dir, output_file)
+            if os.path.isfile(out_path):
+                try:
+                    with open(out_path) as fh:
+                        text = fh.read()
+                    forces = parse_force_table(text)
+                    if forces:
+                        logger.info(f"  Forces from {output_file} (jqmc-tool skipped):")
+                        for f in forces:
+                            logger.info(
+                                f"  {f['label']:8s}"
+                                f" Fx={f['Fx']:+.6f}+-{f['Fx_err']:.6f}"
+                                f" Fy={f['Fy']:+.6f}+-{f['Fy_err']:.6f}"
+                                f" Fz={f['Fz']:+.6f}+-{f['Fz_err']:.6f}"
+                                f" Ha/bohr"
+                            )
+                        return forces
+                except OSError:
+                    pass
+
+        # Fallback: jqmc-tool
         cmd = (
             f"jqmc-tool lrdmc compute-force {restart_chk} "
             f"-b {self.num_gfmc_bin_blocks} "
