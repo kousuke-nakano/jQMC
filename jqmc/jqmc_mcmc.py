@@ -3598,6 +3598,12 @@ class MCMC:
 
             num_opt_done += 1
 
+            # Release stale JAX compiled executables from the previous run()
+            # call.  The @jit closures defined inside run() are new Python
+            # objects each step, so old cached compilations are unreachable
+            # and would otherwise accumulate until OOM.
+            jax.clear_caches()
+
             # check max time
             vmcopt_current = time.perf_counter()
 
