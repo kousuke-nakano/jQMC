@@ -192,6 +192,7 @@ def _cli():
             handler_format = Formatter("%(message)s")
             stream_handler.setFormatter(handler_format)
             log.addHandler(stream_handler)
+
     # print header
     _print_header()
 
@@ -224,6 +225,9 @@ def _cli():
         logger.info("*** XLA Local devices recognized by JAX***")
         logger.info(local_device_info)
         logger.info("")
+
+    # JAX environment info
+    logger.debug(jax.print_environment_info(return_string=True))
 
     logger.info(f"Input file = {toml_file}")
     if not all([type(value) is dict for value in dict_toml.values()]):

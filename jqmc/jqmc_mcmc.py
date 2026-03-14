@@ -2955,8 +2955,8 @@ class MCMC:
                 # Retrieve local data (samples assigned to this rank)
                 w_L_local = self.w_L[num_mcmc_warmup_steps:]  # shape: (num_mcmc, num_walker)
                 e_L_local = self.e_L[num_mcmc_warmup_steps:]  # shape: (num_mcmc, num_walker)
-                w_L_local = list(np.ravel(w_L_local))  # shape: (num_mcmc * num_walker, )s
-                e_L_local = list(np.ravel(e_L_local))  # shape: (num_mcmc * num_walker, )
+                w_L_local = np.ravel(w_L_local)  # shape: (num_mcmc * num_walker, )
+                e_L_local = np.ravel(e_L_local)  # shape: (num_mcmc * num_walker, )
                 O_matrix_local = self.get_dln_WF(
                     num_mcmc_warmup_steps=num_mcmc_warmup_steps,
                     chosen_param_index=chosen_param_index,
@@ -2968,20 +2968,12 @@ class MCMC:
                     O_matrix_local.shape[0] * O_matrix_local.shape[1],
                     O_matrix_local.shape[2],
                 )
-                O_matrix_local = list(O_matrix_local.reshape(O_matrix_local_shape))  # shape: (num_mcmc * num_walker, num_param)
+                O_matrix_local = O_matrix_local.reshape(O_matrix_local_shape)  # shape: (num_mcmc * num_walker, num_param)
 
                 # Compute local partial sums
-                local_Ow = list(
-                    np.einsum("i,ij->j", w_L_local, O_matrix_local)
-                )  # weighted sum for observables, shape: (num_param,)
+                local_Ow = np.einsum("i,ij->j", w_L_local, O_matrix_local)  # weighted sum for observables, shape: (num_param,)
                 local_Ew = np.dot(w_L_local, e_L_local)  # weighted sum of energies, shape: scalar
                 local_weight_sum = np.sum(w_L_local)  # scalar: sum of weights, shape: scalar
-
-                w_L_local = np.array(w_L_local)
-                e_L_local = np.array(e_L_local)
-                local_Ow = np.array(local_Ow)
-                local_Ew = np.array(local_Ew)
-                local_weight_sum = np.array(local_weight_sum)
 
                 # Aggregate across all ranks
                 total_weight = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)  # total sum of weights, shape: scalar
@@ -3253,10 +3245,12 @@ class MCMC:
                             X_T_X = None
                         mpi_comm.Reduce(X_T_X_local, X_T_X, op=MPI.SUM, root=0)
                         # compute local sum of X @ F
-                        F_local_list = list(F_local)
-                        F_list = mpi_comm.reduce(F_local_list, op=MPI.SUM, root=0)
                         if mpi_rank == 0:
-                            F = np.array(F_list)
+                            F = np.empty(F_local.shape, dtype=np.float64)
+                        else:
+                            F = None
+                        mpi_comm.Reduce(F_local, F, op=MPI.SUM, root=0)
+                        if mpi_rank == 0:
                             logger.devel(f"X_T_X.shape = {X_T_X.shape}.")
                             logger.devel(f"F.shape = {F.shape}.")
                             X_T_X[np.diag_indices_from(X_T_X)] += epsilon
@@ -3297,9 +3291,8 @@ class MCMC:
                             return XTXv_global + epsilon * v
 
                         # Solve (X^T X + εI)^(-1) @ F
-                        F_local_list = list(F_local)
-                        F_list = mpi_comm.allreduce(F_local_list, op=MPI.SUM)
-                        F_total = np.asarray(F_list, dtype=np.float64)
+                        F_total = np.empty(F_local.shape, dtype=np.float64)
+                        mpi_comm.Allreduce(F_local, F_total, op=MPI.SUM)
                         if sr_cg_warm_start_dual is not None and sr_cg_warm_start_dual.shape == F_total.shape:
                             x0 = sr_cg_warm_start_dual
                         else:
@@ -3597,12 +3590,6 @@ class MCMC:
             timer_MPI_barrier += end - start
 
             num_opt_done += 1
-
-            # Release stale JAX compiled executables from the previous run()
-            # call.  The @jit closures defined inside run() are new Python
-            # objects each step, so old cached compilations are unreachable
-            # and would otherwise accumulate until OOM.
-            jax.clear_caches()
 
             # check max time
             vmcopt_current = time.perf_counter()
