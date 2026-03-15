@@ -380,14 +380,14 @@ class MCMC_Workflow(Workflow):
             # Post-process energy (informational only, no convergence check)
             restart_chk = self._find_restart_chk(_wd)
             if restart_chk:
-                energy, error = self._compute_energy(restart_chk, work_dir=_wd)
+                energy, error = self._compute_energy(restart_chk, work_dir=_wd, output_file=output_i)
                 if energy is not None:
                     self.output_values["energy"] = energy
                     self.output_values["energy_error"] = error
                     self.output_values["restart_chk"] = restart_chk
                     logger.info(f"  MCMC energy: {energy} +- {error} Ha")
                     if self.atomic_force:
-                        forces = self._compute_force(restart_chk, work_dir=_wd)
+                        forces = self._compute_force(restart_chk, work_dir=_wd, output_file=output_i)
                         if forces is not None:
                             self.output_values["forces"] = forces
                     set_estimation(
@@ -399,15 +399,16 @@ class MCMC_Workflow(Workflow):
                     )
 
         # ── Final energy computation ─────────────────────────────
+        last_output = suffixed_name(self.output_file, last_run) if last_run > 0 else None
         restart_chk = self._find_restart_chk(_wd)
         if restart_chk:
-            energy, error = self._compute_energy(restart_chk, work_dir=_wd)
+            energy, error = self._compute_energy(restart_chk, work_dir=_wd, output_file=last_output)
             if energy is not None:
                 self.output_values["energy"] = energy
                 self.output_values["energy_error"] = error
                 self.output_values["restart_chk"] = restart_chk
                 if self.atomic_force:
-                    forces = self._compute_force(restart_chk, work_dir=_wd)
+                    forces = self._compute_force(restart_chk, work_dir=_wd, output_file=last_output)
                     if forces is not None:
                         self.output_values["forces"] = forces
                 set_estimation(
@@ -470,7 +471,7 @@ class MCMC_Workflow(Workflow):
             if not restart_chk:
                 raise RuntimeError("No checkpoint found after pilot run. Cannot estimate required steps.")
 
-            _, pilot_error = self._compute_energy(restart_chk, work_dir=pilot_dir)
+            _, pilot_error = self._compute_energy(restart_chk, work_dir=pilot_dir, output_file=output_0)
             if pilot_error is None:
                 raise RuntimeError("Could not parse energy error from pilot run.")
 
@@ -526,6 +527,8 @@ class MCMC_Workflow(Workflow):
                 estimated_steps=estimated_steps,
                 pilot_queue_label=self.pilot_queue_label,
                 walker_ratio=walker_ratio,
+                pilot_wall_sec=pilot_wall_sec,
+                net_pilot_sec=net_pilot_sec or 0,
             )
 
         # ── Re-compute energy if post-processing parameters changed ──
@@ -584,6 +587,7 @@ class MCMC_Workflow(Workflow):
         # production restarts.
         accumulated_steps = 0
         last_run = 0
+        _prev_run_steps = None  # tracks the step count of the last completed run
         for i in range(1, self.max_continuation + 1):
             input_i = suffixed_name(self.input_file, i)
             output_i = suffixed_name(self.output_file, i)
@@ -594,6 +598,7 @@ class MCMC_Workflow(Workflow):
                 if recorded["status"] == "fetched":
                     logger.info(f"  {input_i}: already fetched. Skipping.")
                     accumulated_steps += estimated_steps
+                    _prev_run_steps = estimated_steps
                     last_run = i
                     continue
                 logger.info(f"  {input_i}: already {recorded['status']}. Resuming...")
@@ -620,6 +625,26 @@ class MCMC_Workflow(Workflow):
                 raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {_wd}")
             extra_from = [restart_chk] if restart_chk else []
 
+            # Estimate run time from the latest available output
+            _ref_net = None
+            for _j in range(i - 1, 0, -1):
+                _ref_net = parse_net_time(os.path.join(_wd, suffixed_name(self.output_file, _j)))
+                if _ref_net and _ref_net > 0:
+                    _ref_steps = _prev_run_steps if _prev_run_steps else estimated_steps
+                    _est_sec = _ref_net * (estimated_steps / _ref_steps) if _ref_steps > 0 else _ref_net
+                    logger.info(f"  est. Net run time (w/o JAX compilation) = {_format_duration(_est_sec)}")
+                    break
+            else:
+                # First production run: use pilot output
+                _pilot_out = os.path.join(_wd, "_pilot", suffixed_name(self.output_file, 0))
+                _ref_net = parse_net_time(_pilot_out)
+                if _ref_net and _ref_net > 0:
+                    _p_steps = estimation.get("pilot_steps") or self.pilot_steps
+                    if _p_steps > 0:
+                        logger.info(
+                            f"  est. Net run time (w/o JAX compilation) = {_format_duration(_ref_net * estimated_steps / _p_steps)}"
+                        )
+
             await self._submit_and_wait(
                 input_i,
                 output_i,
@@ -627,19 +652,20 @@ class MCMC_Workflow(Workflow):
                 extra_from_objects=extra_from,
             )
             accumulated_steps += estimated_steps
+            _prev_run_steps = estimated_steps
             last_run = i
 
             # Check convergence
             restart_chk = self._find_restart_chk(_wd)
             if restart_chk:
-                energy, error = self._compute_energy(restart_chk, work_dir=_wd)
+                energy, error = self._compute_energy(restart_chk, work_dir=_wd, output_file=output_i)
                 if energy is not None:
                     self.output_values["energy"] = energy
                     self.output_values["energy_error"] = error
                     self.output_values["restart_chk"] = restart_chk
                     logger.info(f"  MCMC energy: {energy} +- {error} Ha")
                     if self.atomic_force:
-                        forces = self._compute_force(restart_chk, work_dir=_wd)
+                        forces = self._compute_force(restart_chk, work_dir=_wd, output_file=output_i)
                         if forces is not None:
                             self.output_values["forces"] = forces
 
@@ -670,22 +696,26 @@ class MCMC_Workflow(Workflow):
                             f"  Re-estimated: {old_steps} -> {estimated_steps} additional steps (accumulated so far: {accumulated_steps})"
                         )
                     else:
-                        logger.warning(
+                        msg = (
                             f"Error {error:.6g} > target "
                             f"{self.target_error:.6g} Ha -- "
                             f"max_continuation ({self.max_continuation}) reached"
                         )
+                        logger.error(msg)
+                        self.status = "failed"
+                        raise RuntimeError(msg)
 
         # ── Final energy computation ─────────────────────────────
+        last_output = suffixed_name(self.output_file, last_run) if last_run > 0 else None
         restart_chk = self._find_restart_chk(_wd)
         if restart_chk:
-            energy, error = self._compute_energy(restart_chk, work_dir=_wd)
+            energy, error = self._compute_energy(restart_chk, work_dir=_wd, output_file=last_output)
             if energy is not None:
                 self.output_values["energy"] = energy
                 self.output_values["energy_error"] = error
                 self.output_values["restart_chk"] = restart_chk
                 if self.atomic_force:
-                    forces = self._compute_force(restart_chk, work_dir=_wd)
+                    forces = self._compute_force(restart_chk, work_dir=_wd, output_file=last_output)
                     if forces is not None:
                         self.output_values["forces"] = forces
                 set_estimation(
@@ -719,8 +749,13 @@ class MCMC_Workflow(Workflow):
                 return os.path.basename(matches[-1])
         return None
 
-    def _compute_energy(self, restart_chk: str, work_dir: str):
-        """Run ``jqmc-tool mcmc compute-energy`` and parse output.
+    def _compute_energy(self, restart_chk: str, work_dir: str, output_file: Optional[str] = None):
+        """Parse energy from *output_file* or run ``jqmc-tool mcmc compute-energy``.
+
+        When *output_file* is given the energy is read directly from
+        the ``jqmc`` stdout (``Total Energy: E = … +- … Ha.``).
+        Falls back to ``jqmc-tool`` when *output_file* is *None* or
+        when stdout parsing fails.
 
         Parameters
         ----------
@@ -728,12 +763,29 @@ class MCMC_Workflow(Workflow):
             Checkpoint filename (basename).
         work_dir : str
             Directory in which to run the command.
+        output_file : str, optional
+            Stdout filename (basename) of the ``jqmc`` run.
 
         Returns
         -------
         tuple
             ``(energy, error)`` or ``(None, None)``.
         """
+        # Fast path: parse from jqmc stdout
+        if output_file is not None:
+            out_path = os.path.join(work_dir, output_file)
+            if os.path.isfile(out_path):
+                try:
+                    with open(out_path) as fh:
+                        text = fh.read()
+                    energy, error = self._parse_energy_output(text)
+                    if energy is not None:
+                        logger.info(f"  Energy from {output_file} (jqmc-tool skipped): E = {energy} +- {error} Ha")
+                        return energy, error
+                except OSError:
+                    pass
+
+        # Fallback: jqmc-tool
         cmd = f"jqmc-tool mcmc compute-energy {restart_chk} -b {self.num_mcmc_bin_blocks} -w {self.num_mcmc_warmup_steps}"
         logger.info(f"  Running: {cmd}")
         try:
@@ -759,8 +811,12 @@ class MCMC_Workflow(Workflow):
             return float(match.group(1)), float(match.group(2))
         return None, None
 
-    def _compute_force(self, restart_chk: str, work_dir: str):
-        """Run ``jqmc-tool mcmc compute-force`` and parse output.
+    def _compute_force(self, restart_chk: str, work_dir: str, output_file: Optional[str] = None):
+        """Parse forces from *output_file* or run ``jqmc-tool mcmc compute-force``.
+
+        When *output_file* is given, forces are read directly from
+        the ``jqmc`` stdout (``Atomic Forces:`` table).  Falls back
+        to ``jqmc-tool`` when *output_file* is *None* or parsing fails.
 
         Parameters
         ----------
@@ -768,6 +824,8 @@ class MCMC_Workflow(Workflow):
             Checkpoint filename (basename).
         work_dir : str
             Directory in which to run the command.
+        output_file : str, optional
+            Stdout filename (basename) of the ``jqmc`` run.
 
         Returns
         -------
@@ -776,6 +834,29 @@ class MCMC_Workflow(Workflow):
             ``Fy``, ``Fy_err``, ``Fz``, ``Fz_err``.
             Returns *None* on failure.
         """
+        # Fast path: parse from jqmc stdout
+        if output_file is not None:
+            out_path = os.path.join(work_dir, output_file)
+            if os.path.isfile(out_path):
+                try:
+                    with open(out_path) as fh:
+                        text = fh.read()
+                    forces = parse_force_table(text)
+                    if forces:
+                        logger.info(f"  Forces from {output_file} (jqmc-tool skipped):")
+                        for f in forces:
+                            logger.info(
+                                f"  {f['label']:8s}"
+                                f" Fx={f['Fx']:+.6f}+-{f['Fx_err']:.6f}"
+                                f" Fy={f['Fy']:+.6f}+-{f['Fy_err']:.6f}"
+                                f" Fz={f['Fz']:+.6f}+-{f['Fz_err']:.6f}"
+                                f" Ha/bohr"
+                            )
+                        return forces
+                except OSError:
+                    pass
+
+        # Fallback: jqmc-tool
         cmd = f"jqmc-tool mcmc compute-force {restart_chk} -b {self.num_mcmc_bin_blocks} -w {self.num_mcmc_warmup_steps}"
         logger.info(f"  Running: {cmd}")
         try:

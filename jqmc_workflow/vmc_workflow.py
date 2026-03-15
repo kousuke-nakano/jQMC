@@ -65,19 +65,28 @@ class VMC_Workflow(Workflow):
     until completion, and collects the optimised
     ``hamiltonian_data_opt_step_N.h5`` files and checkpoint.
 
-    The workflow operates in two phases:
+    The workflow supports two modes:
+
+    **Automatic mode** (default, ``num_mcmc_steps=None``):
 
     1. **Pilot VMC run** (``_0``) — Runs a short optimisation with
        ``pilot_vmc_steps`` optimisation steps and ``pilot_mcmc_steps``
        MCMC steps per step.  The statistical error of the *last*
        optimisation step is used to estimate the MCMC steps per
        opt-step required to achieve ``target_error`` via
-       $\\sigma \\propto 1/\\sqrt{N}$.
+       $\sigma \propto 1/\sqrt{N}$.
     2. **Production VMC runs** (``_1``, ``_2``, …) — Full optimisation
        with ``num_opt_steps`` and the estimated MCMC steps per step.
        If a run is interrupted by the wall-time limit, the next
        continuation restarts from the checkpoint.  At most
        ``max_continuation`` runs are attempted.
+
+    **Fixed-step mode** (``num_mcmc_steps`` is set):
+
+    The pilot run is skipped entirely and ``target_error`` is ignored.
+    Each production run uses exactly ``num_mcmc_steps`` MCMC steps per
+    optimisation step, and ``max_continuation`` runs are executed
+    unconditionally.
 
     Parameters
     ----------
@@ -134,9 +143,16 @@ class VMC_Workflow(Workflow):
     poll_interval : int
         Seconds between job-status polls.
     target_error : float
-        Target statistical error (Ha) per optimization step.
+        Target statistical error (Ha) per optimization step.  Ignored
+        when *num_mcmc_steps* is set.
+    num_mcmc_steps : int, optional
+        Fixed number of MCMC measurement steps per optimisation step.
+        When set, the pilot run is skipped and ``target_error`` is
+        ignored; each of the ``max_continuation`` production runs uses
+        exactly this many MCMC steps per opt step.
     pilot_mcmc_steps : int
-        MCMC steps per opt-step for the pilot run.
+        MCMC steps per opt-step for the pilot run.  Ignored when
+        *num_mcmc_steps* is set.
     pilot_vmc_steps : int
         Number of optimization steps in the pilot run (small; just
         enough to estimate the error bar).
@@ -152,7 +168,7 @@ class VMC_Workflow(Workflow):
 
     Examples
     --------
-    Standalone launch::
+    Standalone launch (automatic mode)::
 
         wf = VMC_Workflow(
             server_machine_name="cluster",
@@ -164,6 +180,17 @@ class VMC_Workflow(Workflow):
         )
         status, files, values = wf.launch()
         print(values["optimized_hamiltonian"])
+
+    Fixed-step mode (no pilot, no target_error check)::
+
+        wf = VMC_Workflow(
+            server_machine_name="cluster",
+            num_opt_steps=20,
+            num_mcmc_steps=500,
+            number_of_walkers=8,
+            max_continuation=3,
+        )
+        status, files, values = wf.launch()
 
     As part of a :class:`Launcher` pipeline::
 
@@ -225,6 +252,7 @@ class VMC_Workflow(Workflow):
         # -- workflow parameters --
         poll_interval: int = 60,
         target_error: float = 0.001,
+        num_mcmc_steps: Optional[int] = None,
         pilot_mcmc_steps: int = 50,
         pilot_vmc_steps: int = 5,
         pilot_queue_label: Optional[str] = None,
@@ -262,6 +290,7 @@ class VMC_Workflow(Workflow):
         # workflow
         self.poll_interval = poll_interval
         self.target_error = target_error
+        self.num_mcmc_steps = num_mcmc_steps
         self.pilot_mcmc_steps = pilot_mcmc_steps
         self.pilot_vmc_steps = pilot_vmc_steps
         self.pilot_queue_label = pilot_queue_label or queue_label
@@ -343,7 +372,14 @@ class VMC_Workflow(Workflow):
     # ── Launch ────────────────────────────────────────────────────
 
     async def async_launch(self):
-        """Run the VMC optimization workflow with automatic step estimation.
+        """Run the VMC optimization workflow.
+
+        **Fixed-step mode** (``num_mcmc_steps`` is set):
+        The pilot run is skipped.  Each production run uses exactly
+        ``num_mcmc_steps`` MCMC steps per opt step and all
+        ``max_continuation`` runs are executed unconditionally.
+
+        **Automatic mode** (``num_mcmc_steps`` is *None*, default):
 
         1. Pilot VMC run in ``_pilot/`` with ``pilot_vmc_steps`` opt steps
            and ``pilot_mcmc_steps`` MCMC steps to estimate the required
@@ -357,6 +393,99 @@ class VMC_Workflow(Workflow):
         self._ensure_project_dir()
         _wd = self.project_dir
 
+        # ── Fixed-step mode ───────────────────────────────────────
+        if self.num_mcmc_steps is not None:
+            return await self._launch_fixed_steps(_wd)
+
+        # ── Automatic mode (pilot + target_error) ─────────────────
+        return await self._launch_auto(_wd)
+
+    async def _launch_fixed_steps(self, _wd):
+        """Fixed-step production: skip pilot, ignore target_error."""
+        estimated_mcmc_steps = self.num_mcmc_steps
+        logger.info("")
+        logger.info("-- VMC Fixed-step mode " + "-" * 27)
+        logger.info(
+            f"  num_mcmc_steps    = {estimated_mcmc_steps}\n"
+            f"  num_opt_steps     = {self.num_opt_steps}\n"
+            f"  max_continuation  = {self.max_continuation}"
+        )
+
+        last_run = 0
+        for i in range(1, self.max_continuation + 1):
+            input_i = suffixed_name(self.input_file, i)
+            output_i = suffixed_name(self.output_file, i)
+
+            recorded = get_job(_wd, input_i)
+            if recorded.get("status") in ("submitted", "completed", "fetched"):
+                if recorded["status"] == "fetched":
+                    logger.info(f"  {input_i}: already fetched. Skipping.")
+                    last_run = i
+                    continue
+                logger.info(f"  {input_i}: already {recorded['status']}. Resuming...")
+            else:
+                if i == 1:
+                    self._generate_input(
+                        estimated_mcmc_steps,
+                        self.num_opt_steps,
+                        os.path.join(_wd, input_i),
+                    )
+                else:
+                    restart_chk = self._find_restart_chk(_wd)
+                    if restart_chk is None:
+                        raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {_wd}")
+                    self._generate_input(
+                        estimated_mcmc_steps,
+                        self.num_opt_steps,
+                        os.path.join(_wd, input_i),
+                        restart=True,
+                        restart_chk=restart_chk,
+                    )
+                logger.info("")
+                logger.info(f"-- VMC Production run {i}/{self.max_continuation} " + "-" * 10)
+                logger.info(f"  {input_i}: {self.num_opt_steps} opt steps x {estimated_mcmc_steps} MCMC steps/step")
+
+            restart_chk = self._find_restart_chk(_wd) if i > 1 else None
+            if i > 1 and restart_chk is None:
+                raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {_wd}")
+            extra_from = [restart_chk] if restart_chk else []
+
+            await self._submit_and_wait(
+                input_i,
+                output_i,
+                work_dir=_wd,
+                extra_from_objects=extra_from,
+            )
+            last_run = i
+
+            logger.info(f"  VMC production run {i}/{self.max_continuation} completed.")
+
+        # ── Collect outputs ───────────────────────────────────────
+        h5_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
+        output_logs = [
+            suffixed_name(self.output_file, j)
+            for j in range(last_run + 1)
+            if os.path.isfile(os.path.join(_wd, suffixed_name(self.output_file, j)))
+        ]
+        self.output_files = h5_files + output_logs
+
+        opt_files = sorted(glob.glob(os.path.join(_wd, "hamiltonian_data_opt_step_*.h5")))
+        if opt_files:
+            self.output_values["optimized_hamiltonian"] = os.path.basename(opt_files[-1])
+        restart_chk = self._find_restart_chk(_wd)
+        if restart_chk:
+            self.output_values["checkpoint"] = restart_chk
+        self.output_values["num_mcmc_steps"] = estimated_mcmc_steps
+
+        # Parse last production output for energy
+        last_output = os.path.join(_wd, suffixed_name(self.output_file, last_run))
+        self._parse_output(last_output)
+
+        self.status = "success"
+        return self.status, self.output_files, self.output_values
+
+    async def _launch_auto(self, _wd):
+        """Automatic mode: pilot + target_error convergence."""
         # ── Phase 0: pilot estimation (skip on continuation) ──────
         estimation = get_estimation(_wd)
 
@@ -471,6 +600,8 @@ class VMC_Workflow(Workflow):
                 estimated_mcmc_steps=estimated_mcmc_steps,
                 pilot_queue_label=self.pilot_queue_label,
                 walker_ratio=walker_ratio,
+                pilot_wall_sec=pilot_wall_sec,
+                net_pilot_sec=net_pilot_sec or 0,
             )
 
         # ── Production runs (phase 1..N) ──────────────────────────
@@ -514,6 +645,28 @@ class VMC_Workflow(Workflow):
             if i > 1 and restart_chk is None:
                 raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {_wd}")
             extra_from = [restart_chk] if restart_chk else []
+
+            # Estimate run time from the latest available output
+            _prod_cost = self.num_opt_steps * estimated_mcmc_steps
+            _ref_net = None
+            for _j in range(i - 1, 0, -1):
+                _ref_net = parse_net_time(os.path.join(_wd, suffixed_name(self.output_file, _j)))
+                if _ref_net and _ref_net > 0:
+                    # All production runs have the same step count
+                    logger.info(f"  est. Net run time (w/o JAX compilation) = {_format_duration(_ref_net)}")
+                    break
+            else:
+                # First production run: use pilot output
+                _pilot_out = os.path.join(_wd, "_pilot", suffixed_name(self.output_file, 0))
+                _ref_net = parse_net_time(_pilot_out)
+                if _ref_net and _ref_net > 0:
+                    _p_vmc = estimation.get("pilot_vmc_steps") or self.pilot_vmc_steps
+                    _p_mcmc = estimation.get("pilot_mcmc_steps") or self.pilot_mcmc_steps
+                    _pilot_cost = _p_vmc * _p_mcmc
+                    if _pilot_cost > 0:
+                        logger.info(
+                            f"  est. Net run time (w/o JAX compilation) = {_format_duration(_ref_net * _prod_cost / _pilot_cost)}"
+                        )
 
             await self._submit_and_wait(input_i, output_i, work_dir=_wd, extra_from_objects=extra_from)
             last_run = i
@@ -567,7 +720,10 @@ class VMC_Workflow(Workflow):
                     f"after {self.max_continuation} continuation run(s)."
                 )
         else:
-            logger.warning("  Could not parse signal-to-noise from any production output. Assuming success.")
+            msg = "Could not parse signal-to-noise from any production output."
+            logger.error(msg)
+            self.status = "failed"
+            raise RuntimeError(msg)
 
         self.status = "success"
         return self.status, self.output_files, self.output_values

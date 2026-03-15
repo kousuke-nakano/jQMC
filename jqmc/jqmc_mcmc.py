@@ -251,50 +251,88 @@ class MCMC:
         self.__accepted_moves = 0
         self.__rejected_moves = 0
 
+        # Compute dimensions for pre-shaped empty arrays
+        nw = self.__num_walkers
+        n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+        n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+        n_atoms = self.__hamiltonian_data.structure_data.natom
+
         # stored weight (w_L)
-        self.__stored_w_L = []
+        self.__stored_w_L = np.zeros((0, nw))
 
         # stored local energy (e_L)
-        self.__stored_e_L = []
+        self.__stored_e_L = np.zeros((0, nw))
 
         # stored local energy (e_L2)
-        self.__stored_e_L2 = []
+        self.__stored_e_L2 = np.zeros((0, nw))
 
         # stored de_L / dR
-        self.__stored_grad_e_L_dR = []
+        self.__stored_grad_e_L_dR = np.zeros((0, nw, n_atoms, 3))
 
         # stored de_L / dr_up
-        self.__stored_grad_e_L_r_up = []
+        self.__stored_grad_e_L_r_up = np.zeros((0, nw, n_up, 3))
 
         # stored de_L / dr_dn
-        self.__stored_grad_e_L_r_dn = []
+        self.__stored_grad_e_L_r_dn = np.zeros((0, nw, n_dn, 3))
 
         # stored dln_Psi / dr_up
-        self.__stored_grad_ln_Psi_r_up = []
+        self.__stored_grad_ln_Psi_r_up = np.zeros((0, nw, n_up, 3))
 
         # stored dln_Psi / dr_dn
-        self.__stored_grad_ln_Psi_r_dn = []
+        self.__stored_grad_ln_Psi_r_dn = np.zeros((0, nw, n_dn, 3))
 
         # stored dln_Psi / dR
-        self.__stored_grad_ln_Psi_dR = []
+        self.__stored_grad_ln_Psi_dR = np.zeros((0, nw, n_atoms, 3))
 
         # stored Omega_up (SWCT)
-        self.__stored_omega_up = []
+        self.__stored_omega_up = np.zeros((0, nw, n_atoms, n_up))
 
         # stored Omega_dn (SWCT)
-        self.__stored_omega_dn = []
+        self.__stored_omega_dn = np.zeros((0, nw, n_atoms, n_dn))
 
         # stored sum_i d omega/d r_i for up spins (SWCT)
-        self.__stored_grad_omega_r_up = []
+        self.__stored_grad_omega_r_up = np.zeros((0, nw, n_atoms, 3))
 
         # stored sum_i d omega/d r_i for dn spins (SWCT)
-        self.__stored_grad_omega_r_dn = []
+        self.__stored_grad_omega_r_dn = np.zeros((0, nw, n_atoms, 3))
 
         # stored parameter gradients keyed by block name
         self.__stored_log_WF_param_grads: dict[str, list] = defaultdict(list)
 
         # stored local energy parameter gradients keyed by block name (de_L / dc)
         self.__stored_e_L_param_grads: dict[str, list] = defaultdict(list)
+
+    def __validate_stored_shapes(self) -> None:
+        """Assert that all stored observable arrays have consistent shapes."""
+        ns = self.__mcmc_counter  # expected number of stored steps
+        nw = self.__num_walkers
+        n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+        n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+        n_atoms = self.__hamiltonian_data.structure_data.natom
+
+        expected = {
+            "e_L": ((ns, nw), self.__stored_e_L),
+            "e_L2": ((ns, nw), self.__stored_e_L2),
+            "w_L": ((ns, nw), self.__stored_w_L),
+        }
+        if self.__comput_position_deriv:
+            expected.update(
+                {
+                    "grad_e_L_r_up": ((ns, nw, n_up, 3), self.__stored_grad_e_L_r_up),
+                    "grad_e_L_r_dn": ((ns, nw, n_dn, 3), self.__stored_grad_e_L_r_dn),
+                    "grad_e_L_dR": ((ns, nw, n_atoms, 3), self.__stored_grad_e_L_dR),
+                    "grad_ln_Psi_r_up": ((ns, nw, n_up, 3), self.__stored_grad_ln_Psi_r_up),
+                    "grad_ln_Psi_r_dn": ((ns, nw, n_dn, 3), self.__stored_grad_ln_Psi_r_dn),
+                    "grad_ln_Psi_dR": ((ns, nw, n_atoms, 3), self.__stored_grad_ln_Psi_dR),
+                    "omega_up": ((ns, nw, n_atoms, n_up), self.__stored_omega_up),
+                    "omega_dn": ((ns, nw, n_atoms, n_dn), self.__stored_omega_dn),
+                    "grad_omega_r_up": ((ns, nw, n_atoms, 3), self.__stored_grad_omega_r_up),
+                    "grad_omega_r_dn": ((ns, nw, n_atoms, 3), self.__stored_grad_omega_r_dn),
+                }
+            )
+
+        for name, (shape, arr) in expected.items():
+            assert arr.shape == shape, f"stored shape mismatch: {name}.shape={arr.shape}, expected={shape}"
 
     @staticmethod
     def __default_param_grad_flags() -> dict[str, bool]:
@@ -1081,6 +1119,37 @@ class MCMC:
 
         # adjust_epsilon_AS = self.__adjust_epsilon_AS
 
+        # -- Extend stored arrays with zero-padding for new steps --
+        nw = self.__num_walkers
+        n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+        n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+        n_atoms = self.__hamiltonian_data.structure_data.natom
+
+        self.__stored_e_L = np.concatenate([self.__stored_e_L, np.zeros((num_mcmc_steps, nw))])
+        self.__stored_e_L2 = np.concatenate([self.__stored_e_L2, np.zeros((num_mcmc_steps, nw))])
+        self.__stored_w_L = np.concatenate([self.__stored_w_L, np.zeros((num_mcmc_steps, nw))])
+        if self.__comput_position_deriv:
+            self.__stored_grad_e_L_r_up = np.concatenate([self.__stored_grad_e_L_r_up, np.zeros((num_mcmc_steps, nw, n_up, 3))])
+            self.__stored_grad_e_L_r_dn = np.concatenate([self.__stored_grad_e_L_r_dn, np.zeros((num_mcmc_steps, nw, n_dn, 3))])
+            self.__stored_grad_e_L_dR = np.concatenate([self.__stored_grad_e_L_dR, np.zeros((num_mcmc_steps, nw, n_atoms, 3))])
+            self.__stored_grad_ln_Psi_r_up = np.concatenate(
+                [self.__stored_grad_ln_Psi_r_up, np.zeros((num_mcmc_steps, nw, n_up, 3))]
+            )
+            self.__stored_grad_ln_Psi_r_dn = np.concatenate(
+                [self.__stored_grad_ln_Psi_r_dn, np.zeros((num_mcmc_steps, nw, n_dn, 3))]
+            )
+            self.__stored_grad_ln_Psi_dR = np.concatenate(
+                [self.__stored_grad_ln_Psi_dR, np.zeros((num_mcmc_steps, nw, n_atoms, 3))]
+            )
+            self.__stored_omega_up = np.concatenate([self.__stored_omega_up, np.zeros((num_mcmc_steps, nw, n_atoms, n_up))])
+            self.__stored_omega_dn = np.concatenate([self.__stored_omega_dn, np.zeros((num_mcmc_steps, nw, n_atoms, n_dn))])
+            self.__stored_grad_omega_r_up = np.concatenate(
+                [self.__stored_grad_omega_r_up, np.zeros((num_mcmc_steps, nw, n_atoms, 3))]
+            )
+            self.__stored_grad_omega_r_dn = np.concatenate(
+                [self.__stored_grad_omega_r_dn, np.zeros((num_mcmc_steps, nw, n_atoms, 3))]
+            )
+
         geminal, geminal_inv, _, _ = _geminal_inv_batched(
             self.__hamiltonian_data.wavefunction_data.geminal_data,
             self.__latest_r_up_carts,
@@ -1162,15 +1231,15 @@ class MCMC:
             end = time.perf_counter()
             timer_e_L += end - start
 
-            self.__stored_e_L.append(np.array(e_L_step))
-            self.__stored_e_L2.append(np.array(e_L_step**2))
+            self.__stored_e_L[self.__mcmc_counter + num_mcmc_done] = np.array(e_L_step)
+            self.__stored_e_L2[self.__mcmc_counter + num_mcmc_done] = np.array(e_L_step**2)
 
             # AS weights
             R_AS_step = _jit_vmap_as_reg_fast(geminal, geminal_inv)
             R_AS_eps_step = jnp.maximum(R_AS_step, self.__epsilon_AS)
             w_L_step = (R_AS_step / R_AS_eps_step) ** 2
 
-            self.__stored_w_L.append(np.array(w_L_step))
+            self.__stored_w_L[self.__mcmc_counter + num_mcmc_done] = np.array(w_L_step)
 
             if self.__comput_position_deriv:
                 start = time.perf_counter()
@@ -1202,10 +1271,10 @@ class MCMC:
                 end = time.perf_counter()
                 timer_de_L_dR_dr += end - start
 
-                self.__stored_grad_e_L_r_up.append(np.array(grad_e_L_r_up_step))
-                self.__stored_grad_e_L_r_dn.append(np.array(grad_e_L_r_dn_step))
+                self.__stored_grad_e_L_r_up[self.__mcmc_counter + num_mcmc_done] = np.array(grad_e_L_r_up_step)
+                self.__stored_grad_e_L_r_dn[self.__mcmc_counter + num_mcmc_done] = np.array(grad_e_L_r_dn_step)
                 grad_e_L_R = self.__hamiltonian_data.accumulate_position_grad(grad_e_L_h_step)
-                self.__stored_grad_e_L_dR.append(np.array(grad_e_L_R))
+                self.__stored_grad_e_L_dR[self.__mcmc_counter + num_mcmc_done] = np.array(grad_e_L_R)
 
                 start = time.perf_counter()
                 logger.devel("    Evaluating dln_Psi/dR and dln_Psi/dr ...")
@@ -1219,10 +1288,10 @@ class MCMC:
                 end = time.perf_counter()
                 timer_dln_Psi_dR_dr += end - start
 
-                self.__stored_grad_ln_Psi_r_up.append(np.array(grad_ln_Psi_r_up_step))
-                self.__stored_grad_ln_Psi_r_dn.append(np.array(grad_ln_Psi_r_dn_step))
+                self.__stored_grad_ln_Psi_r_up[self.__mcmc_counter + num_mcmc_done] = np.array(grad_ln_Psi_r_up_step)
+                self.__stored_grad_ln_Psi_r_dn[self.__mcmc_counter + num_mcmc_done] = np.array(grad_ln_Psi_r_dn_step)
                 grad_ln_Psi_dR = self.__hamiltonian_data.wavefunction_data.accumulate_position_grad(grad_ln_Psi_h_step)
-                self.__stored_grad_ln_Psi_dR.append(np.array(grad_ln_Psi_dR))
+                self.__stored_grad_ln_Psi_dR[self.__mcmc_counter + num_mcmc_done] = np.array(grad_ln_Psi_dR)
 
                 omega_up_step = _jit_vmap_swct_omega(
                     self.__hamiltonian_data.structure_data,
@@ -1241,10 +1310,10 @@ class MCMC:
                     self.__latest_r_dn_carts,
                 )
 
-                self.__stored_omega_up.append(np.array(omega_up_step))
-                self.__stored_omega_dn.append(np.array(omega_dn_step))
-                self.__stored_grad_omega_r_up.append(np.array(grad_omega_dr_up_step))
-                self.__stored_grad_omega_r_dn.append(np.array(grad_omega_dr_dn_step))
+                self.__stored_omega_up[self.__mcmc_counter + num_mcmc_done] = np.array(omega_up_step)
+                self.__stored_omega_dn[self.__mcmc_counter + num_mcmc_done] = np.array(omega_dn_step)
+                self.__stored_grad_omega_r_up[self.__mcmc_counter + num_mcmc_done] = np.array(grad_omega_dr_up_step)
+                self.__stored_grad_omega_r_dn[self.__mcmc_counter + num_mcmc_done] = np.array(grad_omega_dr_dn_step)
 
             if self.__comput_log_WF_param_deriv:
                 start = time.perf_counter()
@@ -1358,6 +1427,25 @@ class MCMC:
         # count up the mcmc counter
         # count up mcmc_counter
         self.__mcmc_counter += num_mcmc_done
+
+        # -- Truncate stored arrays to actual number of steps completed --
+        self.__stored_e_L = self.__stored_e_L[: self.__mcmc_counter]
+        self.__stored_e_L2 = self.__stored_e_L2[: self.__mcmc_counter]
+        self.__stored_w_L = self.__stored_w_L[: self.__mcmc_counter]
+        if self.__comput_position_deriv:
+            self.__stored_grad_e_L_r_up = self.__stored_grad_e_L_r_up[: self.__mcmc_counter]
+            self.__stored_grad_e_L_r_dn = self.__stored_grad_e_L_r_dn[: self.__mcmc_counter]
+            self.__stored_grad_e_L_dR = self.__stored_grad_e_L_dR[: self.__mcmc_counter]
+            self.__stored_grad_ln_Psi_r_up = self.__stored_grad_ln_Psi_r_up[: self.__mcmc_counter]
+            self.__stored_grad_ln_Psi_r_dn = self.__stored_grad_ln_Psi_r_dn[: self.__mcmc_counter]
+            self.__stored_grad_ln_Psi_dR = self.__stored_grad_ln_Psi_dR[: self.__mcmc_counter]
+            self.__stored_omega_up = self.__stored_omega_up[: self.__mcmc_counter]
+            self.__stored_omega_dn = self.__stored_omega_dn[: self.__mcmc_counter]
+            self.__stored_grad_omega_r_up = self.__stored_grad_omega_r_up[: self.__mcmc_counter]
+            self.__stored_grad_omega_r_dn = self.__stored_grad_omega_r_dn[: self.__mcmc_counter]
+
+        # test the shapes of stored arrays are consistent with the number of MCMC steps done and the number of walkers
+        self.__validate_stored_shapes()
 
         mcmc_total_end = time.perf_counter()
         timer_mcmc_total += mcmc_total_end - mcmc_total_start
@@ -2310,8 +2398,10 @@ class MCMC:
                      \\sqrt{(H_2 - H_0 S_2)^2 + 4 H_1^2 S_2}}
                     {-2 H_1 S_2}.
 
-        The positive root is returned; if neither root is positive a warning is
-        logged and the root with larger absolute value is returned.
+        The root with the smaller absolute value is returned.  This avoids
+        spuriously large steps when the quadratic coefficient
+        :math:`a = -H_1 S_2` is small (e.g. sparse ``num_param_opt`` mask),
+        which causes one root to diverge while the other stays near zero.
 
         Args:
             H_0 (float): Current energy :math:`E_{\\alpha}`.
@@ -2334,24 +2424,16 @@ class MCMC:
 
         logger.info(f"aSR: gamma+ = {gamma_plus:.6f}, gamma- = {gamma_minus:.6f}")
 
-        # Choose the positive root.
-        if gamma_plus > 0.0 and gamma_minus <= 0.0:
+        # Choose the root with the smaller absolute value (conservative step).
+        if abs(gamma_plus) <= abs(gamma_minus):
             gamma = gamma_plus
-        elif gamma_minus > 0.0 and gamma_plus <= 0.0:
-            gamma = gamma_minus
-        elif gamma_plus > 0.0 and gamma_minus > 0.0:
-            # Both positive: prefer the smaller one (conservative step).
-            gamma = min(gamma_plus, gamma_minus)
-            logger.warning(
-                f"aSR: both roots positive (gamma+={gamma_plus:.6f}, gamma-={gamma_minus:.6f}); "
-                f"using smaller root gamma={gamma:.6f}."
-            )
         else:
-            # Neither positive: fall back to the root with larger absolute value.
-            gamma = gamma_plus if abs(gamma_plus) >= abs(gamma_minus) else gamma_minus
-            logger.warning(
-                f"aSR: no positive root (gamma+={gamma_plus:.6f}, gamma-={gamma_minus:.6f}); using gamma={gamma:.6f}."
-            )
+            gamma = gamma_minus
+
+        if gamma > 0.0:
+            logger.debug("aSR: steepest-descent direction (gamma > 0).")
+        else:
+            logger.debug("aSR: anti-steepest-descent direction (gamma < 0).")
 
         logger.info(f"aSR: selected gamma = {gamma:.6f}")
         return gamma
@@ -2873,8 +2955,8 @@ class MCMC:
                 # Retrieve local data (samples assigned to this rank)
                 w_L_local = self.w_L[num_mcmc_warmup_steps:]  # shape: (num_mcmc, num_walker)
                 e_L_local = self.e_L[num_mcmc_warmup_steps:]  # shape: (num_mcmc, num_walker)
-                w_L_local = list(np.ravel(w_L_local))  # shape: (num_mcmc * num_walker, )s
-                e_L_local = list(np.ravel(e_L_local))  # shape: (num_mcmc * num_walker, )
+                w_L_local = np.ravel(w_L_local)  # shape: (num_mcmc * num_walker, )
+                e_L_local = np.ravel(e_L_local)  # shape: (num_mcmc * num_walker, )
                 O_matrix_local = self.get_dln_WF(
                     num_mcmc_warmup_steps=num_mcmc_warmup_steps,
                     chosen_param_index=chosen_param_index,
@@ -2886,20 +2968,12 @@ class MCMC:
                     O_matrix_local.shape[0] * O_matrix_local.shape[1],
                     O_matrix_local.shape[2],
                 )
-                O_matrix_local = list(O_matrix_local.reshape(O_matrix_local_shape))  # shape: (num_mcmc * num_walker, num_param)
+                O_matrix_local = O_matrix_local.reshape(O_matrix_local_shape)  # shape: (num_mcmc * num_walker, num_param)
 
                 # Compute local partial sums
-                local_Ow = list(
-                    np.einsum("i,ij->j", w_L_local, O_matrix_local)
-                )  # weighted sum for observables, shape: (num_param,)
+                local_Ow = np.einsum("i,ij->j", w_L_local, O_matrix_local)  # weighted sum for observables, shape: (num_param,)
                 local_Ew = np.dot(w_L_local, e_L_local)  # weighted sum of energies, shape: scalar
                 local_weight_sum = np.sum(w_L_local)  # scalar: sum of weights, shape: scalar
-
-                w_L_local = np.array(w_L_local)
-                e_L_local = np.array(e_L_local)
-                local_Ow = np.array(local_Ow)
-                local_Ew = np.array(local_Ew)
-                local_weight_sum = np.array(local_weight_sum)
 
                 # Aggregate across all ranks
                 total_weight = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)  # total sum of weights, shape: scalar
@@ -3171,10 +3245,12 @@ class MCMC:
                             X_T_X = None
                         mpi_comm.Reduce(X_T_X_local, X_T_X, op=MPI.SUM, root=0)
                         # compute local sum of X @ F
-                        F_local_list = list(F_local)
-                        F_list = mpi_comm.reduce(F_local_list, op=MPI.SUM, root=0)
                         if mpi_rank == 0:
-                            F = np.array(F_list)
+                            F = np.empty(F_local.shape, dtype=np.float64)
+                        else:
+                            F = None
+                        mpi_comm.Reduce(F_local, F, op=MPI.SUM, root=0)
+                        if mpi_rank == 0:
                             logger.devel(f"X_T_X.shape = {X_T_X.shape}.")
                             logger.devel(f"F.shape = {F.shape}.")
                             X_T_X[np.diag_indices_from(X_T_X)] += epsilon
@@ -3215,9 +3291,8 @@ class MCMC:
                             return XTXv_global + epsilon * v
 
                         # Solve (X^T X + εI)^(-1) @ F
-                        F_local_list = list(F_local)
-                        F_list = mpi_comm.allreduce(F_local_list, op=MPI.SUM)
-                        F_total = np.asarray(F_list, dtype=np.float64)
+                        F_total = np.empty(F_local.shape, dtype=np.float64)
+                        mpi_comm.Allreduce(F_local, F_total, op=MPI.SUM)
                         if sr_cg_warm_start_dual is not None and sr_cg_warm_start_dual.shape == F_total.shape:
                             x0 = sr_cg_warm_start_dual
                         else:
@@ -3343,32 +3418,6 @@ class MCMC:
                             )
                             break
 
-                # aSR gamma scaling: compute the optimal gamma using the FULL natural
-                # gradient theta_all BEFORE the num_param_opt mask is applied.
-                # The aSR formula (S_2 = g^T S g = g^T f = -2 H_1) is only valid when
-                # g = S^{-1} f (the full natural gradient).  Passing a sparse masked
-                # theta violates that identity and produces a wrong gamma, so we must
-                # scale theta_all here and let the masking step below reduce it.
-                #
-                # IMPORTANT: This must happen BEFORE the back-transform to AO basis.
-                # get_aH calls get_dln_WF(lambda_projectors=...) which returns
-                # O_matrix in the orthogonal basis.  theta_all (= g) must also be
-                # in the orthogonal basis for the dot products g^T f, g^T S g, etc.
-                # to be consistent.  After gamma scaling, we then back-transform.
-                if use_sr_adaptive_lr:
-                    logger.info("aSR: computing optimal gamma via accelerated SR.")
-                    H_0, H_1, H_2, S_2 = self.get_aH(
-                        g=theta_all,
-                        blocks=blocks,
-                        num_mcmc_warmup_steps=num_mcmc_warmup_steps,
-                        chosen_param_index=chosen_param_index,
-                        lambda_projectors=lambda_projectors,
-                        num_orb_projection=num_orb_projection,
-                    )
-                    gamma = self.compute_asr_gamma(H_0, H_1, H_2, S_2)
-                    logger.info(f"aSR: scaling theta_all by gamma = {gamma:.6f}.")
-                    theta_all = theta_all * gamma
-
             #############################
             # optax optimizer
             #############################
@@ -3398,6 +3447,34 @@ class MCMC:
             # ------------------------------------------------------------------
             theta = np.zeros_like(theta_all)
             theta[signal_to_noise_f_max_indices] = theta_all[signal_to_noise_f_max_indices]
+
+            # ------------------------------------------------------------------
+            # 1.5) aSR gamma scaling.  Must happen AFTER the num_param_opt
+            #    mask and BEFORE the back-transform to AO basis.
+            #
+            #    The energy model  E(γ) = (H0 + 2γH1 + γ²H2) / (1 + γ²S2)
+            #    is valid for any direction g; H1, H2, S2 are computed from
+            #    samples (S2 = <w (g^T δO)²>, not the g^T f shortcut).
+            #    gamma must be optimised for the *actual* step direction
+            #    that will be applied (the masked theta), not for the full
+            #    natural gradient.  Computing gamma with the full theta_all
+            #    and then applying only a subset of components produces a
+            #    step size that is too large for the masked direction,
+            #    causing energy increase when num_param_opt > 0.
+            # ------------------------------------------------------------------
+            if use_sr_adaptive_lr:
+                logger.info("aSR: computing optimal gamma via accelerated SR.")
+                H_0, H_1, H_2, S_2 = self.get_aH(
+                    g=theta,
+                    blocks=blocks,
+                    num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+                    chosen_param_index=chosen_param_index,
+                    lambda_projectors=lambda_projectors,
+                    num_orb_projection=num_orb_projection,
+                )
+                gamma = self.compute_asr_gamma(H_0, H_1, H_2, S_2)
+                logger.info(f"aSR: scaling theta by gamma = {gamma:.6f}.")
+                theta = theta * gamma
 
             # ------------------------------------------------------------------
             # 2) Back-transform theta from orthogonal basis to AO basis
@@ -3730,7 +3807,7 @@ class MCMC:
             "grad_omega_r_dn": self.__stored_grad_omega_r_dn,
         }
         for key, val in _obs_map.items():
-            arr = np.asarray(val) if len(val) > 0 else np.empty(0)
+            arr = np.asarray(val) if val.size > 0 else np.empty(0)
             observables[key] = arr
 
         # dict-keyed parameter gradients
@@ -3839,26 +3916,32 @@ class MCMC:
         tot_dn = hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
         obj._MCMC__only_up_electron = tot_dn == 0
 
-        # -- Observables --
+        # -- Observables (keep __init_attributes defaults for missing/empty data) --
+        def _load_obs(obs_arr, default):
+            """Return loaded ndarray if non-empty, otherwise keep the shaped default."""
+            if obs_arr is None or (isinstance(obs_arr, np.ndarray) and obs_arr.size == 0):
+                return default
+            return np.asarray(obs_arr)
+
         def _to_list(arr):
-            """Convert ndarray back to list-of-arrays (one per MCMC step)."""
+            """Convert ndarray back to list-of-arrays (for dict-keyed param grads)."""
             if arr is None or (isinstance(arr, np.ndarray) and arr.size == 0):
                 return []
             return [arr[i] for i in range(arr.shape[0])]
 
-        obj._MCMC__stored_e_L = _to_list(obs.get("e_L"))
-        obj._MCMC__stored_e_L2 = _to_list(obs.get("e_L2"))
-        obj._MCMC__stored_w_L = _to_list(obs.get("w_L"))
-        obj._MCMC__stored_grad_e_L_dR = _to_list(obs.get("grad_e_L_dR"))
-        obj._MCMC__stored_grad_e_L_r_up = _to_list(obs.get("grad_e_L_r_up"))
-        obj._MCMC__stored_grad_e_L_r_dn = _to_list(obs.get("grad_e_L_r_dn"))
-        obj._MCMC__stored_grad_ln_Psi_r_up = _to_list(obs.get("grad_ln_Psi_r_up"))
-        obj._MCMC__stored_grad_ln_Psi_r_dn = _to_list(obs.get("grad_ln_Psi_r_dn"))
-        obj._MCMC__stored_grad_ln_Psi_dR = _to_list(obs.get("grad_ln_Psi_dR"))
-        obj._MCMC__stored_omega_up = _to_list(obs.get("omega_up"))
-        obj._MCMC__stored_omega_dn = _to_list(obs.get("omega_dn"))
-        obj._MCMC__stored_grad_omega_r_up = _to_list(obs.get("grad_omega_r_up"))
-        obj._MCMC__stored_grad_omega_r_dn = _to_list(obs.get("grad_omega_r_dn"))
+        obj._MCMC__stored_e_L = _load_obs(obs.get("e_L"), obj._MCMC__stored_e_L)
+        obj._MCMC__stored_e_L2 = _load_obs(obs.get("e_L2"), obj._MCMC__stored_e_L2)
+        obj._MCMC__stored_w_L = _load_obs(obs.get("w_L"), obj._MCMC__stored_w_L)
+        obj._MCMC__stored_grad_e_L_dR = _load_obs(obs.get("grad_e_L_dR"), obj._MCMC__stored_grad_e_L_dR)
+        obj._MCMC__stored_grad_e_L_r_up = _load_obs(obs.get("grad_e_L_r_up"), obj._MCMC__stored_grad_e_L_r_up)
+        obj._MCMC__stored_grad_e_L_r_dn = _load_obs(obs.get("grad_e_L_r_dn"), obj._MCMC__stored_grad_e_L_r_dn)
+        obj._MCMC__stored_grad_ln_Psi_r_up = _load_obs(obs.get("grad_ln_Psi_r_up"), obj._MCMC__stored_grad_ln_Psi_r_up)
+        obj._MCMC__stored_grad_ln_Psi_r_dn = _load_obs(obs.get("grad_ln_Psi_r_dn"), obj._MCMC__stored_grad_ln_Psi_r_dn)
+        obj._MCMC__stored_grad_ln_Psi_dR = _load_obs(obs.get("grad_ln_Psi_dR"), obj._MCMC__stored_grad_ln_Psi_dR)
+        obj._MCMC__stored_omega_up = _load_obs(obs.get("omega_up"), obj._MCMC__stored_omega_up)
+        obj._MCMC__stored_omega_dn = _load_obs(obs.get("omega_dn"), obj._MCMC__stored_omega_dn)
+        obj._MCMC__stored_grad_omega_r_up = _load_obs(obs.get("grad_omega_r_up"), obj._MCMC__stored_grad_omega_r_up)
+        obj._MCMC__stored_grad_omega_r_dn = _load_obs(obs.get("grad_omega_r_dn"), obj._MCMC__stored_grad_omega_r_dn)
 
         # dict-keyed parameter gradients
         pg = obs.get("param_grads", {})
@@ -3925,79 +4008,79 @@ class MCMC:
     def w_L(self) -> npt.NDArray:
         """Return the stored weight array. dim: (mcmc_counter, num_walkers)."""
         # self.__stored_w_L = np.ones((self.mcmc_counter, self.num_walkers))  # tentative
-        return np.array(self.__stored_w_L)
+        return np.asarray(self.__stored_w_L)
 
     # observables
     @property
     def e_L(self) -> npt.NDArray:
         """Return the stored e_L array. dim: (mcmc_counter, num_walkers)."""
-        return np.array(self.__stored_e_L)
+        return np.asarray(self.__stored_e_L)
 
     # observables
     @property
     def e_L2(self) -> npt.NDArray:
         """Return the stored e_L^2 array. dim: (mcmc_counter, num_walkers)."""
-        return np.array(self.__stored_e_L2)
+        return np.asarray(self.__stored_e_L2)
 
     @property
     def de_L_dR(self) -> npt.NDArray:
         """Return the stored de_L/dR array. dim: (mcmc_counter, num_walkers)."""
-        return np.array(self.__stored_grad_e_L_dR)
+        return np.asarray(self.__stored_grad_e_L_dR)
 
     @property
     def de_L_dr_up(self) -> npt.NDArray:
         """Return the stored de_L/dr_up array. dim: (mcmc_counter, num_walkers, num_electrons_up, 3)."""
-        return np.array(self.__stored_grad_e_L_r_up)
+        return np.asarray(self.__stored_grad_e_L_r_up)
 
     @property
     def de_L_dr_dn(self) -> npt.NDArray:
         """Return the stored de_L/dr_dn array. dim: (mcmc_counter, num_walkers, num_electrons_dn, 3)."""
-        return np.array(self.__stored_grad_e_L_r_dn)
+        return np.asarray(self.__stored_grad_e_L_r_dn)
 
     @property
     def dln_Psi_dr_up(self) -> npt.NDArray:
         """Return the stored dln_Psi/dr_up array. dim: (mcmc_counter, num_walkers, num_electrons_up, 3)."""
-        return np.array(self.__stored_grad_ln_Psi_r_up)
+        return np.asarray(self.__stored_grad_ln_Psi_r_up)
 
     @property
     def dln_Psi_dr_dn(self) -> npt.NDArray:
         """Return the stored dln_Psi/dr_down array. dim: (mcmc_counter, num_walkers, num_electrons_dn, 3)."""
-        return np.array(self.__stored_grad_ln_Psi_r_dn)
+        return np.asarray(self.__stored_grad_ln_Psi_r_dn)
 
     @property
     def dln_Psi_dR(self) -> npt.NDArray:
         """Return the stored dln_Psi/dR array. dim: (mcmc_counter, num_walkers, num_atoms, 3)."""
-        return np.array(self.__stored_grad_ln_Psi_dR)
+        return np.asarray(self.__stored_grad_ln_Psi_dR)
 
     @property
     def omega_up(self) -> npt.NDArray:
         """Return the stored Omega (for up electrons) array. dim: (mcmc_counter, num_walkers, num_atoms, num_electrons_up)."""
-        return np.array(self.__stored_omega_up)
+        return np.asarray(self.__stored_omega_up)
 
     @property
     def omega_dn(self) -> npt.NDArray:
         """Return the stored Omega (for down electrons) array. dim: (mcmc_counter, num_walkers, num_atoms, num_electons_dn)."""
-        return np.array(self.__stored_omega_dn)
+        return np.asarray(self.__stored_omega_dn)
 
     @property
     def domega_dr_up(self) -> npt.NDArray:
         """Return the stored dOmega/dr_up array. dim: (mcmc_counter, num_walkers, num_electons_dn, 3)."""
-        return np.array(self.__stored_grad_omega_r_up)
+        return np.asarray(self.__stored_grad_omega_r_up)
 
     @property
     def domega_dr_dn(self) -> npt.NDArray:
         """Return the stored dOmega/dr_dn array. dim: (mcmc_counter, num_walkers, num_electons_dn, 3)."""
-        return np.array(self.__stored_grad_omega_r_dn)
+        return np.asarray(self.__stored_grad_omega_r_dn)
 
     @property
     def dln_Psi_dc(self) -> dict[str, npt.NDArray]:
         """Return stored parameter gradients (d ln Psi / dc) keyed by block name."""
-        return {name: np.array(values) for name, values in self.__stored_log_WF_param_grads.items()}
+        return {name: np.asarray(values) for name, values in self.__stored_log_WF_param_grads.items()}
 
     @property
     def de_L_dc(self) -> dict[str, npt.NDArray]:
         """Return stored local energy parameter gradients (de_L / dc) keyed by block name."""
-        return {name: np.array(values) for name, values in self.__stored_e_L_param_grads.items()}
+        return {name: np.asarray(values) for name, values in self.__stored_e_L_param_grads.items()}
 
     @property
     def comput_position_deriv(self) -> bool:

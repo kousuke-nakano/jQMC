@@ -81,22 +81,22 @@ via `pilot_queue_label` (defaults to `queue_label`).
 #### LRDMC
 
 LRDMC has an additional calibration stage to automatically determine
-`num_mcmc_per_measurement` (GFMC projections per measurement) from
+`num_projection_per_measurement` (GFMC projections per measurement) from
 a `target_survived_walkers_ratio` (default 0.97):
 
 1. **Calibration** (`_pilot_a/_pilot1` – `_pilot_a/_pilot3`, parallel) —
    Three short LRDMC runs with
-   `num_mcmc_per_measurement = Ne × k × (0.3/alat)²` (k=2,4,6;
+   `num_projection_per_measurement = Ne × k × (0.3/alat)²` (k=2,4,6;
    $N_e$ is the total electron count).  A quadratic is fit to the
    observed survived-walkers ratio and the optimal
-   `num_mcmc_per_measurement` is determined.
+   `num_projection_per_measurement` is determined.
 2. **Error-bar pilot** (`_pilot_b`) — A run with the calibrated
-   `num_mcmc_per_measurement`; its error bar estimates the production
+   `num_projection_per_measurement`; its error bar estimates the production
    step count.
 3. **Production** (`_1`, `_2`, …) — Start from scratch, accumulate
    statistics until `target_error` is achieved.
 
-If `num_mcmc_per_measurement` is given explicitly, the calibration
+If `num_projection_per_measurement` is given explicitly, the calibration
 stage is skipped and only the error-bar pilot is executed.
 
 For `LRDMC_Ext_Workflow` (multi-alat extrapolation), every alat value
@@ -443,7 +443,7 @@ In this example, `mcmc-prod` and `lrdmc-ext` depend on `vmc` (via
 `FileFrom`).  Additionally, `lrdmc-ext` depends on `mcmc-prod` (via
 `ValueFrom` for `E_scf`), so the DAG becomes
 VMC → MCMC → LRDMC-ext.  The `target_survived_walkers_ratio`
-triggers automatic calibration of `num_mcmc_per_measurement`
+triggers automatic calibration of `num_projection_per_measurement`
 independently at each lattice spacing.  All alat values run their
 calibration, error-bar pilot, and production phases in parallel.
 

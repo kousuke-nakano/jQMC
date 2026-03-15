@@ -253,9 +253,11 @@ def parse_net_time(output_file: str) -> float | None:
         logger.debug(f"parse_net_time: cannot read {output_file}: {exc}")
         return None
 
-    # Try LRDMC pattern first, then MCMC/VMC
+    # Try LRDMC pattern first, then MCMC/VMC.
+    # Use findall + sum so that VMC outputs (which print the line
+    # once per optimization step) return the *total* net time.
     for pat in (_RE_NET_GFMC, _RE_NET_MCMC):
-        m = pat.search(text)
-        if m:
-            return float(m.group(1))
+        matches = pat.findall(text)
+        if matches:
+            return sum(float(v) for v in matches)
     return None

@@ -299,47 +299,83 @@ class GFMC_t:
         self.__num_survived_walkers = 0
         self.__num_killed_walkers = 0
 
-        # stored local energy (w_L)
-        self.__stored_w_L = []
+        # Compute dimensions for pre-shaped empty arrays
+        n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+        n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+        n_atoms = self.__hamiltonian_data.structure_data.natom
+
+        # stored weight (w_L)
+        self.__stored_w_L = np.zeros((0, 1))
 
         # stored local energy (e_L)
-        self.__stored_e_L = []
+        self.__stored_e_L = np.zeros((0, 1))
 
-        # stored local energy (e_L)
-        self.__stored_e_L2 = []
+        # stored local energy (e_L2)
+        self.__stored_e_L2 = np.zeros((0, 1))
 
         # average projection counter
-        self.__stored_average_projection_counter = []
+        self.__stored_average_projection_counter = np.zeros((0,))
 
         # stored de_L / dR
-        self.__stored_grad_e_L_dR = []
+        self.__stored_grad_e_L_dR = np.zeros((0, 1, n_atoms, 3))
 
         # stored de_L / dr_up
-        self.__stored_grad_e_L_r_up = []
+        self.__stored_grad_e_L_r_up = np.zeros((0, 1, n_up, 3))
 
         # stored de_L / dr_dn
-        self.__stored_grad_e_L_r_dn = []
+        self.__stored_grad_e_L_r_dn = np.zeros((0, 1, n_dn, 3))
 
         # stored dln_Psi / dr_up
-        self.__stored_grad_ln_Psi_r_up = []
+        self.__stored_grad_ln_Psi_r_up = np.zeros((0, 1, n_up, 3))
 
         # stored dln_Psi / dr_dn
-        self.__stored_grad_ln_Psi_r_dn = []
+        self.__stored_grad_ln_Psi_r_dn = np.zeros((0, 1, n_dn, 3))
 
         # stored dln_Psi / dR
-        self.__stored_grad_ln_Psi_dR = []
+        self.__stored_grad_ln_Psi_dR = np.zeros((0, 1, n_atoms, 3))
 
         # stored Omega_up (SWCT)
-        self.__stored_omega_up = []
+        self.__stored_omega_up = np.zeros((0, 1, n_atoms, n_up))
 
         # stored Omega_dn (SWCT)
-        self.__stored_omega_dn = []
+        self.__stored_omega_dn = np.zeros((0, 1, n_atoms, n_dn))
 
         # stored sum_i d omega/d r_i for up spins (SWCT)
-        self.__stored_grad_omega_r_up = []
+        self.__stored_grad_omega_r_up = np.zeros((0, 1, n_atoms, 3))
 
         # stored sum_i d omega/d r_i for dn spins (SWCT)
-        self.__stored_grad_omega_r_dn = []
+        self.__stored_grad_omega_r_dn = np.zeros((0, 1, n_atoms, 3))
+
+    def __validate_stored_shapes(self):
+        """Assert that all stored observable arrays have consistent shapes."""
+        ns = self.__mcmc_counter
+        n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+        n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+        n_atoms = self.__hamiltonian_data.structure_data.natom
+
+        expected = {
+            "e_L": ((ns, 1), self.__stored_e_L),
+            "e_L2": ((ns, 1), self.__stored_e_L2),
+            "w_L": ((ns, 1), self.__stored_w_L),
+            "average_projection_counter": ((ns,), self.__stored_average_projection_counter),
+        }
+        if self.__comput_position_deriv:
+            expected.update(
+                {
+                    "grad_e_L_dR": ((ns, 1, n_atoms, 3), self.__stored_grad_e_L_dR),
+                    "grad_e_L_r_up": ((ns, 1, n_up, 3), self.__stored_grad_e_L_r_up),
+                    "grad_e_L_r_dn": ((ns, 1, n_dn, 3), self.__stored_grad_e_L_r_dn),
+                    "grad_ln_Psi_r_up": ((ns, 1, n_up, 3), self.__stored_grad_ln_Psi_r_up),
+                    "grad_ln_Psi_r_dn": ((ns, 1, n_dn, 3), self.__stored_grad_ln_Psi_r_dn),
+                    "grad_ln_Psi_dR": ((ns, 1, n_atoms, 3), self.__stored_grad_ln_Psi_dR),
+                    "omega_up": ((ns, 1, n_atoms, n_up), self.__stored_omega_up),
+                    "omega_dn": ((ns, 1, n_atoms, n_dn), self.__stored_omega_dn),
+                    "grad_omega_r_up": ((ns, 1, n_atoms, 3), self.__stored_grad_omega_r_up),
+                    "grad_omega_r_dn": ((ns, 1, n_atoms, 3), self.__stored_grad_omega_r_dn),
+                }
+            )
+        for name, (shape, arr) in expected.items():
+            assert arr.shape == shape, f"GFMC_t stored shape mismatch: {name} expected {shape}, got {arr.shape}"
 
     # ------------------------------------------------------------------
     # HDF5 checkpoint save / load
@@ -403,7 +439,7 @@ class GFMC_t:
             "grad_omega_r_dn": self.__stored_grad_omega_r_dn,
         }
         for key, val in _obs_map.items():
-            arr = np.asarray(val) if len(val) > 0 else np.empty(0)
+            arr = np.asarray(val) if val.size > 0 else np.empty(0)
             observables[key] = arr
 
         save_rank_checkpoint(
@@ -482,26 +518,31 @@ class GFMC_t:
         obj._GFMC_t__latest_r_dn_carts = jnp.array(ws["latest_r_dn_carts"])
 
         # -- Observables --
-        def _to_list(arr):
-            """Convert ndarray back to list-of-arrays (one per step)."""
-            if arr is None or (isinstance(arr, np.ndarray) and arr.size == 0):
-                return []
-            return [arr[i] for i in range(arr.shape[0])]
+        def _load_obs(obs_arr, default):
+            """Return obs_arr as ndarray, or default if empty/missing."""
+            if obs_arr is None or (isinstance(obs_arr, np.ndarray) and obs_arr.size == 0):
+                return default
+            return np.array(obs_arr)
 
-        obj._GFMC_t__stored_e_L = _to_list(obs.get("e_L"))
-        obj._GFMC_t__stored_e_L2 = _to_list(obs.get("e_L2"))
-        obj._GFMC_t__stored_w_L = _to_list(obs.get("w_L"))
-        obj._GFMC_t__stored_average_projection_counter = _to_list(obs.get("average_projection_counter"))
-        obj._GFMC_t__stored_grad_e_L_dR = _to_list(obs.get("grad_e_L_dR"))
-        obj._GFMC_t__stored_grad_e_L_r_up = _to_list(obs.get("grad_e_L_r_up"))
-        obj._GFMC_t__stored_grad_e_L_r_dn = _to_list(obs.get("grad_e_L_r_dn"))
-        obj._GFMC_t__stored_grad_ln_Psi_r_up = _to_list(obs.get("grad_ln_Psi_r_up"))
-        obj._GFMC_t__stored_grad_ln_Psi_r_dn = _to_list(obs.get("grad_ln_Psi_r_dn"))
-        obj._GFMC_t__stored_grad_ln_Psi_dR = _to_list(obs.get("grad_ln_Psi_dR"))
-        obj._GFMC_t__stored_omega_up = _to_list(obs.get("omega_up"))
-        obj._GFMC_t__stored_omega_dn = _to_list(obs.get("omega_dn"))
-        obj._GFMC_t__stored_grad_omega_r_up = _to_list(obs.get("grad_omega_r_up"))
-        obj._GFMC_t__stored_grad_omega_r_dn = _to_list(obs.get("grad_omega_r_dn"))
+        # Defaults come from __init_attributes shapes (empty with proper ndim)
+        n_up = hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+        n_dn = hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+        n_atoms = hamiltonian_data.structure_data.natom
+
+        obj._GFMC_t__stored_e_L = _load_obs(obs.get("e_L"), np.zeros((0, 1)))
+        obj._GFMC_t__stored_e_L2 = _load_obs(obs.get("e_L2"), np.zeros((0, 1)))
+        obj._GFMC_t__stored_w_L = _load_obs(obs.get("w_L"), np.zeros((0, 1)))
+        obj._GFMC_t__stored_average_projection_counter = _load_obs(obs.get("average_projection_counter"), np.zeros((0,)))
+        obj._GFMC_t__stored_grad_e_L_dR = _load_obs(obs.get("grad_e_L_dR"), np.zeros((0, 1, n_atoms, 3)))
+        obj._GFMC_t__stored_grad_e_L_r_up = _load_obs(obs.get("grad_e_L_r_up"), np.zeros((0, 1, n_up, 3)))
+        obj._GFMC_t__stored_grad_e_L_r_dn = _load_obs(obs.get("grad_e_L_r_dn"), np.zeros((0, 1, n_dn, 3)))
+        obj._GFMC_t__stored_grad_ln_Psi_r_up = _load_obs(obs.get("grad_ln_Psi_r_up"), np.zeros((0, 1, n_up, 3)))
+        obj._GFMC_t__stored_grad_ln_Psi_r_dn = _load_obs(obs.get("grad_ln_Psi_r_dn"), np.zeros((0, 1, n_dn, 3)))
+        obj._GFMC_t__stored_grad_ln_Psi_dR = _load_obs(obs.get("grad_ln_Psi_dR"), np.zeros((0, 1, n_atoms, 3)))
+        obj._GFMC_t__stored_omega_up = _load_obs(obs.get("omega_up"), np.zeros((0, 1, n_atoms, n_up)))
+        obj._GFMC_t__stored_omega_dn = _load_obs(obs.get("omega_dn"), np.zeros((0, 1, n_atoms, n_dn)))
+        obj._GFMC_t__stored_grad_omega_r_up = _load_obs(obs.get("grad_omega_r_up"), np.zeros((0, 1, n_atoms, 3)))
+        obj._GFMC_t__stored_grad_omega_r_dn = _load_obs(obs.get("grad_omega_r_dn"), np.zeros((0, 1, n_atoms, 3)))
 
         return obj
 
@@ -552,78 +593,75 @@ class GFMC_t:
     def w_L(self) -> npt.NDArray:
         """Return the stored weight array. dim: (mcmc_counter, 1)."""
         # logger.info(f"np.array(self.__stored_w_L).shape = {np.array(self.__stored_w_L).shape}.")
-        return _compute_G_L(np.array(self.__stored_w_L), self.__num_gfmc_collect_steps)
+        return _compute_G_L(np.asarray(self.__stored_w_L), self.__num_gfmc_collect_steps)
 
     # weights
     @property
     def bare_w_L(self) -> npt.NDArray:
         """Return the stored weight array. dim: (mcmc_counter, 1)."""
-        # logger.info(f"np.array(self.__stored_w_L).shape = {np.array(self.__stored_w_L).shape}.")
-        return np.array(self.__stored_w_L)
+        return np.asarray(self.__stored_w_L)
 
     # observables
     @property
     def e_L(self) -> npt.NDArray:
         """Return the stored e_L array. dim: (mcmc_counter, 1)."""
-        # logger.info(f"np.array(self.__stored_e_L).shape = {np.array(self.__stored_e_L).shape}.")
-        return np.array(self.__stored_e_L)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_e_L)[self.__num_gfmc_collect_steps :]
 
     # observables
     @property
     def e_L2(self) -> npt.NDArray:
         """Return the stored e_L2 array. dim: (mcmc_counter, 1)."""
-        # logger.info(f"np.array(self.__stored_e_L2).shape = {np.array(self.__stored_e_L).shape}.")
-        return np.array(self.__stored_e_L2)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_e_L2)[self.__num_gfmc_collect_steps :]
 
     @property
     def de_L_dR(self) -> npt.NDArray:
         """Return the stored de_L/dR array. dim: (mcmc_counter, 1)."""
-        return np.array(self.__stored_grad_e_L_dR)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_grad_e_L_dR)[self.__num_gfmc_collect_steps :]
 
     @property
     def de_L_dr_up(self) -> npt.NDArray:
         """Return the stored de_L/dr_up array. dim: (mcmc_counter, 1, num_electrons_up, 3)."""
-        return np.array(self.__stored_grad_e_L_r_up)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_grad_e_L_r_up)[self.__num_gfmc_collect_steps :]
 
     @property
     def de_L_dr_dn(self) -> npt.NDArray:
         """Return the stored de_L/dr_dn array. dim: (mcmc_counter, 1, num_electrons_dn, 3)."""
-        return np.array(self.__stored_grad_e_L_r_dn)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_grad_e_L_r_dn)[self.__num_gfmc_collect_steps :]
 
     @property
     def dln_Psi_dr_up(self) -> npt.NDArray:
         """Return the stored dln_Psi/dr_up array. dim: (mcmc_counter, 1, num_electrons_up, 3)."""
-        return np.array(self.__stored_grad_ln_Psi_r_up)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_grad_ln_Psi_r_up)[self.__num_gfmc_collect_steps :]
 
     @property
     def dln_Psi_dr_dn(self) -> npt.NDArray:
         """Return the stored dln_Psi/dr_down array. dim: (mcmc_counter, 1, num_electrons_dn, 3)."""
-        return np.array(self.__stored_grad_ln_Psi_r_dn)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_grad_ln_Psi_r_dn)[self.__num_gfmc_collect_steps :]
 
     @property
     def dln_Psi_dR(self) -> npt.NDArray:
         """Return the stored dln_Psi/dR array. dim: (mcmc_counter, 1, num_atoms, 3)."""
-        return np.array(self.__stored_grad_ln_Psi_dR)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_grad_ln_Psi_dR)[self.__num_gfmc_collect_steps :]
 
     @property
     def omega_up(self) -> npt.NDArray:
         """Return the stored Omega (for up electrons) array. dim: (mcmc_counter, 1, num_atoms, num_electrons_up)."""
-        return np.array(self.__stored_omega_up)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_omega_up)[self.__num_gfmc_collect_steps :]
 
     @property
     def omega_dn(self) -> npt.NDArray:
         """Return the stored Omega (for down electrons) array. dim: (mcmc_counter,1, num_atoms, num_electons_dn)."""
-        return np.array(self.__stored_omega_dn)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_omega_dn)[self.__num_gfmc_collect_steps :]
 
     @property
     def domega_dr_up(self) -> npt.NDArray:
         """Return the stored dOmega/dr_up array. dim: (mcmc_counter, 1, num_electons_dn, 3)."""
-        return np.array(self.__stored_grad_omega_r_up)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_grad_omega_r_up)[self.__num_gfmc_collect_steps :]
 
     @property
     def domega_dr_dn(self) -> npt.NDArray:
         """Return the stored dOmega/dr_dn array. dim: (mcmc_counter, 1, num_electons_dn, 3)."""
-        return np.array(self.__stored_grad_omega_r_dn)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_grad_omega_r_dn)[self.__num_gfmc_collect_steps :]
 
     @property
     def comput_position_deriv(self) -> bool:
@@ -1393,6 +1431,47 @@ class GFMC_t:
         )
 
         num_mcmc_done = 0
+
+        # -- Extend stored arrays with zero-padding for new steps (rank 0 only) --
+        if mpi_rank == 0:
+            n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+            n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+            n_atoms = self.__hamiltonian_data.structure_data.natom
+
+            self.__stored_e_L = np.concatenate([self.__stored_e_L, np.zeros((num_mcmc_steps, 1))])
+            self.__stored_e_L2 = np.concatenate([self.__stored_e_L2, np.zeros((num_mcmc_steps, 1))])
+            self.__stored_w_L = np.concatenate([self.__stored_w_L, np.zeros((num_mcmc_steps, 1))])
+            self.__stored_average_projection_counter = np.concatenate(
+                [self.__stored_average_projection_counter, np.zeros((num_mcmc_steps,))]
+            )
+            if self.__comput_position_deriv:
+                self.__stored_grad_e_L_dR = np.concatenate(
+                    [self.__stored_grad_e_L_dR, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
+                )
+                self.__stored_grad_e_L_r_up = np.concatenate(
+                    [self.__stored_grad_e_L_r_up, np.zeros((num_mcmc_steps, 1, n_up, 3))]
+                )
+                self.__stored_grad_e_L_r_dn = np.concatenate(
+                    [self.__stored_grad_e_L_r_dn, np.zeros((num_mcmc_steps, 1, n_dn, 3))]
+                )
+                self.__stored_grad_ln_Psi_r_up = np.concatenate(
+                    [self.__stored_grad_ln_Psi_r_up, np.zeros((num_mcmc_steps, 1, n_up, 3))]
+                )
+                self.__stored_grad_ln_Psi_r_dn = np.concatenate(
+                    [self.__stored_grad_ln_Psi_r_dn, np.zeros((num_mcmc_steps, 1, n_dn, 3))]
+                )
+                self.__stored_grad_ln_Psi_dR = np.concatenate(
+                    [self.__stored_grad_ln_Psi_dR, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
+                )
+                self.__stored_omega_up = np.concatenate([self.__stored_omega_up, np.zeros((num_mcmc_steps, 1, n_atoms, n_up))])
+                self.__stored_omega_dn = np.concatenate([self.__stored_omega_dn, np.zeros((num_mcmc_steps, 1, n_atoms, n_dn))])
+                self.__stored_grad_omega_r_up = np.concatenate(
+                    [self.__stored_grad_omega_r_up, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
+                )
+                self.__stored_grad_omega_r_dn = np.concatenate(
+                    [self.__stored_grad_omega_r_dn, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
+                )
+
         for i_branching in range(num_mcmc_steps):
             if (i_branching + 1) % gfmc_interval == 0:
                 progress = (i_branching + self.__mcmc_counter + 1) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
@@ -1649,20 +1728,20 @@ class GFMC_t:
                     grad_omega_dr_dn_averaged = np.expand_dims(grad_omega_dr_dn_averaged, axis=0)
 
                 # store  # This should stored only for MPI-rank = 0 !!!
-                self.__stored_e_L2.append(np.array(e_L2_averaged))
-                self.__stored_e_L.append(np.array(e_L_averaged))
-                self.__stored_w_L.append(np.array(w_L_averaged))
+                self.__stored_e_L2[self.__mcmc_counter + num_mcmc_done] = np.array(e_L2_averaged)
+                self.__stored_e_L[self.__mcmc_counter + num_mcmc_done] = np.array(e_L_averaged)
+                self.__stored_w_L[self.__mcmc_counter + num_mcmc_done] = np.array(w_L_averaged)
                 if self.__comput_position_deriv:
-                    self.__stored_grad_e_L_r_up.append(np.array(grad_e_L_r_up_averaged))
-                    self.__stored_grad_e_L_r_dn.append(np.array(grad_e_L_r_dn_averaged))
-                    self.__stored_grad_e_L_dR.append(np.array(grad_e_L_R_averaged))
-                    self.__stored_grad_ln_Psi_r_up.append(np.array(grad_ln_Psi_r_up_averaged))
-                    self.__stored_grad_ln_Psi_r_dn.append(np.array(grad_ln_Psi_r_dn_averaged))
-                    self.__stored_grad_ln_Psi_dR.append(np.array(grad_ln_Psi_dR_averaged))
-                    self.__stored_omega_up.append(np.array(omega_up_averaged))
-                    self.__stored_omega_dn.append(np.array(omega_dn_averaged))
-                    self.__stored_grad_omega_r_up.append(np.array(grad_omega_dr_up_averaged))
-                    self.__stored_grad_omega_r_dn.append(np.array(grad_omega_dr_dn_averaged))
+                    self.__stored_grad_e_L_r_up[self.__mcmc_counter + num_mcmc_done] = np.array(grad_e_L_r_up_averaged)
+                    self.__stored_grad_e_L_r_dn[self.__mcmc_counter + num_mcmc_done] = np.array(grad_e_L_r_dn_averaged)
+                    self.__stored_grad_e_L_dR[self.__mcmc_counter + num_mcmc_done] = np.array(grad_e_L_R_averaged)
+                    self.__stored_grad_ln_Psi_r_up[self.__mcmc_counter + num_mcmc_done] = np.array(grad_ln_Psi_r_up_averaged)
+                    self.__stored_grad_ln_Psi_r_dn[self.__mcmc_counter + num_mcmc_done] = np.array(grad_ln_Psi_r_dn_averaged)
+                    self.__stored_grad_ln_Psi_dR[self.__mcmc_counter + num_mcmc_done] = np.array(grad_ln_Psi_dR_averaged)
+                    self.__stored_omega_up[self.__mcmc_counter + num_mcmc_done] = np.array(omega_up_averaged)
+                    self.__stored_omega_dn[self.__mcmc_counter + num_mcmc_done] = np.array(omega_dn_averaged)
+                    self.__stored_grad_omega_r_up[self.__mcmc_counter + num_mcmc_done] = np.array(grad_omega_dr_up_averaged)
+                    self.__stored_grad_omega_r_dn[self.__mcmc_counter + num_mcmc_done] = np.array(grad_omega_dr_dn_averaged)
 
             mpi_comm.Barrier()
 
@@ -1934,7 +2013,10 @@ class GFMC_t:
             # np.array -> jnp.array
             self.__num_survived_walkers += num_survived_walkers
             self.__num_killed_walkers += num_killed_walkers
-            self.__stored_average_projection_counter.append(stored_average_projection_counter)
+            if mpi_rank == 0:
+                self.__stored_average_projection_counter[self.__mcmc_counter + num_mcmc_done] = (
+                    stored_average_projection_counter
+                )
             self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
             self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
             self.__latest_A_old_inv = vmap(_compute_initial_A_inv_t, in_axes=(0, 0))(
@@ -1974,6 +2056,26 @@ class GFMC_t:
 
         # count up
         self.__mcmc_counter += num_mcmc_done
+
+        # truncate stored arrays to actual number of steps (rank 0 only)
+        if mpi_rank == 0:
+            ns = self.__mcmc_counter
+            self.__stored_e_L = self.__stored_e_L[:ns]
+            self.__stored_e_L2 = self.__stored_e_L2[:ns]
+            self.__stored_w_L = self.__stored_w_L[:ns]
+            self.__stored_average_projection_counter = self.__stored_average_projection_counter[:ns]
+            if self.__comput_position_deriv:
+                self.__stored_grad_e_L_dR = self.__stored_grad_e_L_dR[:ns]
+                self.__stored_grad_e_L_r_up = self.__stored_grad_e_L_r_up[:ns]
+                self.__stored_grad_e_L_r_dn = self.__stored_grad_e_L_r_dn[:ns]
+                self.__stored_grad_ln_Psi_r_up = self.__stored_grad_ln_Psi_r_up[:ns]
+                self.__stored_grad_ln_Psi_r_dn = self.__stored_grad_ln_Psi_r_dn[:ns]
+                self.__stored_grad_ln_Psi_dR = self.__stored_grad_ln_Psi_dR[:ns]
+                self.__stored_omega_up = self.__stored_omega_up[:ns]
+                self.__stored_omega_dn = self.__stored_omega_dn[:ns]
+                self.__stored_grad_omega_r_up = self.__stored_grad_omega_r_up[:ns]
+                self.__stored_grad_omega_r_dn = self.__stored_grad_omega_r_dn[:ns]
+            self.__validate_stored_shapes()
 
         gfmc_total_end = time.perf_counter()
         timer_gfmc_total = gfmc_total_end - gfmc_total_start
@@ -4037,48 +4139,83 @@ class GFMC_n:
         self.__num_survived_walkers = 0
         self.__num_killed_walkers = 0
 
-        # stored local energy (w_L)
-        self.__stored_w_L = []
+        # Compute dimensions for pre-shaped empty arrays
+        n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+        n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+        n_atoms = self.__hamiltonian_data.structure_data.natom
+
+        # stored weight (w_L)
+        self.__stored_w_L = np.zeros((0, 1))
 
         # stored local energy (e_L)
-        self.__stored_e_L = []
+        self.__stored_e_L = np.zeros((0, 1))
 
         # stored local energy (e_L2)
-        self.__stored_e_L2 = []
+        self.__stored_e_L2 = np.zeros((0, 1))
 
         # stored de_L / dR
-        self.__stored_grad_e_L_dR = []
+        self.__stored_grad_e_L_dR = np.zeros((0, 1, n_atoms, 3))
 
         # stored de_L / dr_up
-        self.__stored_grad_e_L_r_up = []
+        self.__stored_grad_e_L_r_up = np.zeros((0, 1, n_up, 3))
 
         # stored de_L / dr_dn
-        self.__stored_grad_e_L_r_dn = []
+        self.__stored_grad_e_L_r_dn = np.zeros((0, 1, n_dn, 3))
 
         # stored dln_Psi / dr_up
-        self.__stored_grad_ln_Psi_r_up = []
+        self.__stored_grad_ln_Psi_r_up = np.zeros((0, 1, n_up, 3))
 
         # stored dln_Psi / dr_dn
-        self.__stored_grad_ln_Psi_r_dn = []
+        self.__stored_grad_ln_Psi_r_dn = np.zeros((0, 1, n_dn, 3))
 
         # stored dln_Psi / dR
-        self.__stored_grad_ln_Psi_dR = []
+        self.__stored_grad_ln_Psi_dR = np.zeros((0, 1, n_atoms, 3))
 
         # stored Omega_up (SWCT)
-        self.__stored_omega_up = []
+        self.__stored_omega_up = np.zeros((0, 1, n_atoms, n_up))
 
         # stored Omega_dn (SWCT)
-        self.__stored_omega_dn = []
+        self.__stored_omega_dn = np.zeros((0, 1, n_atoms, n_dn))
 
         # stored sum_i d omega/d r_i for up spins (SWCT)
-        self.__stored_grad_omega_r_up = []
+        self.__stored_grad_omega_r_up = np.zeros((0, 1, n_atoms, 3))
 
         # stored sum_i d omega/d r_i for dn spins (SWCT)
-        self.__stored_grad_omega_r_dn = []
+        self.__stored_grad_omega_r_dn = np.zeros((0, 1, n_atoms, 3))
 
-        # stored G_L and G_e_L for updating the E_scf
+        # stored G_L and G_e_L for updating the E_scf (kept as lists — variable count per run)
         self.__G_L = []
         self.__G_e_L = []
+
+    def __validate_stored_shapes(self):
+        """Assert that all stored observable arrays have consistent shapes."""
+        ns = self.__mcmc_counter
+        n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+        n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+        n_atoms = self.__hamiltonian_data.structure_data.natom
+
+        expected = {
+            "e_L": ((ns, 1), self.__stored_e_L),
+            "e_L2": ((ns, 1), self.__stored_e_L2),
+            "w_L": ((ns, 1), self.__stored_w_L),
+        }
+        if self.__comput_position_deriv:
+            expected.update(
+                {
+                    "grad_e_L_dR": ((ns, 1, n_atoms, 3), self.__stored_grad_e_L_dR),
+                    "grad_e_L_r_up": ((ns, 1, n_up, 3), self.__stored_grad_e_L_r_up),
+                    "grad_e_L_r_dn": ((ns, 1, n_dn, 3), self.__stored_grad_e_L_r_dn),
+                    "grad_ln_Psi_r_up": ((ns, 1, n_up, 3), self.__stored_grad_ln_Psi_r_up),
+                    "grad_ln_Psi_r_dn": ((ns, 1, n_dn, 3), self.__stored_grad_ln_Psi_r_dn),
+                    "grad_ln_Psi_dR": ((ns, 1, n_atoms, 3), self.__stored_grad_ln_Psi_dR),
+                    "omega_up": ((ns, 1, n_atoms, n_up), self.__stored_omega_up),
+                    "omega_dn": ((ns, 1, n_atoms, n_dn), self.__stored_omega_dn),
+                    "grad_omega_r_up": ((ns, 1, n_atoms, 3), self.__stored_grad_omega_r_up),
+                    "grad_omega_r_dn": ((ns, 1, n_atoms, 3), self.__stored_grad_omega_r_dn),
+                }
+            )
+        for name, (shape, arr) in expected.items():
+            assert arr.shape == shape, f"GFMC_n stored shape mismatch: {name} expected {shape}, got {arr.shape}"
 
     # ------------------------------------------------------------------
     # HDF5 checkpoint save / load
@@ -4140,12 +4277,11 @@ class GFMC_n:
             "omega_dn": self.__stored_omega_dn,
             "grad_omega_r_up": self.__stored_grad_omega_r_up,
             "grad_omega_r_dn": self.__stored_grad_omega_r_dn,
-            "G_L": self.__G_L,
-            "G_e_L": self.__G_e_L,
+            "G_L": np.array(self.__G_L) if len(self.__G_L) > 0 else np.empty(0),
+            "G_e_L": np.array(self.__G_e_L) if len(self.__G_e_L) > 0 else np.empty(0),
         }
         for key, val in _obs_map.items():
-            arr = np.asarray(val) if len(val) > 0 else np.empty(0)
-            observables[key] = arr
+            observables[key] = val if val.size > 0 else np.empty(0)
 
         save_rank_checkpoint(
             filepath,
@@ -4224,27 +4360,33 @@ class GFMC_n:
         obj._GFMC_n__latest_r_dn_carts = jnp.array(ws["latest_r_dn_carts"])
 
         # -- Observables --
-        def _to_list(arr):
-            """Convert ndarray back to list-of-arrays (one per step)."""
-            if arr is None or (isinstance(arr, np.ndarray) and arr.size == 0):
-                return []
-            return [arr[i] for i in range(arr.shape[0])]
+        n_up = obj._GFMC_n__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+        n_dn = obj._GFMC_n__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+        n_atoms = obj._GFMC_n__hamiltonian_data.structure_data.natom
 
-        obj._GFMC_n__stored_e_L = _to_list(obs.get("e_L"))
-        obj._GFMC_n__stored_e_L2 = _to_list(obs.get("e_L2"))
-        obj._GFMC_n__stored_w_L = _to_list(obs.get("w_L"))
-        obj._GFMC_n__stored_grad_e_L_dR = _to_list(obs.get("grad_e_L_dR"))
-        obj._GFMC_n__stored_grad_e_L_r_up = _to_list(obs.get("grad_e_L_r_up"))
-        obj._GFMC_n__stored_grad_e_L_r_dn = _to_list(obs.get("grad_e_L_r_dn"))
-        obj._GFMC_n__stored_grad_ln_Psi_r_up = _to_list(obs.get("grad_ln_Psi_r_up"))
-        obj._GFMC_n__stored_grad_ln_Psi_r_dn = _to_list(obs.get("grad_ln_Psi_r_dn"))
-        obj._GFMC_n__stored_grad_ln_Psi_dR = _to_list(obs.get("grad_ln_Psi_dR"))
-        obj._GFMC_n__stored_omega_up = _to_list(obs.get("omega_up"))
-        obj._GFMC_n__stored_omega_dn = _to_list(obs.get("omega_dn"))
-        obj._GFMC_n__stored_grad_omega_r_up = _to_list(obs.get("grad_omega_r_up"))
-        obj._GFMC_n__stored_grad_omega_r_dn = _to_list(obs.get("grad_omega_r_dn"))
-        obj._GFMC_n__G_L = _to_list(obs.get("G_L"))
-        obj._GFMC_n__G_e_L = _to_list(obs.get("G_e_L"))
+        def _load_obs(arr, default):
+            """Return arr as ndarray, or default if missing/empty."""
+            if arr is None or (isinstance(arr, np.ndarray) and arr.size == 0):
+                return default
+            return np.asarray(arr)
+
+        obj._GFMC_n__stored_e_L = _load_obs(obs.get("e_L"), np.zeros((0, 1)))
+        obj._GFMC_n__stored_e_L2 = _load_obs(obs.get("e_L2"), np.zeros((0, 1)))
+        obj._GFMC_n__stored_w_L = _load_obs(obs.get("w_L"), np.zeros((0, 1)))
+        obj._GFMC_n__stored_grad_e_L_dR = _load_obs(obs.get("grad_e_L_dR"), np.zeros((0, 1, n_atoms, 3)))
+        obj._GFMC_n__stored_grad_e_L_r_up = _load_obs(obs.get("grad_e_L_r_up"), np.zeros((0, 1, n_up, 3)))
+        obj._GFMC_n__stored_grad_e_L_r_dn = _load_obs(obs.get("grad_e_L_r_dn"), np.zeros((0, 1, n_dn, 3)))
+        obj._GFMC_n__stored_grad_ln_Psi_r_up = _load_obs(obs.get("grad_ln_Psi_r_up"), np.zeros((0, 1, n_up, 3)))
+        obj._GFMC_n__stored_grad_ln_Psi_r_dn = _load_obs(obs.get("grad_ln_Psi_r_dn"), np.zeros((0, 1, n_dn, 3)))
+        obj._GFMC_n__stored_grad_ln_Psi_dR = _load_obs(obs.get("grad_ln_Psi_dR"), np.zeros((0, 1, n_atoms, 3)))
+        obj._GFMC_n__stored_omega_up = _load_obs(obs.get("omega_up"), np.zeros((0, 1, n_atoms, n_up)))
+        obj._GFMC_n__stored_omega_dn = _load_obs(obs.get("omega_dn"), np.zeros((0, 1, n_atoms, n_dn)))
+        obj._GFMC_n__stored_grad_omega_r_up = _load_obs(obs.get("grad_omega_r_up"), np.zeros((0, 1, n_atoms, 3)))
+        obj._GFMC_n__stored_grad_omega_r_dn = _load_obs(obs.get("grad_omega_r_dn"), np.zeros((0, 1, n_atoms, 3)))
+        _g_l = obs.get("G_L")
+        _g_e_l = obs.get("G_e_L")
+        obj._GFMC_n__G_L = [_g_l[i] for i in range(_g_l.shape[0])] if _g_l is not None and _g_l.size > 0 else []
+        obj._GFMC_n__G_e_L = [_g_e_l[i] for i in range(_g_e_l.shape[0])] if _g_e_l is not None and _g_e_l.size > 0 else []
 
         return obj
 
@@ -4298,78 +4440,78 @@ class GFMC_n:
     def w_L(self) -> npt.NDArray:
         """Return the stored weight array. dim: (mcmc_counter, 1)."""
         # logger.info(f"np.array(self.__stored_w_L).shape = {np.array(self.__stored_w_L).shape}.")
-        return _compute_G_L(np.array(self.__stored_w_L), self.__num_gfmc_collect_steps)
+        return _compute_G_L(np.asarray(self.__stored_w_L), self.__num_gfmc_collect_steps)
 
     # weights
     @property
     def bare_w_L(self) -> npt.NDArray:
         """Return the stored weight array. dim: (mcmc_counter, 1)."""
         # logger.info(f"np.array(self.__stored_w_L).shape = {np.array(self.__stored_w_L).shape}.")
-        return np.array(self.__stored_w_L)
+        return np.asarray(self.__stored_w_L)
 
     # observables
     @property
     def e_L(self) -> npt.NDArray:
         """Return the stored e_L array. dim: (mcmc_counter, 1)."""
         # logger.info(f"np.array(self.__stored_e_L).shape = {np.array(self.__stored_e_L).shape}.")
-        return np.array(self.__stored_e_L)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_e_L)[self.__num_gfmc_collect_steps :]
 
     # observables
     @property
     def e_L2(self) -> npt.NDArray:
         """Return the stored e_L^2 array. dim: (mcmc_counter, 1)."""
         # logger.info(f"np.array(self.__stored_e_L2).shape = {np.array(self.__stored_e_L).shape}.")
-        return np.array(self.__stored_e_L2)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_e_L2)[self.__num_gfmc_collect_steps :]
 
     @property
     def de_L_dR(self) -> npt.NDArray:
         """Return the stored de_L/dR array. dim: (mcmc_counter, 1)."""
-        return np.array(self.__stored_grad_e_L_dR)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_grad_e_L_dR)[self.__num_gfmc_collect_steps :]
 
     @property
     def de_L_dr_up(self) -> npt.NDArray:
         """Return the stored de_L/dr_up array. dim: (mcmc_counter, 1, num_electrons_up, 3)."""
-        return np.array(self.__stored_grad_e_L_r_up)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_grad_e_L_r_up)[self.__num_gfmc_collect_steps :]
 
     @property
     def de_L_dr_dn(self) -> npt.NDArray:
         """Return the stored de_L/dr_dn array. dim: (mcmc_counter, 1, num_electrons_dn, 3)."""
-        return np.array(self.__stored_grad_e_L_r_dn)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_grad_e_L_r_dn)[self.__num_gfmc_collect_steps :]
 
     @property
     def dln_Psi_dr_up(self) -> npt.NDArray:
         """Return the stored dln_Psi/dr_up array. dim: (mcmc_counter, 1, num_electrons_up, 3)."""
-        return np.array(self.__stored_grad_ln_Psi_r_up)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_grad_ln_Psi_r_up)[self.__num_gfmc_collect_steps :]
 
     @property
     def dln_Psi_dr_dn(self) -> npt.NDArray:
         """Return the stored dln_Psi/dr_down array. dim: (mcmc_counter, 1, num_electrons_dn, 3)."""
-        return np.array(self.__stored_grad_ln_Psi_r_dn)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_grad_ln_Psi_r_dn)[self.__num_gfmc_collect_steps :]
 
     @property
     def dln_Psi_dR(self) -> npt.NDArray:
         """Return the stored dln_Psi/dR array. dim: (mcmc_counter, 1, num_atoms, 3)."""
-        return np.array(self.__stored_grad_ln_Psi_dR)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_grad_ln_Psi_dR)[self.__num_gfmc_collect_steps :]
 
     @property
     def omega_up(self) -> npt.NDArray:
         """Return the stored Omega (for up electrons) array. dim: (mcmc_counter, 1, num_atoms, num_electrons_up)."""
-        return np.array(self.__stored_omega_up)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_omega_up)[self.__num_gfmc_collect_steps :]
 
     @property
     def omega_dn(self) -> npt.NDArray:
         """Return the stored Omega (for down electrons) array. dim: (mcmc_counter,1, num_atoms, num_electons_dn)."""
-        return np.array(self.__stored_omega_dn)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_omega_dn)[self.__num_gfmc_collect_steps :]
 
     @property
     def domega_dr_up(self) -> npt.NDArray:
         """Return the stored dOmega/dr_up array. dim: (mcmc_counter, 1, num_electons_dn, 3)."""
-        return np.array(self.__stored_grad_omega_r_up)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_grad_omega_r_up)[self.__num_gfmc_collect_steps :]
 
     @property
     def domega_dr_dn(self) -> npt.NDArray:
         """Return the stored dOmega/dr_dn array. dim: (mcmc_counter, 1, num_electons_dn, 3)."""
-        return np.array(self.__stored_grad_omega_r_dn)[self.__num_gfmc_collect_steps :]
+        return np.asarray(self.__stored_grad_omega_r_dn)[self.__num_gfmc_collect_steps :]
 
     @property
     def comput_position_deriv(self) -> bool:
@@ -5293,6 +5435,44 @@ class GFMC_n:
         # MAIN MCMC loop from here !!!
         logger.info("Start GFMC")
         num_mcmc_done = 0
+
+        # -- Extend stored arrays with zero-padding for new steps (rank 0 only) --
+        if mpi_rank == 0:
+            n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
+            n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
+            n_atoms = self.__hamiltonian_data.structure_data.natom
+
+            self.__stored_e_L = np.concatenate([self.__stored_e_L, np.zeros((num_mcmc_steps, 1))])
+            self.__stored_e_L2 = np.concatenate([self.__stored_e_L2, np.zeros((num_mcmc_steps, 1))])
+            self.__stored_w_L = np.concatenate([self.__stored_w_L, np.zeros((num_mcmc_steps, 1))])
+            if self.__comput_position_deriv:
+                self.__stored_grad_e_L_dR = np.concatenate(
+                    [self.__stored_grad_e_L_dR, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
+                )
+                self.__stored_grad_e_L_r_up = np.concatenate(
+                    [self.__stored_grad_e_L_r_up, np.zeros((num_mcmc_steps, 1, n_up, 3))]
+                )
+                self.__stored_grad_e_L_r_dn = np.concatenate(
+                    [self.__stored_grad_e_L_r_dn, np.zeros((num_mcmc_steps, 1, n_dn, 3))]
+                )
+                self.__stored_grad_ln_Psi_r_up = np.concatenate(
+                    [self.__stored_grad_ln_Psi_r_up, np.zeros((num_mcmc_steps, 1, n_up, 3))]
+                )
+                self.__stored_grad_ln_Psi_r_dn = np.concatenate(
+                    [self.__stored_grad_ln_Psi_r_dn, np.zeros((num_mcmc_steps, 1, n_dn, 3))]
+                )
+                self.__stored_grad_ln_Psi_dR = np.concatenate(
+                    [self.__stored_grad_ln_Psi_dR, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
+                )
+                self.__stored_omega_up = np.concatenate([self.__stored_omega_up, np.zeros((num_mcmc_steps, 1, n_atoms, n_up))])
+                self.__stored_omega_dn = np.concatenate([self.__stored_omega_dn, np.zeros((num_mcmc_steps, 1, n_atoms, n_dn))])
+                self.__stored_grad_omega_r_up = np.concatenate(
+                    [self.__stored_grad_omega_r_up, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
+                )
+                self.__stored_grad_omega_r_dn = np.concatenate(
+                    [self.__stored_grad_omega_r_dn, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
+                )
+
         progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
         gfmc_total_current = time.perf_counter()
         logger.info(
@@ -5579,20 +5759,20 @@ class GFMC_n:
                     grad_omega_dr_dn_averaged = np.expand_dims(grad_omega_dr_dn_averaged, axis=0)
 
                 # store  # This should stored only for MPI-rank = 0 !!!
-                self.__stored_e_L2.append(np.array(e_L2_averaged))
-                self.__stored_e_L.append(np.array(e_L_averaged))
-                self.__stored_w_L.append(np.array(w_L_averaged))
+                self.__stored_e_L2[self.__mcmc_counter + num_mcmc_done] = np.array(e_L2_averaged)
+                self.__stored_e_L[self.__mcmc_counter + num_mcmc_done] = np.array(e_L_averaged)
+                self.__stored_w_L[self.__mcmc_counter + num_mcmc_done] = np.array(w_L_averaged)
                 if self.__comput_position_deriv:
-                    self.__stored_grad_e_L_r_up.append(np.array(grad_e_L_r_up_averaged))
-                    self.__stored_grad_e_L_r_dn.append(np.array(grad_e_L_r_dn_averaged))
-                    self.__stored_grad_e_L_dR.append(np.array(grad_e_L_R_averaged))
-                    self.__stored_grad_ln_Psi_r_up.append(np.array(grad_ln_Psi_r_up_averaged))
-                    self.__stored_grad_ln_Psi_r_dn.append(np.array(grad_ln_Psi_r_dn_averaged))
-                    self.__stored_grad_ln_Psi_dR.append(np.array(grad_ln_Psi_dR_averaged))
-                    self.__stored_omega_up.append(np.array(omega_up_averaged))
-                    self.__stored_omega_dn.append(np.array(omega_dn_averaged))
-                    self.__stored_grad_omega_r_up.append(np.array(grad_omega_dr_up_averaged))
-                    self.__stored_grad_omega_r_dn.append(np.array(grad_omega_dr_dn_averaged))
+                    self.__stored_grad_e_L_r_up[self.__mcmc_counter + num_mcmc_done] = np.array(grad_e_L_r_up_averaged)
+                    self.__stored_grad_e_L_r_dn[self.__mcmc_counter + num_mcmc_done] = np.array(grad_e_L_r_dn_averaged)
+                    self.__stored_grad_e_L_dR[self.__mcmc_counter + num_mcmc_done] = np.array(grad_e_L_R_averaged)
+                    self.__stored_grad_ln_Psi_r_up[self.__mcmc_counter + num_mcmc_done] = np.array(grad_ln_Psi_r_up_averaged)
+                    self.__stored_grad_ln_Psi_r_dn[self.__mcmc_counter + num_mcmc_done] = np.array(grad_ln_Psi_r_dn_averaged)
+                    self.__stored_grad_ln_Psi_dR[self.__mcmc_counter + num_mcmc_done] = np.array(grad_ln_Psi_dR_averaged)
+                    self.__stored_omega_up[self.__mcmc_counter + num_mcmc_done] = np.array(omega_up_averaged)
+                    self.__stored_omega_dn[self.__mcmc_counter + num_mcmc_done] = np.array(omega_dn_averaged)
+                    self.__stored_grad_omega_r_up[self.__mcmc_counter + num_mcmc_done] = np.array(grad_omega_dr_up_averaged)
+                    self.__stored_grad_omega_r_dn[self.__mcmc_counter + num_mcmc_done] = np.array(grad_omega_dr_dn_averaged)
 
             mpi_comm.Barrier()
 
@@ -5874,8 +6054,10 @@ class GFMC_n:
 
             if mpi_rank == 0:
                 if i_mcmc_step >= num_gfmc_collect_steps:
-                    e_L = self.__stored_e_L[-1]
-                    w_L = self.__stored_w_L[-num_gfmc_collect_steps - 1 : -1]
+                    e_L = self.__stored_e_L[self.__mcmc_counter + num_mcmc_done]
+                    w_L = self.__stored_w_L[
+                        self.__mcmc_counter + num_mcmc_done - num_gfmc_collect_steps : self.__mcmc_counter + num_mcmc_done
+                    ]
                     G_L = np.prod(w_L, axis=0)
                     self.__G_L.append(G_L)
                     self.__G_e_L.append(G_L * e_L)
@@ -5946,6 +6128,25 @@ class GFMC_n:
 
         # count up mcmc_counter
         self.__mcmc_counter += num_mcmc_done
+
+        # -- Truncate stored arrays to actual size (rank 0 only) --
+        if mpi_rank == 0:
+            ns = self.__mcmc_counter
+            self.__stored_e_L = self.__stored_e_L[:ns]
+            self.__stored_e_L2 = self.__stored_e_L2[:ns]
+            self.__stored_w_L = self.__stored_w_L[:ns]
+            if self.__comput_position_deriv:
+                self.__stored_grad_e_L_dR = self.__stored_grad_e_L_dR[:ns]
+                self.__stored_grad_e_L_r_up = self.__stored_grad_e_L_r_up[:ns]
+                self.__stored_grad_e_L_r_dn = self.__stored_grad_e_L_r_dn[:ns]
+                self.__stored_grad_ln_Psi_r_up = self.__stored_grad_ln_Psi_r_up[:ns]
+                self.__stored_grad_ln_Psi_r_dn = self.__stored_grad_ln_Psi_r_dn[:ns]
+                self.__stored_grad_ln_Psi_dR = self.__stored_grad_ln_Psi_dR[:ns]
+                self.__stored_omega_up = self.__stored_omega_up[:ns]
+                self.__stored_omega_dn = self.__stored_omega_dn[:ns]
+                self.__stored_grad_omega_r_up = self.__stored_grad_omega_r_up[:ns]
+                self.__stored_grad_omega_r_dn = self.__stored_grad_omega_r_dn[:ns]
+            self.__validate_stored_shapes()
 
         gfmc_total_end = time.perf_counter()
         timer_gfmc_total = gfmc_total_end - gfmc_total_start

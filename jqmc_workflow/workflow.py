@@ -199,6 +199,7 @@ class Workflow:
         self.output_files: List[str] = []
         self.output_values: dict = {}
         self.project_dir: Optional[str] = os.path.abspath(project_dir) if project_dir else None
+        self._bg_task: Optional[asyncio.Task] = None
 
     def _ensure_project_dir(self):
         """Lazily resolve *project_dir* to CWD when not set explicitly."""
@@ -216,42 +217,90 @@ class Workflow:
         return asyncio.run(self.async_launch())
 
     # ── Phased execution (new API for MCP / external orchestration) ──
+    #
+    # The default implementation delegates to ``async_launch()`` via a
+    # background ``asyncio.Task``.  Subclasses *may* override for
+    # finer-grained, state-machine-style control; the base-class
+    # versions work out-of-the-box for every workflow.
+    #
+    # Usage pattern::
+    #
+    #     info = await wf.async_submit()
+    #     while (status := await wf.async_poll()) == "running":
+    #         await asyncio.sleep(60)
+    #     result = await wf.async_collect()
 
     async def async_submit(self) -> dict:
-        """Submit initial job(s) and return tracking information.
+        """Start the workflow in the background and return tracking info.
 
-        Override in subclass.  The default raises ``NotImplementedError``.
+        The full workflow (pilot ➜ production ➜ post-processing) is
+        executed as an ``asyncio.Task`` wrapping :meth:`async_launch`.
+        Use :meth:`async_poll` to monitor progress and
+        :meth:`async_collect` to retrieve results once completed.
 
         Returns
         -------
         dict
-            At minimum ``{"status": "submitted"}``.
+            ``{"status": "submitted", "project_dir": ...}``.
+
+        Raises
+        ------
+        RuntimeError
+            If the workflow has already been submitted.
         """
-        raise NotImplementedError
+        if self._bg_task is not None and not self._bg_task.done():
+            raise RuntimeError("Workflow already submitted and still running.")
+        self._ensure_project_dir()
+        self._bg_task = asyncio.create_task(self.async_launch())
+        return {"status": "submitted", "project_dir": self.project_dir}
 
     async def async_poll(self) -> str:
-        """Check whether submitted jobs have completed.
-
-        Override in subclass.  The default raises ``NotImplementedError``.
+        """Check whether the submitted workflow has completed.
 
         Returns
         -------
         str
-            One of ``"running"``, ``"completed"``, ``"failed"``.
+            ``"running"``  — workflow still executing.
+            ``"completed"`` — finished successfully.
+            ``"failed"``   — finished with an error.
+            ``"not_submitted"`` — :meth:`async_submit` not yet called.
         """
-        raise NotImplementedError
+        if self._bg_task is None:
+            return "not_submitted"
+        if not self._bg_task.done():
+            return "running"
+        if self._bg_task.exception() is not None:
+            return "failed"
+        return "completed"
 
     async def async_collect(self) -> dict:
-        """Collect and return results from completed jobs.
-
-        Override in subclass.  The default raises ``NotImplementedError``.
+        """Collect results from the completed workflow.
 
         Returns
         -------
         dict
-            Workflow-specific result mapping.
+            ``{"status": ..., "output_files": [...], **output_values}``.
+
+        Raises
+        ------
+        RuntimeError
+            If the workflow was not submitted or is still running.
+        Exception
+            Re-raises the original exception if the workflow failed.
         """
-        raise NotImplementedError
+        if self._bg_task is None:
+            raise RuntimeError("No workflow has been submitted. Call async_submit() first.")
+        if not self._bg_task.done():
+            raise RuntimeError("Workflow is still running. Call async_poll() to check status.")
+        exc = self._bg_task.exception()
+        if exc is not None:
+            raise exc
+        status, output_files, output_values = self._bg_task.result()
+        return {
+            "status": status,
+            "output_files": output_files,
+            **output_values,
+        }
 
     # ── Common job helpers (used by VMC / MCMC / LRDMC) ───────────
     #
@@ -461,6 +510,7 @@ class Container:
         self.output_files: List[str] = []
         self.output_values: dict = {}
         self.status = "init"
+        self._bg_task: Optional[asyncio.Task] = None
 
         # Directories
         self.root_dir = os.getcwd()
@@ -494,7 +544,13 @@ class Container:
         )
 
     def _copy_input_files(self):
-        """Copy input files into the project directory."""
+        """Copy input files into the project directory.
+
+        Raises
+        ------
+        FileNotFoundError
+            If a required input file or directory does not exist.
+        """
         rename = len(self.rename_input_files) > 0 and len(self.rename_input_files) == len(self.input_files)
 
         for i, src in enumerate(self.input_files):
@@ -516,7 +572,7 @@ class Container:
                     shutil.rmtree(dst)
                 shutil.copytree(src, dst)
             else:
-                logger.warning(f"[{self.label}] Input not found: {src}")
+                raise FileNotFoundError(f"[{self.label}] Required input not found: {src}")
 
     # ── Launch ────────────────────────────────────────────────────
 
@@ -544,11 +600,18 @@ class Container:
             update_status(proj, "failed", error=str(e))
             raise
 
-        # Write completion
-        result_fields = {}
-        for k, v in self.output_values.items():
-            result_fields[f"result_{k}"] = v
-        update_status(proj, "completed", **result_fields)
+        # Write completion — but only if the workflow actually succeeded.
+        # Workflows that return a non-success status (e.g. "failed") must
+        # NOT be marked "completed" in the state file.
+        if self.status in ("success", "completed"):
+            result_fields = {}
+            for k, v in self.output_values.items():
+                result_fields[f"result_{k}"] = v
+            update_status(proj, "completed", **result_fields)
+        else:
+            error_msg = self.output_values.get("error", f"workflow returned status={self.status}")
+            update_status(proj, "failed", error=error_msg)
+            raise RuntimeError(f"[{self.label}] {error_msg}")
 
         return self.status, self.output_files, self.output_values
 
@@ -566,3 +629,75 @@ class Container:
 
     def launch(self):
         return asyncio.run(self.async_launch())
+
+    # ── Phased execution (delegates to inner Workflow) ────────────
+
+    async def async_submit(self) -> dict:
+        """Start the container's workflow in the background.
+
+        Prepares the project directory, copies input files, then
+        starts the inner workflow via ``asyncio.Task``.  Use
+        :meth:`async_poll` and :meth:`async_collect` to monitor
+        and retrieve results.
+
+        Returns
+        -------
+        dict
+            ``{"status": "submitted", "label": ..., "project_dir": ...}``.
+        """
+        if self._bg_task is not None and not self._bg_task.done():
+            raise RuntimeError(f"[{self.label}] Already submitted and still running.")
+        self._bg_task = asyncio.create_task(self.async_launch())
+        return {
+            "status": "submitted",
+            "label": self.label,
+            "project_dir": self.project_dir,
+        }
+
+    async def async_poll(self) -> str:
+        """Check whether the container's workflow has completed.
+
+        Returns
+        -------
+        str
+            ``"running"``, ``"completed"``, ``"failed"``, or
+            ``"not_submitted"``.
+        """
+        if self._bg_task is None:
+            return "not_submitted"
+        if not self._bg_task.done():
+            return "running"
+        if self._bg_task.exception() is not None:
+            return "failed"
+        return "completed"
+
+    async def async_collect(self) -> dict:
+        """Collect results from the completed container workflow.
+
+        Returns
+        -------
+        dict
+            ``{"status": ..., "label": ..., "output_files": [...],
+            **output_values}``.
+
+        Raises
+        ------
+        RuntimeError
+            If not submitted or still running.
+        Exception
+            Re-raises the original exception if the workflow failed.
+        """
+        if self._bg_task is None:
+            raise RuntimeError(f"[{self.label}] Not submitted. Call async_submit() first.")
+        if not self._bg_task.done():
+            raise RuntimeError(f"[{self.label}] Still running. Call async_poll() to check.")
+        exc = self._bg_task.exception()
+        if exc is not None:
+            raise exc
+        status, output_files, output_values = self._bg_task.result()
+        return {
+            "status": status,
+            "label": self.label,
+            "output_files": output_files,
+            **output_values,
+        }
