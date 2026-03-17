@@ -1358,10 +1358,13 @@ class MCMC:
                     f"    [de_L/dc] r_up_carts: shape={_r_up.shape} non-finite={_nan_r_up}/{_r_up.size} "
                     f"    min={np.nanmin(_r_up):.3e} max={np.nanmax(_r_up):.3e}"
                 )
-                logger.devel(
-                    f"    [de_L/dc] r_dn_carts: shape={_r_dn.shape} non-finite={_nan_r_dn}/{_r_dn.size} "
-                    f"    min={np.nanmin(_r_dn):.3e} max={np.nanmax(_r_dn):.3e}"
-                )
+                if _r_dn.size > 0:
+                    logger.devel(
+                        f"    [de_L/dc] r_dn_carts: shape={_r_dn.shape} non-finite={_nan_r_dn}/{_r_dn.size} "
+                        f"    min={np.nanmin(_r_dn):.3e} max={np.nanmax(_r_dn):.3e}"
+                    )
+                else:
+                    logger.devel(f"    [de_L/dc] r_dn_carts: shape={_r_dn.shape} (empty — no down-spin electrons)")
                 logger.devel(f"    [de_L/dc] RTs: shape={_RTs.shape} non-finite={_nan_RTs}/{_RTs.size}")
 
                 grad_e_L_h_step = _jit_vmap_grad_e_L_h(
