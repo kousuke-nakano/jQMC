@@ -3247,12 +3247,20 @@ class MCMC:
                         else:
                             X_T_X = None
                         mpi_comm.Reduce(X_T_X_local, X_T_X, op=MPI.SUM, root=0)
-                        # compute local sum of X @ F
+                        # gather F_local from all ranks (concatenation, not element-wise sum)
+                        F_local_count = F_local.shape[0]
+                        F_recvcounts = mpi_comm.gather(F_local_count, root=0)
                         if mpi_rank == 0:
-                            F = np.empty(F_local.shape, dtype=np.float64)
+                            F_displs = [sum(F_recvcounts[:i]) for i in range(len(F_recvcounts))]
+                            F = np.empty(sum(F_recvcounts), dtype=np.float64)
                         else:
+                            F_displs = None
                             F = None
-                        mpi_comm.Reduce(F_local, F, op=MPI.SUM, root=0)
+                        mpi_comm.Gatherv(
+                            [F_local, MPI.DOUBLE],
+                            [F, (F_recvcounts, F_displs), MPI.DOUBLE] if mpi_rank == 0 else [F, None],
+                            root=0,
+                        )
                         if mpi_rank == 0:
                             logger.devel(f"X_T_X.shape = {X_T_X.shape}.")
                             logger.devel(f"F.shape = {F.shape}.")
@@ -3293,9 +3301,15 @@ class MCMC:
                             mpi_comm.Allreduce(XTXv_local, XTXv_global, op=MPI.SUM)
                             return XTXv_global + epsilon * v
 
-                        # Solve (X^T X + εI)^(-1) @ F
-                        F_total = np.empty(F_local.shape, dtype=np.float64)
-                        mpi_comm.Allreduce(F_local, F_total, op=MPI.SUM)
+                        # Gather F_local from all ranks (concatenation) to form F_total of length M*P
+                        F_local_count = F_local.shape[0]
+                        F_recvcounts = mpi_comm.allgather(F_local_count)
+                        F_displs = [sum(F_recvcounts[:i]) for i in range(len(F_recvcounts))]
+                        F_total = np.empty(sum(F_recvcounts), dtype=np.float64)
+                        mpi_comm.Allgatherv(
+                            [F_local, MPI.DOUBLE],
+                            [F_total, (F_recvcounts, F_displs), MPI.DOUBLE],
+                        )
                         if sr_cg_warm_start_dual is not None and sr_cg_warm_start_dual.shape == F_total.shape:
                             x0 = sr_cg_warm_start_dual
                         else:

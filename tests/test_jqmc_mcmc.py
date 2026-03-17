@@ -591,6 +591,236 @@ def test_jqmc_vmc(trexio_file, monkeypatch):
         jax.clear_caches()
 
 
+@pytest.mark.parametrize(
+    "regime,cg_flag",
+    [
+        ("wide", False),  # num_params < num_samples, direct solver
+        ("wide", True),  # num_params < num_samples, CG solver
+        ("tall", False),  # num_params >= num_samples, direct solver
+        ("tall", True),  # num_params >= num_samples, CG solver
+    ],
+)
+@pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvtz_cart.h5"])
+def test_sr_wide_and_tall_matrix(trexio_file, regime, cg_flag, monkeypatch):
+    """SR optimization must run without error for both primal (wide) and dual (tall)
+    matrix branches, with both the direct solver and CG solver.
+
+    Wide matrix:  num_params < num_samples_total  (primal formulation)
+    Tall matrix:  num_params >= num_samples_total  (dual / push-through identity)
+
+    The test is MPI-aware: num_samples_total = num_mcmc * num_walkers * mpi_size,
+    so the regime thresholds are computed accordingly.
+    """
+    from mpi4py import MPI as _MPI
+
+    mpi_size = _MPI.COMM_WORLD.Get_size()
+
+    (
+        structure_data,
+        _,
+        _,
+        _,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
+    )
+
+    # Minimal Jastrow (j1 + j2 only) to keep param count small and controllable.
+    jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
+        jastrow_1b_param=1.0,
+        structure_data=structure_data,
+        core_electrons=tuple([0] * len(structure_data.atomic_numbers)),
+        jastrow_1b_type="pade",
+    )
+    jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5, jastrow_2b_type="pade")
+
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=jastrow_onebody_data,
+        jastrow_two_body_data=jastrow_twobody_data,
+        jastrow_three_body_data=None,
+        jastrow_nn_data=None,
+    )
+    jastrow_data.sanity_check()
+
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+    wavefunction_data.sanity_check()
+
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+
+    num_walkers = 2
+    Dt = 2.0
+    mcmc_seed = 12345
+    epsilon_AS = 1.0e-6
+
+    # Build base parameter registry — j1, j2, lambda.
+    # For the "tall" regime, pad lambda_matrix so that total_params stays
+    # larger than num_samples_total even with multiple MPI ranks.
+    base_params = {}
+    if wavefunction_data.jastrow_data.jastrow_one_body_data is not None:
+        base_params["j1_param"] = np.ones_like(np.array(wavefunction_data.jastrow_data.jastrow_one_body_data.jastrow_1b_param))
+    if wavefunction_data.jastrow_data.jastrow_two_body_data is not None:
+        base_params["j2_param"] = np.ones_like(np.array(wavefunction_data.jastrow_data.jastrow_two_body_data.jastrow_2b_param))
+
+    num_mcmc = 1  # default for tall
+    fixed_param_size = sum(v.size for v in base_params.values())
+
+    if regime == "tall":
+        # num_samples_total = num_mcmc * num_walkers * mpi_size
+        # We need total_params >= num_samples_total, so pad lambda_matrix.
+        min_samples_total = num_mcmc * num_walkers * mpi_size
+        lambda_size_needed = max(1, min_samples_total - fixed_param_size + 1)
+        base_params["lambda_matrix"] = np.ones(lambda_size_needed, dtype=float)
+    else:
+        if wavefunction_data.geminal_data.lambda_matrix is not None:
+            base_params["lambda_matrix"] = np.ones_like(np.array(wavefunction_data.geminal_data.lambda_matrix))
+        else:
+            base_params["lambda_matrix"] = np.array([[2.0, -2.0], [3.0, -3.0]], dtype=float)
+
+    total_params = sum(v.size for v in base_params.values())
+
+    if regime == "wide":
+        # num_samples_total = num_mcmc * num_walkers * mpi_size > total_params
+        num_mcmc = total_params // (num_walkers * mpi_size) + 2
+
+    num_samples_total = num_mcmc * num_walkers * mpi_size
+
+    # Sanity-check the regime we configured (accounting for all MPI ranks).
+    if regime == "wide":
+        assert total_params < num_samples_total, f"Expected wide (params < samples_total): {total_params} < {num_samples_total}"
+    else:
+        assert total_params >= num_samples_total, (
+            f"Expected tall (params >= samples_total): {total_params} >= {num_samples_total}"
+        )
+
+    # Deterministic fake data with non-trivial variance so X and F are non-zero.
+    rng = np.random.default_rng(42)
+    fake_w_L_data = np.ones((num_mcmc, num_walkers))
+    fake_e_L_data = rng.standard_normal((num_mcmc, num_walkers)) * 0.1
+
+    # ── monkeypatch helpers ──────────────────────────────────────────────────
+    params_registry: dict[int, dict[str, np.ndarray]] = {}
+
+    def register_params(wf, params):
+        params_registry[id(wf)] = params
+
+    def lookup_params(wf):
+        return params_registry[id(wf)]
+
+    def fake_get_variational_blocks(
+        self, opt_J1_param=True, opt_J2_param=True, opt_J3_param=True, opt_JNN_param=True, opt_lambda_param=False
+    ):
+        blocks = []
+        pos = lookup_params(self)
+        if opt_J1_param and "j1_param" in pos:
+            arr = pos["j1_param"]
+            blocks.append(VariationalParameterBlock(name="j1_param", values=arr, shape=arr.shape, size=int(arr.size)))
+        if opt_J2_param and "j2_param" in pos:
+            arr = pos["j2_param"]
+            blocks.append(VariationalParameterBlock(name="j2_param", values=arr, shape=arr.shape, size=int(arr.size)))
+        if opt_lambda_param and "lambda_matrix" in pos:
+            arr = pos["lambda_matrix"]
+            blocks.append(VariationalParameterBlock(name="lambda_matrix", values=arr, shape=arr.shape, size=int(arr.size)))
+        return blocks
+
+    def fake_apply_block_updates(self, blocks, thetas, learning_rate):
+        params = lookup_params(self)
+        idx = 0
+        for block in blocks:
+            blk_slice = thetas[idx : idx + block.size]
+            idx += block.size
+            if blk_slice.size == 0:
+                continue
+            delta = blk_slice.reshape(block.shape)
+            params[block.name] = params[block.name] + learning_rate * delta
+        return self
+
+    def fake_run(self, num_mcmc_steps: int = 0, max_time=None):
+        return None
+
+    def fake_get_dln_WF(
+        self,
+        blocks,
+        num_mcmc_warmup_steps=0,
+        chosen_param_index=None,
+        lambda_projectors=None,
+        num_orb_projection=None,
+    ):
+        total = sum(block.size for block in blocks)
+        rng_local = np.random.default_rng(123)
+        return rng_local.standard_normal((num_mcmc, self.num_walkers, total)) * 0.01
+
+    def fake_get_E(self, num_mcmc_warmup_steps: int = 0, num_mcmc_bin_blocks: int = 1):
+        return (0.0, 0.0, 0.0, 0.0)
+
+    def fake_get_gF(
+        self,
+        num_mcmc_warmup_steps,
+        num_mcmc_bin_blocks,
+        chosen_param_index,
+        blocks,
+        lambda_projectors=None,
+        num_orb_projection=None,
+    ):
+        total = sum(block.size for block in blocks)
+        return np.ones(total, dtype=float), np.ones(total, dtype=float)
+
+    monkeypatch.setattr(Wavefunction_data, "get_variational_blocks", fake_get_variational_blocks, raising=False)
+    monkeypatch.setattr(Wavefunction_data, "apply_block_updates", fake_apply_block_updates, raising=False)
+    monkeypatch.setattr(MCMC, "run", fake_run, raising=False)
+    monkeypatch.setattr(MCMC, "get_E", fake_get_E, raising=False)
+    monkeypatch.setattr(MCMC, "get_gF", fake_get_gF, raising=False)
+    monkeypatch.setattr(MCMC, "get_dln_WF", fake_get_dln_WF, raising=False)
+    monkeypatch.setattr(MCMC, "w_L", property(lambda self: fake_w_L_data), raising=False)
+    monkeypatch.setattr(MCMC, "e_L", property(lambda self: fake_e_L_data), raising=False)
+
+    # ── run the test ─────────────────────────────────────────────────────────
+    mcmc = MCMC(
+        hamiltonian_data=hamiltonian_data,
+        Dt=Dt,
+        mcmc_seed=mcmc_seed,
+        epsilon_AS=epsilon_AS,
+        num_walkers=num_walkers,
+        comput_position_deriv=False,
+        comput_log_WF_param_deriv=True,
+        comput_e_L_param_deriv=False,
+        random_discretized_mesh=True,
+    )
+
+    current_params = {k: v.copy() for k, v in base_params.items()}
+    register_params(mcmc.hamiltonian_data.wavefunction_data, current_params)
+
+    before = {k: v.copy() for k, v in current_params.items()}
+
+    mcmc.run_optimize(
+        num_mcmc_steps=num_mcmc,
+        num_opt_steps=1,
+        num_mcmc_warmup_steps=0,
+        num_mcmc_bin_blocks=1,
+        opt_J1_param=True,
+        opt_J2_param=True,
+        opt_J3_param=False,
+        opt_JNN_param=False,
+        opt_lambda_param=True,
+        optimizer_kwargs={
+            "method": "sr",
+            "delta": 1.0e-3,
+            "epsilon": 1.0e-3,
+            "cg_flag": cg_flag,
+        },
+    )
+
+    # At least one param should have been updated (non-trivial SR solve).
+    any_changed = any(not np.array_equal(before[k], current_params[k]) for k in before)
+    assert any_changed, f"Expected at least one parameter to change (regime={regime}, cg_flag={cg_flag})"
+
+    jax.clear_caches()
+
+
 @pytest.mark.parametrize("trexio_file", ["H2_ae_ccpvtz_cart.h5"])
 def test_opt_with_projected_MOs(trexio_file, monkeypatch):
     """After run_optimize with opt_with_projected_MOs=True the final wavefunction
