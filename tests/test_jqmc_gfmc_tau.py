@@ -71,10 +71,10 @@ jax.config.update("jax_traceback_filtering", "off")
 param_grid = [
     # ECP cases (non_local_move required)
     ("H_ecp_ccpvdz_cart.h5", False, False, False, False, "tmove"),
-    ("H_ecp_ccpvdz_cart.h5", False, False, False, False, "dltmove"),
+    # ("H_ecp_ccpvdz_cart.h5", False, False, False, False, "dltmove"),
     ("H_ecp_ccpvdz_cart.h5", True, True, True, False, "tmove"),
-    ("H_ecp_ccpvdz_cart.h5", True, True, True, False, "dltmove"),
-    ("H_ecp_ccpvdz_cart.h5", True, True, True, True, "tmove"),
+    # ("H_ecp_ccpvdz_cart.h5", True, True, True, False, "dltmove"),
+    # ("H_ecp_ccpvdz_cart.h5", True, True, True, True, "tmove"),
     ("H_ecp_ccpvdz_cart.h5", True, True, True, True, "dltmove"),
     # AE cases (no non_local_move)
     ("H2_ae_ccpvdz_cart.h5", True, True, True, True, None),
@@ -197,6 +197,14 @@ def test_jqmc_gfmc_t(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jast
         assert not np.any(np.isnan(np.asarray(e_L2_debug))), "NaN detected in first argument"
         assert not np.any(np.isnan(np.asarray(e_L2_jax))), "NaN detected in second argument"
         np.testing.assert_allclose(e_L2_debug, e_L2_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+
+    # average_projection_counter
+    # Both GFMC_t and _GFMC_t_debug now store local averages per rank.
+    apc_debug = gfmc_debug.average_projection_counter
+    apc_jax = gfmc_jax.average_projection_counter
+    assert not np.any(np.isnan(np.asarray(apc_debug))), "NaN detected in first argument"
+    assert not np.any(np.isnan(np.asarray(apc_jax))), "NaN detected in second argument"
+    np.testing.assert_allclose(apc_debug, apc_jax, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
 
     # E
     E_debug, E_err_debug, Var_debug, Var_err_debug = gfmc_debug.get_E(

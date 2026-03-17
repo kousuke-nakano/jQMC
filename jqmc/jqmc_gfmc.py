@@ -614,6 +614,11 @@ class GFMC_t:
         return np.asarray(self.__stored_e_L2)[self.__num_gfmc_collect_steps :]
 
     @property
+    def average_projection_counter(self) -> npt.NDArray:
+        """Return the stored average projection counter array."""
+        return np.asarray(self.__stored_average_projection_counter)
+
+    @property
     def de_L_dR(self) -> npt.NDArray:
         """Return the stored de_L/dR array. dim: (mcmc_counter, 1)."""
         return np.asarray(self.__stored_grad_e_L_dR)[self.__num_gfmc_collect_steps :]
@@ -1432,7 +1437,12 @@ class GFMC_t:
 
         num_mcmc_done = 0
 
-        # -- Extend stored arrays with zero-padding for new steps (rank 0 only) --
+        # -- Extend stored arrays with zero-padding for new steps --
+        # average_projection_counter is stored on all ranks
+        self.__stored_average_projection_counter = np.concatenate(
+            [self.__stored_average_projection_counter, np.zeros((num_mcmc_steps,))]
+        )
+        # other observables are stored on rank 0 only
         if mpi_rank == 0:
             n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
             n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
@@ -1441,9 +1451,6 @@ class GFMC_t:
             self.__stored_e_L = np.concatenate([self.__stored_e_L, np.zeros((num_mcmc_steps, 1))])
             self.__stored_e_L2 = np.concatenate([self.__stored_e_L2, np.zeros((num_mcmc_steps, 1))])
             self.__stored_w_L = np.concatenate([self.__stored_w_L, np.zeros((num_mcmc_steps, 1))])
-            self.__stored_average_projection_counter = np.concatenate(
-                [self.__stored_average_projection_counter, np.zeros((num_mcmc_steps,))]
-            )
             if self.__comput_position_deriv:
                 self.__stored_grad_e_L_dR = np.concatenate(
                     [self.__stored_grad_e_L_dR, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
@@ -1834,12 +1841,6 @@ class GFMC_t:
             ## Compute the local average of the projection counter list.
             ave_projection_counter = np.mean(projection_counter_list)
 
-            ## Use MPI allgather to collect the local averages from all processes.
-            ave_projection_counter_gathered = mpi_comm.allgather(ave_projection_counter)
-
-            ## Each process computes the overall (global) average projection counter.
-            stored_average_projection_counter = np.mean(ave_projection_counter_gathered)
-
             end_ = time.perf_counter()
             logger.debug(f"    timer_reconfigration step 1.5 = {(end_ - start_) * 1e3:.3f} msec.")
 
@@ -2013,10 +2014,7 @@ class GFMC_t:
             # np.array -> jnp.array
             self.__num_survived_walkers += num_survived_walkers
             self.__num_killed_walkers += num_killed_walkers
-            if mpi_rank == 0:
-                self.__stored_average_projection_counter[self.__mcmc_counter + num_mcmc_done] = (
-                    stored_average_projection_counter
-                )
+            self.__stored_average_projection_counter[self.__mcmc_counter + num_mcmc_done] = ave_projection_counter
             self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
             self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
             self.__latest_A_old_inv = vmap(_compute_initial_A_inv_t, in_axes=(0, 0))(
@@ -2057,13 +2055,15 @@ class GFMC_t:
         # count up
         self.__mcmc_counter += num_mcmc_done
 
-        # truncate stored arrays to actual number of steps (rank 0 only)
+        # truncate stored arrays to actual number of steps
+        ns = self.__mcmc_counter
+        # average_projection_counter is stored on all ranks
+        self.__stored_average_projection_counter = self.__stored_average_projection_counter[:ns]
+        # other observables are stored on rank 0 only
         if mpi_rank == 0:
-            ns = self.__mcmc_counter
             self.__stored_e_L = self.__stored_e_L[:ns]
             self.__stored_e_L2 = self.__stored_e_L2[:ns]
             self.__stored_w_L = self.__stored_w_L[:ns]
-            self.__stored_average_projection_counter = self.__stored_average_projection_counter[:ns]
             if self.__comput_position_deriv:
                 self.__stored_grad_e_L_dR = self.__stored_grad_e_L_dR[:ns]
                 self.__stored_grad_e_L_r_up = self.__stored_grad_e_L_r_up[:ns]
@@ -2848,6 +2848,11 @@ class _GFMC_t_debug:
         return np.array(self.__stored_e_L2)[self.__num_gfmc_collect_steps :]
 
     @property
+    def average_projection_counter(self) -> npt.NDArray:
+        """Return the stored average projection counter array."""
+        return np.array(self.__stored_average_projection_counter)
+
+    @property
     def de_L_dR(self) -> npt.NDArray:
         """Return the stored de_L/dR array. dim: (mcmc_counter, 1)."""
         return np.array(self.__stored_grad_e_L_dR)[self.__num_gfmc_collect_steps :]
@@ -3606,8 +3611,8 @@ class _GFMC_t_debug:
                 grad_omega_dr_dn_dyad = mpi_comm.gather(grad_omega_dr_dn_dyad, root=0)
 
             # num projection counter
+            ## Compute the local average of the projection counter list.
             ave_projection_counter = np.mean(projection_counter_list)
-            ave_projection_counter_gathered = mpi_comm.gather(ave_projection_counter, root=0)
 
             if mpi_rank == 0:
                 zeta = float(np.random.random())
@@ -3728,17 +3733,14 @@ class _GFMC_t_debug:
 
                 num_survived_walkers = len(set(chosen_walker_indices_old))
                 num_killed_walkers = len(w_L_gathered) - len(set(chosen_walker_indices_old))
-                stored_average_projection_counter = np.mean(ave_projection_counter_gathered)
             else:
                 num_survived_walkers = None
                 num_killed_walkers = None
-                stored_average_projection_counter = None
                 proposed_r_up_carts = None
                 proposed_r_dn_carts = None
 
             num_survived_walkers = mpi_comm.bcast(num_survived_walkers, root=0)
             num_killed_walkers = mpi_comm.bcast(num_killed_walkers, root=0)
-            stored_average_projection_counter = mpi_comm.bcast(stored_average_projection_counter, root=0)
 
             proposed_r_up_carts = mpi_comm.bcast(proposed_r_up_carts, root=0)
             proposed_r_dn_carts = mpi_comm.bcast(proposed_r_dn_carts, root=0)
@@ -3757,7 +3759,7 @@ class _GFMC_t_debug:
             # np.array -> jnp.array
             self.__num_survived_walkers += num_survived_walkers
             self.__num_killed_walkers += num_killed_walkers
-            self.__stored_average_projection_counter.append(stored_average_projection_counter)
+            self.__stored_average_projection_counter.append(ave_projection_counter)
             self.__latest_r_up_carts = jnp.array(latest_r_up_carts_after_branching)
             self.__latest_r_dn_carts = jnp.array(latest_r_dn_carts_after_branching)
 

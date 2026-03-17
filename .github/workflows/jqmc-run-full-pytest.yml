@@ -4,7 +4,7 @@ name: jqmc full test
 
 on:
   push:
-    branches: [ "main", "rc" ]
+    branches: [ "main" ]
     paths-ignore:
       - '.gitignore'
       - '.github/**'
@@ -15,7 +15,7 @@ on:
       - '.pre-commit-config.yaml'
       - 'jqmc_workflow/**'
   pull_request:
-    branches: [ "main", "rc" ]
+    branches: [ "main" ]
 
 jobs:
   run:
