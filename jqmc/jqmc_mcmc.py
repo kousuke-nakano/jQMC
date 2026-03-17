@@ -3106,11 +3106,11 @@ class MCMC:
 
                 if num_params < num_samples_total:
                     # if True:
-                    logger.devel("X is a wide matrix. Proceed w/o the push-through identity.")
-                    logger.devel("theta = (S+epsilon*I)^{-1}*f = (X * X^T + epsilon*I)^{-1} * X F...")
+                    logger.debug("X is a wide matrix. Proceed w/o the push-through identity.")
+                    logger.debug("theta = (S+epsilon*I)^{-1}*f = (X * X^T + epsilon*I)^{-1} * X F...")
                     if not sr_cg_flag:
                         logger.info("Using the direct solver for the inverse of S.")
-                        logger.devel(
+                        logger.debug(
                             f"Estimated X_local @ X_local.T.bytes per MPI = {X_local.shape[0] ** 2 * X_local.dtype.itemsize / (2**30)} gib."
                         )
                         # compute local sum of X * X^T
@@ -3189,8 +3189,8 @@ class MCMC:
 
                 else:  # num_params >= num_samples:
                     # if True:
-                    logger.devel("X is a tall matrix. Proceed w/ the push-through identity.")
-                    logger.devel("theta = (S+epsilon*I)^{-1}*f = X(X^T * X + epsilon*I)^{-1} * F...")
+                    logger.debug("X is a tall matrix. Proceed w/ the push-through identity.")
+                    logger.debug("theta = (S+epsilon*I)^{-1}*f = X(X^T * X + epsilon*I)^{-1} * F...")
 
                     # Get local shapes
                     N, M = X_local.shape
