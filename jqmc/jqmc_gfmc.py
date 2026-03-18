@@ -1773,7 +1773,7 @@ class GFMC_t:
             global_weight_sum = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)
 
             end_ = time.perf_counter()
-            logger.debug(f"    timer_reconfigration step 1.1 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 1.1 = {(end_ - start_) * 1e3:.3f} msec.")
 
             start_ = time.perf_counter()
 
@@ -1792,7 +1792,7 @@ class GFMC_t:
             local_cumprob += offset
 
             end_ = time.perf_counter()
-            logger.debug(f"    timer_reconfigration step 1.2 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 1.2 = {(end_ - start_) * 1e3:.3f} msec.")
 
             start_ = time.perf_counter()
 
@@ -1801,7 +1801,7 @@ class GFMC_t:
             global_cumprob = np.empty(total_walkers, dtype=np.float64)
             mpi_comm.Allgather([local_cumprob, MPI.DOUBLE], [global_cumprob, MPI.DOUBLE])
             end_ = time.perf_counter()
-            logger.debug(f"    timer_reconfigration step 1.3 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 1.3 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # Total number of walkers across all processes.
             # Compute index range for this rank
@@ -1815,7 +1815,7 @@ class GFMC_t:
             # Perform searchsorted and cast the result to int32
             local_chosen_indices = np.searchsorted(global_cumprob, z_local).astype(np.int32)
             end_ = time.perf_counter()
-            logger.debug(f"    timer_reconfigration step 1.4 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 1.4 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # Gather all local_chosen_indices across ranks using MPI.INT
             start_ = time.perf_counter()
@@ -1842,7 +1842,7 @@ class GFMC_t:
             ave_projection_counter = np.mean(projection_counter_list)
 
             end_ = time.perf_counter()
-            logger.debug(f"    timer_reconfigration step 1.5 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 1.5 = {(end_ - start_) * 1e3:.3f} msec.")
 
             #########################################
             # 2. In each process, prepare for data exchange based on the new walker selection
@@ -1860,7 +1860,7 @@ class GFMC_t:
                 else:
                     reqs.setdefault(src_rank, []).append((dest_idx, src_local_idx))
             end_ = time.perf_counter()
-            logger.debug(f"    timer_reconfigration step 2 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 2 = {(end_ - start_) * 1e3:.3f} msec.")
 
             #########################################
             # 3. Exchange only the necessary walker data between processes using asynchronous communication
@@ -1873,21 +1873,21 @@ class GFMC_t:
             ]
             triplets = np.array(flat_list, dtype=np.int32) if flat_list else np.empty((0, 3), dtype=np.int32)
             end_ = time.perf_counter()
-            logger.debug(f"    timer_reconfigration step 3.1.1 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.1.1 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.2: Compute how many ints to send to each rank (3 ints per request)
             start_ = time.perf_counter()
             counts_per_rank = np.bincount(triplets[:, 0], minlength=mpi_size)  # # reqs per src_rank
             send_counts = (counts_per_rank * 3).astype(np.int32)  # # ints per src_rank
             end_ = time.perf_counter()
-            logger.debug(f"    timer_reconfigration step 3.1.2 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.1.2 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.3: Post nonblocking Alltoall to exchange counts
             start_ = time.perf_counter()
             recv_counts = np.empty_like(send_counts)
             req_counts = mpi_comm.Ialltoall([send_counts, MPI.INT], [recv_counts, MPI.INT])
             end_ = time.perf_counter()
-            logger.debug(f"    timer_reconfigration step 3.1.3 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.1.3 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.4: Build send_buf while counts exchange is in flight
             start_ = time.perf_counter()
@@ -1896,13 +1896,13 @@ class GFMC_t:
             sorted_tr = triplets[order]  # shape = (N_req, 3)
             send_buf = sorted_tr.ravel()  # shape = (N_req*3,)
             end_ = time.perf_counter()
-            logger.debug(f"    timer_reconfigration step 3.1.4 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.1.4 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.5: Wait for counts exchange to complete
             start_ = time.perf_counter()
             req_counts.Wait()
             end_ = time.perf_counter()
-            logger.debug(f"    timer_reconfigration step 3.1.5 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.1.5 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.6: Build displacements for send/recv from counts
             start_ = time.perf_counter()
@@ -1911,20 +1911,20 @@ class GFMC_t:
             recv_displs = np.zeros_like(recv_counts)
             recv_displs[1:] = np.cumsum(recv_counts)[:-1]
             end_ = time.perf_counter()
-            logger.debug(f"    timer_reconfigration step 3.1.6 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.1.6 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.7: Allocate recv buffer of the exact size
             start_ = time.perf_counter()
             total_recv = int(np.sum(recv_counts))
             recv_buf = np.empty(total_recv, dtype=np.int32)
             end_ = time.perf_counter()
-            logger.debug(f"    timer_reconfigration step 3.1.7 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.1.7 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.8: Post blocking Alltoallv to exchange the triplets
             start_ = time.perf_counter()
             mpi_comm.Alltoallv([send_buf, send_counts, send_displs, MPI.INT], [recv_buf, recv_counts, recv_displs, MPI.INT])
             end_ = time.perf_counter()
-            logger.debug(f"    timer_reconfigration step 3.1.8 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.1.8 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.9: Wait for data to arrive and reconstruct per‐process request dicts
             start_ = time.perf_counter()
@@ -1942,13 +1942,13 @@ class GFMC_t:
                     proc_dict.setdefault(int(sr), []).append((int(dest_idx), int(src_local_idx)))
                 all_reqs.append(proc_dict)
             end_ = time.perf_counter()
-            logger.debug(f"    timer_reconfigration step 3.1.9 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.1.9 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # 3.1.10: Filter out empty request dicts
             start_ = time.perf_counter()
             non_empty_all_reqs = [(p, rd) for p, rd in enumerate(all_reqs) if rd]
             end_ = time.perf_counter()
-            logger.debug(f"    timer_reconfigration step 3.1.10 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.1.10 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # --- 3-2. Build incoming_reqs: who needs data from me? ---
             start_ = time.perf_counter()
@@ -1959,7 +1959,7 @@ class GFMC_t:
                 for dest_idx, src_local_idx in proc_req.get(mpi_rank, [])
             ]
             end_ = time.perf_counter()
-            logger.debug(f"    timer_reconfigration step 3.2 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.2 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # --- 3-3. Post nonblocking receives using Irecv for both up and dn buffers. ---
             start_ = time.perf_counter()
@@ -1977,7 +1977,7 @@ class GFMC_t:
                 recv_reqs_up[src_rank] = mpi_comm.Irecv([buf_up, MPI.DOUBLE], source=src_rank, tag=200)
                 recv_reqs_dn[src_rank] = mpi_comm.Irecv([buf_dn, MPI.DOUBLE], source=src_rank, tag=201)
             end_ = time.perf_counter()
-            logger.debug(f"    timer_reconfigration step 3.3 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.3 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # --- 3-4. Prepare and post nonblocking sends using Isend. ---
             start_ = time.perf_counter()
@@ -1989,13 +1989,13 @@ class GFMC_t:
                 send_requests.append(mpi_comm.Isend([buf_up, MPI.DOUBLE], dest=dest_rank, tag=200))
                 send_requests.append(mpi_comm.Isend([buf_dn, MPI.DOUBLE], dest=dest_rank, tag=201))
             end_ = time.perf_counter()
-            logger.debug(f"    timer_reconfigration step 3.4 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.4 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # --- 3-5. Wait for all nonblocking sends to complete. ---
             start_ = time.perf_counter()
             MPI.Request.Waitall(send_requests)
             end_ = time.perf_counter()
-            logger.debug(f"    timer_reconfigration step 3.5 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.5 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # --- 3-6. Process the received walker data. ---
             start_ = time.perf_counter()
@@ -2009,7 +2009,7 @@ class GFMC_t:
                 latest_r_up_carts_after_branching[dest_idxs] = buf_up
                 latest_r_dn_carts_after_branching[dest_idxs] = buf_dn
             end_ = time.perf_counter()
-            logger.debug(f"    timer_reconfigration step 3.6 = {(end_ - start_) * 1e3:.3f} msec.")
+            logger.devel(f"    timer_reconfigration step 3.6 = {(end_ - start_) * 1e3:.3f} msec.")
 
             # np.array -> jnp.array
             self.__num_survived_walkers += num_survived_walkers
