@@ -89,6 +89,7 @@ cli_parameters = {
         "opt_lambda_param": False,
         "opt_with_projected_MOs": False,
         "num_param_opt": 0,
+        "opt_filter_min_SN_ratio": 4.0,
         "optimizer_kwargs": {
             "method": "sr",
             "delta": 0.15,
@@ -118,6 +119,7 @@ cli_parameters = {
             "num_eigenvectors=num_electron_up in the present implementation."
         ),
         "num_param_opt": "the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.",
+        "opt_filter_min_SN_ratio": "Minimum signal-to-noise ratio |f|/|std f| for a parameter to be updated. Parameters with SN <= this threshold are frozen. Applied before num_param_opt. Default is 4.0.",
         "optimizer_kwargs": (
             "Optimizer configuration. Set 'method' to 'sr' (default) for stochastic reconfiguration or to any "
             "optax optimizer name (e.g., 'adam'). For SR, keep the 'delta' (prefactor in c_i <- c_i + delta * "
