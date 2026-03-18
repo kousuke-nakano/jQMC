@@ -475,6 +475,7 @@ def test_jqmc_vmc(trexio_file, monkeypatch):
             num_opt_steps=num_opt_steps,
             num_mcmc_warmup_steps=0,
             num_mcmc_bin_blocks=1,
+            opt_filter_min_SN_ratio=0.0,
             optimizer_kwargs={"method": "sgd", "learning_rate": 1.0},
             **case["flags"],
         )
@@ -536,6 +537,7 @@ def test_jqmc_vmc(trexio_file, monkeypatch):
         opt_J3_param=False,
         opt_JNN_param=False,
         opt_lambda_param=True,
+        opt_filter_min_SN_ratio=0.0,
         optimizer_kwargs={
             "method": "sr",
             "delta": 1e-3,
@@ -580,6 +582,7 @@ def test_jqmc_vmc(trexio_file, monkeypatch):
             opt_JNN_param=True,
             opt_lambda_param=True,
             num_param_opt=num_opt,
+            opt_filter_min_SN_ratio=0.0,
             optimizer_kwargs={"method": "sgd", "learning_rate": 1.0},
         )
 
@@ -806,6 +809,7 @@ def test_sr_wide_and_tall_matrix(trexio_file, regime, cg_flag, monkeypatch):
         opt_J3_param=False,
         opt_JNN_param=False,
         opt_lambda_param=True,
+        opt_filter_min_SN_ratio=0.0,
         optimizer_kwargs={
             "method": "sr",
             "delta": 1.0e-3,
@@ -907,6 +911,7 @@ def test_opt_with_projected_MOs(trexio_file, monkeypatch):
         opt_JNN_param=False,
         opt_lambda_param=True,
         opt_with_projected_MOs=True,
+        opt_filter_min_SN_ratio=0.0,
         optimizer_kwargs={"method": "sgd", "learning_rate": 0.01},
     )
 
