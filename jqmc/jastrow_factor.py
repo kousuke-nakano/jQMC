@@ -613,7 +613,7 @@ class Jastrow_one_body_data:
     def init_jastrow_one_body_data(cls, jastrow_1b_param, structure_data, core_electrons, jastrow_1b_type="exp"):
         """Initialization."""
         jastrow_one_body_data = cls(
-            jastrow_1b_param=jastrow_1b_param,
+            jastrow_1b_param=np.asarray(jastrow_1b_param, dtype=np.float64).reshape(()),
             jastrow_1b_type=jastrow_1b_type,
             structure_data=structure_data,
             core_electrons=core_electrons,
@@ -1055,7 +1055,10 @@ class Jastrow_two_body_data:
     @classmethod
     def init_jastrow_two_body_data(cls, jastrow_2b_param=1.0, jastrow_2b_type="pade"):
         """Initialization."""
-        jastrow_two_body_data = cls(jastrow_2b_param=jastrow_2b_param, jastrow_2b_type=jastrow_2b_type)
+        jastrow_two_body_data = cls(
+            jastrow_2b_param=np.asarray(jastrow_2b_param, dtype=np.float64).reshape(()),
+            jastrow_2b_type=jastrow_2b_type,
+        )
         return jastrow_two_body_data
 
 
@@ -1814,7 +1817,7 @@ class Jastrow_data:
         nn3 = self.jastrow_nn_data
 
         if block.name == "j1_param" and j1 is not None:
-            new_param = float(np.array(block.values).reshape(()))
+            new_param = np.asarray(block.values, dtype=np.float64).reshape(())
             j1 = Jastrow_one_body_data(
                 jastrow_1b_param=new_param,
                 structure_data=j1.structure_data,
@@ -1822,7 +1825,7 @@ class Jastrow_data:
                 jastrow_1b_type=j1.jastrow_1b_type,
             )
         elif block.name == "j2_param" and j2 is not None:
-            new_param = float(np.array(block.values).reshape(()))
+            new_param = np.asarray(block.values, dtype=np.float64).reshape(())
             j2 = Jastrow_two_body_data(jastrow_2b_param=new_param, jastrow_2b_type=j2.jastrow_2b_type)
         elif block.name == "j3_matrix" and j3 is not None:
             # Enforce J3 structural constraints here. The last column corresponds
