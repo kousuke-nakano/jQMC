@@ -2986,6 +2986,9 @@ class MCMC:
                         hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.h5"
                         logger.info(f"Hamiltonian data is dumped as an HDF5 file: {hamiltonian_data_filename}.")
                         self.hamiltonian_data.save_to_hdf5(hamiltonian_data_filename)
+                # Re-assign hamiltonian_data to trigger the setter, which calls
+                # __init_attributes() and resets __mcmc_counter for the next step.
+                self.hamiltonian_data = self.hamiltonian_data
                 mpi_comm.Barrier()
                 continue
 
