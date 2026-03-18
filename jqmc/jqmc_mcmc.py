@@ -2973,6 +2973,22 @@ class MCMC:
             signal_to_noise_f = mpi_comm.bcast(signal_to_noise_f, root=0)
             signal_to_noise_f_max_indices = mpi_comm.bcast(signal_to_noise_f_max_indices, root=0)
 
+            # If all parameters were filtered out, skip the optimizer entirely
+            # and proceed to the next optimization step with unchanged parameters.
+            if len(signal_to_noise_f_max_indices) == 0:
+                logger.info(
+                    "All variational parameters filtered out by SN-ratio threshold. Skipping parameter update for this step."
+                )
+                num_opt_done += 1
+                # Still need to dump WF at the expected frequency
+                if mpi_rank == 0:
+                    if (i_opt + 1) % wf_dump_freq == 0 or (i_opt + 1) == num_opt_steps:
+                        hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.h5"
+                        logger.info(f"Hamiltonian data is dumped as an HDF5 file: {hamiltonian_data_filename}.")
+                        self.hamiltonian_data.save_to_hdf5(hamiltonian_data_filename)
+                mpi_comm.Barrier()
+                continue
+
             #############################
             # in-house SR optimizer
             #############################
