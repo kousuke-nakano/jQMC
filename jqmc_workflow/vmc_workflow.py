@@ -134,6 +134,10 @@ class VMC_Workflow(Workflow):
         Optimize in a restricted MO space.  Default from ``jqmc_miscs``.
     num_param_opt : int, optional
         Number of parameters to optimize (0 = all).  Default from ``jqmc_miscs``.
+    opt_filter_min_SN_ratio : float, optional
+        Minimum signal-to-noise ratio ``|f|/|std f|`` for a parameter to be
+        updated.  Parameters with SN <= this threshold are frozen.  Applied
+        before ``num_param_opt``.  Default from ``jqmc_miscs``.
     optimizer_kwargs : dict, optional
         Optimizer configuration dict.  Default from ``jqmc_miscs``.
     mcmc_seed : int, optional
@@ -245,6 +249,7 @@ class VMC_Workflow(Workflow):
         opt_lambda_param: Optional[bool] = None,
         opt_with_projected_MOs: Optional[bool] = None,
         num_param_opt: Optional[int] = None,
+        opt_filter_min_SN_ratio: Optional[float] = None,
         optimizer_kwargs: Optional[dict] = None,
         # -- [control] section parameters --
         mcmc_seed: Optional[int] = None,
@@ -283,6 +288,7 @@ class VMC_Workflow(Workflow):
         self.opt_lambda_param = opt_lambda_param
         self.opt_with_projected_MOs = opt_with_projected_MOs
         self.num_param_opt = num_param_opt
+        self.opt_filter_min_SN_ratio = opt_filter_min_SN_ratio
         self.optimizer_kwargs = optimizer_kwargs
         # [control] section
         self.mcmc_seed = mcmc_seed
@@ -353,6 +359,7 @@ class VMC_Workflow(Workflow):
                 "opt_lambda_param": self.opt_lambda_param,
                 "opt_with_projected_MOs": self.opt_with_projected_MOs,
                 "num_param_opt": self.num_param_opt,
+                "opt_filter_min_SN_ratio": self.opt_filter_min_SN_ratio,
                 "optimizer_kwargs": self.optimizer_kwargs,
             },
         )

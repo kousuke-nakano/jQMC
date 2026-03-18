@@ -70,6 +70,7 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 | `opt_J3_param`             |       `true` | Optimize J3 parameters.                                                                                              |
 | `opt_lambda_param`         |      `false` | Optimize geminal (λ) parameters.                                                                                     |
 | `num_param_opt`            |          `0` | Number of parameters to optimize, chosen in descending order of \|f\| / std(f). If `0`, optimize **all** parameters. |
+| `opt_filter_min_SN_ratio`  |        `4.0` | Minimum signal-to-noise ratio \|f\| / std(f) for a parameter to be updated. Parameters with SN ≤ this threshold are frozen. Applied **before** `num_param_opt` top-N selection. Set to `0` to disable. |
 
 ---
 

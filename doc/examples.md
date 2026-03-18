@@ -377,6 +377,7 @@ opt_JNN_param = false
 opt_lambda_param = false
 opt_with_projected_MOs = false
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
+opt_filter_min_SN_ratio = 4.0 # minimum |f|/|std f| to update a parameter. Parameters with SN <= this are frozen. Applied before num_param_opt. Set 0 to disable.
 ```
 
 Please lunch the job.
@@ -699,6 +700,7 @@ opt_JNN_param = true
 opt_lambda_param = false
 opt_with_projected_MOs = false
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
+opt_filter_min_SN_ratio = 4.0 # minimum |f|/|std f| to update a parameter. Parameters with SN <= this are frozen. Applied before num_param_opt. Set 0 to disable.
 optimizer_kwargs = { method = "adam" }
 ```
 
@@ -914,6 +916,7 @@ opt_JNN_param = false
 opt_lambda_param = true
 opt_with_projected_MOs = true
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
+opt_filter_min_SN_ratio = 4.0 # minimum |f|/|std f| to update a parameter. Parameters with SN <= this are frozen. Applied before num_param_opt. Set 0 to disable.
 ```
 
 The key differences from `example01` are:
@@ -1234,6 +1237,7 @@ opt_JNN_param = false
 opt_lambda_param = false
 opt_with_projected_MOs = false
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
+opt_filter_min_SN_ratio = 4.0 # minimum |f|/|std f| to update a parameter. Parameters with SN <= this are frozen. Applied before num_param_opt. Set 0 to disable.
 ```
 
 Please lunch the job.
@@ -1455,6 +1459,7 @@ opt_JNN_param = false
 opt_lambda_param = true
 opt_with_projected_MOs = false
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
+opt_filter_min_SN_ratio = 4.0 # minimum |f|/|std f| to update a parameter. Parameters with SN <= this are frozen. Applied before num_param_opt. Set 0 to disable.
 ```
 
 > [!IMPORTANT]
@@ -1757,6 +1762,7 @@ opt_J2_param = true
 opt_J3_param = true
 opt_lambda_param = false
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If None, all parameters are optimized.
+opt_filter_min_SN_ratio = 4.0 # minimum |f|/|std f| to update a parameter. Parameters with SN <= this are frozen. Applied before num_param_opt. Set 0 to disable.
 ```
 
 Please launch the job.
@@ -1971,6 +1977,7 @@ opt_J2_param = true
 opt_J3_param = true
 opt_lambda_param = true
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If None, all parameters are optimized.
+opt_filter_min_SN_ratio = 4.0 # minimum |f|/|std f| to update a parameter. Parameters with SN <= this are frozen. Applied before num_param_opt. Set 0 to disable.
 ```
 
 Please launch the job.

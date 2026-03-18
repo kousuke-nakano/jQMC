@@ -2456,6 +2456,7 @@ class MCMC:
         opt_lambda_param: bool = False,
         opt_with_projected_MOs: bool = False,
         num_param_opt: int = 0,
+        opt_filter_min_SN_ratio: float = 4.0,
         optimizer_kwargs: dict | None = None,
     ):
         """Optimize wavefunction parameters using SR or optax.
@@ -2477,6 +2478,9 @@ class MCMC:
                 convert MO->AO for MCMC/gradient evaluation, update AO parameters, then project AO->MO
                 with fixed ``num_eigenvectors=num_electron_dn`` to finish the step.
             num_param_opt (int, optional): Limit parameters updated (ranked by ``|f|/|std f|``); ``0`` means all. Defaults to 0.
+            opt_filter_min_SN_ratio (float, optional): Minimum signal-to-noise ratio ``|f|/|std f|`` for a
+                parameter to be updated.  Parameters with SN <= this threshold are frozen.  Applied
+                before ``num_param_opt`` top-N selection.  Defaults to 4.0.
             optimizer_kwargs (dict | None, optional): Optimizer configuration. ``method='sr'`` uses SR keys (``delta``, ``epsilon``, ``cg_flag``, ``cg_max_iter``, ``cg_tol``, ``adaptive_learning_rate``); ``adaptive_learning_rate=True`` enables accelerated SR (aSR) gamma scaling and requires ``compute_log_WF_param_deriv=True`` and ``comput_e_L_param_deriv=True``; other ``method`` names are optax constructors (e.g., ``"adam"``) and receive remaining keys.
 
         Notes:
@@ -2913,33 +2917,55 @@ class MCMC:
                 logger.info(f"Max f = {f[f_argmax]:.3f} +- {f_std[f_argmax]:.3f} Ha/a.u.")
                 logger.info(f"Max of signal-to-noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}.")
                 logger.info("-" * num_sep_line)
-                if num_param_opt != 0:
-                    if num_param_opt > len(signal_to_noise_f):
-                        num_param_opt = len(signal_to_noise_f)
+
+                # ---- Step 1: SN-ratio floor filter ----
+                _sn_sorted_indices = np.argsort(signal_to_noise_f)[::-1]  # descending
+                if opt_filter_min_SN_ratio > 0.0:
+                    _sn_pass_mask = signal_to_noise_f[_sn_sorted_indices] > opt_filter_min_SN_ratio
+                    _sn_filtered_indices = _sn_sorted_indices[_sn_pass_mask]
+                    _num_filtered_out = len(_sn_sorted_indices) - len(_sn_filtered_indices)
+                    logger.info(
+                        f"SN-ratio filter (>{opt_filter_min_SN_ratio:.2f}): "
+                        f"{len(_sn_filtered_indices)}/{len(_sn_sorted_indices)} parameters pass, "
+                        f"{_num_filtered_out} frozen."
+                    )
+                else:
+                    _sn_filtered_indices = _sn_sorted_indices
+
+                # ---- Step 2: num_param_opt top-N selection ----
+                if num_param_opt != 0 and num_param_opt < len(_sn_filtered_indices):
+                    signal_to_noise_f_max_indices = _sn_filtered_indices[:num_param_opt]
                     logger.info(
                         f"Optimizing only {num_param_opt} variational parameters with the largest signal to noise ratios of f."
                     )
-                    signal_to_noise_f_max_indices = np.argsort(signal_to_noise_f)[::-1][:num_param_opt]
-                    # Identify which block each selected parameter belongs to
-                    _sel_info = []
-                    for _idx in signal_to_noise_f_max_indices:
-                        _block_name = "unknown"
-                        _local_idx = int(_idx)
-                        for _blk, _s, _e in offsets:
-                            if _s <= _idx < _e:
-                                _block_name = _blk.name
-                                _local_idx = int(_idx - _s)
-                                break
-                        _sel_info.append(
-                            f"  flat={_idx} block={_block_name} local={_local_idx} "
-                            f"|f|/std={signal_to_noise_f[_idx]:.3f} f={f[_idx]:.6f}"
-                        )
-                    logger.debug("Selected %d parameters for optimization (by |f|/|std f|):", num_param_opt)
-                    for _line in _sel_info:
-                        logger.debug(_line)
                 else:
-                    logger.info("Optimizing all variational parameters.")
-                    signal_to_noise_f_max_indices = np.arange(signal_to_noise_f.size)
+                    signal_to_noise_f_max_indices = _sn_filtered_indices
+                    if len(_sn_filtered_indices) < len(_sn_sorted_indices):
+                        logger.info(
+                            f"Optimizing {len(signal_to_noise_f_max_indices)} variational parameters (after SN-ratio filter)."
+                        )
+                    else:
+                        logger.info("Optimizing all variational parameters.")
+
+                # ---- Debug: show selected / top parameters ----
+                _show_k = min(30, len(signal_to_noise_f_max_indices))
+                _show_indices = signal_to_noise_f_max_indices[:_show_k]
+                _sel_info = []
+                for _idx in _show_indices:
+                    _block_name = "unknown"
+                    _local_idx = int(_idx)
+                    for _blk, _s, _e in offsets:
+                        if _s <= _idx < _e:
+                            _block_name = _blk.name
+                            _local_idx = int(_idx - _s)
+                            break
+                    _sel_info.append(
+                        f"  flat={_idx} block={_block_name} local={_local_idx} "
+                        f"|f|/std={signal_to_noise_f[_idx]:.3f} f={f[_idx]:.6f}"
+                    )
+                logger.debug("Top %d parameters by |f|/|std f|:", _show_k)
+                for _line in _sel_info:
+                    logger.debug(_line)
             else:
                 signal_to_noise_f = None
                 signal_to_noise_f_max_indices = None
@@ -3494,6 +3520,18 @@ class MCMC:
                 theta = theta * gamma
 
             # ------------------------------------------------------------------
+            # Compute ||Delta ln|Psi||| = delta * sqrt(theta^T S theta)
+            # Using X_local (normalized): theta^T S theta = ||X_local^T (sqrt(diag_S) * theta)||^2
+            # ------------------------------------------------------------------
+            _lr = sr_delta
+            _v = np.sqrt(diag_S) * theta
+            _Xt_v_local = X_local.T @ _v
+            _norm_sq_local = np.dot(_Xt_v_local, _Xt_v_local)
+            _norm_sq = mpi_comm.allreduce(_norm_sq_local, op=MPI.SUM)
+            _delta_ln_psi_norm = _lr * np.sqrt(_norm_sq)
+            logger.debug(f"Change in ln|Psi| norm = {_delta_ln_psi_norm}")
+
+            # ------------------------------------------------------------------
             # 2) Back-transform theta from orthogonal basis to AO basis
             #    for the lambda_matrix block.
             #      paired:   θ_AO = S^{-1/2}_up @ θ'_orth @ S^{-1/2}_dn
@@ -3569,7 +3607,7 @@ class MCMC:
             coulomb_potential_data = self.hamiltonian_data.coulomb_potential_data
 
             wavefunction_data_old = self.hamiltonian_data.wavefunction_data
-            block_learning_rate = sr_delta if (use_sr and not use_sr_adaptive_lr) else 1.0
+            block_learning_rate = sr_delta
             wavefunction_data = wavefunction_data_old.apply_block_updates(
                 blocks=blocks,
                 thetas=theta,
