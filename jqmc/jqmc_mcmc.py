@@ -2429,13 +2429,14 @@ class MCMC:
                 f_argmax = np.argmax(np.abs(f))
                 logger.info("-" * num_sep_line)
                 logger.info(f"Max f = {f[f_argmax]:.3f} +- {f_std[f_argmax]:.3f} Ha/a.u.")
-                logger.info(f"Max of signal-to-noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}.")
-                logger.info("-" * num_sep_line)
 
                 # ---- Step 0: Symmetrize SN metric for blocks with internal symmetry ----
                 for _blk, _s, _e in offsets:
                     if _blk.symmetrize_metric is not None:
                         signal_to_noise_f[_s:_e] = _blk.symmetrize_metric(signal_to_noise_f[_s:_e])
+
+                logger.info(f"Max of signal-to-noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}.")
+                logger.info("-" * num_sep_line)
 
                 # ---- Step 1: SN-ratio floor filter ----
                 _sn_sorted_indices = np.argsort(signal_to_noise_f)[::-1]  # descending
@@ -2485,7 +2486,9 @@ class MCMC:
 
                 # ---- Debug: show selected / top parameters ----
                 _show_k = min(30, len(signal_to_noise_f_max_indices))
-                _show_indices = signal_to_noise_f_max_indices[:_show_k]
+                _show_indices = signal_to_noise_f_max_indices[
+                    np.argsort(signal_to_noise_f[signal_to_noise_f_max_indices])[::-1]
+                ][:_show_k]
                 _sel_info = []
                 for _idx in _show_indices:
                     _block_name = "unknown"

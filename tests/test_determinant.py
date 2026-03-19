@@ -46,6 +46,16 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+from jqmc._setting import (  # noqa: E402
+    atol_auto_vs_analytic_deriv,
+    atol_auto_vs_numerical_deriv,
+    atol_consistency,
+    atol_debug_vs_production,
+    rtol_auto_vs_analytic_deriv,
+    rtol_auto_vs_numerical_deriv,
+    rtol_consistency,
+    rtol_debug_vs_production,
+)
 from jqmc.atomic_orbital import AOs_sphe_data, compute_overlap_matrix  # noqa: E402
 from jqmc.determinant import (  # noqa: E402
     Geminal_data,
@@ -69,19 +79,9 @@ from jqmc.determinant import (  # noqa: E402
     compute_ln_det_geminal_all_elements_fast,
 )
 from jqmc.molecular_orbital import MOs_data  # noqa: E402
-from jqmc.wavefunction import VariationalParameterBlock  # noqa: E402
-from jqmc._setting import (  # noqa: E402
-    atol_auto_vs_analytic_deriv,
-    atol_auto_vs_numerical_deriv,
-    atol_consistency,
-    atol_debug_vs_production,
-    rtol_auto_vs_analytic_deriv,
-    rtol_auto_vs_numerical_deriv,
-    rtol_consistency,
-    rtol_debug_vs_production,
-)
 from jqmc.structure import Structure_data  # noqa: E402
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
+from jqmc.wavefunction import VariationalParameterBlock  # noqa: E402
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
