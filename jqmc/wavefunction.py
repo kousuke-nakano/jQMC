@@ -45,6 +45,7 @@ from flax import struct
 from jax import grad, hessian, jit, tree_util, vmap
 from jax import typing as jnpt
 
+from ._diff_mask import DiffMask, apply_diff_mask
 from .determinant import (
     Geminal_data,
     _compute_ratio_determinant_part_rank1_update,
@@ -55,7 +56,6 @@ from .determinant import (
     compute_ln_det_geminal_all_elements,
     compute_ln_det_geminal_all_elements_fast,
 )
-from ._diff_mask import DiffMask, apply_diff_mask
 from .jastrow_factor import (
     Jastrow_data,
     _compute_ratio_Jastrow_part_rank1_update,

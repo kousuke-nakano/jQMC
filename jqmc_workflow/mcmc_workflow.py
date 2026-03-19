@@ -203,7 +203,7 @@ class MCMC_Workflow(Workflow):
         jobname: str = "jqmc-mcmc",
         number_of_walkers: int = 4,
         max_time: int = 86400,
-        num_mcmc_bin_blocks: int = 1,
+        num_mcmc_bin_blocks: int = 5,
         num_mcmc_warmup_steps: int = 0,
         # -- [mcmc] section parameters --
         Dt: Optional[float] = None,
