@@ -2031,21 +2031,6 @@ class MCMC:
             if k not in {"delta", "epsilon", "cg_flag", "cg_max_iter", "cg_tol", "cg_x0_strategy", "adaptive_learning_rate"}
         }
 
-        # Guard: SN-based parameter filtering does not yet respect
-        # internal symmetries of variational blocks (e.g. paired lambda).
-        if num_param_opt != 0:
-            raise NotImplementedError(
-                "num_param_opt != 0 is temporarily disabled because the SN-based "
-                "parameter mask does not yet respect internal block symmetries "
-                "(e.g. paired lambda_matrix).  See plan.md for the fix."
-            )
-        if opt_filter_min_SN_ratio > 0.0:
-            raise NotImplementedError(
-                "opt_filter_min_SN_ratio > 0 is temporarily disabled because the "
-                "SN-based parameter filter does not yet respect internal block "
-                "symmetries (e.g. paired lambda_matrix).  See plan.md for the fix."
-            )
-
         optax_tx = None
         optax_state = None
         optax_param_size = None
@@ -2447,6 +2432,11 @@ class MCMC:
                 logger.info(f"Max of signal-to-noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}.")
                 logger.info("-" * num_sep_line)
 
+                # ---- Step 0: Symmetrize SN metric for blocks with internal symmetry ----
+                for _blk, _s, _e in offsets:
+                    if _blk.symmetrize_metric is not None:
+                        signal_to_noise_f[_s:_e] = _blk.symmetrize_metric(signal_to_noise_f[_s:_e])
+
                 # ---- Step 1: SN-ratio floor filter ----
                 _sn_sorted_indices = np.argsort(signal_to_noise_f)[::-1]  # descending
                 if opt_filter_min_SN_ratio > 0.0:
@@ -2475,6 +2465,23 @@ class MCMC:
                         )
                     else:
                         logger.info("Optimizing all variational parameters.")
+
+                # ---- Step 3: Ensure symmetry-equivalent parameters are selected together ----
+                _mask = np.zeros(total_num_params, dtype=np.float64)
+                _mask[signal_to_noise_f_max_indices] = 1.0
+                _mask_changed = False
+                for _blk, _s, _e in offsets:
+                    if _blk.symmetrize_metric is not None:
+                        _old_slice = _mask[_s:_e].copy()
+                        _mask[_s:_e] = _blk.symmetrize_metric(_mask[_s:_e])
+                        if not np.array_equal(_old_slice, _mask[_s:_e]):
+                            _mask_changed = True
+                if _mask_changed:
+                    signal_to_noise_f_max_indices = np.where(_mask > 0.0)[0]
+                    logger.info(
+                        f"Expanded parameter selection to {len(signal_to_noise_f_max_indices)} "
+                        f"to respect block symmetry constraints."
+                    )
 
                 # ---- Debug: show selected / top parameters ----
                 _show_k = min(30, len(signal_to_noise_f_max_indices))
