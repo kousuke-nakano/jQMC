@@ -170,8 +170,11 @@ class Geminal_data:
           geminal parameters.
         * Handle the splitting of a rectangular lambda matrix into paired and
           unpaired parts when needed.
-        * Enforce Geminal-specific structural constraints, especially the
-          symmetry conditions on the paired block of the lambda matrix.
+        * Enforce Geminal-specific structural constraints by calling the
+          callback returned by :meth:`get_symmetrize_metric`.  Both the
+          decision and the enforcement are fully encapsulated in that
+          method, which is the single source of truth for all symmetry
+          operations.
 
         All details about how the lambda parameters are stored and constrained
         live here (and in the surrounding ``Geminal_data`` class), not in
@@ -184,26 +187,10 @@ class Geminal_data:
         if block.name != "lambda_matrix":
             return self
 
-        lambda_old = np.array(self.lambda_matrix)
         lambda_new = np.array(block.values)
 
-        # If the paired part of lambda_matrix is symmetric, keep it symmetric
-        # after the update. The unpaired block (if any) is left as-is.
-        # Use the actual matrix shape to decide: square means no unpaired columns.
-        if lambda_old.shape[0] == lambda_old.shape[1]:
-            # Full square matrix: check and enforce symmetry on the whole block.
-            if np.allclose(lambda_old, lambda_old.T, atol=atol_consistency, rtol=rtol_consistency):
-                lambda_new = 0.5 * (lambda_new + lambda_new.T)
-        else:
-            # Rectangular: split into paired (square) and unpaired parts.
-            n_paired_cols = lambda_old.shape[0]  # paired block is (n_row, n_row)
-            paired_old, unpaired_old = np.hsplit(lambda_old, [n_paired_cols])
-            paired_new, unpaired_new = np.hsplit(lambda_new, [n_paired_cols])
-
-            if np.allclose(paired_old, paired_old.T, atol=atol_consistency, rtol=rtol_consistency):
-                paired_new = 0.5 * (paired_new + paired_new.T)
-
-            lambda_new = np.hstack([paired_new, unpaired_new])
+        # Symmetrize unconditionally — the method is a no-op for non-symmetric matrices.
+        lambda_new = self.symmetrize_lambda(lambda_new)
 
         return Geminal_data(
             num_electron_up=self.num_electron_up,
@@ -212,6 +199,54 @@ class Geminal_data:
             orb_data_dn_spin=self.orb_data_dn_spin,
             lambda_matrix=lambda_new,
         )
+
+    def symmetrize_lambda(self, mat):
+        """Symmetrize a lambda matrix and return it, or return it unchanged.
+
+        If the current ``lambda_matrix`` (or its paired sub-block for
+        rectangular layouts) is symmetric within ``atol_consistency`` /
+        ``rtol_consistency``, this method enforces ``0.5*(A+A.T)`` on
+        the corresponding block and returns the symmetrized 2-D matrix.
+        Otherwise the input matrix is returned unchanged.
+
+        This method is the **single source of truth** for all symmetry
+        operations on the lambda matrix.  Both
+        :meth:`apply_block_update` (parameter enforcement) and the MCMC
+        driver (SN-metric symmetrization, selection-mask expansion)
+        use this method, so the symmetry logic is never duplicated.
+        (The MCMC driver wraps it with flatten/unflatten in
+        :meth:`~Wavefunction_data.get_variational_blocks`.)
+
+        .. note::
+
+           When molecular or crystal spatial symmetry is incorporated in
+           the future, **only this method** needs to be extended (e.g. to
+           average over a symmetry-group orbit) — every call site
+           automatically follows.
+
+        Args:
+            mat: 2-D lambda matrix to symmetrize.
+
+        Returns:
+            Symmetrized matrix, or the input unchanged if no symmetry applies.
+        """
+        if self.lambda_matrix is None:
+            return mat
+        lam = np.asarray(self.lambda_matrix)
+        if lam.ndim != 2:
+            return mat
+        if lam.shape[0] == lam.shape[1]:
+            if np.allclose(lam, lam.T, atol=atol_consistency, rtol=rtol_consistency):
+                return 0.5 * (mat + mat.T)
+        else:
+            n_paired = lam.shape[0]
+            paired = lam[:, :n_paired]
+            if np.allclose(paired, paired.T, atol=atol_consistency, rtol=rtol_consistency):
+                out = mat.copy()
+                p = out[:, :n_paired]
+                out[:, :n_paired] = 0.5 * (p + p.T)
+                return out
+        return mat
 
     def accumulate_position_grad(self, grad_geminal: "Geminal_data"):
         """Aggregate position gradients from geminal-related structures."""

@@ -1828,20 +1828,10 @@ class Jastrow_data:
             new_param = np.asarray(block.values, dtype=np.float64).reshape(())
             j2 = Jastrow_two_body_data(jastrow_2b_param=new_param, jastrow_2b_type=j2.jastrow_2b_type)
         elif block.name == "j3_matrix" and j3 is not None:
-            # Enforce J3 structural constraints here. The last column corresponds
-            # to the J1-like rectangular part, while the remaining square block
-            # is kept symmetric when the original matrix is symmetric.
-            j3_old = np.array(j3.j_matrix)
             j3_new = np.array(block.values)
 
-            # Split into square + last-column parts
-            square_old = j3_old[:, :-1]
-            square_new = j3_new[:, :-1]
-
-            # If the original square block is symmetric, enforce symmetry on the update
-            if np.allclose(square_old, square_old.T, atol=atol_consistency):
-                square_new = 0.5 * (square_new + square_new.T)
-                j3_new[:, :-1] = square_new
+            # Symmetrize unconditionally — the method is a no-op for non-symmetric matrices.
+            j3_new = self.symmetrize_j3(j3_new)
 
             j3 = Jastrow_three_body_data(orb_data=j3.orb_data, j_matrix=j3_new)
         elif block.name == "jastrow_nn_params" and nn3 is not None:
@@ -1856,6 +1846,53 @@ class Jastrow_data:
             jastrow_three_body_data=j3,
             jastrow_nn_data=nn3,
         )
+
+    def symmetrize_j3(self, mat):
+        """Symmetrize a j3 matrix and return it, or return it unchanged.
+
+        If the square sub-block ``j_matrix[:, :-1]`` of the current
+        three-body Jastrow matrix is symmetric within
+        ``atol_consistency``, this method enforces ``0.5*(A+A.T)`` on
+        that sub-block (leaving the last column untouched) and returns
+        the full 2-D matrix.  Otherwise the input matrix is returned
+        unchanged.
+
+        This method is the **single source of truth** for all symmetry
+        operations on the j3 matrix.  Both :meth:`apply_block_update`
+        (parameter enforcement) and the MCMC driver (SN-metric
+        symmetrization, selection-mask expansion) use this method,
+        so the symmetry logic is never duplicated.  (The MCMC driver
+        wraps it with flatten/unflatten in
+        :meth:`~Wavefunction_data.get_variational_blocks`.)
+
+        .. note::
+
+           When molecular or crystal spatial symmetry is incorporated in
+           the future, **only this method** needs to be extended (e.g. to
+           average over a symmetry-group orbit) — every call site
+           automatically follows.
+
+        Args:
+            mat: 2-D j3 matrix to symmetrize.
+
+        Returns:
+            Symmetrized matrix, or the input unchanged if no symmetry applies.
+        """
+        j3 = self.jastrow_three_body_data
+        if j3 is None:
+            return mat
+        j3_arr = np.asarray(j3.j_matrix)
+        if j3_arr.ndim != 2 or j3_arr.shape[1] < 2:
+            return mat
+        sq = j3_arr[:, :-1]
+        if sq.shape[0] != sq.shape[1]:
+            return mat
+        if np.allclose(sq, sq.T, atol=atol_consistency):
+            out = mat.copy()
+            sq_new = out[:, :-1]
+            out[:, :-1] = 0.5 * (sq_new + sq_new.T)
+            return out
+        return mat
 
     def accumulate_position_grad(self, grad_jastrow: "Jastrow_data"):
         """Aggregate position gradients from all active Jastrow components."""

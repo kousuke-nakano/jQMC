@@ -98,6 +98,9 @@ class VariationalParameterBlock:
     values: jnpt.ArrayLike = struct.field(pytree_node=True)  #: Parameter payload (keeps PyTree structure if present).
     shape: tuple[int, ...] = struct.field(pytree_node=False)  #: Original shape of ``values`` for unflattening updates.
     size: int = struct.field(pytree_node=False)  #: Flattened size of ``values`` used when slicing the global vector.
+    symmetrize_metric: object = struct.field(
+        pytree_node=False, default=None
+    )  #: Optional callback ``flat_array -> flat_array`` (wraps a ``matrix -> matrix`` callback from the data class with flatten/unflatten).
 
     def apply_update(self, delta_flat: npt.NDArray, learning_rate: float) -> "VariationalParameterBlock":
         r"""Return a new block with values updated by a generic additive rule.
@@ -387,12 +390,14 @@ class Wavefunction_data:
             if opt_J3_param and self.jastrow_data.jastrow_three_body_data is not None:
                 j3 = self.jastrow_data.jastrow_three_body_data.j_matrix
                 j3_arr = np.asarray(j3)
+                _jd = self.jastrow_data
                 blocks.append(
                     VariationalParameterBlock(
                         name="j3_matrix",
                         values=j3_arr,
                         shape=j3_arr.shape,
                         size=int(j3_arr.size),
+                        symmetrize_metric=lambda flat, _d=_jd, _s=j3_arr.shape: _d.symmetrize_j3(flat.reshape(_s)).ravel(),
                     )
                 )
 
@@ -413,12 +418,14 @@ class Wavefunction_data:
         if opt_lambda_param and self.geminal_data is not None and self.geminal_data.lambda_matrix is not None:
             lam = self.geminal_data.lambda_matrix
             lam_arr = np.asarray(lam)
+            _gd = self.geminal_data
             blocks.append(
                 VariationalParameterBlock(
                     name="lambda_matrix",
                     values=lam_arr,
                     shape=lam_arr.shape,
                     size=int(lam_arr.size),
+                    symmetrize_metric=lambda flat, _d=_gd, _s=lam_arr.shape: _d.symmetrize_lambda(flat.reshape(_s)).ravel(),
                 )
             )
 

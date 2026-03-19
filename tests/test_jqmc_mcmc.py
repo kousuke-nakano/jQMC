@@ -941,6 +941,221 @@ def test_opt_with_projected_MOs(trexio_file, monkeypatch):
     jax.clear_caches()
 
 
+# ---------------------------------------------------------------------------
+# L3: VMC optimization loop — symmetry preservation tests
+# ---------------------------------------------------------------------------
+
+# Test parameters: (j3_type, lambda_type, num_param_opt, sn_ratio)
+_SYMMETRY_TEST_CASES = [
+    # L3-1: baseline, both symmetric, all params, no SN filter
+    ("sym", "square_sym", 0, 0.0),
+    # L3-2: both symmetric, num_param_opt active → Step 3 expands partners
+    ("sym", "square_sym", 3, 0.0),
+    # L3-3: both symmetric, SN filter active
+    ("sym", "square_sym", 0, 0.5),
+    # L3-4: both symmetric, SN filter + num_param_opt (toughest)
+    ("sym", "square_sym", 3, 0.5),
+    # L3-5: j3 symmetric, lambda non-symmetric → only j3 preserved
+    ("sym", "square_nonsym", 0, 0.0),
+    # L3-6: j3 non-symmetric, lambda symmetric → only lambda preserved
+    ("nonsym", "square_sym", 0, 0.0),
+    # L3-7: both non-symmetric → no symmetrization (no-op)
+    ("nonsym", "square_nonsym", 0, 0.0),
+    # L3-8: j3 symmetric, rectangular lambda with paired-symmetric sub-block
+    ("sym", "rect_paired_sym", 0, 0.0),
+    # L3-9: rectangular lambda + num_param_opt
+    ("sym", "rect_paired_sym", 3, 0.0),
+    # L3-10: both non-symmetric + all filters → nothing breaks
+    ("nonsym", "square_nonsym", 3, 0.5),
+    # L3-11: both symmetric + SN filter + num_param_opt → hardest case
+    ("sym", "square_sym", 2, 0.5),
+]
+
+
+@pytest.mark.parametrize("j3_type,lambda_type,num_param_opt,sn_ratio", _SYMMETRY_TEST_CASES)
+def test_vmc_symmetry_preservation(j3_type, lambda_type, num_param_opt, sn_ratio, monkeypatch):
+    """Verify that j3 and lambda symmetry is preserved through the full VMC optimization loop.
+
+    The test uses **real** ``get_variational_blocks`` and ``apply_block_updates`` (not
+    monkeypatched), so the ``symmetrize_metric`` wrapper and ``symmetrize_j3`` /
+    ``symmetrize_lambda`` are fully exercised through Steps 0, 1, 2, 3 and the final
+    parameter apply.
+    """
+    trexio_file = os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ae_ccpvtz_cart.h5")
+    (
+        structure_data,
+        aos_data,
+        _,
+        _,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file=trexio_file, store_tuple=True)
+
+    # ── Build j3 matrix ──────────────────────────────────────────────────────
+    rng = np.random.RandomState(42)
+    n_orb = aos_data._num_orb
+    if j3_type == "sym":
+        sq = rng.randn(n_orb, n_orb)
+        sq = 0.5 * (sq + sq.T)
+        last_col = rng.randn(n_orb)
+        j3_matrix = np.column_stack([sq, last_col])
+    else:
+        j3_matrix = rng.randn(n_orb, n_orb + 1)
+        j3_matrix[0, 1] = 100.0  # force asymmetry in [:, :-1]
+
+    jastrow_threebody_data = Jastrow_three_body_data(orb_data=aos_data, j_matrix=j3_matrix)
+    jastrow_data = Jastrow_data(jastrow_three_body_data=jastrow_threebody_data)
+
+    # ── Build lambda matrix ──────────────────────────────────────────────────
+    n_up_elec = geminal_mo_data.num_electron_up
+    n_dn_elec = geminal_mo_data.num_electron_dn
+    orb_num = geminal_mo_data.orb_num_up  # = orb_num_dn for MO geminals
+
+    if lambda_type == "square_sym":
+        lam = rng.randn(orb_num, orb_num)
+        lam = 0.5 * (lam + lam.T)
+    elif lambda_type == "square_nonsym":
+        if orb_num < 2:
+            pytest.skip("Cannot create nonsymmetric square lambda with orb_num < 2")
+        lam = rng.randn(orb_num, orb_num)
+        lam[0, 1] = 100.0  # force asymmetry
+    elif lambda_type == "rect_paired_sym":
+        # For rectangular: shape (n_up_orbs, n_dn_orbs + extra_up)
+        # We need num_electron_up > num_electron_dn for open-shell.
+        # H2 is closed-shell (1up, 1dn), so we simulate rectangular
+        # by constructing lambda shape (orb_num, orb_num + 1).
+        n_extra = 1
+        paired = rng.randn(orb_num, orb_num)
+        paired = 0.5 * (paired + paired.T)
+        unpaired = rng.randn(orb_num, n_extra)
+        lam = np.column_stack([paired, unpaired])
+        # Override electron counts for open-shell simulation
+        n_up_elec = n_dn_elec + n_extra
+    else:
+        raise ValueError(f"Unknown lambda_type: {lambda_type}")
+
+    geminal_data = Geminal_data(
+        num_electron_up=n_up_elec,
+        num_electron_dn=n_dn_elec,
+        orb_data_up_spin=geminal_mo_data.orb_data_up_spin,
+        orb_data_dn_spin=geminal_mo_data.orb_data_dn_spin,
+        lambda_matrix=lam,
+    )
+
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_data)
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+
+    num_walkers = 2
+
+    # ── Mock only the sampling/energy; leave get_variational_blocks and
+    #    apply_block_updates real so symmetrize_metric is exercised. ────────
+
+    def fake_run(self, num_mcmc_steps=0, max_time=None):
+        return None
+
+    def fake_get_E(self, num_mcmc_warmup_steps=0, num_mcmc_bin_blocks=1):
+        return (0.0, 0.0, 0.0, 0.0)
+
+    def fake_get_gF(
+        self,
+        num_mcmc_warmup_steps,
+        num_mcmc_bin_blocks,
+        chosen_param_index,
+        blocks,
+        lambda_projectors=None,
+        num_orb_projection=None,
+    ):
+        """Return intentionally non-symmetric forces to stress-test the symmetrization."""
+        total = sum(block.size for block in blocks)
+        rng_gf = np.random.RandomState(99)
+        f = rng_gf.randn(total)
+        f_std = np.abs(rng_gf.randn(total)) + 0.1  # positive std
+        return f, f_std
+
+    monkeypatch.setattr(MCMC, "run", fake_run, raising=False)
+    monkeypatch.setattr(MCMC, "get_E", fake_get_E, raising=False)
+    monkeypatch.setattr(MCMC, "get_gF", fake_get_gF, raising=False)
+    monkeypatch.setattr(MCMC, "w_L", property(lambda self: np.ones((1, self.num_walkers))), raising=False)
+    monkeypatch.setattr(MCMC, "e_L", property(lambda self: np.zeros((1, self.num_walkers))), raising=False)
+    # NOTE: get_variational_blocks and apply_block_updates are NOT patched.
+
+    mcmc = MCMC(
+        hamiltonian_data=hamiltonian_data,
+        Dt=2.0,
+        mcmc_seed=123,
+        num_walkers=num_walkers,
+        comput_position_deriv=False,
+        comput_log_WF_param_deriv=True,
+        comput_e_L_param_deriv=False,
+        random_discretized_mesh=True,
+    )
+
+    # Record before
+    j3_before = np.asarray(mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix).copy()
+    lam_before = np.asarray(mcmc.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix).copy()
+
+    mcmc.run_optimize(
+        num_mcmc_steps=1,
+        num_opt_steps=1,
+        num_mcmc_warmup_steps=0,
+        num_mcmc_bin_blocks=1,
+        opt_J1_param=False,
+        opt_J2_param=False,
+        opt_J3_param=True,
+        opt_JNN_param=False,
+        opt_lambda_param=True,
+        num_param_opt=num_param_opt,
+        opt_filter_min_SN_ratio=sn_ratio,
+        optimizer_kwargs={"method": "sgd", "learning_rate": 0.01},
+    )
+
+    # Extract updated matrices
+    j3_after = np.asarray(mcmc.hamiltonian_data.wavefunction_data.jastrow_data.jastrow_three_body_data.j_matrix)
+    lam_after = np.asarray(mcmc.hamiltonian_data.wavefunction_data.geminal_data.lambda_matrix)
+
+    # ── Assertions ───────────────────────────────────────────────────────────
+    if j3_type == "sym":
+        np.testing.assert_allclose(
+            j3_after[:, :-1],
+            j3_after[:, :-1].T,
+            atol=1e-14,
+            err_msg="j3 sub-block symmetry broken after VMC update",
+        )
+    else:
+        # j3 non-symmetric: just verify no crash, no NaN
+        assert np.all(np.isfinite(j3_after)), "NaN or Inf in j3 after update"
+
+    if lambda_type == "square_sym":
+        np.testing.assert_allclose(
+            lam_after,
+            lam_after.T,
+            atol=1e-14,
+            err_msg="square lambda symmetry broken after VMC update",
+        )
+    elif lambda_type == "rect_paired_sym":
+        n_paired = orb_num
+        np.testing.assert_allclose(
+            lam_after[:, :n_paired],
+            lam_after[:, :n_paired].T,
+            atol=1e-14,
+            err_msg="rectangular lambda paired sub-block symmetry broken after VMC update",
+        )
+    else:
+        assert np.all(np.isfinite(lam_after)), "NaN or Inf in lambda after update"
+
+    # Verify something actually changed (unless all params were filtered)
+    j3_changed = not np.array_equal(j3_before, j3_after)
+    lam_changed = not np.array_equal(lam_before, lam_after)
+    if sn_ratio == 0.0 and num_param_opt == 0:
+        assert j3_changed or lam_changed, "Expected at least one parameter to change"
+
+    jax.clear_caches()
+
+
 if __name__ == "__main__":
     from logging import Formatter, StreamHandler, getLogger
 
