@@ -1970,7 +1970,7 @@ class MCMC:
         opt_lambda_param: bool = False,
         opt_with_projected_MOs: bool = False,
         num_param_opt: int = 0,
-        opt_filter_min_SN_ratio: float = 4.0,
+        opt_filter_min_SN_ratio: float = 0.0,
         optimizer_kwargs: dict | None = None,
     ):
         """Optimize wavefunction parameters using SR or optax.
@@ -1994,7 +1994,7 @@ class MCMC:
             num_param_opt (int, optional): Limit parameters updated (ranked by ``|f|/|std f|``); ``0`` means all. Defaults to 0.
             opt_filter_min_SN_ratio (float, optional): Minimum signal-to-noise ratio ``|f|/|std f|`` for a
                 parameter to be updated.  Parameters with SN <= this threshold are frozen.  Applied
-                before ``num_param_opt`` top-N selection.  Defaults to 4.0.
+                before ``num_param_opt`` top-N selection.  Defaults to 0.0.
             optimizer_kwargs (dict | None, optional): Optimizer configuration. ``method='sr'`` uses SR keys (``delta``, ``epsilon``, ``cg_flag``, ``cg_max_iter``, ``cg_tol``, ``adaptive_learning_rate``); ``adaptive_learning_rate=True`` enables accelerated SR (aSR) gamma scaling and requires ``compute_log_WF_param_deriv=True`` and ``comput_e_L_param_deriv=True``; other ``method`` names are optax constructors (e.g., ``"adam"``) and receive remaining keys.
 
         Notes:
@@ -2030,6 +2030,21 @@ class MCMC:
             for k, v in optimizer_kwargs.items()
             if k not in {"delta", "epsilon", "cg_flag", "cg_max_iter", "cg_tol", "cg_x0_strategy", "adaptive_learning_rate"}
         }
+
+        # Guard: SN-based parameter filtering does not yet respect
+        # internal symmetries of variational blocks (e.g. paired lambda).
+        if num_param_opt != 0:
+            raise NotImplementedError(
+                "num_param_opt != 0 is temporarily disabled because the SN-based "
+                "parameter mask does not yet respect internal block symmetries "
+                "(e.g. paired lambda_matrix).  See plan.md for the fix."
+            )
+        if opt_filter_min_SN_ratio > 0.0:
+            raise NotImplementedError(
+                "opt_filter_min_SN_ratio > 0 is temporarily disabled because the "
+                "SN-based parameter filter does not yet respect internal block "
+                "symmetries (e.g. paired lambda_matrix).  See plan.md for the fix."
+            )
 
         optax_tx = None
         optax_state = None
