@@ -167,8 +167,13 @@ class VMC_Workflow(Workflow):
         Maximum number of production runs after the pilot.
     target_snr : float
         Target signal-to-noise ratio ``max(|f|/|std f|)`` for force
-        convergence.  The workflow continues until the last
-        optimization step's S/N drops to or below this threshold.
+        convergence.  The workflow continues until the averaged
+        S/N drops to or below this threshold.
+    snr_avg_window : int
+        Number of trailing optimization steps over which to average
+        the signal-to-noise ratio for the convergence check.
+        When there are fewer S/N values than this window, all
+        available values are averaged.
 
     Examples
     --------
@@ -263,6 +268,7 @@ class VMC_Workflow(Workflow):
         pilot_queue_label: Optional[str] = None,
         max_continuation: int = 1,
         target_snr: float = 4.5,
+        snr_avg_window: int = 5,
     ):
         super().__init__()
         self.server_machine_name = server_machine_name
@@ -302,6 +308,7 @@ class VMC_Workflow(Workflow):
         self.pilot_queue_label = pilot_queue_label or queue_label
         self.max_continuation = max_continuation
         self.target_snr = target_snr
+        self.snr_avg_window = snr_avg_window
 
     # ── Input generation ──────────────────────────────────────────
 
@@ -702,28 +709,32 @@ class VMC_Workflow(Workflow):
         self._parse_output(last_output)
 
         # ── Final convergence check (signal-to-noise) ─────────────
-        # Find S/N from the latest available output
-        final_snr = None
+        # Collect S/N values from production outputs (newest first)
+        all_snr = []
         for j in range(last_run, 0, -1):
             out_j = os.path.join(_wd, suffixed_name(self.output_file, j))
-            final_snr = self._parse_last_snr(out_j)
-            if final_snr is not None:
+            all_snr = self._parse_all_snr(out_j) + all_snr
+            if len(all_snr) >= self.snr_avg_window:
                 break
 
-        if final_snr is not None:
-            self.output_values["signal_to_noise"] = final_snr
-            if final_snr <= self.target_snr:
-                logger.info(f"  VMC converged: signal-to-noise ({final_snr:.3f}) <= target ({self.target_snr:.3f})")
+        if all_snr:
+            window = all_snr[-self.snr_avg_window :]
+            avg_snr = sum(window) / len(window)
+            self.output_values["signal_to_noise"] = avg_snr
+            self.output_values["signal_to_noise_last"] = all_snr[-1]
+            logger.info(f"  S/N avg over last {len(window)} step(s): {avg_snr:.3f}  (last step: {all_snr[-1]:.3f})")
+            if avg_snr <= self.target_snr:
+                logger.info(f"  VMC converged: avg signal-to-noise ({avg_snr:.3f}) <= target ({self.target_snr:.3f})")
             else:
                 logger.error(
-                    f"  VMC NOT converged: signal-to-noise ({final_snr:.3f}) "
+                    f"  VMC NOT converged: avg signal-to-noise ({avg_snr:.3f}) "
                     f"> target ({self.target_snr:.3f}) after "
                     f"{self.max_continuation} continuation run(s)"
                 )
                 self.status = "failed"
                 raise RuntimeError(
                     f"VMC optimization did not converge: "
-                    f"signal-to-noise ({final_snr:.3f}) > target ({self.target_snr:.3f}) "
+                    f"avg signal-to-noise ({avg_snr:.3f}) > target ({self.target_snr:.3f}) "
                     f"after {self.max_continuation} continuation run(s)."
                 )
         else:
@@ -771,32 +782,30 @@ class VMC_Workflow(Workflow):
             logger.info(f"  VMC energy: {self.output_values['energy']} +- {self.output_values['energy_error']} Ha")
 
     @staticmethod
-    def _parse_last_snr(output_file):
-        """Parse the last signal-to-noise ratio from a VMC output file.
+    def _parse_all_snr(output_file):
+        """Parse all signal-to-noise ratios from a VMC output file.
 
         Returns
         -------
-        float or None
-            The max signal-to-noise ratio ``max(|f|/|std f|)``,
-            or ``None`` if not found.
+        list[float]
+            All ``max(|f|/|std f|)`` values in order, one per
+            optimization step.  Empty list if the file is missing
+            or contains no S/N lines.
         """
         if not os.path.isfile(output_file):
-            return None
+            return []
 
         snr_pattern = re.compile(r"Max of signal-to-noise of f = max\(\|f\|/\|std f\|\) = ([-+]?\d+(?:\.\d+)?)")
-        last_match = None
+        values = []
         try:
             with open(output_file, "r") as f:
                 for line in f:
                     m = snr_pattern.search(line)
                     if m:
-                        last_match = m
+                        values.append(float(m.group(1)))
         except Exception:
-            return None
-
-        if last_match:
-            return float(last_match.group(1))
-        return None
+            return []
+        return values
 
     @staticmethod
     def _parse_last_opt_energy(output_file):

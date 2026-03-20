@@ -104,6 +104,30 @@ independently runs its own calibration, error-bar pilot, and production
 in parallel.  There is no inter-alat interaction until the final
 extrapolation step.
 
+#### VMC signal-to-noise convergence check
+
+After all production runs complete, the VMC workflow checks whether
+the optimization has converged by inspecting the signal-to-noise
+ratio (S/N = max(|f| / |std f|)) of the generalized forces.
+
+Rather than relying on the S/N of a single (last) optimization step,
+which can be noisy, the workflow averages the S/N over the last
+`snr_avg_window` optimization steps (default 5).  If there are
+fewer steps than the window size, all available values are used.
+
+The convergence criterion is:
+
+$$
+\overline{\text{S/N}}_{\text{last } W} \le \text{target\_snr}
+$$
+
+where $W$ is `snr_avg_window` and `target_snr` defaults to 4.5.
+When the averaged S/N exceeds the target, the workflow raises an
+error indicating non-convergence.
+
+In fixed-step mode (`num_mcmc_steps` is set), the S/N check is
+not performed.
+
 #### Step estimation formula
 
 The required number of production steps is estimated via
