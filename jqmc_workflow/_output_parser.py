@@ -5,7 +5,7 @@ expressions.  It contains no heuristic judgments or convergence assessments
 — those belong to a higher-level diagnostics layer (e.g. jqmc-mcp).
 
 The parser unifies and extends the scattered parse logic previously found
-in ``vmc_workflow._parse_output``, ``vmc_workflow._parse_last_snr``,
+in ``vmc_workflow._parse_output``, ``vmc_workflow._parse_all_snr``,
 ``_error_estimator.parse_net_time``, and ``_lrdmc_calibration.parse_survived_walkers_ratio``.
 
 Key improvement over the old parsers: per-optimization-step data extraction
