@@ -58,7 +58,7 @@ from ._setting import (
     MCMC_MIN_WARMUP_STEPS,
     EPS_rcond_SVD,
     atol_consistency,
-    min_S_diag_eps,
+    min_S_diag_abs,
 )
 from .atomic_orbital import compute_overlap_matrix
 from .determinant import (
@@ -2676,20 +2676,22 @@ class MCMC:
                     float(np.max(diag_S)),
                     float(np.median(diag_S)),
                 )
-                # Use a relative floor for diag_S to prevent 1/sqrt(diag_S)
+                # Absolute floor for diag_S to prevent 1/sqrt(diag_S)
                 # from amplifying near-zero components to catastrophic levels.
-                # Parameters with diag_S << max(diag_S) have negligible variance
-                # and should be effectively frozen rather than amplified.
-                diag_eps = np.finfo(diag_S.dtype).tiny
-                _ds_finite = diag_S[np.isfinite(diag_S) & (diag_S > 0)]
-                _ds_max = float(np.max(_ds_finite)) if _ds_finite.size else 1.0
-                diag_S_floor = max(diag_eps, _ds_max * min_S_diag_eps)
-                logger.devel(
-                    "[SR diag_S] relative floor = %.3e (max(diag_S)=%.3e * min_S_diag_eps=%.3e)",
-                    diag_S_floor,
-                    _ds_max,
-                    min_S_diag_eps,
-                )
+                diag_S_floor = min_S_diag_abs
+                logger.devel("[SR diag_S] floor = %.3e", diag_S_floor)
+                # Freeze parameters whose diag_S is below the absolute threshold.
+                # These parameters have near-zero derivative variance, so SR
+                # normalization would amplify noise into catastrophically large updates.
+                _sr_frozen_mask = ~(np.isfinite(diag_S) & (diag_S > min_S_diag_abs))
+                _n_frozen = int(np.count_nonzero(_sr_frozen_mask))
+                if _n_frozen > 0:
+                    logger.info(
+                        "Freezing %d/%d parameters with diag_S < %.1e (converged).",
+                        _n_frozen,
+                        diag_S.size,
+                        min_S_diag_abs,
+                    )
                 diag_S = np.where(np.isfinite(diag_S) & (diag_S > diag_S_floor), diag_S, diag_S_floor)
                 X_local = X_local / np.sqrt(diag_S)[:, np.newaxis]  # shape (num_param, num_mcmc * num_walker)
 
@@ -2945,6 +2947,13 @@ class MCMC:
 
                 # theta, back to the original scale
                 theta_all = theta_all / np.sqrt(diag_S)
+
+                # Zero out theta for parameters frozen due to near-zero diag_S.
+                # These parameters have near-zero derivative variance; the
+                # scale-invariant de-normalization amplifies noise into
+                # catastrophically large updates.
+                if _n_frozen > 0:
+                    theta_all[_sr_frozen_mask] = 0.0
 
                 # ------------------------------------------------------------------
                 # DEVEL: theta_all after scale-back — key NaN diagnosis point

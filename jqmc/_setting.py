@@ -77,7 +77,9 @@ EPS_stabilizing_jax_AO_cart_deriv = 1.0e-16
 # docstring in determinant.py for why a larger value breaks the analytic path.
 EPS_rcond_SVD = 1.0e-20
 
-# Relative floor for diag(S) in scale-invariant SR.
-# diag_S values below max(diag_S) * min_S_diag_eps are clamped to prevent
-# 1/sqrt(diag_S) from amplifying near-zero components to catastrophic levels.
-min_S_diag_eps = 1.0e-16
+# Absolute floor for diag(S) in scale-invariant SR.
+# Parameters with diag_S below this threshold are considered converged
+# (the wavefunction derivative has near-zero variance) and are frozen
+# to prevent the scale-invariant normalization from amplifying noise
+# into catastrophically large parameter updates.
+min_S_diag_abs = 1.0e-10
