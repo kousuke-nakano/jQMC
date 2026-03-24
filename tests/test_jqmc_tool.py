@@ -330,16 +330,29 @@ def _make_mcmc_obj(
         shape_iwjk_up = (num_steps, num_walkers, num_atoms, num_elec_up)
         shape_iwjk_dn = (num_steps, num_walkers, num_atoms, num_elec_dn)
 
-        obj.de_L_dR = rng.standard_normal(shape_iwj3) * 0.01
-        obj.de_L_dr_up = rng.standard_normal(shape_iwk3_up) * 0.01
-        obj.de_L_dr_dn = rng.standard_normal(shape_iwk3_dn) * 0.01
-        obj.dln_Psi_dR = rng.standard_normal(shape_iwj3) * 0.01
-        obj.dln_Psi_dr_up = rng.standard_normal(shape_iwk3_up) * 0.01
-        obj.dln_Psi_dr_dn = rng.standard_normal(shape_iwk3_dn) * 0.01
-        obj.omega_up = rng.standard_normal(shape_iwjk_up) * 0.01
-        obj.omega_dn = rng.standard_normal(shape_iwjk_dn) * 0.01
-        obj.domega_dr_up = rng.standard_normal(shape_iwj3) * 0.01
-        obj.domega_dr_dn = rng.standard_normal(shape_iwj3) * 0.01
+        # Compute force products from random raw gradients (matches MCMC storage)
+        de_L_dR = rng.standard_normal(shape_iwj3) * 0.01
+        de_L_dr_up = rng.standard_normal(shape_iwk3_up) * 0.01
+        de_L_dr_dn = rng.standard_normal(shape_iwk3_dn) * 0.01
+        dln_Psi_dR = rng.standard_normal(shape_iwj3) * 0.01
+        dln_Psi_dr_up = rng.standard_normal(shape_iwk3_up) * 0.01
+        dln_Psi_dr_dn = rng.standard_normal(shape_iwk3_dn) * 0.01
+        _omega_up = rng.standard_normal(shape_iwjk_up) * 0.01
+        _omega_dn = rng.standard_normal(shape_iwjk_dn) * 0.01
+        domega_dr_up = rng.standard_normal(shape_iwj3) * 0.01
+        domega_dr_dn = rng.standard_normal(shape_iwj3) * 0.01
+
+        obj.force_HF = (
+            de_L_dR + np.einsum("iwjk,iwkl->iwjl", _omega_up, de_L_dr_up) + np.einsum("iwjk,iwkl->iwjl", _omega_dn, de_L_dr_dn)
+        )
+        force_PP = (
+            dln_Psi_dR
+            + np.einsum("iwjk,iwkl->iwjl", _omega_up, dln_Psi_dr_up)
+            + np.einsum("iwjk,iwkl->iwjl", _omega_dn, dln_Psi_dr_dn)
+            + 0.5 * (domega_dr_up + domega_dr_dn)
+        )
+        obj.force_PP = force_PP
+        obj.E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
     else:
         obj.comput_position_deriv = False
 
@@ -381,16 +394,9 @@ def _make_lrdmc_obj(
 _OBS_KEY_MAP = {
     "e_L": "e_L",
     "w_L": "w_L",
-    "de_L_dR": "grad_e_L_dR",
-    "de_L_dr_up": "grad_e_L_r_up",
-    "de_L_dr_dn": "grad_e_L_r_dn",
-    "dln_Psi_dR": "grad_ln_Psi_dR",
-    "dln_Psi_dr_up": "grad_ln_Psi_r_up",
-    "dln_Psi_dr_dn": "grad_ln_Psi_r_dn",
-    "omega_up": "omega_up",
-    "omega_dn": "omega_dn",
-    "domega_dr_up": "grad_omega_r_up",
-    "domega_dr_dn": "grad_omega_r_dn",
+    "force_HF": "force_HF",
+    "force_PP": "force_PP",
+    "E_L_force_PP": "E_L_force_PP",
 }
 
 
@@ -735,18 +741,11 @@ class TestComputeForce:
             atomic_labels=["H", "H"],
             with_force=True,
         )
-        # Set all derivative arrays to zero
+        # Set force product arrays to zero
         for attr in [
-            "de_L_dR",
-            "de_L_dr_up",
-            "de_L_dr_dn",
-            "dln_Psi_dR",
-            "dln_Psi_dr_up",
-            "dln_Psi_dr_dn",
-            "omega_up",
-            "omega_dn",
-            "domega_dr_up",
-            "domega_dr_dn",
+            "force_HF",
+            "force_PP",
+            "E_L_force_PP",
         ]:
             setattr(obj, attr, np.zeros_like(getattr(obj, attr)))
         _write_chk(chk_path, [obj])

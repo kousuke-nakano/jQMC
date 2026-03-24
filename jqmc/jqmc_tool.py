@@ -837,16 +837,9 @@ def mcmc_compute_force(
     _force_keys = [
         "e_L",
         "w_L",
-        "grad_e_L_dR",
-        "grad_e_L_r_up",
-        "grad_e_L_r_dn",
-        "grad_ln_Psi_r_up",
-        "grad_ln_Psi_r_dn",
-        "grad_ln_Psi_dR",
-        "omega_up",
-        "omega_dn",
-        "grad_omega_r_up",
-        "grad_omega_r_dn",
+        "force_HF",
+        "force_PP",
+        "E_L_force_PP",
     ]
     rank_data = load_observables_from_checkpoint(restart_chk, _force_keys)
     num_ranks = len(rank_data)
@@ -870,29 +863,9 @@ def mcmc_compute_force(
     for obs in rank_data:
         e_L = obs["e_L"][num_mcmc_warmup_steps:]
         w_L = obs["w_L"][num_mcmc_warmup_steps:]
-        de_L_dR = obs["grad_e_L_dR"][num_mcmc_warmup_steps:]
-        de_L_dr_up = obs["grad_e_L_r_up"][num_mcmc_warmup_steps:]
-        de_L_dr_dn = obs["grad_e_L_r_dn"][num_mcmc_warmup_steps:]
-        dln_Psi_dr_up = obs["grad_ln_Psi_r_up"][num_mcmc_warmup_steps:]
-        dln_Psi_dr_dn = obs["grad_ln_Psi_r_dn"][num_mcmc_warmup_steps:]
-        dln_Psi_dR = obs["grad_ln_Psi_dR"][num_mcmc_warmup_steps:]
-        omega_up = obs["omega_up"][num_mcmc_warmup_steps:]
-        omega_dn = obs["omega_dn"][num_mcmc_warmup_steps:]
-        domega_dr_up = obs["grad_omega_r_up"][num_mcmc_warmup_steps:]
-        domega_dr_dn = obs["grad_omega_r_dn"][num_mcmc_warmup_steps:]
-
-        force_HF = (
-            de_L_dR + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up) + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
-        )
-
-        force_PP = (
-            dln_Psi_dR
-            + np.einsum("iwjk,iwkl->iwjl", omega_up, dln_Psi_dr_up)
-            + np.einsum("iwjk,iwkl->iwjl", omega_dn, dln_Psi_dr_dn)
-            + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
-        )
-
-        E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
+        force_HF = obs["force_HF"][num_mcmc_warmup_steps:]
+        force_PP = obs["force_PP"][num_mcmc_warmup_steps:]
+        E_L_force_PP = obs["E_L_force_PP"][num_mcmc_warmup_steps:]
 
         # split and binning with multiple walkers
         w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
@@ -1152,16 +1125,9 @@ def lrdmc_compute_force(
     _force_keys = [
         "e_L",
         "w_L",
-        "grad_e_L_dR",
-        "grad_e_L_r_up",
-        "grad_e_L_r_dn",
-        "grad_ln_Psi_r_up",
-        "grad_ln_Psi_r_dn",
-        "grad_ln_Psi_dR",
-        "omega_up",
-        "omega_dn",
-        "grad_omega_r_up",
-        "grad_omega_r_dn",
+        "force_HF",
+        "force_PP",
+        "E_L_force_PP",
     ]
     rank_data = load_observables_from_checkpoint(restart_chk, _force_keys)
     num_ranks = len(rank_data)
@@ -1192,31 +1158,9 @@ def lrdmc_compute_force(
         if raw_e_L.size != 0:
             e_L = raw_e_L[k:][num_mcmc_warmup_steps:]
             w_L = compute_accumulated_weights(obs["w_L"], k)[num_mcmc_warmup_steps:]
-            de_L_dR = obs["grad_e_L_dR"][k:][num_mcmc_warmup_steps:]
-            de_L_dr_up = obs["grad_e_L_r_up"][k:][num_mcmc_warmup_steps:]
-            de_L_dr_dn = obs["grad_e_L_r_dn"][k:][num_mcmc_warmup_steps:]
-            dln_Psi_dr_up = obs["grad_ln_Psi_r_up"][k:][num_mcmc_warmup_steps:]
-            dln_Psi_dr_dn = obs["grad_ln_Psi_r_dn"][k:][num_mcmc_warmup_steps:]
-            dln_Psi_dR = obs["grad_ln_Psi_dR"][k:][num_mcmc_warmup_steps:]
-            omega_up = obs["omega_up"][k:][num_mcmc_warmup_steps:]
-            omega_dn = obs["omega_dn"][k:][num_mcmc_warmup_steps:]
-            domega_dr_up = obs["grad_omega_r_up"][k:][num_mcmc_warmup_steps:]
-            domega_dr_dn = obs["grad_omega_r_dn"][k:][num_mcmc_warmup_steps:]
-
-            force_HF = (
-                de_L_dR
-                + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up)
-                + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
-            )
-
-            force_PP = (
-                dln_Psi_dR
-                + np.einsum("iwjk,iwkl->iwjl", omega_up, dln_Psi_dr_up)
-                + np.einsum("iwjk,iwkl->iwjl", omega_dn, dln_Psi_dr_dn)
-                + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
-            )
-
-            E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
+            force_HF = obs["force_HF"][k:][num_mcmc_warmup_steps:]
+            force_PP = obs["force_PP"][k:][num_mcmc_warmup_steps:]
+            E_L_force_PP = obs["E_L_force_PP"][k:][num_mcmc_warmup_steps:]
 
             # split and binning with multiple walkers
             w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
