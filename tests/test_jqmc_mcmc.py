@@ -48,6 +48,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from jqmc._setting import atol_debug_vs_production, rtol_debug_vs_production  # noqa: E402
+from jqmc._setting import atol_consistency, rtol_consistency  # noqa: E402
 from jqmc.determinant import Geminal_data  # noqa: E402
 from jqmc.hamiltonians import Hamiltonian_data  # noqa: E402
 from jqmc.jastrow_factor import (  # noqa: E402
@@ -165,6 +166,7 @@ def test_jqmc_mcmc(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jastro
         comput_log_WF_param_deriv=False,
         comput_e_L_param_deriv=False,
         random_discretized_mesh=True,
+        h5_compact=False,
     )
     mcmc_jax.run(num_mcmc_steps=num_mcmc_steps)
 
@@ -191,12 +193,12 @@ def test_jqmc_mcmc(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jastro
 
     # E
     E_debug, E_err_debug, Var_debug, Var_err_debug = mcmc_debug.get_E(
-        num_mcmc_warmup_steps=25,
-        num_mcmc_bin_blocks=5,
+        num_mcmc_warmup_steps=30,
+        num_mcmc_bin_blocks=10,
     )
     E_jax, E_err_jax, Var_jax, Var_err_jax = mcmc_jax.get_E(
-        num_mcmc_warmup_steps=25,
-        num_mcmc_bin_blocks=5,
+        num_mcmc_warmup_steps=30,
+        num_mcmc_bin_blocks=10,
     )
     assert not np.any(np.isnan(E_debug)), f"E_debug contains NaN: {E_debug}"
     assert not np.any(np.isnan(E_jax)), f"E_jax contains NaN: {E_jax}"
@@ -221,12 +223,12 @@ def test_jqmc_mcmc(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jastro
 
     # aF
     force_mean_debug, force_std_debug = mcmc_debug.get_aF(
-        num_mcmc_warmup_steps=25,
-        num_mcmc_bin_blocks=5,
+        num_mcmc_warmup_steps=30,
+        num_mcmc_bin_blocks=10,
     )
     force_mean_jax, force_std_jax = mcmc_jax.get_aF(
-        num_mcmc_warmup_steps=25,
-        num_mcmc_bin_blocks=5,
+        num_mcmc_warmup_steps=30,
+        num_mcmc_bin_blocks=10,
     )
     assert not np.any(np.isnan(force_mean_debug)), f"force_mean_debug contains NaN: {force_mean_debug}"
     assert not np.any(np.isnan(force_mean_jax)), f"force_mean_jax contains NaN: {force_mean_jax}"
@@ -1152,6 +1154,190 @@ def test_vmc_symmetry_preservation(j3_type, lambda_type, num_param_opt, sn_ratio
     lam_changed = not np.array_equal(lam_before, lam_after)
     if sn_ratio == 0.0 and num_param_opt == 0:
         assert j3_changed or lam_changed, "Expected at least one parameter to change"
+
+    jax.clear_caches()
+
+
+# ---------------------------------------------------------------------------
+#  h5_compact comparison: compact=True vs compact=False
+# ---------------------------------------------------------------------------
+
+h5_compact_param_grid = [
+    ("water_ccecp_ccpvtz.h5", True, True, True, False),
+]
+
+
+@pytest.mark.parametrize("trexio_file,with_1b_jastrow,with_2b_jastrow,with_3b_jastrow,with_nn_jastrow", h5_compact_param_grid)
+def test_h5_compact(trexio_file, with_1b_jastrow, with_2b_jastrow, with_3b_jastrow, with_nn_jastrow):
+    """Verify that h5_compact=True reproduces h5_compact=False results for energy and forces."""
+    (
+        structure_data,
+        _,
+        mos_data,
+        _,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(
+        trexio_file=os.path.join(os.path.dirname(__file__), "trexio_example_files", trexio_file), store_tuple=True
+    )
+
+    jastrow_onebody_data = None
+    if with_1b_jastrow:
+        jastrow_onebody_data = Jastrow_one_body_data.init_jastrow_one_body_data(
+            jastrow_1b_param=1.0,
+            structure_data=structure_data,
+            core_electrons=tuple([0] * len(structure_data.atomic_numbers)),
+            jastrow_1b_type="exp",
+        )
+
+    jastrow_twobody_data = None
+    if with_2b_jastrow:
+        jastrow_twobody_data = Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=1.0, jastrow_2b_type="exp")
+
+    jastrow_threebody_data = None
+    if with_3b_jastrow:
+        jastrow_threebody_data = Jastrow_three_body_data.init_jastrow_three_body_data(
+            orb_data=mos_data, random_init=True, random_scale=1.0e-3, seed=123
+        )
+
+    jastrow_nn_data = None
+    if with_nn_jastrow:
+        jastrow_nn_data = Jastrow_NN_data.init_from_structure(
+            structure_data=structure_data, hidden_dim=2, num_layers=1, cutoff=5.0
+        )
+
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=jastrow_onebody_data,
+        jastrow_two_body_data=jastrow_twobody_data,
+        jastrow_three_body_data=jastrow_threebody_data,
+        jastrow_nn_data=jastrow_nn_data,
+    )
+    jastrow_data.sanity_check()
+
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+    wavefunction_data.sanity_check()
+
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+    hamiltonian_data.sanity_check()
+
+    num_walkers = 4
+    num_mcmc_steps = 60
+    mcmc_seed = 34356
+    Dt = 2.0
+    epsilon_AS = 0.2
+
+    # --- Run with h5_compact=False (reference: per-walker storage) ---
+    mcmc_ref = MCMC(
+        hamiltonian_data=hamiltonian_data,
+        Dt=Dt,
+        mcmc_seed=mcmc_seed,
+        epsilon_AS=epsilon_AS,
+        num_walkers=num_walkers,
+        comput_position_deriv=True,
+        comput_log_WF_param_deriv=False,
+        comput_e_L_param_deriv=False,
+        random_discretized_mesh=True,
+        h5_compact=False,
+    )
+    mcmc_ref.run(num_mcmc_steps=num_mcmc_steps)
+
+    # --- Run with h5_compact=True (compact mode) ---
+    mcmc_compact = MCMC(
+        hamiltonian_data=hamiltonian_data,
+        Dt=Dt,
+        mcmc_seed=mcmc_seed,
+        epsilon_AS=epsilon_AS,
+        num_walkers=num_walkers,
+        comput_position_deriv=True,
+        comput_log_WF_param_deriv=False,
+        comput_e_L_param_deriv=False,
+        random_discretized_mesh=True,
+        h5_compact=True,
+    )
+    mcmc_compact.run(num_mcmc_steps=num_mcmc_steps)
+
+    # Compare binning-independent weighted averages.
+    # These must agree exactly (up to floating-point) because compact mode
+    # stores the same per-step MPI-reduced sums that non-compact would produce.
+    from mpi4py import MPI as _MPI
+
+    warmup = 25
+
+    # --- Non-compact weighted averages (per-rank, then MPI reduce) ---
+    w_L = mcmc_ref.w_L[warmup:]  # (steps, nw)
+    e_L = mcmc_ref.e_L[warmup:]  # (steps, nw)
+    local_sum_w = np.sum(w_L)
+    local_sum_we = np.sum(w_L * e_L)
+    global_sum_w = _MPI.COMM_WORLD.allreduce(local_sum_w, op=_MPI.SUM)
+    global_sum_we = _MPI.COMM_WORLD.allreduce(local_sum_we, op=_MPI.SUM)
+    E_ref = global_sum_we / global_sum_w
+
+    # --- Compact weighted averages (rank 0 holds MPI-reduced sums) ---
+    if _MPI.COMM_WORLD.Get_rank() == 0:
+        cw = mcmc_compact._MCMC__stored_compact_w_sum[warmup:]
+        cwe = mcmc_compact._MCMC__stored_compact_w_e_L[warmup:]
+        E_compact = np.sum(cwe) / np.sum(cw)
+    else:
+        E_compact = 0.0
+    E_compact = _MPI.COMM_WORLD.bcast(E_compact, root=0)
+
+    np.testing.assert_allclose(
+        E_ref,
+        E_compact,
+        atol=atol_consistency,
+        rtol=rtol_consistency,
+        err_msg="E weighted-mean mismatch: compact vs non-compact",
+    )
+
+    # --- Force weighted averages ---
+    force_HF = mcmc_ref.force_HF_stored[warmup:]  # (steps, nw, natom, 3)
+    force_PP = mcmc_ref.force_PP_stored[warmup:]
+    E_L_fPP = mcmc_ref.E_L_force_PP_stored[warmup:]
+
+    local_wfHF = np.sum(np.einsum("iw,iwjk->jk", w_L, force_HF), axis=None)
+    local_wfPP = np.sum(np.einsum("iw,iwjk->jk", w_L, force_PP), axis=None)
+    local_wEfPP = np.sum(np.einsum("iw,iwjk->jk", w_L, E_L_fPP), axis=None)
+
+    # Per-atom weighted sums (shape: (natom, 3))
+    local_wfHF_arr = np.einsum("iw,iwjk->jk", w_L, force_HF)
+    local_wfPP_arr = np.einsum("iw,iwjk->jk", w_L, force_PP)
+    local_wEfPP_arr = np.einsum("iw,iwjk->jk", w_L, E_L_fPP)
+
+    global_wfHF = np.empty_like(local_wfHF_arr)
+    global_wfPP = np.empty_like(local_wfPP_arr)
+    global_wEfPP = np.empty_like(local_wEfPP_arr)
+    _MPI.COMM_WORLD.Allreduce(local_wfHF_arr, global_wfHF, op=_MPI.SUM)
+    _MPI.COMM_WORLD.Allreduce(local_wfPP_arr, global_wfPP, op=_MPI.SUM)
+    _MPI.COMM_WORLD.Allreduce(local_wEfPP_arr, global_wEfPP, op=_MPI.SUM)
+
+    # F_HF = -<w*force_HF> / <w>,  F_Pulay = -2*(<w*E_L*f_PP>/<w> - <w*e_L>/<w> * <w*f_PP>/<w>)
+    F_ref = -global_wfHF / global_sum_w - 2.0 * (
+        global_wEfPP / global_sum_w - (global_sum_we / global_sum_w) * (global_wfPP / global_sum_w)
+    )
+
+    if _MPI.COMM_WORLD.Get_rank() == 0:
+        cw_sum = np.sum(mcmc_compact._MCMC__stored_compact_w_sum[warmup:])
+        cwe_sum = np.sum(mcmc_compact._MCMC__stored_compact_w_e_L[warmup:])
+        cwfHF = np.sum(mcmc_compact._MCMC__stored_compact_w_force_HF[warmup:], axis=0)
+        cwfPP = np.sum(mcmc_compact._MCMC__stored_compact_w_force_PP[warmup:], axis=0)
+        cwEfPP = np.sum(mcmc_compact._MCMC__stored_compact_w_E_L_force_PP[warmup:], axis=0)
+        F_compact = -cwfHF / cw_sum - 2.0 * (cwEfPP / cw_sum - (cwe_sum / cw_sum) * (cwfPP / cw_sum))
+    else:
+        n_atoms = mcmc_ref.force_HF_stored.shape[2]
+        F_compact = np.empty((n_atoms, 3))
+    _MPI.COMM_WORLD.Bcast(F_compact, root=0)
+
+    np.testing.assert_allclose(
+        F_ref,
+        F_compact,
+        atol=atol_consistency,
+        rtol=rtol_consistency,
+        err_msg="force weighted-mean mismatch: compact vs non-compact",
+    )
 
     jax.clear_caches()
 

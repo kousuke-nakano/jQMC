@@ -131,6 +131,7 @@ class MCMC:
         comput_e_L_param_deriv: bool = False,
         comput_position_deriv: bool = False,
         random_discretized_mesh: bool = True,
+        h5_compact: bool = True,
     ) -> None:
         """Build an MCMC driver and initialize walker state.
 
@@ -145,6 +146,10 @@ class MCMC:
             comput_e_L_param_deriv (bool, optional): Keep local energy variational parameter derivatives (de_L / dc). Defaults to False.
             comput_position_deriv (bool, optional): Keep nuclear position derivatives. Defaults to False.
             random_discretized_mesh (bool, optional): Randomize quadrature mesh for non-local ECP terms. Defaults to True.
+            h5_compact (bool, optional): When True, observables are MPI-reduced to rank 0 each step
+                and stored with walker dimension = 1, drastically reducing checkpoint size.
+                Force cross-correlations (Omega * grad_e_L etc.) are correctly preserved.
+                Defaults to True.
 
         Notes:
             - Seeds are folded with MPI rank and walker index to avoid correlation.
@@ -161,6 +166,7 @@ class MCMC:
         self.__comput_e_L_param_deriv = comput_e_L_param_deriv
         self.__comput_position_deriv = comput_position_deriv
         self.__random_discretized_mesh = random_discretized_mesh
+        self.__h5_compact = h5_compact
 
         # check sanity of hamiltonian_data
         hamiltonian_data.sanity_check()
@@ -253,8 +259,6 @@ class MCMC:
 
         # Compute dimensions for pre-shaped empty arrays
         nw = self.__num_walkers
-        n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
-        n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
         n_atoms = self.__hamiltonian_data.structure_data.natom
 
         # stored weight (w_L)
@@ -266,35 +270,14 @@ class MCMC:
         # stored local energy (e_L2)
         self.__stored_e_L2 = np.zeros((0, nw))
 
-        # stored de_L / dR
-        self.__stored_grad_e_L_dR = np.zeros((0, nw, n_atoms, 3))
+        # stored force_HF per walker (HF force = de_L/dR + Omega . de_L/dr)
+        self.__stored_force_HF = np.zeros((0, nw, n_atoms, 3))
 
-        # stored de_L / dr_up
-        self.__stored_grad_e_L_r_up = np.zeros((0, nw, n_up, 3))
+        # stored force_PP per walker (Pulay force = dln_Psi/dR + Omega . dln_Psi/dr + 1/2 * d_omega/dr)
+        self.__stored_force_PP = np.zeros((0, nw, n_atoms, 3))
 
-        # stored de_L / dr_dn
-        self.__stored_grad_e_L_r_dn = np.zeros((0, nw, n_dn, 3))
-
-        # stored dln_Psi / dr_up
-        self.__stored_grad_ln_Psi_r_up = np.zeros((0, nw, n_up, 3))
-
-        # stored dln_Psi / dr_dn
-        self.__stored_grad_ln_Psi_r_dn = np.zeros((0, nw, n_dn, 3))
-
-        # stored dln_Psi / dR
-        self.__stored_grad_ln_Psi_dR = np.zeros((0, nw, n_atoms, 3))
-
-        # stored Omega_up (SWCT)
-        self.__stored_omega_up = np.zeros((0, nw, n_atoms, n_up))
-
-        # stored Omega_dn (SWCT)
-        self.__stored_omega_dn = np.zeros((0, nw, n_atoms, n_dn))
-
-        # stored sum_i d omega/d r_i for up spins (SWCT)
-        self.__stored_grad_omega_r_up = np.zeros((0, nw, n_atoms, 3))
-
-        # stored sum_i d omega/d r_i for dn spins (SWCT)
-        self.__stored_grad_omega_r_dn = np.zeros((0, nw, n_atoms, 3))
+        # stored E_L * force_PP per walker (for covariance in Pulay force)
+        self.__stored_E_L_force_PP = np.zeros((0, nw, n_atoms, 3))
 
         # stored parameter gradients keyed by block name
         self.__stored_log_WF_param_grads: dict[str, list] = defaultdict(list)
@@ -302,37 +285,57 @@ class MCMC:
         # stored local energy parameter gradients keyed by block name (de_L / dc)
         self.__stored_e_L_param_grads: dict[str, list] = defaultdict(list)
 
+        # ---- compact mode arrays (MPI-reduced weighted sums, rank 0 only) ----
+        # These are always initialized but only populated when h5_compact=True.
+        self.__stored_compact_w_sum = np.zeros((0,))
+        self.__stored_compact_w_e_L = np.zeros((0,))
+        self.__stored_compact_w_e_L2 = np.zeros((0,))
+        self.__stored_compact_w_force_HF = np.zeros((0, n_atoms, 3))
+        self.__stored_compact_w_force_PP = np.zeros((0, n_atoms, 3))
+        self.__stored_compact_w_E_L_force_PP = np.zeros((0, n_atoms, 3))
+
     def __validate_stored_shapes(self) -> None:
         """Assert that all stored observable arrays have consistent shapes."""
         ns = self.__mcmc_counter  # expected number of stored steps
         nw = self.__num_walkers
-        n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
-        n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
         n_atoms = self.__hamiltonian_data.structure_data.natom
 
-        expected = {
-            "e_L": ((ns, nw), self.__stored_e_L),
-            "e_L2": ((ns, nw), self.__stored_e_L2),
-            "w_L": ((ns, nw), self.__stored_w_L),
-        }
-        if self.__comput_position_deriv:
-            expected.update(
-                {
-                    "grad_e_L_r_up": ((ns, nw, n_up, 3), self.__stored_grad_e_L_r_up),
-                    "grad_e_L_r_dn": ((ns, nw, n_dn, 3), self.__stored_grad_e_L_r_dn),
-                    "grad_e_L_dR": ((ns, nw, n_atoms, 3), self.__stored_grad_e_L_dR),
-                    "grad_ln_Psi_r_up": ((ns, nw, n_up, 3), self.__stored_grad_ln_Psi_r_up),
-                    "grad_ln_Psi_r_dn": ((ns, nw, n_dn, 3), self.__stored_grad_ln_Psi_r_dn),
-                    "grad_ln_Psi_dR": ((ns, nw, n_atoms, 3), self.__stored_grad_ln_Psi_dR),
-                    "omega_up": ((ns, nw, n_atoms, n_up), self.__stored_omega_up),
-                    "omega_dn": ((ns, nw, n_atoms, n_dn), self.__stored_omega_dn),
-                    "grad_omega_r_up": ((ns, nw, n_atoms, 3), self.__stored_grad_omega_r_up),
-                    "grad_omega_r_dn": ((ns, nw, n_atoms, 3), self.__stored_grad_omega_r_dn),
+        if self.__h5_compact:
+            # In compact mode, per-walker arrays stay at (0, nw) and
+            # compact arrays hold the reduced data (on rank 0 only).
+            if mpi_rank == 0:
+                expected = {
+                    "compact_w_sum": ((ns,), self.__stored_compact_w_sum),
+                    "compact_w_e_L": ((ns,), self.__stored_compact_w_e_L),
+                    "compact_w_e_L2": ((ns,), self.__stored_compact_w_e_L2),
                 }
-            )
+                if self.__comput_position_deriv:
+                    expected.update(
+                        {
+                            "compact_w_force_HF": ((ns, n_atoms, 3), self.__stored_compact_w_force_HF),
+                            "compact_w_force_PP": ((ns, n_atoms, 3), self.__stored_compact_w_force_PP),
+                            "compact_w_E_L_force_PP": ((ns, n_atoms, 3), self.__stored_compact_w_E_L_force_PP),
+                        }
+                    )
+                for name, (shape, arr) in expected.items():
+                    assert arr.shape == shape, f"stored shape mismatch: {name}.shape={arr.shape}, expected={shape}"
+        else:
+            expected = {
+                "e_L": ((ns, nw), self.__stored_e_L),
+                "e_L2": ((ns, nw), self.__stored_e_L2),
+                "w_L": ((ns, nw), self.__stored_w_L),
+            }
+            if self.__comput_position_deriv:
+                expected.update(
+                    {
+                        "force_HF": ((ns, nw, n_atoms, 3), self.__stored_force_HF),
+                        "force_PP": ((ns, nw, n_atoms, 3), self.__stored_force_PP),
+                        "E_L_force_PP": ((ns, nw, n_atoms, 3), self.__stored_E_L_force_PP),
+                    }
+                )
 
-        for name, (shape, arr) in expected.items():
-            assert arr.shape == shape, f"stored shape mismatch: {name}.shape={arr.shape}, expected={shape}"
+            for name, (shape, arr) in expected.items():
+                assert arr.shape == shape, f"stored shape mismatch: {name}.shape={arr.shape}, expected={shape}"
 
     @staticmethod
     def __default_param_grad_flags() -> dict[str, bool]:
@@ -635,34 +638,35 @@ class MCMC:
 
         # -- Extend stored arrays with zero-padding for new steps --
         nw = self.__num_walkers
-        n_up = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_up
-        n_dn = self.__hamiltonian_data.wavefunction_data.geminal_data.num_electron_dn
         n_atoms = self.__hamiltonian_data.structure_data.natom
 
-        self.__stored_e_L = np.concatenate([self.__stored_e_L, np.zeros((num_mcmc_steps, nw))])
-        self.__stored_e_L2 = np.concatenate([self.__stored_e_L2, np.zeros((num_mcmc_steps, nw))])
-        self.__stored_w_L = np.concatenate([self.__stored_w_L, np.zeros((num_mcmc_steps, nw))])
-        if self.__comput_position_deriv:
-            self.__stored_grad_e_L_r_up = np.concatenate([self.__stored_grad_e_L_r_up, np.zeros((num_mcmc_steps, nw, n_up, 3))])
-            self.__stored_grad_e_L_r_dn = np.concatenate([self.__stored_grad_e_L_r_dn, np.zeros((num_mcmc_steps, nw, n_dn, 3))])
-            self.__stored_grad_e_L_dR = np.concatenate([self.__stored_grad_e_L_dR, np.zeros((num_mcmc_steps, nw, n_atoms, 3))])
-            self.__stored_grad_ln_Psi_r_up = np.concatenate(
-                [self.__stored_grad_ln_Psi_r_up, np.zeros((num_mcmc_steps, nw, n_up, 3))]
-            )
-            self.__stored_grad_ln_Psi_r_dn = np.concatenate(
-                [self.__stored_grad_ln_Psi_r_dn, np.zeros((num_mcmc_steps, nw, n_dn, 3))]
-            )
-            self.__stored_grad_ln_Psi_dR = np.concatenate(
-                [self.__stored_grad_ln_Psi_dR, np.zeros((num_mcmc_steps, nw, n_atoms, 3))]
-            )
-            self.__stored_omega_up = np.concatenate([self.__stored_omega_up, np.zeros((num_mcmc_steps, nw, n_atoms, n_up))])
-            self.__stored_omega_dn = np.concatenate([self.__stored_omega_dn, np.zeros((num_mcmc_steps, nw, n_atoms, n_dn))])
-            self.__stored_grad_omega_r_up = np.concatenate(
-                [self.__stored_grad_omega_r_up, np.zeros((num_mcmc_steps, nw, n_atoms, 3))]
-            )
-            self.__stored_grad_omega_r_dn = np.concatenate(
-                [self.__stored_grad_omega_r_dn, np.zeros((num_mcmc_steps, nw, n_atoms, 3))]
-            )
+        if self.__h5_compact:
+            # Compact mode: extend only the reduced-sum arrays (on rank 0)
+            if mpi_rank == 0:
+                self.__stored_compact_w_sum = np.concatenate([self.__stored_compact_w_sum, np.zeros(num_mcmc_steps)])
+                self.__stored_compact_w_e_L = np.concatenate([self.__stored_compact_w_e_L, np.zeros(num_mcmc_steps)])
+                self.__stored_compact_w_e_L2 = np.concatenate([self.__stored_compact_w_e_L2, np.zeros(num_mcmc_steps)])
+                if self.__comput_position_deriv:
+                    self.__stored_compact_w_force_HF = np.concatenate(
+                        [self.__stored_compact_w_force_HF, np.zeros((num_mcmc_steps, n_atoms, 3))]
+                    )
+                    self.__stored_compact_w_force_PP = np.concatenate(
+                        [self.__stored_compact_w_force_PP, np.zeros((num_mcmc_steps, n_atoms, 3))]
+                    )
+                    self.__stored_compact_w_E_L_force_PP = np.concatenate(
+                        [self.__stored_compact_w_E_L_force_PP, np.zeros((num_mcmc_steps, n_atoms, 3))]
+                    )
+        else:
+            # Non-compact mode: extend per-walker arrays on every rank
+            self.__stored_e_L = np.concatenate([self.__stored_e_L, np.zeros((num_mcmc_steps, nw))])
+            self.__stored_e_L2 = np.concatenate([self.__stored_e_L2, np.zeros((num_mcmc_steps, nw))])
+            self.__stored_w_L = np.concatenate([self.__stored_w_L, np.zeros((num_mcmc_steps, nw))])
+            if self.__comput_position_deriv:
+                self.__stored_force_HF = np.concatenate([self.__stored_force_HF, np.zeros((num_mcmc_steps, nw, n_atoms, 3))])
+                self.__stored_force_PP = np.concatenate([self.__stored_force_PP, np.zeros((num_mcmc_steps, nw, n_atoms, 3))])
+                self.__stored_E_L_force_PP = np.concatenate(
+                    [self.__stored_E_L_force_PP, np.zeros((num_mcmc_steps, nw, n_atoms, 3))]
+                )
 
         geminal, geminal_inv, _, _ = _geminal_inv_batched(
             self.__hamiltonian_data.wavefunction_data.geminal_data,
@@ -745,15 +749,17 @@ class MCMC:
             end = time.perf_counter()
             timer_e_L += end - start
 
-            self.__stored_e_L[self.__mcmc_counter + num_mcmc_done] = np.array(e_L_step)
-            self.__stored_e_L2[self.__mcmc_counter + num_mcmc_done] = np.array(e_L_step**2)
+            if not self.__h5_compact:
+                self.__stored_e_L[self.__mcmc_counter + num_mcmc_done] = np.array(e_L_step)
+                self.__stored_e_L2[self.__mcmc_counter + num_mcmc_done] = np.array(e_L_step**2)
 
             # AS weights
             R_AS_step = _jit_vmap_as_reg_fast(geminal, geminal_inv)
             R_AS_eps_step = jnp.maximum(R_AS_step, self.__epsilon_AS)
             w_L_step = (R_AS_step / R_AS_eps_step) ** 2
 
-            self.__stored_w_L[self.__mcmc_counter + num_mcmc_done] = np.array(w_L_step)
+            if not self.__h5_compact:
+                self.__stored_w_L[self.__mcmc_counter + num_mcmc_done] = np.array(w_L_step)
 
             if self.__comput_position_deriv:
                 start = time.perf_counter()
@@ -785,10 +791,7 @@ class MCMC:
                 end = time.perf_counter()
                 timer_de_L_dR_dr += end - start
 
-                self.__stored_grad_e_L_r_up[self.__mcmc_counter + num_mcmc_done] = np.array(grad_e_L_r_up_step)
-                self.__stored_grad_e_L_r_dn[self.__mcmc_counter + num_mcmc_done] = np.array(grad_e_L_r_dn_step)
                 grad_e_L_R = self.__hamiltonian_data.accumulate_position_grad(grad_e_L_h_step)
-                self.__stored_grad_e_L_dR[self.__mcmc_counter + num_mcmc_done] = np.array(grad_e_L_R)
 
                 start = time.perf_counter()
                 logger.devel("    Evaluating dln_Psi/dR and dln_Psi/dr ...")
@@ -802,10 +805,7 @@ class MCMC:
                 end = time.perf_counter()
                 timer_dln_Psi_dR_dr += end - start
 
-                self.__stored_grad_ln_Psi_r_up[self.__mcmc_counter + num_mcmc_done] = np.array(grad_ln_Psi_r_up_step)
-                self.__stored_grad_ln_Psi_r_dn[self.__mcmc_counter + num_mcmc_done] = np.array(grad_ln_Psi_r_dn_step)
                 grad_ln_Psi_dR = self.__hamiltonian_data.wavefunction_data.accumulate_position_grad(grad_ln_Psi_h_step)
-                self.__stored_grad_ln_Psi_dR[self.__mcmc_counter + num_mcmc_done] = np.array(grad_ln_Psi_dR)
 
                 omega_up_step = _jit_vmap_swct_omega(
                     self.__hamiltonian_data.structure_data,
@@ -824,10 +824,86 @@ class MCMC:
                     self.__latest_r_dn_carts,
                 )
 
-                self.__stored_omega_up[self.__mcmc_counter + num_mcmc_done] = np.array(omega_up_step)
-                self.__stored_omega_dn[self.__mcmc_counter + num_mcmc_done] = np.array(omega_dn_step)
-                self.__stored_grad_omega_r_up[self.__mcmc_counter + num_mcmc_done] = np.array(grad_omega_dr_up_step)
-                self.__stored_grad_omega_r_dn[self.__mcmc_counter + num_mcmc_done] = np.array(grad_omega_dr_dn_step)
+                # Compute per-walker force products preserving cross-correlations
+                _grad_e_L_r_up_np = np.array(grad_e_L_r_up_step)  # (nw, n_up, 3)
+                _grad_e_L_r_dn_np = np.array(grad_e_L_r_dn_step)  # (nw, n_dn, 3)
+                _grad_e_L_R_np = np.array(grad_e_L_R)  # (nw, n_atoms, 3)
+                _omega_up_np = np.array(omega_up_step)  # (nw, n_atoms, n_up)
+                _omega_dn_np = np.array(omega_dn_step)  # (nw, n_atoms, n_dn)
+                _grad_omega_dr_up_np = np.array(grad_omega_dr_up_step)  # (nw, n_atoms, 3)
+                _grad_omega_dr_dn_np = np.array(grad_omega_dr_dn_step)  # (nw, n_atoms, 3)
+                _grad_ln_Psi_r_up_np = np.array(grad_ln_Psi_r_up_step)  # (nw, n_up, 3)
+                _grad_ln_Psi_r_dn_np = np.array(grad_ln_Psi_r_dn_step)  # (nw, n_dn, 3)
+                _grad_ln_Psi_dR_np = np.array(grad_ln_Psi_dR)  # (nw, n_atoms, 3)
+
+                # force_HF = de_L/dR + Omega_up . de_L/dr_up + Omega_dn . de_L/dr_dn
+                _force_HF = (
+                    _grad_e_L_R_np
+                    + np.einsum("wjk,wkl->wjl", _omega_up_np, _grad_e_L_r_up_np)
+                    + np.einsum("wjk,wkl->wjl", _omega_dn_np, _grad_e_L_r_dn_np)
+                )  # (nw, n_atoms, 3)
+
+                # force_PP = dln_Psi/dR + Omega . dln_Psi/dr + 1/2 * sum_i d_omega/d_r_i
+                _force_PP = (
+                    _grad_ln_Psi_dR_np
+                    + np.einsum("wjk,wkl->wjl", _omega_up_np, _grad_ln_Psi_r_up_np)
+                    + np.einsum("wjk,wkl->wjl", _omega_dn_np, _grad_ln_Psi_r_dn_np)
+                    + 0.5 * (_grad_omega_dr_up_np + _grad_omega_dr_dn_np)
+                )  # (nw, n_atoms, 3)
+
+                _e_L_np = np.array(e_L_step)  # (nw,)
+                _E_L_force_PP = np.einsum("w,wjk->wjk", _e_L_np, _force_PP)  # (nw, n_atoms, 3)
+
+                if not self.__h5_compact:
+                    # Non-compact: store per-walker force products
+                    self.__stored_force_HF[self.__mcmc_counter + num_mcmc_done] = _force_HF
+                    self.__stored_force_PP[self.__mcmc_counter + num_mcmc_done] = _force_PP
+                    self.__stored_E_L_force_PP[self.__mcmc_counter + num_mcmc_done] = _E_L_force_PP
+
+            # ---- h5_compact: MPI-reduce weighted sums to rank 0 ----
+            if self.__h5_compact:
+                _e_L_np = np.array(e_L_step)  # (nw,)
+                _w_L_np = np.array(w_L_step)  # (nw,)
+                _w_sum_local = np.array(np.sum(_w_L_np))
+                _w_e_L_local = np.array(np.sum(_w_L_np * _e_L_np))
+                _w_e_L2_local = np.array(np.sum(_w_L_np * _e_L_np**2))
+
+                _w_sum_global = np.zeros_like(_w_sum_local)
+                _w_e_L_global = np.zeros_like(_w_e_L_local)
+                _w_e_L2_global = np.zeros_like(_w_e_L2_local)
+
+                mpi_comm.Reduce([_w_sum_local, MPI.DOUBLE], [_w_sum_global, MPI.DOUBLE], op=MPI.SUM, root=0)
+                mpi_comm.Reduce([_w_e_L_local, MPI.DOUBLE], [_w_e_L_global, MPI.DOUBLE], op=MPI.SUM, root=0)
+                mpi_comm.Reduce([_w_e_L2_local, MPI.DOUBLE], [_w_e_L2_global, MPI.DOUBLE], op=MPI.SUM, root=0)
+
+                if mpi_rank == 0:
+                    _step_idx = self.__mcmc_counter + num_mcmc_done
+                    self.__stored_compact_w_sum[_step_idx] = _w_sum_global
+                    self.__stored_compact_w_e_L[_step_idx] = _w_e_L_global
+                    self.__stored_compact_w_e_L2[_step_idx] = _w_e_L2_global
+
+                if self.__comput_position_deriv:
+                    _w_L_np = np.array(w_L_step)  # (nw,)
+
+                    # Weighted sum across walkers on this rank
+                    _w_force_HF_local = np.einsum("w,wjk->jk", _w_L_np, _force_HF)
+                    _w_force_PP_local = np.einsum("w,wjk->jk", _w_L_np, _force_PP)
+                    _w_E_L_force_PP_local = np.einsum("w,wjk->jk", _w_L_np, _E_L_force_PP)
+
+                    _w_force_HF_global = np.zeros_like(_w_force_HF_local)
+                    _w_force_PP_global = np.zeros_like(_w_force_PP_local)
+                    _w_E_L_force_PP_global = np.zeros_like(_w_E_L_force_PP_local)
+
+                    mpi_comm.Reduce([_w_force_HF_local, MPI.DOUBLE], [_w_force_HF_global, MPI.DOUBLE], op=MPI.SUM, root=0)
+                    mpi_comm.Reduce([_w_force_PP_local, MPI.DOUBLE], [_w_force_PP_global, MPI.DOUBLE], op=MPI.SUM, root=0)
+                    mpi_comm.Reduce(
+                        [_w_E_L_force_PP_local, MPI.DOUBLE], [_w_E_L_force_PP_global, MPI.DOUBLE], op=MPI.SUM, root=0
+                    )
+
+                    if mpi_rank == 0:
+                        self.__stored_compact_w_force_HF[_step_idx] = _w_force_HF_global
+                        self.__stored_compact_w_force_PP[_step_idx] = _w_force_PP_global
+                        self.__stored_compact_w_E_L_force_PP[_step_idx] = _w_E_L_force_PP_global
 
             if self.__comput_log_WF_param_deriv:
                 start = time.perf_counter()
@@ -946,20 +1022,23 @@ class MCMC:
         self.__mcmc_counter += num_mcmc_done
 
         # -- Truncate stored arrays to actual number of steps completed --
-        self.__stored_e_L = self.__stored_e_L[: self.__mcmc_counter]
-        self.__stored_e_L2 = self.__stored_e_L2[: self.__mcmc_counter]
-        self.__stored_w_L = self.__stored_w_L[: self.__mcmc_counter]
-        if self.__comput_position_deriv:
-            self.__stored_grad_e_L_r_up = self.__stored_grad_e_L_r_up[: self.__mcmc_counter]
-            self.__stored_grad_e_L_r_dn = self.__stored_grad_e_L_r_dn[: self.__mcmc_counter]
-            self.__stored_grad_e_L_dR = self.__stored_grad_e_L_dR[: self.__mcmc_counter]
-            self.__stored_grad_ln_Psi_r_up = self.__stored_grad_ln_Psi_r_up[: self.__mcmc_counter]
-            self.__stored_grad_ln_Psi_r_dn = self.__stored_grad_ln_Psi_r_dn[: self.__mcmc_counter]
-            self.__stored_grad_ln_Psi_dR = self.__stored_grad_ln_Psi_dR[: self.__mcmc_counter]
-            self.__stored_omega_up = self.__stored_omega_up[: self.__mcmc_counter]
-            self.__stored_omega_dn = self.__stored_omega_dn[: self.__mcmc_counter]
-            self.__stored_grad_omega_r_up = self.__stored_grad_omega_r_up[: self.__mcmc_counter]
-            self.__stored_grad_omega_r_dn = self.__stored_grad_omega_r_dn[: self.__mcmc_counter]
+        if self.__h5_compact:
+            if mpi_rank == 0:
+                self.__stored_compact_w_sum = self.__stored_compact_w_sum[: self.__mcmc_counter]
+                self.__stored_compact_w_e_L = self.__stored_compact_w_e_L[: self.__mcmc_counter]
+                self.__stored_compact_w_e_L2 = self.__stored_compact_w_e_L2[: self.__mcmc_counter]
+                if self.__comput_position_deriv:
+                    self.__stored_compact_w_force_HF = self.__stored_compact_w_force_HF[: self.__mcmc_counter]
+                    self.__stored_compact_w_force_PP = self.__stored_compact_w_force_PP[: self.__mcmc_counter]
+                    self.__stored_compact_w_E_L_force_PP = self.__stored_compact_w_E_L_force_PP[: self.__mcmc_counter]
+        else:
+            self.__stored_e_L = self.__stored_e_L[: self.__mcmc_counter]
+            self.__stored_e_L2 = self.__stored_e_L2[: self.__mcmc_counter]
+            self.__stored_w_L = self.__stored_w_L[: self.__mcmc_counter]
+            if self.__comput_position_deriv:
+                self.__stored_force_HF = self.__stored_force_HF[: self.__mcmc_counter]
+                self.__stored_force_PP = self.__stored_force_PP[: self.__mcmc_counter]
+                self.__stored_E_L_force_PP = self.__stored_E_L_force_PP[: self.__mcmc_counter]
 
         # test the shapes of stored arrays are consistent with the number of MCMC steps done and the number of walkers
         self.__validate_stored_shapes()
@@ -1009,7 +1088,18 @@ class MCMC:
             ave_timer_de_L_dc = 0.0
             ave_timer_MPI_barrier = 0.0
             ave_timer_misc = 0.0
-        ave_stored_w_L = mpi_comm.allreduce(np.mean(self.__stored_w_L), op=MPI.SUM) / mpi_size
+        if self.__h5_compact:
+            # In compact mode, w_L per-walker is not stored; approximate from compact sums.
+            if mpi_rank == 0 and self.__stored_compact_w_sum.size > 0:
+                # avg weight ≈ total_w / (mpi_size * nw * steps)
+                _total_w = np.sum(self.__stored_compact_w_sum)
+                _total_samples = self.__mcmc_counter * self.__num_walkers * mpi_size
+                _local_avg = _total_w / _total_samples if _total_samples > 0 else 0.0
+            else:
+                _local_avg = 0.0
+            ave_stored_w_L = mpi_comm.allreduce(_local_avg, op=MPI.SUM) / max(mpi_size, 1)
+        else:
+            ave_stored_w_L = mpi_comm.allreduce(np.mean(self.__stored_w_L), op=MPI.SUM) / mpi_size
         sum_accepted_moves = mpi_comm.allreduce(int(self.__accepted_moves), op=MPI.SUM)
         sum_rejected_moves = mpi_comm.allreduce(int(self.__rejected_moves), op=MPI.SUM)
 
@@ -1067,6 +1157,18 @@ class MCMC:
         if self.mcmc_counter - num_mcmc_warmup_steps < num_mcmc_bin_blocks:
             logger.error("(mcmc_counter - num_mcmc_warmup_steps) should be larger than num_mcmc_bin_blocks.")
             raise ValueError
+
+        if self.__h5_compact:
+            return self._get_E_compact(num_mcmc_warmup_steps, num_mcmc_bin_blocks)
+        else:
+            return self._get_E_full(num_mcmc_warmup_steps, num_mcmc_bin_blocks)
+
+    def _get_E_full(
+        self,
+        num_mcmc_warmup_steps: int,
+        num_mcmc_bin_blocks: int,
+    ) -> tuple[float, float, float, float]:
+        """Full-mode energy estimation: per-walker jackknife with MPI reductions."""
         e_L = self.e_L[num_mcmc_warmup_steps:]
         e_L2 = self.e_L2[num_mcmc_warmup_steps:]
         w_L = self.w_L[num_mcmc_warmup_steps:]
@@ -1154,6 +1256,52 @@ class MCMC:
 
         return (E_mean, E_std, Var_mean, Var_std)
 
+    def _get_E_compact(
+        self,
+        num_mcmc_warmup_steps: int,
+        num_mcmc_bin_blocks: int,
+    ) -> tuple[float, float, float, float]:
+        """Compact-mode energy estimation: jackknife on MPI-reduced data on rank 0."""
+        # Only rank 0 holds the compact arrays; other ranks participate in broadcast.
+        if mpi_rank == 0:
+            w_sum = self.__stored_compact_w_sum[num_mcmc_warmup_steps:]
+            w_e_L = self.__stored_compact_w_e_L[num_mcmc_warmup_steps:]
+            w_e_L2 = self.__stored_compact_w_e_L2[num_mcmc_warmup_steps:]
+
+            # Bin along the step axis (each bin is one jackknife sample)
+            w_sum_split = np.array_split(w_sum, num_mcmc_bin_blocks)
+            w_e_L_split = np.array_split(w_e_L, num_mcmc_bin_blocks)
+            w_e_L2_split = np.array_split(w_e_L2, num_mcmc_bin_blocks)
+
+            w_sum_binned = np.array([np.sum(b) for b in w_sum_split])
+            w_e_L_binned = np.array([np.sum(b) for b in w_e_L_split])
+            w_e_L2_binned = np.array([np.sum(b) for b in w_e_L2_split])
+
+            M = w_sum_binned.size
+            total_w = np.sum(w_sum_binned)
+            total_we = np.sum(w_e_L_binned)
+            total_we2 = np.sum(w_e_L2_binned)
+
+            E_jn = np.array([(total_we - w_e_L_binned[j]) / (total_w - w_sum_binned[j]) for j in range(M)])
+            E2_jn = np.array([(total_we2 - w_e_L2_binned[j]) / (total_w - w_sum_binned[j]) for j in range(M)])
+            Var_jn = E2_jn - E_jn**2
+
+            E_mean = float(np.mean(E_jn))
+            E_std = float(np.sqrt((M - 1) * np.var(E_jn)))
+            Var_mean = float(np.mean(Var_jn))
+            Var_std = float(np.sqrt((M - 1) * np.var(Var_jn)))
+            result = np.array([E_mean, E_std, Var_mean, Var_std])
+        else:
+            result = np.empty(4)
+
+        mpi_comm.Bcast([result, MPI.DOUBLE], root=0)
+        E_mean, E_std, Var_mean, Var_std = result
+
+        logger.devel(f"E = {E_mean} +- {E_std} Ha.")
+        logger.devel(f"Var(E) = {Var_mean} +- {Var_std} Ha^2.")
+
+        return (E_mean, E_std, Var_mean, Var_std)
+
     def get_aF(
         self,
         num_mcmc_warmup_steps: int = 50,
@@ -1169,33 +1317,24 @@ class MCMC:
             tuple[npt.NDArray, npt.NDArray]: ``(force_mean, force_std)`` shaped ``(num_atoms, 3)`` in Hartree/bohr.
 
         Notes:
-            Uses stored per-walker weights, energies, wavefunction gradients, and SWCT terms accumulated during :meth:`run`; reductions are MPI-aware.
+            Uses stored per-walker weights, energies, and pre-computed force products accumulated during :meth:`run`; reductions are MPI-aware.
         """
+        if self.__h5_compact:
+            return self._get_F_compact(num_mcmc_warmup_steps, num_mcmc_bin_blocks)
+        else:
+            return self._get_F_full(num_mcmc_warmup_steps, num_mcmc_bin_blocks)
+
+    def _get_F_full(
+        self,
+        num_mcmc_warmup_steps: int,
+        num_mcmc_bin_blocks: int,
+    ):
+        """Full-mode force estimation: per-walker jackknife with MPI reductions."""
         w_L = self.w_L[num_mcmc_warmup_steps:]
         e_L = self.e_L[num_mcmc_warmup_steps:]
-        de_L_dR = self.de_L_dR[num_mcmc_warmup_steps:]
-        de_L_dr_up = self.de_L_dr_up[num_mcmc_warmup_steps:]
-        de_L_dr_dn = self.de_L_dr_dn[num_mcmc_warmup_steps:]
-        dln_Psi_dr_up = self.dln_Psi_dr_up[num_mcmc_warmup_steps:]
-        dln_Psi_dr_dn = self.dln_Psi_dr_dn[num_mcmc_warmup_steps:]
-        dln_Psi_dR = self.dln_Psi_dR[num_mcmc_warmup_steps:]
-        omega_up = self.omega_up[num_mcmc_warmup_steps:]
-        omega_dn = self.omega_dn[num_mcmc_warmup_steps:]
-        domega_dr_up = self.domega_dr_up[num_mcmc_warmup_steps:]
-        domega_dr_dn = self.domega_dr_dn[num_mcmc_warmup_steps:]
-
-        force_HF = (
-            de_L_dR + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up) + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
-        )
-
-        force_PP = (
-            dln_Psi_dR
-            + np.einsum("iwjk,iwkl->iwjl", omega_up, dln_Psi_dr_up)
-            + np.einsum("iwjk,iwkl->iwjl", omega_dn, dln_Psi_dr_dn)
-            + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
-        )
-
-        E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
+        force_HF = self.__stored_force_HF[num_mcmc_warmup_steps:]
+        force_PP = self.__stored_force_PP[num_mcmc_warmup_steps:]
+        E_L_force_PP = self.__stored_E_L_force_PP[num_mcmc_warmup_steps:]
 
         # split and binning with multiple walkers
         w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
@@ -1316,6 +1455,83 @@ class MCMC:
         ## mean and std
         force_mean = mean_force_global
         force_std = np.sqrt((M_total - 1) * var_force_global)
+
+        logger.devel(f"force_mean.shape  = {force_mean.shape}.")
+        logger.devel(f"force_std.shape  = {force_std.shape}.")
+        logger.devel(f"force = {force_mean} +- {force_std} Ha.")
+
+        return (force_mean, force_std)
+
+    def _get_F_compact(
+        self,
+        num_mcmc_warmup_steps: int,
+        num_mcmc_bin_blocks: int,
+    ):
+        """Compact-mode force estimation: jackknife on MPI-reduced data on rank 0.
+
+        Cross-correlations (Omega * grad_e_L, E_L * force_PP) are correctly
+        preserved because per-walker products were computed before reduction
+        during :meth:`run`.
+        """
+        n_atoms = self.__hamiltonian_data.structure_data.natom
+
+        if mpi_rank == 0:
+            w_sum = self.__stored_compact_w_sum[num_mcmc_warmup_steps:]
+            w_e_L = self.__stored_compact_w_e_L[num_mcmc_warmup_steps:]
+            w_fHF = self.__stored_compact_w_force_HF[num_mcmc_warmup_steps:]
+            w_fPP = self.__stored_compact_w_force_PP[num_mcmc_warmup_steps:]
+            w_EfPP = self.__stored_compact_w_E_L_force_PP[num_mcmc_warmup_steps:]
+
+            # Bin along step axis
+            w_sum_bins = [np.sum(b) for b in np.array_split(w_sum, num_mcmc_bin_blocks)]
+            w_e_L_bins = [np.sum(b) for b in np.array_split(w_e_L, num_mcmc_bin_blocks)]
+            w_fHF_bins = [np.sum(b, axis=0) for b in np.array_split(w_fHF, num_mcmc_bin_blocks)]
+            w_fPP_bins = [np.sum(b, axis=0) for b in np.array_split(w_fPP, num_mcmc_bin_blocks)]
+            w_EfPP_bins = [np.sum(b, axis=0) for b in np.array_split(w_EfPP, num_mcmc_bin_blocks)]
+
+            w_sum_binned = np.array(w_sum_bins)  # (M,)
+            w_e_L_binned = np.array(w_e_L_bins)  # (M,)
+            w_fHF_binned = np.array(w_fHF_bins)  # (M, n_atoms, 3)
+            w_fPP_binned = np.array(w_fPP_bins)  # (M, n_atoms, 3)
+            w_EfPP_binned = np.array(w_EfPP_bins)  # (M, n_atoms, 3)
+
+            M = w_sum_binned.shape[0]
+            total_w = np.sum(w_sum_binned)
+            total_we = np.sum(w_e_L_binned)
+            total_wfHF = np.sum(w_fHF_binned, axis=0)
+            total_wfPP = np.sum(w_fPP_binned, axis=0)
+            total_wEfPP = np.sum(w_EfPP_binned, axis=0)
+
+            # Jackknife: leave-one-bin-out
+            force_HF_jn = -1.0 * np.array([(total_wfHF - w_fHF_binned[j]) / (total_w - w_sum_binned[j]) for j in range(M)])
+
+            force_Pulay_jn = -2.0 * np.array(
+                [
+                    (
+                        (total_wEfPP - w_EfPP_binned[j]) / (total_w - w_sum_binned[j])
+                        - (
+                            (total_we - w_e_L_binned[j])
+                            / (total_w - w_sum_binned[j])
+                            * (total_wfPP - w_fPP_binned[j])
+                            / (total_w - w_sum_binned[j])
+                        )
+                    )
+                    for j in range(M)
+                ]
+            )
+
+            force_jn = force_HF_jn + force_Pulay_jn  # (M, n_atoms, 3)
+            force_mean = np.mean(force_jn, axis=0)
+            force_var = np.var(force_jn, axis=0)
+            force_std = np.sqrt((M - 1) * force_var)
+
+            result_flat = np.concatenate([force_mean.ravel(), force_std.ravel()])
+        else:
+            result_flat = np.empty(n_atoms * 3 * 2)
+
+        mpi_comm.Bcast([result_flat, MPI.DOUBLE], root=0)
+        force_mean = result_flat[: n_atoms * 3].reshape(n_atoms, 3)
+        force_std = result_flat[n_atoms * 3 :].reshape(n_atoms, 3)
 
         logger.devel(f"force_mean.shape  = {force_mean.shape}.")
         logger.devel(f"force_std.shape  = {force_std.shape}.")
@@ -3405,6 +3621,7 @@ class MCMC:
             "comput_e_L_param_deriv": self.__comput_e_L_param_deriv,
             "comput_position_deriv": self.__comput_position_deriv,
             "random_discretized_mesh": self.__random_discretized_mesh,
+            "h5_compact": self.__h5_compact,
             "mcmc_counter": self.__mcmc_counter,
             "accepted_moves": self.__accepted_moves,
             "rejected_moves": self.__rejected_moves,
@@ -3429,25 +3646,33 @@ class MCMC:
 
         # -- observables --
         observables: dict[str, Any] = {}
-        # Standard arrays (convert list→array only if non-empty)
-        _obs_map = {
-            "e_L": self.__stored_e_L,
-            "e_L2": self.__stored_e_L2,
-            "w_L": self.__stored_w_L,
-            "grad_e_L_dR": self.__stored_grad_e_L_dR,
-            "grad_e_L_r_up": self.__stored_grad_e_L_r_up,
-            "grad_e_L_r_dn": self.__stored_grad_e_L_r_dn,
-            "grad_ln_Psi_r_up": self.__stored_grad_ln_Psi_r_up,
-            "grad_ln_Psi_r_dn": self.__stored_grad_ln_Psi_r_dn,
-            "grad_ln_Psi_dR": self.__stored_grad_ln_Psi_dR,
-            "omega_up": self.__stored_omega_up,
-            "omega_dn": self.__stored_omega_dn,
-            "grad_omega_r_up": self.__stored_grad_omega_r_up,
-            "grad_omega_r_dn": self.__stored_grad_omega_r_dn,
-        }
-        for key, val in _obs_map.items():
-            arr = np.asarray(val) if val.size > 0 else np.empty(0)
-            observables[key] = arr
+
+        if self.__h5_compact:
+            # Compact mode: store MPI-reduced weighted sums (rank 0 only has data)
+            _compact_map = {
+                "compact_w_sum": self.__stored_compact_w_sum,
+                "compact_w_e_L": self.__stored_compact_w_e_L,
+                "compact_w_e_L2": self.__stored_compact_w_e_L2,
+                "compact_w_force_HF": self.__stored_compact_w_force_HF,
+                "compact_w_force_PP": self.__stored_compact_w_force_PP,
+                "compact_w_E_L_force_PP": self.__stored_compact_w_E_L_force_PP,
+            }
+            for key, val in _compact_map.items():
+                arr = np.asarray(val) if val.size > 0 else np.empty(0)
+                observables[key] = arr
+        else:
+            # Standard arrays (convert list→array only if non-empty)
+            _obs_map = {
+                "e_L": self.__stored_e_L,
+                "e_L2": self.__stored_e_L2,
+                "w_L": self.__stored_w_L,
+                "force_HF": self.__stored_force_HF,
+                "force_PP": self.__stored_force_PP,
+                "E_L_force_PP": self.__stored_E_L_force_PP,
+            }
+            for key, val in _obs_map.items():
+                arr = np.asarray(val) if val.size > 0 else np.empty(0)
+                observables[key] = arr
 
         # dict-keyed parameter gradients
         param_grads: dict[str, np.ndarray] = {}
@@ -3518,6 +3743,7 @@ class MCMC:
         obj._MCMC__comput_e_L_param_deriv = bool(cfg.get("comput_e_L_param_deriv", False))
         obj._MCMC__comput_position_deriv = bool(cfg.get("comput_position_deriv", False))
         obj._MCMC__random_discretized_mesh = bool(cfg.get("random_discretized_mesh", True))
+        obj._MCMC__h5_compact = bool(cfg.get("h5_compact", False))
 
         # Counters
         obj._MCMC__mcmc_counter = cfg.get("mcmc_counter", 0)
@@ -3571,16 +3797,19 @@ class MCMC:
         obj._MCMC__stored_e_L = _load_obs(obs.get("e_L"), obj._MCMC__stored_e_L)
         obj._MCMC__stored_e_L2 = _load_obs(obs.get("e_L2"), obj._MCMC__stored_e_L2)
         obj._MCMC__stored_w_L = _load_obs(obs.get("w_L"), obj._MCMC__stored_w_L)
-        obj._MCMC__stored_grad_e_L_dR = _load_obs(obs.get("grad_e_L_dR"), obj._MCMC__stored_grad_e_L_dR)
-        obj._MCMC__stored_grad_e_L_r_up = _load_obs(obs.get("grad_e_L_r_up"), obj._MCMC__stored_grad_e_L_r_up)
-        obj._MCMC__stored_grad_e_L_r_dn = _load_obs(obs.get("grad_e_L_r_dn"), obj._MCMC__stored_grad_e_L_r_dn)
-        obj._MCMC__stored_grad_ln_Psi_r_up = _load_obs(obs.get("grad_ln_Psi_r_up"), obj._MCMC__stored_grad_ln_Psi_r_up)
-        obj._MCMC__stored_grad_ln_Psi_r_dn = _load_obs(obs.get("grad_ln_Psi_r_dn"), obj._MCMC__stored_grad_ln_Psi_r_dn)
-        obj._MCMC__stored_grad_ln_Psi_dR = _load_obs(obs.get("grad_ln_Psi_dR"), obj._MCMC__stored_grad_ln_Psi_dR)
-        obj._MCMC__stored_omega_up = _load_obs(obs.get("omega_up"), obj._MCMC__stored_omega_up)
-        obj._MCMC__stored_omega_dn = _load_obs(obs.get("omega_dn"), obj._MCMC__stored_omega_dn)
-        obj._MCMC__stored_grad_omega_r_up = _load_obs(obs.get("grad_omega_r_up"), obj._MCMC__stored_grad_omega_r_up)
-        obj._MCMC__stored_grad_omega_r_dn = _load_obs(obs.get("grad_omega_r_dn"), obj._MCMC__stored_grad_omega_r_dn)
+        obj._MCMC__stored_force_HF = _load_obs(obs.get("force_HF"), obj._MCMC__stored_force_HF)
+        obj._MCMC__stored_force_PP = _load_obs(obs.get("force_PP"), obj._MCMC__stored_force_PP)
+        obj._MCMC__stored_E_L_force_PP = _load_obs(obs.get("E_L_force_PP"), obj._MCMC__stored_E_L_force_PP)
+
+        # Compact mode arrays
+        obj._MCMC__stored_compact_w_sum = _load_obs(obs.get("compact_w_sum"), obj._MCMC__stored_compact_w_sum)
+        obj._MCMC__stored_compact_w_e_L = _load_obs(obs.get("compact_w_e_L"), obj._MCMC__stored_compact_w_e_L)
+        obj._MCMC__stored_compact_w_e_L2 = _load_obs(obs.get("compact_w_e_L2"), obj._MCMC__stored_compact_w_e_L2)
+        obj._MCMC__stored_compact_w_force_HF = _load_obs(obs.get("compact_w_force_HF"), obj._MCMC__stored_compact_w_force_HF)
+        obj._MCMC__stored_compact_w_force_PP = _load_obs(obs.get("compact_w_force_PP"), obj._MCMC__stored_compact_w_force_PP)
+        obj._MCMC__stored_compact_w_E_L_force_PP = _load_obs(
+            obs.get("compact_w_E_L_force_PP"), obj._MCMC__stored_compact_w_E_L_force_PP
+        )
 
         # dict-keyed parameter gradients
         pg = obs.get("param_grads", {})
@@ -3642,6 +3871,11 @@ class MCMC:
         """The number of walkers."""
         return self.__num_walkers
 
+    @property
+    def h5_compact(self) -> bool:
+        """Whether compact checkpoint mode is enabled."""
+        return self.__h5_compact
+
     # weights
     @property
     def w_L(self) -> npt.NDArray:
@@ -3662,54 +3896,19 @@ class MCMC:
         return np.asarray(self.__stored_e_L2)
 
     @property
-    def de_L_dR(self) -> npt.NDArray:
-        """Return the stored de_L/dR array. dim: (mcmc_counter, num_walkers)."""
-        return np.asarray(self.__stored_grad_e_L_dR)
+    def force_HF_stored(self) -> npt.NDArray:
+        """Return the stored force_HF array. dim: (mcmc_counter, num_walkers, num_atoms, 3)."""
+        return np.asarray(self.__stored_force_HF)
 
     @property
-    def de_L_dr_up(self) -> npt.NDArray:
-        """Return the stored de_L/dr_up array. dim: (mcmc_counter, num_walkers, num_electrons_up, 3)."""
-        return np.asarray(self.__stored_grad_e_L_r_up)
+    def force_PP_stored(self) -> npt.NDArray:
+        """Return the stored force_PP array. dim: (mcmc_counter, num_walkers, num_atoms, 3)."""
+        return np.asarray(self.__stored_force_PP)
 
     @property
-    def de_L_dr_dn(self) -> npt.NDArray:
-        """Return the stored de_L/dr_dn array. dim: (mcmc_counter, num_walkers, num_electrons_dn, 3)."""
-        return np.asarray(self.__stored_grad_e_L_r_dn)
-
-    @property
-    def dln_Psi_dr_up(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dr_up array. dim: (mcmc_counter, num_walkers, num_electrons_up, 3)."""
-        return np.asarray(self.__stored_grad_ln_Psi_r_up)
-
-    @property
-    def dln_Psi_dr_dn(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dr_down array. dim: (mcmc_counter, num_walkers, num_electrons_dn, 3)."""
-        return np.asarray(self.__stored_grad_ln_Psi_r_dn)
-
-    @property
-    def dln_Psi_dR(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dR array. dim: (mcmc_counter, num_walkers, num_atoms, 3)."""
-        return np.asarray(self.__stored_grad_ln_Psi_dR)
-
-    @property
-    def omega_up(self) -> npt.NDArray:
-        """Return the stored Omega (for up electrons) array. dim: (mcmc_counter, num_walkers, num_atoms, num_electrons_up)."""
-        return np.asarray(self.__stored_omega_up)
-
-    @property
-    def omega_dn(self) -> npt.NDArray:
-        """Return the stored Omega (for down electrons) array. dim: (mcmc_counter, num_walkers, num_atoms, num_electons_dn)."""
-        return np.asarray(self.__stored_omega_dn)
-
-    @property
-    def domega_dr_up(self) -> npt.NDArray:
-        """Return the stored dOmega/dr_up array. dim: (mcmc_counter, num_walkers, num_electons_dn, 3)."""
-        return np.asarray(self.__stored_grad_omega_r_up)
-
-    @property
-    def domega_dr_dn(self) -> npt.NDArray:
-        """Return the stored dOmega/dr_dn array. dim: (mcmc_counter, num_walkers, num_electons_dn, 3)."""
-        return np.asarray(self.__stored_grad_omega_r_dn)
+    def E_L_force_PP_stored(self) -> npt.NDArray:
+        """Return the stored E_L * force_PP array. dim: (mcmc_counter, num_walkers, num_atoms, 3)."""
+        return np.asarray(self.__stored_E_L_force_PP)
 
     @property
     def dln_Psi_dc(self) -> dict[str, npt.NDArray]:

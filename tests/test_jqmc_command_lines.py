@@ -95,6 +95,7 @@ def test_jqmc_cli_run_mcmc(tmp_path, monkeypatch, trexio_file: str):
         dict_toml["mcmc"]["num_mcmc_steps"] = 50
         dict_toml["mcmc"]["num_mcmc_bin_blocks"] = 5
         dict_toml["mcmc"]["num_mcmc_warmup_steps"] = 30
+        dict_toml["mcmc"]["h5_compact"] = False
     with open(os.path.join(tmp_path, "mcmc_input.toml"), "w") as f:
         toml.dump(dict_toml, f)
     os.chdir(root_dir)

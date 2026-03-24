@@ -316,35 +316,10 @@ class GFMC_t:
         # average projection counter
         self.__stored_average_projection_counter = np.zeros((0,))
 
-        # stored de_L / dR
-        self.__stored_grad_e_L_dR = np.zeros((0, 1, n_atoms, 3))
-
-        # stored de_L / dr_up
-        self.__stored_grad_e_L_r_up = np.zeros((0, 1, n_up, 3))
-
-        # stored de_L / dr_dn
-        self.__stored_grad_e_L_r_dn = np.zeros((0, 1, n_dn, 3))
-
-        # stored dln_Psi / dr_up
-        self.__stored_grad_ln_Psi_r_up = np.zeros((0, 1, n_up, 3))
-
-        # stored dln_Psi / dr_dn
-        self.__stored_grad_ln_Psi_r_dn = np.zeros((0, 1, n_dn, 3))
-
-        # stored dln_Psi / dR
-        self.__stored_grad_ln_Psi_dR = np.zeros((0, 1, n_atoms, 3))
-
-        # stored Omega_up (SWCT)
-        self.__stored_omega_up = np.zeros((0, 1, n_atoms, n_up))
-
-        # stored Omega_dn (SWCT)
-        self.__stored_omega_dn = np.zeros((0, 1, n_atoms, n_dn))
-
-        # stored sum_i d omega/d r_i for up spins (SWCT)
-        self.__stored_grad_omega_r_up = np.zeros((0, 1, n_atoms, 3))
-
-        # stored sum_i d omega/d r_i for dn spins (SWCT)
-        self.__stored_grad_omega_r_dn = np.zeros((0, 1, n_atoms, 3))
+        # stored force products (per-walker cross-correlation preserved)
+        self.__stored_force_HF = np.zeros((0, 1, n_atoms, 3))
+        self.__stored_force_PP = np.zeros((0, 1, n_atoms, 3))
+        self.__stored_E_L_force_PP = np.zeros((0, 1, n_atoms, 3))
 
     def __validate_stored_shapes(self):
         """Assert that all stored observable arrays have consistent shapes."""
@@ -362,16 +337,9 @@ class GFMC_t:
         if self.__comput_position_deriv:
             expected.update(
                 {
-                    "grad_e_L_dR": ((ns, 1, n_atoms, 3), self.__stored_grad_e_L_dR),
-                    "grad_e_L_r_up": ((ns, 1, n_up, 3), self.__stored_grad_e_L_r_up),
-                    "grad_e_L_r_dn": ((ns, 1, n_dn, 3), self.__stored_grad_e_L_r_dn),
-                    "grad_ln_Psi_r_up": ((ns, 1, n_up, 3), self.__stored_grad_ln_Psi_r_up),
-                    "grad_ln_Psi_r_dn": ((ns, 1, n_dn, 3), self.__stored_grad_ln_Psi_r_dn),
-                    "grad_ln_Psi_dR": ((ns, 1, n_atoms, 3), self.__stored_grad_ln_Psi_dR),
-                    "omega_up": ((ns, 1, n_atoms, n_up), self.__stored_omega_up),
-                    "omega_dn": ((ns, 1, n_atoms, n_dn), self.__stored_omega_dn),
-                    "grad_omega_r_up": ((ns, 1, n_atoms, 3), self.__stored_grad_omega_r_up),
-                    "grad_omega_r_dn": ((ns, 1, n_atoms, 3), self.__stored_grad_omega_r_dn),
+                    "force_HF": ((ns, 1, n_atoms, 3), self.__stored_force_HF),
+                    "force_PP": ((ns, 1, n_atoms, 3), self.__stored_force_PP),
+                    "E_L_force_PP": ((ns, 1, n_atoms, 3), self.__stored_E_L_force_PP),
                 }
             )
         for name, (shape, arr) in expected.items():
@@ -427,16 +395,9 @@ class GFMC_t:
             "e_L2": self.__stored_e_L2,
             "w_L": self.__stored_w_L,
             "average_projection_counter": self.__stored_average_projection_counter,
-            "grad_e_L_dR": self.__stored_grad_e_L_dR,
-            "grad_e_L_r_up": self.__stored_grad_e_L_r_up,
-            "grad_e_L_r_dn": self.__stored_grad_e_L_r_dn,
-            "grad_ln_Psi_r_up": self.__stored_grad_ln_Psi_r_up,
-            "grad_ln_Psi_r_dn": self.__stored_grad_ln_Psi_r_dn,
-            "grad_ln_Psi_dR": self.__stored_grad_ln_Psi_dR,
-            "omega_up": self.__stored_omega_up,
-            "omega_dn": self.__stored_omega_dn,
-            "grad_omega_r_up": self.__stored_grad_omega_r_up,
-            "grad_omega_r_dn": self.__stored_grad_omega_r_dn,
+            "force_HF": self.__stored_force_HF,
+            "force_PP": self.__stored_force_PP,
+            "E_L_force_PP": self.__stored_E_L_force_PP,
         }
         for key, val in _obs_map.items():
             arr = np.asarray(val) if val.size > 0 else np.empty(0)
@@ -533,16 +494,9 @@ class GFMC_t:
         obj._GFMC_t__stored_e_L2 = _load_obs(obs.get("e_L2"), np.zeros((0, 1)))
         obj._GFMC_t__stored_w_L = _load_obs(obs.get("w_L"), np.zeros((0, 1)))
         obj._GFMC_t__stored_average_projection_counter = _load_obs(obs.get("average_projection_counter"), np.zeros((0,)))
-        obj._GFMC_t__stored_grad_e_L_dR = _load_obs(obs.get("grad_e_L_dR"), np.zeros((0, 1, n_atoms, 3)))
-        obj._GFMC_t__stored_grad_e_L_r_up = _load_obs(obs.get("grad_e_L_r_up"), np.zeros((0, 1, n_up, 3)))
-        obj._GFMC_t__stored_grad_e_L_r_dn = _load_obs(obs.get("grad_e_L_r_dn"), np.zeros((0, 1, n_dn, 3)))
-        obj._GFMC_t__stored_grad_ln_Psi_r_up = _load_obs(obs.get("grad_ln_Psi_r_up"), np.zeros((0, 1, n_up, 3)))
-        obj._GFMC_t__stored_grad_ln_Psi_r_dn = _load_obs(obs.get("grad_ln_Psi_r_dn"), np.zeros((0, 1, n_dn, 3)))
-        obj._GFMC_t__stored_grad_ln_Psi_dR = _load_obs(obs.get("grad_ln_Psi_dR"), np.zeros((0, 1, n_atoms, 3)))
-        obj._GFMC_t__stored_omega_up = _load_obs(obs.get("omega_up"), np.zeros((0, 1, n_atoms, n_up)))
-        obj._GFMC_t__stored_omega_dn = _load_obs(obs.get("omega_dn"), np.zeros((0, 1, n_atoms, n_dn)))
-        obj._GFMC_t__stored_grad_omega_r_up = _load_obs(obs.get("grad_omega_r_up"), np.zeros((0, 1, n_atoms, 3)))
-        obj._GFMC_t__stored_grad_omega_r_dn = _load_obs(obs.get("grad_omega_r_dn"), np.zeros((0, 1, n_atoms, 3)))
+        obj._GFMC_t__stored_force_HF = _load_obs(obs.get("force_HF"), np.zeros((0, 1, n_atoms, 3)))
+        obj._GFMC_t__stored_force_PP = _load_obs(obs.get("force_PP"), np.zeros((0, 1, n_atoms, 3)))
+        obj._GFMC_t__stored_E_L_force_PP = _load_obs(obs.get("E_L_force_PP"), np.zeros((0, 1, n_atoms, 3)))
 
         return obj
 
@@ -619,54 +573,19 @@ class GFMC_t:
         return np.asarray(self.__stored_average_projection_counter)
 
     @property
-    def de_L_dR(self) -> npt.NDArray:
-        """Return the stored de_L/dR array. dim: (mcmc_counter, 1)."""
-        return np.asarray(self.__stored_grad_e_L_dR)[self.__num_gfmc_collect_steps :]
+    def force_HF(self) -> npt.NDArray:
+        """Return the stored force_HF array. dim: (mcmc_counter, 1, num_atoms, 3)."""
+        return np.asarray(self.__stored_force_HF)[self.__num_gfmc_collect_steps :]
 
     @property
-    def de_L_dr_up(self) -> npt.NDArray:
-        """Return the stored de_L/dr_up array. dim: (mcmc_counter, 1, num_electrons_up, 3)."""
-        return np.asarray(self.__stored_grad_e_L_r_up)[self.__num_gfmc_collect_steps :]
+    def force_PP(self) -> npt.NDArray:
+        """Return the stored force_PP array. dim: (mcmc_counter, 1, num_atoms, 3)."""
+        return np.asarray(self.__stored_force_PP)[self.__num_gfmc_collect_steps :]
 
     @property
-    def de_L_dr_dn(self) -> npt.NDArray:
-        """Return the stored de_L/dr_dn array. dim: (mcmc_counter, 1, num_electrons_dn, 3)."""
-        return np.asarray(self.__stored_grad_e_L_r_dn)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def dln_Psi_dr_up(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dr_up array. dim: (mcmc_counter, 1, num_electrons_up, 3)."""
-        return np.asarray(self.__stored_grad_ln_Psi_r_up)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def dln_Psi_dr_dn(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dr_down array. dim: (mcmc_counter, 1, num_electrons_dn, 3)."""
-        return np.asarray(self.__stored_grad_ln_Psi_r_dn)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def dln_Psi_dR(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dR array. dim: (mcmc_counter, 1, num_atoms, 3)."""
-        return np.asarray(self.__stored_grad_ln_Psi_dR)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def omega_up(self) -> npt.NDArray:
-        """Return the stored Omega (for up electrons) array. dim: (mcmc_counter, 1, num_atoms, num_electrons_up)."""
-        return np.asarray(self.__stored_omega_up)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def omega_dn(self) -> npt.NDArray:
-        """Return the stored Omega (for down electrons) array. dim: (mcmc_counter,1, num_atoms, num_electons_dn)."""
-        return np.asarray(self.__stored_omega_dn)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def domega_dr_up(self) -> npt.NDArray:
-        """Return the stored dOmega/dr_up array. dim: (mcmc_counter, 1, num_electons_dn, 3)."""
-        return np.asarray(self.__stored_grad_omega_r_up)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def domega_dr_dn(self) -> npt.NDArray:
-        """Return the stored dOmega/dr_dn array. dim: (mcmc_counter, 1, num_electons_dn, 3)."""
-        return np.asarray(self.__stored_grad_omega_r_dn)[self.__num_gfmc_collect_steps :]
+    def E_L_force_PP(self) -> npt.NDArray:
+        """Return the stored E_L * force_PP array. dim: (mcmc_counter, 1, num_atoms, 3)."""
+        return np.asarray(self.__stored_E_L_force_PP)[self.__num_gfmc_collect_steps :]
 
     @property
     def comput_position_deriv(self) -> bool:
@@ -1452,31 +1371,10 @@ class GFMC_t:
             self.__stored_e_L2 = np.concatenate([self.__stored_e_L2, np.zeros((num_mcmc_steps, 1))])
             self.__stored_w_L = np.concatenate([self.__stored_w_L, np.zeros((num_mcmc_steps, 1))])
             if self.__comput_position_deriv:
-                self.__stored_grad_e_L_dR = np.concatenate(
-                    [self.__stored_grad_e_L_dR, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
-                )
-                self.__stored_grad_e_L_r_up = np.concatenate(
-                    [self.__stored_grad_e_L_r_up, np.zeros((num_mcmc_steps, 1, n_up, 3))]
-                )
-                self.__stored_grad_e_L_r_dn = np.concatenate(
-                    [self.__stored_grad_e_L_r_dn, np.zeros((num_mcmc_steps, 1, n_dn, 3))]
-                )
-                self.__stored_grad_ln_Psi_r_up = np.concatenate(
-                    [self.__stored_grad_ln_Psi_r_up, np.zeros((num_mcmc_steps, 1, n_up, 3))]
-                )
-                self.__stored_grad_ln_Psi_r_dn = np.concatenate(
-                    [self.__stored_grad_ln_Psi_r_dn, np.zeros((num_mcmc_steps, 1, n_dn, 3))]
-                )
-                self.__stored_grad_ln_Psi_dR = np.concatenate(
-                    [self.__stored_grad_ln_Psi_dR, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
-                )
-                self.__stored_omega_up = np.concatenate([self.__stored_omega_up, np.zeros((num_mcmc_steps, 1, n_atoms, n_up))])
-                self.__stored_omega_dn = np.concatenate([self.__stored_omega_dn, np.zeros((num_mcmc_steps, 1, n_atoms, n_dn))])
-                self.__stored_grad_omega_r_up = np.concatenate(
-                    [self.__stored_grad_omega_r_up, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
-                )
-                self.__stored_grad_omega_r_dn = np.concatenate(
-                    [self.__stored_grad_omega_r_dn, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
+                self.__stored_force_HF = np.concatenate([self.__stored_force_HF, np.zeros((num_mcmc_steps, 1, n_atoms, 3))])
+                self.__stored_force_PP = np.concatenate([self.__stored_force_PP, np.zeros((num_mcmc_steps, 1, n_atoms, 3))])
+                self.__stored_E_L_force_PP = np.concatenate(
+                    [self.__stored_E_L_force_PP, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
                 )
 
         for i_branching in range(num_mcmc_steps):
@@ -1672,17 +1570,28 @@ class GFMC_t:
                 else:
                     mod_w_L_latest = w_L_latest
 
+                # Compute per-walker force products BEFORE walker averaging
+                # force_HF per walker: shape (n_walkers, n_atoms, 3)
+                force_HF_per_walker = (
+                    grad_e_L_R_latest
+                    + np.einsum("ijk,ikl->ijl", omega_up_latest, grad_e_L_r_up_latest)
+                    + np.einsum("ijk,ikl->ijl", omega_dn_latest, grad_e_L_r_dn_latest)
+                )
+                # force_PP per walker: shape (n_walkers, n_atoms, 3)
+                force_PP_per_walker = (
+                    grad_ln_Psi_dR_latest
+                    + np.einsum("ijk,ikl->ijl", omega_up_latest, grad_ln_Psi_r_up_latest)
+                    + np.einsum("ijk,ikl->ijl", omega_dn_latest, grad_ln_Psi_r_dn_latest)
+                    + 0.5 * (grad_omega_dr_up_latest + grad_omega_dr_dn_latest)
+                )
+                # E_L * force_PP per walker: shape (n_walkers, n_atoms, 3)
+                E_L_force_PP_per_walker = e_L_latest[:, None, None] * force_PP_per_walker
+
+                # Weighted sum of per-walker force products
                 # Note: GFMC_t uses w_L directly (no V_diag_E division unlike GFMC_n)
-                grad_e_L_r_up_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, grad_e_L_r_up_latest)
-                grad_e_L_r_dn_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, grad_e_L_r_dn_latest)
-                grad_e_L_R_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, grad_e_L_R_latest)
-                grad_ln_Psi_r_up_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, grad_ln_Psi_r_up_latest)
-                grad_ln_Psi_r_dn_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, grad_ln_Psi_r_dn_latest)
-                grad_ln_Psi_dR_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, grad_ln_Psi_dR_latest)
-                omega_up_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, omega_up_latest)
-                omega_dn_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, omega_dn_latest)
-                grad_omega_dr_up_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, grad_omega_dr_up_latest)
-                grad_omega_dr_dn_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, grad_omega_dr_dn_latest)
+                force_HF_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, force_HF_per_walker)
+                force_PP_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, force_PP_per_walker)
+                E_L_force_PP_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest, E_L_force_PP_per_walker)
 
             # reduce
             nw_sum = mpi_comm.reduce(nw_sum, op=MPI.SUM, root=0)
@@ -1690,16 +1599,9 @@ class GFMC_t:
             e_L_sum = mpi_comm.reduce(e_L_sum, op=MPI.SUM, root=0)
             e_L2_sum = mpi_comm.reduce(e_L2_sum, op=MPI.SUM, root=0)
             if self.__comput_position_deriv:
-                grad_e_L_r_up_weighted_sum = mpi_comm.reduce(grad_e_L_r_up_weighted_sum, op=MPI.SUM, root=0)
-                grad_e_L_r_dn_weighted_sum = mpi_comm.reduce(grad_e_L_r_dn_weighted_sum, op=MPI.SUM, root=0)
-                grad_e_L_R_weighted_sum = mpi_comm.reduce(grad_e_L_R_weighted_sum, op=MPI.SUM, root=0)
-                grad_ln_Psi_r_up_weighted_sum = mpi_comm.reduce(grad_ln_Psi_r_up_weighted_sum, op=MPI.SUM, root=0)
-                grad_ln_Psi_r_dn_weighted_sum = mpi_comm.reduce(grad_ln_Psi_r_dn_weighted_sum, op=MPI.SUM, root=0)
-                grad_ln_Psi_dR_weighted_sum = mpi_comm.reduce(grad_ln_Psi_dR_weighted_sum, op=MPI.SUM, root=0)
-                omega_up_weighted_sum = mpi_comm.reduce(omega_up_weighted_sum, op=MPI.SUM, root=0)
-                omega_dn_weighted_sum = mpi_comm.reduce(omega_dn_weighted_sum, op=MPI.SUM, root=0)
-                grad_omega_dr_up_weighted_sum = mpi_comm.reduce(grad_omega_dr_up_weighted_sum, op=MPI.SUM, root=0)
-                grad_omega_dr_dn_weighted_sum = mpi_comm.reduce(grad_omega_dr_dn_weighted_sum, op=MPI.SUM, root=0)
+                force_HF_weighted_sum = mpi_comm.reduce(force_HF_weighted_sum, op=MPI.SUM, root=0)
+                force_PP_weighted_sum = mpi_comm.reduce(force_PP_weighted_sum, op=MPI.SUM, root=0)
+                E_L_force_PP_weighted_sum = mpi_comm.reduce(E_L_force_PP_weighted_sum, op=MPI.SUM, root=0)
 
             if mpi_rank == 0:
                 # averaged
@@ -1707,48 +1609,27 @@ class GFMC_t:
                 e_L_averaged = e_L_sum / w_L_sum
                 e_L2_averaged = e_L2_sum / w_L_sum
                 if self.__comput_position_deriv:
-                    grad_e_L_r_up_averaged = grad_e_L_r_up_weighted_sum / w_L_sum
-                    grad_e_L_r_dn_averaged = grad_e_L_r_dn_weighted_sum / w_L_sum
-                    grad_e_L_R_averaged = grad_e_L_R_weighted_sum / w_L_sum
-                    grad_ln_Psi_r_up_averaged = grad_ln_Psi_r_up_weighted_sum / w_L_sum
-                    grad_ln_Psi_r_dn_averaged = grad_ln_Psi_r_dn_weighted_sum / w_L_sum
-                    grad_ln_Psi_dR_averaged = grad_ln_Psi_dR_weighted_sum / w_L_sum
-                    omega_up_averaged = omega_up_weighted_sum / w_L_sum
-                    omega_dn_averaged = omega_dn_weighted_sum / w_L_sum
-                    grad_omega_dr_up_averaged = grad_omega_dr_up_weighted_sum / w_L_sum
-                    grad_omega_dr_dn_averaged = grad_omega_dr_dn_weighted_sum / w_L_sum
+                    force_HF_averaged = force_HF_weighted_sum / w_L_sum
+                    force_PP_averaged = force_PP_weighted_sum / w_L_sum
+                    E_L_force_PP_averaged = E_L_force_PP_weighted_sum / w_L_sum
 
                 # add a dummy dim
                 e_L2_averaged = np.expand_dims(e_L2_averaged, axis=0)
                 e_L_averaged = np.expand_dims(e_L_averaged, axis=0)
                 w_L_averaged = np.expand_dims(w_L_averaged, axis=0)
                 if self.__comput_position_deriv:
-                    grad_e_L_r_up_averaged = np.expand_dims(grad_e_L_r_up_averaged, axis=0)
-                    grad_e_L_r_dn_averaged = np.expand_dims(grad_e_L_r_dn_averaged, axis=0)
-                    grad_e_L_R_averaged = np.expand_dims(grad_e_L_R_averaged, axis=0)
-                    grad_ln_Psi_r_up_averaged = np.expand_dims(grad_ln_Psi_r_up_averaged, axis=0)
-                    grad_ln_Psi_r_dn_averaged = np.expand_dims(grad_ln_Psi_r_dn_averaged, axis=0)
-                    grad_ln_Psi_dR_averaged = np.expand_dims(grad_ln_Psi_dR_averaged, axis=0)
-                    omega_up_averaged = np.expand_dims(omega_up_averaged, axis=0)
-                    omega_dn_averaged = np.expand_dims(omega_dn_averaged, axis=0)
-                    grad_omega_dr_up_averaged = np.expand_dims(grad_omega_dr_up_averaged, axis=0)
-                    grad_omega_dr_dn_averaged = np.expand_dims(grad_omega_dr_dn_averaged, axis=0)
+                    force_HF_averaged = np.expand_dims(force_HF_averaged, axis=0)
+                    force_PP_averaged = np.expand_dims(force_PP_averaged, axis=0)
+                    E_L_force_PP_averaged = np.expand_dims(E_L_force_PP_averaged, axis=0)
 
                 # store  # This should stored only for MPI-rank = 0 !!!
                 self.__stored_e_L2[self.__mcmc_counter + num_mcmc_done] = np.array(e_L2_averaged)
                 self.__stored_e_L[self.__mcmc_counter + num_mcmc_done] = np.array(e_L_averaged)
                 self.__stored_w_L[self.__mcmc_counter + num_mcmc_done] = np.array(w_L_averaged)
                 if self.__comput_position_deriv:
-                    self.__stored_grad_e_L_r_up[self.__mcmc_counter + num_mcmc_done] = np.array(grad_e_L_r_up_averaged)
-                    self.__stored_grad_e_L_r_dn[self.__mcmc_counter + num_mcmc_done] = np.array(grad_e_L_r_dn_averaged)
-                    self.__stored_grad_e_L_dR[self.__mcmc_counter + num_mcmc_done] = np.array(grad_e_L_R_averaged)
-                    self.__stored_grad_ln_Psi_r_up[self.__mcmc_counter + num_mcmc_done] = np.array(grad_ln_Psi_r_up_averaged)
-                    self.__stored_grad_ln_Psi_r_dn[self.__mcmc_counter + num_mcmc_done] = np.array(grad_ln_Psi_r_dn_averaged)
-                    self.__stored_grad_ln_Psi_dR[self.__mcmc_counter + num_mcmc_done] = np.array(grad_ln_Psi_dR_averaged)
-                    self.__stored_omega_up[self.__mcmc_counter + num_mcmc_done] = np.array(omega_up_averaged)
-                    self.__stored_omega_dn[self.__mcmc_counter + num_mcmc_done] = np.array(omega_dn_averaged)
-                    self.__stored_grad_omega_r_up[self.__mcmc_counter + num_mcmc_done] = np.array(grad_omega_dr_up_averaged)
-                    self.__stored_grad_omega_r_dn[self.__mcmc_counter + num_mcmc_done] = np.array(grad_omega_dr_dn_averaged)
+                    self.__stored_force_HF[self.__mcmc_counter + num_mcmc_done] = np.array(force_HF_averaged)
+                    self.__stored_force_PP[self.__mcmc_counter + num_mcmc_done] = np.array(force_PP_averaged)
+                    self.__stored_E_L_force_PP[self.__mcmc_counter + num_mcmc_done] = np.array(E_L_force_PP_averaged)
 
             mpi_comm.Barrier()
 
@@ -2065,16 +1946,9 @@ class GFMC_t:
             self.__stored_e_L2 = self.__stored_e_L2[:ns]
             self.__stored_w_L = self.__stored_w_L[:ns]
             if self.__comput_position_deriv:
-                self.__stored_grad_e_L_dR = self.__stored_grad_e_L_dR[:ns]
-                self.__stored_grad_e_L_r_up = self.__stored_grad_e_L_r_up[:ns]
-                self.__stored_grad_e_L_r_dn = self.__stored_grad_e_L_r_dn[:ns]
-                self.__stored_grad_ln_Psi_r_up = self.__stored_grad_ln_Psi_r_up[:ns]
-                self.__stored_grad_ln_Psi_r_dn = self.__stored_grad_ln_Psi_r_dn[:ns]
-                self.__stored_grad_ln_Psi_dR = self.__stored_grad_ln_Psi_dR[:ns]
-                self.__stored_omega_up = self.__stored_omega_up[:ns]
-                self.__stored_omega_dn = self.__stored_omega_dn[:ns]
-                self.__stored_grad_omega_r_up = self.__stored_grad_omega_r_up[:ns]
-                self.__stored_grad_omega_r_dn = self.__stored_grad_omega_r_dn[:ns]
+                self.__stored_force_HF = self.__stored_force_HF[:ns]
+                self.__stored_force_PP = self.__stored_force_PP[:ns]
+                self.__stored_E_L_force_PP = self.__stored_E_L_force_PP[:ns]
             self.__validate_stored_shapes()
 
         gfmc_total_end = time.perf_counter()
@@ -2351,32 +2225,9 @@ class GFMC_t:
             if mpi_rank == 0:
                 w_L = self.w_L[num_mcmc_warmup_steps:]
                 e_L = self.e_L[num_mcmc_warmup_steps:]
-                de_L_dR = self.de_L_dR[num_mcmc_warmup_steps:]
-                de_L_dr_up = self.de_L_dr_up[num_mcmc_warmup_steps:]
-                de_L_dr_dn = self.de_L_dr_dn[num_mcmc_warmup_steps:]
-                dln_Psi_dr_up = self.dln_Psi_dr_up[num_mcmc_warmup_steps:]
-                dln_Psi_dr_dn = self.dln_Psi_dr_dn[num_mcmc_warmup_steps:]
-                dln_Psi_dR = self.dln_Psi_dR[num_mcmc_warmup_steps:]
-                omega_up = self.omega_up[num_mcmc_warmup_steps:]
-                omega_dn = self.omega_dn[num_mcmc_warmup_steps:]
-                domega_dr_up = self.domega_dr_up[num_mcmc_warmup_steps:]
-                domega_dr_dn = self.domega_dr_dn[num_mcmc_warmup_steps:]
-
-                force_HF = (
-                    de_L_dR
-                    + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up)
-                    + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
-                )
-
-                force_PP = (
-                    dln_Psi_dR
-                    + np.einsum("iwjk,iwkl->iwjl", omega_up, dln_Psi_dr_up)
-                    + np.einsum("iwjk,iwkl->iwjl", omega_dn, dln_Psi_dr_dn)
-                    + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
-                )
-
-                E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
-
+                force_HF = self.force_HF[num_mcmc_warmup_steps:]
+                force_PP = self.force_PP[num_mcmc_warmup_steps:]
+                E_L_force_PP = self.E_L_force_PP[num_mcmc_warmup_steps:]
                 # split and binning with multiple walkers
                 w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
                 w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
@@ -2479,33 +2330,9 @@ class GFMC_t:
             if mpi_rank == 0:
                 w_L = self.w_L[num_mcmc_warmup_steps:]
                 e_L = self.e_L[num_mcmc_warmup_steps:]
-                de_L_dR = self.de_L_dR[num_mcmc_warmup_steps:]
-                de_L_dr_up = self.de_L_dr_up[num_mcmc_warmup_steps:]
-                de_L_dr_dn = self.de_L_dr_dn[num_mcmc_warmup_steps:]
-                dln_Psi_dr_up = self.dln_Psi_dr_up[num_mcmc_warmup_steps:]
-                dln_Psi_dr_dn = self.dln_Psi_dr_dn[num_mcmc_warmup_steps:]
-                dln_Psi_dR = self.dln_Psi_dR[num_mcmc_warmup_steps:]
-                omega_up = self.omega_up[num_mcmc_warmup_steps:]
-                omega_dn = self.omega_dn[num_mcmc_warmup_steps:]
-                domega_dr_up = self.domega_dr_up[num_mcmc_warmup_steps:]
-                domega_dr_dn = self.domega_dr_dn[num_mcmc_warmup_steps:]
-
-                force_HF = (
-                    de_L_dR
-                    + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up)
-                    + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
-                )
-
-                force_PP = (
-                    dln_Psi_dR
-                    + np.einsum("iwjk,iwkl->iwjl", omega_up, dln_Psi_dr_up)
-                    + np.einsum("iwjk,iwkl->iwjl", omega_dn, dln_Psi_dr_dn)
-                    + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
-                )
-
-                E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
-
-                # split and binning with multiple walkers
+                force_HF = self.force_HF[num_mcmc_warmup_steps:]
+                force_PP = self.force_PP[num_mcmc_warmup_steps:]
+                E_L_force_PP = self.E_L_force_PP[num_mcmc_warmup_steps:]
                 w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
                 w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
                 w_L_force_HF_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_HF), num_mcmc_bin_blocks, axis=0)
@@ -2790,35 +2617,14 @@ class _GFMC_t_debug:
         # average projection counter
         self.__stored_average_projection_counter = []
 
-        # stored de_L / dR
-        self.__stored_grad_e_L_dR = []
+        # stored force_HF (pre-computed force product)
+        self.__stored_force_HF = []
 
-        # stored de_L / dr_up
-        self.__stored_grad_e_L_r_up = []
+        # stored force_PP (pre-computed force product)
+        self.__stored_force_PP = []
 
-        # stored de_L / dr_dn
-        self.__stored_grad_e_L_r_dn = []
-
-        # stored dln_Psi / dr_up
-        self.__stored_grad_ln_Psi_r_up = []
-
-        # stored dln_Psi / dr_dn
-        self.__stored_grad_ln_Psi_r_dn = []
-
-        # stored dln_Psi / dR
-        self.__stored_grad_ln_Psi_dR = []
-
-        # stored Omega_up (SWCT)
-        self.__stored_omega_up = []
-
-        # stored Omega_dn (SWCT)
-        self.__stored_omega_dn = []
-
-        # stored sum_i d omega/d r_i for up spins (SWCT)
-        self.__stored_grad_omega_r_up = []
-
-        # stored sum_i d omega/d r_i for dn spins (SWCT)
-        self.__stored_grad_omega_r_dn = []
+        # stored E_L * force_PP (pre-computed force product)
+        self.__stored_E_L_force_PP = []
 
     # collecting factor
     @property
@@ -2853,54 +2659,19 @@ class _GFMC_t_debug:
         return np.array(self.__stored_average_projection_counter)
 
     @property
-    def de_L_dR(self) -> npt.NDArray:
-        """Return the stored de_L/dR array. dim: (mcmc_counter, 1)."""
-        return np.array(self.__stored_grad_e_L_dR)[self.__num_gfmc_collect_steps :]
+    def force_HF(self) -> npt.NDArray:
+        """Return the stored force_HF array. dim: (mcmc_counter, 1, n_atoms, 3)."""
+        return np.array(self.__stored_force_HF)[self.__num_gfmc_collect_steps :]
 
     @property
-    def de_L_dr_up(self) -> npt.NDArray:
-        """Return the stored de_L/dr_up array. dim: (mcmc_counter, 1, num_electrons_up, 3)."""
-        return np.array(self.__stored_grad_e_L_r_up)[self.__num_gfmc_collect_steps :]
+    def force_PP(self) -> npt.NDArray:
+        """Return the stored force_PP array. dim: (mcmc_counter, 1, n_atoms, 3)."""
+        return np.array(self.__stored_force_PP)[self.__num_gfmc_collect_steps :]
 
     @property
-    def de_L_dr_dn(self) -> npt.NDArray:
-        """Return the stored de_L/dr_dn array. dim: (mcmc_counter, 1, num_electrons_dn, 3)."""
-        return np.array(self.__stored_grad_e_L_r_dn)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def dln_Psi_dr_up(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dr_up array. dim: (mcmc_counter, 1, num_electrons_up, 3)."""
-        return np.array(self.__stored_grad_ln_Psi_r_up)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def dln_Psi_dr_dn(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dr_down array. dim: (mcmc_counter, 1, num_electrons_dn, 3)."""
-        return np.array(self.__stored_grad_ln_Psi_r_dn)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def dln_Psi_dR(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dR array. dim: (mcmc_counter, 1, num_atoms, 3)."""
-        return np.array(self.__stored_grad_ln_Psi_dR)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def omega_up(self) -> npt.NDArray:
-        """Return the stored Omega (for up electrons) array. dim: (mcmc_counter, 1, num_atoms, num_electrons_up)."""
-        return np.array(self.__stored_omega_up)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def omega_dn(self) -> npt.NDArray:
-        """Return the stored Omega (for down electrons) array. dim: (mcmc_counter, 1, num_atoms, num_electons_dn)."""
-        return np.array(self.__stored_omega_dn)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def domega_dr_up(self) -> npt.NDArray:
-        """Return the stored dOmega/dr_up array. dim: (mcmc_counter, 1, num_electons_dn, 3)."""
-        return np.array(self.__stored_grad_omega_r_up)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def domega_dr_dn(self) -> npt.NDArray:
-        """Return the stored dOmega/dr_dn array. dim: (mcmc_counter, 1, num_electons_dn, 3)."""
-        return np.array(self.__stored_grad_omega_r_dn)[self.__num_gfmc_collect_steps :]
+    def E_L_force_PP(self) -> npt.NDArray:
+        """Return the stored E_L*force_PP array. dim: (mcmc_counter, 1, n_atoms, 3)."""
+        return np.array(self.__stored_E_L_force_PP)[self.__num_gfmc_collect_steps :]
 
     @property
     def comput_position_deriv(self) -> bool:
@@ -3674,50 +3445,36 @@ class _GFMC_t_debug:
                     else:
                         mod_w_L_gathered = w_L_gathered
                     # weighted sum (using w_L directly, no V_diag_E in GFMC_t)
-                    grad_e_L_r_up_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, grad_e_L_r_up_gathered)
-                    grad_e_L_r_dn_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, grad_e_L_r_dn_gathered)
-                    grad_e_L_R_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, grad_e_L_R_gathered)
-                    grad_ln_Psi_r_up_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, grad_ln_Psi_r_up_gathered)
-                    grad_ln_Psi_r_dn_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, grad_ln_Psi_r_dn_gathered)
-                    grad_ln_Psi_dR_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, grad_ln_Psi_dR_gathered)
-                    omega_up_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, omega_up_gathered)
-                    omega_dn_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, omega_dn_gathered)
-                    grad_omega_dr_up_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, grad_omega_dr_up_gathered)
-                    grad_omega_dr_dn_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, grad_omega_dr_dn_gathered)
+                    # compute per-walker force products
+                    force_HF_per_walker = (
+                        grad_e_L_R_gathered
+                        + np.einsum("ijk,ikl->ijl", omega_up_gathered, grad_e_L_r_up_gathered)
+                        + np.einsum("ijk,ikl->ijl", omega_dn_gathered, grad_e_L_r_dn_gathered)
+                    )
+                    force_PP_per_walker = (
+                        grad_ln_Psi_dR_gathered
+                        + np.einsum("ijk,ikl->ijl", omega_up_gathered, grad_ln_Psi_r_up_gathered)
+                        + np.einsum("ijk,ikl->ijl", omega_dn_gathered, grad_ln_Psi_r_dn_gathered)
+                        + 0.5 * (grad_omega_dr_up_gathered + grad_omega_dr_dn_gathered)
+                    )
+                    E_L_force_PP_per_walker = e_L_gathered[:, None, None] * force_PP_per_walker
+                    # weighted sum
+                    force_HF_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, force_HF_per_walker)
+                    force_PP_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, force_PP_per_walker)
+                    E_L_force_PP_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered, E_L_force_PP_per_walker)
                     # averaged (using sum of w_L)
                     w_L_sum = np.sum(w_L_gathered)
-                    grad_e_L_r_up_averaged = grad_e_L_r_up_weighted_sum / w_L_sum
-                    grad_e_L_r_dn_averaged = grad_e_L_r_dn_weighted_sum / w_L_sum
-                    grad_e_L_R_averaged = grad_e_L_R_weighted_sum / w_L_sum
-                    grad_ln_Psi_r_up_averaged = grad_ln_Psi_r_up_weighted_sum / w_L_sum
-                    grad_ln_Psi_r_dn_averaged = grad_ln_Psi_r_dn_weighted_sum / w_L_sum
-                    grad_ln_Psi_dR_averaged = grad_ln_Psi_dR_weighted_sum / w_L_sum
-                    omega_up_averaged = omega_up_weighted_sum / w_L_sum
-                    omega_dn_averaged = omega_dn_weighted_sum / w_L_sum
-                    grad_omega_dr_up_averaged = grad_omega_dr_up_weighted_sum / w_L_sum
-                    grad_omega_dr_dn_averaged = grad_omega_dr_dn_weighted_sum / w_L_sum
+                    force_HF_averaged = force_HF_weighted_sum / w_L_sum
+                    force_PP_averaged = force_PP_weighted_sum / w_L_sum
+                    E_L_force_PP_averaged = E_L_force_PP_weighted_sum / w_L_sum
                     # add a dummy dim
-                    grad_e_L_r_up_averaged = np.expand_dims(grad_e_L_r_up_averaged, axis=0)
-                    grad_e_L_r_dn_averaged = np.expand_dims(grad_e_L_r_dn_averaged, axis=0)
-                    grad_e_L_R_averaged = np.expand_dims(grad_e_L_R_averaged, axis=0)
-                    grad_ln_Psi_r_up_averaged = np.expand_dims(grad_ln_Psi_r_up_averaged, axis=0)
-                    grad_ln_Psi_r_dn_averaged = np.expand_dims(grad_ln_Psi_r_dn_averaged, axis=0)
-                    grad_ln_Psi_dR_averaged = np.expand_dims(grad_ln_Psi_dR_averaged, axis=0)
-                    omega_up_averaged = np.expand_dims(omega_up_averaged, axis=0)
-                    omega_dn_averaged = np.expand_dims(omega_dn_averaged, axis=0)
-                    grad_omega_dr_up_averaged = np.expand_dims(grad_omega_dr_up_averaged, axis=0)
-                    grad_omega_dr_dn_averaged = np.expand_dims(grad_omega_dr_dn_averaged, axis=0)
+                    force_HF_averaged = np.expand_dims(force_HF_averaged, axis=0)
+                    force_PP_averaged = np.expand_dims(force_PP_averaged, axis=0)
+                    E_L_force_PP_averaged = np.expand_dims(E_L_force_PP_averaged, axis=0)
                     # store
-                    self.__stored_grad_e_L_r_up.append(grad_e_L_r_up_averaged)
-                    self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn_averaged)
-                    self.__stored_grad_e_L_dR.append(grad_e_L_R_averaged)
-                    self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up_averaged)
-                    self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn_averaged)
-                    self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR_averaged)
-                    self.__stored_omega_up.append(omega_up_averaged)
-                    self.__stored_omega_dn.append(omega_dn_averaged)
-                    self.__stored_grad_omega_r_up.append(grad_omega_dr_up_averaged)
-                    self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn_averaged)
+                    self.__stored_force_HF.append(force_HF_averaged)
+                    self.__stored_force_PP.append(force_PP_averaged)
+                    self.__stored_E_L_force_PP.append(E_L_force_PP_averaged)
 
                 # branching
                 probabilities = w_L_gathered / w_L_gathered.sum()
@@ -3876,31 +3633,9 @@ class _GFMC_t_debug:
         if mpi_rank == 0:
             w_L = self.w_L[num_mcmc_warmup_steps:]
             e_L = self.e_L[num_mcmc_warmup_steps:]
-            de_L_dR = self.de_L_dR[num_mcmc_warmup_steps:]
-            de_L_dr_up = self.de_L_dr_up[num_mcmc_warmup_steps:]
-            de_L_dr_dn = self.de_L_dr_dn[num_mcmc_warmup_steps:]
-            dln_Psi_dr_up = self.dln_Psi_dr_up[num_mcmc_warmup_steps:]
-            dln_Psi_dr_dn = self.dln_Psi_dr_dn[num_mcmc_warmup_steps:]
-            dln_Psi_dR = self.dln_Psi_dR[num_mcmc_warmup_steps:]
-            omega_up = self.omega_up[num_mcmc_warmup_steps:]
-            omega_dn = self.omega_dn[num_mcmc_warmup_steps:]
-            domega_dr_up = self.domega_dr_up[num_mcmc_warmup_steps:]
-            domega_dr_dn = self.domega_dr_dn[num_mcmc_warmup_steps:]
-
-            force_HF = (
-                de_L_dR
-                + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up)
-                + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
-            )
-
-            force_PP = (
-                dln_Psi_dR
-                + np.einsum("iwjk,iwkl->iwjl", omega_up, dln_Psi_dr_up)
-                + np.einsum("iwjk,iwkl->iwjl", omega_dn, dln_Psi_dr_dn)
-                + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
-            )
-
-            E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
+            force_HF = self.force_HF[num_mcmc_warmup_steps:]
+            force_PP = self.force_PP[num_mcmc_warmup_steps:]
+            E_L_force_PP = self.E_L_force_PP[num_mcmc_warmup_steps:]
 
             # split and binning with multiple walkers
             w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
@@ -4155,35 +3890,10 @@ class GFMC_n:
         # stored local energy (e_L2)
         self.__stored_e_L2 = np.zeros((0, 1))
 
-        # stored de_L / dR
-        self.__stored_grad_e_L_dR = np.zeros((0, 1, n_atoms, 3))
-
-        # stored de_L / dr_up
-        self.__stored_grad_e_L_r_up = np.zeros((0, 1, n_up, 3))
-
-        # stored de_L / dr_dn
-        self.__stored_grad_e_L_r_dn = np.zeros((0, 1, n_dn, 3))
-
-        # stored dln_Psi / dr_up
-        self.__stored_grad_ln_Psi_r_up = np.zeros((0, 1, n_up, 3))
-
-        # stored dln_Psi / dr_dn
-        self.__stored_grad_ln_Psi_r_dn = np.zeros((0, 1, n_dn, 3))
-
-        # stored dln_Psi / dR
-        self.__stored_grad_ln_Psi_dR = np.zeros((0, 1, n_atoms, 3))
-
-        # stored Omega_up (SWCT)
-        self.__stored_omega_up = np.zeros((0, 1, n_atoms, n_up))
-
-        # stored Omega_dn (SWCT)
-        self.__stored_omega_dn = np.zeros((0, 1, n_atoms, n_dn))
-
-        # stored sum_i d omega/d r_i for up spins (SWCT)
-        self.__stored_grad_omega_r_up = np.zeros((0, 1, n_atoms, 3))
-
-        # stored sum_i d omega/d r_i for dn spins (SWCT)
-        self.__stored_grad_omega_r_dn = np.zeros((0, 1, n_atoms, 3))
+        # stored force products (per-walker cross-correlation preserved)
+        self.__stored_force_HF = np.zeros((0, 1, n_atoms, 3))
+        self.__stored_force_PP = np.zeros((0, 1, n_atoms, 3))
+        self.__stored_E_L_force_PP = np.zeros((0, 1, n_atoms, 3))
 
         # stored G_L and G_e_L for updating the E_scf (kept as lists — variable count per run)
         self.__G_L = []
@@ -4204,16 +3914,9 @@ class GFMC_n:
         if self.__comput_position_deriv:
             expected.update(
                 {
-                    "grad_e_L_dR": ((ns, 1, n_atoms, 3), self.__stored_grad_e_L_dR),
-                    "grad_e_L_r_up": ((ns, 1, n_up, 3), self.__stored_grad_e_L_r_up),
-                    "grad_e_L_r_dn": ((ns, 1, n_dn, 3), self.__stored_grad_e_L_r_dn),
-                    "grad_ln_Psi_r_up": ((ns, 1, n_up, 3), self.__stored_grad_ln_Psi_r_up),
-                    "grad_ln_Psi_r_dn": ((ns, 1, n_dn, 3), self.__stored_grad_ln_Psi_r_dn),
-                    "grad_ln_Psi_dR": ((ns, 1, n_atoms, 3), self.__stored_grad_ln_Psi_dR),
-                    "omega_up": ((ns, 1, n_atoms, n_up), self.__stored_omega_up),
-                    "omega_dn": ((ns, 1, n_atoms, n_dn), self.__stored_omega_dn),
-                    "grad_omega_r_up": ((ns, 1, n_atoms, 3), self.__stored_grad_omega_r_up),
-                    "grad_omega_r_dn": ((ns, 1, n_atoms, 3), self.__stored_grad_omega_r_dn),
+                    "force_HF": ((ns, 1, n_atoms, 3), self.__stored_force_HF),
+                    "force_PP": ((ns, 1, n_atoms, 3), self.__stored_force_PP),
+                    "E_L_force_PP": ((ns, 1, n_atoms, 3), self.__stored_E_L_force_PP),
                 }
             )
         for name, (shape, arr) in expected.items():
@@ -4269,16 +3972,9 @@ class GFMC_n:
             "e_L": self.__stored_e_L,
             "e_L2": self.__stored_e_L2,
             "w_L": self.__stored_w_L,
-            "grad_e_L_dR": self.__stored_grad_e_L_dR,
-            "grad_e_L_r_up": self.__stored_grad_e_L_r_up,
-            "grad_e_L_r_dn": self.__stored_grad_e_L_r_dn,
-            "grad_ln_Psi_r_up": self.__stored_grad_ln_Psi_r_up,
-            "grad_ln_Psi_r_dn": self.__stored_grad_ln_Psi_r_dn,
-            "grad_ln_Psi_dR": self.__stored_grad_ln_Psi_dR,
-            "omega_up": self.__stored_omega_up,
-            "omega_dn": self.__stored_omega_dn,
-            "grad_omega_r_up": self.__stored_grad_omega_r_up,
-            "grad_omega_r_dn": self.__stored_grad_omega_r_dn,
+            "force_HF": self.__stored_force_HF,
+            "force_PP": self.__stored_force_PP,
+            "E_L_force_PP": self.__stored_E_L_force_PP,
             "G_L": np.array(self.__G_L) if len(self.__G_L) > 0 else np.empty(0),
             "G_e_L": np.array(self.__G_e_L) if len(self.__G_e_L) > 0 else np.empty(0),
         }
@@ -4375,16 +4071,9 @@ class GFMC_n:
         obj._GFMC_n__stored_e_L = _load_obs(obs.get("e_L"), np.zeros((0, 1)))
         obj._GFMC_n__stored_e_L2 = _load_obs(obs.get("e_L2"), np.zeros((0, 1)))
         obj._GFMC_n__stored_w_L = _load_obs(obs.get("w_L"), np.zeros((0, 1)))
-        obj._GFMC_n__stored_grad_e_L_dR = _load_obs(obs.get("grad_e_L_dR"), np.zeros((0, 1, n_atoms, 3)))
-        obj._GFMC_n__stored_grad_e_L_r_up = _load_obs(obs.get("grad_e_L_r_up"), np.zeros((0, 1, n_up, 3)))
-        obj._GFMC_n__stored_grad_e_L_r_dn = _load_obs(obs.get("grad_e_L_r_dn"), np.zeros((0, 1, n_dn, 3)))
-        obj._GFMC_n__stored_grad_ln_Psi_r_up = _load_obs(obs.get("grad_ln_Psi_r_up"), np.zeros((0, 1, n_up, 3)))
-        obj._GFMC_n__stored_grad_ln_Psi_r_dn = _load_obs(obs.get("grad_ln_Psi_r_dn"), np.zeros((0, 1, n_dn, 3)))
-        obj._GFMC_n__stored_grad_ln_Psi_dR = _load_obs(obs.get("grad_ln_Psi_dR"), np.zeros((0, 1, n_atoms, 3)))
-        obj._GFMC_n__stored_omega_up = _load_obs(obs.get("omega_up"), np.zeros((0, 1, n_atoms, n_up)))
-        obj._GFMC_n__stored_omega_dn = _load_obs(obs.get("omega_dn"), np.zeros((0, 1, n_atoms, n_dn)))
-        obj._GFMC_n__stored_grad_omega_r_up = _load_obs(obs.get("grad_omega_r_up"), np.zeros((0, 1, n_atoms, 3)))
-        obj._GFMC_n__stored_grad_omega_r_dn = _load_obs(obs.get("grad_omega_r_dn"), np.zeros((0, 1, n_atoms, 3)))
+        obj._GFMC_n__stored_force_HF = _load_obs(obs.get("force_HF"), np.zeros((0, 1, n_atoms, 3)))
+        obj._GFMC_n__stored_force_PP = _load_obs(obs.get("force_PP"), np.zeros((0, 1, n_atoms, 3)))
+        obj._GFMC_n__stored_E_L_force_PP = _load_obs(obs.get("E_L_force_PP"), np.zeros((0, 1, n_atoms, 3)))
         _g_l = obs.get("G_L")
         _g_e_l = obs.get("G_e_L")
         obj._GFMC_n__G_L = [_g_l[i] for i in range(_g_l.shape[0])] if _g_l is not None and _g_l.size > 0 else []
@@ -4466,54 +4155,16 @@ class GFMC_n:
         return np.asarray(self.__stored_e_L2)[self.__num_gfmc_collect_steps :]
 
     @property
-    def de_L_dR(self) -> npt.NDArray:
-        """Return the stored de_L/dR array. dim: (mcmc_counter, 1)."""
-        return np.asarray(self.__stored_grad_e_L_dR)[self.__num_gfmc_collect_steps :]
+    def force_HF(self):
+        return self.__stored_force_HF[self.__num_gfmc_collect_steps :]
 
     @property
-    def de_L_dr_up(self) -> npt.NDArray:
-        """Return the stored de_L/dr_up array. dim: (mcmc_counter, 1, num_electrons_up, 3)."""
-        return np.asarray(self.__stored_grad_e_L_r_up)[self.__num_gfmc_collect_steps :]
+    def force_PP(self):
+        return self.__stored_force_PP[self.__num_gfmc_collect_steps :]
 
     @property
-    def de_L_dr_dn(self) -> npt.NDArray:
-        """Return the stored de_L/dr_dn array. dim: (mcmc_counter, 1, num_electrons_dn, 3)."""
-        return np.asarray(self.__stored_grad_e_L_r_dn)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def dln_Psi_dr_up(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dr_up array. dim: (mcmc_counter, 1, num_electrons_up, 3)."""
-        return np.asarray(self.__stored_grad_ln_Psi_r_up)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def dln_Psi_dr_dn(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dr_down array. dim: (mcmc_counter, 1, num_electrons_dn, 3)."""
-        return np.asarray(self.__stored_grad_ln_Psi_r_dn)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def dln_Psi_dR(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dR array. dim: (mcmc_counter, 1, num_atoms, 3)."""
-        return np.asarray(self.__stored_grad_ln_Psi_dR)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def omega_up(self) -> npt.NDArray:
-        """Return the stored Omega (for up electrons) array. dim: (mcmc_counter, 1, num_atoms, num_electrons_up)."""
-        return np.asarray(self.__stored_omega_up)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def omega_dn(self) -> npt.NDArray:
-        """Return the stored Omega (for down electrons) array. dim: (mcmc_counter,1, num_atoms, num_electons_dn)."""
-        return np.asarray(self.__stored_omega_dn)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def domega_dr_up(self) -> npt.NDArray:
-        """Return the stored dOmega/dr_up array. dim: (mcmc_counter, 1, num_electons_dn, 3)."""
-        return np.asarray(self.__stored_grad_omega_r_up)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def domega_dr_dn(self) -> npt.NDArray:
-        """Return the stored dOmega/dr_dn array. dim: (mcmc_counter, 1, num_electons_dn, 3)."""
-        return np.asarray(self.__stored_grad_omega_r_dn)[self.__num_gfmc_collect_steps :]
+    def E_L_force_PP(self):
+        return self.__stored_E_L_force_PP[self.__num_gfmc_collect_steps :]
 
     @property
     def comput_position_deriv(self) -> bool:
@@ -5448,31 +5099,10 @@ class GFMC_n:
             self.__stored_e_L2 = np.concatenate([self.__stored_e_L2, np.zeros((num_mcmc_steps, 1))])
             self.__stored_w_L = np.concatenate([self.__stored_w_L, np.zeros((num_mcmc_steps, 1))])
             if self.__comput_position_deriv:
-                self.__stored_grad_e_L_dR = np.concatenate(
-                    [self.__stored_grad_e_L_dR, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
-                )
-                self.__stored_grad_e_L_r_up = np.concatenate(
-                    [self.__stored_grad_e_L_r_up, np.zeros((num_mcmc_steps, 1, n_up, 3))]
-                )
-                self.__stored_grad_e_L_r_dn = np.concatenate(
-                    [self.__stored_grad_e_L_r_dn, np.zeros((num_mcmc_steps, 1, n_dn, 3))]
-                )
-                self.__stored_grad_ln_Psi_r_up = np.concatenate(
-                    [self.__stored_grad_ln_Psi_r_up, np.zeros((num_mcmc_steps, 1, n_up, 3))]
-                )
-                self.__stored_grad_ln_Psi_r_dn = np.concatenate(
-                    [self.__stored_grad_ln_Psi_r_dn, np.zeros((num_mcmc_steps, 1, n_dn, 3))]
-                )
-                self.__stored_grad_ln_Psi_dR = np.concatenate(
-                    [self.__stored_grad_ln_Psi_dR, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
-                )
-                self.__stored_omega_up = np.concatenate([self.__stored_omega_up, np.zeros((num_mcmc_steps, 1, n_atoms, n_up))])
-                self.__stored_omega_dn = np.concatenate([self.__stored_omega_dn, np.zeros((num_mcmc_steps, 1, n_atoms, n_dn))])
-                self.__stored_grad_omega_r_up = np.concatenate(
-                    [self.__stored_grad_omega_r_up, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
-                )
-                self.__stored_grad_omega_r_dn = np.concatenate(
-                    [self.__stored_grad_omega_r_dn, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
+                self.__stored_force_HF = np.concatenate([self.__stored_force_HF, np.zeros((num_mcmc_steps, 1, n_atoms, 3))])
+                self.__stored_force_PP = np.concatenate([self.__stored_force_PP, np.zeros((num_mcmc_steps, 1, n_atoms, 3))])
+                self.__stored_E_L_force_PP = np.concatenate(
+                    [self.__stored_E_L_force_PP, np.zeros((num_mcmc_steps, 1, n_atoms, 3))]
                 )
 
         progress = (self.__mcmc_counter) / (num_mcmc_steps + self.__mcmc_counter) * 100.0
@@ -5692,24 +5322,28 @@ class GFMC_n:
                 else:
                     mod_w_L_latest = w_L_latest
 
-                grad_e_L_r_up_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest / V_diag_E_latest, grad_e_L_r_up_latest)
-                grad_e_L_r_dn_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest / V_diag_E_latest, grad_e_L_r_dn_latest)
-                grad_e_L_R_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest / V_diag_E_latest, grad_e_L_R_latest)
-                grad_ln_Psi_r_up_weighted_sum = np.einsum(
-                    "i,ijk->jk", mod_w_L_latest / V_diag_E_latest, grad_ln_Psi_r_up_latest
+                # Compute per-walker force products BEFORE walker averaging
+                # force_HF per walker: shape (n_walkers, n_atoms, 3)
+                force_HF_per_walker = (
+                    grad_e_L_R_latest
+                    + np.einsum("ijk,ikl->ijl", omega_up_latest, grad_e_L_r_up_latest)
+                    + np.einsum("ijk,ikl->ijl", omega_dn_latest, grad_e_L_r_dn_latest)
                 )
-                grad_ln_Psi_r_dn_weighted_sum = np.einsum(
-                    "i,ijk->jk", mod_w_L_latest / V_diag_E_latest, grad_ln_Psi_r_dn_latest
+                # force_PP per walker: shape (n_walkers, n_atoms, 3)
+                force_PP_per_walker = (
+                    grad_ln_Psi_dR_latest
+                    + np.einsum("ijk,ikl->ijl", omega_up_latest, grad_ln_Psi_r_up_latest)
+                    + np.einsum("ijk,ikl->ijl", omega_dn_latest, grad_ln_Psi_r_dn_latest)
+                    + 0.5 * (grad_omega_dr_up_latest + grad_omega_dr_dn_latest)
                 )
-                grad_ln_Psi_dR_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest / V_diag_E_latest, grad_ln_Psi_dR_latest)
-                omega_up_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest / V_diag_E_latest, omega_up_latest)
-                omega_dn_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest / V_diag_E_latest, omega_dn_latest)
-                grad_omega_dr_up_weighted_sum = np.einsum(
-                    "i,ijk->jk", mod_w_L_latest / V_diag_E_latest, grad_omega_dr_up_latest
-                )
-                grad_omega_dr_dn_weighted_sum = np.einsum(
-                    "i,ijk->jk", mod_w_L_latest / V_diag_E_latest, grad_omega_dr_dn_latest
-                )
+                # E_L * force_PP per walker: shape (n_walkers, n_atoms, 3)
+                E_L_force_PP_per_walker = e_L_latest[:, None, None] * force_PP_per_walker
+
+                # Weighted sum of per-walker force products
+                # Note: GFMC_n uses mod_w_L / V_diag_E weighting
+                force_HF_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest / V_diag_E_latest, force_HF_per_walker)
+                force_PP_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest / V_diag_E_latest, force_PP_per_walker)
+                E_L_force_PP_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_latest / V_diag_E_latest, E_L_force_PP_per_walker)
             # reduce
             nw_sum = mpi_comm.reduce(nw_sum, op=MPI.SUM, root=0)
             w_L_sum = mpi_comm.reduce(w_L_sum, op=MPI.SUM, root=0)
@@ -5717,16 +5351,9 @@ class GFMC_n:
             e_L_weighted_sum = mpi_comm.reduce(e_L_weighted_sum, op=MPI.SUM, root=0)
             e_L2_weighted_sum = mpi_comm.reduce(e_L2_weighted_sum, op=MPI.SUM, root=0)
             if self.__comput_position_deriv:
-                grad_e_L_r_up_weighted_sum = mpi_comm.reduce(grad_e_L_r_up_weighted_sum, op=MPI.SUM, root=0)
-                grad_e_L_r_dn_weighted_sum = mpi_comm.reduce(grad_e_L_r_dn_weighted_sum, op=MPI.SUM, root=0)
-                grad_e_L_R_weighted_sum = mpi_comm.reduce(grad_e_L_R_weighted_sum, op=MPI.SUM, root=0)
-                grad_ln_Psi_r_up_weighted_sum = mpi_comm.reduce(grad_ln_Psi_r_up_weighted_sum, op=MPI.SUM, root=0)
-                grad_ln_Psi_r_dn_weighted_sum = mpi_comm.reduce(grad_ln_Psi_r_dn_weighted_sum, op=MPI.SUM, root=0)
-                grad_ln_Psi_dR_weighted_sum = mpi_comm.reduce(grad_ln_Psi_dR_weighted_sum, op=MPI.SUM, root=0)
-                omega_up_weighted_sum = mpi_comm.reduce(omega_up_weighted_sum, op=MPI.SUM, root=0)
-                omega_dn_weighted_sum = mpi_comm.reduce(omega_dn_weighted_sum, op=MPI.SUM, root=0)
-                grad_omega_dr_up_weighted_sum = mpi_comm.reduce(grad_omega_dr_up_weighted_sum, op=MPI.SUM, root=0)
-                grad_omega_dr_dn_weighted_sum = mpi_comm.reduce(grad_omega_dr_dn_weighted_sum, op=MPI.SUM, root=0)
+                force_HF_weighted_sum = mpi_comm.reduce(force_HF_weighted_sum, op=MPI.SUM, root=0)
+                force_PP_weighted_sum = mpi_comm.reduce(force_PP_weighted_sum, op=MPI.SUM, root=0)
+                E_L_force_PP_weighted_sum = mpi_comm.reduce(E_L_force_PP_weighted_sum, op=MPI.SUM, root=0)
 
             if mpi_rank == 0:
                 # averaged
@@ -5734,47 +5361,26 @@ class GFMC_n:
                 e_L_averaged = e_L_weighted_sum / w_L_weighted_sum
                 e_L2_averaged = e_L2_weighted_sum / w_L_weighted_sum
                 if self.__comput_position_deriv:
-                    grad_e_L_r_up_averaged = grad_e_L_r_up_weighted_sum / w_L_weighted_sum
-                    grad_e_L_r_dn_averaged = grad_e_L_r_dn_weighted_sum / w_L_weighted_sum
-                    grad_e_L_R_averaged = grad_e_L_R_weighted_sum / w_L_weighted_sum
-                    grad_ln_Psi_r_up_averaged = grad_ln_Psi_r_up_weighted_sum / w_L_weighted_sum
-                    grad_ln_Psi_r_dn_averaged = grad_ln_Psi_r_dn_weighted_sum / w_L_weighted_sum
-                    grad_ln_Psi_dR_averaged = grad_ln_Psi_dR_weighted_sum / w_L_weighted_sum
-                    omega_up_averaged = omega_up_weighted_sum / w_L_weighted_sum
-                    omega_dn_averaged = omega_dn_weighted_sum / w_L_weighted_sum
-                    grad_omega_dr_up_averaged = grad_omega_dr_up_weighted_sum / w_L_weighted_sum
-                    grad_omega_dr_dn_averaged = grad_omega_dr_dn_weighted_sum / w_L_weighted_sum
+                    force_HF_averaged = force_HF_weighted_sum / w_L_weighted_sum
+                    force_PP_averaged = force_PP_weighted_sum / w_L_weighted_sum
+                    E_L_force_PP_averaged = E_L_force_PP_weighted_sum / w_L_weighted_sum
                 # add a dummy dim
                 e_L2_averaged = np.expand_dims(e_L2_averaged, axis=0)
                 e_L_averaged = np.expand_dims(e_L_averaged, axis=0)
                 w_L_averaged = np.expand_dims(w_L_averaged, axis=0)
                 if self.__comput_position_deriv:
-                    grad_e_L_r_up_averaged = np.expand_dims(grad_e_L_r_up_averaged, axis=0)
-                    grad_e_L_r_dn_averaged = np.expand_dims(grad_e_L_r_dn_averaged, axis=0)
-                    grad_e_L_R_averaged = np.expand_dims(grad_e_L_R_averaged, axis=0)
-                    grad_ln_Psi_r_up_averaged = np.expand_dims(grad_ln_Psi_r_up_averaged, axis=0)
-                    grad_ln_Psi_r_dn_averaged = np.expand_dims(grad_ln_Psi_r_dn_averaged, axis=0)
-                    grad_ln_Psi_dR_averaged = np.expand_dims(grad_ln_Psi_dR_averaged, axis=0)
-                    omega_up_averaged = np.expand_dims(omega_up_averaged, axis=0)
-                    omega_dn_averaged = np.expand_dims(omega_dn_averaged, axis=0)
-                    grad_omega_dr_up_averaged = np.expand_dims(grad_omega_dr_up_averaged, axis=0)
-                    grad_omega_dr_dn_averaged = np.expand_dims(grad_omega_dr_dn_averaged, axis=0)
+                    force_HF_averaged = np.expand_dims(force_HF_averaged, axis=0)
+                    force_PP_averaged = np.expand_dims(force_PP_averaged, axis=0)
+                    E_L_force_PP_averaged = np.expand_dims(E_L_force_PP_averaged, axis=0)
 
                 # store  # This should stored only for MPI-rank = 0 !!!
                 self.__stored_e_L2[self.__mcmc_counter + num_mcmc_done] = np.array(e_L2_averaged)
                 self.__stored_e_L[self.__mcmc_counter + num_mcmc_done] = np.array(e_L_averaged)
                 self.__stored_w_L[self.__mcmc_counter + num_mcmc_done] = np.array(w_L_averaged)
                 if self.__comput_position_deriv:
-                    self.__stored_grad_e_L_r_up[self.__mcmc_counter + num_mcmc_done] = np.array(grad_e_L_r_up_averaged)
-                    self.__stored_grad_e_L_r_dn[self.__mcmc_counter + num_mcmc_done] = np.array(grad_e_L_r_dn_averaged)
-                    self.__stored_grad_e_L_dR[self.__mcmc_counter + num_mcmc_done] = np.array(grad_e_L_R_averaged)
-                    self.__stored_grad_ln_Psi_r_up[self.__mcmc_counter + num_mcmc_done] = np.array(grad_ln_Psi_r_up_averaged)
-                    self.__stored_grad_ln_Psi_r_dn[self.__mcmc_counter + num_mcmc_done] = np.array(grad_ln_Psi_r_dn_averaged)
-                    self.__stored_grad_ln_Psi_dR[self.__mcmc_counter + num_mcmc_done] = np.array(grad_ln_Psi_dR_averaged)
-                    self.__stored_omega_up[self.__mcmc_counter + num_mcmc_done] = np.array(omega_up_averaged)
-                    self.__stored_omega_dn[self.__mcmc_counter + num_mcmc_done] = np.array(omega_dn_averaged)
-                    self.__stored_grad_omega_r_up[self.__mcmc_counter + num_mcmc_done] = np.array(grad_omega_dr_up_averaged)
-                    self.__stored_grad_omega_r_dn[self.__mcmc_counter + num_mcmc_done] = np.array(grad_omega_dr_dn_averaged)
+                    self.__stored_force_HF[self.__mcmc_counter + num_mcmc_done] = np.array(force_HF_averaged)
+                    self.__stored_force_PP[self.__mcmc_counter + num_mcmc_done] = np.array(force_PP_averaged)
+                    self.__stored_E_L_force_PP[self.__mcmc_counter + num_mcmc_done] = np.array(E_L_force_PP_averaged)
 
             mpi_comm.Barrier()
 
@@ -6138,16 +5744,9 @@ class GFMC_n:
             self.__stored_e_L2 = self.__stored_e_L2[:ns]
             self.__stored_w_L = self.__stored_w_L[:ns]
             if self.__comput_position_deriv:
-                self.__stored_grad_e_L_dR = self.__stored_grad_e_L_dR[:ns]
-                self.__stored_grad_e_L_r_up = self.__stored_grad_e_L_r_up[:ns]
-                self.__stored_grad_e_L_r_dn = self.__stored_grad_e_L_r_dn[:ns]
-                self.__stored_grad_ln_Psi_r_up = self.__stored_grad_ln_Psi_r_up[:ns]
-                self.__stored_grad_ln_Psi_r_dn = self.__stored_grad_ln_Psi_r_dn[:ns]
-                self.__stored_grad_ln_Psi_dR = self.__stored_grad_ln_Psi_dR[:ns]
-                self.__stored_omega_up = self.__stored_omega_up[:ns]
-                self.__stored_omega_dn = self.__stored_omega_dn[:ns]
-                self.__stored_grad_omega_r_up = self.__stored_grad_omega_r_up[:ns]
-                self.__stored_grad_omega_r_dn = self.__stored_grad_omega_r_dn[:ns]
+                self.__stored_force_HF = self.__stored_force_HF[:ns]
+                self.__stored_force_PP = self.__stored_force_PP[:ns]
+                self.__stored_E_L_force_PP = self.__stored_E_L_force_PP[:ns]
             self.__validate_stored_shapes()
 
         gfmc_total_end = time.perf_counter()
@@ -6434,31 +6033,9 @@ class GFMC_n:
             if mpi_rank == 0:
                 w_L = self.w_L[num_mcmc_warmup_steps:]
                 e_L = self.e_L[num_mcmc_warmup_steps:]
-                de_L_dR = self.de_L_dR[num_mcmc_warmup_steps:]
-                de_L_dr_up = self.de_L_dr_up[num_mcmc_warmup_steps:]
-                de_L_dr_dn = self.de_L_dr_dn[num_mcmc_warmup_steps:]
-                dln_Psi_dr_up = self.dln_Psi_dr_up[num_mcmc_warmup_steps:]
-                dln_Psi_dr_dn = self.dln_Psi_dr_dn[num_mcmc_warmup_steps:]
-                dln_Psi_dR = self.dln_Psi_dR[num_mcmc_warmup_steps:]
-                omega_up = self.omega_up[num_mcmc_warmup_steps:]
-                omega_dn = self.omega_dn[num_mcmc_warmup_steps:]
-                domega_dr_up = self.domega_dr_up[num_mcmc_warmup_steps:]
-                domega_dr_dn = self.domega_dr_dn[num_mcmc_warmup_steps:]
-
-                force_HF = (
-                    de_L_dR
-                    + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up)
-                    + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
-                )
-
-                force_PP = (
-                    dln_Psi_dR
-                    + np.einsum("iwjk,iwkl->iwjl", omega_up, dln_Psi_dr_up)
-                    + np.einsum("iwjk,iwkl->iwjl", omega_dn, dln_Psi_dr_dn)
-                    + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
-                )
-
-                E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
+                force_HF = self.force_HF[num_mcmc_warmup_steps:]
+                force_PP = self.force_PP[num_mcmc_warmup_steps:]
+                E_L_force_PP = self.E_L_force_PP[num_mcmc_warmup_steps:]
 
                 # split and binning with multiple walkers
                 w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
@@ -6562,31 +6139,9 @@ class GFMC_n:
             if mpi_rank == 0:
                 w_L = self.w_L[num_mcmc_warmup_steps:]
                 e_L = self.e_L[num_mcmc_warmup_steps:]
-                de_L_dR = self.de_L_dR[num_mcmc_warmup_steps:]
-                de_L_dr_up = self.de_L_dr_up[num_mcmc_warmup_steps:]
-                de_L_dr_dn = self.de_L_dr_dn[num_mcmc_warmup_steps:]
-                dln_Psi_dr_up = self.dln_Psi_dr_up[num_mcmc_warmup_steps:]
-                dln_Psi_dr_dn = self.dln_Psi_dr_dn[num_mcmc_warmup_steps:]
-                dln_Psi_dR = self.dln_Psi_dR[num_mcmc_warmup_steps:]
-                omega_up = self.omega_up[num_mcmc_warmup_steps:]
-                omega_dn = self.omega_dn[num_mcmc_warmup_steps:]
-                domega_dr_up = self.domega_dr_up[num_mcmc_warmup_steps:]
-                domega_dr_dn = self.domega_dr_dn[num_mcmc_warmup_steps:]
-
-                force_HF = (
-                    de_L_dR
-                    + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up)
-                    + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
-                )
-
-                force_PP = (
-                    dln_Psi_dR
-                    + np.einsum("iwjk,iwkl->iwjl", omega_up, dln_Psi_dr_up)
-                    + np.einsum("iwjk,iwkl->iwjl", omega_dn, dln_Psi_dr_dn)
-                    + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
-                )
-
-                E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
+                force_HF = self.force_HF[num_mcmc_warmup_steps:]
+                force_PP = self.force_PP[num_mcmc_warmup_steps:]
+                E_L_force_PP = self.E_L_force_PP[num_mcmc_warmup_steps:]
 
                 # split and binning with multiple walkers
                 w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
@@ -6877,35 +6432,14 @@ class _GFMC_n_debug:
         # stored local energy (e_L2)
         self.__stored_e_L2 = []
 
-        # stored de_L / dR
-        self.__stored_grad_e_L_dR = []
+        # stored force_HF (pre-computed force product)
+        self.__stored_force_HF = []
 
-        # stored de_L / dr_up
-        self.__stored_grad_e_L_r_up = []
+        # stored force_PP (pre-computed force product)
+        self.__stored_force_PP = []
 
-        # stored de_L / dr_dn
-        self.__stored_grad_e_L_r_dn = []
-
-        # stored dln_Psi / dr_up
-        self.__stored_grad_ln_Psi_r_up = []
-
-        # stored dln_Psi / dr_dn
-        self.__stored_grad_ln_Psi_r_dn = []
-
-        # stored dln_Psi / dR
-        self.__stored_grad_ln_Psi_dR = []
-
-        # stored Omega_up (SWCT)
-        self.__stored_omega_up = []
-
-        # stored Omega_dn (SWCT)
-        self.__stored_omega_dn = []
-
-        # stored sum_i d omega/d r_i for up spins (SWCT)
-        self.__stored_grad_omega_r_up = []
-
-        # stored sum_i d omega/d r_i for dn spins (SWCT)
-        self.__stored_grad_omega_r_dn = []
+        # stored E_L * force_PP (pre-computed force product)
+        self.__stored_E_L_force_PP = []
 
     # collecting factor
     @property
@@ -6942,54 +6476,19 @@ class _GFMC_n_debug:
         return np.array(self.__stored_e_L2)[self.__num_gfmc_collect_steps :]
 
     @property
-    def de_L_dR(self) -> npt.NDArray:
-        """Return the stored de_L/dR array. dim: (mcmc_counter, 1)."""
-        return np.array(self.__stored_grad_e_L_dR)[self.__num_gfmc_collect_steps :]
+    def force_HF(self) -> npt.NDArray:
+        """Return the stored force_HF array. dim: (mcmc_counter, 1, n_atoms, 3)."""
+        return np.array(self.__stored_force_HF)[self.__num_gfmc_collect_steps :]
 
     @property
-    def de_L_dr_up(self) -> npt.NDArray:
-        """Return the stored de_L/dr_up array. dim: (mcmc_counter, 1, num_electrons_up, 3)."""
-        return np.array(self.__stored_grad_e_L_r_up)[self.__num_gfmc_collect_steps :]
+    def force_PP(self) -> npt.NDArray:
+        """Return the stored force_PP array. dim: (mcmc_counter, 1, n_atoms, 3)."""
+        return np.array(self.__stored_force_PP)[self.__num_gfmc_collect_steps :]
 
     @property
-    def de_L_dr_dn(self) -> npt.NDArray:
-        """Return the stored de_L/dr_dn array. dim: (mcmc_counter, 1, num_electrons_dn, 3)."""
-        return np.array(self.__stored_grad_e_L_r_dn)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def dln_Psi_dr_up(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dr_up array. dim: (mcmc_counter, 1, num_electrons_up, 3)."""
-        return np.array(self.__stored_grad_ln_Psi_r_up)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def dln_Psi_dr_dn(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dr_down array. dim: (mcmc_counter, 1, num_electrons_dn, 3)."""
-        return np.array(self.__stored_grad_ln_Psi_r_dn)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def dln_Psi_dR(self) -> npt.NDArray:
-        """Return the stored dln_Psi/dR array. dim: (mcmc_counter, 1, num_atoms, 3)."""
-        return np.array(self.__stored_grad_ln_Psi_dR)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def omega_up(self) -> npt.NDArray:
-        """Return the stored Omega (for up electrons) array. dim: (mcmc_counter, 1, num_atoms, num_electrons_up)."""
-        return np.array(self.__stored_omega_up)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def omega_dn(self) -> npt.NDArray:
-        """Return the stored Omega (for down electrons) array. dim: (mcmc_counter,1, num_atoms, num_electons_dn)."""
-        return np.array(self.__stored_omega_dn)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def domega_dr_up(self) -> npt.NDArray:
-        """Return the stored dOmega/dr_up array. dim: (mcmc_counter, 1, num_electons_dn, 3)."""
-        return np.array(self.__stored_grad_omega_r_up)[self.__num_gfmc_collect_steps :]
-
-    @property
-    def domega_dr_dn(self) -> npt.NDArray:
-        """Return the stored dOmega/dr_dn array. dim: (mcmc_counter, 1, num_electons_dn, 3)."""
-        return np.array(self.__stored_grad_omega_r_dn)[self.__num_gfmc_collect_steps :]
+    def E_L_force_PP(self) -> npt.NDArray:
+        """Return the stored E_L*force_PP array. dim: (mcmc_counter, 1, n_atoms, 3)."""
+        return np.array(self.__stored_E_L_force_PP)[self.__num_gfmc_collect_steps :]
 
     @property
     def comput_position_deriv(self) -> bool:
@@ -7847,75 +7346,49 @@ class _GFMC_n_debug:
                     else:
                         mod_w_L_gathered = w_L_gathered
 
-                    grad_e_L_r_up_weighted_sum = np.einsum(
-                        "i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, grad_e_L_r_up_gathered
+                    # compute per-walker force products
+                    force_HF_per_walker = (
+                        grad_e_L_R_gathered
+                        + np.einsum("ijk,ikl->ijl", omega_up_gathered, grad_e_L_r_up_gathered)
+                        + np.einsum("ijk,ikl->ijl", omega_dn_gathered, grad_e_L_r_dn_gathered)
                     )
-                    grad_e_L_r_dn_weighted_sum = np.einsum(
-                        "i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, grad_e_L_r_dn_gathered
+                    force_PP_per_walker = (
+                        grad_ln_Psi_dR_gathered
+                        + np.einsum("ijk,ikl->ijl", omega_up_gathered, grad_ln_Psi_r_up_gathered)
+                        + np.einsum("ijk,ikl->ijl", omega_dn_gathered, grad_ln_Psi_r_dn_gathered)
+                        + 0.5 * (grad_omega_dr_up_gathered + grad_omega_dr_dn_gathered)
                     )
-                    grad_e_L_R_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, grad_e_L_R_gathered)
-                    grad_ln_Psi_r_up_weighted_sum = np.einsum(
-                        "i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, grad_ln_Psi_r_up_gathered
+                    E_L_force_PP_per_walker = e_L_gathered[:, None, None] * force_PP_per_walker
+                    # weighted sum (using mod_w_L / V_diag_E)
+                    force_HF_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, force_HF_per_walker)
+                    force_PP_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, force_PP_per_walker)
+                    E_L_force_PP_weighted_sum = np.einsum(
+                        "i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, E_L_force_PP_per_walker
                     )
-                    grad_ln_Psi_r_dn_weighted_sum = np.einsum(
-                        "i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, grad_ln_Psi_r_dn_gathered
-                    )
-                    grad_ln_Psi_dR_weighted_sum = np.einsum(
-                        "i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, grad_ln_Psi_dR_gathered
-                    )
-                    omega_up_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, omega_up_gathered)
-                    omega_dn_weighted_sum = np.einsum("i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, omega_dn_gathered)
-                    grad_omega_dr_up_weighted_sum = np.einsum(
-                        "i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, grad_omega_dr_up_gathered
-                    )
-                    grad_omega_dr_dn_weighted_sum = np.einsum(
-                        "i,ijk->jk", mod_w_L_gathered / V_diag_E_gathered, grad_omega_dr_dn_gathered
-                    )
+                    # averaged
+                    force_HF_averaged = force_HF_weighted_sum / w_L_weighted_sum
+                    force_PP_averaged = force_PP_weighted_sum / w_L_weighted_sum
+                    E_L_force_PP_averaged = E_L_force_PP_weighted_sum / w_L_weighted_sum
+                    # add a dummy dim
+                    force_HF_averaged = np.expand_dims(force_HF_averaged, axis=0)
+                    force_PP_averaged = np.expand_dims(force_PP_averaged, axis=0)
+                    E_L_force_PP_averaged = np.expand_dims(E_L_force_PP_averaged, axis=0)
+                    # store
+                    self.__stored_force_HF.append(force_HF_averaged)
+                    self.__stored_force_PP.append(force_PP_averaged)
+                    self.__stored_E_L_force_PP.append(E_L_force_PP_averaged)
                 # averaged
                 w_L_averaged = np.average(w_L_gathered)
                 e_L_averaged = e_L_weighted_sum / w_L_weighted_sum
                 e_L2_averaged = e_L2_weighted_sum / w_L_weighted_sum
-                if self.__comput_position_deriv:
-                    grad_e_L_r_up_averaged = grad_e_L_r_up_weighted_sum / w_L_weighted_sum
-                    grad_e_L_r_dn_averaged = grad_e_L_r_dn_weighted_sum / w_L_weighted_sum
-                    grad_e_L_R_averaged = grad_e_L_R_weighted_sum / w_L_weighted_sum
-                    grad_ln_Psi_r_up_averaged = grad_ln_Psi_r_up_weighted_sum / w_L_weighted_sum
-                    grad_ln_Psi_r_dn_averaged = grad_ln_Psi_r_dn_weighted_sum / w_L_weighted_sum
-                    grad_ln_Psi_dR_averaged = grad_ln_Psi_dR_weighted_sum / w_L_weighted_sum
-                    omega_up_averaged = omega_up_weighted_sum / w_L_weighted_sum
-                    omega_dn_averaged = omega_dn_weighted_sum / w_L_weighted_sum
-                    grad_omega_dr_up_averaged = grad_omega_dr_up_weighted_sum / w_L_weighted_sum
-                    grad_omega_dr_dn_averaged = grad_omega_dr_dn_weighted_sum / w_L_weighted_sum
                 # add a dummy dim
                 e_L2_averaged = np.expand_dims(e_L2_averaged, axis=0)
                 e_L_averaged = np.expand_dims(e_L_averaged, axis=0)
                 w_L_averaged = np.expand_dims(w_L_averaged, axis=0)
-                if self.__comput_position_deriv:
-                    grad_e_L_r_up_averaged = np.expand_dims(grad_e_L_r_up_averaged, axis=0)
-                    grad_e_L_r_dn_averaged = np.expand_dims(grad_e_L_r_dn_averaged, axis=0)
-                    grad_e_L_R_averaged = np.expand_dims(grad_e_L_R_averaged, axis=0)
-                    grad_ln_Psi_r_up_averaged = np.expand_dims(grad_ln_Psi_r_up_averaged, axis=0)
-                    grad_ln_Psi_r_dn_averaged = np.expand_dims(grad_ln_Psi_r_dn_averaged, axis=0)
-                    grad_ln_Psi_dR_averaged = np.expand_dims(grad_ln_Psi_dR_averaged, axis=0)
-                    omega_up_averaged = np.expand_dims(omega_up_averaged, axis=0)
-                    omega_dn_averaged = np.expand_dims(omega_dn_averaged, axis=0)
-                    grad_omega_dr_up_averaged = np.expand_dims(grad_omega_dr_up_averaged, axis=0)
-                    grad_omega_dr_dn_averaged = np.expand_dims(grad_omega_dr_dn_averaged, axis=0)
                 # store  # This should stored only for MPI-rank = 0 !!!
                 self.__stored_e_L2.append(e_L2_averaged)
                 self.__stored_e_L.append(e_L_averaged)
                 self.__stored_w_L.append(w_L_averaged)
-                if self.__comput_position_deriv:
-                    self.__stored_grad_e_L_r_up.append(grad_e_L_r_up_averaged)
-                    self.__stored_grad_e_L_r_dn.append(grad_e_L_r_dn_averaged)
-                    self.__stored_grad_e_L_dR.append(grad_e_L_R_averaged)
-                    self.__stored_grad_ln_Psi_r_up.append(grad_ln_Psi_r_up_averaged)
-                    self.__stored_grad_ln_Psi_r_dn.append(grad_ln_Psi_r_dn_averaged)
-                    self.__stored_grad_ln_Psi_dR.append(grad_ln_Psi_dR_averaged)
-                    self.__stored_omega_up.append(omega_up_averaged)
-                    self.__stored_omega_dn.append(omega_dn_averaged)
-                    self.__stored_grad_omega_r_up.append(grad_omega_dr_up_averaged)
-                    self.__stored_grad_omega_r_dn.append(grad_omega_dr_dn_averaged)
                 # Start branching
                 logger.devel(f"w_L_gathered = {w_L_gathered}")
                 probabilities = w_L_gathered / w_L_gathered.sum()
@@ -8139,31 +7612,9 @@ class _GFMC_n_debug:
         if mpi_rank == 0:
             w_L = self.w_L[num_mcmc_warmup_steps:]
             e_L = self.e_L[num_mcmc_warmup_steps:]
-            de_L_dR = self.de_L_dR[num_mcmc_warmup_steps:]
-            de_L_dr_up = self.de_L_dr_up[num_mcmc_warmup_steps:]
-            de_L_dr_dn = self.de_L_dr_dn[num_mcmc_warmup_steps:]
-            dln_Psi_dr_up = self.dln_Psi_dr_up[num_mcmc_warmup_steps:]
-            dln_Psi_dr_dn = self.dln_Psi_dr_dn[num_mcmc_warmup_steps:]
-            dln_Psi_dR = self.dln_Psi_dR[num_mcmc_warmup_steps:]
-            omega_up = self.omega_up[num_mcmc_warmup_steps:]
-            omega_dn = self.omega_dn[num_mcmc_warmup_steps:]
-            domega_dr_up = self.domega_dr_up[num_mcmc_warmup_steps:]
-            domega_dr_dn = self.domega_dr_dn[num_mcmc_warmup_steps:]
-
-            force_HF = (
-                de_L_dR
-                + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up)
-                + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
-            )
-
-            force_PP = (
-                dln_Psi_dR
-                + np.einsum("iwjk,iwkl->iwjl", omega_up, dln_Psi_dr_up)
-                + np.einsum("iwjk,iwkl->iwjl", omega_dn, dln_Psi_dr_dn)
-                + 1.0 / 2.0 * (domega_dr_up + domega_dr_dn)
-            )
-
-            E_L_force_PP = np.einsum("iw,iwjk->iwjk", e_L, force_PP)
+            force_HF = self.force_HF[num_mcmc_warmup_steps:]
+            force_PP = self.force_PP[num_mcmc_warmup_steps:]
+            E_L_force_PP = self.E_L_force_PP[num_mcmc_warmup_steps:]
 
             # split and binning with multiple walkers
             w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
