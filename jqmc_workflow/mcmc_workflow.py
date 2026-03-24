@@ -211,7 +211,6 @@ class MCMC_Workflow(Workflow):
         num_mcmc_per_measurement: Optional[int] = None,
         atomic_force: Optional[bool] = None,
         parameter_derivatives: Optional[bool] = None,
-        h5_compact: bool = False,
         # -- [control] section parameters --
         mcmc_seed: Optional[int] = None,
         verbosity: Optional[str] = None,
@@ -240,7 +239,6 @@ class MCMC_Workflow(Workflow):
         self.num_mcmc_per_measurement = num_mcmc_per_measurement
         self.atomic_force = atomic_force
         self.parameter_derivatives = parameter_derivatives
-        self.h5_compact = h5_compact
         # [control] section
         self.mcmc_seed = mcmc_seed
         self.verbosity = verbosity
@@ -286,7 +284,6 @@ class MCMC_Workflow(Workflow):
                 "num_mcmc_bin_blocks": self.num_mcmc_bin_blocks,
                 "atomic_force": self.atomic_force,
                 "parameter_derivatives": self.parameter_derivatives,
-                "h5_compact": self.h5_compact,
             },
         )
         overrides = {

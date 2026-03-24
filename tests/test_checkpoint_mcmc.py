@@ -123,7 +123,6 @@ def _make_mcmc(hamiltonian_data, num_walkers=4, mcmc_seed=12345, **kwargs):
         hamiltonian_data=hamiltonian_data,
         num_walkers=num_walkers,
         mcmc_seed=mcmc_seed,
-        h5_compact=False,
         **kwargs,
     )
 
