@@ -6,7 +6,7 @@ max_time = 86400 # Maximum time in sec.
 restart = false
 restart_chk = "restart.h5" # Restart checkpoint file. If restart is True, this file is used.
 hamiltonian_h5 = "hamiltonian_data.h5" # Hamiltonian checkpoint file. If restart is False, this file is used.
-verbosity = "low" # Verbosity level. "low" or "high"
+verbosity = "high" # Verbosity level. "low" or "high"
 
 [vmc]
 num_mcmc_steps = 500 # Number of observable measurement steps per MPI and Walker. Every local energy and other observeables are measured num_mcmc_steps times in total. The total number of measurements is num_mcmc_steps * mpi_size * number_of_walkers.
@@ -24,4 +24,8 @@ opt_J3_param = true
 opt_JNN_param = false
 opt_lambda_param = false
 opt_with_projected_MOs = false
+opt_J3_basis_exp = true
+opt_J3_basis_coeff = true
+opt_lambda_basis_exp = false
+opt_lambda_basis_coeff = false
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.

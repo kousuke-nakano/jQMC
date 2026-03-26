@@ -310,6 +310,10 @@ class MCMC:
             "j3_matrix": True,
             "jastrow_nn_params": True,
             "lambda_matrix": True,
+            "j3_basis_exp": False,
+            "j3_basis_coeff": False,
+            "lambda_basis_exp": False,
+            "lambda_basis_coeff": False,
         }
 
     def __param_gradient_flags(self) -> dict[str, bool]:
@@ -337,6 +341,10 @@ class MCMC:
             opt_J3_param=flags.get("j3_matrix", True),
             opt_JNN_param=flags.get("jastrow_nn_params", True),
             opt_lambda_param=flags.get("lambda_matrix", True),
+            opt_J3_basis_exp=flags.get("j3_basis_exp", False),
+            opt_J3_basis_coeff=flags.get("j3_basis_coeff", False),
+            opt_lambda_basis_exp=flags.get("lambda_basis_exp", False),
+            opt_lambda_basis_coeff=flags.get("lambda_basis_coeff", False),
         )
 
     def __prepare_param_grad_objects(self):
@@ -1917,6 +1925,10 @@ class MCMC:
         opt_JNN_param: bool = True,
         opt_lambda_param: bool = False,
         opt_with_projected_MOs: bool = False,
+        opt_J3_basis_exp: bool = False,
+        opt_J3_basis_coeff: bool = False,
+        opt_lambda_basis_exp: bool = False,
+        opt_lambda_basis_coeff: bool = False,
         num_param_opt: int = 0,
         opt_filter_min_SN_ratio: float = 0.0,
         optimizer_kwargs: dict | None = None,
@@ -1939,6 +1951,14 @@ class MCMC:
                 At every optimization step, build projection operators from the current MO state,
                 convert MO->AO for MCMC/gradient evaluation, update AO parameters, then project AO->MO
                 with fixed ``num_eigenvectors=num_electron_dn`` to finish the step.
+            opt_J3_basis_exp (bool, optional): Optimize J3 AO Gaussian exponents. Defaults to False.
+                Cannot be combined with ``opt_with_projected_MOs``.
+            opt_J3_basis_coeff (bool, optional): Optimize J3 AO contraction coefficients. Defaults to False.
+                Cannot be combined with ``opt_with_projected_MOs``.
+            opt_lambda_basis_exp (bool, optional): Optimize Geminal AO Gaussian exponents (up and down). Defaults to False.
+                Cannot be combined with ``opt_with_projected_MOs``.
+            opt_lambda_basis_coeff (bool, optional): Optimize Geminal AO contraction coefficients (up and down). Defaults to False.
+                Cannot be combined with ``opt_with_projected_MOs``.
             num_param_opt (int, optional): Limit parameters updated (ranked by ``|f|/|std f|``); ``0`` means all. Defaults to 0.
             opt_filter_min_SN_ratio (float, optional): Minimum signal-to-noise ratio ``|f|/|std f|`` for a
                 parameter to be updated.  Parameters with SN <= this threshold are frozen.  Applied
@@ -2113,11 +2133,23 @@ class MCMC:
             j3_matrix=opt_J3_param,
             jastrow_nn_params=opt_JNN_param,
             lambda_matrix=opt_lambda_param,
+            j3_basis_exp=opt_J3_basis_exp,
+            j3_basis_coeff=opt_J3_basis_coeff,
+            lambda_basis_exp=opt_lambda_basis_exp,
+            lambda_basis_coeff=opt_lambda_basis_coeff,
         )
 
         if opt_with_projected_MOs:
             if not opt_lambda_param:
                 raise ValueError("opt_with_projected_MOs=True requires opt_lambda_param=True.")
+
+            if any([opt_J3_basis_exp, opt_J3_basis_coeff, opt_lambda_basis_exp, opt_lambda_basis_coeff]):
+                raise ValueError(
+                    "AO basis optimization (opt_J3_basis_exp/coeff, opt_lambda_basis_exp/coeff) "
+                    "cannot be combined with opt_with_projected_MOs. "
+                    "Changing AO exponents/coefficients invalidates the overlap matrix "
+                    "used by the MO projection operators."
+                )
 
             geminal_init = self.hamiltonian_data.wavefunction_data.geminal_data
             if not (geminal_init.is_mo_representation or geminal_init.is_ao_representation):
@@ -2329,6 +2361,10 @@ class MCMC:
                 opt_J3_param=opt_J3_param,
                 opt_JNN_param=opt_JNN_param,
                 opt_lambda_param=opt_lambda_param,
+                opt_J3_basis_exp=opt_J3_basis_exp,
+                opt_J3_basis_coeff=opt_J3_basis_coeff,
+                opt_lambda_basis_exp=opt_lambda_basis_exp,
+                opt_lambda_basis_coeff=opt_lambda_basis_coeff,
             )
 
             # flatten index mapping for the blocks

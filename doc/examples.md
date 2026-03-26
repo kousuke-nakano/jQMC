@@ -699,6 +699,10 @@ opt_J3_param = false
 opt_JNN_param = true
 opt_lambda_param = false
 opt_with_projected_MOs = false
+opt_J3_basis_exp = false # Optimize J3 AO Gaussian exponents.
+opt_J3_basis_coeff = false # Optimize J3 AO contraction coefficients.
+opt_lambda_basis_exp = false # Optimize Geminal AO Gaussian exponents (up+dn).
+opt_lambda_basis_coeff = false # Optimize Geminal AO contraction coefficients (up+dn).
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
 opt_filter_min_SN_ratio = 4.0 # minimum |f|/|std f| to update a parameter. Parameters with SN <= this are frozen. Applied before num_param_opt. Set 0 to disable.
 optimizer_kwargs = { method = "adam" }
@@ -915,6 +919,10 @@ opt_J3_param = true
 opt_JNN_param = false
 opt_lambda_param = true
 opt_with_projected_MOs = true
+opt_J3_basis_exp = false # Optimize J3 AO Gaussian exponents. Cannot be combined with opt_with_projected_MOs.
+opt_J3_basis_coeff = false # Optimize J3 AO contraction coefficients. Cannot be combined with opt_with_projected_MOs.
+opt_lambda_basis_exp = false # Optimize Geminal AO Gaussian exponents (up+dn). Cannot be combined with opt_with_projected_MOs.
+opt_lambda_basis_coeff = false # Optimize Geminal AO contraction coefficients (up+dn). Cannot be combined with opt_with_projected_MOs.
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
 opt_filter_min_SN_ratio = 4.0 # minimum |f|/|std f| to update a parameter. Parameters with SN <= this are frozen. Applied before num_param_opt. Set 0 to disable.
 ```
@@ -1458,6 +1466,10 @@ opt_J3_param = true
 opt_JNN_param = false
 opt_lambda_param = true
 opt_with_projected_MOs = false
+opt_J3_basis_exp = false # Optimize J3 AO Gaussian exponents.
+opt_J3_basis_coeff = false # Optimize J3 AO contraction coefficients.
+opt_lambda_basis_exp = false # Optimize Geminal AO Gaussian exponents (up+dn).
+opt_lambda_basis_coeff = false # Optimize Geminal AO contraction coefficients (up+dn).
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
 opt_filter_min_SN_ratio = 4.0 # minimum |f|/|std f| to update a parameter. Parameters with SN <= this are frozen. Applied before num_param_opt. Set 0 to disable.
 ```
@@ -1761,6 +1773,10 @@ opt_J1_param = true
 opt_J2_param = true
 opt_J3_param = true
 opt_lambda_param = false
+opt_J3_basis_exp = false
+opt_J3_basis_coeff = false
+opt_lambda_basis_exp = false
+opt_lambda_basis_coeff = false
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If None, all parameters are optimized.
 opt_filter_min_SN_ratio = 4.0 # minimum |f|/|std f| to update a parameter. Parameters with SN <= this are frozen. Applied before num_param_opt. Set 0 to disable.
 ```
@@ -1976,6 +1992,10 @@ opt_J1_param = true
 opt_J2_param = true
 opt_J3_param = true
 opt_lambda_param = true
+opt_J3_basis_exp = false
+opt_J3_basis_coeff = false
+opt_lambda_basis_exp = false
+opt_lambda_basis_coeff = false
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If None, all parameters are optimized.
 opt_filter_min_SN_ratio = 4.0 # minimum |f|/|std f| to update a parameter. Parameters with SN <= this are frozen. Applied before num_param_opt. Set 0 to disable.
 ```

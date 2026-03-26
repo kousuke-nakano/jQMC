@@ -309,6 +309,23 @@ def test_jqmc_vmc(trexio_file, monkeypatch):
         base_params["lambda_matrix"] = np.ones_like(np.array(wf_data.geminal_data.lambda_matrix))
     else:
         base_params["lambda_matrix"] = np.array([[2.0, -2.0], [3.0, -3.0]], dtype=float)
+    # AO basis blocks for J3 and Geminal.
+    if wf_data.jastrow_data.jastrow_three_body_data is not None:
+        base_params["j3_basis_exp"] = np.ones_like(np.array(wf_data.jastrow_data.jastrow_three_body_data.ao_exponents))
+        base_params["j3_basis_coeff"] = np.ones_like(np.array(wf_data.jastrow_data.jastrow_three_body_data.ao_coefficients))
+    if wf_data.geminal_data is not None:
+        base_params["lambda_basis_exp"] = np.concatenate(
+            [
+                np.ones_like(np.array(wf_data.geminal_data.ao_exponents_up)),
+                np.ones_like(np.array(wf_data.geminal_data.ao_exponents_dn)),
+            ]
+        )
+        base_params["lambda_basis_coeff"] = np.concatenate(
+            [
+                np.ones_like(np.array(wf_data.geminal_data.ao_coefficients_up)),
+                np.ones_like(np.array(wf_data.geminal_data.ao_coefficients_dn)),
+            ]
+        )
 
     # Registry keyed by wavefunction id to hold mutable parameter snapshots.
     params_registry: dict[int, dict[str, np.ndarray]] = {}
@@ -322,7 +339,16 @@ def test_jqmc_vmc(trexio_file, monkeypatch):
         return params_registry[id(wf)]
 
     def fake_get_variational_blocks(
-        self, opt_J1_param=True, opt_J2_param=True, opt_J3_param=True, opt_JNN_param=True, opt_lambda_param=False
+        self,
+        opt_J1_param=True,
+        opt_J2_param=True,
+        opt_J3_param=True,
+        opt_JNN_param=True,
+        opt_lambda_param=False,
+        opt_J3_basis_exp=False,
+        opt_J3_basis_coeff=False,
+        opt_lambda_basis_exp=False,
+        opt_lambda_basis_coeff=False,
     ):
         """Return deterministic VariationalParameterBlock list honoring the optimization flags.
 
@@ -340,12 +366,24 @@ def test_jqmc_vmc(trexio_file, monkeypatch):
         if opt_J3_param and "j3_matrix" in pos:
             arr = pos["j3_matrix"]
             blocks.append(VariationalParameterBlock(name="j3_matrix", values=arr, shape=arr.shape, size=int(arr.size)))
+        if opt_J3_basis_exp and "j3_basis_exp" in pos:
+            arr = pos["j3_basis_exp"]
+            blocks.append(VariationalParameterBlock(name="j3_basis_exp", values=arr, shape=arr.shape, size=int(arr.size)))
+        if opt_J3_basis_coeff and "j3_basis_coeff" in pos:
+            arr = pos["j3_basis_coeff"]
+            blocks.append(VariationalParameterBlock(name="j3_basis_coeff", values=arr, shape=arr.shape, size=int(arr.size)))
         if opt_JNN_param and "jastrow_nn_params" in pos:
             arr = pos["jastrow_nn_params"]
             blocks.append(VariationalParameterBlock(name="jastrow_nn_params", values=arr, shape=arr.shape, size=int(arr.size)))
         if opt_lambda_param and "lambda_matrix" in pos:
             arr = pos["lambda_matrix"]
             blocks.append(VariationalParameterBlock(name="lambda_matrix", values=arr, shape=arr.shape, size=int(arr.size)))
+        if opt_lambda_basis_exp and "lambda_basis_exp" in pos:
+            arr = pos["lambda_basis_exp"]
+            blocks.append(VariationalParameterBlock(name="lambda_basis_exp", values=arr, shape=arr.shape, size=int(arr.size)))
+        if opt_lambda_basis_coeff and "lambda_basis_coeff" in pos:
+            arr = pos["lambda_basis_coeff"]
+            blocks.append(VariationalParameterBlock(name="lambda_basis_coeff", values=arr, shape=arr.shape, size=int(arr.size)))
         return blocks
 
     def fake_apply_block_updates(self, blocks, thetas, learning_rate):
@@ -449,6 +487,101 @@ def test_jqmc_vmc(trexio_file, monkeypatch):
                 "j3_matrix": True,
                 "jastrow_nn_params": True,
                 "lambda_matrix": True,
+            },
+        },
+        # ── AO basis optimization cases ──
+        {
+            "name": "j3_basis_exp_only",
+            "flags": dict(
+                opt_J1_param=False,
+                opt_J2_param=False,
+                opt_J3_param=False,
+                opt_JNN_param=False,
+                opt_lambda_param=False,
+                opt_J3_basis_exp=True,
+                opt_J3_basis_coeff=False,
+            ),
+            "expect_change": {
+                "j1_param": False,
+                "j2_param": False,
+                "j3_matrix": False,
+                "jastrow_nn_params": False,
+                "lambda_matrix": False,
+                "j3_basis_exp": True,
+                "j3_basis_coeff": False,
+                "lambda_basis_exp": False,
+                "lambda_basis_coeff": False,
+            },
+        },
+        {
+            "name": "j3_basis_both",
+            "flags": dict(
+                opt_J1_param=False,
+                opt_J2_param=False,
+                opt_J3_param=True,
+                opt_JNN_param=False,
+                opt_lambda_param=False,
+                opt_J3_basis_exp=True,
+                opt_J3_basis_coeff=True,
+            ),
+            "expect_change": {
+                "j1_param": False,
+                "j2_param": False,
+                "j3_matrix": True,
+                "jastrow_nn_params": False,
+                "lambda_matrix": False,
+                "j3_basis_exp": True,
+                "j3_basis_coeff": True,
+                "lambda_basis_exp": False,
+                "lambda_basis_coeff": False,
+            },
+        },
+        {
+            "name": "lambda_basis_exp_only",
+            "flags": dict(
+                opt_J1_param=False,
+                opt_J2_param=False,
+                opt_J3_param=False,
+                opt_JNN_param=False,
+                opt_lambda_param=False,
+                opt_lambda_basis_exp=True,
+                opt_lambda_basis_coeff=False,
+            ),
+            "expect_change": {
+                "j1_param": False,
+                "j2_param": False,
+                "j3_matrix": False,
+                "jastrow_nn_params": False,
+                "lambda_matrix": False,
+                "j3_basis_exp": False,
+                "j3_basis_coeff": False,
+                "lambda_basis_exp": True,
+                "lambda_basis_coeff": False,
+            },
+        },
+        {
+            "name": "all_basis_on",
+            "flags": dict(
+                opt_J1_param=False,
+                opt_J2_param=False,
+                opt_J3_param=False,
+                opt_JNN_param=False,
+                opt_lambda_param=False,
+                opt_J3_basis_exp=True,
+                opt_J3_basis_coeff=True,
+                opt_lambda_basis_exp=True,
+                opt_lambda_basis_coeff=True,
+            ),
+            "expect_change": {
+                "j1_param": False,
+                "j2_param": False,
+                "j3_matrix": False,
+                "jastrow_nn_params": False,
+                "lambda_matrix": False,
+                "j3_basis_exp": True,
+                "j3_basis_coeff": True,
+                "lambda_basis_exp": True,
+                "lambda_basis_coeff": True,
             },
         },
     ]
@@ -715,7 +848,16 @@ def test_sr_wide_and_tall_matrix(trexio_file, regime, cg_flag, monkeypatch):
         return params_registry[id(wf)]
 
     def fake_get_variational_blocks(
-        self, opt_J1_param=True, opt_J2_param=True, opt_J3_param=True, opt_JNN_param=True, opt_lambda_param=False
+        self,
+        opt_J1_param=True,
+        opt_J2_param=True,
+        opt_J3_param=True,
+        opt_JNN_param=True,
+        opt_lambda_param=False,
+        opt_J3_basis_exp=False,
+        opt_J3_basis_coeff=False,
+        opt_lambda_basis_exp=False,
+        opt_lambda_basis_coeff=False,
     ):
         blocks = []
         pos = lookup_params(self)
