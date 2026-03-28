@@ -53,7 +53,7 @@ from jax import grad, hessian, jit, vmap
 from jax import typing as jnpt
 from jax.tree_util import tree_flatten, tree_unflatten
 
-from ._setting import atol_consistency
+from ._setting import EPS_safe_distance, atol_consistency
 from .atomic_orbital import (
     AOs_cart_data,
     AOs_sphe_data,
@@ -253,7 +253,7 @@ class NNJastrow(nn.Module):
             mu = mu[None, ...]
             sigma = sigma[None, ...]
 
-            features = (d**2) * jnp.exp(-d - ((d - mu) ** 2) / (sigma**2 + 1e-12))
+            features = (d**2) * jnp.exp(-d - ((d - mu) ** 2) / (sigma**2 + EPS_safe_distance))
             return features
 
     class TwoLayerMLP(nn.Module):
@@ -426,7 +426,7 @@ class NNJastrow(nn.Module):
         if A.shape[0] == 0 or B.shape[0] == 0:
             return jnp.zeros((A.shape[0], B.shape[0]))
         diff = A[:, None, :] - B[None, :, :]
-        return jnp.sqrt(jnp.sum(diff**2, axis=-1) + 1e-12)
+        return jnp.sqrt(jnp.sum(diff**2, axis=-1) + EPS_safe_distance)
 
     def _nuclear_embeddings(self, Z_n: jnp.ndarray) -> jnp.ndarray:
         """Convert atomic numbers into learned embedding vectors.
@@ -944,7 +944,7 @@ def compute_grads_and_laplacian_Jastrow_one_body(
     c = (2.0 * z_eff) ** (1.0 / 4.0)
     A = (2.0 * z_eff) ** (3.0 / 4.0)
 
-    eps = 1.0e-12
+    eps = EPS_safe_distance
 
     j1b_type = jastrow_one_body_data.jastrow_1b_type
 
@@ -3137,7 +3137,7 @@ def compute_grads_and_laplacian_Jastrow_two_body(
             Laplacians for up/down electrons with shapes ``(N_up,)`` and ``(N_dn,)``.
     """
     a = jastrow_two_body_data.jastrow_2b_param
-    eps = 1.0e-12
+    eps = EPS_safe_distance
 
     r_up = jnp.asarray(r_up_carts)
     r_dn = jnp.asarray(r_dn_carts)

@@ -57,6 +57,7 @@ from ._setting import (
     MCMC_MIN_BIN_BLOCKS,
     MCMC_MIN_WARMUP_STEPS,
     EPS_rcond_SVD,
+    EPS_zero_division,
     atol_consistency,
     min_S_diag_abs,
 )
@@ -1891,6 +1892,13 @@ class MCMC:
             logger.warning(f"aSR: discriminant is negative ({discriminant:.3e}); setting to 0.")
             discriminant = 0.0
         denom = -2.0 * H_1 * S_2
+        if abs(denom) < EPS_zero_division:
+            logger.warning(
+                "aSR: denom = -2*H_1*S_2 ~ 0 (H_1=%.3e, S_2=%.3e); no meaningful optimization direction. Returning gamma = 0.",
+                H_1,
+                S_2,
+            )
+            return 0.0
         sqrt_d = np.sqrt(discriminant)
         gamma_plus = (-B + sqrt_d) / denom
         gamma_minus = (-B - sqrt_d) / denom
@@ -2676,6 +2684,16 @@ class MCMC:
                         diag_S.size,
                         min_S_diag_abs,
                     )
+                    # Per-block breakdown of frozen parameters
+                    for _blk, _s, _e in offsets:
+                        _blk_frozen = int(np.count_nonzero(_sr_frozen_mask[_s:_e]))
+                        if _blk_frozen > 0:
+                            logger.info(
+                                "  Frozen in block=%s: %d/%d",
+                                _blk.name,
+                                _blk_frozen,
+                                _blk.size,
+                            )
                 diag_S = np.where(np.isfinite(diag_S) & (diag_S > diag_S_floor), diag_S, diag_S_floor)
                 X_local = X_local / np.sqrt(diag_S)[:, np.newaxis]  # shape (num_param, num_mcmc * num_walker)
 
@@ -2723,6 +2741,7 @@ class MCMC:
                             logger.devel(f"X @ F.shape = {X_F.shape}.")
                             # (X X^T + eps*I) x = X F ->solve-> x = (X  X^T + eps*I)^{-1} X F
                             X_X_T[np.diag_indices_from(X_X_T)] += epsilon
+
                             X_X_T_inv_X_F = scipy.linalg.solve(X_X_T, X_F, assume_a="sym")
                             # theta = (X_w X^T + eps*I)^{-1} X_w F
                             theta_all = X_X_T_inv_X_F
@@ -3073,18 +3092,21 @@ class MCMC:
             #    causing energy increase when num_param_opt > 0.
             # ------------------------------------------------------------------
             if use_sr_adaptive_lr:
-                logger.info("aSR: computing optimal gamma via accelerated SR.")
-                H_0, H_1, H_2, S_2 = self.get_aH(
-                    g=theta,
-                    blocks=blocks,
-                    num_mcmc_warmup_steps=num_mcmc_warmup_steps,
-                    chosen_param_index=chosen_param_index,
-                    lambda_projectors=lambda_projectors,
-                    num_orb_projection=num_orb_projection,
-                )
-                gamma = self.compute_asr_gamma(H_0, H_1, H_2, S_2)
-                logger.info(f"aSR: scaling theta by gamma = {gamma:.6f}.")
-                theta = theta * gamma
+                if not np.any(theta):
+                    logger.info("aSR: theta is all zeros (all parameters frozen); skipping gamma scaling.")
+                else:
+                    logger.info("aSR: computing optimal gamma via accelerated SR.")
+                    H_0, H_1, H_2, S_2 = self.get_aH(
+                        g=theta,
+                        blocks=blocks,
+                        num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+                        chosen_param_index=chosen_param_index,
+                        lambda_projectors=lambda_projectors,
+                        num_orb_projection=num_orb_projection,
+                    )
+                    gamma = self.compute_asr_gamma(H_0, H_1, H_2, S_2)
+                    logger.info(f"aSR: scaling theta by gamma = {gamma:.6f}.")
+                    theta = theta * gamma
 
             # ------------------------------------------------------------------
             # Compute ||Delta ln|Psi||| = delta * sqrt(theta^T S theta)
@@ -3131,9 +3153,9 @@ class MCMC:
 
             # logger.devel(f"XX for MPI-rank={mpi_rank} is {theta}")
             # logger.devel(f"XX.shape for MPI-rank={mpi_rank} is {theta.shape}")
-            logger.devel(f"theta.size = {theta.size}.")
-            logger.devel(f"np.count_nonzero(theta) = {np.count_nonzero(theta)}.")
-            logger.devel(f"max. and min. of theta are {np.max(theta)} and {np.min(theta)}.")
+            logger.info(f"theta.size = {theta.size}.")
+            logger.info(f"np.count_nonzero(theta) = {np.count_nonzero(theta)}.")
+            logger.info(f"max. and min. of theta are {np.max(theta)} and {np.min(theta)}.")
 
             # Guard against NaN/Inf components before applying the update and
             # report which blocks contain problematic entries.
@@ -3156,15 +3178,22 @@ class MCMC:
             for block, start, end in offsets:
                 block_theta = theta[start:end]
                 if not np.any(block_theta):
+                    logger.info(
+                        "SR update – block=%s size=%d  theta=ALL ZERO (no update)",
+                        block.name,
+                        block.size,
+                    )
                     continue
                 block_norm = float(np.linalg.norm(block_theta))
                 block_max = float(np.max(np.abs(block_theta)))
-                logger.devel(
-                    "SR update summary – block=%s size=%d ||theta||_2=%.3e max|theta|=%.3e",
+                block_delta_max = float(sr_delta * block_max)
+                logger.info(
+                    "SR update – block=%s size=%d  ||theta||=%.3e  max|theta|=%.3e  max|delta*theta|=%.3e",
                     block.name,
                     block.size,
                     block_norm,
                     block_max,
+                    block_delta_max,
                 )
 
             start = time.perf_counter()
