@@ -72,6 +72,7 @@ jobs:
         pytest -s -v tests/test_checkpoint_components.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_checkpoint_mcmc.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
         pytest -s -v tests/test_checkpoint_gfmc.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
+        pytest -s -v tests/test_ao_basis_optimization.py --cov=jqmc --cov-branch --no-cov-on-fail --cov-append
 
     - name: Test jqmc (inter-software comparisons)
       run: |
