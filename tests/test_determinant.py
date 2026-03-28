@@ -1651,6 +1651,72 @@ def test_apply_block_update_rect_paired_symmetric_preserved():
     np.testing.assert_allclose(new_lam[:, :n_up], new_lam[:, :n_up].T, atol=1e-15)
 
 
+@pytest.mark.parametrize("num_walkers", [1, 2, 4])
+def test_collect_param_grads_walker_shapes(num_walkers):
+    """collect_param_grads must concatenate up/dn along the parameter axis, not walkers."""
+    rng = np.random.default_rng(42)
+
+    # -- build two different AO bases for up / dn spins --
+    def _make_aos(num_prim, seed):
+        r = np.random.default_rng(seed)
+        sd = Structure_data(
+            pbc_flag=False,
+            positions=np.zeros((1, 3)),
+            atomic_numbers=(1,),
+            element_symbols=("X",),
+            atomic_labels=("X",),
+        )
+        return AOs_sphe_data(
+            structure_data=sd,
+            nucleus_index=tuple([0] * num_prim),
+            num_ao=num_prim,
+            num_ao_prim=num_prim,
+            orbital_indices=tuple(range(num_prim)),
+            exponents=jnp.array(r.uniform(0.5, 2.0, num_prim)),
+            coefficients=jnp.array(r.uniform(0.5, 1.5, num_prim)),
+            angular_momentums=tuple([0] * num_prim),
+            magnetic_quantum_numbers=tuple([0] * num_prim),
+        )
+
+    num_prim_up, num_prim_dn = 5, 3
+    aos_up = _make_aos(num_prim_up, seed=10)
+    aos_dn = _make_aos(num_prim_dn, seed=20)
+
+    geminal = Geminal_data(
+        num_electron_up=2,
+        num_electron_dn=2,
+        orb_data_up_spin=aos_up,
+        orb_data_dn_spin=aos_dn,
+        lambda_matrix=rng.standard_normal((num_prim_up, num_prim_dn)),
+    )
+
+    # -- simulate vmap-batched gradient (walker dim prepended on pytree leaves) --
+    grad_lambda = jnp.array(rng.standard_normal((num_walkers, num_prim_up, num_prim_dn)))
+    grad_exp_up = jnp.array(rng.standard_normal((num_walkers, num_prim_up)))
+    grad_exp_dn = jnp.array(rng.standard_normal((num_walkers, num_prim_dn)))
+    grad_coeff_up = jnp.array(rng.standard_normal((num_walkers, num_prim_up)))
+    grad_coeff_dn = jnp.array(rng.standard_normal((num_walkers, num_prim_dn)))
+
+    grad_geminal = geminal.replace(
+        lambda_matrix=grad_lambda,
+        orb_data_up_spin=aos_up.replace(exponents=grad_exp_up, coefficients=grad_coeff_up),
+        orb_data_dn_spin=aos_dn.replace(exponents=grad_exp_dn, coefficients=grad_coeff_dn),
+    )
+
+    grads = geminal.collect_param_grads(grad_geminal)
+
+    # -- shape checks --
+    assert grads["lambda_matrix"].shape == (num_walkers, num_prim_up, num_prim_dn)
+    assert grads["lambda_basis_exp"].shape == (num_walkers, num_prim_up + num_prim_dn)
+    assert grads["lambda_basis_coeff"].shape == (num_walkers, num_prim_up + num_prim_dn)
+
+    # -- value checks: up part then dn part along last axis --
+    np.testing.assert_array_equal(grads["lambda_basis_exp"][:, :num_prim_up], grad_exp_up)
+    np.testing.assert_array_equal(grads["lambda_basis_exp"][:, num_prim_up:], grad_exp_dn)
+    np.testing.assert_array_equal(grads["lambda_basis_coeff"][:, :num_prim_up], grad_coeff_up)
+    np.testing.assert_array_equal(grads["lambda_basis_coeff"][:, num_prim_up:], grad_coeff_dn)
+
+
 if __name__ == "__main__":
     from logging import Formatter, StreamHandler, getLogger
 

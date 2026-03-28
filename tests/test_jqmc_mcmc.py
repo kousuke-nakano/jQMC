@@ -1298,6 +1298,134 @@ def test_vmc_symmetry_preservation(j3_type, lambda_type, num_param_opt, sn_ratio
     jax.clear_caches()
 
 
+# ---------------------------------------------------------------------------
+# End-to-end optimization smoke tests (no monkeypatching)
+# ---------------------------------------------------------------------------
+
+# Each case is a dict of opt_* flags passed to run_optimize.
+_E2E_OPT_CASES = [
+    pytest.param(
+        {"opt_J1_param": True, "opt_J2_param": False, "opt_J3_param": False, "opt_lambda_param": False},
+        id="j1_only",
+    ),
+    pytest.param(
+        {"opt_J1_param": True, "opt_J2_param": True, "opt_J3_param": True, "opt_lambda_param": True},
+        id="j123_lambda",
+    ),
+    pytest.param(
+        {
+            "opt_J1_param": False,
+            "opt_J2_param": False,
+            "opt_J3_param": False,
+            "opt_lambda_param": False,
+            "opt_J3_basis_exp": True,
+            "opt_J3_basis_coeff": True,
+        },
+        id="j3_basis_only",
+    ),
+    pytest.param(
+        {
+            "opt_J1_param": False,
+            "opt_J2_param": False,
+            "opt_J3_param": False,
+            "opt_lambda_param": False,
+            "opt_lambda_basis_exp": True,
+            "opt_lambda_basis_coeff": True,
+        },
+        id="lambda_basis_only",
+    ),
+    pytest.param(
+        {
+            "opt_J1_param": True,
+            "opt_J2_param": True,
+            "opt_J3_param": True,
+            "opt_lambda_param": True,
+            "opt_J3_basis_exp": True,
+            "opt_J3_basis_coeff": True,
+            "opt_lambda_basis_exp": True,
+            "opt_lambda_basis_coeff": True,
+        },
+        id="all_on",
+    ),
+]
+
+
+@pytest.mark.parametrize("opt_flags", _E2E_OPT_CASES)
+def test_optimize_e2e_smoke(opt_flags):
+    """End-to-end 1-step optimisation without monkeypatching.
+
+    Verifies that the full pipeline (MCMC sampling -> gradient computation ->
+    SR solve -> parameter update) runs without NaN/Inf for various flag combos.
+    """
+    trexio_file = os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ae_ccpvdz_cart.h5")
+    (
+        structure_data,
+        aos_data,
+        _,
+        _,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file=trexio_file, store_tuple=True)
+
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=Jastrow_one_body_data.init_jastrow_one_body_data(
+            jastrow_1b_param=1.0,
+            structure_data=structure_data,
+            core_electrons=tuple([0] * len(structure_data.atomic_numbers)),
+            jastrow_1b_type="pade",
+        ),
+        jastrow_two_body_data=Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5, jastrow_2b_type="pade"),
+        jastrow_three_body_data=Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data),
+    )
+
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+
+    num_walkers = 2
+    mcmc = MCMC(
+        hamiltonian_data=hamiltonian_data,
+        Dt=2.0,
+        mcmc_seed=12345,
+        num_walkers=num_walkers,
+        comput_position_deriv=False,
+        comput_log_WF_param_deriv=True,
+        comput_e_L_param_deriv=False,
+    )
+
+    mcmc.run_optimize(
+        num_mcmc_steps=10,
+        num_opt_steps=1,
+        num_mcmc_warmup_steps=0,
+        num_mcmc_bin_blocks=1,
+        opt_filter_min_SN_ratio=0.0,
+        optimizer_kwargs={"method": "sr", "delta": 1e-3, "epsilon": 1e-3},
+        **opt_flags,
+    )
+
+    # Verify no NaN/Inf in any parameter after optimisation
+    wf = mcmc.hamiltonian_data.wavefunction_data
+    if wf.jastrow_data.jastrow_one_body_data is not None:
+        assert np.all(np.isfinite(np.asarray(wf.jastrow_data.jastrow_one_body_data.jastrow_1b_param)))
+    if wf.jastrow_data.jastrow_two_body_data is not None:
+        assert np.all(np.isfinite(np.asarray(wf.jastrow_data.jastrow_two_body_data.jastrow_2b_param)))
+    if wf.jastrow_data.jastrow_three_body_data is not None:
+        assert np.all(np.isfinite(np.asarray(wf.jastrow_data.jastrow_three_body_data.j_matrix)))
+        assert np.all(np.isfinite(np.asarray(wf.jastrow_data.jastrow_three_body_data.ao_exponents)))
+        assert np.all(np.isfinite(np.asarray(wf.jastrow_data.jastrow_three_body_data.ao_coefficients)))
+    if wf.geminal_data is not None:
+        assert np.all(np.isfinite(np.asarray(wf.geminal_data.lambda_matrix)))
+        assert np.all(np.isfinite(np.asarray(wf.geminal_data.ao_exponents_up)))
+        assert np.all(np.isfinite(np.asarray(wf.geminal_data.ao_exponents_dn)))
+        assert np.all(np.isfinite(np.asarray(wf.geminal_data.ao_coefficients_up)))
+        assert np.all(np.isfinite(np.asarray(wf.geminal_data.ao_coefficients_dn)))
+
+    jax.clear_caches()
+
+
 if __name__ == "__main__":
     from logging import Formatter, StreamHandler, getLogger
 

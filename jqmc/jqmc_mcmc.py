@@ -3179,7 +3179,7 @@ class MCMC:
                 block_theta = theta[start:end]
                 if not np.any(block_theta):
                     logger.info(
-                        "SR update – block=%s size=%d  theta=ALL ZERO (no update)",
+                        "  SR update – block=%s size=%d  theta=ALL ZERO (no update)",
                         block.name,
                         block.size,
                     )

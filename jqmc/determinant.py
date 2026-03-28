@@ -348,9 +348,11 @@ class Geminal_data:
         grads: dict[str, any] = {}
         if hasattr(grad_geminal, "lambda_matrix"):
             grads["lambda_matrix"] = grad_geminal.lambda_matrix
-        # AO basis gradients (up + dn concatenated into single arrays)
-        grads["lambda_basis_exp"] = jnp.concatenate([grad_geminal.ao_exponents_up, grad_geminal.ao_exponents_dn])
-        grads["lambda_basis_coeff"] = jnp.concatenate([grad_geminal.ao_coefficients_up, grad_geminal.ao_coefficients_dn])
+        # AO basis gradients (up + dn concatenated along the parameter axis)
+        grads["lambda_basis_exp"] = jnp.concatenate([grad_geminal.ao_exponents_up, grad_geminal.ao_exponents_dn], axis=-1)
+        grads["lambda_basis_coeff"] = jnp.concatenate(
+            [grad_geminal.ao_coefficients_up, grad_geminal.ao_coefficients_dn], axis=-1
+        )
         return grads
 
     @property
