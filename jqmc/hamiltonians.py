@@ -488,6 +488,16 @@ def _load_dataclass_from_hdf5(cls: Type[T], group: h5py.Group) -> T:
             elif isinstance(val, list) and (field.type is tuple or "tuple" in str(field.type)):
                 val = tuple(val)
 
+            # Convert np.ndarray or list/tuple to jax.Array for fields typed as jax.Array
+            if (
+                isinstance(val, (np.ndarray, list, tuple))
+                and "Array" in str(field.type)
+                and "ndarray" not in str(field.type)
+                and "list" not in str(field.type)
+                and "tuple" not in str(field.type)
+            ):
+                val = jnp.asarray(val, dtype=jnp.float64)
+
             init_args[field.name] = val
         elif field.name in group.attrs:
             val = group.attrs[field.name]

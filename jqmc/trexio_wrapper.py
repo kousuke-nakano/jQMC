@@ -40,6 +40,8 @@ from logging import getLogger
 import numpy as np
 import scipy
 
+import jax.numpy as jnp
+
 # import trexio
 import trexio
 
@@ -331,8 +333,8 @@ def read_trexio_file(
                 polynominal_order_y=tuple(polynominal_order_y),
                 polynominal_order_z=tuple(polynominal_order_z),
                 orbital_indices=tuple(orbital_indices),
-                exponents=tuple(exponents),
-                coefficients=tuple(coefficients),
+                exponents=jnp.array(exponents, dtype=jnp.float64),
+                coefficients=jnp.array(coefficients, dtype=jnp.float64),
             )
         else:
             aos_data = AOs_cart_data(
@@ -345,8 +347,8 @@ def read_trexio_file(
                 polynominal_order_y=list(polynominal_order_y),
                 polynominal_order_z=list(polynominal_order_z),
                 orbital_indices=list(orbital_indices),
-                exponents=list(exponents),
-                coefficients=list(coefficients),
+                exponents=jnp.array(exponents, dtype=jnp.float64),
+                coefficients=jnp.array(coefficients, dtype=jnp.float64),
             )
     else:
         logger.debug("Spherical basis functions.")
@@ -427,8 +429,8 @@ def read_trexio_file(
                 angular_momentums=tuple(angular_momentums),
                 magnetic_quantum_numbers=tuple(magnetic_quantum_numbers),
                 orbital_indices=tuple(orbital_indices),
-                exponents=tuple(exponents),
-                coefficients=tuple(coefficients),
+                exponents=jnp.array(exponents, dtype=jnp.float64),
+                coefficients=jnp.array(coefficients, dtype=jnp.float64),
             )
         else:
             aos_data = AOs_sphe_data(
@@ -439,8 +441,8 @@ def read_trexio_file(
                 angular_momentums=list(angular_momentums),
                 magnetic_quantum_numbers=list(magnetic_quantum_numbers),
                 orbital_indices=list(orbital_indices),
-                exponents=list(exponents),
-                coefficients=list(coefficients),
+                exponents=jnp.array(exponents, dtype=jnp.float64),
+                coefficients=jnp.array(coefficients, dtype=jnp.float64),
             )
 
     # MOs_data instance

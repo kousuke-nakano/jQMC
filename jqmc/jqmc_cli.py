@@ -394,6 +394,10 @@ def _cli():
         opt_JNN_param = parameters[section]["opt_JNN_param"]
         opt_lambda_param = parameters[section]["opt_lambda_param"]
         opt_with_projected_MOs = parameters[section]["opt_with_projected_MOs"]
+        opt_J3_basis_exp = parameters[section]["opt_J3_basis_exp"]
+        opt_J3_basis_coeff = parameters[section]["opt_J3_basis_coeff"]
+        opt_lambda_basis_exp = parameters[section]["opt_lambda_basis_exp"]
+        opt_lambda_basis_coeff = parameters[section]["opt_lambda_basis_coeff"]
         num_param_opt = parameters[section]["num_param_opt"]
         opt_filter_min_SN_ratio = parameters[section]["opt_filter_min_SN_ratio"]
         optimizer_kwargs = parameters[section]["optimizer_kwargs"]
@@ -455,6 +459,10 @@ def _cli():
             opt_JNN_param=opt_JNN_param,
             opt_lambda_param=opt_lambda_param,
             opt_with_projected_MOs=opt_with_projected_MOs,
+            opt_J3_basis_exp=opt_J3_basis_exp,
+            opt_J3_basis_coeff=opt_J3_basis_coeff,
+            opt_lambda_basis_exp=opt_lambda_basis_exp,
+            opt_lambda_basis_coeff=opt_lambda_basis_coeff,
             num_param_opt=num_param_opt,
             opt_filter_min_SN_ratio=opt_filter_min_SN_ratio,
             max_time=max_time,

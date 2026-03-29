@@ -62,6 +62,7 @@ from .jastrow_factor import (
     compute_grads_and_laplacian_Jastrow_part,
     compute_Jastrow_part,
 )
+from .molecular_orbital import MOs_data
 
 # set logger
 logger = getLogger("jqmc").getChild(__name__)
@@ -239,6 +240,10 @@ class Wavefunction_data:
         opt_J3_param: bool = True,
         opt_JNN_param: bool = True,
         opt_lambda_param: bool = True,
+        opt_J3_basis_exp: bool = False,
+        opt_J3_basis_coeff: bool = False,
+        opt_lambda_basis_exp: bool = False,
+        opt_lambda_basis_coeff: bool = False,
     ) -> "Wavefunction_data":
         """Return a copy where disabled parameter blocks stop propagating gradients.
 
@@ -252,6 +257,10 @@ class Wavefunction_data:
             ``lambda_matrix``, ``j_matrix``, ``jastrow_1b_param``, ``jastrow_2b_param``,
             ``jastrow_3b_param``, and ``params``. Those tagged leaves receive
             ``jax.lax.stop_gradient``, so their backpropagated gradients become zero.
+        * AO basis flags (``opt_J3_basis_exp`` etc.) independently control whether
+            ``exponents`` / ``coefficients`` gradients flow. These are handled as a
+            separate masking step so they are fully independent of the high-level block
+            flags.
         * Example: if ``opt_J1_param=False`` and others are True, only the J1 block is
             masked; its parameter leaves are stopped, while J2/J3/NN/lambda continue to
             propagate gradients normally.
@@ -285,6 +294,23 @@ class Wavefunction_data:
             if jastrow_updates:
                 jastrow_data = jastrow_data.replace(**jastrow_updates)
 
+            # AO basis masking for J3: stop gradient on exponents/coefficients when not optimized.
+            # This is independent of the J3 param (j_matrix) masking above.
+            j3d = jastrow_data.jastrow_three_body_data
+            if j3d is not None:
+                j3_orb_updates = {}
+                if not opt_J3_basis_exp:
+                    j3_orb_updates["exponents"] = jax.lax.stop_gradient(j3d.ao_exponents)
+                if not opt_J3_basis_coeff:
+                    j3_orb_updates["coefficients"] = jax.lax.stop_gradient(j3d.ao_coefficients)
+                if j3_orb_updates:
+                    if isinstance(j3d.orb_data, MOs_data):
+                        new_aos = j3d.orb_data.aos_data.replace(**j3_orb_updates)
+                        new_orb = j3d.orb_data.replace(aos_data=new_aos)
+                    else:
+                        new_orb = j3d.orb_data.replace(**j3_orb_updates)
+                    jastrow_data = jastrow_data.replace(jastrow_three_body_data=j3d.replace(orb_data=new_orb))
+
         geminal_data = self.geminal_data
         geminal_updates = {}
         if geminal_data is not None:
@@ -295,7 +321,35 @@ class Wavefunction_data:
             if geminal_updates:
                 geminal_data = geminal_data.replace(**geminal_updates)
 
-        if jastrow_updates or geminal_updates:
+            # AO basis masking for Geminal: stop gradient on exponents/coefficients when not optimized.
+            if not opt_lambda_basis_exp or not opt_lambda_basis_coeff:
+                orb_up_updates = {}
+                orb_dn_updates = {}
+                if not opt_lambda_basis_exp:
+                    orb_up_updates["exponents"] = jax.lax.stop_gradient(geminal_data.ao_exponents_up)
+                    orb_dn_updates["exponents"] = jax.lax.stop_gradient(geminal_data.ao_exponents_dn)
+                if not opt_lambda_basis_coeff:
+                    orb_up_updates["coefficients"] = jax.lax.stop_gradient(geminal_data.ao_coefficients_up)
+                    orb_dn_updates["coefficients"] = jax.lax.stop_gradient(geminal_data.ao_coefficients_dn)
+
+                up_orb = geminal_data.orb_data_up_spin
+                dn_orb = geminal_data.orb_data_dn_spin
+                if isinstance(up_orb, MOs_data):
+                    new_aos_up = up_orb.aos_data.replace(**orb_up_updates)
+                    up_orb = up_orb.replace(aos_data=new_aos_up)
+                else:
+                    up_orb = up_orb.replace(**orb_up_updates)
+                if isinstance(dn_orb, MOs_data):
+                    new_aos_dn = dn_orb.aos_data.replace(**orb_dn_updates)
+                    dn_orb = dn_orb.replace(aos_data=new_aos_dn)
+                else:
+                    dn_orb = dn_orb.replace(**orb_dn_updates)
+                geminal_data = geminal_data.replace(
+                    orb_data_up_spin=up_orb,
+                    orb_data_dn_spin=dn_orb,
+                )
+
+        if jastrow_data is not self.jastrow_data or geminal_data is not self.geminal_data:
             return Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_data)
 
         return self
@@ -352,6 +406,10 @@ class Wavefunction_data:
         opt_J3_param: bool = True,
         opt_JNN_param: bool = True,
         opt_lambda_param: bool = False,
+        opt_J3_basis_exp: bool = False,
+        opt_J3_basis_coeff: bool = False,
+        opt_lambda_basis_exp: bool = False,
+        opt_lambda_basis_coeff: bool = False,
     ) -> list[VariationalParameterBlock]:
         """Collect variational parameter blocks from Jastrow and Geminal parts.
 
@@ -401,6 +459,31 @@ class Wavefunction_data:
                     )
                 )
 
+            # J3 AO basis blocks
+            if opt_J3_basis_exp and self.jastrow_data.jastrow_three_body_data is not None:
+                j3_exp = self.jastrow_data.jastrow_three_body_data.ao_exponents
+                j3_exp_arr = np.asarray(j3_exp)
+                blocks.append(
+                    VariationalParameterBlock(
+                        name="j3_basis_exp",
+                        values=j3_exp_arr,
+                        shape=j3_exp_arr.shape,
+                        size=int(j3_exp_arr.size),
+                    )
+                )
+
+            if opt_J3_basis_coeff and self.jastrow_data.jastrow_three_body_data is not None:
+                j3_coeff = self.jastrow_data.jastrow_three_body_data.ao_coefficients
+                j3_coeff_arr = np.asarray(j3_coeff)
+                blocks.append(
+                    VariationalParameterBlock(
+                        name="j3_basis_coeff",
+                        values=j3_coeff_arr,
+                        shape=j3_coeff_arr.shape,
+                        size=int(j3_coeff_arr.size),
+                    )
+                )
+
             if opt_JNN_param and self.jastrow_data.jastrow_nn_data is not None:
                 nn3 = self.jastrow_data.jastrow_nn_data
                 if nn3.params is not None and nn3.num_params > 0:
@@ -428,6 +511,34 @@ class Wavefunction_data:
                     symmetrize_metric=lambda flat, _d=_gd, _s=lam_arr.shape: _d.symmetrize_lambda(flat.reshape(_s)).ravel(),
                 )
             )
+
+        # Geminal AO basis blocks (up + dn concatenated into single blocks)
+        if self.geminal_data is not None:
+            if opt_lambda_basis_exp:
+                lam_exp_up = self.geminal_data.ao_exponents_up
+                lam_exp_dn = self.geminal_data.ao_exponents_dn
+                lam_exp_arr = np.concatenate([np.asarray(lam_exp_up), np.asarray(lam_exp_dn)])
+                blocks.append(
+                    VariationalParameterBlock(
+                        name="lambda_basis_exp",
+                        values=lam_exp_arr,
+                        shape=lam_exp_arr.shape,
+                        size=int(lam_exp_arr.size),
+                    )
+                )
+
+            if opt_lambda_basis_coeff:
+                lam_coeff_up = self.geminal_data.ao_coefficients_up
+                lam_coeff_dn = self.geminal_data.ao_coefficients_dn
+                lam_coeff_arr = np.concatenate([np.asarray(lam_coeff_up), np.asarray(lam_coeff_dn)])
+                blocks.append(
+                    VariationalParameterBlock(
+                        name="lambda_basis_coeff",
+                        values=lam_coeff_arr,
+                        shape=lam_coeff_arr.shape,
+                        size=int(lam_coeff_arr.size),
+                    )
+                )
 
         return blocks
 

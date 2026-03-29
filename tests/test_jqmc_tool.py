@@ -107,7 +107,7 @@ class TestTrexioConvertTo:
         uncontracted_exps = [None] * uncontracted.num_ao
         for p, orb in enumerate(uncontracted.orbital_indices):
             if uncontracted_exps[orb] is None:
-                uncontracted_exps[orb] = uncontracted.exponents[p]
+                uncontracted_exps[orb] = float(uncontracted.exponents[p])
 
         expected_counts: dict[tuple[int, int, float], int] = {}
         for i in range(uncontracted.num_ao):
@@ -117,7 +117,7 @@ class TestTrexioConvertTo:
         orb_exps = [None] * orb_data.num_ao
         for p, orb in enumerate(orb_data.orbital_indices):
             if orb_exps[orb] is None:
-                orb_exps[orb] = orb_data.exponents[p]
+                orb_exps[orb] = float(orb_data.exponents[p])
 
         actual_counts: dict[tuple[int, int, float], int] = {}
         for i in range(orb_data.num_ao):
@@ -175,7 +175,7 @@ class TestTrexioConvertTo:
         ao_exps = [None] * uncontracted.num_ao
         for p, orb in enumerate(uncontracted.orbital_indices):
             if ao_exps[orb] is None:
-                ao_exps[orb] = uncontracted.exponents[p]
+                ao_exps[orb] = float(uncontracted.exponents[p])
 
         expected_indices = []
         if choice in ("ao", "ao-full"):
@@ -218,14 +218,14 @@ class TestTrexioConvertTo:
                     if n_shells <= 0:
                         continue
 
-                    basis_exps = sorted({ao_exps[i] for i in ao_idxs_l})
+                    basis_exps = sorted({float(ao_exps[i]) for i in ao_idxs_l})
                     if n_shells >= len(basis_exps):
                         sel_basis = basis_exps
                     else:
                         start = max(0, (len(basis_exps) - n_shells) // 2)
                         sel_basis = basis_exps[start : start + n_shells]
 
-                    expected_indices.extend([i for i in ao_idxs_l if ao_exps[i] in sel_basis])
+                    expected_indices.extend([i for i in ao_idxs_l if float(ao_exps[i]) in sel_basis])
 
             expected_indices = sorted(set(expected_indices))
 
@@ -240,7 +240,7 @@ class TestTrexioConvertTo:
             for i in expected_indices:
                 if uncontracted.nucleus_index[i] != nucleus:
                     continue
-                shells.setdefault(uncontracted.angular_momentums[i], set()).add(ao_exps[i])
+                shells.setdefault(uncontracted.angular_momentums[i], set()).add(float(ao_exps[i]))
             parts = []
             for l, label in [(0, "s"), (1, "p"), (2, "d"), (3, "f"), (4, "g"), (5, "h")]:
                 count = len(shells.get(l, set()))
@@ -264,7 +264,7 @@ class TestTrexioConvertTo:
         orb_exps = [None] * orb_data.num_ao
         for p, orb in enumerate(orb_data.orbital_indices):
             if orb_exps[orb] is None:
-                orb_exps[orb] = orb_data.exponents[p]
+                orb_exps[orb] = float(orb_data.exponents[p])
 
         actual_counts: dict[tuple[int, int, float], int] = {}
         for i in range(orb_data.num_ao):

@@ -154,6 +154,82 @@ class Geminal_data:
         for line in self._get_info():
             logger.info(line)
 
+    # --- AO basis property accessors (for basis optimization) ---
+
+    @property
+    def ao_exponents_up(self) -> jax.Array:
+        """AO Gaussian exponents for spin-up orbitals, regardless of AO/MO representation."""
+        if isinstance(self.orb_data_up_spin, (AOs_sphe_data, AOs_cart_data)):
+            return self.orb_data_up_spin.exponents
+        elif isinstance(self.orb_data_up_spin, MOs_data):
+            return self.orb_data_up_spin.aos_data.exponents
+        else:
+            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_up_spin)}")
+
+    @property
+    def ao_exponents_dn(self) -> jax.Array:
+        """AO Gaussian exponents for spin-down orbitals, regardless of AO/MO representation."""
+        if isinstance(self.orb_data_dn_spin, (AOs_sphe_data, AOs_cart_data)):
+            return self.orb_data_dn_spin.exponents
+        elif isinstance(self.orb_data_dn_spin, MOs_data):
+            return self.orb_data_dn_spin.aos_data.exponents
+        else:
+            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_dn_spin)}")
+
+    @property
+    def ao_coefficients_up(self) -> jax.Array:
+        """AO contraction coefficients for spin-up orbitals, regardless of AO/MO representation."""
+        if isinstance(self.orb_data_up_spin, (AOs_sphe_data, AOs_cart_data)):
+            return self.orb_data_up_spin.coefficients
+        elif isinstance(self.orb_data_up_spin, MOs_data):
+            return self.orb_data_up_spin.aos_data.coefficients
+        else:
+            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_up_spin)}")
+
+    @property
+    def ao_coefficients_dn(self) -> jax.Array:
+        """AO contraction coefficients for spin-down orbitals, regardless of AO/MO representation."""
+        if isinstance(self.orb_data_dn_spin, (AOs_sphe_data, AOs_cart_data)):
+            return self.orb_data_dn_spin.coefficients
+        elif isinstance(self.orb_data_dn_spin, MOs_data):
+            return self.orb_data_dn_spin.aos_data.coefficients
+        else:
+            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data_dn_spin)}")
+
+    def _replace_orb_exponents(self, orb_data, new_exp):
+        """Helper to replace exponents in an orb_data (AO or MO)."""
+        if isinstance(orb_data, (AOs_sphe_data, AOs_cart_data)):
+            return orb_data.replace(exponents=new_exp)
+        elif isinstance(orb_data, MOs_data):
+            new_aos = orb_data.aos_data.replace(exponents=new_exp)
+            return orb_data.replace(aos_data=new_aos)
+        else:
+            raise NotImplementedError(f"Unsupported orb_data type: {type(orb_data)}")
+
+    def _replace_orb_coefficients(self, orb_data, new_coeff):
+        """Helper to replace coefficients in an orb_data (AO or MO)."""
+        if isinstance(orb_data, (AOs_sphe_data, AOs_cart_data)):
+            return orb_data.replace(coefficients=new_coeff)
+        elif isinstance(orb_data, MOs_data):
+            new_aos = orb_data.aos_data.replace(coefficients=new_coeff)
+            return orb_data.replace(aos_data=new_aos)
+        else:
+            raise NotImplementedError(f"Unsupported orb_data type: {type(orb_data)}")
+
+    def with_updated_ao_exponents(self, new_exp_up: jax.Array, new_exp_dn: jax.Array) -> "Geminal_data":
+        """Return a new instance with updated AO exponents for both spins."""
+        return self.replace(
+            orb_data_up_spin=self._replace_orb_exponents(self.orb_data_up_spin, new_exp_up),
+            orb_data_dn_spin=self._replace_orb_exponents(self.orb_data_dn_spin, new_exp_dn),
+        )
+
+    def with_updated_ao_coefficients(self, new_coeff_up: jax.Array, new_coeff_dn: jax.Array) -> "Geminal_data":
+        """Return a new instance with updated AO contraction coefficients for both spins."""
+        return self.replace(
+            orb_data_up_spin=self._replace_orb_coefficients(self.orb_data_up_spin, new_coeff_up),
+            orb_data_dn_spin=self._replace_orb_coefficients(self.orb_data_dn_spin, new_coeff_dn),
+        )
+
     def apply_block_update(self, block: "VariationalParameterBlock") -> "Geminal_data":
         """Apply a single variational-parameter block update to this Geminal object.
 
@@ -184,21 +260,31 @@ class Geminal_data:
         construction in ``Wavefunction_data.get_variational_blocks`` and adding
         the corresponding handling in this method.
         """
-        if block.name != "lambda_matrix":
-            return self
+        if block.name == "lambda_matrix":
+            lambda_new = np.array(block.values)
 
-        lambda_new = np.array(block.values)
+            # Symmetrize unconditionally — the method is a no-op for non-symmetric matrices.
+            lambda_new = self.symmetrize_lambda(lambda_new)
 
-        # Symmetrize unconditionally — the method is a no-op for non-symmetric matrices.
-        lambda_new = self.symmetrize_lambda(lambda_new)
+            return Geminal_data(
+                num_electron_up=self.num_electron_up,
+                num_electron_dn=self.num_electron_dn,
+                orb_data_up_spin=self.orb_data_up_spin,
+                orb_data_dn_spin=self.orb_data_dn_spin,
+                lambda_matrix=lambda_new,
+            )
+        elif block.name == "lambda_basis_exp":
+            vals = jnp.asarray(block.values, dtype=jnp.float64)
+            n_up = len(self.ao_exponents_up)
+            new_exp_up, new_exp_dn = vals[:n_up], vals[n_up:]
+            return self.with_updated_ao_exponents(new_exp_up, new_exp_dn)
+        elif block.name == "lambda_basis_coeff":
+            vals = jnp.asarray(block.values, dtype=jnp.float64)
+            n_up = len(self.ao_coefficients_up)
+            new_coeff_up, new_coeff_dn = vals[:n_up], vals[n_up:]
+            return self.with_updated_ao_coefficients(new_coeff_up, new_coeff_dn)
 
-        return Geminal_data(
-            num_electron_up=self.num_electron_up,
-            num_electron_dn=self.num_electron_dn,
-            orb_data_up_spin=self.orb_data_up_spin,
-            orb_data_dn_spin=self.orb_data_dn_spin,
-            lambda_matrix=lambda_new,
-        )
+        return self
 
     def symmetrize_lambda(self, mat):
         """Symmetrize a lambda matrix and return it, or return it unchanged.
@@ -262,6 +348,11 @@ class Geminal_data:
         grads: dict[str, any] = {}
         if hasattr(grad_geminal, "lambda_matrix"):
             grads["lambda_matrix"] = grad_geminal.lambda_matrix
+        # AO basis gradients (up + dn concatenated along the parameter axis)
+        grads["lambda_basis_exp"] = jnp.concatenate([grad_geminal.ao_exponents_up, grad_geminal.ao_exponents_dn], axis=-1)
+        grads["lambda_basis_coeff"] = jnp.concatenate(
+            [grad_geminal.ao_coefficients_up, grad_geminal.ao_coefficients_dn], axis=-1
+        )
         return grads
 
     @property

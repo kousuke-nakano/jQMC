@@ -77,6 +77,18 @@ EPS_stabilizing_jax_AO_cart_deriv = 1.0e-16
 # docstring in determinant.py for why a larger value breaks the analytic path.
 EPS_rcond_SVD = 1.0e-20
 
+# Threshold for zero-division guards.
+# Denominators with absolute value below this are treated as zero.
+EPS_zero_division = 1.0e-30
+
+# Small epsilon for safe distance / sqrt stabilization.
+# Added to squared distances before sqrt to keep gradients finite
+# when particles coincide (e.g. r_eN -> 0).
+EPS_safe_distance = 1.0e-12
+
+# Near-machine-precision floor for safe ratio in diagnostics.
+EPS_machine_precision = 1.0e-300
+
 # Absolute floor for diag(S) in scale-invariant SR.
 # Parameters with diag_S below this threshold are considered converged
 # (the wavefunction derivative has near-zero variance) and are frozen

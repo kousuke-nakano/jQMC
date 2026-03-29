@@ -225,9 +225,9 @@ class AOs_cart_data:
     #: For each primitive, the parent AO index (``len == num_ao_prim``).
     orbital_indices: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
     #: Gaussian exponents for primitives (``len == num_ao_prim``).
-    exponents: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    exponents: jax.Array = struct.field(pytree_node=True, default_factory=lambda: jnp.array([]))
     #: Contraction coefficients per primitive (``len == num_ao_prim``).
-    coefficients: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    coefficients: jax.Array = struct.field(pytree_node=True, default_factory=lambda: jnp.array([]))
     #: Angular momentum quantum numbers ``l`` per AO (``len == num_ao``).
     angular_momentums: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
     #: Cartesian power ``n_x`` for each AO (``len == num_ao``).
@@ -281,10 +281,10 @@ class AOs_cart_data:
             raise ValueError(f"num_ao_prim = {type(self.num_ao_prim)} must be an int.")
         if not isinstance(self.orbital_indices, (tuple, list)):
             raise ValueError(f"orbital_indices = {type(self.orbital_indices)} must be a list or tuple.")
-        if not isinstance(self.exponents, (tuple, list)):
-            raise ValueError(f"exponents = {type(self.exponents)} must be a tuple.")
-        if not isinstance(self.coefficients, (tuple, list)):
-            raise ValueError(f"coefficients = {type(self.coefficients)} must be a list or tuple.")
+        if not isinstance(self.exponents, (tuple, list, jax.Array, np.ndarray)):
+            raise ValueError(f"exponents = {type(self.exponents)} must be a jax.Array, np.ndarray, list, or tuple.")
+        if not isinstance(self.coefficients, (tuple, list, jax.Array, np.ndarray)):
+            raise ValueError(f"coefficients = {type(self.coefficients)} must be a jax.Array, np.ndarray, list, or tuple.")
         if not isinstance(self.angular_momentums, (tuple, list)):
             raise ValueError(f"angular_momentums = {type(self.angular_momentums)} must be a list or tuple.")
         if not isinstance(self.polynominal_order_x, (tuple, list)):
@@ -404,7 +404,7 @@ class AOs_cart_data:
         new_polynominal_order_z = []
 
         for orb, exp in zip(self.orbital_indices, self.exponents, strict=True):
-            key = (orb, exp)
+            key = (orb, float(exp))
             if key in seen:
                 continue
             seen.add(key)
@@ -720,12 +720,12 @@ class AOs_cart_data:
     @property
     def _exponents_jnp(self) -> jax.Array:
         """Return exponents."""
-        return jnp.array(self.exponents, dtype=jnp.float64)
+        return jnp.asarray(self.exponents, dtype=jnp.float64)
 
     @property
     def _coefficients_jnp(self) -> jax.Array:
         """Return coefficients."""
-        return jnp.array(self.coefficients, dtype=jnp.float64)
+        return jnp.asarray(self.coefficients, dtype=jnp.float64)
 
     @property
     def _num_orb(self) -> int:
@@ -874,9 +874,9 @@ class AOs_sphe_data:
     #: For each primitive, the parent AO index (``len == num_ao_prim``).
     orbital_indices: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
     #: Gaussian exponents for primitives (``len == num_ao_prim``).
-    exponents: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    exponents: jax.Array = struct.field(pytree_node=True, default_factory=lambda: jnp.array([]))
     #: Contraction coefficients per primitive (``len == num_ao_prim``).
-    coefficients: list[float] | tuple[float] = struct.field(pytree_node=False, default_factory=tuple)
+    coefficients: jax.Array = struct.field(pytree_node=True, default_factory=lambda: jnp.array([]))
     #: Angular momentum quantum numbers ``l`` per AO (``len == num_ao``).
     angular_momentums: list[int] | tuple[int] = struct.field(pytree_node=False, default_factory=tuple)
     #: Magnetic quantum numbers ``m`` per AO (``len == num_ao``; ``-l <= m <= l``).
@@ -919,10 +919,10 @@ class AOs_sphe_data:
             raise ValueError(f"num_ao_prim = {type(self.num_ao_prim)} must be an int.")
         if not isinstance(self.orbital_indices, (list, tuple)):
             raise ValueError(f"orbital_indices = {type(self.orbital_indices)} must be a list or tuple.")
-        if not isinstance(self.exponents, (list, tuple)):
-            raise ValueError(f"exponents = {type(self.exponents)} must be a list or tuple.")
-        if not isinstance(self.coefficients, (list, tuple)):
-            raise ValueError(f"coefficients = {type(self.coefficients)} must be a list or tuple.")
+        if not isinstance(self.exponents, (list, tuple, jax.Array, np.ndarray)):
+            raise ValueError(f"exponents = {type(self.exponents)} must be a jax.Array, np.ndarray, list, or tuple.")
+        if not isinstance(self.coefficients, (list, tuple, jax.Array, np.ndarray)):
+            raise ValueError(f"coefficients = {type(self.coefficients)} must be a jax.Array, np.ndarray, list, or tuple.")
         if not isinstance(self.angular_momentums, (list, tuple)):
             raise ValueError(f"angular_momentums = {type(self.angular_momentums)} must be a list or tuple.")
         if not isinstance(self.magnetic_quantum_numbers, (list, tuple)):
@@ -1022,7 +1022,7 @@ class AOs_sphe_data:
         new_magnetic_quantum_numbers = []
 
         for orb, exp in zip(self.orbital_indices, self.exponents, strict=True):
-            key = (orb, exp)
+            key = (orb, float(exp))
             if key in seen:
                 continue
             seen.add(key)
@@ -1268,12 +1268,12 @@ class AOs_sphe_data:
     @property
     def _exponents_jnp(self) -> jax.Array:
         """Return exponents."""
-        return jnp.array(self.exponents, dtype=jnp.float64)
+        return jnp.asarray(self.exponents, dtype=jnp.float64)
 
     @property
     def _coefficients_jnp(self) -> jax.Array:
         """Return coefficients."""
-        return jnp.array(self.coefficients, dtype=jnp.float64)
+        return jnp.asarray(self.coefficients, dtype=jnp.float64)
 
     @property
     def _num_orb(self) -> int:
@@ -1367,8 +1367,8 @@ def _aos_sphe_to_cart(aos_data: AOs_sphe_data | AOs_cart_data) -> tuple[AOs_cart
         num_ao=total_cart,
         num_ao_prim=len(new_exponents),
         orbital_indices=new_orbital_indices,
-        exponents=new_exponents,
-        coefficients=new_coefficients,
+        exponents=jnp.array(new_exponents, dtype=jnp.float64),
+        coefficients=jnp.array(new_coefficients, dtype=jnp.float64),
         angular_momentums=new_angular_momentums,
         polynominal_order_x=new_polynominal_order_x,
         polynominal_order_y=new_polynominal_order_y,
@@ -1480,8 +1480,8 @@ def _aos_cart_to_sphe(aos_data: AOs_cart_data | AOs_sphe_data) -> tuple[AOs_sphe
         num_ao=total_sph,
         num_ao_prim=len(new_exponents),
         orbital_indices=new_orbital_indices,
-        exponents=new_exponents,
-        coefficients=new_coefficients,
+        exponents=jnp.array(new_exponents, dtype=jnp.float64),
+        coefficients=jnp.array(new_coefficients, dtype=jnp.float64),
         angular_momentums=new_angular_momentums,
         magnetic_quantum_numbers=new_magnetic_quantum_numbers,
     )

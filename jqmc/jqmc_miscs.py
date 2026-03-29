@@ -88,6 +88,10 @@ cli_parameters = {
         "opt_JNN_param": False,
         "opt_lambda_param": False,
         "opt_with_projected_MOs": False,
+        "opt_J3_basis_exp": False,
+        "opt_J3_basis_coeff": False,
+        "opt_lambda_basis_exp": False,
+        "opt_lambda_basis_coeff": False,
         "num_param_opt": 0,
         "opt_filter_min_SN_ratio": 0.0,
         "optimizer_kwargs": {
@@ -118,6 +122,10 @@ cli_parameters = {
             "If true, optimize lambda parameters (for AOs) or molecular orbital coefficients (for MOs) in a restricted MO space. "
             "num_eigenvectors=num_electron_up in the present implementation."
         ),
+        "opt_J3_basis_exp": "Optimize the AO basis exponents in the three-body Jastrow factor.",
+        "opt_J3_basis_coeff": "Optimize the AO basis contraction coefficients in the three-body Jastrow factor.",
+        "opt_lambda_basis_exp": "Optimize the AO basis exponents in the geminal (lambda) determinant.",
+        "opt_lambda_basis_coeff": "Optimize the AO basis contraction coefficients in the geminal (lambda) determinant.",
         "num_param_opt": "the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.",
         "opt_filter_min_SN_ratio": "Minimum signal-to-noise ratio |f|/|std f| for a parameter to be updated. Parameters with SN <= this threshold are frozen. Applied before num_param_opt. Default is 4.0.",
         "optimizer_kwargs": (

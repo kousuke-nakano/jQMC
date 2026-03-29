@@ -53,7 +53,7 @@ from jax import grad, hessian, jit, vmap
 from jax import typing as jnpt
 from jax.tree_util import tree_flatten, tree_unflatten
 
-from ._setting import atol_consistency
+from ._setting import EPS_safe_distance, atol_consistency
 from .atomic_orbital import (
     AOs_cart_data,
     AOs_sphe_data,
@@ -253,7 +253,7 @@ class NNJastrow(nn.Module):
             mu = mu[None, ...]
             sigma = sigma[None, ...]
 
-            features = (d**2) * jnp.exp(-d - ((d - mu) ** 2) / (sigma**2 + 1e-12))
+            features = (d**2) * jnp.exp(-d - ((d - mu) ** 2) / (sigma**2 + EPS_safe_distance))
             return features
 
     class TwoLayerMLP(nn.Module):
@@ -426,7 +426,7 @@ class NNJastrow(nn.Module):
         if A.shape[0] == 0 or B.shape[0] == 0:
             return jnp.zeros((A.shape[0], B.shape[0]))
         diff = A[:, None, :] - B[None, :, :]
-        return jnp.sqrt(jnp.sum(diff**2, axis=-1) + 1e-12)
+        return jnp.sqrt(jnp.sum(diff**2, axis=-1) + EPS_safe_distance)
 
     def _nuclear_embeddings(self, Z_n: jnp.ndarray) -> jnp.ndarray:
         """Convert atomic numbers into learned embedding vectors.
@@ -944,7 +944,7 @@ def compute_grads_and_laplacian_Jastrow_one_body(
     c = (2.0 * z_eff) ** (1.0 / 4.0)
     A = (2.0 * z_eff) ** (3.0 / 4.0)
 
-    eps = 1.0e-12
+    eps = EPS_safe_distance
 
     j1b_type = jastrow_one_body_data.jastrow_1b_type
 
@@ -1274,6 +1274,46 @@ class Jastrow_three_body_data:
             return compute_MOs
         else:
             raise NotImplementedError
+
+    @property
+    def ao_exponents(self) -> jax.Array:
+        """AO Gaussian exponents, regardless of AO/MO representation."""
+        if isinstance(self.orb_data, (AOs_sphe_data, AOs_cart_data)):
+            return self.orb_data.exponents
+        elif isinstance(self.orb_data, MOs_data):
+            return self.orb_data.aos_data.exponents
+        else:
+            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data)}")
+
+    @property
+    def ao_coefficients(self) -> jax.Array:
+        """AO contraction coefficients, regardless of AO/MO representation."""
+        if isinstance(self.orb_data, (AOs_sphe_data, AOs_cart_data)):
+            return self.orb_data.coefficients
+        elif isinstance(self.orb_data, MOs_data):
+            return self.orb_data.aos_data.coefficients
+        else:
+            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data)}")
+
+    def with_updated_ao_exponents(self, new_exp: jax.Array) -> "Jastrow_three_body_data":
+        """Return a new instance with updated AO exponents."""
+        if isinstance(self.orb_data, (AOs_sphe_data, AOs_cart_data)):
+            return self.replace(orb_data=self.orb_data.replace(exponents=new_exp))
+        elif isinstance(self.orb_data, MOs_data):
+            new_aos = self.orb_data.aos_data.replace(exponents=new_exp)
+            return self.replace(orb_data=self.orb_data.replace(aos_data=new_aos))
+        else:
+            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data)}")
+
+    def with_updated_ao_coefficients(self, new_coeff: jax.Array) -> "Jastrow_three_body_data":
+        """Return a new instance with updated AO contraction coefficients."""
+        if isinstance(self.orb_data, (AOs_sphe_data, AOs_cart_data)):
+            return self.replace(orb_data=self.orb_data.replace(coefficients=new_coeff))
+        elif isinstance(self.orb_data, MOs_data):
+            new_aos = self.orb_data.aos_data.replace(coefficients=new_coeff)
+            return self.replace(orb_data=self.orb_data.replace(aos_data=new_aos))
+        else:
+            raise NotImplementedError(f"Unsupported orb_data type: {type(self.orb_data)}")
 
     @classmethod
     def init_jastrow_three_body_data(
@@ -1834,6 +1874,12 @@ class Jastrow_data:
             j3_new = self.symmetrize_j3(j3_new)
 
             j3 = Jastrow_three_body_data(orb_data=j3.orb_data, j_matrix=j3_new)
+        elif block.name == "j3_basis_exp" and j3 is not None:
+            new_exp = jnp.asarray(block.values, dtype=jnp.float64)
+            j3 = j3.with_updated_ao_exponents(new_exp)
+        elif block.name == "j3_basis_coeff" and j3 is not None:
+            new_coeff = jnp.asarray(block.values, dtype=jnp.float64)
+            j3 = j3.with_updated_ao_coefficients(new_coeff)
         elif block.name == "jastrow_nn_params" and nn3 is not None:
             # Update NN Jastrow parameters: block.values is the flattened parameter vector.
             flat = jnp.asarray(block.values).reshape(-1)
@@ -1914,6 +1960,9 @@ class Jastrow_data:
             grads["j2_param"] = grad_jastrow.jastrow_two_body_data.jastrow_2b_param
         if grad_jastrow.jastrow_three_body_data is not None:
             grads["j3_matrix"] = grad_jastrow.jastrow_three_body_data.j_matrix
+            # AO basis gradients
+            grads["j3_basis_exp"] = grad_jastrow.jastrow_three_body_data.ao_exponents
+            grads["j3_basis_coeff"] = grad_jastrow.jastrow_three_body_data.ao_coefficients
         if grad_jastrow.jastrow_nn_data is not None and grad_jastrow.jastrow_nn_data.params is not None:
             grads["jastrow_nn_params"] = grad_jastrow.jastrow_nn_data.params
         return grads
@@ -3088,7 +3137,7 @@ def compute_grads_and_laplacian_Jastrow_two_body(
             Laplacians for up/down electrons with shapes ``(N_up,)`` and ``(N_dn,)``.
     """
     a = jastrow_two_body_data.jastrow_2b_param
-    eps = 1.0e-12
+    eps = EPS_safe_distance
 
     r_up = jnp.asarray(r_up_carts)
     r_dn = jnp.asarray(r_dn_carts)
