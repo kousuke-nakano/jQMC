@@ -703,7 +703,6 @@ class MCMC_Workflow(Workflow):
                         )
                         logger.error(msg)
                         self.status = "failed"
-                        raise RuntimeError(msg)
 
         # ── Final energy computation ─────────────────────────────
         last_output = suffixed_name(self.output_file, last_run) if last_run > 0 else None
@@ -736,7 +735,7 @@ class MCMC_Workflow(Workflow):
         self.output_files = chk_files + output_logs
         self.output_values["estimated_steps"] = estimated_steps
 
-        self.status = "success"
+        self.status = self.status or "success"
         return self.status, self.output_files, self.output_values
 
     # ── Utility methods ───────────────────────────────────────────

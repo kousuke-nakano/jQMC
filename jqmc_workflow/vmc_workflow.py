@@ -267,8 +267,10 @@ class VMC_Workflow(Workflow):
         pilot_vmc_steps: int = 5,
         pilot_queue_label: Optional[str] = None,
         max_continuation: int = 1,
-        target_snr: float = 4.5,
+        target_snr: Optional[float] = None,
         snr_avg_window: int = 5,
+        energy_slope_sigma_threshold: Optional[float] = None,
+        energy_slope_window_size: int = 5,
     ):
         super().__init__()
         self.server_machine_name = server_machine_name
@@ -309,6 +311,8 @@ class VMC_Workflow(Workflow):
         self.max_continuation = max_continuation
         self.target_snr = target_snr
         self.snr_avg_window = snr_avg_window
+        self.energy_slope_sigma_threshold = energy_slope_sigma_threshold
+        self.energy_slope_window_size = energy_slope_window_size
 
     # ── Input generation ──────────────────────────────────────────
 
@@ -708,42 +712,81 @@ class VMC_Workflow(Workflow):
         last_output = os.path.join(_wd, suffixed_name(self.output_file, last_run))
         self._parse_output(last_output)
 
-        # ── Final convergence check (signal-to-noise) ─────────────
-        # Collect S/N values from production outputs (newest first)
-        all_snr = []
-        for j in range(last_run, 0, -1):
-            out_j = os.path.join(_wd, suffixed_name(self.output_file, j))
-            all_snr = self._parse_all_snr(out_j) + all_snr
-            if len(all_snr) >= self.snr_avg_window:
-                break
+        # ── Final convergence check ───────────────────────────────
+        converged_snr = True  # None means unconditional pass
+        converged_slope = True  # None means unconditional pass
 
-        if all_snr:
-            window = all_snr[-self.snr_avg_window :]
-            avg_snr = sum(window) / len(window)
-            self.output_values["signal_to_noise"] = avg_snr
-            self.output_values["signal_to_noise_last"] = all_snr[-1]
-            logger.info(f"  S/N avg over last {len(window)} step(s): {avg_snr:.3f}  (last step: {all_snr[-1]:.3f})")
-            if avg_snr <= self.target_snr:
-                logger.info(f"  VMC converged: avg signal-to-noise ({avg_snr:.3f}) <= target ({self.target_snr:.3f})")
+        # ── (A) SNR check ──
+        if self.target_snr is not None:
+            all_snr = []
+            for j in range(last_run, 0, -1):
+                out_j = os.path.join(_wd, suffixed_name(self.output_file, j))
+                all_snr = self._parse_all_snr(out_j) + all_snr
+                if len(all_snr) >= self.snr_avg_window:
+                    break
+            if all_snr:
+                window = all_snr[-self.snr_avg_window :]
+                avg_snr = sum(window) / len(window)
+                self.output_values["signal_to_noise"] = avg_snr
+                self.output_values["signal_to_noise_last"] = all_snr[-1]
+                logger.info(f"  S/N avg over last {len(window)} step(s): {avg_snr:.3f}  (last step: {all_snr[-1]:.3f})")
+                converged_snr = avg_snr <= self.target_snr
             else:
-                logger.error(
-                    f"  VMC NOT converged: avg signal-to-noise ({avg_snr:.3f}) "
-                    f"> target ({self.target_snr:.3f}) after "
-                    f"{self.max_continuation} continuation run(s)"
-                )
-                self.status = "failed"
-                raise RuntimeError(
-                    f"VMC optimization did not converge: "
-                    f"avg signal-to-noise ({avg_snr:.3f}) > target ({self.target_snr:.3f}) "
-                    f"after {self.max_continuation} continuation run(s)."
-                )
-        else:
-            msg = "Could not parse signal-to-noise from any production output."
-            logger.error(msg)
-            self.status = "failed"
-            raise RuntimeError(msg)
+                converged_snr = False
+                logger.warning("  Could not parse S/N from production output.")
 
-        self.status = "success"
+        # ── (B) Energy slope check ──
+        if self.energy_slope_sigma_threshold is not None:
+            all_energies: list[tuple[float, float]] = []
+            for j in range(last_run, 0, -1):
+                out_j = os.path.join(_wd, suffixed_name(self.output_file, j))
+                all_energies = self._parse_all_energies(out_j) + all_energies
+                if len(all_energies) >= self.energy_slope_window_size:
+                    break
+
+            window_e = all_energies[-self.energy_slope_window_size :]
+            if len(window_e) >= 2:
+                energies = [e for e, _ in window_e]
+                errors = [s for _, s in window_e]
+                slope, slope_std = self._fit_energy_slope(energies, errors)
+                self.output_values["energy_slope"] = slope
+                self.output_values["energy_slope_std"] = slope_std
+                logger.info(f"  Energy slope over last {len(window_e)} step(s): {slope:.6f} ± {slope_std:.6f} Ha/step")
+                # slope < -slope_std * threshold  ⇒ still decreasing (not converged)
+                # slope >= -slope_std * threshold ⇒ plateau (converged)
+                converged_slope = slope >= -slope_std * self.energy_slope_sigma_threshold
+                if converged_slope:
+                    logger.info(
+                        f"  Energy plateau: slope ({slope:.6f} Ha/step) >= "
+                        f"-{slope_std:.6f} * {self.energy_slope_sigma_threshold}"
+                    )
+                else:
+                    logger.info(
+                        f"  Energy still decreasing: slope ({slope:.6f} Ha/step) < "
+                        f"-{slope_std:.6f} * {self.energy_slope_sigma_threshold}"
+                    )
+            else:
+                converged_slope = False
+                logger.warning(f"  Not enough energy data for slope check ({len(window_e)} < 2 steps).")
+
+        # ── (C) Combined verdict ──
+        if self.target_snr is None and self.energy_slope_sigma_threshold is None:
+            logger.info("  No convergence criteria set; treating as converged.")
+        elif converged_snr and converged_slope:
+            logger.info("  VMC converged (all active checks passed).")
+        else:
+            reasons = []
+            if not converged_snr:
+                reasons.append(f"S/N ({self.output_values.get('signal_to_noise', '?'):.3f}) > target ({self.target_snr})")
+            if not converged_slope:
+                reasons.append(
+                    f"energy slope ({self.output_values.get('energy_slope', '?'):.6f} Ha/step) still significantly negative"
+                )
+            msg = f"VMC NOT converged after {self.max_continuation} continuation run(s): {'; '.join(reasons)}"
+            logger.error(f"  {msg}")
+            self.status = "failed"
+
+        self.status = self.status or "success"
         return self.status, self.output_files, self.output_values
 
     # ── Utility methods ───────────────────────────────────────────
@@ -806,6 +849,72 @@ class VMC_Workflow(Workflow):
         except Exception:
             return []
         return values
+
+    @staticmethod
+    def _parse_all_energies(output_file: str) -> list[tuple[float, float]]:
+        """Extract per-step ``(energy, energy_error)`` from a VMC output file.
+
+        Uses the existing ``_parse_vmc_log_text()`` parser to obtain
+        :class:`VMC_Step_Data` and returns the energy/error pairs.
+
+        Returns
+        -------
+        list[tuple[float, float]]
+            ``[(E_1, σ_1), (E_2, σ_2), ...]`` in file order.
+            Empty list if the file is missing or unparseable.
+        """
+        if not os.path.isfile(output_file):
+            return []
+        try:
+            with open(output_file, "r") as f:
+                text = f.read()
+            from ._output_parser import _parse_vmc_log_text
+
+            steps = _parse_vmc_log_text(text)
+            return [(s.energy, s.energy_error) for s in steps if s.energy is not None and s.energy_error is not None]
+        except Exception:
+            return []
+
+    @staticmethod
+    def _fit_energy_slope(
+        energies: list[float],
+        energy_errors: list[float],
+    ) -> tuple[float, float]:
+        """Weighted linear regression of energy vs optimisation step.
+
+        Model: ``E_k = a + b * k + ε_k``, weight ``w_k = 1 / σ_k²``.
+
+        Parameters
+        ----------
+        energies : list[float]
+            Energy value per optimisation step (length *N* >= 2).
+        energy_errors : list[float]
+            Statistical error per step (length *N*, positive).
+
+        Returns
+        -------
+        slope : float
+            Weighted least-squares slope *b*.
+        slope_std : float
+            Standard error of *b*.
+        """
+        import numpy as np
+
+        E = np.asarray(energies, dtype=float)
+        sigma = np.asarray(energy_errors, dtype=float)
+        w = 1.0 / sigma**2
+        k = np.arange(len(E), dtype=float)
+
+        S = np.sum(w)
+        Sk = np.sum(w * k)
+        Skk = np.sum(w * k**2)
+        SE = np.sum(w * E)
+        SkE = np.sum(w * k * E)
+
+        delta = S * Skk - Sk**2
+        b = (S * SkE - Sk * SE) / delta
+        sigma_b = np.sqrt(S / delta)
+        return float(b), float(sigma_b)
 
     @staticmethod
     def _parse_last_opt_energy(output_file):

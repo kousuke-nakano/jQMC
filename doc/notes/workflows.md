@@ -104,16 +104,18 @@ independently runs its own calibration, error-bar pilot, and production
 in parallel.  There is no inter-alat interaction until the final
 extrapolation step.
 
-#### VMC signal-to-noise convergence check
+#### VMC convergence checks
 
 After all production runs complete, the VMC workflow checks whether
-the optimization has converged by inspecting the signal-to-noise
-ratio (S/N = max(|f| / |std f|)) of the generalized forces.
+the optimization has converged.  Two independent criteria are
+available; when both are active, both must pass for convergence.
 
-Rather than relying on the S/N of a single (last) optimization step,
-which can be noisy, the workflow averages the S/N over the last
-`snr_avg_window` optimization steps (default 5).  If there are
-fewer steps than the window size, all available values are used.
+##### Signal-to-noise (S/N) check
+
+Enabled when `target_snr` is set (not `None`).  The workflow
+averages the signal-to-noise ratio (S/N = max(|f| / |std f|)) over
+the last `snr_avg_window` optimization steps (default 5).  If there
+are fewer steps than the window size, all available values are used.
 
 The convergence criterion is:
 
@@ -121,12 +123,42 @@ $$
 \overline{\text{S/N}}_{\text{last } W} \le \text{target\_snr}
 $$
 
-where $W$ is `snr_avg_window` and `target_snr` defaults to 4.5.
-When the averaged S/N exceeds the target, the workflow raises an
-error indicating non-convergence.
+where $W$ is `snr_avg_window`.
 
-In fixed-step mode (`num_mcmc_steps` is set), the S/N check is
-not performed.
+##### Energy-slope check
+
+Enabled when `energy_slope_sigma_threshold` is set (not `None`).
+A weighted linear regression is fitted to the last
+`energy_slope_window_size` optimisation steps (default 5):
+
+$$
+E_k = a + b \cdot k + \varepsilon_k, \quad w_k = 1/\sigma_k^2
+$$
+
+The optimisation is considered converged (plateau) when the slope
+$b$ is not significantly negative:
+
+$$
+b \ge -\sigma_b \times \text{energy\_slope\_sigma\_threshold}
+$$
+
+If instead $b < -\sigma_b \times \text{threshold}$, the energy is
+still decreasing and optimisation has not yet plateaued.
+
+##### Combined verdict
+
+| `target_snr` | `energy_slope_sigma_threshold` | Behaviour |
+|:---:|:---:|:---|
+| `None` | `None` | No convergence check; always succeeds |
+| set | `None` | S/N check only |
+| `None` | set | Energy-slope check only |
+| set | set | Both must pass |
+
+All numerical values (averaged S/N, slope, slope std) are recorded
+in `output_values` for downstream inspection.
+
+In fixed-step mode (`num_mcmc_steps` is set), the convergence checks
+are not performed.
 
 #### Step estimation formula
 
