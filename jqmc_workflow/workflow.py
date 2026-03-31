@@ -611,7 +611,7 @@ class Container:
         else:
             error_msg = self.output_values.get("error", f"workflow returned status={self.status}")
             update_status(proj, "failed", error=error_msg)
-            raise RuntimeError(f"[{self.label}] {error_msg}")
+            logger.warning(f"[{self.label}] {error_msg}")
 
         return self.status, self.output_files, self.output_values
 

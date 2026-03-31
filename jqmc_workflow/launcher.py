@@ -413,8 +413,13 @@ class Launcher:
                     logger.error(f"[{label}] FAILED: {exc}")
                     failed.add(label)
                 else:
-                    logger.info(f"[{label}] Completed.")
-                    completed.add(label)
+                    cw = self.workflows_by_label[label]
+                    if getattr(cw, "status", None) == "failed":
+                        logger.error(f"[{label}] FAILED (status=failed)")
+                        failed.add(label)
+                    else:
+                        logger.info(f"[{label}] Completed.")
+                        completed.add(label)
 
         # Summary
         logger.info("")

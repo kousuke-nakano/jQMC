@@ -984,7 +984,6 @@ class LRDMC_Workflow(Workflow):
                         )
                         logger.error(msg)
                         self.status = "failed"
-                        raise RuntimeError(msg)
 
         # ── Final energy computation ─────────────────────────────
         last_output = suffixed_name(self.output_file, last_run) if last_run > 0 else None
@@ -1023,7 +1022,7 @@ class LRDMC_Workflow(Workflow):
         else:
             self.output_values["time_projection_tau"] = self.time_projection_tau
 
-        self.status = "success"
+        self.status = self.status or "success"
         return self.status, self.output_files, self.output_values
 
     # ── Utility methods ───────────────────────────────────────────

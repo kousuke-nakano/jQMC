@@ -2448,6 +2448,8 @@ VMC_Workflow(
     opt_J3_param=True,
     opt_with_projected_MOs=True,
     target_error=0.001,
+    target_snr=4.5,
+    energy_slope_sigma_threshold=2.0,
 )
 ```
 
@@ -2661,6 +2663,8 @@ VMC_Workflow(
     opt_J3_param=True,
     opt_with_projected_MOs=False,
     target_error=1.0e-3,
+    target_snr=4.5,
+    energy_slope_sigma_threshold=2.0,
     optimizer_kwargs={
         "method": "sr",
         "delta": 0.350,
@@ -2868,6 +2872,8 @@ VMC_Workflow(
     opt_lambda_param=False,
     opt_with_projected_MOs=False,
     target_error=3.0e-3,
+    target_snr=4.5,
+    energy_slope_sigma_threshold=2.0,
     optimizer_kwargs={
         "method": "sr",
         "delta": 0.350,

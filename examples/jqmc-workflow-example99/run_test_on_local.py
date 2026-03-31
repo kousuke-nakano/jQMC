@@ -178,7 +178,8 @@ def build_pipeline() -> list[Container]:
                 max_time=600,
                 poll_interval=120,
                 max_continuation=2,
-                target_snr=10.0,
+                target_snr=None,
+                energy_slope_sigma_threshold=1.0,
             ),
         )
 
