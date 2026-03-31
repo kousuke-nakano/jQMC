@@ -77,6 +77,8 @@ param_grid = [
     ("H_ecp_ccpvdz_cart.h5", True, True, True, True, "dltmove"),
     # AE cases (non_local_move=None)
     ("H2_ae_ccpvdz_cart.h5", True, True, True, False, None),
+    # AE open-shell (n_up != n_dn): Li atom (2 up, 1 dn)
+    ("Li_ae_ccpvdz_cart.h5", True, True, True, False, None),
 ]
 
 

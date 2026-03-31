@@ -1851,9 +1851,10 @@ class GFMC_t:
                 if not req_list:
                     continue
                 count = len(req_list)
-                shape = latest_r_up_carts_before_branching.shape[1:]
-                buf_up = np.empty((count, *shape), dtype=latest_r_up_carts_before_branching.dtype)
-                buf_dn = np.empty((count, *shape), dtype=latest_r_dn_carts_before_branching.dtype)
+                shape_up = latest_r_up_carts_before_branching.shape[1:]
+                shape_dn = latest_r_dn_carts_before_branching.shape[1:]
+                buf_up = np.empty((count, *shape_up), dtype=latest_r_up_carts_before_branching.dtype)
+                buf_dn = np.empty((count, *shape_dn), dtype=latest_r_dn_carts_before_branching.dtype)
                 recv_buffers[src_rank] = (buf_up, buf_dn)
                 recv_reqs_up[src_rank] = mpi_comm.Irecv([buf_up, MPI.DOUBLE], source=src_rank, tag=200)
                 recv_reqs_dn[src_rank] = mpi_comm.Irecv([buf_dn, MPI.DOUBLE], source=src_rank, tag=201)
@@ -5598,9 +5599,10 @@ class GFMC_n:
                 if not req_list:
                     continue
                 count = len(req_list)
-                shape = latest_r_up_carts_before_branching.shape[1:]
-                buf_up = np.empty((count, *shape), dtype=latest_r_up_carts_before_branching.dtype)
-                buf_dn = np.empty((count, *shape), dtype=latest_r_dn_carts_before_branching.dtype)
+                shape_up = latest_r_up_carts_before_branching.shape[1:]
+                shape_dn = latest_r_dn_carts_before_branching.shape[1:]
+                buf_up = np.empty((count, *shape_up), dtype=latest_r_up_carts_before_branching.dtype)
+                buf_dn = np.empty((count, *shape_dn), dtype=latest_r_dn_carts_before_branching.dtype)
                 recv_buffers[src_rank] = (buf_up, buf_dn)
                 recv_reqs_up[src_rank] = mpi_comm.Irecv([buf_up, MPI.DOUBLE], source=src_rank, tag=200)
                 recv_reqs_dn[src_rank] = mpi_comm.Irecv([buf_dn, MPI.DOUBLE], source=src_rank, tag=201)
