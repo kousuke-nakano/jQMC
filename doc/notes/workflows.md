@@ -453,11 +453,11 @@ my-slurm:                            # Slurm example
   jobnum_index: 3
   jobacct: sacct -j --format=State,ExitCode,MaxRSS,Elapsed,Timelimit -P --noheader
 
-my-fugaku:                           # Fujitsu TCS example
-  ssh_host: fugaku
+my-fujitsu:                          # Fujitsu TCS example
+  ssh_host: fujitsu
   machine_type: remote
   queuing: true
-  workspace_root: /vol0004/user/jqmc_work
+  workspace_root: /home/user/jqmc_work
   jobsubmit: /usr/local/bin/pjsub
   jobcheck: /usr/local/bin/pjstat
   jobdel: /usr/local/bin/pjdel

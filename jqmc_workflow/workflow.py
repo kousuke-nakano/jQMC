@@ -413,6 +413,13 @@ class Workflow:
         if fetch_from_objects is None:
             fetch_from_objects = ["*.h5", output_file]
 
+        # Include scheduler stdout/stderr in fetch list when queuing
+        job_tmp = self._make_job(input_file, output_file, queue_label=queue_label)
+        if job_tmp.server_machine.queuing:
+            for jf in (job_tmp.job_stdout, job_tmp.job_stderr):
+                if jf and jf not in fetch_from_objects:
+                    fetch_from_objects.append(jf)
+
         # ── Restart detection via job history ─────────────────────
         recorded = get_job(work_dir, input_file)
 
