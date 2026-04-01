@@ -152,6 +152,9 @@ class JobSubmission:
         self.job_submit_date = None
         self.job_check_last_time = None
         self.job_fetch_date = None
+        # ── Scheduler stdout/stderr file paths (TASK 9) ──────────
+        self.job_stdout: str = ""
+        self.job_stderr: str = ""
 
     # ── Script generation ─────────────────────────────────────────
 
@@ -183,10 +186,18 @@ class JobSubmission:
                 lines[idx] = lines[idx].replace(keyword.replace("\\", ""), str(value))
             return lines
 
+        # Default scheduler output filenames (derived from jobname)
+        if not self.job_stdout:
+            self.job_stdout = f"job_{self.jobname}.o"
+        if not self.job_stderr:
+            self.job_stderr = f"job_{self.jobname}.e"
+
         # Standard replacements (jqmc-specific)
         lines = replace_kw(lines, "_INPUT_", self.input_file)
         lines = replace_kw(lines, "_OUTPUT_", self.output_file)
         lines = replace_kw(lines, "_JOBNAME_", self.jobname)
+        lines = replace_kw(lines, "_JOB_STDOUT_", self.job_stdout)
+        lines = replace_kw(lines, "_JOB_STDERR_", self.job_stderr)
 
         # Queue-specific variables from queue_data.toml
         _SKIP_KEYS = {"submit_template", "max_job_submit"}
@@ -360,6 +371,36 @@ class JobSubmission:
         self.server_machine.delete_job(jobid=self.job_number)
         self.job_running = False
         self._close_ssh()
+
+    # ── Job accounting (TASK 8) ────────────────────────────────
+
+    def job_acct(self) -> tuple[str, str, str] | None:
+        """Run the scheduler accounting command and return raw output.
+
+        Reads the ``jobacct`` field from ``machine_data.yaml`` and
+        executes ``{jobacct} {job_id}``.  No parsing or flag-injection
+        is performed — the user specifies the complete command with
+        flags in the config.
+
+        Returns
+        -------
+        tuple[str, str, str] | None
+            ``(command, stdout, stderr)`` on success.
+            ``None`` if ``jobacct`` is not configured, the machine does
+            not use a queuing system, or the command fails.
+        """
+        if not self.server_machine.queuing:
+            return None
+        jobacct_cmd = self.server_machine._get("jobacct", default=None)
+        if not jobacct_cmd or not self.job_number:
+            return None
+        try:
+            command = f"{jobacct_cmd} {self.job_number}"
+            stdout, stderr = self.server_machine.run_command(command)
+            return command, stdout, stderr
+        except Exception as e:
+            logger.warning(f"job_acct failed for job {self.job_number}: {e}")
+            return None
 
     # ── Helper ────────────────────────────────────────────────────
 

@@ -53,6 +53,7 @@ from ._state import (
     get_workflow_summary,
     read_state,
     set_error,
+    set_job_accounting,
     update_job,
     update_status,
 )
@@ -344,6 +345,34 @@ class Workflow:
     # They are therefore only callable from concrete subclasses that
     # set those attributes.
 
+    @staticmethod
+    def _record_job_acct(job: JobSubmission, work_dir: str) -> None:
+        """Run scheduler accounting and save raw output, if configured."""
+        result = job.job_acct()
+        if result is None:
+            return
+        command, stdout, stderr = result
+        set_job_accounting(
+            work_dir,
+            command=command,
+            stdout=stdout,
+            stderr=stderr,
+            job_id=job.job_number or "",
+        )
+
+    @staticmethod
+    def _record_job_files(job: JobSubmission, work_dir: str) -> None:
+        """Record job-related file paths in workflow_state.toml."""
+        from ._state import _write, read_state
+
+        state = read_state(work_dir)
+        state["job_files"] = {
+            "output": job.output_file,
+            "job_stdout": job.job_stdout,
+            "job_stderr": job.job_stderr,
+        }
+        _write(work_dir, state)
+
     async def _submit_and_wait(
         self,
         input_file,
@@ -408,6 +437,7 @@ class Workflow:
                 await asyncio.sleep(self.poll_interval)
             logger.info("  Job completed.")
             update_job(work_dir, input_file, status="completed", completed_at=_now_iso())
+            self._record_job_acct(job, work_dir)
             job.fetch_job(from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir)
             update_job(work_dir, input_file, status="fetched", fetched_at=_now_iso())
             return
@@ -432,12 +462,19 @@ class Workflow:
             server_machine=self.server_machine_name,
         )
 
+        # Record job file paths for MCP discoverability
+        self._record_job_files(job, work_dir)
+
         while job.jobcheck():
             logger.info(f"  Job {job_number} still running, waiting {self.poll_interval}s...")
             await asyncio.sleep(self.poll_interval)
 
         logger.info("  Job completed.")
         update_job(work_dir, input_file, status="completed", completed_at=_now_iso())
+
+        # Collect scheduler accounting before fetch (raw output only)
+        self._record_job_acct(job, work_dir)
+
         job.fetch_job(from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir)
         update_job(work_dir, input_file, status="fetched", fetched_at=_now_iso())
 

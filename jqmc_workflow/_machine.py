@@ -198,11 +198,13 @@ class Machine:
 
     # ── Properties (read from machine_data.yaml) ──────────────────
 
-    def _get(self, key, default=None):
+    _MISSING = object()  # sentinel for _get() default detection
+
+    def _get(self, key, default=_MISSING):
         try:
             return self.data[key]
         except KeyError:
-            if default is not None:
+            if default is not self._MISSING:
                 return default
             raise KeyError(f"'{key}' not found for machine '{self.name}'")
 
@@ -478,3 +480,53 @@ class Machines_handler:
                 self._get_sftp_dir(from_path, to_path, exclude_patterns)
             else:
                 self._get_sftp_file(from_path, to_path, exclude_patterns)
+
+
+# ── Machine catalog (MCP adapter helpers) ─────────────────────────
+
+
+def list_machines() -> list[dict]:
+    """Return a summary of all machines defined in ``machine_data.yaml``.
+
+    Each entry contains the machine name and key configuration fields.
+    Returns an empty list if the config file does not exist.
+    """
+    machine_data_path = os.path.join(get_config_dir(), "machine_data.yaml")
+    if not os.path.isfile(machine_data_path):
+        return []
+    with open(machine_data_path) as f:
+        data = yaml.safe_load(f)
+    if not data:
+        return []
+    return [
+        {
+            "name": name,
+            "machine_type": cfg.get("machine_type", "local"),
+            "queuing": cfg.get("queuing", False),
+            "ssh_host": cfg.get("ssh_host", ""),
+            "workspace_root": cfg.get("workspace_root", ""),
+        }
+        for name, cfg in data.items()
+    ]
+
+
+def probe_environment(machine_name: str) -> dict:
+    """Test connectivity to the named machine.
+
+    For remote machines an SSH connection is attempted; for local machines
+    reachability is always ``True``.  No software detection (jqmc, JAX, etc.)
+    is performed — that responsibility belongs to the MCP agent.
+    """
+    machine = Machine(machine_name)
+    result: dict = {"machine_name": machine_name, "machine_type": machine.machine_type}
+    try:
+        if machine.machine_type == "remote":
+            machine.ssh_open()
+        result["reachable"] = True
+    except Exception as e:
+        result["reachable"] = False
+        result["error"] = str(e)
+    finally:
+        if machine.machine_type == "remote" and machine.ssh_status:
+            machine.ssh_close()
+    return result

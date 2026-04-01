@@ -41,13 +41,13 @@ run_pipeline.py
      │  creates asyncio.Task per ready node
      │
      ├──► Container("vmc")
-     │         └─► VMC_Workflow.async_launch()
+     │         └─► VMC_Workflow.configure() → .run()
      │
      ├──► Container("mcmc-prod")   ← runs in parallel
-     │         └─► MCMC_Workflow.async_launch()
+     │         └─► MCMC_Workflow.configure() → .run()
      │
      └──► Container("lrdmc-ext")   ← runs in parallel
-               └─► LRDMC_Ext_Workflow.async_launch()
+               └─► LRDMC_Ext_Workflow.configure() → .run()
                        ├─► LRDMC_Workflow (alat=0.50)  ┐
                        ├─► LRDMC_Workflow (alat=0.40)  ├ parallel
                        └─► LRDMC_Workflow (alat=0.25)  ┘
@@ -55,9 +55,9 @@ run_pipeline.py
 
 ### Key components
 
-| Class | Role |
+| Class / Module | Role |
 |---|---|
-| `Launcher` | Executes a DAG of `Container` nodes in topological order, launching independent nodes in parallel. |
+| `Launcher` | Executes a DAG of `Container` nodes in topological order, launching independent nodes in parallel. Provides `get_session_state()`, `get_current_job()`, `get_job_history()` for session introspection. |
 | `Container` | Wraps any `Workflow` subclass in a dedicated project directory with state tracking (`workflow_state.toml`). |
 | `FileFrom` / `ValueFrom` | Declare inter-workflow dependencies (files or computed values). |
 | `WF_Workflow` | Converts a TREXIO file to `hamiltonian_data.h5`. |
@@ -65,6 +65,8 @@ run_pipeline.py
 | `MCMC_Workflow` | Production energy sampling (`job_type=mcmc`). |
 | `LRDMC_Workflow` | Lattice-regularized diffusion Monte Carlo for a single $a$ value. |
 | `LRDMC_Ext_Workflow` | Runs multiple `LRDMC_Workflow` instances at different lattice spacings and performs $a^2 \to 0$ extrapolation. |
+| `ScientificPhase` | Enum defining the scientific phases of a workflow session (INIT → SCF → WF_BUILD → VMC → MCMC → LRDMC → COMPLETED). See [Phase management](#phase-management). |
+| `WorkflowStatus` / `JobStatus` | Enums for workflow-level and per-job status values. See [Status enums](#status-enums). |
 
 
 ### Target error-bar estimation
@@ -239,6 +241,153 @@ This means a pipeline can be interrupted at any point (Ctrl-C, node
 failure, wall-time limit) and simply re-run; it will pick up exactly
 where it left off.
 
+When a job leaves the scheduler queue, the engine automatically collects
+**job accounting** data (if `jobacct` is configured in `machine_data.yaml`)
+before fetching output files.  The raw accounting output is saved to
+`job_accounting_{job_id}.txt` alongside `workflow_state.toml`.  See
+[Job accounting](#job-accounting).
+
+
+### Phase management
+
+A workflow session progresses through a sequence of **scientific phases**
+defined by the `ScientificPhase` enum (module `_phase`):
+
+```text
+INIT → SCF → WF_BUILD → VMC_PILOT → VMC → MCMC_PILOT → MCMC
+                                                         ↓
+                        COMPLETED ← LRDMC_FIT ← LRDMC ← LRDMC_PILOT
+```
+
+Not every pipeline uses every phase (e.g. a VMC-only pipeline skips
+LRDMC phases).  The allowed transitions are defined in
+`PHASE_TRANSITIONS` — for example, from `VMC` you may advance to
+`MCMC_PILOT`, `MCMC`, `LRDMC_PILOT`, `LRDMC`, or `COMPLETED`.
+
+Each phase has a list of **allowed actions** (`PHASE_ALLOWED_ACTIONS`)
+that further depends on the current `WorkflowStatus`:
+
+- When `status == RUNNING`, configuration actions (`configure_*`) are
+  filtered out.
+- When `status == FAILED`, only recovery actions (`recover_*`) and
+  `rollback_phase` are available.
+
+A set of **always-allowed actions** (`advance_phase`, `rollback_phase`,
+`close_session`, `register_artifact`, `mark_unhealthy`) is appended
+regardless of phase/status.
+
+The `require_action()` function enforces these rules at the boundary
+between an MCP tool call and a workflow method — if the action is not
+permitted, a `ValueError` is raised immediately.
+
+
+### Status enums
+
+Workflow status and job status are represented by `str`-based enums
+(`WorkflowStatus`, `JobStatus`) so they remain human-readable in
+`workflow_state.toml` and can be compared directly with strings.
+
+**WorkflowStatus** values:
+
+| Value | Meaning |
+|---|---|
+| `pending` | Not yet started |
+| `copying` | Input files being transferred |
+| `submitted` | Job submitted to scheduler |
+| `running` | Execution in progress |
+| `completed` | Finished successfully |
+| `failed` | Terminated with an error |
+| `cancelled` | Manually cancelled |
+
+**JobStatus** values (per-job, stored in `[[jobs]]` of
+`workflow_state.toml`):
+
+| Value | Meaning |
+|---|---|
+| `submitted` | Job submitted |
+| `completed` | Job finished (output not yet fetched) |
+| `fetched` | Output files retrieved |
+| `failed` | Job failed |
+
+
+### Artifact registry
+
+The engine records file lineage in the `[[artifacts]]` array of
+`workflow_state.toml`.  Each entry tracks:
+
+| Field | Description |
+|---|---|
+| `filename` | Basename of the artifact file |
+| `produced_by_job` | Input file that produced this artifact |
+| `produced_at` | ISO 8601 timestamp |
+| `artifact_type` | `"file"` (default) |
+| `upstream` | Optional list of `{label, file}` dicts tracing the dependency chain |
+
+Use `register_artifact()` to add an entry, `get_artifact_lineage()` to
+look up a single file, and `get_artifact_registry()` to list all
+artifacts.
+
+
+### Error recording
+
+When a workflow fails, the `[error]` section of `workflow_state.toml`
+is populated via `set_error()`:
+
+```toml
+[error]
+message = "Job killed after 86400s"
+exception_type = "RuntimeError"
+traceback = "..."
+```
+
+The engine records raw data only — failure classification and recovery
+strategy are responsibilities of external tooling (e.g. an MCP agent).
+
+
+### Job accounting
+
+For queuing systems (PBS, Slurm, Fujitsu TCS, etc.), the engine can
+collect scheduler accounting data after a job leaves the queue.  This
+is configured via the optional `jobacct` field in `machine_data.yaml`
+(see [machine_data.yaml parameters](#parameters)).
+
+The engine executes `{jobacct} {job_id}` and writes the raw output to
+a separate file `job_accounting_{job_id}.txt`.  The `[job_accounting]`
+section of `workflow_state.toml` stores only the command and a
+reference to that file:
+
+```toml
+[job_accounting]
+command = "sacct -j --format=State,ExitCode,MaxRSS,Elapsed,Timelimit -P --noheader 12345"
+file = "job_accounting_12345.txt"
+```
+
+No parsing or interpretation is performed — that responsibility belongs
+to external tooling.  If `jobacct` is not configured, this section is
+simply absent.
+
+
+### Session state queries
+
+The `Launcher` provides three methods for programmatic introspection
+(useful for MCP adapters and monitoring tools):
+
+| Method | Returns |
+|---|---|
+| `get_session_state()` | Dict with per-workflow summaries, dependency graph, and progress counters (completed / failed / running / pending / total). |
+| `get_current_job()` | The first workflow with status `running` or `submitted`, or `None`. |
+| `get_job_history()` | Flat, chronologically-sorted list of all jobs across all workflows. |
+
+
+### Machine catalog
+
+Two helper functions are available for machine discovery:
+
+| Function | Description |
+|---|---|
+| `list_machines()` | Returns a list of dicts summarising all machines defined in `machine_data.yaml` (name, machine_type, queuing, ssh_host, workspace_root). |
+| `probe_environment(machine_name)` | Tests connectivity to the named machine (SSH for remote, always reachable for local). Returns `{"reachable": True/False, ...}`. |
+
 
 ## Configuration
 
@@ -291,6 +440,29 @@ my-cluster:                          # nickname (freely chosen)
   jobcheck: /opt/pbs/bin/qstat
   jobdel: /opt/pbs/bin/qdel
   jobnum_index: 0
+  jobacct: /opt/pbs/bin/qstat -xf
+
+my-slurm:                            # Slurm example
+  ssh_host: slurm-cluster
+  machine_type: remote
+  queuing: true
+  workspace_root: /home/user/jqmc_work
+  jobsubmit: sbatch
+  jobcheck: squeue --noheader
+  jobdel: scancel
+  jobnum_index: 3
+  jobacct: sacct -j --format=State,ExitCode,MaxRSS,Elapsed,Timelimit -P --noheader
+
+my-fugaku:                           # Fujitsu TCS example
+  ssh_host: fugaku
+  machine_type: remote
+  queuing: true
+  workspace_root: /vol0004/user/jqmc_work
+  jobsubmit: /usr/local/bin/pjsub
+  jobcheck: /usr/local/bin/pjstat
+  jobdel: /usr/local/bin/pjdel
+  jobnum_index: 5
+  jobacct: pjstat -H -s --choose jid,st,ec,elp,pc --data
 ```
 
 #### Parameters
@@ -305,6 +477,7 @@ my-cluster:                          # nickname (freely chosen)
 | `jobcheck` | String (command) | When `queuing: true` | Command to check job status (e.g. `qstat`, `squeue --noheader`, `pjstat`). |
 | `jobdel` | String (command) | When `queuing: true` | Command to cancel a job (e.g. `qdel`, `scancel`, `pjdel`). |
 | `jobnum_index` | Integer | When `queuing: true` | 0-based column index of the job ID in the output of `jobsubmit`. For PBS (`42.server`), use `0`. For Slurm (`Submitted batch job 42`), use `3`. |
+| `jobacct` | String (command) | No | Scheduler accounting command **with flags**. The engine executes `{jobacct} {job_id}` after a job leaves the queue and saves the raw output to `job_accounting_{job_id}.txt`. No parsing is performed. Examples: `sacct -j --format=State,ExitCode,MaxRSS,Elapsed,Timelimit -P --noheader` (Slurm), `qstat -xf` (PBS), `pjstat -H -s --choose jid,st,ec,elp,pc --data` (Fujitsu TCS). If omitted, no accounting data is collected. |
 | `ip` | String | No | IP address or hostname of the remote machine. Usually the SSH alias in `~/.ssh/config` is used instead. |
 
 #### SSH connection
@@ -377,11 +550,20 @@ You can name the file anything you like (e.g. `submit_gpu.sh`).
 
 #### Predefined variables
 
-| Variable | Description |
-|---|---|
-| `_INPUT_` | Path to the input file |
-| `_OUTPUT_` | Path to the output file |
-| `_JOBNAME_` | Job name |
+| Variable | Description | Default |
+|---|---|---|
+| `_INPUT_` | Path to the jqmc input TOML file | (set by workflow) |
+| `_OUTPUT_` | Path to the jqmc stdout+stderr capture file | `"out.o"` |
+| `_JOBNAME_` | Job name | `"jqmc-wf"` |
+| `_JOB_STDOUT_` | Path for the **scheduler** stdout file (e.g. PBS `-o`, Slurm `--output`) | `"job_{jobname}.o"` |
+| `_JOB_STDERR_` | Path for the **scheduler** stderr file (e.g. PBS `-e`, Slurm `--error`) | `"job_{jobname}.e"` |
+
+`_JOB_STDOUT_` and `_JOB_STDERR_` allow the engine to track where the
+scheduler writes its output, which is useful for failure diagnosis.
+If these placeholders are not present in the template the scheduler's
+default naming convention is used (backward-compatible).
+The file paths are recorded in the `[job_files]` section of
+`workflow_state.toml`.
 
 #### Custom variables
 
@@ -397,12 +579,34 @@ surrounding underscores. For example, `num_cores = 48` becomes
 #PBS -q _QUEUE_
 #PBS -l nodes=_NODES_:ppn=_MPI_PER_NODE_
 #PBS -l walltime=_MAX_TIME_
+#PBS -o _JOB_STDOUT_
+#PBS -e _JOB_STDERR_
 
 export OMP_NUM_THREADS=_OMP_NUM_THREADS_
 INPUT=_INPUT_
 OUTPUT=_OUTPUT_
 
+cd ${PBS_O_WORKDIR}
 mpirun -np _NUM_CORES_ jqmc ${INPUT} > ${OUTPUT} 2>&1
+```
+
+#### Example (`submit_mpi.sh` for Slurm)
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=_JOBNAME_
+#SBATCH --partition=_QUEUE_
+#SBATCH --nodes=_NODES_
+#SBATCH --ntasks=_NUM_CORES_
+#SBATCH --time=_MAX_TIME_
+#SBATCH --output=_JOB_STDOUT_
+#SBATCH --error=_JOB_STDERR_
+
+export OMP_NUM_THREADS=_OMP_NUM_THREADS_
+INPUT=_INPUT_
+OUTPUT=_OUTPUT_
+
+srun jqmc ${INPUT} > ${OUTPUT} 2>&1
 ```
 
 #### Example (`submit_serial.sh`)
@@ -413,11 +617,14 @@ mpirun -np _NUM_CORES_ jqmc ${INPUT} > ${OUTPUT} 2>&1
 #PBS -q _QUEUE_
 #PBS -l nodes=_NODES_
 #PBS -l walltime=_MAX_TIME_
+#PBS -o _JOB_STDOUT_
+#PBS -e _JOB_STDERR_
 
 export OMP_NUM_THREADS=_OMP_NUM_THREADS_
 INPUT=_INPUT_
 OUTPUT=_OUTPUT_
 
+cd ${PBS_O_WORKDIR}
 jqmc ${INPUT} > ${OUTPUT} 2>&1
 ```
 
