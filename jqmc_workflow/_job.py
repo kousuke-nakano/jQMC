@@ -153,8 +153,8 @@ class JobSubmission:
         self.job_check_last_time = None
         self.job_fetch_date = None
         # ── Scheduler stdout/stderr file paths (TASK 9) ──────────
-        self.job_stdout: str = ""
-        self.job_stderr: str = ""
+        self.job_stdout: str = f"job_{jobname}.o"
+        self.job_stderr: str = f"job_{jobname}.e"
 
     # ── Script generation ─────────────────────────────────────────
 
@@ -185,12 +185,6 @@ class JobSubmission:
                 idx = lines.index(b)
                 lines[idx] = lines[idx].replace(keyword.replace("\\", ""), str(value))
             return lines
-
-        # Default scheduler output filenames (derived from jobname)
-        if not self.job_stdout:
-            self.job_stdout = f"job_{self.jobname}.o"
-        if not self.job_stderr:
-            self.job_stderr = f"job_{self.jobname}.e"
 
         # Standard replacements (jqmc-specific)
         lines = replace_kw(lines, "_INPUT_", self.input_file)
