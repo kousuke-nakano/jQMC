@@ -3179,7 +3179,7 @@ class MCMC:
                 block_theta = theta[start:end]
                 if not np.any(block_theta):
                     logger.info(
-                        "  SR update – block=%s size=%d  theta=ALL ZERO (no update)",
+                        "  [SR update] – block=%s size=%d  theta=ALL ZERO (no update)",
                         block.name,
                         block.size,
                     )
@@ -3188,7 +3188,7 @@ class MCMC:
                 block_max = float(np.max(np.abs(block_theta)))
                 block_delta_max = float(sr_delta * block_max)
                 logger.info(
-                    "SR update – block=%s size=%d  ||theta||=%.3e  max|theta|=%.3e  max|delta*theta|=%.3e",
+                    "  [SR update] – block=%s size=%d  ||theta||=%.3e  max|theta|=%.3e  max|delta*theta|=%.3e",
                     block.name,
                     block.size,
                     block_norm,
