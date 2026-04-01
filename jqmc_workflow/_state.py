@@ -53,23 +53,39 @@ Per-job statuses (stored in ``[[jobs]]``):
 
 import os
 from datetime import datetime
+from enum import Enum
 from logging import getLogger
 
 import toml
 
 logger = getLogger("jqmc-workflow").getChild(__name__)
 
-VALID_STATUSES = {
-    "pending",
-    "copying",
-    "submitted",
-    "running",
-    "completed",
-    "failed",
-    "cancelled",
-}
 
-VALID_JOB_STATUSES = {"submitted", "completed", "fetched", "failed"}
+class WorkflowStatus(str, Enum):
+    """Workflow-level status values."""
+
+    PENDING = "pending"
+    COPYING = "copying"
+    SUBMITTED = "submitted"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class JobStatus(str, Enum):
+    """Per-job status values stored in ``[[jobs]]``."""
+
+    SUBMITTED = "submitted"
+    COMPLETED = "completed"
+    FETCHED = "fetched"
+    FAILED = "failed"
+
+
+# Legacy sets — kept for backward compatibility during transition.
+# New code should use WorkflowStatus / JobStatus enums.
+VALID_STATUSES = {s.value for s in WorkflowStatus}
+VALID_JOB_STATUSES = {s.value for s in JobStatus}
 
 STATE_FILENAME = "workflow_state.toml"
 
@@ -166,8 +182,26 @@ def _check_normal_termination(directory: str, jobs: list) -> list[str]:
     return abnormal
 
 
-def update_status(directory: str, status: str, **extra_fields):
+def update_status(
+    directory: str,
+    status: str | WorkflowStatus,
+    phase: str | None = None,
+    **extra_fields,
+):
     """Update the status field (and optional extra fields) in workflow_state.toml.
+
+    Parameters
+    ----------
+    directory : str
+        Working directory containing workflow_state.toml.
+    status : str or WorkflowStatus
+        New workflow status.
+    phase : str or None
+        Scientific phase to record.  If given, written to
+        ``[workflow] phase``.
+    **extra_fields
+        Additional fields.  Keys starting with ``result_`` go into
+        ``[result]``; everything else goes into ``[workflow]``.
 
     When *status* is ``"completed"``, every fetched output file listed in
     the ``[[jobs]]`` table is checked for the ``Program ends`` footer.  If
@@ -176,27 +210,31 @@ def update_status(directory: str, status: str, **extra_fields):
     recorded, because the absence almost certainly indicates abnormal
     termination (e.g. wall-time expiration on a supercomputer).
     """
-    if status not in VALID_STATUSES:
-        raise ValueError(f"Invalid status '{status}'. Must be one of {VALID_STATUSES}")
-
+    # Ensure we work with raw string for VALID_STATUSES check
+    status_str = status.value if isinstance(status, WorkflowStatus) else status
+    if status_str not in VALID_STATUSES:
+        raise ValueError(f"Invalid status '{status_str}'. Must be one of {VALID_STATUSES}")
     state = read_state(directory)
     if not state:
         logger.warning(f"No workflow_state.toml in {directory}; creating minimal one.")
         state = {"workflow": {}, "jobs": [], "result": {}}
 
     # ── Abnormal-termination guard ────────────────────────────────
-    if status == "completed":
+    if status_str == "completed":
         abnormal = _check_normal_termination(directory, state.get("jobs", []))
         if abnormal:
             files_str = ", ".join(abnormal)
             error_msg = f"Abnormal termination detected: 'Program ends' marker missing in output file(s): {files_str}"
             logger.error(error_msg)
-            status = "failed"
+            status_str = "failed"
             extra_fields.setdefault("error", error_msg)
 
     state.setdefault("workflow", {})
-    state["workflow"]["status"] = status
+    state["workflow"]["status"] = status_str
     state["workflow"]["updated_at"] = _now_iso()
+
+    if phase is not None:
+        state["workflow"]["phase"] = phase.value if hasattr(phase, "value") else phase
 
     # Merge extra fields into appropriate sections
     for key, value in extra_fields.items():
@@ -365,10 +403,16 @@ def get_workflow_summary(directory: str) -> dict:
     The returned dict contains:
 
     - ``workflow`` – label, type, status, timestamps
-    - ``result``  – any stored results (energy, etc.)
+    - ``phase``    – current scientific phase (str or ``"init"``)
+    - ``allowed_actions`` – list of permitted MCP actions
+    - ``result``   – any stored results (energy, etc.)
     - ``estimation`` – step-estimation data (if present)
-    - ``jobs``    – list of job records with their statuses
+    - ``jobs``     – list of job records with their statuses
     - ``num_jobs`` – total number of job records
+    - ``error``    – ``[error]`` section or ``None``
+    - ``job_accounting`` – ``[job_accounting]`` section or ``None``
+    - ``job_files`` – ``[job_files]`` section or ``None``
+    - ``artifacts`` – ``[[artifacts]]`` list
 
     Returns an empty dict if no ``workflow_state.toml`` is found.
     """
@@ -377,13 +421,128 @@ def get_workflow_summary(directory: str) -> dict:
         return {}
 
     jobs = state.get("jobs", [])
+    phase_str = state.get("workflow", {}).get("phase", "init")
+    status_str = state.get("workflow", {}).get("status", "pending")
+
+    # Compute allowed_actions (lazy import to avoid circular dependency)
+    try:
+        from ._phase import ScientificPhase, allowed_actions
+
+        aa = allowed_actions(ScientificPhase(phase_str), WorkflowStatus(status_str))
+    except (ValueError, ImportError):
+        aa = []
+
     return {
         "workflow": state.get("workflow", {}),
+        "phase": phase_str,
+        "allowed_actions": aa,
         "result": state.get("result", {}),
         "estimation": state.get("estimation", {}),
         "jobs": jobs,
         "num_jobs": len(jobs),
+        "error": state.get("error", None),
+        "job_accounting": state.get("job_accounting", None),
+        "job_files": state.get("job_files", None),
+        "artifacts": state.get("artifacts", []),
     }
+
+
+# ── Error / accounting / artifact helpers ─────────────────────────
+
+
+def set_error(directory: str, message: str, **context) -> None:
+    """Write error information to the ``[error]`` section.
+
+    Parameters
+    ----------
+    message : str
+        Human-readable error description (exception message, etc.).
+    **context
+        Arbitrary extra fields (``traceback``, ``exception_type``, …).
+    """
+    state = read_state(directory)
+    state["error"] = {"message": message, **context}
+    state.setdefault("workflow", {})["updated_at"] = _now_iso()
+    _write(directory, state)
+
+
+def set_job_accounting(
+    directory: str,
+    command: str,
+    stdout: str,
+    stderr: str = "",
+    job_id: str = "",
+) -> None:
+    """Record scheduler accounting raw output.
+
+    The raw stdout is written to a separate file
+    ``job_accounting_{job_id}.txt`` next to ``workflow_state.toml``.
+    The ``[job_accounting]`` section stores only the command and a
+    reference to that file.  No parsing or interpretation is performed.
+    """
+    # Write raw output to a separate file
+    if job_id:
+        acct_filename = f"job_accounting_{job_id}.txt"
+    else:
+        acct_filename = "job_accounting.txt"
+    acct_path = os.path.join(directory, acct_filename)
+    os.makedirs(directory, exist_ok=True)
+    with open(acct_path, "w") as f:
+        f.write(f"# command: {command}\n")
+        f.write(f"# job_id: {job_id}\n\n")
+        f.write("--- stdout ---\n")
+        f.write(stdout)
+        if stderr:
+            f.write("\n--- stderr ---\n")
+            f.write(stderr)
+
+    # Record reference in toml
+    state = read_state(directory)
+    state["job_accounting"] = {
+        "command": command,
+        "file": acct_filename,
+    }
+    state.setdefault("workflow", {})["updated_at"] = _now_iso()
+    _write(directory, state)
+
+
+def register_artifact(
+    directory: str,
+    filename: str,
+    produced_by_job: str = "",
+    artifact_type: str = "file",
+    upstream: list[dict] | None = None,
+) -> None:
+    """Register (or update) a file artifact in ``[[artifacts]]``."""
+    state = read_state(directory)
+    artifacts = state.setdefault("artifacts", [])
+    # Replace existing entry for the same filename
+    artifacts[:] = [a for a in artifacts if a.get("filename") != filename]
+    entry: dict = {
+        "filename": filename,
+        "produced_by_job": produced_by_job,
+        "produced_at": _now_iso(),
+        "artifact_type": artifact_type,
+    }
+    if upstream:
+        entry["upstream"] = upstream
+    artifacts.append(entry)
+    state["artifacts"] = artifacts
+    state.setdefault("workflow", {})["updated_at"] = _now_iso()
+    _write(directory, state)
+
+
+def get_artifact_lineage(directory: str, filename: str) -> dict | None:
+    """Return the artifact record for *filename*, or ``None``."""
+    for a in read_state(directory).get("artifacts", []):
+        if a.get("filename") == filename:
+            return a
+    return None
+
+
+def get_artifact_registry(directory: str) -> list[dict]:
+    """Return all artifact records from ``[[artifacts]]``."""
+    return read_state(directory).get("artifacts", [])
 
 
 def _write(directory: str, state: dict):

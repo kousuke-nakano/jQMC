@@ -53,6 +53,7 @@ from ._error_estimator import (
 from ._input_generator import generate_input_toml, resolve_with_defaults
 from ._job import get_num_mpi, load_queue_data
 from ._state import get_estimation, get_job, set_estimation
+from ._state import WorkflowStatus
 from .workflow import Workflow
 
 logger = getLogger("jqmc-workflow").getChild(__name__)
@@ -387,9 +388,28 @@ class VMC_Workflow(Workflow):
     # ── Submit / poll / fetch ─────────────────────────────────────
     # _submit_and_wait() and _make_job() are inherited from Workflow.
 
-    # ── Launch ────────────────────────────────────────────────────
+    # ── configure / run ──────────────────────────────────────────
 
-    async def async_launch(self):
+    def configure(self) -> dict:
+        """Validate parameters and return configuration summary."""
+        mode = "fixed" if self.num_mcmc_steps is not None else "auto"
+        return {
+            "input_file": self.input_file,
+            "num_opt_steps": self.num_opt_steps,
+            "num_mcmc_steps": self.num_mcmc_steps,
+            "target_error": self.target_error,
+            "mode": mode,
+            "hamiltonian_file": self.hamiltonian_file,
+            "server_machine": self.server_machine_name,
+            "number_of_walkers": self.number_of_walkers,
+            "max_time": self.max_time,
+            "target_snr": self.target_snr,
+            "pilot_mcmc_steps": self.pilot_mcmc_steps,
+            "pilot_vmc_steps": self.pilot_vmc_steps,
+            "max_continuation": self.max_continuation,
+        }
+
+    async def run(self) -> tuple:
         """Run the VMC optimization workflow.
 
         **Fixed-step mode** (``num_mcmc_steps`` is set):
@@ -499,7 +519,7 @@ class VMC_Workflow(Workflow):
         last_output = os.path.join(_wd, suffixed_name(self.output_file, last_run))
         self._parse_output(last_output)
 
-        self.status = "success"
+        self.status = WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
 
     async def _launch_auto(self, _wd):
@@ -784,9 +804,9 @@ class VMC_Workflow(Workflow):
                 )
             msg = f"VMC NOT converged after {self.max_continuation} continuation run(s): {'; '.join(reasons)}"
             logger.error(f"  {msg}")
-            self.status = "failed"
+            self.status = WorkflowStatus.FAILED
 
-        self.status = self.status or "success"
+        self.status = self.status or WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
 
     # ── Utility methods ───────────────────────────────────────────

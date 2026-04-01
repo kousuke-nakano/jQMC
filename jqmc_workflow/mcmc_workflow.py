@@ -56,6 +56,7 @@ from ._input_generator import generate_input_toml, resolve_with_defaults
 from ._job import get_num_mpi, load_queue_data
 from ._output_parser import parse_force_table
 from ._state import get_estimation, get_job, set_estimation
+from ._state import WorkflowStatus
 from .workflow import Workflow
 
 logger = getLogger("jqmc-workflow").getChild(__name__)
@@ -299,9 +300,24 @@ class MCMC_Workflow(Workflow):
     # ── Submit / poll / fetch ─────────────────────────────────────
     # _submit_and_wait() and _make_job() are inherited from Workflow.
 
-    # ── Launch ────────────────────────────────────────────────────
+    # ── configure / run ──────────────────────────────────────────
 
-    async def async_launch(self):
+    def configure(self) -> dict:
+        """Validate parameters and return configuration summary."""
+        mode = "fixed" if self.num_mcmc_steps is not None else "auto"
+        return {
+            "input_file": self.input_file,
+            "target_error": self.target_error,
+            "mode": mode,
+            "hamiltonian_file": self.hamiltonian_file,
+            "server_machine": self.server_machine_name,
+            "number_of_walkers": self.number_of_walkers,
+            "max_time": self.max_time,
+            "pilot_steps": self.pilot_steps,
+            "max_continuation": self.max_continuation,
+        }
+
+    async def run(self) -> tuple:
         """Run the MCMC workflow.
 
         **Fixed-step mode** (``num_mcmc_steps`` is set):
@@ -429,7 +445,7 @@ class MCMC_Workflow(Workflow):
         self.output_files = chk_files + output_logs
         self.output_values["num_mcmc_steps"] = estimated_steps
 
-        self.status = "success"
+        self.status = WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
 
     async def _launch_auto(self, _wd):
@@ -578,7 +594,7 @@ class MCMC_Workflow(Workflow):
                     if forces is not None:
                         self.output_values["forces"] = forces
                 self.output_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
-                self.status = "success"
+                self.status = WorkflowStatus.COMPLETED
                 return self.status, self.output_files, self.output_values
 
         # ── Production runs (phase 1..N) ──────────────────────────
@@ -702,7 +718,7 @@ class MCMC_Workflow(Workflow):
                             f"max_continuation ({self.max_continuation}) reached"
                         )
                         logger.error(msg)
-                        self.status = "failed"
+                        self.status = WorkflowStatus.FAILED
 
         # ── Final energy computation ─────────────────────────────
         last_output = suffixed_name(self.output_file, last_run) if last_run > 0 else None
@@ -735,7 +751,7 @@ class MCMC_Workflow(Workflow):
         self.output_files = chk_files + output_logs
         self.output_values["estimated_steps"] = estimated_steps
 
-        self.status = self.status or "success"
+        self.status = self.status or WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
 
     # ── Utility methods ───────────────────────────────────────────

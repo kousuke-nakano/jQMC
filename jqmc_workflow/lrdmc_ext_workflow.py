@@ -55,6 +55,7 @@ from ._setting import (
     GFMC_MIN_WARMUP_STEPS,
 )
 from .lrdmc_workflow import LRDMC_Workflow
+from ._state import WorkflowStatus
 from .workflow import Container, Workflow
 
 logger = getLogger("jqmc-workflow").getChild(__name__)
@@ -328,7 +329,20 @@ class LRDMC_Ext_Workflow(Workflow):
         )
         return enc
 
-    async def async_launch(self):
+    def configure(self) -> dict:
+        """Validate parameters and return configuration summary."""
+        return {
+            "alat_list": self.alat_list,
+            "polynomial_order": self.polynomial_order,
+            "hamiltonian_file": self.hamiltonian_file,
+            "server_machine": self.server_machine_name,
+            "number_of_walkers": self.number_of_walkers,
+            "max_time": self.max_time,
+            "target_error": self.target_error,
+            "max_continuation": self.max_continuation,
+        }
+
+    async def run(self) -> tuple:
         """Run LRDMC at each alat, then extrapolate to a²→0.
 
         Every ``alat`` value is launched in parallel.  Each child
@@ -377,7 +391,7 @@ class LRDMC_Ext_Workflow(Workflow):
                 logger.error(f"[{enc.label}] failed: {error}")
                 errors.append(str(error))
                 continue
-            if status != "success":
+            if status not in ("success", "completed", WorkflowStatus.COMPLETED):
                 logger.error(f"[{enc.label}] returned status={status}")
                 errors.append(f"{enc.label}: status={status}")
                 continue
@@ -398,7 +412,7 @@ class LRDMC_Ext_Workflow(Workflow):
             )
 
         if errors:
-            self.status = "failed"
+            self.status = WorkflowStatus.FAILED
             self.output_values["errors"] = errors
             return self.status, [], {"error": "; ".join(errors)}
 
@@ -414,13 +428,13 @@ class LRDMC_Ext_Workflow(Workflow):
         else:
             msg = f"Only {len(restart_chks)} checkpoint(s) found; cannot extrapolate."
             logger.error(msg)
-            self.status = "failed"
+            self.status = WorkflowStatus.FAILED
             self.output_values["error"] = msg
             return self.status, [], {"error": msg}
 
         self.output_values["per_alat_results"] = per_alat_results
         self.output_files = restart_chks
-        self.status = "success"
+        self.status = WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
 
     def _extrapolate_energy(self, restart_chks: List[str]):

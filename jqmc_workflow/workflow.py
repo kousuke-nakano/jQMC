@@ -43,12 +43,16 @@ from logging import getLogger
 from typing import Any, List, Optional
 
 from ._job import JobSubmission
+from ._phase import ScientificPhase, require_action
 from ._state import (
+    WorkflowStatus,
     _now_iso,
     add_job,
     create_state,
     get_job,
+    get_workflow_summary,
     read_state,
+    set_error,
     update_job,
     update_status,
 )
@@ -153,23 +157,25 @@ class Workflow:
     """Abstract base class for all jQMC computation workflows.
 
     Every concrete workflow (VMC, MCMC, LRDMC, WF, …) inherits from
-    this class and overrides :meth:`async_launch`.
+    this class and overrides :meth:`configure` and :meth:`run`.
 
     Parameters
     ----------
     project_dir : str, optional
         Absolute path to the working directory for this workflow.
         When *None* (the default), ``project_dir`` is set to the
-        process CWD at the time :meth:`async_launch` is first called.
+        process CWD at the time :meth:`run` is first called.
         :class:`Container` sets this explicitly before launching the
         inner workflow.
 
     Attributes
     ----------
-    status : str
-        Current lifecycle status (``"init"``, ``"success"``, ``"failed"``).
+    status : WorkflowStatus
+        Current lifecycle status.
+    phase : ScientificPhase
+        Current scientific phase.
     output_files : list[str]
-        Filenames produced by the workflow (populated after launch).
+        Filenames produced by the workflow (populated after run).
     output_values : dict
         Scalar results (energy, error, …) produced by the workflow.
     project_dir : str or None
@@ -179,8 +185,8 @@ class Workflow:
     -----
     **Subclass contract:**
 
-    * Override :meth:`async_launch` and return
-      ``(status, output_files, output_values)``.
+    * Override :meth:`configure` and :meth:`run`, return
+      ``(status, output_files, output_values)`` from ``run()``.
     * Call ``super().__init__()`` in your constructor.
 
     Examples
@@ -188,14 +194,18 @@ class Workflow:
     Minimal custom workflow::
 
         class MyWorkflow(Workflow):
-            async def async_launch(self):
+            def configure(self):
+                return {"param": 42}
+
+            async def run(self):
                 # ... do work ...
-                self.status = "success"
+                self.status = WorkflowStatus.COMPLETED
                 return self.status, ["result.h5"], {"energy": -1.23}
     """
 
     def __init__(self, project_dir: Optional[str] = None):
-        self.status = "init"
+        self.status: WorkflowStatus = WorkflowStatus.PENDING
+        self.phase: ScientificPhase = ScientificPhase.INIT
         self.output_files: List[str] = []
         self.output_values: dict = {}
         self.project_dir: Optional[str] = os.path.abspath(project_dir) if project_dir else None
@@ -206,37 +216,58 @@ class Workflow:
         if self.project_dir is None:
             self.project_dir = os.path.abspath(os.getcwd())
 
+    # ── configure / run (new primary interface) ─────────────────────
+
+    def configure(self) -> dict:
+        """Validate parameters and generate inputs (no execution).
+
+        Override in subclass.  Returns a summary dict.
+        """
+        return {}
+
+    async def run(self) -> tuple:
+        """Execute the workflow (submit → poll → fetch → convergence loop).
+
+        Override in subclass.  Must return
+        ``(status, output_files, output_values)``.
+
+        Intermediate progress is written to ``workflow_state.toml``
+        via :func:`update_status`.
+        """
+        self._ensure_project_dir()
+        return self.status, self.output_files, self.output_values
+
     # ── Full lifecycle (backward-compatible) ──────────────────────
 
     async def async_launch(self):
-        """Override in subclass. Must return (status, output_files, output_values)."""
+        """Run configure() + run().  Backward-compatible entry point."""
         self._ensure_project_dir()
-        return self.status, self.output_files, self.output_values
+        self.configure()
+        return await self.run()
 
     def launch(self):
         return asyncio.run(self.async_launch())
 
-    # ── Phased execution (new API for MCP / external orchestration) ──
+    # ── Phased execution (MCP interactive mode) ───────────────────
     #
-    # The default implementation delegates to ``async_launch()`` via a
-    # background ``asyncio.Task``.  Subclasses *may* override for
-    # finer-grained, state-machine-style control; the base-class
-    # versions work out-of-the-box for every workflow.
+    # Used by MCP tools: submit(action) → poll() → collect().
+    # submit() starts run() as a background asyncio.Task.
     #
     # Usage pattern::
     #
-    #     info = await wf.async_submit()
+    #     info = await wf.async_submit(action="run_vmc")
     #     while (status := await wf.async_poll()) == "running":
     #         await asyncio.sleep(60)
     #     result = await wf.async_collect()
 
-    async def async_submit(self) -> dict:
+    async def async_submit(self, action: str = "run") -> dict:
         """Start the workflow in the background and return tracking info.
 
-        The full workflow (pilot ➜ production ➜ post-processing) is
-        executed as an ``asyncio.Task`` wrapping :meth:`async_launch`.
-        Use :meth:`async_poll` to monitor progress and
-        :meth:`async_collect` to retrieve results once completed.
+        Parameters
+        ----------
+        action : str
+            MCP tool name (e.g. ``"run_vmc"``).  Checked against
+            :func:`allowed_actions` for the current phase and status.
 
         Returns
         -------
@@ -245,33 +276,36 @@ class Workflow:
 
         Raises
         ------
+        ValueError
+            If *action* is not allowed in the current phase/status.
         RuntimeError
             If the workflow has already been submitted.
         """
         if self._bg_task is not None and not self._bg_task.done():
             raise RuntimeError("Workflow already submitted and still running.")
+        require_action(action, self.phase, self.status)
         self._ensure_project_dir()
-        self._bg_task = asyncio.create_task(self.async_launch())
+        self.configure()
+        self._bg_task = asyncio.create_task(self.run())
         return {"status": "submitted", "project_dir": self.project_dir}
 
-    async def async_poll(self) -> str:
+    async def async_poll(self) -> dict:
         """Check whether the submitted workflow has completed.
 
         Returns
         -------
-        str
-            ``"running"``  — workflow still executing.
-            ``"completed"`` — finished successfully.
-            ``"failed"``   — finished with an error.
-            ``"not_submitted"`` — :meth:`async_submit` not yet called.
+        dict
+            Status dict.  Includes ``get_workflow_summary()`` when
+            the task is still running.
         """
         if self._bg_task is None:
-            return "not_submitted"
+            return {"status": "not_submitted"}
         if not self._bg_task.done():
-            return "running"
+            summary = get_workflow_summary(self.project_dir) if self.project_dir else {}
+            return {"status": "running", **summary}
         if self._bg_task.exception() is not None:
-            return "failed"
-        return "completed"
+            return {"status": "failed", "error": str(self._bg_task.exception())}
+        return {"status": "completed"}
 
     async def async_collect(self) -> dict:
         """Collect results from the completed workflow.
@@ -585,32 +619,34 @@ class Container:
         state = read_state(proj)
         if state.get("workflow", {}).get("status") == "completed":
             logger.info(f"[{self.label}] Already completed, no re-run.")
-            self.status = "success"
+            self.status = WorkflowStatus.COMPLETED
             self._collect_outputs()
             return self.status, self.output_files, self.output_values
 
         # Run the workflow — pass project_dir explicitly instead of
         # relying on os.chdir().
-        update_status(proj, "running")
+        update_status(proj, WorkflowStatus.RUNNING)
         self.workflow.project_dir = proj
 
         try:
             self.status, self.output_files, self.output_values = await self.workflow.async_launch()
         except Exception as e:
-            update_status(proj, "failed", error=str(e))
+            set_error(proj, str(e))
+            update_status(proj, WorkflowStatus.FAILED)
             raise
 
         # Write completion — but only if the workflow actually succeeded.
         # Workflows that return a non-success status (e.g. "failed") must
         # NOT be marked "completed" in the state file.
-        if self.status in ("success", "completed"):
+        if self.status in ("success", "completed", WorkflowStatus.COMPLETED):
             result_fields = {}
             for k, v in self.output_values.items():
                 result_fields[f"result_{k}"] = v
-            update_status(proj, "completed", **result_fields)
+            update_status(proj, WorkflowStatus.COMPLETED, **result_fields)
         else:
             error_msg = self.output_values.get("error", f"workflow returned status={self.status}")
-            update_status(proj, "failed", error=error_msg)
+            set_error(proj, error_msg)
+            update_status(proj, WorkflowStatus.FAILED)
             logger.warning(f"[{self.label}] {error_msg}")
 
         return self.status, self.output_files, self.output_values
@@ -632,13 +668,18 @@ class Container:
 
     # ── Phased execution (delegates to inner Workflow) ────────────
 
-    async def async_submit(self) -> dict:
+    async def async_submit(self, action: str = "run") -> dict:
         """Start the container's workflow in the background.
 
         Prepares the project directory, copies input files, then
         starts the inner workflow via ``asyncio.Task``.  Use
         :meth:`async_poll` and :meth:`async_collect` to monitor
         and retrieve results.
+
+        Parameters
+        ----------
+        action : str
+            MCP tool name for action validation.
 
         Returns
         -------
@@ -654,22 +695,22 @@ class Container:
             "project_dir": self.project_dir,
         }
 
-    async def async_poll(self) -> str:
+    async def async_poll(self) -> dict:
         """Check whether the container's workflow has completed.
 
         Returns
         -------
-        str
-            ``"running"``, ``"completed"``, ``"failed"``, or
-            ``"not_submitted"``.
+        dict
+            Status dict with ``get_workflow_summary()`` when running.
         """
         if self._bg_task is None:
-            return "not_submitted"
+            return {"status": "not_submitted"}
         if not self._bg_task.done():
-            return "running"
+            summary = get_workflow_summary(self.project_dir) if self.project_dir else {}
+            return {"status": "running", **summary}
         if self._bg_task.exception() is not None:
-            return "failed"
-        return "completed"
+            return {"status": "failed", "error": str(self._bg_task.exception())}
+        return {"status": "completed"}
 
     async def async_collect(self) -> dict:
         """Collect results from the completed container workflow.

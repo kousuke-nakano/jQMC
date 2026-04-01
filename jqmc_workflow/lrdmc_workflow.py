@@ -77,6 +77,7 @@ from ._setting import (
     GFMC_MIN_WARMUP_STEPS,
 )
 from ._state import get_estimation, get_job, set_estimation
+from ._state import WorkflowStatus
 from .workflow import Workflow
 
 logger = getLogger("jqmc-workflow").getChild(__name__)
@@ -434,9 +435,23 @@ class LRDMC_Workflow(Workflow):
     # ── Submit / poll / fetch ─────────────────────────────────────
     # _submit_and_wait() and _make_job() are inherited from Workflow.
 
-    # ── Launch ────────────────────────────────────────────────────
+    # ── configure / run ──────────────────────────────────────────
 
-    async def async_launch(self):
+    def configure(self) -> dict:
+        """Validate parameters and return configuration summary."""
+        return {
+            "input_file": self.input_file,
+            "alat": self.alat,
+            "target_error": self.target_error,
+            "hamiltonian_file": self.hamiltonian_file,
+            "server_machine": self.server_machine_name,
+            "number_of_walkers": self.number_of_walkers,
+            "max_time": self.max_time,
+            "pilot_steps": self.pilot_steps,
+            "max_continuation": self.max_continuation,
+        }
+
+    async def run(self) -> tuple:
         """Run the LRDMC workflow.
 
         **Fixed-step mode** (``num_gfmc_projections`` is set):
@@ -591,7 +606,7 @@ class LRDMC_Workflow(Workflow):
         else:
             self.output_values["time_projection_tau"] = self.time_projection_tau
 
-        self.status = "success"
+        self.status = WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
 
     async def _run_calibration(self, _wd):
@@ -860,7 +875,7 @@ class LRDMC_Workflow(Workflow):
                     if forces is not None:
                         self.output_values["forces"] = forces
                 self.output_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
-                self.status = "success"
+                self.status = WorkflowStatus.COMPLETED
                 return self.status, self.output_files, self.output_values
 
         # ── Production runs (phase 1..N) ──────────────────────────
@@ -983,7 +998,7 @@ class LRDMC_Workflow(Workflow):
                             f"max_continuation ({self.max_continuation}) reached"
                         )
                         logger.error(msg)
-                        self.status = "failed"
+                        self.status = WorkflowStatus.FAILED
 
         # ── Final energy computation ─────────────────────────────
         last_output = suffixed_name(self.output_file, last_run) if last_run > 0 else None
@@ -1022,7 +1037,7 @@ class LRDMC_Workflow(Workflow):
         else:
             self.output_values["time_projection_tau"] = self.time_projection_tau
 
-        self.status = self.status or "success"
+        self.status = self.status or WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
 
     # ── Utility methods ───────────────────────────────────────────
