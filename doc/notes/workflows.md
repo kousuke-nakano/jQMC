@@ -243,8 +243,8 @@ where it left off.
 
 When a job leaves the scheduler queue, the engine automatically collects
 **job accounting** data (if `jobacct` is configured in `machine_data.yaml`)
-before fetching output files.  The raw accounting output is saved to
-`job_accounting_{job_id}.txt` alongside `workflow_state.toml`.  See
+before fetching output files.  The accounting command and output file
+path are stored in the corresponding `[[jobs]]` record.  See
 [Job accounting](#job-accounting).
 
 
@@ -309,6 +309,25 @@ Workflow status and job status are represented by `str`-based enums
 | `fetched` | Output files retrieved |
 | `failed` | Job failed |
 
+Each `[[jobs]]` record contains:
+
+| Field | Description |
+|---|---|
+| `input_file` | Basename of the generated TOML input file |
+| `output_file` | Basename of the stdout capture file |
+| `job_id` | Scheduler job ID (or `"local"` for local runs) |
+| `server_machine` | Machine name |
+| `status` | One of the `JobStatus` values above |
+| `submitted_at` | ISO 8601 timestamp |
+| `step` | Step index (0 = pilot, 1, 2, … = production) |
+| `run_id` | Short hex identifier for the job |
+| `completed_at` | ISO 8601 timestamp (set on completion) |
+| `fetched_at` | ISO 8601 timestamp (set on fetch) |
+| `job_stdout` | Scheduler stdout path (queuing systems only) |
+| `job_stderr` | Scheduler stderr path (queuing systems only) |
+| `job_acct_command` | Accounting command executed (queuing systems only) |
+| `job_acct_file` | Path to raw accounting output file (queuing systems only) |
+
 
 ### Artifact registry
 
@@ -352,19 +371,27 @@ is configured via the optional `jobacct` field in `machine_data.yaml`
 (see [machine_data.yaml parameters](#parameters)).
 
 The engine executes `{jobacct} {job_id}` and writes the raw output to
-a separate file `job_accounting_{job_id}.txt`.  The `[job_accounting]`
-section of `workflow_state.toml` stores only the command and a
-reference to that file:
+a separate file `job_accounting_{job_id}.txt`.  The accounting command
+and file path are stored per-job in the `[[jobs]]` record:
 
 ```toml
-[job_accounting]
-command = "sacct -j --format=State,ExitCode,MaxRSS,Elapsed,Timelimit -P --noheader 12345"
-file = "job_accounting_12345.txt"
+[[jobs]]
+input_file = "vmc-H2-0.74_1_aebf13bd.toml"
+output_file = "vmc-H2-0.74_1_aebf13bd.out"
+job_id = "12345"
+server_machine = "my-cluster"
+status = "fetched"
+step = 1
+run_id = "aebf13bd"
+job_stdout = "job_vmc-H2-0.74.o"
+job_stderr = "job_vmc-H2-0.74.e"
+job_acct_command = "sacct -j 12345 --format=State,ExitCode,MaxRSS,Elapsed -P"
+job_acct_file = "job_accounting_12345.txt"
 ```
 
 No parsing or interpretation is performed — that responsibility belongs
-to external tooling.  If `jobacct` is not configured, this section is
-simply absent.
+to external tooling.  If `jobacct` is not configured, the
+`job_acct_command` and `job_acct_file` fields are simply absent.
 
 
 ### Session state queries
@@ -562,8 +589,8 @@ You can name the file anything you like (e.g. `submit_gpu.sh`).
 scheduler writes its output, which is useful for failure diagnosis.
 If these placeholders are not present in the template the scheduler's
 default naming convention is used (backward-compatible).
-The file paths are recorded in the `[job_files]` section of
-`workflow_state.toml`.
+The file paths are recorded per-job in the `[[jobs]]` records of
+`workflow_state.toml` (as `job_stdout` and `job_stderr`).
 
 #### Custom variables
 
