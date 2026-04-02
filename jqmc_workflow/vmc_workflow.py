@@ -48,12 +48,10 @@ from ._error_estimator import (
     _format_duration,
     estimate_required_steps,
     parse_net_time,
-    suffixed_name,
 )
 from ._input_generator import generate_input_toml, resolve_with_defaults
 from ._job import get_num_mpi, load_queue_data
-from ._state import get_estimation, get_job, set_estimation
-from ._state import WorkflowStatus
+from ._state import WorkflowStatus, get_estimation, get_job_by_step, set_estimation
 from .workflow import Workflow
 
 logger = getLogger("jqmc-workflow").getChild(__name__)
@@ -235,8 +233,6 @@ class VMC_Workflow(Workflow):
         server_machine_name: str = "localhost",
         num_opt_steps: int = 20,
         hamiltonian_file: str = "hamiltonian_data.h5",
-        input_file: str = "input.toml",
-        output_file: str = "out.o",
         queue_label: str = "default",
         jobname: str = "jqmc-vmc",
         number_of_walkers: int = 4,
@@ -277,8 +273,6 @@ class VMC_Workflow(Workflow):
         self.server_machine_name = server_machine_name
         self.num_opt_steps = num_opt_steps
         self.hamiltonian_file = hamiltonian_file
-        self.input_file = input_file
-        self.output_file = output_file
         self.queue_label = queue_label
         self.jobname = jobname
         self.number_of_walkers = number_of_walkers
@@ -394,7 +388,7 @@ class VMC_Workflow(Workflow):
         """Validate parameters and return configuration summary."""
         mode = "fixed" if self.num_mcmc_steps is not None else "auto"
         return {
-            "input_file": self.input_file,
+            "jobname": self.jobname,
             "num_opt_steps": self.num_opt_steps,
             "num_mcmc_steps": self.num_mcmc_steps,
             "target_error": self.target_error,
@@ -450,18 +444,24 @@ class VMC_Workflow(Workflow):
         )
 
         last_run = 0
+        step_files = {}  # {step: (input, output, run_id)}
         for i in range(1, self.max_continuation + 1):
-            input_i = suffixed_name(self.input_file, i)
-            output_i = suffixed_name(self.output_file, i)
-
-            recorded = get_job(_wd, input_i)
-            if recorded.get("status") in ("submitted", "completed", "fetched"):
-                if recorded["status"] == "fetched":
-                    logger.info(f"  {input_i}: already fetched. Skipping.")
-                    last_run = i
-                    continue
-                logger.info(f"  {input_i}: already {recorded['status']}. Resuming...")
+            recorded = get_job_by_step(_wd, i)
+            status = recorded.get("status")
+            if status == "fetched":
+                logger.info(f"  step {i}: already fetched. Skipping.")
+                step_files[i] = (recorded["input_file"], recorded["output_file"], recorded.get("run_id", ""))
+                last_run = i
+                continue
+            elif status in ("submitted", "completed"):
+                input_i = recorded["input_file"]
+                output_i = recorded["output_file"]
+                run_id_i = recorded.get("run_id", "")
+                logger.info(f"  step {i}: already {status}. Resuming...")
             else:
+                run_id_i = self._new_run_id()
+                input_i = self._input_filename(i, run_id_i)
+                output_i = self._output_filename(i, run_id_i)
                 if i == 1:
                     self._generate_input(
                         estimated_mcmc_steps,
@@ -493,18 +493,17 @@ class VMC_Workflow(Workflow):
                 output_i,
                 work_dir=_wd,
                 extra_from_objects=extra_from,
+                step=i,
+                run_id=run_id_i,
             )
+            step_files[i] = (input_i, output_i, run_id_i)
             last_run = i
 
             logger.info(f"  VMC production run {i}/{self.max_continuation} completed.")
 
         # ── Collect outputs ───────────────────────────────────────
         h5_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
-        output_logs = [
-            suffixed_name(self.output_file, j)
-            for j in range(last_run + 1)
-            if os.path.isfile(os.path.join(_wd, suffixed_name(self.output_file, j)))
-        ]
+        output_logs = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.out")))
         self.output_files = h5_files + output_logs
 
         opt_files = sorted(glob.glob(os.path.join(_wd, "hamiltonian_data_opt_step_*.h5")))
@@ -516,8 +515,9 @@ class VMC_Workflow(Workflow):
         self.output_values["num_mcmc_steps"] = estimated_mcmc_steps
 
         # Parse last production output for energy
-        last_output = os.path.join(_wd, suffixed_name(self.output_file, last_run))
-        self._parse_output(last_output)
+        if last_run in step_files:
+            last_output = os.path.join(_wd, step_files[last_run][1])
+            self._parse_output(last_output)
 
         self.status = WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
@@ -544,18 +544,25 @@ class VMC_Workflow(Workflow):
             if os.path.isfile(h5_src) and not os.path.exists(h5_dst):
                 os.symlink(h5_src, h5_dst)
 
-            input_0 = suffixed_name(self.input_file, 0)
-            output_0 = suffixed_name(self.output_file, 0)
-
-            recorded_0 = get_job(pilot_dir, input_0)
-            if recorded_0.get("status") not in ("submitted", "completed", "fetched"):
+            recorded_0 = get_job_by_step(pilot_dir, 0)
+            status_0 = recorded_0.get("status")
+            if status_0 in ("fetched", "submitted", "completed"):
+                input_0 = recorded_0["input_file"]
+                output_0 = recorded_0["output_file"]
+                run_id_0 = recorded_0.get("run_id", "")
+                if status_0 == "fetched":
+                    logger.info(f"  {input_0}: already fetched. Skipping pilot.")
+                else:
+                    logger.info(f"  {input_0}: already {status_0}. Resuming...")
+            else:
+                run_id_0 = self._new_run_id()
+                input_0 = self._input_filename(0, run_id_0)
+                output_0 = self._output_filename(0, run_id_0)
                 self._generate_input(
                     self.pilot_mcmc_steps,
                     self.pilot_vmc_steps,
                     os.path.join(pilot_dir, input_0),
                 )
-            else:
-                logger.info(f"  {input_0}: already {recorded_0['status']}. Resuming...")
             logger.info("")
             logger.info("-- VMC Phase 0: Pilot " + "-" * 28)
             logger.info(
@@ -563,7 +570,9 @@ class VMC_Workflow(Workflow):
             )
 
             pilot_t0 = time.monotonic()
-            await self._submit_and_wait(input_0, output_0, work_dir=pilot_dir, queue_label=self.pilot_queue_label)
+            await self._submit_and_wait(
+                input_0, output_0, work_dir=pilot_dir, queue_label=self.pilot_queue_label, step=0, run_id=run_id_0
+            )
             pilot_wall_sec = time.monotonic() - pilot_t0
 
             # Parse the last optimization step's error from pilot output
@@ -644,20 +653,25 @@ class VMC_Workflow(Workflow):
 
         # ── Production runs (phase 1..N) ──────────────────────────
         last_run = 0
+        step_files = {}  # {step: (input, output, run_id)}
         for i in range(1, self.max_continuation + 1):
-            input_i = suffixed_name(self.input_file, i)
-            output_i = suffixed_name(self.output_file, i)
-
             # Skip input generation if this step already has a job record
-            recorded = get_job(_wd, input_i)
-            if recorded.get("status") in ("submitted", "completed", "fetched"):
-                if recorded["status"] == "fetched":
-                    logger.info(f"  {input_i}: already fetched. Skipping.")
-                    last_run = i
-                    continue
-                # submitted or completed -- let _submit_and_wait handle resume
-                logger.info(f"  {input_i}: already {recorded['status']}. Resuming...")
+            recorded = get_job_by_step(_wd, i)
+            status = recorded.get("status")
+            if status == "fetched":
+                logger.info(f"  step {i}: already fetched. Skipping.")
+                step_files[i] = (recorded["input_file"], recorded["output_file"], recorded.get("run_id", ""))
+                last_run = i
+                continue
+            elif status in ("submitted", "completed"):
+                input_i = recorded["input_file"]
+                output_i = recorded["output_file"]
+                run_id_i = recorded.get("run_id", "")
+                logger.info(f"  step {i}: already {status}. Resuming...")
             else:
+                run_id_i = self._new_run_id()
+                input_i = self._input_filename(i, run_id_i)
+                output_i = self._output_filename(i, run_id_i)
                 if i == 1:
                     self._generate_input(
                         estimated_mcmc_steps,
@@ -688,15 +702,17 @@ class VMC_Workflow(Workflow):
             _prod_cost = self.num_opt_steps * estimated_mcmc_steps
             _ref_net = None
             for _j in range(i - 1, 0, -1):
-                _ref_net = parse_net_time(os.path.join(_wd, suffixed_name(self.output_file, _j)))
+                if _j not in step_files:
+                    continue
+                _ref_net = parse_net_time(os.path.join(_wd, step_files[_j][1]))
                 if _ref_net and _ref_net > 0:
                     # All production runs have the same step count
                     logger.info(f"  est. Net run time (w/o JAX compilation) = {_format_duration(_ref_net)}")
                     break
             else:
                 # First production run: use pilot output
-                _pilot_out = os.path.join(_wd, "_pilot", suffixed_name(self.output_file, 0))
-                _ref_net = parse_net_time(_pilot_out)
+                _pilot_outs = sorted(glob.glob(os.path.join(_wd, "_pilot", "*.out")))
+                _ref_net = parse_net_time(_pilot_outs[-1]) if _pilot_outs else None
                 if _ref_net and _ref_net > 0:
                     _p_vmc = estimation.get("pilot_vmc_steps") or self.pilot_vmc_steps
                     _p_mcmc = estimation.get("pilot_mcmc_steps") or self.pilot_mcmc_steps
@@ -706,18 +722,15 @@ class VMC_Workflow(Workflow):
                             f"  est. Net run time (w/o JAX compilation) = {_format_duration(_ref_net * _prod_cost / _pilot_cost)}"
                         )
 
-            await self._submit_and_wait(input_i, output_i, work_dir=_wd, extra_from_objects=extra_from)
+            await self._submit_and_wait(input_i, output_i, work_dir=_wd, extra_from_objects=extra_from, step=i, run_id=run_id_i)
+            step_files[i] = (input_i, output_i, run_id_i)
             last_run = i
 
             logger.info(f"  VMC production run {i}/{self.max_continuation} completed.")
 
         # ── Collect outputs ───────────────────────────────────────
         h5_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
-        output_logs = [
-            suffixed_name(self.output_file, j)
-            for j in range(last_run + 1)
-            if os.path.isfile(os.path.join(_wd, suffixed_name(self.output_file, j)))
-        ]
+        output_logs = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.out")))
         self.output_files = h5_files + output_logs
 
         opt_files = sorted(glob.glob(os.path.join(_wd, "hamiltonian_data_opt_step_*.h5")))
@@ -729,8 +742,9 @@ class VMC_Workflow(Workflow):
         self.output_values["estimated_mcmc_steps"] = estimated_mcmc_steps
 
         # Parse last production output for energy
-        last_output = os.path.join(_wd, suffixed_name(self.output_file, last_run))
-        self._parse_output(last_output)
+        if last_run in step_files:
+            last_output = os.path.join(_wd, step_files[last_run][1])
+            self._parse_output(last_output)
 
         # ── Final convergence check ───────────────────────────────
         converged_snr = True  # None means unconditional pass
@@ -740,7 +754,9 @@ class VMC_Workflow(Workflow):
         if self.target_snr is not None:
             all_snr = []
             for j in range(last_run, 0, -1):
-                out_j = os.path.join(_wd, suffixed_name(self.output_file, j))
+                if j not in step_files:
+                    continue
+                out_j = os.path.join(_wd, step_files[j][1])
                 all_snr = self._parse_all_snr(out_j) + all_snr
                 if len(all_snr) >= self.snr_avg_window:
                     break
@@ -759,7 +775,9 @@ class VMC_Workflow(Workflow):
         if self.energy_slope_sigma_threshold is not None:
             all_energies: list[tuple[float, float]] = []
             for j in range(last_run, 0, -1):
-                out_j = os.path.join(_wd, suffixed_name(self.output_file, j))
+                if j not in step_files:
+                    continue
+                out_j = os.path.join(_wd, step_files[j][1])
                 all_energies = self._parse_all_energies(out_j) + all_energies
                 if len(all_energies) >= self.energy_slope_window_size:
                     break
@@ -806,7 +824,8 @@ class VMC_Workflow(Workflow):
             logger.error(f"  {msg}")
             self.status = WorkflowStatus.FAILED
 
-        self.status = self.status or WorkflowStatus.COMPLETED
+        if self.status != WorkflowStatus.FAILED:
+            self.status = WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
 
     # ── Utility methods ───────────────────────────────────────────
@@ -824,7 +843,7 @@ class VMC_Workflow(Workflow):
     def _parse_output(self, output_file=None):
         """Extract the last optimization energy from *output_file*."""
         if output_file is None:
-            output_file = self.output_file
+            return
         if not os.path.isfile(output_file):
             return
 

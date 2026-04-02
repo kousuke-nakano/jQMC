@@ -61,7 +61,6 @@ from ._error_estimator import (
     estimate_additional_steps,
     estimate_required_steps,
     parse_net_time,
-    suffixed_name,
 )
 from ._input_generator import generate_input_toml, resolve_with_defaults
 from ._job import get_num_mpi, load_queue_data
@@ -76,8 +75,7 @@ from ._setting import (
     GFMC_MIN_COLLECT_STEPS,
     GFMC_MIN_WARMUP_STEPS,
 )
-from ._state import get_estimation, get_job, set_estimation
-from ._state import WorkflowStatus
+from ._state import WorkflowStatus, get_estimation, get_job_by_step, set_estimation
 from .workflow import Workflow
 
 logger = getLogger("jqmc-workflow").getChild(__name__)
@@ -266,8 +264,6 @@ class LRDMC_Workflow(Workflow):
         server_machine_name: str = "localhost",
         alat: float = 0.30,
         hamiltonian_file: str = "hamiltonian_data.h5",
-        input_file: str = "input.toml",
-        output_file: str = "out.o",
         queue_label: str = "default",
         jobname: str = "jqmc-lrdmc",
         number_of_walkers: int = 4,
@@ -298,8 +294,6 @@ class LRDMC_Workflow(Workflow):
         self.server_machine_name = server_machine_name
         self.alat = alat
         self.hamiltonian_file = hamiltonian_file
-        self.input_file = input_file
-        self.output_file = output_file
         self.queue_label = queue_label
         self.jobname = jobname
         self.number_of_walkers = number_of_walkers
@@ -440,7 +434,7 @@ class LRDMC_Workflow(Workflow):
     def configure(self) -> dict:
         """Validate parameters and return configuration summary."""
         return {
-            "input_file": self.input_file,
+            "jobname": self.jobname,
             "alat": self.alat,
             "target_error": self.target_error,
             "hamiltonian_file": self.hamiltonian_file,
@@ -504,19 +498,26 @@ class LRDMC_Workflow(Workflow):
             f"  {mode_info}"
         )
 
+        step_files = {}  # {step: (input, output, run_id)}
         last_run = 0
         for i in range(1, self.max_continuation + 1):
-            input_i = suffixed_name(self.input_file, i)
-            output_i = suffixed_name(self.output_file, i)
+            recorded = get_job_by_step(_wd, i)
+            status_i = recorded.get("status")
 
-            recorded = get_job(_wd, input_i)
-            if recorded.get("status") in ("submitted", "completed", "fetched"):
-                if recorded["status"] == "fetched":
-                    logger.info(f"  {input_i}: already fetched. Skipping.")
-                    last_run = i
-                    continue
-                logger.info(f"  {input_i}: already {recorded['status']}. Resuming...")
+            if status_i == "fetched":
+                step_files[i] = (recorded["input_file"], recorded["output_file"], recorded.get("run_id", ""))
+                logger.info(f"  step {i}: already fetched. Skipping.")
+                last_run = i
+                continue
+            elif status_i in ("submitted", "completed"):
+                input_i = recorded["input_file"]
+                output_i = recorded["output_file"]
+                run_id_i = recorded.get("run_id", "")
+                logger.info(f"  step {i}: already {status_i}. Resuming...")
             else:
+                run_id_i = self._new_run_id()
+                input_i = self._input_filename(i, run_id_i)
+                output_i = self._output_filename(i, run_id_i)
                 if i == 1:
                     self._generate_input(estimated_steps, os.path.join(_wd, input_i))
                 else:
@@ -533,6 +534,7 @@ class LRDMC_Workflow(Workflow):
                 logger.info(f"-- LRDMC Production run {i}/{self.max_continuation} (a={self.alat}) " + "-" * 10)
                 logger.info(f"  {input_i}: {estimated_steps} steps")
 
+            step_files[i] = (input_i, output_i, run_id_i)
             restart_chk = self._find_restart_chk(_wd) if i > 1 else None
             if i > 1 and restart_chk is None:
                 raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {_wd}")
@@ -543,6 +545,8 @@ class LRDMC_Workflow(Workflow):
                 output_i,
                 work_dir=_wd,
                 extra_from_objects=extra_from,
+                step=i,
+                run_id=run_id_i,
             )
             last_run = i
 
@@ -570,7 +574,7 @@ class LRDMC_Workflow(Workflow):
                     )
 
         # ── Final energy computation ─────────────────────────────
-        last_output = suffixed_name(self.output_file, last_run) if last_run > 0 else None
+        last_output = step_files[last_run][1] if last_run in step_files else None
         restart_chk = self._find_restart_chk(_wd)
         if restart_chk:
             energy, error = self._compute_energy(restart_chk, work_dir=_wd, output_file=last_output)
@@ -594,11 +598,7 @@ class LRDMC_Workflow(Workflow):
 
         # ── Collect outputs ───────────────────────────────────────
         chk_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
-        output_logs = [
-            suffixed_name(self.output_file, j)
-            for j in range(last_run + 1)
-            if os.path.isfile(os.path.join(_wd, suffixed_name(self.output_file, j)))
-        ]
+        output_logs = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.out")))
         self.output_files = chk_files + output_logs
         self.output_values["estimated_steps"] = estimated_steps
         if self._use_gfmc_n:
@@ -634,29 +634,34 @@ class LRDMC_Workflow(Workflow):
             if os.path.isfile(h5_src) and not os.path.exists(h5_link):
                 os.symlink(h5_src, h5_link)
 
-            inp = suffixed_name(self.input_file, 0)
-            out = suffixed_name(self.output_file, 0)
-
-            async def _run_calib(sub_dir, inp_f, out_f, nmpm_v, _idx=idx):
-                rec = get_job(sub_dir, inp_f)
-                if rec.get("status") not in (
-                    "submitted",
-                    "completed",
-                    "fetched",
-                ):
+            async def _run_calib(sub_dir, nmpm_v, _idx=idx):
+                rec = get_job_by_step(sub_dir, 0)
+                status_c = rec.get("status")
+                if status_c in ("fetched", "submitted", "completed"):
+                    inp_f = rec["input_file"]
+                    out_f = rec["output_file"]
+                    run_id_c = rec.get("run_id", "")
+                    if status_c == "fetched":
+                        logger.info(f"  {inp_f} (nmpm={nmpm_v}): already fetched. Skipping.")
+                    else:
+                        logger.info(f"  {inp_f} (nmpm={nmpm_v}): already {status_c}. Resuming...")
+                else:
+                    run_id_c = self._new_run_id()
+                    inp_f = self._input_filename(0, run_id_c)
+                    out_f = self._output_filename(0, run_id_c)
                     self._generate_input(
                         self.pilot_steps,
                         os.path.join(sub_dir, inp_f),
                         num_projection_per_measurement=nmpm_v,
                     )
-                else:
-                    logger.info(f"  {inp_f} (nmpm={nmpm_v}): already {rec['status']}. Resuming...")
                 logger.info(f"  _pilot{_idx}: nmpm={nmpm_v}, {self.pilot_steps} steps")
                 await self._submit_and_wait(
                     inp_f,
                     out_f,
                     work_dir=sub_dir,
                     queue_label=self.pilot_queue_label,
+                    step=0,
+                    run_id=run_id_c,
                 )
                 # Parse survived walkers ratio from output
                 out_path = os.path.join(sub_dir, out_f)
@@ -664,7 +669,7 @@ class LRDMC_Workflow(Workflow):
                 logger.info(f"  _pilot{_idx} (nmpm={nmpm_v}): survived ratio = {ratio:.4f}" if ratio else "N/A")
                 return nmpm_v, ratio
 
-            calib_tasks.append(asyncio.create_task(_run_calib(calib_sub, inp, out, nmpm_val)))
+            calib_tasks.append(asyncio.create_task(_run_calib(calib_sub, nmpm_val)))
 
         calib_results = await asyncio.gather(*calib_tasks)
 
@@ -729,25 +734,34 @@ class LRDMC_Workflow(Workflow):
             if os.path.isfile(h5_src) and not os.path.exists(h5_link_b):
                 os.symlink(h5_src, h5_link_b)
 
-            input_pb = suffixed_name(self.input_file, 0)
-            output_pb = suffixed_name(self.output_file, 0)
+            input_pb = None
+            output_pb = None
+            run_id_pb = ""
 
-            recorded_pb = get_job(pilot_b_dir, input_pb)
-            if recorded_pb.get("status") not in (
-                "submitted",
-                "completed",
-                "fetched",
-            ):
-                self._generate_input(self.pilot_steps, os.path.join(pilot_b_dir, input_pb))
+            recorded_pb = get_job_by_step(pilot_b_dir, 0)
+            status_pb = recorded_pb.get("status")
+            if status_pb in ("fetched", "submitted", "completed"):
+                input_pb = recorded_pb["input_file"]
+                output_pb = recorded_pb["output_file"]
+                run_id_pb = recorded_pb.get("run_id", "")
+                if status_pb == "fetched":
+                    logger.info(f"  {input_pb}: already fetched. Skipping pilot_b.")
+                else:
+                    logger.info(f"  {input_pb}: already {status_pb}. Resuming...")
             else:
-                logger.info(f"  {input_pb}: already {recorded_pb['status']}. Resuming...")
+                run_id_pb = self._new_run_id()
+                input_pb = self._input_filename(0, run_id_pb)
+                output_pb = self._output_filename(0, run_id_pb)
+                self._generate_input(self.pilot_steps, os.path.join(pilot_b_dir, input_pb))
             mode_info = f"nmpm={self.num_projection_per_measurement}" if self._use_gfmc_n else f"tau={self.time_projection_tau}"
             logger.info("")
             logger.info(f"-- LRDMC Phase B: Error-bar Pilot (a={self.alat}) " + "-" * 12)
             logger.info(f"  {input_pb}: {self.pilot_steps} steps, {mode_info} (queue: {self.pilot_queue_label})")
 
             pilot_t0 = time.monotonic()
-            await self._submit_and_wait(input_pb, output_pb, work_dir=pilot_b_dir, queue_label=self.pilot_queue_label)
+            await self._submit_and_wait(
+                input_pb, output_pb, work_dir=pilot_b_dir, queue_label=self.pilot_queue_label, step=0, run_id=run_id_pb
+            )
             pilot_wall_sec = time.monotonic() - pilot_t0
 
             restart_chk = self._find_restart_chk(pilot_b_dir)
@@ -879,24 +893,30 @@ class LRDMC_Workflow(Workflow):
                 return self.status, self.output_files, self.output_values
 
         # ── Production runs (phase 1..N) ──────────────────────────
+        step_files = {}  # {step: (input, output, run_id)}
         accumulated_steps = 0
         last_run = 0
         _prev_run_steps = None  # tracks the step count of the last completed run
         for i in range(1, self.max_continuation + 1):
-            input_i = suffixed_name(self.input_file, i)
-            output_i = suffixed_name(self.output_file, i)
+            recorded = get_job_by_step(_wd, i)
+            status_i = recorded.get("status")
 
-            # Skip input generation if this step already has a job record
-            recorded = get_job(_wd, input_i)
-            if recorded.get("status") in ("submitted", "completed", "fetched"):
-                if recorded["status"] == "fetched":
-                    logger.info(f"  {input_i}: already fetched. Skipping.")
-                    accumulated_steps += estimated_steps
-                    _prev_run_steps = estimated_steps
-                    last_run = i
-                    continue
-                logger.info(f"  {input_i}: already {recorded['status']}. Resuming...")
+            if status_i == "fetched":
+                step_files[i] = (recorded["input_file"], recorded["output_file"], recorded.get("run_id", ""))
+                logger.info(f"  step {i}: already fetched. Skipping.")
+                accumulated_steps += estimated_steps
+                _prev_run_steps = estimated_steps
+                last_run = i
+                continue
+            elif status_i in ("submitted", "completed"):
+                input_i = recorded["input_file"]
+                output_i = recorded["output_file"]
+                run_id_i = recorded.get("run_id", "")
+                logger.info(f"  step {i}: already {status_i}. Resuming...")
             else:
+                run_id_i = self._new_run_id()
+                input_i = self._input_filename(i, run_id_i)
+                output_i = self._output_filename(i, run_id_i)
                 if i == 1:
                     self._generate_input(estimated_steps, os.path.join(_wd, input_i))
                 else:
@@ -913,6 +933,7 @@ class LRDMC_Workflow(Workflow):
                 logger.info(f"-- LRDMC Phase 1: Production run {i}/{self.max_continuation} (a={self.alat}) " + "-" * 10)
                 logger.info(f"  {input_i}: {estimated_steps} steps")
 
+            step_files[i] = (input_i, output_i, run_id_i)
             restart_chk = self._find_restart_chk(_wd) if i > 1 else None
             if i > 1 and restart_chk is None:
                 raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {_wd}")
@@ -921,7 +942,9 @@ class LRDMC_Workflow(Workflow):
             # Estimate run time from the latest available output
             _ref_net = None
             for _j in range(i - 1, 0, -1):
-                _ref_net = parse_net_time(os.path.join(_wd, suffixed_name(self.output_file, _j)))
+                if _j not in step_files:
+                    continue
+                _ref_net = parse_net_time(os.path.join(_wd, step_files[_j][1]))
                 if _ref_net and _ref_net > 0:
                     _ref_steps = _prev_run_steps if _prev_run_steps else estimated_steps
                     _est_sec = _ref_net * (estimated_steps / _ref_steps) if _ref_steps > 0 else _ref_net
@@ -929,8 +952,8 @@ class LRDMC_Workflow(Workflow):
                     break
             else:
                 # First production run: use pilot output
-                _pilot_out = os.path.join(_wd, "_pilot_b", suffixed_name(self.output_file, 0))
-                _ref_net = parse_net_time(_pilot_out)
+                _pilot_outs = sorted(glob.glob(os.path.join(_wd, "_pilot_b", "*.out")))
+                _ref_net = parse_net_time(_pilot_outs[-1]) if _pilot_outs else None
                 if _ref_net and _ref_net > 0:
                     _p_steps = estimation.get("pilot_steps") or self.pilot_steps
                     if _p_steps > 0:
@@ -943,6 +966,8 @@ class LRDMC_Workflow(Workflow):
                 output_i,
                 work_dir=_wd,
                 extra_from_objects=extra_from,
+                step=i,
+                run_id=run_id_i,
             )
             accumulated_steps += estimated_steps
             _prev_run_steps = estimated_steps
@@ -1001,7 +1026,7 @@ class LRDMC_Workflow(Workflow):
                         self.status = WorkflowStatus.FAILED
 
         # ── Final energy computation ─────────────────────────────
-        last_output = suffixed_name(self.output_file, last_run) if last_run > 0 else None
+        last_output = step_files[last_run][1] if last_run in step_files else None
         restart_chk = self._find_restart_chk(_wd)
         if restart_chk:
             energy, error = self._compute_energy(restart_chk, work_dir=_wd, output_file=last_output)
@@ -1025,11 +1050,7 @@ class LRDMC_Workflow(Workflow):
 
         # ── Collect outputs ───────────────────────────────────────
         chk_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
-        output_logs = [
-            suffixed_name(self.output_file, j)
-            for j in range(last_run + 1)
-            if os.path.isfile(os.path.join(_wd, suffixed_name(self.output_file, j)))
-        ]
+        output_logs = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.out")))
         self.output_files = chk_files + output_logs
         self.output_values["estimated_steps"] = estimated_steps
         if self._use_gfmc_n:
@@ -1037,7 +1058,8 @@ class LRDMC_Workflow(Workflow):
         else:
             self.output_values["time_projection_tau"] = self.time_projection_tau
 
-        self.status = self.status or WorkflowStatus.COMPLETED
+        if self.status != WorkflowStatus.FAILED:
+            self.status = WorkflowStatus.COMPLETED
         return self.status, self.output_files, self.output_values
 
     # ── Utility methods ───────────────────────────────────────────

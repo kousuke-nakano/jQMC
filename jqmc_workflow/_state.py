@@ -257,6 +257,8 @@ def add_job(
     job_id: str,
     server_machine: str,
     status: str = "submitted",
+    step: int = None,
+    run_id: str = "",
 ) -> dict:
     """Append a new job record to the ``[[jobs]]`` list.
 
@@ -276,6 +278,10 @@ def add_job(
         "status": status,
         "submitted_at": _now_iso(),
     }
+    if step is not None:
+        job["step"] = step
+    if run_id:
+        job["run_id"] = run_id
     state["jobs"].append(job)
     state.setdefault("workflow", {})["updated_at"] = _now_iso()
     _write(directory, state)
@@ -314,6 +320,18 @@ def get_job(directory: str, input_file: str) -> dict:
     state = read_state(directory)
     for j in reversed(state.get("jobs", [])):
         if j.get("input_file") == input_file:
+            return j
+    return {}
+
+
+def get_job_by_step(directory: str, step: int) -> dict:
+    """Get the latest job record for *step*, regardless of run_id.
+
+    Returns an empty dict if no matching record is found.
+    """
+    state = read_state(directory)
+    for j in reversed(state.get("jobs", [])):
+        if j.get("step") == step:
             return j
     return {}
 

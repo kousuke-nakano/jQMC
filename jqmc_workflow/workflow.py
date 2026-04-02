@@ -39,6 +39,7 @@ Dependencies between workflows are declared with FileFrom / ValueFrom.
 import asyncio
 import os
 import shutil
+import uuid
 from logging import getLogger
 from typing import Any, List, Optional
 
@@ -50,6 +51,7 @@ from ._state import (
     add_job,
     create_state,
     get_job,
+    get_job_by_step,
     get_workflow_summary,
     read_state,
     set_error,
@@ -212,6 +214,28 @@ class Workflow:
         self.project_dir: Optional[str] = os.path.abspath(project_dir) if project_dir else None
         self._bg_task: Optional[asyncio.Task] = None
 
+    # ── Filename generation (per-job run_id) ──────────────────────
+
+    @staticmethod
+    def _new_run_id() -> str:
+        """Generate a short random identifier for a single job."""
+        return uuid.uuid4().hex[:8]
+
+    def _filename(self, ext: str, index: int, run_id: str) -> str:
+        """Build ``{jobname}_{index}_{run_id}{ext}``."""
+        return f"{self.jobname}_{index}_{run_id}{ext}"
+
+    def _input_filename(self, index: int, run_id: str) -> str:
+        """Input TOML filename for step *index*."""
+        return self._filename(".toml", index, run_id)
+
+    def _output_filename(self, index: int, run_id: str) -> str:
+        """Stdout-capture filename for step *index*."""
+        return self._filename(".out", index, run_id)
+
+    def _submit_script_name(self, run_id: str) -> str:
+        return f"submit_{run_id}.sh"
+
     def _ensure_project_dir(self):
         """Lazily resolve *project_dir* to CWD when not set explicitly."""
         if self.project_dir is None:
@@ -366,11 +390,11 @@ class Workflow:
         from ._state import _write, read_state
 
         state = read_state(work_dir)
-        state["job_files"] = {
-            "output": job.output_file,
-            "job_stdout": job.job_stdout,
-            "job_stderr": job.job_stderr,
-        }
+        job_files = {"output": job.output_file}
+        if job.server_machine.queuing:
+            job_files["job_stdout"] = job.job_stdout
+            job_files["job_stderr"] = job.job_stderr
+        state["job_files"] = job_files
         _write(work_dir, state)
 
     async def _submit_and_wait(
@@ -381,6 +405,8 @@ class Workflow:
         extra_from_objects=None,
         fetch_from_objects=None,
         queue_label=None,
+        step=None,
+        run_id="",
     ):
         """Submit a job, poll until done, fetch results.
 
@@ -409,27 +435,36 @@ class Workflow:
             ``["*.h5", output_file]``.
         queue_label : str, optional
             Override for the queue label.
+        step : int, optional
+            Step index (0 for pilot, 1+ for production).  Used for
+            cross-run continuation detection.
+        run_id : str
+            Per-job identifier used for scheduler script and stdout/stderr
+            naming.
         """
         if fetch_from_objects is None:
             fetch_from_objects = ["*.h5", output_file]
 
         # Include scheduler stdout/stderr in fetch list when queuing
-        job_tmp = self._make_job(input_file, output_file, queue_label=queue_label)
+        job_tmp = self._make_job(input_file, output_file, queue_label=queue_label, run_id=run_id)
         if job_tmp.server_machine.queuing:
             for jf in (job_tmp.job_stdout, job_tmp.job_stderr):
                 if jf and jf not in fetch_from_objects:
                     fetch_from_objects.append(jf)
 
         # ── Restart detection via job history ─────────────────────
-        recorded = get_job(work_dir, input_file)
+        if step is not None:
+            recorded = get_job_by_step(work_dir, step)
+        else:
+            recorded = get_job(work_dir, input_file)
 
         if recorded.get("status") == "fetched":
-            logger.info(f"  {input_file}: already fetched. Skipping.")
+            logger.info(f"  {input_file}: already fetched (step {step}). Skipping.")
             return
 
         if recorded.get("status") == "completed":
             logger.info(f"  {input_file}: completed but not fetched. Fetching...")
-            job = self._make_job(input_file, output_file, queue_label=queue_label)
+            job = self._make_job(input_file, output_file, queue_label=queue_label, run_id=run_id)
             job.fetch_job(from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir)
             update_job(work_dir, input_file, status="fetched", fetched_at=_now_iso())
             return
@@ -437,7 +472,7 @@ class Workflow:
         if recorded.get("status") == "submitted":
             stored_job_id = recorded.get("job_id")
             logger.info(f"  Resuming previously submitted job {stored_job_id}")
-            job = self._make_job(input_file, output_file, queue_label=queue_label)
+            job = self._make_job(input_file, output_file, queue_label=queue_label, run_id=run_id)
             job.job_number = stored_job_id
             while job.jobcheck():
                 logger.info(f"  Job {stored_job_id} still running, waiting {self.poll_interval}s...")
@@ -450,13 +485,14 @@ class Workflow:
             return
 
         # ── New submission ────────────────────────────────────────
-        job = self._make_job(input_file, output_file, queue_label=queue_label)
-        job.generate_script(work_dir=work_dir)
+        job = self._make_job(input_file, output_file, queue_label=queue_label, run_id=run_id)
+        submit_sh = self._submit_script_name(run_id)
+        job.generate_script(submission_script=submit_sh, work_dir=work_dir)
 
-        from_objects = [input_file, self.hamiltonian_file, "submit.sh"]
+        from_objects = [input_file, self.hamiltonian_file, submit_sh]
         if extra_from_objects:
             from_objects.extend(extra_from_objects)
-        submitted, job_number = job.job_submit(from_objects=from_objects, work_dir=work_dir)
+        submitted, job_number = job.job_submit(submission_script=submit_sh, from_objects=from_objects, work_dir=work_dir)
         if not submitted:
             raise RuntimeError("Job submission failed (queue limit or error).")
 
@@ -467,6 +503,8 @@ class Workflow:
             output_file=output_file,
             job_id=str(job_number) if job_number else "local",
             server_machine=self.server_machine_name,
+            step=step,
+            run_id=run_id,
         )
 
         # Record job file paths for MCP discoverability
@@ -485,7 +523,7 @@ class Workflow:
         job.fetch_job(from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir)
         update_job(work_dir, input_file, status="fetched", fetched_at=_now_iso())
 
-    def _make_job(self, input_file, output_file, queue_label=None):
+    def _make_job(self, input_file, output_file, queue_label=None, run_id=""):
         """Create a :class:`JobSubmission` with current workflow settings.
 
         Requires *self.server_machine_name*, *self.queue_label*, and
@@ -497,6 +535,7 @@ class Workflow:
             output_file=output_file,
             queue_label=queue_label or self.queue_label,
             jobname=self.jobname,
+            run_id=run_id,
         )
 
 

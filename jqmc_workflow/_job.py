@@ -103,6 +103,7 @@ class JobSubmission:
         output_file: str = "out.o",
         queue_label: str = "default",
         jobname: str = "jqmc-wf",
+        run_id: str = "",
         safe_mode: bool = False,
     ):
         self.server_machine = Machine(server_machine_name)
@@ -140,6 +141,7 @@ class JobSubmission:
 
         # ── Job parameters ────────────────────────────────────────
         self.jobname = jobname
+        self.run_id = run_id
         self.input_file = input_file
         self.output_file = output_file
         self.safe_mode = safe_mode
@@ -153,8 +155,9 @@ class JobSubmission:
         self.job_check_last_time = None
         self.job_fetch_date = None
         # ── Scheduler stdout/stderr file paths (TASK 9) ──────────
-        self.job_stdout: str = f"job_{jobname}.o"
-        self.job_stderr: str = f"job_{jobname}.e"
+        _id_suffix = f"_{run_id}" if run_id else ""
+        self.job_stdout: str = f"job_{jobname}{_id_suffix}.o"
+        self.job_stderr: str = f"job_{jobname}{_id_suffix}.e"
 
     # ── Script generation ─────────────────────────────────────────
 
