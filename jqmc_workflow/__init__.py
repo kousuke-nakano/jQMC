@@ -89,8 +89,8 @@ from ._state import (
     get_artifact_registry,
     get_workflow_summary,
     register_artifact,
+    save_job_accounting,
     set_error,
-    set_job_accounting,
 )
 from .launcher import Launcher
 from .lrdmc_ext_workflow import LRDMC_Ext_Workflow
@@ -134,7 +134,7 @@ __all__ = [
     "get_all_workflow_statuses",
     "get_workflow_summary",
     "set_error",
-    "set_job_accounting",
+    "save_job_accounting",
     "register_artifact",
     "get_artifact_lineage",
     "get_artifact_registry",

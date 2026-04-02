@@ -259,6 +259,8 @@ def add_job(
     status: str = "submitted",
     step: int = None,
     run_id: str = "",
+    job_stdout: str = "",
+    job_stderr: str = "",
 ) -> dict:
     """Append a new job record to the ``[[jobs]]`` list.
 
@@ -282,6 +284,10 @@ def add_job(
         job["step"] = step
     if run_id:
         job["run_id"] = run_id
+    if job_stdout:
+        job["job_stdout"] = job_stdout
+    if job_stderr:
+        job["job_stderr"] = job_stderr
     state["jobs"].append(job)
     state.setdefault("workflow", {})["updated_at"] = _now_iso()
     _write(directory, state)
@@ -425,11 +431,10 @@ def get_workflow_summary(directory: str) -> dict:
     - ``allowed_actions`` – list of permitted MCP actions
     - ``result``   – any stored results (energy, etc.)
     - ``estimation`` – step-estimation data (if present)
-    - ``jobs``     – list of job records with their statuses
+    - ``jobs``     – list of job records (each includes accounting
+      and scheduler file info when available)
     - ``num_jobs`` – total number of job records
     - ``error``    – ``[error]`` section or ``None``
-    - ``job_accounting`` – ``[job_accounting]`` section or ``None``
-    - ``job_files`` – ``[job_files]`` section or ``None``
     - ``artifacts`` – ``[[artifacts]]`` list
 
     Returns an empty dict if no ``workflow_state.toml`` is found.
@@ -459,8 +464,6 @@ def get_workflow_summary(directory: str) -> dict:
         "jobs": jobs,
         "num_jobs": len(jobs),
         "error": state.get("error", None),
-        "job_accounting": state.get("job_accounting", None),
-        "job_files": state.get("job_files", None),
         "artifacts": state.get("artifacts", []),
     }
 
@@ -484,21 +487,18 @@ def set_error(directory: str, message: str, **context) -> None:
     _write(directory, state)
 
 
-def set_job_accounting(
+def save_job_accounting(
     directory: str,
     command: str,
     stdout: str,
     stderr: str = "",
     job_id: str = "",
-) -> None:
-    """Record scheduler accounting raw output.
+) -> tuple:
+    """Write scheduler accounting to a text file.
 
-    The raw stdout is written to a separate file
-    ``job_accounting_{job_id}.txt`` next to ``workflow_state.toml``.
-    The ``[job_accounting]`` section stores only the command and a
-    reference to that file.  No parsing or interpretation is performed.
+    Returns ``(acct_command, acct_filename)`` so the caller can store
+    them in the ``[[jobs]]`` record via :func:`update_job`.
     """
-    # Write raw output to a separate file
     if job_id:
         acct_filename = f"job_accounting_{job_id}.txt"
     else:
@@ -513,15 +513,7 @@ def set_job_accounting(
         if stderr:
             f.write("\n--- stderr ---\n")
             f.write(stderr)
-
-    # Record reference in toml
-    state = read_state(directory)
-    state["job_accounting"] = {
-        "command": command,
-        "file": acct_filename,
-    }
-    state.setdefault("workflow", {})["updated_at"] = _now_iso()
-    _write(directory, state)
+    return command, acct_filename
 
 
 def register_artifact(

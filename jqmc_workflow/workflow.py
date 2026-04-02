@@ -54,8 +54,8 @@ from ._state import (
     get_job_by_step,
     get_workflow_summary,
     read_state,
+    save_job_accounting,
     set_error,
-    set_job_accounting,
     update_job,
     update_status,
 )
@@ -370,32 +370,20 @@ class Workflow:
     # set those attributes.
 
     @staticmethod
-    def _record_job_acct(job: JobSubmission, work_dir: str) -> None:
-        """Run scheduler accounting and save raw output, if configured."""
+    def _collect_job_acct(job: JobSubmission, work_dir: str, input_file: str) -> None:
+        """Run scheduler accounting, save to file, and attach to [[jobs]] record."""
         result = job.job_acct()
         if result is None:
             return
         command, stdout, stderr = result
-        set_job_accounting(
+        acct_cmd, acct_file = save_job_accounting(
             work_dir,
             command=command,
             stdout=stdout,
             stderr=stderr,
             job_id=job.job_number or "",
         )
-
-    @staticmethod
-    def _record_job_files(job: JobSubmission, work_dir: str) -> None:
-        """Record job-related file paths in workflow_state.toml."""
-        from ._state import _write, read_state
-
-        state = read_state(work_dir)
-        job_files = {"output": job.output_file}
-        if job.server_machine.queuing:
-            job_files["job_stdout"] = job.job_stdout
-            job_files["job_stderr"] = job.job_stderr
-        state["job_files"] = job_files
-        _write(work_dir, state)
+        update_job(work_dir, input_file, job_acct_command=acct_cmd, job_acct_file=acct_file)
 
     async def _submit_and_wait(
         self,
@@ -479,7 +467,7 @@ class Workflow:
                 await asyncio.sleep(self.poll_interval)
             logger.info("  Job completed.")
             update_job(work_dir, input_file, status="completed", completed_at=_now_iso())
-            self._record_job_acct(job, work_dir)
+            self._collect_job_acct(job, work_dir, input_file)
             job.fetch_job(from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir)
             update_job(work_dir, input_file, status="fetched", fetched_at=_now_iso())
             return
@@ -505,10 +493,9 @@ class Workflow:
             server_machine=self.server_machine_name,
             step=step,
             run_id=run_id,
+            job_stdout=job.job_stdout if job.server_machine.queuing else "",
+            job_stderr=job.job_stderr if job.server_machine.queuing else "",
         )
-
-        # Record job file paths for MCP discoverability
-        self._record_job_files(job, work_dir)
 
         while job.jobcheck():
             logger.info(f"  Job {job_number} still running, waiting {self.poll_interval}s...")
@@ -517,8 +504,8 @@ class Workflow:
         logger.info("  Job completed.")
         update_job(work_dir, input_file, status="completed", completed_at=_now_iso())
 
-        # Collect scheduler accounting before fetch (raw output only)
-        self._record_job_acct(job, work_dir)
+        # Collect scheduler accounting before fetch
+        self._collect_job_acct(job, work_dir, input_file)
 
         job.fetch_job(from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir)
         update_job(work_dir, input_file, status="fetched", fetched_at=_now_iso())
