@@ -188,7 +188,7 @@ def parse_force_table(text: str):
 
 
 def repair_forces_from_output(work_dir: str) -> bool:
-    """Re-parse forces from ``out_*.o`` files and update ``workflow_state.toml``.
+    """Re-parse forces from output files and update ``workflow_state.toml``.
 
     This repairs corrupted force data caused by the pre-fix
     ``parse_ufloat_short`` that ignored scientific notation (e.g.
@@ -200,8 +200,7 @@ def repair_forces_from_output(work_dir: str) -> bool:
     if not os.path.isfile(state_path):
         return False
 
-    # Find the last out_*.o file
-    out_files = sorted(glob.glob(os.path.join(work_dir, "out_*.o")))
+    out_files = _find_output_files(work_dir)
     if not out_files:
         return False
     last_out = out_files[-1]
@@ -656,8 +655,8 @@ def _parse_vmc_log_text(text: str) -> list:
 def parse_vmc_output(work_dir: str) -> VMC_Diagnostic_Data:
     """Parse VMC optimization output from *work_dir*.
 
-    Discovers output files (``out_vmc``, ``out_vmc_0``, etc.) in the
-    directory, parses per-step data, and looks for
+    Discovers output files from ``workflow_state.toml`` ``[[jobs]]``
+    records, parses per-step data, and looks for
     ``hamiltonian_data_opt_step_*.h5``.
 
     Parameters

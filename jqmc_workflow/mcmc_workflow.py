@@ -94,10 +94,6 @@ class MCMC_Workflow(Workflow):
         Name of the target machine (configured in ``~/.jqmc_setting/``).
     hamiltonian_file : str
         Input ``hamiltonian_data.h5``.
-    input_file : str
-        Generated TOML input filename.
-    output_file : str
-        Stdout capture filename.
     queue_label : str
         Queue/partition label.
     jobname : str

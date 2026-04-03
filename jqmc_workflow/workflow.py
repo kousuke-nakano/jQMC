@@ -41,7 +41,7 @@ import os
 import shutil
 import uuid
 from logging import getLogger
-from typing import Any, List, Optional
+from typing import List, Optional
 
 from ._job import JobSubmission
 from ._phase import ScientificPhase, require_action
@@ -705,10 +705,8 @@ class Container:
             update_status(proj, WorkflowStatus.FAILED)
             raise
 
-        # Write completion — but only if the workflow actually succeeded.
-        # Workflows that return a non-success status (e.g. "failed") must
-        # NOT be marked "completed" in the state file.
-        if self.status in ("success", "completed", WorkflowStatus.COMPLETED):
+        # Write completion — but only if the workflow did not fail.
+        if self.status != WorkflowStatus.FAILED:
             result_fields = {}
             for k, v in self.output_values.items():
                 result_fields[f"result_{k}"] = v

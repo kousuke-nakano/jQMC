@@ -95,10 +95,6 @@ class VMC_Workflow(Workflow):
         Number of optimization iterations for production runs.
     hamiltonian_file : str
         Input ``hamiltonian_data.h5``.
-    input_file : str
-        Name of the generated TOML input file.
-    output_file : str
-        Name of the stdout capture file.
     queue_label : str
         Queue/partition label from ``queue_data.toml``.
     jobname : str
