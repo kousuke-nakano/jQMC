@@ -1018,8 +1018,7 @@ class LRDMC_Workflow(Workflow):
                             f"{self.target_error:.6g} Ha -- "
                             f"max_continuation ({self.max_continuation}) reached"
                         )
-                        logger.error(msg)
-                        self.status = WorkflowStatus.FAILED
+                        logger.warning(msg)
 
         # ── Final energy computation ─────────────────────────────
         last_output = step_files[last_run][1] if last_run in step_files else None
