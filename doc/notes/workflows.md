@@ -186,6 +186,25 @@ in `output_values` for downstream inspection.
 In fixed-step mode (`num_mcmc_steps` is set), the convergence checks
 are not performed.
 
+##### Early exit on convergence
+
+When convergence criteria are set, the VMC production loop exits
+early as soon as all active checks pass, instead of always running
+the full `max_continuation` steps.  This avoids wasting compute
+time once the optimization has plateaued.
+
+On re-runs with changed criteria (e.g. lowering `target_snr`),
+convergence is re-evaluated from the fetched results before
+submitting new jobs.  If the existing results already satisfy the
+new criteria, the workflow completes immediately without launching
+additional runs.
+
+When no convergence criterion is set (`target_snr = None` and
+`energy_slope_sigma_threshold = None`), all `max_continuation`
+steps run unconditionally.  If convergence is **not** achieved
+after exhausting all production steps, the workflow returns
+`FAILED`.
+
 #### Step estimation formula
 
 The required number of production steps is estimated via
@@ -244,6 +263,23 @@ After each production run, the error bar is re-evaluated.
 If it exceeds the target, additional steps are estimated and a
 continuation run is launched automatically, up to `max_continuation`
 times.
+
+#### Target error not met
+
+If `max_continuation` runs complete but the statistical error still
+exceeds `target_error`, the workflow logs a **warning** and returns
+`COMPLETED` (not `FAILED`).  The calculation itself succeeded; only
+the error-bar criterion was not fully met.  This applies to both
+`MCMC_Workflow` and `LRDMC_Workflow`.
+
+#### Continuation with tighter target error
+
+When re-running a pipeline with a stricter `target_error` (e.g.
+lowering from `1e-3` to `5e-4`), the workflow detects that the
+cached error from previous runs exceeds the new target and
+automatically re-estimates additional steps from the accumulated
+data.  Continuation runs are launched from where the previous
+execution left off, up to `max_continuation`.
 
 
 ### Restart behavior
@@ -337,8 +373,8 @@ Each `[[jobs]]` record contains:
 
 | Field | Description |
 |---|---|
-| `input_file` | Basename of the generated TOML input file |
-| `output_file` | Basename of the stdout capture file |
+| `input_file` | Basename of the generated TOML input file (`input_{jobname}_{step}_{run_id}.toml`) |
+| `output_file` | Basename of the stdout capture file (`output_{jobname}_{step}_{run_id}.out`) |
 | `job_id` | Scheduler job ID (or `"local"` for local runs) |
 | `server_machine` | Machine name |
 | `status` | One of the `JobStatus` values above |
@@ -371,6 +407,32 @@ look up a single file, and `get_artifact_registry()` to list all
 artifacts.
 
 
+### Input staleness detection
+
+When a `Container` completes successfully, it records the **size** and
+**modification time** of each input file in the `[input_fingerprints]`
+section of `workflow_state.toml`.  On subsequent runs, if the container
+is already `completed`, the engine compares the current input files
+against the recorded fingerprints.
+
+If any input has changed (e.g. an upstream VMC produced a new optimised
+wavefunction), the engine logs a warning:
+
+```text
+WARNING: Inputs have changed but previous results are still present.
+Delete 'mcmc_prod/' to re-run with the updated inputs.
+```
+
+The container is **not** automatically re-run — the user must
+manually delete the stale directory.  This conservative approach
+avoids the risk of mixing old and new job data on the remote server.
+
+Note that staleness is tracked per-file by `os.stat()` metadata
+(size + mtime), not by file content hashing.  If an upstream
+workflow re-runs but produces an identical output file (same size
+and mtime), no warning is triggered.
+
+
 ### Error recording
 
 When a workflow fails, the `[error]` section of `workflow_state.toml`
@@ -400,8 +462,8 @@ and file path are stored per-job in the `[[jobs]]` record:
 
 ```toml
 [[jobs]]
-input_file = "vmc-H2-0.74_1_aebf13bd.toml"
-output_file = "vmc-H2-0.74_1_aebf13bd.out"
+input_file = "input_vmc-H2-0.74_1_aebf13bd.toml"
+output_file = "output_vmc-H2-0.74_1_aebf13bd.out"
 job_id = "12345"
 server_machine = "my-cluster"
 status = "fetched"

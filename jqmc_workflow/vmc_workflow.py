@@ -668,8 +668,10 @@ class VMC_Workflow(Workflow):
             )
 
         # ── Production runs (phase 1..N) ──────────────────────────
+        _has_convergence_criteria = self.target_snr is not None or self.energy_slope_sigma_threshold is not None
         last_run = 0
         step_files = {}  # {step: (input, output, run_id)}
+        _checked_fetched_convergence = False
         for i in range(1, self.max_continuation + 1):
             # Skip input generation if this step already has a job record
             recorded = get_job_by_step(_wd, i)
@@ -685,6 +687,18 @@ class VMC_Workflow(Workflow):
                 run_id_i = recorded.get("run_id", "")
                 logger.info(f"  step {i}: already {status}. Resuming...")
             else:
+                # ── Re-evaluate convergence from fetched runs ─────
+                if _has_convergence_criteria and last_run > 0 and not _checked_fetched_convergence:
+                    _checked_fetched_convergence = True
+                    _conv, _, _ = self._check_convergence(
+                        _wd,
+                        step_files,
+                        last_run,
+                    )
+                    if _conv:
+                        logger.info(f"  Convergence already met after fetched runs (step {last_run}). No further runs needed.")
+                        break
+
                 run_id_i = self._new_run_id()
                 input_i = self._input_filename(i, run_id_i)
                 output_i = self._output_filename(i, run_id_i)
@@ -744,6 +758,17 @@ class VMC_Workflow(Workflow):
 
             logger.info(f"  VMC production run {i}/{self.max_continuation} completed.")
 
+            # ── Early exit if convergence criteria met ────────────
+            if _has_convergence_criteria and i < self.max_continuation:
+                _conv, _, _ = self._check_convergence(
+                    _wd,
+                    step_files,
+                    last_run,
+                )
+                if _conv:
+                    logger.info(f"  Convergence achieved at run {i}/{self.max_continuation}. Stopping early.")
+                    break
+
         # ── Collect outputs ───────────────────────────────────────
         h5_files = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.h5")))
         output_logs = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.out")))
@@ -763,8 +788,46 @@ class VMC_Workflow(Workflow):
             self._parse_output(last_output)
 
         # ── Final convergence check ───────────────────────────────
-        converged_snr = True  # None means unconditional pass
-        converged_slope = True  # None means unconditional pass
+        converged, converged_snr, converged_slope = self._check_convergence(
+            _wd,
+            step_files,
+            last_run,
+        )
+        if not _has_convergence_criteria:
+            logger.info("  No convergence criteria set; treating as converged.")
+        elif converged:
+            logger.info("  VMC converged (all active checks passed).")
+        else:
+            reasons = []
+            if not converged_snr:
+                reasons.append(f"S/N ({self.output_values.get('signal_to_noise', '?'):.3f}) > target ({self.target_snr})")
+            if not converged_slope:
+                reasons.append(
+                    f"energy slope ({self.output_values.get('energy_slope', '?'):.6f} Ha/step) still significantly negative"
+                )
+            msg = f"VMC NOT converged after {self.max_continuation} continuation run(s): {'; '.join(reasons)}"
+            logger.error(f"  {msg}")
+            self.status = WorkflowStatus.FAILED
+
+        if self.status != WorkflowStatus.FAILED:
+            self.status = WorkflowStatus.COMPLETED
+        return self.status, self.output_files, self.output_values
+
+    # ── Utility methods ───────────────────────────────────────────
+
+    def _check_convergence(
+        self,
+        work_dir: str,
+        step_files: dict,
+        last_run: int,
+    ) -> tuple:
+        """Evaluate SNR and energy-slope convergence criteria.
+
+        Returns ``(converged, converged_snr, converged_slope)`` where
+        each flag is *True* when the criterion is met or not active.
+        """
+        converged_snr = True
+        converged_slope = True
 
         # ── (A) SNR check ──
         if self.target_snr is not None:
@@ -772,7 +835,7 @@ class VMC_Workflow(Workflow):
             for j in range(last_run, 0, -1):
                 if j not in step_files:
                     continue
-                out_j = os.path.join(_wd, step_files[j][1])
+                out_j = os.path.join(work_dir, step_files[j][1])
                 all_snr = self._parse_all_snr(out_j) + all_snr
                 if len(all_snr) >= self.snr_avg_window:
                     break
@@ -793,7 +856,7 @@ class VMC_Workflow(Workflow):
             for j in range(last_run, 0, -1):
                 if j not in step_files:
                     continue
-                out_j = os.path.join(_wd, step_files[j][1])
+                out_j = os.path.join(work_dir, step_files[j][1])
                 all_energies = self._parse_all_energies(out_j) + all_energies
                 if len(all_energies) >= self.energy_slope_window_size:
                     break
@@ -805,9 +868,7 @@ class VMC_Workflow(Workflow):
                 slope, slope_std = self._fit_energy_slope(energies, errors)
                 self.output_values["energy_slope"] = slope
                 self.output_values["energy_slope_std"] = slope_std
-                logger.info(f"  Energy slope over last {len(window_e)} step(s): {slope:.6f} ± {slope_std:.6f} Ha/step")
-                # slope < -slope_std * threshold  ⇒ still decreasing (not converged)
-                # slope >= -slope_std * threshold ⇒ plateau (converged)
+                logger.info(f"  Energy slope over last {len(window_e)} step(s): {slope:.6f} \u00b1 {slope_std:.6f} Ha/step")
                 converged_slope = slope >= -slope_std * self.energy_slope_sigma_threshold
                 if converged_slope:
                     logger.info(
@@ -823,28 +884,8 @@ class VMC_Workflow(Workflow):
                 converged_slope = False
                 logger.warning(f"  Not enough energy data for slope check ({len(window_e)} < 2 steps).")
 
-        # ── (C) Combined verdict ──
-        if self.target_snr is None and self.energy_slope_sigma_threshold is None:
-            logger.info("  No convergence criteria set; treating as converged.")
-        elif converged_snr and converged_slope:
-            logger.info("  VMC converged (all active checks passed).")
-        else:
-            reasons = []
-            if not converged_snr:
-                reasons.append(f"S/N ({self.output_values.get('signal_to_noise', '?'):.3f}) > target ({self.target_snr})")
-            if not converged_slope:
-                reasons.append(
-                    f"energy slope ({self.output_values.get('energy_slope', '?'):.6f} Ha/step) still significantly negative"
-                )
-            msg = f"VMC NOT converged after {self.max_continuation} continuation run(s): {'; '.join(reasons)}"
-            logger.error(f"  {msg}")
-            self.status = WorkflowStatus.FAILED
-
-        if self.status != WorkflowStatus.FAILED:
-            self.status = WorkflowStatus.COMPLETED
-        return self.status, self.output_files, self.output_values
-
-    # ── Utility methods ───────────────────────────────────────────
+        converged = converged_snr and converged_slope
+        return converged, converged_snr, converged_slope
 
     def _find_restart_chk(self, work_dir: str) -> Optional[str]:
         """Locate a VMC restart checkpoint file in *work_dir*."""

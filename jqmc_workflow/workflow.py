@@ -50,12 +50,14 @@ from ._state import (
     _now_iso,
     add_job,
     create_state,
+    get_input_fingerprints,
     get_job,
     get_job_by_step,
     get_workflow_summary,
     read_state,
     save_job_accounting,
     set_error,
+    set_input_fingerprints,
     update_job,
     update_status,
 )
@@ -221,17 +223,13 @@ class Workflow:
         """Generate a short random identifier for a single job."""
         return uuid.uuid4().hex[:8]
 
-    def _filename(self, ext: str, index: int, run_id: str) -> str:
-        """Build ``{jobname}_{index}_{run_id}{ext}``."""
-        return f"{self.jobname}_{index}_{run_id}{ext}"
-
     def _input_filename(self, index: int, run_id: str) -> str:
-        """Input TOML filename for step *index*."""
-        return self._filename(".toml", index, run_id)
+        """Input TOML filename: ``input_{jobname}_{index}_{run_id}.toml``."""
+        return f"input_{self.jobname}_{index}_{run_id}.toml"
 
     def _output_filename(self, index: int, run_id: str) -> str:
-        """Stdout-capture filename for step *index*."""
-        return self._filename(".out", index, run_id)
+        """Stdout-capture filename: ``output_{jobname}_{index}_{run_id}.out``."""
+        return f"output_{self.jobname}_{index}_{run_id}.out"
 
     def _submit_script_name(self, run_id: str) -> str:
         return f"submit_{run_id}.sh"
@@ -685,6 +683,47 @@ class Container:
             else:
                 raise FileNotFoundError(f"[{self.label}] Required input not found: {src}")
 
+    def _compute_input_fingerprints(self) -> dict[str, dict]:
+        """Return ``{basename: {size, mtime}}`` for each resolved input file."""
+        fingerprints: dict[str, dict] = {}
+        rename = len(self.rename_input_files) > 0 and len(self.rename_input_files) == len(self.input_files)
+        for i, src in enumerate(self.input_files):
+            src = str(src)
+            if not os.path.isabs(src):
+                src = os.path.join(self.root_dir, src)
+            if rename:
+                key = os.path.basename(str(self.rename_input_files[i]))
+            else:
+                key = os.path.basename(src)
+            if os.path.exists(src):
+                st = os.stat(src)
+                fingerprints[key] = {"size": st.st_size, "mtime": st.st_mtime}
+        return fingerprints
+
+    def _check_input_staleness(self, proj: str) -> bool:
+        """Compare current input fingerprints against the recorded ones.
+
+        Returns ``True`` if any input has changed (stale), ``False``
+        if everything matches or no fingerprints were recorded.
+        """
+        recorded = get_input_fingerprints(proj)
+        if not recorded:
+            return False  # no fingerprints recorded — cannot check
+        current = self._compute_input_fingerprints()
+        for name, cur_fp in current.items():
+            rec_fp = recorded.get(name)
+            if rec_fp is None:
+                # New input file not in original — treat as stale
+                return True
+            if cur_fp["size"] != rec_fp["size"] or cur_fp["mtime"] != rec_fp["mtime"]:
+                logger.warning(
+                    f"[{self.label}] Input '{name}' has changed since last run "
+                    f"(size: {rec_fp['size']}→{cur_fp['size']}, "
+                    f"mtime: {rec_fp['mtime']:.1f}→{cur_fp['mtime']:.1f})."
+                )
+                return True
+        return False
+
     # ── Launch ────────────────────────────────────────────────────
 
     async def async_launch(self):
@@ -695,6 +734,12 @@ class Container:
         # Check if already completed
         state = read_state(proj)
         if state.get("workflow", {}).get("status") == "completed":
+            if self._check_input_staleness(proj):
+                logger.warning(
+                    f"[{self.label}] Inputs have changed but previous results "
+                    f"are still present. Delete '{self.dirname}/' to re-run "
+                    f"with the updated inputs."
+                )
             logger.info(f"[{self.label}] Already completed, no re-run.")
             self.status = WorkflowStatus.COMPLETED
             self._collect_outputs()
@@ -718,6 +763,8 @@ class Container:
             for k, v in self.output_values.items():
                 result_fields[f"result_{k}"] = v
             update_status(proj, WorkflowStatus.COMPLETED, **result_fields)
+            # Record input-file fingerprints for downstream staleness detection
+            set_input_fingerprints(proj, self._compute_input_fingerprints())
         else:
             error_msg = self.output_values.get("error", f"workflow returned status={self.status}")
             set_error(proj, error_msg)

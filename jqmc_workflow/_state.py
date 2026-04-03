@@ -555,6 +555,25 @@ def get_artifact_registry(directory: str) -> list[dict]:
     return read_state(directory).get("artifacts", [])
 
 
+def set_input_fingerprints(directory: str, fingerprints: dict[str, dict]) -> None:
+    """Record input-file fingerprints in ``[input_fingerprints]``.
+
+    Parameters
+    ----------
+    fingerprints : dict[str, dict]
+        Mapping ``{basename: {"size": int, "mtime": float}}``.
+    """
+    state = read_state(directory)
+    state["input_fingerprints"] = fingerprints
+    state.setdefault("workflow", {})["updated_at"] = _now_iso()
+    _write(directory, state)
+
+
+def get_input_fingerprints(directory: str) -> dict[str, dict]:
+    """Return the recorded input-file fingerprints, or empty dict."""
+    return read_state(directory).get("input_fingerprints", {})
+
+
 def _write(directory: str, state: dict):
     """Write state dict to workflow_state.toml."""
     path = os.path.join(directory, STATE_FILENAME)

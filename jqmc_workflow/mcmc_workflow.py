@@ -609,6 +609,7 @@ class MCMC_Workflow(Workflow):
         last_run = 0
         step_files = {}  # {step: (input, output, run_id)}
         _prev_run_steps = None  # tracks the step count of the last completed run
+        _did_reestimate_from_fetched = False
         for i in range(1, self.max_continuation + 1):
             # Skip input generation if this step already has a job record
             recorded = get_job_by_step(_wd, i)
@@ -626,6 +627,41 @@ class MCMC_Workflow(Workflow):
                 run_id_i = recorded.get("run_id", "")
                 logger.info(f"  step {i}: already {status}. Resuming...")
             else:
+                # ── Re-estimate if resuming after fetched runs ────
+                if accumulated_steps > 0 and not _did_reestimate_from_fetched:
+                    _did_reestimate_from_fetched = True
+                    _re_chk = self._find_restart_chk(_wd)
+                    if _re_chk:
+                        _re_energy, _re_error = self._compute_energy(_re_chk, work_dir=_wd)
+                        if _re_energy is not None and _re_error is not None:
+                            if _re_error <= self.target_error * 1.05:
+                                logger.info(
+                                    f"  Target already met after fetched runs: "
+                                    f"{_re_error:.6g} <= {self.target_error * 1.05:.6g} Ha"
+                                )
+                                self.output_values.update(
+                                    energy=_re_energy,
+                                    energy_error=_re_error,
+                                    restart_chk=_re_chk,
+                                )
+                                if self.atomic_force:
+                                    forces = self._compute_force(_re_chk, work_dir=_wd)
+                                    if forces is not None:
+                                        self.output_values["forces"] = forces
+                                break
+                            estimated_steps = estimate_additional_steps(
+                                accumulated_steps,
+                                _re_error,
+                                self.target_error,
+                            )
+                            logger.info(
+                                f"  Re-estimated from accumulated data: "
+                                f"error={_re_error:.6g} Ha > target "
+                                f"{self.target_error:.6g} Ha -> "
+                                f"{estimated_steps} additional steps "
+                                f"(accumulated: {accumulated_steps})"
+                            )
+
                 run_id_i = self._new_run_id()
                 input_i = self._input_filename(i, run_id_i)
                 output_i = self._output_filename(i, run_id_i)
