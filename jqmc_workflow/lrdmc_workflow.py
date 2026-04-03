@@ -890,7 +890,8 @@ class LRDMC_Workflow(Workflow):
 
         # ── Production runs (phase 1..N) ──────────────────────────
         step_files = {}  # {step: (input, output, run_id)}
-        accumulated_steps = 0
+        warmup = self.num_gfmc_warmup_steps
+        accumulated_steps = 0  # measurement steps only (excluding warmup)
         last_run = 0
         _prev_run_steps = None  # tracks the step count of the last completed run
         _did_reestimate_from_fetched = False
@@ -901,7 +902,7 @@ class LRDMC_Workflow(Workflow):
             if status_i == "fetched":
                 step_files[i] = (recorded["input_file"], recorded["output_file"], recorded.get("run_id", ""))
                 logger.info(f"  step {i}: already fetched. Skipping.")
-                accumulated_steps += estimated_steps
+                accumulated_steps += estimated_steps - warmup
                 _prev_run_steps = estimated_steps
                 last_run = i
                 continue
@@ -934,17 +935,19 @@ class LRDMC_Workflow(Workflow):
                                     if forces is not None:
                                         self.output_values["forces"] = forces
                                 break
-                            estimated_steps = estimate_additional_steps(
+                            _additional = estimate_additional_steps(
                                 accumulated_steps,
                                 _re_error,
                                 self.target_error,
                             )
+                            estimated_steps = _additional + warmup
                             logger.info(
                                 f"  Re-estimated from accumulated data: "
                                 f"error={_re_error:.6g} Ha > target "
                                 f"{self.target_error:.6g} Ha -> "
-                                f"{estimated_steps} additional steps "
-                                f"(accumulated: {accumulated_steps})"
+                                f"{estimated_steps} steps "
+                                f"(measurement: {_additional}, warmup: {warmup}, "
+                                f"accumulated measurement: {accumulated_steps})"
                             )
 
                 run_id_i = self._new_run_id()
@@ -1002,7 +1005,7 @@ class LRDMC_Workflow(Workflow):
                 step=i,
                 run_id=run_id_i,
             )
-            accumulated_steps += estimated_steps
+            accumulated_steps += estimated_steps - warmup
             _prev_run_steps = estimated_steps
             last_run = i
 
@@ -1040,14 +1043,16 @@ class LRDMC_Workflow(Workflow):
                         break
                     elif i < self.max_continuation:
                         old_steps = estimated_steps
-                        estimated_steps = estimate_additional_steps(
+                        _additional = estimate_additional_steps(
                             accumulated_steps,
                             error,
                             self.target_error,
                         )
+                        estimated_steps = _additional + warmup
                         logger.info(
-                            f"  Re-estimated: {old_steps} -> {estimated_steps} "
-                            f"additional steps (accumulated so far: {accumulated_steps})"
+                            f"  Re-estimated: {old_steps} -> {estimated_steps} steps "
+                            f"(measurement: {_additional}, warmup: {warmup}, "
+                            f"accumulated measurement: {accumulated_steps})"
                         )
                     else:
                         msg = (
