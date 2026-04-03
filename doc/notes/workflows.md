@@ -120,7 +120,11 @@ optimization:
 | `opt_lambda_basis_exp` | `False` | Optimize Geminal AO Gaussian exponents |
 | `opt_lambda_basis_coeff` | `False` | Optimize Geminal AO contraction coefficients |
 
-These cannot be combined with `opt_with_projected_MOs`.
+`opt_lambda_basis_exp` and `opt_lambda_basis_coeff` cannot be combined
+with `opt_with_projected_MOs` (changing Geminal AO exponents/coefficients
+invalidates the overlap matrix used by the MO projection).
+`opt_J3_basis_exp` and `opt_J3_basis_coeff` **can** be used together
+with `opt_with_projected_MOs`.
 
 When set, the corresponding parameters are passed through to the
 jqmc input TOML via `resolve_with_defaults()`.  When left as `None`

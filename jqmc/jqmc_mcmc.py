@@ -2151,11 +2151,11 @@ class MCMC:
             if not opt_lambda_param:
                 raise ValueError("opt_with_projected_MOs=True requires opt_lambda_param=True.")
 
-            if any([opt_J3_basis_exp, opt_J3_basis_coeff, opt_lambda_basis_exp, opt_lambda_basis_coeff]):
+            if any([opt_lambda_basis_exp, opt_lambda_basis_coeff]):
                 raise ValueError(
-                    "AO basis optimization (opt_J3_basis_exp/coeff, opt_lambda_basis_exp/coeff) "
+                    "Geminal AO basis optimization (opt_lambda_basis_exp/coeff) "
                     "cannot be combined with opt_with_projected_MOs. "
-                    "Changing AO exponents/coefficients invalidates the overlap matrix "
+                    "Changing Geminal AO exponents/coefficients invalidates the overlap matrix "
                     "used by the MO projection operators."
                 )
 

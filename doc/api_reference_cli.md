@@ -71,8 +71,8 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 | `opt_JNN_param`            |      `false` | Optimize neural-network Jastrow parameters.                                                                          |
 | `opt_lambda_param`         |      `false` | Optimize geminal (λ) parameters.                                                                                     |
 | `opt_with_projected_MOs`   |      `false` | If `true`, optimize lambda parameters (for AOs) or molecular orbital coefficients (for MOs) in a restricted MO space. |
-| `opt_J3_basis_exp`         |      `false` | Optimize J3 AO Gaussian exponents. Cannot be combined with `opt_with_projected_MOs`. |
-| `opt_J3_basis_coeff`       |      `false` | Optimize J3 AO contraction coefficients. Cannot be combined with `opt_with_projected_MOs`. |
+| `opt_J3_basis_exp`         |      `false` | Optimize J3 AO Gaussian exponents. Can be combined with `opt_with_projected_MOs`. |
+| `opt_J3_basis_coeff`       |      `false` | Optimize J3 AO contraction coefficients. Can be combined with `opt_with_projected_MOs`. |
 | `opt_lambda_basis_exp`     |      `false` | Optimize Geminal AO Gaussian exponents (up and down spins, concatenated). Cannot be combined with `opt_with_projected_MOs`. |
 | `opt_lambda_basis_coeff`   |      `false` | Optimize Geminal AO contraction coefficients (up and down spins, concatenated). Cannot be combined with `opt_with_projected_MOs`. |
 | `num_param_opt`            |          `0` | Number of parameters to optimize, chosen in descending order of \|f\| / std(f). If `0`, optimize **all** parameters. |
