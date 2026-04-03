@@ -336,7 +336,7 @@ class JobSubmission:
 
     # ── Fetch results ─────────────────────────────────────────────
 
-    def fetch_job(self, from_objects=None, exclude_patterns=None, *, work_dir=None):
+    def fetch_job(self, from_objects=None, exclude_patterns=None, *, work_dir=None, optional_patterns=None):
         """Fetch job results from the remote machine.
 
         Parameters
@@ -348,15 +348,21 @@ class JobSubmission:
         work_dir : str, optional
             Absolute path to the local job directory.  When *None*,
             falls back to ``os.getcwd()`` for backward compatibility.
+        optional_patterns : list[str], optional
+            Basenames or glob patterns of non-essential files.
+            Missing files matching these patterns produce a warning
+            instead of an error.
         """
         from_objects = from_objects or []
         exclude_patterns = exclude_patterns or []
+        optional_patterns = optional_patterns or []
 
         if self.server_machine.machine_type != "local":
             self.data_transfer.get_objects(
                 from_objects=from_objects,
                 exclude_patterns=exclude_patterns,
                 work_dir=work_dir,
+                optional_patterns=optional_patterns,
             )
 
         self.job_fetch_date = datetime.today()

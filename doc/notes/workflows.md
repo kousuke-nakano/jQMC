@@ -106,6 +106,26 @@ independently runs its own calibration, error-bar pilot, and production
 in parallel.  There is no inter-alat interaction until the final
 extrapolation step.
 
+#### AO basis optimization
+
+`VMC_Workflow` supports optimizing the atomic-orbital (AO) Gaussian
+basis parameters alongside Jastrow / orbital coefficients.  Four
+boolean flags control which basis parameters are included in the
+optimization:
+
+| Parameter | Default | Description |
+|---|---|---|
+| `opt_J3_basis_exp` | `False` | Optimize J3 (three-body Jastrow) AO Gaussian exponents |
+| `opt_J3_basis_coeff` | `False` | Optimize J3 AO contraction coefficients |
+| `opt_lambda_basis_exp` | `False` | Optimize Geminal AO Gaussian exponents |
+| `opt_lambda_basis_coeff` | `False` | Optimize Geminal AO contraction coefficients |
+
+These cannot be combined with `opt_with_projected_MOs`.
+
+When set, the corresponding parameters are passed through to the
+jqmc input TOML via `resolve_with_defaults()`.  When left as `None`
+(the default), the jqmc binary applies its own defaults (`false`).
+
 #### VMC convergence checks
 
 After all production runs complete, the VMC workflow checks whether
@@ -591,6 +611,13 @@ If these placeholders are not present in the template the scheduler's
 default naming convention is used (backward-compatible).
 The file paths are recorded per-job in the `[[jobs]]` records of
 `workflow_state.toml` (as `job_stdout` and `job_stderr`).
+
+> **Note:** `job_stdout` and `job_stderr` are treated as **optional**
+> during fetch.  If the files do not exist on the remote server (e.g.
+> the job script template does not include `#SBATCH --output` /
+> `#SBATCH --error` directives), the engine logs a warning and
+> continues instead of raising an error.  All other output files
+> remain mandatory.
 
 #### Custom variables
 

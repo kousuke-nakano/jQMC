@@ -433,12 +433,15 @@ class Workflow:
         if fetch_from_objects is None:
             fetch_from_objects = ["*.h5", output_file]
 
-        # Include scheduler stdout/stderr in fetch list when queuing
+        # Include scheduler stdout/stderr in fetch list when queuing.
+        # These are non-essential: warn (not error) if missing on server.
+        optional_fetch = []
         job_tmp = self._make_job(input_file, output_file, queue_label=queue_label, run_id=run_id)
         if job_tmp.server_machine.queuing:
             for jf in (job_tmp.job_stdout, job_tmp.job_stderr):
                 if jf and jf not in fetch_from_objects:
                     fetch_from_objects.append(jf)
+                    optional_fetch.append(jf)
 
         # ── Restart detection via job history ─────────────────────
         if step is not None:
@@ -453,7 +456,9 @@ class Workflow:
         if recorded.get("status") == "completed":
             logger.info(f"  {input_file}: completed but not fetched. Fetching...")
             job = self._make_job(input_file, output_file, queue_label=queue_label, run_id=run_id)
-            job.fetch_job(from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir)
+            job.fetch_job(
+                from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir, optional_patterns=optional_fetch
+            )
             update_job(work_dir, input_file, status="fetched", fetched_at=_now_iso())
             return
 
@@ -468,7 +473,9 @@ class Workflow:
             logger.info("  Job completed.")
             update_job(work_dir, input_file, status="completed", completed_at=_now_iso())
             self._collect_job_acct(job, work_dir, input_file)
-            job.fetch_job(from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir)
+            job.fetch_job(
+                from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir, optional_patterns=optional_fetch
+            )
             update_job(work_dir, input_file, status="fetched", fetched_at=_now_iso())
             return
 
@@ -507,7 +514,7 @@ class Workflow:
         # Collect scheduler accounting before fetch
         self._collect_job_acct(job, work_dir, input_file)
 
-        job.fetch_job(from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir)
+        job.fetch_job(from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir, optional_patterns=optional_fetch)
         update_job(work_dir, input_file, status="fetched", fetched_at=_now_iso())
 
     def _make_job(self, input_file, output_file, queue_label=None, run_id=""):
