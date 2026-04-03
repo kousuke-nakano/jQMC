@@ -133,6 +133,14 @@ class VMC_Workflow(Workflow):
         Minimum signal-to-noise ratio ``|f|/|std f|`` for a parameter to be
         updated.  Parameters with SN <= this threshold are frozen.  Applied
         before ``num_param_opt``.  Default from ``jqmc_miscs``.
+    opt_J3_basis_exp : bool, optional
+        Optimize J3 AO Gaussian exponents.  Default from ``jqmc_miscs``.
+    opt_J3_basis_coeff : bool, optional
+        Optimize J3 AO contraction coefficients.  Default from ``jqmc_miscs``.
+    opt_lambda_basis_exp : bool, optional
+        Optimize Geminal AO Gaussian exponents.  Default from ``jqmc_miscs``.
+    opt_lambda_basis_coeff : bool, optional
+        Optimize Geminal AO contraction coefficients.  Default from ``jqmc_miscs``.
     optimizer_kwargs : dict, optional
         Optimizer configuration dict.  Default from ``jqmc_miscs``.
     mcmc_seed : int, optional
@@ -248,6 +256,10 @@ class VMC_Workflow(Workflow):
         opt_with_projected_MOs: Optional[bool] = None,
         num_param_opt: Optional[int] = None,
         opt_filter_min_SN_ratio: Optional[float] = None,
+        opt_J3_basis_exp: Optional[bool] = None,
+        opt_J3_basis_coeff: Optional[bool] = None,
+        opt_lambda_basis_exp: Optional[bool] = None,
+        opt_lambda_basis_coeff: Optional[bool] = None,
         optimizer_kwargs: Optional[dict] = None,
         # -- [control] section parameters --
         mcmc_seed: Optional[int] = None,
@@ -288,6 +300,10 @@ class VMC_Workflow(Workflow):
         self.opt_with_projected_MOs = opt_with_projected_MOs
         self.num_param_opt = num_param_opt
         self.opt_filter_min_SN_ratio = opt_filter_min_SN_ratio
+        self.opt_J3_basis_exp = opt_J3_basis_exp
+        self.opt_J3_basis_coeff = opt_J3_basis_coeff
+        self.opt_lambda_basis_exp = opt_lambda_basis_exp
+        self.opt_lambda_basis_coeff = opt_lambda_basis_coeff
         self.optimizer_kwargs = optimizer_kwargs
         # [control] section
         self.mcmc_seed = mcmc_seed
@@ -362,6 +378,10 @@ class VMC_Workflow(Workflow):
                 "opt_with_projected_MOs": self.opt_with_projected_MOs,
                 "num_param_opt": self.num_param_opt,
                 "opt_filter_min_SN_ratio": self.opt_filter_min_SN_ratio,
+                "opt_J3_basis_exp": self.opt_J3_basis_exp,
+                "opt_J3_basis_coeff": self.opt_J3_basis_coeff,
+                "opt_lambda_basis_exp": self.opt_lambda_basis_exp,
+                "opt_lambda_basis_coeff": self.opt_lambda_basis_coeff,
                 "optimizer_kwargs": self.optimizer_kwargs,
             },
         )
