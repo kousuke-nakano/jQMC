@@ -409,11 +409,11 @@ artifacts.
 
 ### Input staleness detection
 
-When a `Container` completes successfully, it records the **size** and
-**modification time** of each input file in the `[input_fingerprints]`
+When a `Container` completes successfully, it records the **SHA-256
+content hash** of each input file in the `[input_fingerprints]`
 section of `workflow_state.toml`.  On subsequent runs, if the container
-is already `completed`, the engine compares the current input files
-against the recorded fingerprints.
+is already `completed` or `running`, the engine compares the current
+input files against the recorded fingerprints.
 
 If any input has changed (e.g. an upstream VMC produced a new optimised
 wavefunction), the engine logs a warning:
@@ -427,10 +427,9 @@ The container is **not** automatically re-run — the user must
 manually delete the stale directory.  This conservative approach
 avoids the risk of mixing old and new job data on the remote server.
 
-Note that staleness is tracked per-file by `os.stat()` metadata
-(size + mtime), not by file content hashing.  If an upstream
-workflow re-runs but produces an identical output file (same size
-and mtime), no warning is triggered.
+Staleness is tracked per-file by SHA-256 content hashing.  If an
+upstream workflow re-runs but produces a byte-identical output file,
+no warning is triggered.
 
 
 ### Error recording

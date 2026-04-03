@@ -37,6 +37,7 @@ Dependencies between workflows are declared with FileFrom / ValueFrom.
 # POSSIBILITY OF SUCH DAMAGE.
 
 import asyncio
+import hashlib
 import os
 import shutil
 import uuid
@@ -684,7 +685,7 @@ class Container:
                 raise FileNotFoundError(f"[{self.label}] Required input not found: {src}")
 
     def _compute_input_fingerprints(self) -> dict[str, dict]:
-        """Return ``{basename: {size, mtime}}`` for each resolved input file."""
+        """Return ``{basename: {sha256: hex_digest}}`` for each resolved input file."""
         fingerprints: dict[str, dict] = {}
         rename = len(self.rename_input_files) > 0 and len(self.rename_input_files) == len(self.input_files)
         for i, src in enumerate(self.input_files):
@@ -696,8 +697,11 @@ class Container:
             else:
                 key = os.path.basename(src)
             if os.path.exists(src):
-                st = os.stat(src)
-                fingerprints[key] = {"size": st.st_size, "mtime": st.st_mtime}
+                h = hashlib.sha256()
+                with open(src, "rb") as f:
+                    for chunk in iter(lambda: f.read(1 << 20), b""):
+                        h.update(chunk)
+                fingerprints[key] = {"sha256": h.hexdigest()}
         return fingerprints
 
     def _check_input_staleness(self, proj: str) -> bool:
@@ -715,11 +719,10 @@ class Container:
             if rec_fp is None:
                 # New input file not in original — treat as stale
                 return True
-            if cur_fp["size"] != rec_fp["size"] or cur_fp["mtime"] != rec_fp["mtime"]:
+            if cur_fp.get("sha256") != rec_fp.get("sha256"):
                 logger.warning(
                     f"[{self.label}] Input '{name}' has changed since last run "
-                    f"(size: {rec_fp['size']}→{cur_fp['size']}, "
-                    f"mtime: {rec_fp['mtime']:.1f}→{cur_fp['mtime']:.1f})."
+                    f"(sha256: {rec_fp.get('sha256', '?')[:12]}… → {cur_fp.get('sha256', '?')[:12]}…)."
                 )
                 return True
         return False
@@ -731,15 +734,23 @@ class Container:
 
         self._prepare()
 
-        # Check if already completed
+        # Check if already completed or running (resume)
         state = read_state(proj)
-        if state.get("workflow", {}).get("status") == "completed":
+        prev_status = state.get("workflow", {}).get("status")
+
+        if prev_status in ("completed", "running"):
             if self._check_input_staleness(proj):
                 logger.warning(
-                    f"[{self.label}] Inputs have changed but previous results "
-                    f"are still present. Delete '{self.dirname}/' to re-run "
-                    f"with the updated inputs."
+                    f"[{self.label}] Inputs have changed since the previous run. "
+                    f"Delete '{self.dirname}/' to re-run with the updated inputs."
                 )
+
+        # Record input-file fingerprints after staleness check but
+        # before any execution, so that even interrupted runs have a
+        # baseline for the next invocation.
+        set_input_fingerprints(proj, self._compute_input_fingerprints())
+
+        if prev_status == "completed":
             logger.info(f"[{self.label}] Already completed, no re-run.")
             self.status = WorkflowStatus.COMPLETED
             self._collect_outputs()
@@ -763,8 +774,6 @@ class Container:
             for k, v in self.output_values.items():
                 result_fields[f"result_{k}"] = v
             update_status(proj, WorkflowStatus.COMPLETED, **result_fields)
-            # Record input-file fingerprints for downstream staleness detection
-            set_input_fingerprints(proj, self._compute_input_fingerprints())
         else:
             error_msg = self.output_values.get("error", f"workflow returned status={self.status}")
             set_error(proj, error_msg)
