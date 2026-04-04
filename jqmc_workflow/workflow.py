@@ -751,13 +751,12 @@ class Container:
                 raise FileNotFoundError(f"[{self.label}] Required input not found: {src}")
 
     def _validate_input_files(self, proj: str):
-        """Verify that all files the workflow expects exist in *proj*.
+        """Verify that all files listed in ``input_files`` exist in *proj*.
 
-        Checks:
-        1. Every entry in ``self.input_files`` (after rename) exists in
-           the project directory.
-        2. If the workflow declares ``hamiltonian_file``, that file also
-           exists.
+        Only the entries in ``self.input_files`` (after rename) are
+        checked.  Workflow-internal files (e.g. ``hamiltonian_file``)
+        are **not** validated here because some workflows (e.g.
+        ``WF_Workflow``) *produce* them rather than consume them.
 
         Raises
         ------
@@ -767,17 +766,10 @@ class Container:
         """
         missing = []
 
-        # (1) Check resolved input_files
         for i, src in enumerate(self.input_files):
             dst_name = self._dst_basename(str(src), self.rename_input_files, i)
             if not os.path.exists(os.path.join(proj, dst_name)):
                 missing.append(dst_name)
-
-        # (2) Check the workflow's hamiltonian_file (if declared)
-        h5 = getattr(self.workflow, "hamiltonian_file", None)
-        if h5 and not os.path.exists(os.path.join(proj, h5)):
-            if h5 not in missing:
-                missing.append(h5)
 
         if missing:
             raise FileNotFoundError(
