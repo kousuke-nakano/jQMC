@@ -602,92 +602,112 @@ class MCMC_Workflow(Workflow):
                 return self.status, self.output_files, self.output_values
 
         # ── Production runs (phase 1..N) ──────────────────────────
-        # Production starts from scratch (no restart from pilot).
+        # Three phases:
+        #   A. Scan existing runs → find resume point
+        #   B. Re-estimate from accumulated data (if resuming)
+        #   C. Production loop for remaining runs
+        #
         # Checkpoint preserves all accumulated statistics across
-        # production restarts.
+        # production restarts.  accumulated_measurement tracks
+        # total measurement steps (excluding warmup) and is
+        # persisted in estimation state for correct resume.
+
         warmup = self.num_mcmc_warmup_steps
-        accumulated_steps = 0  # measurement steps only (excluding warmup)
-        last_run = 0
         step_files = {}  # {step: (input, output, run_id)}
-        _prev_run_steps = None  # tracks the step count of the last completed run
-        _did_reestimate_from_fetched = False
+        last_run = 0
+        first_new_run = self.max_continuation + 1  # assume all done
+
+        # ── Phase A: scan existing runs ──
         for i in range(1, self.max_continuation + 1):
-            # Skip input generation if this step already has a job record
             recorded = get_job_by_step(_wd, i)
             status = recorded.get("status")
             if status == "fetched":
-                logger.info(f"  step {i}: already fetched. Skipping.")
                 step_files[i] = (recorded["input_file"], recorded["output_file"], recorded.get("run_id", ""))
-                accumulated_steps += estimated_steps - warmup
-                _prev_run_steps = estimated_steps
+                logger.info(f"  step {i}: already fetched. Skipping.")
                 last_run = i
-                continue
-            elif status in ("submitted", "completed"):
+            else:
+                first_new_run = i
+                break
+
+        # ── Phase B: re-estimate from accumulated data ──
+        accumulated_measurement = 0  # measurement steps only (excl. warmup)
+        if first_new_run > 1:
+            cached_accum = estimation.get("accumulated_measurement_steps")
+            if cached_accum is not None:
+                accumulated_measurement = int(cached_accum)
+            else:
+                accumulated_measurement = (first_new_run - 1) * max(estimated_steps - warmup, 0)
+
+            _re_chk = self._find_restart_chk(_wd)
+            if _re_chk:
+                _re_energy, _re_error = self._compute_energy(_re_chk, work_dir=_wd)
+                if _re_energy is not None and _re_error is not None:
+                    if _re_error <= self.target_error * 1.05:
+                        logger.info(
+                            f"  Target already met after prior runs: {_re_error:.6g} <= {self.target_error * 1.05:.6g} Ha"
+                        )
+                        self.output_values.update(
+                            energy=_re_energy,
+                            energy_error=_re_error,
+                            restart_chk=_re_chk,
+                        )
+                        if self.atomic_force:
+                            forces = self._compute_force(_re_chk, work_dir=_wd)
+                            if forces is not None:
+                                self.output_values["forces"] = forces
+                        first_new_run = self.max_continuation + 1  # skip loop
+                    else:
+                        _additional = estimate_additional_steps(
+                            accumulated_measurement,
+                            _re_error,
+                            self.target_error,
+                        )
+                        estimated_steps = _additional + warmup
+                        logger.info(
+                            f"  Resuming after {first_new_run - 1} prior run(s): "
+                            f"error={_re_error:.6g} Ha > target "
+                            f"{self.target_error:.6g} Ha -> "
+                            f"{estimated_steps} steps "
+                            f"(measurement: {_additional}, warmup: {warmup}, "
+                            f"accumulated measurement: {accumulated_measurement})"
+                        )
+
+        # ── Phase C: production loop ──
+        _prev_run_steps = None
+        for i in range(first_new_run, self.max_continuation + 1):
+            recorded = get_job_by_step(_wd, i)
+            status = recorded.get("status")
+
+            if status in ("submitted", "completed"):
                 input_i = recorded["input_file"]
                 output_i = recorded["output_file"]
                 run_id_i = recorded.get("run_id", "")
                 logger.info(f"  step {i}: already {status}. Resuming...")
             else:
-                # ── Re-estimate if resuming after fetched runs ────
-                if accumulated_steps > 0 and not _did_reestimate_from_fetched:
-                    _did_reestimate_from_fetched = True
-                    _re_chk = self._find_restart_chk(_wd)
-                    if _re_chk:
-                        _re_energy, _re_error = self._compute_energy(_re_chk, work_dir=_wd)
-                        if _re_energy is not None and _re_error is not None:
-                            if _re_error <= self.target_error * 1.05:
-                                logger.info(
-                                    f"  Target already met after fetched runs: "
-                                    f"{_re_error:.6g} <= {self.target_error * 1.05:.6g} Ha"
-                                )
-                                self.output_values.update(
-                                    energy=_re_energy,
-                                    energy_error=_re_error,
-                                    restart_chk=_re_chk,
-                                )
-                                if self.atomic_force:
-                                    forces = self._compute_force(_re_chk, work_dir=_wd)
-                                    if forces is not None:
-                                        self.output_values["forces"] = forces
-                                break
-                            _additional = estimate_additional_steps(
-                                accumulated_steps,
-                                _re_error,
-                                self.target_error,
-                            )
-                            estimated_steps = _additional + warmup
-                            logger.info(
-                                f"  Re-estimated from accumulated data: "
-                                f"error={_re_error:.6g} Ha > target "
-                                f"{self.target_error:.6g} Ha -> "
-                                f"{estimated_steps} steps "
-                                f"(measurement: {_additional}, warmup: {warmup}, "
-                                f"accumulated measurement: {accumulated_steps})"
-                            )
-
                 run_id_i = self._new_run_id()
                 input_i = self._input_filename(i, run_id_i)
                 output_i = self._output_filename(i, run_id_i)
-                if i == 1:
-                    # First production run: start from scratch
+                # First-ever production run starts fresh; all others restart
+                if i == 1 and first_new_run == 1:
                     self._generate_input(estimated_steps, os.path.join(_wd, input_i))
                 else:
                     restart_chk = self._find_restart_chk(_wd)
                     if restart_chk is None:
-                        raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {_wd}")
+                        raise RuntimeError(f"No restart checkpoint found for run {i}. Expected .h5 file in {_wd}")
                     self._generate_input(
                         estimated_steps,
                         os.path.join(_wd, input_i),
-                        restart=bool(restart_chk),
+                        restart=True,
                         restart_chk=restart_chk,
                     )
                 logger.info("")
                 logger.info(f"-- MCMC Phase 1: Production run {i}/{self.max_continuation} " + "-" * 10)
                 logger.info(f"  {input_i}: {estimated_steps} steps")
 
-            restart_chk = self._find_restart_chk(_wd) if i > 1 else None
-            if i > 1 and restart_chk is None:
-                raise RuntimeError(f"No restart checkpoint found for continuation run {i}. Expected .h5 file in {_wd}")
+            need_restart = i > 1 or first_new_run > 1
+            restart_chk = self._find_restart_chk(_wd) if need_restart else None
+            if need_restart and restart_chk is None:
+                raise RuntimeError(f"No restart checkpoint found for run {i}. Expected .h5 file in {_wd}")
             extra_from = [restart_chk] if restart_chk else []
 
             # Estimate run time from the latest available output
@@ -702,7 +722,6 @@ class MCMC_Workflow(Workflow):
                     logger.info(f"  est. Net run time (w/o JAX compilation) = {_format_duration(_est_sec)}")
                     break
             else:
-                # First production run: use pilot output
                 _pilot_outs = sorted(glob.glob(os.path.join(_wd, "_pilot", "*.out")))
                 _ref_net = parse_net_time(_pilot_outs[-1]) if _pilot_outs else None
                 if _ref_net and _ref_net > 0:
@@ -721,11 +740,11 @@ class MCMC_Workflow(Workflow):
                 run_id=run_id_i,
             )
             step_files[i] = (input_i, output_i, run_id_i)
-            accumulated_steps += estimated_steps - warmup
+            accumulated_measurement += estimated_steps - warmup
             _prev_run_steps = estimated_steps
             last_run = i
 
-            # Check convergence
+            # ── Convergence check (single estimation point) ──
             restart_chk = self._find_restart_chk(_wd)
             if restart_chk:
                 energy, error = self._compute_energy(restart_chk, work_dir=_wd, output_file=output_i)
@@ -739,11 +758,11 @@ class MCMC_Workflow(Workflow):
                         if forces is not None:
                             self.output_values["forces"] = forces
 
-                    # Cache for restart
                     set_estimation(
                         _wd,
                         last_energy=energy,
                         last_energy_error=error,
+                        accumulated_measurement_steps=accumulated_measurement,
                         last_num_mcmc_bin_blocks=self.num_mcmc_bin_blocks,
                         last_num_mcmc_warmup_steps=self.num_mcmc_warmup_steps,
                     )
@@ -758,7 +777,7 @@ class MCMC_Workflow(Workflow):
                     elif i < self.max_continuation:
                         old_steps = estimated_steps
                         _additional = estimate_additional_steps(
-                            accumulated_steps,
+                            accumulated_measurement,
                             error,
                             self.target_error,
                         )
@@ -766,17 +785,16 @@ class MCMC_Workflow(Workflow):
                         logger.info(
                             f"  Re-estimated: {old_steps} -> {estimated_steps} steps "
                             f"(measurement: {_additional}, warmup: {warmup}, "
-                            f"accumulated measurement: {accumulated_steps})"
+                            f"accumulated measurement: {accumulated_measurement})"
                         )
                     else:
-                        msg = (
+                        logger.warning(
                             f"Error {error:.6g} > target "
                             f"{self.target_error:.6g} Ha -- "
                             f"max_continuation ({self.max_continuation}) reached"
                         )
-                        logger.warning(msg)
 
-        # ── Final energy computation ─────────────────────────────
+        # ── Final energy computation (safety net) ─────────────────
         last_output = step_files[last_run][1] if last_run in step_files else None
         restart_chk = self._find_restart_chk(_wd)
         if restart_chk:
@@ -793,6 +811,7 @@ class MCMC_Workflow(Workflow):
                     _wd,
                     last_energy=energy,
                     last_energy_error=error,
+                    accumulated_measurement_steps=accumulated_measurement,
                     last_num_mcmc_bin_blocks=self.num_mcmc_bin_blocks,
                     last_num_mcmc_warmup_steps=self.num_mcmc_warmup_steps,
                 )
