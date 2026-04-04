@@ -670,7 +670,8 @@ class Container:
             return
 
         if os.path.isdir(self.project_dir):
-            logger.info(f"[{self.label}] Project dir exists, skipping file copy.")
+            logger.info(f"[{self.label}] Project dir exists, ensuring input files are present.")
+            self._ensure_input_files()
         else:
             logger.info(f"[{self.label}] Creating project dir: {self.project_dir}")
             os.makedirs(self.project_dir, exist_ok=False)
@@ -684,6 +685,18 @@ class Container:
             status="pending",
         )
 
+    @staticmethod
+    def _dst_basename(src: str, rename_list: list, index: int) -> str:
+        """Compute the destination basename for the *index*-th input file.
+
+        If *rename_list* has a non-``None`` entry at *index*, that value
+        is used as the destination name; otherwise the source basename
+        is preserved.
+        """
+        if index < len(rename_list) and rename_list[index] is not None:
+            return os.path.basename(str(rename_list[index]))
+        return os.path.basename(src)
+
     def _copy_input_files(self):
         """Copy input files into the project directory.
 
@@ -692,17 +705,12 @@ class Container:
         FileNotFoundError
             If a required input file or directory does not exist.
         """
-        rename = len(self.rename_input_files) > 0 and len(self.rename_input_files) == len(self.input_files)
-
         for i, src in enumerate(self.input_files):
             src = str(src)  # resolve pathlib objects
             # Resolve relative paths against root_dir
             if not os.path.isabs(src):
                 src = os.path.join(self.root_dir, src)
-            if rename:
-                dst_name = os.path.basename(str(self.rename_input_files[i]))
-            else:
-                dst_name = os.path.basename(src)
+            dst_name = self._dst_basename(src, self.rename_input_files, i)
 
             dst = os.path.join(self.project_dir, dst_name)
 
@@ -715,18 +723,78 @@ class Container:
             else:
                 raise FileNotFoundError(f"[{self.label}] Required input not found: {src}")
 
-    def _compute_input_fingerprints(self) -> dict[str, dict]:
-        """Return ``{basename: {sha256: hex_digest}}`` for each resolved input file."""
-        fingerprints: dict[str, dict] = {}
-        rename = len(self.rename_input_files) > 0 and len(self.rename_input_files) == len(self.input_files)
+    def _ensure_input_files(self):
+        """Copy any missing input files into an existing project directory.
+
+        Unlike :meth:`_copy_input_files`, this does *not* overwrite files
+        that already exist in the project directory — it only fills in
+        the gaps (e.g. after a failed first run that created the
+        directory but never completed the copy).
+        """
         for i, src in enumerate(self.input_files):
             src = str(src)
             if not os.path.isabs(src):
                 src = os.path.join(self.root_dir, src)
-            if rename:
-                key = os.path.basename(str(self.rename_input_files[i]))
+            dst_name = self._dst_basename(src, self.rename_input_files, i)
+            dst = os.path.join(self.project_dir, dst_name)
+
+            if os.path.exists(dst):
+                continue  # already present
+
+            if os.path.isfile(src):
+                shutil.copy(src, dst)
+                logger.info(f"[{self.label}] Copied missing input: {dst_name}")
+            elif os.path.isdir(src):
+                shutil.copytree(src, dst)
+                logger.info(f"[{self.label}] Copied missing input dir: {dst_name}")
             else:
-                key = os.path.basename(src)
+                raise FileNotFoundError(f"[{self.label}] Required input not found: {src}")
+
+    def _validate_input_files(self, proj: str):
+        """Verify that all files the workflow expects exist in *proj*.
+
+        Checks:
+        1. Every entry in ``self.input_files`` (after rename) exists in
+           the project directory.
+        2. If the workflow declares ``hamiltonian_file``, that file also
+           exists.
+
+        Raises
+        ------
+        FileNotFoundError
+            With a clear message listing all missing files, raised
+            *before* any job is submitted.
+        """
+        missing = []
+
+        # (1) Check resolved input_files
+        for i, src in enumerate(self.input_files):
+            dst_name = self._dst_basename(str(src), self.rename_input_files, i)
+            if not os.path.exists(os.path.join(proj, dst_name)):
+                missing.append(dst_name)
+
+        # (2) Check the workflow's hamiltonian_file (if declared)
+        h5 = getattr(self.workflow, "hamiltonian_file", None)
+        if h5 and not os.path.exists(os.path.join(proj, h5)):
+            if h5 not in missing:
+                missing.append(h5)
+
+        if missing:
+            raise FileNotFoundError(
+                f"[{self.label}] Required file(s) missing in '{self.dirname}/' "
+                f"before workflow launch: {missing}. "
+                f"Check that input_files and rename_input_files are "
+                f"configured correctly."
+            )
+
+    def _compute_input_fingerprints(self) -> dict[str, dict]:
+        """Return ``{basename: {sha256: hex_digest}}`` for each resolved input file."""
+        fingerprints: dict[str, dict] = {}
+        for i, src in enumerate(self.input_files):
+            src = str(src)
+            if not os.path.isabs(src):
+                src = os.path.join(self.root_dir, src)
+            key = self._dst_basename(src, self.rename_input_files, i)
             if os.path.exists(src):
                 h = hashlib.sha256()
                 with open(src, "rb") as f:
@@ -786,6 +854,9 @@ class Container:
             self.status = WorkflowStatus.COMPLETED
             self._collect_outputs()
             return self.status, self.output_files, self.output_values
+
+        # Validate required files before running.
+        self._validate_input_files(proj)
 
         # Run the workflow — pass project_dir explicitly instead of
         # relying on os.chdir().

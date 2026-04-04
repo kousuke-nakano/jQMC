@@ -54,8 +54,8 @@ from ._setting import (
     GFMC_MIN_COLLECT_STEPS,
     GFMC_MIN_WARMUP_STEPS,
 )
-from .lrdmc_workflow import LRDMC_Workflow
 from ._state import WorkflowStatus
+from .lrdmc_workflow import LRDMC_Workflow
 from .workflow import Container, Workflow
 
 logger = getLogger("jqmc-workflow").getChild(__name__)

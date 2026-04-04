@@ -97,6 +97,33 @@ Pass a **file** produced by an upstream workflow.  `filename` can be:
   (e.g. `"hamiltonian_data_opt_step_91.h5"`), which is then used to
   locate the file in the upstream directory.
 
+> **Important: file renaming.**  When a dynamic `FileFrom` resolves to
+> a name that differs from what the downstream workflow expects (e.g.
+> `hamiltonian_data_opt_step_91.h5` vs. `hamiltonian_data.h5`), use
+> `rename_input_files` to map it to the expected name.  Entries of
+> `None` keep the original name.  A pre-launch validation check will
+> raise `FileNotFoundError` **before any job is submitted** if required
+> files are missing.
+>
+> ```python
+> Container(
+>     label="mcmc",
+>     dirname="02_mcmc",
+>     input_files=[
+>         FileFrom("vmc", ValueFrom("vmc", "optimized_hamiltonian")),
+>     ],
+>     rename_input_files=["hamiltonian_data.h5"],
+>     workflow=MCMC_Workflow(...),
+> )
+> ```
+>
+> With multiple input files, use `None` to skip renaming for specific entries:
+>
+> ```python
+> input_files=[h5, FileFrom("vmc", ValueFrom("vmc", "optimized_hamiltonian"))],
+> rename_input_files=[None, "hamiltonian_data.h5"],
+> ```
+
 #### `ValueFrom(label, key)`
 
 Pass a **scalar value** from an upstream workflow's `output_values`
@@ -370,6 +397,35 @@ cached error from previous runs exceeds the new target and
 automatically re-estimates additional steps from the accumulated
 data.  Continuation runs are launched from where the previous
 execution left off, up to `max_continuation`.
+
+
+### Pre-launch validation
+
+Before any job is submitted, the engine verifies that all required
+files are present in the project directory.  Two checks are performed:
+
+1. Every resolved entry in `input_files` (after renaming) exists.
+2. The workflow's `hamiltonian_file` (e.g. `"hamiltonian_data.h5"`)
+   exists.
+
+If any file is missing, a `FileNotFoundError` is raised immediately
+with a message listing the missing files:
+
+```text
+FileNotFoundError: [mcmc-N2-0.80] Required file(s) missing in '05_mcmc/'
+before workflow launch: ['hamiltonian_data.h5'].
+Check that input_files and rename_input_files are configured correctly.
+```
+
+This catches misconfigured `rename_input_files` (e.g. a dynamic
+`FileFrom` + `ValueFrom` that produces `hamiltonian_data_opt_step_91.h5`
+but the workflow expects `hamiltonian_data.h5`) before wasting
+compute resources.
+
+Additionally, when the project directory already exists from a
+previous interrupted run, any input files that are missing (but
+available from the source) are automatically copied in.  Existing
+files are not overwritten.
 
 
 ### Restart behavior
