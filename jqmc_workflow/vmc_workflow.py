@@ -217,6 +217,36 @@ class VMC_Workflow(Workflow):
             ),
         )
 
+    Output Values
+    -------------
+    After ``launch()`` completes, ``output_values`` may contain:
+
+    optimized_hamiltonian : str
+        Basename of the last optimised Hamiltonian file
+        (e.g. ``"hamiltonian_data_opt_step_91.h5"``).
+        Use with ``ValueFrom("vmc", "optimized_hamiltonian")``
+        to pass the filename dynamically to downstream workflows.
+    checkpoint : str
+        Basename of the restart checkpoint file.
+    num_mcmc_steps : int
+        Estimated MCMC steps per optimisation step
+        (automatic mode).  In fixed-step mode this key is
+        ``estimated_mcmc_steps`` instead.
+    energy : float
+        Energy from the last optimisation step (Ha).
+    energy_error : float
+        Statistical error on ``energy`` (Ha).
+    signal_to_noise : float
+        Average signal-to-noise ratio over the trailing window
+        (only when force-convergence is enabled).
+    signal_to_noise_last : float
+        Signal-to-noise ratio of the last optimisation step.
+    energy_slope : float
+        Slope of energy vs. step from the trailing window
+        (only when ``energy_slope_sigma_threshold`` is set).
+    energy_slope_std : float
+        Standard deviation of the energy slope.
+
     Notes
     -----
     * The pilot uses a small number of opt steps (``pilot_vmc_steps``)

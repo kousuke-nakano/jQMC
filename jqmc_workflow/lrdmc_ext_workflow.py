@@ -193,6 +193,21 @@ class LRDMC_Ext_Workflow(Workflow):
             ),
         )
 
+    Output Values
+    -------------
+    After ``launch()`` completes, ``output_values`` may contain:
+
+    extrapolated_energy : float
+        Continuum-limit (a²→0) extrapolated energy (Ha).
+    extrapolated_energy_error : float
+        Statistical error on ``extrapolated_energy`` (Ha).
+    per_alat_results : dict
+        Per-alat energy/error results keyed by ``alat``.
+    errors : list[str]
+        Error messages for alat runs that failed.
+    error : str
+        Top-level error message (only on failure).
+
     Notes
     -----
     * At least two ``alat`` values are required for extrapolation.

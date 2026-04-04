@@ -82,18 +82,34 @@ class FileFrom:
     ----------
     label : str
         Label of the upstream workflow that produces the file.
-    filename : str
+    filename : str or ValueFrom
         Filename (basename) to pull from the upstream workflow's
-        output directory.
+        output directory.  Can be a plain string when the filename is
+        known at definition time, or a :class:`ValueFrom` for names
+        that are only determined at runtime (e.g. the optimised
+        Hamiltonian whose step number depends on convergence).
 
     Examples
     --------
-    Pass an optimised Hamiltonian from a VMC step to an MCMC step::
+    Static filename (step number known in advance)::
 
         Container(
             label="mcmc-run",
             dirname="mcmc",
             input_files=[FileFrom("vmc-opt", "hamiltonian_data_opt_step_9.h5")],
+            rename_input_files=["hamiltonian_data.h5"],
+            workflow=MCMC_Workflow(...),
+        )
+
+    Dynamic filename (resolved from upstream ``output_values``)::
+
+        Container(
+            label="mcmc-run",
+            dirname="mcmc",
+            input_files=[
+                FileFrom("vmc-opt",
+                         ValueFrom("vmc-opt", "optimized_hamiltonian")),
+            ],
             rename_input_files=["hamiltonian_data.h5"],
             workflow=MCMC_Workflow(...),
         )
@@ -104,7 +120,7 @@ class FileFrom:
     Launcher  : Resolves ``FileFrom`` / ``ValueFrom`` at launch time.
     """
 
-    def __init__(self, label: str, filename: str):
+    def __init__(self, label: str, filename):
         self.label = label
         self.filename = filename
 
@@ -125,6 +141,17 @@ class ValueFrom:
         Label of the upstream workflow that produces the value.
     key : str
         Key name in the upstream workflow's ``output_values`` dict.
+        See the *Output Values* section of each workflow class for
+        available keys:
+
+        * :class:`VMC_Workflow` — ``optimized_hamiltonian``,
+          ``energy``, ``energy_error``, ``checkpoint``, …
+        * :class:`MCMC_Workflow` — ``energy``, ``energy_error``,
+          ``restart_chk``, ``forces``, …
+        * :class:`LRDMC_Workflow` — ``energy``, ``energy_error``,
+          ``alat``, ``restart_chk``, ``forces``, …
+        * :class:`LRDMC_Ext_Workflow` — ``extrapolated_energy``,
+          ``extrapolated_energy_error``, ``per_alat_results``, …
 
     Examples
     --------
@@ -134,6 +161,10 @@ class ValueFrom:
             trial_energy=ValueFrom("mcmc-run", "energy"),
             ...
         )
+
+    Pass the VMC-optimised Hamiltonian dynamically via ``FileFrom``::
+
+        FileFrom("vmc-opt", ValueFrom("vmc-opt", "optimized_hamiltonian"))
 
     See Also
     --------

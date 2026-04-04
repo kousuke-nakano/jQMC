@@ -367,7 +367,16 @@ class Launcher:
         cw = self.workflows_by_label[label]
 
         if isinstance(dep_obj, FileFrom):
-            filepath = os.path.join(cw.dirname, dep_obj.filename)
+            filename = dep_obj.filename
+            # Resolve dynamic filename (ValueFrom inside FileFrom)
+            if isinstance(filename, ValueFrom):
+                filename = self._get_value(filename)
+                if filename is None:
+                    raise ValueError(
+                        f"[{dep_obj.label}] ValueFrom({filename!r}) resolved to None. "
+                        f"Upstream workflow may not have set the output_values key."
+                    )
+            filepath = os.path.join(cw.dirname, filename)
             p = pathlib.Path(filepath)
             return p.resolve().relative_to(pathlib.Path(self.root_dir).resolve())
 

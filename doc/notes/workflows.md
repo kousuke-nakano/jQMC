@@ -69,6 +69,96 @@ run_pipeline.py
 | `WorkflowStatus` / `JobStatus` | Enums for workflow-level and per-job status values. See [Status enums](#status-enums). |
 
 
+### Inter-workflow data passing (`FileFrom` / `ValueFrom`)
+
+`FileFrom` and `ValueFrom` declare inter-workflow dependencies inside a
+`Container` definition.  At launch time, the `Launcher` resolves them
+to actual paths or values.
+
+#### `FileFrom(label, filename)`
+
+Pass a **file** produced by an upstream workflow.  `filename` can be:
+
+- A **static string** — when the exact name is known at definition time:
+
+  ```python
+  FileFrom("vmc", "hamiltonian_data_opt_step_9.h5")
+  ```
+
+- A **`ValueFrom` object** — when the name is determined at runtime
+  (e.g. VMC early convergence produces a step number that cannot be
+  predicted):
+
+  ```python
+  FileFrom("vmc", ValueFrom("vmc", "optimized_hamiltonian"))
+  ```
+
+  Here the `ValueFrom` is resolved first, yielding the actual basename
+  (e.g. `"hamiltonian_data_opt_step_91.h5"`), which is then used to
+  locate the file in the upstream directory.
+
+#### `ValueFrom(label, key)`
+
+Pass a **scalar value** from an upstream workflow's `output_values`
+dict.  The available keys depend on the workflow class — see the
+table below.
+
+#### Available `output_values` keys
+
+Each workflow populates `output_values` on completion.  These keys
+can be referenced by downstream workflows via
+`ValueFrom("label", "key")`.
+
+##### `VMC_Workflow`
+
+| Key | Type | Description |
+|---|---|---|
+| `optimized_hamiltonian` | `str` | Basename of the last optimised Hamiltonian file (e.g. `"hamiltonian_data_opt_step_91.h5"`). |
+| `checkpoint` | `str` | Basename of the restart checkpoint file. |
+| `num_mcmc_steps` | `int` | Estimated MCMC steps per optimisation step (automatic mode). |
+| `estimated_mcmc_steps` | `int` | Same as above, in fixed-step mode. |
+| `energy` | `float` | Energy from the last optimisation step (Ha). |
+| `energy_error` | `float` | Statistical error on `energy` (Ha). |
+| `signal_to_noise` | `float` | Average S/N over the trailing window (force convergence only). |
+| `signal_to_noise_last` | `float` | S/N of the last optimisation step. |
+| `energy_slope` | `float` | Slope of energy vs. step (energy-slope check only). |
+| `energy_slope_std` | `float` | Standard deviation of the energy slope. |
+
+##### `MCMC_Workflow`
+
+| Key | Type | Description |
+|---|---|---|
+| `energy` | `float` | VMC energy (Ha). |
+| `energy_error` | `float` | Statistical error on `energy` (Ha). |
+| `restart_chk` | `str` | Basename of the restart checkpoint file. |
+| `forces` | `object` | Atomic forces (only when `atomic_force=True`). |
+| `num_mcmc_steps` | `int` | Estimated total measurement steps (automatic mode). |
+| `estimated_steps` | `int` | Same as above, in fixed-step mode. |
+
+##### `LRDMC_Workflow`
+
+| Key | Type | Description |
+|---|---|---|
+| `energy` | `float` | DMC energy (Ha). |
+| `energy_error` | `float` | Statistical error on `energy` (Ha). |
+| `alat` | `float` | Lattice spacing used for this run. |
+| `restart_chk` | `str` | Basename of the restart checkpoint file. |
+| `forces` | `object` | Atomic forces (only when `atomic_force=True`). |
+| `estimated_steps` | `int` | Estimated total measurement steps. |
+| `num_projection_per_measurement` | `int` | GFMC projections per measurement (GFMC_n mode only). |
+| `time_projection_tau` | `float` | Imaginary-time projection step (GFMC_t mode only). |
+
+##### `LRDMC_Ext_Workflow`
+
+| Key | Type | Description |
+|---|---|---|
+| `extrapolated_energy` | `float` | Continuum-limit ($a^2 \to 0$) extrapolated energy (Ha). |
+| `extrapolated_energy_error` | `float` | Statistical error on `extrapolated_energy` (Ha). |
+| `per_alat_results` | `dict` | Per-alat energy/error results. |
+| `errors` | `list[str]` | Error messages for alat runs that failed. |
+| `error` | `str` | Top-level error message (only on failure). |
+
+
 ### Target error-bar estimation
 
 When `target_error` is set, each workflow (MCMC and LRDMC) operates in
@@ -785,8 +875,9 @@ mcmc = Container(
     dirname="mcmc_prod",
     input_files=[
         h5,
-        FileFrom("vmc", "hamiltonian_data_opt_step_*.h5"),
+        FileFrom("vmc", ValueFrom("vmc", "optimized_hamiltonian")),
     ],
+    rename_input_files=[None, "hamiltonian_data.h5"],
     workflow=MCMC_Workflow(
         server_machine_name=server,
         hamiltonian_file=h5,
@@ -802,7 +893,7 @@ lrdmc = Container(
     dirname="lrdmc_ext",
     input_files=[
         h5,
-        FileFrom("vmc", "hamiltonian_data_opt_step_*.h5"),
+        FileFrom("vmc", ValueFrom("vmc", "optimized_hamiltonian")),
     ],
     workflow=LRDMC_Ext_Workflow(
         server_machine_name=server,
@@ -822,8 +913,11 @@ pipeline.launch()
 ```
 
 In this example, `mcmc-prod` and `lrdmc-ext` depend on `vmc` (via
-`FileFrom`).  Additionally, `lrdmc-ext` depends on `mcmc-prod` (via
-`ValueFrom` for `E_scf`), so the DAG becomes
+`FileFrom`).  The optimised Hamiltonian filename is resolved
+dynamically through `ValueFrom("vmc", "optimized_hamiltonian")`,
+so the pipeline works correctly even when VMC converges early
+(e.g. step 91 instead of 150).  Additionally, `lrdmc-ext` depends on
+`mcmc-prod` (via `ValueFrom` for `E_scf`), so the DAG becomes
 VMC → MCMC → LRDMC-ext.  The `target_survived_walkers_ratio`
 triggers automatic calibration of `num_projection_per_measurement`
 independently at each lattice spacing.  All alat values run their

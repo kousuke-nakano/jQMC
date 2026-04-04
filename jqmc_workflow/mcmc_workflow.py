@@ -175,6 +175,22 @@ class MCMC_Workflow(Workflow):
             ),
         )
 
+    Output Values
+    -------------
+    After ``launch()`` completes, ``output_values`` may contain:
+
+    energy : float
+        VMC energy (Ha).
+    energy_error : float
+        Statistical error on ``energy`` (Ha).
+    restart_chk : str
+        Basename of the restart checkpoint file.
+    forces : object
+        Atomic forces (only when ``atomic_force=True``).
+    num_mcmc_steps : int
+        Estimated total measurement steps (automatic mode).
+        In fixed-step mode this key is ``estimated_steps``.
+
     Notes
     -----
     * The pilot run is skipped on re-entrance if an estimation already

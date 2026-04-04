@@ -241,6 +241,28 @@ class LRDMC_Workflow(Workflow):
             ),
         )
 
+    Output Values
+    -------------
+    After ``launch()`` completes, ``output_values`` may contain:
+
+    energy : float
+        DMC energy (Ha).
+    energy_error : float
+        Statistical error on ``energy`` (Ha).
+    alat : float
+        Lattice spacing used for this run.
+    restart_chk : str
+        Basename of the restart checkpoint file.
+    forces : object
+        Atomic forces (only when ``atomic_force=True``).
+    estimated_steps : int
+        Estimated total measurement steps.
+    num_projection_per_measurement : int
+        Number of GFMC projections per measurement
+        (GFMC_n mode only).
+    time_projection_tau : float
+        Imaginary-time projection step (GFMC_t mode only).
+
     Notes
     -----
     * For a²→0 continuum-limit extrapolation, use
