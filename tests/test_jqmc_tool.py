@@ -61,6 +61,10 @@ from jqmc.jqmc_tool import (  # noqa: E402
     vmc_analyze_output,
     vmc_generate_input,
 )
+from jqmc._setting import (  # noqa: E402
+    atol_consistency,
+    rtol_consistency,
+)
 from jqmc.trexio_wrapper import read_trexio_file  # noqa: E402
 
 trexio_files = [
@@ -508,105 +512,226 @@ class TestGenerateInput:
         assert "#" in text, "Expected comments in the generated TOML file"
 
 
+def _reference_mcmc_jackknife(rank_data, num_warmup, num_bin_blocks):
+    """Reference jackknife using np.sum (matches runtime get_E)."""
+    w_all = []
+    we_all = []
+    for obs in rank_data:
+        e_L = obs["e_L"][num_warmup:]
+        w_L = obs["w_L"][num_warmup:]
+        for arr in np.array_split(w_L, num_bin_blocks, axis=0):
+            w_all.extend(np.ravel(np.sum(arr, axis=0)).tolist())
+        for arr in np.array_split(w_L * e_L, num_bin_blocks, axis=0):
+            we_all.extend(np.ravel(np.sum(arr, axis=0)).tolist())
+    w = np.array(w_all)
+    we = np.array(we_all)
+    M = w.size
+    S_w, S_we = np.sum(w), np.sum(we)
+    E_jk = np.array([(S_we - we[m]) / (S_w - w[m]) for m in range(M)])
+    E_mean = np.mean(E_jk)
+    E_std = np.sqrt(M - 1) * np.std(E_jk)
+    return E_mean, E_std
+
+
+def _reference_lrdmc_jackknife(rank_data, num_warmup, num_bin_blocks, k):
+    """Reference jackknife for LRDMC using np.sum (matches runtime get_E)."""
+
+    def _compute_accumulated_weights(w_L, k):
+        """Pure-numpy equivalent of jqmc._checkpoint.compute_accumulated_weights."""
+        A, x = w_L.shape
+        G_L = np.ones((A - k, x))
+        for i in range(A - k):
+            G_L[i] = np.prod(w_L[i : i + k], axis=0)
+        return G_L
+
+    w_all = []
+    we_all = []
+    for obs in rank_data:
+        raw_e_L = obs["e_L"]
+        raw_w_L = obs["w_L"]
+        e_L = raw_e_L[k:][num_warmup:]
+        w_L = _compute_accumulated_weights(raw_w_L, k)[num_warmup:]
+        for arr in np.array_split(w_L, num_bin_blocks, axis=0):
+            w_all.extend(np.ravel(np.sum(arr, axis=0)).tolist())
+        for arr in np.array_split(w_L * e_L, num_bin_blocks, axis=0):
+            we_all.extend(np.ravel(np.sum(arr, axis=0)).tolist())
+    w = np.array(w_all)
+    we = np.array(we_all)
+    M = w.size
+    S_w, S_we = np.sum(w), np.sum(we)
+    E_jk = np.array([(S_we - we[m]) / (S_w - w[m]) for m in range(M)])
+    E_mean = np.mean(E_jk)
+    E_std = np.sqrt(M - 1) * np.std(E_jk)
+    return E_mean, E_std
+
+
 class TestComputeEnergy:
     """Tests for mcmc and lrdmc compute-energy commands."""
 
-    def test_mcmc_constant_energy_jackknife(self, tmp_path):
-        """With constant e_L and w_L=1 the jackknife mean must equal that constant."""
-        E_const = -5.0
+    def test_mcmc_random_energy_jackknife(self, tmp_path):
+        """jqmc-tool must match the np.sum-based reference jackknife for random data."""
+        rng = np.random.default_rng(42)
+        num_steps, num_walkers, num_bins, warmup = 103, 4, 7, 0
         chk_path = str(tmp_path / "mcmc.h5")
-        obj = _make_mcmc_obj(num_steps=100, num_walkers=4, e_L_value=E_const, with_force=False)
+        obj = _make_mcmc_obj(num_steps=num_steps, num_walkers=num_walkers, with_force=False)
+        obj.e_L = rng.standard_normal((num_steps, num_walkers)) - 5.0
+        obj.w_L = rng.uniform(0.8, 1.2, (num_steps, num_walkers))
         _write_chk(chk_path, [obj])
 
+        E_ref, std_ref = _reference_mcmc_jackknife(
+            [{"e_L": obj.e_L, "w_L": obj.w_L}],
+            warmup,
+            num_bins,
+        )
+
         from typer.testing import CliRunner
 
         from jqmc.jqmc_tool import mcmc_app
 
         runner = CliRunner()
-        result = runner.invoke(mcmc_app, ["compute-energy", chk_path, "-b", "2", "-w", "0"])
+        result = runner.invoke(mcmc_app, ["compute-energy", chk_path, "-b", str(num_bins), "-w", str(warmup)])
         assert result.exit_code == 0
-        assert f"E = {E_const}" in result.output
+        m = re.search(r"E\s*=\s*([+-]?[\d.eE+-]+)\s*\+-\s*([\d.eE+-]+)", result.output)
+        assert m is not None
+        E_cli, std_cli = float(m.group(1)), float(m.group(2))
+        np.testing.assert_allclose(E_cli, E_ref, atol=atol_consistency, rtol=rtol_consistency)
+        np.testing.assert_allclose(std_cli, std_ref, atol=atol_consistency, rtol=rtol_consistency)
 
-    def test_mcmc_multi_rank(self, tmp_path):
-        """Multiple MPI ranks with same constant energy should give same result."""
-        E_const = -3.0
+    def test_mcmc_multi_rank_random(self, tmp_path):
+        """Multiple MPI ranks with random data should match np.sum reference."""
+        num_steps, num_walkers, num_bins, warmup = 97, 3, 5, 0
         chk_path = str(tmp_path / "mcmc.h5")
-        objs = [
-            _make_mcmc_obj(num_steps=100, num_walkers=2, e_L_value=E_const, with_force=False, rng=np.random.default_rng(i))
-            for i in range(3)
-        ]
+        objs = []
+        rank_data = []
+        for i in range(3):
+            rng = np.random.default_rng(i + 100)
+            obj = _make_mcmc_obj(num_steps=num_steps, num_walkers=num_walkers, with_force=False)
+            obj.e_L = rng.standard_normal((num_steps, num_walkers)) - 3.0
+            obj.w_L = rng.uniform(0.9, 1.1, (num_steps, num_walkers))
+            objs.append(obj)
+            rank_data.append({"e_L": obj.e_L, "w_L": obj.w_L})
         _write_chk(chk_path, objs)
 
+        E_ref, std_ref = _reference_mcmc_jackknife(rank_data, warmup, num_bins)
+
         from typer.testing import CliRunner
 
         from jqmc.jqmc_tool import mcmc_app
 
         runner = CliRunner()
-        result = runner.invoke(mcmc_app, ["compute-energy", chk_path, "-b", "1", "-w", "0"])
+        result = runner.invoke(mcmc_app, ["compute-energy", chk_path, "-b", str(num_bins), "-w", str(warmup)])
         assert result.exit_code == 0
         assert "Found 3 MPI ranks" in result.output
-        assert f"E = {E_const}" in result.output
+        m = re.search(r"E\s*=\s*([+-]?[\d.eE+-]+)\s*\+-\s*([\d.eE+-]+)", result.output)
+        assert m is not None
+        E_cli, std_cli = float(m.group(1)), float(m.group(2))
+        np.testing.assert_allclose(E_cli, E_ref, atol=atol_consistency, rtol=rtol_consistency)
+        np.testing.assert_allclose(std_cli, std_ref, atol=atol_consistency, rtol=rtol_consistency)
 
     def test_mcmc_warmup_discards_steps(self, tmp_path):
-        """First num_mcmc_warmup_steps should be discarded."""
+        """Warmup discard + random data post-warmup must match reference."""
+        rng = np.random.default_rng(99)
+        num_steps, num_walkers, num_bins, warmup = 100, 2, 3, 10
         chk_path = str(tmp_path / "mcmc.h5")
-        # First 10 steps have e_L=100 (bad), remaining 90 have e_L=-5 (good)
-        obj = _make_mcmc_obj(num_steps=100, num_walkers=2, e_L_value=-5.0, with_force=False)
-        obj.e_L[:10, :] = 100.0
+        obj = _make_mcmc_obj(num_steps=num_steps, num_walkers=num_walkers, with_force=False)
+        obj.e_L = rng.standard_normal((num_steps, num_walkers)) - 5.0
+        obj.w_L = rng.uniform(0.8, 1.2, (num_steps, num_walkers))
+        # Poison first warmup steps to make warmup discard meaningful
+        obj.e_L[:warmup, :] = 100.0
         _write_chk(chk_path, [obj])
+
+        E_ref, std_ref = _reference_mcmc_jackknife(
+            [{"e_L": obj.e_L, "w_L": obj.w_L}],
+            warmup,
+            num_bins,
+        )
 
         from typer.testing import CliRunner
 
         from jqmc.jqmc_tool import mcmc_app
 
         runner = CliRunner()
-        result = runner.invoke(mcmc_app, ["compute-energy", chk_path, "-b", "1", "-w", "10"])
+        result = runner.invoke(mcmc_app, ["compute-energy", chk_path, "-b", str(num_bins), "-w", str(warmup)])
         assert result.exit_code == 0
-        # After discarding first 10 steps, E should be -5.0
-        assert "E = -5.0" in result.output
+        m = re.search(r"E\s*=\s*([+-]?[\d.eE+-]+)\s*\+-\s*([\d.eE+-]+)", result.output)
+        assert m is not None
+        E_cli, std_cli = float(m.group(1)), float(m.group(2))
+        np.testing.assert_allclose(E_cli, E_ref, atol=atol_consistency, rtol=rtol_consistency)
+        np.testing.assert_allclose(std_cli, std_ref, atol=atol_consistency, rtol=rtol_consistency)
 
-    def test_lrdmc_constant_energy_jackknife(self, tmp_path):
-        """LRDMC version of jackknife test with constant energy."""
-        E_const = -7.0
+    def test_lrdmc_random_energy_jackknife(self, tmp_path):
+        """LRDMC jqmc-tool must match the np.sum-based reference jackknife for random data."""
+        rng = np.random.default_rng(77)
+        num_steps, num_walkers, num_bins, warmup, k = 203, 4, 10, 30, 5
         chk_path = str(tmp_path / "lrdmc.h5")
-        obj = _make_lrdmc_obj(num_steps=100, num_walkers=4, e_L_value=E_const, with_force=False)
+        obj = _make_lrdmc_obj(num_steps=num_steps, num_walkers=num_walkers, with_force=False)
+        obj.e_L = rng.standard_normal((num_steps, num_walkers)) - 7.0
+        obj.w_L = rng.uniform(0.9, 1.1, (num_steps, num_walkers))
         _write_chk(chk_path, [obj])
 
+        E_ref, std_ref = _reference_lrdmc_jackknife(
+            [{"e_L": obj.e_L, "w_L": obj.w_L}],
+            warmup,
+            num_bins,
+            k,
+        )
+
         from typer.testing import CliRunner
 
         from jqmc.jqmc_tool import lrdmc_app
 
         runner = CliRunner()
-        result = runner.invoke(lrdmc_app, ["compute-energy", chk_path, "-b", "10", "-w", "30", "-c", "5"])
+        result = runner.invoke(lrdmc_app, ["compute-energy", chk_path, "-b", str(num_bins), "-w", str(warmup), "-c", str(k)])
         assert result.exit_code == 0
-        assert f"E = {E_const}" in result.output
+        m = re.search(r"E\s*=\s*([+-]?[\d.eE+-]+)\s*\+-\s*([\d.eE+-]+)", result.output)
+        assert m is not None
+        E_cli, std_cli = float(m.group(1)), float(m.group(2))
+        np.testing.assert_allclose(E_cli, E_ref, atol=atol_consistency, rtol=rtol_consistency)
+        np.testing.assert_allclose(std_cli, std_ref, atol=atol_consistency, rtol=rtol_consistency)
 
-    def test_lrdmc_multi_rank(self, tmp_path):
-        """Multiple MPI ranks for LRDMC."""
-        E_const = -2.0
+    def test_lrdmc_multi_rank_random(self, tmp_path):
+        """Multiple LRDMC ranks with random data must match np.sum reference."""
+        num_steps, num_walkers, num_bins, warmup, k = 203, 2, 10, 30, 5
         chk_path = str(tmp_path / "lrdmc.h5")
-        objs = [
-            _make_lrdmc_obj(num_steps=80, num_walkers=2, e_L_value=E_const, with_force=False, rng=np.random.default_rng(i))
-            for i in range(2)
-        ]
+        objs = []
+        rank_data = []
+        for i in range(2):
+            rng = np.random.default_rng(i + 200)
+            obj = _make_lrdmc_obj(num_steps=num_steps, num_walkers=num_walkers, with_force=False)
+            obj.e_L = rng.standard_normal((num_steps, num_walkers)) - 2.0
+            obj.w_L = rng.uniform(0.9, 1.1, (num_steps, num_walkers))
+            objs.append(obj)
+            rank_data.append({"e_L": obj.e_L, "w_L": obj.w_L})
         _write_chk(chk_path, objs)
 
+        E_ref, std_ref = _reference_lrdmc_jackknife(rank_data, warmup, num_bins, k)
+
         from typer.testing import CliRunner
 
         from jqmc.jqmc_tool import lrdmc_app
 
         runner = CliRunner()
-        result = runner.invoke(lrdmc_app, ["compute-energy", chk_path, "-b", "10", "-w", "30", "-c", "5"])
+        result = runner.invoke(lrdmc_app, ["compute-energy", chk_path, "-b", str(num_bins), "-w", str(warmup), "-c", str(k)])
         assert result.exit_code == 0
         assert "Found 2 MPI ranks" in result.output
+        m = re.search(r"E\s*=\s*([+-]?[\d.eE+-]+)\s*\+-\s*([\d.eE+-]+)", result.output)
+        assert m is not None
+        E_cli, std_cli = float(m.group(1)), float(m.group(2))
+        np.testing.assert_allclose(E_cli, E_ref, atol=atol_consistency, rtol=rtol_consistency)
+        np.testing.assert_allclose(std_cli, std_ref, atol=atol_consistency, rtol=rtol_consistency)
 
     def test_lrdmc_extrapolate_energy(self, tmp_path):
         """extrapolate-energy with two LRDMC checkpoints should report a->0 result."""
+        rng1, rng2 = np.random.default_rng(300), np.random.default_rng(301)
         chk1 = str(tmp_path / "lrdmc1.h5")
         chk2 = str(tmp_path / "lrdmc2.h5")
 
-        obj1 = _make_lrdmc_obj(num_steps=100, num_walkers=4, e_L_value=-5.0, alat=0.5, with_force=False)
-        obj2 = _make_lrdmc_obj(num_steps=100, num_walkers=4, e_L_value=-5.2, alat=0.3, with_force=False)
+        obj1 = _make_lrdmc_obj(num_steps=100, num_walkers=4, alat=0.5, with_force=False)
+        obj1.e_L = rng1.standard_normal((100, 4)) - 5.0
+        obj1.w_L = rng1.uniform(0.9, 1.1, (100, 4))
+        obj2 = _make_lrdmc_obj(num_steps=100, num_walkers=4, alat=0.3, with_force=False)
+        obj2.e_L = rng2.standard_normal((100, 4)) - 5.2
+        obj2.w_L = rng2.uniform(0.9, 1.1, (100, 4))
         _write_chk(chk1, [obj1])
         _write_chk(chk2, [obj2])
 
