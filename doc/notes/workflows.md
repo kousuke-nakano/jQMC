@@ -402,11 +402,10 @@ execution left off, up to `max_continuation`.
 ### Pre-launch validation
 
 Before any job is submitted, the engine verifies that all required
-files are present in the project directory.  Two checks are performed:
-
-1. Every resolved entry in `input_files` (after renaming) exists.
-2. The workflow's `hamiltonian_file` (e.g. `"hamiltonian_data.h5"`)
-   exists.
+files are present in the project directory.  Every resolved entry in
+`input_files` (after renaming) must exist.  Workflow-internal files
+(e.g. `hamiltonian_file`) are **not** checked because some workflows
+(e.g. `WF_Workflow`) *produce* them rather than consume them.
 
 If any file is missing, a `FileNotFoundError` is raised immediately
 with a message listing the missing files:
