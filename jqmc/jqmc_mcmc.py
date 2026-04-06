@@ -1072,7 +1072,7 @@ class MCMC:
         w_L_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_binned_local), op=MPI.SUM)
         w_L_e_L_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_e_L_binned_local), op=MPI.SUM)
         w_L_e_L2_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_e_L2_binned_local), op=MPI.SUM)
-        
+
         ## jackknie binned samples
         M_local = w_L_binned_local.size
         M_total = mpi_comm.allreduce(M_local, op=MPI.SUM)
@@ -1112,7 +1112,7 @@ class MCMC:
         # Var: global sums
         sum_Var_global = mpi_comm.allreduce(sum_Var_local, op=MPI.SUM)
         sumsq_Var_global = mpi_comm.allreduce(sumsq_Var_local, op=MPI.SUM)
-        
+
         Var_mean = sum_Var_global / M_total
         Var_var = (sumsq_Var_global / M_total) - (sum_Var_global / M_total) ** 2
         Var_std = np.sqrt((M_total - 1) * Var_var)
@@ -1203,7 +1203,7 @@ class MCMC:
         ### mpi allreduce (scalar)
         w_L_binned_global_sum = mpi_comm.allreduce(w_L_binned_local_sum, op=MPI.SUM)
         w_L_e_L_binned_global_sum = mpi_comm.allreduce(w_L_e_L_binned_local_sum, op=MPI.SUM)
-        
+
         ### mpi Allreduce (array)
         w_L_force_HF_binned_global_sum = np.empty_like(w_L_force_HF_binned_local_sum)
         w_L_force_PP_binned_global_sum = np.empty_like(w_L_force_PP_binned_local_sum)

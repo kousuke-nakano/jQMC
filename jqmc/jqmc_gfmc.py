@@ -5971,7 +5971,7 @@ class GFMC_n:
             # E: jackknife mean and std
             sum_E_local = np.sum(E_jackknife_binned_local)
             sumsq_E_local = np.sum(E_jackknife_binned_local**2)
-            
+
             # E: global sums
             sum_E_global = mpi_comm.allreduce(sum_E_local, op=MPI.SUM)
             sumsq_E_global = mpi_comm.allreduce(sumsq_E_local, op=MPI.SUM)
@@ -5983,7 +5983,7 @@ class GFMC_n:
             # Var: jackknife mean and std
             sum_Var_local = np.sum(Var_jackknife_binned_local)
             sumsq_Var_local = np.sum(Var_jackknife_binned_local**2)
-            
+
             # Var: global sums
             sum_Var_global = mpi_comm.allreduce(sum_Var_local, op=MPI.SUM)
             sumsq_Var_global = mpi_comm.allreduce(sumsq_Var_local, op=MPI.SUM)
