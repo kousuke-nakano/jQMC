@@ -702,6 +702,7 @@ class VMC_Workflow(Workflow):
         last_run = 0
         step_files = {}  # {step: (input, output, run_id)}
         _checked_fetched_convergence = False
+        converged = converged_snr = converged_slope = None
         for i in range(1, self.max_continuation + 1):
             # Skip input generation if this step already has a job record
             recorded = get_job_by_step(_wd, i)
@@ -720,12 +721,12 @@ class VMC_Workflow(Workflow):
                 # ── Re-evaluate convergence from fetched runs ─────
                 if _has_convergence_criteria and last_run > 0 and not _checked_fetched_convergence:
                     _checked_fetched_convergence = True
-                    _conv, _, _ = self._check_convergence(
+                    converged, converged_snr, converged_slope = self._check_convergence(
                         _wd,
                         step_files,
                         last_run,
                     )
-                    if _conv:
+                    if converged:
                         logger.info(f"  Convergence already met after fetched runs (step {last_run}). No further runs needed.")
                         break
 
@@ -785,17 +786,18 @@ class VMC_Workflow(Workflow):
             await self._submit_and_wait(input_i, output_i, work_dir=_wd, extra_from_objects=extra_from, step=i, run_id=run_id_i)
             step_files[i] = (input_i, output_i, run_id_i)
             last_run = i
+            converged = converged_snr = converged_slope = None
 
             logger.info(f"  VMC production run {i}/{self.max_continuation} completed.")
 
             # ── Early exit if convergence criteria met ────────────
             if _has_convergence_criteria and i < self.max_continuation:
-                _conv, _, _ = self._check_convergence(
+                converged, converged_snr, converged_slope = self._check_convergence(
                     _wd,
                     step_files,
                     last_run,
                 )
-                if _conv:
+                if converged:
                     logger.info(f"  Convergence achieved at run {i}/{self.max_continuation}. Stopping early.")
                     break
 
@@ -818,11 +820,12 @@ class VMC_Workflow(Workflow):
             self._parse_output(last_output)
 
         # ── Final convergence check ───────────────────────────────
-        converged, converged_snr, converged_slope = self._check_convergence(
-            _wd,
-            step_files,
-            last_run,
-        )
+        if converged is None:
+            converged, converged_snr, converged_slope = self._check_convergence(
+                _wd,
+                step_files,
+                last_run,
+            )
         if not _has_convergence_criteria:
             logger.info("  No convergence criteria set; treating as converged.")
         elif converged:
