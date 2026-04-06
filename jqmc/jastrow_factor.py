@@ -57,6 +57,7 @@ from ._setting import EPS_safe_distance, atol_consistency
 from .atomic_orbital import (
     AOs_cart_data,
     AOs_sphe_data,
+    ShellPrimMap,
     _aos_cart_to_sphe,
     _aos_sphe_to_cart,
     compute_AOs,
@@ -1876,14 +1877,12 @@ class Jastrow_data:
             j3 = Jastrow_three_body_data(orb_data=j3.orb_data, j_matrix=j3_new)
         elif block.name == "j3_basis_exp" and j3 is not None:
             new_exp = np.asarray(block.values, dtype=np.float64)
-            if block.symmetrize_metric is not None:
-                new_exp = block.symmetrize_metric(new_exp)
-            j3 = j3.with_updated_ao_exponents(jnp.asarray(new_exp, dtype=jnp.float64))
+            new_exp = jnp.asarray(self._symmetrize_ao_basis(j3.orb_data, new_exp), dtype=jnp.float64)
+            j3 = j3.with_updated_ao_exponents(new_exp)
         elif block.name == "j3_basis_coeff" and j3 is not None:
             new_coeff = np.asarray(block.values, dtype=np.float64)
-            if block.symmetrize_metric is not None:
-                new_coeff = block.symmetrize_metric(new_coeff)
-            j3 = j3.with_updated_ao_coefficients(jnp.asarray(new_coeff, dtype=jnp.float64))
+            new_coeff = jnp.asarray(self._symmetrize_ao_basis(j3.orb_data, new_coeff), dtype=jnp.float64)
+            j3 = j3.with_updated_ao_coefficients(new_coeff)
         elif block.name == "jastrow_nn_params" and nn3 is not None:
             # Update NN Jastrow parameters: block.values is the flattened parameter vector.
             flat = jnp.asarray(block.values).reshape(-1)
@@ -1943,6 +1942,18 @@ class Jastrow_data:
             out[:, :-1] = 0.5 * (sq_new + sq_new.T)
             return out
         return mat
+
+    @staticmethod
+    def _symmetrize_ao_basis(orb_data, arr: np.ndarray) -> np.ndarray:
+        """Average within same-atom same-shell primitive groups.
+
+        This is the single source of truth for shell-sharing constraints
+        on AO basis exponents/coefficients in the Jastrow factor.
+        """
+        from .wavefunction import _get_aos_data
+
+        spm = ShellPrimMap.from_aos_data(_get_aos_data(orb_data))
+        return spm.symmetrize(arr)
 
     def accumulate_position_grad(self, grad_jastrow: "Jastrow_data"):
         """Aggregate position gradients from all active Jastrow components."""
