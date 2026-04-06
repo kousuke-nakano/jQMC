@@ -46,6 +46,7 @@ from jax import grad, hessian, jit, tree_util, vmap
 from jax import typing as jnpt
 
 from ._diff_mask import DiffMask, apply_diff_mask
+from .atomic_orbital import AOs_cart_data, AOs_sphe_data, ShellPrimMap
 from .determinant import (
     Geminal_data,
     _compute_ratio_determinant_part_rank1_update,
@@ -69,6 +70,20 @@ logger = getLogger("jqmc").getChild(__name__)
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
+
+
+# ---------------------------------------------------------------------------
+# Shell-constraint helpers for AO basis optimization
+# ---------------------------------------------------------------------------
+
+
+def _get_aos_data(orb_data):
+    """Extract the underlying AOs_*_data from orb_data (AO or MO)."""
+    if isinstance(orb_data, (AOs_sphe_data, AOs_cart_data)):
+        return orb_data
+    if isinstance(orb_data, MOs_data):
+        return orb_data.aos_data
+    raise NotImplementedError(f"Unsupported orb_data type: {type(orb_data)}")
 
 
 @struct.dataclass
@@ -460,29 +475,33 @@ class Wavefunction_data:
                 )
 
             # J3 AO basis blocks
-            if opt_J3_basis_exp and self.jastrow_data.jastrow_three_body_data is not None:
-                j3_exp = self.jastrow_data.jastrow_three_body_data.ao_exponents
-                j3_exp_arr = np.asarray(j3_exp)
-                blocks.append(
-                    VariationalParameterBlock(
-                        name="j3_basis_exp",
-                        values=j3_exp_arr,
-                        shape=j3_exp_arr.shape,
-                        size=int(j3_exp_arr.size),
-                    )
-                )
+            if (opt_J3_basis_exp or opt_J3_basis_coeff) and self.jastrow_data.jastrow_three_body_data is not None:
+                j3_data = self.jastrow_data.jastrow_three_body_data
+                j3_spm = ShellPrimMap.from_aos_data(_get_aos_data(j3_data.orb_data))
 
-            if opt_J3_basis_coeff and self.jastrow_data.jastrow_three_body_data is not None:
-                j3_coeff = self.jastrow_data.jastrow_three_body_data.ao_coefficients
-                j3_coeff_arr = np.asarray(j3_coeff)
-                blocks.append(
-                    VariationalParameterBlock(
-                        name="j3_basis_coeff",
-                        values=j3_coeff_arr,
-                        shape=j3_coeff_arr.shape,
-                        size=int(j3_coeff_arr.size),
+                if opt_J3_basis_exp:
+                    exp_arr = np.asarray(j3_data.ao_exponents)
+                    blocks.append(
+                        VariationalParameterBlock(
+                            name="j3_basis_exp",
+                            values=exp_arr,
+                            shape=exp_arr.shape,
+                            size=int(exp_arr.size),
+                            symmetrize_metric=j3_spm.symmetrize,
+                        )
                     )
-                )
+
+                if opt_J3_basis_coeff:
+                    coeff_arr = np.asarray(j3_data.ao_coefficients)
+                    blocks.append(
+                        VariationalParameterBlock(
+                            name="j3_basis_coeff",
+                            values=coeff_arr,
+                            shape=coeff_arr.shape,
+                            size=int(coeff_arr.size),
+                            symmetrize_metric=j3_spm.symmetrize,
+                        )
+                    )
 
             if opt_JNN_param and self.jastrow_data.jastrow_nn_data is not None:
                 nn3 = self.jastrow_data.jastrow_nn_data
@@ -514,29 +533,43 @@ class Wavefunction_data:
 
         # Geminal AO basis blocks (up + dn concatenated into single blocks)
         if self.geminal_data is not None:
+            if opt_lambda_basis_exp or opt_lambda_basis_coeff:
+                lam_spm = ShellPrimMap.concat(
+                    ShellPrimMap.from_aos_data(_get_aos_data(self.geminal_data.orb_data_up_spin)),
+                    ShellPrimMap.from_aos_data(_get_aos_data(self.geminal_data.orb_data_dn_spin)),
+                )
+
             if opt_lambda_basis_exp:
-                lam_exp_up = self.geminal_data.ao_exponents_up
-                lam_exp_dn = self.geminal_data.ao_exponents_dn
-                lam_exp_arr = np.concatenate([np.asarray(lam_exp_up), np.asarray(lam_exp_dn)])
+                lam_exp_arr = np.concatenate(
+                    [
+                        np.asarray(self.geminal_data.ao_exponents_up),
+                        np.asarray(self.geminal_data.ao_exponents_dn),
+                    ]
+                )
                 blocks.append(
                     VariationalParameterBlock(
                         name="lambda_basis_exp",
                         values=lam_exp_arr,
                         shape=lam_exp_arr.shape,
                         size=int(lam_exp_arr.size),
+                        symmetrize_metric=lam_spm.symmetrize,
                     )
                 )
 
             if opt_lambda_basis_coeff:
-                lam_coeff_up = self.geminal_data.ao_coefficients_up
-                lam_coeff_dn = self.geminal_data.ao_coefficients_dn
-                lam_coeff_arr = np.concatenate([np.asarray(lam_coeff_up), np.asarray(lam_coeff_dn)])
+                lam_coeff_arr = np.concatenate(
+                    [
+                        np.asarray(self.geminal_data.ao_coefficients_up),
+                        np.asarray(self.geminal_data.ao_coefficients_dn),
+                    ]
+                )
                 blocks.append(
                     VariationalParameterBlock(
                         name="lambda_basis_coeff",
                         values=lam_coeff_arr,
                         shape=lam_coeff_arr.shape,
                         size=int(lam_coeff_arr.size),
+                        symmetrize_metric=lam_spm.symmetrize,
                     )
                 )
 

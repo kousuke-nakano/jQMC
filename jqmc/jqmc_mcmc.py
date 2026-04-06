@@ -1297,14 +1297,16 @@ class MCMC:
 
         # Collect gradients in the order of the provided variational blocks.
         dln_Psi_dc_list = []
+        matched_blocks = []
         for block in blocks:
             if block.name in grad_map:
                 dln_Psi_dc_list.append(grad_map[block.name])
+                matched_blocks.append(block)
 
         # here, the third index indicates the flattened variational parameter index.
         O_matrix = np.empty((self.mcmc_counter, self.num_walkers, 0))
 
-        for dln_Psi_dc in dln_Psi_dc_list:
+        for dln_Psi_dc, block in zip(dln_Psi_dc_list, matched_blocks):
             logger.devel(f"dln_Psi_dc.shape={dln_Psi_dc.shape}.")
             if dln_Psi_dc.ndim == 2:  # scalar variational param.
                 dln_Psi_dc_reshaped = dln_Psi_dc.reshape(dln_Psi_dc.shape[0], dln_Psi_dc.shape[1], 1)

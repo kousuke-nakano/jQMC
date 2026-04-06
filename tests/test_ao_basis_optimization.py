@@ -327,9 +327,13 @@ def test_get_variational_blocks_basis_flags():
     assert "lambda_basis_exp" in block_names
     assert "lambda_basis_coeff" in block_names
 
-    # Verify shapes
+    # Verify shapes: block.size should be the full number of primitives
     j3_exp_block = next(b for b in blocks if b.name == "j3_basis_exp")
     assert j3_exp_block.size == len(aos_data.exponents)
+    # symmetrize_metric should be set and be idempotent on the current values
+    assert j3_exp_block.symmetrize_metric is not None
+    symmetrized = j3_exp_block.symmetrize_metric(np.asarray(j3_exp_block.values))
+    npt.assert_allclose(symmetrized, np.asarray(aos_data.exponents), rtol=1e-14)
 
 
 # ============================================================

@@ -1875,11 +1875,15 @@ class Jastrow_data:
 
             j3 = Jastrow_three_body_data(orb_data=j3.orb_data, j_matrix=j3_new)
         elif block.name == "j3_basis_exp" and j3 is not None:
-            new_exp = jnp.asarray(block.values, dtype=jnp.float64)
-            j3 = j3.with_updated_ao_exponents(new_exp)
+            new_exp = np.asarray(block.values, dtype=np.float64)
+            if block.symmetrize_metric is not None:
+                new_exp = block.symmetrize_metric(new_exp)
+            j3 = j3.with_updated_ao_exponents(jnp.asarray(new_exp, dtype=jnp.float64))
         elif block.name == "j3_basis_coeff" and j3 is not None:
-            new_coeff = jnp.asarray(block.values, dtype=jnp.float64)
-            j3 = j3.with_updated_ao_coefficients(new_coeff)
+            new_coeff = np.asarray(block.values, dtype=np.float64)
+            if block.symmetrize_metric is not None:
+                new_coeff = block.symmetrize_metric(new_coeff)
+            j3 = j3.with_updated_ao_coefficients(jnp.asarray(new_coeff, dtype=jnp.float64))
         elif block.name == "jastrow_nn_params" and nn3 is not None:
             # Update NN Jastrow parameters: block.values is the flattened parameter vector.
             flat = jnp.asarray(block.values).reshape(-1)

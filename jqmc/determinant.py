@@ -274,12 +274,18 @@ class Geminal_data:
                 lambda_matrix=lambda_new,
             )
         elif block.name == "lambda_basis_exp":
-            vals = jnp.asarray(block.values, dtype=jnp.float64)
+            vals = np.asarray(block.values, dtype=np.float64)
+            if block.symmetrize_metric is not None:
+                vals = block.symmetrize_metric(vals)
+            vals = jnp.asarray(vals, dtype=jnp.float64)
             n_up = len(self.ao_exponents_up)
             new_exp_up, new_exp_dn = vals[:n_up], vals[n_up:]
             return self.with_updated_ao_exponents(new_exp_up, new_exp_dn)
         elif block.name == "lambda_basis_coeff":
-            vals = jnp.asarray(block.values, dtype=jnp.float64)
+            vals = np.asarray(block.values, dtype=np.float64)
+            if block.symmetrize_metric is not None:
+                vals = block.symmetrize_metric(vals)
+            vals = jnp.asarray(vals, dtype=jnp.float64)
             n_up = len(self.ao_coefficients_up)
             new_coeff_up, new_coeff_dn = vals[:n_up], vals[n_up:]
             return self.with_updated_ao_coefficients(new_coeff_up, new_coeff_dn)
