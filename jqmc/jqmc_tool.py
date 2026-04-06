@@ -789,9 +789,9 @@ def mcmc_compute_energy(
         e_L = obs["e_L"][num_mcmc_warmup_steps:]
         w_L = obs["w_L"][num_mcmc_warmup_steps:]
         w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-        w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
+        w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
         w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
-        w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
+        w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
         w_L_binned_list += w_L_binned
         w_L_e_L_binned_list += w_L_e_L_binned
 
@@ -1072,9 +1072,9 @@ def lrdmc_compute_energy(
             e_L = raw_e_L[k:][num_mcmc_warmup_steps:]
             w_L = compute_accumulated_weights(raw_w_L, k)[num_mcmc_warmup_steps:]
             w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-            w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
+            w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
             w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
-            w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
+            w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
             w_L_binned_list += w_L_binned
             w_L_e_L_binned_list += w_L_e_L_binned
 
@@ -1315,9 +1315,9 @@ def lrdmc_extrapolate_energy(
                 e_L = raw_e_L[k:][num_mcmc_warmup_steps:]
                 w_L = compute_accumulated_weights(obs["w_L"], k)[num_mcmc_warmup_steps:]
                 w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
-                w_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_split]))
+                w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
                 w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
-                w_L_e_L_binned = list(np.ravel([np.mean(arr, axis=0) for arr in w_L_e_L_split]))
+                w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
                 w_L_binned_list += w_L_binned
                 w_L_e_L_binned_list += w_L_e_L_binned
 

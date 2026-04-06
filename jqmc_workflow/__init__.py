@@ -55,6 +55,7 @@ try:
 except Exception:
     __version__ = "unknown"
 
+from ._machine import list_machines, probe_environment
 from ._output_parser import (
     parse_input_params,
     parse_lrdmc_ext_output,
@@ -62,6 +63,15 @@ from ._output_parser import (
     parse_mcmc_output,
     parse_vmc_output,
     repair_forces_from_output,
+)
+from ._phase import (
+    PHASE_ALLOWED_ACTIONS,
+    PHASE_TRANSITIONS,
+    ScientificPhase,
+    advance_phase,
+    allowed_actions,
+    can_advance,
+    rollback_phase,
 )
 from ._results import (
     Input_Parameters,
@@ -71,7 +81,17 @@ from ._results import (
     VMC_Diagnostic_Data,
     VMC_Step_Data,
 )
-from ._state import get_all_workflow_statuses, get_workflow_summary
+from ._state import (
+    JobStatus,
+    WorkflowStatus,
+    get_all_workflow_statuses,
+    get_artifact_lineage,
+    get_artifact_registry,
+    get_workflow_summary,
+    register_artifact,
+    save_job_accounting,
+    set_error,
+)
 from .launcher import Launcher
 from .lrdmc_ext_workflow import LRDMC_Ext_Workflow
 from .lrdmc_workflow import LRDMC_Workflow
@@ -113,4 +133,23 @@ __all__ = [
     # State queries
     "get_all_workflow_statuses",
     "get_workflow_summary",
+    "set_error",
+    "save_job_accounting",
+    "register_artifact",
+    "get_artifact_lineage",
+    "get_artifact_registry",
+    # Enums
+    "WorkflowStatus",
+    "JobStatus",
+    # Phase management
+    "ScientificPhase",
+    "PHASE_TRANSITIONS",
+    "PHASE_ALLOWED_ACTIONS",
+    "can_advance",
+    "allowed_actions",
+    "advance_phase",
+    "rollback_phase",
+    # Machine catalog
+    "list_machines",
+    "probe_environment",
 ]

@@ -154,7 +154,7 @@ class Data_transfer:
 
     # ── get (remote → local) ──────────────────────────────────────
 
-    def get_objects(self, from_objects=None, exclude_patterns=None, *, work_dir=None):
+    def get_objects(self, from_objects=None, exclude_patterns=None, *, work_dir=None, optional_patterns=None):
         """Download files from the remote directory to *work_dir*.
 
         Parameters
@@ -169,9 +169,15 @@ class Data_transfer:
             *None*, falls back to ``os.getcwd()`` for backward
             compatibility, but callers should always pass this
             explicitly.
+        optional_patterns : list[str], optional
+            Basenames or glob patterns of files that are non-essential.
+            When a file matching one of these patterns is missing on
+            the server, a warning is logged instead of raising
+            ``FileNotFoundError``.
         """
         from_objects = from_objects or []
         exclude_patterns = exclude_patterns or []
+        optional_patterns = optional_patterns or []
 
         local_root = self._local_root
         server_root = self.server_machine.workspace_root
@@ -215,6 +221,9 @@ class Data_transfer:
             for obj in expanded:
                 from_path = os.path.join(server_dir, obj)
                 if not self.server_machine.exist(object_name=from_path):
+                    if any(fnmatch.fnmatch(obj, pat) for pat in optional_patterns):
+                        logger.warning(f"Optional file not found on server (skipped): {from_path}")
+                        continue
                     raise FileNotFoundError(f"{from_path} not found on server.")
                 to_path = from_path.replace(server_root, local_root)
                 if self.server_machine.is_file(file_name=from_path):

@@ -377,7 +377,6 @@ opt_JNN_param = false
 opt_lambda_param = false
 opt_with_projected_MOs = false
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
-opt_filter_min_SN_ratio = 4.0 # minimum |f|/|std f| to update a parameter. Parameters with SN <= this are frozen. Applied before num_param_opt. Set 0 to disable.
 ```
 
 Please lunch the job.
@@ -699,12 +698,7 @@ opt_J3_param = false
 opt_JNN_param = true
 opt_lambda_param = false
 opt_with_projected_MOs = false
-opt_J3_basis_exp = false # Optimize J3 AO Gaussian exponents.
-opt_J3_basis_coeff = false # Optimize J3 AO contraction coefficients.
-opt_lambda_basis_exp = false # Optimize Geminal AO Gaussian exponents (up+dn).
-opt_lambda_basis_coeff = false # Optimize Geminal AO contraction coefficients (up+dn).
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
-opt_filter_min_SN_ratio = 4.0 # minimum |f|/|std f| to update a parameter. Parameters with SN <= this are frozen. Applied before num_param_opt. Set 0 to disable.
 optimizer_kwargs = { method = "adam" }
 ```
 
@@ -919,12 +913,7 @@ opt_J3_param = true
 opt_JNN_param = false
 opt_lambda_param = true
 opt_with_projected_MOs = true
-opt_J3_basis_exp = false # Optimize J3 AO Gaussian exponents. Cannot be combined with opt_with_projected_MOs.
-opt_J3_basis_coeff = false # Optimize J3 AO contraction coefficients. Cannot be combined with opt_with_projected_MOs.
-opt_lambda_basis_exp = false # Optimize Geminal AO Gaussian exponents (up+dn). Cannot be combined with opt_with_projected_MOs.
-opt_lambda_basis_coeff = false # Optimize Geminal AO contraction coefficients (up+dn). Cannot be combined with opt_with_projected_MOs.
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
-opt_filter_min_SN_ratio = 4.0 # minimum |f|/|std f| to update a parameter. Parameters with SN <= this are frozen. Applied before num_param_opt. Set 0 to disable.
 ```
 
 The key differences from `example01` are:
@@ -1245,7 +1234,6 @@ opt_JNN_param = false
 opt_lambda_param = false
 opt_with_projected_MOs = false
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
-opt_filter_min_SN_ratio = 4.0 # minimum |f|/|std f| to update a parameter. Parameters with SN <= this are frozen. Applied before num_param_opt. Set 0 to disable.
 ```
 
 Please lunch the job.
@@ -1466,12 +1454,7 @@ opt_J3_param = true
 opt_JNN_param = false
 opt_lambda_param = true
 opt_with_projected_MOs = false
-opt_J3_basis_exp = false # Optimize J3 AO Gaussian exponents.
-opt_J3_basis_coeff = false # Optimize J3 AO contraction coefficients.
-opt_lambda_basis_exp = false # Optimize Geminal AO Gaussian exponents (up+dn).
-opt_lambda_basis_coeff = false # Optimize Geminal AO contraction coefficients (up+dn).
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
-opt_filter_min_SN_ratio = 4.0 # minimum |f|/|std f| to update a parameter. Parameters with SN <= this are frozen. Applied before num_param_opt. Set 0 to disable.
 ```
 
 > [!IMPORTANT]
@@ -1773,12 +1756,7 @@ opt_J1_param = true
 opt_J2_param = true
 opt_J3_param = true
 opt_lambda_param = false
-opt_J3_basis_exp = false
-opt_J3_basis_coeff = false
-opt_lambda_basis_exp = false
-opt_lambda_basis_coeff = false
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If None, all parameters are optimized.
-opt_filter_min_SN_ratio = 4.0 # minimum |f|/|std f| to update a parameter. Parameters with SN <= this are frozen. Applied before num_param_opt. Set 0 to disable.
 ```
 
 Please launch the job.
@@ -1992,12 +1970,7 @@ opt_J1_param = true
 opt_J2_param = true
 opt_J3_param = true
 opt_lambda_param = true
-opt_J3_basis_exp = false
-opt_J3_basis_coeff = false
-opt_lambda_basis_exp = false
-opt_lambda_basis_coeff = false
 num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If None, all parameters are optimized.
-opt_filter_min_SN_ratio = 4.0 # minimum |f|/|std f| to update a parameter. Parameters with SN <= this are frozen. Applied before num_param_opt. Set 0 to disable.
 ```
 
 Please launch the job.
@@ -2448,8 +2421,6 @@ VMC_Workflow(
     opt_J3_param=True,
     opt_with_projected_MOs=True,
     target_error=0.001,
-    target_snr=4.5,
-    energy_slope_sigma_threshold=2.0,
 )
 ```
 
@@ -2663,8 +2634,6 @@ VMC_Workflow(
     opt_J3_param=True,
     opt_with_projected_MOs=False,
     target_error=1.0e-3,
-    target_snr=4.5,
-    energy_slope_sigma_threshold=2.0,
     optimizer_kwargs={
         "method": "sr",
         "delta": 0.350,
@@ -2692,7 +2661,7 @@ LRDMC_Workflow(
     queue_label="cores-4-mpi-4-gpu-4-omp-1-30m",
     alat=0.30,
     number_of_walkers=nw,
-    num_projection_per_measurement=40,
+    num_mcmc_per_measurement=40,
     pilot_steps=1000,  # explicit step count
 )
 ```
@@ -2872,8 +2841,6 @@ VMC_Workflow(
     opt_lambda_param=False,
     opt_with_projected_MOs=False,
     target_error=3.0e-3,
-    target_snr=4.5,
-    energy_slope_sigma_threshold=2.0,
     optimizer_kwargs={
         "method": "sr",
         "delta": 0.350,

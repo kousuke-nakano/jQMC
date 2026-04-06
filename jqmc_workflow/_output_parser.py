@@ -188,7 +188,7 @@ def parse_force_table(text: str):
 
 
 def repair_forces_from_output(work_dir: str) -> bool:
-    """Re-parse forces from ``out_*.o`` files and update ``workflow_state.toml``.
+    """Re-parse forces from output files and update ``workflow_state.toml``.
 
     This repairs corrupted force data caused by the pre-fix
     ``parse_ufloat_short`` that ignored scientific notation (e.g.
@@ -200,8 +200,7 @@ def repair_forces_from_output(work_dir: str) -> bool:
     if not os.path.isfile(state_path):
         return False
 
-    # Find the last out_*.o file
-    out_files = sorted(glob.glob(os.path.join(work_dir, "out_*.o")))
+    out_files = _find_output_files(work_dir)
     if not out_files:
         return False
     last_out = out_files[-1]
@@ -383,19 +382,38 @@ def _tail(text: str, max_lines: int = _STDERR_TAIL_LINES) -> str:
     return "".join(lines[-max_lines:])
 
 
-def _find_hamiltonian_h5(work_dir: str) -> Optional[str]:
-    """Extract ``[control] hamiltonian_h5`` from TOML input files in *work_dir*.
+def _find_input_files(work_dir: str) -> list:
+    """Return jQMC input TOML files in *work_dir*, sorted by step index.
 
-    Searches ``input_*.toml`` files and returns the value from the last one
-    that contains ``[control] hamiltonian_h5``.  Returns *None* if not found.
+    Reads ``workflow_state.toml`` ``[[jobs]]`` records and returns the
+    ``input_file`` paths that exist on disk, ordered by ``step``.
     """
-    toml_files = sorted(glob.glob(os.path.join(work_dir, "input_*.toml")))
-    if not toml_files:
-        # Fallback: any .toml that is not workflow_state.toml
-        toml_files = sorted(
-            f for f in glob.glob(os.path.join(work_dir, "*.toml")) if os.path.basename(f) != "workflow_state.toml"
-        )
-    for fpath in reversed(toml_files):
+    state_path = os.path.join(work_dir, "workflow_state.toml")
+    if not os.path.isfile(state_path):
+        return []
+    try:
+        state = toml.load(state_path)
+    except Exception:
+        return []
+    files = []
+    for job in state.get("jobs", []):
+        name = job.get("input_file", "")
+        if name:
+            path = os.path.join(work_dir, name)
+            if os.path.isfile(path):
+                files.append((job.get("step", 0), path))
+    files.sort()
+    return [path for _, path in files]
+
+
+def _find_hamiltonian_h5(work_dir: str) -> Optional[str]:
+    """Extract ``[control] hamiltonian_h5`` from input TOML files in *work_dir*.
+
+    Uses ``workflow_state.toml`` ``[[jobs]]`` to locate input files.
+    Returns the value from the last input that contains
+    ``[control] hamiltonian_h5``, or *None* if not found.
+    """
+    for fpath in reversed(_find_input_files(work_dir)):
         try:
             data = toml.load(fpath)
             h5 = data.get("control", {}).get("hamiltonian_h5")
@@ -478,32 +496,28 @@ def _apply_run_metadata(result, meta: dict) -> None:
     result.jax_devices = meta["jax_devices"]
 
 
-def _find_output_files(work_dir: str, prefix: str = "out_") -> list:
-    """Find jQMC output files in *work_dir*, sorted by suffix number.
+def _find_output_files(work_dir: str) -> list:
+    """Return jQMC stdout files in *work_dir*, sorted by step index.
 
-    Handles patterns like ``out_vmc``, ``out_vmc_0``, ``out_vmc_1``, ...
-    as well as ``out_mcmc``, ``out_lrdmc``, etc.
-
-    Returns a list of absolute paths sorted by (base, suffix_number).
+    Reads ``workflow_state.toml`` ``[[jobs]]`` records and returns the
+    ``output_file`` paths that exist on disk, ordered by ``step``.
     """
+    state_path = os.path.join(work_dir, "workflow_state.toml")
+    if not os.path.isfile(state_path):
+        return []
+    try:
+        state = toml.load(state_path)
+    except Exception:
+        return []
     files = []
-    for name in os.listdir(work_dir):
-        if name.startswith(prefix):
-            files.append(os.path.join(work_dir, name))
-    if not files:
-        # Fallback: try *.log files
-        for name in os.listdir(work_dir):
-            if name.endswith(".log"):
-                files.append(os.path.join(work_dir, name))
-
-    def _sort_key(path: str):
-        base = os.path.basename(path)
-        # Extract trailing number: "out_vmc_2" -> 2, "out_vmc" -> -1
-        m = re.search(r"_(\d+)$", base)
-        return (base, int(m.group(1)) if m else -1)
-
-    files.sort(key=_sort_key)
-    return files
+    for job in state.get("jobs", []):
+        name = job.get("output_file", "")
+        if name:
+            path = os.path.join(work_dir, name)
+            if os.path.isfile(path):
+                files.append((job.get("step", 0), path))
+    files.sort()
+    return [path for _, path in files]
 
 
 # ── VMC parser ────────────────────────────────────────────────────
@@ -641,8 +655,8 @@ def _parse_vmc_log_text(text: str) -> list:
 def parse_vmc_output(work_dir: str) -> VMC_Diagnostic_Data:
     """Parse VMC optimization output from *work_dir*.
 
-    Discovers output files (``out_vmc``, ``out_vmc_0``, etc.) in the
-    directory, parses per-step data, and looks for
+    Discovers output files from ``workflow_state.toml`` ``[[jobs]]``
+    records, parses per-step data, and looks for
     ``hamiltonian_data_opt_step_*.h5``.
 
     Parameters
@@ -662,7 +676,7 @@ def parse_vmc_output(work_dir: str) -> VMC_Diagnostic_Data:
         return result
 
     # ── Discover and parse stdout files ──
-    output_files = _find_output_files(work_dir, prefix="out_")
+    output_files = _find_output_files(work_dir)
     all_steps: list[VMC_Step_Data] = []
 
     for fpath in output_files:
@@ -778,7 +792,7 @@ def parse_mcmc_output(work_dir: str) -> MCMC_Diagnostic_Data:
         logger.warning("parse_mcmc_output: directory not found: %s", work_dir)
         return result
 
-    output_files = _find_output_files(work_dir, prefix="out_")
+    output_files = _find_output_files(work_dir)
 
     # ── Run-level metadata (MPI, walkers, JAX) from first output file ──
     if output_files:
@@ -888,7 +902,7 @@ def parse_lrdmc_output(work_dir: str) -> LRDMC_Diagnostic_Data:
         logger.warning("parse_lrdmc_output: directory not found: %s", work_dir)
         return result
 
-    output_files = _find_output_files(work_dir, prefix="out_")
+    output_files = _find_output_files(work_dir)
 
     # ── Run-level metadata (MPI, walkers, JAX) from first output file ──
     if output_files:
@@ -1001,7 +1015,7 @@ def parse_lrdmc_ext_output(work_dir: str) -> LRDMC_Ext_Diagnostic_Data:
         logger.warning("parse_lrdmc_ext_output: directory not found: %s", work_dir)
         return result
 
-    output_files = _find_output_files(work_dir, prefix="out_")
+    output_files = _find_output_files(work_dir)
 
     for fpath in reversed(output_files):
         text = _read_text(fpath)

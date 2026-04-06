@@ -10,7 +10,7 @@
 ![stars](https://img.shields.io/github/stars/kousuke-nakano/jQMC?style=social)
 ![short-pytest](https://github.com/kousuke-nakano/jQMC/actions/workflows/jqmc-run-short-pytest.yml/badge.svg)
 ![full-pytest](https://github.com/kousuke-nakano/jQMC/actions/workflows/jqmc-run-full-pytest.yml/badge.svg)
-![codecov](https://codecov.io/github/kousuke-nakano/jQMC/graph/badge.svg?token=H0Z7M86C1E)
+![codecov](https://codecov.io/github/kousuke-nakano/jQMC/graph/badge.svg)
 ![DL](https://img.shields.io/pypi/dm/jqmc)
 ![python_version](https://img.shields.io/pypi/pyversions/jqmc)
 ![pypi_version](https://badge.fury.io/py/jqmc.svg)

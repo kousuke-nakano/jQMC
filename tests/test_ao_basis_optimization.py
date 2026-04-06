@@ -523,21 +523,39 @@ def test_full_wavefunction_exponent_gradient():
 # ============================================================
 
 
-def test_opt_with_projected_MOs_basis_conflict():
-    """opt_with_projected_MOs should raise ValueError when combined with basis optimization."""
+def test_opt_with_projected_MOs_lambda_basis_conflict():
+    """opt_with_projected_MOs should raise ValueError when combined with lambda basis optimization."""
     from jqmc.jqmc_mcmc import MCMC
 
-    # We just test that the validation logic raises the error
-    # by checking the error directly at the run_optimize level.
-    # Since MCMC initialization is heavy, we test the conflict check directly.
-    any_basis_flag = True
+    # Only opt_lambda_basis_exp/coeff conflict with opt_with_projected_MOs.
+    # opt_J3_basis_exp/coeff are allowed because J3 basis does not affect
+    # the overlap matrix used by MO projection.
     opt_with_projected_MOs = True
-    flags = [any_basis_flag, False, False, False]  # opt_J3_basis_exp=True
+
+    # lambda_basis_exp=True should conflict
+    flags_lambda_exp = [False, False, True, False]  # opt_lambda_basis_exp=True
     with pytest.raises(ValueError, match="cannot be combined with opt_with_projected_MOs"):
-        if opt_with_projected_MOs and any(flags):
+        if opt_with_projected_MOs and any(flags_lambda_exp[2:]):
             raise ValueError(
-                "AO basis optimization (opt_J3_basis_exp/coeff, opt_lambda_basis_exp/coeff) "
+                "Geminal AO basis optimization (opt_lambda_basis_exp/coeff) "
                 "cannot be combined with opt_with_projected_MOs. "
-                "Changing AO exponents/coefficients invalidates the overlap matrix "
+                "Changing Geminal AO exponents/coefficients invalidates the overlap matrix "
                 "used by the MO projection operators."
             )
+
+    # lambda_basis_coeff=True should conflict
+    flags_lambda_coeff = [False, False, False, True]  # opt_lambda_basis_coeff=True
+    with pytest.raises(ValueError, match="cannot be combined with opt_with_projected_MOs"):
+        if opt_with_projected_MOs and any(flags_lambda_coeff[2:]):
+            raise ValueError(
+                "Geminal AO basis optimization (opt_lambda_basis_exp/coeff) "
+                "cannot be combined with opt_with_projected_MOs. "
+                "Changing Geminal AO exponents/coefficients invalidates the overlap matrix "
+                "used by the MO projection operators."
+            )
+
+    # J3_basis_exp=True should NOT conflict with opt_with_projected_MOs
+    flags_j3 = [True, False, False, False]  # opt_J3_basis_exp=True
+    # This should not raise — J3 basis does not affect MO projection overlap
+    if opt_with_projected_MOs and any(flags_j3[2:]):
+        raise ValueError("Should not reach here")

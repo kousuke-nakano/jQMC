@@ -2053,9 +2053,9 @@ class GFMC_t:
                 w_L_e_L2_binned_local = np.array(w_L_e_L2_binned)
 
                 ## local sum
-                w_L_binned_local_sum = np.sum(w_L_binned_local, axis=0)
-                w_L_e_L_binned_local_sum = np.sum(w_L_e_L_binned_local, axis=0)
-                w_L_e_L2_binned_local_sum = np.sum(w_L_e_L2_binned_local, axis=0)
+                w_L_binned_local_sum = np.sum(w_L_binned_local)
+                w_L_e_L_binned_local_sum = np.sum(w_L_e_L_binned_local)
+                w_L_e_L2_binned_local_sum = np.sum(w_L_e_L2_binned_local)
 
                 ## jackknie binned samples
                 M_local = w_L_binned_local.size
@@ -2140,19 +2140,14 @@ class GFMC_t:
             w_L_e_L2_binned_local = np.array(w_L_e_L2_binned_local)
 
             ## local sum
-            w_L_binned_local_sum = np.sum(w_L_binned_local, axis=0)
-            w_L_e_L_binned_local_sum = np.sum(w_L_e_L_binned_local, axis=0)
-            w_L_e_L2_binned_local_sum = np.sum(w_L_e_L2_binned_local, axis=0)
+            w_L_binned_local_sum = np.sum(w_L_binned_local)
+            w_L_e_L_binned_local_sum = np.sum(w_L_e_L_binned_local)
+            w_L_e_L2_binned_local_sum = np.sum(w_L_e_L2_binned_local)
 
             ## glolbal sum
-            w_L_binned_global_sum = np.empty_like(w_L_binned_local_sum)
-            w_L_e_L_binned_global_sum = np.empty_like(w_L_e_L_binned_local_sum)
-            w_L_e_L2_binned_global_sum = np.empty_like(w_L_e_L2_binned_local_sum)
-
-            ## mpi Allreduce
-            mpi_comm.Allreduce([w_L_binned_local_sum, MPI.DOUBLE], [w_L_binned_global_sum, MPI.DOUBLE], op=MPI.SUM)
-            mpi_comm.Allreduce([w_L_e_L_binned_local_sum, MPI.DOUBLE], [w_L_e_L_binned_global_sum, MPI.DOUBLE], op=MPI.SUM)
-            mpi_comm.Allreduce([w_L_e_L2_binned_local_sum, MPI.DOUBLE], [w_L_e_L2_binned_global_sum, MPI.DOUBLE], op=MPI.SUM)
+            w_L_binned_global_sum = mpi_comm.allreduce(w_L_binned_local_sum, op=MPI.SUM)
+            w_L_e_L_binned_global_sum = mpi_comm.allreduce(w_L_e_L_binned_local_sum, op=MPI.SUM)
+            w_L_e_L2_binned_global_sum = mpi_comm.allreduce(w_L_e_L2_binned_local_sum, op=MPI.SUM)
 
             ## jackknie binned samples
             M_local = w_L_binned_local.size
@@ -2178,11 +2173,9 @@ class GFMC_t:
             sum_E_local = np.sum(E_jackknife_binned_local)
             sumsq_E_local = np.sum(E_jackknife_binned_local**2)
 
-            sum_E_global = np.empty_like(sum_E_local)
-            sumsq_E_global = np.empty_like(sumsq_E_local)
-
-            mpi_comm.Allreduce([sum_E_local, MPI.DOUBLE], [sum_E_global, MPI.DOUBLE], op=MPI.SUM)
-            mpi_comm.Allreduce([sumsq_E_local, MPI.DOUBLE], [sumsq_E_global, MPI.DOUBLE], op=MPI.SUM)
+            # E: global sum
+            sum_E_global = mpi_comm.allreduce(sum_E_local, op=MPI.SUM)
+            sumsq_E_global = mpi_comm.allreduce(sumsq_E_local, op=MPI.SUM)
 
             E_mean = sum_E_global / M_total
             E_var = (sumsq_E_global / M_total) - (sum_E_global / M_total) ** 2
@@ -2192,11 +2185,9 @@ class GFMC_t:
             sum_Var_local = np.sum(Var_jackknife_binned_local)
             sumsq_Var_local = np.sum(Var_jackknife_binned_local**2)
 
-            sum_Var_global = np.empty_like(sum_Var_local)
-            sumsq_Var_global = np.empty_like(sumsq_Var_local)
-
-            mpi_comm.Allreduce([sum_Var_local, MPI.DOUBLE], [sum_Var_global, MPI.DOUBLE], op=MPI.SUM)
-            mpi_comm.Allreduce([sumsq_Var_local, MPI.DOUBLE], [sumsq_Var_global, MPI.DOUBLE], op=MPI.SUM)
+            # Var: global sum
+            sum_Var_global = mpi_comm.allreduce(sum_Var_local, op=MPI.SUM)
+            sumsq_Var_global = mpi_comm.allreduce(sumsq_Var_local, op=MPI.SUM)
 
             Var_mean = sum_Var_global / M_total
             Var_var = (sumsq_Var_global / M_total) - (sum_Var_global / M_total) ** 2
@@ -2405,22 +2396,21 @@ class GFMC_t:
             w_L_E_L_force_PP_binned_local = np.array(w_L_E_L_force_PP_binned_local)
 
             ## local sum
-            w_L_binned_local_sum = np.sum(w_L_binned_local, axis=0)
-            w_L_e_L_binned_local_sum = np.sum(w_L_e_L_binned_local, axis=0)
+            w_L_binned_local_sum = np.sum(w_L_binned_local)
+            w_L_e_L_binned_local_sum = np.sum(w_L_e_L_binned_local)
             w_L_force_HF_binned_local_sum = np.sum(w_L_force_HF_binned_local, axis=0)
             w_L_force_PP_binned_local_sum = np.sum(w_L_force_PP_binned_local, axis=0)
             w_L_E_L_force_PP_binned_local_sum = np.sum(w_L_E_L_force_PP_binned_local, axis=0)
 
             ## glolbal sum
-            w_L_binned_global_sum = np.empty_like(w_L_binned_local_sum)
-            w_L_e_L_binned_global_sum = np.empty_like(w_L_e_L_binned_local_sum)
+            ### mpi allreduce (scalar)
+            w_L_binned_global_sum = mpi_comm.allreduce(w_L_binned_local_sum, op=MPI.SUM)
+            w_L_e_L_binned_global_sum = mpi_comm.allreduce(w_L_e_L_binned_local_sum, op=MPI.SUM)
+
+            ### mpi Allreduce (array)
             w_L_force_HF_binned_global_sum = np.empty_like(w_L_force_HF_binned_local_sum)
             w_L_force_PP_binned_global_sum = np.empty_like(w_L_force_PP_binned_local_sum)
             w_L_E_L_force_PP_binned_global_sum = np.empty_like(w_L_E_L_force_PP_binned_local_sum)
-
-            ## mpi Allreduce
-            mpi_comm.Allreduce([w_L_binned_local_sum, MPI.DOUBLE], [w_L_binned_global_sum, MPI.DOUBLE], op=MPI.SUM)
-            mpi_comm.Allreduce([w_L_e_L_binned_local_sum, MPI.DOUBLE], [w_L_e_L_binned_global_sum, MPI.DOUBLE], op=MPI.SUM)
             mpi_comm.Allreduce(
                 [w_L_force_HF_binned_local_sum, MPI.DOUBLE], [w_L_force_HF_binned_global_sum, MPI.DOUBLE], op=MPI.SUM
             )
@@ -5949,19 +5939,14 @@ class GFMC_n:
             w_L_e_L2_binned_local = np.array(w_L_e_L2_binned_local)
 
             ## local sum
-            w_L_binned_local_sum = np.sum(w_L_binned_local, axis=0)
-            w_L_e_L_binned_local_sum = np.sum(w_L_e_L_binned_local, axis=0)
-            w_L_e_L2_binned_local_sum = np.sum(w_L_e_L2_binned_local, axis=0)
+            w_L_binned_local_sum = np.sum(w_L_binned_local)
+            w_L_e_L_binned_local_sum = np.sum(w_L_e_L_binned_local)
+            w_L_e_L2_binned_local_sum = np.sum(w_L_e_L2_binned_local)
 
             ## glolbal sum
-            w_L_binned_global_sum = np.empty_like(w_L_binned_local_sum)
-            w_L_e_L_binned_global_sum = np.empty_like(w_L_e_L_binned_local_sum)
-            w_L_e_L2_binned_global_sum = np.empty_like(w_L_e_L2_binned_local_sum)
-
-            ## mpi Allreduce
-            mpi_comm.Allreduce([w_L_binned_local_sum, MPI.DOUBLE], [w_L_binned_global_sum, MPI.DOUBLE], op=MPI.SUM)
-            mpi_comm.Allreduce([w_L_e_L_binned_local_sum, MPI.DOUBLE], [w_L_e_L_binned_global_sum, MPI.DOUBLE], op=MPI.SUM)
-            mpi_comm.Allreduce([w_L_e_L2_binned_local_sum, MPI.DOUBLE], [w_L_e_L2_binned_global_sum, MPI.DOUBLE], op=MPI.SUM)
+            w_L_binned_global_sum = mpi_comm.allreduce(w_L_binned_local_sum, op=MPI.SUM)
+            w_L_e_L_binned_global_sum = mpi_comm.allreduce(w_L_e_L_binned_local_sum, op=MPI.SUM)
+            w_L_e_L2_binned_global_sum = mpi_comm.allreduce(w_L_e_L2_binned_local_sum, op=MPI.SUM)
 
             ## jackknie binned samples
             M_local = w_L_binned_local.size
@@ -5987,11 +5972,9 @@ class GFMC_n:
             sum_E_local = np.sum(E_jackknife_binned_local)
             sumsq_E_local = np.sum(E_jackknife_binned_local**2)
 
-            sum_E_global = np.empty_like(sum_E_local)
-            sumsq_E_global = np.empty_like(sumsq_E_local)
-
-            mpi_comm.Allreduce([sum_E_local, MPI.DOUBLE], [sum_E_global, MPI.DOUBLE], op=MPI.SUM)
-            mpi_comm.Allreduce([sumsq_E_local, MPI.DOUBLE], [sumsq_E_global, MPI.DOUBLE], op=MPI.SUM)
+            # E: global sums
+            sum_E_global = mpi_comm.allreduce(sum_E_local, op=MPI.SUM)
+            sumsq_E_global = mpi_comm.allreduce(sumsq_E_local, op=MPI.SUM)
 
             E_mean = sum_E_global / M_total
             E_var = (sumsq_E_global / M_total) - (sum_E_global / M_total) ** 2
@@ -6001,11 +5984,9 @@ class GFMC_n:
             sum_Var_local = np.sum(Var_jackknife_binned_local)
             sumsq_Var_local = np.sum(Var_jackknife_binned_local**2)
 
-            sum_Var_global = np.empty_like(sum_Var_local)
-            sumsq_Var_global = np.empty_like(sumsq_Var_local)
-
-            mpi_comm.Allreduce([sum_Var_local, MPI.DOUBLE], [sum_Var_global, MPI.DOUBLE], op=MPI.SUM)
-            mpi_comm.Allreduce([sumsq_Var_local, MPI.DOUBLE], [sumsq_Var_global, MPI.DOUBLE], op=MPI.SUM)
+            # Var: global sums
+            sum_Var_global = mpi_comm.allreduce(sum_Var_local, op=MPI.SUM)
+            sumsq_Var_global = mpi_comm.allreduce(sumsq_Var_local, op=MPI.SUM)
 
             Var_mean = sum_Var_global / M_total
             Var_var = (sumsq_Var_global / M_total) - (sum_Var_global / M_total) ** 2
@@ -6083,8 +6064,8 @@ class GFMC_n:
                 w_L_E_L_force_PP_binned_local = np.array(w_L_E_L_force_PP_binned)
 
                 ## local sum
-                w_L_binned_local_sum = np.sum(w_L_binned_local, axis=0)
-                w_L_e_L_binned_local_sum = np.sum(w_L_e_L_binned_local, axis=0)
+                w_L_binned_local_sum = np.sum(w_L_binned_local)
+                w_L_e_L_binned_local_sum = np.sum(w_L_e_L_binned_local)
                 w_L_force_HF_binned_local_sum = np.sum(w_L_force_HF_binned_local, axis=0)
                 w_L_force_PP_binned_local_sum = np.sum(w_L_force_PP_binned_local, axis=0)
                 w_L_E_L_force_PP_binned_local_sum = np.sum(w_L_E_L_force_PP_binned_local, axis=0)
@@ -6217,22 +6198,21 @@ class GFMC_n:
             w_L_E_L_force_PP_binned_local = np.array(w_L_E_L_force_PP_binned_local)
 
             ## local sum
-            w_L_binned_local_sum = np.sum(w_L_binned_local, axis=0)
-            w_L_e_L_binned_local_sum = np.sum(w_L_e_L_binned_local, axis=0)
+            w_L_binned_local_sum = np.sum(w_L_binned_local)
+            w_L_e_L_binned_local_sum = np.sum(w_L_e_L_binned_local)
             w_L_force_HF_binned_local_sum = np.sum(w_L_force_HF_binned_local, axis=0)
             w_L_force_PP_binned_local_sum = np.sum(w_L_force_PP_binned_local, axis=0)
             w_L_E_L_force_PP_binned_local_sum = np.sum(w_L_E_L_force_PP_binned_local, axis=0)
 
             ## glolbal sum
-            w_L_binned_global_sum = np.empty_like(w_L_binned_local_sum)
-            w_L_e_L_binned_global_sum = np.empty_like(w_L_e_L_binned_local_sum)
+            ### mpi allreduce(scalar)
+            w_L_binned_global_sum = mpi_comm.allreduce(w_L_binned_local_sum, op=MPI.SUM)
+            w_L_e_L_binned_global_sum = mpi_comm.allreduce(w_L_e_L_binned_local_sum, op=MPI.SUM)
+
+            ### mpi Allreduce(array)
             w_L_force_HF_binned_global_sum = np.empty_like(w_L_force_HF_binned_local_sum)
             w_L_force_PP_binned_global_sum = np.empty_like(w_L_force_PP_binned_local_sum)
             w_L_E_L_force_PP_binned_global_sum = np.empty_like(w_L_E_L_force_PP_binned_local_sum)
-
-            ## mpi Allreduce
-            mpi_comm.Allreduce([w_L_binned_local_sum, MPI.DOUBLE], [w_L_binned_global_sum, MPI.DOUBLE], op=MPI.SUM)
-            mpi_comm.Allreduce([w_L_e_L_binned_local_sum, MPI.DOUBLE], [w_L_e_L_binned_global_sum, MPI.DOUBLE], op=MPI.SUM)
             mpi_comm.Allreduce(
                 [w_L_force_HF_binned_local_sum, MPI.DOUBLE], [w_L_force_HF_binned_global_sum, MPI.DOUBLE], op=MPI.SUM
             )

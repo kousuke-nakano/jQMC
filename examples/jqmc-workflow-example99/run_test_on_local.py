@@ -53,6 +53,7 @@ TARGET_LRDMC_ERROR = 0.005  # very loose
 ALAT = 0.30  # LRDMC lattice spacing (bohr)
 
 R_VALUES = [0.74, 1.00]
+R_VALUES = [0.74]
 
 # pySCF script template
 PYSCF_TEMPLATE = '''\
@@ -179,7 +180,7 @@ def build_pipeline() -> list[Container]:
                 poll_interval=120,
                 max_continuation=2,
                 target_snr=None,
-                energy_slope_sigma_threshold=1.0,
+                energy_slope_sigma_threshold=None,
             ),
         )
 

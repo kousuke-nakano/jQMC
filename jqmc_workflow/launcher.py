@@ -293,6 +293,72 @@ class Launcher:
         G.render("dependency_graph", cleanup=True)
         logger.info("Dependency graph saved to dependency_graph.png")
 
+    # ── Session / job queries (MCP adapter layer) ───────────────
+
+    def get_session_state(self) -> dict:
+        """Aggregate the status of all workflows, dependency graph, and progress.
+
+        Returns a dict suitable for the ``workflow/current_state`` MCP resource.
+        """
+        from ._state import get_workflow_summary
+
+        workflows = {}
+        completed = failed = 0
+        running_labels: list[str] = []
+        pending_labels: list[str] = []
+
+        for cw in self.workflows:
+            if cw.project_dir:
+                summary = get_workflow_summary(cw.project_dir)
+            else:
+                summary = {}
+            workflows[cw.label] = summary
+            s = summary.get("status", "pending")
+            if s == "completed":
+                completed += 1
+            elif s == "failed":
+                failed += 1
+            elif s in ("running", "submitted"):
+                running_labels.append(cw.label)
+            else:
+                pending_labels.append(cw.label)
+
+        return {
+            "workflows": workflows,
+            "dependency_graph": {label: list(deps) for label, deps in self.dependency_dict.items()},
+            "progress": {
+                "completed": completed,
+                "failed": failed,
+                "running": running_labels,
+                "pending": pending_labels,
+                "total": len(self.workflows),
+            },
+        }
+
+    def get_current_job(self) -> dict | None:
+        """Return the first workflow that is currently running/submitted, or ``None``."""
+        from ._state import get_workflow_summary
+
+        for cw in self.workflows:
+            if cw.project_dir:
+                summary = get_workflow_summary(cw.project_dir)
+                if summary.get("status") in ("running", "submitted"):
+                    return {"label": cw.label, "project_dir": cw.project_dir, **summary}
+        return None
+
+    def get_job_history(self) -> list[dict]:
+        """Return a flat, chronologically-sorted list of all jobs across all workflows."""
+        from ._state import get_jobs
+
+        history: list[dict] = []
+        for cw in self.workflows:
+            if cw.project_dir:
+                for j in get_jobs(cw.project_dir):
+                    j["workflow_label"] = cw.label
+                    history.append(j)
+        history.sort(key=lambda j: j.get("submitted_at", ""))
+        return history
+
     # ── Variable resolution ───────────────────────────────────────
 
     def _get_value(self, dep_obj):
@@ -301,7 +367,16 @@ class Launcher:
         cw = self.workflows_by_label[label]
 
         if isinstance(dep_obj, FileFrom):
-            filepath = os.path.join(cw.dirname, dep_obj.filename)
+            filename = dep_obj.filename
+            # Resolve dynamic filename (ValueFrom inside FileFrom)
+            if isinstance(filename, ValueFrom):
+                filename = self._get_value(filename)
+                if filename is None:
+                    raise ValueError(
+                        f"[{dep_obj.label}] ValueFrom({filename!r}) resolved to None. "
+                        f"Upstream workflow may not have set the output_values key."
+                    )
+            filepath = os.path.join(cw.dirname, filename)
             p = pathlib.Path(filepath)
             return p.resolve().relative_to(pathlib.Path(self.root_dir).resolve())
 

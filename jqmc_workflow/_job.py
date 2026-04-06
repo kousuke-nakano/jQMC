@@ -103,6 +103,7 @@ class JobSubmission:
         output_file: str = "out.o",
         queue_label: str = "default",
         jobname: str = "jqmc-wf",
+        run_id: str = "",
         safe_mode: bool = False,
     ):
         self.server_machine = Machine(server_machine_name)
@@ -140,6 +141,7 @@ class JobSubmission:
 
         # ── Job parameters ────────────────────────────────────────
         self.jobname = jobname
+        self.run_id = run_id
         self.input_file = input_file
         self.output_file = output_file
         self.safe_mode = safe_mode
@@ -152,6 +154,10 @@ class JobSubmission:
         self.job_submit_date = None
         self.job_check_last_time = None
         self.job_fetch_date = None
+        # ── Scheduler stdout/stderr file paths (TASK 9) ──────────
+        _id_suffix = f"_{run_id}" if run_id else ""
+        self.job_stdout: str = f"job_{jobname}{_id_suffix}.o"
+        self.job_stderr: str = f"job_{jobname}{_id_suffix}.e"
 
     # ── Script generation ─────────────────────────────────────────
 
@@ -187,6 +193,8 @@ class JobSubmission:
         lines = replace_kw(lines, "_INPUT_", self.input_file)
         lines = replace_kw(lines, "_OUTPUT_", self.output_file)
         lines = replace_kw(lines, "_JOBNAME_", self.jobname)
+        lines = replace_kw(lines, "_JOB_STDOUT_", self.job_stdout)
+        lines = replace_kw(lines, "_JOB_STDERR_", self.job_stderr)
 
         # Queue-specific variables from queue_data.toml
         _SKIP_KEYS = {"submit_template", "max_job_submit"}
@@ -328,7 +336,7 @@ class JobSubmission:
 
     # ── Fetch results ─────────────────────────────────────────────
 
-    def fetch_job(self, from_objects=None, exclude_patterns=None, *, work_dir=None):
+    def fetch_job(self, from_objects=None, exclude_patterns=None, *, work_dir=None, optional_patterns=None):
         """Fetch job results from the remote machine.
 
         Parameters
@@ -340,15 +348,21 @@ class JobSubmission:
         work_dir : str, optional
             Absolute path to the local job directory.  When *None*,
             falls back to ``os.getcwd()`` for backward compatibility.
+        optional_patterns : list[str], optional
+            Basenames or glob patterns of non-essential files.
+            Missing files matching these patterns produce a warning
+            instead of an error.
         """
         from_objects = from_objects or []
         exclude_patterns = exclude_patterns or []
+        optional_patterns = optional_patterns or []
 
         if self.server_machine.machine_type != "local":
             self.data_transfer.get_objects(
                 from_objects=from_objects,
                 exclude_patterns=exclude_patterns,
                 work_dir=work_dir,
+                optional_patterns=optional_patterns,
             )
 
         self.job_fetch_date = datetime.today()
@@ -360,6 +374,36 @@ class JobSubmission:
         self.server_machine.delete_job(jobid=self.job_number)
         self.job_running = False
         self._close_ssh()
+
+    # ── Job accounting (TASK 8) ────────────────────────────────
+
+    def job_acct(self) -> tuple[str, str, str] | None:
+        """Run the scheduler accounting command and return raw output.
+
+        Reads the ``jobacct`` field from ``machine_data.yaml`` and
+        executes ``{jobacct} {job_id}``.  No parsing or flag-injection
+        is performed — the user specifies the complete command with
+        flags in the config.
+
+        Returns
+        -------
+        tuple[str, str, str] | None
+            ``(command, stdout, stderr)`` on success.
+            ``None`` if ``jobacct`` is not configured, the machine does
+            not use a queuing system, or the command fails.
+        """
+        if not self.server_machine.queuing:
+            return None
+        jobacct_cmd = self.server_machine._get("jobacct", default=None)
+        if not jobacct_cmd or not self.job_number:
+            return None
+        try:
+            command = f"{jobacct_cmd} {self.job_number}"
+            stdout, stderr = self.server_machine.run_command(command)
+            return command, stdout, stderr
+        except Exception as e:
+            logger.warning(f"job_acct failed for job {self.job_number}: {e}")
+            return None
 
     # ── Helper ────────────────────────────────────────────────────
 
