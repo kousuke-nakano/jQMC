@@ -2495,6 +2495,11 @@ class MCMC:
             signal_to_noise_f = mpi_comm.bcast(signal_to_noise_f, root=0)
             signal_to_noise_f_max_indices = mpi_comm.bcast(signal_to_noise_f_max_indices, root=0)
 
+            # Shorthand for selected parameter indices (used to slice O_matrix
+            # before SR matrix construction so that the SR dimension is reduced).
+            sn_indices = signal_to_noise_f_max_indices
+            num_param_selected = len(sn_indices)
+
             # If all parameters were filtered out, skip the optimizer entirely
             # and proceed to the next optimization step with unchanged parameters.
             if len(signal_to_noise_f_max_indices) == 0:
@@ -2556,18 +2561,24 @@ class MCMC:
                 )
                 O_matrix_local = O_matrix_local.reshape(O_matrix_local_shape)  # shape: (num_mcmc * num_walker, num_param)
 
+                # Slice to keep only SN-filtered parameters so that
+                # the SR matrix is built in the reduced space.
+                O_matrix_local = O_matrix_local[:, sn_indices]  # shape: (num_mcmc * num_walker, num_param_selected)
+
                 # Compute local partial sums
-                local_Ow = np.einsum("i,ij->j", w_L_local, O_matrix_local)  # weighted sum for observables, shape: (num_param,)
+                local_Ow = np.einsum(
+                    "i,ij->j", w_L_local, O_matrix_local
+                )  # weighted sum for observables, shape: (num_param_selected,)
                 local_Ew = np.dot(w_L_local, e_L_local)  # weighted sum of energies, shape: scalar
                 local_weight_sum = np.sum(w_L_local)  # scalar: sum of weights, shape: scalar
 
                 # Aggregate across all ranks
                 total_weight = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)  # total sum of weights, shape: scalar
-                total_Ow = mpi_comm.allreduce(local_Ow, op=MPI.SUM)  # aggregated observable sums, shape: (num_param,)
+                total_Ow = mpi_comm.allreduce(local_Ow, op=MPI.SUM)  # aggregated observable sums, shape: (num_param_selected,)
                 total_Ew = mpi_comm.allreduce(local_Ew, op=MPI.SUM)  # aggregated energy sum, shape: scalar
 
                 # Compute global averages
-                O_bar = total_Ow / total_weight  # average observables, shape: (num_param,)
+                O_bar = total_Ow / total_weight  # average observables, shape: (num_param_selected,)
                 e_L_bar = total_Ew / total_weight  # average energy, shape: scalar
 
                 # ------------------------------------------------------------------
@@ -2591,7 +2602,7 @@ class MCMC:
 
                 X_local = (
                     (O_matrix_local - O_bar) * np.sqrt(w_L_local)[:, np.newaxis] / np.sqrt(total_weight)
-                ).T  # shape (num_param, num_mcmc * num_walker) because it's transposed.
+                ).T  # shape (num_param_selected, num_mcmc * num_walker) because it's transposed.
                 F_local = (
                     -2.0 * np.sqrt(w_L_local) * (e_L_local - e_L_bar) / np.sqrt(total_weight)
                 )  # shape (num_mcmc * num_walker, )
@@ -2628,14 +2639,14 @@ class MCMC:
                 logger.devel(f"F_local.shape = {F_local.shape}.")
 
                 # compute X_w@F
-                X_F_local = X_local @ F_local  # shape (num_param, )
+                X_F_local = X_local @ F_local  # shape (num_param_selected, )
                 X_F = np.empty(X_F_local.shape, dtype=np.float64)
                 mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
 
-                # compute f_argmax
+                # compute f_argmax (index in reduced space)
                 f_argmax = np.argmax(np.abs(X_F))
                 logger.devel(
-                    f"Max dot(X, F) = {X_F[f_argmax]:.3f} Ha/a.u. should be equal to Max f = {f[f_argmax]:.3f} Ha/a.u."
+                    f"Max dot(X, F) = {X_F[f_argmax]:.3f} Ha/a.u. should be equal to Max f = {f[sn_indices[f_argmax]]:.3f} Ha/a.u."
                 )
 
                 # make the SR matrix scale-invariant (i.e., normalize)
@@ -2675,15 +2686,17 @@ class MCMC:
                         diag_S.size,
                         min_S_diag_abs,
                     )
-                    # Per-block breakdown of frozen parameters
+                    # Per-block breakdown of frozen parameters (in reduced space)
                     for _blk, _s, _e in offsets:
-                        _blk_frozen = int(np.count_nonzero(_sr_frozen_mask[_s:_e]))
+                        _blk_mask_in_reduced = (sn_indices >= _s) & (sn_indices < _e)
+                        _blk_frozen = int(np.count_nonzero(_sr_frozen_mask[_blk_mask_in_reduced]))
                         if _blk_frozen > 0:
                             logger.info(
-                                "  Frozen in block=%s: %d/%d",
+                                "  Frozen in block=%s: %d/%d (selected %d)",
                                 _blk.name,
                                 _blk_frozen,
                                 _blk.size,
+                                int(np.count_nonzero(_blk_mask_in_reduced)),
                             )
                 diag_S = np.where(np.isfinite(diag_S) & (diag_S > diag_S_floor), diag_S, diag_S_floor)
                 X_local = X_local / np.sqrt(diag_S)[:, np.newaxis]  # shape (num_param, num_mcmc * num_walker)
@@ -2697,7 +2710,7 @@ class MCMC:
                 logger.info("The binning technique is not used to compute the natural gradient.")
                 logger.info(f"The number of local samples is {num_samples_local}.")
                 logger.info(f"The number of total samples is {num_samples_total}.")
-                logger.info(f"The total number of variational parameters is {num_params}.")
+                logger.info(f"The number of selected variational parameters for SR is {num_params} / {total_num_params}.")
 
                 if num_params < num_samples_total:
                     # if True:
@@ -2973,71 +2986,6 @@ class MCMC:
                     float(np.max(_sqrt_ds)),
                 )
 
-                # ------------------------------------------------------------------
-                # DEVEL: per-block f and theta comparison
-                #   This enables side-by-side comparison of projected vs unprojected runs.
-                # ------------------------------------------------------------------
-                for _blk, _s, _e in offsets:
-                    _f_blk = f[_s:_e]
-                    _t_blk = theta_all[_s:_e]
-                    _f_fin = _f_blk[np.isfinite(_f_blk)]
-                    _t_fin = _t_blk[np.isfinite(_t_blk)]
-                    logger.devel(
-                        "[SR per-block] block=%-16s size=%5d  "
-                        "f: min=%+.3e max=%+.3e norm=%.3e  "
-                        "theta: min=%+.3e max=%+.3e norm=%.3e",
-                        _blk.name,
-                        _blk.size,
-                        float(np.min(_f_fin)) if _f_fin.size else float("nan"),
-                        float(np.max(_f_fin)) if _f_fin.size else float("nan"),
-                        float(np.linalg.norm(_f_fin)) if _f_fin.size else float("nan"),
-                        float(np.min(_t_fin)) if _t_fin.size else float("nan"),
-                        float(np.max(_t_fin)) if _t_fin.size else float("nan"),
-                        float(np.linalg.norm(_t_fin)) if _t_fin.size else float("nan"),
-                    )
-
-                # ------------------------------------------------------------------
-                # Re-project theta in orthogonal basis to remove vir-vir noise.
-                #
-                # The scale-invariant SR normalizes X by 1/sqrt(diag_S) before the
-                # solve and de-normalizes theta by 1/sqrt(diag_S) afterwards.  For
-                # the "projected-out" (vir-vir) parameter directions, the
-                # derivative observable is nominally zero but retains floating-point
-                # residuals of order eps_mach * ||O'||.  The normalization amplifies
-                # these residuals to O(1) in the SR matrix, and the de-normalization
-                # then blows up the corresponding theta components to very large
-                # values (~1/eps_proj), corrupting the AO lambda update.
-                #
-                # The cure is to apply the same orbital-space projection that was
-                # used on the derivatives *also* on the natural-gradient vector
-                # theta, while we are still in the orthogonal basis.  This zeroes
-                # out the vir-vir components before the AO back-transform.
-                # ------------------------------------------------------------------
-                if lambda_projectors is not None and len(lambda_projectors) == 4:
-                    _left_proj, _right_proj, _, _ = lambda_projectors
-                    _identity_proj = np.eye(_left_proj.shape[0], dtype=np.float64)
-                    _comp_L = _identity_proj - _left_proj
-                    _comp_R = _identity_proj - _right_proj
-                    for _blk, _s, _e in offsets:
-                        if _blk.name == "lambda_matrix":
-                            _theta_mat = theta_all[_s:_e].reshape(_blk.shape)
-                            _n_paired = _right_proj.shape[0]
-                            _theta_paired = _theta_mat[:, :_n_paired]
-                            # Remove vir-vir: θ_clean = θ - (I-L')θ(I-R')
-                            _vv_correction = _comp_L @ _theta_paired @ _comp_R
-                            _vv_norm_before = float(np.linalg.norm(_theta_paired))
-                            _theta_mat[:, :_n_paired] = _theta_paired - _vv_correction
-                            _vv_norm_removed = float(np.linalg.norm(_vv_correction))
-                            theta_all[_s:_e] = _theta_mat.ravel()
-                            logger.devel(
-                                "[SR theta] Re-projected theta in orth basis: "
-                                "||theta_paired||=%.3e  ||vv_removed||=%.3e  ratio=%.3e",
-                                _vv_norm_before,
-                                _vv_norm_removed,
-                                _vv_norm_removed / max(_vv_norm_before, 1e-300),
-                            )
-                            break
-
             #############################
             # optax optimizer
             #############################
@@ -3059,18 +3007,87 @@ class MCMC:
             timer_optimizer += end - start
 
             # ------------------------------------------------------------------
-            # 1) Apply num_param_opt mask.  Must happen BEFORE the
-            #    back-transform: the dense S^{-1/2} @ θ @ S^{-1/2} mixes
-            #    all lambda entries, so masking in AO space afterwards
-            #    would corrupt the update.  For non-lambda blocks (Jastrow
-            #    etc.) the back-transform is a no-op, so this is harmless.
+            # 1) Expand theta_all from reduced space to full parameter space.
+            #    For SR: theta_all lives in the SN-filtered subspace (size
+            #    num_param_selected).  For optax: theta_all is already full-size.
             # ------------------------------------------------------------------
-            theta = np.zeros_like(theta_all)
-            theta[signal_to_noise_f_max_indices] = theta_all[signal_to_noise_f_max_indices]
+            theta = np.zeros(total_num_params, dtype=np.float64)
+            if use_sr:
+                theta[sn_indices] = theta_all  # theta_all is num_param_selected
+            else:
+                theta[sn_indices] = theta_all[sn_indices]  # theta_all is full-size
 
             # ------------------------------------------------------------------
-            # 1.5) aSR gamma scaling.  Must happen AFTER the num_param_opt
-            #    mask and BEFORE the back-transform to AO basis.
+            # DEVEL: per-block f and theta comparison (in full space, after expand)
+            #   This enables side-by-side comparison of projected vs unprojected runs.
+            # ------------------------------------------------------------------
+            if use_sr:
+                for _blk, _s, _e in offsets:
+                    _f_blk = f[_s:_e]
+                    _t_blk = theta[_s:_e]
+                    _f_fin = _f_blk[np.isfinite(_f_blk)]
+                    _t_fin = _t_blk[np.isfinite(_t_blk)]
+                    logger.devel(
+                        "[SR per-block] block=%-16s size=%5d  "
+                        "f: min=%+.3e max=%+.3e norm=%.3e  "
+                        "theta: min=%+.3e max=%+.3e norm=%.3e",
+                        _blk.name,
+                        _blk.size,
+                        float(np.min(_f_fin)) if _f_fin.size else float("nan"),
+                        float(np.max(_f_fin)) if _f_fin.size else float("nan"),
+                        float(np.linalg.norm(_f_fin)) if _f_fin.size else float("nan"),
+                        float(np.min(_t_fin)) if _t_fin.size else float("nan"),
+                        float(np.max(_t_fin)) if _t_fin.size else float("nan"),
+                        float(np.linalg.norm(_t_fin)) if _t_fin.size else float("nan"),
+                    )
+
+            # ------------------------------------------------------------------
+            # Re-project theta in orthogonal basis to remove vir-vir noise.
+            #
+            # The scale-invariant SR normalizes X by 1/sqrt(diag_S) before the
+            # solve and de-normalizes theta by 1/sqrt(diag_S) afterwards.  For
+            # the "projected-out" (vir-vir) parameter directions, the
+            # derivative observable is nominally zero but retains floating-point
+            # residuals of order eps_mach * ||O'||.  The normalization amplifies
+            # these residuals to O(1) in the SR matrix, and the de-normalization
+            # then blows up the corresponding theta components to very large
+            # values (~1/eps_proj), corrupting the AO lambda update.
+            #
+            # The cure is to apply the same orbital-space projection that was
+            # used on the derivatives *also* on the natural-gradient vector
+            # theta, while we are still in the orthogonal basis.  This zeroes
+            # out the vir-vir components before the AO back-transform.
+            #
+            # Performed after expanding to full space so that offsets/reshape work.
+            # ------------------------------------------------------------------
+            if use_sr and lambda_projectors is not None and len(lambda_projectors) == 4:
+                _left_proj, _right_proj, _, _ = lambda_projectors
+                _identity_proj = np.eye(_left_proj.shape[0], dtype=np.float64)
+                _comp_L = _identity_proj - _left_proj
+                _comp_R = _identity_proj - _right_proj
+                for _blk, _s, _e in offsets:
+                    if _blk.name == "lambda_matrix":
+                        _theta_mat = theta[_s:_e].reshape(_blk.shape)
+                        _n_paired = _right_proj.shape[0]
+                        _theta_paired = _theta_mat[:, :_n_paired]
+                        # Remove vir-vir: θ_clean = θ - (I-L')θ(I-R')
+                        _vv_correction = _comp_L @ _theta_paired @ _comp_R
+                        _vv_norm_before = float(np.linalg.norm(_theta_paired))
+                        _theta_mat[:, :_n_paired] = _theta_paired - _vv_correction
+                        _vv_norm_removed = float(np.linalg.norm(_vv_correction))
+                        theta[_s:_e] = _theta_mat.ravel()
+                        logger.devel(
+                            "[SR theta] Re-projected theta in orth basis: "
+                            "||theta_paired||=%.3e  ||vv_removed||=%.3e  ratio=%.3e",
+                            _vv_norm_before,
+                            _vv_norm_removed,
+                            _vv_norm_removed / max(_vv_norm_before, 1e-300),
+                        )
+                        break
+
+            # ------------------------------------------------------------------
+            # 1.5) aSR gamma scaling.  Must happen AFTER the expand/re-projection
+            #    and BEFORE the back-transform to AO basis.
             #
             #    The energy model  E(γ) = (H0 + 2γH1 + γ²H2) / (1 + γ²S2)
             #    is valid for any direction g; H1, H2, S2 are computed from
@@ -3101,11 +3118,13 @@ class MCMC:
 
             # ------------------------------------------------------------------
             # Compute ||Delta ln|Psi||| = delta * sqrt(theta^T S theta)
-            # Using X_local (normalized): theta^T S theta = ||X_local^T (sqrt(diag_S) * theta)||^2
+            # Using X_local (normalized): theta^T S theta = ||X_local^T (sqrt(diag_S) * theta_selected)||^2
+            # X_local and diag_S are in reduced space, so extract the selected components of theta.
             # ------------------------------------------------------------------
             if use_sr:
                 _lr = sr_delta
-                _v = np.sqrt(diag_S) * theta
+                _theta_selected = theta[sn_indices]
+                _v = np.sqrt(diag_S) * _theta_selected
                 _Xt_v_local = X_local.T @ _v
                 _norm_sq_local = np.dot(_Xt_v_local, _Xt_v_local)
                 _norm_sq = mpi_comm.allreduce(_norm_sq_local, op=MPI.SUM)
