@@ -2353,6 +2353,15 @@ class MCMC:
             logger.info("-" * num_sep_line)
             logger.info("")
 
+            # Abort optimization if energy is NaN/Inf — the wavefunction is
+            # corrupted and further updates would be meaningless.
+            if not np.isfinite(E):
+                logger.error(
+                    "Non-finite energy detected (E=%s). Aborting optimization loop.",
+                    E,
+                )
+                break
+
             # collect variational parameter blocks from the wavefunction data
             blocks = self.hamiltonian_data.wavefunction_data.get_variational_blocks(
                 opt_J1_param=opt_J1_param,
@@ -2649,6 +2658,16 @@ class MCMC:
                     f"Max dot(X, F) = {X_F[f_argmax]:.3f} Ha/a.u. should be equal to Max f = {f[sn_indices[f_argmax]]:.3f} Ha/a.u."
                 )
 
+                # matrix shape info
+                num_params = X_local.shape[0]
+                num_samples_local = X_local.shape[1]
+                num_samples_total = mpi_comm.allreduce(num_samples_local, op=MPI.SUM)
+
+                logger.info("The binning technique is not used to compute the natural gradient.")
+                logger.info(f"The number of local samples is {num_samples_local}.")
+                logger.info(f"The number of total samples is {num_samples_total}.")
+                logger.info(f"SR matrix dimension: {num_params} x {num_params} (reduced from {total_num_params}).")
+
                 # make the SR matrix scale-invariant (i.e., normalize)
                 ## compute X_w@X.T
                 diag_S_local = np.einsum("jk,kj->j", X_local, X_local.T)
@@ -2699,18 +2718,7 @@ class MCMC:
                                 int(np.count_nonzero(_blk_mask_in_reduced)),
                             )
                 diag_S = np.where(np.isfinite(diag_S) & (diag_S > diag_S_floor), diag_S, diag_S_floor)
-                X_local = X_local / np.sqrt(diag_S)[:, np.newaxis]  # shape (num_param, num_mcmc * num_walker)
-
-                # matrix shape info
-                num_params = X_local.shape[0]
-                num_samples_local = X_local.shape[1]
-                num_samples_total = mpi_comm.allreduce(num_samples_local, op=MPI.SUM)
-
-                # info
-                logger.info("The binning technique is not used to compute the natural gradient.")
-                logger.info(f"The number of local samples is {num_samples_local}.")
-                logger.info(f"The number of total samples is {num_samples_total}.")
-                logger.info(f"The number of selected variational parameters for SR is {num_params} / {total_num_params}.")
+                X_local = X_local / np.sqrt(diag_S)[:, np.newaxis]  # shape (num_param_selected, num_mcmc * num_walker)
 
                 if num_params < num_samples_total:
                     # if True:
