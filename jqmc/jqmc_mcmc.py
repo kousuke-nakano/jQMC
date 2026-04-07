@@ -528,6 +528,7 @@ class MCMC:
                 self.__latest_r_up_carts,
                 self.__latest_r_dn_carts,
             )
+            _ = _jit_vmap_as_reg_fast(geminal, geminal_inv)
             if self.__comput_position_deriv:
                 _, _ = _jit_vmap_grad_e_L_r(
                     hamiltonian_for_position_grads,
@@ -578,6 +579,12 @@ class MCMC:
                     wavefunction_for_param_grads,
                     self.__latest_r_up_carts,
                     self.__latest_r_dn_carts,
+                )
+                _ = _jit_vmap_grad_ln_psi_params_fast(
+                    wavefunction_for_param_grads,
+                    self.__latest_r_up_carts,
+                    self.__latest_r_dn_carts,
+                    geminal_inv,
                 )
 
             if self.__comput_e_L_param_deriv:
