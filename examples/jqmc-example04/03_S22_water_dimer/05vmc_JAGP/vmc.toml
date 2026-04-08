@@ -17,7 +17,7 @@ Dt = 2.0 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.05 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 num_opt_steps = 200 # Number of optimization steps.
 wf_dump_freq = 20 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
-optimizer_kwargs = { method = "sr", delta = 0.15, epsilon = 0.001, cg_flag = true, cg_max_iter = 10000, cg_tol = 1e-6, adaptive_learning_rate = true } # SR optimizer configuration (method plus step/regularization).
+optimizer_kwargs = { method = "sr", delta = 0.15, epsilon = 0.001, cg_flag = true, cg_max_iter = 10000, cg_tol = 1e-6, use_lm = true } # SR optimizer configuration (method plus step/regularization).
 opt_J1_param = false
 opt_J2_param = true
 opt_J3_param = true

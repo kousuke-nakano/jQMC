@@ -94,12 +94,13 @@ cli_parameters = {
         "opt_lambda_basis_coeff": False,
         "optimizer_kwargs": {
             "method": "sr",
-            "sr_delta": 0.15,
-            "sr_epsilon": 0.001,
+            "delta": 0.15,
+            "epsilon": 0.001,
             "cg_flag": True,
             "cg_max_iter": 10000,
             "cg_tol": 1e-8,
-            "adaptive_learning_rate": True,
+            "use_lm": True,
+            "lm_subspace_dim": 0,
         },
     },
     "vmc_comments": {

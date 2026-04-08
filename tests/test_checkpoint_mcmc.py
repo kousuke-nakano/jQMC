@@ -382,7 +382,7 @@ class TestMCMCOptaxRoundtrip:
             num_opt_steps=1,
             num_mcmc_warmup_steps=0,
             num_mcmc_bin_blocks=5,
-            optimizer_kwargs={"method": "sr", "sr_delta": 1e-3},
+            optimizer_kwargs={"method": "sr", "delta": 1e-3},
         )
 
         rt_before = mcmc._MCMC__optimizer_runtime

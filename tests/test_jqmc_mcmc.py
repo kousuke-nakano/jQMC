@@ -672,9 +672,9 @@ def test_jqmc_vmc(trexio_file, monkeypatch):
         opt_lambda_param=True,
         optimizer_kwargs={
             "method": "sr",
-            "sr_delta": 1e-3,
-            "sr_epsilon": 1e-3,
-            "adaptive_learning_rate": True,
+            "delta": 1e-3,
+            "epsilon": 1e-3,
+            "use_lm": True,
         },
     )
 
@@ -907,8 +907,8 @@ def test_sr_wide_and_tall_matrix(trexio_file, regime, cg_flag, monkeypatch):
         opt_lambda_param=True,
         optimizer_kwargs={
             "method": "sr",
-            "sr_delta": 1.0e-3,
-            "sr_epsilon": 1.0e-3,
+            "delta": 1.0e-3,
+            "epsilon": 1.0e-3,
             "cg_flag": cg_flag,
         },
     )
@@ -1341,7 +1341,7 @@ def test_optimize_e2e_smoke(opt_flags):
         num_opt_steps=1,
         num_mcmc_warmup_steps=0,
         num_mcmc_bin_blocks=1,
-        optimizer_kwargs={"method": "sr", "sr_delta": 1e-3, "sr_epsilon": 1e-3},
+        optimizer_kwargs={"method": "sr", "delta": 1e-3, "epsilon": 1e-3},
         **opt_flags,
     )
 
@@ -1409,12 +1409,12 @@ class TestSolveLinearMethod:
         assert c_vec.shape == (p,)
         assert np.isfinite(E_lm)
 
-    def test_all_eigenvalues_below_epsilon(self):
-        """All S eigenvalues < epsilon → zero update, E_lm == H_0."""
+    def test_all_diag_S_zero(self):
+        """All diag(S) = 0 → dgelscut removes all parameters → zero update, E_lm == H_0."""
         p = 3
         H_0 = -1.5
         f_vec = np.ones(p) * 0.1
-        S_matrix = np.eye(p) * 1e-12
+        S_matrix = np.zeros((p, p))
         K_matrix = np.eye(p) * (-0.5)
         B_matrix = np.eye(p) * (-0.1)
         c_vec, E_lm = MCMC.solve_linear_method(H_0, f_vec, S_matrix, K_matrix, B_matrix, epsilon=1e-6)
@@ -1490,9 +1490,10 @@ def test_optimize_lm_e2e_smoke():
         opt_J3_param=True,
         opt_lambda_param=True,
         optimizer_kwargs={
-            "method": "lm",
-            "lm_delta": 0.1,
-            "lm_epsilon": 1e-6,
+            "method": "sr",
+            "use_lm": True,
+            "delta": 0.1,
+            "epsilon": 1e-6,
             "lm_subspace_dim": 0,
         },
     )

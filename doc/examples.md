@@ -369,7 +369,7 @@ Dt = 2.0 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 num_opt_steps = 300 # Number of optimization steps.
 wf_dump_freq = 1 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
-optimizer_kwargs = { method = "sr", sr_delta = 0.15, sr_epsilon = 0.001, cg_flag = true, cg_max_iter = 10000, cg_tol = 1e-6, adaptive_learning_rate = true } # SR optimizer configuration (method plus step/regularization).
+optimizer_kwargs = { method = "sr", delta = 0.15, epsilon = 0.001, cg_flag = true, cg_max_iter = 10000, cg_tol = 1e-6, use_lm = true } # SR optimizer configuration (method plus step/regularization).
 opt_J1_param = false
 opt_J2_param = true
 opt_J3_param = true
@@ -419,8 +419,8 @@ The important criteria are `Max f` and `Max of signal to noise of f`. `Max f` sh
 
 > [!TIP]
 > If the optimization does not converge well, try the following:
-> - Adjust the `sr_delta` parameter in `optimizer_kwargs`. A smaller `sr_delta` (e.g., `0.05`) makes the optimization more conservative but stable, while a larger one (e.g., `0.30`) is more aggressive but may cause instabilities.
-> - Set `adaptive_learning_rate = false` in `optimizer_kwargs` to disable the adaptive learning rate and use a fixed step size instead. This can sometimes improve convergence for difficult cases.
+> - Adjust the `delta` parameter in `optimizer_kwargs`. A smaller `delta` (e.g., `0.05`) makes the optimization more conservative but stable, while a larger one (e.g., `0.30`) is more aggressive but may cause instabilities.
+> - Set `use_lm = false` in `optimizer_kwargs` to disable the linear method and use plain SR with a fixed step size instead. This can sometimes improve convergence for difficult cases.
 
 You can also plot them and make a figure.
 
@@ -904,7 +904,7 @@ Dt = 2.0 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 num_opt_steps = 300 # Number of optimization steps.
 wf_dump_freq = 1 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
-optimizer_kwargs = { method = "sr", sr_delta = 0.15, sr_epsilon = 0.001, cg_flag = true, cg_max_iter = 10000, cg_tol = 1e-6, adaptive_learning_rate = true } # SR optimizer configuration (method plus step/regularization).
+optimizer_kwargs = { method = "sr", delta = 0.15, epsilon = 0.001, cg_flag = true, cg_max_iter = 10000, cg_tol = 1e-6, use_lm = true } # SR optimizer configuration (method plus step/regularization).
 opt_J1_param = false
 opt_J2_param = true
 opt_J3_param = true
@@ -936,8 +936,8 @@ The important criteria are `Max f` and `Max of signal to noise of f`. `Max f` sh
 
 > [!TIP]
 > If the optimization does not converge well, try the following:
-> - Adjust the `sr_delta` parameter in `optimizer_kwargs`. A smaller `sr_delta` (e.g., `0.05`) makes the optimization more conservative but stable, while a larger one (e.g., `0.30`) is more aggressive but may cause instabilities.
-> - Set `adaptive_learning_rate = false` in `optimizer_kwargs` to disable the adaptive learning rate and use a fixed step size instead. This can sometimes improve convergence for difficult cases.
+> - Adjust the `delta` parameter in `optimizer_kwargs`. A smaller `delta` (e.g., `0.05`) makes the optimization more conservative but stable, while a larger one (e.g., `0.30`) is more aggressive but may cause instabilities.
+> - Set `use_lm = false` in `optimizer_kwargs` to disable the linear method and use plain SR with a fixed step size instead. This can sometimes improve convergence for difficult cases.
 
 You can also plot them and make a figure.
 
@@ -1223,7 +1223,7 @@ Dt = 2.0 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 num_opt_steps = 200 # Number of optimization steps.
 wf_dump_freq = 20 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
-optimizer_kwargs = { method = "sr", sr_delta = 0.15, sr_epsilon = 0.001, cg_flag = true, cg_max_iter = 10000, cg_tol = 1e-6, adaptive_learning_rate = true } # SR optimizer configuration (method plus step/regularization).
+optimizer_kwargs = { method = "sr", delta = 0.15, epsilon = 0.001, cg_flag = true, cg_max_iter = 10000, cg_tol = 1e-6, use_lm = true } # SR optimizer configuration (method plus step/regularization).
 opt_J1_param = false
 opt_J2_param = true
 opt_J3_param = true
@@ -1276,8 +1276,8 @@ The important criteria are `Max f` and `Max of signal to noise of f`. `Max f` sh
 
 > [!TIP]
 > If the optimization does not converge well, try the following:
-> - Adjust the `sr_delta` parameter in `optimizer_kwargs`. A smaller `sr_delta` (e.g., `0.05`) makes the optimization more conservative but stable, while a larger one (e.g., `0.30`) is more aggressive but may cause instabilities.
-> - Set `adaptive_learning_rate = false` in `optimizer_kwargs` to disable the adaptive learning rate and use a fixed step size instead. This can sometimes improve convergence for difficult cases.
+> - Adjust the `delta` parameter in `optimizer_kwargs`. A smaller `delta` (e.g., `0.05`) makes the optimization more conservative but stable, while a larger one (e.g., `0.30`) is more aggressive but may cause instabilities.
+> - Set `use_lm = false` in `optimizer_kwargs` to disable the linear method and use plain SR with a fixed step size instead. This can sometimes improve convergence for difficult cases.
 
 You can also plot them and make a figure.
 
@@ -1443,7 +1443,7 @@ Dt = 2.0 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.05 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 num_opt_steps = 200 # Number of optimization steps.
 wf_dump_freq = 20 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
-optimizer_kwargs = { method = "sr", sr_delta = 0.15, sr_epsilon = 0.001, cg_flag = true, cg_max_iter = 10000, cg_tol = 1e-6, adaptive_learning_rate = true } # SR optimizer configuration (method plus step/regularization).
+optimizer_kwargs = { method = "sr", delta = 0.15, epsilon = 0.001, cg_flag = true, cg_max_iter = 10000, cg_tol = 1e-6, use_lm = true } # SR optimizer configuration (method plus step/regularization).
 opt_J1_param = false
 opt_J2_param = true
 opt_J3_param = true
@@ -2538,7 +2538,7 @@ The workflow DAG is constructed programmatically in `run_pipelines.py` and execu
 #### Ansatz and optimization
 
 - **JSD** (Jastrow-Slater Determinant): J2 (two-body, exponential) + J3 (three-body, AO-small basis). No J1.
-- **VMC optimization**: 50 steps with SR optimizer (`adaptive_learning_rate = True`, `sr_delta = 0.35`)
+- **VMC optimization**: 50 steps with SR optimizer (`use_lm = True`, `delta = 0.35`)
 - Determinant part is **not** optimized (`opt_with_projected_MOs = False`)
 
 #### Walker counts
@@ -2629,9 +2629,9 @@ VMC_Workflow(
     target_error=1.0e-3,
     optimizer_kwargs={
         "method": "sr",
-        "sr_delta": 0.350,
-        "sr_epsilon": 0.001,
-        "adaptive_learning_rate": True,
+        "delta": 0.350,
+        "epsilon": 0.001,
+        "use_lm": True,
     },
 )
 ```
@@ -2750,7 +2750,7 @@ The workflow DAG is constructed programmatically in `run_pipelines.py` and execu
 #### Ansatz and optimization
 
 - **JSD** (Jastrow-Slater Determinant): J2 (two-body, exponential) + J3 (three-body, AO-small basis). No J1.
-- **VMC optimization**: 100 steps with SR optimizer (`adaptive_learning_rate = True`, `sr_delta = 0.35`)
+- **VMC optimization**: 100 steps with SR optimizer (`use_lm = True`, `delta = 0.35`)
 - Determinant part is **not** optimized (`opt_with_projected_MOs = False`)
 - 1024 walkers per MPI process
 
@@ -2836,9 +2836,9 @@ VMC_Workflow(
     target_error=3.0e-3,
     optimizer_kwargs={
         "method": "sr",
-        "sr_delta": 0.350,
-        "sr_epsilon": 0.001,
-        "adaptive_learning_rate": True,
+        "delta": 0.350,
+        "epsilon": 0.001,
+        "use_lm": True,
     },
     max_time=76000,
     max_continuation=2,

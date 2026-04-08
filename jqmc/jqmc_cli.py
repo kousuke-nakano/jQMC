@@ -425,7 +425,7 @@ def _cli():
             raise ValueError("(num_mcmc_steps - num_mcmc_warmup_steps) should be larger than num_mcmc_bin_blocks.")
 
         _method = optimizer_kwargs.get("method", "sr").lower()
-        _need_eL_deriv = _method == "lm" or (_method == "sr" and bool(optimizer_kwargs.get("adaptive_learning_rate", False)))
+        _need_eL_deriv = _method == "sr" and bool(optimizer_kwargs.get("use_lm", False))
 
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
