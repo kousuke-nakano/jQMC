@@ -2009,7 +2009,10 @@ class MCMC:
         )
 
         # Step 2: Project to truncated basis
+        # Symmetrize H = K + B (K is symmetric, B is not; finite-sample noise
+        # also breaks symmetry).  TurboRVB does this explicitly.
         H_matrix = K_matrix + B_matrix
+        H_matrix = 0.5 * (H_matrix + H_matrix.T)
         H_tilde = U.T @ H_matrix @ U  # (p', p')
         f_tilde = U.T @ f_vec  # (p',)
 
@@ -2036,14 +2039,14 @@ class MCMC:
         lowest_idx = 0  # eigh returns ascending order
         if lowest_idx != best_idx:
             logger.debug(
-                "  LM: lowest eigenvalue E = %.6f (|v0|^2 = %.4f), selected (max |v0|^2) E = %.6f (|v0|^2 = %.4f)",
+                "  LM: lowest eigenvalue E_LM = %.6f (|v0|^2 = %.4f), selected (max |v0|^2) E_LM = %.6f (|v0|^2 = %.4f)",
                 eigvals[lowest_idx],
                 v0_sq[lowest_idx],
                 E_lm,
                 v0_sq[best_idx],
             )
         else:
-            logger.debug("  LM: selected eigenvalue E = %.6f (|v0|^2 = %.4f)", E_lm, v0_sq[best_idx])
+            logger.debug("  LM: selected eigenvalue E_LM = %.6f (|v0|^2 = %.4f)", E_lm, v0_sq[best_idx])
 
         if v0_sq[best_idx] < 0.01:
             logger.warning("  LM: max |v0|^2 = %.4f is small; update may be unreliable.", v0_sq[best_idx])
@@ -5464,8 +5467,11 @@ class _MCMC_debug:
         Lambda = eigvals_S[kept_indices]  # (p',)
 
         # ── Step 3: Project H = K + B and f into truncated eigenvector basis ─
-        #   H_tilde_{a,b} = sum_{k,k'} U_{k,a} * (K_{k,k'} + B_{k,k'}) * U_{k',b}
+        #   Symmetrize H first: H_ij = 0.5*(H_ij + H_ji)
+        #   (K is symmetric, B is not; TurboRVB does this explicitly)
+        #   H_tilde_{a,b} = sum_{k,k'} U_{k,a} * H_{k,k'} * U_{k',b}
         H_full = K_matrix + B_matrix  # (p, p)
+        H_full = 0.5 * (H_full + H_full.T)  # symmetrize
         H_tilde = np.zeros((p_prime, p_prime))
         for a in range(p_prime):
             for b in range(p_prime):
