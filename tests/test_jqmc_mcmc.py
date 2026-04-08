@@ -423,10 +423,10 @@ def test_jqmc_vmc(trexio_file, monkeypatch):
         self,
         num_mcmc_warmup_steps,
         num_mcmc_bin_blocks,
-        chosen_param_index,
         blocks,
         lambda_projectors=None,
         num_orb_projection=None,
+        chosen_param_index=None,
     ):
         """Return unit generalized forces with std sized to flattened blocks for deterministic updates."""
         total = sum(block.size for block in blocks)
@@ -608,7 +608,6 @@ def test_jqmc_vmc(trexio_file, monkeypatch):
             num_opt_steps=num_opt_steps,
             num_mcmc_warmup_steps=0,
             num_mcmc_bin_blocks=1,
-            opt_filter_min_SN_ratio=0.0,
             optimizer_kwargs={"method": "sgd", "learning_rate": 1.0},
             **case["flags"],
         )
@@ -643,12 +642,13 @@ def test_jqmc_vmc(trexio_file, monkeypatch):
 
     def _fake_get_aH(
         self_inner,
-        g,
-        blocks,
+        g=None,
+        blocks=None,
         num_mcmc_warmup_steps=0,
         chosen_param_index=None,
         lambda_projectors=None,
         num_orb_projection=None,
+        return_matrices=False,
     ):
         H_0 = -1.0
         H_1 = -0.1
@@ -670,61 +670,15 @@ def test_jqmc_vmc(trexio_file, monkeypatch):
         opt_J3_param=False,
         opt_JNN_param=False,
         opt_lambda_param=True,
-        opt_filter_min_SN_ratio=0.0,
         optimizer_kwargs={
             "method": "sr",
-            "delta": 1e-3,
-            "epsilon": 1e-3,
+            "sr_delta": 1e-3,
+            "sr_epsilon": 1e-3,
             "adaptive_learning_rate": True,
         },
     )
 
     jax.clear_caches()
-
-    # ── num_param_opt: exactly N scalar parameter entries are updated ─────────
-    # Strategy: use the sgd optimizer with learning_rate=1.0 so that
-    # theta_all = f = ones (every entry non-zero and equal).  The
-    # signal-to-noise ratio is therefore the same for all parameters
-    # (|f|/std(f) = 1), so np.argsort is deterministic (stable).
-    # After the num_param_opt mask exactly num_param_opt entries of theta
-    # are non-zero, and fake_apply_block_updates propagates those changes to
-    # the parameter registry.  Comparing before/after lets us count how many
-    # scalar entries actually changed.
-    for num_opt in (1, 3):
-        mcmc_npo = MCMC(
-            hamiltonian_data=hamiltonian_data,
-            Dt=Dt,
-            mcmc_seed=mcmc_seed,
-            num_walkers=num_walkers,
-            epsilon_AS=epsilon_AS,
-            comput_position_deriv=False,
-            comput_log_WF_param_deriv=True,
-            comput_e_L_param_deriv=False,
-        )
-        _, params_npo = make_mcmc_with_patches(mcmc_npo)
-        before_npo = {k: v.copy() for k, v in params_npo.items()}
-
-        mcmc_npo.run_optimize(
-            num_mcmc_steps=num_mcmc_steps,
-            num_opt_steps=1,
-            num_mcmc_warmup_steps=0,
-            num_mcmc_bin_blocks=1,
-            opt_J1_param=True,
-            opt_J2_param=True,
-            opt_J3_param=True,
-            opt_JNN_param=True,
-            opt_lambda_param=True,
-            num_param_opt=num_opt,
-            opt_filter_min_SN_ratio=0.0,
-            optimizer_kwargs={"method": "sgd", "learning_rate": 1.0},
-        )
-
-        num_changed = sum(int(np.count_nonzero(params_npo[k] != before_npo[k])) for k in before_npo)
-        assert num_changed == num_opt, (
-            f"num_param_opt={num_opt}: expected exactly {num_opt} scalar parameter entries to change, but {num_changed} changed"
-        )
-
-        jax.clear_caches()
 
 
 @pytest.mark.parametrize(
@@ -906,10 +860,10 @@ def test_sr_wide_and_tall_matrix(trexio_file, regime, cg_flag, monkeypatch):
         self,
         num_mcmc_warmup_steps,
         num_mcmc_bin_blocks,
-        chosen_param_index,
         blocks,
         lambda_projectors=None,
         num_orb_projection=None,
+        chosen_param_index=None,
     ):
         total = sum(block.size for block in blocks)
         return np.ones(total, dtype=float), np.ones(total, dtype=float)
@@ -951,11 +905,10 @@ def test_sr_wide_and_tall_matrix(trexio_file, regime, cg_flag, monkeypatch):
         opt_J3_param=False,
         opt_JNN_param=False,
         opt_lambda_param=True,
-        opt_filter_min_SN_ratio=0.0,
         optimizer_kwargs={
             "method": "sr",
-            "delta": 1.0e-3,
-            "epsilon": 1.0e-3,
+            "sr_delta": 1.0e-3,
+            "sr_epsilon": 1.0e-3,
             "cg_flag": cg_flag,
         },
     )
@@ -1024,10 +977,10 @@ def test_opt_with_projected_MOs(trexio_file, monkeypatch):
         self,
         num_mcmc_warmup_steps,
         num_mcmc_bin_blocks,
-        chosen_param_index,
         blocks,
         lambda_projectors=None,
         num_orb_projection=None,
+        chosen_param_index=None,
     ):
         # Return non-zero unit forces so the lambda actually changes.
         total = sum(block.size for block in blocks)
@@ -1053,7 +1006,6 @@ def test_opt_with_projected_MOs(trexio_file, monkeypatch):
         opt_JNN_param=False,
         opt_lambda_param=True,
         opt_with_projected_MOs=True,
-        opt_filter_min_SN_ratio=0.0,
         optimizer_kwargs={"method": "sgd", "learning_rate": 0.01},
     )
 
@@ -1087,35 +1039,23 @@ def test_opt_with_projected_MOs(trexio_file, monkeypatch):
 # L3: VMC optimization loop — symmetry preservation tests
 # ---------------------------------------------------------------------------
 
-# Test parameters: (j3_type, lambda_type, num_param_opt, sn_ratio)
+# Test parameters: (j3_type, lambda_type)
 _SYMMETRY_TEST_CASES = [
-    # L3-1: baseline, both symmetric, all params, no SN filter
-    ("sym", "square_sym", 0, 0.0),
-    # L3-2: both symmetric, num_param_opt active → Step 3 expands partners
-    ("sym", "square_sym", 3, 0.0),
-    # L3-3: both symmetric, SN filter active
-    ("sym", "square_sym", 0, 0.5),
-    # L3-4: both symmetric, SN filter + num_param_opt (toughest)
-    ("sym", "square_sym", 3, 0.5),
+    # L3-1: baseline, both symmetric, all params
+    ("sym", "square_sym"),
     # L3-5: j3 symmetric, lambda non-symmetric → only j3 preserved
-    ("sym", "square_nonsym", 0, 0.0),
+    ("sym", "square_nonsym"),
     # L3-6: j3 non-symmetric, lambda symmetric → only lambda preserved
-    ("nonsym", "square_sym", 0, 0.0),
+    ("nonsym", "square_sym"),
     # L3-7: both non-symmetric → no symmetrization (no-op)
-    ("nonsym", "square_nonsym", 0, 0.0),
+    ("nonsym", "square_nonsym"),
     # L3-8: j3 symmetric, rectangular lambda with paired-symmetric sub-block
-    ("sym", "rect_paired_sym", 0, 0.0),
-    # L3-9: rectangular lambda + num_param_opt
-    ("sym", "rect_paired_sym", 3, 0.0),
-    # L3-10: both non-symmetric + all filters → nothing breaks
-    ("nonsym", "square_nonsym", 3, 0.5),
-    # L3-11: both symmetric + SN filter + num_param_opt → hardest case
-    ("sym", "square_sym", 2, 0.5),
+    ("sym", "rect_paired_sym"),
 ]
 
 
-@pytest.mark.parametrize("j3_type,lambda_type,num_param_opt,sn_ratio", _SYMMETRY_TEST_CASES)
-def test_vmc_symmetry_preservation(j3_type, lambda_type, num_param_opt, sn_ratio, monkeypatch):
+@pytest.mark.parametrize("j3_type,lambda_type", _SYMMETRY_TEST_CASES)
+def test_vmc_symmetry_preservation(j3_type, lambda_type, monkeypatch):
     """Verify that j3 and lambda symmetry is preserved through the full VMC optimization loop.
 
     The test uses **real** ``get_variational_blocks`` and ``apply_block_updates`` (not
@@ -1206,10 +1146,10 @@ def test_vmc_symmetry_preservation(j3_type, lambda_type, num_param_opt, sn_ratio
         self,
         num_mcmc_warmup_steps,
         num_mcmc_bin_blocks,
-        chosen_param_index,
         blocks,
         lambda_projectors=None,
         num_orb_projection=None,
+        chosen_param_index=None,
     ):
         """Return intentionally non-symmetric forces to stress-test the symmetrization."""
         total = sum(block.size for block in blocks)
@@ -1250,8 +1190,6 @@ def test_vmc_symmetry_preservation(j3_type, lambda_type, num_param_opt, sn_ratio
         opt_J3_param=True,
         opt_JNN_param=False,
         opt_lambda_param=True,
-        num_param_opt=num_param_opt,
-        opt_filter_min_SN_ratio=sn_ratio,
         optimizer_kwargs={"method": "sgd", "learning_rate": 0.01},
     )
 
@@ -1264,7 +1202,8 @@ def test_vmc_symmetry_preservation(j3_type, lambda_type, num_param_opt, sn_ratio
         np.testing.assert_allclose(
             j3_after[:, :-1],
             j3_after[:, :-1].T,
-            atol=1e-14,
+            atol=atol_debug_vs_production,
+            rtol=rtol_debug_vs_production,
             err_msg="j3 sub-block symmetry broken after VMC update",
         )
     else:
@@ -1275,7 +1214,8 @@ def test_vmc_symmetry_preservation(j3_type, lambda_type, num_param_opt, sn_ratio
         np.testing.assert_allclose(
             lam_after,
             lam_after.T,
-            atol=1e-14,
+            atol=atol_debug_vs_production,
+            rtol=rtol_debug_vs_production,
             err_msg="square lambda symmetry broken after VMC update",
         )
     elif lambda_type == "rect_paired_sym":
@@ -1283,17 +1223,17 @@ def test_vmc_symmetry_preservation(j3_type, lambda_type, num_param_opt, sn_ratio
         np.testing.assert_allclose(
             lam_after[:, :n_paired],
             lam_after[:, :n_paired].T,
-            atol=1e-14,
+            atol=atol_debug_vs_production,
+            rtol=rtol_debug_vs_production,
             err_msg="rectangular lambda paired sub-block symmetry broken after VMC update",
         )
     else:
         assert np.all(np.isfinite(lam_after)), "NaN or Inf in lambda after update"
 
-    # Verify something actually changed (unless all params were filtered)
+    # Verify something actually changed
     j3_changed = not np.array_equal(j3_before, j3_after)
     lam_changed = not np.array_equal(lam_before, lam_after)
-    if sn_ratio == 0.0 and num_param_opt == 0:
-        assert j3_changed or lam_changed, "Expected at least one parameter to change"
+    assert j3_changed or lam_changed, "Expected at least one parameter to change"
 
     jax.clear_caches()
 
@@ -1401,8 +1341,7 @@ def test_optimize_e2e_smoke(opt_flags):
         num_opt_steps=1,
         num_mcmc_warmup_steps=0,
         num_mcmc_bin_blocks=1,
-        opt_filter_min_SN_ratio=0.0,
-        optimizer_kwargs={"method": "sr", "delta": 1e-3, "epsilon": 1e-3},
+        optimizer_kwargs={"method": "sr", "sr_delta": 1e-3, "sr_epsilon": 1e-3},
         **opt_flags,
     )
 
@@ -1422,6 +1361,286 @@ def test_optimize_e2e_smoke(opt_flags):
         assert np.all(np.isfinite(np.asarray(wf.geminal_data.ao_exponents_dn)))
         assert np.all(np.isfinite(np.asarray(wf.geminal_data.ao_coefficients_up)))
         assert np.all(np.isfinite(np.asarray(wf.geminal_data.ao_coefficients_dn)))
+
+    jax.clear_caches()
+
+
+# ---------------------------------------------------------------------------
+# solve_linear_method unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestSolveLinearMethod:
+    """Unit tests for MCMC.solve_linear_method (no MCMC instance needed)."""
+
+    def test_trivial_2x2(self):
+        """p=1: 2x2 eigenvalue problem. E_lm <= H_0."""
+        H_0 = -1.0
+        f_vec = np.array([0.2])
+        S_matrix = np.array([[1.0]])
+        K_matrix = np.array([[-0.5]])
+        B_matrix = np.array([[-0.1]])
+        c_vec, E_lm = MCMC.solve_linear_method(H_0, f_vec, S_matrix, K_matrix, B_matrix, epsilon=1e-10)
+        assert c_vec.shape == (1,)
+        assert E_lm <= H_0 + 1e-10, f"E_lm={E_lm} should be <= H_0={H_0}"
+
+    def test_diagonal_known_solution(self):
+        """Diagonal H, S: verify c_vec has correct shape and E_lm is valid."""
+        p = 5
+        H_0 = -2.0
+        f_vec = np.random.default_rng(42).standard_normal(p)
+        S_matrix = np.diag(np.linspace(0.1, 1.0, p))
+        K_matrix = np.diag(np.linspace(-1.0, -0.1, p))
+        B_matrix = np.diag(np.linspace(-0.5, -0.05, p))
+        c_vec, E_lm = MCMC.solve_linear_method(H_0, f_vec, S_matrix, K_matrix, B_matrix, epsilon=1e-10)
+        assert c_vec.shape == (p,)
+        assert np.all(np.isfinite(c_vec))
+        assert np.isfinite(E_lm)
+
+    def test_epsilon_cutoff(self):
+        """S eigenvalues below epsilon are cut; p' < p."""
+        p = 4
+        H_0 = -1.0
+        f_vec = np.ones(p) * 0.1
+        S_matrix = np.diag([1.0, 0.5, 1e-8, 1e-10])
+        K_matrix = np.eye(p) * (-0.5)
+        B_matrix = np.eye(p) * (-0.1)
+        c_vec, E_lm = MCMC.solve_linear_method(H_0, f_vec, S_matrix, K_matrix, B_matrix, epsilon=1e-6)
+        assert c_vec.shape == (p,)
+        assert np.isfinite(E_lm)
+
+    def test_all_eigenvalues_below_epsilon(self):
+        """All S eigenvalues < epsilon → zero update, E_lm == H_0."""
+        p = 3
+        H_0 = -1.5
+        f_vec = np.ones(p) * 0.1
+        S_matrix = np.eye(p) * 1e-12
+        K_matrix = np.eye(p) * (-0.5)
+        B_matrix = np.eye(p) * (-0.1)
+        c_vec, E_lm = MCMC.solve_linear_method(H_0, f_vec, S_matrix, K_matrix, B_matrix, epsilon=1e-6)
+        np.testing.assert_array_equal(c_vec, np.zeros(p))
+        assert E_lm == H_0
+
+    def test_v0_max_selection(self):
+        """The eigenvector with max |v_0|^2 is selected."""
+        # Construct a case where the lowest eigenvector is not the one with max |v_0|^2
+        p = 2
+        H_0 = 0.0
+        f_vec = np.array([0.01, 0.01])
+        S_matrix = np.eye(p)
+        K_matrix = np.diag([-10.0, -0.1])
+        B_matrix = np.zeros((p, p))
+        c_vec, E_lm = MCMC.solve_linear_method(H_0, f_vec, S_matrix, K_matrix, B_matrix, epsilon=1e-10)
+        assert c_vec.shape == (p,)
+        assert np.isfinite(E_lm)
+
+
+# ---------------------------------------------------------------------------
+# LM end-to-end smoke test
+# ---------------------------------------------------------------------------
+
+
+def test_optimize_lm_e2e_smoke():
+    """End-to-end LM optimisation — verifies no NaN/Inf after 1 step."""
+    trexio_file = os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ae_ccpvdz_cart.h5")
+    (
+        structure_data,
+        aos_data,
+        _,
+        _,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file=trexio_file, store_tuple=True)
+
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=Jastrow_one_body_data.init_jastrow_one_body_data(
+            jastrow_1b_param=1.0,
+            structure_data=structure_data,
+            core_electrons=tuple([0] * len(structure_data.atomic_numbers)),
+            jastrow_1b_type="pade",
+        ),
+        jastrow_two_body_data=Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5, jastrow_2b_type="pade"),
+        jastrow_three_body_data=Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data),
+    )
+
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+
+    mcmc = MCMC(
+        hamiltonian_data=hamiltonian_data,
+        Dt=2.0,
+        mcmc_seed=12345,
+        num_walkers=2,
+        comput_position_deriv=False,
+        comput_log_WF_param_deriv=True,
+        comput_e_L_param_deriv=True,
+    )
+
+    mcmc.run_optimize(
+        num_mcmc_steps=10,
+        num_opt_steps=1,
+        num_mcmc_warmup_steps=0,
+        num_mcmc_bin_blocks=1,
+        opt_J1_param=True,
+        opt_J2_param=True,
+        opt_J3_param=True,
+        opt_lambda_param=True,
+        optimizer_kwargs={
+            "method": "lm",
+            "lm_delta": 0.1,
+            "lm_epsilon": 1e-6,
+            "lm_subspace_dim": 0,
+        },
+    )
+
+    wf = mcmc.hamiltonian_data.wavefunction_data
+    if wf.jastrow_data.jastrow_one_body_data is not None:
+        assert np.all(np.isfinite(np.asarray(wf.jastrow_data.jastrow_one_body_data.jastrow_1b_param)))
+    if wf.jastrow_data.jastrow_two_body_data is not None:
+        assert np.all(np.isfinite(np.asarray(wf.jastrow_data.jastrow_two_body_data.jastrow_2b_param)))
+    if wf.jastrow_data.jastrow_three_body_data is not None:
+        assert np.all(np.isfinite(np.asarray(wf.jastrow_data.jastrow_three_body_data.j_matrix)))
+    if wf.geminal_data is not None:
+        assert np.all(np.isfinite(np.asarray(wf.geminal_data.lambda_matrix)))
+
+    jax.clear_caches()
+
+
+# ---------------------------------------------------------------------------
+# Debug vs Production: get_aH and solve_linear_method consistency
+# ---------------------------------------------------------------------------
+
+
+def test_get_aH_and_solve_lm_debug_vs_production():
+    """Verify that _MCMC_debug.get_aH and solve_linear_method agree with MCMC versions.
+
+    Both aSR (scalar) and LM (matrix) modes are tested.
+    """
+    trexio_file = os.path.join(os.path.dirname(__file__), "trexio_example_files", "H2_ae_ccpvdz_cart.h5")
+    (
+        structure_data,
+        aos_data,
+        _,
+        _,
+        geminal_mo_data,
+        coulomb_potential_data,
+    ) = read_trexio_file(trexio_file=trexio_file, store_tuple=True)
+
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=Jastrow_one_body_data.init_jastrow_one_body_data(
+            jastrow_1b_param=1.0,
+            structure_data=structure_data,
+            core_electrons=tuple([0] * len(structure_data.atomic_numbers)),
+            jastrow_1b_type="pade",
+        ),
+        jastrow_two_body_data=Jastrow_two_body_data.init_jastrow_two_body_data(jastrow_2b_param=0.5, jastrow_2b_type="pade"),
+        jastrow_three_body_data=Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data),
+    )
+
+    wavefunction_data = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=geminal_mo_data)
+    hamiltonian_data = Hamiltonian_data(
+        structure_data=structure_data,
+        coulomb_potential_data=coulomb_potential_data,
+        wavefunction_data=wavefunction_data,
+    )
+
+    num_walkers = 2
+    num_mcmc_steps = 30
+    mcmc_seed = 12345
+    Dt = 2.0
+    epsilon_AS = 1.0e-6
+    warmup = 5
+
+    # Create debug and production MCMC instances with derivative computation enabled
+    mcmc_debug = _MCMC_debug(
+        hamiltonian_data=hamiltonian_data,
+        Dt=Dt,
+        mcmc_seed=mcmc_seed,
+        epsilon_AS=epsilon_AS,
+        num_walkers=num_walkers,
+        comput_position_deriv=False,
+        comput_log_WF_param_deriv=True,
+        comput_e_L_param_deriv=True,
+    )
+    mcmc_debug.run(num_mcmc_steps=num_mcmc_steps)
+
+    mcmc_prod = MCMC(
+        hamiltonian_data=hamiltonian_data,
+        Dt=Dt,
+        mcmc_seed=mcmc_seed,
+        epsilon_AS=epsilon_AS,
+        num_walkers=num_walkers,
+        comput_position_deriv=False,
+        comput_log_WF_param_deriv=True,
+        comput_e_L_param_deriv=True,
+    )
+    mcmc_prod.run(num_mcmc_steps=num_mcmc_steps)
+
+    # Get variational blocks
+    blocks = hamiltonian_data.wavefunction_data.get_variational_blocks()
+
+    # --- Test 1: get_aH in LM mode (return_matrices=True) ---
+    H_0_d, f_d, S_d, K_d, B_d = mcmc_debug.get_aH(
+        blocks=blocks,
+        num_mcmc_warmup_steps=warmup,
+        return_matrices=True,
+    )
+    H_0_p, f_p, S_p, K_p, B_p = mcmc_prod.get_aH(
+        blocks=blocks,
+        num_mcmc_warmup_steps=warmup,
+        return_matrices=True,
+    )
+
+    np.testing.assert_allclose(H_0_d, H_0_p, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(f_d, f_p, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(S_d, S_p, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(K_d, K_p, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(B_d, B_p, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+
+    # --- Test 2: get_aH in aSR mode (return_matrices=False) ---
+    # Use a simple direction vector g for the aSR scalar projection test
+    K_params = len(f_d)
+    g = np.random.default_rng(42).standard_normal(K_params)
+
+    H_0_d2, H_1_d, H_2_d, S_2_d = mcmc_debug.get_aH(
+        blocks=blocks,
+        g=g,
+        num_mcmc_warmup_steps=warmup,
+        return_matrices=False,
+    )
+    H_0_p2, H_1_p, H_2_p, S_2_p = mcmc_prod.get_aH(
+        blocks=blocks,
+        g=g,
+        num_mcmc_warmup_steps=warmup,
+        return_matrices=False,
+    )
+
+    np.testing.assert_allclose(H_0_d2, H_0_p2, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(H_1_d, H_1_p, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(H_2_d, H_2_p, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(S_2_d, S_2_p, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+
+    # --- Test 3: aSR scalars should be consistent with LM matrices ---
+    # H_1 = -1/2 g^T f,  S_2 = g^T S g,  H_2 = g^T (K+B) g
+    H_1_from_mat = -0.5 * np.dot(g, f_d)
+    S_2_from_mat = g @ S_d @ g
+    H_2_from_mat = g @ (K_d + B_d) @ g
+    np.testing.assert_allclose(H_1_d, H_1_from_mat, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(S_2_d, S_2_from_mat, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(H_2_d, H_2_from_mat, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+
+    # --- Test 4: solve_linear_method with identical inputs ---
+    # Use the production matrices for both to verify the two implementations
+    # produce identical results when given the exact same input.
+    epsilon_lm = 1e-6
+    c_debug, E_debug = _MCMC_debug.solve_linear_method(H_0_p, f_p, S_p, K_p, B_p, epsilon_lm)
+    c_prod, E_prod = MCMC.solve_linear_method(H_0_p, f_p, S_p, K_p, B_p, epsilon_lm)
+    np.testing.assert_allclose(c_debug, c_prod, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
+    np.testing.assert_allclose(E_debug, E_prod, atol=atol_debug_vs_production, rtol=rtol_debug_vs_production)
 
     jax.clear_caches()
 

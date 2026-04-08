@@ -398,8 +398,6 @@ def _cli():
         opt_J3_basis_coeff = parameters[section]["opt_J3_basis_coeff"]
         opt_lambda_basis_exp = parameters[section]["opt_lambda_basis_exp"]
         opt_lambda_basis_coeff = parameters[section]["opt_lambda_basis_coeff"]
-        num_param_opt = parameters[section]["num_param_opt"]
-        opt_filter_min_SN_ratio = parameters[section]["opt_filter_min_SN_ratio"]
         optimizer_kwargs = parameters[section]["optimizer_kwargs"]
         if optimizer_kwargs is None:
             optimizer_kwargs = {}
@@ -426,9 +424,8 @@ def _cli():
         if num_mcmc_steps - num_mcmc_warmup_steps < num_mcmc_bin_blocks:
             raise ValueError("(num_mcmc_steps - num_mcmc_warmup_steps) should be larger than num_mcmc_bin_blocks.")
 
-        _use_asr = optimizer_kwargs.get("method", "sr").lower() == "sr" and bool(
-            optimizer_kwargs.get("adaptive_learning_rate", False)
-        )
+        _method = optimizer_kwargs.get("method", "sr").lower()
+        _need_eL_deriv = _method == "lm" or (_method == "sr" and bool(optimizer_kwargs.get("adaptive_learning_rate", False)))
 
         if restart:
             logger.info(f"Read restart checkpoint file(s) from {restart_chk}.")
@@ -445,7 +442,7 @@ def _cli():
                 epsilon_AS=epsilon_AS,
                 comput_position_deriv=False,
                 comput_log_WF_param_deriv=True,
-                comput_e_L_param_deriv=_use_asr,
+                comput_e_L_param_deriv=_need_eL_deriv,
             )
         mcmc.run_optimize(
             num_mcmc_steps=num_mcmc_steps,
@@ -463,8 +460,6 @@ def _cli():
             opt_J3_basis_coeff=opt_J3_basis_coeff,
             opt_lambda_basis_exp=opt_lambda_basis_exp,
             opt_lambda_basis_coeff=opt_lambda_basis_coeff,
-            num_param_opt=num_param_opt,
-            opt_filter_min_SN_ratio=opt_filter_min_SN_ratio,
             max_time=max_time,
             optimizer_kwargs=optimizer_kwargs,
         )

@@ -64,7 +64,7 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 | `epsilon_AS`               |        `0.0` | ε for Attaccalite–Sorella regularization.                                                                            |
 | `num_opt_steps`            | **required** | Number of optimization iterations.                                                                                   |
 | `wf_dump_freq`             |          `1` | Write wavefunction/Hamiltonian checkpoint every this many optimization steps.                                        |
-| `optimizer_kwargs`         | `{ "method": "sr", "delta": 0.01, "epsilon": 0.001, "cg_flag": true, "cg_max_iter": 10000, "cg_tol": 1e-4 }` | Optimizer configuration. Set `method` to `"sr"` for stochastic reconfiguration or to an optax optimizer name (e.g., `"adam"`). `delta`/`epsilon` control SR step size and regularization; `cg_*` entries tune the SR conjugate-gradient solver. Any additional keys are forwarded to optax when `method` ≠ `"sr"`. |
+| `optimizer_kwargs`         | `{ "method": "sr", "sr_delta": 0.01, "sr_epsilon": 0.001, "cg_flag": true, "cg_max_iter": 10000, "cg_tol": 1e-4 }` | Optimizer configuration. Set `method` to `"sr"` for stochastic reconfiguration, `"lm"` for the linear method, or to an optax optimizer name (e.g., `"adam"`). For `method = "sr"`: `sr_delta`/`sr_epsilon` control step size and regularization; `cg_*` entries tune the conjugate-gradient solver. For `method = "lm"`: `lm_delta` (default `0.01`) is the energy-shift regularization, `lm_epsilon` (default `0.001`) is the identity regularization, and `lm_subspace_dim` (default `0`, meaning all parameters) limits the LM subspace dimension. Any additional keys are forwarded to optax when `method` is an optax optimizer name. |
 | `opt_J1_param`             |       `true` | Optimize J1 parameters.                                                                                              |
 | `opt_J2_param`             |       `true` | Optimize J2 parameters.                                                                                              |
 | `opt_J3_param`             |       `true` | Optimize J3 parameters.                                                                                              |
@@ -75,8 +75,6 @@ The input file is a JSON/YAML document whose keys match the parameters listed be
 | `opt_J3_basis_coeff`       |      `false` | Optimize J3 AO contraction coefficients. Can be combined with `opt_with_projected_MOs`. |
 | `opt_lambda_basis_exp`     |      `false` | Optimize Geminal AO Gaussian exponents (up and down spins, concatenated). Cannot be combined with `opt_with_projected_MOs`. |
 | `opt_lambda_basis_coeff`   |      `false` | Optimize Geminal AO contraction coefficients (up and down spins, concatenated). Cannot be combined with `opt_with_projected_MOs`. |
-| `num_param_opt`            |          `0` | Number of parameters to optimize, chosen in descending order of \|f\| / std(f). If `0`, optimize **all** parameters. |
-| `opt_filter_min_SN_ratio`  |        `0.0` | Minimum signal-to-noise ratio \|f\| / std(f) for a parameter to be updated. Parameters with SN ≤ this threshold are frozen. Applied **before** `num_param_opt` top-N selection. Set to `0` to disable. |
 
 ---
 

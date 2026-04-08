@@ -156,10 +156,9 @@ Within a given atom, a single *shell* (same nucleus, same angular momentum $l$, 
 To preserve this physical constraint during optimization, jQMC enforces that **all primitives belonging to the same shell are updated identically**.  This is implemented via the same `symmetrize_metric` mechanism used for the J3 and lambda matrix symmetry:
 
 1. **Gradient symmetrization** — Before the SR solve, the signal-to-noise ratio of the force vector $f_k$ is averaged within each shell group.  This ensures that all shell-mates receive the same effective gradient.
-2. **Parameter selection** — When `num_param_opt` or `opt_filter_min_SN_ratio` selects a subset of parameters, the selection mask is symmetrized so that either *all* or *none* of a shell's primitives are included.  Selecting one $p$-shell exponent automatically selects the other two.
-3. **Update enforcement** — After the additive parameter update, `apply_block_update` averages the updated values within each shell group, guaranteeing that shell-mates remain exactly equal even in the presence of floating-point rounding.
+2. **Update enforcement** — After the additive parameter update, `apply_block_update` averages the updated values within each shell group, guaranteeing that shell-mates remain exactly equal even in the presence of floating-point rounding.
 
-This approach is size-preserving: the optimizer always works with the full per-primitive parameter vector (no dimension reduction), which keeps the SR matrix construction and the parameter-selection logic identical to other variational blocks.
+This approach is size-preserving: the optimizer always works with the full per-primitive parameter vector (no dimension reduction), which keeps the SR matrix construction identical to other variational blocks.  All basis parameters are optimized simultaneously — there is no SN-ratio filter or parameter-count selection.
 
 #### Restrictions
 

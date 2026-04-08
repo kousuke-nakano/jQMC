@@ -1582,14 +1582,17 @@ class MCMC:
 
     def get_aH(
         self,
-        g: npt.NDArray,
         blocks: list,
+        g: npt.NDArray | None = None,
         num_mcmc_warmup_steps: int = 50,
         chosen_param_index: list | None = None,
         lambda_projectors: tuple | None = None,
         num_orb_projection: int | None = None,
-    ) -> tuple[float, float, float, float]:
-        r"""Compute H_0, H_1, H_2, S_2 for accelerated SR (aSR) gamma optimization.
+        return_matrices: bool = False,
+    ) -> tuple:
+        r"""Compute aSR scalars or full LM matrices.
+
+        **aSR mode** (``return_matrices=False``, default):
 
         Using the decomposition
 
@@ -1600,34 +1603,33 @@ class MCMC:
 
         where :math:`\\delta\\alpha = \\gamma g` and :math:`g = S^{-1}f`.
 
-        Each term is:
+        Returns ``(H_0, H_1, H_2, S_2)`` — scalars for aSR gamma optimization.
+        Requires ``g`` (natural gradient direction).
 
-        - :math:`H_0 = E_{\\alpha}` (current energy),
-        - :math:`H_1 = -\\tfrac{1}{2}\\,g^T f`,
-        - :math:`H_2 = g^T (B + K)\\,g`, with
-          :math:`K_{k,k'} = \\langle e_L (O_k - \\bar O_k)(O_{k'} - \\bar O_{k'})\\rangle`
-          and
-          :math:`B_{k,k'} = \\langle (O_{k'} - \\bar O_{k'})(\\partial_k e_L - \\overline{\\partial_k e_L})\\rangle`,
-        - :math:`S_2 = g^T S g = \langle w\,(g^T\delta O)^2 \rangle_w`
-          (computed directly from samples; **not** :math:`g^T f` which overestimates by
-          :math:`\epsilon_\text{SR}\,\|g_\text{scaled}\|^2` due to SR regularisation).
+        **LM mode** (``return_matrices=True``):
+
+        Builds the full S, K, B matrices and force vector f for
+        the Linear Method generalized eigenvalue problem.
+        ``g`` is ignored.
+
+        Returns ``(H_0, f_vec, S_matrix, K_matrix, B_matrix)``.
 
         Args:
-            g (npt.NDArray): Natural gradient vector :math:`g = S^{-1}f`, shape ``(K,)`` or ``(L,)`` if ``chosen_param_index`` is used.
+            g (npt.NDArray | None): Natural gradient vector :math:`g = S^{-1}f`.
+                Required when ``return_matrices=False``. Ignored when ``return_matrices=True``.
             blocks (list): Ordered variational blocks (same ordering as used for ``g``).
             num_mcmc_warmup_steps (int, optional): Samples to discard as warmup. Defaults to 50.
             chosen_param_index (list | None, optional): Optional subset of flattened parameter indices. Defaults to None.
             lambda_projectors (tuple | None, optional): Passed to :meth:`get_dln_WF`.
             num_orb_projection (int | None, optional): Passed to :meth:`get_dln_WF`.
+            return_matrices (bool, optional): If True, return full matrices for LM. Defaults to False.
 
         Returns:
-            tuple[float, float, float, float]: ``(H_0, H_1, H_2, S_2)``.
+            tuple: ``(H_0, H_1, H_2, S_2)`` if ``return_matrices=False``, or
+            ``(H_0, f_vec, S_matrix, K_matrix, B_matrix)`` if ``return_matrices=True``.
 
         Raises:
             RuntimeError: If ``compute_log_WF_param_deriv`` or ``comput_e_L_param_deriv`` is False.
-
-        Notes:
-            Use :meth:`compute_asr_gamma` to obtain :math:`\\gamma` from the returned values.
         """
         if not self.__comput_log_WF_param_deriv:
             raise RuntimeError("get_aH requires compute_log_WF_param_deriv=True.")
@@ -1635,13 +1637,16 @@ class MCMC:
             raise RuntimeError("get_aH requires comput_e_L_param_deriv=True (for B matrix / de_L/dc).")
 
         # Diagnostic output at entry
-        logger.devel("[get_aH] ENTRY")
-        g_stats = self._safe_stats(g, "g")
-        logger.devel(
-            f"[get_aH] INPUT g: shape={g_stats['shape']} "
-            f"NaN={g_stats['nan_count']}/{g.size} min={g_stats['min']:.3e} "
-            f"max={g_stats['max']:.3e} mean={g_stats['mean']:.3e}"
-        )
+        logger.devel("[get_aH] ENTRY (return_matrices=%s)", return_matrices)
+        if g is not None:
+            g_stats = self._safe_stats(g, "g")
+            logger.devel(
+                f"[get_aH] INPUT g: shape={g_stats['shape']} "
+                f"NaN={g_stats['nan_count']}/{g.size} min={g_stats['min']:.3e} "
+                f"max={g_stats['max']:.3e} mean={g_stats['mean']:.3e}"
+            )
+        else:
+            logger.devel("[get_aH] INPUT g: None (LM mode)")
 
         # ---- raw samples after warmup ----
         w_L = self.w_L[num_mcmc_warmup_steps:]  # (M, nw)
@@ -1809,6 +1814,41 @@ class MCMC:
         mpi_comm.Allreduce([f_local, MPI.DOUBLE], [f_global, MPI.DOUBLE], op=MPI.SUM)
         f_vec = f_global / total_w  # (K,)
 
+        if return_matrices:
+            # ---- LM mode: build full S, K, B matrices ----
+            ddE_flat = dE_flat - dE_bar[np.newaxis, :]  # (N, K)
+
+            # S_matrix = <w * dO_k * dO_k'>_w
+            w_dO = w_flat[:, np.newaxis] * dO_flat  # (N, K)
+            S_local = dO_flat.T @ w_dO  # (K, K)
+            S_matrix = np.empty_like(S_local)
+            mpi_comm.Allreduce(S_local, S_matrix, op=MPI.SUM)
+            S_matrix /= total_w
+
+            # K_matrix = <w * e_L * dO_k * dO_k'>_w
+            we_dO = (w_flat * e_flat)[:, np.newaxis] * dO_flat  # (N, K)
+            K_local = dO_flat.T @ we_dO  # (K, K)
+            K_matrix = np.empty_like(K_local)
+            mpi_comm.Allreduce(K_local, K_matrix, op=MPI.SUM)
+            K_matrix /= total_w
+
+            # B_matrix = <w * ddE_k * dO_k'>_w
+            w_ddE = w_flat[:, np.newaxis] * ddE_flat  # (N, K)
+            B_local = w_ddE.T @ dO_flat  # (K, K)
+            B_matrix = np.empty_like(B_local)
+            mpi_comm.Allreduce(B_local, B_matrix, op=MPI.SUM)
+            B_matrix /= total_w
+
+            logger.info(
+                f"  LM matrices: p={K}, H_0={H_0:.6f}, "
+                f"||f||={np.linalg.norm(f_vec):.3e}, "
+                f"diag(S): min={np.min(np.diag(S_matrix)):.3e} max={np.max(np.diag(S_matrix)):.3e}"
+            )
+            return H_0, f_vec, S_matrix, K_matrix, B_matrix
+
+        # ---- aSR mode: scalar projections ----
+        assert g is not None, "g is required for aSR mode (return_matrices=False)"
+
         # ---- H_1 = -1/2 * g^T f ----
         H_1 = -0.5 * float(np.dot(g, f_vec))
 
@@ -1872,7 +1912,7 @@ class MCMC:
 
         The root with the smaller absolute value is returned.  This avoids
         spuriously large steps when the quadratic coefficient
-        :math:`a = -H_1 S_2` is small (e.g. sparse ``num_param_opt`` mask),
+        :math:`a = -H_1 S_2` is small,
         which causes one root to diverge while the other stays near zero.
 
         Args:
@@ -1917,6 +1957,105 @@ class MCMC:
         logger.info(f"aSR: selected gamma = {gamma:.6f}")
         return gamma
 
+    @staticmethod
+    def solve_linear_method(
+        H_0: float,
+        f_vec: npt.NDArray,
+        S_matrix: npt.NDArray,
+        K_matrix: npt.NDArray,
+        B_matrix: npt.NDArray,
+        epsilon: float,
+    ) -> tuple[npt.NDArray, float]:
+        r"""Solve the Linear Method generalized eigenvalue problem.
+
+        Constructs extended matrices :math:`\bar H` and :math:`\bar S` of
+        dimension :math:`(p'+1) \times (p'+1)` (after S eigenvalue cutoff)
+        and solves :math:`\bar H v = E \bar S v`.
+
+        The eigenvector with the largest :math:`|v_0|^2` is selected, and the
+        parameter update is :math:`c_k = v_k / v_0`.
+
+        Args:
+            H_0: Current energy :math:`E_\alpha`.
+            f_vec: Generalized force vector, shape ``(p,)``.
+            S_matrix: SR matrix, shape ``(p, p)``.
+            K_matrix: K matrix, shape ``(p, p)``.
+            B_matrix: B matrix, shape ``(p, p)``.
+            epsilon: Eigenvalue cutoff for S matrix.
+
+        Returns:
+            tuple: ``(c_vec, E_lm)`` where ``c_vec`` has shape ``(p,)``
+            (in the original parameter space) and ``E_lm`` is the selected eigenvalue.
+        """
+        p = len(f_vec)
+
+        # Step 1: S eigenvalue decomposition + epsilon cutoff
+        eigvals_S, eigvecs_S = np.linalg.eigh(S_matrix)
+        mask = eigvals_S > epsilon
+        p_prime = int(np.count_nonzero(mask))
+        if p_prime == 0:
+            logger.warning("  LM: all S eigenvalues below epsilon (%.1e); returning zero update.", epsilon)
+            return np.zeros(p), H_0
+
+        U = eigvecs_S[:, mask]  # (p, p')
+        Lambda = eigvals_S[mask]  # (p',)
+        logger.info(
+            "  LM: S eigenvalue cutoff: %d/%d kept (min=%.3e, max=%.3e, eps=%.1e).",
+            p_prime,
+            p,
+            Lambda[0],
+            Lambda[-1],
+            epsilon,
+        )
+
+        # Step 2: Project to truncated basis
+        H_matrix = K_matrix + B_matrix
+        H_tilde = U.T @ H_matrix @ U  # (p', p')
+        f_tilde = U.T @ f_vec  # (p',)
+
+        # Step 3: Build extended matrices (p'+1) x (p'+1)
+        dim = p_prime + 1
+        H_bar = np.zeros((dim, dim))
+        S_bar = np.zeros((dim, dim))
+        H_bar[0, 0] = H_0
+        H_bar[0, 1:] = -0.5 * f_tilde
+        H_bar[1:, 0] = -0.5 * f_tilde
+        H_bar[1:, 1:] = H_tilde
+        S_bar[0, 0] = 1.0
+        S_bar[1:, 1:] = np.diag(Lambda)
+
+        # Step 4: Generalized eigenvalue problem
+        eigvals, eigvecs = scipy.linalg.eigh(H_bar, S_bar)
+
+        # Step 5: Select eigenvector with max |v_0|^2
+        v0_sq = eigvecs[0, :] ** 2
+        best_idx = int(np.argmax(v0_sq))
+        E_lm = float(eigvals[best_idx])
+
+        # Diagnostic: compare with lowest eigenvalue
+        lowest_idx = 0  # eigh returns ascending order
+        if lowest_idx != best_idx:
+            logger.debug(
+                "  LM: lowest eigenvalue E = %.6f (|v0|^2 = %.4f), selected (max |v0|^2) E = %.6f (|v0|^2 = %.4f)",
+                eigvals[lowest_idx],
+                v0_sq[lowest_idx],
+                E_lm,
+                v0_sq[best_idx],
+            )
+        else:
+            logger.debug("  LM: selected eigenvalue E = %.6f (|v0|^2 = %.4f)", E_lm, v0_sq[best_idx])
+
+        if v0_sq[best_idx] < 0.01:
+            logger.warning("  LM: max |v0|^2 = %.4f is small; update may be unreliable.", v0_sq[best_idx])
+
+        v = eigvecs[:, best_idx]
+        v0 = v[0]
+        c_tilde = v[1:] / v0  # (p',)
+
+        # Step 6: Back to original space
+        c_vec = U @ c_tilde  # (p,)
+        return c_vec, E_lm
+
     def run_optimize(
         self,
         num_mcmc_steps: int = 100,
@@ -1935,8 +2074,6 @@ class MCMC:
         opt_J3_basis_coeff: bool = False,
         opt_lambda_basis_exp: bool = False,
         opt_lambda_basis_coeff: bool = False,
-        num_param_opt: int = 0,
-        opt_filter_min_SN_ratio: float = 0.0,
         optimizer_kwargs: dict | None = None,
     ):
         """Optimize wavefunction parameters using SR or optax.
@@ -1965,11 +2102,15 @@ class MCMC:
                 Cannot be combined with ``opt_with_projected_MOs``.
             opt_lambda_basis_coeff (bool, optional): Optimize Geminal AO contraction coefficients (up and down). Defaults to False.
                 Cannot be combined with ``opt_with_projected_MOs``.
-            num_param_opt (int, optional): Limit parameters updated (ranked by ``|f|/|std f|``); ``0`` means all. Defaults to 0.
-            opt_filter_min_SN_ratio (float, optional): Minimum signal-to-noise ratio ``|f|/|std f|`` for a
-                parameter to be updated.  Parameters with SN <= this threshold are frozen.  Applied
-                before ``num_param_opt`` top-N selection.  Defaults to 0.0.
-            optimizer_kwargs (dict | None, optional): Optimizer configuration. ``method='sr'`` uses SR keys (``delta``, ``epsilon``, ``cg_flag``, ``cg_max_iter``, ``cg_tol``, ``adaptive_learning_rate``); ``adaptive_learning_rate=True`` enables accelerated SR (aSR) gamma scaling and requires ``compute_log_WF_param_deriv=True`` and ``comput_e_L_param_deriv=True``; other ``method`` names are optax constructors (e.g., ``"adam"``) and receive remaining keys.
+            optimizer_kwargs (dict | None, optional): Optimizer configuration.
+                ``method='sr'`` uses SR keys (``sr_delta``, ``sr_epsilon``, ``cg_flag``,
+                ``cg_max_iter``, ``cg_tol``, ``adaptive_learning_rate``);
+                ``method='lm'`` uses LM keys (``lm_delta``, ``lm_epsilon``,
+                ``lm_subspace_dim``); ``adaptive_learning_rate=True`` (SR only) enables
+                accelerated SR (aSR) gamma scaling and requires
+                ``compute_log_WF_param_deriv=True`` and ``comput_e_L_param_deriv=True``;
+                other ``method`` names are optax constructors (e.g., ``"adam"``) and
+                receive remaining keys.
 
         Notes:
             - Persists optax optimizer state across calls when method and hyperparameters match.
@@ -1991,18 +2132,51 @@ class MCMC:
             raise TypeError("optimizer_kwargs['method'] must be a string if provided.")
         optimizer_mode = optimizer_mode.lower()
         use_sr = optimizer_mode == "sr"
-        sr_adaptive_lr = bool(optimizer_kwargs.get("adaptive_learning_rate", False))
-        use_sr_adaptive_lr = use_sr and sr_adaptive_lr  # aSR gamma scaling
-        optax_name = optimizer_mode if not use_sr else None
-        sr_delta = float(optimizer_kwargs.get("delta", 1.0e-3))
-        sr_epsilon = float(optimizer_kwargs.get("epsilon", 1.0e-3))
-        sr_cg_flag = bool(optimizer_kwargs.get("cg_flag", True))
-        sr_cg_max_iter = int(optimizer_kwargs.get("cg_max_iter", int(1e6)))
-        sr_cg_tol = float(optimizer_kwargs.get("cg_tol", 1.0e-8))
+        use_lm = optimizer_mode == "lm"
+        optax_name = optimizer_mode if not (use_sr or use_lm) else None
+
+        # SR-specific parameters
+        sr_delta = sr_epsilon = sr_cg_flag = sr_cg_max_iter = sr_cg_tol = None
+        use_sr_adaptive_lr = False
+        if use_sr:
+            sr_delta = float(optimizer_kwargs.get("sr_delta", 1.0e-3))
+            sr_epsilon = float(optimizer_kwargs.get("sr_epsilon", 1.0e-3))
+            sr_cg_flag = bool(optimizer_kwargs.get("cg_flag", True))
+            sr_cg_max_iter = int(optimizer_kwargs.get("cg_max_iter", int(1e6)))
+            sr_cg_tol = float(optimizer_kwargs.get("cg_tol", 1.0e-8))
+            sr_adaptive_lr = bool(optimizer_kwargs.get("adaptive_learning_rate", False))
+            use_sr_adaptive_lr = sr_adaptive_lr
+
+        # LM-specific parameters
+        lm_delta = lm_epsilon = lm_subspace_dim = None
+        if use_lm:
+            lm_delta = float(optimizer_kwargs.get("lm_delta", 0.35))
+            lm_epsilon = float(optimizer_kwargs.get("lm_epsilon", 1.0e-6))
+            lm_subspace_dim = int(optimizer_kwargs.get("lm_subspace_dim", 10))
+
+        # LM / aSR require derivative computations
+        if use_lm or use_sr_adaptive_lr:
+            if not self.__comput_log_WF_param_deriv:
+                raise RuntimeError("LM/aSR requires compute_log_WF_param_deriv=True.")
+            if not self.__comput_e_L_param_deriv:
+                raise RuntimeError("LM/aSR requires comput_e_L_param_deriv=True.")
+
         optax_kwargs = {
             k: v
             for k, v in optimizer_kwargs.items()
-            if k not in {"delta", "epsilon", "cg_flag", "cg_max_iter", "cg_tol", "cg_x0_strategy", "adaptive_learning_rate"}
+            if k
+            not in {
+                "sr_delta",
+                "sr_epsilon",
+                "cg_flag",
+                "cg_max_iter",
+                "cg_tol",
+                "cg_x0_strategy",
+                "adaptive_learning_rate",
+                "lm_delta",
+                "lm_epsilon",
+                "lm_subspace_dim",
+            }
         }
 
         optax_tx = None
@@ -2018,16 +2192,16 @@ class MCMC:
 
         optimizer_hparams: dict[str, float | int | str] = {"method": optimizer_mode}
 
-        if not use_sr:
+        if not (use_sr or use_lm):
             if optax_name not in optax_supported:
                 raise ValueError(
                     f"Unsupported optimizer '{optimizer_mode}'. Supported optax options: {sorted(optax_supported)}."
                 )
             optax_config = dict(optax_kwargs)
-            optax_config.setdefault("learning_rate", sr_delta)
+            optax_config.setdefault("learning_rate", 1.0e-3)
             optax_tx = optax_supported[optax_name](**optax_config)
             optimizer_hparams = {"method": optimizer_mode, **optax_config}
-        else:
+        elif use_sr:
             optimizer_hparams = {
                 "method": optimizer_mode,
                 "delta": sr_delta,
@@ -2037,8 +2211,16 @@ class MCMC:
                 "cg_tol": sr_cg_tol,
                 "adaptive_learning_rate": sr_adaptive_lr,
             }
+        else:
+            # LM
+            optimizer_hparams = {
+                "method": optimizer_mode,
+                "lm_delta": lm_delta,
+                "lm_epsilon": lm_epsilon,
+                "lm_subspace_dim": lm_subspace_dim,
+            }
 
-        if use_sr:
+        if use_sr or use_lm:
             self.__set_optimizer_runtime(
                 method=optimizer_mode,
                 hyperparameters=optimizer_hparams,
@@ -2077,6 +2259,11 @@ class MCMC:
                     "  adaptive_learning_rate=True: optimal gamma is computed via accelerated SR (aSR) and applied to theta."
                 )
                 logger.info("  Requires compute_log_WF_param_deriv=True and comput_e_L_param_deriv=True.")
+            logger.info("  Hyperparameters: %s", ", ".join(f"{k}={v}" for k, v in sorted(optimizer_hparams.items())))
+            logger.info("")
+        elif use_lm:
+            logger.info("  The Linear Method (LM) optimizer is used for wavefunction optimization.")
+            logger.info("  Requires compute_log_WF_param_deriv=True and comput_e_L_param_deriv=True.")
             logger.info("  Hyperparameters: %s", ", ".join(f"{k}={v}" for k, v in sorted(optimizer_hparams.items())))
             logger.info("")
         else:
@@ -2390,10 +2577,9 @@ class MCMC:
                 start += block.size
             total_num_params = start
 
-            chosen_param_index = np.arange(total_num_params, dtype=np.int32)
-            logger.info(f"Number of variational parameters = {len(chosen_param_index)}.")
+            logger.info(f"Number of variational parameters = {total_num_params}.")
 
-            if not use_sr:
+            if not (use_sr or use_lm):
                 if blocks:
                     flat_param_vector = np.concatenate([np.ravel(np.array(block.values, dtype=np.float64)) for block in blocks])
                 else:
@@ -2410,7 +2596,6 @@ class MCMC:
             f, f_std = self.get_gF(
                 num_mcmc_warmup_steps=num_mcmc_warmup_steps,
                 num_mcmc_bin_blocks=num_mcmc_bin_blocks,
-                chosen_param_index=chosen_param_index,
                 blocks=blocks,
                 lambda_projectors=lambda_projectors,
                 num_orb_projection=num_orb_projection,
@@ -2429,7 +2614,7 @@ class MCMC:
                 logger.info("-" * num_sep_line)
                 logger.info(f"Max f = {f[f_argmax]:.3f} +- {f_std[f_argmax]:.3f} Ha/a.u.")
 
-                # ---- Step 0: Symmetrize SN metric for blocks with internal symmetry ----
+                # Symmetrize SN metric for blocks with internal symmetry
                 for _blk, _s, _e in offsets:
                     if _blk.symmetrize_metric is not None:
                         signal_to_noise_f[_s:_e] = _blk.symmetrize_metric(signal_to_noise_f[_s:_e])
@@ -2437,57 +2622,10 @@ class MCMC:
                 logger.info(f"Max of signal-to-noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}.")
                 logger.info("-" * num_sep_line)
 
-                # ---- Step 1: SN-ratio floor filter ----
-                _sn_sorted_indices = np.argsort(signal_to_noise_f)[::-1]  # descending
-                if opt_filter_min_SN_ratio > 0.0:
-                    _sn_pass_mask = signal_to_noise_f[_sn_sorted_indices] > opt_filter_min_SN_ratio
-                    _sn_filtered_indices = _sn_sorted_indices[_sn_pass_mask]
-                    _num_filtered_out = len(_sn_sorted_indices) - len(_sn_filtered_indices)
-                    logger.info(
-                        f"SN-ratio filter (>{opt_filter_min_SN_ratio:.2f}): "
-                        f"{len(_sn_filtered_indices)}/{len(_sn_sorted_indices)} parameters pass, "
-                        f"{_num_filtered_out} frozen."
-                    )
-                else:
-                    _sn_filtered_indices = _sn_sorted_indices
-
-                # ---- Step 2: num_param_opt top-N selection ----
-                if num_param_opt != 0 and num_param_opt < len(_sn_filtered_indices):
-                    signal_to_noise_f_max_indices = _sn_filtered_indices[:num_param_opt]
-                    logger.info(
-                        f"Optimizing only {num_param_opt} variational parameters with the largest signal to noise ratios of f."
-                    )
-                else:
-                    signal_to_noise_f_max_indices = _sn_filtered_indices
-                    if len(_sn_filtered_indices) < len(_sn_sorted_indices):
-                        logger.info(
-                            f"Optimizing {len(signal_to_noise_f_max_indices)} variational parameters (after SN-ratio filter)."
-                        )
-                    else:
-                        logger.info("Optimizing all variational parameters.")
-
-                # ---- Step 3: Ensure symmetry-equivalent parameters are selected together ----
-                _mask = np.zeros(total_num_params, dtype=np.float64)
-                _mask[signal_to_noise_f_max_indices] = 1.0
-                _mask_changed = False
-                for _blk, _s, _e in offsets:
-                    if _blk.symmetrize_metric is not None:
-                        _old_slice = _mask[_s:_e].copy()
-                        _mask[_s:_e] = _blk.symmetrize_metric(_mask[_s:_e])
-                        if not np.array_equal(_old_slice, _mask[_s:_e]):
-                            _mask_changed = True
-                if _mask_changed:
-                    signal_to_noise_f_max_indices = np.where(_mask > 0.0)[0]
-                    logger.info(
-                        f"Expanded parameter selection to {len(signal_to_noise_f_max_indices)} "
-                        f"to respect block symmetry constraints."
-                    )
-
-                # ---- Debug: show selected / top parameters ----
-                _show_k = min(30, len(signal_to_noise_f_max_indices))
-                _show_indices = signal_to_noise_f_max_indices[
-                    np.argsort(signal_to_noise_f[signal_to_noise_f_max_indices])[::-1]
-                ][:_show_k]
+                # Show top parameters by SN ratio (diagnostic)
+                _sn_sorted_indices = np.argsort(signal_to_noise_f)[::-1]
+                _show_k = min(30, len(_sn_sorted_indices))
+                _show_indices = _sn_sorted_indices[:_show_k]
                 _sel_info = []
                 for _idx in _show_indices:
                     _block_name = "unknown"
@@ -2506,56 +2644,41 @@ class MCMC:
                     logger.debug(_line)
             else:
                 signal_to_noise_f = None
-                signal_to_noise_f_max_indices = None
 
             signal_to_noise_f = mpi_comm.bcast(signal_to_noise_f, root=0)
-            signal_to_noise_f_max_indices = mpi_comm.bcast(signal_to_noise_f_max_indices, root=0)
-
-            # Shorthand for selected parameter indices (used to slice O_matrix
-            # before SR matrix construction so that the SR dimension is reduced).
-            sn_indices = signal_to_noise_f_max_indices
-            num_param_selected = len(sn_indices)
-
-            # If all parameters were filtered out, skip the optimizer entirely
-            # and proceed to the next optimization step with unchanged parameters.
-            if len(signal_to_noise_f_max_indices) == 0:
-                logger.info(
-                    "All variational parameters filtered out by SN-ratio threshold. Skipping parameter update for this step."
-                )
-                num_opt_done += 1
-                # Still need to dump WF at the expected frequency
-                if mpi_rank == 0:
-                    if (i_opt + 1) % wf_dump_freq == 0 or (i_opt + 1) == num_opt_steps:
-                        hamiltonian_data_filename = f"hamiltonian_data_opt_step_{i_opt + 1 + self.__i_opt}.h5"
-                        logger.info(f"Hamiltonian data is dumped as an HDF5 file: {hamiltonian_data_filename}.")
-                        self.hamiltonian_data.save_to_hdf5(hamiltonian_data_filename)
-
-                # If opt_with_projected_MOs is active, the geminal was converted
-                # MO→AO at the top of this iteration.  Since no parameters were
-                # updated we must restore the original MO representation so that
-                # the next iteration can access mo_coefficients.
-                if opt_with_projected_MOs:
-                    wavefunction_data_restore = type(self.hamiltonian_data.wavefunction_data)(
-                        jastrow_data=self.hamiltonian_data.wavefunction_data.jastrow_data,
-                        geminal_data=geminal_mo_current,
-                    )
-                    self.hamiltonian_data = Hamiltonian_data(
-                        structure_data=self.hamiltonian_data.structure_data,
-                        wavefunction_data=wavefunction_data_restore,
-                        coulomb_potential_data=self.hamiltonian_data.coulomb_potential_data,
-                    )
-
-                # Re-assign hamiltonian_data to trigger the setter, which calls
-                # __init_attributes() and resets __mcmc_counter for the next step.
-                self.hamiltonian_data = self.hamiltonian_data
-                mpi_comm.Barrier()
-                continue
 
             #############################
-            # in-house SR optimizer
+            # optimization step
             #############################
             start = time.perf_counter()
-            if use_sr:
+            if use_lm:
+                # ---- Linear Method ----
+                # Subspace selection
+                if lm_subspace_dim > 0 and lm_subspace_dim < total_num_params:
+                    _sn_sorted = np.argsort(signal_to_noise_f)[::-1]
+                    subspace_indices = _sn_sorted[:lm_subspace_dim]
+                    logger.info(f"  LM: subspace dimension = {lm_subspace_dim} / {total_num_params}")
+                else:
+                    subspace_indices = np.arange(total_num_params, dtype=np.intp)
+                    logger.info(f"  LM: subspace dimension = {total_num_params} (all parameters)")
+
+                H_0_lm, f_vec_lm, S_mat, K_mat, B_mat = self.get_aH(
+                    g=None,
+                    blocks=blocks,
+                    num_mcmc_warmup_steps=num_mcmc_warmup_steps,
+                    chosen_param_index=subspace_indices,
+                    lambda_projectors=lambda_projectors,
+                    num_orb_projection=num_orb_projection,
+                    return_matrices=True,
+                )
+                # S, K, B are Allreduce'd — identical on all ranks
+                c_vec, E_lm = self.solve_linear_method(H_0_lm, f_vec_lm, S_mat, K_mat, B_mat, epsilon=lm_epsilon)
+
+                # Expand to full parameter space
+                theta = np.zeros(total_num_params, dtype=np.float64)
+                theta[subspace_indices] = c_vec
+
+            elif use_sr:
                 logger.info("Computing the natural gradient, i.e., {S+epsilon*I}^{-1}*f")
                 epsilon = sr_epsilon
 
@@ -2566,7 +2689,6 @@ class MCMC:
                 e_L_local = np.ravel(e_L_local)  # shape: (num_mcmc * num_walker, )
                 O_matrix_local = self.get_dln_WF(
                     num_mcmc_warmup_steps=num_mcmc_warmup_steps,
-                    chosen_param_index=chosen_param_index,
                     blocks=blocks,
                     lambda_projectors=lambda_projectors,
                     num_orb_projection=num_orb_projection,
@@ -2577,24 +2699,18 @@ class MCMC:
                 )
                 O_matrix_local = O_matrix_local.reshape(O_matrix_local_shape)  # shape: (num_mcmc * num_walker, num_param)
 
-                # Slice to keep only SN-filtered parameters so that
-                # the SR matrix is built in the reduced space.
-                O_matrix_local = O_matrix_local[:, sn_indices]  # shape: (num_mcmc * num_walker, num_param_selected)
-
                 # Compute local partial sums
-                local_Ow = np.einsum(
-                    "i,ij->j", w_L_local, O_matrix_local
-                )  # weighted sum for observables, shape: (num_param_selected,)
+                local_Ow = np.einsum("i,ij->j", w_L_local, O_matrix_local)  # weighted sum for observables, shape: (num_param,)
                 local_Ew = np.dot(w_L_local, e_L_local)  # weighted sum of energies, shape: scalar
                 local_weight_sum = np.sum(w_L_local)  # scalar: sum of weights, shape: scalar
 
                 # Aggregate across all ranks
                 total_weight = mpi_comm.allreduce(local_weight_sum, op=MPI.SUM)  # total sum of weights, shape: scalar
-                total_Ow = mpi_comm.allreduce(local_Ow, op=MPI.SUM)  # aggregated observable sums, shape: (num_param_selected,)
+                total_Ow = mpi_comm.allreduce(local_Ow, op=MPI.SUM)  # aggregated observable sums, shape: (num_param,)
                 total_Ew = mpi_comm.allreduce(local_Ew, op=MPI.SUM)  # aggregated energy sum, shape: scalar
 
                 # Compute global averages
-                O_bar = total_Ow / total_weight  # average observables, shape: (num_param_selected,)
+                O_bar = total_Ow / total_weight  # average observables, shape: (num_param,)
                 e_L_bar = total_Ew / total_weight  # average energy, shape: scalar
 
                 # ------------------------------------------------------------------
@@ -2618,7 +2734,7 @@ class MCMC:
 
                 X_local = (
                     (O_matrix_local - O_bar) * np.sqrt(w_L_local)[:, np.newaxis] / np.sqrt(total_weight)
-                ).T  # shape (num_param_selected, num_mcmc * num_walker) because it's transposed.
+                ).T  # shape (num_param, num_mcmc * num_walker) because it's transposed.
                 F_local = (
                     -2.0 * np.sqrt(w_L_local) * (e_L_local - e_L_bar) / np.sqrt(total_weight)
                 )  # shape (num_mcmc * num_walker, )
@@ -2655,14 +2771,14 @@ class MCMC:
                 logger.devel(f"F_local.shape = {F_local.shape}.")
 
                 # compute X_w@F
-                X_F_local = X_local @ F_local  # shape (num_param_selected, )
+                X_F_local = X_local @ F_local  # shape (num_param, )
                 X_F = np.empty(X_F_local.shape, dtype=np.float64)
                 mpi_comm.Allreduce(X_F_local, X_F, op=MPI.SUM)
 
                 # compute f_argmax (index in reduced space)
                 f_argmax = np.argmax(np.abs(X_F))
                 logger.devel(
-                    f"Max dot(X, F) = {X_F[f_argmax]:.3f} Ha/a.u. should be equal to Max f = {f[sn_indices[f_argmax]]:.3f} Ha/a.u."
+                    f"Max dot(X, F) = {X_F[f_argmax]:.3f} Ha/a.u. should be equal to Max f = {f[f_argmax]:.3f} Ha/a.u."
                 )
 
                 # matrix shape info
@@ -2673,7 +2789,7 @@ class MCMC:
                 logger.info("The binning technique is not used to compute the natural gradient.")
                 logger.info(f"The number of local samples is {num_samples_local}.")
                 logger.info(f"The number of total samples is {num_samples_total}.")
-                logger.info(f"SR matrix dimension: {num_params} x {num_params} (reduced from {total_num_params}).")
+                logger.info(f"SR matrix dimension: {num_params} x {num_params}.")
 
                 # make the SR matrix scale-invariant (i.e., normalize)
                 ## compute X_w@X.T
@@ -2712,20 +2828,18 @@ class MCMC:
                         diag_S.size,
                         min_S_diag_abs,
                     )
-                    # Per-block breakdown of frozen parameters (in reduced space)
+                    # Per-block breakdown of frozen parameters
                     for _blk, _s, _e in offsets:
-                        _blk_mask_in_reduced = (sn_indices >= _s) & (sn_indices < _e)
-                        _blk_frozen = int(np.count_nonzero(_sr_frozen_mask[_blk_mask_in_reduced]))
+                        _blk_frozen = int(np.count_nonzero(_sr_frozen_mask[_s:_e]))
                         if _blk_frozen > 0:
                             logger.info(
-                                "  Frozen in block=%s: %d/%d (selected %d)",
+                                "  Frozen in block=%s: %d/%d",
                                 _blk.name,
                                 _blk_frozen,
                                 _blk.size,
-                                int(np.count_nonzero(_blk_mask_in_reduced)),
                             )
                 diag_S = np.where(np.isfinite(diag_S) & (diag_S > diag_S_floor), diag_S, diag_S_floor)
-                X_local = X_local / np.sqrt(diag_S)[:, np.newaxis]  # shape (num_param_selected, num_mcmc * num_walker)
+                X_local = X_local / np.sqrt(diag_S)[:, np.newaxis]  # shape (num_param, num_mcmc * num_walker)
 
                 if num_params < num_samples_total:
                     # if True:
@@ -3022,30 +3136,35 @@ class MCMC:
             timer_optimizer += end - start
 
             # ------------------------------------------------------------------
-            # 1) Expand theta_all from reduced space to full parameter space.
-            #    For SR: theta_all lives in the SN-filtered subspace (size
-            #    num_param_selected).  For optax: theta_all is already full-size.
+            # 1) Expand theta_all to full parameter space.
+            #    For LM: theta is already set in the LM block above.
+            #    For SR/optax: theta_all is full-size.
             # ------------------------------------------------------------------
-            theta = np.zeros(total_num_params, dtype=np.float64)
-            if use_sr:
-                theta[sn_indices] = theta_all  # theta_all is num_param_selected
+            if use_lm:
+                pass  # theta already set: theta[subspace_indices] = c_vec
+            elif use_sr:
+                theta = np.zeros(total_num_params, dtype=np.float64)
+                theta[:] = theta_all
             else:
-                theta[sn_indices] = theta_all[sn_indices]  # theta_all is full-size
+                # optax
+                theta = np.zeros(total_num_params, dtype=np.float64)
+                theta[:] = theta_all
 
             # ------------------------------------------------------------------
             # DEVEL: per-block f and theta comparison (in full space, after expand)
             #   This enables side-by-side comparison of projected vs unprojected runs.
             # ------------------------------------------------------------------
-            if use_sr:
+            if use_sr or use_lm:
                 for _blk, _s, _e in offsets:
                     _f_blk = f[_s:_e]
                     _t_blk = theta[_s:_e]
                     _f_fin = _f_blk[np.isfinite(_f_blk)]
                     _t_fin = _t_blk[np.isfinite(_t_blk)]
                     logger.devel(
-                        "[SR per-block] block=%-16s size=%5d  "
+                        "[%s per-block] block=%-16s size=%5d  "
                         "f: min=%+.3e max=%+.3e norm=%.3e  "
                         "theta: min=%+.3e max=%+.3e norm=%.3e",
+                        "LM" if use_lm else "SR",
                         _blk.name,
                         _blk.size,
                         float(np.min(_f_fin)) if _f_fin.size else float("nan"),
@@ -3075,7 +3194,7 @@ class MCMC:
             #
             # Performed after expanding to full space so that offsets/reshape work.
             # ------------------------------------------------------------------
-            if use_sr and lambda_projectors is not None and len(lambda_projectors) == 4:
+            if (use_sr or use_lm) and lambda_projectors is not None and len(lambda_projectors) == 4:
                 _left_proj, _right_proj, _, _ = lambda_projectors
                 _identity_proj = np.eye(_left_proj.shape[0], dtype=np.float64)
                 _comp_L = _identity_proj - _left_proj
@@ -3112,7 +3231,7 @@ class MCMC:
             #    natural gradient.  Computing gamma with the full theta_all
             #    and then applying only a subset of components produces a
             #    step size that is too large for the masked direction,
-            #    causing energy increase when num_param_opt > 0.
+            #    causing energy increase.
             # ------------------------------------------------------------------
             if use_sr_adaptive_lr:
                 if not np.any(theta):
@@ -3123,7 +3242,6 @@ class MCMC:
                         g=theta,
                         blocks=blocks,
                         num_mcmc_warmup_steps=num_mcmc_warmup_steps,
-                        chosen_param_index=chosen_param_index,
                         lambda_projectors=lambda_projectors,
                         num_orb_projection=num_orb_projection,
                     )
@@ -3133,13 +3251,16 @@ class MCMC:
 
             # ------------------------------------------------------------------
             # Compute ||Delta ln|Psi||| = delta * sqrt(theta^T S theta)
-            # Using X_local (normalized): theta^T S theta = ||X_local^T (sqrt(diag_S) * theta_selected)||^2
-            # X_local and diag_S are in reduced space, so extract the selected components of theta.
             # ------------------------------------------------------------------
-            if use_sr:
+            if use_lm:
+                _theta_sub = theta[subspace_indices]
+                _norm_sq = _theta_sub @ S_mat @ _theta_sub
+                _delta_ln_psi_norm = lm_delta * np.sqrt(max(float(_norm_sq), 0.0))
+                logger.debug(f"  Change in ln|Psi| norm = {_delta_ln_psi_norm}")
+            elif use_sr:
+                # Using X_local (normalized): theta^T S theta = ||X_local^T (sqrt(diag_S) * theta)||^2
                 _lr = sr_delta
-                _theta_selected = theta[sn_indices]
-                _v = np.sqrt(diag_S) * _theta_selected
+                _v = np.sqrt(diag_S) * theta
                 _Xt_v_local = X_local.T @ _v
                 _norm_sq_local = np.dot(_Xt_v_local, _Xt_v_local)
                 _norm_sq = mpi_comm.allreduce(_norm_sq_local, op=MPI.SUM)
@@ -3182,6 +3303,10 @@ class MCMC:
             logger.info(f"np.count_nonzero(theta) = {np.count_nonzero(theta)}.")
             logger.info(f"max. and min. of theta are {np.max(theta)} and {np.min(theta)}.")
 
+            # Common log helpers
+            _log_delta = lm_delta if use_lm else sr_delta if use_sr else 1.0
+            _log_label = "LM" if use_lm else "SR" if use_sr else optimizer_mode
+
             # Guard against NaN/Inf components before applying the update and
             # report which blocks contain problematic entries.
             non_finite_mask = ~np.isfinite(theta)
@@ -3193,7 +3318,8 @@ class MCMC:
                         count_bad = int(np.count_nonzero(block_mask))
                         bad_blocks.append(f"{block.name}({count_bad}/{block.size})")
                 logger.error(
-                    "Detected non-finite entries in SR update vector; zeroing them. Blocks=%s",
+                    "Detected non-finite entries in %s update vector; zeroing them. Blocks=%s",
+                    _log_label,
                     ", ".join(bad_blocks) if bad_blocks else "unknown",
                 )
                 theta = np.where(np.isfinite(theta), theta, 0.0)
@@ -3204,16 +3330,18 @@ class MCMC:
                 block_theta = theta[start:end]
                 if not np.any(block_theta):
                     logger.info(
-                        "  [SR update] – block=%s size=%d  theta=ALL ZERO (no update)",
+                        "  [%s update] – block=%s size=%d  theta=ALL ZERO (no update)",
+                        _log_label,
                         block.name,
                         block.size,
                     )
                     continue
                 block_norm = float(np.linalg.norm(block_theta))
                 block_max = float(np.max(np.abs(block_theta)))
-                block_delta_max = float(sr_delta * block_max)
+                block_delta_max = float(_log_delta * block_max)
                 logger.info(
-                    "  [SR update] – block=%s size=%d  ||theta||=%.3e  max|theta|=%.3e  max|delta*theta|=%.3e",
+                    "  [%s update] – block=%s size=%d  ||theta||=%.3e  max|theta|=%.3e  max|delta*theta|=%.3e",
+                    _log_label,
                     block.name,
                     block.size,
                     block_norm,
@@ -3229,7 +3357,7 @@ class MCMC:
             coulomb_potential_data = self.hamiltonian_data.coulomb_potential_data
 
             wavefunction_data_old = self.hamiltonian_data.wavefunction_data
-            block_learning_rate = sr_delta
+            block_learning_rate = lm_delta if use_lm else sr_delta if use_sr else 1.0
             wavefunction_data = wavefunction_data_old.apply_block_updates(
                 blocks=blocks,
                 thetas=theta,
@@ -5095,19 +5223,25 @@ class _MCMC_debug:
 
     def get_aH(
         self,
-        g: npt.NDArray,
         blocks: list,
+        g: npt.NDArray | None = None,
         num_mcmc_warmup_steps: int = 50,
         chosen_param_index: list | None = None,
         lambda_projectors=None,
         num_orb_projection=None,
-    ) -> tuple[float, float, float, float]:
+        return_matrices: bool = False,
+    ) -> tuple:
         r"""Compute H_0, H_1, H_2, S_2 for accelerated SR (aSR) gamma optimization.
 
         This is the debug (single-rank, no vmap, explicit-step) counterpart of
         ``MCMC.get_aH``.  Every intermediate quantity is computed in a named
         numpy step that maps directly to the mathematical formula so that the
         logic can be followed line by line.
+
+        .. note::
+
+            ``return_matrices=True`` (LM mode) is **not implemented** in this
+            debug class.  It will raise ``NotImplementedError``.
 
         Mathematical background
         -----------------------
@@ -5140,17 +5274,17 @@ class _MCMC_debug:
             f_k         -2/W * sum_i w(i)(e_L-E_bar) dO_{i,k}   shape (K,)
 
         Args:
-            g: Natural gradient vector S^{-1}f, shape (K,) or (L,) if
-                chosen_param_index is used.
             blocks: Ordered variational blocks (same ordering as g).
+            g: Natural gradient vector S^{-1}f. Required for aSR mode.
             num_mcmc_warmup_steps: Samples to discard as warmup.
             chosen_param_index: Optional subset of flattened indices.
             lambda_projectors: Not used in this debug implementation (accepted
                 for API compatibility with MCMC.get_aH).
             num_orb_projection: Not used in this debug implementation.
+            return_matrices: If True, raise NotImplementedError (LM not supported in debug).
 
         Returns:
-            (H_0, H_1, H_2, S_2)
+            (H_0, H_1, H_2, S_2) — aSR mode only.
         """
         if not self.__comput_log_WF_param_deriv:
             raise RuntimeError("get_aH requires compute_log_WF_param_deriv=True.")
@@ -5219,6 +5353,28 @@ class _MCMC_debug:
         de = e_L - E_bar  # (N,)  local energy fluctuation
         f_vec = -2.0 * (w * de) @ dO / W  # (K,)
 
+        # ── LM mode: build full matrices element-by-element ──────────────────
+        if return_matrices:
+            # S_{k,k'} = 1/W  sum_i  w_i * dO_{i,k} * dO_{i,k'}
+            #          = (dO^T @ diag(w) @ dO) / W
+            w_dO = w[:, np.newaxis] * dO  # (N, K)  weight each sample
+            S_matrix = (dO.T @ w_dO) / W  # (K, K)
+
+            # K_{k,k'} = 1/W  sum_i  w_i * e_L_i * dO_{i,k} * dO_{i,k'}
+            #          = (dO^T @ diag(w * e_L) @ dO) / W
+            we_dO = (w * e_L)[:, np.newaxis] * dO  # (N, K)  weight by w*e_L
+            K_matrix = (dO.T @ we_dO) / W  # (K, K)
+
+            # B_{k,k'} = 1/W  sum_i  w_i * ddE_{i,k} * dO_{i,k'}
+            #          = (ddE^T @ diag(w) @ dO) / W
+            w_ddE = w[:, np.newaxis] * ddE  # (N, K)  weight each sample
+            B_matrix = (w_ddE.T @ dO) / W  # (K, K)
+
+            return H_0, f_vec, S_matrix, K_matrix, B_matrix
+
+        # ── aSR mode: scalar projections along g ─────────────────────────────
+        assert g is not None, "g is required for aSR mode (return_matrices=False)"
+
         # ── Step 8: H_1 = -1/2 * g^T f ──────────────────────────────────────
         H_1 = -0.5 * float(np.dot(g, f_vec))
 
@@ -5251,6 +5407,133 @@ class _MCMC_debug:
         H_2 = gBg + gKg
 
         return H_0, H_1, H_2, S_2
+
+    @staticmethod
+    def solve_linear_method(
+        H_0: float,
+        f_vec: npt.NDArray,
+        S_matrix: npt.NDArray,
+        K_matrix: npt.NDArray,
+        B_matrix: npt.NDArray,
+        epsilon: float,
+    ) -> tuple[npt.NDArray, float]:
+        r"""Debug implementation of the Linear Method generalized eigenvalue problem.
+
+        This mirrors ``MCMC.solve_linear_method`` but is written for maximum
+        clarity, using explicit loops and named intermediate variables so that
+        every step maps directly to the mathematical formulas.
+
+        Steps:
+            1. Diagonalize S to find its eigenvectors and eigenvalues.
+            2. Discard eigenvectors whose eigenvalue is below ``epsilon``.
+            3. Project H = K + B and f into the truncated eigenvector basis.
+            4. Assemble the extended (p'+1)x(p'+1) matrices H_bar and S_bar.
+            5. Solve the generalized eigenvalue problem  H_bar v = E S_bar v.
+            6. Select the eigenvector with the largest |v_0|^2.
+            7. Extract parameter update  c_k = v_k / v_0  and transform back.
+
+        Args:
+            H_0: Current energy.
+            f_vec: Generalized force vector, shape (p,).
+            S_matrix: SR (overlap) matrix, shape (p, p).
+            K_matrix: K matrix, shape (p, p).
+            B_matrix: B matrix, shape (p, p).
+            epsilon: Eigenvalue cutoff for S.
+
+        Returns:
+            (c_vec, E_lm): parameter update in original space and selected eigenvalue.
+        """
+        p = len(f_vec)
+
+        # ── Step 1: Diagonalize S ────────────────────────────────────────────
+        #   S = U_full @ diag(lambda_full) @ U_full^T
+        eigvals_S, eigvecs_S = np.linalg.eigh(S_matrix)
+
+        # ── Step 2: Keep only eigenvectors with eigenvalue > epsilon ─────────
+        kept_indices = []
+        for i in range(p):
+            if eigvals_S[i] > epsilon:
+                kept_indices.append(i)
+        p_prime = len(kept_indices)
+
+        if p_prime == 0:
+            return np.zeros(p), H_0
+
+        # U: (p, p') matrix of kept eigenvectors
+        U = eigvecs_S[:, kept_indices]  # (p, p')
+        Lambda = eigvals_S[kept_indices]  # (p',)
+
+        # ── Step 3: Project H = K + B and f into truncated eigenvector basis ─
+        #   H_tilde_{a,b} = sum_{k,k'} U_{k,a} * (K_{k,k'} + B_{k,k'}) * U_{k',b}
+        H_full = K_matrix + B_matrix  # (p, p)
+        H_tilde = np.zeros((p_prime, p_prime))
+        for a in range(p_prime):
+            for b in range(p_prime):
+                val = 0.0
+                for k in range(p):
+                    for kp in range(p):
+                        val += U[k, a] * H_full[k, kp] * U[kp, b]
+                H_tilde[a, b] = val
+
+        # f_tilde_a = sum_k U_{k,a} * f_k
+        f_tilde = np.zeros(p_prime)
+        for a in range(p_prime):
+            for k in range(p):
+                f_tilde[a] += U[k, a] * f_vec[k]
+
+        # ── Step 4: Build extended matrices (p'+1) x (p'+1) ─────────────────
+        #
+        #   H_bar = [[ H_0,          -f_tilde/2      ],
+        #            [ -f_tilde/2,    H_tilde         ]]
+        #
+        #   S_bar = [[ 1,             0               ],
+        #            [ 0,             diag(Lambda)    ]]
+        dim = p_prime + 1
+        H_bar = np.zeros((dim, dim))
+        S_bar = np.zeros((dim, dim))
+
+        H_bar[0, 0] = H_0
+        S_bar[0, 0] = 1.0
+        for a in range(p_prime):
+            H_bar[0, 1 + a] = -0.5 * f_tilde[a]
+            H_bar[1 + a, 0] = -0.5 * f_tilde[a]
+        for a in range(p_prime):
+            for b in range(p_prime):
+                H_bar[1 + a, 1 + b] = H_tilde[a, b]
+            S_bar[1 + a, 1 + a] = Lambda[a]
+
+        # ── Step 5: Solve generalized eigenvalue problem ─────────────────────
+        #   H_bar v = E S_bar v
+        eigvals, eigvecs = scipy.linalg.eigh(H_bar, S_bar)
+
+        # ── Step 6: Select eigenvector with largest |v_0|^2 ──────────────────
+        #   v_0 is the first component, corresponding to |Psi_0>.
+        #   Maximizing |v_0|^2 ensures the correction c_k = v_k/v_0 stays small.
+        best_idx = 0
+        best_v0_sq = eigvecs[0, 0] ** 2
+        for j in range(1, dim):
+            v0_sq_j = eigvecs[0, j] ** 2
+            if v0_sq_j > best_v0_sq:
+                best_v0_sq = v0_sq_j
+                best_idx = j
+
+        E_lm = float(eigvals[best_idx])
+        v = eigvecs[:, best_idx]
+        v0 = v[0]
+
+        # ── Step 7: Extract c_tilde and transform back ───────────────────────
+        #   c_tilde_a = v_{1+a} / v_0   (in truncated eigenvector basis)
+        #   c_k = sum_a U_{k,a} * c_tilde_a   (back to parameter space)
+        c_tilde = np.zeros(p_prime)
+        for a in range(p_prime):
+            c_tilde[a] = v[1 + a] / v0
+
+        c_vec = np.zeros(p)
+        for k in range(p):
+            for a in range(p_prime):
+                c_vec[k] += U[k, a] * c_tilde[a]
+
+        return c_vec, E_lm
 
     @staticmethod
     def compute_asr_gamma(H_0: float, H_1: float, H_2: float, S_2: float) -> float:

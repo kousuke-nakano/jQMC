@@ -28,4 +28,3 @@ opt_J3_basis_exp = false
 opt_J3_basis_coeff = false
 opt_lambda_basis_exp = false
 opt_lambda_basis_coeff = false
-num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
