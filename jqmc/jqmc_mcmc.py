@@ -1589,6 +1589,7 @@ class MCMC:
         lambda_projectors: tuple | None = None,
         num_orb_projection: int | None = None,
         return_matrices: bool = False,
+        collective_obs: npt.NDArray | None = None,
     ) -> tuple:
         r"""Compute aSR scalars or full LM matrices.
 
@@ -1653,9 +1654,11 @@ class MCMC:
         e_L = self.e_L[num_mcmc_warmup_steps:]  # (M, nw)
 
         # ---- O_matrix: d ln Psi / dc  shape (M, nw, K) ----
-        # When building LM matrices with a collective variable (g is not None),
-        # we need the FULL O_matrix first (to compute O_SR = dO @ g), then slice.
-        _cpi_for_dln = None if (return_matrices and g is not None) else chosen_param_index
+        # When building LM matrices with a collective variable:
+        #   - If collective_obs is provided (pre-computed O_SR), only fetch subspace params.
+        #   - If g is provided but no collective_obs, fetch full params (to compute O_SR = dO @ g).
+        _need_full_O = return_matrices and g is not None and collective_obs is None
+        _cpi_for_dln = None if _need_full_O else chosen_param_index
         O_matrix = self.get_dln_WF(
             blocks=blocks,
             num_mcmc_warmup_steps=num_mcmc_warmup_steps,
@@ -1732,13 +1735,16 @@ class MCMC:
                     break
                 _start = _end
 
-        if _cpi_for_dln is not None:
-            # Already sliced O_matrix in get_dln_WF; slice dE_matrix to match.
+        # Slice dE_matrix to match O_matrix, UNLESS we need full dE for
+        # collective variable dE_SR computation (collective_obs path).
+        _need_full_dE = return_matrices and g is not None and collective_obs is not None
+        if _need_full_dE:
+            pass  # keep full dE_matrix; will slice after computing dE_SR
+        elif _cpi_for_dln is not None:
             dE_matrix = dE_matrix[:, :, chosen_param_index]
         elif chosen_param_index is not None and not (return_matrices and g is not None):
-            # Non-LM case with chosen_param_index
             dE_matrix = dE_matrix[:, :, chosen_param_index]
-        # else: LM with collective variable — keep full dE_matrix, slice later
+        # else: LM fallback (no collective_obs) — keep full dE_matrix, slice later
 
         # Diagnostics: dE_matrix
         dE_matrix_stats = self._safe_stats(dE_matrix, "dE_matrix")
@@ -1754,8 +1760,22 @@ class MCMC:
         e_flat = np.ravel(e_L)  # (N,)
         N = w_flat.shape[0]
         K = O_matrix.shape[2]
+        K_dE = dE_matrix.shape[2]  # may differ from K when dE is kept full for collective_obs
         O_flat = O_matrix.reshape(N, K)  # (N, K)
-        dE_flat = dE_matrix.reshape(N, K)  # (N, K)
+        dE_flat = dE_matrix.reshape(N, K_dE)  # (N, K_dE)
+
+        # Shape assertions
+        assert w_flat.shape == (N,), f"w_flat shape {w_flat.shape} != ({N},)"
+        assert e_flat.shape == (N,), f"e_flat shape {e_flat.shape} != ({N},)"
+        assert O_flat.shape == (N, K), f"O_flat shape {O_flat.shape} != ({N}, {K})"
+        assert dE_flat.shape == (N, K_dE), f"dE_flat shape {dE_flat.shape} != ({N}, {K_dE})"
+        if collective_obs is not None:
+            assert collective_obs.shape == (N,), f"collective_obs shape {collective_obs.shape} != ({N},)"
+            assert K_dE >= K, f"dE must be full when collective_obs is used: K_dE={K_dE} < K={K}"
+        else:
+            assert K == K_dE, f"O and dE dimension mismatch: K={K} != K_dE={K_dE}"
+        if g is not None:
+            assert g.shape[0] == K_dE, f"g dimension {g.shape[0]} != K_dE={K_dE}"
 
         # Diagnostics: dE_flat
         dE_flat_stats = self._safe_stats(dE_flat, "dE_flat")
@@ -1770,7 +1790,7 @@ class MCMC:
         total_w_local = np.sum(w_flat)
         we_local = np.dot(w_flat, e_flat)
         wO_local = np.einsum("i,ik->k", w_flat, O_flat)  # (K,)
-        wdE_local = np.einsum("i,ik->k", w_flat, dE_flat)  # (K,)
+        wdE_local = np.einsum("i,ik->k", w_flat, dE_flat)  # (K_dE,)
 
         # Diagnostics: wdE_local (BEFORE MPI Allreduce)
         wdE_local_stats = self._safe_stats(wdE_local, "wdE_local")
@@ -1785,7 +1805,7 @@ class MCMC:
 
         we_global = np.empty(1)
         wO_global = np.empty(K)
-        wdE_global = np.empty(K)
+        wdE_global = np.empty(K_dE)
         mpi_comm.Allreduce([np.array([we_local]), MPI.DOUBLE], [we_global, MPI.DOUBLE], op=MPI.SUM)
         mpi_comm.Allreduce([wO_local, MPI.DOUBLE], [wO_global, MPI.DOUBLE], op=MPI.SUM)
         mpi_comm.Allreduce([wdE_local, MPI.DOUBLE], [wdE_global, MPI.DOUBLE], op=MPI.SUM)
@@ -1826,17 +1846,25 @@ class MCMC:
             # ---- LM mode: build full S, K, B matrices ----
             ddE_flat = dE_flat - dE_bar[np.newaxis, :]  # (N, K)
 
-            # If g (SR direction) is provided, compute the collective variable
-            # from full-parameter dO/ddE, then slice individual parameters.
+            # If g (SR direction) is provided, add collective variable to subspace.
             if g is not None:
-                # Collective variable (computed from full parameter space)
-                O_SR = dO_flat @ g  # (N,) collective observable
-                dE_SR = ddE_flat @ g  # (N,) collective energy derivative
-
-                # Slice individual parameters to subspace
-                if chosen_param_index is not None:
-                    dO_flat = dO_flat[:, chosen_param_index]
-                    ddE_flat = ddE_flat[:, chosen_param_index]
+                if collective_obs is not None:
+                    # Memory-efficient path: O_SR pre-computed during SR solve.
+                    # dO_flat is already subspace-only (fetched with chosen_param_index).
+                    O_SR = collective_obs  # (N_local,)
+                    # dE_SR needs full ddE — ddE_flat is full K_full here because
+                    # dE_matrix was NOT sliced by _cpi_for_dln (see else branch below).
+                    dE_SR = ddE_flat @ g  # (N,)
+                    # Slice ddE to subspace (dO_flat is already subspace)
+                    if chosen_param_index is not None:
+                        ddE_flat = ddE_flat[:, chosen_param_index]
+                else:
+                    # Fallback: compute O_SR from full dO (needs full O_matrix).
+                    O_SR = dO_flat @ g  # (N,)
+                    dE_SR = ddE_flat @ g  # (N,)
+                    if chosen_param_index is not None:
+                        dO_flat = dO_flat[:, chosen_param_index]
+                        ddE_flat = ddE_flat[:, chosen_param_index]
 
                 # Prepend collective variable column
                 dO_flat = np.column_stack([O_SR, dO_flat])  # (N, p+1)
@@ -1848,6 +1876,13 @@ class MCMC:
                 f_global_ext = np.empty(K)
                 mpi_comm.Allreduce([f_local_ext, MPI.DOUBLE], [f_global_ext, MPI.DOUBLE], op=MPI.SUM)
                 f_vec = f_global_ext / total_w
+
+            # Shape assertions before matrix construction
+            assert dO_flat.shape == ddE_flat.shape, (
+                f"dO/ddE shape mismatch after collective variable: dO={dO_flat.shape} ddE={ddE_flat.shape}"
+            )
+            assert dO_flat.shape[0] == N, f"dO_flat samples {dO_flat.shape[0]} != N={N}"
+            assert f_vec.shape == (K,), f"f_vec shape {f_vec.shape} != ({K},)"
 
             # S_matrix = <w * dO_k * dO_k'>_w
             w_dO = w_flat[:, np.newaxis] * dO_flat  # (N, K)
@@ -1869,6 +1904,12 @@ class MCMC:
             B_matrix = np.empty_like(B_local)
             mpi_comm.Allreduce(B_local, B_matrix, op=MPI.SUM)
             B_matrix /= total_w
+
+            # Final shape assertions
+            assert S_matrix.shape == (K, K), f"S_matrix shape {S_matrix.shape} != ({K}, {K})"
+            assert K_matrix.shape == (K, K), f"K_matrix shape {K_matrix.shape} != ({K}, {K})"
+            assert B_matrix.shape == (K, K), f"B_matrix shape {B_matrix.shape} != ({K}, {K})"
+            assert f_vec.shape == (K,), f"f_vec shape {f_vec.shape} != ({K},)"
 
             _p_label = f"p={K}" + (" (incl. SR collective)" if g is not None else "")
             logger.info(
@@ -3191,6 +3232,18 @@ class MCMC:
                     float(np.max(_sqrt_ds)),
                 )
 
+                # Pre-compute collective variable observables for LM while
+                # O_matrix_local is still in memory (avoids reloading full
+                # O_matrix in get_aH).
+                _lm_collective_obs = None
+                if use_lm and lm_subspace_dim != 0:
+                    dO_local = O_matrix_local - O_bar[np.newaxis, :]  # (N_local, K_full)
+                    _lm_collective_obs = dO_local @ theta_all  # (N_local,) = Ō_SR per sample
+                    del dO_local  # free immediately
+
+                # Free SR-solve temporaries that are no longer needed
+                del O_matrix_local
+
             #############################
             # optax optimizer
             #############################
@@ -3268,6 +3321,7 @@ class MCMC:
                     logger.info(f"  LM: subspace = SR collective + top {lm_subspace_dim} parameters (by SN ratio)")
 
                 # Build LM matrices with collective variable
+                # _lm_collective_obs was pre-computed during SR solve (memory-efficient)
                 H_0_lm, f_vec_lm, S_mat, K_mat, B_mat = self.get_aH(
                     blocks=blocks,
                     g=g_sr,
@@ -3276,6 +3330,7 @@ class MCMC:
                     lambda_projectors=lambda_projectors,
                     num_orb_projection=num_orb_projection,
                     return_matrices=True,
+                    collective_obs=_lm_collective_obs,
                 )
 
                 # Solve LM eigenvalue problem
