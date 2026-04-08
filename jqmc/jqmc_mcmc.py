@@ -1989,58 +1989,135 @@ class MCMC:
         """
         p = len(f_vec)
 
-        # Step 1: S eigenvalue decomposition + epsilon cutoff
-        eigvals_S, eigvecs_S = np.linalg.eigh(S_matrix)
-        mask = eigvals_S > epsilon
-        p_prime = int(np.count_nonzero(mask))
-        if p_prime == 0:
-            logger.warning("  LM: all S eigenvalues below epsilon (%.1e); returning zero update.", epsilon)
+        # ==================================================================
+        # Preconditioning (dgelscut algorithm, following TurboRVB)
+        #
+        # 1. Remove parameters with negligible diag(S)
+        # 2. Normalize S to a correlation matrix (diag = 1)
+        # 3. Iteratively remove parameters until the minimum eigenvalue
+        #    of the correlation matrix >= epsilon (= epsdgel)
+        # This guarantees condition number <= 1/epsilon.
+        # ==================================================================
+
+        # ---- Step 1: Remove parameters with near-zero diag(S) ----
+        diag_S = np.diag(S_matrix)
+        max_diag_S = np.max(np.abs(diag_S))
+        # parcut2 ~ machine_precision^2, effectively only removes exact zeros
+        parcut2 = np.finfo(np.float64).eps ** 2
+        alive = np.abs(diag_S) > parcut2 * max_diag_S
+        n_removed_step1 = p - int(np.count_nonzero(alive))
+        if n_removed_step1 > 0:
+            logger.info("  LM dgelscut: Step 1 removed %d/%d parameters (tiny diag(S)).", n_removed_step1, p)
+
+        if not np.any(alive):
+            logger.warning("  LM dgelscut: all parameters removed in Step 1; returning zero update.")
             return np.zeros(p), H_0
 
-        U = eigvecs_S[:, mask]  # (p, p')
-        Lambda = eigvals_S[mask]  # (p',)
+        # ---- Step 2: Build correlation matrix for alive parameters ----
+        alive_idx = np.where(alive)[0]
+        D_inv_sqrt = np.zeros(p)
+        D_inv_sqrt[alive_idx] = 1.0 / np.sqrt(np.abs(diag_S[alive_idx]))
+
+        # ---- Step 3: Iteratively remove parameters until well-conditioned ----
+        while True:
+            idx = np.where(alive)[0]
+            n_alive = len(idx)
+            if n_alive == 0:
+                logger.warning("  LM dgelscut: all parameters removed; returning zero update.")
+                return np.zeros(p), H_0
+
+            # Build correlation matrix for current alive set
+            D_sub = D_inv_sqrt[idx]  # (n_alive,)
+            S_sub = S_matrix[np.ix_(idx, idx)]  # (n_alive, n_alive)
+            C = D_sub[:, np.newaxis] * S_sub * D_sub[np.newaxis, :]  # correlation matrix
+            np.fill_diagonal(C, 1.0)  # enforce exact 1 on diagonal
+
+            # Eigenvalue decomposition of correlation matrix
+            eigvals_C, eigvecs_C = np.linalg.eigh(C)
+            min_eigval = eigvals_C[0]  # smallest eigenvalue
+
+            if min_eigval >= epsilon:
+                break  # well-conditioned
+
+            # Find the parameter contributing most to the smallest eigenvector
+            # (the one with largest |component| in the problematic eigenvector)
+            worst_local = int(np.argmax(np.abs(eigvecs_C[:, 0])))
+            worst_global = idx[worst_local]
+            alive[worst_global] = False
+            logger.debug(
+                "  LM dgelscut: removing param %d (min eigval=%.3e < eps=%.3e), %d remaining.",
+                worst_global,
+                min_eigval,
+                epsilon,
+                int(np.count_nonzero(alive)),
+            )
+
+        n_final = int(np.count_nonzero(alive))
         logger.info(
-            "  LM: S eigenvalue cutoff: %d/%d kept (min=%.3e, max=%.3e, eps=%.1e).",
-            p_prime,
+            "  LM dgelscut: %d/%d parameters kept (correlation matrix cond <= %.0f).",
+            n_final,
             p,
-            Lambda[0],
-            Lambda[-1],
-            epsilon,
+            1.0 / epsilon,
         )
 
-        # Step 2: Project to truncated basis
-        # Symmetrize H = K + B (K is symmetric, B is not; finite-sample noise
-        # also breaks symmetry).  TurboRVB does this explicitly.
+        # ==================================================================
+        # Build LM matrices for the surviving parameters
+        # ==================================================================
+        idx = np.where(alive)[0]
+
+        # Symmetrize H = K + B (B is not symmetric due to finite-sample noise)
         H_matrix = K_matrix + B_matrix
         H_matrix = 0.5 * (H_matrix + H_matrix.T)
-        H_tilde = U.T @ H_matrix @ U  # (p', p')
-        f_tilde = U.T @ f_vec  # (p',)
 
-        # Step 3: Build extended matrices (p'+1) x (p'+1)
+        # Extract sub-matrices for alive parameters
+        S_alive = S_matrix[np.ix_(idx, idx)]
+        H_alive = H_matrix[np.ix_(idx, idx)]
+        f_alive = f_vec[idx]
+
+        # ---- S-orthonormalization: S = U Λ U^T, P = U Λ^{-1/2} ----
+        eigvals_S, eigvecs_S = np.linalg.eigh(S_alive)
+        # After dgelscut, all eigenvalues should be positive, but clip for safety
+        pos_mask = eigvals_S > 0
+        U = eigvecs_S[:, pos_mask]
+        Lambda = eigvals_S[pos_mask]
+        p_prime = len(Lambda)
+
+        if p_prime == 0:
+            logger.warning("  LM: no positive S eigenvalues after dgelscut; returning zero update.")
+            return np.zeros(p), H_0
+
+        # P = U Λ^{-1/2} (S-orthonormal basis)
+        inv_sqrt_Lambda = 1.0 / np.sqrt(Lambda)
+        P = U * inv_sqrt_Lambda[np.newaxis, :]  # (n_alive, p')
+
+        # Transform H and f to S-orthonormal basis
+        H_new = P.T @ H_alive @ P  # (p', p') — should be near-identity S
+        f_new = P.T @ f_alive  # (p',)
+
+        # ---- Build extended matrices (p'+1) x (p'+1) ----
         dim = p_prime + 1
         H_bar = np.zeros((dim, dim))
-        S_bar = np.zeros((dim, dim))
+        S_bar = np.eye(dim)  # identity (S-orthonormal basis)
+
         H_bar[0, 0] = H_0
-        H_bar[0, 1:] = -0.5 * f_tilde
-        H_bar[1:, 0] = -0.5 * f_tilde
-        H_bar[1:, 1:] = H_tilde
-        S_bar[0, 0] = 1.0
-        S_bar[1:, 1:] = np.diag(Lambda)
+        H_bar[0, 1:] = -0.5 * f_new
+        H_bar[1:, 0] = -0.5 * f_new
+        H_bar[1:, 1:] = H_new
 
-        # Step 4: Generalized eigenvalue problem
-        eigvals, eigvecs = scipy.linalg.eigh(H_bar, S_bar)
+        # ---- Standard eigenvalue problem (S_bar = I) ----
+        eigvals_lm, eigvecs_lm = np.linalg.eigh(H_bar)
 
-        # Step 5: Select eigenvector with max |v_0|^2
-        v0_sq = eigvecs[0, :] ** 2
+        # ---- Select eigenvector with max |v_0|^2 ----
+        v0_sq = eigvecs_lm[0, :] ** 2
         best_idx = int(np.argmax(v0_sq))
-        E_lm = float(eigvals[best_idx])
+        E_lm = float(eigvals_lm[best_idx])
 
-        # Diagnostic: compare with lowest eigenvalue
-        lowest_idx = 0  # eigh returns ascending order
+        # Diagnostic
+        lowest_idx = 0
         if lowest_idx != best_idx:
             logger.debug(
                 "  LM: lowest eigenvalue E_LM = %.6f (|v0|^2 = %.4f), selected (max |v0|^2) E_LM = %.6f (|v0|^2 = %.4f)",
-                eigvals[lowest_idx],
+                eigvals_lm[lowest_idx],
                 v0_sq[lowest_idx],
                 E_lm,
                 v0_sq[best_idx],
@@ -2051,12 +2128,23 @@ class MCMC:
         if v0_sq[best_idx] < 0.01:
             logger.warning("  LM: max |v0|^2 = %.4f is small; update may be unreliable.", v0_sq[best_idx])
 
-        v = eigvecs[:, best_idx]
-        v0 = v[0]
-        c_tilde = v[1:] / v0  # (p',)
+        w = eigvecs_lm[:, best_idx]
+        w0 = w[0]
+        c_new = w[1:] / w0  # (p',) in S-orthonormal basis
 
-        # Step 6: Back to original space
-        c_vec = U @ c_tilde  # (p,)
+        # ---- Back-transform: P @ c_new → alive parameter space → full space ----
+        c_alive = P @ c_new  # (n_alive,)
+        c_vec = np.zeros(p)
+        c_vec[idx] = c_alive
+
+        logger.info(
+            "  LM: E_LM = %.6f (|v0|^2 = %.4f), ||c|| = %.3e, max|c| = %.3e",
+            E_lm,
+            v0_sq[best_idx],
+            np.linalg.norm(c_vec),
+            np.max(np.abs(c_vec)),
+        )
+
         return c_vec, E_lm
 
     def run_optimize(
@@ -2154,7 +2242,7 @@ class MCMC:
         lm_delta = lm_epsilon = lm_subspace_dim = None
         if use_lm:
             lm_delta = float(optimizer_kwargs.get("lm_delta", 0.35))
-            lm_epsilon = float(optimizer_kwargs.get("lm_epsilon", 1.0e-6))
+            lm_epsilon = float(optimizer_kwargs.get("lm_epsilon", 1.0e-3))
             lm_subspace_dim = int(optimizer_kwargs.get("lm_subspace_dim", 10))
 
         # LM / aSR require derivative computations
