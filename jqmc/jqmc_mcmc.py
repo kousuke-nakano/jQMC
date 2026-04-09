@@ -1049,6 +1049,14 @@ class MCMC:
         e_L = self.e_L[num_mcmc_warmup_steps:]
         e_L2 = self.e_L2[num_mcmc_warmup_steps:]
         w_L = self.w_L[num_mcmc_warmup_steps:]
+
+        # Shape assertions: (M, nw) from mcmc_counter and num_walkers
+        M = self.mcmc_counter - num_mcmc_warmup_steps
+        nw = self.num_walkers
+        assert w_L.shape == (M, nw), f"w_L shape {w_L.shape} != ({M}, {nw})"
+        assert e_L.shape == (M, nw), f"e_L shape {e_L.shape} != ({M}, {nw})"
+        assert e_L2.shape == (M, nw), f"e_L2 shape {e_L2.shape} != ({M}, {nw})"
+
         w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
         w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
         w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
@@ -1064,6 +1072,16 @@ class MCMC:
         w_L_binned_local = np.array(w_L_binned_local)
         w_L_e_L_binned_local = np.array(w_L_e_L_binned_local)
         w_L_e_L2_binned_local = np.array(w_L_e_L2_binned_local)
+
+        # Shape assertions: binned arrays must be 1D (num_mcmc_bin_blocks * nw,)
+        M_binned = num_mcmc_bin_blocks * nw
+        assert w_L_binned_local.shape == (M_binned,), f"w_L_binned_local shape {w_L_binned_local.shape} != ({M_binned},)"
+        assert w_L_e_L_binned_local.shape == (M_binned,), (
+            f"w_L_e_L_binned_local shape {w_L_e_L_binned_local.shape} != ({M_binned},)"
+        )
+        assert w_L_e_L2_binned_local.shape == (M_binned,), (
+            f"w_L_e_L2_binned_local shape {w_L_e_L2_binned_local.shape} != ({M_binned},)"
+        )
 
         ## local sum
         w_L_binned_local_sum = np.sum(w_L_binned_local)
@@ -1147,6 +1165,18 @@ class MCMC:
         force_PP = self.__stored_force_PP[num_mcmc_warmup_steps:]
         E_L_force_PP = self.__stored_E_L_force_PP[num_mcmc_warmup_steps:]
 
+        # Shape assertions: (M, nw) for scalars; (M, nw, n_atoms, 3) for forces
+        M = self.mcmc_counter - num_mcmc_warmup_steps
+        nw = self.num_walkers
+        n_atoms = self.__hamiltonian_data.structure_data.natom
+        assert w_L.shape == (M, nw), f"w_L shape {w_L.shape} != ({M}, {nw})"
+        assert e_L.shape == (M, nw), f"e_L shape {e_L.shape} != ({M}, {nw})"
+        assert force_HF.shape == (M, nw, n_atoms, 3), f"force_HF shape {force_HF.shape} != ({M}, {nw}, {n_atoms}, 3)"
+        assert force_PP.shape == (M, nw, n_atoms, 3), f"force_PP shape {force_PP.shape} != ({M}, {nw}, {n_atoms}, 3)"
+        assert E_L_force_PP.shape == (M, nw, n_atoms, 3), (
+            f"E_L_force_PP shape {E_L_force_PP.shape} != ({M}, {nw}, {n_atoms}, 3)"
+        )
+
         # split and binning with multiple walkers
         w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
         w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
@@ -1193,6 +1223,22 @@ class MCMC:
         w_L_force_HF_binned_local = np.array(w_L_force_HF_binned_local)
         w_L_force_PP_binned_local = np.array(w_L_force_PP_binned_local)
         w_L_E_L_force_PP_binned_local = np.array(w_L_E_L_force_PP_binned_local)
+
+        # Shape assertions: scalar bins (num_bins * nw,); force bins (num_bins * nw, n_atoms, 3)
+        M_binned = num_mcmc_bin_blocks * nw
+        assert w_L_binned_local.shape == (M_binned,), f"w_L_binned_local shape {w_L_binned_local.shape} != ({M_binned},)"
+        assert w_L_e_L_binned_local.shape == (M_binned,), (
+            f"w_L_e_L_binned_local shape {w_L_e_L_binned_local.shape} != ({M_binned},)"
+        )
+        assert w_L_force_HF_binned_local.shape == (M_binned, n_atoms, 3), (
+            f"w_L_force_HF_binned_local shape {w_L_force_HF_binned_local.shape} != ({M_binned}, {n_atoms}, 3)"
+        )
+        assert w_L_force_PP_binned_local.shape == (M_binned, n_atoms, 3), (
+            f"w_L_force_PP_binned_local shape {w_L_force_PP_binned_local.shape} != ({M_binned}, {n_atoms}, 3)"
+        )
+        assert w_L_E_L_force_PP_binned_local.shape == (M_binned, n_atoms, 3), (
+            f"w_L_E_L_force_PP_binned_local shape {w_L_E_L_force_PP_binned_local.shape} != ({M_binned}, {n_atoms}, 3)"
+        )
 
         ## local sum
         w_L_binned_local_sum = np.sum(w_L_binned_local)
@@ -1247,6 +1293,9 @@ class MCMC:
             ]
         )
 
+        assert force_HF_jn_local.shape == force_Pulay_jn_local.shape, (
+            f"force_HF_jn shape {force_HF_jn_local.shape} != force_Pulay_jn shape {force_Pulay_jn_local.shape}"
+        )
         force_jn_local = force_HF_jn_local + force_Pulay_jn_local
 
         sum_force_local = np.sum(force_jn_local, axis=0)
@@ -1447,6 +1496,13 @@ class MCMC:
         w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
 
         e_L = self.e_L[num_mcmc_warmup_steps:]
+
+        # Shape assertions: (M, nw) from mcmc_counter and num_walkers
+        M = self.mcmc_counter - num_mcmc_warmup_steps
+        nw = self.num_walkers
+        assert w_L.shape == (M, nw), f"w_L shape {w_L.shape} != ({M}, {nw})"
+        assert e_L.shape == (M, nw), f"e_L shape {e_L.shape} != ({M}, {nw})"
+
         w_L_e_L_split = np.array_split(np.einsum("iw,iw->iw", w_L, e_L), num_mcmc_bin_blocks, axis=0)
         w_L_e_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_e_L_split]))
 
@@ -1457,6 +1513,11 @@ class MCMC:
             lambda_projectors=lambda_projectors,
             num_orb_projection=num_orb_projection,
         )
+
+        # Shape assertions: O_matrix is (M, nw, K)
+        K_gF = O_matrix.shape[2] if O_matrix.ndim == 3 else 0
+        assert O_matrix.shape == (M, nw, K_gF), f"O_matrix shape {O_matrix.shape} != ({M}, {nw}, {K_gF})"
+
         w_L_O_matrix_split = np.array_split(np.einsum("iw,iwj->iwj", w_L, O_matrix), num_mcmc_bin_blocks, axis=0)
         w_L_O_matrix_sum = np.array([np.sum(arr, axis=0) for arr in w_L_O_matrix_split])
         w_L_O_matrix_binned_shape = (
@@ -1484,6 +1545,19 @@ class MCMC:
         w_L_e_L_binned_local = np.array(w_L_e_L_binned_local)
         w_L_O_matrix_binned_local = np.array(w_L_O_matrix_binned_local)
         w_L_e_L_O_matrix_binned_local = np.array(w_L_e_L_O_matrix_binned_local)
+
+        # Shape assertions: scalar bins (num_bins * nw,); O bins (num_bins * nw, K)
+        M_binned = num_mcmc_bin_blocks * nw
+        assert w_L_binned_local.shape == (M_binned,), f"w_L_binned_local shape {w_L_binned_local.shape} != ({M_binned},)"
+        assert w_L_e_L_binned_local.shape == (M_binned,), (
+            f"w_L_e_L_binned_local shape {w_L_e_L_binned_local.shape} != ({M_binned},)"
+        )
+        assert w_L_O_matrix_binned_local.shape == (M_binned, K_gF), (
+            f"w_L_O_matrix_binned_local shape {w_L_O_matrix_binned_local.shape} != ({M_binned}, {K_gF})"
+        )
+        assert w_L_e_L_O_matrix_binned_local.shape == (M_binned, K_gF), (
+            f"w_L_e_L_O_matrix_binned_local shape {w_L_e_L_O_matrix_binned_local.shape} != ({M_binned}, {K_gF})"
+        )
 
         ## local sum
         w_L_binned_local_sum = np.sum(w_L_binned_local)
@@ -1531,6 +1605,11 @@ class MCMC:
                 for j in range(M_local)
             ]
         )
+
+        # Shape assertions: jackknife arrays before einsum; M_local = M_binned
+        assert eL_jn_local.shape == (M_binned,), f"eL_jn_local shape {eL_jn_local.shape} != ({M_binned},)"
+        assert O_jn_local.shape == (M_binned, K_gF), f"O_jn_local shape {O_jn_local.shape} != ({M_binned}, {K_gF})"
+        assert eL_O_jn_local.shape == (M_binned, K_gF), f"eL_O_jn_local shape {eL_O_jn_local.shape} != ({M_binned}, {K_gF})"
 
         bar_eL_bar_O_jn_local = np.einsum("i,ij->ij", eL_jn_local, O_jn_local)
 
@@ -5129,6 +5208,14 @@ class _MCMC_debug:
         e_L = self.e_L[num_mcmc_warmup_steps:]
         e_L2 = self.e_L2[num_mcmc_warmup_steps:]
         w_L = self.w_L[num_mcmc_warmup_steps:]
+
+        # Shape assertions: (M, nw) from mcmc_counter and num_walkers
+        M = self.mcmc_counter - num_mcmc_warmup_steps
+        nw = self.num_walkers
+        assert w_L.shape == (M, nw), f"w_L shape {w_L.shape} != ({M}, {nw})"
+        assert e_L.shape == (M, nw), f"e_L shape {e_L.shape} != ({M}, {nw})"
+        assert e_L2.shape == (M, nw), f"e_L2 shape {e_L2.shape} != ({M}, {nw})"
+
         w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
         w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
         w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
@@ -5144,6 +5231,16 @@ class _MCMC_debug:
         w_L_binned_local = np.array(w_L_binned_local)
         w_L_e_L_binned_local = np.array(w_L_e_L_binned_local)
         w_L_e_L2_binned_local = np.array(w_L_e_L2_binned_local)
+
+        # Shape assertions: binned arrays must be 1D (num_mcmc_bin_blocks * nw,)
+        M_binned = num_mcmc_bin_blocks * nw
+        assert w_L_binned_local.shape == (M_binned,), f"w_L_binned_local shape {w_L_binned_local.shape} != ({M_binned},)"
+        assert w_L_e_L_binned_local.shape == (M_binned,), (
+            f"w_L_e_L_binned_local shape {w_L_e_L_binned_local.shape} != ({M_binned},)"
+        )
+        assert w_L_e_L2_binned_local.shape == (M_binned,), (
+            f"w_L_e_L2_binned_local shape {w_L_e_L2_binned_local.shape} != ({M_binned},)"
+        )
 
         w_L_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_binned_local, axis=0), op=MPI.SUM)
         w_L_e_L_binned_global_sum = mpi_comm.allreduce(np.sum(w_L_e_L_binned_local, axis=0), op=MPI.SUM)
@@ -5212,6 +5309,27 @@ class _MCMC_debug:
         omega_dn = self.omega_dn[num_mcmc_warmup_steps:]
         domega_dr_up = self.domega_dr_up[num_mcmc_warmup_steps:]
         domega_dr_dn = self.domega_dr_dn[num_mcmc_warmup_steps:]
+
+        # Shape assertions: (M, nw) for scalars; (M, nw, n_atoms, 3) for R-derivatives
+        M = self.mcmc_counter - num_mcmc_warmup_steps
+        nw = self.num_walkers
+        n_atoms = self.hamiltonian_data.structure_data.natom
+        n_up = de_L_dr_up.shape[2] if de_L_dr_up.ndim >= 3 else 0
+        n_dn = de_L_dr_dn.shape[2] if de_L_dr_dn.ndim >= 3 else 0
+        assert w_L.shape == (M, nw), f"w_L shape {w_L.shape} != ({M}, {nw})"
+        assert e_L.shape == (M, nw), f"e_L shape {e_L.shape} != ({M}, {nw})"
+        assert de_L_dR.shape == (M, nw, n_atoms, 3), f"de_L_dR shape {de_L_dR.shape} != ({M}, {nw}, {n_atoms}, 3)"
+        assert dln_Psi_dR.shape == (M, nw, n_atoms, 3), f"dln_Psi_dR shape {dln_Psi_dR.shape} != ({M}, {nw}, {n_atoms}, 3)"
+        assert de_L_dr_up.shape == (M, nw, n_up, 3), f"de_L_dr_up shape {de_L_dr_up.shape} != ({M}, {nw}, {n_up}, 3)"
+        assert de_L_dr_dn.shape == (M, nw, n_dn, 3), f"de_L_dr_dn shape {de_L_dr_dn.shape} != ({M}, {nw}, {n_dn}, 3)"
+        assert omega_up.shape == (M, nw, n_atoms, n_up), f"omega_up shape {omega_up.shape} != ({M}, {nw}, {n_atoms}, {n_up})"
+        assert omega_dn.shape == (M, nw, n_atoms, n_dn), f"omega_dn shape {omega_dn.shape} != ({M}, {nw}, {n_atoms}, {n_dn})"
+        assert domega_dr_up.shape == (M, nw, n_atoms, 3), (
+            f"domega_dr_up shape {domega_dr_up.shape} != ({M}, {nw}, {n_atoms}, 3)"
+        )
+        assert domega_dr_dn.shape == (M, nw, n_atoms, 3), (
+            f"domega_dr_dn shape {domega_dr_dn.shape} != ({M}, {nw}, {n_atoms}, 3)"
+        )
 
         force_HF = (
             de_L_dR + np.einsum("iwjk,iwkl->iwjl", omega_up, de_L_dr_up) + np.einsum("iwjk,iwkl->iwjl", omega_dn, de_L_dr_dn)
@@ -5307,6 +5425,9 @@ class _MCMC_debug:
             ]
         )
 
+        assert force_HF_jn_local.shape == force_Pulay_jn_local.shape, (
+            f"force_HF_jn shape {force_HF_jn_local.shape} != force_Pulay_jn shape {force_Pulay_jn_local.shape}"
+        )
         force_jn_local = list(force_HF_jn_local + force_Pulay_jn_local)
 
         # MPI allreduce
@@ -5510,6 +5631,12 @@ class _MCMC_debug:
         e_L_2d = self.e_L[num_mcmc_warmup_steps:]  # (M, nw)
         w_L_2d = self.w_L[num_mcmc_warmup_steps:]  # (M, nw)
 
+        # Shape assertions: (M, nw) from mcmc_counter and num_walkers
+        M_expected = self.mcmc_counter - num_mcmc_warmup_steps
+        nw_expected = self.num_walkers
+        assert w_L_2d.shape == (M_expected, nw_expected), f"w_L_2d shape {w_L_2d.shape} != ({M_expected}, {nw_expected})"
+        assert e_L_2d.shape == (M_expected, nw_expected), f"e_L_2d shape {e_L_2d.shape} != ({M_expected}, {nw_expected})"
+
         # Flatten (M, nw) -> (N,) so each sample is one entry.
         M, nw = e_L_2d.shape
         N = M * nw
@@ -5531,6 +5658,19 @@ class _MCMC_debug:
             arr = arr.reshape(N, -1)  # (N, block.size)
             O_cols.append(arr)
         O_matrix = np.concatenate(O_cols, axis=1)  # (N, K)
+        K = O_matrix.shape[1]
+
+        # Shape assertion
+        assert O_matrix.shape == (N, K), f"O_matrix shape {O_matrix.shape} != ({N}, {K})"
+
+        # Symmetrize O_matrix for blocks with internal symmetry constraints
+        # (mirrors the symmetrization in MCMC.get_dln_WF).
+        _sym_start = 0
+        for block in blocks:
+            _sym_end = _sym_start + block.size
+            if block.symmetrize_metric is not None:
+                O_matrix[:, _sym_start:_sym_end] = block.symmetrize_metric(O_matrix[:, _sym_start:_sym_end])
+            _sym_start = _sym_end
 
         # ── Step 3: Build dE_matrix  (de_L / dc)  shape (N, K) ───────────────
         de_L_dc_map = self.de_L_dc
@@ -5544,17 +5684,42 @@ class _MCMC_debug:
             dE_cols.append(arr)
         dE_matrix = np.concatenate(dE_cols, axis=1)  # (N, K)
 
+        # Shape assertion
+        assert dE_matrix.shape == (N, K), f"dE_matrix shape {dE_matrix.shape} != ({N}, {K})"
+
         # Apply optional parameter-index subset.
         if chosen_param_index is not None:
             O_matrix = O_matrix[:, chosen_param_index]
             dE_matrix = dE_matrix[:, chosen_param_index]
             g = g[chosen_param_index]
 
-        # ── Step 4: Weighted averages ─────────────────────────────────────────
-        W = float(np.sum(w))  # total weight
-        E_bar = float(np.dot(w, e_L) / W)  # <e_L>_w
-        O_bar = (w @ O_matrix) / W  # (K,)   <O_k>_w
-        dE_bar = (w @ dE_matrix) / W  # (K,)   <dE_k>_w
+        # Shape assertions after optional subset
+        K_sub = O_matrix.shape[1]
+        assert O_matrix.shape == (N, K_sub), f"O_matrix shape {O_matrix.shape} != ({N}, {K_sub})"
+        assert dE_matrix.shape == (N, K_sub), f"dE_matrix shape {dE_matrix.shape} != ({N}, {K_sub})"
+        assert w.shape == (N,), f"w shape {w.shape} != ({N},)"
+        assert e_L.shape == (N,), f"e_L shape {e_L.shape} != ({N},)"
+        if g is not None:
+            assert g.shape == (K_sub,), f"g shape {g.shape} != ({K_sub},)"
+
+        # ── Step 4: MPI-aware weighted averages ────────────────────────────────
+        W_local = float(np.sum(w))
+        W = mpi_comm.allreduce(W_local, op=MPI.SUM)
+
+        we_local = np.dot(w, e_L)
+        we_global = mpi_comm.allreduce(we_local, op=MPI.SUM)
+        E_bar = float(we_global) / W
+
+        K_sub = O_matrix.shape[1]
+        wO_local = w @ O_matrix  # (K_sub,)
+        wO_global = np.empty(K_sub)
+        mpi_comm.Allreduce([wO_local, MPI.DOUBLE], [wO_global, MPI.DOUBLE], op=MPI.SUM)
+        O_bar = wO_global / W
+
+        wdE_local = w @ dE_matrix  # (K_sub,)
+        wdE_global = np.empty(K_sub)
+        mpi_comm.Allreduce([wdE_local, MPI.DOUBLE], [wdE_global, MPI.DOUBLE], op=MPI.SUM)
+        dE_bar = wdE_global / W
 
         # ── Step 5: H_0  (current energy estimate) ──────────────────────────
         H_0 = E_bar
@@ -5565,7 +5730,10 @@ class _MCMC_debug:
 
         # ── Step 7: Generalized force  f_k = -2/W sum_i w_i (e_L_i - E_bar) dO_{i,k}
         de = e_L - E_bar  # (N,)  local energy fluctuation
-        f_vec = -2.0 * (w * de) @ dO / W  # (K,)
+        f_local = -2.0 * (w * de) @ dO  # (K,)
+        f_global = np.empty(K_sub)
+        mpi_comm.Allreduce([f_local, MPI.DOUBLE], [f_global, MPI.DOUBLE], op=MPI.SUM)
+        f_vec = f_global / W
 
         # ── LM mode: build full matrices ─────────────────────────────────────
         if return_matrices:
@@ -5575,20 +5743,33 @@ class _MCMC_debug:
                 dE_SR = ddE @ g  # (N,)
                 dO = np.column_stack([O_SR, dO])  # (N, K+1)
                 ddE = np.column_stack([dE_SR, ddE])  # (N, K+1)
+                K_ext = dO.shape[1]
                 # Recompute f_vec for extended space
-                f_vec = -2.0 * (w * de) @ dO / W
+                f_local_ext = -2.0 * (w * de) @ dO
+                f_global_ext = np.empty(K_ext)
+                mpi_comm.Allreduce([f_local_ext, MPI.DOUBLE], [f_global_ext, MPI.DOUBLE], op=MPI.SUM)
+                f_vec = f_global_ext / W
 
             # S_{k,k'} = (dO^T @ diag(w) @ dO) / W
             w_dO = w[:, np.newaxis] * dO
-            S_matrix = (dO.T @ w_dO) / W
+            S_local = dO.T @ w_dO
+            S_matrix = np.empty_like(S_local)
+            mpi_comm.Allreduce(S_local, S_matrix, op=MPI.SUM)
+            S_matrix /= W
 
             # K_{k,k'} = (dO^T @ diag(w * e_L) @ dO) / W
             we_dO = (w * e_L)[:, np.newaxis] * dO
-            K_matrix = (dO.T @ we_dO) / W
+            K_local = dO.T @ we_dO
+            K_matrix = np.empty_like(K_local)
+            mpi_comm.Allreduce(K_local, K_matrix, op=MPI.SUM)
+            K_matrix /= W
 
             # B_{k,k'} = (ddE^T @ diag(w) @ dO) / W
             w_ddE = w[:, np.newaxis] * ddE
-            B_matrix = (w_ddE.T @ dO) / W
+            B_local = w_ddE.T @ dO
+            B_matrix = np.empty_like(B_local)
+            mpi_comm.Allreduce(B_local, B_matrix, op=MPI.SUM)
+            B_matrix /= W
 
             return H_0, f_vec, S_matrix, K_matrix, B_matrix
 
@@ -5605,14 +5786,16 @@ class _MCMC_debug:
         # Using g^T f overestimates S_2, makes the denominator of
         # E(gamma) grow too fast, and drives the optimal gamma to be unrealistically small.
         gdO = dO @ g  # (N,)  g-projected centered observable
-        S_2 = float(np.dot(w, gdO**2) / W)
+        S_2_local = float(np.dot(w, gdO**2))
+        S_2 = mpi_comm.allreduce(S_2_local, op=MPI.SUM) / W
 
         # ── Step 10: K matrix contribution  g^T K g ─────────────────────────
         #
         #   K_{k,k'} = 1/W sum_i  w_i * e_L_i * dO_{i,k} * dO_{i,k'}
         #
         #   g^T K g  = 1/W sum_i  w_i * e_L_i * (sum_k g_k dO_{i,k})^2
-        gKg = float(np.dot(w * e_L * gdO, gdO) / W)
+        gKg_local = float(np.dot(w * e_L * gdO, gdO))
+        gKg = mpi_comm.allreduce(gKg_local, op=MPI.SUM) / W
 
         # ── Step 11: B matrix contribution  g^T B g ─────────────────────────
         #
@@ -5621,7 +5804,8 @@ class _MCMC_debug:
         #
         #   g^T B g  = 1/W sum_i  w_i * (sum_k g_k dO_{i,k}) * (sum_k' g_k' ddE_{i,k'})
         gdE = ddE @ g  # (N,)  g-projected centered de_L
-        gBg = float(np.dot(w * gdO, gdE) / W)
+        gBg_local = float(np.dot(w * gdO, gdE))
+        gBg = mpi_comm.allreduce(gBg_local, op=MPI.SUM) / W
 
         # ── Step 12: H_2 = g^T (B + K) g ────────────────────────────────────
         H_2 = gBg + gKg

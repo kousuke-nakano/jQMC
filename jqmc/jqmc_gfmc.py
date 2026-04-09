@@ -2041,6 +2041,11 @@ class GFMC_t:
                 e_L = self.e_L[num_mcmc_warmup_steps:]
                 e_L2 = self.e_L2[num_mcmc_warmup_steps:]
                 w_L = self.w_L[num_mcmc_warmup_steps:]
+                M = self.mcmc_counter - num_mcmc_warmup_steps
+                nw = 1  # GFMC observables are reduced across walkers
+                assert w_L.shape == (M, nw), f"w_L shape {w_L.shape} != ({M}, {nw})"
+                assert e_L.shape == (M, nw), f"e_L shape {e_L.shape} != ({M}, {nw})"
+                assert e_L2.shape == (M, nw), f"e_L2 shape {e_L2.shape} != ({M}, {nw})"
                 w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
                 w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
                 w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
@@ -2110,6 +2115,11 @@ class GFMC_t:
                 e_L = self.e_L[num_mcmc_warmup_steps:]
                 e_L2 = self.e_L2[num_mcmc_warmup_steps:]
                 w_L = self.w_L[num_mcmc_warmup_steps:]
+                M = self.mcmc_counter - num_mcmc_warmup_steps
+                nw = 1  # GFMC observables are reduced across walkers
+                assert w_L.shape == (M, nw), f"w_L shape {w_L.shape} != ({M}, {nw})"
+                assert e_L.shape == (M, nw), f"e_L shape {e_L.shape} != ({M}, {nw})"
+                assert e_L2.shape == (M, nw), f"e_L2 shape {e_L2.shape} != ({M}, {nw})"
                 w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
                 w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
                 w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
@@ -2220,6 +2230,16 @@ class GFMC_t:
                 force_HF = self.force_HF[num_mcmc_warmup_steps:]
                 force_PP = self.force_PP[num_mcmc_warmup_steps:]
                 E_L_force_PP = self.E_L_force_PP[num_mcmc_warmup_steps:]
+                M = self.mcmc_counter - num_mcmc_warmup_steps
+                nw = 1  # GFMC observables are reduced across walkers
+                n_atoms = self.__hamiltonian_data.structure_data.natom
+                assert w_L.shape == (M, nw), f"w_L shape {w_L.shape} != ({M}, {nw})"
+                assert e_L.shape == (M, nw), f"e_L shape {e_L.shape} != ({M}, {nw})"
+                assert force_HF.shape == (M, nw, n_atoms, 3), f"force_HF shape {force_HF.shape} != ({M}, {nw}, {n_atoms}, 3)"
+                assert force_PP.shape == (M, nw, n_atoms, 3), f"force_PP shape {force_PP.shape} != ({M}, {nw}, {n_atoms}, 3)"
+                assert E_L_force_PP.shape == (M, nw, n_atoms, 3), (
+                    f"E_L_force_PP shape {E_L_force_PP.shape} != ({M}, {nw}, {n_atoms}, 3)"
+                )
                 # split and binning with multiple walkers
                 w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
                 w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
@@ -2325,6 +2345,16 @@ class GFMC_t:
                 force_HF = self.force_HF[num_mcmc_warmup_steps:]
                 force_PP = self.force_PP[num_mcmc_warmup_steps:]
                 E_L_force_PP = self.E_L_force_PP[num_mcmc_warmup_steps:]
+                M = self.mcmc_counter - num_mcmc_warmup_steps
+                nw = 1  # GFMC observables are reduced across walkers
+                n_atoms = self.__hamiltonian_data.structure_data.natom
+                assert w_L.shape == (M, nw), f"w_L shape {w_L.shape} != ({M}, {nw})"
+                assert e_L.shape == (M, nw), f"e_L shape {e_L.shape} != ({M}, {nw})"
+                assert force_HF.shape == (M, nw, n_atoms, 3), f"force_HF shape {force_HF.shape} != ({M}, {nw}, {n_atoms}, 3)"
+                assert force_PP.shape == (M, nw, n_atoms, 3), f"force_PP shape {force_PP.shape} != ({M}, {nw}, {n_atoms}, 3)"
+                assert E_L_force_PP.shape == (M, nw, n_atoms, 3), (
+                    f"E_L_force_PP shape {E_L_force_PP.shape} != ({M}, {nw}, {n_atoms}, 3)"
+                )
                 w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
                 w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
                 w_L_force_HF_split = np.array_split(np.einsum("iw,iwjk->iwjk", w_L, force_HF), num_mcmc_bin_blocks, axis=0)
@@ -2622,6 +2652,21 @@ class _GFMC_t_debug:
     def num_gfmc_collect_steps(self):
         """Return num_gfmc_collect_steps."""
         return self.__num_gfmc_collect_steps
+
+    @property
+    def mcmc_counter(self) -> int:
+        """Return current MCMC counter."""
+        return self.__mcmc_counter - self.__num_gfmc_collect_steps
+
+    @property
+    def num_walkers(self):
+        """The number of walkers."""
+        return self.__num_walkers
+
+    @property
+    def hamiltonian_data(self):
+        """Return hamiltonian_data."""
+        return self.__hamiltonian_data
 
     # weights
     @property
@@ -3539,6 +3584,12 @@ class _GFMC_t_debug:
             e_L = self.e_L[num_mcmc_warmup_steps:]
             e_L2 = self.e_L2[num_mcmc_warmup_steps:]
             w_L = self.w_L[num_mcmc_warmup_steps:]
+            # Shape assertions: (M, nw) from mcmc_counter and num_walkers
+            M = self.mcmc_counter - num_mcmc_warmup_steps
+            nw = 1  # GFMC observables are reduced across walkers
+            assert w_L.shape == (M, nw), f"w_L shape {w_L.shape} != ({M}, {nw})"
+            assert e_L.shape == (M, nw), f"e_L shape {e_L.shape} != ({M}, {nw})"
+            assert e_L2.shape == (M, nw), f"e_L2 shape {e_L2.shape} != ({M}, {nw})"
             w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
             w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
             w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
@@ -3627,6 +3678,17 @@ class _GFMC_t_debug:
             force_HF = self.force_HF[num_mcmc_warmup_steps:]
             force_PP = self.force_PP[num_mcmc_warmup_steps:]
             E_L_force_PP = self.E_L_force_PP[num_mcmc_warmup_steps:]
+            # Shape assertions: (M, nw) from mcmc_counter and num_walkers
+            M = self.mcmc_counter - num_mcmc_warmup_steps
+            nw = 1  # GFMC observables are reduced across walkers
+            n_atoms = self.hamiltonian_data.structure_data.natom
+            assert w_L.shape == (M, nw), f"w_L shape {w_L.shape} != ({M}, {nw})"
+            assert e_L.shape == (M, nw), f"e_L shape {e_L.shape} != ({M}, {nw})"
+            assert force_HF.shape == (M, nw, n_atoms, 3), f"force_HF shape {force_HF.shape} != ({M}, {nw}, {n_atoms}, 3)"
+            assert force_PP.shape == (M, nw, n_atoms, 3), f"force_PP shape {force_PP.shape} != ({M}, {nw}, {n_atoms}, 3)"
+            assert E_L_force_PP.shape == (M, nw, n_atoms, 3), (
+                f"E_L_force_PP shape {E_L_force_PP.shape} != ({M}, {nw}, {n_atoms}, 3)"
+            )
 
             # split and binning with multiple walkers
             w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
@@ -5840,6 +5902,11 @@ class GFMC_n:
                 e_L = self.e_L[num_mcmc_warmup_steps:]
                 e_L2 = self.e_L2[num_mcmc_warmup_steps:]
                 w_L = self.w_L[num_mcmc_warmup_steps:]
+                M = self.mcmc_counter - num_mcmc_warmup_steps
+                nw = 1  # GFMC observables are reduced across walkers
+                assert w_L.shape == (M, nw), f"w_L shape {w_L.shape} != ({M}, {nw})"
+                assert e_L.shape == (M, nw), f"e_L shape {e_L.shape} != ({M}, {nw})"
+                assert e_L2.shape == (M, nw), f"e_L2 shape {e_L2.shape} != ({M}, {nw})"
                 w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
                 w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
                 w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
@@ -5909,6 +5976,11 @@ class GFMC_n:
                 e_L = self.e_L[num_mcmc_warmup_steps:]
                 e_L2 = self.e_L2[num_mcmc_warmup_steps:]
                 w_L = self.w_L[num_mcmc_warmup_steps:]
+                M = self.mcmc_counter - num_mcmc_warmup_steps
+                nw = 1  # GFMC observables are reduced across walkers
+                assert w_L.shape == (M, nw), f"w_L shape {w_L.shape} != ({M}, {nw})"
+                assert e_L.shape == (M, nw), f"e_L shape {e_L.shape} != ({M}, {nw})"
+                assert e_L2.shape == (M, nw), f"e_L2 shape {e_L2.shape} != ({M}, {nw})"
                 w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
                 w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
                 w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
@@ -6019,6 +6091,16 @@ class GFMC_n:
                 force_HF = self.force_HF[num_mcmc_warmup_steps:]
                 force_PP = self.force_PP[num_mcmc_warmup_steps:]
                 E_L_force_PP = self.E_L_force_PP[num_mcmc_warmup_steps:]
+                M = self.mcmc_counter - num_mcmc_warmup_steps
+                nw = 1  # GFMC observables are reduced across walkers
+                n_atoms = self.__hamiltonian_data.structure_data.natom
+                assert w_L.shape == (M, nw), f"w_L shape {w_L.shape} != ({M}, {nw})"
+                assert e_L.shape == (M, nw), f"e_L shape {e_L.shape} != ({M}, {nw})"
+                assert force_HF.shape == (M, nw, n_atoms, 3), f"force_HF shape {force_HF.shape} != ({M}, {nw}, {n_atoms}, 3)"
+                assert force_PP.shape == (M, nw, n_atoms, 3), f"force_PP shape {force_PP.shape} != ({M}, {nw}, {n_atoms}, 3)"
+                assert E_L_force_PP.shape == (M, nw, n_atoms, 3), (
+                    f"E_L_force_PP shape {E_L_force_PP.shape} != ({M}, {nw}, {n_atoms}, 3)"
+                )
 
                 # split and binning with multiple walkers
                 w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
@@ -6125,6 +6207,16 @@ class GFMC_n:
                 force_HF = self.force_HF[num_mcmc_warmup_steps:]
                 force_PP = self.force_PP[num_mcmc_warmup_steps:]
                 E_L_force_PP = self.E_L_force_PP[num_mcmc_warmup_steps:]
+                M = self.mcmc_counter - num_mcmc_warmup_steps
+                nw = 1  # GFMC observables are reduced across walkers
+                n_atoms = self.__hamiltonian_data.structure_data.natom
+                assert w_L.shape == (M, nw), f"w_L shape {w_L.shape} != ({M}, {nw})"
+                assert e_L.shape == (M, nw), f"e_L shape {e_L.shape} != ({M}, {nw})"
+                assert force_HF.shape == (M, nw, n_atoms, 3), f"force_HF shape {force_HF.shape} != ({M}, {nw}, {n_atoms}, 3)"
+                assert force_PP.shape == (M, nw, n_atoms, 3), f"force_PP shape {force_PP.shape} != ({M}, {nw}, {n_atoms}, 3)"
+                assert E_L_force_PP.shape == (M, nw, n_atoms, 3), (
+                    f"E_L_force_PP shape {E_L_force_PP.shape} != ({M}, {nw}, {n_atoms}, 3)"
+                )
 
                 # split and binning with multiple walkers
                 w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
@@ -6435,6 +6527,21 @@ class _GFMC_n_debug:
         if num_gfmc_collect_steps < GFMC_MIN_COLLECT_STEPS:
             logger.warning(f"num_gfmc_collect_steps should be larger than {GFMC_MIN_COLLECT_STEPS}.")
         self.__num_gfmc_collect_steps = num_gfmc_collect_steps
+
+    @property
+    def mcmc_counter(self) -> int:
+        """Return current MCMC counter."""
+        return self.__mcmc_counter - self.__num_gfmc_collect_steps
+
+    @property
+    def num_walkers(self):
+        """The number of walkers."""
+        return self.__num_walkers
+
+    @property
+    def hamiltonian_data(self):
+        """Return hamiltonian_data."""
+        return self.__hamiltonian_data
 
     # weights
     @property
@@ -7509,6 +7616,12 @@ class _GFMC_n_debug:
             e_L = self.e_L[num_mcmc_warmup_steps:]
             e_L2 = self.e_L2[num_mcmc_warmup_steps:]
             w_L = self.w_L[num_mcmc_warmup_steps:]
+            # Shape assertions: (M, nw) from mcmc_counter and num_walkers
+            M = self.mcmc_counter - num_mcmc_warmup_steps
+            nw = 1  # GFMC observables are reduced across walkers
+            assert w_L.shape == (M, nw), f"w_L shape {w_L.shape} != ({M}, {nw})"
+            assert e_L.shape == (M, nw), f"e_L shape {e_L.shape} != ({M}, {nw})"
+            assert e_L2.shape == (M, nw), f"e_L2 shape {e_L2.shape} != ({M}, {nw})"
             w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)
             w_L_binned = list(np.ravel([np.sum(arr, axis=0) for arr in w_L_split]))
             w_L_e_L_split = np.array_split(w_L * e_L, num_mcmc_bin_blocks, axis=0)
@@ -7597,6 +7710,17 @@ class _GFMC_n_debug:
             force_HF = self.force_HF[num_mcmc_warmup_steps:]
             force_PP = self.force_PP[num_mcmc_warmup_steps:]
             E_L_force_PP = self.E_L_force_PP[num_mcmc_warmup_steps:]
+            # Shape assertions: (M, nw) from mcmc_counter and num_walkers
+            M = self.mcmc_counter - num_mcmc_warmup_steps
+            nw = 1  # GFMC observables are reduced across walkers
+            n_atoms = self.hamiltonian_data.structure_data.natom
+            assert w_L.shape == (M, nw), f"w_L shape {w_L.shape} != ({M}, {nw})"
+            assert e_L.shape == (M, nw), f"e_L shape {e_L.shape} != ({M}, {nw})"
+            assert force_HF.shape == (M, nw, n_atoms, 3), f"force_HF shape {force_HF.shape} != ({M}, {nw}, {n_atoms}, 3)"
+            assert force_PP.shape == (M, nw, n_atoms, 3), f"force_PP shape {force_PP.shape} != ({M}, {nw}, {n_atoms}, 3)"
+            assert E_L_force_PP.shape == (M, nw, n_atoms, 3), (
+                f"E_L_force_PP shape {E_L_force_PP.shape} != ({M}, {nw}, {n_atoms}, 3)"
+            )
 
             # split and binning with multiple walkers
             w_L_split = np.array_split(w_L, num_mcmc_bin_blocks, axis=0)

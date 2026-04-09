@@ -528,11 +528,13 @@ def test_full_wavefunction_exponent_gradient():
 
 
 def test_shell_symmetrize_j3_basis():
-    """apply_block_update should average exponents within shell groups (J3)."""
-    _, aos_data, _, _, _, _ = _load_trexio("H2_ae_ccpvdz_cart.h5")
-    from jqmc.atomic_orbital import ShellPrimMap
+    """apply_block_update passes exponents through without shell averaging.
 
-    spm = ShellPrimMap.from_aos_data(aos_data)
+    Post-update symmetrization was removed; O_k is now symmetrized at source
+    in get_dln_WF, so apply_block_update stores the raw values as-is.
+    """
+    _, aos_data, _, _, _, _ = _load_trexio("H2_ae_ccpvdz_cart.h5")
+
     j3 = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data, random_init=True, random_scale=0.01, seed=42)
     jastrow_data = Jastrow_data(
         jastrow_one_body_data=None,
@@ -545,8 +547,6 @@ def test_shell_symmetrize_j3_basis():
     exp = np.array(aos_data.exponents, dtype=np.float64)
     rng = np.random.RandomState(123)
     perturbed = exp + rng.uniform(-0.05, 0.05, size=exp.shape)
-    # Confirm p-shell mates are NOT equal before symmetrize
-    assert not np.allclose(perturbed[4], perturbed[5])
 
     block = VariationalParameterBlock(
         name="j3_basis_exp",
@@ -557,25 +557,19 @@ def test_shell_symmetrize_j3_basis():
     jastrow_new = jastrow_data.apply_block_update(block)
     result = np.array(jastrow_new.jastrow_three_body_data.ao_exponents)
 
-    # Shell-mates must be equal after symmetrize
-    expected = spm.symmetrize(perturbed)
-    npt.assert_allclose(result, expected, rtol=1e-14)
-    # Specifically: p-shell primitives (indices 4,5,6 and 11,12,13) must match
-    assert result[4] == result[5] == result[6]
-    assert result[11] == result[12] == result[13]
+    # apply_block_update stores the raw perturbed values (no shell averaging)
+    npt.assert_allclose(result, perturbed, rtol=1e-14)
 
 
 def test_shell_symmetrize_geminal_basis():
-    """apply_block_update should average exponents within shell groups (Geminal)."""
+    """apply_block_update passes exponents through without shell averaging (Geminal).
+
+    Post-update symmetrization was removed; O_k is now symmetrized at source
+    in get_dln_WF, so apply_block_update stores the raw values as-is.
+    """
     _, _, _, _, geminal_mo_data, _ = _load_trexio("H2_ae_ccpvdz_cart.h5")
-    from jqmc.atomic_orbital import ShellPrimMap
-    from jqmc.wavefunction import _get_aos_data
 
     geminal_ao = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_data)
-    spm = ShellPrimMap.concat(
-        ShellPrimMap.from_aos_data(_get_aos_data(geminal_ao.orb_data_up_spin)),
-        ShellPrimMap.from_aos_data(_get_aos_data(geminal_ao.orb_data_dn_spin)),
-    )
 
     exp = np.concatenate(
         [
@@ -599,8 +593,8 @@ def test_shell_symmetrize_geminal_basis():
             np.array(geminal_new.ao_exponents_dn),
         ]
     )
-    expected = spm.symmetrize(perturbed)
-    npt.assert_allclose(result, expected, rtol=1e-14)
+    # apply_block_update stores the raw perturbed values (no shell averaging)
+    npt.assert_allclose(result, perturbed, rtol=1e-14)
 
 
 def test_shell_symmetrize_metric_averages_sn():

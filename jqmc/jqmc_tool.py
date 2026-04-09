@@ -369,9 +369,25 @@ def trexio_convert_to(
                     if n_shells >= len(basis_exps):
                         sel_basis = basis_exps
                     else:
-                        # select N shells centered around the median exponent
-                        start = max(0, (len(basis_exps) - n_shells) // 2)
-                        sel_basis = basis_exps[start : start + n_shells]
+                        # Select n_shells exponents from a window centered on
+                        # the median of the log-exponent distribution.
+                        # The window width scales with n_shells/len: small
+                        # selections stay near the middle, larger ones spread out.
+                        log_exps = np.log(basis_exps)
+                        frac = n_shells / len(basis_exps)
+                        margin = (1.0 - frac) / 2.0
+                        cdf = np.linspace(0, 1, len(log_exps))
+                        lo = np.interp(margin, cdf, log_exps)
+                        hi = np.interp(1.0 - margin, cdf, log_exps)
+                        targets = np.linspace(lo, hi, n_shells)
+                        sel_basis = []
+                        remaining = list(basis_exps)
+                        log_remaining = list(log_exps)
+                        for t in targets:
+                            idx = int(np.argmin([abs(lr - t) for lr in log_remaining]))
+                            sel_basis.append(remaining.pop(idx))
+                            log_remaining.pop(idx)
+                        sel_basis.sort()
 
                     # 4) Select AO indices whose exponent is in the chosen basis group
                     sel_ao = [i for i in ao_idxs_l if float(ao_exps[i]) in sel_basis]

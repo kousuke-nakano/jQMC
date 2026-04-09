@@ -226,8 +226,21 @@ class TestTrexioConvertTo:
                     if n_shells >= len(basis_exps):
                         sel_basis = basis_exps
                     else:
-                        start = max(0, (len(basis_exps) - n_shells) // 2)
-                        sel_basis = basis_exps[start : start + n_shells]
+                        log_exps = np.log(basis_exps)
+                        frac = n_shells / len(basis_exps)
+                        margin = (1.0 - frac) / 2.0
+                        cdf = np.linspace(0, 1, len(log_exps))
+                        lo = np.interp(margin, cdf, log_exps)
+                        hi = np.interp(1.0 - margin, cdf, log_exps)
+                        targets = np.linspace(lo, hi, n_shells)
+                        sel_basis = []
+                        remaining = list(basis_exps)
+                        log_remaining = list(log_exps)
+                        for t in targets:
+                            idx = int(np.argmin([abs(lr - t) for lr in log_remaining]))
+                            sel_basis.append(remaining.pop(idx))
+                            log_remaining.pop(idx)
+                        sel_basis.sort()
 
                     expected_indices.extend([i for i in ao_idxs_l if float(ao_exps[i]) in sel_basis])
 

@@ -1151,11 +1151,22 @@ def test_vmc_symmetry_preservation(j3_type, lambda_type, monkeypatch):
         num_orb_projection=None,
         chosen_param_index=None,
     ):
-        """Return intentionally non-symmetric forces to stress-test the symmetrization."""
+        """Return symmetric forces (mirrors real get_gF where O_k is symmetrized at source)."""
         total = sum(block.size for block in blocks)
         rng_gf = np.random.RandomState(99)
         f = rng_gf.randn(total)
         f_std = np.abs(rng_gf.randn(total)) + 0.1  # positive std
+        # Apply per-block symmetrization (same as O_matrix symmetrization in get_dln_WF)
+        offset = 0
+        for block in blocks:
+            if block.symmetrize_metric is not None:
+                f[offset : offset + block.size] = block.symmetrize_metric(
+                    f[offset : offset + block.size].reshape(1, -1)
+                ).ravel()
+                f_std[offset : offset + block.size] = np.abs(
+                    block.symmetrize_metric(f_std[offset : offset + block.size].reshape(1, -1))
+                ).ravel()
+            offset += block.size
         return f, f_std
 
     monkeypatch.setattr(MCMC, "run", fake_run, raising=False)
