@@ -1870,19 +1870,17 @@ class Jastrow_data:
             j2 = Jastrow_two_body_data(jastrow_2b_param=new_param, jastrow_2b_type=j2.jastrow_2b_type)
         elif block.name == "j3_matrix" and j3 is not None:
             j3_new = np.array(block.values)
-
-            # Symmetrize unconditionally — the method is a no-op for non-symmetric matrices.
-            j3_new = self.symmetrize_j3(j3_new)
-
+            # Post-update symmetrization removed — O_k is symmetrized at source
+            # in get_dln_WF, so theta and parameter updates are already symmetric.
             j3 = Jastrow_three_body_data(orb_data=j3.orb_data, j_matrix=j3_new)
         elif block.name == "j3_basis_exp" and j3 is not None:
             new_exp = np.asarray(block.values, dtype=np.float64)
-            new_exp = jnp.asarray(self._symmetrize_ao_basis(j3.orb_data, new_exp), dtype=jnp.float64)
-            j3 = j3.with_updated_ao_exponents(new_exp)
+            # Post-update symmetrization removed — O_k symmetrized at source.
+            j3 = j3.with_updated_ao_exponents(jnp.asarray(new_exp, dtype=jnp.float64))
         elif block.name == "j3_basis_coeff" and j3 is not None:
             new_coeff = np.asarray(block.values, dtype=np.float64)
-            new_coeff = jnp.asarray(self._symmetrize_ao_basis(j3.orb_data, new_coeff), dtype=jnp.float64)
-            j3 = j3.with_updated_ao_coefficients(new_coeff)
+            # Post-update symmetrization removed — O_k symmetrized at source.
+            j3 = j3.with_updated_ao_coefficients(jnp.asarray(new_coeff, dtype=jnp.float64))
         elif block.name == "jastrow_nn_params" and nn3 is not None:
             # Update NN Jastrow parameters: block.values is the flattened parameter vector.
             flat = jnp.asarray(block.values).reshape(-1)

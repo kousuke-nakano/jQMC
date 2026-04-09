@@ -263,9 +263,7 @@ class Geminal_data:
         """
         if block.name == "lambda_matrix":
             lambda_new = np.array(block.values)
-
-            # Symmetrize unconditionally — the method is a no-op for non-symmetric matrices.
-            lambda_new = self.symmetrize_lambda(lambda_new)
+            # Post-update symmetrization removed — O_k symmetrized at source.
 
             return Geminal_data(
                 num_electron_up=self.num_electron_up,
@@ -276,14 +274,14 @@ class Geminal_data:
             )
         elif block.name == "lambda_basis_exp":
             vals = np.asarray(block.values, dtype=np.float64)
-            vals = self._symmetrize_ao_basis(vals)
+            # Post-update symmetrization removed — O_k symmetrized at source.
             vals = jnp.asarray(vals, dtype=jnp.float64)
             n_up = len(self.ao_exponents_up)
             new_exp_up, new_exp_dn = vals[:n_up], vals[n_up:]
             return self.with_updated_ao_exponents(new_exp_up, new_exp_dn)
         elif block.name == "lambda_basis_coeff":
             vals = np.asarray(block.values, dtype=np.float64)
-            vals = self._symmetrize_ao_basis(vals)
+            # Post-update symmetrization removed — O_k symmetrized at source.
             vals = jnp.asarray(vals, dtype=jnp.float64)
             n_up = len(self.ao_coefficients_up)
             new_coeff_up, new_coeff_dn = vals[:n_up], vals[n_up:]

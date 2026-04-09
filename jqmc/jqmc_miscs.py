@@ -101,6 +101,7 @@ cli_parameters = {
             "cg_tol": 1e-8,
             "use_lm": True,
             "lm_subspace_dim": 0,
+            "lm_cond": 0.001,
         },
     },
     "vmc_comments": {

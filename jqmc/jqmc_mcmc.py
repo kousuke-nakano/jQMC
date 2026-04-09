@@ -235,11 +235,6 @@ class MCMC:
         logger.info(f"The number of walkers assigned for each MPI process = {self.__num_walkers}.")
         logger.info("")
 
-        # print out hamiltonian info
-        logger.info("Printing out information in hamitonian_data instance.")
-        self.__hamiltonian_data._logger_info()
-        logger.info("")
-
         # init_attributes
         self.hamiltonian_data = self.__hamiltonian_data
         self.__init_attributes()
@@ -1368,11 +1363,30 @@ class MCMC:
                     break
                 start = end
 
+        # ------------------------------------------------------------------
+        # Symmetrize O_matrix for blocks with internal symmetry constraints.
+        # This ensures that f, S, theta all respect the symmetry automatically,
+        # removing the need for downstream symmetrization of S/N ratios,
+        # parameter updates, etc.
+        # All symmetrize_metric functions are batch-aware: they accept
+        # (batch, block_size) input and symmetrize each row.
+        # ------------------------------------------------------------------
+        _sym_start = 0
+        for block in blocks:
+            _sym_end = _sym_start + block.size
+            if block.symmetrize_metric is not None:
+                _blk_slice = O_matrix[:, :, _sym_start:_sym_end]
+                _orig_shape = _blk_slice.shape  # (M, nw, block_size)
+                _flat_2d = _blk_slice.reshape(-1, block.size)  # (M*nw, block_size)
+                _flat_2d[:] = block.symmetrize_metric(_flat_2d)
+                O_matrix[:, :, _sym_start:_sym_end] = _flat_2d.reshape(_orig_shape)
+            _sym_start = _sym_end
+
         logger.devel(f"O_matrix.shape = {O_matrix.shape}")
         if chosen_param_index is None:
             O_matrix_chosen = O_matrix[num_mcmc_warmup_steps:]
         else:
-            O_matrix_chosen = O_matrix[num_mcmc_warmup_steps:, :, chosen_param_index]  # O.... (x....) (M, nw, L) matrix
+            O_matrix_chosen = O_matrix[num_mcmc_warmup_steps:, :, chosen_param_index]
         logger.devel(f"O_matrix_chosen.shape = {O_matrix_chosen.shape}")
 
         # ------------------------------------------------------------------
@@ -2269,8 +2283,8 @@ class MCMC:
             optimizer_kwargs (dict | None, optional): Optimizer configuration.
                 ``method='sr'`` uses SR keys (``sr_delta``, ``sr_epsilon``, ``cg_flag``,
                 ``cg_max_iter``, ``cg_tol``, ``adaptive_learning_rate``);
-                ``method='lm'`` uses LM keys (``lm_delta``, ``lm_epsilon``,
-                ``lm_subspace_dim``); ``adaptive_learning_rate=True`` (SR only) enables
+                ``use_lm=True`` enables LM with keys (``lm_subspace_dim``, ``lm_cond``,
+                ``lm_subspace_dim``, ``lm_cond``); ``adaptive_learning_rate=True`` (SR only) enables
                 accelerated SR (aSR) gamma scaling and requires
                 ``compute_log_WF_param_deriv=True`` and ``comput_e_L_param_deriv=True``;
                 other ``method`` names are optax constructors (e.g., ``"adam"``) and
@@ -2310,6 +2324,7 @@ class MCMC:
             sr_cg_tol = float(optimizer_kwargs.get("cg_tol", 1.0e-8))
             use_lm = bool(optimizer_kwargs.get("use_lm", False))
             lm_subspace_dim = int(optimizer_kwargs.get("lm_subspace_dim", 0))
+            lm_cond = float(optimizer_kwargs.get("lm_cond", 1.0e-3))
 
         # use_lm requires derivative computations
         if use_lm:
@@ -2331,6 +2346,7 @@ class MCMC:
                 "cg_x0_strategy",
                 "use_lm",
                 "lm_subspace_dim",
+                "lm_cond",
             }
         }
 
@@ -2366,6 +2382,7 @@ class MCMC:
                 "cg_tol": sr_cg_tol,
                 "use_lm": use_lm,
                 "lm_subspace_dim": lm_subspace_dim,
+                "lm_cond": lm_cond,
             }
 
         if use_sr:
@@ -2759,10 +2776,8 @@ class MCMC:
                 logger.info("-" * num_sep_line)
                 logger.info(f"Max f = {f[f_argmax]:.3f} +- {f_std[f_argmax]:.3f} Ha/a.u.")
 
-                # Symmetrize SN metric for blocks with internal symmetry
-                for _blk, _s, _e in offsets:
-                    if _blk.symmetrize_metric is not None:
-                        signal_to_noise_f[_s:_e] = _blk.symmetrize_metric(signal_to_noise_f[_s:_e])
+                # S/N symmetrization is no longer needed — O_k is symmetrized
+                # at source in get_dln_WF, so f and f_std are already symmetric.
 
                 logger.info(f"Max of signal-to-noise of f = max(|f|/|std f|) = {np.max(signal_to_noise_f):.3f}.")
                 logger.info("-" * num_sep_line)
@@ -3332,8 +3347,19 @@ class MCMC:
                     logger.info(f"  LM: subspace = SR collective + all {total_num_params} parameters")
                 else:
                     _sn_sorted = np.argsort(signal_to_noise_f)[::-1]
-                    subspace_indices = _sn_sorted[:lm_subspace_dim]
-                    logger.info(f"  LM: subspace = SR collective + top {lm_subspace_dim} parameters (by SN ratio)")
+                    # Include all parameters tied at the boundary S/N value
+                    _sn_cutoff = signal_to_noise_f[_sn_sorted[lm_subspace_dim - 1]]
+                    _n_selected = lm_subspace_dim
+                    while _n_selected < len(_sn_sorted) and signal_to_noise_f[_sn_sorted[_n_selected]] >= _sn_cutoff:
+                        _n_selected += 1
+                    subspace_indices = _sn_sorted[:_n_selected]
+                    if _n_selected > lm_subspace_dim:
+                        logger.info(
+                            f"  LM: subspace = SR collective + {_n_selected} parameters "
+                            f"(requested {lm_subspace_dim}, expanded to include tied SN={_sn_cutoff:.3f})"
+                        )
+                    else:
+                        logger.info(f"  LM: subspace = SR collective + top {lm_subspace_dim} parameters (by SN ratio)")
 
                 # Build LM matrices with collective variable
                 # _lm_collective_obs was pre-computed during SR solve (memory-efficient)
@@ -3349,7 +3375,7 @@ class MCMC:
                 )
 
                 # Solve LM eigenvalue problem
-                c_vec, E_lm = self.solve_linear_method(H_0_lm, f_vec_lm, S_mat, K_mat, B_mat, epsilon=epsilon)
+                c_vec, E_lm = self.solve_linear_method(H_0_lm, f_vec_lm, S_mat, K_mat, B_mat, epsilon=lm_cond)
 
                 # Back-transform: c_vec[0] = c₀ (SR direction), c_vec[1:] = c_k (individual params)
                 theta = np.zeros(total_num_params, dtype=np.float64)

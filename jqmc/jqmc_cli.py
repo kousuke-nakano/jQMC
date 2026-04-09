@@ -314,6 +314,8 @@ def _cli():
                 comput_position_deriv=atomic_force,
                 comput_log_WF_param_deriv=parameter_derivatives,
             )
+        logger.info("Printing out information in hamitonian_data instance.")
+        mcmc.hamiltonian_data._logger_info()
         mcmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = mcmc.get_E(
             num_mcmc_warmup_steps=num_mcmc_warmup_steps,
@@ -444,6 +446,8 @@ def _cli():
                 comput_log_WF_param_deriv=True,
                 comput_e_L_param_deriv=_need_eL_deriv,
             )
+        logger.info("Printing out information in hamitonian_data instance.")
+        mcmc.hamiltonian_data._logger_info()
         mcmc.run_optimize(
             num_mcmc_steps=num_mcmc_steps,
             num_opt_steps=num_opt_steps,
@@ -551,6 +555,8 @@ def _cli():
                 comput_position_deriv=atomic_force,
                 epsilon_PW=epsilon_PW,
             )
+        logger.info("Printing out information in hamitonian_data instance.")
+        lrdmc.hamiltonian_data._logger_info()
         lrdmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = lrdmc.get_E(
             num_mcmc_warmup_steps=num_gfmc_warmup_steps,
@@ -649,6 +655,8 @@ def _cli():
                 comput_position_deriv=atomic_force,
                 epsilon_PW=epsilon_PW,
             )
+        logger.info("Printing out information in hamitonian_data instance.")
+        lrdmc.hamiltonian_data._logger_info()
         lrdmc.run(num_mcmc_steps=num_mcmc_steps, max_time=max_time)
         E_mean, E_std, Var_mean, Var_std = lrdmc.get_E(
             num_mcmc_warmup_steps=num_gfmc_warmup_steps,
