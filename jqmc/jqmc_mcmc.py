@@ -3232,6 +3232,21 @@ class MCMC:
                     float(np.max(_sqrt_ds)),
                 )
 
+                # ------------------------------------------------------------------
+                # DEBUG: per-parameter trace for top SN parameters
+                # ------------------------------------------------------------------
+                _trace_n = 5
+                _trace_idx = np.argsort(signal_to_noise_f)[::-1][:_trace_n]
+                for _ti in _trace_idx:
+                    logger.debug(
+                        "  [SR trace] flat=%d  f=%.6e  diag_S=%.6e  theta_SR=%.6e  SN=%.3f",
+                        int(_ti),
+                        float(f[_ti]),
+                        float(diag_S[_ti]),
+                        float(theta_all[_ti]),
+                        float(signal_to_noise_f[_ti]),
+                    )
+
                 # Pre-compute collective variable observables for LM while
                 # O_matrix_local is still in memory (avoids reloading full
                 # O_matrix in get_aH).
@@ -3344,6 +3359,23 @@ class MCMC:
                 else:
                     theta[subspace_indices] += c_vec[1:]
 
+                # DEBUG: trace theta after LM replacement
+                for _ti in _trace_idx:
+                    _c0_g = c_vec[0] * g_sr[_ti]
+                    _c_ind = 0.0
+                    if _ti in subspace_indices:
+                        _sub_pos = int(np.searchsorted(subspace_indices, _ti))
+                        if _sub_pos < len(subspace_indices) and subspace_indices[_sub_pos] == _ti:
+                            _c_ind = c_vec[1 + _sub_pos]
+                    logger.debug(
+                        "  [LM trace] flat=%d  theta_LM=%.6e  (c0*g=%.6e  c_ind=%.6e)  c0=%.6e",
+                        int(_ti),
+                        float(theta[_ti]),
+                        float(_c0_g),
+                        float(_c_ind),
+                        float(c_vec[0]),
+                    )
+
             elif use_lm:
                 # ---- aSR (lm_subspace_dim = 0) ----
                 if not np.any(theta):
@@ -3389,6 +3421,16 @@ class MCMC:
                         )
                         break
 
+            # DEBUG: trace theta after vir-vir re-projection and before back-transform
+            if use_sr and use_lm and lm_subspace_dim != 0:
+                _theta_before_bt = theta.copy()
+                for _ti in _trace_idx:
+                    logger.debug(
+                        "  [post-virvir trace] flat=%d  theta=%.6e",
+                        int(_ti),
+                        float(theta[_ti]),
+                    )
+
             # ------------------------------------------------------------------
             # Compute ||Delta ln|Psi||| = delta * sqrt(theta^T S theta)
             # ------------------------------------------------------------------
@@ -3431,8 +3473,18 @@ class MCMC:
                         )
                         break
 
-            # logger.devel(f"XX for MPI-rank={mpi_rank} is {theta}")
-            # logger.devel(f"XX.shape for MPI-rank={mpi_rank} is {theta.shape}")
+            # DEBUG: trace theta after back-transform (final update direction)
+            if use_sr and use_lm and lm_subspace_dim != 0:
+                for _ti in _trace_idx:
+                    _bt_change = float(theta[_ti] - _theta_before_bt[_ti]) if "_theta_before_bt" in dir() else 0.0
+                    logger.debug(
+                        "  [final trace] flat=%d  theta_final=%.6e  delta*theta=%.6e  bt_change=%.6e",
+                        int(_ti),
+                        float(theta[_ti]),
+                        float(delta * theta[_ti]),
+                        float(_bt_change),
+                    )
+
             logger.info(f"theta.size = {theta.size}.")
             logger.info(f"np.count_nonzero(theta) = {np.count_nonzero(theta)}.")
             logger.info(f"max. and min. of theta are {np.max(theta)} and {np.min(theta)}.")
