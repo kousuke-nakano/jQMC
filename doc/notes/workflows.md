@@ -243,6 +243,11 @@ invalidates the overlap matrix used by the MO projection).
 `opt_J3_basis_exp` and `opt_J3_basis_coeff` **can** be used together
 with `opt_with_projected_MOs`.
 
+Primitives belonging to the same shell (same atom, same $l$, same
+initial radial parameters) are constrained to share identical values
+throughout optimization.  See {ref}`sec_opt_wf` for details on the
+shell-sharing constraint mechanism.
+
 When set, the corresponding parameters are passed through to the
 jqmc input TOML via `resolve_with_defaults()`.  When left as `None`
 (the default), the jqmc binary applies its own defaults (`false`).

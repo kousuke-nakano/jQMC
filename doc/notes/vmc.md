@@ -130,3 +130,36 @@ ensures non-vanishing guiding weights.  Observables with weight $\mathcal{W}=(\P
 ```
 
 The parameter $\varepsilon$ is chosen so that the average weight $\langle\mathcal{W}\rangle\approx0.8$.
+
+
+### AO Basis Exponent and Coefficient Optimization
+
+In addition to optimizing the Jastrow and geminal (lambda) matrix parameters, jQMC supports variational optimization of the Gaussian-type orbital (GTO) basis set parameters — specifically the **exponents** $Z_\alpha$ and **contraction coefficients** $c_\alpha$ of the primitive GTOs that enter both the three-body Jastrow factor and the geminal pairing function.
+
+#### Variational derivatives
+
+Each primitive GTO has the radial part $\exp(-Z_\alpha |\mathbf{r} - \mathbf{R}_I|^2)$ multiplied by a contraction coefficient $c_\alpha$.  The logarithmic derivatives of the wave function with respect to these parameters are computed via JAX automatic differentiation and enter the stochastic reconfiguration (SR) equation on the same footing as the Jastrow or lambda matrix parameters.
+
+The four optimization flags are:
+
+| Flag | Target |
+|---|---|
+| `opt_J3_basis_exp` | Exponents of J3 AOs |
+| `opt_J3_basis_coeff` | Contraction coefficients of J3 AOs |
+| `opt_lambda_basis_exp` | Exponents of geminal AOs |
+| `opt_lambda_basis_coeff` | Contraction coefficients of geminal AOs |
+
+#### Shell-sharing constraint
+
+Within a given atom, a single *shell* (same nucleus, same angular momentum $l$, same number of primitives, and identical initial exponents/coefficients) generates multiple AOs that differ only in the angular part (e.g., the three $p_x, p_y, p_z$ Cartesian components, or the $2l+1$ solid-harmonic components for a given $l$).  All these AOs share the same radial parameters by construction.
+
+To preserve this physical constraint during optimization, jQMC enforces that **all primitives belonging to the same shell are updated identically**.  This is implemented via the same `symmetrize_metric` mechanism used for the J3 and lambda matrix symmetry:
+
+1. **Gradient symmetrization** — Before the SR solve, the signal-to-noise ratio of the force vector $f_k$ is averaged within each shell group.  This ensures that all shell-mates receive the same effective gradient.
+2. **Update enforcement** — After the additive parameter update, `apply_block_update` averages the updated values within each shell group, guaranteeing that shell-mates remain exactly equal even in the presence of floating-point rounding.
+
+This approach is size-preserving: the optimizer always works with the full per-primitive parameter vector (no dimension reduction), which keeps the SR matrix construction identical to other variational blocks.  All basis parameters are optimized simultaneously — there is no SN-ratio filter or parameter-count selection.
+
+#### Restrictions
+
+* `opt_lambda_basis_exp` and `opt_lambda_basis_coeff` **cannot** be combined with `opt_with_projected_MOs`, because changing the geminal AO exponents/coefficients invalidates the overlap matrix used by the MO projection.

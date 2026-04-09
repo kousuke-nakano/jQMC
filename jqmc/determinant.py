@@ -53,6 +53,7 @@ from ._setting import EPS_rcond_SVD, atol_consistency, rtol_consistency
 from .atomic_orbital import (
     AOs_cart_data,
     AOs_sphe_data,
+    ShellPrimMap,
     _aos_cart_to_sphe,
     _aos_sphe_to_cart,
     compute_AOs,
@@ -262,9 +263,7 @@ class Geminal_data:
         """
         if block.name == "lambda_matrix":
             lambda_new = np.array(block.values)
-
-            # Symmetrize unconditionally — the method is a no-op for non-symmetric matrices.
-            lambda_new = self.symmetrize_lambda(lambda_new)
+            # Post-update symmetrization removed — O_k symmetrized at source.
 
             return Geminal_data(
                 num_electron_up=self.num_electron_up,
@@ -274,17 +273,35 @@ class Geminal_data:
                 lambda_matrix=lambda_new,
             )
         elif block.name == "lambda_basis_exp":
-            vals = jnp.asarray(block.values, dtype=jnp.float64)
+            vals = np.asarray(block.values, dtype=np.float64)
+            # Post-update symmetrization removed — O_k symmetrized at source.
+            vals = jnp.asarray(vals, dtype=jnp.float64)
             n_up = len(self.ao_exponents_up)
             new_exp_up, new_exp_dn = vals[:n_up], vals[n_up:]
             return self.with_updated_ao_exponents(new_exp_up, new_exp_dn)
         elif block.name == "lambda_basis_coeff":
-            vals = jnp.asarray(block.values, dtype=jnp.float64)
+            vals = np.asarray(block.values, dtype=np.float64)
+            # Post-update symmetrization removed — O_k symmetrized at source.
+            vals = jnp.asarray(vals, dtype=jnp.float64)
             n_up = len(self.ao_coefficients_up)
             new_coeff_up, new_coeff_dn = vals[:n_up], vals[n_up:]
             return self.with_updated_ao_coefficients(new_coeff_up, new_coeff_dn)
 
         return self
+
+    def _symmetrize_ao_basis(self, arr: np.ndarray) -> np.ndarray:
+        """Average within same-atom same-shell primitive groups (up + dn concatenated).
+
+        This is the single source of truth for shell-sharing constraints
+        on AO basis exponents/coefficients in the Geminal.
+        """
+        from .wavefunction import _get_aos_data
+
+        spm = ShellPrimMap.concat(
+            ShellPrimMap.from_aos_data(_get_aos_data(self.orb_data_up_spin)),
+            ShellPrimMap.from_aos_data(_get_aos_data(self.orb_data_dn_spin)),
+        )
+        return spm.symmetrize(arr)
 
     def symmetrize_lambda(self, mat):
         """Symmetrize a lambda matrix and return it, or return it unchanged.

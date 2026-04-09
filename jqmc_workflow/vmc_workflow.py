@@ -127,12 +127,6 @@ class VMC_Workflow(Workflow):
         Optimize lambda (geminal) parameters.  Default from ``jqmc_miscs``.
     opt_with_projected_MOs : bool, optional
         Optimize in a restricted MO space.  Default from ``jqmc_miscs``.
-    num_param_opt : int, optional
-        Number of parameters to optimize (0 = all).  Default from ``jqmc_miscs``.
-    opt_filter_min_SN_ratio : float, optional
-        Minimum signal-to-noise ratio ``|f|/|std f|`` for a parameter to be
-        updated.  Parameters with SN <= this threshold are frozen.  Applied
-        before ``num_param_opt``.  Default from ``jqmc_miscs``.
     opt_J3_basis_exp : bool, optional
         Optimize J3 AO Gaussian exponents.  Default from ``jqmc_miscs``.
     opt_J3_basis_coeff : bool, optional
@@ -284,8 +278,6 @@ class VMC_Workflow(Workflow):
         opt_JNN_param: Optional[bool] = None,
         opt_lambda_param: Optional[bool] = None,
         opt_with_projected_MOs: Optional[bool] = None,
-        num_param_opt: Optional[int] = None,
-        opt_filter_min_SN_ratio: Optional[float] = None,
         opt_J3_basis_exp: Optional[bool] = None,
         opt_J3_basis_coeff: Optional[bool] = None,
         opt_lambda_basis_exp: Optional[bool] = None,
@@ -328,8 +320,6 @@ class VMC_Workflow(Workflow):
         self.opt_JNN_param = opt_JNN_param
         self.opt_lambda_param = opt_lambda_param
         self.opt_with_projected_MOs = opt_with_projected_MOs
-        self.num_param_opt = num_param_opt
-        self.opt_filter_min_SN_ratio = opt_filter_min_SN_ratio
         self.opt_J3_basis_exp = opt_J3_basis_exp
         self.opt_J3_basis_coeff = opt_J3_basis_coeff
         self.opt_lambda_basis_exp = opt_lambda_basis_exp
@@ -406,8 +396,6 @@ class VMC_Workflow(Workflow):
                 "opt_JNN_param": self.opt_JNN_param,
                 "opt_lambda_param": self.opt_lambda_param,
                 "opt_with_projected_MOs": self.opt_with_projected_MOs,
-                "num_param_opt": self.num_param_opt,
-                "opt_filter_min_SN_ratio": self.opt_filter_min_SN_ratio,
                 "opt_J3_basis_exp": self.opt_J3_basis_exp,
                 "opt_J3_basis_coeff": self.opt_J3_basis_coeff,
                 "opt_lambda_basis_exp": self.opt_lambda_basis_exp,

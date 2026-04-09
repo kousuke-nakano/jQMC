@@ -92,8 +92,6 @@ cli_parameters = {
         "opt_J3_basis_coeff": False,
         "opt_lambda_basis_exp": False,
         "opt_lambda_basis_coeff": False,
-        "num_param_opt": 0,
-        "opt_filter_min_SN_ratio": 0.0,
         "optimizer_kwargs": {
             "method": "sr",
             "delta": 0.15,
@@ -101,7 +99,9 @@ cli_parameters = {
             "cg_flag": True,
             "cg_max_iter": 10000,
             "cg_tol": 1e-8,
-            "adaptive_learning_rate": True,
+            "use_lm": True,
+            "lm_subspace_dim": 0,
+            "lm_cond": 0.001,
         },
     },
     "vmc_comments": {
@@ -126,8 +126,6 @@ cli_parameters = {
         "opt_J3_basis_coeff": "Optimize the AO basis contraction coefficients in the three-body Jastrow factor.",
         "opt_lambda_basis_exp": "Optimize the AO basis exponents in the geminal (lambda) determinant.",
         "opt_lambda_basis_coeff": "Optimize the AO basis contraction coefficients in the geminal (lambda) determinant.",
-        "num_param_opt": "the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.",
-        "opt_filter_min_SN_ratio": "Minimum signal-to-noise ratio |f|/|std f| for a parameter to be updated. Parameters with SN <= this threshold are frozen. Applied before num_param_opt. Default is 4.0.",
         "optimizer_kwargs": (
             "Optimizer configuration. Set 'method' to 'sr' (default) for stochastic reconfiguration or to any "
             "optax optimizer name (e.g., 'adam'). For SR, keep the 'delta' (prefactor in c_i <- c_i + delta * "

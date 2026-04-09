@@ -46,6 +46,7 @@ from jax import grad, hessian, jit, tree_util, vmap
 from jax import typing as jnpt
 
 from ._diff_mask import DiffMask, apply_diff_mask
+from .atomic_orbital import AOs_cart_data, AOs_sphe_data, ShellPrimMap
 from .determinant import (
     Geminal_data,
     _compute_ratio_determinant_part_rank1_update,
@@ -69,6 +70,20 @@ logger = getLogger("jqmc").getChild(__name__)
 
 # JAX float64
 jax.config.update("jax_enable_x64", True)
+
+
+# ---------------------------------------------------------------------------
+# Shell-constraint helpers for AO basis optimization
+# ---------------------------------------------------------------------------
+
+
+def _get_aos_data(orb_data):
+    """Extract the underlying AOs_*_data from orb_data (AO or MO)."""
+    if isinstance(orb_data, (AOs_sphe_data, AOs_cart_data)):
+        return orb_data
+    if isinstance(orb_data, MOs_data):
+        return orb_data.aos_data
+    raise NotImplementedError(f"Unsupported orb_data type: {type(orb_data)}")
 
 
 @struct.dataclass
@@ -129,6 +144,82 @@ class VariationalParameterBlock:
             shape=new_values.shape,
             size=new_values.size,
         )
+
+
+def _make_batch_symmetrize_j3(jastrow_data, shape):
+    """Create a batch-aware symmetrize function for j3_matrix.
+
+    Works on 1D (block_size,) or 2D (batch, block_size) input.
+    The symmetry check (is the current j3 square sub-block symmetric?)
+    is evaluated once at creation time.
+    """
+    from .jastrow_factor import atol_consistency
+
+    j3 = jastrow_data.jastrow_three_body_data
+    # Determine if symmetrization applies (same check as symmetrize_j3)
+    _do_sym = False
+    if j3 is not None:
+        j3_arr = np.asarray(j3.j_matrix)
+        if j3_arr.ndim == 2 and j3_arr.shape[1] >= 2:
+            sq = j3_arr[:, :-1]
+            if sq.shape[0] == sq.shape[1] and np.allclose(sq, sq.T, atol=atol_consistency):
+                _do_sym = True
+    _n_cols_sq = shape[1] - 1 if len(shape) == 2 else 0
+
+    def _symmetrize(arr):
+        if not _do_sym:
+            return arr
+        if arr.ndim == 1:
+            mat = arr.reshape(shape)
+            sq = mat[:, :_n_cols_sq]
+            mat[:, :_n_cols_sq] = 0.5 * (sq + sq.T)
+            return mat.ravel()
+        # batch: arr shape (batch, block_size)
+        batch = arr.reshape(arr.shape[0], *shape)
+        sq = batch[:, :, :_n_cols_sq]
+        batch[:, :, :_n_cols_sq] = 0.5 * (sq + np.swapaxes(sq, -2, -1))
+        return batch.reshape(arr.shape)
+
+    return _symmetrize
+
+
+def _make_batch_symmetrize_lambda(geminal_data, shape):
+    """Create a batch-aware symmetrize function for lambda_matrix.
+
+    Works on 1D (block_size,) or 2D (batch, block_size) input.
+    The symmetry check is evaluated once at creation time.
+    """
+    from .determinant import atol_consistency, rtol_consistency
+
+    lam = np.asarray(geminal_data.lambda_matrix) if geminal_data.lambda_matrix is not None else None
+    _do_sym = False
+    _n_paired = 0
+    if lam is not None and lam.ndim == 2:
+        if lam.shape[0] == lam.shape[1]:
+            if np.allclose(lam, lam.T, atol=atol_consistency, rtol=rtol_consistency):
+                _do_sym = True
+                _n_paired = lam.shape[0]
+        else:
+            _n_paired = lam.shape[0]
+            paired = lam[:, :_n_paired]
+            if np.allclose(paired, paired.T, atol=atol_consistency, rtol=rtol_consistency):
+                _do_sym = True
+
+    def _symmetrize(arr):
+        if not _do_sym:
+            return arr
+        if arr.ndim == 1:
+            mat = arr.reshape(shape)
+            p = mat[:, :_n_paired]
+            mat[:, :_n_paired] = 0.5 * (p + p.T)
+            return mat.ravel()
+        # batch: arr shape (batch, block_size)
+        batch = arr.reshape(arr.shape[0], *shape)
+        p = batch[:, :, :_n_paired]
+        batch[:, :, :_n_paired] = 0.5 * (p + np.swapaxes(p, -2, -1))
+        return batch.reshape(arr.shape)
+
+    return _symmetrize
 
 
 @struct.dataclass
@@ -455,34 +546,38 @@ class Wavefunction_data:
                         values=j3_arr,
                         shape=j3_arr.shape,
                         size=int(j3_arr.size),
-                        symmetrize_metric=lambda flat, _d=_jd, _s=j3_arr.shape: _d.symmetrize_j3(flat.reshape(_s)).ravel(),
+                        symmetrize_metric=_make_batch_symmetrize_j3(_jd, j3_arr.shape),
                     )
                 )
 
             # J3 AO basis blocks
-            if opt_J3_basis_exp and self.jastrow_data.jastrow_three_body_data is not None:
-                j3_exp = self.jastrow_data.jastrow_three_body_data.ao_exponents
-                j3_exp_arr = np.asarray(j3_exp)
-                blocks.append(
-                    VariationalParameterBlock(
-                        name="j3_basis_exp",
-                        values=j3_exp_arr,
-                        shape=j3_exp_arr.shape,
-                        size=int(j3_exp_arr.size),
-                    )
-                )
+            if (opt_J3_basis_exp or opt_J3_basis_coeff) and self.jastrow_data.jastrow_three_body_data is not None:
+                j3_data = self.jastrow_data.jastrow_three_body_data
+                j3_spm = ShellPrimMap.from_aos_data(_get_aos_data(j3_data.orb_data))
 
-            if opt_J3_basis_coeff and self.jastrow_data.jastrow_three_body_data is not None:
-                j3_coeff = self.jastrow_data.jastrow_three_body_data.ao_coefficients
-                j3_coeff_arr = np.asarray(j3_coeff)
-                blocks.append(
-                    VariationalParameterBlock(
-                        name="j3_basis_coeff",
-                        values=j3_coeff_arr,
-                        shape=j3_coeff_arr.shape,
-                        size=int(j3_coeff_arr.size),
+                if opt_J3_basis_exp:
+                    exp_arr = np.asarray(j3_data.ao_exponents)
+                    blocks.append(
+                        VariationalParameterBlock(
+                            name="j3_basis_exp",
+                            values=exp_arr,
+                            shape=exp_arr.shape,
+                            size=int(exp_arr.size),
+                            symmetrize_metric=j3_spm.symmetrize,
+                        )
                     )
-                )
+
+                if opt_J3_basis_coeff:
+                    coeff_arr = np.asarray(j3_data.ao_coefficients)
+                    blocks.append(
+                        VariationalParameterBlock(
+                            name="j3_basis_coeff",
+                            values=coeff_arr,
+                            shape=coeff_arr.shape,
+                            size=int(coeff_arr.size),
+                            symmetrize_metric=j3_spm.symmetrize,
+                        )
+                    )
 
             if opt_JNN_param and self.jastrow_data.jastrow_nn_data is not None:
                 nn3 = self.jastrow_data.jastrow_nn_data
@@ -508,35 +603,49 @@ class Wavefunction_data:
                     values=lam_arr,
                     shape=lam_arr.shape,
                     size=int(lam_arr.size),
-                    symmetrize_metric=lambda flat, _d=_gd, _s=lam_arr.shape: _d.symmetrize_lambda(flat.reshape(_s)).ravel(),
+                    symmetrize_metric=_make_batch_symmetrize_lambda(_gd, lam_arr.shape),
                 )
             )
 
         # Geminal AO basis blocks (up + dn concatenated into single blocks)
         if self.geminal_data is not None:
+            if opt_lambda_basis_exp or opt_lambda_basis_coeff:
+                lam_spm = ShellPrimMap.concat(
+                    ShellPrimMap.from_aos_data(_get_aos_data(self.geminal_data.orb_data_up_spin)),
+                    ShellPrimMap.from_aos_data(_get_aos_data(self.geminal_data.orb_data_dn_spin)),
+                )
+
             if opt_lambda_basis_exp:
-                lam_exp_up = self.geminal_data.ao_exponents_up
-                lam_exp_dn = self.geminal_data.ao_exponents_dn
-                lam_exp_arr = np.concatenate([np.asarray(lam_exp_up), np.asarray(lam_exp_dn)])
+                lam_exp_arr = np.concatenate(
+                    [
+                        np.asarray(self.geminal_data.ao_exponents_up),
+                        np.asarray(self.geminal_data.ao_exponents_dn),
+                    ]
+                )
                 blocks.append(
                     VariationalParameterBlock(
                         name="lambda_basis_exp",
                         values=lam_exp_arr,
                         shape=lam_exp_arr.shape,
                         size=int(lam_exp_arr.size),
+                        symmetrize_metric=lam_spm.symmetrize,
                     )
                 )
 
             if opt_lambda_basis_coeff:
-                lam_coeff_up = self.geminal_data.ao_coefficients_up
-                lam_coeff_dn = self.geminal_data.ao_coefficients_dn
-                lam_coeff_arr = np.concatenate([np.asarray(lam_coeff_up), np.asarray(lam_coeff_dn)])
+                lam_coeff_arr = np.concatenate(
+                    [
+                        np.asarray(self.geminal_data.ao_coefficients_up),
+                        np.asarray(self.geminal_data.ao_coefficients_dn),
+                    ]
+                )
                 blocks.append(
                     VariationalParameterBlock(
                         name="lambda_basis_coeff",
                         values=lam_coeff_arr,
                         shape=lam_coeff_arr.shape,
                         size=int(lam_coeff_arr.size),
+                        symmetrize_metric=lam_spm.symmetrize,
                     )
                 )
 

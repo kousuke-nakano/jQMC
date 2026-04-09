@@ -359,7 +359,10 @@ class Machine:
     def exist(self, object_name: str) -> bool:
         if self.machine_type == "local":
             return os.path.exists(object_name)
-        fileattr = self._sftp_lstat_with_retry(object_name)
+        try:
+            fileattr = self._sftp_lstat_with_retry(object_name)
+        except (RuntimeError, OSError):
+            return False
         return stat.S_ISDIR(fileattr.st_mode) or stat.S_ISREG(fileattr.st_mode)
 
     # ── Job list queries ──────────────────────────────────────────

@@ -327,9 +327,13 @@ def test_get_variational_blocks_basis_flags():
     assert "lambda_basis_exp" in block_names
     assert "lambda_basis_coeff" in block_names
 
-    # Verify shapes
+    # Verify shapes: block.size should be the full number of primitives
     j3_exp_block = next(b for b in blocks if b.name == "j3_basis_exp")
     assert j3_exp_block.size == len(aos_data.exponents)
+    # symmetrize_metric should be set and be idempotent on the current values
+    assert j3_exp_block.symmetrize_metric is not None
+    symmetrized = j3_exp_block.symmetrize_metric(np.asarray(j3_exp_block.values))
+    npt.assert_allclose(symmetrized, np.asarray(aos_data.exponents), rtol=1e-14)
 
 
 # ============================================================
@@ -519,7 +523,134 @@ def test_full_wavefunction_exponent_gradient():
 
 
 # ============================================================
-# Test 16: opt_with_projected_MOs conflict with basis optimization
+# Test 16: shell-constraint symmetrize in apply_block_update
+# ============================================================
+
+
+def test_shell_symmetrize_j3_basis():
+    """apply_block_update passes exponents through without shell averaging.
+
+    Post-update symmetrization was removed; O_k is now symmetrized at source
+    in get_dln_WF, so apply_block_update stores the raw values as-is.
+    """
+    _, aos_data, _, _, _, _ = _load_trexio("H2_ae_ccpvdz_cart.h5")
+
+    j3 = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data, random_init=True, random_scale=0.01, seed=42)
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=None,
+        jastrow_two_body_data=None,
+        jastrow_three_body_data=j3,
+        jastrow_nn_data=None,
+    )
+
+    # Perturb exponents so that shell-mates differ
+    exp = np.array(aos_data.exponents, dtype=np.float64)
+    rng = np.random.RandomState(123)
+    perturbed = exp + rng.uniform(-0.05, 0.05, size=exp.shape)
+
+    block = VariationalParameterBlock(
+        name="j3_basis_exp",
+        values=perturbed,
+        shape=perturbed.shape,
+        size=int(perturbed.size),
+    )
+    jastrow_new = jastrow_data.apply_block_update(block)
+    result = np.array(jastrow_new.jastrow_three_body_data.ao_exponents)
+
+    # apply_block_update stores the raw perturbed values (no shell averaging)
+    npt.assert_allclose(result, perturbed, rtol=1e-14)
+
+
+def test_shell_symmetrize_geminal_basis():
+    """apply_block_update passes exponents through without shell averaging (Geminal).
+
+    Post-update symmetrization was removed; O_k is now symmetrized at source
+    in get_dln_WF, so apply_block_update stores the raw values as-is.
+    """
+    _, _, _, _, geminal_mo_data, _ = _load_trexio("H2_ae_ccpvdz_cart.h5")
+
+    geminal_ao = Geminal_data.convert_from_MOs_to_AOs(geminal_mo_data)
+
+    exp = np.concatenate(
+        [
+            np.array(geminal_ao.ao_exponents_up, dtype=np.float64),
+            np.array(geminal_ao.ao_exponents_dn, dtype=np.float64),
+        ]
+    )
+    rng = np.random.RandomState(456)
+    perturbed = exp + rng.uniform(-0.05, 0.05, size=exp.shape)
+
+    block = VariationalParameterBlock(
+        name="lambda_basis_exp",
+        values=perturbed,
+        shape=perturbed.shape,
+        size=int(perturbed.size),
+    )
+    geminal_new = geminal_ao.apply_block_update(block)
+    result = np.concatenate(
+        [
+            np.array(geminal_new.ao_exponents_up),
+            np.array(geminal_new.ao_exponents_dn),
+        ]
+    )
+    # apply_block_update stores the raw perturbed values (no shell averaging)
+    npt.assert_allclose(result, perturbed, rtol=1e-14)
+
+
+def test_shell_symmetrize_metric_averages_sn():
+    """symmetrize_metric on basis blocks should average SN values within shell groups."""
+    _, aos_data, _, _, _, _ = _load_trexio("H2_ae_ccpvdz_cart.h5")
+    j3 = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data, random_init=True, random_scale=0.01, seed=42)
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=None,
+        jastrow_two_body_data=None,
+        jastrow_three_body_data=j3,
+        jastrow_nn_data=None,
+    )
+    wf = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=None)
+    blocks = wf.get_variational_blocks(opt_J3_param=True, opt_J3_basis_exp=True)
+    exp_block = next(b for b in blocks if b.name == "j3_basis_exp")
+
+    # Simulate SN values where p-shell mates differ
+    sn = np.arange(exp_block.size, dtype=np.float64)
+    symmetrized = exp_block.symmetrize_metric(sn)
+
+    # p-shell mates (indices 4,5,6) should be averaged
+    expected_p1 = np.mean(sn[4:7])
+    assert symmetrized[4] == symmetrized[5] == symmetrized[6] == expected_p1
+    # s-shell singletons should be unchanged
+    assert symmetrized[0] == sn[0]
+
+
+def test_shell_symmetrize_selection_mask():
+    """If one p-shell member is selected, all must be selected after symmetrize_metric on mask."""
+    _, aos_data, _, _, _, _ = _load_trexio("H2_ae_ccpvdz_cart.h5")
+    j3 = Jastrow_three_body_data.init_jastrow_three_body_data(orb_data=aos_data, random_init=True, random_scale=0.01, seed=42)
+    jastrow_data = Jastrow_data(
+        jastrow_one_body_data=None,
+        jastrow_two_body_data=None,
+        jastrow_three_body_data=j3,
+        jastrow_nn_data=None,
+    )
+    wf = Wavefunction_data(jastrow_data=jastrow_data, geminal_data=None)
+    blocks = wf.get_variational_blocks(opt_J3_param=True, opt_J3_basis_exp=True)
+    exp_block = next(b for b in blocks if b.name == "j3_basis_exp")
+
+    # Select only index 4 (one p-shell member)
+    mask = np.zeros(exp_block.size, dtype=np.float64)
+    mask[4] = 1.0
+    expanded_mask = exp_block.symmetrize_metric(mask)
+
+    # All p-shell mates (4,5,6) must be nonzero
+    assert expanded_mask[4] > 0
+    assert expanded_mask[5] > 0
+    assert expanded_mask[6] > 0
+    # s-shell should remain zero
+    assert expanded_mask[0] == 0.0
+
+
+# ============================================================
+# Test 20: opt_with_projected_MOs conflict with basis optimization
 # ============================================================
 
 

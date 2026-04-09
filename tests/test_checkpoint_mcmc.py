@@ -324,7 +324,6 @@ class TestMCMCOptaxRoundtrip:
             num_opt_steps=1,
             num_mcmc_warmup_steps=0,
             num_mcmc_bin_blocks=5,
-            opt_filter_min_SN_ratio=0.0,
             optimizer_kwargs={"method": "adam", "learning_rate": 1e-3},
         )
 
@@ -358,7 +357,6 @@ class TestMCMCOptaxRoundtrip:
             num_opt_steps=1,
             num_mcmc_warmup_steps=0,
             num_mcmc_bin_blocks=5,
-            opt_filter_min_SN_ratio=0.0,
             optimizer_kwargs={"method": "adam", "learning_rate": 1e-3},
         )
 
@@ -370,7 +368,6 @@ class TestMCMCOptaxRoundtrip:
             num_opt_steps=1,
             num_mcmc_warmup_steps=0,
             num_mcmc_bin_blocks=5,
-            opt_filter_min_SN_ratio=0.0,
             optimizer_kwargs={"method": "adam", "learning_rate": 1e-3},
         )
         assert mcmc2._MCMC__i_opt == 2
@@ -385,7 +382,6 @@ class TestMCMCOptaxRoundtrip:
             num_opt_steps=1,
             num_mcmc_warmup_steps=0,
             num_mcmc_bin_blocks=5,
-            opt_filter_min_SN_ratio=0.0,
             optimizer_kwargs={"method": "sr", "delta": 1e-3},
         )
 

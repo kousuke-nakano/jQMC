@@ -57,6 +57,7 @@ from ._setting import EPS_safe_distance, atol_consistency
 from .atomic_orbital import (
     AOs_cart_data,
     AOs_sphe_data,
+    ShellPrimMap,
     _aos_cart_to_sphe,
     _aos_sphe_to_cart,
     compute_AOs,
@@ -1869,17 +1870,17 @@ class Jastrow_data:
             j2 = Jastrow_two_body_data(jastrow_2b_param=new_param, jastrow_2b_type=j2.jastrow_2b_type)
         elif block.name == "j3_matrix" and j3 is not None:
             j3_new = np.array(block.values)
-
-            # Symmetrize unconditionally — the method is a no-op for non-symmetric matrices.
-            j3_new = self.symmetrize_j3(j3_new)
-
+            # Post-update symmetrization removed — O_k is symmetrized at source
+            # in get_dln_WF, so theta and parameter updates are already symmetric.
             j3 = Jastrow_three_body_data(orb_data=j3.orb_data, j_matrix=j3_new)
         elif block.name == "j3_basis_exp" and j3 is not None:
-            new_exp = jnp.asarray(block.values, dtype=jnp.float64)
-            j3 = j3.with_updated_ao_exponents(new_exp)
+            new_exp = np.asarray(block.values, dtype=np.float64)
+            # Post-update symmetrization removed — O_k symmetrized at source.
+            j3 = j3.with_updated_ao_exponents(jnp.asarray(new_exp, dtype=jnp.float64))
         elif block.name == "j3_basis_coeff" and j3 is not None:
-            new_coeff = jnp.asarray(block.values, dtype=jnp.float64)
-            j3 = j3.with_updated_ao_coefficients(new_coeff)
+            new_coeff = np.asarray(block.values, dtype=np.float64)
+            # Post-update symmetrization removed — O_k symmetrized at source.
+            j3 = j3.with_updated_ao_coefficients(jnp.asarray(new_coeff, dtype=jnp.float64))
         elif block.name == "jastrow_nn_params" and nn3 is not None:
             # Update NN Jastrow parameters: block.values is the flattened parameter vector.
             flat = jnp.asarray(block.values).reshape(-1)
@@ -1939,6 +1940,18 @@ class Jastrow_data:
             out[:, :-1] = 0.5 * (sq_new + sq_new.T)
             return out
         return mat
+
+    @staticmethod
+    def _symmetrize_ao_basis(orb_data, arr: np.ndarray) -> np.ndarray:
+        """Average within same-atom same-shell primitive groups.
+
+        This is the single source of truth for shell-sharing constraints
+        on AO basis exponents/coefficients in the Jastrow factor.
+        """
+        from .wavefunction import _get_aos_data
+
+        spm = ShellPrimMap.from_aos_data(_get_aos_data(orb_data))
+        return spm.symmetrize(arr)
 
     def accumulate_position_grad(self, grad_jastrow: "Jastrow_data"):
         """Aggregate position gradients from all active Jastrow components."""
