@@ -373,9 +373,11 @@ def trexio_convert_to(
                         # the median of the log-exponent distribution.
                         # The window width scales with n_shells/len: small
                         # selections stay near the middle, larger ones spread out.
+                        # Using /2.5 for a wider window that covers more of the
+                        # exponent range (e.g. 2/10 -> [32%,68%] of CDF).
                         log_exps = np.log(basis_exps)
                         frac = n_shells / len(basis_exps)
-                        margin = (1.0 - frac) / 2.0
+                        margin = (1.0 - frac) / 2.5
                         cdf = np.linspace(0, 1, len(log_exps))
                         lo = np.interp(margin, cdf, log_exps)
                         hi = np.interp(1.0 - margin, cdf, log_exps)

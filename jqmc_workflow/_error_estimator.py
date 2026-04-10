@@ -53,6 +53,7 @@ def estimate_required_steps(
     pilot_error: float,
     target_error: float,
     walker_ratio: float = 1.0,
+    min_steps: int = 0,
 ) -> int:
     """Estimate total measurement steps to achieve *target_error*.
 
@@ -65,9 +66,9 @@ def estimate_required_steps(
 
     .. math::
 
-        N_{\\text{prod}} = \\lceil N_{\\text{pilot}}
+        N_{\\text{prod}} = N_{\\text{pilot}}
             \\times (\\sigma_{\\text{pilot}} / \\sigma_{\\text{target}})^2
-            \\times W_{\\text{pilot}} / W_{\\text{prod}} \\rceil
+            \\times W_{\\text{pilot}} / W_{\\text{prod}}
 
     Parameters
     ----------
@@ -82,21 +83,23 @@ def estimate_required_steps(
         When walkers-per-MPI is constant this equals
         ``pilot_num_mpi / prod_num_mpi``.
         Default 1.0 (same queue for pilot and production).
+    min_steps : int
+        Minimum number of steps to return (e.g. warmup + bin_blocks).
+        Default 0 (no minimum).
 
     Returns
     -------
     int
-        Estimated number of steps (never less than *pilot_steps*).
+        Estimated number of steps for the production run.
     """
     if target_error <= 0:
         raise ValueError(f"target_error must be positive, got {target_error}")
     if pilot_error <= 0:
         logger.warning(f"pilot_error={pilot_error} is non-positive; returning pilot_steps={pilot_steps} as fallback.")
-        return pilot_steps
+        return max(pilot_steps, min_steps)
 
     ratio_sq = (pilot_error / target_error) ** 2
-    n_required = math.ceil(pilot_steps * ratio_sq * walker_ratio)
-    n_required = max(n_required, pilot_steps)
+    n_required = max(int(pilot_steps * ratio_sq * walker_ratio), min_steps)
 
     logger.info(
         f"Step estimation (sigma ~ 1/sqrt(N*W)):\n"
@@ -105,7 +108,8 @@ def estimate_required_steps(
         f"  target_error   = {target_error:.6g} Ha\n"
         f"  (sig_p/sig_t)^2 = ({pilot_error:.6g}/{target_error:.6g})^2 = {ratio_sq:.2f}\n"
         f"  walker_ratio   = {walker_ratio:.4g}\n"
-        f"  N_required     = ceil({pilot_steps} * {ratio_sq:.2f} * {walker_ratio:.4g}) = {n_required}"
+        f"  min_steps      = {min_steps}\n"
+        f"  N_required     = max(int({pilot_steps} * {ratio_sq:.2f} * {walker_ratio:.4g}), {min_steps}) = {n_required}"
     )
     return n_required
 
