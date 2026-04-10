@@ -634,6 +634,7 @@ class VMC_Workflow(Workflow):
                 pilot_error,
                 self.target_error,
                 walker_ratio=walker_ratio,
+                min_steps=self.num_mcmc_bin_blocks or 0,
             )
             # Add warmup back: production also discards warmup steps
             estimated_mcmc_steps += warmup

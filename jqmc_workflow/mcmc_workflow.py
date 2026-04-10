@@ -523,6 +523,7 @@ class MCMC_Workflow(Workflow):
                 pilot_error,
                 self.target_error,
                 walker_ratio=walker_ratio,
+                min_steps=self.num_mcmc_bin_blocks,
             )
             # Add warmup back: production also discards warmup steps
             estimated_steps += self.num_mcmc_warmup_steps
