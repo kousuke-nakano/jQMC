@@ -2109,18 +2109,17 @@ class MCMC:
 
         logger.info(f"aSR: gamma+ = {gamma_plus:.6f}, gamma- = {gamma_minus:.6f}")
 
-        # Collect positive roots.
-        positive_roots = [g for g in (gamma_plus, gamma_minus) if g > 0.0]
-
-        if positive_roots:
-            gamma = min(positive_roots)
-            logger.info(f"aSR: selected gamma = {gamma:.6f}")
+        # Choose the root with the smaller absolute value (conservative step).
+        if abs(gamma_plus) <= abs(gamma_minus):
+            gamma = gamma_plus
         else:
+            gamma = gamma_minus
+
+        if gamma > 0.0:
+            logger.info(f"aSR: selected gamma = {gamma:.6f} (steepest-descent direction).")
+        else:
+            logger.warning(f"aSR: anti-steepest-descent direction (gamma={gamma:.6f}); falling back to plain SR (gamma=0.1).")
             gamma = 0.1
-            logger.warning(
-                f"aSR: no positive root (gamma+={gamma_plus:.6f}, gamma-={gamma_minus:.6f}); "
-                f"falling back to plain SR (gamma=0.1)."
-            )
 
         return gamma
 
@@ -5895,18 +5894,17 @@ class _MCMC_debug:
 
         logger.info(f"aSR: gamma+ = {gamma_plus:.6f}, gamma- = {gamma_minus:.6f}")
 
-        # Collect positive roots; prefer the smaller one when both are positive.
-        positive_roots = [g for g in (gamma_plus, gamma_minus) if g > 0.0]
-
-        if positive_roots:
-            gamma = min(positive_roots)
-            logger.info(f"aSR: selected gamma = {gamma:.6f}")
+        # Choose the root with the smaller absolute value (conservative step).
+        if abs(gamma_plus) <= abs(gamma_minus):
+            gamma = gamma_plus
         else:
+            gamma = gamma_minus
+
+        if gamma > 0.0:
+            logger.info(f"aSR: selected gamma = {gamma:.6f} (steepest-descent direction).")
+        else:
+            logger.warning(f"aSR: anti-steepest-descent direction (gamma={gamma:.6f}); falling back to plain SR (gamma=0.1).")
             gamma = 0.1
-            logger.warning(
-                f"aSR: no positive root (gamma+={gamma_plus:.6f}, gamma-={gamma_minus:.6f}); "
-                f"falling back to plain SR (gamma=0.1)."
-            )
 
         return float(gamma)
 
