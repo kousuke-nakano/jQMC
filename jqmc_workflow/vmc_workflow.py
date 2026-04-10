@@ -540,7 +540,11 @@ class VMC_Workflow(Workflow):
         output_logs = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.out")))
         self.output_files = h5_files + output_logs
 
-        opt_files = sorted(glob.glob(os.path.join(_wd, "hamiltonian_data_opt_step_*.h5")))
+        def _h5_step_num(path: str) -> int:
+            m = re.search(r"hamiltonian_data_opt_step_(\d+)\.h5$", path)
+            return int(m.group(1)) if m else -1
+
+        opt_files = sorted(glob.glob(os.path.join(_wd, "hamiltonian_data_opt_step_*.h5")), key=_h5_step_num)
         if opt_files:
             self.output_values["optimized_hamiltonian"] = os.path.basename(opt_files[-1])
         restart_chk = self._find_restart_chk(_wd)
@@ -795,7 +799,11 @@ class VMC_Workflow(Workflow):
         output_logs = sorted(os.path.basename(f) for f in glob.glob(os.path.join(_wd, "*.out")))
         self.output_files = h5_files + output_logs
 
-        opt_files = sorted(glob.glob(os.path.join(_wd, "hamiltonian_data_opt_step_*.h5")))
+        def _h5_step_num(path: str) -> int:
+            m = re.search(r"hamiltonian_data_opt_step_(\d+)\.h5$", path)
+            return int(m.group(1)) if m else -1
+
+        opt_files = sorted(glob.glob(os.path.join(_wd, "hamiltonian_data_opt_step_*.h5")), key=_h5_step_num)
         if opt_files:
             self.output_values["optimized_hamiltonian"] = os.path.basename(opt_files[-1])
         restart_chk = self._find_restart_chk(_wd)
