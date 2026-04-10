@@ -14,7 +14,7 @@ project_root = str(Path(__file__).parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from jqmc.atomic_orbital import AOs_cart_data, AOs_sphe_data  # noqa: E402
+from jqmc.atomic_orbital import AOs_cart_data, AOs_sphe_data, ShellPrimMap  # noqa: E402
 from jqmc.determinant import Geminal_data, compute_det_geminal_all_elements  # noqa: E402
 from jqmc.jastrow_factor import (  # noqa: E402
     Jastrow_data,
@@ -528,10 +528,10 @@ def test_full_wavefunction_exponent_gradient():
 
 
 def test_shell_symmetrize_j3_basis():
-    """apply_block_update passes exponents through without shell averaging.
+    """apply_block_update shell-averages exponents within each shell group.
 
-    Post-update symmetrization was removed; O_k is now symmetrized at source
-    in get_dln_WF, so apply_block_update stores the raw values as-is.
+    Post-update symmetrization is applied in apply_block_update so that
+    shell-mates always share identical radial parameters.
     """
     _, aos_data, _, _, _, _ = _load_trexio("H2_ae_ccpvdz_cart.h5")
 
@@ -557,15 +557,17 @@ def test_shell_symmetrize_j3_basis():
     jastrow_new = jastrow_data.apply_block_update(block)
     result = np.array(jastrow_new.jastrow_three_body_data.ao_exponents)
 
-    # apply_block_update stores the raw perturbed values (no shell averaging)
-    npt.assert_allclose(result, perturbed, rtol=1e-14)
+    # apply_block_update shell-averages the perturbed values
+    spm = ShellPrimMap.from_aos_data(aos_data)
+    expected = spm.symmetrize(perturbed)
+    npt.assert_allclose(result, expected, rtol=1e-14)
 
 
 def test_shell_symmetrize_geminal_basis():
-    """apply_block_update passes exponents through without shell averaging (Geminal).
+    """apply_block_update shell-averages exponents within each shell group (Geminal).
 
-    Post-update symmetrization was removed; O_k is now symmetrized at source
-    in get_dln_WF, so apply_block_update stores the raw values as-is.
+    Post-update symmetrization is applied in apply_block_update so that
+    shell-mates always share identical radial parameters.
     """
     _, _, _, _, geminal_mo_data, _ = _load_trexio("H2_ae_ccpvdz_cart.h5")
 
@@ -593,8 +595,15 @@ def test_shell_symmetrize_geminal_basis():
             np.array(geminal_new.ao_exponents_dn),
         ]
     )
-    # apply_block_update stores the raw perturbed values (no shell averaging)
-    npt.assert_allclose(result, perturbed, rtol=1e-14)
+    # apply_block_update shell-averages the perturbed values
+    from jqmc.wavefunction import _get_aos_data
+
+    spm = ShellPrimMap.concat(
+        ShellPrimMap.from_aos_data(_get_aos_data(geminal_ao.orb_data_up_spin)),
+        ShellPrimMap.from_aos_data(_get_aos_data(geminal_ao.orb_data_dn_spin)),
+    )
+    expected = spm.symmetrize(perturbed)
+    npt.assert_allclose(result, expected, rtol=1e-14)
 
 
 def test_shell_symmetrize_metric_averages_sn():
