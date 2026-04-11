@@ -1593,20 +1593,14 @@ def test_symmetrize_lambda_1d():
 
 
 def test_apply_block_update_square_symmetric_preserved():
-    """L2-1: symmetric square lambda stays symmetric when delta is symmetric.
-
-    Symmetry is enforced at the O_k level (get_dln_WF), so theta and
-    parameter updates are always symmetric.  apply_block_update no longer
-    symmetrizes post-hoc.
-    """
+    """L2-1: symmetric square lambda stays symmetric after non-symmetric delta."""
     rng = np.random.RandomState(10)
     n = 5
     lam_sym = rng.randn(n, n)
     lam_sym = 0.5 * (lam_sym + lam_sym.T)
     gd = _make_geminal_with_lambda(lam_sym)
 
-    delta = rng.randn(n, n)
-    delta = 0.5 * (delta + delta.T)  # symmetric delta (as produced by O_k symmetrization)
+    delta = rng.randn(n, n)  # intentionally non-symmetric
     lr = 0.1
     updated_values = lam_sym + lr * delta
     block = VariationalParameterBlock(
@@ -1636,12 +1630,7 @@ def test_apply_block_update_square_nonsymmetric_free():
 
 
 def test_apply_block_update_rect_paired_symmetric_preserved():
-    """L2-3: rectangular lambda, paired part stays symmetric when delta paired part is symmetric.
-
-    Symmetry is enforced at the O_k level, so the paired sub-block of
-    theta is always symmetric.  apply_block_update no longer symmetrizes
-    post-hoc.
-    """
+    """L2-3: rectangular lambda, paired part stays symmetric after non-symmetric delta."""
     rng = np.random.RandomState(12)
     n_up = 4
     n_extra = 2
@@ -1651,10 +1640,7 @@ def test_apply_block_update_rect_paired_symmetric_preserved():
     lam_rect = np.column_stack([paired, unpaired])
     gd = _make_geminal_with_lambda(lam_rect, num_up=n_up + n_extra, num_dn=n_up)
 
-    delta_paired = rng.randn(n_up, n_up)
-    delta_paired = 0.5 * (delta_paired + delta_paired.T)  # symmetric paired delta
-    delta_unpaired = rng.randn(n_up, n_extra)
-    delta = np.column_stack([delta_paired, delta_unpaired])
+    delta = rng.randn(n_up, n_up + n_extra)
     lr = 0.1
     updated_values = lam_rect + lr * delta
     block = VariationalParameterBlock(

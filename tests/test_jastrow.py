@@ -1573,12 +1573,7 @@ def test_symmetrize_j3_too_few_columns():
 
 
 def test_apply_block_update_symmetric_j3_preserved():
-    """L2-4: symmetric j3 stays symmetric when delta square sub-block is symmetric.
-
-    Symmetry is enforced at the O_k level (get_dln_WF), so the square
-    sub-block of theta is always symmetric.  apply_block_update no longer
-    symmetrizes post-hoc.
-    """
+    """L2-4: symmetric j3 stays symmetric after non-symmetric delta."""
     rng = np.random.RandomState(20)
     n = 4
     sq_sym = rng.randn(n, n)
@@ -1587,10 +1582,7 @@ def test_apply_block_update_symmetric_j3_preserved():
     j_matrix = np.column_stack([sq_sym, last_col])
     jd = _make_jastrow_with_j3(j_matrix)
 
-    delta_sq = rng.randn(n, n)
-    delta_sq = 0.5 * (delta_sq + delta_sq.T)  # symmetric square sub-block
-    delta_last = rng.randn(n)
-    delta = np.column_stack([delta_sq, delta_last])
+    delta = rng.randn(n, n + 1)
     lr = 0.1
     updated_values = j_matrix + lr * delta
     block = VariationalParameterBlock(

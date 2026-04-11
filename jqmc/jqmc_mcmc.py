@@ -2116,11 +2116,11 @@ class MCMC:
             gamma = gamma_minus
 
         if gamma > 0.0:
-            logger.debug("aSR: steepest-descent direction (gamma > 0).")
+            logger.info(f"aSR: selected gamma = {gamma:.6f} (steepest-descent direction).")
         else:
-            logger.debug("aSR: anti-steepest-descent direction (gamma < 0).")
+            logger.warning(f"aSR: anti-steepest-descent direction (gamma={gamma:.6f}); falling back to plain SR (gamma=0.1).")
+            gamma = 0.1
 
-        logger.info(f"aSR: selected gamma = {gamma:.6f}")
         return gamma
 
     @staticmethod
@@ -3456,30 +3456,37 @@ class MCMC:
                 # Solve LM eigenvalue problem
                 c_vec, E_lm = self.solve_linear_method(H_0_lm, f_vec_lm, S_mat, K_mat, B_mat, epsilon=lm_cond)
 
-                # Back-transform: c_vec[0] = c₀ (SR direction), c_vec[1:] = c_k (individual params)
-                theta = np.zeros(total_num_params, dtype=np.float64)
-                theta[:] += c_vec[0] * g_sr  # SR collective variable (affects all params)
-                if lm_subspace_dim == -1 or lm_subspace_dim >= total_num_params:
-                    theta[:] += c_vec[1:]
-                else:
-                    theta[subspace_indices] += c_vec[1:]
-
-                # DEBUG: trace theta after LM replacement
-                for _ti in _trace_idx:
-                    _c0_g = c_vec[0] * g_sr[_ti]
-                    _c_ind = 0.0
-                    if _ti in subspace_indices:
-                        _sub_pos = int(np.searchsorted(subspace_indices, _ti))
-                        if _sub_pos < len(subspace_indices) and subspace_indices[_sub_pos] == _ti:
-                            _c_ind = c_vec[1 + _sub_pos]
-                    logger.debug(
-                        "  [LM trace] flat=%d  theta_LM=%.6e  (c0*g=%.6e  c_ind=%.6e)  c0=%.6e",
-                        int(_ti),
-                        float(theta[_ti]),
-                        float(_c0_g),
-                        float(_c_ind),
-                        float(c_vec[0]),
+                if E_lm > H_0_lm + 3.0 * E_std:
+                    logger.warning(
+                        f"LM: E_LM={E_lm:.6f} > E_0 + 3*sigma = {H_0_lm:.6f} + 3*{E_std:.6f} = {H_0_lm + 3.0 * E_std:.6f}; "
+                        f"LM does not predict improvement. Falling back to plain SR."
                     )
+                    theta = 0.1 * g_sr
+                else:
+                    # Back-transform: c_vec[0] = c₀ (SR direction), c_vec[1:] = c_k (individual params)
+                    theta = np.zeros(total_num_params, dtype=np.float64)
+                    theta[:] += c_vec[0] * g_sr  # SR collective variable (affects all params)
+                    if lm_subspace_dim == -1 or lm_subspace_dim >= total_num_params:
+                        theta[:] += c_vec[1:]
+                    else:
+                        theta[subspace_indices] += c_vec[1:]
+
+                    # DEBUG: trace theta after LM replacement
+                    for _ti in _trace_idx:
+                        _c0_g = c_vec[0] * g_sr[_ti]
+                        _c_ind = 0.0
+                        if _ti in subspace_indices:
+                            _sub_pos = int(np.searchsorted(subspace_indices, _ti))
+                            if _sub_pos < len(subspace_indices) and subspace_indices[_sub_pos] == _ti:
+                                _c_ind = c_vec[1 + _sub_pos]
+                        logger.debug(
+                            "  [LM trace] flat=%d  theta_LM=%.6e  (c0*g=%.6e  c_ind=%.6e)  c0=%.6e",
+                            int(_ti),
+                            float(theta[_ti]),
+                            float(_c0_g),
+                            float(_c_ind),
+                            float(c_vec[0]),
+                        )
 
             elif use_lm:
                 # ---- aSR (lm_subspace_dim = 0) ----
@@ -5887,23 +5894,17 @@ class _MCMC_debug:
 
         logger.info(f"aSR: gamma+ = {gamma_plus:.6f}, gamma- = {gamma_minus:.6f}")
 
-        # Return the positive root; prefer the smaller one when both are positive.
-        if gamma_plus > 0.0 and gamma_minus <= 0.0:
+        # Choose the root with the smaller absolute value (conservative step).
+        if abs(gamma_plus) <= abs(gamma_minus):
             gamma = gamma_plus
-        elif gamma_minus > 0.0 and gamma_plus <= 0.0:
-            gamma = gamma_minus
-        elif gamma_plus > 0.0 and gamma_minus > 0.0:
-            gamma = min(gamma_plus, gamma_minus)
-            logger.warning(
-                f"aSR: both roots positive (gamma+={gamma_plus:.6f}, gamma-={gamma_minus:.6f}); "
-                f"using smaller root gamma={gamma:.6f}."
-            )
         else:
-            gamma = gamma_plus if abs(gamma_plus) >= abs(gamma_minus) else gamma_minus
-            logger.warning(
-                f"aSR: neither root is positive (gamma+={gamma_plus:.6f}, gamma-={gamma_minus:.6f}); "
-                f"using root with larger absolute value gamma={gamma:.6f}."
-            )
+            gamma = gamma_minus
+
+        if gamma > 0.0:
+            logger.info(f"aSR: selected gamma = {gamma:.6f} (steepest-descent direction).")
+        else:
+            logger.warning(f"aSR: anti-steepest-descent direction (gamma={gamma:.6f}); falling back to plain SR (gamma=0.1).")
+            gamma = 0.1
 
         return float(gamma)
 

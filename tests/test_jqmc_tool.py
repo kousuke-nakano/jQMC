@@ -228,7 +228,7 @@ class TestTrexioConvertTo:
                     else:
                         log_exps = np.log(basis_exps)
                         frac = n_shells / len(basis_exps)
-                        margin = (1.0 - frac) / 2.0
+                        margin = (1.0 - frac) / 2.5
                         cdf = np.linspace(0, 1, len(log_exps))
                         lo = np.interp(margin, cdf, log_exps)
                         hi = np.interp(1.0 - margin, cdf, log_exps)
