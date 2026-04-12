@@ -112,7 +112,8 @@ class Machine:
         ssh_config = paramiko.SSHConfig()
         config_file = os.path.join(os.getenv("HOME"), ".ssh/config")
         try:
-            ssh_config.parse(open(config_file, "r"))
+            with open(config_file, "r") as fh:
+                ssh_config.parse(fh)
         except FileNotFoundError:
             logger.error(f"SSH config file ({config_file}) is required.")
             raise
@@ -175,7 +176,7 @@ class Machine:
         max_retries = 3
         timeout_sec = 5.0
 
-        for obj_name, obj in [("ssh", self.ssh), ("sftp", self.sftp)]:
+        for obj_name, obj in [("sftp", self.sftp), ("ssh", self.ssh)]:
             for attempt in range(1, max_retries + 1):
                 executor = ThreadPoolExecutor(max_workers=1)
                 future = executor.submit(obj.close)
@@ -190,7 +191,7 @@ class Machine:
                         raise ValueError(f"Cannot close {obj_name}")
                     time.sleep(1)
                 finally:
-                    executor.shutdown(wait=False, cancel_futures=True)
+                    executor.shutdown(wait=True)
 
         del self.ssh
         del self.sftp
@@ -317,9 +318,13 @@ class Machine:
     def _run_remote(self, command_r: str):
         self.ssh_open()
         _, pstdout, pstderr = self.ssh.exec_command(command=command_r)
-        exit_status = pstdout.channel.recv_exit_status()
-        stdout = pstdout.read().decode("utf-8").strip()
-        stderr = pstderr.read().decode("utf-8").strip()
+        try:
+            exit_status = pstdout.channel.recv_exit_status()
+            stdout = pstdout.read().decode("utf-8").strip()
+            stderr = pstderr.read().decode("utf-8").strip()
+        finally:
+            pstdout.close()
+            pstderr.close()
         if exit_status != 0:
             logger.error(f"Remote command failed: {command_r}")
             logger.error(f"stdout={stdout}")
@@ -342,7 +347,7 @@ class Machine:
                     raise RuntimeError(f"SFTP lstat failed for '{path}'")
                 time.sleep(1)
             finally:
-                executor.shutdown(wait=False, cancel_futures=True)
+                executor.shutdown(wait=True)
 
     def is_file(self, file_name: str) -> bool:
         if self.machine_type == "local":

@@ -467,11 +467,14 @@ class Workflow:
         # These are non-essential: warn (not error) if missing on server.
         optional_fetch = []
         job_tmp = self._make_job(input_file, output_file, queue_label=queue_label, run_id=run_id)
-        if job_tmp.server_machine.queuing:
-            for jf in (job_tmp.job_stdout, job_tmp.job_stderr):
-                if jf and jf not in fetch_from_objects:
-                    fetch_from_objects.append(jf)
-                    optional_fetch.append(jf)
+        try:
+            if job_tmp.server_machine.queuing:
+                for jf in (job_tmp.job_stdout, job_tmp.job_stderr):
+                    if jf and jf not in fetch_from_objects:
+                        fetch_from_objects.append(jf)
+                        optional_fetch.append(jf)
+        finally:
+            job_tmp._close_ssh()
 
         # ── Restart detection via job history ─────────────────────
         if step is not None:
@@ -486,9 +489,12 @@ class Workflow:
         if recorded.get("status") == "completed":
             logger.info(f"  {input_file}: completed but not fetched. Fetching...")
             job = self._make_job(input_file, output_file, queue_label=queue_label, run_id=run_id)
-            job.fetch_job(
-                from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir, optional_patterns=optional_fetch
-            )
+            try:
+                job.fetch_job(
+                    from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir, optional_patterns=optional_fetch
+                )
+            finally:
+                job._close_ssh()
             update_job(work_dir, input_file, status="fetched", fetched_at=_now_iso())
             return
 
@@ -496,55 +502,61 @@ class Workflow:
             stored_job_id = recorded.get("job_id")
             logger.info(f"  Resuming previously submitted job {stored_job_id}")
             job = self._make_job(input_file, output_file, queue_label=queue_label, run_id=run_id)
-            job.job_number = stored_job_id
-            while job.jobcheck():
-                logger.info(f"  Job {stored_job_id} still running, waiting {self.poll_interval}s...")
-                await asyncio.sleep(self.poll_interval)
-            logger.info("  Job completed.")
-            update_job(work_dir, input_file, status="completed", completed_at=_now_iso())
-            self._collect_job_acct(job, work_dir, input_file)
-            job.fetch_job(
-                from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir, optional_patterns=optional_fetch
-            )
+            try:
+                job.job_number = stored_job_id
+                while job.jobcheck():
+                    logger.info(f"  Job {stored_job_id} still running, waiting {self.poll_interval}s...")
+                    await asyncio.sleep(self.poll_interval)
+                logger.info("  Job completed.")
+                update_job(work_dir, input_file, status="completed", completed_at=_now_iso())
+                self._collect_job_acct(job, work_dir, input_file)
+                job.fetch_job(
+                    from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir, optional_patterns=optional_fetch
+                )
+            finally:
+                job._close_ssh()
             update_job(work_dir, input_file, status="fetched", fetched_at=_now_iso())
             return
 
         # ── New submission ────────────────────────────────────────
         job = self._make_job(input_file, output_file, queue_label=queue_label, run_id=run_id)
-        submit_sh = self._submit_script_name(run_id)
-        job.generate_script(submission_script=submit_sh, work_dir=work_dir)
+        try:
+            submit_sh = self._submit_script_name(run_id)
+            job.generate_script(submission_script=submit_sh, work_dir=work_dir)
 
-        from_objects = [input_file, self.hamiltonian_file, submit_sh]
-        if extra_from_objects:
-            from_objects.extend(extra_from_objects)
-        submitted, job_number = job.job_submit(submission_script=submit_sh, from_objects=from_objects, work_dir=work_dir)
-        if not submitted:
-            raise RuntimeError("Job submission failed (queue limit or error).")
+            from_objects = [input_file, self.hamiltonian_file, submit_sh]
+            if extra_from_objects:
+                from_objects.extend(extra_from_objects)
+            submitted, job_number = job.job_submit(submission_script=submit_sh, from_objects=from_objects, work_dir=work_dir)
+            if not submitted:
+                raise RuntimeError("Job submission failed (queue limit or error).")
 
-        logger.info(f"  Job submitted: {job_number}")
-        add_job(
-            work_dir,
-            input_file=input_file,
-            output_file=output_file,
-            job_id=str(job_number) if job_number else "local",
-            server_machine=self.server_machine_name,
-            step=step,
-            run_id=run_id,
-            job_stdout=job.job_stdout if job.server_machine.queuing else "",
-            job_stderr=job.job_stderr if job.server_machine.queuing else "",
-        )
+            logger.info(f"  Job submitted: {job_number}")
+            add_job(
+                work_dir,
+                input_file=input_file,
+                output_file=output_file,
+                job_id=str(job_number) if job_number else "local",
+                server_machine=self.server_machine_name,
+                step=step,
+                run_id=run_id,
+                job_stdout=job.job_stdout if job.server_machine.queuing else "",
+                job_stderr=job.job_stderr if job.server_machine.queuing else "",
+            )
 
-        while job.jobcheck():
-            logger.info(f"  Job {job_number} still running, waiting {self.poll_interval}s...")
-            await asyncio.sleep(self.poll_interval)
+            while job.jobcheck():
+                logger.info(f"  Job {job_number} still running, waiting {self.poll_interval}s...")
+                await asyncio.sleep(self.poll_interval)
 
-        logger.info("  Job completed.")
-        update_job(work_dir, input_file, status="completed", completed_at=_now_iso())
+            logger.info("  Job completed.")
+            update_job(work_dir, input_file, status="completed", completed_at=_now_iso())
 
-        # Collect scheduler accounting before fetch
-        self._collect_job_acct(job, work_dir, input_file)
+            # Collect scheduler accounting before fetch
+            self._collect_job_acct(job, work_dir, input_file)
 
-        job.fetch_job(from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir, optional_patterns=optional_fetch)
+            job.fetch_job(from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir, optional_patterns=optional_fetch)
+        finally:
+            job._close_ssh()
         update_job(work_dir, input_file, status="fetched", fetched_at=_now_iso())
 
     def _make_job(self, input_file, output_file, queue_label=None, run_id=""):

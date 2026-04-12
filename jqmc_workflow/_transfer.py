@@ -70,7 +70,10 @@ class Data_transfer:
         """Determine the local workspace_root from localhost entry."""
         try:
             local_m = Machine("localhost")
-            return local_m.workspace_root or os.path.expanduser("~")
+            try:
+                return local_m.workspace_root or os.path.expanduser("~")
+            finally:
+                local_m.ssh_close()
         except (KeyError, FileNotFoundError):
             return os.path.expanduser("~")
 
