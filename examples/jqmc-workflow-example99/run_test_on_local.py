@@ -174,7 +174,7 @@ def build_pipeline() -> list[Container]:
                     "method": "sr",
                     "delta": 0.100,
                     "epsilon": 0.100,
-                    "adaptive_learning_rate": True,
+                    "use_lm": True,
                 },
                 max_time=600,
                 poll_interval=120,

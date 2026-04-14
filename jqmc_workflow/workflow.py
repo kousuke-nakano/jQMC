@@ -61,6 +61,7 @@ from ._state import (
     set_input_fingerprints,
     update_job,
     update_status,
+    validate_completion,
 )
 
 logger = getLogger("jqmc-workflow").getChild(__name__)
@@ -554,7 +555,9 @@ class Workflow:
             # Collect scheduler accounting before fetch
             self._collect_job_acct(job, work_dir, input_file)
 
-            job.fetch_job(from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir, optional_patterns=optional_fetch)
+            job.fetch_job(
+                from_objects=fetch_from_objects, exclude_patterns=[], work_dir=work_dir, optional_patterns=optional_fetch
+            )
         finally:
             job._close_ssh()
         update_job(work_dir, input_file, status="fetched", fetched_at=_now_iso())
@@ -876,10 +879,18 @@ class Container:
 
         # Write completion — but only if the workflow did not fail.
         if self.status != WorkflowStatus.FAILED:
-            result_fields = {}
-            for k, v in self.output_values.items():
-                result_fields[f"result_{k}"] = v
-            update_status(proj, WorkflowStatus.COMPLETED, **result_fields)
+            # Run all post-completion validation checks in one place.
+            ok, error_msg = validate_completion(proj, self.output_values)
+            if ok:
+                result_fields = {}
+                for k, v in self.output_values.items():
+                    result_fields[f"result_{k}"] = v
+                update_status(proj, WorkflowStatus.COMPLETED, **result_fields)
+            else:
+                logger.error(error_msg)
+                self.status = WorkflowStatus.FAILED
+                set_error(proj, error_msg)
+                update_status(proj, WorkflowStatus.FAILED)
         else:
             error_msg = self.output_values.get("error", f"workflow returned status={self.status}")
             set_error(proj, error_msg)

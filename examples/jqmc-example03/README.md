@@ -103,14 +103,17 @@ Dt = 2.0 # Step size for the MCMC update (bohr).
 epsilon_AS = 0.0 # the epsilon parameter used in the Attacalite-Sandro regulatization method.
 num_opt_steps = 300 # Number of optimization steps.
 wf_dump_freq = 1 # Frequency of wavefunction (i.e. hamiltonian_data) dump.
-optimizer_kwargs = { method = "sr", delta = 0.15, epsilon = 0.001, cg_flag = true, cg_max_iter = 10000, cg_tol = 1e-6, adaptive_learning_rate = true } # SR optimizer configuration (method plus step/regularization).
+optimizer_kwargs = { method = "sr", delta = 0.15, epsilon = 0.001, cg_flag = true, cg_max_iter = 10000, cg_tol = 1e-6, use_lm = true } # SR optimizer configuration (method plus step/regularization).
 opt_J1_param = false
 opt_J2_param = true
 opt_J3_param = true
 opt_JNN_param = false
 opt_lambda_param = true
 opt_with_projected_MOs = true
-num_param_opt = 0 # the number of parameters to optimize in the descending order of |f|/|std f|. If it is set 0, all parameters are optimized.
+opt_J3_basis_exp = false
+opt_J3_basis_coeff = false
+opt_lambda_basis_exp = false
+opt_lambda_basis_coeff = false
 ```
 
 The key differences from `example01` are:
@@ -137,7 +140,7 @@ The important criteria are `Max f` and `Max of signal to noise of f`. `Max f` sh
 > [!TIP]
 > If the optimization does not converge well, try the following:
 > - Adjust the `delta` parameter in `optimizer_kwargs`. A smaller `delta` (e.g., `0.05`) makes the optimization more conservative but stable, while a larger one (e.g., `0.30`) is more aggressive but may cause instabilities.
-> - Set `adaptive_learning_rate = false` in `optimizer_kwargs` to disable the adaptive learning rate and use a fixed step size instead. This can sometimes improve convergence for difficult cases.
+> - Set `use_lm = false` in `optimizer_kwargs` to disable the Linear Method (LM) and use a fixed step size instead. This can sometimes improve convergence for difficult cases.
 
 You can also plot them and make a figure.
 

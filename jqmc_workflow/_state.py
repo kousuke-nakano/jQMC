@@ -182,6 +182,46 @@ def _check_normal_termination(directory: str, jobs: list) -> list[str]:
     return abnormal
 
 
+def validate_completion(directory: str, output_values: dict | None = None) -> tuple[bool, str]:
+    """Run all post-completion checks and return ``(ok, error_msg)``.
+
+    Called once from :class:`Container` after a workflow reports
+    ``COMPLETED``.  All "is this really completed?" checks live here.
+
+    Parameters
+    ----------
+    directory : str
+        Working directory containing ``workflow_state.toml`` and
+        fetched output files.
+    output_values : dict, optional
+        Scalar results from the workflow (energy, error, etc.).
+
+    Returns
+    -------
+    ok : bool
+        ``True`` if all checks pass.
+    error_msg : str
+        Empty when *ok* is ``True``; describes the failure otherwise.
+    """
+    output_values = output_values or {}
+    state = read_state(directory)
+
+    # ── Check 1: "Program ends" marker in output files ────────────
+    abnormal = _check_normal_termination(directory, state.get("jobs", []))
+    if abnormal:
+        files_str = ", ".join(abnormal)
+        return False, f"Abnormal termination: 'Program ends' marker missing in output file(s): {files_str}"
+
+    # ── Check 2: Non-finite energy ────────────────────────────────
+    import math
+
+    energy = output_values.get("energy")
+    if energy is not None and not math.isfinite(energy):
+        return False, f"Non-finite energy detected (E={energy})"
+
+    return True, ""
+
+
 def update_status(
     directory: str,
     status: str | WorkflowStatus,
@@ -202,13 +242,6 @@ def update_status(
     **extra_fields
         Additional fields.  Keys starting with ``result_`` go into
         ``[result]``; everything else goes into ``[workflow]``.
-
-    When *status* is ``"completed"``, every fetched output file listed in
-    the ``[[jobs]]`` table is checked for the ``Program ends`` footer.  If
-    any output file exists on disk but lacks this marker the status is
-    automatically downgraded to ``"failed"`` and an ``error`` field is
-    recorded, because the absence almost certainly indicates abnormal
-    termination (e.g. wall-time expiration on a supercomputer).
     """
     # Ensure we work with raw string for VALID_STATUSES check
     status_str = status.value if isinstance(status, WorkflowStatus) else status
@@ -218,16 +251,6 @@ def update_status(
     if not state:
         logger.warning(f"No workflow_state.toml in {directory}; creating minimal one.")
         state = {"workflow": {}, "jobs": [], "result": {}}
-
-    # ── Abnormal-termination guard ────────────────────────────────
-    if status_str == "completed":
-        abnormal = _check_normal_termination(directory, state.get("jobs", []))
-        if abnormal:
-            files_str = ", ".join(abnormal)
-            error_msg = f"Abnormal termination detected: 'Program ends' marker missing in output file(s): {files_str}"
-            logger.error(error_msg)
-            status_str = "failed"
-            extra_fields.setdefault("error", error_msg)
 
     state.setdefault("workflow", {})
     state["workflow"]["status"] = status_str
